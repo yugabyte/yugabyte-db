@@ -34,6 +34,10 @@ namespace yb {
 class RefCntBuffer;
 class RefCntSlice;
 class Slice;
+class Strand;
+class StrandTask;
+class ThreadPoolTask;
+class YBThreadPool;
 
 namespace rpc {
 
@@ -75,12 +79,8 @@ class Scheduler;
 class SecureContext;
 class ServicePoolImpl;
 class Sidecars;
-class Strand;
-class StrandTask;
 class Stream;
 class StreamReadBuffer;
-class ThreadPool;
-class ThreadPoolTask;
 class LocalYBInboundCall;
 
 struct CallData;
@@ -122,6 +122,11 @@ using ServerEventListPtr = std::shared_ptr<ServerEventList>;
 
 class ServiceIf;
 using ServiceIfPtr = std::shared_ptr<ServiceIf>;
+
+using Strand = yb::Strand;
+using StrandTask = yb::StrandTask;
+using ThreadPool = YBThreadPool;
+using ThreadPoolTask = yb::ThreadPoolTask;
 
 using Publisher = std::function<int(const std::string&, const std::string&)>;
 

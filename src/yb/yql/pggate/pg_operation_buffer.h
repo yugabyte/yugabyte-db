@@ -45,6 +45,9 @@ class BufferableOperations {
   size_t Size() const;
   void MoveTo(PgsqlOps& operations, PgObjectIds& relations) &&;
 
+  friend std::pair<BufferableOperations, BufferableOperations> Split(
+      BufferableOperations&& ops, size_t index);
+
  private:
   PgsqlOps operations_;
   PgObjectIds relations_;
@@ -58,8 +61,7 @@ class PgOperationBuffer {
   ~PgOperationBuffer();
   Status Add(const PgTableDesc& table, PgsqlWriteOpPtr op, bool transactional);
   Status Flush();
-  Result<BufferableOperations> FlushTake(
-      const PgTableDesc& table, const PgsqlOp& op, bool transactional);
+  Result<BufferableOperations> Take(bool transactional);
   size_t Size() const;
   void Clear();
 

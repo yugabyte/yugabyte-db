@@ -17,6 +17,66 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, where `YYYY` is the release year, `M` is the month, and `N` is the number of the release in that month.
 
+## v2025.7.2 - July 15, 2025
+
+### New feature
+
+- Introduced the `--on-primary-key-conflict` flag for the import data to target and import data file command, supporting two modes:
+
+  - ERROR: Fails the import if a primary key conflict is encountered.
+  - IGNORE: Ignores rows that have a primary key conflict.
+
+## Enhancements
+
+- Foreign keys with mismatched datatypes are now detected and reported in the Migration Assessment Report under **Performance Optimizations**.
+- Automatically clean up leftover metadata when `assess-migration` is aborted via a prompt, eliminating the need to rerun with `--start-clean`.
+- Added a warning in import data when existing rows are detected in the target table to help prevent primary key conflicts during import.
+- Improved error messages when multiple Debezium processes or active replication slots are detected, so that you can identify and kill orphaned processes and retry the command.
+- Upgraded the [YugabyteDB gRPC Connector](/preview/develop/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/) for live migration with fall-back and fall-forward workflows to support new YugabyteDB releases.
+
+## Bug fixes
+
+- Fixed incorrect error message shown during schema export failures; now correctly reports "schema export unsuccessful".
+- Fixed import report output for import data file when the same file is mapped to multiple tables; all target tables are now correctly listed in the report.
+- Fixed broken status reporting in import data status when multiple files are imported to the same table; all imported files are now listed in the status report.
+- Fixed misclassification of performance optimization issues inside PL/pgSQL blocks; these are now correctly reported under **Performance Optimizations** in the Migration Assessment Report.
+
+## v2025.7.1 - July 1, 2025
+
+### New feature
+
+- You can now use [configuration files](../reference/configuration-file/) with the [import-data-file](../reference/bulk-data-load/import-data-file/) command for [bulk data load](../migrate/bulk-data-load/) from files.
+
+### Enhancements
+
+- Added a check to prompt users to run ANALYZE on schemas if it hasn't been executed, ensuring more accurate performance optimization assessment.
+- The assessment no longer reports partial indexes as redundant in performance optimizations.
+- The assessment no longer reports any partial indexes filtering NULL values in the "Indexes with high percentage of NULL values" case, and filtering a particular value in the "Indexes with high percentage of a particular value" case.
+
+### Bug fixes
+
+- Fixed the `export data from source` and `export data from target` commands to prevent multiple internal processes from running concurrently in cases where a previous run may have left an orphaned process.
+- Fixed a bug where DDLs containing `DEFAULT CURRENT_TIMESTAMP AT TIME ZONE` clauses were generated with a syntax error during export schema.
+
+## v2025.6.2 - June 17, 2025
+
+### New feature
+
+- [Configuration files](../reference/configuration-file/) can now be used for all commands in live migration workflows.
+
+### Enhancements
+
+- The migration assessment report for the [performance optimization](../known-issues/postgresql/#performance-optimizations) "Hotspots with indexes on timestamp/date as first column" now includes reporting for primary keys and unique key indexes.
+- Improved the readability of the HTML assessment report by moving performance optimizations to a dedicated section.
+- Added a guardrail in export data live migration resumption scenarios for PostgreSQL source to prevent multiple export data streaming processes from running at the same time.
+
+### Bug fixes
+
+- Fixed an issue where Oracle Normal Indexes were incorrectly reported as unsupported in the schema analysis report.
+- Fixed a bug in the `assess-migration` command that caused it to fail with an error in scenarios where the source database had a column of an array of any unsupported YugabyteDB datatype.
+- Fixed a bug in the `import-data` command for a live migration scenario that prevented resuming `import-data` if a failure occurred after cutover was initiated.
+- Fixed a bug in yugabyted UI where data migration progress was not shown/updated for tables with a large number of rows (exceeding `int32` range).
+
 ## v2025.6.1 - June 3, 2025
 
 ### New feature
@@ -39,7 +99,7 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 
 ### New features
 
-- Added support for using a config file to manage parameters in offline migration using `yb-voyager`.
+- Added support for using a [configuration file](../reference/configuration-file/) to manage parameters in offline migration using `yb-voyager`.
 
 ### Enhancements
 

@@ -26,6 +26,7 @@
 #include "yb/common/column_id.h"
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/id_mapping.h"
+#include "yb/common/value.pb.h"
 
 #include "yb/dockv/dockv_fwd.h"
 #include "yb/dockv/dockv.fwd.h"
@@ -56,6 +57,8 @@ struct ColumnPackingData {
 
   DataType data_type;
 
+  QLValuePB missing_value;
+
   static ColumnPackingData FromPB(const ColumnPackingPB& pb);
   void ToPB(ColumnPackingPB* out) const;
 
@@ -65,10 +68,10 @@ struct ColumnPackingData {
 
   std::string ToString() const;
 
-  bool operator==(const ColumnPackingData&) const = default;
-
   Slice FetchV1(const uint8_t* header, const uint8_t* body) const;
 };
+
+bool operator==(const ColumnPackingData& lhs, const ColumnPackingData& rhs);
 
 class SchemaPacking {
  public:

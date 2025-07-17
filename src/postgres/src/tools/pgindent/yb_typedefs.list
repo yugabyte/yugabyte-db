@@ -200,7 +200,6 @@ YbUpdateAffectedEntities
 YbUpdateRelationCacheState
 YbValidateOkeysState
 YbVirtualWalRecord
-YbXClusterReplicationRole
 YbcAdvisoryLockId
 YbcAdvisoryLockMode
 YbcAshAcquireBufferLock
@@ -273,7 +272,6 @@ YbcPgTableDesc
 YbcPgTabletsDescriptor
 YbcPgThreadLocalRegexpCache
 YbcPgThreadLocalRegexpCacheCleanup
-YbcPgThreadLocalRegexpMetadata
 YbcPgTransactionSetting
 YbcPgTxnSnapshot
 YbcPgTypeAttrs
@@ -306,6 +304,7 @@ YbcTypeEntityProvider
 YbcWaitEventDescriptor
 YbcWaitEventInfo
 YbcWaitEventInfoPtr
+YbcXClusterReplicationRole
 YbcYCQLStatementStats
 YbcYsqlBenchMetricEntry
 YbgError

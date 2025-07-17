@@ -14,23 +14,24 @@ public class AdditionalServicesStateData {
   @Data
   @ApiModel(description = "State for earlyoom service")
   public static class EarlyoomConfig {
-    @ApiModelProperty private boolean enabled;
 
-    @ApiModelProperty private int availMemoryTermPercent;
+    @ApiModelProperty private Integer availMemoryTermPercent;
 
-    @ApiModelProperty private int availMemoryKillPercent;
+    @ApiModelProperty private Integer availMemoryKillPercent;
 
-    @ApiModelProperty private int availMemoryTermKb;
+    @ApiModelProperty private Integer availMemoryTermKb;
 
-    @ApiModelProperty private int availMemoryKillKb;
+    @ApiModelProperty private Integer availMemoryKillKb;
 
-    @ApiModelProperty private int reportInterval;
+    @ApiModelProperty private Integer reportInterval;
 
     @ApiModelProperty private String preferPattern;
   }
 
   @ApiModelProperty("Configuration for earlyoom service.")
   private EarlyoomConfig earlyoomConfig;
+
+  @ApiModelProperty private boolean earlyoomEnabled;
 
   /**
    * Parse earlyoom config from command line args used for configuration.
@@ -40,9 +41,11 @@ public class AdditionalServicesStateData {
    * @param ignoreErrors Whether to ignore errors during conversion (use default values instead)
    * @return
    */
-  public static EarlyoomConfig fromArgs(boolean enabled, String args, boolean ignoreErrors) {
+  public static EarlyoomConfig fromArgs(String args, boolean ignoreErrors) {
     EarlyoomConfig result = new EarlyoomConfig();
-    result.setEnabled(enabled);
+    if (args == null) {
+      return result;
+    }
     String[] split = args.split(" ");
     for (int i = 0; i < split.length; i++) {
       String key = split[i];
@@ -52,11 +55,14 @@ public class AdditionalServicesStateData {
           value = split[++i];
         }
         if (key.equals("--prefer")) {
-          result.setPreferPattern(value);
+          result.setPreferPattern(value.replaceAll("'", ""));
         } else if (key.equals("-M")) {
           String[] spl = value.split(",");
           parseInt("available memory term kb", spl[0], result::setAvailMemoryTermKb, ignoreErrors);
-          parseInt("available memory kill kb", spl[1], result::setAvailMemoryKillKb, ignoreErrors);
+          if (spl.length > 1) {
+            parseInt(
+                "available memory kill kb", spl[1], result::setAvailMemoryKillKb, ignoreErrors);
+          }
         } else if (key.equals("-m")) {
           String[] spl = value.split(",");
           parseInt(
@@ -64,11 +70,13 @@ public class AdditionalServicesStateData {
               spl[0],
               result::setAvailMemoryTermPercent,
               ignoreErrors);
-          parseInt(
-              "available memory kill percent",
-              spl[1],
-              result::setAvailMemoryKillPercent,
-              ignoreErrors);
+          if (spl.length > 1) {
+            parseInt(
+                "available memory kill percent",
+                spl[1],
+                result::setAvailMemoryKillPercent,
+                ignoreErrors);
+          }
         } else if (key.equals("-r")) {
           parseInt("report interval", value, result::setReportInterval, ignoreErrors);
         }
@@ -85,17 +93,20 @@ public class AdditionalServicesStateData {
     if (StringUtils.isNotEmpty(config.getPreferPattern())) {
       sb.append(" --prefer '").append(config.getPreferPattern()).append("'");
     }
-    if (config.getReportInterval() > 0) {
+    if (config.getReportInterval() != null && config.getReportInterval() > 0) {
       sb.append(" -r ").append(config.getReportInterval());
     }
     return sb.toString().trim();
   }
 
-  private static void appendIfPresent(StringBuilder sb, String key, int value0, int value1) {
-    if (value0 > 0 || value1 > 0) {
-      sb.append(key).append(" ").append(value0 == 0 ? "" : String.valueOf(value0));
-      if (value1 > 0) {
-        sb.append(",").append(value1);
+  private static void appendIfPresent(
+      StringBuilder sb, String key, Integer value0, Integer value1) {
+    int val0 = value0 == null ? 0 : value0;
+    int val1 = value1 == null ? 0 : value1;
+    if (val0 > 0 || val1 > 0) {
+      sb.append(key).append(" ").append(val0 == 0 ? "" : String.valueOf(val0));
+      if (val1 > 0) {
+        sb.append(",").append(val1);
       }
     }
   }

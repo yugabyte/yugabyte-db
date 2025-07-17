@@ -70,10 +70,7 @@ func (h *ConfigureServerHandler) Handle(ctx context.Context) (*pb.DescribeTaskRe
 	}
 
 	// 1) figure out home dir
-	home := ""
-	if h.param.GetYbHomeDir() != "" {
-		home = h.param.GetYbHomeDir()
-	} else {
+	if h.param.GetYbHomeDir() == "" {
 		err := errors.New("ybHomeDir is required")
 		util.FileLogger().Error(ctx, err.Error())
 		return nil, err
@@ -89,25 +86,25 @@ func (h *ConfigureServerHandler) Handle(ctx context.Context) (*pb.DescribeTaskRe
 		return nil, err
 	}
 	if cmdInfo.StdOut.String() != yb_metrics_dir {
-		yb_metrics_dir = filepath.Join(home, "metrics")
+		yb_metrics_dir = filepath.Join(h.param.GetYbHomeDir(), "metrics")
 	}
 
 	// 3) Execute the shell commands.
-	err = h.execShellCommands(ctx, home)
+	err = h.execShellCommands(ctx, h.param.GetYbHomeDir())
 	if err != nil {
 		util.FileLogger().Errorf(ctx, "Configure server failed - %s", err.Error())
 		return nil, err
 	}
 
 	// 4) Setup the server scripts.
-	err = h.setupServerScript(ctx, home, yb_metrics_dir)
+	err = h.setupServerScript(ctx, h.param.GetYbHomeDir(), yb_metrics_dir)
 	if err != nil {
 		util.FileLogger().Errorf(ctx, "Configure server failed - %s", err.Error())
 		return nil, err
 	}
 
 	// 5) Enable the user systemd units.
-	err = h.enableSystemdServices(ctx, home)
+	err = h.enableSystemdServices(ctx)
 	if err != nil {
 		util.FileLogger().Errorf(ctx, "Configure server failed - %s", err.Error())
 		return nil, err
@@ -115,7 +112,7 @@ func (h *ConfigureServerHandler) Handle(ctx context.Context) (*pb.DescribeTaskRe
 
 	for _, process := range h.param.GetProcesses() {
 		// 6) Configure the individual specified process.
-		err = h.configureProcess(ctx, home, process)
+		err = h.configureProcess(ctx, h.param.GetYbHomeDir(), process)
 		if err != nil {
 			util.FileLogger().Errorf(ctx, "Configure server failed - %s", err.Error())
 			return nil, err
@@ -146,7 +143,7 @@ func (h *ConfigureServerHandler) configureProcess(ctx context.Context, home, pro
 		{
 			"symlink-logs-to-yb-logs",
 			fmt.Sprintf(
-				"unlink %s > /dev/null 2>&1; ln -sf %s %s",
+				"rm -rf %s && ln -sf %s %s",
 				filepath.Join(home, process, "logs"),
 				filepath.Join(mountPoint, "yb-data/", process, "logs"),
 				filepath.Join(home, process, "logs"),
@@ -160,25 +157,18 @@ func (h *ConfigureServerHandler) configureProcess(ctx context.Context, home, pro
 	return nil
 }
 
-func (h *ConfigureServerHandler) enableSystemdServices(ctx context.Context, home string) error {
+func (h *ConfigureServerHandler) enableSystemdServices(ctx context.Context) error {
 	for _, unit := range SystemdUnits {
-		cmd := module.EnableSystemdUnit(h.username, unit)
-		h.logOut.WriteLine("Running configure server phase: %s", cmd)
-		util.FileLogger().Infof(ctx, "Running command %v", cmd)
-		_, err := module.RunShellCmd(ctx, h.username, h.String(), cmd, h.logOut)
+		err := module.EnableSystemdService(ctx, h.username, unit, h.logOut)
 		if err != nil {
-			util.FileLogger().Errorf(ctx, "Configure server failed in %v - %s", cmd, err.Error())
+			util.FileLogger().Errorf(ctx, "Configure server failed - %s", err.Error())
 			return err
 		}
-
-		if unit != "network-online.target" && unit[len(unit)-6:] == "timer" {
-			startCmd := module.StartSystemdUnit(h.username, unit)
-			h.logOut.WriteLine("Running configure server phase: %s", startCmd)
-			util.FileLogger().Infof(ctx, "Running command %v", startCmd)
-			_, err = module.RunShellCmd(ctx, h.username, h.String(), startCmd, h.logOut)
+		if strings.HasSuffix(unit, ".timer") {
+			err := module.StartSystemdService(ctx, h.username, unit, h.logOut)
 			if err != nil {
 				util.FileLogger().
-					Errorf(ctx, "Configure server failed in %v - %s", cmd, err.Error())
+					Errorf(ctx, "Configure server failed - %s", err.Error())
 				return err
 			}
 		}
@@ -307,7 +297,7 @@ func (h *ConfigureServerHandler) execShellCommands(
 		{
 			"symlink-cores-to-yb-cores",
 			fmt.Sprintf(
-				"unlink %s > /dev/null 2>&1; ln -sf %s %s",
+				"rm -rf %s && ln -sf %s %s",
 				filepath.Join(home, "cores"),
 				filepath.Join(mountPoint, "cores"),
 				filepath.Join(home, "cores"),

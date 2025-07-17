@@ -13,6 +13,12 @@ type: docs
 
 Use the `yb-tserver` binary and its flags to configure the [YB-TServer](../../../architecture/yb-tserver/) server. The `yb-tserver` executable file is located in the `bin` directory of YugabyteDB home.
 
+{{< note title="Setting flags in YugabyteDB Anywhere" >}}
+
+If you are using YugabyteDB Anywhere, set flags using the [Edit Flags](../../../yugabyte-platform/manage-deployments/edit-config-flags/#modify-configuration-flags) feature.
+
+{{< /note >}}
+
 ## Syntax
 
 ```sh
@@ -265,9 +271,9 @@ The defaults for [flags controlling memory division in a TServer](#flags-control
 | --db_block_cache_size_percentage | 32 |
 | --tablet_overhead_size_percentage | 10 |
 
-The default value of [`--db_block_cache_size_percentage`](#db_block_cache_size_percentage) here has been picked to avoid oversubscribing memory on the assumption that 10% of memory is reserved for per-tablet overhead.  (Other TServer components and overhead from TCMalloc consume the remaining 58%.)
+The default value of [`--db_block_cache_size_percentage`](#db_block_cache_size_percentage) has been picked to avoid oversubscribing memory on the assumption that 10% of memory is reserved for per-tablet overhead.  (Other TServer components and overhead from TCMalloc consume the remaining 58%.)
 
-Given the amount of RAM devoted to per tablet overhead, it is possible to compute the maximum number of tablet replicas (see [allowing for tablet replica overheads](../../../develop/best-practices-ysql#allowing-for-tablet-replica-overheads)); following are some sample values for selected node sizes using `--use_memory_defaults_optimized_for_ysql`:
+Given the amount of RAM devoted to per tablet overhead, it is possible to compute the maximum number of tablet replicas (see [Allow for tablet replica overheads](../../../best-practices-operations/administration/#allow-for-tablet-replica-overheads)); following are some sample values for selected node sizes using `--use_memory_defaults_optimized_for_ysql`:
 
 | total node GiB | max number of tablet replicas | max number of Postgres connections |
 | ---: | ---: | ---: |
@@ -798,14 +804,6 @@ Default: `false`
 
 Default: `false`
 
-##### --ysql_disable_index_backfill
-
-Set this flag to `false` to enable online index backfill. When set to `false`, online index builds run while online, without failing other concurrent writes and traffic.
-
-For details on how online index backfill works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
-
-Default: `false`
-
 ##### --ysql_sequence_cache_method
 
 Specifies where to cache sequence values.
@@ -923,14 +921,6 @@ Default: `12000`
 Specifies if YCQL tables are created with transactions enabled by default.
 
 Default: `false`
-
-##### --ycql_disable_index_backfill
-
-Set this flag to `false` to enable online index backfill. When set to `false`, online index builds run while online, without failing other concurrent writes and traffic.
-
-For details on how online index backfill works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
-
-Default: `true`
 
 ##### --ycql_require_drop_privs_for_truncate
 
@@ -1345,7 +1335,7 @@ Default: `3600`
 
 Maximum size (in bytes) of changes from a tablet sent from the CDC service to the gRPC connector when using the gRPC replication protocol.
 
-Maximum size (in bytes) of changes sent from the [Virtual WAL](../../../architecture/docdb-replication/cdc-logical-replication) (VWAL) to the Walsender process when using the PostgreSQL replication protocol. 
+Maximum size (in bytes) of changes sent from the [Virtual WAL](../../../architecture/docdb-replication/cdc-logical-replication) (VWAL) to the Walsender process when using the PostgreSQL replication protocol.
 
 Default: `4194304` (4MB)
 
@@ -1451,7 +1441,7 @@ Default: `UINT32_MAX`
 
 ## Catalog flags
 
-Catalog flags are {{<tags/feature/ea>}}.
+Catalog cache flags are {{<tags/feature/ea idea="599">}}. For information on setting these flags, see [Customize preloading of YSQL catalog caches](../../../best-practices-operations/ysql-catalog-cache-tuning-guide/).
 
 ##### ysql_catalog_preload_additional_table_list
 
@@ -1604,17 +1594,34 @@ After a DDL statement that includes updating DocDB system catalog completes, YB-
 When the flag `ysql_ddl_transaction_wait_for_ddl_verification` is enabled, YSQL waits for any YB-Master background operations to finish before returning control to the user.
 {{< /note >}}
 
-## Advanced flags
+## Index backfill flags
 
-##### --allowed_preview_flags_csv
+##### --ysql_disable_index_backfill
 
-Comma-separated values (CSV) formatted catalogue of [preview feature](/preview/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
+Set this flag to `false` to enable online index backfill. When set to `false`, online index builds run while online, without failing other concurrent writes and traffic.
 
-By adding a flag to this list, you explicitly acknowledge and accept any potential risks or instability that may arise from modifying these preview features. This process serves as a safeguard, ensuring that you are fully aware of the experimental nature of the flags you are working with.
+For details on how online index backfill works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
 
-{{<warning>}}
-Adding flags to this list doesn't automatically change any settings. It only grants permission for the flag to be modified. You still need to configure the flag separately after adding it to this list.
-{{</warning>}}
+Default: `false`
+
+##### --ycql_disable_index_backfill
+
+Set this flag to `false` to enable online index backfill. When set to `false`, online index builds run while online, without failing other concurrent writes and traffic.
+
+For details on how online index backfill works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
+
+Default: `true`
+
+#### --num_concurrent_backfills_allowed
+
+[Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) uses a number of distributed workers to backfill older data from the main table into the index table. This flag sets the number of concurrent index backfill jobs that are allowed to execute on each yb-tserver process. By default, the number of jobs is set automatically as follows:
+
+- When the node has >= 16 cores, it is set to 8 jobs.
+- When the node has < 16 cores, it is set to (number of cores) / 2 jobs.
+
+Increasing the number of backfill jobs can allow the index creation to complete faster, however setting it to a higher number can impact foreground workload operations and also increase the chance of failures and retries of backfill jobs if CPU usage becomes too high.
+
+Default: -1 (automatic setting)
 
 ##### backfill_index_client_rpc_timeout_ms
 
@@ -1630,9 +1637,29 @@ Default: -1, where the system automatically calculates the value to be approxima
 
 ##### backfill_index_write_batch_size
 
-The number of table rows to backfill at a time. In case of [GIN indexes](../../../explore/ysql-language-features/indexes-constraints/gin/), the number can include more index rows.
+The number of table rows to backfill in a single backfill job. In case of [GIN indexes](../../../explore/ysql-language-features/indexes-constraints/gin/), the number can include more index rows. When index creation is slower than expected on large tables, increasing this parameter to 1024 or 2048 may speed up the operation. However, care must be taken to also tune the associated timeouts for larger batch sizes.
 
 Default: 128
+
+## Advanced flags
+
+##### --allowed_preview_flags_csv
+
+Comma-separated values (CSV) formatted catalogue of [preview feature](/preview/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
+
+By adding a flag to this list, you explicitly acknowledge and accept any potential risks or instability that may arise from modifying these preview features. This process serves as a safeguard, ensuring that you are fully aware of the experimental nature of the flags you are working with.
+
+{{<warning title="You still need to set the flag">}}
+Adding flags to this list doesn't automatically change any settings. It only _grants permission_ for the flag to be modified.
+
+You still need to configure the flag separately after adding it to this list.
+{{</warning>}}
+
+{{<note title="Using YugabyteDB Anywhere">}}
+If you are using YugabyteDB Anywhere, as with other flags, set `allowed_preview_flags_csv` using the [Edit Flags](../../../yugabyte-platform/manage-deployments/edit-config-flags/#modify-configuration-flags) feature.
+
+After adding a preview flag to the `allowed_preview_flags_csv` list, you still need to set the flag using **Edit Flags** as well.
+{{</note>}}
 
 ## PostgreSQL server options
 
@@ -1741,7 +1768,7 @@ Default: true
 
 ##### yb_enable_bitmapscan
 
-{{<tags/feature/ea>}} Enables or disables the query planner's use of bitmap scans for YugabyteDB relations. Both [enable_bitmapscan](#enable-bitmapscan) and `yb_enable_bitmapscan` must be set to true for a YugabyteDB relation to use a bitmap scan. If `yb_enable_bitmapscan` is false, the planner never uses a YugabyteDB bitmap scan.
+{{<tags/feature/ea idea="1092">}} Enables or disables the query planner's use of bitmap scans for YugabyteDB relations. Both [enable_bitmapscan](#enable-bitmapscan) and `yb_enable_bitmapscan` must be set to true for a YugabyteDB relation to use a bitmap scan. If `yb_enable_bitmapscan` is false, the planner never uses a YugabyteDB bitmap scan.
 
 | enable_bitmapscan | yb_enable_bitmapscan | Result |
 | :--- | :---  | :--- |

@@ -857,7 +857,8 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 			 * date.
 			 */
 			if (beentry->st_xact_start_timestamp != 0 &&
-				beentry->st_backendType != B_WAL_SENDER)
+				beentry->st_backendType != B_WAL_SENDER &&
+				beentry->st_backendType != YB_YSQL_CONN_MGR_WAL_SENDER)
 				values[8] = TimestampTzGetDatum(beentry->st_xact_start_timestamp);
 			else
 				nulls[8] = true;
@@ -2692,6 +2693,25 @@ yb_pg_stat_get_backend_rss_mem_bytes(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 
 	result = local_beentry->yb_backend_rss_mem_bytes;
+
+	PG_RETURN_INT64(result);
+}
+
+/* Returns rss_mem_bytes from the process's beid */
+Datum
+yb_pg_stat_get_backend_pss_mem_bytes(PG_FUNCTION_ARGS)
+{
+	if (!yb_enable_memory_tracking)
+		PG_RETURN_NULL();
+
+	int32		beid = PG_GETARG_INT32(0);
+	int64		result;
+	LocalPgBackendStatus *local_beentry;
+
+	if ((local_beentry = pgstat_fetch_stat_local_beentry(beid)) == NULL)
+		PG_RETURN_NULL();
+
+	result = local_beentry->yb_backend_pss_mem_bytes;
 
 	PG_RETURN_INT64(result);
 }

@@ -149,7 +149,7 @@ Status AddColumnToMap(
     const Value& col, const EnumOidLabelMap& enum_oid_label_map,
     const CompositeAttsMap& composite_atts_map, CDCSDKRequestSource request_source,
     DatumMessagePB* cdc_datum_message, const QLValuePB* old_ql_value_passed) {
-  auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
+  auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet());
   cdc_datum_message->set_column_name(col_schema.name());
   QLValuePB ql_value;
   if (old_ql_value_passed) {
@@ -504,7 +504,7 @@ Status DoPopulateBeforeImage(
     return Status::OK();
   }
 
-  auto tablet = tablet_peer->shared_tablet();
+  auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet());
   auto docdb = tablet->doc_db();
   auto pending_op = tablet->CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
 
@@ -720,7 +720,7 @@ Result<TableName> GetColocatedTableName(
       continue;
     }
 
-    const auto& tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
+    const auto& tablet = VERIFY_RESULT(tablet_peer->shared_tablet());
     return tablet->metadata()->table_name(cur_table_id);
   }
 
@@ -741,7 +741,7 @@ Result<SchemaDetails> GetOrPopulateRequiredSchemaDetails(
       continue;
     }
 
-    auto tablet_result = tablet_peer->shared_tablet_safe();
+    auto tablet_result = tablet_peer->shared_tablet();
     RETURN_NOT_OK(tablet_result);
 
     auto tablet = *tablet_result;
@@ -886,7 +886,7 @@ Status PopulateCDCSDKIntentRecord(
     client::YBClient* client,
     const bool& end_of_transaction,
     CDCThroughputMetrics* throughput_metrics) {
-  auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
+  auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet());
 
   bool colocated = tablet->metadata()->colocated();
   Schema schema = Schema();
@@ -1210,80 +1210,36 @@ Status PopulateCDCSDKIntentRecord(
 }
 
 void FillBeginRecordForSingleShardTransaction(
-    const std::shared_ptr<tablet::TabletPeer>& tablet_peer, GetChangesResponsePB* resp,
-    uint64_t commit_timestamp, const StreamMetadata& metadata,
+    const uint64_t& commit_timestamp, GetChangesResponsePB* resp,
     CDCThroughputMetrics* throughput_metrics) {
-  for (auto const& table_info : tablet_peer->tablet_metadata()->GetAllColocatedTableInfos()) {
-    // We do not want to stream any transactional message if the table is not present in the stream
-    // metadata.
-    if (!IsColocatedTableQualifiedForStreaming(table_info->table_id, metadata)) {
-      continue;
-    }
+  CDCSDKProtoRecordPB* proto_record = resp->add_cdc_sdk_proto_records();
+  RowMessage* row_message = proto_record->mutable_row_message();
 
-    auto tablet_result = tablet_peer->shared_tablet_safe();
-    if (!tablet_result.ok()) {
-      LOG(WARNING) << tablet_result.status();
-      continue;
-    }
-    auto tablet = *tablet_result;
-    auto table_name = table_info->table_name;
-    // Ignore the DDL information of the parent table.
-    if (tablet->metadata()->colocated() &&
-        (boost::ends_with(table_name, kTablegroupParentTableNameSuffix) ||
-         boost::ends_with(table_name, kColocationParentTableNameSuffix))) {
-      continue;
-    }
-    CDCSDKProtoRecordPB* proto_record = resp->add_cdc_sdk_proto_records();
-    RowMessage* row_message = proto_record->mutable_row_message();
-    row_message->set_op(RowMessage_Op_BEGIN);
-    row_message->set_table(table_name);
-    row_message->set_commit_time(commit_timestamp);
-    // No need to add record_time to the Begin record since it does not have any intent associated
-    // with it.
-    throughput_metrics->records_sent++;
-    throughput_metrics->bytes_sent += proto_record->ByteSizeLong();
-  }
+  row_message->set_op(RowMessage_Op_BEGIN);
+  row_message->set_commit_time(commit_timestamp);
+  // No need to add record_time to the Begin record since it does not have any intent associated
+  // with it.
+
+  throughput_metrics->records_sent++;
+  throughput_metrics->bytes_sent += proto_record->ByteSizeLong();
 }
 
 void FillCommitRecordForSingleShardTransaction(
-    const OpId& op_id, const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-    GetChangesResponsePB* resp, uint64_t commit_timestamp, const StreamMetadata& metadata,
+    const OpId& op_id, const uint64_t& commit_timestamp, GetChangesResponsePB* resp,
     CDCThroughputMetrics* throughput_metrics) {
-  for (auto const& table_info : tablet_peer->tablet_metadata()->GetAllColocatedTableInfos()) {
-    // We do not want to stream any transactional message if the table is not present in the stream
-    // metadata.
-    if (!IsColocatedTableQualifiedForStreaming(table_info->table_id, metadata)) {
-      continue;
-    }
+  CDCSDKProtoRecordPB* proto_record = resp->add_cdc_sdk_proto_records();
+  RowMessage* row_message = proto_record->mutable_row_message();
 
-    auto tablet_result = tablet_peer->shared_tablet_safe();
-    if (!tablet_result.ok()) {
-      LOG(WARNING) << tablet_result.status();
-      continue;
-    }
-    auto tablet = *tablet_result;
-    auto table_name = table_info->table_name;
-    // Ignore the DDL information of the parent table.
-    if (tablet->metadata()->colocated() &&
-        (boost::ends_with(table_name, kTablegroupParentTableNameSuffix) ||
-         boost::ends_with(table_name, kColocationParentTableNameSuffix))) {
-      continue;
-    }
-    CDCSDKProtoRecordPB* proto_record = resp->add_cdc_sdk_proto_records();
-    RowMessage* row_message = proto_record->mutable_row_message();
+  row_message->set_op(RowMessage_Op_COMMIT);
+  row_message->set_commit_time(commit_timestamp);
+  // No need to add record_time to the Commit record since it does not have any intent associated
+  // with it.
 
-    row_message->set_op(RowMessage_Op_COMMIT);
-    row_message->set_table(table_name);
-    row_message->set_commit_time(commit_timestamp);
-    // No need to add record_time to the Commit record since it does not have any intent associated
-    // with it.
+  CDCSDKOpIdPB* cdc_sdk_op_id_pb = proto_record->mutable_cdc_sdk_op_id();
+  SetCDCSDKOpId(op_id.term, op_id.index, 0, "", cdc_sdk_op_id_pb);
 
-    CDCSDKOpIdPB* cdc_sdk_op_id_pb = proto_record->mutable_cdc_sdk_op_id();
-    SetCDCSDKOpId(op_id.term, op_id.index, 0, "", cdc_sdk_op_id_pb);
-
-    throughput_metrics->records_sent++;
-    throughput_metrics->bytes_sent += proto_record->ByteSizeLong();
-  }
+  throughput_metrics->records_sent++;
+  throughput_metrics->bytes_sent += proto_record->ByteSizeLong();
 }
 
 // Populate CDC record corresponding to WAL batch in ReplicateMsg.
@@ -1300,11 +1256,10 @@ Status PopulateCDCSDKWriteRecord(
     client::YBClient* client,
     CDCThroughputMetrics* throughput_metrics) {
   if (FLAGS_cdc_populate_end_markers_transactions) {
-    FillBeginRecordForSingleShardTransaction(
-        tablet_peer, resp, msg->hybrid_time(), metadata, throughput_metrics);
+    FillBeginRecordForSingleShardTransaction(msg->hybrid_time(), resp, throughput_metrics);
   }
 
-  auto tablet_ptr = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
+  auto tablet_ptr = VERIFY_RESULT(tablet_peer->shared_tablet());
   const auto& batch = msg->write().write_batch();
   CDCSDKProtoRecordPB* proto_record = nullptr;
   RowMessage* row_message = nullptr;
@@ -1571,8 +1526,7 @@ Status PopulateCDCSDKWriteRecord(
     }
 
     FillCommitRecordForSingleShardTransaction(
-        OpId(msg->id().term(), msg->id().index()), tablet_peer, resp, msg->hybrid_time(), metadata,
-        throughput_metrics);
+        OpId(msg->id().term(), msg->id().index()), msg->hybrid_time(), resp, throughput_metrics);
   }
 
   return Status::OK();
@@ -1606,7 +1560,7 @@ Status PopulateCDCSDKWriteRecordWithInvalidSchemaRetry(
     }
 
     // Clear the scheam for all the colocated tables assocaited with the tablet
-    auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
+    auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet());
     for (auto const& cur_table_id : tablet_peer->tablet_metadata()->GetAllColocatedTables()) {
       auto it = cached_schema_details->find(cur_table_id);
       if (it != cached_schema_details->end()) {
@@ -1698,85 +1652,40 @@ void SetKeyWriteId(string key, int32_t write_id, CDCSDKCheckpointPB* checkpoint)
 }
 
 void FillBeginRecord(
-    const TransactionId& transaction_id, const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-    GetChangesResponsePB* resp, HybridTime commit_timestamp, const StreamMetadata& metadata,
-    CDCThroughputMetrics* throughput_metrics) {
-  for (auto const& table_info : tablet_peer->tablet_metadata()->GetAllColocatedTableInfos()) {
-    // We do not want to stream any transactional message if the table is not present in the stream
-    // metadata.
-    if (!IsColocatedTableQualifiedForStreaming(table_info->table_id, metadata)) {
-      continue;
-    }
+    const TransactionId& transaction_id, const uint64_t& commit_timestamp,
+    GetChangesResponsePB* resp, CDCThroughputMetrics* throughput_metrics) {
+  CDCSDKProtoRecordPB* proto_record = resp->add_cdc_sdk_proto_records();
+  RowMessage* row_message = proto_record->mutable_row_message();
 
-    auto tablet_result = tablet_peer->shared_tablet_safe();
-    if (!tablet_result.ok()) {
-      LOG(WARNING) << tablet_result.status();
-      continue;
-    }
-    auto tablet = *tablet_result;
-    auto table_name = table_info->table_name;
-    // Ignore the DDL information of the parent table.
-    if (tablet->metadata()->colocated() &&
-        (boost::ends_with(table_name, kTablegroupParentTableNameSuffix) ||
-         boost::ends_with(table_name, kColocationParentTableNameSuffix))) {
-      continue;
-    }
-    CDCSDKProtoRecordPB* proto_record = resp->add_cdc_sdk_proto_records();
-    RowMessage* row_message = proto_record->mutable_row_message();
-    row_message->set_op(RowMessage_Op_BEGIN);
-    row_message->set_transaction_id(transaction_id.ToString());
-    row_message->set_table(table_name);
-    row_message->set_commit_time(commit_timestamp.ToPB());
-    // No need to add record_time to the Begin record since it does not have any intent associated
-    // with it.
+  row_message->set_op(RowMessage_Op_BEGIN);
+  row_message->set_transaction_id(transaction_id.ToString());
+  row_message->set_commit_time(commit_timestamp);
+  // No need to add record_time to the Begin record since it does not have any intent associated
+  // with it.
 
-    throughput_metrics->records_sent++;
-    throughput_metrics->bytes_sent += proto_record->ByteSizeLong();
-  }
+  throughput_metrics->records_sent++;
+  throughput_metrics->bytes_sent += proto_record->ByteSizeLong();
 }
 
 void FillCommitRecord(
-    const OpId& op_id, const TransactionId& transaction_id,
-    const std::shared_ptr<tablet::TabletPeer>& tablet_peer, CDCSDKCheckpointPB* checkpoint,
-    GetChangesResponsePB* resp, HybridTime commit_timestamp, const StreamMetadata& metadata,
+    const OpId& op_id, const TransactionId& transaction_id, const uint64_t& commit_timestamp,
+    CDCSDKCheckpointPB* checkpoint, GetChangesResponsePB* resp,
     CDCThroughputMetrics* throughput_metrics) {
-  for (auto const& table_info : tablet_peer->tablet_metadata()->GetAllColocatedTableInfos()) {
-    // We do not want to stream any transactional message if the table is not present in the stream
-    // metadata.
-    if (!IsColocatedTableQualifiedForStreaming(table_info->table_id, metadata)) {
-      continue;
-    }
+  CDCSDKProtoRecordPB* proto_record = resp->add_cdc_sdk_proto_records();
+  RowMessage* row_message = proto_record->mutable_row_message();
 
-    auto tablet_result = tablet_peer->shared_tablet_safe();
-    if (!tablet_result.ok()) {
-      LOG(WARNING) << tablet_result.status();
-      continue;
-    }
-    auto tablet = *tablet_result;
-    auto table_name = table_info->table_name;
-    // Ignore the DDL information of the parent table.
-    if (tablet->metadata()->colocated() &&
-        (boost::ends_with(table_name, kTablegroupParentTableNameSuffix) ||
-         boost::ends_with(table_name, kColocationParentTableNameSuffix))) {
-      continue;
-    }
-    CDCSDKProtoRecordPB* proto_record = resp->add_cdc_sdk_proto_records();
-    RowMessage* row_message = proto_record->mutable_row_message();
+  row_message->set_op(RowMessage_Op_COMMIT);
+  row_message->set_transaction_id(transaction_id.ToString());
+  row_message->set_commit_time(commit_timestamp);
+  // No need to add record_time to the Commit record since it does not have any intent associated
+  // with it.
 
-    row_message->set_op(RowMessage_Op_COMMIT);
-    row_message->set_transaction_id(transaction_id.ToString());
-    row_message->set_table(table_name);
-    row_message->set_commit_time(commit_timestamp.ToPB());
-    // No need to add record_time to the Commit record since it does not have any intent associated
-    // with it.
+  CDCSDKOpIdPB* cdc_sdk_op_id_pb = proto_record->mutable_cdc_sdk_op_id();
+  SetCDCSDKOpId(op_id.term, op_id.index, 0, "", cdc_sdk_op_id_pb);
+  SetKeyWriteId("", 0, checkpoint);
 
-    CDCSDKOpIdPB* cdc_sdk_op_id_pb = proto_record->mutable_cdc_sdk_op_id();
-    SetCDCSDKOpId(op_id.term, op_id.index, 0, "", cdc_sdk_op_id_pb);
-    SetKeyWriteId("", 0, checkpoint);
-
-    throughput_metrics->records_sent++;
-    throughput_metrics->bytes_sent += proto_record->ByteSizeLong();
-  }
+  throughput_metrics->records_sent++;
+  throughput_metrics->bytes_sent += proto_record->ByteSizeLong();
 }
 
 Status ProcessIntents(
@@ -1797,10 +1706,10 @@ Status ProcessIntents(
     TableSchemaPackingStorage* schema_packing_storages,
     HybridTime commit_time,
     CDCThroughputMetrics* throughput_metrics) {
-  auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
+  auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet());
   if (stream_state->key.empty() && stream_state->write_id == 0 &&
       FLAGS_cdc_populate_end_markers_transactions) {
-    FillBeginRecord(transaction_id, tablet_peer, resp, commit_time, metadata, throughput_metrics);
+    FillBeginRecord(transaction_id, commit_time.ToUint64(), resp, throughput_metrics);
     TEST_SYNC_POINT("AddBeginRecord::End");
   }
 
@@ -1851,8 +1760,7 @@ Status ProcessIntents(
     if (FLAGS_cdc_populate_end_markers_transactions) {
       TEST_SYNC_POINT("FillCommitRecord::Start");
       FillCommitRecord(
-          op_id, transaction_id, tablet_peer, checkpoint, resp, commit_time, metadata,
-          throughput_metrics);
+          op_id, transaction_id, commit_time.ToUint64(), checkpoint, resp, throughput_metrics);
     }
   } else {
     SetKeyWriteId(reverse_index_key, write_id, checkpoint);
@@ -1897,7 +1805,7 @@ Status PrcoessIntentsWithInvalidSchemaRetry(
     }
 
     // Clear the scheam for all the colocated tables assocaited with the tablet
-    auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
+    auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet());
     for (auto const& cur_table_id : tablet_peer->tablet_metadata()->GetAllColocatedTables()) {
       auto it = cached_schema_details->find(cur_table_id);
       if (it != cached_schema_details->end()) {
@@ -2648,7 +2556,7 @@ Status GetChangesForCDCSDK(
   bool report_tablet_split = false, snapshot_operation = false, pending_intents = false,
        wait_for_wal_update = false, txn_load_in_progress = false;
 
-  auto tablet_ptr = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
+  auto tablet_ptr = VERIFY_RESULT(tablet_peer->shared_tablet());
   auto leader_safe_time = tablet_ptr->SafeTime();
   if (!leader_safe_time.ok()) {
     YB_LOG_EVERY_N_SECS(WARNING, 10)
@@ -3214,10 +3122,8 @@ Status GetChangesForCDCSDK(
   if (FLAGS_cdc_populate_safepoint_record && !pending_intents && from_op_id.write_id() != -1) {
     // Do not consider safe point record for throughput metrics calculations.
     RETURN_NOT_OK(PopulateCDCSDKSafepointOpRecord(
-        safe_time.ToUint64(),
-        tablet_peer->tablet()->metadata()->table_name(),
-        resp->add_cdc_sdk_proto_records(),
-        *tablet_peer->tablet()->schema().get()));
+        safe_time.ToUint64(), tablet_ptr->metadata()->table_name(),
+        resp->add_cdc_sdk_proto_records(), *tablet_ptr->schema().get()));
     VLOG(2) << "Added Safepoint Record";
   }
 

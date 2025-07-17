@@ -58,6 +58,12 @@ var describeUserCmd = &cobra.Command{
 			}
 		}
 
+		fetchRoleBindingsForListing(
+			r[0].GetUuid(),
+			authAPI,
+			"Describe",
+		)
+
 		if len(r) > 0 && util.IsOutputType(formatter.TableFormatKey) {
 			fullUserContext := *user.NewFullUserContext()
 			fullUserContext.Output = os.Stdout

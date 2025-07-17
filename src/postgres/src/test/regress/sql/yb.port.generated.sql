@@ -442,7 +442,16 @@ CREATE TABLE gtest29 (
 );
 INSERT INTO gtest29 (a) VALUES (3), (4);
 ALTER TABLE gtest29 ALTER COLUMN a DROP EXPRESSION;  -- error
--- YB note: port additional tests once drop expression is supported.
+ALTER TABLE gtest29 ALTER COLUMN a DROP EXPRESSION IF EXISTS;  -- notice
+ALTER TABLE gtest29 ALTER COLUMN b DROP EXPRESSION;
+INSERT INTO gtest29 (a) VALUES (5);
+INSERT INTO gtest29 (a, b) VALUES (6, 66);
+SELECT * FROM gtest29;
+\d gtest29
+
+-- check that dependencies between columns have also been removed
+ALTER TABLE gtest29 DROP COLUMN a;  -- should not drop b
+\d gtest29
 
 -- with inheritance
 CREATE TABLE gtest30 (
@@ -450,7 +459,7 @@ CREATE TABLE gtest30 (
     b int GENERATED ALWAYS AS (a * 2) STORED
 );
 CREATE TABLE gtest30_1 () INHERITS (gtest30);
-ALTER TABLE gtest30 ALTER COLUMN b DROP EXPRESSION; -- YB: this is not supported yet, which impacts the following queries
+ALTER TABLE gtest30 ALTER COLUMN b DROP EXPRESSION;
 \d gtest30
 \d gtest30_1
 DROP TABLE gtest30 CASCADE;

@@ -35,7 +35,7 @@ class PgPackedInsertTest : public PgMiniTestBase,
 TEST_P(PgPackedInsertTest, Simple) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute(
-      "CREATE TABLE t (key INT PRIMARY KEY, ivalue INT, tvalue TEXT)"));
+      "CREATE TABLE t (key INT PRIMARY KEY, ivalue INT, tvalue TEXT) SPLIT INTO 1 TABLETS"));
 
   ASSERT_OK(conn.Execute(
       "INSERT INTO t VALUES (1, -1, 'one'), (2, -2, NULL), (3, -3, 'three')"));

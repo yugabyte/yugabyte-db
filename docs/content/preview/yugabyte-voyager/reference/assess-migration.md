@@ -32,34 +32,199 @@ Usage: yb-voyager assess-migration [ <arguments> ... ]
 
 The valid *arguments* for assess migration are described in the following table:
 
-| <div style="width:150px">Argument</div> | Description/valid options |
-| :------- | :------------------------ |
-| --assessment-metadata-dir | Directory path where assessment metadata like source database metadata and statistics are stored. Optional flag, if not provided, it will be assumed to be present at default path inside the export directory. |
-| -e, --export-dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file. |
-| -h, --help | Command line help. |
-| --iops-capture-interval | Interval (in seconds) at which Voyager will gather IOPS metadata from the source database for the given schema(s). <br> Default: 120 |
-| --oracle-db-sid | Oracle System Identifier you can use while exporting data from Oracle instances. Oracle migrations only. |
-| --oracle-home | Path to set `$ORACLE_HOME` environment variable. `tnsnames.ora` is found in `$ORACLE_HOME/network/admin`. Oracle migrations only. |
-| [--oracle-tns-alias](../yb-voyager-cli/#oracle-options) | TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server. Oracle migrations only. |
-| --send-diagnostics | Enable or disable sending [diagnostics](../../reference/diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
-| --run-guardrails-checks | Run guardrails checks during migration. <br>Default: true<br>Accepted values: true, false, yes, no, 0, 1 |
-| --source-db-host <hostname> | Domain name or IP address of the machine on which the source database server is running. <br>Default: localhost |
-| --source-db-name | Source database name. |
-| --source-db-password | Password to connect to the source database. If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password. Alternatively, you can also specify the password by setting the environment variable `SOURCE_DB_PASSWORD`. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose it in single quotes. |
-| --source-db-port | Source database server port number. <br>Default: PostgreSQL (5432), Oracle (1521) |
-| --source-db-schema | Source schema name(s) to export. In case of PostgreSQL, it can be single or a comma-separated list of schemas: `schema1,schema2,schema3`. |
-| --source-db-type |  Source database type (postgresql, oracle). |
-| --source-db-user |  Username of the source database. |
-| [--source-ssl-cert](../yb-voyager-cli/#ssl-connectivity) | Path to a file containing the certificate which is part of the SSL `<cert,key>` pair. |
-| [--source-ssl-crl](../yb-voyager-cli/#ssl-connectivity) | Path of the file containing source SSL Root Certificate Revocation List (CRL). |
-| [--source-ssl-key](../yb-voyager-cli/#ssl-connectivity) | Path to a file containing the key which is part of the SSL `<cert,key>` pair.|
-| [--source-ssl-mode](../yb-voyager-cli/#ssl-connectivity) | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
-| [--source-ssl-root-cert](../yb-voyager-cli/#ssl-connectivity) | Path of the file containing source SSL Root Certificate. |
-| --start-clean | Cleans up the project directory for schema or data files depending on the export command. <br>Default: false <br> Accepted parameters: true, false, yes, no, 0, 1. |
-| --target-db-version | Specifies the target version of YugabyteDB in the format `A.B.C.D`.<br>Default: latest stable version | 
-| -y, --yes | Assume answer to all prompts during migration. <br>Default: false |
+{{<table>}}
+| <div style="width:150px">CLI flag</div> | Config file parameter | Description |
+
+| :--- | :-------- | :---------- |
+
+| --run-guardrails-checks |
+
+```yaml{.nocopy}
+assess-migration:
+  run-guardrails-checks:
+```
+
+| Run guardrails checks during migration. <br>Default: true<br>Accepted values: true, false, yes, no, 0, 1 |
+
+| --assessment-metadata-dir |
+
+```yaml{.nocopy}
+assess-migration:
+  assessment-metadata-dir:
+```
+
+| Directory path where assessment metadata like source database metadata and statistics are stored. Optional flag, if not provided, it will be assumed to be present at default path inside the export directory. |
+
+| --iops-capture-interval |
+
+```yaml{.nocopy}
+assess-migration:
+  iops-capture-interval:
+```
+
+| Interval (in seconds) at which Voyager will gather IOPS metadata from the source database for the given schema(s). <br> Default: 120 |
+
+| --target-db-version |
+
+```yaml{.nocopy}
+assess-migration:
+  target-db-version:
+```
+
+| Specifies the target version of YugabyteDB in the format `A.B.C.D`.<br>Default: latest stable version |
+
+| --oracle-db-sid |
+
+```yaml{.nocopy}
+source:
+  oracle-db-sid:
+```
+
+| Oracle System Identifier you can use while exporting data from Oracle instances. Oracle migrations only. |
+| --oracle-home |
+
+```yaml{.nocopy}
+source:
+  oracle-home:
+```
+
+| Path to set `$ORACLE_HOME` environment variable. `tnsnames.ora` is found in `$ORACLE_HOME/network/admin`. Oracle migrations only. |
+| [--oracle-tns-alias](../yb-voyager-cli/#oracle-options) |
+
+```yaml{.nocopy}
+source:
+  oracle-tns-alias:
+```
+
+| TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server. Oracle migrations only. |
+| --send-diagnostics |
+
+```yaml{.nocopy}
+send-diagnostics:
+```
+
+| Enable or disable sending [diagnostics](../../reference/diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+
+| --source-db-host |
+
+```yaml{.nocopy}
+source:
+  db-host:
+```
+
+| Domain name or IP address of the machine on which the source database server is running. <br>Default: localhost |
+| --source-db-name |
+
+```yaml{.nocopy}
+source:
+  db-name:
+```
+
+| Source database name. |
+| --source-db-password |
+
+```yaml{.nocopy}
+source:
+  db-password:
+```
+
+| Password to connect to the source database. If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password. Alternatively, you can also specify the password by setting the environment variable `SOURCE_DB_PASSWORD`. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose it in single quotes. |
+| --source-db-port |
+
+```yaml{.nocopy}
+source:
+  db-port:
+```
+
+| Source database server port number. <br>Default: PostgreSQL (5432), Oracle (1521) |
+| --source-db-schema |
+
+```yaml{.nocopy}
+source:
+  db-schema:
+```
+
+| Source schema name(s) to export. In case of PostgreSQL, it can be single or a comma-separated list of schemas: `schema1,schema2,schema3`. |
+| --source-db-type |
+
+```yaml{.nocopy}
+source:
+  db-type:
+```
+
+| Source database type (postgresql, oracle). |
+| --source-db-user |
+
+```yaml{.nocopy}
+source:
+  db-user:
+```
+
+|  Username of the source database. |
+| [--source-ssl-cert](../yb-voyager-cli/#ssl-connectivity) |
+
+```yaml{.nocopy}
+source:
+  ssl-cert:
+```
+
+| Path to a file containing the certificate which is part of the SSL `<cert,key>` pair. |
+| [--source-ssl-crl](../yb-voyager-cli/#ssl-connectivity) |
+
+```yaml{.nocopy}
+source:
+  ssl-crl:
+```
+
+| Path of the file containing source SSL Root Certificate Revocation List (CRL). |
+| [--source-ssl-key](../yb-voyager-cli/#ssl-connectivity) |
+
+```yaml{.nocopy}
+source:
+  ssl-key:
+```
+
+| Path to a file containing the key which is part of the SSL `<cert,key>` pair.|
+| [--source-ssl-mode](../yb-voyager-cli/#ssl-connectivity) |
+
+```yaml{.nocopy}
+source:
+  ssl-mode:
+```
+
+| One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
+| [--source-ssl-root-cert](../yb-voyager-cli/#ssl-connectivity) |
+
+```yaml{.nocopy}
+source:
+  ssl-root-cert:
+```
+
+| Path of the file containing source SSL Root Certificate. |
+| -e, --export-dir |
+
+```yaml{.nocopy}
+export-dir:
+```
+
+| Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
+
+| --start-clean | — | Cleans up the project directory for schema or data files depending on the export command. <br>Default: false <br> Accepted parameters: true, false, yes, no, 0, 1. |
+
+| -h, --help | — |Command line help. |
+| -y, --yes | — |Answer yes to all prompts during the export schema operation. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
+
+{{</table>}}
 
 ### Example
+
+Configuration file:
+
+```sh
+yb-voyager assess-migration --config-file <path-to-config-file>
+```
+
+CLI:
 
 ```sh
 yb-voyager assess-migration --source-db-type postgresql \

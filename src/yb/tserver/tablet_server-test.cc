@@ -380,9 +380,10 @@ TEST_F(TabletServerTest, TestInsert) {
   WriteResponsePB resp;
   RpcController controller;
 
-  auto tablet = ASSERT_RESULT(mini_server_->server()->tablet_manager()->GetTablet(kTabletId));
+  auto peer = ASSERT_RESULT(mini_server_->server()->tablet_manager()->GetTablet(kTabletId));
+  auto tablet = ASSERT_RESULT(peer->shared_tablet());
   scoped_refptr<Counter> rows_inserted =
-      METRIC_rows_inserted.Instantiate(tablet->tablet()->GetTabletMetricsEntity());
+      METRIC_rows_inserted.Instantiate(tablet->GetTabletMetricsEntity());
   ASSERT_EQ(0, rows_inserted->value());
   tablet.reset();
 
@@ -614,7 +615,8 @@ TEST_F(TabletServerTest, TestInvalidWriteRequest_BadSchema) {
 TEST_F(TabletServerTest, TestClientGetsErrorBackWhenRecoveryFailed) {
   ASSERT_NO_FATALS(InsertTestRowsRemote(0, 1, 7));
 
-  ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
+  auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet());
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
 
   // Save the log path before shutting down the tablet (and destroying
   // the tablet peer).
@@ -675,7 +677,8 @@ TEST_F(TabletServerTest, TestDeleteTablet) {
   // Put some data in the tablet. We flush and insert more rows to ensure that
   // there is data both in the MRS and on disk.
   ASSERT_NO_FATALS(InsertTestRowsRemote(0, 1, 1));
-  ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
+  auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet());
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
   ASSERT_NO_FATALS(InsertTestRowsRemote(0, 2, 1));
 
   // Drop any local references to the tablet from within this test,
@@ -988,6 +991,34 @@ TEST_F(TabletServerTest, TestCallHomeFlag) {
 TEST_F(TabletServerTest, TestGFlagsCallHome) {
   CHECK_OK(env_->CreateDir(GetWebserverDir()));
   TestGFlagsCallHome<TabletServer, TserverCallHome>(mini_server_->server());
+}
+
+TEST_F(TabletServerTest, ThreadMetricsStability) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_metrics_retirement_age_ms) = 1;
+  auto ScrapeAndVerifyThreadMetrics = [&]() {
+    MetricPrometheusOptions opts;
+    opts.export_help_and_type = ExportHelpAndType::kFalse;
+    std::stringstream output;
+    PrometheusWriter writer(&output, opts);
+    ASSERT_OK(mini_server_->server()->metric_registry()->WriteForPrometheus(&writer, opts));
+
+    ASSERT_TRUE(output.str().contains("threads_running_"));
+    ASSERT_TRUE(output.str().contains("threads_started_"));
+  };
+
+  // Verify thread metrics are not retired despite FLAGS_metrics_retirement_age_ms = 0.
+  // Requires 3 scrapes because metric retirement is a two-phase process:
+  // - After scrape 1: cleanup thread marks unreferenced metrics for deletion
+  // - After scrape 2: cleanup thread deletes previously marked metrics
+  // - Scrape 3: confirms metrics still exist (if they were unreferenced, they'd be gone)
+
+  ScrapeAndVerifyThreadMetrics();
+  SleepFor(MonoDelta::FromSeconds(1));
+
+  ScrapeAndVerifyThreadMetrics();
+  SleepFor(MonoDelta::FromSeconds(1));
+
+  ScrapeAndVerifyThreadMetrics();
 }
 
 #if YB_TCMALLOC_ENABLED

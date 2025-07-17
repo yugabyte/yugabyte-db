@@ -63,7 +63,7 @@ HINT:  Set compute_query_id to "auto" or "on" to use hint table.
         1
 (1 row)
 
-SELECT 1;									-- not
+SELECT 1;									-- gets warning with conn mgr
  ?column? 
 ----------
         1

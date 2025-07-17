@@ -22,6 +22,7 @@
 #include <rapidjson/document.h>
 #include "yb/cdc/xcluster_types.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/common/pg_types.h"
 #include "yb/tserver/xcluster_consumer_if.h"
 
 namespace yb {
@@ -31,6 +32,35 @@ namespace tserver {
 struct XClusterOutputClientResponse;
 
 typedef std::function<void(HybridTime)> UpdateSafeTimeFunc;
+
+struct XClusterDDLQueryInfo {
+  int64 ddl_end_time;
+  int64 query_id;
+  std::string query;
+  int version = 0;
+  std::string command_tag;
+  std::string schema;
+  std::string user;
+  std::string json_for_oid_assignment;
+  bool is_manual_execution = false;
+
+  struct RelationInfo {
+    std::string relation_name;
+    PgOid relfile_oid;
+    ColocationId colocation_id;
+    bool is_index;
+    std::string ToString() const {
+      return YB_STRUCT_TO_STRING(relation_name, relfile_oid, colocation_id, is_index);
+    }
+  };
+  std::vector<RelationInfo> relation_map;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(
+        query, ddl_end_time, query_id, version, command_tag, schema, user, json_for_oid_assignment,
+        is_manual_execution, relation_map);
+  }
+};
 
 // Handler for the ddl_queue table, used for xCluster DDL replication.
 // This handler is called by XClusterPoller after ApplyChanges has been processed successfully for
@@ -58,6 +88,8 @@ class XClusterDDLQueueHandler {
   // batch. If not, then we will just persist the commit times of the new DDLs in replicated_ddls.
   Status ProcessGetChangesResponse(const XClusterOutputClientResponse& response);
 
+  Status UpdateSafeTimeForPause();
+
   // Fetch the current batch persisted in the replicated_ddls table.
   static Result<xcluster::SafeTimeBatch> FetchSafeTimeBatchFromReplicatedDdls(
       pgwrapper::PGConn* pg_conn);
@@ -73,49 +105,32 @@ class XClusterDDLQueueHandler {
 
   Status RunAndLogQuery(const std::string& query);
 
-  struct DDLQueryInfo {
-    std::string query;
-    int64 ddl_end_time;
-    int64 query_id;
-    int version;
-    std::string command_tag;
-    std::string schema = "";
-    std::string user = "";
-    std::string json_for_oid_assignment;
-
-    std::string ToString() const {
-      return YB_STRUCT_TO_STRING(query, ddl_end_time, query_id, version, command_tag, schema, user);
-    }
-  };
-
-  // Parse the JSON string and return the DDLQueryInfo struct.
-  Result<DDLQueryInfo> GetDDLQueryInfo(
-      rapidjson::Document& doc, int64 ddl_end_time, int64 query_id);
-
   // Run the DDL query with the appropriate flags set.
-  virtual Status ProcessDDLQuery(const DDLQueryInfo& query_info);
+  virtual Status ProcessDDLQuery(const XClusterDDLQueryInfo& query_info);
 
   // Used to keep track of the number of times we've failed this DDL.
-  virtual Status ProcessFailedDDLQuery(const Status& s, const DDLQueryInfo& query_info);
+  virtual Status ProcessFailedDDLQuery(const Status& s, const XClusterDDLQueryInfo& query_info);
   // Returns whether we've already failed this query too many times.
   virtual Status CheckForFailedQuery();
 
   // Checks replicated_ddls table to see if this DDL has already been processed.
-  virtual Result<bool> CheckIfAlreadyProcessed(const DDLQueryInfo& query_info);
+  virtual Result<bool> IsAlreadyProcessed(const XClusterDDLQueryInfo& query_info);
 
-  Status ProcessManualExecutionQuery(const DDLQueryInfo& query_info);
+  Status ProcessManualExecutionQuery(const XClusterDDLQueryInfo& query_info);
 
   virtual Status InitPGConnection();
   virtual Result<HybridTime> GetXClusterSafeTimeForNamespace();
 
-  // Queries ddl_queue at the given apply_safe_time and returns the DDLs to process.
   virtual Result<std::vector<std::tuple<int64, int64, std::string>>> GetRowsToProcess(
-      const HybridTime& apply_safe_time);
+      const HybridTime& commit_time);
+
+  // Queries ddl_queue at the given apply_safe_time and returns the DDLs to process.
+  Result<std::vector<XClusterDDLQueryInfo>> GetQueriesToProcess(const HybridTime& commit_time);
 
   // Sets xcluster_context with the mapping of table name -> source table id.
   Status ProcessNewRelations(
-      rapidjson::Document& doc, const std::string& schema,
-      std::unordered_set<YsqlFullTableName>& new_relations, const HybridTime& target_safe_ht);
+      const XClusterDDLQueryInfo& query_info, std::unordered_set<YsqlFullTableName>& new_relations,
+      const HybridTime& commit_time);
 
   // Checks replicated_ddls table for an existing batch.
   // If one exists, then will fill out safe_time_batch_ with the commit times and apply safe time
@@ -126,10 +141,9 @@ class XClusterDDLQueueHandler {
   // updates safe_time_batch_ with the new commit times and apply safe time.
   Status PersistAndUpdateSafeTimeBatch(
       const std::set<HybridTime>& commit_times, const HybridTime& apply_safe_time);
-  virtual Status DoPersistAndUpdateSafeTimeBatch(
-      const std::set<HybridTime>& commit_times, const HybridTime& apply_safe_time);
+  virtual Status DoPersistAndUpdateSafeTimeBatch(xcluster::SafeTimeBatch new_safe_time_batch);
 
-  virtual Status UpdateSafeTimeBatchAfterProcessing(const HybridTime& last_commit_time_processed);
+  Status UpdateSafeTimeBatchAfterProcessing(const HybridTime& last_commit_time_processed);
 
   Status ResetSafeTimeBatchOnFailure(const Status& s);
 
@@ -150,7 +164,7 @@ class XClusterDDLQueueHandler {
     int64 ddl_end_time;
     int64 query_id;
 
-    bool MatchesQueryInfo(const DDLQueryInfo& query_info) const {
+    bool MatchesQueryInfo(const XClusterDDLQueryInfo& query_info) const {
       return ddl_end_time == query_info.ddl_end_time && query_id == query_info.query_id;
     }
   };

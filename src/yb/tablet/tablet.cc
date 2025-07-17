@@ -485,6 +485,23 @@ Result<HybridTime> CheckSafeTime(HybridTime time, HybridTime min_allowed) {
   return STATUS_FORMAT(TimedOut, "Timed out waiting for safe time $0", min_allowed);
 }
 
+class ActiveCompactionToken {
+ public:
+  explicit ActiveCompactionToken(std::atomic<size_t>& counter) : counter_(counter) {
+    ++counter;
+  }
+
+  ~ActiveCompactionToken() {
+    --counter_;
+  }
+
+  ActiveCompactionToken(const ActiveCompactionToken&) = delete;
+  void operator=(const ActiveCompactionToken&) = delete;
+
+ private:
+  std::atomic<size_t>& counter_;
+};
+
 } // namespace
 
 class Tablet::RocksDbListener : public rocksdb::EventListener {
@@ -732,7 +749,8 @@ Tablet::Tablet(const TabletInitData& data)
   vector_indexes_ = std::make_unique<TabletVectorIndexes>(
       this,
       data.vector_index_thread_pool_provider,
-      data.vector_index_priority_thread_pool_provider);
+      data.vector_index_priority_thread_pool_provider,
+      data.vector_index_block_cache);
 
   snapshot_coordinator_ = data.snapshot_coordinator;
 
@@ -1387,6 +1405,8 @@ Status Tablet::EnableCompactions(
 }
 
 Status Tablet::DoEnableCompactions() {
+  tablet::VectorIndexList{ vector_indexes().List() }.EnableAutoCompactions();
+
   Status regular_db_status;
   std::unordered_map<std::string, std::string> new_options = {
       { "level0_slowdown_writes_trigger"s,
@@ -2925,8 +2945,13 @@ Result<PgsqlBackfillSpecPB> QueryPostgresToDoBackfill(
   auto result = conn->Fetch(query);
   if (!result.ok()) {
     const auto libpq_error_msg = AuxilaryMessage(result.status()).value();
-    LOG(WARNING) << "libpq query \"" << query << "\" returned "
-                 << result.status() << ": " << libpq_error_msg;
+    LOG(WARNING) << "libpq query \"" << query << "\" returned " << result.status() << ": "
+                 << libpq_error_msg;
+    // The 2 spaces after ERROR: is necessary to match the error message.
+    constexpr auto kSchemaMismatchSubstring = "ERROR:  schema version mismatch";
+    if (libpq_error_msg.starts_with(kSchemaMismatchSubstring)) {
+      return STATUS(TryAgain, libpq_error_msg);
+    }
     return STATUS(IllegalState, libpq_error_msg);
   }
   auto& res = result.get();
@@ -4002,6 +4027,7 @@ Result<HybridTime> Tablet::DoGetSafeTime(
           min_allowed, ht_lease);
     }
   } else if (min_allowed) {
+    SCOPED_WAIT_STATUS(WaitForReadTime);
     RETURN_NOT_OK(WaitUntil(clock_.get(), min_allowed, deadline));
   }
   if (min_allowed > ht_lease.lease) {
@@ -4074,10 +4100,12 @@ Status Tablet::ForceManualRocksDBCompact(docdb::SkipFlush skip_flush) {
 }
 
 Status Tablet::ForceRocksDBCompact(
-    rocksdb::CompactionReason compaction_reason, docdb::SkipFlush skip_flush) {
+    rocksdb::CompactionReason compaction_reason, docdb::SkipFlush skip_flush,
+    rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe) {
   rocksdb::CompactRangeOptions options;
   options.skip_flush = skip_flush;
   options.compaction_reason = compaction_reason;
+  options.skip_corrupt_data_blocks_unsafe = skip_corrupt_data_blocks_unsafe;
   if (compaction_reason != rocksdb::CompactionReason::kPostSplitCompaction) {
     options.exclusive_manual_compaction = FLAGS_tablet_exclusive_full_compaction;
     return ForceRocksDBCompact(options, options);
@@ -4573,6 +4601,10 @@ bool Tablet::HasActiveFullCompaction() {
   return HasActiveFullCompactionUnlocked();
 }
 
+bool Tablet::HasActiveFullCompactionUnlocked() const REQUIRES(full_compaction_token_mutex_) {
+  return num_active_full_compactions_ != 0;
+}
+
 void Tablet::TriggerPostSplitCompactionIfNeeded() {
   if (PREDICT_FALSE(FLAGS_TEST_skip_post_split_compaction)) {
     LOG(INFO) << "Skipping post split compaction due to FLAGS_TEST_skip_post_split_compaction";
@@ -4606,8 +4638,10 @@ Status Tablet::TriggerManualCompactionIfNeeded(rocksdb::CompactionReason compact
         full_compaction_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL);
   }
 
-  return full_compaction_task_pool_token_->SubmitFunc(
-      std::bind(&Tablet::TriggerManualCompactionSync, this, compaction_reason));
+  auto token = std::make_shared<ActiveCompactionToken>(num_active_full_compactions_);
+  return full_compaction_task_pool_token_->SubmitFunc([this, token, compaction_reason] {
+    WARN_NOT_OK(TriggerManualCompactionSync(compaction_reason), "Trigger manual compaction failed");
+  });
 }
 
 Status Tablet::TriggerAdminFullCompactionIfNeeded(const AdminCompactionOptions& options) {
@@ -4621,17 +4655,20 @@ Status Tablet::TriggerAdminFullCompactionIfNeeded(const AdminCompactionOptions& 
         admin_triggered_compaction_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL);
   }
 
-  return admin_full_compaction_task_pool_token_->SubmitFunc([this, options]() {
-    // TODO(vector_index): since full vector index compaction is not optimizaed and may take a
-    // significat amount of time, let's trigger it separately from regular manual compaction.
+  auto token = std::make_shared<ActiveCompactionToken>(num_active_full_compactions_);
+  return admin_full_compaction_task_pool_token_->SubmitFunc([this, token, options]() {
+    // TODO(vector_index): since full vector index compaction is not optimized and may take a
+    // significant amount of time, let's trigger it separately from regular manual compaction.
     // This logic should be revised later.
+    Status status;
     if (options.vector_index_ids) {
       TriggerVectorIndexCompactionSync(*options.vector_index_ids);
     } else {
-      TriggerManualCompactionSync(rocksdb::CompactionReason::kAdminCompaction);
+      status = TriggerManualCompactionSyncUnsafe(
+          rocksdb::CompactionReason::kAdminCompaction, options.skip_corrupt_data_blocks_unsafe);
     }
     if (options.compaction_completion_callback) {
-      options.compaction_completion_callback();
+      options.compaction_completion_callback(status);
     }
   });
 }
@@ -4641,11 +4678,16 @@ void Tablet::TriggerVectorIndexCompactionSync(const TableIds& vector_index_ids) 
   tablet::VectorIndexList{ vector_indexes().Collect(vector_index_ids) }.Compact();
 }
 
-void Tablet::TriggerManualCompactionSync(rocksdb::CompactionReason reason) {
+Status Tablet::TriggerManualCompactionSyncUnsafe(
+    rocksdb::CompactionReason reason,
+    rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe) {
   TEST_PAUSE_IF_FLAG(TEST_pause_before_full_compaction);
+  auto status =
+      ForceRocksDBCompact(reason, docdb::SkipFlush::kFalse, skip_corrupt_data_blocks_unsafe);
   WARN_WITH_PREFIX_NOT_OK(
-      ForceRocksDBCompact(reason),
+      status,
       Format("$0: Failed tablet full compaction ($1)", log_prefix_suffix_, ToString(reason)));
+  return status;
 }
 
 bool Tablet::HasActiveTTLFileExpiration() {
@@ -4972,6 +5014,7 @@ Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transacti
 
   TransactionLockInfoManager lock_info_manager(tablet_lock_info);
   rocksdb::ReadOptions read_options;
+  read_options.fill_cache = false;
   auto intent_iter = std::unique_ptr<rocksdb::Iterator>(intents_db_->NewIterator(read_options));
   intent_iter->SeekToFirst();
   // It could happen that the tablet gets a lock status request with the transactions field unset,
@@ -5022,12 +5065,15 @@ Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transacti
       }
 
       // Scan the transaction's corresponding reverse index section.
-      while (intent_iter->Valid() && intent_iter->key().compare_prefix(reverse_key) == 0) {
+      uint32_t txn_intents_count = 0;
+      while (intent_iter->Valid() && intent_iter->key().compare_prefix(reverse_key) == 0 &&
+             (!max_txn_locks_per_tablet || txn_intents_count <= max_txn_locks_per_tablet)) {
         DCHECK_EQ(intent_iter->key()[0], KeyEntryTypeAsChar::kTransactionId);
         // We should only consider intents whose value is within the tablet's key bounds.
         // Else, we would observe duplicate results in case of tablet split.
         if (key_bounds_.IsWithinBounds(intent_iter->value())) {
           txn_intent_keys.emplace_back(intent_iter->value());
+          ++txn_intents_count;
         }
         intent_iter->Next();
       }

@@ -14,7 +14,7 @@ export const QueriesViewer = (props) => {
         <Tab eventKey="slow-queries" title="Slow Queries" key="slow-queries">
           <SlowQueries />
         </Tab>
-        {props.isPerfAdvisorEnabled && (
+        {props.isPerfAdvisorUIEnabled && (
           <Tab
             eventKey="perf-advisor"
             title="Performance Advisor"

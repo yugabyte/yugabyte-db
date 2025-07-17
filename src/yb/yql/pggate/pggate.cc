@@ -52,6 +52,7 @@
 #include "yb/util/range.h"
 #include "yb/util/status_format.h"
 #include "yb/util/thread.h"
+#include "yb/util/scope_exit.h"
 
 #include "yb/yql/pggate/pg_column.h"
 #include "yb/yql/pggate/pg_ddl.h"
@@ -412,6 +413,16 @@ Result<bool> RetrieveYbctidsImpl(
     }
   }
   return true;
+}
+
+[[nodiscard]] auto UpdateCatalogReadTime(PgSession& session, const ReadHybridTime& read_time) {
+  DCHECK(read_time);
+  const auto current_catalog_read_time = session.catalog_read_time();
+  session.TrySetCatalogReadPoint(read_time);
+  return MakeOptionalScopeExit(
+      [&session, current_catalog_read_time] {
+        session.TrySetCatalogReadPoint(current_catalog_read_time);
+      });
 }
 
 } // namespace
@@ -993,9 +1004,8 @@ Status PgApiImpl::AlterTableSetReplicaIdentity(PgStatement* handle, char identit
   return VERIFY_RESULT_REF(GetStatementAs<PgAlterTable>(handle)).SetReplicaIdentity(identity_type);
 }
 
-Status PgApiImpl::AlterTableRenameTable(
-    PgStatement* handle, const char* db_name, const char* newname) {
-  return VERIFY_RESULT_REF(GetStatementAs<PgAlterTable>(handle)).RenameTable(db_name, newname);
+Status PgApiImpl::AlterTableRenameTable(PgStatement* handle, const char* newname) {
+  return VERIFY_RESULT_REF(GetStatementAs<PgAlterTable>(handle)).RenameTable(newname);
 }
 
 Status PgApiImpl::AlterTableIncrementSchemaVersion(PgStatement* handle) {
@@ -1549,13 +1559,13 @@ Status PgApiImpl::FetchRequestedYbctids(
 }
 
 Status PgApiImpl::BindYbctids(PgStatement* handle, int n, uintptr_t* ybctids) {
-  std::vector<Slice> ybctid_slice;
-  ybctid_slice.reserve(n);
-  for (int i = 0; i < n; i++)
-    ybctid_slice.push_back(YbctidAsSlice(pg_types(), ybctids[i]));
-
-  auto& select = VERIFY_RESULT_REF(GetStatementAs<PgSelect>(handle));
-  select.SetHoldingRequestedYbctids(ybctid_slice);
+  const auto sz = yb::make_unsigned(n);
+  const auto ybctids_span = std::span{ybctids, sz};
+  VERIFY_RESULT_REF(GetStatementAs<PgSelect>(handle)).SetRequestedYbctids(
+      {
+        make_lw_function([this, i = ybctids_span.begin(), end = ybctids_span.end()] mutable {
+          return i != end ? YbctidAsSlice(pg_types_, *i++) : Slice();
+        }), sz});
   return Status::OK();
 }
 
@@ -1573,17 +1583,21 @@ Status PgApiImpl::DmlHnswSetReadOptions(PgStatement* handle, int ef_search) {
 
 Status PgApiImpl::ExecSelect(PgStatement* handle, const YbcPgExecParameters* exec_params) {
   auto& select = VERIFY_RESULT_REF(GetStatementAs<PgSelect>(handle));
-  if (pg_sys_table_prefetcher_ && select.IsReadFromYsqlCatalog() && select.read_req()) {
+  auto* read_req = select.read_req();
+  if (pg_sys_table_prefetcher_ && select.IsReadFromYsqlCatalog() && read_req) {
     // In case of sys tables prefetching is enabled all reads from sys table must use cached data.
-    auto data = pg_sys_table_prefetcher_->GetData(
-        *select.read_req(), select.IsIndexOrderedScan());
-    if (!data) {
-      // LOG(DFATAL) is used instead of SCHECK to let user on release build proceed by reading
-      // data from a master in a non efficient way (by using separate RPC).
-      LOG(DFATAL) << "Data was not prefetched for request "
-                  << select.read_req()->ShortDebugString();
+    auto data = pg_sys_table_prefetcher_->GetData(*read_req, select.IsIndexOrderedScan());
+    if (std::holds_alternative<PrefetchedDataHolder>(data)) {
+      select.UpgradeDocOp(MakeDocReadOpWithData(
+          pg_session_, std::move(std::get<PrefetchedDataHolder>(data))));
     } else {
-      select.UpgradeDocOp(MakeDocReadOpWithData(pg_session_, std::move(data)));
+      LOG(WARNING) << "Data was not prefetched for table " << read_req->table_id();
+      VLOG(5) << "Non prefetched request is: " << read_req->ShortDebugString();
+      DCHECK(std::holds_alternative<MissedPrefetchedDataAlternativeReadTime>(data));
+      const auto& alternative_read_time = std::get<MissedPrefetchedDataAlternativeReadTime>(data);
+      auto catalog_read_time_guard = alternative_read_time
+          ? UpdateCatalogReadTime(*pg_session_, *alternative_read_time) : std::nullopt;
+      return select.Exec(exec_params);
     }
   }
   return select.Exec(exec_params);
@@ -2029,6 +2043,10 @@ bool PgApiImpl::IsDdlMode() const {
 
 void PgApiImpl::ResetCatalogReadTime() {
   pg_session_->ResetCatalogReadPoint();
+}
+
+ReadHybridTime PgApiImpl::GetCatalogReadTime() const {
+  return pg_session_->catalog_read_time();
 }
 
 Result<bool> PgApiImpl::ForeignKeyReferenceExists(

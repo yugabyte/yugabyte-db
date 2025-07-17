@@ -1766,7 +1766,7 @@ is_jenkins() {
 }
 
 should_gzip_test_logs() {
-  is_jenkins || [[ ${YB_GZIP_TEST_LOGS:-0} == "1" ]]
+  [[ ${YB_GZIP_TEST_LOGS:-0} == "1" ]]
 }
 
 # For each file provided as an argument, gzip the given file if it exists and is not already
@@ -2034,7 +2034,7 @@ find_or_download_ysql_snapshots() {
   # Just one snapshot for now.
   # (disabling a code checker error about a singular loop iteration)
   # shellcheck disable=SC2043
-  for ver in "2025.1.0.0-pg15-12-3"; do
+  for ver in "2025.1.0.0-pg15-12-5"; do
     for bt in "release" "sanitizers" "mac"; do
       local name="${prefix}_${ver}_${bt}"
       if [[ ! -d "$YSQL_SNAPSHOTS_DIR_PARENT/$name" ]]; then

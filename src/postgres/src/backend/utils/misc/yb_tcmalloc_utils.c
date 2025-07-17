@@ -35,6 +35,7 @@
 #include "funcapi.h"
 #include "nodes/execnodes.h"
 #include "pg_yb_utils.h"
+#include "storage/ipc.h"
 #include "storage/procarray.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
@@ -42,6 +43,10 @@
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "yb_tcmalloc_utils.h"
+
+int yb_log_heap_snapshot_on_exit_threshold = -1;
+
+static void YbLogHeapSnapshotProcExit(int status, Datum arg);
 
 static void
 			YbPutHeapSnapshotTupleStore(Tuplestorestate *tupstore, TupleDesc tupdesc,
@@ -294,4 +299,32 @@ ProcessLogHeapSnapshotInterrupt(void)
 	 * the number of call stacks to log to 100.
 	 */
 	YBCDumpTcMallocHeapProfile(LogHeapSnapshotPeakHeap, 100);
+}
+
+/*
+ * Always setup the hook to log the heap snapshot when a backend process exits.
+ * YbLogHeapSnapshotProcExit will decide whether to actually log the heap snapshot
+ * if the peak RSS is greater than or equal to yb_log_heap_snapshot_on_exit_threshold
+ * at the time of exit.
+ */
+void
+YbSetupHeapSnapshotProcExit(void)
+{
+	on_proc_exit(YbLogHeapSnapshotProcExit, 0);
+}
+
+static void
+YbLogHeapSnapshotProcExit(int status, Datum arg)
+{
+	if (yb_log_heap_snapshot_on_exit_threshold >= 0)
+	{
+		long peak_rss_kb = YbGetPeakRssKb();
+		if (peak_rss_kb >= yb_log_heap_snapshot_on_exit_threshold)
+		{
+			ereport(LOG,
+				   (errmsg("peak heap snapshot of PID %d (peak RSS: %ld KB, threshold: %d KB):",
+						  MyProcPid, peak_rss_kb, yb_log_heap_snapshot_on_exit_threshold)));
+			YBCDumpTcMallocHeapProfile(true, 100);
+		}
+	}
 }

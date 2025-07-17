@@ -1,6 +1,7 @@
 yb_bin_dir="{{ yb_home_dir }}/bin"
 yb_cores_dir="{{ yb_home_dir }}/cores"
 yb_software_dir="{{ yb_home_dir }}/yb-software"
+yb_releases_dir="{{ yb_home_dir }}/releases"
 
 # Create the bin directory inside the YB HOME directory.
 mkdir -p "$yb_bin_dir"
@@ -11,6 +12,11 @@ chmod 0755 "$yb_bin_dir"
 mkdir -p "$yb_software_dir"
 chown -R {{ yb_user }}:{{ yb_user }} "$yb_software_dir"
 chmod 0755 "$yb_software_dir"
+
+# Create the releases directory inside the YB HOME directory.
+mkdir -p "$yb_releases_dir"
+chown -R {{ yb_user }}:{{ yb_user }} "$yb_releases_dir"
+chmod 0755 "$yb_releases_dir"
 
 # Retrieve the mount_paths.
 mount_points={{ mount_paths }}
@@ -145,13 +151,12 @@ fi
 # Move the package to the home user directory
 rm -rf {{ yb_home_dir }}/$release_folder
 mkdir -p {{ yb_home_dir }}/$release_folder
-chown -R {{ yb_user }}:{{ yb_user }} {{ yb_home_dir }}/$release_folder
 chmod 0755 {{ yb_home_dir }}/$release_folder
 cp "$temp_binary_path/$package_name" {{ yb_home_dir }}/$release_folder
+chown -R {{ yb_user }}:{{ yb_user }} {{ yb_home_dir }}/$release_folder
 
 # Extract yugabyte binary to /home/yugabyte/yb-software/
 tar --strip-components=1 -xzf "$temp_binary_path/$package_name" -C "$yb_package_folder"
-chown -R {{ yb_user }}:{{ yb_user }} "$yb_package_folder"
 chmod 0755 "$yb_package_folder"
 
 # Remove temp_binary_path directory
@@ -163,6 +168,7 @@ rm -rf "$yb_software_dir/$release_name"
 chmod +x "$yb_package_folder/bin/post_install.sh"
 # Run the post install script.
 bash "$yb_package_folder/bin/post_install.sh"
+chown -R {{ yb_user }}:{{ yb_user }} "$yb_package_folder"
 
 symlink_items=$(ls "$yb_package_folder" || true)
 symlink_folders=(master tserver)
@@ -183,3 +189,16 @@ for folder in "${symlink_folders[@]}"; do
     fi
   done
 done
+
+# Ensure the /home/yugabyte/.ssh/authorized_keys file is removed from prebuilt
+# AMIs to avoid retaining default or cloud-injected SSH keys
+# (e.g., Google-injected keys).
+
+AUTHORIZED_KEYS_PATH="{{ yb_home_dir }}/.ssh/authorized_keys"
+
+if [ -f "$AUTHORIZED_KEYS_PATH" ]; then
+  rm -f "$AUTHORIZED_KEYS_PATH"
+  echo "Removed: $AUTHORIZED_KEYS_PATH"
+else
+  echo "No authorized_keys file found"
+fi

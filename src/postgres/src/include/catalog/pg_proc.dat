@@ -11999,6 +11999,11 @@
   proparallel => 'r', prorettype => 'int8', proargtypes => 'int4',
   prosrc => 'yb_pg_stat_get_backend_rss_mem_bytes' },
 
+{ oid => '8097', descr => 'statistics: PSS memory usage of backend retrieved from OS',
+  proname => 'yb_pg_stat_get_backend_pss_mem_bytes', provolatile => 's',
+  proparallel => 'r', prorettype => 'int8', proargtypes => 'int4',
+  prosrc => 'yb_pg_stat_get_backend_pss_mem_bytes' },
+
 { oid => '8048', descr => 'get TCMalloc, PG and PGgate usage for the current connection',
   proname => 'yb_heap_stats', provolatile => 'v',
   prorettype => 'record', proargtypes => '',

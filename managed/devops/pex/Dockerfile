@@ -19,11 +19,12 @@ RUN yum -y install openldap-devel
 # repairing the generated PEX file to ensure compatibility
 # across all python versions, and
 # for Linux platform and cross-platform compatibility).
-RUN pip3 install pex wheel auditwheel
+RUN pip3 install pex==2.45.3 wheel auditwheel
 
 # Copying the testPex folder, which contains the build_pex.sh
 # script we want to run.
 RUN mkdir /code
 COPY . /code/pex
 WORKDIR /code/pex/
+ENV PEX_ROOT=/code/pex/.cache
 ENTRYPOINT [ "/code/pex/build_pex.sh" ]

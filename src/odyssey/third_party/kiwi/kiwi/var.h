@@ -267,6 +267,24 @@ static inline void kiwi_vars_init(kiwi_vars_t *vars)
 #else
 	vars->size = 0;
 	vars->vars = NULL;
+	/*
+	 * YB: Important: Set 'pg_hint_plan.enable_hint_table' before 'compute_query_id'
+	 * in the deploy phase.
+	 * These GUCs are not commutative in effect. Setting 'compute_query_id' to OFF
+	 * before enabling 'pg_hint_plan.enable_hint_table' leads to a failure, as the
+	 * hint plan GUC requires 'compute_query_id' to be ON during its validation.
+	 *
+	 * Although reversing the order (enabling hint_table first, then disabling compute_query_id)
+	 * may succeed with a warning, any subsequent usage of pg_hint_plan features will still
+	 * fail due to 'compute_query_id' being OFF.
+	 *
+	 * To avoid such issues during the deploy phase in the connection manager,
+	 * we enforce this safe order of setting GUCs here.
+	 */
+	yb_kiwi_var_push(vars, "pg_hint_plan.enable_hint_table", 31,
+				"off", 4);
+	yb_kiwi_var_push(vars, "compute_query_id", 17,
+				"auto", 5);
 #endif
 }
 
@@ -435,6 +453,16 @@ static inline int yb_check_reset_needed(kiwi_vars_t *client, kiwi_vars_t *server
 	return 0;
 }
 
+static inline bool yb_only_white_space(char *value)
+{
+	for (int i = 0; value[i] != '\0'; i++)
+	{
+		if (value[i] != ' ')
+			return false;
+	}
+	return true;
+}
+
 __attribute__((hot)) static inline int kiwi_vars_cas(kiwi_vars_t *client,
 						     kiwi_vars_t *server,
 						     char *query, int query_len)
@@ -486,8 +514,12 @@ __attribute__((hot)) static inline int kiwi_vars_cas(kiwi_vars_t *client,
 			 * 1. var_name=; - It would lead to failure of deploy query.
 			 * 2. var_name=""; - PG will throw ERROR msg:
 			 * 			zero-length delimited identifier at or near """".
+			 * 3. var_name='  '; - On setting via set_config function, it returns empty white space
+			 * 			which can also lead to deploy query failure.
 			*/
-			if (strlen(var->value) == 0 || strcmp(var->value, "\"\"") == 0)
+			if (strlen(var->value) == 0 ||
+				strcmp(var->value, "\"\"") == 0 ||
+				yb_only_white_space(var->value))
 			{
 				memcpy(query + pos, "\'\'", 2);
 				if (query_len < pos + 2)

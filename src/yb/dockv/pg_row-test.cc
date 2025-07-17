@@ -130,7 +130,7 @@ void TestPackedRowDecode(const std::vector<DataType>& types) {
 
   std::vector<ValueBuffer> entries;
   for (int i = 0; i != kNumEntries; ++i) {
-    Packer packer(0, schema_packing, std::numeric_limits<ssize_t>::max(), Slice(), schema);
+    Packer packer(0, schema_packing, std::numeric_limits<ssize_t>::max(), Slice());
     for (size_t idx = 0; idx != types.size(); ++idx) {
       ASSERT_OK(packer.AddValue(schema.column_id(idx), RandomQLValue(types[idx])));
     }

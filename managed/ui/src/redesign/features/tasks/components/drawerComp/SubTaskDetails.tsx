@@ -19,7 +19,7 @@ import { YBLoadingCircleIcon } from '../../../../../components/common/indicators
 import { getFailedTaskDetails, getSubTaskDetails } from './api';
 import { SubTaskInfo, Task, TaskStates } from '../../dtos';
 import { TaskDrawerCompProps } from './dtos';
-import { isTaskFailed } from '../../TaskUtils';
+import { isTaskFailed, isTaskRunning } from '../../TaskUtils';
 import LinkIcon from '../../../../assets/link.svg';
 
 const useStyles = makeStyles((theme) => ({
@@ -87,7 +87,10 @@ export const SubTaskDetails: FC<TaskDrawerCompProps> = ({ currentTask }) => {
     refetch: refetchSubTasks
   } = useQuery(['subTasks', currentTask.id!], () => getSubTaskDetails(currentTask.id!), {
     select: (data) => data.data,
-    enabled: !!currentTask
+    enabled: !!currentTask,
+    refetchInterval: (data) => {
+      return values(data?.[currentTask.targetUUID]).some((task) => isTaskRunning(task)) ? 8000 : false;
+    }
   });
 
   useEffect(() => {

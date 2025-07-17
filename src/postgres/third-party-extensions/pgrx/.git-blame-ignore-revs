@@ -1,0 +1,20 @@
+# to make `git blame` ignore the following commits, run:
+# git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# adding a rustfmt.toml
+1ded8553fbeff635fcca0cbc8f37034cc124d698
+
+# utils -> sql-entity-graph
+cf6fd6f1c4709491e86f5dc536d5a99adb1f18fc
+
+# the pgrx rename
+8726d4fb5482910ec389b014efa6b999c2208bae
+
+# modularizing pgrx::spi
+d333053dc6f6afc6433e40f343c885a9c261562d
+
+# modularizing pgrx-pg-sys
+c83c203aa0ca3021bf8bafdd2109f74f940812e5
+
+# removing the PgGuardRewriter struct and impl
+ccf82259a01ccef132cbdc6f56ea60845d387b23

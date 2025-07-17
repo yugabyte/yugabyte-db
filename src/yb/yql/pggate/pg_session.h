@@ -245,6 +245,9 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
     return pg_client_;
   }
 
+  Status SetupIsolationAndPerformOptionsForDdl(
+      tserver::PgPerformOptionsPB* options, bool use_regular_transaction_block);
+
   Status SetActiveSubTransaction(SubTransactionId id);
   Status RollbackToSubTransaction(SubTransactionId id);
 
@@ -298,10 +301,9 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
 
   struct PerformOptions {
     UseCatalogSession use_catalog_session = UseCatalogSession::kFalse;
-    EnsureReadTimeIsSet ensure_read_time_is_set = EnsureReadTimeIsSet::kFalse;
+    std::optional<ReadTimeAction> read_time_action = {};
     std::optional<CacheOptions> cache_options = std::nullopt;
     HybridTime in_txn_limit = {};
-    bool non_transactional_buffered_write = false;
   };
 
   Result<PerformFuture> Perform(BufferableOperations&& ops, PerformOptions&& options);

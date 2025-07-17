@@ -266,14 +266,25 @@ class SysCatalogTable {
     bool is_colocated_database,
     TableToTablespaceIdMap *table_tablespace_map);
 
-  // Read relnamespace OID from the pg_class catalog table.
-  Result<uint32_t> ReadPgClassColumnWithOidValue(const uint32_t database_oid,
-                                                 const uint32_t table_oid,
-                                                 const std::string& column_name);
+  // Read read all 'column_name' (e.g. relnamespace) OIDs from the pg_class catalog table.
+  // Return map: oid -> 'column_name' oid.
+  Result<PgOidToOidMap> ReadPgClassColumnWithOidValueMap(const PgOid database_oid,
+                                                         const std::string& column_name);
+
+  // Read 'column_name' (e.g. relnamespace) OID from the pg_class catalog table.
+  Result<PgOid> ReadPgClassColumnWithOidValue(const PgOid database_oid,
+                                              const PgOid table_oid,
+                                              const std::string& column_name,
+                                              const ReadHybridTime& read_time = ReadHybridTime());
+
+  // Read all nspname strings from the pg_namespace catalog table.
+  // Return map: relnamespace oid -> nspname string.
+  Result<PgOidToStringMap> ReadPgNamespaceNspnameMap(const PgOid database_oid);
 
   // Read nspname string from the pg_namespace catalog table.
-  Result<std::string> ReadPgNamespaceNspname(const uint32_t database_oid,
-                                             const uint32_t relnamespace_oid);
+  Result<std::string> ReadPgNamespaceNspname(const PgOid database_oid,
+                                             const PgOid relnamespace_oid,
+                                             const ReadHybridTime& read_time = ReadHybridTime());
 
   // Read attname and atttypid from pg_attribute catalog table.
   Result<std::unordered_map<std::string, uint32_t>> ReadPgAttNameTypidMap(
@@ -407,6 +418,12 @@ class SysCatalogTable {
       uint64_t* catalog_version,
       uint64_t* last_breaking_version,
       DbOidToCatalogVersionMap* versions);
+  // Similar to reading from pg_yb_catalog_version, read the latest pg_yb_invalidation_messages
+  // via read with restarts.
+  Status ReadYsqlCatalogInvalationMessagesImpl(
+      const ReadHybridTime& read_time,
+      HybridTime* read_restart_ht,
+      DbOidVersionToMessageListMap& messages);
 
   // During a batch write operation, if the max batch bytes have been exceeded, performs a write and
   // creates a new writer. To avoid running the expensive ByteSizeLong calculation too frequently,

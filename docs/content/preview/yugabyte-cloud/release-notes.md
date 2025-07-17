@@ -21,6 +21,45 @@ rightNav:
 
 ### 2025
 
+#### June 25, 2025
+
+##### Database
+
+- Early Access track updated to 2024.2.3.2.
+- Preview track updated to 2.25.2.0.
+
+#### May 27, 2025
+
+##### Database
+
+- Early Access track updated to 2024.2.3.0.
+- Innovation track updated to 2024.1.6.0.
+
+#### May 6, 2025
+
+##### Database
+
+- Early Access track updated to 2024.2.2.2.
+- Production track updated to 2.20.10.0.
+
+#### April 2, 2025
+
+##### Database
+
+- Early Access track updated to 2024.2.2.1.
+- Preview track updated to 2.25.1.0.
+
+#### March 10, 2025
+
+##### New features
+
+- Enhanced [Table](../cloud-monitor/monitor-tables/) and [Nodes](../cloud-monitor/monitor-nodes/) views, including the ability to view the health of individual table [tablets](../../architecture/key-concepts/#tablet).
+- Support for changing fault tolerance of clusters using the [API](https://api-docs.yugabyte.com/docs/managed-apis/b05c2ea10b50e-edit-a-cluster) or [CLI](https://github.com/yugabyte/ybm-cli/blob/main/docs/ybm_cluster_update.md).
+
+##### Database
+
+- Innovation track updated to 2024.1.5.0.
+
 #### January 30, 2025
 
 ##### New features

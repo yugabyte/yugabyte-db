@@ -7,6 +7,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
 import static com.yugabyte.yw.models.helpers.CommonUtils.getDurationSeconds;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+import static play.mvc.Http.Status.SERVICE_UNAVAILABLE;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.api.client.util.Throwables;
@@ -321,7 +322,7 @@ public class TaskExecutor {
 
   private void checkTaskExecutorState() {
     if (isShutdown.get()) {
-      throw new IllegalStateException("TaskExecutor is shutting down");
+      throw new PlatformServiceException(SERVICE_UNAVAILABLE, "TaskExecutor is shutting down");
     }
   }
 
@@ -423,11 +424,12 @@ public class TaskExecutor {
         // Update task state on submission failure.
         runnableTasks.remove(taskUUID);
         log.error("Error occurred in submitting the task", e);
-        String msg =
-            (e instanceof RejectedExecutionException)
-                ? "Task submission failed as too many tasks are running"
-                : "Error occurred during task submission for execution";
-        throw new PlatformServiceException(INTERNAL_SERVER_ERROR, msg);
+        if (e instanceof RejectedExecutionException) {
+          throw new PlatformServiceException(
+              SERVICE_UNAVAILABLE, "Task submission failed as too many tasks are running");
+        }
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR, "Error occurred during task submission for execution");
       }
     } catch (Exception e) {
       runnableTask.updateTaskDetailsOnError(TaskInfo.State.Failure, e);

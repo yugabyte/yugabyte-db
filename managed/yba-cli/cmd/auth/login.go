@@ -33,7 +33,7 @@ var LoginCmd = &cobra.Command{
 		}
 		var email, password string
 		var data []byte
-		url := viperVariablesInAuth(cmd, force)
+		url := ViperVariablesInAuth(cmd, force)
 		if !force {
 			// Prompt for the email
 			fmt.Print("Enter email or username: ")
@@ -106,7 +106,7 @@ var LoginCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		authUtil(url, r.GetApiToken(), showToken)
+		InitializeAuthenticatedSession(url, r.GetApiToken(), showToken)
 	},
 }
 

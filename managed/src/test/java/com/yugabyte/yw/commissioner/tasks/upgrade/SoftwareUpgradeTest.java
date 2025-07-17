@@ -319,6 +319,8 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         // Install ybc
         .addSimultaneousTasks(
             TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
+        .addSimultaneousTasks(
+            TaskType.AnsibleClusterServerCtl, defaultUniverse.getTServers().size())
         .addTasks(TaskType.WaitForYbcServer)
         .addTasks(TaskType.UpdateUniverseYbcDetails)
         .addSimultaneousTasks(TaskType.CheckSoftwareVersion, defaultUniverse.getTServers().size())

@@ -271,17 +271,9 @@ class ColumnFamilyData {
   static const int kCompactToBaseLevel;
   // REQUIRES: DB mutex held
   std::unique_ptr<Compaction> CompactRange(
-      const MutableCFOptions& mutable_cf_options,
-      int input_level,
-      int output_level,
-      uint32_t output_path_id,
-      const InternalKey* begin,
-      const InternalKey* end,
-      CompactionReason compaction_reason,
-      uint64_t file_number_upper_bound,
-      uint64_t input_size_limit,
-      InternalKey** compaction_end,
-      bool* manual_conflict);
+      const MutableCFOptions& mutable_cf_options, int input_level, int output_level,
+      const CompactRangeOptions& compact_range_options, const InternalKey* begin,
+      const InternalKey* end, InternalKey** compaction_end, bool* manual_conflict);
 
   CompactionPicker* compaction_picker() { return compaction_picker_.get(); }
   // thread-safe

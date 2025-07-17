@@ -13,6 +13,12 @@ type: docs
 
 Use the yb-tserver binary and its flags to configure the [YB-TServer](../../../architecture/yb-tserver/) server. The yb-tserver executable file is located in the `bin` directory of YugabyteDB home.
 
+{{< note title="Setting flags in YugabyteDB Anywhere" >}}
+
+If you are using YugabyteDB Anywhere, set flags using the [Edit Flags](../../../yugabyte-platform/manage-deployments/edit-config-flags/#modify-configuration-flags) feature.
+
+{{< /note >}}
+
 ## Syntax
 
 ```sh
@@ -792,14 +798,6 @@ Enables the use of shared memory between PostgreSQL and the YB-TServer. Using sh
 
 Default: `true`
 
-##### --ysql_disable_index_backfill
-
-Set this flag to `false` to enable online index backfill. When set to `false`, online index builds run while online, without failing other concurrent writes and traffic.
-
-For details on how online index backfill works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
-
-Default: `false`
-
 ##### --ysql_sequence_cache_method
 
 Specifies where to cache sequence values.
@@ -932,13 +930,6 @@ Specifies if YCQL tables are created with transactions enabled by default.
 
 Default: `false`
 
-##### --ycql_disable_index_backfill
-
-Set this flag to `false` to enable online index backfill. When set to `false`, online index builds run while online, without failing other concurrent writes and traffic.
-
-For details on how online index backfill works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
-
-Default: `true`
 
 ##### --ycql_require_drop_privs_for_truncate
 
@@ -1115,7 +1106,7 @@ Default: `""` (Use the same directory as certs_dir.)
 
 ##### --allow_insecure_connections
 
-Allow insecure connections. Set to `false` to prevent any process with unencrypted communication from joining a cluster. Note that this flag requires [`use_node_to_node_encryption`](#use-node-to-node-encryption) to be enabled and [`use_client_to_server_encryption`](#use-client-to-server-encryption) to be enabled.
+Allow insecure connections. Set to `false` to prevent any process with unencrypted communication from joining a cluster. Note that this flag requires [use_node_to_node_encryption](#use-node-to-node-encryption) to be enabled and [use_client_to_server_encryption](#use-client-to-server-encryption) to be enabled.
 
 Default: `true`
 
@@ -1483,7 +1474,7 @@ Default: `UINT32_MAX`
 
 ## Catalog flags
 
-Catalog flags are {{<tags/feature/ea>}}.
+Catalog cache flags are {{<tags/feature/ea idea="599">}}. For information on setting these flags, see [Customize preloading of YSQL catalog caches](../../../best-practices-operations/ysql-catalog-cache-tuning-guide/).
 
 ##### ysql_catalog_preload_additional_table_list
 
@@ -1635,17 +1626,50 @@ After a DDL statement that includes updating DocDB system catalog completes, YB-
 When the flag `ysql_ddl_transaction_wait_for_ddl_verification` is enabled, YSQL waits for any YB-Master background operations to finish before returning control to the user.
 {{< /note >}}
 
-## Advanced flags
+## Cost-based optimizer flag
 
-##### --allowed_preview_flags_csv
+Configure the YugabyteDB [cost-based optimizer](../../../architecture/query-layer/planner-optimizer/) (CBO).
 
-Comma-separated values (CSV) formatted catalogue of [preview feature](/preview/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
+See also the [yb_enable_cbo](#yb-enable-cbo) configuration parameter. If this flag is set, the parameter takes precedence.
 
-By adding a flag to this list, you explicitly acknowledge and accept any potential risks or instability that may arise from modifying these preview features. This process serves as a safeguard, ensuring that you are fully aware of the experimental nature of the flags you are working with.
+##### ysql_yb_enable_cbo
 
-{{<warning>}}
-Adding flags to this list doesn't automatically change any settings. It only grants permission for the flag to be modified. You still need to configure the flag separately after adding it to this list.
-{{</warning>}}
+{{<tags/feature/ea idea="483">}}Available in v2024.2.4 or later. Enables the YugabyteDB [cost-based optimizer](../../../architecture/query-layer/planner-optimizer/) (CBO). Options are `on`, `off`, `legacy_mode`, and `legacy_stats_mode`.
+
+When enabling CBO, you must run ANALYZE on user tables to maintain up-to-date statistics.
+
+For information on using this parameter to configure CBO, refer to [Enable cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/).
+
+Default: `legacy_mode`
+
+## Index backfill flags
+
+##### --ysql_disable_index_backfill
+
+Set this flag to `false` to enable online index backfill. When set to `false`, online index builds run while online, without failing other concurrent writes and traffic.
+
+For details on how online index backfill works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
+
+Default: `false`
+
+##### --ycql_disable_index_backfill
+
+Set this flag to `false` to enable online index backfill. When set to `false`, online index builds run while online, without failing other concurrent writes and traffic.
+
+For details on how online index backfill works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
+
+Default: `true`
+
+#### --num_concurrent_backfills_allowed
+
+[Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) uses a number of distributed workers to backfill older data from the main table into the index table. This flag sets the number of concurrent index backfill jobs that are allowed to execute on each yb-tserver process. By default, the number of jobs is set automatically as follows:
+
+- When the node has >= 16 cores, it is set to 8 jobs.
+- When the node has < 16 cores, it is set to (number of cores) / 2 jobs.
+
+Increasing the number of backfill jobs can allow the index creation to complete faster, however setting it to a higher number can impact foreground workload operations and also increase the chance of failures and retries of backfill jobs if CPU usage becomes too high.
+
+Default: -1 (automatic setting)
 
 ##### backfill_index_client_rpc_timeout_ms
 
@@ -1661,9 +1685,29 @@ Default: -1, where the system automatically calculates the value to be approxima
 
 ##### backfill_index_write_batch_size
 
-The number of table rows to backfill at a time. In case of [GIN indexes](../../../explore/ysql-language-features/indexes-constraints/gin/), the number can include more index rows.
+The number of table rows to backfill in a single backfill job. In case of [GIN indexes](../../../explore/ysql-language-features/indexes-constraints/gin/), the number can include more index rows. When index creation is slower than expected on large tables, increasing this parameter to 1024 or 2048 may speed up the operation. However, care must be taken to also tune the associated timeouts for larger batch sizes.
 
 Default: 128
+
+## Advanced flags
+
+##### --allowed_preview_flags_csv
+
+Comma-separated values (CSV) formatted catalogue of [preview feature](/preview/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
+
+By adding a flag to this list, you explicitly acknowledge and accept any potential risks or instability that may arise from modifying these preview features. This process serves as a safeguard, ensuring that you are fully aware of the experimental nature of the flags you are working with.
+
+{{<warning title="You still need to set the flag">}}
+Adding flags to this list doesn't automatically change any settings. It only _grants permission_ for the flag to be modified.
+
+You still need to configure the flag separately after adding it to this list.
+{{</warning>}}
+
+{{<note title="Using YugabyteDB Anywhere">}}
+If you are using YugabyteDB Anywhere, as with other flags, set `allowed_preview_flags_csv` using the [Edit Flags](../../../yugabyte-platform/manage-deployments/edit-config-flags/#modify-configuration-flags) feature.
+
+After adding a preview flag to the `allowed_preview_flags_csv` list, you still need to set the flag using **Edit Flags** as well.
+{{</note>}}
 
 ## PostgreSQL server options
 
@@ -1794,6 +1838,20 @@ Default: 1024
 Enable or disable the query planner's use of batched nested loop join.
 
 Default: true
+
+##### yb_enable_cbo
+
+{{<tags/feature/ea idea="483">}} Available in v2024.2.4 or later. Enables the YugabyteDB [cost-based optimizer](../../../architecture/query-layer/planner-optimizer/) (CBO). Options are `on`, `off`, `legacy_mode`, and `legacy_stats_mode`.
+
+This parameter replaces the [yb_enable_base_scans_cost_model](#yb-enable-base-scans-cost-model) and [yb_enable_optimizer_statistics](#yb-enable-optimizer-statistics) parameters.
+
+When enabling CBO, you must run ANALYZE on user tables to maintain up-to-date statistics.
+
+For information on using this parameter to configure CBO, refer to [Enable cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/).
+
+See also the [--ysql_yb_enable_cbo](#ysql-yb-enable-cbo) flag. If the flag is set, this parameter takes precedence.
+
+Default: `legacy_mode`
 
 ##### yb_enable_base_scans_cost_model
 

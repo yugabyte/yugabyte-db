@@ -821,5 +821,62 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestAlterTableSetTablespaceM
   ASSERT_NE(msg.find("Catalog Version Mismatch"), std::string::npos);
 }
 
+class GeoTransactionsWildcardTest : public GeoTransactionsTest {
+ protected:
+  void SetupTablespaces() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = true;
+    auto conn = ASSERT_RESULT(Connect());
+    for (size_t i = 1; i <= NumRegions(); ++i) {
+      ASSERT_OK(conn.ExecuteFormat(R"#(
+          CREATE TABLESPACE tablespace$0 WITH (replica_placement='{
+            "num_replicas": 1,
+            "placement_blocks":[{
+              "cloud": "cloud0",
+              "region": "rack$0",
+              "zone": "*",
+              "min_num_replicas": 1
+            }]
+          }')
+      )#", i));
+    }
+  }
+};
+
+TEST_F_EX(
+    GeoTransactionsTest, TestTransactionTabletSelectionWildcard, GeoTransactionsWildcardTest) {
+  constexpr int tables_per_region = 1;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_promote_nonlocal_transactions_to_global) = false;
+  SetupTablesAndTablespaces(tables_per_region);
+
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kLocal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kFalse, ExpectedLocality::kGlobal);
+  CheckAbort(
+      kOtherRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, 1 /* num_aborts */);
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+}
+
 } // namespace client
 } // namespace yb

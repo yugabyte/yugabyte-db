@@ -97,7 +97,7 @@ In read committed isolation level, as the server retries internally, the client 
 
 Another way to handle these failures is would be to rollback to a checkpoint before the failed statement and proceed further as described in [Savepoints](#savepoints).
 
-##### 40001 - Deadlock detected
+##### 40P01 - Deadlock detected
 
 This error occurs when two or more transactions wait on each other to form a deadlock cycle. One or more of the transactions in the cycle are aborted
 and they fail with the following error:

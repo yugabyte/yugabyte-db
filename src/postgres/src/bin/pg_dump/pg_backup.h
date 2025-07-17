@@ -207,7 +207,6 @@ typedef struct _dumpOptions
 	bool		dumpStatistics;
 
 	/* YB */
-	const char *master_hosts;	/* YB Master hosts */
 	int			no_tablegroups;
 	int			no_tablegroup_creations;
 	int			include_yb_metadata;	/* In this mode DDL statements include

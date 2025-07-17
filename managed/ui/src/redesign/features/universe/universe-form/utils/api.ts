@@ -177,7 +177,7 @@ class ApiService {
   getInstanceTypes = (
     providerId?: string,
     zones: string[] = [],
-    arch = null
+    arch: ArchitectureType | null = null
   ): Promise<InstanceType[]> => {
     if (providerId) {
       const requestUrl = new URL(

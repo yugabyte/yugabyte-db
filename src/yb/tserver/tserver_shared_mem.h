@@ -20,6 +20,8 @@
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/interprocess/ipc/message_queue.hpp>
 
+#include "yb/docdb/object_lock_shared_fwd.h"
+
 #include "yb/gutil/strings/escaping.h"
 
 #include "yb/tserver/tserver_util_fwd.h"
@@ -29,6 +31,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_fwd.h"
+#include "yb/util/shmem/annotations.h"
 #include "yb/util/shmem/reserved_address_segment.h"
 #include "yb/util/shmem/shared_mem_allocator.h"
 #include "yb/util/slice.h"
@@ -52,18 +55,9 @@ class TServerSharedData {
  public:
   static constexpr uint32_t kMaxNumDbCatalogVersions = kYBCMaxNumDbCatalogVersions;
 
-  TServerSharedData() {
-    // All atomics stored in shared memory must be lock-free. Non-robust locks
-    // in shared memory can lead to deadlock if a processes crashes, and memory
-    // access violations if the segment is mapped as read-only.
-    // NOTE: this check is NOT sufficient to guarantee that an atomic is safe
-    // for shared memory! Some atomics claim to be lock-free but still require
-    // read-write access for a `load()`.
-    // E.g. for 128 bit objects: https://stackoverflow.com/questions/49816855.
-    LOG_IF(FATAL, !IsAcceptableAtomicImpl(catalog_version_))
-        << "Shared memory atomics must be lock-free";
-    host_[0] = 0;
-  }
+  TServerSharedData();
+
+  ~TServerSharedData();
 
   // This object is initialized early on, but until address negotiation with postmaster finishes,
   // it is mapped at a temporary address, and pointers in shared memory cannot be used. This is
@@ -144,6 +138,10 @@ class TServerSharedData {
     return pid_;
   }
 
+  docdb::ObjectLockSharedState* object_lock_state() const {
+    return object_lock_state_.get();
+  }
+
  private:
   // Endpoint that should be used by local processes to access this tserver.
   Endpoint endpoint_;
@@ -165,7 +163,11 @@ class TServerSharedData {
   // Whether AllocatorsInitialized() has been called -- until then, pointers in shared memory cannot
   // be used.
   std::atomic<bool> fully_initialized_{false};
+
+  SharedMemoryUniquePtr<docdb::ObjectLockSharedState> object_lock_state_;
 };
+
+using SharedMemoryReadyCallback = std::function<void()>;
 
 class SharedMemoryManager {
  public:
@@ -186,6 +188,8 @@ class SharedMemoryManager {
     return ready_;
   }
 
+  void SetReadyCallback(SharedMemoryReadyCallback&& callback);
+
   auto SharedData() {
     return data_.get();
   }
@@ -197,6 +201,8 @@ class SharedMemoryManager {
   Status InitializeParentAllocatorsAndObjects();
   Status InitializeChildAllocatorsAndObjects(std::string_view uuid);
 
+  void SetReady();
+
   ReservedAddressSegment address_segment_;
   SharedMemoryBackingAllocator allocator_;
 
@@ -204,10 +210,15 @@ class SharedMemoryManager {
   std::weak_ptr<AddressSegmentNegotiator> parent_negotiator_;
   bool is_parent_ = false;
 
+  mutable std::mutex mutex_;
+  SharedMemoryReadyCallback ready_callback_ GUARDED_BY(mutex_);
+
   std::atomic<bool> ready_{false};
   SharedMemoryAllocatorPrepareState prepare_state_;
   ConcurrentPointer<TServerSharedData> data_{nullptr};
 };
+
+using PgSessionLockOwnerTagShared = ChildProcessRO<docdb::SessionLockOwnerTag>;
 
 YB_STRONGLY_TYPED_BOOL(Create);
 
@@ -282,6 +293,8 @@ class PgSessionSharedMemoryManager {
   uint64_t session_id() const;
 
   SharedExchange& exchange();
+
+  [[nodiscard]] PgSessionLockOwnerTagShared& object_locking_data();
 
   static Result<PgSessionSharedMemoryManager> Make(
       const std::string& instance_id, uint64_t session_id, Create create);

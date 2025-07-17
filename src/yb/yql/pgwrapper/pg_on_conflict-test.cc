@@ -30,6 +30,12 @@ namespace pgwrapper {
 class PgOnConflictTest : public LibPqTestBase {
  protected:
   void TestOnConflict(bool kill_master, const MonoDelta& duration);
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    // Disable tracing for this test to avoid generating too much logging output.
+    opts->extra_tserver_flags.push_back("--enable_tracing=false");
+    opts->extra_master_flags.push_back("--enable_tracing=false");
+  }
 };
 
 class PgFailOnConflictTest : public PgOnConflictTest {

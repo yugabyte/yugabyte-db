@@ -256,6 +256,10 @@ std::string TEST_RpcAddress(size_t index, Private priv);
 std::string TEST_RpcBindEndpoint(size_t index, uint16_t port);
 
 // Sets up connectivity in test for specified messenger of server with index.
+// Configures messenger to only allow incoming/outgoing RPCs to the same server group using
+// private IP and to rest of servers using public IP. Not allowed RPCs will be rejected by
+// messenger. Also drops already established connections which are not allowed as a result of this
+// function.
 void TEST_SetupConnectivity(rpc::Messenger* messenger, size_t index);
 // Isolates specific messenger, i.e. breaks any of this messengers connections with all other
 // servers.

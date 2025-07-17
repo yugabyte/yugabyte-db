@@ -62,7 +62,7 @@ Following are some recommendations when performing batch loads of data programma
 
 1. It may be necessary to increase the parallelism of the load in certain scenarios. For example, in the case of a loader using a single thread to load data, it may not be possible to utilize a large cluster optimally. In these cases, it may be necessary to increase the number of threads or run multiple loaders in parallel.
 
-1. Note that `INSERT .. ON CONFLICT` statements are not yet fully optimized as of YugabyteDB v2.2, so it is recommended to use basic `INSERT` statements if possible.
+1. Note that `INSERT .. ON CONFLICT` statements are not yet fully optimized, so it is recommended to use basic `INSERT` statements if possible.
 
 ### Indexes during data load
 

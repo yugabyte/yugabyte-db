@@ -72,6 +72,8 @@ class ExternalMiniClusterITestBase : public YBTest {
 
   Status StartCluster(ExternalMiniClusterOptions opts);
 
+  void TearDownCluster();
+
   std::unique_ptr<ExternalMiniCluster> cluster_;
   std::unique_ptr<itest::ExternalMiniClusterFsInspector> inspect_;
   std::unique_ptr<client::YBClient> client_;

@@ -954,5 +954,11 @@ class TestRaftConsensusQueueIface : public PeerMessageQueueObserver {
   OpId majority_replicated_op_id_;
 };
 
+void TrackPeer(PeerMessageQueue& queue, const std::string& uuid) {
+  RaftPeerPB peer;
+  peer.set_permanent_uuid(uuid);
+  queue.TrackPeer(peer);
+}
+
 }  // namespace consensus
 }  // namespace yb

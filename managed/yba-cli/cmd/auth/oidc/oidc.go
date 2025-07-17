@@ -24,4 +24,5 @@ func init() {
 	OIDCCmd.AddCommand(configureOIDCCmd)
 	OIDCCmd.AddCommand(disableOIDCCmd)
 	OIDCCmd.AddCommand(describeOIDCCmd)
+	OIDCCmd.AddCommand(oidcLoginCmd)
 }

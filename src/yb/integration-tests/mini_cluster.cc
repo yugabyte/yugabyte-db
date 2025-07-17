@@ -47,11 +47,14 @@
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/integration-tests/cluster_itest_util.h"
+
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master_admin.pb.h"
+#include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_ddl.pb.h"
@@ -188,6 +191,12 @@ bool IsForTable(const tablet::TabletPeer& peer, const TableId& table_id) {
   return false;
 }
 
+bool IsTabletInCollection(const master::TabletInfoPtr& tablet, const master::TabletInfos& tablets) {
+  return tablets.end() != std::find_if(
+      tablets.begin(), tablets.end(),
+      [&tablet](const master::TabletInfoPtr& p) { return p->tablet_id() == tablet->tablet_id(); });
+}
+
 } // namespace
 
 MiniCluster::MiniCluster(const MiniClusterOptions& options)
@@ -263,8 +272,7 @@ Status MiniCluster::StartAsync(
   }
 
   running_ = true;
-  rpc::MessengerBuilder builder("minicluster-messenger");
-  builder.set_num_reactors(1);
+  auto builder = CreateMiniClusterMessengerBuilder();
   messenger_ = VERIFY_RESULT(builder.Build());
   proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
   return Status::OK();
@@ -322,16 +330,13 @@ Status MiniCluster::StartMasters() {
     mini_masters_.resize(options_.num_masters);
   }
 
-  bool started = false;
-  auto se = ScopeExit([this, &started] {
-    if (!started) {
-      for (const auto& master : mini_masters_) {
-        if (master) {
-          master->Shutdown();
-        }
+  CancelableScopeExit shutdown_se{[this] {
+    for (const auto& master : mini_masters_) {
+      if (master) {
+        master->Shutdown();
       }
     }
-  });
+  }};
 
   for (size_t i = 0; i < options_.num_masters; i++) {
     mini_masters_[i] = std::make_shared<MiniMaster>(
@@ -361,7 +366,7 @@ Status MiniCluster::StartMasters() {
     RETURN_NOT_OK(consensus->StartElection(data));
   }
 
-  started = true;
+  shutdown_se.Cancel();
   return Status::OK();
 }
 
@@ -1117,7 +1122,7 @@ std::vector<tablet::TabletPtr> PeersToTablets(const std::vector<tablet::TabletPe
   std::vector<tablet::TabletPtr> result;
   result.reserve(peers.size());
   for (const auto& peer : peers) {
-    auto tablet = peer->shared_tablet();
+    auto tablet = peer->shared_tablet_maybe_null();
     if (tablet) {
       result.push_back(tablet);
     }
@@ -1146,7 +1151,7 @@ std::vector<tablet::TabletPeerPtr> ListTableInactiveSplitTabletPeers(
     MiniCluster* cluster, const TableId& table_id) {
   std::vector<tablet::TabletPeerPtr> result;
   for (auto peer : ListTableTabletPeers(cluster, table_id)) {
-    auto tablet = peer->shared_tablet();
+    auto tablet = peer->shared_tablet_maybe_null();
     if (tablet &&
         tablet->metadata()->tablet_data_state() ==
             tablet::TabletDataState::TABLET_DATA_SPLIT_COMPLETED) {
@@ -1337,7 +1342,7 @@ void PushBackIfNotNull(const typename Collection::value_type& value, Collection*
 std::vector<rocksdb::DB*> GetAllRocksDbs(MiniCluster* cluster, bool include_intents) {
   std::vector<rocksdb::DB*> dbs;
   for (auto& peer : ListTabletPeers(cluster, ListPeersFilter::kAll)) {
-    auto tablet = peer->shared_tablet();
+    auto tablet = peer->shared_tablet_maybe_null();
     if (tablet) {
       PushBackIfNotNull(tablet->regular_db(), &dbs);
       if (include_intents) {
@@ -1418,7 +1423,7 @@ size_t CountIntents(MiniCluster* cluster, const TabletPeerFilter& filter) {
   size_t result = 0;
   auto peers = ListTabletPeers(cluster, ListPeersFilter::kAll);
   for (const auto &peer : peers) {
-    auto tablet = peer->shared_tablet();
+    auto tablet = peer->shared_tablet_maybe_null();
     auto participant = tablet ? tablet->transaction_participant() : nullptr;
     if (!participant) {
       continue;
@@ -1537,7 +1542,7 @@ void SetCompactFlushRateLimitBytesPerSec(MiniCluster* cluster, const size_t byte
             << " and updating compact/flush rate in existing tablets";
   FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec = bytes_per_sec;
   for (auto& tablet_peer : ListTabletPeers(cluster, ListPeersFilter::kAll)) {
-    auto tablet_result = tablet_peer->shared_tablet_safe();
+    auto tablet_result = tablet_peer->shared_tablet();
     if (!tablet_result.ok()) {
       LOG(WARNING) << "Unable to get tablet: " << tablet_result.status();
       continue;
@@ -1545,6 +1550,70 @@ void SetCompactFlushRateLimitBytesPerSec(MiniCluster* cluster, const size_t byte
     auto tablet = *tablet_result;
     tablet->SetCompactFlushRateLimitBytesPerSec(bytes_per_sec);
   }
+}
+
+Status InvokeSplitTabletRpc(MiniCluster* cluster, const TabletId& tablet_id, MonoDelta timeout) {
+  auto& master = *VERIFY_RESULT(cluster->GetLeaderMiniMaster());
+  auto  proxy = master::MasterAdminProxy(&cluster->proxy_cache(), master.bound_rpc_addr());
+
+  master::SplitTabletRequestPB req;
+  req.set_tablet_id(tablet_id);
+
+  rpc::RpcController controller;
+  controller.set_timeout(timeout);
+  master::SplitTabletResponsePB resp;
+  RETURN_NOT_OK(proxy.SplitTablet(req, &resp, &controller));
+  if (resp.has_error()) {
+    RETURN_NOT_OK(StatusFromPB(resp.error().status()));
+  }
+  return Status::OK();
+}
+
+Status InvokeSplitTabletRpcAndWaitForDataCompacted(
+    MiniCluster* cluster, const master::TableInfoPtr& table,
+    const master::TabletInfoPtr& tablet, MonoDelta rpc_timeout) {
+  // Keep current tablets.
+  const auto tablets = VERIFY_RESULT(table->GetTablets());
+
+  // Sanity check that tablet belongs to the table.
+  if (!IsTabletInCollection(tablet, tablets)) {
+    return STATUS(InvalidArgument, "The tablet does not belong to table's tablets list.");
+  }
+
+  // Send split RPC.
+  RETURN_NOT_OK(InvokeSplitTabletRpc(cluster, tablet->tablet_id(), rpc_timeout));
+
+  // Wait for new tablets are added.
+  RETURN_NOT_OK(WaitForTableActiveTabletLeadersPeers(cluster, table->id(), tablets.size() + 1));
+
+  // Wait until split is replicated across all tablet servers.
+  RETURN_NOT_OK(WaitAllReplicasReady(
+      cluster, table->id(), MonoDelta::FromSeconds(20) * kTimeMultiplier));
+
+  // Select new tablets ids
+  const auto all_tablets = VERIFY_RESULT(table->GetTablets());
+  std::vector<TabletId> new_tablet_ids;
+  new_tablet_ids.reserve(all_tablets.size());
+  for (const auto& t : all_tablets) {
+    if (!IsTabletInCollection(t, tablets)) {
+      new_tablet_ids.push_back(t->tablet_id());
+    }
+  }
+
+  // Wait for new peers are fully compacted.
+  return WaitForPeersPostSplitCompacted(cluster, new_tablet_ids);
+}
+
+Status InvokeSplitTabletRpcAndWaitForDataCompacted(
+    MiniCluster* cluster, const TabletId& tablet_id, MonoDelta rpc_timeout) {
+  auto* master = VERIFY_RESULT(cluster->GetLeaderMiniMaster());
+  auto& catalog_manager = master->catalog_manager();
+  const auto tablet = VERIFY_RESULT(catalog_manager.GetTabletInfo(tablet_id));
+
+  // Get current number of tablets for the table.
+  const auto table = catalog_manager.GetTableInfo(tablet->table()->id());
+
+  return InvokeSplitTabletRpcAndWaitForDataCompacted(cluster, table, tablet, rpc_timeout);
 }
 
 Status WaitAllReplicasSynchronizedWithLeader(
@@ -1578,14 +1647,13 @@ Status WaitAllReplicasSynchronizedWithLeader(MiniCluster* cluster, CoarseDuratio
 
 Status WaitForAnySstFiles(tablet::TabletPeerPtr peer, MonoDelta timeout) {
   CHECK_NOTNULL(peer.get());
-  return LoggedWaitFor([peer] {
-      auto tablet = peer->shared_tablet();
-      if (!tablet)
-        return false;
-      return tablet->regular_db()->GetCurrentVersionNumSSTFiles() > 0;
-    },
-    timeout,
-    Format("Wait for SST files of peer: $0", peer->permanent_uuid()));
+  return LoggedWaitFor(
+      [peer] {
+        auto tablet = peer->shared_tablet_maybe_null();
+        if (!tablet) return false;
+        return tablet->regular_db()->GetCurrentVersionNumSSTFiles() > 0;
+      },
+      timeout, Format("Wait for SST files of peer: $0", peer->permanent_uuid()));
 }
 
 Status WaitForAnySstFiles(MiniCluster* cluster, const TabletId& tablet_id, MonoDelta timeout) {
@@ -1659,7 +1727,11 @@ void ActivateCompactionTimeLogging(MiniCluster* cluster) {
 void DumpDocDB(MiniCluster* cluster, ListPeersFilter filter) {
   auto peers = ListTabletPeers(cluster, filter);
   for (const auto& peer : peers) {
-    peer->shared_tablet()->TEST_DocDBDumpToLog(docdb::IncludeIntents::kTrue);
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (!tablet) {
+      continue;
+    }
+    tablet->TEST_DocDBDumpToLog(docdb::IncludeIntents::kTrue);
   }
 }
 
@@ -1667,14 +1739,18 @@ std::vector<std::string> DumpDocDBToStrings(MiniCluster* cluster, ListPeersFilte
   std::vector<std::string> result;
   auto peers = ListTabletPeers(cluster, filter);
   for (const auto& peer : peers) {
-    result.push_back(peer->shared_tablet()->TEST_DocDBDumpStr());
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (!tablet) {
+      continue;
+    }
+    result.push_back(tablet->TEST_DocDBDumpStr());
   }
   return result;
 }
 
 void DisableFlushOnShutdown(MiniCluster& cluster, bool disable) {
   for (const auto& peer : ListTabletPeers(&cluster, ListPeersFilter::kAll)) {
-    auto tablet = peer->shared_tablet();
+    auto tablet = peer->shared_tablet_maybe_null();
     if (!tablet) {
       continue;
     }

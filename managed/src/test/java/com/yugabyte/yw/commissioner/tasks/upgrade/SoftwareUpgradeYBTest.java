@@ -15,9 +15,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.net.HostAndPort;
@@ -88,6 +86,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     super.setUp();
 
     attachHooks("SoftwareUpgrade");
+    lenient().when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
 
     softwareUpgrade.setUserTaskUUID(UUID.randomUUID());
     ShellResponse successResponse = new ShellResponse();
@@ -259,6 +258,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         .addTasks(TaskType.UpdateUniverseState)
         .addTasks(TaskType.PromoteAutoFlags)
         .addTasks(TaskType.RunYsqlUpgrade)
+        .addTasks(TaskType.UpdatePitrConfigIntermittentMinRecoverTime)
         .addTasks(TaskType.UpdateUniverseState)
         .verifyTasks(taskInfo.getSubTasks());
 

@@ -12,6 +12,8 @@
 
 #include "yb/tserver/backup_service.h"
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/common/wire_protocol.h"
 
 #include "yb/tablet/tablet.h"
@@ -52,6 +54,15 @@ void TabletServiceBackupImpl::TabletSnapshotOp(const TabletSnapshotOpRequestPB* 
                                                RpcContext context) {
   if (!CheckUuidMatchOrRespond(tablet_manager_, "TabletSnapshotOp", req, resp, &context)) {
     return;
+  }
+
+  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
+    if (req->has_ash_metadata()) {
+      wait_state->UpdateMetadataFromPB(req->ash_metadata());
+    }
+    if (req->tablet_id_size()) {
+      wait_state->UpdateAuxInfo({.tablet_id = req->tablet_id(0)});
+    }
   }
 
   if (FLAGS_TEST_fail_tserver_snapshot_op) {

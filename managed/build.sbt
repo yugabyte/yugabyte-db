@@ -98,9 +98,9 @@ lazy val versionGenerate = taskKey[Int]("Add version_metadata.json file")
 lazy val buildVenv = taskKey[Int]("Build venv")
 lazy val generateCrdObjects = taskKey[Int]("Generating CRD classes..")
 lazy val generateOssConfig = taskKey[Int]("Generating OSS class.")
-lazy val buildModules = taskKey[Int]("Build modules")
 lazy val buildDependentArtifacts = taskKey[Int]("Build dependent artifacts")
 lazy val releaseModulesLocally = taskKey[Int]("Release modules locally")
+lazy val testDependentArtifacts = taskKey[Int]("Test dependent artifacts")
 lazy val downloadThirdPartyDeps = taskKey[Int]("Downloading thirdparty dependencies")
 lazy val devSpaceReload = taskKey[Int]("Do a build without UI for DevSpace and reload")
 
@@ -170,7 +170,7 @@ libraryDependencies ++= Seq(
   "org.apache.mina" % "mina-core" % "2.2.4",
   "org.flywaydb" %% "flyway-play" % "9.0.0",
   // https://github.com/YugaByte/cassandra-java-driver/releases
-  "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-7",
+  "com.yugabyte" % "java-driver-core" % "4.15.0-yb-3",
   "org.yaml" % "snakeyaml" % "2.1",
   "org.bouncycastle" % "bc-fips" % "2.1.0",
   "org.bouncycastle" % "bcpkix-fips" % "2.1.9",
@@ -351,7 +351,7 @@ externalResolvers := {
   validateResolver(ybPublicSnapshotResolver, ybPublicSnapshotResolverDescription)
 }
 
-(Compile / compile) := ((Compile / compile) dependsOn buildDependentArtifacts).value
+(Compile / compile) := (Compile / compile).dependsOn(buildDependentArtifacts, testDependentArtifacts).value
 
 (Compile / compilePlatform) := {
   Def.sequential(
@@ -416,8 +416,14 @@ buildVenv := {
   }
 }
 
+testDependentArtifacts := {
+  ybLog("Testing modules...")
+  val status = Process("mvn test", baseDirectory.value / "parent-module").!
+  status
+}
+
 releaseModulesLocally := {
-  ybLog("Building modules...")
+  ybLog("Releasing modules...")
   val status = Process("mvn install -DskipTests=true -P releaseLocally", baseDirectory.value / "parent-module").!
   status
 }
@@ -931,8 +937,8 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.104-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.2-b5"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.105-SNAPSHOT"
+libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.2-b6"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
 
 libraryDependencies ++= Seq(

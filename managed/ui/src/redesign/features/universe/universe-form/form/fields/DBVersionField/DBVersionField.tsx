@@ -116,15 +116,9 @@ export const DBVersionField = ({ disabled }: DBVersionFieldProps): ReactElement 
     () =>
       api.getDBVersions(
         true,
-        /* Pass x86_64 as default version to search in case of AWS when OS patching is enabled
-          Checking this condition only for AWS as we support OS patching only for AWS based on
-          line 56 from CPUArchField.tsx
-        */
         isOsPatchingEnabled &&
-          isImgBundleSupportedByProvider(provider) &&
-          provider?.code === CloudType.aws
-          ? cpuArch ?? ArchitectureType.X86_64
-          : null,
+          (isImgBundleSupportedByProvider(provider)  || provider?.code === CloudType.onprem)?
+          (cpuArch || ArchitectureType.X86_64) : null,
         true
       ),
     {

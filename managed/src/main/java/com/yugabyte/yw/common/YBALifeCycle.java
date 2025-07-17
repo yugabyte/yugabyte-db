@@ -87,25 +87,25 @@ public class YBALifeCycle {
                 previousSoftwareVersion, version);
         throw new PlatformServiceException(Status.BAD_REQUEST, msg);
       }
-    }
 
-    boolean isPlatformDowngradeAllowed = config.getBoolean("yb.is_platform_downgrade_allowed");
+      boolean isPlatformDowngradeAllowed = config.getBoolean("yb.is_platform_downgrade_allowed");
 
-    if (Util.compareYbVersions(previousSoftwareVersion, version, true) > 0
-        && !isPlatformDowngradeAllowed) {
+      if (Util.compareYbVersions(previousSoftwareVersion, version, true) > 0
+          && !isPlatformDowngradeAllowed) {
 
-      String msg =
-          String.format(
-              "Platform does not support version downgrades, %s"
-                  + " has downgraded to %s. Shutting down. To override this check"
-                  + " (not recommended) and continue startup,"
-                  + " set the application config setting yb.is_platform_downgrade_allowed"
-                  + "or the environment variable"
-                  + " YB_IS_PLATFORM_DOWNGRADE_ALLOWED to true."
-                  + " Otherwise, upgrade your YBA version back to or above %s to proceed.",
-              previousSoftwareVersion, version, previousSoftwareVersion);
+        String msg =
+            String.format(
+                "Platform does not support version downgrades, %s"
+                    + " has downgraded to %s. Shutting down. To override this check"
+                    + " (not recommended) and continue startup,"
+                    + " set the application config setting yb.is_platform_downgrade_allowed"
+                    + "or the environment variable"
+                    + " YB_IS_PLATFORM_DOWNGRADE_ALLOWED to true."
+                    + " Otherwise, upgrade your YBA version back to or above %s to proceed.",
+                previousSoftwareVersion, version, previousSoftwareVersion);
 
-      throw new RuntimeException(msg);
+        throw new RuntimeException(msg);
+      }
     }
   }
 }

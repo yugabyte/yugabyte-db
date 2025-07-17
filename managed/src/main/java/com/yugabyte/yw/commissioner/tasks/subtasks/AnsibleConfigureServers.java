@@ -16,7 +16,6 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.payload.NodeAgentRpcPayload;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer.Params;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeManager.CertRotateAction;
@@ -49,7 +48,6 @@ import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 public class AnsibleConfigureServers extends NodeTaskBase {
-  private static final String DEFAULT_CONFIGURE_USER = "yugabyte";
   private final NodeAgentRpcPayload nodeAgentRpcPayload;
 
   @Inject
@@ -167,10 +165,10 @@ public class AnsibleConfigureServers extends NodeTaskBase {
         taskParams().resetMasterState);
     taskParams().resetMasterState = resetMasterState;
     Optional<NodeAgent> optional =
-        confGetter.getGlobalConf(GlobalConfKeys.nodeAgentEnableConfigureServer)
-            ? nodeUniverseManager.maybeGetNodeAgent(
-                getUniverse(), nodeDetails, true /*check feature flag*/)
-            : Optional.empty();
+        confGetter.getGlobalConf(GlobalConfKeys.nodeAgentDisableConfigureServer)
+            ? Optional.empty()
+            : nodeUniverseManager.maybeGetNodeAgent(
+                getUniverse(), nodeDetails, true /*check feature flag*/);
     taskParams().skipDownloadSoftware = optional.isPresent();
     if (optional.isPresent()
         && (taskParams().type == UpgradeTaskType.GFlags
@@ -185,6 +183,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
         getNodeManager()
             .nodeCommand(NodeManager.NodeCommandType.Configure, taskParams())
             .processErrors();
+    String taskSubType = taskParams().getProperty("taskSubType");
     if (optional.isPresent()
         && (taskParams().type == UpgradeTaskType.Everything
             || taskParams().type == UpgradeTaskType.Software)) {
@@ -193,8 +192,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
           optional.get(),
           nodeAgentRpcPayload.setUpConfigureServerBits(
               universe, nodeDetails, taskParams(), optional.get()),
-          DEFAULT_CONFIGURE_USER);
-      String taskSubType = taskParams().getProperty("taskSubType");
+          NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
       if (taskParams().type == UpgradeTaskType.Software) {
         if (taskSubType == null) {
           throw new RuntimeException("Invalid taskSubType property: " + taskSubType);
@@ -203,25 +201,25 @@ public class AnsibleConfigureServers extends NodeTaskBase {
               optional.get(),
               nodeAgentRpcPayload.setupDownloadSoftwareBits(
                   universe, nodeDetails, taskParams(), optional.get()),
-              DEFAULT_CONFIGURE_USER);
+              NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
         } else if (taskSubType.equals(UpgradeTaskParams.UpgradeTaskSubType.Install.toString())) {
           nodeAgentClient.runInstallSoftware(
               optional.get(),
               nodeAgentRpcPayload.setupInstallSoftwareBits(
                   universe, nodeDetails, taskParams(), optional.get()),
-              DEFAULT_CONFIGURE_USER);
+              NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
         }
       } else {
         nodeAgentClient.runDownloadSoftware(
             optional.get(),
             nodeAgentRpcPayload.setupDownloadSoftwareBits(
                 universe, nodeDetails, taskParams(), optional.get()),
-            DEFAULT_CONFIGURE_USER);
+            NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
         nodeAgentClient.runInstallSoftware(
             optional.get(),
             nodeAgentRpcPayload.setupInstallSoftwareBits(
                 universe, nodeDetails, taskParams(), optional.get()),
-            DEFAULT_CONFIGURE_USER);
+            NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
       }
 
       if (taskParams().isEnableYbc()) {
@@ -230,7 +228,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
             optional.get(),
             nodeAgentRpcPayload.setupInstallYbcSoftwareBits(
                 universe, nodeDetails, taskParams(), optional.get()),
-            DEFAULT_CONFIGURE_USER);
+            NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
         nodeAgentRpcPayload.runServerGFlagsWithNodeAgent(
             optional.get(), universe, nodeDetails, ServerType.CONTROLLER.toString(), taskParams());
       }
@@ -242,7 +240,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
               optional.get(),
               nodeAgentRpcPayload.setupInstallOtelCollectorBits(
                   universe, nodeDetails, taskParams(), optional.get()),
-              DEFAULT_CONFIGURE_USER);
+              NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
         }
       }
       if (taskParams().cgroupSize > 0) {
@@ -250,7 +248,20 @@ public class AnsibleConfigureServers extends NodeTaskBase {
             optional.get(),
             nodeAgentRpcPayload.setupSetupCGroupBits(
                 universe, nodeDetails, taskParams(), optional.get()),
-            DEFAULT_CONFIGURE_USER);
+            NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
+      }
+    }
+    if (optional.isPresent() && taskParams().type == UpgradeTaskType.ToggleTls) {
+      if (UpgradeTaskParams.UpgradeTaskSubType.Round1GFlagsUpdate.name().equals(taskSubType)
+          || UpgradeTaskParams.UpgradeTaskSubType.Round2GFlagsUpdate.name().equals(taskSubType)
+          || UpgradeTaskParams.UpgradeTaskSubType.YbcGflagsUpdate.name().equals(taskSubType)) {
+        log.info(
+            "Updating toggle TLS gflags using node agent {} for taskSubType {}",
+            optional.get(),
+            taskSubType);
+        nodeAgentRpcPayload.runServerGFlagsWithNodeAgent(
+            optional.get(), universe, nodeDetails, taskParams());
+        return;
       }
     }
 

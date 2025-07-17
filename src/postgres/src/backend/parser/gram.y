@@ -688,8 +688,8 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <grpopt>	OptTableGroup
 %type <ival>	Oid opt_yb_hash opt_yb_index_sort_order yb_hash
 				yb_opt_concurrently_index
-%type <list>	oid_list yb_index_expr_list_hash_elems yb_split_point
-				yb_split_points
+%type <list>	oid_list yb_hash_index_expr_list yb_hash_index_expr_with_alias
+				yb_index_expr_list_hash_elems yb_split_point yb_split_points
 %type <node>	YbBackfillIndexStmt YbCreateTableGroupStmt YbCreateProfileStmt
 				YbDropProfileStmt
 %type <rolespec> OptTableGroupOwner
@@ -1043,8 +1043,8 @@ stmt:
 			| AlterEnumStmt
 			| AlterExtensionStmt { parser_ybc_beta_feature(@1, "extension", true); }
 			| AlterExtensionContentsStmt { parser_ybc_beta_feature(@1, "extension", true); }
-			| AlterFdwStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
-			| AlterForeignServerStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
+			| AlterFdwStmt
+			| AlterForeignServerStmt
 			| AlterFunctionStmt
 			| AlterGroupStmt
 			| AlterObjectDependsStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -1065,7 +1065,7 @@ stmt:
 			| AlterStatsStmt
 			| AlterTSConfigurationStmt { parser_ybc_beta_feature(@1, "alter text search configuration", false); }
 			| AlterTSDictionaryStmt { parser_ybc_not_support(@1, "This statement"); }
-			| AlterUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
+			| AlterUserMappingStmt
 			| AnalyzeStmt
 			| CallStmt
 			| CheckPointStmt { parser_ybc_beta_feature(@1, "checkpoint", false); }
@@ -1081,9 +1081,9 @@ stmt:
 			| CreateConversionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateDomainStmt
 			| CreateExtensionStmt
-			| CreateFdwStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
-			| CreateForeignServerStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
-			| CreateForeignTableStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
+			| CreateFdwStmt
+			| CreateForeignServerStmt
+			| CreateForeignTableStmt
 			| CreateFunctionStmt
 			| CreateGroupStmt
 			| CreateMatViewStmt
@@ -1104,7 +1104,7 @@ stmt:
 			| CreateEventTrigStmt
 			| CreateRoleStmt
 			| CreateUserStmt
-			| CreateUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
+			| CreateUserMappingStmt
 			| CreatedbStmt
 			| DeallocateStmt
 			| DeclareCursorStmt
@@ -1121,7 +1121,7 @@ stmt:
 			| DropTableSpaceStmt
 			| DropTransformStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropRoleStmt
-			| DropUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
+			| DropUserMappingStmt
 			| DropdbStmt
 			| ExecuteStmt
 			| ExplainStmt
@@ -8731,14 +8731,46 @@ opt_yb_hash: yb_hash		{ $$ = $1; }
 			 | /* EMPTY */	{ $$ = SORTBY_HASH; }
 		;
 
-yb_index_expr_list_hash_elems: '(' expr_list ')' opt_yb_hash
+yb_hash_index_expr_with_alias:
+			a_expr AS ColId
+				{
+					if (!IsBinaryUpgrade)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("syntax error at or near \"AS\"")));
+					$$ = list_make2($1, makeString($3));
+				}
+			| a_expr %prec EXPR_LIST
+				{
+					$$ = list_make2($1, NULL);
+				}
+		;
+
+
+yb_hash_index_expr_list:
+			yb_hash_index_expr_with_alias
+				{
+					$$ = list_make1($1);
+				}
+			| yb_hash_index_expr_list ',' yb_hash_index_expr_with_alias
+
+				{
+					$$ = lappend($1, $3);
+				}
+		;
+
+
+yb_index_expr_list_hash_elems: '(' yb_hash_index_expr_list ')' opt_yb_hash
 				{
 					$$ = NULL;
 					ListCell *lc;
 					foreach (lc, $2)
 					{
 							IndexElem *index_elem = makeNode(IndexElem);
-							Node *node = lfirst(lc);
+							List *pair = (List *) lfirst(lc);
+							Node *node = (Node *) linitial(pair);
+							char *alias = lsecond(pair) != NULL ?
+								strVal(lsecond(pair)) : NULL;
 							if (node->type == T_ColumnRef) {
 									index_elem->name = strVal(linitial(((ColumnRef *)node)->fields));
 									index_elem->expr = NULL;
@@ -8746,7 +8778,7 @@ yb_index_expr_list_hash_elems: '(' expr_list ')' opt_yb_hash
 									index_elem->name = NULL;
 									index_elem->expr = copyObject(node);
 							}
-							index_elem->indexcolname = NULL;
+							index_elem->indexcolname = alias;
 							index_elem->collation = NIL;
 							index_elem->opclass = NIL;
 							index_elem->ordering = $4;

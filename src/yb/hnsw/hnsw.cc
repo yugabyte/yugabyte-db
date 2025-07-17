@@ -24,6 +24,8 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 
+#include "yb/vector_index/vector_index_if.h"
+
 using namespace yb::size_literals;
 
 DEFINE_RUNTIME_uint64(yb_hnsw_max_block_size, 64_KB,
@@ -344,6 +346,11 @@ class YbHnswBuilder {
 
 } // namespace
 
+Config::Config(const unum::usearch::index_dense_config_t& input)
+    : connectivity_base(input.connectivity_base),
+      connectivity(input.connectivity) {
+}
+
 void Header::Init(const unum::usearch::index_dense_gt<vector_index::VectorId>& index) {
   max_block_size = FLAGS_yb_hnsw_max_block_size;
   dimensions = index.dimensions();
@@ -361,22 +368,24 @@ void Header::Init(const unum::usearch::index_dense_gt<vector_index::VectorId>& i
   max_vectors_per_non_base_block = CalcMaxVectorsPerLayerBlock(max_block_size, config.connectivity);
 }
 
-YbHnsw::YbHnsw(Metric& metric) : metric_(metric) {
+SearchCacheScope::SearchCacheScope(SearchCache& cache, const YbHnsw& hnsw) : cache_(cache) {
+  cache.Bind(hnsw.header_, *hnsw.file_block_cache_);
+}
+
+YbHnsw::YbHnsw(const Metric& metric, BlockCachePtr block_cache)
+    : metric_(metric), block_cache_(std::move(block_cache)) {
 }
 
 YbHnsw::~YbHnsw() = default;
 
 Status YbHnsw::Import(
-    const unum::usearch::index_dense_gt<vector_index::VectorId>& index, const std::string& path,
-    BlockCachePtr block_cache) {
-  YbHnswBuilder builder(index, *block_cache, path);
-  block_cache_ = std::move(block_cache);
+    const unum::usearch::index_dense_gt<vector_index::VectorId>& index, const std::string& path) {
+  YbHnswBuilder builder(index, *block_cache_, path);
   std::tie(file_block_cache_, header_) = VERIFY_RESULT(builder.Build());
   return Status::OK();
 }
 
-Status YbHnsw::Init(const std::string& path, BlockCachePtr block_cache) {
-  block_cache_ = std::move(block_cache);
+Status YbHnsw::Init(const std::string& path) {
   std::unique_ptr<RandomAccessFile> file;
   RETURN_NOT_OK(block_cache_->env().NewRandomAccessFile(path, &file));
   file_block_cache_ = std::make_unique<FileBlockCache>(*block_cache_, std::move(file));
@@ -385,14 +394,15 @@ Status YbHnsw::Init(const std::string& path, BlockCachePtr block_cache) {
 }
 
 YbHnsw::SearchResult YbHnsw::Search(
-    const std::byte* query_vector, size_t max_results, const vector_index::VectorFilter& filter,
+    const std::byte* query_vector, const vector_index::SearchOptions& options,
     YbHnswSearchContext& context) const {
+  SearchCacheScope scs(context.search_cache, *this);
   context.search_cache.Bind(header_, *file_block_cache_);
   auto se = ScopeExit([&context] { context.search_cache.Release(); });
   auto [best_vector, best_dist] = SearchInNonBaseLayers(
       query_vector, context.search_cache);
-  SearchInBaseLayer(query_vector, best_vector, best_dist, max_results, filter, context);
-  return MakeResult(max_results, context);
+  SearchInBaseLayer(query_vector, best_vector, best_dist, options, context);
+  return MakeResult(options.max_num_results, context);
 }
 
 YbHnsw::SearchResult YbHnsw::MakeResult(size_t max_results, YbHnswSearchContext& context) const {
@@ -438,8 +448,7 @@ std::pair<VectorNo, YbHnsw::DistanceType> YbHnsw::SearchInNonBaseLayers(
 
 void YbHnsw::SearchInBaseLayer(
     const std::byte* query_vector, VectorNo best_vector, DistanceType best_dist,
-    size_t max_results, const vector_index::VectorFilter& filter,
-    YbHnswSearchContext& context) const {
+    const vector_index::SearchOptions& options, YbHnswSearchContext& context) const {
   auto& top = context.top;
   top.clear();
   auto& extra_top = context.extra_top;
@@ -454,11 +463,11 @@ void YbHnsw::SearchInBaseLayer(
   // So could use the following as initial capacity for visited.
   visited.reserve(header_.config.connectivity_base + 1u);
 
-  auto top_limit = max_results;
+  auto top_limit = options.max_num_results;
   auto extra_top_limit = std::max<size_t>(
-    header_.config.expansion_search, max_results) - max_results;
+      options.ef, options.max_num_results) - options.max_num_results;
   next.push({best_dist, best_vector});
-  if (!filter || filter(cache.GetVectorData(best_vector))) {
+  if (!options.filter || options.filter(cache.GetVectorData(best_vector))) {
     top.push({best_dist, best_vector});
   }
   visited.set(best_vector);
@@ -482,7 +491,7 @@ void YbHnsw::SearchInBaseLayer(
       if (top.size() < top_limit || extra_top.size() < extra_top_limit ||
           neighbor_dist < best_dist) {
         next.push({neighbor_dist, neighbor});
-        if (!filter || filter(cache.GetVectorData(neighbor))) {
+        if (!options.filter || options.filter(cache.GetVectorData(neighbor))) {
           if (top.size() == top_limit) {
             auto extra_push = top.top().first;
             if (neighbor_dist < extra_push) {
@@ -524,6 +533,10 @@ boost::iterator_range<MisalignedPtr<const YbHnsw::CoordinateType>> YbHnsw::MakeC
 boost::iterator_range<MisalignedPtr<const YbHnsw::CoordinateType>> YbHnsw::Coordinates(
     size_t vector, SearchCache& cache) const {
   return MakeCoordinates(cache.CoordinatesPtr(vector));
+}
+
+const Header& YbHnsw::header() const {
+  return header_;
 }
 
 const std::byte* SearchCache::Data(size_t index) {

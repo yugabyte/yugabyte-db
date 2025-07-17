@@ -81,7 +81,13 @@ To enable built-in connection pooling for universes deployed using YugabyteDB An
 - Turn on the **Connection pooling** option when creating a universe. Refer to [Create a multi-zone universe](../../../yugabyte-platform/create-deployments/create-universe-multi-zone/#advanced-configuration).
 - Edit connection pooling on an existing universe. Refer to [Edit connection pooling](../../../yugabyte-platform/manage-deployments/edit-universe/#edit-connection-pooling).
 
-When managing universes using YugabyteDB Anywhere, do not set connection pooling options using flags.
+Note that when managing universes using YugabyteDB Anywhere, do not set connection pooling flags, `enable_ysql_conn_mgr`, `ysql_conn_mgr_port`, and `pgsql_proxy_bind_address`.
+
+#### Connect
+
+To connect to the YSQL Connection Manager, use the [ysqlsh](../../../api/ysqlsh/) command with the [`-h <IP>`](../../../api/ysqlsh/#h-hostname-host-hostname) flag, instead of specifying the Unix-domain socket directory.
+
+Using the socket directory along with [`-p`](../../../api/ysqlsh/#p-port-port-port) (custom PostgreSQL port or default 6433) will connect you to the PostgreSQL process, not the YSQL connection manager process.
 
 ## Configuration
 
@@ -113,6 +119,22 @@ The following table describes YB-TServer flags related to YSQL Connection Manage
 | ysql_conn_mgr_pool_timeout | Server pool wait timeout (in milliseconds) in YSQL Connection Manager. This is the time clients wait for an available server, after which they are disconnected. If set to zero, clients wait for server connections indefinitely. | 0 |
 | ysql_conn_mgr_sequence_support_mode | Sequence support mode when YSQL connection manager is enabled. When set to  'pooled_without_curval_lastval', the currval() and lastval() functions are not supported. When set to 'pooled_with_curval_lastval', the currval() and lastval() functions are supported. For both settings, monotonic sequence order is not guaranteed if `ysql_sequence_cache_method` is set to `connection`. To also support monotonic order, set this flag to `session`. | pooled_without_curval_lastval |
 | ysql_conn_mgr_optimized_extended_query_protocol | Enables optimization of [extended-query protocol](https://www.postgresql.org/docs/current/protocol-overview.html#PROTOCOL-QUERY-CONCEPTS) to provide better performance; note that while optimization is enabled, you may have correctness issues if you alter the schema of objects used in prepared statements. If set to false, extended-query protocol handling is always fully correct but unoptimized. | true |
+
+## Authentication methods
+
+The following table outlines the various authentication methods supported by YugabyteDB and their compatibility with the YSQL Connection Manager when a connection matches an HBA (Host-Based Authentication) record.
+
+| | Auth Method | Description |
+|:--| :---------------------| :------------ | :---- |
+| {{<icon/no>}} | Ident Authentication | Server contacts client's OS to verify username that initiated connection, trusting OS-level identity.|
+| {{<icon/no>}} | Peer Authentication | For local/Unix socket connections, server checks that the connecting UNIX user matches the requested database user, relying on OS user identity. |
+| {{<icon/yes>}} | Plain/Clear Text Password | Standard password-based authentication, though storing passwords in plain text is not recommended. |
+| {{<icon/yes>}} | JWT Authentication (OIDC) | Uses JSON Web Tokens (JWT) from an external Identity Provider (IDP) to securely transmit authentication and authorization information. |
+| {{<icon/yes>}} | LDAP Authentication | Verifies users against a centralized directory service using Lightweight Directory Access Protocol (LDAP). |
+| {{<icon/no>}} | GSS API or Kerberos| Enables Kerberos-based authentication through a standardized API, allowing secure, enterprise-grade Single Sign-On (SSO) logins without passwords. <br> **Note**: Testing of this feature with YugabyteDB is currently limited.|
+| {{<icon/no>}} | SCRAM-sha256  | A secure password-based authentication that protects credentials using hashing, salting, and challenge-response. |
+| {{<icon/yes>}} | MD5 | Password-based authentication where the user's password is by default stored in MD5 encryption format in the database. |
+| {{<icon/no>}} | Cert  | Certificate-based authentication requires the client to provide certificates to the server over a TLS connection for authentication. |
 
 ## Sticky connections
 
@@ -148,3 +170,5 @@ When using YSQL Connection Manager, sticky connections can form in the following
 - YSQL Connection Manager does not yet support IPv6 connections. [#24765](https://github.com/yugabyte/yugabyte-db/issues/24765)
 - Currently, [auth-method](https://docs.yugabyte.com/preview/secure/authentication/host-based-authentication/#auth-method) `cert` is not supported for host-based authentication. [#20658](https://github.com/yugabyte/yugabyte-db/issues/20658)
 - Although the use of auth-backends (`ysql_conn_mgr_use_auth_backend=true`) to authenticate logical connections can result in higher connection acquisition latencies, using auth-passthrough (`ysql_conn_mgr_use_auth_backend=false`) may not be suitable depending on your workload. Contact the YSQL Connection Manager Development team before setting `ysql_conn_mgr_use_auth_backend` to false. [#25313](https://github.com/yugabyte/yugabyte-db/issues/25313)
+- Salted Challenge Response Authentication Mechanism ([SCRAM](https://docs.yugabyte.com/preview/secure/authentication/password-authentication/#scram-sha-256)) is not supported with YSQL Connection Manager. [#25870](https://github.com/yugabyte/yugabyte-db/issues/25870)
+- Unix socket connections to YSQL Connection Manager are not supported. [#20048](https://github.com/yugabyte/yugabyte-db/issues/20048)

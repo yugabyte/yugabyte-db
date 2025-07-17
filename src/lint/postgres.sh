@@ -348,14 +348,15 @@ grep -nvE '^('$'\t''* {0,3}\S|$)' "$1" \
 # leading / trailing whitespace is not caught by that regex, so we can check it
 # explicitly.
 #
-# second grep removes lines that have continuous ---, *** characters
-# third grep removes lines that have /*#define or /*-, because PG uses those sometimes
+# second grep removes lines that have continuous ---, *** characters.
+# third grep removes /*#define or /*- lines because PG uses those sometimes.
+# third grep also removes /*+ lines because pg_hint_plan hints are like that.
 if ! [[ "$1" == src/postgres/src/backend/utils/activity/pgstat.c ||
         "$1" == src/postgres/contrib/pgcrypto/px-crypt.h ||
         "$1" == src/postgres/src/include/tsearch/dicts/regis.h ]]; then
   grep -nE '/\*(\S+(.*\S+)?|\s\S+(.*\S+)?|\S+(.*\S+)?\s)\*/' "$1" \
     | grep -vE '[\*\-]{3}' \
-    | grep -vE '/\*(#define|\-)' \
+    | grep -vE '/\*(#define|[+-])' \
     | sed 's,^,error:bad_comment_spacing:'\
 'Spacing should be like /* param */:,'
 fi
@@ -374,11 +375,10 @@ fi
 # fn(arg1 /* acceptable */ ,
 #    arg2 /* acceptable */ );
 # pg_dump has some comments in strings, hence the allowance of '"'.
-# TODO(jason): make this an error after running pgindent in the future.
 if ! [[ "$1" == src/postgres/src/interfaces/ecpg/preproc/output.c ]]; then
   grep -nE '\s\*/' "$1" \
     | grep -vE '\s\*/([\"[:space:]]|$)' \
-    | sed 's/^/warning:bad_spacing_after_comment:'\
+    | sed 's/^/error:bad_spacing_after_comment:'\
 'Comment should generally be followed by space or EOL:/'
 fi
 # fn(/* bad */ arg1,
@@ -391,8 +391,14 @@ if ! [[ "$1" == src/postgres/src/interfaces/ecpg/preproc/output.c ]]; then
 fi
 
 # Comments
-grep -nE '//\s' "$1" \
-  | sed 's|^|error:bad_comment_style:Use /* comment */, not // comment:|'
+# The second grep excludes // comments if the first non-space character of the
+# line is a '*', to allow most cases where // comments are inside a /* */ block
+if ! [[ "$1" == src/postgres/src/common/d2s.c ||
+        "$1" == src/postgres/src/common/d2s_intrinsics.h ]]; then
+  grep -nE '//\s' "$1" \
+    | grep -vE '^[0-9]+:\s+\*\s' \
+    | sed 's|^|error:bad_comment_style:Use /* comment */, not // comment:|'
+fi
 # /* this is a bad
 #  * multiline comment */
 # TupleTableSlot slot /* this is a good
@@ -479,11 +485,25 @@ grep -nE '^\s+\w+(\s\s+|'$'\t'')[_[:alpha:]*(]' "$1" \
 'Variable declarations should align variable names to the 12 column mark:/'
 
 # Braces
+#
+# For curly braces, ignore code comments and macros as they may deviate from
+# the expected style.
+#
+# The first grep below is immune to macros.  The second grep below filters out
+# multiline comments.
 grep -nE '(\)|else)\s+{$' "$1" \
-  | sed 's,^,warning:likely_bad_opening_brace:'\
+  | grep -vE '^[0-9]+:\s+\*' \
+  | sed 's,^,error:bad_opening_brace:'\
 'Brace should not be on the same line as if/else:,'
-grep -nE '}\s+else' "$1" \
-  | sed 's/^/warning:likely_bad_closing_brace:'\
+# Find macros as lines ending in backslash.  If the else is the last line of
+# the macro, there is no backslash there, so look for a backslash in the
+# previous line (hence the -B1 and -A1 dance below).  The last grep below
+# filters out multiline comments.
+grep -nEB1 '}\s+else(.*[^\])?$' "$1" \
+  | grep -EA1 '^[0-9]+-.*[^\]$' \
+  | grep -E '}\s+else' \
+  | grep -vE '^[0-9]+:\s+\*' \
+  | sed 's/^/error:bad_closing_brace:'\
 'Brace should not be on the same line as else:/'
 if ! [[ "$1" == src/postgres/contrib/bloom/bloom.h ||
         "$1" == src/postgres/src/include/replication/reorderbuffer.h ||

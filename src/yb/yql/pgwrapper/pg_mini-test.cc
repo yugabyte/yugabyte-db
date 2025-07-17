@@ -62,6 +62,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
@@ -79,6 +80,7 @@ using namespace std::literals;
 
 DECLARE_bool(TEST_disable_flush_on_shutdown);
 DECLARE_bool(TEST_enable_pg_client_mock);
+DECLARE_bool(TEST_fail_batcher_rpc);
 DECLARE_bool(TEST_force_master_leader_resolution);
 DECLARE_bool(TEST_no_schedule_remove_intents);
 DECLARE_bool(delete_intents_sst_files);
@@ -109,6 +111,7 @@ DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(txn_max_apply_batch_records);
 DECLARE_int32(yb_num_shards_per_tserver);
 DECLARE_int32(ysql_yb_ash_sample_size);
+DECLARE_uint32(yb_max_recursion_depth);
 
 DECLARE_int64(TEST_inject_random_delay_on_txn_status_response_ms);
 DECLARE_int64(apply_intents_task_injected_delay_ms);
@@ -171,6 +174,11 @@ Status IsReplicaIdentityPopulatedInTabletPeers(
 
 class PgMiniTest : public PgMiniTestBase {
  protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_max_recursion_depth) = 1500; // for RegexRecursionLimit
+    PgMiniTestBase::SetUp();
+  }
+
   // Have several threads doing updates and several threads doing large scans in parallel.
   // If deferrable is true, then the scans are in deferrable transactions, so no read restarts are
   // expected.
@@ -553,7 +561,7 @@ TEST_F(PgMiniTest, Simple) {
 class PgMiniTestTracing : public PgMiniTest, public ::testing::WithParamInterface<bool> {
  protected:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tracing) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tracing) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_tracing_level) = 1;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_use_shared_memory) = GetParam();
     PgMiniTest::SetUp();
@@ -931,8 +939,10 @@ TEST_F(PgMiniTest, TruncateColocatedBigTable) {
   ASSERT_OK(conn.Execute("create table t1(k int primary key) tablegroup tg1"));
   const auto& peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
   tablet::TabletPeerPtr tablet_peer = nullptr;
+  tablet::TabletPtr tablet = nullptr;
   for (auto peer : peers) {
-    if (peer->shared_tablet()->regular_db()) {
+    tablet = ASSERT_RESULT(peer->shared_tablet());
+    if (tablet->regular_db()) {
       tablet_peer = peer;
       break;
     }
@@ -942,12 +952,12 @@ TEST_F(PgMiniTest, TruncateColocatedBigTable) {
   // Insert 2 rows, and flush.
   ASSERT_OK(conn.Execute("insert into t1 values (1)"));
   ASSERT_OK(conn.Execute("insert into t1 values (2)"));
-  ASSERT_OK(tablet_peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
 
   // Truncate the table, and flush. Tabletombstone should be in a seperate sst file.
   ASSERT_OK(conn.Execute("TRUNCATE t1"));
   SleepFor(1s);
-  ASSERT_OK(tablet_peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
 
   // Check if the row still visible.
   ASSERT_OK(conn.FetchMatrix("select k from t1 where k = 1", 0, 1));
@@ -1356,7 +1366,11 @@ void PgMiniTest::TestBigInsert(bool restart) {
 
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
   for (const auto& peer : peers) {
-    auto db = peer->tablet()->regular_db();
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (!tablet) {
+      continue;
+    }
+    auto db = tablet->regular_db();
     if (!db) {
       continue;
     }
@@ -1562,7 +1576,11 @@ TEST_F(PgMiniTest, SkipTableTombstoneCheckMetadata) {
   tablet_peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
   tablet::TabletPeerPtr colocated_tablet_peer = nullptr;
   for (const auto& peer : tablet_peers) {
-    if (peer->shared_tablet()->regular_db() && peer->tablet_metadata()->colocated()) {
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (!tablet) {
+      continue;
+    }
+    if (tablet->regular_db() && peer->tablet_metadata()->colocated()) {
       colocated_tablet_peer = peer;
       break;
     }
@@ -1912,7 +1930,7 @@ TEST_F_EX(
 void PgMiniTest::ValidateAbortedTxnMetric() {
   auto tablet_peers = cluster_->GetTabletPeers(0);
   for(size_t i = 0; i < tablet_peers.size(); ++i) {
-    auto tablet = ASSERT_RESULT(tablet_peers[i]->shared_tablet_safe());
+    auto tablet = ASSERT_RESULT(tablet_peers[i]->shared_tablet());
     auto* gauge = GetMetricOpt<const AtomicGauge<uint64>>(
         *tablet, METRIC_aborted_transactions_pending_cleanup);
     if (gauge) {
@@ -2129,7 +2147,11 @@ void PgMiniTest::VerifyFileSizeAfterCompaction(PGConn* conn, const int num_table
   ASSERT_OK(cluster_->FlushTablets());
   uint64_t files_size = 0;
   for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
-    files_size += peer->tablet()->GetCurrentVersionSstFilesUncompressedSize();
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (!tablet) {
+      continue;
+    }
+    files_size += tablet->GetCurrentVersionSstFilesUncompressedSize();
   }
 
   ASSERT_OK(conn->ExecuteFormat("ALTER TABLE test$0 DROP COLUMN string;", num_tables - 1));
@@ -2139,7 +2161,11 @@ void PgMiniTest::VerifyFileSizeAfterCompaction(PGConn* conn, const int num_table
 
   uint64_t new_files_size = 0;
   for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
-    new_files_size += peer->tablet()->GetCurrentVersionSstFilesUncompressedSize();
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (!tablet) {
+      continue;
+    }
+    new_files_size += tablet->GetCurrentVersionSstFilesUncompressedSize();
   }
 
   LOG(INFO) << "Old files size: " << files_size << ", new files size: " << new_files_size;
@@ -2240,7 +2266,8 @@ TEST_F(PgMiniTest, TablegroupCompactionWithRestart) {
 TEST_F(PgMiniTest, CompactionAfterDBDrop) {
   const std::string kDatabaseName = "testdb";
   auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
-  auto sys_catalog_tablet = catalog_manager.sys_catalog()->tablet_peer()->tablet();
+  auto sys_catalog_tablet =
+      ASSERT_RESULT(catalog_manager.sys_catalog()->tablet_peer()->shared_tablet());
 
   ASSERT_OK(sys_catalog_tablet->Flush(tablet::FlushMode::kSync));
   ASSERT_OK(sys_catalog_tablet->ForceManualRocksDBCompact());
@@ -2424,7 +2451,7 @@ int64_t PgMiniTest::GetBloomFilterCheckedMetric() {
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
   auto bloom_filter_checked = 0;
   for (auto &peer : peers) {
-    const auto tablet = peer->shared_tablet();
+    const auto tablet = peer->shared_tablet_maybe_null();
     if (tablet) {
       bloom_filter_checked += tablet->regulardb_statistics()
         ->getTickerCount(rocksdb::BLOOM_FILTER_CHECKED);
@@ -2557,6 +2584,23 @@ TEST_F_EX(PgMiniTest, RegexPushdown, PgMiniTestSingleNode) {
   }
 }
 
+TEST_F_EX(PgMiniTest, RegexRecursionLimit, PgMiniTestSingleNode) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE test_regexp_count (c0 text)"));
+  ASSERT_OK(conn.ExecuteFormat(
+    "INSERT INTO test_regexp_count VALUES (repeat('a', 4)), (repeat('a', 10))"));
+
+  auto query = "select count(*) from test_regexp_count where regexp_count(c0, repeat('a', $0)) > 0";
+  auto too_complex_error = "regular expression is too complex";
+
+  ASSERT_NOK_STR_CONTAINS(conn.ExecuteFormat(query, 10000), too_complex_error);
+  ASSERT_NOK_STR_CONTAINS(conn.ExecuteFormat(query, 1800), too_complex_error);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>(Format(query, 500))), 0);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>(Format(query, 10))), 1);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>(Format(query, 3))), 2);
+}
+
 TEST_F(PgMiniTestSingleNode, TestBootstrapOnAppliedTransactionWithIntents) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_delete_intents_sst_files) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_bootstrap_intent_ht_filter) = true;
@@ -2571,8 +2615,10 @@ TEST_F(PgMiniTestSingleNode, TestBootstrapOnAppliedTransactionWithIntents) {
 
   const auto& peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
   tablet::TabletPeerPtr tablet_peer = nullptr;
+  tablet::TabletPtr tablet = nullptr;
   for (auto peer : peers) {
-    if (peer->shared_tablet()->regular_db()) {
+    tablet = ASSERT_RESULT(peer->shared_tablet());
+    if (tablet->regular_db()) {
       tablet_peer = peer;
       break;
     }
@@ -2584,14 +2630,14 @@ TEST_F(PgMiniTestSingleNode, TestBootstrapOnAppliedTransactionWithIntents) {
   ASSERT_OK(conn1.Execute("INSERT INTO test(a) VALUES (0)"));
 
   LOG(INFO) << "Flush";
-  ASSERT_OK(tablet_peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
 
   LOG(INFO) << "T2 - BEGIN/INSERT";
   ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   ASSERT_OK(conn2.Execute("INSERT INTO test(a) VALUES (1)"));
 
   LOG(INFO) << "Flush";
-  ASSERT_OK(tablet_peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
 
   LOG(INFO) << "T1 - Commit";
   ASSERT_OK(conn1.CommitTransaction());
@@ -2620,23 +2666,25 @@ TEST_F(PgMiniTestSingleNode, TestAppliedTransactionsStateReadOnly) {
   ASSERT_OK(conn.Execute("CREATE TABLE test1(a int primary key) SPLIT INTO 1 TABLETS"));
 
   tablet::TabletPeerPtr test1_peer = nullptr;
+  tablet::TabletPtr tablet = nullptr;
   {
     const auto& peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
     for (auto peer : peers) {
-      if (peer->shared_tablet()->regular_db()) {
+      tablet = ASSERT_RESULT(peer->shared_tablet());
+      if (tablet && tablet->regular_db()) {
         test1_peer = peer;
         break;
       }
     }
     ASSERT_NE(test1_peer, nullptr);
   }
-  std::string test1_tablet_id = test1_peer->shared_tablet()->tablet_id();
+  std::string test1_tablet_id = tablet->tablet_id();
 
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   ASSERT_OK(conn.Execute("INSERT INTO test1(a) VALUES (0)"));
   ASSERT_OK(conn.CommitTransaction());
 
-  ASSERT_OK(test1_peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
   ASSERT_OK(test1_peer->FlushBootstrapState());
 
   ASSERT_OK(conn.Execute("CREATE TABLE test2(a int references test1(a)) SPLIT INTO 1 TABLETS"));
@@ -2648,19 +2696,23 @@ TEST_F(PgMiniTestSingleNode, TestAppliedTransactionsStateReadOnly) {
 
   ASSERT_EQ(
       GetMetricOpt<AtomicGauge<uint64_t>>(
-          *test1_peer->shared_tablet(), METRIC_wal_replayable_applied_transactions)->value(),
+          *test1_peer->shared_tablet_maybe_null(), METRIC_wal_replayable_applied_transactions)
+          ->value(),
       1);
 
   LOG(INFO) << "Restarting cluster";
   ASSERT_OK(RestartCluster());
 
   for (auto peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
-    if (!peer->shared_tablet()->regular_db()) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    if (!tablet || !tablet->regular_db()) {
       continue;
     }
-    auto metric_value = GetMetricOpt<AtomicGauge<uint64_t>>(
-        *peer->shared_tablet(), METRIC_wal_replayable_applied_transactions)->value();
-    if (peer->shared_tablet()->tablet_id() == test1_tablet_id) {
+    auto metric_value =
+        GetMetricOpt<AtomicGauge<uint64_t>>(
+            *peer->shared_tablet_maybe_null(), METRIC_wal_replayable_applied_transactions)
+            ->value();
+    if (tablet->tablet_id() == test1_tablet_id) {
       ASSERT_EQ(metric_value, 1);
     } else {
       ASSERT_EQ(metric_value, kIters);
@@ -2691,8 +2743,10 @@ TEST_F(PgMiniTest, TestAppliedTransactionsStateInFlight) {
 
   const auto& pg_ts_uuid = cluster_->mini_tablet_server(kPgTsIndex)->server()->permanent_uuid();
   tablet::TabletPeerPtr tablet_peer = nullptr;
+  tablet::TabletPtr tablet = nullptr;
   for (auto peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kNonLeaders)) {
-    if (peer->shared_tablet()->regular_db() && peer->permanent_uuid() != pg_ts_uuid) {
+    tablet = ASSERT_RESULT(peer->shared_tablet());
+    if (tablet->regular_db() && peer->permanent_uuid() != pg_ts_uuid) {
       tablet_peer = peer;
       break;
     }
@@ -2723,7 +2777,7 @@ TEST_F(PgMiniTest, TestAppliedTransactionsStateInFlight) {
   ASSERT_OK(conn3.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   ASSERT_OK(conn3.FetchRow<PGUint32>("SELECT a FROM test WHERE a = 0 FOR KEY SHARE"));
 
-  ASSERT_OK(tablet_peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
 
   ASSERT_OK(tablet_server->Restart());
   ASSERT_OK(tablet_server->WaitStarted());
@@ -2737,9 +2791,11 @@ TEST_F(PgMiniTest, TestAppliedTransactionsStateInFlight) {
 
   std::unordered_map<std::string, uint64_t> metric_values;
   for (auto peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
-    if (peer->shared_tablet()->regular_db()) {
-      metric_values[peer->permanent_uuid()] = GetMetricOpt<AtomicGauge<uint64_t>>(
-          *peer->shared_tablet(), METRIC_wal_replayable_applied_transactions)->value();
+    if (ASSERT_RESULT(peer->shared_tablet())->regular_db()) {
+      metric_values[peer->permanent_uuid()] =
+          GetMetricOpt<AtomicGauge<uint64_t>>(
+              *peer->shared_tablet_maybe_null(), METRIC_wal_replayable_applied_transactions)
+              ->value();
     }
   }
 
@@ -2806,6 +2862,49 @@ TEST_F(PgRecursiveAbortTest, MockAbortFailure) {
   auto status = conn.Execute("ABORT");
   ASSERT_TRUE(status.IsNetworkError());
   ASSERT_EQ(conn.ConnStatus(), CONNECTION_BAD);
+}
+
+TEST_F(PgMiniTest, KillPGInTheMiddleOfBatcherOperation) {
+  const std::string kTableName = "test_table";
+  const auto kQuery = Format("SELECT * FROM $0", kTableName);
+
+  auto& sync_point = *SyncPoint::GetInstance();
+  sync_point.LoadDependency(
+      {{"Batcher::ProcessRpcStatus1", "KillPGInTheMiddleOfBatcherOperation::BeforePgRestart"},
+       {"KillPGInTheMiddleOfBatcherOperation::AfterPgRestart", "Batcher::ProcessRpcStatus2"}});
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int) SPLIT INTO 10 TABLETS", kTableName));
+  ASSERT_OK(conn.FetchAllAsString(kQuery));  // Sanity check
+
+  sync_point.EnableProcessing();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_batcher_rpc) = true;
+
+  std::atomic<bool> select_complete = false;
+  TestThreadHolder thread_holder;
+  thread_holder.AddThread([&conn, &select_complete, kQuery] {
+    ASSERT_NOK(conn.FetchAllAsString(kQuery));
+    select_complete = true;
+  });
+
+  // Block the batcher operations.
+  TEST_SYNC_POINT("KillPGInTheMiddleOfBatcherOperation::BeforePgRestart");
+
+  // The select should still be running because it's stuck waiting for the sync point.
+  ASSERT_FALSE(select_complete.load());
+
+  LOG(INFO) << "Restarting Postgres";
+  ASSERT_OK(RestartPostgres());
+  // Wait for the Sessions to be killed.
+  SleepFor(5s);
+
+  // Unblock the batcher operation.
+  TEST_SYNC_POINT("KillPGInTheMiddleOfBatcherOperation::AfterPgRestart");
+
+  thread_holder.JoinAll();
+  ASSERT_TRUE(select_complete.load());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_batcher_rpc) = false;
 }
 
 }  // namespace yb::pgwrapper

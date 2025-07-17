@@ -71,9 +71,13 @@ The YSQL shell (ysqlsh) is functionally similar to PostgreSQL's psql , but uses 
 Explore ysqlsh
 {{</lead>}}
 
+<!--
+### What is the status of the YEDIS API?
+
 In the near-term, Yugabyte is not actively working on new feature or driver enhancements to the [YEDIS](../../yedis/) API other than bug fixes and stability improvements. Current focus is on [YSQL](../../api/ysql/) and [YCQL](../../api/ycql/).
 
 For key-value workloads that need persistence, elasticity and fault-tolerance, YCQL (with the notion of keyspaces, tables, role-based access control, and more) is often a great fit, especially if the application is new rather than an existing one already written in Redis. The YCQL drivers are also more clustering aware, and hence YCQL is expected to perform better than YEDIS for equivalent scenarios. In general, our new feature development (support for data types, built-ins, TLS, backups, and more), correctness testing (using Jepsen), and performance optimization is in the YSQL and YCQL areas.
+-->
 
 ## API compatibility
 

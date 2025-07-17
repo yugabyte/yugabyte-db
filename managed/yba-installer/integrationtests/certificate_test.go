@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/integrationtests/testutils"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
 )
 
 func TestSelfSignedCertInstall(t *testing.T) {
@@ -15,7 +16,7 @@ func TestSelfSignedCertInstall(t *testing.T) {
 	mgr := Initialize(t)
 	port := testutils.GetNextPort(t)
 	version := testutils.GetVersion(t)
-	ctrInfo := SetupContainer(t, mgr, port, version, "yba-installer-test:latest")
+	ctrInfo := SetupContainer(t, mgr, port, version, containerTag)
 
 	// Test
 	installAndValidateYBA(t, mgr, ctrInfo)
@@ -35,7 +36,7 @@ func TestSelfSignedCertsToCustomCerts(t *testing.T) {
 	mgr := Initialize(t)
 	port := testutils.GetNextPort(t)
 	version := testutils.GetVersion(t)
-	ctrInfo := SetupContainer(t, mgr, port, version, "yba-installer-test:latest")
+	ctrInfo := SetupContainer(t, mgr, port, version, containerTag)
 
 	// Test
 	installAndValidateYBA(t, mgr, ctrInfo)
@@ -50,8 +51,9 @@ func TestSelfSignedCertsToCustomCerts(t *testing.T) {
 	}
 
 	// Update to custom certs and run reconfigure
-	localKey := filepath.Join(testutils.GetTopDir(), "integrationtests", "resources", "certs", "server-key.pem")
-	localCert := filepath.Join(testutils.GetTopDir(), "integrationtests", "resources", "certs", "server-cert.pem")
+	certDir := testutils.CustomCerts(testWorkingDir)
+	localKey := filepath.Join(certDir, common.ServerKeyPath)
+	localCert := filepath.Join(certDir, common.ServerCertPath)
 	copyCertsAndUpdateConfig(t, mgr, ctrInfo, localCert, localKey)
 
 	if out := mgr.Exec(ctrInfo, "yba-ctl", "reconfigure"); !out.Succeeded() {

@@ -1227,9 +1227,10 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointPersistencyNodeRest
       if (peer->tablet_id() == tablets[0].tablet_id()) {
         // What ever checkpoint persisted in the RAFT logs should be same as what ever in memory
         // transaction participant tablet peer.
+        auto tablet = ASSERT_RESULT(peer->shared_tablet());
         ASSERT_EQ(
             peer->cdc_sdk_min_checkpoint_op_id(),
-            peer->tablet()->transaction_participant()->GetRetainOpId());
+            tablet->transaction_participant()->GetRetainOpId());
       }
     }
   }
@@ -1553,20 +1554,21 @@ void CDCSDKYsqlTest::TestMultipleActiveStreamOnSameTablet(CDCCheckpointType chec
   ASSERT_OK(s);
 
   ASSERT_OK(WaitFor(
-      [&]() {
+      [&]() -> Result<bool> {
         // Read the tablet LEADER as well as FOLLOWER's transaction_participation
         // Check all the tserver checkpoint info it's should be valid.
         uint32_t i = 0;
         while (i < test_cluster()->num_tablet_servers()) {
           for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
             if (peer->tablet_id() == tablets[0].tablet_id()) {
-              if (peer->tablet()->transaction_participant()->GetRetainOpId() != min_checkpoint) {
+              auto tablet = VERIFY_RESULT(peer->shared_tablet());
+              if (tablet->transaction_participant()->GetRetainOpId() != min_checkpoint) {
                 SleepFor(MonoDelta::FromMilliseconds(2));
               } else {
                 i += 1;
                 LOG(INFO) << "In tserver: " << i
                           << " tablet peer have transaction_participant op_id set as: "
-                          << peer->tablet()->transaction_participant()->GetRetainOpId();
+                          << tablet->transaction_participant()->GetRetainOpId();
               }
               break;
             }
@@ -1690,16 +1692,15 @@ void CDCSDKYsqlTest::TestActiveAndInactiveStreamOnSameTablet(CDCCheckpointType c
         while (i < test_cluster()->num_tablet_servers()) {
           for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
             if (peer->tablet_id() == tablets[0].tablet_id()) {
-              if (peer->tablet()->transaction_participant()->GetRetainOpId() !=
-                      overall_min_checkpoint &&
-                  peer->tablet()->transaction_participant()->GetRetainOpId() !=
-                      active_stream_checkpoint) {
+              auto tablet = VERIFY_RESULT(peer->shared_tablet());
+              if (tablet->transaction_participant()->GetRetainOpId() != overall_min_checkpoint &&
+                  tablet->transaction_participant()->GetRetainOpId() != active_stream_checkpoint) {
                 SleepFor(MonoDelta::FromMilliseconds(2));
               } else {
                 i += 1;
                 LOG(INFO) << "In tserver: " << i
                           << " tablet peer have transaction_participant op_id set as: "
-                          << peer->tablet()->transaction_participant()->GetRetainOpId();
+                          << tablet->transaction_participant()->GetRetainOpId();
               }
               break;
             }
@@ -1782,8 +1783,9 @@ void CDCSDKYsqlTest::TestCheckpointPersistencyAllNodesRestart(CDCCheckpointType 
             [&]() -> Result<bool> {
               // Checkpoint persisted in the RAFT logs should be same as in memory transaction
               // participant tablet peer.
+              auto tablet = VERIFY_RESULT(peer->shared_tablet());
               if (peer->cdc_sdk_min_checkpoint_op_id() !=
-                      peer->tablet()->transaction_participant()->GetRetainOpId() ||
+                      tablet->transaction_participant()->GetRetainOpId() ||
                   checkpoints[0] != peer->cdc_sdk_min_checkpoint_op_id()) {
                 return false;
               }
@@ -5587,17 +5589,19 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBeginCommitRecordValidationWi
   uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
   ASSERT_GT(record_size, insert_count);
 
-  int expected_begin_records = 2;
-  int expected_commit_records = 2;
+  int expected_begin_records = 1;
+  int expected_commit_records = 1;
   int actual_begin_records = 0;
   int actual_commit_records = 0;
   std::vector<std::string> excepted_table_list{"test1", "test2"};
   for (uint32_t i = 0; i < record_size; ++i) {
     const auto record = change_resp.cdc_sdk_proto_records(i);
     LOG(INFO) << "Record found: " << record.ShortDebugString();
-    if (std::find(
+    if (record.row_message().op() != RowMessage::BEGIN &&
+        record.row_message().op() != RowMessage::COMMIT &&
+        std::find(
             excepted_table_list.begin(), excepted_table_list.end(), record.row_message().table()) ==
-        excepted_table_list.end()) {
+            excepted_table_list.end()) {
       LOG(INFO) << "Tablename got in the record is wrong: " << record.row_message().table();
       FAIL();
     }
@@ -6213,9 +6217,10 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointWithNoCDCStream)) {
         // What ever checkpoint persisted in the RAFT logs should be same as what ever in memory
         // transaction participant tablet peer.
         ASSERT_EQ(peer->cdc_sdk_min_checkpoint_op_id(), OpId::Invalid());
+        auto tablet = ASSERT_RESULT(peer->shared_tablet());
         ASSERT_EQ(
             peer->cdc_sdk_min_checkpoint_op_id(),
-            peer->tablet()->transaction_participant()->GetRetainOpId());
+            tablet->transaction_participant()->GetRetainOpId());
       }
     }
   }
@@ -6233,9 +6238,10 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointWithNoCDCStream)) {
         // What ever checkpoint persisted in the RAFT logs should be same as what ever in memory
         // transaction participant tablet peer.
         ASSERT_EQ(peer->cdc_sdk_min_checkpoint_op_id(), OpId::Invalid());
+        auto tablet = ASSERT_RESULT(peer->shared_tablet());
         ASSERT_EQ(
             peer->cdc_sdk_min_checkpoint_op_id(),
-            peer->tablet()->transaction_participant()->GetRetainOpId());
+            tablet->transaction_participant()->GetRetainOpId());
       }
     }
   }
@@ -6817,8 +6823,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithRepeatedRequest
   int expected_key2 = 0;
   int ddl_count = 0;
   std::unordered_set<string> ddl_tables;
-  for (uint32_t i = 0; i < record_size; ++i) {
-    const auto record = change_resp.records[i];
+  for (const auto& record : change_resp.records) {
     if (record.row_message().op() == RowMessage::INSERT) {
       if (record.row_message().table() == "test1") {
         ASSERT_EQ(expected_key1, record.row_message().new_tuple(0).datum_int32());
@@ -6863,8 +6868,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithRepeatedRequest
   expected_key1 = 30;
   expected_key2 = 30;
   ddl_count = 0;
-  for (uint32_t i = 0; i < record_size; ++i) {
-    const auto record = change_resp.records[i];
+  for (const auto& record : change_resp.records) {
     if (record.row_message().op() == RowMessage::INSERT) {
       if (record.row_message().table() == "test1") {
         ASSERT_EQ(expected_key1, record.row_message().new_tuple(0).datum_int32());
@@ -10758,7 +10762,7 @@ TEST_F(CDCSDKYsqlTest, TestWithMajorityReplicatedButNonCommittedMultiShardTxn) {
     if (peer->tablet_id() != tablet_id) {
       continue;
     }
-    auto tablet = ASSERT_RESULT(peer->shared_tablet_safe());
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
     ASSERT_OK(peer->log()->AllocateSegmentAndRollOver());
     ASSERT_OK(peer->log()->GetSegmentsSnapshot(&segments));
     ASSERT_EQ(segments.size(), 2);
@@ -11582,7 +11586,7 @@ TEST_F(CDCSDKYsqlTest, TestIntentSSTFileCleanupAfterConsumption) {
             if (peer->tablet_id() != tablet_id) {
               continue;
             }
-            auto tablet = VERIFY_RESULT(peer->shared_tablet_safe());
+            auto tablet = VERIFY_RESULT(peer->shared_tablet());
             if (tablet->transaction_participant()->GetNumRunningTransactions() != 0) {
               return false;
             }
@@ -11867,7 +11871,7 @@ TEST_F(CDCSDKYsqlTest, TestGetChangesAfterMultipleTabletBootstrap) {
             if (peer->tablet_id() != tablet_id) {
               continue;
             }
-            auto tablet = VERIFY_RESULT(peer->shared_tablet_safe());
+            auto tablet = VERIFY_RESULT(peer->shared_tablet());
             auto running_txns = tablet->transaction_participant()->GetNumRunningTransactions();
             if (running_txns != 0) {
               LOG(INFO) << "Running txns on tablet " << tablet_id

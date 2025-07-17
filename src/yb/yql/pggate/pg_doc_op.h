@@ -296,16 +296,6 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   virtual Result<std::list<PgDocResult>> GetResult();
   Result<int32_t> GetRowsAffectedCount() const;
 
-  struct YbctidGenerator {
-    using Next = LWFunction<Slice()>;
-
-    YbctidGenerator(const Next& next_, size_t capacity_)
-        : next(next_), capacity(capacity_) {}
-
-    const Next& next;
-    const size_t capacity;
-  };
-
   // This operation is requested internally within PgGate, and that request does not go through
   // all the steps as other operation from Postgres thru PgDocOp.
   // Ybctids from the generator may be skipped if they conflict with other conditions placed on the
@@ -516,6 +506,10 @@ class PgDocReadOp : public PgDocOp {
   const PgsqlReadOp& GetTemplateReadOp() { return *read_op_; }
 
  private:
+  // Check request conditions if they allow to limit the scan range
+  // Returns true if resulting range is not empty, false otherwise
+  Result<bool> SetScanBounds();
+
   // Create protobuf requests using template_op_.
   Result<bool> DoCreateRequests() override;
 

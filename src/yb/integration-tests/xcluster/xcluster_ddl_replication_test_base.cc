@@ -19,8 +19,11 @@
 #include "yb/client/table.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
+
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
+#include "yb/integration-tests/xcluster/xcluster_test_utils.h"
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
+
 #include "yb/master/mini_master.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/xcluster_ddl_queue_handler.h"
@@ -67,7 +70,8 @@ Status XClusterDDLReplicationTestBase::CheckpointReplicationGroupOnNamespaces(
     const std::vector<NamespaceName>& namespace_names) {
   std::vector<NamespaceId> namespace_ids;
   for (const auto& namespace_name : namespace_names) {
-    namespace_ids.push_back(VERIFY_RESULT(GetNamespaceId(producer_client(), namespace_name)));
+    namespace_ids.push_back(
+        VERIFY_RESULT(XClusterTestUtils::GetNamespaceId(*producer_client(), namespace_name)));
   }
   RETURN_NOT_OK(
       client::XClusterClient(*producer_client())

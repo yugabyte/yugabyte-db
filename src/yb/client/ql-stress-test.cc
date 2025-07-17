@@ -277,18 +277,17 @@ bool QLStressTest::CheckRetryableRequestsCountsAndLeaders(
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
   for (const auto& peer : peers) {
     auto leader = peer->LeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
-    if (!peer->tablet() || peer->tablet()->metadata()->table_id() != table_.table()->id()) {
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (!tablet || tablet->metadata()->table_id() != table_.table()->id()) {
       continue;
     }
-    const auto tablet_entries = EXPECT_RESULT(peer->tablet()->TEST_CountDBRecords(
-        docdb::StorageDbType::kRegular));
+    const auto tablet_entries =
+        EXPECT_RESULT(tablet->TEST_CountDBRecords(docdb::StorageDbType::kRegular));
     auto raft_consensus = EXPECT_RESULT(peer->GetRaftConsensus());
     auto request_counts = raft_consensus->TEST_CountRetryableRequests();
-    LOG(INFO) << "T " << peer->tablet()->tablet_id() << " P " << peer->permanent_uuid()
-              << ", entries: " << tablet_entries
-              << ", running: " << request_counts.running
-              << ", replicated: " << request_counts.replicated
-              << ", leader: " << leader
+    LOG(INFO) << "T " << tablet->tablet_id() << " P " << peer->permanent_uuid()
+              << ", entries: " << tablet_entries << ", running: " << request_counts.running
+              << ", replicated: " << request_counts.replicated << ", leader: " << leader
               << ", term: " << raft_consensus->LeaderTerm();
     if (leader) {
       *total_entries += tablet_entries;
@@ -313,10 +312,11 @@ bool QLStressTest::CheckRetryableRequestsCountsAndLeaders(
   if (result && FLAGS_detect_duplicates_for_retryable_requests) {
     auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
     for (const auto& peer : peers) {
-      if (peer->tablet()->metadata()->table_id() != table_.table()->id()) {
+      auto tablet = peer->shared_tablet_maybe_null();
+      if (!tablet || tablet->metadata()->table_id() != table_.table()->id()) {
         continue;
       }
-      auto db = peer->tablet()->regular_db();
+      auto db = tablet->regular_db();
       rocksdb::ReadOptions read_opts;
       read_opts.query_id = rocksdb::kDefaultQueryId;
       std::unique_ptr<rocksdb::Iterator> iter(db->NewIterator(read_opts));
@@ -601,8 +601,8 @@ TEST_F_EX(QLStressTest, ShortTimeLeaderDoesNotReplicateNoOp, QLStressTestSingleT
   // Give new leader some time to request lease.
   // TODO wait for specific event.
   std::this_thread::sleep_for(3s);
-  auto temp_leader_safe_time = ASSERT_RESULT(
-      temp_leader->tablet()->SafeTime(tablet::RequireLease::kTrue));
+  auto tablet = ASSERT_RESULT(temp_leader->shared_tablet());
+  auto temp_leader_safe_time = ASSERT_RESULT(tablet->SafeTime(tablet::RequireLease::kTrue));
   LOG(INFO) << "Safe time: " << temp_leader_safe_time;
 
   LOG(INFO) << "Transferring leadership from " << temp_leader->permanent_uuid()
@@ -636,7 +636,11 @@ void QLStressTest::VerifyFlushedFrontiers() {
   for (const auto& mini_tserver : cluster_->mini_tablet_servers()) {
     auto peers = mini_tserver->server()->tablet_manager()->GetTabletPeers();
     for (const auto& peer : peers) {
-      rocksdb::DB* db = peer->tablet()->regular_db();
+      auto tablet = peer->shared_tablet_maybe_null();
+      if (!tablet) {
+        continue;
+      }
+      rocksdb::DB* db = tablet->regular_db();
       OpId op_id;
       ASSERT_NO_FATALS(VerifyFlushedFrontier(db->GetFlushedFrontier(), &op_id));
 
@@ -896,8 +900,12 @@ void QLStressTest::TestWriteRejection() {
       int64_t rejections = 0;
       auto peers = cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
       for (const auto& peer : peers) {
-        auto counter = METRIC_majority_sst_files_rejections.Instantiate(
-            peer->tablet()->GetTabletMetricsEntity());
+        auto tablet = peer->shared_tablet_maybe_null();
+        if (!tablet) {
+          continue;
+        }
+        auto counter =
+            METRIC_majority_sst_files_rejections.Instantiate(tablet->GetTabletMetricsEntity());
         rejections += counter->value();
       }
       total_rejections += rejections;
@@ -985,7 +993,7 @@ TEST_F_EX(QLStressTest, LongRemoteBootstrap, QLStressTestLongRemoteBootstrap) {
       return false;
     }
 
-    RETURN_NOT_OK(leaders.front()->tablet()->Flush(tablet::FlushMode::kSync));
+    RETURN_NOT_OK(VERIFY_RESULT(leaders.front()->shared_tablet())->Flush(tablet::FlushMode::kSync));
     RETURN_NOT_OK(leaders.front()->RunLogGC());
 
     // Check that first log was garbage collected, so remote bootstrap will be required.

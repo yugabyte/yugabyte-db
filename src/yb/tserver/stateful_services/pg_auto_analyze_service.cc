@@ -65,8 +65,7 @@ DEFINE_test_flag(int32, simulate_analyze_deleted_table_secs, 0,
 DEFINE_test_flag(bool, sort_auto_analyze_target_table_ids, false,
                  "Sort the analyze target tables' ids to generate deterministic ANALYZE statements "
                  "for testing purpose.");
-
-DECLARE_bool(ysql_enable_auto_analyze_service);
+DECLARE_bool(ysql_enable_auto_analyze);
 
 using namespace std::chrono_literals;
 
@@ -329,14 +328,14 @@ Status PgAutoAnalyzeService::FetchUnknownReltuples(
       return conn_result.status();
     auto& conn = *conn_result;
     for (const auto& [table_id, table_oid] : tables) {
-      auto res =
-        VERIFY_RESULT(conn.Fetch("SELECT reltuples FROM pg_class WHERE oid = "
-                                  + std::to_string(table_oid)));
-      if (PQntuples(res.get()) > 0) {
-        float reltuples = VERIFY_RESULT(pgwrapper::GetValue<float>(res.get(), 0, 0));
-        table_tuple_count_[table_id] = reltuples == -1 ? 0 : reltuples;
-        VLOG(1) << "Table with id " << table_id << " has " << table_tuple_count_[table_id]
-                << " reltuples";
+      // In YB, after a table rewrite operation, table id is based on relfilenode instead of
+      // table oid. Most of relations' initial relfilenode is equal to its oid, so try querying
+      // reltuples using relfilenode first.
+      // In case querying reltuples using relfilnode doesn't return any result, we need to query
+      // using oid instead. Mapped catalogs have zero in their pg_class.relfilenode entries.
+      auto is_fetched = VERIFY_RESULT(DoFetchReltuples(conn, table_id, table_oid, true));
+      if (!is_fetched) {
+        VERIFY_RESULT(DoFetchReltuples(conn, table_id, table_oid, false));
       }
     }
   }
@@ -643,6 +642,23 @@ Result<pgwrapper::PGConn> PgAutoAnalyzeService::EstablishDBConnection(
   return conn_result;
 }
 
+// Return true if reltuples is fetched.
+Result<bool> PgAutoAnalyzeService::DoFetchReltuples(pgwrapper::PGConn& conn, TableId table_id,
+                                                    PgOid oid, bool use_relfilenode) {
+  auto res =
+    VERIFY_RESULT(conn.Fetch(Format("SELECT reltuples FROM pg_class WHERE $0 = $1",
+                                    use_relfilenode ? "relfilenode" : "oid", oid)));
+  if (PQntuples(res.get()) > 0) {
+    float reltuples = VERIFY_RESULT(pgwrapper::GetValue<float>(res.get(), 0, 0));
+    table_tuple_count_[table_id] = reltuples == -1 ? 0 : reltuples;
+    VLOG(1) << "Table with id " << table_id << " has " << table_tuple_count_[table_id]
+            << " reltuples";
+    return true;
+  }
+
+  return false;
+}
+
 // Construct tables' names list.
 std::string PgAutoAnalyzeService::TableNamesForAnalyzeCmd(const std::vector<TableId>& table_ids) {
   std::string table_names = "";
@@ -661,14 +677,17 @@ std::string PgAutoAnalyzeService::TableNamesForAnalyzeCmd(const std::vector<Tabl
 }
 
 Result<bool> PgAutoAnalyzeService::RunPeriodicTask() {
-  if (FLAGS_ysql_enable_auto_analyze_service) {
-    // Update the underlying YCQL service table that tracks cluster-wide mutations
-    // for all YSQL tables.
-    RETURN_NOT_OK(FlushMutationsToServiceTable());
-
-    // Trigger ANALYZE for tables whose mutation counts have crossed their thresholds.
-    RETURN_NOT_OK(TriggerAnalyze());
+  if (!FLAGS_ysql_enable_auto_analyze) {
+    VLOG_WITH_FUNC(4) << "Auto analyze service is disabled";
+    return true;
   }
+
+  // Update the underlying YCQL service table that tracks cluster-wide mutations
+  // for all YSQL tables.
+  RETURN_NOT_OK(FlushMutationsToServiceTable());
+
+  // Trigger ANALYZE for tables whose mutation counts have crossed their thresholds.
+  RETURN_NOT_OK(TriggerAnalyze());
 
   // Return true to re-trigger this periodic task after PeriodicTaskIntervalMs.
   return true;

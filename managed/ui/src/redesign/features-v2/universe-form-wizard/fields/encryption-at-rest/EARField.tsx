@@ -1,9 +1,10 @@
 import { FC } from 'react';
-import _ from 'lodash';
+import { sortBy } from 'lodash';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
 import { useFormContext, useWatch, Controller } from 'react-hook-form';
 import { mui, YBToggleField, YBLabel, YBAutoComplete } from '@yugabyte-ui-library/core';
+import { FieldContainer } from '../../components/DefaultComponents';
 import { QUERY_KEY, api } from '../../../../features/universe/universe-form/utils/api';
 
 import { SecuritySettingsProps } from '../../steps/security-settings/dtos';
@@ -12,6 +13,7 @@ import { ReactComponent as NextLineIcon } from '../../../../assets/next-line.svg
 
 const { Box } = mui;
 
+//TODO : Disable option for customCertPathOption
 interface EARProps {
   disabled: boolean;
 }
@@ -33,7 +35,7 @@ export const EARField: FC<EARProps> = ({ disabled }) => {
 
   //fetch data
   const { data, isLoading } = useQuery(QUERY_KEY.getKMSConfigs, api.getKMSConfigs);
-  let kmsConfigs: KmsConfig[] = data ? _.sortBy(data, 'metadata.provider', 'metadata.name') : [];
+  const kmsConfigs: KmsConfig[] = data ? sortBy(data, 'metadata.provider', 'metadata.name') : [];
 
   const handleChange = (e: any, option: any) => {
     setValue(KMS_FIELD, option?.metadata?.configUUID ?? null, {
@@ -42,18 +44,13 @@ export const EARField: FC<EARProps> = ({ disabled }) => {
   };
 
   return (
-    <Box
-      sx={{
-        display: 'flex',
-        width: '548px',
-        flexDirection: 'column',
-        backgroundColor: '#FBFCFD',
-        border: '1px solid #D7DEE4',
-        borderRadius: '8px',
-        padding: '16px 24px'
-      }}
-    >
-      <YBToggleField name={EAR_FIELD} control={control} label={'Enable Encryption At Rest'} />
+    <FieldContainer sx={{ padding: '16px 24px' }}>
+      <YBToggleField
+        name={EAR_FIELD}
+        control={control}
+        label={t('createUniverseV2.securitySettings.earField.label')}
+        dataTestId="enable-encryption-at-rest-field"
+      />
       {encryptionEnabled && (
         <Box
           sx={{ display: 'flex', flexDirection: 'row', width: '100%', alignItems: 'center', mt: 2 }}
@@ -67,7 +64,7 @@ export const EARField: FC<EARProps> = ({ disabled }) => {
                 required:
                   !disabled && encryptionEnabled
                     ? (t('universeForm.validation.required', {
-                        field: t('universeForm.instanceConfig.kmsConfig')
+                        field: t('createUniverseV2.securitySettings.earField.kmsConfig')
                       }) as string)
                     : ''
               }}
@@ -80,7 +77,9 @@ export const EARField: FC<EARProps> = ({ disabled }) => {
                     flexDirection={'column'}
                     data-testid="KMSConfigField-Container"
                   >
-                    <YBLabel error={!!fieldState.error}>Key Management Service Config</YBLabel>
+                    <YBLabel error={!!fieldState.error}>
+                      {t('createUniverseV2.securitySettings.earField.kmsConfig')}
+                    </YBLabel>
                     <Box flex={1}>
                       <YBAutoComplete
                         disabled={disabled}
@@ -88,11 +87,15 @@ export const EARField: FC<EARProps> = ({ disabled }) => {
                         options={(kmsConfigs as unknown) as Record<string, string>[]}
                         groupBy={(option: Record<string, any>) => option?.metadata?.provider} //group by provider
                         ybInputProps={{
-                          placeholder: t('universeForm.instanceConfig.kmsConfigPlaceHolder'),
+                          placeholder: t(
+                            'createUniverseV2.securitySettings.earField.kmsConfigPlaceHolder'
+                          ),
                           error: !!fieldState.error,
                           helperText: fieldState.error?.message,
-                          InputProps: { autoFocus: true }
+                          InputProps: { autoFocus: true },
+                          dataTestId: 'kms-config-field'
                         }}
+                        dataTestId="kms-config-field-container"
                         ref={field.ref}
                         getOptionLabel={getOptionLabel}
                         onChange={handleChange}
@@ -106,6 +109,6 @@ export const EARField: FC<EARProps> = ({ disabled }) => {
           </Box>
         </Box>
       )}
-    </Box>
+    </FieldContainer>
   );
 };

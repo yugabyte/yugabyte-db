@@ -46,16 +46,16 @@ The core primitive of CDC is the _stream_. Streams can be enabled and disabled o
 
 * A single stream can only be used to stream data from one namespace only.
 * There should be a primary key on the table you want to stream the changes from.
-* CDC is not supported on tables (both source and target) for xCluster replication. Issues [25371](https://github.com/yugabyte/yugabyte-db/issues/25371) and [15534](https://github.com/yugabyte/yugabyte-db/issues/15534).
+* CDC is not supported on tables (both source and target) for xCluster replication. Issues {{<issue 25371>}} and {{<issue 15534>}}.
 * Currently, CDC doesn't support schema evolution for changes that require table rewrites (for example, [ALTER TYPE](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-type-with-table-rewrite)), or DROP TABLE and TRUNCATE TABLE operations.
-* YCQL tables aren't currently supported. Issue [11320](https://github.com/yugabyte/yugabyte-db/issues/11320).
+* YCQL tables aren't currently supported. Issue {{<issue 11320>}}.
 
 In addition, CDC support for the following features will be added in upcoming releases:
 
-* Support for point-in-time recovery (PITR) is tracked in issue [10938](https://github.com/yugabyte/yugabyte-db/issues/10938).
-* Support for transaction savepoints is tracked in issue [10936](https://github.com/yugabyte/yugabyte-db/issues/10936).
-* Support for enabling CDC on Read Replicas is tracked in issue [11116](https://github.com/yugabyte/yugabyte-db/issues/11116).
-* Support for schema evolution with before image is tracked in issue [15197](https://github.com/yugabyte/yugabyte-db/issues/15197).
+* Support for point-in-time recovery (PITR) is tracked in issue {{<issue 10938>}}.
+* Support for transaction savepoints is tracked in issue {{<issue 10936>}}.
+* Support for enabling CDC on Read Replicas is tracked in issue {{<issue 11116>}}.
+* Support for schema evolution with before image is tracked in issue {{<issue 15197>}}.
 
 ## Further reading
 

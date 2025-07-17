@@ -77,12 +77,8 @@ public class SupportBundleController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
-        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT)),
-    @RequiredPermissionOnResource(
-        requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.DEBUG),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
   public Result create(UUID customerUUID, UUID universeUUID, Http.Request request) {
     JsonNode requestBody = request.body().asJson();

@@ -183,6 +183,7 @@ public final class YBBackupUtil {
         "--bucket=" + bucket,
         "--cloud_dir=yugabyte",
         "--cloud_type=nfs",
+        "--revert_to_pre_roles_behaviour=true",
         "--ns_type=" + ns_type,
         "--ns=" + ns,
         "--tserver_ip=" + ybControllerHostAndPort.getHost(),

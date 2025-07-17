@@ -114,11 +114,6 @@ struct FollowerWatermark {
 class PeerMessageQueue {
  public:
   struct TrackedPeer {
-    explicit TrackedPeer(const std::string& uuid)
-        : uuid(uuid),
-          last_known_committed_idx(OpId::Min().index),
-          last_successful_communication_time(MonoTime::Now()) {}
-
     explicit TrackedPeer(const RaftPeerPB& raft_peer_pb)
         : uuid(raft_peer_pb.permanent_uuid()),
           last_known_committed_idx(OpId::Min().index),
@@ -247,9 +242,6 @@ class PeerMessageQueue {
   // advance the majority replicated index or notify observers of its advancement.
   virtual void SetNonLeaderMode();
 
-  // Makes the queue track this peer.
-  virtual void TrackPeer(const std::string& peer_uuid);
-
   virtual void TrackPeer(const RaftPeerPB& raft_peer_pb);
 
   // Makes the queue untrack this peer.
@@ -370,7 +362,12 @@ class PeerMessageQueue {
 
   OpId PeerLastReceivedOpId(const TabletServerId& uuid) const;
 
-  std::string GetUpToDatePeer() const;
+  // Choose an up-to-date peer for leader elections that do not specify a new_leader_uuid. Any VOTER
+  // would be valid, but we pick from those with the highest op id to minimize how long the leader
+  // has to wait for it to catch up to its log, which it should do before triggering an election.
+  // Incidentally, this also avoids picking a peer that is unable to keep up with replication for
+  // any reason.
+  std::string FindBestNewLeader() const;
 
   struct Metrics {
     // Keeps track of the number of ops. that are completed by a majority but still need
@@ -546,8 +543,6 @@ class PeerMessageQueue {
   // Does the setup work required after adding a new tracked peer.
   TrackedPeer* SetupNewTrackedPeerUnlocked(
       std::unique_ptr<PeerMessageQueue::TrackedPeer> tracked_peer) REQUIRES(queue_lock_);
-
-  TrackedPeer* TrackPeerUnlocked(const std::string& uuid) REQUIRES(queue_lock_);
 
   TrackedPeer* TrackPeerUnlocked(const RaftPeerPB& raft_peer_pb) REQUIRES(queue_lock_);
 

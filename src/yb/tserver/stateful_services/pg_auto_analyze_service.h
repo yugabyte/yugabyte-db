@@ -15,6 +15,7 @@
 
 #include <map>
 
+#include "yb/common/pg_types.h"
 #include "yb/tserver/pg_mutation_counter.h"
 #include "yb/tserver/stateful_services/pg_auto_analyze_service.service.h"
 #include "yb/tserver/stateful_services/stateful_service_base.h"
@@ -69,6 +70,8 @@ class PgAutoAnalyzeService : public StatefulRpcServiceBase<PgAutoAnalyzeServiceI
       const NamespaceId& namespace_id,
       std::unordered_set<NamespaceId>& deleted_databases,
       bool* is_deleted_or_renamed);
+  Result<bool> DoFetchReltuples(
+      pgwrapper::PGConn& conn, TableId table_id, PgOid oid, bool use_relfilenode);
   std::string TableNamesForAnalyzeCmd(const std::vector<TableId>& table_ids);
 
   STATEFUL_SERVICE_IMPL_METHODS(IncreaseMutationCounters);

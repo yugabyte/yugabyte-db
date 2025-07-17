@@ -1950,7 +1950,7 @@ RangeVarCallbackForDropRelation(const RangeVar *rel, Oid relOid, Oid oldRelOid,
  * are truncated and reindexed.
  */
 void
-ExecuteTruncate(TruncateStmt *stmt, bool yb_is_top_level)
+ExecuteTruncate(TruncateStmt *stmt, bool yb_is_top_level, List **yb_relids)
 {
 	List	   *rels = NIL;
 	List	   *relids = NIL;
@@ -2051,6 +2051,10 @@ ExecuteTruncate(TruncateStmt *stmt, bool yb_is_top_level)
 	ExecuteTruncateGuts(rels, relids, relids_logged,
 						stmt->behavior, stmt->restart_seqs, yb_is_top_level);
 
+
+	if (IsYugaByteEnabled() && yb_relids != NULL)
+		*yb_relids = relids;
+
 	/* And close the rels */
 	foreach(cell, rels)
 	{
@@ -2089,6 +2093,13 @@ ExecuteTruncateGuts(List *explicit_rels,
 	SubTransactionId mySubid;
 	ListCell   *cell;
 	Oid		   *logrelids;
+
+	/*
+	 * DDL replicated on xCluster target. The change to the sequence value is already
+	 * replicated to the sequence_data table
+	 */
+	if (yb_xcluster_automatic_mode_target_ddl)
+		restart_seqs = false;
 
 	/*
 	 * Check the explicitly-specified relations.
@@ -2150,7 +2161,7 @@ ExecuteTruncateGuts(List *explicit_rels,
 	 * check early and report error if necessary.
 	 */
 	if (IsYugaByteEnabled() &&
-		*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled &&
+		YBIsDdlTransactionBlockEnabled() &&
 		IsInTransactionBlock(yb_is_top_level))
 	{
 		foreach(cell, rels)
@@ -4901,7 +4912,7 @@ ATController(AlterTableStmt *parsetree,
 		 * enabled, then the invalidation will be taken care of during the Abort
 		 * of the transaction.
 		 */
-		if (!*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled)
+		if (!YBIsDdlTransactionBlockEnabled())
 			YbInvalidateTableCacheForAlteredTables();
 		PG_RE_THROW();
 	}
@@ -4938,7 +4949,7 @@ ATController(AlterTableStmt *parsetree,
 		 * enabled, then the invalidation will be taken care of during the Abort
 		 * of the transaction.
 		 */
-		if (!*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled)
+		if (!YBIsDdlTransactionBlockEnabled())
 			YbInvalidateTableCacheForAlteredTables();
 		PG_RE_THROW();
 	}
@@ -6774,7 +6785,7 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 			}
 
 			/* Write the tuple out to the new relation */
-			if (newrel && !yb_skip_data_insert_for_xcluster_target)
+			if (newrel && !yb_xcluster_automatic_mode_target_ddl)
 			{
 				if (IsYBRelation(newrel))
 					YBCExecuteInsert(newrel,
@@ -9371,8 +9382,9 @@ ATExecDropColumn(List **wqueue, AlteredTableInfo *yb_tab, Relation rel,
 				 */
 				if (childatt->attinhcount == 1 && !childatt->attislocal)
 				{
+					AlteredTableInfo *yb_childtab = ATGetQueueEntry(wqueue, childrel);
 					/* Time to delete this child column, too */
-					ATExecDropColumn(wqueue, yb_tab, childrel, colName,
+					ATExecDropColumn(wqueue, yb_childtab, childrel, colName,
 									 behavior, true, true,
 									 false, lockmode, addrs);
 				}
@@ -9634,11 +9646,26 @@ ATExecAddIndexConstraint(AlteredTableInfo *tab, Relation rel,
 		elog(ERROR, "index \"%s\" is not unique", indexName);
 
 	/*
+	 * YB note: initdb adds unique/primary key constraint on catalog relations
+	 * using ALTER TABLE ... ADD PRIMARY KEY/UNIQUE USING INDEX.
+	 *
+	 * The index referenced by ADD PRIMARY KEY USING INDEX is already primary
+	 * index in YB due to YB-specific customization (see yb_genbki.pl). But
+	 * since initdb doesn't create the corresponding constraint objects, we
+	 * still want to execute this ALTER TABLE. However, a table
+	 * rewrite/index_check_primary_key() is not required.
+	 */
+	bool		yb_skip_pk_rewrite = stmt->primary && YBCIsInitDbModeEnvVarSet() &&
+		indexRel->rd_index->indisprimary;
+
+	/* yb_skip_pk_rewrite can only be true for catalog relations. */
+	Assert(!yb_skip_pk_rewrite || YbIsSysCatalogTabletRelation(rel));
+	/*
 	 * YB: Adding a primary key requires table rewrite.
 	 * We do not need to rewrite any children as this operation is not supported
 	 * on partitioned tables (checked above).
 	 */
-	if (IsYBRelation(rel) && stmt->primary)
+	if (IsYBRelation(rel) && stmt->primary && !yb_skip_pk_rewrite)
 	{
 		YbGetTableProperties(rel);
 		/* Don't copy split options if we are creating a range key. */
@@ -9679,7 +9706,7 @@ ATExecAddIndexConstraint(AlteredTableInfo *tab, Relation rel,
 	}
 
 	/* Extra checks needed if making primary key */
-	if (stmt->primary)
+	if (stmt->primary && !yb_skip_pk_rewrite)
 		index_check_primary_key(rel, indexInfo, true, stmt);
 
 	/* Note we currently don't support EXCLUSION constraints here */
@@ -20098,11 +20125,17 @@ ATExecDetachPartition(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		table_close(rel, NoLock);
 		tab->rel = NULL;
 
-		/* Make updated catalog entry visible */
-		PopActiveSnapshot();
-		CommitTransactionCommand();
+		/* commit the transaction and start new txn with the same ddl state. */
+		if (IsYugaByteEnabled())
+			YbCommitTransactionCommandIntermediate();
+		else
+		{
+			/* Make updated catalog entry visible */
+			PopActiveSnapshot();
+			CommitTransactionCommand();
 
-		StartTransactionCommand();
+			StartTransactionCommand();
+		}
 
 		/*
 		 * Now wait.  This ensures that all queries that were planned

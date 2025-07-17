@@ -3768,23 +3768,23 @@ InternalIterator* VersionSet::MakeInputIterator(Compaction* c) {
           }
           RecordTick(cfd->ioptions()->statistics, COMPACTION_FILES_NOT_FILTERED);
           list[num++] = cfd->table_cache()->NewIterator(
-              read_options, env_options_compactions_,
-              cfd->internal_comparator(), flevel->files[i].fd,
-              flevel->files[i].user_filter_data,
-              nullptr, nullptr /* no per level latency histogram*/,
-              true /* for compaction */);
+              read_options, env_options_compactions_, cfd->internal_comparator(),
+              flevel->files[i].fd, flevel->files[i].user_filter_data,
+              /* table_reader_ptr = */ nullptr,
+              /* file_read_hist = */ nullptr /* no per level latency histogram */,
+              /* for compaction = */ true, /* arena = */ nullptr,
+              /* skip_filters = */ false, c->skip_corrupt_data_blocks_unsafe());
         }
       } else {
         // Create concatenating iterator for the files from this level
         list[num++] = NewTwoLevelIterator(
             new LevelFileIteratorState(
-                cfd->table_cache(), read_options, env_options_,
-                cfd->internal_comparator(),
-                nullptr /* no per level latency histogram */,
-                true /* for_compaction */, false /* prefix enabled */,
-                false /* skip_filters */),
-            new LevelFileNumIterator(*cfd->internal_comparator(),
-                                     c->input_levels(which)));
+                cfd->table_cache(), read_options, env_options_, cfd->internal_comparator(),
+                nullptr /* no per level latency histogram */, true /* for_compaction */,
+                false /* prefix enabled */, false /* skip_filters */),
+            new LevelFileNumIterator(*cfd->internal_comparator(), c->input_levels(which)),
+            /* arena = */ nullptr, /* need_free_iter_and_state = */ true,
+            c->skip_corrupt_data_blocks_unsafe());
       }
     }
   }

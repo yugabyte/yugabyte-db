@@ -1,3 +1,6 @@
+--
+-- test yb_enable_cbo and legacy counterpart value sync
+--
 reset yb_enable_cbo;
 reset yb_enable_base_scans_cost_model;
 reset yb_enable_optimizer_statistics;
@@ -277,3 +280,78 @@ show yb_enable_cbo;
 set yb_enable_cbo = oui;
 ERROR:  invalid value for parameter "yb_enable_cbo": "oui"
 HINT:  Available values: off, on, legacy_mode, legacy_stats_mode.
+--
+-- test GUC_EXPLAIN flag
+--
+reset all;
+explain (settings, costs off)
+select * from pg_class;
+      QUERY PLAN      
+----------------------
+ Seq Scan on pg_class
+(1 row)
+
+set yb_enable_cbo = on;
+explain (settings, costs off)
+select * from pg_class;
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Seq Scan on pg_class
+ Settings: yb_enable_base_scans_cost_model = 'on', yb_enable_cbo = 'on'
+(2 rows)
+
+set yb_enable_cbo = legacy_stats_mode;
+explain (settings, costs off)
+select * from pg_class;
+                                      QUERY PLAN                                      
+--------------------------------------------------------------------------------------
+ Seq Scan on pg_class
+ Settings: yb_enable_cbo = 'legacy_stats_mode', yb_enable_optimizer_statistics = 'on'
+(2 rows)
+
+set yb_bnl_optimize_first_batch = off;
+set yb_prefer_bnl = off;
+set yb_enable_batchednl = off;
+set yb_enable_geolocation_costing = off;
+set yb_pushdown_strict_inequality = off;
+set yb_pushdown_is_not_null = off;
+set yb_enable_distinct_pushdown = off;
+set yb_bypass_cond_recheck = off;
+set yb_enable_parallel_append = on;
+set yb_enable_bitmapscan = on;
+set yb_enable_base_scans_cost_model = on;
+set yb_enable_optimizer_statistics = on;
+set yb_bnl_batch_size = 1;
+set yb_fetch_row_limit = 0;
+set yb_fetch_size_limit = '4GB';
+ERROR:  invalid value for parameter "yb_fetch_size_limit": "4GB"
+HINT:  Value exceeds integer range.
+set yb_parallel_range_rows = 10;
+set yb_parallel_range_size = '1kB';
+set yb_network_fetch_cost = 100;
+explain (settings, costs off)
+select * from pg_class;
+                                                                                                                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                                                                                                                         
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Seq Scan on pg_class
+ Settings: yb_bnl_batch_size = '1', yb_bnl_optimize_first_batch = 'off', yb_bypass_cond_recheck = 'off', yb_enable_base_scans_cost_model = 'on', yb_enable_batchednl = 'off', yb_enable_bitmapscan = 'on', yb_enable_cbo = 'legacy_stats_mode', yb_enable_distinct_pushdown = 'off', yb_enable_geolocation_costing = 'off', yb_enable_optimizer_statistics = 'on', yb_enable_parallel_append = 'on', yb_fetch_row_limit = '0', yb_network_fetch_cost = '100', yb_parallel_range_rows = '10', yb_parallel_range_size = '1kB', yb_prefer_bnl = 'off', yb_pushdown_is_not_null = 'off', yb_pushdown_strict_inequality = 'off'
+(2 rows)
+
+-- reset all then try a few yb_ parameters that won't affect plans
+reset all;
+explain (settings, costs off)
+select * from pg_class;
+      QUERY PLAN      
+----------------------
+ Seq Scan on pg_class
+(1 row)
+
+set yb_enable_memory_tracking = off;
+set yb_enable_planner_trace = on;
+explain (settings, costs off)
+select * from pg_class;
+      QUERY PLAN      
+----------------------
+ Seq Scan on pg_class
+(1 row)
+

@@ -55,7 +55,7 @@ extern void AlterRelationNamespaceInternal(Relation classRel, Oid relOid,
 
 extern void CheckTableNotInUse(Relation rel, const char *stmt);
 
-extern void ExecuteTruncate(TruncateStmt *stmt, bool yb_is_top_level);
+extern void ExecuteTruncate(TruncateStmt *stmt, bool yb_is_top_level, List **yb_relids);
 extern void ExecuteTruncateGuts(List *explicit_rels,
 								List *relids,
 								List *relids_logged,

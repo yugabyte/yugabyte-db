@@ -27,7 +27,7 @@
   {{ $startNow = .Site.Menus.start_now }}
 {{- end -}}
 
-<nav id="nav_bar" class="js-navbar-scroll navbar navbar-expand navbar-dark flex-column td-navbar">
+<nav id="nav_bar" class="js-navbar-scroll navbar navbar-expand navbar-dark flex-column td-navbar"{{- if (and .File .File.Path) }} data-file="{{ .File.Path }}"{{ end -}}>
   <div class="container-fluid top-nav">
     {{- if .Site.Params.ui.navbar_logo -}}
       {{- if .Site.Params.yb.navbar_logo.url -}}
@@ -48,7 +48,7 @@
 		</div>
 
     {{- if .Site.Params.kapa_ai -}}
-      <div class="ask-ai-top">OR <span class="tritiery-btn" title="Ask AI"><span>Ask AI</span><img width="18" height="18" src="/icons/pixi-dust.svg" alt="Ask AI"></span></div>
+      <div class="ask-ai-top">OR <span class="tritiery-btn" title="Ask AI"><span>Ask AI</span><img width="24" height="24" src="/icons/ai-icon.svg" alt="Ask AI"></span></div>
     {{- end -}}
 
     <div class="td-navbar-nav-scroll ms-md-auto" id="main_navbar">

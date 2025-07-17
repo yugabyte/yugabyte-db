@@ -569,8 +569,8 @@ TEST_F(CDCSDKConsistentStreamTest,
       0,
       0,
       0,
-      8 * num_batches + 4 * num_batches * inserts_per_batch,
-      8 * num_batches + 4 * num_batches * inserts_per_batch,
+      4 * num_batches + 2 * num_batches * inserts_per_batch,
+      4 * num_batches + 2 * num_batches * inserts_per_batch,
   };
   int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
 
@@ -585,7 +585,7 @@ TEST_F(CDCSDKConsistentStreamTest,
   for (int i = 0; i < 8; i++) {
     ASSERT_EQ(expected_count[i], count[i]);
   }
-  ASSERT_EQ(30802, get_changes_resp.records.size());
+  ASSERT_EQ(20402, get_changes_resp.records.size());
 }
 
 void CDCSDKConsistentStreamTest::TestCDCSDKConsistentStreamWithTabletSplit(
@@ -1265,7 +1265,7 @@ TEST_F(CDCSDKConsistentStreamTest, TestGetChangesDuringLoadTxn) {
 
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
-        auto tablet_safe = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
+        auto tablet_safe = VERIFY_RESULT(tablet_peer->shared_tablet());
         return tablet_safe->GetMinStartHTRunningTxnsForCDCProducer() == HybridTime::kMax;
       },
       MonoDelta::FromSeconds(60), "Timed out waiting for the commit of running txn."));

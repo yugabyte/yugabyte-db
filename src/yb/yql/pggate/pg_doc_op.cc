@@ -19,8 +19,12 @@
 
 #include "yb/ash/wait_state.h"
 
+#include "yb/client/yb_op.h"
+
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/row_mark.h"
+
+#include "yb/dockv/doc_key.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/escaping.h"
@@ -38,6 +42,9 @@
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/util/pg_doc_data.h"
 #include "yb/yql/pggate/util/ybc_util.h"
+
+DECLARE_uint64(rpc_max_message_size);
+DECLARE_double(max_buffer_size_to_rpc_limit_ratio);
 
 namespace yb::pggate {
 namespace {
@@ -372,12 +379,34 @@ Status PgDocOp::SendRequestImpl(ForceNonBufferable force_non_bufferable) {
   // Populate collected information into protobuf requests before sending to DocDB.
   RETURN_NOT_OK(CreateRequests());
 
-  // Send at most "parallelism_level_" number of requests at one time.
-  size_t send_count = std::min(parallelism_level_, active_op_count_);
-  VLOG(1) << "Number of operations to send: " << send_count;
-  response_ = VERIFY_RESULT(sender_(
-      pg_session_.get(), pgsql_ops_.data(), send_count, *table_,
-      HybridTime::FromPB(GetInTxnLimitHt()), force_non_bufferable, IsForWritePgDoc(IsWrite())));
+  if (active_op_count_ > 0) {
+    // Send at most "parallelism_level_" number of requests at one time.
+    size_t send_count = std::min(parallelism_level_, active_op_count_);
+
+    uint64_t max_size = FLAGS_rpc_max_message_size * FLAGS_max_buffer_size_to_rpc_limit_ratio
+                        / send_count;
+
+    for (const auto& op : pgsql_ops_) {
+      if (op->is_active() && op->is_read()) {
+        auto& read_op = down_cast<PgsqlReadOp&>(*op);
+        auto req_size_limit = read_op.read_request().size_limit();
+        if (req_size_limit > 0) {
+          VLOG(2) << "Capping read op at size limit: " << max_size
+                  << " (from " << req_size_limit << ")";
+        }
+
+        // Cap the size limit if the size limit is unset or exceeds the maximum size.
+        if (req_size_limit > max_size || req_size_limit == 0) {
+              read_op.read_request().set_size_limit(max_size);
+        }
+      }
+    }
+
+    VLOG(1) << "Number of operations to send: " << send_count;
+    response_ = VERIFY_RESULT(sender_(
+        pg_session_.get(), pgsql_ops_.data(), send_count, *table_,
+        HybridTime::FromPB(GetInTxnLimitHt()), force_non_bufferable, IsForWritePgDoc(IsWrite())));
+  }
   return Status::OK();
 }
 
@@ -389,7 +418,6 @@ void PgDocOp::RecordRequestMetrics() {
       continue;
     }
     const auto& response_metrics = response->metrics();
-    metrics.RecordRequestMetrics(response_metrics);
 
     // Record the number of DocDB rows read.
     // Index Scans on secondary indexes in colocated tables need special handling: the target
@@ -490,6 +518,7 @@ Result<std::list<PgDocResult>> PgDocOp::ProcessCallResponse(const rpc::CallRespo
 
     auto rows_data = VERIFY_RESULT(response.GetSidecarHolder(op_response->rows_data_sidecar()));
     result.emplace_back(std::move(rows_data), BuildRowOrders(*op_response, batch_row_orders_, *op));
+    VLOG(3) << "From " << op->ToString() << " PgDocResult row count: " << result.back().row_count();
   }
 
   return result;
@@ -557,6 +586,10 @@ Status PgDocReadOp::ExecuteInit(const YbcPgExecParameters* exec_params) {
       pgsql_ops_.empty() || !exec_params,
       IllegalState, "Exec params can't be changed for already created operations");
   RETURN_NOT_OK(PgDocOp::ExecuteInit(exec_params));
+  if (!VERIFY_RESULT(SetScanBounds())) {
+    end_of_data_ = true;
+    return Status::OK();
+  }
 
   read_op_->read_request().set_return_paging_state(true);
   RETURN_NOT_OK(SetRequestPrefetchLimit());
@@ -566,18 +599,34 @@ Status PgDocReadOp::ExecuteInit(const YbcPgExecParameters* exec_params) {
   return Status::OK();
 }
 
+Result<bool> PgDocReadOp::SetScanBounds() {
+  if (table_->schema().num_hash_key_columns() > 0) {
+    // TODO: figure out if we can clarify bounds of a hash table scan
+    return true;
+  }
+  std::vector<dockv::KeyEntryValue> lower_range_components, upper_range_components;
+  auto& request = read_op_->read_request();
+  RETURN_NOT_OK(client::GetRangePartitionBounds(
+      table_->schema(), request, &lower_range_components, &upper_range_components));
+  if (lower_range_components.empty() && upper_range_components.empty()) {
+    return true;
+  }
+  auto lower_bound = dockv::DocKey(
+      table_->schema(), std::move(lower_range_components)).Encode().ToStringBuffer();
+  auto upper_bound = dockv::DocKey(
+      table_->schema(), std::move(upper_range_components)).Encode().ToStringBuffer();
+  VLOG_WITH_FUNC(2) << "Lower bound: " << Slice(lower_bound).ToDebugHexString()
+                    << ", upper bound: " << Slice(upper_bound).ToDebugHexString();
+  return table_->SetScanBoundary(&request, lower_bound, true, upper_bound, false);
+}
+
 bool CouldBeExecutedInParallel(const LWPgsqlReadRequestPB& req) {
   if (req.index_request().has_vector_idx_options()) {
     // Executed in parallel on PgClient
     return false;
   }
-  if (req.is_aggregate()) {
-    return true;
-  }
-  if (!req.has_is_forward_scan() && !req.where_clauses().empty()) {
-    return true;
-  }
-  return false;
+  // At this time ordered scan requires tablet scan order, so they have to be done sequentially
+  return !req.has_is_forward_scan();
 }
 
 Result<bool> PgDocReadOp::DoCreateRequests() {

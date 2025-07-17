@@ -45,9 +45,8 @@ typedef struct YbExplainExecStats
 	double		write_count;
 	double		catalog_write_count;
 
-	double		storage_gauge_metrics[YB_STORAGE_GAUGE_COUNT];
-	double		storage_counter_metrics[YB_STORAGE_COUNTER_COUNT];
-	YbPgEventMetric storage_event_metrics[YB_STORAGE_EVENT_COUNT];
+	YbcPgExecStorageMetrics *read_metrics;
+	YbcPgExecStorageMetrics *write_metrics;
 } YbExplainExecStats;
 
 typedef struct ExplainState

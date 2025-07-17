@@ -197,7 +197,7 @@ Single- and three-node clusters deployed in a single availability zone (AZ) will
 
 {{< tip title="Rate card" >}}
 
-$.01/GB
+$0.01/GB
 
 {{< /tip >}}
 
@@ -223,7 +223,7 @@ This accounts for all of the traffic coming out of the cluster to the internet. 
 
 {{< tip title="Rate card" >}}
 
-$.10/GB
+$0.10/GB
 
 {{< /tip >}}
 

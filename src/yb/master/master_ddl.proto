@@ -460,7 +460,7 @@ message AlterTableRequestPB {
   required TableIdentifierPB table = 1;
   repeated Step alter_schema_steps = 2;
   optional string new_table_name = 3;
-  optional NamespaceIdentifierPB new_namespace = 4;
+  reserved 4; // Deprecated new_namespace
   optional TablePropertiesPB alter_properties = 5;
   optional uint32 wal_retention_secs = 6;
 

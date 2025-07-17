@@ -153,6 +153,7 @@ static char* pg_cron_cmdTuples(char *msg);
 static void bgw_generate_returned_message(StringInfoData *display_msg, ErrorData edata);
 
 static long YbSecondsPassed(TimestampTz startTime, TimestampTz stopTime);
+static bool YbIsCronLeader();
 static void YbCheckLeadership(List *taskList, TimestampTz currentTime);
 static TimestampTz YbGetLastPersistedMinute(TimestampTz currentTime);
 static void YbPersistLastMinute();
@@ -177,6 +178,7 @@ static bool UseBackgroundWorkers = true;
 
 static int YbJobListRefreshSeconds = 60;
 static TimestampTz YbLastMinuteToPersist = 0;
+static bool YbEnableOnXClusterTarget = false;
 
 char  *cron_timezone = NULL;
 
@@ -354,6 +356,16 @@ _PG_init(void)
 		60,
 		1,
 		INT_MAX,
+		PGC_SUSET,
+		GUC_UNIT_S,
+		NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		"cron.yb_enable_on_xcluster_target",
+		gettext_noop("Run cron jobs on an xCluster automatic mode target universe."),
+		NULL,
+		&YbEnableOnXClusterTarget,
+		false,
 		PGC_SUSET,
 		GUC_UNIT_S,
 		NULL, NULL, NULL);
@@ -2490,13 +2502,37 @@ YbSecondsPassed(TimestampTz startTime, TimestampTz stopTime)
 	return secondsPassed;
 }
 
+static bool
+YbIsCronLeader()
+{
+	if (!YBCIsCronLeader())
+		return false;
+
+	if (YbEnableOnXClusterTarget)
+		return true;
+
+	int xcluster_role = YBCGetXClusterRole(MyDatabaseId);
+	if (xcluster_role == XCLUSTER_ROLE_UNSPECIFIED ||
+		xcluster_role == XCLUSTER_ROLE_UNAVAILABLE)
+	{
+		/*
+		 * If we do not know the role, then assume we are an xCluster target.
+		 */
+		ereport(DEBUG1, (errmsg("pg_cron switching to non-leader mode since xcluster role is "
+								"unspecified or unavailable")));
+		return false;
+	}
+
+	return xcluster_role != XCLUSTER_ROLE_AUTOMATIC_TARGET;
+}
+
 static void
 YbCheckLeadership(List *taskList, TimestampTz currentTime)
 {
 	if (!IsYugaByteEnabled())
 		return;
 
-	if (YBCIsCronLeader())
+	if (YbIsCronLeader())
 	{
 		if (!ybIsLeader)
 		{

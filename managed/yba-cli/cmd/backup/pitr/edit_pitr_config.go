@@ -15,7 +15,7 @@ var editPITRCmd = &cobra.Command{
 	Short:   "Edit the existing PITR configuration for the universe",
 	Long:    "Edit Point-In-Time Recovery (PITR) configuration for the universe",
 	Example: `yba backup pitr edit --universe-name <universe-name> --uuid <pitr-uuid> \
-	--retention-period <retention-period>`,
+	--retention-in-secs <retention-in-secs>`,
 	Run: func(cmd *cobra.Command, args []string) {
 		universeName := util.MustGetFlagString(cmd, "universe-name")
 		pitrUUID := util.MustGetFlagString(cmd, "uuid")

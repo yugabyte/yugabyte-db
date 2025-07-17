@@ -94,6 +94,8 @@ message TabletSnapshotOpRequestPB {
   // before it is deleted. Set only for CREATE_ON_MASTER for non-pitr use-cases.
   // Set to -1 to retain indefinitely until an explicit delete_snapshot.
   int32 retention_duration_hours = 20;
+
+  AshMetadataPB ash_metadata = 21;
 }
 
 message TabletSnapshotOpResponsePB {

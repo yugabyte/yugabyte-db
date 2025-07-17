@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include <ranges>
+
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -18,6 +20,8 @@
 #include "yb/util/test_thread_holder.h"
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
+
+DECLARE_bool(vector_index_disable_compactions);
 
 using namespace std::literals;
 
@@ -27,6 +31,11 @@ constexpr auto kBackfillSleepSec = 10 * kTimeMultiplier;
 
 class PgVectorIndexITest : public LibPqTestBase {
  public:
+  void SetUp() override {
+    FLAGS_vector_index_disable_compactions = false;
+    LibPqTestBase::SetUp();
+  }
+
   Result<PGConn> ConnectAndInit(std::optional<int> num_tablets = std::nullopt) {
     auto conn = VERIFY_RESULT(Connect());
     RETURN_NOT_OK(conn.Execute("CREATE EXTENSION vector"));
@@ -252,6 +261,17 @@ TEST_F_EX(PgVectorIndexITest, CrashAfterRBSDownload, PgVectorIndexRBSITest) {
     return lagging_tablets.status_and_schema()[0].tablet_status().last_op_id().index() >=
            good_tablets.status_and_schema()[0].tablet_status().last_op_id().index();
   }, 5s, "Wait lagging TS to catch up"));
+}
+
+TEST_F(PgVectorIndexITest, Truncate) {
+  constexpr size_t kNumIterations = 25;
+
+  auto conn = ASSERT_RESULT(ConnectAndInit());
+  ASSERT_OK(CreateIndex(conn));
+  for (size_t i = 1; i <= kNumIterations; ++i) {
+    LOG(INFO) << "Iteration: " << i;
+    ASSERT_OK(conn.Execute("TRUNCATE test"));
+  }
 }
 
 } // namespace yb::pgwrapper

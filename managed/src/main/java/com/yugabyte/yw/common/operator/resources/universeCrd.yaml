@@ -1309,6 +1309,7 @@ spec:
                               type: string
                   serviceEndpoints:
                     items:
+                      x-kubernetes-preserve-unknown-fields: true
                       properties:
                         name:
                           type: string

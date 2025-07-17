@@ -12,9 +12,9 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) SELECT * FROM pkey_only_table;
                        QUERY PLAN                        
 ---------------------------------------------------------
  Seq Scan on pkey_only_table (actual rows=10240 loops=1)
-   Storage Table Read Requests: 12
+   Storage Table Read Requests: 4
    Storage Table Rows Scanned: 10240
- Storage Read Requests: 12
+ Storage Read Requests: 4
  Storage Rows Scanned: 10240
  Storage Write Requests: 0
  Storage Flush Requests: 0
@@ -497,16 +497,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE number_type_table SET h = h + 1, v1 = 
 -------------------------------------------------------------
  Update on number_type_table (actual rows=0 loops=1)
    ->  Seq Scan on number_type_table (actual rows=2 loops=1)
-         Storage Table Read Requests: 3
+         Storage Table Read Requests: 1
          Storage Table Rows Scanned: 2
          Storage Table Write Requests: 4
          Storage Index Write Requests: 20
-         Storage Flush Requests: 1
- Storage Read Requests: 3
+ Storage Read Requests: 1
  Storage Rows Scanned: 2
  Storage Write Requests: 24
- Storage Flush Requests: 2
-(11 rows)
+ Storage Flush Requests: 1
+(10 rows)
 
 CREATE TYPE mood_type AS ENUM ('sad', 'ok', 'happy');
 DROP TABLE IF EXISTS non_number_type_table;
