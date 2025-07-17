@@ -1769,6 +1769,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Node agent describe polling deadline.",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowCloudVolumeEncryption =
+      new ConfKeyInfo<>(
+          "yb.universe.allow_cloud_volume_encryption",
+          ScopeType.GLOBAL,
+          "Allow Cloud Volume Encryption feature",
+          "Allows enabling the volume encryption feature for new universes. Currently only"
+              + " supported for AWS universes.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> enableYbcBackgroundUpgrade =
       new ConfKeyInfo<>(
           "ybc.upgrade.enable_background_upgrade",

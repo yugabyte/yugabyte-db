@@ -5753,6 +5753,21 @@
       },
       "type" : "object"
     },
+    "CloudVolumeEncryption" : {
+      "description" : "Volume encryption settings for AWS EBS volumes",
+      "properties" : {
+        "enableVolumeEncryption" : {
+          "description" : "To enable volume encryption or not",
+          "type" : "boolean"
+        },
+        "kmsConfigUUID" : {
+          "description" : "KMS config UUID to be used for volume encryption",
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
     "Cluster" : {
       "properties" : {
         "clusterType" : {
@@ -7185,6 +7200,10 @@
     "DeviceInfo" : {
       "description" : "Device information",
       "properties" : {
+        "cloudVolumeEncryption" : {
+          "$ref" : "#/definitions/CloudVolumeEncryption",
+          "description" : "Volume encryption settings for AWS EBS volumes"
+        },
         "diskIops" : {
           "description" : "Desired IOPS for the volumes mounted on this instance",
           "format" : "int32",
@@ -26268,9 +26287,6 @@
           "type" : "boolean"
         },
         "enableNodeToNodeEncrypt" : {
-          "type" : "boolean"
-        },
-        "enableVolumeEncryption" : {
           "type" : "boolean"
         },
         "enableYCQL" : {
