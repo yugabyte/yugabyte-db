@@ -89,6 +89,15 @@ To connect to the YSQL Connection Manager, use the [ysqlsh](../../../api/ysqlsh/
 
 Using the socket directory along with [`-p`](../../../api/ysqlsh/#p-port-port-port) (custom PostgreSQL port or default 6433) will connect you to the PostgreSQL process, not the YSQL connection manager process.
 
+### YugabyteDB Aeon
+
+{{<tags/feature/ea idea="1368">}}To enable built-in connection pooling for clusters deployed using YugabyteDB Aeon:
+
+- Turn on the **Connection Pooling** option when [creating a cluster](../../../yugabyte-cloud/cloud-basics/create-clusters/). Connection Pooling is always enabled for Sandbox clusters.
+- Edit connection pooling on the cluster **Settings>Connection Pooling** tab.
+
+Enabling connection pooling on an Aeon cluster gives 10 client connections for every server connection.
+
 ## Configuration
 
 By default, when YSQL Connection Manager is enabled, it uses the port 5433, and the backend database is assigned a random free port.
