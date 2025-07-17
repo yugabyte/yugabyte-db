@@ -54,6 +54,7 @@ yugabyte=# \d yb_local_tablets
  table_name          | text  |           |          |
  partition_key_start | bytea |           |          |
  partition_key_end   | bytea |           |          |
+ state               | text  |           |          |
 ```
 
 ### Get basic information
