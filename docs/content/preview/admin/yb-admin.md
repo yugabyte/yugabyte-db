@@ -496,7 +496,7 @@ yb-admin \
 * *db-type*: The type of database. Valid values include `ysql` and `ycql`.
 * *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
 * *table*: The name of the table to show the compaction status.
-* **show_tablets**: Show the compactions status of individual tablets.
+* `show_tablets`: Show the compactions status of individual tablets.
 
 **Example**
 
