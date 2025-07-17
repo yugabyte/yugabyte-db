@@ -1306,9 +1306,9 @@ This behaviour may be unexpected, but it is still safe. Only the schema definiti
 
 ### Setting up permissions
 
-Setting up a YugabyteDB server to run a Debezium connector requires a database user that can perform replications. Replication can be performed only by a database user that has appropriate permissions and only for a configured number of hosts.
+Setting up a YugabyteDB server to run the connector requires a database user that can perform replications. Replication can be performed only by a database user that has appropriate permissions and only for a configured number of hosts.
 
-Although, by default, superusers have the necessary `REPLICATION` and `LOGIN` roles, as mentioned in [Security](#security), it is best not to provide the Debezium replication user with elevated privileges. Instead, create a Debezium user that has the minimum required privileges.
+Although, by default, superusers have the necessary `REPLICATION` and `LOGIN` roles, as mentioned in [Security](#security), it is best not to provide the replication user with elevated privileges. Instead, create a Debezium user that has the minimum required privileges.
 
 **Prerequisites:**
 
