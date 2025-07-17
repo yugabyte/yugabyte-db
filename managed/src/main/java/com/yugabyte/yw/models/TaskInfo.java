@@ -300,6 +300,45 @@ public class TaskInfo extends Model {
   }
 
   @JsonIgnore
+  public synchronized long getQueuedTimeMs() {
+    return details == null ? 0L : details.getQueuedTimeMs();
+  }
+
+  @JsonIgnore
+  public synchronized void setQueuedTimeMs(long queuedTimeMs) {
+    if (details == null) {
+      details = new TaskDetails();
+    }
+    details.setQueuedTimeMs(queuedTimeMs);
+  }
+
+  @JsonIgnore
+  public synchronized long getExecutionTimeMs() {
+    return details == null ? 0L : details.getQueuedTimeMs();
+  }
+
+  @JsonIgnore
+  public synchronized void setExecutionTimeMs(long executionTimeMs) {
+    if (details == null) {
+      details = new TaskDetails();
+    }
+    details.setExecutionTimeMs(executionTimeMs);
+  }
+
+  @JsonIgnore
+  public synchronized long getTotalTimeMs() {
+    return details == null ? 0L : details.getQueuedTimeMs();
+  }
+
+  @JsonIgnore
+  public synchronized void setTotalTimeMs(long totalTimeMs) {
+    if (details == null) {
+      details = new TaskDetails();
+    }
+    details.setTotalTimeMs(totalTimeMs);
+  }
+
+  @JsonIgnore
   public synchronized String getVersion() {
     return details == null ? "" : details.getVersion();
   }

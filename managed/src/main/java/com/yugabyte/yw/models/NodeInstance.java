@@ -230,7 +230,7 @@ public class NodeInstance extends Model {
       exp.where().eq("instance_type_code", instanceTypeCode);
     }
     if (CollectionUtils.isNotEmpty(nodeUuids)) {
-      exp = appendInClause(NodeInstance.find.query().where(), "node_uuid", nodeUuids);
+      exp = appendInClause(exp, "node_uuid", nodeUuids);
     }
     return exp.findList();
   }

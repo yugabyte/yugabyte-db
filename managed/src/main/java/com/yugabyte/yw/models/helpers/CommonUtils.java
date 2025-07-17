@@ -34,7 +34,6 @@ import io.ebean.PagedList;
 import io.ebean.Query;
 import io.ebean.common.BeanList;
 import java.lang.annotation.Annotation;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.time.temporal.TemporalUnit;
@@ -643,12 +642,11 @@ public class CommonUtils {
   }
 
   public static long getDurationSeconds(Date startTime, Date endTime) {
-    return getDurationSeconds(startTime.toInstant(), endTime.toInstant());
+    return getElapsedTime(startTime.toInstant(), endTime.toInstant(), ChronoUnit.SECONDS);
   }
 
-  public static long getDurationSeconds(Instant startTime, Instant endTime) {
-    Duration duration = Duration.between(startTime, endTime);
-    return duration.getSeconds();
+  public static long getElapsedTime(Instant startTime, Instant endTime, TemporalUnit unit) {
+    return unit.between(startTime, endTime);
   }
 
   /**

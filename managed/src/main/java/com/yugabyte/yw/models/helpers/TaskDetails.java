@@ -10,6 +10,9 @@ import lombok.Setter;
 @Setter
 /** Details for {@link com.yugabyte.yw.models.TaskInfo.class} */
 public class TaskDetails {
+  private long queuedTimeMs = -1;
+  private long executionTimeMs = -1;
+  private long totalTimeMs = -1;
   private String version;
   private YBAError error;
   private JsonNode runtimeInfo;
