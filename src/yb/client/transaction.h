@@ -110,6 +110,10 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   Status Init(
       IsolationLevel isolation, const ReadHybridTime& read_time = ReadHybridTime());
 
+  void RestartStartTime();
+
+  void SetStartTimeIfNecessary();
+
   // Allows starting a transaction that reuses an existing read point.
   void InitWithReadPoint(IsolationLevel isolation, ConsistentReadPoint&& read_point);
 

@@ -25,6 +25,8 @@
 #include "yb/util/tsan_util.h"
 #include "yb/yql/pgwrapper/pg_locks_test_base.h"
 
+DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_uint64(refresh_waiter_timeout_ms);
 DECLARE_double(transaction_max_missed_heartbeat_periods);
@@ -915,6 +917,81 @@ TEST_F(PgGetLockStatusTest, TestLockStatusRespHasHostNodeSet) {
   ASSERT_OK(session.conn->CommitTransaction());
   ASSERT_OK(status_future.get());
 }
+
+class PgGetLockStatusTestEnableObjectLocks : public PgGetLockStatusTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    PgGetLockStatusTest::SetUp();
+  }
+};
+
+TEST_F_EX(
+    PgGetLockStatusTest, TestPgLocksFiltersForObjectLocks,
+    PgGetLockStatusTestEnableObjectLocks) {
+  constexpr auto table = "foo";
+  constexpr int kWaitTimeSeconds = 3;
+
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.ExecuteFormat("CREATE TABLE $0(k INT PRIMARY KEY, v INT)", table));
+
+  auto exclusive_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(exclusive_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(exclusive_conn.ExecuteFormat("LOCK TABLE $0 IN ACCESS EXCLUSIVE MODE", table));
+
+  // Wait for 3 seconds to make the transaction older
+  SleepFor(kWaitTimeSeconds * 1s * kTimeMultiplier);
+
+  TestThreadHolder thread_holder;
+  CountDownLatch share_lock_started{1};
+  CountDownLatch test_complete{1};
+  thread_holder.AddThreadFunctor([this, &share_lock_started, &test_complete, table] {
+    auto share_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(share_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    share_lock_started.CountDown();
+    // This will block due to ACCESS EXCLUSIVE lock
+    ASSERT_OK(share_conn.ExecuteFormat("LOCK TABLE $0 IN ACCESS SHARE MODE", table));
+    ASSERT_TRUE(test_complete.WaitFor(30s * kTimeMultiplier));
+  });
+  ASSERT_TRUE(share_lock_started.WaitFor(5s * kTimeMultiplier));
+  // Give some time for the share lock to get queued/blocked
+  SleepFor(1s * kTimeMultiplier);
+
+  const auto pg_locks_query = Format(
+      "SELECT mode FROM pg_locks WHERE relation = '$0'::regclass", table);
+  // 1. Set yb_locks_min_txn_age first to higher than wait time
+  ASSERT_OK(setup_conn.ExecuteFormat("SET yb_locks_min_txn_age='$0s'", kWaitTimeSeconds + 1));
+  auto lock_modes = ASSERT_RESULT(setup_conn.FetchAllAsString(
+      pg_locks_query, /*column_sep = */ "", /*row_sep = */ " "));
+  ASSERT_EQ("AccessExclusiveLock", lock_modes);
+
+  // 2. Set yb_locks_min_txn_age='0s', should see both locks
+  ASSERT_OK(setup_conn.Execute("SET yb_locks_min_txn_age='0s'"));
+  lock_modes = ASSERT_RESULT(setup_conn.FetchAllAsString(
+      pg_locks_query, /*column_sep = */ "", /*row_sep = */ " "));
+  ASSERT_TRUE("AccessExclusiveLock AccessShareLock" == lock_modes ||
+              "AccessShareLock AccessExclusiveLock" == lock_modes);
+
+  // 3. Set yb_locks_max_transactions=1, should only see exclusive lock
+  ASSERT_OK(setup_conn.Execute("SET yb_locks_max_transactions=1"));
+  lock_modes = ASSERT_RESULT(setup_conn.FetchAllAsString(
+      pg_locks_query, /*column_sep = */ "", /*row_sep = */ " "));
+  ASSERT_EQ("AccessExclusiveLock", lock_modes);
+
+  // 4. Set yb_locks_max_transactions=2, should see both locks
+  ASSERT_OK(setup_conn.Execute("SET yb_locks_max_transactions=2"));
+  lock_modes = ASSERT_RESULT(setup_conn.FetchAllAsString(
+      pg_locks_query, /*column_sep = */ "", /*row_sep = */ " "));
+  ASSERT_TRUE("AccessExclusiveLock AccessShareLock" == lock_modes ||
+              "AccessShareLock AccessExclusiveLock" == lock_modes);
+
+  // Clean up
+  ASSERT_OK(exclusive_conn.Execute("COMMIT"));
+  test_complete.CountDown();
+  thread_holder.WaitAndStop(20s * kTimeMultiplier);
+}
+
 class PgGetLockStatusTestRF3 : public PgGetLockStatusTest {
   size_t NumTabletServers() override {
     return 3;

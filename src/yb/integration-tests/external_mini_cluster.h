@@ -625,6 +625,9 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Get a LogWaiter that waits for the given log message across all masters.
   LogWaiter GetMasterLogWaiter(const std::string& log_message) const;
 
+  Result<tserver::GetObjectLockStatusResponsePB> GetObjectLockStatus(
+      const ExternalTabletServer& ts);
+
  protected:
   friend class UpgradeTestBase;
   FRIEND_TEST(MasterFailoverTest, TestKillAnyMaster);

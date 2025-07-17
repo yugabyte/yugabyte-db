@@ -1847,6 +1847,16 @@ Result<tserver::CheckTserverTabletHealthResponsePB> ExternalMiniCluster::GetTabl
   return CheckedResponse(resp);
 }
 
+Result<tserver::GetObjectLockStatusResponsePB> ExternalMiniCluster::GetObjectLockStatus(
+    const ExternalTabletServer& ts) {
+  auto rpc = DefaultRpcController();
+  tserver::GetObjectLockStatusRequestPB req;
+
+  tserver::GetObjectLockStatusResponsePB resp;
+  RETURN_NOT_OK(GetProxy<TabletServerServiceProxy>(&ts).GetObjectLockStatus(req, &resp, &rpc));
+  return CheckedResponse(resp);
+}
+
 Result<tserver::GetSplitKeyResponsePB> ExternalMiniCluster::GetSplitKey(
     const TabletId& tablet_id) {
   size_t attempts = 50;

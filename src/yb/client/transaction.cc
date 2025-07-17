@@ -335,6 +335,16 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     return Status::OK();
   }
 
+  void RestartStartTime() {
+    start_.store(0, std::memory_order_release);
+  }
+
+  void SetStartTimeIfNecessary() {
+    if (!start_) {
+      start_.store(manager_->clock()->Now().GetPhysicalValueMicros(), std::memory_order_release);
+    }
+  }
+
   void InitWithReadPoint(IsolationLevel isolation, ConsistentReadPoint&& read_point) {
     TRACE_TO(trace_, __func__);
     VLOG_WITH_PREFIX(1) << __func__ << "(" << IsolationLevel_Name(isolation) << ", "
@@ -1161,7 +1171,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
     // TODO(wait-queues): Consider using metadata_.pg_txn_start_us here for consistency with
     // wait queues. https://github.com/yugabyte/yugabyte-db/issues/20976
-    start_.store(manager_->clock()->Now().GetPhysicalValueMicros(), std::memory_order_release);
+    SetStartTimeIfNecessary();
   }
 
   void SetReadTimeIfNeeded(bool do_it) {
@@ -2502,6 +2512,14 @@ uint64_t YBTransaction::GetPriority() const {
 
 Status YBTransaction::Init(IsolationLevel isolation, const ReadHybridTime& read_time) {
   return impl_->Init(isolation, read_time);
+}
+
+void YBTransaction::RestartStartTime() {
+  return impl_->RestartStartTime();
+}
+
+void YBTransaction::SetStartTimeIfNecessary() {
+  return impl_->SetStartTimeIfNecessary();
 }
 
 void YBTransaction::InitWithReadPoint(
