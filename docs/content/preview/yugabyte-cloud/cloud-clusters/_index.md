@@ -43,6 +43,7 @@ Cluster infrastructure operations lock the cluster while they are in progress, a
 | Locking Operation | Subtask | Restart |
 | :--- | :--- | :--- |
 | [Backup and restore](backup-clusters/) | | |
+| [Point-in-time reecovery and clone](aeon-pitr/) | | |
 | Pause and resume | | |
 | [Cluster Edit](configure-clusters/) | Add or remove nodes | |
 | [Cluster Edit](configure-clusters/) | Change vCPUs, increase disk size, or change IOPS | Yes |
@@ -90,6 +91,12 @@ If your cluster database version is v2024.1.0 or later, you can enable early acc
     title="Back up clusters"
     body="Perform on-demand backups and restores, and customize the backup policy."
     href="backup-clusters/"
+    icon="/images/section_icons/manage/backup.png">}}
+
+  {{<index/item
+    title="Point-in-time recovery"
+    body="Create a database clone at a point in time for recovery or testing."
+    href="aeon-pitr/"
     icon="/images/section_icons/manage/backup.png">}}
 
   {{<index/item

@@ -20,11 +20,11 @@ The clone a zero-copy, independent writable clone of your database that you can 
 
 - Development and testing. Because the two databases are completely isolated, you can experiment with the cloned database, perform DDL operations, read and write data, and delete the clone without impacting the original or affecting its performance.
 
-You can change the retention period for snapshots. The default is seven days, which gives you a rolling history of seven snapshots (one a day), with the oldest snapshot being deleted automatically as the most recent one is added.
-
-For more information on PITR in YugabyteDB, refer to [Point-in-time recovery](../../../manage/backup-restore/point-in-time-recovery/).
+You can change the retention window for the clone. The default is two days.
 
 For more information on database cloning, refer to [Instant database cloning](../../../manage/backup-restore/instant-db-cloning/).
+
+For more information on PITR in YugabyteDB, refer to [Point-in-time recovery](../../../manage/backup-restore/point-in-time-recovery/).
 
 To configure point in time recovery, and create a clone at a point in time, go to the cluster **Backups** tab and choose **Point in time Recovery**.
 
