@@ -216,14 +216,6 @@ Controls whether YSQL follower reads that specify a not-yet-safe read time shoul
 
 Default: `true`
 
-##### --enable_ysql_operation_lease
-
-Default: `true`
-
-Enables the YSQL lease mechanism.
-
-On YB-Masters, the flag processes YSQL lease refresh requests and on YB-TServers, a new PostgreSQL process is spawned only after establishing a lease with the YB-Master leader. The flag also controls whether the background YB-TServer task makes lease refresh requests.
-
 ##### --master_ysql_operation_lease_ttl_ms
 
 Default: `30000` (30 seconds)
@@ -237,6 +229,8 @@ Increasing the lease TTL has the following implications:
 - Decreases the chances YB-TServers will terminate all hosted PostgreSQL sessions because of YSQL lease expiration.
 - Extends the period during which DDLs remain serviceable after a YB-TServer becomes unavailable (this period is capped by the lease TTL).
 - Increases the time before locks held by crashed YB-TServers are released, which can block DMLs on any table where the  crashed YB-TServer held a lock (this period  is also capped by the lease TTL).
+
+Refer to [YSQL lease mechanism](../../../architecture/transactions/concurrency-control/#ysql-lease-mechanism-for-dml-and-ddl-concurrency) for more details.
 
 ##### --ysql_operation_lease_ttl_client_buffer_ms
 

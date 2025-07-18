@@ -1276,7 +1276,7 @@ The `SKIP LOCKED` clause is supported in both concurrency control policies and p
 
 YugabyteDB employs a robust lease mechanism to ensure data consistency in a distributed environment, particularly during concurrent DML and DDL operations or YB-TServer failures. A YB-TServer must hold a valid lease from the YB-Master leader to serve any YSQL DMLs or DDLs.
 
-You can enable the lease feature using the `--enable_ysql_operation_lease` flag on [YB-Master](../../../reference/configuration/yb-master/#enable-ysql-operation-lease) and [YB-TServer](../../../reference/configuration/yb-master/#enable-ysql-operation-lease). Additional flags you can use are as follows:
+You can enable the lease feature for the YB-TServers using the [--enable_ysql_operation_lease](../../../reference/configuration/yb-master/#enable-ysql-operation-lease) flag. Additional flags you can use are as follows:
 
 **YB-Master**
 
@@ -1288,13 +1288,21 @@ You can enable the lease feature using the `--enable_ysql_operation_lease` flag 
 - [--ysql_lease_refresher_interval_ms](../../../reference/configuration/yb-tserver/#ysql-lease-refresher-interval-ms)
 
 With the YSQL lease feature enabled, a YB-TServer node will only accept PostgreSQL connections after establishing a lease with the YB-Master leader. If a YB-TServer is unable to refresh its lease before it expires, it will terminate all PostgreSQL sessions it hosts.
-When a YB-TServer loses its lease, clients connected to that YB-TServer will encounter specific error messages such as "server closed the connection unexpectedly" or "Object Lock Manager Shutdown".
+When a YB-TServer loses its lease, clients connected to that YB-TServer will encounter the following specific error messages:
+
+```output
+server closed the connection unexpectedly
+```
+
+```output
+Object Lock Manager Shutdown
+```
 
 ### Lease persistence and YB-Master failover
 
 YSQL leases held by YB-TServer are respected by a new YB-Master leader after a failover. When a YB-TServer first acquires a YSQL lease, the YB-Master persists this to the system catalog. If a YB-TServer's lease expires, the entry is removed. After a YB-Master leader failover, the new YB-Master leader treats every YB-TServer with an active YSQL lease entry in its persisted state as having a live lease, with the remaining TTL being the full YSQL lease duration. This design ensures that YB-TServers do not unnecessarily terminate connections during a YB-Master failover, contributing to higher availability.
 
-### Changing the lease TTL
+<!-- ### Changing the lease TTL
 
 The lease TTL, in particular with the `master_ysql_operation_lease_ttl_ms` configuration flag, can be safely increased during runtime. However lowering it during runtime may be unsafe as the lease duration from the YB-Master leader's perspective may be shorter than the lease duration from the YB-TServer's perspective. If the YB-TServer is network partitioned from the YB-Master leader during this time, it may serve DMLs believing it has a live lease while the YB-Master leader serves DDLs believing the YB-TServer has lost its lease.
 
@@ -1309,4 +1317,4 @@ Suppose `X` is the target value for `master_ysql_operation_lease_ttl_ms`.
 
 For example, suppose `master_ysql_operation_lease_ttl_ms` is 30 seconds (30000 ms) and you want to reduce it to 20 seconds (20000 ms). Your `ysql_operation_lease_ttl_client_buffer_ms` is 2 seconds (2000 ms). The steps would be:
 
-1. Set `ysql_operation_lease_ttl_client_buffer_ms` to 12 seconds.
+1. Set `ysql_operation_lease_ttl_client_buffer_ms` to 12 seconds. -->

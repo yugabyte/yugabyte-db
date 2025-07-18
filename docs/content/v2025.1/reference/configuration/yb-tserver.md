@@ -2775,7 +2775,7 @@ Default: `true`
 
 Enables the YSQL lease mechanism.
 
-On YB-Masters, the flag processes YSQL lease refresh requests and on YB-TServers, a new PostgreSQL process is spawned only after establishing a lease with the YB-Master leader. The flag also controls whether the background YB-TServer task makes lease refresh requests.
+On YB-TServers, a new PostgreSQL process is spawned only after establishing a lease with the YB-Master leader. The flag also controls whether the background YB-TServer task makes lease refresh requests.
 
 ##### --ysql_lease_refresher_interval_ms
 
