@@ -1455,7 +1455,7 @@ yb_pgstat_report_wait_start(YBCWaitEventInfo info)
 	YBCWaitEventInfo prev_wait_event_info = info;
 	volatile PGPROC *proc = MyProc;
 
-	if (yb_enable_ash && proc)
+	if (yb_enable_ash)
 	{
 		/*
 		 * Since this is a four-byte field which is always read and written as
