@@ -2307,6 +2307,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
           tableHandler,
           replicationClusterData.sourceTableInfoList,
           replicationClusterData.targetTableInfoList,
+          replicationClusterData.getSourceNamespaceInfoList(),
           replicationClusterData.clusterConfig);
       if (xClusterConfig.getType() == XClusterConfig.ConfigType.Db) {
         addSourceAndTargetDbInfo(
@@ -2847,6 +2848,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       UniverseTableHandler tableHandler,
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList,
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList,
+      @Nullable Set<MasterTypes.NamespaceIdentifierPB> sourceNamespaceInfoList,
       CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig) {
     Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
 
@@ -2861,6 +2863,14 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     Map<String, TableInfoResp> sourceTableIdTableInfoRespMap =
         sourceUniverseTableInfoRespList.stream()
             .collect(Collectors.toMap(TableInfoResp::getTableId, Function.identity()));
+    Map<String, String> keyspaceIdtoKeyspaceNameMap =
+        Objects.nonNull(sourceNamespaceInfoList)
+            ? sourceNamespaceInfoList.stream()
+                .collect(
+                    Collectors.toMap(
+                        namespaceInfo -> namespaceInfo.getId().toStringUtf8(),
+                        namespaceInfo -> namespaceInfo.getName()))
+            : Collections.emptyMap();
 
     // Update tableInfo from source universe
     xClusterConfig
@@ -2870,9 +2880,21 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
               if (tableConfig.getStatus().equals(XClusterTableConfig.Status.ExtraTableOnTarget)) {
                 return;
               }
-              tableConfig.setSourceTableInfo(
+              TableInfoResp tableInfo =
                   sourceTableIdTableInfoRespMap.get(
-                      getTableIdTruncateAfterSequencesData(tableConfig.getTableId())));
+                      getTableIdTruncateAfterSequencesData(tableConfig.getTableId()));
+              // For sequences_data table, we need to set the keyspace and pgSchemaName manually.
+              if (Boolean.TRUE.equals(xClusterConfig.isAutomaticDdlMode())
+                  && Objects.nonNull(tableInfo)
+                  && isSequencesDataTableId(tableConfig.getTableId())) {
+                String databaseId = getDatabaseIdFromSequencesDataTableId(tableConfig.getTableId());
+                tableInfo =
+                    tableInfo.toBuilder()
+                        .keySpace(keyspaceIdtoKeyspaceNameMap.get(databaseId))
+                        .pgSchemaName("_")
+                        .build();
+              }
+              tableConfig.setSourceTableInfo(tableInfo);
             });
 
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
@@ -2897,27 +2919,42 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
         .getTableDetails()
         .forEach(
             tableConfig -> {
+              TableInfoResp tableInfo;
               if (tableConfig.getStatus().equals(XClusterTableConfig.Status.ExtraTableOnSource)
                   || tableConfig.getStatus().equals(XClusterTableConfig.Status.DroppedFromTarget)) {
                 return;
-              } else if (tableConfig
-                  .getStatus()
-                  .equals(XClusterTableConfig.Status.ExtraTableOnTarget)) {
-                tableConfig.setTargetTableInfo(
-                    targetTableIdTableInfoRespMap.get(
-                        getTableIdTruncateAfterSequencesData(tableConfig.getTableId())));
-                return;
               }
-              String consumerTableId = producerConsumerTableIdMap.get(tableConfig.getTableId());
-              if (consumerTableId != null) {
-                tableConfig.setTargetTableInfo(
+              if (tableConfig.getStatus().equals(XClusterTableConfig.Status.ExtraTableOnTarget)) {
+                tableInfo =
                     targetTableIdTableInfoRespMap.get(
-                        getTableIdTruncateAfterSequencesData(consumerTableId)));
+                        getTableIdTruncateAfterSequencesData(tableConfig.getTableId()));
               } else {
-                tableConfig.setTargetTableInfo(
-                    targetTableIdTableInfoRespMap.get(
-                        getTableIdTruncateAfterSequencesData(tableConfig.getTableId())));
+                String consumerTableId = producerConsumerTableIdMap.get(tableConfig.getTableId());
+                if (consumerTableId != null) {
+                  tableInfo =
+                      targetTableIdTableInfoRespMap.get(
+                          getTableIdTruncateAfterSequencesData(consumerTableId));
+                  if (Objects.nonNull(tableInfo)) {
+                    // For sequences_data table, we need to set the keyspace and pgSchemaName
+                    // manually.
+                    if (Boolean.TRUE.equals(xClusterConfig.isAutomaticDdlMode())
+                        && isSequencesDataTableId(tableConfig.getTableId())) {
+                      String databaseId =
+                          getDatabaseIdFromSequencesDataTableId(tableConfig.getTableId());
+                      tableInfo =
+                          tableInfo.toBuilder()
+                              .keySpace(keyspaceIdtoKeyspaceNameMap.get(databaseId))
+                              .pgSchemaName("_")
+                              .build();
+                    }
+                  }
+                } else {
+                  tableInfo =
+                      targetTableIdTableInfoRespMap.get(
+                          getTableIdTruncateAfterSequencesData(tableConfig.getTableId()));
+                }
               }
+              tableConfig.setTargetTableInfo(tableInfo);
             });
   }
 
@@ -2925,6 +2962,26 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     // We need to truncate the tableId to drop everything after ".sequences_data".
     int index = tableId.indexOf(".sequences_data_for");
     return index != -1 ? tableId.substring(0, index) : tableId;
+  }
+
+  public static boolean isSequencesDataTableId(String tableId) {
+    // Check if the tableId contains ".sequences_data_for".
+    return tableId.contains(".sequences_data_for");
+  }
+
+  public static boolean isSequencesDataTable(TableInfoResp tableInfoResp) {
+    return tableInfoResp.keySpace.equals("system_postgres")
+        && tableInfoResp.tableName.equals("sequences_data");
+  }
+
+  public static String getDatabaseIdFromSequencesDataTableId(String tableId) {
+    // Extract the database ID from the sequences data table ID.
+    String marker = ".sequences_data_for.";
+    int index = tableId.indexOf(marker);
+    if (index == -1) {
+      throw new IllegalArgumentException("Table ID does not contain '" + marker + "': " + tableId);
+    }
+    return tableId.substring(index + marker.length());
   }
 
   /**
