@@ -262,7 +262,7 @@ See the section [Specifying a column's data type by using a domain](#specifying-
 
 ## Execution model
 
-This wording is taken (but re-written slightly) from the section [PL/pgSQL under the Hood](https://www.postgresql.org/docs/11/plpgsql-implementation.html) in the PostgreSQL documentation:
+This wording is taken (but re-written slightly) from the section [PL/pgSQL under the Hood](https://www.postgresql.org/docs/15/plpgsql-implementation.html) in the PostgreSQL documentation:
 
 > The first time that a subprogram is called _within each session_, the PL/pgSQL interpreter fetches the subprogram's definition from _pg_proc_, parses the source text, and produces an _abstract syntax tree_ (a.k.a. _AST_). The AST fully translates the PL/pgSQL statement structure and control flow, but individual expressions and complete SQL statements used in the subprogram are not translated immediately. (Every PL/pgSQL expression is evaluated, at runtime, as a SQL expression.)
 >

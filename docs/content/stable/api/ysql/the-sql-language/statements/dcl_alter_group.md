@@ -13,7 +13,7 @@ type: docs
 ## Synopsis
 
 Use the `ALTER GROUP` statement to alter attributes for a group (role).
-This is added for compatibility with Postgres. Its usage is discouraged. [`ALTER ROLE`](../dcl_alter_role) is the preferred way to change attributes of a role.
+This is added for compatibility with PostgreSQL. Its usage is discouraged. [`ALTER ROLE`](../dcl_alter_role) is the preferred way to change attributes of a role.
 
 ## Syntax
 
@@ -23,16 +23,15 @@ This is added for compatibility with Postgres. Its usage is discouraged. [`ALTER
   alter_group_rename
 {{%/ebnf%}}
 
+See [ALTER ROLE](../dcl_alter_role) for more details.
 
-See [`ALTER ROLE`](../dcl_alter_role) for more details.
-
-`ALTER GROUP` can be used to add or remove roles from a group. Please use [`GRANT`](../dcl_grant) or [`REVOKE`](../dcl_revoke) instead.
+`ALTER GROUP` can be used to add or remove roles from a group. Please use [GRANT](../dcl_grant) or [REVOKE](../dcl_revoke) instead.
 It can also be used to rename a role.
 
 ## See also
 
-- [`ALTER ROLE`](../dcl_alter_role)
-- [`CREATE ROLE`](../dcl_create_role)
-- [`DROP ROLE`](../dcl_drop_role)
-- [`GRANT`](../dcl_grant)
-- [`REVOKE`](../dcl_revoke)
+- [ALTER ROLE](../dcl_alter_role)
+- [CREATE ROLE](../dcl_create_role)
+- [DROP ROLE](../dcl_drop_role)
+- [GRANT](../dcl_grant)
+- [REVOKE](../dcl_revoke)

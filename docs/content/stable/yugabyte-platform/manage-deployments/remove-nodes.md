@@ -18,13 +18,13 @@ For information on how to respond to DB Node Restart, DB Instance Down, and DB I
 
 ## Automatic YB-Master failover
 
-{{<tags/feature/ea idea="22">}} To avoid under-replication, YugabyteDB Anywhere can automatically detect a YB-Master server that is not responding to the master leader, or that is lagging WAL operations, and fail over to another available node in the same availability zone.
+{{<tags/feature/ea>}} To avoid under-replication, YugabyteDB Anywhere can automatically detect a YB-Master server that is not responding to the master leader, or that is lagging WAL operations, and fail over to another available node in the same availability zone.
 
 Note that automatic failover only works for a single unhealthy master server.
 
 ### Prerequisites
 
-- Automatic YB-Master failover is {{<tags/feature/ea idea="22">}}. To enable the feature for a universe, set the **Auto Master Failover** Universe Runtime Configuration option (config key `yb.auto_master_failover.enabled`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
+- Automatic YB-Master failover is {{<tags/feature/ea>}}. To enable the feature for a universe, set the **Auto Master Failover** Universe Runtime Configuration option (config key `yb.auto_master_failover.enabled`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
 - The universe has the following characteristics:
 
   - running v2.20.3.0, v2.21.0.0, or later
@@ -86,20 +86,19 @@ To replace a live node for extended maintenance or replace an unhealthy node, do
 
     ![Replace Node Actions](/images/ee/replace-node.png)
 
-1. Click **OK** to confirm.
+1. Click OK to confirm.
 
-YugabyteDB Anywhere starts the node replacement process, and you can view the progress on the **Tasks** tab. As part of the node replacement process, all data (tablets) on the existing node will be moved to other nodes to ensure that the desired replication factor is maintained throughout the operation.
+YugabyteDB Anywhere (YBA) starts the node replacement process, and you can view the progress on the **Tasks** tab. As part of the node replacement process, all data (tablets) on the existing node will be moved to other nodes to ensure that the desired replication factor is maintained throughout the operation.
 
-For cloud providers (AWS, Azure, or GCP), YugabyteDB Anywhere returns the existing node back to the provider and provisions a new replacement node from the cloud provider. For on-premises universes, the existing node is returned to the [on-premises provider node pool](../../configure-yugabyte-platform/on-premises-nodes/) and a new replacement node is selected from the free pool.
+For cloud providers (AWS, Azure, or GCP), YBA returns the existing node back to the provider and provisions a new replacement node from the cloud provider. For on-premises universes, the existing node is returned to the [on-premises provider node pool](../../configure-yugabyte-platform/on-premises-nodes/) and a new replacement node is selected from the free pool.
 
-For on-premises universes, clean up of existing data directories and running processes may fail if the node is unhealthy. In such cases, YugabyteDB Anywhere sets the state to Decommissioned. This prevents the node from being added to a new universe.
+For on-premises universes, clean up of existing data directories and running processes may fail if the node is unhealthy. In such cases, YBA sets the state to Decommissioned. This prevents the node from being added to a new universe.
 
 ### Check on-premises node state
 
 On-premises nodes have three states: In use, Free, and Decommissioned as described in the following illustration.
 
 ![Decommissioned node workflow](/images/ee/on-prem-replace-workflow.png)
-
 To check the state of an on-premises node, navigate to **Integrations > Infrastructure > On-Premises Datacenters**, select the associated on-premises configuration, and click **Instances**.
 
 ### Recommission a decommissioned on-premises node
@@ -110,13 +109,13 @@ Perform the following steps to recommission a node:
 
 1. Navigate to **Integrations > Infrastructure > On-Premises Datacenters**, select the associated on-premises configuration, and click **Instances**.
 
-1. Under Instances, for the decommissioned node, click **Actions > Recommission Node**. YugabyteDB Anywhere will re-attempt to clean up existing data directories and processes on this node.
+1. Under Instances, for the decommissioned node, click **Actions > Recommission Node**. YBA will now re-attempt to clean up existing data directories and processes on this node.
 
     ![Recommission Node](/images/ee/recommission-node.png)
 
 1. Click OK to confirm.
 
-YugabyteDB Anywhere starts the node recommissioning process, and you can view the progress on the **Tasks** tab.
+YugabyteDB Anywhere (YBA) starts the node recommissioning process, and you can view the progress on the **Tasks** tab.
 
 ## Eliminate an unresponsive node
 
@@ -200,11 +199,11 @@ A typical universe has an RF of 3 or 5. At the end of the [node removal](#remove
 
 1. Click **Actions > Start Master** corresponding to the node, as per the following illustration.
 
-    This action is only available if there are additional nodes in the same availability zone and these nodes do not have a running Master process.
+   This action is only available if there are additional nodes in the same availability zone and these nodes do not have a running Master process.
 
     ![Start master](/images/yp/start-master.png)
 
-    When you execute the start Master action, YugabyteDB Anywhere performs the following:
+   When you execute the start Master action, YugabyteDB Anywhere performs the following:
 
 1. Configures the Master on the subject node.
 
@@ -268,7 +267,7 @@ In some cases, depending on the node's status, YugabyteDB Anywhere allows you to
 
 1. Find a node with a Decommissioned status and click its corresponding **Actions > Add Node**, as per the following illustration:
 
-    ![Add Node Actions](/images/ee/node-actions-add-node.png)
+  ![Add Node Actions](/images/ee/node-actions-add-node.png)
 
 For Infrastructure as a service (IaaS) such as AWS and GCP, YugabyteDB Anywhere will spawn with the existing node instance type in the existing region and zone of that node. When the process completes, the node will have the Master and TServer processes running, along with data that is load-balanced onto this node. The node's name will be reused and the status will be shown as Live.
 

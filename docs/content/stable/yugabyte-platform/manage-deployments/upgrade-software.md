@@ -12,7 +12,13 @@ menu:
 type: docs
 ---
 
-The YugabyteDB release that is powering a universe can be upgraded to get new features and fixes included in the release.
+{{< page-finder/head text="Upgrade YugabyteDB" subtle="across different products">}}
+  {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" url="../../../manage/upgrade-deployment/" >}}
+  {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" current="" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/preview/yugabyte-cloud/cloud-clusters/cloud-maintenance/" >}}
+{{< /page-finder/head >}}
+
+You can upgrade the YugabyteDB release that is powering a universe to get new features and fixes included in the release.
 
 {{< note title="Upgrading YugabyteDB on deprecated operating systems" >}}
 
@@ -26,6 +32,10 @@ When upgrading universes in [xCluster Replication](../../manage-deployments/xclu
 - Use the same version of YugabyteDB on both the source/DR primary and target/DR replica.
 - Upgrade and finalize the target/DR replica before upgrading and finalizing the source/DR primary.
 {{< /note >}}
+
+{{< warning title="YSQL major version upgrades" >}}
+To upgrade YugabyteDB to a version based on a different version of PostgreSQL (for example, from v2024.2 based on PG11 to v2025.1 or later based on PG15), you need to perform additional steps. Refer to [YSQL major upgrade](../ysql-major-upgrade-yba/).
+{{< /warning >}}
 
 When performing a database upgrade, do the following:
 

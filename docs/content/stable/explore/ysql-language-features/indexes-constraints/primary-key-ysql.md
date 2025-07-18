@@ -56,26 +56,7 @@ The order of the keys matters a lot in range sharding. The data is distributed a
 
 ## Setup
 
-The examples run on any YugabyteDB universe.
-
-<!-- begin: nav tabs -->
-{{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
-
-{{<nav/panels>}}
-{{<nav/panel name="local" active="true">}}
-<!-- local cluster setup instructions -->
-{{<setup/local numnodes="1" rf="1" >}}
-
-{{</nav/panel>}}
-
-{{<nav/panel name="anywhere">}} {{<setup/anywhere>}} {{</nav/panel>}}
-{{<nav/panel name="cloud">}}{{<setup/cloud>}}{{</nav/panel>}}
-{{</nav/panels>}}
-<!-- end: nav tabs -->
-
-{{<note>}}
-To explain the behavior of queries, the examples use *explain (analyze, dist, costs off)*. In practice, you do not need to do this unless you are trying to optimize performance. For more details, see [Analyze queries](../../../../explore/query-1-performance/explain-analyze).
-{{</note>}}
+{{% explore-setup-single-new %}}
 
 Create a census table as follows:
 
