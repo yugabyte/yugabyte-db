@@ -207,7 +207,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
  public:
   explicit CatalogManager(Master *master, SysCatalogTable* sys_catalog);
-  virtual ~CatalogManager();
+  ~CatalogManager() override;
 
   Status Init();
 
@@ -758,10 +758,13 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   // Advance OID counters as needed to ensure future OID allocations do not run into trouble.
   //
-  // So far this just ensures the normal-space OID counter is beyond any normal-space OID we need to
-  // preserve.
-  // TODO(#27944): also handle reserved space and OIDs used by hidden tables.
-  Status AdvanceOidCounters(NamespaceId namespace_id);
+  // After this function returns, the following will hold:
+  //   * All the in-use OIDs that xCluster needs to preserve are below the associated OID counter.
+  //   * There are no DocDB hidden tables whose OIDs are at or above the associated OID counter.
+  //
+  // Remember that OIDs are cached at TServers so you may want to use InvalidateTserverOidCaches()
+  // after calling this function.
+  Status AdvanceOidCounters(const NamespaceId& namespace_id);
 
   // Invalidate all the TServer OID caches in this universe.  After this returns, each TServer cache
   // will be effectively invalidated when that TServer receives a heartbeat response from master.

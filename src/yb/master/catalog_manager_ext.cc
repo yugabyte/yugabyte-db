@@ -12,110 +12,77 @@
 
 #include <memory>
 #include <queue>
-#include <regex>
-#include <set>
 #include <unordered_set>
+
 #include <google/protobuf/repeated_field.h>
 #include <google/protobuf/util/message_differencer.h>
 
-#include "yb/common/colocated_util.h"
-#include "yb/common/common_fwd.h"
-#include "yb/common/common_types.pb.h"
-#include "yb/common/constants.h"
-#include "yb/common/common.pb.h"
-#include "yb/common/entity_ids.h"
-#include "yb/common/entity_ids_types.h"
-#include "yb/common/pg_system_attr.h"
-#include "yb/common/snapshot.h"
-#include "yb/master/ts_manager.h"
-#include "yb/qlexpr/ql_name.h"
-#include "yb/common/ql_type.h"
-#include "yb/common/ql_type_util.h"
-#include "yb/common/schema_pbutil.h"
-#include "yb/common/schema.h"
-
-#include "yb/master/catalog_entity_info.h"
-#include "yb/master/catalog_entity_info.pb.h"
-#include "yb/master/catalog_manager-internal.h"
-#include "yb/master/catalog_manager.h"
-#include "yb/master/xcluster_consumer_registry_service.h"
-#include "yb/master/cluster_balance.h"
-#include "yb/master/master.h"
-#include "yb/master/master_backup.pb.h"
-#include "yb/master/master_error.h"
-#include "yb/master/master_snapshot_coordinator.h"
-#include "yb/master/snapshot_state.h"
-#include "yb/master/tablet_split_manager.h"
-#include "yb/master/ysql_tablegroup_manager.h"
-
-#include "yb/client/client-internal.h"
 #include "yb/client/meta_cache.h"
-#include "yb/client/schema.h"
 #include "yb/client/session.h"
-#include "yb/client/table.h"
-#include "yb/client/table_alterer.h"
-#include "yb/client/table_handle.h"
 #include "yb/client/table_info.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/colocated_util.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/ql_type.h"
+#include "yb/common/ql_type_util.h"
+#include "yb/common/schema.h"
+#include "yb/common/schema_pbutil.h"
+#include "yb/common/snapshot.h"
+
 #include "yb/consensus/consensus.h"
 
-#include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_write_batch.h"
-#include "yb/docdb/docdb_pgapi.h"
 
-#include "yb/gutil/bind.h"
 #include "yb/gutil/casts.h"
-#include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/master/master_client.pb.h"
+
+#include "yb/master/async_rpc_tasks.h"
+#include "yb/master/async_snapshot_tasks.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/catalog_manager-internal.h"
+#include "yb/master/catalog_manager.h"
+#include "yb/master/encryption_manager.h"
+#include "yb/master/master.h"
+#include "yb/master/master_backup.pb.h"
 #include "yb/master/master_ddl.pb.h"
-#include "yb/master/master_defaults.h"
+#include "yb/master/master_error.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_replication.pb.h"
+#include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/master_util.h"
-#include "yb/master/sys_catalog.h"
-#include "yb/master/sys_catalog-internal.h"
-#include "yb/master/async_snapshot_tasks.h"
-#include "yb/master/async_rpc_tasks.h"
-#include "yb/master/encryption_manager.h"
 #include "yb/master/restore_sys_catalog_state.h"
-#include "yb/master/scoped_leader_shared_lock.h"
-#include "yb/master/scoped_leader_shared_lock-internal.h"
+#include "yb/master/sys_catalog.h"
+#include "yb/master/tablet_split_manager.h"
+#include "yb/master/ts_manager.h"
+#include "yb/master/xcluster_consumer_registry_service.h"
+#include "yb/master/ysql/ysql_manager_if.h"
+#include "yb/master/ysql_tablegroup_manager.h"
 
 #include "yb/rpc/messenger.h"
 
-#include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_snapshots.h"
 
-#include "yb/tserver/backup.proxy.h"
-#include "yb/tserver/service_util.h"
-#include "yb/tserver/tserver_admin.pb.h"
-
-#include "yb/util/cast.h"
-#include "yb/util/date_time.h"
-#include "yb/util/file_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/oid_generator.h"
-#include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/service_util.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/tostring.h"
-#include "yb/util/string_util.h"
 #include "yb/util/trace.h"
-
-#include "yb/yql/cql/ql/util/statement_result.h"
-
-#include "ybgate/ybgate_api.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -138,9 +105,11 @@ DEPRECATE_FLAG(bool, allow_consecutive_restore, "10_2022");
 DEFINE_test_flag(double, crash_during_sys_catalog_restoration, 0.0,
                  "Probability of crash during the RESTORE_SYS_CATALOG phase.");
 
-DEFINE_test_flag(
-    bool, import_snapshot_failed, false,
+DEFINE_test_flag(bool, import_snapshot_failed, false,
     "Return a error from ImportSnapshotMeta RPC for testing the RPC failure.");
+
+DEFINE_test_flag(bool, skip_oid_advance_on_restore, false,
+    "Skip advancing OID counters on restore if true.");
 
 DEFINE_RUNTIME_uint64(import_snapshot_max_concurrent_create_table_requests, 20,
     "Maximum number of create table requests to the master that can be outstanding "
@@ -739,9 +708,11 @@ Status CatalogManager::DoImportSnapshotMeta(
   ImportSnapshotRemoveInvalidTables(use_relfilenode, tables_data);
 
   // PHASE 6: Adjust OID counters.
-  for (const auto& [_old_namespace_id, external_namespace_snapshot_data] : *namespace_map) {
-    if (external_namespace_snapshot_data.db_type == YQL_DATABASE_PGSQL) {
-      RETURN_NOT_OK(AdvanceOidCounters(external_namespace_snapshot_data.new_namespace_id));
+  if (!FLAGS_TEST_skip_oid_advance_on_restore) {
+    for (const auto& [_old_namespace_id, external_namespace_snapshot_data] : *namespace_map) {
+      if (external_namespace_snapshot_data.db_type == YQL_DATABASE_PGSQL) {
+        RETURN_NOT_OK(AdvanceOidCounters(external_namespace_snapshot_data.new_namespace_id));
+      }
     }
   }
 

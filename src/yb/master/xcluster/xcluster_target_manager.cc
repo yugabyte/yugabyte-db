@@ -1271,8 +1271,8 @@ Status XClusterTargetManager::DeleteUniverseReplication(
         uint32_t begin_oid;
         uint32_t end_oid;
         RETURN_NOT_OK(yb_client->ReservePgsqlOids(
-            target_namespace_id, oid_to_bump, /*count=*/1, &begin_oid, &end_oid,
-            /*use_secondary_space=*/false));
+            target_namespace_id, oid_to_bump, /*count=*/1, /*use_secondary_space=*/false,
+            &begin_oid, &end_oid));
       }
       RETURN_NOT_OK(master_.catalog_manager()->InvalidateTserverOidCaches());
     }

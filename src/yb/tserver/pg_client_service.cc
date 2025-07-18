@@ -74,14 +74,13 @@
 #include "yb/tserver/ts_local_lock_manager.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
 
-#include "yb/util/debug.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/shared_lock.h"
-#include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -583,7 +582,7 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator, public SessionProv
     shared_mem_pool_.Start(messenger->scheduler());
   }
 
-  ~Impl() {
+  ~Impl() override {
     cdc_state_table_.reset();
     std::vector<SessionInfoPtr> sessions;
     {
@@ -821,7 +820,8 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator, public SessionProv
 
     uint32_t begin_oid, end_oid;
     RETURN_NOT_OK(client().ReservePgsqlOids(
-        namespace_id, req.next_oid(), req.count(), &begin_oid, &end_oid, false));
+        namespace_id, req.next_oid(), req.count(), /*use_secondary_space=*/false, &begin_oid,
+        &end_oid));
     resp->set_begin_oid(begin_oid);
     resp->set_end_oid(end_oid);
 
@@ -854,8 +854,8 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator, public SessionProv
           oid_chunk.next_oid + static_cast<uint32_t>(FLAGS_TEST_ysql_oid_prefetch_adjustment);
       uint32_t begin_oid, end_oid, oid_cache_invalidations_count;
       RETURN_NOT_OK(client().ReservePgsqlOids(
-          namespace_id, next_oid, FLAGS_ysql_oid_cache_prefetch_size, &begin_oid, &end_oid,
-          use_secondary_space, &oid_cache_invalidations_count));
+          namespace_id, next_oid, FLAGS_ysql_oid_cache_prefetch_size, use_secondary_space,
+          &begin_oid, &end_oid, &oid_cache_invalidations_count));
       oid_chunk.next_oid = begin_oid;
       oid_chunk.oid_count = end_oid - begin_oid;
       oid_chunk.oid_cache_invalidations_count = oid_cache_invalidations_count;
