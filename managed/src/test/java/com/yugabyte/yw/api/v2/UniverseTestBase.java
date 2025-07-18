@@ -334,7 +334,12 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     universeSpec.name("Test-V2-Universe");
     universeSpec.setYbSoftwareVersion("2.20.0.0-b123");
     universeSpec.setUseTimeSync(true);
-    universeSpec.ysql(new YSQLSpec().enable(true).enableAuth(true).password("ysqlPassword#1"));
+    universeSpec.ysql(
+        new YSQLSpec()
+            .enable(true)
+            .enableAuth(true)
+            .password("ysqlPassword#1")
+            .enableConnectionPooling(false));
     universeSpec.ycql(new YCQLSpec().enable(true).enableAuth(true).password("ycqlPassword#1"));
     universeSpec.networkingSpec(
         new UniverseNetworkingSpec()
@@ -573,9 +578,13 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     if (ysql != null) {
       assertThat(ysql.getEnable(), is(dbUniv.getPrimaryCluster().userIntent.enableYSQL));
       assertThat(ysql.getEnableAuth(), is(dbUniv.getPrimaryCluster().userIntent.enableYSQLAuth));
+      assertThat(
+          ysql.getEnableConnectionPooling(),
+          is(dbUniv.getPrimaryCluster().userIntent.enableConnectionPooling));
     } else {
       assertThat(dbUniv.getPrimaryCluster().userIntent.enableYSQL, is(false));
       assertThat(dbUniv.getPrimaryCluster().userIntent.enableYSQLAuth, is(false));
+      assertThat(dbUniv.getPrimaryCluster().userIntent.enableConnectionPooling, is(false));
     }
   }
 
