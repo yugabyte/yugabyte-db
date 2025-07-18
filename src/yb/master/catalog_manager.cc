@@ -11312,9 +11312,8 @@ Status CatalogManager::SelectReplicasForTablet(
         tablet->tablet_id());
   }
 
-  const auto& replication_info =
-    VERIFY_RESULT(GetTableReplicationInfo(table_guard->pb.replication_info(),
-          tablet->table()->TablespaceIdForTableCreation()));
+  auto replication_info = VERIFY_RESULT(GetTableReplicationInfo(
+        table_guard->pb.replication_info(), tablet->table()->TablespaceIdForTableCreation()));
 
   ConsensusStatePB* cstate = tablet->mutable_metadata()->mutable_dirty()
           ->pb.mutable_committed_consensus_state();
@@ -11324,12 +11323,9 @@ Status CatalogManager::SelectReplicasForTablet(
   RETURN_NOT_OK(HandlePlacementUsingReplicationInfo(
       replication_info, ts_descs, config, per_table_state, global_state));
 
-  std::ostringstream out;
-  out << "Initial tserver uuids for tablet " << tablet->tablet_id() << ": ";
-  for (const RaftPeerPB& peer : config->peers()) {
-    out << peer.permanent_uuid() << " ";
-  }
-  VLOG(0) << out.str();
+  LOG_WITH_FUNC(INFO)
+      << "Initial tserver uuids for tablet " << tablet->tablet_id() << ": "
+      << CollectionToString(config->peers(), [](const auto& p) { return p.permanent_uuid(); });
 
   // Select a protege for the initial leader election. The selected protege is stored in 'tablet'
   // but is not used until the master starts the initial leader election. The master will start the
