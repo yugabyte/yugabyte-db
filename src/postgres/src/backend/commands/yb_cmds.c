@@ -2318,7 +2318,9 @@ void
 YBCInitVirtualWalForCDC(const char *stream_id, Oid *relations,
 						size_t numrelations,
 						const YbcReplicationSlotHashRange *slot_hash_range,
-						uint64_t active_pid)
+						uint64_t active_pid,
+						Oid *publications, size_t numpublications,
+						bool yb_is_pub_all_tables)
 {
 	Assert(MyDatabaseId);
 
@@ -2329,7 +2331,8 @@ YBCInitVirtualWalForCDC(const char *stream_id, Oid *relations,
 
 	HandleYBStatus(YBCPgInitVirtualWalForCDC(stream_id, MyDatabaseId, relations,
 											 relfilenodes, numrelations,
-											 slot_hash_range, active_pid));
+											 slot_hash_range, active_pid, publications,
+											 numpublications, yb_is_pub_all_tables));
 
 	pfree(relfilenodes);
 }

@@ -431,6 +431,7 @@ typedef struct {
   const uint32_t* yb_max_recursion_depth;
   const uint32_t* ysql_conn_mgr_stats_interval;
   const bool*     ysql_enable_read_request_cache_for_connection_auth;
+  const bool*     TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication;
 } YbcPgGFlagsAccessor;
 
 typedef struct {

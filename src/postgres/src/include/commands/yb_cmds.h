@@ -141,7 +141,8 @@ extern void
 			YBCInitVirtualWalForCDC(const char *stream_id, Oid *relations,
 									size_t numrelations,
 									const YbcReplicationSlotHashRange *slot_hash_range,
-									uint64_t active_pid);
+									uint64_t active_pid, Oid *publications,
+									size_t numpublications, bool yb_is_pub_all_tables);
 
 extern void YBCUpdatePublicationTableList(const char *stream_id,
 										  Oid *relations,

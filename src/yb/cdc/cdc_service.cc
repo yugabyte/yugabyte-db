@@ -5160,9 +5160,22 @@ void CDCServiceImpl::InitVirtualWALForCDC(
     table_list.insert(table_id);
   }
 
+  bool pub_all_tables = false;
+  std::unordered_set<uint32_t> publications_list;
+  if (FLAGS_cdcsdk_enable_dynamic_table_addition_with_table_cleanup) {
+    for (const auto& publication : req->publication_oid()) {
+      publications_list.insert(publication);
+    }
+
+    if (req->has_pub_all_tables()) {
+      pub_all_tables = req->pub_all_tables();
+    }
+  }
+
   HostPort hostport(context.local_address());
   Status s = virtual_wal->InitVirtualWALInternal(
-      table_list, hostport, GetDeadline(context, client()), std::move(slot_hash_range));
+      table_list, hostport, GetDeadline(context, client()), std::move(slot_hash_range),
+      publications_list, pub_all_tables);
   if (!s.ok()) {
     {
       std::lock_guard l(mutex_);

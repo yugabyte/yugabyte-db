@@ -87,6 +87,14 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     return flagMap;
   }
 
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    flagMap.put(
+      "vmodule", "cdc_service=4,cdcsdk_producer=4");
+    return flagMap;
+  }
+
   void createSlot(PGReplicationConnection replConnection, String slotName, String pluginName)
       throws Exception {
     replConnection.createReplicationSlot()
@@ -830,8 +838,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     return zonedDateTime.format(outputFormatter);
   }
 
-  @Test
-  public void testDynamicTableAdditionForAllTablesPublication() throws Exception {
+  void testDynamicTableAdditionForAllTablesPublication(boolean usePubRefresh) throws Exception {
     String slotName = "test_dynamic_table_addition_for_all_tables_pub";
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("DROP TABLE IF EXISTS t1");
@@ -864,7 +871,10 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       stmt.execute("CREATE TABLE t3 (a int primary key, b text)");
     }
 
-    Thread.sleep(kPublicationRefreshIntervalSec * 2 * 1000);
+    if (usePubRefresh) {
+      Thread.sleep(kPublicationRefreshIntervalSec * 2 * 1000);
+    }
+
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("BEGIN");
       stmt.execute("INSERT INTO t1 VALUES(3, 'mnop')");
@@ -932,8 +942,37 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     stream.close();
   }
 
+  public void setFlagsForDynamicTablesTest(Map<String, String> tserverFlags,
+                                          Map<String, String> masterFlags,
+                                          Boolean usePubRefresh) throws Exception {
+    tserverFlags.put("cdcsdk_enable_dynamic_table_support", "" + usePubRefresh);
+    tserverFlags.put("TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication",
+                        "" + !usePubRefresh);
+
+    masterFlags.put("TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication",
+                        "" + !usePubRefresh);
+
+    restartClusterWithFlags(masterFlags, tserverFlags);
+  }
+
   @Test
-  public void testDynamicTableAdditionForTablesCreatedBeforeStreamCreation() throws Exception {
+  public void testDynamicTableAdditionForAllTablesPublicationWithPubRefresh()
+      throws Exception {
+    setFlagsForDynamicTablesTest(super.getTServerFlags(), super.getMasterFlags(),
+        true /* usePubRefresh */);
+    testDynamicTableAdditionForAllTablesPublication(true /* usePubRefresh */);
+  }
+
+  @Test
+  public void testDynamicTableAdditionForAllTablesPublicationWithoutPubRefresh()
+      throws Exception {
+    setFlagsForDynamicTablesTest(super.getTServerFlags(), super.getMasterFlags(),
+        false /* usePubRefresh */);
+    testDynamicTableAdditionForAllTablesPublication(false /* usePubRefresh */);
+  }
+
+  void testDynamicTableAdditionForTablesCreatedBeforeStreamCreation(boolean usePubRefresh)
+      throws Exception {
     String slotName = "test_dynamic_table_addition_slot_before_stream_creation";
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("DROP TABLE IF EXISTS t1");
@@ -967,7 +1006,10 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       .withSlotOption("publication_names", "pub")
       .start();
 
-    Thread.sleep(kPublicationRefreshIntervalSec * 2 * 1000);
+    if (usePubRefresh) {
+      Thread.sleep(kPublicationRefreshIntervalSec * 2 * 1000);
+    }
+
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("BEGIN");
       stmt.execute("INSERT INTO t1 VALUES(3, 'mnop')");
@@ -975,7 +1017,10 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       stmt.execute("INSERT INTO t3 values(5, 'uvwx')");
       stmt.execute("COMMIT");
       stmt.execute("ALTER PUBLICATION pub DROP TABLE t2");
-      Thread.sleep(kPublicationRefreshIntervalSec * 2 * 1000);
+
+      if (usePubRefresh) {
+        Thread.sleep(kPublicationRefreshIntervalSec * 2 * 1000);
+      }
 
       stmt.execute("BEGIN");
       stmt.execute("INSERT INTO t1 VALUES(6, 'ijkl')");
@@ -1044,6 +1089,22 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     assertEquals(expectedResult, result);
 
     stream.close();
+  }
+
+  @Test
+  public void testDynamicTableAdditionForTablesCreatedBeforeStreamCreationWithPubRefresh()
+      throws Exception {
+    setFlagsForDynamicTablesTest(super.getTServerFlags(), super.getMasterFlags(),
+        true /* usePubRefresh */);
+    testDynamicTableAdditionForTablesCreatedBeforeStreamCreation(true /* usePubRefresh */);
+  }
+
+  @Test
+  public void testDynamicTableAdditionForTablesCreatedBeforeStreamCreationWithoutPubRefresh()
+      throws Exception {
+    setFlagsForDynamicTablesTest(super.getTServerFlags(), super.getMasterFlags(),
+        false /* usePubRefresh */);
+    testDynamicTableAdditionForTablesCreatedBeforeStreamCreation(false /* usePubRefresh */);
   }
 
   @Test
