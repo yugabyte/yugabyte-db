@@ -64,18 +64,21 @@ public class MetricQueryHelper {
   public static final String PROMETHEUS_MANAGEMENT_ENABLED = "yb.metrics.management.enabled";
   public static final String WS_CLIENT_KEY = "yb.metrics.ws";
 
-  private static final String CONTAINER_METRIC_PREFIX = "container";
+  public static final String CONTAINER_METRIC_PREFIX = "container";
+  public static final String KUBELET_VOLUME_METRIC_PREFIX = "kubelet_volume";
+  public static final String CONTAINER_VOLUME_METRIC_PREFIX = "container_volume";
   private static final String NODE_PREFIX = "node_prefix";
-  private static final String NAMESPACE = "namespace";
+  public static final String NAMESPACE = "namespace";
   public static final String EXPORTED_INSTANCE = "exported_instance";
   public static final String TABLE_ID = "table_id";
   public static final String TABLE_NAME = "table_name";
   public static final String NAMESPACE_NAME = "namespace_name";
   public static final String NAMESPACE_ID = "namespace_id";
   public static final String YBA_INSTANCE_ADDRESS = "instance_address";
-  private static final String POD_NAME = "pod_name";
+  public static final String POD_NAME = "pod_name";
   private static final String CONTAINER_NAME = "container_name";
-  private static final String PVC = "persistentvolumeclaim";
+  public static final String PVC = "persistentvolumeclaim";
+  public static final String AZ_NAME = "az_name";
 
   private static final String DEFAULT_MOUNT_POINTS = "/mnt/d[0-9]+";
 
