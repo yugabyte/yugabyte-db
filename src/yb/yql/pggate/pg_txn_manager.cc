@@ -904,15 +904,9 @@ Status PgTxnManager::AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObject
   RETURN_NOT_OK(CalculateIsolation(
       mode <= YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK /* read_only */,
       isolation_level_ == IsolationLevel::READ_COMMITTED ? kHighestPriority : kLowerPriorityRange));
-  tserver::PgAcquireObjectLockRequestPB req;
-  RETURN_NOT_OK(SetupPerformOptions(req.mutable_options()));
-  auto* lock_oid = req.mutable_lock_oid();
-  lock_oid->set_database_oid(lock_id.db_oid);
-  lock_oid->set_relation_oid(lock_id.relation_oid);
-  lock_oid->set_object_oid(lock_id.object_oid);
-  lock_oid->set_object_sub_oid(lock_id.object_sub_oid);
-  req.set_lock_type(static_cast<tserver::ObjectLockMode>(mode));
-  return client_->AcquireObjectLock(&req, CoarseTimePoint());
+  tserver::PgPerformOptionsPB options;
+  RETURN_NOT_OK(SetupPerformOptions(&options));
+  return client_->AcquireObjectLock(&options, lock_id, mode);
 }
 
 }  // namespace yb::pggate
