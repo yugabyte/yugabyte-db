@@ -100,7 +100,6 @@ Number of partitions: 2 (Use \d+ to list them.)
 ```
 
 ```sql
-CREATE INDEX parent_index ON parent_partition (c1, c2);
 CREATE INDEX child_part_1_index ON child_part_1 (c1, c2);
 CREATE INDEX child_part_2_index ON child_part_2 (c1, c2);
 ALTER INDEX parent_index ATTACH PARTITION child_part_1_index;
