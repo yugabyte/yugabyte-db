@@ -28,25 +28,25 @@ For more information on database cloning, refer to [Instant database cloning](..
 
 To configure point in time recovery, and create a clone at a point in time, go to the cluster **Backups** tab and choose **Point in time Recovery**.
 
-## Create a PITR configuration
+## Enable PITR
 
-You can create a PITR configuration as follows:
+You can enable PITR for databases and keyspaces as follows:
 
 1. Navigate to the cluster **Backups** tab and choose **Point in time Recovery** to view a list of the databases and keyspaces already enabled for PITR, if any.
 
-   ![PITR](/images/yp/pitr-main.png)
+   ![PITR](/images/yb-cloud/managed-pitr.png)
 
    If there are currently no databases or keyspaces enabled for PITR, a message is displayed.
 
-1. Click **Enable Point-in-time Recovery**.
+1. Click **Add Database** or, if there are currently no databases or keyspaces enabled for PITR, **Enable Point-in-time Recovery**.
 
-1. Select YSQL or YCQL, then select the databases or keyspaces for which to enable PITR.
+1. Select the databases or keyspaces for which to enable PITR.
 
 1. Click **Next**.
 
 1. Set the retention window for PITR.
 
-1. Click **Enable Point in time Recovery**.
+1. Click **Enable Point-in-time Recovery**.
 
 The database or keyspace is added to the **Databases/Keyspaces with Point-In-Time Recovery Enabled** list.
 
@@ -56,13 +56,13 @@ You can clone a database or keyspace at a specific point in time as follows:
 
 1. Navigate to **Point-in-time Recovery**.
 
-1. Find the database or keyspace you want to recover and click **Clone to Point in Time**.
+1. Find the database or keyspace you want to recover and click **Clone to Point-in-time**.
 
-1. In the **Recover dbname to a point in time** dialog shown in the following illustration, specify the recovery time parameters that fall within your predefined retention period:
+1. Provide a name for the clone.
 
-    ![Recover](/images/yp/pitr-recover.png)
+1. Specify the time at which to create the clone.
 
-1. Click **Recover**.
+1. Click **Clone**.
 
 ## Disable a PITR configuration
 
