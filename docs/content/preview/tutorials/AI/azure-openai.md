@@ -298,6 +298,23 @@ The application performs the following steps to generate the recommendations (se
     return places;
     ```
 
+This application uses cosine distance for indexing, as the backend query is using cosine similarity search. Using [vector indexing](../../../explore/ysql-language-features/pg-extensions/extension-pgvector/#vector-indexing) improves the search speed. YugabyteDB currently supports the Hierarchical Navigable Small World (HNSW) index type in pgvector.
+
+```sql
+# sql/1_airbnb_embeddings.sql
+
+CREATE EXTENSION IF NOT EXISTS vector;
+
+ALTER TABLE airbnb_listing
+    ADD COLUMN description_embedding vector(1536);
+
+CREATE INDEX NONCONCURRENTLY ON airbnb_listing USING ybhnsw (description_embedding vector_cosine_ops);
+```
+
+{{<note>}}
+For smaller datasets, like the one used in this tutorial, you may observe that vector indexing does not appear in the query execution plan. As your dataset grows, vector index will automatically be used by the planner.
+{{</note>}}
+
 ## Wrap-up
 
 The Azure OpenAI Service simplifies the process of designing, building, and productizing generative AI applications by offering developer APIs for various major programming languages.
