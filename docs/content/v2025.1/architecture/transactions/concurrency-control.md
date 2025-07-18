@@ -1293,3 +1293,20 @@ When a YB-TServer loses its lease, clients connected to that YB-TServer will enc
 ### Lease persistence and YB-Master failover
 
 YSQL leases held by YB-TServer are respected by a new YB-Master leader after a failover. When a YB-TServer first acquires a YSQL lease, the YB-Master persists this to the system catalog. If a YB-TServer's lease expires, the entry is removed. After a YB-Master leader failover, the new YB-Master leader treats every YB-TServer with an active YSQL lease entry in its persisted state as having a live lease, with the remaining TTL being the full YSQL lease duration. This design ensures that YB-TServers do not unnecessarily terminate connections during a YB-Master failover, contributing to higher availability.
+
+### Changing the lease TTL
+
+The lease TTL, in particular with the `master_ysql_operation_lease_ttl_ms` configuration flag, can be safely increased during runtime. However lowering it during runtime may be unsafe as the lease duration from the YB-Master leader's perspective may be shorter than the lease duration from the YB-TServer's perspective. If the YB-TServer is network partitioned from the YB-Master leader during this time, it may serve DMLs believing it has a live lease while the YB-Master leader serves DDLs believing the YB-TServer has lost its lease.
+
+To prevent such inconsistencies when reducing `master_ysql_operation_lease_ttl_ms`, follow this multi-step process:
+
+Suppose `X` is the target value for `master_ysql_operation_lease_ttl_ms`.
+
+1. Set `ysql_operation_lease_ttl_client_buffer_ms` on all YB-Masters to: (`master_ysql_operation_lease_ttl_ms` - `X` + `ysql_operation_lease_ttl_client_buffer_ms`).
+1. Wait for `master_ysql_operation_lease_ttl_ms`.
+1. Set `master_ysql_operation_lease_ttl_ms` to `X`.
+1. Set `ysql_operation_lease_ttl_client_buffer_ms` to its original value before the change in step 1.
+
+For example, suppose `master_ysql_operation_lease_ttl_ms` is 30 seconds (30000 ms) and you want to reduce it to 20 seconds (20000 ms). Your `ysql_operation_lease_ttl_client_buffer_ms` is 2 seconds (2000 ms). The steps would be:
+
+1. Set `ysql_operation_lease_ttl_client_buffer_ms` to 12 seconds.
