@@ -1276,7 +1276,7 @@ The `SKIP LOCKED` clause is supported in both concurrency control policies and p
 
 YugabyteDB employs a robust lease mechanism to ensure data consistency in a distributed environment, particularly during concurrent DML and DDL operations or YB-TServer failures. A YB-TServer must hold a valid lease from the YB-Master leader to serve any YSQL DMLs or DDLs.
 
-You can enable the lease feature for the YB-TServers using the [--enable_ysql_operation_lease](../../../reference/configuration/yb-master/#enable-ysql-operation-lease) flag. Additional flags you can use are as follows:
+You can enable the lease feature for the YB-TServers using the [--enable_ysql_operation_lease](../../../reference/configuration/yb-tserver/#enable-ysql-operation-lease) flag. Additional flags you can use are as follows:
 
 **YB-Master**
 
