@@ -211,6 +211,9 @@ ALTER TABLE airbnb_listing
 CREATE INDEX NONCONCURRENTLY ON airbnb_listing USING ybhnsw (description_embedding vector_cosine_ops);
 ```
 
+{{<note>}}
+For smaller datasets, like the one used in this tutorial, you may observe that vector indexing does not appear in the query execution plan. As your dataset grows, vector index will automatically be used by the planner.
+{{</note>}}
 
 ## Wrap-up
 
