@@ -2785,7 +2785,9 @@ On YB-TServers, a new PostgreSQL process is spawned only after establishing a le
 Default: `1000` (1 second)
 {{% /tags/wrap %}}
 
-Determines the interval a YB-TServer waits before initiating another YSQL lease refresh RPC. After a YB-TServer processes either a successful response or an error status from a YSQL lease refresh RPC, it pauses for this specified duration before sending another YSQL lease refresh RPC.
+Determines the interval a YB-TServer waits before initiating another YSQL lease refresh RPC.
+
+Refer to [YSQL lease mechanism](../../../architecture/transactions/concurrency-control/#yb-tserver) for more details.
 
 ### YCQL
 

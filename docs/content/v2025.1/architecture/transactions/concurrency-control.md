@@ -1278,14 +1278,37 @@ YugabyteDB employs a robust lease mechanism to ensure data consistency in a dist
 
 You can enable the lease feature for the YB-TServers using the [--enable_ysql_operation_lease](../../../reference/configuration/yb-tserver/#enable-ysql-operation-lease) flag. Additional flags you can use are as follows:
 
-**YB-Master**
+### YB-Master
 
 - [--master_ysql_operation_lease_ttl_ms](../../../reference/configuration/yb-master/#master-ysql-operation-lease-ttl-ms)
+
+    Default: `30000` (30 seconds)
+
+    Specifies base YSQL lease Time-To-Live (TTL). The YB-Master leader uses this value to determine the validity of a YB-TServer's YSQL lease.
+
+    This parameter primarily determines the TTL of YSQL lease extensions. The YB-Master leader considers a YB-TServer's YSQL lease valid for this specified number of milliseconds after it successfully processes the YB-TServer's most recent `RefreshYsqlLease` request. YB-TServers will terminate all hosted PostgreSQL sessions if they are unable to refresh their YSQL lease before its expiration.
+
+    Increasing the lease TTL has the following implications:
+
+      - Decreases the chances YB-TServers will terminate all hosted PostgreSQL sessions because of YSQL lease expiration.
+      - Extends the period during which DDLs remain serviceable after a YB-TServer becomes unavailable (this period is capped by the lease TTL).
+      - Increases the time before locks held by crashed YB-TServers are released, which can block DMLs on any table where the  crashed YB-TServer held a lock (this period  is also capped by the lease TTL).
+
 - [--ysql_operation_lease_ttl_client_buffer_ms](../../../reference/configuration/yb-master/#ysql-operation-lease-ttl-client-buffer-ms)
 
-**YB-TServer**
+    Default: 2000 (2 seconds)
+
+    Specifies a client-side buffer for the YSQL operation lease TTL.
+
+    When processing lease refresh RPC (`RefreshYsqlLease`) requests, the YB-Master leader subtracts this value from the [--master_ysql_operation_lease_ttl_ms](#master-ysql-operation-lease-ttl-ms) to calculate a slightly shorter lease TTL that is then provided to the YB-TServers. This difference between the lease TTL maintained by the YB-Masters and the lease TTL granted to the YB-TServers allows YB-TServers a grace period to terminate their hosted sessions before the YB-Master leader considers their lease expired.
+
+### YB-TServer
 
 - [--ysql_lease_refresher_interval_ms](../../../reference/configuration/yb-tserver/#ysql-lease-refresher-interval-ms)
+
+    Default: `1000` (1 second)
+
+    Determines the interval a YB-TServer waits before initiating another YSQL lease refresh RPC. After a YB-TServer processes either a successful response or an error status from a YSQL lease refresh RPC, it pauses for this specified duration before sending another YSQL lease refresh RPC.
 
 With the YSQL lease feature enabled, a YB-TServer node will only accept PostgreSQL connections after establishing a lease with the YB-Master leader. If a YB-TServer is unable to refresh its lease before it expires, it will terminate all PostgreSQL sessions it hosts.
 When a YB-TServer loses its lease, clients connected to that YB-TServer will encounter the following specific error messages:
