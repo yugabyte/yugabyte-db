@@ -22,7 +22,7 @@ Create two clusters, the Source cluster which will serve reads and writes, and t
 
 Ensure the clusters have the following characteristics:
 
-- Both clusters are running the same version of YugabyteDB (v2024.1.4 or later).
+- Both clusters are running the same version of YugabyteDB ({{<release "2024.1.4">}} or later).
 - Both clusters are deployed in a [VPC and are peered](../../../cloud-basics/cloud-vpcs/cloud-vpc-intro/).
 - They have enough disk space to support storage of write-ahead logs (WALs) in case of a network partition or a temporary outage of the Target cluster. During these cases, WALs will continue to write until replication is restored. Consider sizing your disk according to your ability to respond and recover from network or other infrastructure outages.
 - DR enables point-in-time-recovery (PITR) on the Target, requiring additional disk space.
@@ -131,7 +131,7 @@ For more information on alerting in YugabyteDB Aeon, refer to [Alerts](../../../
 
 ### Tables
 
-After disaster recovery is set up and replicating, the **Disaster Recovery** tab lists all the databases and tables in replication and their status under **Databases and Tables**.
+After disaster recovery is set up and replicating, the **Disaster Recovery** tab lists all the databases and tables in replication and their status under **Database and Tables**.
 
 ![Disaster recovery - Databases and Tables](/images/yb-cloud/dr-databases-and-tables.png)
 
@@ -143,7 +143,7 @@ To check if the replication has been properly configured for a table, check the 
 
 The status will be _Not Reported_ momentarily after the replication configuration is created until metrics are available for the replication configuration. This should take about 10 seconds.
 
-If the replication lag has increased so much that resuming or continuing replication cannot be accomplished via WAL logs but instead requires making another full copy from Source to Target, the status is shown as _Missing op ID_, and you must [restart replication](#restart-replication) for those tables. If a lag alert is enabled on the replication, you are notified when the lag is behind the [replication lag alert](#set-up-replication-lag-alerts) threshold; if the replication stream is not yet broken and the lag is due to some other issues, the status is shown as _Warning_.
+If the replication lag has increased so much that resuming or continuing replication cannot be accomplished via WAL logs but instead requires making another full copy from Source to Target, the status is shown as _Missing op ID_, and you must [restart replication](#repair-replication) for those tables. If a lag alert is enabled on the replication, you are notified when the lag is behind the [replication lag alert](#set-up-replication-lag-alerts) threshold; if the replication stream is not yet broken and the lag is due to some other issues, the status is shown as _Warning_.
 
 If YugabyteDB Aeon is unable to obtain the status (for example, due to a heavy workload being run on the cluster), the status for that table will be _Unable To Fetch_. You may refresh the page to retry gathering information.
 
@@ -176,7 +176,7 @@ The following statuses describe replication errors. More than one of these error
 | Status | Description |
 | :--- | :--- |
 | Error | Replication is in an error state, but the error is not known. |
-| Missing op ID | The replication is broken and cannot continue because the write-ahead-logs are garbage collected before they were replicated to the other universe and you will need to [restart replication](#restart-replication).|
+| Missing op ID | The replication is broken and cannot continue because the write-ahead-logs are garbage collected before they were replicated to the other universe and you will need to [restart replication](#repair-replication).|
 | Schema&nbsp;mismatch | The schema was updated on the table (on either of the universes) and replication is paused until the same schema change is made to the other universe. |
 | Missing table | For colocated tables, only the parent table is in the replication group; any child table that is part of the colocation will also be replicated. This status is displayed for a parent colocated table if a child table only exists on the Source. Create the same table on the Target. |
 | Auto flag config mismatch | Replication has stopped because one of the clusters is running a version of YugabyteDB that is incompatible with the other. This can happen when upgrading universes that are in replication. Upgrade the other universe to the same version. |
