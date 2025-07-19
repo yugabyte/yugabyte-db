@@ -275,6 +275,78 @@ spec:
   keyspace: <keyspace overide>
 ```
 
+#### Service account for backup
+
+You can attach a service account to database pods to be used to access storage in S3 or GCS. The service account used for the database pods should have annotations for the IAM role. The service account to be used can be applied to the database pods as a Helm override with provider- or universe- level overrides.
+
+**AWS**
+
+The IAM role used should be sufficient to access storage in S3. The operator pod (with the YugabyteDB Anywhere instance) should have the IAM role for cloud storage access attached to its service account.
+
+To enable IAM roles to access storage in S3, set the **Use S3 IAM roles attached to DB node for Backup/Restore** Universe Configuration option (config key `yb.backup.s3.use_db_nodes_iam_role_for_backup`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
+
+The storage config CR should have IAM as the credential source.
+
+```yaml
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: StorageConfig
+metadata:
+  name: s3-config-operator
+spec:
+  config_type: STORAGE_S3
+  data:
+    BACKUP_LOCATION: s3://backups.yugabyte.com/test
+    USE_IAM: true //For IAM based access on GCP/S3
+```
+
+Provide the service account in the universe overrides section. The service account should have IAM roles configured for access to cloud storage.
+
+```yaml
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: YBUniverse
+metadata:
+  name: operator-universe
+spec:
+  ...
+  kubernetesOverrides:
+    tserver:
+      serviceAccount: <KSA_NAME>
+```
+
+For more information, refer to [Enable IAM roles for service accounts](https://docs.aws.amazon.com/eks/latest/userguide/enable-iam-roles-for-service-accounts.html) in the AWS documentation.
+
+**GKE**
+
+The storage config CR should have IAM as the credential source.
+
+```yaml
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: StorageConfig
+metadata:
+  name: gcs-config-operator
+spec:
+  config_type: STORAGE_GCS
+  data:
+    BACKUP_LOCATION: gs://gcp-bucket/test_backups
+    USE_IAM: true //For IAM based access on GCP/S3
+```
+
+Provide the service account in the universe overrides section. The service account should have IAM roles configured for access to cloud storage.
+
+```yaml
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: YBUniverse
+metadata:
+  name: operator-universe
+spec:
+  ...
+  kubernetesOverrides:
+    tserver:
+      serviceAccount: <KSA_NAME>
+```
+
+For more information, refer to [Authenticate to Google Cloud APIs from GKE workloads](https://cloud.google.com/kubernetes-engine/docs/how-to/workload-identity) in the Google Cloud documentation.
+
 <!--
 TODO in 2.27
 #### Scheduled backups
