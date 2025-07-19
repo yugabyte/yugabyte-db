@@ -2272,14 +2272,16 @@ class PgClientSession::Impl {
         wait_state->UpdateAuxInfo({.method = "Perform"});
         ash::SharedMemoryPgPerformTracker().Track(wait_state);
       }
-      auto listener = std::make_shared<SharedMemoryPerformListener>();
+      auto listener_and_result = std::make_shared<
+          std::pair<SharedMemoryPerformListener, PgTablesQueryResult>>();
+      auto listener = rpc::SharedField(listener_and_result, &listener_and_result->first);
+      auto result = rpc::SharedField(listener_and_result, &listener_and_result->second);
       boost::container::small_vector<TableId, 4> table_ids;
       PreparePgTablesQuery(data->req, table_ids);
-      PgTablesQueryResult result;
       table_cache().GetTables(table_ids, {}, result, listener);
       status = listener->Wait(data->deadline);
       if (status.ok()) {
-        status = DoPerform(data, data->deadline, nullptr, result);
+        status = DoPerform(data, data->deadline, nullptr, *result);
       }
       ash::SharedMemoryPgPerformTracker().Untrack(wait_state);
     }
