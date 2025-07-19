@@ -80,6 +80,7 @@ When you receive a cluster alert, the first step is to review the chart for the 
 | [Node Free Storage](#fix-storage-alerts) | Disk Usage metric |
 | [Nodes Down](#fix-nodes-reporting-as-down-alerts) | Go to the cluster [Nodes tab](../monitor-nodes/) to see which nodes are down |
 | [Memory Use](#fix-memory-alerts) | Memory Usage metric |
+| [Disaster recovery](#fix-disaster-recovery-alerts) | Safe time and Replication lag metric |
 | [Cluster Queues Overflow](#fix-database-overload-alerts) | RPC Queue Size metric |
 | [Compaction Overload](#fix-database-overload-alerts) | Compaction metric |
 | [YSQL Connections](#fix-ysql-connection-alerts) | YSQL Operations/Sec metric |
@@ -178,6 +179,17 @@ If memory use is continuously higher than 80%, your workload may also exceed the
 
 High memory use could also indicate a problem and may require debugging by {{% support-cloud %}}.
 
+#### Fix disaster recovery alerts
+
+If you have set up disaster recovery (DR) for a cluster, YugabyteDB Aeon sends a notification when the safe time or replication lag exceeds the threshold, as follows:
+
+- Safe time lag exceeds 5 minutes (Warning).
+- Safe time lag exceeds 10 minutes (Severe).
+- Replication lag exceeds 5 minutes (Warning).
+- Replication lag exceeds 10 minutes (Severe).
+
+If you receive DR alerts, navigate to the primary cluster **Disaster Recovery** tab and check the status. See [Disaster Recovery alerts](../../cloud-clusters/disaster-recovery/disaster-recovery-setup/#disaster-recovery-alerts) for more information.
+
 #### Fix database overload alerts
 
 YugabyteDB Aeon sends the following database overload alert:
@@ -244,6 +256,22 @@ Unoptimized queries can lead to CPU alerts. Use the [Slow Queries](../cloud-quer
 High CPU use could also indicate a problem and may require debugging by {{% support-cloud %}}.
 
 If CPU use is continuously higher than 80%, your workload may also exceed the capacity of your cluster. Consider scaling your cluster vertically by adding vCPUs to increase capacity per node, or horizontally by adding nodes to reduce the load per node. Refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
+
+### Disaster recovery alerts
+
+If disaster recovery is configured, YugabyteDB Aeon can alert you when the safe time or replication lag to the replica cluster exceeds a threshold.
+
+| Alert | Metric |
+| :--- | :--- |
+| Safe time lag | Time |
+| Replication lag | Time |
+
+YugabyteDB Aeon sends a notification when lag exceeds the threshold, as follows:
+
+- Safe time lag exceeds 5 minutes (Warning) or 10 minutes (Severe).
+- Replication lag exceeds 5 minutes (Warning) or 10 minutes (Severe).
+
+For more information, refer to [Monitor replication](../../cloud-clusters/disaster-recovery/disaster-recovery-setup/#monitor-replication).
 
 ### Billing alerts
 
