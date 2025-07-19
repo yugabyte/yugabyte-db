@@ -658,7 +658,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     auto query = std::make_shared<OpenTableQuery>(
         MakeTypedPBRpcContextHolder(req, resp, std::move(context)));
     table_cache_.GetTables(
-        std::span(&req.table_id(), 1), options, query->tables(), query);
+        std::span(&req.table_id(), 1), options, rpc::SharedField(query, &query->tables()), query);
   }
 
   Status GetTablePartitionList(
@@ -1741,7 +1741,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     PreparePgTablesQuery(*req, table_ids);
     auto query = std::make_shared<PerformQuery>(
       *this, MakeTypedPBRpcContextHolder(*req, resp, std::move(*context)));
-    table_cache_.GetTables(table_ids, {}, query->tables(), query);
+    table_cache_.GetTables(table_ids, {}, rpc::SharedField(query, &query->tables()), query);
   }
 
   void InvalidateTableCache() {

@@ -26,29 +26,39 @@
 
 namespace yb::tserver {
 
+std::string PgTablesQueryResult::TableInfo::ToString() const {
+  return YB_STRUCT_TO_STRING(table, schema);
+}
+
 class PgTablesQueryResultBuilder {
  public:
-  PgTablesQueryResultBuilder(PgTablesQueryResult& result, size_t size) : result_(result) {
-    result.pending_tables_ = size;
-    result.tables_.reserve(size);
+  PgTablesQueryResultBuilder(const PgTablesQueryResultPtr& result, size_t size) : result_(result) {
+    VLOG_WITH_FUNC(4) << static_cast<const void*>(result_.get()) << ", pending tables: " << size;
+    result->pending_tables_ = size;
+    result->tables_.reserve(size);
   }
 
   bool TableReady(const Result<PgTablesQueryResult::TableInfo>& info) const {
-    std::lock_guard lock(result_.mutex_);
-    if (!result_.failure_status_.ok()) {
+    std::lock_guard lock(result_->mutex_);
+    VLOG_WITH_FUNC(4)
+        << static_cast<const void*>(result_.get())
+        << ", failure status: " << AsString(result_->failure_status_) << ", pending tables: "
+        << result_->pending_tables_ << ", tables: " << AsString(result_->tables_) << ", info: "
+        << AsString(info);
+    if (!result_->failure_status_.ok()) {
       return false;
     }
     if (!info.ok()) {
-      result_.failure_status_ = info.status();
+      result_->failure_status_ = info.status();
       return true;
     }
 
-    result_.tables_.push_back(*info);
-    return --result_.pending_tables_ == 0;
+    result_->tables_.push_back(*info);
+    return --result_->pending_tables_ == 0;
   }
 
  private:
-  PgTablesQueryResult& result_;
+  PgTablesQueryResultPtr result_;
 };
 
 namespace {
@@ -159,7 +169,7 @@ class PgTableCache::Impl {
   void GetTables(
       std::span<const TableId> table_ids,
       const PgTableCacheGetOptions& options,
-      PgTablesQueryResult& result,
+      const PgTablesQueryResultPtr& result,
       const PgTablesQueryListenerPtr& listener) {
     boost::container::small_vector<std::pair<const TableId*, CacheEntryPtr>, 8> entries;
     {
@@ -270,7 +280,10 @@ class PgTableCache::Impl {
 
   void LoadEntry(
       const TableId& table_id, master::IncludeHidden include_hidden, const CacheEntryPtr& entry) {
-    auto callback = [entry](const Result<client::YBTablePtr>& result) {
+    auto callback = [entry, table_id](const Result<client::YBTablePtr>& result) {
+      VLOG(4)
+          << "PG table cache entry response for " << table_id << ": "
+          << (result.ok() ? (*result)->ToString() : result.status().ToString());
       entry->SetValue(CheckTableType(result));
     };
 
@@ -306,7 +319,7 @@ Result<client::YBTablePtr> PgTableCache::Get(const TableId& table_id) {
 void PgTableCache::GetTables(
     std::span<const TableId> table_ids,
     const PgTableCacheGetOptions& options,
-    PgTablesQueryResult& result,
+    const PgTablesQueryResultPtr& result,
     const PgTablesQueryListenerPtr& listener) {
   return impl_->GetTables(table_ids, options, result, listener);
 }
