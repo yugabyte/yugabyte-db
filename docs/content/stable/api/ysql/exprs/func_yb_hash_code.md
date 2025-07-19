@@ -7,6 +7,7 @@ menu:
   stable_api:
     identifier: api-ysql-exprs-yb_hash_code
     parent: api-ysql-exprs
+    weight: 10
 type: docs
 ---
 

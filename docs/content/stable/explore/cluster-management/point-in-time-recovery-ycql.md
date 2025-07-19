@@ -23,7 +23,7 @@ Note that the examples are deliberately simplified. In many of the scenarios, yo
 
 ## Set up universe
 
-The examples run on a local multi-node YugabyteDB universe. To create a universe, see [Set up YugabyteDB universe](../../#set-up-yugabytedb-universe).
+The examples run on a local multi-node YugabyteDB universe. To create a universe, see [Set up YugabyteDB universe](../../cluster-setup-local/#set-up-yugabytedb-universe).
 
 ## Undo data changes
 

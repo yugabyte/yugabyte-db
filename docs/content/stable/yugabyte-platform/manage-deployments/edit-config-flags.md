@@ -21,7 +21,7 @@ For more information about the available configuration flags, see the following:
 
 ## Enhanced Postgres Compatibility
 
-If your cluster database version is v2024.2 or later, you can enable early access features for PostgreSQL compatibility by navigating to the universe and clicking **Actions > Edit Postgres Compatibility**. For more information, refer to [Enhanced PostgreSQL Compatibility Mode](../../../develop/postgresql-compatibility/).
+If your cluster database version is v2024.2 or later, you can enable early access features for PostgreSQL compatibility by navigating to the universe and clicking **Actions > More > Edit Postgres Compatibility**. For more information, refer to [Enhanced PostgreSQL Compatibility Mode](../../../develop/postgresql-compatibility/).
 
 {{<warning title="Flag settings">}}
 Enabling Enhanced Postgres Compatibility sets several flags, and overrides any settings you may have set for the same flags on the **G-Flags** tab. The **G-Flags** tab will however continue to display the setting that you customized.
@@ -43,9 +43,9 @@ Depending on the flag, the universe may need to be restarted to apply the change
 
 ### Batched rolling restart
 
-{{<tags/feature/ea idea="444">}}During a rolling restart, YugabyteDB Anywhere can process multiple YB-TServer nodes in each availability zone simultaneously. YB-Master nodes are always updated one at a time.
+{{<tags/feature/ea>}}During a rolling restart, YugabyteDB Anywhere can process multiple YB-TServer nodes in each availability zone simultaneously. YB-Master nodes are always updated one at a time.
 
-Batched rolling restart is {{<tags/feature/ea idea="444">}}. To enable the feature in YugabyteDB Anywhere, set the **Stop multiple nodes in az simultaneously during upgrade** Global runtime configuration option (config key `yb.task.upgrade.batch_roll_enabled`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global runtime configuration settings.
+Batched rolling restart is {{<tags/feature/ea>}}. To enable the feature in YugabyteDB Anywhere, set the **Stop multiple nodes in az simultaneously during upgrade** Global runtime configuration option (config key `yb.task.upgrade.batch_roll_enabled`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global runtime configuration settings.
 
 Batched rolling restart requires a replication factor of 3 or more, and at least two nodes in an availability zone. If your universe supports a batched rolling restart, you can specify the maximum number of nodes to process as a batch.
 

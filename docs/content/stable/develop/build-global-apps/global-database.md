@@ -55,14 +55,14 @@ You can review the universe setup using the [YugabyteDB UI](http://127.0.0.1:154
 
 ### Add a table
 
-Connect to the database using `ysqlsh` and create a table as follows:
+Connect to the database using ysqlsh and create a table as follows:
 
 ```bash
 ./bin/ysqlsh
 ```
 
 ```output
-ysqlsh (11.2-YB-{{<yb-version version="stable">}}-b0)
+ysqlsh (15.2-YB-{{<yb-version version="stable">}}-b0)
 Type "help" for help.
 ```
 

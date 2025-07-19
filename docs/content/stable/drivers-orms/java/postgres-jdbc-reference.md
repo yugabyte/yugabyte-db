@@ -280,14 +280,14 @@ Steps for configuring the JDBC client for server authentication in a Kubernetes 
    replicas.master=1,replicas.tserver=1,tls.enabled=true --namespace yb-demo
    ```
 
-1. Verify that SSL is enabled using `ysqlsh`.
+1. Verify that SSL is enabled using ysqlsh.
 
    ```sh
     $ ysqlsh
     ```
 
     ```output
-    ysqlsh (11.2-YB-{{<yb-version version="stable">}}-b0)
+    ysqlsh (15.2-YB-{{<yb-version version="stable">}}-b0)
     SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
     Type "help" for help.
     ```

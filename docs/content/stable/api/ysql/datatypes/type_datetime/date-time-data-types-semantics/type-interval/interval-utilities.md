@@ -66,7 +66,7 @@ Here's an example of such a _text_ literal:
 
 PostgreSQL defines two fundamentally different data type families for representing real numbers and for supporting arithmetic using their values. Of course, YSQL inherits this regime.
 
-The PostgreSQL documentation uses the terms [Arbitrary Precision Numbers](https://www.postgresql.org/docs/11/datatype-numeric.html#DATATYPE-NUMERIC-DECIMAL) and [Floating-Point Numbers](https://www.postgresql.org/docs/11/datatype-numeric.html#DATATYPE-FLOAT) for these two kinds of data type. The first kind is exemplified by the data type _numeric_. And the second kind is exemplified by _double precision_. There are other variants in each class. But the entire _[date_time](../../../../type_datetime/)_ section uses only these two (and uses only the unconstraint _numeric_ variant). Moreover, it uses _numeric_ only under duress. For example, you can easily round a _numeric_ value to some desired number of decimal places like this:
+The PostgreSQL documentation uses the terms [Arbitrary Precision Numbers](https://www.postgresql.org/docs/15/datatype-numeric.html#DATATYPE-NUMERIC-DECIMAL) and [Floating-Point Numbers](https://www.postgresql.org/docs/15/datatype-numeric.html#DATATYPE-FLOAT) for these two kinds of data type. The first kind is exemplified by the data type _numeric_. And the second kind is exemplified by _double precision_. There are other variants in each class. But the entire _[date_time](../../../../type_datetime/)_ section uses only these two (and uses only the unconstraint _numeric_ variant). Moreover, it uses _numeric_ only under duress. For example, you can easily round a _numeric_ value to some desired number of decimal places like this:
 
 ```plpgsql
 select round(12.3456789::numeric, 3::int);

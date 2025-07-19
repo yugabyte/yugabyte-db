@@ -18,7 +18,7 @@ type: docs
   <li >
     <a href="../yugabyte-psycopg2-reference/" class="nav-link active">
       <img src="/icons/yugabyte.svg"></i>
-      YugabyteDB Psycopg2
+      Yugabyte Psycopg2
     </a>
   </li>
   <li >
@@ -148,7 +148,7 @@ To create a multi-zone cluster, do the following:
 
     ```sh
     ./bin/yugabyted start --advertise_address=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1 \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node1 \
         --cloud_location=aws.us-east-1.us-east-1a \
         --fault_tolerance=zone
     ```
@@ -158,7 +158,7 @@ To create a multi-zone cluster, do the following:
     ```sh
     ./bin/yugabyted start --advertise_address=127.0.0.2 \
         --join=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node2 \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node2 \
         --cloud_location=aws.us-east-1.us-east-1a \
         --fault_tolerance=zone
     ```
@@ -166,7 +166,7 @@ To create a multi-zone cluster, do the following:
     ```sh
     ./bin/yugabyted start --advertise_address=127.0.0.3 \
         --join=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node3 \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node3 \
         --cloud_location=aws.us-east-1.us-east-1b \
         --fault_tolerance=zone
     ```
@@ -216,9 +216,9 @@ To verify the behavior, wait for the app to create connections and then navigate
 When you're done experimenting, run the following command to destroy the local cluster:
 
 ```sh
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node2
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node3
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node1
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node2
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node3
 ```
 
 ## Limitations

@@ -106,7 +106,7 @@ SET session yb_locks_txn_locks_per_tablet = 10;
 
 ## Examples
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 The following examples show how you can use the pg_locks view in YugabyteDB:
 

@@ -87,7 +87,6 @@ SELECT * FROM txndemo WHERE k=1 FOR UPDATE;
 ```
 
 YugabyteDB supports the following types of explicit row locks:
-
 | Lock | Description |
 | :--- | :---------- |
 | **FOR UPDATE** | Strongest and exclusive lock. Prevents all other locks on these rows till the transaction ends.|

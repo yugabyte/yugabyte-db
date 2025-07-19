@@ -24,9 +24,9 @@ The following examples demonstrate how YugabyteDB transactions survive common fa
 
 For more information on how YugabyteDB handles failures and its impact during transaction processing, refer to [Impact of failures](../../../architecture/transactions/distributed-txns/#impact-of-failures).
 
-## Prerequisites
+## Setup
 
-1. Follow the [setup instructions](../../#set-up-yugabytedb-universe) to start a local single region three-node universe. This creates a single region cluster with nodes in 3 different zones as shown in the following illustration:
+1. Follow the [setup instructions](../../cluster-setup-local/) to start a local single region three-node universe. This creates a single region cluster with nodes in 3 different zones as shown in the following illustration:
 
     ![Local three node cluster](/images/explore/local_cluster_setup.svg)
 
@@ -300,7 +300,7 @@ For this case, you can connect to any node in the cluster; `127.0.0.1` has been 
     Time: 2.499 ms
     ```
 
-    The transaction failed with an error code `57P01`, which is a [standard PostgreSQL error code](https://www.postgresql.org/docs/11/errcodes-appendix.html) to indicate that the database server was restarted or your connection killed by the administrator. In such cases, the application should be programmed so that it automatically reconnects to the database when the connection fails.
+    The transaction failed with an error code `57P01`, which is a [standard PostgreSQL error code](https://www.postgresql.org/docs/15/errcodes-appendix.html) to indicate that the database server was restarted or your connection killed by the administrator. In such cases, the application should be programmed so that it automatically reconnects to the database when the connection fails.
 
 1. From another terminal of your YugabyteDB home directory, connect to a different node and check the value as follows:
 

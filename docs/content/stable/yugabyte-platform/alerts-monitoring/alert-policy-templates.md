@@ -104,7 +104,7 @@ sum by (node_prefix) (increase(majority_sst_files_rejections{node_prefix="$node_
 
 #### DB core files
 
-Core files detected for universe `'$universe_name'` on `$value` T-Server instances.
+Core files detected for universe `'$universe_name'` on `$value` TServer instances.
 
 ```promql
 ybp_health_check_tserver_core_files{universe_uuid="$uuid"} > 0
@@ -129,7 +129,7 @@ sum by (universe_uuid) ((ybp_health_check_node_master_error_logs{universe_uuid="
 
 #### DB fatal logs
 
-Fatal logs have been detected for universe `'$universe_name'` on `$value` Master or T-Server instances.
+Fatal logs have been detected for universe `'$universe_name'` on `$value` Master or TServer instances.
 
 ```promql
 sum by (universe_uuid) (ybp_health_check_node_master_fatal_logs{universe_uuid="$uuid"} < bool 1) + sum by (universe_uuid) (ybp_health_check_node_tserver_fatal_logs{universe_uuid="$uuid"} < bool 1) > 0
@@ -137,7 +137,7 @@ sum by (universe_uuid) (ybp_health_check_node_master_fatal_logs{universe_uuid="$
 
 #### DB instance down
 
-`$value` database Master or T-Server instances are down for more than 15 minutes for universe `'$universe_name'`.
+`$value` database Master or TServer instances are down for more than 15 minutes for universe `'$universe_name'`.
 
 ```promql
   count by (node_prefix) (
@@ -159,7 +159,7 @@ sum by (universe_uuid) (ybp_health_check_node_master_fatal_logs{universe_uuid="$
 
 #### DB instance restart
 
-Universe `'$universe_name'` Master or T-Server has restarted `$value` times during last 30 minutes.
+Universe `'$universe_name'` Master or TServer has restarted `$value` times during last 30 minutes.
 
 ```promql
   max by (node_prefix) (
@@ -203,7 +203,7 @@ Database memory rejections have been detected for universe `'$universe_name'`.
 
 #### DB version mismatch
 
-Version mismatch has been detected for universe `'$universe_name'` for `$value` Master or T-Server instances.
+Version mismatch has been detected for universe `'$universe_name'` for `$value` Master or TServer instances.
 
 ```promql
    ybp_health_check_tserver_version_mismatch{universe_uuid="$uuid"}
@@ -714,7 +714,7 @@ sum by (service_method)(rate(rpc_latency_count{universe_uuid="__universeUuid__",
 
 #### DB CQLSH connection
 
-CQLSH connection failure has been detected for universe `'$universe_name'` on `$value` T-Server instances.
+CQLSH connection failure has been detected for universe `'$universe_name'` on `$value` TServer instances.
 
 ```promql
 ybp_health_check_cqlsh_connectivity_error{universe_uuid="$uuid"} > 0

@@ -69,7 +69,7 @@ If the name of the stored procedure is not unique (for example, if you had two `
 
 ## Example workflow
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 In the following example, you create a new table and a stored procedure to perform operations on that table. Finally, you clean up by removing the procedure and the table.
 

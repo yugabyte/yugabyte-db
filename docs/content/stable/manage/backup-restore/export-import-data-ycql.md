@@ -26,7 +26,7 @@ type: docs
   </li>
 </ul>
 
-You use the `ycqlsh` script to export and import YCQL data. For details on how to use the script to connect to a YugabyteDB cluster, as well as the full list of available options, see [ycqlsh reference](../../../api/ycqlsh/).
+You use the ycqlsh script to export and import YCQL data. For details on how to use the script to connect to a YugabyteDB cluster, as well as the full list of available options, see [ycqlsh reference](../../../api/ycqlsh/).
 
 ## Export schema
 

@@ -325,7 +325,7 @@ You can enable tablet limits using the following steps:
 
 1. Enable the flag [enforce_tablet_replica_limits](../../../reference/configuration/yb-master/#enforce-tablet-replica-limits) on all YB-Masters.
 1. Choose a resource to limit the total number of tablet replicas. Limits are supported by available CPU cores, GiB of RAM, or both.
-    * To limit by memory, if you're using YSQL, it is simplest to set the flag [use_memory_defaults_optimized_for_ysql](../../../reference/configuration/yb-tserver/#use-memory-defaults-optimized-for-ysql) to true.
+    * To limit by memory, if you're using YSQL, it is simplest to set the flag [use_memory_defaults_optimized_for_ysql](../../../reference/configuration/yb-tserver/#use-memory-defaults-optimized-for-ysql) to true. This [smart default](../../../reference/configuration/smart-defaults/) automatically optimizes tablet limits based on the amount of RAM and cores available.
     * To limit by CPU cores and GiB, or both, set the flags [tablet_replicas_per_core_limit](../../../reference/configuration/yb-tserver/#tablet-replicas-per-core-limit) and [tablet_replicas_per_gib_limit](../../../reference/configuration/yb-tserver/#tablet-replicas-per-gib-limit) to the desired positive value on all YB-Masters and YB-TServers.
 
         These flags limit the number of tablets that can be created in the live placement group in terms of resources available to YB-TServers in the cluster. For example, if [tablet_overhead_size_percentage](../../../reference/configuration/yb-tserver/#tablet-overhead-size-percentage) is 10, each YB-TServer has 10 GiB available, `tablet_replicas_per_gib_limit` is 1000, and there are 3 YB-TServers in the cluster, this feature will prevent you from creating more than 3000 tablet replicas. Assuming a replication factor of 3, this is the same as 1000 tablets. Note that YugabyteDB creates a certain number of system tablets itself, so in this case you are not free to create 1000 tablets.
@@ -363,7 +363,7 @@ The following table describes metrics related to tablet limits.
 
 ### Example
 
-{{% explore-setup-single-local %}}
+{{% explore-setup-single-local-new %}}
 
 Assuming a cluster has been properly configured, if you try to create a table beyond the configurable limit, the error message you can expect to see in a ysqlsh session is as follows:
 
@@ -388,7 +388,7 @@ It is recommended to use the pre-computed memory defaults. Setting `use_memory_d
 The following known limitations are planned to be resolved in upcoming releases:
 
 * Colocated tables cannot be split. For details, see [#4463](https://github.com/yugabyte/yugabyte-db/issues/4463).
-* In YugabyteDB version 2.14.0, when tablet splitting is used with point in time recovery (PITR), restoring to arbitrary times in the past when a tablet is in the process of splitting is not supported. This was resolved in 2.14.1.
+* In YugabyteDB version 2.14.0, when tablet splitting is used with point-in-time recovery (PITR), restoring to arbitrary times in the past when a tablet is in the process of splitting is not supported. This was resolved in 2.14.1.
 * Tablet splitting is currently disabled during bootstrap for tables with cross-cluster replication. For details, see [#13170](https://github.com/yugabyte/yugabyte-db/issues/13170).
 * Tablet splitting is currently disabled for tables that are using the [TTL file expiration](../../../develop/learn/ttl-data-expiration-ycql/#efficient-data-expiration-for-ttl) feature.
 

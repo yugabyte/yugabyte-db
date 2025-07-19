@@ -19,16 +19,16 @@ Unless otherwise noted, operating systems are supported by all supported version
 
 | Operating system | x86            | ARM            | Notes |
 | :--------------- | :------------- | :------------- | :---- |
-| AlmaLinux 8      | {{<icon/yes>}} | {{<icon/yes>}} |       |
+| AlmaLinux 8      | {{<icon/yes>}} | {{<icon/yes>}} | |
 | AlmaLinux 9      | {{<icon/yes>}} | {{<icon/yes>}} | Default for YugabyteDB Anywhere-deployed nodes |
 | Amazon Linux 2023 | {{<icon/yes>}} | {{<icon/yes>}} | Supported in v2024.2.3 and later |
 | Oracle Linux 8   | {{<icon/yes>}} |                | |
 | Red Hat Enterprise Linux 8 | {{<icon/yes>}} |      | |
 | Red Hat Enterprise Linux 8 CIS Hardened | {{<icon/yes>}} |      | |
 | Red Hat Enterprise Linux&nbsp;9.3 and later | {{<icon/yes>}} |  | |
-| Red Hat Enterprise Linux&nbsp;9 CIS Hardened | {{<icon/yes>}} |  | Supported in v2.20.3 and later.  {{<tags/feature/ea idea="1716">}} |
-| Rocky Linux 8    | {{<icon/yes>}} |                | Supported in v2.20.8, v2024.1.4, and v2024.2 and later. |
-| SUSE&nbsp;Linux&nbsp;Enterprise&nbsp;Server&nbsp;15&nbsp;SP5 | {{<icon/yes>}} |     | {{<tags/feature/ea idea="886">}} |
+| Red Hat Enterprise Linux&nbsp;9 CIS Hardened | {{<icon/yes>}} |  | Supported in v2.20.3 and later.  {{<tags/feature/ea>}} |
+| Rocky Linux 8    | {{<icon/yes>}} |                | Supported in v2.20.8, v2024.1.4, and v2024.2 and later.  {{<tags/feature/ea>}} |
+| SUSE&nbsp;Linux&nbsp;Enterprise&nbsp;Server&nbsp;15&nbsp;SP5 | {{<icon/yes>}} |     | {{<tags/feature/ea>}} |
 | Ubuntu 20        | {{<icon/yes>}} | {{<icon/yes>}} |       |
 | Ubuntu 22        | {{<icon/yes>}} | {{<icon/yes>}} | Supported in v2.18.5, v2.20.1 |
 

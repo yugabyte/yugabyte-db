@@ -43,7 +43,7 @@ Learn about [analyzing queries with EXPLAIN](./explain-analyze/).
 
 ## Use a hint plan
 
-Using the pg_hint_plan extension, you can influence the query planner's decisions by embedding hints directly in SQL comments. This can be particularly useful when the planner's default behavior doesn't align with the specific performance needs of a query. Using hints (such as specifying join methods or scan types), you can guide the planner to choose more efficient execution plans based on your knowledge of the data and workload.
+Using the pg_hint_plan extension, you can influence the query planner's decisions by embedding hints directly in SQL comments. This can be particularly useful when the planner's default behavior doesn't align with the specific performance needs of a query. Using hints, such as specifying join methods or scan types, you can guide the planner to choose more efficient execution plans based on your knowledge of the data and workload.
 
 {{<lead link="./pg-hint-plan/">}}
 To learn more, see [Optimizing YSQL queries using pg_hint_plan](./pg-hint-plan/).
@@ -52,7 +52,6 @@ To learn more, see [Optimizing YSQL queries using pg_hint_plan](./pg-hint-plan/)
 ## Log all slow queries
 
 You can set the `--ysql_log_min_duration_statement` flag to help track down slow queries. When configured, YugabyteDB logs the duration of each completed SQL statement that runs the specified duration (in milliseconds) or longer. (Setting the value to 0 prints all statement durations.)
-You can set the `--ysql_log_min_duration_statement` flag to help track down slow queries. When configured, YugabyteDB logs the duration of each completed SQL statement that runs the specified duration (in milliseconds) or longer. (Setting the value to 0 prints all statement durations.)
 
 ```sh
 $ ./bin/yb-tserver --ysql_log_min_duration_statement 1000
@@ -60,14 +59,24 @@ $ ./bin/yb-tserver --ysql_log_min_duration_statement 1000
 
 Results are written to the current `postgres*log` file.
 
-{{< note title="Note" >}}
-
-Depending on the database and the work being performed, long-running queries don't necessarily need to be optimized.
-
-Ensure that the threshold is high enough so that you don't flood the `postgres*log` log files.
-
-{{< /note >}}
+(Depending on the database and the work being performed, long-running queries don't necessarily need to be optimized. Ensure that the threshold is high enough so that you don't flood the `postgres*log` log files.)
 
 {{<lead link="/preview/troubleshoot/nodes/check-logs/#yb-tserver-logs">}}
-Learn more about [YB-TServer logs](/preview/troubleshoot/nodes/check-logs/#yb-tserver-logs).
+Learn more about [YB-TServer logs](/preview/explore/observability/logging/).
+{{</lead>}}
+
+## Auto Analyze
+
+To create optimal plans for queries, the query planner needs accurate and up-to-date statistics related to tables and their columns. ANALYZE collects statistics about the contents of tables in the database, and stores the results in the `pg_statistic` system catalog. Similar to [PostgreSQL autovacuum](https://www.postgresql.org/docs/current/routine-vacuuming.html#AUTOVACUUM), the YugabyteDB Auto Analyze service automates the execution of ANALYZE commands for any table where rows have changed more than a configurable threshold for the table. This ensures table statistics are always up-to-date.
+
+{{<lead link="./auto-analyze/">}}
+To learn more, see [Auto Analyze service](./auto-analyze/).
+{{</lead>}}
+
+## Export query diagnostics
+
+Capture and export detailed query diagnostic information across multiple dimensions to help identify and resolve database query problems.
+
+{{<lead link="./query-diagnostics/">}}
+To learn more, see [Query diagnostics](./query-diagnostics/).
 {{</lead>}}

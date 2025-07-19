@@ -27,6 +27,6 @@ type: docs
   </li>
 </ul>
 
-{{<tags/feature/ea idea="831">}}The YugabyteDB Kubernetes Operator automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments. It streamlines database operations, reducing manual effort for developers and operators.
+The YugabyteDB Kubernetes Operator automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments. It streamlines database operations, reducing manual effort for developers and operators.
 
 For more information, refer to the [YugabyteDB Kubernetes Operator](https://github.com/yugabyte/yugabyte-k8s-operator) GitHub project.

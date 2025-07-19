@@ -27,16 +27,6 @@ The certificate and private key must be in PEM format.
 
 YugabyteDB Anywhere produces the node (leaf) certificates from the uploaded certificates and copies the certificate chain, leaf certificate, and private key to the nodes in the cluster.
 
-### Generate self-signed certificates
-
-You can generate self-signed certificates using openssl as follows:
-
-```sh
-openssl req -newkey rsa:2048 -nodes -keyout yugabyte_private_key.pem -x509 -days 365 -out yugabyte_cert.pem
-```
-
-See also [Generate the root certificate file](../../../../secure/tls-encryption/server-certificates/#generate-the-root-certificate-file).
-
 ### Convert certificates and keys from PKCS12 to PEM format
 
 If your certificates and keys are stored in the PKCS12 format, you can convert them to the PEM format using OpenSSL.
@@ -54,6 +44,16 @@ openssl pkcs12 -in cert-archive.pfx -out key.pem -nocerts -nodes
 ```
 
 If the key is protected by a passphrase in the PKCS12 archive, you are prompted for the passphrase.
+
+### Generate self-signed certificates
+
+You can generate self-signed certificates using openssl as follows:
+
+```sh
+openssl req -newkey rsa:2048 -nodes -keyout yugabyte_private_key.pem -x509 -days 365 -out yugabyte_cert.pem
+```
+
+See also [Generate the root certificate file](../../../../secure/tls-encryption/server-certificates/#generate-the-root-certificate-file).
 
 ## Add self-signed certificates
 

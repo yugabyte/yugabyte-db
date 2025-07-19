@@ -136,21 +136,23 @@ The following options are used for logging the provisioning itself.
 | `logging directory` | Set the directory where node provisioning log files will be stored. |
 | `logging file` | Name of the node provisioning log file. |
 
+### Preflight check
+
+Run the preflight checks either as a root user, or via sudo as follows:
+
+```sh
+sudo ./node-agent-provision.sh --preflight_check
+```
+
+Address any issues highlighted by the preflight checks.
+
 ### Run the provisioning script
 
-1. Run the preflight checks either as a root user, or via sudo as follows:
+When the preflight checks pass, run the script either as a root user, or via sudo as follows:
 
-    ```sh
-    sudo ./node-agent-provision.sh --preflight_check
-    ```
-
-1. Address any issues highlighted by the preflight checks.
-
-1. When the preflight checks pass, run the script either as a root user, or via sudo as follows:
-
-    ```sh
-    sudo ./node-agent-provision.sh
-    ```
+```sh
+sudo ./node-agent-provision.sh
+```
 
 The script provisions the node and installs node agent.
 

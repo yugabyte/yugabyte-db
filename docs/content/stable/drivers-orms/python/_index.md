@@ -2,7 +2,7 @@
 title: Python drivers and ORMs
 headerTitle: Python
 linkTitle: Python
-description: Python Drivers and ORMs support for YugabyteDB.
+description: Python drivers and ORMs support for YugabyteDB.
 menu:
   stable:
     identifier: python-drivers

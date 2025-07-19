@@ -1,8 +1,8 @@
 ---
-title: Troubleshoot cloud provider configuration issues
+title: Troubleshoot provider configuration issues
 headerTitle:
-linkTitle: Cloud provider configuration issues
-description: Troubleshoot issues encountered when configuring cloud providers for YugabyteDB Anywhere.
+linkTitle: Provider configuration issues
+description: Troubleshoot issues encountered when creating provider configurations for YugabyteDB Anywhere.
 menu:
   stable_yugabyte-platform:
     identifier: cloud-provider-config-issues
@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-You might encounter issues during configuration of cloud providers for YugabyteDB Anywhere.
+You might encounter issues when creating provider configurations for YugabyteDB Anywhere.
 
 If you have problems while troubleshooting, contact {{% support-platform %}}.
 

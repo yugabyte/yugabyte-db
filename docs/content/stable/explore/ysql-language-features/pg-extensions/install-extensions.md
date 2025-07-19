@@ -65,17 +65,17 @@ ls "$(yb_pg_config --sharedir)"/extension/
 
 The easiest way to install an extension is to copy the files from an existing PostgreSQL installation.
 
-Ideally, use the same version of the PostgreSQL extension as that used by YugabyteDB. To see the version of PostgreSQL used in your YugabyteDB installation, enter the following `ysqlsh` command:
+Ideally, use the same version of the PostgreSQL extension as that used by YugabyteDB. To see the version of PostgreSQL used in your YugabyteDB installation, enter the following ysqlsh command:
 
 ```sh
 ./bin/ysqlsh --version
 ```
 
 ```output
-psql (PostgreSQL) 11.2-YB-{{<yb-version version="stable">}}-b0
+psql (PostgreSQL) 15.2-YB-{{<yb-version version="stable">}}-b0
 ```
 
-If you already have PostgreSQL (use version `11.2` for best YSQL compatibility) with the extension installed, you can find the extension's files as follows:
+If you already have PostgreSQL (use version 15 for best YSQL compatibility) with the extension installed, you can find the extension's files as follows:
 
 ```sh
 ls "$(pg_config --pkglibdir)" | grep <name>

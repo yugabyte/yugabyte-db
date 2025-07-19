@@ -168,7 +168,7 @@ YugabyteDB currently supports two types of [LSN](../key-concepts/#lsn-type), SEQ
 To obtain the current hybrid time value, use the `yb_get_current_hybrid_time_lsn()` function:
 
 ```sql
-select * from yb_get_current_hybrid_time_lsn();
+SELECT * FROM yb_get_current_hybrid_time_lsn();
 ```
 
 This gives an output in terms of a long value. You can further convert this to `pg_lsn` format by defining the following method:

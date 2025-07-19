@@ -24,10 +24,10 @@ The following table summarizes these different multi-region deployments in Yugab
 | :-- | :--------------------------------------- | :---------------------------------------------- | :----------------------------------------- | :------------ |
 | **Replication** | Synchronous | Synchronous  | Asynchronous <br/> *(unidirectional and bidirectional)* | Asynchronous <br/> *(unidirectional only)* |
 | **Data residency** | All data replicated across regions | Data partitioned across regions. <br/>Partitions replicated inside region. | All data replicated inside region. <br/>Configure per-table cross-region replication. | All data replicated in primary region. <br/>Cluster-wide asynchronous replication to read replicas. |
-| **Consistency** | Transactional | Transactional | Timeline consistency | Timeline consistency |
+| **Consistency** | Transactional | Transactional | Transactional | Timeline consistency |
 | **Write latency** | High latency | Low latency | Low latency | N/A |
 | **Read latency** | High latency | Low latency <br/> *(when queried from nearby geography)* | Low latency | Low latency |
-| **Schema changes** | Transparently managed | Transparently managed | Manual propagation | Transparently managed |
+| **Schema changes** | Transparently managed | Transparently managed | Transparently managed *([Limitations](../../architecture/docdb-replication/async-replication/#transactional-automatic-mode))* | Transparently managed |
 | **RPO** | No data loss | No data loss <br/> *(partial unavailability possible)* | Some data loss | No data loss |
 
 The deployment types are explained in the following sections.
@@ -42,7 +42,7 @@ The deployment types are explained in the following sections.
 
   {{<index/item
     title="xCluster"
-    body="Asynchronous replication across two data centers or cloud regions."
+    body="Asynchronous replication across regions."
     href="../going-beyond-sql/asynchronous-replication-ysql/"
     icon="fa-thin fa-clone">}}
 

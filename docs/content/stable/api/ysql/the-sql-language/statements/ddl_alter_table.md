@@ -29,7 +29,7 @@ Use the `ALTER TABLE` statement to change the definition of a table.
 <a name="table-expr-note"></a></br></br>
 {{< note title="Table inheritance is not yet supported" >}}
 
-YSQL in the present "latest" YugabyteDB does not yet support the "table inheritance" feature that is described in the [PostgreSQL documentation](https://www.postgresql.org/docs/11/ddl-inherit.html). The attempt to create a table that inherits another table causes the _0A000 (feature_not_supported)_ error with the message _"INHERITS not supported yet"_. This means that the syntax that the `table_expr` rule allows doesn't yet bring any useful meaning.
+YSQL in the present "latest" YugabyteDB does not yet support the "table inheritance" feature that is described in the [PostgreSQL documentation](https://www.postgresql.org/docs/15/ddl-inherit.html). The attempt to create a table that inherits another table causes the _0A000 (feature_not_supported)_ error with the message _"INHERITS not supported yet"_. This means that the syntax that the `table_expr` rule allows doesn't yet bring any useful meaning.
 
 It says that you can write, for example, this:
 
@@ -116,13 +116,13 @@ Currently the *UNLOGGED* option is ignored. It's handled as *LOGGED* default per
 
 Change the specified storage parameter into the provided value.
 
-Storage parameters, [as defined by PostgreSQL](https://www.postgresql.org/docs/11/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS), are ignored and only present for compatibility with PostgreSQL.
+Storage parameters, [as defined by PostgreSQL](https://www.postgresql.org/docs/15/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS), are ignored and only present for compatibility with PostgreSQL.
 
 #### RESET ( *param_name* )
 
 Reset the specified storage parameter.
 
-Storage parameters, [as defined by PostgreSQL](https://www.postgresql.org/docs/11/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS), are ignored and only present for compatibility with PostgreSQL.
+Storage parameters, [as defined by PostgreSQL](https://www.postgresql.org/docs/15/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS), are ignored and only present for compatibility with PostgreSQL.
 
 #### DROP [ COLUMN ] [ IF EXISTS ] *column_name* [ RESTRICT | CASCADE ]
 
@@ -252,9 +252,10 @@ Change the type of an existing column. The following semantics apply:
 - If the optional `COLLATE` clause is not specified, the default collation for the new column type will be used.
 - If the optional `USING` clause is not provided, the default conversion for the new column value will be the same as an assignment cast from the old type to the new type.
 - A `USING` clause must be included when there is no implicit assignment cast available from the old type to the new type.
-- Alter type is not supported for partitioned tables. See [#16980](https://github.com/yugabyte/yugabyte-db/issues/16980).
+- Alter type is not supported for partitioned tables. See {{<issue 16980>}}.
 - Alter type is not supported for tables with rules (limitation inherited from PostgreSQL).
-- Alter type is not supported for tables with CDC streams, or xCluster replication when it requires data on disk to change. See [#16625](https://github.com/yugabyte/yugabyte-db/issues/16625).
+- Alter type is not supported for tables with CDC streams if a table rewrite is required. See {{<issue 27766>}}.
+- Alter type is not supported for tables under xCluster replication if a table rewrite is required. This will be supported by automatic mode in a future release. See {{<issue 27796>}}.
 
 ##### Table rewrites
 

@@ -103,7 +103,7 @@ Predictably, this is the result:
 
 ## Who wins?
 
-The [PostgreSQL documentation](https://www.postgresql.org/docs/11/) does not provide the answer. But the question can be answered empirically if _MET_ (or another such string that occurs in both columns) maps to different _UTC_offset_ values in the two different columns. Try this:
+The [PostgreSQL documentation](https://www.postgresql.org/docs/15/) does not provide the answer. But the question can be answered empirically if _MET_ (or another such string that occurs in both columns) maps to different _UTC_offset_ values in the two different columns. Try this:
 
 ```plpgsql
 with

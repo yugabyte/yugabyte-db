@@ -24,7 +24,7 @@ When DDL changes are made to databases in replication for xCluster disaster reco
 For each DDL statement:
 
 1. Execute the DDL on the DR primary, waiting for it to complete.
-2. Execute the DDL on the DR replica, waiting for it to complete.
+1. Execute the DDL on the DR replica, waiting for it to complete.
 
 After both steps are complete, the YugabyteDB Anywhere UI should reflect any added/removed tables in the Tables listing for this DR configuration.
 

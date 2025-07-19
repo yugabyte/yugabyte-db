@@ -45,10 +45,10 @@ To perform backups and restores in a Replicated environment, you must have a per
 
 Download the version of the backup script that corresponds to the version of YugabyteDB Anywhere that you are backing up and restoring.
 
-For example, if you are running version {{< yb-version version="preview">}}, you can copy the `yb_platform_backup.sh` script from the `yugabyte-db` repository using the following `wget` command:
+For example, if you are running version {{< yb-version version="stable">}}, you can copy the `yb_platform_backup.sh` script from the `yugabyte-db` repository using the following `wget` command:
 
 ```sh
-wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/v{{< yb-version version="preview">}}/managed/devops/bin/yb_platform_backup.sh
+wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/v{{< yb-version version="stable">}}/managed/devops/bin/yb_platform_backup.sh
 ```
 
 If you are running a different version of YugabyteDB Anywhere, replace the version number in the command with the correct version number.

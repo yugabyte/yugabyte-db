@@ -330,14 +330,14 @@ To see the new configuration, go to `http://<external-ip>:7000/cluster-config`.
 
 ## 5. Connect using YugabyteDB shells
 
-To connect and use the YSQL Shell (`ysqlsh`), run the following command:
+To connect and use the YSQL Shell (ysqlsh), run the following command:
 
 ```sh
 $ kubectl exec -n yb-demo-us-east-1a -it yb-tserver-0 -- ysqlsh \
   -h yb-tserver-0.yb-tservers.yb-demo-us-east-1a
 ```
 
-To connect and use the YCQL Shell (`ycqlsh`), run the following command:
+To connect and use the YCQL Shell (ycqlsh), run the following command:
 
 ```sh
 $ kubectl exec -n yb-demo-us-east-1a -it yb-tserver-0 -- ycqlsh \

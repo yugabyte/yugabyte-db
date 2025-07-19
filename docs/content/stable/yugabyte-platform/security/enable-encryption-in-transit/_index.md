@@ -13,6 +13,12 @@ type: indexpage
 showRightNav: true
 ---
 
+{{< page-finder/head text="Encryption in transit" subtle="across different products">}}
+  {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" url="../../../secure/tls-encryption/" >}}
+  {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" current="" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/" >}}
+{{< /page-finder/head >}}
+
 YugabyteDB Anywhere allows you to protect data in transit by using the following:
 
 - Node-to-Node TLS to encrypt inter-node communication between YB-Master and YB-TServer nodes.
@@ -45,7 +51,7 @@ You enable Node-to-Node and Client-to-Node encryption in transit when you [creat
 You can also enable and disable encryption in transit for an existing universe as follows:
 
 1. Navigate to your universe.
-1. Click **Actions > Edit Security > Encryption in-Transit** to open the **Manage encryption in transit** dialog.
+1. Click **Actions > More > Edit Security > Encryption in-Transit** to open the **Manage encryption in transit** dialog.
 1. Enable or disable the **Enable encryption in transit for this Universe** option.
 1. Click **Apply**.
 
@@ -65,10 +71,12 @@ To enforce the minimum TLS version of 1.2, you need to specify all available sub
 ssl_protocols = tls12,tls13
 ```
 
-In addition, as the `ssl_protocols` setting does not propagate to PostgreSQL, it is recommended that you specify the minimum TLS version (`ssl_min_protocol_version`) for PostgreSQL by setting the following YB-TServer flag:
+By default, PostgreSQL uses a default minimum version for TLS of v1.2, as set using the [ssl_min_protocol_version](https://www.postgresql.org/docs/15/runtime-config-connection.html#GUC-SSL-MIN-PROTOCOL-VERSION) configuration parameter.
 
-```shell
---ysql_pg_conf_csv="ssl_min_protocol_version='TLSv1.2'"
+As the `ssl_protocols` setting does not propagate to PostgreSQL, if you specify a different minimum TLS version for Master and TServer, you should update the `ssl_min_protocol_version` parameter. For example:
+
+```sh
+--ysql_pg_conf_csv="ssl_min_protocol_version='TLSv1.3'"
 ```
 
 ## Trust store

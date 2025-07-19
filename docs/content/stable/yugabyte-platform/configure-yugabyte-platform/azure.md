@@ -176,6 +176,12 @@ To add your own machine images to the catalog:
 
 To edit custom Linux versions, remove Linux versions, and set a version as the default to use when creating universes, click **...** for the version you want to modify.
 
+    {{< warning title="Important" >}}
+
+For YugabyteDB Anywhere v2025.1 and later, if you want to deploy a universe on Azure in an airgapped environment, you must provide your own Linux version.
+
+    {{< /warning >}}
+
 ### SSH Key Pairs
 
 To be able to provision cloud instances with YugabyteDB, YBA requires SSH access.

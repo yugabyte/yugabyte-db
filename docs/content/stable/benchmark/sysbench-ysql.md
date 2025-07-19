@@ -28,7 +28,7 @@ $ export PATH=$PATH:/path/to/ysqlsh
 
 ### Install sysbench
 
-Install sysbench on a machine which satisfies the Prerequisites using one of 
+Install sysbench on a machine which satisfies the Prerequisites using one of
 the following options:
 
 <ul class="nav nav-tabs nav-tabs-yb">
@@ -78,7 +78,7 @@ RHEL package is only for EL8
 ```sh
 wget https://github.com/yugabyte/sysbench/releases/download/1.0.0-yb/sysbench-1.0.0-1.el8.x86_64.rpm
 
-sudo yum install -y sysbench-1.0.0-1.el8.x86_64.rpm 
+sudo yum install -y sysbench-1.0.0-1.el8.x86_64.rpm
 ```
 
   </div>
@@ -174,7 +174,7 @@ The following results are for a 3-node cluster running YBDB version {{< yb-versi
 
 ### 10 tables each with 100k rows
 
-<table border="1" cellpadding="10" cellspacing="0">
+<table>
   <thead>
     <tr>
       <th rowspan="2">Workload</th>
@@ -192,34 +192,34 @@ The following results are for a 3-node cluster running YBDB version {{< yb-versi
   <tbody>
     <tr>
       <td>oltp_read_only</td>
-      <td>4671.97</td>
-      <td>12.84</td>
-      <td>46719.7</td>
-      <td>1.2</td>
+      <td>4616.32</td>
+      <td>13</td>
+      <td>46163.2</td>
+      <td>1.3</td>
       <td>10 point selects</td>
     </tr>
     <tr>
       <td>oltp_read_write</td>
-      <td>248.42</td>
-      <td>96.61</td>
-      <td>7949.44</td>
-      <td>3</td>
+      <td>245.49</td>
+      <td>97.76</td>
+      <td>7855.68</td>
+      <td>3.05</td>
       <td>10 point selects <br> 10 index updates <br> 10 non-index update <br> 1 Insert <br> 1 Delete</td>
     </tr>
     <tr>
       <td>oltp_multi_insert</td>
-      <td>586.11</td>
-      <td>40.95</td>
-      <td>5861.1</td>
+      <td>585.66</td>
+      <td>40.98</td>
+      <td>5856.6</td>
       <td>4.09</td>
       <td>10 Insert</td>
     </tr>
     <tr>
       <td>oltp_update_index</td>
-      <td>261.49</td>
-      <td>91.78</td>
-      <td>2614.9</td>
-      <td>9.17</td>
+      <td>259.64</td>
+      <td>92.43</td>
+      <td>2596.4</td>
+      <td>9.43</td>
       <td>10 index updates</td>
     </tr>
   </tbody>

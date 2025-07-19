@@ -78,7 +78,7 @@ For more information, see [Cluster-aware load balancing](../../smart-drivers/#cl
 
 To use the driver, pass new connection properties for load balancing in the connection URL or properties pool.
 
-To enable uniform load balancing across all servers, you set the `load_balance` property to one of the allowed values other than `false` in the URL, as per the following example:
+To enable uniform load balancing across all servers, you set the `load_balance` property to `true` or `any` in the URL, as per the following example:
 
 ```go
 baseUrl := fmt.Sprintf("postgres://%s:%s@%s:%d/%s",

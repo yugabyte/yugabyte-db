@@ -35,7 +35,7 @@ A value of the _interval_ data type represents a _duration_. In contrast, a valu
 <a name="avoid-timetz"></a>Subtraction between a pair of moment values with the same data type produces, with one exception, an _interval_ value. Exceptionally, subtracting one _date_ value from another produces an _integer_ value.
 
 {{< tip title="Avoid using the 'timetz' data type." >}}
-The [PostgreSQL documentation](https://www.postgresql.org/docs/11/datatype-datetime.html#DATATYPE-DATETIME-TABLE) recommends against using the _timetz_ (a.k.a. _time with time zone_) data type. This text is slightly reworded:
+The [PostgreSQL documentation](https://www.postgresql.org/docs/15/datatype-datetime.html#DATATYPE-DATETIME-TABLE) recommends against using the _timetz_ (a.k.a. _time with time zone_) data type. This text is slightly reworded:
 
 > The data type _time with time zone_ is defined by the SQL standard, but the definition exhibits properties which lead to questionable usefulness. In most cases, a combination of _date_, (plain) _time_, (plain) _timestamp_, and _timestamptz_ should provide the complete range of _date-time_ functionality that any application could require.
 
@@ -101,7 +101,7 @@ This is the result:
 
 You see the same date and time-of-day values, but without the timezone offset of course, if you define the _ts_t_ domain type using plain _timestamp_.
 
-This test is shown for completeness. Its outcome is of little practical consequence. You can rely on the values in the "Min" and "Max" columns in the table above, copied from the [PostgreSQL documentation](https://www.postgresql.org/docs/11/datatype-datetime.html#DATATYPE-DATETIME-TABLE), to specify the _supported_ range. Yugabyte recommends that, as a practical compromise, you take these to be the limits for _timestamp[tz]_ values:
+This test is shown for completeness. Its outcome is of little practical consequence. You can rely on the values in the "Min" and "Max" columns in the table above, copied from the [PostgreSQL documentation](https://www.postgresql.org/docs/15/datatype-datetime.html#DATATYPE-DATETIME-TABLE), to specify the _supported_ range. Yugabyte recommends that, as a practical compromise, you take these to be the limits for _timestamp[tz]_ values:
 
 ```output
 ['4713-01-01 00:00:00 BC', '294276-12-31 23:59:59 AD']
@@ -127,7 +127,7 @@ PostgreSQL, and therefore YSQL, support the use of several special manifest _tex
 | 'yesterday' | date, plain timestamp              |
 | 'allballs'  | plain time                         |
 
-Their meanings are given in section [8.5.1.4. Special Values](https://www.postgresql.org/docs/11/datatype-datetime.html#DATATYPE-DATETIME-SPECIAL-VALUES) in the PostgreSQL documentation.
+Their meanings are given in section [8.5.1.4. Special Values](https://www.postgresql.org/docs/15/datatype-datetime.html#DATATYPE-DATETIME-SPECIAL-VALUES) in the PostgreSQL documentation.
 
 {{< tip title="Avoid using all of these special constants except for 'infinity' and '-infinity'." >}}
 

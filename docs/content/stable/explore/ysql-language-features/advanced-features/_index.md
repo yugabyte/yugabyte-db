@@ -82,3 +82,11 @@ Snapshot synchronization ensures that two or more independent, concurrently runn
 {{<lead link="snapshot-synchronization/">}}
 To learn how different transactions can maintain a consistent view of the data, see [Synchronize snapshots](snapshot-synchronization/)
 {{</lead>}}
+
+## Inheritance
+
+Table inheritance lets you create child tables that automatically share columns and constraints from a parent table.
+
+{{<lead link="inheritance/">}}
+To see how to create tables that inherit from a parent table, see [Inheritance](inheritance/)
+{{</lead>}}

@@ -75,7 +75,7 @@ The other levels are defined by which anomalies (none of which are possible with
 
 ## Serializable isolation
 
-{{<explore-setup-single>}}
+{{% explore-setup-single-new %}}
 
 The Serializable isolation level provides the strictest transaction isolation. This level emulates serial transaction execution for all committed transactions, as if transactions had been executed one after another, serially rather than concurrently. Serializable isolation can detect read-write conflicts in addition to write-write conflicts. This is accomplished by writing provisional records for read operations as well.
 
@@ -100,7 +100,7 @@ insert into account values
   ('kevin','checking', 500);
 ```
 
-Next, connect to the universe using two independent `ysqlsh` instances, referred to as session #1 and session #2.
+Next, connect to the universe using two independent ysqlsh instances, referred to as session #1 and session #2.
 
 <table>
   <tr>
@@ -238,7 +238,7 @@ CREATE TABLE IF NOT EXISTS example (k INT PRIMARY KEY);
 TRUNCATE TABLE example;
 ```
 
-Next, connect to the universe using two independent `ysqlsh` instances, referred to as session #1 and session #2:
+Next, connect to the universe using two independent ysqlsh instances, referred to as session #1 and session #2:
 
 <table>
   <tr>
@@ -354,7 +354,7 @@ SELECT * FROM example;
 
 Read committed isolation is the same as Snapshot isolation, except that every statement in the transaction is aware of all data that has been committed before it has been issued (this implicitly means that the statement will see a consistent snapshot). In other words, each statement works on a new snapshot of the database that includes everything that has been committed before the statement is issued. Conflict detection is the same as in Snapshot isolation.
 
-Consider an example of transaction behavior under the Read committed isolation level.
+Consider an example of transactions' behavior under the Read committed isolation level.
 
 Create a table, as follows:
 
@@ -363,7 +363,7 @@ CREATE TABLE test (k int PRIMARY KEY, v int);
 INSERT INTO test VALUES (1, 2);
 ```
 
-Connect to the universe using two independent `ysqlsh` instances, referred to as session #1 and session #2:
+Connect to the universe using two independent ysqlsh instances, referred to as session #1 and session #2:
 
 <table>
   <tr>
