@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks.payload;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.gcp.GCPCloudImpl;
@@ -18,6 +19,8 @@ import com.yugabyte.yw.common.FileHelperService;
 import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeUniverseManager;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
@@ -80,6 +83,7 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import play.libs.Json;
 
 @Slf4j
 public class NodeAgentRpcPayload {
@@ -755,7 +759,10 @@ public class NodeAgentRpcPayload {
     }
     gflags = populateTLSRotateFlags(universe, taskParams, taskSubType, gflags);
     ServerGFlagsInput input = builder.putAllGflags(gflags).build();
-    log.debug("Setting gflags using node agent: {}", input.getGflagsMap());
+    JsonNode redactedParams =
+        RedactingService.filterSecretFields(
+            Json.toJson(input.getGflagsMap()), RedactionTarget.LOGS);
+    log.debug("Setting gflags using node agent: {}", redactedParams);
     nodeAgentClient.runServerGFlags(nodeAgent, input, DEFAULT_CONFIGURE_USER);
   }
 

@@ -13,10 +13,13 @@ package com.yugabyte.yw.common;
 import static com.yugabyte.yw.common.Util.getDataDirectoryPath;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.KubernetesManager.RoleData;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.UniverseResp;
@@ -39,6 +42,7 @@ import io.ebean.PagedList;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -59,6 +63,7 @@ import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.ToString;
@@ -75,6 +80,8 @@ import play.libs.Json;
 public class SupportBundleUtil {
 
   public static final String kubectlOutputFormat = "yaml";
+
+  @Inject private GFlagsValidation gFlagsValidation;
 
   public Date getDateNDaysAgo(Date currDate, int days) {
     Date dateNDaysAgo = new DateTime(currDate).minusDays(days).toDate();
@@ -633,6 +640,7 @@ public class SupportBundleUtil {
             com.yugabyte.yw.common.utils.FileUtils.unTar(
                 unZippedFile, new File(bundlePath.toAbsolutePath().toString()));
             unZippedFile.delete();
+            redactSensitiveFilesInBundle(bundlePath.toAbsolutePath().toString(), universe);
           }
         } else {
           log.debug(
@@ -816,7 +824,8 @@ public class SupportBundleUtil {
     saveMetadata(customer, destDir, jsonData, "high_availability_config.json");
   }
 
-  public void getAuditLogs(Customer customer, String destDir, Date startDate, Date endDate) {
+  public void getAuditLogs(
+      Customer customer, Universe universe, String destDir, Date startDate, Date endDate) {
     int pageSize = 50, pageIndex = 0;
     PagedList<?> pagedList;
     do {
@@ -833,6 +842,7 @@ public class SupportBundleUtil {
       JsonNode jsonData =
           RedactingService.filterSecretFields(
               Json.toJson(pagedList.getList()), RedactionTarget.LOGS);
+      jsonData = redactAuditAdditionalDetails(jsonData, universe);
       writeStringToFile(
           jsonData.toPrettyString(), Paths.get(destDir, "audit.json").toString(), true);
     } while (pagedList.hasNext());
@@ -876,8 +886,20 @@ public class SupportBundleUtil {
         jsonData.toPrettyString(), Paths.get(destDir, "task_info.json").toString(), true);
   }
 
+  /**
+   * Returns the software version of a universe
+   *
+   * @param universe The universe object for which support bundle is created
+   * @return The database version string, or null if not available
+   */
+  private String getYbSoftwareVersion(Universe universe) {
+    String ybSoftwareVersion =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    return ybSoftwareVersion;
+  }
+
   public void gatherAndSaveAllMetadata(
-      Customer customer, String destDir, Date startDate, Date endDate) {
+      Customer customer, Universe universe, String destDir, Date startDate, Date endDate) {
     ignoreExceptions(() -> getCustomerMetadata(customer, destDir));
     ignoreExceptions(() -> getUniversesMetadata(customer, destDir));
     ignoreExceptions(() -> getProvidersMetadata(customer, destDir));
@@ -886,6 +908,146 @@ public class SupportBundleUtil {
     ignoreExceptions(() -> getInstanceTypeMetadata(customer, destDir));
     ignoreExceptions(() -> getHaMetadata(customer, destDir));
     ignoreExceptions(() -> getXclusterMetadata(customer, destDir));
-    ignoreExceptions(() -> getAuditLogs(customer, destDir, startDate, endDate));
+    ignoreExceptions(() -> getAuditLogs(customer, universe, destDir, startDate, endDate));
+  }
+
+  /**
+   * Redacts sensitive information from all relevant files in the support bundle. Handles
+   * server.conf files and PostgreSQL log files.
+   *
+   * @param bundlePath The path to the support bundle directory
+   * @param universe The universe object for which support bundle is created
+   */
+  private void redactSensitiveFilesInBundle(String bundlePath, Universe universe) {
+    try {
+      Path bundleDir = Paths.get(bundlePath);
+      if (!Files.exists(bundleDir)) {
+        return;
+      }
+
+      try (Stream<Path> paths = Files.walk(bundleDir)) {
+        paths
+            .filter(Files::isRegularFile)
+            .filter(
+                path -> {
+                  String fileName = path.getFileName().toString();
+                  return fileName.equals("server.conf")
+                      || (fileName.startsWith("postgresql") && fileName.endsWith(".log"))
+                      || (fileName.startsWith("filtered_postgresql") && fileName.endsWith(".log"));
+                })
+            .forEach(path -> redactSensitiveFile(path, universe));
+      }
+    } catch (Exception e) {
+      log.warn("Error while redacting sensitive files in bundle: {}", e);
+    }
+  }
+
+  /**
+   * Redacts sensitive information from a single file (server.conf or PostgreSQL log).
+   *
+   * @param filePath The path to the file to redact
+   * @param universe The universe object for which support bundle is created
+   */
+  private void redactSensitiveFile(Path filePath, Universe universe) {
+    try {
+      String fileName = filePath.getFileName().toString();
+      String content = new String(Files.readAllBytes(filePath), StandardCharsets.UTF_8);
+      String ybSoftwareVersion = getYbSoftwareVersion(universe);
+      String redactedContent =
+          RedactingService.redactSensitiveInfoInString(
+              content, ybSoftwareVersion, gFlagsValidation);
+      Files.write(filePath, redactedContent.getBytes(StandardCharsets.UTF_8));
+      log.debug(
+          "Redacted sensitive information from file: {} (type: {})",
+          filePath,
+          fileName.startsWith("postgresql") || fileName.startsWith("filtered_postgresql")
+              ? "PostgreSQL log"
+              : "server.conf");
+    } catch (Exception e) {
+      log.warn("Error while redacting file {}: {}", filePath, e);
+    }
+  }
+
+  /**
+   * Redacts sensitive information from a single server.conf file. Uses
+   * RedactingService.redactLdapPasswordsInString() for redaction.
+   *
+   * @param filePath The path to the server.conf file
+   * @param universe The universe object for which support bundle is created
+   */
+  private void redactServerConfFile(Path filePath, Universe universe) {
+    try {
+      String content = new String(Files.readAllBytes(filePath), StandardCharsets.UTF_8);
+      String ybVersion = getYbSoftwareVersion(universe);
+      String redactedContent =
+          RedactingService.redactSensitiveInfoInString(content, ybVersion, gFlagsValidation);
+      Files.write(filePath, redactedContent.getBytes(StandardCharsets.UTF_8));
+      log.debug("Redacted sensitive information from server.conf file: {}", filePath);
+    } catch (Exception e) {
+      log.warn("Error while redacting server.conf file {}: {}", filePath, e);
+    }
+  }
+
+  /**
+   * Redacts sensitive gflags in the additionalDetails section of audit logs. Redacts the "old",
+   * "new", and "default" fields for any gflag that has the sensitive_info tag.
+   *
+   * @param jsonData The audit log JSON data
+   * @param universe Universe object for the universe whose support bundle is being created
+   * @return The JSON data with additional redaction applied
+   */
+  private JsonNode redactAuditAdditionalDetails(JsonNode jsonData, Universe universe) {
+    try {
+      if (jsonData.isArray()) {
+        for (JsonNode auditEntry : jsonData) {
+          if (auditEntry.has("additionalDetails")) {
+            JsonNode additionalDetails = auditEntry.get("additionalDetails");
+            if (additionalDetails.has("gflags")) {
+              JsonNode gflags = additionalDetails.get("gflags");
+              redactGflagsSection(gflags, universe);
+            }
+          }
+        }
+      }
+    } catch (Exception e) {
+      log.warn("Error while redacting audit additionalDetails: {}", e);
+    }
+    return jsonData;
+  }
+
+  /**
+   * Redacts sensitive gflags in the gflags section. Handles both master and tserver gflags arrays.
+   * Redacts any gflag that has the sensitive_info tag.
+   *
+   * @param gflags The gflags JSON node
+   * @param universe The universe object for which support bundle is created
+   */
+  private void redactGflagsSection(JsonNode gflags, Universe universe) {
+    try {
+      String ybSoftwareVersion = getYbSoftwareVersion(universe);
+      // Get sensitive gflags dynamically from RedactingService
+      Set<String> sensitiveGflags =
+          RedactingService.getSensitiveGflagsForRedaction(ybSoftwareVersion, gFlagsValidation);
+
+      for (String gflagType : new String[] {"tserver", "master"}) {
+        if (gflags.has(gflagType) && gflags.get(gflagType).isArray()) {
+          for (JsonNode flag : gflags.get(gflagType)) {
+            if (flag.has("name")) {
+              String flagName = flag.get("name").asText();
+              if (sensitiveGflags.contains(flagName)) {
+                ObjectNode flagNode = (ObjectNode) flag;
+                for (String field : new String[] {"old", "new", "default"}) {
+                  if (flag.has(field)) {
+                    flagNode.put(field, RedactingService.SECRET_REPLACEMENT);
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch (Exception e) {
+      log.warn("Error while redacting gflags section: {}", e);
+    }
   }
 }
