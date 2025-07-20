@@ -196,10 +196,25 @@ public class Commissioner {
       // Destroy the task initialization in case of failure.
       taskRunnable.getTask().terminate();
       taskRunnable.updateTaskDetailsOnError(State.Failure, t);
+
+      String redactedTaskParams;
+      try {
+        JsonNode taskParamsJson = Json.toJson(taskParams);
+        JsonNode redactedJson =
+            RedactingService.filterSecretFields(taskParamsJson, RedactionTarget.LOGS);
+        redactedTaskParams = redactedJson.toString();
+      } catch (Exception jsonException) {
+        String taskParamsString = taskParams.toString();
+        redactedTaskParams = RedactingService.redactSensitiveInfoInString(taskParamsString);
+        log.debug(
+            "JSON serialization failed for task params, using string redaction: {}",
+            jsonException.getMessage());
+      }
+
       String msg =
           String.format(
               "Error processing %s task for %s",
-              taskRunnable.getTaskInfo().getTaskType(), taskParams.toString());
+              taskRunnable.getTaskInfo().getTaskType(), redactedTaskParams);
       log.error(msg, t);
       if (t instanceof PlatformServiceException) {
         throw t;

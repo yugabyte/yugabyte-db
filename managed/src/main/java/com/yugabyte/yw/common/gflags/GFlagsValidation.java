@@ -121,7 +121,11 @@ public class GFlagsValidation {
       try {
         for (GFlagDetails gflag : extractGFlags(version, server.name(), false)) {
           if (gflag.tags.contains("sensitive_info")) {
-            sensitiveGflags.add("$.." + gflag.name);
+            // Skip ysql_hba_conf_csv from being entirely redacted. Sensitive fields in this csv
+            // flag will be redacted through regex matching.
+            if (!gflag.name.equals("ysql_hba_conf_csv")) {
+              sensitiveGflags.add("$.." + gflag.name);
+            }
           }
         }
       } catch (Exception e) {

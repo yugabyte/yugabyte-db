@@ -10,9 +10,13 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -25,9 +29,12 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import play.libs.Json;
 
 @Slf4j
 public class UpdateAndPersistGFlags extends UniverseTaskBase {
+
+  @Inject private GFlagsValidation gFlagsValidation;
 
   @Inject
   protected UpdateAndPersistGFlags(BaseTaskDependencies baseTaskDependencies) {
@@ -48,13 +55,43 @@ public class UpdateAndPersistGFlags extends UniverseTaskBase {
 
   @Override
   public String getName() {
+    String universeVersion = null;
+    try {
+      Universe universe = getUniverse();
+      List<String> versions = universe.getVersions();
+      if (!versions.isEmpty()) {
+        universeVersion = versions.get(0);
+      }
+    } catch (Exception e) {
+      log.debug("Could not get universe version for redaction: {}", e.getMessage());
+    }
+
+    JsonNode filteredMasterGFlags =
+        RedactingService.filterSecretFields(
+            Json.toJson(taskParams().masterGFlags),
+            RedactionTarget.LOGS,
+            universeVersion,
+            gFlagsValidation);
+    JsonNode filteredTserverGFlags =
+        RedactingService.filterSecretFields(
+            Json.toJson(taskParams().tserverGFlags),
+            RedactionTarget.LOGS,
+            universeVersion,
+            gFlagsValidation);
+    JsonNode filteredSpecificGFlags =
+        RedactingService.filterSecretFields(
+            Json.toJson(taskParams().specificGFlags),
+            RedactionTarget.LOGS,
+            universeVersion,
+            gFlagsValidation);
+
     return super.getName()
         + "(master: "
-        + taskParams().masterGFlags
+        + filteredMasterGFlags
         + ", tserver:"
-        + taskParams().tserverGFlags
+        + filteredTserverGFlags
         + ", specific:"
-        + taskParams().specificGFlags
+        + filteredSpecificGFlags
         + ")";
   }
 
