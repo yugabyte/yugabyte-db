@@ -129,13 +129,23 @@ public class Commissioner {
       if (taskRunnable != null) {
         // Destroy the task initialization in case of failure.
         taskRunnable.getTask().terminate();
-        TaskInfo taskInfo = taskRunnable.getTaskInfo();
-        if (taskInfo.getTaskState() != TaskInfo.State.Failure) {
-          taskInfo.setTaskState(TaskInfo.State.Failure);
-          taskInfo.save();
-        }
+        taskRunnable.updateTaskDetailsOnError(TaskInfo.State.Failure, t);
       }
-      String msg = "Error processing " + taskType + " task for " + taskParams.toString();
+
+      String redactedTaskParams;
+      try {
+        JsonNode taskParamsJson = Json.toJson(taskParams);
+        JsonNode redactedJson =
+            RedactingService.filterSecretFields(taskParamsJson, RedactionTarget.LOGS);
+        redactedTaskParams = redactedJson.toString();
+      } catch (Exception jsonException) {
+        String taskParamsString = taskParams.toString();
+        redactedTaskParams = RedactingService.redactSensitiveInfoInString(taskParamsString);
+        log.debug(
+            "JSON serialization failed for task params, using string redaction: {}",
+            jsonException.getMessage());
+      }
+      String msg = "Error processing " + taskType + " task for " + redactedTaskParams;
       log.error(msg, t);
       if (t instanceof PlatformServiceException) {
         throw t;
