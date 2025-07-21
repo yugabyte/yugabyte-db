@@ -24,7 +24,7 @@ try {
   console.log('.npmrc file created/updated with Font Awesome token.');
   console.log('Attempting to install @fortawesome/fontawesome-pro...');
 
-  execSync(`npm install @fortawesome/fontawesome-pro@${FONTAWESOME_VERSION} --prefix ./`, { stdio: 'inherit' });
+  execSync(`npm install @fortawesome/fontawesome-pro@${FONTAWESOME_VERSION} --prefix ./ --no-save`, { stdio: 'inherit' });
   console.log('Successfully installed @fortawesome/fontawesome-pro.');
 } catch (error) {
   console.error('\nERROR: Failed to install @fortawesome/fontawesome-pro.');
