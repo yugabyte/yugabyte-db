@@ -110,6 +110,10 @@
         "learnMoreText": "<nodeAgentFaqDocsLink>Learn more about Node Agent.</nodeAgentFaqDocsLink>",
         "viewNodeAgentsButton": "View Node Agents",
         "enableAutomaticNodeAgentInstallationButton": " Automatically Install Node Agents"
+      },
+      "useSystemdReminderBanner": {
+        "primaryText": "Some of your universes use cron to manage nodes.",
+        "additionalDetailText": "<paragraph>Cron-based universes will no longer be supported in YugabyteDB Anywhere v2025.2 and later. Before you can upgrade to v2025.2, you must upgrade cron-based universes to systemd.</paragraph><paragraph>To do this, navigate to the universe and choose <bold>Actions>Upgrade to Systemd</bold></paragraph>"
       }
     },
     "universeActions": {
