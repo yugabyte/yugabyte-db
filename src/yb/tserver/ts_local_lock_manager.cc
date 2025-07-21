@@ -292,9 +292,9 @@ class TSLocalLockManager::Impl {
   Impl(
       const server::ClockPtr& clock, TabletServerIf* tablet_server,
       server::RpcServerBase& messenger_server, ThreadPool* thread_pool,
-      docdb::ObjectLockSharedStateManager* shared_manager)
+      const MetricEntityPtr& metric_entity, docdb::ObjectLockSharedStateManager* shared_manager)
       : clock_(clock), server_(tablet_server), messenger_base_(messenger_server),
-        object_lock_manager_(thread_pool, messenger_server, shared_manager),
+        object_lock_manager_(thread_pool, messenger_server, metric_entity, shared_manager),
         poller_("TSLocalLockManager", std::bind(&Impl::Poll, this)) {}
 
   ~Impl() = default;
@@ -721,10 +721,10 @@ class TSLocalLockManager::Impl {
 TSLocalLockManager::TSLocalLockManager(
     const server::ClockPtr& clock, TabletServerIf* tablet_server,
     server::RpcServerBase& messenger_server, ThreadPool* thread_pool,
-    docdb::ObjectLockSharedStateManager* shared_manager)
+    const MetricEntityPtr& metric_entity, docdb::ObjectLockSharedStateManager* shared_manager)
       : impl_(new Impl(
           clock, CHECK_NOTNULL(tablet_server), messenger_server, CHECK_NOTNULL(thread_pool),
-          shared_manager)) {}
+          metric_entity, shared_manager)) {}
 
 TSLocalLockManager::~TSLocalLockManager() {}
 

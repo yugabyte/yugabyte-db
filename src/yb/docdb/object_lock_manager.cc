@@ -42,6 +42,7 @@
 #include "yb/util/enums.h"
 #include "yb/util/logging.h"
 #include "yb/util/lw_function.h"
+#include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/tostring.h"
@@ -58,6 +59,16 @@ DEFINE_test_flag(bool, olm_skip_scheduling_waiter_resumption, false,
 DEFINE_test_flag(bool, olm_skip_sending_wait_for_probes, false,
     "When set, the lock manager doesn't send wait-for probres to the local waiting txn registry, "
     "essentially giving away deadlock detection.");
+
+METRIC_DEFINE_counter(server, object_locking_lock_acquires,
+                      "Number of object locking lock acquires (both fast and slow path)",
+                      yb::MetricUnit::kRequests,
+                      "Number of object locking lock acquires (both fast and slow path)");
+
+METRIC_DEFINE_counter(server, object_locking_fastpath_acquires,
+                      "Number of object locking fast path lock acquires",
+                      yb::MetricUnit::kRequests,
+                      "Number of object locking fast path lock acquires");
 
 using namespace std::placeholders;
 using namespace std::literals;
@@ -266,12 +277,17 @@ struct ObjectLockedBatchEntry {
 class ObjectLockManagerImpl {
  public:
   ObjectLockManagerImpl(
-      ThreadPool* thread_pool, server::RpcServerBase& server,
+      ThreadPool* thread_pool, server::RpcServerBase& server, const MetricEntityPtr& metric_entity,
       ObjectLockSharedStateManager* shared_manager)
     : thread_pool_token_(thread_pool->NewToken(ThreadPool::ExecutionMode::CONCURRENT)),
       server_(server),
       waiters_amidst_resumption_on_messenger_("ObjectLockManagerImpl: " /* log_prefix */),
-      shared_manager_(shared_manager) {}
+      shared_manager_(shared_manager) {
+    metric_num_acquires_ =
+        METRIC_object_locking_lock_acquires.Instantiate(metric_entity);
+    metric_num_fastpath_acquires_ =
+        METRIC_object_locking_fastpath_acquires.Instantiate(metric_entity);
+  }
 
   void Lock(LockData&& data);
 
@@ -399,6 +415,9 @@ class ObjectLockManagerImpl {
   OperationCounter waiters_amidst_resumption_on_messenger_;
 
   ObjectLockSharedStateManager* const shared_manager_;
+
+  scoped_refptr<Counter> metric_num_acquires_;
+  scoped_refptr<Counter> metric_num_fastpath_acquires_;
 };
 
 void WaiterEntry::Resume(ObjectLockManagerImpl* lock_manager, Status resume_with_status) {
@@ -481,10 +500,12 @@ LockState TrackedTransactionLockEntry::GetLockStateForKeyUnlocked(
 
 void ObjectLockManagerImpl::ConsumePendingSharedLockRequests() {
   if (shared_manager_) {
-    shared_manager_->ConsumePendingSharedLockRequests(
+    size_t consumed = shared_manager_->ConsumePendingSharedLockRequests(
         make_lw_function([this](ObjectSharedLockRequest request) NO_THREAD_SAFETY_ANALYSIS {
           ConsumePendingSharedLockRequest(request);
         }));
+    IncrementCounterBy(metric_num_acquires_, consumed);
+    IncrementCounterBy(metric_num_fastpath_acquires_, consumed);
   }
 }
 
@@ -508,11 +529,13 @@ void ObjectLockManagerImpl::AcquireExclusiveLockIntents(const LockData& data) {
     }
   }
   std::lock_guard lock(global_mutex_);
-  shared_manager_->ConsumeAndAcquireExclusiveLockIntents(
+  size_t consumed = shared_manager_->ConsumeAndAcquireExclusiveLockIntents(
       make_lw_function([this](ObjectSharedLockRequest request) NO_THREAD_SAFETY_ANALYSIS {
         ConsumePendingSharedLockRequest(request);
       }),
       exclusive_locks);
+  IncrementCounterBy(metric_num_acquires_, consumed);
+  IncrementCounterBy(metric_num_fastpath_acquires_, consumed);
 }
 
 void ObjectLockManagerImpl::ReleaseExclusiveLockIntents(const LockIntentCounts& lock_intents) {
@@ -698,6 +721,7 @@ bool ObjectLockManagerImpl::DoLockSingleEntry(
         VLOG(4) << AsString(object_lock_owner) << " acquired lock " << AsString(lock_entry);
         transaction_entry->AddAcquiredLockUnlocked(
             lock_entry, object_lock_owner, LocksMapType::kGranted);
+        IncrementCounter(metric_num_acquires_);
         return true;
       }
       continue;
@@ -1192,9 +1216,10 @@ std::unordered_map<ObjectLockPrefix, LockState>
 }
 
 ObjectLockManager::ObjectLockManager(
-    ThreadPool* thread_pool, server::RpcServerBase& server,
+    ThreadPool* thread_pool, server::RpcServerBase& server, const MetricEntityPtr& metric_entity,
     ObjectLockSharedStateManager* shared_manager)
-    : impl_(std::make_unique<ObjectLockManagerImpl>(thread_pool, server, shared_manager)) {}
+    : impl_(std::make_unique<ObjectLockManagerImpl>(
+          thread_pool, server, metric_entity, shared_manager)) {}
 
 ObjectLockManager::~ObjectLockManager() = default;
 

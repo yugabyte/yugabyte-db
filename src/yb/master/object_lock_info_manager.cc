@@ -124,7 +124,8 @@ class ObjectLockInfoManager::Impl {
         poller_(std::bind(&Impl::CleanupExpiredLeaseEpochs, this)) {
     CHECK_OK(ThreadPoolBuilder("object_lock_info_manager").Build(&lock_manager_thread_pool_));
     local_lock_manager_ = std::make_shared<tserver::TSLocalLockManager>(
-        clock_, master_.tablet_server(), master_, lock_manager_thread_pool_.get());
+        clock_, master_.tablet_server(), master_, lock_manager_thread_pool_.get(),
+        master_.metric_entity());
   }
 
   void Start() {
@@ -1057,7 +1058,8 @@ void ObjectLockInfoManager::Impl::Clear() {
     local_lock_manager_->Shutdown();
   }
   local_lock_manager_.reset(new tserver::TSLocalLockManager(
-      clock_, master_.tablet_server(), master_, lock_manager_thread_pool_.get()));
+      clock_, master_.tablet_server(), master_, lock_manager_thread_pool_.get(),
+      master_.metric_entity()));
   local_lock_manager_->Start(waiting_txn_registry_.get());
 }
 
