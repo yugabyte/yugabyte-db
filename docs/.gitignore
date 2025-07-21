@@ -1,3 +1,4 @@
+# OS generated files
 */.DS_STORE
 */.DS_Store
 .DS_Store
@@ -18,3 +19,9 @@ static/js/
 *.sw?
 
 .hugo_build.lock
+
+# Environment variables
+.env
+
+# NPM configuration
+.npmrc
