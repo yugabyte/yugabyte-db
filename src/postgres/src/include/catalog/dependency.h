@@ -155,8 +155,10 @@ typedef enum ObjectClass
 #define PERFORM_DELETION_CONCURRENT_LOCK	0x0020	/* normal drop with
 													 * concurrent lock mode */
 
-/* skip yb drop on a column -- used during ALTER TABLE */
-#define YB_SKIP_YB_DROP_COLUMN				0x8000
+/* skip yb drop on an original column -- used during ALTER TABLE */
+#define YB_SKIP_YB_DROP_ORIGNAL_COLUMN		0x08000
+/* similar to the above, for PK column */
+#define YB_SKIP_YB_DROP_PK_COLUMN			0x10000
 
 /* in dependency.c */
 
