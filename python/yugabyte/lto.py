@@ -526,8 +526,10 @@ class LinkHelper:
             # We are most likely building the main server process, so add other Postgres libraries
             # as well.
             self.new_args.extend([
+                # Instead of libpgcommon.a, use libpgcommon_srv.a in the server.
+                os.path.join(self.build_root, 'postgres_build', 'src', 'common',
+                             'libpgcommon_srv.a'),
                 '-L%s' % os.path.join(self.build_root, 'postgres', 'lib'),
-                '-l:libpgcommon.a',
                 '-l:libpgport.a',
                 '-l:libpq.a'
             ])

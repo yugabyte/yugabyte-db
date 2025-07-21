@@ -2730,6 +2730,7 @@ processEncodingEntry(ArchiveHandle *AH, TocEntry *te)
 			exit_horribly(modulename, "unrecognized encoding \"%s\"\n",
 						  ptr1);
 		AH->public.encoding = encoding;
+		setFmtEncoding(encoding);
 	}
 	else
 		exit_horribly(modulename, "invalid ENCODING item: %s\n",

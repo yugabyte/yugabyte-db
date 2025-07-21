@@ -2978,6 +2978,9 @@ pairingheap_comparator
 pairingheap_node
 parallel_worker_main_type
 parse_error_callback_arg
+pe_test_config
+pe_test_escape_func
+pe_test_vector
 pendingPosition
 pgParameterStatus
 pg_atomic_flag

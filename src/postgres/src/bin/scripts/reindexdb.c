@@ -307,7 +307,7 @@ reindex_one_database(const ConnParams *cparams,
 	else if (strcmp(type, "SCHEMA") == 0)
 		appendPQExpBufferStr(&sql, name);
 	else if (strcmp(type, "DATABASE") == 0)
-		appendPQExpBufferStr(&sql, fmtId(PQdb(conn)));
+		appendPQExpBufferStr(&sql, fmtIdEnc(PQdb(conn), PQclientEncoding(conn)));
 	appendPQExpBufferChar(&sql, ';');
 
 	if (!executeMaintenanceCommand(conn, sql.data, echo))
@@ -379,7 +379,7 @@ reindex_system_catalogs(const ConnParams *cparams,
 	if (verbose)
 		appendPQExpBuffer(&sql, " (VERBOSE)");
 
-	appendPQExpBuffer(&sql, " SYSTEM %s;", fmtId(PQdb(conn)));
+	appendPQExpBuffer(&sql, " SYSTEM %s;", fmtIdEnc(PQdb(conn), PQclientEncoding(conn)));
 
 	if (!executeMaintenanceCommand(conn, sql.data, echo))
 	{

@@ -30,5 +30,3 @@
 /sha2_openssl.c
 /saslprep.c
 /unicode_norm.c
-/encnames.c
-/wchar.c

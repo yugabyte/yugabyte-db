@@ -48,7 +48,7 @@ my @contrib_excludes = (
 	'ltree_plpython',  'pgcrypto',
 	'sepgsql',         'brin',
 	'test_extensions', 'test_pg_dump',
-	'snapshot_too_old');
+	'snapshot_too_old','test_escape');
 
 # Set of variables for frontend modules
 my $frontend_defines = { 'initdb' => 'FRONTEND' };
@@ -115,10 +115,10 @@ sub mkvcbuild
 	}
 
 	our @pgcommonallfiles = qw(
-	  base64.c config_info.c controldata_utils.c exec.c file_perm.c ip.c
+	  base64.c config_info.c controldata_utils.c encnames.c exec.c file_perm.c ip.c
 	  keywords.c md5.c pg_lzcompress.c pgfnames.c psprintf.c relpath.c rmtree.c
 	  saslprep.c scram-common.c string.c stringinfo.c unicode_norm.c username.c
-	  wait_error.c);
+	  wait_error.c wchar.c);
 
 	if ($solution->{options}->{openssl})
 	{

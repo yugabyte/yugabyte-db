@@ -222,8 +222,8 @@ typedef unsigned int pg_wchar;
  * PostgreSQL encoding identifiers
  *
  * WARNING: the order of this enum must be same as order of entries
- *			in the pg_enc2name_tbl[] array (in mb/encnames.c), and
- *			in the pg_wchar_table[] array (in mb/wchar.c)!
+ *			in the pg_enc2name_tbl[] array (in src/common/encnames.c), and
+ *			in the pg_wchar_table[] array (in src/common/wchar.c)!
  *
  *			If you add some encoding don't forget to check
  *			PG_ENCODING_BE_LAST macro.
@@ -520,6 +520,7 @@ extern int	pg_valid_server_encoding_id(int encoding);
  * Remaining functions are not considered part of libpq's API, though many
  * of them do exist inside libpq.
  */
+extern void pg_encoding_set_invalid(int encoding, char *dst);
 extern int	pg_mb2wchar(const char *from, pg_wchar *to);
 extern int	pg_mb2wchar_with_len(const char *from, pg_wchar *to, int len);
 extern int pg_encoding_mb2wchar_with_len(int encoding,
