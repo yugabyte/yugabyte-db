@@ -11966,5 +11966,37 @@ TEST_F(CDCSDKYsqlTest, TestDropTableWithXcluster) {
   ASSERT_EQ(replica_identities.size(), 2);
 }
 
+TEST_F(CDCSDKYsqlTest, TestYbRestartCommitTimeInPgReplicationSlots) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_consumption) = true;
+  ASSERT_OK(SetUpWithParams(3, 1, false, true));
+
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 3));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 3);
+
+  auto cdc_state_table = MakeCDCStateTable(test_client());
+  auto stream_id = ASSERT_RESULT(
+      CreateConsistentSnapshotStreamWithReplicationSlot(CDCSDKSnapshotOption::USE_SNAPSHOT));
+  auto checkpoint = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablets[0].tablet_id()));
+
+  auto entry = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
+      {kCDCSDKSlotEntryTabletId, stream_id}, CDCStateTableEntrySelector().IncludeAll()));
+  ASSERT_TRUE(entry.has_value());
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto result = ASSERT_RESULT(conn.Fetch(
+      "SELECT to_char(yb_restart_time, 'YYYY-MM-DD HH24:MI:SS.USOF') FROM pg_replication_slots"));
+
+  ASSERT_EQ(PQntuples(result.get()), 1);
+
+  std::string view_time = PQgetvalue(result.get(), 0, 0);
+  std::string expected_time =
+    ASSERT_RESULT(HybridTimeToReadableString(entry->record_id_commit_time.value()));
+
+  ASSERT_EQ(view_time, expected_time);
+}
+
 }  // namespace cdc
 }  // namespace yb
