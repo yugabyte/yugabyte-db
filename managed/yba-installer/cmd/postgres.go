@@ -152,6 +152,10 @@ func (pg Postgres) Initialize() error {
 		pg.createYugawareDatabase()
 	}
 
+	if viper.GetBool("perfAdvisor.enabled") {
+		pg.createTSDatabase()
+	}
+
 	log.Info("Finishing Postgres initialize")
 	return nil
 }
@@ -638,6 +642,31 @@ func (pg Postgres) copyConfFiles() error {
 		}
 	}
 	return nil
+}
+
+func (pg Postgres) createTSDatabase() {
+	cmd := pg.PgBin + "/createdb"
+	args := []string{
+		"-h", pg.MountPath,
+		"-U", pg.getPgUserName(),
+		"-p", viper.GetString("postgres.install.port"),
+		"ts",
+	}
+	var out *shell.Output
+	if common.HasSudoAccess() {
+		// RUns as service user
+		// This is needed for the ts db to be created in the right location
+		out = shell.RunAsUser(viper.GetString("service_username"), cmd, args...)
+	} else {
+		out = shell.Run(cmd, args...)
+	}
+	if !out.Succeeded() {
+		if strings.Contains(out.StderrString(), "already exists") {
+			// db already existing is fine because this may be a resumed failed install
+			return
+		}
+		log.Fatal(fmt.Sprintf("Could not create ts database: %s", out.Error.Error()))
+	}
 }
 
 func (pg Postgres) createYugawareDatabase() {
