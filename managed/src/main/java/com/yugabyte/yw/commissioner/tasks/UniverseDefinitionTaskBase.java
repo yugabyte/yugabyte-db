@@ -42,6 +42,8 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.PersistUseClockbound;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PreflightNodeCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetupYNP;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert.UpdateRootCertAction;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistAuditLoggingConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterAPIDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseCommunicationPorts;
@@ -3966,6 +3968,26 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     params.rootAndClientRootCASame = rootAndClientRootCASame;
     params.rootCA = rootCA;
     UniverseSetTlsParams task = createTask(UniverseSetTlsParams.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  protected void createUniverseUpdateRootCertTask(UpdateRootCertAction updateAction) {
+    createUniverseUpdateRootCertTask(updateAction, null /* temporaryRootCAUUID */);
+  }
+
+  protected void createUniverseUpdateRootCertTask(
+      UpdateRootCertAction updateAction, UUID temporaryRootCAUUID) {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("UniverseUpdateRootCert", SubTaskGroupType.ConfigureUniverse);
+    UniverseUpdateRootCert.Params params = new UniverseUpdateRootCert.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.rootCA = taskParams().rootCA;
+    params.action = updateAction;
+    params.temporaryRootCAUUID = temporaryRootCAUUID;
+    UniverseUpdateRootCert task = createTask(UniverseUpdateRootCert.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     subTaskGroup.setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);

@@ -867,6 +867,7 @@ public class CustomerTaskManager {
         taskParams = Json.fromJson(oldTaskParams, ThirdpartySoftwareUpgradeParams.class);
         break;
       case CertsRotate:
+      case CertsRotateKubernetesUpgrade:
         taskParams = Json.fromJson(oldTaskParams, CertsRotateParams.class);
         break;
       case TlsToggle:
