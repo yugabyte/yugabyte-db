@@ -212,7 +212,7 @@ CREATE INDEX NONCONCURRENTLY ON airbnb_listing USING ybhnsw (description_embeddi
 ```
 
 {{<note>}}
-For smaller datasets, like the one used in this tutorial, you may observe that vector indexing does not appear in the query execution plan. As your dataset grows, vector index will automatically be used by the planner.
+For smaller datasets, like the one used in this tutorial, you may observe that vector indexing does not appear in the query execution plan. As your dataset grows, vector index is automatically used by the planner.
 {{</note>}}
 
 ## Wrap-up
