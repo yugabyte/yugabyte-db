@@ -1272,9 +1272,11 @@ The `NOWAIT` clause for row-level explicit locking doesn't apply to the `Fail-on
 
 The `SKIP LOCKED` clause is supported in both concurrency control policies and provides a transaction with the capability to skip locking without any error when a conflict is detected. However, it isn't supported for Serializable isolation. [#11761](https://github.com/yugabyte/yugabyte-db/issues/5683) tracks support for `SKIP LOCKED` in Serializable isolation.
 
-## YSQL lease mechanism for DML and DDL concurrency
+## YSQL lease mechanism
 
 YugabyteDB employs a robust lease mechanism to ensure data consistency in a distributed environment, particularly during concurrent DML and DDL operations or YB-TServer failures. A YB-TServer must hold a valid lease from the YB-Master leader to serve any YSQL DMLs or DDLs.
+
+YugabyteDB employs a robust lease mechanism between YB-TServer and YB-Master, so that in the event a YB-TServer is network partitioned from the YB-Master leader for a long time, the YB-TServer is transitioned to a mode that doesn't allow the YB-TServer to serve read or write traffic till it establishes connectivity with the YB-Master leader.
 
 You can enable the lease feature for the YB-TServers using the [--enable_ysql_operation_lease](../../../reference/configuration/yb-tserver/#enable-ysql-operation-lease) flag. Additional flags you can use are as follows:
 
@@ -1290,9 +1292,11 @@ You can enable the lease feature for the YB-TServers using the [--enable_ysql_op
 
     Increasing the lease TTL has the following implications:
 
-      - Decreases the chances YB-TServers will terminate all hosted PostgreSQL sessions because of YSQL lease expiration.
-      - Extends the period during which DDLs remain serviceable after a YB-TServer becomes unavailable (this period is capped by the lease TTL).
-      - Increases the time before locks held by crashed YB-TServers are released, which can block DMLs on any table where the  crashed YB-TServer held a lock (this period  is also capped by the lease TTL).
+  - Decreases the chances YB-TServers will terminate all hosted PostgreSQL sessions because of YSQL lease expiration.
+
+  - Extends the period during which DDLs remain serviceable after a YB-TServer becomes unavailable (this period is capped by the lease TTL).
+
+  - Increases the time before locks held by crashed YB-TServers are released, which can block DMLs on any table where the  crashed YB-TServer held a lock (this period  is also capped by the lease TTL).
 
 - [--ysql_operation_lease_ttl_client_buffer_ms](../../../reference/configuration/yb-master/#ysql-operation-lease-ttl-client-buffer-ms)
 

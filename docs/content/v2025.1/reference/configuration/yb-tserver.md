@@ -2773,7 +2773,7 @@ Controls whether YSQL follower reads that specify a not-yet-safe read time shoul
 Default: `true`
 {{% /tags/wrap %}}
 
-Enables the [YSQL lease mechanism](../../../architecture/transactions/concurrency-control/#ysql-lease-mechanism-for-dml-and-ddl-concurrency).
+Enables the [YSQL lease mechanism](../../../architecture/transactions/concurrency-control/#ysql-lease-mechanism).
 
 On YB-TServers, a new PostgreSQL process is spawned only after establishing a lease with the YB-Master leader. The flag also controls whether the background YB-TServer task makes lease refresh requests.
 
