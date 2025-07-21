@@ -18,15 +18,17 @@ Where possible, design application sessions to avoid using session-level state, 
 
 - Prepared statements - Prefer using protocol-level prepared statements instead of SQL-level prepared statements to avoid stickiness (this may provide better performance than PostgreSQL if in optimized mode).
 - Using superuser connections - There are some corner cases where providing temporary superuser access to a user on a connection can break the connection after revoking the superuser privileges. If there are no cases of temporarily providing superuser privileges to any user, then the flag `ysql_conn_mgr_superuser_sticky` can be safely set to false.
-- (WIP/guarded by a flag) Setting the role or session authorization during a session (SET role/SET session authorization) makes the connection sticky, but this can be disabled by setting <WIP flag name> to false.
+<!-- (WIP/guarded by a flag) Setting the role or session authorization during a session (SET role/SET session authorization) makes the connection sticky, but this can be disabled by setting <WIP flag name> to false.-->
 
 ## Use sticky connections for long-running workloads
 
-Sticky connections are ideal for workloads where avoiding the overhead of connection pooling context switches is important. Currently, users cannot explicitly request a sticky connection through configuration or connection parameters—this capability is planned for future release. In the meantime, sticky connections can be leveraged by using the super-admin user, as all connections initiated under this role are treated as sticky by default. This approach is particularly recommended for administrative tasks, long-running analytical queries, or debugging sessions where stickiness avoids context switching overhead.
+Sticky connections are ideal for workloads where avoiding the overhead of connection pooling context switches is important. Currently, you cannot explicitly request a sticky connection through configuration or connection parameters (this capability is planned for future release).
 
-## Coordinate connection scaling with smart driver
+In the meantime, you can explicitly request sticky connections by using the SuperAdmin user, as all connections initiated under this role are treated as sticky by default. This approach is particularly recommended for administrative tasks, long-running analytical queries, or debugging sessions where stickiness avoids context switching overhead.
 
-YugabyteDB YSQL Smart Driver and Connection Manager are designed to work together and complement each other for optimal scalability and performance.
+## Coordinate connection scaling using a smart driver
+
+YugabyteDB YSQL Smart Drivers and Connection Manager are designed to work together and complement each other for optimal scalability and performance.
 
 The smart driver is responsible for intelligent routing of connections across nodes in a distributed YugabyteDB cluster. It ensures that application traffic is load-balanced efficiently and can dynamically route queries to appropriate TServers.
 

@@ -15,15 +15,16 @@ type: docs
 ## PgBouncer
 
 PgBouncer is a generic PostgreSQL connection pooler and YB-Controller is purpose-built for YugabyteDB, optimizing connection management for distributed PostgreSQL (YSQL). Both support transaction pooling, session pooling, or statement pooling.
-Below table shows mapping and differences between PgBouncer and Yugabyte.
+
+The following table describes key differences between PgBouncer and YugabyteDB Connection Manager.
 
 | Feature | PgBouncer | YSQL Connection Manager |
 | :--- | :--- | :--- |
 | Architecture | Single node | Designed for distributed multi-node connections |
 | Pooling mode | Transaction level (default) | Transaction level only |
 | Pool configuration | Creates pool for every combination of users and databases | Creates pool for every (user,db) combination |
-| SQL limitations | Doesn't support SQL features such as TEMP TABLE, SET statements, CURSORS etc | Supported |
-| Config parameters | max_db_connections | ysql_max_connections (core db flag) |
+| SQL limitations | No support for SQL features such as TEMP TABLE, SET statements, CURSORS, and so on. | No equivalent limitations. |
+| Configuration parameters | max_db_connections | ysql_max_connections (core database flag) |
 | | max_db_client_connections | ysql_conn_mgr_max_client_connections |
 | | min_pool_size | ysql_conn_mgr_min_conns_per_db |
 | | server_idle_timeout | ysql_conn_mgr_idle_time |
@@ -32,44 +33,47 @@ Below table shows mapping and differences between PgBouncer and Yugabyte.
 | | tcp_keepintvl | ysql_conn_mgr_tcp_keepalive_keep_interval |
 | | listen_port | ysql_conn_mgr_port |
 | Connection string | `postgresql://<username>:<password>@<pgbouncer_host>:<pgbouncer_port>/<database_name>?sslmode=require` | `postgresql://<username>:<password>@<host>:<port>/<database_name>?sslmode=require`<br><br>Connection Manager remains transparent, connection string (by default) is same as without connection manager enabled. |
-| Scalability | Single process/thread. To scale, you need to start multiple instances of PgBouncer. | The number of threads for multiplexing is configurable. (`ysql_conn_mgr_worker_threads`, default value = CPU cores divided by 2) |
+| Scalability | Single process/thread. To scale, you need to start multiple instances of PgBouncer. | The number of threads for multiplexing is configurable using `ysql_conn_mgr_worker_threads` (default is CPU cores divided by 2). |
 
-To migrate:
+To migrate from PgBouncer, do the following:
 
-1. Understand Differences
+1. Understand the differences.
 
-    Review how PgBouncer differs from YB-Controller (Yugabyte-native pooling and load balancing) as explained in the table above.
+    Review how PgBouncer differs from YugabyteDB Connection Manager (YugabyteDB-native pooling and load balancing) as explained in the previous table.
 
-1. Choose Pooling Mode
+1. Choose pooling mode.
 
-    - Use session pooling in Yugabyte (default session level) compared to PgBouncer
+    - Use session pooling in YugabyteDB (default session level) compared to PgBouncer.
     - Plan application adjustments if PgBouncer was using transaction pooling.
 
-1. Deploy Yugabyte Connection Manager
+1. Deploy YugabyteDB Connection Manager.
 
-    - Enable and configure Yugabyte Connection Pooling
-    - How to configure to connect to a local region (without using sticky session)
+    - Enable and configure YugabyteDB Connection Manager. Refer to [setup](./ycm-setup/).
+    - How to configure to connect to a local region (without using sticky session).
 
-1. Update Connection Strings
+1. Update connection strings.
 
     Change your application's database connection URL to point to the YugabyteDB endpoint (default port 5433).
 
-1. Test in Staging Environment
+1. Test in a staging environment.
 
-    - Validate connection handling your work load.
+    - Validate connection handling when running your workload.
     - Simulate failover scenarios and node failures.
 
-1. Set Up Monitoring
-    - Integrate YBDB metrics into Prometheus, Grafana, Datadog, or preferred APM.
+1. Set up [monitoring](./ycm-monitor/).
+
+    - Integrate YugabyteDB metrics into Prometheus, Grafana, Datadog, or preferred APM.
     - Track active connections, error rates, and latency.
 
-1. Scale horizontally
+1. Scale horizontally.
 
-    PgBouncer is a Single process/thread. To scale, you need to start multiple instances of PgBouncer. YSQL Connection manager is multi-threaded and creates a number of threads based on the available CPU.
+    PgBouncer is a single process/thread. To scale, you need to start multiple instances of PgBouncer.
 
-1. Update failover and high availability strategy
+    YSQL Connection manager on the other hand is multi-threaded and creates a number of threads based on the available CPU.
+
+1. Update failover and high availability strategy.
 
     - Ensure the application handles dynamic leader changes.
-    - Remove PgBouncer-specific manual failover scripts if any custom scripts used to failover/bring your app online.
+    - Remove PgBouncer-specific manual failover scripts, if any custom scripts are used to failover and bring your application online.
 
-## HikariPool
+<!-- ## HikariPool -->

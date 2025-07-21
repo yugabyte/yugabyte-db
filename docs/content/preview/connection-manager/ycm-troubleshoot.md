@@ -52,7 +52,7 @@ TCP IPv6 logical connections are not authenticated with the connection manager. 
 
 CERT Authentication: Connection manager does not support CERT authentication (verify-full/verify-ca). CERT authentication requires connection to be SSL encrypted. Authentication with the connection manager still happens on the database side. Therefore the connection manager should forward all client credentials (e.g password) along with setting up the ssl context on the database while doing authentication. The logical connection presents client certificates to the connection manager and it's difficult to pass the same certificates to the database to perform authentication. Even if we manage to pass, the physical connections are unix socket connections (no SSL/Encryption) which makes it difficult to set up a fake ssl context in which client certificates are needed to be processed for the purpose of cert authentication via connection manager. Client certificates are loaded during the initial ssl handshake of the client with the postmaster process without a connection manager.
 
-## Different Behaviour for sslmode
+## Different behaviour for SSLmode
 
 Although we don't throw errors and support all sslmode that clients can set in a connection, the behaviour could be slightly different. Following scenarios are the corner cases which do not show the same behaviour as YugabyteDB does without a connection manager. The main reason for the difference in behaviour is sometimes authentication is done at connection manager layer itself rather than following standard authentication mechanism (where auth happens on the server based on credentials forwarded by connection manager).
 
