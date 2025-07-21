@@ -431,17 +431,22 @@ class TSLocalLockManager::Impl {
     VLOG(1) << "Blocking acquire request to simulate out-of-order requests: "
             << req.ShortDebugString();
     TRACE("Blocking acquire request to simulate out-of-order requests");
+    const auto wait_start = CoarseMonoClock::Now();
     while (!FLAGS_TEST_release_blocked_acquires_to_simulate_out_of_order) {
       constexpr auto kSpinWait = 100ms;
       VLOG(2) << Format("Blocking $0 for $1", __func__, kSpinWait);
       SleepFor(kSpinWait);
-      // Update the deadline so that this request does not get rejected later on due
-      // to the delay caused here.
-      deadline += kSpinWait;
     }
     TRACE("Unblocked acquire request");
-    VLOG(1) << "Unblocking acquire request. Updated deadline to : "
-            << ToStringRelativeToNow(deadline, CoarseMonoClock::Now());
+    const auto now = CoarseMonoClock::Now();
+    const auto spin_wait_duration = now - wait_start;
+    const auto previous_deadline = deadline;
+    // Update the deadline so that this request does not get rejected later on due
+    // to the delay caused here.
+    deadline = previous_deadline + spin_wait_duration;
+    VLOG(1) << "Unblocking acquire request. Updated deadline from "
+            << ToStringRelativeToNow(previous_deadline, now)
+            << " to " << ToStringRelativeToNow(deadline, now);
   }
 
   Status WaitUntilBootstrapped(CoarseTimePoint deadline) {
