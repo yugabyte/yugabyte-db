@@ -595,6 +595,16 @@ TEST_P(PgMiniTestTracing, Tracing) {
   auto conn = ASSERT_RESULT(Connect());
 
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT, value2 TEXT)"));
+
+  LOG(INFO) << "Doing Insert";
+  trace_log_sink.get_last_logged_bytes_and_reset();
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION"));
+  ASSERT_OK(conn.Execute("INSERT INTO t (key, value, value2) VALUES (0, 'zero', 'zero')"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  SleepFor(1s);
+  // We do not expect the transaction to be logged unless we set the tracing flag.
+  EXPECT_EQ(trace_log_sink.get_last_logged_bytes_and_reset(), 0);
+
   LOG(INFO) << "Setting yb_enable_docdb_tracing";
   ASSERT_OK(conn.Execute("SET yb_enable_docdb_tracing = true"));
 
@@ -603,9 +613,9 @@ TEST_P(PgMiniTestTracing, Tracing) {
   SleepFor(1s);
   last_logged_trace_size = trace_log_sink.get_last_logged_bytes_and_reset();
   LOG(INFO) << "Logged " << last_logged_trace_size << " bytes";
-  // 2601 is size of the current trace for insert.
+  // 1975 is size of the current trace for insert.
   // being a little conservative for changes in ports/ip addr etc.
-  EXPECT_GE(last_logged_trace_size, 2400);
+  EXPECT_GE(last_logged_trace_size, 1900);
   LOG(INFO) << "Done Insert";
 
   // 1884 is size of the current trace for select.
@@ -939,8 +949,10 @@ TEST_F(PgMiniTest, TruncateColocatedBigTable) {
   ASSERT_OK(conn.Execute("create table t1(k int primary key) tablegroup tg1"));
   const auto& peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
   tablet::TabletPeerPtr tablet_peer = nullptr;
+  tablet::TabletPtr tablet = nullptr;
   for (auto peer : peers) {
-    if (peer->shared_tablet()->regular_db()) {
+    tablet = ASSERT_RESULT(peer->shared_tablet());
+    if (tablet->regular_db()) {
       tablet_peer = peer;
       break;
     }
@@ -950,12 +962,12 @@ TEST_F(PgMiniTest, TruncateColocatedBigTable) {
   // Insert 2 rows, and flush.
   ASSERT_OK(conn.Execute("insert into t1 values (1)"));
   ASSERT_OK(conn.Execute("insert into t1 values (2)"));
-  ASSERT_OK(tablet_peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
 
   // Truncate the table, and flush. Tabletombstone should be in a seperate sst file.
   ASSERT_OK(conn.Execute("TRUNCATE t1"));
   SleepFor(1s);
-  ASSERT_OK(tablet_peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
 
   // Check if the row still visible.
   ASSERT_OK(conn.FetchMatrix("select k from t1 where k = 1", 0, 1));
@@ -1364,7 +1376,11 @@ void PgMiniTest::TestBigInsert(bool restart) {
 
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
   for (const auto& peer : peers) {
-    auto db = peer->tablet()->regular_db();
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (!tablet) {
+      continue;
+    }
+    auto db = tablet->regular_db();
     if (!db) {
       continue;
     }
@@ -1570,7 +1586,11 @@ TEST_F(PgMiniTest, SkipTableTombstoneCheckMetadata) {
   tablet_peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
   tablet::TabletPeerPtr colocated_tablet_peer = nullptr;
   for (const auto& peer : tablet_peers) {
-    if (peer->shared_tablet()->regular_db() && peer->tablet_metadata()->colocated()) {
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (!tablet) {
+      continue;
+    }
+    if (tablet->regular_db() && peer->tablet_metadata()->colocated()) {
       colocated_tablet_peer = peer;
       break;
     }
@@ -1920,7 +1940,7 @@ TEST_F_EX(
 void PgMiniTest::ValidateAbortedTxnMetric() {
   auto tablet_peers = cluster_->GetTabletPeers(0);
   for(size_t i = 0; i < tablet_peers.size(); ++i) {
-    auto tablet = ASSERT_RESULT(tablet_peers[i]->shared_tablet_safe());
+    auto tablet = ASSERT_RESULT(tablet_peers[i]->shared_tablet());
     auto* gauge = GetMetricOpt<const AtomicGauge<uint64>>(
         *tablet, METRIC_aborted_transactions_pending_cleanup);
     if (gauge) {
@@ -2137,7 +2157,11 @@ void PgMiniTest::VerifyFileSizeAfterCompaction(PGConn* conn, const int num_table
   ASSERT_OK(cluster_->FlushTablets());
   uint64_t files_size = 0;
   for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
-    files_size += peer->tablet()->GetCurrentVersionSstFilesUncompressedSize();
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (!tablet) {
+      continue;
+    }
+    files_size += tablet->GetCurrentVersionSstFilesUncompressedSize();
   }
 
   ASSERT_OK(conn->ExecuteFormat("ALTER TABLE test$0 DROP COLUMN string;", num_tables - 1));
@@ -2147,7 +2171,11 @@ void PgMiniTest::VerifyFileSizeAfterCompaction(PGConn* conn, const int num_table
 
   uint64_t new_files_size = 0;
   for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
-    new_files_size += peer->tablet()->GetCurrentVersionSstFilesUncompressedSize();
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (!tablet) {
+      continue;
+    }
+    new_files_size += tablet->GetCurrentVersionSstFilesUncompressedSize();
   }
 
   LOG(INFO) << "Old files size: " << files_size << ", new files size: " << new_files_size;
@@ -2248,7 +2276,8 @@ TEST_F(PgMiniTest, TablegroupCompactionWithRestart) {
 TEST_F(PgMiniTest, CompactionAfterDBDrop) {
   const std::string kDatabaseName = "testdb";
   auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
-  auto sys_catalog_tablet = catalog_manager.sys_catalog()->tablet_peer()->tablet();
+  auto sys_catalog_tablet =
+      ASSERT_RESULT(catalog_manager.sys_catalog()->tablet_peer()->shared_tablet());
 
   ASSERT_OK(sys_catalog_tablet->Flush(tablet::FlushMode::kSync));
   ASSERT_OK(sys_catalog_tablet->ForceManualRocksDBCompact());
@@ -2432,7 +2461,7 @@ int64_t PgMiniTest::GetBloomFilterCheckedMetric() {
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
   auto bloom_filter_checked = 0;
   for (auto &peer : peers) {
-    const auto tablet = peer->shared_tablet();
+    const auto tablet = peer->shared_tablet_maybe_null();
     if (tablet) {
       bloom_filter_checked += tablet->regulardb_statistics()
         ->getTickerCount(rocksdb::BLOOM_FILTER_CHECKED);
@@ -2596,8 +2625,10 @@ TEST_F(PgMiniTestSingleNode, TestBootstrapOnAppliedTransactionWithIntents) {
 
   const auto& peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
   tablet::TabletPeerPtr tablet_peer = nullptr;
+  tablet::TabletPtr tablet = nullptr;
   for (auto peer : peers) {
-    if (peer->shared_tablet()->regular_db()) {
+    tablet = ASSERT_RESULT(peer->shared_tablet());
+    if (tablet->regular_db()) {
       tablet_peer = peer;
       break;
     }
@@ -2609,14 +2640,14 @@ TEST_F(PgMiniTestSingleNode, TestBootstrapOnAppliedTransactionWithIntents) {
   ASSERT_OK(conn1.Execute("INSERT INTO test(a) VALUES (0)"));
 
   LOG(INFO) << "Flush";
-  ASSERT_OK(tablet_peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
 
   LOG(INFO) << "T2 - BEGIN/INSERT";
   ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   ASSERT_OK(conn2.Execute("INSERT INTO test(a) VALUES (1)"));
 
   LOG(INFO) << "Flush";
-  ASSERT_OK(tablet_peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
 
   LOG(INFO) << "T1 - Commit";
   ASSERT_OK(conn1.CommitTransaction());
@@ -2645,23 +2676,25 @@ TEST_F(PgMiniTestSingleNode, TestAppliedTransactionsStateReadOnly) {
   ASSERT_OK(conn.Execute("CREATE TABLE test1(a int primary key) SPLIT INTO 1 TABLETS"));
 
   tablet::TabletPeerPtr test1_peer = nullptr;
+  tablet::TabletPtr tablet = nullptr;
   {
     const auto& peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
     for (auto peer : peers) {
-      if (peer->shared_tablet()->regular_db()) {
+      tablet = ASSERT_RESULT(peer->shared_tablet());
+      if (tablet && tablet->regular_db()) {
         test1_peer = peer;
         break;
       }
     }
     ASSERT_NE(test1_peer, nullptr);
   }
-  std::string test1_tablet_id = test1_peer->shared_tablet()->tablet_id();
+  std::string test1_tablet_id = tablet->tablet_id();
 
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   ASSERT_OK(conn.Execute("INSERT INTO test1(a) VALUES (0)"));
   ASSERT_OK(conn.CommitTransaction());
 
-  ASSERT_OK(test1_peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
   ASSERT_OK(test1_peer->FlushBootstrapState());
 
   ASSERT_OK(conn.Execute("CREATE TABLE test2(a int references test1(a)) SPLIT INTO 1 TABLETS"));
@@ -2673,19 +2706,23 @@ TEST_F(PgMiniTestSingleNode, TestAppliedTransactionsStateReadOnly) {
 
   ASSERT_EQ(
       GetMetricOpt<AtomicGauge<uint64_t>>(
-          *test1_peer->shared_tablet(), METRIC_wal_replayable_applied_transactions)->value(),
+          *test1_peer->shared_tablet_maybe_null(), METRIC_wal_replayable_applied_transactions)
+          ->value(),
       1);
 
   LOG(INFO) << "Restarting cluster";
   ASSERT_OK(RestartCluster());
 
   for (auto peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
-    if (!peer->shared_tablet()->regular_db()) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    if (!tablet || !tablet->regular_db()) {
       continue;
     }
-    auto metric_value = GetMetricOpt<AtomicGauge<uint64_t>>(
-        *peer->shared_tablet(), METRIC_wal_replayable_applied_transactions)->value();
-    if (peer->shared_tablet()->tablet_id() == test1_tablet_id) {
+    auto metric_value =
+        GetMetricOpt<AtomicGauge<uint64_t>>(
+            *peer->shared_tablet_maybe_null(), METRIC_wal_replayable_applied_transactions)
+            ->value();
+    if (tablet->tablet_id() == test1_tablet_id) {
       ASSERT_EQ(metric_value, 1);
     } else {
       ASSERT_EQ(metric_value, kIters);
@@ -2716,8 +2753,10 @@ TEST_F(PgMiniTest, TestAppliedTransactionsStateInFlight) {
 
   const auto& pg_ts_uuid = cluster_->mini_tablet_server(kPgTsIndex)->server()->permanent_uuid();
   tablet::TabletPeerPtr tablet_peer = nullptr;
+  tablet::TabletPtr tablet = nullptr;
   for (auto peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kNonLeaders)) {
-    if (peer->shared_tablet()->regular_db() && peer->permanent_uuid() != pg_ts_uuid) {
+    tablet = ASSERT_RESULT(peer->shared_tablet());
+    if (tablet->regular_db() && peer->permanent_uuid() != pg_ts_uuid) {
       tablet_peer = peer;
       break;
     }
@@ -2748,7 +2787,7 @@ TEST_F(PgMiniTest, TestAppliedTransactionsStateInFlight) {
   ASSERT_OK(conn3.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   ASSERT_OK(conn3.FetchRow<PGUint32>("SELECT a FROM test WHERE a = 0 FOR KEY SHARE"));
 
-  ASSERT_OK(tablet_peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
 
   ASSERT_OK(tablet_server->Restart());
   ASSERT_OK(tablet_server->WaitStarted());
@@ -2762,9 +2801,11 @@ TEST_F(PgMiniTest, TestAppliedTransactionsStateInFlight) {
 
   std::unordered_map<std::string, uint64_t> metric_values;
   for (auto peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
-    if (peer->shared_tablet()->regular_db()) {
-      metric_values[peer->permanent_uuid()] = GetMetricOpt<AtomicGauge<uint64_t>>(
-          *peer->shared_tablet(), METRIC_wal_replayable_applied_transactions)->value();
+    if (ASSERT_RESULT(peer->shared_tablet())->regular_db()) {
+      metric_values[peer->permanent_uuid()] =
+          GetMetricOpt<AtomicGauge<uint64_t>>(
+              *peer->shared_tablet_maybe_null(), METRIC_wal_replayable_applied_transactions)
+              ->value();
     }
   }
 

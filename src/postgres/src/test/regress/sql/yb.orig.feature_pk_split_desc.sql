@@ -168,10 +168,18 @@ INSERT INTO feature_pk_split_desc_min_max
 -- each row. Currently, this is verified by tracking number rows per tablet during development.
 --
 -- All rows must be from partition 1: (nan) < PKey < (1, max)
-SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer <= 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
+SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer <= 1 ORDER BY col_integer DESC;
+SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer <= 1 ORDER BY col_integer DESC;
 -- All rows must be from partition 2: (1, max) <= PKey < (10, min)
-SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer > 1 AND col_integer < 10;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
+SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer > 1 AND col_integer < 10 ORDER BY col_integer DESC;
+SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer > 1 AND col_integer < 10 ORDER BY col_integer DESC;
 -- All rows must be from partition3: (10, min) <= PKey < (100, min)
-SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer >= 10 AND col_integer < 100;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
+SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer >= 10 AND col_integer < 100 ORDER BY col_integer DESC;
+SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer >= 10 AND col_integer < 100 ORDER BY col_integer DESC;
 -- All rows must be from partition 4: (100, min) <= PKey < (nan)
-SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer >= 100;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
+SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer >= 100 ORDER BY col_integer DESC;
+SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer >= 100 ORDER BY col_integer DESC;

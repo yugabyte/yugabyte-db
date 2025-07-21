@@ -83,8 +83,8 @@ DEFINE_test_flag(bool, cdcsdk_skip_processing_unqualified_tables, false,
 
 DECLARE_bool(enable_ysql);
 DECLARE_bool(TEST_echo_service_enabled);
-DECLARE_bool(ysql_enable_auto_analyze_service);
 DECLARE_bool(cdcsdk_enable_dynamic_table_addition_with_table_cleanup);
+DECLARE_bool(ysql_enable_auto_analyze_infra);
 
 namespace yb {
 namespace master {
@@ -208,13 +208,9 @@ void CatalogManagerBgTasks::Run() {
         WARN_NOT_OK(catalog_manager_->ysql_manager_->CreateYbAdvisoryLocksTableIfNeeded(l.epoch()),
                     "Failed to create YB advisory locks table");
 
-        // TODO(auto-analyze, #19464): we allow enabling this service at runtime. We should also
-        // allow disabling this service at runtime i.e., the service should stop on the tserver
-        // hosting it when the flag is set to false.
-        if (GetAtomicFlag(&FLAGS_ysql_enable_auto_analyze_service)) {
-          WARN_NOT_OK(catalog_manager_->CreatePgAutoAnalyzeService(l.epoch()),
-                      "Failed to create Auto Analyze service");
-        }
+        if (FLAGS_ysql_enable_auto_analyze_infra)
+            WARN_NOT_OK(catalog_manager_->CreatePgAutoAnalyzeService(l.epoch()),
+                        "Failed to create Auto Analyze service");
       }
 
       // Report metrics.

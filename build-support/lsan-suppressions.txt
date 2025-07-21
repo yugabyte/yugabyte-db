@@ -27,11 +27,7 @@ leak:__res_vinit
 # In general, PostgreSQL has not yet been adapted to run correctly with LSAN
 # as of 09/2018.
 
-leak:save_ps_display_args
-leak:pg_malloc_internal
-leak:escape_single_quotes_ascii
 leak:gaih_inet
-leak:pg_strdup
 
 # When we push down PG/YSQL expression execution we prepare long-lived, thread-local memory
 # contexts in DocDB to use for evaluating the expressions. These contexts are never deleted, only
@@ -40,13 +36,6 @@ leak:YbgPrepareMemoryContext
 
 # https://gist.githubusercontent.com/mbautin/015cb594c8281e1afc7ee7b3b5230fce/raw
 leak:__strdup
-
-# https://gist.githubusercontent.com/mbautin/864e341c578f30b478da93f59cf098cc/raw
-leak:guc_strdup
-leak:postmaster_strdup
-
-# https://github.com/yugabyte/yugabyte-db/issues/27496
-leak:CloneAndAddErrorCode
 
 # https://github.com/yugabyte/yugabyte-db/issues/14745
 leak:ThreadSafeObjectPool

@@ -137,8 +137,19 @@ func upgradeCmd() *cobra.Command {
 				log.Info(fmt.Sprintf("Taking YBA backup to %s", backupDir))
 				usePromProtocol := true
 				// PLAT-14522 introduced prometheus_protocol which isn't present in <2.20.7.0-b40 or <2024.1.3.0-b55
-				if common.LessVersions(state.Version, "2.20.7.0-b40") ||
-					(common.LessVersions("2024.1.0.0-b0", state.Version) && common.LessVersions(state.Version, "2024.1.3.0-b55")) {
+				v, e := common.NewYBVersion(state.Version)
+				if e != nil {
+					log.Fatal(fmt.Sprintf("Failed to parse version %s: %s", state.Version, e.Error()))
+				}
+
+				// Stable versions less then 2.20.7.0-b40 or 2024.1.3.0-b55 or 2024.1.0.0.0-b0 don't have promProtocol
+				// In addition, non stable versions less than 2.23.1.0-b220 also don't have promProtocol
+				if v.IsStable {
+					if common.LessVersions(state.Version, "2.20.7.0-b40") ||
+						(common.LessVersions("2024.1.0.0-b0", state.Version) && common.LessVersions(state.Version, "2024.1.3.0-b55")) {
+						usePromProtocol = false
+					}
+				} else if common.LessVersions("2.23.1.0-b220", state.Version) {
 					usePromProtocol = false
 				}
 				if errB := CreateBackupScriptHelper(backupDir, common.GetBaseInstall(),
@@ -202,15 +213,15 @@ func upgradeCmd() *cobra.Command {
 			}
 			*/
 
-			for _, name := range serviceOrder {
-				log.Info("About to upgrade component " + name)
-				if err := services[name].Upgrade(); err != nil {
+			for service := range serviceManager.Services() {
+				log.Info("About to upgrade component " + service.Name())
+				if err := service.Upgrade(); err != nil {
 					if rollback {
 						rollbackUpgrade(backupDir, state)
 					}
-					log.Fatal("Upgrade of " + name + " failed: " + err.Error())
+					log.Fatal("Upgrade of " + service.Name() + " failed: " + err.Error())
 				}
-				log.Info("Completed upgrade of component " + name)
+				log.Info("Completed upgrade of component " + service.Name())
 			}
 
 			// Permissions update to be safe
@@ -218,15 +229,15 @@ func upgradeCmd() *cobra.Command {
 				log.Fatal("error updating permissions for data and software directories: " + err.Error())
 			}
 
-			for _, name := range serviceOrder {
-				log.Info("About to restart component " + name)
-				if err := services[name].Restart(); err != nil {
+			for service := range serviceManager.Services() {
+				log.Info("About to restart component " + service.Name())
+				if err := service.Restart(); err != nil {
 					if rollback {
 						rollbackUpgrade(backupDir, state)
 					}
-					log.Fatal("Failed restarting " + name + " after upgrade: " + err.Error())
+					log.Fatal("Failed restarting " + service.Name() + " after upgrade: " + err.Error())
 				}
-				log.Info("Completed restart of component " + name)
+				log.Info("Completed restart of component " + service.Name())
 			}
 
 			if err := common.WaitForYBAReady(ybactl.Version); err != nil {
@@ -238,8 +249,7 @@ func upgradeCmd() *cobra.Command {
 
 			var statuses []common.Status
 			//serviceOrder = append([]string{newDbServiceName}, serviceOrder...)
-			for _, name := range serviceOrder {
-				service := services[name]
+			for service := range serviceManager.Services() {
 				status, err := service.Status()
 				if err != nil {
 					log.Fatal("Failed to get status: " + err.Error())

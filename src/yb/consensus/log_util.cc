@@ -65,6 +65,7 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/std_util.h"
 #include "yb/util/to_stream.h"
 
 DEFINE_UNKNOWN_int32(log_segment_size_mb, 64,
@@ -980,7 +981,7 @@ Result<std::shared_ptr<LWLogEntryBatchPB>> ReadableLogSegment::ReadEntryBatch(
   }
 
   *offset += entry_batch_slice.size();
-  return rpc::SharedField(holder, batch);
+  return SharedField(holder, batch);
 }
 
 const LogSegmentHeaderPB& ReadableLogSegment::header() const {
@@ -1223,7 +1224,7 @@ std::shared_ptr<LWLogEntryBatchPB> CreateBatchFromAllocatedOperations(const Repl
     result = rpc::MakeSharedMessage<LWLogEntryBatchPB>();
   } else {
     auto* batch = msgs.front()->arena().NewObject<LWLogEntryBatchPB>(&msgs.front()->arena());
-    result = rpc::SharedField(msgs.front(), batch);
+    result = SharedField(msgs.front(), batch);
   }
   result->set_mono_time(RestartSafeCoarseMonoClock().Now().ToUInt64());
   for (const auto& msg_ptr : msgs) {

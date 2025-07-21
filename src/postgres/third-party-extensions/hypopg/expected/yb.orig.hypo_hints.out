@@ -1,0 +1,25 @@
+-- Using hints with hypothetical indexes
+-- Remove all the hypothetical indexes if any
+SELECT hypopg_reset();
+ hypopg_reset 
+--------------
+ 
+(1 row)
+
+-- Create a hypothetical index
+SELECT COUNT(*) FROM hypopg_create_index('CREATE INDEX ON hypo (id ASC);');
+ count 
+-------
+     1
+(1 row)
+
+-- Create a real index
+CREATE INDEX hypo_real_idx ON hypo (id ASC);
+-- Before #27927, the following query would crash.
+/*+ IndexScan(hypo hypo_real_idx) */ EXPLAIN (costs off) SELECT * FROM hypo WHERE id = 1;
+               QUERY PLAN               
+----------------------------------------
+ Index Scan using hypo_real_idx on hypo
+   Index Cond: (id = 1)
+(2 rows)
+

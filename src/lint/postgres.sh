@@ -485,11 +485,25 @@ grep -nE '^\s+\w+(\s\s+|'$'\t'')[_[:alpha:]*(]' "$1" \
 'Variable declarations should align variable names to the 12 column mark:/'
 
 # Braces
+#
+# For curly braces, ignore code comments and macros as they may deviate from
+# the expected style.
+#
+# The first grep below is immune to macros.  The second grep below filters out
+# multiline comments.
 grep -nE '(\)|else)\s+{$' "$1" \
-  | sed 's,^,warning:likely_bad_opening_brace:'\
+  | grep -vE '^[0-9]+:\s+\*' \
+  | sed 's,^,error:bad_opening_brace:'\
 'Brace should not be on the same line as if/else:,'
-grep -nE '}\s+else' "$1" \
-  | sed 's/^/warning:likely_bad_closing_brace:'\
+# Find macros as lines ending in backslash.  If the else is the last line of
+# the macro, there is no backslash there, so look for a backslash in the
+# previous line (hence the -B1 and -A1 dance below).  The last grep below
+# filters out multiline comments.
+grep -nEB1 '}\s+else(.*[^\])?$' "$1" \
+  | grep -EA1 '^[0-9]+-.*[^\]$' \
+  | grep -E '}\s+else' \
+  | grep -vE '^[0-9]+:\s+\*' \
+  | sed 's/^/error:bad_closing_brace:'\
 'Brace should not be on the same line as else:/'
 if ! [[ "$1" == src/postgres/contrib/bloom/bloom.h ||
         "$1" == src/postgres/src/include/replication/reorderbuffer.h ||

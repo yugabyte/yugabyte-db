@@ -65,6 +65,7 @@ client/*/generated
 lib
 
 devops/pex/pexEnv
+devops/pex/.cache
 
 # This is for people using pyenv with a local version for YBA set.
 .python-version

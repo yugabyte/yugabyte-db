@@ -160,7 +160,11 @@ class FlushITest : public YBTest {
     size_t bytes = 0;
     auto tablet_peers = cluster_->GetTabletPeers(0);
     for (auto& peer : tablet_peers) {
-      bytes += peer->tablet()->regulardb_statistics()->getTickerCount(rocksdb::FLUSH_WRITE_BYTES);
+      auto tablet = peer->shared_tablet_maybe_null();
+      if (!tablet) {
+        continue;
+      }
+      bytes += tablet->regulardb_statistics()->getTickerCount(rocksdb::FLUSH_WRITE_BYTES);
     }
     return bytes;
   }
@@ -187,7 +191,11 @@ class FlushITest : public YBTest {
   int NumRunningFlushes() {
     int compactions = 0;
     for (auto& peer : cluster_->GetTabletPeers(0)) {
-      auto* db = pointer_cast<rocksdb::DBImpl*>(peer->tablet()->regular_db());
+      auto tablet = peer->shared_tablet_maybe_null();
+      if (!tablet) {
+        continue;
+      }
+      auto* db = pointer_cast<rocksdb::DBImpl*>(tablet->regular_db());
       if (db) {
         compactions += db->TEST_NumRunningFlushes();
       }
@@ -214,7 +222,11 @@ class FlushITest : public YBTest {
     for (auto& peer : cluster_->GetTabletPeers(0)) {
       const auto tablet_id = peer->tablet_id();
       if (tablets->count(tablet_id) == 0) {
-        auto* db = pointer_cast<rocksdb::DBImpl*>(peer->tablet()->regular_db());
+        auto tablet = peer->shared_tablet_maybe_null();
+        if (!tablet) {
+          continue;
+        }
+        auto* db = pointer_cast<rocksdb::DBImpl*>(tablet->regular_db());
         if (db) {
           auto* cf = pointer_cast<rocksdb::ColumnFamilyHandleImpl*>(db->DefaultColumnFamily());
           if (cf->cfd()->mem()->num_entries() > 0) {

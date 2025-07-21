@@ -61,6 +61,7 @@
 
 /* YB includes */
 #include "catalog/namespace.h"
+#include "commands/explain.h"
 #include "common/hashfn.h"
 #include "pg_yb_utils.h"
 #include "utils/catcache.h"
@@ -3936,6 +3937,26 @@ ybAliasForHinting(List *aliasMapping, RelOptInfo *rel, RangeTblEntry *rte)
 	return aliasForHint;
 }
 
+static char *
+yb_get_rel_name(Oid relid)
+{
+	char	   *relname = NULL;
+
+	if (explain_get_index_name_hook)
+	{
+		char	   *tmp_relname = (char*) (*explain_get_index_name_hook) (relid);
+		if (tmp_relname)
+		{
+			relname = pstrdup(tmp_relname);
+		}
+	}
+
+	if (relname == NULL)
+		relname = get_rel_name(relid);
+
+	return relname;
+}
+
 /*
  * Find scan method hint to be applied to the given relation
  *
@@ -3997,7 +4018,7 @@ find_scan_hint(PlannerInfo *root, Index relid)
 		if (!real_name_hint &&
 			rel && rel->reloptkind == RELOPT_OTHER_MEMBER_REL)
 		{
-			char *realname = get_rel_name(rte->relid);
+			char *realname = yb_get_rel_name(rte->relid);
 
 			if (realname && RelnameCmp(&realname, &hint->relname) == 0)
 				real_name_hint = hint;
@@ -4068,7 +4089,7 @@ find_parallel_hint(PlannerInfo *root, Index relid)
 		if (!real_name_hint &&
 			rel && rel->reloptkind == RELOPT_OTHER_MEMBER_REL)
 		{
-			char *realname = get_rel_name(rte->relid);
+			char *realname = yb_get_rel_name(rte->relid);
 
 			if (realname && RelnameCmp(&realname, &hint->relname) == 0)
 				real_name_hint = hint;
@@ -4170,7 +4191,7 @@ restrict_indexes(PlannerInfo *root, ScanMethodHint *hint, RelOptInfo *rel,
 	foreach (cell, rel->indexlist)
 	{
 		IndexOptInfo   *info = (IndexOptInfo *) lfirst(cell);
-		char		   *indexname = get_rel_name(info->indexoid);
+		char		   *indexname = yb_get_rel_name(info->indexoid);
 		ListCell	   *l;
 		bool			use_index = false;
 
@@ -4402,7 +4423,7 @@ restrict_indexes(PlannerInfo *root, ScanMethodHint *hint, RelOptInfo *rel,
 		 * child. Otherwise use hint specification.
 		 */
 		if (using_parent_hint)
-			disprelname = get_rel_name(rte->relid);
+			disprelname = yb_get_rel_name(rte->relid);
 		else
 			disprelname = hint->relname;
 
@@ -4565,7 +4586,7 @@ setup_hint_enforcement(PlannerInfo *root, RelOptInfo *rel,
 							 " skipping inh parent: relation=%u(%s), inhparent=%d,"
 							 " current_hint_state=%p, hint_inhibit_level=%d",
 							 qnostr, relationObjectId,
-							 get_rel_name(relationObjectId),
+							 yb_get_rel_name(relationObjectId),
 							 inhparent, current_hint_state, hint_inhibit_level)));
 		return 0;
 	}
@@ -4622,7 +4643,7 @@ setup_hint_enforcement(PlannerInfo *root, RelOptInfo *rel,
 				foreach(l, RelationGetIndexList(parent_rel))
 				{
 					Oid         indexoid = lfirst_oid(l);
-					char       *indexname = get_rel_name(indexoid);
+					char       *indexname = yb_get_rel_name(indexoid);
 					ListCell   *lc;
 					ParentIndexInfo *parent_index_info;
 
@@ -4686,7 +4707,7 @@ setup_hint_enforcement(PlannerInfo *root, RelOptInfo *rel,
 							 " hint_inhibit_level=%d, scanmask=0x%x",
 							 qnostr, additional_message,
 							 relationObjectId,
-							 get_rel_name(relationObjectId),
+							 yb_get_rel_name(relationObjectId),
 							 inhparent, current_hint_state,
 							 hint_inhibit_level,
 							 shint->enforce_mask)));
@@ -4714,7 +4735,7 @@ setup_hint_enforcement(PlannerInfo *root, RelOptInfo *rel,
 							 " relation=%u(%s), inhparent=%d, current_hint=%p,"
 							 " hint_inhibit_level=%d, scanmask=0x%x",
 							 qnostr, relationObjectId,
-							 get_rel_name(relationObjectId),
+							 yb_get_rel_name(relationObjectId),
 							 inhparent, current_hint_state, hint_inhibit_level,
 							 current_hint_state->init_scan_mask)));
 
@@ -6201,7 +6222,7 @@ ybCheckBadIndexHintExists(PlannerInfo *root, RelOptInfo *rel)
 				foreach(lc1, rel->indexlist)
 				{
 					IndexOptInfo *index = (IndexOptInfo *) lfirst(lc1);
-					char *indexName = get_rel_name(index->indexoid);
+					char *indexName = yb_get_rel_name(index->indexoid);
 
 					if (RelnameCmp(&indexName, &hintIndexName) == 0)
 					{

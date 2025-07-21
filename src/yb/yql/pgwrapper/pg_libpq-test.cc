@@ -553,12 +553,7 @@ Result<int64_t> ReadSumBalance(
     PGConn* conn, int accounts, IsolationLevel isolation,
     std::atomic<int>* counter) {
   RETURN_NOT_OK(conn->StartTransaction(isolation));
-  bool failed = true;
-  auto se = ScopeExit([conn, &failed] {
-    if (failed) {
-      EXPECT_OK(conn->Execute("ROLLBACK"));
-    }
-  });
+  CancelableScopeExit rollback_se{[conn] { EXPECT_OK(conn->Execute("ROLLBACK")); }};
 
   std::string query = "";
   for (int i = 1; i <= accounts; ++i) {
@@ -574,7 +569,7 @@ Result<int64_t> ReadSumBalance(
     sum += VERIFY_RESULT(GetValue<int64_t>(res.get(), i, 0));
   }
 
-  failed = false;
+  rollback_se.Cancel();
   RETURN_NOT_OK(conn->Execute("COMMIT"));
   return sum;
 }
@@ -4905,6 +4900,92 @@ CREATE TABLE t1_default PARTITION OF t1 DEFAULT;
   result = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM t1 ORDER BY region"));
   LOG(INFO) << "test_en_us_x_icu_db result: " << result;
   ASSERT_EQ(result, utf8_expected);
+}
+
+TEST_F(PgLibPqTest, InconsistentIndexRead) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE bank (id INT, balance INT)"));
+  // In this test do the following:
+  // (0) Create an index on balance with a partial clause as id>=0
+  // The partial clause is used to generate a secondary index scan on SELECT SUM(balance).
+  ASSERT_OK(conn.Execute("CREATE INDEX balance_idx ON bank(balance) WHERE id >= 0"));
+
+  // (1) Add 10 accounts to the bank account table each with a balance of 1000.
+  for (int i = 0; i < 10; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO bank (id, balance) VALUES ($0, 1000)", i));
+  }
+  auto initial_sum = ASSERT_RESULT(
+      conn.FetchRow<int64_t>("SELECT SUM(balance) FROM bank WHERE id >= 0"));
+
+  TestThreadHolder thread_holder;
+
+  // (2) Start a writer thread that keeps executing a transaction which deletes the smallest id row
+  // and inserts a new id row with the next available id and a balance of 1000.
+  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()]() {
+    auto writer_conn = ASSERT_RESULT(Connect());
+    int min_id = 0, next_id = 10;
+    while (!stop.load(std::memory_order_acquire)) {
+      ASSERT_OK(writer_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+      ASSERT_OK(writer_conn.ExecuteFormat("DELETE FROM bank WHERE id = $0", min_id));
+      min_id++;
+      ASSERT_OK(writer_conn.ExecuteFormat(
+          "INSERT INTO bank (id, balance) VALUES ($0, 1000)", next_id));
+      next_id++;
+      ASSERT_OK(writer_conn.CommitTransaction());
+    }
+  });
+
+  // (3) Start a reader thread that keeps fetching the sum of balances for all id>=0.
+  // Assert that the balance is always 10k.
+  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag(), initial_sum]() {
+    auto reader_conn = ASSERT_RESULT(Connect());
+    while (!stop.load(std::memory_order_acquire)) {
+      auto sum_balance = ASSERT_RESULT(reader_conn.FetchRow<int64_t>(
+          "/*+ IndexScan(bank) */ SELECT SUM(balance) FROM bank WHERE id >= 0"));
+      ASSERT_EQ(sum_balance, initial_sum);
+    }
+  });
+
+  thread_holder.WaitAndStop(std::chrono::seconds(30));
+}
+
+// Test aborting concurrent ANALYZEs doesn't cause the connection to FATAL.
+// During execution of ANALYZE, when analyzing each table, CurrentUserId is switched to the table
+// owner's userid and SecurityRestrictionContext is set to indicate security-restricted operations.
+// StartTransactionCommand and CommitTransactionCommand are called internally by ANALYZE
+// for (1) the ANALYZE command itself and
+//     (2) analyzing each individual table selected by the ANALYZE.
+// In read committed isolation, we retry aborted DDL queries. An unclean retry of ANALYZE having
+// set SecurityRestrictionContext causes assertion failure in StartTransactionCommand, making
+// its connection FATAL.
+TEST_F(PgLibPqTest, ConcurrentAnalyzeWithDDL) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+
+  std::atomic<bool> stop = false;
+  // Execute concurrent DDLs in separate threads.
+  std::thread analyze_thread([&conn, &stop] {
+    while (!stop) {
+        // Setting yb_use_internal_auto_analyze_service_conn simulates ANALYZE command
+        // as ANALYZE command run by auto analyze service -- auto-ANALYZE command has
+        // a lower txn priority than regular DDLs, so that ANALYZE in this thread
+        // is always aborted by DROP TABLE and retries later on.
+        ASSERT_OK(conn.Execute("SET yb_use_internal_auto_analyze_service_conn = TRUE"));
+        ASSERT_OK(conn.Execute("SET yb_debug_log_internal_restarts=TRUE"));
+        ASSERT_OK(conn.Execute("SET log_min_messages=DEBUG3"));
+        ASSERT_OK(conn.Execute("SET yb_max_query_layer_retries=300"));
+        auto status = conn.Execute("ANALYZE");
+    }
+  });
+
+  for (int i = 0; i < 10; ++i) {
+    ASSERT_OK(conn2.ExecuteFormat("CREATE TABLE tbl_$0 (k INT)", i));
+    ASSERT_OK(conn2.ExecuteFormat("DROP TABLE tbl_$0", i));
+  }
+  stop = true;
+  analyze_thread.join();
+  ASSERT_NE(conn.ConnStatus(), CONNECTION_BAD);
 }
 
 } // namespace pgwrapper

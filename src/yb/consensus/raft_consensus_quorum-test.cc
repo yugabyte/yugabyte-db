@@ -59,6 +59,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status_log.h"
+#include "yb/util/std_util.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"
@@ -934,7 +935,7 @@ TEST_F(RaftConsensusQuorumTest, TestReplicasEnforceTheLogMatchingProperty) {
   id_copy->set_index(id_copy->index() + 2);
   // Appending this message to peer0 should return a Status::OK
   // but should contain an error referring to the log matching property.
-  ASSERT_OK(follower->Update(rpc::SharedField(req_ptr, &req_copy), &resp, CoarseBigDeadline()));
+  ASSERT_OK(follower->Update(SharedField(req_ptr, &req_copy), &resp, CoarseBigDeadline()));
   ASSERT_TRUE(resp.has_status());
   ASSERT_TRUE(resp.status().has_error());
   ASSERT_EQ(resp.status().error().code(), ConsensusErrorPB::PRECEDING_ENTRY_DIDNT_MATCH);

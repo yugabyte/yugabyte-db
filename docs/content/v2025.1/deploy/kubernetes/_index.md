@@ -8,7 +8,7 @@ menu:
   v2025.1:
     identifier: deploy-kubernetes
     parent: deploy
-    weight: 620
+    weight: 50
 type: indexpage
 ---
 

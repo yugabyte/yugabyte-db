@@ -149,6 +149,7 @@
 #include "storage/procarray.h"
 #include "storage/procsignal.h"
 #include "storage/sinvaladt.h"
+#include "yb/util/debug/leak_annotations.h"
 #include "yb/yql/pggate/ybc_pg_shared_mem.h"
 #include "yb_ash.h"
 #include "yb_query_diagnostics.h"
@@ -598,7 +599,9 @@ HANDLE		PostmasterHandle;
 char *
 postmaster_strdup(const char *in)
 {
-	return strdup(in);
+	char *result = strdup(in);
+	__lsan_ignore_object(result);
+	return result;
 }
 
 /*
@@ -3227,6 +3230,14 @@ reaper(SIGNAL_ARGS)
 
 			foundProcStruct = true;
 
+			if (YbCrashInUnmanageableState)
+			{
+				ereport(WARNING,
+						(errmsg("not attempting to cleanup process %d because the postmaster is "
+								"already terminating active server processes", pid)));
+				break;
+			}
+
 			/*
 			 * We take a conservative approach and restart the postmaster if
 			 * a process dies while holding a lock. Otherwise, we can do some
@@ -3299,13 +3310,33 @@ reaper(SIGNAL_ARGS)
 
 			elog(INFO, "cleaning up after process with pid %d exited with status %d",
 				 pid, exitstatus);
-			if (!CleanupKilledProcess(proc))
+
+			MemoryContext yb_curr_cxt = CurrentMemoryContext;
+			PG_TRY();
 			{
+				if (!CleanupKilledProcess(proc))
+				{
+					YbCrashInUnmanageableState = true;
+					ereport(WARNING,
+							(errmsg("terminating active server processes due to backend crash that is "
+									"unable to be cleaned up")));
+				}
+				break;
+			}
+			PG_CATCH();
+			{
+				MemoryContextSwitchTo(yb_curr_cxt);
+				ErrorData *yb_edata = CopyErrorData();
+				FlushErrorState();
+
 				YbCrashInUnmanageableState = true;
 				ereport(WARNING,
-						(errmsg("terminating active server processes due to backend crash that is "
-								"unable to be cleaned up")));
+						(errmsg("terminating active server processes due to an error"),
+						 errdetail("%s", yb_edata->message)));
+
+				break;
 			}
+			PG_END_TRY();
 			break;
 		}
 
@@ -3599,7 +3630,8 @@ reaper(SIGNAL_ARGS)
 		 * process responding to a termination request or terminating with a
 		 * FATAL.
 		 */
-		if (!foundProcStruct && !EXIT_STATUS_0(exitstatus) && !EXIT_STATUS_1(exitstatus))
+		if (!YbCrashInUnmanageableState && !foundProcStruct &&
+				!EXIT_STATUS_0(exitstatus) && !EXIT_STATUS_1(exitstatus))
 		{
 			YbCrashInUnmanageableState = true;
 			ereport(WARNING,

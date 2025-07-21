@@ -732,6 +732,21 @@ TEST_F(LoadBalancerMockedTest, LimitRbsPerTserver) {
   ASSERT_EQ(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)), false);
 }
 
+TEST_F(LoadBalancerMockedTest, ExcludeOverreplicationInSourceLoad) {
+  PrepareTestStateMultiAz();
+  // Add another tserver in zone c.
+  const auto& new_ts = ts_descs_.emplace_back(SetupTS("3333", "c"));
+  for (int i = 0; i < 2; ++i) {
+    AddRunningReplica(tablets_[i].get(), new_ts);
+  }
+
+  // Should not find a replica to move because, after accounting for over-replicated replicas we
+  // might remove, we have only 2 tablets on ts2 (and 2 on ts3).
+  std::string tablet_id, from_ts, to_ts;
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)), false);
+}
+
 TEST_F(LoadBalancerMockedTest, TestLeaderBlacklist) {
   LOG(INFO) << "Testing moving overloaded leaders";
   PrepareTestStateMultiAz();

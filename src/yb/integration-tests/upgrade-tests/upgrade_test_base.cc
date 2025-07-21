@@ -16,6 +16,7 @@
 #include <boost/algorithm/string/trim.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/xml_parser.hpp>
+#include <boost/regex.hpp>
 
 #include <gtest/gtest.h>
 
@@ -24,6 +25,7 @@
 #include "yb/util/env_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/common/version_info.h"
+#include "yb/util/stol_utils.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 #include "yb/server/server_base.pb.h"
@@ -208,6 +210,48 @@ bool IsUpgradeSupported(const std::string& from_version) {
   return major > 2024 || (major == 2024 && minor >= 2);
 }
 
+Status ValidateYsqlMigrationCompatibility(const std::string& old_version_base_path) {
+  const auto ysq_migration_sub_dir = JoinPathSegments("share", "ysql_migrations");
+
+  const auto get_ysql_migrations =
+      [&ysq_migration_sub_dir](const std::string& base_path) -> Result<std::set<int64_t>> {
+    std::vector<std::string> migration_files;
+    std::set<int64_t> migration_ghs;
+    auto migration_dir = JoinPathSegments(base_path, ysq_migration_sub_dir);
+    auto env = Env::Default();
+    RETURN_NOT_OK(env->GetChildren(migration_dir, &migration_files));
+
+    for (const auto& file : migration_files) {
+      if (!file.ends_with(".sql")) {
+        continue;
+      }
+      // Ex from V59.7__26540__yb_int_pg_stats_v11.sql extract 26540.
+      static const boost::regex migration_regex(R"(^V[\d.]+__(\d+)__.*\.sql$)");
+      boost::smatch match;
+      if (!boost::regex_match(file, match, migration_regex) || match.size() != 2) {
+        return STATUS_FORMAT(IllegalState, "Invalid migration file name: $0", file);
+      }
+
+      const auto gh_number = VERIFY_RESULT(CheckedStoll(match[1].str()));
+      SCHECK(
+          migration_ghs.emplace(gh_number).second, IllegalState,
+          "Duplicate migration script for GH $0 found: $1", gh_number, file);
+    }
+    return migration_ghs;
+  };
+
+  auto old_version_migrations = VERIFY_RESULT(get_ysql_migrations(old_version_base_path));
+  auto current_version_migrations = VERIFY_RESULT(
+      get_ysql_migrations(VERIFY_RESULT(env_util::GetRootDirResult(ysq_migration_sub_dir))));
+
+  for (const auto migration : old_version_migrations) {
+    SCHECK(
+        current_version_migrations.contains(migration), NotFound,
+        "Old version migration $0 not found in current version migrations", migration);
+  }
+  return Status::OK();
+}
+
 }  // namespace
 
 const MonoDelta UpgradeTestBase::kNoDelayBetweenNodes = 0s;
@@ -317,6 +361,8 @@ Status UpgradeTestBase::StartClusterInOldVersion(const ExternalMiniClusterOption
   current_version_master_bin_path_ = cluster_->GetMasterBinaryPath();
   current_version_tserver_bin_path_ = cluster_->GetTServerBinaryPath();
   cluster_->SetDaemonBinPath(old_version_bin_path_);
+
+  RETURN_NOT_OK(ValidateYsqlMigrationCompatibility(DirName(old_version_bin_path_)));
 
   if (cluster_->opts_.enable_ysql) {
     server::GetStatusRequestPB req;

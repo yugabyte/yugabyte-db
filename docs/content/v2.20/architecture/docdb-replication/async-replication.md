@@ -257,6 +257,8 @@ When the source universe is lost, an explicit decision must be made to switch ov
 ### DDL changes
 
 - Currently, DDL changes are not automatically replicated.  Applying commands such as `CREATE TABLE`, `ALTER TABLE`, and `CREATE INDEX` to the target universes is your responsibility.
+- `ALTER TABLE` DDLs that involve table rewrites may not be performed while replication is running; you will need to drop replication, perform those DDL(s) on the source universe, then create replication again.
+- `CREATE TABLE AS` and `SELECT INTO` DDL statements are not supported. You can work around this by breaking the DDL into a `CREATE TABLE` (done on both universes) followed by `INSERT SELECT` (done only on the source universe).
 - `DROP TABLE` is not supported in YCQL.  You must first disable replication for this table.
 - `TRUNCATE TABLE` is not supported.  This is an underlying limitation, due to the level at which the two features operate.  That is, replication is implemented on top of the Raft WAL files, while truncate is implemented on top of the RocksDB SST files.
 - In the future, it will be possible to propagate DDL changes safely to other universes.  This is tracked in [#11537](https://github.com/yugabyte/yugabyte-db/issues/11537).

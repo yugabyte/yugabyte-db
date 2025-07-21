@@ -90,7 +90,7 @@ Status PopulateWriteRecord(
     const XClusterGetChangesContext& context,
     const consensus::LWReplicateMsg& msg) {
   const auto& batch = msg.write().write_batch();
-  auto tablet = VERIFY_RESULT(context.tablet_peer->shared_tablet_safe());
+  auto tablet = VERIFY_RESULT(context.tablet_peer->shared_tablet());
   // Write batch may contain records from different rows.
   // For xCluster, we need to split the batch into 1 CDC record per row of the table.
   // We'll use DocDB key hash to identify the records that belong to the same row.
@@ -195,7 +195,7 @@ Status PopulateTransactionRecord(
     aborted_subtransactions.ToPB(txn_state->mutable_aborted()->mutable_set());
   }
 
-  auto tablet = VERIFY_RESULT(context.tablet_peer->shared_tablet_safe());
+  auto tablet = VERIFY_RESULT(context.tablet_peer->shared_tablet());
   tablet->metadata()->partition()->ToPB(record->mutable_partition());
 
   // The partition keys for a hash partitioned table are not encoded, whereas for a range
@@ -289,7 +289,7 @@ Status GetChangesForXCluster(const XClusterGetChangesContext& context) {
       context.stream_metadata->GetRecordFormat(), CDCRecordFormat::WAL, IllegalState,
       "xCluster only supports WAL record format");
 
-  auto tablet = VERIFY_RESULT(context.tablet_peer->shared_tablet_safe());
+  auto tablet = VERIFY_RESULT(context.tablet_peer->shared_tablet());
   auto consensus = VERIFY_RESULT(context.tablet_peer->GetConsensus());
   auto term = consensus->LeaderTerm();
   SCHECK_GT(

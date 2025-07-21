@@ -30,6 +30,7 @@ Configurable performance parameters and incremental backups are mediated using t
 
 - Don't perform cluster operations at the same time as your scheduled backup.
 - Configure your maintenance window and backup schedule so that they do not conflict.
+- Perform full backups before performing a large operation, such as a DDL change.
 - Performing a backup or restore incurs a load on the cluster. Perform backup operations when the cluster isn't experiencing heavy traffic. Backing up during times of heavy traffic can temporarily degrade application performance and increase the length of time of the backup.
 - Avoid running a backup during or before a scheduled maintenance.
 

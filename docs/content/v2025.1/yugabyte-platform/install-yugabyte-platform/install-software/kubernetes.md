@@ -85,7 +85,7 @@ You install YugabyteDB Anywhere on a Kubernetes cluster as follows:
 
     You can enable TLS by following instructions provided in [Configure TLS](#configure-tls).
 
-    To install YugabyteDB Anywhere using the YugabyteDB Kubernetes Operator {{<tags/feature/ea idea="831">}}, see [Use YugabyteDB Kubernetes Operator to automate YugabyteDB Anywhere deployments](#use-yugabytedb-kubernetes-operator-to-automate-yba-deployments).
+    To install YugabyteDB Anywhere using the YugabyteDB Kubernetes Operator, see [Use YugabyteDB Kubernetes Operator to automate YugabyteDB Anywhere deployments](#use-yugabytedb-kubernetes-operator-to-automate-yba-deployments).
 
 1. Use the following command to check the service:
 
@@ -141,11 +141,11 @@ helm install yw-test yugabytedb/yugaware \
 
 You can copy the preceding code block into a file called `yba-values.yaml` and then install YugabyteDB Anywhere using this command. Alternatively, you can pass the values using the `--set key=value` flag. For more information, see [Customizing the chart before installing](https://helm.sh/docs/intro/using_helm/#customizing-the-chart-before-installing). It is recommend to use a values file and store it in a version control system.
 
-If you are looking for a customization which is not listed, you can view all the supported options and their default values by running the `helm show values yugabytedb/yugaware --version {{<yb-version version="preview" format="short">}}` command and copying the specific section to your own values file.
+If you are looking for a customization which is not listed, you can view all the supported options and their default values by running the `helm show values yugabytedb/yugaware --version {{<yb-version version="stable" format="short">}}` command and copying the specific section to your own values file.
 
 ### Use YugabyteDB Kubernetes Operator to automate YBA deployments
 
-The [YugabyteDB Kubernetes Operator](../../../anywhere-automation/yb-kubernetes-operator/) {{<tags/feature/ea idea="831">}} automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments.
+The [YugabyteDB Kubernetes Operator](../../../anywhere-automation/yb-kubernetes-operator/) automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments.
 
 Note that for YugabyteDB Kubernetes Operator to work correctly, you need to set `rbac.create=true`, as the operator needs ClusterRoles to create its own providers.
 
@@ -154,7 +154,7 @@ To install YugabyteDB Anywhere and a universe using the YugabyteDB Kubernetes Op
 1. Apply the following Custom Resource Definition:
 
     ```sh
-    kubectl apply -f https://raw.github.com/yugabyte/charts/{{< yb-version version="preview" format="short">}}/crds/concatenated_crd.yaml
+    kubectl apply -f https://raw.github.com/yugabyte/charts/{{< yb-version version="stable" format="short">}}/crds/concatenated_crd.yaml
     ```
 
 1. Run the following `helm install` command to set the parameters from the preceding YAML file to install the YugabyteDB Anywhere (`yugaware`) Helm chart:

@@ -4816,6 +4816,8 @@ YBCheckSharedCatalogCacheVersion()
 	if (need_global_cache_refresh)
 		YBRefreshCacheWrapper(YB_CATCACHE_VERSION_UNINITIALIZED,
 							  false /* is_retry */ );
+	else if (yb_test_preload_catalog_tables)
+		YBRefreshCache();
 }
 
 /*
@@ -4988,6 +4990,29 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 		const char *retry_err = ("query layer retries aren't supported when "
 								 "executing non-first statement in batch, "
 								 "will be unable to replay earlier commands");
+
+		edata->message = psprintf("%s (%s)", edata->message, retry_err);
+		if (yb_debug_log_internal_restarts)
+			elog(LOG, "%s", retry_err);
+		return false;
+	}
+
+	/*
+	 * In READ COMMITTED isolation, if the current statement is a DDL, then we
+	 * don't support retrying it, if transactional DDL is enabled. This is
+	 * because we don't support savepoint rollback for DDLs, so we can't rely
+	 * on that mechanism to perform statement level retries.
+	 */
+	if (IsYBReadCommitted() &&
+		YBIsDdlTransactionBlockEnabled() &&
+		YBIsCurrentStmtDdl())
+	{
+		const char *retry_err = ("query layer retry isn't possible because "
+								 "retrying DDL statements are not supported in "
+								 "READ COMMITTED isolation level when "
+								 "transactional DDL is enabled. If object "
+								 "locking is enabled, kConflict and "
+								 "kReadRestart errors won't occur.");
 
 		edata->message = psprintf("%s (%s)", edata->message, retry_err);
 		if (yb_debug_log_internal_restarts)
@@ -6126,6 +6151,12 @@ PostgresMain(const char *dbname, const char *username)
 
 	if (!ignore_till_sync)
 		send_ready_for_query = true;	/* initially, or after error */
+
+	/*
+	 * YB: Refresh the session stats accumulated during catalog cache
+	 * prefetching.
+	 */
+	YbRefreshSessionStatsDuringExecution();
 
 	/*
 	 * Non-error queries loop here.

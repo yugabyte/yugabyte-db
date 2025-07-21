@@ -8,6 +8,7 @@ import {
   ON_PREM_CLOUD_OPTION,
   YBCloudSelectField
 } from '@yugabyte-ui-library/core';
+import { CloudType } from '../../../../features/universe/universe-form/utils/dto';
 
 interface CloudFieldProps<T> {
   name: string;
@@ -21,8 +22,14 @@ export const CloudField = <T,>({ name, label }: CloudFieldProps<T>): ReactElemen
   const clouds = [
     AWS_CLOUD_OPTION,
     GCP_CLOUD_OPTION,
-    AZURE_CLOUD_OPTION,
-    K8S_CLOUD_OPTION,
+    {
+      ...AZURE_CLOUD_OPTION,
+      value: CloudType.azu
+    },
+    {
+      ...K8S_CLOUD_OPTION,
+      value: CloudType.kubernetes
+    },
     ON_PREM_CLOUD_OPTION
   ];
 

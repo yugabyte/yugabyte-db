@@ -220,6 +220,9 @@
         "earlyoomConfig" : {
           "$ref" : "#/definitions/EarlyoomConfig",
           "description" : "Configuration for earlyoom service."
+        },
+        "earlyoomEnabled" : {
+          "type" : "boolean"
         }
       },
       "type" : "object"
@@ -2731,6 +2734,7 @@
             "CreateAlertDefinitions",
             "ManageAlertDefinitions",
             "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
             "MarkSourceMetric",
             "UniverseSetTlsParams",
             "UniverseUpdateRootCert",
@@ -5402,6 +5406,7 @@
             "CreateAlertDefinitions",
             "ManageAlertDefinitions",
             "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
             "MarkSourceMetric",
             "UniverseSetTlsParams",
             "UniverseUpdateRootCert",
@@ -6171,6 +6176,9 @@
         "certPath" : {
           "type" : "string"
         },
+        "compressor" : {
+          "type" : "string"
+        },
         "offloadable" : {
           "type" : "boolean"
         },
@@ -6183,6 +6191,7 @@
       },
       "required" : [
         "certPath",
+        "compressor",
         "offloadable",
         "serverCert",
         "serverKey"
@@ -7662,9 +7671,6 @@
           "format" : "int32",
           "type" : "integer"
         },
-        "enabled" : {
-          "type" : "boolean"
-        },
         "preferPattern" : {
           "type" : "string"
         },
@@ -8395,6 +8401,7 @@
             "CreateAlertDefinitions",
             "ManageAlertDefinitions",
             "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
             "MarkSourceMetric",
             "UniverseSetTlsParams",
             "UniverseUpdateRootCert",
@@ -9175,6 +9182,7 @@
             "CreateAlertDefinitions",
             "ManageAlertDefinitions",
             "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
             "MarkSourceMetric",
             "UniverseSetTlsParams",
             "UniverseUpdateRootCert",
@@ -10573,6 +10581,7 @@
             "CreateAlertDefinitions",
             "ManageAlertDefinitions",
             "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
             "MarkSourceMetric",
             "UniverseSetTlsParams",
             "UniverseUpdateRootCert",
@@ -14790,6 +14799,7 @@
             "CreateAlertDefinitions",
             "ManageAlertDefinitions",
             "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
             "MarkSourceMetric",
             "UniverseSetTlsParams",
             "UniverseUpdateRootCert",
@@ -15786,6 +15796,7 @@
             "CreateAlertDefinitions",
             "ManageAlertDefinitions",
             "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
             "MarkSourceMetric",
             "UniverseSetTlsParams",
             "UniverseUpdateRootCert",
@@ -16593,6 +16604,7 @@
             "CreateAlertDefinitions",
             "ManageAlertDefinitions",
             "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
             "MarkSourceMetric",
             "UniverseSetTlsParams",
             "UniverseUpdateRootCert",
@@ -18089,6 +18101,7 @@
             "CreateAlertDefinitions",
             "ManageAlertDefinitions",
             "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
             "MarkSourceMetric",
             "UniverseSetTlsParams",
             "UniverseUpdateRootCert",
@@ -18628,6 +18641,7 @@
             "CreateAlertDefinitions",
             "ManageAlertDefinitions",
             "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
             "MarkSourceMetric",
             "UniverseSetTlsParams",
             "UniverseUpdateRootCert",
@@ -19009,6 +19023,7 @@
               "CreateAlertDefinitions",
               "ManageAlertDefinitions",
               "ManageCatalogUpgradeSuperUser",
+              "UpdatePitrConfigIntermittentMinRecoverTime",
               "MarkSourceMetric",
               "UniverseSetTlsParams",
               "UniverseUpdateRootCert",
@@ -19811,6 +19826,7 @@
             "CreateAlertDefinitions",
             "ManageAlertDefinitions",
             "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
             "MarkSourceMetric",
             "UniverseSetTlsParams",
             "UniverseUpdateRootCert",
@@ -20883,6 +20899,7 @@
             "CreateAlertDefinitions",
             "ManageAlertDefinitions",
             "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
             "MarkSourceMetric",
             "UniverseSetTlsParams",
             "UniverseUpdateRootCert",
@@ -22159,6 +22176,7 @@
             "CreateAlertDefinitions",
             "ManageAlertDefinitions",
             "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
             "MarkSourceMetric",
             "UniverseSetTlsParams",
             "UniverseUpdateRootCert",
@@ -22809,6 +22827,7 @@
             "CreateAlertDefinitions",
             "ManageAlertDefinitions",
             "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
             "MarkSourceMetric",
             "UniverseSetTlsParams",
             "UniverseUpdateRootCert",
@@ -23714,6 +23733,7 @@
             "CreateAlertDefinitions",
             "ManageAlertDefinitions",
             "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
             "MarkSourceMetric",
             "UniverseSetTlsParams",
             "UniverseUpdateRootCert",
@@ -24328,6 +24348,7 @@
             "CreateAlertDefinitions",
             "ManageAlertDefinitions",
             "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
             "MarkSourceMetric",
             "UniverseSetTlsParams",
             "UniverseUpdateRootCert",
@@ -24942,6 +24963,7 @@
             "CreateAlertDefinitions",
             "ManageAlertDefinitions",
             "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
             "MarkSourceMetric",
             "UniverseSetTlsParams",
             "UniverseUpdateRootCert",
@@ -25958,6 +25980,7 @@
             "CreateAlertDefinitions",
             "ManageAlertDefinitions",
             "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
             "MarkSourceMetric",
             "UniverseSetTlsParams",
             "UniverseUpdateRootCert",
@@ -27129,6 +27152,7 @@
             "CreateAlertDefinitions",
             "ManageAlertDefinitions",
             "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
             "MarkSourceMetric",
             "UniverseSetTlsParams",
             "UniverseUpdateRootCert",
@@ -27367,6 +27391,10 @@
     "XClusterConfig" : {
       "description" : "xcluster config object",
       "properties" : {
+        "automaticDdlMode" : {
+          "readOnly" : true,
+          "type" : "boolean"
+        },
         "createTime" : {
           "description" : "Create time of the xCluster config",
           "example" : "2022-12-12T13:07:18Z",
@@ -27657,6 +27685,10 @@
     "XClusterConfigGetResp" : {
       "description" : "xcluster get response",
       "properties" : {
+        "automaticDdlMode" : {
+          "readOnly" : true,
+          "type" : "boolean"
+        },
         "createTime" : {
           "description" : "Create time of the xCluster config",
           "example" : "2022-12-12T13:07:18Z",

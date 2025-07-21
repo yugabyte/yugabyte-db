@@ -437,7 +437,9 @@ Status StepDown(
 // Waits until all tablet peers of the specified cluster are in the Running state.
 // And total number of those peers equals to the number of tablet servers for each known tablet.
 // Additionally checks peers for the specified table if table_id is specified.
-Status WaitAllReplicasReady(MiniCluster* cluster, MonoDelta timeout);
+Status WaitAllReplicasReady(
+    MiniCluster* cluster, MonoDelta timeout,
+    UserTabletsOnly user_tablets_only = UserTabletsOnly::kTrue);
 
 Status WaitAllReplicasReady(MiniCluster* cluster, const TableId& table_id, MonoDelta timeout);
 

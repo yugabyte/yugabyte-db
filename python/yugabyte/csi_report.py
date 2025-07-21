@@ -105,7 +105,7 @@ def create_suite(qid: str, suite_name: str, parent: str, method: str, planned: i
         if response.status_code == 200:
             results = response.json()['content']
             if len(results) > 0:
-                suite_id = results[0]['id']
+                suite_id = str(results[0]['id'])
                 suite_uuid = results[0]['uuid']
 
     if suite_uuid:

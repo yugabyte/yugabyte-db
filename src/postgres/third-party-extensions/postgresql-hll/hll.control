@@ -14,5 +14,5 @@
 
 # hll extension
 comment = 'type for storing hyperloglog data'
-default_version = '2.16'
+default_version = '2.17'
 module_pathname = '$libdir/hll'

@@ -55,6 +55,8 @@ class PgTablesQueryResult {
   struct TableInfo {
     client::YBTablePtr table;
     std::shared_ptr<master::GetTableSchemaResponsePB> schema;
+
+    std::string ToString() const;
   };
 
   PgTablesQueryResult() = default;
@@ -71,6 +73,8 @@ class PgTablesQueryResult {
   boost::container::small_vector<TableInfo, 4> tables_ GUARDED_BY(mutex_);
 };
 
+using PgTablesQueryResultPtr = std::shared_ptr<PgTablesQueryResult>;
+
 class PgTableCache {
  public:
   explicit PgTableCache(std::shared_future<client::YBClient*> client_future);
@@ -86,7 +90,7 @@ class PgTableCache {
   void GetTables(
       std::span<const TableId> table_ids,
       const PgTableCacheGetOptions& options,
-      PgTablesQueryResult& result,
+      const PgTablesQueryResultPtr& result,
       const PgTablesQueryListenerPtr& listener);
 
   void Invalidate(const TableId& table_id);

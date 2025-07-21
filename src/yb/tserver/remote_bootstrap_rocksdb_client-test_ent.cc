@@ -42,18 +42,20 @@ class RemoteBootstrapRocksDBClientTest : public RemoteBootstrapClientTest {
 
   void CreateSnapshot(const SnapshotId& snapshot_id) {
     LOG(INFO) << "Creating Snapshot " << snapshot_id << " ...";
-    tablet::SnapshotOperation operation(ASSERT_RESULT(tablet_peer_->shared_tablet_safe()));
+    tablet::SnapshotOperation operation(ASSERT_RESULT(tablet_peer_->shared_tablet()));
     auto& request = *operation.AllocateRequest();
     request.ref_snapshot_id(snapshot_id);
     operation.set_hybrid_time(tablet_peer_->clock().Now());
     operation.set_op_id(tablet_peer_->log()->GetLatestEntryOpId());
-    ASSERT_OK(tablet_peer_->tablet()->snapshots().Create(&operation));
+    auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet());
+    ASSERT_OK(tablet->snapshots().Create(&operation));
   }
 
   void CheckSnapshotsInSrc() {
     // Check folders on sending side.
-    src_rocksdb_dir_ = tablet_peer_->tablet()->metadata()->rocksdb_dir();
-    src_top_snapshots_dir_ = tablet_peer_->tablet()->metadata()->snapshots_dir();
+    auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet());
+    src_rocksdb_dir_ = tablet->metadata()->rocksdb_dir();
+    src_top_snapshots_dir_ = tablet->metadata()->snapshots_dir();
 
     ASSERT_TRUE(env_->FileExists(src_rocksdb_dir_));
     ASSERT_TRUE(env_->FileExists(src_top_snapshots_dir_));

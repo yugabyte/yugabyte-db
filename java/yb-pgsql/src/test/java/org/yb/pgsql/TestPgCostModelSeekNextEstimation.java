@@ -23,6 +23,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
 import org.yb.client.TestUtils;
+import org.yb.pgsql.ExplainAnalyzeUtils.MetricsCheckerBuilder;
 import org.yb.pgsql.ExplainAnalyzeUtils.PlanCheckerBuilder;
 import org.yb.pgsql.ExplainAnalyzeUtils.TopLevelCheckerBuilder;
 import org.yb.util.json.Checkers;
@@ -74,6 +75,10 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
 
   private static PlanCheckerBuilder makePlanBuilder() {
     return JsonUtil.makeCheckerBuilder(PlanCheckerBuilder.class, false);
+  }
+
+  private static MetricsCheckerBuilder makeMetricsBuilder() {
+    return JsonUtil.makeCheckerBuilder(MetricsCheckerBuilder.class, false);
   }
 
   private ValueChecker<Double> expectedSeeksRange(double expected_seeks) {
@@ -184,8 +189,10 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
                   .estimatedIndexRoundtrips(expectedRoundtripsRange(expected_index_roundtrips))
                   .estimatedTableRoundtrips(expectedRoundtripsRange(expected_table_roundtrips))
                   .estimatedDocdbResultWidth(Checkers.equal(expected_docdb_result_width))
-                  .metric(METRIC_NUM_DB_SEEK, expectedSeeksRange(expected_seeks))
-                  .metric(METRIC_NUM_DB_NEXT, expectedNextsRange(expected_nexts))
+                  .readMetrics(makeMetricsBuilder()
+                    .metric(METRIC_NUM_DB_SEEK, expectedSeeksRange(expected_seeks))
+                    .metric(METRIC_NUM_DB_NEXT, expectedNextsRange(expected_nexts))
+                    .build())
                   .build())
               .build());
     }
@@ -205,8 +212,10 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
       .indexName(index_name)
       .estimatedSeeks(expectedSeeksRange(expected_seeks))
       .estimatedNextsAndPrevs(expectedNextsRange(expected_nexts))
-      .metric(METRIC_NUM_DB_SEEK, expectedSeeksRange(expected_seeks))
-      .metric(METRIC_NUM_DB_NEXT, expectedNextsRange(expected_nexts))
+      .readMetrics(makeMetricsBuilder()
+        .metric(METRIC_NUM_DB_SEEK, expectedSeeksRange(expected_seeks))
+        .metric(METRIC_NUM_DB_NEXT, expectedNextsRange(expected_nexts))
+        .build())
       .build();
   }
 
@@ -241,8 +250,10 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
                   .estimatedSeeks(expectedSeeksRange(expected_seeks))
                   .estimatedNextsAndPrevs(expectedNextsRange(expected_nexts))
                   .estimatedDocdbResultWidth(Checkers.equal(expected_docdb_result_width))
-                  .metric(METRIC_NUM_DB_SEEK, expectedSeeksRange(expected_seeks))
-                  .metric(METRIC_NUM_DB_NEXT, expectedNextsRange(expected_nexts))
+                  .readMetrics(makeMetricsBuilder()
+                    .metric(METRIC_NUM_DB_SEEK, expectedSeeksRange(expected_seeks))
+                    .metric(METRIC_NUM_DB_NEXT, expectedNextsRange(expected_nexts))
+                    .build())
                   .plans(bitmap_index_checker)
                   .build())
               .build());
@@ -329,8 +340,10 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
                   .estimatedIndexRoundtrips(expectedRoundtripsRange(0))
                   .estimatedTableRoundtrips(expectedRoundtripsRange(expected_table_roundtrips))
                   .estimatedDocdbResultWidth(Checkers.equal(expected_docdb_result_width))
-                  .metric(METRIC_NUM_DB_SEEK, expectedSeeksRange(expected_seeks))
-                  .metric(METRIC_NUM_DB_NEXT, expectedNextsRange(expected_nexts))
+                  .readMetrics(makeMetricsBuilder()
+                    .metric(METRIC_NUM_DB_NEXT, expectedNextsRange(expected_nexts))
+                    .metric(METRIC_NUM_DB_SEEK, expectedSeeksRange(expected_seeks))
+                    .build())
                   .build())
               .build());
     }

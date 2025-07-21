@@ -130,7 +130,11 @@ class PgSingleTServerTest : public PgMiniTestBase {
 
     auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
     for (const auto& peer : peers) {
-      auto tp = peer->tablet()->transaction_participant();
+      auto tablet = peer->shared_tablet_maybe_null();
+      if (!tablet) {
+        continue;
+      }
+      auto tp = tablet->transaction_participant();
       if (tp) {
         const auto count_intents_result = tp->TEST_CountIntents();
         const auto count_intents =
@@ -1249,7 +1253,7 @@ class PgFastBackwardScanOnlyTest
     // A helper to parse some metrics from explain (analyze, dist, debug) output.
     static const auto read_request_pattern = "Storage Read Requests"s;
     auto parse_metrics = [](const std::string& explain_result) {
-      static const auto metric_pattern = "Metric rocksdb_number_db_"s;
+      static const auto metric_pattern = "  Metric rocksdb_number_db_"s;
       std::vector<std::string> metric_lines = strings::Split(
           explain_result, DefaultRowSeparator(),
           [](GStringPiece sp) {
@@ -1883,7 +1887,11 @@ TEST_F(PgSingleTServerTest, BootstrapReplayTruncate) {
   // Rollover and flush the WAL, so that the truncate will be replayed during next restart.
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
   for (const auto& peer : peers) {
-    if (peer->tablet()->transaction_participant()) {
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (!tablet) {
+      continue;
+    }
+    if (tablet->transaction_participant()) {
       ASSERT_OK(peer->log()->AllocateSegmentAndRollOver());
     }
   }

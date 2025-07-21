@@ -256,7 +256,7 @@ def get_yb_src_root_from_build_root(
                     yb_src_root, build_dir)
     else:
         error_msg = "Could not find git repository root by walking up from %s" % build_dir
-        logging.warn(error_msg)
+        logging.warning(error_msg)
         if must_succeed:
             raise RuntimeError(error_msg)
 

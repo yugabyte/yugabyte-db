@@ -1,7 +1,7 @@
 ---
 title: PostgreSQL Psycopg2 Driver
-headerTitle: Python Drivers
-linkTitle: Python Drivers
+headerTitle: Python drivers
+linkTitle: Python drivers
 description: PostgreSQL Psycopg2 Python Driver for YSQL
 tags:
   other: ysql
@@ -9,7 +9,7 @@ aliases:
 - /preview/reference/drivers/python/postgres-psycopg2-reference/
 menu:
   preview:
-    name: Python Drivers
+    name: Python drivers
     identifier: ref-postgres-psycopg2-driver
     parent: python-drivers
     weight: 110
@@ -19,14 +19,20 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
     <li >
     <a href="../yugabyte-psycopg2-reference/" class="nav-link ">
-      <i class="fa-brands fa-java" aria-hidden="true"></i>
-      YugabyteDB Psycopg2 Smart Driver
+      <img src="/icons/yugabyte.svg"></i>
+      Yugabyte Psycopg2
     </a>
   </li>
   <li >
     <a href="../postgres-psycopg2-reference/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      PostgreSQL Psycopg2 Driver
+      PG Psycopg2
+    </a>
+  </li>
+  <li >
+    <a href="../postgres-psycopg3-reference/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      PG Psycopg3
     </a>
   </li>
 </ul>

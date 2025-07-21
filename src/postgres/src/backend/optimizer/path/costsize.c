@@ -144,12 +144,6 @@
  */
 #define UUID_YBCTID_WIDTH 33
 
-/*
- * This multiplier is a temporary way to disincentivize bitmap scans unless they
- * are a very obvious choice.
- */
-#define YB_BITMAP_DISCOURAGE_MODIFIER 3
-
 double		seq_page_cost = DEFAULT_SEQ_PAGE_COST;
 double		random_page_cost = DEFAULT_RANDOM_PAGE_COST;
 double		cpu_tuple_cost = DEFAULT_CPU_TUPLE_COST;
@@ -1163,9 +1157,7 @@ cost_bitmap_heap_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	run_cost += path->pathtarget->cost.per_tuple * path->rows;
 
 	path->startup_cost = startup_cost;
-	path->total_cost = (IsYugaByteEnabled() && baserel->is_yb_relation)
-		? (startup_cost + run_cost) * YB_BITMAP_DISCOURAGE_MODIFIER
-		: startup_cost + run_cost;
+	path->total_cost = startup_cost + run_cost;
 }
 
 /*
@@ -6836,15 +6828,18 @@ yb_get_baserel_primary_index(RelOptInfo *baserel)
 	foreach(lc, baserel->indexlist)
 	{
 		IndexOptInfo *index = (IndexOptInfo *) lfirst(lc);
-		Relation	index_rel = RelationIdGetRelation(index->indexoid);
-
-		if (index_rel->rd_index->indisprimary)
+		if (!index->hypothetical)
 		{
-			pk_index = index;
+			Relation	index_rel = RelationIdGetRelation(index->indexoid);
+
+			if (index_rel->rd_index->indisprimary)
+			{
+				pk_index = index;
+				RelationClose(index_rel);
+				break;
+			}
 			RelationClose(index_rel);
-			break;
 		}
-		RelationClose(index_rel);
 	}
 	return pk_index;
 }
@@ -6902,21 +6897,25 @@ yb_get_ybctid_width(Oid baserel_oid, RelOptInfo *baserel,
 				{
 					ybctid_width += get_attavgwidth(index->indexoid, i + 1) + 1;
 
-					Relation	indexrel = index_open(index->indexoid, NoLock);
-					Form_pg_attribute att = TupleDescAttr(indexrel->rd_att,
-														  i + 1);
-
-					if (att->attlen < 0)
+					if (!index->hypothetical)
 					{
-						/*
-						 * attlen is negative if the attribute has variable
-						 * length. Add 1 byte because DocDB uses double
-						 * null termination.
-						 */
-						++ybctid_width;
-					}
+						Relation	indexrel = index_open(index->indexoid,
+														   NoLock);
+						Form_pg_attribute att = TupleDescAttr(indexrel->rd_att,
+															  i + 1);
 
-					index_close(indexrel, NoLock);
+						if (att->attlen < 0)
+						{
+							/*
+							 * attlen is negative if the attribute has variable
+							 * length. Add 1 byte because DocDB uses double
+							 * null termination.
+							 */
+							++ybctid_width;
+						}
+
+						index_close(indexrel, NoLock);
+					}
 				}
 				else if (index->indexkeys[i] > 0)	/* Index key is user
 													 * column */
@@ -7938,11 +7937,18 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 			  bool partial_path)
 {
 	IndexOptInfo *index = path->indexinfo;
-	Relation	index_rel = RelationIdGetRelation(index->indexoid);
-	bool		is_primary_index = index_rel->rd_index->indisprimary;
-	Oid			index_tablespace_id = index_rel->rd_rel->reltablespace;
-
-	RelationClose(index_rel);
+	bool is_primary_index;
+	Oid			index_tablespace_id = index->reltablespace;
+	if (index->hypothetical)
+	{
+		is_primary_index = false;
+	}
+	else
+	{
+		Relation	index_rel = RelationIdGetRelation(index->indexoid);
+		is_primary_index = index_rel->rd_index->indisprimary;
+		RelationClose(index_rel);
+	}
 	RelOptInfo *baserel = index->rel;
 	bool		index_only = (path->path.pathtype == T_IndexOnlyScan);
 	List	   *qpquals;
@@ -8012,7 +8018,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	{
 		if (baserel->is_yb_relation)
 		{
-			Oid			rel_oid = (is_primary_index ?
+			Oid			rel_oid = ((is_primary_index || index->hypothetical) ?
 								   baserel_oid :
 								   path->indexinfo->indexoid);
 
@@ -8976,8 +8982,8 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	startup_cost += qual_cost.startup;
 	run_cost += qual_cost.per_tuple * tuples_fetched;
 
-	path->startup_cost = startup_cost * YB_BITMAP_DISCOURAGE_MODIFIER;
-	path->total_cost = (startup_cost + run_cost) * YB_BITMAP_DISCOURAGE_MODIFIER;
+	path->startup_cost = startup_cost;
+	path->total_cost = startup_cost + run_cost;
 	path->yb_plan_info.estimated_num_nexts_prevs = num_nexts;
 	path->yb_plan_info.estimated_num_seeks = num_seeks;
 	path->yb_plan_info.estimated_num_bmscan_nexts_prevs = 0;

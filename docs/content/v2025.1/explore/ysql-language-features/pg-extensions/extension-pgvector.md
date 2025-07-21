@@ -160,7 +160,7 @@ SELECT category_id, AVG(embedding) FROM items GROUP BY category_id;
 
 ## Vector indexing
 
-{{<tags/feature/tp idea="1111">}} By default, vector search performs exact nearest neighbor search, ensuring perfect recall.
+{{<tags/feature/ea idea="1111">}} By default, vector search performs exact nearest neighbor search, ensuring perfect recall.
 
 To improve query performance, you can use approximate nearest neighbor (ANN) search, which trades some recall for speed. Unlike traditional indexes, approximate indexes may return different results for queries.
 

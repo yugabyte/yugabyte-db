@@ -51,9 +51,11 @@
 #include "commands/yb_tablegroup.h"
 #include "miscadmin.h"
 #include "nodes/nodeFuncs.h"
+#include "nodes/pathnodes.h"
 #include "optimizer/cost.h"
 #include "optimizer/optimizer.h"
 #include "optimizer/paths.h"
+#include "parser/parsetree.h"
 #include "pg_yb_utils.h"
 #include "pgstat.h"
 #include "postmaster/bgworker_internals.h"	/* for MAX_PARALLEL_WORKER_LIMIT */
@@ -3680,8 +3682,7 @@ ybcEvalHashSelectivity(List *hashed_rinfos)
  * Evaluate the selectivity for some qualified cols given the hash and primary key cols.
  */
 static double
-ybcIndexEvalClauseSelectivity(Relation index,
-							  double reltuples,
+ybcIndexEvalClauseSelectivity(double reltuples,
 							  Bitmapset *qual_cols,
 							  bool is_unique_idx,
 							  Bitmapset *hash_key,
@@ -3764,31 +3765,67 @@ ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 					 Selectivity *selectivity, Cost *startup_cost,
 					 Cost *total_cost)
 {
-	Relation	index = RelationIdGetRelation(path->indexinfo->indexoid);
-	bool		isprimary = index->rd_index->indisprimary;
-	Relation	relation = (isprimary ?
-							RelationIdGetRelation(index->rd_index->indrelid) :
-							NULL);
+	IndexOptInfo *indexinfo = path->indexinfo;
+	bool		is_primary = false;
 	RelOptInfo *baserel = path->path.parent;
 	ListCell   *lc;
 	bool		is_backwards_scan = path->indexscandir == BackwardScanDirection;
-	bool		is_unique = index->rd_index->indisunique;
-	bool		is_partial_idx = (path->indexinfo->indpred != NIL &&
-								  path->indexinfo->predOK);
+	bool		is_unique = indexinfo->unique;
+	bool		is_partial_idx = (indexinfo->indpred != NIL &&
+								  indexinfo->predOK);
 	Bitmapset  *const_quals = NULL;
 	List	   *hashed_rinfos = NIL;
 	List	   *clauses = NIL;
 	double		baserel_rows_estimate;
 
+
+	if (!indexinfo->hypothetical)
+	{
+		/* Hypothetical index cannot be primary index */
+		Relation	index = RelationIdGetRelation(indexinfo->indexoid);
+		is_primary = index->rd_index->indisprimary;
+		RelationClose(index);
+	}
+
 	/* Primary-index scans are always covered in Yugabyte (internally) */
-	bool		is_uncovered_idx_scan = (!index->rd_index->indisprimary &&
+	bool		is_uncovered_idx_scan = (!is_primary &&
 										 path->path.pathtype != T_IndexOnlyScan);
 
 	YbScanPlanData scan_plan;
-
 	memset(&scan_plan, 0, sizeof(scan_plan));
-	scan_plan.target_relation = isprimary ? relation : index;
-	ybcLoadTableInfo(scan_plan.target_relation, &scan_plan);
+
+	if (is_primary || indexinfo->hypothetical)
+	{
+		RangeTblEntry *rte = planner_rt_fetch(indexinfo->rel->relid, root);
+		Assert(rte->rtekind == RTE_RELATION);
+		Oid			baserel_oid = rte->relid;
+		scan_plan.target_relation = RelationIdGetRelation(baserel_oid);
+	}
+	else
+	{
+		scan_plan.target_relation = RelationIdGetRelation(indexinfo->indexoid);
+	}
+
+	for (int i = 0; i < indexinfo->nkeycolumns; i++)
+	{
+		int			bms_idx;
+		if (indexinfo->hypothetical)
+			bms_idx = YBAttnumToBmsIndexWithMinAttr(YBFirstLowInvalidAttributeNumber,
+													i + 1);
+		else
+		{
+			if (is_primary)
+				bms_idx = YBAttnumToBmsIndex(scan_plan.target_relation, indexinfo->indexkeys[i]);
+			else
+				bms_idx = YBAttnumToBmsIndex(scan_plan.target_relation, i + 1);
+		}
+
+		if (i < indexinfo->nhashcolumns)
+		{
+			scan_plan.hash_key = bms_add_member(scan_plan.hash_key, bms_idx);
+		}
+		scan_plan.primary_key = bms_add_member(scan_plan.primary_key, bms_idx);
+	}
 
 	/* Find out the search conditions on the primary key columns */
 	foreach(lc, path->indexclauses)
@@ -3800,8 +3837,8 @@ ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 		foreach(lc2, iclause->indexquals)
 		{
 			RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc2);
-			AttrNumber	attnum = (isprimary ?
-								  index->rd_index->indkey.values[indexcol] :
+			AttrNumber	attnum = (is_primary ?
+								  path->indexinfo->indexkeys[indexcol] :
 								  (indexcol + 1));
 			Expr	   *clause = rinfo->clause;
 			int			bms_idx = YBAttnumToBmsIndex(scan_plan.target_relation, attnum);
@@ -3851,8 +3888,7 @@ ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 		}
 		else
 		{
-			*selectivity = ybcIndexEvalClauseSelectivity(index,
-														 baserel->tuples,
+			*selectivity = ybcIndexEvalClauseSelectivity(baserel->tuples,
 														 scan_plan.sk_cols,
 														 is_unique,
 														 scan_plan.hash_key,
@@ -3883,8 +3919,7 @@ ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 		 * they may not be applied if another join path is chosen.
 		 * So only use the t1.c1 = <const_value> quals (filtered above) for this.
 		 */
-		double		const_qual_selectivity = ybcIndexEvalClauseSelectivity(index,
-																		   baserel->tuples,
+		double		const_qual_selectivity = ybcIndexEvalClauseSelectivity(baserel->tuples,
 																		   const_quals,
 																		   is_unique,
 																		   scan_plan.hash_key,
@@ -3896,10 +3931,7 @@ ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 			baserel->rows = baserel_rows_estimate;
 	}
 
-	if (relation)
-		RelationClose(relation);
-
-	RelationClose(index);
+	RelationClose(scan_plan.target_relation);
 }
 
 static bool
@@ -4032,12 +4064,16 @@ HandleExplicitRowLockStatus(YbcPgExplicitRowLockStatus status)
 	if (status.error_info.is_initialized &&
 		YBCIsExplicitRowLockConflictStatus(status.ybc_status))
 	{
+		YBCFreeStatus(status.ybc_status);
 		YBCHandleConflictError((OidIsValid(status.error_info.conflicting_table_id) ?
 								RelationIdGetRelation(status.error_info.conflicting_table_id) :
 								NULL),
 							   status.error_info.pg_wait_policy);
 	}
-	HandleYBStatus(status.ybc_status);
+	else
+	{
+		HandleYBStatus(status.ybc_status);
+	}
 }
 
 /*

@@ -31,6 +31,7 @@ scrape_configs:
        - '{job="yugabyte"}'
        - '{job="node"}'
        - '{job="node-agent"}'
+       - '{job="otel-collector"}'
 
    static_configs:
      - targets:

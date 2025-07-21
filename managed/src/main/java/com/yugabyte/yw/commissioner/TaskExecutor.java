@@ -4,9 +4,10 @@ package com.yugabyte.yw.commissioner;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
-import static com.yugabyte.yw.models.helpers.CommonUtils.getDurationSeconds;
+import static com.yugabyte.yw.models.helpers.CommonUtils.getElapsedTime;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+import static play.mvc.Http.Status.SERVICE_UNAVAILABLE;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.api.client.util.Throwables;
@@ -211,7 +212,7 @@ public class TaskExecutor {
         .labels(
             taskLabels.get(KnownAlertLabels.TASK_TYPE.labelName()),
             taskLabels.get(KnownAlertLabels.PARENT_TASK_TYPE.labelName()))
-        .observe(getDurationSeconds(scheduledTime, startTime));
+        .observe(getElapsedTime(scheduledTime, startTime, ChronoUnit.SECONDS));
   }
 
   // This writes the execution time metric.
@@ -227,7 +228,7 @@ public class TaskExecutor {
             state.name(),
             taskLabels.get(KnownAlertLabels.PARENT_TASK_TYPE.labelName()),
             String.valueOf(isTaskSkipped))
-        .observe(getDurationSeconds(startTime, endTime));
+        .observe(getElapsedTime(startTime, endTime, ChronoUnit.SECONDS));
   }
 
   // It looks for the annotation starting from the current class to its super classes until it
@@ -321,7 +322,7 @@ public class TaskExecutor {
 
   private void checkTaskExecutorState() {
     if (isShutdown.get()) {
-      throw new IllegalStateException("TaskExecutor is shutting down");
+      throw new PlatformServiceException(SERVICE_UNAVAILABLE, "TaskExecutor is shutting down");
     }
   }
 
@@ -423,11 +424,12 @@ public class TaskExecutor {
         // Update task state on submission failure.
         runnableTasks.remove(taskUUID);
         log.error("Error occurred in submitting the task", e);
-        String msg =
-            (e instanceof RejectedExecutionException)
-                ? "Task submission failed as too many tasks are running"
-                : "Error occurred during task submission for execution";
-        throw new PlatformServiceException(INTERNAL_SERVER_ERROR, msg);
+        if (e instanceof RejectedExecutionException) {
+          throw new PlatformServiceException(
+              SERVICE_UNAVAILABLE, "Task submission failed as too many tasks are running");
+        }
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR, "Error occurred during task submission for execution");
       }
     } catch (Exception e) {
       runnableTask.updateTaskDetailsOnError(TaskInfo.State.Failure, e);
@@ -1022,15 +1024,13 @@ public class TaskExecutor {
       taskStartTime = Instant.now();
       boolean isTaskSkipped = false;
       Map<String, String> taskLabels = this.getTaskMetricLabels();
-
+      long queuedTimeMs = getElapsedTime(taskScheduledTime, taskStartTime, ChronoUnit.MILLIS);
       try {
         if (log.isDebugEnabled()) {
-          log.debug(
-              "Task {} waited for {}s",
-              task.getName(),
-              getDurationSeconds(taskScheduledTime, taskStartTime));
+          log.debug("Task {} waited for {}ms", task.getName(), queuedTimeMs);
         }
         writeTaskWaitMetric(taskLabels, taskScheduledTime, taskStartTime);
+        TaskInfo.updateInTxn(getTaskUUID(), tf -> tf.setQueuedTimeMs(queuedTimeMs));
         publishBeforeTask();
         if (isAbortTimeReached(Duration.ZERO)) {
           throw new CancellationException("Task " + task.getName() + " is aborted");
@@ -1055,14 +1055,18 @@ public class TaskExecutor {
           updateTaskDetailsOnError(TaskInfo.State.Failure, t);
         }
         taskCompletionTime = Instant.now();
+        long executionTimeMs = getElapsedTime(taskStartTime, taskCompletionTime, ChronoUnit.MILLIS);
         if (log.isDebugEnabled()) {
-          log.debug(
-              "Completed task {} in {}s",
-              task.getName(),
-              getDurationSeconds(taskStartTime, taskCompletionTime));
+          log.debug("Completed task {} in {}ms", task.getName(), executionTimeMs);
         }
         writeTaskStateMetric(
             taskLabels, taskStartTime, taskCompletionTime, getTaskState(), isTaskSkipped);
+        TaskInfo.updateInTxn(
+            getTaskUUID(),
+            tf -> {
+              tf.setExecutionTimeMs(executionTimeMs);
+              tf.setTotalTimeMs(queuedTimeMs + executionTimeMs);
+            });
         task.terminate();
         publishAfterTask(t);
       }

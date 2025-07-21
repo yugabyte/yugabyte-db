@@ -14,6 +14,7 @@
 #include "yb/tserver/stateful_services/pg_auto_analyze_service.h"
 
 #include <algorithm>
+#include <chrono>
 #include <ranges>
 
 #include "yb/bfql/gen_opcodes.h"
@@ -45,6 +46,10 @@
 #include "yb/yql/cql/ql/util/statement_result.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
+#include "yb/common/json_util.h"
+#include "yb/common/jsonb.h"
+
+
 DEFINE_RUNTIME_uint32(ysql_cluster_level_mutation_persist_interval_ms, 10000,
                       "Interval at which the reported node level table mutation counts are "
                       "persisted to the underlying YCQL table by the central auto analyze service");
@@ -65,14 +70,73 @@ DEFINE_test_flag(int32, simulate_analyze_deleted_table_secs, 0,
 DEFINE_test_flag(bool, sort_auto_analyze_target_table_ids, false,
                  "Sort the analyze target tables' ids to generate deterministic ANALYZE statements "
                  "for testing purpose.");
-
-DECLARE_bool(ysql_enable_auto_analyze_service);
+DEFINE_RUNTIME_double(ysql_auto_analyze_cooldown_per_table_scale_factor, 2,
+                      "The per-table cooldown factor for the auto analyze service. "
+                      "The auto analyze service will not trigger an ANALYZE on a table if "
+                      "the last ANALYZE was less than "
+                      "ysql_auto_analyze_cooldown_per_table_scale_factor * (t1 - t2) seconds "
+                      "ago, where t1 and t2 are the timestamps of the last two ANALYZEs.");
+DEFINE_RUNTIME_uint32(ysql_auto_analyze_max_cooldown_per_table,
+                      60 * 60 * 24 * 1000 /* 24 hours */,
+                      "The maximum cooldown time for the auto analyze service in milliseconds."
+                      "The cooldown between analyzes will grow by "
+                      "ysql_auto_analyze_cooldown_per_table_scale_factor for each consecutive "
+                      "analyze until it passes this threshold, at which point "
+                      "the cooldown will be clamped to ysql_auto_analyze_max_cooldown_per_table "
+                      "and stay at that value forever. For example, if "
+                      "ysql_auto_analyze_min_cooldown_per_table is 1000ms, "
+                      "ysql_auto_analyze_max_cooldown_per_table is 10000ms, "
+                      "and ysql_auto_analyze_cooldown_per_table_scale_factor is 2, "
+                      "then the cooldowns will be 1s, 2s, 4s, 8s, 10s, 10s, 10s, ...");
+DEFINE_RUNTIME_uint32(ysql_auto_analyze_min_cooldown_per_table,
+                       10000,
+                       "The minimum cooldown time in milliseconds for the auto analyze service "
+                       "to trigger an ANALYZE on a table again after it has been analyzed.");
+DEFINE_test_flag(uint64, ysql_auto_analyze_max_history_entries, 5,
+                 "The maximum number of analyze history entries to keep for each table.");
+DECLARE_bool(ysql_enable_auto_analyze);
 
 using namespace std::chrono_literals;
+using std::chrono::system_clock;
 
 namespace yb {
 
 namespace stateful_service {
+
+rapidjson::Value AutoAnalyzeInfo::AnalyzeEvent::ToRapidJson(
+    rapidjson::Document::AllocatorType& alloc) const {
+  rapidjson::Value value(rapidjson::kObjectType);
+  auto timestamp_us =
+      std::chrono::duration_cast<std::chrono::microseconds>(timestamp.time_since_epoch());
+  uint64_t timestamp_us_value = timestamp_us.count();
+  uint64_t cooldown_us_value = cooldown.count();
+  value.AddMember("timestamp", rapidjson::Value(timestamp_us_value), alloc);
+  value.AddMember("cooldown", rapidjson::Value(cooldown_us_value), alloc);
+  return value;
+}
+
+std::string AutoAnalyzeInfo::AnalyzeEvent::ToString() const {
+  return Format(
+      "{{timestamp: $0, cooldown: $1}}", timestamp.time_since_epoch().count(), cooldown.count());
+}
+
+std::string AutoAnalyzeInfo::ToString() const {
+  return Format(
+      "{mutations: $0, analyze_history: $1}", mutations, CollectionToString(analyze_history));
+}
+
+rapidjson::Document AutoAnalyzeInfo::ToRapidJson() const {
+  rapidjson::Document doc;
+  auto& alloc = doc.GetAllocator();
+  doc.SetObject();
+  rapidjson::Value history_value(rapidjson::kArrayType);
+  for (const auto& event : analyze_history) {
+    history_value.PushBack(event.ToRapidJson(alloc), alloc);
+  }
+  doc.AddMember(PgAutoAnalyzeService::kAnalyzeHistoryKey, history_value, alloc);
+  return doc;
+}
+
 PgAutoAnalyzeService::PgAutoAnalyzeService(
     const scoped_refptr<MetricEntity>& metric_entity,
     const std::shared_future<client::YBClient*>& client_future,
@@ -162,44 +226,92 @@ Status PgAutoAnalyzeService::TriggerAnalyze() {
 
   VLOG_WITH_FUNC(3);
 
-  auto table_id_to_mutations_maps = VERIFY_RESULT(ReadTableMutations());
-  if (table_id_to_mutations_maps.empty()) {
+  const auto analyze_timestamp = system_clock::now();
+
+  auto table_id_to_info_maps = VERIFY_RESULT(ReadTableMutations());
+  if (table_id_to_info_maps.empty()) {
     return Status::OK();
   }
-  VLOG(1) << "table_id_to_mutations_maps: " << ToString(table_id_to_mutations_maps);
+  VLOG(1) << "table_id_to_info_maps: " << ToString(table_id_to_info_maps);
 
-  RETURN_NOT_OK(GetTablePGSchemaAndName(table_id_to_mutations_maps));
+  RETURN_NOT_OK(GetTablePGSchemaAndName(table_id_to_info_maps));
 
   std::unordered_set<NamespaceId> deleted_databases;
-  RETURN_NOT_OK(FetchUnknownReltuples(table_id_to_mutations_maps, deleted_databases));
+  RETURN_NOT_OK(FetchUnknownReltuples(table_id_to_info_maps, deleted_databases));
+
+  auto params = VERIFY_RESULT(GetAutoAnalyzeParams(table_id_to_info_maps, deleted_databases));
 
   auto namespace_id_to_analyze_target_tables
-      = VERIFY_RESULT(DetermineTablesForAnalyze(table_id_to_mutations_maps));
+      = VERIFY_RESULT(DetermineTablesForAnalyze(table_id_to_info_maps, analyze_timestamp));
 
   auto [analyzed_tables, deleted_tables]
       = VERIFY_RESULT(DoAnalyzeOnCandidateTables(namespace_id_to_analyze_target_tables,
                                                  deleted_databases));
 
-  RETURN_NOT_OK(UpdateTableMutationsAfterAnalyze(analyzed_tables, table_id_to_mutations_maps));
+  RETURN_NOT_OK(UpdateTableMutationsAfterAnalyze(analyzed_tables, table_id_to_info_maps));
 
-  RETURN_NOT_OK(CleanUpDeletedTablesFromServiceTable(table_id_to_mutations_maps, deleted_tables,
+  table_id_to_info_maps = VERIFY_RESULT(UpdateAnalyzeHistory(
+      analyzed_tables, std::move(table_id_to_info_maps), analyze_timestamp, params));
+
+  RETURN_NOT_OK(FlushAnalyzeHistory(
+      analyzed_tables, table_id_to_info_maps, analyze_timestamp));
+
+  RETURN_NOT_OK(CleanUpDeletedTablesFromServiceTable(table_id_to_info_maps, deleted_tables,
                                                      deleted_databases));
 
   return Status::OK();
 }
 
-Result<PgAutoAnalyzeService::TableMutationsMap> PgAutoAnalyzeService::ReadTableMutations() {
+Result<std::vector<AutoAnalyzeInfo::AnalyzeEvent>> PgAutoAnalyzeService::ParseHistoryFromJsonb(
+    const QLValuePB& value) {
+  if (value.value_case() != QLValuePB::kJsonbValue) {
+    return std::vector<AutoAnalyzeInfo::AnalyzeEvent>();
+  }
+
+  common::Jsonb jsonb;
+  RETURN_NOT_OK(jsonb.FromQLValue(value));
+  rapidjson::Document doc;
+  RETURN_NOT_OK(jsonb.ToRapidJson(&doc));
+
+  std::vector<AutoAnalyzeInfo::AnalyzeEvent> history;
+  if (doc.HasMember(PgAutoAnalyzeService::kAnalyzeHistoryKey) &&
+      doc[PgAutoAnalyzeService::kAnalyzeHistoryKey].IsArray()) {
+    const auto& history_array = doc[PgAutoAnalyzeService::kAnalyzeHistoryKey];
+    history.reserve(history_array.Size());
+    for (const auto& event : history_array.GetArray()) {
+      if (event.IsObject() && event.HasMember("timestamp") && event["timestamp"].IsInt64()) {
+        AutoAnalyzeInfo::AnalyzeEvent analyze_event;
+        analyze_event.timestamp = std::chrono::system_clock::time_point(
+            std::chrono::microseconds(event["timestamp"].GetInt64()));
+        if (event.HasMember("cooldown") && event["cooldown"].IsInt64()) {
+          analyze_event.cooldown = std::chrono::microseconds(event["cooldown"].GetInt64());
+        } else {
+          analyze_event.cooldown = std::chrono::microseconds(0);
+        }
+        history.push_back(std::move(analyze_event));
+      }
+    }
+  }
+  std::sort(history.begin(), history.end(), [](const auto& a, const auto& b) {
+    return a.timestamp < b.timestamp;
+  });
+  return history;
+}
+
+Result<AutoAnalyzeInfoMap> PgAutoAnalyzeService::ReadTableMutations() {
   VLOG_WITH_FUNC(3);
-  std::unordered_map<TableId, int64_t> table_id_to_mutations_maps;
+  AutoAnalyzeInfoMap table_id_to_info_maps;
   // Read from the underlying YCQL table to get all pairs of (table id, mutation count).
-  auto session = VERIFY_RESULT(GetYBSession(
-      GetAtomicFlag(&FLAGS_ysql_cluster_level_mutation_persist_rpc_timeout_ms) * 1ms));
+  auto session = VERIFY_RESULT(
+      GetYBSession(GetAtomicFlag(&FLAGS_ysql_cluster_level_mutation_persist_rpc_timeout_ms) * 1ms));
   auto* table = VERIFY_RESULT(GetServiceTable());
 
   const client::YBqlReadOpPtr read_op = table->NewReadOp();
   auto* const read_req = read_op->mutable_request();
   table->AddColumns(
-    {yb::master::kPgAutoAnalyzeTableId, yb::master::kPgAutoAnalyzeMutations}, read_req);
+      {yb::master::kPgAutoAnalyzeTableId, yb::master::kPgAutoAnalyzeMutations,
+       yb::master::kPgAutoAnalyzeLastAnalyzeInfo},
+      read_req);
   VLOG(4) << "Read table mutations - " << read_req->ShortDebugString();
 
   // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
@@ -210,40 +322,54 @@ Result<PgAutoAnalyzeService::TableMutationsMap> PgAutoAnalyzeService::ReadTableM
   auto& row_schema = rowblock->schema();
   auto table_id_idx = row_schema.find_column(master::kPgAutoAnalyzeTableId);
   auto mutations_idx = row_schema.find_column(master::kPgAutoAnalyzeMutations);
+  auto analyze_history_idx = row_schema.find_column(master::kPgAutoAnalyzeLastAnalyzeInfo);
   for (const auto& row : rowblock->rows()) {
     TableId table_id = row.column(table_id_idx).string_value();
     int64_t mutations = row.column(mutations_idx).int64_value();
-    table_id_to_mutations_maps[table_id] = mutations;
+    AutoAnalyzeInfo info(mutations);
+
+    auto parse_result = ParseHistoryFromJsonb(row.column(analyze_history_idx).value());
+    if (!parse_result.ok()) {
+      LOG(WARNING) << "Failed to parse analyze history for table " << table_id;
+      info.analyze_history = {};
+    } else {
+      info.analyze_history = std::move(*parse_result);
+    }
+
     VLOG(5) << "Table "
             << (table_id_to_name_.contains(table_id)
-                   ? Format("$0[$1]", table_id_to_name_.find(table_id)->second, table_id)
-                   : table_id)
-            << " has mutations: " << mutations;
+                    ? Format("$0[$1]", table_id_to_name_.find(table_id)->second, table_id)
+                    : table_id)
+            << " info: " << ToString(info);
+
+    table_id_to_info_maps[table_id] = std::move(info);
   }
 
-  return table_id_to_mutations_maps;
+  return table_id_to_info_maps;
 }
 
 // TODO(auto-analyze, #22946): maybe do some optimizations to speed up getting PG schema name and
 //                             relation name.
 // Get tables' PG schema name and relation name.
 Status PgAutoAnalyzeService::GetTablePGSchemaAndName(
-    const TableMutationsMap& table_id_to_mutations_maps) {
+    const AutoAnalyzeInfoMap& table_id_to_info_maps) {
   VLOG_WITH_FUNC(3);
 
   // Check if we have all mutated tables' names in cache.
   // If not, then we need to issue a ListTables RPC to retrieve tables' name.
   if (!refresh_name_cache_ &&
       std::all_of(
-          table_id_to_mutations_maps.begin(), table_id_to_mutations_maps.end(),
+          table_id_to_info_maps.begin(), table_id_to_info_maps.end(),
           [this](auto& tableid_mutation_pair) {
-            const auto& [table_id, mutations] = tableid_mutation_pair;
+            const auto& [table_id, info] = tableid_mutation_pair;
             auto result = this->table_id_to_name_.contains(table_id);
             VLOG_IF(1, !result)
                 << "GetTablePGSchemaAndName: Refresh because missing: "
                 << table_id;
             if (result) {
-              result = mutations == FindWithDefault(pg_class_id_mutations_, table_id, mutations);
+              result = info.mutations ==
+                  (pg_class_id_mutations_.contains(table_id) ?
+                   pg_class_id_mutations_.at(table_id).mutations : info.mutations);
               VLOG_IF(1, !result)
                   << "GetTablePGSchemaAndName: Refresh because pg_class modified "
                   << table_id;
@@ -268,12 +394,13 @@ Status PgAutoAnalyzeService::GetTablePGSchemaAndName(
                                                        "" /* ysql_db_filter */,
                                                        client::SkipHidden::kTrue));
   for (auto& table_name : all_table_names) {
-    if (table_id_to_mutations_maps.contains(table_name.table_id())) {
+    if (table_id_to_info_maps.contains(table_name.table_id())) {
       table_id_to_name_[table_name.table_id()] = table_name;
       if (table_name.table_name() == "pg_class") {
         pg_class_id_mutations_.emplace(
             table_name.table_id(),
-            FindWithDefault(table_id_to_mutations_maps, table_name.table_id(), 0));
+            table_id_to_info_maps.contains(table_name.table_id()) ?
+            table_id_to_info_maps.at(table_name.table_id()) : AutoAnalyzeInfo(0));
       }
       if (!namespace_id_to_name_.contains(table_name.namespace_id())) {
         namespace_id_to_name_[table_name.namespace_id()] = table_name.namespace_name();
@@ -290,17 +417,17 @@ Status PgAutoAnalyzeService::GetTablePGSchemaAndName(
 // For each table we don't know its number of tuples, we need to fetch its reltuples from
 // pg_class catalog within the same database as this table.
 Status PgAutoAnalyzeService::FetchUnknownReltuples(
-    const TableMutationsMap& table_id_to_mutations_maps,
+    const AutoAnalyzeInfoMap& table_id_to_info_maps,
     std::unordered_set<NamespaceId>& deleted_databases) {
   VLOG_WITH_FUNC(3);
   std::unordered_map<NamespaceId, std::vector<std::pair<TableId, PgOid>>>
       namespace_id_to_tables_with_unknown_reltuples;
   // Clean up dead entries from table_tuple_count_.
-  std::erase_if(table_tuple_count_, [&table_id_to_mutations_maps](const auto& kv) {
-    return !table_id_to_mutations_maps.contains(kv.first);
+  std::erase_if(table_tuple_count_, [&table_id_to_info_maps](const auto& kv) {
+    return !table_id_to_info_maps.contains(kv.first);
   });
   // Gather tables with unknown reltuples.
-  for (const auto& [table_id, mutations] : table_id_to_mutations_maps) {
+  for (const auto& [table_id, mutations] : table_id_to_info_maps) {
     if (!table_id_to_name_.contains(table_id))
       continue;
     auto namespace_id = VERIFY_RESULT(GetNamespaceIdFromYsqlTableId(table_id));
@@ -346,10 +473,11 @@ Status PgAutoAnalyzeService::FetchUnknownReltuples(
 
 // ANALYZE is triggered for tables crossing their analyze thresholds.
 Result<PgAutoAnalyzeService::NamespaceTablesMap> PgAutoAnalyzeService::DetermineTablesForAnalyze(
-    const TableMutationsMap& table_id_to_mutations_maps) {
+    const AutoAnalyzeInfoMap& table_id_to_info_maps,
+    const std::chrono::system_clock::time_point& now) {
   VLOG_WITH_FUNC(3);
   NamespaceTablesMap namespace_id_to_analyze_target_tables;
-  for (const auto& [table_id, mutations] : table_id_to_mutations_maps) {
+  for (const auto& [table_id, table_info] : table_id_to_info_maps) {
     auto it = table_tuple_count_.find(table_id);
     if (it == table_tuple_count_.end()) {
       VLOG(1) << "Table not in table_tuple_count_, so skipping: " << table_id;
@@ -362,9 +490,26 @@ Result<PgAutoAnalyzeService::NamespaceTablesMap> PgAutoAnalyzeService::Determine
     double analyze_threshold = FLAGS_ysql_auto_analyze_threshold +
         FLAGS_ysql_auto_analyze_scale_factor * it->second;
     VLOG(2) << "table_id: " << table_id << ", analyze_threshold: " << analyze_threshold;
-    if (mutations >= analyze_threshold) {
-      VLOG(2) << "Table with id " << table_id << " has " << mutations << " mutations "
-              << "and reaches its analyze threshold " << analyze_threshold;
+
+    std::chrono::microseconds cooldown{0};
+    std::chrono::system_clock::time_point last_analyze_timestamp{};
+
+    if (!table_info.analyze_history.empty()) {
+      const auto& last = table_info.analyze_history.back();
+      cooldown = last.cooldown;
+      last_analyze_timestamp = last.timestamp;
+    }
+
+    const auto since_last_analyze = now - last_analyze_timestamp;
+
+    VLOG(5) << "Current time: " << ToString(now)
+            << "; last analyze time: " << ToString(last_analyze_timestamp)
+            << "; cooldown from last analyze: " << ToString(cooldown)
+            << "; time since last analyze: " << ToString(since_last_analyze);
+
+    if (table_info.mutations >= analyze_threshold && since_last_analyze >= cooldown) {
+      VLOG(2) << "Table with id " << table_id << " has " << table_info.mutations << " mutations "
+              << " and reaches its analyze threshold " << analyze_threshold;
       auto namespace_id = VERIFY_RESULT(GetNamespaceIdFromYsqlTableId(table_id));
       namespace_id_to_analyze_target_tables[namespace_id].push_back(table_id);
     }
@@ -509,7 +654,7 @@ Result<std::pair<std::vector<TableId>, std::vector<TableId>>>
 // mutations is 0 for a table for a long time to free up memory.
 Status PgAutoAnalyzeService::UpdateTableMutationsAfterAnalyze(
     const std::vector<TableId>& tables,
-    const TableMutationsMap& table_id_to_mutations_maps) {
+    const AutoAnalyzeInfoMap& table_id_to_info_maps) {
   VLOG_WITH_FUNC(2) << "tables: " << AsString(tables);
   auto session = VERIFY_RESULT(GetYBSession(
       GetAtomicFlag(&FLAGS_ysql_cluster_level_mutation_persist_rpc_timeout_ms) * 1ms));
@@ -530,9 +675,9 @@ Status PgAutoAnalyzeService::UpdateTableMutationsAfterAnalyze(
     QLExpressionPB* operand1 = bfcall_expr_pb->add_operands();
     QLExpressionPB* operand2 = bfcall_expr_pb->add_operands();
     operand1->set_column_id(mutations_col_id);
-    auto it = table_id_to_mutations_maps.find(table_id);
+    auto it = table_id_to_info_maps.find(table_id);
     operand2->mutable_value()->set_int64_value(
-        it == table_id_to_mutations_maps.end() ? 0 : it->second);
+        it == table_id_to_info_maps.end() ? 0 : it->second.mutations);
     ops.push_back(std::move(update_op));
     auto* const condition = update_req->mutable_if_expr()->mutable_condition();
     condition->set_op(QL_OP_EXISTS);
@@ -550,15 +695,15 @@ Status PgAutoAnalyzeService::UpdateTableMutationsAfterAnalyze(
 
 // Remove deleted table entries from the YCQL service table.
 Status PgAutoAnalyzeService::CleanUpDeletedTablesFromServiceTable(
-    const TableMutationsMap& table_id_to_mutations_maps,
+    const AutoAnalyzeInfoMap& table_id_to_info_maps,
     const std::vector<TableId>& deleted_tables,
     const std::unordered_set<NamespaceId>& deleted_databases) {
   VLOG_WITH_FUNC(3);
 
   std::vector<TableId> tables_of_deleted_databases;
   std::vector<TableId> tables_absent_in_name_cache;
-  for (const auto& [table_id, mutations] : table_id_to_mutations_maps) {
-    // table_id_to_name_ is a subset of table_id_to_mutations_maps
+  for (const auto& [table_id, mutations] : table_id_to_info_maps) {
+    // table_id_to_name_ is a subset of table_id_to_info_maps
     if (!table_id_to_name_.contains(table_id)) {
       // Table with table_id doesn't exist, so remove its entry from the service table.
       tables_absent_in_name_cache.push_back(table_id);
@@ -678,14 +823,17 @@ std::string PgAutoAnalyzeService::TableNamesForAnalyzeCmd(const std::vector<Tabl
 }
 
 Result<bool> PgAutoAnalyzeService::RunPeriodicTask() {
-  if (FLAGS_ysql_enable_auto_analyze_service) {
-    // Update the underlying YCQL service table that tracks cluster-wide mutations
-    // for all YSQL tables.
-    RETURN_NOT_OK(FlushMutationsToServiceTable());
-
-    // Trigger ANALYZE for tables whose mutation counts have crossed their thresholds.
-    RETURN_NOT_OK(TriggerAnalyze());
+  if (!FLAGS_ysql_enable_auto_analyze) {
+    VLOG_WITH_FUNC(4) << "Auto analyze service is disabled";
+    return true;
   }
+
+  // Update the underlying YCQL service table that tracks cluster-wide mutations
+  // for all YSQL tables.
+  RETURN_NOT_OK(FlushMutationsToServiceTable());
+
+  // Trigger ANALYZE for tables whose mutation counts have crossed their thresholds.
+  RETURN_NOT_OK(TriggerAnalyze());
 
   // Return true to re-trigger this periodic task after PeriodicTaskIntervalMs.
   return true;
@@ -703,6 +851,131 @@ Status PgAutoAnalyzeService::IncreaseMutationCountersImpl(
           }));
 
   return Status::OK();
+}
+
+//------------------------------------------------------------------------------
+// PgAutoAnalyzeService helpers
+//------------------------------------------------------------------------------
+Result<AutoAnalyzeInfoMap> PgAutoAnalyzeService::UpdateAnalyzeHistory(
+    const std::vector<TableId>& analyzed_tables, AutoAnalyzeInfoMap&& table_id_to_info_maps,
+    const std::chrono::system_clock::time_point& now, const AutoAnalyzeParams& params) {
+  for (const auto& table_id : analyzed_tables) {
+    auto namespace_id = VERIFY_RESULT(GetNamespaceIdFromYsqlTableId(table_id));
+    auto it = table_id_to_info_maps.find(table_id);
+    if (it == table_id_to_info_maps.end()) {
+      VLOG(5) << "Table " << table_id << " not found in mutations map";
+      continue;
+    }
+    auto& table_info = it->second;
+    std::chrono::microseconds cooldown;
+    if (table_info.analyze_history.empty()) {
+      std::chrono::milliseconds default_cooldown{params.GetMinCooldownPerTable(namespace_id)};
+      cooldown = std::chrono::duration_cast<std::chrono::microseconds>(default_cooldown);
+      VLOG(5) << "No analyze history found for table " << table_id << ", setting cooldown to "
+              << ToString(cooldown);
+    } else {
+      auto prev_cooldown = table_info.analyze_history.back().cooldown;
+      cooldown = std::chrono::duration_cast<std::chrono::microseconds>(
+          prev_cooldown * params.GetCooldownScaleFactor(namespace_id));
+    }
+
+    auto max_cooldown = params.GetMaxCooldownPerTable(namespace_id);
+    if (cooldown > max_cooldown) {
+      cooldown = max_cooldown;
+    }
+
+    VLOG(5) << "Adding analyze event at " << ToString(now) << " for table " << table_id
+            << " with cooldown " << ToString(cooldown);
+    table_info.analyze_history.push_back(AutoAnalyzeInfo::AnalyzeEvent{now, cooldown});
+
+    // Keep only the N most recent analyze history entries.
+    if (table_info.analyze_history.size() > FLAGS_TEST_ysql_auto_analyze_max_history_entries) {
+      table_info.analyze_history.erase(
+          table_info.analyze_history.begin(),
+          table_info.analyze_history.end() - FLAGS_TEST_ysql_auto_analyze_max_history_entries);
+    }
+  }
+
+  return std::move(table_id_to_info_maps);
+}
+
+/*
+ * Updates the analyze history for each table listed in the auto-analyze CQL table.
+ * The history is a JSONB value with a "history" array of integers, where each integer is a
+ * timestamp in microseconds.
+ * Example input: {"history":[2512767964307,2512768509620]}
+ * Example output: {"history":[2512767964307,2512768509620,2512768509621]}
+ */
+Status PgAutoAnalyzeService::FlushAnalyzeHistory(
+    const std::vector<TableId>& tables, const AutoAnalyzeInfoMap& table_id_to_mutations_maps,
+    const std::chrono::system_clock::time_point& now) {
+  const auto rpc_timeout =
+      GetAtomicFlag(&FLAGS_ysql_cluster_level_mutation_persist_rpc_timeout_ms) * 1ms;
+
+  auto session = VERIFY_RESULT(GetYBSession(rpc_timeout));
+  auto* table = VERIFY_RESULT(GetServiceTable());
+
+  const auto& schema = table->schema();
+  const ColumnId history_column_id(
+      schema.ColumnId(schema.FindColumn(master::kPgAutoAnalyzeLastAnalyzeInfo)));
+
+  std::vector<client::YBOperationPtr> ops;
+  ops.reserve(tables.size());
+
+  for (const auto& table_id : tables) {
+    auto& mutations = table_id_to_mutations_maps.at(table_id);
+    auto history_doc = mutations.ToRapidJson();
+
+    // 3. Convert to Jsonb
+    common::Jsonb jsonb;
+    std::string json_string;
+    RETURN_NOT_OK(jsonb.FromRapidJson(history_doc));
+    if (VLOG_IS_ON(5)) {
+      std::string json_string;
+      RETURN_NOT_OK(jsonb.ToJsonString(&json_string));
+      VLOG(5) << "Writing history for table " << table_id << ": " << json_string;
+    }
+
+    // 4. Build UPDATE ... WHERE table_id = ? IF EXISTS;
+    auto update_op = table->NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
+    auto* req = update_op->mutable_request();
+
+    QLAddStringHashValue(req, table_id);  // PK
+    req->mutable_column_refs()->add_ids(history_column_id);
+
+    auto* col = req->add_column_values();
+    col->set_column_id(history_column_id);
+    col->mutable_expr()->mutable_value()->set_jsonb_value(jsonb.MoveSerializedJsonb());
+
+    req->mutable_if_expr()->mutable_condition()->set_op(QL_OP_EXISTS);
+
+    ops.push_back(std::move(update_op));
+  }
+
+  RETURN_NOT_OK_PREPEND(session->TEST_ApplyAndFlush(ops), "Failed to update auto-analyze history");
+  return Status::OK();
+}
+Result<AutoAnalyzeParams> PgAutoAnalyzeService::GetAutoAnalyzeParams(
+    const AutoAnalyzeInfoMap& table_id_to_info_maps,
+    std::unordered_set<NamespaceId>& deleted_databases) {
+  std::unordered_set<NamespaceId> namespaces_to_fetch;
+  for (const auto& [table_id, mutations] : table_id_to_info_maps) {
+    auto namespace_id = VERIFY_RESULT(GetNamespaceIdFromYsqlTableId(table_id));
+    namespaces_to_fetch.insert(namespace_id);
+  }
+
+  AutoAnalyzeParams params;
+  for (const auto& namespace_id : namespaces_to_fetch) {
+    // For now, all DBs have the same params.
+    params.SetDbParams(
+        namespace_id,
+        DbAutoAnalyzeParams{
+            FLAGS_ysql_auto_analyze_cooldown_per_table_scale_factor,
+            std::chrono::milliseconds(FLAGS_ysql_auto_analyze_max_cooldown_per_table),
+            std::chrono::milliseconds(FLAGS_ysql_auto_analyze_min_cooldown_per_table)});
+  }
+
+  return params;
 }
 
 }  // namespace stateful_service

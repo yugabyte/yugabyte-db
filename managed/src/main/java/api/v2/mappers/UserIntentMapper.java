@@ -194,6 +194,11 @@ public interface UserIntentMapper {
         clusterGFlags.putAzGflagsItem(entry.getKey().toString(), azGFlags);
       }
     }
+    if (specificGFlags.getGflagGroups() != null) {
+      clusterGFlags.setGflagGroups(
+          UniverseDefinitionTaskParamsMapper.INSTANCE.mapGflagGroupsList(
+              specificGFlags.getGflagGroups()));
+    }
     return clusterGFlags;
   }
 
@@ -449,6 +454,11 @@ public interface UserIntentMapper {
         perAz.put(UUID.fromString(entry.getKey()), perProc);
       }
       specificGFlags.setPerAZ(perAz);
+    }
+    if (v2ClusterGFlags.getGflagGroups() != null) {
+      specificGFlags.setGflagGroups(
+          UniverseDefinitionTaskParamsMapper.INSTANCE.mapGroupNameList(
+              v2ClusterGFlags.getGflagGroups()));
     }
     return specificGFlags;
   }

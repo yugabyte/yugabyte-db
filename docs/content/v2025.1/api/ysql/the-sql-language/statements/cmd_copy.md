@@ -101,9 +101,13 @@ First 3000 rows will be persisted to the table and `tuples_processed` will show 
 
 The REPLACE option replaces the existing row in the table if the new row's primary/unique key conflicts with that of the existing row.
 
-Note that REPLACE doesn't work on tables that have more than 1 unique constraints (see [#13687](https://github.com/yugabyte/yugabyte-db/issues/13687) for explanation)
+Note that REPLACE doesn't work on tables that have more than 1 unique constraint (see [#13687](https://github.com/yugabyte/yugabyte-db/issues/13687)).
 
 Default: by default conflict error is reported.
+
+{{< warning title="Avoid using REPLACE if the target table has secondary indexes." >}}
+If the table has secondary indexes, a workaround is to COPY (without REPLACE) data into a temporary table, and then use [`INSERT ... ON CONFLICT`](../dml_insert/#on-conflict-clause) to transfer data from the temporary table to the target table.
+{{< /warning >}}
 
 ### DISABLE_FK_CHECK
 
@@ -116,6 +120,27 @@ Default: by default, foreign key check is always performed when DISABLE_FK_CHECK
 The `SKIP n` option skips the first `n` rows of the file. `n` must be a non-negative integer ().
 
 Default: 0, no rows are skipped.
+
+## Copy with fast-path transaction for colocated tables
+
+YugabyteDB supports a fast-path mode for the COPY command on colocated tables, which can significantly improve performance during data import.
+
+### Enable fast-path COPY
+
+The fast-path copy feature is disabled by default. To enable it for your current PostgreSQL session, run:
+
+ ```plpgsql
+ SET yb_fast_path_for_colocated_copy = on;
+ ```
+
+The fast-path COPY is applied only when all of the following conditions are met:
+
+1. The `yb_fast_path_for_colocated_copy` setting is enabled.
+2. The `ROWS_PER_TRANSACTION` option is not specified in the COPY command.
+3. The target table does not have any triggers, rules, or foreign key constraints defined.
+4. The COPY command is executed **outside** of an explicit transaction.
+
+With fast-path enabled, the unit of atomicity is determined by `ysql_session_max_batch_size` rather than `ROWS_PER_TRANSACTION`. For example, if `ysql_session_max_batch_size` is set to 3072, which means at most 3072 writes will be included in the same batch. For a table without indexes, this results in an atomic unit of 3072 rows. For a table with two indexes, the unit of atomicity will be 1024 rows which ensure the 1024 rows and their indexes are written atomically. Only use fast-path COPY if this level of atomicity aligns with your requirements.
 
 ## Examples
 

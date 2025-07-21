@@ -177,6 +177,8 @@ Result<Socket> CreateClientSocket(const Endpoint& remote) {
                  << "be created: " << status.ToString();
     return status;
   }
+  VLOG_WITH_FUNC(2) << "Created client socket " << socket.GetFd()
+                    << " for remote: " << AsString(remote);
   return std::move(socket);
 }
 
@@ -505,11 +507,11 @@ void Reactor::CheckReadyToStop() {
       state_.store(ReactorState::kClosed, std::memory_order_release);
       final_tasks.swap(pending_tasks_);
     }
-    VLOG_WITH_PREFIX(2) << "Running final pending task aborts: " << thread_->ToString();;
+    VLOG_WITH_PREFIX(2) << "Running final pending task aborts: " << thread_->ToString();
     for (auto task : final_tasks) {
       task->Abort(ServiceUnavailableError());
     }
-    VLOG_WITH_PREFIX(2) << "Breaking reactor loop: " << thread_->ToString();;
+    VLOG_WITH_PREFIX(2) << "Breaking reactor loop: " << thread_->ToString();
     loop_.break_loop(); // break the epoll loop and terminate the thread
   }
 }
@@ -744,6 +746,8 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
     auto conn_iter = client_conns_.find(conn_id);
     if (conn_iter != client_conns_.end()) {
       *conn = (*conn_iter).second;
+      VLOG_WITH_PREFIX_AND_FUNC(3)
+          << "found connection: " << AsString(*conn) << " for " << conn_id.ToString();
       return Status::OK();
     }
   }
@@ -753,8 +757,7 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
   }
 
   // No connection to this remote. Need to create one.
-  VLOG_WITH_PREFIX(2) << "FindOrStartConnection: creating new connection for "
-                      << conn_id.ToString();
+  VLOG_WITH_PREFIX_AND_FUNC(2) << "creating new connection for " << conn_id.ToString();
 
   // Create a new socket and start connecting to the remote.
   auto sock = VERIFY_RESULT(CreateClientSocket(conn_id.remote()));
@@ -769,6 +772,7 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
     boost::asio::ip::address_v4 outbound_address(address_bytes);
     auto status = sock.SetReuseAddr(true);
     if (status.ok()) {
+      VLOG_WITH_PREFIX_AND_FUNC(2) << "Binding client socket";
       status = sock.Bind(Endpoint(outbound_address, 0));
     }
     LOG_IF_WITH_PREFIX(WARNING, !status.ok()) << "Bind " << outbound_address << " failed: "
@@ -780,6 +784,7 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
     if (!outbound_address.is_unspecified()) {
       auto status = sock.SetReuseAddr(true);
       if (status.ok()) {
+        VLOG_WITH_PREFIX_AND_FUNC(2) << "Binding client socket";
         status = sock.Bind(Endpoint(outbound_address, 0));
       }
       LOG_IF_WITH_PREFIX(WARNING, !status.ok()) << "Bind " << outbound_address << " failed: "

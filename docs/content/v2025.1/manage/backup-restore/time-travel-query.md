@@ -4,7 +4,7 @@ headerTitle: Time travel query
 linkTitle: Time travel query
 description: Read data at a specific point in time for data recovery and analysis.
 tags:
-  feature: tech-preview
+  feature: early-access
 menu:
   v2025.1:
     identifier: time-travel-query
@@ -65,7 +65,7 @@ The following example shows how you can use time travel queries to recover accid
     ```
 
     ```output
-    k  | v  
+    k  | v
     ----+----
     1 |  2
     2 |  4
@@ -87,7 +87,7 @@ The following example shows how you can use time travel queries to recover accid
     ```
 
     ```output
-        numeric      
+        numeric
     ------------------
     1741886500266607
     (1 row)
@@ -104,7 +104,7 @@ The following example shows how you can use time travel queries to recover accid
     ```
 
     ```output
-    k | v  
+    k | v
     ---+----
     1 |  2
     2 |  4
@@ -130,7 +130,7 @@ The following example shows how you can use time travel queries to recover accid
     ```
 
     ```output
-    k  | v  
+    k  | v
     ----+----
     1 |  2
     2 |  4
@@ -172,7 +172,7 @@ The following example shows how you can use time travel queries to recover accid
     ```
 
     ```output
-    k  | v  
+    k  | v
     ----+----
     1 |  2
     2 |  4

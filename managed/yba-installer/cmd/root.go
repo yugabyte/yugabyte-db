@@ -7,15 +7,17 @@ package cmd
 import (
 	"github.com/spf13/cobra"
 
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 )
 
 // Service Names
 const (
-	YbPlatformServiceName string = "yb-platform"
-	PostgresServiceName   string = "postgres"
-	PrometheusServiceName string = "prometheus"
-	YbdbServiceName       string = "ybdb"
+	YbPlatformServiceName  string = "yb-platform"
+	PostgresServiceName    string = "postgres"
+	PrometheusServiceName  string = "prometheus"
+	YbdbServiceName        string = "ybdb"
+	PerfAdvisorServiceName string = "performance-advisor"
 )
 
 var (
@@ -23,6 +25,8 @@ var (
 	logLevel          string
 	skipVersionChecks bool = false
 )
+
+var serviceManager *components.Manager
 
 var rootCmd = &cobra.Command{
 	Use:   "yba-ctl",
@@ -33,6 +37,8 @@ var rootCmd = &cobra.Command{
     Anywhere instance through our command line CLI, such as clean, createBackup,
     restoreBackup, install, and upgrade! View the CLI menu to learn more!`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		// Initialize component manager
+		serviceManager = components.NewManager()
 		initAfterFlagsParsed(cmd.CommandPath())
 	},
 }

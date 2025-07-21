@@ -5,4 +5,4 @@ The build produces two sets of binaries:
 
 (1) YugabyteDB, available [here](https://download.yugabyte.com/local#linux) and licensed under Apache License 2.0
 
-(2) YugabyteDB Aeon (Self-Managed), available [here](https://docs.yugabyte.com/preview/yugabyte-platform/install-yugabyte-platform/install-software/installer/) and licensed under Polyform Free Trial License 1.0.0. 
+(2) YugabyteDB Anywhere (Self-Managed), available [here](https://docs.yugabyte.com/preview/yugabyte-platform/install-yugabyte-platform/install-software/installer/) and licensed under Polyform Free Trial License 1.0.0. 

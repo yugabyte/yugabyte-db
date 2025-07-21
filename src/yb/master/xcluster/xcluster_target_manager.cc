@@ -13,6 +13,8 @@
 
 #include "yb/master/xcluster/xcluster_target_manager.h"
 
+#include <algorithm>
+
 #include "yb/client/client.h"
 #include "yb/client/xcluster_client.h"
 
@@ -508,13 +510,22 @@ Result<XClusterInboundReplicationGroupStatus> XClusterTargetManager::GetUniverse
         if (stream_info) {
           table_status.target_table_id = stream_info->consumer_table_id();
 
-          auto stripped_target_table_id =
-              xcluster::StripSequencesDataAliasIfPresent(table_status.target_table_id);
+          const auto& unstripped_target_table_id = table_status.target_table_id;
+          const auto stripped_target_table_id =
+              xcluster::StripSequencesDataAliasIfPresent(unstripped_target_table_id);
           auto table_info_res = catalog_manager_.GetTableById(stripped_target_table_id);
           if (table_info_res) {
             const auto& table_info = table_info_res.get();
             namespace_name = table_info->namespace_name();
             table_status.full_table_name = GetFullTableName(*table_info);
+          }
+          if (xcluster::IsSequencesDataAlias(unstripped_target_table_id)) {
+            auto namespace_id = VERIFY_RESULT(
+                xcluster::GetReplicationNamespaceBelongsTo(unstripped_target_table_id));
+            namespace_name = catalog_manager_.GetNamespaceName(namespace_id);
+            RSTATUS_DCHECK(
+                !namespace_name.empty(), NotFound,
+                "Namespace ID $0 from sequences_data alias not found", namespace_id);
           }
 
           table_status.target_tablet_count = stream_info->consumer_producer_tablet_map_size();
@@ -1004,9 +1015,8 @@ Result<TableId> XClusterTargetManager::GetTableIdForStreamId(
     const xrepl::StreamId& stream_id) const {
   SharedLock l(table_stream_ids_map_mutex_);
 
-  auto iter = std::find_if(
-      table_stream_ids_map_.begin(), table_stream_ids_map_.end(),
-      [&replication_group_id, &stream_id](auto& id_map) {
+  auto iter = std::ranges::find_if(
+      table_stream_ids_map_, [&replication_group_id, &stream_id](auto& id_map) {
         return ContainsKeyValuePair(id_map.second, replication_group_id, stream_id);
       });
   SCHECK(
@@ -1261,8 +1271,8 @@ Status XClusterTargetManager::DeleteUniverseReplication(
         uint32_t begin_oid;
         uint32_t end_oid;
         RETURN_NOT_OK(yb_client->ReservePgsqlOids(
-            target_namespace_id, oid_to_bump, /*count=*/1, &begin_oid, &end_oid,
-            /*use_secondary_space=*/false));
+            target_namespace_id, oid_to_bump, /*count=*/1, /*use_secondary_space=*/false,
+            &begin_oid, &end_oid));
       }
       RETURN_NOT_OK(master_.catalog_manager()->InvalidateTserverOidCaches());
     }

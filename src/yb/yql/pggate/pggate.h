@@ -123,7 +123,9 @@ class PgApiImpl {
 
   // Interrupt aborts all pending RPCs immediately to unblock main thread.
   void Interrupt();
+
   void ResetCatalogReadTime();
+  [[nodiscard]] ReadHybridTime GetCatalogReadTime() const;
 
   // Initialize a session to process statements that come from the same client connection.
   void InitSession(YbcPgExecStatsState& session_stats, bool is_binary_upgrade);
@@ -755,6 +757,8 @@ class PgApiImpl {
 
   void StartSysTablePrefetching(const PrefetcherOptions& options);
   void StopSysTablePrefetching();
+  void PauseSysTablePrefetching();
+  void ResumeSysTablePrefetching();
   bool IsSysTablePrefetchingStarted() const;
   void RegisterSysTableForPrefetching(
       const PgObjectId& table_id, const PgObjectId& index_id, int row_oid_filtering_attr,

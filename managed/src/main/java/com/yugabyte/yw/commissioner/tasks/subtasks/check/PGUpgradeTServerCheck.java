@@ -246,7 +246,7 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
         nodeAgentClient.runDownloadSoftware(
             optional.get(),
             nodeAgentRpcPayload.setupDownloadSoftwareBits(universe, node, params, optional.get()),
-            AnsibleConfigureServers.DEFAULT_CONFIGURE_USER);
+            NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
       }
     }
   }

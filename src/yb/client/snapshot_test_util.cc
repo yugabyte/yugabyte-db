@@ -47,13 +47,14 @@ Result<bool> SnapshotTestUtil::IsSnapshotDone(const TxnSnapshotId& snapshot_id) 
 }
 
 Result<Snapshots> SnapshotTestUtil::ListSnapshots(
-    const TxnSnapshotId& snapshot_id, ListDeleted list_deleted,
-    PrepareForBackup prepare_for_backup) {
+    const TxnSnapshotId& snapshot_id, ListDeleted list_deleted, PrepareForBackup prepare_for_backup,
+    IncludeDdlInProgressTables include_ddl_in_progress_tables) {
   master::ListSnapshotsRequestPB req;
   master::ListSnapshotsResponsePB resp;
 
   req.set_list_deleted_snapshots(list_deleted);
   req.set_prepare_for_backup(prepare_for_backup);
+  req.set_include_ddl_in_progress_tables(include_ddl_in_progress_tables);
   if (!snapshot_id.IsNil()) {
     req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
   }
@@ -262,6 +263,12 @@ Result<TxnSnapshotId> SnapshotTestUtil::CreateSnapshot(const TableId& table_id, 
 
 Result<TxnSnapshotId> SnapshotTestUtil::CreateSnapshot(const TableHandle& table) {
   return CreateSnapshot(table.table()->id());
+}
+
+Result<TxnSnapshotId> SnapshotTestUtil::CreateSnapshot(const YBTableName& table_name) {
+  TxnSnapshotId snapshot_id = VERIFY_RESULT(StartSnapshot(table_name));
+  RETURN_NOT_OK(WaitSnapshotDone(snapshot_id));
+  return snapshot_id;
 }
 
 Result<TxnSnapshotId> SnapshotTestUtil::CreateSnapshot(

@@ -2,8 +2,8 @@
 
 package com.yugabyte.yw.common;
 
-import com.datastax.driver.core.JdkSSLOptions;
-import com.datastax.driver.core.SSLOptions;
+import com.datastax.oss.driver.api.core.ssl.ProgrammaticSslEngineFactory;
+import com.datastax.oss.driver.api.core.ssl.SslEngineFactory;
 import java.io.FileInputStream;
 import java.security.KeyStore;
 import java.security.cert.CertificateFactory;
@@ -17,7 +17,7 @@ public class SslHelper {
 
   public static final Logger LOG = LoggerFactory.getLogger(SslHelper.class);
 
-  public static SSLOptions getSSLOptions(String certfile) {
+  public static SslEngineFactory getSSLOptions(String certfile) {
     try {
       CertificateFactory cf = CertificateFactory.getInstance("X.509");
       FileInputStream fis = new FileInputStream(certfile);
@@ -44,7 +44,7 @@ public class SslHelper {
 
       SSLContext sslContext = SSLContext.getInstance("TLS");
       sslContext.init(null, tmf.getTrustManagers(), null);
-      return JdkSSLOptions.builder().withSSLContext(sslContext).build();
+      return new ProgrammaticSslEngineFactory(sslContext);
     } catch (Exception e) {
       LOG.error("Exception creating sslContext: ", e);
       return null;

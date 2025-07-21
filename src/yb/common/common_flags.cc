@@ -13,6 +13,7 @@
 
 #include "yb/common/common_flags.h"
 #include "yb/util/flags.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/size_literals.h"
 
 using namespace yb::size_literals;
@@ -144,6 +145,8 @@ DEFINE_RUNTIME_PREVIEW_bool(enable_object_locking_for_table_locks, false,
     "This test flag enables the object lock APIs provided by tservers and masters - "
     "AcquireObject(Global)Lock, ReleaseObject(Global)Lock. These APIs are used to "
     "implement pg table locks.");
+DEFINE_validator(enable_object_locking_for_table_locks,
+    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_enable_db_catalog_version_mode));
 
 // The following flags related to the cloud, region and availability zone that an instance is
 // started in. These are passed in from whatever provisioning mechanics start the servers. They
@@ -167,9 +170,15 @@ DEFINE_test_flag(bool, check_catalog_version_overflow, false,
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_invalidation_messages, true,
     "True to enable invalidation messages");
 
-DEFINE_test_flag(bool, ysql_yb_ddl_transaction_block_enabled, false,
+DEFINE_NON_RUNTIME_PG_PREVIEW_FLAG(bool, yb_ddl_transaction_block_enabled, false,
     "If true, DDL operations in YSQL will execute within the active transaction"
     "block instead of their separate transactions.");
+
+DEFINE_NON_RUNTIME_PG_FLAG(bool, yb_disable_ddl_transaction_block_for_read_committed, false,
+    "If true, DDL operations in READ COMMITTED mode will be executed in a separate DDL transaction "
+    "instead of the as part of the enclosing transaction block even if "
+    "ysql_yb_ddl_transaction_block_enabled is true. In other words, for Read Committed, fall back "
+    "to the mode when ysql_yb_ddl_transaction_block_enabled is false.");
 
 namespace {
 

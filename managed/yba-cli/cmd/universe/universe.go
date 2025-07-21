@@ -44,7 +44,15 @@ func init() {
 	UniverseCmd.AddCommand(table.TableCmd)
 	UniverseCmd.AddCommand(edit.EditUniverseCmd)
 
-	util.PreviewCommand(UniverseCmd, []*cobra.Command{supportbundle.SupportBundleUniverseCmd})
+	util.PreviewCommand(
+		UniverseCmd,
+		[]*cobra.Command{
+			supportbundle.SupportBundleUniverseCmd,
+			detachUniverseCmd,
+			deleteMetadataCmd,
+			attachUniverseCmd,
+		},
+	)
 
 	UniverseCmd.AddGroup(&cobra.Group{
 		ID:    "action",

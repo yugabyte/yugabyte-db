@@ -737,8 +737,7 @@ public class HealthChecker {
               .collect(Collectors.toMap(NodeInstance::getNodeUuid, Function.identity()));
       boolean earlyoomEnabled =
           details.additionalServicesStateData != null
-              && details.additionalServicesStateData.getEarlyoomConfig() != null
-              && details.additionalServicesStateData.getEarlyoomConfig().isEnabled();
+              && details.additionalServicesStateData.isEarlyoomEnabled();
       int topKOtherProcesses =
           confGetter.getConfForScope(
               params.universe, UniverseConfKeys.healthCollectTopKOtherProcessesCount);

@@ -51,8 +51,7 @@ Status PgDmlWrite::Prepare(const PgObjectId& table_id, bool is_region_local) {
   write_req_->dup_table_id(table_id.GetYbTableId());
   write_req_->set_schema_version(target_->schema_version());
   write_req_->set_stmt_id(reinterpret_cast<uint64_t>(write_req_.get()));
-  // TODO(#26086): Capture and display metrics in EXPLAIN output
-  write_req_->set_metrics_capture(PgsqlMetricsCaptureType::PGSQL_METRICS_CAPTURE_NONE);
+  write_req_->set_metrics_capture(pg_session_->metrics().metrics_capture());
 
   doc_op_ = std::make_shared<PgDocWriteOp>(pg_session_, &target_, std::move(write_op));
   PrepareColumns();

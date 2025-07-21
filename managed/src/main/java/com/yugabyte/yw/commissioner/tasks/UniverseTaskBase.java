@@ -2106,7 +2106,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
     int serverPort = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort);
     NodeAgentEnabler nodeAgentEnabler = getInstanceOf(NodeAgentEnabler.class);
-    if (reinstall == false && nodeAgentEnabler.shouldMarkUniverse(universe)) {
+    if (reinstall == false && nodeAgentEnabler.shouldSkipInstallAndMarkUniverse(universe)) {
       // Reinstall forces direct installation in the same task.
       log.info(
           "Skipping node agent installation for universe {} as it is not enabled",
@@ -6877,6 +6877,21 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     UpdateUniverseFields task = createTask(UpdateUniverseFields.class);
     task.initialize(params);
     // Add it to the task list.
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  public SubTaskGroup createUpdatePitrConfigIntermittentMinRecoverTimeTask() {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup(
+            "UpdatePitrConfigIntermittentMinRecoverTime", SubTaskGroupType.ConfigureUniverse);
+    UpdatePitrConfigIntermittentMinRecoverTime.Params params =
+        new UpdatePitrConfigIntermittentMinRecoverTime.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    UpdatePitrConfigIntermittentMinRecoverTime task =
+        createTask(UpdatePitrConfigIntermittentMinRecoverTime.class);
+    task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;

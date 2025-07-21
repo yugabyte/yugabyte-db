@@ -19,8 +19,12 @@
 
 #include "yb/ash/wait_state.h"
 
+#include "yb/client/yb_op.h"
+
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/row_mark.h"
+
+#include "yb/dockv/doc_key.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/escaping.h"
@@ -414,7 +418,6 @@ void PgDocOp::RecordRequestMetrics() {
       continue;
     }
     const auto& response_metrics = response->metrics();
-    metrics.RecordRequestMetrics(response_metrics);
 
     // Record the number of DocDB rows read.
     // Index Scans on secondary indexes in colocated tables need special handling: the target
@@ -515,6 +518,7 @@ Result<std::list<PgDocResult>> PgDocOp::ProcessCallResponse(const rpc::CallRespo
 
     auto rows_data = VERIFY_RESULT(response.GetSidecarHolder(op_response->rows_data_sidecar()));
     result.emplace_back(std::move(rows_data), BuildRowOrders(*op_response, batch_row_orders_, *op));
+    VLOG(3) << "From " << op->ToString() << " PgDocResult row count: " << result.back().row_count();
   }
 
   return result;
@@ -582,6 +586,10 @@ Status PgDocReadOp::ExecuteInit(const YbcPgExecParameters* exec_params) {
       pgsql_ops_.empty() || !exec_params,
       IllegalState, "Exec params can't be changed for already created operations");
   RETURN_NOT_OK(PgDocOp::ExecuteInit(exec_params));
+  if (!VERIFY_RESULT(SetScanBounds())) {
+    end_of_data_ = true;
+    return Status::OK();
+  }
 
   read_op_->read_request().set_return_paging_state(true);
   RETURN_NOT_OK(SetRequestPrefetchLimit());
@@ -589,6 +597,27 @@ Status PgDocReadOp::ExecuteInit(const YbcPgExecParameters* exec_params) {
   SetRowMark();
   SetReadTimeForBackfill();
   return Status::OK();
+}
+
+Result<bool> PgDocReadOp::SetScanBounds() {
+  if (table_->schema().num_hash_key_columns() > 0) {
+    // TODO: figure out if we can clarify bounds of a hash table scan
+    return true;
+  }
+  std::vector<dockv::KeyEntryValue> lower_range_components, upper_range_components;
+  auto& request = read_op_->read_request();
+  RETURN_NOT_OK(client::GetRangePartitionBounds(
+      table_->schema(), request, &lower_range_components, &upper_range_components));
+  if (lower_range_components.empty() && upper_range_components.empty()) {
+    return true;
+  }
+  auto lower_bound = dockv::DocKey(
+      table_->schema(), std::move(lower_range_components)).Encode().ToStringBuffer();
+  auto upper_bound = dockv::DocKey(
+      table_->schema(), std::move(upper_range_components)).Encode().ToStringBuffer();
+  VLOG_WITH_FUNC(2) << "Lower bound: " << Slice(lower_bound).ToDebugHexString()
+                    << ", upper bound: " << Slice(upper_bound).ToDebugHexString();
+  return table_->SetScanBoundary(&request, lower_bound, true, upper_bound, false);
 }
 
 bool CouldBeExecutedInParallel(const LWPgsqlReadRequestPB& req) {

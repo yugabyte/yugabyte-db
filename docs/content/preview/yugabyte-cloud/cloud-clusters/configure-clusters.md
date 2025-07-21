@@ -37,10 +37,10 @@ The **Regions** section on the cluster **Settings > Infrastructure** tab summari
 
 ## Limitations
 
-- You can horizontally scale nodes in clusters with Node Level fault tolerance in increments of 1. Nodes in clusters with Availability Zone Level fault tolerance are scaled in increments of 3 (1 per zone). Nodes in clusters with Region Level fault tolerance are scaled in increments of 1 per region.
+- You can horizontally scale nodes in clusters with Node Level [fault tolerance](../../cloud-basics/create-clusters-overview/#fault-tolerance) in increments of 1. Nodes in clusters with Availability Zone Level fault tolerance are scaled in increments of 3 (1 per zone). Nodes in clusters with Region Level fault tolerance are scaled in increments of 1 per region.
 - You can configure up to 16 vCPUs per node. To have more than 16 vCPUs per node, send your request to {{% support-cloud %}}.
 - To avoid data loss, you can only increase disk size per node; once increased, you can't reduce it.
-- You can't change the [fault tolerance](../../cloud-basics/create-clusters-overview/#fault-tolerance) of a cluster after it is created.
+- Currently, you can't change the cluster fault tolerance using the YugabyteDB Aeon UI; you can change it using the [API](../../managed-automation/managed-api/) or [CLI](../../managed-automation/managed-cli/).
 - You can't change vCPUs on clusters with fault tolerance of none, you can only increase disk size, or change IOPS (AWS only).
 - Changing disk size or IOPS on a cluster with fault tolerance of none results in downtime.
 - You can't scale Sandbox clusters.

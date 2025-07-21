@@ -234,6 +234,9 @@ prometheus:
       # Scraping from node exporter on db nodes
       node:
          scheme: http
+      # Scraping from otel collector on db nodes
+      otel-collector:
+         scheme: http
       # Scraping yugabyteDB metrics
       yugabyte:
          scheme: http

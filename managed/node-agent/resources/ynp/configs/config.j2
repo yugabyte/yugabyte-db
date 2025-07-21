@@ -111,9 +111,12 @@ node_ip = {{ ynp_config['yba'].node_external_fqdn }}
 bind_ip = {{ ynp_config['ynp'].node_ip }}
 node_agent_port = {{ ynp_config['ynp'].node_agent_port|default(9070) }}
 
+
+{%- if 'earlyoom' in ynp_config['ynp'] %}
 [InstallConfigureEarlyoom]
-earlyoom_enable = {{ ynp_config['ynp'].earlyoom_enable | default('False') }}
-earlyoom_args = {{ ynp_config['ynp'].earlyoom_args | default('') }}
+earlyoom_enable = {{ ynp_config['ynp']['earlyoom'].earlyoom_enable | default('False') }}
+earlyoom_args = {{ ynp_config['ynp']['earlyoom'].earlyoom_args | default('') }}
+{%- endif %}
 
 [RebootNode]
 

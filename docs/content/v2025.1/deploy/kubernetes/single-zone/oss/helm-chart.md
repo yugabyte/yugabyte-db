@@ -428,6 +428,8 @@ Then finalize the upgrade as follows:
 kubectl exec -it yb-master-0 -- /home/yugabyte/bin/yb-admin --master_addresses yb-master-0.yb-masters.default.svc.cluster.local:7100 finalize_upgrade
 ```
 
+Note that `finalize_upgrade` is a cluster-level operation; you don't need to run it on every node.
+
 ## Update the configuration of YugabyteDB pods
 
 You can update most settings in the helm chart by running a `helm upgrade` with the new values. By default, this performs a [rolling update](https://github.com/yugabyte/charts/blob/853d7ac744cf6d637b5877f4681940825beda8f6/stable/yugabyte/values.yaml#L60) of the pods.

@@ -25,4 +25,10 @@ type: indexpage
     href="ysql-catalog-cache-tuning-guide/"
     icon="fa-thin fa-user-tie-hair">}}
 
+  {{<index/item
+    title="Use the YSQL cost-based-optimizer"
+    body="Create optimal execution plans for queries."
+    href="ysql-yb-enable-cbo/"
+    icon="fa-thin fa-dollar">}}
+
 {{</index/block>}}

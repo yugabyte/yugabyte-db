@@ -247,34 +247,22 @@ Status YsqlManager::ValidateTServerVersion(const VersionInfoPB& version) const {
   return ysql_initdb_and_major_upgrade_helper_->ValidateTServerVersion(version);
 }
 
-Result<uint32_t> YsqlManager::GetYqlTableOid(
-    const TableId& table_id, const PersistentTableInfo& table_info) const {
-  RSTATUS_DCHECK_EQ(table_info.GetTableType(), PGSQL_TABLE_TYPE, InternalError,
+Result<uint32_t> YsqlManager::GetPgTableOidIfCommitted(
+    const TableId& table_id, const PersistentTableInfo& table_info,
+    const ReadHybridTime& read_time) const {
+  RSTATUS_DCHECK_EQ(
+      table_info.GetTableType(), PGSQL_TABLE_TYPE, InternalError,
       Format("Invalid table type of table $0", table_id));
-
-  // YB_TODO: Review & simplify the code below.
-  //          Or describe in details when & why the simple implementation
-  //              pg_table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id))
-  //          does not work.
-  //          GHI: https://github.com/yugabyte/yugabyte-db/issues/27590
+  const auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(table_info.namespace_id()));
   const auto relfilenode_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id));
   const auto pg_table_oid = VERIFY_RESULT(table_info.GetPgTableOid(table_id));
-
-  // If this is a rewritten table, confirm that the relfilenode oid of pg_class entry with
-  // OID pg_table_oid is table_oid.
-  if (pg_table_oid != relfilenode_oid) {
-    const auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(table_info.namespace_id()));
-    const auto pg_class_relfilenode_oid = VERIFY_RESULT(
-        sys_catalog_.ReadPgClassColumnWithOidValue(
-            database_oid,
-            pg_table_oid,
-            kPgClassRelFileNodeColumnName));
-    if (pg_class_relfilenode_oid != relfilenode_oid) {
-      // This must be an orphaned table from a failed rewrite.
-      return STATUS_FORMAT(NotFound, "$0: $1", kRelnamespaceNotFoundErrorStr, pg_table_oid);
-    }
+  const auto committed_relfilenode_oid = VERIFY_RESULT(sys_catalog_.ReadPgClassColumnWithOidValue(
+      database_oid, pg_table_oid, kPgClassRelFileNodeColumnName, read_time));
+  if (committed_relfilenode_oid != relfilenode_oid) {
+    return STATUS(
+        NotFound, Format("$0: $1", kCommittedPgsqlTableNotFoundErrorStr, table_id),
+        MasterError(MasterErrorPB::DOCDB_TABLE_NOT_COMMITTED));
   }
-
   return pg_table_oid;
 }
 
@@ -282,7 +270,7 @@ Result<std::string> YsqlManager::GetCachedPgSchemaName(
     const TableId& table_id, const PersistentTableInfo& table_info,
     PgDbRelNamespaceMap& cache) const {
   const auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(table_info.namespace_id()));
-  const auto pg_table_oid = VERIFY_RESULT(GetYqlTableOid(table_id, table_info));
+  const auto pg_table_oid = VERIFY_RESULT(GetPgTableOidIfCommitted(table_id, table_info));
 
   const PgRelNamespaceData* nsp_data_ptr = FindOrNull(cache, database_oid);
   if (nsp_data_ptr == nullptr) {
@@ -311,14 +299,19 @@ Result<std::string> YsqlManager::GetCachedPgSchemaName(
 }
 
 Result<std::string> YsqlManager::GetPgSchemaName(
-    const TableId& table_id, const PersistentTableInfo& table_info) const {
+    const TableId& table_id, const PersistentTableInfo& table_info,
+    const ReadHybridTime& read_time) const {
   const auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(table_info.namespace_id()));
-  const auto pg_table_oid = VERIFY_RESULT(GetYqlTableOid(table_id, table_info));
+  const auto pg_table_oid =
+      VERIFY_RESULT(GetPgTableOidIfCommitted(table_id, table_info, read_time));
   const auto relnamespace_oid = VERIFY_RESULT(sys_catalog_.ReadPgClassColumnWithOidValue(
-      database_oid, pg_table_oid, kPgClassRelNamespaceColumnName));
-  SCHECK_FORMAT(relnamespace_oid != kPgInvalidOid, NotFound,
-      "$0: $1", kRelnamespaceNotFoundErrorStr, pg_table_oid);
-  return sys_catalog_.ReadPgNamespaceNspname(database_oid, relnamespace_oid);
+      database_oid, pg_table_oid, kPgClassRelNamespaceColumnName, read_time));
+  if (relnamespace_oid == kPgInvalidOid) {
+    return STATUS(
+        NotFound, Format("$0: $1", kRelnamespaceNotFoundErrorStr, pg_table_oid),
+        MasterError(MasterErrorPB::DOCDB_TABLE_NOT_COMMITTED));
+  }
+  return sys_catalog_.ReadPgNamespaceNspname(database_oid, relnamespace_oid, read_time);
 }
 
 }  // namespace yb::master
