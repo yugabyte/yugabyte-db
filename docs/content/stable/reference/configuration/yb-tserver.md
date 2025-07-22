@@ -2241,7 +2241,7 @@ Set this flag to `false` to enable online index backfill. When set to `false`, o
 
 For details on how online index backfill works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
 
-#### --num_concurrent_backfills_allowed
+##### --num_concurrent_backfills_allowed
 
 {{% tags/wrap %}}
 
@@ -2764,6 +2764,30 @@ Default: `true`
 {{% /tags/wrap %}}
 
 Controls whether YSQL follower reads that specify a not-yet-safe read time should be rejected. This will force them to go to the leader, which will likely be faster than waiting for safe time to catch up.
+
+##### --enable_ysql_operation_lease
+
+{{% tags/wrap %}}
+
+
+Default: `true`
+{{% /tags/wrap %}}
+
+Enables the [YSQL lease mechanism](../../../architecture/transactions/concurrency-control/#ysql-lease-mechanism).
+
+On YB-TServers, a new PostgreSQL process is spawned only after establishing a lease with the YB-Master leader. The flag also controls whether the background YB-TServer task makes lease refresh requests.
+
+##### --ysql_lease_refresher_interval_ms
+
+{{% tags/wrap %}}
+
+
+Default: `1000` (1 second)
+{{% /tags/wrap %}}
+
+Determines the interval a YB-TServer waits before initiating another YSQL lease refresh RPC.
+
+Refer to [YSQL lease mechanism](../../../architecture/transactions/concurrency-control/#ysql-lease-refresher-interval-ms) for more details.
 
 ### YCQL
 

@@ -216,6 +216,22 @@ Controls whether YSQL follower reads that specify a not-yet-safe read time shoul
 
 Default: `true`
 
+##### --master_ysql_operation_lease_ttl_ms
+
+Default: `30000` (30 seconds)
+
+Specifies base YSQL lease Time-To-Live (TTL). The YB-Master leader uses this value to determine the validity of a YB-TServer's YSQL lease.
+
+Refer to [YSQL lease mechanism](../../../architecture/transactions/concurrency-control/#master-ysql-operation-lease-ttl-ms) for more details.
+
+##### --ysql_operation_lease_ttl_client_buffer_ms
+
+Default: 2000 (2 seconds)
+
+Specifies a client-side buffer for the YSQL operation lease TTL.
+
+Refer to [YSQL lease mechanism](../../../architecture/transactions/concurrency-control/#ysql-operation-lease-ttl-client-buffer-ms) for more details.
+
 ## Logging flags
 
 ##### --colorlogtostderr
