@@ -383,11 +383,11 @@ Returns tables in the following format, depending on the flags used:
 <db-type>.<namespace>.<table-name> <table-id> <table-type>
 ```
 
-* *db-type*: The type of database. Valid values include `ysql`, `ycql`, and `unknown`.
+* *db-type*: The type of database. Valid values are `ysql`, `ycql`, and `unknown`.
 * *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
 * *table-name*: The name of the table.
 * *table-id*: The UUID of the table.
-* *table-type*: The type of table. Valid values include `catalog`, `table`, `index`, and `other`.
+* *table-type*: The type of table. Valid values are `catalog`, `table`, `index`, and `other`.
 
 {{< note title="Tip" >}}
 
@@ -484,7 +484,7 @@ Compacted [000033eb000030008000000000004002] tables.
 
 #### compaction_status
 
-Show the status of compaction on a table.
+Show the status of full compaction on a table.
 
 ```sh
 yb-admin \
@@ -493,9 +493,9 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
-* *db-type*: The type of database. Valid values include `ysql` and `ycql`.
+* *db-type*: The type of database. Valid values are `ysql` and `ycql`.
 * *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
-* *table*: The name of the table to show the compaction status.
+* *table*: The name of the table to show the full compaction status.
 * `show_tablets`: Show the compactions status of individual tablets.
 
 **Example**
@@ -674,7 +674,7 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
-* *db-type*: The type of database. Valid values include `ysql` and `ycql`.
+* *db-type*: The type of database. Valid values are `ysql` and `ycql`.
 * *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
 * *table*: The name of the table to flush.
 * *timeout-in-seconds*: Specifies duration (in seconds) yb-admin waits for flushing to end. Default is `20`.
