@@ -19,7 +19,7 @@ For each DDL statement:
 1. Execute the DDL on the Source, waiting for it to complete.
 1. Execute the DDL on the Target, waiting for it to complete.
 
-After both steps are complete, the YugabyteDB Aeon should reflect any added/removed tables in the Tables listing for this DR configuration.
+After both steps are complete, YugabyteDB Aeon should reflect any added/removed tables in the Tables listing for this DR configuration.
 
 In addition, keep in mind the following:
 

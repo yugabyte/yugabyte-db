@@ -24,7 +24,7 @@ While the switchover task is in progress, both clusters are in read-only mode an
 
 If the DR configuration has any tables that don't have a replication status of Operational, switchover will be unsuccessful. In that case, you can do one of the following:
 
-- On the **Databases** tab, select the database to view the tables and their replication status. For any tables in a bad state, take corresponding action to fix the problem, and then run switchover. In severe cases, where you cannot fix the replication status, (such as Missing Op ID), you will need to perform a full copy from the Source to the Target.
+- On the **Database and Tables** tab, check the replication status of the tables. For any tables in a bad state, take corresponding action to fix the problem, and then run switchover. In severe cases, where you cannot fix the replication status, (such as Missing Op ID), you will need to perform a full copy from the Source to the Target.
 - [Unplanned Failover](../disaster-recovery-failover/).
 
 Verify that the list of tables in the Source's database(s) match the list of tables in the Target's database(s). Switchover will fail if there is a mismatch in this list.
