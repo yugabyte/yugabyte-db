@@ -52,7 +52,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
 
-DEFINE_RUNTIME_uint64(master_ysql_operation_lease_ttl_ms, 30 * 1000,
+DEFINE_RUNTIME_uint64(master_ysql_operation_lease_ttl_ms, 5 * 60 * 1000,
                       "The lifetime of ysql operation lease extensions. The ysql operation lease "
                       "allows tservers to host pg sessions and serve reads and writes to user data "
                       "through the YSQL API.");
