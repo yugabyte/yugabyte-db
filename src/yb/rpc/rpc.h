@@ -242,7 +242,10 @@ class Rpcs {
   typedef boost::container::stable_vector<rpc::RpcCommandPtr> Calls;
   typedef Calls::iterator Handle;
 
+  void StartShutdown();
+  void CompleteShutdown();
   void Shutdown();
+
   Handle Register(RpcCommandPtr call);
   void Register(RpcCommandPtr call, Handle* handle);
   bool RegisterAndStart(RpcCommandPtr call, Handle* handle);
@@ -295,6 +298,7 @@ class Rpcs {
   std::condition_variable cond_;
   Calls calls_;
   bool shutdown_ = false;
+  CoarseTimePoint shutdown_deadline_ GUARDED_BY(mutex_);
 };
 
 template<class Iter>
