@@ -30,6 +30,7 @@
 
 #include "yb/common/common_flags.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/common/jsonb.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
@@ -3117,6 +3118,39 @@ YbcStatus YBCDatabaseClones(YbcPgDatabaseCloneInfo** database_clones, size_t* co
       ++cur_clone;
     }
   }
+  return YBCStatusOK();
+}
+
+YbcStatus YBCQueryAutoAnalyze(
+    YbcPgOid db_oid, YbcAutoAnalyzeInfo** analyze_info, size_t* count) {
+  const auto result = pgapi->QueryAutoAnalyze(db_oid);
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+  const auto& auto_analyze_rows = result.get().rows();
+  *count = auto_analyze_rows.size();
+  if (!auto_analyze_rows.empty()) {
+    *analyze_info = static_cast<YbcAutoAnalyzeInfo*>(
+        YBCPAlloc(sizeof(YbcAutoAnalyzeInfo) * auto_analyze_rows.size()));
+
+    YbcAutoAnalyzeInfo* cur_info = *analyze_info;
+    for (const auto& row : auto_analyze_rows) {
+      std::string last_analyze_info;
+      if (!row.last_analyze_info().empty()) {
+        common::Jsonb jsonb(row.last_analyze_info());
+        auto status = jsonb.ToJsonString(&last_analyze_info);
+        if (!status.ok())
+            return ToYBCStatus(status);
+      }
+      new (cur_info) YbcAutoAnalyzeInfo {
+          .table_oid = row.table_oid(),
+          .mutations = static_cast<uint64_t>(row.mutations()),
+          .last_analyze_info = YBCPAllocStdString(last_analyze_info)
+      };
+      ++cur_info;
+    }
+  }
+
   return YBCStatusOK();
 }
 

@@ -32,14 +32,17 @@
 #include "yb/cdc/cdc_state_table.h"
 
 #include "yb/client/client.h"
+#include "yb/client/error.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
+#include "yb/client/session.h"
 #include "yb/client/stateful_services/pg_cron_leader_service_client.h"
 #include "yb/client/table.h"
 #include "yb/client/table_info.h"
 #include "yb/client/tablet_server.h"
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_pool.h"
+#include "yb/client/yb_op.h"
 
 #include "yb/common/pg_types.h"
 #include "yb/common/pgsql_error.h"
@@ -51,6 +54,7 @@
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.proxy.h"
+#include "yb/master/master_defaults.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/sys_catalog_constants.h"
 
@@ -68,6 +72,7 @@
 #include "yb/tserver/pg_shared_mem_pool.h"
 #include "yb/tserver/pg_table_cache.h"
 #include "yb/tserver/pg_txn_snapshot_manager.h"
+#include "yb/tserver/stateful_services/stateful_service_base.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
@@ -89,6 +94,8 @@
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/yb_pg_errcodes.h"
+
+#include "yb/yql/cql/ql/util/statement_result.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -2810,6 +2817,51 @@ class PgClientServiceImpl::Impl : public SessionProvider {
         req.namespace_oid(), req.table_name(), &oid, &relfilenode));
     resp->set_table_oid(oid);
     resp->set_relfilenode(relfilenode);
+    return Status::OK();
+  }
+
+  Status QueryAutoAnalyze(
+      const PgQueryAutoAnalyzeRequestPB& req, PgQueryAutoAnalyzeResponsePB* resp,
+      rpc::RpcContext* context) {
+    auto table = std::make_unique<client::TableHandle>();
+    const client::YBTableName pg_auto_analyze_table =
+        stateful_service::GetStatefulServiceTableName(StatefulServiceKind::PG_AUTO_ANALYZE);
+    RETURN_NOT_OK(table->Open(pg_auto_analyze_table, &client()));
+    const client::YBqlReadOpPtr read_op = table->NewReadOp();
+    auto* const read_req = read_op->mutable_request();
+
+    table->AddColumns(
+        {yb::master::kPgAutoAnalyzeTableId, yb::master::kPgAutoAnalyzeMutations,
+         yb::master::kPgAutoAnalyzeLastAnalyzeInfo, yb::master::kPgAutoAnalyzeCurrentAnalyzeInfo},
+        read_req);
+    auto session = client().NewSession(client().default_rpc_timeout());
+    // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+    RETURN_NOT_OK_PREPEND(
+        session->TEST_ApplyAndFlush(read_op), "Failed to read from auto analyze table");
+
+    auto database_oid = req.database_oid();
+    auto rowblock = ql::RowsResult(read_op.get()).GetRowBlock();
+    auto& row_schema = rowblock->schema();
+    auto table_id_idx = row_schema.find_column(master::kPgAutoAnalyzeTableId);
+    auto mutations_idx = row_schema.find_column(master::kPgAutoAnalyzeMutations);
+    auto analyze_history_idx = row_schema.find_column(master::kPgAutoAnalyzeLastAnalyzeInfo);
+    for (const auto& row : rowblock->rows()) {
+        TableId table_id = row.column(table_id_idx).string_value();
+        auto db_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTableId(table_id));
+        if (db_oid != database_oid)
+            continue;
+        auto pg_auto_analyze_entry = resp->add_rows();
+        auto table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id));
+        int64_t mutations = row.column(mutations_idx).int64_value();
+        pg_auto_analyze_entry->set_table_oid(table_oid);
+        pg_auto_analyze_entry->set_mutations(mutations);
+        auto last_analyze_qlvalue = row.column(analyze_history_idx);
+        if (!last_analyze_qlvalue.IsNull()
+            && last_analyze_qlvalue.value_case() == QLValuePB::kJsonbValue) {
+            pg_auto_analyze_entry->set_last_analyze_info(last_analyze_qlvalue.jsonb_value());
+        }
+    }
+
     return Status::OK();
   }
 

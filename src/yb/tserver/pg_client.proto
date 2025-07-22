@@ -121,6 +121,8 @@ service PgClientService {
 
   rpc ListClones(PgListClonesRequestPB) returns (PgListClonesResponsePB);
 
+  rpc QueryAutoAnalyze(PgQueryAutoAnalyzeRequestPB) returns (PgQueryAutoAnalyzeResponsePB);
+
   rpc FetchData(PgFetchDataRequestPB) returns (PgFetchDataResponsePB) {
     option (yb.rpc.lightweight_method).sides = PROXY;
     option (yb.rpc.exclude_metadata) = true; // TODO: remove after #27903
@@ -1266,6 +1268,22 @@ message PgDatabaseCloneInfoPB {
   string state = 5;
   fixed64 as_of_time = 6;
   string failure_reason = 7;
+}
+
+message PgQueryAutoAnalyzeRequestPB{
+  AshMetadataPB ash_metadata = 1;
+  uint32 database_oid = 2;
+}
+
+message PgQueryAutoAnalyzeResponsePB {
+  AppStatusPB status = 1;
+  repeated PgAutoAnalyzeDataPB rows = 2;
+}
+
+message PgAutoAnalyzeDataPB {
+  uint32 table_oid = 1;
+  uint64 mutations = 2;
+  bytes last_analyze_info = 3;
 }
 
 //--------------------------------------------------------------------------------------------------

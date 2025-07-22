@@ -997,6 +997,12 @@ typedef struct {
   int num_lists;
 } YbcCatalogMessageLists;
 
+typedef struct {
+  YbcPgOid table_oid;
+  uint64_t mutations;
+  char* last_analyze_info;
+} YbcAutoAnalyzeInfo;
+
 typedef enum {
   /*
    * Taken from XClusterNamespaceInfoPB.XClusterRole in

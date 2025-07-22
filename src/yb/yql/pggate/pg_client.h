@@ -203,6 +203,8 @@ class PgClient {
 
   Result<tserver::PgListClonesResponsePB> ListDatabaseClones();
 
+  Result<tserver::PgQueryAutoAnalyzeResponsePB> QueryAutoAnalyze(PgOid db_oid);
+
   Result<master::GetNamespaceInfoResponsePB> GetDatabaseInfo(PgOid oid);
 
   Result<bool> PollVectorIndexReady(const PgObjectId& table_id);

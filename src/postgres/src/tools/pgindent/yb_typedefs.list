@@ -231,6 +231,7 @@ YbcAshConstQueryIdType
 YbcAshGetNextCircularBufferSlot
 YbcAshMetadata
 YbcAshSample
+YbcAutoAnalyzeInfo
 YbcBindColumn
 YbcCatalogMessageList
 YbcCatalogMessageLists

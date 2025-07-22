@@ -271,7 +271,7 @@ Status PgAutoAnalyzeService::TriggerAnalyze() {
       analyzed_tables, std::move(table_id_to_info_maps), analyze_timestamp, params));
 
   RETURN_NOT_OK(FlushAnalyzeHistory(
-      analyzed_tables, table_id_to_info_maps, analyze_timestamp));
+      analyzed_tables, table_id_to_info_maps));
 
   RETURN_NOT_OK(CleanUpDeletedTablesFromServiceTable(table_id_to_info_maps, deleted_tables,
                                                      deleted_databases));
@@ -965,8 +965,7 @@ Result<AutoAnalyzeInfoMap> PgAutoAnalyzeService::UpdateAnalyzeHistory(
  * Example output: {"history":[2512767964307,2512768509620,2512768509621]}
  */
 Status PgAutoAnalyzeService::FlushAnalyzeHistory(
-    const std::vector<TableId>& tables, const AutoAnalyzeInfoMap& table_id_to_mutations_maps,
-    const std::chrono::system_clock::time_point& now) {
+    const std::vector<TableId>& tables, const AutoAnalyzeInfoMap& table_id_to_mutations_maps) {
   const auto rpc_timeout =
       GetAtomicFlag(&FLAGS_ysql_cluster_level_mutation_persist_rpc_timeout_ms) * 1ms;
 

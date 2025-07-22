@@ -780,6 +780,15 @@ class PgClient::Impl : public BigDataFetcher {
     return resp;
   }
 
+  Result<tserver::PgQueryAutoAnalyzeResponsePB> QueryAutoAnalyze(PgOid db_oid) {
+    tserver::PgQueryAutoAnalyzeRequestPB req;
+    tserver::PgQueryAutoAnalyzeResponsePB resp;
+    req.set_database_oid(db_oid);
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::QueryAutoAnalyze,
+        req, resp, PggateRPC::kQueryAutoAnalyze));
+    return resp;
+  }
+
   Status FinishTransaction(Commit commit, const std::optional<DdlMode>& ddl_mode) {
     tserver::PgFinishTransactionRequestPB req;
     req.set_session_id(session_id_);
@@ -2004,6 +2013,11 @@ Status PgClient::FinishTransaction(Commit commit, const std::optional<DdlMode>& 
 Result<tserver::PgListClonesResponsePB> PgClient::ListDatabaseClones() {
   return impl_->ListDatabaseClones();
 }
+
+Result<tserver::PgQueryAutoAnalyzeResponsePB> PgClient::QueryAutoAnalyze(PgOid db_oid) {
+    return impl_->QueryAutoAnalyze(db_oid);
+}
+
 
 Result<master::GetNamespaceInfoResponsePB> PgClient::GetDatabaseInfo(uint32_t oid) {
   return impl_->GetDatabaseInfo(oid);

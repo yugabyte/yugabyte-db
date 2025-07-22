@@ -8546,6 +8546,57 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 	return (Datum) 0;
 }
 
+Datum
+yb_stat_auto_analyze(PG_FUNCTION_ARGS)
+{
+	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	int			i;
+
+#define YB_AUTO_ANALYZE_TABLE_COLS 5
+
+	InitMaterializedSRF(fcinfo, 0);
+	YbcAutoAnalyzeInfo *auto_analyze_info = NULL;
+	size_t		num_rows = 0;
+
+	HandleYBStatus(YBCQueryAutoAnalyze(MyDatabaseId, &auto_analyze_info, &num_rows));
+
+	for (i = 0; i < num_rows; ++i)
+	{
+		YbcAutoAnalyzeInfo *row_info = (YbcAutoAnalyzeInfo *) auto_analyze_info + i;
+		Datum		values[YB_AUTO_ANALYZE_TABLE_COLS];
+		bool		nulls[YB_AUTO_ANALYZE_TABLE_COLS];
+
+		memset(values, 0, sizeof(values));
+		memset(nulls, 0, sizeof(nulls));
+		Relation rel = RelationIdGetRelation(row_info->table_oid);
+		/*
+		 * A table could be deleted, but auto analyze hasn't cleaned up its
+		 * entry from its service table yet.
+		 */
+		if (!RelationIsValid(rel))
+			continue;
+		values[0] = ObjectIdGetDatum(row_info->table_oid);
+		values[1] = CStringGetTextDatum(get_namespace_name(RelationGetNamespace(rel)));
+		values[2] = CStringGetTextDatum(RelationGetRelationName(rel));
+		values[3] = UInt64GetDatum(row_info->mutations);
+		if (strlen(row_info->last_analyze_info))
+		{
+			values[4] = DirectFunctionCall1(jsonb_in, CStringGetDatum(row_info->last_analyze_info));
+		}
+		else
+		{
+			nulls[4] = true;
+		}
+
+		tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);
+		RelationClose(rel);
+	}
+
+#undef YB_AUTO_ANALYZE_TABLE_COLS
+
+	return (Datum) 0;
+}
+
 YbcPgStatement
 YbNewSample(Relation rel,
 			int targrows,
