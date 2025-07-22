@@ -3,6 +3,11 @@
 # Get current kube context
 context=$(kubectl config current-context)
 
+# Defaults for YBA
+export STORAGE_CLASS="yb-standard"
+export STORAGE_SIZE="100Gi"
+export YBA_ADDITIONAL_VALUES_FILE="/dev/null"
+
 # Derive cloud provider from context
 if [[ "$context" == *"teleport"*"aws"* ]]; then
   export STORAGE_CLASS="gp2"
@@ -35,11 +40,15 @@ elif [[ "$context" == *"teleport"*"gcp"* ]]; then
 elif [[ "$context" == *"teleport"*"azure"* ]]; then
   export STORAGE_CLASS="managed-csi"
   export STORAGE_SIZE="200Gi"
+fi
 
+if [[ "$context" == *"teleport"* ]] && \
+   ([[ "$context" == *"aws"* ]] || \
+    [[ "$context" == *"gcp"* ]] || \
+    [[ "$context" == *"azure"* ]]); then
+  export YBA_ADDITIONAL_VALUES_FILE="./additional-app-conf.yaml"
 else
-  # Default/fallback configuration
-  export STORAGE_CLASS="yb-standard"
-  export STORAGE_SIZE="100Gi"
+  export YBA_ADDITIONAL_VALUES_FILE="/dev/null"
 fi
 
 echo "Successfully configured the enviornment for $context"

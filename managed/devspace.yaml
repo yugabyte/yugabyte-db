@@ -35,13 +35,13 @@ pipelines:
 
 deployments:
   yba:
-    namespace: ${YBA_HELM_RELEASE_NAME}
+    namespace: ${DEVSPACE_NAMESPACE}
     helm:
       releaseName: ${YBA_HELM_RELEASE_NAME}
       chart:
         name: ../../charts/stable/yugaware/
       valuesFiles:
-        - ./additional-app-conf.yaml
+        -  ${YBA_ADDITIONAL_VALUES_FILE}
       values:
         image:
           repository: quay.io/yugabyte/yugaware-itest
@@ -160,3 +160,6 @@ vars:
   ENABLE_AWS_IAM_ROLE:
     source: env
     default: "false"
+  YBA_ADDITIONAL_VALUES_FILE:
+    source: env
+    default: "/dev/null"
