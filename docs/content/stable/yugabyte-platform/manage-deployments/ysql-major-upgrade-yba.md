@@ -26,6 +26,8 @@ The upgrade is fully online. While the upgrade is in progress, you have full and
 
     If you have a pre-existing cluster, first upgrade it to the latest version in the v2024.2 series using the [upgrade instructions](../upgrade-software/).
 
+- If you are upgrading a multi-region cluster or a cluster with more than 10,000 tables and indexes, increase the catalog upgrade timeout by setting the **Wait Attempts for major catalog upgrade** Universe Runtime Configuration option (config key yb.upgrade.wait_attempts_for_major_catalog_upgrade) to 60 or higher at the universe scope. This prevents timeout issues during the PostgreSQL 15 catalog upgrade process. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). <!-- TODO Remove for 2025.1.1-->
+
 ### Precheck
 
 New PostgreSQL major versions add many new features and performance improvements, but also remove some older unsupported features and data types. You can only upgrade after you remove all deprecated features and data types from your databases.
