@@ -49,7 +49,7 @@ DEFINE_test_flag(bool, skip_remove_tserver_shared_memory_object, false,
 DEFINE_RUNTIME_bool(pg_client_use_shared_memory, !yb::kIsDebug && !yb::kIsMac,
                     "Use shared memory for executing read and write pg client queries");
 
-DEFINE_NON_RUNTIME_bool(enable_object_lock_fastpath, false,
+DEFINE_NON_RUNTIME_bool(enable_object_lock_fastpath, !yb::kIsDebug && !yb::kIsMac,
     "Whether to use shared memory fastpath for shared object locks.");
 
 DEFINE_validator(pg_client_use_shared_memory,

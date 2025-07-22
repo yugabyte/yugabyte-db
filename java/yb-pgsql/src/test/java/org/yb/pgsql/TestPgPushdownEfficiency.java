@@ -14,6 +14,7 @@ public class TestPgPushdownEfficiency extends BasePgSQLTestWithRpcMetric {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("enable_object_lock_fastpath", "false");
     flagMap.put("pg_client_use_shared_memory", "false");
     return flagMap;
   }
