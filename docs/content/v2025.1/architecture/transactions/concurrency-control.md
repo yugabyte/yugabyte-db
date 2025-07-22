@@ -1276,11 +1276,20 @@ The `SKIP LOCKED` clause is supported in both concurrency control policies and p
 
 YugabyteDB employs a robust lease mechanism between YB-TServer and YB-Master, so that in the event a YB-TServer is network partitioned from the YB-Master leader for a long time, the YB-TServer is transitioned to a mode that doesn't allow the YB-TServer to serve read or write traffic till it establishes connectivity with the YB-Master leader.
 
-You can enable the lease feature for the YB-TServers using the [--enable_ysql_operation_lease](../../../reference/configuration/yb-tserver/#enable-ysql-operation-lease) flag. Additional flags you can use are as follows:
+### Configure leases
 
-### YB-Master
+You enable the lease feature for the YB-TServers using the [--enable_ysql_operation_lease](../../../reference/configuration/yb-tserver/#enable-ysql-operation-lease) flag.
 
-- [--master_ysql_operation_lease_ttl_ms](../../../reference/configuration/yb-master/#master-ysql-operation-lease-ttl-ms)
+You configure the lease duration and behavior using the following additional flags:
+
+| Server | Flag |
+| :--- | :--- |
+| Master | [--master_ysql_operation_lease_ttl_ms](../../../reference/configuration/yb-master/#master-ysql-operation-lease-ttl-ms) |
+| Master | [--ysql_operation_lease_ttl_client_buffer_ms](../../../reference/configuration/yb-master/#ysql-operation-lease-ttl-client-buffer-ms) |
+| TServer | [--ysql_lease_refresher_interval_ms](../../../reference/configuration/yb-tserver/#ysql-lease-refresher-interval-ms) |
+
+
+#### master_ysql_operation_lease_ttl_ms
 
     Default: `30000` (30 seconds)
 
@@ -1296,7 +1305,7 @@ You can enable the lease feature for the YB-TServers using the [--enable_ysql_op
 
   - Increases the time before locks held by crashed YB-TServers are released, which can block DMLs on any table where the  crashed YB-TServer held a lock (this period  is also capped by the lease TTL).
 
-- [--ysql_operation_lease_ttl_client_buffer_ms](../../../reference/configuration/yb-master/#ysql-operation-lease-ttl-client-buffer-ms)
+#### ysql_operation_lease_ttl_client_buffer_ms
 
     Default: 2000 (2 seconds)
 
@@ -1304,9 +1313,8 @@ You can enable the lease feature for the YB-TServers using the [--enable_ysql_op
 
     When processing lease refresh RPC (`RefreshYsqlLease`) requests, the YB-Master leader subtracts this value from the [--master_ysql_operation_lease_ttl_ms](#master-ysql-operation-lease-ttl-ms) to calculate a slightly shorter lease TTL that is then provided to the YB-TServers. This difference between the lease TTL maintained by the YB-Masters and the lease TTL granted to the YB-TServers allows YB-TServers a grace period to terminate their hosted sessions before the YB-Master leader considers their lease expired.
 
-### YB-TServer
 
-- [--ysql_lease_refresher_interval_ms](../../../reference/configuration/yb-tserver/#ysql-lease-refresher-interval-ms)
+#### ysql_lease_refresher_interval_ms
 
     Default: `1000` (1 second)
 
@@ -1331,11 +1339,13 @@ YSQL leases held by YB-TServer are respected by a new YB-Master leader after a f
 
 The lease TTL, in particular with the `master_ysql_operation_lease_ttl_ms` configuration flag, can be safely increased during runtime. However lowering it during runtime may be unsafe as the lease duration from the YB-Master leader's perspective may be shorter than the lease duration from the YB-TServer's perspective. If the YB-TServer is network partitioned from the YB-Master leader during this time, it may serve DMLs believing it has a live lease while the YB-Master leader serves DDLs believing the YB-TServer has lost its lease.
 
-To prevent such inconsistencies when reducing `master_ysql_operation_lease_ttl_ms`, follow this multi-step process:
+To prevent such inconsistencies when reducing `master_ysql_operation_lease_ttl_ms`, use the following multi-step process.
 
-Suppose `X` is the target value for `master_ysql_operation_lease_ttl_ms`.
+Suppose `X` is the target value for `master_ysql_operation_lease_ttl_ms`; do the following:
 
-1. Set `ysql_operation_lease_ttl_client_buffer_ms` on all YB-Masters to: (`master_ysql_operation_lease_ttl_ms` - `X` + `ysql_operation_lease_ttl_client_buffer_ms`).
+1. Set `ysql_operation_lease_ttl_client_buffer_ms` on all YB-Masters as follows:
+
+    (`master_ysql_operation_lease_ttl_ms` - `X` + `ysql_operation_lease_ttl_client_buffer_ms`)
 1. Wait for `master_ysql_operation_lease_ttl_ms`.
 1. Set `master_ysql_operation_lease_ttl_ms` to `X`.
 1. Set `ysql_operation_lease_ttl_client_buffer_ms` to its original value before the change in step 1.
