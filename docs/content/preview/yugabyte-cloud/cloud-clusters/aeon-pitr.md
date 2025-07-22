@@ -14,7 +14,7 @@ type: docs
 
 To prevent data loss, YugabyteDB Aeon supports point-in-time recovery (PITR) of cluster data. When enabled for a database or keyspace, YugabyteDB takes a snapshot of the data once a day. Each snapshot maintains a continuous change history. You can then create a database clone at a specific point in time in a snapshot.
 
-The clone a zero-copy, independent writable clone of your database that you can use for the following:
+The clone is a zero-copy, independent writable clone of your database that you can use for the following:
 
 - Data recovery. To recover from data loss due to user error (for example, accidentally dropping a table) or application error (for example, updating rows with corrupted data), you can create a clone of your production database from a point in time when the database was in a good state. This allows you to perform forensic analysis, export the lost or corrupted data from the clone, and import it back to the original database.
 
@@ -70,7 +70,7 @@ You can disable PITR for a database or keyspace as follows:
 
 1. Navigate to **Point-in-time Recovery**.
 
-1. Find the database or keyspace for which you to disable PITR, click the three dots (**...**) to display its actions, and then select **Disable Point-in-Time Recovery**.
+1. Find the database or keyspace for which you want to disable PITR, click the three dots (**...**) to display its actions, and then select **Disable Point-in-Time Recovery**.
 
 ## Caveats and limitations
 
@@ -81,4 +81,4 @@ Enabling PITR impacts both disk consumption and performance. Keep in mind the fo
 
     In addition to the snapshot retention period, YugabyteDB allows you to adjust the snapshot interval, which in YugabyteDB Aeon is fixed at 24 hours.
 
-Database clones do not initially use added disk space, but they do create an independent set of logical tablets. If you are at or have exceeded the [tablet peer limit](../cloud-monitor/cloud-alerts/#fix-tablet-peer-alerts), you cannot create clones. If you hit or exceed the limit due to tablets that a clone is creating, then operations on the clone will fail.
+Database clones do not initially use added disk space, but they do create an independent set of logical tablets. If you are at or have exceeded the [tablet peer limit](../../cloud-monitor/cloud-alerts/#fix-tablet-peer-alerts), you cannot create clones. If you hit or exceed the limit due to tablets that a clone is creating, then operations on the clone will fail.
