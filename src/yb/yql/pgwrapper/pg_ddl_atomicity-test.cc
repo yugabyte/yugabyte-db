@@ -1000,7 +1000,28 @@ TEST_F(PgDdlAtomicityTxnTest,
   ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET b = 2 WHERE a = 1", table()));
 }
 
-TEST_F(PgDdlAtomicitySanityTest, DmlWithAddColTest) {
+class PgDdlAtomicitySanityTestWithTableLocks : public PgDdlAtomicitySanityTest,
+                                               public ::testing::WithParamInterface<bool> {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgDdlAtomicitySanityTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back(
+        yb::Format("--enable_object_locking_for_table_locks=$0", EnableTableLocks()));
+    options->extra_tserver_flags.push_back(
+        yb::Format("--ysql_yb_ddl_transaction_block_enabled=$0", EnableTableLocks()));
+    AppendCsvFlagValue(
+        options->extra_tserver_flags, "allowed_preview_flags_csv",
+        "enable_object_locking_for_table_locks,ysql_yb_ddl_transaction_block_enabled");
+  }
+
+  bool EnableTableLocks() const { return GetParam(); }
+};
+
+TEST_P(PgDdlAtomicitySanityTestWithTableLocks, DmlWithAddColTest) {
+  // Disable object locking for table locks so that we can test the DML with add-column.
+  // With table locks, the add-column operation will be blocked until the DML transaction
+  // is committed. This is because the add-column operation acquires an EXCLUSIVE lock on the table
+  // and the DML transaction acquires an ACCESS_SHARE lock on the table (at ts-1).
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   const string table = "dml_with_add_col_test";
   CreateTable(table);
@@ -1013,14 +1034,22 @@ TEST_F(PgDdlAtomicitySanityTest, DmlWithAddColTest) {
 
   // Conn2: Initiate rollback of the alter.
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "true"));
-  ASSERT_OK(conn2.TestFailDdl(AddColumnStmt(table)));
+  ASSERT_OK(conn2.Execute("SET statement_timeout = 8"));
 
-  // Conn1: Since we parallely added a column to the table, the add-column operation would have
-  // detected the distributed transaction locks acquired by this transaction on its tablets and
-  // aborted it. Add-column operation aborts all ongoing transactions on the table without
-  // exception as the transaction could now be in an erroneous state having used the schema
-  // without the newly added column.
-  ASSERT_NOK(conn1.Execute("COMMIT"));
+  if (EnableTableLocks()) {
+    // Conn2 will have to fail because it cannot get the table locks held by conn1.
+    ASSERT_NOK(conn2.TestFailDdl(AddColumnStmt(table)));
+    ASSERT_OK(conn1.Execute("ABORT"));
+  } else {
+    ASSERT_OK(conn2.TestFailDdl(AddColumnStmt(table)));
+
+    // Conn1: Since we parallely added a column to the table, the add-column operation would have
+    // detected the distributed transaction locks acquired by this transaction on its tablets and
+    // aborted it. Add-column operation aborts all ongoing transactions on the table without
+    // exception as the transaction could now be in an erroneous state having used the schema
+    // without the newly added column.
+    ASSERT_NOK(conn1.Execute("COMMIT"));
+  }
 
   // Conn1: Non-transactional insert retry due to Schema version mismatch,
   // refreshing the table cache.
@@ -1043,6 +1072,10 @@ TEST_F(PgDdlAtomicitySanityTest, DmlWithAddColTest) {
   // transaction succeeds.
   ASSERT_OK(conn1.Execute("COMMIT"));
 }
+
+INSTANTIATE_TEST_CASE_P(
+    DmlAddColTestWithTableLocks, PgDdlAtomicitySanityTestWithTableLocks, ::testing::Bool(),
+    ::testing::PrintToStringParamName());
 
 // Test that DML transactions concurrent with an aborted DROP TABLE transaction
 // can commit successfully (both before and after the rollback is complete).`
