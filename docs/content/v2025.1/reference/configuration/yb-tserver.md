@@ -2787,7 +2787,7 @@ Default: `1000` (1 second)
 
 Determines the interval a YB-TServer waits before initiating another YSQL lease refresh RPC.
 
-Refer to [YSQL lease mechanism](../../../architecture/transactions/concurrency-control/#yb-tserver) for more details.
+Refer to [YSQL lease mechanism](../../../architecture/transactions/concurrency-control/#ysql-lease-refresher-interval-ms) for more details.
 
 ### YCQL
 
