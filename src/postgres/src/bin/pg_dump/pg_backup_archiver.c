@@ -165,7 +165,8 @@ YbBackwardCompatibleSetGuc(ArchiveHandle *AH,
 						   const char *value,
 						   bool db_scoped)
 {
-	char *set_guc_command;
+	char	   *set_guc_command;
+
 	if (db_scoped)
 	{
 		set_guc_command = psprintf("format('ALTER DATABASE %%I SET %s TO %s', "
@@ -176,12 +177,13 @@ YbBackwardCompatibleSetGuc(ArchiveHandle *AH,
 	{
 		set_guc_command = psprintf("'SET %s TO %s'", guc_name, value);
 	}
-	char *cmd =  psprintf("DO $$\n"
-		"BEGIN\n"
-		"  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = '%s') THEN\n"
-		"    EXECUTE %s;\n"
-		"  END IF;\n"
-		"END $$;\n", guc_name, set_guc_command);
+	char	   *cmd = psprintf("DO $$\n"
+							   "BEGIN\n"
+							   "  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = '%s') THEN\n"
+							   "    EXECUTE %s;\n"
+							   "  END IF;\n"
+							   "END $$;\n", guc_name, set_guc_command);
+
 	ahprintf(AH, "%s", cmd);
 	free(set_guc_command);
 	free(cmd);
