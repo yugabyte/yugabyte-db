@@ -3287,8 +3287,8 @@
           "portPlaceholder": "8080",
           "webProxy": "Web Proxy (HTTP)",
           "byPassProxy": "Bypass Proxy List",
-          "byPassListPlaceholder": "example.com, example.com:8080",
-          "byPassHelper": "Separate multiple values by pressing Enter, Space, or Comma."
+          "byPassListPlaceholder": "example.com:8080",
+          "byPassHelper": "Separate multiple values by pressing <b>Enter, Space,</b> or <b>Comma</b>."
         }
       },
       "otherAdvancedSettings": {

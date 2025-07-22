@@ -115,10 +115,10 @@ export const sortAndGroup = (data?: InstanceType[], cloud?: CloudType): Instance
   return _.sortBy(result, ['groupName', 'label', 'numCores']);
 };
 
-export const useGetAllZones = (provider?: ProviderType, regionList?: Region[]) => {
-  const [allAZ, setAllAZ] = useState<Placement[]>([]);
+export const useGetZones = (provider?: ProviderType, regionList?: Region[]) => {
+  const [zones, setZones] = useState<Placement[]>([]);
 
-  const { data: allRegions } = useQuery(
+  const { data: allRegions, isLoading: isLoadingZones } = useQuery(
     [QUERY_KEY.getRegionsList, provider?.uuid],
     () => api.getRegionsList(provider?.uuid),
     { enabled: !!provider?.uuid } // make sure query won't run when there's no provider defined
@@ -138,8 +138,8 @@ export const useGetAllZones = (provider?: ProviderType, regionList?: Region[]) =
         }));
       });
 
-    setAllAZ(_.sortBy(zones, 'name'));
+    setZones(_.sortBy(zones, 'name'));
   }, [allRegions, regionList]);
 
-  return allAZ;
+  return { zones, isLoadingZones };
 };
