@@ -26,7 +26,7 @@ If the Source is terminated for some reason, do the following:
 
 1. Note the **Potential data loss on failover** to understand the extent of possible data loss as a result of the outage, and determine if the extent of data loss is acceptable for your situation.
 
-    - The potential data loss is computed as the safe time lag that existed at the current safe time on the Target.
+    - The potential data loss is computed as the safe time lag that existed at the current safe time on the Target. Because only a portion of the data changes can be replicated to the target universe, any partially replicated data will be discarded to ensure a consistent snapshot at the latest safe point in time. The potential data loss on failover indicates the volume of such data that will be dropped.
     - Use the **Tables** tab to understand which specific tables have the highest safe time lag and replication lag.
 
     For more information on replication metrics, refer to [Replication](../../../../launch-and-manage/monitor-and-alert/metrics/replication/).

@@ -31,46 +31,33 @@ Use the following guidance when managing tables and indexes in clusters with DR 
 
 ## Tables
 
-Note: If you are performing application upgrades involving both adding and dropping tables, perform the upgrade in two parts: first add tables, then drop tables.
+All DDL operations must first be executed on the Source and then manually applied to the Target in the same order. For example, if you create a table on the Source, you must also create the same table on the Target before executing any subsequent DDL commands on the Source.
 
-### Add a table to DR
+For example, if you add a table on the Source as follows: 
 
-To ensure that data is protected at all times, set up DR on a new table _before_ starting any workload.
+```sql
+CREATE TABLE users (id UUID PRIMARY KEY, name TEXT);
+```
 
-If a table already has data before adding it to DR, then adding the table to replication can result in a backup and restore of the entire database from Source to Target.
+Then, on the Target, you would apply the same command:
 
-Add tables to DR in the following sequence:
+```sql
+CREATE TABLE users (id UUID PRIMARY KEY, name TEXT);
+```
 
-1. Create the table on the Source (if it doesn't already exist).
-1. Create the table on the Target.
-1. Navigate to your Source cluster **Disaster Recovery** tab.
-1. Click **Actions** and choose **Select Databases and Tables**.
-1. Select the tables and click **Validate Selection**.
-1. If data needs to be copied, click **Next: Confirm Full Copy**.
-1. Click **Apply Changes**.
+Next, if you add a column on the Source:
 
-Note the following:
+```sql
+ALTER TABLE users ADD COLUMN email TEXT;
+```
 
-- If the newly added table already has data, then adding the table can trigger a full copy of that entire database from Source to Target.
+You must repeat the same operation on the Target before issuing any further DDLs on the Source:
 
-- It is recommended that you set up replication on the new table before starting any workload to ensure that data is protected at all times. This approach also avoids the full copy.
+```sql
+ALTER TABLE users ADD COLUMN email TEXT;
+```
 
-- This operation also automatically adds any associated index tables of this table to the DR configuration.
-
-- If using colocation, colocated tables on the Source and Target should be created with the same colocation ID if they already exist on both the Source and Target prior to DR setup.
-
-### Remove a table from DR
-
-When dropping a table, remove the table from DR before dropping the table in the Source and Target databases.
-
-Remove tables from DR in the following sequence:
-
-1. Navigate to your Source cluster **Disaster Recovery** tab.
-1. Click **Actions** and choose **Select Databases and Tables**.
-1. Deselect the tables and click **Validate Selection**.
-1. Click **Apply Changes**.
-1. Drop the table from the Target database.
-1. Drop the table from the Source database.
+This ensures DDL consistency between the Source and Target.
 
 ## Indexes
 
@@ -92,8 +79,6 @@ Add indexes to replication in the following sequence:
 
     For instructions on monitoring backfill, refer to [Create indexes and track the progress](../../../../explore/ysql-language-features/indexes-constraints/index-backfill/).
 
-1. [Reconcile the configuration](#reconcile-configuration).
-
 ### Remove an index from DR
 
 When an index is dropped it is automatically removed from DR.
@@ -103,43 +88,3 @@ Remove indexes from replication in the following sequence:
 1. Drop the index on the Target.
 
 1. Drop the index on the Source.
-
-1. [Reconcile the configuration](#reconcile-configuration).
-
-## Table partitions
-
-### Add a table partition to DR
-
-Adding a table partition is similar to adding a table.
-
-The caveat is that the parent table (if not already) along with each new partition has to be added to DR, as DDL changes are not replicated automatically. Each partition is treated as a separate table and is added to DR separately (like a table).
-
-For example, you can create a table with partitions as follows:
-
-```sql
-CREATE TABLE order_changes (
-  order_id int,
-  change_date date,
-  type text,
-  description text)
-  PARTITION BY RANGE (change_date);
-```
-
-```sql
-CREATE TABLE order_changes_default PARTITION OF order_changes DEFAULT;
-```
-
-Create a new partition:
-
-```sql
-CREATE TABLE order_changes_2023_01 PARTITION OF order_changes
-FOR VALUES FROM ('2023-01-01') TO ('2023-03-30');
-```
-
-Assume the parent table and default partition are included in the replication stream.
-
-To add a table partition to DR, follow the same steps for [Add a table to DR](#add-a-table-to-dr).
-
-### Remove table partitions from DR
-
-To remove a table partition from DR, follow the same steps as [Remove a table from DR](#remove-a-table-from-dr).

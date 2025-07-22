@@ -23,11 +23,11 @@ Create two clusters, the Source cluster which will serve reads and writes, and t
 Ensure the clusters have the following characteristics:
 
 - Both clusters are running the same version of YugabyteDB ({{<release "2024.1.4">}} or later).
-- Both clusters are deployed in a [VPC and are peered](../../../cloud-basics/cloud-vpcs/cloud-vpc-intro/).
+- Both clusters are deployed in a [VPC](../../../cloud-basics/cloud-vpcs/cloud-vpc-intro/) and are on the same cloud provider.
 - They have enough disk space to support storage of write-ahead logs (WALs) in case of a network partition or a temporary outage of the Target cluster. During these cases, WALs will continue to write until replication is restored. Consider sizing your disk according to your ability to respond and recover from network or other infrastructure outages.
-- DR enables point-in-time-recovery (PITR) on the Target, requiring additional disk space.
+- DR enables point-in-time-recovery (PITR) on both the Source and the Target. Although PITR is not required on the Source for DR purposes, enabling it reduces the switchover task execution time. This leads to increase storage use for the sake of performance.
 
-    PITR is used by DR during failover to restore the database to a consistent state. Note that if the Target cluster already has PITR configured, that configuration is replaced by the DR configuration.
+    PITR is used by DR during failover to restore the database to a consistent state. Note that if the Target cluster already has PITR configured, that configuration is replaced by the PITR configuration set during DR setup.
 
 Prepare your database and tables on the Source. Make sure the database and tables aren't already being used for xCluster replication; databases and tables can only be used in one replication at a time. The Source can be empty or have data. If the Source has a lot of data, the DR setup will take longer because the data must be copied in full to the Target before on-going asynchronous replication starts.
 
@@ -35,13 +35,13 @@ During DR setup, create objects on the Target as well.
 
 DR performs a full copy of the data to be replicated on the Source, and restores the data to the Target.
 
-After DR is configured, the Target is only be available for reads.
+After DR is configured, the Target is only available for reads.
 
 ### Best practices
 
 - Monitor CPU and keep its use below 65%.
 - Monitor disk space and keep its use under 65%.
-- Add new tables and databases to the DR configuration soon after creating them, and before performing any writes to avoid the overhead of a full copy.
+- Perform DDL changes on the Target immediately after performing them on Source to avoid the overhead of a full copy.
 
 ## Set up disaster recovery
 
@@ -55,7 +55,7 @@ To set up disaster recovery for a cluster, do the following:
 
 1. Select the databases to be copied to the Target for disaster recovery.
 
-    You can add databases containing colocated tables to the DR configuration as long as the underlying database is v2.18.1.0 or later. Colocated tables on the Source and Target should be created with the same colocation ID if they already exist on both the Source and Target prior to DR setup. Refer to [xCluster and colocation](../../../../explore/colocation/#xcluster-and-colocation).
+    Colocated tables on the Source and Target should be created with the same colocation ID if they already exist on both the Source and Target prior to DR setup. Refer to [xCluster and colocation](../../../../explore/colocation/#xcluster-and-colocation).
 
     YugabyteDB Aeon checks whether or not data needs to be copied to the Target for the selected databases and their tables.
 
@@ -85,9 +85,9 @@ In addition, you can monitor the following metrics on the **Disaster Recovery** 
 
     The network lag in microseconds between any two communicating nodes, and the replication lag alert threshold.
 
-<!-- Consumer Safe Time Skew
+- Consumer Safe Time Skew
 
-    The time elapsed in microseconds for replication between the most caught up tablet and the tablet that lags the most on the Target. This metric is available only on the Target.-->
+    The time elapsed in microseconds for replication between the most caught up tablet and the tablet that lags the most on the Target. This metric is available only on the Target.
 
 Consider the following scenario.
 
@@ -125,7 +125,7 @@ Note that to display the lag threshold in the [Async Replication Lag chart](#met
 
 When you receive an alert, navigate to the Disaster Recovery [Database and Tables](#tables) to see the table status.
 
-YugabyteDB Aeon collects these metrics every 2 minutes, and fires the alert within 10 minutes of the error.
+YugabyteDB Aeon collects these metrics every 30 seconds, and fires the alert within 3 minutes of the error.
 
 For more information on alerting in YugabyteDB Aeon, refer to [Alerts](../../../cloud-monitor/cloud-alerts/).
 
@@ -143,7 +143,7 @@ To check if the replication has been properly configured for a table, check the 
 
 The status will be _Not Reported_ momentarily after the replication configuration is created until metrics are available for the replication configuration. This should take about 10 seconds.
 
-If the replication lag has increased so much that resuming or continuing replication cannot be accomplished via WAL logs but instead requires making another full copy from Source to Target, the status is shown as _Missing op ID_, and you must [restart replication](#repair-replication) for those tables. If a lag alert is enabled on the replication, you are notified when the lag is behind the [replication lag alert](#set-up-replication-lag-alerts) threshold; if the replication stream is not yet broken and the lag is due to some other issues, the status is shown as _Warning_.
+If the replication lag has increased so much that resuming or continuing replication cannot be accomplished via WAL logs but instead requires making another full copy from Source to Target, the status is shown as _Missing op ID_, and you must [restart replication](#restart-replication) for the databases those tables belong to. If a lag alert is enabled on the replication, you are notified when the lag is behind the [replication lag alert](#set-up-replication-lag-alerts) threshold; if the replication stream is not yet broken and the lag is due to some other issues, the status is shown as _Warning_.
 
 If YugabyteDB Aeon is unable to obtain the status (for example, due to a heavy workload being run on the cluster), the status for that table will be _Unable To Fetch_. You may refresh the page to retry gathering information.
 
@@ -176,10 +176,10 @@ The following statuses describe replication errors. More than one of these error
 | Status | Description |
 | :--- | :--- |
 | Error | Replication is in an error state, but the error is not known. |
-| Missing op ID | The replication is broken and cannot continue because the write-ahead-logs are garbage collected before they were replicated to the other universe and you will need to [restart replication](#repair-replication).|
-| Schema&nbsp;mismatch | The schema was updated on the table (on either of the universes) and replication is paused until the same schema change is made to the other universe. |
+| Missing op ID | The replication is broken and cannot continue because the write-ahead-logs are garbage collected before they were replicated to the other cluster and you will need to [restart replication](#repair-replication).|
+| Schema&nbsp;mismatch | The schema was updated on the table (on either of the clusters) and replication is paused until the same schema change is made to the other cluster. |
 | Missing table | For colocated tables, only the parent table is in the replication group; any child table that is part of the colocation will also be replicated. This status is displayed for a parent colocated table if a child table only exists on the Source. Create the same table on the Target. |
-| Auto flag config mismatch | Replication has stopped because one of the clusters is running a version of YugabyteDB that is incompatible with the other. This can happen when upgrading universes that are in replication. Upgrade the other universe to the same version. |
+| Auto flag config mismatch | Replication has stopped because one of the clusters is running a version of YugabyteDB that is incompatible with the other. This can happen when upgrading clusters that are in replication. Upgrade the other cluster to the same version. |
 
 ## Manage replication
 
@@ -221,8 +221,8 @@ To remove DR, do the following:
 
 1. Click **Edit DR Configuration** and choose **Remove DR**.
 
-### Repair replication
+### Restart replication
 
 Some situations, such as extended network partitions between the Source and Target, can cause a permanent failure of replication due to WAL logs being no longer available on the Source.
 
-In these cases, restart replication by navigating to your Source cluster **Disaster Recovery** tab and click **Repair Replication**.
+In these cases, restart replication by navigating to your Source cluster **Disaster Recovery** tab and click **Restart Replication**.
