@@ -1143,6 +1143,13 @@ HybridTime Tablet::GetMinStartHTRunningTxnsForCDCProducer() const {
     return min_start_ht_running_txns;
   }
 
+  // If there does not exist a transaction participant and the table is non-transactional, there
+  // will be no running txns, so we return kMax. This is the case when distributed transactions are
+  // not enabled on YCQL tables.
+  if (!transaction_participant() && !IsTransactionalRequest(false /* is_ysql_request */)) {
+    return HybridTime::kMax;
+  }
+
   if (transaction_participant()) {
     min_start_ht_running_txns = transaction_participant()->MinRunningHybridTime();
     VLOG_WITH_PREFIX(2) << "min_start_ht_running_txns from txn participant: "
