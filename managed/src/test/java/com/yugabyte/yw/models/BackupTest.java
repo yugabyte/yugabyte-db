@@ -529,6 +529,23 @@ public class BackupTest extends FakeDBApplication {
             BackupCategory.YB_CONTROLLER,
             BackupVersion.V2);
     backup.setState(BackupState.Completed);
+    backup.setFirstSnapshotTime(backup.backupCreateTimeInMillis());
+    backup.save();
+    tableParamsParent
+        .backupList
+        .get(0)
+        .setBackupPointInTimeRestoreWindow(
+            new BackupPointInTimeRestoreWindow(
+                backup.backupCreateTimeInMillis() - 1500L,
+                backup.backupCreateTimeInMillis() + 100L));
+    tableParamsParent
+        .backupList
+        .get(1)
+        .setBackupPointInTimeRestoreWindow(
+            new BackupPointInTimeRestoreWindow(
+                backup.backupCreateTimeInMillis() - 1300L,
+                backup.backupCreateTimeInMillis() + 200L));
+
     backup.save();
     Thread.sleep(1000L);
     tableParamsParent.baseBackupUUID = backup.getBaseBackupUUID();
@@ -539,9 +556,10 @@ public class BackupTest extends FakeDBApplication {
             BackupCategory.YB_CONTROLLER,
             BackupVersion.V2);
     incrementalBackup.setState(BackupState.Completed);
+    incrementalBackup.setFirstSnapshotTime(incrementalBackup.backupCreateTimeInMillis() - 1500L);
     incrementalBackup.save();
-    // Restore timestamp more than latest backup create time
-    long restoreTimestampMillis = incrementalBackup.backupCreateTimeInMillis() + 1000L;
+    // Restore timestamp after earliest snapshot time
+    long restoreTimestampMillis = incrementalBackup.backupCreateTimeInMillis() + 250L;
     Optional<Backup> optBackup =
         Backup.maybeGetRestorableBackup(
             defaultCustomer.getUuid(), backup.getBaseBackupUUID(), restoreTimestampMillis);
@@ -573,23 +591,78 @@ public class BackupTest extends FakeDBApplication {
         .get(0)
         .setBackupPointInTimeRestoreWindow(
             new BackupPointInTimeRestoreWindow(
-                backup.backupCreateTimeInMillis() - 5000L,
-                backup.backupCreateTimeInMillis() - 500L));
+                backup.backupCreateTimeInMillis() + 5000L,
+                backup.backupCreateTimeInMillis() + 1500L));
+    tableParamsParent
+        .backupList
+        .get(1)
+        .setBackupPointInTimeRestoreWindow(
+            new BackupPointInTimeRestoreWindow(
+                backup.backupCreateTimeInMillis() + 3000L,
+                backup.backupCreateTimeInMillis() + 1600L));
+    backup.setFirstSnapshotTime(backup.backupCreateTimeInMillis() + 1500L);
+    backup.save();
+    // Restore timestamp less than earliest snapshot retention start window
+    long restoreTimestampMillis = backup.backupCreateTimeInMillis() - 100L;
+    Optional<Backup> optBackup =
+        Backup.maybeGetRestorableBackup(
+            defaultCustomer.getUuid(), backup.getBaseBackupUUID(), restoreTimestampMillis);
+    assertTrue(optBackup.isEmpty());
+  }
+
+  @Test
+  public void testMaybeFetchBackupWithCreateTimeAfterRestoreTimestamp()
+      throws InterruptedException {
+    Universe defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
+    BackupTableParams tableParamsParent = createParentParams(defaultUniverse);
+    List<BackupTableParams> paramsList = new ArrayList<>();
+    BackupTableParams childParam1 = createTableParams(0, 1, "foo");
+    paramsList.add(childParam1);
+    BackupTableParams childParam2 = createTableParams(2, 3, "foo");
+    paramsList.add(childParam2);
+    tableParamsParent.backupList = new ArrayList<>(paramsList);
+    Backup backup =
+        Backup.create(
+            defaultCustomer.getUuid(),
+            tableParamsParent,
+            BackupCategory.YB_CONTROLLER,
+            BackupVersion.V2);
+    backup.setState(BackupState.Completed);
+    backup.setFirstSnapshotTime(backup.backupCreateTimeInMillis());
+    backup.save();
+    Thread.sleep(1000L);
+    tableParamsParent.baseBackupUUID = backup.getBaseBackupUUID();
+    Backup incrementalBackup =
+        Backup.create(
+            defaultCustomer.getUuid(),
+            tableParamsParent,
+            BackupCategory.YB_CONTROLLER,
+            BackupVersion.V2);
+    incrementalBackup.setState(BackupState.Completed);
+    tableParamsParent = backup.getBackupInfo();
     tableParamsParent
         .backupList
         .get(0)
         .setBackupPointInTimeRestoreWindow(
             new BackupPointInTimeRestoreWindow(
-                backup.backupCreateTimeInMillis() - 3000L,
-                backup.backupCreateTimeInMillis() - 500L));
-
-    backup.save();
-    // Restore timestamp less backup params start window
-    long restoreTimestampMillis = backup.backupCreateTimeInMillis() - 6000L;
+                incrementalBackup.backupCreateTimeInMillis() - 5000L,
+                incrementalBackup.backupCreateTimeInMillis() + 300L));
+    tableParamsParent
+        .backupList
+        .get(1)
+        .setBackupPointInTimeRestoreWindow(
+            new BackupPointInTimeRestoreWindow(
+                incrementalBackup.backupCreateTimeInMillis() - 3000L,
+                incrementalBackup.backupCreateTimeInMillis() + 100L));
+    incrementalBackup.setFirstSnapshotTime(incrementalBackup.backupCreateTimeInMillis() + 100L);
+    incrementalBackup.save();
+    // Restore timestamp in the latest backup restorable window
+    long restoreTimestampMillis = incrementalBackup.backupCreateTimeInMillis() - 200L;
     Optional<Backup> optBackup =
         Backup.maybeGetRestorableBackup(
             defaultCustomer.getUuid(), backup.getBaseBackupUUID(), restoreTimestampMillis);
-    assertTrue(optBackup.isEmpty());
+    assertTrue(optBackup.isPresent());
+    assertEquals(incrementalBackup.getBackupUUID(), optBackup.get().getBackupUUID());
   }
 
   @Test
@@ -609,7 +682,22 @@ public class BackupTest extends FakeDBApplication {
             tableParamsParent,
             BackupCategory.YB_CONTROLLER,
             BackupVersion.V2);
+    tableParamsParent
+        .backupList
+        .get(0)
+        .setBackupPointInTimeRestoreWindow(
+            new BackupPointInTimeRestoreWindow(
+                backup.backupCreateTimeInMillis() - 5000L,
+                backup.backupCreateTimeInMillis() + 3000L));
+    tableParamsParent
+        .backupList
+        .get(1)
+        .setBackupPointInTimeRestoreWindow(
+            new BackupPointInTimeRestoreWindow(
+                backup.backupCreateTimeInMillis() - 7000L,
+                backup.backupCreateTimeInMillis() + 1000L));
     backup.setState(BackupState.Completed);
+    backup.setFirstSnapshotTime(backup.backupCreateTimeInMillis() + 1000L);
     backup.save();
     Thread.sleep(1000L);
     tableParamsParent.baseBackupUUID = backup.getBaseBackupUUID();
@@ -626,23 +714,24 @@ public class BackupTest extends FakeDBApplication {
         .get(0)
         .setBackupPointInTimeRestoreWindow(
             new BackupPointInTimeRestoreWindow(
-                incrementalBackup.backupCreateTimeInMillis() - 5000L,
-                incrementalBackup.backupCreateTimeInMillis() - 300L));
+                incrementalBackup.backupCreateTimeInMillis() - 4000L,
+                incrementalBackup.backupCreateTimeInMillis() + 4000L));
     tableParamsParent
         .backupList
-        .get(0)
+        .get(1)
         .setBackupPointInTimeRestoreWindow(
             new BackupPointInTimeRestoreWindow(
                 incrementalBackup.backupCreateTimeInMillis() - 3000L,
-                incrementalBackup.backupCreateTimeInMillis() - 100L));
+                incrementalBackup.backupCreateTimeInMillis() + 5000L));
+    incrementalBackup.setFirstSnapshotTime(incrementalBackup.backupCreateTimeInMillis() + 4000L);
     incrementalBackup.save();
-    // Restore timestamp in the latest backup restorable window
-    long restoreTimestampMillis = incrementalBackup.backupCreateTimeInMillis() - 200L;
+    // First backup restorable window closest to restore timestamp
+    long restoreTimestampMillis = backup.backupCreateTimeInMillis() + 200L;
     Optional<Backup> optBackup =
         Backup.maybeGetRestorableBackup(
             defaultCustomer.getUuid(), backup.getBaseBackupUUID(), restoreTimestampMillis);
     assertTrue(optBackup.isPresent());
-    assertEquals(incrementalBackup.getBackupUUID(), optBackup.get().getBackupUUID());
+    assertEquals(backup.getBackupUUID(), optBackup.get().getBackupUUID());
   }
 
   @Test
