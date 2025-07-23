@@ -2,8 +2,25 @@ const { execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
-const npmrcPath = path.resolve(__dirname, '../.npmrc');
+/**
+ * Check if Font Awesome Pro is installed.
+ */
+function fontAwesomeProInstalled() {
+  const projectRoot = process.cwd();
+  const faProPath = path.join(projectRoot, 'node_modules', '@fortawesome', 'fontawesome-pro');
 
+  return fs.existsSync(faProPath);
+}
+
+/*
+ * If FA Pro is already installed then do nothing.
+ */
+const isFontAwesomeProInstalled = fontAwesomeProInstalled();
+if (isFontAwesomeProInstalled) {
+  return;
+}
+
+const npmrcPath = path.resolve(__dirname, '../.npmrc');
 if (!process.env.FONTAWESOME_PRO_AUTH_TOKEN) {
   const dotenv = require('dotenv');
   if (!dotenv) {
