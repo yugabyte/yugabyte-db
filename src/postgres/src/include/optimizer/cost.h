@@ -151,7 +151,6 @@ extern PGDLLIMPORT bool yb_enable_geolocation_costing;
  * nested loop join plans.
  */
 extern PGDLLIMPORT bool yb_enable_batchednl;
-extern PGDLLIMPORT bool yb_enable_parallel_append;
 extern PGDLLIMPORT YbCostModel yb_enable_cbo;
 extern PGDLLIMPORT bool yb_ignore_stats;
 extern PGDLLIMPORT bool yb_legacy_bnl_cost;

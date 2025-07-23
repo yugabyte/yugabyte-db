@@ -13,7 +13,7 @@ insert into t1 values (1, 'value_t1_1'), (2, 'value_t1_2');
 insert into t2 values (3, 'value_t2_3'), (4, 'value_t2_4');
 
 set yb_enable_base_scans_cost_model to true;
-set yb_enable_parallel_append to false;
+set enable_parallel_append to false;
 set parallel_setup_cost to 0;
 set parallel_tuple_cost to 0;
 
@@ -42,7 +42,7 @@ explain (costs off)
 select * from lp;
 select * from lp;
 
-set yb_enable_parallel_append to true;
+set enable_parallel_append to true;
 
 -- do not execute those parallel queries, there are known issues with YB PA
 explain (costs off)

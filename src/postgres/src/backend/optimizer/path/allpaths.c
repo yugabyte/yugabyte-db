@@ -1436,10 +1436,7 @@ add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
 	double		partial_rows = -1;
 
 	/* If appropriate, consider parallel append */
-	if (IsYugaByteEnabled() && !yb_enable_parallel_append)
-		pa_subpaths_valid = false;
-	else
-		pa_subpaths_valid = enable_parallel_append && rel->consider_parallel;
+	pa_subpaths_valid = enable_parallel_append && rel->consider_parallel;
 
 	/*
 	 * For every non-dummy child, remember the cheapest path.  Also, identify
