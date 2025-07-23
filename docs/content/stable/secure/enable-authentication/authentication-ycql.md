@@ -37,11 +37,11 @@ To enable YCQL authentication in deployable YugabyteDB clusters, start the yb-ts
   >& /home/centos/disk1/yb-tserver.out &
 ```
 
-You can read more about bringing up the YB-TServers for a deployment in the section on [manual deployment of a YugabyteDB cluster](../../../deploy/manual-deployment/start-tservers/).
+You can read more about bringing up the YB-TServers for a deployment in the section on [manual deployment of a YugabyteDB cluster](../../../deploy/manual-deployment/start-masters/#yb-tserver-servers).
 
 ## Connect using the default admin credentials
 
-A new YugabyteDB cluster with authentication enabled comes up with a default admin user, the default username/password for this admin user is `cassandra`/`cassandra`. Note that this default user has `SUPERUSER` privilege. You can connect to this cluster using `ycqlsh` as follows:
+A new YugabyteDB cluster with authentication enabled comes up with a default admin user, the default username/password for this admin user is `cassandra`/`cassandra`. Note that this default user has `SUPERUSER` privilege. You can connect to this cluster using ycqlsh as follows:
 
 ```sh
 $ ./bin/ycqlsh -u cassandra -p cassandra
@@ -133,7 +133,7 @@ For example, to reset the password for the admin superuser created in [Create a 
       --ycql_allow_non_authenticated_password_reset=true
     ```
 
-1. Change the password using `ycqlsh` as follows:
+1. Change the password using ycqlsh as follows:
 
     ```cql
     cassandra@ycqlsh> ALTER ROLE admin WITH PASSWORD = <updatedPassword>
@@ -148,7 +148,7 @@ For example, to reset the password for the admin superuser created in [Create a 
       --ycql_allow_non_authenticated_password_reset=false
     ```
 
-1. Log in to `ycqlsh` with the updated password as follows:
+1. Log in to ycqlsh with the updated password as follows:
 
     ```sh
     ./bin/ycqlsh -u admin -p <updatedPassword>
@@ -266,7 +266,7 @@ cassandra@ycqlsh> SELECT role, can_login, is_superuser, member_of FROM system_au
 (1 rows)
 ```
 
-Trying to log in as `john` using `ycqlsh` will throw the following error.
+Trying to log in as `john` using ycqlsh will throw the following error.
 
 ```sh
 $ ./bin/ycqlsh -u john

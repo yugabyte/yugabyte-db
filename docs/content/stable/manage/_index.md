@@ -24,24 +24,24 @@ type: indexpage
     title="Migrate data"
     body="Bulk data export and import in the context of YugabyteDB."
     href="data-migration/"
-    icon="/images/section_icons/index/deploy.png">}}
+    icon="fa-thin fa-file-import">}}
 
   {{<index/item
     title="Change cluster configuration"
     body="Move universe data to a new set of machines."
     href="change-cluster-config/"
-    icon="/images/section_icons/deploy/enterprise/administer.png">}}
+    icon="fa-thin fa-circle-nodes">}}
 
   {{<index/item
     title="Upgrade a deployment"
     body="Upgrade the YugabyteDB software."
     href="upgrade-deployment/"
-    icon="/images/section_icons/deploy/enterprise/administer.png">}}
+    icon="fa-thin fa-arrow-up-to-line">}}
 
   {{<index/item
     title="Diagnostics reporting"
     body="Configure collection and reporting of diagnostics data."
     href="diagnostics-reporting/"
-    icon="/images/section_icons/manage/diagnostics.png">}}
+    icon="fa-thin fa-stethoscope">}}
 
 {{</index/block>}}

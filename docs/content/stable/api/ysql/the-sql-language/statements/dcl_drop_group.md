@@ -11,7 +11,7 @@ type: docs
 
 ## Synopsis
 
-Use the `DROP GROUP` statement to drop a role. `DROP GROUP` is an alias for [DROP ROLE](../dcl_drop_role) and is used to drop a role.
+Use the DROP GROUP statement to drop a role. DROP GROUP is an alias for [DROP ROLE](../dcl_drop_role) and is used to drop a role.
 
 ## Syntax
 

@@ -13,7 +13,7 @@ type: docs
 
 The terms of art _name_ and _identifier_ are often used interchangeably. But they have different meanings. A simple example makes the point. See the section [Unquoted and quoted identifiers in action](./#unquoted-and-quoted-identifiers-in-action). Nevertheless, no matter in which order you read this page's two sections ([Artifacts, their names, and identifiers for those names](./#artifacts-their-names-and-identifiers-for-those-names) and [Unquoted and quoted identifiers in action](./#unquoted-and-quoted-identifiers-in-action)), you should make sure that you read both of them.
 
-You should also read the section **[Lexical Structure](https://www.postgresql.org/docs/11/sql-syntax-lexical.html)** in the PostgreSQL documentation.
+You should also read the section [Lexical Structure](https://www.postgresql.org/docs/15/sql-syntax-lexical.html) in the PostgreSQL documentation.
 
 ## Artifacts, their names, and identifiers for those names
 
@@ -140,7 +140,7 @@ Surprisingly, then, this test:
 create table s.dog$house(k int primary key);
 ```
 
-also completes without error—in spite of the fact that _quote_ident()_ tells you to expect that this would, without quoting the name, cause a syntax error. (Here, too, you can go on to use the table.) The explanation is given in the PostgreSQL documentation in the subsection [Identifiers and Key Words](https://www.postgresql.org/docs/11/sql-syntax-lexical.html#SQL-SYNTAX-IDENTIFIERS) within the _Lexical Structure_ section. Look for this:
+also completes without error—in spite of the fact that _quote_ident()_ tells you to expect that this would, without quoting the name, cause a syntax error. (Here, too, you can go on to use the table.) The explanation is given in the PostgreSQL documentation in the subsection [Identifiers and Key Words](https://www.postgresql.org/docs/15/sql-syntax-lexical.html#SQL-SYNTAX-IDENTIFIERS) within the _Lexical Structure_ section. Look for this:
 
 > SQL identifiers and key words must begin with a letter (a-z, but also ...) or an underscore. Subsequent characters in an identifier or key word can be letters, underscores, digits (0-9), or dollar signs ($). Note that dollar signs are not allowed in identifiers according to the letter of the SQL standard, so their use might render applications less portable. The SQL standard will not define a key word that contains digits or starts or ends with an underscore, so identifiers of this form are safe against possible conflict with future extensions of the standard.
 

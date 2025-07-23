@@ -2397,7 +2397,7 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* ADD | REMOVE: Adds or removes the specified YB-TServer from leader blacklist.
+* ADD | REMOVE: Adds or removes the specified YB-Master, or YB-TServer from leader blacklist.
 * *ip_addr:port*: The IP address and port of the YB-TServer.
 
 **Example**

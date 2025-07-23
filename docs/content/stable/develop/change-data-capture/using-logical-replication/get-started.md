@@ -51,7 +51,7 @@ To start the services needed for this tutorial, you must:
 
 Zookeeper is the first service you must start.
 
-1. Open a terminal and use it to start Zookeeper in a container. This command runs a new container using version `2.5.2.Final` of the `debezium/zookeeper` image:
+Open a terminal and use it to start Zookeeper in a container. This command runs a new container using version `2.5.2.Final` of the `debezium/zookeeper` image:
 
 ```sh
 docker run -d --rm --name zookeeper -p 2181:2181 -p 2888:2888 -p 3888:3888 debezium/zookeeper:2.5.2.Final
@@ -61,7 +61,7 @@ docker run -d --rm --name zookeeper -p 2181:2181 -p 2888:2888 -p 3888:3888 debez
 
 After starting Zookeeper, you can start Kafka in a new container.
 
-1. Open a new terminal and use it to start Kafka in a container. This command runs a new container using version `2.5.2.Final` of the `debezium/kafka` image:
+Open a new terminal and use it to start Kafka in a container. This command runs a new container using version `2.5.2.Final` of the `debezium/kafka` image:
 
 ```sh
 docker run -d --rm --name kafka -p 9092:9092 --link zookeeper:zookeeper debezium/kafka:2.5.2.Final
@@ -104,7 +104,7 @@ After starting YugabyteDB, use ysqlsh to create your database:
     You should see output similar to the following:
 
     ```output
-    ysqlsh (11.2-YB-{{<yb-version version="stable">}}-b0)
+    ysqlsh (15.2-YB-{{<yb-version version="stable">}}-b0)
     Type "help" for help.
 
     yugabyte=#
@@ -242,7 +242,7 @@ In a production environment, you would typically either use the Kafka tools to m
     - `plugin.name` - [Plugin](../key-concepts/#output-plugin) to be used for replication.
     - `slot.name` - Name of the [replication slot](../key-concepts/#replication-slot).
 
-    For more information, see [YugabyteDB connector configuration properties](../yugabytedb-connector/#connector-properties).
+    For more information, see [YugabyteDB connector configuration properties](../yugabytedb-connector-properties).
 
 1. Open a new terminal and use the `curl` command to register the YugabyteDB connector.
 

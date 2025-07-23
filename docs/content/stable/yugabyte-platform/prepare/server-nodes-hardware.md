@@ -59,7 +59,7 @@ Refer to [Hardware requirements](../../../deploy/checklist/#hardware-requirement
 - [Verify support for SSE2 and SSE4.2](../../../deploy/checklist/#verify-support-for-sse2-and-sse4-2)
 - [Disks](../../../deploy/checklist/#disks)
 
-When creating your VMs, create at least two virtual disks: one as the boot disk, and another for data and logs.
+It is recommended to use separate disks for the Linux OS and for the data.
 
   </div>
 
