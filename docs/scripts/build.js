@@ -89,10 +89,9 @@ defaultTomlFiles.forEach(file => {
  * Conditionally add `hugo.fa.toml` if Font Awesome Pro is installed.
  */
 const isFontAwesomeProInstalled = fontAwesomeProInstalled();
+// Define which FA version to use.
+setFontAwesome(isFontAwesomeProInstalled);
 if (isFontAwesomeProInstalled) {
-  // Define which FA version to use.
-  setFontAwesome(isFontAwesomeProInstalled);
-
   const faConfigPath = path.join(defaultConfigsDir, 'hugo.fa.toml');
   if (fs.existsSync(faConfigPath)) {
     configFilesToLoad.push(faConfigPath);
