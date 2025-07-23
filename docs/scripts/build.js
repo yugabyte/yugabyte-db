@@ -19,26 +19,34 @@ function fontAwesomeProInstalled() {
  */
 function setFontAwesome(isFontAwesomeProInstalled) {
   const defaultFilePath = path.join(projectRoot, 'assets', 'scss', 'fontawesome', '_default.scss');
+  const freeFilePath = path.join(projectRoot, 'assets', 'scss', 'fontawesome', '_free.scss');
   const proFilePath = path.join(projectRoot, 'assets', 'scss', 'fontawesome', '_pro.scss');
 
+  let sourceFilePath;
   if (isFontAwesomeProInstalled) {
-    fs.readFile(proFilePath, 'utf8', (readErr, data) => {
-      if (readErr) {
-        console.error(`Error reading Pro file ${proFilePath}:`, readErr);
+    sourceFilePath = proFilePath;
+    console.log(`Condition met: Copying content from ${proFilePath}`);
+  } else {
+    sourceFilePath = freeFilePath;
+    console.log(`Condition met: Copying content from ${freeFilePath}`);
+  }
+
+  fs.readFile(sourceFilePath, 'utf8', (readErr, data) => {
+    if (readErr) {
+      console.error(`Error reading source file ${sourceFilePath}:`, readErr);
+      return;
+    }
+
+    // Create the default file if it doesn't exist, or overwrite it if it does.
+    fs.writeFile(defaultFilePath, data, (writeErr) => {
+      if (writeErr) {
+        console.error(`Error writing to ${defaultFilePath}:`, writeErr);
         return;
       }
 
-      // Overwrite the content from the Pro file content.
-      fs.writeFile(defaultFilePath, data, (writeErr) => {
-        if (writeErr) {
-          console.error(`Error writing to ${defaultFilePath}:`, writeErr);
-          return;
-        }
-
-        console.log(`Content copied successfully to ${defaultFilePath}.`);
-      });
+      console.log(`Content copied successfully to ${defaultFilePath}.`);
     });
-  }
+  });
 }
 
 /*
@@ -78,18 +86,18 @@ defaultTomlFiles.forEach(file => {
 
 
 /*
- * Conditionally add `config.fa.toml` if Font Awesome Pro is installed.
+ * Conditionally add `hugo.fa.toml` if Font Awesome Pro is installed.
  */
 const isFontAwesomeProInstalled = fontAwesomeProInstalled();
 if (isFontAwesomeProInstalled) {
   // Define which FA version to use.
   setFontAwesome(isFontAwesomeProInstalled);
 
-  const faConfigPath = path.join(defaultConfigsDir, 'config.fa.toml');
+  const faConfigPath = path.join(defaultConfigsDir, 'hugo.fa.toml');
   if (fs.existsSync(faConfigPath)) {
     configFilesToLoad.push(faConfigPath);
   } else {
-    console.warn(`Warning: Font Awesome Pro is installed but config.fa.toml not found at ${faConfigPath}`);
+    console.warn(`Warning: Font Awesome Pro is installed but hugo.fa.toml not found at ${faConfigPath}`);
   }
 }
 

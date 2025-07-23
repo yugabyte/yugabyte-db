@@ -11,6 +11,9 @@ node_modules
 *.swp
 *~
 
+# File generated dynamically.
+assets/scss/fontawesome/_default.scss
+
 static/css/site.css
 static/js/
 
