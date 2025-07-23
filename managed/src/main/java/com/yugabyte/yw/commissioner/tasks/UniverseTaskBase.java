@@ -1322,6 +1322,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     params.auditLogConfig =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.auditLogConfig;
+    params.metricsExportConfig =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.metricsExportConfig;
 
     // The software package to install for this cluster.
     params.ybSoftwareVersion = userIntent.ybSoftwareVersion;

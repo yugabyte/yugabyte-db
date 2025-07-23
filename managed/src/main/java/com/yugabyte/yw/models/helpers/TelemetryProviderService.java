@@ -22,6 +22,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
 import com.yugabyte.yw.models.helpers.telemetry.ProviderType;
 import io.ebean.annotation.Transactional;
 import java.util.Collection;
@@ -159,12 +160,13 @@ public class TelemetryProviderService {
   public void throwExceptionIfRuntimeFlagDisabled() {
     boolean isDBAuditLoggingEnabled = isDBAuditLoggingRuntimeFlagEnabled();
     boolean isQueryLoggingEnabled = isQueryLoggingRuntimeFlagEnabled();
-    if (!isDBAuditLoggingEnabled && !isQueryLoggingEnabled) {
+    boolean isMetricsExportEnabled = isMetricsExportRuntimeFlagEnabled();
+    if (!isDBAuditLoggingEnabled && !isQueryLoggingEnabled && !isMetricsExportEnabled) {
       throw new PlatformServiceException(
           BAD_REQUEST,
-          "DB Audit Logging and Query Logging are not enabled. Please set runtime flag"
-              + " 'yb.universe.audit_logging_enabled' or 'yb.universe.query_logging_enabled' to"
-              + " true.");
+          "DB Audit Logging, Query Logging and Metrics Export are not enabled. Please set runtime"
+              + " flag 'yb.universe.audit_logging_enabled' or 'yb.universe.query_logging_enabled'"
+              + " or 'yb.universe.metrics_export_enabled' to true.");
     }
   }
 
@@ -186,12 +188,25 @@ public class TelemetryProviderService {
     }
   }
 
+  public void throwExceptionIfMetricsExportRuntimeFlagDisabled() {
+    if (!isMetricsExportRuntimeFlagEnabled()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Metrics Export is not enabled. Please set runtime flag"
+              + " 'yb.universe.metrics_export_enabled' to true.");
+    }
+  }
+
   public boolean isDBAuditLoggingRuntimeFlagEnabled() {
     return confGetter.getGlobalConf(GlobalConfKeys.dbAuditLoggingEnabled);
   }
 
   public boolean isQueryLoggingRuntimeFlagEnabled() {
     return confGetter.getGlobalConf(GlobalConfKeys.queryLoggingEnabled);
+  }
+
+  public boolean isMetricsExportRuntimeFlagEnabled() {
+    return confGetter.getGlobalConf(GlobalConfKeys.metricsExportEnabled);
   }
 
   public void throwExceptionIfLokiExporterRuntimeFlagDisabled(ProviderType providerType) {
@@ -206,7 +221,6 @@ public class TelemetryProviderService {
 
   public boolean isProviderInUse(Customer customer, UUID providerUUID) {
     Set<Universe> allUniverses = Universe.getAllWithoutResources(customer);
-
     // Iterate through all universe details and check if any of them have an audit log config.
     for (Universe universe : allUniverses) {
       UserIntent primaryUserIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
@@ -218,6 +232,19 @@ public class TelemetryProviderService {
 
         // Check if the provider is in the list of export configs in the audit log config.
         for (UniverseLogsExporterConfig config : universeLogsExporterConfigs) {
+          if (config != null && providerUUID.equals(config.getExporterUuid())) {
+            return true;
+          }
+        }
+      }
+      if (primaryUserIntent.getMetricsExportConfig() != null
+          && primaryUserIntent.getMetricsExportConfig().getUniverseMetricsExporterConfig()
+              != null) {
+        List<UniverseMetricsExporterConfig> metricsExporterConfigs =
+            primaryUserIntent.getMetricsExportConfig().getUniverseMetricsExporterConfig();
+
+        // Check if the provider is in the list of export configs in the metrics export config.
+        for (UniverseMetricsExporterConfig config : metricsExporterConfigs) {
           if (config != null && providerUUID.equals(config.getExporterUuid())) {
             return true;
           }

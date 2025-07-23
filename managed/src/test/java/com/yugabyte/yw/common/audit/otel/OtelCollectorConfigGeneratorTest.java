@@ -124,6 +124,7 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
           provider,
           null,
           auditLogConfig,
+          null,
           "%t | %u%d : ",
           file.toPath(),
           NodeManager.getOtelColMetricsPort(nodeTaskParams));
@@ -168,6 +169,7 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
           provider,
           null,
           auditLogConfig,
+          null,
           "%t | %u%d : ",
           file.toPath(),
           NodeManager.getOtelColMetricsPort(nodeTaskParams));
@@ -216,6 +218,7 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
           provider,
           null,
           auditLogConfig,
+          null,
           "%t | %u%d : ",
           file.toPath(),
           NodeManager.getOtelColMetricsPort(nodeTaskParams));
@@ -284,6 +287,7 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
           provider,
           null,
           auditLogConfig,
+          null,
           "%t | %u%d : ",
           file.toPath(),
           NodeManager.getOtelColMetricsPort(nodeTaskParams));

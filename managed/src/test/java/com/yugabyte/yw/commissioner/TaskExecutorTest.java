@@ -132,6 +132,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.SystemdUpgrade,
           TaskType.ModifyAuditLoggingConfig,
           TaskType.ModifyQueryLoggingConfig,
+          TaskType.ModifyMetricsExportConfig,
           TaskType.StartMasterOnNode,
           TaskType.MasterFailover,
           TaskType.SyncMasterAddresses,

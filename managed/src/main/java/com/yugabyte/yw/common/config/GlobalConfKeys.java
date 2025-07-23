@@ -1407,6 +1407,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " enable/disable YSQL query logging on universes.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> metricsExportEnabled =
+      new ConfKeyInfo<>(
+          "yb.universe.metrics_export_enabled",
+          ScopeType.GLOBAL,
+          "Enable Metrics Export",
+          "If this flag is enabled, user will be able to create telemetry providers and"
+              + " enable/disable metrics export on universes.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> allowConnectionPooling =
       new ConfKeyInfo<>(
           "yb.universe.allow_connection_pooling",

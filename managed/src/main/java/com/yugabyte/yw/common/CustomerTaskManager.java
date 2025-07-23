@@ -42,6 +42,7 @@ import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
+import com.yugabyte.yw.forms.MetricsExportConfigParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
@@ -884,6 +885,9 @@ public class CustomerTaskManager {
                 "Cannot retry modifying audit logging task as YSQL major upgrade is in progress.");
           }
         }
+        break;
+      case ModifyMetricsExportConfig:
+        taskParams = Json.fromJson(oldTaskParams, MetricsExportConfigParams.class);
         break;
       case AddNodeToUniverse:
       case RemoveNodeFromUniverse:

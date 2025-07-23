@@ -31,6 +31,7 @@ import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.*;
 import com.yugabyte.yw.models.helpers.exporters.audit.*;
+import com.yugabyte.yw.models.helpers.exporters.metrics.*;
 import com.yugabyte.yw.models.helpers.exporters.query.*;
 import io.ebean.annotation.EnumValue;
 import io.swagger.annotations.ApiModel;
@@ -965,6 +966,15 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     public QueryLogConfig getQueryLogConfig() {
       return queryLogConfig;
+    }
+
+    // Metrics Export Config
+    @ApiModelProperty(value = "YbaApi Internal. Metrics Export configuration")
+    @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2025.2.0.0")
+    public MetricsExportConfig metricsExportConfig;
+
+    public MetricsExportConfig getMetricsExportConfig() {
+      return metricsExportConfig;
     }
 
     // Proxy config HTTP_RPOXY, HTTPS_PROXY, NO_PROXY

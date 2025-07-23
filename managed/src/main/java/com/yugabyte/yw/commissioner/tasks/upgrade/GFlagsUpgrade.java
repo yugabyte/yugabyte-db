@@ -472,14 +472,16 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
     createServerConfFileUpdateTasks(
         userIntent, nodes, processTypes, curCluster, curClusters, newCluster, newClusters);
 
-    // In case audit logs export is set up - need to re-configure otel collector.
+    // In case audit logs or metrics export is set up - need to re-configure otel collector.
     if (universe.getUniverseDetails().otelCollectorEnabled
-        && curCluster.userIntent.auditLogConfig != null) {
+        && (curCluster.userIntent.auditLogConfig != null
+            || curCluster.userIntent.metricsExportConfig != null)) {
       createManageOtelCollectorTasks(
           userIntent,
           nodes,
           false,
           curCluster.userIntent.auditLogConfig,
+          curCluster.userIntent.metricsExportConfig,
           nodeDetails ->
               GFlagsUtil.getGFlagsForNode(
                   nodeDetails, ServerType.TSERVER, newCluster, newClusters));

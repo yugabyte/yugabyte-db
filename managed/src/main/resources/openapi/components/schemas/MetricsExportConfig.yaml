@@ -1,0 +1,36 @@
+title: MetricsExportConfig
+description: Metrics Export Configuration Specification for the Universe. Part of Clusterspec.
+required:
+  - universe_metrics_exporter_config
+type: object
+properties:
+  scrape_interval_seconds:
+    description: Scrape interval in seconds. Applied on all scrape jobs commonly.
+    type: integer
+    example: 30
+    default: 30
+  scrape_timeout_seconds:
+    description: Scrape timeout in seconds. Applied on all scrape jobs commonly.
+    type: integer
+    example: 20
+    default: 20
+  collection_level:
+    description: |
+      The level of metrics collection. Allowed values are:
+        - ALL: Collect all available metrics.
+        - NORMAL: Collect standard set of metrics.
+        - MINIMAL: Collect minimal set of metrics.
+        - OFF: Disable metrics collection.
+    type: string
+    example: NORMAL
+    default: NORMAL
+    enum:
+      - ALL
+      - NORMAL
+      - MINIMAL
+      - 'OFF'
+  universe_metrics_exporter_config:
+    description: 'List of universe metrics exporter configurations. If empty, no metrics will be sent anywhere.'
+    type: array
+    items:
+      $ref: "./UniverseMetricsExporterConfig.yaml"

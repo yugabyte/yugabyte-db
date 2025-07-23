@@ -33,6 +33,33 @@ public class OtelCollectorConfigFormat {
   }
 
   @Data
+  @EqualsAndHashCode(callSuper = true)
+  public static class PrometheusReceiver extends Receiver {
+    private PrometheusConfig config;
+  }
+
+  @Data
+  public static class PrometheusConfig {
+    private List<ScrapeConfig> scrape_configs;
+  }
+
+  @Data
+  public static class ScrapeConfig {
+    private String job_name;
+    private String scrape_interval;
+    private String scrape_timeout;
+    private String scheme;
+    private String metrics_path;
+    private List<StaticConfig> static_configs;
+  }
+
+  @Data
+  public static class StaticConfig {
+    private List<String> targets;
+    private Map<String, String> labels;
+  }
+
+  @Data
   public static class Operator {
     private String type;
   }
