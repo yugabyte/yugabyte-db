@@ -4,7 +4,7 @@ headerTitle: ANALYZE
 linkTitle: ANALYZE
 description: Collect statistics about database tables with the ANALYZE statement.
 tags:
-  feature: tech-preview
+  feature: early-access
 menu:
   v2024.2_api:
     identifier: cmd_analyze
