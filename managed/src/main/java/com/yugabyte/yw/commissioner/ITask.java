@@ -14,6 +14,7 @@ import java.time.Duration;
 import java.util.UUID;
 
 public interface ITask extends Runnable {
+  public static final int DEFAULT_TASK_VERSION = 1;
 
   /** Annotation for a ITask class to enable/disable retryable. */
   @Retention(RetentionPolicy.RUNTIME)
@@ -34,6 +35,13 @@ public interface ITask extends Runnable {
   @Target(ElementType.TYPE)
   @interface Abortable {
     boolean enabled() default true;
+  }
+
+  /** Annotation for task version of a ITask class. */
+  @Retention(RetentionPolicy.RUNTIME)
+  @Target(ElementType.TYPE)
+  @interface TaskVersion {
+    int version() default DEFAULT_TASK_VERSION;
   }
 
   /** Initialize the task by reading various parameters. */

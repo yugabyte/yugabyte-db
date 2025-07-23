@@ -39,10 +39,10 @@ std::string CStringArrayToString(char** elements, size_t length) {
   return result;
 }
 
-std::string ToString(
-    const std::chrono::time_point<std::chrono::system_clock,
-                                  std::chrono::duration<long long, std::micro>>& tp) {
+namespace {
 
+template <class Clock, class Duration>
+std::string ToStringTimePoint(const std::chrono::time_point<Clock, Duration>& tp) {
   int64_t micros = std::chrono::duration_cast<std::chrono::microseconds>(
     tp.time_since_epoch()).count();
 
@@ -57,6 +57,16 @@ std::string ToString(
 
   // Format as "<seconds>.<microseconds padded to 6 digits>s", mirroring MillisecondsToString.
   return StringPrintf("%s%" PRId64 ".%06" PRId64 "s", sign, seconds, remainder_micros);
+}
+
+} // namespace
+
+std::string ToString(const std::chrono::steady_clock::time_point& time_point) {
+  return ToStringTimePoint(time_point);
+}
+
+std::string ToString(const std::chrono::system_clock::time_point& time_point) {
+  return ToStringTimePoint(time_point);
 }
 
 } // namespace yb

@@ -429,6 +429,11 @@ func IsPostgresEnabled() bool {
 	return viper.GetBool("postgres.install.enabled") || viper.GetBool("postgres.useExisting.enabled")
 }
 
+// Checks if PerfAdvisor is enabled in config.
+func IsPerfAdvisorEnabled() bool {
+	return viper.GetBool("perfAdvisor.enabled")
+}
+
 func GetUserHomeDir() string {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {

@@ -22,9 +22,7 @@
 #include "yb/util/logging.h"
 
 #include "yb/yql/pggate/pg_tools.h"
-
-DEFINE_test_flag(bool, ysql_ignore_add_fk_reference, false,
-                 "Don't fill YSQL's internal cache for FK check to force read row from a table");
+#include "yb/yql/pggate/util/ybc_guc.h"
 
 namespace yb::pggate {
 
@@ -43,7 +41,8 @@ void Erase(Container& container, const Key& key) {
 class PgFKReferenceCache::Impl {
  public:
   Impl(YbctidReaderProvider& reader_provider, const BufferingSettings& buffering_settings)
-      : reader_provider_(reader_provider), buffering_settings_(buffering_settings) {}
+      : reader_provider_(reader_provider), buffering_settings_(buffering_settings) {
+  }
 
   void Clear() {
     references_.clear();
@@ -51,6 +50,7 @@ class PgFKReferenceCache::Impl {
     deferred_intents_.clear();
     region_local_tables_.clear();
     intents_ = &regular_intents_;
+    references_cache_limit_.reset();
   }
 
   void DeleteReference(const LightweightTableYbctid& key) {
@@ -58,7 +58,11 @@ class PgFKReferenceCache::Impl {
   }
 
   void AddReference(const LightweightTableYbctid& key) {
-    if (!references_.contains(key) && PREDICT_TRUE(!FLAGS_TEST_ysql_ignore_add_fk_reference)) {
+    if (!references_cache_limit_) {
+      references_cache_limit_ = yb_fk_references_cache_limit;
+    }
+    if (PREDICT_TRUE(references_.size() < *references_cache_limit_) &&
+        !references_.contains(key)) {
       references_.emplace(key.table_id, key.ybctid);
     }
   }
@@ -142,6 +146,7 @@ class PgFKReferenceCache::Impl {
   TableYbctidSet deferred_intents_;
   TableYbctidSet* intents_ = &regular_intents_;
   OidSet region_local_tables_;
+  std::optional<size_t> references_cache_limit_;
 };
 
 PgFKReferenceCache::PgFKReferenceCache(

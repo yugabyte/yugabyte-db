@@ -20,6 +20,7 @@ import com.google.inject.Provider;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.CanRollback;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
+import com.yugabyte.yw.commissioner.ITask.TaskVersion;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.DrainableMap;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -50,7 +51,6 @@ import java.time.temporal.ChronoUnit;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
@@ -387,7 +387,7 @@ public class TaskExecutor {
         "Task {}({}) with version {}",
         taskInfo.getTaskType(),
         taskInfo.getUuid(),
-        taskInfo.getVersion());
+        taskInfo.getTaskVersion());
     return new RunnableTask(task, taskInfo.getUuid());
   }
 
@@ -562,11 +562,17 @@ public class TaskExecutor {
     } else {
       taskInfo.setTaskState(State.Created);
     }
-    String ybaVersion = Util.getYbaVersion();
+    // Annotate the task with another version if there is a breaking change.
+    // We must take care not to break the runtime info.
+    int taskVersion =
+        CommonUtils.isAnnotatedWith(taskType.getTaskClass(), TaskVersion.class)
+            .map(v -> v.version())
+            .orElse(ITask.DEFAULT_TASK_VERSION);
+    // The runtime config is internal and must not be disabled unless absolutely necessary.
     if (previousTaskUUID != null
         && runtimeConfGetter.getGlobalConf(GlobalConfKeys.enableTaskRuntimeInfoOnRetry)) {
       TaskInfo previousTaskInfo = TaskInfo.getOrBadRequest(previousTaskUUID);
-      if (Objects.equals(ybaVersion, previousTaskInfo.getVersion())) {
+      if (taskVersion != previousTaskInfo.getTaskVersion()) {
         log.info("Inherting runtime task info from the previous task {}", previousTaskUUID);
         taskInfo.inherit(previousTaskInfo);
         if (log.isDebugEnabled() && taskInfo.getRuntimeInfo() != null) {
@@ -577,17 +583,20 @@ public class TaskExecutor {
         }
       } else {
         log.info(
-            "Could not inherit due to different versions - current: {}, previous: {}",
-            ybaVersion,
-            previousTaskInfo.getVersion());
+            "Could not inherit runtime info due to different versions - current: {}, previous: {}",
+            taskVersion,
+            previousTaskInfo.getTaskVersion());
       }
+    } else {
+      log.info("Did not inherit runtime info due to unsatisfied conditions");
     }
     // Set the task params.
     taskInfo.setTaskParams(
         RedactingService.filterSecretFields(task.getTaskParams(), RedactionTarget.APIS));
     // Set the owner info.
     taskInfo.setOwner(taskOwner);
-    taskInfo.setVersion(ybaVersion);
+    taskInfo.setTaskVersion(taskVersion);
+    taskInfo.setYbaVersion(Util.getYbaVersion());
     return taskInfo;
   }
 
@@ -1376,7 +1385,7 @@ public class TaskExecutor {
      * @param subTaskGroup the subtask group of subtasks to be executed concurrently.
      */
     public void addSubTaskGroup(SubTaskGroup subTaskGroup) {
-      log.info("Adding SubTaskGroup #{}: {}", subTaskGroups.size(), subTaskGroup.name);
+      log.info("Adding SubTaskGroup #{}: {}", subTaskGroup.getSubTaskCount(), subTaskGroup.name);
       if (subTaskGroup.getSubTaskCount() == 0) {
         // Allowing to add this just messes up the positions.
         log.info("Ignoring subtask SubTaskGroup {} as it is empty", subTaskGroup.name);

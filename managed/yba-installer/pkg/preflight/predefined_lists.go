@@ -25,6 +25,13 @@ var InstallChecks = []Check{
 // InstallChecksWithPostgres adds onto the base list with postgres checks
 var InstallChecksWithPostgres = append(InstallChecks, checks.Postgres)
 
+var InstallPerfAdvisorChecks = []Check{
+	checks.InstallNotExists,
+	checks.Cpu,
+	checks.Memory,
+	checks.DiskAvail,
+}
+
 // UpgradeChecks is the base list of checks for upgrade
 var UpgradeChecks = []Check{
 	checks.InstallExists,

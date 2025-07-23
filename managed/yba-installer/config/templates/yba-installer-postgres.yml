@@ -1,4 +1,4 @@
- services:
+services:
   - name: postgresService
     fileName: "{{ .SystemdFileLocation }}"
     contents: |

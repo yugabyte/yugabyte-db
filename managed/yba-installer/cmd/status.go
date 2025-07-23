@@ -26,7 +26,7 @@ var statusCmd = &cobra.Command{
     applicable systemd and config files, and the running status of the service
     (active or inactive)`,
 	Args:      cobra.MatchAll(cobra.MaximumNArgs(1), cobra.OnlyValidArgs),
-	ValidArgs: []string{"postgres", "prometheus", "yb-platform"},
+	ValidArgs: []string{"postgres", "prometheus", "yb-platform", "performance-advisor"},
 	Run: func(cmd *cobra.Command, args []string) {
 		// Print status for given service.
 		state, err := ybactlstate.Initialize()

@@ -13,7 +13,8 @@ public class TaskDetails {
   private long queuedTimeMs = -1;
   private long executionTimeMs = -1;
   private long totalTimeMs = -1;
-  private String version;
+  private int taskVersion;
+  private String ybaVersion;
   private YBAError error;
   private JsonNode runtimeInfo;
 }

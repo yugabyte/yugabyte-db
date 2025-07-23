@@ -283,7 +283,9 @@ public interface UniverseDefinitionTaskParamsMapper {
     @ValueMapping(target = "TERMINATED", source = "Terminated"),
     @ValueMapping(target = "REBOOTING", source = "Rebooting"),
     @ValueMapping(target = "HARDREBOOTING", source = "HardRebooting"),
-    @ValueMapping(target = "VMIMAGEUPGRADE", source = "VMImageUpgrade")
+    @ValueMapping(target = "VMIMAGEUPGRADE", source = "VMImageUpgrade"),
+    @ValueMapping(target = "INSTANCESTOPPING", source = "InstanceStopping"),
+    @ValueMapping(target = "INSTANCESTOPPED", source = "InstanceStopped")
   })
   NodeDetails.StateEnum toV2NodeState(
       com.yugabyte.yw.models.helpers.NodeDetails.NodeState v1NodeState);

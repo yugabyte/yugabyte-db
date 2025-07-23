@@ -675,6 +675,7 @@ class PgApiImpl {
   Result<Uuid> GetActiveTransaction() const;
   Status GetActiveTransactions(YbcPgSessionTxnInfo* infos, size_t num_infos);
   bool IsDdlMode() const;
+  Result<bool> CurrentTransactionUsesFastPath() const;
 
   //------------------------------------------------------------------------------------------------
   // Expressions.

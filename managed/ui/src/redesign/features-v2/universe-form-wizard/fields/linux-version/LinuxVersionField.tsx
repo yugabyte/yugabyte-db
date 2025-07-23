@@ -1,59 +1,121 @@
 import { useContext } from 'react';
-import { find } from 'lodash';
 import { useFormContext } from 'react-hook-form';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
-import { Box, MenuItem, makeStyles } from '@material-ui/core';
-import { YBSelectField } from '@yugabyte-ui-library/core';
+import { YBSelectField, mui, YBTooltip } from '@yugabyte-ui-library/core';
+import { InstanceSettingProps } from '@app/redesign/features-v2/universe-form-wizard/steps/hardware-settings/dtos';
 import {
-  ImageBundleDefaultTag,
-  ImageBundleYBActiveTag
-} from '@app/components/configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
-import { InstanceSettingProps } from '../../steps/hardware-settings/dtos';
-import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
+  CreateUniverseContext,
+  CreateUniverseContextMethods
+} from '@app/redesign/features-v2/universe-form-wizard/CreateUniverseContext';
 import { QUERY_KEY, api } from '@app/redesign/features/universe/universe-form/utils/api';
 import { ImageBundleType } from '@app/redesign/features/universe/universe-form/utils/dto';
-import { LINUX_VERSION_FIELD } from '../FieldNames';
-
+import {
+  LINUX_VERSION_FIELD,
+  CPU_ARCH_FIELD
+} from '@app/redesign/features-v2/universe-form-wizard/fields/FieldNames';
 import { ReactComponent as YBLogo } from '@app/redesign/assets/yb-logo-transparent.svg';
 import { ReactComponent as StarLogo } from '@app/redesign/assets/in-use-star.svg';
+import { ReactComponent as FlagIcon } from '@app/redesign/assets/flag-secondary.svg';
 
-const menuStyles = makeStyles(() => ({
-  menuItemContainer: {
-    height: '48px',
-    display: 'flex',
-    gap: '12px'
-  },
-  selectedValue: {
-    '& .MuiSelect-select': {
-      gap: '14px'
-    }
-  },
-  logoStyle: {
-    height: 20,
-    width: 20,
-    padding: 0,
-    display: 'flex',
-    justifyContent: 'center',
-    marginLeft: 8
-  },
-  defaultChip: {
-    height: 20,
-    display: 'flex',
-    marginLeft: 8
-  }
-}));
+const { Box, MenuItem, Typography } = mui;
+
+const menuProps = {
+  anchorOrigin: { vertical: 'bottom', horizontal: 'left' },
+  transformOrigin: { vertical: 'top', horizontal: 'left' }
+} as const;
+
+export const ImageBundleYBActiveTag = ({
+  icon,
+  sx
+}: {
+  icon?: React.ReactChild;
+  sx?: mui.SxProps<mui.Theme>;
+}) => {
+  const { t } = useTranslation('translation', { keyPrefix: 'linuxVersion.form.menuActions' });
+
+  return (
+    <YBTooltip
+      title={<Typography variant="subtitle1">{t('recommendedVersion')}</Typography>}
+      arrow
+      placement="top"
+    >
+      <Box
+        sx={{
+          width: 26,
+          height: 24,
+          px: '6px',
+          py: '2px',
+          backgroundColor: (theme) => theme.palette.grey[200],
+          borderRadius: '4px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          ...sx
+        }}
+      >
+        {icon || <YBLogo width={14} height={14} />}
+      </Box>
+    </YBTooltip>
+  );
+};
+
+export const ImageBundleDefaultTag = ({
+  text,
+  tooltip,
+  icon,
+  sx
+}: {
+  text?: string;
+  tooltip?: string;
+  icon?: React.ReactChild;
+  sx?: mui.SxProps<mui.Theme>;
+}) => {
+  const { t } = useTranslation('translation', { keyPrefix: 'common' });
+
+  return (
+    <YBTooltip
+      title={
+        <Typography variant="subtitle1">
+          {tooltip ? tooltip : t('form.menuActions.defaultVersion', { keyPrefix: 'linuxVersion' })}
+        </Typography>
+      }
+      arrow
+      placement="top"
+    >
+      <Typography
+        variant="subtitle1"
+        component={'span'}
+        sx={{
+          height: 24,
+          px: '6px',
+          py: '2px',
+          display: 'flex',
+          gap: '4px',
+          backgroundColor: (theme) => theme.palette.grey[200],
+          borderRadius: '4px',
+          alignItems: 'center',
+          justifyContent: 'center',
+          ml: 1,
+          ...sx
+        }}
+      >
+        {icon ? icon : <FlagIcon width="18" />}
+        {text ? text : t('default')}
+      </Typography>
+    </YBTooltip>
+  );
+};
 
 export const LinuxVersionField = ({ disabled }: { disabled: boolean }) => {
   const { watch, control, setValue } = useFormContext<InstanceSettingProps>();
   const { t } = useTranslation('translation', { keyPrefix: 'universeForm.instanceConfig' });
-  const linuxMenuStyles = menuStyles();
 
   const [{ generalSettings }] = (useContext(
     CreateUniverseContext
   ) as unknown) as CreateUniverseContextMethods;
 
-  const cpuArch = watch('arch');
+  const cpuArch = watch(CPU_ARCH_FIELD);
   const provider = generalSettings?.providerConfiguration;
   const fieldValue = watch(LINUX_VERSION_FIELD);
 
@@ -61,13 +123,12 @@ export const LinuxVersionField = ({ disabled }: { disabled: boolean }) => {
     [QUERY_KEY.getLinuxVersions, provider?.uuid, cpuArch],
     () => api.getLinuxVersions(provider?.uuid ?? '', cpuArch),
     {
-      enabled: !!provider,
+      enabled: !!provider?.uuid && !!cpuArch,
       onSuccess(data) {
-        if (!fieldValue && data.length) {
-          const defaultImg = find(data, { useAsDefault: true });
-          if (defaultImg) {
-            setValue(LINUX_VERSION_FIELD, defaultImg?.uuid, { shouldValidate: true });
-          }
+        const selected = data.find((item) => item.uuid === fieldValue);
+        if (!selected && data.length) {
+          const defaultImg = data.find((item) => item.useAsDefault);
+          setValue(LINUX_VERSION_FIELD, defaultImg?.uuid ?? data[0].uuid, { shouldValidate: true });
         }
       }
     }
@@ -80,25 +141,37 @@ export const LinuxVersionField = ({ disabled }: { disabled: boolean }) => {
           fullWidth
           name={LINUX_VERSION_FIELD}
           disabled={disabled}
-          className={linuxMenuStyles.selectedValue}
+          sx={{
+            '& .MuiSelect-select': {
+              gap: '14px'
+            }
+          }}
           control={control}
           label={t('linuxVersion')}
           dataTestId="linux-version-field"
+          menuProps={menuProps}
         >
           {linuxVersions?.map((version) => (
             <MenuItem
               key={version.uuid}
               value={version.uuid}
-              className={linuxMenuStyles.menuItemContainer}
+              sx={{
+                height: '40px',
+                display: 'flex',
+                alignItems: 'center'
+              }}
             >
               {version.name}
               {version.metadata?.type === ImageBundleType.YBA_ACTIVE && (
-                <ImageBundleYBActiveTag icon={<YBLogo />} className={linuxMenuStyles.logoStyle} />
+                <ImageBundleYBActiveTag
+                  icon={<YBLogo />}
+                  sx={{ height: 20, width: 20, ml: 1, display: 'flex', alignItems: 'center' }}
+                />
               )}
               {version.useAsDefault && (
                 <ImageBundleDefaultTag
                   icon={<StarLogo />}
-                  className={linuxMenuStyles.defaultChip}
+                  sx={{ height: 20, ml: 1, display: 'flex', alignItems: 'center' }}
                 />
               )}
             </MenuItem>

@@ -22,3 +22,11 @@ export const MASTER_DEVICE_INFO_FIELD = 'masterDeviceInfo';
 export const CPU_ARCHITECTURE_FIELD = 'arch';
 export const MASTER_PLACEMENT_FIELD = 'masterPlacement';
 export const MASTER_TSERVER_SAME_FIELD = 'keepMasterTserverSame';
+
+export const ENABLE_PROXY_SERVER_FIELD = 'enableProxyServer';
+export const SECURE_WEB_PROXY_FIELD = 'secureWebProxy';
+export const SECURE_WEB_PROXY_SERVER_FIELD = 'secureWebProxyServer';
+export const SECURE_WEB_PROXY_PORT_FIELD = 'secureWebProxyPort';
+export const WEB_PROXY_FIELD = 'webProxy';
+export const BYPASS_PROXY_LIST_FIELD = 'byPassProxyList';
+export const BYPASS_PROXY_LIST_VALUES_FIELD = 'byPassProxyListValues';
