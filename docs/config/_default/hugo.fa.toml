@@ -1,0 +1,10 @@
+[module]
+  [[module.imports]]
+    path = "../node_modules/@fortawesome/fontawesome-pro"
+    disable = false
+    [[module.imports.mounts]]
+      source = "scss"
+      target = "assets/vendor/Font-Awesome-Pro/scss"
+    [[module.imports.mounts]]
+      source = "webfonts"
+      target = "static/webfonts/Font-Awesome-Pro"

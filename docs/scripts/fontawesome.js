@@ -6,8 +6,12 @@ const npmrcPath = path.resolve(__dirname, '../.npmrc');
 
 if (!process.env.FONTAWESOME_PRO_AUTH_TOKEN) {
   const dotenv = require('dotenv');
-  dotenv.config({ path: path.resolve(__dirname, '../.env') });
+  if (!dotenv) {
+    console.warn('\nWARNING: dotenv package is not installed.');
+    process.exit(0);
+  }
 
+  dotenv.config({ path: path.resolve(__dirname, '../.env') });
   if (!process.env.FONTAWESOME_PRO_AUTH_TOKEN) {
     console.warn('\nWARNING: FONTAWESOME_PRO_AUTH_TOKEN is not set.');
     console.warn('Please set the FONTAWESOME_PRO_AUTH_TOKEN environment variable to install Font Awesome Pro.');
