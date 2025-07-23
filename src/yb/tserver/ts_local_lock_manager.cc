@@ -291,9 +291,10 @@ class TSLocalLockManager::Impl {
  public:
   Impl(
       const server::ClockPtr& clock, TabletServerIf* tablet_server,
-      server::RpcServerBase& messenger_server, ThreadPool* thread_pool)
+      server::RpcServerBase& messenger_server, ThreadPool* thread_pool,
+      docdb::ObjectLockSharedStateManager* shared_manager)
       : clock_(clock), server_(tablet_server), messenger_base_(messenger_server),
-        object_lock_manager_(thread_pool, messenger_server),
+        object_lock_manager_(thread_pool, messenger_server, shared_manager),
         poller_("TSLocalLockManager", std::bind(&Impl::Poll, this)) {}
 
   ~Impl() = default;
@@ -658,11 +659,11 @@ class TSLocalLockManager::Impl {
     return is_bootstrapped_;
   }
 
-  size_t TEST_GrantedLocksSize() const {
+  size_t TEST_GrantedLocksSize() {
     return object_lock_manager_.TEST_GrantedLocksSize();
   }
 
-  size_t TEST_WaitingLocksSize() const {
+  size_t TEST_WaitingLocksSize() {
     return object_lock_manager_.TEST_WaitingLocksSize();
   }
 
@@ -719,9 +720,11 @@ class TSLocalLockManager::Impl {
 
 TSLocalLockManager::TSLocalLockManager(
     const server::ClockPtr& clock, TabletServerIf* tablet_server,
-    server::RpcServerBase& messenger_server, ThreadPool* thread_pool)
+    server::RpcServerBase& messenger_server, ThreadPool* thread_pool,
+    docdb::ObjectLockSharedStateManager* shared_manager)
       : impl_(new Impl(
-            clock, CHECK_NOTNULL(tablet_server), messenger_server, CHECK_NOTNULL(thread_pool))) {}
+          clock, CHECK_NOTNULL(tablet_server), messenger_server, CHECK_NOTNULL(thread_pool),
+          shared_manager)) {}
 
 TSLocalLockManager::~TSLocalLockManager() {}
 
@@ -764,7 +767,7 @@ void TSLocalLockManager::DumpLocksToHtml(std::ostream& out) {
   return impl_->DumpLocksToHtml(out);
 }
 
-size_t TSLocalLockManager::TEST_GrantedLocksSize() const {
+size_t TSLocalLockManager::TEST_GrantedLocksSize() {
   return impl_->TEST_GrantedLocksSize();
 }
 
@@ -781,7 +784,7 @@ void TSLocalLockManager::PopulateObjectLocks(
   impl_->PopulateObjectLocks(object_lock_infos);
 }
 
-size_t TSLocalLockManager::TEST_WaitingLocksSize() const {
+size_t TSLocalLockManager::TEST_WaitingLocksSize() {
   return impl_->TEST_WaitingLocksSize();
 }
 

@@ -18,11 +18,27 @@
 #include "yb/common/transaction.h"
 
 #include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/lock_util.h"
+#include "yb/docdb/object_lock_data.h"
 #include "yb/docdb/object_lock_shared_fwd.h"
 
 #include "yb/gutil/macros.h"
 
+#include "yb/util/lw_function.h"
+#include "yb/util/tostring.h"
+
 namespace yb::docdb {
+
+struct ObjectSharedLockRequest {
+  ObjectLockOwner owner;
+  LockBatchEntry<ObjectLockManager> entry;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(owner, entry);
+  }
+};
+
+using LockRequestConsumer = LWFunction<void(ObjectSharedLockRequest)>;
 
 class ObjectLockOwnerRegistry {
   class Impl;
@@ -58,6 +74,8 @@ class ObjectLockSharedStateManager {
   void SetupShared(ObjectLockSharedState& shared);
 
   [[nodiscard]] ObjectLockOwnerRegistry& registry() { return registry_; }
+
+  void ConsumePendingSharedLockRequests(const LockRequestConsumer& consume);
 
   [[nodiscard]] TransactionId TEST_last_owner() const;
 

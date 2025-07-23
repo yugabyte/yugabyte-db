@@ -20,7 +20,9 @@
 #include "yb/docdb/object_lock_data.h"
 #include "yb/docdb/object_lock_shared_fwd.h"
 
+#include "yb/util/lw_function.h"
 #include "yb/util/shmem/annotations.h"
+#include "yb/util/shmem/robust_mutex.h"
 #include "yb/util/shmem/shared_mem_allocator.h"
 #include "yb/util/tostring.h"
 
@@ -45,14 +47,22 @@ struct ObjectLockFastpathRequest {
 
 static_assert(std::is_trivially_copyable_v<ObjectLockFastpathRequest>);
 
+using FastLockRequestConsumer = LWFunction<void(ObjectLockFastpathRequest)>;
+
 class ObjectLockSharedState {
  public:
+  explicit ObjectLockSharedState(SharedMemoryBackingAllocator& allocator);
+  ~ObjectLockSharedState();
+
   [[nodiscard]] bool Lock(const ObjectLockFastpathRequest& request);
 
-  [[nodiscard]] SessionLockOwnerTag TEST_last_owner() const PARENT_PROCESS_ONLY;
+  void ConsumePendingLockRequests(const FastLockRequestConsumer& consume) PARENT_PROCESS_ONLY;
+
+  [[nodiscard]] SessionLockOwnerTag TEST_last_owner() PARENT_PROCESS_ONLY;
 
  private:
-  std::atomic<SessionLockOwnerTag> TEST_last_owner_tag_{};
+  class Impl;
+  const SharedMemoryUniquePtr<Impl> impl_;
 };
 
 } // namespace yb::docdb
