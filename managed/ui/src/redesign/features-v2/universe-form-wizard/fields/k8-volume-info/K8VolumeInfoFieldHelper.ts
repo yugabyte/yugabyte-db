@@ -7,9 +7,11 @@ const getK8VolumeInfo = (providerRuntimeConfigs: any) => {
   const volumeSize = providerRuntimeConfigs?.configEntries?.find(
     (c: RunTimeConfigEntry) => c.key === 'yb.kubernetes.default_volume_size_gb'
   )?.value;
+
   const volumeCount = providerRuntimeConfigs?.configEntries?.find(
     (c: RunTimeConfigEntry) => c.key === 'yb.kubernetes.default_volume_count'
   )?.value;
+
   return { volumeSize, volumeCount };
 };
 

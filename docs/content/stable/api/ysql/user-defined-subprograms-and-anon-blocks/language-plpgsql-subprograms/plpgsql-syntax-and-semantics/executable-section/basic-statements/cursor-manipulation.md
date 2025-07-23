@@ -139,7 +139,7 @@ Not only does this penalize performance; it also brings a semantic error if the 
 
 #### Ensure that the required roles are in place
 
-The approach that this section describes relies on the ideas that the section **[Case study: PL/pgSQL procedures for provisioning roles with privileges on only the current database](../../../../provisioning-roles-for-current-database/)** describes. Run each of the code blocks on that page, in order. You can do that time and again. You might like to save the code to a single _.sql_ script so that you can start again with a clean slate whenever you want to. (Having said this, and as long as the roles are in place, you can re-run the code blocks that follow, in order, time and again without needing to re-create the roles.)
+The approach that this section describes relies on the ideas that the section **[Case study: PL/pgSQL procedures for provisioning roles with privileges on only the current database](../../../../provisioning-roles-for-current-database/)** describes. Run each of the code blocks on that page, in order. (You can do that time and again. You might like to save the code to a single _.sql_ script so that you can start again with a clean slate whenever you want to. (Having said this, and as long as the roles are in place, you can re-run the code blocks that follow, in order, time and again without needing to re-create the roles.)
 
 Notice that the final code block on the referenced page is this:
 

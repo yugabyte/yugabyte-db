@@ -3,7 +3,7 @@ title: Enable encryption at rest in YugabyteDB clusters
 headerTitle: Encryption at rest
 linkTitle: Encryption at rest
 description: Enable encryption at rest in a YugabyteDB cluster with a user-generated key.
-headcontent: 
+headcontent: Encrypt your YugabyteDB cluster
 menu:
   stable:
     identifier: encryption-at-rest
@@ -11,6 +11,12 @@ menu:
     weight: 735
 type: docs
 ---
+
+{{< page-finder/head text="Encryption at rest" subtle="across different products">}}
+  {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" current="" >}}
+  {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" url="../../yugabyte-platform/security/enable-encryption-at-rest/" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/preview/yugabyte-cloud/cloud-secure-clusters/managed-ear/" >}}
+{{< /page-finder/head >}}
 
 You can enable and disable encryption at rest in a YugabyteDB cluster with a self-generated key.
 

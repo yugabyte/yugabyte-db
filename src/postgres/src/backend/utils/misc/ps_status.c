@@ -120,9 +120,10 @@ static char **save_argv;
 static char **
 allocate_new_environ(int i)
 {
-  char **result = (char **) malloc((i + 1) * sizeof(char *));
-  __lsan_ignore_object(result);
-  return result;
+	char	  **result = (char **) malloc((i + 1) * sizeof(char *));
+
+	__lsan_ignore_object(result);
+	return result;
 }
 #endif
 

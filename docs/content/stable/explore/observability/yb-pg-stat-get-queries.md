@@ -12,6 +12,10 @@ menu:
 type: docs
 ---
 
+{{< warning title="Not currently compatible with v2.25" >}}
+The yb_terminated_queries view (supported in v2024.2 and earlier) is not yet available in v2.25.
+{{< /warning >}}
+
 Use the YugabyteDB `yb_terminated_queries` view to see terminated queries and the reason for their termination.
 
 When a query quits for unexpected reasons, information about the query and the responsible backend is stored. You can access this information by using `yb_terminated_queries` view which is built on top of the `yb_pg_stat_get_queries` function. The view returns queries using the following criteria:
@@ -20,11 +24,11 @@ When a query quits for unexpected reasons, information about the query and the r
 - Terminated by SIGSEGV - the query terminated due to a crash in the PostgreSQL process.
 - Terminated by SIGKILL - the query was killed by the system's out of memory killer because the node is running out of memory.
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 ## Supported fields
 
-At a `ysqlsh` prompt, run the following meta-commands to return the fields supported by `yb_terminated_queries`:
+At a ysqlsh prompt, run the following meta-commands to return the fields supported by `yb_terminated_queries`:
 
 ```sql
 yugabyte=# \x

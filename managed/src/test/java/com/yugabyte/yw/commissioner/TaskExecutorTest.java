@@ -131,6 +131,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.TlsToggle,
           TaskType.SystemdUpgrade,
           TaskType.ModifyAuditLoggingConfig,
+          TaskType.ModifyQueryLoggingConfig,
           TaskType.StartMasterOnNode,
           TaskType.MasterFailover,
           TaskType.SyncMasterAddresses,

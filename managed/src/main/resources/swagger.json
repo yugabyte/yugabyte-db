@@ -1990,6 +1990,7 @@
             "ConfigUniverseAlert",
             "ToggleTls",
             "ModifyAuditLogging",
+            "ModifyQueryLogging",
             "TlsConfigUpdate",
             "UpdateDiskSize",
             "CreateCluster",
@@ -2552,6 +2553,7 @@
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -5230,6 +5232,7 @@
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -8225,6 +8228,7 @@
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -9006,6 +9010,7 @@
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -10405,6 +10410,7 @@
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -14627,6 +14633,7 @@
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -14960,6 +14967,30 @@
         "endTime",
         "startTime",
         "suggestion"
+      ],
+      "type" : "object"
+    },
+    "QueryLogConfig" : {
+      "description" : "Query Log Configuration",
+      "properties" : {
+        "exportActive" : {
+          "description" : "Universe logs export active",
+          "type" : "boolean"
+        },
+        "universeLogsExporterConfig" : {
+          "description" : "Universe query logs exporter config",
+          "items" : {
+            "$ref" : "#/definitions/UniverseQueryLogsExporterConfig"
+          },
+          "type" : "array"
+        },
+        "ysqlQueryLogConfig" : {
+          "$ref" : "#/definitions/YSQLQueryLogConfig",
+          "description" : "YSQL query config"
+        }
+      },
+      "required" : [
+        "universeLogsExporterConfig"
       ],
       "type" : "object"
     },
@@ -15624,6 +15655,7 @@
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -16432,6 +16464,7 @@
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -17929,6 +17962,7 @@
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -18469,6 +18503,7 @@
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -18851,6 +18886,7 @@
               "ThirdpartySoftwareUpgrade",
               "ModifyAuditLoggingConfig",
               "ModifyKubernetesAuditLoggingConfig",
+              "ModifyQueryLoggingConfig",
               "InstallYbcSoftware",
               "UpgradeUniverseYbc",
               "UpgradeYbcGFlags",
@@ -19654,6 +19690,7 @@
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -20727,6 +20764,7 @@
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -21487,6 +21525,7 @@
               "CreateTableSpaces",
               "ThirdpartySoftwareUpgrade",
               "ModifyAuditLoggingConfig",
+              "ModifyQueryLoggingConfig",
               "RotateAccessKey",
               "CreateAndRotateAccessKey",
               "RunApiTriggeredHooks",
@@ -22004,6 +22043,7 @@
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -22655,6 +22695,7 @@
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -23561,6 +23602,7 @@
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -24176,6 +24218,7 @@
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -24791,6 +24834,7 @@
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -25131,6 +25175,43 @@
           "description" : "Exporter uuid",
           "format" : "uuid",
           "readOnly" : true,
+          "type" : "string"
+        }
+      },
+      "required" : [
+        "additionalTags",
+        "exporterUuid"
+      ],
+      "type" : "object"
+    },
+    "UniverseQueryLogsExporterConfig" : {
+      "description" : "Universe Logs Exporter Config",
+      "properties" : {
+        "additionalTags" : {
+          "additionalProperties" : {
+            "type" : "string"
+          },
+          "description" : "Additional tags",
+          "type" : "object"
+        },
+        "exporterUuid" : {
+          "description" : "Exporter uuid",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "sendBatchMaxSize" : {
+          "description" : "Maximum batch size for query logs exporter",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "sendBatchSize" : {
+          "description" : "Batch size for query logs exporter",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "sendBatchTimeout" : {
+          "description" : "Maximum batch timeout for query logs exporter",
           "type" : "string"
         }
       },
@@ -25808,6 +25889,7 @@
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -26980,6 +27062,7 @@
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -28351,6 +28434,75 @@
         "logRows",
         "logStatement",
         "logStatementOnce"
+      ],
+      "type" : "object"
+    },
+    "YSQLQueryLogConfig" : {
+      "description" : "YSQL Query Logging Configuration",
+      "properties" : {
+        "debugPrintPlan" : {
+          "description" : "Debug print plan, these parameters enable various debugging output to be emitted. When set, they print the resulting parse tree, the query rewriter output, or the execution plan for each executed query.",
+          "type" : "boolean"
+        },
+        "enabled" : {
+          "description" : "Enabled",
+          "readOnly" : true,
+          "type" : "boolean"
+        },
+        "logConnections" : {
+          "description" : "Log connections, causes each attempted connection to the server to be logged, as well as successful completion of both client authentication (if necessary) and authorization",
+          "type" : "boolean"
+        },
+        "logDisconnections" : {
+          "description" : "Log disconnections, causes session terminations to be logged. The log output provides information similar to log_connections, plus the duration of the session.",
+          "type" : "boolean"
+        },
+        "logDuration" : {
+          "description" : "Log duration, causes the duration of every completed statement to be logged",
+          "type" : "boolean"
+        },
+        "logErrorVerbosity" : {
+          "description" : "Log error verbosity, controls the amount of detail written in the server log for each message that is logged.",
+          "enum" : [
+            "VERBOSE",
+            "TERSE",
+            "DEFAULT"
+          ],
+          "type" : "string"
+        },
+        "logMinDurationStatement" : {
+          "description" : "Log min duration statement, causes the duration of each completed statement to be logged if the statement ran for at least the specified amount of time.",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "logMinErrorStatement" : {
+          "description" : "Log min error statement, controls which SQL statements that cause an error condition are recorded.",
+          "enum" : [
+            "ERROR"
+          ],
+          "type" : "string"
+        },
+        "logStatement" : {
+          "description" : "Log statement, controls which SQL statements are logged.",
+          "enum" : [
+            "ALL",
+            "NONE",
+            "DDL",
+            "MOD"
+          ],
+          "type" : "string"
+        }
+      },
+      "required" : [
+        "debugPrintPlan",
+        "enabled",
+        "logConnections",
+        "logDisconnections",
+        "logDuration",
+        "logErrorVerbosity",
+        "logMinDurationStatement",
+        "logMinErrorStatement",
+        "logStatement"
       ],
       "type" : "object"
     },

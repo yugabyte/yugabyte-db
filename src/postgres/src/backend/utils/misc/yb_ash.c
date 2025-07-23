@@ -500,7 +500,7 @@ GetDefaultQueryId()
 {
 	YbcAshConstQueryIdType type =
 		IsBackgroundWorker ? QUERY_ID_TYPE_BACKGROUND_WORKER
-						   : QUERY_ID_TYPE_DEFAULT;
+		: QUERY_ID_TYPE_DEFAULT;
 
 	return YBCGetConstQueryId(type);
 }
@@ -575,6 +575,7 @@ YbAshUnsetMetadata(void)
 	if (pop_query_id_before_push)
 	{
 		uint64		prev_query_id = YbAshNestedQueryIdStackPop(query_id_to_be_popped_before_push);
+
 		pop_query_id_before_push = false;
 		query_id_to_be_popped_before_push = 0;
 

@@ -397,7 +397,7 @@ The _"Too long"_ tests still fail. but the _"Too short"_ tests now succeed.
 
 {{< tip title="Avoid using 'years' substring values less than one to specify BC in 'to_date()' and 'to_timestamp()'." >}}
 
-The section "Usage notes for date/time formatting" on the page "9.8. Data Type Formatting Functions" just under [Table 9.25. Template Pattern Modifiers for Date/Time Formatting](https://www.postgresql.org/docs/11/functions-formatting.html#FUNCTIONS-FORMATTING-DATETIMEMOD-TABLE) says this:
+The section "Usage notes for date/time formatting" on the page "9.8. Data Type Formatting Functions" just under [Table 9.25. Template Pattern Modifiers for Date/Time Formatting](https://www.postgresql.org/docs/15/functions-formatting.html#FUNCTIONS-FORMATTING-DATETIMEMOD-TABLE) says this:
 
 > In to_timestamp and to_date, negative years are treated as signifying BC. If you write both a negative year and an explicit BC field, you get AD again. An input of year zero is treated as 1 BC.
 
@@ -495,7 +495,7 @@ This table lists about fifty distinct template patterns. They are ordered in rou
 | _TZH_                    | Time-zone hours.                                                                                  |
 | _TZM_                    | Time-zone minutes.                                                                                |
 | _OF_                     | Time-zone offset from UTC—supported only in _to_char()_.                                          |
-| _J_                      | Julian Date (integer days since November 24, 4714 BC at local midnight; see [B.7. Julian Dates](https://www.postgresql.org/docs/11/datetime-julian-dates.html) in Appendix B. Date/Time Support of the PostgreSQL documentation). |
+| _J_                      | Julian Date (integer days since November 24, 4714 BC at local midnight; see [B.7. Julian Dates](https://www.postgresql.org/docs/15/datetime-julian-dates.html) in Appendix B. Date/Time Support of the PostgreSQL documentation). |
 
 Create and execute the _template_pattern_results()_ table function to demonstrate the effect of almost all of the template patterns. When a few different template patterns simply produce different upper/lower case mixtures of their resulting text, only the one that produces the init-cap variant is used. The function uses three overloads of a formatting function _f()_. This is a simple technique to reduce repetition and clutter in the _template_pattern_results()_ function itself.
 

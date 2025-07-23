@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-The [tablefunc](https://www.postgresql.org/docs/11/tablefunc.html) module includes various functions that return tables (that is, multiple rows).
+The [tablefunc](https://www.postgresql.org/docs/15/tablefunc.html) module includes various functions that return tables (that is, multiple rows).
 
 ```sql
 CREATE EXTENSION tablefunc;

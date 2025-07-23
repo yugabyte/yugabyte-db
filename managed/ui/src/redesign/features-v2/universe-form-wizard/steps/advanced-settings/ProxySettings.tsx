@@ -1,32 +1,28 @@
-/*
- * Created on Tue Mar 25 2025
- *
- * Copyright 2021 YugaByte, Inc. and Contributors
- * Licensed under the Polyform Free Trial License 1.0.0 (the "License")
- * You may not use this file except in compliance with the License. You may obtain a copy of the License at
- * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
- */
-
 import { forwardRef, useContext, useImperativeHandle } from 'react';
+import { FormProvider, useForm } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import {
   CreateUniverseContext,
   CreateUniverseContextMethods,
   StepsRef
-} from '../../CreateUniverseContext';
-import { FormProvider, useForm } from 'react-hook-form';
-import { useTranslation } from 'react-i18next';
-import { StyledContent, StyledHeader, StyledPanel } from '../../components/DefaultComponents';
-import { ProxyAdvancedProps } from './dtos';
-import { EnableProxyServer } from '../../fields';
+} from '@app/redesign/features-v2/universe-form-wizard/CreateUniverseContext';
+import {
+  StyledContent,
+  StyledHeader,
+  StyledPanel
+} from '@app/redesign/features-v2/universe-form-wizard/components/DefaultComponents';
+import { ProxyAdvancedProps } from '@app/redesign/features-v2/universe-form-wizard/steps/advanced-settings/dtos';
+import { EnableProxyServer } from '@app/redesign/features-v2/universe-form-wizard/fields';
 
 export const ProxySettings = forwardRef<StepsRef>((_, forwardRef) => {
-  const [, { moveToNextPage, moveToPreviousPage, saveProxySettings }] = (useContext(
-    CreateUniverseContext
-  ) as unknown) as CreateUniverseContextMethods;
+  const [
+    { proxySettings },
+    { moveToNextPage, moveToPreviousPage, saveProxySettings }
+  ] = (useContext(CreateUniverseContext) as unknown) as CreateUniverseContextMethods;
 
   const { t } = useTranslation();
 
-  const methods = useForm<ProxyAdvancedProps>({});
+  const methods = useForm<ProxyAdvancedProps>({ defaultValues: proxySettings });
 
   useImperativeHandle(
     forwardRef,
@@ -38,7 +34,10 @@ export const ProxySettings = forwardRef<StepsRef>((_, forwardRef) => {
         })();
       },
       onPrev: () => {
-        moveToPreviousPage();
+        methods.handleSubmit((data) => {
+          saveProxySettings(data);
+          moveToPreviousPage();
+        })();
       }
     }),
     []

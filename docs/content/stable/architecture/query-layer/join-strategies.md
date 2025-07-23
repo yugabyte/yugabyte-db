@@ -6,7 +6,6 @@ description: Understand the various methodologies used for joining multiple tabl
 headcontent: Understand the various methods used for joining multiple tables
 menu:
   stable:
-    name: Join strategies
     identifier: joins-strategies-ysql
     parent: architecture-query-layer
     weight: 200

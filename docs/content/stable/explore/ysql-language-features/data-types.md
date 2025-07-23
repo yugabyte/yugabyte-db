@@ -15,7 +15,7 @@ type: docs
 
 Whether you're storing text, numbers, dates, or more complex data like arrays and JSON, YugabyteDB provides robust options to define the structure of your database tables. Choosing the correct data type ensures that data is stored optimally, queries run efficiently, and constraints like precision, length, and integrity are properly maintained.
 
-This guide explores the different data types to use to handle different kinds of data efficiently.
+The following examples demonstrate the different data types you can use to handle different kinds of data efficiently.
 
 {{<tip>}}
 For a list of supported and unsupported data types, see [Data types](../../../api/ysql/sql-feature-support/#data-types).
@@ -23,22 +23,7 @@ For a list of supported and unsupported data types, see [Data types](../../../ap
 
 ## Setup
 
-The examples run on any YugabyteDB universe.
-
-<!-- begin: nav tabs -->
-{{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
-
-{{<nav/panels>}}
-{{<nav/panel name="local" active="true">}}
-<!-- local cluster setup instructions -->
-{{<setup/local numnodes="1" rf="1" >}}
-
-{{</nav/panel>}}
-
-{{<nav/panel name="anywhere">}} {{<setup/anywhere>}} {{</nav/panel>}}
-{{<nav/panel name="cloud">}}{{<setup/cloud>}}{{</nav/panel>}}
-{{</nav/panels>}}
-<!-- end: nav tabs -->
+{{% explore-setup-single-new %}}
 
 ## Strings
 

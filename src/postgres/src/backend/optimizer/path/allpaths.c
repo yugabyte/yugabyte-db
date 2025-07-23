@@ -3635,8 +3635,8 @@ standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 						break;
 					default:
 						ereport(ERROR,
-							(errmsg("expected a join path (%u)",
-									ybRel->cheapest_total_path->ybUniqueId)));
+								(errmsg("expected a join path (%u)",
+										ybRel->cheapest_total_path->ybUniqueId)));
 						break;
 				}
 

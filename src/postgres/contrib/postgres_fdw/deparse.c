@@ -206,8 +206,7 @@ static bool is_subquery_var(Var *node, RelOptInfo *foreignrel,
 static void get_relation_column_alias_ids(Var *node, RelOptInfo *foreignrel,
 										  int *relno, int *colno);
 
-static const char *
-yb_get_tuple_identifier_colname_from_min_attr(AttrNumber min_attr);
+static const char *yb_get_tuple_identifier_colname_from_min_attr(AttrNumber min_attr);
 
 
 /*
@@ -2192,6 +2191,7 @@ deparseDeleteSql(StringInfo buf, RangeTblEntry *rte,
 				 List **retrieved_attrs)
 {
 	AttrNumber	yb_min_attr = yb_get_min_attr_from_ftrelid(RelationGetRelid(rel));
+
 	appendStringInfoString(buf, "DELETE FROM ");
 	deparseRelation(buf, rel);
 	appendStringInfo(buf, " WHERE %s = $1",

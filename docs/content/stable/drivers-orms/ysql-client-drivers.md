@@ -20,7 +20,7 @@ rightNav:
 {{<tabitem href="../ycql-client-drivers/" text="YCQL" icon="cassandra">}}
 {{</tabs>}}
 
-The [Yugabyte Structured Query Language (YSQL) API](../../api/ysql/) builds upon and extends a fork of the query layer from PostgreSQL 11.2, with the intent of supporting most PostgreSQL functionality and adding new functionality to supported distributed SQL databases.
+The [Yugabyte Structured Query Language (YSQL) API](../../api/ysql/) builds upon and extends a fork of the query layer from PostgreSQL 15, with the intent of supporting most PostgreSQL functionality and adding new functionality to supported distributed SQL databases.
 
 For details on PostgreSQL feature support in YSQL, refer to [SQL feature support](../../api/ysql/sql-feature-support/).
 
@@ -34,9 +34,9 @@ If you encounter an issue or have an enhancement request, [file a GitHub issue](
 
 ### libpq
 
-[libpq](https://www.postgresql.org/docs/11/libpq.html) is the C client library for connecting to and interacting with PostgreSQL databases. libpq is also the underlying engine used in other PostgreSQL application interfaces. The libpq client library supports the [SCRAM-SHA-256 authentication method](../../secure/authentication/password-authentication/#scram-sha-256).
+[libpq](https://www.postgresql.org/docs/15/libpq.html) is the C client library for connecting to and interacting with PostgreSQL databases. libpq is also the underlying engine used in other PostgreSQL application interfaces. The libpq client library supports the [SCRAM-SHA-256 authentication method](../../secure/authentication/password-authentication/#scram-sha-256).
 
-For details and documentation, refer to [libpq - C Library](https://www.postgresql.org/docs/11/libpq.html) for PostgreSQL 11 (on which YugabyteDB is based).
+For details and documentation, refer to [libpq - C Library](https://www.postgresql.org/docs/15/libpq.html) for PostgreSQL 11 (on which YugabyteDB is based).
 
 For a tutorial on building a sample C application with libpq, refer to [Connect an application](../c/ysql/).
 

@@ -134,7 +134,7 @@ This case-study is one among several. You can install all of them in a dedicated
 
 - **[ysql-case-studies](https://github.com/YugabyteDB-Samples/ysql-case-studies/tree/main/)**
 
-It takes only minutes to download the code and then run the scripts that install it all and test it all. As a bonus, you can install and run the code without making any changes in a Vanilla [PostgreSQL](https://www.yugabyte.com/postgresql/) cluster to demonstrate [the full compatibility between PostgreSQL and YSQL](https://www.yugabyte.com/postgresql/postgresql-compatibility/). It has been tested using both Version 11 (upon which the current latest YSQL implementation is based) and the _current_ PostgreSQL version.
+It takes only minutes to download the code and then run the scripts that install it all and test it all. As a bonus, you can install and run the code without making any changes in a Vanilla [PostgreSQL](https://www.yugabyte.com/postgresql/) cluster to demonstrate [the full compatibility between PostgreSQL and YSQL](https://www.yugabyte.com/postgresql/postgresql-compatibility/). It has been tested using both Version 11 (upon which the YSQL implementation (prior to v2.25.0) is based) and the _current_ PostgreSQL version.
 
 ## Creating, altering, and dropping subprograms
 

@@ -291,6 +291,8 @@ typedef enum {
 
 extern int32_t yb_sampling_algorithm;
 
+extern int yb_fk_references_cache_limit;
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

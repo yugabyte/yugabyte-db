@@ -12,12 +12,7 @@ menu:
 type: docs
 ---
 
-For protection in the event of the failure of an entire cloud region, you can deploy YugabyteDB across multiple regions with a synchronously replicated multi-region cluster. In a synchronized multi-region cluster, a minimum of 3 nodes are [replicated](../../../architecture/docdb-replication/replication/) across 3 regions with a replication factor (RF) of 3. In the event of a region failure, the database cluster continues to serve data requests from the remaining regions. YugabyteDB automatically performs a failover to the nodes in the other two regions, and the tablets being failed over are evenly distributed across the two remaining regions.
-
-This deployment provides the following advantages:
-
-- Resilience. Putting cluster nodes in different regions provides a higher degree of failure independence.
-- Consistency. All writes are synchronously replicated. Transactions are globally consistent.
+For protection in the event of the failure of an entire cloud region, you can deploy YugabyteDB across multiple regions with a synchronously replicated multi-region cluster.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
@@ -40,11 +35,18 @@ This deployment provides the following advantages:
   </li>
 </ul>
 
+In a synchronized multi-region cluster, a minimum of 3 nodes are [replicated](../../../architecture/docdb-replication/replication/) across 3 regions with a replication factor (RF) of 3. In the event of a region failure, the database cluster continues to serve data requests from the remaining regions. YugabyteDB automatically performs a failover to the nodes in the other two regions, and the tablets being failed over are evenly distributed across the two remaining regions.
+
+This deployment provides the following advantages:
+
+- Resilience. Putting cluster nodes in different regions provides a higher degree of failure independence.
+- Consistency. All writes are synchronously replicated. Transactions are globally consistent.
+
 ## Create a Replicate across regions cluster
 
 Before you can create a multi-region cluster in YugabyteDB Aeon, you need to [add your billing profile and payment method](/preview/yugabyte-cloud/cloud-admin/cloud-billing-profile/), or you can [request a free trial](/preview/yugabyte-cloud/managed-freetrial/).
 
-To create a multi-region cluster with synchronous replication, refer to [Replicate across regions](../../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-multisync/). For best results, set up your environment as follows:
+To create a multi-region cluster with synchronous replication, refer to [Replicate across regions](/preview/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-multisync/). For best results, set up your environment as follows:
 
 - Each region in a multi-region cluster must be [deployed in a VPC](/preview/yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-add-vpc/). In AWS, this means creating a VPC for each region. In GCP, make sure your VPC includes the regions where you want to deploy the cluster. You need to create the VPCs before you deploy the cluster.
 - Set up a [peering connection](/preview/yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-add-peering/) to an application VPC where you can host the YB Workload Simulator application. If your cluster is deployed in AWS (that is, has a separate VPC for each region), peer the application VPC with each cluster VPC.
@@ -54,7 +56,7 @@ YB Workload Simulator uses the YugabyteDB JDBC Smart Driver. You can run the app
 
 ## Start a workload
 
-Follow the [setup instructions](../../#set-up-yb-workload-simulator) to install the YB Workload Simulator application.
+Follow the [setup instructions](../../cluster-setup-aeon/#set-up-yb-workload-simulator) to install the YB Workload Simulator application.
 
 ### Configure the smart driver
 

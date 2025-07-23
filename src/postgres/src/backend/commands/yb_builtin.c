@@ -189,7 +189,8 @@ yb_getrusage(PG_FUNCTION_ARGS)
 Datum
 yb_mem_usage(PG_FUNCTION_ARGS)
 {
-	char a[1024];
+	char		a[1024];
+
 	sprintf(a, "Session memory usage = %ld kbs", YbGetPeakRssKb());
 	PG_RETURN_TEXT_P(cstring_to_text(a));
 }

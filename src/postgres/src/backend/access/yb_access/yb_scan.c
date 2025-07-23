@@ -3783,6 +3783,7 @@ ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 	{
 		/* Hypothetical index cannot be primary index */
 		Relation	index = RelationIdGetRelation(indexinfo->indexoid);
+
 		is_primary = index->rd_index->indisprimary;
 		RelationClose(index);
 	}
@@ -3792,13 +3793,16 @@ ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 										 path->path.pathtype != T_IndexOnlyScan);
 
 	YbScanPlanData scan_plan;
+
 	memset(&scan_plan, 0, sizeof(scan_plan));
 
 	if (is_primary || indexinfo->hypothetical)
 	{
 		RangeTblEntry *rte = planner_rt_fetch(indexinfo->rel->relid, root);
+
 		Assert(rte->rtekind == RTE_RELATION);
 		Oid			baserel_oid = rte->relid;
+
 		scan_plan.target_relation = RelationIdGetRelation(baserel_oid);
 	}
 	else
@@ -3809,6 +3813,7 @@ ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 	for (int i = 0; i < indexinfo->nkeycolumns; i++)
 	{
 		int			bms_idx;
+
 		if (indexinfo->hypothetical)
 			bms_idx = YBAttnumToBmsIndexWithMinAttr(YBFirstLowInvalidAttributeNumber,
 													i + 1);

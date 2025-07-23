@@ -100,7 +100,7 @@ DELETE FROM employees_cursor_2;
 
 You can return a cursor using a function that opens the cursor and returns its name to the caller which, in turn, can fetch rows from the cursor and close it before the end of the transaction, if needed.
 
-For more information and examples, refer to [Using Cursors](https://www.postgresql.org/docs/11/plpgsql-cursors.html#PLPGSQL-CURSOR-USING) in the PostgreSQL documentation.
+For more information and examples, refer to [Using Cursors](https://www.postgresql.org/docs/15/plpgsql-cursors.html#PLPGSQL-CURSOR-USING) in the PostgreSQL documentation.
 
 ### Use loops
 
@@ -130,22 +130,7 @@ CLOSE employees_cursor_2;
 
 ## Setup
 
-The examples run on any YugabyteDB universe.
-
-<!-- begin: nav tabs -->
-{{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
-
-{{<nav/panels>}}
-{{<nav/panel name="local" active="true">}}
-<!-- local cluster setup instructions -->
-{{<setup/local numnodes="1" rf="1" >}}
-
-{{</nav/panel>}}
-
-{{<nav/panel name="anywhere">}} {{<setup/anywhere>}} {{</nav/panel>}}
-{{<nav/panel name="cloud">}}{{<setup/cloud>}}{{</nav/panel>}}
-{{</nav/panels>}}
-<!-- end: nav tabs -->
+{{% explore-setup-single-new %}}
 
 Suppose you work with a database that includes the following table populated with data:
 
