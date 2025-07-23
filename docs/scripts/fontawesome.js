@@ -17,7 +17,7 @@ function fontAwesomeProInstalled() {
  */
 const isFontAwesomeProInstalled = fontAwesomeProInstalled();
 if (isFontAwesomeProInstalled) {
-  return;
+  process.exit(0);
 }
 
 const npmrcPath = path.resolve(__dirname, '../.npmrc');
