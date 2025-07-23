@@ -57,8 +57,8 @@ export const K8NodeSpecField = ({ isMaster, disabled }: K8NodeSpecFieldProps): R
       };
       setValue(UPDATE_FIELD, nodeSpec);
     };
-    updateDeviceInfo();
-  }, [provider?.uuid]);
+    !fieldValue && updateDeviceInfo();
+  }, [fieldValue]);
 
   const { minMemorySize, maxMemorySize } = getK8MemorySizeRange(providerRuntimeConfigs);
   const { minCPUCores, maxCPUCores } = getK8CPUCoresRange(providerRuntimeConfigs);

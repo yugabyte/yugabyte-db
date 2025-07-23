@@ -111,15 +111,13 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   const instance = instanceTypes?.find((item) => item.instanceTypeCode === instanceType);
 
   // Update volume info after instance changes
-  // We need to have have 2 separate useEffects for instanceType and provider changes
-  // once provider can be edited via the UI in case of primary cluster
   useEffect(() => {
     if (!instance || !provider?.uuid) return;
     const updateDeviceInfo = () => {
       const deviceInfo = getDeviceInfoFromInstance(instance, providerRuntimeConfigs);
       deviceInfo && setValue(UPDATE_FIELD, deviceInfo);
     };
-    updateDeviceInfo();
+    !fieldValue && updateDeviceInfo();
   }, [instance, provider?.uuid]);
 
   const convertToString = (str: string | number) => str?.toString() ?? '';

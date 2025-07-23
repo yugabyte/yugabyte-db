@@ -57,7 +57,7 @@ export const K8VolumeInfoField = ({
       const deviceInfo = getK8DeviceInfo(providerRuntimeConfigs);
       setValue(UPDATE_FIELD, deviceInfo);
     };
-    updateDeviceInfo();
+    !fieldValue && updateDeviceInfo();
     setValue(INSTANCE_TYPE_UPDATE_FIELD, null);
   }, []);
 

@@ -1,4 +1,5 @@
 import { forwardRef, useContext, useEffect, useImperativeHandle } from 'react';
+import { upperCase } from 'lodash';
 import { FormProvider, useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { Trans, useTranslation } from 'react-i18next';
@@ -34,6 +35,8 @@ import {
   LINUX_VERSION_FIELD,
   MASTER_DEVICE_INFO_FIELD,
   MASTER_INSTANCE_TYPE_FIELD,
+  MASTER_K8_NODE_SPEC_FIELD,
+  TSERVER_K8_NODE_SPEC_FIELD,
   MASTER_TSERVER_SAME_FIELD
 } from '@app/redesign/features-v2/universe-form-wizard/fields/FieldNames';
 import { InstanceSettingsValidationSchema } from '@app/redesign/features-v2/universe-form-wizard/steps/hardware-settings/ValidationSchema';
@@ -72,6 +75,7 @@ export const InstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
 
   const provider = generalSettings?.providerConfiguration;
   const isK8s = provider?.code === CloudType.kubernetes;
+  const useDedicatedNodes = nodesAvailabilitySettings?.useDedicatedNodes;
 
   //Runtime configs
   const {
@@ -90,14 +94,16 @@ export const InstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
 
   const methods = useForm<InstanceSettingProps>({
     defaultValues: instanceSettings,
-    resolver: yupResolver(InstanceSettingsValidationSchema(t))
+    resolver: yupResolver(
+      InstanceSettingsValidationSchema(t, useK8CustomResources, provider?.code, !!useDedicatedNodes)
+    )
   });
   const { watch, setValue, control } = methods;
 
   const deviceInfo = watch(DEVICE_INFO_FIELD);
   const sameAsTserver = watch(MASTER_TSERVER_SAME_FIELD);
   const instanceType = watch(INSTANCE_TYPE_FIELD);
-  const useDedicatedNodes = nodesAvailabilitySettings?.useDedicatedNodes;
+  const nodeSpec = watch(TSERVER_K8_NODE_SPEC_FIELD);
 
   useEffect(() => {
     if (osPatchingEnabled && provider && !isImgBundleSupportedByProvider(provider)) {
@@ -106,11 +112,18 @@ export const InstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
   }, [provider?.uuid]);
 
   useEffect(() => {
-    if (deviceInfo && sameAsTserver && instanceType) {
+    if (deviceInfo && sameAsTserver) {
       setValue(MASTER_DEVICE_INFO_FIELD, deviceInfo);
-      setValue(MASTER_INSTANCE_TYPE_FIELD, instanceType);
+      //instance type not present for k8s
+      if (instanceType) {
+        setValue(MASTER_INSTANCE_TYPE_FIELD, instanceType);
+      }
+      //node spec for k8s
+      if (nodeSpec) {
+        setValue(MASTER_K8_NODE_SPEC_FIELD, nodeSpec);
+      }
     }
-  }, [deviceInfo, sameAsTserver, instanceType]);
+  }, [deviceInfo, sameAsTserver, instanceType, nodeSpec]);
 
   useImperativeHandle(
     forwardRef,
@@ -121,11 +134,14 @@ export const InstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
           moveToNextPage();
         })(),
       onPrev: () => {
-        if (resilienceAndRegionsSettings?.resilienceType === ResilienceType.SINGLE_NODE) {
-          setActiveStep(CreateUniverseSteps.RESILIENCE_AND_REGIONS);
-        } else {
-          moveToPreviousPage();
-        }
+        methods.handleSubmit((data) => {
+          saveInstanceSettings(data);
+          if (resilienceAndRegionsSettings?.resilienceType === ResilienceType.SINGLE_NODE) {
+            setActiveStep(CreateUniverseSteps.RESILIENCE_AND_REGIONS);
+          } else {
+            moveToPreviousPage();
+          }
+        })();
       }
     }),
     []
@@ -136,9 +152,7 @@ export const InstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
   if (isRuntimeConfigLoading || isProviderRuntimeConfigLoading) {
     return (
       <StyledPanel>
-        <StyledHeader>
-          {showDedicatedNodesSection ? t('tserver') : t('clusterInstance')}
-        </StyledHeader>
+        <StyledHeader />
         <StyledContent>
           <PanelWrapper>
             <Box display="flex" alignItems="center" justifyContent="center" width="100%">
@@ -222,15 +236,21 @@ export const InstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
       <Box mb={3} />
 
       {showDedicatedNodesSection && (
-        <YBAccordion titleContent={<>{t('master')}</>} sx={{ width: '100%', padding: 1 }}>
+        <YBAccordion
+          defaultExpanded={!sameAsTserver}
+          titleContent={<>{t('master')}</>}
+          sx={{ width: '100%', padding: 1 }}
+        >
           <Box>
-            <YBCheckboxField
-              label={t('keepMasterTserverSame')}
-              control={control}
-              name={MASTER_TSERVER_SAME_FIELD}
-              size="large"
-              dataTestId="keep-master-tserver-same-field"
-            />
+            <Box mb={2}>
+              <YBCheckboxField
+                label={t('keepMasterTserverSame')}
+                control={control}
+                name={MASTER_TSERVER_SAME_FIELD}
+                size="large"
+                dataTestId="keep-master-tserver-same-field"
+              />
+            </Box>
             <PanelWrapper>
               <InstanceBox>
                 {!isK8s && useDedicatedNodes && (
@@ -255,14 +275,16 @@ export const InstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
                   </>
                 )}
               </InstanceBox>
-              <Box mt={4} sx={{ width: 480 }}>
-                <Typography variant="subtitle1" color="textSecondary">
-                  <Trans i18nKey="masterNote">
-                    {t('masterNote')}
-                    <b />
-                  </Trans>
-                </Typography>
-              </Box>
+              {!isK8s && (
+                <Box mt={4} sx={{ width: 480 }}>
+                  <Typography variant="subtitle1" color="textSecondary">
+                    <Trans i18nKey="masterNote">
+                      {t('masterNote', { cloudType: upperCase(provider?.code) })}
+                      <b />
+                    </Trans>
+                  </Typography>
+                </Box>
+              )}
             </PanelWrapper>
           </Box>
         </YBAccordion>

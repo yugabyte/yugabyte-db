@@ -23,10 +23,13 @@ import {
   CreateUniverseContextMethods
 } from '@app/redesign/features-v2/universe-form-wizard/CreateUniverseContext';
 import { InstanceSettingProps } from '@app/redesign/features-v2/universe-form-wizard/steps/hardware-settings/dtos';
+import { getDeviceInfoFromInstance } from '@app/redesign/features-v2/universe-form-wizard/fields/volume-info/VolumeInfoFieldHelper';
 import {
   INSTANCE_TYPE_FIELD,
   MASTER_INSTANCE_TYPE_FIELD,
-  CPU_ARCH_FIELD
+  CPU_ARCH_FIELD,
+  MASTER_DEVICE_INFO_FIELD,
+  DEVICE_INFO_FIELD
 } from '@app/redesign/features-v2/universe-form-wizard/fields/FieldNames';
 
 const { Box } = mui;
@@ -63,6 +66,7 @@ export const InstanceTypeField = ({ isMaster, disabled }: InstanceTypeFieldProps
 
   // To set value based on master or tserver field in dedicated mode
   const UPDATE_FIELD = isMaster ? MASTER_INSTANCE_TYPE_FIELD : INSTANCE_TYPE_FIELD;
+  const UPDATE_DEVICE_INFO_FIELD = isMaster ? MASTER_DEVICE_INFO_FIELD : DEVICE_INFO_FIELD;
 
   const [{ generalSettings, resilienceAndRegionsSettings }] = (useContext(
     CreateUniverseContext
@@ -111,6 +115,8 @@ export const InstanceTypeField = ({ isMaster, disabled }: InstanceTypeFieldProps
 
   const handleChange = (e: ChangeEvent<{}>, option: any) => {
     setValue(UPDATE_FIELD, option?.instanceTypeCode, { shouldValidate: true });
+    const deviceInfo = getDeviceInfoFromInstance(option, providerRuntimeConfigs);
+    setValue(UPDATE_DEVICE_INFO_FIELD, deviceInfo, { shouldValidate: true });
   };
 
   return (
