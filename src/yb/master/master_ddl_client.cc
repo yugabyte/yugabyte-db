@@ -69,6 +69,13 @@ Status MasterDDLClient::WaitForCreateNamespaceDone(const NamespaceId& id, MonoDe
       timeout, Format("Timed out waiting for namespace $0 to be created", id));
 }
 
+Result<NamespaceId> MasterDDLClient::CreateNamespaceAndWait(
+    const NamespaceName& namespace_name, YQLDatabase namespace_type, MonoDelta timeout) {
+  auto id = VERIFY_RESULT(CreateNamespace(namespace_name, namespace_type));
+  RETURN_NOT_OK(WaitForCreateNamespaceDone(id, timeout));
+  return id;
+}
+
 Result<RefreshYsqlLeaseInfoPB> MasterDDLClient::RefreshYsqlLease(
     const std::string& permanent_uuid, int64_t instance_seqno, uint64_t time_ms,
     std::optional<uint64_t> current_lease_epoch) {
@@ -84,6 +91,17 @@ Result<RefreshYsqlLeaseInfoPB> MasterDDLClient::RefreshYsqlLease(
   RETURN_NOT_OK(proxy_.RefreshYsqlLease(req, &resp, &rpc));
   RETURN_NOT_OK(ResponseStatus(resp));
   return resp.info();
+}
+
+Status MasterDDLClient::DeleteTable(const TableId& id, MonoDelta timeout) {
+  DeleteTableRequestPB req;
+  req.mutable_table()->set_table_id(id);
+  DeleteTableResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(timeout);
+  RETURN_NOT_OK(proxy_.DeleteTable(req, &resp, &rpc));
+  RETURN_NOT_OK(ResponseStatus(resp));
+  return Status::OK();
 }
 
 }  // namespace yb::master
