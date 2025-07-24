@@ -45,6 +45,14 @@ Use the following steps to perform a planned switchover:
 
 1. Resume the application traffic on the new DR primary.
 
+### Fix up sequences and serial columns
+
+xCluster DR does not replicate sequence data. If you are using sequences, you need to manually synchronize the sequence next values on the new DR primary after failover. This ensures that new writes on the new DR primary do not conflict with existing data.
+
+For example, if you have a SERIAL column in a table and the highest value in that column after switchover is 500, you need to set the sequence associated with that column to a value higher than 500, such as 501. This ensures that new writes on new DR primary do not conflict with existing data.
+
+Use the [nextval](../../../../api/ysql/exprs/sequence_functions/func_nextval/) function to set the sequence next values appropriately.
+
 ## Abort, retry, and rollback
 
 While in progress, the swtchover task is displayed on the universe **Tasks** tab. From there you can abort, retry, and roll back the switchover task.
