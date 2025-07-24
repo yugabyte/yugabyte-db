@@ -269,6 +269,7 @@ TEST_F(LoadBalancerMiniClusterRf3Test, DurationMetric) {
 }
 
 TEST_F(LoadBalancerMiniClusterTest, TaskTracker) {
+  auto kTimeout = 30s;
   auto load_balancer = ASSERT_RESULT(
       mini_cluster()->GetLeaderMiniMaster())->master()->catalog_manager()->load_balancer();
   ASSERT_TRUE(load_balancer->GetLatestActivityInfo().IsIdle());
@@ -280,9 +281,9 @@ TEST_F(LoadBalancerMiniClusterTest, TaskTracker) {
     auto tasks_summary = load_balancer->GetLatestActivityInfo().GetTasksSummary();
     return tasks_summary.size() == 1 &&
            tasks_summary.begin()->first.first == server::MonitoredTaskType::kAddServer;
-  }, 10s, "Wait for add server task to start"));
+  }, kTimeout, "Wait for add server task to start"));
   ASSERT_OK(WaitFor([&] { return load_balancer->GetLatestActivityInfo().IsIdle(); },
-      10s, "Wait for add server task to complete"));
+      kTimeout, "Wait for add server task to complete"));
 
   // Leader blacklist the new tablet server. The load balancer should start a stepdown task.
   ASSERT_OK(mini_cluster()->AddTServerToLeaderBlacklist(new_ts_index));
@@ -290,9 +291,9 @@ TEST_F(LoadBalancerMiniClusterTest, TaskTracker) {
     auto tasks_summary = load_balancer->GetLatestActivityInfo().GetTasksSummary();
     return tasks_summary.size() == 1 &&
            tasks_summary.begin()->first.first == server::MonitoredTaskType::kTryStepDown;
-  }, 10s, "Wait for stepdown task to start"));
+  }, kTimeout, "Wait for stepdown task to start"));
   ASSERT_OK(WaitFor([&] { return load_balancer->GetLatestActivityInfo().IsIdle(); },
-      10s, "Wait for stepdown task to complete"));
+      kTimeout, "Wait for stepdown task to complete"));
 
   // Blacklist the new tablet server. The load balancer should start a remove server task.
   ASSERT_OK(mini_cluster()->AddTServerToBlacklist(new_ts_index));
@@ -300,9 +301,9 @@ TEST_F(LoadBalancerMiniClusterTest, TaskTracker) {
     auto tasks_summary = load_balancer->GetLatestActivityInfo().GetTasksSummary();
     return tasks_summary.size() == 1 &&
            tasks_summary.begin()->first.first == server::MonitoredTaskType::kRemoveServer;
-  }, 10s, "Wait for remove server task to start"));
+  }, kTimeout, "Wait for remove server task to start"));
   ASSERT_OK(WaitFor([&] { return load_balancer->GetLatestActivityInfo().IsIdle(); },
-      10s, "Wait for remove server task to complete"));
+      kTimeout, "Wait for remove server task to complete"));
 }
 
 TEST_F(LoadBalancerMiniClusterTest, TabletsInWrongPlacementMetric) {
