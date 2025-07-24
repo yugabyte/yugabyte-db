@@ -105,7 +105,7 @@ Consider the following example:
 
     ```output
     Password for user yugabyte: yugabyte
-    ysqlsh (11.2-YB-{{<yb-version version="stable">}}-b0)
+    ysqlsh (15.2-YB-{{<yb-version version="stable">}}-b0)
     Type "help" for help.
     ```
 
@@ -121,7 +121,7 @@ Consider the following example:
 
     ```output
     Password for user adam: supersecret
-    ysqlsh (11.2-YB-{{<yb-version version="stable">}}-b0)
+    ysqlsh (15.2-YB-{{<yb-version version="stable">}}-b0)
     Type "help" for help.
     ```
 

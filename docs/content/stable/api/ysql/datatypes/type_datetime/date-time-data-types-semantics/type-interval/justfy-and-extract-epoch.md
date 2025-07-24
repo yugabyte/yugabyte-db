@@ -331,7 +331,7 @@ The function finishes without error, showing that, for the _interval_ values use
 
 ## The extract(epoch from interval_value) built-in function
 
-The [PostgreSQL documentation](https://www.postgresql.org/docs/11/functions-datetime.html#FUNCTIONS-DATETIME-EXTRACT) specifies the semantics of _extract(epoch from interval_value)_ thus:
+The [PostgreSQL documentation](https://www.postgresql.org/docs/15/functions-datetime.html#FUNCTIONS-DATETIME-EXTRACT) specifies the semantics of _extract(epoch from interval_value)_ thus:
 
 - [the function returns] the total number of seconds in the _interval_ [value].
 

@@ -198,6 +198,7 @@ YbTupleCacheIterator
 YbTupleCacheKeyExtractor
 YbUpdateAffectedEntities
 YbUpdateRelationCacheState
+YbUserIdAndSecContext
 YbValidateOkeysState
 YbVirtualWalRecord
 YbcAdvisoryLockId
@@ -242,6 +243,7 @@ YbcPgExecParameters
 YbcPgExecReadWriteStats
 YbcPgExecStats
 YbcPgExecStatsState
+YbcPgExecStorageMetrics
 YbcPgExplicitRowLockErrorInfo
 YbcPgExplicitRowLockParams
 YbcPgExplicitRowLockStatus
@@ -287,6 +289,7 @@ YbcPgYbrowidMode
 YbcPgmEntry
 YbcPostgresCallbacks
 YbcReadAfterCommitVisibilityEnum
+YbcReadHybridTime
 YbcReadPointHandle
 YbcReplicationSlotDescriptor
 YbcReplicationSlotHashRange

@@ -30,7 +30,8 @@ import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.*;
-import com.yugabyte.yw.models.helpers.audit.*;
+import com.yugabyte.yw.models.helpers.exporters.audit.*;
+import com.yugabyte.yw.models.helpers.exporters.query.*;
 import io.ebean.annotation.EnumValue;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -955,6 +956,15 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     public AuditLogConfig getAuditLogConfig() {
       return auditLogConfig;
+    }
+
+    // Query Logging Config
+    @ApiModelProperty(value = "YbaApi Internal. Query Logging configuration")
+    @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2025.2.0.0")
+    public QueryLogConfig queryLogConfig;
+
+    public QueryLogConfig getQueryLogConfig() {
+      return queryLogConfig;
     }
 
     // Proxy config HTTP_RPOXY, HTTPS_PROXY, NO_PROXY

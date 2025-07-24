@@ -77,7 +77,7 @@ typedef enum
 
 static YB_THREAD_LOCAL PG_Locale_Strategy pg_regex_strategy;
 static YB_THREAD_LOCAL pg_locale_t pg_regex_locale;
-static YB_THREAD_LOCAL Oid	pg_regex_collation;
+static YB_THREAD_LOCAL Oid pg_regex_collation;
 
 /*
  * Hard-wired character properties for C locale

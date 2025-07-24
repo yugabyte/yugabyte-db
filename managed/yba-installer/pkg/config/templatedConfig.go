@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	// "path/filepath"
 
@@ -19,6 +20,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 )
 
@@ -80,7 +82,7 @@ func GetYamlPathSliceData(text string) []string {
 // ReadConfigAndTemplate Reads info from input config file and sets
 // all template parameters for each individual config file directly, without
 // having to rely on variable names in app data.
-func readConfigAndTemplate(configYmlFileName string, service common.Component) ([]byte, error) {
+func readConfigAndTemplate(configYmlFileName string, service components.Service) ([]byte, error) {
 
 	// First we create a FuncMap with which to register the function.
 	funcMap := template.FuncMap{
@@ -98,6 +100,7 @@ func readConfigAndTemplate(configYmlFileName string, service common.Component) (
 		"toYaml":            ToYaml,
 		"indent":            indent,
 		"nindent":           nindent,
+		"logrotateD":        func() string { return filepath.Join(common.GetSoftwareRoot(), "logrotate", "logrotate.d") },
 	}
 
 	tmpl, err := template.New(configYmlFileName).
@@ -162,7 +165,7 @@ func WriteBytes(byteSlice []byte, fileName []byte) ([]byte, error) {
 }
 
 // GenerateTemplate of a particular component.
-func GenerateTemplate(component common.Component) error {
+func GenerateTemplate(component components.Service) error {
 	log.Debug("Generating config files for " + component.Name())
 	createdBytes, err := readConfigAndTemplate(component.TemplateFile(), component)
 	if err != nil {

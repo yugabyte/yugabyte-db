@@ -61,7 +61,7 @@ While in Early Access, the feature is not available by default. To make connecti
 To enable or disable connection pooling on a universe:
 
 1. Navigate to your universe.
-1. Click **Actions > Edit Connection Pooling** to open the **Edit Connection Pooling** dialog.
+1. Click **Actions > More > Edit Connection Pooling** to open the **Edit Connection Pooling** dialog.
 1. Enable or disable the **Built-In Connection Pooling** option.
 1. Optionally, you can change the YSQL API port (used by applications to connect to a universe) and the Internal YSQL Port, which is the port that the YugabyteDB internal PostgreSQL process listens on when connection pooling is enabled. It defaults to 6433 and is only required for local binding, not external connectivity.
 1. Click **Apply Changes**.

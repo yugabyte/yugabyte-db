@@ -72,7 +72,7 @@ However, the regime that the [custom domains approach](../custom-interval-domain
 
 ## Interval declaration syntax variants
 
-The [PostgreSQL documentation](https://www.postgresql.org/docs/11/datatype-datetime.html) specifies that this is the general syntax for an _interval_ declaration:
+The [PostgreSQL documentation](https://www.postgresql.org/docs/15/datatype-datetime.html) specifies that this is the general syntax for an _interval_ declaration:
 
 ```output
 interval [ fields ] [ (p) ]

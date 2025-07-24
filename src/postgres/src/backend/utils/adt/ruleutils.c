@@ -1585,6 +1585,7 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 		{
 			char	   *index_attname;
 			char	   *rel_attname;
+
 			index_attname = get_attname(indexrelid, keyno + 1, false);
 			rel_attname = get_attname(indrelid, attnum, false);
 			if (strcmp(index_attname, rel_attname) != 0)

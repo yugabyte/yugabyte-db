@@ -3,8 +3,6 @@ title: Query Planner
 headerTitle: Query Planner / CBO
 linkTitle: Query Planner
 headcontent: Understand how the planner chooses the optimal path for query execution
-tags:
-  feature: early-access
 menu:
   stable:
     identifier: query-planner
@@ -27,9 +25,11 @@ YugabyteDB's YSQL API uses a simple heuristics-based optimizer to determine the 
 
 ## Cost-based optimizer (YSQL)
 
-To account for the distributed nature of the data, YugabyteDB has implemented a Cost based optimizer (CBO) for YSQL that uses an advanced cost model. The model considers accurate table statistics, the cost of network round trips, operations on lower level storage layer, and the cluster topology.
+To account for the distributed nature of the data, YugabyteDB has implemented a cost-based optimizer (CBO) for YSQL that uses an advanced cost model. The model considers accurate table statistics, the cost of network round trips, operations on lower level storage layer, and the cluster topology.
 
-The YugabyteDB CBO is {{<tags/feature/ea idea="483">}} and disabled by default. To enable it, refer to [Enable cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/).
+The YugabyteDB CBO is disabled by default.
+
+For more information on configuring CBO, refer to [Enable cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/).
 
 ### Plan search algorithm
 
@@ -39,9 +39,9 @@ To optimize the search for the best plan, the CBO uses a dynamic programming-bas
 
 The optimizer relies on accurate statistics about the tables, including the number of rows, the distribution of data in columns, and the cardinality of results from operations. These statistics are essential for estimating the selectivity of filters and costs of various query plans accurately. These statistics are gathered by the [ANALYZE](../../../api/ysql/the-sql-language/statements/cmd_analyze/) command and are provided in a display-friendly format by the [pg_stats](../../../architecture/system-catalog/#data-statistics) view.
 
-{{<note title="Run ANALYZE manually" >}}
-Currently, YugabyteDB doesn't run a background job like PostgreSQL autovacuum to analyze the tables. To collect or update statistics, run the ANALYZE command manually. If you have enabled CBO, you must run ANALYZE on user tables after data load for the CBO to create optimal execution plans. Multiple projects are in progress to trigger this automatically.
-{{</note>}}
+Similar to [PostgreSQL autovacuum](https://www.postgresql.org/docs/current/routine-vacuuming.html#AUTOVACUUM), the YugabyteDB [Auto Analyze](../../../explore/query-1-performance/auto-analyze/) service automates the execution of ANALYZE commands for any table where rows have changed more than a configurable threshold for the table. This ensures table statistics are always up-to-date.
+
+Even with the Auto Analyze service, for the CBO to create optimal execution plans, you should still run ANALYZE manually on user tables after data load, as well as in other circumstances. Refer to [Best practices](#best-practices).
 
 ### Cost estimation
 
@@ -92,4 +92,4 @@ After the optimal plan is determined, YugabyteDB generates a detailed execution 
 ## Learn more
 
 - [Exploring the Cost Based Optimizer](https://www.yugabyte.com/blog/yugabytedb-cost-based-optimizer/)
-- [YugabyteDB Cost-Based Optimizer](https://dev.to/yugabyte/yugabytedb-cost-based-optimizer-and-cost-model-for-distributed-lsm-tree-1hb4)
+- [YugabyteDB Cost Based Optimizer](https://dev.to/yugabyte/yugabytedb-cost-based-optimizer-and-cost-model-for-distributed-lsm-tree-1hb4)

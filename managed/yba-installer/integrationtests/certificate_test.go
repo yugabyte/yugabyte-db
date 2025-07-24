@@ -16,9 +16,12 @@ func TestSelfSignedCertInstall(t *testing.T) {
 	mgr := Initialize(t)
 	port := testutils.GetNextPort(t)
 	version := testutils.GetVersion(t)
+	t.Log("got version and port")
 	ctrInfo := SetupContainer(t, mgr, port, version, containerTag)
+	t.Log("container setup complete")
 
 	// Test
+	t.Log("starting YBA installation with self-signed certs")
 	installAndValidateYBA(t, mgr, ctrInfo)
 	ycfg := getYbaInstallerConfig(t, mgr, ctrInfo)
 	if ycfg["server_cert_path"] != "" || ycfg["server_key_path"] != "" {

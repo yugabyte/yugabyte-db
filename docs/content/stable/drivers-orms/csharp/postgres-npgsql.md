@@ -101,7 +101,7 @@ The following is an example connection string for connecting to YugabyteDB using
 
 ```csharp
 var connStringBuilder = new NpgsqlConnectionStringBuilder();
-    connStringBuilder.Host = "22420e3a-768b-43da-8dcb-xxxxxx.aws.ybdb.io";
+    connStringBuilder.Host = "22420e3a-768b-43da-8dcb-xxxxxx.aws.yugabyte.cloud";
     connStringBuilder.Port = 5433;
     connStringBuilder.SslMode = SslMode.VerifyFull;
     connStringBuilder.RootCertificate = "/root.crt"; //Provide full path to your root CA.
@@ -111,7 +111,7 @@ var connStringBuilder = new NpgsqlConnectionStringBuilder();
     CRUD(connStringBuilder.ConnectionString);
 ```
 
-YugabyteDB Aeon clusters require SSL. Refer to [Connect applications](/preview/yugabyte-cloud/cloud-connect/connect-applications/) for instructions on how to obtain the cluster connection parameters and download the CA certificate.
+YugabyteDB Aeon clusters require SSL. Refer to [Connect applications](../../../yugabyte-cloud/cloud-connect/connect-applications/) for instructions on how to obtain the cluster connection parameters and download the CA certificate.
 
 Refer to [Configure SSL/TLS](../postgres-npgsql-reference/#configure-ssl-tls) for more information on Npgsql default and supported SSL modes, and examples for setting up your connection strings when using SSL.
 
@@ -215,7 +215,7 @@ namespace Yugabyte_CSharp_Demo
        static void Main(string[] args)
        {
           var connStringBuilder = new NpgsqlConnectionStringBuilder();
-           connStringBuilder.Host = "22420e3a-768b-43da-8dcb-xxxxxx.aws.ybdb.io";
+           connStringBuilder.Host = "22420e3a-768b-43da-8dcb-xxxxxx.aws.yugabyte.cloud";
            connStringBuilder.Port = 5433;
            connStringBuilder.SslMode = SslMode.VerifyFull;
            connStringBuilder.RootCertificate = "/root.crt" //Provide full path to your root CA.

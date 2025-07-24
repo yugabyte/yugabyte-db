@@ -2054,14 +2054,16 @@ ProcessUtilitySlow(ParseState *pstate,
 			case T_TruncateStmt:
 				{
 					Assert(IsYugaByteEnabled());
-					List *relids = NIL;
-					ListCell *cell;
+					List	   *relids = NIL;
+					ListCell   *cell;
+
 					ExecuteTruncate((TruncateStmt *) parsetree, isTopLevel,
 									&relids);
 
-					foreach (cell, relids)
+					foreach(cell, relids)
 					{
-						Oid relid = lfirst_oid(cell);
+						Oid			relid = lfirst_oid(cell);
+
 						ObjectAddressSet(address, RelationRelationId, relid);
 						EventTriggerCollectSimpleCommand(address, secondaryObject,
 														 parsetree);

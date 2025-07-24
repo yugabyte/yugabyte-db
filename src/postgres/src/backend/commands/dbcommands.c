@@ -1901,7 +1901,7 @@ yb_removing_database_from_system:
 		 */
 		if (YbIsClientYsqlConnMgr())
 		{
-			uint32_t sleep = *(YBCGetGFlags()->ysql_conn_mgr_stats_interval) * 1000 * 1000;
+			uint32_t	sleep = *(YBCGetGFlags()->ysql_conn_mgr_stats_interval) * 1000 * 1000;
 
 			elog(LOG_SERVER_ONLY,
 				 "connection manager: adding sleep of %d microseconds "

@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-The [file_fdw](https://www.postgresql.org/docs/11/file-fdw.html) module provides the foreign-data wrapper `file_fdw`, which can be used to access data files in the server's file system, or to execute programs on the server and read their output.
+The [file_fdw](https://www.postgresql.org/docs/15/file-fdw.html) module provides the foreign-data wrapper `file_fdw`, which can be used to access data files in the server's file system, or to execute programs on the server and read their output.
 
 To enable the extension:
 
