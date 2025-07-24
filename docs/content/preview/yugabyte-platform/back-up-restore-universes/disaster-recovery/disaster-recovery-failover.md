@@ -74,7 +74,7 @@ Do not attempt a switchover if you have not first repaired DR.
 
 ### Fix up sequences and serial columns
 
-If you are using sequences, you need to manually synchronize the sequence next values on the new DR primary after failover. This ensures that new writes on the new DR primary do not conflict with existing data.
+In v2025.1.1 or earlier, if you are using sequences, you need to manually synchronize the sequence next values on the new DR primary after failover. This ensures that new writes on the new DR primary do not conflict with existing data.
 
 For example, if you have a SERIAL column in a table and the highest value in that column after switchover is 500, you need to set the sequence associated with that column to a value higher than 500, such as 501. This ensures that new writes on new DR primary do not conflict with existing data.
 
