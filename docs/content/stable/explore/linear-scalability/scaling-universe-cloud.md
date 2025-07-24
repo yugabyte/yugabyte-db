@@ -19,7 +19,7 @@ YugabyteDB can scale seamlessly while running a read-write workload. You can see
 
 ## Set up a cluster
 
-Follow the [setup instructions](../../#set-up-yugabytedb-universe) to start a multi-node cluster in YugabyteDB Aeon, connect the [YB Workload Simulator](../../#set-up-yb-workload-simulator) application, and run a read-write workload. To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the cluster network diagram and Latency and Throughput charts for the running workload.
+Follow the [setup instructions](../../cluster-setup-aeon/) to start a multi-node cluster in YugabyteDB Aeon, connect the [YB Workload Simulator](../../cluster-setup-aeon/#set-up-yb-workload-simulator) application, and run a read-write workload. To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the cluster network diagram and Latency and Throughput charts for the running workload.
 
 ## Observe IOPS per node
 

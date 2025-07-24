@@ -4588,7 +4588,7 @@ Result<TabletInfos> CatalogManager::CreateTabletsFromTable(const vector<Partitio
     tablet_id_and_partition.emplace_back(GenerateIdUnlocked(SysRowEntryType::TABLET), &partition);
   }
   // Order tablets by id to guarantee same lock order in all scenarios.
-  std::sort(tablet_id_and_partition.begin(), tablet_id_and_partition.end());
+  std::ranges::sort(tablet_id_and_partition);
   for (const auto& [tablet_id, partition] : tablet_id_and_partition) {
     PartitionPB partition_pb;
     partition->ToPB(&partition_pb);
@@ -5273,7 +5273,8 @@ Result<IsOperationDoneResult> CatalogManager::IsCreateTableDone(const TableInfoP
     const auto& pb = l->pb;
 
     TRACE("Verify if the table creation is in progress for $0", table->ToString());
-    VLOG_WITH_FUNC(1) << table->ToString();
+    VLOG_WITH_FUNC(1)
+        << table->ToString() << ", create in progress: " << table->IsCreateInProgress();
     if (table->IsCreateInProgress()) {
       // Set any current errors, if we are experiencing issues creating the table. This will be
       // bubbled up to the MasterService layer. If it is an error, it gets wrapped around in
@@ -5335,7 +5336,7 @@ Result<IsOperationDoneResult> CatalogManager::IsCreateTableDone(const TableInfoP
     }
 
     if (!done) {
-      VLOG(1) << "Indexed table is not yet updated";
+      VLOG_WITH_FUNC(2) << "Indexed table is not yet updated";
       return IsOperationDoneResult::NotDone();
     }
   }
@@ -5368,7 +5369,7 @@ Result<IsOperationDoneResult> CatalogManager::IsCreateTableDone(const TableInfoP
     auto txn_status_table = VERIFY_RESULT(FindTable(GetTransactionStatusTableId()));
     auto is_create_done = VERIFY_RESULT(IsCreateTableDone(txn_status_table));
     if (!is_create_done) {
-      VLOG(1) << "Transaction status table is not yet ready: " << is_create_done.ToString();
+      VLOG_WITH_FUNC(2) << "Transaction status table is not yet ready: " << is_create_done;
       return is_create_done;
     }
   }
@@ -5381,11 +5382,12 @@ Result<IsOperationDoneResult> CatalogManager::IsCreateTableDone(const TableInfoP
     auto metric_snapshot_table = VERIFY_RESULT(FindTable(GetMetricsSnapshotsTableId()));
     auto is_create_done = VERIFY_RESULT(IsCreateTableDone(metric_snapshot_table));
     if (!is_create_done) {
-      VLOG(1) << "Metrics snapshot table is not yet ready: " << is_create_done.ToString();
+      VLOG_WITH_FUNC(2) << "Metrics snapshot table is not yet ready: " << is_create_done;
       return is_create_done;
     }
   }
 
+  VLOG_WITH_FUNC(2) << "Done";
   return IsOperationDoneResult::Done();
 }
 
@@ -7815,7 +7817,7 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
     if (get_fully_applied_indexes && l->pb.has_fully_applied_schema()) {
       // An AlterTable is in progress; fully_applied_schema is the last
       // schema that has reached every TS.
-      DCHECK(l->pb.state() == SysTablesEntryPB::ALTERING);
+      DCHECK_EQ(l->pb.state(), SysTablesEntryPB::ALTERING);
       resp->mutable_schema()->CopyFrom(l->pb.fully_applied_schema());
     } else {
       // Case 1: There's no AlterTable, the regular schema is "fully applied".
@@ -7849,11 +7851,11 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
               << "\nfully_applied_schema with version "
               << l->pb.fully_applied_schema_version()
               << ":\n"
-              << yb::ToString(l->pb.fully_applied_indexes())
+              << AsString(l->pb.fully_applied_indexes())
               << "\ninstead of schema with version "
               << l->pb.version()
               << ":\n"
-              << yb::ToString(l->pb.indexes());
+              << AsString(l->pb.indexes());
     } else {
       resp->set_version(l->pb.version());
       resp->mutable_indexes()->CopyFrom(l->pb.indexes());
@@ -7865,7 +7867,7 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
               << "\nschema with version "
               << l->pb.version()
               << ":\n"
-              << yb::ToString(l->pb.indexes());
+              << AsString(l->pb.indexes());
     }
 
     resp->set_is_backfilling(table->IsBackfilling());
@@ -10087,6 +10089,40 @@ Status CatalogManager::ListUDTypes(const ListUDTypesRequestPB* req,
   return Status::OK();
 }
 
+Status CatalogManager::AdvanceOidCounters(const NamespaceId& namespace_id) {
+  auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
+  VLOG(1) << "Calling AdvanceOidCounters on database ID " << namespace_id << ", which has OID "
+          << database_oid;
+  auto highest_oids = VERIFY_RESULT(sys_catalog_->ReadHighestPreservableOids(database_oid));
+
+  // The above does not see hidden DocDB tables (they have no record in the PG catalogs) so we need
+  // to walk the list of DocDB tables separately to find those.
+  auto table_infos = VERIFY_RESULT(GetTableInfosForNamespace(namespace_id));
+  for (const auto& table_info : table_infos) {
+    TableId table_id = table_info->id();
+    auto table_oid = GetPgsqlTableOid(table_id);
+    if (table_oid) {
+      highest_oids.UpdateWithOid(*table_oid);
+    }
+  }
+
+  VLOG(1) << "Bumping normal space OID for database OID " << database_oid << " above "
+          << highest_oids.for_normal_space_;
+  auto* yb_client = master_->client_future().get();
+  SCHECK(yb_client, IllegalState, "Client not initialized or shutting down");
+  uint32_t begin_oid, end_oid;
+  RETURN_NOT_OK(yb_client->ReservePgsqlOids(
+      namespace_id, /*next_oid=*/highest_oids.for_normal_space_, /*count=*/1,
+      /*use_secondary_space=*/false, &begin_oid, &end_oid));
+
+  VLOG(1) << "Bumping secondary space OID for database OID " << database_oid << " above "
+          << highest_oids.for_secondary_space_;
+  RETURN_NOT_OK(yb_client->ReservePgsqlOids(
+      namespace_id, /*next_oid=*/highest_oids.for_secondary_space_, /*count=*/1,
+      /*use_secondary_space=*/true, &begin_oid, &end_oid));
+  return Status::OK();
+}
+
 Status CatalogManager::InvalidateTserverOidCaches() {
   auto cluster_config = ClusterConfig();
   SCHECK_NOTNULL(cluster_config);
@@ -11276,9 +11312,8 @@ Status CatalogManager::SelectReplicasForTablet(
         tablet->tablet_id());
   }
 
-  const auto& replication_info =
-    VERIFY_RESULT(GetTableReplicationInfo(table_guard->pb.replication_info(),
-          tablet->table()->TablespaceIdForTableCreation()));
+  auto replication_info = VERIFY_RESULT(GetTableReplicationInfo(
+        table_guard->pb.replication_info(), tablet->table()->TablespaceIdForTableCreation()));
 
   ConsensusStatePB* cstate = tablet->mutable_metadata()->mutable_dirty()
           ->pb.mutable_committed_consensus_state();
@@ -11288,12 +11323,9 @@ Status CatalogManager::SelectReplicasForTablet(
   RETURN_NOT_OK(HandlePlacementUsingReplicationInfo(
       replication_info, ts_descs, config, per_table_state, global_state));
 
-  std::ostringstream out;
-  out << "Initial tserver uuids for tablet " << tablet->tablet_id() << ": ";
-  for (const RaftPeerPB& peer : config->peers()) {
-    out << peer.permanent_uuid() << " ";
-  }
-  VLOG(0) << out.str();
+  LOG_WITH_FUNC(INFO)
+      << "Initial tserver uuids for tablet " << tablet->tablet_id() << ": "
+      << CollectionToString(config->peers(), [](const auto& p) { return p.permanent_uuid(); });
 
   // Select a protege for the initial leader election. The selected protege is stored in 'tablet'
   // but is not used until the master starts the initial leader election. The master will start the

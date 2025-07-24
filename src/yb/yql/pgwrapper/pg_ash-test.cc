@@ -723,7 +723,7 @@ TEST_F(PgBgWorkersTest, ValidateBgWorkers) {
 
   ASSERT_OK(WaitFor([this, &pid_with_backend_type, &bg_workers]() -> Result<bool> {
     auto rows = VERIFY_RESULT((conn_->FetchRows<int32_t, std::string>(
-        "SELECT pid, backend_type FROM pg_stat_activity")));
+        "SELECT pid, backend_type FROM pg_stat_activity WHERE backend_type IS NOT NULL")));
     for (const auto& [pid, backend_type] : rows) {
       if (bg_workers.contains(backend_type)) {
         pid_with_backend_type.insert(std::make_pair(pid, backend_type));

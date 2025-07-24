@@ -122,6 +122,7 @@ const std::unordered_set<std::string> kSupportedCommandTags {
     "ALTER INDEX",
     "ALTER TYPE",
     "ALTER SEQUENCE",
+    "TRUNCATE TABLE",
     // Pass thru DDLs
     "CREATE ACCESS METHOD",
     "CREATE AGGREGATE",
@@ -532,8 +533,8 @@ Status XClusterDDLQueueHandler::RunDdlQueueHandlerPrepareQueries(pgwrapper::PGCo
   // Allow writes on target (read-only) cluster.
   query << "SET yb_non_ddl_txn_for_sys_tables_allowed = 1;";
   // Skip any data loads on the target since those records will be replicated (note that concurrent
-  // index backfill uses a different flow).
-  query << "SET yb_skip_data_insert_for_xcluster_target=true;";
+  // index backfill uses a different flow). Skip sequence restart for TRUNCATE TABLE.
+  query << "SET yb_xcluster_automatic_mode_target_ddl=true;";
   // Prepare replicated_ddls insert for manually replicated ddls.
   query << "PREPARE " << kDDLPrepStmtManualInsert << "(bigint, bigint, text) AS "
         << "INSERT INTO " << kReplicatedDDLsFullTableName << " VALUES ($1, $2, $3::jsonb);";

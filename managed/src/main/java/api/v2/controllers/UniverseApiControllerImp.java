@@ -17,6 +17,8 @@ import api.v2.models.UniverseEditEncryptionInTransit;
 import api.v2.models.UniverseEditGFlags;
 import api.v2.models.UniverseEditKubernetesOverrides;
 import api.v2.models.UniverseEditSpec;
+import api.v2.models.UniverseQueryLogsExport;
+import api.v2.models.UniverseResourceDetails;
 import api.v2.models.UniverseRestart;
 import api.v2.models.UniverseRollbackUpgradeReq;
 import api.v2.models.UniverseSoftwareUpgradeFinalize;
@@ -198,5 +200,17 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
   public void deleteAttachDetachMetadata(Request request, UUID cUUID, UUID uniUUID)
       throws Exception {
     universeHandler.deleteAttachDetachMetadata(request, cUUID, uniUUID);
+  }
+
+  @Override
+  public UniverseResourceDetails getUniverseResources(
+      Request request, UUID cUUID, UniverseCreateSpec universeSpec) throws Exception {
+    return universeHandler.getUniverseResources(request, cUUID, universeSpec);
+  }
+
+  @Override
+  public YBATask configureQueryLogging(
+      Request request, UUID cUUID, UUID uniUUID, UniverseQueryLogsExport req) throws Exception {
+    return universeUpgradeHandler.configureQueryLogging(request, cUUID, uniUUID, req);
   }
 }

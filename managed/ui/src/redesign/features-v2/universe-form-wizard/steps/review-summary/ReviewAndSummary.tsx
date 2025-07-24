@@ -15,9 +15,12 @@ import {
 } from '@yugabyte-ui-library/core';
 import { Region } from '../../../../features/universe/universe-form/utils/dto';
 import { styled } from '@material-ui/core';
+import { useCreateUniverse } from '../../../../../v2/api/universe/universe';
+import { mapCreateUniversePayload } from '../../CreateUniverseUtils';
 
 import { ReactComponent as UniverseIcon } from '../../../../assets/clusters.svg';
 import { ReactComponent as Money } from '../../../../assets/money.svg';
+import { toast } from 'react-toastify';
 
 const StyledPanel = styled('div')(({ theme }) => ({
   borderRadius: '8px',
@@ -76,16 +79,37 @@ const StyledBoldValue = styled('div')(({ theme }) => ({
 }));
 
 export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
-  const [{ resilienceAndRegionsSettings }, { moveToPreviousPage }] = (useContext(
+  const [context, { moveToPreviousPage }] = (useContext(
     CreateUniverseContext
   ) as unknown) as CreateUniverseContextMethods;
 
+  const { resilienceAndRegionsSettings } = context;
+
   const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.reviewAndSummary' });
+
+  const createUniverse = useCreateUniverse();
 
   useImperativeHandle(
     forwardRef,
     () => ({
-      onNext: () => {},
+      onNext: () => {
+        const payload = mapCreateUniversePayload({ ...context });
+        createUniverse
+          .mutateAsync({
+            data: payload
+          })
+          .then((resp) => {
+            if (resp.resource_uuid) {
+              // Navigate to the universe details page after creation
+              window.location.href = `/universes/${resp.resource_uuid}`;
+            }
+          })
+          .catch((error) => {
+            console.error('Error creating universe:', error);
+            toast.error(error);
+            // Handle error appropriately, e.g., show a notification
+          });
+      },
       onPrev: () => {
         moveToPreviousPage();
       }
@@ -182,6 +206,7 @@ export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
         </StyledFooter>
       </StyledPanel>
       <YBMaps
+        dataTestId='yb-maps-review-and-summary'
         mapHeight={360}
         coordinates={[
           [37.3688, -122.0363],

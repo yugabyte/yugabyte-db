@@ -29,6 +29,7 @@ export const InstanceARNField: FC<InstanceARNProps> = ({ disabled }) => {
   return (
     <Box sx={{ display: 'flex', width: '100%', flexDirection: 'column', gap: '12px' }}>
       <YBInputField
+        dataTestId="instance-arn-field"
         control={control}
         name={INSTANCE_ARN_FIELD}
         fullWidth

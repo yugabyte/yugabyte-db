@@ -223,13 +223,13 @@ REVISION  UPDATED                   STATUS    CHART           APP VERSION   DESC
 
 ## Connect using YugabyteDB shells
 
-To connect and use the YSQL Shell (`ysqlsh`), run the following command:
+To connect and use the YSQL Shell (ysqlsh), run the following command:
 
 ```sh
 kubectl exec -n yb-demo -it yb-tserver-0 -- ysqlsh -h yb-tserver-0.yb-tservers.yb-demo
 ```
 
-To connect and use the YCQL Shell (`ycqlsh`), run the following command:
+To connect and use the YCQL Shell (ycqlsh), run the following command:
 
 ```sh
 kubectl exec -n yb-demo -it yb-tserver-0 -- ycqlsh yb-tserver-0.yb-tservers.yb-demo
@@ -425,11 +425,10 @@ helm upgrade yb-demo yugabytedb/yugabyte --version {{<yb-version version="stable
 Then finalize the upgrade as follows:
 
 ```sh
-kubectl exec -it yb-master-0 -- /home/yugabyte/bin/yb-admin --master_addresses yb-master-0.yb-masters.default.svc.cluster.local:7100 promote_auto_flags
-kubectl exec -it yb-master-0 -- /home/yugabyte/bin/yb-admin --master_addresses yb-master-0.yb-masters.default.svc.cluster.local:7100 upgrade_ysql
+kubectl exec -it yb-master-0 -- /home/yugabyte/bin/yb-admin --master_addresses yb-master-0.yb-masters.default.svc.cluster.local:7100 finalize_upgrade
 ```
 
-The `upgrade_ysql` command is only needed if YSQL is enabled. Note that `promote_auto_flags` and `upgrade_ysql` are cluster-level operations; you don't need to run them on every node.
+Note that `finalize_upgrade` is a cluster-level operation; you don't need to run it on every node.
 
 ## Update the configuration of YugabyteDB pods
 

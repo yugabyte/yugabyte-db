@@ -28,6 +28,7 @@ export const SystemDField: FC<SystemDFieldProps> = () => {
         control={control}
         label={'Enable SystemD Services'}
         size="large"
+        dataTestId="systemd-field"
       />
     </Box>
   );

@@ -954,6 +954,48 @@
         checkOnlyPermission: false
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
+'/customers/{cUUID}/fetch-universe-resources':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: getUniverseResources
+    summary: Get resource utilisation of a YugabyteDB Universe
+    description: Fetches an estimate of pricing and cpu/memory/storage resource utilisation for the Universe. This is meant to be used before creating the Universe.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseCreateReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/UniverseResourceDetailsResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Customer
+      auditTargetId: cUUID.toString()
+      auditActionType: GetUniverseResources
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: READ
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2025.2.0.0
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/gflags':
   parameters:
     - name: cUUID
@@ -1423,7 +1465,7 @@
     operationId: encryptionInTransitToggle
     summary: Enable or disable encryption in transit
     description: |
-      Enable or disable encryption in transit. Encryption in transit can be both node to node or 
+      Enable or disable encryption in transit. Encryption in transit can be both node to node or
       node to client.
     tags:
       - Universe
@@ -1529,8 +1571,8 @@
     operationId: editKubernetesOverrides
     summary: Edit Kubernetes Helm Overrides
     description: |
-      Update the kubernetes helm override values. This can be used to add custom settings to 
-      kubernetes resources managed by YugabyteDB Anywhere. These override values can apply globally 
+      Update the kubernetes helm override values. This can be used to add custom settings to
+      kubernetes resources managed by YugabyteDB Anywhere. These override values can apply globally
       to a universe or per AZ.
 
       See https://github.com/yugabyte/charts/blob/master/stable/yugabyte/values.yaml for possible
@@ -1698,5 +1740,80 @@
         resourceLocation:
           path: universes
           sourceType: endpoint
+    x-yba-api-since: 2025.2.0.0
+    x-yba-api-visibility: internal
+'/customers/{cUUID}/universes/{uniUUID}/query-log-config':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: configureQueryLogging
+    summary: Configure Query Log for YugabyteDB Universe
+    description: Configure Query Log for a YugabyteDB Universe.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseQueryLogsExportReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: ModifyQueryLogging
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2025.2.0.0
+    x-yba-api-visibility: internal
+/yba-info:
+  get:
+    operationId: GetYBAInstanceInfo
+    summary: Get YBAInstance info
+    description: Get YBA Instance info
+    tags:
+      - YBA Instance
+    responses:
+      '200':
+        description: successful operation
+        $ref: "../components/responses/YBAInfoResp.yaml"
+      '400':
+        description: Client Error
+      '500':
+        description: Server Error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      noAuthz: true
     x-yba-api-since: 2025.2.0.0
     x-yba-api-visibility: internal

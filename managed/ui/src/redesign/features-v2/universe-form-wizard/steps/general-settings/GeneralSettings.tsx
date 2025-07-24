@@ -31,16 +31,26 @@ import {
   CLOUD,
   DATABASE_VERSION,
   PROVIDER_CONFIGURATION,
-  UNIVERSE_NAME
+  UNIVERSE_NAME,
+  REGIONS_FIELD,
+  RESILIENCE_TYPE,
+  RESILIENCE_FORM_MODE,
+  REPLICATION_FACTOR,
+  FAULT_TOLERANCE_TYPE,
+  NODE_COUNT,
+  SINGLE_AVAILABILITY_ZONE
 } from '../../fields/FieldNames';
 import { ReactComponent as ShuffleIcon } from '../../../../assets/shuffle.svg';
+import { Region } from '@app/redesign/features/universe/universe-form/utils/dto';
+import { ResilienceType, ResilienceFormMode, FaultToleranceType } from '../resilence-regions/dtos';
 
 const CONTROL_WIDTH = '480px';
 
 export const GeneralSettings = forwardRef<StepsRef>((_, forwardRef) => {
-  const [{ generalSettings }, { moveToNextPage, saveGeneralSettings }] = (useContext(
-    CreateUniverseContext
-  ) as unknown) as CreateUniverseContextMethods;
+  const [
+    { generalSettings, resilienceAndRegionsSettings },
+    { moveToNextPage, saveGeneralSettings, saveResilienceAndRegionsSettings }
+  ] = (useContext(CreateUniverseContext) as unknown) as CreateUniverseContextMethods;
 
   const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.generalSettings' });
   const methods = useForm<GeneralSettingsProps>({
@@ -68,6 +78,17 @@ export const GeneralSettings = forwardRef<StepsRef>((_, forwardRef) => {
 
   useEffect(() => {
     methods.resetField(PROVIDER_CONFIGURATION);
+    saveResilienceAndRegionsSettings({
+      [REGIONS_FIELD]: [],
+      [SINGLE_AVAILABILITY_ZONE]: '',
+      [RESILIENCE_TYPE]: resilienceAndRegionsSettings?.[RESILIENCE_TYPE] ?? ResilienceType.REGULAR,
+      [RESILIENCE_FORM_MODE]:
+        resilienceAndRegionsSettings?.[RESILIENCE_FORM_MODE] ?? ResilienceFormMode.GUIDED,
+      [REPLICATION_FACTOR]: resilienceAndRegionsSettings?.[REPLICATION_FACTOR] ?? 3,
+      [FAULT_TOLERANCE_TYPE]:
+        resilienceAndRegionsSettings?.[FAULT_TOLERANCE_TYPE] ?? FaultToleranceType.AZ_LEVEL,
+      [NODE_COUNT]: resilienceAndRegionsSettings?.[NODE_COUNT] ?? 1
+    });
   }, [cloud]);
 
   return (
@@ -83,6 +104,7 @@ export const GeneralSettings = forwardRef<StepsRef>((_, forwardRef) => {
               sx={{
                 width: CONTROL_WIDTH
               }}
+              dataTestId="universe-name-field"
             />
             <ShuffleIcon
               style={{
@@ -103,6 +125,7 @@ export const GeneralSettings = forwardRef<StepsRef>((_, forwardRef) => {
               width: CONTROL_WIDTH
             }}
             filterByProvider={cloud}
+            dataTestId="provider-configuration-field"
           />
           <DatabaseVersionField<GeneralSettingsProps>
             name={DATABASE_VERSION}
@@ -111,6 +134,7 @@ export const GeneralSettings = forwardRef<StepsRef>((_, forwardRef) => {
             sx={{
               width: CONTROL_WIDTH
             }}
+            dataTestId="database-version-field"
           />
         </StyledContent>
       </StyledPanel>

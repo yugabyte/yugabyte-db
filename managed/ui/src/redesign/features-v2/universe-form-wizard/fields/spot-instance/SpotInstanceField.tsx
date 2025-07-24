@@ -1,11 +1,11 @@
 import { FC } from 'react';
 import { useFormContext } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { toUpper } from 'lodash';
 import { mui, YBLabel, YBCheckboxField } from '@yugabyte-ui-library/core';
-import { useTranslation } from 'react-i18next';
-import { InstanceSettingProps } from '../../steps/hardware-settings/dtos';
+import { InstanceSettingProps } from '@app/redesign/features-v2/universe-form-wizard/steps/hardware-settings/dtos';
 import { CloudType } from '@app/redesign/features/universe/universe-form/utils/dto';
-import { SPOT_INSTANCE_FIELD } from '../FieldNames';
+import { SPOT_INSTANCE_FIELD } from '@app/redesign/features-v2/universe-form-wizard/fields/FieldNames';
 
 const { Box, styled, Typography } = mui;
 
@@ -18,10 +18,10 @@ const StyledSubText = styled(Typography)(({ theme }) => ({
   fontSize: 11.5,
   lineHeight: '16px',
   fontWeight: 400,
-  color: '#6D7C88'
+  color: theme.palette.grey[600]
 }));
 
-export const SpotInstanceField: FC<SpotInstanceFieldProps> = ({ cloudType }) => {
+export const SpotInstanceField: FC<SpotInstanceFieldProps> = ({ cloudType, disabled }) => {
   const { control } = useFormContext<InstanceSettingProps>();
   const { t } = useTranslation('translation', { keyPrefix: 'universeForm.instanceConfig' });
 
@@ -37,6 +37,8 @@ export const SpotInstanceField: FC<SpotInstanceFieldProps> = ({ cloudType }) => 
           control={control}
           name={SPOT_INSTANCE_FIELD}
           size="large"
+          dataTestId="spot-instance-field"
+          disabled={disabled}
         />
       </Box>
     </Box>

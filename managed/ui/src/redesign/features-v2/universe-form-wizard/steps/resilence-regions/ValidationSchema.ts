@@ -7,12 +7,18 @@ import {
   ResilienceType
 } from './dtos';
 import { getFaultToleranceNeeded, getFaultToleranceNeededForAZ } from '../../CreateUniverseUtils';
+import { SINGLE_AVAILABILITY_ZONE } from '../../fields/FieldNames';
 
 export const ResilienceAndRegionsSchema = (t: TFunction) => {
   return Yup.object<ResilienceAndRegionsProps>({
     resilienceFormMode: Yup.mixed<ResilienceFormMode>().required(t('errMsg.resilienceFormMode')),
     resilienceType: Yup.mixed<ResilienceType>().required(t('errMsg.resilienceType')),
     regions: Yup.array().min(1, t('errMsg.regions')),
+    [SINGLE_AVAILABILITY_ZONE]: Yup.string().when('resilienceType', {
+      is: ResilienceType.SINGLE_NODE,
+      then: Yup.string().required(t('errMsg.singleAvailabilityZoneRequired')),
+      otherwise: Yup.string().notRequired()
+    }),
     faultToleranceType: Yup.string().test('replicationFactor', 'Error', function () {
       const { path, createError } = this;
       const {
@@ -59,7 +65,6 @@ export const ResilienceAndRegionsSchema = (t: TFunction) => {
           return true;
         }
       }
-      return true;
     })
   } as any);
 };

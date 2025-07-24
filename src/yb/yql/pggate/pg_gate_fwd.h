@@ -34,7 +34,6 @@ namespace yb {
 namespace pggate {
 
 class PerformFuture;
-class PerformExchangeFuture;
 class PgClient;
 class PgDml;
 class PgExpr;

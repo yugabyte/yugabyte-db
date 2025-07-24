@@ -9198,6 +9198,21 @@ YbRelationIdIsInInitFileAndNotCached(Oid relationId)
 			relationId == SharedSecLabelObjectIndexId);
 }
 
+bool
+YbSharedRelationIdNeedsGlobalImpact(Oid relationId)
+{
+	Assert(IsSharedRelation(relationId));
+	/*
+	 * These rel ids are shared relations that can exist in tserver response
+	 * cache but not in PG catalog cache because they do not have a PG catalog
+	 * cache. If a DDL writes to such a shared relation, it needs to have
+	 * global impact. We add such rel ids here on a case by case basis when
+	 * they are identified.
+	 */
+	return (relationId == DbRoleSettingRelationId ||
+			relationId == DbRoleSettingDatidRolidIndexId);
+}
+
 /*
  * Invalidate (remove) the init file during commit of a transaction that
  * changed one or more of the relation cache entries that are kept in the

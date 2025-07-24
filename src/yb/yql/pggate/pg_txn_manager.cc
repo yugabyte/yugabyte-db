@@ -347,6 +347,9 @@ Status PgTxnManager::CalculateIsolation(
     return RecreateTransaction(SavePriority::kFalse);
   }
 
+  if (!read_only_op)
+    has_writes_ = true;
+
   // Force use of a docdb distributed txn for YSQL read only transactions involving savepoints when
   // object locking feature is enabled (only for isolation != read committed case).
   //
@@ -356,6 +359,7 @@ Status PgTxnManager::CalculateIsolation(
       pg_isolation_level_ != PgIsolationLevel::READ_COMMITTED) {
     read_only_op = false;
   }
+
   // Using pg_isolation_level_, read_only_, and deferrable_, determine the effective isolation level
   // to use at the DocDB layer, and the "deferrable" flag.
   //
@@ -548,6 +552,7 @@ void PgTxnManager::ResetTxnAndSession() {
 
   enable_follower_reads_ = false;
   read_only_ = false;
+  has_writes_ = false;
   enable_tracing_ = false;
   read_time_for_follower_reads_ = HybridTime();
   snapshot_read_time_is_used_ = false;
@@ -904,15 +909,20 @@ Status PgTxnManager::AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObject
   RETURN_NOT_OK(CalculateIsolation(
       mode <= YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK /* read_only */,
       isolation_level_ == IsolationLevel::READ_COMMITTED ? kHighestPriority : kLowerPriorityRange));
-  tserver::PgAcquireObjectLockRequestPB req;
-  RETURN_NOT_OK(SetupPerformOptions(req.mutable_options()));
-  auto* lock_oid = req.mutable_lock_oid();
-  lock_oid->set_database_oid(lock_id.db_oid);
-  lock_oid->set_relation_oid(lock_id.relation_oid);
-  lock_oid->set_object_oid(lock_id.object_oid);
-  lock_oid->set_object_sub_oid(lock_id.object_sub_oid);
-  req.set_lock_type(static_cast<tserver::ObjectLockMode>(mode));
-  return client_->AcquireObjectLock(&req, CoarseTimePoint());
+  tserver::PgPerformOptionsPB options;
+  RETURN_NOT_OK(SetupPerformOptions(&options));
+  return client_->AcquireObjectLock(&options, lock_id, mode);
+}
+
+void PgTxnManager::SetTransactionHasWrites() {
+  has_writes_ = true;
+}
+
+Result<bool> PgTxnManager::TransactionHasNonTransactionalWrites() const {
+  RSTATUS_DCHECK(
+      txn_in_progress_, IllegalState,
+      "Transaction is not in progress, cannot check fast-path writes");
+  return has_writes_ && isolation_level_ == NON_TRANSACTIONAL;
 }
 
 }  // namespace yb::pggate

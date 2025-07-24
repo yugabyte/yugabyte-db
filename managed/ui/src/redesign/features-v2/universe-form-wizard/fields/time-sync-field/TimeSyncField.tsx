@@ -39,6 +39,7 @@ export const TimeSyncField: FC<TimeSyncProps> = ({ provider }) => {
         label={t('universeForm.instanceConfig.useTimeSync', stringMap)}
         size="large"
         disabled={isChronyEnabled}
+        dataTestId="time-sync-field"
       />
     </Box>
   );

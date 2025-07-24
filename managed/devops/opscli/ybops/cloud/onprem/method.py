@@ -186,6 +186,8 @@ class OnPremDestroyInstancesMethod(DestroyInstancesMethod):
                 "platform-services", "remove-services", args, self.extra_vars, host_info)
 
         # Run non-db related tasks.
+        # The flag clean_node_exporter is always set for onprem destroy.
+        # So, provisioning_cleanup is the only effective flag.
         if args.clean_node_exporter and args.provisioning_cleanup:
             logging.info(("[app] Running control script remove-services " +
                           "against thirdparty services at {}").format(host_info['name']))

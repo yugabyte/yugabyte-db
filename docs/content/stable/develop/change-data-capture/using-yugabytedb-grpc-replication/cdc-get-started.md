@@ -542,7 +542,7 @@ The following flags control the retention of data required by CDC:
 Starting from v2024.2.1, the default data retention for CDC is 8 hours, with support for maximum retention up to 24 hours. Prior to v2024.2.1, the default retention for CDC is 4 hours.
 
 {{< warning title="Important" >}}
-When using ALL, FULL_ROW_NEW_IMAGE, or MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES before image modes, CDC preserves previous row values for UPDATE and DELETE operations. This is done by retaining history for each row in the database through a suspension of the compaction process. Compaction is halted by setting retention barriers to prevent cleanup of history for those rows that are yet to be streamed to the CDC client. These retention barriers are dynamically managed and advanced only after the CDC events are streamed and explicitly acknowledged by the client, thus allowing compaction of streamed rows.
+When using ALL, FULL_ROW_NEW_IMAGE, or MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES before image modes, CDC preserves previous row values for UPDATE and DELETE operations. This is done by retaining history for each row in the database through a suspension of the compaction process. Compaction is halted by setting retention barriers to prevent cleanup of history for those rows that are yet to be streamed to the CDC client. These retention barriers are dynamically managed and advanced only after the CDC events are streamed and explicitly acknowledged by the client, thus allowing compaction of streamed rows. 
 
 The [cdc_intent_retention_ms](../../../../reference/configuration/yb-tserver/#cdc-intent-retention-ms) flag governs the maximum retention period (default 8 hours). Be aware that any interruption in CDC consumption for extended periods using these before image modes may degrade read performance. This happens because compaction activities are halted in the database when these before image modes are used, leading to inefficient key lookups as reads must traverse multiple SST files.
 {{< /warning >}}
@@ -588,3 +588,7 @@ value.after != null ? (value.after?.country?.value == '\''UK'\'' ? '\''uk_users'
 This expression checks if the value of the row after the operation has the country set to `UK`. If _yes_, then the expression returns `uk_users`. If _no_, it returns _null_, and in case the row after the operation is _null_ (for example, in a "delete" operation), the expression also checks for the same condition on row values before the operation. The value that is returned determines which new Kafka Topic will receive the re-routed event. If it returns _null_, the event is sent to the default topic.
 
 For more advanced routing configuration, refer to the [Debezium documentation](https://debezium.io/documentation/reference/stable/transformations/content-based-routing.html) on content-based routing.
+
+## CDC with point-in-time recovery
+
+[Point-in-time recovery](../../../../manage/backup-restore/point-in-time-recovery/) (PITR) provides the ability to restore the data to a specific point in time, reflecting the state of the database at an earlier time. For databases and tables with CDC configured, you need to create new streams after the restore is complete, and start streaming from that point. Creating new streams ensures that you start streaming from the correct checkpoints.

@@ -11,13 +11,7 @@ import { forwardRef, useContext, useEffect, useImperativeHandle } from 'react';
 import { styled } from '@material-ui/core';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { FormProvider, useForm } from 'react-hook-form';
-import {
-  AlertVariant,
-  mui,
-  YBAlert,
-  YBButton,
-  YBTooltip
-} from '@yugabyte-ui-library/core';
+import { AlertVariant, mui, YBAlert, YBButton, YBTooltip } from '@yugabyte-ui-library/core';
 import { Trans, useTranslation } from 'react-i18next';
 import {
   CreateUniverseContext,
@@ -67,7 +61,7 @@ const StyledHelpText = styled('div')(({ theme }) => ({
 export const ResilienceAndRegions = forwardRef<StepsRef>((_, forwardRef) => {
   const [
     { resilienceAndRegionsSettings },
-    { moveToPreviousPage, saveResilienceAndRegionsSettings, moveToNextPage }
+    { moveToPreviousPage, saveResilienceAndRegionsSettings, moveToNextPage, setResilienceType }
   ] = (useContext(CreateUniverseContext) as unknown) as CreateUniverseContextMethods;
 
   const { t } = useTranslation('translation', {
@@ -98,6 +92,10 @@ export const ResilienceAndRegions = forwardRef<StepsRef>((_, forwardRef) => {
   useEffect(() => {
     trigger(FAULT_TOLERANCE_TYPE);
   }, [regions, replicationFactor, faultToleranceType, formMode, resilienceType]);
+
+  useEffect(() => {
+    setResilienceType(resilienceType);
+  }, [resilienceType]);
 
   useImperativeHandle(
     forwardRef,
@@ -139,6 +137,7 @@ export const ResilienceAndRegions = forwardRef<StepsRef>((_, forwardRef) => {
                       onClick={() => {
                         methods.setValue(RESILIENCE_FORM_MODE, ResilienceFormMode.GUIDED);
                       }}
+                      dataTestId='guided-mode-button'
                     >
                       {t('formType.guidedMode')}
                     </YBButton>
@@ -153,6 +152,7 @@ export const ResilienceAndRegions = forwardRef<StepsRef>((_, forwardRef) => {
                       onClick={() => {
                         methods.setValue(RESILIENCE_FORM_MODE, ResilienceFormMode.FREE_FORM);
                       }}
+                      dataTestId='free-form-mode-button'
                     >
                       {t('formType.freeForm')}
                     </YBButton>

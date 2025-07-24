@@ -182,7 +182,7 @@ The following example shows how to build a connection string for connecting to a
 
 ```csharp
 var connStringBuilder = new NpgsqlConnectionStringBuilder();
-    connStringBuilder.Host = "22420e3a-768b-43da-8dcb-xxxxxx.aws.ybdb.io";
+    connStringBuilder.Host = "22420e3a-768b-43da-8dcb-xxxxxx.aws.yugabyte.cloud";
     connStringBuilder.Port = 5433;
     connStringBuilder.SslMode = SslMode.Require;
     connStringBuilder.Username = "admin";
@@ -196,7 +196,7 @@ The following example shows how to build a connection string for connecting to a
 
 ```csharp
 var connStringBuilder = new NpgsqlConnectionStringBuilder();
-    connStringBuilder.Host = "22420e3a-768b-43da-8dcb-xxxxxx.aws.ybdb.io";
+    connStringBuilder.Host = "22420e3a-768b-43da-8dcb-xxxxxx.aws.yugabyte.cloud";
     connStringBuilder.Port = 5433;
     connStringBuilder.SslMode = SslMode.VerifyCA;
     //or connStringBuilder.SslMode = SslMode.VerifyFull;

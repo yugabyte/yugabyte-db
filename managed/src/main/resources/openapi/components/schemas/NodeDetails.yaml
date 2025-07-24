@@ -120,6 +120,8 @@ properties:
       - Rebooting
       - HardRebooting
       - VMImageUpgrade
+      - InstanceStopping
+      - InstanceStopped
   yb_prebuilt_ami:
     description: True if this a custom YB AMI
     type: boolean

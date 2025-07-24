@@ -48,7 +48,7 @@ Before you create a Kubernetes provider, perform the following:
 - Create a `yugabyte-platform-universe-management` service account.
 - Create a `kubeconfig` file of the service account you created to configure access to the Kubernetes cluster.
 
-Refer to [To deploy nodes](../../prepare/cloud-permissions/cloud-permissions-nodes/).
+See [To deploy nodes](../../prepare/cloud-permissions/cloud-permissions-nodes/).
 
 ## Configure Kubernetes
 
@@ -420,6 +420,8 @@ spec:
         ISTIO_META_DNS_AUTO_ALLOCATE: "true"
   # rest of the configuration…
 ```
+
+Note that any change to the Istio configuration requires a restart of the YugabyteDB Anywhere pod.
 
 Refer to [Multi-Region YugabyteDB Deployments on Kubernetes with Istio](https://www.yugabyte.com/blog/multi-region-yugabytedb-deployments-on-kubernetes-with-istio/) for a step-by-step guide and an explanation of the options being used.
 

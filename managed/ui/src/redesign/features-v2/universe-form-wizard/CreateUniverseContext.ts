@@ -52,6 +52,7 @@ export type createUniverseFormProps = {
   securitySettings?: SecuritySettingsProps;
   proxySettings?: ProxyAdvancedProps;
   otherAdvancedSettings?: OtherAdvancedProps;
+  resilienceType?: ResilienceType;
 };
 
 export const initialCreateUniverseFormState: createUniverseFormProps = {
@@ -95,6 +96,20 @@ export const initialCreateUniverseFormState: createUniverseFormProps = {
     tserverK8SNodeResourceSpec: null,
     masterK8SNodeResourceSpec: null,
     keepMasterTserverSame: true
+  },
+  securitySettings: {
+    enableClientToNodeEncryption: false,
+    enableNodeToNodeEncryption: false
+  },
+  resilienceType: ResilienceType.REGULAR,
+  proxySettings: {
+    enableProxyServer: false,
+    secureWebProxy: false,
+    secureWebProxyServer: '',
+    secureWebProxyPort: undefined,
+    webProxy: false,
+    byPassProxyList: false,
+    byPassProxyListValues: []
   }
 };
 
@@ -110,6 +125,10 @@ export const createUniverseFormMethods = (context: createUniverseFormProps) => (
   moveToPreviousPage: () => ({
     ...context,
     activeStep: Math.max(context.activeStep - 1, 1)
+  }),
+  setActiveStep: (step: CreateUniverseSteps) => ({
+    ...context,
+    activeStep: step
   }),
   saveGeneralSettings: (data: GeneralSettingsProps) => ({
     ...context,
@@ -142,6 +161,10 @@ export const createUniverseFormMethods = (context: createUniverseFormProps) => (
   saveOtherAdvancedSettings: (data: OtherAdvancedProps) => ({
     ...context,
     otherAdvancedSettings: data
+  }),
+  setResilienceType: (resilienceType: ResilienceType) => ({
+    ...context,
+    resilienceType
   })
 });
 

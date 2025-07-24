@@ -35,7 +35,6 @@ METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Write);
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_PgClientService_Perform);
 DECLARE_uint64(ysql_session_max_batch_size);
-DECLARE_bool(TEST_ysql_ignore_add_fk_reference);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(pg_client_use_shared_memory);
@@ -43,6 +42,15 @@ DECLARE_string(ysql_pg_conf_csv);
 
 namespace yb::pgwrapper {
 namespace {
+
+void AppendPgConfOption(const std::string& value) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) =
+      FLAGS_ysql_pg_conf_csv.empty() ? value : (FLAGS_ysql_pg_conf_csv + "," + value);
+}
+
+std::string FKReferenceCacheLimitPgConfOption(size_t value) {
+  return Format("yb_fk_references_cache_limit=$0", value);
+}
 
 const std::string kPKTable = "pk_table";
 const std::string kFKTable = "fk_table";
@@ -75,7 +83,7 @@ class PgFKeyTest : public PgMiniTestBase {
     FLAGS_enable_automatic_tablet_splitting = false;
     // This test counts number of performed RPC calls, so turn off pg client shared memory.
     FLAGS_pg_client_use_shared_memory = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = MaxQueryLayerRetriesConf(0);
+    AppendPgConfOption(MaxQueryLayerRetriesConf(0));
     PgMiniTestBase::SetUp();
     rpc_count_.emplace(*cluster_->mini_tablet_server(0)->server()->metric_entity());
   }
@@ -147,7 +155,7 @@ Status CheckAddFKCorrectness(PGConn* conn, bool temp_tables) {
 class PgFKeyTestNoFKCache : public PgFKeyTest {
  protected:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_ignore_add_fk_reference) = true;
+    AppendPgConfOption(FKReferenceCacheLimitPgConfOption(0));
     PgFKeyTest::SetUp();
   }
 };
@@ -623,4 +631,77 @@ TEST_F(PgFKeyTest, DeferredConstraintWithSubTxn) {
   ASSERT_EQ(row, (decltype(row){1, 1}));
 }
 
+class PgFKeyFKCacheLimitTest : public PgFKeyTest {
+ protected:
+  struct Options {
+    std::optional<size_t> cache_limit_guc_value{};
+    std::pair<size_t, size_t> insert_keys{};
+    size_t expected_reads{};
+  };
+
+  void SetUp() override {
+    AppendPgConfOption(FKReferenceCacheLimitPgConfOption(kDefaultRefCacheLimit));
+    FLAGS_ysql_session_max_batch_size = 1;
+    PgFKeyTest::SetUp();
+  }
+
+  Status DoTest(PGConn& conn, const Options& options) {
+    RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    if (options.cache_limit_guc_value) {
+      RETURN_NOT_OK(conn.ExecuteFormat(
+          "SET LOCAL yb_fk_references_cache_limit = $0", *options.cache_limit_guc_value));
+    }
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0 SELECT s FROM generate_series($1, $2) AS s",
+        kPKTable, options.insert_keys.first, options.insert_keys.second));
+    const auto num_reads = VERIFY_RESULT(rpc_count_->Delta([&conn, &options] {
+      return conn.ExecuteFormat(
+          "INSERT INTO $0 SELECT s, s FROM generate_series($1, $2) AS s",
+          kFKTable, options.insert_keys.first, options.insert_keys.second);
+    })).read;
+    RSTATUS_DCHECK_EQ(num_reads, options.expected_reads, IllegalState, "Bad read count");
+    return conn.CommitTransaction();
+  }
+
+  static constexpr size_t kDefaultRefCacheLimit = 10;
+};
+
+// The test checks limiting of FK reference cache size base on GUC
+TEST_F_EX(PgFKeyTest, FKReferenceCacheLimit, PgFKeyFKCacheLimitTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(CreateTables(&conn));
+  ASSERT_OK(AddFKConstraint(&conn));
+  size_t last_key = 0;
+  auto get_next_insert_keys = [&last_key](auto count) {
+    const auto start = last_key + 1;
+    last_key += count;
+    return std::make_pair(start, last_key);
+  };
+  for (auto above_limit_value : {0U, 1U, 3U}) {
+    ASSERT_OK(DoTest(
+        conn,
+        {
+            .insert_keys =
+                get_next_insert_keys(kDefaultRefCacheLimit + above_limit_value),
+            .expected_reads = above_limit_value
+        }));
+  }
+
+  ASSERT_OK(DoTest(
+    conn,
+    {
+        .cache_limit_guc_value = 0,
+        .insert_keys = get_next_insert_keys(kDefaultRefCacheLimit),
+        .expected_reads = kDefaultRefCacheLimit
+    }));
+
+  const auto new_cache_limit_value = kDefaultRefCacheLimit * 2;
+  ASSERT_OK(DoTest(
+    conn,
+    {
+        .cache_limit_guc_value = new_cache_limit_value,
+        .insert_keys = get_next_insert_keys(new_cache_limit_value + 1),
+        .expected_reads = 1
+    }));
+}
 } // namespace yb::pgwrapper

@@ -46,7 +46,7 @@ export const YCQField = (): ReactElement => {
       >
         <Box sx={{ marginBottom: '-5px', mr: 1 }}>
           <YBTooltip
-            title={!ysqlEnabled ? (t('enableYsqlOrYcql') as string) : ''}
+            title={!ysqlEnabled && !ycqlEnabled ? (t('enableYsqlOrYcql') as string) : ''}
             placement="top-start"
           >
             <div>
@@ -54,7 +54,7 @@ export const YCQField = (): ReactElement => {
                 name={YCQL_FIELD}
                 control={control}
                 label={t('ycqlSettings.toggleLabel')}
-                disabled={!ysqlEnabled}
+                dataTestId="ycql-settings-field"
               />
             </div>
           </YBTooltip>
@@ -76,6 +76,7 @@ export const YCQField = (): ReactElement => {
                 name={YCQL_AUTH_FIELD}
                 control={control}
                 label={t('ycqlSettings.authToggleLabel')}
+                dataTestId="ycql-settings-auth-field"
               />
             </Box>
           </Box>
@@ -86,6 +87,7 @@ export const YCQField = (): ReactElement => {
                 control={control}
                 placeholder={t('ycqlSettings.authPwd')}
                 label={t('ycqlSettings.authPwd')}
+                dataTestId="ycql-settings-auth-pwd-field"
               />
               <Box sx={{ display: 'flex', flexDirection: 'column', mt: 3, width: '100%' }}>
                 <YBPasswordField
@@ -93,6 +95,7 @@ export const YCQField = (): ReactElement => {
                   control={control}
                   placeholder={t('ycqlSettings.authConfirmPwd')}
                   label={t('ycqlSettings.authConfirmPwd')}
+                  dataTestId="ycql-settings-auth-confirm-pwd-field"
                 />
               </Box>
             </Box>

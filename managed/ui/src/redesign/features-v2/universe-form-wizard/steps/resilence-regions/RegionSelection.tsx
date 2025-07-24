@@ -78,15 +78,27 @@ export const RegionSelection = () => {
         ybInputProps={{
           placeholder: t('selectRegion'),
           error: !!errors[REGIONS_FIELD],
-          helperText: errors[REGIONS_FIELD]?.message
+          helperText: errors[REGIONS_FIELD]?.message,
+          dataTestId: 'region-selection-autocomplete',
+          slotProps: {
+            input: {
+              style: {
+                paddingLeft: '8px'
+              }
+            }
+          }
         }}
+        dataTestId="region-selection-autocomplete-parent"
         options={((regionsList as unknown) as Record<string, string>[]) ?? []}
         getOptionLabel={(r) => (typeof r === 'string' ? r : r.name ?? '')}
         sx={{ marginBottom: '24px', marginLeft: '24px', marginRight: '24px' }}
         loading={isFetching}
         multiple={allowmultipleRegionsSelection}
         onChange={(_, option) => {
-          const value = uniqBy(Array.isArray(option) ? option : option === null ? [] : [option], 'name');
+          const value = uniqBy(
+            Array.isArray(option) ? option : option === null ? [] : [option],
+            'name'
+          );
           setValue(REGIONS_FIELD, (value as unknown) as Region[], { shouldValidate: true });
         }}
         value={
@@ -109,12 +121,14 @@ export const RegionSelection = () => {
           }}
         >
           <AvailabilityZoneField
+            dataTestId="single-node-availability-zone"
             name={SINGLE_AVAILABILITY_ZONE}
             label={t('singleNode.availabilityZone')}
             placeholder={t('singleNode.chooseAvailabilityZone')}
             sx={{ width: '500px' }}
           />
           <YBInputField
+            dataTestId="single-node-count"
             name={NODE_COUNT}
             control={control}
             label={t('singleNode.node')}
@@ -126,13 +140,16 @@ export const RegionSelection = () => {
       )}
       <YBMaps
         mapHeight={345}
+        dataTestId='yb-maps-region-selection'
         coordinates={[
           [37.3688, -122.0363],
           [34.052235, -118.243683]
         ]}
         initialBounds={undefined}
         mapContainerProps={{
-          scrollWheelZoom: false
+          scrollWheelZoom: false,
+          zoom: 2,
+          center: [0, 0]
         }}
       >
         {
@@ -147,22 +164,22 @@ export const RegionSelection = () => {
             );
           }) as any
         }
-        {regionsList?.map((region) => {
-          if (regions.includes(region)) return null;
-          return (
-            <YBMapMarker
-              key={region.code}
-              position={[region.latitude, region.longitude]}
-              type={MarkerType.REGION_NOT_SELECTED}
-              tooltip={<>{region.name}</>}
-            />
-          );
-        })}
-        {regions?.length > 0 && (
+        <>
+          {(regionsList ?? [])
+            .map((region) => (
+              <YBMapMarker
+                key={region.code}
+                position={[region.latitude, region.longitude]}
+                type={regions.includes(region) ? MarkerType.REGION_SELECTED : MarkerType.REGION_NOT_SELECTED}
+                tooltip={<>{region.name}</>}
+              />
+            ))}
+        </>
+        {regions?.length > 0 ? (
           <MapLegend
             mapLegendItems={[<MapLegendItem icon={<>{icon.normal}</>} label={'Region'} />]}
           />
-        )}
+        ) : <span />}
       </YBMaps>
     </div>
   );

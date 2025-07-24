@@ -245,8 +245,13 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
     return pg_client_;
   }
 
+  Status SetupIsolationAndPerformOptionsForDdl(
+      tserver::PgPerformOptionsPB* options, bool use_regular_transaction_block);
+
   Status SetActiveSubTransaction(SubTransactionId id);
   Status RollbackToSubTransaction(SubTransactionId id);
+  void SetTransactionHasWrites();
+  Result<bool> CurrentTransactionUsesFastPath() const;
 
   void ResetHasCatalogWriteOperationsInDdlMode();
   bool HasCatalogWriteOperationsInDdlMode() const;

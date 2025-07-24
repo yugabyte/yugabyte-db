@@ -14,7 +14,7 @@ type: docs
 
 Use the `JSONB` data type to efficiently model JSON data. This data type makes it easy to model
 JSON data which does not have a set schema and might change often. This data type is similar to
-the [JSONB data type in PostgreSQL](https://www.postgresql.org/docs/9.4/static/datatype-json.html).
+the [JSONB data type in PostgreSQL](https://www.postgresql.org/docs/15/static/datatype-json.html).
 The JSON document is serialized into a format which is easy for search and retrieval.
 This is achieved by storing all the JSON keys in sorted order, which allows for efficient binary
 search of keys. Similarly, arrays are stored such that random access for a particular array index

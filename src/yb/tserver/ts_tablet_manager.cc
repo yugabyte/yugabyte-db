@@ -1946,7 +1946,6 @@ Status TSTabletManager::DeleteTablet(
                        meta->data_root_dir(),
                        meta->wal_root_dir());
 
-  LOG_WITH_PREFIX_AND_FUNC(INFO) << "6";
   return Status::OK();
 }
 

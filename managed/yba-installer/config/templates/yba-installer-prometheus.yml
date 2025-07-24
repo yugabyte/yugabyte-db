@@ -236,3 +236,16 @@
           {{ end }}
         {{ end }}
       {{ end }}
+  - name: prometheusLogrotate
+    fileName: '{{ logrotateD }}/prometheus'
+    contents: |
+      {{ .LogDir }}/prometheus.log {
+          daily
+          rotate 7
+          compress
+          missingok
+          notifempty
+          copytruncate
+          delaycompress
+          create 0640 {{ yamlPath "service_username" }} {{ yamlPath "service_username" }}
+      }

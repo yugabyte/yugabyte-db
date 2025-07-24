@@ -244,7 +244,7 @@ Specify that any user requires GSSAPI authentication to connect.
 
 After the [auth-method](#auth-method) field, you can add fields in the form `name=value` that specify options specific to the authentication method.
 
-In addition to the method-specific options, there is one method-independent authentication option `clientcert`, which can be specified in any `hostssl` record. When set to 1, this option requires the client to present a valid (trusted) SSL certificate, in addition to the other requirements of the authentication method.
+In addition to the method-specific options, there is one method-independent authentication option `clientcert`, which can be specified in any `hostssl` record. When set to `verify-full`, this option requires the client to present a valid (trusted) SSL certificate, in addition to the other requirements of the authentication method.
 
 ### Examples
 

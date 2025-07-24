@@ -1,7 +1,7 @@
 import { FC, useState } from 'react';
 import { useUpdateEffect } from 'react-use';
 import { useTranslation, Trans } from 'react-i18next';
-import { makeStyles } from '@material-ui/core';
+import { styled } from '@material-ui/core';
 import { useFormContext, useWatch } from 'react-hook-form';
 import { mui, YBToggleField, YBTooltip } from '@yugabyte-ui-library/core';
 import { YBEarlyAccessTag } from '../../../../components';
@@ -19,25 +19,24 @@ interface PGCompatibiltyFieldProps {
 
 const PG_COMPATIBILITY_FIELD = 'enablePGCompatibitilty';
 
-const useStyles = makeStyles((theme) => ({
-  subText: {
-    fontSize: '11.5px',
-    lineHeight: '16px',
-    fontWeight: 400,
-    color: '#67666C'
-  },
-  linkText: {
-    fontSize: '11.5px',
-    lineHeight: '16px',
-    fontWeight: 400,
-    color: '#67666C'
-  }
-}));
+const StyledSubText = styled(Typography)({
+  fontSize: '11.5px',
+  lineHeight: '16px',
+  fontWeight: 400,
+  color: '#67666C',
+  marginLeft: '8px'
+});
+
+const StyledLinkText = styled(Link)({
+  fontSize: '11.5px',
+  lineHeight: '16px',
+  fontWeight: 400,
+  color: '#67666C'
+});
 
 export const PGCompatibiltyField: FC<PGCompatibiltyFieldProps> = ({ disabled, dbVersion }) => {
-  const { control, setValue } = useFormContext<DatabaseSettingsProps>();
+  const { control } = useFormContext<DatabaseSettingsProps>();
   const [openAnalyzeModal, setAnalyzeModal] = useState(false);
-  const classes = useStyles();
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.databaseSettings.pgCompatibility'
   });
@@ -68,17 +67,16 @@ export const PGCompatibiltyField: FC<PGCompatibiltyFieldProps> = ({ disabled, db
           isPGSupported ? (
             ''
           ) : (
-            <Typography className={classes.subText}>
+            <StyledSubText>
               <Trans>
                 {t('tooltip')}
-                <Link
+                <StyledLinkText
                   underline="always"
                   href="https://docs.yugabyte.com/preview/explore/ysql-language-features/postgresql-compatibility/"
-                  className={classes.linkText}
                   target="_blank"
-                ></Link>
+                ></StyledLinkText>
               </Trans>
-            </Typography>
+            </StyledSubText>
           )
         }
       >
@@ -90,6 +88,7 @@ export const PGCompatibiltyField: FC<PGCompatibiltyFieldProps> = ({ disabled, db
             }}
             control={control}
             disabled={disabled || !isPGSupported}
+            dataTestId="enable-PG-compatibility-field"
           />
         </div>
       </YBTooltip>
@@ -102,17 +101,16 @@ export const PGCompatibiltyField: FC<PGCompatibiltyFieldProps> = ({ disabled, db
         </Box>
 
         <Box>
-          <Typography className={classes.subText}>
+          <StyledSubText>
             <Trans>
               {t('pgSubText')}
-              <Link
+              <StyledLinkText
                 underline="always"
                 href="https://docs.yugabyte.com/preview/explore/ysql-language-features/postgresql-compatibility/"
-                className={classes.linkText}
                 target="_blank"
-              ></Link>
+              ></StyledLinkText>
             </Trans>
-          </Typography>
+          </StyledSubText>
         </Box>
       </Box>
       <AnalyzeDialog open={openAnalyzeModal} onClose={() => setAnalyzeModal(false)} />

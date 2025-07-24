@@ -173,6 +173,14 @@ import-data-file:
 ```
 
 | Comma-separated list of node endpoints to use for parallel import of data.<br>Default: Use all the nodes in the cluster. For example: "host1:port1,host2:port2" or "host1,host2". Note: use-public-ip flag is ignored if this is used. |
+| --on-primary-key-conflict |
+
+```yaml{.nocopy}
+import-data-file:
+  on-primary-key-conflict:
+```
+
+| Action to take on primary key conflict during data import.<br>Accepted parameters: <ul><li> `ERROR` (Default): Import in this mode fails if any primary key conflict is encountered, indicating such conflicts are unexpected.</li><li>`IGNORE`: Skips rows that have an existing primary key allowing the import to continue for the remaining data.</li></ul> |
 
 | -e, --export-dir |
 
@@ -283,7 +291,7 @@ target:
 
 | --file-opts | — | **[Deprecated]** Comma-separated string options for CSV file format. <br>Options:<ul><li>`escape_char` - escape character</li><li>`quote_char` - character used to quote the values</li></ul>Default: double quotes (") for both escape and quote characters<br>**Note** that escape_char and quote_char are only valid and required for CSV file format.<br>Example: `--file-opts "escape_char \\",quote_char \\""` or `--file-opts 'escape_char ",quote_char "'` |
 
-|  --skip-replication-checks | 
+|  --skip-replication-checks |
 
 ```yaml{.nocopy}
 import-data-file:

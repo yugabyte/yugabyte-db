@@ -31,6 +31,7 @@ namespace yb::docdb {
 
 struct ObjectSharedLockRequest {
   ObjectLockOwner owner;
+  TabletId status_tablet;
   LockBatchEntry<ObjectLockManager> entry;
 
   std::string ToString() const {
@@ -58,12 +59,20 @@ class ObjectLockOwnerRegistry {
     const SessionLockOwnerTag tag_;
   };
 
+  struct OwnerInfo {
+    OwnerInfo(TransactionId txn_id_, const TabletId& status_tablet_)
+        : txn_id(txn_id_), status_tablet(status_tablet_) {}
+
+    TransactionId txn_id;
+    TabletId status_tablet;
+  };
+
   ObjectLockOwnerRegistry();
   ~ObjectLockOwnerRegistry();
 
-  RegistrationGuard Register(const TransactionId& id);
+  RegistrationGuard Register(const TransactionId& id, const TabletId& tablet_id);
 
-  [[nodiscard]] TransactionId GetTransactionId(SessionLockOwnerTag tag) const;
+  [[nodiscard]] std::shared_ptr<OwnerInfo> GetOwnerInfo(SessionLockOwnerTag tag) const;
 
  private:
   std::unique_ptr<Impl> impl_;
@@ -77,9 +86,17 @@ class ObjectLockSharedStateManager {
 
   void ConsumePendingSharedLockRequests(const LockRequestConsumer& consume);
 
+  void ConsumeAndAcquireExclusiveLockIntents(
+      const LockRequestConsumer& consume, std::span<const ObjectLockPrefix*> object_ids);
+
+  void ReleaseExclusiveLockIntent(const ObjectLockPrefix& object_id, size_t count = 1);
+
   [[nodiscard]] TransactionId TEST_last_owner() const;
 
  private:
+  template<typename ConsumeMethod>
+  void CallWithRequestConsumer(ConsumeMethod&& m, const LockRequestConsumer& consume);
+
   ObjectLockSharedState* shared_ = nullptr;
   ObjectLockOwnerRegistry registry_;
 };

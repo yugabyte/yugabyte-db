@@ -1158,7 +1158,6 @@ bool TableInfo::IsUserCreated(const ReadLock& lock) const {
     return false;
   }
   return !is_system() && !IsSequencesSystemTable(lock) &&
-         !lock->IsXClusterDDLReplicationTable() &&
          lock->namespace_id() != kSystemNamespaceId &&
          !IsColocationParentTable();
 }

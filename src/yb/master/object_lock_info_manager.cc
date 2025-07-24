@@ -401,8 +401,6 @@ class UpdateTServer : public RetrySpecificTSRpcTask {
     return Format("$0 for TServer: $1 ", shared_all_tservers_->LogPrefix(), permanent_uuid());
   }
 
-  MonoTime ComputeDeadline() const override;
-
  protected:
   void Finished(const Status& status) override;
 
@@ -1487,11 +1485,6 @@ bool UpdateTServer<ReleaseObjectLockRequestPB, ReleaseObjectLockResponsePB>::Sen
   VLOG_WITH_PREFIX(3) << __func__ << " attempt " << attempt;
   ts_proxy_->ReleaseObjectLocksAsync(request(), &resp_, &rpc_, BindRpcCallback());
   return true;
-}
-
-template <class Req, class Resp>
-MonoTime UpdateTServer<Req, Resp>::ComputeDeadline() const {
-  return MonoTime(ToSteady(shared_all_tservers_->GetClientDeadline()));
 }
 
 template <class Req, class Resp>

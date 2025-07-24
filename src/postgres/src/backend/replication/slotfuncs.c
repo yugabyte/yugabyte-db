@@ -27,6 +27,7 @@
 #include "utils/resowner.h"
 
 /* YB includes */
+#include "catalog/yb_type.h"
 #include "commands/yb_cmds.h"
 #include "pg_yb_utils.h"
 #include "replication/walsender.h"
@@ -344,7 +345,7 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 {
 #define PG_GET_REPLICATION_SLOTS_COLS 14
 /* YB specific fields in pg_get_replication_slots */
-#define YB_PG_GET_REPLICATION_SLOTS_COLS 3
+#define YB_PG_GET_REPLICATION_SLOTS_COLS 4
 
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 	XLogRecPtr	currlsn;
@@ -605,9 +606,19 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 			values[i++] = CStringGetTextDatum(yb_stream_id);
 			values[i++] = Int64GetDatum(yb_restart_commit_ht);
 			values[i++] = CStringGetTextDatum(yb_lsn_type);
+
+			/*
+			 * The first 12 bits signify the logical component in hybrid time. Right shifting the
+			 * value will help us extract the physical time component from the same. The obtained
+			 * value will be then in microseconds from unix epoch which needs to be converted to
+			 * Postgres epoch in order to be passed to the macro TimestampTzGetDatum.
+			 */
+			values[i++] =
+				TimestampTzGetDatum(YbUnixEpochToPostgresEpoch(yb_restart_commit_ht >> 12));
 		}
 		else
 		{
+			nulls[i++] = true;
 			nulls[i++] = true;
 			nulls[i++] = true;
 			nulls[i++] = true;

@@ -10,7 +10,7 @@ import { ReactComponent as Selected } from '../../../../assets/circle-checked.sv
 const StyledContainer = styled('div')({
   display: 'flex',
   flexDirection: 'row',
-  gap: '6px'
+  gap: '8px'
 });
 
 const StyledCard = styled('div')(({ theme }) => ({

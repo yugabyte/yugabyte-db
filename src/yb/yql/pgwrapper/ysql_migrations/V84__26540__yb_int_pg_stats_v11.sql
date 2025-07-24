@@ -1,0 +1,2 @@
+-- No Op Script for yb_int_pg_stats_v11. This function is only needed in pg11 versions,
+-- but we need to have an empty file with the same name to satisfy the upgrade criteria.

@@ -317,18 +317,25 @@ class CqlThreeMastersTest : public CqlTest {
 
 Status CheckNumAddressesInYqlPartitionsTable(CassandraSession* session, int expected_num_addrs) {
   const int kReplicaAddressesIndex = 5;
-  auto result = VERIFY_RESULT(session->ExecuteWithResult("SELECT * FROM system.partitions"));
-  auto iterator = result.CreateIterator();
-  while (iterator.Next()) {
-    auto replica_addresses = iterator.Row().Value(kReplicaAddressesIndex).ToString();
-    ssize_t num_addrs = 0;
-    if (replica_addresses.size() > std::strlen("{}")) {
-      num_addrs = std::count(replica_addresses.begin(), replica_addresses.end(), ',') + 1;
-    }
+  return WaitFor([session, expected_num_addrs]() -> Result<bool> {
+    auto result = VERIFY_RESULT(session->ExecuteWithResult("SELECT * FROM system.partitions"));
+    auto iterator = result.CreateIterator();
+    while (iterator.Next()) {
+      auto row = iterator.Row();
+      auto replica_addresses = row.Value(kReplicaAddressesIndex).ToString();
+      ssize_t num_addrs = 0;
+      if (replica_addresses.size() > std::strlen("{}")) {
+        num_addrs = std::count(replica_addresses.begin(), replica_addresses.end(), ',') + 1;
+      }
 
-    EXPECT_EQ(num_addrs, expected_num_addrs);
-  }
-  return Status::OK();
+      if (num_addrs != expected_num_addrs) {
+        LOG(INFO) << "Unexpected number of addresses: " << num_addrs << " vs "
+                  << expected_num_addrs << " in " << row.RenderToString();
+        return false;
+      }
+    }
+    return true;
+  }, 10s * kTimeMultiplier, "Wait number of partitions");
 }
 
 TEST_F_EX(CqlTest, HostnameResolutionFailureInYqlPartitionsTable, CqlThreeMastersTest) {

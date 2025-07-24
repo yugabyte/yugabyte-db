@@ -1413,7 +1413,9 @@ TEST_F(ExternalObjectLockTestOneTS, ReleaseBlocksUntilBootstrap) {
       &master_proxy, ts->uuid(), kTxn1, kDatabaseID, kRelationId, kLeaseEpoch, nullptr,
       std::nullopt, kTimeout));
   ASSERT_OK(cluster_->AddTabletServer(
-      false, {"--TEST_tserver_enable_ysql_lease_refresh=false"}, -1, false));
+      false,
+      {"--TEST_tserver_enable_ysql_lease_refresh=false", "--vmodule=ts_local_lock_manager=1"}, -1,
+      false));
 
   auto added_ts = cluster_->tablet_server(1);
   auto added_ts_proxy = cluster_->GetTServerProxy<tserver::TabletServerServiceProxy>(1);
@@ -1698,8 +1700,6 @@ ExternalMiniClusterOptions ExternalObjectLockTest::MakeExternalMiniClusterOption
   opts.replication_factor = ReplicationFactor();
   opts.enable_ysql = true;
   opts.extra_master_flags = {
-      "--allowed_preview_flags_csv=enable_object_locking_for_table_locks",
-      "--enable_object_locking_for_table_locks",
       Format("--master_ysql_operation_lease_ttl_ms=$0", kDefaultMasterYSQLLeaseTTLMilli),
       Format("--object_lock_cleanup_interval_ms=$0", kDefaultMasterObjectLockCleanupIntervalMilli),
       "--enable_load_balancing=false",
@@ -1763,8 +1763,6 @@ ExternalObjectLockTestOneTSWithoutLease::MakeExternalMiniClusterOptions() {
   opts.enable_ysql = true;
   opts.wait_for_tservers_to_accept_ysql_connections = false;
   opts.extra_master_flags = {
-      "--allowed_preview_flags_csv=enable_object_locking_for_table_locks",
-      "--enable_object_locking_for_table_locks",
       Format("--master_ysql_operation_lease_ttl_ms=$0", kDefaultMasterYSQLLeaseTTLMilli),
       Format("--object_lock_cleanup_interval_ms=$0", kDefaultMasterObjectLockCleanupIntervalMilli),
       "--enable_load_balancing=false"};

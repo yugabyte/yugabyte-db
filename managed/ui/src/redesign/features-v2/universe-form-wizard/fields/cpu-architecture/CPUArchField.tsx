@@ -1,10 +1,10 @@
 import { FC } from 'react';
 import { useFormContext } from 'react-hook-form';
-import { mui, YBLabel, RadioOrientation, YBRadioGroupField } from '@yugabyte-ui-library/core';
 import { useTranslation } from 'react-i18next';
-import { ArchitectureType } from '../../helpers/constants';
-import { InstanceSettingProps } from '../../steps/hardware-settings/dtos';
-import { CPU_ARCH_FIELD } from '../FieldNames';
+import { mui, YBLabel, RadioOrientation, YBRadioGroupField } from '@yugabyte-ui-library/core';
+import { ArchitectureType } from '@app/redesign/features-v2/universe-form-wizard/helpers/constants';
+import { InstanceSettingProps } from '@app/redesign/features-v2/universe-form-wizard/steps/hardware-settings/dtos';
+import { CPU_ARCH_FIELD } from '@app/redesign/features-v2/universe-form-wizard/fields/FieldNames';
 
 const { Box, styled, Typography } = mui;
 
@@ -12,11 +12,11 @@ interface CPUArchFieldProps {
   disabled: boolean;
 }
 
-const StyledSubText = styled(Typography)(() => ({
+const StyledSubText = styled(Typography)(({ theme }) => ({
   fontSize: 11.5,
   lineHeight: '16px',
   fontWeight: 400,
-  color: '#6D7C88'
+  color: theme.palette.grey[600]
 }));
 
 export const CPUArchField: FC<CPUArchFieldProps> = ({ disabled }) => {
@@ -46,6 +46,8 @@ export const CPUArchField: FC<CPUArchFieldProps> = ({ disabled }) => {
         control={control}
         name={CPU_ARCH_FIELD}
         sx={{ display: 'flex', flexDirection: 'row', gap: 4 }}
+        dataTestId="cpu-architecture-field"
+        disabled={disabled}
       />
     </Box>
   );

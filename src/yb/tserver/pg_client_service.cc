@@ -76,14 +76,12 @@
 #include "yb/tserver/ts_local_lock_manager.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
 
-#include "yb/util/debug.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/shared_lock.h"
-#include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -476,12 +474,13 @@ class PerformQuery : public std::enable_shared_from_this<PerformQuery>, public r
   }
 
   void Run() override {
+    auto& context = context_.context();
     auto session = provider_.GetSession(req().session_id());
-    auto status = session.ok()
-        ? (*session)->Perform(&req(), &resp(), &context_.context(), tables_) : session.status();
-    if (!status.ok()) {
-      Respond(status, &resp(), &context_.context());
+    if (!session.ok()) {
+      Respond(session.status(), &resp(), &context);
+      return;
     }
+    (*session)->Perform(req(), resp(), std::move(context), tables_);
   }
 
   void Done(const Status& status) override {
@@ -525,7 +524,7 @@ class OpenTableQuery : public PgTablesQueryListener {
 
 }  // namespace
 
-class PgClientServiceImpl::Impl : public LeaseEpochValidator, public SessionProvider {
+class PgClientServiceImpl::Impl : public SessionProvider {
  public:
   explicit Impl(
       std::reference_wrapper<const TabletServerIf> tablet_server,
@@ -589,7 +588,7 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator, public SessionProv
     shared_mem_pool_.Start(messenger->scheduler());
   }
 
-  ~Impl() {
+  ~Impl() override {
     cdc_state_table_.reset();
     std::vector<SessionInfoPtr> sessions;
     {
@@ -619,11 +618,6 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator, public SessionProv
     return lease_epoch_;
   }
 
-  bool IsLeaseValid(uint64_t lease_epoch) override EXCLUDES(mutex_) {
-    std::lock_guard lock(mutex_);
-    return lease_epoch == lease_epoch_;
-  }
-
   Status Heartbeat(
       const PgHeartbeatRequestPB& req, PgHeartbeatResponsePB* resp, rpc::RpcContext* context) {
     if (req.session_id() == std::numeric_limits<uint64_t>::max()) {
@@ -638,7 +632,7 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator, public SessionProv
     auto session_info = SessionInfo::Make(
         txns_assignment_mutexes_[session_id % txns_assignment_mutexes_.size()],
         FLAGS_pg_client_session_expiration_ms * 1ms, transaction_builder_, client(),
-        session_context_, session_id, lease_epoch(), this, tablet_server_.ts_local_lock_manager(),
+        session_context_, session_id, lease_epoch(), tablet_server_.ts_local_lock_manager(),
         messenger_.scheduler());
     resp->set_session_id(session_id);
     if (FLAGS_pg_client_use_shared_memory) {
@@ -706,7 +700,7 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator, public SessionProv
     auto query = std::make_shared<OpenTableQuery>(
         MakeTypedPBRpcContextHolder(req, resp, std::move(context)));
     table_cache_.GetTables(
-        std::span(&req.table_id(), 1), options, query->tables(), query);
+        std::span(&req.table_id(), 1), options, SharedField(query, &query->tables()), query);
   }
 
   Status GetTablePartitionList(
@@ -827,7 +821,8 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator, public SessionProv
 
     uint32_t begin_oid, end_oid;
     RETURN_NOT_OK(client().ReservePgsqlOids(
-        namespace_id, req.next_oid(), req.count(), &begin_oid, &end_oid, false));
+        namespace_id, req.next_oid(), req.count(), /*use_secondary_space=*/false, &begin_oid,
+        &end_oid));
     resp->set_begin_oid(begin_oid);
     resp->set_end_oid(end_oid);
 
@@ -860,8 +855,8 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator, public SessionProv
           oid_chunk.next_oid + static_cast<uint32_t>(FLAGS_TEST_ysql_oid_prefetch_adjustment);
       uint32_t begin_oid, end_oid, oid_cache_invalidations_count;
       RETURN_NOT_OK(client().ReservePgsqlOids(
-          namespace_id, next_oid, FLAGS_ysql_oid_cache_prefetch_size, &begin_oid, &end_oid,
-          use_secondary_space, &oid_cache_invalidations_count));
+          namespace_id, next_oid, FLAGS_ysql_oid_cache_prefetch_size, use_secondary_space,
+          &begin_oid, &end_oid, &oid_cache_invalidations_count));
       oid_chunk.next_oid = begin_oid;
       oid_chunk.oid_count = end_oid - begin_oid;
       oid_chunk.oid_cache_invalidations_count = oid_cache_invalidations_count;
@@ -2076,7 +2071,7 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator, public SessionProv
     PreparePgTablesQuery(*req, table_ids);
     auto query = std::make_shared<PerformQuery>(
       *this, MakeTypedPBRpcContextHolder(*req, resp, std::move(*context)));
-    table_cache_.GetTables(table_ids, {}, query->tables(), query);
+    table_cache_.GetTables(table_ids, {}, SharedField(query, &query->tables()), query);
   }
 
   void InvalidateTableCache() {

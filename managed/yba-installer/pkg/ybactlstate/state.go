@@ -46,7 +46,7 @@ type Config struct {
 }
 
 type Services struct {
-	PerfAdvisor bool `json:"perf-advisor"`
+	PerfAdvisor bool `json:"performance-advisor"`
 	Platform    bool `json:"yb-platform"`
 }
 

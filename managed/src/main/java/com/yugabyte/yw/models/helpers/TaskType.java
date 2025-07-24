@@ -487,6 +487,11 @@ public enum TaskType {
       CustomerTask.TaskType.ModifyAuditLoggingConfig,
       CustomerTask.TargetType.Universe),
 
+  ModifyQueryLoggingConfig(
+      com.yugabyte.yw.commissioner.tasks.upgrade.ModifyQueryLoggingConfig.class,
+      CustomerTask.TaskType.ModifyQueryLoggingConfig,
+      CustomerTask.TargetType.Universe),
+
   InstallYbcSoftware(
       com.yugabyte.yw.commissioner.tasks.InstallYbcSoftware.class,
       CustomerTask.TaskType.InstallYbcSoftware,
@@ -1039,6 +1044,9 @@ public enum TaskType {
   ManageCatalogUpgradeSuperUser(
       com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser.class),
 
+  UpdatePitrConfigIntermittentMinRecoverTime(
+      com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePitrConfigIntermittentMinRecoverTime.class),
+
   MarkSourceMetric(com.yugabyte.yw.commissioner.tasks.subtasks.MarkSourceMetric.class),
 
   UniverseSetTlsParams(com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams.class),
@@ -1259,6 +1267,7 @@ public enum TaskType {
           .put(RollbackKubernetesUpgrade, 54)
           .put(ModifyAuditLoggingConfig, 55)
           .put(ModifyKubernetesAuditLoggingConfig, 56)
+          .put(ModifyQueryLoggingConfig, 57)
           // Node operations (70-89):
           .put(AddNodeToUniverse, 70)
           .put(DeleteNodeFromUniverse, 71)

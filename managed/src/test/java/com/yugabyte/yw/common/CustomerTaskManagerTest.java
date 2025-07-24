@@ -55,7 +55,7 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
     taskInfo.setUuid(taskUUID);
     taskInfo.setTaskParams(Json.newObject());
     taskInfo.setOwner("");
-    taskInfo.setVersion(Util.getYbaVersion());
+    taskInfo.setYbaVersion(Util.getYbaVersion());
     taskInfo.save();
     return CustomerTask.create(
         customer, targetUUID, taskInfo.getUuid(), targetType, taskType, "Foo");
@@ -191,7 +191,7 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
               TaskInfo taskInfo = new TaskInfo(t, null);
               taskInfo.setTaskParams(Json.newObject());
               taskInfo.setOwner("");
-              taskInfo.setVersion(Util.getYbaVersion());
+              taskInfo.setYbaVersion(Util.getYbaVersion());
               taskInfo.setTaskState(TaskInfo.State.Aborted);
               taskInfo.setTaskError(new YBAError(Code.PLATFORM_SHUTDOWN, "Platform shutdown"));
               taskInfo.save();
@@ -216,7 +216,7 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
     partitions.get(0).stream()
         .forEach(
             t -> {
-              t.setVersion("1.1.0.0-b1");
+              t.setYbaVersion("1.1.0.0-b1");
               t.save();
               nonAutoRetryableTaskUuids.add(t.getUuid());
             });

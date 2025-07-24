@@ -65,7 +65,7 @@ Display the overall timing and counters of the various execution nodes in the qu
 
 ## Examples
 
-Create a sample table.
+Create a sample table:
 
 ```sql
 CREATE TABLE sample(k1 int, k2 int, v1 int, v2 text, PRIMARY KEY (k1, k2));
@@ -88,7 +88,6 @@ EXPLAIN SELECT * FROM sample WHERE k1 = 1;
 ------------------------------------------------------------------------------
  Index Scan using sample_pkey on sample  (cost=0.00..15.25 rows=100 width=44)
    Index Cond: (k1 = 1)
-(2 rows)
 ```
 
 #### Select with complex condition
@@ -103,7 +102,6 @@ EXPLAIN SELECT * FROM sample WHERE k1 = 2 and floor(k2 + 1.5) = v1;
  Index Scan using sample_pkey on sample  (cost=0.00..17.75 rows=100 width=44)
    Index Cond: (k1 = 2)
    Filter: (floor(((k2)::numeric + 1.5)) = (v1)::numeric)
-(3 rows)
 ```
 
 #### Check execution with ANALYZE

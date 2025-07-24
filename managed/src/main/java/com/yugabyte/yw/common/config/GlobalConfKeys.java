@@ -1405,6 +1405,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " enable/disable DB audit logging on universes.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> queryLoggingEnabled =
+      new ConfKeyInfo<>(
+          "yb.universe.query_logging_enabled",
+          ScopeType.GLOBAL,
+          "Enable Query Logging",
+          "If this flag is enabled, user will be able to create telemetry providers and"
+              + " enable/disable YSQL query logging on universes.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> allowConnectionPooling =
       new ConfKeyInfo<>(
           "yb.universe.allow_connection_pooling",
@@ -1700,7 +1709,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable Task Runtime Info on Retry",
           "Use the runtime info from the previously failed task on retry",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Integer> gcpBlobDeleteRetryCount =
       new ConfKeyInfo<>(
           "yb.gcp.blob_delete_retry_count",
