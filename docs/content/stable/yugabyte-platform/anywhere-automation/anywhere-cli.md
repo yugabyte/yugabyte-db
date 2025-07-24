@@ -31,7 +31,7 @@ You can install and use the YugabyteDB Anywhere CLI in two ways.
     ```sh
     wget https://downloads.yugabyte.com/releases/{{<yb-version version="stable" format="long">}}/yba_cli-{{<yb-version     version="stable" format="build">}}-linux-amd64.tar.gz
     tar -xf yba_cli-{{<yb-version version="stable" format="build">}}-linux-amd64.tar.gz
-    cd yba_cli-{{<yb-version version="stable" format="build">}}/
+    cd yba_cli-{{<yb-version version="stable" format="build">}}-linux-amd64/
     ```
 
 1. Verify that the package is available:
@@ -160,7 +160,7 @@ The following flags can be passed in with any command. These flags can also be a
 : Configuration file (default is `$HOME/.yba-cli.yaml`).
 
 --directory string
-: Directory containing YBA CLI configuration and generated files. If specified, the CLI looks for a configuration file named '.yba-cli.yaml' in this directory. (default is `$HOME/.yba-cli/`).
+: Directory containing YBA CLI configuration and generated files. If specified, the CLI looks for a configuration file named `.yba-cli.yaml` in this directory. Default is `$HOME/.yba-cli/`.
 
 --debug
 : Use debug mode, same as `--logLevel debug`.
