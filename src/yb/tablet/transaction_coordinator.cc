@@ -830,7 +830,7 @@ class TransactionState {
     return Status::OK();
   }
 
-  void SubmitUpdateStatus(TransactionStatus status, const Status& deadlock_reason = Status::OK()) {
+  bool SubmitUpdateStatus(TransactionStatus status, const Status& deadlock_reason = Status::OK()) {
     VLOG_WITH_PREFIX(4) << "SubmitUpdateStatus(" << TransactionStatus_Name(status) << ")";
     auto state = rpc::MakeSharedMessage<LWTransactionStatePB>();
     state->dup_transaction_id(id_.AsSlice());
@@ -841,8 +841,9 @@ class TransactionState {
     auto request = context_.coordinator_context().CreateUpdateTransaction(std::move(state));
     if (replicating_) {
       request_queue_.push_back(std::move(request));
+      return true;
     } else {
-      SubmitRequest(std::move(request));
+      return SubmitRequest(std::move(request));
     }
   }
 
@@ -1130,7 +1131,9 @@ struct CompleteWithStatusEntry {
 
 // Contains actions that should be executed after lock in transaction coordinator is released.
 struct PostponedLeaderActions {
-  int64_t leader_term = OpId::kUnknownTerm;
+  static constexpr int64_t kInvalidTerm = -2;
+
+  int64_t leader_term = kInvalidTerm;
   // List of tablets with transaction id, that should be notified that this transaction
   // is applying.
   std::vector<NotifyApplyingData> notify_applying;
@@ -1147,6 +1150,7 @@ struct PostponedLeaderActions {
   }
 
   bool leader() const {
+    DCHECK_GE(leader_term, OpId::kUnknownTerm);
     return leader_term != OpId::kUnknownTerm;
   }
 };
@@ -1156,13 +1160,22 @@ class CoordinatorLock {
  public:
   CoordinatorLock(Impl* impl, int64_t leader_term)
       : impl_(impl), lock_(impl->managed_mutex_) {
+    DCHECK_NE(leader_term, PostponedLeaderActions::kInvalidTerm);
+    DCHECK_EQ(impl_->postponed_leader_actions_.leader_term, PostponedLeaderActions::kInvalidTerm);
+    DCHECK(impl_->postponed_leader_actions_.notify_applying.empty());
+    DCHECK(impl_->postponed_leader_actions_.updates.empty());
+    DCHECK(impl_->postponed_leader_actions_.complete_with_status.empty());
+
     impl_->postponed_leader_actions_.leader_term = leader_term;
   }
 
   auto UnlockedScope() {
+    PostponedLeaderActions actions;
+    actions.Swap(&impl_->postponed_leader_actions_);
     lock_.unlock();
-    return ScopeExit([&lock = lock_] {
-      lock.lock();
+    return ScopeExit([this, actions = std::move(actions)]() mutable {
+      lock_.lock();
+      actions.Swap(&impl_->postponed_leader_actions_);
     });
   }
 
@@ -1676,50 +1689,57 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
               (const Status& status,
                const tserver::UpdateTransactionRequestPB& req,
                const tserver::UpdateTransactionResponsePB& resp) {
-            client::UpdateClock(resp, &context_);
-            rpcs_.Unregister(handle);
-            if (status.ok()) {
-              return;
-            }
-            LOG_WITH_PREFIX(WARNING)
-                << "Failed to send apply for transaction: " << action.transaction << ": "
-                << status;
-            const auto split_child_tablet_ids = SplitChildTabletIdsData(status).value();
-            const bool tablet_has_been_split = !split_child_tablet_ids.empty();
-            if (status.IsNotFound() || tablet_has_been_split) {
-              std::lock_guard lock(managed_mutex_);
-              auto it = managed_transactions_.find(action.transaction);
-              if (it == managed_transactions_.end()) {
-                return;
-              }
-              managed_transactions_.modify(
-                  it, [this, &action, &split_child_tablet_ids,
-                       tablet_has_been_split](TransactionState& state) {
-                    if (tablet_has_been_split) {
-                      // We need to update involved tablets map.
-                      LOG_WITH_PREFIX(INFO) << Format(
-                          "Tablet $0 has been split into: $1", action.tablet,
-                          split_child_tablet_ids);
-                      state.AddInvolvedTablets(action.tablet, split_child_tablet_ids);
-                    } else {
-                      // Tablet has been deleted (not split), so we should mark it as applied to
-                      // be able to cleanup the transaction.
-                      WARN_NOT_OK(
-                          state.AppliedInOneOfInvolvedTablets(action.tablet),
-                          "AppliedInOneOfInvolvedTablets for removed tabled failed: ");
-                    }
-                  });
-              if (tablet_has_been_split) {
-                const auto new_deadline = TransactionRpcDeadline();
-                NotifyApplyingData new_action = action;
-                for (const auto& split_child_tablet_id : split_child_tablet_ids) {
-                  new_action.tablet = split_child_tablet_id;
-                  SendUpdateTransactionRequest(new_action, context_.clock().Now(), new_deadline);
-                }
-              }
-            }
+            ApplyingReplicated(handle, action, status, resp);
           });
       (**handle).SendRpc();
+    }
+  }
+
+  void ApplyingReplicated(
+      const rpc::Rpcs::Handle& handle, const NotifyApplyingData& action,
+      const Status& status, const tserver::UpdateTransactionResponsePB& resp) {
+    client::UpdateClock(resp, &context_);
+    rpcs_.Unregister(handle);
+    if (status.ok()) {
+      return;
+    }
+    LOG_WITH_PREFIX(WARNING)
+        << "Failed to send apply for transaction: " << action.transaction << ": "
+        << status;
+    const auto split_child_tablet_ids = SplitChildTabletIdsData(status).value();
+    const bool tablet_has_been_split = !split_child_tablet_ids.empty();
+    if (status.IsNotFound() || tablet_has_been_split) {
+      Lock lock(this, context_.LeaderTerm());
+      auto it = managed_transactions_.find(action.transaction);
+      if (it == managed_transactions_.end()) {
+        return;
+      }
+      if (tablet_has_been_split) {
+        managed_transactions_.modify(
+            it, [this, &action, &split_child_tablet_ids](TransactionState& state) {
+          // We need to update involved tablets map.
+          LOG_WITH_PREFIX(INFO) << Format(
+              "Tablet $0 has been split into: $1", action.tablet,
+              split_child_tablet_ids);
+          state.AddInvolvedTablets(action.tablet, split_child_tablet_ids);
+        });
+        lock.unlock();
+
+        const auto new_deadline = TransactionRpcDeadline();
+        NotifyApplyingData new_action = action;
+        for (const auto& split_child_tablet_id : split_child_tablet_ids) {
+          new_action.tablet = split_child_tablet_id;
+          SendUpdateTransactionRequest(new_action, context_.clock().Now(), new_deadline);
+        }
+      } else {
+        managed_transactions_.modify(it, [&action](TransactionState& state) {
+          // Tablet has been deleted (not split), so we should mark it as applied to
+          // be able to cleanup the transaction.
+          WARN_NOT_OK(
+              state.AppliedInOneOfInvolvedTablets(action.tablet),
+              "AppliedInOneOfInvolvedTablets for removed tabled failed: ");
+        });
+      }
     }
   }
 
