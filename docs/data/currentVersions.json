@@ -40,9 +40,9 @@
     {
       "series": "v2024.1",
       "display": "v2024.1 (STS)",
-      "version": "2024.1.6.0",
+      "version": "2024.1.6.1",
       "versionShort": "2024.1.6",
-      "appVersion": "2024.1.6.0-b53",
+      "appVersion": "2024.1.6.1-b2",
       "isStable": true,
       "isSTS": true,
       "initialRelease": "2024-06-04",
