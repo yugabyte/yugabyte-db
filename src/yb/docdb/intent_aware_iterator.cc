@@ -172,11 +172,17 @@ void IntentAwareIterator::Seek(Slice key, Full full) {
 
   SeekTriggered();
 
+#ifndef NDEBUG
+  KeyBuffer original_key(key);
+#endif
   SkipFutureRecords<Direction::kForward>(ROCKSDB_SEEK(&iter_, key));
   if (intent_iter_.Initialized()) {
     if (!SetIntentUpperbound()) {
       return;
     }
+#ifndef NDEBUG
+    CHECK_EQ(original_key.AsSlice(), key);
+#endif
     if (full) {
       seek_buffer_.Assign(key, StrongWriteSuffix(key));
       key = seek_buffer_.AsSlice();
@@ -440,8 +446,9 @@ void IntentAwareIterator::SeekToLatestSubDocKeyInternal() {
   if (!HandleStatus(doc_ht)) {
     return;
   }
-  subdockey_slice.remove_suffix(1);
-  Seek(subdockey_slice);
+  // subdockey_slice could reference iter_.key(), which is invalidated during Seek.
+  KeyBuffer subdockey(subdockey_slice.WithoutSuffix(1));
+  Seek(subdockey.AsSlice());
 }
 
 void IntentAwareIterator::SeekToLatestDocKeyInternal() {
@@ -452,7 +459,9 @@ void IntentAwareIterator::SeekToLatestDocKeyInternal() {
   if (!HandleStatus(dockey_size)) {
     return;
   }
-  Seek(Slice(subdockey_slice.data(), *dockey_size));
+  // subdockey_slice could reference iter_.key(), which is invalidated during Seek.
+  KeyBuffer subdockey(subdockey_slice.Prefix(*dockey_size));
+  Seek(subdockey.AsSlice());
 }
 
 bool IntentAwareIterator::IsEntryRegular(bool descending) {
