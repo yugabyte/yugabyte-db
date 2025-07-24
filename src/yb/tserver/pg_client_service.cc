@@ -475,12 +475,13 @@ class PerformQuery : public std::enable_shared_from_this<PerformQuery>, public r
   }
 
   void Run() override {
+    auto& context = context_.context();
     auto session = provider_.GetSession(req().session_id());
-    auto status = session.ok()
-        ? (*session)->Perform(&req(), &resp(), &context_.context(), tables_) : session.status();
-    if (!status.ok()) {
-      Respond(status, &resp(), &context_.context());
+    if (!session.ok()) {
+      Respond(session.status(), &resp(), &context);
+      return;
     }
+    (*session)->Perform(req(), resp(), std::move(context), tables_);
   }
 
   void Done(const Status& status) override {
@@ -705,7 +706,7 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator, public SessionProv
     auto query = std::make_shared<OpenTableQuery>(
         MakeTypedPBRpcContextHolder(req, resp, std::move(context)));
     table_cache_.GetTables(
-        std::span(&req.table_id(), 1), options, rpc::SharedField(query, &query->tables()), query);
+        std::span(&req.table_id(), 1), options, SharedField(query, &query->tables()), query);
   }
 
   Status GetTablePartitionList(
@@ -2076,7 +2077,7 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator, public SessionProv
     PreparePgTablesQuery(*req, table_ids);
     auto query = std::make_shared<PerformQuery>(
       *this, MakeTypedPBRpcContextHolder(*req, resp, std::move(*context)));
-    table_cache_.GetTables(table_ids, {}, rpc::SharedField(query, &query->tables()), query);
+    table_cache_.GetTables(table_ids, {}, SharedField(query, &query->tables()), query);
   }
 
   void InvalidateTableCache() {

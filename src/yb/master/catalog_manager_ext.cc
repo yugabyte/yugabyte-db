@@ -81,6 +81,7 @@
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/std_util.h"
 #include "yb/util/tostring.h"
 #include "yb/util/trace.h"
 
@@ -2680,7 +2681,7 @@ Status CatalogManager::RestoreSysCatalogCommon(
   // Restore the pg_catalog tables.
   // Since lifetime of tablet_peer and doc_read_context matches in this case. We could
   // use tablet peer reference counter for doc read context.
-  auto doc_read_context = rpc::SharedField(
+  auto doc_read_context = SharedField(
       tablet_peer(), &this->doc_read_context());
   if (FLAGS_enable_ysql && state->IsYsqlRestoration()) {
     // Restore sequences_data table.

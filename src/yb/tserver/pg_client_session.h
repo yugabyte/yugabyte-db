@@ -125,8 +125,9 @@ class PgClientSession final {
 
   void SetupSharedObjectLocking(PgSessionLockOwnerTagShared& object_lock_shared);
 
-  Status Perform(PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context,
-                 const PgTablesQueryResult& tables);
+  void Perform(
+        PgPerformRequestPB& req, PgPerformResponsePB& resp, rpc::RpcContext&& context,
+        const PgTablesQueryResult& tables);
 
   void ProcessSharedRequest(size_t size, SharedExchange* exchange);
 
