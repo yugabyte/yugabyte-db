@@ -242,13 +242,19 @@ public class NodeAgentClient {
           String correlationId = MDC.get(LogUtil.CORRELATION_ID);
           if (StringUtils.isEmpty(correlationId)) {
             correlationId = UUID.randomUUID().toString();
-            log.debug("Using correlation ID {} for node agent {}", correlationId, nodeAgentUuid);
           }
+          String requestId = UUID.randomUUID().toString();
+          log.debug(
+              "Using correlation ID {} and request ID {} for node agent {}",
+              correlationId,
+              requestId,
+              nodeAgentUuid);
           Duration tokenLifetime = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentTokenLifetime);
           String token = NodeAgentClient.getNodeAgentJWT(nodeAgentUuid, tokenLifetime);
           headers.put(Metadata.Key.of("authorization", Metadata.ASCII_STRING_MARSHALLER), token);
           headers.put(
               Metadata.Key.of("x-correlation-id", Metadata.ASCII_STRING_MARSHALLER), correlationId);
+          headers.put(Metadata.Key.of("x-request-id", Metadata.ASCII_STRING_MARSHALLER), requestId);
           super.start(responseListener, headers);
         }
       };
