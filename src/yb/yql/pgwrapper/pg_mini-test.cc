@@ -585,6 +585,16 @@ TEST_P(PgMiniTestTracing, Tracing) {
   auto conn = ASSERT_RESULT(Connect());
 
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT, value2 TEXT)"));
+
+  LOG(INFO) << "Doing Insert";
+  trace_log_sink.get_last_logged_bytes_and_reset();
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION"));
+  ASSERT_OK(conn.Execute("INSERT INTO t (key, value, value2) VALUES (0, 'zero', 'zero')"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  SleepFor(1s);
+  // We do not expect the transaction to be logged unless we set the tracing flag.
+  EXPECT_EQ(trace_log_sink.get_last_logged_bytes_and_reset(), 0);
+
   LOG(INFO) << "Setting yb_enable_docdb_tracing";
   ASSERT_OK(conn.Execute("SET yb_enable_docdb_tracing = true"));
 
@@ -593,9 +603,10 @@ TEST_P(PgMiniTestTracing, Tracing) {
   SleepFor(1s);
   last_logged_trace_size = trace_log_sink.get_last_logged_bytes_and_reset();
   LOG(INFO) << "Logged " << last_logged_trace_size << " bytes";
-  // 2601 is size of the current trace for insert.
-  // being a little conservative for changes in ports/ip addr etc.
-  EXPECT_GE(last_logged_trace_size, 2400);
+  // 1975 is size of the current trace for insert when using Rpc.
+  // The trace is about 1787 when using shared memory. But we only care that
+  // something got printed, so we are not checking the exact size.
+  EXPECT_GE(last_logged_trace_size, 1000);
   LOG(INFO) << "Done Insert";
 
   // 1884 is size of the current trace for select.
@@ -666,7 +677,10 @@ TEST_P(PgMiniTestTracing, Tracing) {
   ValidateAbortedTxnMetric();
 }
 
-INSTANTIATE_TEST_SUITE_P(PgMiniTestTracing, PgMiniTestTracing, ::testing::Bool());
+INSTANTIATE_TEST_SUITE_P(PgMiniTestTracing, PgMiniTestTracing, ::testing::Bool(),
+    [](const ::testing::TestParamInfo<bool>& info) {
+        return info.param ? "PgClientSharedMem" : "PgClientRpc";
+    });
 
 TEST_F(PgMiniTest, TracingSushant) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tracing) = false;
