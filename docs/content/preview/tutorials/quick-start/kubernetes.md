@@ -214,15 +214,15 @@ Each of the processes exposes its own Admin UI that can be used to check the sta
 
 To access the Admin UI, you first need to set up port forwarding for port 7000, as follows:
 
-{{< note title="Note" >}}
-
-If you've created the cluster with `enableLoadBalancer=False`, then the service `yb-master-ui` won't be created and you have to run `kubectl --namespace yb-demo port-forward svc/yb-masters 7000:7000`.
-
-{{< /note >}}
-
 ```sh
 kubectl --namespace yb-demo port-forward svc/yb-master-ui 7000:7000
 ```
+
+{{< note title="Note" >}}
+
+If you've created the cluster with `enableLoadBalancer=False`, then the service `yb-master-ui` won't be created and you have to run `kubectl --namespace yb-demo port-forward svc/yb-masters 7000:7000` instead.
+
+{{< /note >}}
 
 Now you can view the [yb-master-0 Admin UI](../../../reference/configuration/yb-master/#admin-ui) at <http://localhost:7000>.
 
