@@ -51,4 +51,4 @@ If you are using sequences, you need to manually synchronize the sequence next v
 
 For example, if you have a SERIAL column in a table and the highest value in that column after switchover is 500, you need to set the sequence associated with that column to a value higher than 500, such as 501. This ensures that new writes on new DR primary do not conflict with existing data.
 
-Use the [nextval](../../../../api/ysql/exprs/sequence_functions/func_nextval/) function to set the sequence next values appropriately.
+Use the [nextval](../../../../api/ysql/exprs/func_nextval/) function to set the sequence next values appropriately.

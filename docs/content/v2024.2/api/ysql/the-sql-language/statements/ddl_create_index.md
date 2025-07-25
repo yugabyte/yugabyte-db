@@ -39,7 +39,7 @@ Concurrent index creation allows data to be modified in the main table while the
 
 {{< note title="Note" >}}
 
-For more details on how online index backfill works, refer to [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md). Flags controlling the speed of online index backfill are described in [Index backfill flags](../../../../../../reference/configuration/yb-tserver/#index-backfill-flags).
+For more details on how online index backfill works, refer to [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md). Flags controlling the speed of online index backfill are described in [Index backfill flags](../../../../../reference/configuration/yb-tserver/#index-backfill-flags).
 
 {{< /note >}}
 
