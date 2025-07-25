@@ -279,9 +279,11 @@ spec:
 
 You can attach a service account to database pods to be used to access storage in S3 or GCS. The service account used for the database pods should have annotations for the IAM role. The service account to be used can be applied to the database pods as a Helm override with provider- or universe- level overrides.
 
+The operator pod (with the YugabyteDB Anywhere instance) should have the IAM role for cloud storage access attached to its service account.
+
 **AWS**
 
-The IAM role used should be sufficient to access storage in S3. The operator pod (with the YugabyteDB Anywhere instance) should have the IAM role for cloud storage access attached to its service account.
+The IAM role used should be sufficient to access storage in S3.
 
 To enable IAM roles to access storage in S3, set the **Use S3 IAM roles attached to DB node for Backup/Restore** Universe Configuration option (config key `yb.backup.s3.use_db_nodes_iam_role_for_backup`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
 
@@ -316,6 +318,8 @@ spec:
 For more information, refer to [Enable IAM roles for service accounts](https://docs.aws.amazon.com/eks/latest/userguide/enable-iam-roles-for-service-accounts.html) in the AWS documentation.
 
 **GKE**
+
+The IAM role used should be sufficient to access storage in GCS.
 
 The storage config CR should have IAM as the credential source.
 

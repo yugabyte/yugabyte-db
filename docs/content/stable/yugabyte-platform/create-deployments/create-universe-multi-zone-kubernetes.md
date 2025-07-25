@@ -183,7 +183,7 @@ To enable IAM roles for S3, set the **Use S3 IAM roles attached to DB node for B
 
 For more information, refer to [Enable IAM roles for service accounts](https://docs.aws.amazon.com/eks/latest/userguide/enable-iam-roles-for-service-accounts.html) in the AWS documentation, and [Authenticate to Google Cloud APIs from GKE workloads](https://cloud.google.com/kubernetes-engine/docs/how-to/workload-identity) in the Google Cloud documentation.
 
-If you want to enable EKS service account-based IAM for backup and restore using S3 or GCS at the universe level, add the following overrides:
+If you want to enable EKS service account-based IAM for backup and restore using S3 at the universe level, add the following overrides:
 
 ```yaml
 tserver:
