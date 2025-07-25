@@ -216,7 +216,7 @@ To access the Admin UI, you first need to set up port forwarding for port 7000, 
 
 {{< note title="Note" >}}
 
-If you've created the cluster with `enableLoadBalancer=False`, then the service `yb-master-ui` won't be created and port forwarding won't work.
+If you've created the cluster with `enableLoadBalancer=False`, then the service `yb-master-ui` won't be created and you have to run `kubectl --namespace yb-demo port-forward svc/yb-masters 7000:7000`.
 
 {{< /note >}}
 
