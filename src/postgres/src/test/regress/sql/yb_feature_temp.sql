@@ -389,3 +389,22 @@ select pg_temp.nonempty('');
 select ''::nonempty;
 
 reset search_path;
+-- tests for row locking on temp tables
+CREATE TEMP TABLE locktest(f1 int, f2 text);
+INSERT INTO locktest VALUES (1, 'one'), (2, 'two'), (3, 'three');
+SELECT * FROM locktest ORDER BY f1 FOR UPDATE;
+SELECT * FROM locktest WHERE f1 = 2 FOR UPDATE;
+SELECT * FROM locktest WHERE f1 IN (SELECT f1 FROM locktest WHERE f1 < 3) FOR UPDATE;
+SELECT a.f1, a.f2 FROM locktest a JOIN locktest b ON a.f1 = b.f1 WHERE a.f1 = 1 FOR UPDATE;
+BEGIN;
+SELECT * FROM locktest WHERE f1 = 3 FOR UPDATE;
+ROLLBACK;
+CREATE TEMP TABLE locktest_join(id int, note text);
+INSERT INTO locktest_join VALUES (2, 'x'), (3, 'y'), (4, 'z');
+SELECT l.f1, l.f2, j.note FROM locktest l JOIN locktest_join j ON l.f1 = j.id FOR UPDATE;
+CREATE TABLE regtable(id int, name text);
+INSERT INTO regtable VALUES (1, 'a'), (2, 'b'), (3, 'c');
+CREATE TEMP TABLE temptable(id int, note text);
+INSERT INTO temptable VALUES (1, 'x'), (2, 'y'), (4, 'z');
+SELECT r.id, r.name FROM regtable r WHERE r.id IN
+    (SELECT id FROM temptable FOR UPDATE) ORDER BY r.id;

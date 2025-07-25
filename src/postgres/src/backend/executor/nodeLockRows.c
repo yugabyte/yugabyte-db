@@ -87,6 +87,9 @@ lnext:
 		 */
 		return slot;
 	}
+	/* For temp relations, mark the transaction as using temp relations */
+	if (n_yb_relations != n_relations)
+		YbSetTxnWithPgOps(YB_TXN_USES_TEMPORARY_RELATIONS);
 
 	if (TupIsNull(slot))
 		return NULL;
