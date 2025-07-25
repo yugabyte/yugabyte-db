@@ -57,6 +57,13 @@ This same approach isn't limited to just "Ask Your Support Knowledge Base" scena
 
 Download the application and provide settings specific to your deployment:
 
+{{< note title="Note" >}}
+
+If you're having issues with `pip install psycopg2` below, check the [installation instructions](../../../drivers-orms/python/postgres-psycopg2/).
+
+{{< /note >}}
+
+
 1. Install the application dependencies in virtual environment.
 
     ```sh
