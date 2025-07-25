@@ -619,6 +619,7 @@ spec:
 
 ## Limitations
 
+<!--TODO in 2.27 - Remove Backup schedules limitation-->
 - YugabyteDB Kubernetes Operator can only deploy universes on the _same_ Kubernetes cluster it is deployed on.
 - YugabyteDB Kubernetes Operator is single cluster only, and does not support multi-cluster universes.
 - Currently, YugabyteDB Kubernetes Operator does not support the following features:

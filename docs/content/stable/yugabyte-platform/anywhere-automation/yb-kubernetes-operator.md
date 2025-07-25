@@ -621,6 +621,5 @@ spec:
   - Software upgrade rollback
   - [xCluster](../../../architecture/docdb-replication/async-replication/)
   - [Read Replica](../../../architecture/key-concepts/#read-replica-cluster)
-  - [Backup schedules](../../back-up-restore-universes/schedule-data-backups/)
   - [Encryption-At-Rest](../../security/enable-encryption-at-rest/)
 - Only self-signed [encryption in transit](../../security/enable-encryption-in-transit/) is supported. Editing this later is not supported.
