@@ -652,6 +652,7 @@ namespace {
 WaitStateTracker flush_and_compaction_wait_states_tracker;
 WaitStateTracker raft_log_appender_wait_states_tracker;
 WaitStateTracker pg_shared_memory_perform_tracker;
+WaitStateTracker pg_shared_memory_acquire_object_lock_tracker;
 
 }  // namespace
 
@@ -665,6 +666,10 @@ WaitStateTracker& RaftLogWaitStatesTracker() {
 
 WaitStateTracker& SharedMemoryPgPerformTracker() {
   return pg_shared_memory_perform_tracker;
+}
+
+WaitStateTracker& SharedMemoryPgAcquireObjectLockTracker() {
+  return pg_shared_memory_acquire_object_lock_tracker;
 }
 
 }  // namespace yb::ash

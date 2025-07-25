@@ -98,9 +98,9 @@ The following table describes the connection parameters required to connect, inc
 | database | Database name | yugabyte |
 | username | User connecting to the database | yugabyte |
 | password | User password | yugabyte |
-| `loadBalanceHosts` | [Uniform load balancing](../../smart-drivers/#cluster-aware-load-balancing) | Defaults to upstream driver behavior unless set to 'true' |
-| `topologyKeys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-load-balancing) | If `loadBalanceHosts` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`. |
-| `ybServersRefreshInterval` | If loadBalanceHosts is true, the interval in seconds to refresh the servers list | 300 |
+| loadBalanceHosts | Enables [uniform load balancing](../../smart-drivers/#cluster-aware-load-balancing) | false (Disabled) |
+| topologyKeys | Enables [topology-aware load balancing](../../smart-drivers/#topology-aware-load-balancing). Specify comma-separated geo-locations in the form `cloud.region.zone:priority`. Ignored if `loadBalanceHosts` is false | Empty |
+| ybServersRefreshInterval | The interval in seconds to refresh the servers list; ignored if `loadBalanceHosts` is false | 300 |
 
 You can provide the connection details in one of the following ways:
 

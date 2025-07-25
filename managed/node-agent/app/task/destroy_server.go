@@ -22,12 +22,14 @@ var registeredServices = []struct {
 	{"yb-tserver.service", "tserver"},
 	{"yb-controller.service", "controller"},
 	{"yb-clean_cores.service", ""},
-	{"yb-zip_purge_yb_logs.timer", ""},
+	{"yb-clean_cores.timer", ""},
 	{"yb-zip_purge_yb_logs.service", ""},
+	{"yb-zip_purge_yb_logs.timer", ""},
 	{"yb-bind_check.service", ""},
-	{"yb-collect_metrics.timer", ""},
 	{"yb-collect_metrics.service", ""},
+	{"yb-collect_metrics.timer", ""},
 	{"otel-collector.service", ""},
+	{"node_exporter.service", ""},
 }
 
 type DestroyServerHandler struct {
@@ -128,5 +130,9 @@ func (h *DestroyServerHandler) Handle(
 	if err := h.cleanupNode(ctx); err != nil {
 		return nil, err
 	}
-	return nil, nil
+	return &pb.DescribeTaskResponse{
+		Data: &pb.DescribeTaskResponse_DestroyServerOutput{
+			DestroyServerOutput: &pb.DestroyServerOutput{},
+		},
+	}, nil
 }

@@ -26,6 +26,7 @@
 #include "yb/integration-tests/xcluster/xcluster_test_utils.h"
 
 #include "yb/master/catalog_manager.h"
+#include "yb/master/master_ddl.pb.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/xcluster/xcluster_manager.h"
 
@@ -46,10 +47,11 @@ DECLARE_int32(ysql_sequence_cache_minval);
 DECLARE_uint32(xcluster_consistent_wal_safe_time_frequency_ms);
 DECLARE_uint32(ysql_oid_cache_prefetch_size);
 
+DECLARE_bool(TEST_skip_oid_advance_on_restore);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_end);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_start);
-DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_ddl);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_before_incremental_safe_time_bump);
+DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_ddl);
 DECLARE_int32(TEST_xcluster_producer_modify_sent_apply_safe_time_ms);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
 DECLARE_string(TEST_xcluster_simulated_lag_tablet_filter);
@@ -1948,8 +1950,8 @@ TEST_F(XClusterDDLReplicationFailoverTest, FailoverWithPendingAlterDDLs) {
 
   auto& sync_point = *SyncPoint::GetInstance();
   sync_point.LoadDependency(
-      {{"XClusterDDLQueueHandler::DDLQueryProcessed",
-        "FailoverWithPendingAlterDDLs::WaitForDDLToExecute"}});
+      {{.predecessor = "XClusterDDLQueueHandler::DDLQueryProcessed",
+        .successor = "FailoverWithPendingAlterDDLs::WaitForDDLToExecute"}});
 
   ASSERT_OK(EnablePITROnClusters());
 
@@ -2063,11 +2065,15 @@ TEST_F(XClusterDDLReplicationSetupTest, ReplicationSetUpBumpsOidCounter) {
     ASSERT_OK(conn.Execute("CREATE TABLE my_table (x INT);"));
   }
 
-  // Reset OID counters on A by backing up then restoring the database on cluster A.
+  // Simulate a legacy database that was backed up and restored before we added the code for
+  // advancing OIDs counters on restore.  Here we reset OID counters on A by backing up then
+  // restoring the database on cluster A without advancing the OID counters.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_oid_advance_on_restore) = true;
   ASSERT_OK(BackupFromProducer());
   SetReplicationDirection(ReplicationDirection::BToA);
   ASSERT_OK(RestoreToConsumer());
   SetReplicationDirection(ReplicationDirection::AToB);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_oid_advance_on_restore) = false;
 
   // Allocate a few OIDs on A to force caching of normal space OIDs.
   {
@@ -2102,6 +2108,69 @@ TEST_F(XClusterDDLReplicationSetupTest, ReplicationSetUpBumpsOidCounter) {
     // are still in use on B because the previous enum still exists there.
     ASSERT_OK(conn.Execute(CreateGiantEnumStatement("second_enum")));
     ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  }
+}
+
+TEST_F(XClusterDDLReplicationSetupTest, CheckpointingSetUpBumpsOidCounters) {
+  ASSERT_OK(SetUpClusters());
+
+  auto CreateTableWithOid = [&](std::string tablename, uint32_t oid) -> Status {
+    auto conn = VERIFY_RESULT(cluster_A_->ConnectToDB(namespace_name));
+    return conn.ExecuteFormat(
+        "SET yb_binary_restore = true;"
+        "SET yb_ignore_pg_class_oids = false;"
+        "SET yb_ignore_relfilenode_ids = false;"
+        "SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('$0'::pg_catalog.oid);"
+        "SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('$0'::pg_catalog.oid);"
+        "SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('$1'::pg_catalog.oid);"
+        "SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('$2'::pg_catalog.oid);"
+        "CREATE TABLE $3 (x INT);",
+        oid, oid + 1, oid + 2, tablename);
+  };
+
+  auto GetTableOid = [&](std::string tablename) -> Result<uint32_t> {
+    auto conn = VERIFY_RESULT(cluster_A_->ConnectToDB(namespace_name));
+    return conn.FetchRow<pgwrapper::PGOid>(
+        Format("SELECT oid FROM pg_class WHERE relname = '$0'", tablename));
+  };
+
+  google::SetVLOGLevel("catalog_manager*", 1);
+
+  // Create a hidden normal table above where the normal OID counter points.
+  ASSERT_OK(EnablePITROnClusters());
+  const uint32_t normal_table_oid = 50'000;
+  ASSERT_OK(CreateTableWithOid("normal_table", normal_table_oid));
+  {
+    auto conn = ASSERT_RESULT(cluster_A_->ConnectToDB(namespace_name));
+    ASSERT_OK(conn.Execute("DROP TABLE normal_table;"));
+  }
+  // Create a non-hidden secondary space table above where the secondary OID counter points.
+  const uint32_t secondary_table_oid = kPgFirstSecondarySpaceObjectId + 70'000;
+  ASSERT_OK(CreateTableWithOid("secondary_table", secondary_table_oid));
+
+  // Checkpoint the namespace for xCluster automatic replication; this should advance both OID
+  // counters as needed.
+  ASSERT_OK(CheckpointReplicationGroupOnNamespaces({namespace_name}));
+
+  // Verify the normal space OID counter has advanced by creating a probe table.
+  auto conn = ASSERT_RESULT(cluster_A_->ConnectToDB(namespace_name));
+  ASSERT_OK(conn.Execute("CREATE TABLE probe_table (y INT);"));
+  auto probe_oid = ASSERT_RESULT(GetTableOid("probe_table"));
+  ASSERT_GE(probe_oid, normal_table_oid);
+  ASSERT_LT(probe_oid, kPgUpperBoundNormalObjectId);
+
+  // Verify the secondary space OID counter has advanced by directly reserving the next (uncached)
+  // secondary space OID.
+  {
+    master::GetNamespaceInfoResponsePB resp;
+    ASSERT_OK(producer_client()->GetNamespaceInfo(
+        /*namespace_id=*/std::string(), namespace_name, YQL_DATABASE_PGSQL, &resp));
+    NamespaceId namespace_id = resp.namespace_().id();
+    uint32_t begin_oid, end_oid;
+    ASSERT_OK(producer_client()->ReservePgsqlOids(
+        namespace_id, /*next_oid=*/0, /*count=*/1, /*use_secondary_space=*/true, &begin_oid,
+        &end_oid));
+        ASSERT_GE(begin_oid, secondary_table_oid);
   }
 }
 
@@ -2853,6 +2922,73 @@ TEST_F(XClusterDDLReplicationTest, BackupRestorePreservesEnumSortValue) {
     // Also check after restore the exact enum info (including enumsortorder) do not change.
     ASSERT_EQ(enum_info, expected_enum_info);
   }
+}
+
+TEST_F(XClusterDDLReplicationTableRewriteTest, TruncateTable) {
+  // Create a table with a sequence.
+  const auto table_name = "tbl1";
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE tbl1(id SERIAL PRIMARY KEY, col1 int)"));
+  auto producer_table =
+      ASSERT_RESULT(GetYsqlTable(&producer_cluster_, namespace_name, "", table_name));
+  const auto insert_stmt = "INSERT INTO tbl1(col1) VALUES (generate_series($0, $1))";
+  ASSERT_OK(producer_conn_->ExecuteFormat(insert_stmt, 0, 100));
+
+  auto verify_data = [&]() -> Status {
+    RETURN_NOT_OK(WaitForSafeTimeToAdvanceToNow());
+    const auto select_stmt = "SELECT * FROM tbl1 ORDER BY id";
+    auto producer_rows = VERIFY_RESULT(producer_conn_->FetchAllAsString(select_stmt));
+    auto consumer_rows = VERIFY_RESULT(consumer_conn_->FetchAllAsString(select_stmt));
+    SCHECK_EQ(producer_rows, consumer_rows, IllegalState, "Rows do not match");
+
+    const auto select_seq_val_stmt = "SELECT last_value, is_called FROM tbl1_id_seq";
+    auto producer_seq_val = VERIFY_RESULT(producer_conn_->FetchRowAsString(select_seq_val_stmt));
+    auto consumer_seq_val = VERIFY_RESULT(consumer_conn_->FetchRowAsString(select_seq_val_stmt));
+    SCHECK_EQ(producer_seq_val, consumer_seq_val, IllegalState, "Sequence values do not match");
+    return Status::OK();
+  };
+
+  ASSERT_OK(verify_data());
+
+  // Make sure we cannot mix temp and non_temp tables;
+  {
+    ASSERT_OK(producer_conn_->Execute("CREATE TEMP TABLE tbl_tmp(id int)"));
+    const auto expected_err_msg =
+        "unsupported mix of temporary and persisted objects in DDL command";
+    ASSERT_NOK_STR_CONTAINS(
+        producer_conn_->Execute("TRUNCATE TABLE tbl_tmp, tbl1"), expected_err_msg);
+    ASSERT_NOK_STR_CONTAINS(
+        producer_conn_->Execute("TRUNCATE TABLE tbl1, tbl_tmp"), expected_err_msg);
+  }
+
+  // But just truncate the temp table should work on each side independently.
+  ASSERT_OK(producer_conn_->Execute("TRUNCATE TABLE tbl_tmp"));
+  // TODO(#25885): Remove the need to set enable_manual_ddl_replication to use temp tables on
+  // target.
+  ASSERT_OK(consumer_conn_->Execute(
+      "SET yb_xcluster_ddl_replication.enable_manual_ddl_replication TO TRUE"));
+  ASSERT_OK(consumer_conn_->Execute("CREATE TEMP TABLE tbl_tmp2(id int)"));
+  ASSERT_OK(consumer_conn_->Execute("TRUNCATE TABLE tbl_tmp2"));
+  ASSERT_OK(consumer_conn_->Execute(
+      "SET yb_xcluster_ddl_replication.enable_manual_ddl_replication TO FALSE"));
+
+  // Pause DDL replication and run the truncate followed by insert.
+  auto ddl_queue_table = ASSERT_RESULT(GetYsqlTable(
+      &consumer_cluster_, namespace_name, xcluster::kDDLQueuePgSchemaName,
+      xcluster::kDDLQueueTableName));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = true;
+
+  // Truncate with a sequence restart.
+  ASSERT_OK(producer_conn_->Execute("TRUNCATE TABLE tbl1 RESTART IDENTITY"));
+  ASSERT_OK(producer_conn_->ExecuteFormat(insert_stmt, 200, 300));
+
+  // Let the sequence table changes replicate first.
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNowWithoutDDLQueue());
+
+  // Unblock the DDL on target and make sure the sequence restart from the DDL does not
+  // override the already replicated sequence values.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = false;
+
+  ASSERT_OK(verify_data());
 }
 
 }  // namespace yb

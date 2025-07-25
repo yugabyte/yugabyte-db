@@ -4356,8 +4356,10 @@ YBRefreshCacheWrapper(uint64_t catalog_master_version, bool is_retry)
 		shared_catalog_version - local_catalog_version;
 	YbcCatalogMessageLists message_lists = {0};
 	const bool	enable_inval_messages = YbIsInvalidationMessageEnabled();
+
 	/* The reason that we need a full catalog cache refresh. */
-	int reason = 0;
+	int			reason = 0;
+
 	if (enable_inval_messages)
 	{
 		if (is_retry &&
@@ -4428,7 +4430,11 @@ YBRefreshCacheWrapper(uint64_t catalog_master_version, bool is_retry)
 			YbUpdateCatalogCacheVersion(shared_catalog_version);
 			if (yb_test_delay_after_applying_inval_message_ms > 0)
 				pg_usleep(yb_test_delay_after_applying_inval_message_ms * 1000L);
-			/* TODO(myang): only invalidate affected entries in the pggate cache? */
+
+			/*
+			 * TODO(myang): only invalidate affected entries in the pggate
+			 * cache?
+			 */
 			HandleYBStatus(YBCPgInvalidateCache(YbGetCatalogCacheVersion()));
 			yb_need_cache_refresh = false;
 			return;
@@ -6151,6 +6157,12 @@ PostgresMain(const char *dbname, const char *username)
 
 	if (!ignore_till_sync)
 		send_ready_for_query = true;	/* initially, or after error */
+
+	/*
+	 * YB: Refresh the session stats accumulated during catalog cache
+	 * prefetching.
+	 */
+	YbRefreshSessionStatsDuringExecution();
 
 	/*
 	 * Non-error queries loop here.

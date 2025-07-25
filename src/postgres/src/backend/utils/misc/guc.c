@@ -123,6 +123,7 @@
 #include "pg_yb_utils.h"
 #include "tcop/pquery.h"
 #include "utils/syscache.h"
+#include "yb/util/debug/leak_annotations.h"
 #include "yb_ash.h"
 #include "yb_query_diagnostics.h"
 #include "yb_tcmalloc_utils.h"
@@ -2700,14 +2701,16 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_skip_data_insert_for_xcluster_target", PGC_SUSET, DEVELOPER_OPTIONS,
-			gettext_noop("If enabled, any DDL operations will skip the data loading "
-						 "phase. This includes table rewrites and nonconcurrent indexes."
+		{"yb_xcluster_automatic_mode_target_ddl", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Used to identify DDLs executed in Automatic xCluster mode target "
+						 "universe. For example, DDL operations will skip the data loading "
+						 "phase, including table rewrites and nonconcurrent indexes. Sequence "
+						 "restarts via TRUNCATE TABLE are also skipped."
 						 "WARNING: Incorrect usage will result in data loss."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
-		&yb_skip_data_insert_for_xcluster_target,
+		&yb_xcluster_automatic_mode_target_ddl,
 		false,
 		NULL, NULL, NULL
 	},
@@ -5447,6 +5450,16 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_fk_references_cache_limit", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Sets the maximum size for the FK reference cache filled by the INSERT, SELECT ... FOR KEY SHARE or similar statmements"),
+			NULL
+		},
+		&yb_fk_references_cache_limit,
+		65535, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL, NULL
@@ -7330,6 +7343,7 @@ guc_strdup(int elevel, const char *src)
 		ereport(elevel,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("out of memory")));
+	__lsan_ignore_object(data);
 	return data;
 }
 

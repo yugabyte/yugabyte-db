@@ -219,8 +219,8 @@ typedef struct TransactionStateData
 	bool		ybDataSentForCurrQuery; /* Whether any data has been sent to
 										 * frontend as part of current query's
 										 * execution */
-	bool		ybTxnUsesTempRel; /* True if the transaction operates on a
-								   * temporary table */
+	bool		ybTxnUsesTempRel;	/* True if the transaction operates on a
+									 * temporary table */
 	List	   *YBPostponedDdlOps;	/* We postpone execution of non-revertable
 									 * DocDB operations (e.g. drop
 									 * table/index) until the rest of the txn
@@ -2440,7 +2440,8 @@ CommitTransaction(void)
 
 	if (IsYugaByteEnabled())
 	{
-		bool increment_pg_txns = YbTrackPgTxnInvalMessagesForAnalyze();
+		bool		increment_pg_txns = YbTrackPgTxnInvalMessagesForAnalyze();
+
 		/*
 		 * Firing the triggers may abort current transaction.
 		 * At this point all the them has been fired already.
@@ -3270,10 +3271,10 @@ YBStartTransactionCommandInternal(bool yb_skip_read_committed_internal_savepoint
 void
 YbCommitTransactionCommandIntermediate(void)
 {
-	NodeTag yb_node_tag;
-	CommandTag yb_command_tag;
-	bool is_ddl_mode = YBCPgIsDdlMode();
-	YbDdlMode ddl_mode;
+	NodeTag		yb_node_tag;
+	CommandTag	yb_command_tag;
+	bool		is_ddl_mode = YBCPgIsDdlMode();
+	YbDdlMode	ddl_mode;
 
 	elog(DEBUG2, "YbCommitTransactionCommandIntermediate");
 

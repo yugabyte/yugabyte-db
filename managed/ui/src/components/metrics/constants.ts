@@ -221,9 +221,17 @@ export const MetricTypesWithOperations = {
       'container_volume_usage_percent'
     ]
   },
+  ysql_table: {
+    title: 'YSQL',
+    metrics: ['ysql_catalog_cache_misses']
+  },
   tserver_table: {
     title: 'Tablet Server',
     metrics: [
+      'table_read_latency',
+      'table_read_rps',
+      'table_write_latency',
+      'table_write_rps',
       'tserver_log_latency',
       'tserver_log_bytes_written',
       'tserver_log_bytes_read',
@@ -241,6 +249,8 @@ export const MetricTypesWithOperations = {
       'lsm_rocksdb_avg_num_sst_per_node',
       'lsm_rocksdb_latencies_get',
       'lsm_rocksdb_latencies_write',
+      'table_write_rejections',
+      'table_memory_rejections',
       'lsm_rocksdb_latencies_seek',
       'lsm_rocksdb_block_cache_hit_miss',
       'lsm_rocksdb_blooms_checked_and_useful',
@@ -306,7 +316,7 @@ export const MetricTypesByOrigin = {
     ]
   },
   table: {
-    data: ['lsmdb_table', 'tserver_table']
+    data: ['tserver_table', 'lsmdb_table', 'ysql_table']
   }
 } as const;
 

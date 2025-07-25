@@ -34,7 +34,7 @@ To understand more about how LSM tree stores data in SSTs, see [LSM and SST](./l
 
 ## Performance
 
-DocDB is written in C++ and is designed to be highly performant across various platforms and architectures, including Linux, macOS, Windows, and various UNIX-like systems.
+DocDB is written in C++ and is designed to be highly performant on Linux.
 
 {{<lead link="./performance">}}
 To understand more about how DocDB enhances RocksDB, see [Performance](./performance).

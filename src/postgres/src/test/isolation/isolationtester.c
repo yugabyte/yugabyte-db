@@ -62,6 +62,12 @@ static void run_permutation(TestSpec *testspec, int nsteps,
 #define STEP_NONBLOCK	0x1		/* return as soon as cmd waits for a lock */
 #define STEP_RETRY		0x2		/* this is a retry of a previously-waiting cmd */
 
+/*
+ * YB: Skip the YB_NUM_SECONDS_TO_WAIT_TO_ASSUME_SESSION_BLOCKED (4-second) blocking detection wait
+ * and immediately assume step is blocked.
+ */
+#define YB_STEP_SKIP_WAIT	0x4
+
 static int	try_complete_steps(TestSpec *testspec, PermutationStep **waiting,
 							   int nwaiting, int flags);
 static bool try_complete_step(TestSpec *testspec, PermutationStep *pstep,
@@ -769,6 +775,13 @@ try_complete_steps(TestSpec *testspec, PermutationStep **waiting,
 	int			old_nwaiting;
 	bool		have_blocker;
 
+	/*
+	 * YB: Optimization to avoid waiting for changes to propagate before moving onto next step if
+	 * we already did the YB_NUM_SECONDS_TO_WAIT_TO_ASSUME_SESSION_BLOCKED wait earlier and
+	 * haven't completed any step after that wait
+	 */
+	bool		already_waited_this_iteration;
+
 	do
 	{
 		int			w = 0;
@@ -779,16 +792,30 @@ try_complete_steps(TestSpec *testspec, PermutationStep **waiting,
 		/* Likewise, these variables reset for each retry. */
 		old_nwaiting = nwaiting;
 		have_blocker = false;
+		already_waited_this_iteration = false;	/* YB: Reset for each
+												 * iteration */
 
 		/* Scan the array, try to complete steps. */
 		while (w < nwaiting)
 		{
-			if (try_complete_step(testspec, waiting[w], flags))
+			int			step_flags = flags;
+
+			/*
+			 * YB: Add YB_STEP_SKIP_WAIT flag based on whether we already
+			 * waited
+			 */
+			if (already_waited_this_iteration)
+				step_flags |= YB_STEP_SKIP_WAIT;
+
+			if (try_complete_step(testspec, waiting[w], step_flags))
 			{
 				/* Still blocked, leave it alone. */
 				if (waiting[w]->nblockers > 0)
 					have_blocker = true;
 				w++;
+
+				/* YB: We waited for this step */
+				already_waited_this_iteration = true;
 			}
 			else
 			{
@@ -797,6 +824,13 @@ try_complete_steps(TestSpec *testspec, PermutationStep **waiting,
 					memmove(&waiting[w], &waiting[w + 1],
 							(nwaiting - (w + 1)) * sizeof(PermutationStep *));
 				nwaiting--;
+
+				/*
+				 * YB: The step completed, which may have released some waiters,
+				 * so next waiter should wait on block for completed step's
+				 * changes to propagate and unblock this waiter.
+				 */
+				already_waited_this_iteration = false;
 			}
 		}
 
@@ -890,9 +924,18 @@ try_complete_step(TestSpec *testspec, PermutationStep *pstep, int flags)
 			struct timeval current_time;
 			int64		td;
 
+			/* Figure out how long we've been waiting for this step. */
+			gettimeofday(&current_time, NULL);
+			td = (int64) current_time.tv_sec - (int64) start_time.tv_sec;
+			td *= USECS_PER_SEC;
+			td += (int64) current_time.tv_usec - (int64) start_time.tv_usec;
 			/* If it's OK for the step to block, check whether it has. */
 			if (flags & STEP_NONBLOCK)
 			{
+				/* YB: If we already waited this iteration, skip the wait */
+				if (flags & YB_STEP_SKIP_WAIT)
+					return true;
+
 				bool		waiting;
 
 				res = PQexecPrepared(conns[0].conn, PREP_WAITING, 1,
@@ -938,31 +981,24 @@ try_complete_step(TestSpec *testspec, PermutationStep *pstep, int flags)
 					return true;
 				}
 				/* else, not waiting */
-			}
 
-			/* Figure out how long we've been waiting for this step. */
-			gettimeofday(&current_time, NULL);
-			td = (int64) current_time.tv_sec - (int64) start_time.tv_sec;
-			td *= USECS_PER_SEC;
-			td += (int64) current_time.tv_usec - (int64) start_time.tv_usec;
-
-			/*
-			 * Yugabyte specific logic: Since we don't use pg_locks, we can't
-			 * determine if a session is blocked on another session using the
-			 * PREP_WAITING function above. So, we instead assume that waiting
-			 * for for >= 2 second means the session is blocked on another
-			 * session.
-			 *
-			 * This is not a perfect check but good enough for now.
-			 *
-			 * TODO(Piyush): Replace this by a deterministic check when
-			 * blocking information is exposed via Pg locks (#12168).
-			 */
-			if (td > YB_NUM_SECONDS_TO_WAIT_TO_ASSUME_SESSION_BLOCKED * USECS_PER_SEC && !canceled)
-			{
-				if (!(flags & STEP_RETRY))
-					printf("step %s: %s <waiting ...>\n", step->name, step->sql);
-				return true;
+				/*
+				 * Yugabyte specific logic: Since we don't use pg_locks, we can't
+				 * determine if a session is blocked on another session using the
+				 * PREP_WAITING function above. So, we instead assume that waiting
+				 * for >= 4 second means the session is blocked on another session.
+				 *
+				 * This is not a perfect check but good enough for now.
+				 *
+				 * TODO(Piyush): Replace this by a deterministic check when
+				 * blocking information is exposed via Pg locks (#12168).
+				 */
+				if (td > YB_NUM_SECONDS_TO_WAIT_TO_ASSUME_SESSION_BLOCKED * USECS_PER_SEC && !canceled)
+				{
+					if (!(flags & STEP_RETRY))
+						printf("step %s: %s <waiting ...>\n", step->name, step->sql);
+					return true;
+				}
 			}
 
 			/*

@@ -634,6 +634,8 @@ Status PgSession::DropTable(const PgObjectId& table_id, bool use_regular_transac
   tserver::PgDropTableRequestPB req;
   table_id.ToPB(req.mutable_table_id());
   req.set_use_regular_transaction_block(use_regular_transaction_block);
+  RETURN_NOT_OK(
+      SetupIsolationAndPerformOptionsForDdl(req.mutable_options(), use_regular_transaction_block));
   return ResultToStatus(pg_client_.DropTable(&req, CoarseTimePoint()));
 }
 
@@ -645,6 +647,8 @@ Status PgSession::DropIndex(
   index_id.ToPB(req.mutable_table_id());
   req.set_index(true);
   req.set_use_regular_transaction_block(use_regular_transaction_block);
+  RETURN_NOT_OK(
+    SetupIsolationAndPerformOptionsForDdl(req.mutable_options(), use_regular_transaction_block));
   auto result = VERIFY_RESULT(pg_client_.DropTable(&req, CoarseTimePoint()));
   if (indexed_table_name) {
     *indexed_table_name = std::move(result);
@@ -1029,6 +1033,24 @@ void PgSession::TrySetCatalogReadPoint(const ReadHybridTime& read_ht) {
   }
 }
 
+Status PgSession::SetupIsolationAndPerformOptionsForDdl(
+  tserver::PgPerformOptionsPB* options, bool use_regular_transaction_block) {
+  if (!use_regular_transaction_block) {
+    return Status::OK();
+  }
+  RSTATUS_DCHECK(
+      pg_txn_manager_->IsDdlModeWithRegularTransactionBlock(), IllegalState,
+      "Expected to be in DDL mode with regular transaction block");
+
+  RETURN_NOT_OK(pg_txn_manager_->CalculateIsolation(
+    false /* read_only */,
+    GetTxnPriorityRequirement(
+        true /* is_ddl_mode */, GetIsolationLevel(),
+        RowMarkType::ROW_MARK_ABSENT /* ignored for ddl */)));
+
+  return pg_txn_manager_->SetupPerformOptions(options);
+}
+
 Status PgSession::SetActiveSubTransaction(SubTransactionId id) {
   // It's required that we flush all buffered operations before changing the SubTransactionMetadata
   // used by the underlying batcher and RPC logic, as this will snapshot the current
@@ -1054,6 +1076,30 @@ Status PgSession::RollbackToSubTransaction(SubTransactionId id) {
   const auto status = pg_txn_manager_->RollbackToSubTransaction(id);
   VLOG_WITH_FUNC(4) << "id: " << id << ", error: " << status;
   return status;
+}
+
+void PgSession::SetTransactionHasWrites() {
+  pg_txn_manager_->SetTransactionHasWrites();
+}
+
+Result<bool> PgSession::CurrentTransactionUsesFastPath() const {
+  // Single-shard modifications outside of an explicit transaction block are considered "fast-path"
+  // when:
+  // 1. The isolation level is NON_TRANSACTIONAL.
+  // 2. The statement has performed at least one write - this is required because standalone read
+  //    statements and reads before the first write/explicit lock in a transaction block will have
+  //    its isolation level set to NON_TRANSACTIONAL.
+  // Further, we also check if the operations buffer is empty because in some scenarios, such as
+  // stored procedures, writes can be buffered and not flushed at the statement boundary, but rather
+  // at a later point in the execution of the procedure. In such cases, the isolation level for the
+  // buffered writes is not computed at the time of calling this function, leading the transaction
+  // manager to report the isolation level as NON_TRANSACTIONAL (the default).
+  //
+  // Note that the fast-path variant of the COPY command uses a combination of the fast-path with
+  // operations bufferring. However, it is guaranteed to perform a flush at the end of the statement
+  // and it cannot be invoked via EXPLAIN (the only caller of this function). So, we can safely
+  // ignore this case here.
+  return VERIFY_RESULT(pg_txn_manager_->TransactionHasNonTransactionalWrites()) && !buffer_.Size();
 }
 
 void PgSession::ResetHasCatalogWriteOperationsInDdlMode() {

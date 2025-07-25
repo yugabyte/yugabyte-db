@@ -50,7 +50,6 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import java.text.SimpleDateFormat;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
@@ -285,6 +284,19 @@ public class Backup extends Model {
   @Column
   // Unix timestamp at which backup will get deleted.
   private Date expiry;
+
+  @ApiModelProperty(value = "First snapshot time in this backup", accessMode = READ_ONLY)
+  @Column
+  private long firstSnapshotTime;
+
+  @JsonIgnore
+  public void upsertFirstSnapshotTime(long snapshotTime) {
+    if (this.getFirstSnapshotTime() == 0) {
+      this.setFirstSnapshotTime(snapshotTime);
+    } else {
+      this.setFirstSnapshotTime(Math.min(snapshotTime, this.getFirstSnapshotTime()));
+    }
+  }
 
   @JsonIgnore
   private void setExpiry(long timeBeforeDeleteFromPresent) {
@@ -1033,14 +1045,13 @@ public class Backup extends Model {
    */
   public static Optional<Backup> maybeGetRestorableBackup(
       UUID customerUUID, UUID baseBackupUUID, long restoreTimestampMillis) {
-    Date restoreTimestamp = Date.from(Instant.ofEpochMilli(restoreTimestampMillis));
     Optional<Backup> optB =
         find.query()
             .where()
             .eq("customer_uuid", customerUUID)
             .eq("base_backup_uuid", baseBackupUUID)
             .eq("state", BackupState.Completed)
-            .ge("create_time", restoreTimestamp)
+            .ge("first_snapshot_time", restoreTimestampMillis)
             .orderBy()
             .asc("create_time")
             .setMaxRows(1)

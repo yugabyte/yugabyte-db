@@ -382,10 +382,10 @@ Returns tables in the following format, depending on the flags used:
 <db_type>.<namespace>.<table_name> table_id table_type
 ```
 
-* *db_type*: The type of database. Valid values include `ysql`, `ycql`, and `unknown`.
+* *db_type*: The type of database. Valid values are `ysql`, `ycql`, and `unknown`.
 * *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
 * *table_name*: The name of the table.
-* *table_type*: The type of table. Valid values include `catalog`, `table`, `index`, and `other`.
+* *table_type*: The type of table. Valid values are `catalog`, `table`, `index`, and `other`.
 
 {{< note title="Tip" >}}
 
@@ -437,7 +437,7 @@ yb-admin \
 ```
 
 * *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *db_type*: The type of database. Valid values include ysql and ycql.
+* *db_type*: The type of database. Valid values are `ysql` and `ycql`.
 * *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
 * *table*: The name of the table to compact.
 * *timeout_in_seconds*: Specifies duration (in seconds) yb-admin waits for compaction to end. Default value is `20`.
@@ -478,6 +478,65 @@ yb-admin \
 
 ```output
 Compacted [000033eb000030008000000000004002] tables.
+```
+
+#### compaction_status
+
+Show the status of full compaction on a table.
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    compaction_status <db-type>.<namespace> <table> [show_tablets]
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
+* *db-type*: The type of database. Valid values are `ysql` and `ycql`.
+* *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
+* *table*: The name of the table to show the full compaction status.
+* `show_tablets`: Show the compactions status of individual tablets.
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses $MASTER_RPC_ADDRS \
+    compaction_status ysql.yugabyte table_name show_tablets
+```
+
+```output
+tserver uuid: 1b9486461cdd48f59eb46b33992cd73a
+ tablet id | full compaction state | last full compaction completion time
+
+ 93c6933407e24adf8b3f12c11499673a IDLE 2025-06-03 15:36:22.395586
+ 9c1cddfe33ec440cbcd70770563c62ca IDLE 2025-06-03 15:36:22.743703
+ b739745bba254330805c259459c61a7e IDLE 2025-06-03 15:36:23.416460
+ 9d0155aa77b3441e8e8c78cc433b995c IDLE 2025-06-03 15:36:23.504400
+ 2b9f283301d14be2add2c3f2a0016531 IDLE 2025-06-03 15:36:23.892202
+ eff101a879f348778ed599cb79498c44 IDLE 2025-06-03 15:36:24.706769
+
+tserver uuid: c0505f1d31774a3d88fae26ce14cde10
+ tablet id | full compaction state | last full compaction completion time
+
+ 93c6933407e24adf8b3f12c11499673a IDLE 2025-06-03 15:36:22.769900
+ 9c1cddfe33ec440cbcd70770563c62ca IDLE 2025-06-03 15:36:23.142609
+ b739745bba254330805c259459c61a7e IDLE 2025-06-03 15:36:23.871247
+ 9d0155aa77b3441e8e8c78cc433b995c IDLE 2025-06-03 15:36:23.877126
+ 2b9f283301d14be2add2c3f2a0016531 IDLE 2025-06-03 15:36:24.294265
+ eff101a879f348778ed599cb79498c44 IDLE 2025-06-03 15:36:25.107964
+
+tserver uuid: f7b5e6fc38974cbabc330d944d564974
+ tablet id | full compaction state | last full compaction completion time
+
+ 93c6933407e24adf8b3f12c11499673a IDLE 2025-06-03 15:36:22.415413
+ 9c1cddfe33ec440cbcd70770563c62ca IDLE 2025-06-03 15:36:22.793145
+ b739745bba254330805c259459c61a7e IDLE 2025-06-03 15:36:23.473077
+ 9d0155aa77b3441e8e8c78cc433b995c IDLE 2025-06-03 15:36:23.475270
+ 2b9f283301d14be2add2c3f2a0016531 IDLE 2025-06-03 15:36:23.888733
+ eff101a879f348778ed599cb79498c44 IDLE 2025-06-03 15:36:24.705576
+
+Last full compaction completion time: 2025-06-03 15:36:22.395586
+Last admin compaction request time: 2025-06-03 15:36:22.061267
 ```
 
 #### modify_table_placement_info
@@ -613,7 +672,7 @@ yb-admin \
 ```
 
 * *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *db_type*: The type of database. Valid values include ysql and ycql.
+* *db_type*: The type of database. Valid values are `ysql` and `ycql`.
 * *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
 * *table*: The name of the table to flush.
 * *timeout_in_seconds*: Specifies duration (in seconds) yb-admin waits for flushing to end. Default value is `20`.
@@ -2336,7 +2395,7 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* ADD | REMOVE: Adds or removes the specified YB-TServer from leader blacklist.
+* ADD | REMOVE: Adds or removes the specified YB-Master, or YB-TServer from leader blacklist.
 * *ip_addr:port*: The IP address and port of the YB-TServer.
 
 **Example**

@@ -75,16 +75,17 @@ DEFINE_RUNTIME_int32(load_balancer_max_inbound_remote_bootstraps_per_tserver, 4,
     "Maximum number of tablets simultaneously remote bootstrapping on a tserver. Past this value, "
     "the load balancer will not add tablets to this tserver.");
 
-DEFINE_RUNTIME_int32(load_balancer_max_over_replicated_tablets, 1,
-    "Maximum number of running tablet replicas that are allowed to be over the configured "
-    "replication factor.");
+DEFINE_RUNTIME_int32(load_balancer_max_over_replicated_tablets, 50,
+    "Maximum number of running tablet replicas per table that are allowed to be over the "
+    "configured replication factor. This controls the amount of space amplification in the cluster "
+    "when tablet removal is slow. A value less than 0 means no limit.");
 
 DEFINE_RUNTIME_int32(load_balancer_max_concurrent_adds, 1,
     "Maximum number of tablet peer replicas to add in any one run of the load balancer.");
 
-DEFINE_RUNTIME_int32(load_balancer_max_concurrent_removals, 1,
+DEFINE_RUNTIME_int32(load_balancer_max_concurrent_removals, 50,
     "Maximum number of over-replicated tablet peer removals to do in any one run of the "
-    "load balancer.");
+    "load balancer. A value less than 0 means no limit.");
 
 DEFINE_RUNTIME_int32(load_balancer_max_concurrent_moves, 100,
     "Maximum number of tablet leaders on tablet servers (across the cluster) to move in "
@@ -133,6 +134,8 @@ DEFINE_RUNTIME_bool(load_balancer_drive_aware, true,
 DEFINE_RUNTIME_bool(load_balancer_ignore_cloud_info_similarity, false,
     "If true, ignore the similarity between cloud infos when deciding which tablet to move");
 
+DECLARE_int32(replication_factor);
+
 METRIC_DEFINE_gauge_int64(cluster,
                           is_load_balancing_enabled,
                           "Is Load Balancing Enabled",
@@ -157,15 +160,18 @@ METRIC_DEFINE_gauge_uint32(cluster,
                            total_table_load_difference,
                            "Sum of Table Load Difference",
                            yb::MetricUnit::kUnits,
-                           "This metric is the sum of every table's load difference, where a "
-                           "table's load difference is the maximum load difference for that table "
-                           "between all pairs of TServers that are valid hosts for its tablets. "
-                           "Here, the load difference for a table between a pair of TServers is "
-                           "the positive difference between the number of running/starting tablet "
-                           "peers belonging to that table hosted on those TServers. Exception: "
-                           "the load difference is defined as 0 if it otherwise would be 1 because "
-                           "the load balancer cannot fix a load difference of 1 by moving a tablet "
-                           "peer from one TServer to another.");
+                           "The minimum number of replicas that need to be added / moved for the "
+                           "cluster to be balanced.");
+
+METRIC_DEFINE_gauge_uint32(cluster,
+                           estimated_data_to_balance_bytes,
+                           "Estimated Data to Balance",
+                           yb::MetricUnit::kBytes,
+                           "The approximate amount of data that needs to be moved to balance the "
+                           "cluster. It is approximate because it is calculated as the sum across "
+                           "all tables of the number of replicas that need to be added / moved for "
+                           "the table to be balanced, multiplied by the average size of a tablet "
+                           "in that table.");
 
 namespace yb {
 namespace master {
@@ -255,6 +261,13 @@ Status ClusterLoadBalancer::PopulateReplicationInfo(
     }
     state_->placement_.CopyFrom(GetReadOnlyPlacementFromUuid(replication_info));
   }
+  if (state_->placement_.num_replicas() == 0) {
+    state_->placement_.set_num_replicas(FLAGS_replication_factor);
+  }
+  if (state_->placement_.placement_blocks().empty()) {
+    // Wildcard placement matches all tservers.
+    state_->placement_.add_placement_blocks()->CopyFrom(PlacementBlockPB());
+  }
 
   bool is_txn_table = table->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE;
   state_->use_preferred_zones_ = !is_txn_table || FLAGS_transaction_tables_use_preferred_zones;
@@ -333,6 +346,8 @@ void ClusterLoadBalancer::InitMetrics() {
   blacklisted_leaders_metric_ = METRIC_blacklisted_leaders.Instantiate(
       catalog_manager_->master_->metric_entity_cluster(), 0);
   total_table_load_difference_metric_ = METRIC_total_table_load_difference.Instantiate(
+      catalog_manager_->master_->metric_entity_cluster(), 0);
+  estimated_data_to_balance_bytes_metric_ = METRIC_estimated_data_to_balance_bytes.Instantiate(
       catalog_manager_->master_->metric_entity_cluster(), 0);
 }
 
@@ -475,6 +490,7 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
   uint32_t total_tablets_in_wrong_placement = 0;
   uint32_t total_blacklisted_leaders = 0;
   uint32_t total_table_load_difference = 0;
+  uint32_t total_estimated_data_to_balance_bytes = 0;
 
   // Loop over all tables to analyze the global and per-table load.
   for (const auto& table : GetTables()) {
@@ -502,18 +518,29 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
       continue;
     }
 
-    if (!state_->sorted_load_.empty()) {
-      // Only report values greater than 1 since the LB cannot fix a load difference of 1.
-      // This makes the total table load difference metric more interpretable since we would
-      // otherwise add 1 for every table has a difference of 1 between its most/least loaded
-      // tservers, even though the table load is balanced.
-      const auto& low_load_uuid = state_->sorted_load_.front();
-      const auto& high_load_uuid = state_->sorted_load_.back();
-      const int actual_load_difference =
-          narrow_cast<int>(state_->GetLoad(high_load_uuid) - state_->GetLoad(low_load_uuid));
-      if (actual_load_difference > 1) {
-        total_table_load_difference += actual_load_difference;
+    // Calculate the current state and goal state and their difference (in terms of adds / removes).
+    // We currently only use this to provide an estimate of the time it will take to balance the
+    // cluster; it is not used in the algorithm below.
+    TsTableLoadMap current_loads;
+    TSDescriptorVector valid_ts_descs;
+    for (auto& ts_uuid : state_->sorted_load_) {
+      auto& ts_meta = state_->per_ts_meta_.at(ts_uuid);
+      current_loads[ts_uuid] = ts_meta.running_tablets.size() + ts_meta.starting_tablets.size();
+      if (!global_state_->blacklisted_servers_.contains(ts_uuid)) {
+        valid_ts_descs.push_back(ts_meta.descriptor);
       }
+    }
+    auto goal_loads = CalculateOptimalLoadDistribution(
+        valid_ts_descs, state_->placement_, current_loads, state_->num_running_tablets_);
+    if (goal_loads.ok()) {
+      auto num_adds = CalculateTableLoadDifference(current_loads, *goal_loads);
+      VLOG(2) << "Table " << table->id() << " current_loads: " << AsString(current_loads);
+      VLOG(2) << "Table " << table->id() << " goal_loads:    " << AsString(*goal_loads);
+      total_table_load_difference += num_adds;
+      total_estimated_data_to_balance_bytes += num_adds * state_->average_tablet_size_;
+    } else {
+      YB_LOG_EVERY_N_SECS_OR_VLOG(WARNING, 10, 1) << "No valid load distribution found for table "
+          << table->id() << ": " << StatusToString(goal_loads);
     }
     total_tablets_in_wrong_placement += get_total_wrong_placement();
     total_blacklisted_leaders += get_badly_placed_leaders();
@@ -523,6 +550,7 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
   tablets_in_wrong_placement_metric_->set_value(total_tablets_in_wrong_placement);
   blacklisted_leaders_metric_->set_value(total_blacklisted_leaders);
   total_table_load_difference_metric_->set_value(total_table_load_difference);
+  estimated_data_to_balance_bytes_metric_->set_value(total_estimated_data_to_balance_bytes);
 
   VLOG(1) << "Global state after analyzing all tablets: " << global_state_->ToString();
 
@@ -762,7 +790,6 @@ Status ClusterLoadBalancer::IsIdle() const {
         "Task or error encountered recently.",
         MasterError(MasterErrorPB::LOAD_BALANCER_RECENTLY_ACTIVE));
   }
-
   return Status::OK();
 }
 
@@ -814,6 +841,8 @@ void ClusterLoadBalancer::ResetTableStatePtr(const TableId& table_id, Options* o
 Status ClusterLoadBalancer::AnalyzeTabletsUnlocked(const TableId& table_uuid) {
   auto tablets = VERIFY_RESULT_PREPEND(
       GetTabletsForTable(table_uuid), "Skipping table " + table_uuid + " due to error: ");
+  state_->num_running_tablets_ = 0;
+  size_t total_tablet_size = 0;
 
   // Loop over tablet map to register the load that is already live in the cluster.
   for (const auto& tablet : tablets) {
@@ -838,9 +867,13 @@ Status ClusterLoadBalancer::AnalyzeTabletsUnlocked(const TableId& table_uuid) {
     // concerned, but just be underreplicated, and have some TS currently bootstrapping instances
     // of the tablet.
     if (tablet_running) {
+      state_->num_running_tablets_++;
       RETURN_NOT_OK(state_->UpdateTablet(tablet.get()));
+      total_tablet_size += state_->per_tablet_meta_[tablet->id()].size;
     }
   }
+  state_->average_tablet_size_ =
+      state_->num_running_tablets_ == 0 ?  0 : total_tablet_size / state_->num_running_tablets_;
   state_->SetInitialized();
 
   // Once we've analyzed both the tablet server information as well as the tablets, we can sort the
@@ -983,11 +1016,11 @@ Status ClusterLoadBalancer::CanAddReplicas() {
 
   if (state_->options_->kAllowLimitOverReplicatedTablets &&
       get_total_over_replication() >=
-          implicit_cast<size_t>(state_->options_->kMaxOverReplicatedTablets)) {
+          implicit_cast<size_t>(state_->options_->kMaxOverReplicatedTabletsPerTable)) {
     return STATUS_FORMAT(TryAgain,
         "Cannot add replicas. Currently have a total overreplication of $0, when max allowed is $1"
         ", overreplicated tablets: $2",
-        get_total_over_replication(), state_->options_->kMaxOverReplicatedTablets,
+        get_total_over_replication(), state_->options_->kMaxOverReplicatedTabletsPerTable,
         boost::algorithm::join(state_->tablets_over_replicated_, ", "));
   }
 
@@ -1110,6 +1143,21 @@ Result<bool> ClusterLoadBalancer::GetLoadToMove(
           // the left tserver. Continue and try with the next left tserver.
           break;
         }
+      }
+
+      // There may be lots of over-replicated tablets on the high load tserver that are about to be
+      // removed. If removing those tablets would drop the load variance below the minimum, skip
+      // this pair of tservers to avoid adding extra replicas.
+      // For example, consider the case where tserver A has 100 tablets and tserver B is added to
+      // the same zone. We want to move 50 tablets, but without this check (and with unlimited adds
+      // or laggy removes), we would move 99 tablets to TS B and then remove evenly from both.
+      if (!is_global_balancing_move &&
+          load_variance - state_->GetPossiblyTransientLoad(high_load_uuid) <
+              state_->options_->kMinLoadVarianceToBalance) {
+        VLOG(3) << Format(
+            "Skipping tserver pair $0 and $1 because load variance including "
+            "over-replicated tablets would be too low.", high_load_uuid, low_load_uuid);
+        continue;
       }
 
       // If we don't find a tablet_id to move between these two TSs, advance the state.

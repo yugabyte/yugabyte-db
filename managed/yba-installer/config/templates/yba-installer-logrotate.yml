@@ -1,0 +1,42 @@
+services:
+  - name: logrotateService
+    fileName: '{{ .SystemdFileLocation}}'
+    contents: |
+      [Unit]
+      Description=Logrotate for Yugabyte logs
+      Wants=network-online.target
+      After=network-online.target
+
+      [Service]
+      {{ if eq (yamlPath "as_root") "true" }}
+      User={{ yamlPath "service_username" }}
+      Group={{ yamlPath "service_username" }}
+      {{ end}}
+      Type=oneshot
+      ExecStart={{ installRoot }}/logrotate/bin/logrotate.sh -s {{ .StateFileLocation }} {{ .ConfFileLocation }}
+
+  - name: logrotate.sh
+    fileName: '{{ .LogrotateScript }}'
+    contents: |
+      #!/bin/bash
+      {{ .LogrotateBin }} $@
+
+  - name: logrotateConf
+    fileName: "{{ .ConfFileLocation}}"
+    contents: |
+      # Global logrotate configuration for YBA Installer
+      include {{ logrotateD }}
+
+  - name: logrotateTimer
+    fileName: "{{ .SystemdTimerFileLocation }}"
+    contents: |
+      [Unit]
+      Description=Run logrotate for yugabyte logs daily
+
+      [Timer]
+      #OnCalendar=daily
+      OnCalendar=*:*:0,15,30,45
+      Persistent=true
+
+      [Install]
+      WantedBy=timers.target

@@ -82,6 +82,7 @@ export const GuidedRequirementDetails = () => {
               value={nodePerAz ?? 1}
               onChange={handleNodeCountChange}
               disabled={resilienceAndRegionsSettings?.resilienceType === ResilienceType.SINGLE_NODE}
+              dataTestId="node-count-per-az-field"
             />
             {t('nodesPerAz')}
           </div>

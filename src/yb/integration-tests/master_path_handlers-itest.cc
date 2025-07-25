@@ -1099,7 +1099,6 @@ TEST_F_EX(
     MasterPathHandlersItest, TestTabletUnderReplicationEndpointBootstrapping,
     MasterPathHandlersUnderReplicationTwoTsItest) {
   // Set these to allow multiple tablets bootstrapping at the same time.
-  ASSERT_OK(cluster_->SetFlagOnMasters("load_balancer_max_over_replicated_tablets", "10"));
   ASSERT_OK(cluster_->SetFlagOnMasters(
       "load_balancer_max_concurrent_tablet_remote_bootstraps", "10"));
   ASSERT_OK(cluster_->SetFlagOnMasters(
@@ -1634,6 +1633,7 @@ TEST_F(MasterPathHandlersItestExtraTS, LoadDistributionViewWithFailedTServer) {
   verify_cluster_before_next_tear_down_ = false;
   auto table = CreateTestTable(10);
   auto dead_uuid = cluster_->mini_tablet_server(0)->server()->permanent_uuid();
+  ASSERT_OK(WaitAllReplicasReady(cluster_.get(), 20s * kTimeMultiplier, UserTabletsOnly::kFalse));
   cluster_->mini_tablet_server(0)->Shutdown();
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
@@ -1659,7 +1659,9 @@ TEST_F(MasterPathHandlersItestExtraTS, LoadDistributionViewWithFailedTServer) {
           for (const auto& replica : replicas_it->value.GetArray()) {
             auto uuid = replica.FindMember("server_uuid")->value.GetString();
             if (uuid == dead_uuid) {
-              LOG(INFO) << "Downed TServer still assigned tablet replicas";
+              LOG(INFO) << "Downed TServer still assigned tablet replicas: T "
+                        << tablet.GetObject().FindMember("tablet_id")->value.GetString() << " P "
+                        << dead_uuid;
               return false;
             }
           }

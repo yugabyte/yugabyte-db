@@ -30,21 +30,26 @@ type: docs
 
 </ul>
 
-If your YugabyteDB Anywhere (YBA) installation was installed using [YBA Installer](../../install-yugabyte-platform/install-software/installer/), use YBA Installer to upgrade to a newer version. Note that you can only upgrade to a newer version; downgrades are not supported.
+If your YugabyteDB Anywhere installation was installed using [YBA Installer](../../install-yugabyte-platform/install-software/installer/), use YBA Installer to upgrade to a newer version. Note that you can only upgrade to a newer version; downgrades are not supported.
 
 For more information, refer to [Compatibility with YugabyteDB](/preview/releases/yba-releases/#compatibility-with-yugabytedb).
 
 If you are upgrading a YugabyteDB Anywhere installation with high availability enabled, follow the instructions provided in [Upgrade instances](../../administer-yugabyte-platform/high-availability/#upgrade-instances).
 
-{{< note title="Upgrading YBA on deprecated operating systems" >}}
+{{< note title="Upgrading YugabyteDB Anywhere on deprecated operating systems" >}}
 
-If you are running YBA on a [deprecated OS](../../../reference/configuration/operating-systems/), you need to update your OS before you can upgrade YBA to the next major release.
+If you are running YugabyteDB Anywhere on a [deprecated OS](../../../reference/configuration/operating-systems/), you need to update your OS before you can upgrade YugabyteDB Anywhere to the next major release.
+
+{{< /note >}}
+{{< note title="Upgrading YugabyteDB Anywhere on systems that have older versions of Python" >}}
+
+YugabyteDB Anywhere v25.1 and later requires Python v3.10-3.12. If you are running YugabyteDB Anywhere on a system with Python earlier than 3.10, you will need to update Python on your system before you can upgrade YugabyteDB Anywhere to v25.1 or later.
 
 {{< /note >}}
 
 ## Upgrade using YBA Installer
 
-To upgrade using YBA Installer, first download the version of YBA Installer corresponding to the version of YBA you want to upgrade to.
+To upgrade using YBA Installer, first download the version of YBA Installer corresponding to the version of YugabyteDB Anywhere you want to upgrade to.
 
 Download and extract the YBA Installer by entering the following commands:
 
@@ -54,13 +59,13 @@ tar -xf yba_installer_full-{{<yb-version version="stable" format="build">}}-linu
 cd yba_installer_full-{{<yb-version version="stable" format="build">}}/
 ```
 
-When ready to upgrade, run the `upgrade` command from the untarred directory of the target version of the YBA upgrade:
+When ready to upgrade, run the `upgrade` command from the untarred directory of the target version of the YugabyteDB Anywhere upgrade:
 
 ```sh
 sudo ./yba-ctl upgrade
 ```
 
-The upgrade takes a few minutes to complete. When finished, use the status command to verify that YBA has been upgraded to the target version:
+The upgrade takes a few minutes to complete. When finished, use the status command to verify that YugabyteDB Anywhere has been upgraded to the target version:
 
 ```sh
 sudo yba-ctl status

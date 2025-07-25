@@ -1559,13 +1559,13 @@ Status PgApiImpl::FetchRequestedYbctids(
 }
 
 Status PgApiImpl::BindYbctids(PgStatement* handle, int n, uintptr_t* ybctids) {
-  std::vector<Slice> ybctid_slice;
-  ybctid_slice.reserve(n);
-  for (int i = 0; i < n; i++)
-    ybctid_slice.push_back(YbctidAsSlice(pg_types(), ybctids[i]));
-
-  auto& select = VERIFY_RESULT_REF(GetStatementAs<PgSelect>(handle));
-  select.SetHoldingRequestedYbctids(ybctid_slice);
+  const auto sz = yb::make_unsigned(n);
+  const auto ybctids_span = std::span{ybctids, sz};
+  VERIFY_RESULT_REF(GetStatementAs<PgSelect>(handle)).SetRequestedYbctids(
+      {
+        make_lw_function([this, i = ybctids_span.begin(), end = ybctids_span.end()] mutable {
+          return i != end ? YbctidAsSlice(pg_types_, *i++) : Slice();
+        }), sz});
   return Status::OK();
 }
 
@@ -2039,6 +2039,10 @@ Status PgApiImpl::GetActiveTransactions(YbcPgSessionTxnInfo* infos, size_t num_i
 
 bool PgApiImpl::IsDdlMode() const {
   return pg_txn_manager_->IsDdlMode();
+}
+
+Result<bool> PgApiImpl::CurrentTransactionUsesFastPath() const {
+  return pg_session_->CurrentTransactionUsesFastPath();
 }
 
 void PgApiImpl::ResetCatalogReadTime() {

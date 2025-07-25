@@ -98,6 +98,10 @@ struct ExternalNamespaceSnapshotData {
   NamespaceId new_namespace_id;
   YQLDatabase db_type;
   bool just_created;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(new_namespace_id, db_type, just_created);
+  }
 };
 // Map: old_namespace_id (key) -> new_namespace_id + db_type + created-flag.
 using NamespaceMap = std::unordered_map<NamespaceId, ExternalNamespaceSnapshotData>;
@@ -783,9 +787,14 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // tablet split) might not be running.
   Status CheckAllActiveTabletsRunning() const;
 
-  // Clears partitons_ and tablets_.
-  // If deactivate_only is set to true then clear only the partitions_.
-  void ClearTabletMaps(DeactivateOnly deactivate_only = DeactivateOnly::kFalse);
+  // Clears partitions_ and tablets_.
+  // N.B.: The deletion flow removes tablets from the Catalog Manager's tablet map by removing all
+  // tablets returned by TableInfo::TakeTablets of a DELETED table. So it is possible to leak
+  // tablets in the tablet map by calling this function on a primary table.
+  void ClearTabletMaps();
+
+  // Returns the value of the tablets_ map and clears partitions_ and tablets_.
+  std::map<TabletId, std::weak_ptr<TabletInfo>> TakeTablets();
 
   // Returns true if the table creation is in-progress.
   bool IsCreateInProgress() const;

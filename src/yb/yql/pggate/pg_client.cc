@@ -87,6 +87,7 @@ namespace yb::pggate {
 namespace {
 
 using PerformCallback = std::function<void(const PerformResult&)>;
+using AcquireObjectLockCallback = std::function<void(const AcquireObjectLockResult&)>;
 
 class FetchBigDataCallback {
  public:
@@ -162,18 +163,92 @@ struct ResponseReadyTraits<Result<rpc::CallData>> {
   }
 };
 
+std::string PrettyFunctionName(const char* name) {
+  std::string result;
+  for (const char* ch = name; *ch; ++ch) {
+    if (!result.empty() && std::isupper(*ch)) {
+      result += ' ';
+    }
+    result += *ch;
+  }
+  return result;
+}
+
+template <class Req>
+std::string PrettyRequest(const char* name, const Req& req) {
+  return PrettyFunctionName(name);
+}
+
+std::string PrettyRequest(const char* name, const tserver::PgCreateTableRequestPB& req) {
+  return Format("'$0' table creation", req.table_name());
+}
+
+template <class T>
+class ResultFutureArgTypeDeducer;
+
+template <class T, class... Args>
+class ResultFutureArgTypeDeducer<pg_client::internal::ResultFuture<T>(PgClient::*)(Args...)> {
+  using Type = T;
+};
+
+template <class T>
+using ResultFutureArgType = ResultFutureArgTypeDeducer<T>::Type;
+
 } // namespace
 
-struct PerformData : public FetchBigDataCallback {
-  PgsqlOps operations;
-  tserver::LWPgPerformResponsePB resp;
+namespace pg_client::internal {
+
+template <RequestTraitsType T>
+ExchangeFuture<T>::ExchangeFuture() = default;
+
+template <RequestTraitsType T>
+ExchangeFuture<T>::ExchangeFuture(std::shared_ptr<Data> data) : data_(std::move(data)) {}
+
+template <RequestTraitsType T>
+ExchangeFuture<T>::ExchangeFuture(ExchangeFuture<T>&& rhs) noexcept : data_(std::move(rhs.data_)) {}
+
+template <RequestTraitsType T>
+ExchangeFuture<T>& ExchangeFuture<T>::operator=(ExchangeFuture<T>&& rhs) noexcept {
+  data_ = std::move(rhs.data_);
+  return *this;
+}
+
+template <RequestTraitsType T>
+bool ExchangeFuture<T>::valid() const {
+  return data_ != nullptr;
+}
+
+template <RequestTraitsType T>
+void ExchangeFuture<T>::wait() const {
+  if (!value_) {
+    value_ = MakeExchangeResult<T>(*data_, data_->Complete());
+  }
+}
+
+template <RequestTraitsType T>
+bool ExchangeFuture<T>::ready() const {
+  return data_->template ResponseReady<bool>();
+}
+
+template <RequestTraitsType T>
+ExchangeFuture<T>::Result ExchangeFuture<T>::get() {
+  wait();
+  data_.reset();
+  return *value_;
+}
+
+template <class LWReqPB, class LWRespPB, typename Callback>
+struct PgClientData : public FetchBigDataCallback {
+  const LWReqPB& req;
+  tserver::PgSharedExchangeReqType type;
+  LWRespPB resp;
   rpc::RpcController controller;
 
   tserver::SharedExchange* exchange = nullptr;
   CoarseTimePoint deadline;
   BigDataFetcher* big_data_fetcher;
 
-  PerformCallback callback;
+  Callback callback;
 
   std::mutex exchange_mutex;
   std::condition_variable exchange_cond;
@@ -181,14 +256,10 @@ struct PerformData : public FetchBigDataCallback {
   bool fetching_big_data GUARDED_BY(exchange_mutex) = false;
   rpc::CallData big_call_data GUARDED_BY(exchange_mutex);
 
-  PgDocMetrics& metrics;
-
-  PerformData(
-      ThreadSafeArena* arena, PgsqlOps&& operations_,
-      const PerformCallback& callback_, PgDocMetrics& metrics_)
-      : operations(std::move(operations_)), resp(arena),
-        callback(callback_), metrics(metrics_) {
-  }
+  PgClientData(
+      const LWReqPB& req_, tserver::PgSharedExchangeReqType type_, ThreadSafeArena* arena_,
+      const Callback& callback_)
+      : req(req_), type(type_), resp(arena_), callback(callback_) {}
 
   void SetupExchange(
       tserver::SharedExchange* exchange_, BigDataFetcher* big_data_fetcher_, MonoDelta timeout) {
@@ -289,7 +360,7 @@ struct PerformData : public FetchBigDataCallback {
     exchange_cond.notify_all();
   }
 
-  Result<rpc::CallResponsePtr> CompletePerform() {
+  Result<rpc::CallResponsePtr> Complete() {
     auto call_data = ResponseReady<Result<rpc::CallData>>();
     RETURN_NOT_OK(call_data);
     auto response = std::make_shared<rpc::CallResponse>();
@@ -297,6 +368,19 @@ struct PerformData : public FetchBigDataCallback {
     RETURN_NOT_OK(resp.ParseFromSlice(response->serialized_response()));
     return response;
   }
+};
+
+struct PerformData : public PgClientData<tserver::LWPgPerformRequestPB,
+                                         tserver::LWPgPerformResponsePB,
+                                         PerformCallback> {
+  PgsqlOps operations;
+  PgDocMetrics& metrics;
+
+  PerformData(
+      const tserver::LWPgPerformRequestPB& req_, ThreadSafeArena* arena, PgsqlOps&& operations_,
+      PgDocMetrics& metrics_, const PerformCallback& callback_)
+      : PgClientData(req_, tserver::PgSharedExchangeReqType::PERFORM, arena, callback_),
+        operations(std::move(operations_)), metrics(metrics_) {}
 
   Status Process() {
     auto& responses = *resp.mutable_responses();
@@ -318,43 +402,55 @@ struct PerformData : public FetchBigDataCallback {
   }
 };
 
+
+struct AcquireObjectLockData : public PgClientData<tserver::LWPgAcquireObjectLockRequestPB,
+                                                   tserver::LWPgAcquireObjectLockResponsePB,
+                                                   AcquireObjectLockCallback> {
+  AcquireObjectLockData(
+      const tserver::LWPgAcquireObjectLockRequestPB& req_, ThreadSafeArena* arena_,
+      const AcquireObjectLockCallback& callback_)
+      : PgClientData(
+            req_, tserver::PgSharedExchangeReqType::ACQUIRE_OBJECT_LOCK, arena_, callback_) {}
+};
+
+using AcquireObjectLockTraits = RequestTraits<AcquireObjectLockData, AcquireObjectLockResult>;
+
+} // namespace pg_client::internal
+
+using pg_client::internal::PerformData;
+using pg_client::internal::AcquireObjectLockData;
+using pg_client::internal::ResultFuture;
+using pg_client::internal::ExchangeFuture;
+using pg_client::internal::RequestTraitsType;
+using pg_client::internal::RequestTraitsType;
+using pg_client::internal::PerformTraits;
+using pg_client::internal::AcquireObjectLockTraits;
+
 namespace {
 
-Status DoProcessPerformResponse(PerformData* data, PerformResult* result) {
-  RETURN_NOT_OK(ResponseStatus(data->resp));
-  RETURN_NOT_OK(data->Process());
-  if (data->resp.has_catalog_read_time()) {
-    result->catalog_read_time = ReadHybridTime::FromPB(data->resp.catalog_read_time());
+Status DoProcessResponse(
+    PerformData& data, PerformResult& result, const rpc::CallResponsePtr& response) {
+  result.response = response;
+  RETURN_NOT_OK(ResponseStatus(data.resp));
+  RETURN_NOT_OK(data.Process());
+  if (data.resp.has_catalog_read_time()) {
+    result.catalog_read_time = ReadHybridTime::FromPB(data.resp.catalog_read_time());
   }
-  result->used_in_txn_limit = HybridTime::FromPB(data->resp.used_in_txn_limit_ht());
+  result.used_in_txn_limit = HybridTime::FromPB(data.resp.used_in_txn_limit_ht());
   return Status::OK();
 }
 
-PerformResult MakePerformResult(
-    PerformData* data, const Result<rpc::CallResponsePtr>& response) {
-  PerformResult result;
-  if (response.ok()) {
-    result.response = *response;
-    result.status = DoProcessPerformResponse(data, &result);
-  } else {
-    result.status = response.status();
-  }
-  return result;
+Status DoProcessResponse(
+    AcquireObjectLockData& data, AcquireObjectLockResult& result,
+    const Result<rpc::CallResponsePtr>& response) {
+  return ResponseStatus(data.resp);
 }
 
-void ProcessPerformResponse(
-    PerformData* data, const Result<rpc::CallResponsePtr>& response) {
-  data->callback(MakePerformResult(data, response));
-}
-
-std::string PrettyFunctionName(const char* name) {
-  std::string result;
-  for (const char* ch = name; *ch; ++ch) {
-    if (!result.empty() && std::isupper(*ch)) {
-      result += ' ';
-    }
-    result += *ch;
-  }
+template <pg_client::internal::RequestTraitsType T>
+typename T::ResultType MakeExchangeResult(
+    typename T::DataType& data, const Result<rpc::CallResponsePtr>& response) {
+  typename T::ResultType result;
+  result.status = response.ok() ? DoProcessResponse(data, result, *response) : response.status();
   return result;
 }
 
@@ -778,6 +874,49 @@ class PgClient::Impl : public BigDataFetcher {
     return ResponseStatus(resp);
   }
 
+  template <RequestTraitsType T, typename MethodPtr, class... Args>
+  ResultFuture<T> PrepareAndSend(
+      MethodPtr method, Args&&... args) {
+    auto promise = std::make_shared<std::promise<typename T::ResultType>>();
+    auto callback = [promise](const typename T::ResultType& result) {
+      promise->set_value(result);
+    };
+    auto data = std::make_shared<typename T::DataType>(std::forward<Args>(args)..., callback);
+    if (session_shared_mem_ && session_shared_mem_->exchange().ReadyToSend()) {
+      constexpr size_t kHeaderSize = sizeof(uint8_t) + sizeof(uint64_t);
+      auto& exchange = session_shared_mem_->exchange();
+      auto out = exchange.Obtain(kHeaderSize + data->req.SerializedSize());
+      if (out) {
+        *reinterpret_cast<uint8_t *>(out) = data->type;
+        out += sizeof(uint8_t);
+        LittleEndian::Store64(out, timeout_.ToMilliseconds());
+        out += sizeof(uint64_t);
+        const auto size = data->req.SerializedSize();
+        auto* end = pointer_cast<std::byte*>(
+            data->req.SerializeToArray(pointer_cast<uint8_t*>(out)));
+        Status status;
+        if ((size_t)(end - out) != size) {
+          status = STATUS(InternalError, "Obtained size does not match serialized size");
+        }
+        if (status.ok()) {
+          status = exchange.SendRequest();
+        }
+        if (!status.ok()) {
+          data->callback(MakeExchangeResult<T>(*data, status));
+          return promise->get_future();
+        }
+        data->SetupExchange(&exchange, this, timeout_);
+        return ExchangeFuture<T>(std::move(data));
+      }
+    }
+    data->controller.set_invoke_callback_mode(rpc::InvokeCallbackMode::kReactorThread);
+    (proxy_.get()->*method)(
+        data->req, &data->resp, SetupController(&data->controller), [data] {
+          data->callback(MakeExchangeResult<T>(*data, data->controller.CheckedResponse()));
+        });
+    return promise->get_future();
+  }
+
   PerformResultFuture PerformAsync(
       tserver::PgPerformOptionsPB* options, PgsqlOps&& operations, PgDocMetrics& metrics) {
     auto& arena = operations.front()->arena();
@@ -787,44 +926,28 @@ class PgClient::Impl : public BigDataFetcher {
     *req.mutable_options() = std::move(*options);
     PrepareOperations(&req, operations);
 
-    auto promise = std::make_shared<std::promise<PerformResult>>();
-    auto callback = [promise](const PerformResult& result) {
-      promise->set_value(result);
-    };
-
-    auto data = std::make_shared<PerformData>(
-        &arena, std::move(operations), callback, metrics);
-    if (session_shared_mem_ && session_shared_mem_->exchange().ReadyToSend()) {
-      constexpr size_t kHeaderSize = sizeof(uint64_t);
-      auto& exchange = session_shared_mem_->exchange();
-      auto out = exchange.Obtain(kHeaderSize + req.SerializedSize());
-      if (out) {
-        LittleEndian::Store64(out, timeout_.ToMilliseconds());
-        out += sizeof(uint64_t);
-        auto status = StartPerform(data.get(), req, out);
-        if (!status.ok()) {
-          ProcessPerformResponse(data.get(), status);
-          return promise->get_future();
-        }
-        data->SetupExchange(&exchange, this, timeout_);
-        return PerformExchangeFuture(std::move(data));
-      }
-    }
-    data->controller.set_invoke_callback_mode(rpc::InvokeCallbackMode::kReactorThread);
-
-    proxy_->PerformAsync(req, &data->resp, SetupController(&data->controller), [data] {
-      ProcessPerformResponse(data.get(), data->controller.CheckedResponse());
-    });
-    return promise->get_future();
+    return PrepareAndSend<PerformTraits>(
+        &tserver::PgClientServiceProxy::PerformAsync, req, &arena, std::move(operations), metrics);
   }
 
-  Status StartPerform(
-      PerformData* data, const tserver::LWPgPerformRequestPB& req, std::byte* out) {
-    auto size = req.SerializedSize();
-    auto* end = pointer_cast<std::byte*>(req.SerializeToArray(pointer_cast<uint8_t*>(out)));
-    SCHECK_EQ(end - out, size, InternalError, "Obtained size does not match serialized size");
+  Status AcquireObjectLock(
+      tserver::PgPerformOptionsPB* options, const YbcObjectLockId& lock_id,
+      YbcObjectLockMode mode) {
+    object_locks_arena_.Reset(ResetMode::kKeepLast);
+    tserver::LWPgAcquireObjectLockRequestPB req(&object_locks_arena_);
+    AshMetadataToPB(*options);
+    req.set_session_id(session_id_);
+    *req.mutable_options() = std::move(*options);
+    auto* lock_oid = req.mutable_lock_oid();
+    lock_oid->set_database_oid(lock_id.db_oid);
+    lock_oid->set_relation_oid(lock_id.relation_oid);
+    lock_oid->set_object_oid(lock_id.object_oid);
+    lock_oid->set_object_sub_oid(lock_id.object_sub_oid);
+    req.set_lock_type(static_cast<tserver::ObjectLockMode>(mode));
 
-    return session_shared_mem_->exchange().SendRequest();
+    auto result_future = PrepareAndSend<AcquireObjectLockTraits>(
+        &tserver::PgClientServiceProxy::AcquireObjectLockAsync, req, &object_locks_arena_);
+    return result_future.Get().status;
   }
 
   bool TryAcquireObjectLockInSharedMemory(
@@ -1253,7 +1376,7 @@ class PgClient::Impl : public BigDataFetcher {
         *req, resp, BOOST_PP_CAT(PggateRPC::k, method), deadline); \
     if (!status.ok()) { \
       if (status.IsTimedOut()) { \
-        return STATUS_FORMAT(TimedOut, "Timed out waiting for $0", PrettyFunctionName(__func__)); \
+        return STATUS_FORMAT(TimedOut, "Timed out waiting for $0", PrettyRequest(__func__, *req)); \
       } \
       return status; \
     } \
@@ -1631,6 +1754,7 @@ class PgClient::Impl : public BigDataFetcher {
   uint64_t big_shared_memory_id_;
   InterprocessSharedMemoryObject big_shared_memory_object_;
   InterprocessMappedRegion big_mapped_region_;
+  ThreadSafeArena object_locks_arena_;
 };
 
 std::string DdlMode::ToString() const {
@@ -1836,6 +1960,11 @@ bool PgClient::TryAcquireObjectLockInSharedMemory(
   return impl_->TryAcquireObjectLockInSharedMemory(subtxn_id, lock_id, lock_type);
 }
 
+Status PgClient::AcquireObjectLock(
+    tserver::PgPerformOptionsPB* options, const YbcObjectLockId& lock_id, YbcObjectLockMode mode) {
+  return impl_->AcquireObjectLock(options, lock_id, mode);
+}
+
 Result<bool> PgClient::CheckIfPitrActive() {
   return impl_->CheckIfPitrActive();
 }
@@ -1964,52 +2093,9 @@ Status PgClient::SetCronLastMinute(int64_t last_minute) {
 
 Result<int64_t> PgClient::GetCronLastMinute() { return impl_->GetCronLastMinute(); }
 
-void PerformExchangeFuture::wait() const {
-  if (!value_) {
-    value_ = MakePerformResult(data_.get(), data_->CompletePerform());
-  }
-}
+template class pg_client::internal::ResultFuture<
+    ResultFutureArgType<decltype(&PgClient::PerformAsync)>>;
 
-bool PerformExchangeFuture::ready() const {
-  return data_->ResponseReady<bool>();
-}
-
-PerformResult PerformExchangeFuture::get() {
-  wait();
-  data_.reset();
-  return *value_;
-}
-
-void Wait(const PerformResultFuture& future) {
-  std::visit([](const auto& future) {
-    future.wait();
-  }, future);
-}
-
-bool Ready(const std::future<PerformResult>& future) {
-  return future.wait_for(std::chrono::microseconds(0)) == std::future_status::ready;
-}
-
-bool Ready(const PerformExchangeFuture& future) {
-  return future.ready();
-}
-
-bool Ready(const PerformResultFuture& future) {
-  return std::visit([](const auto& future) {
-    return Ready(future);
-  }, future);
-}
-
-bool Valid(const PerformResultFuture& future) {
-  return std::visit([](const auto& future) {
-    return future.valid();
-  }, future);
-}
-
-PerformResult Get(PerformResultFuture* future) {
-  return std::visit([](auto& future) {
-    return future.get();
-  }, *future);
-}
+template class pg_client::internal::ExchangeFuture<pg_client::internal::PerformTraits>;
 
 }  // namespace yb::pggate

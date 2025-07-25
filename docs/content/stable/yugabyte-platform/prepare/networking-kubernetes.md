@@ -38,13 +38,13 @@ In the general case, the following are the prerequisites for YugabyteDB Anywhere
 - There must be DNS connectivity between the clusters. ClusterIP and headless service FQDNs (including the individual pod FQDNs) exposed in one Kubernetes cluster must be resolvable in all the other Kubernetes clusters.
 - YugabyteDB Anywhere must have network connectivity to the control plane of all the Kubernetes clusters.
 
-To achieve network connectivity across multiple Kubernetes clusters, you can set up your networking to directly meet the requirements, or alternatively set up Multi-Cluster Services API (MCS) and/or Istio and configure YBA support to meet the same requirements. Note that MCS support in YugabyteDB Anywhere is currently in Early Access {{<tags/feature/ea idea="46">}}.
+To achieve network connectivity across multiple Kubernetes clusters, you can set up your networking to directly meet the requirements, or alternatively set up Multi-Cluster Services API (MCS) and/or Istio and configure YBA support to meet the same requirements. Note that MCS support in YugabyteDB Anywhere is currently in Early Access {{<tags/feature/ea>}}.
 
 ### Prepare Kubernetes clusters for GKE MCS
 
 GKE MCS allows clusters to be combined as a fleet on Google Cloud. These fleet clusters can export services, which enables you to do cross-cluster communication. For more information, see [Multi-cluster Services](https://cloud.google.com/kubernetes-engine/docs/concepts/multi-cluster-services) in the Google Cloud documentation.
 
-To enable MCS on your GKE clusters, see [Configuring multi-cluster Services](https://cloud.google.com/kubernetes-engine/docs/how-to/multi-cluster-services). Note down the unique membership name of each cluster in the fleet, it will be used during the cloud provider setup in YBA.
+To enable MCS on your GKE clusters, see [Configuring multi-cluster Services](https://cloud.google.com/kubernetes-engine/docs/how-to/multi-cluster-services). Note down the unique membership name of each cluster in the fleet, it will be used during the provider setup in YBA.
 
 ### Prepare OpenShift clusters for MCS
 

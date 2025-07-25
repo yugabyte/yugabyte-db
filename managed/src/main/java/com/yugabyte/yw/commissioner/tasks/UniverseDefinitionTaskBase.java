@@ -1895,7 +1895,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     return params;
   }
 
-  protected void createUniverseSetTlsParamsTask(SubTaskGroupType subTaskGroupType) {
+  protected SubTaskGroup createUniverseSetTlsParamsTask(SubTaskGroupType subTaskGroupType) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("UniverseSetTlsParams");
     UniverseSetTlsParams.Params params = createSetTlsParams(subTaskGroupType);
 
@@ -1904,6 +1904,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     subTaskGroup.addSubTask(task);
     subTaskGroup.setSubTaskGroupType(subTaskGroupType);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
   }
 
   protected LinkedHashSet<NodeDetails> toOrderedSet(
@@ -2046,87 +2047,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags)
           .setAfterTaskRunHandler(failedMasterAddrUpdateHandler);
     }
-  }
-
-  /**
-   * Finds the given list of nodes in the universe. The lookup is done by the node name.
-   *
-   * @param universe Universe to which the node belongs.
-   * @param nodes Set of nodes to be searched.
-   * @return stream of the matching nodes.
-   */
-  public Stream<NodeDetails> findNodesInUniverse(Universe universe, Set<NodeDetails> nodes) {
-    // Node names to nodes in Universe map to find.
-    Map<String, NodeDetails> nodesInUniverseMap =
-        universe.getUniverseDetails().nodeDetailsSet.stream()
-            .collect(Collectors.toMap(NodeDetails::getNodeName, Function.identity()));
-
-    // Locate the given node in the Universe by using the node name.
-    return nodes.stream()
-        .map(
-            node -> {
-              String nodeName = node.getNodeName();
-              NodeDetails nodeInUniverse = nodesInUniverseMap.get(nodeName);
-              if (nodeInUniverse == null) {
-                log.warn(
-                    "Node {} is not found in the Universe {}",
-                    nodeName,
-                    universe.getUniverseUUID());
-              }
-              return nodeInUniverse;
-            })
-        .filter(Objects::nonNull);
-  }
-
-  /**
-   * The methods performs the following in order:
-   *
-   * <p>1. Filters out nodes that do not exist in the given Universe, 2. Finds nodes matching the
-   * given node state only if ignoreNodeStatus is set to false. Otherwise, it ignores the given node
-   * state, 3. Consumer callback is invoked with the nodes found in 2. 4. If the callback is invoked
-   * because of some nodes in 2, the method returns true.
-   *
-   * <p>The method is used to find nodes in a given state and perform subsequent operations on all
-   * the nodes without state checking to mimic fall-through case because node states differ by only
-   * one if any subtask operation fails (mix of completed and failed).
-   *
-   * @param universe the Universe to which the nodes belong.
-   * @param nodes subset of the universe nodes on which the filters are applied.
-   * @param ignoreNodeStatus the flag to ignore the node status.
-   * @param nodeStatus the status to be matched against.
-   * @param consumer the callback to be invoked with the filtered nodes.
-   * @return true if some nodes are found to invoke the callback.
-   */
-  public boolean applyOnNodesWithStatus(
-      Universe universe,
-      Set<NodeDetails> nodes,
-      boolean ignoreNodeStatus,
-      NodeStatus nodeStatus,
-      Consumer<Set<NodeDetails>> consumer) {
-    boolean wasCallbackRun = false;
-    Set<NodeDetails> filteredNodes =
-        findNodesInUniverse(universe, nodes)
-            .filter(
-                n -> {
-                  if (ignoreNodeStatus) {
-                    log.info("Ignoring node status check");
-                    return true;
-                  }
-                  NodeStatus currentNodeStatus = NodeStatus.fromNode(n);
-                  log.info(
-                      "Expected node status {}, found {} for node {}",
-                      nodeStatus,
-                      currentNodeStatus,
-                      n.getNodeName());
-                  return currentNodeStatus.equalsIgnoreNull(nodeStatus);
-                })
-            .collect(Collectors.toSet());
-
-    if (CollectionUtils.isNotEmpty(filteredNodes)) {
-      consumer.accept(filteredNodes);
-      wasCallbackRun = true;
-    }
-    return wasCallbackRun;
   }
 
   /** Sets the task params from the DB. */
@@ -3750,7 +3670,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     return userIntent.numNodes > userIntent.replicationFactor && numActiveTservers >= rfInZone;
   }
 
-  public void createResumeUniverseTasks(Universe universe, UUID customerUUID) {
+  public void createResumeUniverseTasks(
+      Universe universe,
+      UUID customerUUID,
+      boolean updateCerts,
+      Consumer<Universe> afterUpdateCerts) {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     Collection<NodeDetails> nodes = universe.getNodes();
 
@@ -3773,7 +3697,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
       if (rootCert == null) {
         log.error("Root certificate not found for {}", universe.getUniverseUUID());
-      } else if (rootCert.getCertType() == CertConfigType.SelfSigned) {
+      } else if (updateCerts && rootCert.getCertType() == CertConfigType.SelfSigned) {
         SubTaskGroupType certRotate = RotatingCert;
         taskParams().rootCA = universeDetails.rootCA;
         taskParams().setClientRootCA(universeDetails.getClientRootCA());
@@ -3783,7 +3707,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             certRotate,
             CertsRotateParams.CertRotationType.ServerCert,
             CertsRotateParams.CertRotationType.None);
-        createUniverseSetTlsParamsTask(certRotate);
+        // After the group is run, invoke the callback to register checkpoint upto this because once
+        // the processes start running, the certs cannot be updated.
+        createUniverseSetTlsParamsTask(certRotate)
+            .setAfterGroupRunListener(g -> afterUpdateCerts.accept(universe));
       }
     }
 
@@ -3879,6 +3806,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     } else {
       log.info("Skipping upgrade finalization for universe : " + universe.getUniverseUUID());
     }
+
+    // Update PITR configs to set intermittentMinRecoverTimeInMillis to current time
+    // as PITR configs are only valid from the completion of software upgrade finalization
+    createUpdatePitrConfigIntermittentMinRecoverTimeTask();
 
     createUpdateUniverseSoftwareUpgradeStateTask(
         UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,

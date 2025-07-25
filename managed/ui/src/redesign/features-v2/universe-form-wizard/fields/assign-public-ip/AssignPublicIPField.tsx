@@ -39,6 +39,7 @@ export const AssignPublicIPField: FC<PublicIPFieldProps> = ({ disabled, provider
   return (
     <FieldContainer sx={{ padding: '16px 24px' }}>
       <YBCheckboxField
+        dataTestId="assign-public-ip-field"
         name={ASSIGN_PUBLIC_IP_FIELD}
         control={control}
         label={t('label')}

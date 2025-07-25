@@ -95,9 +95,13 @@ First 3000 rows will be persisted to the table and `tuples_processed` will show 
 
 The `REPLACE` option replaces the existing row in the table if the new row's primary/unique key conflicts with that of the existing row.
 
-Note that `REPLACE` doesn't work on tables that have more than 1 unique constraints (see [#13687](https://github.com/yugabyte/yugabyte-db/issues/13687) for explanation)
+Note that REPLACE doesn't work on tables that have more than 1 unique constraint (see [#13687](https://github.com/yugabyte/yugabyte-db/issues/13687)).
 
 Default: by default conflict error is reported.
+
+{{< warning title="Avoid using REPLACE if the target table has secondary indexes." >}}
+If the table has secondary indexes, a workaround is to COPY (without REPLACE) data into a temporary table, and then use [`INSERT ... ON CONFLICT`](../dml_insert/#on-conflict-clause) to transfer data from the temporary table to the target table.
+{{< /warning >}}
 
 ### DISABLE_FK_CHECK
 

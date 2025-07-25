@@ -792,7 +792,13 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			break;
 
 		case T_TruncateStmt:
-			ExecuteTruncate((TruncateStmt *) parsetree, isTopLevel);
+			/* In Yugabyte TRUNCATE supports DDL event triggers */
+			if (IsYugaByteEnabled())
+				ProcessUtilitySlow(pstate, pstmt, queryString, context, params,
+								   queryEnv, dest, qc);
+			else
+				ExecuteTruncate((TruncateStmt *) parsetree, isTopLevel,
+								NULL /* yb_relids */ );
 			break;
 
 		case T_CopyStmt:
@@ -2043,6 +2049,27 @@ ProcessUtilitySlow(ParseState *pstate,
 
 			case T_AlterCollationStmt:
 				address = AlterCollation((AlterCollationStmt *) parsetree);
+				break;
+
+			case T_TruncateStmt:
+				{
+					Assert(IsYugaByteEnabled());
+					List	   *relids = NIL;
+					ListCell   *cell;
+
+					ExecuteTruncate((TruncateStmt *) parsetree, isTopLevel,
+									&relids);
+
+					foreach(cell, relids)
+					{
+						Oid			relid = lfirst_oid(cell);
+
+						ObjectAddressSet(address, RelationRelationId, relid);
+						EventTriggerCollectSimpleCommand(address, secondaryObject,
+														 parsetree);
+					}
+					commandCollected = true;
+				}
 				break;
 
 			default:

@@ -81,6 +81,7 @@ pgstat_report_replslot(ReplicationSlot *slot, const PgStat_StatReplSlotEntry *re
 	PgStatShared_ReplSlot *shstatent;
 	PgStat_StatReplSlotEntry *statent;
 	int			idx = get_replslot_index(NameStr(slot->data.name));
+
 	entry_ref = pgstat_get_entry_ref_locked(PGSTAT_KIND_REPLSLOT, InvalidOid,
 											idx, false);
 	shstatent = (PgStatShared_ReplSlot *) entry_ref->shared_stats;

@@ -1,0 +1,67 @@
+title: YSQLQueryLogConfig
+description: YSQL Query Logging Configuration. Part of QueryLogConfig.
+type: object
+required:
+  - enabled
+  - log_statement
+  - log_min_error_statement
+  - log_error_verbosity
+  - log_duration
+  - debug_print_plan
+  - log_connections
+  - log_disconnections
+  - log_min_duration_statement
+properties:
+  enabled:
+    description: Enabled
+    type: boolean
+    readOnly: true
+  log_statement:
+    description: 'Log statement, controls which SQL statements are logged.'
+    type: string
+    default: NONE
+    enum:
+      - ALL
+      - NONE
+      - DDL
+      - MOD
+  log_min_error_statement:
+    description: 'Log min error statement, controls which SQL statements that cause an error condition are recorded.'
+    type: string
+    default: ERROR
+    enum:
+      - ERROR
+  log_error_verbosity:
+    description: 'Log error verbosity, controls the amount of detail written in the server log for each message that is logged.'
+    type: string
+    default: DEFAULT
+    enum:
+      - VERBOSE
+      - TERSE
+      - DEFAULT
+  log_duration:
+    description: 'Log duration, causes the duration of every completed statement to be logged'
+    type: boolean
+    default: false
+  debug_print_plan:
+    description: 'Debug print plan, these parameters enable various debugging output to be emitted. When set, they print the resulting parse tree, the query rewriter output, or the execution plan for each executed query.'
+    type: boolean
+    default: false
+  log_connections:
+    description: 'Log connections, causes each attempted connection to the server to be logged, as well as successful completion of both client authentication (if necessary) and authorization'
+    type: boolean
+    default: false
+  log_disconnections:
+    description: 'Log disconnections, causes session terminations to be logged. The log output provides information similar to log_connections, plus the duration of the session.'
+    type: boolean
+    default: false
+  log_line_prefix:
+    description: Log line prefix. This would be applied to both audit and query logs.
+    type: string
+    default: '%m :%r :%u @ %d :[%p] : '
+    x-yba-api-visibility: internal
+  log_min_duration_statement:
+    description: 'Log min duration statement, causes the duration of each completed statement to be logged if the statement ran for at least the specified amount of time.'
+    type: integer
+    format: int32
+    default: -1

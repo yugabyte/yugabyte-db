@@ -1,32 +1,24 @@
 import { ReactElement, useContext, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Controller, useFormContext } from 'react-hook-form';
-import { useQuery } from 'react-query';
-import { Box, makeStyles } from '@material-ui/core';
-import { YBLabel, YBInput } from '@yugabyte-ui-library/core';
-import { api, QUERY_KEY } from '@app/redesign/features/universe/universe-form/utils/api';
-import { getK8DeviceInfo } from './K8VolumeInfoFieldHelper';
+import { YBLabel, YBInput, mui } from '@yugabyte-ui-library/core';
+import { getK8DeviceInfo } from '@app/redesign/features-v2/universe-form-wizard/fields/k8-volume-info/K8VolumeInfoFieldHelper';
 import { NodeType } from '@app/redesign/utils/dtos';
-import { InstanceSettingProps } from '../../steps/hardware-settings/dtos';
-import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
-import { ReactComponent as Close } from '@app/redesign/assets/close.svg';
+import { InstanceSettingProps } from '@app/redesign/features-v2/universe-form-wizard/steps/hardware-settings/dtos';
+import {
+  CreateUniverseContext,
+  CreateUniverseContextMethods
+} from '@app/redesign/features-v2/universe-form-wizard/CreateUniverseContext';
+import { useRuntimeConfigValues } from '@app/redesign/features-v2/universe-form-wizard/helpers/utils';
 import {
   DEVICE_INFO_FIELD,
   INSTANCE_TYPE_FIELD,
   MASTER_DEVICE_INFO_FIELD,
   MASTER_INSTANCE_TYPE_FIELD
-} from '../FieldNames';
+} from '@app/redesign/features-v2/universe-form-wizard/fields/FieldNames';
+import { ReactComponent as Close } from '@app/redesign/assets/close.svg';
 
-const useStyles = makeStyles((theme) => ({
-  volumeInfoTextField: {
-    width: theme.spacing(15.5)
-  },
-  unitLabelField: {
-    marginLeft: theme.spacing(2),
-    alignSelf: 'flex-end',
-    marginBottom: 8
-  }
-}));
+const { Box } = mui;
 
 interface K8VolumeInfoFieldProps {
   isMaster: boolean;
@@ -47,7 +39,6 @@ export const K8VolumeInfoField = ({
   const [{ generalSettings }] = (useContext(
     CreateUniverseContext
   ) as unknown) as CreateUniverseContextMethods;
-  const classes = useStyles();
   const nodeTypeTag = isMaster ? NodeType.Master : NodeType.TServer;
 
   // watchers
@@ -59,20 +50,14 @@ export const K8VolumeInfoField = ({
   const convertToString = (str: string | number) => str?.toString() ?? '';
 
   //fetch run time configs
-  const { refetch: providerConfigsRefetch } = useQuery(
-    QUERY_KEY.fetchProviderRunTimeConfigs,
-    () => api.fetchRunTimeConfigs(true, provider?.uuid),
-    { enabled: !!provider?.uuid }
-  );
+  const { providerRuntimeConfigs } = useRuntimeConfigValues(provider?.uuid);
 
   useEffect(() => {
-    const getProviderRuntimeConfigs = async () => {
-      const providerRuntimeRefetch = await providerConfigsRefetch();
-      const deviceInfo = getK8DeviceInfo(providerRuntimeRefetch?.data);
-
+    const updateDeviceInfo = () => {
+      const deviceInfo = getK8DeviceInfo(providerRuntimeConfigs);
       setValue(UPDATE_FIELD, deviceInfo);
     };
-    getProviderRuntimeConfigs();
+    !fieldValue && updateDeviceInfo();
     setValue(INSTANCE_TYPE_UPDATE_FIELD, null);
   }, []);
 
@@ -80,6 +65,7 @@ export const K8VolumeInfoField = ({
     if (!fieldValue) return;
     setValue(UPDATE_FIELD, { ...fieldValue, volumeSize: Number(value) });
   };
+
   const onNumVolumesChanged = (numVolumes: any) => {
     if (!fieldValue) return;
     const volumeCount = Number(numVolumes) > maxVolumeCount ? maxVolumeCount : Number(numVolumes);
@@ -119,6 +105,7 @@ export const K8VolumeInfoField = ({
                   onChange={(event) => onNumVolumesChanged(event.target.value)}
                   inputMode="numeric"
                   disabled={disabled}
+                  dataTestId={`K8VolumeInfoField-${nodeTypeTag}-VolumeInput`}
                 />
               </Box>
 
@@ -148,9 +135,19 @@ export const K8VolumeInfoField = ({
                   value={convertToString(fieldValue?.volumeSize ?? '')}
                   onChange={(event) => onVolumeSizeChanged(event.target.value)}
                   inputMode="numeric"
+                  dataTestId={`K8VolumeInfoField-${nodeTypeTag}-VolumeSizeInput`}
                 />
               </Box>
-              <Box ml={2} display="flex" alignItems="center" className={classes.unitLabelField}>
+              <Box
+                ml={2}
+                display="flex"
+                alignItems="center"
+                sx={(theme) => ({
+                  marginLeft: theme.spacing(2),
+                  alignSelf: 'flex-end',
+                  marginBottom: 1
+                })}
+              >
                 {t('k8VolumeSizeUnit')}
               </Box>
             </Box>

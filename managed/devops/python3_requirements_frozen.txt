@@ -1,5 +1,5 @@
 adal==1.2.7
-ansible==9.2.0
+ansible==9.13.0
 ansible-core==2.16.14
 ansible-vault==2.1.0
 azure-common==1.1.28

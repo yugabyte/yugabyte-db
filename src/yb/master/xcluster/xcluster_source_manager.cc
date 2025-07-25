@@ -212,12 +212,14 @@ XClusterSourceManager::InitOutboundReplicationGroup(
                 CoarseMonoClock::now() +
                     MonoDelta::FromSeconds(FLAGS_xcluster_ysql_statement_timeout_sec));
           },
-      .set_normal_oid_counter_above_all_normal_oids_func =
-          [this](NamespaceId namespace_id) {
-            return SetNormalOidCounterAboveAllNormalOids(namespace_id);
+      .advance_oid_counters_func =
+          [&catalog_manager = catalog_manager_](const NamespaceId& namespace_id) {
+            RETURN_NOT_OK(catalog_manager.AdvanceOidCounters(namespace_id));
+            return catalog_manager.InvalidateTserverOidCaches();
           },
       .get_normal_oid_higher_than_any_used_normal_oid_func =
-          [client_future = master_.client_future()](NamespaceId namespace_id) -> Result<uint32_t> {
+          [client_future =
+               master_.client_future()](const NamespaceId& namespace_id) -> Result<uint32_t> {
         auto* yb_client = client_future.get();
         SCHECK(yb_client, IllegalState, "Client not initialized or shutting down");
         // While automatic mode xCluster replication is running, we have an invariant that all
@@ -227,8 +229,8 @@ XClusterSourceManager::InitOutboundReplicationGroup(
         uint32_t begin_oid;
         uint32_t end_oid;
         RETURN_NOT_OK(yb_client->ReservePgsqlOids(
-            namespace_id, /*next_oid=*/0, /*count=*/1, &begin_oid, &end_oid,
-            /*use_secondary_space=*/false));
+            namespace_id, /*next_oid=*/0, /*count=*/1, /*use_secondary_space=*/false, &begin_oid,
+            &end_oid));
         return begin_oid;
       },
       .get_namespace_func =
@@ -242,7 +244,7 @@ XClusterSourceManager::InitOutboundReplicationGroup(
                 catalog_manager, namespace_id, include_sequences_data);
           },
       .is_automatic_mode_switchover_func =
-          [xcluster_manager = master_.xcluster_manager()](NamespaceId namespace_id) {
+          [xcluster_manager = master_.xcluster_manager()](const NamespaceId& namespace_id) {
             // If a namespace under automatic replication mode is both a source and target at the
             // same time, then it is currently undergoing automatic mode switchover.
             return xcluster_manager->IsNamespaceInAutomaticModeSource(namespace_id) &&
@@ -539,22 +541,6 @@ class XClusterCreateStreamContextImpl : public XClusterCreateStreamsContext {
   XClusterSourceManager& xcluster_manager_;
   std::vector<TableId> table_ids;
 };
-
-Status XClusterSourceManager::SetNormalOidCounterAboveAllNormalOids(NamespaceId namespace_id) {
-  auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
-  VLOG(1) << "Calling ReadHighestNormalPreservableOid on database OID " << database_oid;
-  auto highest_oid = VERIFY_RESULT(sys_catalog_.ReadHighestNormalPreservableOid(database_oid));
-  auto* yb_client = master_.client_future().get();
-  SCHECK(yb_client, IllegalState, "Client not initialized or shutting down");
-  VLOG(1) << "Bumping normal space OID for database OID " << database_oid << " above "
-          << highest_oid;
-  uint32_t begin_oid, end_oid;
-  RETURN_NOT_OK(yb_client->ReservePgsqlOids(
-      namespace_id, /*next_oid=*/highest_oid, /*count=*/1, &begin_oid, &end_oid,
-      /*use_secondary_space=*/false));
-  VLOG(1) << "Invalidating TServer OID caches for database OID " << database_oid;
-  return catalog_manager_.InvalidateTserverOidCaches();
-}
 
 Result<std::unique_ptr<XClusterCreateStreamsContext>>
 XClusterSourceManager::CreateStreamsForDbScoped(

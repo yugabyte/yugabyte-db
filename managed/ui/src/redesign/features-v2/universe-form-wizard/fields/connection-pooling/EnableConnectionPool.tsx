@@ -90,6 +90,7 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled,
           >
             <div>
               <YBToggleField
+                dataTestId="enable-PG-compatibility-field"
                 name={CONNECTION_POOLING_FIELD}
                 inputProps={{
                   'data-testid': 'PGCompatibiltyField-Toggle'
@@ -122,6 +123,7 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled,
             <NextLineIcon />
             <Box sx={{ marginBottom: '-5px', mr: 1, ml: 2 }}>
               <YBToggleField
+                dataTestId="override-CP-ports-field"
                 name={'overrideCPPorts'}
                 control={control}
                 label={t('overridePorts')}
@@ -150,6 +152,7 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled,
                         onChange={onChange}
                         label={item.label}
                         helperText={item.helperText}
+                        dataTestId={`override-CP-ports-field-${item.id}`}
                         onBlur={(event) => {
                           let port =
                             Number(event.target.value.replace(/\D/g, '')) ||

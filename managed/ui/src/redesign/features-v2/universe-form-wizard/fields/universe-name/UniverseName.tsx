@@ -42,6 +42,7 @@ export const UniverseNameField = <T extends FieldValues>({
           type={type}
           label={label}
           sx={sx}
+          dataTestId="universe-name-field"
         />
       )}
     />

@@ -30,9 +30,15 @@ Assuming universe A is the Primary and universe B is the Standby, use the follow
 
   Ensure that all prerequisites for setting up xCluster are satisfied for the new replication direction. For more information, refer to the [xCluster prerequisites](../#prerequisites).
 
+{{< warning title="Automatic mode requirements" >}}
+
+If you are performing a switchover in automatic mode, you must not run any DDLs while the switchover is being done.  Stop submitting any DDLs and wait for any previously submitted DLLs to be replicated before proceeding.  Checking xCluster safe time (see [Monitor xCluster](../../../../launch-and-manage/monitor-and-alert/xcluster-monitor/)) will tell you the latest time up to which DDLs have been replicated. See {{<issue 26028>}}.
+
+{{< /warning >}}
+
 ### Set up replication in the reverse direction
 
-Set up xCluster Replication from the Standby universe (B) to Primary universe (A) by following the steps in [Set up transactional xCluster](../../async-replication/async-transactional-setup-semi-automatic/).
+Set up xCluster Replication from the Standby universe (B) to Primary universe (A) by following the steps in [Set up transactional xCluster](../../async-replication/async-transactional-setup-automatic/).
 
 Skip the bootstrap (backup/restore) step, as the data is already present in both universes.
 
@@ -55,12 +61,14 @@ The lag and skew values might be non-zero as they are estimates based on the las
 ### Fix up sequences and serial columns
 
 {{< note >}}
-_Not applicable for Automatic mode_
+Skip this step if you are using xCluster replication automatic mode.
 {{< /note >}}
 
-Because xCluster does not replicate sequence data, you need to manually synchronize the sequence next values on universe B to match those on universe A. This ensures that new writes on universe B do not conflict with existing data.
+xCluster only replicates sequence data in automatic mode.  If you are not using automatic mode, you need to manually synchronize the sequence next values on universe B after switchover to match those on universe A. This ensures that new writes on universe B do not conflict with existing data.
 
-Use the [nextval](../../../../api/ysql/exprs/func_nextval/) function to set the sequence next values appropriately.
+For example, if you have a SERIAL column in a table and the highest value in that column after switchover is 500, you need to set the sequence associated with that column to a value higher than 500, such as 501. This ensures that new writes on universe B do not conflict with existing data.
+
+Use the [nextval](../../../../api/ysql/exprs/sequence_functions/func_nextval/) function to set the sequence next values appropriately.
 
 ### Delete the old replication group
 

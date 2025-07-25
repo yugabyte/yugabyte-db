@@ -58,7 +58,7 @@ import com.yugabyte.yw.models.extended.SoftwareUpgradeInfoResponse;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
-import com.yugabyte.yw.models.helpers.audit.UniverseLogsExporterConfig;
+import com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -478,7 +478,7 @@ public class UpgradeUniverseHandler {
 
   public UUID modifyAuditLoggingConfig(
       AuditLogConfigParams requestParams, Customer customer, Universe universe) {
-    telemetryProviderService.throwExceptionIfRuntimeFlagDisabled();
+    telemetryProviderService.throwExceptionIfDBAuditLoggingRuntimeFlagDisabled();
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
 

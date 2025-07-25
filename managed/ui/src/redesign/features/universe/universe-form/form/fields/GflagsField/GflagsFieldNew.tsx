@@ -651,6 +651,7 @@ export const GFlagsFieldNew = ({
                     {btnLabel}
                   </YBButton>
                 }
+                dataTestId='yb-gflags-dropdown'
               >
                 {SERVER_LIST.filter((e) => e.visible).map((server) => {
                   const { serverName, label } = server;

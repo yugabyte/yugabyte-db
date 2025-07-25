@@ -88,6 +88,7 @@ export const PGCompatibiltyField: FC<PGCompatibiltyFieldProps> = ({ disabled, db
             }}
             control={control}
             disabled={disabled || !isPGSupported}
+            dataTestId="enable-PG-compatibility-field"
           />
         </div>
       </YBTooltip>

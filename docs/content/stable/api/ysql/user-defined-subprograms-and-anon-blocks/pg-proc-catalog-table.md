@@ -13,7 +13,7 @@ type: docs
 
 ## Querying "pg_proc" explicitly
 
-The [_pg_proc_](https://www.postgresql.org/docs/11/catalog-pg-proc.html) section in the PostgreSQL documentation, within the [System Catalogs](https://www.postgresql.org/docs/11/catalogs.html) enclosing chapter, describes the dedicated catalog table for subprogram metadata. It's a wide table with a column for every single fact that characterizes functions and procedures.
+The [_pg_proc_](https://www.postgresql.org/docs/15/catalog-pg-proc.html) section in the PostgreSQL documentation, within the [System Catalogs](https://www.postgresql.org/docs/15/catalogs.html) enclosing chapter, describes the dedicated catalog table for subprogram metadata. It's a wide table with a column for every single fact that characterizes functions and procedures.
 
 {{< tip title="Any role can see the metadata for every object in the database." >}}
 After you've connected to some database by authorizing as some role, you can query the metadata for all objects in that database irrespective of ownership and privileges—and for global phenomena, cluster-wide, like roles too. YugabyteDB inherits this behavior from PostgreSQL. The community of PostgreSQL experts, and in particular committers to the code base, consider this to be a good thing that brings no security risks.

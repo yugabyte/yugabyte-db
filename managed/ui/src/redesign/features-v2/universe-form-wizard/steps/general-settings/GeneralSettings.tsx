@@ -104,6 +104,7 @@ export const GeneralSettings = forwardRef<StepsRef>((_, forwardRef) => {
               sx={{
                 width: CONTROL_WIDTH
               }}
+              dataTestId="universe-name-field"
             />
             <ShuffleIcon
               style={{
@@ -124,6 +125,7 @@ export const GeneralSettings = forwardRef<StepsRef>((_, forwardRef) => {
               width: CONTROL_WIDTH
             }}
             filterByProvider={cloud}
+            dataTestId="provider-configuration-field"
           />
           <DatabaseVersionField<GeneralSettingsProps>
             name={DATABASE_VERSION}
@@ -132,6 +134,7 @@ export const GeneralSettings = forwardRef<StepsRef>((_, forwardRef) => {
             sx={{
               width: CONTROL_WIDTH
             }}
+            dataTestId="database-version-field"
           />
         </StyledContent>
       </StyledPanel>

@@ -120,7 +120,8 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
             responseJson);
     when(mockCommissioner.buildTaskStatus(eq(task), any(), any(), any()))
         .thenReturn(Optional.of(responseJson));
-    when(mockCommissioner.getUpdatingTaskUUIDsForTargets(any())).thenReturn(Collections.emptyMap());
+    when(mockCommissioner.getUpdatingTaskUUIDsForTargets(any(), any()))
+        .thenReturn(Collections.emptyMap());
     return task.getTaskUUID();
   }
 

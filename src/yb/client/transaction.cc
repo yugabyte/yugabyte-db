@@ -285,9 +285,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     LOG_IF_WITH_PREFIX(DFATAL, !waiters_.empty()) << "Non empty waiters";
     auto start_us = start_.load(std::memory_order_relaxed);
     const auto now_us = manager_->clock()->Now().GetPhysicalValueMicros();
+    const auto threshold_ms = FLAGS_txn_slow_op_threshold_ms;
     auto time_spent_ms = (start_us == 0 ? 0 : now_us - start_us) / 1000;
     bool must_log_trace = (FLAGS_txn_print_trace_on_error && !status_.ok()) ||
-                          (static_cast<int32>(time_spent_ms) > FLAGS_txn_slow_op_threshold_ms);
+                          (threshold_ms > 0 &&
+                           static_cast<int32>(time_spent_ms) > threshold_ms);
     if (must_log_trace) {
       LOG(INFO) << "Transaction " << ToString() << " took " << time_spent_ms
                 << "ms to complete, status: " << status_;

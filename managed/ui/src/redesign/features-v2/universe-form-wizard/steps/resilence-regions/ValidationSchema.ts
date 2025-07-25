@@ -65,7 +65,6 @@ export const ResilienceAndRegionsSchema = (t: TFunction) => {
           return true;
         }
       }
-      return true;
     })
   } as any);
 };

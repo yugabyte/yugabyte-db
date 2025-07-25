@@ -183,7 +183,7 @@ typedef struct YbNameToOidMapEntry
 
 /* Forward Declarations. */
 static bool ShouldReplicateNewRelation(Oid rel_oid, List **new_rel_list, bool is_table_rewrite);
-
+static bool ShouldReplicateTruncatedRelation(Oid rel_oid, List **new_rel_list);
 
 bool
 IsIndex(Relation rel)
@@ -252,16 +252,9 @@ ReplicateInheritedRelations(Oid rel_oid, List **new_rel_list, bool is_table_rewr
 	}
 }
 
-/*
- * This function handles both new relation from create table/index,
- * and also new relations as a result of table rewrites.
- * Returns whether the relation should be replicated (eg false if
- * table is a temp table or a primary key index).
- *
- * This function does not handle sequences.
- */
 bool
-ShouldReplicateNewRelation(Oid rel_oid, List **new_rel_list, bool is_table_rewrite)
+ShouldReplicateRelationHelper(Oid rel_oid, List **new_rel_list, bool is_table_rewrite,
+							  bool include_inheritance_children)
 {
 	Relation	rel = RelationIdGetRelation(rel_oid);
 
@@ -293,10 +286,41 @@ ShouldReplicateNewRelation(Oid rel_oid, List **new_rel_list, bool is_table_rewri
 
 	RelationClose(rel);
 
-	/* Also loop over children relations. */
-	ReplicateInheritedRelations(rel_oid, new_rel_list, is_table_rewrite);
+	if (include_inheritance_children)
+		ReplicateInheritedRelations(rel_oid, new_rel_list, is_table_rewrite);
 
 	return true;
+}
+
+/*
+ * This function handles both new relation from create table/index,
+ * and also new relations as a result of table rewrites.
+ * Returns whether the relation should be replicated (eg false if
+ * table is a temp table or a primary key index).
+ *
+ * This function does not handle sequences.
+ */
+bool
+ShouldReplicateNewRelation(Oid rel_oid, List **new_rel_list,
+						   bool is_table_rewrite)
+{
+	return ShouldReplicateRelationHelper(rel_oid, new_rel_list, is_table_rewrite,
+										 true /* include_inheritance_children */ );
+}
+
+/*
+ * This function handles TRUNCATE TABLE.
+ * Returns whether the relation should be replicated (eg false if
+ * table is a temp table or a primary key index).
+ * Child relations are explicitly included in the relation list of a
+ * TRUNCATE DDL, so do not include them again.
+ */
+bool
+ShouldReplicateTruncatedRelation(Oid rel_oid, List **new_rel_list)
+{
+	return ShouldReplicateRelationHelper(rel_oid, new_rel_list,
+										 true /* is_table_rewrite */ ,
+										 false /* include_inheritance_children */ );
 }
 
 void
@@ -702,6 +726,7 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 	List	   *enum_label_list = NIL;
 	List	   *sequence_info_list = NIL;
 	List	   *type_info_list = NIL;
+	bool		found_temp = false;
 
 	/*
 	 * As long as there is at least one command that needs to be replicated, we
@@ -722,6 +747,8 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 		 * TODO(#25885): add code to handle nameless parts.
 		 */
 		bool		is_temporary_object = IsTempSchema(schema);
+
+		found_temp |= is_temporary_object;
 
 		if (command_tag == CMDTAG_CREATE_TABLE ||
 			command_tag == CMDTAG_CREATE_INDEX)
@@ -803,9 +830,16 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 
 			should_replicate_ddl |= ShouldReplicateAlterReplication(obj_id);
 		}
+		else if (command_tag == CMDTAG_TRUNCATE_TABLE)
+		{
+			if (!is_temporary_object)
+				should_replicate_ddl |=
+					ShouldReplicateTruncatedRelation(obj_id, &new_rel_list);
+
+		}
 		else if (IsPassThroughDdlSupported(command_tag_name))
 		{
-			should_replicate_ddl = !is_temporary_object;;
+			should_replicate_ddl = !is_temporary_object;
 		}
 		else
 		{
@@ -813,6 +847,12 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 				 kManualReplicationErrorMsg);
 		}
 	}
+
+	if (found_temp && should_replicate_ddl)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("unsupported mix of temporary and persisted objects in DDL command"),
+				 errdetail("%s", kManualReplicationErrorMsg)));
 
 	ProcessNewRelationsList(state, &new_rel_list);
 

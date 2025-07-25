@@ -88,9 +88,6 @@ class PgIndexBackfillTest : public LibPqTestBase, public ::testing::WithParamInt
         Format("--ysql_num_shards_per_tserver=$0", kTabletsPerServer));
 
     if (EnableTableLocks()) {
-      options->extra_master_flags.push_back(
-          "--allowed_preview_flags_csv=enable_object_locking_for_table_locks");
-      options->extra_master_flags.push_back("--enable_object_locking_for_table_locks=true");
       options->extra_master_flags.push_back("--enable_ysql_operation_lease=true");
 
       options->extra_tserver_flags.push_back(

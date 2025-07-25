@@ -17,6 +17,30 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, where `YYYY` is the release year, `M` is the month, and `N` is the number of the release in that month.
 
+## v2025.7.2 - July 15, 2025
+
+### New feature
+
+- Introduced the `--on-primary-key-conflict` flag for the import data to target and import data file command, supporting two modes:
+
+  - ERROR: Fails the import if a primary key conflict is encountered.
+  - IGNORE: Ignores rows that have a primary key conflict.
+
+## Enhancements
+
+- Foreign keys with mismatched datatypes are now detected and reported in the Migration Assessment Report under **Performance Optimizations**.
+- Automatically clean up leftover metadata when `assess-migration` is aborted via a prompt, eliminating the need to rerun with `--start-clean`.
+- Added a warning in import data when existing rows are detected in the target table to help prevent primary key conflicts during import.
+- Improved error messages when multiple Debezium processes or active replication slots are detected, so that you can identify and kill orphaned processes and retry the command.
+- Upgraded the [YugabyteDB gRPC Connector](/preview/develop/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/) for live migration with fall-back and fall-forward workflows to support new YugabyteDB releases.
+
+## Bug fixes
+
+- Fixed incorrect error message shown during schema export failures; now correctly reports "schema export unsuccessful".
+- Fixed import report output for import data file when the same file is mapped to multiple tables; all target tables are now correctly listed in the report.
+- Fixed broken status reporting in import data status when multiple files are imported to the same table; all imported files are now listed in the status report.
+- Fixed misclassification of performance optimization issues inside PL/pgSQL blocks; these are now correctly reported under **Performance Optimizations** in the Migration Assessment Report.
+
 ## v2025.7.1 - July 1, 2025
 
 ### New feature

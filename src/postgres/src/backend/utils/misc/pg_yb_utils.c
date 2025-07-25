@@ -179,9 +179,9 @@ YbGetCatalogCacheVersionForTablePrefetching()
 	 * But this requires some additional changes. This optimization will
 	 * be done separately.
 	 */
-	uint64_t version = YB_CATCACHE_VERSION_UNINITIALIZED;
+	uint64_t	version = YB_CATCACHE_VERSION_UNINITIALIZED;
 	YbcReadHybridTime read_time = {};
-	bool is_db_catalog_version_mode = YBIsDBCatalogVersionMode();
+	bool		is_db_catalog_version_mode = YBIsDBCatalogVersionMode();
 
 	if (*YBCGetGFlags()->ysql_enable_read_request_caching)
 	{
@@ -192,8 +192,8 @@ YbGetCatalogCacheVersionForTablePrefetching()
 	return (YbcPgLastKnownCatalogVersionInfo)
 	{
 		.version = version,
-		.version_read_time = read_time,
-		.is_db_catalog_version_mode = is_db_catalog_version_mode,
+			.version_read_time = read_time,
+			.is_db_catalog_version_mode = is_db_catalog_version_mode,
 	};
 }
 
@@ -2148,8 +2148,8 @@ YBUpdateOptimizationOptions yb_update_optimization_options = {
 	.max_cols_size_to_compare = 10 * 1024
 };
 
-bool yb_speculatively_execute_pl_statements = false;
-bool yb_whitelist_extra_stmts_for_pl_speculative_execution = false;
+bool		yb_speculatively_execute_pl_statements = false;
+bool		yb_whitelist_extra_stmts_for_pl_speculative_execution = false;
 
 /*------------------------------------------------------------------------------
  * YB Debug utils.
@@ -2203,7 +2203,7 @@ bool		yb_silence_advisory_locks_not_supported_error = false;
 
 bool		yb_use_hash_splitting_by_default = true;
 
-bool		yb_skip_data_insert_for_xcluster_target = false;
+bool		yb_xcluster_automatic_mode_target_ddl = false;
 
 bool		yb_enable_extended_sql_codes = false;
 
@@ -2436,7 +2436,7 @@ YBResetDdlState()
 bool
 YBIsDdlTransactionBlockEnabled()
 {
-	bool enabled = yb_ddl_transaction_block_enabled;
+	bool		enabled = yb_ddl_transaction_block_enabled;
 
 	if (!IsYBReadCommitted())
 		return enabled;
@@ -2497,7 +2497,8 @@ CheckIsAnalyzeDDL()
 {
 	if (ddl_transaction_state.current_stmt_node_tag == T_VacuumStmt)
 	{
-		CommandTag cmdtag = ddl_transaction_state.current_stmt_ddl_command_tag;
+		CommandTag	cmdtag = ddl_transaction_state.current_stmt_ddl_command_tag;
+
 		Assert(cmdtag);
 		return cmdtag == CMDTAG_ANALYZE;
 	}
@@ -2627,7 +2628,7 @@ YbCatalogModificationAspectsToDdlMode(uint64_t catalog_modification_aspects)
 YbDdlMode
 YBGetCurrentDdlMode()
 {
-	uint64_t combined_aspects =
+	uint64_t	combined_aspects =
 		ddl_transaction_state.catalog_modification_aspects.applied |
 		ddl_transaction_state.catalog_modification_aspects.pending;
 
@@ -2846,11 +2847,13 @@ YbCheckNewSharedCatalogVersionOptimization(bool is_breaking_change,
 														   is_breaking_change,
 														   new_version,
 														   &message_list);
+
 	if (YBCStatusIsTryAgain(status))
 	{
 		const char *reason = YBCStatusMessageBegin(status);
+
 		elog(LOG, "failed to set local tserver catalog message list, "
-				  "waiting for heartbeats instead: %s", reason);
+			 "waiting for heartbeats instead: %s", reason);
 		YBCFreeStatus(status);
 		YbWaitForSharedCatalogVersionToCatchup(new_version);
 	}
@@ -3071,8 +3074,8 @@ YBCommitTransactionContainingDDL()
 		 */
 		const char *command_tag_name =
 			(YBIsDdlTransactionBlockEnabled()) ?
-				NULL :
-				GetCommandTagName(ddl_transaction_state.current_stmt_ddl_command_tag);
+			NULL :
+			GetCommandTagName(ddl_transaction_state.current_stmt_ddl_command_tag);
 
 		is_breaking_change = mode & YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE;
 		/*
@@ -3271,8 +3274,8 @@ static bool
 YbIsTopLevelOrAtomicStatement(ProcessUtilityContext context)
 {
 	return context == PROCESS_UTILITY_TOPLEVEL ||
-					 (context == PROCESS_UTILITY_QUERY &&
-					  ddl_transaction_state.current_stmt_node_tag != T_RefreshMatViewStmt);
+		(context == PROCESS_UTILITY_QUERY &&
+		 ddl_transaction_state.current_stmt_node_tag != T_RefreshMatViewStmt);
 }
 
 YbDdlModeOptional
@@ -3324,8 +3327,9 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 			CreateCommandTag(parsetree);
 		if (CheckIsAnalyzeDDL() && !ddl_transaction_state.userid_and_sec_context.is_set)
 		{
-			Oid         save_userid;
-			int         save_sec_context;
+			Oid			save_userid;
+			int			save_sec_context;
+
 			GetUserIdAndSecContext(&save_userid, &save_sec_context);
 			ddl_transaction_state.userid_and_sec_context.is_set = true;
 			ddl_transaction_state.userid_and_sec_context.userid = save_userid;
@@ -3611,7 +3615,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 						ListCell   *cell;
 
 						is_version_increment = false;
-						bool marked_temp = false;
+						bool		marked_temp = false;
 
 						foreach(cell, stmt->objects)
 						{
@@ -4209,7 +4213,7 @@ void
 YbInvalidateTableCacheForAlteredTables()
 {
 	if ((YbDdlRollbackEnabled() ||
-		YBIsDdlTransactionBlockEnabled()) &&
+		 YBIsDdlTransactionBlockEnabled()) &&
 		ddl_transaction_state.altered_table_ids)
 	{
 		/*
@@ -6618,7 +6622,7 @@ aggregateRpcMetrics(YbcPgExecStorageMetrics **instr_metrics,
 					const YbcPgExecStorageMetrics *exec_stats_metrics)
 {
 	uint64_t	instr_version = (*instr_metrics) ? (*instr_metrics)->version
-												 : 0;
+		: 0;
 
 	if (exec_stats_metrics->version == instr_version)
 		return;
@@ -6638,6 +6642,7 @@ aggregateRpcMetrics(YbcPgExecStorageMetrics **instr_metrics,
 	{
 		const YbcPgExecEventMetric *val = &exec_stats_metrics->events[i];
 		YbcPgExecEventMetric *agg = &(*instr_metrics)->events[i];
+
 		agg->sum += val->sum;
 		agg->count += val->count;
 	}
@@ -7076,8 +7081,8 @@ YbIsStickyConnection(int *change)
 	*change = 0;				/* Since it is updated it will be set to 0 */
 	elog(DEBUG5, "Number of sticky objects: %d", ysql_conn_mgr_sticky_object_count);
 	return (ysql_conn_mgr_sticky_object_count > 0) ||
-			YbIsConnectionMadeStickyUsingGUC() ||
-			yb_ysql_conn_mgr_sticky_locks;
+		YbIsConnectionMadeStickyUsingGUC() ||
+		yb_ysql_conn_mgr_sticky_locks;
 }
 
 void	  **
@@ -7288,13 +7293,13 @@ YbIndexSetNewRelfileNode(Relation indexRel, Oid newRelfileNodeId,
 						 bool yb_copy_split_options)
 {
 	bool		isNull;
-	HeapTuple   indexTuple;
+	HeapTuple	indexTuple;
 	HeapTuple	tuple;
 	Datum		reloptions = (Datum) 0;
 	Relation	indexedRel;
 	IndexInfo  *indexInfo;
 	oidvector  *indclass = NULL;
-	Datum       indclassDatum;
+	Datum		indclassDatum;
 
 	tuple = SearchSysCache1(RELOID,
 							ObjectIdGetDatum(RelationGetRelid(indexRel)));
@@ -7508,8 +7513,8 @@ bool
 YbIsReadCommittedTxn()
 {
 	return IsYBReadCommitted() &&
-		   !((YBCPgIsDdlMode() && !YBIsDdlTransactionBlockEnabled()) ||
-			 YBCIsInitDbModeEnvVarSet());
+		!((YBCPgIsDdlMode() && !YBIsDdlTransactionBlockEnabled()) ||
+		  YBCIsInitDbModeEnvVarSet());
 }
 
 static YbOptionalReadPointHandle
@@ -7827,6 +7832,7 @@ long
 YbGetPeakRssKb()
 {
 	struct rusage r;
+
 	getrusage(RUSAGE_SELF, &r);
 	return scale_rss_to_kb(r.ru_maxrss);
 }

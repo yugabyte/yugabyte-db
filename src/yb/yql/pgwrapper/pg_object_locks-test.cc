@@ -476,22 +476,18 @@ TEST_F(PgObjectLocksTestRF1, ExclusiveLocksRemovedAfterDocDBSchemaChange) {
 class PgObjectLocksTest : public LibPqTestBase {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
-    const bool table_locks_enabled = EnableTableLocks();
     opts->extra_tserver_flags.emplace_back(
         yb::Format("--allowed_preview_flags_csv=enable_object_locking_for_table_locks,"
                    "ysql_yb_ddl_transaction_block_enabled"));
     opts->extra_tserver_flags.emplace_back(
-        yb::Format("--enable_object_locking_for_table_locks=$0", table_locks_enabled));
+        yb::Format("--enable_object_locking_for_table_locks=$0", EnableTableLocks()));
     opts->extra_tserver_flags.emplace_back("--enable_ysql_operation_lease=true");
     opts->extra_tserver_flags.emplace_back("--TEST_tserver_enable_ysql_lease_refresh=true");
     opts->extra_tserver_flags.emplace_back(
         Format("--ysql_lease_refresher_interval_ms=$0", kDefaultYSQLLeaseRefreshIntervalMilli));
 
     opts->extra_master_flags.emplace_back(
-        yb::Format("--allowed_preview_flags_csv=enable_object_locking_for_table_locks,"
-                   "ysql_yb_ddl_transaction_block_enabled"));
-    opts->extra_master_flags.emplace_back(
-        yb::Format("--enable_object_locking_for_table_locks=$0", table_locks_enabled));
+        yb::Format("--allowed_preview_flags_csv=ysql_yb_ddl_transaction_block_enabled"));
     opts->extra_master_flags.emplace_back("--enable_ysql_operation_lease=true");
     opts->extra_master_flags.emplace_back(
         Format("--master_ysql_operation_lease_ttl_ms=$0", kDefaultMasterYSQLLeaseTTLMilli));
@@ -685,6 +681,174 @@ TEST_F(PgObjectLocksTest, ReleaseExpiredLocksInvalidatesCatalogCache) {
   ASSERT_OK(conn2.FetchMatrix("SELECT * FROM test WHERE k=1", 1 /* rows */, 3 /* columns */));
   ASSERT_OK(ts1->Restart());
 }
+
+YB_STRONGLY_TYPED_BOOL(DoMasterFailover);
+YB_STRONGLY_TYPED_BOOL(UseExplicitLocksInsteadOfDdl);
+YB_STRONGLY_TYPED_BOOL(EnableYsqlDdlTxnBlock);
+class PgObjecLocksTestOutOfOrderMessageHandling
+    : public PgObjectLocksTest,
+      public ::testing::WithParamInterface<
+          std::tuple<DoMasterFailover, UseExplicitLocksInsteadOfDdl, EnableYsqlDdlTxnBlock>> {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    PgObjectLocksTest::UpdateMiniClusterOptions(opts);
+    opts->num_masters = (ShouldDoMasterFailover() ? 3 : 1);
+    opts->extra_master_flags.emplace_back(
+        yb::Format("--pg_client_extra_timeout_ms=$0", kPgClientExtraTimeoutMs));
+    opts->extra_master_flags.emplace_back(
+        yb::Format("--ysql_yb_ddl_transaction_block_enabled=$0", ShouldEnableYsqlDdlTxnBlock()));
+    opts->extra_tserver_flags.emplace_back("--vmodule=ts_local_lock_manager=2");
+    opts->extra_tserver_flags.emplace_back(
+        yb::Format("--ysql_yb_ddl_transaction_block_enabled=$0", ShouldEnableYsqlDdlTxnBlock()));
+  }
+
+  DoMasterFailover ShouldDoMasterFailover() const {
+    return std::get<0>(GetParam());
+  }
+
+  UseExplicitLocksInsteadOfDdl ShouldUseExplicitLocksInsteadOfDdl() const {
+    return std::get<1>(GetParam());
+  }
+
+  EnableYsqlDdlTxnBlock ShouldEnableYsqlDdlTxnBlock() const {
+    return std::get<2>(GetParam());
+  }
+
+  static constexpr auto kPgClientExtraTimeoutMs = 2000;
+};
+
+TEST_P(PgObjecLocksTestOutOfOrderMessageHandling, TestOutOfOrderMessageHandling) {
+  const auto ts1_idx = 1;
+  const auto ts2_idx = 2;
+  auto* ts1 = cluster_->tablet_server(ts1_idx);
+  auto* ts2 = cluster_->tablet_server(ts2_idx);
+
+  auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+
+  LOG(INFO) << "Creating test table";
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table (id INT PRIMARY KEY, value TEXT);"));
+
+  const auto kStatementTimeoutSec = 8;
+  ASSERT_OK(conn.ExecuteFormat("SET statement_timeout = '$0s';", kStatementTimeoutSec));
+
+  ASSERT_OK(cluster_->SetFlag(ts2, "TEST_block_acquires_to_simulate_out_of_order", "true"));
+  LogWaiter log_waiter(ts2, "Blocking acquire request to simulate out-of-order requests");
+
+  if (!ShouldDoMasterFailover()) {
+    // This will cause the master to timeout the Acquire Rpc to the tserver, and retry
+    // the Acquire request to simulate out-of-order requests, along with the original blocked
+    // request.
+    ASSERT_OK(cluster_->SetFlagOnMasters(
+        "master_ts_rpc_timeout_ms", yb::Format("$0", (kStatementTimeoutSec * 1000 / 10))));
+  }
+
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION;"));
+  auto lock_request_start = CoarseMonoClock::Now();
+  auto status_future = std::async(std::launch::async, [&]() -> Status {
+    if (ShouldUseExplicitLocksInsteadOfDdl()) {
+      LOG(INFO) << "Acquiring EXCLUSIVE lock on test_table using explicit locks";
+      RETURN_NOT_OK(conn.Execute("LOCK TABLE test_table IN ACCESS EXCLUSIVE MODE;"));
+      LOG(INFO) << "Releasing EXCLUSIVE lock on test_table";
+    } else {
+      LOG(INFO) << "Acquiring EXCLUSIVE lock on test_table using a DDL -- Alter Table";
+      RETURN_NOT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN dummy TEXT;"));
+    }
+    return conn.Execute("COMMIT;");
+  });
+
+  const auto kTimeout = MonoDelta::FromSeconds(3 * kTimeMultiplier);
+  ASSERT_OK(log_waiter.WaitFor(kTimeout));
+
+  LOG(INFO) << "Have at least one Tserver blocking the acquire request";
+  ASSERT_OK(cluster_->SetFlag(ts2, "TEST_block_acquires_to_simulate_out_of_order", "false"));
+  LOG(INFO) << "Will no longer block acquires at TServers";
+
+  if (ShouldDoMasterFailover()) {
+    auto old_master = cluster_->GetLeaderMaster();
+    LOG(INFO) << "Stepping down master leader";
+    ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
+    LOG(INFO) << "Killing old master to reset the network connection";
+    old_master->Shutdown();
+  }
+
+  LOG(INFO) << "Waiting for LOCK TABLE to succeed and release it";
+  ASSERT_OK(status_future.get());
+
+  LOG(INFO) << "Taking a SHARED lock to ensure that the asynchronous release is infact done.";
+  ASSERT_OK(conn2.Execute("BEGIN TRANSACTION;"));
+  ASSERT_OK(conn2.Execute("LOCK TABLE test_table IN ACCESS SHARE MODE;"));
+  ASSERT_OK(conn2.Execute("COMMIT;"));
+  LOG(INFO) << "Acquired and Released shared lock. So the exclusive lock release was processed by "
+               "the TServer.";
+
+  LogWaiter log_waiter2(ts2, "Unblocking acquire request.");
+  LOG(INFO) << "Allowing blocked acquire request to now proceed.";
+  ASSERT_OK(
+      cluster_->SetFlag(ts2, "TEST_release_blocked_acquires_to_simulate_out_of_order", "true"));
+  ASSERT_OK(log_waiter2.WaitFor(kTimeout));
+
+  auto get_locks_count_on_tserver = [&conn2]() -> Result<int64_t> {
+    return conn2.FetchRow<int64_t>(
+        "SELECT COUNT(relname) FROM pg_locks l, pg_class c "
+        "WHERE l.relation = c.oid AND relname = 'test_table';");
+  };
+
+  auto kGracePeriod = MonoDelta::FromMilliseconds(500);
+  ASSERT_LE(CoarseMonoClock::Now() + kGracePeriod, lock_request_start + kStatementTimeoutSec * 1s);
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> {
+        auto locks_count = VERIFY_RESULT(get_locks_count_on_tserver());
+        LOG(INFO) << "Number of locks on test_table: " << locks_count;
+        return locks_count > 0;
+      },
+      kGracePeriod, "Wait for unblocked acquire request to complete"));
+
+  auto expected_cleanup_time = lock_request_start + MonoDelta::FromSeconds(kStatementTimeoutSec) +
+                               kPgClientExtraTimeoutMs * 1ms;
+  ASSERT_OK(LoggedWait(
+      [&]() -> Result<bool> {
+        auto locks_count = VERIFY_RESULT(get_locks_count_on_tserver());
+        LOG(INFO) << "Number of locks on test_table: " << locks_count;
+        return locks_count == 0;
+      },
+      expected_cleanup_time + kGracePeriod, "Wait for the out-of-order acquire to get cleaned up"));
+
+  LOG(INFO) << "Re-Acquiring an exclusive lock on test table";
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION;"));
+  ASSERT_OK(conn.Execute("LOCK TABLE test_table IN ACCESS EXCLUSIVE MODE;"));
+  ASSERT_OK(conn.Execute("COMMIT;"));
+  LOG(INFO) << "Re-acquire succeeded. Done";
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    , PgObjecLocksTestOutOfOrderMessageHandling,
+    ::testing::Values(
+        std::make_tuple(
+            DoMasterFailover::kTrue, UseExplicitLocksInsteadOfDdl::kTrue,
+            EnableYsqlDdlTxnBlock::kFalse),
+        std::make_tuple(
+            DoMasterFailover::kFalse, UseExplicitLocksInsteadOfDdl::kTrue,
+            EnableYsqlDdlTxnBlock::kFalse),
+        std::make_tuple(
+            DoMasterFailover::kTrue, UseExplicitLocksInsteadOfDdl::kFalse,
+            EnableYsqlDdlTxnBlock::kFalse),
+        std::make_tuple(
+            DoMasterFailover::kFalse, UseExplicitLocksInsteadOfDdl::kFalse,
+            EnableYsqlDdlTxnBlock::kFalse),
+        std::make_tuple(
+            DoMasterFailover::kTrue, UseExplicitLocksInsteadOfDdl::kFalse,
+            EnableYsqlDdlTxnBlock::kTrue),
+        std::make_tuple(
+            DoMasterFailover::kFalse, UseExplicitLocksInsteadOfDdl::kFalse,
+            EnableYsqlDdlTxnBlock::kTrue)),
+    [](const ::testing::TestParamInfo<
+        std::tuple<DoMasterFailover, UseExplicitLocksInsteadOfDdl, EnableYsqlDdlTxnBlock>>& info) {
+      return Format("$0_$1_$2",
+          (std::get<0>(info.param) ? "WithMasterFailover" : "NoMasterFailover"),
+          (std::get<1>(info.param) ? "UseExplicitLocks" : "UseDdlForLocks"),
+          (std::get<2>(info.param) ? "WithDdlTxnBlock" : "NoDdlTxnBlock"));
+    });
 
 // This test relies on the OLM poller to run frequently and timedout waiters, in order to
 // check for deadlocks/transaction aborts and retry from pg_client_session if necessary.

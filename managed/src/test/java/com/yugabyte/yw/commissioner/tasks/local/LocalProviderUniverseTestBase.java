@@ -822,7 +822,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
     formData.setTableType(TableType.YQL_TABLE_TYPE);
     JsonNode response =
         ycqlQueryExecutor.executeQuery(
-            universe, formData, true, Util.DEFAULT_YCQL_USERNAME, password);
+            universe, formData, authEnabled, Util.DEFAULT_YCQL_USERNAME, password);
     assertFalse(response.has("error"));
 
     // Create table.
@@ -830,27 +830,27 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
         "CREATE TABLE yugabyte.some_table (id int, name text, age int, PRIMARY KEY((id, name)));");
     response =
         ycqlQueryExecutor.executeQuery(
-            universe, formData, true, Util.DEFAULT_YCQL_USERNAME, password);
+            universe, formData, authEnabled, Util.DEFAULT_YCQL_USERNAME, password);
     assertFalse(response.has("error"));
 
     // Insert Data.
     formData.setQuery("INSERT INTO yugabyte.some_table (id, name, age) VALUES (1, 'John', 20);");
     response =
         ycqlQueryExecutor.executeQuery(
-            universe, formData, true, Util.DEFAULT_YCQL_USERNAME, password);
+            universe, formData, authEnabled, Util.DEFAULT_YCQL_USERNAME, password);
     assertFalse(response.has("error"));
 
     formData.setQuery("INSERT INTO yugabyte.some_table (id, name, age) VALUES (2, 'Mary', 18);");
     response =
         ycqlQueryExecutor.executeQuery(
-            universe, formData, true, Util.DEFAULT_YCQL_USERNAME, password);
+            universe, formData, authEnabled, Util.DEFAULT_YCQL_USERNAME, password);
     assertFalse(response.has("error"));
 
     formData.setQuery(
         "INSERT INTO yugabyte.some_table (id, name, age) VALUES (10000, 'Stephen', 50);");
     response =
         ycqlQueryExecutor.executeQuery(
-            universe, formData, true, Util.DEFAULT_YCQL_USERNAME, password);
+            universe, formData, authEnabled, Util.DEFAULT_YCQL_USERNAME, password);
     assertFalse(response.has("error"));
   }
 
@@ -865,7 +865,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
 
     JsonNode response =
         ycqlQueryExecutor.executeQuery(
-            universe, formData, true, Util.DEFAULT_YCQL_USERNAME, password);
+            universe, formData, authEnabled, Util.DEFAULT_YCQL_USERNAME, password);
     assertFalse(response.has("error"));
     assertEquals("3", response.get("result").get(0).get("count").asText());
   }

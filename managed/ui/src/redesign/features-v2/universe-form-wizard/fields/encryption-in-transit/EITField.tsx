@@ -65,7 +65,7 @@ const CERTComponent: FC<CertCompProps> = ({
 
   return (
     <FieldContainer sx={{ padding: '16px 24px' }}>
-      <YBToggleField control={control} name={toggleFieldPath} label={t(toggleFieldPath)} />
+      <YBToggleField control={control} name={toggleFieldPath} label={t(toggleFieldPath)} dataTestId={`enable-encryption-in-transit-field`} />
       {isOptionEnabled && (
         <Box sx={{ display: 'flex', flexDirection: 'row', width: '100%', mt: 4, gap: '16px' }}>
           <Box sx={{ mt: 4 }}>
@@ -100,8 +100,10 @@ const CERTComponent: FC<CertCompProps> = ({
                         ybInputProps={{
                           placeholder: t('rootCertificatePlaceHolder'),
                           error: !!fieldState.error,
-                          helperText: fieldState.error?.message
+                          helperText: fieldState.error?.message,
+                          dataTestId: 'root-certificate-field'
                         }}
+                        dataTestId="root-certificate-field-container"
                       />
                     </Box>
                   </Box>
@@ -117,6 +119,7 @@ const CERTComponent: FC<CertCompProps> = ({
               name={generateCertFieldPath}
               control={control}
               label={t('genSelfSignedCert')}
+              dataTestId={`generate-self-signed-cert-field`}
             />
           </Box>
         </Box>
@@ -140,6 +143,7 @@ export const EITField: FC<EARProps> = ({ disabled }) => {
         name={USE_SAME_CERT_FIELD}
         label={t('useSameCert')}
         size="large"
+        dataTestId={`use-same-certificate-field`}
       ></YBCheckboxField>
       {useSameCertValue ? (
         <CERTComponent

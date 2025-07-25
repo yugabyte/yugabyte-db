@@ -80,12 +80,6 @@ class PgCatalogVersionTest : public LibPqTestBase {
       Format("--ysql_enable_db_catalog_version_mode=$0", enabled ? "true" : "false");
     for (size_t i = 0; i != cluster_->num_masters(); ++i) {
       cluster_->master(i)->mutable_flags()->push_back(db_catalog_version_gflag);
-      if (!enabled) {
-        cluster_->master(i)->mutable_flags()->push_back(
-            "--allowed_preview_flags_csv=enable_object_locking_for_table_locks");
-        cluster_->master(i)->mutable_flags()->push_back(
-            "--enable_object_locking_for_table_locks=false");
-      }
     }
     for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
       cluster_->tablet_server(i)->mutable_flags()->push_back(db_catalog_version_gflag);

@@ -430,11 +430,10 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
     CatalogManager* catalog_manager, const scoped_refptr<TableInfo>& indexed_table,
     uint32_t current_version, const LeaderEpoch& epoch, bool respect_backfill_deferrals,
     bool update_ysql_to_backfill) {
-  DVLOG(3) << __PRETTY_FUNCTION__ << " "
-           << yb::Format(
-                  "$0, version: $1, respect_deferrals: $2, update_ysql_to_backfill: $3",
-                  yb::ToString(*indexed_table), current_version, respect_backfill_deferrals,
-                  update_ysql_to_backfill);
+  DVLOG_WITH_FUNC(3)
+      << Format("$0, version: $1, respect_deferrals: $2, update_ysql_to_backfill: $3",
+                *indexed_table, current_version, respect_backfill_deferrals,
+                update_ysql_to_backfill);
 
   const bool is_ysql_table = (indexed_table->GetTableType() == TableType::PGSQL_TABLE_TYPE);
   // For YSQL, master won't automatically move the index permission to DO_BACKFILL unless

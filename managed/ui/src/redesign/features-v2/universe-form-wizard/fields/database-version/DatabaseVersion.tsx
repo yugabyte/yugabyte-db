@@ -209,10 +209,12 @@ export const DatabaseVersionField = <T extends FieldValues>({
                 renderOption={renderOption}
                 onChange={handleChange}
                 value={(value as unknown) as never}
+                dataTestId="database-version-field-container"
                 ybInputProps={{
                   error: !!fieldState.error,
                   helperText: fieldState.error?.message,
-                  placeholder: placeholder
+                  placeholder: placeholder,
+                  dataTestId: 'database-version-field'
                 }}
                 sx={sx}
               />

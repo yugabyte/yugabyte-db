@@ -44,6 +44,7 @@ export const AvailabilityZoneField = <T extends FieldValues>({
             <YBLabel error={!!fieldState.error}>{label}</YBLabel>
             <Box flex={1}>
               <YBAutoComplete
+                dataTestId="availability-zone-field-container"
                 value={(field.value as unknown) as Record<string, string>}
                 options={az}
                 getOptionLabel={(option: Record<string, string> | string) => {
@@ -57,7 +58,8 @@ export const AvailabilityZoneField = <T extends FieldValues>({
                 ybInputProps={{
                   error: !!fieldState.error,
                   helperText: fieldState.error?.message,
-                  placeholder: placeholder
+                  placeholder: placeholder,
+                  dataTestId: 'availability-zone-field'
                 }}
                 sx={sx}
               />
