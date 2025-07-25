@@ -66,18 +66,25 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
+import junitparams.naming.TestCaseName;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
-import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
 import play.libs.Json;
 
-@RunWith(MockitoJUnitRunner.class)
+@RunWith(JUnitParamsRunner.class)
 @Slf4j
 public class GFlagsUpgradeTest extends UpgradeTaskTest {
+
+  @Rule public MockitoRule rule = MockitoJUnit.rule();
 
   private int expectedUniverseVersion = 2;
 
@@ -1156,6 +1163,45 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     for (TaskType precheckTask : precheckTasks) {
       assertEquals(precheckTask, subTasks.get(i++).getTaskType());
     }
+  }
+
+  @Test
+  @Parameters({
+    "ROLLING_UPGRADE, Removed, rolling",
+    "NON_ROLLING_UPGRADE, Stopped, non-rolling",
+    "NON_RESTART_UPGRADE, Decommissioned, non-restart"
+  })
+  @TestCaseName("testGFlagsUpgradeWithNodesInTransit_{0}_{1}_{2}")
+  public void testGFlagsUpgradeWithNodesInTransit(
+      UpgradeOption upgradeOption, NodeDetails.NodeState nodeState, String upgradeOptionName) {
+    // Set one node to the specified transit state
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        universe -> {
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          NodeDetails node = universeDetails.nodeDetailsSet.iterator().next();
+          node.state = nodeState;
+          universe.setUniverseDetails(universeDetails);
+        });
+    expectedUniverseVersion++;
+
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.masterGFlags = ImmutableMap.of("master-flag", "m1");
+    taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t1");
+    taskParams.upgradeOption = upgradeOption;
+
+    PlatformServiceException exception =
+        assertThrows(PlatformServiceException.class, () -> submitTask(taskParams));
+    assertThat(
+        exception.getMessage(),
+        containsString(
+            "Cannot perform a "
+                + upgradeOptionName
+                + " upgrade on universe "
+                + defaultUniverse.getUniverseUUID()
+                + " as it has nodes in one of "
+                + NodeDetails.IN_TRANSIT_STATES
+                + " states."));
   }
 
   private Map<String, String> getGflagsForNode(
