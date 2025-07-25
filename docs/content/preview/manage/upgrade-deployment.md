@@ -53,6 +53,8 @@ To upgrade YugabyteDB to a version based on a different version of PostgreSQL (f
 
 - After finalizing an upgrade, snapshots from the previous version can no longer be used for PITR. Backups taken on a newer version cannot be restored to universes running a previous version. Backups taken before the upgrade can be used for restore.
 
+- Upgrades to v2025.1 are not currently supported in Kubernetes.
+
 ## Upgrade YugabyteDB cluster
 
 You upgrade a cluster in the following phases:
