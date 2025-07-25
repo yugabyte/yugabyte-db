@@ -459,6 +459,9 @@ public class NodeAgent extends Model {
   }
 
   public void heartbeat() {
+    if (getState() == State.READY) {
+      clearLastError();
+    }
     updateTimestamp(new Date());
   }
 
