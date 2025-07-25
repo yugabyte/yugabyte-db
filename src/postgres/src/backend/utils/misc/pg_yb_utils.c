@@ -1233,6 +1233,11 @@ typedef struct YbUserIdAndSecContext
 	int			sec_context;
 } YbUserIdAndSecContext;
 
+typedef struct YbDatabaseAndRelfileNodeId {
+	Oid			database_oid;
+	Oid			relfilenode_id;
+} YbDatabaseAndRelfileNodeOid;
+
 typedef struct
 {
 	int			nesting_level;
@@ -1262,9 +1267,9 @@ typedef struct
 	bool		use_regular_txn_block;
 
 	/*
-	 * List of table OIDs that have been altered in the current transaction
-	 * block. This is used to invalidate the cache of the altered tables upon
-	 * rollback of the transaction.
+	 * List of YbDatabaseAndRelfileNodeId representing tables that have been
+	 * altered in the current transaction block. This is used to invalidate the
+	 * cache of the altered tables upon rollback of the transaction.
 	 *
 	 * When yb_ddl_transaction_block_enabled is false, this list just
 	 * contains the tables that have been altered as part of the current ALTER
@@ -2514,8 +2519,13 @@ YbTrackAlteredTableId(Oid relid)
 	Assert(TopTransactionContext != NULL);
 	oldcontext = MemoryContextSwitchTo(TopTransactionContext);
 
+	YbDatabaseAndRelfileNodeOid *entry;
+	entry = (YbDatabaseAndRelfileNodeOid *) palloc0(sizeof(YbDatabaseAndRelfileNodeOid));
+	entry->database_oid = YBCGetDatabaseOidByRelid(relid);
+	entry->relfilenode_id = YbGetRelfileNodeIdFromRelId(relid);
+
 	ddl_transaction_state.altered_table_ids =
-		list_append_unique_oid(ddl_transaction_state.altered_table_ids, relid);
+		lappend(ddl_transaction_state.altered_table_ids, entry);
 	MemoryContextSwitchTo(oldcontext);
 }
 
@@ -4226,20 +4236,16 @@ YbInvalidateTableCacheForAlteredTables()
 
 		foreach(lc, ddl_transaction_state.altered_table_ids)
 		{
-			Oid			relid = lfirst_oid(lc);
-			Relation	rel = RelationIdGetRelation(relid);
+			YbDatabaseAndRelfileNodeOid *object_id =
+				(YbDatabaseAndRelfileNodeOid *) lfirst(lc);
 
 			/*
-			 * The relation may no longer exist if it was dropped as part of
-			 * a legacy rewrite operation or if it was created and then dropped
-			 * in the same transaction block. We can skip invalidation in these
-			 * cases.
+			 * This is safe to do even for tables which don't exist or have
+			 * already been invalidated because this is just a deletion/marking
+			 * in an in-memory map.
 			 */
-			if (!rel)
-				continue;
-			YBCPgAlterTableInvalidateTableByOid(YBCGetDatabaseOidByRelid(relid),
-												YbGetRelfileNodeIdFromRelId(relid));
-			RelationClose(rel);
+			YBCPgAlterTableInvalidateTableByOid(object_id->database_oid,
+												object_id->relfilenode_id);
 		}
 	}
 }
