@@ -19,6 +19,7 @@
 
 #include "yb/common/init.h"
 
+#include "yb/common/wire_protocol.h"
 #include "yb/server/async_client_initializer.h"
 #include "yb/server/clock.h"
 
@@ -53,7 +54,16 @@ Status DbServerBase::Init() {
       mem_tracker(), messenger());
   SetupAsyncClientInit(async_client_init_.get());
 
-  return shared_mem_manager_->InitializeTServer(permanent_uuid());
+  RETURN_NOT_OK(shared_mem_manager_->InitializeTServer(permanent_uuid()));
+
+  const auto bound_addresses = rpc_server()->GetBoundAddresses();
+  if (!bound_addresses.empty()) {
+    ServerRegistrationPB reg;
+    RETURN_NOT_OK(GetRegistration(&reg, server::RpcOnly::kTrue));
+    shared_object()->SetHostEndpoint(bound_addresses.front(), PublicHostPort(reg).host());
+  }
+
+  return Status::OK();
 }
 
 Status DbServerBase::Start() {

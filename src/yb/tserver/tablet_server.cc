@@ -542,13 +542,7 @@ Status TabletServer::Init() {
 
   initted_.store(true, std::memory_order_release);
 
-  auto bound_addresses = rpc_server()->GetBoundAddresses();
   auto shared = shared_object();
-  if (!bound_addresses.empty()) {
-    ServerRegistrationPB reg;
-    RETURN_NOT_OK(GetRegistration(&reg, server::RpcOnly::kTrue));
-    shared->SetHostEndpoint(bound_addresses.front(), PublicHostPort(reg).host());
-  }
 
   // 5433 is kDefaultPort in src/yb/yql/pgwrapper/pg_wrapper.h.
   RETURN_NOT_OK(pgsql_proxy_bind_address_.ParseString(FLAGS_pgsql_proxy_bind_address, 5433));
