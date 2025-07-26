@@ -47,7 +47,7 @@ Logs are exported to the third-party tool in near real time. After the setup is 
 
 ### Logging settings
 
-Database query logging provides access to the following subset of the standard [PostegreSQL logging settings](https://www.postgresql.org/docs/15/runtime-config-logging.html).
+Database query logging provides access to the following subset of the standard [PostgreSQL logging settings](https://www.postgresql.org/docs/15/runtime-config-logging.html).
 
 ##### Log SQL statements (log_statement)
 
