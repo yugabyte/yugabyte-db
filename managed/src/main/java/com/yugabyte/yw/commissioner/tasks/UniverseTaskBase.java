@@ -7012,4 +7012,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
+
+  public SubTaskGroup createUpdateSoftwareUpdatePrevConfigTask() {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateSoftwareUpdatePrevConfig");
+    UpdateSoftwareUpdatePrevConfig.Params params = new UpdateSoftwareUpdatePrevConfig.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    UpdateSoftwareUpdatePrevConfig task = createTask(UpdateSoftwareUpdatePrevConfig.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
 }
