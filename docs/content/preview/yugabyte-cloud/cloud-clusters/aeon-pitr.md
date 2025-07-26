@@ -46,7 +46,7 @@ To clone a database or keyspace at the current point in time, do the following:
 
 1. Select the database or keyspace.
 
-1. Click **Database Actions** and **Clone to Point-in-time**.
+1. Click **Database Actions** and choose **Clone to Point-in-time**.
 
 1. Provide a name for the clone.
 
@@ -96,13 +96,25 @@ If PITR has been enabled, you can clone a database or keyspace at a specific poi
 
 When finished, the cloned database is listed in the **Databases** list.
 
+## Change the retention
+
+You can change the PITR retention window for a database or keyspace as follows:
+
+1. Navigate to **Point-in-time Recovery**.
+
+1. Find the database or keyspace, click the three dots (**...**) to display its actions, and choose **Edit Retention**.
+
+1. Specify the retention window.
+
+1. Click **Save**.
+
 ## Disable PITR
 
 You can disable PITR for a database or keyspace as follows:
 
 1. Navigate to **Point-in-time Recovery**.
 
-1. Find the database or keyspace for which you want to disable PITR, click the three dots (**...**) to display its actions, and then select **Disable Point-in-Time Recovery**.
+1. Find the database or keyspace, click the three dots (**...**) to display its actions, and choose **Disable Point-in-Time Recovery**.
 
 ## Caveats and limitations
 
