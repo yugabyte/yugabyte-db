@@ -597,17 +597,7 @@ pgstat_report_stat(bool force)
 		!have_slrustats &&
 		!pgstat_have_pending_wal())
 	{
-#ifdef YB_TODO
-		/*
-		 * This assertion fails intermittently during drop table operation.
-		 * The test
-		 * TestPgRegressDistinctPushdown#testPgRegressDistinctPushdown
-		 * reproduces this issue consistently. Temporarily disable this
-		 * assertion as a workaround. The root cause is unknown and needs to
-		 * be investigated.
-		 */
 		Assert(pending_since == 0);
-#endif
 		return 0;
 	}
 
@@ -1026,6 +1016,7 @@ pgstat_build_snapshot(void)
 
 		entry->data = MemoryContextAlloc(pgStatLocal.snapshot.context,
 										 kind_info->shared_size);
+
 		/*
 		 * Acquire the LWLock directly instead of using
 		 * pg_stat_lock_entry_shared() which requires a reference.
@@ -1194,7 +1185,7 @@ pgstat_flush_pending_entries(bool nowait)
 	while (cur)
 	{
 		PgStat_EntryRef *entry_ref =
-		dlist_container(PgStat_EntryRef, pending_node, cur);
+			dlist_container(PgStat_EntryRef, pending_node, cur);
 		PgStat_HashKey key = entry_ref->shared_entry->key;
 		PgStat_Kind kind = key.kind;
 		const PgStat_KindInfo *kind_info = pgstat_get_kind_info(kind);

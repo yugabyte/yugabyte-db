@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	// "path/filepath"
 
@@ -19,6 +20,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 )
 
@@ -26,7 +28,41 @@ import (
 func GetYamlPathData(text string) string {
 	// TODO: we should validate if we ever send a key that has spaces.
 	pathString := strings.ReplaceAll(text, " ", "")
+	log.DebugLF("Reading from viper: " + pathString)
+	log.DebugLF(fmt.Sprintf("Reading from viper: %s", viper.Get(pathString)))
 	return viper.GetString(pathString)
+}
+
+func ToYaml(path string) string {
+	// Convert the path to a YAML format
+	// This is a simple conversion, you might want to adjust it based on your needs
+	pathString := strings.ReplaceAll(path, " ", "")
+	log.DebugLF("Reading from viper: " + pathString)
+	log.DebugLF(fmt.Sprintf("Reading from viper: %s", viper.Get(pathString)))
+	d := viper.Get(pathString)
+	outB, err := yaml.Marshal(d)
+	if err != nil {
+		log.Fatal("Error: " + err.Error() + ".")
+	}
+
+	o := strings.TrimSuffix(string(outB), "\n")
+	log.DebugLF("YAML output:\n" + o)
+	return o
+}
+
+func indent(spaces int, s string) string {
+	// Indent the given string with the specified number of spaces
+	indentation := strings.Repeat(" ", spaces)
+	lines := strings.Split(s, "\n")
+	for i, line := range lines {
+		lines[i] = indentation + line
+	}
+	return strings.Join(lines, "\n")
+}
+
+func nindent(spaces int, s string) string {
+	i := indent(spaces, s)
+	return "\n" + i
 }
 
 // GetYamlPathSliceData reads the key text from the input file and returns it as a slice of string
@@ -46,7 +82,7 @@ func GetYamlPathSliceData(text string) []string {
 // ReadConfigAndTemplate Reads info from input config file and sets
 // all template parameters for each individual config file directly, without
 // having to rely on variable names in app data.
-func readConfigAndTemplate(configYmlFileName string, service common.Component) ([]byte, error) {
+func readConfigAndTemplate(configYmlFileName string, service components.Service) ([]byte, error) {
 
 	// First we create a FuncMap with which to register the function.
 	funcMap := template.FuncMap{
@@ -61,6 +97,10 @@ func readConfigAndTemplate(configYmlFileName string, service common.Component) (
 		"splitInput":        common.SplitInput,
 		"removeQuotes":      common.RemoveQuotes,
 		"systemdLogMethod":  common.SystemdLogMethod,
+		"toYaml":            ToYaml,
+		"indent":            indent,
+		"nindent":           nindent,
+		"logrotateD":        func() string { return filepath.Join(common.GetSoftwareRoot(), "logrotate", "logrotate.d") },
 	}
 
 	tmpl, err := template.New(configYmlFileName).
@@ -83,8 +123,10 @@ func readConfigAndTemplate(configYmlFileName string, service common.Component) (
 
 func readYAMLtoJSON(createdBytes []byte) (map[string]interface{}, error) {
 
+	log.DebugLF(string(createdBytes))
 	jsonString, jsonStringErr := yaml.YAMLToJSON(createdBytes)
 	if jsonStringErr != nil {
+		log.DebugLF("Error converting YAML to JSON: " + string(jsonString))
 		log.Fatal(fmt.Sprintf("Error: %v.\n", jsonStringErr))
 		return nil, jsonStringErr
 	}
@@ -123,7 +165,7 @@ func WriteBytes(byteSlice []byte, fileName []byte) ([]byte, error) {
 }
 
 // GenerateTemplate of a particular component.
-func GenerateTemplate(component common.Component) error {
+func GenerateTemplate(component components.Service) error {
 	log.Debug("Generating config files for " + component.Name())
 	createdBytes, err := readConfigAndTemplate(component.TemplateFile(), component)
 	if err != nil {
@@ -160,7 +202,7 @@ func GenerateTemplate(component common.Component) error {
 			defer file.Close()
 
 			// Add the additional raw text to yb-platform.conf if it exists.
-			additionalEntryString := strings.TrimSuffix(GetYamlPathData(".platform.additional"), "\n")
+			additionalEntryString := strings.TrimSuffix(GetYamlPathData("platform.additional"), "\n")
 
 			log.DebugLF("Writing addition data to yb-platform config: " + additionalEntryString)
 			if _, err := file.WriteString(additionalEntryString); err != nil {

@@ -26,6 +26,7 @@
 #include "yb/consensus/consensus_error.h"
 #include "yb/consensus/raft_consensus.h"
 
+#include "yb/master/master_heartbeat.fwd.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/server/clock.h"
 
@@ -71,6 +72,10 @@ Result<int64_t> LeaderTerm(const tablet::TabletPeer& tablet_peer);
 std::shared_ptr<TabletConsensusInfoPB> GetTabletConsensusInfoFromTabletPeer(
     const tablet::TabletPeerPtr& peer);
 
+std::string CatalogInvalMessagesDataDebugString(const master::TSHeartbeatResponsePB& resp);
+std::string CatalogInvalMessagesDataDebugString(
+    const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data);
+
 // Template helpers.
 
 template<class ReqClass>
@@ -83,11 +88,7 @@ Result<bool> CheckUuidMatch(TabletPeerLookupIf* tablet_manager,
     // Maintain compat in release mode, but complain.
     std::string msg = strings::Substitute("$0: Missing destination UUID in request from $1: $2",
         method_name, requestor_string, req->ShortDebugString());
-#ifdef NDEBUG
-    YB_LOG_EVERY_N(ERROR, 100) << msg;
-#else
-    LOG(FATAL) << msg;
-#endif
+    YB_LOG_EVERY_N(DFATAL, 100) << msg;
     return true;
   }
   if (PREDICT_FALSE(req->dest_uuid() != local_uuid)) {

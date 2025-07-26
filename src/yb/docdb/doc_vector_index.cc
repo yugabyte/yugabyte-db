@@ -14,6 +14,10 @@
 
 #include "yb/docdb/doc_vector_index.h"
 
+#include <boost/algorithm/string.hpp>
+
+#include "yb/ann_methods/usearch_wrapper.h"
+
 #include "yb/dockv/doc_vector_id.h"
 
 #include "yb/docdb/consensus_frontier.h"
@@ -29,15 +33,11 @@
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
 
-#include "yb/vector_index/usearch_wrapper.h"
 #include "yb/vector_index/vectorann_util.h"
 #include "yb/vector_index/vector_lsm.h"
 
 DEFINE_RUNTIME_uint64(vector_index_initial_chunk_size, 100000,
-                      "Number of vector in initial vector index chunk");
-
-DEFINE_RUNTIME_PREVIEW_uint32(vector_index_ef, 128,
-    "The \"expansion\" parameter for search");
+    "Number of vector in initial vector index chunk");
 
 DECLARE_bool(vector_index_dump_stats);
 DECLARE_bool(vector_index_skip_filter_check);
@@ -68,27 +68,32 @@ vector_index::HNSWOptions ConvertToHnswOptions(const PgVectorIdxOptionsPB& optio
     .num_neighbors_per_vertex = options.hnsw().m(),
     .num_neighbors_per_vertex_base = options.hnsw().m0(),
     .ef_construction = options.hnsw().ef_construction(),
-    .ef = FLAGS_vector_index_ef,
     .distance_kind = ConvertDistanceKind(options.dist_type()),
   };
 }
 
 template <template<class, class> class Factory, class LSM>
-auto VectorLSMFactory(const PgVectorIdxOptionsPB& options) {
+auto VectorLSMFactory(
+    const hnsw::BlockCachePtr& block_cache, const PgVectorIdxOptionsPB& options,
+    const MemTrackerPtr& mem_tracker) {
   using FactoryImpl = vector_index::MakeVectorIndexFactory<Factory, LSM>;
-  return [hnsw_options = ConvertToHnswOptions(options)] {
-    return FactoryImpl::Create(hnsw_options);
+  return [block_cache, hnsw_options = ConvertToHnswOptions(options),
+          backend = options.hnsw().backend(), mem_tracker](vector_index::FactoryMode mode) {
+    return FactoryImpl::Create(mode, block_cache, hnsw_options, backend, mem_tracker);
   };
 }
 
 template<vector_index::IndexableVectorType Vector,
          vector_index::ValidDistanceResultType DistanceResult>
-auto GetVectorLSMFactory(const PgVectorIdxOptionsPB& options)
+auto GetVectorLSMFactory(
+    const hnsw::BlockCachePtr& block_cache, const PgVectorIdxOptionsPB& options,
+    const MemTrackerPtr& mem_tracker)
     -> Result<vector_index::VectorIndexFactory<Vector, DistanceResult>> {
   using LSM = vector_index::VectorLSM<Vector, DistanceResult>;
   switch (options.idx_type()) {
     case PgVectorIndexType::HNSW:
-      return VectorLSMFactory<vector_index::UsearchIndexFactory, LSM>(options);
+      return VectorLSMFactory<ann_methods::UsearchIndexFactory, LSM>(
+          block_cache, options, mem_tracker);
     case PgVectorIndexType::DUMMY: [[fallthrough]];
     case PgVectorIndexType::IVFFLAT: [[fallthrough]];
     case PgVectorIndexType::UNKNOWN_IDX:
@@ -97,6 +102,18 @@ auto GetVectorLSMFactory(const PgVectorIdxOptionsPB& options)
   return STATUS_FORMAT(
         NotSupported, "Vector index $0 is not supported",
         PgVectorIndexType_Name(options.idx_type()));
+}
+
+std::string GetFileExtension(const PgVectorIdxOptionsPB& options) {
+  switch (options.idx_type()) {
+    case PgVectorIndexType::HNSW:
+      return "." + boost::to_lower_copy(HnswBackend_Name(options.hnsw().backend()));
+    case PgVectorIndexType::DUMMY: [[fallthrough]];
+    case PgVectorIndexType::IVFFLAT: [[fallthrough]];
+    case PgVectorIndexType::UNKNOWN_IDX:
+      break;
+  }
+  FATAL_INVALID_PB_ENUM_VALUE(PgVectorIndexType, options.idx_type());
 }
 
 template<vector_index::IndexableVectorType Vector>
@@ -139,22 +156,21 @@ EncodedDistance EncodeDistance(float distance) {
   }
 }
 
-struct VectorIndexMergeFilter {
-  const std::string& log_prefix;
-  docdb::BoundedRocksDbIterator iter;
-
-  explicit VectorIndexMergeFilter(const std::string& log_prefix_, const DocDB& doc_db)
-      : log_prefix(log_prefix_), iter(doc_db.regular, {}, doc_db.key_bounds)
+class VectorMergeFilter : public vector_index::VectorLSMMergeFilter {
+ public:
+  explicit VectorMergeFilter(const std::string& log_prefix, const DocDB& doc_db)
+      : log_prefix_(log_prefix), iter_(doc_db.regular, {}, doc_db.key_bounds)
   {}
 
   const std::string& LogPrefix() const {
-    return log_prefix;
+    return log_prefix_;
   }
 
-  rocksdb::FilterDecision operator()(vector_index::VectorId vector_id) {
+  rocksdb::FilterDecision Filter(vector_index::VectorId vector_id) override {
     if (FLAGS_vector_index_skip_filter_check) {
       return rocksdb::FilterDecision::kKeep;
     }
+
     // TODO(vector_index): Revise once regular compaction correctly handles VectorId <=> ybctid;
     // additionally check the following points:
     // 1) Should tombstoned mapping be taken into account for filtering decision?
@@ -168,13 +184,17 @@ struct VectorIndexMergeFilter {
 
     // Simple filtering by VectorId <=> ybctid presence in the regulard db.
     auto key = dockv::DocVectorKey(vector_id);
-    const auto& db_entry = iter.Seek(key.AsSlice());
+    const auto& db_entry = iter_.Seek(key.AsSlice());
     auto keep  = db_entry.Valid() && db_entry.key.starts_with(key.AsSlice());
     auto decision = keep ? rocksdb::FilterDecision::kKeep : rocksdb::FilterDecision::kDiscard;
 
     VLOG_WITH_PREFIX(4) << "Filtering " << vector_id << " => " << decision;
     return decision;
   }
+
+ private:
+  const std::string& log_prefix_;
+  docdb::BoundedRocksDbIterator iter_;
 };
 
 template<vector_index::IndexableVectorType Vector,
@@ -183,9 +203,11 @@ class DocVectorIndexImpl : public DocVectorIndex {
  public:
   DocVectorIndexImpl(
       const TableId& table_id, Slice indexed_table_key_prefix, ColumnId column_id,
-      HybridTime hybrid_time, const DocDB& doc_db)
+      HybridTime hybrid_time, const DocDB& doc_db, const hnsw::BlockCachePtr& block_cache,
+      const MemTrackerPtr& mem_tracker)
       : table_id_(table_id), indexed_table_key_prefix_(indexed_table_key_prefix),
-        column_id_(column_id), hybrid_time_(hybrid_time), doc_db_(doc_db) {
+        column_id_(column_id), hybrid_time_(hybrid_time), doc_db_(doc_db),
+        block_cache_(block_cache), mem_tracker_(mem_tracker) {
   }
 
   const TableId& table_id() const override {
@@ -197,7 +219,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
   }
 
   const std::string& path() const override {
-    return lsm_.options().storage_dir;
+    return lsm_.StorageDir();
   }
 
   ColumnId column_id() const override {
@@ -210,31 +232,26 @@ class DocVectorIndexImpl : public DocVectorIndex {
 
   Status Open(const std::string& log_prefix,
               const std::string& data_root_dir,
-              rpc::ThreadPool& thread_pool,
+              const DocVectorIndexThreadPoolProvider& thread_pool_provider,
               const PgVectorIdxOptionsPB& idx_options) {
-    using Options = typename LSM::Options;
-    using VectorIndexPtr  = typename Options::VectorIndexPtr;
-    using VectorIndexPtrs = typename Options::VectorIndexPtrs;
-
     index_id_ = idx_options.id();
-
-    auto vector_index_merger =
-       [this](VectorIndexPtr& target, const VectorIndexPtrs& source) {
-          const auto& log_prefix = lsm_.options().log_prefix;
-          VectorIndexMergeFilter filter(log_prefix, doc_db_);
-          return vector_index::Merge(target, source, std::ref(filter));
-       };
-
     name_ = RemoveLogPrefixColon(log_prefix);
-    Options lsm_options = {
+    auto thread_pools = thread_pool_provider();
+    typename LSM::Options lsm_options = {
       .log_prefix = log_prefix,
       .storage_dir = GetStorageDir(data_root_dir, DirName()),
       .vector_index_factory = VERIFY_RESULT((GetVectorLSMFactory<Vector, DistanceResult>(
-          idx_options))),
+          block_cache_, idx_options, mem_tracker_))),
       .vectors_per_chunk = FLAGS_vector_index_initial_chunk_size,
-      .thread_pool = &thread_pool,
+      .thread_pool = thread_pools.thread_pool,
+      .insert_thread_pool = thread_pools.insert_thread_pool,
+      .compaction_thread_pool = thread_pools.compaction_thread_pool,
       .frontiers_factory = [] { return std::make_unique<docdb::ConsensusFrontiers>(); },
-      .vector_index_merger = std::move(vector_index_merger),
+      .vector_merge_filter_factory = [this]() {
+        return std::make_unique<VectorMergeFilter>(
+            std::cref(lsm_.LogPrefix()), std::cref(doc_db_));
+      },
+      .file_extension = GetFileExtension(idx_options),
     };
     return lsm_.Open(std::move(lsm_options));
   }
@@ -302,6 +319,10 @@ class DocVectorIndexImpl : public DocVectorIndex {
     return EncodeDistance(lsm_.Distance(lhs_vec, rhs_vec));
   }
 
+  void EnableAutoCompactions() override {
+    lsm_.EnableAutoCompactions();
+  }
+
   Status Compact() override {
     return lsm_.Compact(/* wait = */ true);
   }
@@ -334,6 +355,10 @@ class DocVectorIndexImpl : public DocVectorIndex {
     return lsm_.HasVectorId(vector_id);
   }
 
+  Result<size_t> TotalEntries() const override {
+    return lsm_.TotalEntries();
+  }
+
  private:
   std::string DirName() const {
     return kVectorIndexDirPrefix + index_id_;
@@ -344,6 +369,8 @@ class DocVectorIndexImpl : public DocVectorIndex {
   const ColumnId column_id_;
   const HybridTime hybrid_time_;
   const DocDB doc_db_;
+  const hnsw::BlockCachePtr block_cache_;
+  const MemTrackerPtr mem_tracker_;
   std::string index_id_;
 
   using LSM = vector_index::VectorLSM<Vector, DistanceResult>;
@@ -377,16 +404,18 @@ void DocVectorIndex::ApplyReverseEntry(
 Result<DocVectorIndexPtr> CreateDocVectorIndex(
     const std::string& log_prefix,
     const std::string& data_root_dir,
-    rpc::ThreadPool& thread_pool,
+    const DocVectorIndexThreadPoolProvider& thread_pool_provider,
     Slice indexed_table_key_prefix,
     HybridTime hybrid_time,
     const qlexpr::IndexInfo& index_info,
-    const DocDB& doc_db) {
+    const DocDB& doc_db,
+    const hnsw::BlockCachePtr& block_cache,
+    const MemTrackerPtr& mem_tracker) {
   auto& options = index_info.vector_idx_options();
   auto result = std::make_shared<DocVectorIndexImpl<std::vector<float>, float>>(
       index_info.table_id(), indexed_table_key_prefix, ColumnId(options.column_id()), hybrid_time,
-      doc_db);
-  RETURN_NOT_OK(result->Open(log_prefix, data_root_dir, thread_pool, options));
+      doc_db, block_cache, mem_tracker);
+  RETURN_NOT_OK(result->Open(log_prefix, data_root_dir, thread_pool_provider, options));
   return result;
 }
 

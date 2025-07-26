@@ -15,6 +15,7 @@ test: create_operator
 test: yb.port.create_table
 test: yb.port.create_type
 test: yb.port.create_index
+test: yb.port.create_view
 test: yb.port.create_am
 test: yb.port.errors
 test: random

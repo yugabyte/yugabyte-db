@@ -2191,5 +2191,8 @@
   amprocrighttype => 'anyrange', amprocnum => '1', amproc => 'range_cmp' },
 { amprocfamily => 'lsm/jsonb_ops', amproclefttype => 'jsonb',
   amprocrighttype => 'jsonb', amprocnum => '1', amproc => 'jsonb_cmp' },
+{ amprocfamily => 'lsm/multirange_ops', amproclefttype => 'anymultirange',
+  amprocrighttype => 'anymultirange', amprocnum => '1',
+  amproc => 'multirange_cmp' },
 
 ]

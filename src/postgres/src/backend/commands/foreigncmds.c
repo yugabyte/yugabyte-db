@@ -840,11 +840,6 @@ AlterForeignDataWrapper(ParseState *pstate, AlterFdwStmt *stmt)
 	return myself;
 }
 
-#ifdef YB_TODO
-/*
- * Drop foreign-data wrapper by OID
- */
-#endif
 
 /*
  * Create a foreign server
@@ -1085,11 +1080,6 @@ AlterForeignServer(AlterForeignServerStmt *stmt)
 	return address;
 }
 
-#ifdef YB_TODO
-/*
- * Drop foreign server by OID
- */
-#endif
 
 /*
  * Common routine to check permission for user-mapping-related DDL
@@ -1420,11 +1410,6 @@ RemoveUserMapping(DropUserMappingStmt *stmt)
 	return umId;
 }
 
-#ifdef YB_TODO
-/*
- * Drop user mapping by OID.  This is called to clean up dependencies.
- */
-#endif
 
 /*
  * Create a foreign table

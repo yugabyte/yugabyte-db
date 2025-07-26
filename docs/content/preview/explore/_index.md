@@ -12,14 +12,137 @@ type: indexpage
 showRightNav: true
 ---
 
-The Explore documentation introduces you to YugabyteDB's features, often through examples.
+Whether you're setting up your first YugabyteDB cluster, evaluating YugabyteDB for a deployment, or want to learn more about YugabyteDB, Explore offers hands-on guidance to YugabyteDB's features, with examples. From core database operations to advanced features like distributed transactions, real-time data streaming, and robust security, Explore equips you with the tools and knowledge to harness YugabyteDB's cloud-native architecture and unlock its full potential for your mission-critical workloads.
 
-Most examples demonstrating database features, such as API compatibility, can be run on a single-node universe either on your computer, using the free Sandbox universe (cluster) in YugabyteDB Aeon, or using a universe created via YugabyteDB Anywhere. More advanced scenarios use a multi-node deployment. Refer to [Set up YugabyteDB universe](#set-up-yugabytedb-universe) for instructions on creating universes to run the examples.
+## API compatibility and data models
 
-## Overview
+{{< sections/3-boxes>}}
+  {{< sections/3-box-card
+    title="PostgreSQL-compatible API"
+    description="Explore YSQL, YugabyteDB's fully-relational, PostgreSQL-compatible query language."
+    linkText1="JSON support"
+    linkUrl1="ysql-language-features/jsonb-ysql/"
+    linkText2="Indexes"
+    linkUrl2="ysql-language-features/indexes-constraints/"
+    linkText3="Advanced features"
+    linkUrl3="ysql-language-features/advanced-features/"
+    linkText4="Explore more"
+    linkClass4="more"
+    linkUrl4="ysql-language-features/"
+  >}}
 
-The following table describes the YugabyteDB features you can explore, along with the setup required to run the examples (single- or multi-node universe):
+  {{< sections/3-box-card
+    title="Going beyond SQL"
+    description="Learn about YugabyteDB's advanced features for cloud-native applications."
+    linkText1="Cluster-aware client drivers"
+    linkUrl1="going-beyond-sql/cluster-aware-drivers/"
+    linkText2="Built-in connection pooling"
+    linkUrl2="going-beyond-sql/connection-mgr-ysql/"
+    linkText3="Geopartitioning"
+    linkUrl3="going-beyond-sql/tablespaces/"
+    linkText4="Explore more"
+    linkClass4="more"
+    linkUrl4="going-beyond-sql/"
+  >}}
 
+  {{< sections/3-box-card
+    title="Cassandra-compatible API"
+    description="Explore YCQL, YugabyteDB's semi-relational, Cassandra-compatible query language."
+    linkText1="Keyspaces and tables"
+    linkUrl1="ycql-language/keyspaces-tables/"
+    linkText2="Data types"
+    linkUrl2="ycql-language/data-types/"
+    linkText3="Indexes and constraints"
+    linkUrl3="ycql-language/indexes-constraints/"
+    linkText4="Explore more"
+    linkClass4="more"
+    linkUrl4="ycql-language/"
+  >}}
+
+{{< /sections/3-boxes >}}
+
+## Core capabilities
+
+{{< sections/3-boxes>}}
+  {{< sections/3-box-card
+    title="Horizontal scalability"
+    description="Learn about YugabyteDB's operationally simple and completely transparent scaling."
+    buttonText="Scale"
+    buttonUrl="linear-scalability/"
+  >}}
+
+  {{< sections/3-box-card
+    title="Resiliency"
+    description="Learn how YugabyteDB survives and recovers from outages with zero downtime."
+    buttonText="Resiliency"
+    buttonUrl="fault-tolerance/"
+  >}}
+
+  {{< sections/3-box-card
+    title="Distributed transactions"
+    description="Learn how distributed transactions work and about YugabyteDB's isolation levels."
+    buttonText="Transactions"
+    buttonUrl="transactions/"
+  >}}
+
+{{< /sections/3-boxes >}}
+
+## Deployment and operations
+
+{{< sections/3-boxes>}}
+
+  {{< sections/3-box-card
+    title="Multi-region deployments"
+    description="Flexible deployment options to achieve the right mix of latency, resilience, and consistency."
+    buttonText="Deploy"
+    buttonUrl="multi-region-deployments/"
+  >}}
+
+  {{< sections/3-box-card
+    title="Observability"
+    description="Monitoring, alerting, and analyzing metrics."
+    buttonText="Observability"
+    buttonUrl="observability/"
+  >}}
+
+  {{< sections/3-box-card
+    title="Security"
+    description="YugabyteDB supports authentication, authorization (RBAC), encryption, and more."
+    buttonText="Security"
+    buttonUrl="security/security/"
+  >}}
+
+  {{< sections/3-box-card
+    title="Colocation"
+    description="Keep closely related data together via colocation."
+    buttonText="Colocation"
+    buttonUrl="colocation/"
+  >}}
+
+  {{< sections/3-box-card
+    title="Query tuning"
+    description="Identify and optimize queries in YSQL."
+    buttonText="Query tuning"
+    buttonUrl="query-1-performance/"
+  >}}
+
+  {{< sections/3-box-card
+    title="Change data capture"
+    description="Stream data to Kafka using PostgreSQL logical replication."
+    buttonText="Change data capture"
+    buttonUrl="change-data-capture/"
+  >}}
+
+  {{< sections/3-box-card
+    title="Point-in-time recovery"
+    description="Recover your database at a specific point in time."
+    buttonText="PITR"
+    buttonUrl="cluster-management/point-in-time-recovery-ysql/"
+  >}}
+
+{{< /sections/3-boxes >}}
+
+<!--
 | Section | Purpose | [Universe&nbsp;setup](#set-up-yugabytedb-universe) |
 | :--- | :--- | :--- |
 | [SQL features](ysql-language-features/) | Learn about YugabyteDB's compatibility with PostgreSQL, including data types, queries, expressions, operators, extensions, and more. | Single-node<br/>local/cloud |
@@ -35,343 +158,4 @@ The following table describes the YugabyteDB features you can explore, along wit
 | [Change data capture](change-data-capture/) | Learn about YugabyteDB support for streaming data to Kafka. | N/A |
 | [Security](security/security/) | Learn how to secure data in YugabyteDB, using authentication, authorization (RBAC), encryption, and more. | Single-node<br/>local/cloud |
 | [Observability](observability/) | Export metrics into Prometheus and create dashboards using Grafana. | Multi-node<br/>local |
-
-## Set up YugabyteDB universe
-
-You can run examples using a universe set up on your local machine or in a cloud, assuming you have performed one of the following:
-
-- [Installed](/preview/tutorials/quick-start/linux/) YugabyteDB.
-- [Created an account](https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=Cloud_signup) in YugabyteDB Aeon.
-- [Installed](../yugabyte-platform/install-yugabyte-platform/) YugabyteDB Anywhere and [configured](../yugabyte-platform/configure-yugabyte-platform/) it to run in AWS.
-
-<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
-  <li>
-    <a href="#local" class="nav-link active" id="local-tab" data-bs-toggle="tab"
-      role="tab" aria-controls="local" aria-selected="true">
-      <img src="/icons/database.svg" alt="Server Icon">
-      Local
-    </a>
-  </li>
-  <li >
-    <a href="#cloud" class="nav-link" id="cloud-tab" data-bs-toggle="tab"
-      role="tab" aria-controls="cloud" aria-selected="false">
-      <img src="/icons/cloud.svg" alt="Cloud Icon">
-      YugabyteDB Aeon
-    </a>
-  </li>
-  <li>
-    <a href="#anywhere" class="nav-link" id="anywhere-tab" data-bs-toggle="tab"
-      role="tab" aria-controls="anywhere" aria-selected="false">
-      <img src="/icons/server.svg" alt="Server Icon">
-      YugabyteDB Anywhere
-    </a>
-  </li>
-</ul>
-<div class="tab-content">
-  <div id="local" class="tab-pane fade show active" role="tabpanel" aria-labelledby="local-tab">
-
-To run the examples, you need to create a single- or multi-node universe.
-
-Use the [yugabyted](../reference/configuration/yugabyted/) utility to create and manage universes.
-
-The following instructions show how to _simulate_ a single- or multi-node universe on a single computer. To deploy an actual multi-zone universe using yugabyted, follow the instructions in [Create a multi-zone cluster](../reference/configuration/yugabyted/#create-a-multi-zone-cluster).
-
-{{< tabpane text=true >}}
-
-  {{% tab header="Single-node universe" lang="Single-node universe" %}}
-
-If a local universe is currently running, first [destroy it](../reference/configuration/yugabyted/#destroy-a-local-cluster).
-
-You can create a single-node local universe with a replication factor (RF) of 1 by running the following command:
-
-```sh
-./bin/yugabyted start --advertise_address=127.0.0.1
-```
-
-Or, if you are running macOS Monterey, use the following command:
-
-```sh
-./bin/yugabyted start --advertise_address=127.0.0.1 \
-                      --master_webserver_port=9999
-```
-
-To check the status of a running single-node universe, run the following command:
-
-```sh
-./bin/yugabyted status
-```
-
-For more information, refer to [Quick Start](/preview/tutorials/quick-start/linux/#create-a-local-cluster).
-
-  {{% /tab %}}
-
-  {{% tab header="Multi-node universe" lang="Multi-node universe" %}}
-
-{{<setup/local>}}
-
-  {{% /tab %}}
-
-{{< /tabpane >}}
-
-**Connect to universes**
-
-To run the examples in your universe, you use either the ysqlsh or ycqlsh CLI to interact with YugabyteDB via the YSQL or YCQL API.
-
-You can start ysqlsh as follows:
-
-```sh
-./bin/ysqlsh
-```
-
-```output
-ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
-Type "help" for help.
-
-yugabyte=#
-```
-
-You can start ycqlsh as follows:
-
-```sh
-./bin/ycqlsh
-```
-
-```output
-Connected to local cluster at 127.0.0.1:9042.
-[ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
-Use HELP for help.
-ycqlsh>
-```
-
-  </div>
-
-  <div id="cloud" class="tab-pane fade" role="tabpanel" aria-labelledby="cloud-tab">
-
-To run the examples in YugabyteDB Aeon, create a single- or multi-node universe (which is referred to as cluster in YugabyteDB Aeon).
-
-{{< tabpane text=true >}}
-
-  {{% tab header="Single-node cluster" lang="YBM Single" %}}
-
-Examples requiring a single-node cluster can be run using the free [Sandbox](/preview/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/) cluster.
-
-If you haven't already created your sandbox cluster, log in to YugabyteDB Aeon, on the **Clusters** page click **Add Cluster**, and follow the instructions in the **Create Cluster** wizard.
-
-  {{% /tab %}}
-
-  {{% tab header="Multi-node cluster" lang="YBM Multi" %}}
-
-Before you can create a multi-node cluster in YugabyteDB Aeon, you need to [add your billing profile and payment method](/preview/yugabyte-cloud/cloud-admin/cloud-billing-profile/), or you can [request a free trial](/preview/yugabyte-cloud/managed-freetrial/).
-
-To create a single region three-node cluster, refer to [Create a single-region cluster](/preview/yugabyte-cloud/cloud-basics/create-clusters/create-single-region/). Set **Fault tolerance** to **None** and **Nodes** to 3.
-
-  {{% /tab %}}
-
-{{< /tabpane >}}
-
-Save your cluster credentials in a convenient location. You will use them to connect to your cluster.
-
-**Connect to your clusters**
-
-You can run Explore exercises in YugabyteDB Aeon using the [Cloud Shell](/preview/yugabyte-cloud/cloud-connect/connect-cloud-shell/):
-
-1. In YugabyteDB Aeon, on the **Clusters** page, select your cluster.
-1. Click **Connect**.
-1. Click **Launch Cloud Shell**.
-1. Enter the user name from the cluster credentials you downloaded when you created the cluster.
-1. Select the API to use (YSQL or YCQL) and click **Confirm**.
-    The shell displays in a separate browser page. Cloud Shell can take up to 30 seconds to be ready.
-1. Enter the password from the cluster credentials you downloaded when you created the cluster.
-
-Note that if your Cloud Shell session is idle for more than 5 minutes, your browser may disconnect you. To resume, close the browser tab and connect again.
-
-  </div>
-
-  <div id="anywhere" class="tab-pane fade" role="tabpanel" aria-labelledby="anywhere-tab">
-
-To run the examples, you need to create a single- or multi-node universe.
-
-For instructions on creating a universe in YugabyteDB Anywhere, refer to [Create a multi-zone universe](../yugabyte-platform/create-deployments/create-universe-multi-zone/).
-
-  </div>
-</div>
-
-## Set up YB Workload Simulator
-
-YB Workload Simulator is a Java application that simulates workloads against YugabyteDB and provides live metrics of latency and throughput from the application's point of view. Some Explore topics use the application to demonstrate features of YugabyteDB.
-
-The application uses the YugabyteDB JDBC [Smart Driver](../drivers-orms/smart-drivers/), which features universe- and topology-aware connection load balancing. The driver automatically balances application connections across the nodes in a universe, and re-balances connections when a node fails. For more information, see [YB Workload Simulator](https://github.com/YugabyteDB-Samples/yb-workload-simulator/).
-
-### Download
-
-YB Workload Simulator requires Java 11 or later installed on your computer. {{% jdk-setup %}}
-
-Download the YB Workload Simulator JAR file using the following command:
-
-```sh
-wget https://github.com/YugabyteDB-Samples/yb-workload-simulator/releases/download/v0.0.8/yb-workload-sim-0.0.8.jar
-```
-
-## Use the application
-
-<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
-  <li>
-    <a href="#localworkload" class="nav-link active" id="local-tab" data-bs-toggle="tab"
-      role="tab" aria-controls="local" aria-selected="true">
-      <img src="/icons/database.svg" alt="Server Icon">
-      Local
-    </a>
-  </li>
-  <li >
-    <a href="#cloudworkload" class="nav-link" id="cloud-tab" data-bs-toggle="tab"
-      role="tab" aria-controls="cloud" aria-selected="false">
-      <img src="/icons/cloud.svg" alt="Cloud Icon">
-      YugabyteDB Aeon
-    </a>
-  </li>
-  <li>
-    <a href="#anywhereworkload" class="nav-link" id="anywhere-tab" data-bs-toggle="tab"
-      role="tab" aria-controls="anywhere" aria-selected="false">
-      <img src="/icons/server.svg" alt="Server Icon">
-      YugabyteDB Anywhere
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="cloudworkload" class="tab-pane fade" role="tabpanel" aria-labelledby="cloud-tab">
-
-To connect the application to your cluster, ensure that you have downloaded the cluster SSL certificate and your computer is added to the IP allow list. Refer to [Before you begin](/preview/tutorials/build-apps/cloud-add-ip/).
-
-To start the application against a running YugabyteDB Aeon cluster, use the following command:
-
-```sh
-java -Dnode=<host name> \
-    -Ddbname=<dbname> \
-    -Ddbuser=<dbuser> \
-    -Ddbpassword=<dbpassword> \
-    -Dssl=true \
-    -Dsslmode=verify-full \
-    -Dsslrootcert=<path-to-cluster-certificate> \
-    -jar ./yb-workload-sim-0.0.8.jar
-```
-
-- `<host name>` - The host name of your YugabyteDB cluster. For YugabyteDB Aeon, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
-- `<dbname>` - The name of the database you are connecting to (the default is `yugabyte`).
-- `<dbuser>` and `<dbpassword>` - The username and password for the YugabyteDB database. Use the credentials in the credentials file you downloaded when you created your cluster.
-<!-- `<cloud.region.zone>` - The zones in your cluster, comma-separated, in the format `cloud.region.zone`, to be used as topology keys for [topology-aware load balancing](../drivers-orms/smart-drivers/#topology-aware-load-balancing). Node details are displayed on the cluster **Nodes** tab. For example, to add topology keys for a multi-zone cluster in the AWS US East region, you would enter the following:
-
-    ```sh
-    -Dspring.datasource.hikari.data-source-properties.topologyKeys=aws.us-east-1.us-east-1a,aws.us-east-1.us-east-2a,aws.us-east-1.us-east-3a
-    ```
 -->
-- `<path-to-cluster-certificate>` with the path to the [cluster certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/) on your computer.
-
-  </div>
-
-  <div id="localworkload" class="tab-pane fade show active" role="tabpanel" aria-labelledby="local-tab">
-
-To start the application against a running local universe, use the following command:
-
-```sh
-java -jar \
-    -Dnode=127.0.0.1 \
-    ./yb-workload-sim-0.0.8.jar
-```
-
-The `-Dnode` flag specifies the IP address of the node to which to connect.
-
-The `-Dspring.datasource` flag enables [topology-aware load balancing](../drivers-orms/smart-drivers/#topology-aware-load-balancing) for the application connections. If you created a universe using different zones, replace the zones with the corresponding zones in your universe, comma-separated, in the format `cloud.region.zone`.
-
-  </div>
-
-<div id="anywhereworkload" class="tab-pane fade" role="tabpanel" aria-labelledby="anywhere-tab">
-<!--You start by moving the YB Workload Simulator JAR file from your local directory to the YugabyteDB Anywhere instance on AWS EC2, as follows:-->
-
-<!--
-```sh
-scp -i <path_to_your_pem_file> yb-workload-sim-0.0.4.jar ec2-user@<YugabyteDB_Anywhere_instance_IP_address>:/tmp/
-```
--->
-
-<!-- For example:-->
-<!--
-
-```sh
-scp -i Documents/Yugabyte/Security-Keys/AWS/AWS-east-1.pem yb-workload-sim-0.0.4.jar ec2-user@123.456.789.2XS:/tmp/
-```
--->
-
-To start the application against a running YugabyteDB Anywhere universe, use the following command from a local terminal:
-<!-- You can launch the application from your YugabyteDB Anywhere instance by using the terminal, as follows:-->
-
-<!--
-
-  1. Navigate to your `tmp` directory and execute `mkdir logs` to create a log file in case there are any errors during the setup.
-    2. Start the application against a running YugabyteDB Anywhere universe by executing the following commands in the terminal:
-
--->
-
-```sh
-java -Dnode=<node_ip> \
-      -Ddbname=<dbname> \
-      -Ddbuser=<dbuser> \
-      -Ddbpassword=<dbpassword> \
-      -Dspring.datasource.hikari.data-source-properties.topologyKeys=<cloud.region.zone> \
-      -jar ./yb-workload-sim-0.0.8.jar
-```
-
-Replace the following:
-
-- `<node_ip>` - The IP address of the node in your YugabyteDB Anywhere universe. You can find this information by navigating to **Universes > UniverseName > Nodes** in YugabyteDB Anywhere.
-
-- `<dbname>` - The name of the database you are connecting to (the default is `yugabyte`).
-
-- `<dbuser>` and `<dbpassword>` - The user name and password for the YugabyteDB database. <!-- - `<port>` - 5433. -->
-
-- `<cloud.region.zone>` - The zones in your universe, comma-separated, in the format `cloud.region.zone`, to be used as topology keys for [topology-aware load balancing](../drivers-orms/smart-drivers/#topology-aware-load-balancing). Node details are displayed in **Universes > UniverseName > Nodes**. For example, to add topology keys for a single-region multi-zone universe, you would enter the following:
-
-    ```sh
-    -Dspring.datasource.hikari.data-source-properties.topologyKeys=aws.us-east-1.us-east-1a,aws.us-east-1.us-east-1b,aws.us-east-1.us-east-1c
-    ```
-
-<!-- The preceding instructions are applicable to a YSQL workload.
-To run a YCQL workload, add the following parameters before the `-jar ./yb-workload-sim-0.0.4.jar` command: -->
-
-<!--
-```sh
--Dworkload=genericCassandraWorkload \
--Dspring.data.cassandra.contact-points=<host_ip> \
--Dspring.data.cassandra.port=9042
--Dspring.data.cassandra.local-datacenter=<datacenter> [ex. us-east-2 ] \
--Dspring.data.cassandra.userid=cassandra \
--Dspring.data.cassandra.password=<cassandra_password> \
-```
--->
-
-<!-- Replace `<host_ip>`, `<datacenter>`, and `<cassandra_password>` with appropriate values.-->
-
-<!--In the local environment, you would need to execute the following: -->
-
-<!--
-```sh
-./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
-```
--->
-
-</div>
-
-To view the application UI, navigate to `http://<machine_ip_or_dns>:8080` (for example, `http://localhost:8080`).
-
-### Start a read and write workload
-
-You can start a workload that performs read and write operations across all the nodes of the universe as follows:
-
-1. In the [application UI](http://localhost:8080), click the hamburger icon at the top of the page beside Active Workloads for Generic.
-1. Select **Usable Operations**.
-1. Under **Create Tables**, click **Run Create Tables Workload** to add tables to the database.
-1. Under **Seed Data**, click **Run Seed Data Workload** to add data to the tables.
-1. Under **Simulation**, select the **Include new Inserts** option, and click **Run Simulation Workload**.
-1. Click **Close**.
-
-The Latency and Throughput charts show the workload running on the universe.

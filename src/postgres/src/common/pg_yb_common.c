@@ -252,9 +252,9 @@ YBGetYsqlOutputBufferSize()
 
 	/*
 	 * Shouldn't reach here. But even if we do, instead of failing in a release
-	 * build, we return 256KB as a default.
+	 * build, we return 1 MiB as a default.
 	 */
-	return 256 * 1024;
+	return 1024 * 1024;
 
 }
 
@@ -311,7 +311,8 @@ YBGetDatabaseOidFromEnv(const char *database_name)
 bool
 YBQueryDiagnosticsTestRaceCondition()
 {
-	static int cached_value = -1;
+	static int	cached_value = -1;
+
 	if (cached_value == -1)
 	{
 		cached_value = YBCIsEnvVarTrue("FLAGS_TEST_ysql_yb_query_diagnostics_race_condition");

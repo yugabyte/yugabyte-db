@@ -29,6 +29,7 @@ using namespace std::literals;
 DECLARE_int32(yb_client_admin_rpc_timeout_sec);
 DECLARE_int32(TEST_timeout_non_leader_master_rpcs_ms);
 DECLARE_bool(TEST_use_custom_varz);
+DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 
 namespace yb::pgwrapper {
 
@@ -39,10 +40,13 @@ class PgMasterFailoverTest : public PgMiniTestBase {
   void SetUp() override {
     // We need the following to be able to run yb-controller with internal mini cluster.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_use_custom_varz) = true;
+    // Bump up ysql lease ttl to avoid lease losses failing backups.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ysql_operation_lease_ttl_ms) = 60 * 1000;
     PgMiniTestBase::SetUp();
   }
   void ElectNewLeaderAfterShutdown();
   void TestNonRespondingMaster(WaitForTS wait_for_ts);
+
  public:
   size_t NumMasters() override {
     return 3;

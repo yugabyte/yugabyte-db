@@ -168,9 +168,15 @@ public class UniverseControllerRequestBinder {
           checkAndAddMapField(masterGFlagsNode, gflags -> cluster.userIntent.masterGFlags = gflags);
           checkAndAddMapField(
               tserverGFlagsNode, gflags -> cluster.userIntent.tserverGFlags = gflags);
-          checkAndAddMapField(instanceTagsNode, tags -> cluster.userIntent.instanceTags = tags);
+          checkAndAddMapField(
+              instanceTagsNode,
+              tags -> {
+                cluster.userIntent.instanceTags = tags;
+                userIntent.put("instanceTags", Json.toJson(tags));
+              });
           if (specificGFlags != null) {
             cluster.userIntent.specificGFlags = Json.fromJson(specificGFlags, SpecificGFlags.class);
+            userIntent.put("specificGFlags", specificGFlags);
           }
           if (userIntentOverrides != null) {
             cluster.userIntent.setUserIntentOverrides(

@@ -93,14 +93,14 @@ $node_primary->wait_for_catchup($node_standby_1, 'replay',
 command_ok(
 	[
 		'pg_dumpall', '-f', $outputdir . '/primary.dump',
-		'--no-sync',  '-p', $node_primary->port,
+		'--no-sync', '--no-statistics',  '-p', $node_primary->port,
 		'--no-unlogged-table-data'    # if unlogged, standby has schema only
 	],
 	'dump primary server');
 command_ok(
 	[
 		'pg_dumpall', '-f', $outputdir . '/standby.dump',
-		'--no-sync', '-p', $node_standby_1->port
+		'--no-sync', '--no-statistics', '-p', $node_standby_1->port
 	],
 	'dump standby server');
 command_ok(

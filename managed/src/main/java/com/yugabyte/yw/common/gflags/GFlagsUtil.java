@@ -43,9 +43,9 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.UpgradeDetails;
-import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
-import com.yugabyte.yw.models.helpers.audit.YCQLAuditConfig;
-import com.yugabyte.yw.models.helpers.audit.YSQLAuditConfig;
+import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.audit.YCQLAuditConfig;
+import com.yugabyte.yw.models.helpers.exporters.audit.YSQLAuditConfig;
 import java.io.IOException;
 import java.io.StringReader;
 import java.io.StringWriter;
@@ -1138,9 +1138,20 @@ public class GFlagsUtil {
     }
 
     if (userGFlags.containsKey(PSQL_PROXY_BIND_ADDRESS)) {
-      int ysqlPort = node.ysqlServerRpcPort;
+      // If user is changing the port during configure YSQL upgrade, need to use the new port.
+      int ysqlPort =
+          taskParams.overrideNodePorts
+              ? taskParams.communicationPorts.ysqlServerRpcPort
+              : node.ysqlServerRpcPort;
+      // If connection pooling is enabled, use internalYsqlServerRpcPort for PSQL_PROXY_BIND_ADDRESS
       if (taskParams.enableConnectionPooling) {
-        ysqlPort = node.internalYsqlServerRpcPort;
+        // If user is changing the port during configure YSQL upgrade,
+        // need to use the new internalYsqlServerRpcPort.
+        // This is required to ensure that the PSQL_PROXY_BIND_ADDRESS is set correctly
+        ysqlPort =
+            taskParams.overrideNodePorts
+                ? taskParams.communicationPorts.internalYsqlServerRpcPort
+                : node.internalYsqlServerRpcPort;
       }
       mergeHostAndPort(userGFlags, PSQL_PROXY_BIND_ADDRESS, ysqlPort);
     }
@@ -1459,7 +1470,7 @@ public class GFlagsUtil {
     try {
       URI uri = new URI(uriStr);
       if (uri.getPort() != port) {
-        LOG.info("Replacing port {} for {} in {}", uri.getPort(), addressKey, val);
+        LOG.info("Replacing port {} for {} in {} to {}.", uri.getPort(), addressKey, val, port);
         userGFlags.put(addressKey, String.format("%s:%s", uri.getHost(), port));
       }
     } catch (URISyntaxException ex) {
@@ -1882,5 +1893,17 @@ public class GFlagsUtil {
       throw new RuntimeException("Failed to parse CSV", e);
     }
     return DEFAULT_LOG_LINE_PREFIX;
+  }
+
+  public static boolean isYsqlAuthEnabled(Universe universe, NodeDetails node) {
+    Map<String, String> gflags =
+        GFlagsUtil.getGFlagsForNode(
+            node,
+            ServerType.TSERVER,
+            universe.getUniverseDetails().getPrimaryCluster(),
+            universe.getUniverseDetails().clusters);
+    return universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQLAuth
+        || (gflags.containsKey(YSQL_ENABLE_AUTH)
+            && gflags.get(YSQL_ENABLE_AUTH).equalsIgnoreCase("true"));
   }
 }

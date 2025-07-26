@@ -1,0 +1,5 @@
+comment = 'tests:  Created by pgrx'
+default_version = '1.0'
+module_pathname = '$libdir/pgrx_tests'
+relocatable = false
+superuser = false

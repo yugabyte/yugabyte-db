@@ -128,3 +128,26 @@ CREATE TRIGGER t1_gen_before_gen BEFORE UPDATE OF v1_v2_gen ON t1_gen FOR EACH R
 CREATE TRIGGER t1_gen_after_gen AFTER UPDATE OF v1_v2_gen ON t1_gen FOR EACH ROW EXECUTE FUNCTION zz_gen_col_notice('AFTER');
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v3 = v3 + 1 WHERE k = 10;
 SELECT * FROM t1_gen WHERE k > 7 ORDER BY k;
+
+-- Partitioned tables
+CREATE TABLE part (
+    amount NUMERIC,
+    double_amount NUMERIC GENERATED ALWAYS AS (amount * 2) STORED
+) partition by range(amount);
+
+CREATE TABLE part_1_100 partition of part for values from (1) to (100);
+CREATE TABLE part_2_200 partition of part for values from (101) to (200);
+INSERT INTO part VALUES (1), (101);
+INSERT INTO part_1_100 VALUES (2), (3);
+INSERT INTO part_2_200 VALUES (102), (103);
+SELECT * FROM part ORDER BY amount;
+SELECT * FROM part_1_100 ORDER BY amount;
+SELECT * FROM part_2_200 ORDER BY amount;
+
+ALTER TABLE part_1_100 ALTER COLUMN double_amount DROP EXPRESSION; -- error
+ALTER TABLE part ALTER COLUMN double_amount DROP EXPRESSION;
+\d part
+\d part_1_100
+\d part_2_200
+INSERT INTO part VALUES (4), (104);
+SELECT * FROM part ORDER BY amount;

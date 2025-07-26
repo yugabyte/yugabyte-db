@@ -61,6 +61,7 @@
 
 /* YB includes */
 #include "catalog/namespace.h"
+#include "commands/explain.h"
 #include "common/hashfn.h"
 #include "pg_yb_utils.h"
 #include "utils/catcache.h"
@@ -618,6 +619,7 @@ static bool yb_enable_internal_hint_test = false;
 static bool yb_internal_hint_test_fail = false;
 static bool yb_use_generated_hints_for_plan = false;
 static bool yb_use_query_id_for_hinting = false;
+static bool yb_enable_hint_table_cache = true;
 
 static int plpgsql_recurse_level = 0;		/* PLpgSQL recursion level            */
 static int recurse_level = 0;		/* recursion level incl. direct SPI calls */
@@ -761,7 +763,8 @@ _PG_init(void)
 {
 	PLpgSQL_plugin	**var_ptr;
 
-	CacheRegisterRelcacheCallback(YbInvalidateHintCacheCallback, (Datum) 0);
+	if (yb_enable_hint_table_cache)
+		CacheRegisterRelcacheCallback(YbInvalidateHintCacheCallback, (Datum) 0);
 
 	/* Define custom GUC variables. */
 	DefineCustomBoolVariable("pg_hint_plan.enable_hint",
@@ -884,6 +887,17 @@ _PG_init(void)
 							&yb_use_query_id_for_hinting,
 							false,
 							PGC_USERSET,
+							0,
+							NULL,
+							NULL,
+							NULL);
+
+	DefineCustomBoolVariable("pg_hint_plan.yb_enable_hint_table_cache",
+							"Enables per-session caching for the hint table.",
+							NULL,
+							&yb_enable_hint_table_cache,
+							true,
+							PGC_BACKEND,
 							0,
 							NULL,
 							NULL,
@@ -2111,7 +2125,7 @@ get_hints_from_table(const char *client_query, const char *client_application)
 	text   *qry;
 	text   *app;
 
-	if (IsYugaByteEnabled())
+	if (IsYugaByteEnabled() && yb_enable_hint_table_cache)
 	{
 		bool found;
 		elog(DEBUG5, "Looking up hints cache for query: %s, application: '%s'", client_query, client_application);
@@ -3473,8 +3487,9 @@ pg_hint_plan_planner(Query *parse, const char *query_string, int cursorOptions, 
 	if (IsYugaByteEnabled() && yb_enable_planner_trace)
 	{
 		ereport(DEBUG1,
-				(errmsg("\n++ BEGIN pg_hint_plan_planner\n        query: %s",
-						query_string)));
+				(errmsg("\n++ BEGIN pg_hint_plan_planner\n        query: %s\n"
+					    "        query id: %lu",
+						query_string, parse->queryId)));
 	}
 
 	/*
@@ -3922,6 +3937,26 @@ ybAliasForHinting(List *aliasMapping, RelOptInfo *rel, RangeTblEntry *rte)
 	return aliasForHint;
 }
 
+static char *
+yb_get_rel_name(Oid relid)
+{
+	char	   *relname = NULL;
+
+	if (explain_get_index_name_hook)
+	{
+		char	   *tmp_relname = (char*) (*explain_get_index_name_hook) (relid);
+		if (tmp_relname)
+		{
+			relname = pstrdup(tmp_relname);
+		}
+	}
+
+	if (relname == NULL)
+		relname = get_rel_name(relid);
+
+	return relname;
+}
+
 /*
  * Find scan method hint to be applied to the given relation
  *
@@ -3983,7 +4018,7 @@ find_scan_hint(PlannerInfo *root, Index relid)
 		if (!real_name_hint &&
 			rel && rel->reloptkind == RELOPT_OTHER_MEMBER_REL)
 		{
-			char *realname = get_rel_name(rte->relid);
+			char *realname = yb_get_rel_name(rte->relid);
 
 			if (realname && RelnameCmp(&realname, &hint->relname) == 0)
 				real_name_hint = hint;
@@ -4054,7 +4089,7 @@ find_parallel_hint(PlannerInfo *root, Index relid)
 		if (!real_name_hint &&
 			rel && rel->reloptkind == RELOPT_OTHER_MEMBER_REL)
 		{
-			char *realname = get_rel_name(rte->relid);
+			char *realname = yb_get_rel_name(rte->relid);
 
 			if (realname && RelnameCmp(&realname, &hint->relname) == 0)
 				real_name_hint = hint;
@@ -4156,7 +4191,7 @@ restrict_indexes(PlannerInfo *root, ScanMethodHint *hint, RelOptInfo *rel,
 	foreach (cell, rel->indexlist)
 	{
 		IndexOptInfo   *info = (IndexOptInfo *) lfirst(cell);
-		char		   *indexname = get_rel_name(info->indexoid);
+		char		   *indexname = yb_get_rel_name(info->indexoid);
 		ListCell	   *l;
 		bool			use_index = false;
 
@@ -4388,7 +4423,7 @@ restrict_indexes(PlannerInfo *root, ScanMethodHint *hint, RelOptInfo *rel,
 		 * child. Otherwise use hint specification.
 		 */
 		if (using_parent_hint)
-			disprelname = get_rel_name(rte->relid);
+			disprelname = yb_get_rel_name(rte->relid);
 		else
 			disprelname = hint->relname;
 
@@ -4551,7 +4586,7 @@ setup_hint_enforcement(PlannerInfo *root, RelOptInfo *rel,
 							 " skipping inh parent: relation=%u(%s), inhparent=%d,"
 							 " current_hint_state=%p, hint_inhibit_level=%d",
 							 qnostr, relationObjectId,
-							 get_rel_name(relationObjectId),
+							 yb_get_rel_name(relationObjectId),
 							 inhparent, current_hint_state, hint_inhibit_level)));
 		return 0;
 	}
@@ -4608,7 +4643,7 @@ setup_hint_enforcement(PlannerInfo *root, RelOptInfo *rel,
 				foreach(l, RelationGetIndexList(parent_rel))
 				{
 					Oid         indexoid = lfirst_oid(l);
-					char       *indexname = get_rel_name(indexoid);
+					char       *indexname = yb_get_rel_name(indexoid);
 					ListCell   *lc;
 					ParentIndexInfo *parent_index_info;
 
@@ -4672,7 +4707,7 @@ setup_hint_enforcement(PlannerInfo *root, RelOptInfo *rel,
 							 " hint_inhibit_level=%d, scanmask=0x%x",
 							 qnostr, additional_message,
 							 relationObjectId,
-							 get_rel_name(relationObjectId),
+							 yb_get_rel_name(relationObjectId),
 							 inhparent, current_hint_state,
 							 hint_inhibit_level,
 							 shint->enforce_mask)));
@@ -4700,7 +4735,7 @@ setup_hint_enforcement(PlannerInfo *root, RelOptInfo *rel,
 							 " relation=%u(%s), inhparent=%d, current_hint=%p,"
 							 " hint_inhibit_level=%d, scanmask=0x%x",
 							 qnostr, relationObjectId,
-							 get_rel_name(relationObjectId),
+							 yb_get_rel_name(relationObjectId),
 							 inhparent, current_hint_state, hint_inhibit_level,
 							 current_hint_state->init_scan_mask)));
 
@@ -6187,7 +6222,7 @@ ybCheckBadIndexHintExists(PlannerInfo *root, RelOptInfo *rel)
 				foreach(lc1, rel->indexlist)
 				{
 					IndexOptInfo *index = (IndexOptInfo *) lfirst(lc1);
-					char *indexName = get_rel_name(index->indexoid);
+					char *indexName = yb_get_rel_name(index->indexoid);
 
 					if (RelnameCmp(&indexName, &hintIndexName) == 0)
 					{
@@ -6794,6 +6829,12 @@ PG_FUNCTION_INFO_V1(yb_hint_plan_cache_invalidate);
 Datum
 yb_hint_plan_cache_invalidate(PG_FUNCTION_ARGS)
 {
+	if (!yb_enable_hint_table_cache)
+	{
+		elog(DEBUG3, "Hint cache is disabled, skipping cache invalidation");
+		PG_RETURN_DATUM(PointerGetDatum(NULL));
+	}
+
 	if (!CALLED_AS_TRIGGER(fcinfo))
 	{
 		ereport(ERROR, (errcode(ERRCODE_E_R_I_E_TRIGGER_PROTOCOL_VIOLATED),

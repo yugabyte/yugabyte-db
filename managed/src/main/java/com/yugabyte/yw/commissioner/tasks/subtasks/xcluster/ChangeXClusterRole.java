@@ -91,9 +91,7 @@ public class ChangeXClusterRole extends XClusterConfigTaskBase {
       throw new IllegalArgumentException("No role change is requested");
     }
 
-    String universeMasterAddresses = universe.getMasterAddresses();
-    String universeCertificate = universe.getCertificateNodetoNode();
-    try (YBClient client = ybService.getClient(universeMasterAddresses, universeCertificate)) {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       // Sync roles in YBA with YBDB.
       GetMasterClusterConfigResponse clusterConfigResp = client.getMasterClusterConfig();
       XClusterRole currentXClusterRole =

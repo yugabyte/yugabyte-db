@@ -113,7 +113,6 @@ class MockQueue : public PeerMessageQueue {
   MOCK_METHOD3(AppendOperationsMock, Status(const ReplicateMsgs& msgs,
                                             const yb::OpId& committed_op_id,
                                             RestartSafeCoarseTimePoint time));
-  MOCK_METHOD1(TrackPeer, void(const string&));
   MOCK_METHOD1(UntrackPeer, void(const string&));
   MOCK_METHOD6(RequestForPeer, Status(const std::string& uuid,
                                       LWConsensusRequestPB* request,

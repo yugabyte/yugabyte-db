@@ -1,0 +1,6 @@
+{% if sudoers_commands is defined and sudoers_commands | trim != '' %}
+sudoers_file="/etc/sudoers.d/{{yb_user}}"
+echo "Adding commands $sudoers_commands to $sudoers_file"
+echo "{{yb_user}} ALL=(ALL:ALL) NOPASSWD: {{sudoers_commands}}" | tee "$sudoers_file"
+visudo -cf "$sudoers_file"
+{% endif %}

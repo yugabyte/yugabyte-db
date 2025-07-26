@@ -24,9 +24,9 @@ The following examples demonstrate how YugabyteDB transactions survive common fa
 
 For more information on how YugabyteDB handles failures and its impact during transaction processing, refer to [Impact of failures](../../../architecture/transactions/distributed-txns/#impact-of-failures).
 
-## Prerequisites
+## Setup
 
-1. Follow the [setup instructions](../../#set-up-yugabytedb-universe) to start a local single region three-node universe. This creates a single region cluster with nodes in 3 different zones as shown in the following illustration:
+1. Follow the [setup instructions](../../cluster-setup-local/) to start a local single region three-node universe. This creates a single region cluster with nodes in 3 different zones as shown in the following illustration:
 
     ![Local three node cluster](/images/explore/local_cluster_setup.svg)
 

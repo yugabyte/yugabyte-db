@@ -16,3 +16,8 @@ properties:
     format: password
     example: password
     writeOnly: true
+  enable_connection_pooling:
+    description: Use built-in YSQL service for maximizing the number of simultaneous connections to database.
+    type: boolean
+    example: true
+    default: false

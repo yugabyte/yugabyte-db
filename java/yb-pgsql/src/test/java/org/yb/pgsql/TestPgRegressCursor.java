@@ -132,7 +132,6 @@ public class TestPgRegressCursor extends BasePgRegressTest {
 
   @Test
   public void testPgRegressCursorLowPrefetching() throws Exception {
-    markClusterNeedsRecreation();
     restartClusterWithFlags(
         Collections.emptyMap(), Collections.singletonMap("ysql_prefetch_limit", "1"));
     runPgRegressTest("yb_cursor_low_prefetching_schedule");

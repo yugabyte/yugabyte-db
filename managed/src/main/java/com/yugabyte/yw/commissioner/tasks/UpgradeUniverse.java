@@ -86,8 +86,8 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
 
   public static class Params extends UpgradeParams {}
 
-  private Map<UUID, List<String>> replacementRootVolumes = new ConcurrentHashMap<>();
-  private Map<UUID, String> replacementRootDevices = new ConcurrentHashMap<>();
+  private final Map<UUID, Map<String, String>> replacementRootVolumes = new ConcurrentHashMap<>();
+  private final Map<UUID, String> replacementRootDevices = new ConcurrentHashMap<>();
   private Map<UUID, UUID> nodeToRegion = new HashMap<>();
 
   @Override
@@ -429,7 +429,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     replaceParams.nodeName = node.nodeName;
     replaceParams.azUuid = node.azUuid;
     replaceParams.setUniverseUUID(taskParams().getUniverseUUID());
-    replaceParams.bootDisksPerZone = this.replacementRootVolumes;
+    replaceParams.bootDisksPerNodePerZone = this.replacementRootVolumes;
     replaceParams.rootDevicePerZone = this.replacementRootDevices;
 
     ReplaceRootVolume replaceDiskTask = createTask(ReplaceRootVolume.class);
@@ -470,7 +470,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
               fillCreateParamsForNode(params, userIntent, node);
               params.numVolumes = numVolumes;
               params.setMachineImage(machineImage);
-              params.bootDisksPerZone = replacementRootVolumes;
+              params.bootDisksPerNodePerZone = replacementRootVolumes;
               params.rootDevicePerZone = replacementRootDevices;
 
               log.info(

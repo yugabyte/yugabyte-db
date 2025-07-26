@@ -4,6 +4,8 @@
 
 -- Force generic plans to be used for all prepared statements in this file.
 set plan_cache_mode = force_generic_plan;
+-- YB: explicitly set enable_partitionwise_aggregate to original pg default.
+SET enable_partitionwise_aggregate to false;
 
 create table lp (a char) partition by list (a);
 create table lp_default partition of lp default;

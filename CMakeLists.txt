@@ -291,7 +291,10 @@ else()
   message("CMake will not export the compilation database")
 endif()
 
-if(NOT "${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "aarch64")
+# DocumentDB extension is not available in aarch64 and arm64(#26954) builds.
+# (#26948): Builds like those on ubuntu22.04 do not have libpcre2, which this extension depends on.
+find_library(PCRE2_LIB libpcre2-posix.so)
+if(PCRE2_LIB AND NOT APPLE AND NOT "${CMAKE_SYSTEM_PROCESSOR}" MATCHES "^(aarch64|arm64)$" )
   set(YB_ENABLE_YSQL_DOCUMENTDB_EXT TRUE)
   ADD_CXX_FLAGS("-DYB_ENABLE_YSQL_DOCUMENTDB_EXT")
 endif()
@@ -366,7 +369,6 @@ ADD_CXX_FLAGS("-Werror=return-type")
 ADD_CXX_FLAGS("-Werror=non-virtual-dtor")
 
 if(IS_CLANG)
-  ADD_CXX_FLAGS("-ftime-trace")
   ADD_CXX_FLAGS("-Werror=string-plus-int")
   ADD_CXX_FLAGS("-Werror=return-stack-address")
   ADD_CXX_FLAGS("-Werror=implicit-fallthrough")
@@ -880,6 +882,7 @@ add_postgres_shared_library(pq "${LIBPQ_SHARED_LIB}")
 add_postgres_shared_library(yb_pgbackend "${YB_PGBACKEND_SHARED_LIB}")
 
 set(YB_SUBDIR_NAMES
+    ann_methods
     ash
     bfcommon
     bfpg
@@ -894,6 +897,7 @@ set(YB_SUBDIR_NAMES
     fs
     gen_yrpc
     gutil
+    hnsw
     integration-tests
     master
     qlexpr

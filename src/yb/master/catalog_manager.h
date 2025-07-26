@@ -206,7 +206,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
  public:
   explicit CatalogManager(Master *master, SysCatalogTable* sys_catalog);
-  virtual ~CatalogManager();
+  ~CatalogManager() override;
 
   Status Init();
 
@@ -518,6 +518,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       REQUIRES_SHARED(ddl_txn_verifier_mutex_);
   void UpdateDdlVerificationState(const TransactionId& txn, YsqlDdlVerificationState state);
 
+  bool HasDdlVerificationState(const TransactionId& txn) const EXCLUDES(ddl_txn_verifier_mutex_);
   void RemoveDdlTransactionStateUnlocked(
       const TableId& table_id, const std::vector<TransactionId>& txn_ids)
       REQUIRES(ddl_txn_verifier_mutex_);
@@ -740,6 +741,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status GetFullUniverseKeyRegistry(const GetFullUniverseKeyRegistryRequestPB* req,
                                     GetFullUniverseKeyRegistryResponsePB* resp);
 
+  Status GetObjectLockStatus(
+      const GetObjectLockStatusRequestPB* req, GetObjectLockStatusResponsePB* resp);
+
   Status UpdateCDCProducerOnTabletSplit(
       const TableId& producer_table_id, const SplitTabletIds& split_tablet_ids) override;
 
@@ -750,6 +754,16 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status ReVerifyChildrenEntriesOnTabletSplit(
       const TableId& producer_table_id, const std::vector<cdc::CDCStateTableEntry>& entries,
       const std::unordered_set<xrepl::StreamId>& cdcsdk_stream_ids);
+
+  // Advance OID counters as needed to ensure future OID allocations do not run into trouble.
+  //
+  // After this function returns, the following will hold:
+  //   * All the in-use OIDs that xCluster needs to preserve are below the associated OID counter.
+  //   * There are no DocDB hidden tables whose OIDs are at or above the associated OID counter.
+  //
+  // Remember that OIDs are cached at TServers so you may want to use InvalidateTserverOidCaches()
+  // after calling this function.
+  Status AdvanceOidCounters(const NamespaceId& namespace_id);
 
   // Invalidate all the TServer OID caches in this universe.  After this returns, each TServer cache
   // will be effectively invalidated when that TServer receives a heartbeat response from master.
@@ -796,7 +810,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   XClusterManager* GetXClusterManagerImpl() override { return xcluster_manager_.get(); }
 
   YsqlManagerIf& GetYsqlManager();
-  YsqlManager& GetYsqlManagerImpl() { return *ysql_manager_.get(); }
+  YsqlManager& GetYsqlManagerImpl() { return *DCHECK_NOTNULL(ysql_manager_.get()); }
 
   // Dump all of the current state about tables and tablets to the
   // given output stream. This is verbose, meant for debugging.
@@ -1052,9 +1066,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Result<TableDescription> DescribeTable(
       const TableInfoPtr& table_info, bool succeed_if_create_in_progress);
-
-  Result<std::string> GetPgSchemaName(
-      const TableId& table_id, const PersistentTableInfo& table_info);
 
   Result<std::unordered_map<std::string, uint32_t>> GetPgAttNameTypidMap(
       const TableId& table_id, const PersistentTableInfo& table_info);
@@ -2222,7 +2233,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // issuing a DeleteTablet call to tservers. It is possible in the case of corrupted sys catalog or
   // tservers heartbeating into wrong clusters that live data is considered to be orphaned. So make
   // sure that the tablet was explicitly deleted before deleting any on-disk data from tservers.
-  std::unordered_set<TabletId> deleted_tablets_loaded_from_sys_catalog_ GUARDED_BY(mutex_);
+  std::unordered_set<TabletId> deleted_tablets_ GUARDED_BY(mutex_);
 
   // Split parent tablets that are now hidden and still being replicated by some CDC stream. Keep
   // track of these tablets until their children tablets start being polled, at which point they
@@ -2417,6 +2428,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
     int num_tablets, const ReplicationInfoPB& replication_info,
     const TSDescriptorVector& ts_descs);
 
+  Status CDCSDKValidateCreateTableRequest(const CreateTableRequestPB& req);
+
  private:
   friend class yb::master::ClusterLoadBalancer;
   friend class CDCStreamLoader;
@@ -2593,7 +2606,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const NamespaceMap& namespace_map, const UDTypeMap& type_map,
       const ExternalTableSnapshotDataMap& tables_data, const LeaderEpoch& epoch);
 
-  Status RepackSnapshotsForBackup(ListSnapshotsResponsePB* resp);
+  Status RepackSnapshotsForBackup(
+      ListSnapshotsResponsePB* resp, bool include_ddl_in_progress_tables);
 
   // Helper function for ImportTableEntry.
   Result<bool> CheckTableForImport(

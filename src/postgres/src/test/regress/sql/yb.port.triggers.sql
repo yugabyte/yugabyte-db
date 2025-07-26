@@ -1219,6 +1219,33 @@ drop function self_ref_trigger_ins_func();
 drop function self_ref_trigger_del_func();
 
 --
+-- Check that statement triggers work correctly even with all children excluded
+--
+
+create table stmt_trig_on_empty_upd (a int);
+create table stmt_trig_on_empty_upd1 () inherits (stmt_trig_on_empty_upd);
+create function update_stmt_notice() returns trigger as $$
+begin
+	raise notice 'updating %', TG_TABLE_NAME;
+	return null;
+end;
+$$ language plpgsql;
+create trigger before_stmt_trigger
+	before update on stmt_trig_on_empty_upd
+	execute procedure update_stmt_notice();
+create trigger before_stmt_trigger
+	before update on stmt_trig_on_empty_upd1
+	execute procedure update_stmt_notice();
+
+-- inherited no-op update
+update stmt_trig_on_empty_upd set a = a where false returning a+1 as aa;
+-- simple no-op update
+update stmt_trig_on_empty_upd1 set a = a where false returning a+1 as aa;
+
+drop table stmt_trig_on_empty_upd cascade;
+drop function update_stmt_notice();
+
+--
 -- Check that index creation (or DDL in general) is prohibited in a trigger
 --
 
@@ -1743,7 +1770,70 @@ select tgrelid::regclass, count(*) from pg_trigger
 */
 drop table trg_clone;
 
--- Verify that firing state propagates correctly
+-- Test the interaction between ALTER TABLE .. DISABLE TRIGGER and
+-- both kinds of inheritance.  Historically, legacy inheritance has
+-- not recursed to children, so that behavior is preserved.
+create table parent (a int);
+create table child1 () inherits (parent);
+create function trig_nothing() returns trigger language plpgsql
+  as $$ begin return null; end $$;
+create trigger tg after insert on parent
+  for each row execute function trig_nothing();
+create trigger tg after insert on child1
+  for each row execute function trig_nothing();
+alter table parent disable trigger tg;
+select tgrelid::regclass, tgname, tgenabled from pg_trigger
+  where tgrelid in ('parent'::regclass, 'child1'::regclass)
+  order by tgrelid::regclass::text;
+alter table only parent enable always trigger tg;
+select tgrelid::regclass, tgname, tgenabled from pg_trigger
+  where tgrelid in ('parent'::regclass, 'child1'::regclass)
+  order by tgrelid::regclass::text;
+drop table parent, child1;
+
+create table parent (a int) partition by list (a);
+create table child1 partition of parent for values in (1);
+create trigger tg after insert on parent
+  for each row execute procedure trig_nothing();
+create trigger tg_stmt after insert on parent
+  for statement execute procedure trig_nothing();
+select tgrelid::regclass, tgname, tgenabled from pg_trigger
+  where tgrelid in ('parent'::regclass, 'child1'::regclass)
+  order by tgrelid::regclass::text, tgname;
+alter table only parent enable always trigger tg;	-- no recursion because ONLY
+alter table parent enable always trigger tg_stmt;	-- no recursion because statement trigger
+select tgrelid::regclass, tgname, tgenabled from pg_trigger
+  where tgrelid in ('parent'::regclass, 'child1'::regclass)
+  order by tgrelid::regclass::text, tgname;
+-- The following is a no-op for the parent trigger but not so
+-- for the child trigger, so recursion should be applied.
+alter table parent enable always trigger tg;
+select tgrelid::regclass, tgname, tgenabled from pg_trigger
+  where tgrelid in ('parent'::regclass, 'child1'::regclass)
+  order by tgrelid::regclass::text, tgname;
+-- This variant malfunctioned in some releases.
+alter table parent disable trigger user;
+select tgrelid::regclass, tgname, tgenabled from pg_trigger
+  where tgrelid in ('parent'::regclass, 'child1'::regclass)
+  order by tgrelid::regclass::text, tgname;
+drop table parent, child1;
+
+-- Check processing of foreign key triggers
+create table parent (a int primary key, f int references parent)
+  partition by list (a);
+create table child1 partition of parent for values in (1);
+select tgrelid::regclass, rtrim(tgname, '0123456789') as tgname,
+  tgfoid::regproc, tgenabled
+  from pg_trigger where tgrelid in ('parent'::regclass, 'child1'::regclass)
+  order by tgrelid::regclass::text, tgfoid;
+alter table parent disable trigger all;
+select tgrelid::regclass, rtrim(tgname, '0123456789') as tgname,
+  tgfoid::regproc, tgenabled
+  from pg_trigger where tgrelid in ('parent'::regclass, 'child1'::regclass)
+  order by tgrelid::regclass::text, tgfoid;
+drop table parent, child1;
+
+-- Verify that firing state propagates correctly on creation, too
 CREATE TABLE trgfire (i int) PARTITION BY RANGE (i);
 CREATE TABLE trgfire1 PARTITION OF trgfire FOR VALUES FROM (1) TO (10);
 CREATE OR REPLACE FUNCTION tgf() RETURNS trigger LANGUAGE plpgsql
@@ -1836,7 +1926,7 @@ alter table parent attach partition child3 for values in ('CCC');
 create trigger parent_insert_trig
   after insert on parent referencing new table as new_table
   for each statement execute procedure dump_insert();
-/*
+/* YB: Transition tables (REFERENCING clause) are not supported
 create trigger parent_update_trig
   after update on parent referencing old table as old_table new table as new_table
   for each statement execute procedure dump_update();
@@ -2121,9 +2211,9 @@ alter table child inherit parent;
 -- drop the trigger, and now we're allowed to make it inherit again
 drop trigger child_row_trig on child;
 alter table child inherit parent;
-
-drop table child, parent;
 */
+drop table parent; -- YB: child table was commented out above
+
 
 --
 -- Verify behavior of queries with wCTEs, where multiple transition
@@ -2447,3 +2537,49 @@ create table trigger_parted_p2 partition of trigger_parted for values in (2)
 create table trigger_parted_p2_2 partition of trigger_parted_p2 for values in (2);
 alter table only trigger_parted_p2 disable trigger aft_row;
 alter table trigger_parted_p2_2 enable always trigger aft_row;
+-- Test trigger renaming on partitioned tables
+create table grandparent (id int, primary key (id)) partition by range (id);
+create table middle partition of grandparent for values from (1) to (10)
+partition by range (id);
+create table chi partition of middle for values from (1) to (5);
+create table cho partition of middle for values from (6) to (10);
+create function f () returns trigger as
+$$ begin return new; end; $$
+language plpgsql;
+create trigger a after insert on grandparent
+for each row execute procedure f();
+
+alter trigger a on grandparent rename to b;
+select tgrelid::regclass, tgname,
+(select tgname from pg_trigger tr where tr.oid = pg_trigger.tgparentid) parent_tgname
+from pg_trigger where tgrelid in (select relid from pg_partition_tree('grandparent'))
+order by tgname, tgrelid::regclass::text COLLATE "C";
+alter trigger a on only grandparent rename to b;	-- ONLY not supported
+alter trigger b on middle rename to c;	-- can't rename trigger on partition
+create trigger c after insert on middle
+for each row execute procedure f();
+alter trigger b on grandparent rename to c;
+
+-- Rename cascading does not affect statement triggers
+create trigger p after insert on grandparent for each statement execute function f();
+create trigger p after insert on middle for each statement execute function f();
+alter trigger p on grandparent rename to q;
+select tgrelid::regclass, tgname,
+(select tgname from pg_trigger tr where tr.oid = pg_trigger.tgparentid) parent_tgname
+from pg_trigger where tgrelid in (select relid from pg_partition_tree('grandparent'))
+order by tgname, tgrelid::regclass::text COLLATE "C";
+
+drop table grandparent;
+
+-- Trigger renaming does not recurse on legacy inheritance
+create table parent (a int);
+create table child () inherits (parent);
+create trigger parenttrig after insert on parent
+for each row execute procedure f();
+create trigger parenttrig after insert on child
+for each row execute procedure f();
+alter trigger parenttrig on parent rename to anothertrig;
+\d+ child
+
+drop table parent, child;
+drop function f();

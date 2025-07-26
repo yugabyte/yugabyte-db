@@ -58,7 +58,7 @@ public class TestPgDdlConcurrency extends BasePgSQLTest {
     final long startTimeMs = System.currentTimeMillis();
     String enable_invalidation_messages = miniCluster.getClient().getFlag(
           miniCluster.getTabletServers().keySet().iterator().next(),
-          "TEST_yb_enable_invalidation_messages");
+          "ysql_yb_enable_invalidation_messages");
     LOG.info("enable_invalidation_messages: " + enable_invalidation_messages);
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE TABLE t(k INT PRIMARY KEY, v1 INT DEFAULT 10, v2 INT DEFAULT 20)");
@@ -87,7 +87,6 @@ public class TestPgDdlConcurrency extends BasePgSQLTest {
           }
         } catch (SQLException e) {
           final String msg = e.getMessage();
-          LOG.error("Unexpected exception", e);
           if (msg.matches(".*tables can have at most \\d+ columns.*") &&
               enable_invalidation_messages.equals("true")) {
             // With incremental catalog cache refresh, it is not easy to hit one of the
@@ -98,6 +97,7 @@ public class TestPgDdlConcurrency extends BasePgSQLTest {
             assertTrue(!BuildTypeUtil.isSanitizerBuild());
             expectedExceptionsCount.incrementAndGet();
           } else {
+            LOG.error("Unexpected exception", e);
             errorsDetected.set(true);
           }
           return;

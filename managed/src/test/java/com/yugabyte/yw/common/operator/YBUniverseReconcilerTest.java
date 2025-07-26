@@ -16,6 +16,7 @@ import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
@@ -419,6 +420,10 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
         ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
     Universe oldUniverse = Universe.create(taskParams, defaultCustomer.getId());
 
+    Mockito.when(
+            confGetter.getConfForScope(
+                any(Universe.class), eq(UniverseConfKeys.rollingOpsWaitAfterEachPodMs)))
+        .thenReturn(10000);
     // Update spec
     ybUniverse.getSpec().getDeviceInfo().setVolumeSize(20L);
     KubernetesOverrides ko = new KubernetesOverrides();

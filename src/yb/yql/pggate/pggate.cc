@@ -52,6 +52,7 @@
 #include "yb/util/range.h"
 #include "yb/util/status_format.h"
 #include "yb/util/thread.h"
+#include "yb/util/scope_exit.h"
 
 #include "yb/yql/pggate/pg_column.h"
 #include "yb/yql/pggate/pg_ddl.h"
@@ -412,6 +413,16 @@ Result<bool> RetrieveYbctidsImpl(
     }
   }
   return true;
+}
+
+[[nodiscard]] auto UpdateCatalogReadTime(PgSession& session, const ReadHybridTime& read_time) {
+  DCHECK(read_time);
+  const auto current_catalog_read_time = session.catalog_read_time();
+  session.TrySetCatalogReadPoint(read_time);
+  return MakeOptionalScopeExit(
+      [&session, current_catalog_read_time] {
+        session.TrySetCatalogReadPoint(current_catalog_read_time);
+      });
 }
 
 } // namespace
@@ -993,9 +1004,8 @@ Status PgApiImpl::AlterTableSetReplicaIdentity(PgStatement* handle, char identit
   return VERIFY_RESULT_REF(GetStatementAs<PgAlterTable>(handle)).SetReplicaIdentity(identity_type);
 }
 
-Status PgApiImpl::AlterTableRenameTable(
-    PgStatement* handle, const char* db_name, const char* newname) {
-  return VERIFY_RESULT_REF(GetStatementAs<PgAlterTable>(handle)).RenameTable(db_name, newname);
+Status PgApiImpl::AlterTableRenameTable(PgStatement* handle, const char* newname) {
+  return VERIFY_RESULT_REF(GetStatementAs<PgAlterTable>(handle)).RenameTable(newname);
 }
 
 Status PgApiImpl::AlterTableIncrementSchemaVersion(PgStatement* handle) {
@@ -1549,13 +1559,13 @@ Status PgApiImpl::FetchRequestedYbctids(
 }
 
 Status PgApiImpl::BindYbctids(PgStatement* handle, int n, uintptr_t* ybctids) {
-  std::vector<Slice> ybctid_slice;
-  ybctid_slice.reserve(n);
-  for (int i = 0; i < n; i++)
-    ybctid_slice.push_back(YbctidAsSlice(pg_types(), ybctids[i]));
-
-  auto& select = VERIFY_RESULT_REF(GetStatementAs<PgSelect>(handle));
-  select.SetHoldingRequestedYbctids(ybctid_slice);
+  const auto sz = yb::make_unsigned(n);
+  const auto ybctids_span = std::span{ybctids, sz};
+  VERIFY_RESULT_REF(GetStatementAs<PgSelect>(handle)).SetRequestedYbctids(
+      {
+        make_lw_function([this, i = ybctids_span.begin(), end = ybctids_span.end()] mutable {
+          return i != end ? YbctidAsSlice(pg_types_, *i++) : Slice();
+        }), sz});
   return Status::OK();
 }
 
@@ -1573,17 +1583,21 @@ Status PgApiImpl::DmlHnswSetReadOptions(PgStatement* handle, int ef_search) {
 
 Status PgApiImpl::ExecSelect(PgStatement* handle, const YbcPgExecParameters* exec_params) {
   auto& select = VERIFY_RESULT_REF(GetStatementAs<PgSelect>(handle));
-  if (pg_sys_table_prefetcher_ && select.IsReadFromYsqlCatalog() && select.read_req()) {
+  auto* read_req = select.read_req();
+  if (pg_sys_table_prefetcher_ && select.IsReadFromYsqlCatalog() && read_req) {
     // In case of sys tables prefetching is enabled all reads from sys table must use cached data.
-    auto data = pg_sys_table_prefetcher_->GetData(
-        *select.read_req(), select.IsIndexOrderedScan());
-    if (!data) {
-      // LOG(DFATAL) is used instead of SCHECK to let user on release build proceed by reading
-      // data from a master in a non efficient way (by using separate RPC).
-      LOG(DFATAL) << "Data was not prefetched for request "
-                  << select.read_req()->ShortDebugString();
+    auto data = pg_sys_table_prefetcher_->GetData(*read_req, select.IsIndexOrderedScan());
+    if (std::holds_alternative<PrefetchedDataHolder>(data)) {
+      select.UpgradeDocOp(MakeDocReadOpWithData(
+          pg_session_, std::move(std::get<PrefetchedDataHolder>(data))));
     } else {
-      select.UpgradeDocOp(MakeDocReadOpWithData(pg_session_, std::move(data)));
+      LOG(WARNING) << "Data was not prefetched for table " << read_req->table_id();
+      VLOG(5) << "Non prefetched request is: " << read_req->ShortDebugString();
+      DCHECK(std::holds_alternative<MissedPrefetchedDataAlternativeReadTime>(data));
+      const auto& alternative_read_time = std::get<MissedPrefetchedDataAlternativeReadTime>(data);
+      auto catalog_read_time_guard = alternative_read_time
+          ? UpdateCatalogReadTime(*pg_session_, *alternative_read_time) : std::nullopt;
+      return select.Exec(exec_params);
     }
   }
   return select.Exec(exec_params);
@@ -1798,13 +1812,14 @@ Result<bool> PgApiImpl::CatalogVersionTableInPerdbMode() {
     // heartbeat response from yb-master that has set a value in
     // catalog_version_table_in_perdb_mode_ in the shared memory object
     // yet. Let's wait with 500ms interval until a value is set or until
-    // a 10-second timeout.
+    // a 20-second timeout.
     auto status = LoggedWaitFor(
         [this]() -> Result<bool> {
           return tserver_shared_object_->catalog_version_table_in_perdb_mode().has_value();
         },
-        10s /* timeout */,
-        "catalog_version_table_in_perdb_mode is not set in shared memory",
+        20s /* timeout */,
+        "catalog_version_table mode not set in shared memory, "
+        "tserver not ready to serve requests",
         500ms /* initial_delay */,
         1.0 /* delay_multiplier */);
     RETURN_NOT_OK_PREPEND(
@@ -1819,6 +1834,18 @@ PgApiImpl::GetTserverCatalogMessageLists(
     uint32_t db_oid, uint64_t ysql_catalog_version, uint32_t num_catalog_versions) {
   return pg_client_.GetTserverCatalogMessageLists(
       db_oid, ysql_catalog_version, num_catalog_versions);
+}
+
+Result<tserver::PgSetTserverCatalogMessageListResponsePB>
+PgApiImpl::SetTserverCatalogMessageList(
+    uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
+    const YbcCatalogMessageList *message_list) {
+  std::optional<std::string> messages;
+  if (message_list->message_list) {
+    messages.emplace(message_list->message_list, message_list->num_bytes);
+  }
+  return pg_client_.SetTserverCatalogMessageList(
+      db_oid, is_breaking_change, new_catalog_version, messages);
 }
 
 uint64_t PgApiImpl::GetSharedAuthKey() const {
@@ -1927,19 +1954,19 @@ Status PgApiImpl::SetReadOnlyStmt(bool read_only_stmt) {
 }
 
 Status PgApiImpl::SetDdlStateInPlainTransaction() {
-  pg_session_->ResetHasWriteOperationsInDdlMode();
+  pg_session_->ResetHasCatalogWriteOperationsInDdlMode();
   return pg_txn_manager_->SetDdlStateInPlainTransaction();
 }
 
 Status PgApiImpl::EnterSeparateDdlTxnMode() {
   // Flush all buffered operations as ddl txn use its own transaction session.
   RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
-  pg_session_->ResetHasWriteOperationsInDdlMode();
+  pg_session_->ResetHasCatalogWriteOperationsInDdlMode();
   return pg_txn_manager_->EnterSeparateDdlTxnMode();
 }
 
 bool PgApiImpl::HasWriteOperationsInDdlTxnMode() const {
-  return pg_session_->HasWriteOperationsInDdlMode();
+  return pg_session_->HasCatalogWriteOperationsInDdlMode();
 }
 
 Status PgApiImpl::ExitSeparateDdlTxnMode(PgOid db_oid, bool is_silent_modification) {
@@ -2014,8 +2041,16 @@ bool PgApiImpl::IsDdlMode() const {
   return pg_txn_manager_->IsDdlMode();
 }
 
+Result<bool> PgApiImpl::CurrentTransactionUsesFastPath() const {
+  return pg_session_->CurrentTransactionUsesFastPath();
+}
+
 void PgApiImpl::ResetCatalogReadTime() {
   pg_session_->ResetCatalogReadPoint();
+}
+
+ReadHybridTime PgApiImpl::GetCatalogReadTime() const {
+  return pg_session_->catalog_read_time();
 }
 
 Result<bool> PgApiImpl::ForeignKeyReferenceExists(

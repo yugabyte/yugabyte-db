@@ -43,6 +43,7 @@ using namespace std::literals;
 
 DECLARE_string(time_source);
 DECLARE_int32(replication_factor);
+DECLARE_bool(yb_enable_read_committed_isolation);
 
 namespace yb::pgwrapper {
 
@@ -81,6 +82,7 @@ class PgReadAfterCommitVisibilityTest : public PgMiniTestBase {
  public:
   void SetUp() override {
     server::SkewedClock::Register();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_time_source) = server::SkewedClock::kName;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_factor) = 1;
     PgMiniTestBase::SetUp();
@@ -214,6 +216,136 @@ class PgReadAfterCommitVisibilityTest : public PgMiniTestBase {
     }
   }
 
+  enum class Visibility {
+    STRICT,
+    RELAXED,
+    DEFERRED,
+  };
+
+  struct Config {
+    bool same_node = false;
+    bool same_conn = false;
+    bool is_dml = false;
+    bool has_dup_key = false;
+    bool wait_for_skew = false;
+    bool is_hidden_dml = false;
+    Visibility visibility = Visibility::RELAXED;
+  };
+
+  // General framework to observe the behavior of reads in different scenarios
+  // with yb_read_after_commit_visibility option.
+  //
+  // Test Setup:
+  // 1. Cluster with RF 1, skewed clocks, 2 tservers.
+  // 2. Add a pg process on tserver that does not have one.
+  //    This is done since MiniCluster only creates one postmaster process
+  //    on some random tserver.
+  //    We wish to use the minicluster and not external minicluster since
+  //    there is better test infrastructure to manipulate clock skew.
+  //    This approach is the less painful one at the moment.
+  // 3. Add a tablet server to the blacklist
+  //    so we can ensure hybrid time propagation doesn't occur between
+  //    the data host node and the proxy
+  // 4. Connect to the proxy tserver that does not host the data.
+  //    We simulate this by blacklisting the target tserver.
+  // 5. Create a table with a single tablet and a single row.
+  // 6. Populate the catalog cache on the pg backend so that
+  //    catalog cache misses does not interfere with hybrid time propagation.
+  // 7. Jump the clock of the tserver hosting the table to the future.
+  // 8. Insert a row using the setup conn and a fast path txn.
+  //    Commit ts for the insert is picked on the server whose clock is ahead.
+  // 9. Read the table from the proxy connection.
+  //    Does the read observe the commit that is ahead because of clock skew?
+  void RunTest(Config const &config, std::string const &query) {
+    ASSERT_TRUE(!config.is_hidden_dml || config.is_dml)
+        << "Hidden DMLs are still DMLs. So, is_hidden_dml => is_dml.";
+    // Connect to local proxy.
+    auto proxyConn = ASSERT_RESULT(ConnectToProxy());
+    // Not calling ConnectToProxy() again since we already added
+    // the proxy to the blacklist.
+    auto proxyConn2 = ASSERT_RESULT(ConnectToIdx(proxy_idx_));
+    // Connect to the data node.
+    auto hostConn = ASSERT_RESULT(ConnectToDataHost());
+
+    auto &setupConn = !config.same_node ? hostConn : (!config.same_conn ? proxyConn2 : proxyConn);
+    auto &readConn = proxyConn;
+
+    // Create table tokens.
+    ASSERT_OK(setupConn.Execute(
+      "CREATE TABLE kv (k INT, v INT, PRIMARY KEY(k HASH)) SPLIT INTO 1 TABLETS"));
+
+    // Populate catalog cache.
+    if (!config.is_dml) {
+      ASSERT_RESULT(readConn.FetchRows<int32_t>(query));
+    } else {
+      ASSERT_OK(readConn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+      if (!config.is_hidden_dml) {
+        ASSERT_OK(readConn.Execute(query));
+      } else {
+        ASSERT_RESULT(readConn.FetchRows<int32_t>(query));
+      }
+      ASSERT_OK(readConn.RollbackTransaction());
+    }
+
+    // Jump the clock on the tserver hosting the table.
+    auto skew = 100ms;
+    auto changers = JumpClockDataNodes(skew);
+
+    // Perform a fast path insert that picks the commit time
+    // on the data node.
+    ASSERT_OK(setupConn.Execute("INSERT INTO kv(k) VALUES (1)"));
+
+    if (config.wait_for_skew) {
+      SleepFor(skew);
+    }
+
+    // Perform a select using the the relaxed yb_read_after_commit_visibility option.
+    auto visibility = [](auto visibility) {
+      switch (visibility) {
+        case Visibility::STRICT:
+          return "strict";
+        case Visibility::RELAXED:
+          return "relaxed";
+        case Visibility::DEFERRED:
+          return "deferred";
+      }
+      return "<unknown>"; // keep gcc happy
+    }(config.visibility);
+    ASSERT_OK(readConn.ExecuteFormat(
+      "SET yb_read_after_commit_visibility = $0", visibility));
+
+    if (!config.is_dml) {
+      auto rows = ASSERT_RESULT(readConn.FetchRows<int32_t>(query));
+
+      // Observe the recent insert despite the clock skew when on the same node.
+      if (config.visibility != Visibility::RELAXED || config.same_node || config.wait_for_skew) {
+        ASSERT_EQ(rows.size(), 1);
+      } else {
+        ASSERT_EQ(rows.size(), 0);
+      }
+    } else {
+      auto status = [&]() -> Status {
+        if (!config.is_hidden_dml) {
+          return readConn.Execute(query);
+        } else {
+          auto res = readConn.FetchRows<int32_t>(query);
+          return res.ok() ? Status::OK() : res.status();
+        }
+      }();
+      if (!config.has_dup_key) {
+        ASSERT_OK(status);
+      } else {
+        ASSERT_NOK(status);
+        auto pg_err_ptr = status.ErrorData(PgsqlError::kCategory);
+        ASSERT_NE(pg_err_ptr, nullptr);
+        YBPgErrorCode error_code = PgsqlErrorTag::Decode(pg_err_ptr);
+        ASSERT_TRUE(
+            error_code == YBPgErrorCode::YB_PG_UNIQUE_VIOLATION ||
+            error_code == YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE);
+      }
+    }
+  }
+
   int conn_idx_ = 0;
   int proxy_idx_ = 1;
   int host_idx_ = 0;
@@ -223,60 +355,11 @@ class PgReadAfterCommitVisibilityTest : public PgMiniTestBase {
 
 // Ensures that clock skew does not affect read-after-commit guarantees on same
 // session with relaxed yb_read_after_commit_visibility option.
-//
-// Test Setup:
-// 1. Cluster with RF 1, skewed clocks, 2 tservers.
-// 2. Add a pg process on tserver that does not have one.
-//    This is done since MiniCluster only creates one postmaster process
-//    on some random tserver.
-//    We wish to use the minicluster and not external minicluster since
-//    there is better test infrastructure to manipulate clock skew.
-//    This approach is the less painful one at the moment.
-// 3. Add a tablet server to the blacklist
-//    so we can ensure hybrid time propagation doesn't occur between
-//    the data host node and the proxy
-// 4. Connect to the proxy tserver that does not host the data.
-//    We simulate this by blacklisting the target tserver.
-// 5. Create a table with a single tablet and a single row.
-// 6. Populate the catalog cache on the pg backend so that
-//    catalog cache misses does not interfere with hybrid time propagation.
-// 7. Jump the clock of the tserver hosting the table to the future.
-// 8. Insert a row using the proxy conn and a fast path txn.
-//    Commit ts for the insert is picked on the server whose clock is ahead.
-//    The hybrid time is propagated to the proxy conn since the request
-//    originated from the proxy conn.
-// 9. Read the table from the proxy connection.
-//    The read has a timestamp that is ahead of the physical clock accounting
-//    for the timestamp of the insert DML due hybrid time propagation.
-//    Hence, the read does not miss recent updates of the same connection.
-//    This property also applies when dealing with different pg connections
-//    but they all go through the same tserver proxy.
 TEST_F(PgReadAfterCommitVisibilityTest, SameSessionRecency) {
-  // Connect to local proxy.
-  auto proxyConn = ASSERT_RESULT(ConnectToProxy());
-
-  // Create table test.
-  ASSERT_OK(proxyConn.Execute(
-    "CREATE TABLE test (key INT) SPLIT INTO 1 TABLETS"));
-
-  // Populate catalog cache.
-  ASSERT_RESULT(proxyConn.FetchRows<int32_t>("SELECT * FROM test"));
-
-  // Jump the clock on the tserver hosting the table.
-  auto changers = JumpClockDataNodes(100ms);
-
-  // Perform a fast path insert that picks the commit time
-  // on the data node.
-  // This hybrid time is propagated to the local proxy.
-  ASSERT_OK(proxyConn.Execute("INSERT INTO test VALUES (1)"));
-
-  // Perform a select using the the relaxed yb_read_after_commit_visibility option.
-  ASSERT_OK(proxyConn.Execute(
-    "SET yb_read_after_commit_visibility = relaxed"));
-  auto rows = ASSERT_RESULT(proxyConn.FetchRows<int32_t>("SELECT * FROM test"));
-
-  // Observe the recent insert despite the clock skew.
-  ASSERT_EQ(rows.size(), 1);
+  RunTest(Config{
+    .same_node = true,
+    .same_conn = true,
+  }, "SELECT k FROM kv");
 }
 
 // Similar to SameSessionRecency except we have
@@ -285,127 +368,29 @@ TEST_F(PgReadAfterCommitVisibilityTest, SameSessionRecency) {
 // This property is necessary to maintain same session guarantees even in the
 // presence of server-side connection pooling.
 TEST_F(PgReadAfterCommitVisibilityTest, SamePgNodeRecency) {
-  // Connect to local proxy.
-  auto proxyConn = ASSERT_RESULT(ConnectToProxy());
-  // Not calling ConnectToProxy() again since we already added
-  // the proxy to the blacklist.
-  auto proxyConn2 = ASSERT_RESULT(ConnectToIdx(proxy_idx_));
-
-  // Create table test.
-  ASSERT_OK(proxyConn.Execute(
-    "CREATE TABLE test (key INT) SPLIT INTO 1 TABLETS"));
-
-  // Populate catalog cache.
-  ASSERT_RESULT(proxyConn.FetchRows<int32_t>("SELECT * FROM test"));
-  ASSERT_RESULT(proxyConn2.FetchRows<int32_t>("SELECT * FROM test"));
-
-  // Jump the clock on the tserver hosting the table.
-  auto changers = JumpClockDataNodes(100ms);
-
-  // Perform a fast path insert that picks the commit ts
-  // on the data node.
-  // This ts is propagated to the local proxy.
-  ASSERT_OK(proxyConn.Execute("INSERT INTO test VALUES (1)"));
-
-  // Perform a select using the relaxed yb_read_after_commit_visibility option.
-  ASSERT_OK(proxyConn2.Execute(
-    "SET yb_read_after_commit_visibility = relaxed"));
-  auto rows = ASSERT_RESULT(proxyConn2.FetchRows<int32_t>("SELECT * FROM test"));
-
-  // Observe the recent insert despite the clock skew.
-  ASSERT_EQ(rows.size(), 1);
+  RunTest(Config{
+    .same_node = true,
+    .same_conn = false,
+  }, "SELECT k FROM kv");
 }
 
 // Demonstrate that read from a connection to a different node
 // (than the one which had the Pg connection to write data) may miss the
 // commit when using the relaxed yb_read_after_commit_visibility option.
-//
-// Test Setup:
-// 1. Cluster with RF 1, skewed clocks, 2 tservers.
-// 2. Add a pg process on tserver that does not have one.
-//    This is done since MiniCluster only creates one postmaster process
-//    on some random tserver.
-//    We wish to use the minicluster and not external minicluster since
-//    there is better test infrastructure to manipulate clock skew.
-//    This approach is the less painful one at the moment.
-// 3. Add a tablet server to the blacklist.
-// 4. Connect to both servers for Pg connection, data host and proxy.
-// 5. Create a table with a single tablet and a single row.
-// 6. Populate the catalog cache on both pg processes so that
-//    catalog cache misses does not interfere with hybrid time propagation.
-// 7. Jump the clock of the tserver hosting the table to the future.
-// 8. Insert a row using the host conn and a fast path txn.
-//    Commit ts for the insert is picked on the server whose clock is ahead.
-//    The hybrid time is not propagated to the proxy conn since
-//    there is no reason to touch proxy conn.
-// 9. Read the table from the proxy connection.
-//    The read can miss the recent commit since there is no hybrid time
-//    propagation from the host conn before the read time is picked.
 TEST_F(PgReadAfterCommitVisibilityTest, SessionOnDifferentNodeStaleRead) {
-  // Connect to both proxy and data nodes.
-  auto proxyConn = ASSERT_RESULT(ConnectToProxy());
-  auto hostConn = ASSERT_RESULT(ConnectToDataHost());
-
-  // Create table test.
-  ASSERT_OK(hostConn.Execute(
-    "CREATE TABLE test (key INT) SPLIT INTO 1 TABLETS"));
-
-  // Populate catalog cache.
-  ASSERT_RESULT(proxyConn.FetchRows<int32_t>("SELECT * FROM test"));
-  ASSERT_RESULT(hostConn.FetchRows<int32_t>("SELECT * FROM test"));
-
-  // Jump the clock on the tserver hosting the table.
-  auto changers = JumpClockDataNodes(100ms);
-
-  // Perform a fast path insert that picks the commit time
-  // on the data node.
-  ASSERT_OK(hostConn.Execute("INSERT INTO test VALUES (1)"));
-
-  // Perform a select using the relaxed yb_read_after_commit_visibility option.
-  ASSERT_OK(proxyConn.Execute(
-    "SET yb_read_after_commit_visibility = relaxed"));
-  auto rows = ASSERT_RESULT(proxyConn.FetchRows<int32_t>("SELECT * FROM test"));
-
-  // Miss the recent insert due to clock skew.
-  ASSERT_EQ(rows.size(), 0);
+  RunTest(Config{
+    .same_node = false,
+  }, "SELECT k FROM kv");
 }
 
 // Same test as SessionOnDifferentNodeStaleRead
 // except we verify that the staleness is bounded
 // by waiting out the clock skew.
-TEST_F(PgReadAfterCommitVisibilityTest,
-      SessionOnDifferentNodeBoundedStaleness) {
-  // Connect to both proxy and data nodes.
-  auto proxyConn = ASSERT_RESULT(ConnectToProxy());
-  auto hostConn = ASSERT_RESULT(ConnectToDataHost());
-
-  // Create table test.
-  ASSERT_OK(hostConn.Execute(
-    "CREATE TABLE test (key INT) SPLIT INTO 1 TABLETS"));
-
-  // Populate catalog cache.
-  ASSERT_RESULT(proxyConn.FetchRows<int32_t>("SELECT * FROM test"));
-  ASSERT_RESULT(hostConn.FetchRows<int32_t>("SELECT * FROM test"));
-
-  // Jump the clock on the tserver hosting the table.
-  auto skew = 100ms;
-  auto changers = JumpClockDataNodes(skew);
-
-  // Perform a fast path insert that picks the commit ts
-  // on the data node.
-  ASSERT_OK(hostConn.Execute("INSERT INTO test VALUES (1)"));
-
-  // Sleep for a while to verify that the staleness is bounded.
-  // We sleep for the same duration that we jump the clock, i.e. 100ms.
-  SleepFor(skew);
-
-  // Perform a select using the relaxed yb_read_after_commit_visibility option.
-  ASSERT_OK(proxyConn.Execute(
-    "SET yb_read_after_commit_visibility = relaxed"));
-  auto rows = ASSERT_RESULT(proxyConn.FetchRows<int32_t>("SELECT * FROM test"));
-
-  // We do not miss the prior insert since the clock skew has passed.
-  ASSERT_EQ(rows.size(), 1);
+TEST_F(PgReadAfterCommitVisibilityTest, SessionOnDifferentNodeBoundedStaleness) {
+  RunTest(Config{
+    .same_node = false,
+    .wait_for_skew = true,
+  }, "SELECT k FROM kv");
 }
 
 // Duplicate insert check.
@@ -413,70 +398,35 @@ TEST_F(PgReadAfterCommitVisibilityTest,
 // Inserts should not miss other recent inserts to
 // avoid missing duplicate key violations. This is guaranteed because
 // we don't apply "relaxed" to non-read transactions.
-TEST_F(PgReadAfterCommitVisibilityTest,
-      SessionOnDifferentNodeDuplicateInsertCheck) {
-  // Connect to both proxy and data nodes.
-  auto proxyConn = ASSERT_RESULT(ConnectToProxy());
-  auto hostConn = ASSERT_RESULT(ConnectToDataHost());
+TEST_F(PgReadAfterCommitVisibilityTest, RelaxedModeIgnoredForInsert) {
+  RunTest(Config{
+    .is_dml = true,
+    .has_dup_key = true,
+  }, "INSERT INTO kv(k) VALUES (1)");
+}
 
-  // Create table test.
-  ASSERT_OK(hostConn.Execute(
-    "CREATE TABLE test (key INT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
+// Ensure that relaxed mode doesn't apply to fast-path writes.
+TEST_F(PgReadAfterCommitVisibilityTest, RelaxedModeIgnoredForFastPathUpdate) {
+  RunTest(Config{
+    .is_dml = true,
+  }, "UPDATE kv SET v = 2 WHERE k = 1");
 
-  // Populate catalog cache.
-  ASSERT_RESULT(proxyConn.FetchRows<int32_t>("SELECT * FROM test"));
-  ASSERT_RESULT(hostConn.FetchRows<int32_t>("SELECT * FROM test"));
-
-  // Jump the clock on the tserver hosting the table.
-  auto changers = JumpClockDataNodes(100ms);
-
-  // Perform a fast path insert that picks the commit ts
-  // on the data node.
-  ASSERT_OK(hostConn.Execute("INSERT INTO test VALUES (1)"));
-
-  // Perform an insert using the relaxed yb_read_after_commit_visibility option.
-  // Must still observe the duplicate key!
-  ASSERT_OK(proxyConn.Execute(
-    "SET yb_read_after_commit_visibility = relaxed"));
-  auto res = proxyConn.Execute("INSERT INTO test VALUES (1)");
-  ASSERT_FALSE(res.ok());
-
-  auto pg_err_ptr = res.ErrorData(PgsqlError::kCategory);
-  ASSERT_NE(pg_err_ptr, nullptr);
-  YBPgErrorCode error_code = PgsqlErrorTag::Decode(pg_err_ptr);
-  ASSERT_EQ(error_code, YBPgErrorCode::YB_PG_UNIQUE_VIOLATION);
+  // Ensure that the update happened.
+  auto conn = ASSERT_RESULT(ConnectToIdx(host_idx_));
+  auto row = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT v FROM kv"));
+  ASSERT_EQ(row, 2);
 }
 
 // Updates should not miss recent DMLs either. This is guaranteed
 // because we don't apply "relaxed" to non-read transactions.
-TEST_F(PgReadAfterCommitVisibilityTest, SessionOnDifferentNodeUpdateKeyCheck) {
-  // Connect to both proxy and data nodes.
-  auto proxyConn = ASSERT_RESULT(ConnectToProxy());
-  auto hostConn = ASSERT_RESULT(ConnectToDataHost());
-
-  // Create table test.
-  ASSERT_OK(hostConn.Execute(
-    "CREATE TABLE test (key INT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
-
-  // Populate catalog cache.
-  ASSERT_RESULT(proxyConn.FetchRows<int32_t>("SELECT * FROM test"));
-  ASSERT_RESULT(hostConn.FetchRows<int32_t>("SELECT * FROM test"));
-
-  // Jump the clock on the tserver hosting the table.
-  auto changers = JumpClockDataNodes(100ms);
-
-  // Perform a fast path insert that picks the commit ts
-  // on the data node.
-  ASSERT_OK(hostConn.Execute("INSERT INTO test VALUES (1)"));
-
-  // Perform an update using the relaxed yb_read_after_commit_visibility option.
-  // Must still observe the key with value 1
-  ASSERT_OK(proxyConn.Execute(
-    "SET yb_read_after_commit_visibility = relaxed"));
-  auto res = proxyConn.Execute("UPDATE test SET key = 2 WHERE key = 1");
+TEST_F(PgReadAfterCommitVisibilityTest, RelaxedModeIgnoredForDistributedUpdateTxn) {
+  RunTest(Config{
+    .is_dml = true,
+  }, "UPDATE kv SET k = 2 WHERE k = 1");
 
   // Ensure that the update happened.
-  auto row = ASSERT_RESULT(hostConn.FetchRow<int32_t>("SELECT key FROM test"));
+  auto conn = ASSERT_RESULT(ConnectToIdx(host_idx_));
+  auto row = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT k FROM kv"));
   ASSERT_EQ(row, 2);
 }
 
@@ -484,34 +434,14 @@ TEST_F(PgReadAfterCommitVisibilityTest, SessionOnDifferentNodeUpdateKeyCheck) {
 // Otherwise, DELETE FROM table would not delete all the rows.
 // This is guaranteed because we don't apply "relaxed" to non-read
 // transactions.
-TEST_F(PgReadAfterCommitVisibilityTest, SessionOnDifferentNodeDeleteKeyCheck) {
-  // Connect to both proxy and data nodes.
-  auto proxyConn = ASSERT_RESULT(ConnectToProxy());
-  auto hostConn = ASSERT_RESULT(ConnectToDataHost());
+TEST_F(PgReadAfterCommitVisibilityTest, RelaxedModeIgnoredForFastPathDelete) {
+  RunTest(Config{
+    .is_dml = true,
+  }, "DELETE FROM kv WHERE k = 1");
 
-  // Create table test.
-  ASSERT_OK(hostConn.Execute(
-    "CREATE TABLE test (key INT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
-
-  // Populate catalog cache.
-  ASSERT_RESULT(proxyConn.FetchRows<int32_t>("SELECT * FROM test"));
-  ASSERT_RESULT(hostConn.FetchRows<int32_t>("SELECT * FROM test"));
-
-  // Jump the clock on the tserver hosting the table.
-  auto changers = JumpClockDataNodes(100ms);
-
-  // Perform a fast path insert that picks the commit ts
-  // on the data node.
-  ASSERT_OK(hostConn.Execute("INSERT INTO test VALUES (1)"));
-
-  // Perform a delete using the relaxed yb_read_after_commit_visibility option.
-  // Must still observe the key with value 1
-  ASSERT_OK(proxyConn.Execute(
-    "SET yb_read_after_commit_visibility = relaxed"));
-  auto res = proxyConn.Execute("DELETE FROM test WHERE key = 1");
-
-  // Ensure that the update happened.
-  auto rows = ASSERT_RESULT(hostConn.FetchRows<int32_t>("SELECT key FROM test"));
+  // Ensure that the delete happened.
+  auto conn = ASSERT_RESULT(ConnectToIdx(host_idx_));
+  auto rows = ASSERT_RESULT(conn.FetchRows<int32_t>("SELECT k FROM kv"));
   ASSERT_EQ(rows.size(), 0);
 }
 
@@ -519,39 +449,66 @@ TEST_F(PgReadAfterCommitVisibilityTest, SessionOnDifferentNodeDeleteKeyCheck) {
 // a SELECT but there is an insert hiding underneath.
 // We are guaranteed read-after-commit-visibility in this case
 // since "relaxed" is not applied to non-read transactions.
-TEST_F(PgReadAfterCommitVisibilityTest, SessionOnDifferentNodeDmlHidden) {
-  // Connect to both proxy and data nodes.
-  auto proxyConn = ASSERT_RESULT(ConnectToProxy());
-  auto hostConn = ASSERT_RESULT(ConnectToDataHost());
+TEST_F(PgReadAfterCommitVisibilityTest, RelaxedModeIgnoredForHiddenWrite) {
+  RunTest(
+    Config{
+      .is_dml = true,
+      .has_dup_key = true,
+      .is_hidden_dml = true,
+    },
+    "WITH new_kv AS ("
+    "INSERT INTO kv(k) VALUES (1) RETURNING k"
+    ") SELECT k FROM new_kv"
+  );
+}
 
-  // Create table test.
-  ASSERT_OK(hostConn.Execute(
-    "CREATE TABLE test (key INT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
+TEST_F(PgReadAfterCommitVisibilityTest, DifferentNodeDeferredRead) {
+  RunTest(Config{
+    .visibility = Visibility::DEFERRED,
+  }, "SELECT k FROM kv");
+}
 
-  // Populate catalog cache.
-  ASSERT_RESULT(proxyConn.FetchRows<int32_t>("SELECT * FROM test"));
-  ASSERT_RESULT(hostConn.FetchRows<int32_t>("SELECT * FROM test"));
+TEST_F(PgReadAfterCommitVisibilityTest, DeferredModeInsert) {
+  RunTest(Config{
+    .is_dml = true,
+    .has_dup_key = true,
+    .visibility = Visibility::DEFERRED,
+  }, "INSERT INTO kv(k) VALUES (1)");
+}
 
-  // Jump the clock on the tserver hosting the table.
-  auto changers = JumpClockDataNodes(100ms);
+TEST_F(PgReadAfterCommitVisibilityTest, DeferredModeDistributedTxnUpdate) {
+  RunTest(Config{
+    .is_dml = true,
+  }, "UPDATE kv SET k = 2 WHERE k = 1");
 
-  // Perform a fast path insert that picks the commit ts
-  // on the data node.
-  ASSERT_OK(hostConn.Execute("INSERT INTO test VALUES (1)"));
+  // Ensure that the update happened.
+  auto conn = ASSERT_RESULT(ConnectToIdx(host_idx_));
+  auto row = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT k FROM kv"));
+  ASSERT_EQ(row, 2);
+}
 
-  // Perform an insert using the relaxed yb_read_after_commit_visibility option.
-  // Must still observe the duplicate key!
-  ASSERT_OK(proxyConn.Execute(
-    "SET yb_read_after_commit_visibility = relaxed"));
-  auto res = proxyConn.Execute("WITH new_test AS ("
-    "INSERT INTO test (key) VALUES (1) RETURNING key"
-    ") SELECT key FROM new_test");
-  ASSERT_FALSE(res.ok());
+TEST_F(PgReadAfterCommitVisibilityTest, DeferredModeFastPathUpdate) {
+  RunTest(Config{
+    .is_dml = true,
+  }, "UPDATE kv SET v = 2 WHERE k = 1");
 
-  auto pg_err_ptr = res.ErrorData(PgsqlError::kCategory);
-  ASSERT_NE(pg_err_ptr, nullptr);
-  YBPgErrorCode error_code = PgsqlErrorTag::Decode(pg_err_ptr);
-  ASSERT_EQ(error_code, YBPgErrorCode::YB_PG_UNIQUE_VIOLATION);
+  // Ensure that the update happened.
+  auto conn = ASSERT_RESULT(ConnectToIdx(host_idx_));
+  auto row = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT v FROM kv"));
+  ASSERT_EQ(row, 2);
+}
+
+TEST_F(PgReadAfterCommitVisibilityTest, DeferredModeHiddenDml) {
+  RunTest(
+    Config{
+      .is_dml = true,
+      .has_dup_key = true,
+      .is_hidden_dml = true,
+    },
+    "WITH new_kv AS ("
+    "INSERT INTO kv(k) VALUES (1) RETURNING k"
+    ") SELECT k FROM new_kv"
+  );
 }
 
 } // namespace yb::pgwrapper

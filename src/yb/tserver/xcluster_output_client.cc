@@ -103,7 +103,7 @@ XClusterOutputClient::XClusterOutputClient(
     XClusterPoller* xcluster_poller, const xcluster::ConsumerTabletInfo& consumer_tablet_info,
     const xcluster::ProducerTabletInfo& producer_tablet_info, client::YBClient& local_client,
     ThreadPool* thread_pool, rpc::Rpcs* rpcs, bool use_local_tserver, bool is_automatic_mode,
-    rocksdb::RateLimiter* rate_limiter)
+    bool is_ddl_queue_client, rocksdb::RateLimiter* rate_limiter)
     : XClusterAsyncExecutor(thread_pool, local_client.messenger(), rpcs),
       xcluster_poller_(xcluster_poller),
       consumer_tablet_info_(consumer_tablet_info),
@@ -111,6 +111,7 @@ XClusterOutputClient::XClusterOutputClient(
       local_client_(local_client),
       use_local_tserver_(use_local_tserver),
       is_automatic_mode_(is_automatic_mode),
+      is_ddl_queue_client_(is_ddl_queue_client),
       all_tablets_result_(STATUS(Uninitialized, "Result has not been initialized.")),
       rate_limiter_(rate_limiter) {
   const auto& consumer_table_id = consumer_tablet_info.table_id;
@@ -195,6 +196,7 @@ void XClusterOutputClient::ApplyChanges(std::shared_ptr<cdc::GetChangesResponseP
     done_processing_ = false;
     processed_record_count_ = 0;
     record_count_ = poller_resp->records_size();
+    ddl_queue_commit_times_.clear();
     ResetWriteInterface(&write_strategy_);
   }
 
@@ -265,6 +267,9 @@ Status XClusterOutputClient::ProcessChangesStartingFromIndex(int start) {
           RSTATUS_DCHECK(
               !IsSequencesDataTablet(), IllegalState,
               "WAL of a sequences_data tablet unexpectedly contains an apply op");
+          RSTATUS_DCHECK(
+              !is_ddl_queue_client_, IllegalState,
+              "Found a non-local apply record for a ddl_queue client");
           RETURN_NOT_OK(ProcessRecordForTabletRange(record, all_tablets_result_));
           break;
         default: {
@@ -405,6 +410,9 @@ Result<cdc::XClusterSchemaVersionMap> XClusterOutputClient::GetSchemaVersionMap(
 Status XClusterOutputClient::ProcessRecord(
     const std::vector<std::string>& tablet_ids, const cdc::CDCRecordPB& record) {
   ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN_STATUS;
+  if (is_ddl_queue_client_ && record.operation() == cdc::CDCRecordPB::APPLY) {
+    ddl_queue_commit_times_.insert(HybridTime(record.transaction_state().commit_hybrid_time()));
+  }
   for (const auto& tablet_id : tablet_ids) {
     SCHECK(!IsOffline(), Aborted, "$0$1", LogPrefix(), "xCluster output client went offline");
 
@@ -838,8 +846,8 @@ void XClusterOutputClient::HandleError(const Status& s) {
     LOG_WITH_PREFIX(WARNING) << "Retrying applying replicated record for consumer tablet: "
                              << consumer_tablet_info_.tablet_id << ", reason: " << s;
   } else {
-    LOG_WITH_PREFIX(ERROR) << "Error while applying replicated record: " << s
-                           << ", consumer tablet: " << consumer_tablet_info_.tablet_id;
+    LOG_WITH_PREFIX(WARNING) << "Error while applying replicated record: " << s
+                             << ", consumer tablet: " << consumer_tablet_info_.tablet_id;
   }
   {
     ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN;
@@ -863,9 +871,11 @@ void XClusterOutputClient::HandleResponse() {
   if (response.status.ok()) {
     response.last_applied_op_id = op_id_;
     response.processed_record_count = processed_record_count_;
+    response.ddl_queue_commit_times = std::move(ddl_queue_commit_times_);
   }
   op_id_ = consensus::MinimumOpId();
   processed_record_count_ = 0;
+  ddl_queue_commit_times_ = {};
 
   xcluster_poller_->ApplyChangesCallback(std::move(response));
 }
@@ -883,10 +893,10 @@ std::shared_ptr<XClusterOutputClient> CreateXClusterOutputClient(
     XClusterPoller* xcluster_poller, const xcluster::ConsumerTabletInfo& consumer_tablet_info,
     const xcluster::ProducerTabletInfo& producer_tablet_info, client::YBClient& local_client,
     ThreadPool* thread_pool, rpc::Rpcs* rpcs, bool use_local_tserver, bool is_automatic_mode,
-    rocksdb::RateLimiter* rate_limiter) {
+    bool is_ddl_queue_client, rocksdb::RateLimiter* rate_limiter) {
   return std::make_unique<XClusterOutputClient>(
       xcluster_poller, consumer_tablet_info, producer_tablet_info, local_client, thread_pool, rpcs,
-      use_local_tserver, is_automatic_mode, rate_limiter);
+      use_local_tserver, is_automatic_mode, is_ddl_queue_client, rate_limiter);
 }
 
 }  // namespace tserver

@@ -452,7 +452,7 @@ Status PermissionsManager::AlterRole(
 
     s = catalog_manager_->sys_catalog_->Upsert(catalog_manager_->leader_ready_term(), role);
     if (!s.ok()) {
-      LOG(ERROR) << "Unable to alter role " << req->name() << ": " << s;
+      LOG(WARNING) << "Unable to alter role " << req->name() << ": " << s;
       return s;
     }
     l.Commit();
@@ -518,8 +518,8 @@ Status PermissionsManager::DeleteRole(
     // Update sys-catalog with the new member_of list for this role.
     s = catalog_manager_->sys_catalog_->Upsert(catalog_manager_->leader_ready_term(), role);
     if (!s.ok()) {
-      LOG(ERROR) << "Unable to remove role " << req->name()
-                 << " from member_of list for role " << role_name;
+      LOG(WARNING) << "Unable to remove role " << req->name()
+                   << " from member_of list for role " << role_name;
       role->mutable_metadata()->AbortMutation();
     } else {
       role->mutable_metadata()->CommitMutation();

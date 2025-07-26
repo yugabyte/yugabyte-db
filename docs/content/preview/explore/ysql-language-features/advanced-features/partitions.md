@@ -12,7 +12,7 @@ type: docs
 
 This section describes how to partition tables in YugabyteDB using YSQL.
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 ## Overview
 

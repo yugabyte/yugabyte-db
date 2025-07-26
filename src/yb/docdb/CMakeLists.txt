@@ -31,6 +31,7 @@ include_directories("${YB_BUILD_ROOT}/postgres_build/src/include")
 
 set(DOCDB_SHARED_SRCS
         lock_util.cc
+        object_lock_shared_state.cc
         )
 
 set(DOCDB_SHARED_DEPS
@@ -86,6 +87,7 @@ set(DOCDB_SRCS
         local_waiting_txn_registry.cc
         lock_batch.cc
         object_lock_manager.cc
+        object_lock_shared_state_manager.cc
         pgsql_operation.cc
         ql_rocksdb_storage.cc
         ql_rowwise_iterator_interface.cc
@@ -99,21 +101,23 @@ set(DOCDB_SRCS
         )
 
 set(DOCDB_DEPS
-        yb_dockv
-        rocksdb
-        yb_ash
-        yb_util
-        yb_rocksutil
-        yb_common
+        ann_methods
         docdb_proto
-        yb_docdb_shared
-        server_common
-        rpc_introspection_proto
-        yb_pggate_util
-        yb_pggate
+        hnsw
         ql_util
+        rocksdb
+        rpc_introspection_proto
+        server_common
         vector_index
+        yb_ash
+        yb_common
+        yb_docdb_shared
+        yb_dockv
         yb_pgbackend
+        yb_pggate
+        yb_pggate_util
+        yb_rocksutil
+        yb_util
         )
 
 ADD_YB_LIBRARY(yb_docdb

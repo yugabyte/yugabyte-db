@@ -92,17 +92,41 @@ TEST(TablespaceParserTest, TestTablespaceJsonProcessing) {
   options.emplace_back(invalid_json_option);
   ASSERT_NOK(TablespaceParser::FromQLValue(options));
 
-  // 7. Missing placement blocks field.
+  // 7. Missing placement blocks field is ok.
   options.clear();
   invalid_json_option = "replica_placement={\"num_replicas\":3}";
   options.emplace_back(invalid_json_option);
-  ASSERT_NOK(TablespaceParser::FromQLValue(options));
+  ASSERT_OK(TablespaceParser::FromQLValue(options));
 
-  // 8. Missing keys in placement blocks.
+  // 8. Missing key (min_num_replicas) in placement blocks.
   options.clear();
   invalid_json_option =
       "replica_placement={\"num_replicas\":\"abc\",\"placement_blocks\":"
       "[{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\"}]}";
+  options.emplace_back(invalid_json_option);
+  ASSERT_NOK(TablespaceParser::FromQLValue(options));
+
+  // 8.1 Missing key (zone) in placement blocks.
+  options.clear();
+  invalid_json_option =
+      "replica_placement={\"num_replicas\":1,\"placement_blocks\":"
+      "[{\"cloud\":\"c1\",\"region\":\"r1\",\"min_num_replicas\":1}]}";
+  options.emplace_back(invalid_json_option);
+  ASSERT_NOK(TablespaceParser::FromQLValue(options));
+
+  // 8.2 Missing key (region) in placement blocks.
+  options.clear();
+  invalid_json_option =
+      "replica_placement={\"num_replicas\":1,\"placement_blocks\":"
+      "[{\"cloud\":\"c1\",\"zone\":\"z1\",\"min_num_replicas\":1}]}";
+  options.emplace_back(invalid_json_option);
+  ASSERT_NOK(TablespaceParser::FromQLValue(options));
+
+  // 8.3 Missing key (cloud) in placement blocks.
+  options.clear();
+  invalid_json_option =
+      "replica_placement={\"num_replicas\":1,\"placement_blocks\":"
+      "[{\"region\":\"r1\",\"zone\":\"z1\",\"min_num_replicas\":1}]}";
   options.emplace_back(invalid_json_option);
   ASSERT_NOK(TablespaceParser::FromQLValue(options));
 
@@ -142,6 +166,62 @@ TEST(TablespaceParserTest, TestTablespaceJsonProcessing) {
     ASSERT_EQ(placement_block.cloud_info().placement_zone(), "z2");
     ASSERT_EQ(placement_block.min_num_replicas(), 1);
   }
+
+  // Wildcard placement for cloud is not possible.
+  options.clear();
+  invalid_json_option =
+      "replica_placement={\"num_replicas\":1,\"placement_blocks\":"
+      "[{\"cloud\":\"*\",\"min_num_replicas\":1}]}";
+  options.emplace_back(invalid_json_option);
+  ASSERT_NOK(TablespaceParser::FromQLValue(options));
+
+  // Empty placement for cloud is not possible.
+  options.clear();
+  invalid_json_option =
+      "replica_placement={\"num_replicas\":1,\"placement_blocks\":"
+      "[{\"cloud\":\"\",\"min_num_replicas\":1}]}";
+  options.emplace_back(invalid_json_option);
+  ASSERT_NOK(TablespaceParser::FromQLValue(options));
+
+  // Empty placement for region is not possible.
+  options.clear();
+  invalid_json_option =
+      "replica_placement={\"num_replicas\":1,\"placement_blocks\":"
+      "[{\"cloud\":\"c1\",\"region\":\"\",\"min_num_replicas\":1}]}";
+  options.emplace_back(invalid_json_option);
+  ASSERT_NOK(TablespaceParser::FromQLValue(options));
+
+  // Empty placement for zone is not possible.
+  options.clear();
+  invalid_json_option =
+      "replica_placement={\"num_replicas\":1,\"placement_blocks\":"
+      "[{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"\",\"min_num_replicas\":1}]}";
+  options.emplace_back(invalid_json_option);
+  ASSERT_NOK(TablespaceParser::FromQLValue(options));
+
+  // Wildcard for region/zone has to be specified at all levels that follow.
+  options.clear();
+  invalid_json_option =
+      "replica_placement={\"num_replicas\":1,\"placement_blocks\":"
+      "[{\"cloud\":\"cloud1\",\"region\":\"*\",\"min_num_replicas\":1}]}";
+  options.emplace_back(invalid_json_option);
+  ASSERT_NOK(TablespaceParser::FromQLValue(options));
+
+  // Wildcard for region/zone has to be specified at all levels that follow.
+  options.clear();
+  invalid_json_option =
+      "replica_placement={\"num_replicas\":1,\"placement_blocks\":"
+      "[{\"cloud\":\"c1\",\"region\":\"*\",\"zone\":\"z1\",\"min_num_replicas\":1}]}";
+  options.emplace_back(invalid_json_option);
+  ASSERT_NOK(TablespaceParser::FromQLValue(options));
+
+  // Wildcard for region/zone has to be specified at all levels that follow.
+  options.clear();
+  invalid_json_option =
+      "replica_placement={\"num_replicas\":1,\"placement_blocks\":"
+      "[{\"cloud\":\"c1\",\"region\":\"*\",\"zone\":\"*\",\"min_num_replicas\":1}]}";
+  options.emplace_back(invalid_json_option);
+  ASSERT_OK(TablespaceParser::FromQLValue(options));
 }
 
 // Test the tablespace preferred zone info parsing.

@@ -119,7 +119,7 @@ PostgreSQL documentation
       <term><option>--data-only</option></term>
       <listitem>
        <para>
-        Dump only the data, not the schema (data definitions).
+        Dump only the data, not the schema (data definitions) or statistics.
         Table data, large objects, and sequence values are dumped.
        </para>
 
@@ -508,10 +508,11 @@ PostgreSQL documentation
       <term><option>--schema-only</option></term>
       <listitem>
        <para>
-        Dump only the object definitions (schema), not data.
+        Dump only the object definitions (schema), not data or statistics.
        </para>
        <para>
-        This option is the inverse of <option>--data-only</option>.
+        This option is mutually exclusive to <option>--data-only</option>
+        and <option>--statistics-only</option>.
         It is similar to, but for historical reasons not identical to,
         specifying
         <option>--section=pre-data --section=post-data</option>.
@@ -706,7 +707,8 @@ PostgreSQL documentation
       <term><option>--disable-triggers</option></term>
       <listitem>
        <para>
-        This option is relevant only when creating a data-only dump.
+        This option is relevant only when creating a dump that includes data
+        but does not include schema.
         It instructs <application>pg_dump</application> to include commands
         to temporarily disable triggers on the target tables while
         the data is restored.  Use this if you have referential
@@ -764,7 +766,8 @@ PostgreSQL documentation
         though you do not need the data in it.
        </para>
        <para>
-        To exclude data for all tables in the database, see <option>--schema-only</option>.
+        To exclude data for all tables in the database, see <option>--schema-only</option>
+        or <option>--statistics-only</option>.
        </para>
       </listitem>
      </varlistentry>
@@ -910,6 +913,24 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
+      <term><option>--no-schema</option></term>
+      <listitem>
+       <para>
+        Do not dump schema (data definitions).
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--no-statistics</option></term>
+      <listitem>
+       <para>
+        Do not dump statistics.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
       <term><option>--no-subscriptions</option></term>
       <listitem>
        <para>
@@ -992,6 +1013,33 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
+      <term><option>--with-data</option></term>
+      <listitem>
+       <para>
+        Dump data. This is the default.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--with-schema</option></term>
+      <listitem>
+       <para>
+        Dump schema (data definitions). This is the default.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--with-statistics</option></term>
+      <listitem>
+       <para>
+        Dump statistics. This is the default.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
       <term><option>--on-conflict-do-nothing</option></term>
       <listitem>
        <para>
@@ -1047,9 +1095,11 @@ PostgreSQL documentation
          </para>
          <para>
           The data section contains actual table data, large-object
-          contents, and sequence values.
+          contents, statitistics for tables and materialized views and
+          sequence values.
           Post-data items include definitions of indexes, triggers, rules,
-          and constraints other than validated check constraints.
+          statistics for indexes, and constraints other than validated check
+          constraints.
           Pre-data items include all other data definition items.
          </para>
        </listitem>
@@ -1355,7 +1405,7 @@ CREATE DATABASE foo WITH TEMPLATE template0;
   </para>
 
   <para>
-   When a data-only dump is chosen and the option <option>--disable-triggers</option>
+   When a dump without schema is chosen and the option <option>--disable-triggers</option>
    is used, <application>pg_dump</application> emits commands
    to disable triggers on user tables before inserting the data,
    and then commands to re-enable them after the data has been

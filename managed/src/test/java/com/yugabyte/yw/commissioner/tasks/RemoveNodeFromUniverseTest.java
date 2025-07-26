@@ -152,6 +152,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
       fail();
     }
     setDumpEntitiesMock(defaultUniverse, "", false);
+    when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     mockWaits(mockClient, 3);
     UniverseModifyBaseTest.mockGetMasterRegistrationResponse(

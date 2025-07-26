@@ -57,7 +57,7 @@ Note that a snapshot ID becomes invalid as soon as the exporting transaction end
 
 ## Example
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 The following example demonstrates how to use snapshot export and import across two sessions to maintain a consistent view of the data.
 

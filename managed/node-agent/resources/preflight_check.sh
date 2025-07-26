@@ -183,7 +183,7 @@ check_ntp_synchronization() {
     else
       update_result_json "ntp_service_status" false
     fi
-    if [[ $skew_ms -lt 400 ]]; then
+    if awk "BEGIN{exit !(${skew_ms} < 400)}"; then
       update_result_json "ntp_skew" true
     else
       update_result_json "ntp_skew" false

@@ -19,6 +19,16 @@ namespace yb {
 
 namespace {
 
+std::string ColumnAlignmentToHtmlAttr(HtmlTableCellAlignment alignment) {
+  switch (alignment) {
+    case HtmlTableCellAlignment::Left:
+      return "align=\"left\"";
+    case HtmlTableCellAlignment::Right:
+      return "align=\"right\"";
+  }
+  FATAL_INVALID_ENUM_VALUE(HtmlTableCellAlignment, alignment);
+}
+
 // This script is used to sort and filter tables in the html page.
 const char* const kSortAndFilterTableScript = R"(
 <script>
@@ -149,10 +159,12 @@ HtmlPrintHelper::~HtmlPrintHelper() {
 }
 
 HtmlTablePrintHelper HtmlPrintHelper::CreateTablePrinter(
-    std::string table_name, std::vector<std::string> column_names) {
+    std::string table_name, std::vector<std::string> column_names,
+    std::vector<HtmlTableCellAlignment> column_alignment) {
   has_tables_ = true;
 
-  return HtmlTablePrintHelper(output_, std::move(table_name), std::move(column_names));
+  return HtmlTablePrintHelper(
+      output_, std::move(table_name), std::move(column_names), std::move(column_alignment));
 }
 
 HtmlTablePrintHelper HtmlPrintHelper::CreateTablePrinter(
@@ -169,8 +181,10 @@ HtmlFieldsetScope HtmlPrintHelper::CreateFieldset(const std::string& name) {
 // ================================================================================
 
 HtmlTablePrintHelper::HtmlTablePrintHelper(
-    std::stringstream& output, std::string table_name, std::vector<std::string> column_names)
-    : output_(output), table_name_(std::move(table_name)), column_names_(std::move(column_names)) {
+    std::stringstream& output, std::string table_name, std::vector<std::string> column_names,
+    std::vector<HtmlTableCellAlignment> column_alignment)
+    : output_(output), table_name_(std::move(table_name)), column_names_(std::move(column_names)),
+      column_alignment_(std::move(column_alignment)) {
   DCHECK_GT(column_names_.size(), 0);
 }
 
@@ -219,8 +233,13 @@ void HtmlTablePrintHelper::Print() {
   for (const auto& row : table_rows_) {
     DCHECK_EQ(row.column_values_.size(), column_names_.size());
     output_ << "<tr>";
-    for (const auto& column : row.column_values_) {
-      output_ << "<td>" << column << "</td>";
+    for (size_t i = 0; i < row.column_values_.size(); ++i) {
+      std::string column_alignment_str;
+      if (i < column_alignment_.size()) {
+        column_alignment_str = ColumnAlignmentToHtmlAttr(column_alignment_[i]);
+      }
+      output_ << Format("<td $0>", column_alignment_str);
+      output_ << row.column_values_[i] << "</td>";
     }
     output_ << "</tr>\n";
   }

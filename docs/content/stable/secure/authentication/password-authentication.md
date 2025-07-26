@@ -29,9 +29,9 @@ YugabyteDB database passwords are separate from operating system passwords. The 
 Database passwords can be managed using the following:
 
 - YSQL API: [CREATE ROLE](../../../api/ysql/the-sql-language/statements/dcl_create_role) and [ALTER ROLE](../../../api/ysql/the-sql-language/statements/dcl_alter_role)
-- `ysqlsh` meta-command: [\password](../../../api/ysqlsh-meta-commands/#password-username)
+- ysqlsh meta-command: [\password](../../../api/ysqlsh-meta-commands/#password-username)
 
-The [passwordcheck extension](../../../explore/ysql-language-features/pg-extensions/extension-passwordcheck) can be used to enforce strong passwords whenever they are set with `CREATE ROLE` or `ALTER ROLE`. passwordcheck only works for passwords that are provided in plain text. For more information, refer to the [PostgreSQL passwordcheck documentation](https://www.postgresql.org/docs/11/passwordcheck.html).
+The [passwordcheck extension](../../../explore/ysql-language-features/pg-extensions/extension-passwordcheck) can be used to enforce strong passwords whenever they are set with `CREATE ROLE` or `ALTER ROLE`. passwordcheck only works for passwords that are provided in plain text. For more information, refer to the [PostgreSQL passwordcheck documentation](https://www.postgresql.org/docs/15/passwordcheck.html).
 
 ## Password authentication methods
 
@@ -48,10 +48,10 @@ The MD5 hash algorithm is not considered secure against determined attacks. Some
 
 ### SCRAM-SHA-256
 
-The SCRAM-SHA-256 method (`scram-sh-256`) performs SCRAM-SHA-256 authentication, as described in [RFC 7677](https://tools.ietf.org/html/rfc7677). This challenge-response scheme prevents password sniffing on untrusted connections and supports storing passwords on YugabyteDB clusters in the most secure cryptographically hashed form available. The SCRAM-SHA-256 method implemented here is explained in further detail in [SASL Authentication (PostgreSQL documentation)](https://www.postgresql.org/docs/11/sasl-authentication.html). This is the most secure password authentication available and is supported by most of the [client drivers for the YSQL API](../../../drivers-orms/).
+The SCRAM-SHA-256 method (`scram-sh-256`) performs SCRAM-SHA-256 authentication, as described in [RFC 7677](https://tools.ietf.org/html/rfc7677). This challenge-response scheme prevents password sniffing on untrusted connections and supports storing passwords on YugabyteDB clusters in the most secure cryptographically hashed form available. The SCRAM-SHA-256 method implemented here is explained in further detail in [SASL Authentication (PostgreSQL documentation)](https://www.postgresql.org/docs/15/sasl-authentication.html). This is the most secure password authentication available and is supported by most of the [client drivers for the YSQL API](../../../drivers-orms/).
 
 - Allows for two parties to verify they both know a secret without exchanging the secret.
-- SCRAM-SHA-256 encryption uses the [SASL authentication mechanism flow](https://www.postgresql.org/docs/11/sasl-authentication.html) to limit security risks from brute force attacks and sniffing.
+- SCRAM-SHA-256 encryption uses the [SASL authentication mechanism flow](https://www.postgresql.org/docs/15/sasl-authentication.html) to limit security risks from brute force attacks and sniffing.
 
 {{< note title="Note" >}}
 
@@ -111,7 +111,7 @@ To use SCRAM-SHA-256 password authentication on a new YugabyteDB cluster, follow
 
 2. Start the YugabyteDB cluster.
 
-3. Open the YSQL shell (`ysqlsh`), specifying the `yugabyte` user and prompting for the password.
+3. Open the YSQL shell (ysqlsh), specifying the `yugabyte` user and prompting for the password.
 
     ```sh
     $ ./ysqlsh -U yugabyte -W
@@ -120,7 +120,7 @@ To use SCRAM-SHA-256 password authentication on a new YugabyteDB cluster, follow
     When prompted for the password, enter the `yugabyte` password (default is `yugabyte`). You should be able to log in and see a response like this:
 
     ```output
-    ysqlsh (11.2-YB-{{<yb-version version="stable">}}-b0)
+    ysqlsh (15.2-YB-{{<yb-version version="stable">}}-b0)
     Type "help" for help.
 
     yugabyte=#
@@ -128,7 +128,7 @@ To use SCRAM-SHA-256 password authentication on a new YugabyteDB cluster, follow
 
 4. Change the password for `yugabyte` to a SCRAM-SHA-256 password.
 
-    You can use either the ALTER ROLE statement or the `ysqlsh` `\password\` meta-command to change the password. The new password is encrypted using the SCRAM-SHA-256 hashing algorithm. In the following example, the `\password` meta-command is used to change the password.
+    You can use either the ALTER ROLE statement or the ysqlsh `\password\` meta-command to change the password. The new password is encrypted using the SCRAM-SHA-256 hashing algorithm. In the following example, the `\password` meta-command is used to change the password.
 
     ```sql
     \password

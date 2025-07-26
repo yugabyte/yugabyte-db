@@ -92,7 +92,6 @@ YsqlAdvisoryLocksTable::YsqlAdvisoryLocksTable(std::shared_future<client::YBClie
     : client_future_(std::move(client_future)) {}
 
 Result<client::YBTablePtr> YsqlAdvisoryLocksTable::GetTable() {
-  SCHECK(FLAGS_ysql_yb_enable_advisory_locks, NotSupported, "Advisory locks are not enabled");
   std::lock_guard<std::mutex> l(mutex_);
   if (!table_) {
     table_ = VERIFY_RESULT(client_future_.get()->OpenTable(client::YBTableName{

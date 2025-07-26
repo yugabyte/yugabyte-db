@@ -146,7 +146,7 @@ struct ExternalMiniClusterOptions {
   bool enable_ysql = false;
   bool enable_ysql_auth = false;
   bool enable_ysql_conn_mgr = false;
-  bool wait_for_tservers_to_accept_ysql_connections = false;
+  bool wait_for_tservers_to_accept_ysql_connections = true;
 
   // Directory in which to store data.
   // Default: "", which auto-generates a unique path for this cluster.
@@ -209,6 +209,9 @@ struct ExternalMiniClusterOptions {
 
   // Cluster id used to create fs path when we create tests with multiple clusters.
   std::string cluster_id;
+
+  // Used to emit cluster identifier in the logs.
+  std::string cluster_short_name;
 
   // By default, we create max(2, num_tablet_servers) tablets per transaction table. If this is
   // set to a non-zero value, this value is used instead.
@@ -336,7 +339,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Add a Tablet Server to the leader blacklist.
   Status AddTServerToLeaderBlacklist(ExternalMaster* master, ExternalTabletServer* ts);
 
-  // Empty blacklist.
+  // Empty leader and tablet server blacklists.
   Status ClearBlacklist(ExternalMaster* master);
 
   // Start a new master with `peer_addrs` as the master_addresses parameter.
@@ -429,9 +432,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Return the client messenger used by the ExternalMiniCluster.
   rpc::Messenger* messenger();
 
-  rpc::ProxyCache& proxy_cache() {
-    return *proxy_cache_;
-  }
+  rpc::ProxyCache& proxy_cache() override { return *proxy_cache_; }
 
   // Get the master leader consensus proxy.
   consensus::ConsensusServiceProxy GetLeaderConsensusProxy();
@@ -478,9 +479,9 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Waits until the tablet server with given uuid registers to the master leader.
   Status WaitForTabletServerToRegister(const std::string& uuid, MonoDelta timeout);
 
-  Status WaitForTabletServersToAcquireYSQLLeases(MonoTime deadline);
-  Status WaitForTabletServersToAcquireYSQLLeases(
-      const std::vector<scoped_refptr<ExternalTabletServer>>& tablet_servers, MonoTime deadline);
+  Status WaitForTabletServersToAcceptYSQLConnection(MonoTime deadline);
+  Status WaitForTabletServersToAcceptYSQLConnection(
+      const std::vector<size_t>& indexes, MonoTime deadline);
 
   // Runs gtest assertions that no servers have crashed.
   void AssertNoCrashes();
@@ -489,7 +490,8 @@ class ExternalMiniCluster : public MiniClusterBase {
   // state.
   Status WaitForTabletsRunning(ExternalTabletServer* ts, const MonoDelta& timeout);
 
-  Result<tserver::ListTabletsResponsePB> ListTablets(ExternalTabletServer* ts);
+  Result<tserver::ListTabletsResponsePB> ListTablets(
+      ExternalTabletServer* ts, bool user_tablets_only = true);
 
   Result<std::vector<tserver::ListTabletsForTabletServerResponsePB_Entry>> GetTablets(
       ExternalTabletServer* ts);
@@ -499,16 +501,23 @@ class ExternalMiniCluster : public MiniClusterBase {
   Result<size_t> GetSegmentCounts(ExternalTabletServer* ts);
 
   Result<tserver::GetTabletStatusResponsePB> GetTabletStatus(
-      const ExternalTabletServer& ts, const yb::TabletId& tablet_id);
+      const ExternalTabletServer& ts, const TabletId& tablet_id);
 
-  Result<tserver::GetSplitKeyResponsePB> GetSplitKey(const yb::TabletId& tablet_id);
-  Result<tserver::GetSplitKeyResponsePB> GetSplitKey(const ExternalTabletServer& ts,
-      const yb::TabletId& tablet_id, bool fail_on_response_error = true);
+  Result<tserver::CheckTserverTabletHealthResponsePB> GetTabletPeerHealth(
+      const ExternalTabletServer& ts, const std::vector<TabletId>& tablet_ids);
+
+  Result<tserver::GetSplitKeyResponsePB> GetSplitKey(const TabletId& tablet_id);
+  Result<tserver::GetSplitKeyResponsePB> GetSplitKey(
+      const ExternalTabletServer& ts, const TabletId& tablet_id,
+      bool fail_on_response_error = true);
 
   // Flushes all tablets if tablets_ids is empty.
   Status FlushTabletsOnSingleTServer(
-      ExternalTabletServer* ts, const std::vector<yb::TabletId> tablet_ids,
-      tserver::FlushTabletsRequestPB_Operation operation);
+      size_t idx, const std::vector<TabletId>& tablet_ids);
+  Status CompactTabletsOnSingleTServer(
+      size_t idx, const std::vector<TabletId>& tablet_ids);
+  Status LogGCOnSingleTServer(
+      size_t idx, const std::vector<TabletId>& tablet_ids, bool rollover);
 
   Status WaitForTSToCrash(const ExternalTabletServer* ts,
                           const MonoDelta& timeout = MonoDelta::FromSeconds(60));
@@ -619,6 +628,9 @@ class ExternalMiniCluster : public MiniClusterBase {
  protected:
   friend class UpgradeTestBase;
   FRIEND_TEST(MasterFailoverTest, TestKillAnyMaster);
+
+  Result<size_t> LaunchTabletServer(
+    bool start_cql_proxy, const std::vector<std::string>& extra_flags, int num_drives);
 
   void ConfigureClientBuilder(client::YBClientBuilder* builder) override;
 
@@ -735,6 +747,7 @@ class ExternalMaster : public ExternalDaemon {
  public:
   ExternalMaster(
     size_t master_index,
+    const std::string& cluster_short_name,
     rpc::Messenger* messenger,
     rpc::ProxyCache* proxy_cache,
     const std::string& exe,
@@ -766,18 +779,23 @@ class ExternalMaster : public ExternalDaemon {
 class ExternalTabletServer : public ExternalDaemon {
  public:
   ExternalTabletServer(
-      size_t tablet_server_index, rpc::Messenger* messenger, rpc::ProxyCache* proxy_cache,
-      const std::string& exe, const std::string& data_dir, uint16_t num_drives,
-      std::string bind_host, uint16_t rpc_port, uint16_t http_port, uint16_t redis_rpc_port,
-      uint16_t redis_http_port, uint16_t cql_rpc_port, uint16_t cql_http_port,
-      uint16_t pgsql_rpc_port, uint16_t ysql_conn_mgr_rpc_port, uint16_t pgsql_http_port,
-      const std::vector<HostPort>& master_addrs,
+      size_t tablet_server_index, const std::string& cluster_short_name, rpc::Messenger* messenger,
+      rpc::ProxyCache* proxy_cache, const std::string& exe, const std::string& data_dir,
+      uint16_t num_drives, std::string bind_host, uint16_t rpc_port, uint16_t http_port,
+      uint16_t redis_rpc_port, uint16_t redis_http_port, uint16_t cql_rpc_port,
+      uint16_t cql_http_port, uint16_t pgsql_rpc_port, uint16_t ysql_conn_mgr_rpc_port,
+      uint16_t pgsql_http_port, const std::vector<HostPort>& master_addrs,
       const std::vector<std::string>& extra_flags);
 
   Status Start(
       bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy,
       bool set_proxy_addrs = true,
-      std::vector<std::pair<std::string, std::string>> extra_flags = {});
+      const std::vector<std::pair<std::string, std::string>>& extra_flags = {});
+
+  Status Launch(
+      bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+      bool set_proxy_addrs = true,
+      const std::vector<std::pair<std::string, std::string>>& extra_flags = {});
 
   void UpdateMasterAddress(const std::vector<HostPort>& master_addrs);
 
@@ -846,7 +864,16 @@ class ExternalTabletServer : public ExternalDaemon {
                                     const MetricPrototype* metric_proto,
                                     const char* value_field) const;
 
+  Status FlushTablets(const std::vector<TabletId>& tablet_ids);
+  Status CompactTablets(const std::vector<TabletId>& tablet_ids);
+  Status LogGC(const std::vector<TabletId>& tablet_ids, bool rollover);
+
  protected:
+  template <class F>
+  Status ExecuteFlushTablets(
+      const std::vector<TabletId>& tablet_ids, tserver::FlushTabletsRequestPB::Operation operation,
+      const F& f);
+
   Status DeleteServerInfoPaths() override;
 
   bool ServerInfoPathsExist() override;

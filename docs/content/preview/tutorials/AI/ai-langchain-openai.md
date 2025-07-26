@@ -1,14 +1,14 @@
 ---
 title: How to Develop LLM Apps with LangChain, OpenAI and YugabyteDB
-headerTitle: LangChain and OpenAI
-linkTitle: LangChain and OpenAI
+headerTitle: Query without SQL using LangChain
+linkTitle: Query without SQL - LangChain
 description: Learn to build context-aware LLM applications using LangChain and OpenAI.
 image: /images/tutorials/ai/icons/langchain-icon.svg
 headcontent: Query your database using natural language
 menu:
   preview_tutorials:
     identifier: tutorials-ai-langchain-openai
-    parent: tutorials-ai
+    parent: tutorials-ai-agentic
     weight: 60
 type: docs
 ---
@@ -287,4 +287,4 @@ LangChain provides a powerful toolkit to application developers seeking LLM inte
 
 For more information about LangChain, see the [LangChain documentation](https://python.langchain.com/docs/get_started/introduction).
 
-If you would like to learn more on integrating OpenAI with YugabyteDB, check out the [Azure OpenAI](../../azure/azure-openai/) tutorial.
+If you would like to learn more on integrating OpenAI with YugabyteDB, check out the [Azure OpenAI](../azure-openai/) tutorial.

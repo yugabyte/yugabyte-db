@@ -50,6 +50,7 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/entity_ids_types.h"
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol.pb.h"
@@ -519,12 +520,27 @@ Status WaitUntilNumberOfAliveTServersEqual(int n_tservers,
                                      n_tservers, timeout.ToMilliseconds()));
 }
 
-Result<TabletServerMap> CreateTabletServerMap(ExternalMiniCluster* cluster) {
-  auto proxy = cluster->num_masters() > 1
-      ? cluster->GetLeaderMasterProxy<master::MasterClusterProxy>()
-      : cluster->GetMasterProxy<master::MasterClusterProxy>();
-  return CreateTabletServerMap(proxy, &cluster->proxy_cache());
+// TODO: switch ExternalMiniCluster::GetLeaderMaster* to return error if leader is not elected to
+// unify with MiniCluster.
+Result<master::MasterClusterProxy> GetLeaderMasterClusterProxy(MiniCluster* cluster) {
+  return cluster->num_masters() > 1
+             ? VERIFY_RESULT(cluster->GetLeaderMasterProxy<master::MasterClusterProxy>())
+             : cluster->GetMasterProxy<master::MasterClusterProxy>();
 }
+
+Result<master::MasterClusterProxy> GetLeaderMasterClusterProxy(ExternalMiniCluster* cluster) {
+  return cluster->num_masters() > 1 ? cluster->GetLeaderMasterProxy<master::MasterClusterProxy>()
+                                    : cluster->GetMasterProxy<master::MasterClusterProxy>();
+}
+
+template <typename MiniClusterType>
+Result<TabletServerMap> CreateTabletServerMap(MiniClusterType* cluster) {
+  return CreateTabletServerMap(
+      VERIFY_RESULT(GetLeaderMasterClusterProxy(cluster)), &cluster->proxy_cache());
+}
+
+template Result<TabletServerMap> CreateTabletServerMap(MiniCluster* cluster);
+template Result<TabletServerMap> CreateTabletServerMap(ExternalMiniCluster* cluster);
 
 Result<TabletServerMap> CreateTabletServerMap(
     const master::MasterClusterProxy& proxy, rpc::ProxyCache* proxy_cache) {
@@ -1197,8 +1213,10 @@ Status RemoveServer(const TServerDetails* leader,
 
 Status ListTablets(const TServerDetails* ts,
                    const MonoDelta& timeout,
-                   vector<ListTabletsResponsePB::StatusAndSchemaPB>* tablets) {
+                   vector<ListTabletsResponsePB::StatusAndSchemaPB>* tablets,
+                   bool user_tablets_only) {
   tserver::ListTabletsRequestPB req;
+  req.set_include_user_tablets_only(user_tablets_only);
   tserver::ListTabletsResponsePB resp;
   RpcController rpc;
   rpc.set_timeout(timeout);
@@ -1608,6 +1626,23 @@ void SetupQuickSplit(int64_t forced_split_threshold) {
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_force_split_threshold_bytes) = forced_split_threshold;
+}
+
+Result<TableId> CreateSimpleTable(
+    master::MasterDDLClient& client, const NamespaceName& namespace_name,
+    const TableName& table_name, MonoDelta timeout) {
+  Schema schema{{ColumnSchema("key", DataType::INT32, ColumnKind::HASH)}};
+  master::CreateTableRequestPB request;
+  request.set_name(table_name);
+  SchemaToPB(schema, request.mutable_schema());
+  if (!namespace_name.empty()) {
+    request.mutable_namespace_()->set_name(namespace_name);
+  }
+  request.mutable_partition_schema()->set_hash_schema(PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA);
+  request.mutable_schema()->mutable_table_properties()->set_num_tablets(1);
+  auto table_id = VERIFY_RESULT(client.CreateTable(request));
+  RETURN_NOT_OK(client.WaitForCreateTableDone(table_id, timeout));
+  return table_id;
 }
 
 } // namespace itest

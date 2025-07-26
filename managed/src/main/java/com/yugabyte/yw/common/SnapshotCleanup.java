@@ -49,12 +49,8 @@ public class SnapshotCleanup {
 
   public List<SnapshotInfo> getNonScheduledSnapshotList(Universe universe) {
     List<SnapshotInfo> listWithoutRestoreSnapshots = new ArrayList<>();
-    String masterHostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodetoNode();
     if (!universe.getUniverseDetails().universePaused) {
-      YBClient ybClient = null;
-      try {
-        ybClient = ybService.getClient(masterHostPorts, certificate);
+      try (YBClient ybClient = ybService.getUniverseClient(universe)) {
         ListSnapshotSchedulesResponse snapshotScheduleResponse =
             ybClient.listSnapshotSchedules(null);
         List<SnapshotScheduleInfo> snapshotScheduleInfosList = new ArrayList<>();
@@ -95,8 +91,6 @@ public class SnapshotCleanup {
                 });
       } catch (Exception e) {
         LOG.error("Error fetching Orphan snapshots for Universe: {}", universe.getUniverseUUID());
-      } finally {
-        ybService.closeClient(ybClient, masterHostPorts);
       }
     }
     return listWithoutRestoreSnapshots;
@@ -162,10 +156,7 @@ public class SnapshotCleanup {
                             getFilterInProgressBackupSnapshots(
                                 snapshotInfoList, universeSnapshotFilterTime);
                         if (CollectionUtils.isNotEmpty(snapshotInfoList)) {
-                          String masterHostPorts = universe.getMasterAddresses();
-                          String certificate = universe.getCertificateNodetoNode();
-                          YBClient ybClient = ybService.getClient(masterHostPorts, certificate);
-                          try {
+                          try (YBClient ybClient = ybService.getUniverseClient(universe)) {
                             snapshotInfoList.stream()
                                 .forEach(
                                     sI -> {
@@ -178,8 +169,6 @@ public class SnapshotCleanup {
                                     });
                           } catch (Exception e) {
                             LOG.error("Got error while deleting snapshots during Platform start.");
-                          } finally {
-                            ybService.closeClient(ybClient, masterHostPorts);
                           }
                         }
                       });

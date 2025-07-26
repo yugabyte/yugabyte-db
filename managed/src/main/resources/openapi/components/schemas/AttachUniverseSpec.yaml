@@ -1,0 +1,10 @@
+title: AttachUniverseSpec
+description: Request payload for attaching a universe.
+type: object
+properties:
+  downloaded_spec_file:
+    description: The uploaded tgz file containing universe metadata.
+    type: string
+    format: binary
+    x-java-type: Http.MultipartFormData.FilePart<TemporaryFile>
+x-yba-api-visibility: internal

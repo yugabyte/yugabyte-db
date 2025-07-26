@@ -42,6 +42,8 @@ class CDCSDKConsumptionConsistentChangesTest : public CDCSDKYsqlTest {
   void TestConcurrentConsumptionFromMultipleVWAL(CDCSDKSnapshotOption snapshot_option);
   void TestCommitTimeTieWithPublicationRefreshRecord(bool special_record_in_separate_response);
   void TestSlotRowDeletion(bool multiple_streams);
+  void TestColocatedUpdateWithIndex(bool use_pk_as_index);
+  void TestColocatedUpdateAffectingNoRows(bool use_multi_shard);
 };
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVirtualWAL) {
@@ -192,7 +194,7 @@ TEST_F(
       auto tablet_id = peer->tablet_id();
       auto raft_consensus = ASSERT_RESULT(peer->GetRaftConsensus());
       if (tablets_locations_map.contains(tablet_id)) {
-        auto txn_participant = ASSERT_RESULT(peer->shared_tablet_safe())->transaction_participant();
+        auto txn_participant = ASSERT_RESULT(peer->shared_tablet())->transaction_participant();
         ASSERT_OK(WaitFor(
             [&]() -> Result<bool> {
               if (txn_participant->GetNumRunningTransactions() == 0) {
@@ -2032,8 +2034,12 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDynamicTablesAddition) {
   ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 3);
 
   for (auto record : change_resp.cdc_sdk_proto_records()) {
-    ASSERT_EQ(record.row_message().table(), "test1");
     UpdateRecordCount(record, count);
+    if (record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT) {
+      continue;
+    }
+    ASSERT_EQ(record.row_message().table(), "test1");
   }
 
 
@@ -2131,8 +2137,12 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDynamicTablesRemoval) {
 
   change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
   for (auto record : change_resp.cdc_sdk_proto_records()) {
-    ASSERT_EQ(record.row_message().table(), "test1");
     UpdateRecordCount(record, count);
+    if (record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT) {
+      continue;
+    }
+    ASSERT_EQ(record.row_message().table(), "test1");
   }
   for (int i = 0; i < 8; i++) {
     ASSERT_EQ(expecpted_count[i], count[i]);
@@ -4278,9 +4288,14 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALSafeTimeWithDynamicTableA
   auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
   ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 3);
   for (auto record : change_resp.cdc_sdk_proto_records()) {
-    // Assert that all the records belong to test1 table.
-    ASSERT_EQ(record.row_message().table(), "test1");
     UpdateRecordCount(record, count);
+    // Assert that all the records belong to test1 table. Skip the BEGIN / COMMIT records from this
+    // assertion as they don't contain table name.
+    if (record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT) {
+      continue;
+    }
+    ASSERT_EQ(record.row_message().table(), "test1");
   }
 
   // Call GetConsistentChanges once more. This call will move the Virtual WAL safe time forward.
@@ -4310,12 +4325,17 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALSafeTimeWithDynamicTableA
       ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(stream_id, {} /* table_ids */, 1, false));
   ASSERT_EQ(resp.records.size(), 3);
   for (auto record : resp.records) {
+    UpdateRecordCount(record, count);
+    if (record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT) {
+      continue;
+    }
+
     ASSERT_EQ(record.row_message().table(), "test2");
     if (record.row_message().op() == RowMessage_Op_INSERT) {
       // Assert that the insert is the one with id = 3.
       ASSERT_EQ(record.row_message().new_tuple()[0].pg_ql_value().int32_value(), 3);
     }
-    UpdateRecordCount(record, count);
   }
 
   for (int i = 0; i < 8; i++) {
@@ -4343,6 +4363,147 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestBlockDropTableWhenPartOfPubli
   // Drop the table test_1 from pub_1. Now the drop table should succeed.
   ASSERT_OK(conn.Execute("ALTER PUBLICATION pub_1 DROP TABLE test_1"));
   ASSERT_OK(conn.Execute("DROP TABLE test_1"));
+}
+
+// This test was added as a part of #27052.
+void CDCSDKConsumptionConsistentChangesTest::TestColocatedUpdateWithIndex(bool use_pk_as_index) {
+  // Disable packed rows, else updates affecting all the non-key columns come as INSERTS.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
+  ASSERT_OK(SetUpWithParams(
+      1, 1, true /* colocated */, true /* cdc_populate_safepoint_record */,
+      true /* set_pgsql_proxy_bind_address */));
+
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, kNamespaceName, kTableName, 1 /* num_tablets */, true /* add_pk */,
+      true /* colocated */));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(
+      table, 0, &tablets,
+      /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (1,1)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (2,2)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (3,3)"));
+
+  if (use_pk_as_index) {
+    ASSERT_OK(conn.Execute("CREATE INDEX idx ON test_table(key)"));
+  } else {
+    ASSERT_OK(conn.Execute("CREATE INDEX idx ON test_table(key)"));
+  }
+
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}));
+
+  ASSERT_OK(conn.Execute("UPDATE test_table set value_1 = 10 WHERE key in (1,2,3)"));
+  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 5);
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records()[1].row_message().op(), RowMessage_Op_UPDATE);
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records()[2].row_message().op(), RowMessage_Op_UPDATE);
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records()[3].row_message().op(), RowMessage_Op_UPDATE);
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestColocatedUpdateWithIndexOnNonPKColumn) {
+  TestColocatedUpdateWithIndex(false /* use_pk_as_index*/);
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestColocatedUpdateWithIndexOnPKColumn) {
+  TestColocatedUpdateWithIndex(true /* use_pk_as_index*/);
+}
+
+// This test was added as a part of #27052.
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestColocatedUpdateWithIndexMultiColumnTable) {
+  ASSERT_OK(SetUpWithParams(
+      1, 1, true /* colocated */, true /* cdc_populate_safepoint_record */,
+      true /* set_pgsql_proxy_bind_address */));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test_table (id int primary key, v1 text, v2 text, v3 text, v4 int)"));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, kTableName));
+
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (1, 'abc', 'abc', 'abc', 10)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (2, 'abc', 'abc', 'abc', 11)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (3, 'abc', 'abc', 'abc', 12)"));
+
+  ASSERT_OK(conn.Execute("CREATE INDEX idx ON test_table(v4)"));
+
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}));
+
+  ASSERT_OK(conn.Execute("UPDATE test_table set v1 = 'def', v4 = 100 WHERE id in (1,2)"));
+  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 4);
+  auto update_record_1 = change_resp.cdc_sdk_proto_records()[1];
+  ASSERT_EQ(update_record_1.row_message().op(), RowMessage_Op_UPDATE);
+  ASSERT_EQ(update_record_1.row_message().new_tuple()[0].pg_ql_value().int32_value(), 1);
+  ASSERT_EQ(update_record_1.row_message().new_tuple()[1].pg_ql_value().string_value(), "def");
+  ASSERT_EQ(update_record_1.row_message().new_tuple()[2].pg_ql_value().int32_value(), 100);
+
+  auto update_record_2 = change_resp.cdc_sdk_proto_records()[2];
+  ASSERT_EQ(update_record_2.row_message().op(), RowMessage_Op_UPDATE);
+  ASSERT_EQ(update_record_2.row_message().new_tuple()[0].pg_ql_value().int32_value(), 2);
+  ASSERT_EQ(update_record_2.row_message().new_tuple()[1].pg_ql_value().string_value(), "def");
+  ASSERT_EQ(update_record_2.row_message().new_tuple()[2].pg_ql_value().int32_value(), 100);
+}
+
+void CDCSDKConsumptionConsistentChangesTest::TestColocatedUpdateAffectingNoRows(
+    bool use_multi_shard) {
+  ASSERT_OK(SetUpWithParams(1, 1, true /* colocated */, true /* cdc_populate_safepoint_record */));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, kNamespaceName, kTableName, 1 /* num_tablets */, true /* add_pk */,
+      true /* colocated */));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  // Create a dummy_table so that multiple BEGINS and COMMITS are added for each txn.
+  ASSERT_OK(conn.Execute("CREATE TABLE dummy_table (id int primary key)"));
+
+  // Create a stream.
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  // Insert and delete a row and then try to update it. This UPDATE will create WAL op with zero
+  // write pairs. We should not receive any record  (including any BEGIN / COMMIT) corresponding to
+  // this UPDATE.
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (2, 2)"));
+  ASSERT_OK(conn.Execute("DELETE FROM test_table WHERE key = 2"));
+  if (use_multi_shard) {
+    ASSERT_OK(conn.Execute("BEGIN"));
+    ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 60 WHERE key = 2"));
+    ASSERT_OK(conn.Execute("COMMIT"));
+  } else {
+    ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 60 WHERE key = 2"));
+  }
+
+  // Insert another row.
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (100, 100)"));
+
+  // These arrays store counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN and COMMIT
+  // in that order.
+  const int expected_count[] = {0, 2, 0, 1, 0, 0, 3, 3};
+  int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
+
+  ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}));
+  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+
+  // 3 from first INSERT, 3 from DELETE, 0 from UPDATE and 3 from second INSERT.
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 9);
+  for (auto record : change_resp.cdc_sdk_proto_records()) {
+    UpdateRecordCount(record, count);
+  }
+  for (auto i = 0; i < 8; i++) {
+    ASSERT_EQ(expected_count[i], count[i]);
+  }
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestColocatedSingleShardUpdateAffectingNoRows) {
+  TestColocatedUpdateAffectingNoRows(false /* use_multi_shard*/);
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestColocatedMultiShardUpdateAffectingNoRows) {
+  TestColocatedUpdateAffectingNoRows(true /* use_multi_shard*/);
 }
 
 }  // namespace cdc

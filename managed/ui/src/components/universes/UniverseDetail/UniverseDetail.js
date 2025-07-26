@@ -47,8 +47,9 @@ import {
 } from '../../../utils/LayoutUtils';
 import { SecurityMenu } from '../SecurityModal/SecurityMenu';
 import { UniverseLevelBackup } from '../../backupv2/Universe/UniverseLevelBackup';
-import { UniverseSupportBundle } from '../UniverseSupportBundle/UniverseSupportBundle';
+import { UniverseSupportBundleModal } from '../UniverseSupportBundle/UniverseSupportBundleModal';
 import { XClusterReplication } from '../../xcluster/XClusterReplication';
+import { EnablePerfAdvisorModal } from '../../../redesign/features/universe/universe-actions/enable-perf-advisor/EnablePerfAdvisorModal';
 import { EncryptionAtRest } from '../../../redesign/features/universe/universe-actions/encryption-at-rest/EncryptionAtRest';
 import { EncryptionInTransit } from '../../../redesign/features/universe/universe-actions/encryption-in-transit/EncryptionInTransit';
 import { EnableYSQLModal } from '../../../redesign/features/universe/universe-actions/edit-ysql-ycql/EnableYSQLModal';
@@ -65,7 +66,8 @@ import { UniverseState, getUniverseStatus, SoftwareUpgradeState } from '../helpe
 import { TaskDetailBanner } from '../../../redesign/features/tasks/components/TaskDetailBanner';
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
-import { TroubleshootRegistrationDetails } from '../TroubleshootUniverse/TroubleshootRegistrationDetails';
+// import { RegisterYBAToPerfAdvisor } from '../AttachUniverseToPerfAdvisor/RegisterYBAToPerfAdvisor';
+import { PerfAdvisorTabs } from '../PerfAdvisor/PerfAdvisorTabs';
 import {
   VM_PATCHING_RUNTIME_CONFIG,
   isImgBundleSupportedByProvider
@@ -73,8 +75,6 @@ import {
 import { DrConfigList } from '../../xcluster/disasterRecovery/DrConfigList';
 import { InstallNodeAgentModal } from '../../../redesign/features/universe/universe-actions/install-node-agent/InstallNodeAgentModal';
 import { YBMenuItemLabel } from '../../../redesign/components/YBDropdownMenu/YBMenuItemLabel';
-
-import { AppName } from '../../../redesign/features/Troubleshooting/TroubleshootingDashboard';
 import { RuntimeConfigKey, UNIVERSE_TASKS } from '../../../redesign/helpers/constants';
 import { isActionFrozen } from '../../../redesign/helpers/utils';
 import {
@@ -160,7 +160,7 @@ class UniverseDetail extends Component {
   isNewTaskUIEnabled = () => {
     const { featureFlags } = this.props;
     return featureFlags.test.newTaskDetailsUI || featureFlags.released.newTaskDetailsUI;
-  }
+  };
   componentDidMount() {
     const {
       customer: { currentCustomer }
@@ -182,10 +182,11 @@ class UniverseDetail extends Component {
       }
       this.props.getUniverseInfo(uuid).then((response) => {
         const primaryCluster = getPrimaryCluster(response.payload.data?.universeDetails?.clusters);
+        const isUniverseTaskInProgress = response.payload.data?.universeDetails?.updateInProgress;
         const providerUUID = primaryCluster?.userIntent?.provider;
         this.props.fetchSupportedReleases(providerUUID);
         this.props.fetchProviderRunTimeConfigs(providerUUID);
-        this.props.getUniverseLbState(uuid);
+        !isUniverseTaskInProgress && this.props.getUniverseLbState(uuid);
       });
 
       if (isDisabled(currentCustomer.data.features, 'universes.details.health')) {
@@ -204,6 +205,7 @@ class UniverseDetail extends Component {
   componentDidUpdate(prevProps) {
     const {
       universe: { currentUniverse },
+      customer: { perfAdvisorDetails },
       universeTables
     } = this.props;
     // Always refresh universe info on Overview tab or when universe uuid in the route changes.
@@ -212,7 +214,8 @@ class UniverseDetail extends Component {
       prevProps.params.uuid !== this.props.params.uuid
     ) {
       this.props.getUniverseInfo(this.props.params.uuid);
-      this.props.getUniverseLbState(this.props.params.uuid);
+      const isUpdateInProgress = currentUniverse?.data?.universeDetails?.updateInProgress;
+      !isUpdateInProgress && this.props.getUniverseLbState(this.props.params.uuid);
     }
     if (
       getPromiseState(currentUniverse).isSuccess() &&
@@ -232,10 +235,20 @@ class UniverseDetail extends Component {
           refetchedUniverseDetails: true
         });
       }
-      if(this.state.refetchedUniverseDetails && currentUniverse?.data?.universeDetails?.updatingTaskUUID === prevProps.universe.currentUniverse.data?.universeDetails?.updatingTaskUUID) {
+      if (
+        this.state.refetchedUniverseDetails &&
+        currentUniverse?.data?.universeDetails?.updatingTaskUUID ===
+          prevProps.universe.currentUniverse.data?.universeDetails?.updatingTaskUUID
+      ) {
         this.setState({
           refetchedUniverseDetails: false
         });
+      }
+      if (perfAdvisorDetails?.data?.[0]?.uuid) {
+        this.props.getUniversePaRegistrationStatus(
+          perfAdvisorDetails?.data?.[0].uuid,
+          currentUniverse.data.universeUUID
+        );
       }
     }
   }
@@ -329,7 +342,12 @@ class UniverseDetail extends Component {
       modal: { showModal, visibleModal },
       universe,
       tasks,
-      universe: { currentUniverse, supportedReleases, universeLbState },
+      universe: {
+        currentUniverse,
+        supportedReleases,
+        universeLbState,
+        universePaRegistrationStatus
+      },
       showSoftwareUpgradesModal,
       showLinuxSoftwareUpgradeModal,
       showSoftwareUpgradesNewModal,
@@ -348,6 +366,7 @@ class UniverseDetail extends Component {
       showManageKeyModal,
       showDeleteUniverseModal,
       showForceDeleteUniverseModal,
+      showEnablePerfAdvisorModal,
       showToggleUniverseStateModal,
       showToggleBackupModal,
       showEnableYSQLModal,
@@ -357,7 +376,13 @@ class UniverseDetail extends Component {
       updateBackupState,
       closeModal,
       customer,
-      customer: { currentCustomer, currentUser, runtimeConfigs, providerRuntimeConfigs },
+      customer: {
+        currentCustomer,
+        currentUser,
+        runtimeConfigs,
+        providerRuntimeConfigs,
+        perfAdvisorDetails
+      },
       params: { tab },
       featureFlags,
       providers,
@@ -397,8 +422,7 @@ class UniverseDetail extends Component {
     const providerUUID = primaryCluster?.userIntent?.provider;
     const provider = providers.data.find((provider) => provider.uuid === providerUUID);
     const isProviderNodeAgentEnabled = provider?.details?.enableNodeAgent;
-    const isNodeAgentInstallationPending =
-      universe?.currentUniverse?.data?.universeDetails?.installNodeAgent;
+    const isNodeAgentMissing = universe?.currentUniverse?.data?.universeDetails?.nodeAgentMissing;
 
     let onPremSkipProvisioning = false;
     if (provider && provider.code === 'onprem') {
@@ -411,13 +435,6 @@ class UniverseDetail extends Component {
     const isNodeAgentClientEnabled =
       providerRuntimeConfigs?.data?.configEntries?.find(
         (config) => config.key === RuntimeConfigKey.ENABLE_NODE_AGENT
-      )?.value === 'true';
-    runtimeConfigs?.data?.configEntries?.find(
-      (config) => config.key === RuntimeConfigKey.PERFORMANCE_ADVISOR_UI_FEATURE_FLAG
-    )?.value === 'true';
-    const isPerfAdvisorEnabled =
-      runtimeConfigs?.data?.configEntries?.find(
-        (config) => config.key === RuntimeConfigKey.PERFORMANCE_ADVISOR_UI_FEATURE_FLAG
       )?.value === 'true';
     const isDrEnabled =
       runtimeConfigs?.data?.configEntries?.find(
@@ -453,7 +470,12 @@ class UniverseDetail extends Component {
       runtimeConfigs?.data?.configEntries?.find((c) => c.key === VM_PATCHING_RUNTIME_CONFIG)
         ?.value === 'true';
 
-    const isTroubleshootingEnabled =
+    const isPerfAdvisorUIEnabled =
+      runtimeConfigs?.data?.configEntries?.find(
+        (config) => config.key === RuntimeConfigKey.PERFORMANCE_ADVISOR_UI_FEATURE_FLAG
+      )?.value === 'true';
+
+    const isPerfAdvisorServiceEnabled =
       runtimeConfigs?.data?.configEntries?.find(
         (c) => c.key === RuntimeConfigKey.ENABLE_TROUBLESHOOTING
       )?.value === 'true';
@@ -679,7 +701,7 @@ class UniverseDetail extends Component {
             onExit={this.stripQueryParams}
             disabled={isDisabled(currentCustomer.data.features, 'universes.details.queries')}
           >
-            <QueriesViewer isPerfAdvisorEnabled={isPerfAdvisorEnabled} />
+            <QueriesViewer isPerfAdvisorUIEnabled={isPerfAdvisorUIEnabled} />
           </Tab.Pane>
         ),
         isNotHidden(currentCustomer.data.features, 'universes.details.recovery') && isDrEnabled && (
@@ -728,22 +750,18 @@ class UniverseDetail extends Component {
             />
           </Tab.Pane>
         ),
-        isNotHidden(currentCustomer.data.features, 'universes.details.troubleshooting') &&
-          isTroubleshootingEnabled && (
+        isNotHidden(currentCustomer.data.features, 'universes.details.perfAdvisor') &&
+          isPerfAdvisorServiceEnabled && (
             <Tab.Pane
-              eventKey={'troubleshoot'}
-              tabtitle="Troubleshoot"
-              key="troubleshoot-tab"
+              eventKey={'perfAdvisor'}
+              tabtitle="Perf Advisor"
+              key="perf-advisor-tab"
               mountOnEnter={true}
               unmountOnExit={true}
-              disabled={isDisabled(
-                currentCustomer.data.features,
-                'universes.details.troubleshooting'
-              )}
+              disabled={isDisabled(currentCustomer.data.features, 'universes.details.perfAdvisor')}
             >
-              <TroubleshootRegistrationDetails
-                universeUuid={currentUniverse.data.universeUUID}
-                appName={AppName.YBA}
+              <PerfAdvisorTabs
+                universeUUID={currentUniverse.data.universeUUID}
                 timezone={currentUser.data.timezone}
               />
             </Tab.Pane>
@@ -757,7 +775,7 @@ class UniverseDetail extends Component {
               <Tab.Pane
                 eventKey={'db-audit-log'}
                 tabtitle="Logs"
-                key="db-audit-log"
+                key="db-audit-log-tab"
                 mountOnEnter={true}
                 unmountOnExit={true}
               >
@@ -869,7 +887,6 @@ class UniverseDetail extends Component {
 
           <DropdownButton
             title="Actions"
-            className={this.showUpgradeMarker() ? 'btn-marked' : ''}
             id="bg-nested-dropdown"
             pullRight
             onToggle={(isOpen) => this.setState({ actionsDropdownOpen: isOpen })}
@@ -1265,11 +1282,10 @@ class UniverseDetail extends Component {
                       <i className="fa fa-chevron-right submenu-icon" />
                     </span>
                   </YBMenuItem>
-                  {(featureFlags.test['supportBundle'] ||
-                    featureFlags.released['supportBundle']) && (
-                    <>
-                      <MenuItem divider />
-                      {!universePaused && (
+                  {(featureFlags.test['supportBundle'] || featureFlags.released['supportBundle']) &&
+                    !universePaused && (
+                      <>
+                        <MenuItem divider />
                         <RbacValidator
                           isControl
                           accessRequiredOn={{
@@ -1277,25 +1293,17 @@ class UniverseDetail extends Component {
                             ...ApiPermissionMap.GET_SUPPORT_BUNDLE
                           }}
                         >
-                          <UniverseSupportBundle
-                            currentUniverse={currentUniverse.data}
-                            modal={modal}
-                            closeModal={closeModal}
-                            button={
-                              <YBMenuItem
-                                onClick={showSupportBundleModal}
-                                disabled={isSupportBundleDisabled}
-                              >
-                                <YBLabelWithIcon icon="fa fa-file-archive-o">
-                                  Support Bundles
-                                </YBLabelWithIcon>
-                              </YBMenuItem>
-                            }
-                          />
+                          <YBMenuItem
+                            onClick={showSupportBundleModal}
+                            disabled={isSupportBundleDisabled}
+                          >
+                            <YBLabelWithIcon icon="fa fa-file-archive-o">
+                              Support Bundles
+                            </YBLabelWithIcon>
+                          </YBMenuItem>
                         </RbacValidator>
-                      )}
-                    </>
-                  )}
+                      </>
+                    )}
 
                   <MenuItem divider />
 
@@ -1456,7 +1464,7 @@ class UniverseDetail extends Component {
                         <RbacValidator
                           accessRequiredOn={{
                             onResource: uuid,
-                            ...ApiPermissionMap.UNIVERSE_CONFIGURE_YSQL
+                            ...ApiPermissionMap.GET_UNIVERSE_PERF_ADVISOR
                           }}
                           isControl
                         >
@@ -1519,9 +1527,7 @@ class UniverseDetail extends Component {
                           onClick={showInstallNodeAgentModal}
                         >
                           <YBLabelWithIcon icon="fa fa-plus">
-                            {isNodeAgentInstallationPending
-                              ? 'Install Node Agent'
-                              : 'Reinstall Node Agent'}
+                            {isNodeAgentMissing ? 'Install Node Agent' : 'Reinstall Node Agent'}
                           </YBLabelWithIcon>
                         </YBMenuItem>
                       </RbacValidator>
@@ -1557,6 +1563,30 @@ class UniverseDetail extends Component {
                         </YBMenuItem>
                       </RbacValidator>
                     )}
+                    {!universePaused && isPerfAdvisorServiceEnabled && (
+                      <RbacValidator
+                        isControl
+                        accessRequiredOn={{
+                          onResource: uuid,
+                          ...ApiPermissionMap.GET_UNIVERSE_PERF_ADVISOR_STATUS
+                        }}
+                      >
+                        <YBMenuItem
+                          onClick={showEnablePerfAdvisorModal}
+                          availability={getFeatureState(
+                            currentCustomer.data.features,
+                            'universes.details.overview.editGFlags'
+                          )}
+                        >
+                          <YBLabelWithIcon icon="fa fa-trash-o fa-fw">
+                            {universePaRegistrationStatus?.data?.success
+                              ? 'Disable Perf Advisor'
+                              : 'Enable Perf Advisor'}
+                          </YBLabelWithIcon>
+                        </YBMenuItem>
+                      </RbacValidator>
+                    )}
+
                     <RbacValidator
                       isControl
                       accessRequiredOn={{
@@ -1622,9 +1652,7 @@ class UniverseDetail extends Component {
             shouldDisplayTaskButton={true}
           />
         </div>
-        <TaskDetailBanner
-          universeUUID={currentUniverse.data.universeUUID}
-        />
+        <TaskDetailBanner universeUUID={currentUniverse.data.universeUUID} />
         <RollingUpgradeFormContainer
           modalVisible={
             showModal &&
@@ -1763,6 +1791,21 @@ class UniverseDetail extends Component {
           universeData={currentUniverse.data}
           isItKubernetesUniverse={isKubernetesUniverse}
         />
+        <EnablePerfAdvisorModal
+          open={showModal && visibleModal === 'enablePerfAdvisorModal'}
+          onClose={() => {
+            closeModal();
+            if (perfAdvisorDetails?.data?.[0]?.uuid) {
+              this.props.getUniversePaRegistrationStatus(
+                perfAdvisorDetails?.data?.[0].uuid,
+                currentUniverse.data.universeUUID
+              );
+            }
+          }}
+          paUuid={perfAdvisorDetails?.data?.[0]?.uuid}
+          universeData={currentUniverse.data}
+          perfAdvisorStatus={universePaRegistrationStatus}
+        />
 
         <EditPGCompatibilityModal
           open={showModal && visibleModal === 'enablePGCompatibility'}
@@ -1797,7 +1840,13 @@ class UniverseDetail extends Component {
           universeUuid={currentUniverse.data.universeUUID}
           nodeNames={nodeNames}
           isUniverseAction={true}
-          isReinstall={!isNodeAgentInstallationPending}
+          isReinstall={!isNodeAgentMissing}
+        />
+
+        <UniverseSupportBundleModal
+          currentUniverse={currentUniverse.data}
+          modal={modal}
+          closeModal={closeModal}
         />
 
         <Measure onMeasure={this.onResize.bind(this)}>

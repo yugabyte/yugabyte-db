@@ -208,7 +208,6 @@ class LoadBalancerOddTabletsTest : public LoadBalancerTest {
     opts->extra_tserver_flags.push_back("--placement_cloud=c");
     opts->extra_tserver_flags.push_back("--placement_region=r");
     opts->extra_tserver_flags.push_back("--placement_zone=z${index}");
-    opts->extra_master_flags.push_back("--load_balancer_max_over_replicated_tablets=5");
   }
 };
 
@@ -341,9 +340,6 @@ TEST_F(LoadBalancerManyTabletsTest, LimitRbsToUnresponsiveNode) {
       ToString(kNumConcurrentRBS)));
   ASSERT_OK(external_mini_cluster()->SetFlagOnMasters(
       "load_balancer_max_concurrent_tablet_remote_bootstraps", ToString(kNumConcurrentRBS)));
-  // Don't set a limit on overreplication, we want RBS to be the limiting factor.
-  ASSERT_OK(external_mini_cluster()->SetFlagOnMasters(
-      "load_balancer_max_over_replicated_tablets", "100"));
 
   ASSERT_OK(yb_admin_client_->SetLoadBalancerEnabled(false));
 

@@ -66,6 +66,7 @@ using strings::Substitute;
 
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 DECLARE_bool(cdcsdk_enable_dynamic_tables_disable_option);
+DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 
 DEFINE_RUNTIME_AUTO_bool(
     use_parent_table_id_field, kLocalPersisted, false, true,
@@ -511,11 +512,11 @@ Result<Schema> TableInfo::GetSchema() const {
 }
 
 bool TableInfo::has_pgschema_name() const {
-  return LockForRead()->schema().has_pgschema_name();
+  return LockForRead()->schema().has_deprecated_pgschema_name();
 }
 
 const string TableInfo::pgschema_name() const {
-  return LockForRead()->schema().pgschema_name();
+  return LockForRead()->schema().deprecated_pgschema_name();
 }
 
 bool TableInfo::has_pg_type_oid() const {
@@ -598,12 +599,17 @@ Status TableInfo::AddTablets(const TabletInfos& tablets) {
   return Status::OK();
 }
 
-void TableInfo::ClearTabletMaps(DeactivateOnly deactivate_only) {
+void TableInfo::ClearTabletMaps() {
+  DCHECK(IsSecondaryTable());
   std::lock_guard l(lock_);
   partitions_.clear();
-  if (!deactivate_only) {
-    tablets_.clear();
-  }
+  tablets_.clear();
+}
+
+std::map<TabletId, std::weak_ptr<TabletInfo>> TableInfo::TakeTablets() {
+  std::lock_guard l(lock_);
+  partitions_.clear();
+  return std::move(tablets_);
 }
 
 Result<TabletWithSplitPartitions> TableInfo::FindSplittableHashPartitionForStatusTable() const {
@@ -1157,7 +1163,6 @@ bool TableInfo::IsUserCreated(const ReadLock& lock) const {
     return false;
   }
   return !is_system() && !IsSequencesSystemTable(lock) &&
-         !lock->IsXClusterDDLReplicationTable() &&
          lock->namespace_id() != kSystemNamespaceId &&
          !IsColocationParentTable();
 }
@@ -1211,13 +1216,13 @@ Result<TransactionId> PersistentTableInfo::GetCurrentDdlTransactionId() const {
 
 bool PersistentTableInfo::IsXClusterDDLReplicationDDLQueueTable() const {
   return pb.table_type() == PGSQL_TABLE_TYPE &&
-         schema().pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
+         schema().deprecated_pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
          name() == xcluster::kDDLQueueTableName;
 }
 
 bool PersistentTableInfo::IsXClusterDDLReplicationReplicatedDDLsTable() const {
   return pb.table_type() == PGSQL_TABLE_TYPE &&
-         schema().pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
+         schema().deprecated_pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
          name() == xcluster::kDDLReplicatedTableName;
 }
 
@@ -1351,16 +1356,18 @@ std::string DdlLogEntry::id() const {
 // ObjectLockInfo
 // ================================================================================================
 
-std::optional<ObjectLockInfo::WriteLock> ObjectLockInfo::RefreshYsqlOperationLease(
-    const NodeInstancePB& instance) {
+std::variant<ObjectLockInfo::WriteLock, SysObjectLockEntryPB::LeaseInfoPB>
+ObjectLockInfo::RefreshYsqlOperationLease(const NodeInstancePB& instance, MonoDelta lease_ttl) {
   auto l = LockForWrite();
   {
     std::lock_guard l(mutex_);
-    last_ysql_lease_refresh_ = MonoTime::Now();
+    // When doing this mutation we cannot be sure the tserver receives the response.
+    // So we cannot safely reduce the lease deadline, only extend it.
+    ysql_lease_deadline_ = std::max(ysql_lease_deadline_, MonoTime::Now() + lease_ttl);
   }
   if (l->pb.lease_info().live_lease() &&
       l->pb.lease_info().instance_seqno() == instance.instance_seqno()) {
-    return std::nullopt;
+    return l->pb.lease_info();
   }
   auto& lease_info = *l.mutable_data()->pb.mutable_lease_info();
   lease_info.set_live_lease(true);
@@ -1373,13 +1380,15 @@ void ObjectLockInfo::Load(const SysObjectLockEntryPB& metadata) {
   MetadataCowWrapper<PersistentObjectLockInfo>::Load(metadata);
   {
     std::lock_guard l(mutex_);
-    last_ysql_lease_refresh_ = MonoTime::Now();
+    ysql_lease_deadline_ =
+        MonoTime::Now() +
+        MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_master_ysql_operation_lease_ttl_ms));
   }
 }
 
-MonoTime ObjectLockInfo::last_ysql_lease_refresh() const {
+MonoTime ObjectLockInfo::ysql_lease_deadline() const {
   std::lock_guard l(mutex_);
-  return last_ysql_lease_refresh_;
+  return ysql_lease_deadline_;
 }
 
 // ================================================================================================

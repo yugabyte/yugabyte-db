@@ -265,7 +265,6 @@
 #include "yb/util/monotime.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/striped64.h"
-#include "yb/util/threadpool.h"
 
 // Define a new entity type.
 //
@@ -401,6 +400,7 @@ METRIC_DECLARE_entity(server);
 namespace yb {
 
 class JsonWriter;
+class ThreadPool;
 
 // Unit types to be used with metrics.
 // As additional units are required, add them to this enum and also to Name().
@@ -1003,8 +1003,6 @@ class Counter : public Metric {
   DISALLOW_COPY_AND_ASSIGN(Counter);
 };
 
-using CounterPtr = scoped_refptr<Counter>;
-
 class MillisLagPrototype : public MetricPrototype {
  public:
   explicit MillisLagPrototype(const MetricPrototype::CtorArgs& args) : MetricPrototype(args) {
@@ -1287,8 +1285,6 @@ class EventStats : public BaseStats<EventStats> {
 
   DISALLOW_COPY_AND_ASSIGN(EventStats);
 };
-
-using EventStatsPtr = scoped_refptr<EventStats>;
 
 template<typename Stats>
 inline void IncrementStats(const scoped_refptr<Stats>& stats, int64_t value) {

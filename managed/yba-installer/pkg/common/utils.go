@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net"
 	"os"
@@ -154,25 +155,6 @@ func Create(p string) (*os.File, error) {
 	return os.Create(p)
 }
 
-// CreateSymlink of binary from pkgDir to linkDir.
-/*
-	pkgDir - directory where the binary (file or directory) is located
-	linkDir - directory where you want the link to be created
-	binary - name of file or directory to link. should already exist in pkgDir and will be the same
-*/
-func CreateSymlink(pkgDir string, linkDir string, binary string) error {
-	binaryPath := fmt.Sprintf("%s/%s", pkgDir, binary)
-	linkPath := fmt.Sprintf("%s/%s", linkDir, binary)
-
-	args := []string{"-sf", binaryPath, linkPath}
-	log.Debug(fmt.Sprintf("Creating symlink at %s -> orig %s",
-		linkPath, binaryPath))
-
-	out := shell.Run("ln", args...)
-	out.SucceededOrLog()
-	return out.Error
-}
-
 // Symlink implements a more generic symlink utility.
 func Symlink(src string, dest string) error {
 	if stat, err := os.Lstat(dest); err == nil {
@@ -204,7 +186,7 @@ func ResolveSymlink(source, target string) error {
 	if errors.Is(tErr, fs.ErrNotExist) && errors.Is(sErr, fs.ErrNotExist) {
 		msg := fmt.Sprintf("Neither source %s nor target %s exist", source, target)
 		log.Error(msg)
-		return fmt.Errorf(msg)
+		return errors.New(msg)
 		// Handle only target existing (already resolved)
 	} else if tErr == nil && errors.Is(sErr, fs.ErrNotExist) {
 		log.Debug(fmt.Sprintf("Symlink %s -> %s already resolved", source, target))
@@ -291,6 +273,19 @@ func resolveSymlinkFallback(source, target string) error {
 		log.Warn("failed to remove backup source directory " + srcTmpName + ": " + err.Error())
 	}
 	return nil
+}
+
+// returns true if and only if filePath is a symlink to targetPath
+func IsSameFile(filePath, targetPath string) (bool, error) {
+	fi, err := os.Stat(filePath)
+	if err != nil {
+		return false, err
+	}
+	tg, err := os.Stat(targetPath)
+	if err != nil {
+		return false, err
+	}
+	return os.SameFile(fi, tg), nil
 }
 
 func IsSubdirectory(base, target string) (bool, error) {
@@ -408,6 +403,11 @@ func InitViper() {
 	viper.SetDefault("service_username", DefaultServiceUser)
 	viper.SetDefault("installRoot", "/opt/yugabyte")
 
+	viper.SetDefault("prometheus.remoteWrite.enabled", false)
+	viper.SetDefault("prometheus.scrapeConfig.node.scheme", "http")
+	viper.SetDefault("prometheus.scrapeConfig.node-agent.scheme", "http")
+	viper.SetDefault("prometheus.scrapeConfig.otel-collector.scheme", "http")
+	viper.SetDefault("prometheus.scrapeConfig.yugabyte.scheme", "http")
 	// Update the installRoot to home directory for non-root installs. Will honor custom install root.
 	if !HasSudoAccess() && viper.GetString("installRoot") == "/opt/yugabyte" {
 		viper.SetDefault("installRoot", filepath.Join(GetUserHomeDir(), "yugabyte"))
@@ -428,6 +428,11 @@ func InitViper() {
 // Checks if Postgres is enabled in config.
 func IsPostgresEnabled() bool {
 	return viper.GetBool("postgres.install.enabled") || viper.GetBool("postgres.useExisting.enabled")
+}
+
+// Checks if PerfAdvisor is enabled in config.
+func IsPerfAdvisorEnabled() bool {
+	return viper.GetBool("perfAdvisor.enabled")
 }
 
 func GetUserHomeDir() string {
@@ -898,6 +903,9 @@ func Bool2Int(b bool) int {
 
 // StatusSince takes a timestamp in UTC and returns the time since then in a human readable format
 func StatusSince(timestamp string) string {
+	if timestamp == "" {
+		return ""
+	}
 	// Define the layout of the input string
 	layout := "Mon 2006-01-02 15:04:05 MST"
 
@@ -1043,6 +1051,68 @@ func SetDataPermissions() error {
 	userName := viper.GetString("service_username")
 	if err := Chown(GetDataRoot(), userName, userName, true); err != nil {
 		return err
+	}
+	return nil
+}
+
+type ConfEntry struct {
+	Key, Value string
+	Found      bool
+	Quotes     bool
+}
+
+func (ce ConfEntry) String() string {
+	// Format the key-value pair for postgresql.conf
+	if ce.Quotes {
+		return fmt.Sprintf("%s = '%s'", ce.Key, ce.Value)
+	}
+	return fmt.Sprintf("%s = %s", ce.Key, ce.Value)
+}
+
+type ConfUpdater struct {
+	Entries []ConfEntry
+}
+
+func (cu ConfUpdater) updateLine(line *string) {
+	// Check if the line contains a key-value pair
+	for _, entry := range cu.Entries {
+		if strings.HasPrefix(*line, entry.Key+" =") {
+			entry.Found = true
+			*line = entry.String()
+		}
+	}
+}
+
+func (cu ConfUpdater) addRemaining(resp io.Writer) error {
+	// Add any entries that were not found in the input
+	for _, entry := range cu.Entries {
+		if !entry.Found {
+			line := entry.String()
+			if _, err := resp.Write([]byte(line + "\n")); err != nil {
+				return fmt.Errorf("failed to write line '%s': %w", line, err)
+			}
+		}
+	}
+	return nil
+}
+
+func (cu ConfUpdater) Update(f io.Reader, resp io.Writer) error {
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		// Only update lines that are not comments and not empty
+		if !strings.HasPrefix(line, "#") && strings.TrimSpace(line) != "" {
+			cu.updateLine(&line)
+		}
+		if _, err := resp.Write([]byte(line + "\n")); err != nil {
+			return fmt.Errorf("failed to write line '%s': %w", line, err)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("failed to read pg conf: %w", err)
+	}
+	if err := cu.addRemaining(resp); err != nil {
+		return fmt.Errorf("failed to add remaining lines: %w", err)
 	}
 	return nil
 }

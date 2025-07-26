@@ -34,6 +34,8 @@ CREATE SCHEMA documentdb_core;
 #include "operators/bsonquery_btree--0.10-0.sql"
 #include "schema/btree_operator_class--0.10-0.sql"
 #include "schema/btree_opclass_members--0.19-0.sql"
+-- YB: The bson LSM operator class.
+#include "schema/lsm_operator_class--0.24-0.sql"
 
 /*
  * Region: Bson Hash Operator Class

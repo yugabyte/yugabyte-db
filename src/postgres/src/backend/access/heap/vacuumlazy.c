@@ -3104,8 +3104,8 @@ dead_items_max_items(LVRelState *vacrel)
 {
 	int64		max_items;
 	int			vac_work_mem = IsAutoVacuumWorkerProcess() &&
-	autovacuum_work_mem != -1 ?
-	autovacuum_work_mem : maintenance_work_mem;
+		autovacuum_work_mem != -1 ?
+		autovacuum_work_mem : maintenance_work_mem;
 
 	if (vacrel->nindexes > 0)
 	{

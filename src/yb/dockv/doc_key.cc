@@ -632,7 +632,7 @@ string DocKey::ToString(AutoDecodeKeys auto_decode_keys) const {
   string result = "DocKey(";
   if (!cotable_id_.IsNil()) {
     result += "CoTableId=";
-    result += cotable_id_.ToString();
+    result += cotable_id_.ToHexString();
     result += ", ";
   } else if (colocation_id_ != kColocationIdNotSet) {
     result += "ColocationId=";

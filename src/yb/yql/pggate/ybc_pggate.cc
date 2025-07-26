@@ -119,6 +119,9 @@ DEFINE_NON_RUNTIME_int32(ysql_conn_mgr_wait_timeout_ms, 10000,
   "sending/receiving the packets at the socket in ysql connection manager. It is seen"
   " asan builds requires large wait timeout than other builds");
 
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_stats_interval, 1,
+  "Interval (in secs) at which the stats for Ysql Connection Manager will be updated.");
+
 // This gflag should be deprecated but kept to avoid breaking some customer
 // clusters using it. Use ysql_catalog_preload_additional_table_list if possible.
 DEFINE_NON_RUNTIME_bool(ysql_catalog_preload_additional_tables, false,
@@ -163,13 +166,27 @@ DEFINE_RUNTIME_PREVIEW_bool(
     "Enables the support for synchronizing snapshots across transactions, using pg_export_snapshot "
     "and SET TRANSACTION SNAPSHOT");
 
+DEFINE_NON_RUNTIME_bool(ysql_enable_neghit_full_inheritscache, true,
+    "When set to true, a (fully) preloaded inherits cache returns negative cache hits"
+    " right away without incurring a master lookup");
+
+DEFINE_RUNTIME_PG_FLAG(
+    bool, yb_force_early_ddl_serialization, false,
+    "If object locking is off (i.e., enable_object_locking_for_table_locks=false), concurrent "
+    "DDLs might face a conflict error on the catalog version increment at the end after doing all "
+    "the work. Setting this flag enables a fail-fast strategy by locking the catalog version at "
+    "the start of DDLs, causing conflict errors to occur before useful work is done. This flag is "
+    "only applicable without object locking. If object locking is enabled, it ensures that "
+    "concurrent DDLs block on each other for serialization. Also, this flag is valid only if "
+    "ysql_enable_db_catalog_version_mode and yb_enable_invalidation_messages are enabled.");
+
 DECLARE_bool(TEST_ash_debug_aux);
 DECLARE_bool(TEST_generate_ybrowid_sequentially);
 DECLARE_bool(TEST_ysql_log_perdb_allocated_new_objectid);
-DECLARE_bool(TEST_ysql_yb_ddl_transaction_block_enabled);
-DECLARE_bool(ysql_enable_inheritance);
 
 DECLARE_bool(use_fast_backward_scan);
+DECLARE_uint32(ysql_max_invalidation_message_queue_size);
+DECLARE_uint32(max_replication_slots);
 
 /* Constants for replication slot LSN types */
 const std::string YBC_LSN_TYPE_SEQUENCE = "SEQUENCE";
@@ -504,7 +521,7 @@ static Result<std::string> GetYbLsnTypeString(
     case tserver::PGReplicationSlotLsnType::ReplicationSlotLsnTypePg_HYBRID_TIME:
       return YBC_LSN_TYPE_HYBRID_TIME;
     default:
-      LOG(ERROR) << "Received unexpected LSN type " << yb_lsn_type << " for stream " << stream_id;
+      LOG(DFATAL) << "Received unexpected LSN type " << yb_lsn_type << " for stream " << stream_id;
       return STATUS_FORMAT(
           InternalError, "Received unexpected LSN type $0 for stream $1", yb_lsn_type, stream_id);
   }
@@ -516,6 +533,26 @@ inline YbcPgExplicitRowLockStatus MakePgExplicitRowLockStatus() {
       .error_info = {.is_initialized = false,
                      .pg_wait_policy = 0,
                      .conflicting_table_id = kInvalidOid}};
+}
+
+YbcReadHybridTime MakeYbcReadHybridTime(const ReadHybridTime& read_time) {
+  return {
+      .read = read_time.read.ToUint64(),
+      .local_limit = read_time.local_limit.ToUint64(),
+      .global_limit = read_time.global_limit.ToUint64(),
+      .in_txn_limit = read_time.in_txn_limit.ToUint64(),
+      .serial_no = read_time.serial_no
+  };
+}
+
+ReadHybridTime MakeReadHybridTime(const YbcReadHybridTime& read_time) {
+  return {
+      .read = HybridTime(read_time.read),
+      .local_limit = HybridTime(read_time.local_limit),
+      .global_limit = HybridTime(read_time.global_limit),
+      .in_txn_limit = HybridTime(read_time.in_txn_limit),
+      .serial_no = read_time.serial_no
+  };
 }
 
 } // namespace
@@ -637,7 +674,11 @@ YbcStatus YBCPgDestroyMemctx(YbcPgMemctx memctx) {
 }
 
 void YBCPgResetCatalogReadTime() {
-  return pgapi->ResetCatalogReadTime();
+  pgapi->ResetCatalogReadTime();
+}
+
+YbcReadHybridTime YBCGetPgCatalogReadTime() {
+  return MakeYbcReadHybridTime(pgapi->GetCatalogReadTime());
 }
 
 YbcStatus YBCPgResetMemctx(YbcPgMemctx memctx) {
@@ -1173,9 +1214,8 @@ YbcStatus YBCPgAlterTableSetReplicaIdentity(YbcPgStatement handle, const char id
   return ToYBCStatus(pgapi->AlterTableSetReplicaIdentity(handle, identity_type));
 }
 
-YbcStatus YBCPgAlterTableRenameTable(YbcPgStatement handle, const char *db_name,
-                                     const char *newname) {
-  return ToYBCStatus(pgapi->AlterTableRenameTable(handle, db_name, newname));
+YbcStatus YBCPgAlterTableRenameTable(YbcPgStatement handle, const char *newname) {
+  return ToYBCStatus(pgapi->AlterTableRenameTable(handle, newname));
 }
 
 YbcStatus YBCPgAlterTableIncrementSchemaVersion(YbcPgStatement handle) {
@@ -2000,6 +2040,15 @@ bool YBCPgIsDdlMode() {
   return pgapi->IsDdlMode();
 }
 
+bool YBCCurrentTransactionUsesFastPath() {
+  auto result = pgapi->CurrentTransactionUsesFastPath();
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+
+  return result.get();
+}
+
 //------------------------------------------------------------------------------------------------
 // System validation.
 //------------------------------------------------------------------------------------------------
@@ -2195,6 +2244,17 @@ YbcStatus YBCGetTserverCatalogMessageLists(
   return YBCStatusOK();
 }
 
+YbcStatus YBCPgSetTserverCatalogMessageList(
+    YbcPgOid db_oid, bool is_breaking_change, uint64_t new_catalog_version,
+    const YbcCatalogMessageList *message_list) {
+  const auto result = pgapi->SetTserverCatalogMessageList(db_oid, is_breaking_change,
+                                                          new_catalog_version, message_list);
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+  return YBCStatusOK();
+}
+
 uint64_t YBCGetSharedAuthKey() {
   return pgapi->GetSharedAuthKey();
 }
@@ -2214,6 +2274,7 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_num_databases_reserved_in_db_catalog_version_mode =
           &FLAGS_ysql_num_databases_reserved_in_db_catalog_version_mode,
       .ysql_output_buffer_size                  = &FLAGS_ysql_output_buffer_size,
+      .ysql_output_flush_size                   = &FLAGS_ysql_output_flush_size,
       .ysql_sequence_cache_minval               = &FLAGS_ysql_sequence_cache_minval,
       .ysql_session_max_batch_size              = &FLAGS_ysql_session_max_batch_size,
       .ysql_sleep_before_retry_on_txn_conflict  = &FLAGS_ysql_sleep_before_retry_on_txn_conflict,
@@ -2256,12 +2317,16 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_conn_mgr_max_query_size = &FLAGS_ysql_conn_mgr_max_query_size,
       .ysql_conn_mgr_wait_timeout_ms = &FLAGS_ysql_conn_mgr_wait_timeout_ms,
       .ysql_enable_pg_export_snapshot = &FLAGS_ysql_enable_pg_export_snapshot,
-      .TEST_ysql_yb_ddl_transaction_block_enabled =
-          &FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled,
-      .ysql_enable_inheritance =
-          &FLAGS_ysql_enable_inheritance,
-      .TEST_enable_object_locking_for_table_locks =
-          &FLAGS_TEST_enable_object_locking_for_table_locks
+      .ysql_enable_neghit_full_inheritscache =
+        &FLAGS_ysql_enable_neghit_full_inheritscache,
+      .enable_object_locking_for_table_locks =
+          &FLAGS_enable_object_locking_for_table_locks,
+      .ysql_max_invalidation_message_queue_size =
+          &FLAGS_ysql_max_invalidation_message_queue_size,
+      .ysql_max_replication_slots = &FLAGS_max_replication_slots,
+      .yb_max_recursion_depth = &FLAGS_yb_max_recursion_depth,
+      .ysql_conn_mgr_stats_interval =
+          &FLAGS_ysql_conn_mgr_stats_interval
   };
   // clang-format on
   return &accessor;
@@ -2381,10 +2446,6 @@ YbcPgThreadLocalRegexpCache* YBCPgInitThreadLocalRegexpCache(
   return PgInitThreadLocalRegexpCache(buffer_size, cleanup);
 }
 
-YbcPgThreadLocalRegexpMetadata* YBCPgGetThreadLocalRegexpMetadata() {
-  return PgGetThreadLocalRegexpMetadata();
-}
-
 void* YBCPgSetThreadLocalJumpBuffer(void* new_buffer) {
   return PgSetThreadLocalJumpBuffer(new_buffer);
 }
@@ -2410,9 +2471,12 @@ void YBCStartSysTablePrefetching(
     YbcPgLastKnownCatalogVersionInfo version_info,
     YbcPgSysTablePrefetcherCacheMode cache_mode) {
   YBCStartSysTablePrefetchingImpl(PrefetcherOptions::CachingInfo{
-      {version_info.version, version_info.is_db_catalog_version_mode},
-      database_oid,
-      YBCMapPrefetcherCacheMode(cache_mode)});
+      {
+          version_info.version,
+          MakeReadHybridTime(version_info.version_read_time),
+          version_info.is_db_catalog_version_mode
+      },
+      database_oid, YBCMapPrefetcherCacheMode(cache_mode)});
 }
 
 void YBCStopSysTablePrefetching() {
@@ -2678,7 +2742,7 @@ void YBCStoreTServerAshSamples(
   acquire_cb_lock_fn(true /* exclusive */);
   if (!result.ok()) {
     // We don't return error status to avoid a restart loop of the ASH collector
-    LOG(ERROR) << result.status();
+    LOG(WARNING) << result.status();
   } else {
     AshCopyTServerSamples(get_cb_slot_fn, result->tserver_wait_states(), sample_time);
     AshCopyTServerSamples(get_cb_slot_fn, result->cql_wait_states(), sample_time);

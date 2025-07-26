@@ -20,7 +20,7 @@ The following sections describe how to order by entity with a few examples.
 
 ## Setup
 
-{{<explore-setup-multinode>}}
+{{<explore-setup-multinode-new>}}
 
 ## Ordering per entity
 

@@ -399,7 +399,8 @@ pgstat_bestart(void)
 	if (lbeentry.st_backendType == B_BACKEND
 		|| lbeentry.st_backendType == B_WAL_SENDER
 		|| lbeentry.st_backendType == B_BG_WORKER
-		|| lbeentry.st_backendType == YB_YSQL_CONN_MGR)
+		|| lbeentry.st_backendType == YB_YSQL_CONN_MGR
+		|| lbeentry.st_backendType == YB_YSQL_CONN_MGR_WAL_SENDER)
 		lbeentry.st_userid = GetSessionUserId();
 	else
 		lbeentry.st_userid = InvalidOid;
@@ -914,8 +915,9 @@ pgstat_read_current_status(void)
 
 			if (YBIsEnabledInPostgresEnvVar())
 			{
-				localentry->yb_backend_rss_mem_bytes =
-					YbPgGetCurRSSMemUsage(localentry->backendStatus.st_procpid);
+				YbPgGetCurRssPssMemUsage(localentry->backendStatus.st_procpid,
+										 &localentry->yb_backend_rss_mem_bytes,
+										 &localentry->yb_backend_pss_mem_bytes);
 			}
 			localentry++;
 			localappname += NAMEDATALEN;

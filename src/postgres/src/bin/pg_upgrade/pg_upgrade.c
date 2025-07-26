@@ -889,9 +889,10 @@ yb_execute_extension_updates()
 		for (rowno = 0; rowno < ntups; rowno++)
 		{
 			const char *extension_name = PQgetvalue(res, rowno, i_name);
-			char query[256];
+			char		query[256];
 
 			PGresult   *res;
+
 			snprintf(query, sizeof(query), "ALTER EXTENSION %s UPDATE;",
 					 quote_identifier(extension_name));
 

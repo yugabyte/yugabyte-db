@@ -163,19 +163,19 @@ public class TestPgRegressHashInQueries extends BasePgRegressTest {
       statement.execute("SET yb_bnl_batch_size = 3;");
       statement.execute("SET yb_enable_hash_batch_in = false");
       long noBatchingSmallBatchSizeNumRPCs = getNumStorageRoundtrips(statement, query);
-      assertEquals(4102, noBatchingSmallBatchSizeNumRPCs);
+      assertEquals(4098, noBatchingSmallBatchSizeNumRPCs);
       assertRowSet(statement, query, expectedRows);
 
       statement.execute("SET yb_bnl_batch_size = 1024;");
       statement.execute("SET yb_enable_hash_batch_in = false");
       long noBatchingLargeBatchSizeNumRPCs = getNumStorageRoundtrips(statement, query);
-      assertEquals(4102, noBatchingLargeBatchSizeNumRPCs);
+      assertEquals(4098, noBatchingLargeBatchSizeNumRPCs);
       assertRowSet(statement, query, expectedRows);
 
       statement.execute("SET yb_bnl_batch_size = 1024;");
       statement.execute("SET yb_enable_hash_batch_in = true");
       long batchingLargeBatchSizeNumRPCs = getNumStorageRoundtrips(statement, query);
-      assertEquals(12, batchingLargeBatchSizeNumRPCs);
+      assertEquals(8, batchingLargeBatchSizeNumRPCs);
       assertRowSet(statement, query, expectedRows);
     }
   }

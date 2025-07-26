@@ -11,6 +11,7 @@ import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.util.ArrayList;
 import java.util.List;
+import lombok.Value;
 
 public interface TrustStoreManager {
   default String getTrustStorePath(String trustStoreHome, String trustStoreFileName) {
@@ -56,9 +57,11 @@ public interface TrustStoreManager {
       boolean suppressErrors)
       throws CertificateException, IOException, KeyStoreException, NoSuchAlgorithmException;
 
-  String getYbaTrustStorePath(String trustStoreHome);
+  TrustStoreInfo getYbaTrustStoreInfo(String trustStoreHome);
 
-  String getYbaTrustStoreType();
-
-  boolean isTrustStoreEmpty(String caStorePathStr, char[] trustStorePassword);
+  @Value
+  class TrustStoreInfo {
+    String path;
+    String type;
+  }
 }

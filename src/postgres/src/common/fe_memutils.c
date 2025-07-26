@@ -19,6 +19,9 @@
 
 #include "postgres_fe.h"
 
+/* YB includes */
+#include "yb/util/debug/leak_annotations.h"
+
 static inline void *
 pg_malloc_internal(size_t size, int flags)
 {
@@ -40,6 +43,8 @@ pg_malloc_internal(size_t size, int flags)
 
 	if ((flags & MCXT_ALLOC_ZERO) != 0)
 		MemSet(tmp, 0, size);
+
+	__lsan_ignore_object(tmp);
 	return tmp;
 }
 
@@ -98,6 +103,7 @@ pg_strdup(const char *in)
 		fprintf(stderr, _("out of memory\n"));
 		exit(EXIT_FAILURE);
 	}
+	__lsan_ignore_object(tmp);
 	return tmp;
 }
 

@@ -962,21 +962,14 @@ SELECT query, toplevel, plans, calls FROM pg_stat_statements WHERE query LIKE '%
 (3 rows)
 
 -- FROM [ONLY]
--- YB note: ERROR:  INHERITS not supported yet, re-enable when fixed, see issue #5956
 CREATE TABLE tbl_inh(id integer);
 CREATE TABLE tbl_inh_1() INHERITS (tbl_inh);
-ERROR:  INHERITS not supported yet
-LINE 1: CREATE TABLE tbl_inh_1() INHERITS (tbl_inh);
-                                 ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 INSERT INTO tbl_inh_1 SELECT 1;
-ERROR:  relation "tbl_inh_1" does not exist
-LINE 1: INSERT INTO tbl_inh_1 SELECT 1;
-                    ^
 SELECT * FROM tbl_inh;
  id 
 ----
-(0 rows)
+  1
+(1 row)
 
 SELECT * FROM ONLY tbl_inh;
  id 

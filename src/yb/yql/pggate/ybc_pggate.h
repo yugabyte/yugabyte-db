@@ -103,6 +103,10 @@ YbcStatus YBCGetTserverCatalogMessageLists(
     YbcPgOid db_oid, uint64_t ysql_catalog_version, uint32_t num_catalog_versions,
     YbcCatalogMessageLists* message_lists);
 
+YbcStatus YBCPgSetTserverCatalogMessageList(
+    YbcPgOid db_oid, bool is_breaking_change, uint64_t new_catalog_version,
+    const YbcCatalogMessageList *message_list);
+
 // Return auth_key to the local tserver's postgres authentication key stored in shared memory.
 uint64_t YBCGetSharedAuthKey();
 
@@ -346,8 +350,7 @@ YbcStatus YBCPgAlterTableDropColumn(YbcPgStatement handle, const char *name);
 
 YbcStatus YBCPgAlterTableSetReplicaIdentity(YbcPgStatement handle, const char identity_type);
 
-YbcStatus YBCPgAlterTableRenameTable(YbcPgStatement handle, const char *db_name,
-                                     const char *newname);
+YbcStatus YBCPgAlterTableRenameTable(YbcPgStatement handle, const char *newname);
 
 YbcStatus YBCPgAlterTableIncrementSchemaVersion(YbcPgStatement handle);
 
@@ -738,6 +741,7 @@ YbcTxnPriorityRequirement YBCGetTransactionPriorityType();
 YbcStatus YBCPgGetSelfActiveTransaction(YbcPgUuid *txn_id, bool *is_null);
 YbcStatus YBCPgActiveTransactions(YbcPgSessionTxnInfo *infos, size_t num_infos);
 bool YBCPgIsDdlMode();
+bool YBCCurrentTransactionUsesFastPath();
 
 // System validation -------------------------------------------------------------------------------
 // Validate whether placement information is theoretically valid. If check_satisfiable is true,
@@ -872,9 +876,8 @@ YbcPgThreadLocalRegexpCache* YBCPgGetThreadLocalRegexpCache();
 YbcPgThreadLocalRegexpCache* YBCPgInitThreadLocalRegexpCache(
     size_t buffer_size, YbcPgThreadLocalRegexpCacheCleanup cleanup);
 
-YbcPgThreadLocalRegexpMetadata* YBCPgGetThreadLocalRegexpMetadata();
-
 void YBCPgResetCatalogReadTime();
+YbcReadHybridTime YBCGetPgCatalogReadTime();
 
 YbcStatus YBCNewGetLockStatusDataSRF(YbcPgFunction *handle);
 

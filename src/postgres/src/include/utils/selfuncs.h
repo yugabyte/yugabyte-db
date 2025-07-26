@@ -240,8 +240,8 @@ extern Selectivity scalararraysel_containment(PlannerInfo *root,
 
 /* YB */
 extern double yb_estimate_num_groups(PlannerInfo *root, List *groupExprs,
-								  double input_rows, List **pgset,
-								  EstimationInfo *estinfo);
+									 double input_rows, List **pgset,
+									 EstimationInfo *estinfo);
 extern int	yb_batch_expr_size(PlannerInfo *root,
 							   Index path_relid,
 							   Node *batched_expr);

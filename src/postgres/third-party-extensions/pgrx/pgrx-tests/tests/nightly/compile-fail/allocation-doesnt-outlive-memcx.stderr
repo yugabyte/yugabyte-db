@@ -1,0 +1,23 @@
+error[E0521]: borrowed data escapes outside of closure
+  --> tests/nightly/compile-fail/allocation-doesnt-outlive-memcx.rs:15:9
+   |
+9  |     let mut vector_used = Arc::new(None);
+   |         --------------- `vector_used` declared here, outside of the closure body
+10 |
+11 |     pgrx::memcx::current_context(|mcx: &MemCx| {
+   |                                   --- `mcx` is a reference that is only valid in the closure body
+...
+15 |         *Arc::<std::option::Option<_>>::get_mut(&mut vector_used).unwrap() = Some(inner_vec);
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `mcx` escapes the closure body here
+
+error[E0521]: borrowed data escapes outside of closure
+  --> tests/nightly/compile-fail/allocation-doesnt-outlive-memcx.rs:15:9
+   |
+9  |     let mut vector_used = Arc::new(None);
+   |         --------------- `vector_used` declared here, outside of the closure body
+...
+12 |         let mut inner_vec = Vec::new_in(&mcx);
+   |                                         ---- borrow is only valid in the closure body
+...
+15 |         *Arc::<std::option::Option<_>>::get_mut(&mut vector_used).unwrap() = Some(inner_vec);
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ reference to `mcx` escapes the closure body here

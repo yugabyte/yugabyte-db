@@ -63,6 +63,7 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.EnumUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.builder.ToStringBuilder;
@@ -185,6 +186,7 @@ public class NodeAgent extends Model {
     private String serverCert;
     private String serverKey;
     private boolean offloadable;
+    private String compressor;
   }
 
   public static final Finder<UUID, NodeAgent> finder =
@@ -333,6 +335,20 @@ public class NodeAgent extends Model {
     return query.findList();
   }
 
+  public static int count(UUID customerUuid, Set<String> ips, State... states) {
+    ExpressionList<NodeAgent> query =
+        finder
+            .query()
+            .setPersistenceContextScope(PersistenceContextScope.QUERY)
+            .where()
+            .eq("customerUuid", customerUuid);
+    appendInClause(query, "ip", ips);
+    if (states != null && ArrayUtils.isNotEmpty(states)) {
+      appendInClause(query, "state", Arrays.stream(states).collect(Collectors.toSet()));
+    }
+    return query.findCount();
+  }
+
   public static Set<NodeAgent> getUpdatableNodeAgents(UUID customerUuid, String softwareVersion) {
     return finder
         .query()
@@ -443,6 +459,9 @@ public class NodeAgent extends Model {
   }
 
   public void heartbeat() {
+    if (getState() == State.READY) {
+      clearLastError();
+    }
     updateTimestamp(new Date());
   }
 
@@ -556,10 +575,12 @@ public class NodeAgent extends Model {
   }
 
   public void updateServerInfo(ServerInfo serverInfo) {
-    if (getConfig().isOffloadable() != serverInfo.getOffloadable()) {
+    if (getConfig().isOffloadable() != serverInfo.getOffloadable()
+        || !Objects.equals(getConfig().getCompressor(), serverInfo.getCompressor())) {
       updateInTxn(
           n -> {
             n.getConfig().setOffloadable(serverInfo.getOffloadable());
+            n.getConfig().setCompressor(serverInfo.getCompressor());
             n.update();
           });
     }

@@ -279,7 +279,7 @@ To use the data disk with a new installation, do the following:
 
 ### Reconfigure
 
-You can use YBA Installer to reconfigure an installed YBA instance.
+You can use YBA Installer to make changes to an installed YBA instance.
 
 To reconfigure an installation, edit the configuration file with your changes, and then run the command as follows:
 
@@ -294,8 +294,8 @@ For more information, refer to [Configuration options](#configuration-options). 
 YBA Installer provides basic service management, with `start`, `stop`, and `restart` commands. Each of these can be performed for all the services (`platform`, `postgres`, and `prometheus`), or any individual service.
 
 ```sh
-sudo yba-ctl [start, stop, reconfigure]
-sudo yba-ctl [start, stop, reconfigure] prometheus
+sudo yba-ctl [start, stop, restart]
+sudo yba-ctl [start, stop, restart] prometheus
 ```
 
 In addition to the state changing operations, you can use the `status` command to show the status of all YugabyteDB Anywhere services, in addition to other information such as the log and configuration location, versions of each service, and the URL to access the YugabyteDB Anywhere UI.
@@ -417,7 +417,7 @@ FATAL[2023-04-25T00:14:57Z] createBackup must be run from the installed yba-ctl
 
 ## Non-sudo installation
 
-{{<tags/feature/ea idea="1521">}}YBA Installer supports non-sudo installation, where sudo access is not required for any step of the installation.
+{{<tags/feature/ea>}}YBA Installer supports non-sudo installation, where sudo access is not required for any step of the installation.
 
 To facilitate a non-sudo install, YBA Installer will not create any additional users or set up services in systemd. The target location for the installation defaults to the current user's home directory, instead of `/opt`, ensuring YBA Installer has write access to the base install directory. Instead of using systemd to manage services, basic cron jobs are used to start the services on bootup with basic management scripts used to restart the services after a crash.
 
@@ -433,6 +433,8 @@ YBA Installer [automatically generates](#configure-yba-installer) the file when 
 | :--- | :--- |
 | sudo | opt/yba-ctl/ |
 | non-sudo | ~/opt/yba-ctl/ |
+
+To make changes to an existing installation, edit the configuration file with your changes and run the [reconfigure](#reconfigure) command. Note that some settings (marked with {{<icon/partial>}}) cannot be changed after installation.
 
 Note that the file must include all fields. Optional fields may be left blank.
 

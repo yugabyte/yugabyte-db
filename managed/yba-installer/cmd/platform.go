@@ -66,6 +66,8 @@ func NewPlatform(version string) Platform {
 	}
 }
 
+func (Platform) IsReplicated() bool { return true }
+
 func (plat Platform) devopsDir() string {
 	return plat.PlatformPackages + "/devops"
 }
@@ -313,11 +315,11 @@ func (plat Platform) copyNodeAgentPackages() error {
 func (plat Platform) renameAndCreateSymlinks() error {
 
 	ybPlat := common.GetSoftwareRoot() + "/yb-platform"
-	if err := common.CreateSymlink(plat.PlatformPackages, ybPlat, "yugaware"); err != nil {
+	if err := common.Symlink(fmt.Sprintf("%s/yugaware", plat.PlatformPackages), fmt.Sprintf("%s/yugaware", ybPlat)); err != nil {
 		log.Error("failed to create soft link for yugaware directory")
 		return err
 	}
-	if err := common.CreateSymlink(plat.PlatformPackages, ybPlat, "devops"); err != nil {
+	if err := common.Symlink(fmt.Sprintf("%s/devops", plat.PlatformPackages), fmt.Sprintf("%s/devops", ybPlat)); err != nil {
 		log.Error("failed to create soft link for devops directory")
 		return err
 	}
@@ -377,7 +379,7 @@ func (plat Platform) Uninstall(removeData bool) error {
 
 	// Stop running platform service
 	if err := plat.Stop(); err != nil {
-		return err
+		log.Warn("got error when stopping platform, continuing with uninstall: " + err.Error())
 	}
 
 	// Clean up systemd file
@@ -418,8 +420,12 @@ func (plat Platform) Status() (common.Status, error) {
 	status.ServiceFileLoc = plat.SystemdFileLocation
 
 	// Get the service status
-	props := systemd.Show(filepath.Base(plat.SystemdFileLocation), "LoadState", "SubState",
+	props, err := systemd.Show(filepath.Base(plat.SystemdFileLocation), "LoadState", "SubState",
 		"ActiveState", "ActiveEnterTimestamp", "ActiveExitTimestamp")
+	if err != nil {
+		log.Error("Failed to get status of " + plat.Name() + ": " + err.Error())
+		return status, err
+	}
 	if props["LoadState"] == "not-found" {
 		status.Status = common.StatusNotInstalled
 	} else if props["SubState"] == "running" {
@@ -596,8 +602,9 @@ func (plat Platform) FinishReplicatedMigrate() error {
 }
 
 func createPemFormatKeyAndCert() error {
-	keyFile := viper.GetString("server_key_path")
-	certFile := viper.GetString("server_cert_path")
+	paths := getServerKeyAndCert()
+	keyFile := paths.KeyPath
+	certFile := paths.CertPath
 	log.Info(fmt.Sprintf("Generating concatenated PEM from %s %s ", keyFile, certFile))
 
 	// Open and read the key file.
@@ -647,6 +654,18 @@ func createPemFormatKeyAndCert() error {
 	return nil
 }
 
+func getServerKeyAndCert() common.ServerCertPaths {
+	paths := common.ServerCertPaths{}
+	if len(viper.GetString("server_key_path")) == 0 {
+		paths.KeyPath = common.GetSelfSignedServerKeyPath()
+		paths.CertPath = common.GetSelfSignedServerCertPath()
+	} else {
+		paths.KeyPath = viper.GetString("server_key_path")
+		paths.CertPath = viper.GetString("server_cert_path")
+	}
+	return paths
+}
+
 func (plat Platform) symlinkReplicatedData() error {
 	// First do the previous releases.
 	releases, err := os.ReadDir(filepath.Join(common.GetReplicatedBaseDir(), "releases/"))
@@ -673,4 +692,13 @@ func (plat Platform) pemFromDocker() (string, error) {
 		return "", fmt.Errorf("failed to get pem file from container: %w", out.Error)
 	}
 	return out.StdoutString(), nil
+}
+
+func (plat Platform) Reconfigure() error {
+	log.Info("Reconfiguring platform")
+	if err := config.GenerateTemplate(plat); err != nil {
+		return fmt.Errorf("failed to generate template: %w", err)
+	}
+	log.Info("Platform reconfigured")
+	return nil
 }

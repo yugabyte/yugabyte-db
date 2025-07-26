@@ -12,109 +12,78 @@
 
 #include <memory>
 #include <queue>
-#include <regex>
-#include <set>
 #include <unordered_set>
+
 #include <google/protobuf/repeated_field.h>
 #include <google/protobuf/util/message_differencer.h>
 
-#include "yb/common/colocated_util.h"
-#include "yb/common/common_fwd.h"
-#include "yb/common/constants.h"
-#include "yb/common/common.pb.h"
-#include "yb/common/entity_ids.h"
-#include "yb/common/entity_ids_types.h"
-#include "yb/common/pg_system_attr.h"
-#include "yb/common/snapshot.h"
-#include "yb/master/ts_manager.h"
-#include "yb/qlexpr/ql_name.h"
-#include "yb/common/ql_type.h"
-#include "yb/common/ql_type_util.h"
-#include "yb/common/schema_pbutil.h"
-#include "yb/common/schema.h"
-
-#include "yb/master/catalog_entity_info.h"
-#include "yb/master/catalog_entity_info.pb.h"
-#include "yb/master/catalog_manager-internal.h"
-#include "yb/master/catalog_manager.h"
-#include "yb/master/xcluster_consumer_registry_service.h"
-#include "yb/master/cluster_balance.h"
-#include "yb/master/master.h"
-#include "yb/master/master_backup.pb.h"
-#include "yb/master/master_error.h"
-#include "yb/master/master_snapshot_coordinator.h"
-#include "yb/master/snapshot_state.h"
-#include "yb/master/tablet_split_manager.h"
-#include "yb/master/ysql_tablegroup_manager.h"
-
-#include "yb/client/client-internal.h"
 #include "yb/client/meta_cache.h"
-#include "yb/client/schema.h"
 #include "yb/client/session.h"
-#include "yb/client/table.h"
-#include "yb/client/table_alterer.h"
-#include "yb/client/table_handle.h"
 #include "yb/client/table_info.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/colocated_util.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/ql_type.h"
+#include "yb/common/ql_type_util.h"
+#include "yb/common/schema.h"
+#include "yb/common/schema_pbutil.h"
+#include "yb/common/snapshot.h"
+
 #include "yb/consensus/consensus.h"
 
-#include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_write_batch.h"
-#include "yb/docdb/docdb_pgapi.h"
 
-#include "yb/gutil/bind.h"
 #include "yb/gutil/casts.h"
-#include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/master/master_client.pb.h"
+
+#include "yb/master/async_rpc_tasks.h"
+#include "yb/master/async_snapshot_tasks.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/catalog_manager-internal.h"
+#include "yb/master/catalog_manager.h"
+#include "yb/master/encryption_manager.h"
+#include "yb/master/master.h"
+#include "yb/master/master_backup.pb.h"
 #include "yb/master/master_ddl.pb.h"
-#include "yb/master/master_defaults.h"
+#include "yb/master/master_error.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_replication.pb.h"
+#include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/master_util.h"
-#include "yb/master/sys_catalog.h"
-#include "yb/master/sys_catalog-internal.h"
-#include "yb/master/async_snapshot_tasks.h"
-#include "yb/master/async_rpc_tasks.h"
-#include "yb/master/encryption_manager.h"
 #include "yb/master/restore_sys_catalog_state.h"
-#include "yb/master/scoped_leader_shared_lock.h"
-#include "yb/master/scoped_leader_shared_lock-internal.h"
+#include "yb/master/sys_catalog.h"
+#include "yb/master/tablet_split_manager.h"
+#include "yb/master/ts_manager.h"
+#include "yb/master/xcluster_consumer_registry_service.h"
+#include "yb/master/ysql/ysql_manager_if.h"
+#include "yb/master/ysql_tablegroup_manager.h"
 
 #include "yb/rpc/messenger.h"
 
-#include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_snapshots.h"
 
-#include "yb/tserver/backup.proxy.h"
-#include "yb/tserver/service_util.h"
-#include "yb/tserver/tserver_admin.pb.h"
-
-#include "yb/util/cast.h"
-#include "yb/util/date_time.h"
-#include "yb/util/file_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/oid_generator.h"
-#include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/service_util.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/std_util.h"
 #include "yb/util/tostring.h"
-#include "yb/util/string_util.h"
 #include "yb/util/trace.h"
-
-#include "yb/yql/cql/ql/util/statement_result.h"
-
-#include "ybgate/ybgate_api.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -137,9 +106,11 @@ DEPRECATE_FLAG(bool, allow_consecutive_restore, "10_2022");
 DEFINE_test_flag(double, crash_during_sys_catalog_restoration, 0.0,
                  "Probability of crash during the RESTORE_SYS_CATALOG phase.");
 
-DEFINE_test_flag(
-    bool, import_snapshot_failed, false,
+DEFINE_test_flag(bool, import_snapshot_failed, false,
     "Return a error from ImportSnapshotMeta RPC for testing the RPC failure.");
+
+DEFINE_test_flag(bool, skip_oid_advance_on_restore, false,
+    "Skip advancing OID counters on restore if true.");
 
 DEFINE_RUNTIME_uint64(import_snapshot_max_concurrent_create_table_requests, 20,
     "Maximum number of create table requests to the master that can be outstanding "
@@ -159,7 +130,7 @@ DEFINE_RUNTIME_bool(
     "safety button in case restore using relfilenode fails.");
 
 DEFINE_RUNTIME_AUTO_bool(
-    enable_export_snapshot_using_relfilenode, kLocalVolatile, false, true,
+    enable_export_snapshot_using_relfilenode, kExternal, false, true,
     "Enable exporting snapshots with the new format version = 3 that uses relfilenodes.");
 namespace yb {
 
@@ -194,8 +165,8 @@ struct TableWithTabletsEntries {
     table_entry.AppendToString(&output);
     *table_backup_entry->mutable_entry() =
         ToSysRowEntry(table_id, SysRowEntryType::TABLE, std::move(output));
-    if (table_entry.schema().has_pgschema_name() && table_entry.schema().pgschema_name() != "") {
-      table_backup_entry->set_pg_schema_name(table_entry.schema().pgschema_name());
+    if (!table_entry.schema().deprecated_pgschema_name().empty()) {
+      table_backup_entry->set_pg_schema_name(table_entry.schema().deprecated_pgschema_name());
     }
     for (const auto& tablet_entry : tablets_entries) {
       std::string output;
@@ -253,7 +224,7 @@ Status CatalogManager::DoCreateSnapshot(const CreateSnapshotRequestPB* req,
 }
 
 Status CatalogManager::Submit(std::unique_ptr<tablet::Operation> operation, int64_t leader_term) {
-  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
+  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet());
   operation->SetTablet(tablet);
   tablet_peer()->Submit(std::move(operation), leader_term);
   return Status::OK();
@@ -448,25 +419,30 @@ Status CatalogManager::ListSnapshots(const ListSnapshotsRequestPB* req,
   }
   RETURN_NOT_OK(master_->snapshot_coordinator().ListSnapshots(
       txn_snapshot_id, req->list_deleted_snapshots(), req->detail_options(), resp));
+  bool include_ddl_in_progress_tables =
+      req->has_include_ddl_in_progress_tables() ? req->include_ddl_in_progress_tables() : false;
   if (req->prepare_for_backup()) {
-    RETURN_NOT_OK(RepackSnapshotsForBackup(resp));
+    RETURN_NOT_OK(RepackSnapshotsForBackup(resp, include_ddl_in_progress_tables));
   }
 
   return Status::OK();
 }
 
-Status CatalogManager::RepackSnapshotsForBackup(ListSnapshotsResponsePB* resp) {
+Status CatalogManager::RepackSnapshotsForBackup(
+    ListSnapshotsResponsePB* resp, bool include_ddl_in_progress_tables) {
   SharedLock lock(mutex_);
   TRACE("Acquired catalog manager lock");
-
   // Repack & extend the backup row entries.
   for (SnapshotInfoPB& snapshot : *resp->mutable_snapshots()) {
-    auto format_version = GetAtomicFlag(&FLAGS_enable_export_snapshot_using_relfilenode)
+    auto format_version = GetAtomicFlag(&FLAGS_enable_export_snapshot_using_relfilenode) &&
+                                  include_ddl_in_progress_tables
                               ? kUseRelfilenodeFormatVersion
                               : kUseBackupRowEntryFormatVersion;
+
     snapshot.set_format_version(format_version);
 
     SysSnapshotEntryPB& sys_entry = *snapshot.mutable_entry();
+    auto snapshot_hybrid_time = ReadHybridTime::FromUint64(sys_entry.snapshot_hybrid_time());
     snapshot.mutable_backup_entries()->Reserve(sys_entry.entries_size());
 
     unordered_set<TableId> tables_to_skip;
@@ -495,24 +471,35 @@ Status CatalogManager::RepackSnapshotsForBackup(ListSnapshotsResponsePB* resp) {
 
         TRACE("Locking table");
         auto l = table_info->LockForRead();
-        if (l->has_ysql_ddl_txn_verifier_state()) {
+        if (!include_ddl_in_progress_tables && l->has_ysql_ddl_txn_verifier_state()) {
           return STATUS_FORMAT(IllegalState, "Table $0 is undergoing DDL verification, retry later",
                                table_info->id());
         }
         // PG schema name is available for YSQL table only, except for colocation parent tables.
         if (l->table_type() == PGSQL_TABLE_TYPE && !IsColocationParentTableId(entry.id())) {
-          const auto res = GetPgSchemaName(table_info->id(), l.data());
+          // Determine if this DocDB table is committed as of snapshot_hybrid_time.
+          // A committed DocDB table corresponds to a committed pg_table whose relfilenode maps to
+          // this DocDB table.
+          // Uncommitted DocDB tables can include:
+          // - Orphaned tables: dropped in YSQL but still present in DocDB.
+          // - Temporary tables: created during an ongoing DDL operation when the snapshot was
+          // taken.
+          const auto res =
+              GetYsqlManager().GetPgSchemaName(table_info->id(), l.data(), snapshot_hybrid_time);
           if (!res.ok()) {
-            // Check for the scenario where the table is dropped by YSQL but not docdb - this can
-            // happen due to a bug with the async nature of drops in PG with docdb.
-            // If this occurs don't block the entire backup, instead skip this table(see gh #13361).
+            // Handle the case where the table was dropped in YSQL but not in DocDB.
+            // This can occur in two scenarios:
+            // - Before DDL atomicity was implemented, where PG and DocDB drops were not always in
+            // sync.
+            // - A snapshot is being exported in the middle of a DDL operation.
+            // If this occurs don't block the entire backup. Instead, skip exporting this table.
             if (res.status().IsNotFound() &&
-                res.status().message().ToBuffer().find(kRelnamespaceNotFoundErrorStr)
-                    != string::npos) {
+                MasterError(res.status()) == MasterErrorPB::DOCDB_TABLE_NOT_COMMITTED) {
               LOG(WARNING) << "Skipping backup of table " << table_info->id() << " : " << res;
               snapshot.mutable_backup_entries()->RemoveLast();
-              // Keep track of table so we skip its tablets as well. Note, since tablets always
-              // follow their table in sys_entry, we don't need to check previous tablet entries.
+              // Keep track of table so we skip its tablets as well. Note, since tablets
+              // always follow their table in sys_entry, we don't need to check previous
+              // tablet entries.
               tables_to_skip.insert(table_info->id());
               continue;
             }
@@ -721,6 +708,15 @@ Status CatalogManager::DoImportSnapshotMeta(
   RETURN_NOT_OK(ImportSnapshotProcessTablets(snapshot_pb, use_relfilenode, tables_data));
 
   ImportSnapshotRemoveInvalidTables(use_relfilenode, tables_data);
+
+  // PHASE 6: Adjust OID counters.
+  if (!FLAGS_TEST_skip_oid_advance_on_restore) {
+    for (const auto& [_old_namespace_id, external_namespace_snapshot_data] : *namespace_map) {
+      if (external_namespace_snapshot_data.db_type == YQL_DATABASE_PGSQL) {
+        RETURN_NOT_OK(AdvanceOidCounters(external_namespace_snapshot_data.new_namespace_id));
+      }
+    }
+  }
 
   if (PREDICT_FALSE(FLAGS_TEST_import_snapshot_failed)) {
     const string msg = "ImportSnapshotMeta interrupted due to test flag";
@@ -1215,7 +1211,7 @@ Result<RepeatedPtrField<BackupRowEntryPB>> CatalogManager::GetBackupEntriesAsOfT
   // read sys.catalog data as of export_time to get the list of tablets that were running at that
   // time.
   RepeatedPtrField<BackupRowEntryPB> backup_entries;
-  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
+  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet());
   LOG(INFO) << Format("Opening temporary SysCatalog DocDB for snapshot $0 at read_time $1",
       snapshot_id, read_time);
   auto db = VERIFY_RESULT(RestoreSnapshotToTmpRocksDb(tablet.get(), snapshot_id, read_time));
@@ -1952,7 +1948,7 @@ Result<bool> CatalogManager::CheckTableForImport(scoped_refptr<TableInfo> table,
           << ", table type: " << TableType_Name(table->GetTableType());
       // If not a debug build, ignore pg_schema_name.
     } else {
-      const string internal_schema_name = VERIFY_RESULT(GetPgSchemaName(
+      const string internal_schema_name = VERIFY_RESULT(GetYsqlManager().GetPgSchemaName(
           table->id(), table_lock.data()));
       const string& external_schema_name = snapshot_data->pg_schema_name;
       if (internal_schema_name != external_schema_name) {
@@ -2000,24 +1996,21 @@ Status CatalogManager::ImportTableEntry(
       table_data->new_table_id = VERIFY_RESULT(
           GetRestoreTargetTableIdUsingRelfilenode(new_namespace_id, table_data->old_table_id));
     }
-    // A table with new_table_id might not exist if the old table doesn't have a corresponding table
-    // at restore side. This can happen if the old table is not committed while the backup was taken
-    // during a DDL.
+    // Make sure the new_table_id corresponds to an existing DocDB table at restore side.
+    // Return an error in case no table with new_table_id was found at restore side.
     TRACE("Looking up table");
     {
       SharedLock lock(mutex_);
       table = tables_->FindTableOrNull(table_data->new_table_id);
     }
     if (!table) {
-      LOG(INFO) << Format(
-          "Did not find a corresponding table at restore side for the table $0 from backup. "
-          "This mean that old table was not committed while taking the backup.",
+      LOG(WARNING) << Format(
+          "Did not find a corresponding table at restore side for the table $0 from backup.",
           table_data->old_table_id);
       // Clear the table_meta as this is an uncommited table at backup time.
       // This skips the following steps to import the table entry and doesn't add its TableMetaPB
       // the import_snapshot response.
       table_data->table_meta = std::nullopt;
-      return Status::OK();
     } else {
       LOG_WITH_FUNC(INFO) << "Found existing table " << table_data->new_table_id << " for "
                           << new_namespace_id << "/" << meta.name() << " (old table "
@@ -2168,7 +2161,6 @@ Status CatalogManager::ImportTableEntry(
         column.set_id(column_ids[col_idx++]);
       }
 
-      l.mutable_data()->pb.set_next_column_id(schema.max_col_id() + 1);
       l.mutable_data()->pb.set_version(l->pb.version() + 1);
       // Update sys-catalog with the new table schema.
       RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
@@ -2179,6 +2171,8 @@ Status CatalogManager::ImportTableEntry(
     // Set missing values for tables that were created with a default value. ysql_dump will not
     // properly set that value because it is only set on ADD COLUMN, and it creates the column
     // directly in CREATE TABLE.
+    // Also set the next_column_id at target restore side to be equal to next_column_id from backup
+    // side.
     {
       auto l = table->LockForWrite();
       for (auto i = 0; i < l.mutable_data()->pb.schema().columns_size(); ++i) {
@@ -2187,6 +2181,9 @@ Status CatalogManager::ImportTableEntry(
         if (column.has_missing_value() && !persisted_column.has_missing_value()) {
           *persisted_column.mutable_missing_value() = column.missing_value();
         }
+      }
+      if (l.data().pb.next_column_id() < meta.next_column_id()) {
+        l.mutable_data()->pb.set_next_column_id(meta.next_column_id());
       }
       if (l.is_dirty()) {
         RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
@@ -2202,7 +2199,6 @@ Status CatalogManager::ImportTableEntry(
       auto table_props = l.mutable_data()->pb.mutable_schema()->mutable_table_properties();
       table_props->set_partitioning_version(schema.table_properties().partitioning_version());
 
-      l.mutable_data()->pb.set_next_column_id(schema.max_col_id() + 1);
       l.mutable_data()->pb.set_version(l->pb.version() + 1);
       // Update sys-catalog with the new table schema.
       RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
@@ -2684,12 +2680,16 @@ Status CatalogManager::RestoreSysCatalogCommon(
   RETURN_NOT_OK(state->Process());
 
   // Restore the pg_catalog tables.
+  // Since lifetime of tablet_peer and doc_read_context matches in this case. We could
+  // use tablet peer reference counter for doc read context.
+  auto doc_read_context = SharedField(
+      tablet_peer(), &this->doc_read_context());
   if (FLAGS_enable_ysql && state->IsYsqlRestoration()) {
     // Restore sequences_data table.
     RETURN_NOT_OK(state->PatchSequencesDataObjects());
 
     RETURN_NOT_OK(state->ProcessPgCatalogRestores(
-        doc_db, tablet->doc_db(), write_batch, doc_read_context(), schema_packing_provider,
+        doc_db, tablet->doc_db(), write_batch, doc_read_context, schema_packing_provider,
         tablet->metadata()));
   }
 
@@ -2698,7 +2698,7 @@ Status CatalogManager::RestoreSysCatalogCommon(
 
   // Restore the other tables.
   RETURN_NOT_OK(state->PrepareWriteBatch(
-      schema(), schema_packing_provider, write_batch, master_->clock()->Now()));
+      doc_read_context, schema_packing_provider, write_batch, master_->clock()->Now()));
 
   // Updates the restoration state to indicate that sys catalog phase has completed.
   // Also, initializes the master side perceived list of tables/tablets/namespaces

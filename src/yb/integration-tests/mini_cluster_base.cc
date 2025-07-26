@@ -82,4 +82,11 @@ Result<HostPort> MiniClusterBase::GetLeaderMasterBoundRpcAddr() {
   return DoGetLeaderMasterBoundRpcAddr();
 }
 
+rpc::MessengerBuilder CreateMiniClusterMessengerBuilder() {
+  rpc::MessengerBuilder builder("minicluster-messenger");
+  builder.set_num_reactors(1);
+  builder.UseLocalHostOutboundIpBaseInTests();
+  return builder;
+}
+
 }  // namespace yb

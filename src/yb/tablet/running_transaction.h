@@ -154,6 +154,10 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
   bool IsTxnLoadedWithCDC() const;
 
+  void MarkHasRetryableRequestsReplicated();
+
+  bool HasRetryableRequestsReplicated() const;
+
  private:
   static boost::optional<TransactionStatus> GetStatusAt(
       HybridTime time,
@@ -237,6 +241,9 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   // Identification marker for transactions that are loaded on tablet bootstrap with CDC
   // enbled.
   bool is_txn_loaded_with_cdc_ = false;
+
+  // Whether or not transaction has any batches replicated by retryable requests.
+  bool has_retryable_requests_replicated_ = false;
 };
 
 Status MakeAbortedStatus(const TransactionId& id);

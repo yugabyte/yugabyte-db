@@ -9,6 +9,8 @@ menu:
     identifier: yugabytedb-connector
     weight: 70
 type: docs
+rightNav:
+  hideH4: true
 ---
 
 The YugabyteDB Connector is based on the Debezium Connector, and captures row-level changes in the schemas of a YugabyteDB database using the PostgreSQL replication protocol.
@@ -17,7 +19,7 @@ The first time it connects to a YugabyteDB server, the connector takes a consist
 
 ## Overview
 
-YugabyteDB CDC using logical decoding is a mechanism that allows the extraction of changes that were committed to the transaction log and the processing of these changes in a user-friendly manner with the help of a [PostgreSQL output plugin](https://www.postgresql.org/docs/11/logicaldecoding-output-plugin.html). The output plugin enables clients to consume the changes.
+YugabyteDB CDC using logical decoding is a mechanism that allows the extraction of changes that were committed to the transaction log and the processing of these changes in a user-friendly manner with the help of a [PostgreSQL output plugin](https://www.postgresql.org/docs/15/logicaldecoding-output-plugin.html). The output plugin enables clients to consume the changes.
 
 The YugabyteDB connector contains two main parts that work together to read and process database changes:
 
@@ -29,13 +31,13 @@ The YugabyteDB connector contains two main parts that work together to read and 
   * `pgoutput` is the standard logical decoding output plugin in PostgreSQL 10+. It is maintained by the PostgreSQL community, and used by PostgreSQL itself for logical replication. YugabyteDB bundles this plugin with the standard distribution so it is always present and no additional libraries need to be installed. The YugabyteDB connector interprets the raw replication event stream directly into change events.
 
 <!-- YB note driver part -->
-* Java code (the actual Kafka Connect connector) that reads the changes produced by the chosen logical decoding output plugin. It uses the [streaming replication protocol](https://www.postgresql.org/docs/11/protocol-replication.html), by means of the YugabyteDB JDBC driver.
+* Java code (the actual Kafka Connect connector) that reads the changes produced by the chosen logical decoding output plugin. It uses the [streaming replication protocol](https://www.postgresql.org/docs/15/protocol-replication.html), by means of the YugabyteDB JDBC driver.
 
 The connector produces a change event for every row-level insert, update, and delete operation that was captured, and sends change event records for each table in a separate Kafka topic. Client applications read the Kafka topics that correspond to the database tables of interest, and can react to every row-level event they receive from those topics.
 
 YugabyteDB normally purges write-ahead log (WAL) segments after some period of time. This means that the connector does not have the complete history of all changes that have been made to the database. Therefore, when the YugabyteDB connector first connects to a particular YugabyteDB database, it starts by performing a consistent snapshot of each of the configured tables. After the connector completes the snapshot, it continues streaming changes from the exact point at which the snapshot was made. This way, the connector starts with a consistent view of all of the data, and does not omit any changes that were made while the snapshot was being taken.
 
-The connector is tolerant of failures. As the connector reads changes and produces events, it records the LSN for each event. If the connector stops for any reason (including communication failures, network problems, or crashes), upon restart the connector continues reading the WAL where it last left off.
+The connector is tolerant of failures. As the connector reads changes and produces events, it records the Log Sequence Number ([LSN](../key-concepts/#lsn-type)) for each event. If the connector stops for any reason (including communication failures, network problems, or crashes), upon restart the connector continues reading the WAL where it last left off.
 
 {{< tip title="Use UTF-8 encoding" >}}
 
@@ -79,7 +81,7 @@ The following table describes the options for the `snapshot.mode` connector conf
 
 ### Streaming changes
 
-The YugabyteDB connector typically spends the vast majority of its time streaming changes from the YugabyteDB server to which it is connected. This mechanism relies on [PostgreSQL's replication protocol](https://www.postgresql.org/docs/11/protocol-replication.html). This protocol enables clients to receive changes from the server as they are committed in the server's transaction logs.
+The YugabyteDB connector typically spends the vast majority of its time streaming changes from the YugabyteDB server to which it is connected. This mechanism relies on [PostgreSQL's replication protocol](https://www.postgresql.org/docs/15/protocol-replication.html). This protocol enables clients to receive changes from the server as they are committed in the server's transaction logs.
 
 Whenever the server commits a transaction, a separate server process invokes a callback function from the [logical decoding plugin](../key-concepts/#output-plugin). This function processes the changes from the transaction, converts them to a specific format and writes them on an output stream, which can then be consumed by clients.
 
@@ -339,7 +341,7 @@ The value portion of a change event for a change to this table varies according 
 
 ### Replica Identity
 
-[REPLICA IDENTITY](https://www.postgresql.org/docs/11/sql-altertable.html#SQL-CREATETABLE-REPLICA-IDENTITY) is a YugabyteDB-specific table-level setting that determines the amount of information that is available to the logical decoding plugin for `UPDATE` and `DELETE` events. More specifically, the setting of `REPLICA IDENTITY` controls what (if any) information is available for the previous values of the table columns involved, whenever an `UPDATE` or `DELETE` event occurs.
+[REPLICA IDENTITY](https://www.postgresql.org/docs/15/sql-altertable.html#SQL-CREATETABLE-REPLICA-IDENTITY) is a YugabyteDB-specific table-level setting that determines the amount of information that is available to the logical decoding plugin for `UPDATE` and `DELETE` events. More specifically, the setting of `REPLICA IDENTITY` controls what (if any) information is available for the previous values of the table columns involved, whenever an `UPDATE` or `DELETE` event occurs.
 
 There are 4 possible values for `REPLICA IDENTITY`:
 
@@ -798,7 +800,7 @@ DELETE FROM employee WHERE employee_id = 1001;
 
 {{< note title="Note" >}}
 
-If `UPDATE` and `DELETE` operations will be performed on a table in publication without any replica identity (that is, `REPLICA IDENTITY` set to `NOTHING`), then the operations will cause an error on the publisher. For more details, see [Publication](https://www.postgresql.org/docs/11/logical-replication-publication.html).
+If `UPDATE` and `DELETE` operations will be performed on a table in publication without any replica identity (that is, `REPLICA IDENTITY` set to `NOTHING`), then the operations will cause an error on the publisher. For more details, see [Publication](https://www.postgresql.org/docs/15/logical-replication-publication.html).
 
 {{< /note >}}
 
@@ -1093,6 +1095,16 @@ YugabyteDB connector events are designed to work with [Kafka log compaction](htt
 
 When a row is deleted, the _delete_ event value still works with log compaction, because Kafka can remove all earlier messages that have that same key. However, for Kafka to remove all messages that have that same key, the message value must be `null`. To make this possible, the YugabyteDB connector follows a _delete_ event with a special tombstone event that has the same key but a `null` value.
 
+If the downstream consumer from the topic relies on tombstone events to process deletions and uses the [YBExtractNewRecordState transformer](../transformers/#ybextractnewrecordstate) (SMT), it is recommended to set the `delete.tombstone.handling.mode` SMT configuration property to `tombstone`. This ensures that the connector converts the delete records to tombstone events and drops the tombstone events.
+
+To set the property, follow the SMT configuration conventions. For example:
+
+```json
+"transforms": "flatten",
+"transforms.flatten.type": "io.debezium.connector.postgresql.transforms.yugabytedb.YBExtractNewRecordState",
+"transforms.flatten.delete.tombstone.handling.mode": "tombstone"
+```
+
 ### Updating or deleting a row inserted in the same transaction
 
 If a row is updated or deleted in the same transaction in which it was inserted, CDC cannot retrieve the before-image values for the UPDATE / DELETE event. If the replica identity is not CHANGE, then CDC will throw an error while processing such events.
@@ -1294,9 +1306,9 @@ This behaviour may be unexpected, but it is still safe. Only the schema definiti
 
 ### Setting up permissions
 
-Setting up a YugabyteDB server to run a Debezium connector requires a database user that can perform replications. Replication can be performed only by a database user that has appropriate permissions and only for a configured number of hosts.
+Setting up a YugabyteDB server to run the connector requires a database user that can perform replications. Replication can be performed only by a database user that has appropriate permissions and only for a configured number of hosts.
 
-Although, by default, superusers have the necessary `REPLICATION` and `LOGIN` roles, as mentioned in [Security](#security), it is best not to provide the Debezium replication user with elevated privileges. Instead, create a Debezium user that has the minimum required privileges.
+Although, by default, superusers have the necessary `REPLICATION` and `LOGIN` roles, as mentioned in [Security](#security), it is best not to provide the replication user with elevated privileges. Instead, create a Debezium user that has the minimum required privileges.
 
 **Prerequisites:**
 
@@ -1310,17 +1322,17 @@ To provide a user with replication permissions, define a YugabyteDB role that ha
 CREATE ROLE <name> REPLICATION LOGIN;
 ```
 
-### Setting privileges to enable Debezium to create YugabyteDB publications when you use `pgoutput` or `yboutput`
+### Setting privileges to enable the connector to create YugabyteDB publications when you use `pgoutput` or `yboutput`
 
-If you use `pgoutput` or `yboutput` as the logical decoding plugin, Debezium must operate in the database as a user with specific privileges.
+If you use `pgoutput` or `yboutput` as the logical decoding plugin, the connector must operate in the database as a user with specific privileges.
 
-Debezium streams change events for YugabyteDB source tables from publications that are created for the tables. Publications contain a filtered set of change events that are generated from one or more tables. The data in each publication is filtered based on the publication specification. The specification can be created by the `YugabyteDB` database administrator or by the Debezium connector. To permit the Debezium connector to create publications and specify the data to replicate to them, the connector must operate with specific privileges in the database.
+The connector streams change events for YugabyteDB source tables from publications that are created for the tables. Publications contain a filtered set of change events that are generated from one or more tables. The data in each publication is filtered based on the publication specification. The specification can be created by the `YugabyteDB` database administrator or by the connector. To permit the connector to create publications and specify the data to replicate to them, the connector must operate with specific privileges in the database.
 
-There are several options for determining how publications are created. In general, it is best to manually create publications for the tables that you want to capture, before you set up the connector. However, you can configure your environment in a way that permits Debezium to create publications automatically, and to specify the data that is added to them.
+There are several options for determining how publications are created. In general, it is best to manually create publications for the tables that you want to capture, before you set up the connector. However, you can configure your environment in a way that permits the connector to create publications automatically, and to specify the data that is added to them.
 
-Debezium uses include list and exclude list properties to specify how data is inserted in the publication. For more information about the options for enabling Debezium to create publications, see `publication.autocreate.mode`.
+Debezium uses include list and exclude list properties to specify how data is inserted in the publication. For more information about the options for enabling the connector to create publications, see `publication.autocreate.mode`.
 
-For Debezium to create a YugabyteDB publication, it must run as a user that has the following privileges:
+For the connector to create a YugabyteDB publication, it must run as a user that has the following privileges:
 
 * Replication privileges in the database to add the table to a publication.
 * `CREATE` privileges on the database to add publications.
@@ -1356,13 +1368,13 @@ Procedure
 
 For Debezium to specify the capture configuration, the value of `publication.autocreate.mode` must be set to `filtered`.
 
-### Configuring YugabyteDB to allow replication with the Debezium connector host
+### Configuring YugabyteDB to allow replication with the connector host
 
 To enable Debezium to replicate YugabyteDB data, you must configure the database to permit replication with the host that runs the YugabyteDB connector. To specify the clients that are permitted to replicate with the database, add entries to the YugabyteDB host-based authentication file, `ysql_hba.conf`. For more information about the pg_hba.conf file, see the [YugabyteDB documentation](../../../../secure/authentication/host-based-authentication/#ysql-hba-conf-file).
 
 Procedure
 
-* Add entries to the `ysql_hba.conf` file to specify the Debezium connector hosts that can replicate with the database host. For example,
+* Add entries to the `ysql_hba.conf` file to specify the connector hosts that can replicate with the database host. For example,
 
 ```sh
 --ysql_hba_conf_csv="local replication <yourUser> trust, local replication <yourUser> 127.0.0.1/32 trust, host replication <yourUser> ::1/128 trust"
@@ -1374,11 +1386,11 @@ As mentioned in the beginning, YugabyteDB (for all versions > 2024.1.1) supports
 
 ### Setting up multiple connectors for same database server
 
-Debezium uses [replication slots](https://www.postgresql.org/docs/11/logicaldecoding-explanation.html#LOGICALDECODING-REPLICATION-SLOTS) to stream changes from a database. These replication slots maintain the current position in form of a LSN. This helps YugabyteDB keep the WAL available until it is processed by Debezium. A single replication slot can exist only for a single consumer or process - as different consumer might have different state and may need data from different position.
+Debezium uses [replication slots](https://www.postgresql.org/docs/15/logicaldecoding-explanation.html#LOGICALDECODING-REPLICATION-SLOTS) to stream changes from a database. These replication slots maintain the current position in form of a LSN. This helps YugabyteDB keep the WAL available until it is processed by Debezium. A single replication slot can exist only for a single consumer or process - as different consumer might have different state and may need data from different position.
 
-Because a replication slot can only be used by a single connector, it is essential to create a unique replication slot for each Debezium connector. Although when a connector is not active, YugabyteDB may allow other connectors to consume the replication slot - which could be dangerous as it may lead to data loss as a slot will emit each change just once.
+Because a replication slot can only be used by a single connector, it is essential to create a unique replication slot for each connector. Although when a connector is not active, YugabyteDB may allow other connectors to consume the replication slot - which could be dangerous as it may lead to data loss as a slot will emit each change just once.
 
-In addition to replication slot, Debezium uses publication to stream events when using the `pgoutput`or `yboutput` plugin. Similar to replication slot, publication is at database level and is defined for a set of tables. Thus, you'll need a unique publication for each connector, unless the connectors work on same set of tables. For more information about the options for enabling Debezium to create publications, see `publication.autocreate.mode`.
+In addition to replication slot, the connector uses publication to stream events when using the `pgoutput`or `yboutput` plugin. Similar to replication slot, publication is at database level and is defined for a set of tables. Thus, you'll need a unique publication for each connector, unless the connectors work on same set of tables. For more information about the options for enabling the connector to create publications, see `publication.autocreate.mode`.
 
 See `slot.name` and `publication.name` on how to set a unique replication slot name and publication name for each connector.
 
@@ -1389,7 +1401,7 @@ To deploy the connector, you install the connector archive, configure the connec
 **Prerequisites**
 
 * [Zookeeper](https://zookeeper.apache.org/), [Kafka](http://kafka.apache.org/), and [Kafka Connect](https://kafka.apache.org/documentation.html#connect) are installed.
-* YugabyteDB is installed and is [set up to run the Debezium connector](#setting-up-yugabytedb).
+* YugabyteDB is installed and is [set up to run the connector](#setting-up-yugabytedb).
 
 **Procedure**
 
@@ -1437,7 +1449,7 @@ You can choose to produce events for a subset of the schemas and tables in a dat
 8. The topic prefix for the YugabyteDB server/cluster, which forms a namespace and is used in all the names of the Kafka topics to which the connector writes, the Kafka Connect schema names, and the namespaces of the corresponding Avro schema when the Avro converter is used.
 9. A list of all tables hosted by this server that this connector will monitor. This is optional, and there are other properties for listing the schemas and tables to include or exclude from monitoring.
 
-See the [complete list of YugabyteDB connector properties](../yugabytedb-connector-properties) that can be specified in these configurations.
+See the [complete list of YugabyteDB connector properties](../yugabytedb-connector-properties/) that can be specified in these configurations.
 
 You can send this configuration with a `POST` command to a running Kafka Connect service. The service records the configuration and starts one connector task that performs the following actions:
 

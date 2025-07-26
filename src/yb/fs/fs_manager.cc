@@ -921,7 +921,7 @@ void FsManager::DumpFileSystemTree(ostream& out) {
     std::vector<string> objects;
     Status s = env_->GetChildren(root, &objects);
     if (!s.ok()) {
-      LOG(ERROR) << "Unable to list the fs-tree: " << s.ToString();
+      LOG(DFATAL) << "Unable to list the fs-tree: " << s.ToString();
       return;
     }
 

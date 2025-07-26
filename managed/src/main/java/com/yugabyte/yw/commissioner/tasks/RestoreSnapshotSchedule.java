@@ -46,9 +46,7 @@ public class RestoreSnapshotSchedule extends UniverseTaskBase {
     log.info("Running {}", getName());
 
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    String masterAddresses = universe.getMasterAddresses();
-    String universeCertificate = universe.getCertificateNodetoNode();
-    try (YBClient client = ybService.getClient(masterAddresses, universeCertificate)) {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
 
       UUID restorationUuid = null;
 

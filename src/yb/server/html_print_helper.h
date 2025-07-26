@@ -15,6 +15,7 @@
 
 #include <sstream>
 
+#include "yb/util/enums.h"
 #include "yb/util/tostring.h"
 
 namespace yb {
@@ -22,13 +23,16 @@ namespace yb {
 class HtmlTablePrintHelper;
 class HtmlFieldsetScope;
 
+YB_DEFINE_ENUM(HtmlTableCellAlignment, (Left)(Right));
+
 // Helper class to print HTML.
 class HtmlPrintHelper {
  public:
   explicit HtmlPrintHelper(std::stringstream& output);
 
   HtmlTablePrintHelper CreateTablePrinter(
-      std::string table_name, std::vector<std::string> column_names);
+      std::string table_name, std::vector<std::string> column_names,
+      std::vector<HtmlTableCellAlignment> column_html_arguments = {});
   HtmlTablePrintHelper CreateTablePrinter(
       const std::string& table_name, uint32 table_id, std::vector<std::string> column_names);
 
@@ -91,13 +95,15 @@ class HtmlTablePrintHelper {
   friend class HtmlPrintHelper;
 
   HtmlTablePrintHelper(
-      std::stringstream& output, std::string table_name, std::vector<std::string> column_names);
+      std::stringstream& output, std::string table_name, std::vector<std::string> column_names,
+      std::vector<HtmlTableCellAlignment> column_alignment);
 
   size_t ColumnCount() const { return column_names_.size(); }
 
   std::stringstream& output_;
   const std::string table_name_;
   const std::vector<std::string> column_names_;
+  const std::vector<HtmlTableCellAlignment> column_alignment_;
   std::vector<TableRow> table_rows_;
 };
 

@@ -1,0 +1,9 @@
+{{/* get the page path to determine version */}}
+{{- $path := split $.Page.File.Dir "/" -}}
+{{/* version is the first path of the path. eg: preview/stable/v2.12 ...*/}}
+{{- $version := index $path 0 -}}
+<div class="admonition note">
+    <p class="admonition-title">Before you start</p>
+    <p>The examples will run on a single-node local YugabyteDB universe.<br/>
+    To create a universe, see <a href="/{{$version}}/explore/cluster-setup-local/">Set up YugabyteDB universe</a>.
+</div>

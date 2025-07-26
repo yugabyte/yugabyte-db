@@ -18,7 +18,7 @@ Learn how to distribute your entire time-ordered dataset across tablets and retr
 
 ## Setup
 
-{{<cluster-setup-tabs>}}
+{{<cluster-setup-tabs-new>}}
 
 ## Timestamp-based distribution
 

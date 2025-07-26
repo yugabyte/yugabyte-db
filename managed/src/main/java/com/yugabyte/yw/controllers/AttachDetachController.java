@@ -30,6 +30,8 @@ import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.DetachUniverseFormData;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.models.AttachDetachSpec;
+import com.yugabyte.yw.models.AttachDetachSpec.PlatformPaths;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.CertificateInfo;
@@ -42,9 +44,9 @@ import com.yugabyte.yw.models.PriceComponent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.UniverseSpec;
-import com.yugabyte.yw.models.UniverseSpec.PlatformPaths;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.common.YBADeprecated;
+import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
@@ -54,6 +56,8 @@ import com.yugabyte.yw.rbac.annotations.Resource;
 import com.yugabyte.yw.rbac.enums.SourceType;
 import io.ebean.annotation.Transactional;
 import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.Authorization;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
@@ -66,7 +70,10 @@ import play.mvc.Http.Request;
 import play.mvc.Result;
 
 @Slf4j
-@Api(hidden = true)
+@Api(
+    hidden = true,
+    value = "Universe management",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class AttachDetachController extends AuthenticatedController {
 
   @Inject private Config config;
@@ -81,6 +88,12 @@ public class AttachDetachController extends AuthenticatedController {
   private static final String YBC_RELEASE_PATH = "ybc.docker.release";
   private static final String YBC_RELEASES_PATH = "ybc.releases.path";
 
+  @ApiOperation(
+      notes =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2025.2.0.0.</b>. Please use the"
+              + " v2 endpoint for detach universe instead",
+      value = "Export universe metadata to a tgz file from (source) YBA",
+      response = byte[].class)
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -91,6 +104,9 @@ public class AttachDetachController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
+  @Deprecated
+  @YBADeprecated(sinceDate = "2025-05-26", sinceYBAVersion = "2025.2.0.0")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2025.2.0.0")
   public Result exportUniverse(UUID customerUUID, UUID universeUUID, Request request)
       throws IOException {
     JsonNode requestBody = request.body().asJson();
@@ -137,7 +153,7 @@ public class AttachDetachController extends AuthenticatedController {
 
     // Lock Universe to prevent updates from happening.
     universe = Util.lockUniverse(universe);
-    UniverseSpec universeSpec;
+    AttachDetachSpec attachDetachSpec;
     InputStream is;
     try {
       List<PriceComponent> priceComponents = PriceComponent.findByProvider(provider);
@@ -193,8 +209,8 @@ public class AttachDetachController extends AuthenticatedController {
               .ybcReleasesPath(ybcReleasesPath)
               .build();
 
-      universeSpec =
-          UniverseSpec.builder()
+      attachDetachSpec =
+          AttachDetachSpec.builder()
               .universe(universe)
               .universeConfig(universe.getConfig())
               .provider(provider)
@@ -212,7 +228,7 @@ public class AttachDetachController extends AuthenticatedController {
               .skipReleases(detachUniverseFormData.skipReleases)
               .build();
 
-      is = universeSpec.exportSpec();
+      is = attachDetachSpec.exportSpec();
     } catch (Exception e) {
       // Unlock the universe if error is thrown to return universe back to original state.
       Util.unlockUniverse(universe);
@@ -224,13 +240,19 @@ public class AttachDetachController extends AuthenticatedController {
             request,
             Audit.TargetType.Universe,
             universe.getUniverseUUID().toString(),
-            Audit.ActionType.Export,
-            universeSpec.generateUniverseSpecObj());
+            Audit.ActionType.Detach,
+            attachDetachSpec.generateAttachDetachSpecObj());
     return ok(is)
-        .withHeader("Content-Disposition", "attachment; filename=universeSpec.tar.gz")
+        .withHeader("Content-Disposition", "attachment; filename=attachDetachSpec.tar.gz")
         .as("application/gzip");
   }
 
+  @ApiOperation(
+      notes =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2025.2.0.0.</b>. Please use the"
+              + " v2 endpoint for attach universe instead",
+      value = "Import universe metadata to (dest) YBA using a given tgz file",
+      response = YBPSuccess.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -241,6 +263,9 @@ public class AttachDetachController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.CREATE),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
+  @Deprecated
+  @YBADeprecated(sinceDate = "2025-05-26", sinceYBAVersion = "2025.2.0.0")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2025.2.0.0")
   public Result importUniverse(UUID customerUUID, UUID universeUUID, Http.Request request)
       throws IOException {
     checkAttachDetachEnabled();
@@ -271,20 +296,26 @@ public class AttachDetachController extends AuthenticatedController {
             .ybcReleasesPath(ybcReleasesPath)
             .build();
 
-    UniverseSpec universeSpec =
-        UniverseSpec.importSpec(tempSpecFile.getRef().path(), platformPaths, customer);
-    universeSpec.save(platformPaths, releaseManager, swamperHelper);
+    AttachDetachSpec attachDetachSpec =
+        AttachDetachSpec.importSpec(tempSpecFile.getRef().path(), platformPaths, customer);
+    attachDetachSpec.save(platformPaths, releaseManager, swamperHelper);
 
     auditService()
         .createAuditEntryWithReqBody(
             request,
             Audit.TargetType.Universe,
-            universeSpec.universe.getUniverseUUID().toString(),
-            Audit.ActionType.Import);
+            attachDetachSpec.universe.getUniverseUUID().toString(),
+            Audit.ActionType.Attach);
     return YBPSuccess.empty();
   }
 
   @Transactional
+  @ApiOperation(
+      notes =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2025.2.0.0.</b>. Please use the"
+              + " v2 endpoint for delete attach detach metadata instead",
+      value = "Delete metadata of a universe from (source) YBA",
+      response = YBPSuccess.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -295,6 +326,9 @@ public class AttachDetachController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.DELETE),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
+  @Deprecated
+  @YBADeprecated(sinceDate = "2025-05-26", sinceYBAVersion = "2025.2.0.0")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2025.2.0.0")
   public Result deleteUniverseMetadata(UUID customerUUID, UUID universeUUID, Request request)
       throws IOException {
     checkAttachDetachEnabled();
@@ -332,7 +366,7 @@ public class AttachDetachController extends AuthenticatedController {
             request,
             Audit.TargetType.Universe,
             universe.getUniverseUUID().toString(),
-            Audit.ActionType.DeleteMetadata);
+            Audit.ActionType.DeleteAttachDetachMetadata);
 
     Universe.delete(universe.getUniverseUUID());
     return YBPSuccess.empty();

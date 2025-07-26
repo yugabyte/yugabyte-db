@@ -18,6 +18,8 @@
 
 #include "yb/docdb/docdb_fwd.h"
 
+#include "yb/hnsw/hnsw_fwd.h"
+
 #include "yb/qlexpr/qlexpr_fwd.h"
 
 #include "yb/rocksdb/rocksdb_fwd.h"
@@ -27,6 +29,12 @@
 #include "yb/util/kv_util.h"
 
 #include "yb/vector_index/vector_index_fwd.h"
+
+namespace yb {
+
+class PriorityThreadPool;
+
+} // namespace yb
 
 namespace yb::docdb {
 
@@ -62,6 +70,7 @@ class DocVectorIndex {
   virtual Result<DocVectorIndexSearchResult> Search(
       Slice vector, const vector_index::SearchOptions& options) = 0;
   virtual Result<EncodedDistance> Distance(Slice lhs, Slice rhs) = 0;
+  virtual void EnableAutoCompactions() = 0;
   virtual Status Compact() = 0;
   virtual Status Flush() = 0;
   virtual Status WaitForFlush() = 0;
@@ -71,6 +80,7 @@ class DocVectorIndex {
   virtual const std::string& ToString() const = 0;
   virtual Result<bool> HasVectorId(const vector_index::VectorId& vector_id) const = 0;
   virtual Status Destroy() = 0;
+  virtual Result<size_t> TotalEntries() const = 0;
 
   bool BackfillDone();
 
@@ -81,13 +91,30 @@ class DocVectorIndex {
   std::atomic<bool> backfill_done_cache_{false};
 };
 
+struct DocVectorIndexThreadPools {
+  // Used for other tasks (for example some background cleaning up).
+  rpc::ThreadPool* thread_pool;
+
+  // Used for inserts/flushes.
+  rpc::ThreadPool* insert_thread_pool;
+
+  // Used for compactions.
+  PriorityThreadPool* compaction_thread_pool;
+};
+
+using DocVectorIndexThreadPoolProvider = std::function<DocVectorIndexThreadPools()>;
+
+// Doc vector index starts with background compactions disabled, they must be enabled explicitly:
+// don't forget to call EnableAutoCompactions().
 Result<DocVectorIndexPtr> CreateDocVectorIndex(
     const std::string& log_prefix,
     const std::string& data_root_dir,
-    rpc::ThreadPool& thread_pool,
+    const DocVectorIndexThreadPoolProvider& thread_pool_provider,
     Slice indexed_table_key_prefix,
     HybridTime hybrid_time,
     const qlexpr::IndexInfo& index_info,
-    const DocDB& doc_db);
+    const DocDB& doc_db,
+    const hnsw::BlockCachePtr& block_cache,
+    const MemTrackerPtr& mem_tracker);
 
 }  // namespace yb::docdb

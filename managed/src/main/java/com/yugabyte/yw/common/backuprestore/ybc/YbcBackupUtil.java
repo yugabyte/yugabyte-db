@@ -116,6 +116,10 @@ public class YbcBackupUtil {
   public static final String YBC_SUCCESS_MARKER_TASK_SUFFIX = "_success_marker";
   public static final String YBC_SUCCESS_MARKER_FILE_NAME = "success";
   public static final String YBDB_AUTOFLAG_BACKUP_SUPPORT_VERSION = "2.19.3.0-b1";
+  // YBDB Version that implements https://github.com/yugabyte/yugabyte-db/issues/25877
+  // TODO: Update the version once the change is landed
+  public static final String YBDB_STABLE_GRANT_SAFETY_VERSION = "2025.1.0.0-b1";
+  public static final String YBDB_PREVIEW_GRANT_SAFETY_VERSION = "2.25.2.0-b275";
 
   private final AutoFlagUtil autoFlagUtil;
   private final UniverseInfoHandler universeInfoHandler;
@@ -286,6 +290,18 @@ public class YbcBackupUtil {
     @JsonAlias("restorable_window")
     @Valid
     public RestorableWindow restorableWindow;
+
+    @JsonAlias("use_roles")
+    @Valid
+    public Boolean useRoles;
+
+    @JsonAlias("revert_to_pre_roles_behaviour")
+    @Valid
+    public Boolean revertToPreRolesBehaviour;
+
+    @JsonAlias("dump_role_checks")
+    @Valid
+    public Boolean dumpRoleChecks;
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class ResponseCloudStoreSpec {
@@ -584,7 +600,7 @@ public class YbcBackupUtil {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     NamespaceType namespaceType = getNamespaceType(backupStorageInfo.backupType);
     BackupServiceTaskExtendedArgs extendedArgs =
-        getExtendedArgsForRestore(backupStorageInfo, restoreToPointInTimeMillis);
+        getExtendedArgsForRestore(backupStorageInfo, restoreToPointInTimeMillis, successMarker);
     BackupServiceTaskCreateRequest.Builder backupServiceTaskCreateRequestBuilder =
         backupServiceTaskCreateBuilder(taskId, namespaceType, extendedArgs);
     CustomerConfig config = configService.getOrBadRequest(customerUUID, storageConfigUUID);
@@ -1071,10 +1087,28 @@ public class YbcBackupUtil {
           BackupServiceTaskExtendedArgs.newBuilder();
       ObjectMapper mapper = new ObjectMapper();
       extendedArgsBuilder.setBackupConfigData(mapper.writeValueAsString(config));
+      extendedArgsBuilder.setUseTablespaces(false);
       if (tableParams.useTablespaces) {
         extendedArgsBuilder.setUseTablespaces(true);
       }
       extendedArgsBuilder.setSaveRetentionWindow(true);
+      // Removing backup of roles temporarily. There are some issues we need to work out before
+      // fully implementing this.
+      // extendedArgsBuilder.setUseRoles(tableParams.getUseRoles());
+      extendedArgsBuilder.setRevertToPreRolesBehaviour(tableParams.getRevertToPreRolesBehaviour());
+      if (Util.compareYBVersions(
+              ybdbSoftwareVersion,
+              YBDB_STABLE_GRANT_SAFETY_VERSION,
+              YBDB_PREVIEW_GRANT_SAFETY_VERSION,
+              true)
+          <= 0) {
+        extendedArgsBuilder.setDumpRoleChecks(tableParams.getDumpRoleChecks());
+      } else {
+        log.debug("database version {} does not support --dump-role-checks", ybdbSoftwareVersion);
+        extendedArgsBuilder.setDumpRoleChecks(false); // DB does not support dump role checks flag.
+      }
+      // Set enable backups during DDL
+      extendedArgsBuilder.setUseReadTimeYsqlDump(tableParams.getEnableBackupsDuringDDL());
       return extendedArgsBuilder.build();
     } catch (Exception e) {
       log.error("Error while fetching extended args for backup: ", e);
@@ -1161,12 +1195,41 @@ public class YbcBackupUtil {
   }
 
   public BackupServiceTaskExtendedArgs getExtendedArgsForRestore(
-      BackupStorageInfo backupStorageInfo, long restoreToPointInTimeMillis) {
+      BackupStorageInfo backupStorageInfo,
+      long restoreToPointInTimeMillis,
+      YbcBackupResponse successMarker) {
     BackupServiceTaskExtendedArgs.Builder extendedArgsBuilder =
         BackupServiceTaskExtendedArgs.newBuilder();
+    extendedArgsBuilder.setUseTablespaces(false);
     if (backupStorageInfo.isUseTablespaces()) {
       extendedArgsBuilder.setUseTablespaces(true);
     }
+    extendedArgsBuilder.setUseRoles(backupStorageInfo.getUseRoles());
+    // If the success marker does not have revert to pre roles behaviour set, or it is set to true,
+    // pass revert to pre roles behaviour as true to the restore call.
+    if (successMarker.revertToPreRolesBehaviour == null
+        || successMarker.revertToPreRolesBehaviour) {
+      extendedArgsBuilder.setRevertToPreRolesBehaviour(true);
+    } else {
+      // Set the rest of the extended args directly from api params.
+      extendedArgsBuilder.setRevertToPreRolesBehaviour(
+          backupStorageInfo.getRevertToPreRolesBehaviour());
+      /* Removing backup of roles temporarily. There are some issues we need to work out before
+      fully implementing this.
+      extendedArgsBuilder.setErrorIfTablespacesExists(
+          backupStorageInfo.getErrorIfTablespacesExists());
+      extendedArgsBuilder.setErrorIfRolesExists(backupStorageInfo.getErrorIfRolesExists());
+      */
+    }
+
+    // Only skip ignore errors if requested by the user AND the backup supports 'dump_role_checks'.
+    extendedArgsBuilder.setIgnoreRestoreErrors(true);
+    if (successMarker.dumpRoleChecks != null
+        && successMarker.dumpRoleChecks
+        && !backupStorageInfo.getIgnoreErrors()) {
+      extendedArgsBuilder.setIgnoreRestoreErrors(false);
+    }
+
     if (StringUtils.isNotBlank(backupStorageInfo.newOwner)) {
       extendedArgsBuilder.setUserSpec(
           UserChangeSpec.newBuilder()

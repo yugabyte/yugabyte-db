@@ -131,7 +131,9 @@ static void show_buffer_usage(ExplainState *es, const BufferUsage *usage,
 							  bool planning);
 static void show_wal_usage(ExplainState *es, const WalUsage *usage);
 static void ExplainIndexScanDetails(Oid indexid, ScanDirection indexorderdir,
-									YbPlanInfo *yb_plan_info, ExplainState *es);
+									YbPlanInfo *yb_plan_info,
+									bool yb_is_agg_pushdown,
+									ExplainState *es);
 static void ExplainScanTarget(Scan *plan, ExplainState *es);
 static void ExplainModifyTarget(ModifyTable *plan, ExplainState *es);
 static void ExplainTargetRel(Plan *plan, Index rti, ExplainState *es);
@@ -163,7 +165,15 @@ static void ExplainYAMLLineStarting(ExplainState *es);
 static void escape_yaml(StringInfo buf, const char *str);
 
 /* YB declarations */
+static void show_yb_planning_stats_common(double num_seeks,
+										  double num_nexts_prevs,
+										  double num_table_pages,
+										  double num_index_pages,
+										  int docdb_result_width,
+										  ExplainState *es);
 static void show_yb_planning_stats(YbPlanInfo *planinfo, ExplainState *es);
+static void show_yb_bitmap_scan_planning_stats(YbPlanInfo *planinfo,
+											   ExplainState *es);
 static void show_yb_rpc_stats(PlanState *planstate, ExplainState *es);
 static void YbAppendPgMemInfo(ExplainState *es, const Size peakMem);
 static void YbAggregateExplainableRPCRequestStat(ExplainState *es,
@@ -614,6 +624,8 @@ const char *yb_metric_counter_label[] = {
 	BUILD_METRIC_LABEL("restart_read_requests"),
 	[YB_STORAGE_COUNTER_CONSISTENT_PREFIX_READ_REQUESTS] =
 	BUILD_METRIC_LABEL("consistent_prefix_read_requests"),
+	[YB_STORAGE_COUNTER_PICKED_READ_TIME_ON_DOCDB] =
+	BUILD_METRIC_LABEL("picked_read_time_on_docdb"),
 	[YB_STORAGE_COUNTER_PGSQL_CONSISTENT_PREFIX_READ_ROWS] =
 	BUILD_METRIC_LABEL("pgsql_consistent_prefix_read_rows"),
 	[YB_STORAGE_COUNTER_TABLET_DATA_CORRUPTIONS] =
@@ -687,6 +699,10 @@ const char *yb_metric_event_label[] = {
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_bytes_per_write"),
 	[YB_STORAGE_EVENT_INTENTSDB_BYTES_PER_MULTIGET] =
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_bytes_per_multiget"),
+	[YB_STORAGE_EVENT_INTENTSDB_WRITE_JOIN_GROUP_MICROS] =
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_write_thread_join_group_micros"),
+	[YB_STORAGE_EVENT_INTENTSDB_REMOVE_JOIN_GROUP_MICROS] =
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_remove_thread_join_group_micros"),
 	[YB_STORAGE_EVENT_SNAPSHOT_READ_INFLIGHT_WAIT_DURATION] =
 	BUILD_METRIC_LABEL("snapshot_read_inflight_wait_duration"),
 	[YB_STORAGE_EVENT_QL_READ_LATENCY] =
@@ -747,6 +763,7 @@ static void
 YbExplainRpcRequestNumericMetric(YbExplainState *yb_es, const char *label, double value,
 								 bool is_mean)
 {
+	Assert(label != NULL);
 	if (value == 0)
 		return;
 
@@ -774,13 +791,15 @@ YbExplainRpcRequestCounter(YbExplainState *yb_es, YbPgCounterMetrics metric, dou
 /* Explains a single RPC event metric */
 static void
 YbExplainRpcRequestEvent(YbExplainState *yb_es, YbPgEventMetrics metric,
-						 const YbPgEventMetric *value, double nloops, bool is_mean)
+						 const YbcPgExecEventMetric *value, double nloops, bool is_mean)
 {
 	if (value->count == 0)
 		return;
 
 	const char *label = yb_metric_event_label[metric];
 	ExplainState *es = yb_es->es;
+
+	Assert(label != NULL);
 
 	int			ndigits = is_mean ? 3 : 0;
 
@@ -878,6 +897,36 @@ YbIsTimingNeeded(ExplainState *es, bool timing_set)
 
 	/* Else, use timing if the query needs it */
 	return es->analyze;
+}
+
+static void
+YbExplainRpcRequestMetrics(YbExplainState *yb_es, YbcPgExecStorageMetrics *metrics,
+						   double nloops, bool is_mean, const char *labelname)
+{
+	if (!metrics)
+		return;
+
+	ExplainOpenGroup(labelname, labelname, true, yb_es->es);
+
+	if (yb_es->es->format == EXPLAIN_FORMAT_TEXT)
+		++yb_es->es->indent;
+
+	for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i)
+		YbExplainRpcRequestGauge(yb_es, i, metrics->gauges[i] / nloops,
+								 is_mean);
+
+	for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i)
+		YbExplainRpcRequestCounter(yb_es, i, metrics->counters[i] / nloops,
+								   is_mean);
+
+	for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i)
+		YbExplainRpcRequestEvent(yb_es, i, &metrics->events[i],
+								 nloops, is_mean);
+
+	if (yb_es->es->format == EXPLAIN_FORMAT_TEXT)
+		--yb_es->es->indent;
+
+	ExplainCloseGroup(labelname, labelname, true, yb_es->es);
 }
 
 /*
@@ -1379,7 +1428,7 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 			YbIsSingleRowModifyTxnPlanned(plannedstmt, queryDesc->estate);
 
 		/* YB: Refresh the session stats before the start of the query */
-		if (es->rpc)
+		if (es->analyze)
 		{
 			YbRefreshSessionStatsBeforeExecution();
 		}
@@ -1440,7 +1489,8 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 
 	if (es->ybShowHints)
 	{
-		char *generatedHints = ybGenerateHintString(plannedstmt);
+		char	   *generatedHints = ybGenerateHintString(plannedstmt);
+
 		if (generatedHints != NULL)
 			ExplainPropertyText("Generated hints", generatedHints, es);
 		else
@@ -1521,40 +1571,32 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 			YbExplainStatWithoutTiming(&yb_es,
 									   YB_STAT_LABEL_STORAGE_ROWS_SCANNED,
 									   es->yb_stats.read.rows_scanned);
-			YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_STORAGE_WRITE,
-									   es->yb_stats.write_count);
+
+			if (es->yb_debug)
+				YbExplainRpcRequestMetrics(&yb_es, es->yb_stats.read_metrics, 1.0 /* nloops */ ,
+										   false /* is_mean */ , "Read Metrics" /* labelname */ );
+
 			YbExplainRpcRequestStat(&yb_es, YB_STAT_LABEL_CATALOG_READ,
 									es->yb_stats.catalog_read.count,
 									es->yb_stats.catalog_read.wait_time);
 			YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_CATALOG_WRITE,
 									   es->yb_stats.catalog_write_count);
+			YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_STORAGE_WRITE,
+									   es->yb_stats.write_count);
 			YbExplainRpcRequestStat(&yb_es, YB_STAT_LABEL_STORAGE_FLUSH,
 									es->yb_stats.flush.count,
 									es->yb_stats.flush.wait_time);
 
 			if (es->yb_debug)
-			{
-				for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i)
-				{
-					YbExplainRpcRequestGauge(&yb_es, i, es->yb_stats.storage_gauge_metrics[i],
-											 false /* is_mean */ );
-				}
-				for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i)
-				{
-					YbExplainRpcRequestCounter(&yb_es, i, es->yb_stats.storage_counter_metrics[i],
-											   false /* is_mean */ );
-				}
-				for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i)
-				{
-					YbExplainRpcRequestEvent(&yb_es, i,
-											 &es->yb_stats.storage_event_metrics[i],
-											 1.0 /* nloops */ , false /* is_mean */ );
-				}
-			}
+				YbExplainRpcRequestMetrics(&yb_es, es->yb_stats.write_metrics, 1.0 /* nloops */ ,
+										   false /* is_mean */ , "Write Metrics" /* labelname */ );
 
 			if (es->timing)
 				ExplainPropertyFloat("Storage Execution Time", "ms",
 									 total_rpc_wait / 1000000.0, 3, es);
+
+			if (es->yb_debug && YBCCurrentTransactionUsesFastPath())
+				ExplainPropertyText("Transaction", "Fast Path", es);
 		}
 
 		if (IsYugaByteEnabled() && yb_enable_memory_tracking && show_variable_fields)
@@ -2044,6 +2086,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 	int			save_indent = es->indent;
 	bool		haschildren;
 
+	bool		yb_is_agg_pushdown = false;
+
 	/* YB */
 	if (planstate->instrument)
 	{
@@ -2069,6 +2113,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			if (plan->ybHintAlias != NULL)
 			{
 				StringInfoData buf;
+
 				initStringInfo(&buf);
 				appendStringInfo(&buf, "%s %s", pname, plan->ybHintAlias);
 				pname = sname = buf.data;
@@ -2377,6 +2422,13 @@ ExplainNode(PlanState *planstate, List *ancestors,
 		ExplainPropertyBool("Async Capable", plan->async_capable, es);
 	}
 
+	if (IsYugaByteEnabled())
+	{
+		List	  **aggrefs = YbPlanStateTryGetAggrefs(planstate);
+
+		yb_is_agg_pushdown = aggrefs && *aggrefs != NIL;
+	}
+
 	switch (nodeTag(plan))
 	{
 		case T_SeqScan:
@@ -2409,6 +2461,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				ExplainIndexScanDetails(indexscan->indexid,
 										indexscan->indexorderdir,
 										&indexscan->yb_plan_info,
+										yb_is_agg_pushdown,
 										es);
 				ExplainScanTarget((Scan *) indexscan, es);
 			}
@@ -2420,6 +2473,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				ExplainIndexScanDetails(indexonlyscan->indexid,
 										indexonlyscan->indexorderdir,
 										&indexonlyscan->yb_plan_info,
+										yb_is_agg_pushdown,
 										es);
 				ExplainScanTarget((Scan *) indexonlyscan, es);
 			}
@@ -2429,7 +2483,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			{
 				BitmapIndexScan *bitmapindexscan = (BitmapIndexScan *) plan;
 				const char *indexname =
-				explain_get_index_name(bitmapindexscan->indexid);
+					explain_get_index_name(bitmapindexscan->indexid);
 
 				if (es->format == EXPLAIN_FORMAT_TEXT)
 					appendStringInfo(es->str, " on %s",
@@ -2801,7 +2855,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			if (is_yb_rpc_stats_required)
 				show_yb_rpc_stats(planstate, es);
 			if (is_yb_planning_stats_required)
-				show_yb_planning_stats(&((YbBitmapIndexScan *) plan)->yb_plan_info, es);
+				show_yb_bitmap_scan_planning_stats(&((YbBitmapIndexScan *) plan)->yb_plan_info,
+												   es);
 			break;
 		case T_BitmapHeapScan:
 			show_scan_qual(((BitmapHeapScan *) plan)->bitmapqualorig,
@@ -2819,7 +2874,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 		case T_YbBitmapTableScan:
 			{
 				YbBitmapTableScanState *bitmapscanstate =
-				(YbBitmapTableScanState *) planstate;
+					(YbBitmapTableScanState *) planstate;
 				YbBitmapTableScan *bitmapplan = (YbBitmapTableScan *) plan;
 				List	   *storage_filter = (bitmapscanstate->work_mem_exceeded ?
 											  bitmapplan->fallback_pushdown.quals :
@@ -3155,13 +3210,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 	}
 
 	/* YB aggregate pushdown */
-	if (IsYugaByteEnabled())
-	{
-		List	  **aggrefs = YbPlanStateTryGetAggrefs(planstate);
-
-		if (aggrefs && *aggrefs != NIL)
-			ExplainPropertyBool("Partial Aggregate", true, es);
-	}
+	if (yb_is_agg_pushdown)
+		ExplainPropertyBool("Partial Aggregate", true, es);
 
 	/*
 	 * Prepare per-worker JIT instrumentation.  As with the overall JIT
@@ -4112,7 +4162,7 @@ show_incremental_sort_info(IncrementalSortState *incrsortstate,
 		for (n = 0; n < incrsortstate->shared_info->num_workers; n++)
 		{
 			IncrementalSortInfo *incsort_info =
-			&incrsortstate->shared_info->sinfo[n];
+				&incrsortstate->shared_info->sinfo[n];
 
 			/*
 			 * If a worker hasn't processed any sort groups at all, then
@@ -4601,6 +4651,7 @@ show_instrumentation_count(const char *qlabel, int which,
 	if (IsYugaByteEnabled() && which == 2)
 	{
 		YbInstrumentation *yb_instr = &planstate->instrument->yb_instr;
+
 		nfiltered += yb_instr->rows_removed_by_recheck;
 	}
 
@@ -4850,14 +4901,50 @@ show_buffer_usage(ExplainState *es, const BufferUsage *usage, bool planning)
 }
 
 static void
+show_yb_planning_stats_common(double num_seeks, double num_nexts_prevs,
+							  double num_table_pages, double num_index_pages,
+							  int docdb_result_width, ExplainState *es)
+{
+	ExplainPropertyFloat("Estimated Seeks", NULL, num_seeks, 0, es);
+	ExplainPropertyFloat("Estimated Nexts And Prevs", NULL, num_nexts_prevs, 0,
+						 es);
+
+	/*
+	 * YB_TODO(#27210): Do not print values of estimated_num_table_result_pages
+	 * or estimated_num_index_result_pages if == 0.
+	 */
+	if (num_table_pages >= 0)
+		ExplainPropertyFloat("Estimated Table Roundtrips", NULL,
+							 num_table_pages, 0, es);
+
+	if (num_index_pages >= 0)
+		ExplainPropertyFloat("Estimated Index Roundtrips", NULL,
+							 num_index_pages, 0, es);
+
+	ExplainPropertyInteger("Estimated Docdb Result Width", NULL,
+						   docdb_result_width, es);
+}
+
+static void
 show_yb_planning_stats(YbPlanInfo *planinfo, ExplainState *es)
 {
-	ExplainPropertyFloat("Estimated Seeks", NULL,
-						 planinfo->estimated_num_seeks, 0, es);
-	ExplainPropertyFloat("Estimated Nexts", NULL,
-						 planinfo->estimated_num_nexts, 0, es);
-	ExplainPropertyInteger("Estimated Docdb Result Width", NULL,
-						   planinfo->estimated_docdb_result_width, es);
+	show_yb_planning_stats_common(planinfo->estimated_num_seeks,
+								  planinfo->estimated_num_nexts_prevs,
+								  planinfo->estimated_num_table_result_pages,
+								  planinfo->estimated_num_index_result_pages,
+								  planinfo->estimated_docdb_result_width,
+								  es);
+}
+
+static void
+show_yb_bitmap_scan_planning_stats(YbPlanInfo *planinfo, ExplainState *es)
+{
+	show_yb_planning_stats_common(planinfo->estimated_num_bmscan_seeks,
+								  planinfo->estimated_num_bmscan_nexts_prevs,
+								  -1,
+								  planinfo->estimated_num_bmscan_result_pages,
+								  planinfo->estimated_docdb_result_width,
+								  es);
 }
 
 /*
@@ -4932,6 +5019,10 @@ show_yb_rpc_stats(PlanState *planstate, ExplainState *es)
 	YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_STORAGE_INDEX_ROWS_SCANNED,
 							   index_rows_scanned);
 
+	if (es->yb_debug)
+		YbExplainRpcRequestMetrics(&yb_es, yb_instr->read_metrics, nloops, true /* is_mean */ ,
+								   "Read Metrics" /* labelname */ );
+
 	YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_STORAGE_TABLE_WRITE,
 							   table_writes);
 	YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_STORAGE_INDEX_WRITE,
@@ -4940,23 +5031,8 @@ show_yb_rpc_stats(PlanState *planstate, ExplainState *es)
 							flushes_wait);
 
 	if (es->yb_debug)
-	{
-		for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i)
-		{
-			YbExplainRpcRequestGauge(&yb_es, i, yb_instr->storage_gauge_metrics[i] / nloops,
-									 true /* is_mean */ );
-		}
-		for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i)
-		{
-			YbExplainRpcRequestCounter(&yb_es, i, yb_instr->storage_counter_metrics[i] / nloops,
-									   true /* is_mean */ );
-		}
-		for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i)
-		{
-			YbExplainRpcRequestEvent(&yb_es, i, &yb_instr->storage_event_metrics[i],
-									 nloops, true /* is_mean */ );
-		}
-	}
+		YbExplainRpcRequestMetrics(&yb_es, yb_instr->write_metrics, nloops, true /* is_mean */ ,
+								   "Write Metrics" /* labelname */ );
 }
 
 /*
@@ -4964,13 +5040,15 @@ show_yb_rpc_stats(PlanState *planstate, ExplainState *es)
  */
 static void
 ExplainIndexScanDetails(Oid indexid, ScanDirection indexorderdir,
-						YbPlanInfo *yb_plan_info, ExplainState *es)
+						YbPlanInfo *yb_plan_info, bool yb_is_agg_pushdown,
+						ExplainState *es)
 {
 	const char *indexname = explain_get_index_name(indexid);
 
 	if (es->format == EXPLAIN_FORMAT_TEXT)
 	{
-		if (ScanDirectionIsBackward(indexorderdir))
+		/* YB: index aggregate pushdown does not actually set any ordering. */
+		if (ScanDirectionIsBackward(indexorderdir) && !yb_is_agg_pushdown)
 			appendStringInfoString(es->str, " Backward");
 		appendStringInfo(es->str, " using %s", quote_identifier(indexname));
 	}
@@ -5442,7 +5520,7 @@ ExplainCustomChildren(CustomScanState *css, List *ancestors, ExplainState *es)
 {
 	ListCell   *cell;
 	const char *label =
-	(list_length(css->custom_ps) != 1 ? "children" : "child");
+		(list_length(css->custom_ps) != 1 ? "children" : "child");
 
 	foreach(cell, css->custom_ps)
 		ExplainNode((PlanState *) lfirst(cell), ancestors, label, NULL, es);
@@ -6296,6 +6374,32 @@ YbAppendPgMemInfo(ExplainState *es, const Size peakMem)
 }
 
 static void
+YbAggregateExplainableRpcMetrics(YbcPgExecStorageMetrics **metrics,
+								 const YbcPgExecStorageMetrics *instr_metrics)
+{
+	if (!instr_metrics)
+		return;
+
+	if (*metrics == NULL)
+		*metrics = (YbcPgExecStorageMetrics *) palloc0(sizeof(YbcPgExecStorageMetrics));
+
+	for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i)
+		(*metrics)->gauges[i] += instr_metrics->gauges[i];
+
+	for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i)
+		(*metrics)->counters[i] += instr_metrics->counters[i];
+
+	for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i)
+	{
+		const YbcPgExecEventMetric *val = &instr_metrics->events[i];
+		YbcPgExecEventMetric *agg = &(*metrics)->events[i];
+
+		agg->sum += val->sum;
+		agg->count += val->count;
+	}
+}
+
+static void
 YbAggregateExplainableRPCRequestStat(ExplainState *es,
 									 const YbInstrumentation *yb_instr)
 {
@@ -6326,22 +6430,10 @@ YbAggregateExplainableRPCRequestStat(ExplainState *es,
 	/* RPC Storage Metrics */
 	if (es->yb_debug)
 	{
-		for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i)
-		{
-			es->yb_stats.storage_gauge_metrics[i] += yb_instr->storage_gauge_metrics[i];
-		}
-		for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i)
-		{
-			es->yb_stats.storage_counter_metrics[i] += yb_instr->storage_counter_metrics[i];
-		}
-		for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i)
-		{
-			YbPgEventMetric *agg = &es->yb_stats.storage_event_metrics[i];
-			const YbPgEventMetric *val = &yb_instr->storage_event_metrics[i];
-
-			agg->sum += val->sum;
-			agg->count += val->count;
-		}
+		YbAggregateExplainableRpcMetrics(&es->yb_stats.read_metrics,
+										 yb_instr->read_metrics);
+		YbAggregateExplainableRpcMetrics(&es->yb_stats.write_metrics,
+										 yb_instr->write_metrics);
 	}
 }
 

@@ -82,7 +82,9 @@ export const RuntimeConfigKey = {
   NODE_AGENT_CLIENT_ENABLE: 'yb.node_agent.client.enabled',
   NODE_AGENT_ENABLER_SCAN_INTERVAL: 'yb.node_agent.enabler.scan_interval',
   HYPERDISKS_STORAGE_TYPE: 'yb.gcp.show_hyperdisks_storage_type',
-  CIPHERTRUST_KMS_ENABLE: 'yb.kms.allow_ciphertrust'
+  CIPHERTRUST_KMS_ENABLE: 'yb.kms.allow_ciphertrust',
+  ENABLE_AUTO_NODE_AGENT_INSTALLATION: 'yb.node_agent.enabler.run_installer',
+  LOKI_TELEMETRY_ALLOW: "yb.telemetry.allow_loki"
 } as const;
 
 /**

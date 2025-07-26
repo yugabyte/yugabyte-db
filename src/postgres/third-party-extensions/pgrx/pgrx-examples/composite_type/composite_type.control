@@ -1,0 +1,5 @@
+comment = 'composite_type:  Created by pgrx'
+default_version = '@CARGO_VERSION@'
+module_pathname = '$libdir/composite_type'
+relocatable = false
+superuser = false

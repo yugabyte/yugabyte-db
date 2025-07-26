@@ -40,13 +40,22 @@ class SysCatalogITest : public pgwrapper::PgMiniTestBase {
   NamespaceId namespace_id_;
 };
 
-TEST_F(SysCatalogITest, ReadHighestNormalPreservableOid) {
+TEST_F(SysCatalogITest, ReadHighestPreservableOidForNormalSpace) {
   auto conn = ASSERT_RESULT(ConnectToDB(namespace_name));
   auto database_oid = ASSERT_RESULT(GetPgsqlDatabaseOid(namespace_id_));
   auto sys_catalog = ASSERT_RESULT(catalog_manager())->sys_catalog();
 
-  auto original_highest_oid =
-      ASSERT_RESULT(sys_catalog->ReadHighestNormalPreservableOid(database_oid));
+  auto ReadHighestPreservableOidForNormalSpace = [&sys_catalog, database_oid]() -> uint32_t {
+    auto maximum_oids = sys_catalog->ReadHighestPreservableOids(database_oid);
+    EXPECT_OK(maximum_oids);
+    uint32_t oid = 0;
+    if (maximum_oids) {
+      oid = maximum_oids->for_normal_space_;
+    }
+    return oid;
+  };
+
+  auto original_highest_oid = ReadHighestPreservableOidForNormalSpace();
   // Make sure all the OIDs we are going to use are higher than any of the starting OIDs.
   ASSERT_LT(original_highest_oid, 20'000);
 
@@ -68,7 +77,7 @@ TEST_F(SysCatalogITest, ReadHighestNormalPreservableOid) {
       )";
     ASSERT_OK(conn.Execute(std::regex_replace(
         command, std::regex{"@"}, std::to_string(kPgFirstSecondarySpaceObjectId))));
-    auto oid = ASSERT_RESULT(sys_catalog->ReadHighestNormalPreservableOid(database_oid));
+    auto oid = ReadHighestPreservableOidForNormalSpace();
     // The addition of these OIDs should not have changed the highest normal space OID at all.
     ASSERT_EQ(oid, original_highest_oid);
   }
@@ -89,7 +98,7 @@ TEST_F(SysCatalogITest, ReadHighestNormalPreservableOid) {
        SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('2'::real);
        ALTER TYPE new_enum ADD VALUE 'orange';
       )"));
-    auto oid = ASSERT_RESULT(sys_catalog->ReadHighestNormalPreservableOid(database_oid));
+    auto oid = ReadHighestPreservableOidForNormalSpace();
     EXPECT_EQ(oid, 50'001);
   }
 
@@ -103,7 +112,7 @@ TEST_F(SysCatalogITest, ReadHighestNormalPreservableOid) {
 
        CREATE SEQUENCE new_sequence;
       )"));
-    auto oid = ASSERT_RESULT(sys_catalog->ReadHighestNormalPreservableOid(database_oid));
+    auto oid = ReadHighestPreservableOidForNormalSpace();
     EXPECT_EQ(oid, 60000);
   }
 
@@ -118,7 +127,7 @@ TEST_F(SysCatalogITest, ReadHighestNormalPreservableOid) {
 
        CREATE TYPE new_composite AS (x int);
       )"));
-    auto oid = ASSERT_RESULT(sys_catalog->ReadHighestNormalPreservableOid(database_oid));
+    auto oid = ReadHighestPreservableOidForNormalSpace();
     EXPECT_EQ(oid, 70'001);
   }
 
@@ -135,15 +144,83 @@ TEST_F(SysCatalogITest, ReadHighestNormalPreservableOid) {
        CREATE TABLE my_table (x integer);
       )"));
 
-    // TODO(yhaddad): fix Postgres to honor binary_upgrade_set_next_heap_relfilenode directive then
-    // update this test to expect 80'000.
+    // TODO(yhaddad): fix Postgres to honor binary_upgrade_set_next_heap_relfilenode directive
+    // then update this test to expect 80'000.
     //
     // (Currently this directive is not honored, which prevents this test from testing the
     // relfilenode case.)
     LOG(INFO) << ASSERT_RESULT(conn.FetchAllAsString("SELECT oid, relfilenode FROM pg_class;"));
-    auto oid = ASSERT_RESULT(sys_catalog->ReadHighestNormalPreservableOid(database_oid));
+    auto oid = ReadHighestPreservableOidForNormalSpace();
     // EXPECT_EQ(oid, 80'000);
     EXPECT_EQ(oid, 70'001);
+  }
+}
+
+TEST_F(SysCatalogITest, ReadHighestPreservableOidForSecondarySpace) {
+  auto conn = ASSERT_RESULT(ConnectToDB(namespace_name));
+  auto database_oid = ASSERT_RESULT(GetPgsqlDatabaseOid(namespace_id_));
+  auto sys_catalog = ASSERT_RESULT(catalog_manager())->sys_catalog();
+
+  auto ReadHighestPreservableOidForSecondarySpace = [&sys_catalog, database_oid]() -> uint32_t {
+    auto maximum_oids = sys_catalog->ReadHighestPreservableOids(database_oid);
+    EXPECT_OK(maximum_oids);
+    uint32_t oid = 0;
+    if (maximum_oids) {
+      oid = maximum_oids->for_secondary_space_;
+    }
+    return oid;
+  };
+
+  const uint32_t base_oid = kPgFirstSecondarySpaceObjectId + 100;
+  // Here @ in statement will be replaced by base_oid.
+  auto MyExecute = [&conn](const std::string& statement) {
+    const std::string prefix =
+        "SET yb_binary_restore = true; SET yb_ignore_pg_class_oids = false; ";
+    return conn.Execute(
+        prefix + std::regex_replace(statement, std::regex{"@"}, std::to_string(base_oid)));
+  };
+
+  {
+    auto oid = ReadHighestPreservableOidForSecondarySpace();
+    EXPECT_EQ(oid, kPgFirstSecondarySpaceObjectId);
+  }
+
+  // Create secondary space OIDs of each of the kinds we preserve.
+
+  {
+    ASSERT_OK(MyExecute(R"(
+       SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid((@)::pg_catalog.oid);
+       SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid((@+1)::pg_catalog.oid);
+       CREATE TYPE high_enum AS ENUM ();
+       )"));
+    auto oid = ReadHighestPreservableOidForSecondarySpace();
+    ASSERT_EQ(oid, base_oid + 1);
+  }
+
+  {
+    ASSERT_OK(MyExecute(R"(
+       SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid((@+2)::pg_catalog.oid);
+       SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1'::real);
+       ALTER TYPE high_enum ADD VALUE 'red';
+       )"));
+    auto oid = ReadHighestPreservableOidForSecondarySpace();
+    ASSERT_EQ(oid, base_oid + 2);
+  }
+
+  {
+    ASSERT_OK(MyExecute(R"(
+       SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid((@+3)::pg_catalog.oid);
+       SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode((@+4)::pg_catalog.oid);
+       CREATE SEQUENCE high_sequence;
+       )"));
+    auto oid = ReadHighestPreservableOidForSecondarySpace();
+    // TODO(yhaddad): fix Postgres to honor binary_upgrade_set_next_heap_relfilenode directive
+    // then update this test to expect base_oid + 4.
+    //
+    // (Currently this directive is not honored, which prevents this test from testing the
+    // relfilenode case.)
+    // ASSERT_EQ(oid, base_oid + 4);
+    ASSERT_EQ(oid, base_oid + 3);
   }
 }
 

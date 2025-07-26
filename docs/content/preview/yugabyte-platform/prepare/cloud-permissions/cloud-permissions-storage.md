@@ -91,7 +91,12 @@ The Access key ID and Secret Access Key for the service account are used when cr
 
 When backing up to and/or restoring from GCP GCS, YBA and database nodes must be able to write to and read from the GCS storage bucket.
 
-To grant the required access, create a GCP service account with [IAM roles for cloud storage](https://cloud.google.com/storage/docs/access-control/iam-roles) with the following permissions:
+To grant the required access, you can do one of the following:
+
+- Provide a GCP service account with [IAM roles for cloud storage](https://cloud.google.com/storage/docs/access-control/iam-roles) with the required permissions.
+- Create the VM instances (for both the YBA VM and the DB nodes VMs) with an IAM role that has the required permissions.
+
+The following permissions are required:
 
 ```sh
 roles/storage.admin
@@ -101,9 +106,7 @@ The credentials for this account (in JSON format) are used when creating a backu
 
 | Save for later | To configure |
 | :--- | :--- |
-| Storage service account JSON credentials | [Storage configuration](../../../back-up-restore-universes/configure-backup-storage/#google-cloud-storage) for GCS |
-
-For database clusters deployed to GKE, you can alternatively assign the appropriate IAM roles to the YugabyteDB Anywhere VM and the YugabyteDB nodes.
+| Service account JSON credentials | [Storage configuration](../../../back-up-restore-universes/configure-backup-storage/#google-cloud-storage) for GCS |
 
   </div>
 

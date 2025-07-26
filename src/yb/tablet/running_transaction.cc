@@ -691,5 +691,13 @@ bool RunningTransaction::IsTxnLoadedWithCDC() const {
   return is_txn_loaded_with_cdc_;
 }
 
+void RunningTransaction::MarkHasRetryableRequestsReplicated() {
+  has_retryable_requests_replicated_ = true;
+}
+
+bool RunningTransaction::HasRetryableRequestsReplicated() const {
+  return has_retryable_requests_replicated_;
+}
+
 } // namespace tablet
 } // namespace yb

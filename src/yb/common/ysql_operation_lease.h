@@ -15,4 +15,10 @@
 
 #include "yb/util/flags/flag_tags.h"
 
-DECLARE_bool(TEST_enable_ysql_operation_lease);
+DECLARE_bool(enable_ysql_operation_lease);
+
+namespace yb {
+
+bool IsYsqlLeaseEnabled();
+
+}  // namespace yb

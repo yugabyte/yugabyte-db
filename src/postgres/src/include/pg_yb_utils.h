@@ -78,6 +78,15 @@
 #define YB_RELCACHE_MSGS (1)
 
 /*
+ * Postgres code uses process-level storage (e.g. static variables) to store
+ * long-lived data in a backend process. During expression pushdown, we may be
+ * reading & writing to the same variable from multiple threads in the same
+ * process, so using process-level storage is not safe. We use thread-local
+ * storage to ensure thread safety for these variables.
+ */
+#define YB_THREAD_LOCAL __thread
+
+/*
  * Utility to get the current cache version that accounts for the fact that
  * during a DDL we automatically apply the pending syscatalog changes to
  * the local cache (of the current session).
@@ -144,11 +153,11 @@ extern int32_t yb_follower_read_staleness_ms;
 		HeapTuple   pg_db_tuple; \
 		SysScanDesc pg_db_scan = systable_beginscan( \
 			pg_db, \
-			InvalidOid /* indexId */, \
-			false /* indexOK */, \
-			NULL /* snapshot */, \
-			0 /* nkeys */, \
-			NULL /* key */); \
+			InvalidOid /* indexId */ , \
+			false /* indexOK */ , \
+			NULL /* snapshot */ , \
+			0 /* nkeys */ , \
+			NULL /* key */ ); \
 		while (HeapTupleIsValid(pg_db_tuple = systable_getnext(pg_db_scan))) \
 		{ \
 
@@ -196,8 +205,6 @@ extern bool IsRealYBColumn(Relation rel, int attrNum);
 extern bool IsYBSystemColumn(int attrNum);
 
 extern void YBReportFeatureUnsupported(const char *err_msg);
-
-extern AttrNumber YBGetFirstLowInvalidAttrNumber(bool is_yb_relation);
 
 extern AttrNumber YBGetFirstLowInvalidAttributeNumber(Relation relation);
 
@@ -399,11 +406,6 @@ bool		YBShouldRestartAllChildrenIfOneCrashes();
  */
 void		YbSetConnectedToTemplateDb();
 bool		YbIsConnectedToTemplateDb();
-
-/*
- * Whether every ereport of the ERROR level and higher should log a stack trace.
- */
-bool		YBShouldLogStackTraceOnError();
 
 /*
  * Converts the PostgreSQL error level as listed in elog.h to a string. Always
@@ -608,13 +610,16 @@ extern int	StatementTimeout;
 
 /**
  * YSQL guc variables that can be used to toggle yugabyte debug features.
- * e.g. 'SET yb_debug_report_error_stacktrace=true' and
- *      'RESET yb_debug_report_error_stacktrace'.
+ * e.g. 'SET yb_debug_log_docdb_error_backtrace=true' and
+ *      'RESET yb_debug_log_docdb_error_backtrace'.
  * See also the corresponding entries in guc.c.
  */
 
-/* Add stacktrace information to every YSQL error. */
-extern bool yb_debug_report_error_stacktrace;
+/* Add stacktrace information to errors received from DocDB/PgGate. */
+extern bool yb_debug_log_docdb_error_backtrace;
+
+/* Use Postgres or Yugabyte stacktrace formatting. */
+extern bool yb_debug_original_backtrace_format;
 
 /*
  * Log automatic statement (or transaction) restarts such as read-restarts and
@@ -680,6 +685,12 @@ extern char *yb_default_replica_identity;
  */
 extern bool yb_test_fail_table_rewrite_after_creation;
 
+/*
+ * If set to true, force a full catalog cache refresh before
+ * executing the next top level statement.
+ */
+extern bool yb_test_preload_catalog_tables;
+
 /* GUC variable yb_test_stay_in_global_catalog_version_mode. */
 extern bool yb_test_stay_in_global_catalog_version_mode;
 
@@ -703,7 +714,12 @@ extern bool yb_test_inval_message_portability;
 /*
  * If > 0, add a delay after apply invalidation messages.
  */
-extern int yb_test_delay_after_applying_inval_message_ms;
+extern int	yb_test_delay_after_applying_inval_message_ms;
+
+/*
+ * If > 0, add a delay before calling YBCPgSetTserverCatalogMessageList.
+ */
+extern int	yb_test_delay_set_local_tserver_inval_message_ms;
 
 /*
  * Denotes whether DDL operations touching DocDB system catalog will be rolled
@@ -735,7 +751,7 @@ extern bool yb_use_hash_splitting_by_default;
 extern bool yb_enable_inplace_index_update;
 
 /*
- * Enable the advisory lock feature.
+ * Enable the advisory lock feature. (DEPRECATED)
  */
 extern bool yb_enable_advisory_locks;
 
@@ -743,8 +759,8 @@ extern bool yb_enable_advisory_locks;
  * Enable invalidation messages.
  */
 extern bool yb_enable_invalidation_messages;
-extern int yb_invalidation_message_expiration_secs;
-extern int yb_max_num_invalidation_messages;
+extern int	yb_invalidation_message_expiration_secs;
+extern int	yb_max_num_invalidation_messages;
 
 typedef struct YBUpdateOptimizationOptions
 {
@@ -757,6 +773,10 @@ typedef struct YBUpdateOptimizationOptions
 /* GUC variables to control the behavior of optimizing update queries. */
 extern YBUpdateOptimizationOptions yb_update_optimization_options;
 
+/* GUC variables to control the speculative executive of PL statements. */
+extern bool yb_speculatively_execute_pl_statements;
+extern bool yb_whitelist_extra_stmts_for_pl_speculative_execution;
+
 extern bool yb_enable_docdb_vector_type;
 
 /*
@@ -765,7 +785,12 @@ extern bool yb_enable_docdb_vector_type;
  */
 extern bool yb_silence_advisory_locks_not_supported_error;
 
-extern bool yb_skip_data_insert_for_xcluster_target;
+/*
+ * GUC to indicate DDL executed in a Automatic xCluster mode target universe.
+ */
+extern bool yb_xcluster_automatic_mode_target_ddl;
+
+extern bool yb_force_early_ddl_serialization;
 
 /*
  * See also ybc_util.h which contains additional such variable declarations for
@@ -810,9 +835,14 @@ extern const char *YbBitmapsetToString(Bitmapset *bms);
  */
 bool		YBIsInitDbAlreadyDone();
 
-extern int YBGetDdlNestingLevel();
-extern NodeTag YBGetDdlOriginalNodeTag();
+extern bool YBIsDdlTransactionBlockEnabled();
+extern int	YBGetDdlNestingLevel();
+extern NodeTag YBGetCurrentStmtDdlNodeTag();
+extern bool YBIsCurrentStmtDdl();
+extern CommandTag YBGetCurrentStmtDdlCommandTag();
 extern bool YBGetDdlUseRegularTransactionBlock();
+extern void YBSetDdlOriginalNodeAndCommandTag(NodeTag nodeTag,
+											  CommandTag commandTag);
 extern void YbSetIsGlobalDDL();
 extern void YbIncrementPgTxnsCommitted();
 extern bool YbTrackPgTxnInvalMessagesForAnalyze();
@@ -827,9 +857,9 @@ typedef enum YbSysCatalogModificationAspect
 	YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT = 2,
 	YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE = 4,
 	/*
-	 * Indicates if the statement runs in an autonomous transaction even if
+	 * Indicates if the statement runs in an autonomous transaction when
 	 * transactional DDL support is enabled.
-	 * Always unset if TEST_ysql_yb_ddl_transaction_block_enabled is false.
+	 * Always unset if yb_ddl_transaction_block_enabled is false.
 	 */
 	YB_SYS_CAT_MOD_ASPECT_AUTONOMOUS_TRANSACTION_CHANGE = 8,
 } YbSysCatalogModificationAspect;
@@ -856,7 +886,7 @@ typedef enum YbDdlMode
 void		YBIncrementDdlNestingLevel(YbDdlMode mode);
 void		YBDecrementDdlNestingLevel();
 
-extern void YBSetDdlState(YbDdlMode mode);
+extern void YBAddDdlTxnState(YbDdlMode mode);
 extern void YBCommitTransactionContainingDDL();
 
 typedef struct YbDdlModeOptional
@@ -865,6 +895,7 @@ typedef struct YbDdlModeOptional
 	YbDdlMode	value;
 } YbDdlModeOptional;
 
+extern YbDdlMode YBGetCurrentDdlMode();
 extern YbDdlModeOptional YbGetDdlMode(PlannedStmt *pstmt,
 									  ProcessUtilityContext context);
 void		YBAddModificationAspects(YbDdlMode mode);
@@ -949,19 +980,19 @@ extern void YBGetCollationInfo(Oid collation_id,
 /*
  * Setup collation info in attr.
  */
-extern void		YBSetupAttrCollationInfo(YbcPgAttrValueDescriptor *attr, const YbcPgColumnInfo *column_info);
+extern void YBSetupAttrCollationInfo(YbcPgAttrValueDescriptor *attr, const YbcPgColumnInfo *column_info);
 
 /*
  * Check whether the collation is a valid non-C collation.
  */
-extern bool		YBIsCollationValidNonC(Oid collation_id);
+extern bool YBIsCollationValidNonC(Oid collation_id);
 
 /*
  * Check whether the DB collation is UTF-8.
  */
-extern bool		YBIsDbLocaleDefault();
+extern bool YBIsDbLocaleDefault();
 
-extern bool		YBRequiresCacheToCheckLocale(Oid collation_id);
+extern bool YBRequiresCacheToCheckLocale(Oid collation_id);
 
 /*
  * For the column 'attr_num' and its collation id, return the collation id that
@@ -1220,7 +1251,7 @@ YbOptSplit *YbGetSplitOptions(Relation rel);
 			YBCFreeStatus(_status); \
 			if (errstart(adjusted_elevel, TEXTDOMAIN)) \
 			{ \
-				Assert(msg_buf); \
+				AssertMacro(msg_buf); \
 				yb_errmsg_from_status(msg_buf, msg_nargs, msg_args); \
 				if (detail_buf) \
 					yb_errdetail_from_status(detail_buf, detail_nargs, detail_args); \
@@ -1228,12 +1259,12 @@ YbOptSplit *YbGetSplitOptions(Relation rel);
 					yb_errdetail_log_from_status(detail_log_buf, \
 												 detail_log_nargs, \
 												 detail_log_args); \
-				yb_set_pallocd_error_file_and_func(filename, funcname); \
 				errcode(pg_err_code); \
 				errhidecontext(true); \
-				errfinish(NULL, \
-						  lineno > 0 ? lineno : __LINE__, \
-						  NULL); \
+				if (yb_debug_log_docdb_error_backtrace) \
+					errbacktrace(); \
+				yb_errlocation_from_status(filename, lineno, funcname); \
+				errfinish(__FILE__, __LINE__, PG_FUNCNAME_MACRO); \
 				if (__builtin_constant_p(elevel) && (elevel) >= ERROR) \
 					pg_unreachable(); \
 			} \
@@ -1298,8 +1329,7 @@ extern void YbIndexSetNewRelfileNode(Relation indexRel, Oid relfileNodeId,
  */
 extern SortByDir YbSortOrdering(SortByDir ordering, bool is_colocated, bool is_tablegroup, bool is_first_key);
 
-extern void YbGetRedactedQueryString(const char *query, int query_len,
-									 const char **redacted_query, int *redacted_query_len);
+extern const char *YbGetRedactedQueryString(const char *query, int *redacted_query_len);
 
 /* Check if optimizations for UPDATE queries have been enabled. */
 extern bool YbIsUpdateOptimizationEnabled();
@@ -1372,5 +1402,7 @@ extern bool YbIsInvalidationMessageEnabled();
 extern bool YbRefreshMatviewInPlace();
 
 extern void YbForceSendInvalMessages();
+
+extern long YbGetPeakRssKb();
 
 #endif							/* PG_YB_UTILS_H */

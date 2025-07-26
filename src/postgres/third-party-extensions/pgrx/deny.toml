@@ -1,0 +1,131 @@
+# Configuration for cargo deny for the workspace
+# NOTE: pgrx (the library crate) has its own deny.toml because it is linked into extensions
+
+# Note that all fields that take a lint level have these possible values:
+# * deny - An error will be produced and the check will fail
+# * warn - A warning will be produced, but the check will not fail
+# * allow - No warning or error will be produced, though it may still note
+
+# If 1 or more target triples (and optionally, target_features) are specified,
+# only the specified targets will be checked when running `cargo deny check`.
+targets = [
+    { triple = "x86_64-unknown-linux-gnu" },
+    { triple = "aarch64-apple-darwin" },
+]
+# When creating the dependency graph used, this can be used to prune crates from the graph,
+# removing them from the view of cargo-deny. This is an extremely heavy hammer, as if a crate
+# is pruned from the graph, all of its dependencies will also be pruned.
+# Uses Package IDs: https://doc.rust-lang.org/cargo/reference/pkgid-spec.html
+#exclude = []
+# If true, metadata will be collected with `--all-features`. Prefer using the command line.
+all-features = true
+# If true, metadata will be collected with `--no-default-features`. Prefer using the command line.
+no-default-features = false
+# If set, these features will be enabled when collecting metadata.
+# cargo deny --features "" # will take precedence over this option.
+#features = []
+# When outputting inclusion graphs in diagnostics that include features, this
+# option can be used to specify the depth at which feature edges will be added.
+# cargo deny --feature-depth 9001 # will take precedence over this option
+feature-depth = 1
+
+# https://embarkstudios.github.io/cargo-deny/checks/advisories/cfg.html
+[advisories]
+db-path = "~/.cargo/advisory-db"
+db-urls = ["https://github.com/rustsec/advisory-db"]
+yanked = "warn"
+# Note that ignored advisories can still output a note when they are encountered.
+ignore = [
+    #"RUSTSEC-0000-0000",
+]
+# Threshold for security vulnerabilities based on CVSS
+# Note that CVSS values only measure severity, not risk.
+#severity-threshold =
+
+# If this is true, then cargo deny will use the git executable to fetch the advisory database.
+# If this is false, then it uses a built-in git library.
+#git-fetch-with-cli = true
+
+
+# https://embarkstudios.github.io/cargo-deny/checks/licenses/cfg.html
+[licenses]
+# See https://spdx.org/licenses/ for list of possible licenses
+# This allowlist is a superset of pgrx's allowlist, including the build tools like cargo-pgrx, etc.
+# We are not as concerned about licenses that affect linked code here: most tools aren't shipped.
+allow = [
+    "0BSD",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "ISC",
+    "MIT",
+    "MPL-2.0",
+    "Unicode-DFS-2016",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+# The confidence threshold for detecting a license from license text.
+# The higher the value, the more closely the license text must be to the
+# canonical license text of a valid SPDX license file.
+confidence-threshold = 0.99999 # we got five nines!
+# Allow 1 or more licenses on a per-crate basis.
+exceptions = [
+    { allow = ["LicenseRef-Ring"], name = "ring", version = "*" },
+]
+
+# Some crates don't have (easily) machine readable licensing information
+# and adding a clarification entry allows manually specifying licensing.
+[[licenses.clarify]]
+name = "ring"
+version = "*"
+expression = "LicenseRef-Ring"
+license-files = [
+    { path = "LICENSE", hash = 0xbd0eed23 },
+]
+
+[licenses.private]
+# ignores workspace crates that aren't published
+ignore = true
+registries = [] # private registries
+
+# https://embarkstudios.github.io/cargo-deny/checks/bans/cfg.html
+[bans]
+multiple-versions = "warn"
+wildcards = "allow"
+# * lowest-version - The path to the lowest versioned duplicate is highlighted
+# * simplest-path - The path to the version with the fewest edges is highlighted
+# * all - Both lowest-version and simplest-path are used
+highlight = "all"
+workspace-default-features = "allow" # for "default" features here
+external-default-features = "allow" # for "default" features in other crates
+allow = [] # "I would prefer not to." — Bartleby the Scrivener
+deny = [
+    # Wrapper crates can optionally be specified to allow only for a direct dependency
+    #{ name = "ansi_term", version = "=0.11.0", wrappers = [] },
+]
+skip = [] #{ name = "ansi_term", version = "=0.11.0" },
+# skip but includes transitive dependencies from name to depth of N (default: infinite)
+skip-tree = [] #{ name = "ansi_term", version = "=0.11.0", depth = 20 }
+
+#[[bans.features]]
+#name = "reqwest"
+#deny = ["json"]
+#allow = []
+# If true, the allowed features must exactly match.
+#exact = true
+
+
+
+# https://embarkstudios.github.io/cargo-deny/checks/sources/cfg.html
+[sources]
+unknown-registry = "warn"
+unknown-git = "warn"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
+
+[sources.allow-org]
+github = [""]
+gitlab = [""]
+bitbucket = [""]

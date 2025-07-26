@@ -56,17 +56,14 @@ public class WaitForLoadBalance extends AbstractTaskBase {
   @Override
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    String hostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodetoNode();
+    String masterAddresses = universe.getMasterAddresses();
     boolean ret = false;
-    YBClient client = null;
-    try {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       log.info(
-          "Running {}: hostPorts={}, numTservers={}.",
+          "Running {}: masterAddresses={}, numTservers={}.",
           getName(),
-          hostPorts,
+          masterAddresses,
           taskParams().numTservers);
-      client = ybService.getClient(hostPorts, certificate);
       waitFor(Duration.ofSeconds(getSleepMultiplier() * SLEEP_TIME));
       // When an AZ is down and Platform is unaware(external failure) then load balancing will not
       // work if we pass in the expected number of TServers to the API as the first step for load
@@ -78,16 +75,15 @@ public class WaitForLoadBalance extends AbstractTaskBase {
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
       Throwables.propagate(e);
-    } finally {
-      ybService.closeClient(client, hostPorts);
     }
+
     if (!ret) {
       throw new RuntimeException(getName() + " did not complete.");
     }
     log.info(
-        "Completed {}: hostPorts={}, numTservers={}.",
+        "Completed {}: masterAddresses={}, numTservers={}.",
         getName(),
-        hostPorts,
+        masterAddresses,
         taskParams().numTservers);
   }
 }

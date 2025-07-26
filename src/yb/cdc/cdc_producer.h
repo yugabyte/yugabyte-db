@@ -24,6 +24,7 @@
 #include "yb/common/opid.h"
 #include "yb/common/transaction.h"
 #include "yb/consensus/consensus_fwd.h"
+#include "yb/dockv/dockv_fwd.h"
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/util/monotime.h"
 #include "yb/master/master_replication.pb.h"
@@ -42,6 +43,7 @@ struct SchemaDetails {
 // We will maintain a map for each stream, tablet pait. The schema details will correspond to the
 // the current 'running' schema.
 using SchemaDetailsMap = std::map<TableId, SchemaDetails>;
+using TableSchemaPackingStorage = std::unordered_map<TableId, dockv::SchemaPackingStorage>;
 using consensus::HaveMoreMessages;
 
 struct CDCThroughputMetrics {
@@ -70,10 +72,10 @@ struct XClusterGetChangesContext {
 
 Status GetChangesForCDCSDK(
     const xrepl::StreamId& stream_id,
-    const TableId& tablet_id,
-    const CDCSDKCheckpointPB& op_id,
-    const StreamMetadata& record,
-    const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+    const TabletId& tablet_id,
+    const CDCSDKCheckpointPB& from_op_id,
+    const StreamMetadata& stream_metadata,
+    const tablet::TabletPeerPtr& tablet_peer,
     const std::shared_ptr<MemTracker>& mem_tracker,
     const EnumOidLabelMap& enum_oid_label_map,
     const CompositeAttsMap& composite_atts_map,
@@ -81,16 +83,17 @@ Status GetChangesForCDCSDK(
     client::YBClient* client,
     consensus::ReplicateMsgsHolder* msgs_holder,
     GetChangesResponsePB* resp,
-    uint64_t* commit_timestamp,
+    HybridTime* commit_timestamp,
     SchemaDetailsMap* cached_schema_details,
+    TableSchemaPackingStorage* schema_packing_storages,
     OpId* last_streamed_op_id,
-    const int64_t& safe_hybrid_time_req,
-    const std::optional<uint64_t> consistent_snapshot_time,
-    const int& wal_segment_index_req,
+    int64_t safe_hybrid_time_req,
+    std::optional<uint64_t> consistent_snapshot_time,
+    int wal_segment_index_req,
     int64_t* last_readable_opid_index = nullptr,
     const TableId& colocated_table_id = "",
-    const CoarseTimePoint deadline = CoarseTimePoint::max(),
-    const std::optional<uint64> getchanges_resp_max_size_bytes = std::nullopt,
+    CoarseTimePoint deadline = CoarseTimePoint::max(),
+    std::optional<uint64> getchanges_resp_max_size_bytes = std::nullopt,
     CDCThroughputMetrics* throughput_metrics = nullptr);
 
 bool IsReplicationSlotStream(const StreamMetadata& stream_metadata);

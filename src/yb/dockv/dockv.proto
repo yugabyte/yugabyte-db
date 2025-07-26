@@ -27,6 +27,8 @@ message ColumnPackingPB {
 
   // Present only in recent versions that were added after V2 implementation.
   optional PersistentDataType data_type = 6;
+
+  optional QLValuePB missing_value = 7;
 }
 
 message SchemaPackingPB {

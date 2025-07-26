@@ -47,9 +47,7 @@ public class DeletePitrConfig extends UniverseTaskBase {
     PitrConfig pitrConfig = PitrConfig.getOrBadRequest(taskParams().pitrConfigUuid);
 
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    String universeMasterAddresses = universe.getMasterAddresses();
-    String universeCertificate = universe.getCertificateNodetoNode();
-    try (YBClient client = ybService.getClient(universeMasterAddresses, universeCertificate)) {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       ListSnapshotSchedulesResponse scheduleListResp = client.listSnapshotSchedules(null);
       for (SnapshotScheduleInfo scheduleInfo : scheduleListResp.getSnapshotScheduleInfoList()) {
         if (scheduleInfo.getSnapshotScheduleUUID().equals(pitrConfig.getUuid())) {

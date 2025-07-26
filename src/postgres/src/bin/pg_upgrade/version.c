@@ -121,9 +121,9 @@ check_for_data_types_usage(ClusterInfo *cluster,
 				db_used = true;
 			}
 			yb_fprintf_and_log(script, "  %s.%s.%s\n",
-					PQgetvalue(res, rowno, i_nspname),
-					PQgetvalue(res, rowno, i_relname),
-					PQgetvalue(res, rowno, i_attname));
+							   PQgetvalue(res, rowno, i_nspname),
+							   PQgetvalue(res, rowno, i_relname),
+							   PQgetvalue(res, rowno, i_attname));
 		}
 
 		PQclear(res);

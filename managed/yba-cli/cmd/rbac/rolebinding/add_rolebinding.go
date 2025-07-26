@@ -63,7 +63,7 @@ var addRoleBindingCmd = &cobra.Command{
 
 		rUsers := make([]ybaclient.UserWithFeatures, 0)
 		for _, user := range rUsersResponse {
-			if strings.Compare(user.GetEmail(), email) == 0 {
+			if strings.EqualFold(user.GetEmail(), email) {
 				rUsers = append(rUsers, user)
 			}
 		}
@@ -79,6 +79,7 @@ var addRoleBindingCmd = &cobra.Command{
 
 		rList, err := authAPI.ListRoleBindingRest(
 			userUUID,
+			"RBAC: Role Bindings",
 			"Add - List Role Bindings")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))

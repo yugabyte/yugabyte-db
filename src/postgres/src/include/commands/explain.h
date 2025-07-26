@@ -45,9 +45,8 @@ typedef struct YbExplainExecStats
 	double		write_count;
 	double		catalog_write_count;
 
-	double		storage_gauge_metrics[YB_STORAGE_GAUGE_COUNT];
-	double		storage_counter_metrics[YB_STORAGE_COUNTER_COUNT];
-	YbPgEventMetric storage_event_metrics[YB_STORAGE_EVENT_COUNT];
+	YbcPgExecStorageMetrics *read_metrics;
+	YbcPgExecStorageMetrics *write_metrics;
 } YbExplainExecStats;
 
 typedef struct ExplainState
@@ -81,8 +80,8 @@ typedef struct ExplainState
 	YbExplainExecStats yb_stats;	/* hold YB-specific exec stats */
 	bool		yb_debug;		/* print debug information */
 	bool		ybShowHints;	/* generate and display hints that will
-								   produce the same plan as one Explained */
-	bool		ybShowUniqueIds; /* show unique Path/Plan ids */
+								 * produce the same plan as one Explained */
+	bool		ybShowUniqueIds;	/* show unique Path/Plan ids */
 } ExplainState;
 
 /* Hook for plugins to get control in ExplainOneQuery() */

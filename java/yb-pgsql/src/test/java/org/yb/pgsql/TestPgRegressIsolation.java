@@ -22,21 +22,10 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestPgRegressIsolation extends BasePgRegressTest {
-
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("yb_enable_read_committed_isolation", "true");
-    flagMap.put("allowed_preview_flags_csv", "ysql_yb_enable_advisory_locks");
-    flagMap.put("ysql_yb_enable_advisory_locks", "true");
-    return flagMap;
-  }
-
-  @Override
-  protected Map<String, String> getMasterFlags() {
-    Map<String, String> flagMap = super.getMasterFlags();
-    flagMap.put("allowed_preview_flags_csv", "ysql_yb_enable_advisory_locks");
-    flagMap.put("ysql_yb_enable_advisory_locks", "true");
     return flagMap;
   }
 
@@ -69,7 +58,5 @@ public class TestPgRegressIsolation extends BasePgRegressTest {
                             Collections.singletonMap("TEST_inject_sleep_before_applying_intents_ms",
                                                      "100"));
     runIsolationRegressTest();
-    // Revert back to old set of flags for other test methods
-    restartClusterWithFlags(Collections.emptyMap(), Collections.emptyMap());
   }
 }

@@ -159,7 +159,7 @@ If there are any errors in your overrides definitions, a detailed error message 
 
 #### GKE service account
 
-If you want to enable [GKE service account-based IAM](../../back-up-restore-universes/configure-backup-storage/#gke-service-account-based-iam-gcp-iam) for backup and restore using GCS at the universe level, add the following overrides:
+If you want to enable [GKE service account-based IAM](../../prepare/cloud-permissions/cloud-permissions-nodes-gcp/#gke-service-account-based-iam-gcp-iam) for backup and restore using GCS at the universe level, add the following overrides:
 
 ```yaml
 tserver:

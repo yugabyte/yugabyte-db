@@ -46,21 +46,16 @@ public class WaitForLeadersOnPreferredOnly extends AbstractTaskBase {
   @Override
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    String hostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodetoNode();
-    boolean ret = false;
-    YBClient client = null;
-    try {
-      log.info("Running {}: hostPorts={}.", getName(), hostPorts);
-      client = ybService.getClient(hostPorts, certificate);
+    boolean ret;
+    try (YBClient client = ybService.getUniverseClient(universe)) {
+      log.info("Running {}: masterAddresses={}.", getName(), universe.getMasterAddresses());
 
       ret = client.waitForAreLeadersOnPreferredOnlyCondition(TIMEOUT_SERVER_WAIT_MS);
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);
-    } finally {
-      ybService.closeClient(client, hostPorts);
     }
+
     if (!ret) {
       throw new RuntimeException(getName() + " did not complete.");
     }

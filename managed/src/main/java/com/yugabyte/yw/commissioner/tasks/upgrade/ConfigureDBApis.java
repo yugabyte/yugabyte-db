@@ -15,7 +15,9 @@ import com.yugabyte.yw.forms.UniverseTaskParams.CommunicationPorts;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Abortable
@@ -137,11 +139,29 @@ public class ConfigureDBApis extends UpgradeTaskBase {
                 currClusters,
                 taskParams().communicationPorts);
             if (processTypes.size() == 1 && processTypes.contains(ServerType.TSERVER)) {
-              NodeDetails node = nodes.iterator().next();
-              node.isYqlServer = taskParams().enableYCQL;
-              node.isYsqlServer = taskParams().enableYSQL;
-              CommunicationPorts.setCommunicationPorts(taskParams().communicationPorts, node);
-              createNodeDetailsUpdateTask(node, false);
+              Set<String> nodeNames = new HashSet<>(nodes.size());
+              // TODO Proper fix needed. These fields in the node are used to check if WaitForServer
+              // (YSQLSERVER) should be called in createRollingUpgradeTaskFlow method. So, they need
+              // to be set in memory as well.
+              nodes.forEach(
+                  n -> {
+                    n.isYqlServer = taskParams().enableYCQL;
+                    n.isYsqlServer = taskParams().enableYSQL;
+                    CommunicationPorts.setCommunicationPorts(taskParams().communicationPorts, n);
+                    nodeNames.add(n.getNodeName());
+                  });
+              createUpdateUniverseFieldsTask(
+                      u ->
+                          u.getNodes().stream()
+                              .filter(n -> nodeNames.contains(n.getNodeName()))
+                              .forEach(
+                                  n -> {
+                                    n.isYqlServer = taskParams().enableYCQL;
+                                    n.isYsqlServer = taskParams().enableYSQL;
+                                    CommunicationPorts.setCommunicationPorts(
+                                        taskParams().communicationPorts, n);
+                                  }))
+                  .setSubTaskGroupType(getTaskSubGroupType());
             }
           },
           masterNodes,

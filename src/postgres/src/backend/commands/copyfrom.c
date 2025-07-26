@@ -559,7 +559,7 @@ CopyFrom(CopyFromState cstate)
 	/* Yb variables */
 	bool		useNonTxnInsert = false;
 	bool		has_more_tuples;
-	bool set_txn_batch_size_explicitly = true;
+	bool		set_txn_batch_size_explicitly = true;
 
 	Assert(cstate->rel);
 	Assert(list_length(cstate->range_table) == 1);
@@ -751,19 +751,24 @@ CopyFrom(CopyFromState cstate)
 	 * 2. When rules or trigger are defined. Both rules and trigger may write
 	 *    data in separate buffer, leading to inconsistencies.
 	 */
-	bool has_rule_or_trigger = resultRelInfo->ri_RelationDesc->rd_rel->relhastriggers ||
+	bool		has_rule_or_trigger = resultRelInfo->ri_RelationDesc->rd_rel->relhastriggers ||
 		resultRelInfo->ri_RelationDesc->rd_rel->relhasrules;
+
 	if (yb_fast_path_for_colocated_copy &&
 		!set_txn_batch_size_explicitly && IsYBRelation(resultRelInfo->ri_RelationDesc) &&
 		YbGetTableProperties(resultRelInfo->ri_RelationDesc)->is_colocated &&
 		!has_rule_or_trigger && !IsTransactionBlock())
 	{
-		elog(LOG,"using non-txn for copy from colocated table, yb_disable_transactional_writes=%d",
-				yb_disable_transactional_writes);
+		elog(LOG, "using non-txn for copy from colocated table, yb_disable_transactional_writes=%d",
+			 yb_disable_transactional_writes);
 		useNonTxnInsert = true;
-		/* the value will be reset automatically once the current top transaction ends */
+
+		/*
+		 * the value will be reset automatically once the current top
+		 * transaction ends
+		 */
 		set_config_option("yb_disable_transactional_writes", "true", PGC_USERSET, PGC_S_SESSION,
-				GUC_ACTION_LOCAL, true, 0, false);
+						  GUC_ACTION_LOCAL, true, 0, false);
 		cstate->opts.batch_size = 0;
 		YBAdjustOperationsBuffering(YBCRelInfoGetSecondaryIndicesCount(resultRelInfo) + 1);
 	}

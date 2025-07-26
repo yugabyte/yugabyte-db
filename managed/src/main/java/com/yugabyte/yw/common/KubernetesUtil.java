@@ -16,6 +16,7 @@ import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
@@ -835,7 +836,7 @@ public class KubernetesUtil {
    * @throws IOException
    */
   // @SuppressWarnings("unchecked")
-  private static Map<UUID, Map<String, Object>> getFinalOverrides(
+  public static Map<UUID, Map<String, Object>> getFinalOverrides(
       Cluster cluster, String universeOverridesString, Map<String, String> azsOverridesMap)
       throws IOException {
 
@@ -851,7 +852,6 @@ public class KubernetesUtil {
       String universeOverridesStr = mapper.writeValueAsString(univOverridesMap);
       universeOverrides = mapper.readValue(universeOverridesStr, Map.class);
     }
-
     if (CollectionUtils.isEmpty(placementInfo.cloudList)) {
       return result;
     }
@@ -879,13 +879,15 @@ public class KubernetesUtil {
         if (MapUtils.isNotEmpty(universeOverrides)) {
           HelmUtils.mergeYaml(overrides, universeOverrides);
         }
-        String azOverridesStr = azsOverridesMap.get(az.getName());
-        Map<String, Object> azOverridesMap = HelmUtils.convertYamlToMap(azOverridesStr);
-        // Merge AZ overrides
-        if (MapUtils.isNotEmpty(azOverridesMap)) {
-          String azOverridesString = mapper.writeValueAsString(azOverridesMap);
-          Map<String, Object> azOverrides = mapper.readValue(azOverridesString, Map.class);
-          HelmUtils.mergeYaml(overrides, azOverrides);
+        if (azsOverridesMap != null) {
+          String azOverridesStr = azsOverridesMap.get(az.getName());
+          Map<String, Object> azOverridesMap = HelmUtils.convertYamlToMap(azOverridesStr);
+          // Merge AZ overrides
+          if (MapUtils.isNotEmpty(azOverridesMap)) {
+            String azOverridesString = mapper.writeValueAsString(azOverridesMap);
+            Map<String, Object> azOverrides = mapper.readValue(azOverridesString, Map.class);
+            HelmUtils.mergeYaml(overrides, azOverrides);
+          }
         }
         result.put(az.getUuid(), overrides);
       }
@@ -1432,6 +1434,41 @@ public class KubernetesUtil {
                   }
                 });
       }
+    }
+  }
+
+  public static double getCoreCountForUniverseForServer(
+      UserIntent userIntent,
+      Map<UUID, Map<String, Object>> finalUniverseOverridesAZMap,
+      NodeDetails nodeDetails) {
+
+    String serverType = nodeDetails.isTserver ? "tserver" : "master";
+    Double UserIntentcpuCoreCount =
+        nodeDetails.isTserver
+            ? userIntent.tserverK8SNodeResourceSpec.cpuCoreCount
+            : userIntent.masterK8SNodeResourceSpec.cpuCoreCount;
+    try {
+      Object azOverrides = finalUniverseOverridesAZMap.get(nodeDetails.azUuid);
+      // Traverse the overrides map to find the specific CPU core count for the server type
+      // The expected path in the overrides map is:
+      // resource -> serverType -> requests -> cpu
+      for (String key : new String[] {"resource", serverType, "requests", "cpu"}) {
+        if (!(azOverrides instanceof Map)) {
+          return UserIntentcpuCoreCount;
+        }
+        azOverrides = ((Map<String, Object>) azOverrides).get(key);
+      }
+      return (azOverrides == null || azOverrides.toString().isEmpty())
+          ? UserIntentcpuCoreCount
+          : Double.parseDouble(azOverrides.toString());
+    } catch (Exception e) {
+      log.warn(
+          "Failed to get core count for node {} with user intent {} and overrides {}",
+          nodeDetails.nodeName,
+          userIntent,
+          finalUniverseOverridesAZMap,
+          e);
+      return UserIntentcpuCoreCount;
     }
   }
 }

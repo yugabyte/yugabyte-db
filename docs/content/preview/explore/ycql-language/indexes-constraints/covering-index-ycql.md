@@ -26,7 +26,7 @@ For additional information on creating indexes, see [CREATE INDEX](../../../../a
 
 ## Example
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 The following exercise demonstrates how to optimize query performance using a covering index.
 

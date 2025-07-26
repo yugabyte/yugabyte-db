@@ -12,6 +12,8 @@
 //
 
 #include "yb/common/transaction-test-util.h"
+
+#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/docdb_test_base.h"
 #include "yb/docdb/pgsql_operation.h"
 

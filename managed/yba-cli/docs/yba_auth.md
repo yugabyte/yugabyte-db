@@ -19,8 +19,9 @@ yba auth -f -H <host> -a <api-token>
 ### Options
 
 ```
-  -f, --force   [Optional] Bypass the prompt for non-interactive usage. Provide the host (--host/-H) and API token (--apiToken/-a) using flags
-  -h, --help    help for auth
+      --show-api-token   [Optional] Show the API token after authentication. (default false)
+  -f, --force            [Optional] Bypass the prompt for non-interactive usage. Provide the host (--host/-H) and API token (--apiToken/-a) using flags
+  -h, --help             help for auth
 ```
 
 ### Options inherited from parent commands

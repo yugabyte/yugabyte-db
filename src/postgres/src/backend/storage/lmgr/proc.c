@@ -109,7 +109,7 @@ ProcGlobalShmemSize(void)
 {
 	Size		size = 0;
 	Size		TotalProcs =
-	add_size(MaxBackends, add_size(NUM_AUXILIARY_PROCS, max_prepared_xacts));
+		add_size(MaxBackends, add_size(NUM_AUXILIARY_PROCS, max_prepared_xacts));
 
 	/* ProcGlobal */
 	size = add_size(size, sizeof(PROC_HDR));
@@ -1375,7 +1375,7 @@ ProcSleep(LOCALLOCK *locallock, LockMethod lockMethodTable)
 		if (InHotStandby)
 		{
 			bool		maybe_log_conflict =
-			(standbyWaitStart != 0 && !logged_recovery_conflict);
+				(standbyWaitStart != 0 && !logged_recovery_conflict);
 
 			/* Set a timer and wait for that or for the lock to be granted */
 			ResolveRecoveryConflictWithLock(locallock->tag.lock,

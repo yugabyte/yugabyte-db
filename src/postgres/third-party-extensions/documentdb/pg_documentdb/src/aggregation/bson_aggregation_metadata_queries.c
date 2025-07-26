@@ -526,7 +526,7 @@ GenerateBaseListCollectionsQuery(Datum databaseDatum, bool nameOnly,
 								 (Expr *) databaseVar,
 								 (Expr *) makeConst(TEXTOID, -1, InvalidOid, -1,
 													databaseDatum, false, false),
-								 DEFAULT_COLLATION_OID, DEFAULT_COLLATION_OID);
+								 InvalidOid, DEFAULT_COLLATION_OID); /* YB: Upstream bug(#163). Output type bool should not have collation. */
 
 	/* Remove system collections */
 	Var *collectionVar = makeVar(1, 2, TEXTOID, -1, InvalidOid, 0);
@@ -535,7 +535,7 @@ GenerateBaseListCollectionsQuery(Datum databaseDatum, bool nameOnly,
 											sentinelCollection.length);
 	Expr *notExpr = make_opclause(TextNotEqualOperatorId(), BOOLOID, false,
 								  (Expr *) collectionVar, (Expr *) systemCollection,
-								  DEFAULT_COLLATION_OID, DEFAULT_COLLATION_OID);
+								  InvalidOid, DEFAULT_COLLATION_OID); /* YB: Upstream bug(#164). Output type bool should not have collation. */
 
 	query->jointree = makeFromExpr(list_make1(rtr), (Node *) make_ands_explicit(
 									   list_make2(opExpr, notExpr)));

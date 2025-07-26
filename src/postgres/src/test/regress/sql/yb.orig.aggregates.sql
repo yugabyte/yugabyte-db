@@ -96,6 +96,11 @@ INSERT INTO ybaggtest (id, int_4, float_4, float_8) VALUES (101, 1, 'NaN', 'NaN'
 \set query 'SELECT MAX(a.int_4) FROM ybaggtest AS a LEFT JOIN ybaggtest AS b ON a.id = b.id WHERE a.int_4 = 1 AND a.int_4 BETWEEN 7 AND 14'
 :explain :query; :query;
 
+-- Backward scan.
+EXPLAIN (COSTS OFF) SELECT SUM(float_4) FROM (SELECT float_4 FROM ybaggtest WHERE int_8 = 0 AND int_2 = 0 ORDER BY float_4) t;
+EXPLAIN (COSTS OFF) SELECT SUM(float_4) FROM (SELECT float_4 FROM ybaggtest WHERE int_8 = 0 AND int_2 = 0 ORDER BY float_4 LIMIT 1) t;
+EXPLAIN (COSTS OFF) SELECT SUM(float_4 + 1) FROM (SELECT float_4 FROM ybaggtest WHERE int_8 = 0 AND int_2 = 0 ORDER BY float_4) t;
+
 -- Negative tests - pushdown not supported
 EXPLAIN (COSTS OFF) SELECT int_2, COUNT(*), SUM(int_4) FROM ybaggtest GROUP BY int_2;
 EXPLAIN (COSTS OFF) SELECT DISTINCT int_8 FROM ybaggtest;

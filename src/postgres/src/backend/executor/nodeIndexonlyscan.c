@@ -389,8 +389,8 @@ StoreIndexTuple(IndexOnlyScanState *node, TupleTableSlot *slot,
 
 	ExecStoreVirtualTuple(slot);
 
-	TABLETUPLE_YBCTID(slot) = INDEXTUPLE_YBCTID(itup); /* ybidxbasectid */
-	slot->ts_ybuniqueidxkeysuffix = itup->t_ybuniqueidxkeysuffix; /* ybuniqueidxkeysuffix */
+	TABLETUPLE_YBCTID(slot) = INDEXTUPLE_YBCTID(itup);	/* ybidxbasectid */
+	slot->ts_ybuniqueidxkeysuffix = itup->t_ybuniqueidxkeysuffix;	/* ybuniqueidxkeysuffix */
 }
 
 /*
@@ -800,7 +800,7 @@ ExecInitIndexOnlyScan(IndexOnlyScan *node, EState *estate, int eflags)
 		 * need to be converted from cstring to name.
 		 */
 		indexstate->ioss_NameCStringAttNums = (AttrNumber *)
-									palloc(sizeof(AttrNumber) * namecount);
+			palloc(sizeof(AttrNumber) * namecount);
 
 		for (int attnum = 0; attnum < indnkeyatts; attnum++)
 		{

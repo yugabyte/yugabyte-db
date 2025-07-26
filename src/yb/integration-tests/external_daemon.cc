@@ -268,8 +268,7 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
   argv.push_back("--log_dir=");
 
   // Tell the server to dump its port information so we can pick it up.
-  const string info_path = GetServerInfoPath();
-  argv.push_back("--server_dump_info_path=" + info_path);
+  argv.push_back("--server_dump_info_path=" + GetServerInfoPath());
   argv.push_back("--server_dump_info_format=pb");
 
   // We use ephemeral ports in many tests. They don't work for production, but are OK
@@ -330,7 +329,7 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
   auto p = std::make_unique<Subprocess>(exe_, argv);
   p->PipeParentStdout();
   p->PipeParentStderr();
-  auto default_output_prefix = Format("[$0]", daemon_id_);
+  auto default_output_prefix = DefaultOutputPrefix();
   LOG(INFO) << "Running " << default_output_prefix << ": " << exe_ << "\n"
             << JoinStrings(argv, "\n");
   if (!FLAGS_external_daemon_heap_profile_prefix.empty()) {
@@ -356,6 +355,12 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
     stderr_tailer_thread_->SetListener(listener);
   }
 
+  process_.swap(p);
+  return Status::OK();
+}
+
+Status ExternalDaemon::WaitProcessReady() {
+  auto p = process_.get();
   // The process is now starting -- wait for the bound port info to show up.
   Stopwatch sw;
   sw.start();
@@ -381,14 +386,13 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
     return STATUS(
         TimedOut, Format(
                       "Timed out after $0s waiting for process ($1) to write info file ($2)",
-                      kProcessStartTimeoutSeconds, exe_, info_path));
+                      kProcessStartTimeoutSeconds, exe_, GetServerInfoPath()));
   }
 
   RETURN_NOT_OK(BuildServerStateFromInfoPath());
-  LOG(INFO) << "Started " << default_output_prefix << " " << exe_ << " as pid " << p->pid();
+  LOG(INFO) << "Started " << DefaultOutputPrefix() << " " << exe_ << " as pid " << p->pid();
   VLOG(1) << exe_ << " instance information:\n" << status_->DebugString();
 
-  process_.swap(p);
   return Status::OK();
 }
 
@@ -449,7 +453,7 @@ pid_t ExternalDaemon::pid() const {
 }
 
 void ExternalDaemon::Shutdown(SafeShutdown safe_shutdown, RequireExitCode0 require_exit_code_0) {
-  if (!process_) {
+  if (!process_ || !status_) {
     return;
   }
 
@@ -541,6 +545,10 @@ void ExternalDaemon::FlushCoverage() {
 
 std::string ExternalDaemon::ProcessNameAndPidStr() {
   return Format("$0 with pid $1", exe_, process_->pid());
+}
+
+std::string ExternalDaemon::DefaultOutputPrefix() {
+  return Format("[$0]", daemon_id_);
 }
 
 HostPort ExternalDaemon::bound_rpc_hostport() const {

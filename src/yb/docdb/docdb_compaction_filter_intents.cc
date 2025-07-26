@@ -106,7 +106,7 @@ class DocDBIntentsCompactionFilter : public rocksdb::CompactionFilter {
 #define MAYBE_LOG_ERROR_AND_RETURN_KEEP(result) { \
   if (!result.ok()) { \
     if (num_errors_ < GetAtomicFlag(&FLAGS_intents_compaction_filter_max_errors_to_log)) { \
-      LOG_WITH_PREFIX(ERROR) << StatusToString(result.status()); \
+      LOG_WITH_PREFIX(DFATAL) << StatusToString(result.status()); \
     } \
     num_errors_++; \
     return rocksdb::FilterDecision::kKeep; \

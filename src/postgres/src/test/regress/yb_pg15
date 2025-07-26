@@ -1,6 +1,0 @@
-# src/test/regress/yb_pg15
-#
-################################################################################
-# YB PG15 Testsuite: Yugabyte-owned (non-ported) temporary tests for pg15 branch stability.
-################################################################################
-test: yb.orig.pg15

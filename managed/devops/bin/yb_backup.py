@@ -1880,9 +1880,7 @@ class YBBackup:
         master_addresses = self.get_master_addresses_for_servers()
 
         return self.run_tool(local_binary, remote_tool_binary,
-                             # Latest tools do not need '--masters', but keep it for backward
-                             # compatibility with older YB releases.
-                             self.get_ysql_dump_std_args() + ['--masters=' + master_addresses],
+                             self.get_ysql_dump_std_args(),
                              cmd_line_args, run_ip=run_at_ip, env_vars=certs_env)
 
     def run_ysql_dump(self, cmd_line_args):

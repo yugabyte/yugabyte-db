@@ -209,3 +209,178 @@ select * from rows_by_ybctid();
 
 drop function rows_by_ybctid;
 drop table ybctid_test_without_pk;
+--
+-- Test ybctid in RETURNING clause of DML queries
+--
+\c yugabyte
+CREATE TABLE ybctid_test_hash_range (k1 INT, k2 TEXT, v INT, PRIMARY KEY (k1 HASH, k2 ASC));
+-- Basic DML queries
+-- Queries that return > 1 row are wrapped in a CTE to impose an ordering on the returned rows.
+INSERT INTO ybctid_test_hash_range VALUES (1, 'one', 1), (2, 'two', 2), (3, 'three', 3), (4, 'four', 4) RETURNING *, ybctid;
+ k1 |  k2   | v |                 ybctid                 
+----+-------+---+----------------------------------------
+  1 | one   | 1 | \x471210488000000121536f6e65000021
+  2 | two   | 2 | \x47c0c44880000002215374776f000021
+  3 | three | 3 | \x47fca0488000000321537468726565000021
+  4 | four  | 4 | \x479eaf48800000042153666f7572000021
+(4 rows)
+
+WITH cte AS (UPDATE ybctid_test_hash_range SET v = v + 1 WHERE k1 < 10 RETURNING *, ybctid)
+SELECT * FROM cte ORDER BY k1, k2;
+ k1 |  k2   | v |                 ybctid                 
+----+-------+---+----------------------------------------
+  1 | one   | 2 | \x471210488000000121536f6e65000021
+  2 | two   | 3 | \x47c0c44880000002215374776f000021
+  3 | three | 4 | \x47fca0488000000321537468726565000021
+  4 | four  | 5 | \x479eaf48800000042153666f7572000021
+(4 rows)
+
+UPDATE ybctid_test_hash_range SET k2 = k2 || '_updated', v = v + 1 WHERE k1 = 2 RETURNING *, ybctid;
+ k1 |     k2      | v |                       ybctid                       
+----+-------------+---+----------------------------------------------------
+  2 | two_updated | 4 | \x47c0c44880000002215374776f5f75706461746564000021
+(1 row)
+
+UPDATE ybctid_test_hash_range SET k1 = k1 + 5, k2 = k2 || '_updated' WHERE k2 = 'three' RETURNING *, ybctid;
+ k1 |      k2       | v |                         ybctid                         
+----+---------------+---+--------------------------------------------------------
+  8 | three_updated | 4 | \x47c3a24880000008215374687265655f75706461746564000021
+(1 row)
+
+UPDATE ybctid_test_hash_range SET k1 = k1 + 5 WHERE ybctid = '\x479eaf48800000042153666f7572000021' RETURNING *, ybctid;
+ k1 |  k2  | v |                ybctid                
+----+------+---+--------------------------------------
+  9 | four | 5 | \x475d6048800000092153666f7572000021
+(1 row)
+
+WITH cte AS (DELETE FROM ybctid_test_hash_range WHERE k1 < 10 RETURNING *, ybctid)
+SELECT * FROM cte ORDER BY k1, k2;
+ k1 |      k2       | v |                         ybctid                         
+----+---------------+---+--------------------------------------------------------
+  1 | one           | 2 | \x471210488000000121536f6e65000021
+  2 | two_updated   | 4 | \x47c0c44880000002215374776f5f75706461746564000021
+  8 | three_updated | 4 | \x47c3a24880000008215374687265655f75706461746564000021
+  9 | four          | 5 | \x475d6048800000092153666f7572000021
+(4 rows)
+
+-- Single shard queries
+INSERT INTO ybctid_test_hash_range VALUES (5, 'five', 5) RETURNING *, ybctid;
+ k1 |  k2  | v |                ybctid                
+----+------+---+--------------------------------------
+  5 | five | 5 | \x470a734880000005215366697665000021
+(1 row)
+
+UPDATE ybctid_test_hash_range SET v = v + 1 WHERE k1 = 5 AND k2 = 'five' RETURNING k1, k2, ybctid;
+ k1 |  k2  |                ybctid                
+----+------+--------------------------------------
+  5 | five | \x470a734880000005215366697665000021
+(1 row)
+
+DELETE FROM ybctid_test_hash_range WHERE k1 = 5 AND k2 = 'five' RETURNING k2, ybctid;
+  k2  |                ybctid                
+------+--------------------------------------
+ five | \x470a734880000005215366697665000021
+(1 row)
+
+-- INSERT ... ON CONFLICT queries
+INSERT INTO ybctid_test_hash_range VALUES (6, 'six', 6), (7, 'seven', 7) ON CONFLICT (k1, k2) DO NOTHING RETURNING *, ybctid;
+ k1 |  k2   | v |                 ybctid                 
+----+-------+---+----------------------------------------
+  6 | six   | 6 | \x474e5848800000062153736978000021
+  7 | seven | 7 | \x4752cf48800000072153736576656e000021
+(2 rows)
+
+INSERT INTO ybctid_test_hash_range VALUES (7, 'seven', 7), (8, 'eight', 8) ON CONFLICT (k1, k2) DO NOTHING RETURNING *, ybctid;
+ k1 |  k2   | v |                 ybctid                 
+----+-------+---+----------------------------------------
+  8 | eight | 8 | \x47c3a2488000000821536569676874000021
+(1 row)
+
+INSERT INTO ybctid_test_hash_range VALUES (9, 'nine', 9), (8, 'eight', 8) ON CONFLICT (k1, k2) DO UPDATE SET v = EXCLUDED.v + 1 RETURNING *, ybctid;
+ k1 |  k2   | v |                 ybctid                 
+----+-------+---+----------------------------------------
+  9 | nine  | 9 | \x475d60488000000921536e696e65000021
+  8 | eight | 9 | \x47c3a2488000000821536569676874000021
+(2 rows)
+
+-- Expressions in the RETURNING clause
+INSERT INTO ybctid_test_hash_range VALUES (10, 'ten', 10), (11, 'eleven', 11)
+  RETURNING (k2 || '-' || k1::TEXT) AS keys, (k1 + v) AS nums, (ybctid || '-' || ybctid) AS dblybctid, ybctid;
+   keys    | nums |                                    dblybctid                                     |                  ybctid                  
+-----------+------+----------------------------------------------------------------------------------+------------------------------------------
+ ten-10    |   20 | \x4771cf488000000a215374656e0000212d4771cf488000000a215374656e000021             | \x4771cf488000000a215374656e000021
+ eleven-11 |   22 | \x471c99488000000b2153656c6576656e0000212d471c99488000000b2153656c6576656e000021 | \x471c99488000000b2153656c6576656e000021
+(2 rows)
+
+UPDATE ybctid_test_hash_range SET v = v + 1 WHERE k1 = 10
+  RETURNING (k2 || '-' || k1::TEXT) AS keys, (k1 + v) AS nums, (ybctid || '-' || ybctid) AS dblybctid, ybctid;
+  keys  | nums |                              dblybctid                               |               ybctid               
+--------+------+----------------------------------------------------------------------+------------------------------------
+ ten-10 |   21 | \x4771cf488000000a215374656e0000212d4771cf488000000a215374656e000021 | \x4771cf488000000a215374656e000021
+(1 row)
+
+UPDATE ybctid_test_hash_range SET k2 = k2 || '_updated' WHERE k1 = 11
+  RETURNING (k2 || '-' || k1::TEXT) AS keys, (k1 + v) AS nums, (ybctid || '-' || ybctid) AS dblybctid, ybctid;
+       keys        | nums |                                                    dblybctid                                                     |                          ybctid                          
+-------------------+------+------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------
+ eleven_updated-11 |   22 | \x471c99488000000b2153656c6576656e5f757064617465640000212d471c99488000000b2153656c6576656e5f75706461746564000021 | \x471c99488000000b2153656c6576656e5f75706461746564000021
+(1 row)
+
+DELETE FROM ybctid_test_hash_range WHERE k1 = 10
+  RETURNING (k2 || '-' || k1::TEXT) AS keys, (k1 + v) AS nums, (ybctid || '-' || ybctid) AS dblybctid, ybctid;
+  keys  | nums |                              dblybctid                               |               ybctid               
+--------+------+----------------------------------------------------------------------+------------------------------------
+ ten-10 |   21 | \x4771cf488000000a215374656e0000212d4771cf488000000a215374656e000021 | \x4771cf488000000a215374656e000021
+(1 row)
+
+DELETE FROM ybctid_test_hash_range WHERE ybctid = '\x471c99488000000b2153656c6576656e5f75706461746564000021'
+  RETURNING (k2 || '-' || k1::TEXT) AS keys, (k1 + v) AS nums, (ybctid || '-' || ybctid) AS dblybctid, ybctid;
+       keys        | nums |                                                    dblybctid                                                     |                          ybctid                          
+-------------------+------+------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------
+ eleven_updated-11 |   22 | \x471c99488000000b2153656c6576656e5f757064617465640000212d471c99488000000b2153656c6576656e5f75706461746564000021 | \x471c99488000000b2153656c6576656e5f75706461746564000021
+(1 row)
+
+-- Triggers modifying key columns
+CREATE OR REPLACE FUNCTION increment_k1() RETURNS TRIGGER AS $$
+BEGIN
+	IF TG_OP = 'DELETE' THEN
+		OLD.k1 = OLD.k1 + 2;
+		RETURN OLD;
+	ELSE
+		NEW.k1 = NEW.k1 + 2;
+		RETURN NEW;
+	END IF;
+END;
+$$ LANGUAGE plpgsql;
+CREATE TRIGGER increment_k1_trigger BEFORE INSERT OR UPDATE OR DELETE ON ybctid_test_hash_range FOR EACH ROW EXECUTE PROCEDURE increment_k1();
+-- Returned ybctid should have 0x20
+INSERT INTO ybctid_test_hash_range VALUES (30, 'thirty', 30) RETURNING *, ybctid;
+ k1 |   k2   | v  |                  ybctid                  
+----+--------+----+------------------------------------------
+ 32 | thirty | 30 | \x47540e48800000202153746869727479000021
+(1 row)
+
+-- Returned ybctid should have 0x22
+UPDATE ybctid_test_hash_range SET k2 = k2 || '_updated', v = v + 1 WHERE k1 = 32 RETURNING *, ybctid;
+ k1 |       k2       | v  |                          ybctid                          
+----+----------------+----+----------------------------------------------------------
+ 34 | thirty_updated | 31 | \x478bb8488000002221537468697274795f75706461746564000021
+(1 row)
+
+-- Returned ybctid should have 0x22
+DELETE FROM ybctid_test_hash_range WHERE k1 > 30 AND k1 < 40 RETURNING *, ybctid;
+ k1 |       k2       | v  |                          ybctid                          
+----+----------------+----+----------------------------------------------------------
+ 34 | thirty_updated | 31 | \x478bb8488000002221537468697274795f75706461746564000021
+(1 row)
+
+SELECT * FROM ybctid_test_hash_range ORDER BY k1;
+ k1 |  k2   | v 
+----+-------+---
+  6 | six   | 6
+  7 | seven | 7
+  8 | eight | 9
+  9 | nine  | 9
+(4 rows)
+
+DROP TABLE ybctid_test_hash_range;

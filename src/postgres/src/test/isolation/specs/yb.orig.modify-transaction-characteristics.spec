@@ -14,6 +14,9 @@ teardown
 }
 
 session "s1"
+setup {
+  SET yb_max_query_layer_retries = 60;
+}
 
 # Commands for 4 methods to start a transaction in a desired isolation level
 step "s1_begin_rc_method1" { BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED; }
@@ -49,6 +52,9 @@ step "s1_commit"		{ COMMIT; }
 step "s1_rollback"		{ ROLLBACK; }
 
 session "s2"
+setup {
+  SET yb_max_query_layer_retries = 60;
+}
 
 # Commands for 4 methods to start a transaction in a desired isolation level
 step "s2_begin_rc_method1" { BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED; }
@@ -145,8 +151,6 @@ permutation "s1_begin_sr_method4" "s1_savepoint" "s1_switch_to_rc" "s1_rollback"
 
 # A change to DEFERRABLE characteristic is allowed only if no other statement, other than ones that that change transaction characteristics, has executed.
 # DEFERRABLE doesn't make any sense for any mode other than SERIALIZABLE + READ ONLY, hence testing only for that (ref: https://www.postgresql.org/docs/current/sql-set-transaction.html)
-#
-# TODO: Due to GH issue #23120, the SELECT statement in session 2 waits for the concurrent transaction in session 1 to commit. Fix this once #23120 is resolved.
 
 permutation "s2_begin_rc_method1" "s2_switch_to_sr" "s2_read_only" "s2_deferrable" "s1_begin_sr_method1" "s1_update" "s2_select" "s1_commit" "s2_commit"
 permutation "s2_begin_rc_method2" "s2_switch_to_sr" "s2_read_only" "s2_deferrable" "s1_begin_sr_method1" "s1_update" "s2_select" "s1_commit" "s2_commit"

@@ -365,3 +365,8 @@ select pg_temp.nonempty('');
 select ''::nonempty;
 
 reset search_path;
+
+-- table rewrite on an empty temp table
+create temp table p(f1 int, f2 int);
+alter table p alter column f2 type bigint;
+select * from p;

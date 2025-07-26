@@ -148,7 +148,7 @@ public class TablesControllerTest extends FakeDBApplication {
   public void setUp() {
     mockClient = mock(YBClient.class);
     mockListTablesResponse = mock(ListTablesResponse.class);
-    when(mockService.getClient(any(), any())).thenReturn(mockClient);
+    when(mockService.getUniverseClient(any())).thenReturn(mockClient);
     tableHandler = spy(app.injector().instanceOf(UniverseTableHandler.class));
 
     auditService = new AuditService();

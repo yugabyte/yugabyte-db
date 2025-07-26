@@ -21,6 +21,7 @@ yba login -f -e <email> -p <password> -H <host>
 ```
   -e, --email string      [Optional] Email or username for the user. Required for non-interactive usage.
   -p, --password string   [Optional] Password for the user. Required for non-interactive usage. Use single quotes ('') to provide values with special characters.
+      --show-api-token    [Optional] Show the API token after login. (default false)
   -f, --force             [Optional] Bypass the prompt for non-interactive usage.
   -h, --help              help for login
 ```

@@ -118,7 +118,6 @@ struct CompactionSchemaInfo {
   Uuid cotable_id;
   ColumnIds deleted_cols;
   std::optional<dockv::PackedRowVersion> packed_row_version;
-  std::shared_ptr<const Schema> schema;
 
   size_t pack_limit() const; // As usual, when not specified size is in bytes.
 

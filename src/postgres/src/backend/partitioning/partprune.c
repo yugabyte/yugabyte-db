@@ -2514,8 +2514,8 @@ get_steps_using_prefix(GeneratePruningStepsContext *context,
 		   context->rel->part_scheme->strategy == PARTITION_STRATEGY_HASH);
 
 	/*
-	 * No recursive processing is required when 'prefix' is an empty list.  This
-	 * occurs when there is only 1 partition key column.
+	 * No recursive processing is required when 'prefix' is an empty list.
+	 * This occurs when there is only 1 partition key column.
 	 */
 	if (list_length(prefix) == 0)
 	{
@@ -2589,9 +2589,9 @@ get_steps_using_prefix_recurse(GeneratePruningStepsContext *context,
 		ListCell   *next_start;
 
 		/*
-		 * Find the first PartClauseInfo belonging to the next partition key, the
-		 * next recursive call must start iteration of the prefix list from that
-		 * point.
+		 * Find the first PartClauseInfo belonging to the next partition key,
+		 * the next recursive call must start iteration of the prefix list
+		 * from that point.
 		 */
 		for_each_cell(lc, prefix, start)
 		{
@@ -2605,9 +2605,9 @@ get_steps_using_prefix_recurse(GeneratePruningStepsContext *context,
 		next_start = lc;
 
 		/*
-		 * For each PartClauseInfo with keyno set to cur_keyno, add its expr and
-		 * cmpfn to step_exprs and step_cmpfns, respectively, and recurse using
-		 * 'next_start' as the starting point in the 'prefix' list.
+		 * For each PartClauseInfo with keyno set to cur_keyno, add its expr
+		 * and cmpfn to step_exprs and step_cmpfns, respectively, and recurse
+		 * using 'next_start' as the starting point in the 'prefix' list.
 		 */
 		for_each_cell(lc, prefix, start)
 		{

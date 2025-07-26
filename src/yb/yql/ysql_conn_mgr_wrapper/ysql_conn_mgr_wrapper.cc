@@ -64,9 +64,6 @@ DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_dowarmup, false,
   "Enable precreation of server connections in Ysql Connection Manager. If set false, "
   "the server connections are created lazily (on-demand) in Ysql Connection Manager.");
 
-DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_stats_interval, 1,
-  "Interval (in secs) at which the stats for Ysql Connection Manager will be updated.");
-
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_min_conns_per_db, 1,
     "Minimum number of physical connections, that will be present in pool. "
     "This limit is not considered while closing a broken physical connection.");
@@ -135,6 +132,11 @@ DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_enable_multi_route_pool, true,
     "Enable the use of the dynamic multi-route pooling. "
     "When false, the older static pool sizes are used."
     );
+
+DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_optimized_session_parameters, true,
+    "Optimize usage of session parameters in Ysql Connection Manager. "
+    "If set to false, session parameters are replayed at transaction boundaries for each "
+    "logical connection.");
 
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_jitter_time, 120,
     "Specifies the jitter duration in seconds upto which an idle physical connection may be kept "

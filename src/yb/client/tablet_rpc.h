@@ -101,8 +101,8 @@ inline bool CheckIfConsensusInfoUnexpectedlyMissing(const Req& request, const Re
         if (pb_util::ArePBsEqual(response, empty, /*diff_str=*/ nullptr)) {
           return true;  // we haven't gotten an actual response from an RPC yet...
         }
-        LOG(ERROR) << "Detected consensus info unexpectedly missing; request: "
-                   << request.DebugString() << ", response: " << response.DebugString();
+        LOG(DFATAL) << "Detected consensus info unexpectedly missing; request: "
+                    << request.DebugString() << ", response: " << response.DebugString();
         return false;
       }
     }

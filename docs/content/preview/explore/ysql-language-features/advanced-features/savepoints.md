@@ -28,7 +28,7 @@ The relevant savepoint commands are:
 
 ## Example
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 1. Create a sample table.
 

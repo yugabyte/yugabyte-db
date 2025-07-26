@@ -33,8 +33,6 @@ TEST_F(PgLocksV76UpgradeTest, TestPgLocksViewAdvisoryLocksSupport) {
   ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes, /*auto_finalize=*/false));
 
   std::vector<std::pair<std::string, std::string>> flag_pairs = {
-    {"allowed_preview_flags_csv", "ysql_yb_enable_advisory_locks"},
-    {"ysql_pg_conf_csv", "yb_enable_advisory_locks=true"},
     {"ysql_yb_enable_advisory_locks", "true"}
   };
   for (const auto& [flag, value] : flag_pairs) {

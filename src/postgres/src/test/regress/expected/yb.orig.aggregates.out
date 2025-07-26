@@ -890,6 +890,33 @@ INSERT INTO ybaggtest (id, int_4, float_4, float_8) VALUES (101, 1, 'NaN', 'NaN'
     
 (1 row)
 
+-- Backward scan.
+EXPLAIN (COSTS OFF) SELECT SUM(float_4) FROM (SELECT float_4 FROM ybaggtest WHERE int_8 = 0 AND int_2 = 0 ORDER BY float_4) t;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ybaggtestindex on ybaggtest
+         Index Cond: ((int_8 = 0) AND (int_2 = 0))
+         Partial Aggregate: true
+(4 rows)
+
+EXPLAIN (COSTS OFF) SELECT SUM(float_4) FROM (SELECT float_4 FROM ybaggtest WHERE int_8 = 0 AND int_2 = 0 ORDER BY float_4 LIMIT 1) t;
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Aggregate
+   ->  Limit
+         ->  Index Only Scan Backward using ybaggtestindex on ybaggtest
+               Index Cond: ((int_8 = 0) AND (int_2 = 0))
+(4 rows)
+
+EXPLAIN (COSTS OFF) SELECT SUM(float_4 + 1) FROM (SELECT float_4 FROM ybaggtest WHERE int_8 = 0 AND int_2 = 0 ORDER BY float_4) t;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan Backward using ybaggtestindex on ybaggtest
+         Index Cond: ((int_8 = 0) AND (int_2 = 0))
+(3 rows)
+
 -- Negative tests - pushdown not supported
 EXPLAIN (COSTS OFF) SELECT int_2, COUNT(*), SUM(int_4) FROM ybaggtest GROUP BY int_2;
          QUERY PLAN          

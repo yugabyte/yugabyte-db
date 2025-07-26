@@ -597,11 +597,7 @@ public class ImportController extends AuthenticatedController {
   private Map<String, Integer> getTServers(
       String masterAddresses, ImportUniverseResponseData results) {
     Map<String, Integer> tservers_list = new HashMap<>();
-    YBClient client = null;
-    try {
-      // Get the client to the YB master service.
-      client = ybService.getClient(masterAddresses);
-
+    try (YBClient client = ybService.getClient(masterAddresses)) {
       // Fetch the tablet servers.
       ListTabletServersResponse listTServerResp = client.listTabletServers();
 
@@ -612,8 +608,6 @@ public class ImportController extends AuthenticatedController {
     } catch (Exception e) {
       log.error("Hit error: ", e);
       results.checks.put("find_tservers_list", "FAILURE");
-    } finally {
-      ybService.closeClient(client, masterAddresses);
     }
 
     return tservers_list;

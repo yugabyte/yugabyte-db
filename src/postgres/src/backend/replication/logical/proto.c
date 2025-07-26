@@ -1234,7 +1234,7 @@ logicalrep_read_stream_abort(StringInfo in, TransactionId *xid,
 const char *
 logicalrep_message_type(LogicalRepMsgType action)
 {
-	static char	err_unknown[20];
+	static char err_unknown[20];
 
 	switch (action)
 	{

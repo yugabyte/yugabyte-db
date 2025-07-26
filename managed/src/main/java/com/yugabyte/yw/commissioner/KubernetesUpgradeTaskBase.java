@@ -348,6 +348,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
     boolean tserverFirst = (upgradeContext != null && upgradeContext.isProcessTServersFirst());
     YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState =
         upgradeContext != null ? upgradeContext.getYsqlMajorVersionUpgradeState() : null;
+    UUID rootCAUUID = upgradeContext != null ? upgradeContext.getRootCAUUID() : null;
     if (upgradeMasters && !tserverFirst) {
       upgradePodsTask(
           universe.getName(),
@@ -366,7 +367,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           PodUpgradeParams.builder()
               .delayAfterStartup(taskParams().sleepAfterMasterRestartMillis)
               .build(),
-          ysqlMajorVersionUpgradeState);
+          ysqlMajorVersionUpgradeState,
+          rootCAUUID);
     }
 
     if (upgradeTservers) {
@@ -392,7 +394,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
               .delayAfterStartup(taskParams().sleepAfterTServerRestartMillis)
               .rollMaxBatchSize(getCurrentRollBatchSize(universe))
               .build(),
-          ysqlMajorVersionUpgradeState);
+          ysqlMajorVersionUpgradeState,
+          rootCAUUID);
 
       if (enableYbc) {
         Set<NodeDetails> primaryTservers = new HashSet<>(universe.getTServersInPrimaryCluster());
@@ -436,7 +439,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
                 .delayAfterStartup(taskParams().sleepAfterTServerRestartMillis)
                 .rollMaxBatchSize(getCurrentRollBatchSize(universe))
                 .build(),
-            ysqlMajorVersionUpgradeState);
+            ysqlMajorVersionUpgradeState,
+            rootCAUUID);
 
         if (enableYbc) {
           Set<NodeDetails> replicaTservers =
@@ -468,11 +472,12 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           PodUpgradeParams.builder()
               .delayAfterStartup(taskParams().sleepAfterMasterRestartMillis)
               .build(),
-          ysqlMajorVersionUpgradeState);
+          ysqlMajorVersionUpgradeState,
+          rootCAUUID);
     }
   }
 
-  public void createNonRollingGflagUpgradeTask(
+  public void createNonRollingUpgradeTask(
       Universe universe,
       String softwareVersion,
       boolean isMasterChanged,

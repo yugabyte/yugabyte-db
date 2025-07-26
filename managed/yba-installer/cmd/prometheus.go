@@ -33,10 +33,7 @@ type prometheusDirectories struct {
 }
 
 func newPrometheusDirectories() prometheusDirectories {
-	logDir := "/var/log"
-	if !common.HasSudoAccess() {
-		logDir = common.GetBaseInstall() + "/data/logs"
-	}
+
 	return prometheusDirectories{
 		SystemdFileLocation: common.SystemdDir + "/prometheus.service",
 		ConfFileLocation:    common.GetSoftwareRoot() + "/prometheus/conf/prometheus.yml",
@@ -44,7 +41,7 @@ func newPrometheusDirectories() prometheusDirectories {
 		templateFileName:    "yba-installer-prometheus.yml",
 		DataDir:             common.GetBaseInstall() + "/data/prometheus",
 		PromDir:             common.GetSoftwareRoot() + "/prometheus",
-		LogDir:              logDir,
+		LogDir:              common.GetBaseInstall() + "/data/logs",
 	}
 }
 
@@ -64,6 +61,8 @@ func NewPrometheus(version string) Prometheus {
 		prometheusDirectories: newPrometheusDirectories(),
 	}
 }
+
+func (Prometheus) IsReplicated() bool { return true }
 
 func (prom Prometheus) getSystemdFile() string {
 	return prom.SystemdFileLocation
@@ -130,10 +129,6 @@ func (prom Prometheus) Initialize() error {
 		return err
 	}
 
-	if err := prom.createDataSymlinks(); err != nil {
-		return err
-	}
-
 	if err := prom.Start(); err != nil {
 		return err
 	}
@@ -191,7 +186,7 @@ func (prom Prometheus) Restart() error {
 func (prom Prometheus) Uninstall(removeData bool) error {
 	log.Info("Uninstalling prometheus")
 	if err := prom.Stop(); err != nil {
-		return err
+		log.Warn("failed to stop prometheus, continuing with uninstall: " + err.Error())
 	}
 
 	err := os.Remove(prom.SystemdFileLocation)
@@ -235,6 +230,9 @@ func (prom Prometheus) Upgrade() error {
 	if err := prom.createPrometheusSymlinks(); err != nil {
 		return err
 	}
+	if err := prom.validateLogFile(); err != nil {
+		log.Warn("validate prometheus log file manually, failed with error: " + err.Error())
+	}
 	//chown is not needed when we are operating under non-root, the user will already
 	//have the necessary access.
 	if common.HasSudoAccess() {
@@ -250,24 +248,24 @@ func (prom Prometheus) Upgrade() error {
 // Prometheus service specifically.
 func (prom Prometheus) Status() (common.Status, error) {
 
-	logFileLoc := common.GetBaseInstall() + "/data/logs/prometheus.log"
-	if common.SystemdLogMethod() == "" {
-		logFileLoc = "journalctl -u prometheus"
-	}
 	status := common.Status{
 		Service:    prom.Name(),
 		Port:       viper.GetInt("prometheus.port"),
 		Version:    prom.version,
 		ConfigLoc:  prom.ConfFileLocation,
-		LogFileLoc: logFileLoc,
+		LogFileLoc: common.GetBaseInstall() + "/data/logs/prometheus.log",
 	}
 
 	// Set the systemd service file location if one exists
 	status.ServiceFileLoc = prom.SystemdFileLocation
 
 	// Get the service status
-	props := systemd.Show(filepath.Base(prom.SystemdFileLocation), "LoadState", "SubState",
+	props, err := systemd.Show(filepath.Base(prom.SystemdFileLocation), "LoadState", "SubState",
 		"ActiveState", "ActiveEnterTimestamp", "ActiveExitTimestamp")
+	if err != nil {
+		log.Error("Failed to get prometheus status: " + err.Error())
+		return status, err
+	}
 	if props["LoadState"] == "not-found" {
 		status.Status = common.StatusNotInstalled
 	} else if props["SubState"] == "running" {
@@ -420,13 +418,6 @@ func (prom Prometheus) createDataDirs() error {
 	common.MkdirAll(prom.DataDir+"/swamper_rules", common.DirMode)
 	log.Debug(prom.DataDir + "/storage /swamper_targets /swamper_rules" + " directories created.")
 
-	// Create the log file
-	if _, err := common.Create(prom.DataDir + "/prometheus.log"); err != nil &&
-		!errors.Is(err, os.ErrExist) {
-		log.Error("Failed to create prometheus log file: " + err.Error())
-		return err
-	}
-
 	if common.HasSudoAccess() {
 		// Need to give the yugabyte user ownership of the entire postgres directory.
 		userName := viper.GetString("service_username")
@@ -454,17 +445,10 @@ func (prom Prometheus) createPrometheusSymlinks() error {
 		}
 	}
 
-	links := []struct {
-		pkgDir, linkDir, binary string
-	}{
-		{promPkg, prom.PromDir, "prometheus"},
-		{promPkg, prom.PromDir, "promtool"},
-		{promPkg, prom.PromDir, "consoles"},
-		{promPkg, prom.PromDir, "console_libraries"},
-	}
-	for _, link := range links {
-		if err := common.CreateSymlink(link.pkgDir, link.linkDir, link.binary); err != nil {
-			log.Error("failed to create symlink for " + link.binary + ": " + err.Error())
+	binaries := []string{"prometheus", "promtool", "consoles", "console_libraries"}
+	for _, binary := range binaries {
+		if err := common.Symlink(fmt.Sprintf("%s/%s", promPkg, binary), fmt.Sprintf("%s/%s", prom.PromDir, binary)); err != nil {
+			log.Error("failed to create symlink for " + binary + ": " + err.Error())
 			return err
 		}
 	}
@@ -479,12 +463,18 @@ func (prom Prometheus) createPrometheusSymlinks() error {
 	return nil
 }
 
-func (prom Prometheus) createDataSymlinks() error {
-	if common.HasSudoAccess() {
-		// for root the log file is in /var/log in case of SELinux
-		if err := common.CreateSymlink(prom.LogDir,
-			filepath.Join(common.GetBaseInstall(), "data/logs"), "prometheus.log"); err != nil {
-			return err
+func (prom Prometheus) validateLogFile() error {
+	logFile := prom.LogDir + "/prometheus.log"
+	// check if log file is symlink to /var/log/prometheus.log
+	varLogFile := "/var/log/prometheus.log"
+	if isSameFile, _ := common.IsSameFile(logFile, varLogFile); isSameFile {
+		// remove symlink
+		if err := os.Remove(logFile); err != nil {
+			return fmt.Errorf("failed to remove symlink %s: %w", logFile, err)
+		}
+		// rename /var/log/prometheus.log to logFile
+		if err := os.Rename(varLogFile, logFile); err != nil {
+			return fmt.Errorf("failed to rename /var/log/prometheus.log to %s", logFile)
 		}
 	}
 	return nil
@@ -532,5 +522,17 @@ func (prom Prometheus) migrateReplicatedDirs() error {
 		}
 	}
 
+	return nil
+}
+
+func (prom Prometheus) Reconfigure() error {
+	log.Info("Reconfiguring Prometheus")
+	if err := config.GenerateTemplate(prom); err != nil {
+		return fmt.Errorf("failed to generate prometheus config template: %w", err)
+	}
+	if err := prom.FixBasicAuth(); err != nil {
+		return fmt.Errorf("failed to fix prometheus basic auth: %w", err)
+	}
+	log.Info("Prometheus reconfigured")
 	return nil
 }

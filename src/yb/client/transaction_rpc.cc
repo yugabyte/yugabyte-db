@@ -17,6 +17,8 @@
 
 #include <boost/preprocessor/cat.hpp>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/client/client.h"
 #include "yb/client/tablet_rpc.h"
 
@@ -159,13 +161,23 @@ class TransactionRpc : public TransactionRpcBase {
   typename Traits::Callback callback_;
 };
 
-void PrepareRequest(...) {}
+template <class Req>
+void PrepareRequest(Req& req, rpc::RpcController& controller) {}
 
-void PrepareRequest(tserver::UpdateTransactionRequestPB* req) {
-  if (req->state().status() == TransactionStatus::CREATED) {
+void PrepareRequest(tserver::UpdateTransactionRequestPB& req, rpc::RpcController& controller) {
+  if (req.state().status() == TransactionStatus::CREATED) {
     auto id = TransactionId::GenerateRandom();
-    req->mutable_state()->set_transaction_id(id.data(), id.size());
+    req.mutable_state()->set_transaction_id(id.data(), id.size());
   }
+  ash::WaitStateInfo::CurrentMetadataToPB(req.mutable_ash_metadata());
+}
+
+void PrepareRequest(tserver::AbortTransactionRequestPB& req, rpc::RpcController& controller) {
+  ash::WaitStateInfo::CurrentMetadataToPB(req.mutable_ash_metadata());
+}
+
+void PrepareRequest(tserver::GetTransactionStatusRequestPB& req, rpc::RpcController& controller) {
+  controller.set_invoke_callback_mode(rpc::InvokeCallbackMode::kThreadPoolHigh);
 }
 
 #define TRANSACTION_RPC_TRAITS_NAME(entry) BOOST_PP_CAT(TRANSACTION_RPC_NAME(entry), Traits)
@@ -196,7 +208,7 @@ struct TRANSACTION_RPC_TRAITS_NAME(entry) { \
                           Response* response, \
                           rpc::RpcController* controller, \
                           rpc::ResponseCallback callback) { \
-    PrepareRequest(request); \
+    PrepareRequest(*request, *controller); \
     proxy->BOOST_PP_CAT(TRANSACTION_RPC_NAME(entry), Async)( \
         *request, response, controller, std::move(callback)); \
   } \

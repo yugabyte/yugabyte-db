@@ -49,11 +49,14 @@ void CheckNumRecords(MiniCluster* cluster, size_t expected_num_records) {
   auto peers = ListTabletPeers(cluster, ListPeersFilter::kLeaders);
 
   for (const auto& peer : peers) {
-    if (!peer->tablet()->regular_db()) {
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (!tablet) {
       continue;
     }
-    auto count = ASSERT_RESULT(peer->tablet()->TEST_CountDBRecords(
-        docdb::StorageDbType::kRegular));
+    if (!tablet->regular_db()) {
+      continue;
+    }
+    auto count = ASSERT_RESULT(tablet->TEST_CountDBRecords(docdb::StorageDbType::kRegular));
     LOG(INFO) << peer->LogPrefix() << "records: " << count;
     ASSERT_EQ(count, expected_num_records);
   }

@@ -213,7 +213,8 @@ set(TSERVER_SHARED_SRCS
   tserver_flags.cc
   tserver_error.cc
   tserver_shared_mem.cc)
-set(TSERVER_UTIL_LIBS
+set(TSERVER_SHARED_LIBS
+  yb_docdb_shared
   yb_util
   yb_util_shmem
   consensus_error)
@@ -251,6 +252,7 @@ set(TSERVER_SRCS
   remote_bootstrap_anchor_client.cc
   remote_client_base.cc
   remote_bootstrap_client.cc
+  remote_bootstrap_info.cc
   remote_bootstrap_file_downloader.cc
   remote_bootstrap_service.cc
   remote_bootstrap_session.cc
@@ -289,30 +291,31 @@ set(TSERVER_SRCS
   ysql_lease_poller.cc)
 
 set(TSERVER_DEPS
-  protobuf
+  auto_flags_manager_common
   backup_proto
-  tserver_proto
-  tserver_admin_proto
-  tserver_service_proto
-  remote_bootstrap_proto
-  master_rpc
-  master_proto
-  consensus_proto
-  log_proto
-  log
+  cdc
+  cdc_consumer_proto
   consensus
-  yrpc
+  consensus_proto
+  hnsw
+  log
+  log_proto
+  master_proto
+  master_rpc
+  protobuf
+  remote_bootstrap_proto
   server_common
   server_process
   tablet
+  tserver_admin_proto
+  tserver_proto
+  tserver_service_proto
+  xcluster_producer_proto
   yb_ash
   yb_client
   yb_pggate_flags
+  yrpc
   ysql_upgrade
-  cdc
-  cdc_consumer_proto
-  xcluster_producer_proto
-  auto_flags_manager_common
 )
 
 ADD_YB_LIBRARY(tserver
@@ -406,6 +409,7 @@ set(YB_TEST_LINK_LIBS
   yb-tserver_util
   tablet_test_util
   ${YB_MIN_TEST_LIBS})
+ADD_YB_TEST(remote_bootstrap_file_downloader-test)
 ADD_YB_TEST(remote_bootstrap_rocksdb_client-test)
 ADD_YB_TEST(remote_bootstrap_rocksdb_session-test)
 ADD_YB_TEST(remote_bootstrap_service-test)

@@ -49,7 +49,7 @@ namespace integration_tests {
 const auto kDefaultTimeout = 30000ms;
 constexpr int kNumTables = 3;
 constexpr int kMovesPerTable = 1;
-constexpr int kNumTxnTablets = 6;
+constexpr int kNumSystemTablets = 6;
 
 // We need multiple tables in order to test load_balancer_max_concurrent_moves_per_table.
 class LoadBalancerColocatedTablesTest : public YBTableTestBase {
@@ -77,10 +77,11 @@ class LoadBalancerColocatedTablesTest : public YBTableTestBase {
     opts->extra_master_flags.push_back("--load_balancer_max_concurrent_moves_per_table="
                                        + std::to_string(kMovesPerTable));
     opts->extra_master_flags.push_back("--enable_global_load_balancing=true");
-    // This value needs to be divisible by three so that the transaction tablets are evenly divided
+    // This value needs to be divisible by three so that the system tablets are evenly divided
     // amongst the three tservers that we end up creating.
-    opts->extra_master_flags.push_back("--transaction_table_num_tablets="
-                                       + std::to_string(kNumTxnTablets));
+    // System tablets such as those from the transactions table and advisory lock table.
+    opts->extra_master_flags.push_back("--TEST_system_table_num_tablets="
+                                       + std::to_string(kNumSystemTablets));
   }
 
   virtual void CreateTables() {
@@ -190,7 +191,7 @@ class LoadBalancerTablegroupsTest : public LoadBalancerColocatedTablesTest {
       // Currently just using 1111, 2222, 3333, etc.
       const uint32_t db_oid = i * 1000 + i * 100 + i * 10 + i;
       const uint32_t tablegroup_oid = db_oid * kNumTables + 1;
-      const uint32_t table_oid = tablegroup_oid * kNumTxnTablets + 1;
+      const uint32_t table_oid = tablegroup_oid + 1;
       table_names_.emplace_back(
           YQL_DATABASE_PGSQL,
           GetPgsqlNamespaceId(db_oid),

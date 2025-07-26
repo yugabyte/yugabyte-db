@@ -111,8 +111,8 @@ typedef struct LogicalDecodingContext
 	bool		end_xact;
 
 	/*
-	 * True if the logical decoding context being used for the creation
-	 * of a logical replication slot.
+	 * True if the logical decoding context being used for the creation of a
+	 * logical replication slot.
 	 */
 	bool		in_create;
 

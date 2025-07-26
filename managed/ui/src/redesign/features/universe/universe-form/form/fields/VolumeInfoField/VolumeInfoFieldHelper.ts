@@ -1,6 +1,6 @@
-import {useState} from 'react';
-import {useUpdateEffect} from 'react-use';
-import {useWatch} from 'react-hook-form';
+import { useState } from 'react';
+import { useUpdateEffect } from 'react-use';
+import { useWatch } from 'react-hook-form';
 import {
   DEVICE_INFO_FIELD,
   INSTANCE_TYPE_FIELD,
@@ -15,8 +15,8 @@ import {
   RunTimeConfigEntry,
   StorageType
 } from '../../../utils/dto';
-import {isEphemeralAwsStorageInstance} from '../InstanceTypeField/InstanceTypeFieldHelper';
-import {RuntimeConfigKey} from '../../../../../../helpers/constants';
+import { isEphemeralAwsStorageInstance } from '../InstanceTypeField/InstanceTypeFieldHelper';
+import { RuntimeConfigKey } from '../../../../../../helpers/constants';
 
 export const IO1_DEFAULT_DISK_IOPS = 1000;
 export const IO1_MAX_DISK_IOPS = 64000;

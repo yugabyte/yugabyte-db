@@ -424,11 +424,14 @@ build_minmax_path(PlannerInfo *root, MinMaxAggInfo *mminfo,
 	 * information to its original state. This prevents detection of bogus hint
 	 * alias name conflicts.
 	 */
-	int saveYbBaseRelCnt = subroot->glob->ybBaseRelCnt;
+	int			saveYbBaseRelCnt = subroot->glob->ybBaseRelCnt;
+
 	subroot->glob->ybBaseRelCnt = 0;
-	List *saveYbPlanHintsAliasMapping = subroot->glob->ybPlanHintsAliasMapping;
+	List	   *saveYbPlanHintsAliasMapping = subroot->glob->ybPlanHintsAliasMapping;
+
 	subroot->glob->ybPlanHintsAliasMapping = NIL;
-	int saveYbBlockCnt = subroot->glob->ybBlockCnt;
+	int			saveYbBlockCnt = subroot->glob->ybBlockCnt;
+
 	subroot->glob->ybBlockCnt = 0;
 
 	final_rel = query_planner(subroot, minmax_qp_callback, NULL);

@@ -393,6 +393,7 @@ typedef struct {
   const bool*     ysql_enable_reindex;
   const int32_t*  ysql_num_databases_reserved_in_db_catalog_version_mode;
   const int32_t*  ysql_output_buffer_size;
+  const int32_t*  ysql_output_flush_size;
   const int32_t*  ysql_sequence_cache_minval;
   const uint64_t* ysql_session_max_batch_size;
   const bool*     ysql_sleep_before_retry_on_txn_conflict;
@@ -423,9 +424,12 @@ typedef struct {
   const int32_t*  ysql_conn_mgr_max_query_size;
   const int32_t*  ysql_conn_mgr_wait_timeout_ms;
   const bool*     ysql_enable_pg_export_snapshot;
-  const bool*     TEST_ysql_yb_ddl_transaction_block_enabled;
-  const bool*     ysql_enable_inheritance;
-  const bool*     TEST_enable_object_locking_for_table_locks;
+  const bool*     ysql_enable_neghit_full_inheritscache;
+  const bool*     enable_object_locking_for_table_locks;
+  const uint32_t* ysql_max_invalidation_message_queue_size;
+  const uint32_t* ysql_max_replication_slots;
+  const uint32_t* yb_max_recursion_depth;
+  const uint32_t* ysql_conn_mgr_stats_interval;
 } YbcPgGFlagsAccessor;
 
 typedef struct {
@@ -514,6 +518,14 @@ typedef struct {
 } YbcPgExecEventMetric;
 
 typedef struct {
+  uint64_t version;
+  uint64_t gauges[YB_PGGATE_IDENTIFIER(YB_STORAGE_GAUGE_COUNT)];
+  int64_t counters[YB_PGGATE_IDENTIFIER(YB_STORAGE_COUNTER_COUNT)];
+  YbcPgExecEventMetric
+      events[YB_PGGATE_IDENTIFIER(YB_STORAGE_EVENT_COUNT)];
+} YbcPgExecStorageMetrics;
+
+typedef struct {
   YbcPgExecReadWriteStats tables;
   YbcPgExecReadWriteStats indices;
   YbcPgExecReadWriteStats catalog;
@@ -521,11 +533,8 @@ typedef struct {
   uint64_t num_flushes;
   uint64_t flush_wait;
 
-  uint64_t storage_metrics_version;
-  uint64_t storage_gauge_metrics[YB_PGGATE_IDENTIFIER(YB_STORAGE_GAUGE_COUNT)];
-  int64_t storage_counter_metrics[YB_PGGATE_IDENTIFIER(YB_STORAGE_COUNTER_COUNT)];
-  YbcPgExecEventMetric
-      storage_event_metrics[YB_PGGATE_IDENTIFIER(YB_STORAGE_EVENT_COUNT)];
+  YbcPgExecStorageMetrics read_metrics;
+  YbcPgExecStorageMetrics write_metrics;
 
   uint64_t rows_removed_by_recheck;
 } YbcPgExecStats;
@@ -612,7 +621,16 @@ typedef enum {
 } YbcPgSysTablePrefetcherCacheMode;
 
 typedef struct {
+  uint64_t read;
+  uint64_t local_limit;
+  uint64_t global_limit;
+  uint64_t in_txn_limit;
+  int64_t serial_no;
+} YbcReadHybridTime;
+
+typedef struct {
   uint64_t version;
+  YbcReadHybridTime version_read_time;
   bool is_db_catalog_version_mode;
 } YbcPgLastKnownCatalogVersionInfo;
 
@@ -905,18 +923,11 @@ typedef struct {
 
 // A thread-safe way to cache compiled regexes.
 typedef struct {
-  int num;
   void* array;
 } YbcPgThreadLocalRegexpCache;
 
 typedef void (*YbcPgThreadLocalRegexpCacheCleanup)(YbcPgThreadLocalRegexpCache*);
 
-// A thread-safe way to control the behavior of regex matching.
-typedef struct {
-  int pg_regex_strategy; // PG_Locale_Strategy
-  void* pg_regex_locale; // struct pg_locale_t
-  YbcPgOid pg_regex_collation;
-} YbcPgThreadLocalRegexpMetadata;
 
 typedef struct {
   void *slot;
@@ -953,7 +964,9 @@ typedef struct {
 
 typedef struct {
   uint32_t db_oid;
+  uint32_t relation_oid;
   uint32_t object_oid;
+  uint32_t object_sub_oid;
 } YbcObjectLockId;
 
 typedef enum {
@@ -983,6 +996,18 @@ typedef struct {
   YbcCatalogMessageList* message_lists;
   int num_lists;
 } YbcCatalogMessageLists;
+
+typedef enum {
+  /*
+   * Taken from XClusterNamespaceInfoPB.XClusterRole in
+   * yb/common/common_types.proto.
+   */
+  XCLUSTER_ROLE_UNSPECIFIED = 0,
+  XCLUSTER_ROLE_UNAVAILABLE = 1,
+  XCLUSTER_ROLE_NOT_AUTOMATIC_MODE = 2,
+  XCLUSTER_ROLE_AUTOMATIC_SOURCE = 3,
+  XCLUSTER_ROLE_AUTOMATIC_TARGET = 4,
+} YbcXClusterReplicationRole;
 
 #ifdef __cplusplus
 }  // extern "C"

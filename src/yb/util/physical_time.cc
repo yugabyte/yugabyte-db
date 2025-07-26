@@ -81,7 +81,7 @@ Status CallAdjTime(timex* tx) {
                     ErrnoToString(errno));
     case TIME_ERROR:
       if (FLAGS_disable_clock_sync_error) {
-        YB_LOG_EVERY_N_SECS(ERROR, 15) << "Clock unsynchronized, status: " << tx->status;
+        YB_LOG_EVERY_N_SECS(DFATAL, 15) << "Clock unsynchronized, status: " << tx->status;
         return Status::OK();
       }
       return STATUS_FORMAT(
@@ -89,8 +89,8 @@ Status CallAdjTime(timex* tx) {
           tx->status);
     default:
       // TODO what to do about leap seconds? see KUDU-146
-      YB_LOG_FIRST_N(ERROR, 1) << "Server undergoing leap second. This may cause consistency "
-                               << "issues (rc=" << rc << ")";
+      YB_LOG_FIRST_N(DFATAL, 1) << "Server undergoing leap second. This may cause consistency "
+                                << "issues (rc=" << rc << ")";
       return Status::OK();
   }
 }

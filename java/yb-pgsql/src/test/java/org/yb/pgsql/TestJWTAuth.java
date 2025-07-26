@@ -829,9 +829,6 @@ public class TestJWTAuth extends BasePgSQLTest {
       // Error message on Linux: "The connection attempt failed".
       // Error message on Mac: "Connection to <host> refused. Check that the hostname and port are
       // correct and that the postmaster is accepting TCP/IP connections."
-    } finally {
-      // Mark the cluster for recreation so that the next test is not affected.
-      markClusterNeedsRecreation();
     }
   }
 

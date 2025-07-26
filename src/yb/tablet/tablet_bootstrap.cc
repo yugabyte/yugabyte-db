@@ -38,6 +38,8 @@
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/common/common_fwd.h"
 #include "yb/common/opid.h"
 #include "yb/common/schema_pbutil.h"
@@ -504,6 +506,11 @@ class TabletBootstrap {
 
     listener_->StatusMessage("Bootstrap starting.");
 
+    const auto& wait_state = ash::WaitStateInfo::CurrentWaitState();
+    if (wait_state) {
+      wait_state->UpdateAuxInfo({.tablet_id = tablet_id, .method = "LocalBootstrap"});
+    }
+
     if (VLOG_IS_ON(1)) {
       RaftGroupReplicaSuperBlockPB super_block;
       meta_->ToSuperBlock(&super_block);
@@ -548,7 +555,7 @@ class TabletBootstrap {
 
     if (FLAGS_TEST_dump_docdb_before_tablet_bootstrap) {
       LOG_WITH_PREFIX(INFO) << "DEBUG: DocDB dump before tablet bootstrap:";
-      tablet_->TEST_DocDBDumpToLog(IncludeIntents::kTrue);
+      tablet_->TEST_DocDBDumpToLog(docdb::IncludeIntents::kTrue);
     }
 
     const auto needs_recovery = VERIFY_RESULT(PrepareToReplay());
@@ -623,7 +630,7 @@ class TabletBootstrap {
     listener_->StatusMessage(message);
     if (FLAGS_TEST_dump_docdb_after_tablet_bootstrap) {
       LOG_WITH_PREFIX(INFO) << "DEBUG: DocDB debug dump after tablet bootstrap:\n";
-      tablet_->TEST_DocDBDumpToLog(IncludeIntents::kTrue);
+      tablet_->TEST_DocDBDumpToLog(docdb::IncludeIntents::kTrue);
     }
 
     *rebuilt_tablet = std::move(tablet_);

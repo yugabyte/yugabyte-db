@@ -155,6 +155,14 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kDumpRunningRpc_WaitOnReactor)
     (kConflictResolution_ResolveConficts)
     (kConflictResolution_WaitOnConflictingTxns)
+    (kRemoteBootstrap_FetchData)
+    (kRemoteBootstrap_StartRemoteSession)
+    (kRemoteBootstrap_ReadDataFromFile)
+    (kRemoteBootstrap_RateLimiter)
+    (kWaitForReadTime)
+    (kSnapshot_WaitingForFlush)
+    (kSnapshot_CleanupSnapshotDir)
+    (kSnapshot_RestoreCheckpoint)
 
     // Wait states related to consensus
     ((kRaft_WaitingForReplication, YB_ASH_MAKE_EVENT(Consensus)))
@@ -175,6 +183,7 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kRocksDB_RateLimiter)
     (kRocksDB_WaitForSubcompaction)
     (kRocksDB_NewIterator)
+    (kRocksDB_CreateCheckpoint)
 
     // Wait states related to YCQL
     ((kYCQL_Parse, YB_ASH_MAKE_EVENT(YCQLQuery)))
@@ -186,6 +195,7 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     // Wait states related to YBClient
     ((kYBClient_WaitingOnDocDB, YB_ASH_MAKE_EVENT(Client)))
     (kYBClient_LookingUpTablet)
+    (kYBClient_WaitingOnMaster)
 );
 
 // We also want to track background operations such as, log-append
@@ -200,12 +210,14 @@ YB_DEFINE_TYPED_ENUM(FixedQueryId, uint8_t,
   ((kQueryIdForUncomputedQueryId, 5))
   ((kQueryIdForLogBackgroundSync, 6))
   ((kQueryIdForYSQLBackgroundWorker, 7))
+  ((kQueryIdForRemoteBootstrap, 8))
+  ((kQueryIdForSnapshot, 9))
 );
 
 YB_DEFINE_TYPED_ENUM(WaitStateType, uint8_t,
   (kCpu)
   (kDiskIO)
-  (kNetwork)
+  (kRPCWait)
   (kWaitOnCondition)
   (kLock)
 );
@@ -214,6 +226,7 @@ YB_DEFINE_TYPED_ENUM(WaitStateType, uint8_t,
 // Make sure that kAsyncRPC is always 0
 YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   ((kNoRPC, 0))
+  // PgClientService RPCs
   (kAlterDatabase)
   (kAlterTable)
   (kBackfillIndex)
@@ -250,6 +263,7 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kIsObjectPartOfXRepl)
   (kGetTserverCatalogVersionInfo)
   (kGetTserverCatalogMessageLists)
+  (kSetTserverCatalogMessageList)
   (kCancelTransaction)
   (kGetActiveTransactionList)
   (kGetTableKeyRanges)
@@ -268,6 +282,14 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kClearExportedTxnSnapshots)
   (kPollVectorIndexReady)
   (kGetXClusterRole)
+
+  // CDCService RPCs
+  (kInitVirtualWALForCDC)
+  (kGetLagMetrics)
+  (kUpdatePublicationTableList)
+  (kDestroyVirtualWALForCDC)
+  (kGetConsistentChanges)
+  (kUpdateAndPersistLSN)
 );
 
 struct WaitStatesDescription {
@@ -443,20 +465,32 @@ class WaitStateInfo {
   void UpdateAuxInfo(const AshAuxInfo& aux) EXCLUDES(mutex_);
 
   template <class PB>
-  static void UpdateMetadataFromPB(const PB& pb) {
+  static void UpdateCurrentMetadataFromPB(const PB& pb) {
     const auto& wait_state = CurrentWaitState();
     if (wait_state) {
-      // rpc_request_id is generated for each RPC, we don't populate it from PB
-      auto metadata = AshMetadata::FromPB(pb);
-      metadata.clear_rpc_request_id();
-      wait_state->UpdateMetadata(metadata);
+      wait_state->UpdateMetadataFromPB(pb);
     }
+  }
+
+  template <class PB>
+  void UpdateMetadataFromPB(const PB& pb) {
+    // rpc_request_id is generated for each RPC, we don't populate it from PB
+    auto metadata = AshMetadata::FromPB(pb);
+    metadata.clear_rpc_request_id();
+    UpdateMetadata(metadata);
   }
 
   template <class PB>
   void MetadataToPB(PB* pb) EXCLUDES(mutex_) {
     std::lock_guard lock(mutex_);
     metadata_.ToPB(pb);
+  }
+
+  template <class PB>
+  static void CurrentMetadataToPB(PB* pb) {
+    if (const auto& wait_state = CurrentWaitState()) {
+      wait_state->MetadataToPB(pb);
+    }
   }
 
   template <class PB>
@@ -498,7 +532,8 @@ class WaitStateInfo {
   static int GetCircularBufferSizeInKiBs();
 
   static uint32_t AshEncodeWaitStateCodeWithComponent(uint32_t component, uint32_t code);
-  static uint32_t AshRemoveComponentFromWaitStateCode(uint32_t code);
+  static uint32_t AshNormalizeComponentForTServerEvents(uint32_t code,
+    bool component_bits_set);
 
  protected:
   void VTraceTo(Trace* trace, int level, GStringPiece data);
@@ -572,5 +607,6 @@ class WaitStateTracker {
 WaitStateTracker& FlushAndCompactionWaitStatesTracker();
 WaitStateTracker& RaftLogWaitStatesTracker();
 WaitStateTracker& SharedMemoryPgPerformTracker();
+WaitStateTracker& SharedMemoryPgAcquireObjectLockTracker();
 
 }  // namespace yb::ash

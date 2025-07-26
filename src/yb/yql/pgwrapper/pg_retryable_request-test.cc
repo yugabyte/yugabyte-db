@@ -37,7 +37,11 @@ class PgRetryableRequestTest : public pgwrapper::PgMiniTestBase {
   Result<tablet::TabletPeerPtr> GetOnlyTablePeer() {
     auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
     for (const auto& peer : peers) {
-      if (!peer->tablet()->regular_db()) {
+      auto tablet = peer->shared_tablet_maybe_null();
+      if (!tablet) {
+        continue;
+      }
+      if (!tablet->regular_db()) {
         continue;
       }
       return peer;

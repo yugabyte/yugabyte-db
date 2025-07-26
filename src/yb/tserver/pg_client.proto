@@ -130,7 +130,9 @@ service PgClientService {
       returns (PgReleaseAdvisoryLockResponsePB);
 
   rpc AcquireObjectLock(PgAcquireObjectLockRequestPB)
-      returns (PgAcquireObjectLockResponsePB);
+      returns (PgAcquireObjectLockResponsePB) {
+    option (yb.rpc.lightweight_method).sides = PROXY;
+  }
 
   rpc ExportTxnSnapshot(PgExportTxnSnapshotRequestPB)
       returns (PgExportTxnSnapshotResponsePB);
@@ -143,6 +145,9 @@ service PgClientService {
 
   rpc GetTserverCatalogMessageLists(PgGetTserverCatalogMessageListsRequestPB)
       returns (PgGetTserverCatalogMessageListsResponsePB);
+
+  rpc SetTserverCatalogMessageList(PgSetTserverCatalogMessageListRequestPB)
+      returns (PgSetTserverCatalogMessageListResponsePB);
 }
 
 // TODO: Remove the OptionalUint32PB helper message after updating protobuf generator to allow
@@ -203,9 +208,14 @@ message PgRenameColumnPB {
 }
 
 message PgRenameTablePB {
-  string database_name = 1;
+  reserved 1; // Deprecated database_name
   string table_name = 2;
   string schema_name = 3;
+}
+
+enum PgSharedExchangeReqType {
+  PERFORM = 0;
+  ACQUIRE_OBJECT_LOCK = 1;
 }
 
 // Available replica identity modes for use in CDC
@@ -243,6 +253,9 @@ message PgAlterTableRequestPB {
   PgReplicaIdentityPB replica_identity = 9;
   AshMetadataPB ash_metadata = 10;
   bool use_regular_transaction_block = 11;
+  // Used to setup the session in case the table is being altered in a
+  // transaction block with transactional ddl enabled i.e. use_regular_transaction_block is true.
+  PgPerformOptionsPB options = 12;
 }
 
 message PgAlterTableResponsePB {
@@ -263,6 +276,9 @@ message PgCreateDatabaseRequestPB {
   string target_owner = 11;
   AshMetadataPB ash_metadata = 12;
   bool use_regular_transaction_block = 13;
+  // Used to setup the session in case the database is being created in a
+  // transaction block with transactional ddl enabled i.e. use_regular_transaction_block is true.
+  PgPerformOptionsPB options = 14;
 }
 
 message PgCreateDatabaseResponsePB {
@@ -339,7 +355,6 @@ message PgCreateTableRequestPB {
   uint64 session_id = 1;
 
   bool use_transaction = 2;
-  bool use_regular_transaction_block = 26;
   PgObjectIdPB table_id = 3;
   string database_name = 4;
   string table_name = 5;
@@ -379,6 +394,12 @@ message PgCreateTableRequestPB {
   PgVectorIdxOptionsPB vector_idx_options = 24;
 
   AshMetadataPB ash_metadata = 25;
+
+  bool use_regular_transaction_block = 26;
+
+  // Used to setup the session in case the table is being created in a
+  // transaction block with transactional ddl enabled i.e. use_regular_transaction_block is true.
+  PgPerformOptionsPB options = 27;
 }
 
 message PgCreateTableResponsePB {
@@ -395,6 +416,10 @@ message PgCreateTablegroupRequestPB {
 
   AshMetadataPB ash_metadata = 5;
   bool use_regular_transaction_block = 6;
+
+  // Used to setup the session in case the tablegroup is being created in a
+  // transaction block with transactional ddl enabled i.e. use_regular_transaction_block is true.
+  PgPerformOptionsPB options = 7;
 }
 
 message PgCreateTablegroupResponsePB {
@@ -428,6 +453,10 @@ message PgDropTableRequestPB {
   bool index = 3;
   AshMetadataPB ash_metadata = 4;
   bool use_regular_transaction_block = 5;
+
+  // Used to setup the session in case the table is being dropped in a
+  // transaction block with transactional ddl enabled i.e. use_regular_transaction_block is true.
+  PgPerformOptionsPB options = 6;
 }
 
 message PgDropTableResponsePB {
@@ -440,6 +469,9 @@ message PgDropTablegroupRequestPB {
   PgObjectIdPB tablegroup_id = 2;
   AshMetadataPB ash_metadata = 3;
   bool use_regular_transaction_block = 4;
+  // Used to setup the session in case the tablegroup is being dropped in a
+  // transaction block with transactional ddl enabled i.e. use_regular_transaction_block is true.
+  PgPerformOptionsPB options = 5;
 }
 
 message PgDropTablegroupResponsePB {
@@ -542,6 +574,8 @@ message PgGetLockStatusResponsePB {
 
   // Map of transactions keyed by the host node uuid.
   map<string, TransactionList> transactions_by_node = 3;
+
+  repeated ObjectLockInfoPB object_lock_infos = 4;
 }
 
 message PgGetReplicationSlotRequestPB {
@@ -727,8 +761,6 @@ message PgPerformOptionsPB {
   // - Clamps the read uncertainty window.
   // See the commit desc for more info.
   bool clamp_uncertainty_window = 24;
-
-  bool non_transactional_buffered_write = 26;
 }
 
 message PgPerformRequestPB {
@@ -972,6 +1004,18 @@ message PgGetTserverCatalogMessageListsResponsePB {
   // be fulfilled, entries will be empty. This only happens when the requested sequence does not
   // exist in the tserver's message queue.
   repeated TServerDBCatalogMessageListInfo entries = 2;
+}
+
+message PgSetTserverCatalogMessageListRequestPB {
+  uint32 db_oid = 1;
+  bool is_breaking_change = 2;
+  uint64 new_catalog_version = 3;
+  TServerDBCatalogMessageListInfo message_list = 4;
+  AshMetadataPB ash_metadata = 5;
+}
+
+message PgSetTserverCatalogMessageListResponsePB {
+  AppStatusPB status = 1;
 }
 
 message PgWaitForBackendsCatalogVersionRequestPB {
@@ -1231,11 +1275,18 @@ enum ObjectLockMode {
 message PgAcquireObjectLockRequestPB {
   uint64 session_id = 1;
   PgPerformOptionsPB options = 2;
-  uint64 database_oid = 3;
-  uint64 object_oid = 4;
+
+  message LockOId {
+    uint64 database_oid = 1;
+    uint64 relation_oid = 2;
+    uint64 object_oid = 3;
+    uint64 object_sub_oid = 4;
+  }
+  LockOId lock_oid = 3;
+
   // Cannot use TableLockType enum due to proto2/3 compatibility issues.
-  ObjectLockMode lock_type = 5;
-  AshMetadataPB ash_metadata = 6;
+  ObjectLockMode lock_type = 4;
+  AshMetadataPB ash_metadata = 5;
 }
 
 message PgAcquireObjectLockResponsePB {

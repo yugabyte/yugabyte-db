@@ -1309,8 +1309,12 @@ void CompactionJob::LogCompaction() {
         compaction->score());
     char scratch[2345];
     compaction->Summary(scratch, sizeof(scratch));
-    RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
-        "[%s] Compaction start summary: %s\n", cfd->GetName().c_str(), scratch);
+    RLOG(
+        InfoLogLevel::INFO_LEVEL, db_options_.info_log, "[%s] Compaction start summary: %s%s\n",
+        cfd->GetName().c_str(), scratch,
+        compaction->skip_corrupt_data_blocks_unsafe()
+            ? " WILL DELETE ANY CORRUPT DATA BLOCKS IF FOUND"
+            : "");
     // build event logger report
     auto stream = event_logger_->Log();
     stream << "job" << job_id_ << "event"

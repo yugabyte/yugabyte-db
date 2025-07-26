@@ -23,6 +23,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.Data;
@@ -58,9 +59,7 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
       log.debug("Skipping check cluster consistency");
       return;
     }
-    String masterAddresses = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodetoNode();
-    log.info("Running {} on masterAddress = {}.", getName(), masterAddresses);
+    log.info("Running {} on masterAddress = {}.", getName(), universe.getMasterAddresses());
     Set<String> errors;
     boolean cloudEnabled =
         confGetter.getConfForScope(
@@ -76,7 +75,7 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
             + " this check (not recommended), briefly disable the runtime config "
             + UniverseConfKeys.verifyClusterStateBeforeTask.getKey()
             + ".";
-    try (YBClient ybClient = ybService.getClient(masterAddresses, certificate)) {
+    try (YBClient ybClient = ybService.getUniverseClient(universe)) {
       errors = doCheckServers(ybClient, universe, cloudEnabled);
     } catch (Exception e) {
       throw new RuntimeException(
@@ -176,7 +175,9 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
             .map(
                 p ->
                     new NodeResp(
-                        p.getLastKnownPrivateIps().stream()
+                        Stream.concat(
+                                p.getLastKnownPrivateIps().stream(),
+                                p.getLastKnownBroadcastIps().stream())
                             .map(hp -> hp.getHost())
                             .collect(Collectors.toList())))
             .collect(Collectors.toList());

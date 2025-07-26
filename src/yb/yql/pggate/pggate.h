@@ -123,7 +123,9 @@ class PgApiImpl {
 
   // Interrupt aborts all pending RPCs immediately to unblock main thread.
   void Interrupt();
+
   void ResetCatalogReadTime();
+  [[nodiscard]] ReadHybridTime GetCatalogReadTime() const;
 
   // Initialize a session to process statements that come from the same client connection.
   void InitSession(YbcPgExecStatsState& session_stats, bool is_binary_upgrade);
@@ -160,6 +162,10 @@ class PgApiImpl {
   Result<bool> CatalogVersionTableInPerdbMode();
   Result<tserver::PgGetTserverCatalogMessageListsResponsePB> GetTserverCatalogMessageLists(
       uint32_t db_oid, uint64_t ysql_catalog_version, uint32_t num_catalog_versions);
+  Result<tserver::PgSetTserverCatalogMessageListResponsePB> SetTserverCatalogMessageList(
+      uint32_t db_oid, bool is_breaking_change,
+      uint64_t new_catalog_version, const YbcCatalogMessageList *message_list);
+
   uint64_t GetSharedAuthKey() const;
   const unsigned char *GetLocalTserverUuid() const;
   pid_t GetLocalTServerPid() const;
@@ -330,8 +336,7 @@ class PgApiImpl {
 
   Status AlterTableSetReplicaIdentity(PgStatement *handle, const char identity_type);
 
-  Status AlterTableRenameTable(PgStatement *handle, const char *db_name,
-                               const char *newname);
+  Status AlterTableRenameTable(PgStatement *handle, const char *newname);
 
   Status AlterTableIncrementSchemaVersion(PgStatement *handle);
 
@@ -670,6 +675,7 @@ class PgApiImpl {
   Result<Uuid> GetActiveTransaction() const;
   Status GetActiveTransactions(YbcPgSessionTxnInfo* infos, size_t num_infos);
   bool IsDdlMode() const;
+  Result<bool> CurrentTransactionUsesFastPath() const;
 
   //------------------------------------------------------------------------------------------------
   // Expressions.
@@ -752,6 +758,8 @@ class PgApiImpl {
 
   void StartSysTablePrefetching(const PrefetcherOptions& options);
   void StopSysTablePrefetching();
+  void PauseSysTablePrefetching();
+  void ResumeSysTablePrefetching();
   bool IsSysTablePrefetchingStarted() const;
   void RegisterSysTableForPrefetching(
       const PgObjectId& table_id, const PgObjectId& index_id, int row_oid_filtering_attr,

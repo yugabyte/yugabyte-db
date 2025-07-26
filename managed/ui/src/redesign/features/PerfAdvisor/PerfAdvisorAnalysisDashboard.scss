@@ -1,0 +1,14 @@
+@use '../../../_style/colors.scss';
+
+.perf-advisor-dashboard {
+  .content-title {
+    .subtext {
+      opacity: 0.5;
+      color: black !important;
+
+      a {
+        color: black !important;
+      }
+    }
+  }
+}

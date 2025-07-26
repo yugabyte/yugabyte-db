@@ -98,6 +98,10 @@ struct ExternalNamespaceSnapshotData {
   NamespaceId new_namespace_id;
   YQLDatabase db_type;
   bool just_created;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(new_namespace_id, db_type, just_created);
+  }
 };
 // Map: old_namespace_id (key) -> new_namespace_id + db_type + created-flag.
 using NamespaceMap = std::unordered_map<NamespaceId, ExternalNamespaceSnapshotData>;
@@ -783,9 +787,14 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // tablet split) might not be running.
   Status CheckAllActiveTabletsRunning() const;
 
-  // Clears partitons_ and tablets_.
-  // If deactivate_only is set to true then clear only the partitions_.
-  void ClearTabletMaps(DeactivateOnly deactivate_only = DeactivateOnly::kFalse);
+  // Clears partitions_ and tablets_.
+  // N.B.: The deletion flow removes tablets from the Catalog Manager's tablet map by removing all
+  // tablets returned by TableInfo::TakeTablets of a DELETED table. So it is possible to leak
+  // tablets in the tablet map by calling this function on a primary table.
+  void ClearTabletMaps();
+
+  // Returns the value of the tablets_ map and clears partitions_ and tablets_.
+  std::map<TabletId, std::weak_ptr<TabletInfo>> TakeTablets();
 
   // Returns true if the table creation is in-progress.
   bool IsCreateInProgress() const;
@@ -1061,25 +1070,26 @@ struct PersistentObjectLockInfo : public Persistent<SysObjectLockEntryPB> {};
 
 class ObjectLockInfo : public MetadataCowWrapper<PersistentObjectLockInfo> {
  public:
-  explicit ObjectLockInfo(const std::string& ts_uuid) : ts_uuid_(ts_uuid) {}
+  explicit ObjectLockInfo(const std::string& ts_uuid)
+      : ts_uuid_(ts_uuid), ysql_lease_deadline_(MonoTime::Min()) {}
   ~ObjectLockInfo() = default;
 
   // Return the user defined type's ID. Does not require synchronization.
   virtual const std::string& id() const override { return ts_uuid_; }
 
-  std::optional<ObjectLockInfo::WriteLock> RefreshYsqlOperationLease(const NodeInstancePB& instance)
-      EXCLUDES(mutex_);
+  std::variant<ObjectLockInfo::WriteLock, SysObjectLockEntryPB::LeaseInfoPB>
+  RefreshYsqlOperationLease(const NodeInstancePB& instance, MonoDelta lease_ttl) EXCLUDES(mutex_);
 
   virtual void Load(const SysObjectLockEntryPB& metadata) override;
 
-  MonoTime last_ysql_lease_refresh() const EXCLUDES(mutex_);
+  MonoTime ysql_lease_deadline() const EXCLUDES(mutex_);
 
  private:
   // The ID field is used in the sys_catalog table.
   const std::string ts_uuid_;
 
   mutable simple_spinlock mutex_;
-  MonoTime last_ysql_lease_refresh_ GUARDED_BY(mutex_);
+  MonoTime ysql_lease_deadline_ GUARDED_BY(mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(ObjectLockInfo);
 };

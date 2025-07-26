@@ -148,8 +148,7 @@ void MasterTabletServer::get_ysql_db_catalog_version(uint32_t db_oid,
     master_->catalog_manager()->GetYsqlDBCatalogVersion(
         db_oid, current_version, last_breaking_version);
   if (!s.ok()) {
-    LOG(ERROR) << "Could not get YSQL catalog version for master's tserver API: "
-               << s.ToUserMessage();
+    LOG(WARNING) << "Could not get YSQL catalog version for master's tserver API: " << s;
     fill_vers();
   }
 }
@@ -168,6 +167,13 @@ Status MasterTabletServer::GetTserverCatalogMessageLists(
     const tserver::GetTserverCatalogMessageListsRequestPB& req,
     tserver::GetTserverCatalogMessageListsResponsePB *resp) const {
   return master_->GetTserverCatalogMessageLists(req, resp);
+}
+
+Status MasterTabletServer::SetTserverCatalogMessageList(
+    uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
+    const std::optional<std::string>& message_list) {
+  return master_->SetTserverCatalogMessageList(db_oid, is_breaking_change,
+                                               new_catalog_version, message_list);
 }
 
 const std::shared_future<client::YBClient*>& MasterTabletServer::client_future() const {
@@ -248,7 +254,7 @@ bool MasterTabletServer::SkipCatalogVersionChecks() {
   return master_->catalog_manager()->SkipCatalogVersionChecks();
 }
 
-Result<tserver::GetYSQLLeaseInfoResponsePB> MasterTabletServer::GetYSQLLeaseInfo() const {
+Result<tserver::YSQLLeaseInfo> MasterTabletServer::GetYSQLLeaseInfo() const {
   return STATUS(InternalError, "Unexpected call of GetYSQLLeaseInfo");
 }
 

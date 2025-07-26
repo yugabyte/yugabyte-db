@@ -39,4 +39,10 @@ menu:
     href="diagnostics-report/"
     icon="fa-sharp fa-thin fa-stethoscope">}}
 
+  {{<index/item
+    title="Configuration file"
+    body="Use a YAML-based configuration file to simplify and standardize migrations."
+    href="configuration-file/"
+    icon="/images/section_icons/manage/export_import.png">}}
+
 {{</index/block>}}

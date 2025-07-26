@@ -1317,7 +1317,7 @@ deleteOneObject(const ObjectAddress *object, Relation *depRel, int flags)
 	HeapTuple	tup;
 	ObjectAddress implicit_tablegroup;
 	bool		is_colocated_tables_with_tablespace_enabled =
-	*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
+		*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
 
 	/* DROP hook of the objects being removed */
 	InvokeObjectDropHookArg(object->classId, object->objectId,
@@ -1472,7 +1472,7 @@ doDeletion(const ObjectAddress *object, int flags)
 					if (object->objectSubId != 0)
 					{
 						Relation	yb_rel =
-						RelationIdGetRelation(object->objectId);
+							RelationIdGetRelation(object->objectId);
 
 						if (IsYBRelation(yb_rel) &&
 							!(flags & YB_SKIP_YB_DROP_COLUMN))

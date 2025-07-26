@@ -30,7 +30,7 @@ class ShardedVectorIndex : public VectorIndexIf<Vector, DistanceResult> {
                      size_t num_shards)
       : indexes_(num_shards), round_robin_counter_(0) {
     for (auto& index : indexes_) {
-      index = factory();
+      index = factory(FactoryMode::kCreate);
     }
   }
 
@@ -55,6 +55,11 @@ class ShardedVectorIndex : public VectorIndexIf<Vector, DistanceResult> {
     return std::accumulate(
         indexes_.begin(), indexes_.end(), static_cast<size_t>(0),
         [](size_t sum, const auto& index) { return sum + index->Capacity(); });
+  }
+
+  size_t Dimensions() const override {
+    CHECK(!indexes_.empty());
+    return indexes_[0]->Dimensions();
   }
 
   // Insert a vector into the current shard using round-robin.
@@ -106,7 +111,7 @@ class ShardedVectorIndex : public VectorIndexIf<Vector, DistanceResult> {
     return all_results;
   }
 
-  Status SaveToFile(const std::string& path) override {
+  Result<VectorIndexIfPtr<Vector, DistanceResult>> SaveToFile(const std::string& path) override {
     return STATUS(NotSupported, "Saving to file is not implemented for ShardedVectorIndex");
   }
 

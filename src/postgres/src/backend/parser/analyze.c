@@ -132,7 +132,7 @@ parse_analyze_fixedparams(RawStmt *parseTree, const char *sourceText,
 		pstate->p_target_relation->rd_rel->relpersistence == RELPERSISTENCE_TEMP
 		&& IsYugaByteEnabled())
 	{
-		YbSetTxnWithPgOps(YB_TXN_USES_TEMPORARY_RELATIONS);
+		YbSetTxnUsesTempRel();
 	}
 
 	if (IsQueryIdEnabled())
@@ -178,7 +178,7 @@ parse_analyze_varparams(RawStmt *parseTree, const char *sourceText,
 		pstate->p_target_relation->rd_rel->relpersistence == RELPERSISTENCE_TEMP
 		&& IsYugaByteEnabled())
 	{
-		YbSetTxnWithPgOps(YB_TXN_USES_TEMPORARY_RELATIONS);
+		YbSetTxnUsesTempRel();
 	}
 
 	/* make sure all is well with parameter types */
@@ -225,7 +225,7 @@ parse_analyze_withcb(RawStmt *parseTree, const char *sourceText,
 		pstate->p_target_relation->rd_rel->relpersistence == RELPERSISTENCE_TEMP
 		&& IsYugaByteEnabled())
 	{
-		YbSetTxnWithPgOps(YB_TXN_USES_TEMPORARY_RELATIONS);
+		YbSetTxnUsesTempRel();
 	}
 
 	if (IsQueryIdEnabled())

@@ -4,5 +4,6 @@ public enum ProviderType {
   DATA_DOG,
   SPLUNK,
   AWS_CLOUDWATCH,
-  GCP_CLOUD_MONITORING
+  GCP_CLOUD_MONITORING,
+  LOKI
 }

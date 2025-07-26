@@ -223,13 +223,13 @@ REVISION  UPDATED                   STATUS    CHART           APP VERSION   DESC
 
 ## Connect using YugabyteDB shells
 
-To connect and use the YSQL Shell (`ysqlsh`), run the following command:
+To connect and use the YSQL Shell (ysqlsh), run the following command:
 
 ```sh
 kubectl exec -n yb-demo -it yb-tserver-0 -- ysqlsh -h yb-tserver-0.yb-tservers.yb-demo
 ```
 
-To connect and use the YCQL Shell (`ycqlsh`), run the following command:
+To connect and use the YCQL Shell (ycqlsh), run the following command:
 
 ```sh
 kubectl exec -n yb-demo -it yb-tserver-0 -- ycqlsh yb-tserver-0.yb-tservers.yb-demo
@@ -421,6 +421,14 @@ You can upgrade the software on the YugabyteDB cluster with the following comman
 helm repo update
 helm upgrade yb-demo yugabytedb/yugabyte --version {{<yb-version version="stable" format="short">}} --wait -n yb-demo
 ```
+
+Then finalize the upgrade as follows:
+
+```sh
+kubectl exec -it yb-master-0 -- /home/yugabyte/bin/yb-admin --master_addresses yb-master-0.yb-masters.default.svc.cluster.local:7100 finalize_upgrade
+```
+
+Note that `finalize_upgrade` is a cluster-level operation; you don't need to run it on every node.
 
 ## Update the configuration of YugabyteDB pods
 

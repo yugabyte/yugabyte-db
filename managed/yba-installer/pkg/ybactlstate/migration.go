@@ -23,6 +23,8 @@ const asRoot = 7
 const ybaWait = 8
 const initialized = 9
 const asRootRetry = 10
+const improvedCertHandling = 11
+const stateServices = 12
 
 // Please do not use this in ybactlstate package, only use getSchemaVersion()
 var schemaVersionCache = -1
@@ -45,9 +47,11 @@ func handleMigration(state *State) error {
 			continue
 		}
 		updateMade = true
+		log.Debug(fmt.Sprintf("running migration %d", nextSchema))
 		if err := migrate(state); err != nil {
-			return err
+			return fmt.Errorf("failed to run migration %d: %w", nextSchema, err)
 		}
+		log.Debug(fmt.Sprintf("migration %d complete", nextSchema))
 		state._internalFields.RunSchemas = append(state._internalFields.RunSchemas, nextSchema)
 	}
 	if !updateMade {
@@ -250,6 +254,35 @@ func migrateYbaWait(state *State) error {
 	return nil
 }
 
+func migrateCertHandler(state *State) error {
+	cert, err := common.GetFirstCertInServerPem()
+	if err != nil || cert == nil {
+		return fmt.Errorf("failed to get self-signed CA cert: %w", err)
+	}
+	// If the cert doesn't exist OR the only org is not yugabyte, its a custom cert. Update the state
+	// to show self signed as false.
+	if len(cert.Issuer.Organization) == 1 &&
+		cert.Issuer.Organization[0] == "Yugabyte Self-Signed CA" {
+		log.DebugLF("Found self-signed cert, removing entries from config")
+		state.Config.SelfSignedCert = true
+		common.SetYamlValue(common.InputFile(), "server_cert_path", "")
+		common.SetYamlValue(common.InputFile(), "server_key_path", "")
+		common.InitViper()
+	} else {
+		log.DebugLF("Found custom Cert")
+		state.Config.SelfSignedCert = false
+	}
+	return nil
+}
+
+func migrateStateServices(state *State) error {
+	state.Services = Services{
+		PerfAdvisor: false, // Upgrade case will not have perf advisor enabled
+		Platform:    true,  // Platform is always enabled
+	}
+	return nil
+}
+
 // migrateInitialized migrates the initialized flag - all previous installs
 // have been initialized so set to true
 func migrateInitialized(state *State) error {
@@ -268,6 +301,8 @@ var migrations map[int]migrator = map[int]migrator{
 	ybaWait:              migrateYbaWait,
 	initialized:          migrateInitialized,
 	asRootRetry:          migrateAsRootConfig,
+	improvedCertHandling: migrateCertHandler,
+	stateServices:        migrateStateServices,
 }
 
 func getMigrationHandler(toSchema int) migrator {

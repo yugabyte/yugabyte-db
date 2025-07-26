@@ -56,18 +56,6 @@ else
     add_result "Service Status Check" "FAIL" "$service_name is not active"
 fi
 
-# Check the memory usage for yb-node-agent service
-memory=$(su - {{ yb_user }} -c \
-    "XDG_RUNTIME_DIR=/run/user/$(id -u {{ yb_user }}) systemctl --user show -p MemoryCurrent \
-    \"$service_name\" | grep MemoryCurrent | awk -F= '/MemoryCurrent/ {print \$2}'")
-if [ "$memory" -gt 0 ]; then
-    echo "MemoryCurrent is greater than 0: $memory"
-    add_result "Memory Usage Check" "PASS" "MemoryCurrent is greater than 0: $memory"
-else
-    echo "MemoryCurrent is not greater than 0: $memory"
-    add_result "Memory Usage Check" "FAIL" "MemoryCurrent is not greater than 0: $memory"
-fi
-
 if [ -z "$provider_id" ]; then
     # Perform GET request to fetch provider to get provider_uuid
     get_provider_url=$(_get_provider_by_name_url $yba_url $customer_uuid $provider_name)

@@ -2,12 +2,17 @@
 -- YSQL database dump
 --
 
--- Dumped from database version 15.2-YB-2.25.2.0-b0
--- Dumped by ysql_dump version 15.2-YB-2.25.2.0-b0
+-- Dumped from database version 15.12-YB-2.27.0.0-b0
+-- Dumped by ysql_dump version 15.12-YB-2.27.0.0-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
-SET yb_ignore_relfilenode_ids = false;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_ignore_relfilenode_ids') THEN
+    EXECUTE 'SET yb_ignore_relfilenode_ids TO false';
+  END IF;
+END $$;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -35,9 +40,9 @@ SET row_security = off;
 -- YB: disable auto analyze to avoid conflicts with catalog changes
 DO $$
 BEGIN
-IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN
-EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO on', current_database());
-END IF;
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN
+    EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO on', current_database());
+  END IF;
 END $$;
 
 --
@@ -287,6 +292,112 @@ ALTER TYPE public.underflow ADD VALUE 'Z';
 SET default_table_access_method = heap;
 
 --
+-- Name: par; Type: TABLE; Schema: public; Owner: regress_rls_alice
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16710'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16709'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16708'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16708'::pg_catalog.oid);
+
+CREATE TABLE public.par (
+    parc1 integer,
+    parc2 text DEFAULT 'def'::text,
+    parc3 integer GENERATED ALWAYS AS ((parc1 + 5)) STORED,
+    parc4 real NOT NULL,
+    parc5 text,
+    parc9 real NOT NULL,
+    parc10 integer DEFAULT 5
+)
+SPLIT INTO 2 TABLETS;
+
+
+\if :use_roles
+    ALTER TABLE public.par OWNER TO regress_rls_alice;
+\endif
+
+--
+-- Name: ch; Type: TABLE; Schema: public; Owner: regress_rls_alice
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16715'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16714'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16713'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16713'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16718'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16718'::pg_catalog.oid);
+
+CREATE TABLE public.ch (
+    parc1 integer,
+    parc2 text DEFAULT 'def'::text,
+    parc3 integer GENERATED ALWAYS AS ((parc1 + 5)) STORED,
+    parc4 real NOT NULL,
+    parc5 text,
+    chc1 text NOT NULL,
+    parc9 real NOT NULL,
+    parc10 integer DEFAULT 5,
+    CONSTRAINT ch_pkey PRIMARY KEY((chc1) HASH)
+)
+SPLIT INTO 2 TABLETS;
+
+-- For binary upgrade, recreate inherited column.
+UPDATE pg_catalog.pg_attribute
+SET attislocal = false
+WHERE attname = 'parc1'
+  AND attrelid = 'public.ch'::pg_catalog.regclass;
+
+-- For binary upgrade, recreate inherited column.
+UPDATE pg_catalog.pg_attribute
+SET attislocal = false
+WHERE attname = 'parc2'
+  AND attrelid = 'public.ch'::pg_catalog.regclass;
+
+-- For binary upgrade, recreate inherited column.
+UPDATE pg_catalog.pg_attribute
+SET attislocal = false
+WHERE attname = 'parc3'
+  AND attrelid = 'public.ch'::pg_catalog.regclass;
+
+-- For binary upgrade, recreate inherited column.
+UPDATE pg_catalog.pg_attribute
+SET attislocal = false
+WHERE attname = 'parc9'
+  AND attrelid = 'public.ch'::pg_catalog.regclass;
+
+-- For binary upgrade, recreate inherited column.
+UPDATE pg_catalog.pg_attribute
+SET attislocal = false
+WHERE attname = 'parc10'
+  AND attrelid = 'public.ch'::pg_catalog.regclass;
+
+-- For binary upgrade, set up inheritance this way.
+ALTER TABLE ONLY public.ch INHERIT public.par;
+
+
+\if :use_roles
+    ALTER TABLE public.ch OWNER TO regress_rls_alice;
+\endif
+
+--
 -- Name: chat_user; Type: TABLE; Schema: public; Owner: yugabyte_test
 --
 
@@ -391,6 +502,147 @@ SPLIT INTO 2 TABLETS;
 \endif
 
 --
+-- Name: inh2_par1; Type: TABLE; Schema: public; Owner: regress_rls_alice
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16724'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16723'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16722'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16722'::pg_catalog.oid);
+
+CREATE TABLE public.inh2_par1 (
+    parc1 integer,
+    parc2 text,
+    parc3 real,
+    parc6 numeric(8,1)
+)
+SPLIT INTO 2 TABLETS;
+
+
+\if :use_roles
+    ALTER TABLE public.inh2_par1 OWNER TO regress_rls_alice;
+\endif
+
+--
+-- Name: inh2_par2; Type: TABLE; Schema: public; Owner: regress_rls_alice
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16727'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16726'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16725'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16725'::pg_catalog.oid);
+
+CREATE TABLE public.inh2_par2 (
+    parc3 real,
+    parc1 integer,
+    parc2 text,
+    parc5 text,
+    parc7 text DEFAULT 'PAR2_C7_DEF'::text
+)
+SPLIT INTO 2 TABLETS;
+
+
+\if :use_roles
+    ALTER TABLE public.inh2_par2 OWNER TO regress_rls_alice;
+\endif
+
+--
+-- Name: inh2_ch; Type: TABLE; Schema: public; Owner: regress_rls_alice
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16730'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16729'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16728'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16728'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16731'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16731'::pg_catalog.oid);
+
+CREATE TABLE public.inh2_ch (
+    parc1 integer,
+    parc2 text,
+    parc3 real,
+    chc1 integer NOT NULL,
+    chc2 text,
+    parc5 text,
+    parc6 numeric(8,1),
+    parc7 text DEFAULT 'CH_C7_DEF'::text,
+    CONSTRAINT inh2_ch_pkey PRIMARY KEY((chc1) HASH)
+)
+SPLIT INTO 2 TABLETS;
+
+-- For binary upgrade, recreate inherited column.
+UPDATE pg_catalog.pg_attribute
+SET attislocal = false
+WHERE attname = 'parc1'
+  AND attrelid = 'public.inh2_ch'::pg_catalog.regclass;
+
+-- For binary upgrade, recreate inherited column.
+UPDATE pg_catalog.pg_attribute
+SET attislocal = false
+WHERE attname = 'parc2'
+  AND attrelid = 'public.inh2_ch'::pg_catalog.regclass;
+
+-- For binary upgrade, recreate inherited column.
+UPDATE pg_catalog.pg_attribute
+SET attislocal = false
+WHERE attname = 'parc3'
+  AND attrelid = 'public.inh2_ch'::pg_catalog.regclass;
+
+-- For binary upgrade, recreate inherited column.
+UPDATE pg_catalog.pg_attribute
+SET attislocal = false
+WHERE attname = 'parc5'
+  AND attrelid = 'public.inh2_ch'::pg_catalog.regclass;
+
+-- For binary upgrade, recreate inherited column.
+UPDATE pg_catalog.pg_attribute
+SET attislocal = false
+WHERE attname = 'parc6'
+  AND attrelid = 'public.inh2_ch'::pg_catalog.regclass;
+
+-- For binary upgrade, recreate inherited column.
+UPDATE pg_catalog.pg_attribute
+SET attislocal = false
+WHERE attname = 'parc7'
+  AND attrelid = 'public.inh2_ch'::pg_catalog.regclass;
+
+-- For binary upgrade, set up inheritance this way.
+ALTER TABLE ONLY public.inh2_ch INHERIT public.inh2_par1;
+ALTER TABLE ONLY public.inh2_ch INHERIT public.inh2_par2;
+
+
+\if :use_roles
+    ALTER TABLE public.inh2_ch OWNER TO regress_rls_alice;
+\endif
+
+--
 -- Name: level0; Type: TABLE; Schema: public; Owner: regress_rls_alice
 --
 
@@ -446,9 +698,39 @@ SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16582'::pg_catalog.
 
 CREATE TABLE public.level1_0 (
     c1 integer NOT NULL,
+    c2 text NOT NULL,
+    c3 text,
+    c4 text,
     CONSTRAINT level1_0_pkey PRIMARY KEY(c1 ASC)
-)
-INHERITS (public.level0);
+);
+
+-- For binary upgrade, recreate inherited column.
+UPDATE pg_catalog.pg_attribute
+SET attislocal = false
+WHERE attname = 'c2'
+  AND attrelid = 'public.level1_0'::pg_catalog.regclass;
+
+-- For binary upgrade, recreate inherited column.
+UPDATE pg_catalog.pg_attribute
+SET attislocal = false
+WHERE attname = 'c3'
+  AND attrelid = 'public.level1_0'::pg_catalog.regclass;
+
+-- For binary upgrade, recreate inherited column.
+UPDATE pg_catalog.pg_attribute
+SET attislocal = false
+WHERE attname = 'c4'
+  AND attrelid = 'public.level1_0'::pg_catalog.regclass;
+
+-- For binary upgrade, set up inherited constraint.
+ALTER TABLE ONLY public.level1_0 ADD CONSTRAINT level0_c1_cons CHECK ((c1 > 0));
+UPDATE pg_catalog.pg_constraint
+SET conislocal = false
+WHERE contype = 'c' AND conname = 'level0_c1_cons'
+  AND conrelid = 'public.level1_0'::pg_catalog.regclass;
+
+-- For binary upgrade, set up inheritance this way.
+ALTER TABLE ONLY public.level1_0 INHERIT public.level0;
 
 
 \if :use_roles
@@ -478,12 +760,42 @@ SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16587'::pg_catalog
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16587'::pg_catalog.oid);
 
 CREATE TABLE public.level1_1 (
-    c2 text,
+    c1 integer,
+    c2 text NOT NULL,
+    c3 text,
+    c4 text,
     CONSTRAINT level1_1_c1_cons CHECK ((c1 >= 2)),
     CONSTRAINT level1_1_pkey PRIMARY KEY((c2) HASH)
 )
-INHERITS (public.level0)
 SPLIT INTO 2 TABLETS;
+
+-- For binary upgrade, recreate inherited column.
+UPDATE pg_catalog.pg_attribute
+SET attislocal = false
+WHERE attname = 'c1'
+  AND attrelid = 'public.level1_1'::pg_catalog.regclass;
+
+-- For binary upgrade, recreate inherited column.
+UPDATE pg_catalog.pg_attribute
+SET attislocal = false
+WHERE attname = 'c3'
+  AND attrelid = 'public.level1_1'::pg_catalog.regclass;
+
+-- For binary upgrade, recreate inherited column.
+UPDATE pg_catalog.pg_attribute
+SET attislocal = false
+WHERE attname = 'c4'
+  AND attrelid = 'public.level1_1'::pg_catalog.regclass;
+
+-- For binary upgrade, set up inherited constraint.
+ALTER TABLE ONLY public.level1_1 ADD CONSTRAINT level0_c1_cons CHECK ((c1 > 0));
+UPDATE pg_catalog.pg_constraint
+SET conislocal = false
+WHERE contype = 'c' AND conname = 'level0_c1_cons'
+  AND conrelid = 'public.level1_1'::pg_catalog.regclass;
+
+-- For binary upgrade, set up inheritance this way.
+ALTER TABLE ONLY public.level1_1 INHERIT public.level0;
 
 
 \if :use_roles
@@ -508,12 +820,28 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16590'::pg_catalog.
 SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16590'::pg_catalog.oid);
 
 CREATE TABLE public.level2_0 (
-    c1 integer,
-    c2 text,
-    c3 text NOT NULL
+    c1 integer NOT NULL,
+    c2 text NOT NULL,
+    c3 text NOT NULL,
+    c4 text
 )
-INHERITS (public.level1_0)
 SPLIT INTO 2 TABLETS;
+
+-- For binary upgrade, recreate inherited column.
+UPDATE pg_catalog.pg_attribute
+SET attislocal = false
+WHERE attname = 'c4'
+  AND attrelid = 'public.level2_0'::pg_catalog.regclass;
+
+-- For binary upgrade, set up inherited constraint.
+ALTER TABLE ONLY public.level2_0 ADD CONSTRAINT level0_c1_cons CHECK ((c1 > 0));
+UPDATE pg_catalog.pg_constraint
+SET conislocal = false
+WHERE contype = 'c' AND conname = 'level0_c1_cons'
+  AND conrelid = 'public.level2_0'::pg_catalog.regclass;
+
+-- For binary upgrade, set up inheritance this way.
+ALTER TABLE ONLY public.level2_0 INHERIT public.level1_0;
 
 
 \if :use_roles
@@ -543,14 +871,31 @@ SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16596'::pg_catalog
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16596'::pg_catalog.oid);
 
 CREATE TABLE public.level2_1 (
-    c1 integer,
-    c2 text,
+    c1 integer NOT NULL,
+    c2 text NOT NULL,
     c3 text NOT NULL,
     c4 text NOT NULL,
     CONSTRAINT level2_1_pkey PRIMARY KEY((c4) HASH)
 )
-INHERITS (public.level1_0, public.level1_1)
 SPLIT INTO 2 TABLETS;
+
+-- For binary upgrade, set up inherited constraint.
+ALTER TABLE ONLY public.level2_1 ADD CONSTRAINT level0_c1_cons CHECK ((c1 > 0));
+UPDATE pg_catalog.pg_constraint
+SET conislocal = false
+WHERE contype = 'c' AND conname = 'level0_c1_cons'
+  AND conrelid = 'public.level2_1'::pg_catalog.regclass;
+
+-- For binary upgrade, set up inherited constraint.
+ALTER TABLE ONLY public.level2_1 ADD CONSTRAINT level1_1_c1_cons CHECK ((c1 >= 2));
+UPDATE pg_catalog.pg_constraint
+SET conislocal = false
+WHERE contype = 'c' AND conname = 'level1_1_c1_cons'
+  AND conrelid = 'public.level2_1'::pg_catalog.regclass;
+
+-- For binary upgrade, set up inheritance this way.
+ALTER TABLE ONLY public.level2_1 INHERIT public.level1_0;
+ALTER TABLE ONLY public.level2_1 INHERIT public.level1_1;
 
 
 \if :use_roles
@@ -1687,6 +2032,15 @@ ALTER TABLE ONLY public.tbl2 ALTER COLUMN a SET DEFAULT nextval('public.tbl2_a_s
 
 
 --
+-- Data for Name: ch; Type: TABLE DATA; Schema: public; Owner: regress_rls_alice
+--
+
+COPY public.ch (parc1, parc2, parc4, parc5, chc1, parc9, parc10) FROM stdin;
+1	FOO	1.1	\N	fooch	2.2	5
+\.
+
+
+--
 -- Data for Name: chat_user; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
 --
 
@@ -1707,6 +2061,32 @@ COPY public.hash_tbl_pk_with_include_clause (k2, v, k1) FROM stdin;
 --
 
 COPY public.hash_tbl_pk_with_multiple_included_columns (col1, col2, col3, col4) FROM stdin;
+\.
+
+
+--
+-- Data for Name: inh2_ch; Type: TABLE DATA; Schema: public; Owner: regress_rls_alice
+--
+
+COPY public.inh2_ch (parc1, parc2, parc3, chc1, chc2, parc5, parc6, parc7) FROM stdin;
+1	1_FOO	1.1	10	CH_1_FOO	\N	\N	PAR2_C7_DEF
+2	2_FOO	2.2	20	2_CH_2	2_CH_5	2.2	CH_C7_DEF
+\.
+
+
+--
+-- Data for Name: inh2_par1; Type: TABLE DATA; Schema: public; Owner: regress_rls_alice
+--
+
+COPY public.inh2_par1 (parc1, parc2, parc3, parc6) FROM stdin;
+\.
+
+
+--
+-- Data for Name: inh2_par2; Type: TABLE DATA; Schema: public; Owner: regress_rls_alice
+--
+
+COPY public.inh2_par2 (parc3, parc1, parc2, parc5, parc7) FROM stdin;
 \.
 
 
@@ -1768,6 +2148,14 @@ COPY public.p1 (k, v) FROM stdin;
 --
 
 COPY public.p2 (k, v) FROM stdin;
+\.
+
+
+--
+-- Data for Name: par; Type: TABLE DATA; Schema: public; Owner: regress_rls_alice
+--
+
+COPY public.par (parc1, parc2, parc4, parc5, parc9, parc10) FROM stdin;
 \.
 
 
@@ -2412,9 +2800,9 @@ GRANT ALL ON TABLE public.rls_public TO PUBLIC;
 -- YB: re-enable auto analyze after all catalog changes
 DO $$
 BEGIN
-IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN
-EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO off', current_database());
-END IF;
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN
+    EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO off', current_database());
+  END IF;
 END $$;
 
 --

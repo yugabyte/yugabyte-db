@@ -168,7 +168,9 @@ public class NodeAgentPoller {
           pollerExecutor.submit(this);
         } catch (RejectedExecutionException e) {
           stateRef.set(PollerTaskState.IDLE);
-          log.error("Failed to schedule poller task for {}", param.getNodeAgentUuid());
+          log.warn(
+              "Failed to schedule poller task for {}. Will be retried later",
+              param.getNodeAgentUuid());
         }
       }
     }
@@ -247,9 +249,12 @@ public class NodeAgentPoller {
       if (stateRef.compareAndSet(PollerTaskState.SCHEDULED, PollerTaskState.RUNNING)) {
         try {
           NodeAgent.maybeGet(param.getNodeAgentUuid()).ifPresent(n -> poll(n));
-        } catch (Exception e) {
+        } catch (Throwable t) {
           log.error(
-              "Error in polling for node {} - {}", param.getNodeAgentUuid(), e.getMessage(), e);
+              "Error in polling for node {} - {}", param.getNodeAgentUuid(), t.getMessage(), t);
+          if (t instanceof Error) {
+            throw (Error) t;
+          }
         } finally {
           stateRef.set(PollerTaskState.IDLE);
         }

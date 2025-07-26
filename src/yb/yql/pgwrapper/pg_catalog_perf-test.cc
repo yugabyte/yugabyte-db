@@ -16,7 +16,6 @@
 #include <string>
 #include <string_view>
 #include <thread>
-#include <unordered_map>
 
 #include "yb/common/json_util.h"
 
@@ -31,7 +30,6 @@
 #include "yb/tserver/mini_tablet_server.h"
 
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
@@ -152,8 +150,8 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
           *config.response_cache_size_bytes;
     }
     if (!config.preload_additional_catalog_list.empty()) {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_catalog_preload_additional_table_list) =
-        std::string(config.preload_additional_catalog_list);
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_catalog_preload_additional_table_list) =
+          std::string(config.preload_additional_catalog_list);
     }
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_relcache_file) = config.use_relcache_file;
     // When invalidation messages are used, this test does not use the tserver response
@@ -167,6 +165,10 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
 
   size_t NumTabletServers() override {
     return 1;
+  }
+
+  void OverrideMiniClusterOptions(MiniClusterOptions* options) override {
+    options->wait_for_pg = false;
   }
 
   Result<uint64_t> CacheRefreshRPCCount() {
@@ -383,7 +385,7 @@ class ClientConnectionsCountFetcher {
           return curl_.FetchURL(url_, &buf).ok();
         },
         5s, "Requesting /rpcz", initial_delay_));
-    const auto doc = VERIFY_RESULT(ParseJson(std::string_view(buf.c_str(), buf.size())));
+    const auto doc = VERIFY_RESULT(ParseJson(std::string_view(buf.char_data(), buf.size())));
     size_t result = 0;
     for (const auto& conn : VERIFY_RESULT(GetMemberAsArray(doc, "connections"))) {
       if (VERIFY_RESULT(GetMemberAsStr(conn, "backend_type")) == "client backend") {
@@ -715,9 +717,9 @@ TEST_F_EX(PgCatalogPerfTest,
 
 // The test checks that response cache for specific DB is invalidated in case of closure of
 // connection with temp tables. Response cache for other DBs is not affected.
-TEST_F_EX(PgCatalogPerfTest,
-          ResponseCacheInvalidationOnConnectionWithTempTableClosure,
-          PgCatalogWithUnlimitedCachePerfTest) {
+TEST_F_EX(
+    PgCatalogPerfTest, ResponseCacheInvalidationOnConnectionWithTempTableClosure,
+    PgCatalogWithUnlimitedCachePerfTest) {
   constexpr auto* kDBName = "aux_db";
 
   {
@@ -819,7 +821,8 @@ TEST_F_EX(PgCatalogPerfTest,
 
   {
     // Cutoff catalog history for current time to avoid reading with old read time
-    auto* tablet = cluster_->mini_master(0)->master()->catalog_manager()->tablet_peer()->tablet();
+    auto tablet = ASSERT_RESULT(
+        cluster_->mini_master(0)->master()->catalog_manager()->tablet_peer()->shared_tablet());
     auto* policy = tablet->RetentionPolicy();
     auto cutoff = policy->GetRetentionDirective().history_cutoff;
     cutoff.primary_cutoff_ht = HybridTime::FromMicros(

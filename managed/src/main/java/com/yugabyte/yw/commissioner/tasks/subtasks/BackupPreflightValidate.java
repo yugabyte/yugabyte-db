@@ -32,7 +32,8 @@ public class BackupPreflightValidate extends AbstractTaskBase {
   private final UniverseTableHandler tableHandler;
   private final NodeUniverseManager nodeUniverseManager;
   private final RuntimeConfGetter confGetter;
-  private final String FREE_SPACE_CMD = "df -P %s | tail -n1 | awk \'{print$4}\'";
+  private final String FREE_SPACE_CMD = "df -P %s | tail -n1 ";
+  private final String PRECHECK_FAILED_MSG = "NFS space precheck failed. ";
 
   public static class Params extends AbstractTaskParams {
     public Params(UUID storageConfigUUID, UUID customerUUID, UUID universeUUID, boolean ybcBackup) {
@@ -85,7 +86,18 @@ public class BackupPreflightValidate extends AbstractTaskBase {
       backupHelper.validateStorageConfigForBackupOnUniverse(storageConfig, universe);
 
       if (confGetter.getConfForScope(universe, UniverseConfKeys.enableNfsBackupPrecheck)) {
-        doNfsSpacePrecheck(storageConfig, universe);
+        try {
+          doNfsSpacePrecheck(storageConfig, universe);
+        } catch (Exception e) {
+          // Only throw if the space precheck fails,
+          // log error and continue backup otherwise
+          if (e.getMessage().contains(PRECHECK_FAILED_MSG)) {
+            throw e;
+          } else {
+            log.error("Error while running NFS precheck on universe: {}", universe.getName());
+            e.printStackTrace();
+          }
+        }
       }
     }
   }
@@ -197,12 +209,14 @@ public class BackupPreflightValidate extends AbstractTaskBase {
     ShellResponse resp =
         nodeUniverseManager
             .runCommand(
-                tserver, universe, List.of(String.format(FREE_SPACE_CMD, location).split(" ")))
+                tserver, universe, List.of("bash", "-c", String.format(FREE_SPACE_CMD, location)))
             .processErrors("Error while finding free space on " + tserver.nodeName);
     log.debug("Response for free space cmd on node {} = {}", tserver.nodeName, resp.toString());
-    // Resp.message is in the format "Command output:202020\n"
-    long spaceAvailable =
-        Long.parseLong(resp.getMessage().substring(resp.getMessage().indexOf(":") + 1).trim());
+    // Resp.message looks like: "Command output:/dev/sda1  47227284 16333704 30877196 35%"
+    var respSplit =
+        List.of(
+            resp.getMessage().substring(resp.getMessage().indexOf(":") + 1).strip().split("\\s+"));
+    long spaceAvailable = Long.parseLong(respSplit.get(3).trim());
     log.debug(
         "Space available on path {} on node {} = {}MB.",
         location,
@@ -211,9 +225,11 @@ public class BackupPreflightValidate extends AbstractTaskBase {
     if (spaceAvailable < spaceNeeded) {
       throw new RuntimeException(
           String.format(
-              "NFS space precheck failed. Need atleast %dMB but only %dMB present. Set"
+              PRECHECK_FAILED_MSG
+                  + "Need atleast %dMB but only %dMB present. Set"
                   + " 'yb.backup.enableNfsPrecheck' to false to disable this check.",
-              spaceNeeded / 1024, spaceAvailable / 1024));
+              spaceNeeded / 1024,
+              spaceAvailable / 1024));
     }
   }
 }

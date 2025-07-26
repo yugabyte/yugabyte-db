@@ -58,7 +58,7 @@ class DnsResolverTest : public YBTest {
     io_thread_ = CHECK_RESULT(Thread::Make("io_thread", "io_thread", [this] {
       boost::system::error_code ec;
       io_service_.run(ec);
-      LOG_IF(ERROR, ec) << "Failed to run io service: " << ec;
+      LOG_IF(DFATAL, ec) << "Failed to run io service: " << ec;
     }));
   }
 
@@ -72,7 +72,7 @@ class DnsResolverTest : public YBTest {
     auto deadline = std::chrono::steady_clock::now() + 15s;
     while (!io_service_.stopped()) {
       if (std::chrono::steady_clock::now() >= deadline) {
-        LOG(ERROR) << "Io service failed to stop";
+        LOG(DFATAL) << "Io service failed to stop";
         io_service_.stop();
         break;
       }

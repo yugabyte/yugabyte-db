@@ -182,6 +182,9 @@ class IntentsWriterContext {
   int64_t left_records_;
 };
 
+struct ExternalTxnApplyStateData;
+using ExternalTxnApplyState = std::map<TransactionId, ExternalTxnApplyStateData>;
+
 class IntentsWriter : public rocksdb::DirectWriter {
  public:
   IntentsWriter(const Slice& start_key,

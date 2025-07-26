@@ -60,6 +60,8 @@ class DbServerBase : public server::RpcAndWebServerBase, public pgwrapper::PgWra
 
   int SharedMemoryNegotiationFd() override;
 
+  [[nodiscard]] SharedMemoryManager* shared_mem_manager();
+
   ConcurrentPointerReference<TServerSharedData> shared_object() const;
 
   Status Init() override;

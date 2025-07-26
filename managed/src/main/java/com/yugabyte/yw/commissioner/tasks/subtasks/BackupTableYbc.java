@@ -296,6 +296,8 @@ public class BackupTableYbc extends YbcTaskBase {
                 tableParams.setBackupPointInTimeRestoreWindow(
                     new BackupPointInTimeRestoreWindow(
                         response.restorableWindow, taskParams().scheduleRetention.toMillis()));
+                b.upsertFirstSnapshotTime(
+                    response.restorableWindow.getTimestampSnapshotCreationMillis());
               }
               BackupTableParams parentParams = b.getBackupInfo();
               parentParams

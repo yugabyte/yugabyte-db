@@ -36,7 +36,7 @@ public class InstallNodeAgent extends AbstractTaskBase {
 
   private final NodeUniverseManager nodeUniverseManager;
   private final NodeAgentManager nodeAgentManager;
-  private ShellProcessContext shellContext =
+  private final ShellProcessContext defaultShellContext =
       ShellProcessContext.builder().logCmdOutput(true).build();
 
   @Inject
@@ -75,7 +75,8 @@ public class InstallNodeAgent extends AbstractTaskBase {
     return params;
   }
 
-  private NodeAgent createNodeAgent(Universe universe, NodeDetails node, String nodeAgentHome) {
+  private NodeAgent createNodeAgent(
+      Universe universe, NodeDetails node, String nodeAgentHome, ShellProcessContext shellContext) {
     String output =
         nodeUniverseManager
             .runCommand(node, universe, Arrays.asList("uname", "-sm"), shellContext)
@@ -127,9 +128,10 @@ public class InstallNodeAgent extends AbstractTaskBase {
   public NodeAgent install() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     NodeDetails node = universe.getNodeOrBadRequest(taskParams().nodeName);
-    if (taskParams().sshUser != null) {
-      shellContext = shellContext.toBuilder().sshUser(taskParams().sshUser).build();
-    }
+    ShellProcessContext shellContext =
+        taskParams().sshUser == null
+            ? defaultShellContext
+            : defaultShellContext.toBuilder().sshUser(taskParams().sshUser).build();
     Optional<NodeAgent> optional = NodeAgent.maybeGetByIp(node.cloudInfo.private_ip);
     if (optional.isPresent()) {
       NodeAgent nodeAgent = optional.get();
@@ -140,14 +142,17 @@ public class InstallNodeAgent extends AbstractTaskBase {
       nodeAgentManager.purge(nodeAgent);
     }
     Path nodeAgentHomePath = Paths.get(taskParams().nodeAgentInstallDir, NodeAgent.NODE_AGENT_DIR);
-    if (!doesNodeAgentPackageExist(node, universe, shellContext, nodeAgentHomePath.toString())) {
+    // Force update the package on reinstall.
+    if (taskParams().reinstall
+        || !doesNodeAgentPackageExist(node, universe, shellContext, nodeAgentHomePath.toString())) {
       // Re-download the installer payload on the remote node.
       SetupYNP task = createTask(SetupYNP.class);
       task.initialize(getSetupYNPParams(taskParams()));
       task.run();
     }
     // Create the node agent record.
-    NodeAgent nodeAgent = createNodeAgent(universe, node, nodeAgentHomePath.toString());
+    NodeAgent nodeAgent =
+        createNodeAgent(universe, node, nodeAgentHomePath.toString(), shellContext);
     // Get the node agent installer files.
     InstallerFiles installerFiles =
         nodeAgentManager.getInstallerFiles(nodeAgent, nodeAgentHomePath, false /* certsOnly */);
@@ -172,7 +177,7 @@ public class InstallNodeAgent extends AbstractTaskBase {
             .collect(Collectors.toSet());
     sb.setLength(0);
     // Create the child folders with full permission to allow upload.
-    sb.append("mkdir -m 777 -p ").append(String.join(" ", createDirs));
+    sb.append("umask 022 && mkdir -m 777 -p ").append(String.join(" ", createDirs));
     command = getCommand("/bin/bash", "-c", sb.toString());
     log.info("Creating directories {} for node agent {}", createDirs, nodeAgent.getUuid());
     nodeUniverseManager.runCommand(node, universe, command, shellContext).processErrors();
@@ -182,12 +187,10 @@ public class InstallNodeAgent extends AbstractTaskBase {
         .filter(f -> !f.getTargetPath().equals(installerFiles.getPackagePath()))
         .forEach(
             f -> {
-              log.info(
-                  "Uploading {} to {} on node agent {}",
-                  f.getSourcePath(),
-                  f.getTargetPath(),
-                  nodeAgent.getUuid());
               String filePerm = StringUtils.isBlank(f.getPermission()) ? "755" : f.getPermission();
+              log.info(
+                  "Uploading {} to {} with perm %s on node agent {}",
+                  f.getSourcePath(), f.getTargetPath(), filePerm, nodeAgent.getUuid());
               nodeUniverseManager.uploadFileToNode(
                   node,
                   universe,

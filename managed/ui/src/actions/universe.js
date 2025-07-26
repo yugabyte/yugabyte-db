@@ -55,6 +55,11 @@ export const DELETE_READ_REPLICA_RESPONSE = 'DELETE_READ_REPLICA_RESPONSE';
 export const GET_MASTER_INFO = 'GET_MASTER_INFO';
 export const GET_MASTER_INFO_RESPONSE = 'GET_MASTER_INFO_RESPONSE';
 
+export const GET_UNIVERSE_PA_REGISTRATION_STATUS = 'GET_UNIVERSE_PA_REGISTRATION_STATUS';
+export const GET_UNIVERSE_PA_REGISTRATION_STATUS_RESPONSE =
+  'GET_UNIVERSE_PA_REGISTRATION_STATUS_RESPONSE';
+// const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/troubleshooting_platform/${tpUuid}/universes/${universeUuid}`;
+
 // Get the Master Nodes Info for a Universe
 export const GET_MASTER_LEADER = 'GET_MASTER_LEADER';
 export const GET_MASTER_LEADER_RESPONSE = 'GET_MASTER_LEADER_RESPONSE';
@@ -597,6 +602,23 @@ export function getMasterInfos(universeUUID) {
 export function getMasterInfosResponse(response) {
   return {
     type: GET_MASTER_INFO_RESPONSE,
+    payload: response
+  };
+}
+
+export function getUniversePaRegistrationStatus(paUuid, universeUUID) {
+  const request = axios.get(
+    `${getCustomerEndpoint()}/troubleshooting_platform/${paUuid}/universes/${universeUUID}`
+  );
+  return {
+    type: GET_UNIVERSE_PA_REGISTRATION_STATUS,
+    payload: request
+  };
+}
+
+export function getUniversePaRegistrationStatusResponse(response) {
+  return {
+    type: GET_UNIVERSE_PA_REGISTRATION_STATUS_RESPONSE,
     payload: response
   };
 }

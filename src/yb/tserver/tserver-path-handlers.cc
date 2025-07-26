@@ -302,7 +302,7 @@ void HandleTransactionsPage(
     const std::string& tablet_id, const tablet::TabletPeerPtr& peer,
     const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-  auto tablet = peer->shared_tablet();
+  auto tablet = peer->shared_tablet_maybe_null();
   if (!tablet) {
     *output << "Tablet " << EscapeForHtmlToString(tablet_id) << " not running";
     return;
@@ -388,7 +388,7 @@ void HandleRocksDBPage(
   std::stringstream *output = &resp->output;
   *output << "<h1>RocksDB for Tablet " << EscapeForHtmlToString(tablet_id) << "</h1>" << std::endl;
 
-  auto tablet_result = peer->shared_tablet_safe();
+  auto tablet_result = peer->shared_tablet();
   if (!tablet_result.ok()) {
     *output << EscapeForHtmlToString(tablet_result.status().ToString());
     return;
@@ -403,7 +403,7 @@ void HandleWaitQueuePage(
   std::stringstream *out = &resp->output;
   *out << "<h1>Waiters for Tablet " << EscapeForHtmlToString(tablet_id) << "</h1>" << std::endl;
 
-  auto tablet_result = peer->shared_tablet_safe();
+  auto tablet_result = peer->shared_tablet();
   if (!tablet_result.ok()) {
     *out << EscapeForHtmlToString(tablet_result.status().ToString());
     return;
@@ -427,7 +427,7 @@ void HandleInMemoryLocksPage(
   *out << "<h1>In-Memory Locks for Tablet "
        << EscapeForHtmlToString(tablet_id) << "</h1>" << std::endl;
 
-  auto tablet_result = peer->shared_tablet_safe();
+  auto tablet_result = peer->shared_tablet();
   if (!tablet_result.ok()) {
     *out << EscapeForHtmlToString(tablet_result.status().ToString());
     return;
@@ -558,7 +558,7 @@ void TabletServerPathHandlers::HandleVersionInfoDump(const Webserver::WebRequest
   VersionInfo::GetVersionInfoPB(&version_info);
 
   std::stringstream *output = &resp->output;
-  JsonWriter jw(output, JsonWriter::PRETTY_ESCAPE_STR);
+  JsonWriter jw(output, JsonWriter::PRETTY);
 
   jw.Protobuf(version_info);
 }
@@ -585,7 +585,7 @@ void TabletServerPathHandlers::HandleOperationsPage(const Webserver::WebRequest&
   for (const std::shared_ptr<TabletPeer>& peer : peers) {
     vector<OperationStatusPB> inflight;
 
-    auto tablet = peer->shared_tablet();
+    auto tablet = peer->shared_tablet_maybe_null();
     if (tablet == nullptr) {
       continue;
     }
@@ -706,7 +706,7 @@ std::map<TableIdentifier, TableInfo> GetTablesInfo(
       .state = peer->HumanReadableState()
     };
 
-    auto tablet = peer->shared_tablet();
+    auto tablet = peer->shared_tablet_maybe_null();
     uint64_t num_sst_files = (tablet) ? tablet->GetCurrentVersionNumSSTFiles() : 0;
     bool is_hidden = status.is_hidden();
 
@@ -799,7 +799,7 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
     string table_name = status.table_name();
     string table_id = status.table_id();
     string tablet_id_or_link;
-    auto tablet = peer->shared_tablet();
+    auto tablet = peer->shared_tablet_maybe_null();
     if (tablet != nullptr) {
       tablet_id_or_link = TabletLink(id);
     } else {
@@ -849,7 +849,7 @@ void TabletServerPathHandlers::HandleListMasterServers(const Webserver::WebReque
   const Status s = tserver_->ListMasterServers(&list_masters_req, &list_masters_resp);
 
   std::stringstream *output = &resp->output;
-  JsonWriter jw(output, JsonWriter::PRETTY_ESCAPE_STR);
+  JsonWriter jw(output, JsonWriter::PRETTY);
   jw.Protobuf(list_masters_resp);
 }
 
@@ -1141,7 +1141,7 @@ void TabletServerPathHandlers::HandleXClusterJSON(
   const auto xcluster_outbound_stream_stats = GetXClusterOutboundStreamStats(tserver_);
   const auto xcluster_inbound_stream_stats = GetXClusterInboundStreamStats(tserver_);
 
-  JsonWriter jw(output, JsonWriter::COMPACT_ESCAPE_STR);
+  JsonWriter jw(output, JsonWriter::COMPACT);
 
   jw.StartObject();
   if (!xcluster_outbound_stream_stats.empty()) {
@@ -1226,7 +1226,7 @@ void TabletServerPathHandlers::HandleXClusterJSON(
 void TabletServerPathHandlers::HandleHealthCheck(const Webserver::WebRequest& req,
                                                  Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-  JsonWriter jw(output, JsonWriter::COMPACT_ESCAPE_STR);
+  JsonWriter jw(output, JsonWriter::COMPACT);
   auto tablet_peers = tserver_->tablet_manager()->GetTabletPeers();
 
   jw.StartObject();
@@ -1244,7 +1244,7 @@ void TabletServerPathHandlers::HandleHealthCheck(const Webserver::WebRequest& re
 void TabletServerPathHandlers::HandleTabletsJSON(const Webserver::WebRequest& req,
                                                  Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-  JsonWriter jw(output, JsonWriter::COMPACT_ESCAPE_STR);
+  JsonWriter jw(output, JsonWriter::COMPACT);
 
   auto peers = tserver_->tablet_manager()->GetTabletPeers();
   std::sort(peers.begin(), peers.end(), &CompareByTabletId);
@@ -1254,7 +1254,6 @@ void TabletServerPathHandlers::HandleTabletsJSON(const Webserver::WebRequest& re
     TabletStatusPB status;
     peer->GetTabletStatusPB(&status);
     string id = status.tablet_id();
-    const auto& tablet = peer->shared_tablet();
     string tablets_disk_size_html = GetOnDiskSizeInHtml(
         yb::tablet::TabletOnDiskSizeInfo::FromPB(status)
     );
@@ -1264,6 +1263,7 @@ void TabletServerPathHandlers::HandleTabletsJSON(const Webserver::WebRequest& re
                             ->PartitionDebugString(*peer->status_listener()->partition(),
                                                    *tablet_metadata->schema());
 
+    const auto& tablet = peer->shared_tablet_maybe_null();
     uint64_t num_sst_files = (tablet) ? tablet->GetCurrentVersionNumSSTFiles() : 0;
 
     // TODO: Would be nice to include some other stuff like memory usage.
@@ -1342,7 +1342,7 @@ void TabletServerPathHandlers::HandleTabletsJSON(const Webserver::WebRequest& re
 void TabletServerPathHandlers::HandleTabletMetaCacheJSON(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream* output = &resp->output;
-  JsonWriter writer(output, JsonWriter::COMPACT_ESCAPE_STR);
+  JsonWriter writer(output, JsonWriter::COMPACT);
   tserver_->WriteServerMetaCacheAsJson(&writer);
 }
 

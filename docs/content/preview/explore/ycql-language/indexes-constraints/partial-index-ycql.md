@@ -32,7 +32,7 @@ CREATE INDEX index_name ON table_name(column_list) WHERE condition;
 
 ## Example
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 Create a keyspace and a table as follows:
 

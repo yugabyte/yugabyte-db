@@ -114,7 +114,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
     GetTableSchemaResponse mockSchemaResponse2 = mock(GetTableSchemaResponse.class);
     GetTableSchemaResponse mockSchemaResponse3 = mock(GetTableSchemaResponse.class);
     mockClient = mock(YBClient.class);
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     try {
       when(mockClient.getTablesList(null, true, null)).thenReturn(mockListTablesResponse);
       when(mockClient.getTableSchemaByUUID(TABLE_1_UUID.toString().replace("-", "")))

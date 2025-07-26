@@ -1,0 +1,79 @@
+use pgrx::bgworkers::*;
+use pgrx::prelude::*;
+use std::time::Duration;
+
+::pgrx::pg_module_magic!();
+
+/*
+In order to use this bgworker with a cargo-pgrx managed database, you'll need to add this line to
+"$PGRX_HOME/data-$PGVER/postgresql.conf" if the `shared_preload_libraries` entry is absent:
+
+```
+shared_preload_libraries = '{name}.so'
+```
+
+Background workers *must* be initialized in the extension's `_PG_init()` function, and can *only*
+be started if loaded through the `shared_preload_libraries` configuration setting.
+
+Executing `cargo pgrx run "$PGVER"` will, when it restarts the specified Postgres instance, also start
+this background worker
+*/
+
+#[allow(non_snake_case)]
+#[pg_guard]
+pub extern "C-unwind" fn _PG_init() {{
+    BackgroundWorkerBuilder::new("{name}")
+        .set_function("background_worker_main")
+        .set_library("{name}")
+        .set_argument(42i32.into_datum())
+        .enable_spi_access()
+        .load();
+}}
+
+#[pg_guard]
+#[no_mangle]
+pub extern "C-unwind" fn background_worker_main(arg: pg_sys::Datum) {{
+    let arg = unsafe {{ i32::from_datum(arg, false) }};
+
+    // these are the signals we want to receive.  If we don't attach the SIGTERM handler, then
+    // we'll never be able to exit via an external notification
+    BackgroundWorker::attach_signal_handlers(SignalWakeFlags::SIGHUP | SignalWakeFlags::SIGTERM);
+
+    // we want to be able to use SPI against the specified table (postgres), as the user postgres
+    BackgroundWorker::connect_worker_to_spi(Some("postgres"), None);
+
+    log!(
+        "Background Worker '{{}}' is starting.  Argument={{}}",
+        BackgroundWorker::get_name(),
+        arg.unwrap()
+    );
+
+    // wake up every 10s or if we received a SIGTERM
+    while BackgroundWorker::wait_latch(Some(Duration::from_secs(10))) {{
+        if BackgroundWorker::sighup_received() {{
+            // on SIGHUP, you might want to reload some external configuration or something
+        }}
+
+        // within a transaction, execute an SQL statement, and log its results
+        BackgroundWorker::transaction(|| {{
+            Spi::connect(|client| {{
+                let tuple_table = client.select(
+                    "SELECT 'Hi', id, ''||a FROM (SELECT id, 42 from generate_series(1,10) id) a ",
+                    None,
+                    None,
+                ).unwrap();
+                tuple_table.for_each(|tuple| {{
+                    let a = tuple.get_datum_by_ordinal(1).unwrap().value::<String>().unwrap();
+                    let b = tuple.get_datum_by_ordinal(2).unwrap().value::<i32>().unwrap();
+                    let c = tuple.get_datum_by_ordinal(3).unwrap().value::<String>().unwrap();
+                    log!("from bgworker: ({{a:?}}, {{b:?}}, {{c:?}})");
+                }});
+            }});
+        }});
+    }}
+
+    log!(
+        "Background Worker '{{}}' is exiting",
+        BackgroundWorker::get_name()
+    );
+}}

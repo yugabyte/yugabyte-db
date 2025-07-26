@@ -18,6 +18,7 @@ import static org.yb.AssertionWrappers.*;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.sql.PreparedStatement;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -41,6 +42,21 @@ public class TestYbAsh extends BasePgSQLTest {
   private static final int ASH_SAMPLING_INTERVAL = 1000;
   private static final int ASH_SAMPLE_SIZE = 500;
   private static final String ASH_VIEW = "yb_active_session_history";
+
+  @Override
+  protected int getReplicationFactor() {
+    return 1;
+  }
+
+  @Override
+  protected int getInitialNumMasters() {
+    return 1;
+  }
+
+  @Override
+  protected int getInitialNumTServers() {
+    return 1;
+  }
 
   private void setAshConfigAndRestartCluster(
       int sampling_interval, int sample_size, int circular_buffer_size) throws Exception {
@@ -242,7 +258,7 @@ public class TestYbAsh extends BasePgSQLTest {
           " WHERE query_id = " + nested_query_id ;
       String nested_query_id_samples_count_last_second = "SELECT COUNT(*) FROM " + ASH_VIEW +
           " WHERE query_id = " + nested_query_id + " AND sample_time >= current_timestamp - " +
-          "interval '1 second'" ;
+          "interval '1 second' AND wait_event_component = 'YSQL'" ;
 
       // Verify that there are samples of the nested query
       assertGreaterThan(getSingleRow(statement, nested_query_id_samples_count).getLong(0), 0L);
@@ -250,12 +266,12 @@ public class TestYbAsh extends BasePgSQLTest {
       // Track only top level queries inside pg_stat_statements
       statement.execute("SET pg_stat_statements.track = 'TOP'");
 
-      // sleep for one second so that the circular buffer doesn't contain samples of this query id
-      // for the last one second
-      executePgSleep(statement, 1);
-
       // reset pg_stat_statements so that the nested query is no longer there
       statement.execute("SELECT pg_stat_statements_reset()");
+
+      // sleep for 2 seconds so that the circular buffer doesn't contain samples of this query id
+      // for the last one second
+      executePgSleep(statement, 2);
 
       // Rerun the nested query, now pg_stat_statements should not track it
       statement.execute(String.format("SELECT insert_into_table(100001, 200000)"));
@@ -366,5 +382,42 @@ public class TestYbAsh extends BasePgSQLTest {
           "query_id = %d", ASH_VIEW, pstmtQueryId)).getLong(0).intValue();
       assertGreaterThan(res, 0);
     }
+  }
+
+  @Test
+  public void testQueryId5Samples() throws Exception {
+    setAshConfigAndRestartCluster(50, ASH_SAMPLE_SIZE);
+
+    Statement stmt = connection.createStatement();
+
+    stmt.execute("CREATE TABLE test_table(k int primary key, v int, t timestamptz)");
+    stmt.execute("CREATE INDEX test_table_val on test_table(v)");
+    stmt.execute("CREATE INDEX test_table_time on test_table(t HASH)");
+
+    for (int i = 0; i < 100; ++i) {
+      stmt.execute(String.format("INSERT INTO test_table VALUES (%d, %d)", i, i));
+    }
+
+    // intentionally incorrect syntax to make the query flush buffered ops outside of
+    // executor hooks
+    final String multiQuery = "insert into test_table (k, v, t) select max(k) + 1 as k, "
+        + "max(v) + 1 as v, now() as t from test_table; "
+        + "select * from test_table where t=now(); "
+        + "pg_sleep(0.1);";
+
+    try (PreparedStatement pstmt = connection.prepareStatement(multiQuery)) {
+      for (int i = 0; i < 1000; ++i) {
+        try {
+          pstmt.executeUpdate();
+        } catch (Exception e) {}
+      }
+    }
+
+    final String storageFlushQueryId =
+        "SELECT COUNT(*) FROM " + ASH_VIEW +
+        " WHERE wait_event = 'StorageFlush' AND query_id = 5";
+
+    assertEquals(
+        getSingleRow(stmt, storageFlushQueryId).getLong(0).intValue(), 0);
   }
 }

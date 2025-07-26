@@ -57,7 +57,7 @@ var updateUserCmd = &cobra.Command{
 
 		r := make([]ybaclient.UserWithFeatures, 0)
 		for _, user := range rUsers {
-			if strings.Compare(user.GetEmail(), email) == 0 {
+			if strings.EqualFold(user.GetEmail(), email) {
 				r = append(r, user)
 			}
 		}
@@ -110,6 +110,12 @@ var updateUserCmd = &cobra.Command{
 			UserType:           rUpdate.UserType,
 		}
 		r = append(r, updatedUser)
+
+		fetchRoleBindingsForListing(
+			r[0].GetUuid(),
+			authAPI,
+			"Update",
+		)
 
 		userCtx := formatter.Context{
 			Command: "update",

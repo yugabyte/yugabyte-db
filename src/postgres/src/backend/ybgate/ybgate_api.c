@@ -517,7 +517,7 @@ YbgPrepareExpr(char *expr_cstring, YbgPreparedExpr *expr,
 {
 	PG_SETUP_ERROR_REPORTING();
 	*expr = (YbgPreparedExpr) ybDeserializeNode(expr_cstring,
-													yb_expression_version);
+												yb_expression_version);
 	PG_STATUS_OK();
 }
 

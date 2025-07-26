@@ -1,0 +1,11 @@
+resource:
+  tserver:
+    requests:
+      cpu: 16
+    limits:
+      cpu: 20
+  master:
+    requests:
+      cpu: 8
+    limits:
+      cpu: 10

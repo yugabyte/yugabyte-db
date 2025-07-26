@@ -99,19 +99,30 @@
       "yba_ha_last_backup_size_mb": "HA Last Backup Size (MB)"
     },
     "dashboard": {
-      "nodeAgentReminderBanner": {
-        "primaryText": "Automatic installation of node agent failed on some nodes.",
-        "additionalDetailText": "<paragraph>Node agent manages communication between universe nodes and YugabyteDB Anywhere, and must be installed on all nodes before you can upgrade to future versions of YugabyteDB Anywhere.</paragraph><paragraph>Click View Node Agents to find the problem nodes, verify they fulfill the <nodeAgentPrereqDocsLink>node prerequisites</nodeAgentPrereqDocsLink> and retry the installation.</paragraph><paragraph><nodeAgentFaqDocsLink>Learn more about Node Agent.</nodeAgentFaqDocsLink></paragraph>",
-        "viewNodeAgentsButton": "View Node Agents"
+      "installNodeAgentReminderBanner": {
+        "primaryText": "Node agent needs to be installed on some nodes",
+        "nodeAgentMustBeInstallToUpgradeYba": "Node agent manages communication between universe nodes and YugabyteDB Anywhere, and must be installed on all nodes before you can upgrade to future versions of YugabyteDB Anywhere.",
+        "waysToInstallNodeAgent": "YugabyteDB Anywhere can automatically install node agent on universes that require it, or you can install node agent manually.",
+        "howToManuallyInstallNodeAgent": "To manually install node agent, navigate to the universe and choose Actions>More>Install Node Agent.",
+        "automaticInstallationsInProgress": "Automatic installation of node agent is in progress. Click View Node Agents to see which nodes have node agent installed.",
+        "manuallyUnregisteredNodeAgent": "If you manually removed node agent on any nodes, then you must also manually reinstall by navigating to the universe and choosing Actions>More>Install Node Agent. The automatic installation of node agent will not reinstall node agent on those nodes for you.",
+        "someNodeAgentsAreNotFunctional": "We found some universes where node agent is not functional. Click View Node Agents to find the problem nodes, verify they fulfill the <nodeAgentPrereqDocsLink>node prerequisites</nodeAgentPrereqDocsLink> and retry the installation by choosing Actions>Reinstall Node Agent.",
+        "learnMoreText": "<nodeAgentFaqDocsLink>Learn more about Node Agent.</nodeAgentFaqDocsLink>",
+        "viewNodeAgentsButton": "View Node Agents",
+        "enableAutomaticNodeAgentInstallationButton": " Automatically Install Node Agents"
+      },
+      "useSystemdReminderBanner": {
+        "primaryText": "Some of your universes use cron to manage nodes.",
+        "additionalDetailText": "<paragraph>Cron-based universes will no longer be supported in YugabyteDB Anywhere v2025.2 and later. Before you can upgrade to v2025.2, you must upgrade cron-based universes to systemd.</paragraph><paragraph>To do this, navigate to the universe and choose <bold>Actions>Upgrade to Systemd</bold></paragraph>"
       }
     },
     "universeActions": {
       "precheckInitiatedMsg": "Running Prechecks...",
       "runPrecheckOnlyButton": "Run Pre-check Only",
       "lbState": {
-        "loadBalancerEnabled": "Tablet Load Balancer",
-        "loadIsBalanced": "Tablet load is balanced",
-        "loadBalanceInProgress": "Tablet load balancing in progress"
+        "loadBalancerEnabled": "Cluster Load Balancer",
+        "loadIsBalanced": "Cluster load is balanced",
+        "loadBalanceInProgress": "Cluster load balancing in progress"
       },
       "encryptionAtRest": {
         "title": "Manage encryption at-Rest",
@@ -275,6 +286,15 @@
           "upgradingTooltip": "Upgrading to v{{version}}"
         }
       },
+      "paUniverseStatus": {
+        "enableTitle": "Enable Perf Advisor",
+        "disableTitle": "Disable Perf Advisor",
+        "enablePaUniverseSuccess": "Successfully enabled Perf Advisor to the universe",
+        "enablePaUniverseFailure": "Failed to enable Perf Advisor to the universe",
+        "disbalePaUniverseSuccess": "Successfully enabled Perf Advisor to the universe",
+        "disablePaUniverseFailure": "Failed to enable Perf Advisor to the universe",
+        "subText": "Are you sure you want to {{action}} Perf Advisor for the universe <strong>{{universeName}}</strong>?"
+      },
       "pgCompatibility": {
         "modalTitle": "Edit Enhanced Postgres Compatibility",
         "toggleLabel": "Enhanced Postgres Compatibility",
@@ -386,10 +406,10 @@
         "internalYsqlServerRpcPort": "Internal YSQL Port",
         "enhancePGCompatibility": "Enhanced Postgres Compatibility",
         "earlyAccess": "Early Access",
-        "pgSubText": "Configure YSQL for maximum Postgres compatibility by enabling<br /> early access features. <1>Learn more</1>",
+        "pgSubText": "Configure YSQL for maximum Postgres compatibility by enabling early access<br /> features. <1>Learn more</1>",
         "pgTooltip": "Access to enhanced Postgres compatible features is only available for database version 2024.2 or later. <1>Learn more</1>",
         "enableConnectionPooling": "Enable Connection Pooling",
-        "conPoolTooltip": "Use built-in YSQL service for maximizing the number of<br /> simultaneous connections to your database.",
+        "conPoolTooltip": "Use built-in YSQL service for maximizing the number of simultaneous<br /> connections to your database.",
         "conPoolVersionTooltip": "Built-in connection pooling is only available for database version 2024.2 or later.",
         "conPoolYSQLWarn": "Enable YSQL first to use connection pooling.",
         "conPoolDBVersionWarn": "Built-in connection pooling is only available for database version 2024.2 or later",
@@ -449,6 +469,7 @@
         "modalTitle": "Delete Read Replica of {{universeName}}"
       },
       "gFlags": {
+        "loadingGflagGroups": "Loading Gflag groups ...",
         "edit": "Edit",
         "preview": "Preview",
         "addFlag": "Add Flag",
@@ -469,6 +490,7 @@
         "JWKSModalNote": "Note: You can obtain JWKS from JWKS URI that is part of OIDC discover end point",
         "JWKSModalPlaceholder": "e.g. eyJraWQiOiJQQWc0NjVINmxZMC1XR1JwUm1ZbEloeEpXb2s5OG10LVZLcXV3VzNPazg0IiwiYWxnIjoiUlMyNTYifQeyJzdWIiOiIw MHUyYXBxMWNtSFlaM092ZDVkNyIsIm5hbWUiOiJKaW4gWWFuIiwiZW1haWwiOiJqeWFuQHl1Z2FieXRlLmNvbSIsInZlciI6MSwiaXNzIjoi",
         "noFlags": "There are no flags assigned to this universe ",
+        "noFlagsCreate": "You have not added any database configuration flags yet.",
         "removeFlag": "Remove Flag",
         "removeValue": "Remove Value",
         "selectedDBVersion": "Selected DB Version : ",
@@ -528,6 +550,7 @@
         "azOverrides": "AZ Overrides",
         "forceApply": "Force Apply",
         "k8sOverrides": "Kubernetes Overrides",
+        "validateAndSaveSuccess": "Validated and Saved Successfully",
         "title": "Helm Overrides",
         "universeOverrides": "Universe Overrides",
         "yamlErrorsTitle": "Errors in helm YAML"
@@ -562,7 +585,21 @@
         "aarch64": "AArch6 (ARM)",
         "linuxVersion": "Linux Version",
         "showRetired": "Show retired recommendations",
-        "cooldownHours": "Resizing device within cooldown period of 6 hours causes resize to happen only by moving to different nodes"
+        "cooldownHours": "Resizing device within cooldown period of 6 hours causes resize to happen only by moving to different nodes",
+        "spotInstance": "{{cloudType}} Spot Instance",
+        "useAwsSpotInstance": "Use {{cloudType}} spot instances",
+        "volumeInfoPerNode": "Volume Info / Node",
+        "provisionedIopsPerNode": "Provisioned IOPS / Node ",
+        "provisionedThroughputPerNode": "Provisioned Throughput / Node",
+        "provisionedThroughputPerPod": "Provisioned Throughput / Pod",
+        "memory": "Memory",
+        "volumeInfoPerPod": "Volume Info / Pod",
+        "clusterInstance": "Cluster Instance",
+        "tserver": "T-Server Instance",
+        "master": "Master Server Instance (Optional)",
+        "keepMasterTserverSame": "Keep master server instance settings same as T-Server instance settings.",
+        "cantChangeLater": "This CANNOT be changed after creation",
+        "masterNote": "<1>Note!</1> CPU Architecture, Linux version and {{cloudType}} Spot instance usage are global settings and can not be overridden. You can change these settings from the “Default Instance Configuration”."
       },
       "securityConfig": {
         "title": "Security Configurations",
@@ -682,10 +719,14 @@
             "SQLIssue ": "SQL ISSUE"
           }
         },
+        "perfAdvisorAnomaliesTab": "Anomalies",
+        "perfAdvisorInsightsTab": "Insights",
+        "perfAdvisorQueriesTab": "Queries",
+        "perfAdvisorMetricsTab": "Metrics",
         "tpServiceUrlHelperText": "Please do not append '/' at the end of the URL",
-        "registrationSuccess": "Registered to Troubleshooting Platform service successfully",
-        "registrationFailed": "Failed to register to Troubleshooting Platform service",
-        "tpServiceUrlLabel": "Troubleshooting Platform Service URL",
+        "registrationSuccess": "Registered to Perf Advisor service successfully",
+        "registrationFailed": "Failed to register to Perf Advisor service",
+        "tpServiceUrlLabel": "Perf Advisor Service URL",
         "ybPlatformServiceUrlLabel": "Yugabyte Platform Service URL",
         "ybPlatformMetricsUrlLabel": "Yugabyte Platform Metrics URL",
         "apiTokenLabel": "YBA API Token",
@@ -695,31 +736,28 @@
         "registerButton": "Register",
         "urlPlaceholder": "http(s)://<ip>:<port>",
         "universeDetailsErrorMessage": "Failed to fetch universe details",
-        "tpConfigErrorMessage": "Failed to fetch troubleshooting platform configuration",
-        "configTabTitle": "Configuration",
+        "tpConfigErrorMessage": "Failed to fetch Perf Advisor configuration",
+        "configTabTitle": "Register",
         "universesTabTitle": "Universes",
         "urlRequired": "Platform Url required",
         "apiTokenRequired": "API Token required",
-        "monitorUniverseSuccess": "Successfully started monitoring the universe",
-        "monitorUniverseFailure": "Failed to monitor universe",
-        "startMonitoring": "Start monitoring the universe.",
-        "monitor": "Monitor",
+        "enablePerfAdvisorMsg": "Select <bold> 'More' </bold> from <bold>Actions</bold> dropdown menu on the top right corner of the page to <bold>'Enable Perf Advisor'</bold> for this universe.",
         "editDialog": {
-          "title": "Update Troubleshooting Platform Configuration",
+          "title": "Update Perf Advisor Configuration",
           "updateButton": "Update",
           "forceUpdateCheckBoxLabel": "Force Update",
-          "updateMetadataSuccess": "Successfully updated the Troubleshooting Platform configuration",
-          "updateMetadataFailed": "Failed to update the Troubleshooting Platform configuration",
-          "tooltipMessage": "The current troubleshooting platform service may be consumed by some universes currently, to update its metadata, please select the 'Force Update' checkbox"
+          "updateMetadataSuccess": "Successfully updated the Perf Advisor configuration",
+          "updateMetadataFailed": "Failed to update the Perf Advisor configuration",
+          "tooltipMessage": "The current Perf Advisor service may be consumed by some universes currently, to update its metadata, please select the 'Force Update' checkbox"
         },
         "deleteDialog": {
-          "title": "Unregister Troubleshooting Platform Configuration",
-          "unregistrationSuccess": "Successfully unregistered from the Troubleshooting Platform service",
-          "unregistrationFailed": "Failed to unregister from the Troubleshooting Platform service",
-          "tooltipMessage": "Please unregister existing universes being monitored by the troubleshooting Platform service, if not, you can force unregister by checking the 'Force Unregister' checkbox",
+          "title": "Unregister Perf Advisor Service",
+          "unregistrationSuccess": "Successfully unregistered the universe from the Perf Advisor service",
+          "unregistrationFailed": "Failed to unregister the universe from the Perf Advisor service",
+          "tooltipMessage": "Please unregister existing universes being monitored by the Perf Advisor service, if not, you can force unregister by checking the 'Force Unregister' checkbox",
           "forceUnregisterCheckBoxLabel": "Force Unregister",
           "unregisterButton": "Unregister",
-          "unregisterMessage": "Are you sure you want to unregister the Troubleshooting Platform service with URL: {{url}} ?"
+          "unregisterMessage": "Are you sure you want to unregister the Perf Advisor service with URL: {{url}} ?"
         }
       },
       "performance": {
@@ -1060,7 +1098,7 @@
               "configurePitr": {
                 "instruction": "Configure point-in-time recovery (PITR) settings",
                 "submitButton": "Next: Confirm Alert Threshold",
-                "retentionPeriodSeconds": {
+                "retentionPeriod": {
                   "label": "Snapshot Retention Period",
                   "tooltip": "A longer snapshot retention period requires more disk space."
                 },
@@ -1106,13 +1144,23 @@
           },
           "editModal": {
             "title": "Edit DR Configuration",
-            "infoText": "Initial full copy is required when the database contains data. Performing an initial full copy requires a backup storage config as an intermediate third party storage, and is time and resource intensive. This is also referred to as bootstrapping or initial seeding.",
+            "backupStorageConfigInfoText": "Creating a full copy of the DR primary requires a backup storage config as an intermediate third party storage, and is time and resource intensive. This is also referred to as bootstrapping or initial seeding.",
             "backupStorageConfig": {
-              "label": "Backup Storage Config"
+              "label": "Backup Storage Config",
+              "tooltip": "<paragraph>Ensure that the backup storage config <bold>can be accessed from both {{sourceUniverseTerm}} and {{targetUniverseTerm}} universe.</bold></paragraph><paragraph>Particularly, <bold>Network File System (NFS)</bold> based storage configs may not be accessible from universes in different regions.</paragraph>"
+            },
+            "pitrInfoText": "Configure point-in-time recovery (PITR) settings",
+            "retentionPeriod": {
+              "label": "Snapshot Retention Period",
+              "tooltip": "A longer snapshot retention period requires more disk space."
             },
             "error": {
               "requestFailureLabel": "Edit DR configuration request failed",
-              "backupStorageConfigRequired": "Required."
+              "backupStorageConfigRequired": "Required.",
+              "pitrRetentionPeriodValueRequired": "Please enter a positive integer.",
+              "pitrRetentionPeriodValueMinimum": "Minimum 5 minutes.",
+              "pitrRetentionPeriodValueIntegerValidation": "Please enter a positive integer.",
+              "pitrRetentionPeriodUnitRequired": "Required."
             },
             "success": {
               "requestSuccess": "DR config updated."
@@ -1746,6 +1794,12 @@
         "CONNECTION_ERROR": "Connection Error",
         "TIMED_OUT": "Timed Out",
         "universePaused": "Universe Paused"
+      },
+      "enableAutomaticNodeAgentInstallationModal": {
+        "title": "Automatically Install Node Agent",
+        "infoText": "<paragraph>YugabyteDB Anywhere can automatically install node agent on universes that require it. Installation is quick and does not impact application or database performance.</paragraph><paragraph>Some universe tasks will be unavailable while installation is in progress. If other tasks are in progress (for example, backups), wait until they complete before starting automatic installation.</paragraph>",
+        "confirmationText": "Type YES to proceeed.",
+        "submitLabel": "Start"
       },
       "installNodeAgentModal": {
         "title": {
@@ -2403,6 +2457,8 @@
         "expand": "Expand",
         "viewLess": "Collapse",
         "showLog": "YugaWare Log",
+        "expandAll": "Expand All",
+        "collapseAll": "Collapse All",
         "percentComplete": "<b>{{percent}}</b>% Completed"
       },
       "banner": {
@@ -2466,8 +2522,8 @@
         "backupNew": {
           "tabLabel": "New Backup Config"
         },
-        "troubleshoot": {
-          "tabLabel": "Troubleshoot"
+        "perfAdvisor": {
+          "tabLabel": "Perf Advisor"
         }
       },
       "error": {
@@ -2585,6 +2641,14 @@
       "dataDogApiKey": "Datadog API Key",
       "dataDogURLPlaceholder": "Custom Datadog URL",
       "dataDogSite": "Datadog Site",
+      "lokiEndpoint": "Loki endpoint",
+      "lokiEndpointPlaceholder": "http://<loki-url>:<loki-port>",
+      "lokiEndpointTooltip": "Loki endpoint URL. Ensure loki is accessible through the mentioned port. YugbayteDB Anywhere will push logs to <endpoint>/loki/api/v1/push.",
+      "lokiUsername": "Username",
+      "lokiPassword": "Password",
+      "lokiOrganizationID": "Organization / Tenant ID (Optional)",
+      "lokiOrganizationIDTooltip": "Organization ID is required when multi-tenancy is set up in Loki. Optional for Grafana Cloud since the authentication reroutes requests according to scope.",
+      "authType": "Authentication Type",
       "siteURL": "Site URL",
       "splunkToken": "Splunk Access Token",
       "endpointURL": "Endpoint URL",
@@ -2982,14 +3046,14 @@
         "security": "Security",
         "securitySettings": "Security Settings",
         "advanced": "Advanced",
-        "proxySettings": "Proxy Settings",
-        "otherAdvancedSettings": "Other Advanced Settings",
+        "proxySettings": "Proxy Settings (Optional)",
+        "otherAdvancedSettings": "Other Advanced Settings (Optional)",
         "review": "Review",
         "summaryAndCost": "Summary and Cost"
       },
       "generalSettings": {
         "title": "General Settings",
-        "universeName":"Universe Name",
+        "universeName": "Universe Name",
         "universeNamePlaceholder": "Enter Universe Name",
         "cloudProvider": "Cloud Provider",
         "providerconfiguration": "Provider Configuration",
@@ -2999,17 +3063,281 @@
         "errMsg": {
           "universeNameRequired": "Universe name is required",
           "cloudProviderRequired": "Cloud provider is required",
+          "universeNameUnique": "Universe with this name already exists",
           "providerConfigurationRequired": "Provider configuration is required",
           "databaseVersionRequired": "Database version is required"
         }
       },
       "resilienceAndRegions": {
         "title": "Resilience",
+        "selectRegion": "Select Regions",
         "resilienceType": {
           "regular": "Regular Cluster",
           "singleNode": "Single-Node Cluster",
           "quickSetup": "Quick Setup"
+        },
+        "formType": {
+          "guidedMode": "Guided Mode",
+          "freeForm": "Free Form"
+        },
+        "singleNode": {
+          "availabilityZone": "Availability Zone",
+          "chooseAvailabilityZone": "Choose Availability Zone",
+          "node": "Node"
+        },
+        "helpText": "Advanced placement options such as  <a>Read Replicas</a>  and  <a>Geo Partitioning</a>  can be configured post cluster creation.",
+        "freeFormHelpText": "Set the replication factor for your data.  <a>What is this?</a>",
+        "freeFormFaultToleranceMinMsg": "Clusters with replication factor of 1 won't be resilient to outages and are subject to downtime during operations that require a restart.",
+        "regions": "Regions",
+        "replicationFactor": "Replication Factor",
+        "errMsg": {
+          "regions": "Region is required",
+          "resilienceFormMode": "Resilience form mode is required",
+          "resilienceType": "Resilience type is required",
+          "singleAvailabilityZoneRequired": "Availability zone is required for single node clusters",
+          "regionErr": "<b>Invalid region count!</b> You have selected <b>{{selected_regions}}</b> regions. To support the chosen fault tolerance <b>{{required_regions}}</b> regions are required. Update your selection to proceed.",
+          "azErrFew": "<b>Invalid availability zone count!</b> The selected regions provide total of <b>{{availability_zone}} availability zones</b>. To support the chosen fault tolerance <b>{{required_zones}} availability zones</b> are required. Update your selection to proceed.",
+          "azErrMany": "<b>Invalid availability zone count!</b> You have selected <b>{{selected_regions}} regions</b>. Considering 1 availability zone per region, this would exceed the requirement for <b>{{required_zones}} availability zones</b>. Update your selection to proceed.",
+          "nodeErr": "<b>Invalid region count!</b>  You have selected <b>{{selected_regions}} regions</b>. To support the chosen fault tolerance <b>1 region</b> is required. Update your selection to proceed."
+        },
+        "guidedMode": {
+          "instruction": "Set the resilience for your cluster",
+          "helpText": "What is this?",
+          "faultTolerance": "Fault Tolerance",
+          "REGION_LEVEL": {
+            "title": "Region Level",
+            "subText": "Resilient to region outages.",
+            "name": "region"
+          },
+          "NODE_LEVEL": {
+            "title": "Node Level",
+            "subText": "Resilient to node outages but not availability zone outages.",
+            "name": "node"
+          },
+          "AZ_LEVEL": {
+            "title": "Availability Zone Level",
+            "subText": "Resilient to availability zone outages.",
+            "name": "availability zone"
+          },
+          "NONE": {
+            "title": "None",
+            "subText": "Not resilient to outages."
+          },
+          "resilientTo": "Resilient to",
+          "outages": " outages",
+          "faultToleranceNone": {
+            "msg": "Clusters with no fault tolerance won't be resilient to outages and are subject to downtime during operations that require a restart.",
+            "caution": "Caution!"
+          }
+        },
+        "infoTooltips": {
+          "resilience": {
+            "title": "YugabyteDB 101",
+            "header": "What is Resilience?",
+            "msg": "Resiliency is the ability to withstand and recover from various types of failures. A resilient database system has a high fault tolerance. It is designed to maintain data integrity, accessibility, and continuity of operations, even in the face of adverse events.",
+            "learnMore": "Learn More"
+          },
+          "guidedMode": "Guided mode uses the selected cluster's fault tolerance to suggest optimal setup requirements for achieving the intended outcome.",
+          "freeForm": "Free form flow is optimal for users who want to create unique cluster setups. <b>(Advanced)</b>"
         }
+      },
+      "nodesAndAvailability": {
+        "freeForm": {
+          "nodes": "Nodes",
+          "totalNodes": "Total Nodes"
+        },
+        "guidedMode": {
+          "nodes": "Nodes",
+          "nodesPerAz": "Nodes per Availability Zone",
+          "totalNodes": "Total Nodes"
+        },
+        "availabilityZones": {
+          "title": "Availability Zones",
+          "region": "Region {{region_count}}",
+          "add_button": "Add Availability Zone"
+        },
+        "dedicatedNodes": {
+          "toggle": "Allocate dedicated nodes to master servers",
+          "disabledToolip": "you need atleast {{nodeCount}} nodes to enable this option",
+          "title": "Advanced Configuration",
+          "helpText": "Optimize performance by allocating dedicated resources for metadata operations.",
+          "helpTextLink": "<b>Note!</b> This will increase the number nodes in your cluster.  <a>Learn more.</a>",
+          "totalNodes": "Total Nodes",
+          "totalTServer": "Total T-Server Nodes",
+          "totalMaster": "Total Master Nodes"
+        },
+        "replicationFactorCard": {
+          "title": "Setup Requirements",
+          "minumum": "Minimum of Total {{total_nodes}} Nodes",
+          "nodeMinumum": "{{total_nodes}} Node",
+          "across": "Across",
+          "within": "Within",
+          "replicationFactor": "Replication Factor of {{replication_factor}}",
+          "acrossRegions": "Regions",
+          "acrossAvailabilityZone": "Availability Zones",
+          "acrossNodes": "Nodes",
+          "acrossNone": "Availability Zone",
+          "nodeOutage": "Available during {{node_count}} node outage",
+          "azOutage": "Available during {{node_count}} availability zone outage",
+          "regionOutage": "Available during {{node_count}} region outage",
+          "azNotAvailable": "Not available during availability zone outage",
+          "regionNotAvailable": "Not available during region outage",
+          "nodeNotAvailable": "Not available during node outage"
+        },
+        "replicationFactorInfoModal": {
+          "title": "YugabyteDB 101",
+          "rfFactor": "What is Replication Factor?",
+          "rfFactorAns": "YugabyteDB replicates data across fault domains (which, depending on the deployment, could be nodes, availability zones, or regions) in order to tolerate faults. The replication factor (RF) is the number of copies of data in a YugabyteDB cluster.",
+          "FtAndRf": "Correlation between Fault Tolerance and Replication Factor",
+          "FtAndRfAns": "To achieve a FT of <highlight>f</highlight> fault domains, the primary cluster has to be configured with a RF of at least <highlight>2f + 1</highlight>.",
+          "tip": "<b>Tip!</b> When using Guided Mode, the required replication factor is automatically configured and applied based on your selected fault tolerance. ",
+          "learn": "<a>Learn more about Replication Factor</a> and <a2>Fault Tolerance.</a2>"
+        },
+        "prefferedInfoModal": {
+          "title": "YugabyteDB 101",
+          "prefferedQues": "What is the preferred availability zone?",
+          "prefferedAns": "The preferred availability zones handle all read and write requests from your client application. For lower latencies and best performance, set the availability zones closest to your application as preferred.",
+          "links": "<a1>Learn more about preferred availability zone</a1> and <a2>how to select ranking.</a2>",
+          "note": "<b>Note:</b><br/> <li>If no zone is set as preferred, client requests are equally distributed across all zones.</li> <li>Certain exceptions, such as <a>follower reads</a>, will diverge read requests.</li><li>You can set or change the preferred availability zone after cluster creation.</li>"
+        },
+        "errMsg": {
+          "lessNodes": "<b>Invalid node count!</b>  You have selected <b>{{nodeCount}} nodes</b>. To support the chosen fault tolerance <b>{{faultToleranceNeeded}} nodes</b> are required. Update your selection to proceed. ",
+          "lessNodesDedicated": "<b>Invalid node count!</b>  You have selected <b>{{nodeCount}} T-server nodes</b>. To support the chosen fault tolerance <b>{{faultToleranceNeeded}} T-server nodes</b> are required. Update your selection to proceed. "
+        }
+      },
+      "instanceSettings": {
+        "title": "Instance Settings",
+        "validation": {
+          "invalidArchitecture": "Invalid CPU Architecture",
+          "positiveNumber": "{{field}} must be a positive number",
+          "minValue": "{{field}} must be at least {{min}}",
+          "maxValue": "{{field}} must be at most {{max}}",
+          "invalidStorageClass": "Invalid storage class",
+          "invalidMountPoint": "Mount point must be a valid path starting with '/'",
+          "invalidStorageType": "Invalid storage type"
+        }
+      },
+      "databaseSettings": {
+        "interface": "Interface",
+        "features": "Features",
+        "advFlags": "Advanced Flags",
+        "enableYsqlOrYcql": "Need to enable at least one endpoint among YSQL and YCQL",
+        "ysqlSettings": {
+          "toggleLabel": "Enable YSQL End Point",
+          "authToggleLabel": "Enable YSQL Authentication",
+          "authPwd": "YSQL Auth Password",
+          "authConfirmPwd": "Confirm YSQL Auth Password"
+        },
+        "ycqlSettings": {
+          "toggleLabel": "Enable YCQL End Point",
+          "authToggleLabel": "Enable YCQL Authentication",
+          "authPwd": "YCQL Auth Password",
+          "authConfirmPwd": "Confirm YCQL Auth Password"
+        },
+        "conPool": {
+          "label": "Enable Connection Pooling",
+          "helperMsg": "Use built-in YSQL service for maximizing the number of simultaneous<br /> connections to your database.",
+          "versionTooltip": "Built-in connection pooling is only available for database version 2024.2 or later.",
+          "YSQLWarn": "Enable YSQL first to use connection pooling.",
+          "dbVersionWarn": "Built-in connection pooling is only available for database version 2024.2 or later",
+          "overridePorts": "Override related YSQL Ports (Optional)",
+          "ysqlPortlabel": "YSQL Port",
+          "internalPortLabel": "Internal YSQL Port",
+          "defaultPortMsg": "Default {{port}}"
+        },
+        "pgCompatibility": {
+          "label": "Enhanced Postgres Compatibility",
+          "pgSubText": "Configure YSQL for maximum Postgres compatibility by enabling early access<br /> features. <1>Learn more</1>",
+          "tooltip": "Access to enhanced Postgres compatible features is only available for database version 2024.2 or later. <1>Learn more</1>"
+        }
+      },
+      "securitySettings": {
+        "publicIPTitle": "Public IP assignment",
+        "eitTitle": "Encryption in Transit Settings",
+        "earTitle": "Encryption at Rest Settings",
+        "publicIPField": {
+          "label": "Assign Public IP",
+          "subText": "Assign a public IP to the DB servers for connections over the internet."
+        },
+        "earField": {
+          "label": "Enable Encryption At Rest",
+          "kmsConfig": "Key Management Service Config",
+          "kmsConfigPlaceHolder": "Select Configuration"
+        },
+        "eitField": {
+          "useSameCert": "Use the same certificate for Node-to-Node and Client-to-Node encryption.",
+          "enableNodeToNodeEncryption": "Enable Node-to-Node Encryption",
+          "enableClientToNodeEncryption": "Enable Client-to-Node Encryption",
+          "selectRootCert": "Select Root Certificate",
+          "rootCertificatePlaceHolder": "Select",
+          "genSelfSignedCert": "Generate Self Signed Certificate",
+          "enableBothEncryption": "Enable Node to Node and Client-to-Node Encryption"
+        }
+      },
+      "proxySettings": {
+        "header": "Proxy Configuration",
+        "enableProxyServer": {
+          "toggleLabel": "Enable Proxy Server",
+          "toggleHelper": "Configure web proxies as gateways for traffic from your database nodes.",
+          "learnMore": "Learn more",
+          "secureWebProxyLabel": "Secure Web Proxy (HTTPS)",
+          "serverLabel": "Server",
+          "serverPlaceholder": "https://proxy.example.com",
+          "portLabel": "Port",
+          "portPlaceholder": "8080",
+          "webProxy": "Web Proxy (HTTP)",
+          "byPassProxy": "Bypass Proxy List",
+          "byPassListPlaceholder": "example.com:8080",
+          "byPassHelper": "Separate multiple values by pressing <b>Enter, Space,</b> or <b>Comma</b>."
+        }
+      },
+      "otherAdvancedSettings": {
+        "portsOverrideHeader": "Deployment Port Override",
+        "userTagsHeader": "User Tags",
+        "additionalSettingsHeader": "Other Additional Settings",
+        "deployPortsFeild": {
+          "defaultPortValue": "Default {{port}}",
+          "masterHttpPort": "Master HTTP Port",
+          "masterRpcPort": "Master RPC Port",
+          "tserverHttpPort": "T-Server HTTP Port",
+          "tserverRpcPort": "T-Server RPC Port",
+          "yqlServerHttpPort": "YCQL HTTP Port",
+          "yqlServerRpcPort": "YCQL Port",
+          "ysqlServerHttpPort": "YSQL HTTP Port",
+          "ysqlServerRpcPort": "YSQL Port",
+          "internalYsqlServerRpcPort": "Internal YSQL Port",
+          "redisServerHttpPort": "Redis HTTP Port",
+          "redisServerRpcPort": "Redis HTTP Port",
+          "nodeExporterPort": "Node Exporter Port",
+          "ybControllerrRpcPort": "YB Controller RPC Port",
+          "masterGroup": "Master Server",
+          "tServerGroup": "T-Server",
+          "ysqlGroup": "YSQL",
+          "ycqlGroup": "YCQL",
+          "redisGroup": "Redis",
+          "othersGroup": "Others"
+        },
+        "userTags": {
+          "subText": "Assign custom metadata to help manage, bill, or audit the resources.",
+          "learnMore": "Learn more",
+          "tagName": "Tag name",
+          "tagNamePlaceholder": "Ex : Department",
+          "tagValue": "Tag value",
+          "tagValuePlaceholder": "Ex : Dev",
+          "addTag": "Add User Tag"
+        },
+        "accessKeyLabel": "Access Key",
+        "arnField": "Instance Profile ARN"
+      },
+      "reviewAndSummary": {
+        "daily": "Daily",
+        "monthly": "Monthly",
+        "nodes": "Nodes",
+        "totalCores": "Total Cores",
+        "totalMemory": "Total Memory",
+        "totalStorage": "Total Storage",
+        "universe": "Universe",
+        "universeTotal": "Universe Total"
       }
     }
   }

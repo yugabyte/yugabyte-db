@@ -57,6 +57,20 @@ class NonTransactionalBatchWriterTest : public DocDBTestBase {
     return Status::OK();
   }
 
+  std::string GetEncodedHashPartitionKey(uint16_t hash) {
+    dockv::KeyBytes encoded_key;
+    dockv::DocKeyEncoderAfterTableIdStep(&encoded_key).Hash(
+        hash, dockv::KeyEntryValues());
+    return encoded_key.ToStringBuffer();
+  }
+
+  std::string GetEncodedHashPartitionKey(const std::string& key) {
+    KeyBytes encoded_key;
+    KeyEntryValue(key).AppendToKey(&encoded_key);
+
+    return encoded_key.ToStringBuffer();
+  }
+
   void AddApplyExternalTxn(
       docdb::LWKeyValueWriteBatchPB* put_batch, const TransactionId& txn_id, HybridTime commit_ht,
       const Slice& filter_start_key = "", const Slice& filter_end_key = "") {
@@ -65,6 +79,7 @@ class NonTransactionalBatchWriterTest : public DocDBTestBase {
     apply_txn->set_commit_hybrid_time(commit_ht.ToUint64());
     apply_txn->dup_filter_start_key(filter_start_key);
     apply_txn->dup_filter_end_key(filter_end_key);
+    apply_txn->set_filter_range_encoded(true);
   }
 
   void AddExternalIntentsWritePair(
@@ -206,7 +221,7 @@ TXN EXT 30303030-3030-3030-3030-303030303031 HT{ physical: 5000 w: 9 } -> \
   // Apply with a filter, [0,400).
   put_batch.Clear();
   AddApplyExternalTxn(
-      &put_batch, txn1, kWriteHT, "", dockv::PartitionSchema::EncodeMultiColumnHashValue(400));
+      &put_batch, txn1, kWriteHT, "", GetEncodedHashPartitionKey(400));
   ASSERT_OK(SendWriteBatch(put_batch, kWriteHT, kBatchHT));
 
   // Should apply the first 4 rows, and keep other the intents.
@@ -248,7 +263,7 @@ TXN EXT 30303030-3030-3030-3030-303030303031 HT{ physical: 5000 w: 9 } -> \
   // Apply with a filter, [700, "").
   put_batch.Clear();
   AddApplyExternalTxn(
-      &put_batch, txn1, kWriteHT, dockv::PartitionSchema::EncodeMultiColumnHashValue(700), "");
+      &put_batch, txn1, kWriteHT, GetEncodedHashPartitionKey(700), "");
   ASSERT_OK(SendWriteBatch(put_batch, kWriteHT, kBatchHT));
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
 SubDocKey(DocKey(0x0000, ["h0"], []), [HT{ physical: 6000 w: 1 }]) -> "value1"
@@ -282,8 +297,8 @@ TXN EXT 30303030-3030-3030-3030-303030303031 HT{ physical: 5000 w: 6 } -> \
   // Apply remaining section. There should be no intents remaining in the end.
   put_batch.Clear();
   AddApplyExternalTxn(
-      &put_batch, txn1, kWriteHT, dockv::PartitionSchema::EncodeMultiColumnHashValue(400),
-      dockv::PartitionSchema::EncodeMultiColumnHashValue(700));
+      &put_batch, txn1, kWriteHT, GetEncodedHashPartitionKey(400),
+      GetEncodedHashPartitionKey(700));
   ASSERT_OK(SendWriteBatch(put_batch, kWriteHT, kBatchHT));
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
 SubDocKey(DocKey(0x0000, ["h0"], []), [HT{ physical: 6000 w: 1 }]) -> "value1"
@@ -376,7 +391,7 @@ TXN EXT 30303030-3030-3030-3030-303030303031 HT{ physical: 5000 w: 9 } -> \
 
   // Apply with a filter, [0,r4).
   put_batch.Clear();
-  AddApplyExternalTxn(&put_batch, txn1, kWriteHT, "", "r4");
+  AddApplyExternalTxn(&put_batch, txn1, kWriteHT, "", GetEncodedHashPartitionKey("r4"));
   ASSERT_OK(SendWriteBatch(put_batch, kWriteHT, kBatchHT));
 
   // Should apply the first 4 rows, and keep the other intents.
@@ -417,7 +432,7 @@ TXN EXT 30303030-3030-3030-3030-303030303031 HT{ physical: 5000 w: 9 } -> \
 
   // Apply with a filter, [r7, "").
   put_batch.Clear();
-  AddApplyExternalTxn(&put_batch, txn1, kWriteHT, "r7", "");
+  AddApplyExternalTxn(&put_batch, txn1, kWriteHT, GetEncodedHashPartitionKey("r7"), "");
   ASSERT_OK(SendWriteBatch(put_batch, kWriteHT, kBatchHT));
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
 SubDocKey(DocKey([], ["r0"]), [HT{ physical: 6000 w: 1 }]) -> "value1"
@@ -450,7 +465,9 @@ TXN EXT 30303030-3030-3030-3030-303030303031 HT{ physical: 5000 w: 6 } -> \
 
   // Apply remaining section. All intents should be cleaned up.
   put_batch.Clear();
-  AddApplyExternalTxn(&put_batch, txn1, kWriteHT, "r4", "r7");
+  AddApplyExternalTxn(
+      &put_batch, txn1, kWriteHT, GetEncodedHashPartitionKey("r4"),
+      GetEncodedHashPartitionKey("r7"));
   ASSERT_OK(SendWriteBatch(put_batch, kWriteHT, kBatchHT));
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
 SubDocKey(DocKey([], ["r0"]), [HT{ physical: 6000 w: 1 }]) -> "value1"

@@ -149,6 +149,7 @@
 #include "storage/procarray.h"
 #include "storage/procsignal.h"
 #include "storage/sinvaladt.h"
+#include "yb/util/debug/leak_annotations.h"
 #include "yb/yql/pggate/ybc_pg_shared_mem.h"
 #include "yb_ash.h"
 #include "yb_query_diagnostics.h"
@@ -368,6 +369,7 @@ static bool connsAllowed = true;
 
 /* Start time of SIGKILL timeout during immediate shutdown or child crash */
 /* Zero means timeout is not running */
+/* YB: We also use the timeout for fast shutdown. */
 static time_t AbortStartTime = 0;
 
 /* Length of said timeout */
@@ -597,7 +599,10 @@ HANDLE		PostmasterHandle;
 char *
 postmaster_strdup(const char *in)
 {
-	return strdup(in);
+	char	   *result = strdup(in);
+
+	__lsan_ignore_object(result);
+	return result;
 }
 
 /*
@@ -1997,8 +2002,12 @@ ServerLoop(void)
 		 * shutting down.  This is a last measure to get them unwedged.
 		 *
 		 * Note we also do this during recovery from a process crash.
+		 *
+		 * YB Note: to decrease chance of hung backends, we also want to kill
+		 * backends if they're not responding after a certain time.
 		 */
-		if ((Shutdown >= ImmediateShutdown || (FatalError && !SendStop)) &&
+		if ((Shutdown >= ImmediateShutdown || (FatalError && !SendStop) ||
+			 (YBIsEnabledInPostgresEnvVar() && Shutdown >= FastShutdown)) &&
 			AbortStartTime != 0 &&
 			(now - AbortStartTime) >= SIGKILL_CHILDREN_AFTER_SECS)
 		{
@@ -3121,6 +3130,10 @@ pmdie(SIGNAL_ARGS)
 				pmState = PM_STOP_BACKENDS;
 			}
 
+			if (YBIsEnabledInPostgresEnvVar())
+				/* set stopwatch for them to die */
+				AbortStartTime = time(NULL);
+
 			/*
 			 * PostmasterStateMachine will issue any necessary signals, or
 			 * take the next step if no child processes need to be killed.
@@ -3218,6 +3231,14 @@ reaper(SIGNAL_ARGS)
 
 			foundProcStruct = true;
 
+			if (YbCrashInUnmanageableState)
+			{
+				ereport(WARNING,
+						(errmsg("not attempting to cleanup process %d because the postmaster is "
+								"already terminating active server processes", pid)));
+				break;
+			}
+
 			/*
 			 * We take a conservative approach and restart the postmaster if
 			 * a process dies while holding a lock. Otherwise, we can do some
@@ -3290,13 +3311,35 @@ reaper(SIGNAL_ARGS)
 
 			elog(INFO, "cleaning up after process with pid %d exited with status %d",
 				 pid, exitstatus);
-			if (!CleanupKilledProcess(proc))
+
+			MemoryContext yb_curr_cxt = CurrentMemoryContext;
+
+			PG_TRY();
 			{
+				if (!CleanupKilledProcess(proc))
+				{
+					YbCrashInUnmanageableState = true;
+					ereport(WARNING,
+							(errmsg("terminating active server processes due to backend crash that is "
+									"unable to be cleaned up")));
+				}
+				break;
+			}
+			PG_CATCH();
+			{
+				MemoryContextSwitchTo(yb_curr_cxt);
+				ErrorData  *yb_edata = CopyErrorData();
+
+				FlushErrorState();
+
 				YbCrashInUnmanageableState = true;
 				ereport(WARNING,
-						(errmsg("terminating active server processes due to backend crash that is "
-								"unable to be cleaned up")));
+						(errmsg("terminating active server processes due to an error"),
+						 errdetail("%s", yb_edata->message)));
+
+				break;
 			}
+			PG_END_TRY();
 			break;
 		}
 
@@ -3590,7 +3633,8 @@ reaper(SIGNAL_ARGS)
 		 * process responding to a termination request or terminating with a
 		 * FATAL.
 		 */
-		if (!foundProcStruct && !EXIT_STATUS_0(exitstatus) && !EXIT_STATUS_1(exitstatus))
+		if (!YbCrashInUnmanageableState && !foundProcStruct &&
+			!EXIT_STATUS_0(exitstatus) && !EXIT_STATUS_1(exitstatus))
 		{
 			YbCrashInUnmanageableState = true;
 			ereport(WARNING,
@@ -4838,12 +4882,8 @@ BackendInitialize(Port *port)
 	 * Save remote_host and remote_port in port structure (after this, they
 	 * will appear in log_line_prefix data for log messages).
 	 */
-	/*
-	 * YB: Allocate memory in the context using pstrdup so that with auth-backend
-	 * where the backend is closed after authentication, the memory is automatically freed.
-	 */
-	port->remote_host = pstrdup(remote_host);
-	port->remote_port = pstrdup(remote_port);
+	port->remote_host = strdup(remote_host);
+	port->remote_port = strdup(remote_port);
 
 	/* And now we can issue the Log_connections message, if wanted */
 	if (Log_connections)

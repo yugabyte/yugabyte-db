@@ -106,15 +106,12 @@ setup_node_agent_dir() {
   pushd "$INSTALL_PATH"
   echo "* Creating Node Agent Directory."
   #Create node-agent directory.
-  mkdir -p "$NODE_AGENT_HOME"
-  #Change permissions.
-  chmod 755 "$NODE_AGENT_HOME"
+  mkdir -m 755 -p "$NODE_AGENT_HOME"
   echo "* Changing directory to node agent."
   #Change directory.
   pushd "$NODE_AGENT_HOME"
   echo "* Creating Sub Directories."
-  mkdir -p cert config logs release
-  chmod -R 755 .
+  mkdir -m 755 -p cert config logs release
   popd
   save_node_agent_home
   export_path "$NODE_AGENT_PKG_PATH/bin"

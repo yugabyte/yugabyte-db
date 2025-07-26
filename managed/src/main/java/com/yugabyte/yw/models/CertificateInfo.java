@@ -133,6 +133,10 @@ public class CertificateInfo extends Model {
     return expiryDate;
   }
 
+  public void setExpiryDateIso(Date expiryDate) {
+    this.setExpiryDate(expiryDate);
+  }
+
   @ApiModelProperty(
       value = "Private key path",
       example = "/opt/yugaware/.../example.key.pem",
@@ -348,6 +352,13 @@ public class CertificateInfo extends Model {
     copy.setCustomCertInfo(certificateInfo.getCustomCertInfo());
     copy.save();
     return copy;
+  }
+
+  public CertificateInfo update(String certFilePath) throws IOException, NoSuchAlgorithmException {
+    setCertificate(certFilePath);
+    setChecksum(FileUtils.getFileChecksum(certFilePath));
+    save();
+    return this;
   }
 
   public CertificateInfo update(

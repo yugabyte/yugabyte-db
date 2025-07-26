@@ -299,6 +299,8 @@ GetBackendTypeDesc(BackendType backendType)
 		case YB_YSQL_CONN_MGR:
 			backendDesc = "yb-conn-mgr worker connection";
 			break;
+		case YB_YSQL_CONN_MGR_WAL_SENDER:
+			backendDesc = "yb-conn-mgr walsender";
 	}
 
 	return backendDesc;

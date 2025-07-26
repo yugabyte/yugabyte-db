@@ -72,12 +72,8 @@ public class UpdatePlacementInfo extends UniverseTaskBase {
   @Override
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    String hostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodetoNode();
-    YBClient client = null;
-    try {
-      log.info("Running {}: hostPorts={}.", getName(), hostPorts);
-      client = ybService.getClient(hostPorts, certificate);
+    try (YBClient client = ybService.getUniverseClient(universe)) {
+      log.info("Running {}: masterAddresses={}.", getName(), universe.getMasterAddresses());
 
       ModifyUniverseConfig modifyConfig =
           new ModifyUniverseConfig(
@@ -90,8 +86,6 @@ public class UpdatePlacementInfo extends UniverseTaskBase {
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);
-    } finally {
-      ybService.closeClient(client, hostPorts);
     }
   }
 

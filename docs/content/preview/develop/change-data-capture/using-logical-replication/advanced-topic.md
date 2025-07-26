@@ -80,8 +80,6 @@ This is illustrated in the following example. The client used for the example is
 
 ## Adding tables to publication
 
-Addition of tables to the streaming list after slot creation is currently a preview feature. To enable dynamic table addition, set the [cdcsdk_enable_dynamic_table_support](../../../../reference/configuration/yb-tserver/#cdcsdk-enable-dynamic-table-support) flag to true.
-
 The Publication's tables list can change in two ways. The first way is by adding a table to the publication by performing an alter publication.
 
 ```sql
@@ -225,13 +223,22 @@ END;
 $$
 SECURITY DEFINER;
 
+CREATE OR REPLACE PROCEDURE appuser.disable_catalog_version_check()
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    EXECUTE 'SET yb_disable_catalog_version_check = true';
+END;
+$$
+SECURITY DEFINER;
 
-REVOKE EXECUTE ON PROCEDURE appuser.set_yb_read_time FROM PUBLIC; 
-GRANT EXECUTE ON PROCEDURE appuser.set_yb_read_time TO appuser;
+REVOKE EXECUTE ON PROCEDURE appuser.disable_catalog_version_check FROM PUBLIC; 
+GRANT EXECUTE ON PROCEDURE appuser.disable_catalog_version_check TO appuser;
 ```
 
 With this setup, the command to be executed by the application user as part of the transaction prior to executing the snapshot SELECT query would be:
 
-```sh
-CALL set_yb_read_time('<consistent_point commit time> ht')
+```sql
+CALL set_yb_read_time('<consistent_point commit time> ht');
+CALL disable_catalog_version_check();
 ```

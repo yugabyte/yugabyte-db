@@ -38,7 +38,7 @@ class PgDocMetrics {
   void ReadRequest(TableType relation, uint64_t wait_time);
   void WriteRequest(TableType relation);
   void FlushRequest(uint64_t wait_time);
-  void RecordRequestMetrics(const LWPgsqlRequestMetricsPB& metrics);
+  void RecordRequestMetrics(const LWPgsqlRequestMetricsPB& metrics, bool is_read);
   void RecordStorageRowsRead(TableType relation, uint64_t row);
   void RecordRowRemovedByIndexRecheck();
 

@@ -9,6 +9,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.AllowedTasks;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstallNodeAgent;
 import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.NodeAgentClient;
+import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -158,6 +159,7 @@ public class NodeAgentInstallerImpl implements NodeAgentInstaller {
     }
     if (provider.getCloudCode() == CloudType.onprem && provider.getDetails().skipProvisioning) {
       params.sudoAccess = false;
+      params.sshUser = ShellProcessContext.DEFAULT_REMOTE_USER;
       params.nodeAgentInstallDir = provider.getYbHome();
     } else {
       params.sudoAccess = true;

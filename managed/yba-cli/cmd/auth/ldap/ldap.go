@@ -22,4 +22,5 @@ func init() {
 	LdapCmd.Flags().SortFlags = false
 	LdapCmd.AddCommand(configureLDAPCmd)
 	LdapCmd.AddCommand(disableLDAPCmd)
+	LdapCmd.AddCommand(describeLDAPCmd)
 }

@@ -37,9 +37,7 @@ public class NodeCertReloadTask extends NodeTaskBase {
     // fetch cert file from DB, it might have been changed during rolling restart
     String certFile = Universe.getOrBadRequest(params.getUniverseUUID()).getCertificateNodetoNode();
 
-    YBClient client = null;
-    try {
-      client = clientService.getClient(params.masterHostPorts, certFile);
+    try (YBClient client = clientService.getClient(params.masterHostPorts, certFile)) {
       log.info("about to reload certs for {} using certFile {}", params.nodeHostPort, certFile);
 
       client.reloadCertificates(HostAndPort.fromString(params.nodeHostPort));
@@ -47,9 +45,6 @@ public class NodeCertReloadTask extends NodeTaskBase {
     } catch (Exception e) {
       log.error("Certificate reload failed for node -> {}", params.nodeHostPort, e);
       throw new RuntimeException(e);
-
-    } finally {
-      clientService.closeClient(client, params.masterHostPorts);
     }
 
     log.info("Certificates reloaded for node -> {}", params.nodeHostPort);

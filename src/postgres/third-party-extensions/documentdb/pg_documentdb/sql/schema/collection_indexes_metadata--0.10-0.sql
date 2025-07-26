@@ -33,7 +33,11 @@ CREATE TYPE __API_CATALOG_SCHEMA__.index_spec_type_internal AS (
     index_version int,
 
     -- document expiry threshold for ttl index
-    index_expire_after_seconds int
+    index_expire_after_seconds int,
+
+    -- YB: ALTER TYPE ADD ATTRIBUTE not supported, so add the attributes as part of CREATE instead of in collection_indexes_metadata--0.23-0.sql.
+    cosmos_search_options __CORE_SCHEMA__.bson,
+    index_options __CORE_SCHEMA__.bson
 );
 
 CREATE DOMAIN __API_CATALOG_SCHEMA__.index_spec_type AS __API_CATALOG_SCHEMA__.index_spec_type_internal

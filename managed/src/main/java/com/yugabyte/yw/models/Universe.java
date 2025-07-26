@@ -9,6 +9,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.api.client.util.Throwables;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Common;
@@ -425,17 +426,22 @@ public class Universe extends Model {
    * @param clazz the attribute type.
    * @param customerId the customer ID primary key.
    * @param fieldName the name of the field.
-   * @return the attribute values for all universes.
+   * @param universeUuid the targeted universe UUID which can be null.
+   * @return the attribute values for all universes or the given targeted universe.
    */
   public static <T> Map<UUID, T> getUniverseDetailsFields(
-      Class<T> clazz, Long customerId, String fieldName) {
+      Class<T> clazz, Long customerId, String fieldName, @Nullable UUID universeUuid) {
+    String querySuffix = universeUuid == null ? "" : " and universe_uuid = :universeUuid";
     String query =
         String.format(
             "select universe_uuid, universe_details_json::jsonb->>'%s' as field from universe"
-                + " where customer_id = :customerId",
-            fieldName);
+                + " where customer_id = :customerId%s",
+            fieldName, querySuffix);
     SqlQuery sqlQuery = DB.sqlQuery(query);
     sqlQuery.setParameter("customerId", customerId);
+    if (universeUuid != null) {
+      sqlQuery.setParameter("universeUuid", universeUuid);
+    }
     return sqlQuery.findList().stream()
         .filter(r -> r.get("field") != null && clazz.isAssignableFrom(r.get("field").getClass()))
         .collect(
@@ -523,6 +529,36 @@ public class Universe extends Model {
       return Universe.saveDetails(universeUUID, updater, shouldIncrementVersion);
     } finally {
       UNIVERSE_KEY_LOCK.releaseLock(universeUUID);
+    }
+  }
+
+  /**
+   * Update a universe in mutual exclusion with universe lock. It does not update
+   * 'updateInProgress'. Instead, tryLock is used to provide provide mutual exclusion between the
+   * callback and the lock update for universe by an incoming task.
+   *
+   * <p>Note: Ensure that the callback finishes quickly.
+   */
+  public static void doIfUnlocked(UUID universeUuid, Consumer<Universe> callback) {
+    if (UNIVERSE_KEY_LOCK.tryLock(universeUuid)) {
+      try {
+        Universe.maybeGet(universeUuid)
+            .ifPresent(
+                u -> {
+                  if (u.getUniverseDetails().updateInProgress) {
+                    LOG.debug(
+                        "Universe {}({}) is already being updated",
+                        u.getName(),
+                        u.getUniverseUUID());
+                  } else {
+                    callback.accept(u);
+                  }
+                });
+      } finally {
+        UNIVERSE_KEY_LOCK.releaseLock(universeUuid);
+      }
+    } else {
+      LOG.info("Could not acquire key lock for universe {}", universeUuid);
     }
   }
 
@@ -1093,15 +1129,12 @@ public class Universe extends Model {
    */
   @JsonIgnore
   private HostAndPort getMasterLeaderInternal() {
-    final String masterAddresses = getMasterAddresses();
-    final String cert = getCertificateNodetoNode();
     final YBClientService ybService =
         StaticInjectorHolder.injector().instanceOf(YBClientService.class);
-    final YBClient client = ybService.getClient(masterAddresses, cert);
-    try {
+    try (YBClient client = ybService.getUniverseClient(this)) {
       return client.getLeaderMasterHostAndPort();
-    } finally {
-      ybService.closeClient(client, masterAddresses);
+    } catch (Exception e) {
+      throw Throwables.propagate(e);
     }
   }
 

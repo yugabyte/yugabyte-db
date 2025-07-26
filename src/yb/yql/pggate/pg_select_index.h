@@ -42,8 +42,6 @@ class PgSelectIndex : public PgSelect {
   explicit PgSelectIndex(const PgSession::ScopedRefPtr& pg_session);
 
  private:
-  // Get next batch of ybctids from either PgGate::cache or server.
-  Result<bool> GetNextYbctidBatch();
 
   // Prepare NESTED query for secondary index. This function is called when Postgres layer is
   // accessing the IndexTable via an outer select (Sequential or primary scans)

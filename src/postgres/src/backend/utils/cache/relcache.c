@@ -2622,9 +2622,14 @@ YbRunWithPrefetcher(YbcStatus (*func) (YbRunWithPrefetcherContext *),
 	size_t		starter_idx = kStartersCount - 1;
 
 	/*
-	 * YB_TODO: Decide whether skipping this block during IsBinaryUpgrade is the
-	 * right solution to avoid catalog refreshes during pg_upgrade, which can
-	 * confuse various DDLs we do on the PG15 catalog during the upgrade.
+	 * IsBinaryUpgrade=true indicates we are doing catalog restore during a major
+	 * version update. In this situation the only DDLs allowed are being performed
+	 * by the new-major-version ysqlsh and pg_restore process and they do not
+	 * increment catalog version. If we used response cache, because catalog version
+	 * does not change but these DDLs do change catalogs, the cached metadata will
+	 * become stale for subsequent connections used for restoring catalog metadata.
+	 * When a subsequent connection works with stale catalog metadata to do retore
+	 * work, it can lead to incorrect catalog restore result.
 	 */
 	if (!YBCIsInitDbModeEnvVarSet() &&
 		!IsBinaryUpgrade &&
@@ -4743,10 +4748,9 @@ RelationClearRelation(Relation relation, bool rebuild)
 		 * have different types of stats.
 		 *
 		 * If we don't want to keep the stats, unlink the stats and relcache
-		 * entry (and do so before entering the "critical section"
-		 * below). This is important because otherwise
-		 * PgStat_TableStatus->relation would get out of sync with
-		 * relation->pgstat_info.
+		 * entry (and do so before entering the "critical section" below).
+		 * This is important because otherwise PgStat_TableStatus->relation
+		 * would get out of sync with relation->pgstat_info.
 		 */
 		keep_pgstats = relation->rd_rel->relkind == newrel->rd_rel->relkind;
 		if (!keep_pgstats)
@@ -5197,10 +5201,10 @@ static void
 AssertPendingSyncConsistency(Relation relation)
 {
 	bool		relcache_verdict =
-	RelationIsPermanent(relation) &&
-	((relation->rd_createSubid != InvalidSubTransactionId &&
-	  RELKIND_HAS_STORAGE(relation->rd_rel->relkind)) ||
-	 relation->rd_firstRelfilenodeSubid != InvalidSubTransactionId);
+		RelationIsPermanent(relation) &&
+		((relation->rd_createSubid != InvalidSubTransactionId &&
+		  RELKIND_HAS_STORAGE(relation->rd_rel->relkind)) ||
+		 relation->rd_firstRelfilenodeSubid != InvalidSubTransactionId);
 
 	Assert(relcache_verdict == RelFileNodeSkippingWAL(relation->rd_node));
 
@@ -9192,6 +9196,21 @@ YbRelationIdIsInInitFileAndNotCached(Oid relationId)
 			relationId == TriggerRelidNameIndexId ||
 			relationId == DatabaseNameIndexId ||
 			relationId == SharedSecLabelObjectIndexId);
+}
+
+bool
+YbSharedRelationIdNeedsGlobalImpact(Oid relationId)
+{
+	Assert(IsSharedRelation(relationId));
+	/*
+	 * These rel ids are shared relations that can exist in tserver response
+	 * cache but not in PG catalog cache because they do not have a PG catalog
+	 * cache. If a DDL writes to such a shared relation, it needs to have
+	 * global impact. We add such rel ids here on a case by case basis when
+	 * they are identified.
+	 */
+	return (relationId == DbRoleSettingRelationId ||
+			relationId == DbRoleSettingDatidRolidIndexId);
 }
 
 /*

@@ -139,7 +139,7 @@ Status CDCSDKTestBase::SetUpWithParams(
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_bind_address) = Format("$0:$1", pg_addr, pg_port);
   }
 
-  RETURN_NOT_OK(test_cluster()->StartSync());
+  RETURN_NOT_OK(test_cluster()->Start());
   RETURN_NOT_OK(test_cluster()->WaitForTabletServerCount(replication_factor));
   RETURN_NOT_OK(WaitForInitDb(test_cluster()));
   test_cluster_.client_ = VERIFY_RESULT(test_cluster()->CreateClient());
@@ -148,6 +148,8 @@ Status CDCSDKTestBase::SetUpWithParams(
   } else {
     RETURN_NOT_OK(test_cluster_.InitPostgres());
   }
+  auto pg_ts = test_cluster_.mini_cluster_->mini_tablet_server(test_cluster_.pg_ts_idx_);
+  RETURN_NOT_OK(pg_ts->StartPgIfConfigured());
   RETURN_NOT_OK(CreateDatabase(&test_cluster_, kNamespaceName, colocated));
 
   cdc_proxy_ = GetCdcProxy();
@@ -535,6 +537,21 @@ Result<master::ListCDCStreamsResponsePB> CDCSDKTestBase::ListDBStreams() {
   }
 
   return resp;
+}
+
+// Helper method to convert a hybrid time value to a timestamp string with
+// a UTC timezone (indicated by +00 at the end).
+Result<std::string> CDCSDKTestBase::HybridTimeToReadableString(uint64_t hybrid_time) {
+  uint64_t micros_since_epoch = hybrid_time >> 12;
+  time_t unix_time = static_cast<time_t>(micros_since_epoch / 1'000'000);
+  uint64_t microseconds = micros_since_epoch % 1'000'000;
+  char buf[64];
+  struct tm tm_info;
+  if (gmtime_r(&unix_time, &tm_info) == nullptr) {
+    return "Invalid time";
+  }
+  strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm_info);
+  return Format("$0.$1+00", buf, StringPrintf("%06" PRIu64, microseconds));
 }
 
 }  // namespace cdc

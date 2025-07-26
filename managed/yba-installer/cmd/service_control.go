@@ -20,9 +20,9 @@ var startCmd = &cobra.Command{
     The start command can be invoked to start any service that is required for the
     running of YugabyteDB Anywhere. Can be invoked without any arguments to start all
     services, or invoked with a specific service name to start only that service.
-    Valid service names: postgres, prometheus, yb-platform`,
+    Valid service names: postgres, prometheus, yb-platform, performance-advisor`,
 	Args:      cobra.MatchAll(cobra.MaximumNArgs(1), cobra.OnlyValidArgs),
-	ValidArgs: serviceOrder,
+	ValidArgs: []string{YbPlatformServiceName, PostgresServiceName, PrometheusServiceName, PerfAdvisorServiceName},
 	PreRun: func(cmd *cobra.Command, args []string) {
 		if !common.RunFromInstalled() {
 			path := filepath.Join(common.YbactlInstallDir(), "yba-ctl")
@@ -51,15 +51,15 @@ var startCmd = &cobra.Command{
 			if err := common.Initialize(); err != nil {
 				log.Fatal("Failed to initialize common components: " + err.Error())
 			}
-			for _, name := range serviceOrder {
-				if name == "yb-platform" {
+			for service := range serviceManager.Services() {
+				if service.Name() == "yb-platform" {
 					log.Info("Generating yb-platform config with fixPaths set to true")
-					plat := services[name].(Platform)
+					plat := service.(Platform)
 					plat.FixPaths = true
 					config.GenerateTemplate(plat)
 				}
-				if err := services[name].Initialize(); err != nil {
-					log.Fatal("Failed to initialize " + name + ": " + err.Error())
+				if err := service.Initialize(); err != nil {
+					log.Fatal("Failed to initialize " + service.Name() + ": " + err.Error())
 				}
 			}
 			state.Initialized = true
@@ -81,13 +81,13 @@ var startCmd = &cobra.Command{
 			log.Fatal("error updating permissions for data and software directories: " + err.Error())
 		}
 		if len(args) == 1 {
-			if err := services[args[0]].Start(); err != nil {
+			if err := serviceManager.ServiceByName(args[0]).Start(); err != nil {
 				log.Fatal("Failed to start " + args[0] + ": " + err.Error())
 			}
 		} else {
-			for _, name := range serviceOrder {
-				if err := services[name].Start(); err != nil {
-					log.Fatal("Failed to start " + name + ": " + err.Error())
+			for service := range serviceManager.Services() {
+				if err := service.Start(); err != nil {
+					log.Fatal("Failed to start " + service.Name() + ": " + err.Error())
 				}
 			}
 		}
@@ -102,9 +102,10 @@ var stopCmd = &cobra.Command{
     The stop command can be invoked to stop any service that is required for the
     running of YugabyteDB Anywhere. Can be invoked without any arguments to stop all
     services, or invoked with a specific service name to stop only that service.
-    Valid service names: postgres, prometheus, yb-platform`,
-	Args:      cobra.MatchAll(cobra.MaximumNArgs(1), cobra.OnlyValidArgs),
-	ValidArgs: serviceOrder,
+    Valid service names: postgres, prometheus, yb-platform, performance-advisor`,
+	Args: cobra.MatchAll(cobra.MaximumNArgs(1), cobra.OnlyValidArgs),
+	// TODO: This should be populated from the service manager.
+	ValidArgs: []string{YbPlatformServiceName, PostgresServiceName, PrometheusServiceName, PerfAdvisorServiceName},
 	PreRun: func(cmd *cobra.Command, args []string) {
 		if !common.RunFromInstalled() {
 			path := filepath.Join(common.YbactlInstallDir(), "yba-ctl")
@@ -114,13 +115,13 @@ var stopCmd = &cobra.Command{
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 1 {
-			if err := services[args[0]].Stop(); err != nil {
+			if err := serviceManager.ServiceByName(args[0]).Stop(); err != nil {
 				log.Fatal("Failed to stop " + args[0] + ": " + err.Error())
 			}
 		} else {
-			for _, name := range serviceOrder {
-				if err := services[name].Stop(); err != nil {
-					log.Fatal("Failed to stop " + name + ": " + err.Error())
+			for service := range serviceManager.Services() {
+				if err := service.Stop(); err != nil {
+					log.Fatal("Failed to stop " + service.Name() + ": " + err.Error())
 				}
 			}
 		}
@@ -135,9 +136,9 @@ var restartCmd = &cobra.Command{
     The restart command can be invoked to stop any service that is required for the
     running of YugabyteDB Anywhere. Can be invoked without any arguments to restart all
     services, or invoked with a specific service name to restart only that service.
-    Valid service names: postgres, prometheus, yb-platform`,
+    Valid service names: postgres, prometheus, yb-platform, performance-advisor`,
 	Args:      cobra.MatchAll(cobra.MaximumNArgs(1), cobra.OnlyValidArgs),
-	ValidArgs: serviceOrder,
+	ValidArgs: []string{YbPlatformServiceName, PostgresServiceName, PrometheusServiceName, PerfAdvisorServiceName},
 	PreRun: func(cmd *cobra.Command, args []string) {
 		if !common.RunFromInstalled() {
 			path := filepath.Join(common.YbactlInstallDir(), "yba-ctl")
@@ -147,13 +148,13 @@ var restartCmd = &cobra.Command{
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 1 {
-			if err := services[args[0]].Restart(); err != nil {
+			if err := serviceManager.ServiceByName(args[0]).Restart(); err != nil {
 				log.Fatal("Failed to restart " + args[0] + ": " + err.Error())
 			}
 		} else {
-			for _, name := range serviceOrder {
-				if err := services[name].Restart(); err != nil {
-					log.Fatal("Failed to restart " + name + ": " + err.Error())
+			for service := range serviceManager.Services() {
+				if err := service.Restart(); err != nil {
+					log.Fatal("Failed to restart " + service.Name() + ": " + err.Error())
 				}
 			}
 		}

@@ -233,6 +233,7 @@ class BootstrapTest : public LogTestBase {
       .metric_registry = nullptr,
       .log_anchor_registry = log_anchor_registry,
       .tablet_options = tablet_options,
+      .mutable_tablet_options = MutableTabletOptions{},
       .log_prefix_suffix = std::string(),
       .transaction_participant_context = nullptr,
       .local_tablet_filter = client::LocalTabletFilter(),

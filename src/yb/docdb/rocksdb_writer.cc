@@ -992,6 +992,60 @@ Status RemoveIntentsContext::DeleteVectorIds(
   return Status::OK();
 }
 
+struct ExternalTxnApplyStateData {
+  HybridTime commit_ht;
+  SubtxnSet aborted_subtransactions;
+  IntraTxnWriteId write_id = 0;
+
+  // Used by xCluster to only apply intents that match the key range of the matching producer
+  // tablet.
+  KeyBounds filter_range;
+  bool filter_range_encoded;
+
+  static Result<ExternalTxnApplyState> FromPB(const LWKeyValueWriteBatchPB& put_batch) {
+    ExternalTxnApplyState result;
+    for (const auto& apply : put_batch.apply_external_transactions()) {
+      auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(apply.transaction_id()));
+      ExternalTxnApplyStateData apply_data;
+      apply_data.commit_ht = HybridTime(apply.commit_hybrid_time());
+      apply_data.aborted_subtransactions =
+          VERIFY_RESULT(SubtxnSet::FromPB(apply.aborted_subtransactions().set()));
+      apply_data.filter_range = KeyBounds(apply.filter_start_key(), apply.filter_end_key());
+      apply_data.filter_range_encoded = apply.filter_range_encoded();
+
+      result.emplace(std::move(txn_id), std::move(apply_data));
+    }
+
+    return result;
+  }
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(commit_ht, aborted_subtransactions, write_id);
+  }
+
+  // Check the the encoded key is within the bounds of the xCluster producer tablet key range that
+  // replicated the APPLY.
+  Result<bool> IsWithinBounds(Slice encoded_key) const {
+    if (filter_range_encoded) {
+      return filter_range.IsWithinBounds(encoded_key);
+    }
+
+    // (DEPRECATE_EOL 2.27) Handle the case when producer is still on an older version.
+    // Remove the key entry prefix byte(s) and verify the key is valid.
+    auto output_key_value = encoded_key;
+    auto output_key_value_byte = dockv::ConsumeKeyEntryType(&output_key_value);
+    SCHECK_NE(output_key_value_byte, KeyEntryType::kInvalid, Corruption, "Wrong first byte");
+    if (output_key_value_byte != KeyEntryType::kUInt16Hash) {
+      DCHECK(false) << "Expected hash partitioned key, but got: " << output_key_value_byte;
+      YB_LOG_EVERY_N_SECS(WARNING, 600)
+          << "Non Hash partitioned record of key type '" << output_key_value_byte
+          << "' detected on xCluster target. Report to the YugabyteDB support team if this error "
+             "persists even after both xCluster Universes have been upgraded to the latest version";
+    }
+    return filter_range.IsWithinBounds(output_key_value);
+  }
+};
+
 NonTransactionalBatchWriter::NonTransactionalBatchWriter(
     std::reference_wrapper<const LWKeyValueWriteBatchPB> put_batch, HybridTime write_hybrid_time,
     HybridTime batch_hybrid_time, rocksdb::DB* intents_db, rocksdb::WriteBatch* intents_write_batch,
@@ -1019,26 +1073,6 @@ Status NotEnoughBytes(size_t present, size_t required, const Slice& full) {
   return STATUS_FORMAT(
       Corruption, "Not enough bytes in external intents $0 while $1 expected, full: $2", present,
       required, full.ToDebugHexString());
-}
-
-Result<ExternalTxnApplyState> ProcessApplyExternalTransactions(
-    const LWKeyValueWriteBatchPB& put_batch) {
-  ExternalTxnApplyState result;
-  for (const auto& apply : put_batch.apply_external_transactions()) {
-    auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(apply.transaction_id()));
-    auto commit_ht = HybridTime(apply.commit_hybrid_time());
-    auto aborted_subtransactions =
-        VERIFY_RESULT(SubtxnSet::FromPB(apply.aborted_subtransactions().set()));
-    result.emplace(
-        txn_id, ExternalTxnApplyStateData{
-                    .commit_ht = commit_ht,
-                    .aborted_subtransactions = aborted_subtransactions,
-                    // If filter keys are not specified then default to full key range.
-                    .filter_range = {apply.filter_start_key(), apply.filter_end_key()},
-                });
-  }
-
-  return result;
 }
 
 }  // namespace
@@ -1087,11 +1121,9 @@ Result<bool> NonTransactionalBatchWriter::PrepareApplyExternalIntentsBatch(
     auto output_value = input_value.Prefix(value_size);
     input_value.remove_prefix(value_size);
 
-    // Remove the key entry prefix byte(s) and verify the key is valid.
-    auto output_key_value = output_key;
-    auto output_key_value_byte = dockv::ConsumeKeyEntryType(&output_key_value);
-    SCHECK_NE(output_key_value_byte, KeyEntryType::kInvalid, Corruption, "Wrong first byte");
-    if (!apply_data->filter_range.IsWithinBounds(output_key_value)) {
+    if (!VERIFY_RESULT(apply_data->IsWithinBounds(output_key))) {
+      VLOG(1) << "Skipping APPLY of external intent with key: " << output_key.ToDebugHexString()
+              << " since it is outside of filter range: " << apply_data->filter_range.ToString();
       // Skip this entry. Ensure that we don't delete this batch, as another apply will need this
       // skipped intent.
       can_delete_entire_batch = false;
@@ -1213,7 +1245,7 @@ Result<bool> NonTransactionalBatchWriter::AddEntryToWriteBatch(
 }
 
 Status NonTransactionalBatchWriter::Apply(rocksdb::DirectWriteHandler& handler) {
-  auto apply_external_transactions = VERIFY_RESULT(ProcessApplyExternalTransactions(put_batch_));
+  auto apply_external_transactions = VERIFY_RESULT(ExternalTxnApplyStateData::FromPB(put_batch_));
   if (!apply_external_transactions.empty()) {
     DCHECK(intents_db_iter_.Initialized());
     RETURN_NOT_OK(PrepareApplyExternalIntents(&apply_external_transactions, handler));

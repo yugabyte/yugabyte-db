@@ -273,6 +273,7 @@ public class CreateBackup extends UniverseTaskBase {
       return;
     }
     UUID taskUUID = commissioner.submit(TaskType.CreateBackup, taskParams);
+    // backupTaskUUID is present iff its an incremental backup
     ScheduleTask.create(taskUUID, schedule.getScheduleUUID());
     if (schedule.isBacklogStatus() && baseBackupUUID == null) {
       schedule.updateBacklogStatus(false);

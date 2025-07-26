@@ -35,10 +35,13 @@ pipelines:
 
 deployments:
   yba:
+    namespace: ${DEVSPACE_NAMESPACE}
     helm:
       releaseName: ${YBA_HELM_RELEASE_NAME}
       chart:
         name: ../../charts/stable/yugaware/
+      valuesFiles:
+        -  ${YBA_ADDITIONAL_VALUES_FILE}
       values:
         image:
           repository: quay.io/yugabyte/yugaware-itest
@@ -47,10 +50,14 @@ deployments:
           service:
             annotations:
               'networking.gke.io/load-balancer-type': Internal
+              'service.beta.kubernetes.io/azure-load-balancer-internal' : 'true'
+              'service.beta.kubernetes.io/aws-load-balancer-internal': 'true'
             type: LoadBalancer
-          storage: 100Gi
-          storageClass: yb-standard
-      # valuesFiles:
+          serviceAccountAnnotations:
+            eks.amazonaws.com/role-arn: "${AWS_ROLE_ARN}"
+            eks.amazonaws.com/sts-regional-endpoints: "true"
+          storage: ${STORAGE_SIZE}
+          storageClass: ${STORAGE_CLASS}
       # -
 
 dev:
@@ -141,3 +148,18 @@ vars:
   YBA_HELM_RELEASE_NAME:
     source: env
     default: "yba-${DEVSPACE_NAMESPACE}"
+  STORAGE_CLASS:
+    source: env
+    default: "yb-standard"
+  STORAGE_SIZE:
+    source: env
+    default: "100Gi"
+  AWS_ROLE_ARN:
+    source: env
+    default: ""
+  ENABLE_AWS_IAM_ROLE:
+    source: env
+    default: "false"
+  YBA_ADDITIONAL_VALUES_FILE:
+    source: env
+    default: "/dev/null"

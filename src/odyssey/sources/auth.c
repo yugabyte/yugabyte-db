@@ -1038,6 +1038,95 @@ static inline int od_auth_backend_sasl_final(od_server_t *server,
 
 #endif
 
+/*
+ * YB: Fetch next message of type KIWI_FE_PASSWORD_MESSAGE from
+ * client and forward to server, ignoring all other client messages.
+ * Currently, waits indefinitely until client sends appropriate
+ * message.
+ * TODO (#27709): Add cumulative timeout of `client_login_timeout` ms.
+ */
+static inline int yb_od_relay_client_to_auth_server(od_server_t *server,
+	od_client_t *client, od_instance_t *instance, char *context)
+{
+	kiwi_fe_type_t type;
+	machine_msg_t *msg = NULL;
+
+	while (true) {
+		msg = od_read(&client->io, UINT32_MAX);
+		if (msg == NULL) {
+			od_error(&instance->logger, context,
+				client, NULL,
+				"read from client error: %s", od_io_error(&client->io));
+			return -1;
+		}
+
+		type = *(char *)machine_msg_data(msg);
+
+		/*
+		* Packet type `KIWI_FE_PASSWORD_MESSAGE` is used by client
+		* to respond to the server packet for auth message
+		*/
+		if (type == KIWI_FE_PASSWORD_MESSAGE)
+			break;
+		machine_msg_free(msg);
+	}
+
+	od_debug(&instance->logger, context, client, server,
+		"Received the client response");
+
+	/* Forward the password response packet to the database. */
+	int rc = od_write(&server->io, msg);
+	if (rc == -1) {
+		od_error(
+			&instance->logger, context, client, server,
+			"Unable to forward the client response to the server");
+		return -1;
+	}
+
+	od_debug(&instance->logger, context, client, server,
+		"Forwarded the client response to the server");
+
+	return 0;
+}
+
+/*
+ * YB: Fetch next message of server (if not already passed as `msg`),
+ * TODO (#27709): Add timeout of `client_login_timeout` ms.
+ */
+static inline int yb_od_relay_auth_server_to_client(od_server_t *server, machine_msg_t *msg,
+	od_client_t *client, od_instance_t *instance, char *context)
+{
+	kiwi_be_type_t type;
+
+	if(msg == NULL) {
+		/* Waiting for server response */
+		msg = od_read(&server->io, UINT32_MAX);
+		if(msg == NULL) {
+			od_error(&instance->logger, context, NULL, server,
+				"read from server error: %s", od_io_error(&server->io));
+			machine_msg_free(msg);
+			return -1;
+
+		}
+	}
+
+	type = *(char *)machine_msg_data(msg);
+	od_debug(&instance->logger, context, NULL, server,
+		"received server packet type: %s",
+		kiwi_be_type_to_string(type));
+
+	int rc = od_write(&client->io, msg);
+		if (rc == -1) {
+			od_error(&instance->logger, context, client, NULL,
+				"write to client error: %s", od_io_error(&client->io));
+			machine_msg_free(msg);
+			return -1;
+		}
+	od_debug(&instance->logger, context, client, server,
+		"Forwarded the server response to the client");
+	return 0;
+}
+
 int od_auth_backend(od_server_t *server, machine_msg_t *msg,
 		    od_client_t *client)
 {
@@ -1063,7 +1152,7 @@ int od_auth_backend(od_server_t *server, machine_msg_t *msg,
 	if (client->yb_is_authenticating)
 	{
 		/* AuthenticationOk */
-		if (auth_type == 0) {
+		if (auth_type == OD_AUTH_OK) {
 			machine_msg_free(msg);
 			return 0;
 		}
@@ -1071,60 +1160,42 @@ int od_auth_backend(od_server_t *server, machine_msg_t *msg,
 		/*
 		 * AuthenticationCleartextPassword and AuthenticationMD5Password.
 		 *
-		 * Other possible values are AuthenticationSASL, 
-		 * AuthenticationSASLContinue and AuthenticationSASLFinal which are
-		 * unsupported by YSQL connection manager.
+		 * Other possible values are AuthenticationSASL,
 		 */
-		assert(auth_type == 3 || auth_type == 5);
+#ifdef USE_SCRAM
+		assert(auth_type == OD_AUTH_CLEARTEXT
+			|| auth_type == OD_AUTH_MD5
+			|| auth_type == OD_AUTH_SASL
+			|| auth_type == OD_AUTH_SASL_CONTINUE
+			|| auth_type == OD_AUTH_SASL_FINAL
+		);
+#else
+		assert(auth_type == OD_AUTH_CLEARTEXT
+			|| auth_type == OD_AUTH_MD5);
+#endif
 		assert(client->yb_external_client != NULL);
 		assert(instance->config.yb_use_auth_backend);
 
 		kiwi_fe_type_t type;
 		od_client_t *external_client = client->yb_external_client;
 
-		/* forward the request for password to the client. */
-		rc = od_write(&external_client->io, msg);
-		if (rc == -1) {
-			od_error(&instance->logger, "auth", external_client, NULL,
-				"error while forwarding the auth packet to the client: %s",
-				od_io_error(&external_client->io));
+
+		rc = yb_od_relay_auth_server_to_client(server, msg, external_client,
+			instance, yb_authtype_to_string(auth_type));
+		if(rc == -1) {
 			return -1;
 		}
 
-		/* wait for password response packet from the client. */
-		while (true) {
-			msg = od_read(&external_client->io, UINT32_MAX);
-			if (msg == NULL) {
-				od_error(&instance->logger, "auth",
-					external_client, NULL,
-					"read error while expecting a password response packet from"
-					" the client: %s", od_io_error(&external_client->io));
-				return -1;
-			}
-
-			type = *(char *)machine_msg_data(msg);
-
-			/*
-			 * Packet type `KIWI_FE_PASSWORD_MESSAGE` is used by client
-			 * to respond to the server packet for:
-			 * 		GSSAPI, SSPI and password response messages
-			 */
-			if (type == KIWI_FE_PASSWORD_MESSAGE)
-				break;
-			machine_msg_free(msg);
+		if(auth_type == OD_AUTH_SASL_FINAL) {
+			/* No client response expected for SASL Final */
+			return 0;
 		}
 
-		/* Forward the password response packet to the database. */
-		rc = od_write(&server->io, msg);
-		if (rc == -1) {
-			od_error(
-				&instance->logger, "auth", client, server,
-				"Unable to forward the password response to the server");
+		rc = yb_od_relay_client_to_auth_server(server, external_client,
+			instance, yb_authtype_to_string(auth_type));
+		if(rc == -1) {
 			return -1;
 		}
-
-		od_debug(&instance->logger, "auth", client, server,
-			"Forwarded the password response to the server");
 
 		return 0;
 	}

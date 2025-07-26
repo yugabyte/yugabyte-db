@@ -13,8 +13,6 @@
 
 #pragma once
 
-#include <memory>
-
 #include "yb/master/master_fwd.h"
 #include "yb/master/xcluster/master_xcluster_types.h"
 
@@ -83,6 +81,7 @@ class XClusterManagerIf {
 
   virtual bool IsTableReplicationConsumer(const TableId& table_id) const = 0;
 
+  virtual bool IsNamespaceInAutomaticDDLMode(const NamespaceId& namespace_id) const = 0;
   virtual bool IsNamespaceInAutomaticModeSource(const NamespaceId& namespace_id) const = 0;
   virtual bool IsNamespaceInAutomaticModeTarget(const NamespaceId& namespace_id) const = 0;
 

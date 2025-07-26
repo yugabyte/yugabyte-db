@@ -203,6 +203,25 @@ public class BackupTableParams extends TableManagerParams {
   @Setter
   private KubernetesResourceDetails kubernetesResourceDetails;
 
+  // When set, ybc backups will ignore all new flags that came with roles backup. Useful for taking
+  // backups on older universes.
+  // Default to True for backwards compatibility
+  @ApiModelProperty(hidden = true)
+  @Getter
+  @Setter
+  private Boolean revertToPreRolesBehaviour = true;
+
+  // False until fully tested
+  @ApiModelProperty(value = "Add role exists checks for roles metadata", hidden = true)
+  @Getter
+  @Setter
+  private Boolean dumpRoleChecks = false;
+
+  @ApiModelProperty(hidden = true)
+  @Getter
+  @Setter
+  private Boolean enableBackupsDuringDDL = false;
+
   @ToString
   public static class ParallelBackupState {
     public String nodeIp;
@@ -259,6 +278,8 @@ public class BackupTableParams extends TableManagerParams {
     this.enableVerboseLogs = backupRequestParams.enableVerboseLogs;
     this.setPointInTimeRestoreEnabled(backupRequestParams.enablePointInTimeRestore);
     this.setKubernetesResourceDetails(backupRequestParams.getKubernetesResourceDetails());
+    // this.useRoles = backupRequestParams.getUseRoles();
+    this.dumpRoleChecks = backupRequestParams.getDumpRoleChecks();
   }
 
   @JsonIgnore
@@ -313,6 +334,9 @@ public class BackupTableParams extends TableManagerParams {
     this.backupParamsIdentifier = tableParams.backupParamsIdentifier;
     this.tableByTableBackup = tableParams.tableByTableBackup;
     this.setPointInTimeRestoreEnabled(tableParams.isPointInTimeRestoreEnabled());
+    // this.useRoles = tableParams.getUseRoles();
+    this.revertToPreRolesBehaviour = tableParams.getRevertToPreRolesBehaviour();
+    this.dumpRoleChecks = tableParams.getDumpRoleChecks();
   }
 
   @JsonIgnore

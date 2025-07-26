@@ -15,7 +15,7 @@ type: docs
 
 YugabyteDB supports the PostgreSQL `pg_stat_activity` view to analyze live queries. This view returns analytic and diagnostic information about active YugabyteDB server processes and queries. The view returns one row per server process, and displays information related to the current status of the database connection.
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 ## Supported fields
 

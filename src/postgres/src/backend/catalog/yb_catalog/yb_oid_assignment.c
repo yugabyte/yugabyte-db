@@ -42,16 +42,17 @@ static bool yb_sequence_oid_assignment_exists = false;
  */
 #define YB_ENUM_LABEL_ASSIGNMENT_MAP_KEY_SIZE (10 + 1 + NAMEDATALEN)
 
-typedef struct YbEnumLabelAssignmentMapEntry {
+typedef struct YbEnumLabelAssignmentMapEntry
+{
 	/* encodes enum_oid, label */
-	char key[YB_ENUM_LABEL_ASSIGNMENT_MAP_KEY_SIZE];
-	Oid label_oid;
+	char		key[YB_ENUM_LABEL_ASSIGNMENT_MAP_KEY_SIZE];
+	Oid			label_oid;
 } YbEnumLabelAssignmentMapEntry;
 
 static void
 YbClearEnumLabelMap(void)
 {
-	HASHCTL ctl;
+	HASHCTL		ctl;
 
 	if (yb_enum_label_assignment_map != NULL)
 		hash_destroy(yb_enum_label_assignment_map);
@@ -59,16 +60,18 @@ YbClearEnumLabelMap(void)
 	ctl.keysize = YB_ENUM_LABEL_ASSIGNMENT_MAP_KEY_SIZE;
 	ctl.entrysize = sizeof(YbEnumLabelAssignmentMapEntry);
 	yb_enum_label_assignment_map = hash_create("YB enum label map",
-											   /* initial size */ 20, &ctl,
+											   20,	/* initial size */
+											   &ctl,
 											   HASH_ELEM | HASH_STRINGS);
 }
 
 static void
 YbCreateEnumLabelMapKey(Oid enum_oid, const char *label, char *key_buffer)
 {
-	int written_bytes = snprintf(key_buffer,
-								 YB_ENUM_LABEL_ASSIGNMENT_MAP_KEY_SIZE, "%u.%s",
-								 enum_oid, label);
+	int			written_bytes = snprintf(key_buffer,
+										 YB_ENUM_LABEL_ASSIGNMENT_MAP_KEY_SIZE, "%u.%s",
+										 enum_oid, label);
+
 	if (written_bytes >= YB_ENUM_LABEL_ASSIGNMENT_MAP_KEY_SIZE)
 		elog(ERROR,
 			 "unexpectedly large OID/label size in OID assignment (OID %u, "
@@ -79,12 +82,14 @@ YbCreateEnumLabelMapKey(Oid enum_oid, const char *label, char *key_buffer)
 static void
 YbInsertEnumLabel(Oid enum_oid, const char *label, Oid label_oid)
 {
-	char key[YB_ENUM_LABEL_ASSIGNMENT_MAP_KEY_SIZE];
+	char		key[YB_ENUM_LABEL_ASSIGNMENT_MAP_KEY_SIZE];
+
 	YbCreateEnumLabelMapKey(enum_oid, label, key);
 
-	bool found;
+	bool		found;
 	YbEnumLabelAssignmentMapEntry *entry =
 		hash_search(yb_enum_label_assignment_map, key, HASH_ENTER, &found);
+
 	if (!found)
 		entry->label_oid = label_oid;
 	else if (entry->label_oid != label_oid)
@@ -98,11 +103,13 @@ YbInsertEnumLabel(Oid enum_oid, const char *label, Oid label_oid)
 static Oid
 YbLookupOidForEnumLabel(Oid enum_oid, const char *label)
 {
-	char key[YB_ENUM_LABEL_ASSIGNMENT_MAP_KEY_SIZE];
+	char		key[YB_ENUM_LABEL_ASSIGNMENT_MAP_KEY_SIZE];
+
 	YbCreateEnumLabelMapKey(enum_oid, label, key);
-	bool found;
+	bool		found;
 	YbEnumLabelAssignmentMapEntry *entry =
 		hash_search(yb_enum_label_assignment_map, key, HASH_FIND, &found);
+
 	if (found)
 		return entry->label_oid;
 	return InvalidOid;
@@ -118,7 +125,8 @@ YbLookupOidForEnumLabel(Oid enum_oid, const char *label)
  */
 #define YB_OID_ASSIGNMENT_MAP_KEY_SIZE (20 + NAMEDATALEN + NAMEDATALEN)
 
-typedef struct YbOidAssignmentMapEntry {
+typedef struct YbOidAssignmentMapEntry
+{
 	/* encodes oid_kind, schema, name */
 	char		key[YB_OID_ASSIGNMENT_MAP_KEY_SIZE];
 	Oid			oid;
@@ -127,7 +135,7 @@ typedef struct YbOidAssignmentMapEntry {
 static void
 YbClearOidMap(void)
 {
-	HASHCTL ctl;
+	HASHCTL		ctl;
 
 	if (yb_oid_assignment_map != NULL)
 		hash_destroy(yb_oid_assignment_map);
@@ -135,7 +143,7 @@ YbClearOidMap(void)
 	ctl.keysize = YB_OID_ASSIGNMENT_MAP_KEY_SIZE;
 	ctl.entrysize = sizeof(YbOidAssignmentMapEntry);
 	yb_oid_assignment_map = hash_create("YB OIDs map",
-										/* initial size */ 20, &ctl,
+										 /* initial size */ 20, &ctl,
 										HASH_ELEM | HASH_STRINGS);
 }
 
@@ -143,8 +151,9 @@ static void
 YbCreateOidMapKey(const char *oid_kind, const char *schema, const char *name,
 				  char *key_buffer)
 {
-	int written_bytes = snprintf(key_buffer, YB_OID_ASSIGNMENT_MAP_KEY_SIZE,
-								 "%s.%s.%s", oid_kind, schema, name);
+	int			written_bytes = snprintf(key_buffer, YB_OID_ASSIGNMENT_MAP_KEY_SIZE,
+										 "%s.%s.%s", oid_kind, schema, name);
+
 	if (written_bytes >= YB_OID_ASSIGNMENT_MAP_KEY_SIZE)
 		elog(ERROR,
 			 "unexpectedly large schema/name in OID assignment (schema '%s', "
@@ -155,12 +164,14 @@ YbCreateOidMapKey(const char *oid_kind, const char *schema, const char *name,
 static void
 YbInsertOid(const char *oid_kind, const char *schema, const char *name, Oid oid)
 {
-	char key[YB_OID_ASSIGNMENT_MAP_KEY_SIZE];
+	char		key[YB_OID_ASSIGNMENT_MAP_KEY_SIZE];
+
 	YbCreateOidMapKey(oid_kind, schema, name, key);
 
-	bool found;
+	bool		found;
 	YbOidAssignmentMapEntry *entry =
 		hash_search(yb_oid_assignment_map, key, HASH_ENTER, &found);
+
 	if (!found)
 		entry->oid = oid;
 	else if (entry->oid != oid)
@@ -174,12 +185,14 @@ YbInsertOid(const char *oid_kind, const char *schema, const char *name, Oid oid)
 static Oid
 YbLookupOid(const char *oid_kind, const char *schema, const char *name)
 {
-	char key[YB_OID_ASSIGNMENT_MAP_KEY_SIZE];
+	char		key[YB_OID_ASSIGNMENT_MAP_KEY_SIZE];
+
 	YbCreateOidMapKey(oid_kind, schema, name, key);
 
-	bool found;
+	bool		found;
 	YbOidAssignmentMapEntry *entry =
 		hash_search(yb_oid_assignment_map, key, HASH_FIND, &found);
+
 	if (found)
 		return entry->oid;
 	return InvalidOid;
@@ -192,8 +205,9 @@ YbGetOidFromText(const text *input)
 	if (!input)
 		return InvalidOid;
 	const char *cstring = text_to_cstring(input);
-	char *end_ptr;
-	Oid result = strtoul(cstring, &end_ptr, 10);
+	char	   *end_ptr;
+	Oid			result = strtoul(cstring, &end_ptr, 10);
+
 	if (result == 0 || result > UINT32_MAX || *end_ptr != '\0')
 		return InvalidOid;
 	return result;
@@ -202,7 +216,8 @@ YbGetOidFromText(const text *input)
 static void
 YbExtractEnumLabelMap(text *json_text, char *map_key, bool *found)
 {
-	text       *map_json = json_get_value(json_text, map_key);
+	text	   *map_json = json_get_value(json_text, map_key);
+
 	if (!map_json)
 	{
 		*found = false;
@@ -210,19 +225,21 @@ YbExtractEnumLabelMap(text *json_text, char *map_key, bool *found)
 	}
 	*found = true;
 
-	int length = get_json_array_length(map_json);
+	int			length = get_json_array_length(map_json);
+
 	for (int i = 0; i < length; i++)
 	{
-		text *label_info_entry = get_json_array_element(map_json, i);
-		char *label = text_to_cstring(json_get_denormalized_value(label_info_entry,
-																  "label"));
-		text *label_oid_text = json_get_value(label_info_entry,
-											  "label_oid");
-		text *enum_oid_text = json_get_value(label_info_entry,
-											 "enum_oid");
+		text	   *label_info_entry = get_json_array_element(map_json, i);
+		char	   *label = text_to_cstring(json_get_denormalized_value(label_info_entry,
+																		"label"));
+		text	   *label_oid_text = json_get_value(label_info_entry,
+													"label_oid");
+		text	   *enum_oid_text = json_get_value(label_info_entry,
+												   "enum_oid");
 
-		Oid label_oid = YbGetOidFromText(label_oid_text);
-		Oid enum_oid = YbGetOidFromText(enum_oid_text);
+		Oid			label_oid = YbGetOidFromText(label_oid_text);
+		Oid			enum_oid = YbGetOidFromText(enum_oid_text);
+
 		if (label_oid == InvalidOid || enum_oid == InvalidOid)
 		{
 			elog(ERROR,
@@ -239,7 +256,8 @@ static void
 YbExtractNameToOidMap(text *json_text, char *map_key, const char *oid_kind,
 					  bool *found)
 {
-	text       *map_json = json_get_value(json_text, map_key);
+	text	   *map_json = json_get_value(json_text, map_key);
+
 	if (!map_json)
 	{
 		*found = false;
@@ -247,16 +265,18 @@ YbExtractNameToOidMap(text *json_text, char *map_key, const char *oid_kind,
 	}
 	*found = true;
 
-	int length = get_json_array_length(map_json);
+	int			length = get_json_array_length(map_json);
+
 	for (int i = 0; i < length; i++)
 	{
-		text *type_info_entry = get_json_array_element(map_json, i);
-		char *schema = text_to_cstring(json_get_denormalized_value(type_info_entry,
-																   "schema"));
-		char *name = text_to_cstring(json_get_denormalized_value(type_info_entry,
-																 "name"));
-		text *oid_text = json_get_value(type_info_entry, "oid");
-		Oid oid = YbGetOidFromText(oid_text);
+		text	   *type_info_entry = get_json_array_element(map_json, i);
+		char	   *schema = text_to_cstring(json_get_denormalized_value(type_info_entry,
+																		 "schema"));
+		char	   *name = text_to_cstring(json_get_denormalized_value(type_info_entry,
+																	   "name"));
+		text	   *oid_text = json_get_value(type_info_entry, "oid");
+		Oid			oid = YbGetOidFromText(oid_text);
+
 		if (oid == InvalidOid)
 		{
 			elog(ERROR,
@@ -346,7 +366,7 @@ PG_FUNCTION_INFO_V1(yb_xcluster_set_next_oid_assignments);
 Datum
 yb_xcluster_set_next_oid_assignments(PG_FUNCTION_ARGS)
 {
-	text *json_text = PG_GETARG_TEXT_P(0);
+	text	   *json_text = PG_GETARG_TEXT_P(0);
 
 	YbClearEnumLabelMap();
 	YbExtractEnumLabelMap(json_text, "enum_label_info",
@@ -370,7 +390,8 @@ YbUsingEnumLabelOidAssignment(void)
 Oid
 YbLookupOidAssignmentForEnumLabel(Oid enum_oid, const char *label)
 {
-	Oid label_oid = YbLookupOidForEnumLabel(enum_oid, label);
+	Oid			label_oid = YbLookupOidForEnumLabel(enum_oid, label);
+
 	if (label_oid == InvalidOid)
 		elog(ERROR, "no OID assignment for enum label %u.%s in OID assignment",
 			 enum_oid, label);
@@ -386,7 +407,8 @@ YbUsingTypeOidAssignment(void)
 Oid
 YbLookupOidAssignmentForType(const char *schema, const char *name)
 {
-	Oid type_oid = YbLookupOid(YB_OID_KIND_TYPE, schema, name);
+	Oid			type_oid = YbLookupOid(YB_OID_KIND_TYPE, schema, name);
+
 	if (type_oid == InvalidOid)
 		elog(ERROR, "no OID assignment for type %s.%s in OID assignment",
 			 schema, name);
@@ -402,7 +424,8 @@ YbUsingSequenceOidAssignment(void)
 Oid
 YbLookupOidAssignmentForSequence(const char *schema, const char *name)
 {
-	Oid sequence_oid = YbLookupOid(YB_OID_KIND_SEQUENCE, schema, name);
+	Oid			sequence_oid = YbLookupOid(YB_OID_KIND_SEQUENCE, schema, name);
+
 	if (sequence_oid == InvalidOid)
 		elog(ERROR, "no OID assignment for sequence %s.%s in OID assignment",
 			 schema, name);

@@ -91,7 +91,7 @@ using std::vector;
 
 namespace yb {
 
-const int PPROF_DEFAULT_SAMPLE_SECS = 30; // pprof default sample time in seconds.
+const int PPROF_DEFAULT_SAMPLE_SECS = 1;
 
 // pprof asks for the url /pprof/cmdline to figure out what application it's profiling.
 // The server should respond by sending the executable path.
@@ -115,73 +115,56 @@ SampleOrder ParseSampleOrder(const Webserver::ArgumentMap& parsed_args) {
 }
 
 namespace {
-std::string FormatNumericTableRow(const std::string& value) {
-  return Format("<td align=\"right\">$0</td>", value);
+std::string GetHumanReadableNumeric(int64_t value) {
+  return SimpleItoaWithCommas(value);
 }
 
-std::string FormatNumericTableRow(int64_t value) {
-  return FormatNumericTableRow(SimpleItoaWithCommas(value));
-}
-
-std::string FormatNumericTableRow(std::optional<int64_t> value) {
+std::string GetHumanReadableNumeric(std::optional<int64_t> value) {
   if (value) {
-    return FormatNumericTableRow(*value);
+    return GetHumanReadableNumeric(*value);
   }
-  return FormatNumericTableRow("N/A");
+  return "N/A";
 }
 
-void GenerateTable(std::stringstream* output, const std::vector<Sample>& samples,
+void GenerateTable(std::stringstream* output, const std::vector<Sample>& sorted_samples,
     const std::string& title, size_t max_call_stacks, SampleOrder order) {
+  HtmlPrintHelper html_print_helper(*output);
+  auto table_printer = html_print_helper.CreateTablePrinter(
+      "heap_profile",
+      {"Estimated Bytes", "Estimated Count", "Mean Bytes Per Allocation",
+       "Sampled Bytes", "Sampled Count", "Call Stack"},
+      {HtmlTableCellAlignment::Right, HtmlTableCellAlignment::Right, HtmlTableCellAlignment::Right,
+       HtmlTableCellAlignment::Right, HtmlTableCellAlignment::Right, HtmlTableCellAlignment::Left});
+  int64_t total_estimated_bytes = 0;
+  auto num_samples = std::min(max_call_stacks, sorted_samples.size());
+  for (size_t i = 0; i < num_samples; ++i) {
+    const auto& [stack, sample] = sorted_samples.at(i);
+    table_printer.AddRow(
+        GetHumanReadableNumeric(sample.estimated_bytes),
+        GetHumanReadableNumeric(sample.estimated_count),
+        GetHumanReadableNumeric(std::round(static_cast<double>(
+            sample.sampled_allocated_bytes) / sample.sampled_count)),
+        GetHumanReadableNumeric(sample.sampled_allocated_bytes),
+        GetHumanReadableNumeric(sample.sampled_count),
+        Format("<pre>$0</pre>", EscapeForHtmlToString(stack)));
+    if (sample.estimated_bytes) {
+      total_estimated_bytes += *sample.estimated_bytes;
+    }
+  }
+
   // Generate the output table.
   (*output) << std::fixed;
   (*output) << std::setprecision(2);
   (*output) << Format("<b>Top $0 call stacks for:</b> $1<br>\n", max_call_stacks, title);
-  if (samples.size() > max_call_stacks) {
-    (*output) << Format("$0 call stacks omitted<br>\n", samples.size() - max_call_stacks);
+  if (sorted_samples.size() > max_call_stacks) {
+    (*output) << Format("$0 call stacks omitted<br>\n", sorted_samples.size() - max_call_stacks);
   }
-  (*output) << Format("<b>Ordering call stacks by:</b> $0<br>\n", order);
   (*output) << Format(
-      "<b>Current sampling frequency:</b> $0 bytes (on average)<br>\n",
-      GetTCMallocSamplingPeriod());
+      "Total estimated bytes: $0 bytes. Actual heap usage (excluding TCMalloc internals): "
+      "$1 bytes<br>\n", total_estimated_bytes, GetTCMallocCurrentAllocatedBytes());
   (*output) << Format("Values shown below are for allocations still in use "
       "(i.e., objects that have been deallocated are not included)<br>\n");
-  (*output) << "<p>\n";
-  (*output) << "<table style=\"border-collapse: collapse\" border=1>\n";
-  (*output) << "<style>td, th { padding: 5px; }</style>";
-  (*output) << "<tr>\n";
-  (*output) << "<th>Estimated Bytes</th>\n";
-  (*output) << "<th>Estimated Count</th>\n";
-  (*output) << "<th>Avg Bytes Per Allocation</th>\n";
-  (*output) << "<th>Sampled Bytes</th>\n";
-  (*output) << "<th>Sampled Count</th>\n";
-  (*output) << "<th>Call Stack</th>\n";
-  (*output) << "</tr>\n";
-
-  for (size_t i = 0; i < std::min(max_call_stacks, samples.size()); ++i) {
-    const auto& entry = samples.at(i);
-    (*output) << "<tr>";
-
-    (*output) << FormatNumericTableRow(entry.second.estimated_bytes);
-
-    (*output) << FormatNumericTableRow(entry.second.estimated_count);
-
-    std::optional<int64_t> avg_bytes;
-    if (entry.second.sampled_count > 0) {
-      avg_bytes = std::round(
-          static_cast<double>(entry.second.sampled_allocated_bytes) / entry.second.sampled_count);
-    }
-    (*output) << FormatNumericTableRow(avg_bytes);
-
-    (*output) << FormatNumericTableRow(entry.second.sampled_allocated_bytes);
-
-    (*output) << FormatNumericTableRow(entry.second.sampled_count);
-
-    // Call stack.
-    (*output) << Format("<td><pre>$0</pre></td>", EscapeForHtmlToString(entry.first));
-
-    (*output) << "</tr>";
-  }
-  (*output) << "</table>";
+  table_printer.Print();
 }
 } // namespace
 
@@ -208,7 +191,7 @@ static void PprofHeapHandler(const Webserver::WebRequest& req,
 
   // Set the sample frequency to this value for the duration of the sample.
   int64_t sample_freq_bytes = ParseLeadingInt64Value(
-      FindWithDefault(req.parsed_args, "sample_freq_bytes", ""), 4_KB);
+      FindWithDefault(req.parsed_args, "sample_freq_bytes", ""), 10_MB);
   LOG(INFO) << "Starting a heap profile:"
             << " seconds=" << seconds
             << " only_growth=" << only_growth
@@ -257,7 +240,8 @@ void PprofHeapSnapshotHandler(const Webserver::WebRequest& req, Webserver::WebRe
   Result<vector<Sample>> sample_result = GetAggregateAndSortHeapSnapshot(
       order, peak_heap ? HeapSnapshotType::kPeakHeap : HeapSnapshotType::kCurrentHeap);
   if (!sample_result.ok()) {
-    (*output) << sample_result.status().message();
+    LOG(INFO) << "Failed to get heap snapshot: " << sample_result.status();
+    (*output) << sample_result.status();
     return;
   }
   vector<Sample> samples = sample_result.get();

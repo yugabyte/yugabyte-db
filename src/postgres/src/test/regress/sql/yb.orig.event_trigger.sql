@@ -42,6 +42,13 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION test_event_trigger_truncate() RETURNS event_trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE NOTICE 'Calling trigger truncate on %', tg_event;
+END;
+$$;
+
 -- Create the ddl_start event triggers.
 -- Make sure to create them in non-alphabetical order.
 -- (and different from functions order).
@@ -50,6 +57,9 @@ CREATE EVENT TRIGGER ybc ON ddl_command_start EXECUTE PROCEDURE test_event_trigg
 CREATE EVENT TRIGGER bar ON ddl_command_start EXECUTE PROCEDURE test_event_trigger_bar();
 CREATE EVENT TRIGGER xyz ON ddl_command_start EXECUTE PROCEDURE test_event_trigger_xyz();
 CREATE EVENT TRIGGER abc ON ddl_command_start EXECUTE PROCEDURE test_event_trigger_abc();
+CREATE EVENT TRIGGER truncate_abc ON ddl_command_start
+  WHEN TAG in ('TRUNCATE TABLE')
+  EXECUTE PROCEDURE test_event_trigger_truncate();
 
 -- Create the ddl_end event triggers.
 -- Make sure to create them in non-alphabetical order
@@ -59,6 +69,9 @@ CREATE EVENT TRIGGER end_bar ON ddl_command_end EXECUTE PROCEDURE test_event_tri
 CREATE EVENT TRIGGER end_ybc ON ddl_command_end EXECUTE PROCEDURE test_event_trigger_ybc();
 CREATE EVENT TRIGGER end_abc ON ddl_command_end EXECUTE PROCEDURE test_event_trigger_abc();
 CREATE EVENT TRIGGER end_foo ON ddl_command_end EXECUTE PROCEDURE test_event_trigger_foo();
+CREATE EVENT TRIGGER end_truncate_abc ON ddl_command_end
+  WHEN TAG in ('TRUNCATE TABLE')
+  EXECUTE PROCEDURE test_event_trigger_truncate();
 
 CREATE TABLE test(a int PRIMARY KEY, b int);
 
@@ -66,6 +79,10 @@ INSERT INTO test values (1,2);
 INSERT INTO test values (2,3);
 INSERT INTO test values (3,4);
 SELECT * FROM test;
+
+-- Verify TRUNCATE TABLE does not fire ddl_command_start triggers unless
+-- a explicit TAG has been set.
+TRUNCATE TABLE test;
 
 DROP TABLE test;
 

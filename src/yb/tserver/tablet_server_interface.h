@@ -32,6 +32,7 @@
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_util_fwd.h"
 #include "yb/tserver/local_tablet_server.h"
+#include "yb/tserver/ysql_lease.h"
 
 #include "yb/util/concurrent_value.h"
 
@@ -81,6 +82,10 @@ class TabletServerIf : public LocalTabletServer {
       const tserver::GetTserverCatalogMessageListsRequestPB& req,
       tserver::GetTserverCatalogMessageListsResponsePB *resp) const = 0;
 
+  virtual Status SetTserverCatalogMessageList(
+      uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
+      const std::optional<std::string>& message_list) = 0;
+
   virtual const scoped_refptr<MetricEntity>& MetricEnt() const = 0;
 
   virtual client::TransactionPool& TransactionPool() = 0;
@@ -88,6 +93,8 @@ class TabletServerIf : public LocalTabletServer {
   virtual const std::shared_future<client::YBClient*>& client_future() const = 0;
 
   virtual ConcurrentPointerReference<TServerSharedData> SharedObject() = 0;
+
+  virtual docdb::ObjectLockSharedStateManager* ObjectLockSharedStateManager() const = 0;
 
   virtual Status GetLiveTServers(
       std::vector<master::TSInformationPB> *live_tservers) const = 0;
@@ -143,9 +150,11 @@ class TabletServerIf : public LocalTabletServer {
   virtual void SetYsqlDBCatalogVersions(
       const tserver::DBCatalogVersionDataPB& db_catalog_version_data) = 0;
 
-  virtual Result<GetYSQLLeaseInfoResponsePB> GetYSQLLeaseInfo() const = 0;
+  virtual Result<YSQLLeaseInfo> GetYSQLLeaseInfo() const = 0;
 
   virtual Status RestartPG() const = 0;
+
+  virtual Status KillPg() const = 0;
 };
 
 } // namespace tserver

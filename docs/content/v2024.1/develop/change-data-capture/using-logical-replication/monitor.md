@@ -64,7 +64,7 @@ Provides a list of all replication slots that currently exist on the database cl
 | active_pid | integer | The process ID of the session using this slot if the slot is currently actively being used. `NULL` if no replication process is ongoing. |
 | xmin | xid | The oldest transaction that this slot needs the database to retain. |
 | catalog_xmin | xid | Not applicable for YSQL. Always set to xmin. |
-| restart_lsn | pg_lsn | The LSN of the oldest change record which still might be required by the consumer of this slot and thus won't be automatically removed during checkpoints. |
+| restart_lsn | pg_lsn | The Log Sequence Number ([LSN](../key-concepts/#lsn)) of the oldest change record which still might be required by the consumer of this slot and thus won't be automatically removed during checkpoints. |
 | confirmed_flush_lsn | pg_lsn | The LSN up to which the logical slot's consumer has confirmed receiving data. Data older than this is not available anymore. Transactions with commit LSN lower than the `confirmed_flush_lsn` are not available anymore. |
 | yb_stream_id | text | UUID of the CDC stream |
 | yb_restart_commit_ht | int8 | A uint64 representation of the commit Hybrid Time corresponding to the `restart_lsn`. This can be used by the client (like YugabyteDB connector) to perform a consistent snapshot (as of the `consistent_point`) in the case when a replication slot already exists. |

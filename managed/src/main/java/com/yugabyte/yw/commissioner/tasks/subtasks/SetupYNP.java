@@ -33,7 +33,7 @@ public class SetupYNP extends AbstractTaskBase {
 
   private final NodeUniverseManager nodeUniverseManager;
   private final NodeAgentManager nodeAgentManager;
-  private ShellProcessContext shellContext =
+  private final ShellProcessContext defaultShellContext =
       ShellProcessContext.builder().logCmdOutput(true).build();
   private final RuntimeConfGetter confGetter;
 
@@ -71,7 +71,8 @@ public class SetupYNP extends AbstractTaskBase {
     nodeUniverseManager.runCommand(node, universe, command, shellContext).isSuccess();
   }
 
-  private Path getNodeAgentPackagePath(Universe universe, NodeDetails node) {
+  private Path getNodeAgentPackagePath(
+      Universe universe, NodeDetails node, ShellProcessContext shellContext) {
     String output =
         nodeUniverseManager
             .runCommand(node, universe, Arrays.asList("uname", "-sm"), shellContext)
@@ -91,10 +92,11 @@ public class SetupYNP extends AbstractTaskBase {
 
   @Override
   public void run() {
+    ShellProcessContext shellContext = defaultShellContext;
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     NodeDetails node = universe.getNodeOrBadRequest(taskParams().nodeName);
     if (taskParams().sshUser != null) {
-      shellContext = shellContext.toBuilder().sshUser(taskParams().sshUser).build();
+      shellContext = defaultShellContext.toBuilder().sshUser(taskParams().sshUser).build();
     }
     Provider provider =
         Provider.getOrBadRequest(
@@ -105,7 +107,7 @@ public class SetupYNP extends AbstractTaskBase {
     Path ynpStagingDir = Paths.get(customTmpDirectory, "ynp");
     Path targetPackagePath = ynpStagingDir.resolve(Paths.get("release", "node-agent.tgz"));
     Path nodeAgentHomePath = Paths.get(taskParams().nodeAgentInstallDir, NodeAgent.NODE_AGENT_DIR);
-    Path packagePath = getNodeAgentPackagePath(universe, node);
+    Path packagePath = getNodeAgentPackagePath(universe, node, shellContext);
 
     // Clean up the previous stale data.
     Optional<NodeAgent> optional = NodeAgent.maybeGetByIp(node.cloudInfo.private_ip);
@@ -133,6 +135,7 @@ public class SetupYNP extends AbstractTaskBase {
             .add(targetPackagePath.getParent().toString())
             .build();
     log.info("Creating release path in staging directory: {}", command);
+
     nodeUniverseManager.runCommand(node, universe, command, shellContext).processErrors();
     log.info("Uploading {} to {}", packagePath, targetPackagePath);
     nodeUniverseManager.uploadFileToNode(
@@ -146,7 +149,7 @@ public class SetupYNP extends AbstractTaskBase {
     // Create the node agent home directory.
     sb.append(" && mkdir -m 755 -p ").append(nodeAgentInstallPath);
     // Extract only the installer file.
-    sb.append(" && mkdir -p ").append(ynpStagingDir).append("/thirdparty");
+    sb.append(" && mkdir -m 755 -p ").append(ynpStagingDir).append("/thirdparty");
     sb.append(" && tar --no-same-owner -zxf ").append(targetPackagePath);
     sb.append(" --strip-components=2 -C ")
         .append(ynpStagingDir)
@@ -154,7 +157,7 @@ public class SetupYNP extends AbstractTaskBase {
         .append("--wildcards '*/thirdparty/*'");
 
     sb.append(" && tar --no-same-owner -zxf ").append(targetPackagePath);
-    sb.append(" --exclude='*/node-agent' --exclude='*/preflight_check.sh'");
+    sb.append(" --exclude='*/node-agent' --exclude='*/preflight_check.sh' --exclude='*/devops'");
     sb.append(" --strip-components=3 -C ").append(ynpStagingDir);
 
     // Move the node-agent source folder to the right location.

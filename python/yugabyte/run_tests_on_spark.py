@@ -80,6 +80,7 @@ from typing import List, Dict, Set, Tuple, Optional, Any, cast
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from yugabyte import csi_report  # noqa
 from yugabyte import file_util  # noqa
 from yugabyte import build_paths  # noqa
 from yugabyte.test_descriptor import TEST_DESCRIPTOR_SEPARATOR  # noqa
@@ -135,6 +136,9 @@ JENKINS_ENV_VARS = [
     "BUILD_TAG",
     "BUILD_URL",
     "CVS_BRANCH",
+    "CSI_SERVER",
+    "CSI_PROJ",
+    "CSI_TOKEN",
     "EXECUTOR_NUMBER",
     "GIT_BRANCH",
     "GIT_COMMIT",
@@ -358,6 +362,7 @@ def copy_to_host(artifact_paths: List[str], dest_host: str) -> artifact_upload.F
 
 def copy_spark_stderr(
         test_descriptor_str: str,
+        csi_id: str,
         build_host: str) -> artifact_upload.FileTransferResult:
     """
     If the initialization or the test fails, copy the Spark worker stderr log back to build host.
@@ -378,6 +383,7 @@ def copy_spark_stderr(
 
         logging.info(f"Copying spark stderr {spark_stderr_src} to {spark_stderr_dest}")
         shutil.copyfile(spark_stderr_src, spark_stderr_dest)
+        csi_report.upload_log(csi_id, time.time(), [spark_stderr_dest])
         return copy_to_host(
             artifact_paths=[spark_stderr_dest],
             dest_host=build_host)
@@ -407,7 +413,7 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
     except Exception as e:
         build_host = os.environ.get('YB_BUILD_HOST', None)
         if build_host:
-            copy_spark_stderr(test_descriptor_str, build_host)
+            copy_spark_stderr(test_descriptor_str, '', build_host)
         raise e
 
     from yugabyte import yb_dist_tests
@@ -448,12 +454,24 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
     logging.info("Setting YB_TEST_ARTIFACT_LIST_PATH to %s", artifact_list_path)
 
     timer_thread = None
+    build_host = os.environ.get('YB_BUILD_HOST')
+    assert build_host is not None
+
+    from pyspark import TaskContext  # type: ignore
+    attempt = TaskContext.get().attemptNumber()
+
     try:
         start_time_sec = time.time()
+
+        csi_id = csi_report.create_test(test_descriptor, start_time_sec, attempt)
+
         error_log_dir_path = os.path.dirname(os.path.abspath(error_output_path))
         file_util.mkdir_p(error_log_dir_path)
+        # For debugging purpose, we could send output to both test log and spark log, but
+        # generally, timestamps should be enough to correlate any issues.
+        #    'set -o pipefail; cd %s; "%s" %s 2>&1 | tee "%s"; exit ${PIPESTATUS[0]}' % (
         runner_oneline = \
-            'set -o pipefail; cd %s; "%s" %s 2>&1 | tee "%s"; exit ${PIPESTATUS[0]}' % (
+            'cd %s; "%s" %s > "%s" 2>&1' % (
                 shlex.quote(get_build_root()),
                 global_conf.get_run_test_script_path(),
                 test_descriptor.args_for_run_test,
@@ -461,22 +479,29 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
             )
         process = subprocess.Popen(
             [get_bash_path(), '-c', runner_oneline],
-            cwd=get_build_root()
         )
 
         # Terminate extremely long running tests using a timer thread.
-        def handle_timeout() -> None:
+        def handle_timeout(csi_id: str, build_host: str, error_output_path: str) -> None:
             if process.poll() is None:
-                elapsed_time_sec = time.time() - start_time_sec
+                final_time_sec = time.time()
+                elapsed_time_sec = final_time_sec - start_time_sec
                 logging.warning("Test %s is being terminated due to timeout after %.1f seconds",
                                 test_descriptor, elapsed_time_sec)
+                if csi_id:
+                    csi_report.close_item(csi_id, final_time_sec, 'interrupted', [])
+                    csi_report.upload_log(csi_id, final_time_sec, [error_output_path])
+                    if build_host:
+                        copy_spark_stderr(test_descriptor_str, csi_id, build_host)
                 process.kill()
 
         timer_thread = threading.Timer(
-            interval=TEST_TIMEOUT_UPPER_BOUND_SEC, function=handle_timeout, args=[])
+            interval=TEST_TIMEOUT_UPPER_BOUND_SEC, function=handle_timeout,
+            args=(csi_id, build_host, error_output_path))
         timer_thread.start()
         exit_code = process.wait()
-        elapsed_time_sec = time.time() - start_time_sec
+        end_time_sec = time.time()
+        elapsed_time_sec = end_time_sec - start_time_sec
 
         additional_log_message = ''
         if elapsed_time_sec > TEST_TIMEOUT_UPPER_BOUND_SEC:
@@ -486,8 +511,10 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
         logging.info(
             f"Test {test_descriptor} ran on {socket.gethostname()} in {elapsed_time_sec:.2f} "
             f"seconds, exit code: {exit_code}{additional_log_message}")
+        csi_result = 'passed'
         if exit_code != 0:
             fail_count.add(1)
+            csi_result = 'failed'
 
         artifact_copy_result: Optional[artifact_upload.FileTransferResult] = None
         spark_error_copy_result: Optional[artifact_upload.FileTransferResult] = None
@@ -503,6 +530,7 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
                 failed_without_output = True
 
         artifact_paths = []
+        csi_tags = []
 
         rel_artifact_paths = None
         if global_conf.archive_for_workers:
@@ -520,18 +548,31 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
                         if not glob_result:
                             logging.warning("No artifacts found for pattern: '%s'",
                                             artifact_path_pattern)
+                # Find a better way to identify skipped tests? This depends on
+                # postprocess_test_result.py running successfully.
+                testres_file = next((f for f in artifact_paths if 'test_report.json' in f), None)
+                if testres_file:
+                    with open(testres_file) as trf:
+                        result_summary = json.load(trf)
+                        if 'num_skipped' in result_summary and result_summary['num_skipped'] == 1:
+                            csi_result = 'skipped'
+                        if 'fail_tags' in result_summary:
+                            csi_tags = result_summary['fail_tags']
+
+                if csi_result in ['failed', 'skipped']:
+                    csi_report.upload_log(csi_id, end_time_sec, artifact_paths)
             else:
                 logging.warning("Artifact list does not exist: '%s'", artifact_list_path)
 
-            build_host = os.environ.get('YB_BUILD_HOST')
-            assert build_host is not None
             artifact_copy_result = copy_to_host(artifact_paths, build_host)
             if exit_code != 0:
-                spark_error_copy_result = copy_spark_stderr(test_descriptor_str, build_host)
+                spark_error_copy_result = copy_spark_stderr(test_descriptor_str, csi_id, build_host)
 
             rel_artifact_paths = [
                 os.path.relpath(os.path.abspath(artifact_path), global_conf.yb_src_root)
                 for artifact_path in artifact_paths]
+
+        csi_report.close_item(csi_id, end_time_sec, csi_result, csi_tags)
 
         test_results.add(yb_dist_tests.TestResult(
             exit_code=exit_code,
@@ -633,6 +674,22 @@ def parallel_list_test_descriptors(rel_test_path: str) -> Tuple[List[str], float
     this, listing all gtest tests across 330 test programs might take about 5 minutes on TSAN and 2
     minutes in debug.
     """
+    # TODO: We should change this from a parallel spark-job stage to just do it serially on the
+    # jenkins worker host.
+    # Rationale: The time may be longer than when the above comment was written, since we have more
+    # tests, but it is still a good trade-off.
+    # To run the tasks on spark workers, the workspace archive has to be copied over and unpacked,
+    # which takes a couple minutes by itself. That cost will have to be paid anyway when second
+    # stage comes to run the tests, but some of the nodes are re-assigned to other jobs while stage
+    # 0 is being completed, and the cost is wasted for those nodes.
+    # Having nodes shuffled off the job while last few tasks of stage 0 are running means that
+    # resources are assigned somewhat out of order and require more switching overhead.
+    # Changing the jobs from 2 stages to a single stage allows much better knowledge of how many
+    # tasks the job is actually going to run, instead of finding out only after stage 0 is complete.
+    # This would allow much easier cluster scaling calculations.
+    # Finally, the submitting node is generally doing nothing but waiting in a spark queue, during
+    # that waiting time stage 0 could already be done and reduce the resource contintion of the
+    # spark cluster workers.
 
     start_time_sec = time.time()
 
@@ -835,7 +892,10 @@ def save_report(
     jenkins_env_var_values = {}
     for jenkins_env_var_name in JENKINS_ENV_VARS:
         if jenkins_env_var_name in os.environ:
-            jenkins_env_var_values[jenkins_env_var_name] = os.environ[jenkins_env_var_name]
+            if jenkins_env_var_name == 'CSI_TOKEN':
+                jenkins_env_var_values[jenkins_env_var_name] = 'XXXX'
+            else:
+                jenkins_env_var_values[jenkins_env_var_name] = os.environ[jenkins_env_var_name]
 
     report = dict(
         conf=vars(yb_dist_tests.global_conf),
@@ -1377,6 +1437,36 @@ def main() -> None:
         assert total_num_tests == len(test_descriptors), \
             "total_num_tests={}, len(test_descriptors)={}".format(
                     total_num_tests, len(test_descriptors))
+        test_phase_start_time = time.time()
+
+        # For now, we are just dividing test reports into two suites by language.
+        num_planned_by_language: Dict[str, int] = defaultdict(int)
+        for td in test_descriptors:
+            if td.attempt_index == 1:
+                num_planned_by_language[td.language] += 1
+
+        csi_suites: Dict[str, str] = {}
+        propagated_env_vars['YB_CSI_REPS'] = str(num_repetitions)
+        logging.info("Propagating env var %s (value: %s) to Spark workers",
+                     'YB_CSI_REPS', num_repetitions)
+        csi_lqid = csi_report.launch_qid()
+        propagated_env_vars['YB_CSI_QID'] = csi_lqid
+        logging.info("Propagating env var %s (value: %s) to Spark workers",
+                     'YB_CSI_QID', csi_lqid)
+        for suite_name, num_tests in num_planned_by_language.items():
+            if args.test_filter_re:
+                method = "RegEx"
+            elif args.test_list:
+                method = "Requested"
+            else:
+                method = "All"
+            (csi_var_name, csi_var_value) = csi_report.create_suite(
+                csi_lqid, suite_name, os.getenv('YB_CSI_SUITE', ''), method, num_tests,
+                num_repetitions, test_phase_start_time)
+            csi_suites[suite_name] = csi_var_value
+            propagated_env_vars[csi_var_name] = csi_var_value
+            logging.info("Propagating env var %s (value: %s) to Spark workers",
+                         csi_var_name, csi_var_value)
 
         # Randomize test order to avoid any kind of skew.
         random.shuffle(test_descriptors)
@@ -1404,6 +1494,8 @@ def main() -> None:
     else:
         # Allow running zero tests, for testing the reporting logic.
         results = []
+
+    test_phase_end_time = time.time()
 
     test_exit_codes = set([result.exit_code for result in results])
 
@@ -1443,6 +1535,9 @@ def main() -> None:
         num_tests_by_language[test_language] += 1
     logging.info("Total time spent uploading artifacts: %.2f sec (total retry wait time: %.2f sec)",
                  total_artifact_upload_time_sec, total_retry_wait_time_sec)
+
+    for suite_name in csi_suites.keys():
+        csi_report.close_item(csi_suites[suite_name], test_phase_end_time, '', [])
 
     if had_errors_copying_artifacts and global_exit_code == 0:
         logging.info("Will return exit code 1 due to errors copying artifacts to build host")

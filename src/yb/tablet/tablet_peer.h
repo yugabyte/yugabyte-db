@@ -240,6 +240,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   // UpdateReplica -> EnqueuePreparesUnlocked on Raft heartbeats.
   void SetPropagatedSafeTime(HybridTime ht) override;
 
+  void SetMvccPropagatedSafeTime(HybridTime ht) override;
+
   // Returns false if it is preferable to don't apply write operation.
   bool ShouldApplyWrite() override;
 
@@ -257,20 +259,15 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   // checking and return a raw pointer.
   // ----------------------------------------------------------------------------------------------
 
-  // Returns the tablet associated with this TabletPeer as a raw pointer.
-  [[deprecated]] Tablet* tablet() const {
-    return shared_tablet().get();
-  }
-
-  TabletPtr shared_tablet() const {
-    auto tablet_result = shared_tablet_safe();
+  TabletPtr shared_tablet_maybe_null() const {
+    auto tablet_result = shared_tablet();
     if (tablet_result.ok()) {
       return *tablet_result;
     }
     return nullptr;
   }
 
-  Result<TabletPtr> shared_tablet_safe() const;
+  Result<TabletPtr> shared_tablet() const;
 
   RaftGroupStatePB state() const {
     return state_.load(std::memory_order_acquire);
@@ -393,7 +390,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   Result<OperationDriverPtr> NewReplicaOperationDriver(std::unique_ptr<Operation>* operation);
 
   // Tells the tablet's log to garbage collect.
-  Status RunLogGC();
+  Status RunLogGC(bool rollover = false);
 
   // Register the maintenance ops associated with this peer's tablet, also invokes
   // Tablet::RegisterMaintenanceOps().

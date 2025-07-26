@@ -1,4 +1,5 @@
 -- Create Tablespace API tests
+-- Negative test cases
 -- Create Tablespace should not work if neither LOCATION nor options
 -- are specified
 CREATE TABLESPACE x;
@@ -10,8 +11,20 @@ CREATE TABLESPACE x WITH (replica_placement='[{"cloud"}]');
 -- num_replicas field missing.
 CREATE TABLESPACE x WITH (replica_placement='{"placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":3}]}');
 
--- placement_blocks field missing.
-CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":3}');
+-- missing zone field
+CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","min_num_replicas":3}]}');
+
+-- missing region field
+CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","zone":"z1","min_num_replicas":3}]}');
+
+-- missing cloud field
+CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"region":"r1","zone":"z1","min_num_replicas":3}]}');
+
+-- wildcard cloud field is not allowed
+CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"*","region":"r1","zone":"z1","min_num_replicas":3}]}');
+
+-- wildcard region with specific zone is not allowed
+CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"*","zone":"z1","min_num_replicas":3}]}');
 
 -- Invalid value for num_replicas.
 CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":"three", "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":3}]}');
@@ -26,11 +39,20 @@ CREATE TABLESPACE y WITH (replica_placement='{"num_replicas":3, "placement_block
 -- Tablespace without replica_placement option.
 CREATE TABLESPACE x LOCATION '/data';
 
+-- placement_blocks field missing is allowed
+CREATE TABLESPACE no_placement_blocks WITH (replica_placement='{"num_replicas":3}');
+
 -- Sum of min_num_replicas lesser than num_replicas.
 CREATE TABLESPACE y WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":1},{"cloud":"cloud2","region":"r2", "zone":"z2", "min_num_replicas":1}]}');
 
 -- Sum of min_num_replicas equal to num_replicas.
 CREATE TABLESPACE z WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":1},{"cloud":"cloud2","region":"r2", "zone":"z2", "min_num_replicas":2}]}');
+
+-- wildcard region
+CREATE TABLESPACE wildcard_region_ts WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"*","zone":"*","min_num_replicas":3}]}');
+
+-- wildcard zone
+CREATE TABLESPACE wildcard_zone_ts WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone": "*","min_num_replicas":3}]}');
 
 -- describe command
 \db

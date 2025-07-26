@@ -48,9 +48,9 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
   private static final String PG_15_DB_VERSION_URL =
       "https://software.yugabyte.com/releases/2.25.1.0/yugabyte-2.25.1.0-b381-%s-%s.tar.gz";
 
-  private static final String PG_11_DB_VERSION = "2024.2.2.1-b6";
+  private static final String PG_11_DB_VERSION = "2024.2.3.0-b116";
   private static final String PG_11_DB_VERSION_URL =
-      "https://software.yugabyte.com/releases/2024.2.2.1/yugabyte-2024.2.2.1-b6-%s-%s.tar.gz";
+      "https://software.yugabyte.com/releases/2024.2.3.0/yugabyte-2024.2.3.0-b116-%s-%s.tar.gz";
 
   @Before
   public void setup() {

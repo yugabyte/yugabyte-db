@@ -6,10 +6,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.nullable;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -179,7 +176,7 @@ public class YbcBackupNodeRetrieverTest extends FakeDBApplication {
     params.getPrimaryCluster().setUuid(params.nodeDetailsSet.iterator().next().placementUuid);
     mockUniverse = Universe.create(params, mockCustomer.getId());
     HostAndPort leaderHP = HostAndPort.fromParts("127.0.0.2", 7100);
-    when(mockService.getClient(anyString(), nullable(String.class))).thenReturn(mockYBClient);
+    when(mockService.getUniverseClient(any())).thenReturn(mockYBClient);
     when(mockYBClient.getLeaderMasterHostAndPort()).thenReturn(leaderHP);
   }
 

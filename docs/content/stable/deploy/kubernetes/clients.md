@@ -171,14 +171,14 @@ spec:
       defaultMode: 256
 ```
 
-When a client uses the `YSQL shell` ([`ysqlsh`](../../../api/ysqlsh/)) to connect, you can execute the following command to verify the connection:
+When a client uses the `YSQL shell` ([ysqlsh](../../../api/ysqlsh/)) to connect, you can execute the following command to verify the connection:
 
 ```sh
 kubectl exec -n yb-demo -it yb-client -- ysqlsh -h yb-tservers.yb-demo.svc.cluster.local "sslmode=require"
 ```
 
 ```output
-ysqlsh (11.2-YB-{{<yb-version version="stable">}}-b0)
+ysqlsh (15.2-YB-{{<yb-version version="stable">}}-b0)
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 Type "help" for help.
 ```
@@ -231,14 +231,14 @@ mkdir $(pwd)/certs
 kubectl get secret yugabyte-tls-client-cert  -n yb-demo -o jsonpath='{.data.root\.crt}' | base64 --decode > $(pwd)/certs/root.crt
 ```
 
-When a client that uses the `YSQL shell` ([`ysqlsh`](../../../api/ysqlsh/)) to connect, the command to execute specifies the external LoadBalancer IP of the `yb-tserver-service`, as described in [Connect using external clients](../single-zone/oss/helm-chart/#connect-using-external-clients). You can verify the connection via the following command:
+When a client that uses the `YSQL shell` ([ysqlsh](../../../api/ysqlsh/)) to connect, the command to execute specifies the external LoadBalancer IP of the `yb-tserver-service`, as described in [Connect using external clients](../single-zone/oss/helm-chart/#connect-using-external-clients). You can verify the connection via the following command:
 
 ```sh
 docker run -it --rm -v $(pwd)/certs/:/root/.yugabytedb/:ro yugabytedb/yugabyte-client:latest ysqlsh -h <External_Cluster_IP> "sslmode=require"
 ```
 
 ```output
-ysqlsh (11.2-YB-{{<yb-version version="stable">}}-b0)
+ysqlsh (15.2-YB-{{<yb-version version="stable">}}-b0)
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 Type "help" for help.
 ```
@@ -260,7 +260,7 @@ docker run -it --rm -v $(pwd)/certs/:/root/.yugabytedb/:ro \
 ```
 
 ```output
-ysqlsh (11.2-YB-{{<yb-version version="stable">}}-b0)
+ysqlsh (15.2-YB-{{<yb-version version="stable">}}-b0)
 Connected to local cluster at 35.200.205.208:9042.
 [cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.

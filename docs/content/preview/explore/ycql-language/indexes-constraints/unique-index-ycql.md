@@ -18,15 +18,15 @@ When a unique index is applied to two or more columns, the combined values in th
 
 If a table has a primary key defined, a corresponding unique index is created automatically.
 
-{{% explore-setup-single %}}
-
-## Syntax
+The syntax to create a unique index in YCQL is as follows:
 
 ```sql
 CREATE UNIQUE INDEX index_name ON table_name(column_list);
 ```
 
 ## Example
+
+{{% explore-setup-single-new %}}
 
 1. Create a keyspace and a table as follows:
 

@@ -21,7 +21,8 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.audit.UniverseLogsExporterConfig;
+import com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig;
+import com.yugabyte.yw.models.helpers.telemetry.ProviderType;
 import io.ebean.annotation.Transactional;
 import java.util.Collection;
 import java.util.Collections;
@@ -38,6 +39,7 @@ import org.apache.commons.collections4.CollectionUtils;
 @Slf4j
 public class TelemetryProviderService {
 
+  public static final String LOKI_PUSH_ENDPOINT = "/loki/api/v1/push";
   private final BeanValidator beanValidator;
   private final RuntimeConfGetter confGetter;
 
@@ -155,13 +157,50 @@ public class TelemetryProviderService {
   }
 
   public void throwExceptionIfRuntimeFlagDisabled() {
-    boolean isDBAuditLoggingEnabled =
-        confGetter.getGlobalConf(GlobalConfKeys.dbAuditLoggingEnabled);
-    if (!isDBAuditLoggingEnabled) {
+    boolean isDBAuditLoggingEnabled = isDBAuditLoggingRuntimeFlagEnabled();
+    boolean isQueryLoggingEnabled = isQueryLoggingRuntimeFlagEnabled();
+    if (!isDBAuditLoggingEnabled && !isQueryLoggingEnabled) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "DB Audit Logging and Query Logging are not enabled. Please set runtime flag"
+              + " 'yb.universe.audit_logging_enabled' or 'yb.universe.query_logging_enabled' to"
+              + " true.");
+    }
+  }
+
+  public void throwExceptionIfDBAuditLoggingRuntimeFlagDisabled() {
+    if (!isDBAuditLoggingRuntimeFlagEnabled()) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           "DB Audit Logging is not enabled. Please set runtime flag"
               + " 'yb.universe.audit_logging_enabled' to true.");
+    }
+  }
+
+  public void throwExceptionIfQueryLoggingRuntimeFlagDisabled() {
+    if (!isQueryLoggingRuntimeFlagEnabled()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Query Logging is not enabled. Please set runtime flag"
+              + " 'yb.universe.query_logging_enabled' to true.");
+    }
+  }
+
+  public boolean isDBAuditLoggingRuntimeFlagEnabled() {
+    return confGetter.getGlobalConf(GlobalConfKeys.dbAuditLoggingEnabled);
+  }
+
+  public boolean isQueryLoggingRuntimeFlagEnabled() {
+    return confGetter.getGlobalConf(GlobalConfKeys.queryLoggingEnabled);
+  }
+
+  public void throwExceptionIfLokiExporterRuntimeFlagDisabled(ProviderType providerType) {
+    boolean isLokiTelemetryEnabled = confGetter.getGlobalConf(GlobalConfKeys.telemetryAllowLoki);
+    if (!isLokiTelemetryEnabled && providerType == ProviderType.LOKI) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Loki Exporter for Telemetry Provider is not enabled. Please set runtime flag"
+              + " 'yb.telemetry.allow_loki' to true.");
     }
   }
 

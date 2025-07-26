@@ -35,9 +35,9 @@ namespace {
 
 class TwoLevelIterator final : public InternalIterator {
  public:
-  explicit TwoLevelIterator(TwoLevelIteratorState* state,
-                            InternalIterator* first_level_iter,
-                            bool need_free_iter_and_state);
+  TwoLevelIterator(
+      TwoLevelIteratorState* state, InternalIterator* first_level_iter,
+      bool need_free_iter_and_state, SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe);
 
   virtual ~TwoLevelIterator() {
     first_level_iter_.DeleteIter(!need_free_iter_and_state_);
@@ -84,8 +84,14 @@ class TwoLevelIterator final : public InternalIterator {
   }
 
  private:
+  bool ShouldReturnError(const Status& s) {
+    return !s.ok() && !(skip_corrupt_data_blocks_unsafe_ && s.IsCorruption());
+  }
+
   void SaveError(const Status& s) {
-    if (status_.ok() && !s.ok()) status_ = s;
+    if (status_.ok() && ShouldReturnError(s)) {
+      status_ = s;
+    }
   }
   const KeyValueEntry& DoSkipEmptyDataBlocksForward(const KeyValueEntry* entry);
   void SkipEmptyDataBlocksBackward();
@@ -103,18 +109,20 @@ class TwoLevelIterator final : public InternalIterator {
   IteratorWrapper first_level_iter_;
   IteratorWrapper second_level_iter_;  // May be nullptr
   bool need_free_iter_and_state_;
+  SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe_;
   Status status_;
   // If second_level_iter is non-nullptr, then "data_block_handle_" holds the
   // "index_value" passed to block_function_ to create the second_level_iter.
   std::string data_block_handle_;
 };
 
-TwoLevelIterator::TwoLevelIterator(TwoLevelIteratorState* state,
-                                   InternalIterator* first_level_iter,
-                                   bool need_free_iter_and_state)
+TwoLevelIterator::TwoLevelIterator(
+    TwoLevelIteratorState* state, InternalIterator* first_level_iter, bool need_free_iter_and_state,
+    SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe)
     : state_(state),
       first_level_iter_(first_level_iter),
-      need_free_iter_and_state_(need_free_iter_and_state) {}
+      need_free_iter_and_state_(need_free_iter_and_state),
+      skip_corrupt_data_blocks_unsafe_(skip_corrupt_data_blocks_unsafe) {}
 
 const KeyValueEntry& TwoLevelIterator::Seek(Slice target) {
   if (state_->check_prefix_may_match &&
@@ -162,7 +170,7 @@ const KeyValueEntry& TwoLevelIterator::Prev() {
 
 const KeyValueEntry& TwoLevelIterator::DoSkipEmptyDataBlocksForward(const KeyValueEntry* entry) {
   for (;;) {
-    if (entry->Valid() || second_level_iter_.status().IsIncomplete()) {
+    if (entry->Valid() || ShouldReturnError(second_level_iter_.status())) {
       return *entry;
     }
     // Move to next block
@@ -180,8 +188,7 @@ const KeyValueEntry& TwoLevelIterator::DoSkipEmptyDataBlocksForward(const KeyVal
 
 void TwoLevelIterator::SkipEmptyDataBlocksBackward() {
   while (second_level_iter_.iter() == nullptr ||
-         (!second_level_iter_.Valid() &&
-         !second_level_iter_.status().IsIncomplete())) {
+         (!second_level_iter_.Valid() && !ShouldReturnError(second_level_iter_.status()))) {
     // Move to next block
     if (!first_level_iter_.Valid()) {
       SetSecondLevelIterator(nullptr);
@@ -228,13 +235,14 @@ bool TwoLevelIterator::InitDataBlock() {
 
 InternalIterator* NewTwoLevelIterator(
     TwoLevelIteratorState* state, InternalIterator* first_level_iter, Arena* arena,
-    bool need_free_iter_and_state) {
+    bool need_free_iter_and_state, SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe) {
   if (arena == nullptr) {
-    return new TwoLevelIterator(state, first_level_iter, need_free_iter_and_state);
+    return new TwoLevelIterator(
+        state, first_level_iter, need_free_iter_and_state, skip_corrupt_data_blocks_unsafe);
   } else {
     auto mem = arena->AllocateAligned(sizeof(TwoLevelIterator));
-    return new (mem)
-        TwoLevelIterator(state, first_level_iter, need_free_iter_and_state);
+    return new (mem) TwoLevelIterator(
+        state, first_level_iter, need_free_iter_and_state, skip_corrupt_data_blocks_unsafe);
   }
 }
 

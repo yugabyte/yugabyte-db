@@ -334,7 +334,12 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     universeSpec.name("Test-V2-Universe");
     universeSpec.setYbSoftwareVersion("2.20.0.0-b123");
     universeSpec.setUseTimeSync(true);
-    universeSpec.ysql(new YSQLSpec().enable(true).enableAuth(true).password("ysqlPassword#1"));
+    universeSpec.ysql(
+        new YSQLSpec()
+            .enable(true)
+            .enableAuth(true)
+            .password("ysqlPassword#1")
+            .enableConnectionPooling(false));
     universeSpec.ycql(new YCQLSpec().enable(true).enableAuth(true).password("ycqlPassword#1"));
     universeSpec.networkingSpec(
         new UniverseNetworkingSpec()
@@ -573,9 +578,13 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     if (ysql != null) {
       assertThat(ysql.getEnable(), is(dbUniv.getPrimaryCluster().userIntent.enableYSQL));
       assertThat(ysql.getEnableAuth(), is(dbUniv.getPrimaryCluster().userIntent.enableYSQLAuth));
+      assertThat(
+          ysql.getEnableConnectionPooling(),
+          is(dbUniv.getPrimaryCluster().userIntent.enableConnectionPooling));
     } else {
       assertThat(dbUniv.getPrimaryCluster().userIntent.enableYSQL, is(false));
       assertThat(dbUniv.getPrimaryCluster().userIntent.enableYSQLAuth, is(false));
+      assertThat(dbUniv.getPrimaryCluster().userIntent.enableConnectionPooling, is(false));
     }
   }
 
@@ -838,7 +847,7 @@ public class UniverseTestBase extends UniverseControllerTestBase {
 
   private void validateAuditLogConfig(
       AuditLogConfig v2AuditLogConfig,
-      com.yugabyte.yw.models.helpers.audit.AuditLogConfig dbAuditLogConfig,
+      com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig dbAuditLogConfig,
       AuditLogConfig v2PrimaryAuditLogConfig) {
     if (v2AuditLogConfig == null) {
       v2AuditLogConfig = v2PrimaryAuditLogConfig;
@@ -868,7 +877,7 @@ public class UniverseTestBase extends UniverseControllerTestBase {
 
   private void validateUniverseLogsExportedConfig(
       UniverseLogsExporterConfig v2UniverseLogsExporterConfig,
-      com.yugabyte.yw.models.helpers.audit.UniverseLogsExporterConfig
+      com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig
           dbUniverseLogsExporterConfig) {
     if (v2UniverseLogsExporterConfig == null) {
       assertThat(dbUniverseLogsExporterConfig, is(nullValue()));
@@ -889,7 +898,7 @@ public class UniverseTestBase extends UniverseControllerTestBase {
 
   private void validateYsqlAuditConfig(
       YSQLAuditConfig v2YsqlAuditConfig,
-      com.yugabyte.yw.models.helpers.audit.YSQLAuditConfig dbYsqlAuditConfig) {
+      com.yugabyte.yw.models.helpers.exporters.audit.YSQLAuditConfig dbYsqlAuditConfig) {
     if (v2YsqlAuditConfig == null) {
       assertThat(dbYsqlAuditConfig, is(nullValue()));
       return;
@@ -919,7 +928,7 @@ public class UniverseTestBase extends UniverseControllerTestBase {
 
   private void validateYcqlAuditConfig(
       YCQLAuditConfig v2YcqlAuditConfig,
-      com.yugabyte.yw.models.helpers.audit.YCQLAuditConfig dbYcqlAuditConfig) {
+      com.yugabyte.yw.models.helpers.exporters.audit.YCQLAuditConfig dbYcqlAuditConfig) {
     if (v2YcqlAuditConfig == null) {
       assertThat(dbYcqlAuditConfig, is(nullValue()));
       return;

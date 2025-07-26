@@ -144,25 +144,18 @@ message RaftGroupReplicaSuperBlockPB {
 
   required bytes raft_group_id = 2;
 
-  // deprecated MemRowSet id.
+  // Previously: MemRowSet id.
   reserved 3;
 
-  // Reserved for deprecated start_key, end_key, orphaned_blocks.
+  // Previously: deprecated start_key, end_key, orphaned_blocks.
   reserved 4, 5, 11;
 
   // The partition of the table.
   optional PartitionPB partition = 13;
 
-  // The latest schema
-  // TODO: maybe this should be TableSchemaPB? Need to actually put those attributes
-  // into use throughout the code. Using the simpler one for now.
-  optional string OBSOLETE_table_name = 7;
-  optional TableType OBSOLETE_table_type = 15 [ default = DEFAULT_TABLE_TYPE ];
-  optional SchemaPB OBSOLETE_schema = 8;
-  optional uint32 OBSOLETE_schema_version = 9;
-
-  // The partition schema of the table.
-  optional PartitionSchemaPB OBSOLETE_partition_schema = 14;
+  // Previously: OBSOLETE_table_name, OBSOLETE_table_type, OBSOLETE_schema,
+  //             OBSOLETE_schema_version, OBSOLETE_partition_schema.
+  reserved 7, 8, 9, 14, 15;
 
   // The current state of the Raft group's data.
   optional TabletDataState tablet_data_state = 10 [ default = TABLET_DATA_UNKNOWN ];
@@ -178,29 +171,9 @@ message RaftGroupReplicaSuperBlockPB {
   // KV-store for this Raft group.
   optional KvStoreInfoPB kv_store = 24;
 
-  // ----------------------------------------------------------------------------------------------
-  // Deprecated fields, only for backward compatibility during load, shouldn't be used during save:
-
-  // The RocksDB directory for this tablet.
-  optional string OBSOLETE_rocksdb_dir = 16;
-
-  // List of RocksDB SST files.
-  repeated FilePB OBSOLETE_rocksdb_files = 17;
-
-  // List of Snapshot files.
-  repeated SnapshotFilePB OBSOLETE_snapshot_files = 20;
-
-  // Deleted column IDs with timestamps so that memory can be cleaned up.
-  repeated DeletedColumnPB OBSOLETE_deleted_cols = 19;
-
-  // Secondary indexes of the table.
-  repeated IndexInfoPB OBSOLETE_indexes = 21;
-
-  // For index table: information about this index.
-  optional IndexInfoPB OBSOLETE_index_info = 22;
-
-  // Tables co-located in this tablet.
-  repeated TableInfoPB OBSOLETE_tables = 23;
+  // Previously: OBSOLETE_rocksdb_dir, OBSOLETE_rocksdb_files, OBSOLETE_snapshot_files,
+  //             OBSOLETE_deleted_cols, OBSOLETE_indexes, OBSOLETE_index_info, OBSOLETE_tables.
+  reserved 16, 17, 19, 20, 21, 22, 23;
 
   // True if the raft group is for a colocated tablet.
   optional bool colocated = 25 [ default = false ];

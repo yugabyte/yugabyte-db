@@ -22,7 +22,6 @@
 
 #include "yb/docdb/doc_expr.h"
 #include "yb/docdb/doc_operation.h"
-#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 

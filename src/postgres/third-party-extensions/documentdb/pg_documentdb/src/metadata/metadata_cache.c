@@ -117,8 +117,11 @@ PGDLLEXPORT char *ApiInternalSchemaName = "documentdb_api_internal";
 PGDLLEXPORT char *ApiInternalSchemaNameV2 = "documentdb_api_internal";
 PGDLLEXPORT char *ExtensionObjectPrefix = "documentdb";
 PGDLLEXPORT char *ExtensionObjectPrefixV2 = "documentdb";
+/*
+ * YB: Upstream bug(#164). AddressSanitizer: odr-violation. Already declared in type_cache.c.
 PGDLLEXPORT char *CoreSchemaName = "documentdb_core";
 PGDLLEXPORT char *CoreSchemaNameV2 = "documentdb_core";
+ */
 PGDLLEXPORT char *FullBsonTypeName = "documentdb_core.bson";
 PGDLLEXPORT char *ApiExtensionName = "documentdb";
 PGDLLEXPORT char *ApiCatalogSchemaName = "documentdb_api_catalog";
@@ -2639,6 +2642,12 @@ RumIndexAmId(void)
 		HeapTuple tuple = SearchSysCache1(AMNAME, CStringGetDatum(extensionRumAccess));
 		if (!HeapTupleIsValid(tuple))
 		{
+			/*
+			 * YB: Rum index is not supported.
+			*/
+			if (IsYugaByteEnabled())
+				return InvalidOid;
+
 			ereport(ERROR,
 					(errmsg("Access method \"%s\" not supported.", extensionRumAccess)));
 		}

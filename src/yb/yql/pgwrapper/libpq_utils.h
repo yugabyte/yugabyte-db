@@ -277,7 +277,12 @@ class PGConn {
   // Reconnect.
   void Reset();
 
-  Status Execute(const std::string& command, bool show_query_in_error = true);
+  // Execute a query that does not return any results.
+  // If show_query_in_error is set, the query will be included in the error message.
+  // If ignore_empty_query is set, an empty query or a query containing only comments will not
+  // result in an error.
+  Status Execute(
+      const std::string& command, bool show_query_in_error = true, bool ignore_empty_query = false);
 
   template <class... Args>
   Status ExecuteFormat(const std::string& format, Args&&... args) {

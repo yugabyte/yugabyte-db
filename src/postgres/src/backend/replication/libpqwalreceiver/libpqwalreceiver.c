@@ -373,6 +373,7 @@ libpqrcv_identify_system(WalReceiverConn *conn, TimeLineID *primary_tli)
 						"the primary server: %s",
 						pchomp(PQerrorMessage(conn->streamConn)))));
 	}
+
 	/*
 	 * IDENTIFY_SYSTEM returns 3 columns in 9.3 and earlier, and 4 columns in
 	 * 9.4 and onwards.

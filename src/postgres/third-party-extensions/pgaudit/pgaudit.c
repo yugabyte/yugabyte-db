@@ -554,11 +554,9 @@ log_audit_event(AuditEventStackItem *stackItem)
                 case T_AlterRoleStmt:
 
                     if (stackItem->auditEvent.commandText != NULL)
-                    {
-                        CommandTag command_tag = YbParseCommandTag(stackItem->auditEvent.commandText);
-                        stackItem->auditEvent.commandText = YbRedactPasswordIfExists(stackItem->auditEvent.commandText,
-                            command_tag);
-                    }
+                        stackItem->auditEvent.commandText =
+                            YbGetRedactedQueryString(stackItem->auditEvent.commandText,
+                                                     NULL /* redacted_query_len */ );
                     yb_switch_fallthrough();
 
                 /* Fall through */

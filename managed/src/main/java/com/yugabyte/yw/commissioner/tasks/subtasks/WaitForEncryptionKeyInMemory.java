@@ -43,11 +43,7 @@ public class WaitForEncryptionKeyInMemory extends NodeTaskBase {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     if (universe != null
         && EncryptionAtRestUtil.getNumUniverseKeys(universe.getUniverseUUID()) > 0) {
-      YBClient client = null;
-      String hostPorts = universe.getMasterAddresses();
-      String certificate = universe.getCertificateNodetoNode();
-      try {
-        client = ybService.getClient(hostPorts, certificate);
+      try (YBClient client = ybService.getUniverseClient(universe)) {
         KmsHistory activeKey = EncryptionAtRestUtil.getActiveKey(universe.getUniverseUUID());
         if (!client.waitForMasterHasUniverseKeyInMemory(
             KEY_IN_MEMORY_TIMEOUT, activeKey.getUuid().keyRef, taskParams().nodeAddress)) {
@@ -56,8 +52,6 @@ public class WaitForEncryptionKeyInMemory extends NodeTaskBase {
         }
       } catch (Exception e) {
         log.error("{} hit error : {}", getName(), e.getMessage());
-      } finally {
-        ybService.closeClient(client, hostPorts);
       }
     }
   }

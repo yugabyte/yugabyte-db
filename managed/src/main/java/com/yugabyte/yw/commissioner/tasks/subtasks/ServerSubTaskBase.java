@@ -86,8 +86,18 @@ public abstract class ServerSubTaskBase extends AbstractTaskBase {
     return ybService.getClient(masterAddresses, certificate);
   }
 
-  public void closeClient(YBClient client) {
-    ybService.closeClient(client, getMasterAddresses());
+  public YBClient getClient(long adminOperationTimeoutMs) {
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+    String masterAddresses = universe.getMasterAddresses();
+    String certificate = universe.getCertificateNodetoNode();
+    YbClientConfig ybClientConfig =
+        new YbClientConfig(
+            masterAddresses,
+            certificate,
+            adminOperationTimeoutMs,
+            TimeUnit.SECONDS.toMillis(VALIDATE_PRECHECK_SOCKET_READ_TIMEOUT_MS),
+            TimeUnit.SECONDS.toMillis(VALIDATE_PRECHECK_OPERATION_TIMEOUT_MS));
+    return ybService.getClientWithConfig(ybClientConfig);
   }
 
   public void checkParams() {

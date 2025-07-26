@@ -47,7 +47,6 @@ public class TestPgRegressTablegroup extends BasePgRegressTest {
 
   @Test
   public void testPgRegressTablegroupDeprecation() throws Exception {
-    markClusterNeedsRecreation();
     restartClusterWithFlags(Collections.emptyMap(),
                             ImmutableMap.of(
                                 "ysql_beta_features", "false",

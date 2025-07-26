@@ -2,7 +2,7 @@
 
 package com.yugabyte.yw.forms;
 
-import com.fasterxml.jackson.databind.PropertyNamingStrategy;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -14,7 +14,7 @@ import lombok.experimental.Accessors;
 @ApiModel
 @Data
 @Accessors(chain = true)
-@JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
+@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class PerfAdvisorSettingsFormData {
 
   @ApiModelProperty(value = "Enable/disable perf advisor runs for the universe")

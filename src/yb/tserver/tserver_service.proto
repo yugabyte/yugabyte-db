@@ -107,6 +107,9 @@ service TabletServerService {
   // a persisted intent. These intents may correspond to explicit or implicit locks.
   rpc GetLockStatus(GetLockStatusRequestPB) returns (GetLockStatusResponsePB);
 
+  rpc GetObjectLockStatus(GetObjectLockStatusRequestPB)
+      returns (GetObjectLockStatusResponsePB);
+
   rpc CancelTransaction(CancelTransactionRequestPB) returns (CancelTransactionResponsePB);
 
   // Returns the schema version on the XCluster consumer side that is
@@ -199,6 +202,16 @@ message GetLockStatusResponsePB {
   repeated TabletLockInfoPB tablet_lock_infos = 4;
 }
 
+
+message GetObjectLockStatusRequestPB {
+}
+
+message GetObjectLockStatusResponsePB {
+  optional TabletServerErrorPB error = 1;
+
+  repeated ObjectLockInfoPB object_lock_infos = 2;
+}
+
 message GetYSQLLeaseInfoRequestPB {
 }
 
@@ -281,6 +294,8 @@ message UpdateTransactionRequestPB {
   // Reserved for xcluster deprecated field is_external.
   reserved 4;
   optional fixed64 start_time = 5;
+
+  optional AshMetadataPB ash_metadata = 6;
 }
 
 message UpdateTransactionResponsePB {
@@ -484,6 +499,8 @@ message AbortTransactionRequestPB {
 
   // Status containing deadlock info if the transaction is being aborted due to deadlock.
   optional AppStatusPB deadlock_reason = 4;
+
+  optional AshMetadataPB ash_metadata = 5;
 }
 
 message AbortTransactionResponsePB {

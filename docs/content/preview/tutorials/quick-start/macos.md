@@ -69,7 +69,7 @@ Installing YugabyteDB involves completing [prerequisites](#prerequisites) and [d
 
 Before installing YugabyteDB, ensure that you have the following available:
 
-- <i class="fa-brands fa-apple" aria-hidden="true"></i> macOS 10.12 or later. If you are on Apple silicon, you also need [Rosetta](https://support.apple.com/en-us/HT211861).
+- <i class="fa-brands fa-apple" aria-hidden="true"></i> macOS 10.12 or later. If you are on Apple silicon, you need to download the macOS ARM package.
 
 - Python 3. To check the version, execute the following command:
 
@@ -180,6 +180,10 @@ You might need to `unload` the service before loading it.
 
 You download YugabyteDB as follows:
 
+{{< tabpane text=true >}}
+
+{{% tab header="macOS x86" lang="macOS x86" %}}
+
 1. Download the YugabyteDB `tar.gz` file by executing the following `wget` command:
 
     ```sh
@@ -191,6 +195,26 @@ You download YugabyteDB as follows:
     ```sh
     tar xvfz yugabyte-{{< yb-version version="preview" format="build">}}-darwin-x86_64.tar.gz && cd yugabyte-{{< yb-version version="preview">}}/
     ```
+
+{{% /tab %}}
+
+{{% tab header="macOS ARM" lang="macOS ARM" %}}
+
+1. Download the YugabyteDB `tar.gz` file by executing the following `wget` command:
+
+    ```sh
+    wget https://software.yugabyte.com/releases/{{< yb-version version="preview">}}/yugabyte-{{< yb-version version="preview" format="build">}}-darwin-arm64.tar.gz
+    ```
+
+1. Extract the package and then change directories to the YugabyteDB home, as follows:
+
+    ```sh
+    tar xvfz yugabyte-{{< yb-version version="preview" format="build">}}-darwin-arm64.tar.gz && cd yugabyte-{{< yb-version version="preview">}}/
+    ```
+
+{{% /tab %}}
+
+{{< /tabpane >}}
 
 ## Create a local cluster
 

@@ -49,6 +49,7 @@ insert into tht select (x%10)::text::digit, x from generate_series(1,1000) x;
 $node->command_ok(
 	[
 		'pg_dump', '-Fd', '--no-sync', '-j2', '-f', "$backupdir/dump1",
+		'--load-via-partition-root',
 		$node->connstr($dbname1)
 	],
 	'parallel dump');
@@ -66,6 +67,7 @@ $node->command_ok(
 		'pg_dump',   '-Fd',
 		'--no-sync', '-j2',
 		'-f',        "$backupdir/dump2",
+		'--load-via-partition-root',
 		'--inserts', $node->connstr($dbname1)
 	],
 	'parallel dump as inserts');

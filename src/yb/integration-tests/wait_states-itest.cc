@@ -13,8 +13,18 @@
 
 #include "yb/integration-tests/cql_test_base.h"
 
+#include "yb/common/hybrid_time.h"
+
+#include "yb/gutil/strings/split.h"
+
+#include "yb/master/master.h"
+#include "yb/master/master_backup.pb.h"
+#include "yb/master/mini_master.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
+
+#include "yb/tools/yb-admin_client.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/pg_client.pb.h"
@@ -24,7 +34,9 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/enums.h"
 #include "yb/util/logging.h"
+#include "yb/util/result.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
@@ -186,10 +198,7 @@ class WaitStateITest : public pgwrapper::PgMiniTestBase {
   }
 
   void EnableYSQLFlags() override {
-    if (test_mode_ == TestMode::kYCQL) {
-      ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = false;
-      ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_auto_run_initdb) = false;
-    } else {
+    if (test_mode_ != TestMode::kYCQL) {
       pgwrapper::PgMiniTestBase::EnableYSQLFlags();
     }
   }
@@ -249,6 +258,7 @@ class WaitStateTestCheckMethodCounts : public WaitStateITest {
   void DoPgWritesUntilStopped(std::atomic<bool>& stop);
   virtual void DoPgReadsUntilStopped(std::atomic<bool>& stop);
   virtual void MaybeSleepBeforePgWriteCommits() {}
+  virtual bool StartRegularWorkers() { return true; }
 
   std::atomic<size_t> num_ash_calls_done_;
 
@@ -285,8 +295,16 @@ void WaitStateTestCheckMethodCounts::VerifyRowsFromASH() {
   // Some of the tests only check for the wait-state to have been reached.
   // We may not have collected many samples in the circular buffer, so it is ok for the query to
   // return nothing.
-  if (!rows.empty()) {
-    ASSERT_EQ(rows, n0_uuid_with_dashes);
+  auto split_rows = SplitStringUsing(rows, "\n");
+  if (!split_rows.empty()) {
+    bool condition = false;
+    for (auto row : split_rows) {
+      if (n0_uuid_with_dashes == row) {
+        condition = true;
+        break;
+      }
+    }
+    ASSERT_TRUE(condition);
   }
 }
 
@@ -366,6 +384,14 @@ size_t WaitStateTestCheckMethodCounts::GetMethodCount(const std::string& method)
 }
 
 void WaitStateTestCheckMethodCounts::LaunchWorkers(TestThreadHolder* thread_holder) {
+  thread_holder->AddThreadFunctor([this, &stop = thread_holder->stop_flag()] {
+    DoAshCalls(stop);
+  });
+
+  if (!StartRegularWorkers()) {
+    return;
+  }
+
   if (IsCQLEnabled()) {
     for (int i = 0; i < NumWriterThreads(); i++) {
       thread_holder->AddThreadFunctor(
@@ -383,10 +409,6 @@ void WaitStateTestCheckMethodCounts::LaunchWorkers(TestThreadHolder* thread_hold
     thread_holder->AddThreadFunctor(
         [this, &stop = thread_holder->stop_flag()] { DoPgReadsUntilStopped(stop); });
   }
-
-  thread_holder->AddThreadFunctor([this, &stop = thread_holder->stop_flag()] {
-    DoAshCalls(stop);
-  });
 }
 
 void WaitStateTestCheckMethodCounts::UpdateCounts(
@@ -784,12 +806,23 @@ class AshTestVerifyOccurrenceBase : public AshTestWithCompactions {
     return 1;
   }
 
+  bool StartRegularWorkers() override {
+    switch (code_to_look_for_) {
+      case ash::WaitStateCode::kWaitForReadTime:
+        return false;
+      default:
+        return true;
+    }
+  }
+
  protected:
   const ash::WaitStateCode code_to_look_for_;
   const bool verify_code_was_pulled_;
 
   void CreateIndexesUntilStopped(std::atomic<bool>& stop);
   void AddNodesUntilStopped(std::atomic<bool>& stop);
+  void DoPgDeferrableReadsUntilStopped(std::atomic<bool>& stop);
+  void CreateAndRestoreSnapshot();
   std::atomic<size_t> num_indexes_created_{0};
 };
 
@@ -823,6 +856,43 @@ void AshTestVerifyOccurrenceBase::AddNodesUntilStopped(std::atomic<bool>& stop) 
   } while (WaitFor([&stop]() { return stop.load(); }, waitTime, "Wait to be stopped").IsTimedOut());
 }
 
+void AshTestVerifyOccurrenceBase::DoPgDeferrableReadsUntilStopped(std::atomic<bool>& stop) {
+  constexpr auto kTableName = "test_table";
+  ASSERT_OK(main_thread_connection_->ExecuteFormat(
+      "CREATE TABLE $0 (k INT)", kTableName));
+  ASSERT_OK(main_thread_connection_->ExecuteFormat(
+      "INSERT INTO $0 (k) VALUES (1)", kTableName));
+  ASSERT_OK(main_thread_connection_->Execute(
+      "BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE READ ONLY DEFERRABLE"));
+  while (!stop) {
+    ASSERT_OK(main_thread_connection_->FetchFormat(
+        "SELECT * FROM $0 WHERE k = 1", kTableName));
+    SleepFor(10ms * kTimeMultiplier);
+  }
+  ASSERT_OK(main_thread_connection_->CommitTransaction());
+}
+
+void AshTestVerifyOccurrenceBase::CreateAndRestoreSnapshot() {
+  auto yb_admin_client = std::make_unique<tools::ClusterAdminClient>(
+    cluster_->GetMasterAddresses(), MonoDelta::FromSeconds(30));
+  ASSERT_OK(yb_admin_client->Init());
+  const tools::TypedNamespaceName database {
+    .db_type = YQL_DATABASE_PGSQL,
+    .name = "yugabyte"
+  };
+  ASSERT_OK(yb_admin_client->CreateNamespaceSnapshot(database, 1, false));
+
+  SleepFor(1s * kTimeMultiplier);
+  tools::ListSnapshotsFlags flags;
+  master::ListSnapshotsResponsePB snapshot_response =
+          ResultToValue(yb_admin_client->ListSnapshots(flags), master::ListSnapshotsResponsePB());
+
+  const ::std::string& snapshot_id = snapshot_response.snapshots(0).id();
+
+  HybridTime timestamp;
+  ASSERT_OK(yb_admin_client->RestoreSnapshot(snapshot_id, timestamp));
+}
+
 std::string WaitStateCodeToString(const testing::TestParamInfo<ash::WaitStateCode>& param_info) {
   return yb::ToString(param_info.param);
 }
@@ -837,9 +907,24 @@ void AshTestVerifyOccurrenceBase::LaunchWorkers(TestThreadHolder* thread_holder)
           [this, &stop = thread_holder->stop_flag()] { CreateIndexesUntilStopped(stop); });
       break;
     case ash::WaitStateCode::kReplicaState_TakeUpdateLock:
+    case ash::WaitStateCode::kRemoteBootstrap_StartRemoteSession:
+    case ash::WaitStateCode::kRemoteBootstrap_FetchData:
+    case ash::WaitStateCode::kRemoteBootstrap_RateLimiter:
+    case ash::WaitStateCode::kRemoteBootstrap_ReadDataFromFile:
     case ash::WaitStateCode::kRetryableRequests_SaveToDisk:
       thread_holder->AddThreadFunctor(
           [this, &stop = thread_holder->stop_flag()] { AddNodesUntilStopped(stop); });
+      break;
+    case ash::WaitStateCode::kWaitForReadTime:
+      thread_holder->AddThreadFunctor(
+          [this, &stop = thread_holder->stop_flag()] { DoPgDeferrableReadsUntilStopped(stop); });
+      break;
+    case ash::WaitStateCode::kSnapshot_WaitingForFlush:
+    case ash::WaitStateCode::kSnapshot_RestoreCheckpoint:
+    case ash::WaitStateCode::kSnapshot_CleanupSnapshotDir:
+    case ash::WaitStateCode::kRocksDB_CreateCheckpoint:
+      thread_holder->AddThreadFunctor(
+        [this] { CreateAndRestoreSnapshot(); });
       break;
     default: {
     }
@@ -861,6 +946,7 @@ INSTANTIATE_TEST_SUITE_P(
       ash::WaitStateCode::kRpc_Done,
       ash::WaitStateCode::kRetryableRequests_SaveToDisk,
       ash::WaitStateCode::kMVCC_WaitForSafeTime,
+      ash::WaitStateCode::kWaitForReadTime,
       ash::WaitStateCode::kLockedBatchEntry_Lock,
       ash::WaitStateCode::kBackfillIndex_WaitForAFreeSlot,
       ash::WaitStateCode::kCreatingNewTablet,
@@ -883,11 +969,20 @@ INSTANTIATE_TEST_SUITE_P(
       ash::WaitStateCode::kRocksDB_CloseFile,
       ash::WaitStateCode::kRocksDB_RateLimiter,
       ash::WaitStateCode::kRocksDB_NewIterator,
+      ash::WaitStateCode::kRocksDB_CreateCheckpoint,
       ash::WaitStateCode::kYCQL_Parse,
       ash::WaitStateCode::kYCQL_Analyze,
       ash::WaitStateCode::kYCQL_Execute,
       ash::WaitStateCode::kYBClient_WaitingOnDocDB,
-      ash::WaitStateCode::kYBClient_LookingUpTablet
+      ash::WaitStateCode::kYBClient_LookingUpTablet,
+      ash::WaitStateCode::kYBClient_WaitingOnMaster,
+      ash::WaitStateCode::kRemoteBootstrap_StartRemoteSession,
+      ash::WaitStateCode::kRemoteBootstrap_FetchData,
+      ash::WaitStateCode::kRemoteBootstrap_RateLimiter,
+      ash::WaitStateCode::kRemoteBootstrap_ReadDataFromFile,
+      ash::WaitStateCode::kSnapshot_WaitingForFlush,
+      ash::WaitStateCode::kSnapshot_RestoreCheckpoint,
+      ash::WaitStateCode::kSnapshot_CleanupSnapshotDir
       ), WaitStateCodeToString);
 
 TEST_P(AshTestVerifyOccurrence, VerifyWaitStateEntered) {
@@ -1029,6 +1124,11 @@ class AshTestVerifyPgOccurrence : public AshTestVerifyPgOccurrenceBase,
                                   public ::testing::WithParamInterface<ash::WaitStateCode> {
  public:
   AshTestVerifyPgOccurrence() : AshTestVerifyPgOccurrenceBase(GetParam()) {}
+
+ protected:
+  void OverrideMiniClusterOptions(MiniClusterOptions* options) override {
+    options->wait_for_pg = false;
+  }
 };
 
 INSTANTIATE_TEST_SUITE_P(

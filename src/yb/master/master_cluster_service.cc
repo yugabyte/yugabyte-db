@@ -40,7 +40,6 @@ DEFINE_UNKNOWN_double(master_slow_get_registration_probability, 0,
 DECLARE_bool(enable_ysql_tablespaces_for_placement);
 
 DECLARE_bool(emergency_repair_mode);
-DECLARE_bool(TEST_enable_object_locking_for_table_locks);
 
 using namespace std::literals;
 
@@ -121,7 +120,7 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
       if (is_ysql_replication_info_required) {
         LOG(INFO) << "Filter TServers based on placement ID "
                   << "and cloud info against placement "
-                  << replication_info->live_replicas().placement_uuid();
+                  << replication_info->ShortDebugString();
         // Filter based on placement ID
         if (l->pb.registration().placement_uuid() !=
             replication_info->live_replicas().placement_uuid())

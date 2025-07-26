@@ -1,0 +1,32 @@
+warning: elided lifetime has a name
+ --> tests/compile-fail/table-iterators-arent-immortal.rs:6:19
+  |
+6 | ) -> TableIterator<(name!(a, &'static str), name!(b, Option<&'static str>))> {
+  |                   ^ this elided lifetime gets resolved as `'static`
+  |
+  = note: `#[warn(elided_named_lifetimes)]` on by default
+help: consider specifying it explicitly
+  |
+6 | ) -> TableIterator<'static, (name!(a, &'static str), name!(b, Option<&'static str>))> {
+  |                    ++++++++
+
+error[E0521]: borrowed data escapes outside of function
+ --> tests/compile-fail/table-iterators-arent-immortal.rs:6:78
+  |
+3 |   #[pg_extern]
+  |   ------------
+  |   |
+  |   lifetime `'fcx` defined here
+  |   in this procedural macro expansion
+...
+6 |   ) -> TableIterator<(name!(a, &'static str), name!(b, Option<&'static str>))> {
+  |  ______________________________________________________________________________^
+7 | |     TableIterator::once((value, Some(value)))
+8 | | }
+  | | ^
+  | | |
+  | | `fcinfo` is a reference that is only valid in the function body
+  | |_`fcinfo` escapes the function body here
+  |   argument requires that `'fcx` must outlive `'static`
+  |
+  = note: this error originates in the attribute macro `pg_extern` (in Nightly builds, run with -Z macro-backtrace for more info)

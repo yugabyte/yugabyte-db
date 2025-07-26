@@ -12,6 +12,7 @@
 
 #pragma once
 
+#include "pg_yb_utils.h"
 #include "storage/sinval.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
@@ -34,6 +35,7 @@ extern YbCatalogVersionType yb_catalog_version_type;
 
 /* Get the latest catalog version from the master leader. */
 extern uint64_t YbGetMasterCatalogVersion();
+extern void YbMaybeLockMasterCatalogVersion(YbDdlMode mode);
 
 /* Send a request to increment the master catalog version. */
 extern bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change,

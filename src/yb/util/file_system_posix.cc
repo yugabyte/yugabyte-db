@@ -355,7 +355,7 @@ Status PosixWritableFile::Close() {
                 << " filesize_: " << filesize_;
     }
     if (ftruncate(fd_, filesize_) != 0) {
-      LOG(ERROR) << STATUS_IO_ERROR(filename_, errno) << " filesize_: " << filesize_;
+      LOG(WARNING) << STATUS_IO_ERROR(filename_, errno) << " filesize_: " << filesize_;
     }
 #ifdef ROCKSDB_FALLOCATE_PRESENT
     // in some file systems, ftruncate only trims trailing space if the
@@ -374,9 +374,9 @@ Status PosixWritableFile::Close() {
       if (fallocate(
               fd_, FALLOC_FL_KEEP_SIZE | FALLOC_FL_PUNCH_HOLE, filesize_,
               block_size * last_allocated_block - filesize_) != 0) {
-        LOG(ERROR) << STATUS_IO_ERROR(filename_, errno) << " block_size: " << block_size
-                   << " last_allocated_block: " << last_allocated_block
-                   << " filesize_: " << filesize_;
+        LOG(WARNING) << STATUS_IO_ERROR(filename_, errno) << " block_size: " << block_size
+                     << " last_allocated_block: " << last_allocated_block
+                     << " filesize_: " << filesize_;
       }
     }
 #endif

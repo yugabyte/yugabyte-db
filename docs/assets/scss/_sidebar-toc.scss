@@ -15,6 +15,7 @@
       height: auto;
       scrollbar-width: thin;
       overflow-y: auto;
+      scroll-behavior: smooth;
 
       &::-webkit-scrollbar {
         height: 5px;

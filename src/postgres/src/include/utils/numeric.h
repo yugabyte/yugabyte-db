@@ -14,7 +14,7 @@
 #ifndef _PG_NUMERIC_H_
 #define _PG_NUMERIC_H_
 
-#include "c.h"	/* YB include */
+#include "c.h"					/* YB include */
 
 #include "fmgr.h"
 

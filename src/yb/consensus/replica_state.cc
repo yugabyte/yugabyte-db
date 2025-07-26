@@ -46,6 +46,8 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/casts.h"
 
+#include "yb/tserver/tserver_error.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/debug/trace_event.h"
@@ -70,6 +72,9 @@ TAG_FLAG(inject_delay_commit_pre_voter_to_voter_secs, unsafe);
 TAG_FLAG(inject_delay_commit_pre_voter_to_voter_secs, hidden);
 
 DEFINE_RUNTIME_bool(enable_lease_revocation, true, "Enables Raft lease revocation mechanism");
+
+DEFINE_test_flag(bool, follower_fail_retryable_register, false,
+                 "Whether the follower will fail on the retryable register");
 
 namespace yb::consensus {
 
@@ -659,7 +664,9 @@ Status ReplicaState::AbortOpsAfterUnlocked(int64_t new_preceding_idx) {
   last_received_op_id_current_leader_ = OpId();
   next_index_ = new_preceding.index + 1;
 
-  auto abort_status = STATUS(Aborted, "Operation aborted by new leader");
+  auto abort_status = STATUS(
+      Aborted, "Operation aborted by new leader",
+      tserver::TabletServerError(tserver::TabletServerErrorPB::NOT_THE_LEADER));
   for (auto it = pending_operations_.end(); it != preceding_op_iter;) {
     const ConsensusRoundPtr& round = *--it;
     auto op_id = OpId::FromPB(round->replicate_msg()->id());
@@ -731,6 +738,10 @@ Status ReplicaState::AddPendingOperation(const ConsensusRoundPtr& round, Operati
   } else if (op_type == WRITE_OP) {
     // Leader registers an operation with RetryableRequests even before assigning an op id.
     if (mode == OperationMode::kFollower) {
+      if (PREDICT_FALSE(FLAGS_TEST_follower_fail_retryable_register)) {
+        return STATUS(IllegalState, "Rejected: --TEST_follower_fail_retryable_register is true");
+      }
+
       auto result = retryable_requests_.Register(round, tablet::IsLeaderSide::kFalse);
       const auto error_msg = "Cannot register retryable request on follower";
       if (!result.ok()) {
@@ -756,6 +767,12 @@ Status ReplicaState::AddPendingOperation(const ConsensusRoundPtr& round, Operati
     SCHECK_EQ(
         split_request.tablet_id(), cmeta_->tablet_id(), InvalidArgument,
         "Received split op for a different tablet.");
+    SCHECK(
+        pending_split_op_id_.empty(), InvalidArgument,
+        Format(
+            "Received split op ($0) while having another split op pending ($1)", round->id(),
+            pending_split_op_id_));
+    pending_split_op_id_ = round->id();
     // TODO(tsplit): if we get failures past this point we can't undo the tablet state.
     // Might be need some tool to be able to remove SPLIT_OP from Raft log.
   }
@@ -1500,8 +1517,17 @@ void ReplicaState::NotifyReplicationFinishedUnlocked(
     const ConsensusRoundPtr& round, const Status& status, int64_t leader_term,
     OpIds* applied_op_ids) {
   round->NotifyReplicationFinished(status, leader_term, applied_op_ids);
-
   retryable_requests_.ReplicationFinished(*round->replicate_msg(), status, leader_term);
+  if (OpId::FromPB(round->replicate_msg()->id()) == GetPendingSplitOpIdUnlocked()) {
+    // There are two cases this can happen:
+    // 1 - status is OK, that means operation has been applied by the current peer. This relies on
+    // our current Raft implementation specifics where apply happens inside
+    // ConsensusRound::NotifyReplicationFinished.
+    // 2 - status is an error, that means operation has been aborted by the current peer.
+    //
+    // In both cases operation is no longer pending, so we should clear pending SPLIT_OP id.
+    ClearPendingSplitOpIdUnlocked();
+  }
 }
 
 consensus::LeaderState ReplicaState::RefreshLeaderStateCacheUnlocked(CoarseTimePoint& now) const {

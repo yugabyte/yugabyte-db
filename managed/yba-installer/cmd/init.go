@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components/ybactl"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/config"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
@@ -19,8 +20,9 @@ import (
 )
 
 var (
-	PostgresVersion   string = ""
-	PrometheusVersion string = ""
+	PostgresVersion    string = ""
+	PrometheusVersion  string = ""
+	PerfAdvisorVersion string = ""
 )
 
 // Get the commands that will require yba-ctl.yml to be setup before getting run
@@ -32,10 +34,6 @@ func cmdsRequireConfigInit() []string {
 		"yba-ctl preflight",
 	}
 }
-
-// List of services required for YBA installation.
-var services map[string]common.Component
-var serviceOrder []string
 
 var ybaCtl *ybactl.YbaCtlComponent
 
@@ -101,27 +99,16 @@ func ensureInstallerConfFile() {
 
 func initServices() {
 	// services is an ordered map so services that depend on others should go later in the chain.
-	services = make(map[string]common.Component)
-	installPostgres := viper.GetBool("postgres.install.enabled")
-	installYbdb := viper.GetBool("ybdb.install.enabled")
-	services[PostgresServiceName] = NewPostgres(PostgresVersion)
-	// services[YbdbServiceName] = NewYbdb("2.17.2.0")
-	services[PrometheusServiceName] = NewPrometheus(PrometheusVersion)
-	services[YbPlatformServiceName] = NewPlatform(ybactl.Version)
-	// serviceOrder = make([]string, len(services))
-	if installPostgres {
-		serviceOrder = []string{PostgresServiceName, PrometheusServiceName, YbPlatformServiceName}
-	} else if installYbdb {
-		serviceOrder = []string{YbdbServiceName, PrometheusServiceName, YbPlatformServiceName}
-	} else {
-		serviceOrder = []string{PrometheusServiceName, YbPlatformServiceName}
+	serviceManager.RegisterService(NewPostgres(PostgresVersion))
+	serviceManager.RegisterService(NewPrometheus(PrometheusVersion))
+	serviceManager.RegisterService(NewPlatform(ybactl.Version))
+	serviceManager.RegisterService(NewPerfAdvisor(PerfAdvisorVersion))
+	serviceManager.RegisterService(NewLogRotate())
+	var services []components.Service
+	for s := range serviceManager.Services() {
+		services = append(services, s)
 	}
-	serviceList := []common.Component{}
-	for _, service := range services {
-		serviceList = append(serviceList, service)
-	}
-	checks.SetServicesRunningCheck(serviceList)
-	// populate names of services for valid args
+	checks.SetServicesRunningCheck(services)
 }
 
 func handleRootCheck(cmdName string) {
@@ -138,7 +125,13 @@ func handleRootCheck(cmdName string) {
 		} else if user.Uid != "0" && err == nil {
 			log.Fatal("Detected root install at /opt/yba-ctl, cannot upgrade as non-root")
 		}
-		log.Debug("legacy root check passed for upgrade")
+		log.Debug(fmt.Sprintf("legacy root check passed for %s", cmdName))
+
+		// Also handle the case where a config file is provided but did not include as_root
+		if err := common.SetYamlValue(common.InputFile(), "as_root", user.Uid == "0"); err != nil {
+			log.Warn("Failed to set as_root in config file, please set it manually")
+			log.Fatal("Failed to set as_root in config file: " + err.Error())
+		}
 		return
 	} else if user.Uid == "0" && !viper.GetBool("as_root") {
 		log.Fatal("running as root user with 'as_root' set to false is not supported")

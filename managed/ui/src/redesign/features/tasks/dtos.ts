@@ -94,7 +94,14 @@ export interface SubTaskInfo {
     error?: {
       code: string;
       message: string;
+      originMessage: string;
     }
+  }
+  taskParams? : {
+    nodeName?: string;
+    nodeDetailsSet? : {
+      nodeName?: string;
+    }[]
   }
 };
 

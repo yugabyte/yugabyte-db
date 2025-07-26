@@ -46,7 +46,7 @@ YB_DEFINE_ENUM(
   ((SERIALIZABLE, 3))
 );
 
-YB_STRONGLY_TYPED_BOOL(EnsureReadTimeIsSet);
+YB_DEFINE_ENUM(ReadTimeAction, (ENSURE_IS_SET)(RESET));
 
 class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
  public:
@@ -80,6 +80,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   void SetDdlHasSyscatalogChanges();
   Status SetInTxnBlock(bool in_txn_blk);
   Status SetReadOnlyStmt(bool read_only_stmt);
+  void SetTransactionHasWrites();
+  Result<bool> TransactionHasNonTransactionalWrites() const;
 
   bool IsTxnInProgress() const { return txn_in_progress_; }
   IsolationLevel GetIsolationLevel() const { return isolation_level_; }
@@ -96,9 +98,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   bool ShouldEnableTracing() const { return enable_tracing_; }
 
   Status SetupPerformOptions(
-      tserver::PgPerformOptionsPB* options,
-      EnsureReadTimeIsSet ensure_read_time = EnsureReadTimeIsSet::kFalse,
-      bool non_transactional_buffered_write = false);
+      tserver::PgPerformOptionsPB* options, std::optional<ReadTimeAction> read_time_action = {});
 
   double GetTransactionPriority() const;
   YbcTxnPriorityRequirement GetTransactionPriorityType() const;
@@ -202,13 +202,28 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   // On a transaction conflict error we want to recreate the transaction with the same priority as
   // the last transaction. This avoids the case where the current transaction gets a higher priority
   // and cancels the other transaction.
-  uint64_t priority_ = 0;
+  std::optional<uint64_t> priority_;
   SavePriority use_saved_priority_ = SavePriority::kFalse;
   int64_t pg_txn_start_us_ = 0;
   bool snapshot_read_time_is_used_ = false;
   bool has_exported_snapshots_ = false;
 
   YbcPgCallbacks pg_callbacks_;
+  // The transaction manager tracks the following semantics:
+  // 1. read_only_: Is the current transaction marked as read-only? A read-only transaction is one
+  //                that does not write to non temporary tables. This is a postgres construct that
+  //                is determined by the GUCs "default_transaction_read_only" and
+  //                "transaction_read_only". Note that a transaction can be marked as read-only
+  //                after it has already performed some writes.
+  // 2. read_only_stmt_: Does the current statement write to non temporary tables? Relevant in the
+  //                     context of read-only transactions, where all statements must be read-only.
+  // 3. has_writes_: Has the current transaction performed any writes to non temporary tables?
+  //                 This is used to track whether the transaction writes use the "fast path".
+  //                 Note that a transaction can be marked as non-read-only and not have any writes.
+  //                 The reverse is also true: a transaction can be marked as read-only and still
+  //                 have writes (before it was marked as read-only). So, no conclusion can be drawn
+  //                 about the transaction's read-only status based on the has_writes_ flag.
+  bool has_writes_ = false;
 
   const bool enable_table_locking_;
 

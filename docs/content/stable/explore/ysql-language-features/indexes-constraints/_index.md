@@ -85,3 +85,11 @@ To understand how index backfill works, see [Index backfill](index-backfill/)
 ## Unsupported indexes
 
 Generalized Search Tree (GiST) indexes in SQL are versatile indexes that support a wide range of query types and data structures. GiST indexes are particularly useful for indexing complex data types such as geometric shapes, text search, and custom data types. GiST indexes are **not** supported in YugabyteDB; follow {{<issue 1337>}} for updates.
+
+## Check indexes
+
+{{<tags/feature/ea idea="2160">}} Use the `yb_index_check()` utility function to check if an index is consistent with its base relation. Use it to detect inconsistencies that can creep in due to faulty storage, faulty RAM, or data files being overwritten or modified by unrelated software.
+
+{{<lead link="../../../api/ysql/exprs/func_yb_index_check/">}}
+To understand how to use the function, see [yb_index_check()](../../../api/ysql/exprs/func_yb_index_check/)
+{{</lead>}}

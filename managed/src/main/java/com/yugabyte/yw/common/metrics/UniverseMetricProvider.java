@@ -24,6 +24,7 @@ import com.yugabyte.yw.common.AccessKeyRotationUtil;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ImageBundleUtil;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.Util;
@@ -169,12 +170,16 @@ public class UniverseMetricProvider implements MetricsProvider {
               getEncryptionKeyExpiryDays(
                   activeEncryptionKeys.get(universe.getUniverseUUID()), kmsConfigMap);
           if (encryptionKeyExpiryDays != null) {
-            universeGroup.metric(
+            KmsHistory kmsHistory = activeEncryptionKeys.get(universe.getUniverseUUID());
+            KmsConfig kmsConfig = kmsConfigMap.get(kmsHistory.getConfigUuid());
+            Metric encryptionKeyMetric =
                 createUniverseMetric(
                     customer,
                     universe,
                     PlatformMetrics.UNIVERSE_ENCRYPTION_KEY_EXPIRY_DAY,
-                    encryptionKeyExpiryDays));
+                    encryptionKeyExpiryDays);
+            encryptionKeyMetric.setLabel(KnownAlertLabels.KMS_CONFIG_NAME, kmsConfig.getName());
+            universeGroup.metric(encryptionKeyMetric);
           }
           universeGroup.metric(
               createUniverseMetric(
@@ -239,8 +244,17 @@ public class UniverseMetricProvider implements MetricsProvider {
                     PlatformMetrics.UNIVERSE_RELEASE_FILES_STATUS,
                     universeFilepathMetric));
           }
-
           if (universe.getUniverseDetails().nodeDetailsSet != null) {
+            UserIntent primaryUserIntent =
+                universe.getUniverseDetails().getPrimaryCluster().userIntent;
+            boolean isK8SUniverse = CloudType.kubernetes.equals(primaryUserIntent.providerType);
+            Map<UUID, Map<String, Object>> finalUniverseOverridesAZMap =
+                isK8SUniverse
+                    ? KubernetesUtil.getFinalOverrides(
+                        universe.getUniverseDetails().getPrimaryCluster(),
+                        primaryUserIntent.universeOverrides,
+                        primaryUserIntent.azOverrides)
+                    : null;
             for (NodeDetails nodeDetails : universe.getUniverseDetails().nodeDetailsSet) {
               if (nodeDetails.cloudInfo == null || nodeDetails.cloudInfo.private_ip == null) {
                 // Node IP is missing - node is being created
@@ -317,8 +331,6 @@ public class UniverseMetricProvider implements MetricsProvider {
                       nodeDetails.redisServerHttpPort,
                       "redis_export",
                       statusValue(nodeDetails.isRedisServer)));
-              boolean isK8SUniverse =
-                  CloudType.kubernetes.equals(universe.getNodeDeploymentMode(nodeDetails));
               universeGroup.metric(
                   createNodeMetric(
                       customer,
@@ -382,12 +394,9 @@ public class UniverseMetricProvider implements MetricsProvider {
                             throughput));
                   }
                   if (isK8SUniverse) {
-                    UserIntent userIntent =
-                        universe.getUniverseDetails().getPrimaryCluster().userIntent;
                     double cpuCoreCount =
-                        nodeDetails.isTserver
-                            ? userIntent.tserverK8SNodeResourceSpec.cpuCoreCount
-                            : userIntent.masterK8SNodeResourceSpec.cpuCoreCount;
+                        KubernetesUtil.getCoreCountForUniverseForServer(
+                            cluster.userIntent, finalUniverseOverridesAZMap, nodeDetails);
                     universeGroup.metric(
                         createContainerMetric(
                             customer,

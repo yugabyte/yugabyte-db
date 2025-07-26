@@ -57,6 +57,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/barrier.h"
 #include "yb/util/cast.h"
+#include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/os-util.h"
@@ -164,6 +165,8 @@ class PgLibPqTest : public LibPqTestBase {
   Status TestDuplicateCreateTableRequest(PGConn conn);
 
   void TestSecondaryIndexInsertSelect();
+
+  Status TestEmbeddedIndexScanOptimization(bool is_colocated_with_tablespaces);
 
   void KillPostmasterProcessOnTservers();
 
@@ -550,12 +553,7 @@ Result<int64_t> ReadSumBalance(
     PGConn* conn, int accounts, IsolationLevel isolation,
     std::atomic<int>* counter) {
   RETURN_NOT_OK(conn->StartTransaction(isolation));
-  bool failed = true;
-  auto se = ScopeExit([conn, &failed] {
-    if (failed) {
-      EXPECT_OK(conn->Execute("ROLLBACK"));
-    }
-  });
+  CancelableScopeExit rollback_se{[conn] { EXPECT_OK(conn->Execute("ROLLBACK")); }};
 
   std::string query = "";
   for (int i = 1; i <= accounts; ++i) {
@@ -571,7 +569,7 @@ Result<int64_t> ReadSumBalance(
     sum += VERIFY_RESULT(GetValue<int64_t>(res.get(), i, 0));
   }
 
-  failed = false;
+  rollback_se.Cancel();
   RETURN_NOT_OK(conn->Execute("COMMIT"));
   return sum;
 }
@@ -945,6 +943,107 @@ class PgLibPqWithSharedMemTest : public PgLibPqTest {
 
 TEST_F_EX(PgLibPqTest, SecondaryIndexInsertSelectWithSharedMem, PgLibPqWithSharedMemTest) {
   TestSecondaryIndexInsertSelect();
+}
+
+Status PgLibPqTest::TestEmbeddedIndexScanOptimization(bool is_colocated_with_tablespaces) {
+  auto conn = VERIFY_RESULT(Connect());
+  constexpr auto kPgCatalogOid = 11;
+
+  // Secondary index scan on system table.
+  auto query = Format(
+      "EXPLAIN (ANALYZE, DIST, FORMAT JSON)"
+      " SELECT * FROM pg_class WHERE relname = 'pg_class' AND relnamespace = $0",
+      kPgCatalogOid);
+  // First run is to warm up the cache.
+  RETURN_NOT_OK(conn.FetchRow<std::string>(query));
+  // Second run is the real test.
+  auto explain_str = VERIFY_RESULT(conn.FetchRow<std::string>(query));
+  rapidjson::Document explain_json;
+  explain_json.Parse(explain_str.c_str());
+  auto scan_type = std::string(explain_json[0]["Plan"]["Node Type"].GetString());
+  SCHECK_EQ(scan_type, "Index Scan",
+            IllegalState,
+            "Unexpected scan type");
+  SCHECK_EQ(explain_json[0]["Catalog Read Requests"].GetDouble(), 1,
+            IllegalState,
+            "Unexpected number of catalog read requests");
+
+  // Secondary index scan on copartitioned table.
+  RETURN_NOT_OK(conn.Execute("CREATE EXTENSION vector"));
+  RETURN_NOT_OK(conn.Execute(
+      "CREATE TABLE vector_test (id int PRIMARY KEY, embedding vector(3)) SPLIT INTO 2 TABLETS"));
+  RETURN_NOT_OK(conn.Execute(
+      "CREATE INDEX ON vector_test USING ybhnsw (embedding vector_l2_ops)"));
+  RETURN_NOT_OK(conn.Execute("INSERT INTO vector_test VALUES (1, '[1, 2, 3]')"));
+  explain_str = VERIFY_RESULT(conn.FetchRow<std::string>(
+      "EXPLAIN (ANALYZE, DIST, FORMAT JSON)"
+      " SELECT * FROM vector_test ORDER BY embedding <-> '[0, 0, 0]' LIMIT 1"));
+  explain_json.Parse(explain_str.c_str());
+  scan_type = std::string(explain_json[0]["Plan"]["Node Type"].GetString());
+  SCHECK_EQ(scan_type, "Limit",
+            IllegalState,
+            "Unexpected scan type");
+  scan_type = std::string(explain_json[0]["Plan"]["Plans"][0]["Node Type"].GetString());
+  SCHECK_EQ(scan_type, "Index Scan",
+            IllegalState,
+            "Unexpected scan type");
+  SCHECK_EQ(explain_json[0]["Storage Read Requests"].GetDouble(), 1,
+            IllegalState,
+            "Unexpected number of storage read requests");
+
+  // Secondary index scan on colocated table and index.
+  RETURN_NOT_OK(conn.Execute("CREATE DATABASE colodb WITH colocation = true"));
+  conn = VERIFY_RESULT(ConnectToDB("colodb"));
+  RETURN_NOT_OK(conn.Execute(
+      "CREATE TABLE colo_test (id int PRIMARY KEY, value TEXT)"));
+  RETURN_NOT_OK(conn.Execute("CREATE INDEX ON colo_test (value)"));
+  RETURN_NOT_OK(conn.Execute("INSERT INTO colo_test VALUES (1, 'hi')"));
+  query = "EXPLAIN (ANALYZE, DIST, FORMAT JSON) SELECT * FROM colo_test WHERE value = 'hi'";
+  explain_str = VERIFY_RESULT(conn.FetchRow<std::string>(query));
+  explain_json.Parse(explain_str.c_str());
+  scan_type = std::string(explain_json[0]["Plan"]["Node Type"].GetString());
+  SCHECK_EQ(scan_type, "Index Scan",
+            IllegalState,
+            "Unexpected scan type");
+  SCHECK_EQ(explain_json[0]["Storage Read Requests"].GetDouble(), 1,
+            IllegalState,
+            "Unexpected number of storage read requests");
+
+  // Secondary index scan on colocated table and index on different tablespaces.
+  if (is_colocated_with_tablespaces) {
+    RETURN_NOT_OK(conn.Execute("DROP INDEX colo_test_value_idx"));
+    RETURN_NOT_OK(conn.Execute("CREATE TABLESPACE spc LOCATION '/dne'"));
+    RETURN_NOT_OK(conn.Execute("CREATE INDEX ON colo_test (value) TABLESPACE spc"));
+    explain_str = VERIFY_RESULT(conn.FetchRow<std::string>(query));
+    explain_json.Parse(explain_str.c_str());
+    scan_type = std::string(explain_json[0]["Plan"]["Node Type"].GetString());
+    SCHECK_EQ(scan_type, "Index Scan",
+              IllegalState,
+              "Unexpected scan type");
+    SCHECK_GT(explain_json[0]["Storage Read Requests"].GetDouble(), 1,
+              IllegalState,
+              "Unexpected number of storage read requests");
+  }
+
+  return Status::OK();
+}
+
+TEST_F(PgLibPqTest, EmbeddedIndexScanOptimizationColocatedWithTablespacesFalse) {
+  ASSERT_OK(TestEmbeddedIndexScanOptimization(false));
+}
+
+class PgLibPqColocatedTablesWithTablespacesTest : public PgLibPqTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    const auto flag = "--ysql_enable_colocated_tables_with_tablespaces=true"s;
+    options->extra_master_flags.push_back(flag);
+    options->extra_tserver_flags.push_back(flag);
+  }
+};
+
+TEST_F_EX(PgLibPqTest,
+          EmbeddedIndexScanOptimizationColocatedWithTablespacesTrue,
+          PgLibPqColocatedTablesWithTablespacesTest) {
+  ASSERT_OK(TestEmbeddedIndexScanOptimization(true));
 }
 
 void AssertRows(PGConn *conn, int expected_num_rows) {
@@ -2931,7 +3030,11 @@ void PgLibPqTest::TestCacheRefreshRetry(const bool is_retry_disabled) {
   int num_successes = 0;
   std::array<PGConn, 2> conns = {
     ASSERT_RESULT(ConnectToDB(kNamespaceName, true /* simple_query_protocol */)),
-    ASSERT_RESULT(ConnectToDB(kNamespaceName, true /* simple_query_protocol */)),
+    // For this test, we need to have the DDL connection and DML connection connected to
+    // two nodes in order to have heartbeat delay to cause stale cache which shows catalog
+    // version mismatch symptom.
+    ASSERT_RESULT((pg_ts = cluster_->tablet_server(1),
+                   ConnectToDB(kNamespaceName, true /* simple_query_protocol */))),
   };
 
   ASSERT_OK(conns[0].ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
@@ -2996,6 +3099,8 @@ class PgLibPqTestEnumType: public PgLibPqTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.push_back("--TEST_do_not_add_enum_sort_order=true");
+    // The EnumType test kills all postmasters on tservers so it must wait until they are spawned.
+    options->wait_for_tservers_to_accept_ysql_connections = true;
   }
 };
 
@@ -4230,32 +4335,58 @@ class PgLibPqPgInheritsNegCacheTest : public PgLibPqTest {
     options->extra_tserver_flags.push_back("--ysql_pg_conf_csv=yb_debug_log_catcache_events=true");
     PgLibPqTest::UpdateMiniClusterOptions(options);
   }
+
+  void TestInheritsNegCache(bool minimal_preload) {
+    google::SetVLOGLevel("libpq_utils", 1);
+    auto conn = ASSERT_RESULT(Connect());
+
+    // Prepare schema
+    ASSERT_OK(conn.Execute(
+      "CREATE TABLE foo (h INT, r INT, v1 INT, v2 INT, PRIMARY KEY (h, r))"
+      "PARTITION BY RANGE(r);"
+      "CREATE TABLE foo_part_1 PARTITION OF foo FOR VALUES FROM (1) TO (10);"
+      "CREATE UNIQUE INDEX ON foo (v1, r);"
+      "INSERT INTO foo VALUES (1,1,1,1);"));
+
+    auto start_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_inherits"));
+
+    // Run the query on a fresh conn
+    auto conn2 = ASSERT_RESULT(Connect());
+    auto str = conn2.FetchAllAsString(
+        "EXPLAIN (ANALYZE, DIST) INSERT INTO foo VALUES (1,1,1,1) ON CONFLICT (h, r) DO UPDATE SET "
+        "v2=foo.v2+1");
+    auto end_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_inherits"));
+
+    int32_t updated_v2 = ASSERT_RESULT(conn2.FetchRow<int32_t>(
+        "SELECT v2 FROM foo WHERE h=1 AND r=1"));
+    ASSERT_EQ(2, updated_v2);
+
+    // Given we are preloaded, we should not have any cache misses (incl neg misses)
+    // for the query above which should cause lookups for ancestors of a table in pg_inherits
+    if (!minimal_preload)
+      ASSERT_EQ(end_value.value, start_value.value);
+    else
+      ASSERT_GT(end_value.value, start_value.value);
+  }
 };
 
+class PgLibPqPgInheritsNegCacheMinimalPreloadTest : public PgLibPqPgInheritsNegCacheTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back(
+        "--ysql_minimal_catalog_caches_preload=true");
+    PgLibPqPgInheritsNegCacheTest::UpdateMiniClusterOptions(options);
+  }
+};
+
+
 TEST_F_EX(PgLibPqTest, PgInheritsNegCacheTest, PgLibPqPgInheritsNegCacheTest) {
-  auto conn = ASSERT_RESULT(Connect());
+  TestInheritsNegCache(false /*minimal preload*/);
+}
 
-  // Prepare schema
-  ASSERT_OK(conn.Execute(
-    "CREATE TABLE foo (h INT, r INT, v1 INT, v2 INT, PRIMARY KEY (h, r))"
-    "PARTITION BY RANGE(r);"
-    "CREATE TABLE foo_part_1 PARTITION OF foo FOR VALUES FROM (1) TO (10);"
-    "CREATE UNIQUE INDEX ON foo (v1, r);"
-    "INSERT INTO FOO VALUES (1,1,1,1);"));
-
-  auto start_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_inherits"));
-
-  // Run the query on a fresh conn
-  auto conn2 = ASSERT_RESULT(Connect());
-  auto str = conn2.FetchAllAsString(
-      "EXPLAIN (ANALYZE, DIST) INSERT INTO FOO VALUES (1,1,1,1) ON CONFLICT (h, r) DO UPDATE SET "
-      "v2=foo.v2+1");
-
-  auto end_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_inherits"));
-
-  // Given we are preloaded, we should not have any cache misses (incl neg misses)
-  // for the query above which should cause lookups for ancestors of a table in pg_inherits
-  ASSERT_EQ(end_value.value, start_value.value);
+TEST_F_EX(PgLibPqTest, PgInheritsNegCacheMinPreloadTest,
+            PgLibPqPgInheritsNegCacheMinimalPreloadTest) {
+  TestInheritsNegCache(true /*minimal preload*/);
 }
 
 class PgLibPqCreateSequenceNamespaceRaceTest : public PgLibPqTest {
@@ -4769,6 +4900,92 @@ CREATE TABLE t1_default PARTITION OF t1 DEFAULT;
   result = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM t1 ORDER BY region"));
   LOG(INFO) << "test_en_us_x_icu_db result: " << result;
   ASSERT_EQ(result, utf8_expected);
+}
+
+TEST_F(PgLibPqTest, InconsistentIndexRead) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE bank (id INT, balance INT)"));
+  // In this test do the following:
+  // (0) Create an index on balance with a partial clause as id>=0
+  // The partial clause is used to generate a secondary index scan on SELECT SUM(balance).
+  ASSERT_OK(conn.Execute("CREATE INDEX balance_idx ON bank(balance) WHERE id >= 0"));
+
+  // (1) Add 10 accounts to the bank account table each with a balance of 1000.
+  for (int i = 0; i < 10; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO bank (id, balance) VALUES ($0, 1000)", i));
+  }
+  auto initial_sum = ASSERT_RESULT(
+      conn.FetchRow<int64_t>("SELECT SUM(balance) FROM bank WHERE id >= 0"));
+
+  TestThreadHolder thread_holder;
+
+  // (2) Start a writer thread that keeps executing a transaction which deletes the smallest id row
+  // and inserts a new id row with the next available id and a balance of 1000.
+  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()]() {
+    auto writer_conn = ASSERT_RESULT(Connect());
+    int min_id = 0, next_id = 10;
+    while (!stop.load(std::memory_order_acquire)) {
+      ASSERT_OK(writer_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+      ASSERT_OK(writer_conn.ExecuteFormat("DELETE FROM bank WHERE id = $0", min_id));
+      min_id++;
+      ASSERT_OK(writer_conn.ExecuteFormat(
+          "INSERT INTO bank (id, balance) VALUES ($0, 1000)", next_id));
+      next_id++;
+      ASSERT_OK(writer_conn.CommitTransaction());
+    }
+  });
+
+  // (3) Start a reader thread that keeps fetching the sum of balances for all id>=0.
+  // Assert that the balance is always 10k.
+  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag(), initial_sum]() {
+    auto reader_conn = ASSERT_RESULT(Connect());
+    while (!stop.load(std::memory_order_acquire)) {
+      auto sum_balance = ASSERT_RESULT(reader_conn.FetchRow<int64_t>(
+          "/*+ IndexScan(bank) */ SELECT SUM(balance) FROM bank WHERE id >= 0"));
+      ASSERT_EQ(sum_balance, initial_sum);
+    }
+  });
+
+  thread_holder.WaitAndStop(std::chrono::seconds(30));
+}
+
+// Test aborting concurrent ANALYZEs doesn't cause the connection to FATAL.
+// During execution of ANALYZE, when analyzing each table, CurrentUserId is switched to the table
+// owner's userid and SecurityRestrictionContext is set to indicate security-restricted operations.
+// StartTransactionCommand and CommitTransactionCommand are called internally by ANALYZE
+// for (1) the ANALYZE command itself and
+//     (2) analyzing each individual table selected by the ANALYZE.
+// In read committed isolation, we retry aborted DDL queries. An unclean retry of ANALYZE having
+// set SecurityRestrictionContext causes assertion failure in StartTransactionCommand, making
+// its connection FATAL.
+TEST_F(PgLibPqTest, ConcurrentAnalyzeWithDDL) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+
+  std::atomic<bool> stop = false;
+  // Execute concurrent DDLs in separate threads.
+  std::thread analyze_thread([&conn, &stop] {
+    while (!stop) {
+        // Setting yb_use_internal_auto_analyze_service_conn simulates ANALYZE command
+        // as ANALYZE command run by auto analyze service -- auto-ANALYZE command has
+        // a lower txn priority than regular DDLs, so that ANALYZE in this thread
+        // is always aborted by DROP TABLE and retries later on.
+        ASSERT_OK(conn.Execute("SET yb_use_internal_auto_analyze_service_conn = TRUE"));
+        ASSERT_OK(conn.Execute("SET yb_debug_log_internal_restarts=TRUE"));
+        ASSERT_OK(conn.Execute("SET log_min_messages=DEBUG3"));
+        ASSERT_OK(conn.Execute("SET yb_max_query_layer_retries=300"));
+        auto status = conn.Execute("ANALYZE");
+    }
+  });
+
+  for (int i = 0; i < 10; ++i) {
+    ASSERT_OK(conn2.ExecuteFormat("CREATE TABLE tbl_$0 (k INT)", i));
+    ASSERT_OK(conn2.ExecuteFormat("DROP TABLE tbl_$0", i));
+  }
+  stop = true;
+  analyze_thread.join();
+  ASSERT_NE(conn.ConnStatus(), CONNECTION_BAD);
 }
 
 } // namespace pgwrapper

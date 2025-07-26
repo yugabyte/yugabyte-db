@@ -34,7 +34,7 @@ export const customInstance = <T>(config: AxiosRequestConfig, customAxiosInstanc
       source.cancel('Query was cancelled by React Query');
     };
   } catch (error) {
-    throw Error(error);
+    throw Error(String(error));
   }
 
   return promise || Promise.reject(new Error('Something went wrong'));

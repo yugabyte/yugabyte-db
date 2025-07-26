@@ -32,4 +32,12 @@ public class EditBackupScheduleParams {
 
   @ApiModelProperty(value = "TimeUnit for incremental Backup Schedule frequency")
   public TimeUnit incrementalBackupFrequencyTimeUnit;
+
+  // Run a full backup if the it was missed due to the schedule being paused. When false (default),
+  // the full backup will instead run at its normally scheduled time.
+  @ApiModelProperty(
+      value =
+          "Run a full or incremental backup if the schedule is expired when resuming a stopped"
+              + " schedule")
+  public boolean runImmediateBackupOnResume = false;
 }

@@ -75,8 +75,6 @@ using yb::server::ReloadCertificatesRequestPB;
 using yb::server::ReloadCertificatesResponsePB;
 using yb::server::ServerStatusPB;
 using yb::tablet::TabletStatusPB;
-using yb::tserver::AcquireObjectLockRequestPB;
-using yb::tserver::AcquireObjectLockResponsePB;
 using yb::tserver::ClearAllMetaCachesOnServerRequestPB;
 using yb::tserver::ClearAllMetaCachesOnServerResponsePB;
 using yb::tserver::ClearUniverseUuidRequestPB;
@@ -122,8 +120,7 @@ const char* const kRemoteBootstrapOp = "remote_bootstrap";
 const char* const kListMasterServersOp = "list_master_servers";
 const char* const kClearAllMetaCachesOnServerOp = "clear_server_metacache";
 const char* const kClearUniverseUuidOp = "clear_universe_uuid";
-const char* const kAcquireObjectLockOp = "acquire_object_lock";
-const char* const kReleaseAllLocksForTxnOp = "release_all_locks_for_txn";
+const char* const kReleaseAllLocksForTxnOp = "unsafe_release_all_locks_for_txn";
 
 DEFINE_NON_RUNTIME_string(server_address, "localhost",
               "Address of server to run against");
@@ -135,6 +132,14 @@ DEFINE_NON_RUNTIME_bool(force, false, "set_flag: If true, allows command to set 
             "delete_tablet: If true, command will delete the tablet and remove the tablet "
             "from the memory, otherwise tablet metadata will be kept in memory with state "
             "TOMBSTONED.");
+
+DEFINE_NON_RUNTIME_bool(
+    remove_corrupt_data_blocks_unsafe, false,
+    "UNSAFE: If true, allows command to remove corrupt data blocks if found. This will result in "
+    "data loss. Use with extra care only when/while no other options are available.");
+TAG_FLAG(remove_corrupt_data_blocks_unsafe, advanced);
+TAG_FLAG(remove_corrupt_data_blocks_unsafe, hidden);
+TAG_FLAG(remove_corrupt_data_blocks_unsafe, unsafe);
 
 DEFINE_NON_RUNTIME_string(certs_dir_name, "",
     "Directory with certificates to use for secure server connection.");
@@ -273,9 +278,6 @@ class TsAdminClient {
   // Clear Universe Uuid.
   Status ClearUniverseUuid();
 
-  Status AcquireObjectLock(
-      const std::string& txn_id_str, const std::string& subtxn_id, const std::string& database_id,
-      const std::string& object_id, const std::string& lock_mode);
   Status ReleaseAllLocksForTxn(
       const std::string& txn_id_str, const std::string& subtxn_id);
 
@@ -624,8 +626,8 @@ Status TsAdminClient::CountIntents(int64_t* num_intents) {
 }
 
 Status TsAdminClient::FlushOrCompactsTabletsImpl(
-  const std::string& tablet_id, bool is_compaction,
-  std::optional<std::reference_wrapper<const TableIds>> vector_index_ids) {
+    const std::string& tablet_id, bool is_compaction,
+    std::optional<std::reference_wrapper<const TableIds>> vector_index_ids) {
   ServerStatusPB status_pb;
   RETURN_NOT_OK(GetStatus(&status_pb));
 
@@ -639,6 +641,8 @@ Status TsAdminClient::FlushOrCompactsTabletsImpl(
   } else {
     req.set_all_tablets(true);
   }
+
+  req.set_remove_corrupt_data_blocks_unsafe(FLAGS_remove_corrupt_data_blocks_unsafe);
 
   if (vector_index_ids.has_value()) {
     const auto& index_ids = vector_index_ids->get();
@@ -783,50 +787,6 @@ Status TsAdminClient::ClearUniverseUuid() {
   return Status::OK();
 }
 
-Status TsAdminClient::AcquireObjectLock(
-    const std::string& txn_id_str, const std::string& subtxn_id,
-    const std::string& database_id, const std::string& object_id, const std::string& lock_mode) {
-  SCHECK(initted_, IllegalState, "TsAdminClient not initialized");
-  static const std::unordered_map<std::string, TableLockType> lock_key_entry_map = {
-    {"ACCESS_SHARE", ACCESS_SHARE},
-    {"ROW_SHARE", ROW_SHARE},
-    {"ROW_EXCLUSIVE", ROW_EXCLUSIVE},
-    {"SHARE_UPDATE_EXCLUSIVE", SHARE_UPDATE_EXCLUSIVE},
-    {"SHARE", SHARE},
-    {"SHARE_ROW_EXCLUSIVE", SHARE_ROW_EXCLUSIVE},
-    {"EXCLUSIVE", EXCLUSIVE},
-    {"ACCESS_EXCLUSIVE", ACCESS_EXCLUSIVE},
-  };
-  auto it = lock_key_entry_map.find(lock_mode);
-  SCHECK(it != lock_key_entry_map.end(), InvalidArgument, "Unsupported lock mode");
-
-  tserver::AcquireObjectLockRequestPB req;
-  tserver::AcquireObjectLockResponsePB resp;
-  RpcController rpc;
-  rpc.set_timeout(timeout_);
-
-  auto txn_id = VERIFY_RESULT(TransactionId::FromString(txn_id_str));
-  req.set_txn_id(txn_id.data(), txn_id.size());
-  req.set_subtxn_id(stoi(subtxn_id));
-  req.set_session_host_uuid(FLAGS_server_address);
-  auto* object_lock_req = req.add_object_locks();
-  object_lock_req->set_database_oid(stoi(database_id));
-  object_lock_req->set_object_oid(stoi(object_id));
-  object_lock_req->set_lock_type(it->second);
-
-  RETURN_NOT_OK(ts_proxy_->AcquireObjectLocks(req, &resp, &rpc));
-
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
-  std::cout << "Acquired lock for txn=" << txn_id
-            << " subtxn id=" << subtxn_id
-            << " on object with id=" << object_id
-            << " database id=" << database_id
-            << " and mode " << lock_mode << " at tserver local object lock manager" << std::endl;
-  return Status::OK();
-}
-
 Status TsAdminClient::ReleaseAllLocksForTxn(
     const std::string& txn_id_str, const std::string& subtxn_id) {
   SCHECK(initted_, IllegalState, "TsAdminClient not initialized");
@@ -838,7 +798,6 @@ Status TsAdminClient::ReleaseAllLocksForTxn(
 
   auto txn_id = VERIFY_RESULT(TransactionId::FromString(txn_id_str));
   req.set_txn_id(txn_id.data(), txn_id.size());
-  req.set_session_host_uuid(FLAGS_server_address);
   if (!subtxn_id.empty()) {
     req.set_subtxn_id(stoi(subtxn_id));
   }
@@ -883,8 +842,6 @@ void SetUsage(const char* argv0) {
       << "  " << kRemoteBootstrapOp << " <server address to bootstrap from> <tablet_id>\n"
       << "  " << kListMasterServersOp << "\n"
       << "  " << kClearUniverseUuidOp << "\n"
-      << "  " << kAcquireObjectLockOp
-      << " <txn id> <subtxn id> <database_id> <object_id> <lock type>\n"
       << "  " << kReleaseAllLocksForTxnOp << " <txn id> [subtxn id]\n";
   google::SetUsageMessage(str.str());
 }
@@ -1128,13 +1085,8 @@ static int TsCliMain(int argc, char** argv) {
   } else if (op == kClearUniverseUuidOp) {
     CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 2);
 
-    RETURN_NOT_OK_PREPEND_FROM_MAIN(client.ClearUniverseUuid(),
-                                    "Unable to clear universe uuid on " + addr);
-  } else if (op == kAcquireObjectLockOp) {
-    CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 7);
     RETURN_NOT_OK_PREPEND_FROM_MAIN(
-        client.AcquireObjectLock(argv[2], argv[3], argv[4], argv[5], argv[6]),
-        "Unable to acquire object lock");
+        client.ClearUniverseUuid(), "Unable to clear universe uuid on " + addr);
   } else if (op == kReleaseAllLocksForTxnOp) {
     if (argc < 3) {
       CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 3);

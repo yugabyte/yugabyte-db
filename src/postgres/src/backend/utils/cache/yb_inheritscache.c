@@ -250,7 +250,13 @@ YbPreloadPgInheritsCache()
 	systable_endscan(scan);
 	table_close(relation, AccessShareLock);
 
-	fully_loaded = true;
+	if (*YBCGetGFlags()->ysql_enable_neghit_full_inheritscache &&
+		!*YBCGetGFlags()->ysql_minimal_catalog_caches_preload &&
+		(IS_NON_EMPTY_STR_FLAG(YBCGetGFlags()->ysql_catalog_preload_additional_table_list) ||
+		 *YBCGetGFlags()->ysql_catalog_preload_additional_tables))
+	{
+		fully_loaded = true;
+	}
 
 	elog(yb_debug_log_catcache_events ? LOG : DEBUG3,
 		 "YbPgInheritsCache: preload complete. Parent cache has %ld entries, "

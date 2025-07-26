@@ -2443,9 +2443,12 @@ public class YBClient implements AutoCloseable {
    * @see AsyncYBClient#xClusterCreateOutboundReplicationGroup(String, Set<String>)
    */
   public XClusterCreateOutboundReplicationGroupResponse xClusterCreateOutboundReplicationGroup(
-      String replicationGroupId, Set<String> namespaceIds) throws Exception {
+      String replicationGroupId,
+      Set<String> namespaceIds,
+      boolean automaticDdlMode) throws Exception {
     Deferred<XClusterCreateOutboundReplicationGroupResponse> d =
-        asyncClient.xClusterCreateOutboundReplicationGroup(replicationGroupId, namespaceIds);
+        asyncClient.xClusterCreateOutboundReplicationGroup(
+          replicationGroupId, namespaceIds, automaticDdlMode);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 

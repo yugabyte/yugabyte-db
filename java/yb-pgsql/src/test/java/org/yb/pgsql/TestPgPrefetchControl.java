@@ -19,15 +19,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
 
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.ArrayList;
-import java.util.List;
 
-import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.pgsql.ExplainAnalyzeUtils.checkReadRequests;
-import static org.yb.pgsql.ExplainAnalyzeUtils.setRowAndSizeLimit;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_ONLY_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_LIMIT;
@@ -87,7 +82,7 @@ public class TestPgPrefetchControl extends BasePgSQLTest {
       String seqScanQuery = String.format("SELECT * FROM %s", tableName);
 
       checkReadRequests(statement, seqScanQuery, NODE_SEQ_SCAN,
-                        Checkers.equal(51), tableRowCount);
+                        Checkers.equal(17), tableRowCount);
     }
   }
 

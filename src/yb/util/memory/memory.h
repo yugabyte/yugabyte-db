@@ -966,10 +966,10 @@ void Quota<thread_safe>::Free(size_t amount) {
   usage_ -= amount;
   // threads allocate/free memory concurrently via the same Quota object that is
   // not protected with a mutex (thread_safe == false).
-  if (usage_ > (std::numeric_limits<size_t>::max() - (1 << 28))) {
-    LOG(ERROR) << "Suspiciously big usage_ value: " << usage_
-               << " (could be a result size_t wrapping around below 0, "
-               << "for example as a result of race condition).";
+  if (usage_ > std::numeric_limits<size_t>::max() / 2) {
+    LOG(DFATAL) << "Suspiciously big usage_ value: " << usage_
+                << " (could be a result size_t wrapping around below 0, "
+                << "for example as a result of race condition).";
   }
 }
 

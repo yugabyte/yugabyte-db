@@ -242,4 +242,20 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           "If enabled use Ansible for provisioning",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> notifyUserOnPasswordReset =
+      new ConfKeyInfo<>(
+          "yb.user.send_password_reset_notification",
+          ScopeType.CUSTOMER,
+          "Notify user on password reset",
+          "If enabled, user will be notified on password reset",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableEarlyoomFeature =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_earlyoom",
+          ScopeType.CUSTOMER,
+          "Enables Earlyoom Installation on Nodes",
+          "Enables Earlyoom Installation on Nodes",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

@@ -203,6 +203,7 @@ CreateExecutorState(void)
 	estate->yb_exec_params.yb_fetch_size_limit = yb_fetch_size_limit;
 
 	estate->yb_exec_params.yb_index_check = false;
+	estate->yb_es_pk_proutes = NIL;
 
 	return estate;
 }
@@ -1404,8 +1405,8 @@ Bitmapset *
 ExecGetAllUpdatedCols(ResultRelInfo *relinfo, EState *estate)
 {
 
-	Bitmapset	   *ret;
-	MemoryContext	oldcxt;
+	Bitmapset  *ret;
+	MemoryContext oldcxt;
 
 	oldcxt = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 

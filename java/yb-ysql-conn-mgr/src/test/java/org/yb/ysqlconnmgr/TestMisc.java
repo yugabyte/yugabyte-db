@@ -92,6 +92,31 @@ public class TestMisc extends BaseYsqlConnMgr {
   }
 
   @Test
+  public void testHllSticky() throws Exception {
+    try (Connection connection = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect();
+         Statement statement = connection.createStatement()) {
+      statement.execute("CREATE EXTENSION hll");
+      statement.execute("CREATE TABLE test_hll (id int, h hll)");
+      statement.execute("INSERT INTO test_hll VALUES (1, hll_empty())");
+      statement.execute("UPDATE test_hll SET h = hll_add(h, hll_hash_integer(1)) WHERE id = 1");
+      ResultSet rs = statement.executeQuery("SELECT hll_cardinality(h) FROM test_hll WHERE id = 1");
+      assertTrue(rs.next());
+      assertEquals(1, rs.getLong(1));
+      // Creating an hll index or doing operations, won't make the connection sticky.
+      assertConnectionStickyState(statement, false);
+
+
+      // Now the connection should be sticky. As setting max sparse is backend
+      // specific.
+      statement.execute("SELECT hll_set_max_sparse(128)");
+      assertConnectionStickyState(statement, true);
+
+    }
+  }
+
+  @Test
   public void testBackendType() throws Exception {
     testBackendTypeForConn(
         getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.POSTGRES)
@@ -379,11 +404,13 @@ public class TestMisc extends BaseYsqlConnMgr {
 
   @Test
   public void testCurrvalErrorOut() throws Exception {
+    disableWarmupModeAndRestartCluster();
     testSequenceFunctions("SELECT currval('my_seq')");
   }
 
   @Test
   public void testLastvalErrorOut() throws Exception {
+    disableWarmupModeAndRestartCluster();
     testSequenceFunctions("SELECT lastval()");
   }
 

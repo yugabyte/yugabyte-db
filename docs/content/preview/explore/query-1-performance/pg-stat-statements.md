@@ -287,7 +287,7 @@ Use `pg_stat_statements_reset` for the following scenarios:
 
 ## Examples
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 Describe the columns in the view:
 

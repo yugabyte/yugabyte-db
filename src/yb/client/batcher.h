@@ -82,6 +82,8 @@ struct InFlightOpsTransactionMetadata {
   // When acquiring a session advisory lock, we need the below to release waiting requests
   // involved in a deadlock.
   boost::optional<PgSessionRequestVersion> pg_session_req_version;
+  // Used to detect potential deadlocks spanning fast path transactions with DDLs.
+  std::optional<TransactionMetadata> object_locking_txn_meta;
 };
 
 struct InFlightOpsGroupsWithMetadata {
@@ -308,6 +310,10 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
     background_transaction_meta_ = background_transaction_meta;
   }
 
+  void SetObjectLockingTxnMeta(const TransactionMetadata& object_locking_txn_meta) {
+    object_locking_txn_meta_ = object_locking_txn_meta;
+  }
+
  private:
   friend class RefCountedThreadSafe<Batcher>;
   friend class AsyncRpc;
@@ -420,6 +426,8 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
   // - For a transaction advisory lock request: the below points to
   //   the session-level transaction, if exists.
   boost::optional<TransactionMetadata> background_transaction_meta_ = boost::none;
+
+  std::optional<TransactionMetadata> object_locking_txn_meta_;
 
   DISALLOW_COPY_AND_ASSIGN(Batcher);
 };

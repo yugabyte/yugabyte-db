@@ -381,16 +381,12 @@ public class EncryptionAtRestManager {
       byte[] keyRef,
       ObjectNode encryptionContext) {
     Universe universe = Universe.getOrBadRequest(universeUUID);
-    String hostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodetoNode();
-    YBClient client = null;
     String dbKeyId =
         EncryptionAtRestUtil.getKeyRefConfig(universeUUID, kmsConfigUUID, keyRef).dbKeyId;
-    try {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       byte[] keyVal = getUniverseKey(universeUUID, kmsConfigUUID, keyRef, encryptionContext);
-      client = ybService.getClient(hostPorts, certificate);
       List<HostAndPort> masterAddrs =
-          Arrays.stream(hostPorts.split(","))
+          Arrays.stream(universe.getMasterAddresses().split(","))
               .map(addr -> HostAndPort.fromString(addr))
               .collect(Collectors.toList());
       for (HostAndPort hp : masterAddrs) {
@@ -428,8 +424,6 @@ public class EncryptionAtRestManager {
       String errMsg = "Error sending universe key to master.";
       LOG.error(errMsg, e);
       throw new RuntimeException(errMsg, e);
-    } finally {
-      ybService.closeClient(client, hostPorts);
     }
   }
 

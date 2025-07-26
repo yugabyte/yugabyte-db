@@ -933,7 +933,7 @@ ScanChoicesPtr ScanChoices::Create(
   // hash columns in a hash partitioned table. And the hash code column cannot be skip'ed without
   // skip'ing all hash columns as well.
   if (prefixlen != 0 && !valid_prefixlen) {
-    LOG(ERROR)
+    LOG(DFATAL)
       << "Prefix length: " << prefixlen << " is invalid for schema: "
       << "num_hash_cols: " << num_hash_cols << ", num_key_cols: " << num_key_cols;
   }

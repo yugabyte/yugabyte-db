@@ -42,7 +42,8 @@ import org.yb.master.CatalogEntityInfo.SysSnapshotEntryPB.State;
 @EqualsAndHashCode(callSuper = false)
 public class PitrConfig extends Model {
 
-  private static final Finder<UUID, PitrConfig> find = new Finder<>(PitrConfig.class) {};
+  private static final Finder<UUID, PitrConfig> find =
+      new Finder<UUID, PitrConfig>(PitrConfig.class) {};
 
   @Id
   @ApiModelProperty(value = "PITR config UUID")

@@ -1,0 +1,9 @@
+title: DetachUniverseSpec
+description: Request payload for detaching a universe.
+type: object
+properties:
+  skip_releases:
+    description: Whether to skip releases during detach operation.
+    type: boolean
+    default: false
+x-yba-api-visibility: internal

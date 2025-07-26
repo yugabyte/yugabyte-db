@@ -62,7 +62,6 @@ public class TestTablespaceProperties extends BaseTablespaceTest {
    */
   @Test
   public void sanityTest() throws Exception {
-    markClusterNeedsRecreation();
     YBClient client = miniCluster.getClient();
 
     // Set required YB-Master flags.
@@ -101,7 +100,6 @@ public class TestTablespaceProperties extends BaseTablespaceTest {
 
   @Test
   public void testDisabledTablespaces() throws Exception {
-    markClusterNeedsRecreation();
     // Create some tables with custom and default placements.
     // These tables will be placed according to their tablespaces
     // by the create table path.
@@ -129,7 +127,6 @@ public class TestTablespaceProperties extends BaseTablespaceTest {
 
   @Test
   public void testLBTablespacePlacement() throws Exception {
-    markClusterNeedsRecreation();
     // This test disables using tablespaces at creation time. Thus, the tablets of the table will be
     // incorrectly placed based on cluster config at creation time, and we will rely on the LB to
     // correctly place the table based on its tablespace.
@@ -161,7 +158,6 @@ public class TestTablespaceProperties extends BaseTablespaceTest {
 
   @Test
   public void negativeTest() throws Exception {
-    markClusterNeedsRecreation();
     // Create tablespaces with invalid placement.
     try (Statement setupStatement = connection.createStatement()) {
       // Create a tablespace specifying a cloud that does not exist.
@@ -271,7 +267,6 @@ public class TestTablespaceProperties extends BaseTablespaceTest {
    */
   @Test
   public void disallowTableSpaceForIndexOnColocatedTables() throws Exception {
-    markClusterNeedsRecreation();
     String customTablegroup = "test_custom_tablegroup";
     final String tablespaceClause = "TABLESPACE " + tablespaceName;
     try (Statement setupStatement = connection.createStatement()) {
@@ -288,7 +283,6 @@ public class TestTablespaceProperties extends BaseTablespaceTest {
 
   @Test
   public void allowTableSpaceForIndexOnColocatedTables() throws Exception {
-    markClusterNeedsRecreation();
 
     // Set the flags to enable colocation with tablespaces.
     YBClient client = miniCluster.getClient();
@@ -318,7 +312,6 @@ public class TestTablespaceProperties extends BaseTablespaceTest {
 
   @Test
   public void testTablesOptOutOfColocation() throws Exception {
-    markClusterNeedsRecreation();
     final String dbname = "testdatabase";
     try (Statement stmt = connection.createStatement()) {
       stmt.execute(String.format("CREATE DATABASE %s COLOCATED=TRUE", dbname));
@@ -364,7 +357,6 @@ public class TestTablespaceProperties extends BaseTablespaceTest {
 
   @Test
   public void testTableRewrite() throws Exception {
-    markClusterNeedsRecreation();
     final String dbname = "testdatabase";
     try (Statement stmt = connection.createStatement()) {
       stmt.execute(String.format("CREATE DATABASE %s COLOCATED=TRUE", dbname));
@@ -423,7 +415,6 @@ public class TestTablespaceProperties extends BaseTablespaceTest {
 
   @Test
   public void readReplicaWithTablespaces() throws Exception {
-    markClusterNeedsRecreation();
     final YBClient client = miniCluster.getClient();
     // Set required YB-Master flags.
     for (HostAndPort hp : miniCluster.getMasters().keySet()) {
@@ -538,8 +529,6 @@ public class TestTablespaceProperties extends BaseTablespaceTest {
 
   @Test
   public void testAlterTableSetTablespace() throws Exception {
-    markClusterNeedsRecreation();
-
     String tableName = "testtable";
     String indexName = "testindex";
     String matViewName = "testmatview";
@@ -596,8 +585,6 @@ public class TestTablespaceProperties extends BaseTablespaceTest {
   /** Test ALTER TABLE SET TABLESPACE running concurrently with the load balancer. */
   @Test
   public void testAlterConcurrentWithLoadBalancer() throws Exception {
-    markClusterNeedsRecreation();
-
     String tableName = "testtable";
     String indexName = "testindex";
     String matViewName = "testmatview";
@@ -673,8 +660,6 @@ public class TestTablespaceProperties extends BaseTablespaceTest {
    */
   @Test
   public void testTablespacePartitioning() throws Exception {
-    markClusterNeedsRecreation();
-
     // Create original tablespace with a single placement block on cloud1.region1.zone1
     Tablespace ts1 = new Tablespace("testTablespaceZone1", Collections.singletonList(1));
     ts1.create(connection);
@@ -750,9 +735,6 @@ public class TestTablespaceProperties extends BaseTablespaceTest {
   }
 
   private void testAlterTableWithPlacementUuidHelper() throws Exception {
-    restartCluster();
-    markClusterNeedsRecreation();
-
     // Create a table.
     final String testTable = "test_table";
     try (Statement setupStatement = connection.createStatement()) {

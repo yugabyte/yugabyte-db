@@ -26,7 +26,7 @@ Use the time menu to change the range. To zoom in to view granular data points, 
 
 ![Fine grained metrics](/images/yp/fine-grain-metrics.png)
 
-Click the Refresh button to restore the default time range.
+Click the refresh button to restore the default time range.
 
 You can create custom PromQL queries and run them against any graph. To do this, from the **Metrics** page, click the Prometheus icon at the top right corner of any metrics graph to display the Prometheus window, then paste your query in the Prometheus query editor.
 
@@ -135,7 +135,7 @@ Resource metrics should be considered on a per-node basis.
 | --------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ | --------------------------------- |
 | Total YSQL Ops / sec  | The number of various transaction control operations, such as BEGIN, COMMIT, ROLLBACK, as well as other operations through the YSQL API. | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![Total YSQL Ops / sec](/images/yp/metrics101.png) |
 | YSQL Op Latency (Avg) | The average time taken by various transaction control operations, such as BEGIN, COMMIT, ROLLBACK, as well as other operations through the YSQL API. | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![YSQL Op Latency (Avg)](/images/yp/metrics102.png) |
-| Catalog Cache Misses | During YSQL query processing, system catalog (pg_catalog) tables that live on the YB-Master are cached on the local YSQL backend. This metric counts the number of YSQL catalog cache misses, where the data had to be fetched from the YB-Master. Also broken down by pg_catalog table that triggered the misses. | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![Catalog Cache Misses](/images/yp/metrics114.png) 
+| Catalog Cache Misses | During YSQL query processing, system catalog (pg_catalog) tables that live on the YB-Master are cached on the local YSQL backend. This metric counts the number of YSQL catalog cache misses, where the data had to be fetched from the YB-Master. Also broken down by pg_catalog table that triggered the misses. | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![Catalog Cache Misses](/images/yp/metrics114.png)
 
 ### YCQL advanced
 

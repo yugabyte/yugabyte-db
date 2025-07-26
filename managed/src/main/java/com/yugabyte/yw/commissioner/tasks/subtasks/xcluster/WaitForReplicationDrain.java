@@ -71,10 +71,8 @@ public class WaitForReplicationDrain extends XClusterConfigTaskBase {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     Duration subtaskTimeout =
         confGetter.getConfForScope(universe, UniverseConfKeys.waitForReplicationDrainTimeout);
-    String universeMasterAddresses = universe.getMasterAddresses();
-    String universeCertificate = universe.getCertificateNodetoNode();
 
-    try (YBClient client = ybService.getClient(universeMasterAddresses, universeCertificate)) {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       List<String> activeStreamIds = new ArrayList<>();
       if (xClusterConfig.getType() == ConfigType.Txn) {
         activeStreamIds.addAll(xClusterConfig.getStreamIdsWithReplicationSetup());

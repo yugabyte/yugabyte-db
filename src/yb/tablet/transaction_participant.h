@@ -139,7 +139,8 @@ class TransactionParticipant : public TransactionStatusManager {
   // Returns boost::none when transaction is unknown.
   Result<boost::optional<std::pair<IsolationLevel, TransactionalBatchData>>> PrepareBatchData(
       const TransactionId& id, size_t batch_idx,
-      boost::container::small_vector_base<uint8_t>* encoded_replicated_batches);
+      boost::container::small_vector_base<uint8_t>* encoded_replicated_batches,
+      bool has_write_pairs);
 
   void BatchReplicated(const TransactionId& id, const TransactionalBatchData& data);
 

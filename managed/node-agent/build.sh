@@ -8,13 +8,15 @@ export GO111MODULE=on
 readonly protoc_version=21.5
 readonly package_name='node-agent'
 readonly default_platforms=("linux/amd64" "linux/arm64")
-readonly skip_dirs=("third-party" "proto" "generated" "build" "resources" "ybops" "target")
+readonly skip_dirs=("third-party" "proto" "generated" "build" "resources" "ybops" "target" \
+                    "pywheels")
 
 readonly base_dir=$(dirname "$0")
 pushd "$base_dir"
 readonly project_dir=$(pwd)
 popd
 
+export PROJECT_DIR="$project_dir"
 export GOPATH=$project_dir/third-party
 export GOBIN=$GOPATH/bin
 export PATH=$GOBIN:$PATH
@@ -169,6 +171,7 @@ format() {
 
 run_tests() {
     # Run all tests if one fails.
+    local failed_tests=()
     pushd "$project_dir"
     for dir in */ ; do
         # Remove trailing slash.
@@ -179,10 +182,21 @@ run_tests() {
         fi
         echo "Running tests in ${dir}..."
         set +e
-        go clean -testcache && go test --tags testonly -v ./"$dir"/...
+        go clean -testcache && go test -short --tags testonly -v ./"$dir"/...
+        status=$?
+        if [ $status -ne 0 ]; then
+            echo "Tests failed for $dir"
+            failed_tests+=("$dir")
+        fi
         set -e
     done
     popd
+    if [ ${#failed_tests[@]} -ne 0 ]; then
+        echo "Failed tests: ${failed_tests[*]}"
+        exit 1
+    else
+        echo "All tests passed."
+    fi
 }
 
 package_for_platform() {
@@ -193,6 +207,7 @@ package_for_platform() {
     version_dir="${build_output_dir}/${staging_dir_name}/${version}"
     script_dir="${version_dir}/scripts"
     bin_dir="${version_dir}/bin"
+    templates_dir="${version_dir}/templates"
     echo "Packaging ${staging_dir_name}"
     os_exec_name=$(get_executable_name "$os" "$arch")
     exec_name="node-agent"
@@ -205,11 +220,13 @@ package_for_platform() {
     mkdir "$staging_dir_name"
     mkdir -p "$script_dir"
     mkdir -p "$bin_dir"
+    mkdir -p "$templates_dir"
     cp -rf "$os_exec_name" "${bin_dir}/$exec_name"
     # Follow the symlinks.
     cp -Lf ../version.txt "${version_dir}"/version.txt
     cp -Lf ../version_metadata.json "${version_dir}"/version_metadata.json
     pushd "$project_dir/resources"
+    cp -rf templates/* "$templates_dir/"
     cp -rf ../pywheels "${script_dir}"/pywheels
     cp -rf preflight_check.sh "${script_dir}"/preflight_check.sh
     cp -rf node-agent-installer.sh "${bin_dir}"/node-agent-installer.sh

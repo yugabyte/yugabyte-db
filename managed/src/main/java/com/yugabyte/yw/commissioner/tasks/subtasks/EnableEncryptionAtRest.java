@@ -55,32 +55,55 @@ public class EnableEncryptionAtRest extends AbstractTaskBase {
     UUID universeUUID = taskParams().getUniverseUUID();
     Universe universe = Universe.getOrBadRequest(universeUUID);
     String hostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodetoNode();
-    YBClient client = null;
 
-    try {
-      log.info("Running {}: hostPorts={}.", getName(), hostPorts);
+    log.info("Running {}: hostPorts={}.", getName(), hostPorts);
 
-      UUID kmsConfigUUID = taskParams().encryptionAtRestConfig.kmsConfigUUID;
-      if (kmsConfigUUID == null) {
-        throw new RuntimeException(
-            "KMS config passed cannot be null when enabling encryption at rest.");
-      }
+    UUID kmsConfigUUID = taskParams().encryptionAtRestConfig.kmsConfigUUID;
+    if (kmsConfigUUID == null) {
+      throw new RuntimeException(
+          "KMS config passed cannot be null when enabling encryption at rest.");
+    }
 
-      KmsHistory activeKmsHistory = EncryptionAtRestUtil.getActiveKey(universeUUID);
-      int numKeys = EncryptionAtRestUtil.getNumUniverseKeys(universeUUID);
+    KmsHistory activeKmsHistory = EncryptionAtRestUtil.getActiveKey(universeUUID);
+    int numKeys = EncryptionAtRestUtil.getNumUniverseKeys(universeUUID);
 
-      if (numKeys > 0 && activeKmsHistory == null) {
-        throw new RuntimeException(
-            String.format(
-                "Universe %s has %d keys but none of them are active", universeUUID, numKeys));
-      }
-      client = ybService.getClient(hostPorts, certificate);
+    if (numKeys > 0 && activeKmsHistory == null) {
+      throw new RuntimeException(
+          String.format(
+              "Universe %s has %d keys but none of them are active", universeUUID, numKeys));
+    }
+    try (YBClient client = ybService.getUniverseClient(universe)) {
 
       if (numKeys == 0 || kmsConfigUUID.equals(activeKmsHistory.getConfigUuid())) {
         // This is for both the following cases:
         // 1. Universe key creation when no universe key exists on the universe.
         // 2. Universe key rotation if the given KMS config equals the active one.
+
+        // Check if we are able to decrypt the current active universe key as a validation step.
+        if (numKeys > 0 && activeKmsHistory != null) {
+          KmsConfig kmsConfig = KmsConfig.getOrBadRequest(kmsConfigUUID);
+          byte[] keyRef = Base64.getDecoder().decode(activeKmsHistory.getUuid().keyRef);
+          if (keyManager
+                  .getServiceInstance(kmsConfig.getKeyProvider().name())
+                  .validateConfigForUpdate(
+                      universeUUID,
+                      kmsConfigUUID,
+                      keyRef,
+                      activeKmsHistory.encryptionContext,
+                      universe.getUniverseDetails().encryptionAtRestConfig,
+                      kmsConfig.getAuthConfig())
+              == null) {
+            String errMsg =
+                String.format(
+                    "Error validating the active KMS History with KMS config '%s' for universe '%s'"
+                        + " before generating universe key. Possibly the master key is recreated"
+                        + " with the same name or has invalid settings to decrypt the active"
+                        + " universe key.",
+                    kmsConfigUUID, universeUUID);
+            log.error(errMsg);
+            throw new RuntimeException(errMsg);
+          }
+        }
         EncryptionKey universeKeyRef =
             keyManager.generateUniverseKey(
                 kmsConfigUUID, universeUUID, taskParams().encryptionAtRestConfig);
@@ -174,8 +197,6 @@ public class EnableEncryptionAtRest extends AbstractTaskBase {
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage(), e);
       throw new RuntimeException(e);
-    } finally {
-      ybService.closeClient(client, hostPorts);
     }
   }
 }

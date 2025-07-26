@@ -22,7 +22,7 @@ For phonetic matching, YugabyteDB natively supports the PostgreSQL extension [fu
 
 ## Setup
 
-{{<cluster-setup-tabs>}}
+{{<cluster-setup-tabs-new>}}
 
 Create the following table:
 

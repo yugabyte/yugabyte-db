@@ -35,6 +35,9 @@
 #include "customscan/bson_custom_scan_private.h"
 #include "api_hooks.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 #if (PG_VERSION_NUM >= 150000)
 
 /* require_col_privs = true by default */
@@ -629,8 +632,9 @@ UpdatePathsWithExtensionCustomPlans(PlannerInfo *root, RelOptInfo *rel,
 	foreach(cell, rel->pathlist)
 	{
 		Path *inputPath = lfirst(cell);
+		bool is_yb_relation = IsYBRelationById(rte->relid);
 
-		if (inputPath->pathtype == T_IndexScan)
+		if (!is_yb_relation && inputPath->pathtype == T_IndexScan)
 		{
 			IndexPath *indexPath = (IndexPath *) inputPath;
 			bool isIndexPathCostZero = inputPath->total_cost == 0;
@@ -652,7 +656,7 @@ UpdatePathsWithExtensionCustomPlans(PlannerInfo *root, RelOptInfo *rel,
 
 		Const *tidLowerBoundConst = NULL;
 		ItemPointer tidLowerPointPointer = NULL;
-		if (inputPath->pathtype == T_SeqScan)
+		if (!is_yb_relation && inputPath->pathtype == T_SeqScan)
 		{
 			/* Convert a seqscan to a TidScan */
 			if ((rel->amflags & AMFLAG_HAS_TID_RANGE) != 0)
@@ -675,9 +679,15 @@ UpdatePathsWithExtensionCustomPlans(PlannerInfo *root, RelOptInfo *rel,
 			}
 		}
 
+		/*
+		 * YB: The extension only supports the RUM index which performs a bitmap 
+		 * scan, and the default tid based seq scan, wheres in yugabyte the LSM
+		 * based index and seq scan is used. 
+		 */
 		if (inputPath->pathtype != T_BitmapHeapScan &&
 			inputPath->pathtype != T_TidScan &&
 			inputPath->pathtype != T_TidRangeScan &&
+			!is_yb_relation &&
 			!IsValidScanPath(inputPath))
 		{
 			/* For now just break if it's not a seq scan or bitmap scan */

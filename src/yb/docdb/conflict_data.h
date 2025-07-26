@@ -144,7 +144,7 @@ class ConflictDataManager {
 
  private:
   std::vector<TransactionConflictData> transactions_;
-  size_t remaining_transactions_;
+  size_t remaining_transactions_ = 0;
 #ifndef NDEBUG
   std::atomic_bool has_filtered_ = false;
 #endif // NDEBUG

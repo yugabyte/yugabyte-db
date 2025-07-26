@@ -929,7 +929,7 @@ CREATE VIEW pg_stat_activity AS
             S.backend_type,
             yb_pg_stat_get_backend_catalog_version(B.beid) AS catalog_version,
             yb_pg_stat_get_backend_allocated_mem_bytes(B.beid) AS allocated_mem_bytes,
-            yb_pg_stat_get_backend_rss_mem_bytes(B.beid) AS rss_mem_bytes,
+            yb_pg_stat_get_backend_pss_mem_bytes(B.beid) AS pss_mem_bytes,
             S.yb_backend_xid
     FROM pg_stat_get_activity(NULL) AS S
         LEFT JOIN pg_database AS D ON (S.datid = D.oid)
@@ -1066,7 +1066,8 @@ CREATE VIEW pg_replication_slots AS
             L.two_phase,
             L.yb_stream_id,
             L.yb_restart_commit_ht,
-            L.yb_lsn_type
+            L.yb_lsn_type,
+            L.yb_restart_time
     FROM pg_get_replication_slots() AS L
             LEFT JOIN pg_database D ON (L.datoid = D.oid);
 

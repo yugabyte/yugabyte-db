@@ -32,6 +32,7 @@ public class ConfigureDBApisTest extends UpgradeTaskTest {
   public void setUp() {
     super.setUp();
     configureDBApis.setUserTaskUUID(UUID.randomUUID());
+    attachHooks("ConfigureDBApis");
     setCheckNodesAreSafeToTakeDown(mockClient);
     setUnderReplicatedTabletsMock();
     setFollowerLagMock();
@@ -53,7 +54,7 @@ public class ConfigureDBApisTest extends UpgradeTaskTest {
         .precheckTasks(getPrecheckTasks(true))
         .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE)
         .task(TaskType.AnsibleConfigureServers)
-        .tserverTask(TaskType.UpdateNodeDetails)
+        .tserverTask(TaskType.UpdateUniverseFields)
         .applyRound()
         .addTasks(TaskType.UpdateUniverseCommunicationPorts)
         .addTasks(TaskType.UpdateClusterAPIDetails)
@@ -80,7 +81,7 @@ public class ConfigureDBApisTest extends UpgradeTaskTest {
         .addTasks(TaskType.ChangeAdminPassword)
         .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE)
         .task(TaskType.AnsibleConfigureServers)
-        .tserverTask(TaskType.UpdateNodeDetails)
+        .tserverTask(TaskType.UpdateUniverseFields)
         .applyRound()
         .addTasks(TaskType.UpdateUniverseCommunicationPorts)
         .addTasks(TaskType.UpdateClusterAPIDetails)

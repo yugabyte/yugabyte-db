@@ -50,6 +50,9 @@ DEFINE_test_flag(
 
 DECLARE_uint64(consensus_max_batch_size_bytes);
 
+DEFINE_RUNTIME_AUTO_bool(xcluster_use_encoded_key_filter, kLocalPersisted, false, true,
+    "use the encoded key range for filtering xCluster intents at the time of APPLY");
+
 namespace yb {
 
 using namespace yb::size_literals;
@@ -181,8 +184,24 @@ Status AddRecord(
     apply_txn->set_commit_hybrid_time(record.transaction_state().commit_hybrid_time());
 
     // Only apply records within the same range that the producer applied.
-    apply_txn->set_filter_start_key(record.partition().partition_key_start());
-    apply_txn->set_filter_end_key(record.partition().partition_key_end());
+    // In Bi-directional xCluster, both clusters can upgrade at the same time which can lead to
+    // producer, and poller node running on the new version, while the consumer tablet leader (in
+    // uneven distributions) is still on the old version.
+    // AutoFlag ensures the destination tserver that performs the APPLY is on a version that can
+    // handle encoded keys. The has_encoded* check is used to handle the case when the producer is
+    // still on an older version.
+    if (FLAGS_xcluster_use_encoded_key_filter &&
+        (record.has_encoded_start_key() || record.has_encoded_end_key())) {
+      apply_txn->set_filter_start_key(record.encoded_start_key());
+      apply_txn->set_filter_end_key(record.encoded_end_key());
+      apply_txn->set_filter_range_encoded(true);
+    } else {
+      // (DEPRECATE_EOL 2.27) If the producer has yet to upgrade, we will not have the encoded keys.
+      // Fallback to the old behavior which only works for hash partitioned tables.
+      apply_txn->set_filter_start_key(record.partition().partition_key_start());
+      apply_txn->set_filter_end_key(record.partition().partition_key_end());
+      apply_txn->set_filter_range_encoded(false);
+    }
 
     return Status::OK();
   }

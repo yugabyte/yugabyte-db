@@ -213,6 +213,10 @@ select * from test where pk=17;
 EXPLAIN (COSTS OFF) SELECT * from test where pk=25;
 select * from test where pk=25;
 
+-- test a query after first connecting
+\c
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM test WHERE col3 = ANY('{}');
+
 -- test index scan where the column type does not match value type
 CREATE TABLE pk_real(c0 REAL, PRIMARY KEY(c0 asc));
 INSERT INTO pk_real(c0) VALUES(0.4);
@@ -283,6 +287,8 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int
 SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) <= (1,6,5) AND (r1,r2,r3) < (1,6,5);
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) <= (1,1,5) AND (r1,r2,r3) < (1,2,4) AND (r1,r2,r3) > (1,2,3) AND (r1,r2,r3) < (1,2,4) AND (r1,r2,r3) >= (1,2,3);
 SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) <= (1,1,5) AND (r1,r2,r3) < (1,2,4) AND (r1,r2,r3) > (1,2,3) AND (r1,r2,r3) < (1,2,4) AND (r1,r2,r3) >= (1,2,3);
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) <= (1,1,5) AND (r1, r2, r3) > (1,2,3) AND v IS NOT NULL;
+SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) <= (1,1,5) AND (r1, r2, r3) > (1,2,3) AND v IS NOT NULL;
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_asc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2);
 SELECT * FROM pk_range_int_asc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2);
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_asc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2) AND (r1,r2,r3) = (1,2,3);

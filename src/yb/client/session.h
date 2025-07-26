@@ -236,6 +236,8 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
 
   void SetBatcherBackgroundTransactionMeta(const TransactionMetadata& background_transaction_meta);
 
+  void SetObjectLockingTxnMeta(const TransactionMetadata& object_locking_txn_meta);
+
   struct BatcherConfig {
     std::weak_ptr<YBSession> session;
     client::YBClient* client;

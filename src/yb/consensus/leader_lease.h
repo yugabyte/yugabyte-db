@@ -129,7 +129,7 @@ struct LeaseData {
   }
 
  private:
-  Leases::iterator Find(const std::string& holder_uuid) {
+  typename Leases::iterator Find(const std::string& holder_uuid) {
     return std::find_if(leases.begin(), leases.end(), [&holder_uuid](const auto& entry) {
       return entry.holder_uuid == holder_uuid;
     });

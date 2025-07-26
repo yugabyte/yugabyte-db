@@ -43,6 +43,9 @@ class ConsensusContext {
 
   virtual void SetPropagatedSafeTime(HybridTime ht) = 0;
 
+  // Set the propagated safe time of the mvcc.
+  virtual void SetMvccPropagatedSafeTime(HybridTime ht) = 0;
+
   virtual bool ShouldApplyWrite() = 0;
 
   // Performs steps to prepare request for peer.

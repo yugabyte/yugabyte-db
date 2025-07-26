@@ -20,7 +20,7 @@ The `LIKE` operator is a basic pattern-matching operator that emulates wildcard-
 
 ## Setup
 
-{{<cluster-setup-tabs>}}
+{{<cluster-setup-tabs-new>}}
 
 Create the following table:
 

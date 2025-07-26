@@ -23,7 +23,7 @@ yba ldap configure --ldap-host <ldap-host> --ldap-port <ldap-port> --base-dn '"<
       --ldap-port int                     [Optional] LDAP server port (default 389)
       --ldap-ssl-protocol string          [Optional] LDAP SSL protocol. Allowed values: none, ldaps, starttls. (default "none")
       --ldap-tls-version string           [Optional] LDAP TLS version. Allowed values (case sensitive): TLSv1, TLSv1_1 and TLSv1_2. (default "TLSv1_2")
-  -b, --base-dn string                    [Optional] Seach base DN for LDAP. Must be enclosed in double quotes.
+  -b, --base-dn string                    [Optional] Search base DN for LDAP. Must be enclosed in double quotes.
       --dn-prefix string                  [Optional] Prefix to be appended to the username for LDAP search.
                                                      Must be enclosed in double quotes. (default "CN=")
       --customer-uuid string              [Optional] YBA Customer UUID for LDAP authentication (Only for multi-tenant YBA)

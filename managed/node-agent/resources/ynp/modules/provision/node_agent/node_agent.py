@@ -4,6 +4,7 @@ import time
 import json
 import requests
 import os
+import sys
 
 
 class InstallNodeAgent(BaseYnpModule):
@@ -48,6 +49,26 @@ class InstallNodeAgent(BaseYnpModule):
                 "code": context.get("provider_region_zone_name")
             }]
         }
+        latitude_str = context.get("provider_region_latitude")
+        if latitude_str is not None:
+            try:
+                latitude = float(latitude_str)
+                if -90 <= latitude <= 90:
+                    region["latitude"] = latitude
+            except (TypeError, ValueError):
+                logging.error("Invalid value for latitude specified")
+                sys.exit(1)
+
+        longitude_str = context.get("provider_region_longitude")
+        if longitude_str is not None:
+            try:
+                longitude = float(longitude_str)
+                if -180 <= longitude <= 180:
+                    region["longitude"] = longitude
+            except (TypeError, ValueError):
+                logging.error("Invalid value for longitude specified")
+                sys.exit(1)
+
         provider_data["regions"].append(region)
         if context.get("provider_access_key_path") is not None:
             with open(context.get("provider_access_key_path"), 'r') as file:
@@ -168,10 +189,13 @@ class InstallNodeAgent(BaseYnpModule):
                     json.dump(instance_data, f, indent=4)
             else:
                 logging.error(f"Request error: {http_err}")
+                sys.exit(1)
         except requests.exceptions.RequestException as req_err:
             logging.error(f"Request error: {req_err}")
+            sys.exit(1)
         except ValueError as json_err:
             logging.error(f"Error parsing JSON response: {json_err}")
+            sys.exit(1)
 
     def _cleanup(self, context):
         files_to_remove = [
@@ -242,8 +266,10 @@ class InstallNodeAgent(BaseYnpModule):
 
             except ValueError as json_err:
                 logging.error(f"Error parsing JSON response: {json_err}")
+                sys.exit(1)
         except requests.exceptions.RequestException as req_err:
             logging.error(f"Request error: {req_err}")
+            sys.exit(1)
 
         add_node_payload = self._generate_add_node_payload(context)
         add_node_payload_file = os.path.join(context.get(

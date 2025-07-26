@@ -12,6 +12,8 @@
 
 #include "yb/master/async_snapshot_tasks.h"
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/consensus/consensus_error.h"
 
 #include "yb/common/transaction_error.h"
@@ -171,6 +173,14 @@ bool AsyncTabletSnapshotOp::SendRequest(int attempt) {
     req.set_db_oid(*db_oid_);
   }
   req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
+
+  auto ash_metadata = ash::AshMetadata({
+    .root_request_id = ResultToValue(Uuid::FromSlice(snapshot_id_), Uuid::Nil()),
+    .top_level_node_id = ResultToValue(Uuid::FromHexString(master_->permanent_uuid()), Uuid::Nil()),
+    .query_id = std::to_underlying(ash::FixedQueryId::kQueryIdForSnapshot),
+  });
+
+  ash_metadata.ToPB(req.mutable_ash_metadata());
 
   ts_backup_proxy_->TabletSnapshotOpAsync(req, &resp_, &rpc_, BindRpcCallback());
   VLOG_WITH_PREFIX(1) << "Sent to " << permanent_uuid() << " (attempt " << attempt << "): "

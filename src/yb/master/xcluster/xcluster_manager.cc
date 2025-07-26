@@ -21,6 +21,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_replication.pb.h"
 #include "yb/master/xcluster/master_xcluster_util.h"
@@ -50,8 +51,7 @@ DEFINE_RUNTIME_AUTO_bool(enable_tablet_split_of_xcluster_replicated_tables, kExt
 DEFINE_RUNTIME_uint32(xcluster_ysql_statement_timeout_sec, 120,
     "Timeout for YSQL statements executed during xCluster operations.");
 
-// This flag will be converted to a kExternal Auto flag as the feature matures.
-DEFINE_RUNTIME_PREVIEW_bool(xcluster_enable_ddl_replication, false,
+DEFINE_RUNTIME_AUTO_bool(xcluster_enable_ddl_replication, kExternal, false, true,
     "Enables xCluster automatic DDL replication.");
 
 DEFINE_test_flag(bool, force_automatic_ddl_replication_mode, false,
@@ -989,6 +989,31 @@ Status XClusterManager::ProcessCreateTableReq(
     const CreateTableRequestPB& req, SysTablesEntryPB& table_pb, const TableId& table_id,
     const NamespaceId& namespace_id) const {
   return XClusterTargetManager::ProcessCreateTableReq(req, table_pb, table_id, namespace_id);
+}
+
+Status XClusterManager::ValidateCreateTableRequest(const CreateTableRequestPB& req) {
+  TableId table_id;
+  std::string error_str;
+  if (!req.old_rewrite_table_id().empty()) {
+    table_id = req.old_rewrite_table_id();
+    error_str = "Cannot rewrite a table that is a part of non-automatic mode XCluster replication.";
+  } else if (IsIndex(req) && req.skip_index_backfill()) {
+    table_id = req.indexed_table_id();
+    error_str =
+        "Cannot create nonconcurrent index on a table that is a part of non-automatic mode "
+        "XCluster replication.";
+  } else {
+    return Status::OK();
+  }
+
+  const auto namespace_id =
+      VERIFY_RESULT(catalog_manager_.GetTableById(table_id))->LockForRead()->namespace_id();
+
+  SCHECK(
+      !IsTableReplicated(table_id) || IsNamespaceInAutomaticDDLMode(namespace_id), NotSupported,
+      error_str);
+
+  return Status::OK();
 }
 
 }  // namespace yb::master

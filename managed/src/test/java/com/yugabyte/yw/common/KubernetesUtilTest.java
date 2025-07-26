@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
@@ -28,6 +29,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
+import org.yaml.snakeyaml.Yaml;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -292,5 +294,79 @@ public class KubernetesUtilTest extends FakeDBApplication {
             false /* deleteCluster */);
     // Nothing to be deleted
     assertEquals(0, svcsToRemove.size());
+  }
+
+  @Test
+  public void testCoreCountForUniverseWithoutOverrides() throws IOException {
+    Pair<UniverseDefinitionTaskParams, List<AvailabilityZone>> pair =
+        addClusterAndNodeDetailsK8s("2024.2.0.0-b2", false /* createRR */);
+    UniverseDefinitionTaskParams universeParams = pair.getFirst();
+    double tserverCoreCount = 8.0;
+    double masterCoreCount = 4.0;
+    UserIntent.K8SNodeResourceSpec tserverSpec = new UserIntent.K8SNodeResourceSpec();
+    tserverSpec.setCpuCoreCount(tserverCoreCount);
+    UserIntent.K8SNodeResourceSpec masterSpec = new UserIntent.K8SNodeResourceSpec();
+    masterSpec.setCpuCoreCount(masterCoreCount);
+    UserIntent userIntent = universeParams.getPrimaryCluster().userIntent;
+    userIntent.tserverK8SNodeResourceSpec = tserverSpec;
+    userIntent.masterK8SNodeResourceSpec = masterSpec;
+    for (NodeDetails node : universeParams.nodeDetailsSet) {
+      double coreCount = KubernetesUtil.getCoreCountForUniverseForServer(userIntent, null, node);
+      assertEquals(node.isTserver ? tserverCoreCount : masterCoreCount, coreCount, 0.1);
+    }
+  }
+
+  @Test
+  public void testCoreCountForUniverseWithOverrides() throws IOException {
+    Pair<UniverseDefinitionTaskParams, List<AvailabilityZone>> pair =
+        addClusterAndNodeDetailsK8s("2024.2.0.0-b2", false /* createRR */);
+    UniverseDefinitionTaskParams universeParams = pair.getFirst();
+    String overrides = TestUtils.readResource("kubernetes/universe_cpu_overrides.yaml");
+    universeParams.getPrimaryCluster().userIntent.tserverK8SNodeResourceSpec =
+        new UserIntent.K8SNodeResourceSpec();
+    universeParams.getPrimaryCluster().userIntent.masterK8SNodeResourceSpec =
+        new UserIntent.K8SNodeResourceSpec();
+    Map<UUID, Map<String, Object>> azOverridesMap =
+        KubernetesUtil.getFinalOverrides(
+            universeParams.getPrimaryCluster(),
+            overrides,
+            universeParams.getPrimaryCluster().userIntent.azOverrides);
+    for (NodeDetails node : universeParams.nodeDetailsSet) {
+      double coreCount =
+          KubernetesUtil.getCoreCountForUniverseForServer(
+              universeParams.getPrimaryCluster().userIntent, azOverridesMap, node);
+      assertEquals(node.isTserver ? 16 : 8, coreCount, 0.1);
+    }
+  }
+
+  @Test
+  public void testCoreCountForUniverseWithAZOverrides() throws IOException {
+    Pair<UniverseDefinitionTaskParams, List<AvailabilityZone>> pair =
+        addClusterAndNodeDetailsK8s("2024.2.0.0-b2", false /* createRR */);
+    UniverseDefinitionTaskParams universeParams = pair.getFirst();
+    Yaml yaml = new Yaml();
+    Map<String, String> azOverridesMap =
+        yaml.load(TestUtils.readResource("kubernetes/az_cpu_overrides.yaml"));
+    universeParams.getPrimaryCluster().userIntent.tserverK8SNodeResourceSpec =
+        new UserIntent.K8SNodeResourceSpec();
+    universeParams.getPrimaryCluster().userIntent.masterK8SNodeResourceSpec =
+        new UserIntent.K8SNodeResourceSpec();
+    Map<UUID, Map<String, Object>> finalAzOverrides =
+        KubernetesUtil.getFinalOverrides(universeParams.getPrimaryCluster(), "", azOverridesMap);
+
+    Map<String, Map<String, Double>> expectedCpuValues =
+        Map.of(
+            "PlacementAZ 1", Map.of("master", 2.0, "tserver", 10.0),
+            "PlacementAZ 2", Map.of("master", 6.0, "tserver", 2.0),
+            "PlacementAZ 3", Map.of("master", 2.0, "tserver", 2.0));
+
+    for (NodeDetails node : universeParams.nodeDetailsSet) {
+      double expected =
+          expectedCpuValues.get(node.getZone()).get(node.isTserver ? "tserver" : "master");
+      double coreCount =
+          KubernetesUtil.getCoreCountForUniverseForServer(
+              universeParams.getPrimaryCluster().userIntent, finalAzOverrides, node);
+      assertEquals(expected, coreCount, 0.1);
+    }
   }
 }

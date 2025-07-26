@@ -36,6 +36,7 @@ DEFINE_test_flag(int32, user_ddl_operation_timeout_sec, 0,
 
 DECLARE_int32(max_num_tablets_for_table);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
+DECLARE_int32(ysql_clone_pg_schema_rpc_timeout_ms);
 
 namespace yb::pggate {
 
@@ -55,8 +56,13 @@ CoarseTimePoint DdlDeadline() {
 }
 
 // Make a special case for create database because it is a well-known slow operation in YB.
-CoarseTimePoint CreateDatabaseDeadline() {
+CoarseTimePoint CreateDatabaseDeadline(bool is_clone = false) {
   int32 timeout = FLAGS_TEST_user_ddl_operation_timeout_sec;
+  // Creating the database through clone workflow has a different deadline compared to non-clone
+  // worflow to account for extra time to clone the schema objects.
+  if (is_clone) {
+    timeout = FLAGS_ysql_clone_pg_schema_rpc_timeout_ms / 1000;
+  }
   if (timeout == 0) {
     timeout = FLAGS_yb_client_admin_operation_timeout_sec *
               RegularBuildVsDebugVsSanitizers(1, 2, 2);
@@ -96,7 +102,10 @@ PgCreateDatabase::PgCreateDatabase(const PgSession::ScopedRefPtr& pg_session,
 }
 
 Status PgCreateDatabase::Exec() {
-  return pg_session_->pg_client().CreateDatabase(&req_, CreateDatabaseDeadline());
+  bool is_clone = !req_.source_database_name().empty();
+  RETURN_NOT_OK(pg_session_->SetupIsolationAndPerformOptionsForDdl(
+      req_.mutable_options(), req_.use_regular_transaction_block()));
+  return pg_session_->pg_client().CreateDatabase(&req_, CreateDatabaseDeadline(is_clone));
 }
 
 PgDropDatabase::PgDropDatabase(
@@ -140,6 +149,8 @@ PgCreateTablegroup::PgCreateTablegroup(
 }
 
 Status PgCreateTablegroup::Exec() {
+  RETURN_NOT_OK(pg_session_->SetupIsolationAndPerformOptionsForDdl(
+      req_.mutable_options(), req_.use_regular_transaction_block()));
   return pg_session_->pg_client().CreateTablegroup(&req_, DdlDeadline());
 }
 
@@ -152,6 +163,8 @@ PgDropTablegroup::PgDropTablegroup(
 }
 
 Status PgDropTablegroup::Exec() {
+  RETURN_NOT_OK(pg_session_->SetupIsolationAndPerformOptionsForDdl(
+      req_.mutable_options(), req_.use_regular_transaction_block()));
   return pg_session_->pg_client().DropTablegroup(&req_, DdlDeadline());
 }
 
@@ -279,6 +292,8 @@ Status PgCreateTableBase::AddSplitBoundary(PgExpr** exprs, int expr_count) {
 }
 
 Status PgCreateTableBase::Exec() {
+  RETURN_NOT_OK(pg_session_->SetupIsolationAndPerformOptionsForDdl(
+      req_.mutable_options(), req_.use_regular_transaction_block()));
   RETURN_NOT_OK(pg_session_->pg_client().CreateTable(&req_, DdlDeadline()));
 
   const auto base_table_id = PgObjectId::FromPB(req_.base_table_id());
@@ -467,9 +482,8 @@ Status PgAlterTable::SetReplicaIdentity(const char identity_type) {
   return Status::OK();
 }
 
-Status PgAlterTable::RenameTable(const char *db_name, const char *newname) {
+Status PgAlterTable::RenameTable(const char *newname) {
   auto& rename = *req_.mutable_rename_table();
-  rename.set_database_name(db_name);
   rename.set_table_name(newname);
   return Status::OK();
 }
@@ -491,6 +505,8 @@ Status PgAlterTable::SetSchema(const char *schema_name) {
 }
 
 Status PgAlterTable::Exec() {
+  RETURN_NOT_OK(pg_session_->SetupIsolationAndPerformOptionsForDdl(
+      req_.mutable_options(), req_.use_regular_transaction_block()));
   RETURN_NOT_OK(pg_session_->pg_client().AlterTable(&req_, DdlDeadline()));
   pg_session_->InvalidateTableCache(
       PgObjectId::FromPB(req_.table_id()), InvalidateOnPgClient::kFalse);

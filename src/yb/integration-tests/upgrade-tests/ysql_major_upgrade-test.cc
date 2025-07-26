@@ -13,6 +13,9 @@
 
 #include "yb/integration-tests/upgrade-tests/ysql_major_upgrade_test_base.h"
 
+#include "yb/client/client-test-util.h"
+#include "yb/client/table_info.h"
+#include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
@@ -987,31 +990,45 @@ TEST_F(YsqlMajorUpgradeTest, ColocatedTables) {
   ASSERT_OK(ExecuteStatement("CREATE DATABASE colo WITH COLOCATION = true"));
   {
     auto conn = ASSERT_RESULT(cluster_->ConnectToDB("colo"));
-    ASSERT_OK(conn.Execute("CREATE TABLE t1 (k int PRIMARY KEY)"));
-    ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1)"));
+    ASSERT_OK(conn.Execute("CREATE TABLE t1 (k int PRIMARY KEY, v int)"));
+    ASSERT_OK(conn.Execute("CREATE INDEX ON t1(v)"));
+    ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1, 1)"));
   }
   ASSERT_OK(UpgradeClusterToMixedMode());
+  auto check_index_query = [&](pgwrapper::PGConn& conn, const std::vector<int>& rows) {
+    for (auto row : rows) {
+      auto index_query = Format("SELECT v FROM t1 WHERE v = $0", row);
+      ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(index_query)));
+      auto result = ASSERT_RESULT(conn.FetchRows<int>(index_query));
+      ASSERT_VECTORS_EQ(result, (decltype(result){row}));
+    }
+  };
   {
     auto conn = ASSERT_RESULT(cluster_->ConnectToDB("colo", kMixedModeTserverPg15));
-    ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (2)"));
-    auto result = ASSERT_RESULT(conn.FetchRows<int>("SELECT * FROM t1"));
+    ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (2, 2)"));
+    auto result = ASSERT_RESULT(conn.FetchRows<int>("SELECT k FROM t1"));
     ASSERT_VECTORS_EQ(result, (decltype(result){1, 2}));
+    check_index_query(conn, {1, 2});
   }
   {
     auto conn = ASSERT_RESULT(cluster_->ConnectToDB("colo", kMixedModeTserverPg11));
-    ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (3)"));
-    auto result = ASSERT_RESULT(conn.FetchRows<int>("SELECT * FROM t1"));
+    ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (3, 3)"));
+    auto result = ASSERT_RESULT(conn.FetchRows<int>("SELECT k FROM t1"));
     ASSERT_VECTORS_EQ(result, (decltype(result){1, 2, 3}));
+    check_index_query(conn, {1, 2, 3});
   }
   ASSERT_OK(FinalizeUpgradeFromMixedMode());
   {
     auto conn = ASSERT_RESULT(cluster_->ConnectToDB("colo"));
-    auto result = ASSERT_RESULT(conn.FetchRows<int>("SELECT * FROM t1"));
+    auto result = ASSERT_RESULT(conn.FetchRows<int>("SELECT k FROM t1"));
     ASSERT_VECTORS_EQ(result, (decltype(result){1, 2, 3}));
+    check_index_query(conn, {1, 2, 3});
 
-    ASSERT_OK(conn.Execute("CREATE TABLE t2 (k int PRIMARY KEY)"));
-    ASSERT_OK(conn.Execute("INSERT INTO t2 VALUES (1), (2), (4)"));
-    result = ASSERT_RESULT(conn.FetchRows<int>("SELECT * FROM t2"));
+    ASSERT_OK(conn.Execute("CREATE TABLE t2 (k int PRIMARY KEY, v int)"));
+    ASSERT_OK(conn.Execute("INSERT INTO t2 VALUES (1, 1), (2, 2), (4, 4)"));
+    result = ASSERT_RESULT(conn.FetchRows<int>("SELECT k FROM t2"));
+    ASSERT_VECTORS_EQ(result, (decltype(result){1, 2, 4}));
+    result = ASSERT_RESULT(conn.FetchRows<int>("SELECT v FROM t2 ORDER BY v"));
     ASSERT_VECTORS_EQ(result, (decltype(result){1, 2, 4}));
   }
 }
@@ -1649,6 +1666,208 @@ TEST_F(YsqlMajorUpgradeTest, YbSuperuserRole) {
       {"CREATE ROLE \"yb_superuser\" INHERIT CREATEROLE CREATEDB BYPASSRLS",
        "GRANT \"pg_read_all_stats\" TO \"yb_superuser\""}));
   ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes));
+}
+
+TEST_F(YsqlMajorUpgradeTest, Analyze) {
+  constexpr std::string_view kStatsUpdateError =
+      "YSQL DDLs, and catalog modifications are not allowed during a major YSQL upgrade";
+  constexpr std::string_view kNoRandStateError = "Invalid sampling state, random state is missing";
+  using ExpectedErrors = std::optional<const std::vector<std::string_view>>;
+  auto check_analyze = [this](std::optional<size_t> server, ExpectedErrors expected_errors) {
+    auto conn = ASSERT_RESULT(CreateConnToTs(server));
+    auto status = conn.ExecuteFormat("ANALYZE $0", kSimpleTableName);
+    if (!expected_errors) {
+      ASSERT_OK(status);
+    } else {
+      ASSERT_NOK(status);
+      for (const auto& err : *expected_errors) {
+        if (status.ToString().find(err) != std::string::npos) {
+          return;
+        }
+      }
+      FAIL() << "Unexpected error " << status.ToString();
+    }
+  };
+  ASSERT_OK(CreateSimpleTable());
+  check_analyze(kAnyTserver, std::nullopt);
+  ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
+  ASSERT_OK(PerformYsqlMajorCatalogUpgrade());
+  check_analyze(kAnyTserver, {{kStatsUpdateError}});
+  LOG(INFO) << "Restarting yb-tserver " << kMixedModeTserverPg15 << " in current version";
+  auto mixed_mode_pg15_tserver = cluster_->tablet_server(kMixedModeTserverPg15);
+  ASSERT_OK(RestartTServerInCurrentVersion(
+      *mixed_mode_pg15_tserver, /*wait_for_cluster_to_stabilize=*/true));
+  check_analyze(kMixedModeTserverPg11, {{kNoRandStateError, kStatsUpdateError}});
+  check_analyze(kMixedModeTserverPg15, {{kNoRandStateError, kStatsUpdateError}});
+  ASSERT_OK(UpgradeAllTserversFromMixedMode());
+  check_analyze(kAnyTserver, {{kStatsUpdateError}});
+  ASSERT_OK(FinalizeUpgrade());
+  check_analyze(kAnyTserver, std::nullopt);
+}
+
+TEST_F(YsqlMajorUpgradeTest, EnumTypes) {
+  ASSERT_OK(ExecuteStatements({
+    "CREATE TYPE color AS ENUM ('red', 'green', 'blue', 'yellow')",
+    "CREATE TABLE paint_log (id serial, shade color) PARTITION BY HASH (shade)",
+    "CREATE TABLE paint_log_p0 PARTITION OF paint_log FOR VALUES WITH (MODULUS 2, REMAINDER 0)",
+    "CREATE TABLE paint_log_p1 PARTITION OF paint_log FOR VALUES WITH (MODULUS 2, REMAINDER 1)",
+    "INSERT INTO paint_log (shade) VALUES ('red'), ('green'), ('blue'), ('yellow')"
+  }));
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+  auto type_oid = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
+    "SELECT oid FROM pg_type WHERE typname = 'color'"));
+
+  const auto fetch_partition_data = [&](const std::string& partition) {
+    return conn.FetchRows<int, std::string>(
+        Format("SELECT id, shade::text FROM $0 ORDER BY shade", partition));
+  };
+
+  const auto fetch_enum_data = [&]() {
+    return conn.FetchRows<pgwrapper::PGOid, float, std::string>(Format(
+        "SELECT oid, enumsortorder, enumlabel FROM pg_enum WHERE enumtypid = $0"
+        " ORDER BY enumsortorder", type_oid));
+  };
+
+  auto paint_log_p0_res = ASSERT_RESULT(fetch_partition_data("paint_log_p0"));
+  auto paint_log_p1_res = ASSERT_RESULT(fetch_partition_data("paint_log_p1"));
+  auto enum_oids = ASSERT_RESULT(fetch_enum_data());
+
+  ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes));
+
+  conn = ASSERT_RESULT(cluster_->ConnectToDB());
+  ASSERT_VECTORS_EQ(ASSERT_RESULT(fetch_partition_data("paint_log_p0")), paint_log_p0_res);
+  ASSERT_VECTORS_EQ(ASSERT_RESULT(fetch_partition_data("paint_log_p1")), paint_log_p1_res);
+  ASSERT_VECTORS_EQ(ASSERT_RESULT(fetch_enum_data()), enum_oids);
+}
+
+TEST_F(YsqlMajorUpgradeTest, IndexWithRenamedColumn) {
+  ASSERT_OK(ExecuteStatements(
+      {"CREATE TABLE t (a int, b int, c int)",
+       "INSERT INTO t VALUES (1, 1, 1), (2, 2, 2)",
+       "CREATE INDEX i ON t (a, b)",
+       "CREATE INDEX i2 ON t (b) INCLUDE (c)",
+       "ALTER TABLE t RENAME COLUMN a TO a_new",
+       "ALTER TABLE t RENAME COLUMN c TO c_new",
+       "CREATE INDEX i3 ON t (a_new, c_new)",
+       "CREATE INDEX i4 ON t ((a_new+c_new), c_new)",
+       "ALTER TABLE t RENAME COLUMN a_new TO a_new2",
+       "ALTER TABLE t RENAME COLUMN c_new TO c_new2"}));
+
+  ASSERT_OK(ExecuteStatements(
+      {"CREATE TABLE t_part (a int, b int, c int) PARTITION BY RANGE (a)",
+       "CREATE TABLE t_part_1 PARTITION OF t_part FOR VALUES FROM (0) TO (10)",
+       "INSERT INTO t VALUES (1, 1, 1), (2, 2, 2)",
+       "CREATE INDEX i_part ON t_part (a, b)",
+       "CREATE INDEX i2_part ON t_part (b) INCLUDE (c)",
+       "ALTER TABLE t_part RENAME COLUMN a TO a_new",
+       "ALTER TABLE t_part RENAME COLUMN c TO c_new",
+       "CREATE INDEX i3_part ON t_part (a_new, c_new)",
+       "CREATE INDEX i4_part ON t_part ((a_new+c_new), c_new)",
+       "ALTER TABLE t_part RENAME COLUMN a_new TO a_new2",
+       "ALTER TABLE t_part RENAME COLUMN c_new TO c_new2"}));
+
+  auto check_index_schema = [this](const std::string& index_name,
+                                   const std::vector<std::string>& expected_columns,
+                                   const std::string& describe_output) {
+    auto table_info = std::make_shared<client::YBTableInfo>();
+    auto table_id = ASSERT_RESULT(GetTableIdByTableName(client_.get(), "yugabyte", index_name));
+
+    // Verify the schema for the current table
+    Synchronizer sync;
+    ASSERT_OK(client_->GetTableSchemaById(table_id, table_info, sync.AsStatusCallback()));
+    ASSERT_OK(sync.Wait());
+    int columns_found = 0;
+    for (size_t i = 0; i < expected_columns.size(); ++i) {
+      for (const auto& col : table_info->schema.columns()) {
+        if (col.name() == expected_columns[i]) {
+          columns_found++;
+          break;
+        }
+      }
+    }
+    ASSERT_EQ(columns_found, expected_columns.size());
+
+    // Verify the pg_attribute entries
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    auto res = ASSERT_RESULT(conn.FetchRows<std::string>(
+        Format("SELECT attname FROM pg_attribute WHERE attrelid = '$0'::regclass", index_name)));
+    ASSERT_VECTORS_EQ(res, expected_columns);
+
+    // Verify the output of \d command
+    auto result = ASSERT_RESULT(ExecuteViaYsqlsh(Format("\\d $0", index_name)));
+    ASSERT_EQ(result, describe_output);
+  };
+
+  ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes));
+
+  // Validate index schemas and pg_attribute entries with correct expected columns and output
+  check_index_schema("i", {"a", "b"},
+    "           Index \"public.i\"\n"
+    " Column |  Type   | Key? | Definition \n"
+    "--------+---------+------+------------\n"
+    " a      | integer | yes  | a_new2\n"
+    " b      | integer | yes  | b\n"
+    "lsm, for table \"public.t\"\n\n");
+
+  check_index_schema("i2", {"b", "c"},
+    "          Index \"public.i2\"\n"
+    " Column |  Type   | Key? | Definition \n"
+    "--------+---------+------+------------\n"
+    " b      | integer | yes  | b\n"
+    " c      | integer | no   | c_new2\n"
+    "lsm, for table \"public.t\"\n\n");
+
+  check_index_schema("i3", {"a_new", "c_new"},
+    "          Index \"public.i3\"\n"
+    " Column |  Type   | Key? | Definition \n"
+    "--------+---------+------+------------\n"
+    " a_new  | integer | yes  | a_new2\n"
+    " c_new  | integer | yes  | c_new2\n"
+    "lsm, for table \"public.t\"\n\n");
+
+  check_index_schema("i4", {"expr", "c_new"},
+    "              Index \"public.i4\"\n"
+    " Column |  Type   | Key? |    Definition     \n"
+    "--------+---------+------+-------------------\n"
+    " expr   | integer | yes  | (a_new2 + c_new2)\n"
+    " c_new  | integer | yes  | c_new2\n"
+    "lsm, for table \"public.t\"\n\n");
+
+  check_index_schema("i_part", {"a", "b"},
+    "  Partitioned index \"public.i_part\"\n"
+    " Column |  Type   | Key? | Definition \n"
+    "--------+---------+------+------------\n"
+    " a      | integer | yes  | a_new2\n"
+    " b      | integer | yes  | b\n"
+    "lsm, for table \"public.t_part\"\n"
+    "Number of partitions: 1 (Use \\d+ to list them.)\n\n");
+
+  check_index_schema("i2_part", {"b", "c"},
+    "  Partitioned index \"public.i2_part\"\n"
+    " Column |  Type   | Key? | Definition \n"
+    "--------+---------+------+------------\n"
+    " b      | integer | yes  | b\n"
+    " c      | integer | no   | c_new2\n"
+    "lsm, for table \"public.t_part\"\n"
+    "Number of partitions: 1 (Use \\d+ to list them.)\n\n");
+
+  check_index_schema("i3_part", {"a_new", "c_new"},
+    "  Partitioned index \"public.i3_part\"\n"
+    " Column |  Type   | Key? | Definition \n"
+    "--------+---------+------+------------\n"
+    " a_new  | integer | yes  | a_new2\n"
+    " c_new  | integer | yes  | c_new2\n"
+    "lsm, for table \"public.t_part\"\n"
+    "Number of partitions: 1 (Use \\d+ to list them.)\n\n");
+
+  check_index_schema("i4_part", {"expr", "c_new"},
+    "     Partitioned index \"public.i4_part\"\n"
+    " Column |  Type   | Key? |    Definition     \n"
+    "--------+---------+------+-------------------\n"
+    " expr   | integer | yes  | (a_new2 + c_new2)\n"
+    " c_new  | integer | yes  | c_new2\n"
+    "lsm, for table \"public.t_part\"\n"
+    "Number of partitions: 1 (Use \\d+ to list them.)\n\n");
 }
 
 }  // namespace yb

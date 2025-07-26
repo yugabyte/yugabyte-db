@@ -2818,7 +2818,7 @@ initialize_peragg(WindowAggState *winstate, WindowFunc *wfunc,
 	if (!OidIsValid(aggform->aggminvtransfn))
 		use_ma_code = false;	/* sine qua non */
 	else if (aggform->aggmfinalmodify == AGGMODIFY_READ_ONLY &&
-		aggform->aggfinalmodify != AGGMODIFY_READ_ONLY)
+			 aggform->aggfinalmodify != AGGMODIFY_READ_ONLY)
 		use_ma_code = true;		/* decision forced by safety */
 	else if (winstate->frameOptions & FRAMEOPTION_START_UNBOUNDED_PRECEDING)
 		use_ma_code = false;	/* non-moving frame head */

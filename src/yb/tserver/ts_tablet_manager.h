@@ -91,6 +91,8 @@ class Schema;
 class BackgroundTask;
 class XClusterSafeTimeTest;
 
+YB_STRONGLY_TYPED_BOOL(UserTabletsOnly);
+
 namespace consensus {
 class RaftConfigPB;
 } // namespace consensus
@@ -129,13 +131,22 @@ YB_DEFINE_ENUM(TabletDirType, (kData)(kWal));
 YB_DEFINE_ENUM(TabletRemoteSessionType, (kBootstrap)(kSnapshotTransfer));
 
 YB_STRONGLY_TYPED_BOOL(MarkDirtyAfterRegister);
+YB_STRONGLY_TYPED_BOOL(ShouldWait);
 
 struct AdminCompactionOptions {
-  const bool should_wait;
+  ShouldWait should_wait;
+  rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe =
+      rocksdb::SkipCorruptDataBlocksUnsafe::kFalse;
   TableIdsPtr vector_index_ids;
 
-  explicit AdminCompactionOptions(bool should_wait_) : should_wait(should_wait_)
-  {}
+  AdminCompactionOptions() = delete;
+
+  AdminCompactionOptions(
+      ShouldWait should_wait_,
+      rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe_ =
+          rocksdb::SkipCorruptDataBlocksUnsafe::kFalse)
+      : should_wait(should_wait_),
+        skip_corrupt_data_blocks_unsafe(skip_corrupt_data_blocks_unsafe_) {}
 };
 
 // Keeps track of the tablets hosted on the tablet server side.
@@ -309,10 +320,15 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   }
 
   // Get all of the tablets currently hosted on this server.
-  TabletPeers GetTabletPeers(TabletPtrs* tablet_ptrs = nullptr) const;
+  TabletPeers GetTabletPeers(
+      TabletPtrs* tablet_ptrs = nullptr,
+      UserTabletsOnly user_tablets_only = UserTabletsOnly::kFalse) const;
   // Get all of the tablets currently hosted on this server that belong to a given table.
   TabletPeers GetTabletPeersWithTableId(const TableId& table_id) const;
-  void GetTabletPeersUnlocked(TabletPeers* tablet_peers) const REQUIRES_SHARED(mutex_);
+  void GetTabletPeersUnlocked(
+      TabletPeers* tablet_peers,
+      UserTabletsOnly user_tablets_only =
+          UserTabletsOnly::kFalse) const REQUIRES_SHARED(mutex_);
   void PreserveLocalLeadersOnly(std::vector<const TabletId*>* tablet_ids) const;
 
   // Get TabletPeers for all status tablets hosted on this server.
@@ -637,7 +653,10 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   void UpdateCompactFlushRateLimitBytesPerSec();
 
+  void UpdateAllowCompactionFailures();
+
   rpc::ThreadPool* VectorIndexThreadPool(tablet::VectorIndexThreadPoolType type);
+  PriorityThreadPool* VectorIndexPriorityThreadPool(tablet::VectorIndexPriorityThreadPoolType type);
 
   const CoarseTimePoint start_time_;
 
@@ -814,12 +833,14 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   std::shared_ptr<client::YBMetaDataCache> metadata_cache_holder_;
   std::atomic<client::YBMetaDataCache*> metadata_cache_;
 
-  // Callback for FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec update handling.
-  FlagCallbackRegistration rate_limiter_flag_callback_;
+  std::vector<FlagCallbackRegistration> flag_callbacks_;
+
+  std::string allow_compaction_failures_for_tablet_ids_ GUARDED_BY(mutex_);
 
   std::mutex vector_index_thread_pool_mutex_;
   std::array<AtomicUniquePtr<rpc::ThreadPool>, tablet::kVectorIndexThreadPoolTypeMapSize>
       vector_index_thread_pools_;
+  hnsw::BlockCachePtr vector_index_block_cache_;
 
   DISALLOW_COPY_AND_ASSIGN(TSTabletManager);
 };

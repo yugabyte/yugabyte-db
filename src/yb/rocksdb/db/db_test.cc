@@ -4754,6 +4754,10 @@ class ModelDB: public DB {
     return NotSupported();
   }
 
+  void SetAllowCompactionFailures(AllowCompactionFailures allow_compaction_failures) override {
+    LOG(FATAL) << "SetAllowCompactionFailures is not supported.";
+  }
+
  private:
   Status NotSupported() const {
     return STATUS(NotSupported, "Not supported in Model DB");

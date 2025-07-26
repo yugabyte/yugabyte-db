@@ -134,7 +134,7 @@ Status YBTableAlterer::ToRequest(master::AlterTableRequestPB* req) {
 
   req->Clear();
 
-  if (table_name_.has_table()) {
+  if (table_name_.has_table() || table_name_.has_table_id()) {
     table_name_.SetIntoTableIdentifierPB(req->mutable_table());
   }
 
@@ -145,10 +145,6 @@ Status YBTableAlterer::ToRequest(master::AlterTableRequestPB* req) {
   if (rename_to_) {
     if (rename_to_->has_table()) {
       req->set_new_table_name(rename_to_->table_name());
-
-      if (rename_to_->has_namespace()) {
-        req->mutable_new_namespace()->set_name(rename_to_->namespace_name());
-      }
     }
 
     if (rename_to_->has_pgschema_name()) {

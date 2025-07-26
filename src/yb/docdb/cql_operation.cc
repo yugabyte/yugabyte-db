@@ -877,8 +877,7 @@ Status QLWriteOperation::ApplyForSubscriptArgs(const QLColumnValuePB& column_val
       break;
     }
     default: {
-      LOG(ERROR) << "Unexpected type for setting subcolumn: "
-                 << column.type()->ToString();
+      LOG(DFATAL) << "Unexpected type for setting subcolumn: " << column.type()->ToString();
     }
   }
   return Status::OK();
@@ -1073,7 +1072,7 @@ Status QLWriteOperation::ApplyUpsert(
       if (pack_row) {
         row_packer.emplace(
             schema_version_, schema_packing, FLAGS_ycql_packed_row_size_limit,
-            context.control_fields, doc_read_context_->schema());
+            context.control_fields);
         packed_row_write_id = data.doc_write_batch->ReserveWriteId();
         context.row_packer = &row_packer.value();
         ValueControlFields column_control_fields;
@@ -1288,8 +1287,8 @@ Status QLWriteOperation::DeleteSubscriptedColumnElement(
       break;
     }
     default: {
-      LOG(ERROR) << "Unexpected type for deleting subscripted column element: "
-                 << column_schema.type()->ToString();
+      LOG(DFATAL) << "Unexpected type for deleting subscripted column element: "
+                  << column_schema.type()->ToString();
       return STATUS_FORMAT(InternalError,
           "Unexpected type for deleting subscripted column element: $0", *column_schema.type());
     }

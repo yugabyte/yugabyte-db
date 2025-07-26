@@ -717,7 +717,6 @@ Result<FetchResult> FetchTableRow(
 struct RowPackerData {
   SchemaVersion schema_version;
   const dockv::SchemaPacking& packing;
-  const Schema& schema;
 
   static Result<RowPackerData> Create(
       const PgsqlWriteRequestPB& request, const DocReadContext& read_context) {
@@ -725,7 +724,6 @@ struct RowPackerData {
     return RowPackerData {
       .schema_version = schema_version,
       .packing = VERIFY_RESULT(read_context.schema_packing_storage.GetPacking(schema_version)),
-      .schema = read_context.schema()
     };
   }
 
@@ -741,7 +739,7 @@ struct RowPackerData {
   dockv::RowPackerVariant MakePackerHelper() const {
     return dockv::RowPackerVariant(
         std::in_place_type_t<T>(), schema_version, packing, FLAGS_ysql_packed_row_size_limit,
-        Slice(), schema);
+        Slice());
   }
 };
 
@@ -2137,7 +2135,7 @@ Result<size_t> PgsqlReadOperation::Execute() {
     PgsqlReadRequestYbctidProvider key_provider(data_.doc_read_context, request_, response_);
     fetched_rows = VERIFY_RESULT(ExecuteBatchKeys(key_provider));
   } else if (request_.has_sampling_state()) {
-    if (data_.doc_read_context.is_index()) {
+    if (data_.doc_read_context.is_index) {
       return STATUS_FORMAT(
           InvalidArgument, "Sampling of index table ($0) is not supported and not expected",
           request_.table_id());
@@ -2221,6 +2219,8 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteSample() {
   // Current number of rows to skip before collecting next one for sample
   double rowstoskip = sampling_state.rowstoskip();
   // Variables for the random numbers generator
+  SCHECK(sampling_state.has_rand_state(), InvalidArgument,
+         "Invalid sampling state, random state is missing");
   YbgPrepareMemoryContext();
   YbgReservoirState rstate = NULL;
   YbgSamplerCreate(

@@ -18,17 +18,53 @@
 #include <memory>
 
 #include "yb/common/common_fwd.h"
-#include "yb/common/transaction.pb.h"
-#include "yb/docdb/object_lock_manager.h"
-#include "yb/dockv/value_type.h"
+#include "yb/common/transaction.h"
+
+#include "yb/docdb/object_lock_shared_fwd.h"
+
 #include "yb/server/clock.h"
+#include "yb/server/server_fwd.h"
+
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tserver.pb.h"
-#include "yb/util/status.h"
 
-namespace yb::tserver {
+#include "yb/util/status_callback.h"
 
-YB_STRONGLY_TYPED_BOOL(WaitForBootstrap);
+namespace yb {
+
+class ThreadPool;
+
+namespace master {
+class ReleaseObjectLocksGlobalRequestPB;
+}
+namespace tserver {
+
+struct ObjectLockContext {
+  ObjectLockContext(
+      TransactionId txn_id, SubTransactionId subtxn_id, uint64_t database_oid,
+      uint64_t relation_oid, uint64_t object_oid, uint64_t object_sub_oid, TableLockType lock_type)
+      : txn_id(txn_id),
+        subtxn_id(subtxn_id),
+        database_oid(database_oid),
+        relation_oid(relation_oid),
+        object_oid(object_oid),
+        object_sub_oid(object_sub_oid),
+        lock_type(lock_type) {}
+
+  YB_STRUCT_DEFINE_HASH(
+      ObjectLockContext, txn_id, subtxn_id, database_oid, relation_oid, object_oid, object_sub_oid,
+      lock_type);
+
+  auto operator<=>(const ObjectLockContext&) const = default;
+
+  TransactionId txn_id;
+  SubTransactionId subtxn_id;
+  uint64_t database_oid;
+  uint64_t relation_oid;
+  uint64_t object_oid;
+  uint64_t object_sub_oid;
+  TableLockType lock_type;
+};
 
 // LockManager for acquiring table/object locks of type TableLockType on a given object id.
 // TSLocalLockManager uses LockManagerImpl<ObjectLockPrefix> to acheive the locking/unlocking
@@ -49,7 +85,10 @@ YB_STRONGLY_TYPED_BOOL(WaitForBootstrap);
 // it with all exisitng DDL (global) locks.
 class TSLocalLockManager {
  public:
-  TSLocalLockManager(const server::ClockPtr& clock, TabletServerIf* server);
+  TSLocalLockManager(
+      const server::ClockPtr& clock, TabletServerIf* tablet_server,
+      server::RpcServerBase& messenger_server, ThreadPool* thread_pool,
+      docdb::ObjectLockSharedStateManager* shared_manager = nullptr);
   ~TSLocalLockManager();
 
   // Tries acquiring object locks with the specified modes and registers them against the given
@@ -62,16 +101,10 @@ class TSLocalLockManager {
   // conflicting lock types on a key given that there aren't other txns with active conflciting
   // locks on the key.
   //
-  // Continuous influx of readers can starve writers. For instance, if there are multiple txns
-  // requesting ACCESS_SHARE on a key, a writer requesting ACCESS_EXCLUSIVE may face starvation.
-  // Since we intend to use this for table locks, DDLs may face starvation if there is influx of
-  // conflicting DMLs.
-  // TODO: DDLs don't face starvation in PG. Address the above starvation problem.
-  //
   // TODO: Augment the 'pg_locks' path to show the acquired/waiting object/table level locks.
-  Status AcquireObjectLocks(
+  void AcquireObjectLocksAsync(
       const tserver::AcquireObjectLockRequestPB& req, CoarseTimePoint deadline,
-      WaitForBootstrap wait = WaitForBootstrap::kTrue);
+      StdStatusCallback&& callback);
 
   // When subtxn id is set, releases all locks tagged against <txn, subtxn>. Else releases all
   // object locks owned by <txn>.
@@ -80,19 +113,51 @@ class TSLocalLockManager {
   // lock modes on a key multiple times, and will unlock them all with a single unlock rpc.
   Status ReleaseObjectLocks(
       const tserver::ReleaseObjectLockRequestPB& req, CoarseTimePoint deadline);
+
+  void TrackDeadlineForGlobalAcquire(
+      const TransactionId& txn_id, const SubTransactionId& subtxn_id,
+      CoarseTimePoint apply_after_ht);
+  void ScheduleReleaseForLostMessages(
+      yb::client::YBClient& client, std::weak_ptr<TSLocalLockManager> lock_manager_weak,
+      const TransactionId& txn_id, std::optional<SubTransactionId> subtxn_id,
+      const std::shared_ptr<master::ReleaseObjectLocksGlobalRequestPB>& release_req);
+
+  void Start(docdb::LocalWaitingTxnRegistry* waiting_txn_registry);
+
+  void Shutdown();
+
   void DumpLocksToHtml(std::ostream& out);
 
   Status BootstrapDdlObjectLocks(const tserver::DdlLockEntriesPB& resp);
 
   bool IsBootstrapped() const;
-  size_t TEST_GrantedLocksSize() const;
-  size_t TEST_WaitingLocksSize() const;
-  void TEST_MarkBootstrapped();
+
   server::ClockPtr clock() const;
+
+  void PopulateObjectLocks(
+      google::protobuf::RepeatedPtrField<ObjectLockInfoPB>* object_lock_infos) const;
+
+  size_t TEST_GrantedLocksSize();
+  size_t TEST_WaitingLocksSize();
+  void TEST_MarkBootstrapped();
+  std::unordered_map<docdb::ObjectLockPrefix, docdb::LockState>
+      TEST_GetLockStateMapForTxn(const TransactionId& txn) const;
+  bool IsShutdownInProgress() const;
 
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;
 };
 
-} // namespace yb::tserver
+void ReleaseWithRetriesGlobal(
+    yb::client::YBClient& client, std::weak_ptr<TSLocalLockManager> lock_manager_weak,
+    const TransactionId& txn_id, std::optional<SubTransactionId> subtxn_id,
+    const std::shared_ptr<master::ReleaseObjectLocksGlobalRequestPB>& release_req);
+
+void AcquireObjectLockLocallyWithRetries(
+    std::weak_ptr<TSLocalLockManager> lock_manager, AcquireObjectLockRequestPB&& req,
+    CoarseTimePoint deadline, StdStatusCallback&& lock_cb,
+    std::function<Status(CoarseTimePoint)> check_txn_running);
+
+}  // namespace tserver
+}  // namespace yb

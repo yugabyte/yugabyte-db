@@ -606,7 +606,8 @@ rel_supports_distinctness(PlannerInfo *root, RelOptInfo *rel)
 		 */
 		ListCell   *lc;
 
-		List *ybIndexList = rel->indexlist;
+		List	   *ybIndexList = rel->indexlist;
+
 		if (list_length(ybIndexList) < list_length(rel->ybHintsOrigIndexlist))
 		{
 			/*

@@ -138,6 +138,17 @@ enum PRIVATE_ThrottleMsg {THROTTLE_MSG};
 // benign races on their internal static variables.
 ////////////////////////////////////////////////////////////////////////////////
 
+#define YB_GLOG_SEVERITY_INFO google::GLOG_INFO
+#define YB_GLOG_SEVERITY_WARNING google::GLOG_WARNING
+#define YB_GLOG_SEVERITY_ERROR google::GLOG_ERROR
+#define YB_GLOG_SEVERITY_FATAL google::GLOG_FATAL
+#if DCHECK_IS_ON()
+#define YB_GLOG_SEVERITY_DFATAL google::GLOG_FATAL
+#else
+#define YB_GLOG_SEVERITY_DFATAL google::GLOG_ERROR
+#endif
+#define YB_GLOG_SEVERITY(severity) BOOST_PP_CAT(YB_GLOG_SEVERITY_, severity)
+
 // The "base" macros.
 #define YB_SOME_KIND_OF_LOG_EVERY_N(severity, n, what_to_do) \
   static int LOG_OCCURRENCES = 0, LOG_OCCURRENCES_MOD_N = 0; \
@@ -147,7 +158,7 @@ enum PRIVATE_ThrottleMsg {THROTTLE_MSG};
   if (++LOG_OCCURRENCES_MOD_N > n) LOG_OCCURRENCES_MOD_N -= n; \
   if (LOG_OCCURRENCES_MOD_N == 1) \
     google::LogMessage( \
-        __FILE__, __LINE__, google::GLOG_ ## severity, LOG_OCCURRENCES, \
+        __FILE__, __LINE__, YB_GLOG_SEVERITY(severity), LOG_OCCURRENCES, \
         &what_to_do).stream()
 
 #define YB_SOME_KIND_OF_LOG_IF_EVERY_N(severity, condition, n, what_to_do) \
@@ -158,7 +169,7 @@ enum PRIVATE_ThrottleMsg {THROTTLE_MSG};
   if (condition && \
       ((LOG_OCCURRENCES_MOD_N=(LOG_OCCURRENCES_MOD_N + 1) % n) == (1 % n))) \
     google::LogMessage( \
-        __FILE__, __LINE__, google::GLOG_ ## severity, LOG_OCCURRENCES, \
+        __FILE__, __LINE__, YB_GLOG_SEVERITY(severity), LOG_OCCURRENCES, \
                  &what_to_do).stream()
 
 #define YB_SOME_KIND_OF_PLOG_EVERY_N(severity, n, what_to_do) \
@@ -169,7 +180,7 @@ enum PRIVATE_ThrottleMsg {THROTTLE_MSG};
   if (++LOG_OCCURRENCES_MOD_N > n) LOG_OCCURRENCES_MOD_N -= n; \
   if (LOG_OCCURRENCES_MOD_N == 1) \
     google::ErrnoLogMessage( \
-        __FILE__, __LINE__, google::GLOG_ ## severity, LOG_OCCURRENCES, \
+        __FILE__, __LINE__, YB_GLOG_SEVERITY(severity), LOG_OCCURRENCES, \
         &what_to_do).stream()
 
 #define YB_SOME_KIND_OF_LOG_FIRST_N(severity, n, what_to_do) \
@@ -177,13 +188,11 @@ enum PRIVATE_ThrottleMsg {THROTTLE_MSG};
   ANNOTATE_BENIGN_RACE(&LOG_OCCURRENCES, "Logging the first N is approximate"); \
   if (LOG_OCCURRENCES++ < (n)) \
     google::LogMessage( \
-      __FILE__, __LINE__, google::GLOG_ ## severity, static_cast<int>(LOG_OCCURRENCES), \
-      &what_to_do).stream()
+      __FILE__, __LINE__, YB_GLOG_SEVERITY(severity), \
+      static_cast<int>(LOG_OCCURRENCES), &what_to_do).stream()
 
 // The direct user-facing macros.
 #define YB_LOG_EVERY_N(severity, n) \
-  static_assert(google::GLOG_ ## severity < google::NUM_SEVERITIES, \
-                "Invalid requested log severity"); \
   YB_SOME_KIND_OF_LOG_EVERY_N(severity, (n), google::LogMessage::SendToLog)
 
 #define YB_LOG_WITH_PREFIX_EVERY_N(severity, n) YB_LOG_EVERY_N(severity, n) << LogPrefix()

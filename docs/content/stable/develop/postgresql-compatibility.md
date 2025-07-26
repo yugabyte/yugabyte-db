@@ -14,21 +14,18 @@ rightNav:
 
 YugabyteDB is a [PostgreSQL-compatible](https://www.yugabyte.com/tech/postgres-compatibility/) distributed database that supports the majority of PostgreSQL syntax. YugabyteDB is methodically expanding its features to deliver PostgreSQL-compatible performance that can substantially improve your application's efficiency.
 
-To test and take advantage of features developed for enhanced PostgreSQL compatibility in YugabyteDB that are currently in {{<tags/feature/ea>}}, you can enable Enhanced PostgreSQL Compatibility Mode (EPCM). When this mode is turned on, YugabyteDB is configured to use all the latest features developed for feature and performance parity. EPCM is available in [v2024.1](/preview/releases/ybdb-releases/v2024.1/) and later. Here are the features that are part of the EPCM mode.
+To test and take advantage of features developed for enhanced PostgreSQL compatibility in YugabyteDB that are currently in {{<tags/feature/ea>}}, you can enable Enhanced PostgreSQL Compatibility Mode (EPCM). When this mode is turned on, YugabyteDB is configured to use all the latest features developed for feature and performance parity. EPCM is available in [v2024.1](/preview/releases/ybdb-releases/v2024.1/) and later. The following features are part of EPCM.
 
 | Feature | Flag/Configuration Parameter | EA | GA |
 | :--- | :--- | :--- | :--- |
 | [Read committed](#read-committed) | [yb_enable_read_committed_isolation](../../reference/configuration/yb-tserver/#ysql-default-transaction-isolation) | {{<release "2.20, 2024.1">}} | {{<release "2024.2.2">}} |
 | [Wait-on-conflict](#wait-on-conflict-concurrency) | [enable_wait_queues](../../reference/configuration/yb-tserver/#enable-wait-queues) | {{<release "2.20">}} | {{<release "2024.1">}} |
-| [Cost based optimizer](#cost-based-optimizer) | [yb_enable_base_scans_cost_model](../../reference/configuration/yb-tserver/#yb-enable-base-scans-cost-model) | {{<release "2024.1">}} | |
+| [Cost based optimizer](#cost-based-optimizer) | [yb_enable_cbo](../../reference/configuration/yb-tserver/#yb-enable-cbo) | {{<release "2024.1">}} | {{<release "2025.1">}} |
 | [Batch nested loop join](#batched-nested-loop-join) | [yb_enable_batchednl](../../reference/configuration/yb-tserver/#yb-enable-batchednl) | {{<release "2.20">}} | {{<release "2024.1">}} |
 | [Ascending indexing by default](#default-ascending-indexing) | [yb_use_hash_splitting_by_default](../../reference/configuration/yb-tserver/#yb-use-hash-splitting-by-default) | {{<release "2024.1">}} | |
-| [YugabyteDB bitmap scan](#yugabytedb-bitmap-scan) | [yb_enable_bitmapscan](../../reference/configuration/yb-tserver/#yb-enable-bitmapscan) | {{<release "2024.1.3">}} | {{<release "2024.2">}} |
+| [YugabyteDB bitmap scan](#yugabytedb-bitmap-scan) | [yb_enable_bitmapscan](../../reference/configuration/yb-tserver/#yb-enable-bitmapscan) | {{<release "2024.1.3">}} | {{<release "2025.1">}} |
 | [Efficient communication<br>between PostgreSQL and DocDB](#efficient-communication-between-postgresql-and-docdb) | [pg_client_use_shared_memory](../../reference/configuration/yb-tserver/#pg-client-use-shared-memory) | {{<release "2024.1">}} | {{<release "2024.2">}} |
-
-| Planned Feature | Flag/Configuration Parameter | EA |
-| :--- | :--- | :--- |
-| [Parallel query](#parallel-query) | | Planned |
+| [Parallel query](#parallel-query) | [yb_enable_parallel_append](../../explore/ysql-language-features/advanced-features/parallel-query/) | {{<release "2024.2.3">}} | {{<release "2025.1">}} |
 
 ## Feature availability
 
@@ -58,22 +55,19 @@ To learn about read committed isolation, see [Read Committed](../../architecture
 
 ### Cost based optimizer
 
-Configuration parameter: `yb_enable_base_scans_cost_model=true`
+Configuration parameter: `yb_enable_cbo=on`
 
 [Cost based optimizer (CBO)](../../architecture/query-layer/planner-optimizer/) creates optimal execution plans for queries, providing significant performance improvements both in single-primary and distributed PostgreSQL workloads. This feature reduces or eliminates the need to use hints or modify queries to optimize query execution. CBO provides improved performance parity.
 
-{{<note>}}
+For information on configuring CBO, refer to [Enable cost-based optimizer](../../best-practices-operations/ysql-yb-enable-cbo/).
+
 When enabling this parameter, you must run ANALYZE on user tables to maintain up-to-date statistics.
-
-When enabling the cost models, ensure that packed row for colocated tables is enabled by setting the `--ysql_enable_packed_row_for_colocated_table` flag to true.
-
-{{</note>}}
 
 {{<lead link="../../architecture/query-layer/planner-optimizer/">}}
 To learn how CBO works, see [Query Planner / CBO](../../architecture/query-layer/planner-optimizer/)
 {{</lead>}}
 
-### Wait-on-conflict concurrency
+#### Wait-on-conflict concurrency
 
 Flag: `enable_wait_queues=true`
 
@@ -107,7 +101,7 @@ Default ascending indexing provides feature compatibility and is the default in 
 
 Configuration parameter: `yb_enable_bitmapscan=true`
 
-Bitmap scans use multiple indexes to answer a query, with only one scan of the main table. Each index produces a "bitmap" indicating which rows of the main table are interesting. Bitmap scans can improve the performance of queries containing AND and OR conditions across several index scans. YugabyteDB bitmap scan provides feature compatibility and improved performance parity. For YugabyteDB relations to use a bitmap scan, the PostgreSQL parameter `enable_bitmapscan` must also be true (the default).
+Bitmap scans use multiple indexes to answer a query, with only one scan of the main table. Each index produces a "bitmap" indicating which rows of the main table are interesting. Bitmap scans can improve the performance of queries containing `AND` and `OR` conditions across several index scans. YugabyteDB bitmap scan provides feature compatibility and improved performance parity. For YugabyteDB relations to use a bitmap scan, the PostgreSQL parameter `enable_bitmapscan` must also be true (the default).
 
 ### Efficient communication between PostgreSQL and DocDB
 
@@ -115,13 +109,21 @@ Configuration parameter: `pg_client_use_shared_memory=true`
 
 Enable more efficient communication between YB-TServer and PostgreSQL using shared memory. This feature provides improved performance parity.
 
-## Planned features
-
-The following features are planned for EPCM in future releases.
-
 ### Parallel query
 
-Enables the use of PostgreSQL [parallel queries](https://www.postgresql.org/docs/11/parallel-query.html). Using parallel queries, the query planner can devise plans that leverage multiple CPUs to answer queries faster. Parallel query provides feature compatibility and improved performance parity.
+{{< note title="Note" >}}
+
+Parallel query is {{<tags/feature/ea>}} in v2024.2.3 but has not yet been added to EPCM.
+
+{{< /note >}}
+
+Configuration parameters: `yb_enable_parallel_append=true` `yb_parallel_range_rows`
+
+Enables the use of [PostgreSQL parallel queries](https://www.postgresql.org/docs/15/parallel-query.html). Using parallel queries, the query planner can devise plans that leverage multiple CPUs to answer queries faster. Currently, YugabyteDB supports parallel query for colocated tables. Support for hash- and range-sharded tables is planned. Parallel query provides feature compatibility and improved performance parity.
+
+{{<lead link="../../architecture/transactions/read-committed/">}}
+To learn about parallel queries, see [Parallel queries](../../explore/ysql-language-features/advanced-features/parallel-query/).
+{{</lead>}}
 
 ## Enable EPCM
 
@@ -136,8 +138,6 @@ For example, from your YugabyteDB home directory, run the following command:
 ```sh
 ./bin/yugabyted start --enable_pg_parity_early_access
 ```
-
-Note: When enabling the cost models, ensure that packed row for colocated tables is enabled by setting the `--ysql_enable_packed_row_for_colocated_table` flag to true.
 
 ### YugabyteDB Anywhere
 
@@ -190,7 +190,6 @@ The following PostgreSQL features are not supported in YugabyteDB:
 | Index on citext column | {{<issue 9698>}}|
 | ABSTIME type | {{<issue 15637>}}|
 | transaction ids (xid) <br/> YugabyteDB uses [Hybrid logical clocks](../../architecture/transactions/transactions-overview/#hybrid-logical-clocks) instead of transaction ids. | {{<issue 15638>}}|
-| DDL operations within transaction| {{<issue 1404>}}|
 | Some ALTER TABLE variants| {{<issue 1124>}}|
 | UNLOGGED table | {{<issue 1129>}} |
 | Indexes on complex datatypes such as INET, CITEXT, JSONB, ARRAYs, and so on.| {{<issue 9698>}}, {{<issue 23829>}}, {{<issue 17017>}} |

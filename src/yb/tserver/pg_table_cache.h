@@ -14,6 +14,9 @@
 #pragma once
 
 #include <future>
+#include <span>
+
+#include <boost/container/small_vector.hpp>
 
 #include "yb/client/client_fwd.h"
 
@@ -25,19 +28,57 @@
 
 #include "yb/util/monotime.h"
 
-namespace yb {
-namespace tserver {
+namespace yb::tserver {
 
 struct PgTableCacheGetOptions {
   bool reopen = false;
   uint64_t min_ysql_catalog_version = 0;
   master::IncludeHidden include_hidden = master::IncludeHidden::kFalse;
 };
+
+void AddTableIdIfMissing(
+    const TableId& table_id, boost::container::small_vector_base<TableId>& table_ids);
+
+class PgTablesQueryResult;
+
+class PgTablesQueryListener {
+ public:
+  virtual ~PgTablesQueryListener() = default;
+  virtual void Ready() = 0;
+};
+using PgTablesQueryListenerPtr = std::shared_ptr<PgTablesQueryListener>;
+
+class PgTablesQueryResultBuilder;
+
+class PgTablesQueryResult {
+ public:
+  struct TableInfo {
+    client::YBTablePtr table;
+    std::shared_ptr<master::GetTableSchemaResponsePB> schema;
+
+    std::string ToString() const;
+  };
+
+  PgTablesQueryResult() = default;
+
+  Result<client::YBTablePtr> Get(const TableId& table_id) const;
+  Result<TableInfo> GetInfo(const TableId& table_id) const;
+
+ private:
+  friend class PgTablesQueryResultBuilder;
+
+  std::mutex mutex_;
+  Status failure_status_ GUARDED_BY(mutex_);
+  size_t pending_tables_ GUARDED_BY(mutex_) = 0;
+  boost::container::small_vector<TableInfo, 4> tables_ GUARDED_BY(mutex_);
+};
+
+using PgTablesQueryResultPtr = std::shared_ptr<PgTablesQueryResult>;
+
 class PgTableCache {
  public:
   explicit PgTableCache(std::shared_future<client::YBClient*> client_future);
   ~PgTableCache();
-
 
   Status GetInfo(
       const TableId& table_id,
@@ -46,6 +87,11 @@ class PgTableCache {
       master::GetTableSchemaResponsePB* schema);
 
   Result<client::YBTablePtr> Get(const TableId& table_id);
+  void GetTables(
+      std::span<const TableId> table_ids,
+      const PgTableCacheGetOptions& options,
+      const PgTablesQueryResultPtr& result,
+      const PgTablesQueryListenerPtr& listener);
 
   void Invalidate(const TableId& table_id);
   void InvalidateAll(CoarseTimePoint invalidation_time);
@@ -58,5 +104,4 @@ class PgTableCache {
   std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace tserver
-}  // namespace yb
+}  // namespace yb::tserver

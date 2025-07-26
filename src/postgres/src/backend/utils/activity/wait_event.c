@@ -1256,7 +1256,7 @@ yb_insert_events_helper(uint32 code, const char *desc, TupleDesc tupdesc,
 	values[2] = CStringGetTextDatum(pgstat_get_wait_event(code));
 	values[3] = CStringGetTextDatum(desc);
 	if (ncols >= YB_WAIT_EVENT_DESC_COLS_V2)
-		values[4] = YBCAshRemoveComponentFromWaitStateCode(UInt32GetDatum(code));
+		values[4] = UInt32GetDatum(code);
 
 	tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 }

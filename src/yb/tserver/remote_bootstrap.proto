@@ -35,6 +35,7 @@ package yb.tserver;
 
 option java_package = "org.yb.tserver";
 
+import "yb/common/common.proto";
 import "yb/common/opid.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
@@ -151,6 +152,8 @@ message BeginRemoteBootstrapSessionRequestPB {
 
   // connection info of the tablet leader peer for the corresponding tablet_id
   optional ServerRegistrationPB tablet_leader_conn_info = 3;
+
+  optional AshMetadataPB ash_metadata = 4;
 }
 
 message BeginRemoteBootstrapSessionResponsePB {
@@ -253,6 +256,8 @@ message FetchDataRequestPB {
   // If max_length is not specified, or if the server's max is less than the
   // requested max, the server will use its own max.
   optional int64 max_length = 4 [default = 0];
+
+  optional AshMetadataPB ash_metadata = 5;
 }
 
 // A chunk of data (a slice of a block, file, etc).

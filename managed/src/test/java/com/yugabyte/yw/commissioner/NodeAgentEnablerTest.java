@@ -24,6 +24,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -33,6 +34,9 @@ import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.NodeAgent;
+import com.yugabyte.yw.models.NodeAgent.ArchType;
+import com.yugabyte.yw.models.NodeAgent.OSType;
+import com.yugabyte.yw.models.NodeAgent.State;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
@@ -46,13 +50,15 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
+import junitparams.naming.TestCaseName;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.junit.MockitoJUnitRunner;
 
-@RunWith(MockitoJUnitRunner.class)
+@RunWith(JUnitParamsRunner.class)
 public class NodeAgentEnablerTest extends FakeDBApplication {
   private Customer customer1;
   private Customer customer2;
@@ -100,6 +106,9 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
     universeTaskBase =
         new TestUniverseTaskBase(
             app.injector().instanceOf(BaseTaskDependencies.class), nodeAgentEnabler);
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.nodeAgentEnablerRunInstaller.getKey(), String.valueOf(true));
   }
 
   @After
@@ -107,6 +116,21 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
     if (executorService != null) {
       executorService.shutdownNow();
     }
+  }
+
+  private NodeAgent createNodeAgent(UUID customerUuid, NodeDetails node) {
+    // Output is like Linux x86_64.
+    NodeAgent nodeAgent = new NodeAgent();
+    nodeAgent.setIp(node.cloudInfo.private_ip);
+    nodeAgent.setName(node.nodeName);
+    nodeAgent.setCustomerUuid(customerUuid);
+    nodeAgent.setOsType(OSType.LINUX);
+    nodeAgent.setArchType(ArchType.AMD64);
+    nodeAgent.setState(State.READY);
+    nodeAgent.setVersion("2024.2.4.0");
+    nodeAgent.setHome("/home/yugabyte/node-agent");
+    nodeAgent.save();
+    return nodeAgent;
   }
 
   private static class TestUniverseTaskBase extends UniverseTaskBase {
@@ -127,10 +151,6 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
         return clazz.cast(nodeAgentEnabler);
       }
       return super.getInstanceOf(clazz);
-    }
-
-    public UniverseTaskParams getMockParams() {
-      return (UniverseTaskParams) super.taskParams();
     }
 
     @Override
@@ -636,5 +656,119 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
       verify(mockNodeAgentInstaller, times(0))
           .install(eq(customer2.getUuid()), eq(universeUuid2), eq(node));
     }
+  }
+
+  @Test
+  public void testSkipInstallNodeAgents() throws Exception {
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.nodeAgentEnablerRunInstaller.getKey(), String.valueOf(false));
+    markUniverses();
+    scanUniverses(true);
+    Universe universe1 = Universe.getOrBadRequest(universeUuid1);
+    Universe universe2 = Universe.getOrBadRequest(universeUuid2);
+    // Installation must not happen because the installer is disabled.
+    for (NodeDetails node : universe1.getNodes()) {
+      verify(mockNodeAgentInstaller, times(0))
+          .install(eq(customer1.getUuid()), eq(universeUuid1), eq(node));
+    }
+    for (NodeDetails node : universe2.getNodes()) {
+      verify(mockNodeAgentInstaller, times(0))
+          .install(eq(customer2.getUuid()), eq(universeUuid2), eq(node));
+    }
+    universe1 = Universe.getOrBadRequest(universeUuid1);
+    universe2 = Universe.getOrBadRequest(universeUuid01);
+    // Field installNodeAgent must still be set.
+    assertEquals(true, universe1.getUniverseDetails().installNodeAgent);
+    assertEquals(true, universe2.getUniverseDetails().installNodeAgent);
+  }
+
+  @Test
+  public void testUpdateMissingNodeAgents() {
+    Universe universe = Universe.getOrBadRequest(universeUuid1);
+    List<NodeDetails> nodes = new ArrayList<>(universe.getNodes());
+    assertEquals(3, nodes.size());
+    createNodeAgent(customer1.getUuid(), nodes.get(0));
+    createNodeAgent(customer1.getUuid(), nodes.get(1));
+    nodeAgentEnabler.updateMissingNodeAgents(customer1.getUuid(), universeUuid1);
+    universe = Universe.getOrBadRequest(universeUuid1);
+    assertEquals(true, universe.getUniverseDetails().nodeAgentMissing);
+    NodeAgent nodeAgent = createNodeAgent(customer1.getUuid(), nodes.get(2));
+    nodeAgentEnabler.updateMissingNodeAgents(customer1.getUuid(), universeUuid1);
+    universe = Universe.getOrBadRequest(universeUuid1);
+    assertEquals(false, universe.getUniverseDetails().nodeAgentMissing);
+    nodeAgent.delete();
+    nodeAgentEnabler.updateMissingNodeAgents(customer1.getUuid(), universeUuid1);
+    universe = Universe.getOrBadRequest(universeUuid1);
+    assertEquals(true, universe.getUniverseDetails().nodeAgentMissing);
+  }
+
+  @Test
+  @Parameters({"false", "true"})
+  @TestCaseName("testShouldSkipInstallAndMarkUniverseWhenDisableBgInstallPostMigration:{0}")
+  public void testShouldSkipInstallAndMarkUniverse(boolean disableBgInstallPostMigration)
+      throws Exception {
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.nodeAgentEnablerRunInstaller.getKey(), String.valueOf(true));
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue(
+            GlobalConfKeys.nodeAgentDisableBgInstallPostMigration.getKey(),
+            String.valueOf(disableBgInstallPostMigration));
+    // Make install successful.
+    when(mockNodeAgentInstaller.install(any(), any(), any())).thenReturn(true);
+    // Make migration successful.
+    doAnswer(
+            inv -> {
+              Object[] objects = inv.getArguments();
+              UUID universeUuid = (UUID) objects[1];
+              Universe universe = Universe.getOrBadRequest(universeUuid);
+              UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+              universeDetails.installNodeAgent = false;
+              universe.setUniverseDetails(universeDetails);
+              universe.save();
+              return true;
+            })
+        .when(mockNodeAgentInstaller)
+        .migrate(any(), any());
+    // Old provider.
+    provider1.getDetails().setEnableNodeAgent(false);
+    provider1.save();
+    // New provider.
+    provider2.getDetails().setEnableNodeAgent(true);
+    provider2.save();
+    Universe universe1 = Universe.getOrBadRequest(universeUuid1);
+    Universe universe01 = Universe.getOrBadRequest(universeUuid01);
+    Universe universe2 = Universe.getOrBadRequest(universeUuid2);
+    nodeAgentEnabler.markUniverses();
+    universe1 = Universe.getOrBadRequest(universeUuid1);
+    universe01 = Universe.getOrBadRequest(universeUuid01);
+    universe2 = Universe.getOrBadRequest(universeUuid2);
+    assertEquals(true, universe1.getUniverseDetails().installNodeAgent);
+    assertEquals(true, universe01.getUniverseDetails().installNodeAgent);
+    assertEquals(false, universe2.getUniverseDetails().installNodeAgent);
+    // Pending migration for universe1 and universe02.
+    assertEquals(true, nodeAgentEnabler.shouldSkipInstallAndMarkUniverse(universe1));
+    assertEquals(true, nodeAgentEnabler.shouldSkipInstallAndMarkUniverse(universe01));
+    // No pending migration.
+    assertEquals(false, nodeAgentEnabler.shouldSkipInstallAndMarkUniverse(universe2));
+    // Run migrations for the eligible universes.
+    scanUniverses(true);
+    universe1 = Universe.getOrBadRequest(universeUuid1);
+    universe01 = Universe.getOrBadRequest(universeUuid01);
+    universe2 = Universe.getOrBadRequest(universeUuid2);
+    // No pending migration.
+    assertEquals(false, universe1.getUniverseDetails().installNodeAgent);
+    assertEquals(false, universe01.getUniverseDetails().installNodeAgent);
+    assertEquals(false, universe2.getUniverseDetails().installNodeAgent);
+    // Must not skip if background installer is disabled after migration.
+    assertEquals(
+        !disableBgInstallPostMigration,
+        nodeAgentEnabler.shouldSkipInstallAndMarkUniverse(universe1));
+    assertEquals(
+        !disableBgInstallPostMigration,
+        nodeAgentEnabler.shouldSkipInstallAndMarkUniverse(universe01));
+    assertEquals(false, nodeAgentEnabler.shouldSkipInstallAndMarkUniverse(universe2));
   }
 }

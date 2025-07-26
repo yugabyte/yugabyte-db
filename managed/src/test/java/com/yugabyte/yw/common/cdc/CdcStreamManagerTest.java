@@ -34,7 +34,7 @@ public class CdcStreamManagerTest {
     mockClient = mock(YBClient.class);
     YBClientService mockClientService = mock(YBClientService.class);
 
-    when(mockClientService.getClient(any(), any())).thenReturn(mockClient);
+    when(mockClientService.getUniverseClient(any())).thenReturn(mockClient);
 
     streamManager = new CdcStreamManager(mockClientService);
   }

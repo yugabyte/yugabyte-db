@@ -401,7 +401,7 @@ class PosixWritableFile : public WritableFile {
     if (sync_on_close_) {
       Status sync_status = Sync();
       if (!sync_status.ok()) {
-        LOG(ERROR) << "Unable to Sync " << filename_ << ": " << sync_status.ToString();
+        LOG(WARNING) << "Unable to Sync " << filename_ << ": " << sync_status;
         if (s.ok()) {
           s = sync_status;
         }
@@ -908,7 +908,7 @@ class PosixRWFile final : public RWFile {
       // Virtual function call in destructor.
       s = Sync();
       if (!s.ok()) {
-        LOG(ERROR) << "Unable to Sync " << filename_ << ": " << s.ToString();
+        LOG(WARNING) << "Unable to Sync " << filename_ << ": " << s;
       }
     }
 

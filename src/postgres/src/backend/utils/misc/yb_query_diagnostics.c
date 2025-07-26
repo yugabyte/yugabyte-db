@@ -83,10 +83,14 @@ static const int max_bundles_in_progress = 100;
 
 typedef struct YbBundleInfo
 {
-	/* 0 - Success; 1 - In Progress; 2 - Error; 3 - Cancelled; 4 - Postmaster Shutdown */
+	/*
+	 * 0 - Success; 1 - In Progress; 2 - Error; 3 - Cancelled; 4 - Postmaster
+	 * Shutdown
+	 */
 	YbQueryDiagnosticsStatusType status;
 	YbQueryDiagnosticsMetadata metadata;	/* stores bundle's metadata */
-	char		description[YB_QD_DESCRIPTION_LEN]; /* stores error description */
+	char		description[YB_QD_DESCRIPTION_LEN]; /* stores error
+													 * description */
 } YbBundleInfo;
 
 typedef struct YbQueryDiagnosticsBundles
@@ -123,8 +127,8 @@ typedef struct YbDatabaseConnectionWorkerInfo
 	 * while the database connection worker is still processing it. This ensures data
 	 * consistency between background workers.
 	 */
-	YbQueryDiagnosticsEntry entry;  /* Copy of the entry we're processing */
-	bool		initialized;  /* Flag to check if the worker is initialized */
+	YbQueryDiagnosticsEntry entry;	/* Copy of the entry we're processing */
+	bool		initialized;	/* Flag to check if the worker is initialized */
 } YbDatabaseConnectionWorkerInfo;
 
 /* GUC variables */
@@ -152,8 +156,8 @@ static YbQueryConstantsMetadata query_constants = {
 
 typedef struct YbBackgroundWorkerHandle
 {
-	int slot;
-	uint64 generation;
+	int			slot;
+	uint64		generation;
 } YbBackgroundWorkerHandle;
 
 enum QueryOutputFormat
@@ -207,7 +211,7 @@ static void FinishBundleProcessing(YbQueryDiagnosticsMetadata *metadata,
 								   YbQueryDiagnosticsStatusType status, const char *description);
 static int	DumpBufferIfHalfFull(char *buffer, size_t max_len, const char *file_name,
 								 const char *folder_path, char *description, slock_t *mutex);
-static int DumpActiveSessionHistory(const YbQueryDiagnosticsEntry *entry, char *description);
+static int	DumpActiveSessionHistory(const YbQueryDiagnosticsEntry *entry, char *description);
 static void GetResultsInCsvFormat(StringInfo output_buffer, int num_cols);
 static void GetResultsInTabularFormat(StringInfo output_buffer, int num_cols);
 static void RegisterDatabaseConnectionBgWorker(const YbQueryDiagnosticsEntry *entry);
@@ -228,11 +232,11 @@ static bool ExecuteQuery(StringInfo output_buffer, const char *query, int output
 static int	DescribeOneTable(Oid oid, const char *db_name, StringInfo schema_details,
 							 char *description);
 static void PrintTableAndDatabaseName(Oid oid, const char *db_name, StringInfo schema_details);
-static int DumpSchemaDetails(const YbQueryDiagnosticsEntry *entry, char *description);
+static int	DumpSchemaDetails(const YbQueryDiagnosticsEntry *entry, char *description);
 
 /* Functions used in gathering cbo_stat_dump */
-static int DumpStatistics(const YbQueryDiagnosticsEntry *entry, char *description);
-static int DumpExtendedStatistics(const YbQueryDiagnosticsEntry *entry, char *description);
+static int	DumpStatistics(const YbQueryDiagnosticsEntry *entry, char *description);
+static int	DumpExtendedStatistics(const YbQueryDiagnosticsEntry *entry, char *description);
 
 void
 YbQueryDiagnosticsInstallHook(void)
@@ -276,9 +280,9 @@ YbQueryDiagnosticsShmemSize(void)
 											 sizeof(YbQueryDiagnosticsEntry)));
 	size = add_size(size, YbQueryDiagnosticsBundlesShmemSize());
 	size = add_size(size, sizeof(TimestampTz));
-	size = add_size(size, sizeof(YbBackgroundWorkerHandle)); /* bg_worker_handle */
-	size = add_size(size, sizeof(YbDatabaseConnectionWorkerInfo)); /* database_connection_worker_info */
-	size = add_size(size, sizeof(bool)); /* bg_worker_should_be_active */
+	size = add_size(size, sizeof(YbBackgroundWorkerHandle));	/* bg_worker_handle */
+	size = add_size(size, sizeof(YbDatabaseConnectionWorkerInfo));	/* database_connection_worker_info */
+	size = add_size(size, sizeof(bool));	/* bg_worker_should_be_active */
 
 	return size;
 }
@@ -347,7 +351,7 @@ YbQueryDiagnosticsShmemInit(void)
 
 	/* Initialize the database connection worker info */
 	database_connection_worker_info = (YbDatabaseConnectionWorkerInfo *)
-			ShmemAlloc(sizeof(YbDatabaseConnectionWorkerInfo));
+		ShmemAlloc(sizeof(YbDatabaseConnectionWorkerInfo));
 	database_connection_worker_info->initialized = false;
 
 	/* Initialize bg_worker_should_be_active */
@@ -475,7 +479,7 @@ StatusToString(YbQueryDiagnosticsStatusType status)
 
 	/* alma8-gcc11-fastdebug fails to compile without a return statement */
 	Assert(false);
-	return NULL; /* Should never reach here. */
+	return NULL;				/* Should never reach here. */
 }
 
 static void
@@ -491,7 +495,7 @@ YbSaveQueryDiagnosticsStatusView(int code, Datum arg)
 	char	   *status_view_tmp_file_path = psprintf("%s/%s/%s", DataDir, "query-diagnostics",
 													 status_view_tmp_file_name);
 	char	   *status_view_file_path = psprintf("%s/%s/%s", DataDir, "query-diagnostics",
-													 status_view_file_name);
+												 status_view_file_name);
 
 	LWLockAcquire(bundles_in_progress_lock, LW_SHARED);
 
@@ -671,7 +675,7 @@ BgWorkerRegister(void)
 	sprintf(worker.bgw_name, "yb_query_diagnostics bgworker");
 	sprintf(worker.bgw_type, "yb_query_diagnostics bgworker");
 	worker.bgw_flags = BGWORKER_SHMEM_ACCESS |
-					   BGWORKER_BACKEND_DATABASE_CONNECTION;
+		BGWORKER_BACKEND_DATABASE_CONNECTION;
 	worker.bgw_start_time = BgWorkerStart_RecoveryFinished;
 	worker.bgw_restart_time = BGW_DEFAULT_RESTART_INTERVAL;
 	sprintf(worker.bgw_library_name, "postgres");
@@ -737,7 +741,7 @@ RegisterDatabaseConnectionBgWorker(const YbQueryDiagnosticsEntry *entry)
 	sprintf(worker.bgw_type, "yb_query_diagnostics database connection bgworker");
 	sprintf(worker.bgw_name, "yb_query_diagnostics database connection bgworker");
 	worker.bgw_flags = BGWORKER_SHMEM_ACCESS |
-					   BGWORKER_BACKEND_DATABASE_CONNECTION;
+		BGWORKER_BACKEND_DATABASE_CONNECTION;
 	worker.bgw_start_time = BgWorkerStart_ConsistentState;
 	worker.bgw_restart_time = BGW_NEVER_RESTART;
 	sprintf(worker.bgw_library_name, "postgres");
@@ -749,7 +753,7 @@ RegisterDatabaseConnectionBgWorker(const YbQueryDiagnosticsEntry *entry)
 	if (!RegisterDynamicBackgroundWorker(&worker, &handle))
 		ereport(LOG,
 				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
-				errmsg("could not register query diagnostics database connection worker")));
+				 errmsg("could not register query diagnostics database connection worker")));
 }
 
 /*
@@ -1072,6 +1076,7 @@ YbQueryDiagnosticsAccumulatePgss(int64 query_id, YbQdPgssStoreKind kind,
 		else
 		{
 			double		old_mean = entry->pgss.counters.mean_time[kind];
+
 			/*
 			 * 'calls' cannot be 0 here because
 			 * it is initialized to 0 and incremented by calls++ above
@@ -1145,63 +1150,63 @@ PgssToString(int64 query_id, char *pgss_str, YbQueryDiagnosticsPgss pgss, const 
 		query_str = "";
 
 	snprintf(pgss_str, YB_QD_MAX_PGSS_LEN,
-			"query_id,query,calls,total_plan_time,total_exec_time,"
-			"min_plan_time,min_exec_time,max_plan_time,max_exec_time,"
-			"mean_plan_time,mean_exec_time,stddev_plan_time,stddev_exec_time,"
-			"rows,shared_blks_hit,shared_blks_read,shared_blks_dirtied,shared_blks_written,"
-			"local_blks_hit,local_blks_read,local_blks_dirtied,local_blks_written,"
-			"temp_blks_read,temp_blks_written,blk_read_time,blk_write_time,"
-			"temp_blk_read_time,temp_blk_write_time,wal_records,wal_fpi,wal_bytes,"
-			"jit_functions,jit_generation_time,jit_inlining_count,jit_inlining_time,"
-			"jit_optimization_count,jit_optimization_time,jit_emission_count,jit_emission_time\n"
-			"%ld,\"%s\",%ld,%lf,%lf,%lf,%lf,"
-			"%lf,%lf,%lf,%lf,%lf,%lf,"
-			"%ld,%ld,%ld,%ld,%ld,"
-			"%ld,%ld,%ld,%ld,"
-			"%ld,%ld,%lf,%lf,"
-			"%lf,%lf,%ld,%ld,%ld,"
-			"%ld,%lf,%ld,%lf,"
-			"%ld,%lf,%ld,%lf\n",
-			query_id, query_str,
-			pgss.counters.calls[YB_QD_PGSS_EXEC],
-			pgss.counters.total_time[YB_QD_PGSS_PLAN],
-			pgss.counters.total_time[YB_QD_PGSS_EXEC],
-			pgss.counters.min_time[YB_QD_PGSS_PLAN],
-			pgss.counters.min_time[YB_QD_PGSS_EXEC],
-			pgss.counters.max_time[YB_QD_PGSS_PLAN],
-			pgss.counters.max_time[YB_QD_PGSS_EXEC],
-			pgss.counters.mean_time[YB_QD_PGSS_PLAN],
-			pgss.counters.mean_time[YB_QD_PGSS_EXEC],
-			CalculateStandardDeviation(pgss.counters.calls[YB_QD_PGSS_PLAN],
-			pgss.counters.sum_var_time[YB_QD_PGSS_PLAN]),
-			CalculateStandardDeviation(pgss.counters.calls[YB_QD_PGSS_EXEC],
-			pgss.counters.sum_var_time[YB_QD_PGSS_EXEC]),
-			pgss.counters.rows,
-			pgss.counters.shared_blks_hit,
-			pgss.counters.shared_blks_read,
-			pgss.counters.shared_blks_dirtied,
-			pgss.counters.shared_blks_written,
-			pgss.counters.local_blks_hit,
-			pgss.counters.local_blks_read,
-			pgss.counters.local_blks_dirtied,
-			pgss.counters.local_blks_written,
-			pgss.counters.temp_blks_read,
-			pgss.counters.temp_blks_written,
-			pgss.counters.blk_read_time,
-			pgss.counters.blk_write_time,
-			pgss.counters.temp_blk_read_time,
-			pgss.counters.temp_blk_write_time,
-			pgss.counters.wal_records,
-			pgss.counters.wal_fpi,
-			pgss.counters.wal_bytes,
-			pgss.counters.jit_functions,
-			pgss.counters.jit_generation_time,
-			pgss.counters.jit_inlining_count,
-			pgss.counters.jit_inlining_time,
-			pgss.counters.jit_optimization_count,
-			pgss.counters.jit_optimization_time,
-			pgss.counters.jit_emission_count,
-			pgss.counters.jit_emission_time);
+			 "query_id,query,calls,total_plan_time,total_exec_time,"
+			 "min_plan_time,min_exec_time,max_plan_time,max_exec_time,"
+			 "mean_plan_time,mean_exec_time,stddev_plan_time,stddev_exec_time,"
+			 "rows,shared_blks_hit,shared_blks_read,shared_blks_dirtied,shared_blks_written,"
+			 "local_blks_hit,local_blks_read,local_blks_dirtied,local_blks_written,"
+			 "temp_blks_read,temp_blks_written,blk_read_time,blk_write_time,"
+			 "temp_blk_read_time,temp_blk_write_time,wal_records,wal_fpi,wal_bytes,"
+			 "jit_functions,jit_generation_time,jit_inlining_count,jit_inlining_time,"
+			 "jit_optimization_count,jit_optimization_time,jit_emission_count,jit_emission_time\n"
+			 "%ld,\"%s\",%ld,%lf,%lf,%lf,%lf,"
+			 "%lf,%lf,%lf,%lf,%lf,%lf,"
+			 "%ld,%ld,%ld,%ld,%ld,"
+			 "%ld,%ld,%ld,%ld,"
+			 "%ld,%ld,%lf,%lf,"
+			 "%lf,%lf,%ld,%ld,%ld,"
+			 "%ld,%lf,%ld,%lf,"
+			 "%ld,%lf,%ld,%lf\n",
+			 query_id, query_str,
+			 pgss.counters.calls[YB_QD_PGSS_EXEC],
+			 pgss.counters.total_time[YB_QD_PGSS_PLAN],
+			 pgss.counters.total_time[YB_QD_PGSS_EXEC],
+			 pgss.counters.min_time[YB_QD_PGSS_PLAN],
+			 pgss.counters.min_time[YB_QD_PGSS_EXEC],
+			 pgss.counters.max_time[YB_QD_PGSS_PLAN],
+			 pgss.counters.max_time[YB_QD_PGSS_EXEC],
+			 pgss.counters.mean_time[YB_QD_PGSS_PLAN],
+			 pgss.counters.mean_time[YB_QD_PGSS_EXEC],
+			 CalculateStandardDeviation(pgss.counters.calls[YB_QD_PGSS_PLAN],
+										pgss.counters.sum_var_time[YB_QD_PGSS_PLAN]),
+			 CalculateStandardDeviation(pgss.counters.calls[YB_QD_PGSS_EXEC],
+										pgss.counters.sum_var_time[YB_QD_PGSS_EXEC]),
+			 pgss.counters.rows,
+			 pgss.counters.shared_blks_hit,
+			 pgss.counters.shared_blks_read,
+			 pgss.counters.shared_blks_dirtied,
+			 pgss.counters.shared_blks_written,
+			 pgss.counters.local_blks_hit,
+			 pgss.counters.local_blks_read,
+			 pgss.counters.local_blks_dirtied,
+			 pgss.counters.local_blks_written,
+			 pgss.counters.temp_blks_read,
+			 pgss.counters.temp_blks_written,
+			 pgss.counters.blk_read_time,
+			 pgss.counters.blk_write_time,
+			 pgss.counters.temp_blk_read_time,
+			 pgss.counters.temp_blk_write_time,
+			 pgss.counters.wal_records,
+			 pgss.counters.wal_fpi,
+			 pgss.counters.wal_bytes,
+			 pgss.counters.jit_functions,
+			 pgss.counters.jit_generation_time,
+			 pgss.counters.jit_inlining_count,
+			 pgss.counters.jit_inlining_time,
+			 pgss.counters.jit_optimization_count,
+			 pgss.counters.jit_optimization_time,
+			 pgss.counters.jit_emission_count,
+			 pgss.counters.jit_emission_time);
 }
 
 static void
@@ -1253,7 +1258,7 @@ IsBgWorkerStopped()
 {
 	pid_t		pid;
 
-	return (GetBackgroundWorkerPid((BackgroundWorkerHandle *)bg_worker_handle,
+	return (GetBackgroundWorkerPid((BackgroundWorkerHandle *) bg_worker_handle,
 								   &pid) != BGWH_STARTED);
 }
 
@@ -1291,7 +1296,7 @@ StartBgWorkerIfStopped()
 				break;
 			}
 
-			pg_usleep(100000); /* Sleep for 100ms */
+			pg_usleep(100000);	/* Sleep for 100ms */
 			attempts++;
 		}
 
@@ -1341,7 +1346,9 @@ InsertNewBundleInfo(YbQueryDiagnosticsMetadata *metadata)
 		{
 			.counters =
 			{
-				{ 0 }
+				{
+					0
+				}
 			},
 				.query_offset = 0,
 				.query_len = 0,
@@ -1550,7 +1557,10 @@ end_of_loop:
 			if (entry->metadata.flush_only_schema_details)
 				continue;
 
-			/* If we haven't yet dumped ash, pgss, bind_var and explain plans then do it. */
+			/*
+			 * If we haven't yet dumped ash, pgss, bind_var and explain plans
+			 * then do it.
+			 */
 			entry->metadata.flush_only_schema_details = true;
 			goto skip_schema_details;
 		}
@@ -1690,7 +1700,7 @@ DumpSchemaDetails(const YbQueryDiagnosticsEntry *entry, char *description)
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_INTERNAL_ERROR),
-								 errmsg("error while dumping schema details %s", description)));
+						 errmsg("error while dumping schema details %s", description)));
 			}
 
 			appendStringInfo(&schema_details, "\n%s\n\n",
@@ -1705,7 +1715,7 @@ DumpSchemaDetails(const YbQueryDiagnosticsEntry *entry, char *description)
 	}
 	PG_CATCH();
 	{
-		ErrorData *edata;
+		ErrorData  *edata;
 
 		/* save error info */
 		MemoryContextSwitchTo(curr_context);
@@ -2133,6 +2143,7 @@ DescribeOneTable(Oid oid, const char *db_name, StringInfo schema_details,
 
 		/* Initialize a temporary buffer to hold the query result. */
 		StringInfoData temp_buffer;
+
 		initStringInfo(&temp_buffer);
 
 		/* Execute the query and format the output in tabular view. */
@@ -2239,16 +2250,16 @@ ExecuteQuery(StringInfo output_buffer, const char *query, int output_format)
 	switch (output_format)
 	{
 		case YB_QD_CSV:
-		{
-			GetResultsInCsvFormat(output_buffer, num_cols);
-			break;
-		}
+			{
+				GetResultsInCsvFormat(output_buffer, num_cols);
+				break;
+			}
 
 		case YB_QD_TABULAR:
-		{
-			GetResultsInTabularFormat(output_buffer, num_cols);
-			break;
-		}
+			{
+				GetResultsInTabularFormat(output_buffer, num_cols);
+				break;
+			}
 
 		default:
 			Assert(false);
@@ -2286,6 +2297,7 @@ GetResultsInCsvFormat(StringInfo output_buffer, int num_cols)
 	for (int i = 0; i < num_cols; i++)
 	{
 		Form_pg_attribute attr = TupleDescAttr(SPI_tuptable->tupdesc, i);
+
 		appendStringInfo(output_buffer, "%s%s", (i == 0 ? "" : ","),
 						 NameStr(attr->attname));
 	}
@@ -2293,10 +2305,12 @@ GetResultsInCsvFormat(StringInfo output_buffer, int num_cols)
 	/* Build rows in CSV format */
 	for (uint64 j = 0; j < SPI_processed; j++)
 	{
-		HeapTuple tuple = SPI_tuptable->vals[j];
+		HeapTuple	tuple = SPI_tuptable->vals[j];
+
 		for (int i = 0; i < num_cols; i++)
 		{
 			char	   *val = SPI_getvalue(tuple, SPI_tuptable->tupdesc, i + 1);
+
 			appendStringInfo(output_buffer, "%s%s", (i == 0 ? "" : ","),
 							 val ? val : "");
 			if (val)
@@ -2324,18 +2338,19 @@ GetResultsInTabularFormat(StringInfo output_buffer, int num_cols)
 	for (int i = 0; i < num_cols; i++)
 	{
 		Form_pg_attribute attr = TupleDescAttr(SPI_tuptable->tupdesc, i);
+
 		col_widths[i] = strlen(NameStr(attr->attname));
 	}
 
 	/* Adjust column widths based on data */
 	for (uint64 j = 0; j < SPI_processed; j++)
 	{
-		HeapTuple tuple = SPI_tuptable->vals[j];
+		HeapTuple	tuple = SPI_tuptable->vals[j];
 
 		for (int i = 0; i < num_cols; i++)
 		{
 			char	   *val = SPI_getvalue(tuple, SPI_tuptable->tupdesc, i + 1);
-			int			val_len = val ? strlen(val) : 0; /* Empty string for NULL */
+			int			val_len = val ? strlen(val) : 0;	/* Empty string for NULL */
 
 			col_widths[i] = Max(col_widths[i], val_len);
 
@@ -2349,6 +2364,7 @@ GetResultsInTabularFormat(StringInfo output_buffer, int num_cols)
 	for (int i = 0; i < num_cols; i++)
 	{
 		Form_pg_attribute attr = TupleDescAttr(SPI_tuptable->tupdesc, i);
+
 		appendStringInfo(output_buffer, "%-*s |", col_widths[i],
 						 NameStr(attr->attname));
 	}
@@ -2370,7 +2386,7 @@ GetResultsInTabularFormat(StringInfo output_buffer, int num_cols)
 	/* Format rows */
 	for (uint64 j = 0; j < SPI_processed; j++)
 	{
-		HeapTuple tuple = SPI_tuptable->vals[j];
+		HeapTuple	tuple = SPI_tuptable->vals[j];
 
 		appendStringInfoChar(output_buffer, '|');
 		for (int i = 0; i < num_cols; i++)
@@ -2530,16 +2546,19 @@ YbQueryDiagnosticsMain(Datum main_arg)
 
 		LWLockRelease(bundles_in_progress_lock);
 
-		/* Do this outside the lock to ensure we release the lock before exiting. */
+		/*
+		 * Do this outside the lock to ensure we release the lock before
+		 * exiting.
+		 */
 		if (!(*bg_worker_should_be_active))
 		{
 			if (YBQueryDiagnosticsTestRaceCondition())
-				pg_usleep(10000000L); /* 10 seconds */
+				pg_usleep(10000000L);	/* 10 seconds */
 
 			/* Kill the bgworker */
 			ereport(LOG,
 					(errmsg("stopping query diagnostics background worker "
-								 "- no active bundles")));
+							"- no active bundles")));
 			proc_exit(0);
 		}
 	}
@@ -2571,9 +2590,9 @@ BuildRelationFilter(const YbQueryDiagnosticsEntry *entry, StringInfo filter_stri
 	}
 
 	appendStringInfo(filter_string,
-						"c.oid in (%s) or c.oid in (select "
-						"indexrelid from pg_index where indrelid in (%s))",
-						oid_list.data, oid_list.data);
+					 "c.oid in (%s) or c.oid in (select "
+					 "indexrelid from pg_index where indrelid in (%s))",
+					 oid_list.data, oid_list.data);
 
 	pfree(oid_list.data);
 }
@@ -2614,7 +2633,7 @@ AppendJsonArrayFromBuffer(StringInfo target_buffer,
 
 	/* Close the array (add newline only if items were added) */
 	if (!first_item)
-	  appendStringInfoChar(target_buffer, '\n');
+		appendStringInfoChar(target_buffer, '\n');
 
 	appendStringInfoString(target_buffer, "    ]");
 }
@@ -2657,7 +2676,10 @@ DumpAndFormatStatistics(const YbQueryDiagnosticsEntry *entry, char *description,
 	/* Process each query */
 	for (int i = 0; i < query_count; i++)
 	{
-		/* Format the query with relation filter if needed, otherwise use it as-is */
+		/*
+		 * Format the query with relation filter if needed, otherwise use it
+		 * as-is
+		 */
 		if (needs_relation_filter[i])
 			appendStringInfo(&query, queries[i], relation_names_filter.data);
 		else
@@ -2668,7 +2690,8 @@ DumpAndFormatStatistics(const YbQueryDiagnosticsEntry *entry, char *description,
 		{
 
 			YbQueryDiagnosticsAppendToDescription("Failed to execute query for %s",
-												  json_key_names[i] + 1); /* Skip the leading quote */
+												  json_key_names[i] + 1);	/* Skip the leading
+																			 * quote */
 			status = YB_DIAGNOSTICS_ERROR;
 
 			goto cleanup;
@@ -2787,7 +2810,7 @@ DumpExtendedStatistics(const YbQueryDiagnosticsEntry *entry, char *description)
  */
 static void
 DumpDataAndLogError(const char *data_identifier,
-					int (*DumpFunction)(const YbQueryDiagnosticsEntry *, char *),
+					int (*DumpFunction) (const YbQueryDiagnosticsEntry *, char *),
 					YbQueryDiagnosticsEntry *entry, char *description)
 {
 	YbQueryDiagnosticsStatusType status = DumpFunction(entry, description);

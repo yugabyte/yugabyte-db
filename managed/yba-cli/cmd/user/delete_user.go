@@ -67,7 +67,7 @@ var deleteUserCmd = &cobra.Command{
 
 		var userUUID string
 		for _, user := range r {
-			if strings.Compare(user.GetEmail(), email) == 0 {
+			if strings.EqualFold(user.GetEmail(), email) {
 				userUUID = user.GetUuid()
 				break
 			}

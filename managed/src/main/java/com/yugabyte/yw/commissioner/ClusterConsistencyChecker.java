@@ -99,9 +99,7 @@ public class ClusterConsistencyChecker {
 
   private CheckClusterConsistency.CheckResult checkUniverseConsistency(
       Universe universe, boolean cloudEnabled) {
-    String masterHostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodetoNode();
-    try (YBClient client = ybClientService.getClient(masterHostPorts, certificate)) {
+    try (YBClient client = ybClientService.getUniverseClient(universe)) {
       return CheckClusterConsistency.checkCurrentServers(
           client, universe, Collections.emptySet(), false, cloudEnabled);
     } catch (Exception e) {

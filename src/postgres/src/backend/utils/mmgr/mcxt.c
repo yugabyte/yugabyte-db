@@ -93,37 +93,62 @@ YbPgMemUpdateCur()
 #endif
 }
 
-int64_t
-YbPgGetCurRSSMemUsage(int pid)
+void
+YbPgGetCurRssPssMemUsage(int pid, int64_t *rss, int64_t *pss)
 {
-	if (!yb_enable_memory_tracking)
-		return -1;
-#ifdef __linux__
-	uint64		resident = 0;
-	char		path[20];
+	*rss = -1;
+	*pss = -1;
 
-	snprintf(path, 20, "/proc/%d/statm", pid);
+	if (!yb_enable_memory_tracking)
+		return;
+#ifdef __linux__
+	char		path[20];
+	char		line[256];
+
+	snprintf(path, 20, "/proc/%d/smaps", pid);
 	FILE	   *fp = fopen(path, "r");
 
+	/*
+	 * smaps contains multiple lines for each memory region. Each group of lines
+	 * starts with a line containing the address range, followed by lines
+	 * describing the memory usage in that region. For example:
+	 *
+	 * 7f3fc9385000-7f3fc94ae000 r-xp 001b6000 08:02 455211619 ...
+	 * Size:               1188 kB
+	 * KernelPageSize:        4 kB
+	 * MMUPageSize:           4 kB
+	 * Rss:                 804 kB
+	 * Pss:                 281 kB
+	 * ...
+	 *
+	 * We need to sum each of the RSS and PSS lines.
+	 */
 	if (fp == NULL)
-		return -1;				/* Can't open */
+		return;					/* Can't open */
 
-	if (fscanf(fp, "%*s%lu", &resident) != 1)
+	*pss = 0;
+	*rss = 0;
+
+	while (fgets(line, sizeof(line), fp))
 	{
-		fclose(fp);
-		return -1;				/* Can't read */
+		int64_t		temp;
+
+		if (sscanf(line, "Rss: %lu", &temp) == 1)
+			*rss += temp * 1024;
+		else if (sscanf(line, "Pss: %lu", &temp) == 1)
+			*pss += temp * 1024;
 	}
 	fclose(fp);
-	return resident * sysconf(_SC_PAGESIZE);
 #else
 	struct proc_taskallinfo info;
 	int			result = proc_pidinfo(pid, PROC_PIDTASKALLINFO, 0, &info,
 									  sizeof(struct proc_taskallinfo));
 
 	if (result == 0 || result < sizeof(info))
-		return -1;				/* Can't be determined or wrong value */
+		return;					/* Can't be determined or wrong value */
 
-	return info.ptinfo.pti_resident_size;
+	*rss = info.ptinfo.pti_resident_size;
+	*pss = -1;					/* PSS is not available on Apple devices */
 #endif
 }
 
@@ -788,6 +813,47 @@ MemoryContextStatsDetail(MemoryContext context, int max_children,
 								 grand_totals.totalspace, grand_totals.nblocks,
 								 grand_totals.freespace, grand_totals.freechunks,
 								 grand_totals.totalspace - grand_totals.freespace)));
+
+	if (IsYugaByteEnabled())
+	{
+		YbcTcmallocStats tcmallocStats;
+
+		YBCGetHeapConsumption(&tcmallocStats);
+
+		const char *labels[] = {
+			"YB TCMalloc heap size bytes: %lld",
+			"YB TCMalloc total physical bytes: %lld",
+			"YB TCMalloc current allocated bytes: %lld",
+			"YB TCMalloc pageheap free bytes: %lld",
+			"YB TCMalloc pageheap unmapped bytes: %lld",
+			"YB PGGate bytes: %lld"
+		};
+
+		int64_t		values[] = {
+			tcmallocStats.heap_size_bytes,
+			tcmallocStats.total_physical_bytes,
+			tcmallocStats.current_allocated_bytes,
+			tcmallocStats.pageheap_free_bytes,
+			tcmallocStats.pageheap_unmapped_bytes,
+			(tcmallocStats.current_allocated_bytes - PgMemTracker.pg_cur_mem_bytes)
+		};
+
+		for (int i = 0; i < sizeof(labels) / sizeof(labels[0]); i++)
+		{
+			if (print_to_stderr)
+			{
+				fprintf(stderr, labels[i], values[i]);
+				fprintf(stderr, "\n");
+			}
+			else
+			{
+				ereport(LOG_SERVER_ONLY,
+						(errhidestmt(true),
+						 errhidecontext(true),
+						 errmsg_internal(labels[i], values[i])));
+			}
+		}
+	}
 }
 
 /*

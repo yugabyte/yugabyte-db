@@ -1,0 +1,24 @@
+title: UniverseQueryLogsExporterConfig
+type: object
+description: |
+  UniverseQueryLogsExporterConfig
+
+  Universe Logs Exporter Config. Part of QueryLogConfig.
+allOf:
+  - $ref: "./UniverseExporterConfig.yaml"
+  - type: object
+    properties:
+      send_batch_max_size:
+        description: Send batch max size
+        type: integer
+        format: int32
+        default: 1000
+      send_batch_size:
+        description: Send batch max size
+        type: integer
+        format: int32
+        default: 100
+      send_batch_timeout:
+        description: Send batch timeout in seconds
+        type: string
+        default: 10s

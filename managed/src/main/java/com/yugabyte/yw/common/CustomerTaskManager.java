@@ -18,9 +18,12 @@ import com.yugabyte.yw.commissioner.tasks.CloudProviderDelete;
 import com.yugabyte.yw.commissioner.tasks.CloudProviderEdit;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
+import com.yugabyte.yw.commissioner.tasks.PauseUniverse;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyKubernetesClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
+import com.yugabyte.yw.commissioner.tasks.ResumeUniverse;
+import com.yugabyte.yw.commissioner.tasks.SendUserNotification;
 import com.yugabyte.yw.commissioner.tasks.params.IProviderTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.YsqlQueryExecutor.ConsistencyInfoResp;
@@ -242,6 +245,8 @@ public class CustomerTaskManager {
           resumeTask = true;
           isRestoreYbc = true;
         }
+      } else if (CustomerTask.TaskType.SendUserNotification.equals(type)) {
+        resumeTask = true;
       }
 
       if (!isRestoreYbc) {
@@ -286,18 +291,19 @@ public class CustomerTaskManager {
 
       // Resume tasks if any
       TaskType taskType = taskInfo.getTaskType();
-      UniverseTaskParams taskParams = null;
+      AbstractTaskParams taskParams = null;
       log.info("Resume Task: {}", resumeTask);
 
       try {
-        if (resumeTask && optUniv.isPresent()) {
-          Universe universe = optUniv.get();
-          if (!taskUUID.equals(universe.getUniverseDetails().updatingTaskUUID)) {
-            log.debug("Invalid task state: Task {} cannot be resumed", taskUUID);
-            customerTask.markAsCompleted();
-            return;
+        if (resumeTask) {
+          if (optUniv.isPresent()) {
+            Universe universe = optUniv.get();
+            if (!taskUUID.equals(universe.getUniverseDetails().updatingTaskUUID)) {
+              log.debug("Invalid task state: Task {} cannot be resumed", taskUUID);
+              customerTask.markAsCompleted();
+              return;
+            }
           }
-
           switch (taskType) {
             case CreateBackup:
               BackupRequestParams backupParams =
@@ -308,6 +314,11 @@ public class CustomerTaskManager {
               RestoreBackupParams restoreParams =
                   Json.fromJson(taskInfo.getTaskParams(), RestoreBackupParams.class);
               taskParams = restoreParams;
+              break;
+            case SendUserNotification:
+              SendUserNotification.Params sendParams =
+                  Json.fromJson(taskInfo.getTaskParams(), SendUserNotification.Params.class);
+              taskParams = sendParams;
               break;
             default:
               log.error("Invalid task type: {} during platform restart", taskType);
@@ -320,7 +331,7 @@ public class CustomerTaskManager {
                   subtask -> {
                     subtask.delete();
                   });
-          UniverseTaskParams finalTaskParams = taskParams;
+          AbstractTaskParams finalTaskParams = taskParams;
           Util.doWithCorrelationId(
               corrId -> {
                 // There is a chance that async execution is delayed and correlation ID is
@@ -423,6 +434,10 @@ public class CustomerTaskManager {
         }
         CustomerTask customerTask =
             Json.mapper().readValue(restoreCustomerTaskFilePath.toFile(), CustomerTask.class);
+        if (customerTask == null) {
+          log.warn("Restore customer task is null, skipping.");
+          return;
+        }
         Optional<CustomerTask> existingCustomerTask =
             CustomerTask.maybeGet(customerTask.getTaskUUID());
         if (existingCustomerTask.isEmpty()) {
@@ -501,19 +516,14 @@ public class CustomerTaskManager {
 
   private void enableLoadBalancer(Universe universe) {
     ChangeLoadBalancerStateResponse resp = null;
-    YBClient client = null;
-    String masterHostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodetoNode();
-    try {
-      client = ybService.getClient(masterHostPorts, certificate);
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       resp = client.changeLoadBalancerState(true);
     } catch (Exception e) {
       log.error(
           "Setting load balancer to state true has failed for universe: {}",
           universe.getUniverseUUID());
-    } finally {
-      ybService.closeClient(client, masterHostPorts);
     }
+
     if (resp != null && resp.hasError()) {
       log.error(
           "Setting load balancer to state true has failed for universe: {}",
@@ -547,13 +557,13 @@ public class CustomerTaskManager {
     Set<UUID> targetUuids = new HashSet<>();
     TaskInfo.getRecentParentTasksInStates(Collections.singleton(TaskInfo.State.Aborted), timeWindow)
         .stream()
-        .filter(t -> StringUtils.isNotEmpty(t.getVersion()))
+        .filter(t -> StringUtils.isNotEmpty(t.getYbaVersion()))
         .filter(t -> YBAError.Code.PLATFORM_SHUTDOWN == t.getTaskError().getCode())
         .filter(t -> Commissioner.isTaskTypeRetryable(t.getTaskType()))
         .filter(
             t ->
                 Util.areYbVersionsEqual(
-                    Util.getYbaVersion(), t.getVersion(), true /* suppressFormatError */))
+                    Util.getYbaVersion(), t.getYbaVersion(), true /* suppressFormatError */))
         .forEach(
             t -> {
               CustomerTask.maybeGet(t.getUuid())
@@ -1052,6 +1062,13 @@ public class CustomerTaskManager {
         taskParams = Json.fromJson(oldTaskParams, XClusterConfigTaskParams.class);
         XClusterConfigTaskParams xClusterConfigTaskParams = (XClusterConfigTaskParams) taskParams;
         xClusterConfigTaskParams.refreshIfExists();
+        break;
+      case PauseUniverse:
+        taskParams = Json.fromJson(oldTaskParams, PauseUniverse.Params.class);
+        break;
+      case ResumeUniverse:
+        taskParams = Json.fromJson(oldTaskParams, ResumeUniverse.Params.class);
+        break;
       default:
         String errMsg =
             String.format(

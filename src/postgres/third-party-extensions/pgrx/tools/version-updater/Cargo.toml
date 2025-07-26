@@ -1,0 +1,29 @@
+#LICENSE Portions Copyright 2019-2021 ZomboDB, LLC.
+#LICENSE
+#LICENSE Portions Copyright 2021-2023 Technology Concepts & Design, Inc.
+#LICENSE
+#LICENSE Portions Copyright 2023-2023 PgCentral Foundation, Inc. <contact@pgcentral.org>
+#LICENSE
+#LICENSE All rights reserved.
+#LICENSE
+#LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
+ 
+[package]
+name = "pgrx-version-updater"
+version = "0.1.1"
+edition = "2021"
+authors = ["PgCentral Foundation, Inc. <contact@pgcentral.org>"]
+license = "MIT"
+description = "Standalone tool to update PGRX Cargo.toml versions and dependencies in preparation for a release."
+publish = false
+
+[dependencies]
+cargo_toml = "0.20.4"
+clap = { version = "4.4.2", features = [ "env", "derive" ] }
+owo-colors = "4"
+rustc-hash = "2"
+toml = "0.8.19"
+toml_edit = { version = "0.22" }
+walkdir = "2"
+
+[workspace]

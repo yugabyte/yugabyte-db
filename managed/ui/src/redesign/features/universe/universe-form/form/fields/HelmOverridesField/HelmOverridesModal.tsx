@@ -68,6 +68,7 @@ export const HelmOverridesModal = ({
   const [validationError, setValidationError] = useState<HelmOverridesError>(
     INITIAL_VAIDATION_ERRORS
   );
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [forceConfirm, setForceConfirm] = useState(false);
 
   const setOverides = (universeOverrides: string, azOverrides: Record<string, string>) => {
@@ -97,6 +98,8 @@ export const HelmOverridesModal = ({
           //apply overrides, close modal and clear error
           setOverides(reqValues.values.universeOverrides, reqValues.values.azOverrides);
         }
+        setIsSubmitting(false);
+        toast.success(t('universeForm.helmOverrides.validateAndSaveSuccess'));
       },
       onError: (err: any, reqValues) => {
         // sometimes, the backend throws 500 error, if the validation is failed. we don't want to block the user if that happens
@@ -106,6 +109,7 @@ export const HelmOverridesModal = ({
           // user can still use force apply option to apply overrides
           toast.error(createErrorMessage(err));
         }
+        setIsSubmitting(false);
       }
     }
   );
@@ -128,6 +132,7 @@ export const HelmOverridesModal = ({
 
   const handleSave = () => {
     const formValues = getValues();
+    !forceConfirm && setIsSubmitting(true);
 
     const universeOverrides = formValues.universeOverrides;
     const azOverrides = formValues?.azOverrides
@@ -179,6 +184,12 @@ export const HelmOverridesModal = ({
       onClose={onClose}
       titleSeparator
       onSubmit={handleSave}
+      isSubmitting={isSubmitting}
+      buttonProps={{
+        primary: {
+          disabled: isSubmitting
+        }
+      }}
       footerAccessory={
         <YBCheckbox
           checked={forceConfirm}

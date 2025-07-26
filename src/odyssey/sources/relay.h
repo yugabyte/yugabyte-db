@@ -75,11 +75,11 @@ static inline bool od_relay_data_pending(od_relay_t *relay)
 }
 
 static inline od_frontend_status_t
-od_relay_start(od_relay_t *relay, machine_cond_t *base,
+yb_od_relay_start_init(od_relay_t *relay, machine_cond_t *base,
 	       od_frontend_status_t error_read,
 	       od_frontend_status_t error_write, od_relay_on_read_t on_read,
 	       void *on_read_arg, od_relay_on_packet_t on_packet,
-	       void *on_packet_arg, bool reserve_session_server_connection)
+	       void *on_packet_arg)
 {
 	relay->error_read = error_read;
 	relay->error_write = error_write;
@@ -96,9 +96,21 @@ od_relay_start(od_relay_t *relay, machine_cond_t *base,
 		return OD_EOOM;
 	}
 
+	/*
+	 * YB: Ensure that there is never a wait on the "base" condition variable
+	 * before this propogation occurs, this can lead to race conditions where
+	 * signals to the condition variable can either be lost or lead to incorrect
+	 * wakeup of threads.
+	 */
 	machine_cond_propagate(relay->src->on_read, base);
 	machine_cond_propagate(relay->src->on_write, base);
 
+	return OD_OK;
+}
+
+static inline od_frontend_status_t
+yb_od_relay_start_io(od_relay_t *relay, bool reserve_session_server_connection)
+{
 	int rc;
 	rc = od_io_read_start(relay->src);
 	if (rc == -1)
@@ -120,6 +132,31 @@ od_relay_start(od_relay_t *relay, machine_cond_t *base,
 	}
 
 	return OD_OK;
+}
+
+/*
+ * YB: Separate the initialization of the relay from the beginning of client<->server IO
+ * operations to provide more control over signalling of condition variables. This can be
+ * useful to wait on server responses using custom queries instead of pipelining them to be
+ * read with the server response from client operations. Note that in this case, the
+ * function machine_cond_propagate() signals the "base" condition variable if applicable,
+ * which could lead to sync issues when attempting to wait on it.
+ */
+static inline od_frontend_status_t
+od_relay_start(od_relay_t *relay, machine_cond_t *base,
+	       od_frontend_status_t error_read,
+	       od_frontend_status_t error_write, od_relay_on_read_t on_read,
+	       void *on_read_arg, od_relay_on_packet_t on_packet,
+	       void *on_packet_arg, bool reserve_session_server_connection)
+{
+	od_frontend_status_t status;
+	status = yb_od_relay_start_init(relay, base, error_read, error_write, on_read,
+			       on_read_arg, on_packet, on_packet_arg);
+	if (status != OD_OK)
+		return status;
+
+	status = yb_od_relay_start_io(relay, reserve_session_server_connection);
+	return status;
 }
 
 static inline void od_relay_attach(od_relay_t *relay, od_io_t *dst)

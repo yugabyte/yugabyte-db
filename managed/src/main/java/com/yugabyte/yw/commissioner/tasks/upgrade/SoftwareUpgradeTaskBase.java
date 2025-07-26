@@ -60,6 +60,13 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
     return NodeState.UpgradeSoftware;
   }
 
+  @Override
+  protected NodeState getNodeState(Set<ServerType> processTypes) {
+    return getSingle(processTypes) == ServerType.MASTER
+        ? NodeState.UpgradeMasterSoftware
+        : NodeState.UpgradeSoftware;
+  }
+
   protected UpgradeContext getUpgradeContext(String targetSoftwareVersion) {
     return UpgradeContext.builder()
         .reconfigureMaster(false)
@@ -411,8 +418,7 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
     if (!Util.isYbVersionFormatValid(requiredVersion)) {
       return new HashSet<>();
     }
-    try (YBClient client =
-        ybService.getClient(universe.getMasterAddresses(), universe.getCertificateClientToNode())) {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       return nodeDetails.stream()
           .filter(node -> isDBVersionSameOnNode(client, node, serverType, requiredVersion))
           .collect(Collectors.toSet());

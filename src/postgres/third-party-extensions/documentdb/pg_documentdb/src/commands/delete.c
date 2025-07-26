@@ -1086,7 +1086,10 @@ DeleteOneInternal(MongoCollection *collection, DeleteOneParams *deleteOneParams,
 	 */
 	StringInfoData selectQuery;
 	initStringInfo(&selectQuery);
-	appendStringInfo(&selectQuery, "WITH s AS MATERIALIZED (SELECT ctid FROM ");
+	if(IsYugaByteEnabled())
+		appendStringInfo(&selectQuery, "WITH s AS MATERIALIZED (SELECT ybctid FROM ");
+	else
+		appendStringInfo(&selectQuery, "WITH s AS MATERIALIZED (SELECT ctid FROM ");
 
 	if (collection->shardTableName[0] != '\0')
 	{
@@ -1137,7 +1140,14 @@ DeleteOneInternal(MongoCollection *collection, DeleteOneParams *deleteOneParams,
 		}
 	}
 
-	appendStringInfo(&selectQuery,
+	/*
+	 * YB (yb#26307): Bug when locking rows inside a CTE.
+	 * Error: Some of the requested ybctids are missing: 0 vs 1
+	 */
+	if (IsYugaByteEnabled())
+		appendStringInfo(&selectQuery, " LIMIT 1)");
+	else
+		appendStringInfo(&selectQuery,
 					 " LIMIT 1 FOR UPDATE)");
 
 
@@ -1156,9 +1166,15 @@ DeleteOneInternal(MongoCollection *collection, DeleteOneParams *deleteOneParams,
 						 collection->collectionId);
 	}
 
-	appendStringInfo(&deleteQuery,
-					 " d USING s WHERE d.ctid = s.ctid AND shard_key_value = $1"
-					 " RETURNING object_id");
+	/* YB: Use ybctid instead of ctid. */
+	if (IsYugaByteEnabled())
+		appendStringInfo(&deleteQuery,
+						 " d USING s WHERE d.ybctid = s.ybctid AND shard_key_value = $1"
+						 " RETURNING object_id");
+	else
+		appendStringInfo(&deleteQuery,
+						 " d USING s WHERE d.ctid = s.ctid AND shard_key_value = $1"
+						 " RETURNING object_id");
 
 	if (deleteOneParams->returnDeletedDocument)
 	{

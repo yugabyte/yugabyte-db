@@ -37,7 +37,7 @@ void TableIndex::AddOrReplace(const TableInfoPtr& table) {
     std::string first_id = (*pos)->id();
     auto replace_successful = tables_.replace(pos, table);
     if (!replace_successful) {
-      LOG(ERROR) << Format(
+      LOG(WARNING) << Format(
           "Multiple tables prevented inserting a new table with id $0. First id was $1",
           table->id(), first_id);
     }

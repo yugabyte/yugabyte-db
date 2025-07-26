@@ -12,21 +12,27 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.payload.NodeAgentRpcPayload;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.nodeagent.DestroyServerInput;
 import java.util.Optional;
+import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 public class AnsibleDestroyServer extends NodeTaskBase {
-
   @Inject
   protected AnsibleDestroyServer(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
@@ -43,6 +49,8 @@ public class AnsibleDestroyServer extends NodeTaskBase {
     public String nodeIP = null;
     // Flag, indicating OpenTelemetry Collector is installed on the DB node.
     public boolean otelCollectorInstalled = false;
+    // Skip changing node state after destroy if it is explicitly set.
+    public boolean skipUpdateNodeState = false;
   }
 
   @Override
@@ -97,9 +105,24 @@ public class AnsibleDestroyServer extends NodeTaskBase {
     }
     boolean cleanupFailed = true;
     try {
-      getNodeManager()
-          .nodeCommand(NodeManager.NodeCommandType.Destroy, taskParams())
-          .processErrors();
+      Optional<NodeAgent> optional =
+          (userIntent.providerType != CloudType.onprem
+                  || confGetter.getGlobalConf(GlobalConfKeys.nodeAgentDisableConfigureServer))
+              ? Optional.empty()
+              : nodeUniverseManager.maybeGetNodeAgent(
+                  getUniverse(), nodeDetails, true /*check feature flag*/);
+      if (optional.isPresent()) {
+        Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+        DestroyServerInput.Builder builder = DestroyServerInput.newBuilder();
+        builder.setIsProvisioningCleanup(!provider.getDetails().skipProvisioning);
+        builder.setYbHomeDir(provider.getYbHome());
+        nodeAgentClient.runDestroyServer(
+            optional.get(), builder.build(), NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
+      } else {
+        getNodeManager()
+            .nodeCommand(NodeManager.NodeCommandType.Destroy, taskParams())
+            .processErrors();
+      }
       cleanupFailed = false;
     } catch (Exception e) {
       if (!taskParams().isForceDelete) {
@@ -159,9 +182,11 @@ public class AnsibleDestroyServer extends NodeTaskBase {
         }
       }
     }
-    // Update the node state to Terminated to mark that instance has been terminated. This is a
-    // short-lived state as either the node is deleted or the state is changed to Decommissioned.
-    setNodeState(NodeDetails.NodeState.Terminated);
+    if (!taskParams().skipUpdateNodeState) {
+      // Update the node state to Terminated to mark that instance has been terminated. This is a
+      // short-lived state as either the node is deleted or the state is changed to Decommissioned.
+      setNodeState(NodeDetails.NodeState.Terminated);
+    }
     if (taskParams().deleteNode) {
       removeNodeFromUniverse(taskParams().nodeName);
     }

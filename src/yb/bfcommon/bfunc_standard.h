@@ -26,20 +26,20 @@ inline Result<BFRetValue> NoOp() {
 
 // ServerOperator that takes no argument and has no return value.
 inline Status ServerOperator() {
-  LOG(ERROR) << "Only tablet servers can execute this builtin call";
+  LOG(DFATAL) << "Only tablet servers can execute this builtin call";
   return STATUS(RuntimeError, "Only tablet servers can execute this builtin call");
 }
 
 // ServerOperator that takes 1 argument and has a return value.
 inline Status ServerOperator(const BFValue& arg1, BFFactory factory) {
-  LOG(ERROR) << "Only tablet servers can execute this builtin call";
+  LOG(DFATAL) << "Only tablet servers can execute this builtin call";
   return STATUS(RuntimeError, "Only tablet servers can execute this builtin call");
 }
 
 // This is not used but implemented as an example for future coding.
 // ServerOperator that takes 2 arguments and has a return value.
 inline Status ServerOperator(const BFValue& arg1, const BFValue& arg2, BFFactory factory) {
-  LOG(ERROR) << "Only tablet servers can execute this builtin call";
+  LOG(DFATAL) << "Only tablet servers can execute this builtin call";
   return STATUS(RuntimeError, "Only tablet servers can execute this builtin call");
 }
 

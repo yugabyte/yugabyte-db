@@ -25,12 +25,16 @@
 
 #include <memory>
 #include <string>
-#include "yb/rocksdb/rocksdb_fwd.h"
+
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/immutable_options.h"
+#include "yb/rocksdb/rocksdb_fwd.h"
+#include "yb/rocksdb/table/format.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 
 namespace rocksdb {
+
+YB_STRONGLY_TYPED_BOOL(DoUncompress);
 
 class SstFileReader {
  public:
@@ -42,6 +46,8 @@ class SstFileReader {
   Status ReadSequential(bool print_kv, uint64_t read_num, bool has_from,
                         const std::string& from_key, bool has_to,
                         const std::string& to_key);
+
+  Status CheckDataBlocks(DoUncompress do_uncompress);
 
   Status ReadTableProperties(
       std::shared_ptr<const TableProperties>* table_properties);
@@ -81,6 +87,7 @@ class SstFileReader {
   EnvOptions soptions_;
 
   Status init_result_;
+  Footer footer_;
   std::unique_ptr<TableReader> table_reader_;
   std::unique_ptr<RandomAccessFileReader> file_;
   // options_ and internal_comparator_ will also be used in

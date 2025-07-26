@@ -2135,18 +2135,85 @@ static od_frontend_status_t od_frontend_remote(od_client_t *client)
 				break;
 
 			assert(server == NULL);
-			status = od_frontend_attach_and_deploy(client, "main");
+
+		yb_retry_attach:
+			/*
+			 * YB: Separate the attach and deploy phases around the initialization of the relay to
+			 * allow correct handling of the condition variables used to synchronize code flow around
+			 * IO operations. This should be done only if in optimized GUC support mode; it is safe
+			 * to initialize the relay after deploy phase without optimization of GUC support.
+			 * 
+			 * Here are the sequence of operations for each mode:
+			 * Without optimization: attach -> deploy -> relay_init -> relay_start
+			 * With optimization: attach -> relay_init -> deploy -> relay_start
+			 */
+			status = od_frontend_attach(client, "main", NULL);
 			if (status != OD_OK)
 				break;
 			server = client->server;
-			status = od_relay_start(
-				&server->relay, client->cond, OD_ESERVER_READ,
-				OD_ECLIENT_WRITE,
-				od_frontend_remote_server_on_read,
-				&route->stats, od_frontend_remote_server,
-				client, reserve_session_server_connection);
+
+			if (instance->config.yb_optimized_session_parameters) {
+				status = yb_od_relay_start_init(
+					&server->relay, client->cond, OD_ESERVER_READ,
+					OD_ECLIENT_WRITE,
+					od_frontend_remote_server_on_read,
+					&route->stats, od_frontend_remote_server,
+					client);
+				if (status != OD_OK)
+					break;
+			}
+
+			int rc;
+			rc = od_deploy(client, "main");
+			if (rc == -1)
+				status = OD_ESERVER_WRITE;
+
+			/*
+			 * YB: This return condition is only possible for optimized support
+			 * for GUC variables. It occurs due to conflict-related errors when
+			 * dealing with concurrent transactions; odyssey assumes that the
+			 * transaction is rolled back on the server and proceeds with
+			 * operations, where the server process is still in a transaction.
+			 * Close the current server process and retry by attaching to a
+			 * different server whenever this occurs.
+			 */
+			if (rc == -2) {
+				assert(instance->config.yb_optimized_session_parameters);
+				od_error(
+					&instance->logger, "main", client, server,
+					"deploy error: conflict with another transaction");
+				od_router_close(client->global->router, client);
+				goto yb_retry_attach;
+			}
+
+			if (client->deploy_err)
+				status = YB_OD_DEPLOY_ERR;
+
+			/* set number of replies to discard */
+			client->server->deploy_sync = rc;
+
+			od_server_sync_request(server, server->deploy_sync);
+
 			if (status != OD_OK)
 				break;
+
+			if (!instance->config.yb_optimized_session_parameters) {
+				status = yb_od_relay_start_init(
+					&server->relay, client->cond, OD_ESERVER_READ,
+					OD_ECLIENT_WRITE,
+					od_frontend_remote_server_on_read,
+					&route->stats, od_frontend_remote_server,
+					client);
+				if (status != OD_OK)
+					break;
+			}
+
+			/*
+			 * YB: Start IO operations only after concluding deploy operations in optimized
+			 * GUC support mode. In unoptimized mode, we mimic upstream odyssey behavior of
+			 * calling od_frontend_attach_and_deploy(), followed by od_relay_start().
+			 */
+			yb_od_relay_start_io(&server->relay, reserve_session_server_connection);
 			od_relay_attach(&client->relay, &server->io);
 			od_relay_attach(&server->relay, &client->io);
 

@@ -59,9 +59,7 @@ public class XClusterAddNamespaceToOutboundReplicationGroup extends CreateOutbou
     }
     String dbId = taskParams().getDbToAdd();
 
-    try (YBClient client =
-        ybService.getClient(
-            sourceUniverse.getMasterAddresses(), sourceUniverse.getCertificateNodetoNode())) {
+    try (YBClient client = ybService.getUniverseClient(sourceUniverse)) {
       log.info(
           "Checkpointing databases for XClusterConfig({}): source db ids: {}",
           xClusterConfig.getUuid(),

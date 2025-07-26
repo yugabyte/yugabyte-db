@@ -152,13 +152,13 @@ TEST(TestProcessSupervisor, StopUnStartedSupervisor) {
 
 TEST(TestProcessSupervisor, StartPausedAndStop) {
   auto supervisor = MakeTestSupervisor();
-  ASSERT_OK(supervisor->Start(/* run_process */ false));
+  ASSERT_OK(supervisor->InitPaused());
   supervisor->Stop();
 }
 
 TEST(TestProcessSupervisor, StartPausedAndRestart) {
   auto supervisor = MakeTestSupervisor();
-  ASSERT_OK(supervisor->Start(/* run_process */ false));
+  ASSERT_OK(supervisor->InitPaused());
   ASSERT_OK(RestartAndWaitForRespawn(*supervisor, MonoDelta::FromSeconds(10)));
   // todo(zdrudi): There might be a race here. Use sleeps to avoid for now.
   std::this_thread::sleep_for(1s);

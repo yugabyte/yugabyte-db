@@ -512,20 +512,25 @@ Status Webserver::Impl::GetBoundAddresses(std::vector<Endpoint>* addrs_ptr) cons
   }
 
   struct sockaddr_storage** sockaddrs = nullptr;
-  int num_addrs;
+  int num_addrs = 0;
 
   if (sq_get_bound_addresses(context_, &sockaddrs, &num_addrs)) {
     return STATUS(NetworkError, "Unable to get bound addresses from Mongoose");
   }
-  auto cleanup = ScopeExit([sockaddrs, num_addrs] {
-    if (!sockaddrs) {
-      return;
-    }
-    for (int i = 0; i < num_addrs; ++i) {
-      free(sockaddrs[i]);
-    }
-    free(sockaddrs);
-  });
+
+  if (!num_addrs) {
+    return Status::OK();
+  }
+  DCHECK(sockaddrs);
+
+  ScopeExit cleanup{
+    [sockaddrs, num_addrs] {
+      for (int i = 0; i < num_addrs; ++i) {
+        free(sockaddrs[i]);
+      }
+      free(sockaddrs);
+    }};
+
   auto& addrs = *addrs_ptr;
   addrs.resize(num_addrs);
 
@@ -546,7 +551,7 @@ Status Webserver::Impl::GetBoundAddresses(std::vector<Endpoint>* addrs_ptr) cons
         break;
       }
       default: {
-        LOG(ERROR) << "Unexpected address family: " << sockaddrs[i]->ss_family;
+        LOG(DFATAL) << "Unexpected address family: " << sockaddrs[i]->ss_family;
         RSTATUS_DCHECK(false, IllegalState, "Unexpected address family");
         break;
       }
@@ -617,7 +622,7 @@ sq_callback_result_t Webserver::Impl::BeginRequestCallback(struct sq_connection*
 sq_callback_result_t Webserver::Impl::RunPathHandler(const PathHandler& handler,
                                                      struct sq_connection* connection,
                                                      struct sq_request_info* request_info) {
-  constexpr auto SERVICE_UNAVAILABLE_MSG = "HTTP/1.1 503 Service Unavailable\r\n";
+  constexpr auto SERVICE_UNAVAILABLE_MSG = "HTTP/1.1 503 Service Unavailable\r\n\r\n";
   // If we're in the process of stopping, do not parse or route the request. Just return.
   if (PREDICT_FALSE(stop_initiated)) {
     sq_printf(connection, SERVICE_UNAVAILABLE_MSG);

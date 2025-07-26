@@ -3563,7 +3563,7 @@ ExecBuildAggTrans(AggState *aggstate, AggStatePerPhase phase,
 			 * DISTINCT and/or ORDER BY case, with a single column sorted on.
 			 */
 			TargetEntry *source_tle =
-			(TargetEntry *) linitial(pertrans->aggref->args);
+				(TargetEntry *) linitial(pertrans->aggref->args);
 
 			Assert(list_length(pertrans->aggref->args) == 1);
 

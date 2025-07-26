@@ -60,6 +60,7 @@ public class PromoteAutoFlagsTest extends CommissionerBaseTest {
     try {
       // TODO: set non-zero sleep time by mocking parent task.
       RuntimeConfigEntry.upsertGlobal("yb.upgrade.auto_flag_update_sleep_time_ms", "0");
+      lenient().when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
       lenient().when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     } catch (Exception ignored) {
       fail();

@@ -34,6 +34,7 @@
 #include "yb/yql/pggate/insert_on_conflict_buffer.h"
 #include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pg_doc_metrics.h"
+#include "yb/yql/pggate/pg_flush_future.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_operation_buffer.h"
 #include "yb/yql/pggate/pg_perform_future.h"
@@ -244,11 +245,16 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
     return pg_client_;
   }
 
+  Status SetupIsolationAndPerformOptionsForDdl(
+      tserver::PgPerformOptionsPB* options, bool use_regular_transaction_block);
+
   Status SetActiveSubTransaction(SubTransactionId id);
   Status RollbackToSubTransaction(SubTransactionId id);
+  void SetTransactionHasWrites();
+  Result<bool> CurrentTransactionUsesFastPath() const;
 
-  void ResetHasWriteOperationsInDdlMode();
-  bool HasWriteOperationsInDdlMode() const;
+  void ResetHasCatalogWriteOperationsInDdlMode();
+  bool HasCatalogWriteOperationsInDdlMode() const;
 
   void SetDdlHasSyscatalogChanges();
 
@@ -289,7 +295,7 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   Result<PgTableDescPtr> DoLoadTable(
       const PgObjectId& table_id, bool fail_on_cache_hit,
       master::IncludeHidden include_hidden = master::IncludeHidden::kFalse);
-  Result<PerformFuture> FlushOperations(BufferableOperations&& ops, bool transactional);
+  Result<FlushFuture> FlushOperations(BufferableOperations&& ops, bool transactional);
 
   const std::string LogPrefix() const;
 
@@ -297,10 +303,9 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
 
   struct PerformOptions {
     UseCatalogSession use_catalog_session = UseCatalogSession::kFalse;
-    EnsureReadTimeIsSet ensure_read_time_is_set = EnsureReadTimeIsSet::kFalse;
+    std::optional<ReadTimeAction> read_time_action = {};
     std::optional<CacheOptions> cache_options = std::nullopt;
     HybridTime in_txn_limit = {};
-    bool non_transactional_buffered_write = false;
   };
 
   Result<PerformFuture> Perform(BufferableOperations&& ops, PerformOptions&& options);
@@ -347,7 +352,7 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   BufferingSettings& buffering_settings_;
   PgOperationBuffer buffer_;
 
-  bool has_write_ops_in_ddl_mode_ = false;
+  bool has_catalog_write_ops_in_ddl_mode_ = false;
 
   // This session is upgrading to PG15.
   const bool is_major_pg_version_upgrade_;

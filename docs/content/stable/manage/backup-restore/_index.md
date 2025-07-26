@@ -12,6 +12,12 @@ menu:
 type: indexpage
 ---
 
+{{< page-finder/head text="Back Up and Restore" subtle="across different products">}}
+  {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" current="" >}}
+  {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" url="../../yugabyte-platform/back-up-restore-universes/" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/preview/yugabyte-cloud/cloud-clusters/backup-clusters/" >}}
+{{< /page-finder/head >}}
+
 Backup and restoration is the process of creating and storing copies of your data for protection against data loss. With a proper backup strategy, you can always restore your data to a most-recent known working state and minimize application downtime. This in turn guarantees business and application continuity.
 
 Unlike traditional single-instance databases, YugabyteDB is designed for fault tolerance. By maintaining at least three copies of your data across multiple data regions or multiple clouds, it makes sure no losses occur if a single node or single data region becomes unavailable. Thus, with YugabyteDB, you would mainly use backups to:
@@ -24,6 +30,7 @@ Unlike traditional single-instance databases, YugabyteDB is designed for fault t
 
 - Don't perform cluster operations at the same time as your scheduled backup.
 - Configure your maintenance window and backup schedule so that they do not conflict.
+- Perform full backups before performing a large operation, such as a DDL change.
 - Performing a backup or restore incurs a load on the cluster. Perform backup operations when the cluster isn't experiencing heavy traffic. Backing up during times of heavy traffic can temporarily degrade application performance and increase the length of time of the backup.
 - Avoid running a backup during or before a scheduled maintenance.
 
@@ -56,5 +63,11 @@ In some circumstances, a backup can fail during high DDL activity. Avoid perform
     body="Clone a database for data recovery, development, and testing."
     href="instant-db-cloning/"
     icon="fa-thin fa-clone">}}
+
+  {{<index/item
+    title="Time travel query"
+    body="Query data as at a specific point in time."
+    href="time-travel-query/"
+    icon="fa-thin fa-clock-rotate-left">}}
 
 {{</index/block>}}

@@ -101,6 +101,9 @@ Status ValidateAutoFlagsInternal(
     } else if (
         !is_valid && old_compatible_auto_flag_config_version != kInvalidAutoFlagsConfigVersion) {
       // We are not compatible with the source universe anymore.
+      LOG(WARNING) << "xCluster replication group " << replication_group_id
+                   << " is not compatible with the source universe AutoFlags. Upgrade the universe "
+                      "to a version that is equal to or higher than the source universe";
       producer_entry->set_compatible_auto_flag_config_version(kInvalidAutoFlagsConfigVersion);
       cluster_config_changed = true;
     }
@@ -826,7 +829,8 @@ Result<uint32> AddHistoricalPackedSchemaForColocatedTable(
   Schema new_schema;
   RETURN_NOT_OK(SchemaFromPB(schema, &new_schema));
 
-  dockv::SchemaPackingStorage old_packings(TableType::PGSQL_TABLE_TYPE);
+  dockv::SchemaPackingStorage old_packings(
+      TableType::PGSQL_TABLE_TYPE, std::make_shared<dockv::SchemaPackingRegistry>("XCluster: "));
   RETURN_NOT_OK(old_packings.LoadFromPB(historical_schema_packings.old_schema_packings()));
   const auto existing_version =
       old_packings.GetSchemaPackingVersion(TableType::PGSQL_TABLE_TYPE, new_schema);

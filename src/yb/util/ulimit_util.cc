@@ -202,8 +202,8 @@ void UlimitUtil::InitUlimits() {
 
     const auto limits_or_status = Env::Default()->GetUlimit(resource_id);
     if (!limits_or_status.ok()) {
-      LOG(ERROR) << "Unable to fetch hard limit for resource " << resource_name
-                 << " Skipping initialization.";
+      LOG(DFATAL) << "Unable to fetch hard limit for resource " << resource_name
+                  << " Skipping initialization.";
       continue;
     }
 
@@ -221,8 +221,8 @@ void UlimitUtil::InitUlimits() {
 
     Status set_ulim_status = Env::Default()->SetUlimit(resource_id, new_soft_limit, resource_name);
     if (!set_ulim_status.ok()) {
-      LOG(ERROR) << "Unable to set new soft limit for resource " << resource_name
-                 << " error: " << set_ulim_status.ToString();
+      LOG(DFATAL) << "Unable to set new soft limit for resource " << resource_name
+                  << " error: " << set_ulim_status.ToString();
     }
   }
 }

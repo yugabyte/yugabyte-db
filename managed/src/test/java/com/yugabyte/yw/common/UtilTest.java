@@ -15,6 +15,7 @@ import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
+import com.cronutils.utils.StringUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.utils.FileUtils;
@@ -451,13 +452,15 @@ public class UtilTest extends FakeDBApplication {
 
   @Test
   public void testGetFileSize() {
-    int maxChars = (int) 1e6; // ~ 2 MB
+    int maxCharsBatch = 8192; // ~ 8 KB
     int minChars = 1;
+    StringBuilder data = new StringBuilder(StringUtils.EMPTY);
+    for (int i = 0; i < 100; i++) {
+      data.append(RandomStringUtils.randomAlphabetic(minChars, maxCharsBatch));
+    }
+    Path tmpFilePath = Paths.get(TestHelper.createTempFile(data.toString()));
 
-    String data = RandomStringUtils.randomAlphabetic(minChars, maxChars);
-    Path tmpFilePath = Paths.get(TestHelper.createTempFile(data));
-
-    long actualFileSize = data.getBytes().length;
+    long actualFileSize = data.toString().getBytes().length;
     long fileSize = FileUtils.getFileSize(tmpFilePath.toString());
 
     org.apache.commons.io.FileUtils.deleteQuietly(new File(tmpFilePath.toString()));

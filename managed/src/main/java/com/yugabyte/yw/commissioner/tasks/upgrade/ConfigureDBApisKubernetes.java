@@ -87,15 +87,15 @@ public class ConfigureDBApisKubernetes extends KubernetesUpgradeTaskBase {
                   taskParams().enableYCQLAuth)
               .setSubTaskGroupType(getTaskSubGroupType());
 
-          universe
-              .getNodes()
-              .forEach(
-                  node -> {
-                    node.isYqlServer = taskParams().enableYCQL;
-                    node.isYsqlServer = taskParams().enableYSQL;
-                    createNodeDetailsUpdateTask(node, false)
-                        .setSubTaskGroupType(getTaskSubGroupType());
-                  });
+          createUpdateUniverseFieldsTask(
+                  u ->
+                      u.getNodes()
+                          .forEach(
+                              node -> {
+                                node.isYqlServer = taskParams().enableYCQL;
+                                node.isYsqlServer = taskParams().enableYSQL;
+                              }))
+              .setSubTaskGroupType(getTaskSubGroupType());
 
           // update password from default to new custom password.
           // Ideally, this should be done before updating the universe state in DB.

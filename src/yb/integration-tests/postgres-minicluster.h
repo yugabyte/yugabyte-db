@@ -37,6 +37,7 @@ class PostgresMiniCluster {
   Result<pgwrapper::PGConn> ConnectToDB(
       const std::string& dbname, bool simple_query_protocol = false);
   Result<pgwrapper::PGConn> ConnectToDBWithReplication(const std::string& dbname);
+  pgwrapper::PGConnSettings CreatePgConnSettings();
 
   Status InitPostgres();
   Status InitPostgres(size_t pg_ts_idx, uint16_t pg_port);

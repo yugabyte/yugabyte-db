@@ -24,6 +24,8 @@ class TestConsensusContext : public ConsensusContext {
  public:
   void SetPropagatedSafeTime(HybridTime ht) override {}
 
+  void SetMvccPropagatedSafeTime(HybridTime ht) override {}
+
   bool ShouldApplyWrite() override { return true; }
 
   Result<HybridTime> PreparePeerRequest() override { return HybridTime(); }

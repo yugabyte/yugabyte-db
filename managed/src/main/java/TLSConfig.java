@@ -2,7 +2,6 @@
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import java.security.Security;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -27,7 +26,8 @@ public class TLSConfig {
 
   public static void modifyTLSDisabledAlgorithms(Config config) {
     String algorithms = TLSConfig.getTLSDisabledAlgorithms();
-    List<String> algorithmList = new ArrayList<>(Arrays.asList(algorithms.split(", ")));
+    List<String> algorithmList =
+        Arrays.stream(algorithms.split(",")).map(String::trim).collect(Collectors.toList());
     // Process existing algorithm to remove the keySize < 2048 from the list
     Pattern pattern = Pattern.compile("(\\w+\\s+keySize)\\s*<\\s*(\\d+)");
     for (int i = 0; i < algorithmList.size(); i++) {

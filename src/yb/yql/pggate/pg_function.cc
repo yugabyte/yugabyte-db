@@ -147,9 +147,64 @@ std::vector<std::string> LockModesToString(const yb::LockInfoPB& lock) {
   return modes;
 }
 
+std::string GetObjectLockModeString(const yb::ObjectLockInfoPB& lock) {
+  switch (lock.mode()) {
+    case TableLockType::ACCESS_SHARE:
+      return "AccessShareLock";
+    case TableLockType::ROW_SHARE:
+      return "RowShareLock";
+    case TableLockType::ROW_EXCLUSIVE:
+      return "RowExclusiveLock";
+    case TableLockType::SHARE_UPDATE_EXCLUSIVE:
+      return "ShareUpdateExclusiveLock";
+    case TableLockType::SHARE:
+      return "ShareLock";
+    case TableLockType::SHARE_ROW_EXCLUSIVE:
+      return "ShareRowExclusiveLock";
+    case TableLockType::EXCLUSIVE:
+      return "ExclusiveLock";
+    case TableLockType::ACCESS_EXCLUSIVE:
+      return "AccessExclusiveLock";
+    default:
+      return "Unknown";
+  }
+}
+
 //--------------------------------------------------------------------------------------------------
 // PgLockStatusRequestor
 //--------------------------------------------------------------------------------------------------
+Result<PgTableRow> AddObjectLock(
+    const ReaderProjection& projection, const Schema& schema, const yb::ObjectLockInfoPB& lock) {
+  PgTableRow row(projection);
+  RETURN_NOT_OK(row.SetNullOrMissingResult(schema));
+
+  auto transaction_id =
+      VERIFY_RESULT(FullyDecodeTransactionId(lock.transaction_id()));
+  std::string locktype = "relation";
+  RETURN_NOT_OK(SetColumnValue("locktype", locktype, schema, &row));
+  RETURN_NOT_OK(SetColumnValue("database", static_cast<PgOid>(lock.database_oid()), schema, &row));
+  RETURN_NOT_OK(SetColumnValue("relation", static_cast<PgOid>(lock.relation_oid()), schema, &row));
+  RETURN_NOT_OK(SetColumnValue("transaction_id", transaction_id.GetUuid(), schema, &row));
+  RETURN_NOT_OK(SetColumnValue("subtransaction_id", lock.subtransaction_id(), schema, &row));
+  if (lock.lock_state() == ObjectLockState::GRANTED) {
+    RETURN_NOT_OK(SetColumnValue("granted", true, schema, &row));
+  } else {
+    RETURN_NOT_OK(SetColumnValue("granted", false, schema, &row));
+    RSTATUS_DCHECK(
+        lock.has_wait_start_ht(), IllegalState,
+        "Expected wait_start_ht to be set for waiting locks, but it is not");
+    RETURN_NOT_OK(SetColumnValue(
+        "waitstart", HybridTime::FromPB(lock.wait_start_ht()).GetPhysicalValueMicros(),
+        schema, &row));
+  }
+  RETURN_NOT_OK(SetColumnArrayValue(
+      "mode",
+      std::vector<std::string>{GetObjectLockModeString(lock)},
+      schema, &row));
+  RETURN_NOT_OK(SetColumnValue("fastpath", transaction_id.IsNil() ? true : false, schema, &row));
+
+  return row;
+}
 
 Result<PgTableRow> AddLock(
     const ReaderProjection& projection, const Schema& schema, const std::string& node_id,
@@ -369,6 +424,11 @@ Result<std::list<PgTableRow>> PgLockStatusRequestor(
         }
       }
     }
+  }
+
+  for (const auto& object_lock_info : lock_status.object_lock_infos()) {
+    PgTableRow row = VERIFY_RESULT(AddObjectLock(projection, schema, object_lock_info));
+    data.emplace_back(row);
   }
 
   return data;

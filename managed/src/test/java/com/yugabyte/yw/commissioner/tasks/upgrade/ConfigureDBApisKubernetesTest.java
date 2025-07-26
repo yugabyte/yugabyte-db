@@ -27,7 +27,7 @@ public class ConfigureDBApisKubernetesTest extends KubernetesUpgradeTaskTest {
       ImmutableList.of(
           TaskType.UpdateUniverseCommunicationPorts,
           TaskType.UpdateClusterAPIDetails,
-          TaskType.UpdateNodeDetails,
+          TaskType.UpdateUniverseFields,
           TaskType.ChangeAdminPassword,
           TaskType.ChangeAdminPassword,
           TaskType.UniverseUpdateSucceeded);
@@ -37,7 +37,7 @@ public class ConfigureDBApisKubernetesTest extends KubernetesUpgradeTaskTest {
           TaskType.ChangeAdminPassword,
           TaskType.ChangeAdminPassword,
           TaskType.UpdateClusterAPIDetails,
-          TaskType.UpdateNodeDetails,
+          TaskType.UpdateUniverseFields,
           TaskType.UniverseUpdateSucceeded);
 
   @Override

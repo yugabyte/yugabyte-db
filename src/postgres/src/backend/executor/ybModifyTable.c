@@ -35,6 +35,7 @@
 #include "catalog/pg_auth_members_d.h"
 #include "catalog/pg_authid_d.h"
 #include "catalog/pg_database.h"
+#include "catalog/pg_db_role_setting_d.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_shseclabel_d.h"
 #include "catalog/pg_tablespace_d.h"
@@ -257,14 +258,15 @@ YBCExecWriteStmt(YbcPgStatement ybc_stmt,
 
 		if (RelationGetForm(rel)->relisshared &&
 			(RelationSupportsSysCache(relid) ||
-			 YbRelationIdIsInInitFileAndNotCached(relid)) &&
+			 YbRelationIdIsInInitFileAndNotCached(relid) ||
+			 YbSharedRelationIdNeedsGlobalImpact(relid)) &&
 			!(*YBCGetGFlags()->ysql_disable_global_impact_ddl_statements))
 		{
 			/* NOTE: relisshared implies that rel is a system relation. */
 			Assert(IsSystemRelation(rel));
 			/*
-			 * There are two sections in the next Assert. Relation ids
-			 * in each section are grouped together and two sections
+			 * There are 3 sections in the next Assert. Relation ids
+			 * in each section are grouped together and these sections
 			 * are separated with an empty line.
 			 *
 			 * Section 1 contains relations in relcache init file that
@@ -274,6 +276,10 @@ YBCExecWriteStmt(YbcPgStatement ybc_stmt,
 			 * Section 2 contains relations in relcache init file but
 			 * do not support sys cache. Should be kept in sync with
 			 * YbRelationIdIsInInitFileAndNotCached.
+			 *
+			 * Section 3 contains relations that can be prefetched
+			 * but do not have a PG catalog cache. Should be kept in
+			 * sync with YbSharedRelationIdNeedsGlobalImpact.
 			 */
 			Assert(relid == AuthIdRelationId ||
 				   relid == AuthIdRolnameIndexId ||
@@ -282,9 +288,13 @@ YBCExecWriteStmt(YbcPgStatement ybc_stmt,
 				   relid == AuthMemMemRoleIndexId ||
 				   relid == DatabaseRelationId ||
 				   relid == TableSpaceRelationId ||
+
 				   relid == DatabaseNameIndexId ||
 				   relid == SharedSecLabelRelationId ||
-				   relid == SharedSecLabelObjectIndexId);
+				   relid == SharedSecLabelObjectIndexId ||
+
+				   relid == DbRoleSettingRelationId ||
+				   relid == DbRoleSettingDatidRolidIndexId);
 
 			YbSetIsGlobalDDL();
 		}
@@ -570,6 +580,7 @@ YbIsInsertOnConflictReadBatchingPossible(ResultRelInfo *resultRelInfo)
 	}
 
 	TriggerDesc *trigdesc = resultRelInfo->ri_TrigDesc;
+
 	if (!(trigdesc && (trigdesc->trig_delete_after_row ||
 					   trigdesc->trig_insert_after_row ||
 					   trigdesc->trig_update_after_row)))
@@ -834,6 +845,7 @@ YBCExecuteDelete(Relation rel,
 				 errmsg("missing column ybctid in DELETE request")));
 	}
 
+	TABLETUPLE_YBCTID(planSlot) = ybctid;
 	MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 
 	/* Bind ybctid to identify the current row. */
@@ -1061,6 +1073,7 @@ YBCExecuteUpdate(ResultRelInfo *resultRelInfo,
 				(errcode(ERRCODE_UNDEFINED_COLUMN),
 				 errmsg("missing column ybctid in UPDATE request")));
 
+	TABLETUPLE_YBCTID(slot) = ybctid;
 	YBCBindTupleId(update_stmt, ybctid);
 
 	/* Assign new values to the updated columns for the current row. */
@@ -1342,7 +1355,7 @@ YBCExecuteUpdateLoginAttempts(Oid roleid,
 	 */
 	slot = MakeSingleTupleTableSlot(inputTupleDesc, &TTSOpsHeapTuple);
 	ExecStoreHeapTuple(tuple, slot, false);
-	ybctid = YBCComputeYBTupleIdFromSlot(rel, slot);
+	ybctid = TABLETUPLE_YBCTID(slot) = YBCComputeYBTupleIdFromSlot(rel, slot);
 	ExecDropSingleTupleTableSlot(slot);
 
 	if (ybctid == 0)
@@ -1544,10 +1557,12 @@ YBCRelInfoHasSecondaryIndices(ResultRelInfo *resultRelInfo)
 int
 YBCRelInfoGetSecondaryIndicesCount(ResultRelInfo *resultRelInfo)
 {
-	int count = 0;
+	int			count = 0;
+
 	for (int i = 0; i < resultRelInfo->ri_NumIndices; i++)
 	{
-		Relation index = resultRelInfo->ri_IndexRelationDescs[i];
+		Relation	index = resultRelInfo->ri_IndexRelationDescs[i];
+
 		if (index->rd_index->indisprimary)
 		{
 			continue;

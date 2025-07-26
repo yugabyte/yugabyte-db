@@ -631,7 +631,7 @@ public class NFSUtil implements StorageUtil {
       for (File file : files) {
         if (file.isDirectory()) {
           String relativePath = Paths.get(nfsDirectory).relativize(file.toPath()).toString();
-          String version = extractReleaseVersion(relativePath, backupDir);
+          String version = extractReleaseVersion(relativePath, backupDir, "");
           if (version != null) {
             releaseVersions.add(version);
           } else {

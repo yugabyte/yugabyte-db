@@ -250,9 +250,8 @@ void TestWorkload::State::WriteThread(const TestWorkloadOptions& options) {
   WaitAllThreads();
 
   std::string test_payload("hello world");
-  if (options.payload_bytes != 11) {
-    // We fill with zeros if you change the default.
-    test_payload.assign(options.payload_bytes, '0');
+  if (options.payload_bytes != test_payload.size()) {
+    test_payload = RandomHumanReadableString(options.payload_bytes);
   }
 
   bool inserting_one_row = false;

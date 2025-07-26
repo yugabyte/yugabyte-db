@@ -54,6 +54,7 @@ public class DeleteNodeFromUniverseTest extends CommissionerBaseTest {
           TaskType.FreezeUniverse,
           TaskType.CheckNodeSafeToDelete,
           TaskType.AnsibleDestroyServer,
+          TaskType.MarkUniverseForHealthScriptReUpload,
           TaskType.DeleteNode,
           TaskType.UniverseUpdateSucceeded);
 
@@ -62,6 +63,7 @@ public class DeleteNodeFromUniverseTest extends CommissionerBaseTest {
           TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
           TaskType.RemoveNodeAgent,
+          TaskType.MarkUniverseForHealthScriptReUpload,
           TaskType.DeleteNode,
           TaskType.UniverseUpdateSucceeded);
 
@@ -91,7 +93,7 @@ public class DeleteNodeFromUniverseTest extends CommissionerBaseTest {
             }));
 
     mockClient = mock(YBClient.class);
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     ListMasterRaftPeersResponse listMastersResponse = mock(ListMasterRaftPeersResponse.class);
     when(listMastersResponse.getPeersList()).thenReturn(Collections.emptyList());
     try {

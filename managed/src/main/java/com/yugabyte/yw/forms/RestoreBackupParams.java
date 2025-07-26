@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.common.YBADeprecated;
+import com.yugabyte.yw.models.common.YbaApi;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
@@ -131,6 +132,32 @@ public class RestoreBackupParams extends UniverseTaskParams {
     @Getter
     @Setter
     private boolean useTablespaces = false;
+
+    // During restore, alter tables/schemas to be owned by the restored roles.
+    @ApiModelProperty(value = "Backup global ysql roles", hidden = true)
+    @Getter
+    @Setter
+    private Boolean useRoles = true;
+
+    // When set, ybc backups will ignore all new flags that came with roles backup. Useful for
+    // taking
+    // backups on older universes.
+    @ApiModelProperty(hidden = true)
+    @Getter
+    @Setter
+    private Boolean revertToPreRolesBehaviour = false;
+
+    /* Error handling flags */
+
+    // This will be be harcoded to true if success marker does not have dump_role_checks set to
+    // true.
+    // Default true until testing is complete.
+    @ApiModelProperty(
+        value = "WARNING: This is a preview API that could change. Ignore all restore errors")
+    @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2025.1.0.0")
+    @Getter
+    @Setter
+    private Boolean ignoreErrors = true;
   }
 
   public RestoreBackupParams(

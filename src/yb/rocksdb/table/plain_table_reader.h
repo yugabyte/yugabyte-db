@@ -97,8 +97,9 @@ class PlainTableReader: public TableReader {
     LOG(FATAL) << "PlainTableReader::SetDataFileReader is not supported";
   }
 
-  InternalIterator* NewIterator(const ReadOptions&, Arena* arena = nullptr,
-                                bool skip_filters = false) override;
+  InternalIterator* NewIterator(
+      const ReadOptions&, Arena* arena, bool skip_filters,
+      SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe) override;
 
   void Prepare(const Slice& target) override;
 

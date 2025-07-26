@@ -455,3 +455,11 @@ ERROR:  value for domain nonempty violates check constraint "nonempty_check"
 select ''::nonempty;
 ERROR:  value for domain nonempty violates check constraint "nonempty_check"
 reset search_path;
+-- table rewrite on an empty temp table
+create temp table p(f1 int, f2 int);
+alter table p alter column f2 type bigint;
+select * from p;
+ f1 | f2 
+----+----
+(0 rows)
+

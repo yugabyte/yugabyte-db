@@ -10,6 +10,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PrevYBSoftwareConfig;
 import com.yugabyte.yw.models.Universe;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.WireProtocol;
@@ -42,21 +43,25 @@ public class StoreAutoFlagConfigVersion extends UniverseTaskBase {
     log.info("Running {}", getName());
 
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    String hostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodetoNode();
-    YBClient client = null;
+
+    PrevYBSoftwareConfig config = universe.getUniverseDetails().prevYBSoftwareConfig;
+    if (config != null
+        && config.getSoftwareVersion()
+            == universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion) {
+      log.info(
+          "Auto flag config version already stored for universe {}. Skipping.",
+          universe.getUniverseUUID());
+      return;
+    }
 
     int autoFlagConfigVersion;
-    try {
-      client = ybService.getClient(hostPorts, certificate);
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       WireProtocol.AutoFlagsConfigPB autoFlagsConfigPB =
           client.autoFlagsConfig().getAutoFlagsConfig();
       autoFlagConfigVersion = autoFlagsConfigPB.getConfigVersion();
     } catch (Exception e) {
       log.error("Error while fetching auto flag config version ", e);
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
-    } finally {
-      ybService.closeClient(client, hostPorts);
     }
 
     try {

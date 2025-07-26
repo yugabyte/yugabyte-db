@@ -37,10 +37,9 @@ TEST(ScopeExitTest, TestSuccess) {
 }
 
 TEST(ScopeExitTest, TestMove) {
-  std::atomic<int32> se_run_count = 0;
-
+  uint32_t se_run_count = 0;
   {
-    auto se1 = ScopeExit([&se_run_count] { se_run_count++; });
+    auto se1 = ScopeExit([&se_run_count] { ++se_run_count; });
     ASSERT_EQ(se_run_count, 0);
     auto se2(std::move(se1));
     ASSERT_EQ(se_run_count, 0);
@@ -53,7 +52,7 @@ TEST(ScopeExitTest, TestCancel) {
   bool se_ran = false;
 
   {
-    auto se = ScopeExit([&se_ran] { se_ran = true; });
+    CancelableScopeExit se([&se_ran] { se_ran = true; });
     ASSERT_FALSE(se_ran);
     se.Cancel();
   }
@@ -62,7 +61,7 @@ TEST(ScopeExitTest, TestCancel) {
 
   // Move before cancel.
   {
-    auto se1 = ScopeExit([&se_ran] { se_ran = true; });
+    CancelableScopeExit se1([&se_ran] { se_ran = true; });
     ASSERT_FALSE(se_ran);
     auto se2(std::move(se1));
     ASSERT_FALSE(se_ran);
@@ -73,7 +72,7 @@ TEST(ScopeExitTest, TestCancel) {
 
   // Cancel before move.
   {
-    auto se1 = ScopeExit([&se_ran] { se_ran = true; });
+    CancelableScopeExit se1([&se_ran] { se_ran = true; });
     ASSERT_FALSE(se_ran);
     se1.Cancel();
     ASSERT_FALSE(se_ran);
@@ -83,10 +82,10 @@ TEST(ScopeExitTest, TestCancel) {
   ASSERT_FALSE(se_ran);
 
   // Ensure cancel releases resources.
-  std::shared_ptr<int> count = std::make_shared<int>(0);
+  auto count = std::make_shared<int>(0);
   ASSERT_EQ(count.use_count(), 1);
   {
-    auto se1 = ScopeExit([count] {});
+    CancelableScopeExit se1([count] {});
     ASSERT_EQ(count.use_count(), 2);
     se1.Cancel();
     ASSERT_EQ(count.use_count(), 1);
@@ -97,4 +96,4 @@ TEST(ScopeExitTest, TestCancel) {
   ASSERT_EQ(count.use_count(), 1);
 }
 
-}  // namespace yb::util
+} // namespace yb::util

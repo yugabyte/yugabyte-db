@@ -1899,7 +1899,6 @@ SearchSysCacheLocked1(int cacheId,
 
 	if (!YBIsPgLockingEnabled())
 	{
-		/* Locking is handled separately by YugaByte. */
 		return SearchSysCache1(cacheId, key1);
 	}
 

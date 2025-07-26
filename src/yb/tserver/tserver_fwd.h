@@ -42,6 +42,7 @@ class MetricsSnapshotter;
 class PgClientServiceMockImpl;
 class PgMutationCounter;
 class PgTableCache;
+class PgTablesQueryResult;
 class PgResponseCache;
 class PgSequenceCache;
 class PgSharedMemoryPool;
@@ -49,7 +50,6 @@ class SharedExchange;
 class SharedMemoryManager;
 class SharedMemorySegmentHandle;
 class TSLocalLockManager;
-using TSLocalLockManagerPtr = std::shared_ptr<TSLocalLockManager>;
 class TSTabletManager;
 class TableMutationCountSender;
 class TabletPeerLookupIf;
@@ -68,6 +68,7 @@ enum class TabletServerServiceRpcMethodIndexes;
 
 YB_STRONGLY_TYPED_BOOL(AllowSplitTablet);
 
+using TSLocalLockManagerPtr = std::shared_ptr<TSLocalLockManager>;
 using TransactionPoolProvider = std::function<client::TransactionPool&()>;
 
 template <typename, typename = std::void_t<>>

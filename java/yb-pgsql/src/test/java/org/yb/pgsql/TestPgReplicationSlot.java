@@ -83,6 +83,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     flagMap.put(
         "cdcsdk_publication_list_refresh_interval_secs","" + kPublicationRefreshIntervalSec);
     flagMap.put("cdc_send_null_before_image_if_not_exists", "true");
+    flagMap.put("TEST_dcheck_for_missing_schema_packing", "false");
     return flagMap;
   }
 
@@ -116,8 +117,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void replicationConnectionCreateDrop() throws Exception {
-    markClusterNeedsRecreation();
-
     String[] wal_levels = {"minimal", "replica", "logical"};
     for (String wal_level : wal_levels) {
       LOG.info("Testing replicationConnectionCreateDrop with wal_level = {}", wal_level);
@@ -746,7 +745,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void testReplicationConnectionConsumptionWithCreateIndex() throws Exception {
-    markClusterNeedsRecreation();
     Map<String, String> tserverFlags = super.getTServerFlags();
     tserverFlags.put("ysql_yb_wait_for_backends_catalog_version_timeout", "10000");
     restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
@@ -1060,7 +1058,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void replicationConnectionConsumptionMultipleBatchesWithYboutput() throws Exception {
-    markClusterNeedsRecreation();
     Map<String, String> tserverFlags = super.getTServerFlags();
     // Set the batch size to a smaller value than the default of 500, so that the test is fast.
     tserverFlags.put("cdcsdk_max_consistent_records", "2");
@@ -1072,7 +1069,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void replicationConnectionConsumptionMultipleBatchesWithPgoutput() throws Exception {
-    markClusterNeedsRecreation();
     Map<String, String> tserverFlags = super.getTServerFlags();
     // Set the batch size to a smaller value than the default of 500, so that the test is fast.
     tserverFlags.put("cdcsdk_max_consistent_records", "2");
@@ -1324,7 +1320,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void consumptionOnSubsetOfColocatedTables() throws Exception {
-    markClusterNeedsRecreation();
     Map<String, String> tserverFlags = super.getTServerFlags();
     // Set the batch size to a smaller value than the default of 500, so that the
     // test is fast.
@@ -1426,7 +1421,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void replicationConnectionConsumptionDisabled() throws Exception {
-    markClusterNeedsRecreation();
     Map<String, String> tserverFlags = super.getTServerFlags();
     tserverFlags.put("ysql_yb_enable_replication_slot_consumption", "false");
     restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
@@ -2034,7 +2028,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void testWalsenderGracefulShutdownWithCDCServiceError() throws Exception {
-    markClusterNeedsRecreation();
     Map<String, String> tserverFlags = super.getTServerFlags();
     tserverFlags.put("TEST_cdc_force_destroy_virtual_wal_failure", "true");
     restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
@@ -3473,7 +3466,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void testConsumptionOnSubsetOfTabletsFromMultipleSlots() throws Exception {
-    markClusterNeedsRecreation();
     Map<String, String> tserverFlags = super.getTServerFlags();
     tserverFlags.put(
             "allowed_preview_flags_csv", "ysql_yb_enable_consistent_replication_from_hash_range");
@@ -3589,7 +3581,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void testOutOfBoundHashRangeWithSlot() throws Exception {
-    markClusterNeedsRecreation();
     Map<String, String> tserverFlags = super.getTServerFlags();
     tserverFlags.put(
             "allowed_preview_flags_csv", "ysql_yb_enable_consistent_replication_from_hash_range");
@@ -3630,7 +3621,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void testNonNumericHashRangeWithSlot() throws Exception {
-    markClusterNeedsRecreation();
     Map<String, String> tserverFlags = super.getTServerFlags();
     tserverFlags.put(
             "allowed_preview_flags_csv", "ysql_yb_enable_consistent_replication_from_hash_range");
@@ -3895,7 +3885,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void testWalStatusLost() throws Exception {
-    markClusterNeedsRecreation();
     Map<String, String> tserverFlags = super.getTServerFlags();
     tserverFlags.put("cdc_intent_retention_ms", "0");
     restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
@@ -3922,6 +3911,167 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       assertTrue(res1.next());
       String status = res1.getString("wal_status");
       assertEquals("lost", status);
+    }
+    conn.close();
+  }
+
+  @Test
+  public void testPgStatReplicationSlots() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE xyz (id int primary key)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+    String slotName = "test_logical_replication_slot";
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    Connection conn1 = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+
+    createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
+
+    PGReplicationStream stream = replConnection.replicationStream()
+        .logical()
+        .withSlotName(slotName)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .withSlotOption("proto_version", 1)
+        .withSlotOption("publication_names", "pub")
+        .start();
+    try (Statement stmt = conn1.createStatement()) {
+      stmt.execute("INSERT INTO xyz (id) SELECT generate_series(1,40000)");
+    }
+    List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
+    result.addAll(receiveMessage(stream, 40002));
+    try (Statement stmt = conn1.createStatement()) {
+      ResultSet r1 = stmt.executeQuery(String.format("SELECT * FROM pg_stat_replication_slots"));
+      assertTrue(r1.next());
+      long spill_txns = r1.getLong("spill_txns");
+      long spill_count = r1.getLong("spill_count");
+      long spill_bytes = r1.getLong("spill_bytes");
+      long total_txns = r1.getLong("total_txns");
+      long total_bytes = r1.getLong("total_bytes");
+
+      assertEquals(1, spill_txns);
+      assertEquals(2, spill_count); // ceil(spill_bytes/yb_reorderbuffer_max_changes_in_memory)
+      assertEquals(5920000, spill_bytes); // 148*40000
+      assertEquals(1, total_txns);
+      assertEquals(5920000, total_bytes);
+
+      stmt.execute("INSERT INTO xyz values (40001)");
+      Thread.sleep(kPublicationRefreshIntervalSec * 2 * 1000);
+      result.addAll(receiveMessage(stream, 3));
+      r1 = stmt.executeQuery(String.format("SELECT * FROM pg_stat_replication_slots"));
+      assertTrue(r1.next());
+      spill_txns = r1.getLong("spill_txns");
+      spill_count = r1.getLong("spill_count");
+      spill_bytes = r1.getLong("spill_bytes");
+      total_txns = r1.getLong("total_txns");
+      total_bytes = r1.getLong("total_bytes");
+      assertEquals(1, spill_txns);
+      assertEquals(2, spill_count);
+      assertEquals(5920000, spill_bytes);
+      assertEquals(2, total_txns);
+      assertEquals(5920148, total_bytes);
+
+      // Reset the stat values
+      stmt.executeQuery(String.format("SELECT pg_stat_reset_replication_slot(NULL)"));
+      Thread.sleep(kPublicationRefreshIntervalSec * 2 * 1000);
+
+      ResultSet r2 = stmt.executeQuery(String.format("SELECT * FROM pg_stat_replication_slots"));
+      assertTrue(r2.next());
+      spill_txns = r2.getLong("spill_txns");
+      spill_count = r2.getLong("spill_count");
+      spill_bytes = r2.getLong("spill_bytes");
+      total_txns = r2.getLong("total_txns");
+      total_bytes = r2.getLong("total_bytes");
+      assertEquals(0, spill_txns);
+      assertEquals(0, spill_count);
+      assertEquals(0, spill_bytes);
+      assertEquals(0, total_txns);
+      assertEquals(0, total_bytes);
+    }
+    stream.close();
+    conn1.close();
+    conn.close();
+  }
+
+  @Test
+  public void testPgStatReplicationSlotsWithMultipleSlots() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE xyz (id int primary key)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    String slotName1 = "test_logical_replication_slot_1";
+    String slotName2 = "test_logical_replication_slot_2";
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    Connection conn1 = getConnectionBuilder().withTServer(0).replicationConnect();
+    Connection conn2 = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection1 = conn1.unwrap(PGConnection.class).getReplicationAPI();
+
+    createSlot(replConnection1, slotName1, YB_OUTPUT_PLUGIN_NAME);
+
+    PGReplicationStream stream1 = replConnection1.replicationStream()
+        .logical()
+        .withSlotName(slotName1)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .withSlotOption("proto_version", 1)
+        .withSlotOption("publication_names", "pub")
+        .start();
+    try (Statement stmt = conn.createStatement()) {
+      stmt.execute("INSERT INTO xyz (id) SELECT generate_series(1,40000)");
+    }
+    Thread.sleep(kPublicationRefreshIntervalSec * 2 * 1000);
+    List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
+    result.addAll(receiveMessage(stream1, 40002));
+
+    PGReplicationConnection replConnection2 = conn2.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection2, slotName2, YB_OUTPUT_PLUGIN_NAME);
+
+    PGReplicationStream stream2 = replConnection2.replicationStream()
+        .logical()
+        .withSlotName(slotName2)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .withSlotOption("proto_version", 1)
+        .withSlotOption("publication_names", "pub")
+        .start();
+    try (Statement stmt = conn.createStatement()) {
+      stmt.execute("INSERT INTO xyz (id) SELECT generate_series(40001,80000)");
+    }
+    Thread.sleep(kPublicationRefreshIntervalSec * 2 * 1000);
+    result.addAll(receiveMessage(stream1, 40002));
+    result.addAll(receiveMessage(stream2, 40002));
+
+    try (Statement stmt = conn.createStatement()) {
+      ResultSet r1 = stmt.executeQuery(
+        String.format("SELECT * FROM pg_stat_replication_slots WHERE slot_name='%s'", slotName1)
+      );
+      assertTrue(r1.next());
+      long spill_txns = r1.getLong("spill_txns");
+      long spill_count = r1.getLong("spill_count");
+      long spill_bytes = r1.getLong("spill_bytes");
+      long total_txns = r1.getLong("total_txns");
+      long total_bytes = r1.getLong("total_bytes");
+
+      assertEquals(2, spill_txns);
+      assertEquals(4, spill_count);
+      assertEquals(11840000, spill_bytes);
+      assertEquals(2, total_txns);
+      assertEquals(11840000, total_bytes);
+
+      ResultSet r2 = stmt.executeQuery(
+        String.format("SELECT * FROM pg_stat_replication_slots WHERE slot_name='%s'", slotName2)
+      );
+      assertTrue(r2.next());
+      spill_txns = r2.getLong("spill_txns");
+      spill_count = r2.getLong("spill_count");
+      spill_bytes = r2.getLong("spill_bytes");
+      total_txns = r2.getLong("total_txns");
+      total_bytes = r2.getLong("total_bytes");
+
+      assertEquals(1, spill_txns);
+      assertEquals(2, spill_count);
+      assertEquals(5920000, spill_bytes);
+      assertEquals(1, total_txns);
+      assertEquals(5920000, total_bytes);
     }
     conn.close();
   }

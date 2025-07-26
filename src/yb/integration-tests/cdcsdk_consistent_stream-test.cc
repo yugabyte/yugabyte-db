@@ -569,8 +569,8 @@ TEST_F(CDCSDKConsistentStreamTest,
       0,
       0,
       0,
-      8 * num_batches + 4 * num_batches * inserts_per_batch,
-      8 * num_batches + 4 * num_batches * inserts_per_batch,
+      4 * num_batches + 2 * num_batches * inserts_per_batch,
+      4 * num_batches + 2 * num_batches * inserts_per_batch,
   };
   int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
 
@@ -585,7 +585,7 @@ TEST_F(CDCSDKConsistentStreamTest,
   for (int i = 0; i < 8; i++) {
     ASSERT_EQ(expected_count[i], count[i]);
   }
-  ASSERT_EQ(30802, get_changes_resp.records.size());
+  ASSERT_EQ(20402, get_changes_resp.records.size());
 }
 
 void CDCSDKConsistentStreamTest::TestCDCSDKConsistentStreamWithTabletSplit(
@@ -1082,7 +1082,7 @@ TEST_F(CDCSDKYsqlTest, TestConsistentSnapshotWithCDCSDKConsistentStream) {
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, COMMIT in
   // that order.
   const int expected_count[] = {
-      0,
+      FLAGS_ysql_enable_packed_row ? 1 : 0,
       2 * num_batches * inserts_per_batch,
       0,
       0,
@@ -1104,7 +1104,7 @@ TEST_F(CDCSDKYsqlTest, TestConsistentSnapshotWithCDCSDKConsistentStream) {
   for (int i = 0; i < 8; i++) {
     ASSERT_EQ(expected_count[i], count[i]);
   }
-  ASSERT_EQ(2020, get_changes_resp.records.size());
+  ASSERT_EQ(FLAGS_ysql_enable_packed_row ? 2021 : 2020, get_changes_resp.records.size());
 }
 
 TEST_F(CDCSDKConsistentStreamTest, TestReadingOfWALSegmentBySegment) {
@@ -1232,6 +1232,9 @@ TEST_F(CDCSDKConsistentStreamTest, TestGetChangesDuringLoadTxn) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
 
   auto tablet = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
+  auto tablet_peer =
+      ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablet.begin()->tablet_id()));
+
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
 
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
@@ -1259,6 +1262,13 @@ TEST_F(CDCSDKConsistentStreamTest, TestGetChangesDuringLoadTxn) {
   ASSERT_EQ(get_change_resp.cdc_sdk_proto_records_size(), 5);
 
   ASSERT_OK(conn.Execute("COMMIT"));
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto tablet_safe = VERIFY_RESULT(tablet_peer->shared_tablet());
+        return tablet_safe->GetMinStartHTRunningTxnsForCDCProducer() == HybridTime::kMax;
+      },
+      MonoDelta::FromSeconds(60), "Timed out waiting for the commit of running txn."));
 
   // Now that there are no running transactions we can ship all the records from all the
   // transactions.

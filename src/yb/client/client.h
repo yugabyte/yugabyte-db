@@ -404,7 +404,7 @@ class YBClient {
   Status GetYBTableInfo(const YBTableName& table_name, std::shared_ptr<YBTableInfo> info,
                         StatusCallback callback);
   Result<YBTableInfo> GetYBTableInfo(const YBTableName& table_name);
-  Result<YBTableInfo> GetYBTableInfoById(const TableId& table_id);
+  Result<YBTableInfo> GetYBTableInfoById(const TableId& table_id, bool include_hidden);
 
   Status GetTableSchemaById(const TableId& table_id, std::shared_ptr<YBTableInfo> info,
                             StatusCallback callback);
@@ -498,9 +498,8 @@ class YBClient {
   // For Postgres: reserve oids for a Postgres database.
   // use_secondary_space is used by xCluster when a database is a target.
   Status ReservePgsqlOids(
-      const std::string& namespace_id, uint32_t next_oid, uint32_t count, uint32_t* begin_oid,
-      uint32_t* end_oid, bool use_secondary_space,
-      uint32_t* oid_cache_invalidations_count = nullptr);
+      const std::string& namespace_id, uint32_t next_oid, uint32_t count, bool use_secondary_space,
+      uint32_t* begin_oid, uint32_t* end_oid, uint32_t* oid_cache_invalidations_count = nullptr);
 
   Status GetYsqlCatalogMasterVersion(uint64_t *ysql_catalog_version);
 
@@ -673,10 +672,10 @@ class YBClient {
 
   void AcquireObjectLocksGlobalAsync(
       const master::AcquireObjectLocksGlobalRequestPB& request, StdStatusCallback callback,
-      MonoDelta rpc_timeout);
+      CoarseTimePoint deadline, std::function<Status()>&& should_retry);
   void ReleaseObjectLocksGlobalAsync(
       const master::ReleaseObjectLocksGlobalRequestPB& request, StdStatusCallback callback,
-      MonoDelta rpc_timeout);
+      CoarseTimePoint deadline);
 
   // Update a CDC stream's options.
   Status UpdateCDCStream(

@@ -36,11 +36,11 @@ typedef enum
 /*
  * YB: The type of ordering mode to use in create replication slot command.
  */
- typedef enum
- {
-	 YB_CRS_ROW,
-	 YB_CRS_TRANSACTION
- } YbCRSOrderingMode;
+typedef enum
+{
+	YB_CRS_ROW,
+	YB_CRS_TRANSACTION
+} YbCRSOrderingMode;
 
 /* global state */
 extern PGDLLIMPORT bool am_walsender;

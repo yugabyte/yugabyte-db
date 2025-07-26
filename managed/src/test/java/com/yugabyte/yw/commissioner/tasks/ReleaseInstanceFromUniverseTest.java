@@ -113,7 +113,7 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockChangeConfigResponse);
     } catch (Exception e) {
     }
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(new ShellResponse());
     when(mockNodeManager.nodeCommand(any(), any()))
         .then(
@@ -160,6 +160,7 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
           TaskType.SetNodeState,
           TaskType.CheckNodeSafeToDelete,
           TaskType.AnsibleDestroyServer,
+          TaskType.MarkUniverseForHealthScriptReUpload,
           TaskType.ModifyBlackList,
           TaskType.SwamperTargetsFileUpdate,
           TaskType.SetNodeState,
@@ -171,6 +172,7 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "BeingDecommissioned")),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),

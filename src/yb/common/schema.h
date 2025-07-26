@@ -701,7 +701,7 @@ class Schema : public MissingValueProvider {
     return &table_properties_;
   }
 
-  void SetDefaultTimeToLive(const uint64_t& ttl_msec) {
+  void SetDefaultTimeToLive(uint64_t ttl_msec) {
     table_properties_.SetDefaultTimeToLive(ttl_msec);
   }
 

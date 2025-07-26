@@ -688,15 +688,15 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <grpopt>	OptTableGroup
 %type <ival>	Oid opt_yb_hash opt_yb_index_sort_order yb_hash
 				yb_opt_concurrently_index
-%type <list>	oid_list yb_index_expr_list_hash_elems yb_split_point
-				yb_split_points
+%type <list>	oid_list yb_hash_index_expr_list yb_hash_index_expr_with_alias
+				yb_index_expr_list_hash_elems yb_split_point yb_split_points
 %type <node>	YbBackfillIndexStmt YbCreateTableGroupStmt YbCreateProfileStmt
 				YbDropProfileStmt
 %type <rolespec> OptTableGroupOwner
 %type <rowbounds> YbRowBounds
 %type <splitopt> SplitClause YbOptSplit
 %type <str>		OptTableSpaceLocation opt_for_bfinstr partition_key row_key
-				read_time row_key_end row_key_start
+				read_time row_key_end row_key_start yb_opt_alias
 
 
 /*
@@ -1043,8 +1043,8 @@ stmt:
 			| AlterEnumStmt
 			| AlterExtensionStmt { parser_ybc_beta_feature(@1, "extension", true); }
 			| AlterExtensionContentsStmt { parser_ybc_beta_feature(@1, "extension", true); }
-			| AlterFdwStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
-			| AlterForeignServerStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
+			| AlterFdwStmt
+			| AlterForeignServerStmt
 			| AlterFunctionStmt
 			| AlterGroupStmt
 			| AlterObjectDependsStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -1065,7 +1065,7 @@ stmt:
 			| AlterStatsStmt
 			| AlterTSConfigurationStmt { parser_ybc_beta_feature(@1, "alter text search configuration", false); }
 			| AlterTSDictionaryStmt { parser_ybc_not_support(@1, "This statement"); }
-			| AlterUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
+			| AlterUserMappingStmt
 			| AnalyzeStmt
 			| CallStmt
 			| CheckPointStmt { parser_ybc_beta_feature(@1, "checkpoint", false); }
@@ -1081,9 +1081,9 @@ stmt:
 			| CreateConversionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateDomainStmt
 			| CreateExtensionStmt
-			| CreateFdwStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
-			| CreateForeignServerStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
-			| CreateForeignTableStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
+			| CreateFdwStmt
+			| CreateForeignServerStmt
+			| CreateForeignTableStmt
 			| CreateFunctionStmt
 			| CreateGroupStmt
 			| CreateMatViewStmt
@@ -1104,7 +1104,7 @@ stmt:
 			| CreateEventTrigStmt
 			| CreateRoleStmt
 			| CreateUserStmt
-			| CreateUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
+			| CreateUserMappingStmt
 			| CreatedbStmt
 			| DeallocateStmt
 			| DeclareCursorStmt
@@ -1121,7 +1121,7 @@ stmt:
 			| DropTableSpaceStmt
 			| DropTransformStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropRoleStmt
-			| DropUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
+			| DropUserMappingStmt
 			| DropdbStmt
 			| ExecuteStmt
 			| ExplainStmt
@@ -2916,10 +2916,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> INHERIT <parent> */
 			| INHERIT qualified_name
 				{
-					if (!*YBCGetGFlags()->ysql_enable_inheritance)
-					{
-						parser_ybc_signal_unsupported(@1, "ALTER action INHERIT", 1124);
-					}
 					parser_ybc_beta_feature(@1, "inheritance", false);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
@@ -2930,10 +2926,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> NO INHERIT <parent> */
 			| NO INHERIT qualified_name
 				{
-					if (!*YBCGetGFlags()->ysql_enable_inheritance)
-					{
-						parser_ybc_signal_unsupported(@1, "ALTER action NO INHERIT", 1124);
-					}
 					parser_ybc_beta_feature(@1, "inheritance", false);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
@@ -3049,7 +3041,6 @@ alter_table_cmd:
 				}
 			| alter_generic_options
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER action OPTIONS", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
 					n->subtype = AT_GenericOptions;
@@ -4554,10 +4545,6 @@ ConstraintElem:
 
 opt_no_inherit:	NO INHERIT
 				{
-					if (!*YBCGetGFlags()->ysql_enable_inheritance)
-					{
-						parser_ybc_signal_unsupported(@1, "NO INHERIT", 1129);
-					}
 					parser_ybc_beta_feature(@1, "inheritance", false);
 					$$ = true;
 				}
@@ -4742,10 +4729,6 @@ key_action:
 
 OptInherit: INHERITS '(' qualified_name_list ')'
 				{
-					if (!*YBCGetGFlags()->ysql_enable_inheritance)
-					{
-						parser_ybc_signal_unsupported(@1, "INHERITS", 1129);
-					}
 					parser_ybc_beta_feature(@1, "inheritance", false);
 					$$ = $3;
 				}
@@ -8637,6 +8620,18 @@ access_method_clause:
 			| /*EMPTY*/								{ $$ = IsYugaByteEnabled() ? NULL : DEFAULT_INDEX_TYPE;	}
 		;
 
+yb_opt_alias:
+			AS ColId
+				{
+					if (!IsBinaryUpgrade)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("syntax error at or near \"AS\"")));
+					$$ = $2;
+				}
+			| /* empty */								{ $$ = NULL; }
+		;
+
 yb_index_params: index_elem
 				{
 					$$ = list_make1($1);
@@ -8675,24 +8670,24 @@ yb_index_params: index_elem
 
 
 index_elem_options:
-	opt_collate opt_class opt_yb_index_sort_order opt_nulls_order
+	opt_collate opt_class opt_yb_index_sort_order opt_nulls_order yb_opt_alias
 		{
 			$$ = makeNode(IndexElem);
 			$$->name = NULL;
 			$$->expr = NULL;
-			$$->indexcolname = NULL;
+			$$->indexcolname = $5;
 			$$->collation = $1;
 			$$->opclass = $2;
 			$$->opclassopts = NIL;
 			$$->ordering = $3;
 			$$->nulls_ordering = $4;
 		}
-	| opt_collate any_name reloptions opt_yb_index_sort_order opt_nulls_order
+	| opt_collate any_name reloptions opt_yb_index_sort_order opt_nulls_order yb_opt_alias
 		{
 			$$ = makeNode(IndexElem);
 			$$->name = NULL;
 			$$->expr = NULL;
-			$$->indexcolname = NULL;
+			$$->indexcolname = $6;
 			$$->collation = $1;
 			$$->opclass = $2;
 			$$->opclassopts = $3;
@@ -8736,14 +8731,46 @@ opt_yb_hash: yb_hash		{ $$ = $1; }
 			 | /* EMPTY */	{ $$ = SORTBY_HASH; }
 		;
 
-yb_index_expr_list_hash_elems: '(' expr_list ')' opt_yb_hash
+yb_hash_index_expr_with_alias:
+			a_expr AS ColId
+				{
+					if (!IsBinaryUpgrade)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("syntax error at or near \"AS\"")));
+					$$ = list_make2($1, makeString($3));
+				}
+			| a_expr %prec EXPR_LIST
+				{
+					$$ = list_make2($1, NULL);
+				}
+		;
+
+
+yb_hash_index_expr_list:
+			yb_hash_index_expr_with_alias
+				{
+					$$ = list_make1($1);
+				}
+			| yb_hash_index_expr_list ',' yb_hash_index_expr_with_alias
+
+				{
+					$$ = lappend($1, $3);
+				}
+		;
+
+
+yb_index_expr_list_hash_elems: '(' yb_hash_index_expr_list ')' opt_yb_hash
 				{
 					$$ = NULL;
 					ListCell *lc;
 					foreach (lc, $2)
 					{
 							IndexElem *index_elem = makeNode(IndexElem);
-							Node *node = lfirst(lc);
+							List *pair = (List *) lfirst(lc);
+							Node *node = (Node *) linitial(pair);
+							char *alias = lsecond(pair) != NULL ?
+								strVal(lsecond(pair)) : NULL;
 							if (node->type == T_ColumnRef) {
 									index_elem->name = strVal(linitial(((ColumnRef *)node)->fields));
 									index_elem->expr = NULL;
@@ -8751,7 +8778,7 @@ yb_index_expr_list_hash_elems: '(' expr_list ')' opt_yb_hash
 									index_elem->name = NULL;
 									index_elem->expr = copyObject(node);
 							}
-							index_elem->indexcolname = NULL;
+							index_elem->indexcolname = alias;
 							index_elem->collation = NIL;
 							index_elem->opclass = NIL;
 							index_elem->ordering = $4;
@@ -13090,7 +13117,7 @@ LockStmt:	LOCK_P opt_table relation_expr_list opt_lock opt_nowait
 opt_lock:	IN_P lock_type MODE				{ $$ = $2; }
 			| /*EMPTY*/
 				{
-					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+					if (!*YBCGetGFlags()->enable_object_locking_for_table_locks)
 						parser_ybc_not_support(@0, "ACCESS EXCLUSIVE lock mode");
 			    	$$ = AccessExclusiveLock;
 				}
@@ -13099,43 +13126,43 @@ opt_lock:	IN_P lock_type MODE				{ $$ = $2; }
 lock_type:	ACCESS SHARE					{ $$ = AccessShareLock; }
 			| ROW SHARE
 				{
-					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+					if (!*YBCGetGFlags()->enable_object_locking_for_table_locks)
 						parser_ybc_not_support(@1, "ROW SHARE");
 			    	$$ = RowShareLock;
 				}
 			| ROW EXCLUSIVE
 				{
-					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+					if (!*YBCGetGFlags()->enable_object_locking_for_table_locks)
 						parser_ybc_not_support(@1, "ROW EXCLUSIVE");
 			    	$$ = RowExclusiveLock;
 				}
 			| SHARE UPDATE EXCLUSIVE
 				{
-					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+					if (!*YBCGetGFlags()->enable_object_locking_for_table_locks)
 						parser_ybc_not_support(@1, "SHARE UPDATE EXCLUSIVE");
 			    	$$ = ShareUpdateExclusiveLock;
 				}
 			| SHARE
 				{
-					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+					if (!*YBCGetGFlags()->enable_object_locking_for_table_locks)
 						parser_ybc_not_support(@1, "SHARE");
 			    	$$ = ShareLock;
 				}
 			| SHARE ROW EXCLUSIVE
 				{
-					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+					if (!*YBCGetGFlags()->enable_object_locking_for_table_locks)
 						parser_ybc_not_support(@1, "SHARE ROW EXCLUSIVE");
 			    	$$ = ShareRowExclusiveLock;
 				}
 			| EXCLUSIVE
 				{
-					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+					if (!*YBCGetGFlags()->enable_object_locking_for_table_locks)
 						parser_ybc_not_support(@1, "EXCLUSIVE");
 			    	$$ = ExclusiveLock;
 				}
 			| ACCESS EXCLUSIVE
 				{
-					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+					if (!*YBCGetGFlags()->enable_object_locking_for_table_locks)
 						parser_ybc_not_support(@1, "ACCESS EXCLUSIVE");
 			    	$$ = AccessExclusiveLock;
 				}

@@ -243,22 +243,23 @@ DEFINE_RUNTIME_uint64(cdc_intent_retention_ms, 8 * 3600 * 1000,
     "Interval up to which CDC consumer's checkpoint is considered for retaining intents."
     "If we haven't received an updated checkpoint from CDC consumer within the interval "
     "specified by cdc_checkpoint_opid_interval, then CDC does not consider that "
-    "consumer while determining which op IDs to delete from the intent.");
+    "consumer while determining which op IDs to delete from the intent. NOTE: Must be no larger "
+    "than cdc_wal_retention_time_secs * 1000.");
 TAG_FLAG(cdc_intent_retention_ms, advanced);
 
 DEFINE_RUNTIME_uint32(cdc_wal_retention_time_secs, 8 * 3600,
     "WAL retention time in seconds to be used for tables which have a xCluster, "
-    "or CDCSDK outbound stream.");
+    "or CDCSDK outbound stream. NOTE: Must be at least cdc_intent_retention_ms (in seconds).");
 
 DEFINE_validator(cdc_intent_retention_ms,
     FLAG_DELAYED_COND_VALIDATOR(
         _value <= static_cast<uint64_t>(FLAGS_cdc_wal_retention_time_secs) * 1000,
-        "Must be less than cdc_wal_retention_time_secs * 1000"));
+        "Must be no larger than cdc_wal_retention_time_secs * 1000"));
 
 DEFINE_validator(cdc_wal_retention_time_secs,
     FLAG_DELAYED_COND_VALIDATOR(
         FLAGS_cdc_intent_retention_ms <= static_cast<uint64_t>(_value) * 1000,
-        "Must be greater than cdc_intent_retention_ms (in seconds)"));
+        "Must be at least cdc_intent_retention_ms (in seconds)"));
 
 DEFINE_RUNTIME_bool(enable_xcluster_timed_based_wal_retention, true,
     "If true, enable time-based WAL retention for tables with xCluster "
@@ -919,7 +920,7 @@ Status Log::AsyncAppend(
   return Status::OK();
 }
 
-Status Log::AsyncAppendReplicates(const ReplicateMsgs& msgs, const yb::OpId& committed_op_id,
+Status Log::AsyncAppendReplicates(const ReplicateMsgs& msgs, const OpId& committed_op_id,
                                   RestartSafeCoarseTimePoint batch_mono_time,
                                   const StatusCallback& callback) {
   auto batch = CreateBatchFromAllocatedOperations(msgs);
@@ -1527,7 +1528,7 @@ uint32_t Log::wal_retention_secs() const {
       wal_retention_secs;
 }
 
-yb::OpId Log::GetLatestEntryOpId() const {
+OpId Log::GetLatestEntryOpId() const {
   return last_synced_entry_op_id_.load(boost::memory_order_acquire);
 }
 
@@ -1535,7 +1536,7 @@ int64_t Log::GetMinReplicateIndex() const {
   return min_replicate_index_.load(std::memory_order_acquire);
 }
 
-yb::OpId Log::WaitForSafeOpIdToApply(const yb::OpId& min_allowed, MonoDelta duration) {
+OpId Log::WaitForSafeOpIdToApply(const OpId& min_allowed, MonoDelta duration) {
   if (FLAGS_TEST_log_consider_all_ops_safe || all_op_ids_safe_) {
     return min_allowed;
   }
@@ -1556,12 +1557,12 @@ yb::OpId Log::WaitForSafeOpIdToApply(const yb::OpId& min_allowed, MonoDelta dura
         break;
       }
       if (duration) {
-        return yb::OpId();
+        return OpId();
       }
       // TODO(bogdan): If the log is closed at this point, consider refactoring to return status
       // and fail cleanly.
-      LOG_WITH_PREFIX(ERROR) << "Appender stack: " << appender_->GetRunThreadStack();
       LOG_WITH_PREFIX(DFATAL)
+          << "Appender stack: " << appender_->GetRunThreadStack() << "\n"
           << "Long wait for safe op id: " << min_allowed
           << ", current: " << GetLatestEntryOpId()
           << ", last appended: " << last_appended_entry_op_id_
@@ -2245,8 +2246,8 @@ bool Log::HasSufficientDiskSpaceForWrite() {
   const auto free_space_mb = *free_space_result / 1024 / 1024;
 
   if (free_space_mb < min_allowed_disk_space_mb) {
-    YB_LOG_EVERY_N_SECS(ERROR, 600) << "Not enough disk space available on " << path
-                                    << ". Free space: " << *free_space_result << " bytes";
+    YB_LOG_EVERY_N_SECS(WARNING, 600) << "Not enough disk space available on " << path
+                                      << ". Free space: " << *free_space_result << " bytes";
     has_space = false;
   } else if (free_space_mb < min_space_to_trigger_aggressive_check_mb) {
     YB_LOG_EVERY_N_SECS(WARNING, 600)

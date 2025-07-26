@@ -1422,6 +1422,43 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   }
 
   @Test
+  public void testK8sRF5GeoPartitioned() {
+    String customerCode = String.valueOf(customerIdx.nextInt(99999));
+    Customer k8sCustomer =
+        ModelFactory.testCustomer(customerCode, String.format("Test Customer %s", customerCode));
+    Provider k8sProvider = ModelFactory.newProvider(k8sCustomer, CloudType.kubernetes);
+    PlacementInfo pi = new PlacementInfo();
+    AtomicInteger zoneIdx = new AtomicInteger();
+    Consumer<Region> createAZ =
+        (region) -> {
+          int idx = zoneIdx.incrementAndGet();
+          AvailabilityZone az =
+              AvailabilityZone.createOrThrow(
+                  region, "PlacementAZ " + idx, "az-" + idx, "subnet-" + idx);
+          PlacementInfoUtil.addPlacementZone(az.getUuid(), pi);
+        };
+    Region r1 = Region.create(k8sProvider, "region-1", "Region 1", "yb-image-1");
+    createAZ.accept(r1);
+    createAZ.accept(r1);
+    createAZ.accept(r1);
+    Region r2 = Region.create(k8sProvider, "region-2", "Region 2", "yb-image-2");
+    createAZ.accept(r2);
+    createAZ.accept(r2);
+    createAZ.accept(r2);
+    Region r3 = Region.create(k8sProvider, "region-3", "Region 3", "yb-image-3");
+    createAZ.accept(r3);
+    createAZ.accept(r3);
+    createAZ.accept(r3);
+    assertEquals(9, pi.azStream().count());
+    int total = pi.azStream().mapToInt(az -> az.replicationFactor).sum();
+    assertEquals(9, total);
+    PlacementInfoUtil.selectNumMastersAZ(pi, 5);
+    assertEquals(9, pi.azStream().count());
+    int total2 = pi.azStream().mapToInt(az -> az.replicationFactor).sum();
+    assertEquals(5, total2);
+  }
+
+  @Test
   public void testK8sGetConfigPerAZ() {
     String customerCode = String.valueOf(customerIdx.nextInt(99999));
     Customer k8sCustomer =

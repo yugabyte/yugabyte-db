@@ -23,6 +23,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/yb_table_name.h"
+#include "yb/integration-tests/xcluster/xcluster_test_utils.h"
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 
 #include "yb/common/common.pb.h"
@@ -111,6 +112,7 @@ DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_uint32(cdc_wal_retention_time_secs);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_bool(TEST_enable_sync_points);
+DECLARE_bool(TEST_dcheck_for_missing_schema_packing);
 
 namespace yb {
 
@@ -122,8 +124,6 @@ using master::GetNamespaceInfoResponsePB;
 
 using pgwrapper::GetValue;
 using pgwrapper::PGConn;
-using pgwrapper::PGResultPtr;
-using pgwrapper::ToString;
 
 static const client::YBTableName producer_transaction_table_name(
     YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
@@ -136,7 +136,7 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
 
   void ValidateSimpleReplicationWithPackedRowsUpgrade(
       std::vector<uint32_t> consumer_tablet_counts, std::vector<uint32_t> producer_tablet_counts,
-      uint32_t num_tablet_servers = 1, bool range_partitioned = false);
+      bool use_transaction, uint32_t num_tablet_servers, bool range_partitioned);
 
   std::string GetCompleteTableName(const YBTableName& table) {
     // Append schema name before table name, if schema is available.
@@ -1151,7 +1151,7 @@ TEST_F(XClusterYsqlTest, SetupUniverseReplicationWithYbAdmin) {
 
 void XClusterYsqlTest::ValidateSimpleReplicationWithPackedRowsUpgrade(
     std::vector<uint32_t> consumer_tablet_counts, std::vector<uint32_t> producer_tablet_counts,
-    uint32_t num_tablet_servers, bool range_partitioned) {
+    bool use_transaction, uint32_t num_tablet_servers, bool range_partitioned) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
 
   constexpr auto kNumRecords = 1000;
@@ -1161,7 +1161,7 @@ void XClusterYsqlTest::ValidateSimpleReplicationWithPackedRowsUpgrade(
   // 1. Write some data.
   for (const auto& producer_table : producer_tables_) {
     LOG(INFO) << "Writing records for table " << producer_table->name().ToString();
-    ASSERT_OK(InsertRowsInProducer(0, kNumRecords, producer_table));
+    ASSERT_OK(InsertRowsInProducer(0, kNumRecords, producer_table, use_transaction));
   }
 
   // Verify data is written on the producer.
@@ -1194,7 +1194,7 @@ void XClusterYsqlTest::ValidateSimpleReplicationWithPackedRowsUpgrade(
 
   // 4. Write more data.
   for (const auto& producer_table : producer_tables_) {
-    ASSERT_OK(InsertRowsInProducer(kNumRecords, kNumRecords + 5, producer_table));
+    ASSERT_OK(InsertRowsInProducer(kNumRecords, kNumRecords + 5, producer_table, use_transaction));
   }
 
   // 5. Make sure this data is also replicated now.
@@ -1210,7 +1210,8 @@ void XClusterYsqlTest::ValidateSimpleReplicationWithPackedRowsUpgrade(
 
   // 6. Write packed data.
   for (const auto& producer_table : producer_tables_) {
-    ASSERT_OK(InsertRowsInProducer(kNumRecords + 5, kNumRecords + 10, producer_table));
+    ASSERT_OK(
+        InsertRowsInProducer(kNumRecords + 5, kNumRecords + 10, producer_table, use_transaction));
   }
 
   // 7. Disable packing and resume replication
@@ -1222,7 +1223,8 @@ void XClusterYsqlTest::ValidateSimpleReplicationWithPackedRowsUpgrade(
   // 8. Write some non-packed data on consumer.
   for (const auto& consumer_table : consumer_tables_) {
     ASSERT_OK(WriteWorkload(
-        kNumRecords + 10, kNumRecords + 15, &consumer_cluster_, consumer_table->name()));
+        kNumRecords + 10, kNumRecords + 15, &consumer_cluster_, consumer_table->name(),
+        /*delete_op=*/false, use_transaction));
   }
 
   // 9. Make sure full scan works now.
@@ -1241,7 +1243,8 @@ void XClusterYsqlTest::ValidateSimpleReplicationWithPackedRowsUpgrade(
 
   // 11. Write some packed rows on producer and verify that those can be read from consumer
   for (const auto& producer_table : producer_tables_) {
-    ASSERT_OK(InsertRowsInProducer(kNumRecords + 15, kNumRecords + 20, producer_table));
+    ASSERT_OK(
+        InsertRowsInProducer(kNumRecords + 15, kNumRecords + 20, producer_table, use_transaction));
   }
 
   // 12. Verify that all the data can be read now.
@@ -1253,27 +1256,46 @@ void XClusterYsqlTest::ValidateSimpleReplicationWithPackedRowsUpgrade(
   ASSERT_OK(data_replicated_correctly(kNumRecords + 20));
 }
 
-TEST_F(XClusterYsqlTest, SimpleReplication) {
-  ValidateSimpleReplicationWithPackedRowsUpgrade(
-      /* consumer_tablet_counts */ {1, 1}, /* producer_tablet_counts */ {1, 1});
-}
+struct XClusterYsqlSimpleReplicationTestParam {
+  bool use_transaction;
+  bool range_partitioned;
+  bool use_uneven_tablets;
+  XClusterYsqlSimpleReplicationTestParam(
+      bool use_transaction_, bool range_partitioned_, bool use_uneven_tablets_)
+      : use_transaction(use_transaction_),
+        range_partitioned(range_partitioned_),
+        use_uneven_tablets(use_uneven_tablets_) {}
+};
 
-TEST_F(XClusterYsqlTest, SimpleReplicationWithUnevenTabletCounts) {
-  ValidateSimpleReplicationWithPackedRowsUpgrade(
-      /* consumer_tablet_counts */ {5, 3}, /* producer_tablet_counts */ {3, 5},
-      /* num_tablet_servers */ 3);
-}
+class XClusterYsqlSimpleReplicationTest
+    : public XClusterYsqlTest,
+      public testing::WithParamInterface<XClusterYsqlSimpleReplicationTestParam> {};
 
-TEST_F(XClusterYsqlTest, SimpleReplicationWithRangedPartitions) {
-  ValidateSimpleReplicationWithPackedRowsUpgrade(
-      /* consumer_tablet_counts */ {1, 1}, /* producer_tablet_counts */ {1, 1},
-      /* num_tablet_servers */ 1, /* range_partitioned */ true);
-}
+INSTANTIATE_TEST_CASE_P(
+    , XClusterYsqlSimpleReplicationTest,
+    ::testing::Values(
+        XClusterYsqlSimpleReplicationTestParam(true, true, true),
+        XClusterYsqlSimpleReplicationTestParam(true, true, false),
+        XClusterYsqlSimpleReplicationTestParam(true, false, true),
+        XClusterYsqlSimpleReplicationTestParam(true, false, false),
+        XClusterYsqlSimpleReplicationTestParam(false, true, true),
+        XClusterYsqlSimpleReplicationTestParam(false, true, false),
+        XClusterYsqlSimpleReplicationTestParam(false, false, true),
+        XClusterYsqlSimpleReplicationTestParam(false, false, false)));
 
-TEST_F(XClusterYsqlTest, SimpleReplicationWithRangedPartitionsAndUnevenTabletCounts) {
+TEST_P(XClusterYsqlSimpleReplicationTest, Validate) {
+  uint32_t num_tablet_servers = 1;
+  std::vector<uint32_t> consumer_tablet_counts({1, 1}), producer_tablet_counts({1, 1});
+
+  if (GetParam().use_uneven_tablets) {
+    num_tablet_servers = 3;  // Use more than one TS to create uneven tablets.
+    consumer_tablet_counts = {5, 3};
+    producer_tablet_counts = {3, 5};
+  }
+
   ValidateSimpleReplicationWithPackedRowsUpgrade(
-      /* consumer_tablet_counts */ {5, 3}, /* producer_tablet_counts */ {3, 5},
-      /* num_tablet_servers */ 3, /* range_partitioned */ true);
+      consumer_tablet_counts, producer_tablet_counts, GetParam().use_transaction,
+      num_tablet_servers, GetParam().range_partitioned);
 }
 
 TEST_F(XClusterYsqlTest, ReplicationWithBasicDDL) {
@@ -2073,7 +2095,8 @@ TEST_F(XClusterYsqlTest, ValidateSchemaPackingGCDuringNetworkPartition) {
     }
   }
 
-  ASSERT_OK(VerifyWrittenRecords(producer_table_, consumer_table_));
+  // Skip checking column counts since consumer has an additional column.
+  ASSERT_OK(VerifyWrittenRecords(ExpectNoRecords::kFalse, CheckColumnCounts::kFalse));
 }
 
 void PrepareChangeRequest(
@@ -2183,6 +2206,7 @@ void XClusterYsqlTest::ValidateRecordsXClusterWithCDCSDK(
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   }
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_dcheck_for_missing_schema_packing) = false;
   ASSERT_OK(SetUpWithParams(tables_vector, tables_vector, 1));
 
   // 2. Setup replication.
@@ -2224,7 +2248,7 @@ void XClusterYsqlTest::ValidateRecordsXClusterWithCDCSDK(
   if (do_explict_transaction) {
     ASSERT_OK(InsertTransactionalBatchOnProducer(0, 10));
   } else {
-    ASSERT_OK(InsertRowsInProducer(0, 10));
+    ASSERT_OK(InsertRowsInProducer(0, 10, /*producer_table=*/nullptr, /*use_transaction=*/false));
   }
 
   // Verify data is written on the producer.
@@ -2274,7 +2298,9 @@ void XClusterYsqlTest::ValidateRecordsXClusterWithCDCSDK(
   if (do_explict_transaction) {
     ASSERT_OK(InsertTransactionalBatchOnProducer(batch_insert_count, batch_insert_count * 2));
   } else {
-    ASSERT_OK(InsertRowsInProducer(batch_insert_count, batch_insert_count * 2));
+    ASSERT_OK(InsertRowsInProducer(
+        batch_insert_count, batch_insert_count * 2, /*producer_table=*/nullptr,
+        /*use_transaction=*/false));
   }
   // Verify data is written on the producer, which should previous plus
   // current new insert.
@@ -2499,7 +2525,9 @@ TEST_P(XClusterPgSchemaNameTest, SetupSameNameDifferentSchemaUniverseReplication
   // Write different numbers of records to the 3 producers, and verify that the
   // corresponding receivers receive the records.
   for (int i = 0; i < kNumTables; i++) {
-    ASSERT_OK(WriteWorkload(0, 2 * (i + 1), &producer_cluster_, producer_table_names[i]));
+    ASSERT_OK(WriteWorkload(
+        0, 2 * (i + 1), &producer_cluster_, producer_table_names[i], /*delete_op=*/false,
+        /*use_transaction=*/false));
     ASSERT_OK(VerifyWrittenRecords(producer_table_names[i], consumer_table_names[i]));
   }
 
@@ -2620,7 +2648,8 @@ TEST_F_EX(XClusterYsqlTest, DmlOperationsBlockedOnStandbyCluster, XClusterYsqlTe
 
   for (auto& conn : consumer_conns) {
     auto namespace_name = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT current_database()"));
-    auto namespace_id = ASSERT_RESULT(GetNamespaceId(consumer_client(), namespace_name));
+    auto namespace_id =
+        ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*consumer_client(), namespace_name));
     ASSERT_OK(
         WaitForReadOnlyModeOnAllTServers(namespace_id, /*is_read_only=*/false, &consumer_cluster_));
   }
@@ -2663,7 +2692,7 @@ TEST_F(XClusterYsqlTest, TestTableRewriteOperations) {
   ASSERT_OK(SetUpWithParams({1}, {1}, 3, 1));
   constexpr auto kColumnName = "c1";
   const auto errstr =
-      "cannot rewrite a table that is a part of CDC or non-automatic mode XCluster replication";
+      "Cannot rewrite a table that is a part of non-automatic mode XCluster replication.";
   ASSERT_OK(SetupUniverseReplication(producer_tables_));
   for (int i = 0; i <= 1; ++i) {
     auto conn = i == 0 ? EXPECT_RESULT(producer_cluster_.ConnectToDB(namespace_name))
@@ -2759,7 +2788,7 @@ TEST_F(XClusterYsqlTest, InsertUpdateDeleteTransactionsWithUnevenTabletPartition
     ASSERT_OK(p_conn.ExecuteFormat(
         "DELETE FROM $0 WHERE $1 >= $2 AND $1 <= $3", table_name, kKeyColumnName, start, end));
     ASSERT_OK(p_conn.Execute("COMMIT"));
-    }
+  }
 
   ASSERT_OK(VerifyWrittenRecords(ExpectNoRecords::kTrue));
 }
@@ -3246,6 +3275,97 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, CreateDropTableAndIndexWithPI
 
   ASSERT_OK(InsertRowsInProducer(0, 10, producer_table_));
   ASSERT_OK(VerifyWrittenRecords());
+}
+
+// Test commands that trigger nonconcurrent backfills.
+// Want to ensure that these are disallowed since when these backfills run on the target, it will
+// produce duplicate rows.
+TEST_F(XClusterYsqlTest, NonconcurrentBackfills) {
+  const auto kNumTablets = 1;
+  ASSERT_OK(SetUpWithParams({kNumTablets}, {kNumTablets}, /* replication_factor */ 1));
+  ASSERT_OK(SetupUniverseReplication({producer_table_}));
+
+  ASSERT_OK(InsertRowsInProducer(0, 10, producer_table_));
+  ASSERT_OK(VerifyWrittenRecords());
+
+  auto p_conn =
+      EXPECT_RESULT(producer_cluster_.ConnectToDB(producer_table_->name().namespace_name()));
+  const auto table_name = GetCompleteTableName(producer_table_->name());
+
+  const auto expected_error =
+      "Cannot create nonconcurrent index on a table that is a part of non-automatic mode XCluster "
+      "replication.";
+
+  // Create index nonconcurrently.
+  ASSERT_NOK_STR_CONTAINS(
+      p_conn.ExecuteFormat(
+          "CREATE INDEX NONCONCURRENTLY nonconcurrent_index ON $0($1 ASC)", table_name,
+          kKeyColumnName),
+      expected_error);
+
+  // Create unique index nonconcurrently.
+  ASSERT_NOK_STR_CONTAINS(
+      p_conn.ExecuteFormat(
+          "CREATE UNIQUE INDEX NONCONCURRENTLY ON $0($1)", table_name, kKeyColumnName),
+      expected_error);
+
+  // Test adding a unique constraint, this will also trigger a nonconcurrent backfill.
+  ASSERT_NOK_STR_CONTAINS(
+      p_conn.ExecuteFormat(
+          "ALTER TABLE $0 ADD CONSTRAINT unique_constraint UNIQUE($1);", table_name,
+          kKeyColumnName),
+      expected_error);
+
+  // Partitioned table checks.
+  const auto kPartitionedTableName = "partitioned_table";
+  const auto kPartitionedIndexName = "partitioned_index";
+  const auto kPartition1Name = Format("$0_p1", kPartitionedTableName);
+  const auto kPartition2Name = Format("$0_p2", kPartitionedTableName);
+  const std::string kColumn2Name = "a";
+
+  auto create_partitioned_table = [&](pgwrapper::PGConn& conn) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0 ($1 int PRIMARY KEY, $2 int) PARTITION BY RANGE ($1);",
+        kPartitionedTableName, kKeyColumnName, kColumn2Name));
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0 PARTITION OF $1 FOR VALUES FROM (0) TO (100);", kPartition1Name,
+        kPartitionedTableName));
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0 PARTITION OF $1 FOR VALUES FROM (100) TO (200);", kPartition2Name,
+        kPartitionedTableName));
+  };
+  ASSERT_NO_FATALS(create_partitioned_table(p_conn));
+  auto c_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+  ASSERT_NO_FATALS(create_partitioned_table(c_conn));
+
+  auto partition1_name =
+      ASSERT_RESULT(GetYsqlTable(&producer_cluster_, namespace_name, "public", kPartition1Name));
+  auto partition2_name =
+      ASSERT_RESULT(GetYsqlTable(&producer_cluster_, namespace_name, "public", kPartition2Name));
+  std::shared_ptr<client::YBTable> partition1_table, partition2_table;
+  ASSERT_OK(producer_client()->OpenTable(partition1_name, &partition1_table));
+  ASSERT_OK(producer_client()->OpenTable(partition2_name, &partition2_table));
+
+  ASSERT_OK(AlterUniverseReplication(
+      kReplicationGroupId, {partition1_table, partition2_table}, true /* add_tables */));
+
+  ASSERT_OK(p_conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i%2 FROM generate_series(51, 150) as i;", kPartitionedTableName));
+
+  // Create partitioned index on the parent, this will cause nonconcurrent index creates on the
+  // partitions.
+  ASSERT_NOK_STR_CONTAINS(
+      p_conn.ExecuteFormat(
+          "CREATE INDEX $0 ON $1($2 ASC);", kPartitionedIndexName, kPartitionedTableName,
+          kColumn2Name),
+      expected_error);
+
+  // Also verify that we cannot create a unique index on the partitioned table.
+  ASSERT_NOK_STR_CONTAINS(
+      p_conn.ExecuteFormat(
+          "CREATE UNIQUE INDEX ON $0($1, $2);", kPartitionedTableName, kKeyColumnName,
+          kColumn2Name),
+      expected_error);
 }
 
 }  // namespace yb

@@ -54,7 +54,7 @@ public class AutoFlagUtilTest extends FakeDBApplication {
             "FLAG_4");
     GetAutoFlagsConfigResponse resp = getAutoFlagConfigResponse(autoFlagsSet, autoFlagsSet);
     when(mockYBClient.autoFlagsConfig()).thenReturn(resp);
-    when(mockService.getClient(any(), any())).thenReturn(mockYBClient);
+    when(mockService.getUniverseClient(any())).thenReturn(mockYBClient);
 
     List<GFlagsValidation.AutoFlagDetails> autoFlagDetails = new ArrayList<>();
     for (int flagClass = 1; flagClass <= 4; flagClass++) {
@@ -134,7 +134,7 @@ public class AutoFlagUtilTest extends FakeDBApplication {
         getAutoFlagConfigResponse(sourceAutoFlagsSet, sourceAutoFlagsSet);
     GetAutoFlagsConfigResponse targetResp =
         getAutoFlagConfigResponse(targetAutoFlagsSet, targetAutoFlagsSet);
-    when(mockService.getClient(any(), any())).thenReturn(mockYBClient);
+    when(mockService.getUniverseClient(any())).thenReturn(mockYBClient);
     try {
       when(mockYBClient.autoFlagsConfig()).thenReturn(sourceResp, targetResp);
       List<GFlagsValidation.AutoFlagDetails> autoFlagDetails = new ArrayList<>();
@@ -172,7 +172,7 @@ public class AutoFlagUtilTest extends FakeDBApplication {
         getAutoFlagConfigResponse(sourceAutoFlagsSet, sourceAutoFlagsSet);
     GetAutoFlagsConfigResponse targetResp =
         getAutoFlagConfigResponse(targetAutoFlagsSet, targetAutoFlagsSet);
-    when(mockService.getClient(any(), any())).thenReturn(mockYBClient);
+    when(mockService.getUniverseClient(any())).thenReturn(mockYBClient);
     try {
       when(mockYBClient.autoFlagsConfig()).thenReturn(sourceResp, targetResp);
       List<GFlagsValidation.AutoFlagDetails> autoFlagDetails = new ArrayList<>();

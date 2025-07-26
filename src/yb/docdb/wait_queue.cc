@@ -331,7 +331,7 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
       Status waiter_status, HybridTime resume_ht = HybridTime::kInvalid,
       CoarseTimePoint locking_deadline = GetWaitForRelockUnblockedKeysDeadline()) EXCLUDES(mutex_) {
     ADOPT_WAIT_STATE(wait_state);
-    SET_WAIT_STATUS(OnCpu_Active);
+    SCOPED_WAIT_STATUS(OnCpu_Active);
     // ASH: This may later be set to ResolveConficts for another thread to pick up
     // working on the wait-state.
     ASH_ENABLE_CONCURRENT_UPDATES_FOR(wait_state);
@@ -466,6 +466,10 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
 
   boost::optional<PgSessionRequestVersion> GetPgSessionRequestVersion() const {
     return pg_session_req_version_;
+  }
+
+  bool IsForAdvisoryLock() const {
+    return is_advisory_lock_req_;
   }
 
  private:
@@ -1412,14 +1416,15 @@ class WaitQueue::Impl {
     SET_WAIT_STATUS(ConflictResolution_WaitOnConflictingTxns);
     auto scoped_reporter = waiting_txn_registry_->Create();
     if (waiter_txn_id.IsNil()) {
-      // If waiter_txn_id is Nil, then we're processing a single-shard transaction. We do not have
-      // to report single shard transactions to transaction coordinators because they can't
-      // possibly be involved in a deadlock. This is true because no transactions can wait on
-      // single shard transactions, so they only have out edges in the wait-for graph and cannot
-      // be a part of a cycle.
+      // When object locking is disabled fast path txns cannot be involved in a deadlock. This is
+      // because no transaction can wait on fast path transactions, so they only have out edges in
+      // the wait-for graph and cannot be a part of a cycle.
       //
       // We still register the single shard waiters with the local waiting transaction registry
       // for the purpose of observability in pg_locks.
+      //
+      // Note that this branch is only hit for fast path transactions when object locking feature
+      // is disabled. When enabled, fast path waiters enter the wait-queue as a distributed txn.
       RETURN_NOT_OK(scoped_reporter->RegisterSingleShardWaiter(
           txn_status_manager_->tablet_id(), request_start_us));
     } else {
@@ -1904,6 +1909,12 @@ class WaitQueue::Impl {
         waiter_info->add_blocking_txn_ids(id.data(), id.size());
       }
       for (auto& [intent_key, intent_data] : lock_info.intents) {
+        if (waiter->IsForAdvisoryLock() && !intent_data.full_doc_key) {
+          // For advisory lock waiters, return the intents corresponding to the full doc key alone
+          // since the rest don't make sense i.e. might not have fields like database id etc set.
+          VLOG_WITH_PREFIX(2) << "Skipping " << intent_data.ToString() << " for pg_locks.";
+          continue;
+        }
         if (max_txn_locks && (waiter_info->locks_size() + granted_locks_size >= max_txn_locks)) {
           waiter_info->set_has_additional_waiting_locks(true);
           break;
@@ -2053,7 +2064,7 @@ class WaitQueue::Impl {
       }
       filter = [&res, &resume_status](const auto& waiter) {
         const auto& opt_serial_no = waiter->GetPgSessionRequestVersion();
-        if (opt_serial_no && *opt_serial_no < res->pg_session_req_version) {
+        if (opt_serial_no && res.ok() && *opt_serial_no < res->pg_session_req_version) {
           resume_status = STATUS_EC_FORMAT(
               Expired, TransactionError(TransactionErrorCode::kDeadlock),
               "Couldn't acquire locks due to a potential deadlock");

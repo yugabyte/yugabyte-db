@@ -301,7 +301,7 @@ class GcpCloud(AbstractCloud):
                                                                                result[name]["numCores"],
                                                                                result[name]["isShared"])
                     except Exception as e:
-                        logging.warn("[app] Error {} getting price info for {}".format(e, name))
+                        logging.warning("[app] Error {} getting price info for {}".format(e, name))
                         result[name]["prices"][region] = 0.0
         to_delete_instance_types = []
         for name in result:

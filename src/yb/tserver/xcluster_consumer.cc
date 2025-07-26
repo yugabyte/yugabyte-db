@@ -525,9 +525,9 @@ void XClusterConsumer::TriggerPollForNewTablets() {
             // it.
             consumer_namespace_name = "<unknown>";
           } else {
-            LOG(ERROR) << "Malformed sequences_data alias table ID: " << consumer_table_id
-                       << "; skipping creation of a poller for a tablet belonging to that table: "
-                       << consumer_tablet_info.tablet_id;
+            LOG(DFATAL) << "Malformed sequences_data alias table ID: " << consumer_table_id
+                        << "; skipping creation of a poller for a tablet belonging to that table: "
+                        << consumer_tablet_info.tablet_id;
             continue;
           }
         } else {

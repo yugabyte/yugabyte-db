@@ -1,4 +1,4 @@
- services:
+services:
   - name: postgresService
     fileName: "{{ .SystemdFileLocation }}"
     contents: |
@@ -16,10 +16,10 @@
       TimeoutSec=300
 
       ExecStart={{ .PgBin }}/pg_ctl -D {{ .ConfFileLocation }} \
-      -w -o "-k {{ .MountPath }}" -l {{ .LogFile }} start
+      -w -o "-k {{ .MountPath }}" start
 
       ExecStop={{ .PgBin }}/pg_ctl -D {{ .ConfFileLocation }} \
-      -w -o "-k {{ .MountPath }}" -l {{ .LogFile }} stop
+      -w -o "-k {{ .MountPath }}" stop
 
       Restart=always
       RestartSec={{ yamlPath "postgres.install.restartSeconds"}}

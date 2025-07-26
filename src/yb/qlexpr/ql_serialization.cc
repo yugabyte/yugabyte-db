@@ -58,8 +58,8 @@ void SerializeValue(
       bool is_out_of_range = false;
       CQLEncodeBytes(decimal.EncodeToSerializedBigDecimal(&is_out_of_range), buffer);
       if(is_out_of_range) {
-        LOG(ERROR) << "Out of range: Unable to encode decimal " << decimal.ToString()
-                   << " into a BigDecimal serialized representation";
+        LOG(DFATAL) << "Out of range: Unable to encode decimal " << decimal.ToString()
+                    << " into a BigDecimal serialized representation";
       }
       return;
     }

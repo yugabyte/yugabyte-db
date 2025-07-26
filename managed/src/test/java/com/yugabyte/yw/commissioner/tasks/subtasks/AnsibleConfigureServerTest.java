@@ -50,7 +50,7 @@ public class AnsibleConfigureServerTest extends FakeDBApplication {
     defaultCustomer = ModelFactory.testCustomer();
     setupUniverse(Common.CloudType.onprem);
     mockMastersResponse = mock(ListMasterRaftPeersResponse.class);
-    when(mockService.getClient(any(), any())).thenReturn(mockYBClient);
+    when(mockService.getUniverseClient(any())).thenReturn(mockYBClient);
     List<PeerInfo> servers = new ArrayList<>();
     // IP for host-n1.
     PeerInfo peerInfo = new PeerInfo();

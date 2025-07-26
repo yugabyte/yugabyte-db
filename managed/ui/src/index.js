@@ -16,6 +16,9 @@ import en from './translations/en.json';
 import 'intl';
 import 'intl/locale-data/jsonp/en.js';
 import { YBCssBaseline, YBThemeProvider, yba } from '@yugabyte-ui-library/core';
+import Leaflet from 'leaflet';
+
+window.L = Leaflet.noConflict();
 
 const { ybaTheme } = yba;
 

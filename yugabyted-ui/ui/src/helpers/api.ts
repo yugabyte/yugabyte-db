@@ -21,7 +21,8 @@ AXIOS_INSTANCE.defaults.paramsSerializer = (params: Record<string, unknown>) => 
         return `${key}=${(params[key] as string[]).map(encodeURIComponent).join(',')}`;
       }
       if (params[key] instanceof Set) {
-        return `${key}=${[...(params[key] as string[])].map(encodeURIComponent).join(',')}`;
+        return `${key}=${[...(params[key] as unknown as string[])]
+          .map(encodeURIComponent).join(',')}`;
       }
       return `${key}=${encodeURIComponent(String(params[key]))}`;
     })

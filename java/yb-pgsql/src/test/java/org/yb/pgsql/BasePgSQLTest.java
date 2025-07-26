@@ -186,6 +186,22 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         "variables at the beginning of transaction boundaries, causing erroneous results in " +
         "the test, leading to failure.";
 
+  protected static final String GUC_REPLAY_AFFECTS_QUERIES_EXEC_RESULT =
+      "Skipping this test with Connection Manager enabled. Connection Manager replays " +
+        "session variables at the transaction boundaries, which causes an extra statement to " +
+        "appear in stats or monitoring/observability methods. Since the client is unaware of " +
+        "this statement, the test fails.";
+
+  protected static final String DIFF_BACKEND_TYPE_PG_STAT_ACTIVITY =
+      "Skipping this test with Connection Manager enabled. In pg_stat_activity table, the " +
+        "backend type column shows 'yb-conn-mgr worker connection' instead of 'client-backend'." +
+        "Additionally, there is no guarantee that each logical connection will create a unique " +
+        "backend with Connection Manager, so the expected number of rows in the table may not " +
+        "match the number of connections created. Furthermore, the query column in the table " +
+        "typically displays a RESET ALL statement if the backend is used to execute any query " +
+        "with Connection Manager. Since this test heavily relies on the output of " +
+        "pg_stat_activity, we are skipping it.";
+
   protected static final String INCORRECT_CONN_STATE_BEHAVIOR =
       "Skipping this test with Connection Manager enabled. The connections may not be in the " +
         "expected state due to the way physical connections are attached and detached from " +
@@ -237,8 +253,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   protected static ConcurrentSkipListSet<Integer> stuckBackendPidsConcMap =
       new ConcurrentSkipListSet<>();
-
-  protected static boolean pgInitialized = false;
 
   public static void perfAssertLessThan(double time1, double time2) {
     if (TestUtils.isReleaseBuild()) {
@@ -377,9 +391,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   @Before
   public void initPostgresBefore() throws Exception {
-    if (pgInitialized)
-      return;
-
     LOG.info("Loading PostgreSQL JDBC driver");
     Class.forName("com.yugabyte.Driver");
 
@@ -411,7 +422,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
     connection = createTestRole();
     allowSchemaPublic();
-    pgInitialized = true;
   }
 
   protected Connection createTestRole() throws Exception {
@@ -437,7 +447,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     destroyMiniCluster();
 
     createMiniCluster(additionalMasterFlags, additionalTserverFlags);
-    pgInitialized = false;
     initPostgresBefore();
   }
 
@@ -446,7 +455,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     destroyMiniCluster();
 
     createMiniCluster(customize);
-    pgInitialized = false;
     initPostgresBefore();
   }
 
@@ -457,7 +465,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     destroyMiniCluster();
 
     createMiniCluster(additionalMasterFlags, additionalTserverFlags, additionalEnvironmentVars);
-    pgInitialized = false;
     initPostgresBefore();
   }
 
@@ -493,72 +500,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   @After
   public void cleanUpAfter() throws Exception {
     LOG.info("Cleaning up after {}", getCurrentTestMethodName());
-    if (connection == null) {
-      LOG.warn("No connection created, skipping cleanup");
-      return;
-    }
-
-    // If root connection was closed, open a new one for cleaning.
-    if (connection.isClosed()) {
-      connection = getConnectionBuilder().connect();
-    }
-
-    try (Statement stmt = connection.createStatement()) {
-      stmt.execute("RESET SESSION AUTHORIZATION");
-
-      // TODO(dmitry): Workaround for #1721, remove after fix.
-      stmt.execute("ROLLBACK");
-      stmt.execute("DISCARD TEMP");
-
-      // TODO(tim): Workaround for DB-11127, remove after fix.
-      stmt.execute("RESET enable_seqscan");
-      stmt.execute("SET enable_bitmapscan = false");
-    }
-
-    cleanUpCustomDatabases();
-
-    cleanUpCustomEntities();
-
-    if (isClusterNeedsRecreation()) {
-      pgInitialized = false;
-    }
-  }
-
-  /**
-   * Removes all databases excluding `postgres`, `yugabyte`, `system_platform`, `template1`, and
-   * `template2`. Any lower-priority cleaners should only clean objects in one of the remaining
-   * three databases, or cluster-wide objects (e.g. roles).
-   */
-  private void cleanUpCustomDatabases() throws Exception {
-    LOG.info("Cleaning up custom databases");
-    if (isTestRunningWithConnectionManager()) {
-      waitForStatsToGetUpdated();
-    }
-    try (Statement stmt = connection.createStatement()) {
-      for (int i = 0; i < 2; i++) {
-        try {
-        List<String> databases = getRowList(stmt,
-            "SELECT datname FROM pg_database" +
-                " WHERE datname <> 'template0'" +
-                " AND datname <> 'template1'" +
-                " AND datname <> 'postgres'" +
-                " AND datname <> 'yugabyte'" +
-                " AND datname <> 'system_platform'").stream().map(r -> r.getString(0))
-                    .collect(Collectors.toList());
-
-        for (String database : databases) {
-          LOG.info("Dropping database '{}'", database);
-          stmt.execute("DROP DATABASE " + database);
-        }
-        } catch (Exception e) {
-          if (e.toString().contains("Catalog Version Mismatch: A DDL occurred while processing")) {
-            continue;
-          } else {
-            throw e;
-          }
-        }
-      }
-    }
+    markClusterNeedsRecreation();
   }
 
   public String formatPGId(String str) {
@@ -575,66 +517,12 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return result;
   }
 
-  /** Drop entities owned by non-system roles, and drop custom roles. */
-  private void cleanUpCustomEntities() throws Exception {
-    LOG.info("Cleaning up roles");
-    List<String> persistentUsers = Arrays.asList(DEFAULT_PG_USER, TEST_PG_USER);
-    try (Statement stmt = connection.createStatement()) {
-      for (int i = 0; i < 2; i++) {
-        try {
-          List<String> roles = getRowList(stmt, "SELECT rolname FROM pg_roles"
-              + " WHERE rolname <> 'postgres'"
-              + " AND rolname NOT LIKE 'pg_%'"
-              + " AND rolname NOT LIKE 'yb_%'").stream()
-                  .map(r -> r.getString(0))
-                  .collect(Collectors.toList());
-
-          for (String role : roles) {
-            boolean isPersistent = persistentUsers.contains(role);
-            LOG.info("Cleaning up role {} (persistent? {})", role, isPersistent);
-            stmt.execute("DROP OWNED BY " + formatPGId(role) + " CASCADE");
-          }
-
-          // Documentation for DROP OWNED BY explicitly states that databases and tablespaces
-          // are not removed, so we do this ourself.
-          // Ref: https://www.postgresql.org/docs/11/sql-drop-owned.html
-          List<String> tablespaces = getRowList(stmt, "SELECT spcname FROM pg_tablespace"
-              + " WHERE spcowner NOT IN ("
-              + "   SELECT oid FROM pg_roles "
-              + "   WHERE rolname = 'postgres' OR rolname LIKE 'pg_%' OR rolname LIKE 'yb_%'"
-              + ")").stream()
-                  .map(r -> r.getString(0))
-                  .collect(Collectors.toList());
-
-          for (String tablespace : tablespaces) {
-            stmt.execute("DROP TABLESPACE " + tablespace);
-          }
-
-          for (String role : roles) {
-            boolean isPersistent = persistentUsers.contains(role);
-            if (!isPersistent) {
-              LOG.info("Dropping role {}", role);
-              stmt.execute("DROP ROLE " + formatPGId(role));
-            }
-          }
-        } catch (Exception e) {
-          if (e.toString().contains("Catalog Version Mismatch: A DDL occurred while processing")) {
-            continue;
-          } else {
-            throw e;
-          }
-        }
-      }
-    }
-  }
-
   @AfterClass
   public static void tearDownAfter() throws Exception {
     // Close the root connection, which is not cleaned up after each test.
     if (connection != null && !connection.isClosed()) {
       connection.close();
     }
-    pgInitialized = false;
     LOG.info("Destroying mini-cluster");
     if (miniCluster != null) {
       destroyMiniCluster();
@@ -701,8 +589,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   protected void recreateWithYsqlVersion(YsqlSnapshotVersion version) throws Exception {
     destroyMiniCluster();
-    pgInitialized = false;
-    markClusterNeedsRecreation();
     createMiniCluster((builder) -> {
       builder.ysqlSnapshotVersion(version);
     });

@@ -25,7 +25,7 @@
 
 #include "yb/gutil/macros.h"
 
-#include "yb/master/master_fwd.h"
+#include "yb/master/master_ddl.pb.h"
 
 #include "yb/util/monotime.h"
 
@@ -44,6 +44,9 @@ class YBTableCreator {
 
   // Sets the type of the table.
   YBTableCreator& table_type(YBTableType table_type);
+
+  // In special cases sets the internal type of the table.
+  YBTableCreator& internal_table_type(master::InternalTableType internal_type);
 
   // Sets the name of the role creating this table.
   YBTableCreator& creator_role_name(const RoleName& creator_role_name);
@@ -191,6 +194,7 @@ class YBTableCreator {
   YBTableName table_name_; // Required.
 
   TableType table_type_ = TableType::DEFAULT_TABLE_TYPE;
+  master::InternalTableType internal_table_type_ = master::InternalTableType::GENERIC_TABLE;
 
   RoleName creator_role_name_;
 
@@ -250,7 +254,7 @@ class YBTableCreator {
   TableId xcluster_source_table_id_;
 
   // Set by DDL Replication as a set time to perform index backfill.
-  uint64_t xcluster_backfill_hybrid_time_;
+  uint64_t xcluster_backfill_hybrid_time_ = 0;
 
   const TransactionMetadata* txn_ = nullptr;
 

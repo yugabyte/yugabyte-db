@@ -179,8 +179,11 @@ class PackedRowData {
     old_value_slice_ = old_value_.AsSlice().WithoutPrefix(control_fields_size);
     std::tie(old_packing_.packed_row_version, old_schema_version_) = VERIFY_RESULT(ParseValueHeader(
         &old_value_slice_));
-    if (old_schema_version_ != new_packing_.schema_version) {
+    if (old_schema_version_ < new_packing_.schema_version) {
       return StartRepacking();
+    }
+    if (old_schema_version_ > new_packing_.schema_version) {
+      RETURN_NOT_OK(UsedSchemaVersion(old_schema_version_));
     }
     packing_started_ = false;
     return Status::OK();
@@ -339,8 +342,7 @@ class PackedRowData {
   void InitPackerHelper() {
     packer_.emplace(
         std::in_place_type_t<Packer>(), new_packing_.schema_version, *new_packing_.schema_packing,
-        new_packing_.pack_limit(), old_value_.AsSlice().Prefix(control_fields_size_),
-        *new_packing_.schema);
+        new_packing_.pack_limit(), old_value_.AsSlice().Prefix(control_fields_size_));
   }
 
   Status Flush() {
@@ -380,8 +382,7 @@ class PackedRowData {
           decoder.GetPackedIndex(column_id) == dockv::SchemaPacking::kSkippedColumnIdx) {
         VLOG(4) << "Packing missing value for column " << column_id;
         const auto& missing_value = VERIFY_RESULT_REF(
-           dockv::PackerBase(&*packer_).missing_value_provider().GetMissingValueByColumnId(
-           column_id));
+            dockv::PackerBase(&*packer_).NextColumnData()).missing_value;
         return CheckPackOldValueResult(
             column_id, std::visit([column_id, missing_value](auto& packer) {
           return packer.AddValue(column_id, missing_value, kUnlimitedTail);

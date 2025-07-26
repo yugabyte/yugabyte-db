@@ -160,7 +160,7 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     createFormData.tables = exampleTables;
 
     mockClient = mock(YBClient.class);
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
 
     try {

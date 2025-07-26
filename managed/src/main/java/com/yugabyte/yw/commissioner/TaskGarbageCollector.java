@@ -95,8 +95,11 @@ public class TaskGarbageCollector {
   private void scheduleRunner() {
     try {
       Customer.getAll().forEach(this::checkCustomer);
-    } catch (Exception e) {
-      log.error("Error running task garbage collector", e);
+    } catch (Throwable t) {
+      log.error("Error running task garbage collector", t);
+      if (t instanceof Error) {
+        throw (Error) t;
+      }
     }
   }
 

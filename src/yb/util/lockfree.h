@@ -41,7 +41,7 @@ class MPSCQueueIterator : public std::iterator<std::input_iterator_tag, T> {
   MPSCQueueIterator& operator++() {
     LOG(INFO) << "incr from " << next_;
     if (!is_end()) {
-      next_ = GetNext(next_);
+      next_ = GetNext(*next_);
     }
     return *this;
   }
@@ -89,7 +89,7 @@ class MPSCQueue {
   void Push(T* value) {
     T* old_head = push_head_.load(std::memory_order_acquire);
     for (;;) {
-      SetNext(value, old_head);
+      SetNext(*value, old_head);
       if (push_head_.compare_exchange_weak(old_head, value, std::memory_order_acq_rel)) {
         break;
       }
@@ -105,7 +105,7 @@ class MPSCQueue {
     if (!result) {
       return nullptr;
     }
-    pop_head_ = GetNext(result);
+    pop_head_ = GetNext(*result);
     return result;
   }
 
@@ -130,8 +130,8 @@ class MPSCQueue {
     // Reverse original list.
     T* prev = nullptr;
     while (current) {
-      auto next = GetNext(current);
-      SetNext(current, prev);
+      auto next = GetNext(*current);
+      SetNext(*current, prev);
       prev = current;
       current = next;
     }
@@ -162,13 +162,13 @@ class MPSCQueueEntry {
 };
 
 template <class T>
-void SetNext(MPSCQueueEntry<T>* entry, T* next) {
-  entry->SetNext(next);
+void SetNext(MPSCQueueEntry<T>& entry, T* next) {
+  entry.SetNext(next);
 }
 
 template <class T>
-T* GetNext(const MPSCQueueEntry<T>* entry) {
-  return entry->GetNext();
+T* GetNext(const MPSCQueueEntry<T>& entry) {
+  return entry.GetNext();
 }
 
 // Intrusive stack implementation based on linked list.
@@ -179,15 +179,15 @@ class LockFreeStack {
     CHECK(IsAcceptableAtomicImpl(head_));
   }
 
-  void Clear() {
-    head_.store(nullptr, std::memory_order_release);
+  bool Empty() const {
+    return head_.load(boost::memory_order_relaxed).pointer == nullptr;
   }
 
   void Push(T* value) {
     Head old_head = head_.load(boost::memory_order_acquire);
     for (;;) {
       ANNOTATE_IGNORE_WRITES_BEGIN();
-      SetNext(value, old_head.pointer);
+      SetNext(*value, old_head.pointer);
       ANNOTATE_IGNORE_WRITES_END();
       Head new_head{value, old_head.version + 1};
       if (head_.compare_exchange_weak(old_head, new_head, boost::memory_order_acq_rel)) {
@@ -203,7 +203,7 @@ class LockFreeStack {
         break;
       }
       ANNOTATE_IGNORE_READS_BEGIN();
-      Head new_head{GetNext(old_head.pointer), old_head.version + 1};
+      Head new_head{GetNext(*old_head.pointer), old_head.version + 1};
       ANNOTATE_IGNORE_READS_END();
       if (head_.compare_exchange_weak(old_head, new_head, boost::memory_order_acq_rel)) {
         break;
@@ -221,6 +221,48 @@ class LockFreeStack {
   } __attribute__((aligned(16)));
 
   boost::atomic<Head> head_{Head{nullptr, 0}};
+};
+
+// SemiFairQueue does not guarantee that pushed values will be popped in exactly the same order
+// as they were pushed.
+// But order will be the same as long as the consumer keeps up with the producer.
+// This is useful to implement thread pool, since it does not guarantee exact task execution order.
+// A single stack is not suitable for thread pool because older tasks would get starved.
+// SemiFairQueue uses two stacks to sort the tasks in the correct order with a high enough
+// probability.
+template <class T>
+class SemiFairQueue {
+ public:
+  bool Empty() const {
+    return write_stack_.Empty() && read_stack_.Empty();
+  }
+
+  void Push(T* value) {
+    write_stack_.Push(value);
+  }
+
+  T* Pop() {
+    auto result = read_stack_.Pop();
+    if (result) {
+      return result;
+    }
+    result = write_stack_.Pop();
+    if (!result) {
+      return nullptr;
+    }
+    for (;;) {
+      auto next = write_stack_.Pop();
+      if (!next) {
+        return result;
+      }
+      read_stack_.Push(result);
+      result = next;
+    }
+  }
+
+ private:
+  LockFreeStack<T> write_stack_;
+  LockFreeStack<T> read_stack_;
 };
 
 // A weak pointer that can only be written to once, but can be read and written in a lock-free way.

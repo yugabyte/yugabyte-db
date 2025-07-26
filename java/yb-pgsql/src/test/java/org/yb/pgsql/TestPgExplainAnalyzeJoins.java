@@ -30,7 +30,9 @@ public class TestPgExplainAnalyzeJoins extends BasePgExplainAnalyzeTest {
   private static final String MAIN_RANGE_INDEX = "foo_v4";
   private static final String SIDE_HASH_INDEX = "bar_v1";
   private static final String SIDE_RANGE_INDEX = "bar_v2";
+  // NUM_PAGES should be divisible by NUM_TABLETS or estimated numbers may be inaccurate
   private static final int NUM_PAGES = 10;
+  private static final int NUM_TABLETS = 2;
   private TopLevelCheckerBuilder JOINS_TOP_LEVEL_CHECKER = makeTopLevelBuilder()
       .storageWriteRequests(Checkers.equal(0))
       .storageFlushRequests(Checkers.equal(0));
@@ -39,7 +41,7 @@ public class TestPgExplainAnalyzeJoins extends BasePgExplainAnalyzeTest {
   public void setUp() throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute(String.format("CREATE TABLE %s (k INT PRIMARY KEY, v1 INT, "
-          + "v2 INT, v3 INT, v4 INT, v5 INT) SPLIT INTO 2 TABLETS", MAIN_TABLE));
+          + "v2 INT, v3 INT, v4 INT, v5 INT) SPLIT INTO %s TABLETS", MAIN_TABLE, NUM_TABLETS));
 
       // Multi-column Range Index on (v1, v2)
       stmt.execute(String.format("CREATE INDEX %s ON %s (v1, v2 ASC)",
@@ -114,7 +116,7 @@ public class TestPgExplainAnalyzeJoins extends BasePgExplainAnalyzeTest {
           .plan(hashJoinNodeChecker
               .plans(
                   outerTableScanChecker
-                  .storageTableReadRequests(Checkers.equal(NUM_PAGES + 1))
+                  .storageTableReadRequests(Checkers.equal(NUM_PAGES / NUM_TABLETS + 1))
                   .build(),
                   innerTableHashChecker
                   .plans(innerTableScanChecker

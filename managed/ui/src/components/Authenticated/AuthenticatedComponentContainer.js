@@ -47,7 +47,9 @@ import {
   fetchUserSuccess,
   fetchUserFailure,
   fetchAdminNotifications,
-  fetchAdminNotificationsResponse
+  fetchAdminNotificationsResponse,
+  fetchPerfAdvisorList,
+  fetchPerfAdvisorListResponse
 } from '../../actions/customers';
 import {
   fetchCustomerTasks,
@@ -201,6 +203,12 @@ const mapDispatchToProps = (dispatch) => {
     fetchAdminNotifications: () => {
       dispatch(fetchAdminNotifications()).then((response) => {
         dispatch(fetchAdminNotificationsResponse(response.payload));
+      });
+    },
+
+    fetchPerfAdvisorList: () => {
+      dispatch(fetchPerfAdvisorList()).then((response) => {
+        dispatch(fetchPerfAdvisorListResponse(response.payload));
       });
     }
   };

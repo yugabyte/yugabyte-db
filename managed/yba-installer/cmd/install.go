@@ -46,6 +46,9 @@ var installCmd = &cobra.Command{
 			log.Debug("marking self signed cert in ybactlstate")
 			state.Config.SelfSignedCert = true
 		}
+		// Save the services installed
+		state.Services.PerfAdvisor = viper.GetBool("perfAdvisor.enabled")
+		state.Services.Platform = !viper.GetBool("perfAdvisor.enabled") || viper.GetBool("perfAdvisor.withPlatform")
 		if err := state.TransitionStatus(ybactlstate.InstallingStatus); err != nil {
 			log.Fatal("failed to start install: " + err.Error())
 		}
@@ -65,7 +68,19 @@ var installCmd = &cobra.Command{
 			skippedPreflightChecks = append(skippedPreflightChecks, "disk-availability")
 		}
 		var results *checks.MappedResults
-		if common.IsPostgresEnabled() {
+
+		if common.IsPerfAdvisorEnabled() && common.IsPostgresEnabled() {
+			// Run both Perf Advisor and Postgres checks, then merge results
+    	paResults := preflight.Run(preflight.InstallPerfAdvisorChecks, skippedPreflightChecks...)
+    	pgResults := preflight.Run(preflight.InstallChecksWithPostgres, skippedPreflightChecks...)
+    	results = checks.MergeMappedResults(paResults, pgResults)
+
+			combined := append(preflight.InstallPerfAdvisorChecks, preflight.InstallChecksWithPostgres...)
+			deduped := deduplicateChecks(combined)
+			results = preflight.Run(deduped, skippedPreflightChecks...)
+		}	else if common.IsPerfAdvisorEnabled() {
+    	results = preflight.Run(preflight.InstallPerfAdvisorChecks, skippedPreflightChecks...)
+		} else if common.IsPostgresEnabled() {
 			results = preflight.Run(preflight.InstallChecksWithPostgres, skippedPreflightChecks...)
 		} else {
 			results = preflight.Run(preflight.InstallChecks, skippedPreflightChecks...)
@@ -93,19 +108,19 @@ var installCmd = &cobra.Command{
 			}
 		}
 
-		for _, name := range serviceOrder {
-			log.Info("About to install component " + name)
-			if err := services[name].Install(); err != nil {
-				log.Fatal("Failed while installing " + name + ": " + err.Error())
+		for service := range serviceManager.Services() {
+			log.Info("About to install component " + service.Name())
+			if err := service.Install(); err != nil {
+				log.Fatal("Failed while installing " + service.Name() + ": " + err.Error())
 			}
 			if !dataless {
-				if err := services[name].Initialize(); err != nil {
-					log.Fatal("Failed while initializing " + name + ": " + err.Error())
+				if err := service.Initialize(); err != nil {
+					log.Fatal("Failed while initializing " + service.Name() + ": " + err.Error())
 				}
 			} else {
-				log.Debug("skipping initializing of service" + name)
+				log.Debug("skipping initializing of service" + service.Name())
 			}
-			log.Info("Completed installing component " + name)
+			log.Info("Completed installing component " + service.Name())
 		}
 
 		// Update permissions of data and software to service username
@@ -144,8 +159,8 @@ var installCmd = &cobra.Command{
 
 func getAndPrintStatus(state *ybactlstate.State) {
 	var statuses []common.Status
-	for _, name := range serviceOrder {
-		status, err := services[name].Status()
+	for service := range serviceManager.Services() {
+		status, err := service.Status()
 		if err != nil {
 			log.Fatal("failed to get status: " + err.Error())
 		}
@@ -157,6 +172,20 @@ func getAndPrintStatus(state *ybactlstate.State) {
 	}
 
 	common.PrintStatus(state.CurrentStatus.String(), statuses...)
+}
+
+// Deduplicate checks by Name
+func deduplicateChecks(checks []preflight.Check) []preflight.Check {
+  seen := make(map[string]bool)
+  unique := make([]preflight.Check, 0, len(checks))
+
+  for _, check := range checks {
+		if !seen[check.Name()] {
+			seen[check.Name()] = true
+			unique = append(unique, check)
+		}
+  }
+  return unique
 }
 
 func init() {

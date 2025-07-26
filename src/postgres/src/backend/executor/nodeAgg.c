@@ -1173,12 +1173,6 @@ finalize_partialaggregate(AggState *aggstate,
 		}
 		else
 		{
-#ifdef YB_TODO
-/* NEIL: Need to lookinto fcinfo->args[0]
- *    fcinfo->args[0].value vs fcinfo->arg[0]
- *    fcinfo->args[0].isnull vs fcinfo->argnull[0]
- */
-#endif
 			FunctionCallInfo fcinfo = pertrans->serialfn_fcinfo;
 
 			fcinfo->args[0].value =

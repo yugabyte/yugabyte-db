@@ -39,9 +39,9 @@ class PgHintTableTest : public LibPqTestBase {
   }
 
   static Result<std::string> ExecuteExplainAndGetJoinType(
-      PGConn& conn,
+      PGConn *conn,
       const std::string& explain_query) {
-    auto explain_str = VERIFY_RESULT(conn.FetchRow<std::string>(explain_query));
+    auto explain_str = VERIFY_RESULT(conn->FetchRow<std::string>(explain_query));
     return GetJoinType(explain_str);
   }
 
@@ -61,6 +61,45 @@ class PgHintTableTest : public LibPqTestBase {
     RETURN_NOT_OK(conn.Execute("SET pg_hint_plan.enable_hint_table TO on"));
     RETURN_NOT_OK(conn.Execute("SET pg_hint_plan.yb_use_query_id_for_hinting TO on"));
     return conn;
+  }
+
+  Result<std::pair<PGConn, PGConn>> InsertHintsAndRunQueries() {
+    // ------------------------------------------------------------------------------------------
+    // 1. Setup connections
+    // ------------------------------------------------------------------------------------------
+    auto conn_query = VERIFY_RESULT(ConnectWithHintTable());
+    auto conn_hint = VERIFY_RESULT(ConnectWithHintTable());
+
+    // ------------------------------------------------------------------------------------------
+    // 2. Insert hints and run queries to force hint table lookups
+    // ------------------------------------------------------------------------------------------
+    const int num_queries = 100;
+    for (int i = 0; i < num_queries; i++) {
+      std::string whitespace(i * 1000, ' ');
+      auto hint_value = Format("YbBatchedNL(pg_class $0 pg_attribute)", whitespace);
+
+      RETURN_NOT_OK(conn_hint.ExecuteFormat(
+          "INSERT INTO hint_plan.hints (norm_query_string, application_name, hints) "
+          "VALUES ('$0', '', '$1')",
+          query_id + i, hint_value));
+
+      // Execute the query to force hint cache lookups and refreshes
+      auto join_type = VERIFY_RESULT(
+          ExecuteExplainAndGetJoinType(&conn_query, "EXPLAIN (ANALYZE, FORMAT JSON) " + query));
+      SCHECK_EQ(std::string("YB Batched Nested Loop"), join_type, IllegalState,
+                Format("Unexpected join type: %s", join_type));
+    }
+    LOG(INFO) << "Completed " << num_queries << " queries";
+    return std::make_pair(std::move(conn_query), std::move(conn_hint));
+  }
+};
+
+class PgHintTableTestWithoutHintCache : public PgHintTableTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgHintTableTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back(
+        "--ysql_pg_conf_csv=pg_hint_plan.yb_enable_hint_table_cache=off");
   }
 };
 
@@ -108,7 +147,7 @@ TEST_F(PgHintTableTest, ForceBatchedNestedLoop) {
   // 4. Re-run the query on the first connection and verify it uses a Batched Nested Loop now
   // ----------------------------------------------------------------------------------------------
   ASSERT_STR_EQ("YB Batched Nested Loop",
-    ASSERT_RESULT(ExecuteExplainAndGetJoinType(conn1, explain_query)));
+    ASSERT_RESULT(ExecuteExplainAndGetJoinType(&conn1, explain_query)));
 
   // ----------------------------------------------------------------------------------------------
   // 5. Delete the hint from the hint table
@@ -122,7 +161,7 @@ TEST_F(PgHintTableTest, ForceBatchedNestedLoop) {
   // ----------------------------------------------------------------------------------------------
   // 6. Re-run the query on the first connection and verify it's back to the original plan
   // ----------------------------------------------------------------------------------------------
-  ASSERT_STR_EQ("Hash Join", ASSERT_RESULT(ExecuteExplainAndGetJoinType(conn1, explain_query)));
+  ASSERT_STR_EQ("Hash Join", ASSERT_RESULT(ExecuteExplainAndGetJoinType(&conn1, explain_query)));
 }
 
 TEST_F(PgHintTableTest, SimpleConcurrencyTest) {
@@ -171,7 +210,7 @@ TEST_F(PgHintTableTest, SimpleConcurrencyTest) {
                             &iterations]() {
     while (!stop_threads) {
       std::string join_type = ASSERT_RESULT(
-        ExecuteExplainAndGetJoinType(conn_explain, explain_query));
+        ExecuteExplainAndGetJoinType(&conn_explain, explain_query));
       LOG(INFO) << "Observed join type: " << join_type;
 
       {
@@ -212,6 +251,21 @@ TEST_F(PgHintTableTest, SimpleConcurrencyTest) {
   }
 }
 
+void FailIfNotConcurrentDDLErrors(const Status& status) {
+  // Expect a catalog version mismatch error during concurrent operations
+  if (!status.ok()) {
+    std::string error_msg = status.ToString();
+    if (error_msg.find("pgsql error 40001") != std::string::npos ||
+        error_msg.find("Catalog Version Mismatch") != std::string::npos ||
+        error_msg.find("Restart read required") != std::string::npos ||
+        error_msg.find("schema version mismatch") != std::string::npos) {
+      LOG(INFO) << "Expected error: " << error_msg;
+    } else {
+      FAIL() << "Unexpected error: " << error_msg;
+    }
+  }
+}
+
 // Test that hints work correctly when ANALYZE is running concurrently
 TEST_F(PgHintTableTest, HintWithConcurrentAnalyze) {
   // ----------------------------------------------------------------------------------------------
@@ -224,42 +278,35 @@ TEST_F(PgHintTableTest, HintWithConcurrentAnalyze) {
 
   // Thread to run ANALYZE
   auto conn_analyze = ASSERT_RESULT(ConnectWithHintTable());
+  // Thread to insert the hint
+  auto conn_hint = ASSERT_RESULT(ConnectWithHintTable());
+
   threads.AddThreadFunctor([&stop_threads, &conn_analyze]() {
     LOG(INFO) << "Starting ANALYZE thread";
 
     while (!stop_threads.load()) {
       auto status = conn_analyze.Execute("ANALYZE VERBOSE");
 
-      // Expect a catalog version mismatch error during concurrent operations
-      if (!status.ok()) {
-        std::string error_msg = status.ToString();
-        if (error_msg.find("pgsql error 40001") != std::string::npos ||
-            error_msg.find("Catalog Version Mismatch") != std::string::npos ||
-            error_msg.find("Restart read required") != std::string::npos ||
-            error_msg.find("schema version mismatch") != std::string::npos) {
-          // These errors are expected during concurrent operations
-          LOG(INFO) << "Expected error during ANALYZE: " << error_msg;
-        } else {
-          FAIL() << "Unexpected error during ANALYZE: " << error_msg;
-        }
-      }
+      FailIfNotConcurrentDDLErrors(status);
     }
 
     LOG(INFO) << "ANALYZE completed";
   });
 
-  // Thread to insert the hint
-  auto conn_hint = ASSERT_RESULT(ConnectWithHintTable());
   threads.AddThreadFunctor([&stop_threads, &hint_num, &conn_hint]() {
 
     LOG(INFO) << "Starting hint insertion thread";
     while (!stop_threads.load()) {
-      ASSERT_OK(conn_hint.ExecuteFormat(
+      auto status = conn_hint.ExecuteFormat(
           "INSERT INTO hint_plan.hints (norm_query_string, application_name, hints) "
           "VALUES ('$0', '', 'MergeJoin(pg_class pg_attribute)') "
           "ON CONFLICT (norm_query_string, application_name) "
           "DO UPDATE SET hints = 'MergeJoin(pg_class pg_attribute)'",
-          hint_num++));
+          hint_num);
+      FailIfNotConcurrentDDLErrors(status);
+      if (status.ok()) {
+        hint_num++;
+      }
     }
     LOG(INFO) << "Successfully inserted " << hint_num << " hints";
   });
@@ -328,7 +375,7 @@ TEST_F(PgHintTableTest, PreparedStatementHintCacheRefresh) {
   int64_t custom_plan_refreshes = 0;
   for (int i = 0; i < 6; i++) {
     auto join_type = ASSERT_RESULT(ExecuteExplainAndGetJoinType(
-        conn_pstmt, Format("EXPLAIN (ANALYZE, FORMAT JSON) EXECUTE test_stmt($0)", i)));
+        &conn_pstmt, Format("EXPLAIN (ANALYZE, FORMAT JSON) EXECUTE test_stmt($0)", i)));
     ASSERT_STR_EQ("YB Batched Nested Loop", join_type);
     // Verify that we got 5 misses and no hits
     auto metrics_custom_plan = GetPrometheusMetrics();
@@ -352,7 +399,7 @@ TEST_F(PgHintTableTest, PreparedStatementHintCacheRefresh) {
   int64_t generic_plan_refreshes = 0;
   for (int i = 7; i < 12; i++) {
     auto join_type = ASSERT_RESULT(ExecuteExplainAndGetJoinType(
-        conn_pstmt, Format("EXPLAIN (ANALYZE, FORMAT JSON) EXECUTE test_stmt($0)", i)));
+        &conn_pstmt, Format("EXPLAIN (ANALYZE, FORMAT JSON) EXECUTE test_stmt($0)", i)));
     ASSERT_STR_EQ("YB Batched Nested Loop", join_type);
 
     // Verify that we got no additional hits/misses
@@ -400,7 +447,7 @@ TEST_F(PgHintTableTest, PreparedStatementHintCacheRefresh) {
   // used
   // ----------------------------------------------------------------------------------------------
   auto join_type = ASSERT_RESULT(ExecuteExplainAndGetJoinType(
-      conn_pstmt, "EXPLAIN (ANALYZE, FORMAT JSON) EXECUTE test_stmt(10)"));
+      &conn_pstmt, "EXPLAIN (ANALYZE, FORMAT JSON) EXECUTE test_stmt(10)"));
   ASSERT_STR_EQ("Merge Join", join_type);
   auto new_hint_metrics = GetPrometheusMetrics();
 
@@ -427,7 +474,7 @@ TEST_F(PgHintTableTest, InvalidHint) {
 
   // Execute the prepared statement once to establish a baseline
   auto initial_join_type = ASSERT_RESULT(ExecuteExplainAndGetJoinType(
-      conn_explain, "EXPLAIN (ANALYZE, FORMAT JSON) " + query));
+      &conn_explain, "EXPLAIN (ANALYZE, FORMAT JSON) " + query));
   LOG(INFO) << "Initial join type: " << initial_join_type;
 
   // ----------------------------------------------------------------------------------------------
@@ -450,7 +497,7 @@ TEST_F(PgHintTableTest, InvalidHint) {
   // ----------------------------------------------------------------------------------------------
   for (int i = 0; i < 10; i++) {
     auto join_type_after_invalid = ASSERT_RESULT(ExecuteExplainAndGetJoinType(
-        conn_explain, "EXPLAIN (ANALYZE, FORMAT JSON) " + query));
+        &conn_explain, "EXPLAIN (ANALYZE, FORMAT JSON) " + query));
     // The join type should remain the same as the initial one
     // since the invalid hint should be ignored
     ASSERT_STR_EQ(initial_join_type, join_type_after_invalid);
@@ -463,36 +510,12 @@ TEST_F(PgHintTableTest, InvalidHint) {
  */
 TEST_F(PgHintTableTest, HintCacheMemoryLeakTest) {
   // ----------------------------------------------------------------------------------------------
-  // 1. Setup connections
+  // 1. Setup connections, add hints and check that the hints are being followed
   // ----------------------------------------------------------------------------------------------
-  auto conn_query = ASSERT_RESULT(ConnectWithHintTable());
-  auto conn_hint = ASSERT_RESULT(ConnectWithHintTable());
-
-  ASSERT_OK(conn_hint.Execute("SET yb_tcmalloc_sample_period = 1"));
-  ASSERT_OK(conn_query.Execute("SET yb_tcmalloc_sample_period = 1"));
+  auto [conn_query, conn_hint] = ASSERT_RESULT(InsertHintsAndRunQueries());
 
   // ----------------------------------------------------------------------------------------------
-  // 2. Insert hints and run queries to force hint cache lookups & refreshes
-  // ----------------------------------------------------------------------------------------------
-  const int num_queries = 100;
-  for (int i = 0; i < num_queries; i++) {
-    std::string whitespace(i * 1000, ' ');
-    auto hint_value = Format("YbBatchedNL(pg_class $0 pg_attribute)", whitespace);
-
-    ASSERT_OK(conn_hint.ExecuteFormat(
-        "INSERT INTO hint_plan.hints (norm_query_string, application_name, hints) "
-        "VALUES ('$0', '', '$1')",
-        query_id + i, hint_value));
-
-    // Execute the query to force hint cache lookups and refreshes
-    auto join_type = ASSERT_RESULT(
-        ExecuteExplainAndGetJoinType(conn_query, "EXPLAIN (ANALYZE, FORMAT JSON) " + query));
-    ASSERT_STR_EQ("YB Batched Nested Loop", join_type);
-  }
-  LOG(INFO) << "Completed " << num_queries << " queries";
-
-  // ----------------------------------------------------------------------------------------------
-  // 3. Check size of YbHintCacheContext and the total size of all memory contexts
+  // 2. Check size of YbHintCacheContext and the total size of all memory contexts
   // ----------------------------------------------------------------------------------------------
   for (PGConn* conn : {&conn_query, &conn_hint}) {
     ASSERT_TRUE(ASSERT_RESULT(
@@ -519,6 +542,26 @@ TEST_F(PgHintTableTest, HintCacheMemoryLeakTest) {
     // Verify the total memory usage is also reasonable (less than 10MB)
     ASSERT_LT(total_memory, 40 * 1024 * 1024) << "Total memory context usage exceeds 40MB";
   }
+}
+
+// Test that the hint cache is disabled when the yb_enable_hint_table_cache flag is set to off.
+TEST_F(PgHintTableTestWithoutHintCache, HintCacheDisabled) {
+  // ----------------------------------------------------------------------------------------------
+  // 1. Setup connections, add hints and check that the hints are being followed
+  // ----------------------------------------------------------------------------------------------
+  auto [conn_query, conn_hint] = ASSERT_RESULT(InsertHintsAndRunQueries());
+
+  // ----------------------------------------------------------------------------------------------
+  // 2. Check that the YbHintCacheContext does not exist on all connections
+  // ----------------------------------------------------------------------------------------------
+  auto count_query = ASSERT_RESULT(conn_query.FetchRow<PGUint64>(
+      "SELECT COUNT(*) FROM pg_backend_memory_contexts "
+      "WHERE name = 'YbHintCacheContext'"));
+  ASSERT_EQ(count_query, 0);
+  auto count_hint = ASSERT_RESULT(conn_hint.FetchRow<PGUint64>(
+      "SELECT COUNT(*) FROM pg_backend_memory_contexts "
+      "WHERE name = 'YbHintCacheContext'"));
+  ASSERT_EQ(count_hint, 0);
 }
 
 }  // namespace yb::pgwrapper

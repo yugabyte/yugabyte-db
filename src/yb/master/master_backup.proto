@@ -127,6 +127,7 @@ message ListSnapshotsRequestPB {
   optional bytes snapshot_id = 2;
   optional bool list_deleted_snapshots = 3;
   optional bool prepare_for_backup = 4;
+  optional bool include_ddl_in_progress_tables = 6;
   optional ListSnapshotsDetailOptionsPB detail_options = 5;
 }
 

@@ -8,13 +8,13 @@ CREATE TABLE yb_xcluster_ddl_replication.ddl_queue(
   ddl_end_time bigint NOT NULL,
   query_id bigint NOT NULL,
   yb_data jsonb NOT NULL,
-  PRIMARY KEY (ddl_end_time, query_id));
+  PRIMARY KEY (ddl_end_time, query_id)) WITH (COLOCATION = false);
 
 CREATE TABLE yb_xcluster_ddl_replication.replicated_ddls(
   ddl_end_time bigint NOT NULL,
   query_id bigint NOT NULL,
   yb_data jsonb NOT NULL,
-  PRIMARY KEY (ddl_end_time, query_id));
+  PRIMARY KEY (ddl_end_time, query_id)) WITH (COLOCATION = false);
 
 /* ------------------------------------------------------------------------- */
 /* Create routines for user of extension. */
@@ -23,10 +23,6 @@ CREATE FUNCTION yb_xcluster_ddl_replication.get_replication_role()
   RETURNS text
   LANGUAGE C
   AS 'MODULE_PATHNAME', 'get_replication_role';
-
-CREATE PROCEDURE yb_xcluster_ddl_replication.TEST_override_replication_role(role text)
-  LANGUAGE C
-  AS 'MODULE_PATHNAME', 'TEST_override_replication_role';
 
 /* ------------------------------------------------------------------------- */
 /* Create event triggers. */
@@ -40,6 +36,11 @@ CREATE EVENT TRIGGER yb_xcluster_ddl_replication_handle_ddl_start_trigger
   ON ddl_command_start
   EXECUTE FUNCTION yb_xcluster_ddl_replication.handle_ddl_start();
 
+CREATE EVENT TRIGGER yb_xcluster_ddl_replication_handle_truncate_start_trigger
+  ON ddl_command_start
+  WHEN TAG in ('TRUNCATE TABLE')
+  EXECUTE FUNCTION yb_xcluster_ddl_replication.handle_ddl_start();
+
 CREATE FUNCTION yb_xcluster_ddl_replication.handle_ddl_end()
   RETURNS event_trigger
   LANGUAGE C
@@ -47,6 +48,11 @@ CREATE FUNCTION yb_xcluster_ddl_replication.handle_ddl_end()
 
 CREATE EVENT TRIGGER yb_xcluster_ddl_replication_handle_ddl_end_trigger
   ON ddl_command_end
+  EXECUTE FUNCTION yb_xcluster_ddl_replication.handle_ddl_end();
+
+CREATE EVENT TRIGGER yb_xcluster_ddl_replication_handle_truncate_end_trigger
+  ON ddl_command_end
+  WHEN TAG in ('TRUNCATE TABLE')
   EXECUTE FUNCTION yb_xcluster_ddl_replication.handle_ddl_end();
 
 CREATE FUNCTION yb_xcluster_ddl_replication.handle_sql_drop()

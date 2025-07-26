@@ -12,8 +12,8 @@ DIRS = \
 	wal2json \
 	pgtap \
 
-ifeq ($(YB_ENABLE_YSQL_DOCUMENTDB_EXT),TRUE)
-	documentdb
+ifneq ($(findstring YB_ENABLE_YSQL_DOCUMENTDB_EXT, $(CXXFLAGS)),)
+	DIRS += documentdb
 endif
 
 BUILDDIRS = $(DIRS:%=build-%)

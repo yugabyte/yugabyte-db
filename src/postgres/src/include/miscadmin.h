@@ -360,6 +360,7 @@ typedef enum BackendType
 	B_ARCHIVER,
 	B_LOGGER,
 	YB_YSQL_CONN_MGR,
+	YB_YSQL_CONN_MGR_WAL_SENDER,
 } BackendType;
 
 extern PGDLLIMPORT BackendType MyBackendType;

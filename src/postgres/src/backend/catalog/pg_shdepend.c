@@ -188,41 +188,6 @@ recordDependencyOnOwner(Oid classId, Oid objectId, Oid owner)
 	recordSharedDependencyOn(&myself, &referenced, SHARED_DEPENDENCY_OWNER);
 }
 
-#ifdef YB_TODO
-/* Postgres 13 has its own definition */
-/*
- * recordDependencyOnTablespace
- *
- * A convenient wrapper of recordSharedDependencyOn -- mark that an object is
- * associated with a tablespace.
- *
- * Note: it's the caller's responsibility to ensure that there isn't a
- * tablespace entry for the object already.
- */
-void
-recordDependencyOnTablespace(Oid classId, Oid objectId, Oid tablespaceOid)
-{
-	if (tablespaceOid == InvalidOid)
-	{
-		/* Nothing to do */
-		return;
-	}
-	ObjectAddress myself,
-				referenced;
-
-	myself.classId = classId;
-	myself.objectId = objectId;
-	myself.objectSubId = 0;
-
-	referenced.classId = TableSpaceRelationId;
-	referenced.objectId = tablespaceOid;
-	referenced.objectSubId = 0;
-
-	recordSharedDependencyOn(&myself, &referenced,
-							 SHARED_DEPENDENCY_TABLESPACE);
-}
-#endif
-
 /*
  * shdepChangeDep
  *

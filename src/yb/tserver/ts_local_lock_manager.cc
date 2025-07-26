@@ -15,9 +15,21 @@
 
 #include "yb/tserver/ts_local_lock_manager.h"
 
+#include "yb/client/client.h"
+
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/object_lock_manager.h"
+
+#include "yb/master/master_ddl.pb.h"
+
+#include "yb/rpc/messenger.h"
+#include "yb/rpc/poller.h"
+
+#include "yb/server/server_base.h"
+
+#include "yb/tserver/tserver_service.pb.h"
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/scope_exit.h"
@@ -27,13 +39,343 @@
 using namespace std::literals;
 DECLARE_bool(dump_lock_keys);
 
+DEFINE_NON_RUNTIME_int64(olm_poll_interval_ms, 100,
+    "Poll interval for Object lock Manager. Waiting requests that are unblocked by other release "
+    "requests are independent of this interval since the release schedules unblocking of potential "
+    "waiters. Yet this might help release timedout requests soon and also avoid probable issues "
+    "with the signaling mechanism if any.");
+
+DEPRECATE_FLAG(int32, ysql_max_retries_for_release_object_lock_requests, "07_2025");
+
+DEFINE_test_flag(bool, block_acquires_to_simulate_out_of_order, false,
+    "Will cause the acquire objects codepath to block indefinitely, until "
+    " the gflag TEST_release_blocked_acquires is set to true. ");
+DEFINE_test_flag(bool, release_blocked_acquires_to_simulate_out_of_order, false,
+    "Will cause the blocked acquire objects handling to unblock");
+
+DECLARE_int32(tserver_yb_client_default_timeout_ms);
+DECLARE_uint64(refresh_waiter_timeout_ms);
+
 namespace yb::tserver {
+
+YB_STRONGLY_TYPED_BOOL(WaitForBootstrap);
+
+// This class tracks object locks specifically for the pg_locks view.
+// An alternative would be to extract and decrypt locks directly from ObjectLockManager,
+// but for simplicity, we decided to maintain a separate tracker here.
+class ObjectLockTracker {
+ public:
+
+  Status TrackLocks(
+    const std::vector<ObjectLockContext>& lock_contexts, ObjectLockState lock_state,
+    HybridTime wait_start = HybridTime::kInvalid) {
+    for (const auto& lock_context : lock_contexts) {
+      RETURN_NOT_OK(TrackLock(lock_context, lock_state, wait_start));
+    }
+    return Status::OK();
+  }
+
+  Status TrackLock(
+      const ObjectLockContext& lock_context, ObjectLockState lock_state,
+      HybridTime wait_start = HybridTime::kInvalid) {
+    const auto txn_id = lock_context.txn_id;
+    const auto subtxn_id = lock_context.subtxn_id;
+    const auto lock_id = LockId{
+      .database_oid = lock_context.database_oid,
+      .relation_oid = lock_context.relation_oid,
+      .object_oid = lock_context.object_oid,
+      .object_sub_oid = lock_context.object_sub_oid,
+      .lock_type = lock_context.lock_type
+    };
+
+    std::lock_guard l(mutex_);
+    auto& lock_id_map = lock_map_[txn_id][subtxn_id];
+
+    auto lock_it = lock_id_map.find(lock_id);
+    if (lock_it != lock_id_map.end()) {
+      auto& existing = lock_it->second;
+      existing.counter++;
+      if (existing.lock_state == ObjectLockState::WAITING &&
+          lock_state == ObjectLockState::GRANTED) {
+        // Upgrade from WAITING to GRANTED state and
+        // keep the wait_start time as it is for pg_locks view.
+        existing.lock_state = ObjectLockState::GRANTED;
+      }
+      return Status::OK();
+    }
+
+    LockInfo new_lock{
+      .lock_state = lock_state,
+      .wait_start = (lock_state == ObjectLockState::WAITING) ? wait_start : HybridTime::kInvalid,
+      .counter = 1
+    };
+    lock_id_map.emplace(lock_id, new_lock);
+
+    return Status::OK();
+  }
+
+  Status UntrackLocks(const std::vector<ObjectLockContext>& lock_contexts) {
+    for (const auto& lock_context : lock_contexts) {
+      RETURN_NOT_OK(UntrackLock(lock_context));
+    }
+    return Status::OK();
+  }
+
+  Status UntrackLock(const ObjectLockContext& lock_context) {
+    if (lock_context.subtxn_id == 0) {
+      return UntrackAllLocks(lock_context.txn_id, lock_context.subtxn_id);
+    }
+
+    std::lock_guard l(mutex_);
+    auto txn_it = lock_map_.find(lock_context.txn_id);
+    if (txn_it == lock_map_.end()) {
+      return Status::OK();
+    }
+    auto subtxn_it = txn_it->second.find(lock_context.subtxn_id);
+    if (subtxn_it == txn_it->second.end()) {
+      return Status::OK();
+    }
+
+    auto& lock_id_map = subtxn_it->second;
+    const auto lock_id = LockId{
+      .database_oid = lock_context.database_oid,
+      .relation_oid = lock_context.relation_oid,
+      .object_oid = lock_context.object_oid,
+      .object_sub_oid = lock_context.object_sub_oid,
+      .lock_type = lock_context.lock_type
+    };
+    auto lock_it = lock_id_map.find(lock_id);
+    DCHECK(lock_it != lock_id_map.end());
+    if (lock_it->second.counter > 1) {
+      lock_it->second.counter--;
+      return Status::OK();
+    }
+
+    // cleanup
+    lock_id_map.erase(lock_it);
+    if (lock_id_map.empty()) {
+      txn_it->second.erase(subtxn_it);
+      if (txn_it->second.empty()) {
+        lock_map_.erase(txn_it);
+      }
+    }
+
+    return Status::OK();
+  }
+
+  Status UntrackAllLocks(TransactionId txn_id, SubTransactionId subtxn_id) {
+    std::lock_guard l(mutex_);
+    if (subtxn_id == 0) {
+      // Remove all subtransactions for this transaction
+      lock_map_.erase(txn_id);
+    } else {
+      auto txn_iter = lock_map_.find(txn_id);
+      if (txn_iter != lock_map_.end()) {
+        txn_iter->second.erase(subtxn_id);
+        if (txn_iter->second.empty()) {
+          lock_map_.erase(txn_iter);
+        }
+      }
+    }
+    return Status::OK();
+  }
+
+  void PopulateObjectLocks(
+      google::protobuf::RepeatedPtrField<ObjectLockInfoPB>* object_lock_infos) const {
+    object_lock_infos->Clear();
+    SharedLock l(mutex_);
+    for (const auto& [txn_id, subtxn_map] : lock_map_) {
+      for (const auto& [subtxn_id, lock_id_map] : subtxn_map) {
+        for (const auto& [lock_id, lock_info] : lock_id_map) {
+          auto* object_lock_info_pb = object_lock_infos->Add();
+          object_lock_info_pb->set_transaction_id(txn_id.data(), txn_id.size());
+          object_lock_info_pb->set_subtransaction_id(subtxn_id);
+          object_lock_info_pb->set_database_oid(lock_id.database_oid);
+          object_lock_info_pb->set_relation_oid(lock_id.relation_oid);
+          object_lock_info_pb->set_object_oid(lock_id.object_oid);
+          object_lock_info_pb->set_object_sub_oid(lock_id.object_sub_oid);
+          object_lock_info_pb->set_mode(lock_id.lock_type);
+          object_lock_info_pb->set_lock_state(lock_info.lock_state);
+          DCHECK_NE(lock_info.wait_start, HybridTime::kInvalid);
+          object_lock_info_pb->set_wait_start_ht(lock_info.wait_start.ToUint64());
+        }
+      }
+    }
+  }
+
+ private:
+  mutable std::shared_mutex mutex_;
+
+  struct LockId {
+    YB_STRUCT_DEFINE_HASH(
+        LockId, database_oid, relation_oid, object_oid, object_sub_oid, lock_type);
+    auto operator<=>(const LockId&) const = default;
+    uint64_t database_oid;
+    uint64_t relation_oid;
+    uint64_t object_oid;
+    uint64_t object_sub_oid;
+    TableLockType lock_type;
+  };
+
+  struct LockInfo {
+    ObjectLockState lock_state;
+    HybridTime wait_start = HybridTime::kInvalid;
+    size_t counter = 0;
+  };
+
+  std::unordered_map<TransactionId,
+      std::unordered_map<SubTransactionId,
+          std::unordered_map<LockId, LockInfo>>> lock_map_;
+};
+
+namespace {
+
+void ReleaseWithRetriesGlobalNow(
+    yb::client::YBClient& client, std::weak_ptr<TSLocalLockManager> lock_manager_weak,
+    const std::shared_ptr<master::ReleaseObjectLocksGlobalRequestPB>& release_req,
+    int attempt = 1) {
+  // Practically speaking, if the TServer cannot reach the master/leader for the ysql lease
+  // interval it can safely give up. The Master is responsible for cleaning up the locks for any
+  // tserver that loses its lease. We have additional retries just to be safe. Also the timeout
+  // used here defaults to 60s, which is much larger than the default lease interval of 28sec.
+  // Even if the lease interval were changed to something much larger, it is ok because the
+  // release request will be retried as long as the ts local lock manager is live.
+  auto deadline =
+      MonoTime::Now() + MonoDelta::FromMilliseconds(FLAGS_tserver_yb_client_default_timeout_ms);
+  auto ptr = lock_manager_weak.lock();
+  if (!ptr) {
+    LOG(INFO) << "Session is no longer valid. Most likely lease epoch "
+              << release_req->lease_epoch() << " is not valid. Will not retry "
+              << " Release request " << (VLOG_IS_ON(2) ? release_req->ShortDebugString() : "");
+    return;
+  } else if (ptr->IsShutdownInProgress()) {
+    LOG(INFO) << "Shutdown in progress. Will not retry "
+              << " Release request " << (VLOG_IS_ON(2) ? release_req->ShortDebugString() : "");
+    return;
+  }
+  client.ReleaseObjectLocksGlobalAsync(
+      *release_req,
+      [&client, lock_manager_weak, release_req, attempt](const Status& s) {
+        if (s.ok()) {
+          VLOG(1) << "Release global request done. "
+                  << (VLOG_IS_ON(2) ? release_req->ShortDebugString() : "");
+          return;
+        } else {
+          VLOG_WITH_FUNC(1) << "Release global locks failed. Will retry."
+                            << " attempt : " << attempt << " status " << s
+                            << (VLOG_IS_ON(2) ? release_req->ShortDebugString() : "");
+          ReleaseWithRetriesGlobalNow(client, lock_manager_weak, release_req, attempt + 1);
+        }
+      },
+      ToCoarse(deadline));
+}
+
+void ReleaseObjectLocksForLostMessages(
+    std::reference_wrapper<yb::client::YBClient> client,
+    std::weak_ptr<TSLocalLockManager> lock_manager_weak,
+    const std::shared_ptr<master::ReleaseObjectLocksGlobalRequestPB>& release_req,
+    const Status& status) {
+  if (!status.ok()) {
+    LOG_WITH_FUNC(ERROR) << "Aborting Release request"
+                         << (VLOG_IS_ON(1) ? release_req->ShortDebugString() : "") << " due to "
+                         << status;
+    return;
+  }
+  VLOG_WITH_FUNC(1) << " for : " << release_req->ShortDebugString();
+  ReleaseWithRetriesGlobalNow(client.get(), lock_manager_weak, release_req);
+}
+
+}  // namespace
 
 class TSLocalLockManager::Impl {
  public:
-  Impl(const server::ClockPtr& clock, TabletServerIf* server) : clock_(clock), server_(server) {}
+  Impl(
+      const server::ClockPtr& clock, TabletServerIf* tablet_server,
+      server::RpcServerBase& messenger_server, ThreadPool* thread_pool,
+      docdb::ObjectLockSharedStateManager* shared_manager)
+      : clock_(clock), server_(tablet_server), messenger_base_(messenger_server),
+        object_lock_manager_(thread_pool, messenger_server, shared_manager),
+        poller_("TSLocalLockManager", std::bind(&Impl::Poll, this)) {}
 
   ~Impl() = default;
+
+  void TrackDeadlineForGlobalAcquire(
+      const TransactionId& txn_id, const SubTransactionId& subtxn_id,
+      CoarseTimePoint apply_after_ht) {
+    std::lock_guard l(mutex_);
+    max_deadline_across_acquires_[txn_id][subtxn_id] =
+        std::max(apply_after_ht, max_deadline_across_acquires_[txn_id][subtxn_id]);
+  }
+
+  std::optional<CoarseTimePoint> MaxDeadlineForTxn(
+      const TransactionId& txn_id, std::optional<SubTransactionId> subtxn_id) {
+    std::lock_guard l(mutex_);
+    auto it = max_deadline_across_acquires_.find(txn_id);
+    if (it == max_deadline_across_acquires_.end()) {
+      return std::nullopt;
+    }
+    if (subtxn_id.has_value()) {
+      // If subtxn_id is provided, we release only that specific subtransaction.
+      auto sub_it = it->second.find(*subtxn_id);
+      if (sub_it == it->second.end()) {
+        return std::nullopt;
+      }
+      return sub_it->second;
+    }
+    // If subtxn_id is not provided, we release all subtransactions for this txn.
+    // This is useful when we want to release all locks for a txn that has lost messages.
+    auto& max_deadline_map = it->second;
+    // There should be at least one subtransaction, as we expect CleanupMaxDeadlineForTxn to
+    // delete the entry if there are no subtransactions left.
+    DCHECK(!max_deadline_map.empty())
+        << "No subtransactions found for txn_id: " << txn_id.ToString();
+    // Get the max max_deadline for all subtxns.
+    auto max_deadline = max_deadline_map.begin()->second;
+    for (auto& [_, subtxn_max_deadline] : max_deadline_map) {
+      if (subtxn_max_deadline > max_deadline) {
+        max_deadline = subtxn_max_deadline;
+      }
+    }
+    return max_deadline;
+  }
+
+  void CleanupMaxDeadlineForTxn(
+      const TransactionId& txn_id, std::optional<SubTransactionId> subtxn_id) {
+    std::lock_guard l(mutex_);
+    auto it = max_deadline_across_acquires_.find(txn_id);
+    if (it == max_deadline_across_acquires_.end()) {
+      return;
+    }
+
+    if (!subtxn_id.has_value()) {
+      // If subtxn_id is not provided, we release all subtransactions for this txn.
+      // This is useful when we want to release all locks for a txn that has lost messages.
+      max_deadline_across_acquires_.erase(it);
+      return;
+    }
+
+    auto& subtxn_map = it->second;
+    subtxn_map.erase(*subtxn_id);
+    if (subtxn_map.empty()) {
+      max_deadline_across_acquires_.erase(it);
+    }
+  }
+
+  void ScheduleReleaseForLostMessages(
+      yb::client::YBClient& client, std::weak_ptr<TSLocalLockManager> lock_manager_weak,
+      const TransactionId& txn_id, std::optional<SubTransactionId> subtxn_id,
+      const std::shared_ptr<master::ReleaseObjectLocksGlobalRequestPB>& release_req) {
+    auto apply_after_ht = MaxDeadlineForTxn(txn_id, subtxn_id);
+    if (!apply_after_ht) {
+      return;
+    }
+    messenger_base_.messenger()->scheduler().Schedule(
+        std::bind(
+            ReleaseObjectLocksForLostMessages, std::reference_wrapper<client::YBClient>(client),
+            lock_manager_weak, release_req, std::placeholders::_1),
+        ToSteady(*apply_after_ht));
+    CleanupMaxDeadlineForTxn(txn_id, subtxn_id);
+  }
 
   Status CheckRequestForDeadline(const tserver::AcquireObjectLockRequestPB& req) {
     TRACE_FUNC();
@@ -56,41 +398,123 @@ class TSLocalLockManager::Impl {
     return Status::OK();
   }
 
+  Status CheckShutdown() const {
+    return shutdown_
+        ? STATUS_FORMAT(ShutdownInProgress, "Object Lock Manager Shutdown") : Status::OK();
+  }
+
   Status AcquireObjectLocks(
       const tserver::AcquireObjectLockRequestPB& req, CoarseTimePoint deadline,
       WaitForBootstrap wait) {
+    Synchronizer synchronizer;
+    DoAcquireObjectLocksAsync(req, deadline, synchronizer.AsStdStatusCallback(), wait);
+    return synchronizer.Wait();
+  }
+
+  void DoAcquireObjectLocksAsync(
+      const tserver::AcquireObjectLockRequestPB& req, CoarseTimePoint deadline,
+      StdStatusCallback&& callback, WaitForBootstrap wait) {
+    auto s = PrepareAndExecuteAcquire(req, deadline, callback, wait);
+    if (!s.ok()) {
+      VLOG_WITH_FUNC(1) << "failed with " << s;
+      callback(s);
+    }
+  }
+
+  void WaitIfNecessaryForSimulatingOutOfOrderRequestsInTests(
+      const tserver::AcquireObjectLockRequestPB& req, CoarseTimePoint& deadline) {
+    if (!FLAGS_TEST_block_acquires_to_simulate_out_of_order) {
+      VLOG_WITH_FUNC(3) << "Disabled.";
+      return;
+    }
+
+    VLOG(1) << "Blocking acquire request to simulate out-of-order requests: "
+            << req.ShortDebugString();
+    TRACE("Blocking acquire request to simulate out-of-order requests");
+    const auto wait_start = CoarseMonoClock::Now();
+    while (!FLAGS_TEST_release_blocked_acquires_to_simulate_out_of_order) {
+      constexpr auto kSpinWait = 100ms;
+      VLOG(2) << Format("Blocking $0 for $1", __func__, kSpinWait);
+      SleepFor(kSpinWait);
+    }
+    TRACE("Unblocked acquire request");
+    const auto now = CoarseMonoClock::Now();
+    const auto spin_wait_duration = now - wait_start;
+    const auto previous_deadline = deadline;
+    // Update the deadline so that this request does not get rejected later on due
+    // to the delay caused here.
+    deadline = previous_deadline + spin_wait_duration;
+    VLOG(1) << "Unblocking acquire request. Updated deadline from "
+            << ToStringRelativeToNow(previous_deadline, now)
+            << " to " << ToStringRelativeToNow(deadline, now);
+  }
+
+  Status WaitUntilBootstrapped(CoarseTimePoint deadline) {
+    VLOG_IF(1, !is_bootstrapped_) << "Waiting until object lock manager is bootstrapped.";
+    return Wait(
+        [this]() -> bool {
+          bool ret = is_bootstrapped_;
+          VTRACE(2, "Is bootstrapped: $0", ret);
+          return ret;
+        },
+        deadline, "Waiting to Bootstrap.");
+  }
+
+  Status PrepareAndExecuteAcquire(
+      const tserver::AcquireObjectLockRequestPB& req, CoarseTimePoint deadline,
+      StdStatusCallback& callback, WaitForBootstrap wait) {
     TRACE_FUNC();
+    RETURN_NOT_OK(CheckShutdown());
     auto txn = VERIFY_RESULT(FullyDecodeTransactionId(req.txn_id()));
     docdb::ObjectLockOwner object_lock_owner(txn, req.subtxn_id());
     VLOG(3) << object_lock_owner.ToString() << " Acquiring lock : " << req.ShortDebugString();
     if (wait) {
-      VTRACE(1, "Waiting for bootstrap.");
-      RETURN_NOT_OK(Wait(
-          [this]() -> bool {
-            bool ret = is_bootstrapped_;
-            VTRACE(2, "Is bootstrapped: $0", ret);
-            return ret;
-          },
-          deadline, "Waiting to Bootstrap."));
+      RETURN_NOT_OK(WaitUntilBootstrapped(deadline));
     }
     TRACE("Through wait for bootstrap.");
+    WaitIfNecessaryForSimulatingOutOfOrderRequestsInTests(req, deadline);
     ScopedAddToInProgressTxns add_to_in_progress{this, ToString(txn), deadline};
     RETURN_NOT_OK(add_to_in_progress.status());
     RETURN_NOT_OK(CheckRequestForDeadline(req));
     UpdateLeaseEpochIfNecessary(req.session_host_uuid(), req.lease_epoch());
 
     auto keys_to_lock = VERIFY_RESULT(DetermineObjectsToLock(req.object_locks()));
-    if (object_lock_manager_.Lock(keys_to_lock.lock_batch, deadline, object_lock_owner)) {
-      TRACE("Successfully obtained object locks.");
-      return Status::OK();
+
+    // Track all locks as waiting
+    std::vector<ObjectLockContext> lock_contexts;
+    lock_contexts.reserve(req.object_locks_size());
+    for (const auto& object_lock : req.object_locks()) {
+      lock_contexts.emplace_back(
+          txn, req.subtxn_id(), object_lock.database_oid(), object_lock.relation_oid(),
+          object_lock.object_oid(), object_lock.object_sub_oid(), object_lock.lock_type());
     }
-    TRACE("Could not get the object locks.");
-    std::string batch_str;
-    if (FLAGS_dump_lock_keys) {
-      batch_str = Format(", batch: $0", keys_to_lock.lock_batch);
-    }
-    return STATUS_FORMAT(
-        TryAgain, "Failed to obtain object locks until deadline: $0$1", deadline, batch_str);
+    auto tracker_status =
+        lock_tracker_.TrackLocks(lock_contexts, ObjectLockState::WAITING, clock_->Now());
+    DCHECK_OK(tracker_status);
+
+    object_lock_manager_.Lock(
+      docdb::LockData{
+          .key_to_lock = std::move(keys_to_lock),
+          .deadline = std::min(
+              deadline,
+              (CoarseTimePoint) (CoarseMonoClock::Now() + FLAGS_refresh_waiter_timeout_ms * 1ms)),
+          .object_lock_owner = std::move(object_lock_owner),
+          .status_tablet = req.status_tablet(),
+          .start_time = MonoTime::FromUint64(req.propagated_hybrid_time()),
+          .callback = [this, lock_contexts = std::move(lock_contexts),
+                       cb = std::move(callback)](Status status) -> void {
+            Status tracker_status;
+            if (status.ok()) {
+              tracker_status = lock_tracker_.TrackLocks(lock_contexts, ObjectLockState::GRANTED);
+            } else {
+              tracker_status = lock_tracker_.UntrackLocks(lock_contexts);
+            }
+            DCHECK_OK(tracker_status);
+            // Call the original callback with the final status
+            cb(status);
+          }
+      });
+    return Status::OK();
   }
 
   Status WaitToApplyIfNecessary(
@@ -129,10 +553,11 @@ class TSLocalLockManager::Impl {
 
   Status ReleaseObjectLocks(
       const tserver::ReleaseObjectLockRequestPB& req, CoarseTimePoint deadline) {
+    RETURN_NOT_OK(CheckShutdown());
+    RETURN_NOT_OK(WaitUntilBootstrapped(deadline));
     auto txn = VERIFY_RESULT(FullyDecodeTransactionId(req.txn_id()));
     docdb::ObjectLockOwner object_lock_owner(txn, req.subtxn_id());
-    VLOG(3) << object_lock_owner.ToString()
-            << " Releasing locks : " << req.ShortDebugString();
+    VLOG(3) << object_lock_owner.ToString() << " Releasing locks : " << req.ShortDebugString();
 
     UpdateLeaseEpochIfNecessary(req.session_host_uuid(), req.lease_epoch());
     RETURN_NOT_OK(WaitToApplyIfNecessary(req, deadline));
@@ -143,7 +568,33 @@ class TSLocalLockManager::Impl {
       server_->SetYsqlDBCatalogVersions(req.db_catalog_version_data());
     }
     object_lock_manager_.Unlock(object_lock_owner);
+    auto tracker_status = lock_tracker_.UntrackAllLocks(txn, req.subtxn_id());
+    DCHECK_OK(tracker_status);
     return Status::OK();
+  }
+
+  void Poll() {
+    object_lock_manager_.Poll();
+  }
+
+  void Start(docdb::LocalWaitingTxnRegistry* waiting_txn_registry) {
+    object_lock_manager_.Start(waiting_txn_registry);
+    poller_.Start(
+        &messenger_base_.messenger()->scheduler(), 1ms * FLAGS_olm_poll_interval_ms);
+  }
+
+  void Shutdown() {
+    shutdown_ = true;
+    poller_.Shutdown();
+    {
+      yb::UniqueLock<LockType> lock(mutex_);
+      while (!txns_in_progress_.empty()) {
+        WaitOnConditionVariableUntil(&cv_, &lock, CoarseMonoClock::Now() + 5s);
+        LOG_WITH_FUNC(WARNING)
+            << Format("Waiting for $0 in progress requests at the OLM", txns_in_progress_.size());
+      }
+    }
+    object_lock_manager_.Shutdown();
   }
 
   void UpdateLeaseEpochIfNecessary(const std::string& uuid, uint64_t lease_epoch) EXCLUDES(mutex_) {
@@ -172,8 +623,8 @@ class TSLocalLockManager::Impl {
     yb::UniqueLock lock(mutex_);
     while (txns_in_progress_.find(txn_id) != txns_in_progress_.end()) {
       if (deadline <= CoarseMonoClock::Now()) {
-        LOG(ERROR) << "Failed to add txn " << txn_id << " to in progress txns until deadline: "
-                    << ToString(deadline);
+        LOG(WARNING) << "Failed to add txn " << txn_id << " to in progress txns until deadline: "
+                     << ToString(deadline);
         TRACE("Failed to add by deadline.");
         return STATUS_FORMAT(
             TryAgain, "Failed to add txn $0 to in progress txns until deadline: $1", txn_id,
@@ -208,12 +659,17 @@ class TSLocalLockManager::Impl {
     return is_bootstrapped_;
   }
 
-  size_t TEST_GrantedLocksSize() const {
+  size_t TEST_GrantedLocksSize() {
     return object_lock_manager_.TEST_GrantedLocksSize();
   }
 
-  size_t TEST_WaitingLocksSize() const {
+  size_t TEST_WaitingLocksSize() {
     return object_lock_manager_.TEST_WaitingLocksSize();
+  }
+
+  std::unordered_map<docdb::ObjectLockPrefix, docdb::LockState>
+      TEST_GetLockStateMapForTxn(const TransactionId& txn) const {
+    return object_lock_manager_.TEST_GetLockStateMapForTxn(txn);
   }
 
   void DumpLocksToHtml(std::ostream& out) {
@@ -222,20 +678,13 @@ class TSLocalLockManager::Impl {
 
   Status BootstrapDdlObjectLocks(const tserver::DdlLockEntriesPB& entries) {
     VLOG(2) << __func__ << " using " << yb::ToString(entries.lock_entries());
-    // TODO(amit): 1) When we implement YSQL leases, we need to clear out the locks, and
-    // re-bootstrap. For now, we are not doing that, the only time this should be happening
-    // is when a tserver registers with the master for the first time.
-    // 2) If the tserver is already bootstrapped from a master, we should not be bootstrapping
-    // again. However, even if we are bootstrap again, it should be safe to do so. Once we implement
-    // persistence of TServer Registration at the master, we can avoid this.
     if (IsBootstrapped()) {
-      LOG_WITH_FUNC(INFO) << "TSLocalLockManager is already bootstrapped. Ignoring the request.";
-      return Status::OK();
+      return STATUS(IllegalState, "TSLocalLockManager is already bootstrapped.");
     }
     for (const auto& acquire_req : entries.lock_entries()) {
       // This call should not block on anything.
-      CoarseTimePoint deadline = CoarseMonoClock::Now() + 1s;
-      RETURN_NOT_OK(AcquireObjectLocks(acquire_req, deadline, tserver::WaitForBootstrap::kFalse));
+      RETURN_NOT_OK(AcquireObjectLocks(
+          acquire_req, CoarseMonoClock::Now() + 1s, tserver::WaitForBootstrap::kFalse));
     }
     MarkBootstrapped();
     return Status::OK();
@@ -243,38 +692,46 @@ class TSLocalLockManager::Impl {
 
   server::ClockPtr clock() const { return clock_; }
 
+  void PopulateObjectLocks(
+      google::protobuf::RepeatedPtrField<ObjectLockInfoPB>* object_lock_infos) const {
+    lock_tracker_.PopulateObjectLocks(object_lock_infos);
+  }
+
  private:
   const server::ClockPtr clock_;
-  docdb::ObjectLockManager object_lock_manager_;
   std::atomic_bool is_bootstrapped_{false};
   std::unordered_map<std::string, uint64> max_seen_lease_epoch_ GUARDED_BY(mutex_);
   std::unordered_set<std::string> txns_in_progress_ GUARDED_BY(mutex_);
+  // This map tracks acquire requests by transaction/subtxn_id their
+  // corresponding (max) deadline, so that we can launch a clean up task to
+  // release any potential out-of-order locks past the deadline.
+  std::unordered_map<TransactionId, std::unordered_map<SubTransactionId, CoarseTimePoint>>
+      max_deadline_across_acquires_ GUARDED_BY(mutex_);
   std::condition_variable cv_;
   using LockType = std::mutex;
   LockType mutex_;
   TabletServerIf* server_;
+  server::RpcServerBase& messenger_base_;
+  docdb::ObjectLockManager object_lock_manager_;
+  std::atomic<bool> shutdown_{false};
+  rpc::Poller poller_;
+  ObjectLockTracker lock_tracker_;
 };
 
-TSLocalLockManager::TSLocalLockManager(const server::ClockPtr& clock, TabletServerIf* server)
-    : impl_(new Impl(clock, server)) {}
+TSLocalLockManager::TSLocalLockManager(
+    const server::ClockPtr& clock, TabletServerIf* tablet_server,
+    server::RpcServerBase& messenger_server, ThreadPool* thread_pool,
+    docdb::ObjectLockSharedStateManager* shared_manager)
+      : impl_(new Impl(
+          clock, CHECK_NOTNULL(tablet_server), messenger_server, CHECK_NOTNULL(thread_pool),
+          shared_manager)) {}
 
 TSLocalLockManager::~TSLocalLockManager() {}
 
-Status TSLocalLockManager::AcquireObjectLocks(
+void TSLocalLockManager::AcquireObjectLocksAsync(
     const tserver::AcquireObjectLockRequestPB& req, CoarseTimePoint deadline,
-    WaitForBootstrap wait) {
-  if (VLOG_IS_ON(4)) {
-    std::stringstream output;
-    impl_->DumpLocksToHtml(output);
-    VLOG(4) << "Dumping current state Before acquire : " << output.str();
-  }
-  auto ret = impl_->AcquireObjectLocks(req, deadline, wait);
-  if (VLOG_IS_ON(3)) {
-    std::stringstream output;
-    impl_->DumpLocksToHtml(output);
-    VLOG(3) << "Dumping current state After acquire : " << output.str();
-  }
-  return ret;
+    StdStatusCallback&& callback) {
+  impl_->DoAcquireObjectLocksAsync(req, deadline, std::move(callback), WaitForBootstrap::kTrue);
 }
 
 Status TSLocalLockManager::ReleaseObjectLocks(
@@ -293,11 +750,24 @@ Status TSLocalLockManager::ReleaseObjectLocks(
   return ret;
 }
 
+void TSLocalLockManager::Start(
+    docdb::LocalWaitingTxnRegistry* waiting_txn_registry) {
+  return impl_->Start(waiting_txn_registry);
+}
+
+void TSLocalLockManager::Shutdown() {
+  impl_->Shutdown();
+}
+
+bool TSLocalLockManager::IsShutdownInProgress() const {
+  return !impl_->CheckShutdown().ok();
+}
+
 void TSLocalLockManager::DumpLocksToHtml(std::ostream& out) {
   return impl_->DumpLocksToHtml(out);
 }
 
-size_t TSLocalLockManager::TEST_GrantedLocksSize() const {
+size_t TSLocalLockManager::TEST_GrantedLocksSize() {
   return impl_->TEST_GrantedLocksSize();
 }
 
@@ -305,7 +775,16 @@ bool TSLocalLockManager::IsBootstrapped() const {
   return impl_->IsBootstrapped();
 }
 
-size_t TSLocalLockManager::TEST_WaitingLocksSize() const {
+server::ClockPtr TSLocalLockManager::clock() const {
+  return impl_->clock();
+}
+
+void TSLocalLockManager::PopulateObjectLocks(
+    google::protobuf::RepeatedPtrField<ObjectLockInfoPB>* object_lock_infos) const {
+  impl_->PopulateObjectLocks(object_lock_infos);
+}
+
+size_t TSLocalLockManager::TEST_WaitingLocksSize() {
   return impl_->TEST_WaitingLocksSize();
 }
 
@@ -317,8 +796,69 @@ void TSLocalLockManager::TEST_MarkBootstrapped() {
   impl_->MarkBootstrapped();
 }
 
-server::ClockPtr TSLocalLockManager::clock() const {
-  return impl_->clock();
+std::unordered_map<docdb::ObjectLockPrefix, docdb::LockState>
+    TSLocalLockManager::TEST_GetLockStateMapForTxn(const TransactionId& txn) const {
+  return impl_->TEST_GetLockStateMapForTxn(txn);
 }
 
-} // namespace yb::tserver
+void TSLocalLockManager::TrackDeadlineForGlobalAcquire(
+    const TransactionId& txn_id, const SubTransactionId& subtxn_id,
+    CoarseTimePoint apply_after_ht) {
+  impl_->TrackDeadlineForGlobalAcquire(txn_id, subtxn_id, apply_after_ht);
+}
+
+void TSLocalLockManager::ScheduleReleaseForLostMessages(
+    yb::client::YBClient& client, std::weak_ptr<TSLocalLockManager> lock_manager_weak,
+    const TransactionId& txn_id, std::optional<SubTransactionId> subtxn_id,
+    const std::shared_ptr<master::ReleaseObjectLocksGlobalRequestPB>& release_req) {
+  impl_->ScheduleReleaseForLostMessages(client, lock_manager_weak, txn_id, subtxn_id, release_req);
+}
+
+void ReleaseWithRetriesGlobal(
+    yb::client::YBClient& client, std::weak_ptr<TSLocalLockManager> lock_manager_weak,
+    const TransactionId& txn_id, std::optional<SubTransactionId> subtxn_id,
+    const std::shared_ptr<master::ReleaseObjectLocksGlobalRequestPB>& release_req) {
+  auto ptr = lock_manager_weak.lock();
+  // If the lock manager is no longer available, we cannot proceed with the release.
+  // This can happen if the LocalTServer has lost its lease.
+  // In such cases, the LocalTServer need not attempt to release the locks.
+  // The master will handle the cleanup of global locks for the expired lease epoch(s).
+  if (!ptr) {
+    return;
+  }
+
+  ptr->ScheduleReleaseForLostMessages(client, lock_manager_weak, txn_id, subtxn_id, release_req);
+
+  ReleaseWithRetriesGlobalNow(client, lock_manager_weak, release_req);
+}
+
+void AcquireObjectLockLocallyWithRetries(
+    std::weak_ptr<TSLocalLockManager> lock_manager, AcquireObjectLockRequestPB&& req,
+    CoarseTimePoint deadline, StdStatusCallback&& lock_cb,
+    std::function<Status(CoarseTimePoint)> check_txn_running) {
+  auto retry_cb = [lock_manager, req, lock_cb = std::move(lock_cb), deadline,
+                   check_txn_running](const Status& s) mutable {
+    if (!s.IsTryAgain()) {
+      return lock_cb(s);
+    }
+    auto txn_status = check_txn_running(deadline);
+    if (!txn_status.ok()) {
+      // Transaction has already failed.
+      return lock_cb(txn_status);
+    }
+    if (CoarseMonoClock::Now() < deadline) {
+      return AcquireObjectLockLocallyWithRetries(
+          lock_manager, std::move(req), deadline, std::move(lock_cb), check_txn_running);
+    }
+    return lock_cb(s);
+  };
+  auto shared_lock_manager = lock_manager.lock();
+  if (!shared_lock_manager) {
+    return retry_cb(STATUS_FORMAT(
+        IllegalState,
+        "TsLocalLockManager unavailable. Lease corresponding to this request/session has "
+        "expired."));
+  }
+  shared_lock_manager->AcquireObjectLocksAsync(req, deadline, std::move(retry_cb));
+}
+}  // namespace yb::tserver

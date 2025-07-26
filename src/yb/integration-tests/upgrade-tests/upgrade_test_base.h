@@ -45,6 +45,10 @@ class UpgradeTestBase : public ExternalMiniClusterITestBase {
   static const MonoDelta kNoDelayBetweenNodes;
   void SetUpOptions(ExternalMiniClusterOptions& opts) override;
 
+  void AddUnDefOkAndSetFlag(
+      std::vector<std::string>& flag_list, const std::string& flag_name,
+      const std::string& flag_value);
+
   Status SetMajorUpgradeCompatibilityIfNeeded(MajorUpgradeCompatibilityType type);
 
   Status StartClusterInOldVersion();
@@ -117,7 +121,7 @@ class UpgradeTestBase : public ExternalMiniClusterITestBase {
 };
 
 // From build versions.
-static constexpr auto kBuild_2024_2_3_0 = "2024.2.3.0";
+static constexpr auto kBuild_2024_2_4_0 = "2024.2.4.0";
 static constexpr auto kBuild_2_25_0_0 = "2.25.0.0";
 
 }  // namespace yb

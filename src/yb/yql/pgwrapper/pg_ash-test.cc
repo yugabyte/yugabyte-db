@@ -262,6 +262,18 @@ const Configuration kPgCronRPCs{
   .master_flags = {
     "--enable_pg_cron=true"}};
 
+const Configuration kPgCDCRPCs{
+  .rpc_list = {
+    ash::PggateRPC::kInitVirtualWALForCDC,
+    ash::PggateRPC::kGetLagMetrics,
+    ash::PggateRPC::kUpdatePublicationTableList,
+    ash::PggateRPC::kGetConsistentChanges,
+    ash::PggateRPC::kDestroyVirtualWALForCDC,
+    ash::PggateRPC::kUpdateAndPersistLSN},
+  .tserver_flags = {
+     "--cdcsdk_publication_list_refresh_interval_secs=1"
+  }};
+
 template <const Configuration& Config>
 class ConfigurableTest : public PgWaitEventAuxTest {
  public:
@@ -292,6 +304,7 @@ using PgMiscWaitEventAux = ConfigurableTest<kMiscRPCs>;
 using PgParallelWaitEventAux = ConfigurableTest<kParallelRPCs>;
 using PgTabletSplitWaitEventAux = ConfigurableTest<kTabletSplitRPCs>;
 using PgCronWaitEventAux = ConfigurableTest<kPgCronRPCs>;
+using PgCDCWaitEventAux = ConfigurableTest<kPgCDCRPCs>;
 
 }  // namespace
 
@@ -527,8 +540,7 @@ TEST_F_EX(PgWaitEventAuxTest, YB_DISABLE_TEST_IN_TSAN(TabletSplitRPCs), PgTablet
   ASSERT_OK(conn_->ExecuteFormat(
       "INSERT INTO $0 SELECT i, i FROM generate_series(1, 100) AS i", kTableName));
 
-  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(0), {tablet_id},
-      tserver::FlushTabletsRequestPB_Operation::FlushTabletsRequestPB_Operation_FLUSH));
+  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(0, {tablet_id}));
 
   // keep running selects until GetTablePartitionList RPC is found
   ASSERT_OK(WaitFor([this]() -> Result<bool> {
@@ -552,6 +564,54 @@ TEST_F_EX(PgWaitEventAuxTest, PgCronRPCs, PgCronWaitEventAux) {
   ASSERT_OK(conn_->Execute("DROP EXTENSION pg_cron"));
   ASSERT_OK(conn_->Execute(kCreatePgCronQuery));
   SleepFor(65s * kTimeMultiplier);
+
+  ASSERT_OK(CheckWaitEventAux());
+}
+
+TEST_F_EX(PgWaitEventAuxTest, PgCDCServiceRPCs, PgCDCWaitEventAux) {
+  static constexpr auto kTableName = "test_table";
+  static constexpr auto kSlotName = "test_slot";
+
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY)", kTableName));
+  auto res = ASSERT_RESULT(conn_->FetchFormat(
+      "SELECT * FROM pg_create_logical_replication_slot('$0', 'test_decoding')", kSlotName));
+
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this]() {
+    std::vector<std::string> argv = {
+        GetPgToolPath("pg_recvlogical"),
+        "--dbname=yugabyte",
+        "--username=yugabyte",
+        Format("--host=$0", pg_ts->bind_host()),
+        Format("--port=$0", pg_ts->ysql_port()),
+        Format("--slot=$0", kSlotName),
+        "--endpos=0/6", // so that the replication stops after 2 commits
+        "--file=-",
+        "--start"
+    };
+    ASSERT_OK(Subprocess::Call(argv));
+  });
+
+  // wait for the walsender process
+  SleepFor(2s * kTimeMultiplier);
+
+  ASSERT_OK(conn_->Fetch("SELECT * FROM pg_stat_get_wal_senders()"));
+
+  ASSERT_OK(conn_->StartTransaction(IsolationLevel::READ_COMMITTED));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (2)", kTableName));
+  ASSERT_OK(conn_->CommitTransaction());
+
+  // wait for UpdateAndPersistLSN RPC to be called
+  SleepFor(2s * kTimeMultiplier);
+
+  ASSERT_OK(conn_->StartTransaction(IsolationLevel::READ_COMMITTED));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (3)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (4)", kTableName));
+  ASSERT_OK(conn_->CommitTransaction());
+
+  // wait for DestroyVirtualWALForCDC RPC to be called
+  SleepFor(2s * kTimeMultiplier);
 
   ASSERT_OK(CheckWaitEventAux());
 }
@@ -600,6 +660,13 @@ TEST_F(PgAshSingleNode, CheckWaitEventsDescription) {
 
   ASSERT_TRUE(pg_events.empty());
   ASSERT_TRUE(yb_events.empty());
+}
+
+TEST_F(PgAshSingleNode, UniqueWaitEvents) {
+  const auto rows = ASSERT_RESULT(conn_->FetchRows<std::string>(
+    "SELECT wait_event_code  FROM yb_wait_event_desc GROUP BY "
+    " wait_event_code HAVING count(*) > 1"));
+  ASSERT_EQ(rows.empty(), true);
 }
 
 TEST_F(PgBgWorkersTest, ValidateBgWorkers) {
@@ -656,7 +723,7 @@ TEST_F(PgBgWorkersTest, ValidateBgWorkers) {
 
   ASSERT_OK(WaitFor([this, &pid_with_backend_type, &bg_workers]() -> Result<bool> {
     auto rows = VERIFY_RESULT((conn_->FetchRows<int32_t, std::string>(
-        "SELECT pid, backend_type FROM pg_stat_activity")));
+        "SELECT pid, backend_type FROM pg_stat_activity WHERE backend_type IS NOT NULL")));
     for (const auto& [pid, backend_type] : rows) {
       if (bg_workers.contains(backend_type)) {
         pid_with_backend_type.insert(std::make_pair(pid, backend_type));
@@ -754,6 +821,24 @@ TEST_F(PgBgWorkersTest, TestBgWorkersQueryId) {
       conn_->FetchRow<int64_t>(Format(kQueryString, pid, kBgWorkerQueryId)));
 
   ASSERT_GE(bgworker_query_id_cnt, 1);
+}
+
+TEST_F(PgAshSingleNode, TestFinishTransactionRPCs) {
+  constexpr auto kTableName = "test_table";
+
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTableName));
+
+  for (int i = 0; i < 1000; ++i) {
+    ASSERT_OK(conn_->StartTransaction(IsolationLevel::READ_COMMITTED));
+    ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES ($1, $1)", kTableName, i));
+    ASSERT_OK(conn_->CommitTransaction());
+  }
+
+  const auto finish_txn_cnt = ASSERT_RESULT(
+      conn_->FetchRow<int64_t>(Format("SELECT COUNT(*) FROM yb_active_session_history "
+          "WHERE wait_event = 'WaitingOnTServer' AND wait_event_aux = 'FinishTransaction' "
+          "AND query_id = 5")));
+  ASSERT_EQ(finish_txn_cnt, 0);
 }
 
 }  // namespace yb::pgwrapper

@@ -30,7 +30,8 @@ import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.*;
-import com.yugabyte.yw.models.helpers.audit.*;
+import com.yugabyte.yw.models.helpers.exporters.audit.*;
+import com.yugabyte.yw.models.helpers.exporters.query.*;
 import io.ebean.annotation.EnumValue;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -303,6 +304,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @ApiModelProperty(value = "YbaApi Internal. Install node agent in background if it is true")
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2024.2.1.0")
   public boolean installNodeAgent = false;
+
+  @ApiModelProperty(value = "YbaApi Internal. True if a node agent for missing in any of the nodes")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2024.2.4.0")
+  public boolean nodeAgentMissing = false;
 
   @ApiModelProperty(value = "YbaApi Internal. State for additional services")
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2025.1.0.0")
@@ -953,6 +958,15 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return auditLogConfig;
     }
 
+    // Query Logging Config
+    @ApiModelProperty(value = "YbaApi Internal. Query Logging configuration")
+    @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2025.2.0.0")
+    public QueryLogConfig queryLogConfig;
+
+    public QueryLogConfig getQueryLogConfig() {
+      return queryLogConfig;
+    }
+
     // Proxy config HTTP_RPOXY, HTTPS_PROXY, NO_PROXY
     @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.3.0")
     @Getter
@@ -968,6 +982,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @Setter
     @ApiModelProperty(value = "YbaApi Internal. Use clockbound as time source")
     private boolean useClockbound = false;
+
+    @Getter
+    @Setter
+    @Nullable
+    @ApiModelProperty(hidden = true, value = "YbaApi Internal. OSS universe migration config")
+    private UniverseMigrationConfig migrationConfig;
 
     @Override
     public String toString() {
