@@ -207,11 +207,6 @@ Status Master::Init() {
 
   RETURN_NOT_OK(path_handlers_->Register(web_server_.get()));
 
-  auto bound_addresses = rpc_server()->GetBoundAddresses();
-  if (!bound_addresses.empty()) {
-    shared_object()->SetHostEndpoint(bound_addresses.front(), get_hostname());
-  }
-
   cdc_state_client_init_ = std::make_unique<client::AsyncClientInitializer>(
       "cdc_state_client",
       default_client_timeout(),
