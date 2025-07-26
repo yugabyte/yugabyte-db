@@ -1076,6 +1076,9 @@ public enum TaskType {
 
   PromoteAutoFlags(com.yugabyte.yw.commissioner.tasks.subtasks.PromoteAutoFlags.class),
 
+  UpdateSoftwareUpdatePrevConfig(
+      com.yugabyte.yw.commissioner.tasks.subtasks.UpdateSoftwareUpdatePrevConfig.class),
+
   RollbackAutoFlags(com.yugabyte.yw.commissioner.tasks.subtasks.RollbackAutoFlags.class),
 
   StoreAutoFlagConfigVersion(

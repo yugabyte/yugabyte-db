@@ -1607,6 +1607,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty private int autoFlagConfigVersion;
 
     @ApiModelProperty private String targetUpgradeSoftwareVersion;
+
+    // This is used to track if all tservers are upgraded to the target ysql major version
+    // and only used for rollback on kubernetes universes.
+    @ApiModelProperty private boolean allTserversUpgradedToYsqlMajorVersion;
   }
 
   // XCluster: All the xCluster related code resides in this section.
