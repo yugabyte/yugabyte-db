@@ -179,13 +179,13 @@ For more information, refer to [Metrics](../../../back-up-restore-universes/disa
 
 The replication details also provide all the tables in replication and their status on the **Tables** tab.
 
-![Replication](/images/yb-platform/xcluster/xcluster-tables.png)
+![Replication](/images/yb-platform/xcluster/xcluster-tables-2024.2.png)
 
 - To find out the replication lag for a specific table, click the graph icon corresponding to that table.
 
-- To delete a table from the replication, click **... > Remove Table**. This removes both the table and its index tables from replication. If you decide to remove an index table from the replication group, it does not remove its main table from the replication group.
-
 - Use the search bar to filter the view by table name, database, size, and more.
+
+For information on managing tables in replication, refer to [Manage tables and indexes](../xcluster-replication-ddl/).
 
 #### Status
 
