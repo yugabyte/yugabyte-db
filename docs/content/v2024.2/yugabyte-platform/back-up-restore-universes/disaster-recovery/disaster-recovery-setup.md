@@ -133,13 +133,13 @@ In this example, the safe time skew is 90 ms, the difference between Repl_Lag(T1
 
 The **xCluster Disaster Recovery** tab also lists all the tables in replication and their status on the **Tables** tab.
 
-![Disaster recovery](/images/yb-platform/disaster-recovery/disaster-recovery-tables.png)
+![Disaster recovery](/images/yb-platform/disaster-recovery/disaster-recovery-tables-2024.2.png)
 
 - To find out the replication lag for a specific table, click the graph icon corresponding to that table.
 
-- To delete a table from the replication, click **... > Remove Table**. This removes both the table and its index tables from replication. If you decide to remove an index table from the replication group, it does not remove its main table from the replication group.
-
 - Use the search bar to filter the view by table name, database, size, and more.
+
+For information on managing tables in DR, refer to [Manage tables and indexes](../disaster-recovery-tables/).
 
 #### Status
 
