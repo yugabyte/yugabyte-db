@@ -27,7 +27,7 @@ rightNav:
 
 - Support for [point-in-time recovery](../cloud-clusters/aeon-pitr/) using database clones. Create a zero-copy, independent writable clone of your database at a point in time for recovery or testing.
 - Support for built-in [YSQL Connection Pooling](../../explore/going-beyond-sql/connection-mgr-ysql/). Use built-in server-side connection pooling to support a larger number of connections from applications.
-- Metrics are now tagged with the cluster name for enhanced downstream processing.
+- [Exported metrics](../cloud-monitor/metrics-export/) are now tagged with the cluster name for enhanced downstream processing.
 
 ##### Database
 
