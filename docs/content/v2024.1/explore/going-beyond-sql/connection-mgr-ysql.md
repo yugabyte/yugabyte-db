@@ -26,10 +26,6 @@ To provide the advantages of connection pooling, but without the limitations, Yu
 
 ![Connection manager](/images/explore/ysql-connection-manager.png)
 
-{{< note title = "Note">}}
-YSQL Connection Manager is currently not supported for [YugabyteDB Anywhere](../../../yugabyte-platform/) and [YugabyteDB Aeon](../../../yugabyte-cloud/).
-{{< /note >}}
-
 ## Key features
 
 YSQL Connection Manager is a modified version of the open-source connection pooler Odyssey. YSQL Connection Manager uses Odyssey in the transaction pooling mode and has been modified at the wire protocol level for tighter integration with YugabyteDB to overcome some SQL limitations.
