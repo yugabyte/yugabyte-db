@@ -54,6 +54,8 @@ properties:
       type: string
   audit_log_config:
     $ref: "./AuditLogConfig.yaml"
+  query_log_config:
+    $ref: "./QueryLogConfig.yaml"
   gflags:
     description: 'The set of user defined gflags for tserver and master processes running on nodes. Can be changed using API /customers/:cUUID/universes/:uniUUID/upgrade/gflags.'
     $ref: "./ClusterGFlags.yaml"

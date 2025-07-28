@@ -921,7 +921,7 @@ YbExplainRpcRequestMetrics(YbExplainState *yb_es, YbcPgExecStorageMetrics *metri
 
 	for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i)
 		YbExplainRpcRequestEvent(yb_es, i, &metrics->events[i],
-								 nloops , is_mean);
+								 nloops, is_mean);
 
 	if (yb_es->es->format == EXPLAIN_FORMAT_TEXT)
 		--yb_es->es->indent;
@@ -1594,6 +1594,9 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 			if (es->timing)
 				ExplainPropertyFloat("Storage Execution Time", "ms",
 									 total_rpc_wait / 1000000.0, 3, es);
+
+			if (es->yb_debug && YBCCurrentTransactionUsesFastPath())
+				ExplainPropertyText("Transaction", "Fast Path", es);
 		}
 
 		if (IsYugaByteEnabled() && yb_enable_memory_tracking && show_variable_fields)
@@ -6390,6 +6393,7 @@ YbAggregateExplainableRpcMetrics(YbcPgExecStorageMetrics **metrics,
 	{
 		const YbcPgExecEventMetric *val = &instr_metrics->events[i];
 		YbcPgExecEventMetric *agg = &(*metrics)->events[i];
+
 		agg->sum += val->sum;
 		agg->count += val->count;
 	}

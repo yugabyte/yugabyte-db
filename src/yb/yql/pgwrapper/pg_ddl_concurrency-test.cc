@@ -26,6 +26,14 @@ Status SuppressAllowedErrors(const Status& s) {
   if (HasTransactionError(s) || IsRetryable(s)) {
     return Status::OK();
   }
+  // Usually PG backend will append to the error message with a line of text like
+  // Catalog Version Mismatch: A DDL occurred while processing this query. Try again.
+  // The "Try again" will be detected by IsRetryable(s) as true. But in uncommon
+  // cases, PG backend will not append this line, for this test we still want to
+  // suppress this error.
+  if (s.message().Contains("waiting for postgres backends to catch up")) {
+    return Status::OK();
+  }
   return s;
 }
 
@@ -46,6 +54,15 @@ Status RunIndexCreationQueries(PGConn* conn, const std::string& table_name) {
 class PgDDLConcurrencyTest : public LibPqTestBase {
  public:
   int GetNumMasters() const override { return 3; }
+
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back(
+        "--wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms=5000");
+    options->extra_tserver_flags.push_back(
+        "--ysql_yb_wait_for_backends_catalog_version_timeout=30000");
+    LibPqTestBase::UpdateMiniClusterOptions(options);
+  }
 };
 
 /*

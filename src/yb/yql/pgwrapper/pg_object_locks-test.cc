@@ -476,22 +476,18 @@ TEST_F(PgObjectLocksTestRF1, ExclusiveLocksRemovedAfterDocDBSchemaChange) {
 class PgObjectLocksTest : public LibPqTestBase {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
-    const bool table_locks_enabled = EnableTableLocks();
     opts->extra_tserver_flags.emplace_back(
         yb::Format("--allowed_preview_flags_csv=enable_object_locking_for_table_locks,"
                    "ysql_yb_ddl_transaction_block_enabled"));
     opts->extra_tserver_flags.emplace_back(
-        yb::Format("--enable_object_locking_for_table_locks=$0", table_locks_enabled));
+        yb::Format("--enable_object_locking_for_table_locks=$0", EnableTableLocks()));
     opts->extra_tserver_flags.emplace_back("--enable_ysql_operation_lease=true");
     opts->extra_tserver_flags.emplace_back("--TEST_tserver_enable_ysql_lease_refresh=true");
     opts->extra_tserver_flags.emplace_back(
         Format("--ysql_lease_refresher_interval_ms=$0", kDefaultYSQLLeaseRefreshIntervalMilli));
 
     opts->extra_master_flags.emplace_back(
-        yb::Format("--allowed_preview_flags_csv=enable_object_locking_for_table_locks,"
-                   "ysql_yb_ddl_transaction_block_enabled"));
-    opts->extra_master_flags.emplace_back(
-        yb::Format("--enable_object_locking_for_table_locks=$0", table_locks_enabled));
+        yb::Format("--allowed_preview_flags_csv=ysql_yb_ddl_transaction_block_enabled"));
     opts->extra_master_flags.emplace_back("--enable_ysql_operation_lease=true");
     opts->extra_master_flags.emplace_back(
         Format("--master_ysql_operation_lease_ttl_ms=$0", kDefaultMasterYSQLLeaseTTLMilli));

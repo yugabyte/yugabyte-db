@@ -67,7 +67,7 @@ Ensure that you have the YSQL shell [ysqlsh](../../api/ysqlsh/) and that its loc
 $ export PATH=$PATH:/path/to/ysqlsh
 ```
 
-You can find `ysqlsh` in your YugabyteDB installation's `bin` directory. For example:
+You can find ysqlsh in your YugabyteDB installation's `bin` directory. For example:
 
 ```sh
 $ export PATH=$PATH:/Users/yugabyte/code/bin

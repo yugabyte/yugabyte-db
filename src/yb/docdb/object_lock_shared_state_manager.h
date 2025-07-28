@@ -86,9 +86,17 @@ class ObjectLockSharedStateManager {
 
   void ConsumePendingSharedLockRequests(const LockRequestConsumer& consume);
 
+  void ConsumeAndAcquireExclusiveLockIntents(
+      const LockRequestConsumer& consume, std::span<const ObjectLockPrefix*> object_ids);
+
+  void ReleaseExclusiveLockIntent(const ObjectLockPrefix& object_id, size_t count = 1);
+
   [[nodiscard]] TransactionId TEST_last_owner() const;
 
  private:
+  template<typename ConsumeMethod>
+  void CallWithRequestConsumer(ConsumeMethod&& m, const LockRequestConsumer& consume);
+
   ObjectLockSharedState* shared_ = nullptr;
   ObjectLockOwnerRegistry registry_;
 };

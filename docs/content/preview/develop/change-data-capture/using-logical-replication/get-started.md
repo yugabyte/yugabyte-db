@@ -26,9 +26,9 @@ CDC via logical replication is supported in YugabyteDB starting from version 202
 
 ## Get started with YugabyteDB connector
 
-This tutorial demonstrates how to use Debezium to monitor a YugabyteDB database. As the data in the database changes, you will see the resulting event streams.
+This tutorial demonstrates how to use the YugabyteDB connector to monitor a YugabyteDB database. As the data in the database changes, you will see the resulting event streams.
 
-In this tutorial you will start the Debezium services, run a YugabyteDB instance with a basic example database, and use Debezium to monitor the database for changes.
+In this tutorial you will start the Debezium services, run a YugabyteDB instance with a basic example database, and use the connector to monitor the database for changes.
 
 **Prerequisites**
 
@@ -38,7 +38,7 @@ In this tutorial you will start the Debezium services, run a YugabyteDB instance
 
 ### Start the services
 
-Using Debezium requires three separate services: [Zookeeper](http://zookeeper.apache.org/), [Kafka](https://kafka.apache.org), and the Debezium connector service.
+Using the connector requires three separate services: [Zookeeper](http://zookeeper.apache.org/), [Kafka](https://kafka.apache.org), and the YugabyteDB connector service.
 
 In this tutorial, you will set up a single instance of each service using Docker and the Debezium container images.
 
@@ -77,7 +77,7 @@ In this tutorial, you will always connect to Kafka from in a Docker container. A
 
 #### Start YugabyteDB
 
-At this point, you have started Zookeeper and Kafka, but you still need a database server from which Debezium can capture changes. In this procedure, you start a YugabyteDB instance with an example database. The example uses sample data in SQL scripts that are included with your YugabyteDB installation in the `share` directory.
+At this point, you have started Zookeeper and Kafka, but you still need a database server from which the connector can capture changes. In this procedure, you start a YugabyteDB instance with an example database. The example uses sample data in SQL scripts that are included with your YugabyteDB installation in the `share` directory.
 
 Follow the [Quick Start](/preview/tutorials/quick-start/macos/) to start an instance using yugabyted.
 

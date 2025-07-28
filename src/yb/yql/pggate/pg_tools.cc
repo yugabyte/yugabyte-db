@@ -281,16 +281,9 @@ Result<std::span<TableYbctid>> YbctidReaderProvider::Reader::DoRead(
   // Collect the results from the docdb ops.
   ybctids_.clear();
   for (auto& it : doc_ops) {
-    for (;;) {
-      auto rowsets = VERIFY_RESULT(it->GetResult());
-      if (rowsets.empty()) {
-        break;
-      }
-      for (auto& row : rowsets) {
-        RETURN_NOT_OK(row.ProcessSystemColumns());
-        for (const auto& ybctid : row.ybctids()) {
-          ybctids_.emplace_back(it->table()->relfilenode_id().object_oid, ybctid.ToBuffer());
-        }
+    while (auto ybctid_batch = VERIFY_RESULT(it->ResultStream().GetNextYbctidBatch(false))) {
+      for (const auto& ybctid : ybctid_batch->ybctids) {
+        ybctids_.emplace_back(it->table()->relfilenode_id().object_oid, ybctid.ToBuffer());
       }
     }
   }

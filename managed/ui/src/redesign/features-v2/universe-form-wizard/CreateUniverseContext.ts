@@ -102,6 +102,15 @@ export const initialCreateUniverseFormState: createUniverseFormProps = {
     enableNodeToNodeEncryption: false
   },
   resilienceType: ResilienceType.REGULAR,
+  proxySettings: {
+    enableProxyServer: false,
+    secureWebProxy: false,
+    secureWebProxyServer: '',
+    secureWebProxyPort: undefined,
+    webProxy: false,
+    byPassProxyList: false,
+    byPassProxyListValues: []
+  }
 };
 
 export const CreateUniverseContext = createContext<createUniverseFormProps>(
@@ -156,7 +165,7 @@ export const createUniverseFormMethods = (context: createUniverseFormProps) => (
   setResilienceType: (resilienceType: ResilienceType) => ({
     ...context,
     resilienceType
-  }),
+  })
 });
 
 export type CreateUniverseContextMethods = [

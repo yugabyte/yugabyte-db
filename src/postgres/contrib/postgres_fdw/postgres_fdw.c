@@ -225,7 +225,7 @@ typedef struct PgFdwModifyState
 											 * created */
 
 	/* YB state */
-	YbPgFdwServerType yb_server_type; /* type of server hosting the relation */
+	YbPgFdwServerType yb_server_type;	/* type of server hosting the relation */
 } PgFdwModifyState;
 
 /*
@@ -264,7 +264,7 @@ typedef struct PgFdwDirectModifyState
 	MemoryContext temp_cxt;		/* context for per-tuple temporary data */
 
 	/* YB state */
-	YbPgFdwServerType yb_server_type; /* type of server hosting the relation */
+	YbPgFdwServerType yb_server_type;	/* type of server hosting the relation */
 } PgFdwDirectModifyState;
 
 /*
@@ -713,13 +713,13 @@ postgresGetForeignRelSize(PlannerInfo *root,
 	 */
 	fpinfo->attrs_used = NULL;
 	pull_varattnos_min_attr((Node *) baserel->reltarget->exprs, baserel->relid,
-				   &fpinfo->attrs_used, fpinfo->yb_min_attr + 1);
+							&fpinfo->attrs_used, fpinfo->yb_min_attr + 1);
 	foreach(lc, fpinfo->local_conds)
 	{
 		RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc);
 
 		pull_varattnos_min_attr((Node *) rinfo->clause, baserel->relid,
-					   &fpinfo->attrs_used, fpinfo->yb_min_attr + 1);
+								&fpinfo->attrs_used, fpinfo->yb_min_attr + 1);
 	}
 
 	/*
@@ -4891,7 +4891,8 @@ apply_returning_filter(PgFdwDirectModifyState *dmstate,
 			if (dmstate->yb_server_type == PG_FDW_SERVER_YUGABYTEDB)
 			{
 				/* YugabyteDB */
-				bytea *ybctid = DatumGetByteaP(old_values[dmstate->ctidAttno - 1]);
+				bytea	   *ybctid = DatumGetByteaP(old_values[dmstate->ctidAttno - 1]);
+
 				COPY_YBCTID(PointerGetDatum(ybctid), HEAPTUPLE_YBCTID(resultTup));
 			}
 			else
@@ -7794,6 +7795,7 @@ yb_get_server_type_from_ftrelid(Oid relid)
 	foreach(lc, server->options)
 	{
 		DefElem    *def = (DefElem *) lfirst(lc);
+
 		if (strcmp(def->defname, "server_type") == 0)
 			return yb_get_server_type(defGetString(def));
 	}
@@ -7838,5 +7840,5 @@ yb_get_tuple_identifier_colname(YbPgFdwServerType server_type)
 			elog(ERROR, "Unsupported server type: %d", server_type);
 	}
 
-	return NULL;	/* keep compiler happy */
+	return NULL;				/* keep compiler happy */
 }

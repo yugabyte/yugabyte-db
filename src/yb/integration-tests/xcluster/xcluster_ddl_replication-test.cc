@@ -26,6 +26,7 @@
 #include "yb/integration-tests/xcluster/xcluster_test_utils.h"
 
 #include "yb/master/catalog_manager.h"
+#include "yb/master/master_ddl.pb.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/xcluster/xcluster_manager.h"
 
@@ -46,10 +47,11 @@ DECLARE_int32(ysql_sequence_cache_minval);
 DECLARE_uint32(xcluster_consistent_wal_safe_time_frequency_ms);
 DECLARE_uint32(ysql_oid_cache_prefetch_size);
 
+DECLARE_bool(TEST_skip_oid_advance_on_restore);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_end);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_start);
-DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_ddl);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_before_incremental_safe_time_bump);
+DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_ddl);
 DECLARE_int32(TEST_xcluster_producer_modify_sent_apply_safe_time_ms);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
 DECLARE_string(TEST_xcluster_simulated_lag_tablet_filter);
@@ -1948,8 +1950,8 @@ TEST_F(XClusterDDLReplicationFailoverTest, FailoverWithPendingAlterDDLs) {
 
   auto& sync_point = *SyncPoint::GetInstance();
   sync_point.LoadDependency(
-      {{"XClusterDDLQueueHandler::DDLQueryProcessed",
-        "FailoverWithPendingAlterDDLs::WaitForDDLToExecute"}});
+      {{.predecessor = "XClusterDDLQueueHandler::DDLQueryProcessed",
+        .successor = "FailoverWithPendingAlterDDLs::WaitForDDLToExecute"}});
 
   ASSERT_OK(EnablePITROnClusters());
 
@@ -2063,11 +2065,15 @@ TEST_F(XClusterDDLReplicationSetupTest, ReplicationSetUpBumpsOidCounter) {
     ASSERT_OK(conn.Execute("CREATE TABLE my_table (x INT);"));
   }
 
-  // Reset OID counters on A by backing up then restoring the database on cluster A.
+  // Simulate a legacy database that was backed up and restored before we added the code for
+  // advancing OIDs counters on restore.  Here we reset OID counters on A by backing up then
+  // restoring the database on cluster A without advancing the OID counters.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_oid_advance_on_restore) = true;
   ASSERT_OK(BackupFromProducer());
   SetReplicationDirection(ReplicationDirection::BToA);
   ASSERT_OK(RestoreToConsumer());
   SetReplicationDirection(ReplicationDirection::AToB);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_oid_advance_on_restore) = false;
 
   // Allocate a few OIDs on A to force caching of normal space OIDs.
   {
@@ -2102,6 +2108,69 @@ TEST_F(XClusterDDLReplicationSetupTest, ReplicationSetUpBumpsOidCounter) {
     // are still in use on B because the previous enum still exists there.
     ASSERT_OK(conn.Execute(CreateGiantEnumStatement("second_enum")));
     ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  }
+}
+
+TEST_F(XClusterDDLReplicationSetupTest, CheckpointingSetUpBumpsOidCounters) {
+  ASSERT_OK(SetUpClusters());
+
+  auto CreateTableWithOid = [&](std::string tablename, uint32_t oid) -> Status {
+    auto conn = VERIFY_RESULT(cluster_A_->ConnectToDB(namespace_name));
+    return conn.ExecuteFormat(
+        "SET yb_binary_restore = true;"
+        "SET yb_ignore_pg_class_oids = false;"
+        "SET yb_ignore_relfilenode_ids = false;"
+        "SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('$0'::pg_catalog.oid);"
+        "SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('$0'::pg_catalog.oid);"
+        "SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('$1'::pg_catalog.oid);"
+        "SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('$2'::pg_catalog.oid);"
+        "CREATE TABLE $3 (x INT);",
+        oid, oid + 1, oid + 2, tablename);
+  };
+
+  auto GetTableOid = [&](std::string tablename) -> Result<uint32_t> {
+    auto conn = VERIFY_RESULT(cluster_A_->ConnectToDB(namespace_name));
+    return conn.FetchRow<pgwrapper::PGOid>(
+        Format("SELECT oid FROM pg_class WHERE relname = '$0'", tablename));
+  };
+
+  google::SetVLOGLevel("catalog_manager*", 1);
+
+  // Create a hidden normal table above where the normal OID counter points.
+  ASSERT_OK(EnablePITROnClusters());
+  const uint32_t normal_table_oid = 50'000;
+  ASSERT_OK(CreateTableWithOid("normal_table", normal_table_oid));
+  {
+    auto conn = ASSERT_RESULT(cluster_A_->ConnectToDB(namespace_name));
+    ASSERT_OK(conn.Execute("DROP TABLE normal_table;"));
+  }
+  // Create a non-hidden secondary space table above where the secondary OID counter points.
+  const uint32_t secondary_table_oid = kPgFirstSecondarySpaceObjectId + 70'000;
+  ASSERT_OK(CreateTableWithOid("secondary_table", secondary_table_oid));
+
+  // Checkpoint the namespace for xCluster automatic replication; this should advance both OID
+  // counters as needed.
+  ASSERT_OK(CheckpointReplicationGroupOnNamespaces({namespace_name}));
+
+  // Verify the normal space OID counter has advanced by creating a probe table.
+  auto conn = ASSERT_RESULT(cluster_A_->ConnectToDB(namespace_name));
+  ASSERT_OK(conn.Execute("CREATE TABLE probe_table (y INT);"));
+  auto probe_oid = ASSERT_RESULT(GetTableOid("probe_table"));
+  ASSERT_GE(probe_oid, normal_table_oid);
+  ASSERT_LT(probe_oid, kPgUpperBoundNormalObjectId);
+
+  // Verify the secondary space OID counter has advanced by directly reserving the next (uncached)
+  // secondary space OID.
+  {
+    master::GetNamespaceInfoResponsePB resp;
+    ASSERT_OK(producer_client()->GetNamespaceInfo(
+        /*namespace_id=*/std::string(), namespace_name, YQL_DATABASE_PGSQL, &resp));
+    NamespaceId namespace_id = resp.namespace_().id();
+    uint32_t begin_oid, end_oid;
+    ASSERT_OK(producer_client()->ReservePgsqlOids(
+        namespace_id, /*next_oid=*/0, /*count=*/1, /*use_secondary_space=*/true, &begin_oid,
+        &end_oid));
+        ASSERT_GE(begin_oid, secondary_table_oid);
   }
 }
 

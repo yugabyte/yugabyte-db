@@ -8,6 +8,7 @@ menu:
   stable_api:
     identifier: window-functions
     parent: api-ysql-exprs
+    weight: 60
 type: indexpage
 showRightNav: true
 ---

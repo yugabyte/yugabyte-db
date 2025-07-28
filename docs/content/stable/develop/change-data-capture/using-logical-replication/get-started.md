@@ -24,9 +24,9 @@ CDC via logical replication is supported in YugabyteDB starting from version 202
 
 ## Get started with YugabyteDB connector
 
-This tutorial demonstrates how to use Debezium to monitor a YugabyteDB database. As the data in the database changes, you will see the resulting event streams.
+This tutorial demonstrates how to use the YugabyteDB connector to monitor a YugabyteDB database. As the data in the database changes, you will see the resulting event streams.
 
-In this tutorial you will start the Debezium services, run a YugabyteDB instance with a basic example database, and use Debezium to monitor the database for changes.
+In this tutorial you will start the Debezium services, run a YugabyteDB instance with a basic example database, and use the connector to monitor the database for changes.
 
 **Prerequisites**
 
@@ -36,7 +36,7 @@ In this tutorial you will start the Debezium services, run a YugabyteDB instance
 
 ### Start the services
 
-Using Debezium requires three separate services: [Zookeeper](http://zookeeper.apache.org/), [Kafka](https://kafka.apache.org), and the Debezium connector service.
+Using the connector requires three separate services: [Zookeeper](http://zookeeper.apache.org/), [Kafka](https://kafka.apache.org), and the YugabyteDB connector service.
 
 In this tutorial, you will set up a single instance of each service using Docker and the Debezium container images.
 
@@ -51,7 +51,7 @@ To start the services needed for this tutorial, you must:
 
 Zookeeper is the first service you must start.
 
-1. Open a terminal and use it to start Zookeeper in a container. This command runs a new container using version `2.5.2.Final` of the `debezium/zookeeper` image:
+Open a terminal and use it to start Zookeeper in a container. This command runs a new container using version `2.5.2.Final` of the `debezium/zookeeper` image:
 
 ```sh
 docker run -d --rm --name zookeeper -p 2181:2181 -p 2888:2888 -p 3888:3888 debezium/zookeeper:2.5.2.Final
@@ -61,7 +61,7 @@ docker run -d --rm --name zookeeper -p 2181:2181 -p 2888:2888 -p 3888:3888 debez
 
 After starting Zookeeper, you can start Kafka in a new container.
 
-1. Open a new terminal and use it to start Kafka in a container. This command runs a new container using version `2.5.2.Final` of the `debezium/kafka` image:
+Open a new terminal and use it to start Kafka in a container. This command runs a new container using version `2.5.2.Final` of the `debezium/kafka` image:
 
 ```sh
 docker run -d --rm --name kafka -p 9092:9092 --link zookeeper:zookeeper debezium/kafka:2.5.2.Final
@@ -75,7 +75,7 @@ In this tutorial, you will always connect to Kafka from in a Docker container. A
 
 #### Start YugabyteDB
 
-At this point, you have started Zookeeper and Kafka, but you still need a database server from which Debezium can capture changes. In this procedure, you start a YugabyteDB instance with an example database. The example uses sample data in SQL scripts that are included with your YugabyteDB installation in the `share` directory.
+At this point, you have started Zookeeper and Kafka, but you still need a database server from which the connector can capture changes. In this procedure, you start a YugabyteDB instance with an example database. The example uses sample data in SQL scripts that are included with your YugabyteDB installation in the `share` directory.
 
 Follow the [Quick Start](/preview/tutorials/quick-start/macos/) to start an instance using yugabyted.
 
@@ -104,7 +104,7 @@ After starting YugabyteDB, use ysqlsh to create your database:
     You should see output similar to the following:
 
     ```output
-    ysqlsh (11.2-YB-{{<yb-version version="stable">}}-b0)
+    ysqlsh (15.2-YB-{{<yb-version version="stable">}}-b0)
     Type "help" for help.
 
     yugabyte=#
@@ -242,7 +242,7 @@ In a production environment, you would typically either use the Kafka tools to m
     - `plugin.name` - [Plugin](../key-concepts/#output-plugin) to be used for replication.
     - `slot.name` - Name of the [replication slot](../key-concepts/#replication-slot).
 
-    For more information, see [YugabyteDB connector configuration properties](../yugabytedb-connector/#connector-properties).
+    For more information, see [YugabyteDB connector configuration properties](../yugabytedb-connector-properties).
 
 1. Open a new terminal and use the `curl` command to register the YugabyteDB connector.
 

@@ -539,5 +539,20 @@ Result<master::ListCDCStreamsResponsePB> CDCSDKTestBase::ListDBStreams() {
   return resp;
 }
 
+// Helper method to convert a hybrid time value to a timestamp string with
+// a UTC timezone (indicated by +00 at the end).
+Result<std::string> CDCSDKTestBase::HybridTimeToReadableString(uint64_t hybrid_time) {
+  uint64_t micros_since_epoch = hybrid_time >> 12;
+  time_t unix_time = static_cast<time_t>(micros_since_epoch / 1'000'000);
+  uint64_t microseconds = micros_since_epoch % 1'000'000;
+  char buf[64];
+  struct tm tm_info;
+  if (gmtime_r(&unix_time, &tm_info) == nullptr) {
+    return "Invalid time";
+  }
+  strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm_info);
+  return Format("$0.$1+00", buf, StringPrintf("%06" PRIu64, microseconds));
+}
+
 }  // namespace cdc
 }  // namespace yb

@@ -3,6 +3,21 @@
 SET yb_enable_expression_pushdown to off;
 SET yb_explain_hide_non_deterministic_fields = 1;
 
+CREATE OR REPLACE PROCEDURE check_fast_path_txn(query TEXT, expected BOOL) LANGUAGE PLPGSQL AS
+$$
+DECLARE
+	output JSON;
+	txn_type TEXT;
+BEGIN
+	-- Note that buffered writes may not be flushed at the the statement boundary for
+	-- statements in stored procedures/functions, and are instead done so before the start of other
+	-- statements in the procedure or at the end of the procedure.
+	EXECUTE 'EXPLAIN (ANALYZE, DIST, DEBUG, COSTS OFF, FORMAT JSON)' || query INTO output;
+	SELECT json_extract_path(output->0, 'Transaction')::TEXT INTO txn_type;
+	ASSERT (CASE WHEN txn_type = '"Fast Path"' THEN TRUE ELSE FALSE END) = expected;
+END;
+$$;
+
 --
 -- Test that single-row UPDATE/DELETEs bypass scan.
 --
@@ -962,6 +977,48 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE p_test SET k = (k + 11) % 30 WHERE k I
 
 SELECT * FROM p_test ORDER BY k;
 
+RESET yb_explain_hide_non_deterministic_fields;
+--
+-- Test to validate the transaction type in EXPLAIN.
+--
+CREATE TABLE t_simple(k INT PRIMARY KEY, v INT);
+CREATE TEMP TABLE t_temp(k INT PRIMARY KEY, v INT);
+
+-- Writing multiple rows should make a transaction ineligible for single-shard.
+CALL check_fast_path_txn('INSERT INTO t_simple (SELECT i, i FROM generate_series(1, 10) AS i)', false);
+-- Writing a single row should make a transaction eligible for single-shard.
+CALL check_fast_path_txn('INSERT INTO t_simple VALUES (11, 11)', true);
+CALL check_fast_path_txn('UPDATE t_simple SET v = 12 WHERE k = 11', true);
+CALL check_fast_path_txn('DELETE FROM t_simple WHERE k = 11', true);
+-- Reads are not single-shard transactions.
+CALL check_fast_path_txn('SELECT * FROM t_simple', false);
+-- Combinations of reads and writes should not be single-shard either.
+CALL check_fast_path_txn('DELETE FROM t_simple WHERE k < 2', false);
+-- Operations involving only temporary tables do not use DocDB transactions and
+-- so should not be eligible to be classified as single-shard transactions.
+CALL check_fast_path_txn('INSERT INTO t_temp (SELECT i, i FROM generate_series(1, 10) AS i)', false);
+CALL check_fast_path_txn('INSERT INTO t_temp VALUES (11, 11)', false);
+CALL check_fast_path_txn('UPDATE t_temp SET v = 12 WHERE k = 11', false);
+CALL check_fast_path_txn('DELETE FROM t_temp WHERE k = 11', false);
+CALL check_fast_path_txn('SELECT * FROM t_temp', false);
+CALL check_fast_path_txn('DELETE FROM t_temp WHERE k < 2', false);
+-- Operations involving both temporary and non-temporary tables should also
+-- not be eligible for single-shard transactions as this optimization is
+-- currently not supported when multiple tables are involved.
+CALL check_fast_path_txn('INSERT INTO t_simple (SELECT k + 10, v + 10 FROM t_temp WHERE k = 1)', false);
+CALL check_fast_path_txn('INSERT INTO t_temp (SELECT k, v FROM t_simple WHERE k = 11)', false);
+-- TODO(kramanathan): The following query currently crashes. Uncomment when fixed.
+-- WITH cte AS (INSERT INTO t_temp VALUES (13, 13) RETURNING *) INSERT INTO t_simple (SELECT * FROM cte);
+-- Queries in an explicit transaction block should not be labeled as single-shard transactions.
+BEGIN;
+CALL check_fast_path_txn('INSERT INTO t_simple VALUES (15, 15)', false);
+CALL check_fast_path_txn('UPDATE t_simple SET v = 16 WHERE k = 15', false);
+CALL check_fast_path_txn('DELETE FROM t_simple WHERE k = 15', false);
+COMMIT;
+
+SELECT * FROM t_simple ORDER BY k;
+SELECT * FROM t_temp ORDER BY k;
+
 -- Cleanup.
 DROP FUNCTION next_v3;
 DROP FUNCTION assign_one_plus_param_to_v1;
@@ -991,6 +1048,8 @@ DROP TABLE array_t4;
 DROP TABLE json_t1;
 DROP TABLE p_test;
 DROP TABLE pk;
+DROP TABLE t_simple;
+DROP TABLE t_temp;
 DROP TYPE rt;
 DROP TYPE two_int;
 DROP TYPE two_text;

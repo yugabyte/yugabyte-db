@@ -36,7 +36,7 @@ static const uint32_t kPgUpperBoundNormalObjectId = 2'199'999'999; // upper boun
 // Secondary OID space is used by xCluster when a database is a target.  Starting point has been
 // chosen so it starts at a nice human readable number, 2'200'000'000 = 0x83'21'56'00.
 static const uint32_t kPgFirstSecondarySpaceObjectId = kPgUpperBoundNormalObjectId + 1;
-static const uint32_t kPgUpperBoundSecondarySpaceObjectId = 0xff'ff'ff'ff;
+static const uint32_t kPgUpperBoundSecondarySpaceObjectId = 0xff'ff'ff'ff; // exclusive
 static const uint32_t kPgYbTablegroupTableOid = 8036;  // Hardcoded in pg_yb_tablegroup.h
 static const uint32_t kPgSequencesTableOid = 2224;  // Hardcoded for pg_sequence. (in pg_sequence.h)
 static const uint32_t kPgYbMigrationTableOid = 8027;  // Hardcoded for pg_yb_migration.

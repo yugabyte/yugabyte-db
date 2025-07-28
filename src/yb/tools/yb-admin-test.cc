@@ -577,9 +577,6 @@ class AdminCliTestForTableLocks : public AdminCliTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->enable_ysql = true;
-    options->extra_master_flags.push_back(
-        "--allowed_preview_flags_csv=enable_object_locking_for_table_locks");
-    options->extra_master_flags.push_back("--enable_object_locking_for_table_locks=true");
     options->extra_tserver_flags.push_back(
         "--allowed_preview_flags_csv=enable_object_locking_for_table_locks");
     options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=true");

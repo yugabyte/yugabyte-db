@@ -33,6 +33,8 @@ Most traditional databases (for example, MySQL, PostgreSQL, Oracle) have a [B-tr
 
 All new write operations (inserts, updates, and deletes) are written as key-value pairs to an in-memory data structure called a memtable, which is essentially a sorted map or tree. The key-value pairs are stored in sorted order based on the keys. When the memtable reaches a certain size, it is made immutable, which means no new writes can be accepted into that memtable.
 
+## Flush to SST
+
 The immutable [memtable](#memtable) is then flushed to disk as an [SST (Sorted String Table)](#sst) file. This process involves writing the key-value pairs from the memtable to disk in a sorted order, creating an SST file. DocDB maintains one active memtable, and at most one immutable memtable at any point in time. This ensures that write operations can continue to be processed in the active memtable while the immutable memtable is being flushed to disk.
 
 ## SST

@@ -197,6 +197,88 @@ TEST_F(TSLocalLockManagerTest, TestFastpathLockAndRelease) {
   ASSERT_OK(ReleaseLocksForOwner(kTxn1));
 }
 
+TEST_F(TSLocalLockManagerTest, TestFastpathConflictWithExisting) {
+  auto txn1 = lock_owner_registry_->Register(kTxn1.txn_id, TabletId());
+
+  ASSERT_OK(LockRelation(kTxn2, kDatabase1, kObject1, TableLockType::EXCLUSIVE));
+
+  ASSERT_FALSE(ASSERT_RESULT(LockRelationPgFastpath(
+      txn1.tag(), kTxn1.subtxn_id, kDatabase1, kObject1,
+      ObjectLockFastpathLockType::kRowExclusive)));
+
+  ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+
+  ASSERT_EQ(GrantedLocksSize(), 2);
+  ASSERT_EQ(WaitingLocksSize(), 0);
+  ASSERT_OK(ReleaseLocksForOwner(kTxn2));
+}
+
+TEST_F(TSLocalLockManagerTest, TestFastpathBlockLaterConflicting) {
+  auto txn1 = lock_owner_registry_->Register(kTxn1.txn_id, TabletId());
+
+  ASSERT_TRUE(ASSERT_RESULT(LockRelationPgFastpath(
+      txn1.tag(), kTxn1.subtxn_id, kDatabase1, kObject1,
+      ObjectLockFastpathLockType::kRowExclusive)));
+
+  auto status_future = std::async(std::launch::async, [&]() {
+    return LockRelation(kTxn2, kDatabase1, kObject1, TableLockType::EXCLUSIVE);
+  });
+
+  SleepFor(1s * kTimeMultiplier);
+  ASSERT_GE(WaitingLocksSize(), 1);
+
+  ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+
+  ASSERT_OK(status_future.get());
+
+  ASSERT_EQ(GrantedLocksSize(), 2);
+  ASSERT_EQ(WaitingLocksSize(), 0);
+  ASSERT_OK(ReleaseLocksForOwner(kTxn2));
+}
+
+TEST_F(TSLocalLockManagerTest, TestFastpathBlockLaterConflictingTimeout) {
+  auto txn1 = lock_owner_registry_->Register(kTxn1.txn_id, TabletId());
+
+  ASSERT_TRUE(ASSERT_RESULT(LockRelationPgFastpath(
+      txn1.tag(), kTxn1.subtxn_id, kDatabase1, kObject1,
+      ObjectLockFastpathLockType::kRowExclusive)));
+
+  ASSERT_NOK(LockRelation(
+      kTxn2, kDatabase1, kObject1, TableLockType::EXCLUSIVE,
+      CoarseMonoClock::Now() + 1s * kTimeMultiplier));
+
+  ASSERT_TRUE(ASSERT_RESULT(LockRelationPgFastpath(
+      txn1.tag(), kTxn1.subtxn_id, kDatabase1, kObject1,
+      ObjectLockFastpathLockType::kRowExclusive)));
+
+  ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+
+  ASSERT_EQ(GrantedLocksSize(), 0);
+  ASSERT_EQ(WaitingLocksSize(), 0);
+}
+
+TEST_F(TSLocalLockManagerTest, TestFastpathReleaseDuplicateExclusiveIntents) {
+  auto txn2 = lock_owner_registry_->Register(kTxn2.txn_id, TabletId());
+  // Test that exclusive lock intents from repeated locks on the same object are properly released.
+  ASSERT_OK(LockRelation(kTxn1, kDatabase1, kObject1, TableLockType::EXCLUSIVE));
+  ASSERT_OK(LockRelation(kTxn1, kDatabase1, kObject1, TableLockType::EXCLUSIVE));
+  ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+
+  ASSERT_TRUE(ASSERT_RESULT(LockRelationPgFastpath(
+      txn2.tag(), kTxn2.subtxn_id, kDatabase1, kObject1,
+      ObjectLockFastpathLockType::kRowExclusive)));
+  ASSERT_OK(ReleaseLocksForOwner(kTxn2));
+}
+
+TEST_F(TSLocalLockManagerTest, TestFastpathWeakStrongNoConflict) {
+  auto txn2 = lock_owner_registry_->Register(kTxn2.txn_id, TabletId());
+  ASSERT_OK(LockRelation(kTxn1, kDatabase1, kObject1, TableLockType::SHARE));
+  ASSERT_TRUE(ASSERT_RESULT(LockRelationPgFastpath(
+      txn2.tag(), kTxn2.subtxn_id, kDatabase1, kObject1, ObjectLockFastpathLockType::kRowShare)));
+  ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+  ASSERT_OK(ReleaseLocksForOwner(kTxn2));
+}
+
 TEST_F(TSLocalLockManagerTest, TestReleaseLocksForOwner) {
   for (int i = 0; i < 5; i++) {
     ASSERT_OK(LockRelation(kTxn1, kDatabase1, i, TableLockType::ACCESS_SHARE));

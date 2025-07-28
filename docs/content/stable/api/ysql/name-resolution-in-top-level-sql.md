@@ -12,7 +12,7 @@ type: docs
 ---
 
 {{< tip title="Regard the PostgreSQL documentation as the canonical definitional reference for SQL syntax." >}}
-In particular, see the section [SQL Syntax](https://www.postgresql.org/docs/11/sql-syntax.html) within the enclosing section [The SQL Language](https://www.postgresql.org/docs/11/sql.html). The discussion of name resolution in top-level SQL statements rests on the notions that the [SQL Syntax](https://www.postgresql.org/docs/11/sql-syntax.html) section explains.
+In particular, see the section [SQL Syntax](https://www.postgresql.org/docs/15/sql-syntax.html) within the enclosing section [The SQL Language](https://www.postgresql.org/docs/15/sql.html). The discussion of name resolution in top-level SQL statements rests on the notions that the [SQL Syntax](https://www.postgresql.org/docs/15/sql-syntax.html) section explains.
 {{< /tip >}}
 
 This section deals mainly with name resolution for the schema-objects that a SQL statement references and how this depends critically on the _search_path_. Name resolution for secondary objects, like columns in relations, is sketched briefly, at the end.
@@ -28,7 +28,7 @@ Unqualified identifiers for schema-objects are resolved according to what the _s
 ### The "search_path" run-time parameter
 
 {{< tip title="Treat the PostgreSQL documentation as the canonical reference for 'search_path'." >}}
-The PostgreSQL documentation describes the semantics of the _search_path_ run-time parameter in the section [Client Connection Defaults](https://www.postgresql.org/docs/11/runtime-config-client.html#RUNTIME-CONFIG-CLIENT-STATEMENT). Notice this:
+The PostgreSQL documentation describes the semantics of the _search_path_ run-time parameter in the section [Client Connection Defaults](https://www.postgresql.org/docs/15/runtime-config-client.html#RUNTIME-CONFIG-CLIENT-STATEMENT). Notice this:
 
 > ...the temporary schema is only searched for relation (table, view, sequence, etc) and data type names. _It is never searched for function or operator names_.
 {{< /tip >}}

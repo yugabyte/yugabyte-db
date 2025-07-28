@@ -9,3 +9,14 @@ allOf:
         type: object
         additionalProperties:
           $ref: "./AvailabilityZoneGFlags.yaml"
+      gflag_groups:
+        description: GFlag groups to be applied
+        type: array
+        items:
+          type: string
+          enum:
+            - ENHANCED_POSTGRES_COMPATIBILITY
+        example:
+          - ENHANCED_POSTGRES_COMPATIBILITY
+        x-yba-api-since: 2024.2.0.0
+        x-yba-api-visibility: internal

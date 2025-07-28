@@ -1,17 +1,4 @@
-// Font Awesome Pro 6
-@import "../vendor/Font-Awesome-Pro/scss/fontawesome.scss";
-@import "../vendor/Font-Awesome-Pro/scss/brands.scss";
-@import "../vendor/Font-Awesome-Pro/scss/duotone.scss";
-@import "../vendor/Font-Awesome-Pro/scss/light.scss";
-@import "../vendor/Font-Awesome-Pro/scss/regular.scss";
-@import "../vendor/Font-Awesome-Pro/scss/sharp-light.scss";
-@import "../vendor/Font-Awesome-Pro/scss/sharp-regular.scss";
-@import "../vendor/Font-Awesome-Pro/scss/sharp-solid.scss";
-@import "../vendor/Font-Awesome-Pro/scss/sharp-thin.scss";
-@import "../vendor/Font-Awesome-Pro/scss/solid.scss";
-@import "../vendor/Font-Awesome-Pro/scss/thin.scss";
-@import "../vendor/Font-Awesome-Pro/scss/v4-shims.scss";
-
+@import "./fontawesome/_default.scss";
 @import "./_yb_headings.scss";
 @import "./_yb_bullets-and-number-list.scss";
 @import "./_dropdown_list.scss";

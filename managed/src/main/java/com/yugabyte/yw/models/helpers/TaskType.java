@@ -487,6 +487,11 @@ public enum TaskType {
       CustomerTask.TaskType.ModifyAuditLoggingConfig,
       CustomerTask.TargetType.Universe),
 
+  ModifyQueryLoggingConfig(
+      com.yugabyte.yw.commissioner.tasks.upgrade.ModifyQueryLoggingConfig.class,
+      CustomerTask.TaskType.ModifyQueryLoggingConfig,
+      CustomerTask.TargetType.Universe),
+
   InstallYbcSoftware(
       com.yugabyte.yw.commissioner.tasks.InstallYbcSoftware.class,
       CustomerTask.TaskType.InstallYbcSoftware,
@@ -1071,6 +1076,9 @@ public enum TaskType {
 
   PromoteAutoFlags(com.yugabyte.yw.commissioner.tasks.subtasks.PromoteAutoFlags.class),
 
+  UpdateSoftwareUpdatePrevConfig(
+      com.yugabyte.yw.commissioner.tasks.subtasks.UpdateSoftwareUpdatePrevConfig.class),
+
   RollbackAutoFlags(com.yugabyte.yw.commissioner.tasks.subtasks.RollbackAutoFlags.class),
 
   StoreAutoFlagConfigVersion(
@@ -1262,6 +1270,7 @@ public enum TaskType {
           .put(RollbackKubernetesUpgrade, 54)
           .put(ModifyAuditLoggingConfig, 55)
           .put(ModifyKubernetesAuditLoggingConfig, 56)
+          .put(ModifyQueryLoggingConfig, 57)
           // Node operations (70-89):
           .put(AddNodeToUniverse, 70)
           .put(DeleteNodeFromUniverse, 71)

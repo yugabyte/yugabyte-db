@@ -1,9 +1,14 @@
 import * as Yup from 'yup';
 import { TFunction } from 'i18next';
-import { ArchitectureType } from '../../helpers/constants';
-import { StorageType } from '@app/redesign/features/universe/universe-form/utils/dto';
+import { ArchitectureType } from '@app/redesign/features-v2/universe-form-wizard/helpers/constants';
+import { CloudType, StorageType } from '@app/redesign/features/universe/universe-form/utils/dto';
 
-export const InstanceSettingsValidationSchema = (t: TFunction) => {
+export const InstanceSettingsValidationSchema = (
+  t: TFunction,
+  useK8CustomResources: boolean,
+  provider: CloudType | undefined,
+  useDedicatedNodes: boolean
+) => {
   return Yup.object().shape({
     // CPU Architecture validation
     arch: Yup.string()
@@ -24,10 +29,9 @@ export const InstanceSettingsValidationSchema = (t: TFunction) => {
         function (value) {
           // Image bundle is required when OS patching is enabled
           const { parent } = this;
-          const provider = parent?.providerConfiguration;
           const osPatchingEnabled = parent?.osPatchingEnabled;
 
-          if (osPatchingEnabled && provider && ['aws', 'gcp', 'azu'].includes(provider?.code)) {
+          if (osPatchingEnabled && provider && ['aws', 'gcp', 'azu'].includes(provider)) {
             return value !== null && value !== undefined && value !== '';
           }
           return true;
@@ -46,9 +50,7 @@ export const InstanceSettingsValidationSchema = (t: TFunction) => {
         'instance-type-required',
         t('createUniverseV2.instanceSettings.validation.required', { field: 'Instance Type' }),
         function (value) {
-          const { parent } = this;
-          const isK8s = parent?.providerConfiguration?.code === 'kubernetes';
-          const useK8CustomResources = parent?.useK8CustomResources;
+          const isK8s = provider === 'kubernetes';
 
           // Instance type is required for non-K8s or K8s without custom resources
           if (!isK8s || (isK8s && !useK8CustomResources)) {
@@ -68,10 +70,8 @@ export const InstanceSettingsValidationSchema = (t: TFunction) => {
         }),
         function (value) {
           const { parent } = this;
-          const useDedicatedNodes = parent?.useDedicatedNodes;
           const keepMasterTserverSame = parent?.keepMasterTserverSame;
-          const isK8s = parent?.providerConfiguration?.code === 'kubernetes';
-          const useK8CustomResources = parent?.useK8CustomResources;
+          const isK8s = provider === 'kubernetes';
 
           // Master instance type is required when using dedicated nodes and not keeping master/tserver same
           if (useDedicatedNodes && !keepMasterTserverSame) {
@@ -90,9 +90,7 @@ export const InstanceSettingsValidationSchema = (t: TFunction) => {
         'device-info-required',
         t('createUniverseV2.instanceSettings.validation.required', { field: 'Device Info' }),
         function (value) {
-          const { parent } = this;
-          const isK8s = parent?.providerConfiguration?.code === 'kubernetes';
-          const useK8CustomResources = parent?.useK8CustomResources;
+          const isK8s = provider === 'kubernetes';
 
           // Device info is required for non-K8s or K8s without custom resources
           if (!isK8s || (isK8s && !useK8CustomResources)) {
@@ -110,10 +108,8 @@ export const InstanceSettingsValidationSchema = (t: TFunction) => {
         t('createUniverseV2.instanceSettings.validation.required', { field: 'Master Device Info' }),
         function (value) {
           const { parent } = this;
-          const useDedicatedNodes = parent?.useDedicatedNodes;
           const keepMasterTserverSame = parent?.keepMasterTserverSame;
-          const isK8s = parent?.providerConfiguration?.code === 'kubernetes';
-          const useK8CustomResources = parent?.useK8CustomResources;
+          const isK8s = provider === 'kubernetes';
 
           // Master device info is required when using dedicated nodes and not keeping master/tserver same
           if (useDedicatedNodes && !keepMasterTserverSame) {
@@ -134,9 +130,7 @@ export const InstanceSettingsValidationSchema = (t: TFunction) => {
           field: 'TServer K8S Node Resource Spec'
         }),
         function (value) {
-          const { parent } = this;
-          const isK8s = parent?.providerConfiguration?.code === 'kubernetes';
-          const useK8CustomResources = parent?.useK8CustomResources;
+          const isK8s = provider === 'kubernetes';
 
           // K8S node spec is required for K8s with custom resources
           if (isK8s && useK8CustomResources) {
@@ -156,10 +150,8 @@ export const InstanceSettingsValidationSchema = (t: TFunction) => {
         }),
         function (value) {
           const { parent } = this;
-          const useDedicatedNodes = parent?.useDedicatedNodes;
           const keepMasterTserverSame = parent?.keepMasterTserverSame;
-          const isK8s = parent?.providerConfiguration?.code === 'kubernetes';
-          const useK8CustomResources = parent?.useK8CustomResources;
+          const isK8s = provider === 'kubernetes';
 
           // Master K8S node spec is required when using dedicated nodes and not keeping master/tserver same
           if (useDedicatedNodes && !keepMasterTserverSame && isK8s && useK8CustomResources) {

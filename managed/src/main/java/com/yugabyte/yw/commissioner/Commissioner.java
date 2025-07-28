@@ -476,16 +476,22 @@ public class Commissioner {
   }
 
   // Returns a map of target to updating task UUID.
-  public Map<UUID, String> getUpdatingTaskUUIDsForTargets(Long customerId) {
-    return Universe.getUniverseDetailsFields(
-        String.class, customerId, UniverseDefinitionTaskParams.UPDATING_TASK_UUID_FIELD);
-  }
-
-  public Map<UUID, String> getPlacementModificationTaskUUIDsForTargets(Long customerId) {
+  public Map<UUID, String> getUpdatingTaskUUIDsForTargets(
+      Long customerId, @Nullable UUID specificTargetUuid) {
     return Universe.getUniverseDetailsFields(
         String.class,
         customerId,
-        UniverseDefinitionTaskParams.PLACEMENT_MODIFICATION_TASK_UUID_FIELD);
+        UniverseDefinitionTaskParams.UPDATING_TASK_UUID_FIELD,
+        specificTargetUuid);
+  }
+
+  public Map<UUID, String> getPlacementModificationTaskUUIDsForTargets(
+      Long customerId, @Nullable UUID specificTargetUuid) {
+    return Universe.getUniverseDetailsFields(
+        String.class,
+        customerId,
+        UniverseDefinitionTaskParams.PLACEMENT_MODIFICATION_TASK_UUID_FIELD,
+        specificTargetUuid);
   }
 
   public JsonNode getTaskParams(UUID taskUUID) {

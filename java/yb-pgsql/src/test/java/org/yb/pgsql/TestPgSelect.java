@@ -49,6 +49,7 @@ public class TestPgSelect extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("ysql_enable_packed_row", "false");
+    flagMap.put("enable_object_lock_fastpath", "false");
     flagMap.put("pg_client_use_shared_memory", "false");
     return flagMap;
   }

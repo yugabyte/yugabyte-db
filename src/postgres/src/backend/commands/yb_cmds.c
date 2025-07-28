@@ -1856,7 +1856,8 @@ YBCPrepareAlterTable(List **subcmds,
 	{
 		foreach(lcmd, subcmds[cmd_idx])
 		{
-			bool subcmd_needs_yb_alter = false;
+			bool		subcmd_needs_yb_alter = false;
+
 			handles = YBCPrepareAlterTableCmd((AlterTableCmd *) lfirst(lcmd),
 											  rel, handles, &col,
 											  &subcmd_needs_yb_alter, rollbackHandle,

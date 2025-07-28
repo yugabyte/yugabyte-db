@@ -1256,18 +1256,20 @@ currval_oid(PG_FUNCTION_ARGS)
 	if (!elm->last_valid)
 	{
 		if (!(YbIsClientYsqlConnMgr() &&
-			strcmp((YBCGetGFlags()->ysql_conn_mgr_sequence_support_mode),
-				 "pooled_with_currval_lastval") == 0))
+			  strcmp((YBCGetGFlags()->ysql_conn_mgr_sequence_support_mode),
+					 "pooled_with_currval_lastval") == 0))
 			ereport(ERROR,
-				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("currval of sequence \"%s\" is not yet defined in this session",
-						RelationGetRelationName(seqrel))));
+					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+					 errmsg("currval of sequence \"%s\" is not yet defined in this session",
+							RelationGetRelationName(seqrel))));
 		else
 		{
-			HeapTuple pgstuple = SearchSysCache1(SEQRELID, relid);
+			HeapTuple	pgstuple = SearchSysCache1(SEQRELID, relid);
+
 			if (!HeapTupleIsValid(pgstuple))
 				elog(ERROR, "cache lookup failed for sequence %u", relid);
 			Form_pg_sequence pgsform = (Form_pg_sequence) GETSTRUCT(pgstuple);
+
 			/*
 			 * YB: When connection manager is enabled, return start of sequence if
 			 * not already defined when providing support for currval without
@@ -1304,11 +1306,11 @@ lastval(PG_FUNCTION_ARGS)
 	if (last_used_seq == NULL)
 	{
 		if (!(YbIsClientYsqlConnMgr() &&
-			strcmp((YBCGetGFlags()->ysql_conn_mgr_sequence_support_mode),
-				 "pooled_with_currval_lastval") == 0))
+			  strcmp((YBCGetGFlags()->ysql_conn_mgr_sequence_support_mode),
+					 "pooled_with_currval_lastval") == 0))
 			ereport(ERROR,
-				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("lastval is not yet defined in this session")));
+					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+					 errmsg("lastval is not yet defined in this session")));
 		else
 		{
 			/*

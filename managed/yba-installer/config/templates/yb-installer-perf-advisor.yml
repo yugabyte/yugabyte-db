@@ -1,0 +1,35 @@
+services:
+  - name: perfAdvisorService
+    fileName: "{{ .SystemdFileLocation }}"
+    contents: |
+      [Unit]
+      Description=Perf Advisor
+      Wants=network-online.target
+      After=network-online.target
+
+      [Service]
+      {{ if eq (yamlPath "as_root") "true" }}
+      User={{ yamlPath "service_username" }}
+      Group={{ yamlPath "service_username" }}
+      {{ end }}
+      Type=simple
+
+      ExecStart=/bin/sh -c "{{ .PABin }}/ts \
+      --spring.config.additional-location=file:{{ .ConfigLocation }} \
+      --web.listen-address=:{{ yamlPath "perfAdvisor.port" }} &>> {{ .PALogDir }}/perf-advisor.log"
+
+      Restart=always
+      RestartSec={{ yamlPath "perfAdvisor.restartSeconds"}}
+
+      # TODO: The logging might not work currently, perf-advisor app only logs to stdout/stderr
+      # Once Aleks makes changes to the perf advisor app, logging should work as expected
+      # Prevent logging to journalctl and only use log.override.path
+      StandardOutput=null
+      StandardError=null
+
+      # Sigterm causes exit status 143 for java, if we dont have this, stopping the perf-advisor
+      # service will show status as errored. Doing this will set ActiveState=inactive
+      SuccessExitStatus=143
+
+      [Install]
+      WantedBy=multi-user.target

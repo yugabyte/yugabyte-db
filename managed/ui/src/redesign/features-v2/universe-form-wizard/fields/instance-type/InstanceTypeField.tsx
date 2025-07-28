@@ -2,23 +2,37 @@ import { ChangeEvent, ReactElement, useContext } from 'react';
 import pluralize from 'pluralize';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
-import { useUpdateEffect } from 'react-use';
 import { Controller, useFormContext } from 'react-hook-form';
-import { Box } from '@material-ui/core';
-import { YBAutoComplete } from '@yugabyte-ui-library/core';
+import { YBAutoComplete, mui } from '@yugabyte-ui-library/core';
 import { QUERY_KEY, api } from '@app/redesign/features/universe/universe-form/utils/api';
-import { sortAndGroup, getDefaultInstanceType, useGetAllZones } from './InstanceTypeFieldHelper';
+import {
+  sortAndGroup,
+  getDefaultInstanceType,
+  useGetZones
+} from '@app/redesign/features-v2/universe-form-wizard/fields/instance-type/InstanceTypeFieldHelper';
 import { NodeType } from '@app/redesign/utils/dtos';
-import { IsOsPatchingEnabled } from '@app/components/configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
+import { useRuntimeConfigValues } from '@app/redesign/features-v2/universe-form-wizard/helpers/utils';
 import {
   CloudType,
   InstanceType,
   InstanceTypeWithGroup,
   Placement
 } from '@app/redesign/features/universe/universe-form/utils/dto';
-import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
-import { InstanceSettingProps } from '../../steps/hardware-settings/dtos';
-import { INSTANCE_TYPE_FIELD, MASTER_INSTANCE_TYPE_FIELD } from '../FieldNames';
+import {
+  CreateUniverseContext,
+  CreateUniverseContextMethods
+} from '@app/redesign/features-v2/universe-form-wizard/CreateUniverseContext';
+import { InstanceSettingProps } from '@app/redesign/features-v2/universe-form-wizard/steps/hardware-settings/dtos';
+import { getDeviceInfoFromInstance } from '@app/redesign/features-v2/universe-form-wizard/fields/volume-info/VolumeInfoFieldHelper';
+import {
+  INSTANCE_TYPE_FIELD,
+  MASTER_INSTANCE_TYPE_FIELD,
+  CPU_ARCH_FIELD,
+  MASTER_DEVICE_INFO_FIELD,
+  DEVICE_INFO_FIELD
+} from '@app/redesign/features-v2/universe-form-wizard/fields/FieldNames';
+
+const { Box } = mui;
 
 const getOptionLabel = (op: Record<string, string> | string): string => {
   if (!op) return '';
@@ -52,42 +66,30 @@ export const InstanceTypeField = ({ isMaster, disabled }: InstanceTypeFieldProps
 
   // To set value based on master or tserver field in dedicated mode
   const UPDATE_FIELD = isMaster ? MASTER_INSTANCE_TYPE_FIELD : INSTANCE_TYPE_FIELD;
+  const UPDATE_DEVICE_INFO_FIELD = isMaster ? MASTER_DEVICE_INFO_FIELD : DEVICE_INFO_FIELD;
 
   const [{ generalSettings, resilienceAndRegionsSettings }] = (useContext(
     CreateUniverseContext
   ) as unknown) as CreateUniverseContextMethods;
 
-  const cpuArch = watch('arch');
+  const cpuArch = watch(CPU_ARCH_FIELD);
   const provider = generalSettings?.providerConfiguration;
-
-  const zones = useGetAllZones(provider, resilienceAndRegionsSettings?.regions).map(
-    (zone: Placement) => zone.name
-  );
-
-  const handleChange = (e: ChangeEvent<{}>, option: any) => {
-    setValue(UPDATE_FIELD, option?.instanceTypeCode, { shouldValidate: true });
-  };
+  const { zones, isLoadingZones } = useGetZones(provider, resilienceAndRegionsSettings?.regions);
+  const zoneNames = zones.map((zone: Placement) => zone.name);
 
   //fetch run time configs
-  const {
-    data: providerRuntimeConfigs,
-    refetch: providerConfigsRefetch
-  } = useQuery(QUERY_KEY.fetchProviderRunTimeConfigs, () =>
-    api.fetchRunTimeConfigs(true, provider?.uuid)
-  );
+  const { providerRuntimeConfigs, osPatchingEnabled } = useRuntimeConfigValues(provider?.uuid);
 
-  const isOsPatchingEnabled = IsOsPatchingEnabled();
-
-  const { data, isLoading, refetch } = useQuery(
+  const { data, isLoading } = useQuery(
     [
       QUERY_KEY.getInstanceTypes,
       provider?.uuid,
-      JSON.stringify(zones),
-      isOsPatchingEnabled ? cpuArch : null
+      JSON.stringify(zoneNames),
+      osPatchingEnabled ? cpuArch : null
     ],
-    () => api.getInstanceTypes(provider?.uuid, zones, isOsPatchingEnabled ? cpuArch : null),
+    () => api.getInstanceTypes(provider?.uuid, zoneNames, osPatchingEnabled ? cpuArch : null),
     {
-      enabled: !!provider?.uuid && zones.length > 0,
+      enabled: !!provider?.uuid && zoneNames.length > 0 && !isLoadingZones,
       onSuccess: (data) => {
         if (!data.length) return;
 
@@ -109,34 +111,22 @@ export const InstanceTypeField = ({ isMaster, disabled }: InstanceTypeFieldProps
       }
     }
   );
-
-  useUpdateEffect(() => {
-    const getProviderRuntimeConfigs = async () => {
-      await providerConfigsRefetch();
-      //Reset instance type after provider change
-      setValue(UPDATE_FIELD, null);
-      //refetch instances based on changed provider
-      refetch();
-    };
-    getProviderRuntimeConfigs();
-  }, [provider?.uuid]);
-
   const instanceTypes = sortAndGroup(data, provider?.code);
+
+  const handleChange = (e: ChangeEvent<{}>, option: any) => {
+    setValue(UPDATE_FIELD, option?.instanceTypeCode, { shouldValidate: true });
+    const deviceInfo = getDeviceInfoFromInstance(option, providerRuntimeConfigs);
+    setValue(UPDATE_DEVICE_INFO_FIELD, deviceInfo, { shouldValidate: true });
+  };
 
   return (
     <Controller
       name={UPDATE_FIELD}
       control={control}
-      rules={{
-        required: t('universeForm.validation.required', {
-          field: t('universeForm.instanceConfig.instanceType')
-        }) as string
-      }}
       render={({ field, fieldState }) => {
         const value =
           instanceTypes.find((i: InstanceTypeWithGroup) => i.instanceTypeCode === field.value) ??
           '';
-
         return (
           <Box
             display="flex"

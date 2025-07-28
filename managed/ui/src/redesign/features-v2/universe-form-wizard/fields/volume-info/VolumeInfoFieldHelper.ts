@@ -15,7 +15,7 @@ import {
   RunTimeConfigEntry,
   StorageType
 } from '@app/redesign/features/universe/universe-form/utils/dto';
-import { isEphemeralAwsStorageInstance } from '../instance-type/InstanceTypeFieldHelper';
+import { isEphemeralAwsStorageInstance } from '@app/redesign/features-v2/universe-form-wizard/fields/instance-type/InstanceTypeFieldHelper';
 import { RuntimeConfigKey } from '@app/redesign/helpers/constants';
 
 export const IO1_DEFAULT_DISK_IOPS = 1000;

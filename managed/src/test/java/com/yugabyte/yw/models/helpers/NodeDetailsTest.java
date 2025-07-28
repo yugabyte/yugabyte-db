@@ -41,6 +41,8 @@ public class NodeDetailsTest {
     activeStates.add(NodeDetails.NodeState.Reprovisioning);
     activeStates.add(NodeDetails.NodeState.ConfigureDBApis);
     activeStates.add(NodeDetails.NodeState.VMImageUpgrade);
+    activeStates.add(NodeDetails.NodeState.InstanceStopping);
+    activeStates.add(NodeDetails.NodeState.InstanceStopped);
     for (NodeDetails.NodeState state : NodeDetails.NodeState.values()) {
       nd.state = state;
       if (activeStates.contains(state)) {

@@ -33,9 +33,14 @@ class MasterDDLClient {
 
   Status WaitForCreateNamespaceDone(const NamespaceId& id, MonoDelta timeout);
 
+  Result<NamespaceId> CreateNamespaceAndWait(
+      const NamespaceName& namespace_name, YQLDatabase namespace_type, MonoDelta timeout);
+
   Result<RefreshYsqlLeaseInfoPB> RefreshYsqlLease(
       const std::string& permanent_uuid, int64_t instance_seqno, uint64_t time_ms,
       std::optional<uint64_t> current_lease_epoch);
+
+  Status DeleteTable(const TableId& id, MonoDelta timeout);
 
  private:
   MasterDdlProxy proxy_;

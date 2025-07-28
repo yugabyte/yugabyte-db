@@ -2,6 +2,7 @@
 package api.v2.mappers;
 
 import api.v2.models.CloudSpecificInfo;
+import api.v2.models.ClusterGFlags;
 import api.v2.models.EncryptionAtRestInfo;
 import api.v2.models.EncryptionAtRestSpec;
 import api.v2.models.EncryptionInTransitSpec;
@@ -15,6 +16,7 @@ import api.v2.models.YCQLSpec;
 import api.v2.models.YSQLSpec;
 import api.v2.models.YbSoftwareDetails;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
+import com.yugabyte.yw.common.gflags.GFlagGroup.GroupName;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
@@ -33,6 +35,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.List;
 import org.mapstruct.BeanMapping;
 import org.mapstruct.Context;
 import org.mapstruct.DecoratedWith;
@@ -194,7 +197,8 @@ public interface UniverseDefinitionTaskParamsMapper {
     return new YSQLSpec()
         .enable(primaryUserIntent.enableYSQL)
         .enableAuth(primaryUserIntent.enableYSQLAuth)
-        .password(primaryUserIntent.ysqlPassword);
+        .password(primaryUserIntent.ysqlPassword)
+        .enableConnectionPooling(primaryUserIntent.enableConnectionPooling);
   }
 
   default YCQLSpec toV2YcqlSpec(UniverseDefinitionTaskParams universeDetails) {
@@ -279,7 +283,9 @@ public interface UniverseDefinitionTaskParamsMapper {
     @ValueMapping(target = "TERMINATED", source = "Terminated"),
     @ValueMapping(target = "REBOOTING", source = "Rebooting"),
     @ValueMapping(target = "HARDREBOOTING", source = "HardRebooting"),
-    @ValueMapping(target = "VMIMAGEUPGRADE", source = "VMImageUpgrade")
+    @ValueMapping(target = "VMIMAGEUPGRADE", source = "VMImageUpgrade"),
+    @ValueMapping(target = "INSTANCESTOPPING", source = "InstanceStopping"),
+    @ValueMapping(target = "INSTANCESTOPPED", source = "InstanceStopped")
   })
   NodeDetails.StateEnum toV2NodeState(
       com.yugabyte.yw.models.helpers.NodeDetails.NodeState v1NodeState);
@@ -287,4 +293,26 @@ public interface UniverseDefinitionTaskParamsMapper {
   @Mapping(target = "ybSoftwareVersion", source = "softwareVersion")
   YbSoftwareDetails toV2SoftwareDetails(
       UniverseDefinitionTaskParams.PrevYBSoftwareConfig prevYBSoftwareConfig);
+
+  ClusterGFlags.GflagGroupsEnum mapGflagGroupsEnum(GroupName groupName);
+
+  GroupName mapGroupName(ClusterGFlags.GflagGroupsEnum gflagGroupsEnum);
+
+  default List<ClusterGFlags.GflagGroupsEnum> mapGflagGroupsList(List<GroupName> groupNames) {
+    if (groupNames == null) {
+      return null;
+    }
+    return groupNames.stream()
+        .map(this::mapGflagGroupsEnum)
+        .collect(java.util.stream.Collectors.toList());
+  }
+
+  default List<GroupName> mapGroupNameList(List<ClusterGFlags.GflagGroupsEnum> gflagGroupsEnums) {
+    if (gflagGroupsEnums == null) {
+      return null;
+    }
+    return gflagGroupsEnums.stream()
+        .map(this::mapGroupName)
+        .collect(java.util.stream.Collectors.toList());
+  }
 }

@@ -64,7 +64,9 @@ The lag and skew values might be non-zero as they are estimates based on the las
 Skip this step if you are using xCluster replication automatic mode.
 {{< /note >}}
 
-xCluster only replicates sequence data in automatic mode.  If you are not using automatic mode, you need to manually synchronize the sequence next values on universe B to match those on universe A. This ensures that new writes on universe B do not conflict with existing data.
+xCluster only replicates sequence data in automatic mode.  If you are not using automatic mode, you need to manually synchronize the sequence next values on universe B after switchover to match those on universe A. This ensures that new writes on universe B do not conflict with existing data.
+
+For example, if you have a SERIAL column in a table and the highest value in that column after switchover is 500, you need to set the sequence associated with that column to a value higher than 500, such as 501. This ensures that new writes on universe B do not conflict with existing data.
 
 Use the [nextval](../../../../api/ysql/exprs/sequence_functions/func_nextval/) function to set the sequence next values appropriately.
 

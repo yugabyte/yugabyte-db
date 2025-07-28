@@ -39,7 +39,7 @@ Concurrent index creation allows data to be modified in the main table while the
 
 {{< note title="Note" >}}
 
-For more details on how online index backfill works, refer to [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md). Flags controlling the speed of online index backfill are described in [Index backfill flags](../../../../../../reference/configuration/yb-tserver/#index-backfill-flags).
+For more details on how online index backfill works, refer to [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md). Flags controlling the speed of online index backfill are described in [Index backfill flags](../../../../../reference/configuration/yb-tserver/#index-backfill-flags).
 
 {{< /note >}}
 
@@ -100,7 +100,6 @@ Number of partitions: 2 (Use \d+ to list them.)
 ```
 
 ```sql
-CREATE INDEX parent_index ON parent_partition (c1, c2);
 CREATE INDEX child_part_1_index ON child_part_1 (c1, c2);
 CREATE INDEX child_part_2_index ON child_part_2 (c1, c2);
 ALTER INDEX parent_index ATTACH PARTITION child_part_1_index;

@@ -182,6 +182,8 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
                   newVersion,
                   ysqlMajorVersionUpgrade ? YsqlMajorVersionUpgradeState.IN_PROGRESS : null));
 
+          createUpdateSoftwareUpdatePrevConfigTask();
+
           if (ysqlMajorVersionUpgrade) {
             createGFlagsUpgradeAndUpdateMastersTaskForYSQLMajorUpgrade(
                 universe,

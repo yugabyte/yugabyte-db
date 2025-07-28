@@ -80,6 +80,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   void SetDdlHasSyscatalogChanges();
   Status SetInTxnBlock(bool in_txn_blk);
   Status SetReadOnlyStmt(bool read_only_stmt);
+  void SetTransactionHasWrites();
+  Result<bool> TransactionHasNonTransactionalWrites() const;
 
   bool IsTxnInProgress() const { return txn_in_progress_; }
   IsolationLevel GetIsolationLevel() const { return isolation_level_; }
@@ -207,6 +209,21 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   bool has_exported_snapshots_ = false;
 
   YbcPgCallbacks pg_callbacks_;
+  // The transaction manager tracks the following semantics:
+  // 1. read_only_: Is the current transaction marked as read-only? A read-only transaction is one
+  //                that does not write to non temporary tables. This is a postgres construct that
+  //                is determined by the GUCs "default_transaction_read_only" and
+  //                "transaction_read_only". Note that a transaction can be marked as read-only
+  //                after it has already performed some writes.
+  // 2. read_only_stmt_: Does the current statement write to non temporary tables? Relevant in the
+  //                     context of read-only transactions, where all statements must be read-only.
+  // 3. has_writes_: Has the current transaction performed any writes to non temporary tables?
+  //                 This is used to track whether the transaction writes use the "fast path".
+  //                 Note that a transaction can be marked as non-read-only and not have any writes.
+  //                 The reverse is also true: a transaction can be marked as read-only and still
+  //                 have writes (before it was marked as read-only). So, no conclusion can be drawn
+  //                 about the transaction's read-only status based on the has_writes_ flag.
+  bool has_writes_ = false;
 
   const bool enable_table_locking_;
 

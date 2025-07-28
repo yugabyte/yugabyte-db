@@ -123,6 +123,7 @@
 #include "pg_yb_utils.h"
 #include "tcop/pquery.h"
 #include "utils/syscache.h"
+#include "yb/util/debug/leak_annotations.h"
 #include "yb_ash.h"
 #include "yb_query_diagnostics.h"
 #include "yb_tcmalloc_utils.h"
@@ -5449,6 +5450,16 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_fk_references_cache_limit", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Sets the maximum size for the FK reference cache filled by the INSERT, SELECT ... FOR KEY SHARE or similar statmements"),
+			NULL
+		},
+		&yb_fk_references_cache_limit,
+		65535, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL, NULL
@@ -7332,6 +7343,7 @@ guc_strdup(int elevel, const char *src)
 		ereport(elevel,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("out of memory")));
+	__lsan_ignore_object(data);
 	return data;
 }
 

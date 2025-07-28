@@ -26,20 +26,22 @@ The CLI is {{<tags/feature/ea idea="1879">}}. Commands and options may change be
 
 ## Install CLI
 
-Your YugabyteDB Anywhere installation includes the CLI binary, in the following location:
+The CLI binary is already included in your YugabyteDB Anywhere installation at the following location:
 
 ```sh
 /opt/ybanywhere/software/active/yb-platform/yugaware/yba-cli
 ```
 
-The CLI is available for following architectures:
+The CLI is available for the following architectures:
 
 - Linux AMD64 and ARM64
 - Darwin AMD64 and ARM64
 
 Copy the appropriate binary to your local machine. Note that the CLI can only be used with the same or earlier version of YBA.
 
-For help, enter the following command:
+### Need Help?
+
+For CLI commands and options, run:
 
 ```sh
 yba help

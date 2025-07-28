@@ -179,7 +179,7 @@ This tutorial shows how to use the YugabyteDB JDBC Driver with YugabyteDB. It st
 Next, you use [yb-sample-apps](https://github.com/yugabyte/yb-sample-apps/tree/master) to demonstrate the driver's load balancing features and create a Maven project to learn how to use the driver in an application.
 
 {{< note title="Note">}}
-The driver requires YugabyteDB version 2.7.2.0 or higher, and Java 8 or above.
+The driver requires YugabyteDB v2.7.2.0 or later, and Java 8 or above.
 {{< /note>}}
 
 ### Install YugabyteDB and create a local cluster
@@ -196,7 +196,7 @@ To create a multi-zone cluster, do the following:
 
     ```sh
     ./bin/yugabyted start --advertise_address=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1 \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node1 \
         --cloud_location=aws.us-east-1.us-east-1a \
         --fault_tolerance=zone
     ```
@@ -206,7 +206,7 @@ To create a multi-zone cluster, do the following:
     ```sh
     ./bin/yugabyted start --advertise_address=127.0.0.2 \
         --join=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node2 \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node2 \
         --cloud_location=aws.us-east-1.us-east-1a \
         --fault_tolerance=zone
     ```
@@ -214,7 +214,7 @@ To create a multi-zone cluster, do the following:
     ```sh
     ./bin/yugabyted start --advertise_address=127.0.0.3 \
         --join=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node3 \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node3 \
         --cloud_location=aws.us-east-1.us-east-1b \
         --fault_tolerance=zone
     ```
@@ -261,9 +261,9 @@ To verify the behavior, wait for the app to create connections and then navigate
 When you're done experimenting, run the following command to destroy the local cluster:
 
 ```sh
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node2
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node3
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node1
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node2
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node3
 ```
 
 ## Other examples
@@ -299,7 +299,7 @@ To use the samples, complete the following steps:
   ```
 
   {{< note title="Note">}}
-The driver requires YugabyteDB version 2.7.2.0 or higher.
+The driver requires YugabyteDB v2.7.2.0 or later.
   {{< /note>}}
 
   The `run` script starts a YugabyteDB cluster, demonstrates load balancing through Java applications, and then destroys the cluster.

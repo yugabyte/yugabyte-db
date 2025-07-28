@@ -20,8 +20,9 @@ import (
 )
 
 var (
-	PostgresVersion   string = ""
-	PrometheusVersion string = ""
+	PostgresVersion    string = ""
+	PrometheusVersion  string = ""
+	PerfAdvisorVersion string = ""
 )
 
 // Get the commands that will require yba-ctl.yml to be setup before getting run
@@ -101,6 +102,8 @@ func initServices() {
 	serviceManager.RegisterService(NewPostgres(PostgresVersion))
 	serviceManager.RegisterService(NewPrometheus(PrometheusVersion))
 	serviceManager.RegisterService(NewPlatform(ybactl.Version))
+	serviceManager.RegisterService(NewPerfAdvisor(PerfAdvisorVersion))
+	serviceManager.RegisterService(NewLogRotate())
 	var services []components.Service
 	for s := range serviceManager.Services() {
 		services = append(services, s)

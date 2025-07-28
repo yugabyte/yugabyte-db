@@ -79,8 +79,8 @@ Status XClusterCheckpointNamespaceTask::FirstStep() {
 
 Status XClusterCheckpointNamespaceTask::BumpOidCounter() {
   if (outbound_replication_group_.AutomaticDDLMode()) {
-    RETURN_NOT_OK(outbound_replication_group_.helper_functions_
-                      .set_normal_oid_counter_above_all_normal_oids_func(namespace_id_));
+    RETURN_NOT_OK(
+        outbound_replication_group_.helper_functions_.advance_oid_counters_func(namespace_id_));
   }
 
   ScheduleNextStep(

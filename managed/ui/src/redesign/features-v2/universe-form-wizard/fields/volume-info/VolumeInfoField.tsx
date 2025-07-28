@@ -3,8 +3,7 @@ import { useQuery } from 'react-query';
 import { useUpdateEffect } from 'react-use';
 import { useTranslation } from 'react-i18next';
 import { Controller, useFormContext } from 'react-hook-form';
-import { Box, makeStyles, MenuItem } from '@material-ui/core';
-import { YBInput, YBLabel, YBSelect } from '@yugabyte-ui-library/core';
+import { YBInput, YBLabel, YBSelect, mui } from '@yugabyte-ui-library/core';
 import { QUERY_KEY, api } from '@app/redesign/features/universe/universe-form/utils/api';
 import {
   getDeviceInfoFromInstance,
@@ -15,24 +14,33 @@ import {
   getThroughputByIops,
   getThroughputByStorageType,
   useVolumeControls
-} from './VolumeInfoFieldHelper';
-import { isEphemeralAwsStorageInstance } from '../instance-type/InstanceTypeFieldHelper';
+} from '@app/redesign/features-v2/universe-form-wizard/fields/volume-info/VolumeInfoFieldHelper';
+import {
+  isEphemeralAwsStorageInstance,
+  useGetZones
+} from '@app/redesign/features-v2/universe-form-wizard/fields/instance-type/InstanceTypeFieldHelper';
 import {
   CloudType,
+  Placement,
   StorageType,
   VolumeType
 } from '@app/redesign/features/universe/universe-form/utils/dto';
-import { IsOsPatchingEnabled } from '@app/components/configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
-import { InstanceSettingProps } from '../../steps/hardware-settings/dtos';
-import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
-import { ReactComponent as Close } from '@app/redesign/assets/close.svg';
+import { useRuntimeConfigValues } from '@app/redesign/features-v2/universe-form-wizard/helpers/utils';
+import { InstanceSettingProps } from '@app/redesign/features-v2/universe-form-wizard/steps/hardware-settings/dtos';
+import {
+  CreateUniverseContext,
+  CreateUniverseContextMethods
+} from '@app/redesign/features-v2/universe-form-wizard/CreateUniverseContext';
 import {
   CPU_ARCHITECTURE_FIELD,
   DEVICE_INFO_FIELD,
   INSTANCE_TYPE_FIELD,
   MASTER_DEVICE_INFO_FIELD,
   MASTER_INSTANCE_TYPE_FIELD
-} from '../FieldNames';
+} from '@app/redesign/features-v2/universe-form-wizard/fields/FieldNames';
+import { ReactComponent as Close } from '@app/redesign/assets/close.svg';
+
+const { Box, MenuItem } = mui;
 
 interface VolumeInfoFieldProps {
   isMaster?: boolean;
@@ -40,54 +48,30 @@ interface VolumeInfoFieldProps {
   disabled: boolean;
 }
 
-const useStyles = makeStyles((theme) => ({
-  volumeInfoTextField: {
-    width: theme.spacing(15.5)
+const menuProps = {
+  anchorOrigin: {
+    vertical: 'bottom',
+    horizontal: 'left'
   },
-  storageTypeLabelField: {
-    minWidth: theme.spacing(21.25)
-  },
-  storageTypeSelectField: {
-    maxWidth: theme.spacing(35.25),
-    minWidth: theme.spacing(30)
-  },
-  unitLabelField: {
-    marginLeft: theme.spacing(2),
-    alignSelf: 'flex-end',
-    marginBottom: 8
-  },
-  overrideMuiHelperText: {
-    '& .MuiFormHelperText-root': {
-      color: theme.palette.orange[500]
-    }
-  },
-  coolDownTooltip: {
-    marginLeft: theme.spacing(1),
-    alignSelf: 'center'
-  },
-  warningStorageLabelField: {
-    marginTop: theme.spacing(2),
-    alignItems: 'flex-start'
+  transformOrigin: {
+    vertical: 'top',
+    horizontal: 'left'
   }
-}));
+} as any;
 
 export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   isMaster,
   maxVolumeCount,
   disabled
 }) => {
-  //   const { control, setValue, watch } = useFormContext<UniverseFormData>();
-  const classes = useStyles();
   const { t } = useTranslation();
   const dataTag = isMaster ? 'Master' : 'TServer';
 
-  //watchers
-
   // watchers
   const { watch, control, setValue } = useFormContext<InstanceSettingProps>();
-  const [{ generalSettings, nodesAvailabilitySettings }] = (useContext(
-    CreateUniverseContext
-  ) as unknown) as CreateUniverseContextMethods;
+  const [
+    { generalSettings, nodesAvailabilitySettings, resilienceAndRegionsSettings }
+  ] = (useContext(CreateUniverseContext) as unknown) as CreateUniverseContextMethods;
 
   const useDedicatedNodes = nodesAvailabilitySettings?.useDedicatedNodes;
   const provider = generalSettings?.providerConfiguration;
@@ -104,57 +88,37 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
     disableStorageType
   } = useVolumeControls();
 
+  const { zones, isLoadingZones } = useGetZones(provider, resilienceAndRegionsSettings?.regions);
+  const zoneNames = zones.map((zone: Placement) => zone.name);
+
   //fetch run time configs
-  const {
-    data: providerRuntimeConfigs,
-    refetch: providerConfigsRefetch
-  } = useQuery(QUERY_KEY.fetchProviderRunTimeConfigs, () =>
-    api.fetchRunTimeConfigs(true, provider?.uuid)
-  );
+  const { providerRuntimeConfigs, osPatchingEnabled } = useRuntimeConfigValues(provider?.uuid);
 
   // Update field is based on master or tserver field in dedicated mode
   const UPDATE_FIELD = isMaster ? MASTER_DEVICE_INFO_FIELD : DEVICE_INFO_FIELD;
 
-  const isOsPatchingEnabled = IsOsPatchingEnabled();
-
   //get instance details
   const { data: instanceTypes } = useQuery(
-    [QUERY_KEY.getInstanceTypes, provider?.uuid, isOsPatchingEnabled ? cpuArch : null],
-    () => api.getInstanceTypes(provider?.uuid, [], isOsPatchingEnabled ? cpuArch : null),
-    { enabled: !!provider?.uuid }
+    [
+      QUERY_KEY.getInstanceTypes,
+      provider?.uuid,
+      JSON.stringify(zoneNames),
+      osPatchingEnabled ? cpuArch : null
+    ],
+    () => api.getInstanceTypes(provider?.uuid, zoneNames, osPatchingEnabled ? cpuArch : null),
+    { enabled: !!provider?.uuid && zoneNames.length > 0 && !isLoadingZones }
   );
   const instance = instanceTypes?.find((item) => item.instanceTypeCode === instanceType);
 
   // Update volume info after instance changes
-  // We need to have have 2 separate useEffects for instanceType and provider changes
-  // once provider can be edited via the UI in case of primary cluster
   useEffect(() => {
-    if (!instance) return;
-    const getProviderRuntimeConfigs = async () => {
-      const providerRuntimeConfigsRefetch = await providerConfigsRefetch();
-      const deviceInfo = getDeviceInfoFromInstance(
-        instance,
-        providerRuntimeConfigsRefetch.isError
-          ? providerRuntimeConfigs
-          : providerRuntimeConfigsRefetch.data
-      );
-
-      //retain old volume size if its edit mode or not ephemeral storage
-      if (
-        fieldValue &&
-        deviceInfo &&
-        !isEphemeralAwsStorageInstance(instance) &&
-        provider &&
-        provider.code !== CloudType.onprem
-      ) {
-        deviceInfo.volumeSize = fieldValue.volumeSize;
-        deviceInfo.numVolumes = fieldValue.numVolumes;
-      }
-
+    if (!instance || !provider?.uuid) return;
+    const updateDeviceInfo = () => {
+      const deviceInfo = getDeviceInfoFromInstance(instance, providerRuntimeConfigs);
       deviceInfo && setValue(UPDATE_FIELD, deviceInfo);
     };
-    getProviderRuntimeConfigs();
-  }, [instanceType, provider?.uuid]);
+    !fieldValue && updateDeviceInfo();
+  }, [instance, provider?.uuid]);
 
   const convertToString = (str: string | number) => str?.toString() ?? '';
 
@@ -263,12 +227,6 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
     const isEphemeralStorage =
       provider?.code === CloudType.aws && isEphemeralAwsStorageInstance(instance);
 
-    const smartResizePossible =
-      provider &&
-      [CloudType.aws, CloudType.gcp, CloudType.azu].includes(provider?.code) &&
-      !isEphemeralAwsStorageInstance(instance) &&
-      fieldValue?.storageType !== StorageType.Scratch;
-
     return (
       <Box display="flex" flexDirection="column">
         <Box display="flex">
@@ -277,7 +235,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
           </Box>
         </Box>
         <Box display="flex">
-          <Box flex={1} className={classes.volumeInfoTextField} sx={{ width: 198 }}>
+          <Box flex={1} sx={{ width: 198 }}>
             <YBInput
               type="number"
               fullWidth
@@ -307,13 +265,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
             <Close />
           </Box>
 
-          <Box
-            display="flex"
-            alignItems="flex-end"
-            flex={1}
-            className={classes.volumeInfoTextField}
-            sx={{ width: 198 }}
-          >
+          <Box display="flex" alignItems="flex-end" flex={1} sx={{ width: 198 }}>
             <YBInput
               type="number"
               fullWidth
@@ -325,7 +277,6 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
                   disabled
                 }
               }}
-              className={classes.overrideMuiHelperText}
               value={convertToString(fieldValue?.volumeSize ?? '')}
               onChange={(event) => onVolumeSizeChanged(event.target.value)}
               onBlur={resetThroughput}
@@ -334,7 +285,15 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
             />
           </Box>
 
-          <Box display="flex" alignItems="center" className={classes.unitLabelField}>
+          <Box
+            display="flex"
+            alignItems="center"
+            sx={(theme) => ({
+              marginLeft: theme.spacing(2),
+              alignSelf: 'flex-end',
+              marginBottom: 1
+            })}
+          >
             {provider?.code === CloudType.kubernetes
               ? t('universeForm.instanceConfig.k8VolumeSizeUnit')
               : t('universeForm.instanceConfig.volumeSizeUnit')}
@@ -348,40 +307,40 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
     if (
       (provider && [CloudType.gcp, CloudType.azu].includes(provider?.code)) ||
       (volumeType === VolumeType.EBS && provider?.code === CloudType.aws)
-    )
+    ) {
       return (
         <Box display="flex" sx={{ width: 198 }} mt={2}>
-          <Box flex={1}>
-            <YBSelect
-              fullWidth
-              label={
-                provider?.code === CloudType.aws
-                  ? t('universeForm.instanceConfig.ebs')
-                  : t('universeForm.instanceConfig.ssd')
+          <YBSelect
+            fullWidth
+            label={
+              provider?.code === CloudType.aws
+                ? t('universeForm.instanceConfig.ebs')
+                : t('universeForm.instanceConfig.ssd')
+            }
+            disabled={disableStorageType || disabled}
+            value={fieldValue?.storageType}
+            slotProps={{
+              htmlInput: {
+                min: 1,
+                'data-testid': `VolumeInfoField-${dataTag}-StorageTypeSelect`,
+                disabled
               }
-              disabled={disableStorageType || disabled}
-              value={fieldValue?.storageType}
-              slotProps={{
-                htmlInput: {
-                  min: 1,
-                  'data-testid': `VolumeInfoField-${dataTag}-StorageTypeSelect`,
-                  disabled
-                }
-              }}
-              onChange={(event) =>
-                onStorageTypeChanged((event?.target.value as unknown) as StorageType)
-              }
-              dataTestId={`VolumeInfoField-${dataTag}-StorageTypeSelect`}
-            >
-              {getStorageTypeOptions(provider?.code, providerRuntimeConfigs).map((item) => (
-                <MenuItem key={item.value} value={item.value}>
-                  {item.label}
-                </MenuItem>
-              ))}
-            </YBSelect>
-          </Box>
+            }}
+            onChange={(event) =>
+              onStorageTypeChanged((event?.target.value as unknown) as StorageType)
+            }
+            dataTestId={`VolumeInfoField-${dataTag}-StorageTypeSelect`}
+            menuProps={menuProps}
+          >
+            {getStorageTypeOptions(provider?.code, providerRuntimeConfigs).map((item) => (
+              <MenuItem key={item.value} value={item.value}>
+                {item.label}
+              </MenuItem>
+            ))}
+          </YBSelect>
         </Box>
       );
+    }
 
     return null;
   };
@@ -397,8 +356,9 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
         StorageType.Hyperdisk_Balanced,
         StorageType.Hyperdisk_Extreme
       ].includes(fieldValue?.storageType)
-    )
+    ) {
       return null;
+    }
 
     return (
       <Box display="flex" sx={{ width: 198 }} mt={2}>
@@ -435,8 +395,9 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
         StorageType.PremiumV2_LRS,
         StorageType.Hyperdisk_Balanced
       ].includes(fieldValue?.storageType)
-    )
+    ) {
       return null;
+    }
 
     return (
       <Box display="flex" flexDirection="column" mt={2}>
@@ -464,7 +425,16 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
               dataTestId={`VolumeInfoField-${dataTag}-ThroughputInput`}
             />
           </Box>
-          <Box ml={2} display="flex" alignItems="center" className={classes.unitLabelField}>
+          <Box
+            ml={2}
+            display="flex"
+            alignItems="center"
+            sx={(theme) => ({
+              marginLeft: theme.spacing(2),
+              alignSelf: 'flex-end',
+              marginBottom: 1
+            })}
+          >
             {t('universeForm.instanceConfig.throughputUnit')}
           </Box>
         </Box>
@@ -482,18 +452,14 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
           {fieldValue && (
             <Box display="flex" width="100%" flexDirection="column">
               <Box display="flex" width="100%" flexDirection="column">
-                <>{renderVolumeInfo()}</>
-                <>{!isGcpDedicatedUniverse && <>{renderStorageType()}</>}</>
+                {renderVolumeInfo()}
+                {!isGcpDedicatedUniverse && renderStorageType()}
               </Box>
 
-              {fieldValue.storageType && (
+              {fieldValue.storageType && !isGcpDedicatedUniverse && (
                 <Box display="flex" width="100%" flexDirection="column">
-                  {!isGcpDedicatedUniverse && (
-                    <>
-                      {renderDiskIops()}
-                      {renderThroughput()}
-                    </>
-                  )}
+                  {renderDiskIops()}
+                  {renderThroughput()}
                 </Box>
               )}
             </Box>

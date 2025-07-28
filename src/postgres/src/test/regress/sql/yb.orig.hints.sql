@@ -246,6 +246,9 @@ explain (hints on, costs off) select f2 from t1, t2, t3, func2(1, 2) funky where
 explain (hints on, costs off) select 1 from t2, t3, t1 where a1=a2 and a1=a3 and unn1=1;
 
 -- Check hint generation for partitioned tables.
+/*
+ * Unexpected error until https://github.com/yugabyte/yugabyte-db/issues/28070 is fixed.
+ */
 explain (hints on, costs off) select count(*) from prt1 p1 join prt2 p2 on p1.a=p2.a;
 
 -- Partitioned table where all partition-wise joins are forced to be merge joins. Should give no warnings/errors.

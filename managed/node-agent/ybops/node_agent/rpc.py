@@ -30,6 +30,7 @@ from ybops.common.exceptions import YBOpsRuntimeError
 
 CORRELATION_ID = "correlation_id"
 X_CORRELATION_ID = "x-correlation-id"
+X_REQUEST_ID = "x-request-id"
 SERVER_READY_RETRY_LIMIT = 60
 PING_TIMEOUT_SEC = 10
 RPC_TIMEOUT_SEC = 900
@@ -149,9 +150,6 @@ class RpcClient(object):
         output = RpcOutput()
         try:
             timeout_sec = kwargs.get('timeout', self.rpc_timeout_sec)
-            request_id = kwargs.get('request_id')
-            if request_id is None:
-                request_id = str(uuid.uuid4())
             metadata = self._get_metadata(**kwargs)
             bash = kwargs.get('bash', False)
             if isinstance(cmd, str):
@@ -369,7 +367,11 @@ class RpcClient(object):
         correlation_id = os.getenv(CORRELATION_ID, None)
         if correlation_id is None:
             correlation_id = str(uuid.uuid4())
+        request_id = str(uuid.uuid4())
+        logging.info("Using correlation ID: {} and request ID: {}"
+                     .format(correlation_id, request_id))
         metadata.append((X_CORRELATION_ID, correlation_id))
+        metadata.append((X_REQUEST_ID, request_id))
         return metadata
 
     def _set_request_oneof_field(self, request, field):

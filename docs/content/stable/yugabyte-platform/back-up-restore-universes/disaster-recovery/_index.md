@@ -26,6 +26,8 @@ The recovery time objective (RTO) for failover or switchover is very low, and de
 
 DR further allows for the role of each universe to switch during planned switchover and unplanned failover scenarios.
 
+All major DR tasks - switchover, failover, delete, restart - are retryable. Switchover tasks can be rolled back if the old stream exists. For information on managing tasks, refer to [Monitor universe tasks](../../manage-deployments/retry-failed-task/).
+
 ![Disaster recovery](/images/yb-platform/disaster-recovery/disaster-recovery.png)
 
 {{<lead link="https://www.yugabyte.com/blog/yugabytedb-xcluster-for-postgresql-dr-in-azure/">}}
@@ -75,7 +77,7 @@ xCluster DR can be set up to perform schema changes in the following ways:
 
 ### Semi-automatic mode
 
-Semi-automatic mode is {{<tags/feature/ea idea="1186">}}. In this mode, table and index-level schema changes must be performed in the same order as follows:
+In this mode, table and index-level schema changes must be performed in the same order as follows:
 
 1. The DR primary universe.
 2. The DR replica universe.
@@ -86,12 +88,7 @@ You don't need to make any changes to the DR configuration.
 To learn more, watch [Simplified schema management with xCluster DB Scoped](https://www.youtube.com/watch?v=vYyn2OUSZFE)
 {{</lead>}}
 
-Semi-automatic mode is recommended for all new DR configurations. When possible, existing DR configurations should be deleted and re-created using semi-automatic mode to reduce the operational burden of DDL changes.
-
-Semi-automatic mode is used for any xCluster DR configuration when the following pre-requisites are met at setup time:
-
-- Both DR primary and replica are running YugabyteDB v2024.1.3 or later.
-- Semi-automatic mode is enabled. While in {{<tags/feature/ea>}}, the feature is not enabled by default. To enable it, set the **DB scoped xCluster replication creation** Global runtime configuration option (config key `yb.xcluster.db_scoped.creationEnabled`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global runtime configuration settings.
+Semi-automatic mode is recommended for all new DR configurations. When possible, existing Manual mode DR configurations should be deleted and re-created using semi-automatic mode to reduce the operational burden of DDL changes.
 
 ### Manual mode
 
@@ -141,7 +138,7 @@ For example, use xCluster Replication for the following deployments:
 
 Note that a universe configured for xCluster DR cannot be used for xCluster Replication, and vice versa. Although xCluster DR uses xCluster Replication under the hood, xCluster DR replication is managed exclusively from the **xCluster Disaster Recovery** tab, and not on the **xCluster Replication** tab.
 
-(As an alternative to xCluster DR, you can perform setup, failover, and switchover manually. Refer to [Set up transactional xCluster Replication](../../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/).)
+(As an alternative to xCluster DR, you can perform setup, failover, and switchover manually. Refer to [Set up transactional xCluster](../../../deploy/multi-dc/async-replication/async-transactional-setup-automatic/).)
 
 {{<lead link="../../../architecture/docdb-replication/async-replication/">}}
 [xCluster Replication: overview and architecture](../../../architecture/docdb-replication/async-replication/)

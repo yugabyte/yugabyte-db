@@ -599,12 +599,17 @@ Status TableInfo::AddTablets(const TabletInfos& tablets) {
   return Status::OK();
 }
 
-void TableInfo::ClearTabletMaps(DeactivateOnly deactivate_only) {
+void TableInfo::ClearTabletMaps() {
+  DCHECK(IsSecondaryTable());
   std::lock_guard l(lock_);
   partitions_.clear();
-  if (!deactivate_only) {
-    tablets_.clear();
-  }
+  tablets_.clear();
+}
+
+std::map<TabletId, std::weak_ptr<TabletInfo>> TableInfo::TakeTablets() {
+  std::lock_guard l(lock_);
+  partitions_.clear();
+  return std::move(tablets_);
 }
 
 Result<TabletWithSplitPartitions> TableInfo::FindSplittableHashPartitionForStatusTable() const {
