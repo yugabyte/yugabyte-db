@@ -53,7 +53,7 @@ YugabyteDB monitors the health of your clusters based on [cluster alert](#cluste
 | Status | Alert | Level |
 | :----- | :---- | :---- |
 | Healthy | No alerts<br/>[Disk throughput](#fix-throughput-alerts)<br/>[Disk IOPS](#fix-iops-alerts)<br/>[Fewer than 34% of nodes down](#fix-nodes-reporting-as-down-alerts) | <br/>Warning<br/>Warning<br/>Info |
-| Needs Attention | [Tablet peers](#fix-storage-alerts)<br/>[Node free storage](#fix-storage-alerts)<br/>[More than 34% of nodes down](#fix-nodes-reporting-as-down-alerts)<br/>[Memory Utilization](#fix-memory-alerts)<br/>[YSQL Connections](#fix-ysql-connection-alerts)<br/>[CPU Utilization](#fix-cpu-alerts) | Warning or Severe<br/>Warning or Severe<br/>Warning<br/>Warning or Severe<br/>Warning or Severe<br/>Warning or Severe |
+| Needs Attention | [Tablet peers](#fix-tablet-peer-alerts)<br/>[Node free storage](#fix-storage-alerts)<br/>[More than 34% of nodes down](#fix-nodes-reporting-as-down-alerts)<br/>[Memory Utilization](#fix-memory-alerts)<br/>[YSQL Connections](#fix-ysql-connection-alerts)<br/>[CPU Utilization](#fix-cpu-alerts) | Warning or Severe<br/>Warning or Severe<br/>Warning<br/>Warning or Severe<br/>Warning or Severe<br/>Warning or Severe |
 | Unhealthy | [More than 66% of nodes down](#fix-nodes-reporting-as-down-alerts)<br/>[CMK unavailable](#fix-cmk-unavailable-alerts)  | Severe<br/>Warning |
 
 To see the alert conditions that caused the current health condition, click the cluster health icon.
@@ -96,7 +96,9 @@ If you get frequent cluster alerts on a [Sandbox cluster](../../cloud-basics/cre
 
 #### Fix tablet peer alerts
 
-YugabyteDB Aeon sends a notification when the number of [tablet peers](../../../architecture/docdb-replication/replication/#tablet-peers) in the cluster exceeds the threshold, as follows:
+YugabyteDB Aeon automatically enforces [tablet peer](../../../architecture/docdb-replication/replication/#tablet-peers) limits for clusters.
+
+If a cluster exceeds the limit, YugabyteDB Aeon sends a notification as follows:
 
 - Number of tablet peers is 85% of the cluster limit (Warning).
 - Number of tablet peers is 100% of the cluster limit (Severe).
@@ -108,6 +110,8 @@ You can also drop tables. There may be a lag in clearing the associated tablets.
 For Sandbox clusters, if you reach the tablet peer limit, you cannot create any more tables, and table splitting is stopped.
 
 For information on scaling clusters, refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
+
+For information on tablet limits in YugabyteDB, refer to [Memory and tablet limits](../../../deploy/checklist/#memory-and-tablet-limits).
 
 Currently, this alert is only available for Sandbox clusters running v2024.1 or later.
 
