@@ -2814,7 +2814,6 @@ Status CatalogManager::RestoreSysCatalog(
   if (!s.ok() && leader_mode) {
     LOG_WITH_PREFIX_AND_FUNC(INFO)
         << "PITR: Accepting RPCs to the master leader because of restoration failure: " << s;
-    std::lock_guard l(leader_mutex_);
     restoring_sys_catalog_ = false;
   }
   // As RestoreSysCatalog is synchronous on Master it should be ok to set the completion
@@ -3270,12 +3269,31 @@ Result<size_t> CatalogManager::GetNumLiveTServersForActiveCluster() {
   return ts_descs.size();
 }
 
+// This function is used to fence other work in the catalog manager which modifies tables or tablets
+// with PITR restores. It is called during the apply of the RESTORE_SYS_CATALOG raft op.
+//
+// Ideally this function would use the leader lock to wait for all async tasks and rpc handlers
+// accessing catalog entities to return, but this is not possible:
+//  *  exclusively acquiring the CatalogManager::leader_mutex_ here introduces a lock inversion with
+//     ReplicaState::update_lock_.
+//  *  waiting to acquire the leader mutex here can add unbounded delay to a raft op apply,
+//     preventing raft heartbeats.
+//
+// Much existing code in the catalog manager acquires the locks in this order:
+//   shared CatalogManager::leader_mutex_, ReplicaState::update_lock_
+//
+// Instead of acquiring the CatalogManager::leader_mutex_, the fence works by failing any inflight
+// work (1) and preventing any new work until the sys catalog is reloaded (2).
+//   (1) Any logical unit of work in the catalog manager should grab a LeaderEpoch when it begins.
+//     The sys catalog mutation API for tables and tablets checks LeaderEpoch::pitr_count. If the
+//     catalog work began before PrepareRestore was called and tried to write after PrepareRestore
+//     was called, then the work's cached pitr_count will not match the sys catalog's pitr_count and
+//     the write will fail.
+//   (2) ScopedLeaderSharedLock checks restoring_sys_catalog_ and fails if it is set, so any new
+//     tasks will fail.
 void CatalogManager::PrepareRestore() {
   LOG_WITH_PREFIX(INFO) << "Disabling concurrent RPCs since restoration is ongoing";
-  {
-    std::lock_guard l(leader_mutex_);
-    restoring_sys_catalog_ = true;
-  }
+  restoring_sys_catalog_ = true;
   sys_catalog_->IncrementPitrCount();
 }
 

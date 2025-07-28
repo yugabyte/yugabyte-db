@@ -2337,9 +2337,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   std::atomic<int64_t> leader_ready_term_ = -1;
 
   // This field is set to true when the leader master has is restoring sys catalog.
-  // In this case ScopedLeaderSharedLock cannot be acquired on this master.
-  // So all RPCs that requires this lock will fail.
-  bool restoring_sys_catalog_ GUARDED_BY(leader_mutex_) = false;
+  // While this is true, the ScopedLeaderSharedLock cannot be acquired on this master, so all RPCs
+  // that require this lock will fail.
+  std::atomic_bool restoring_sys_catalog_ = false;
 
   // Lock used to fence operations and leader elections. All logical operations
   // (i.e. create table, alter table, etc.) should acquire this lock for
