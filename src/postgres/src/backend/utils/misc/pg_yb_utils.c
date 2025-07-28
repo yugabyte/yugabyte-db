@@ -105,6 +105,7 @@
 #include "nodes/makefuncs.h"
 #include "nodes/readfuncs.h"
 #include "optimizer/cost.h"
+#include "optimizer/plancat.h"
 #include "parser/parse_utilcmd.h"
 #include "pg_yb_utils.h"
 #include "pgstat.h"
@@ -7792,4 +7793,29 @@ YbGetPeakRssKb()
 	struct rusage r;
 	getrusage(RUSAGE_SELF, &r);
 	return scale_rss_to_kb(r.ru_maxrss);
+}
+
+bool
+YbIsAnyDependentGeneratedColPK(Relation rel, AttrNumber attnum)
+{
+	AttrNumber	offset = YBGetFirstLowInvalidAttributeNumber(rel);
+	Bitmapset  *target_cols = bms_make_singleton(attnum - offset);
+	Bitmapset  *dependent_generated_cols =
+		get_dependent_generated_columns(NULL /* root */ , 0 /* rti */ ,
+										target_cols,
+										NULL /* yb_generated_cols_source */ ,
+										rel);
+	int			bms_index;
+
+	while ((bms_index = bms_first_member(dependent_generated_cols)) >= 0)
+	{
+		AttrNumber	dependent_attnum = bms_index + offset;
+
+		if (YbIsAttrPrimaryKeyColumn(rel, dependent_attnum))
+			return true;
+	}
+	bms_free(dependent_generated_cols);
+	bms_free(target_cols);
+
+	return false;
 }
