@@ -67,7 +67,13 @@ Keep in mind the following:
 
 ### Enhanced Postgres Compatibility
 
-If your cluster database version is v2024.1.0 or later, you can enable early access features for PostgreSQL compatibility on the cluster **Settings** tab. For more information, refer to [Enhanced PostgreSQL Compatibility Mode](../../develop/postgresql-compatibility/).
+If your cluster database version is v2024.1.0 or later, you can enable early access features for PostgreSQL compatibility on the cluster **Settings>Infrastructure** tab. For more information, refer to [Enhanced PostgreSQL Compatibility Mode](../../develop/postgresql-compatibility/).
+
+### Connection Pooling
+
+{{<tags/feature/ea>}}If your cluster database version is v2024.2.3 or later, you can enable built-in Connection Pooling on the cluster **Settings>Connection Pooling** tab. For more information and limitations, refer to [Built-in connection pooling](../../explore/going-beyond-sql/connection-mgr-ysql/).
+
+For Connection Pooling metrics, see [YSQL Ops metrics](../cloud-monitor/overview/#ysql-ops).
 
 &nbsp;
 

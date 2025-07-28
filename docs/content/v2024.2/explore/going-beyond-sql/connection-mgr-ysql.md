@@ -26,10 +26,6 @@ To provide the advantages of connection pooling, but without the limitations, Yu
 
 ![Connection manager](/images/explore/ysql-connection-manager.png)
 
-{{< note title = "Note">}}
-YSQL Connection Manager is currently not supported for [YugabyteDB Aeon](/preview/yugabyte-cloud/).
-{{< /note >}}
-
 ## Key features
 
 YSQL Connection Manager is a modified version of the open-source connection pooler Odyssey. YSQL Connection Manager uses Odyssey in the transaction pooling mode and has been modified at the wire protocol level for tighter integration with YugabyteDB to overcome some SQL limitations.
@@ -91,6 +87,15 @@ Note that when managing universes using YugabyteDB Anywhere, do not set connecti
 To connect to the YSQL Connection Manager, use the [ysqlsh](../../../api/ysqlsh/) command with the [`-h <IP>`](../../../api/ysqlsh/#h-hostname-host-hostname) flag, instead of specifying the Unix-domain socket directory.
 
 Using the socket directory along with [`-p`](../../../api/ysqlsh/#p-port-port-port) (custom PostgreSQL port or default 6433) will connect you to the PostgreSQL process, not the YSQL connection manager process.
+
+### YugabyteDB Aeon
+
+{{<tags/feature/ea idea="1368">}}To enable built-in connection pooling for clusters deployed using YugabyteDB Aeon:
+
+- Turn on the **Connection Pooling** option when [creating a cluster](../../../yugabyte-cloud/cloud-basics/create-clusters/). (Connection Pooling is enabled by default for [Sandbox clusters](../../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/).)
+- Edit connection pooling on the cluster **Settings>Connection Pooling** tab.
+
+Enabling connection pooling on an Aeon cluster gives 10 client connections for every server connection by default.
 
 ## Configuration
 
