@@ -49,23 +49,23 @@ ALTER ROLE :current_user SET pgaudit.log_client = ON;
 
 --
 -- Create auditor role
-CREATE ROLE auditor;
+CREATE ROLE regress_auditor;
 
 --
 -- Create first test user
-CREATE USER user1 password 'password';
-ALTER ROLE user1 SET pgaudit.log = 'ddl, ROLE';
-ALTER ROLE user1 SET pgaudit.log_level = 'notice';
+CREATE USER regress_user1 password 'password';
+ALTER ROLE regress_user1 SET pgaudit.log = 'ddl, ROLE';
+ALTER ROLE regress_user1 SET pgaudit.log_level = 'notice';
 
-ALTER ROLE user1 PassWord 'password2' NOLOGIN;
-ALTER USER user1 encrypted /* random comment */PASSWORD
+ALTER ROLE regress_user1 PassWord 'password2' NOLOGIN;
+ALTER USER regress_user1 encrypted /* random comment */PASSWORD
 	/* random comment */
     'md565cb1da342495ea6bb0418a6e5718c38' LOGIN;
-ALTER ROLE user1 SET pgaudit.log_client = ON;
+ALTER ROLE regress_user1 SET pgaudit.log_client = ON;
 
 --
 -- Create, select, drop (select will not be audited)
-\connect - user1
+\connect - regress_user1
 
 CREATE TABLE public.test
 (
@@ -81,13 +81,13 @@ DROP TABLE test;
 -- Create second test user
 \connect - :current_user
 
-CREATE ROLE user2 LOGIN password 'password';
-ALTER ROLE user2 SET pgaudit.log = 'Read, writE';
-ALTER ROLE user2 SET pgaudit.log_catalog = OFF;
-ALTER ROLE user2 SET pgaudit.log_client = ON;
-ALTER ROLE user2 SET pgaudit.log_level = 'warning';
-ALTER ROLE user2 SET pgaudit.role = auditor;
-ALTER ROLE user2 SET pgaudit.log_statement_once = ON;
+CREATE ROLE regress_user2 LOGIN password 'password';
+ALTER ROLE regress_user2 SET pgaudit.log = 'Read, writE';
+ALTER ROLE regress_user2 SET pgaudit.log_catalog = OFF;
+ALTER ROLE regress_user2 SET pgaudit.log_client = ON;
+ALTER ROLE regress_user2 SET pgaudit.log_level = 'warning';
+ALTER ROLE regress_user2 SET pgaudit.role = regress_auditor;
+ALTER ROLE regress_user2 SET pgaudit.log_statement_once = ON;
 
 --
 -- Setup role-based tests
@@ -98,11 +98,11 @@ CREATE TABLE test2
 
 GRANT SELECT, INSERT, UPDATE, DELETE
    ON test2
-   TO user2, user1;
+   TO regress_user2, regress_user1;
 
 GRANT SELECT, UPDATE
    ON TABLE public.test2
-   TO auditor;
+   TO regress_auditor;
 
 CREATE TABLE test3
 (
@@ -111,11 +111,11 @@ CREATE TABLE test3
 
 GRANT SELECT, INSERT, UPDATE, DELETE
    ON test3
-   TO user2;
+   TO regress_user2;
 
 GRANT INSERT
    ON TABLE public.test3
-   TO auditor;
+   TO regress_auditor;
 
 CREATE FUNCTION test2_insert() RETURNS TRIGGER AS $$
 BEGIN
@@ -125,7 +125,7 @@ BEGIN
 
 	RETURN new;
 END $$ LANGUAGE plpgsql security definer;
-ALTER FUNCTION test2_insert() OWNER TO user1;
+ALTER FUNCTION test2_insert() OWNER TO regress_user1;
 
 CREATE TRIGGER test2_insert_trg
 	AFTER INSERT ON test2
@@ -137,7 +137,7 @@ BEGIN
 	   SET id = id + 1
 	 WHERE id = change_id;
 END $$ LANGUAGE plpgsql security definer;
-ALTER FUNCTION test2_change(int) OWNER TO user2;
+ALTER FUNCTION test2_change(int) OWNER TO regress_user2;
 
 CREATE VIEW vw_test3 AS
 SELECT *
@@ -145,13 +145,13 @@ SELECT *
 
 GRANT SELECT
    ON vw_test3
-   TO user2;
+   TO regress_user2;
 
 GRANT SELECT
    ON vw_test3
-   TO auditor;
+   TO regress_auditor;
 
-\connect - user2
+\connect - regress_user2
 
 --
 -- Role-based tests
@@ -237,9 +237,9 @@ SELECT *
 --
 -- Change permissions of user 2 so that only object logging will be done
 \connect - :current_user
-ALTER ROLE user2 SET pgaudit.log = 'NONE';
+ALTER ROLE regress_user2 SET pgaudit.log = 'NONE';
 
-\connect - user2
+\connect - regress_user2
 
 --
 -- Create test4 and add permissions
@@ -251,15 +251,15 @@ CREATE TABLE test4
 
 GRANT SELECT (name)
    ON TABLE public.test4
-   TO auditor;
+   TO regress_auditor;
 
 GRANT UPDATE (id)
    ON TABLE public.test4
-   TO auditor;
+   TO regress_auditor;
 
 GRANT insert (name)
    ON TABLE public.test4
-   TO auditor;
+   TO regress_auditor;
 
 --
 -- Not object logged
@@ -313,8 +313,8 @@ DROP TABLE test4;
 DROP FUNCTION test2_insert();
 DROP FUNCTION test2_change(int);
 
-ALTER ROLE user1 SET pgaudit.log = 'DDL, READ';
-\connect - user1
+ALTER ROLE regress_user1 SET pgaudit.log = 'DDL, READ';
+\connect - regress_user1
 
 --
 -- Create table is session logged
@@ -334,21 +334,21 @@ SELECT *
 --
 -- Insert is not logged
 INSERT INTO account (id, name, password, description)
-			 VALUES (1, 'user1', 'HASH1', 'blah, blah');
+			 VALUES (1, 'regress_user1', 'HASH1', 'blah, blah');
 
 --
 -- Change permissions of user 1 so that only object logging will be done
 \connect - :current_user
-ALTER ROLE user1 SET pgaudit.log = 'none';
-ALTER ROLE user1 SET pgaudit.role = 'auditor';
-\connect - user1
+ALTER ROLE regress_user1 SET pgaudit.log = 'none';
+ALTER ROLE regress_user1 SET pgaudit.role = 'regress_auditor';
+\connect - regress_user1
 
 --
--- ROLE class not set, so auditor grants not logged
+-- ROLE class not set, so regress_auditor grants not logged
 GRANT SELECT (password),
 	  UPDATE (name, password)
    ON TABLE public.account
-   TO auditor;
+   TO regress_auditor;
 
 --
 -- Not object logged
@@ -376,9 +376,9 @@ UPDATE account
 --
 -- Change permissions of user 1 so that session relation logging will be done
 \connect - :current_user
-ALTER ROLE user1 SET pgaudit.log_relation = on;
-ALTER ROLE user1 SET pgaudit.log = 'read, WRITE';
-\connect - user1
+ALTER ROLE regress_user1 SET pgaudit.log_relation = on;
+ALTER ROLE regress_user1 SET pgaudit.log = 'read, WRITE';
+\connect - regress_user1
 
 --
 -- Not logged
@@ -389,10 +389,10 @@ CREATE TABLE ACCOUNT_ROLE_MAP
 );
 
 --
--- ROLE class not set, so auditor grants not logged
+-- ROLE class not set, so regress_auditor grants not logged
 GRANT SELECT
    ON TABLE public.account_role_map
-   TO auditor;
+   TO regress_auditor;
 
 --
 -- Object logged because of:
@@ -445,10 +445,10 @@ UPDATE account
 --
 -- Change configuration of user 1 so that full statements are not logged
 \connect - :current_user
-ALTER ROLE user1 RESET pgaudit.log_relation;
-ALTER ROLE user1 RESET pgaudit.log;
-ALTER ROLE user1 SET pgaudit.log_statement = OFF;
-\connect - user1
+ALTER ROLE regress_user1 RESET pgaudit.log_relation;
+ALTER ROLE regress_user1 RESET pgaudit.log;
+ALTER ROLE regress_user1 SET pgaudit.log_statement = OFF;
+\connect - regress_user1
 
 --
 -- Logged but without full statement
@@ -487,7 +487,7 @@ SELECT *
 --
 -- Copy from stdin to account copy
 COPY test.account_copy from stdin;
-1	user1	HASH2	yada, yada
+1	regress_user1	HASH2	yada, yada
 \.
 
 --
@@ -684,16 +684,16 @@ DROP DATABASE contrib_regression_pgaudit2;
 SET pgaudit.log = 'ROLE';
 
 CREATE TABLE t ();
-CREATE ROLE alice;
+CREATE ROLE regress_alice;
 
 CREATE SCHEMA foo2
 	GRANT SELECT
 	   ON public.t
-	   TO alice;
-ALTER ROLE alice CONNECTION LIMIT -1; -- YB: bump audit number to stay same with upstream
+	   TO regress_alice;
+ALTER ROLE regress_alice CONNECTION LIMIT -1; -- YB: bump audit number to stay same with upstream
 
 drop table public.t;
-drop role alice;
+drop role regress_alice;
 
 --
 -- Test for non-empty stack error
@@ -739,7 +739,7 @@ SELECT test();
 --
 -- Delete all rows then delete 1 row
 SET pgaudit.log = 'write';
-SET pgaudit.role = 'auditor';
+SET pgaudit.role = 'regress_auditor';
 
 create table bar
 (
@@ -748,7 +748,7 @@ create table bar
 
 grant delete
    on bar
-   to auditor;
+   to regress_auditor;
 
 insert into bar (col)
 		 values (1);
@@ -764,13 +764,13 @@ drop table bar;
 --
 -- Grant roles to each other
 SET pgaudit.log = 'role';
-GRANT user1 TO user2;
-REVOKE user1 FROM user2;
+GRANT regress_user1 TO regress_user2;
+REVOKE regress_user1 FROM regress_user2;
 
 --
 -- Test that FK references do not log but triggers still do
 SET pgaudit.log = 'READ,WRITE';
-SET pgaudit.role TO 'auditor';
+SET pgaudit.role TO 'regress_auditor';
 
 CREATE TABLE aaa
 (
@@ -796,11 +796,11 @@ CREATE TRIGGER bbb_insert_trg
 
 GRANT SELECT, UPDATE
    ON aaa
-   TO auditor;
+   TO regress_auditor;
 
 GRANT UPDATE
    ON bbb
-   TO auditor;
+   TO regress_auditor;
 
 INSERT INTO aaa VALUES (generate_series(1,100));
 
@@ -828,9 +828,9 @@ SET pgaudit.log_client = ON;
 SET pgaudit.log_relation = ON;
 SET pgaudit.log_parameter = ON;
 
-CREATE ROLE alice;
+CREATE ROLE regress_alice;
 
-SET ROLE alice;
+SET ROLE regress_alice;
 CREATE TABLE t (a int, b text);
 SET search_path TO test, public;
 
@@ -843,7 +843,7 @@ RESET ROLE;
 -- Test MISC_SET
 SET pgaudit.log = 'MISC_SET';
 
-SET ROLE alice;
+SET ROLE regress_alice;
 SET search_path TO public;
 
 INSERT INTO t VALUES (2, 'misc_set');
@@ -863,7 +863,7 @@ VACUUM t;
 
 RESET ROLE;
 DROP TABLE public.t;
-DROP ROLE alice;
+DROP ROLE regress_alice;
 
 --
 -- Test PARTITIONED table
@@ -1026,7 +1026,7 @@ DROP FUNCTION test2_change(int);
 --
 -- Only object logging will be done
 SET pgaudit.log = 'none';
-SET pgaudit.role = 'auditor';
+SET pgaudit.role = 'regress_auditor';
 
 --
 -- Select is session logged
@@ -1036,7 +1036,7 @@ SELECT *
 --
 -- Insert is not logged
 INSERT INTO account (id, name, password, description)
-			 VALUES (1, 'user2', 'HASH3', 'blah, blah2');
+			 VALUES (1, 'regress_user2', 'HASH3', 'blah, blah2');
 INSERT INTO account (id, name, password, description)
 			 VALUES (1, 'user3', 'HASH4', 'blah, blah3');
 
@@ -1142,7 +1142,7 @@ SELECT *
 --
 -- Copy from stdin to account copy
 COPY test.account_copy from stdin;
-1	user1	HASH4	yada, yada4
+1	regress_user1	HASH4	yada, yada4
 \.
 
 --
@@ -1374,15 +1374,15 @@ DROP DATABASE contrib_regression_pgaudit2;
 SET pgaudit.log = 'role';
 
 CREATE TABLE t ();
-CREATE ROLE alice;
+CREATE ROLE regress_alice;
 
 CREATE SCHEMA foo3
 	GRANT SELECT
 	   ON public.t
-	   TO alice;
+	   TO regress_alice;
 
 drop table public.t;
-drop role alice;
+drop role regress_alice;
 
 --
 -- Test for non-empty stack error
@@ -1423,7 +1423,7 @@ SELECT test1();
 --
 -- Delete all rows then delete 1 row
 SET pgaudit.log = 'write';
-SET pgaudit.role = 'auditor';
+SET pgaudit.role = 'regress_auditor';
 
 create table bar
 (
@@ -1432,7 +1432,7 @@ create table bar
 
 grant delete
    on bar
-   to auditor;
+   to regress_auditor;
 
 insert into bar (col)
 		 values (1);
@@ -1448,7 +1448,7 @@ drop table bar;
 --
 -- Test that FK references do not log but triggers still do
 SET pgaudit.log = 'read, write';
-SET pgaudit.role TO 'auditor';
+SET pgaudit.role TO 'regress_auditor';
 
 CREATE TABLE aaa
 (
@@ -1474,11 +1474,11 @@ CREATE TRIGGER bbb_insert_trg1
 
 GRANT SELECT, UPDATE
    ON aaa
-   TO auditor;
+   TO regress_auditor;
 
 GRANT UPDATE
    ON bbb
-   TO auditor;
+   TO regress_auditor;
 
 INSERT INTO aaa VALUES (generate_series(1,100));
 
@@ -1496,9 +1496,9 @@ SET pgaudit.log_client = on;
 SET pgaudit.log_relation = on;
 SET pgaudit.log_parameter = on;
 
-CREATE ROLE alice;
+CREATE ROLE regress_alice;
 
-SET ROLE alice;
+SET ROLE regress_alice;
 CREATE TABLE t (a int, b text);
 SET search_path TO test, public;
 
@@ -1511,7 +1511,7 @@ RESET ROLE;
 -- Test MISC_SET
 SET pgaudit.log = 'MISC_SET';
 
-SET ROLE alice;
+SET ROLE regress_alice;
 SET search_path TO public;
 
 INSERT INTO t VALUES (2, 'misc_set');
@@ -1530,7 +1530,7 @@ VACUUM t;
 
 RESET ROLE;
 DROP TABLE public.t;
-DROP ROLE alice;
+DROP ROLE regress_alice;
 
 --
 -- Test PARTITIONED table
@@ -1547,11 +1547,11 @@ DROP TABLE h;
 --
 -- Change configuration of user 1 so that full statements are not logged
 \connect - :current_user
-ALTER ROLE user1 RESET pgaudit.log_relation;
-ALTER ROLE user1 RESET pgaudit.log;
-ALTER ROLE user1 SET pgaudit.log_statement = OFF;
-ALTER ROLE user1 SET pgaudit.log_rows = on;
-\connect - user1
+ALTER ROLE regress_user1 RESET pgaudit.log_relation;
+ALTER ROLE regress_user1 RESET pgaudit.log;
+ALTER ROLE regress_user1 SET pgaudit.log_statement = OFF;
+ALTER ROLE regress_user1 SET pgaudit.log_rows = on;
+\connect - regress_user1
 
 --
 -- Logged but without full statement
@@ -1604,6 +1604,27 @@ DROP EXTENSION pg_stat_statements;
 
 SET pgaudit.log_level = 'notice';
 
+-- Check that partition scans are skipped for auditing and do no result in an empty stack
+SET pgaudit.log = 'all';
+
+CREATE TABLE part_test (c1 int, c2 int) PARTITION BY RANGE (c1);
+CREATE TABLE part_test_1_to_10 PARTITION OF part_test FOR VALUES FROM (1) TO (10);
+INSERT INTO part_test VALUES (generate_series(1,9));
+
+CREATE OR REPLACE FUNCTION get_test_id(_ret REFCURSOR) RETURNS REFCURSOR
+LANGUAGE plpgsql IMMUTABLE AS $$
+BEGIN
+    OPEN _ret FOR SELECT * FROM part_test;
+    RETURN _ret;
+END $$;
+
+BEGIN;
+SELECT get_test_id('_ret');
+FETCH ALL FROM _ret;
+COMMIT;
+
+DROP TABLE part_test;
+
 -- Cleanup
 -- Set client_min_messages up to warning to avoid noise
 SET client_min_messages = 'warning';
@@ -1636,8 +1657,8 @@ DROP SCHEMA foo; -- YB: fails due to prior CREATE failure
 DROP TABLE hoge;
 DROP TABLE account;
 DROP TABLE account_role_map;
-DROP USER user2;
-DROP USER user1;
-DROP ROLE auditor;
+DROP USER regress_user2;
+DROP USER regress_user1;
+DROP ROLE regress_auditor;
 
 RESET client_min_messages;
