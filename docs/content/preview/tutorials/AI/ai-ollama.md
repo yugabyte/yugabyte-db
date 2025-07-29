@@ -28,30 +28,30 @@ This tutorial shows how you can use [Ollama](https://ollama.com/) to generate te
 Start a 3-node YugabyteDB cluster in Docker (or feel free to use another deployment option):
 
 ```sh
-# NOTE: if the ~/yb_docker_data already exists on your machine, delete and re-create it
+rm -rf ~/yb_docker_data
 mkdir ~/yb_docker_data
 
-docker network create custom-network
+docker network create yb-network
 
-docker run -d --name yugabytedb-node1 --hostname yugabytedb-node1 --net custom-network \
+docker run -d --name ybnode1 --hostname ybnode1 --net yb-network \
     -p 15433:15433 -p 7001:7000 -p 9001:9000 -p 5433:5433 \
     -v ~/yb_docker_data/node1:/home/yugabyte/yb_data --restart unless-stopped \
     yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
     bin/yugabyted start \
     --base_dir=/home/yugabyte/yb_data --background=false
 
-docker run -d --name yugabytedb-node2 --hostname yugabytedb-node2 --net custom-network \
+docker run -d --name ybnode2 --hostname ybnode2  --net yb-network \
     -p 15434:15433 -p 7002:7000 -p 9002:9000 -p 5434:5433 \
     -v ~/yb_docker_data/node2:/home/yugabyte/yb_data --restart unless-stopped \
     yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
-    bin/yugabyted start --join=yugabytedb-node1 \
+    bin/yugabyted start --join=ybnode1 \
     --base_dir=/home/yugabyte/yb_data --background=false
-
-docker run -d --name yugabytedb-node3 --hostname yugabytedb-node3 --net custom-network \
+    
+docker run -d --name ybnode3 --hostname ybnode3 --net yb-network \
     -p 15435:15433 -p 7003:7000 -p 9003:9000 -p 5435:5433 \
     -v ~/yb_docker_data/node3:/home/yugabyte/yb_data --restart unless-stopped \
     yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
-    bin/yugabyted start --join=yugabytedb-node1 \
+    bin/yugabyted start --join=ybnode1 \
     --base_dir=/home/yugabyte/yb_data --background=false
 ```
 
@@ -111,7 +111,7 @@ This application requires a database table with information about news stories. 
 1. Copy the schema to the first node's Docker container as follows:
 
     ```sh
-    docker cp {project_dir}/database/schema.sql yugabytedb-node1:/home/db_schema.sql
+    docker cp {project_dir}/database/schema.sql ybnode1:/home/db_schema.sql
     ```
 
 1. Copy the seed data file to the Docker container as follows:
@@ -119,14 +119,14 @@ This application requires a database table with information about news stories. 
     Because it's an LFS file, you'll need to copy the original file from the `.git` folder.
 
     ```sh
-    docker cp {project_dir}/.git/lfs/objects/21/bb/21bbebed1d66c3cad2100ceeee82ac0034dfb806b52043fab7b64b79940d5863 yugabytedb-node1:/home/db_data.csv
+    docker cp {project_dir}/.git/lfs/objects/21/bb/21bbebed1d66c3cad2100ceeee82ac0034dfb806b52043fab7b64b79940d5863 ybnode1:/home/db_data.csv
     ```
 
 1. Execute the SQL files against the database:
 
     ```sh
-    docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 -f /home/db_schema.sql
-    docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 -c "\COPY news_stories(link,headline,category,short_description,authors,date,embeddings) from '/home/db_data.csv' DELIMITER ',' CSV HEADER;"
+    docker exec -it ybnode1 bin/ysqlsh -h ybnode1 -f /home/db_schema.sql
+    docker exec -it ybnode1 bin/ysqlsh -h ybnode1 -c "\COPY news_stories(link,headline,category,short_description,authors,date,embeddings) from '/home/db_data.csv' DELIMITER ',' CSV HEADER;"
     ```
 
 ## Start the application
@@ -153,8 +153,8 @@ This Node.js application uses a locally-running LLM to produce text embeddings. 
     {
         "data": [
             {
-                "headline": "17-Year-Old Snowboarder Wins United States’ First Gold Medal In Pyeongchang",
-                "short_description": "“I haven’t had time for it to sink in yet,\" Redmond Gerard said following his victory.",
+                "headline": "17-Year-Old Snowboarder Wins United States' First Gold Medal In Pyeongchang",
+                "short_description": ""I haven't had time for it to sink in yet,\" Redmond Gerard said following his victory.",
                 "link": "https://www.huffingtonpost.com/entry/red-gerard-gold-olympics_us_5a7fac94e4b0c6726e141850"
             },
             {
@@ -164,7 +164,7 @@ This Node.js application uses a locally-running LLM to produce text embeddings. 
             },
             {
                 "headline": "Simone Manuel And Simone Biles Pose For Ultimate Olympic Selfie",
-                "short_description": "The gold medalists are feeling the love. 💛",
+                "short_description": "The gold medalists are feeling the love.",
                 "link": "https://www.huffingtonpost.com/entry/simone-biles-simone-manuel-selfie_us_57ae111de4b069e7e5052acf"
             },
             {
@@ -190,7 +190,7 @@ This Node.js application uses a locally-running LLM to produce text embeddings. 
 
     ```output
       VITE ready in 138 ms
-      ➜  Local:   http://localhost:5173/
+        Local:   http://localhost:5173/
     ```
 
 ![YugaNews Archives UI](/images/tutorials/ai/ai-ollama/yuganews_archives.png "YugaNews Archives UI")

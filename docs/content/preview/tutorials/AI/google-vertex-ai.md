@@ -1,5 +1,5 @@
 ---
-title: Build Scalable Generative AI Applications with Google Vertex AI and YugabyteDB
+title: Similarity search using Google Vertex AI
 headerTitle: Similarity search using Google Vertex AI
 linkTitle: Similarity search - Google Vertex
 description: Build scalable generative AI applications with Google Vertex AI and YugabyteDB
@@ -39,29 +39,30 @@ YugabyteDB introduced support for the PostgreSQL pgvector extension in v2.19.2. 
 Start a 3-node YugabyteDB cluster in Docker (or feel free to use another deployment option):
 
 ```sh
+rm -rf ~/yb_docker_data
 mkdir ~/yb_docker_data
 
-docker network create custom-network
+docker network create yb-network
 
-docker run -d --name yugabytedb-node1 --hostname yugabytedb-node1 --net custom-network \
+docker run -d --name ybnode1 --hostname ybnode1 --net yb-network \
     -p 15433:15433 -p 7001:7000 -p 9001:9000 -p 5433:5433 \
     -v ~/yb_docker_data/node1:/home/yugabyte/yb_data --restart unless-stopped \
     yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
     bin/yugabyted start \
     --base_dir=/home/yugabyte/yb_data --background=false
 
-docker run -d --name yugabytedb-node2 --hostname yugabytedb-node2 --net custom-network \
+docker run -d --name ybnode2 --hostname ybnode2  --net yb-network \
     -p 15434:15433 -p 7002:7000 -p 9002:9000 -p 5434:5433 \
     -v ~/yb_docker_data/node2:/home/yugabyte/yb_data --restart unless-stopped \
     yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
-    bin/yugabyted start --join=yugabytedb-node1 \
+    bin/yugabyted start --join=ybnode1 \
     --base_dir=/home/yugabyte/yb_data --background=false
-
-docker run -d --name yugabytedb-node3 --hostname yugabytedb-node3 --net custom-network \
+    
+docker run -d --name ybnode3 --hostname ybnode3 --net yb-network \
     -p 15435:15433 -p 7003:7000 -p 9003:9000 -p 5435:5433 \
     -v ~/yb_docker_data/node3:/home/yugabyte/yb_data --restart unless-stopped \
     yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
-    bin/yugabyted start --join=yugabytedb-node1 \
+    bin/yugabyted start --join=ybnode1 \
     --base_dir=/home/yugabyte/yb_data --background=false
 ```
 
@@ -100,25 +101,25 @@ As long as the application provides a lodging recommendation service for San Fra
 1. Copy the Airbnb schema and data to the first node's container:
 
     ```shell
-    docker cp {project_dir}/sql/0_airbnb_listings.sql yugabytedb-node1:/home/0_airbnb_listings.sql
-    docker cp {project_dir}/sql/1_airbnb_embeddings.sql yugabytedb-node1:/home/1_airbnb_embeddings.sql
-    docker cp {project_dir}/sql/sf_airbnb_listings.csv yugabytedb-node1:/home/sf_airbnb_listings.csv
+    docker cp {project_dir}/sql/0_airbnb_listings.sql ybnode1:/home/0_airbnb_listings.sql
+    docker cp {project_dir}/sql/1_airbnb_embeddings.sql ybnode1:/home/1_airbnb_embeddings.sql
+    docker cp {project_dir}/sql/sf_airbnb_listings.csv ybnode1:/home/sf_airbnb_listings.csv
     ```
 
 1. Load the dataset to the cluster with properties in San Francisco (this can take a minute or two):
 
     ```shell
-    docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 -c '\i /home/0_airbnb_listings.sql'
+    docker exec -it ybnode1 bin/ysqlsh -h ybnode1 -c '\i /home/0_airbnb_listings.sql'
 
 
-    docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 \
+    docker exec -it ybnode1 bin/ysqlsh -h ybnode1 \
     -c "\copy airbnb_listing from /home/sf_airbnb_listings.csv with DELIMITER ',' CSV HEADER"
     ```
 
 1. Add the PostgreSQL `pgvector` extension and `description_embedding` column of type vector.
 
     ```shell
-    docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 -c '\i /home/1_airbnb_embeddings.sql'
+    docker exec -it ybnode1 bin/ysqlsh -h ybnode1 -c '\i /home/1_airbnb_embeddings.sql'
     ```
 
 ## Get started with Google Vertex AI
