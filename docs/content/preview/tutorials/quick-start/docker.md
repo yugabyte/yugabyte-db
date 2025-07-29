@@ -88,9 +88,10 @@ Use the [yugabyted](../../../reference/configuration/yugabyted/) utility to crea
 To create a 1-node cluster with a replication factor (RF) of 1, run the following command:
 
 ```sh
-docker run -d --name yugabyte -p 7000:7000 -p 9000:9000 -p 15433:15433 -p 5433:5433 -p 9042:9042 \
- yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} bin/yugabyted start \
- --background=false
+docker run -d --name yugabyte \
+        -p 7000:7000 -p 9000:9000 -p 15433:15433 -p 5433:5433 -p 9042:9042 \
+        yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} bin/yugabyted start \
+        --background=false
 ```
 
 If you are running macOS Monterey, replace `-p 7000:7000` with `-p 7001:7000`. This is necessary because Monterey enables AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail unless you forward the port as shown. Alternatively, you can disable AirPlay receiving, then start YugabyteDB normally, and then, optionally, re-enable AirPlay receiving.
@@ -141,12 +142,11 @@ In the preceding `docker run` command, the data stored in YugabyteDB does not pe
 - Run Docker with the volume mount option by executing the following command:
 
   ```sh
-  docker run -d --name yugabyte \
-           -p 7000:7000 -p 9000:9000 -p 15433:15433 -p 5433:5433 -p 9042:9042 \
-           -v ~/yb_data:/home/yugabyte/yb_data \
-           yugabytedb/yugabyte:latest bin/yugabyted start \
-           --base_dir=/home/yugabyte/yb_data \
-           --background=false
+  docker run -d --name yugabyte01 --hostname yugabyte01 \
+            -p 7000:7000 -p 9000:9000 -p 15433:15433 -p 5433:5433 -p 9042:9042 \
+            yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} bin/yugabyted start \
+            --base_dir=/home/yugabyte/yb_data \
+            --background=false
   ```
 
   If running macOS Monterey, replace `-p 7000:7000` with `-p 7001:7000`.
@@ -156,6 +156,12 @@ In the preceding `docker run` command, the data stored in YugabyteDB does not pe
 yugabyted uses `$HOME/var` by default to store data, configurations, and logs. You can change the base directory when starting a cluster using the `--base_dir` flag. If you change the base directory, you _must_ specify the base directory using the `--base-dir` flag when running subsequent commands on the cluster.
 
 For example, to get the status of the cluster you just created, you would enter `bin/yugabyted status --base_dir=/home/yugabyte/yb_data`.
+{{< /note >}}
+
+{{< note title="Hostname" >}}
+
+It is important to use a static container hostname to avoid startup errors if the hostname changes, such as when recreating the container with the same volume.
+
 {{< /note >}}
 
 ## Connect to the database
