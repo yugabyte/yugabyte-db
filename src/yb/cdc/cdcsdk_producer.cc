@@ -2557,14 +2557,17 @@ Status GetChangesForCDCSDK(
        wait_for_wal_update = false, txn_load_in_progress = false;
 
   auto tablet_ptr = VERIFY_RESULT(tablet_peer->shared_tablet());
-  auto leader_safe_time = tablet_ptr->SafeTime();
-  if (!leader_safe_time.ok()) {
+  auto leader_safe_time_result = tablet_ptr->SafeTime();
+  HybridTime leader_safe_time;
+  if (!leader_safe_time_result.ok()) {
     YB_LOG_EVERY_N_SECS(WARNING, 10)
-        << "Could not compute safe time: " << leader_safe_time.status();
+        << "Could not compute safe time: " << leader_safe_time_result.status();
     leader_safe_time = HybridTime::kInvalid;
+  } else {
+    leader_safe_time = *leader_safe_time_result;
   }
   uint64_t consistent_stream_safe_time = VERIFY_RESULT(GetConsistentStreamSafeTime(
-      tablet_peer, tablet_ptr, leader_safe_time.get(), safe_hybrid_time_req, deadline,
+      tablet_peer, tablet_ptr, leader_safe_time, safe_hybrid_time_req, deadline,
       &txn_load_in_progress));
   OpId historical_max_op_id = tablet_ptr->transaction_participant()
                                   ? tablet_ptr->transaction_participant()->GetHistoricalMaxOpId()
@@ -2690,7 +2693,7 @@ Status GetChangesForCDCSDK(
       size_t next_checkpoint_index = 0;
 
       consistent_stream_safe_time = VERIFY_RESULT(GetConsistentStreamSafeTime(
-          tablet_peer, tablet_ptr, leader_safe_time.get(), safe_hybrid_time_req, deadline,
+          tablet_peer, tablet_ptr, leader_safe_time, safe_hybrid_time_req, deadline,
           &txn_load_in_progress));
 
       if (txn_load_in_progress) {
@@ -3086,19 +3089,19 @@ Status GetChangesForCDCSDK(
   auto safe_time = (wait_for_wal_update || txn_load_in_progress)
                        ? computed_safe_hybrid_time_req
                        : GetCDCSDKSafeTimeForTarget(
-                             leader_safe_time.get(), safe_hybrid_time_resp, have_more_messages,
+                             leader_safe_time, safe_hybrid_time_resp, have_more_messages,
                              consistent_stream_safe_time, snapshot_operation);
 
   if (!snapshot_operation && !CheckResponseSafeTimeCorrectness(
                                  last_read_wal_op_record_time, safe_time, is_entire_wal_read)) {
     LOG(DFATAL) << "Stream_id: " << stream_id << ", tablet_id: " << tablet_id
-                 << ", response safe time: " << safe_time
-                 << " is greater than last read WAL OP's record time: "
-                 << last_read_wal_op_record_time
-                 << ", req_safe_time: " << computed_safe_hybrid_time_req
-                 << ", consistent stream safe time: " << HybridTime(consistent_stream_safe_time)
-                 << ", leader safe time: " << leader_safe_time.get()
-                 << ", is_entire_wal_read: " << is_entire_wal_read;
+                << ", response safe time: " << safe_time
+                << " is greater than last read WAL OP's record time: "
+                << last_read_wal_op_record_time
+                << ", req_safe_time: " << computed_safe_hybrid_time_req
+                << ", consistent stream safe time: " << HybridTime(consistent_stream_safe_time)
+                << ", leader safe time: " << leader_safe_time
+                << ", is_entire_wal_read: " << is_entire_wal_read;
   }
   resp->set_safe_hybrid_time(safe_time.ToUint64());
 
