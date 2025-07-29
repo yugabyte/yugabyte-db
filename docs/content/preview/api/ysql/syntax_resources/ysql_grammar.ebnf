@@ -928,6 +928,7 @@ close = 'CLOSE' ( name | 'ALL' ) ;
 (* 'DELETE' *)
 delete = [ with_clause ] \
          'DELETE' 'FROM' table_expr [ [ 'AS' ] alias ] \
+         [ 'USING' from_item ] \
          [ 'WHERE' boolean_expression | 'WHERE' 'CURRENT' 'OF' cursor_name ] \
          [ returning_clause ] ;
 
