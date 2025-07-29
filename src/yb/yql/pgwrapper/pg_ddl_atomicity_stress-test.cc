@@ -61,6 +61,9 @@ class PgDdlAtomicityStressTest : public PgDdlAtomicityTestBase,
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=false");
     options->extra_tserver_flags.push_back("--ysql_pg_conf_csv=log_statement=all");
+    options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
+    AppendCsvFlagValue(options->extra_tserver_flags, "allowed_preview_flags_csv",
+                       "ysql_yb_ddl_transaction_block_enabled");
     options->extra_master_flags.push_back("--ysql_ddl_transaction_wait_for_ddl_verification=false");
     if (IsTsan()) {
       options->extra_master_flags.push_back(
