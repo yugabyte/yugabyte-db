@@ -703,6 +703,8 @@ _outTidScan(StringInfo str, const TidScan *node)
 
 	_outScanInfo(str, (const Scan *) node);
 
+	WRITE_NODE_FIELD(yb_rel_pushdown.quals);
+	WRITE_NODE_FIELD(yb_rel_pushdown.colrefs);
 	WRITE_NODE_FIELD(tidquals);
 }
 

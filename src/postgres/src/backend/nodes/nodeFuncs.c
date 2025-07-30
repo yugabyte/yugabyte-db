@@ -4270,6 +4270,8 @@ YbPlanStateTryGetAggrefs(PlanState *ps)
 			return &castNode(YbSeqScanState, ps)->aggrefs;
 		case T_YbBitmapTableScanState:
 			return &castNode(YbBitmapTableScanState, ps)->aggrefs;
+		case T_TidScanState:
+			return &castNode(TidScanState, ps)->yb_tss_aggrefs;
 		default:
 			return NULL;
 	}

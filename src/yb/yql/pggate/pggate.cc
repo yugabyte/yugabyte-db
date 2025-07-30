@@ -1569,6 +1569,12 @@ Status PgApiImpl::BindYbctids(PgStatement* handle, int n, uintptr_t* ybctids) {
   return Status::OK();
 }
 
+bool PgApiImpl::IsValidYbctid(uint64_t ybctid) {
+  dockv::DocKey key;
+  auto s = key.DecodeFrom(YbctidAsSlice(pg_types_, ybctid));
+  return s.ok();
+}
+
 Status PgApiImpl::DmlANNBindVector(PgStatement* handle, PgExpr* vector) {
   return VERIFY_RESULT_REF(GetStatementAs<PgDml>(handle)).ANNBindVector(vector);
 }

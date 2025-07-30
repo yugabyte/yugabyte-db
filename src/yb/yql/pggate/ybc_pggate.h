@@ -697,6 +697,8 @@ YbcStatus YBCPgFetchRequestedYbctids(YbcPgStatement handle, const YbcPgExecParam
                                      YbcConstSliceVector ybctids);
 YbcStatus YBCPgBindYbctids(YbcPgStatement handle, int n, uintptr_t* datums);
 
+bool YBCPgIsValidYbctid(uint64_t ybctid);
+
 // Functions----------------------------------------------------------------------------------------
 YbcStatus YBCAddFunctionParam(
     YbcPgFunction handle, const char *name, const YbcPgTypeEntity *type_entity, uint64_t datum,

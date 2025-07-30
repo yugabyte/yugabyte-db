@@ -3045,14 +3045,18 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				 * as an OR condition.
 				 */
 				List	   *tidquals = ((TidScan *) plan)->tidquals;
+				List	   *yb_pushdown = ((TidScan *) plan)->yb_rel_pushdown.quals;
 
 				if (list_length(tidquals) > 1)
 					tidquals = list_make1(make_orclause(tidquals));
 				show_scan_qual(tidquals, "TID Cond", planstate, ancestors, es);
+				show_scan_qual(yb_pushdown, "Storage Filter", planstate, ancestors, es);
 				show_scan_qual(plan->qual, "Filter", planstate, ancestors, es);
 				if (plan->qual)
 					show_instrumentation_count("Rows Removed by Filter", 1,
 											   planstate, es);
+				if (is_yb_rpc_stats_required)
+					show_yb_rpc_stats(planstate, es);
 			}
 			break;
 		case T_TidRangeScan:

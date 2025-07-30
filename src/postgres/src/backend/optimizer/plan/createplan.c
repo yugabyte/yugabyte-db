@@ -254,7 +254,7 @@ static YbBitmapTableScan *make_yb_bitmap_tablescan(List *qptlist,
 												   List *fallback_local_quals,
 												   YbPlanInfo yb_plan_info);
 static TidScan *make_tidscan(List *qptlist, List *qpqual, Index scanrelid,
-							 List *tidquals);
+							 YbPushdownExprs yb_rel_pushdown, List *tidquals);
 static TidRangeScan *make_tidrangescan(List *qptlist, List *qpqual,
 									   Index scanrelid, List *tidrangequals);
 static SubqueryScan *make_subqueryscan(List *qptlist,
@@ -5084,6 +5084,9 @@ create_tidscan_plan(PlannerInfo *root, TidPath *best_path,
 	TidScan    *scan_plan;
 	Index		scan_relid = best_path->path.parent->relid;
 	List	   *tidquals = best_path->tidquals;
+	List	   *yb_local_quals = NIL;
+	List	   *yb_remote_quals = NIL;
+	List	   *yb_colrefs = NIL;
 
 	/* it should be a base rel... */
 	Assert(scan_relid > 0);
@@ -5133,7 +5136,14 @@ create_tidscan_plan(PlannerInfo *root, TidPath *best_path,
 
 	/* Reduce RestrictInfo lists to bare expressions; ignore pseudoconstants */
 	tidquals = extract_actual_clauses(tidquals, false);
-	scan_clauses = extract_actual_clauses(scan_clauses, false);
+	if (best_path->path.parent->is_yb_relation)
+		yb_extract_pushdown_clauses(scan_clauses, NULL,
+									false,	/* is_bitmap_index_scan */
+									&yb_local_quals, &yb_remote_quals,
+									&yb_colrefs, NULL, NULL,
+									planner_rt_fetch(scan_relid, root)->relid);
+	else
+		yb_local_quals = extract_actual_clauses(scan_clauses, false);
 
 	/*
 	 * If we have multiple tidquals, it's more convenient to remove duplicate
@@ -5147,21 +5157,25 @@ create_tidscan_plan(PlannerInfo *root, TidPath *best_path,
 	 * match it via equal() to any scan clause.
 	 */
 	if (list_length(tidquals) > 1)
-		scan_clauses = list_difference(scan_clauses,
-									   list_make1(make_orclause(tidquals)));
+		yb_local_quals = list_difference(yb_local_quals,
+										 list_make1(make_orclause(tidquals)));
 
 	/* Replace any outer-relation variables with nestloop params */
 	if (best_path->path.param_info)
 	{
 		tidquals = (List *)
 			replace_nestloop_params(root, (Node *) tidquals);
-		scan_clauses = (List *)
-			replace_nestloop_params(root, (Node *) scan_clauses);
+		yb_local_quals = (List *)
+			replace_nestloop_params(root, (Node *) yb_local_quals);
+		yb_remote_quals = (List *)
+			replace_nestloop_params(root, (Node *) yb_remote_quals);
 	}
 
+	YbPushdownExprs yb_rel_pushdown = {yb_remote_quals, yb_colrefs};
 	scan_plan = make_tidscan(tlist,
-							 scan_clauses,
+							 yb_local_quals,
 							 scan_relid,
+							 yb_rel_pushdown,
 							 tidquals);
 
 	copy_generic_path_info(&scan_plan->scan.plan, &best_path->path);
@@ -7603,6 +7617,7 @@ static TidScan *
 make_tidscan(List *qptlist,
 			 List *qpqual,
 			 Index scanrelid,
+			 YbPushdownExprs yb_rel_pushdown,
 			 List *tidquals)
 {
 	TidScan    *node = makeNode(TidScan);
@@ -7613,6 +7628,7 @@ make_tidscan(List *qptlist,
 	plan->lefttree = NULL;
 	plan->righttree = NULL;
 	node->scan.scanrelid = scanrelid;
+	node->yb_rel_pushdown = yb_rel_pushdown;
 	node->tidquals = tidquals;
 
 	return node;

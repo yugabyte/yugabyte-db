@@ -56,8 +56,16 @@ static inline bool
 IsCTIDVar(Var *var, RelOptInfo *rel)
 {
 	/* The vartype check is strictly paranoia */
-	if (var->varattno == SelfItemPointerAttributeNumber &&
-		var->vartype == TIDOID &&
+	bool is_tidvar;
+	if (rel->is_yb_relation)
+	{
+		is_tidvar = (var->varattno == YBTupleIdAttributeNumber && var->vartype == BYTEAOID);
+	}
+	else
+	{
+		is_tidvar = (var->varattno == SelfItemPointerAttributeNumber && var->vartype == TIDOID);
+	}
+	if (is_tidvar &&
 		var->varno == rel->relid &&
 		var->varlevelsup == 0)
 		return true;
@@ -132,8 +140,16 @@ IsTidEqualClause(RestrictInfo *rinfo, RelOptInfo *rel)
 	if (!IsBinaryTidClause(rinfo, rel))
 		return false;
 
-	if (((OpExpr *) rinfo->clause)->opno == TIDEqualOperator)
-		return true;
+	if (rel->is_yb_relation)
+	{
+		if (((OpExpr *) rinfo->clause)->opno == ByteaEqualOperator)
+			return true;
+	}
+	else
+	{
+		if (((OpExpr *) rinfo->clause)->opno == TIDEqualOperator)
+			return true;
+	}
 
 	return false;
 }
@@ -181,7 +197,9 @@ IsTidEqualAnyClause(PlannerInfo *root, RestrictInfo *rinfo, RelOptInfo *rel)
 	node = (ScalarArrayOpExpr *) rinfo->clause;
 
 	/* Operator must be tideq */
-	if (node->opno != TIDEqualOperator)
+	if (rel->is_yb_relation && node->opno != ByteaEqualOperator)
+		return false;
+	if (!rel->is_yb_relation && node->opno != TIDEqualOperator)
 		return false;
 	if (!node->useOr)
 		return false;

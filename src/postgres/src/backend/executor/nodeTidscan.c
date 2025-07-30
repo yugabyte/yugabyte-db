@@ -34,11 +34,16 @@
 #include "utils/array.h"
 #include "utils/rel.h"
 
+/* YB includes */
+#include "access/yb_scan.h"
+#include "utils/builtins.h"
+
 
 #define IsCTIDVar(node)  \
 	((node) != NULL && \
 	 IsA((node), Var) && \
-	 ((Var *) (node))->varattno == SelfItemPointerAttributeNumber && \
+	 (((Var *) (node))->varattno == SelfItemPointerAttributeNumber || \
+	  ((Var *) (node))->varattno == YBTupleIdAttributeNumber) && \
 	 ((Var *) (node))->varlevelsup == 0)
 
 /* one element in tss_tidexprs */
@@ -53,6 +58,9 @@ static void TidExprListCreate(TidScanState *tidstate);
 static void TidListEval(TidScanState *tidstate);
 static int	itemptr_comparator(const void *a, const void *b);
 static TupleTableSlot *TidNext(TidScanState *node);
+static void YbctidListEval(TidScanState *tidstate);
+static int	ybctid_comparator(const void *a, const void *b);
+static TupleTableSlot *YbTidNext(TidScanState *node);
 
 
 /*
@@ -298,6 +306,131 @@ itemptr_comparator(const void *a, const void *b)
 	return 0;
 }
 
+/*
+ * This function is an equivalent of the TidListEval function.
+ * It evaluates previously prepared expressions to obtain the list of ybctids.
+ * But their handling for Yugabyte tables is different.
+ * While TidListEval stores ctids with the TidScanState and uses the values one
+ * by one to fetch the rows, the YbctidListEval binds the list to the PgGate
+ * statements which handles the fetch.
+ */
+static void
+YbctidListEval(TidScanState *tidstate)
+{
+	ExprContext *econtext = tidstate->ss.ps.ps_ExprContext;
+	YbScanDesc	ybScan;
+	Datum	   *ybctidList;
+	int			numAllocYbctids;
+	int			numYbctids;
+	ListCell   *l;
+
+	ybScan = (YbScanDesc) tidstate->ss.ss_currentScanDesc;
+	Assert(ybScan);
+	Assert(IsYBRelation(tidstate->ss.ss_currentRelation));
+
+	/*
+	 * We initialize the array with enough slots for the case that all quals
+	 * are simple OpExprs or CurrentOfExprs.  If there are any
+	 * ScalarArrayOpExprs, we may have to enlarge the array.
+	 */
+	numAllocYbctids = list_length(tidstate->tss_tidexprs);
+	ybctidList = (Datum *) palloc(numAllocYbctids * sizeof(Datum));
+	numYbctids = 0;
+	foreach(l, tidstate->tss_tidexprs)
+	{
+		TidExpr    *tidexpr = (TidExpr *) lfirst(l);
+		Datum		ybctid;
+		bool		isNull;
+
+		if (tidexpr->exprstate && !tidexpr->isarray)
+		{
+			ybctid = ExecEvalExprSwitchContext(tidexpr->exprstate, econtext, &isNull);
+			if (isNull)
+				continue;
+
+			if (!YBCPgIsValidYbctid(ybctid))
+				continue;
+
+			if (numYbctids >= numAllocYbctids)
+			{
+				numAllocYbctids *= 2;
+				ybctidList = (Datum *) repalloc(ybctidList, numAllocYbctids * sizeof(Datum));
+			}
+			ybctidList[numYbctids++] = ybctid;
+		}
+		else if (tidexpr->exprstate && tidexpr->isarray)
+		{
+			Datum		arraydatum;
+			ArrayType  *itemarray;
+			Datum	   *ipdatums;
+			bool	   *ipnulls;
+			int			ndatums;
+			int			i;
+
+			arraydatum = ExecEvalExprSwitchContext(tidexpr->exprstate,
+													econtext,
+													&isNull);
+			if (isNull)
+				continue;
+
+			itemarray = DatumGetArrayTypeP(arraydatum);
+			deconstruct_array(itemarray, BYTEAOID, -1, false, TYPALIGN_INT,
+								&ipdatums, &ipnulls, &ndatums);
+			if (numYbctids + ndatums > numAllocYbctids)
+			{
+				numAllocYbctids = numYbctids + ndatums;
+				ybctidList = (Datum *) repalloc(ybctidList, numAllocYbctids * sizeof(Datum));
+			}
+			for (i = 0; i < ndatums; i++)
+			{
+				if (ipnulls[i])
+					continue;
+
+				if (!YBCPgIsValidYbctid(ipdatums[i]))
+					continue;
+
+				ybctidList[numYbctids++] = ipdatums[i];
+			}
+			pfree(ipdatums);
+			pfree(ipnulls);
+		}
+		else
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("WHERE CURRENT OF on Yugabyte tables is not supported"),
+					 errhint("See https://github.com/yugabyte/yugabyte-db/issues/737. "
+							 "React with thumbs up to raise its priority")));
+		}
+	}
+	/*
+	 * Sort the array of YBCTIDs into order, and eliminate duplicates.
+	 * Eliminating duplicates is necessary since we want OR semantics across
+	 * the list.  Sorting makes it easier to detect duplicates, and as a bonus
+	 * ensures that we will scan DocDB tablets in the most efficient way.
+	 */
+	if (numYbctids > 1)
+	{
+		/* CurrentOfExpr could never appear OR'd with something else */
+		Assert(!tidstate->tss_isCurrentOf);
+
+		qsort(ybctidList, numYbctids, sizeof(Datum), ybctid_comparator);
+		numYbctids = qunique(ybctidList, numYbctids, sizeof(Datum), ybctid_comparator);
+	}
+	HandleYBStatus(YBCPgBindYbctids(ybScan->handle, numYbctids, ybctidList));
+	pfree(ybctidList);
+}
+
+/*
+ * qsort comparator for bytea items
+ */
+static int
+ybctid_comparator(const void *a, const void *b)
+{
+	return DatumGetInt32(
+		DirectFunctionCall2(byteacmp, *(const Datum *) a, *(const Datum *) b));
+}
+
 /* ----------------------------------------------------------------
  *		TidNext
  *
@@ -394,6 +527,70 @@ TidNext(TidScanState *node)
 	return ExecClearTuple(slot);
 }
 
+static TupleTableSlot *
+YbTidNext(TidScanState *node)
+{
+	EState	   *estate;
+	TupleTableSlot *slot;
+	ExprContext *econtext;
+	MemoryContext oldcontext;
+	YbScanDesc	ybScan;
+
+	estate = node->ss.ps.state;
+	econtext = node->ss.ps.ps_ExprContext;
+	slot = node->ss.ss_ScanTupleSlot;
+
+	/*
+	 * Initialize the scandesc upon the first invocation.
+	 */
+	if (node->ss.ss_currentScanDesc == NULL)
+	{
+		TidScan *plan = (TidScan *) node->ss.ps.plan;
+		YbPushdownExprs *rel_pushdown =
+			YbInstantiatePushdownParams(&plan->yb_rel_pushdown, estate);
+		if (node->yb_tss_aggrefs)
+		{
+			TupleDesc	tupdesc = CreateTemplateTupleDesc(list_length(node->yb_tss_aggrefs));
+			ExecInitScanTupleSlot(node->ss.ps.state, &node->ss, tupdesc, &TTSOpsVirtual);
+			slot = node->ss.ss_ScanTupleSlot;
+		}
+		ybScan = ybcBeginScan(node->ss.ss_currentRelation,
+							  NULL,	/* index */
+							  false,	/* xs_want_itup */
+							  0,	/* nkeys */
+							  NULL, /* key */
+							  (Scan *) plan,
+							  rel_pushdown,
+							  NULL,	/* idx_pushdown */
+							  node->yb_tss_aggrefs,
+							  0,	/* distinct_prefixlen */
+							  &estate->yb_exec_params,
+							  false,	/* is_internal_scan */
+							  false);	/* fetch_ybctids_only */
+		ybScan->rs_base.rs_snapshot = estate->es_snapshot;
+		ybScan->rs_base.rs_flags = SO_TYPE_TIDSCAN;
+		node->ss.ss_currentScanDesc = (TableScanDesc) ybScan;
+		YbctidListEval(node);
+	}
+	else
+		ybScan = (YbScanDesc) node->ss.ss_currentScanDesc;
+
+	/* Need to execute the request */
+	if (!ybScan->is_exec_done)
+	{
+		HandleYBStatus(YBCPgExecSelect(ybScan->handle, ybScan->exec_params));
+		ybScan->is_exec_done = true;
+	}
+
+	/* capture all fetch allocations in the short-lived context */
+	oldcontext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
+	ybFetchNext(ybScan->handle, slot,
+				RelationGetRelid(node->ss.ss_currentRelation));
+	MemoryContextSwitchTo(oldcontext);
+
+	return slot;
+}
+
 /*
  * TidRecheck -- access method routine to recheck a tuple in EvalPlanQual
  */
@@ -432,9 +629,14 @@ ExecTidScan(PlanState *pstate)
 {
 	TidScanState *node = castNode(TidScanState, pstate);
 
-	return ExecScan(&node->ss,
-					(ExecScanAccessMtd) TidNext,
-					(ExecScanRecheckMtd) TidRecheck);
+	if (IsYBRelation(node->ss.ss_currentRelation))
+		return ExecScan(&node->ss,
+						(ExecScanAccessMtd) YbTidNext,
+						(ExecScanRecheckMtd) TidRecheck);
+	else
+		return ExecScan(&node->ss,
+						(ExecScanAccessMtd) TidNext,
+						(ExecScanRecheckMtd) TidRecheck);
 }
 
 /* ----------------------------------------------------------------
@@ -450,9 +652,17 @@ ExecReScanTidScan(TidScanState *node)
 	node->tss_NumTids = 0;
 	node->tss_TidPtr = -1;
 
-	/* not really necessary, but seems good form */
 	if (node->ss.ss_currentScanDesc)
-		table_rescan(node->ss.ss_currentScanDesc, NULL);
+	{
+		if (IsYBRelation(node->ss.ss_currentRelation))
+		{
+			ybc_heap_endscan(node->ss.ss_currentScanDesc);
+			node->ss.ss_currentScanDesc = NULL;
+		}
+		else
+			/* not really necessary, but seems good form */
+			table_rescan(node->ss.ss_currentScanDesc, NULL);
+	}
 
 	ExecScanReScan(&node->ss);
 }
@@ -468,7 +678,12 @@ void
 ExecEndTidScan(TidScanState *node)
 {
 	if (node->ss.ss_currentScanDesc)
-		table_endscan(node->ss.ss_currentScanDesc);
+	{
+		if (IsYBRelation(node->ss.ss_currentRelation))
+			ybc_heap_endscan(node->ss.ss_currentScanDesc);
+		else
+			table_endscan(node->ss.ss_currentScanDesc);
+	}
 
 	/*
 	 * Free the exprcontext
@@ -535,7 +750,9 @@ ExecInitTidScan(TidScan *node, EState *estate, int eflags)
 	 */
 	ExecInitScanTupleSlot(estate, &tidstate->ss,
 						  RelationGetDescr(currentRelation),
-						  table_slot_callbacks(currentRelation));
+						  IsYBRelation(currentRelation) ?
+							  &TTSOpsVirtual :
+							  table_slot_callbacks(currentRelation));
 
 	/*
 	 * Initialize result type and projection.

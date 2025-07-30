@@ -606,6 +606,8 @@ class PgApiImpl {
 
   Status BindYbctids(PgStatement* handle, int n, uintptr_t* ybctids);
 
+  bool IsValidYbctid(uint64_t ybctid);
+
   Status DmlANNBindVector(PgStatement *handle, PgExpr *vector);
 
   Status DmlANNSetPrefetchSize(PgStatement *handle, int prefetch_size);

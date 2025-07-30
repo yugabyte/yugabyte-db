@@ -1755,6 +1755,10 @@ YbcStatus YBCPgBindYbctids(YbcPgStatement handle, int n, uintptr_t* ybctids) {
   return ToYBCStatus(pgapi->BindYbctids(handle, n, ybctids));
 }
 
+bool YBCPgIsValidYbctid(uint64_t ybctid) {
+  return pgapi->IsValidYbctid(ybctid);
+}
+
 //------------------------------------------------------------------------------------------------
 // Functions
 //------------------------------------------------------------------------------------------------

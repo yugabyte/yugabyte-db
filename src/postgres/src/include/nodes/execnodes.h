@@ -1983,6 +1983,7 @@ typedef struct TidScanState
 	int			tss_TidPtr;
 	ItemPointerData *tss_TidList;
 	HeapTupleData tss_htup;
+	List	   *yb_tss_aggrefs;
 } TidScanState;
 
 /* ----------------
