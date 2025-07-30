@@ -273,13 +273,13 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     SetYsqlDBCatalogVersionsUnlocked(db_catalog_version_data, 0UL /* debug_id */);
   }
   void SetYsqlDBCatalogInvalMessagesUnlocked(
-      const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data,
+      const tserver::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data,
       uint64_t debug_id) REQUIRES(lock_);
   void SetYsqlDBCatalogVersionsWithInvalMessages(
       const tserver::DBCatalogVersionDataPB& db_catalog_version_data,
-      const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data)
-      EXCLUDES(lock_);
-  void ResetCatalogVersionsFingerprint() EXCLUDES(lock_);
+      const tserver::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data)
+      EXCLUDES(lock_) override;
+  void ResetCatalogVersionsFingerprint() EXCLUDES(lock_) override;
   void UpdateCatalogVersionsFingerprintUnlocked() REQUIRES(lock_);
 
   uint32_t get_oid_cache_invalidations_count() const override {
@@ -621,13 +621,13 @@ class TabletServer : public DbServerBase, public TabletServerIf {
       InvalidationMessagesInfo *info) REQUIRES(lock_);
   void MergeInvalMessagesIntoQueueUnlocked(
       uint32_t db_oid,
-      const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data,
+      const tserver::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data,
       int start_index,
       int end_index,
       uint64_t debug_id) REQUIRES(lock_);
   void DoMergeInvalMessagesIntoQueueUnlocked(
       uint32_t db_oid,
-      const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data,
+      const tserver::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data,
       int start_index,
       int end_index,
       InvalidationMessagesQueue *db_message_lists,

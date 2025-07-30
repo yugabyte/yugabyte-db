@@ -182,7 +182,7 @@ std::string CatalogInvalMessagesDataDebugString(const master::TSHeartbeatRespons
 }
 
 std::string CatalogInvalMessagesDataDebugString(
-    const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data) {
+    const tserver::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data) {
   std::map<uint32_t, std::vector<std::pair<uint64_t, size_t>>> dbg_map;
   for (int i = 0; i < db_catalog_inval_messages_data.db_catalog_inval_messages_size(); ++i) {
     const auto& db_inval_messages = db_catalog_inval_messages_data.db_catalog_inval_messages(i);

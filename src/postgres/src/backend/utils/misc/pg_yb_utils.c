@@ -105,6 +105,7 @@
 #include "nodes/makefuncs.h"
 #include "nodes/readfuncs.h"
 #include "optimizer/cost.h"
+#include "optimizer/plancat.h"
 #include "parser/parse_utilcmd.h"
 #include "pg_yb_utils.h"
 #include "pgstat.h"
@@ -1232,6 +1233,11 @@ typedef struct YbUserIdAndSecContext
 	int			sec_context;
 } YbUserIdAndSecContext;
 
+typedef struct YbDatabaseAndRelfileNodeId {
+	Oid			database_oid;
+	Oid			relfilenode_id;
+} YbDatabaseAndRelfileNodeOid;
+
 typedef struct
 {
 	int			nesting_level;
@@ -1261,9 +1267,9 @@ typedef struct
 	bool		use_regular_txn_block;
 
 	/*
-	 * List of table OIDs that have been altered in the current transaction
-	 * block. This is used to invalidate the cache of the altered tables upon
-	 * rollback of the transaction.
+	 * List of YbDatabaseAndRelfileNodeId representing tables that have been
+	 * altered in the current transaction block. This is used to invalidate the
+	 * cache of the altered tables upon rollback of the transaction.
 	 *
 	 * When yb_ddl_transaction_block_enabled is false, this list just
 	 * contains the tables that have been altered as part of the current ALTER
@@ -2513,8 +2519,13 @@ YbTrackAlteredTableId(Oid relid)
 	Assert(TopTransactionContext != NULL);
 	oldcontext = MemoryContextSwitchTo(TopTransactionContext);
 
+	YbDatabaseAndRelfileNodeOid *entry;
+	entry = (YbDatabaseAndRelfileNodeOid *) palloc0(sizeof(YbDatabaseAndRelfileNodeOid));
+	entry->database_oid = YBCGetDatabaseOidByRelid(relid);
+	entry->relfilenode_id = YbGetRelfileNodeIdFromRelId(relid);
+
 	ddl_transaction_state.altered_table_ids =
-		list_append_unique_oid(ddl_transaction_state.altered_table_ids, relid);
+		lappend(ddl_transaction_state.altered_table_ids, entry);
 	MemoryContextSwitchTo(oldcontext);
 }
 
@@ -2719,7 +2730,7 @@ YbTrackPgTxnInvalMessagesForAnalyze()
 		memcpy(currentInvalMessages + numCatCacheMsgs,
 			   relCacheInvalMessages,
 			   numRelCacheMsgs * sizeof(SharedInvalidationMessage));
-	if (log_min_messages <= DEBUG1)
+	if (log_min_messages <= DEBUG1 || yb_debug_log_catcache_events)
 		YbLogInvalidationMessages(currentInvalMessages, nmsgs);
 	YbCatalogMessageList *current = (YbCatalogMessageList *)
 		MemoryContextAlloc(ddl_transaction_state.mem_context,
@@ -2841,6 +2852,9 @@ YbCheckNewSharedCatalogVersionOptimization(bool is_breaking_change,
 		message_list.num_bytes = 0;
 	}
 
+	elog(DEBUG2,
+		"YbCheckNewSharedCatalogVersionOptimization: "
+		"updating tserver shared catalog version to %"PRIu64, new_version);
 	if (yb_test_delay_set_local_tserver_inval_message_ms > 0)
 		pg_usleep(yb_test_delay_set_local_tserver_inval_message_ms * 1000L);
 	YbcStatus	status = YBCPgSetTserverCatalogMessageList(MyDatabaseId,
@@ -4225,20 +4239,16 @@ YbInvalidateTableCacheForAlteredTables()
 
 		foreach(lc, ddl_transaction_state.altered_table_ids)
 		{
-			Oid			relid = lfirst_oid(lc);
-			Relation	rel = RelationIdGetRelation(relid);
+			YbDatabaseAndRelfileNodeOid *object_id =
+				(YbDatabaseAndRelfileNodeOid *) lfirst(lc);
 
 			/*
-			 * The relation may no longer exist if it was dropped as part of
-			 * a legacy rewrite operation or if it was created and then dropped
-			 * in the same transaction block. We can skip invalidation in these
-			 * cases.
+			 * This is safe to do even for tables which don't exist or have
+			 * already been invalidated because this is just a deletion/marking
+			 * in an in-memory map.
 			 */
-			if (!rel)
-				continue;
-			YBCPgAlterTableInvalidateTableByOid(YBCGetDatabaseOidByRelid(relid),
-												YbGetRelfileNodeIdFromRelId(relid));
-			RelationClose(rel);
+			YBCPgAlterTableInvalidateTableByOid(object_id->database_oid,
+												object_id->relfilenode_id);
 		}
 	}
 }
@@ -7670,7 +7680,7 @@ YbApplyInvalidationMessages(YbcCatalogMessageLists *message_lists)
 		const SharedInvalidationMessage *invalMessages =
 			(const SharedInvalidationMessage *) msglist->message_list;
 
-		elog(DEBUG1, "invalMessages=%p, msglist->num_bytes=%zu",
+		elog(yb_debug_log_catcache_events ? LOG : DEBUG1, "invalMessages=%p, msglist->num_bytes=%zu",
 			 invalMessages, msglist->num_bytes);
 		if (!invalMessages)
 		{
@@ -7713,7 +7723,7 @@ YbApplyInvalidationMessages(YbcCatalogMessageLists *message_lists)
 
 		size_t		nmsgs = msglist->num_bytes / sizeof(SharedInvalidationMessage);
 
-		if (log_min_messages <= DEBUG1)
+		if (log_min_messages <= DEBUG1 || yb_debug_log_catcache_events)
 			YbLogInvalidationMessages(invalMessages, nmsgs);
 		for (size_t i = 0; i < nmsgs; ++i)
 			/*
@@ -7835,4 +7845,29 @@ YbGetPeakRssKb()
 
 	getrusage(RUSAGE_SELF, &r);
 	return scale_rss_to_kb(r.ru_maxrss);
+}
+
+bool
+YbIsAnyDependentGeneratedColPK(Relation rel, AttrNumber attnum)
+{
+	AttrNumber	offset = YBGetFirstLowInvalidAttributeNumber(rel);
+	Bitmapset  *target_cols = bms_make_singleton(attnum - offset);
+	Bitmapset  *dependent_generated_cols =
+		get_dependent_generated_columns(NULL /* root */ , 0 /* rti */ ,
+										target_cols,
+										NULL /* yb_generated_cols_source */ ,
+										rel);
+	int			bms_index;
+
+	while ((bms_index = bms_first_member(dependent_generated_cols)) >= 0)
+	{
+		AttrNumber	dependent_attnum = bms_index + offset;
+
+		if (YbIsAttrPrimaryKeyColumn(rel, dependent_attnum))
+			return true;
+	}
+	bms_free(dependent_generated_cols);
+	bms_free(target_cols);
+
+	return false;
 }

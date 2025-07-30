@@ -19,6 +19,7 @@ import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.audit.AuditService;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
@@ -94,8 +95,16 @@ public class CheckUpgrade extends ServerSubTaskBase {
       return;
     }
 
+    if (confGetter.getConfForScope(
+        universe, UniverseConfKeys.skipAutoflagsAndYsqlMigrationFilesValidation)) {
+      log.info("Skipping auto flags and YSQL migration files validation");
+      return;
+    }
     // Check if autoflags are compatible with the new version.
     validateAutoflag(universe, newVersion);
+
+    // Check if YSQL migration files are present in the new version.
+    validateYsqlMigrationFilesPresent(oldVersion, newVersion);
 
     // Check if YSQL major version upgrade is allowed.
     validateYSQLMajorUpgrade(universe, oldVersion, newVersion);
@@ -179,6 +188,31 @@ public class CheckUpgrade extends ServerSubTaskBase {
         throw new PlatformServiceException(
             BAD_REQUEST, oldFlag + " is not present in the requested db version " + version);
       }
+    }
+  }
+
+  private void validateYsqlMigrationFilesPresent(String oldVersion, String newVersion) {
+    try {
+      if (newVersion.startsWith("2025.1.0")) {
+        log.info("Skipping YSQL migration files validation for 2025.1.0 version");
+        return;
+      }
+      Set<String> oldMigrationFiles = gFlagsValidation.getYsqlMigrationFilesList(oldVersion);
+      Set<String> newMigrationFiles = gFlagsValidation.getYsqlMigrationFilesList(newVersion);
+      Set<String> missingFiles = new java.util.HashSet<>(oldMigrationFiles);
+      missingFiles.removeAll(newMigrationFiles);
+      if (!missingFiles.isEmpty()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "The following YSQL migration files present in the current DB version are missing in"
+                + " the new version: "
+                + missingFiles);
+      }
+    } catch (PlatformServiceException e) {
+      throw e;
+    } catch (Exception e) {
+      log.error("Error occurred while validating YSQL migration files: ", e);
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
   }
 

@@ -1405,4 +1405,6 @@ extern void YbForceSendInvalMessages();
 
 extern long YbGetPeakRssKb();
 
+extern bool YbIsAnyDependentGeneratedColPK(Relation rel, AttrNumber attnum);
+
 #endif							/* PG_YB_UTILS_H */

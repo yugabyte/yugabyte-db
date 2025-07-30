@@ -3584,7 +3584,8 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	 */
 	affected_generated_attrs = get_dependent_generated_columns(root, rt_index,
 															   update_attrs,
-															   &generated_cols_source_attrs);
+															   &generated_cols_source_attrs,
+															   NULL /* yb_relation */ );
 
 	if (bms_overlap(generated_cols_source_attrs, pushdown_update_attrs))
 		has_unpushable_exprs = true;
@@ -4069,7 +4070,8 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 			updatedCols =
 				bms_add_members(get_dependent_generated_columns(root, rt_index,
 																rte->updatedCols,
-																NULL /* yb_generated_cols_source */ ),
+																NULL /* yb_generated_cols_source */ ,
+																NULL /* yb_relation */ ),
 								rte->updatedCols);
 			plan->yb_update_affected_entities =
 				YbComputeAffectedEntitiesForRelation(plan, rel, updatedCols);

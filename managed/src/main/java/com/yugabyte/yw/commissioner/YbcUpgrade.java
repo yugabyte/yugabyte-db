@@ -242,13 +242,14 @@ public class YbcUpgrade {
             }
           });
 
-      while (ybcUpgradeUniverseSet.size() > 0) {
+      if (ybcUpgradeUniverseSet.size() > 0) {
         Iterator<UUID> iter = targetUniverseList.iterator();
         while (iter.hasNext()) {
           UUID universeUUID = iter.next();
           Optional<Universe> optional = Universe.maybeGet(universeUUID);
           if (!optional.isPresent()) {
             iter.remove();
+            removeYBCUpgradeProcess(universeUUID);
             continue;
           } else if (checkYBCUpgradeProcessExists(universeUUID)
               && !failedYBCUpgradeUniverseSet.contains(universeUUID)) {
@@ -268,6 +269,7 @@ public class YbcUpgrade {
           Optional<Universe> optional = Universe.maybeGet(universeUUID);
           if (!optional.isPresent()) {
             iter.remove();
+            removeYBCUpgradeProcessOnK8s(universeUUID);
             continue;
           } else if (checkYBCUpgradeProcessExistsOnK8s(universeUUID)
               && !failedYBCUpgradeUniverseSetOnK8s.contains(universeUUID)) {

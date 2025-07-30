@@ -60,9 +60,9 @@ class ObjectLockSharedState {
 
   [[nodiscard]] bool Lock(const ObjectLockFastpathRequest& request);
 
-  void ConsumePendingLockRequests(const FastLockRequestConsumer& consume) PARENT_PROCESS_ONLY;
+  size_t ConsumePendingLockRequests(const FastLockRequestConsumer& consume) PARENT_PROCESS_ONLY;
 
-  void ConsumeAndAcquireExclusiveLockIntents(
+  size_t ConsumeAndAcquireExclusiveLockIntents(
       const FastLockRequestConsumer& consume,
       std::span<const ObjectLockPrefix*> object_ids) PARENT_PROCESS_ONLY;
 

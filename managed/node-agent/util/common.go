@@ -37,7 +37,7 @@ const (
 	JwtClientTypeClaim      = "clientType"
 	JwtIssuer               = "https://www.yugabyte.com"
 	JwtSubject              = "NODE_AGENT"
-	JwtExpirationTime       = 600 //in seconds
+	JwtExpirationSecs       = 600 //in seconds
 	NodeAgentDefaultLog     = "node_agent.log"
 	NodeHomeDirectory       = "/home/yugabyte"
 	NodeAgentRegistryPath   = ".yugabyte/node-agent-registry"

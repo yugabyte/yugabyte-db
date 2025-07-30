@@ -129,6 +129,12 @@ class MasterTabletServer : public tserver::TabletServerIf,
   void SetYsqlDBCatalogVersions(
       const tserver::DBCatalogVersionDataPB& db_catalog_version_data) override {}
 
+  void SetYsqlDBCatalogVersionsWithInvalMessages(
+      const tserver::DBCatalogVersionDataPB& db_catalog_version_data,
+      const tserver::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data) override {}
+
+  void ResetCatalogVersionsFingerprint() override {}
+
   Result<tserver::YSQLLeaseInfo> GetYSQLLeaseInfo() const override;
   Status RestartPG() const override {
     return STATUS(NotSupported, "RestartPG not implemented for masters");

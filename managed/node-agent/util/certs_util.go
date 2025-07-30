@@ -171,7 +171,7 @@ func GenerateJWT(ctx context.Context, config *Config) (string, error) {
 		JwtUserIdClaim:   config.String(UserIdKey),
 		RegisteredClaims: jwt.RegisteredClaims{
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(JwtExpirationTime)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(JwtExpirationSecs * time.Second)),
 			Issuer:    JwtIssuer,
 			Subject:   JwtSubject,
 		},

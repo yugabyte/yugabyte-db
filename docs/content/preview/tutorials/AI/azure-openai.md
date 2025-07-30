@@ -85,6 +85,7 @@ YugabyteDB introduced support for the PostgreSQL pgvector extension in v2.19.2. 
 Start a 3-node YugabyteDB cluster in Docker (or feel free to use another deployment option):
 
 ```sh
+rm -rf ~/yb_docker_data
 mkdir ~/yb_docker_data
 
 docker network create yb-network

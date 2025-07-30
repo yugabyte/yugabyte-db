@@ -707,7 +707,8 @@ get_rel_all_updated_cols(PlannerInfo *root, RelOptInfo *rel)
 	 */
 	extraUpdatedCols = get_dependent_generated_columns(root, rel->relid,
 													   updatedCols,
-													   NULL /* yb_generated_cols_source */ );
+													   NULL /* yb_generated_cols_source */ ,
+													   NULL /* yb_relation */ );
 
 	return bms_union(updatedCols, extraUpdatedCols);
 }

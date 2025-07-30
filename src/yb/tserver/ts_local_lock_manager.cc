@@ -28,6 +28,7 @@
 
 #include "yb/server/server_base.h"
 
+#include "yb/tserver/service_util.h"
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -38,6 +39,7 @@
 
 using namespace std::literals;
 DECLARE_bool(dump_lock_keys);
+DECLARE_bool(ysql_yb_enable_invalidation_messages);
 
 DEFINE_NON_RUNTIME_int64(olm_poll_interval_ms, 100,
     "Poll interval for Object lock Manager. Waiting requests that are unblocked by other release "
@@ -292,9 +294,9 @@ class TSLocalLockManager::Impl {
   Impl(
       const server::ClockPtr& clock, TabletServerIf* tablet_server,
       server::RpcServerBase& messenger_server, ThreadPool* thread_pool,
-      docdb::ObjectLockSharedStateManager* shared_manager)
+      const MetricEntityPtr& metric_entity, docdb::ObjectLockSharedStateManager* shared_manager)
       : clock_(clock), server_(tablet_server), messenger_base_(messenger_server),
-        object_lock_manager_(thread_pool, messenger_server, shared_manager),
+        object_lock_manager_(thread_pool, messenger_server, metric_entity, shared_manager),
         poller_("TSLocalLockManager", std::bind(&Impl::Poll, this)) {}
 
   ~Impl() = default;
@@ -565,8 +567,26 @@ class TSLocalLockManager::Impl {
     RETURN_NOT_OK(add_to_in_progress.status());
     // In case of exclusive locks, invalidate the db table cache before releasing them.
     if (req.has_db_catalog_version_data()) {
-      server_->SetYsqlDBCatalogVersions(req.db_catalog_version_data());
+      if (FLAGS_ysql_yb_enable_invalidation_messages && req.has_db_catalog_inval_messages_data()) {
+        VLOG(4) << "Received inval msgs during lock release "
+        << tserver::CatalogInvalMessagesDataDebugString(req.db_catalog_inval_messages_data());
+
+        server_->SetYsqlDBCatalogVersionsWithInvalMessages(
+          req.db_catalog_version_data(),
+          req.db_catalog_inval_messages_data());
+      } else {
+        VLOG(4) << "Received cat version without inval msgs during lock release "
+                << req.db_catalog_version_data().ShortDebugString();
+        server_->SetYsqlDBCatalogVersions(req.db_catalog_version_data());
+        // If we only have catalog versions but not invalidation messages, it means that
+        // the master lock release request was only able to read pg_yb_catalog_version,
+        // but the reading of pg_yb_invalidation_messages failed.
+        // Clear the fingerprint so that next heartbeat response from master
+        // can read pg_yb_invalidation_messages again.
+        server_->ResetCatalogVersionsFingerprint();
+      }
     }
+
     object_lock_manager_.Unlock(object_lock_owner);
     auto tracker_status = lock_tracker_.UntrackAllLocks(txn, req.subtxn_id());
     DCHECK_OK(tracker_status);
@@ -721,10 +741,10 @@ class TSLocalLockManager::Impl {
 TSLocalLockManager::TSLocalLockManager(
     const server::ClockPtr& clock, TabletServerIf* tablet_server,
     server::RpcServerBase& messenger_server, ThreadPool* thread_pool,
-    docdb::ObjectLockSharedStateManager* shared_manager)
+    const MetricEntityPtr& metric_entity, docdb::ObjectLockSharedStateManager* shared_manager)
       : impl_(new Impl(
           clock, CHECK_NOTNULL(tablet_server), messenger_server, CHECK_NOTNULL(thread_pool),
-          shared_manager)) {}
+          metric_entity, shared_manager)) {}
 
 TSLocalLockManager::~TSLocalLockManager() {}
 

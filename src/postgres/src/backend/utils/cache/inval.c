@@ -131,6 +131,7 @@
 /* YB includes */
 #include "pg_yb_utils.h"
 #include <assert.h>
+#include <inttypes.h>
 #include <unistd.h>
 
 
@@ -289,6 +290,10 @@ static struct RELCACHECALLBACK
 }			relcache_callback_list[MAX_RELCACHE_CALLBACKS];
 
 static int	relcache_callback_count = 0;
+
+static uint64_t yb_accept_inval_failed_version = YB_CATCACHE_VERSION_UNINITIALIZED;
+
+static bool yb_refresh_cache_in_progress = false;
 
 /* ----------------------------------------------------------------
  *				Invalidation subgroup support functions
@@ -862,6 +867,63 @@ CallSystemCacheCallbacks(void)
 void
 AcceptInvalidationMessages(void)
 {
+	if (OidIsValid(MyDatabaseId) &&
+		*YBCGetGFlags()->enable_object_locking_for_table_locks &&
+		YbIsInvalidationMessageEnabled())
+	{
+		uint64_t	shared_catalog_version = YbGetSharedCatalogVersion();
+		const uint64_t local_catalog_version = YbGetCatalogCacheVersion();
+
+		elog(DEBUG5,
+			 "AcceptInvalidationMessages: shared = %" PRIu64 " local=%" PRIu64 " wait_until=%" PRIu64 " in_progress=%d",
+			 shared_catalog_version, local_catalog_version,
+			 yb_accept_inval_failed_version, yb_refresh_cache_in_progress);
+
+		if (local_catalog_version < shared_catalog_version &&
+			!yb_refresh_cache_in_progress &&
+			(yb_accept_inval_failed_version == YB_CATCACHE_VERSION_UNINITIALIZED ||
+			 local_catalog_version >= yb_accept_inval_failed_version))
+		{
+			PG_TRY();
+			{
+				/*
+				 * As part of processing inval msgs, we may rebuild relcache entries.
+				 * These rebuilds may acquire further locks and trigger this code again.
+				 * In PG, this would be ok as inval msgs are processed one by one and
+				 * reentrant calls do not reprocess msgs that are already being processed.
+				 * However, in YB, we are not able to handle this situation currently.
+				 * TODO: One possible way to avoid this in YB is to add inval msgs to
+				 * the PG shared queue instead.
+				 */
+				yb_refresh_cache_in_progress = true;
+
+				if (YBRefreshCacheUsingInvalMsgs())
+				{
+					elog(DEBUG1,
+						 "AcceptInvalidationMessages: updated via inval msgs to %" PRIu64,
+						 YbGetCatalogCacheVersion());
+				}
+				else
+				{
+					/*
+					 * We may not be able to update to this version via inval msgs, it may
+					 * require a full refresh. In that case we want to avoid retrying this
+					 * update via AcceptInvalidationMessages until we are past this version.
+					 *
+					 * TODO: Potential inconsistency in this case to be addressed in #28002
+					 */
+					yb_accept_inval_failed_version = shared_catalog_version;
+				}
+			} PG_CATCH();
+			{
+				yb_refresh_cache_in_progress = false;
+				yb_accept_inval_failed_version = shared_catalog_version;
+				PG_RE_THROW();
+			}
+			PG_END_TRY();
+			yb_refresh_cache_in_progress = false;
+		}
+	}
 	ReceiveSharedInvalidMessages(LocalExecuteInvalidationMessage,
 								 InvalidateSystemCaches);
 

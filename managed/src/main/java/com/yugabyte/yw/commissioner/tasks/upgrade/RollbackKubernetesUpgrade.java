@@ -103,8 +103,14 @@ public class RollbackKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           if (ysqlMajorVersionUpgrade) {
             // Set the flag ysql_yb_major_version_upgrade_compatibility as major version upgrade is
             // rolled back.
-            createGFlagsUpgradeAndUpdateMastersTaskForYSQLMajorUpgrade(
-                universe, currentVersion, YsqlMajorVersionUpgradeState.ROLLBACK_IN_PROGRESS);
+            if (prevYBSoftwareConfig != null
+                && prevYBSoftwareConfig.isAllTserversUpgradedToYsqlMajorVersion()) {
+              // Only set the ysql_yb_major_version_upgrade_compatibility flag if all tservers
+              // were successfully upgraded to the target YSQL major version. Otherwise,
+              // the flag will be already be set due to the upgrade failure.
+              createGFlagsUpgradeAndUpdateMastersTaskForYSQLMajorUpgrade(
+                  universe, currentVersion, YsqlMajorVersionUpgradeState.ROLLBACK_IN_PROGRESS);
+            }
           }
 
           // Create Kubernetes Upgrade Task

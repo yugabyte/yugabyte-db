@@ -70,30 +70,30 @@ Download the application and provide settings specific to your deployment:
 Start a 3-node YugabyteDB cluster in Docker (or feel free to use another deployment option):
 
 ```sh
-# NOTE: if the ~/yb_docker_data already exists on your machine, delete and re-create it
+rm -rf ~/yb_docker_data
 mkdir ~/yb_docker_data
 
-docker network create custom-network
+docker network create yb-network
 
-docker run -d --name yugabytedb-node1 --net custom-network \
+docker run -d --name ybnode1 --hostname ybnode1 --net yb-network \
     -p 15433:15433 -p 7001:7000 -p 9001:9000 -p 5433:5433 \
     -v ~/yb_docker_data/node1:/home/yugabyte/yb_data --restart unless-stopped \
     yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
     bin/yugabyted start \
     --base_dir=/home/yugabyte/yb_data --background=false
 
-docker run -d --name yugabytedb-node2 --net custom-network \
+docker run -d --name ybnode2 --hostname ybnode2  --net yb-network \
     -p 15434:15433 -p 7002:7000 -p 9002:9000 -p 5434:5433 \
     -v ~/yb_docker_data/node2:/home/yugabyte/yb_data --restart unless-stopped \
     yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
-    bin/yugabyted start --join=yugabytedb-node1 \
+    bin/yugabyted start --join=ybnode1 \
     --base_dir=/home/yugabyte/yb_data --background=false
-
-docker run -d --name yugabytedb-node3 --net custom-network \
+    
+docker run -d --name ybnode3 --hostname ybnode3 --net yb-network \
     -p 15435:15433 -p 7003:7000 -p 9003:9000 -p 5435:5433 \
     -v ~/yb_docker_data/node3:/home/yugabyte/yb_data --restart unless-stopped \
     yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
-    bin/yugabyted start --join=yugabytedb-node1 \
+    bin/yugabyted start --join=ybnode1 \
     --base_dir=/home/yugabyte/yb_data --background=false
 ```
 
@@ -110,20 +110,20 @@ The `pg_trgm` PostgreSQL extension is installed to execute similarity searches o
 1. Copy the schema to the first node's Docker container.
 
     ```sh
-    docker cp {project_dir}/sql/schema.sql yugabytedb-node1:/home
+    docker cp {project_dir}/sql/schema.sql ybnode1:/home
     ```
 
 1. Copy the seed data file to the Docker container.
 
     ```sh
-    docker cp {project_dir}/sql/generated_data.sql yugabytedb-node1:/home
+    docker cp {project_dir}/sql/generated_data.sql ybnode1:/home
     ```
 
 1. Execute the SQL files against the database.
 
     ```sh
-    docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 -c '\i /home/schema.sql'
-    docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 -c '\i /home/generated_data.sql'
+    docker exec -it ybnode1 bin/ysqlsh -h ybnode1 -c '\i /home/schema.sql'
+    docker exec -it ybnode1 bin/ysqlsh -h ybnode1 -c '\i /home/generated_data.sql'
     ```
 
 ## Start the application

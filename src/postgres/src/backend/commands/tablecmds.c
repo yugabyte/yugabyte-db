@@ -9284,7 +9284,8 @@ ATExecDropColumn(List **wqueue, AlteredTableInfo *yb_tab, Relation rel,
 	/*
 	 * In YB, dropping a key column requires a table rewrite.
 	 */
-	if (IsYBRelation(rel) && YbIsAttrPrimaryKeyColumn(rel, attnum))
+	if (IsYBRelation(rel) && (YbIsAttrPrimaryKeyColumn(rel, attnum) ||
+							  YbIsAnyDependentGeneratedColPK(rel, attnum)))
 	{
 		/*
 		 * In YB, the ADD/DROP primary key operation involves a table
@@ -9443,7 +9444,7 @@ ATExecDropColumn(List **wqueue, AlteredTableInfo *yb_tab, Relation rel,
 		 * the ALTER TABLE flow.
 		 */
 		performMultipleDeletions(addrs, behavior,
-								 IsYugaByteEnabled() ? YB_SKIP_YB_DROP_COLUMN : 0);
+								 IsYugaByteEnabled() ? YB_SKIP_YB_DROP_ORIGNAL_COLUMN | YB_SKIP_YB_DROP_PK_COLUMN : 0);
 		free_object_addresses(addrs);
 	}
 
