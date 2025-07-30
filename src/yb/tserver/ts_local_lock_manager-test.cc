@@ -178,7 +178,7 @@ TEST_F(TSLocalLockManagerTest, TestLockAndRelease) {
 }
 
 TEST_F(TSLocalLockManagerTest, TestFastpathLockAndRelease) {
-  auto txn1 = lock_owner_registry_->Register(kTxn1.txn_id);
+  auto txn1 = lock_owner_registry_->Register(kTxn1.txn_id, TabletId());
   for (auto l = TableLockType_MIN + 1; l <= TableLockType_MAX; l++) {
     auto lock_type = docdb::MakeObjectLockFastpathLockType(TableLockType(l));
     if (!lock_type) {
@@ -513,7 +513,7 @@ TEST_F(TSLocalLockManagerTest, YB_LINUX_DEBUG_ONLY_TEST(TestFastpathCrash)) {
   ASSERT_EQ(GrantedLocksSize(), 0);
   ASSERT_EQ(WaitingLocksSize(), 0);
 
-  auto txn1 = lock_owner_registry_->Register(kTxn1.txn_id);
+  auto txn1 = lock_owner_registry_->Register(kTxn1.txn_id, TabletId());
 
   for (uint32_t i = 0; i < arraysize(kCrashPoints); ++i) {
     ASSERT_OK(ForkAndRunToCrashPoint([&] {

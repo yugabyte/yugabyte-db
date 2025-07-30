@@ -1345,8 +1345,8 @@ class ObjectLockOwnerInfo {
  public:
   ObjectLockOwnerInfo(
       PgSessionLockOwnerTagShared& shared, docdb::ObjectLockOwnerRegistry& registry,
-      const TransactionId& txn_id)
-      : shared_(shared), guard_(registry.Register(txn_id)), txn_id_(txn_id) {
+      const TransactionId& txn_id, const TabletId& tablet_id)
+      : shared_(shared), guard_(registry.Register(txn_id, tablet_id)), txn_id_(txn_id) {
     UpdateShared(guard_.tag());
   }
 
@@ -3403,14 +3403,14 @@ class PgClientSession::Impl {
       CoarseTimePoint deadline, bool is_final_release = false) {
     auto txn_meta = VERIFY_RESULT(
         transaction_provider_.NextTxnMetaForPlain(deadline, is_final_release));
-    RegisterLockOwner(txn_meta.transaction_id);
+    RegisterLockOwner(txn_meta.transaction_id, txn_meta.status_tablet);
     return txn_meta;
   }
 
-  void RegisterLockOwner(const TransactionId& txn_id) {
+  void RegisterLockOwner(const TransactionId& txn_id, const TabletId& status_tablet) {
     if (object_lock_shared_ && (!object_lock_owner_ || object_lock_owner_->txn_id() != txn_id)) {
       object_lock_owner_.emplace(
-          *object_lock_shared_, *DCHECK_NOTNULL(lock_owner_registry()), txn_id);
+          *object_lock_shared_, *DCHECK_NOTNULL(lock_owner_registry()), txn_id, status_tablet);
     }
   }
 
