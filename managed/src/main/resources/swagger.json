@@ -13958,6 +13958,9 @@
           "format" : "int32",
           "type" : "integer"
         },
+        "canRollbackCatalogUpgrade" : {
+          "type" : "boolean"
+        },
         "softwareVersion" : {
           "type" : "string"
         },
