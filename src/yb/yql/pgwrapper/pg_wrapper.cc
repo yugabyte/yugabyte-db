@@ -983,19 +983,13 @@ Status PgWrapper::InitDb(InitdbParams initdb_params) {
     }
   }
 
-  Status initdb_status = initdb_subprocess.Run();
-  if (!initdb_status.ok()) {
-    auto log_path = initdb_log_path;
-    auto tmpdir_var = getenv("TEST_TMPDIR");
-    if (tmpdir_var != nullptr) {
-      log_path = boost::replace_all_copy(initdb_log_path, "${TEST_TMPDIR}", tmpdir_var);
-    }
-    LOG(ERROR) << "Initdb failed. Initdb log file path: " << log_path;
-    return initdb_status;
+  auto status = initdb_subprocess.Run();
+  if (!status.ok()) {
+    LOG(ERROR) << Format("initdb failed. initdb log path: $0", initdb_log_path);
+    return status;
   }
-
   LOG(INFO) << "initdb completed successfully. Database initialized at " << conf_.data_dir;
-  return Status::OK();
+  return status;
 }
 
 Status PgWrapper::RunPgUpgrade(const PgUpgradeParams& param) {
