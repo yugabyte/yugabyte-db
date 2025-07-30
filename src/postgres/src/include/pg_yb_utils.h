@@ -1359,6 +1359,8 @@ extern bool YbIsYsqlConnMgrWarmupModeEnabled();
 
 extern bool YbIsAuthBackend();
 
+extern bool YbIsYsqlConnMgrEnabled();
+
 bool		YbIsAttrPrimaryKeyColumn(Relation rel, AttrNumber attnum);
 
 SortByDir	YbGetIndexKeySortOrdering(Relation indexRel);
@@ -1399,5 +1401,7 @@ extern void YbForceSendInvalMessages();
 extern long YbGetPeakRssKb();
 
 extern bool YbIsAnyDependentGeneratedColPK(Relation rel, AttrNumber attnum);
+
+extern bool YbCheckTserverResponseCacheForAuthGflags();
 
 #endif							/* PG_YB_UTILS_H */

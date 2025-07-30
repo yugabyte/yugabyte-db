@@ -177,6 +177,11 @@ DEFINE_RUNTIME_PG_FLAG(
     "concurrent DDLs block on each other for serialization. Also, this flag is valid only if "
     "ysql_enable_db_catalog_version_mode and yb_enable_invalidation_messages are enabled.");
 
+DEFINE_NON_RUNTIME_bool(ysql_enable_read_request_cache_for_connection_auth, false,
+            "If true, use tserver response cache for authorization processing "
+            "during connection setup. Only applicable when connection manager "
+            "is used.");
+
 DECLARE_bool(TEST_ash_debug_aux);
 DECLARE_bool(TEST_generate_ybrowid_sequentially);
 DECLARE_bool(TEST_ysql_log_perdb_allocated_new_objectid);
@@ -2304,6 +2309,8 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_max_replication_slots                = &FLAGS_max_replication_slots,
       .TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication =
           &FLAGS_TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication,
+      .ysql_enable_read_request_cache_for_connection_auth =
+          &FLAGS_ysql_enable_read_request_cache_for_connection_auth,
   };
   // clang-format on
   return &accessor;

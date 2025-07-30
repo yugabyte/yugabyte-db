@@ -429,6 +429,7 @@ typedef struct {
   const uint32_t* ysql_max_invalidation_message_queue_size;
   const uint32_t* ysql_max_replication_slots;
   const bool*     TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication;
+  const bool*     ysql_enable_read_request_cache_for_connection_auth;
 } YbcPgGFlagsAccessor;
 
 typedef struct {
