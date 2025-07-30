@@ -1846,8 +1846,24 @@ YBDecrementDdlNestingLevel()
 			const YbDdlMode mode = YbCatalogModificationAspectsToDdlMode(
 				ddl_transaction_state.catalog_modification_aspects.applied);
 
+			bool increment_for_conn_mgr_needed = false;
+			if (YbIsYsqlConnMgrEnabled())
+			{
+				/* We should not come here on auth backend. */
+				Assert(!yb_is_auth_backend);
+				/*
+				 * Auth backends only read shared relations. If tserver cache is used by
+				 * auth backends, we need to make sure stale tserver cache entries are
+				 * detected by incrementing the catalog version.
+				 */
+				if (ddl_transaction_state.is_global_ddl &&
+					YbCheckTserverResponseCacheForAuthGflags())
+					increment_for_conn_mgr_needed = true;
+	        }
+
 			increment_done =
-				(mode & YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT) &&
+				((mode & YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT) ||
+				 increment_for_conn_mgr_needed) &&
 				YbIncrementMasterCatalogVersionTableEntry(
 					mode & YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE,
 					ddl_transaction_state.is_global_ddl,
@@ -5660,7 +5676,18 @@ bool YbIsYsqlConnMgrWarmupModeEnabled()
 	return strcmp(YBCGetGFlags()->TEST_ysql_conn_mgr_dowarmup_all_pools_mode, "none") != 0;
 }
 
-bool YbIsAuthBackend()
+bool
+YbIsYsqlConnMgrEnabled()
+{
+	static int	cached_value = -1;
+
+	if (cached_value == -1)
+		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_enable_ysql_conn_mgr", false);
+	return cached_value;
+}
+
+bool
+YbIsAuthBackend()
 {
 	return yb_is_auth_backend;
 }
@@ -5752,4 +5779,12 @@ YbGetPeakRssKb()
 	struct rusage r;
 	getrusage(RUSAGE_SELF, &r);
 	return scale_rss_to_kb(r.ru_maxrss);
+}
+
+bool
+YbCheckTserverResponseCacheForAuthGflags()
+{
+	return
+		*YBCGetGFlags()->ysql_enable_read_request_caching &&
+		*YBCGetGFlags()->ysql_enable_read_request_cache_for_connection_auth;
 }

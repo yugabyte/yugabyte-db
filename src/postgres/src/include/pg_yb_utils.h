@@ -1269,6 +1269,8 @@ extern bool YbIsAuthBackend();
 
 bool YbIsAttrPrimaryKeyColumn(Relation rel, AttrNumber attnum);
 
+extern bool YbIsYsqlConnMgrEnabled();
+
 SortByDir YbGetIndexKeySortOrdering(Relation indexRel);
 
 bool YbUseUnsafeTruncate(Relation rel);
@@ -1282,5 +1284,7 @@ extern Oid YbGetDatabaseOidToIncrementCatalogVersion();
 extern bool YbRefreshMatviewInPlace();
 
 extern long YbGetPeakRssKb();
+
+extern bool YbCheckTserverResponseCacheForAuthGflags();
 
 #endif /* PG_YB_UTILS_H */

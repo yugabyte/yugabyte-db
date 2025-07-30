@@ -76,7 +76,7 @@ echo "Build script ${BASH_SOURCE[0]} is running"
 # -------------------------------------------------------------------------------------------------
 # Functions
 
-# shellcheck disable=SC2317
+# shellcheck disable=SC2317,2329
 cleanup() {
   if [[ -n ${BUILD_ROOT:-} && ${DONT_DELETE_BUILD_ROOT} == "0" ]]; then
     log "Running the script to clean up build artifacts..."
