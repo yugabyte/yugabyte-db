@@ -173,7 +173,7 @@ DEFINE_test_flag(bool, cdc_force_destroy_virtual_wal_failure, false,
                  "For testing only. When set to true, DestroyVirtualWal RPC will return RPC "
                  "failure response.");
 
-DEFINE_RUNTIME_PREVIEW_bool(enable_cdcsdk_setting_get_changes_response_byte_limit, false,
+DEFINE_RUNTIME_bool(enable_cdcsdk_setting_get_changes_response_byte_limit, true,
     "When enabled, we'll consider the proto field getchanges_resp_max_size_bytes in "
     "GetChangesRequestPB to limit the size of GetChanges response.");
 DEFINE_test_flag(bool, cdcsdk_skip_stream_active_check, false,

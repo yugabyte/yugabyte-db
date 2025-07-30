@@ -51,7 +51,7 @@ DEFINE_RUNTIME_uint64(
     "Interval in seconds at which the table list in the publication will be refreshed");
 
 DEFINE_RUNTIME_uint64(
-    cdcsdk_vwal_getchanges_resp_max_size_bytes, 1_MB,
+    cdcsdk_vwal_getchanges_resp_max_size_bytes, 4_MB,
     "Max size (in bytes) of GetChanges response for all GetChanges requests sent "
     "from Virtual WAL.");
 
