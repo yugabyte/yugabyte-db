@@ -256,8 +256,12 @@ struct EnumHash {
 template <class Enum>
 class EnumBitSetIterator {
  public:
-  typedef typename decltype(List(static_cast<Enum*>(nullptr)))::const_iterator ImplIterator;
-  typedef std::bitset<MapSize(static_cast<Enum*>(nullptr))> BitSet;
+  using value_type = Enum;
+  using difference_type = ptrdiff_t;
+  using ImplIterator = typename decltype(List(static_cast<Enum*>(nullptr)))::const_iterator;
+  using BitSet = std::bitset<MapSize(static_cast<Enum*>(nullptr))>;
+
+  EnumBitSetIterator() = default;
 
   EnumBitSetIterator(ImplIterator iter, const BitSet* set) : iter_(iter), set_(set) {
     FindSetBit();
@@ -279,16 +283,16 @@ class EnumBitSetIterator {
     return result;
   }
 
+  friend bool operator==(const EnumBitSetIterator<Enum>& lhs, const EnumBitSetIterator<Enum>& rhs) {
+    return lhs.iter_ == rhs.iter_;
+  }
+
  private:
   void FindSetBit() {
     while (iter_ != List(static_cast<Enum*>(nullptr)).end() &&
            !set_->test(std::to_underlying(*iter_))) {
       ++iter_;
     }
-  }
-
-  friend bool operator!=(const EnumBitSetIterator<Enum>& lhs, const EnumBitSetIterator<Enum>& rhs) {
-    return lhs.iter_ != rhs.iter_;
   }
 
   ImplIterator iter_;
