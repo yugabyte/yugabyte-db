@@ -1,8 +1,29 @@
+# Regression tests
 log/
 results/
 tmp_check/
 regression.diffs
 regression.out
+
+# Coverage files
+*.gcno
+*.gcda
+
+# Libraries
+*.lib
+*.a
+
+# LLVM bitcode
 *.bc
+
+# Object files
 *.o
+
+# Shared objects (inc. Windows DLLs)
+*.dll
 *.so
+*.so.*
+*.dylib
+
+# Dependencies
+.deps
