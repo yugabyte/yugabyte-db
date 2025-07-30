@@ -3120,11 +3120,27 @@ YBCommitTransactionContainingDDL()
 			GetCommandTagName(ddl_transaction_state.current_stmt_ddl_command_tag);
 
 		is_breaking_change = mode & YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE;
+		bool increment_for_conn_mgr_needed = false;
+		if (YbIsYsqlConnMgrEnabled())
+		{
+			/* We should not come here on auth backend. */
+			Assert(!yb_is_auth_backend);
+			/*
+			 * Auth backends only read shared relations. If tserver cache is used by
+			 * auth backends, we need to make sure stale tserver cache entries are
+			 * detected by incrementing the catalog version.
+			 */
+			if (ddl_transaction_state.is_global_ddl &&
+				YbCheckTserverResponseCacheForAuthGflags())
+				increment_for_conn_mgr_needed = true;
+		}
+
 		/*
 		 * We can skip incrementing catalog version if nmsgs is 0.
 		 */
 		increment_done =
-			(mode & YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT) &&
+			((mode & YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT) ||
+			 increment_for_conn_mgr_needed) &&
 			(!enable_inval_msgs || nmsgs > 0) &&
 			YbIncrementMasterCatalogVersionTableEntry(is_breaking_change,
 													  ddl_transaction_state.is_global_ddl,
@@ -7614,6 +7630,16 @@ YbIsYsqlConnMgrWarmupModeEnabled()
 }
 
 bool
+YbIsYsqlConnMgrEnabled()
+{
+	static int	cached_value = -1;
+
+	if (cached_value == -1)
+		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_enable_ysql_conn_mgr", false);
+	return cached_value;
+}
+
+bool
 YbIsAuthBackend()
 {
 	return yb_is_auth_backend;
@@ -7902,4 +7928,18 @@ YbIsAnyDependentGeneratedColPK(Relation rel, AttrNumber attnum)
 	bms_free(target_cols);
 
 	return false;
+}
+
+bool
+YbCheckTserverResponseCacheForAuthGflags()
+{
+	/*
+	 * Do not use tserver cache if we do not have incremental catalog cache
+	 * refresh because the cost of global-impact DDLs (which is needed to
+	 * use tserver cache for auth processing) is too high.
+	 */
+	return
+		*YBCGetGFlags()->ysql_enable_read_request_caching &&
+		*YBCGetGFlags()->ysql_enable_read_request_cache_for_connection_auth &&
+		yb_enable_invalidation_messages;
 }

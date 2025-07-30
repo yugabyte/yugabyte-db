@@ -430,6 +430,7 @@ typedef struct {
   const uint32_t* ysql_max_replication_slots;
   const uint32_t* yb_max_recursion_depth;
   const uint32_t* ysql_conn_mgr_stats_interval;
+  const bool*     ysql_enable_read_request_cache_for_connection_auth;
 } YbcPgGFlagsAccessor;
 
 typedef struct {
