@@ -173,6 +173,12 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
                 true /* activeRole */);
           }
 
+          if (requireYsqlMajorVersionUpgrade) {
+            createUpdateSoftwareUpdatePrevConfigTask(
+                true /* canRollbackCatalogUpgrade */,
+                false /* allTserversUpgradedToYsqlMajorVersion */);
+          }
+
           if (nodesToApply.tserversList.size() == universe.getTServers().size()) {
             // If any tservers is upgraded, then we can assume pg upgrade is completed.
             if (requireYsqlMajorVersionUpgrade) {
@@ -195,6 +201,12 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
                     && !Util.isOnPremManualProvisioning(universe)
                     && universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd,
                 requireYsqlMajorVersionUpgrade ? YsqlMajorVersionUpgradeState.IN_PROGRESS : null);
+          }
+
+          if (requireYsqlMajorVersionUpgrade) {
+            createUpdateSoftwareUpdatePrevConfigTask(
+                true /* canRollbackCatalogUpgrade */,
+                true /* allTserversUpgradedToYsqlMajorVersion */);
           }
 
           if (requireYsqlMajorVersionUpgrade) {

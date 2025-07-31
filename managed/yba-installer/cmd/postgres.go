@@ -18,10 +18,9 @@ import (
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common/shell"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/config"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/systemd"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/template"
 )
 
 /*
@@ -106,7 +105,7 @@ func (pg Postgres) getPgUserName() string {
 // Install postgres and create the yugaware DB for YBA.
 func (pg Postgres) Install() error {
 	log.Info("Starting Postgres install")
-	config.GenerateTemplate(pg)
+	template.GenerateTemplate(pg)
 	if err := pg.extractPostgresPackage(); err != nil {
 		return err
 	}
@@ -372,7 +371,7 @@ func (pg Postgres) UpgradeMajorVersion() error {
 	pg.CreateBackup()
 	pg.Stop()
 	pg.postgresDirectories = newPostgresDirectories()
-	config.GenerateTemplate(pg) // NOTE: This does not require systemd reload, start does it for us.
+	template.GenerateTemplate(pg) // NOTE: This does not require systemd reload, start does it for us.
 	if err := pg.extractPostgresPackage(); err != nil {
 		return err
 	}
@@ -402,7 +401,7 @@ func (pg Postgres) UpgradeMajorVersion() error {
 func (pg Postgres) Upgrade() error {
 	log.Info("Starting Postgres upgrade")
 	pg.postgresDirectories = newPostgresDirectories()
-	if err := config.GenerateTemplate(pg); err != nil {
+	if err := template.GenerateTemplate(pg); err != nil {
 		return err
 	}
 	if err := pg.extractPostgresPackage(); err != nil {
@@ -424,7 +423,7 @@ func (pg Postgres) Upgrade() error {
 // restored onto the new postgres install, we currently will just do a full install.
 // TODO: Implement the backup/restore of postgres.
 func (pg Postgres) MigrateFromReplicated() error {
-	config.GenerateTemplate(pg)
+	template.GenerateTemplate(pg)
 	if err := pg.extractPostgresPackage(); err != nil {
 		return fmt.Errorf("Error extracting postgres package: %s", err.Error())
 	}
@@ -573,7 +572,7 @@ func (pg Postgres) modifyPostgresConf() error {
 			return fmt.Errorf("failed to change ownership of %s: %w", pgConfPath, err)
 		}
 	}
-	logging.Info("Modified postgresql.conf at " + pgConfPath)
+	log.Info("Modified postgresql.conf at " + pgConfPath)
 	return nil
 }
 
@@ -744,7 +743,7 @@ func (pg Postgres) symlinkReplicatedDir() error {
 
 func (pg Postgres) Reconfigure() error {
 	log.Info("Reconfiguring Postgres")
-	if err := config.GenerateTemplate(pg); err != nil {
+	if err := template.GenerateTemplate(pg); err != nil {
 		return fmt.Errorf("failed to generate postgres config template: %w", err)
 	}
 	if err := pg.modifyPostgresConf(); err != nil {

@@ -18,7 +18,10 @@ public class UpdateSoftwareUpdatePrevConfig extends UniverseTaskBase {
     super(baseTaskDependencies);
   }
 
-  public static class Params extends UniverseDefinitionTaskParams {}
+  public static class Params extends UniverseDefinitionTaskParams {
+    public boolean canRollbackCatalogUpgrade;
+    public boolean allTserversUpgradedToYsqlMajorVersion;
+  }
 
   @Override
   protected Params taskParams() {
@@ -43,7 +46,10 @@ public class UpdateSoftwareUpdatePrevConfig extends UniverseTaskBase {
                 log.error(errMsg);
                 throw new RuntimeException(errMsg);
               }
-              universeDetails.prevYBSoftwareConfig.setAllTserversUpgradedToYsqlMajorVersion(true);
+              universeDetails.prevYBSoftwareConfig.setCanRollbackCatalogUpgrade(
+                  taskParams().canRollbackCatalogUpgrade);
+              universeDetails.prevYBSoftwareConfig.setAllTserversUpgradedToYsqlMajorVersion(
+                  taskParams().allTserversUpgradedToYsqlMajorVersion);
             }
           };
       // Perform the update. If unsuccessful, this will throw a runtime exception which we do not

@@ -2,7 +2,7 @@
 * Copyright (c) YugaByte, Inc.
  */
 
-package config
+package template
 
 import (
 	"bytes"

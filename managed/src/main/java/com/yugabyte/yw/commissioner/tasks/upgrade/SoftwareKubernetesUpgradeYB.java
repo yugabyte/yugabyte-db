@@ -157,6 +157,12 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
                     ysqlMajorVersionUpgrade ? YsqlMajorVersionUpgradeState.IN_PROGRESS : null));
           }
 
+          if (ysqlMajorVersionUpgrade) {
+            createUpdateSoftwareUpdatePrevConfigTask(
+                true /* canRollbackCatalogUpgrade */,
+                false /* allTserversUpgradedToYsqlMajorVersion */);
+          }
+
           if (ysqlMajorVersionUpgrade && !catalogUpgradeCompleted) {
 
             if (password != null) {
@@ -182,7 +188,11 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
                   newVersion,
                   ysqlMajorVersionUpgrade ? YsqlMajorVersionUpgradeState.IN_PROGRESS : null));
 
-          createUpdateSoftwareUpdatePrevConfigTask();
+          if (ysqlMajorVersionUpgrade) {
+            createUpdateSoftwareUpdatePrevConfigTask(
+                true /* canRollbackCatalogUpgrade */,
+                true /* allTserversUpgradedToYsqlMajorVersion */);
+          }
 
           if (ysqlMajorVersionUpgrade) {
             createGFlagsUpgradeAndUpdateMastersTaskForYSQLMajorUpgrade(

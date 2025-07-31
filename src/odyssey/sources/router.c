@@ -384,10 +384,11 @@ clean:
 		instance->yb_stats[index].user_oid = -1;
 	}
 
+	/* unref route rule */
+	od_rules_unref(route->rule);
 	od_route_unlock(route);
 
-	/* unref route rule and free route object */
-	od_rules_unref(route->rule);
+	/* free route object */
 	od_route_free(route);
 	return 0;
 done:
@@ -824,7 +825,6 @@ static od_server_t *yb_get_idle_server_to_close(od_router_t *router,
 			 * shutting down this server.
 			 */
 			if (idle_server) {
-				od_route_unlock(route);
 				od_router_unlock(router);
 				return idle_server;
 			}

@@ -7166,10 +7166,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return wasCallbackRun;
   }
 
-  public SubTaskGroup createUpdateSoftwareUpdatePrevConfigTask() {
+  public SubTaskGroup createUpdateSoftwareUpdatePrevConfigTask(
+      boolean canRollbackCatalogUpgrade, boolean allTserversUpgradedToYsqlMajorVersion) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateSoftwareUpdatePrevConfig");
     UpdateSoftwareUpdatePrevConfig.Params params = new UpdateSoftwareUpdatePrevConfig.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.canRollbackCatalogUpgrade = canRollbackCatalogUpgrade;
+    params.allTserversUpgradedToYsqlMajorVersion = allTserversUpgradedToYsqlMajorVersion;
     UpdateSoftwareUpdatePrevConfig task = createTask(UpdateSoftwareUpdatePrevConfig.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);
