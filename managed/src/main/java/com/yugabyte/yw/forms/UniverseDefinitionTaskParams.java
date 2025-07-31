@@ -1085,6 +1085,15 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty(hidden = true, value = "YbaApi Internal. OSS universe migration config")
     private UniverseMigrationConfig migrationConfig;
 
+    @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2025.2.0.0")
+    @Getter
+    @Setter
+    @ApiModelProperty(
+        value =
+            "WARNING: This is a preview API that could change. Use YBDB inbuilt YBC for K8s"
+                + " universe")
+    private boolean useYbdbInbuiltYbc = false;
+
     @Override
     public String toString() {
       StringBuilder sb = new StringBuilder();
@@ -1170,6 +1179,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       if (tserverK8SNodeResourceSpec != null) {
         newUserIntent.tserverK8SNodeResourceSpec = tserverK8SNodeResourceSpec.clone();
       }
+      newUserIntent.useClockbound = useClockbound;
+      newUserIntent.useYbdbInbuiltYbc = useYbdbInbuiltYbc;
       return newUserIntent;
     }
 

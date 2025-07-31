@@ -513,14 +513,18 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               && !(restartAllPods || instanceTypeChanged) /* usePreviousGflagsChecksum */);
 
       if (universe.isYbcEnabled()) {
-        installYbcOnThePods(
-            tserversToAdd,
-            isReadOnlyCluster,
-            ybcManager.getStableYbcVersion(),
-            isReadOnlyCluster
-                ? universe.getUniverseDetails().getReadOnlyClusters().get(0).userIntent.ybcFlags
-                : universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags,
-            newPlacement);
+        if (!universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc()) {
+          installYbcOnThePods(
+              tserversToAdd,
+              isReadOnlyCluster,
+              ybcManager.getStableYbcVersion(),
+              isReadOnlyCluster
+                  ? universe.getUniverseDetails().getReadOnlyClusters().get(0).userIntent.ybcFlags
+                  : universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags,
+              newPlacement);
+        } else {
+          log.debug("Skipping configure YBC as 'useYBDBInbuiltYbc' is enabled");
+        }
         createWaitForYbcServerTask(tserversToAdd);
       }
     }

@@ -624,7 +624,10 @@ public class Audit extends Model {
     CloneNamespace,
 
     @EnumValue("Update Additional Services State")
-    UpdateAdditionalServicesState
+    UpdateAdditionalServicesState,
+
+    @EnumValue("Set Immutable Ybc on Kubernetes Universe")
+    KubernetesToggleImmutableYbc
   }
 
   // An auto incrementing, user-friendly ID for the audit entry.

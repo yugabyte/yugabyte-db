@@ -9,6 +9,7 @@ import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
@@ -348,6 +349,14 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
     YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState =
         upgradeContext != null ? upgradeContext.getYsqlMajorVersionUpgradeState() : null;
     UUID rootCAUUID = upgradeContext != null ? upgradeContext.getRootCAUUID() : null;
+
+    // If upgradeContext is non-null and has non-null useYBDBInbuiltYbc we use that.
+    // It will be set for KubernetesToggleImmutableYbc task.
+    // Otherwise pick from universe primary cluster userIntent.
+    boolean useYBDBInbuiltYbc =
+        (upgradeContext != null && upgradeContext.getUseYBDBInbuiltYbc() != null)
+            ? upgradeContext.getUseYBDBInbuiltYbc()
+            : universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc();
     if (upgradeMasters && !tserverFirst) {
       upgradePodsTask(
           universe.getName(),
@@ -398,12 +407,16 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
 
       if (enableYbc) {
         Set<NodeDetails> primaryTservers = new HashSet<>(universe.getTServersInPrimaryCluster());
-        installYbcOnThePods(
-            primaryTservers,
-            false,
-            ybcSoftwareVersion,
-            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags);
-        performYbcAction(primaryTservers, false, "stop");
+        if (!useYBDBInbuiltYbc) {
+          installYbcOnThePods(
+              primaryTservers,
+              false,
+              ybcSoftwareVersion,
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags);
+          performYbcAction(primaryTservers, false, "stop");
+        } else {
+          log.debug("Skipping configure YBC as 'useYBDBInbuiltYbc' is enabled");
+        }
         createWaitForYbcServerTask(primaryTservers);
       }
 
@@ -444,9 +457,11 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
         if (enableYbc) {
           Set<NodeDetails> replicaTservers =
               new HashSet<NodeDetails>(universe.getNodesInCluster(asyncCluster.uuid));
-          installYbcOnThePods(
-              replicaTservers, true, ybcSoftwareVersion, asyncCluster.userIntent.ybcFlags);
-          performYbcAction(replicaTservers, true, "stop");
+          if (!useYBDBInbuiltYbc) {
+            installYbcOnThePods(
+                replicaTservers, true, ybcSoftwareVersion, asyncCluster.userIntent.ybcFlags);
+            performYbcAction(replicaTservers, true, "stop");
+          }
           createWaitForYbcServerTask(replicaTservers);
         }
       }
@@ -520,6 +535,14 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
     }
     UUID rootCAUUID = upgradeContext != null ? upgradeContext.getRootCAUUID() : null;
 
+    // If upgradeContext is non-null and has non-null useYBDBInbuiltYbc we use that.
+    // It will be set for KubernetesToggleImmutableYbc task.
+    // Otherwise pick from universe primary cluster userIntent.
+    boolean useYBDBInbuiltYbc =
+        (upgradeContext != null && upgradeContext.getUseYBDBInbuiltYbc() != null)
+            ? upgradeContext.getUseYBDBInbuiltYbc()
+            : universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc();
+
     String masterAddresses =
         KubernetesUtil.computeMasterAddresses(
             placementInfo,
@@ -556,12 +579,16 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
       if (enableYbc) {
         Set<NodeDetails> primaryTservers =
             new HashSet<NodeDetails>(universe.getTServersInPrimaryCluster());
-        installYbcOnThePods(
-            primaryTservers,
-            false,
-            ybcSoftwareVersion,
-            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags);
-        performYbcAction(primaryTservers, false, "stop");
+        if (!useYBDBInbuiltYbc) {
+          installYbcOnThePods(
+              primaryTservers,
+              false,
+              ybcSoftwareVersion,
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags);
+          performYbcAction(primaryTservers, false, "stop");
+        } else {
+          log.debug("Skipping configure YBC as 'useYBDBInbuiltYbc' is enabled");
+        }
         createWaitForYbcServerTask(primaryTservers);
       }
 
@@ -598,26 +625,32 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
               new HashSet<NodeDetails>(
                   universe.getNodesInCluster(
                       universe.getUniverseDetails().getReadOnlyClusters().get(0).uuid));
-          installYbcOnThePods(
-              replicaTservers,
-              true,
-              ybcSoftwareVersion,
-              universeDetails.getReadOnlyClusters().get(0).userIntent.ybcFlags);
-          performYbcAction(replicaTservers, true, "stop");
+          if (!useYBDBInbuiltYbc) {
+            installYbcOnThePods(
+                replicaTservers,
+                true,
+                ybcSoftwareVersion,
+                universeDetails.getReadOnlyClusters().get(0).userIntent.ybcFlags);
+            performYbcAction(replicaTservers, true, "stop");
+          }
           createWaitForYbcServerTask(replicaTservers);
         }
       }
     }
   }
 
-  protected void createNonRestartUpgradeTask(
-      Universe universe, @Nullable UpgradeContext upgradeContext) {
-    createNonRestartUpgradeTask(universe, upgradeContext, null /* postClusterUpgradeTask */);
-  }
-
   @FunctionalInterface
   protected interface PostClusterUpgradeTask {
     void executePostClusterUpgradeTask(boolean isPrimary);
+  }
+
+  protected void createNonRestartUpgradeTask(Universe universe) {
+    createNonRestartUpgradeTask(universe, null /* upgradeContext */);
+  }
+
+  protected void createNonRestartUpgradeTask(
+      Universe universe, @Nullable UpgradeContext upgradeContext) {
+    createNonRestartUpgradeTask(universe, upgradeContext, null /* postClusterUpgradeTask */);
   }
 
   protected void createNonRestartUpgradeTask(
@@ -687,6 +720,51 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
         postClusterUpgradeTask.executePostClusterUpgradeTask(false /* isPrimary */);
       }
     }
+  }
+
+  protected void createNonRestartGflagsUpgradeTask(Universe universe) {
+    createNonRestartUpgradeTask(
+        universe,
+        null /* upgradeContext */,
+        (isPrimary) -> {
+          List<Cluster> newClusters = taskParams().clusters;
+          MastersAndTservers mastersAndTservers = fetchNodes(UpgradeOption.NON_RESTART_UPGRADE);
+          Cluster cluster;
+
+          if (isPrimary) {
+            cluster = taskParams().getPrimaryCluster();
+            MastersAndTservers primaryClusterMastersAndTservers =
+                mastersAndTservers.getForCluster(
+                    universe.getUniverseDetails().getPrimaryCluster().uuid);
+
+            createSetFlagInMemoryTasks(
+                primaryClusterMastersAndTservers.mastersList,
+                ServerType.MASTER,
+                (node, params) -> {
+                  params.force = true;
+                  params.gflags =
+                      GFlagsUtil.getGFlagsForNode(node, ServerType.MASTER, cluster, newClusters);
+                });
+            createSetFlagInMemoryTasks(
+                primaryClusterMastersAndTservers.tserversList,
+                ServerType.TSERVER,
+                (node, params) -> {
+                  params.force = true;
+                  params.gflags =
+                      GFlagsUtil.getGFlagsForNode(node, ServerType.TSERVER, cluster, newClusters);
+                });
+          } else {
+            cluster = taskParams().getReadOnlyClusters().get(0);
+            createSetFlagInMemoryTasks(
+                mastersAndTservers.getForCluster(cluster.uuid).tserversList,
+                ServerType.TSERVER,
+                (node, params) -> {
+                  params.force = true;
+                  params.gflags =
+                      GFlagsUtil.getGFlagsForNode(node, ServerType.TSERVER, cluster, newClusters);
+                });
+          }
+        });
   }
 
   protected void createSoftwareUpgradePrecheckTasks(

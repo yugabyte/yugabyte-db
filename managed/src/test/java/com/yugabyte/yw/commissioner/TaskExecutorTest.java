@@ -159,7 +159,11 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.SetTablesDrConfig,
           TaskType.DecommissionNode,
           TaskType.PauseUniverse,
-          TaskType.ResumeUniverse);
+          TaskType.ResumeUniverse,
+          TaskType.UpgradeYbcGFlags,
+          TaskType.UpgradeKubernetesYbcGFlags,
+          TaskType.UpdateYbcThrottleFlags,
+          TaskType.UpdateK8sYbcThrottleFlags);
 
   @Override
   protected Application provideApplication() {

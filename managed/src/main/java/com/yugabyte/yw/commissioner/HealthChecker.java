@@ -867,6 +867,13 @@ public class HealthChecker {
         }
         nodeInfo.setClockboundEnabled(
             params.universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseClockbound());
+        nodeInfo.setYbdbInbuiltYbc(
+            params
+                .universe
+                .getUniverseDetails()
+                .getPrimaryCluster()
+                .userIntent
+                .isUseYbdbInbuiltYbc());
         nodeMetadata.add(nodeInfo);
       }
     }
@@ -1339,6 +1346,7 @@ public class HealthChecker {
     private int topKOtherProcesses;
     private int topKMemThresholdPercent;
     private boolean checkTHP;
+    private boolean ybdbInbuiltYbc = false;
     @JsonIgnore @EqualsAndHashCode.Exclude private NodeDetails nodeDetails;
     private boolean earlyoomEnabled = false;
   }

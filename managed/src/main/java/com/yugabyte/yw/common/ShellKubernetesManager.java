@@ -1201,19 +1201,23 @@ public class ShellKubernetesManager extends KubernetesManager {
         execCommand(config, commandList, false /* logCmdOutput */).processErrors();
     List<StatefulSet> stsList = deserialize(response.message, StatefulSetList.class).getItems();
     if (CollectionUtils.isNotEmpty(stsList)) {
-      serverTypeGflagsChecksumMap =
-          stsList.stream()
-              .collect(
-                  Collectors.toMap(
-                      sts -> serverTypeLabelConverter.apply(sts.getMetadata(), newNamingStyle),
-                      sts -> {
-                        Map<String, String> annotations =
-                            sts.getSpec().getTemplate().getMetadata().getAnnotations();
-                        if (annotations == null) {
-                          annotations = new HashMap<>();
-                        }
-                        return annotations.getOrDefault("checksum/gflags", "");
-                      }));
+      stsList.stream()
+          .forEach(
+              sts -> {
+                ServerType serverType =
+                    serverTypeLabelConverter.apply(sts.getMetadata(), newNamingStyle);
+                Map<String, String> annotations =
+                    sts.getSpec().getTemplate().getMetadata().getAnnotations();
+                if (annotations == null) {
+                  annotations = new HashMap<>();
+                }
+                serverTypeGflagsChecksumMap.put(
+                    serverType, annotations.getOrDefault("checksum/gflags", ""));
+                if (serverType == ServerType.TSERVER) {
+                  serverTypeGflagsChecksumMap.put(
+                      ServerType.CONTROLLER, annotations.getOrDefault("checksum/ybcGflags", ""));
+                }
+              });
     }
     return serverTypeGflagsChecksumMap;
   }

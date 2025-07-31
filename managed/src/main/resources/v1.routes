@@ -405,6 +405,7 @@ POST    /customers/:cUUID/universes/:uniUUID/audit_log_config                  c
 POST     /customers/:cUUID/universes/:uniUUID/upgrade/software/precheck        com.yugabyte.yw.controllers.UpgradeUniverseController.softwareUpgradePreCheck(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 GET     /customers/:cUUID/universes/:uniUUID/upgrade/finalize/info             com.yugabyte.yw.controllers.UpgradeUniverseController.finalizeUpgradeInfo(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/upgrade/proxy_config              com.yugabyte.yw.controllers.UpgradeUniverseController.updateProxyConfig(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
+POST    /customers/:cUUID/universes/:uniUUID/upgrade/k8s_immutable_ybc         com.yugabyte.yw.controllers.UpgradeUniverseController.kubernetesToggleImmutableYbc(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 
 # Table Management API
 GET     /customers/:cUUID/universes/:uniUUID/tables                            com.yugabyte.yw.controllers.TablesController.listTables(cUUID: java.util.UUID, uniUUID: java.util.UUID, includeParentTableInfo: java.lang.Boolean ?= false, excludeColocatedTables: java.lang.Boolean ?= false, includeColocatedParentTables: java.lang.Boolean ?= true, xClusterSupportedOnly: java.lang.Boolean ?= false)
@@ -627,6 +628,7 @@ PUT /customers/:cUUID/universes/:uniUUID/ybc/upgrade/gflags                    c
 # YB-Controller throttle parameters
 GET  /customers/:cUUID/universes/:uniUUID/ybc_throttle_params                  com.yugabyte.yw.controllers.BackupsController.getThrottleParams(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST /customers/:cUUID/universes/:uniUUID/ybc_throttle_params                  com.yugabyte.yw.controllers.BackupsController.setThrottleParams(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
+POST /customers/:cUUID/universes/:uniUUID/ybc_throttle_params_async            com.yugabyte.yw.controllers.YbcController.setThrottleParamsAsync(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 
 # Customer Licenses Upload API
 POST    /customers/:cUUID/licenses                                             com.yugabyte.yw.controllers.CustomerLicenseController.upload(cUUID: java.util.UUID, request: Request)

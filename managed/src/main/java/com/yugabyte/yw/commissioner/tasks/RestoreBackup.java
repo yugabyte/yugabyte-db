@@ -16,6 +16,7 @@ import java.util.Arrays;
 import java.util.concurrent.CancellationException;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 public class RestoreBackup extends UniverseTaskBase {
@@ -51,13 +52,17 @@ public class RestoreBackup extends UniverseTaskBase {
 
       try {
 
-        if (isFirstTry()) {
+        if (isFirstTry()
+            && !universe
+                .getUniverseDetails()
+                .getPrimaryCluster()
+                .userIntent
+                .isUseYbdbInbuiltYbc()) {
           backupHelper.validateRestoreOverwrites(taskParams().backupStorageInfoList, universe);
           if (universe.isYbcEnabled()) {
-            if (!universe
-                .getUniverseDetails()
-                .getYbcSoftwareVersion()
-                .equals(ybcManager.getStableYbcVersion())) {
+            if (!StringUtils.equals(
+                universe.getUniverseDetails().getYbcSoftwareVersion(),
+                ybcManager.getStableYbcVersion())) {
               if (universe
                   .getUniverseDetails()
                   .getPrimaryCluster()

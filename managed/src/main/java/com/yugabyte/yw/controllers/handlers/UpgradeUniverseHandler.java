@@ -33,6 +33,7 @@ import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
+import com.yugabyte.yw.forms.KubernetesToggleImmutableYbcParams;
 import com.yugabyte.yw.forms.ProxyConfigUpdateParams;
 import com.yugabyte.yw.forms.QueryLogConfigParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
@@ -916,6 +917,17 @@ public class UpgradeUniverseHandler {
     return submitUpgradeTask(
         TaskType.UpdateProxyConfig,
         CustomerTask.TaskType.UpdateProxyConfig,
+        requestParams,
+        customer,
+        universe);
+  }
+
+  public UUID kubernetesToggleImmutableYbc(
+      KubernetesToggleImmutableYbcParams requestParams, Customer customer, Universe universe) {
+    requestParams.verifyParams(universe, true);
+    return submitUpgradeTask(
+        TaskType.KubernetesToggleImmutableYbc,
+        CustomerTask.TaskType.KubernetesToggleImmutableYbc,
         requestParams,
         customer,
         universe);

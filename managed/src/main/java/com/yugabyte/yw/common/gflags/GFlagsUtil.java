@@ -570,7 +570,6 @@ public class GFlagsUtil {
             : node.cloudInfo.private_ip;
     Map<String, String> ybcFlags = new TreeMap<>();
     ybcFlags.put("v", "1");
-    ybcFlags.put("hardware_concurrency", Integer.toString(hardwareConcurrency));
     ybcFlags.put("server_address", serverAddress);
     ybcFlags.put("server_port", Integer.toString(node.ybControllerRpcPort));
     ybcFlags.put("log_dir", K8S_YBC_LOG_SUBDIR);
@@ -587,6 +586,32 @@ public class GFlagsUtil {
     ybcFlags.put("ycqlsh", ybHomeDir + YCQLSH_PATH);
     ybcFlags.put("log_filename", YBC_LOG_FILENAME);
     ybcFlags.put("log_utc_time", "true");
+
+    ybcFlags.putAll(
+        getCommonYbcGflags(confGetter, universe, Integer.toString(hardwareConcurrency)));
+    if (MapUtils.isNotEmpty(userIntent.ybcFlags)) {
+      ybcFlags.putAll(userIntent.ybcFlags);
+    }
+    if (EncryptionInTransitUtil.isRootCARequired(universeDetails)) {
+      ybcFlags.put("certs_dir_name", "/opt/certs/yugabyte");
+      ybcFlags.put("cert_node_filename", node.cloudInfo.private_ip);
+    }
+    ybcFlags.putAll(customYbcGflags);
+    return ybcFlags;
+  }
+
+  /**
+   * YBC gflags used in both immutable/non-immutable case
+   *
+   * @param confGetter
+   * @param universe
+   * @param hardwareConcurrencyStr
+   * @return Map of YBC gflags
+   */
+  public static Map<String, String> getCommonYbcGflags(
+      RuntimeConfGetter confGetter, Universe universe, String hardwareConcurrencyStr) {
+    Map<String, String> ybcFlags = new TreeMap<>();
+    ybcFlags.put("hardware_concurrency", hardwareConcurrencyStr);
     ybcFlags.put(
         YBC_DISK_IO_REQUEST_SIZE,
         Long.toString(
@@ -603,15 +628,6 @@ public class GFlagsUtil {
         Long.toString(
             confGetter.getConfForScope(
                 universe, UniverseConfKeys.defaultDiskIoWriteBytesPerSecond)));
-
-    if (MapUtils.isNotEmpty(userIntent.ybcFlags)) {
-      ybcFlags.putAll(userIntent.ybcFlags);
-    }
-    if (EncryptionInTransitUtil.isRootCARequired(universeDetails)) {
-      ybcFlags.put("certs_dir_name", "/opt/certs/yugabyte");
-      ybcFlags.put("cert_node_filename", node.cloudInfo.private_ip);
-    }
-    ybcFlags.putAll(customYbcGflags);
     return ybcFlags;
   }
 
