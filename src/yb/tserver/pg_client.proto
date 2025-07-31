@@ -130,7 +130,9 @@ service PgClientService {
       returns (PgReleaseAdvisoryLockResponsePB);
 
   rpc AcquireObjectLock(PgAcquireObjectLockRequestPB)
-      returns (PgAcquireObjectLockResponsePB);
+      returns (PgAcquireObjectLockResponsePB) {
+    option (yb.rpc.lightweight_method).sides = PROXY;
+  }
 
   rpc ExportTxnSnapshot(PgExportTxnSnapshotRequestPB)
       returns (PgExportTxnSnapshotResponsePB);
@@ -209,6 +211,11 @@ message PgRenameTablePB {
   string database_name = 1;
   string table_name = 2;
   string schema_name = 3;
+}
+
+enum PgSharedExchangeReqType {
+  PERFORM = 0;
+  ACQUIRE_OBJECT_LOCK = 1;
 }
 
 // Available replica identity modes for use in CDC

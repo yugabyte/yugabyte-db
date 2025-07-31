@@ -120,8 +120,8 @@ class PgClientSession final {
   void SetupSharedObjectLocking(PgSessionLockOwnerTagShared& object_lock_shared);
 
   void Perform(
-        PgPerformRequestPB& req, PgPerformResponsePB& resp, rpc::RpcContext&& context,
-        const PgTablesQueryResult& tables);
+      PgPerformRequestPB& req, PgPerformResponsePB& resp, rpc::RpcContext&& context,
+      const PgTablesQueryResult& tables);
 
   void ProcessSharedRequest(size_t size, SharedExchange* exchange);
 
@@ -151,7 +151,8 @@ class PgClientSession final {
   BOOST_PP_SEQ_FOR_EACH(
         PG_CLIENT_SESSION_METHOD_DECLARE, (Status, rpc::RpcContext*), PG_CLIENT_SESSION_METHODS);
   BOOST_PP_SEQ_FOR_EACH(
-        PG_CLIENT_SESSION_METHOD_DECLARE, (void, rpc::RpcContext), PG_CLIENT_SESSION_ASYNC_METHODS);
+        PG_CLIENT_SESSION_METHOD_DECLARE,
+        (void, rpc::RpcContext&&), PG_CLIENT_SESSION_ASYNC_METHODS);
 
   #undef PG_CLIENT_SESSION_METHOD_DECLARE
   #undef PG_CLIENT_SESSION_METHOD_DECLARE_IMPL
