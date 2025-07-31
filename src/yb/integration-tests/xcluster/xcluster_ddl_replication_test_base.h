@@ -55,12 +55,6 @@ class XClusterDDLReplicationTestBase : public XClusterYsqlTestBase {
 
   std::string GetTempDir(const std::string& subdir) { return tmp_dir_ / subdir; }
 
-  Result<std::shared_ptr<client::YBTable>> GetProducerTable(
-      const client::YBTableName& producer_table_name);
-
-  Result<std::shared_ptr<client::YBTable>> GetConsumerTable(
-      const client::YBTableName& producer_table_name);
-
   void InsertRowsIntoProducerTableAndVerifyConsumer(
       const client::YBTableName& producer_table_name, uint32_t start = 0, uint32_t end = 50,
       const xcluster::ReplicationGroupId replication_group = kReplicationGroupId);
