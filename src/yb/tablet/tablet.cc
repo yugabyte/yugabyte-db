@@ -2530,7 +2530,7 @@ Status Tablet::WritePostApplyMetadata(std::span<const PostApplyTransactionMetada
 }
 
 // We batch this as some tx could be very large and may not fit in one batch
-Status Tablet::GetIntents(
+Status Tablet::GetIntentsForCDC(
     const TransactionId& id, std::vector<docdb::IntentKeyValueForCDC>* key_value_intents,
     docdb::ApplyTransactionState* stream_state) {
   auto scoped_read_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
@@ -2538,8 +2538,8 @@ Status Tablet::GetIntents(
 
   docdb::ApplyTransactionState new_stream_state;
 
-  new_stream_state = VERIFY_RESULT(
-      docdb::GetIntentsBatch(id, &key_bounds_, stream_state, intents_db_.get(), key_value_intents));
+  new_stream_state = VERIFY_RESULT(docdb::GetIntentsBatchForCDC(
+      id, &key_bounds_, stream_state, intents_db_.get(), key_value_intents));
   stream_state->key = new_stream_state.key;
   stream_state->write_id = new_stream_state.write_id;
 
