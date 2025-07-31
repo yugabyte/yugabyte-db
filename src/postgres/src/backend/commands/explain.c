@@ -268,8 +268,6 @@ const char *yb_metric_gauge_label[] = {
 		BUILD_METRIC_LABEL("rocksdb_block_cache_data_miss"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_DATA_HIT] =
 		BUILD_METRIC_LABEL("rocksdb_block_cache_data_hit"),
-	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_BYTES_READ] =
-		BUILD_METRIC_LABEL("rocksdb_block_cache_bytes_read"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_BYTES_WRITE] =
 		BUILD_METRIC_LABEL("rocksdb_block_cache_bytes_write"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOOM_FILTER_USEFUL] =
@@ -398,16 +396,12 @@ const char *yb_metric_gauge_label[] = {
 		BUILD_METRIC_LABEL("rocksdb_block_cache_single_touch_hit"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_SINGLE_TOUCH_ADD] =
 		BUILD_METRIC_LABEL("rocksdb_block_cache_single_touch_add"),
-	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_SINGLE_TOUCH_BYTES_READ] =
-		BUILD_METRIC_LABEL("rocksdb_block_cache_single_touch_bytes_read"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_SINGLE_TOUCH_BYTES_WRITE] =
 		BUILD_METRIC_LABEL("rocksdb_block_cache_single_touch_bytes_write"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_MULTI_TOUCH_HIT] =
 		BUILD_METRIC_LABEL("rocksdb_block_cache_multi_touch_hit"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_MULTI_TOUCH_ADD] =
 		BUILD_METRIC_LABEL("rocksdb_block_cache_multi_touch_add"),
-	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_MULTI_TOUCH_BYTES_READ] =
-		BUILD_METRIC_LABEL("rocksdb_block_cache_multi_touch_bytes_read"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_MULTI_TOUCH_BYTES_WRITE] =
 		BUILD_METRIC_LABEL("rocksdb_block_cache_multi_touch_bytes_write"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_MISS] =
@@ -430,8 +424,6 @@ const char *yb_metric_gauge_label[] = {
 		BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_data_miss"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_DATA_HIT] =
 		BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_data_hit"),
-	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_BYTES_READ] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_bytes_read"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_BYTES_WRITE] =
 		BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_bytes_write"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOOM_FILTER_USEFUL] =
@@ -560,16 +552,12 @@ const char *yb_metric_gauge_label[] = {
 		BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_single_touch_hit"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_SINGLE_TOUCH_ADD] =
 		BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_single_touch_add"),
-	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_SINGLE_TOUCH_BYTES_READ] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_single_touch_bytes_read"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_SINGLE_TOUCH_BYTES_WRITE] =
 		BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_single_touch_bytes_write"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_MULTI_TOUCH_HIT] =
 		BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_multi_touch_hit"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_MULTI_TOUCH_ADD] =
 		BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_multi_touch_add"),
-	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_MULTI_TOUCH_BYTES_READ] =
-		BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_multi_touch_bytes_read"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_MULTI_TOUCH_BYTES_WRITE] =
 		BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_multi_touch_bytes_write"),
 	[YB_STORAGE_GAUGE_ACTIVE_WRITE_QUERY_OBJECTS] =
