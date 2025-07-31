@@ -21,6 +21,10 @@ YugabyteDB's Read Committed isolation provides slightly stronger guarantees than
 
 Note that retries for the statement in YugabyteDB's Read Committed isolation are limited to the per-session YSQL configuration parameter `yb_max_query_layer_retries`. To set it at the cluster level, use the `ysql_pg_conf_csv` TServer flag. If a serialization error isn't resolved within `yb_max_query_layer_retries`, the error will be returned to the client.
 
+To enable Read committed, you must set the YB-TServer flag [yb_enable_read_committed_isolation](../../../reference/configuration/yb-tserver/#yb-enable-read-committed-isolation) to `true`. By default this flag is `false` and in this case the Read committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot isolation).
+
+Refer to the [Usage](#usage) section to start a Read Committed transaction after enabling the flag.
+
 ## Implementation and semantics (as in PostgreSQL)
 
 The following two key semantics set apart Read Committed isolation from Repeatable Read in PostgreSQL (refer [Read Committed level](https://www.postgresql.org/docs/13/transaction-iso.html#XACT-READ-COMMITTED)):
