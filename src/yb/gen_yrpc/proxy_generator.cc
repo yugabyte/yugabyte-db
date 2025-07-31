@@ -179,7 +179,8 @@ void ProxyGenerator::Source(YBPrinter printer, const google::protobuf::FileDescr
           "  static ::yb::rpc::RemoteMethod method(\"$full_service_name$\", \"$rpc_name$\");\n"
           "  return proxy().SyncRequest(\n"
           "      &method, metrics<$service_method_count$>(static_cast<size_t>("
-              "$service_method_enum$::$metric_enum_key$)), req, resp, controller);\n"
+              "$service_method_enum$::$metric_enum_key$)), req, resp, controller, "
+              "$send_metadata$);\n"
           "}\n"
           "\n"
           "void $service_name$Proxy::$rpc_name$Async(\n"
@@ -189,7 +190,7 @@ void ProxyGenerator::Source(YBPrinter printer, const google::protobuf::FileDescr
           "  proxy().AsyncRequest(\n"
           "      &method, metrics<$service_method_count$>(static_cast<size_t>("
               "$service_method_enum$::$metric_enum_key$)), req, resp, controller, "
-              "std::move(callback));\n"
+              "std::move(callback), $send_metadata$);\n"
           "}\n"
           "\n"
       );

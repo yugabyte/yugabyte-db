@@ -40,13 +40,16 @@ import "yb/common/opid.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
 import "yb/rpc/rpc_header.proto";
+import "yb/rpc/service.proto";
 import "yb/tablet/metadata.proto";
 
 // RaftConfig remote bootstrap RPC calls.
 service RemoteBootstrapService {
   // Establish a remote bootstrap session.
   rpc BeginRemoteBootstrapSession(BeginRemoteBootstrapSessionRequestPB)
-      returns (BeginRemoteBootstrapSessionResponsePB);
+      returns (BeginRemoteBootstrapSessionResponsePB) {
+    option (yb.rpc.send_metadata) = true;
+  }
 
   // Establish a remote snapshot transfer session.
   rpc BeginRemoteSnapshotTransferSession(
@@ -59,7 +62,9 @@ service RemoteBootstrapService {
 
   // Fetch data (blocks, logs) from the server.
   rpc FetchData(FetchDataRequestPB)
-      returns (FetchDataResponsePB);
+      returns (FetchDataResponsePB) {
+    option (yb.rpc.send_metadata) = true;
+  }
 
   // End a remote bootstrap session, allow server to release resources.
   rpc EndRemoteBootstrapSession(EndRemoteBootstrapSessionRequestPB)
@@ -153,7 +158,7 @@ message BeginRemoteBootstrapSessionRequestPB {
   // connection info of the tablet leader peer for the corresponding tablet_id
   optional ServerRegistrationPB tablet_leader_conn_info = 3;
 
-  optional AshMetadataPB ash_metadata = 4;
+  reserved 4; // ASH metadata is now passed in RequestHeader PB
 }
 
 message BeginRemoteBootstrapSessionResponsePB {
@@ -257,7 +262,7 @@ message FetchDataRequestPB {
   // requested max, the server will use its own max.
   optional int64 max_length = 4 [default = 0];
 
-  optional AshMetadataPB ash_metadata = 5;
+  reserved 5; // ASH metadata is now passed in RequestHeaderPB
 }
 
 // A chunk of data (a slice of a block, file, etc).

@@ -276,7 +276,7 @@ inline std::optional<Bound> MakeBound(YbcPgBoundType type, uint16_t value) {
 
 void InitPgGateImpl(
     YbcPgTypeEntities type_entities, const YbcPgCallbacks& pg_callbacks,
-    const YbcPgAshConfig& ash_config, std::optional<uint64_t> session_id) {
+    YbcPgAshConfig& ash_config, std::optional<uint64_t> session_id) {
   // TODO: We should get rid of hybrid clock usage in YSQL backend processes (see #16034).
   // However, this is added to allow simulating and testing of some known bugs until we remove
   // HybridClock usage.
@@ -565,7 +565,7 @@ extern "C" {
 
 void YBCInitPgGate(
     YbcPgTypeEntities type_entities, const YbcPgCallbacks *pg_callbacks, uint64_t *session_id,
-    const YbcPgAshConfig *ash_config) {
+    YbcPgAshConfig *ash_config) {
   CHECK_OK(WithMaskedYsqlSignals([&type_entities, pg_callbacks,  session_id, ash_config] {
     InitPgGateImpl(
         type_entities, *pg_callbacks, *ash_config,

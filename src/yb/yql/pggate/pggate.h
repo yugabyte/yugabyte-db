@@ -113,7 +113,7 @@ class PgApiImpl {
 
   PgApiImpl(
       YbcPgTypeEntities type_entities, const YbcPgCallbacks& pg_callbacks,
-      std::optional<uint64_t> session_id, const YbcPgAshConfig& ash_config);
+      std::optional<uint64_t> session_id, YbcPgAshConfig& ash_config);
 
   ~PgApiImpl();
 
@@ -931,6 +931,8 @@ class PgApiImpl {
   YbctidReaderProvider ybctid_reader_provider_;
   PgFKReferenceCache fk_reference_cache_;
   ExplicitRowLockBuffer explicit_row_lock_buffer_;
+
+  ash::WaitStateInfoPtr wait_state_;
 };
 
 }  // namespace yb::pggate

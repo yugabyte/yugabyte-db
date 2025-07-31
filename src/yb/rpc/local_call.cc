@@ -38,7 +38,7 @@ LocalOutboundCall::LocalOutboundCall(
     ThreadPool* callback_thread_pool)
     : OutboundCall(remote_method, outbound_call_metrics, /* method_metrics= */ nullptr,
                    response_storage, controller, std::move(rpc_metrics), std::move(callback),
-                   callback_thread_pool) {
+                   callback_thread_pool, /* metadata_serializer_factory= */ nullptr) {
   TRACE_TO(trace_, "LocalOutboundCall");
 }
 
@@ -55,7 +55,8 @@ void LocalOutboundCall::Serialize(ByteBlocks* output) {
   LOG(FATAL) << "Local call should not require serialization";
 }
 
-const std::shared_ptr<LocalYBInboundCall>& LocalOutboundCall::CreateLocalInboundCall() {
+const std::shared_ptr<LocalYBInboundCall>& LocalOutboundCall::CreateLocalInboundCall(
+    CallStateListenerFactory* call_state_listener_factory) {
   DCHECK(inbound_call_.get() == nullptr);
   const MonoDelta timeout = controller()->timeout();
   const CoarseTimePoint deadline =
@@ -63,7 +64,8 @@ const std::shared_ptr<LocalYBInboundCall>& LocalOutboundCall::CreateLocalInbound
 
   auto outbound_call = std::static_pointer_cast<LocalOutboundCall>(shared_from(this));
   inbound_call_ = InboundCall::Create<LocalYBInboundCall>(
-      &rpc_metrics(), remote_method(), outbound_call, deadline);
+      &rpc_metrics(), remote_method(), outbound_call, deadline,
+      call_state_listener_factory);
   return inbound_call_;
 }
 
@@ -79,8 +81,10 @@ LocalYBInboundCall::LocalYBInboundCall(
     RpcMetrics* rpc_metrics,
     const RemoteMethod& remote_method,
     std::weak_ptr<LocalOutboundCall> outbound_call,
-    CoarseTimePoint deadline)
-    : YBInboundCall(rpc_metrics, remote_method), outbound_call_(outbound_call),
+    CoarseTimePoint deadline,
+    CallStateListenerFactory* call_state_listener_factory)
+    : YBInboundCall(rpc_metrics, remote_method, call_state_listener_factory),
+      outbound_call_(outbound_call),
       deadline_(deadline) {
   UpdateWaitStateInfo();
 }
@@ -118,6 +122,12 @@ void LocalYBInboundCall::Respond(AnyMessageConstPtr resp, bool is_success) {
     call->SetFailed(std::move(status), std::move(error));
   }
   NotifyTransferred(Status::OK(), /* ConnectionPtr */ nullptr);
+}
+
+void LocalYBInboundCall::UpdateWaitStateInfo() {
+  if (auto* listener = call_state_listener()) {
+    listener->UpdateInfo(IsLocalCall(), method_name().ToBuffer());
+  }
 }
 
 Status LocalYBInboundCall::ParseParam(RpcCallParams* params) {

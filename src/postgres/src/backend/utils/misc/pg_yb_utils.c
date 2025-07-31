@@ -1059,6 +1059,8 @@ typedef struct YbSessionStats
 
 static YbSessionStats yb_session_stats = {0};
 
+static YbcPgAshConfig ash_config;
+
 static void
 IpAddressToBytes(YbcPgAshConfig *ash_config)
 {
@@ -1110,10 +1112,8 @@ YBInitPostgresBackend(const char *program_name, uint64_t *session_id)
 			.CheckUserMap = &check_usermap,
 			.PgstatReportWaitStart = &yb_pgstat_report_wait_start
 		};
-		YbcPgAshConfig ash_config = {
-			.metadata = &MyProc->yb_ash_metadata,
-			.yb_enable_ash = &yb_enable_ash
-		};
+
+		ash_config.metadata = &MyProc->yb_ash_metadata;
 
 		IpAddressToBytes(&ash_config);
 		YBCInitPgGate(YbGetTypeTable(), &callbacks, session_id, &ash_config);

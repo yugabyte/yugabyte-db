@@ -37,6 +37,8 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/ash/rpc_wait_state.h"
+
 #include "yb/gutil/stl_util.h"
 
 #include "yb/rpc/proxy.h"
@@ -76,6 +78,23 @@ using namespace std::chrono_literals;
 namespace yb {
 namespace rpc {
 
+namespace {
+
+ash::AshMetadata GenerateRandomMetadata() {
+  return ash::AshMetadata{
+      .root_request_id{Uuid::Generate()},
+      .top_level_node_id{Uuid::Generate()},
+      .query_id = RandomUniformInt<uint64_t>(),
+      .pid = RandomUniformInt<pid_t>(),
+      .database_id = RandomUniformInt<uint32_t>(),
+      .rpc_request_id = RandomUniformInt<int64_t>(),
+      .client_host_port = HostPort(
+          Format("host-$0", RandomUniformInt<uint16_t>(0, 10)),
+          RandomUniformInt<uint16_t>())};
+}
+
+} // namespace
+
 using base::subtle::NoBarrier_Load;
 
 using yb::rpc_test::AddRequestPB;
@@ -98,6 +117,7 @@ using std::string;
 
 using rpc_test::AddRequestPartialPB;
 using rpc_test::CalculatorServiceProxy;
+using rpc_test::AshTestServiceProxy;
 
 class RpcStubTest : public RpcTestBase {
  public:
@@ -105,6 +125,10 @@ class RpcStubTest : public RpcTestBase {
     RpcTestBase::SetUp();
     StartTestServerWithGeneratedCode(&server_hostport_);
     client_messenger_ = CreateAutoShutdownMessengerHolder("Client");
+    if (FLAGS_ysql_yb_enable_ash) {
+      client_messenger_->SetMetadataSerializerFactory(
+          std::make_unique<ash::MetadataSerializerFactory>());
+    }
     proxy_cache_ = std::make_unique<ProxyCache>(client_messenger_.get());
   }
 
@@ -1174,6 +1198,138 @@ TEST_F(RpcStubTest, StuckOutboundCallWithClosedConnection) {
   ASSERT_TRUE(controller.finished());
   auto s = controller.status();
   ASSERT_TRUE(s.IsTimedOut()) << s.ToString();
+}
+
+// Parameterized test for ASH functionality
+YB_DEFINE_ENUM(AshServiceType, (kCalculatorService)(kAshTestService));
+
+class RpcStubAshTest : public RpcStubTest,
+                       public ::testing::WithParamInterface<AshServiceType> {
+ public:
+  void SetUp() override {
+    RpcStubTest::SetUp();
+    service_type_ = GetParam();
+  }
+
+ protected:
+  template<typename ProxyType>
+  std::unique_ptr<ProxyType> CreateProxy() {
+    return std::make_unique<ProxyType>(proxy_cache_.get(), server_hostport_);
+  }
+
+  void TestAshMethod() {
+    RpcController controller;
+    controller.set_timeout(30s);
+
+    auto metadata = GenerateRandomMetadata();
+    const auto wait_state = ash::WaitStateInfo::CreateIfAshIsEnabled<ash::WaitStateInfo>();
+    wait_state->UpdateMetadata(metadata);
+    ADOPT_WAIT_STATE(wait_state);
+
+    auto random_int = RandomUniformInt<int32_t>();
+
+    rpc_test::AshRequestPB req;
+    rpc_test::AshResponsePB resp;
+    req.set_value(random_int);
+
+    if (service_type_ == AshServiceType::kCalculatorService) {
+      auto proxy = CreateProxy<CalculatorServiceProxy>();
+      ASSERT_OK(proxy->Ash(req, &resp, &controller));
+    } else {
+      auto proxy = CreateProxy<AshTestServiceProxy>();
+      ASSERT_OK(proxy->Ash(req, &resp, &controller));
+    }
+
+    ASSERT_EQ(random_int, resp.value());
+    VerifyMetadata(metadata, ash::AshMetadata::FromPB(resp.ash_metadata()));
+  }
+
+  void TestAshLightweightMethod() {
+    RpcController controller;
+    controller.set_timeout(30s);
+
+    auto metadata = GenerateRandomMetadata();
+    const auto wait_state = ash::WaitStateInfo::CreateIfAshIsEnabled<ash::WaitStateInfo>();
+    wait_state->UpdateMetadata(metadata);
+    ADOPT_WAIT_STATE(wait_state);
+
+    auto random_int = RandomUniformInt<int32_t>();
+
+    rpc_test::AshLightweightRequestPB req;
+    rpc_test::AshLightweightResponsePB resp;
+    req.set_value(random_int);
+
+    if (service_type_ == AshServiceType::kCalculatorService) {
+      auto proxy = CreateProxy<CalculatorServiceProxy>();
+      ASSERT_OK(proxy->AshLightweight(req, &resp, &controller));
+    } else {
+      auto proxy = CreateProxy<AshTestServiceProxy>();
+      ASSERT_OK(proxy->AshLightweight(req, &resp, &controller));
+    }
+
+    ASSERT_EQ(random_int, resp.value());
+    VerifyMetadata(metadata, ash::AshMetadata::FromPB(resp.ash_metadata()));
+  }
+
+  void VerifyMetadata(const ash::AshMetadata& expected, const ash::AshMetadata& actual) {
+    ASSERT_EQ(expected.root_request_id, actual.root_request_id);
+    ASSERT_EQ(expected.top_level_node_id, actual.top_level_node_id);
+    ASSERT_EQ(expected.query_id, actual.query_id);
+    ASSERT_EQ(expected.pid, actual.pid);
+    ASSERT_EQ(expected.database_id, actual.database_id);
+    ASSERT_EQ(expected.client_host_port, actual.client_host_port);
+  }
+
+  AshServiceType service_type_;
+};
+
+TEST_P(RpcStubAshTest, Ash) {
+  TestAshMethod();
+}
+
+TEST_P(RpcStubAshTest, AshLightweight) {
+  TestAshLightweightMethod();
+}
+
+INSTANTIATE_TEST_CASE_P(
+    ServiceTypes,
+    RpcStubAshTest,
+    ::testing::Values(
+        AshServiceType::kCalculatorService,
+        AshServiceType::kAshTestService
+    )
+);
+
+TEST_F(RpcStubTest, NoAsh) {
+  AshTestServiceProxy proxy(proxy_cache_.get(), server_hostport_);
+
+  RpcController controller;
+  controller.set_timeout(30s);
+
+  rpc_test::NoAshRequestPB req;
+  rpc_test::NoAshResponsePB resp;
+
+  auto metadata = GenerateRandomMetadata();
+  const auto wait_state = ash::WaitStateInfo::CreateIfAshIsEnabled<ash::WaitStateInfo>();
+  wait_state->UpdateMetadata(metadata);
+  ADOPT_WAIT_STATE(wait_state);
+
+  auto random_int = RandomUniformInt<int32_t>();
+  req.set_value(random_int);
+  ASSERT_OK(proxy.NoAsh(req, &resp, &controller));
+
+  ASSERT_EQ(random_int, resp.value());
+  auto resp_metadata = ash::AshMetadata::FromPB(resp.ash_metadata());
+
+  // NoAsh should return empty metadata
+  auto expected = ash::AshMetadata{};
+  auto actual = ash::AshMetadata::FromPB(resp.ash_metadata());
+  ASSERT_EQ(expected.root_request_id, actual.root_request_id);
+  ASSERT_EQ(expected.top_level_node_id, actual.top_level_node_id);
+  ASSERT_EQ(expected.query_id, actual.query_id);
+  ASSERT_EQ(expected.pid, actual.pid);
+  ASSERT_EQ(expected.database_id, actual.database_id);
+  ASSERT_EQ(expected.client_host_port, actual.client_host_port);
 }
 
 } // namespace rpc

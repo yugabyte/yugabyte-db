@@ -24,6 +24,9 @@
 
 #include <ev++.h>
 
+#include "yb/ash/pg_wait_state.h"
+#include "yb/ash/rpc_wait_state.h"
+
 #include "yb/client/client_utils.h"
 #include "yb/client/table_info.h"
 
@@ -586,7 +589,7 @@ Result<dockv::KeyBytes> PgApiImpl::TupleIdBuilder::Build(
 
 PgApiImpl::PgApiImpl(
     YbcPgTypeEntities type_entities, const YbcPgCallbacks& callbacks,
-    std::optional<uint64_t> session_id, const YbcPgAshConfig& ash_config)
+    std::optional<uint64_t> session_id, YbcPgAshConfig& ash_config)
     : pg_types_(type_entities),
       metric_registry_(new MetricRegistry()),
       metric_entity_(METRIC_ENTITY_server.Instantiate(metric_registry_.get(), "yb.pggate")),
@@ -601,7 +604,7 @@ PgApiImpl::PgApiImpl(
               ash::WaitStateCode wait_event, ash::PggateRPC pggate_rpc) {
             return PgWaitEventWatcher{starter, wait_event, pggate_rpc};
       }),
-      pg_client_(ash_config, wait_event_watcher_),
+      pg_client_(wait_event_watcher_),
       clock_(new server::HybridClock()),
       pg_txn_manager_(new PgTxnManager(&pg_client_, clock_, pg_callbacks_)),
       ybctid_reader_provider_(pg_session_),
@@ -611,6 +614,10 @@ PgApiImpl::PgApiImpl(
   // This is an RCU object, but there are no concurrent updates on PG side, only on tserver, so
   // it's safe to just save the pointer.
   tserver_shared_object_ = PgSharedMemoryManager().SharedData().get();
+
+  std::memcpy(ash_config.top_level_node_id, tserver_shared_object_->tserver_uuid(), kUuidSize);
+  wait_state_ = ash::WaitStateInfo::CreateIfAshIsEnabled<ash::PgWaitStateInfo>(ash_config);
+  ash::WaitStateInfo::SetCurrentWaitState(wait_state_);
 
   CHECK_OK(interrupter_->Start());
   CHECK_OK(clock_->Init());

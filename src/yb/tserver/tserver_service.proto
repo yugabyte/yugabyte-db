@@ -48,8 +48,12 @@ import "yb/tserver/tserver.proto";
 import "yb/tserver/tserver_types.proto";
 
 service TabletServerService {
-  rpc Write(WriteRequestPB) returns (WriteResponsePB);
-  rpc Read(ReadRequestPB) returns (ReadResponsePB);
+  rpc Write(WriteRequestPB) returns (WriteResponsePB) {
+    option (yb.rpc.send_metadata) = true;
+  }
+  rpc Read(ReadRequestPB) returns (ReadResponsePB) {
+    option (yb.rpc.send_metadata) = true;
+  }
   rpc VerifyTableRowRange(VerifyTableRowRangeRequestPB)
       returns (VerifyTableRowRangeResponsePB);
 
@@ -67,7 +71,9 @@ service TabletServerService {
       returns (ListTabletsForTabletServerResponsePB);
 
   rpc ImportData(ImportDataRequestPB) returns (ImportDataResponsePB);
-  rpc UpdateTransaction(UpdateTransactionRequestPB) returns (UpdateTransactionResponsePB);
+  rpc UpdateTransaction(UpdateTransactionRequestPB) returns (UpdateTransactionResponsePB) {
+    option (yb.rpc.send_metadata) = true;
+  }
   // Returns transaction status at coordinator, i.e. PENDING, ABORTED, COMMITTED etc.
   rpc GetTransactionStatus(GetTransactionStatusRequestPB) returns (GetTransactionStatusResponsePB);
   // Returns the oldest transactions (older than a specified age) from a specified status tablet.
@@ -80,7 +86,9 @@ service TabletServerService {
   // aborted.
   rpc GetTransactionStatusAtParticipant(GetTransactionStatusAtParticipantRequestPB)
       returns (GetTransactionStatusAtParticipantResponsePB);
-  rpc AbortTransaction(AbortTransactionRequestPB) returns (AbortTransactionResponsePB);
+  rpc AbortTransaction(AbortTransactionRequestPB) returns (AbortTransactionResponsePB) {
+    option (yb.rpc.send_metadata) = true;
+  }
   // Change the status tablet id used for a transaction.
   rpc UpdateTransactionStatusLocation(UpdateTransactionStatusLocationRequestPB)
       returns (UpdateTransactionStatusLocationResponsePB);
@@ -135,9 +143,13 @@ service TabletServerService {
   rpc ClearUniverseUuid(ClearUniverseUuidRequestPB) returns (ClearUniverseUuidResponsePB);
 
   rpc AcquireObjectLocks(AcquireObjectLockRequestPB)
-      returns (AcquireObjectLockResponsePB);
+      returns (AcquireObjectLockResponsePB) {
+    option (yb.rpc.send_metadata) = true;
+  }
   rpc ReleaseObjectLocks(ReleaseObjectLockRequestPB)
-      returns (ReleaseObjectLockResponsePB);
+      returns (ReleaseObjectLockResponsePB) {
+    option (yb.rpc.send_metadata) = true;
+  }
   rpc GetYSQLLeaseInfo(GetYSQLLeaseInfoRequestPB) returns (GetYSQLLeaseInfoResponsePB) {
     option (yb.rpc.trivial) = true;
   };
@@ -295,7 +307,7 @@ message UpdateTransactionRequestPB {
   reserved 4;
   optional fixed64 start_time = 5;
 
-  optional AshMetadataPB ash_metadata = 6;
+  reserved 6; // ASH metadata is now passed in RequestHeader PB
 }
 
 message UpdateTransactionResponsePB {
@@ -500,7 +512,7 @@ message AbortTransactionRequestPB {
   // Status containing deadlock info if the transaction is being aborted due to deadlock.
   optional AppStatusPB deadlock_reason = 4;
 
-  optional AshMetadataPB ash_metadata = 5;
+  reserved 5; // ASH metadata is now passed in RequestHeader PB
 }
 
 message AbortTransactionResponsePB {

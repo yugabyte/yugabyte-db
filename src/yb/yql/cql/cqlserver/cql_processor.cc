@@ -519,6 +519,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const BatchRequest& req) {
   // query if it is not prepared. Then execute the parse trees with the parameters.
   for (const BatchRequest::Query& query : req.queries()) {
     if (query.is_prepared) {
+      UpdateAshQueryId(b2a_hex(query.query_id));
       VLOG(1) << "BATCH EXECUTE " << b2a_hex(query.query_id);
       auto stmt_res = GetPreparedStatement(query.query_id, query.params.schema_version());
       if (!stmt_res.ok()) {
@@ -534,6 +535,8 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const BatchRequest& req) {
       }
       batch.emplace_back(*parse_tree, query.params);
     } else {
+      UpdateAshQueryId(ToString(std::to_underlying(
+          ash::FixedQueryId::kQueryIdForUncomputedQueryId)));
       VLOG(1) << "BATCH QUERY " << query.query;
       ParseTree::UniPtr parse_tree;
       s = Prepare(query.query, &parse_tree);
@@ -581,6 +584,8 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const AuthResponseRequest& 
                 << salted_hash_result;
     }
   }
+  UpdateAshQueryId(ToString(std::to_underlying(
+      ash::FixedQueryId::kQueryIdForYcqlAuthResponseRequest)));
   shared_ptr<Statement> stmt = service_impl_->GetAuthPreparedStatement();
   if (!stmt->Prepare(this, nullptr /* memtracker */, true /* internal */).ok()) {
     return make_unique<ErrorResponse>(

@@ -33,9 +33,14 @@ namespace rpc {
 
 class QueueableInboundCall : public InboundCall {
  public:
-  QueueableInboundCall(ConnectionPtr conn, size_t weight_in_bytes,
-                       CallProcessedListener* call_processed_listener)
-      : InboundCall(std::move(conn), nullptr /* rpc_metrics */, call_processed_listener),
+  QueueableInboundCall(ConnectionPtr conn,
+                       size_t weight_in_bytes,
+                       CallProcessedListener* call_processed_listener,
+                       rpc::CallStateListenerFactory* call_state_listener_factory)
+      : InboundCall(std::move(conn),
+                    nullptr /* rpc_metrics */,
+                    call_processed_listener,
+                    call_state_listener_factory),
         weight_in_bytes_(weight_in_bytes) {}
 
   void SetHasReply() {

@@ -32,7 +32,7 @@
 #include <utility>
 #include <vector>
 
-#include "yb/ash/wait_state_fwd.h"
+#include "yb/ash/ash_fwd.h"
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/db/column_family.h"

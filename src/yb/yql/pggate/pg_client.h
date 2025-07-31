@@ -25,6 +25,8 @@
 #include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/version.hpp>
 
+#include "yb/ash/pg_wait_state.h"
+
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/client/client_fwd.h"
 
@@ -171,8 +173,7 @@ using WaitEventWatcher = std::function<PgWaitEventWatcher(ash::WaitStateCode, as
 
 class PgClient {
  public:
-  PgClient(const YbcPgAshConfig& ash_config,
-           std::reference_wrapper<const WaitEventWatcher> wait_event_watcher);
+  explicit PgClient(std::reference_wrapper<const WaitEventWatcher> wait_event_watcher);
   ~PgClient();
 
   Status Start(rpc::ProxyCache* proxy_cache,

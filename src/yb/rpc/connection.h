@@ -221,6 +221,8 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
 
   void ListenShutdown(const std::function<void()>& listener) EXCLUDES(outbound_data_queue_mtx_);
 
+  CallStateListenerFactory* call_state_listener_factory();
+
  private:
   // Marks the given call as failed and schedules destruction of the connection.
   void FailCallAndDestroyConnection(const OutboundDataPtr& outbound_data,

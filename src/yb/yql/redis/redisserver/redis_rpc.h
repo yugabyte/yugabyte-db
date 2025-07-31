@@ -118,7 +118,8 @@ class RedisInboundCall : public rpc::QueueableInboundCall {
   explicit RedisInboundCall(
      rpc::ConnectionPtr conn,
      size_t weight_in_bytes,
-     CallProcessedListener* call_processed_listener);
+     CallProcessedListener* call_processed_listener,
+     rpc::CallStateListenerFactory* call_state_listener_factory);
 
   ~RedisInboundCall();
   // Takes ownership of data content.

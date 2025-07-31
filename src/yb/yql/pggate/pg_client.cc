@@ -15,6 +15,8 @@
 
 #include <functional>
 
+#include "yb/ash/rpc_wait_state.h"
+
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/client/client-internal.h"
 #include "yb/client/table.h"
@@ -498,10 +500,8 @@ static PggateRPC kDebugLogRPCs[] = {
 
 class PgClient::Impl : public BigDataFetcher {
  public:
-  Impl(const YbcPgAshConfig& ash_config,
-       std::reference_wrapper<const WaitEventWatcher> wait_event_watcher)
+  explicit Impl(std::reference_wrapper<const WaitEventWatcher> wait_event_watcher)
     : heartbeat_poller_(std::bind(&Impl::Heartbeat, this, false)),
-      ash_config_(ash_config),
       wait_event_watcher_(wait_event_watcher) {
     tablet_server_count_cache_.fill(0);
   }
@@ -536,9 +536,6 @@ class PgClient::Impl : public BigDataFetcher {
     }
     LOG_WITH_PREFIX(INFO) << "Session id acquired. Postgres backend pid: " << getpid();
     heartbeat_poller_.Start(scheduler, FLAGS_pg_client_heartbeat_interval_ms * 1ms);
-
-    memcpy(ash_config_.top_level_node_id, tserver_shared_data.tserver_uuid(), 16);
-
     return Status::OK();
   }
 
@@ -883,14 +880,17 @@ class PgClient::Impl : public BigDataFetcher {
     };
     auto data = std::make_shared<typename T::DataType>(std::forward<Args>(args)..., callback);
     if (session_shared_mem_ && session_shared_mem_->exchange().ReadyToSend()) {
+      ash::MetadataSerializer metadata(rpc::MetadataSerializationMode::kWriteOnZero);
       constexpr size_t kHeaderSize = sizeof(uint8_t) + sizeof(uint64_t);
+      const size_t kMetadataSize = metadata.SerializedSize();
       auto& exchange = session_shared_mem_->exchange();
-      auto out = exchange.Obtain(kHeaderSize + data->req.SerializedSize());
+      auto out = exchange.Obtain(kHeaderSize + kMetadataSize + data->req.SerializedSize());
       if (out) {
         *reinterpret_cast<uint8_t *>(out) = data->type;
         out += sizeof(uint8_t);
         LittleEndian::Store64(out, timeout_.ToMilliseconds());
         out += sizeof(uint64_t);
+        out = pointer_cast<std::byte*>(metadata.SerializeToArray(to_uchar_ptr(out)));
         const auto size = data->req.SerializedSize();
         auto* end = pointer_cast<std::byte*>(
             data->req.SerializeToArray(pointer_cast<uint8_t*>(out)));
@@ -921,7 +921,6 @@ class PgClient::Impl : public BigDataFetcher {
       tserver::PgPerformOptionsPB* options, PgsqlOps&& operations, PgDocMetrics& metrics) {
     auto& arena = operations.front()->arena();
     tserver::LWPgPerformRequestPB req(&arena);
-    AshMetadataToPB(*options);
     req.set_session_id(session_id_);
     *req.mutable_options() = std::move(*options);
     PrepareOperations(&req, operations);
@@ -935,7 +934,6 @@ class PgClient::Impl : public BigDataFetcher {
       YbcObjectLockMode mode) {
     object_locks_arena_.Reset(ResetMode::kKeepLast);
     tserver::LWPgAcquireObjectLockRequestPB req(&object_locks_arena_);
-    AshMetadataToPB(*options);
     req.set_session_id(session_id_);
     *req.mutable_options() = std::move(*options);
     auto* lock_oid = req.mutable_lock_oid();
@@ -1657,29 +1655,6 @@ class PgClient::Impl : public BigDataFetcher {
     return &heartbeat_controller_;
   }
 
-  template <class RequestPB>
-  void AshMetadataToPB(RequestPB& req) {
-    if (!(*ash_config_.yb_enable_ash)) {
-      return;
-    }
-
-    auto& ash_metadata = *req.mutable_ash_metadata();
-    const auto& pg_metadata = *ash_config_.metadata;
-    ash_metadata.set_top_level_node_id(ash_config_.top_level_node_id, 16);
-    ash_metadata.set_root_request_id(pg_metadata.root_request_id, 16);
-    ash_metadata.set_query_id(pg_metadata.query_id);
-    ash_metadata.set_pid(pg_metadata.pid);
-    ash_metadata.set_database_id(pg_metadata.database_id);
-
-    const auto& addr_family = pg_metadata.addr_family;
-    ash_metadata.set_addr_family(addr_family);
-    // unix addresses are displayed as null, so we only send IPv4 and IPv6 addresses.
-    if (addr_family == AF_INET || addr_family == AF_INET6) {
-      ash_metadata.mutable_client_host_port()->set_host(ash_config_.host);
-      ash_metadata.mutable_client_host_port()->set_port(pg_metadata.client_port);
-    }
-  }
-
   template <class Proxy, class Req, class Resp>
   using SyncRPCFunc = Status (Proxy::*)(
       const Req&, Resp*, rpc::RpcController*) const;
@@ -1688,8 +1663,6 @@ class PgClient::Impl : public BigDataFetcher {
   Status DoSyncRPCImpl(
       Proxy& proxy, SyncRPCFunc<Proxy, Req, Resp> func, Req& req, Resp& resp,
       PggateRPC rpc_enum, rpc::RpcController* controller) {
-
-    AshMetadataToPB(req);
 
     const auto log_detail =
         yb_debug_log_docdb_requests &&
@@ -1748,7 +1721,6 @@ class PgClient::Impl : public BigDataFetcher {
   // should be the minimum of timeout_ and lock_timeout_.
   MonoDelta lock_timeout_ = FLAGS_yb_client_admin_operation_timeout_sec * 1s;
 
-  YbcPgAshConfig ash_config_;
   const WaitEventWatcher& wait_event_watcher_;
 
   uint64_t big_shared_memory_id_;
@@ -1770,9 +1742,8 @@ void DdlMode::ToPB(tserver::PgFinishTransactionRequestPB_DdlModePB* dest) const 
   dest->set_use_regular_transaction_block(use_regular_transaction_block);
 }
 
-PgClient::PgClient(const YbcPgAshConfig& ash_config,
-                   std::reference_wrapper<const WaitEventWatcher> wait_event_watcher)
-    : impl_(new Impl(ash_config, wait_event_watcher)) {}
+PgClient::PgClient(std::reference_wrapper<const WaitEventWatcher> wait_event_watcher)
+    : impl_(new Impl(wait_event_watcher)) {}
 
 PgClient::~PgClient() = default;
 

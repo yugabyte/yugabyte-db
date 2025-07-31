@@ -811,7 +811,6 @@ typedef struct {
 // A struct to pass ASH postgres config to PgClient
 typedef struct {
   YbcAshMetadata* metadata;
-  bool* yb_enable_ash;
   unsigned char top_level_node_id[16];
   // length of host should be equal to INET6_ADDRSTRLEN
   char host[46];

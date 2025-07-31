@@ -44,7 +44,7 @@ typedef struct {
 // functions in this API are called.
 void YBCInitPgGate(
     YbcPgTypeEntities type_entities, const YbcPgCallbacks* pg_callbacks,
-    uint64_t *session_id, const YbcPgAshConfig* ash_config);
+    uint64_t *session_id, YbcPgAshConfig* ash_config);
 
 void YBCDestroyPgGate();
 void YBCInterruptPgGate();

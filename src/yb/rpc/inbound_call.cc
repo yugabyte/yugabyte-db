@@ -67,60 +67,27 @@ namespace yb {
 namespace rpc {
 
 namespace {
-// An InboundCall's trace may have multiple sub-traces. It will be nice
-// for all the wait-state updates to be on the inbound call's trace rather
-// than be spread across the different traces
-class WaitStateInfoWithInboundCall : public ash::WaitStateInfo {
- public:
-  WaitStateInfoWithInboundCall() = default;
-
-  void VTrace(int level, GStringPiece data) override {
-    std::shared_ptr<const InboundCall> sptr;
-    {
-      std::lock_guard guard(mutex_);
-      sptr = holder_.lock();
-    }
-    VTraceTo(sptr ? sptr->trace() : nullptr, level, data);
-  }
-
-  void UseForTracing(const InboundCall* call) {
-    auto ptr = shared_from(call);
-    {
-      std::lock_guard guard(mutex_);
-      holder_ = std::move(ptr);
-    }
-  }
-
-  std::string DumpTraceToString() override {
-    std::shared_ptr<const InboundCall> sptr;
-    {
-      std::lock_guard guard(mutex_);
-      sptr = holder_.lock();
-    }
-    return (sptr && sptr->trace() ? sptr->trace()->DumpToString(true) : "n/a");
-  }
-
- private:
-  simple_spinlock mutex_;
-  std::weak_ptr<const InboundCall> holder_ GUARDED_BY(mutex_);
-};
 
 int64_t NextInstanceId() {
   static std::atomic<int64_t> next_instance_id{0};
   return next_instance_id.fetch_add(1, std::memory_order_relaxed);
 }
 
-}  // namespace
+} // namespace
 
 InboundCall::InboundCall(
-    ConnectionPtr conn, RpcMetrics* rpc_metrics, CallProcessedListener* call_processed_listener)
-    : wait_state_(ash::WaitStateInfo::CreateIfAshIsEnabled<WaitStateInfoWithInboundCall>()),
-      trace_holder_(Trace::MaybeGetNewTraceForParent(Trace::CurrentTrace())),
+    ConnectionPtr conn, RpcMetrics* rpc_metrics,
+    CallProcessedListener* call_processed_listener,
+    CallStateListenerFactory* call_state_listener_factory)
+    : trace_holder_(Trace::MaybeGetNewTraceForParent(Trace::CurrentTrace())),
       trace_(trace_holder_.get()),
       instance_id_(NextInstanceId()),
       conn_(std::move(conn)),
       rpc_metrics_(rpc_metrics ? rpc_metrics : &conn_->rpc_metrics()),
-      call_processed_listener_(call_processed_listener) {
+      call_processed_listener_(call_processed_listener),
+      call_state_listener_(call_state_listener_factory
+          ? call_state_listener_factory->Create(instance_id_)
+          : nullptr) {
   TRACE_TO(trace(), "Created InboundCall");
   IncrementCounter(rpc_metrics_->inbound_calls_created);
   IncrementGauge(rpc_metrics_->inbound_calls_alive);
@@ -132,15 +99,17 @@ InboundCall::~InboundCall() {
 }
 
 void InboundCall::InitializeWaitState() {
-  if (wait_state_) {
-    down_cast<WaitStateInfoWithInboundCall*>(wait_state_.get())->UseForTracing(this);
+  if (const auto wait_state_ptr = wait_state()) {
+    call_state_listener_->UseForTracing(this);
+    SET_WAIT_STATUS_TO(wait_state_ptr, OnCpu_Passive);
   }
-  SET_WAIT_STATUS_TO(wait_state_, OnCpu_Passive);
 }
 
 void InboundCall::NotifyTransferred(const Status& status, const ConnectionPtr& /*conn*/) {
-  ASH_ENABLE_CONCURRENT_UPDATES_FOR(wait_state_);
-  SET_WAIT_STATUS_TO(wait_state_, Rpc_Done);
+  if (const auto wait_state_ptr = wait_state()) {
+    ASH_ENABLE_CONCURRENT_UPDATES_FOR(wait_state_ptr);
+    SET_WAIT_STATUS_TO(wait_state_ptr, Rpc_Done);
+  }
   if (status.ok()) {
     TRACE_TO(trace(), "Transfer finished");
   } else {
@@ -261,8 +230,10 @@ void InboundCall::QueueResponse(bool is_success) {
     LOG_WITH_PREFIX(DFATAL) << "Response already queued";
   }
   TRACE_FUNC();
-  ASH_ENABLE_CONCURRENT_UPDATES_FOR(wait_state_);
-  SET_WAIT_STATUS_TO(wait_state_, OnCpu_Passive);
+  if (const auto wait_state_ptr = wait_state()) {
+    ASH_ENABLE_CONCURRENT_UPDATES_FOR(wait_state_ptr);
+    SET_WAIT_STATUS_TO(wait_state_ptr, OnCpu_Passive);
+  }
   if (is_success) {
     IncrementCounter(rpc_metrics_->inbound_calls_failed);
   }
