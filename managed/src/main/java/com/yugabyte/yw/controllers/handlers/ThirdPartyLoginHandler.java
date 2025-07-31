@@ -216,27 +216,37 @@ public class ThirdPartyLoginHandler {
     String url = String.format(MS_MEMBEROF_API, userID);
     Map<String, String> headers = new HashMap<>();
     headers.put("Authorization", authHeader);
-    JsonNode result = apiHelper.getRequest(url, headers);
     List<String> groups = new ArrayList<>();
-    if (log.isTraceEnabled()) {
-      log.trace("Result from microsoft endpoint = {}", result.toPrettyString());
-    }
-    if (result.has("error")) {
-      log.error(
-          "Fetching group membership from MicroSoft failed with the following error: {}\n"
-              + "user will be created with default role.",
-          result.get("error").toPrettyString());
-      return groups;
-    }
 
-    Iterator<JsonNode> elements = result.get("value").elements();
-    while (elements.hasNext()) {
-      JsonNode element = elements.next();
-      JsonNode displayNameNode = element.get("displayName");
-      if (displayNameNode != null && displayNameNode.isTextual()) {
-        groups.add(displayNameNode.asText());
+    // Get all groups page by page
+    do {
+      JsonNode result = apiHelper.getRequest(url, headers);
+      if (log.isTraceEnabled()) {
+        log.trace("Result from microsoft endpoint {} = {}", url, result.toPrettyString());
       }
-    }
+
+      if (result.has("error")) {
+        log.error(
+            "Fetching group membership from MicroSoft failed with the following error: {}\n"
+                + "user will be created with default role, if a mapped group is not found so far",
+            result.get("error").toPrettyString());
+        break;
+      }
+
+      Iterator<JsonNode> elements = result.get("value").elements();
+      while (elements.hasNext()) {
+        JsonNode element = elements.next();
+        JsonNode displayNameNode = element.get("displayName");
+        if (displayNameNode != null && displayNameNode.isTextual()) {
+          groups.add(displayNameNode.asText());
+        }
+      }
+
+      // Check for next page. See: https://learn.microsoft.com/en-us/graph/paging?tabs=http
+      JsonNode nextLinkNode = result.get("@odata.nextLink");
+      url = (nextLinkNode != null && nextLinkNode.isTextual()) ? nextLinkNode.asText() : null;
+    } while (url != null);
+
     return groups;
   }
 
