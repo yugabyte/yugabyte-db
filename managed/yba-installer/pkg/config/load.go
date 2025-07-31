@@ -45,6 +45,7 @@ func loadLegacyConfig() (*viper.Viper, error) {
 		logging.Debug("Legacy config file (yba-ctl.yml) does not exist, skipping legacy config load.")
 		return nil, nil
 	}
+	logging.Info("Loading legacy config file (yba-ctl.yml)")
 	legacy := viper.New()
 	viper.SetDefault("service_username", common.DefaultServiceUser)
 	viper.SetDefault("installRoot", "/opt/yugabyte")
@@ -65,6 +66,9 @@ func loadLegacyConfig() (*viper.Viper, error) {
 	return legacy, nil
 }
 
+// The legacy config has a different structure, so we need to convert it to the new structure.
+// In addition, we assume the majority of the legacy config is filled out in the config file,
+// so we do not need default values for most fields.
 func legacyToRootConfig(legacy *viper.Viper) rootConfig {
 	services := []Service{ServicePlatform, ServicePrometheus}
 	if legacy.GetBool("postgres.install.enabled") {
@@ -182,6 +186,7 @@ func legacyToRootConfig(legacy *viper.Viper) rootConfig {
 
 func loadConfig() (*viper.Viper, error) {
 	newConfig := viper.New()
+	addDefaults(newConfig)
 	newConfig.SetConfigName("config")
 	newConfig.AddConfigPath(common.YbactlInstallDir())
 	if err := newConfig.ReadInConfig(); err != nil {

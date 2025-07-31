@@ -8,7 +8,7 @@ func New() rootConfig {
 // sub-configurations for the installer, such as installer config (installRoot, etc.), platform,
 // postgres, prometheus, and any other service we may eventually support.
 type rootConfig struct {
-	Installer   installerConfig   `mapstructure:",squash"`
+	Installer   installerConfig   `mapstructure:"installer"`
 	Platform    platformConfig    `mapstructure:"platform"`
 	Prometheus  prometheusConfig  `mapstructure:"prometheus"`
 	Postgres    postgresConfig    `mapstructure:"postgres"`
@@ -120,9 +120,9 @@ type prometheusConfig struct {
 }
 
 type postgresConfig struct {
-	postgresBase
-	postgresInstall
-	postgresExisting
+	postgresBase     `mapstructure:",squash"`
+	postgresInstall  `mapstructure:",squash"`
+	postgresExisting `mapstructure:",squash"`
 }
 
 type postgresBase struct {
