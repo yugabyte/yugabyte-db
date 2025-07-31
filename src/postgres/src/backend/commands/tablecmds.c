@@ -15119,8 +15119,12 @@ PreCommit_on_commit_actions(void)
 		 * Since this is an automatic drop, rather than one directly initiated
 		 * by the user, we pass the PERFORM_DELETION_INTERNAL flag.
 		 */
+		if (IsYugaByteEnabled())
+			YBIncrementDdlNestingLevel(YB_DDL_MODE_SILENT_ALTERING);
 		performMultipleDeletions(targetObjects, DROP_CASCADE,
 								 PERFORM_DELETION_INTERNAL | PERFORM_DELETION_QUIETLY);
+		if (IsYugaByteEnabled())
+			YBDecrementDdlNestingLevel();
 
 #ifdef USE_ASSERT_CHECKING
 

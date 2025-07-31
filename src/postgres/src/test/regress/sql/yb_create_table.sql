@@ -543,14 +543,13 @@ select relname, oid from pg_class where relname = 'with_table_oid';
 create table with_table_oid_duplicate (a int) with (table_oid = 4294967295);
 
 -- Test temp tables with (table_oid = x)
--- TODO(dmitry) ON COMMIT DROP should be fixed in context of #7926
 begin;
-create temp table with_table_oid_temp (a int) with (table_oid = 1234568) on commit drop;
+create temp table with_table_oid_temp (a int) with (table_oid = 1234568);
 select relname, oid from pg_class where relname = 'with_table_oid_temp';
 end;
--- Creating a new temp table with that oid will fail
-create temp table with_table_oid_temp_2 (a int) with (table_oid = 1234568);
--- But creating a regular table with that oid should succeed
+-- Creating another temp table with the same oid should fail
+create temp table with_table_oid_temp_3 (a int) with (table_oid = 1234568);
+-- Creating a regular table with the same oid should fail
 create table with_table_oid_2 (a int) with (table_oid = 1234568);
 select relname, oid from pg_class where relname = 'with_table_oid_2';
 

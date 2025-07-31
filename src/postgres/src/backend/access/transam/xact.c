@@ -2203,15 +2203,6 @@ CommitTransaction(void)
 	}
 
 	/*
-	 * Firing the triggers may abort current transaction.
-	 * At this point all the them has been fired already.
-	 * It is time to commit YB transaction.
-	 * Postgres transaction can be aborted at this point without an issue
-	 * in case of YBCCommitTransaction failure.
-	 */
-	YBCCommitTransaction();
-
-	/*
 	 * The remaining actions cannot call any user-defined code, so it's safe
 	 * to start shutting down within-transaction services.  But note that most
 	 * of this stuff could still throw an error, which would switch us into
@@ -2256,6 +2247,15 @@ CommitTransaction(void)
 
 	/* Commit updates to the relation map --- do this as late as possible */
 	AtEOXact_RelationMap(true);
+
+	/*
+	 * Firing the triggers may abort current transaction.
+	 * At this point all the them has been fired already.
+	 * It is time to commit YB transaction.
+	 * Postgres transaction can be aborted at this point without an issue
+	 * in case of YBCCommitTransaction failure.
+	 */
+	YBCCommitTransaction();
 
 	/*
 	 * set the current transaction state information appropriately during
