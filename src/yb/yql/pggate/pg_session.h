@@ -250,6 +250,8 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
 
   Status SetActiveSubTransaction(SubTransactionId id);
   Status RollbackToSubTransaction(SubTransactionId id);
+  void SetTransactionHasWrites();
+  Result<bool> CurrentTransactionUsesFastPath() const;
 
   void ResetHasCatalogWriteOperationsInDdlMode();
   bool HasCatalogWriteOperationsInDdlMode() const;

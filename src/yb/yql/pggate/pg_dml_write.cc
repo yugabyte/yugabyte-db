@@ -34,6 +34,7 @@ PgDmlWrite::PgDmlWrite(
     const PgSession::ScopedRefPtr& pg_session, YbcPgTransactionSetting transaction_setting,
     bool packed)
     : PgDml(pg_session), transaction_setting_(transaction_setting), packed_(packed) {
+    pg_session_->SetTransactionHasWrites();
 }
 
 Status PgDmlWrite::Prepare(const PgObjectId& table_id, bool is_region_local) {
