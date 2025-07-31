@@ -21,6 +21,9 @@
 
 #include "yb/common/clock.h"
 #include "yb/common/transaction.h"
+
+#include "yb/docdb/object_lock_shared_fwd.h"
+
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/tserver/pg_client.fwd.h"
@@ -30,8 +33,9 @@
 #include "yb/util/enums.h"
 
 #include "yb/yql/pggate/pg_client.h"
-#include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_callbacks.h"
+#include "yb/yql/pggate/pg_gate_fwd.h"
+#include "yb/yql/pggate/pg_setup_perform_options_accessor_tag.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb::pggate {
@@ -50,9 +54,11 @@ YB_DEFINE_ENUM(ReadTimeAction, (ENSURE_IS_SET)(RESET));
 
 class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
  public:
-  PgTxnManager(PgClient* pg_client, scoped_refptr<ClockBase> clock, YbcPgCallbacks pg_callbacks);
+  PgTxnManager(
+      PgClient* pg_client, scoped_refptr<ClockBase> clock, YbcPgCallbacks pg_callbacks,
+      bool enable_table_locking);
 
-  virtual ~PgTxnManager();
+  ~PgTxnManager();
 
   Status BeginTransaction(int64_t start_time);
 
@@ -97,7 +103,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   }
   bool ShouldEnableTracing() const { return enable_tracing_; }
 
-  Status SetupPerformOptions(
+  Status SetupPerformOptions(SetupPerformOptionsAccessorTag tag,
       tserver::PgPerformOptionsPB* options, std::optional<ReadTimeAction> read_time_action = {});
 
   double GetTransactionPriority() const;
@@ -111,12 +117,18 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   Result<YbcReadPointHandle> RegisterSnapshotReadTime(uint64_t read_time, bool use_read_time);
 
   Result<std::string> ExportSnapshot(
-      const YbcPgTxnSnapshot& snapshot, std::optional<YbcReadPointHandle> explicit_read_time);
-  Result<YbcPgTxnSnapshot> ImportSnapshot(std::string_view snapshot_id);
+      SetupPerformOptionsAccessorTag tag, const YbcPgTxnSnapshot& snapshot,
+      std::optional<YbcReadPointHandle> explicit_read_time);
+  Result<YbcPgTxnSnapshot> ImportSnapshot(
+      SetupPerformOptionsAccessorTag tag, std::string_view snapshot_id);
   [[nodiscard]] bool has_exported_snapshots() const { return has_exported_snapshots_; }
   void ClearExportedTxnSnapshots();
-  Status RollbackToSubTransaction(SubTransactionId id);
-  Status AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode);
+  Status RollbackToSubTransaction(SetupPerformOptionsAccessorTag tag, SubTransactionId id);
+  [[nodiscard]] bool TryAcquireObjectLock(
+      const YbcObjectLockId& lock_id, docdb::ObjectLockFastpathLockType lock_type);
+
+  Status AcquireObjectLock(
+      SetupPerformOptionsAccessorTag tag, const YbcObjectLockId& lock_id, YbcObjectLockMode mode);
   struct DdlState {
     bool has_docdb_schema_changes = false;
     bool force_catalog_modification = false;

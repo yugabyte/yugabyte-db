@@ -94,6 +94,8 @@ DECLARE_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_
 DEFINE_RUNTIME_PREVIEW_bool(ysql_pack_inserted_value, false,
      "Enabled packing inserted columns into a single packed value in postgres layer.");
 
+DECLARE_bool(enable_object_locking_for_table_locks);
+
 namespace yb::pggate {
 namespace {
 
@@ -606,7 +608,8 @@ PgApiImpl::PgApiImpl(
       }),
       pg_client_(wait_event_watcher_),
       clock_(new server::HybridClock()),
-      pg_txn_manager_(new PgTxnManager(&pg_client_, clock_, pg_callbacks_)),
+      enable_table_locking_(FLAGS_enable_object_locking_for_table_locks),
+      pg_txn_manager_(new PgTxnManager(&pg_client_, clock_, pg_callbacks_, enable_table_locking_)),
       ybctid_reader_provider_(pg_session_),
       fk_reference_cache_(ybctid_reader_provider_, buffering_settings_),
       explicit_row_lock_buffer_(ybctid_reader_provider_) {
@@ -646,7 +649,7 @@ void PgApiImpl::InitSession(YbcPgExecStatsState& session_stats, bool is_binary_u
 
   pg_session_ = make_scoped_refptr<PgSession>(
       pg_client_, pg_txn_manager_, pg_callbacks_, session_stats, is_binary_upgrade,
-      wait_event_watcher_, buffering_settings_);
+      wait_event_watcher_, buffering_settings_, enable_table_locking_);
 }
 
 uint64_t PgApiImpl::GetSessionID() const { return pg_client_.SessionID(); }
@@ -1382,7 +1385,7 @@ void PgApiImpl::ResetOperationsBuffering() {
 }
 
 Status PgApiImpl::FlushBufferedOperations() {
-  return pg_session_->FlushBufferedOperations();
+  return ResultToStatus(pg_session_->FlushBufferedOperations());
 }
 
 Status PgApiImpl::AdjustOperationsBuffering(int multiple) {
@@ -2006,13 +2009,22 @@ Status PgApiImpl::ClearSeparateDdlTxnMode() {
 }
 
 Status PgApiImpl::SetActiveSubTransaction(SubTransactionId id) {
+  VLOG_WITH_FUNC(4) << "id: " << id;
+  // It's required that we flush all buffered operations before changing the SubTransactionMetadata
+  // used by the underlying batcher and RPC logic, as this will snapshot the current
+  // SubTransactionMetadata for use in construction of RPCs for already-queued operations, thereby
+  // ensuring that previous operations use previous SubTransactionMetadata. If we do not flush here,
+  // already queued operations may incorrectly use this newly modified SubTransactionMetadata when
+  // they are eventually sent to DocDB.
   RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
-  return pg_session_->SetActiveSubTransaction(id);
+  pg_txn_manager_->SetActiveSubTransactionId(id);
+  return Status::OK();
 }
 
 Status PgApiImpl::RollbackToSubTransaction(SubTransactionId id) {
-  ClearSessionState();
-  return pg_session_->RollbackToSubTransaction(id);
+  const auto status = pg_txn_manager_->RollbackToSubTransaction(ClearSessionState(), id);
+  VLOG_WITH_FUNC(4) << "id: " << id << ", error: " << status;
+  return status;
 }
 
 double PgApiImpl::GetTransactionPriority() const {
@@ -2329,11 +2341,12 @@ Result<tserver::PgServersMetricsResponsePB> PgApiImpl::ServersMetrics() {
     return pg_session_->ServersMetrics();
 }
 
-void PgApiImpl::ClearSessionState() {
+SetupPerformOptionsAccessorTag PgApiImpl::ClearSessionState() {
+  auto result = pg_session_->DropBufferedOperations();
   fk_reference_cache_.Clear();
-  pg_session_->DropBufferedOperations();
   explicit_row_lock_buffer_.Clear();
   pg_session_->ClearAllInsertOnConflictBuffers();
+  return result;
 }
 
 bool PgApiImpl::IsCronLeader() const { return tserver_shared_object_->IsCronLeader(); }
@@ -2384,7 +2397,7 @@ Status PgApiImpl::ReleaseAllAdvisoryLocks(uint32_t db_oid) {
 //------------------------------------------------------------------------------------------------
 
 Status PgApiImpl::AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode) {
-  return pg_txn_manager_->AcquireObjectLock(lock_id, mode);
+  return pg_session_->AcquireObjectLock(lock_id, mode);
 }
 
 //------------------------------------------------------------------------------------------------
@@ -2393,11 +2406,13 @@ Status PgApiImpl::AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLoc
 
 Result<std::string> PgApiImpl::ExportSnapshot(
     const YbcPgTxnSnapshot& snapshot, std::optional<YbcReadPointHandle> explicit_read_time) {
-  return pg_txn_manager_->ExportSnapshot(snapshot, explicit_read_time);
+  return pg_txn_manager_->ExportSnapshot(
+      VERIFY_RESULT(pg_session_->FlushBufferedOperations()), snapshot, explicit_read_time);
 }
 
 Result<YbcPgTxnSnapshot> PgApiImpl::ImportSnapshot(std::string_view snapshot_id) {
-  return pg_txn_manager_->ImportSnapshot(snapshot_id);
+  return pg_txn_manager_->ImportSnapshot(
+      VERIFY_RESULT(pg_session_->FlushBufferedOperations()), snapshot_id);
 }
 
 bool PgApiImpl::HasExportedSnapshots() const { return pg_txn_manager_->has_exported_snapshots(); }

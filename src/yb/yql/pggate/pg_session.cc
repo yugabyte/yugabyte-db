@@ -27,6 +27,8 @@
 #include "yb/common/schema.h"
 #include "yb/common/tablespace_parser.h"
 
+#include "yb/docdb/object_lock_shared_state.h"
+
 #include "yb/gutil/casts.h"
 
 #include "yb/util/flags.h"
@@ -151,10 +153,6 @@ Result<SessionType> GetRequiredSessionType(const PgTxnManager& txn_manager,
         !YBCIsInitDbModeEnvVarSet()
       ? SessionType::kCatalog
       : SessionType::kRegular;
-}
-
-bool Empty(const PgOperationBuffer& buffer) {
-  return !buffer.Size();
 }
 
 // Update the buffer setting. 'max_batch_size' will be adjusted to multiple of 'multiple'
@@ -388,7 +386,7 @@ class PgSession::RunHelper {
     }
     bool read_only = op->is_read();
     // Flush all buffered operations (if any) before performing non-bufferable operation
-    if (!Empty(buffer)) {
+    if (!buffer.IsEmpty()) {
       SCHECK(ops_info_.ops.Empty(),
             IllegalState,
             "Buffered operations must be flushed before applying first non-bufferable operation");
@@ -513,7 +511,8 @@ PgSession::PgSession(
     YbcPgExecStatsState& stats_state,
     bool is_pg_binary_upgrade,
     std::reference_wrapper<const WaitEventWatcher> wait_event_watcher,
-    BufferingSettings& buffering_settings)
+    BufferingSettings& buffering_settings,
+    bool enable_table_locking)
     : pg_client_(pg_client),
       pg_txn_manager_(std::move(pg_txn_manager)),
       metrics_(stats_state),
@@ -525,7 +524,8 @@ PgSession::PgSession(
           },
           buffering_settings_),
       is_major_pg_version_upgrade_(is_pg_binary_upgrade),
-      wait_event_watcher_(wait_event_watcher) {
+      wait_event_watcher_(wait_event_watcher),
+      enable_table_locking_(enable_table_locking) {
   Update(&buffering_settings_);
 }
 
@@ -634,8 +634,7 @@ Status PgSession::DropTable(const PgObjectId& table_id, bool use_regular_transac
   tserver::PgDropTableRequestPB req;
   table_id.ToPB(req.mutable_table_id());
   req.set_use_regular_transaction_block(use_regular_transaction_block);
-  RETURN_NOT_OK(
-      SetupIsolationAndPerformOptionsForDdl(req.mutable_options(), use_regular_transaction_block));
+  RETURN_NOT_OK(SetupPerformOptionsForDdlIfNeeded(*this, req));
   return ResultToStatus(pg_client_.DropTable(&req, CoarseTimePoint()));
 }
 
@@ -647,8 +646,7 @@ Status PgSession::DropIndex(
   index_id.ToPB(req.mutable_table_id());
   req.set_index(true);
   req.set_use_regular_transaction_block(use_regular_transaction_block);
-  RETURN_NOT_OK(
-    SetupIsolationAndPerformOptionsForDdl(req.mutable_options(), use_regular_transaction_block));
+  RETURN_NOT_OK(SetupPerformOptionsForDdlIfNeeded(*this, req));
   auto result = VERIFY_RESULT(pg_client_.DropTable(&req, CoarseTimePoint()));
   if (indexed_table_name) {
     *indexed_table_name = std::move(result);
@@ -742,7 +740,7 @@ Result<client::TableSizeInfo> PgSession::GetTableDiskSize(const PgObjectId& tabl
 
 Status PgSession::StartOperationsBuffering() {
   SCHECK(!buffering_enabled_, IllegalState, "Buffering has been already started");
-  if (PREDICT_FALSE(!Empty(buffer_))) {
+  if (PREDICT_FALSE(!buffer_.IsEmpty())) {
     LOG(DFATAL) << "Buffering hasn't been started yet but "
                 << buffer_.Size()
                 << " buffered operations found";
@@ -755,7 +753,7 @@ Status PgSession::StartOperationsBuffering() {
 Status PgSession::StopOperationsBuffering() {
   SCHECK(buffering_enabled_, IllegalState, "Buffering hasn't been started");
   buffering_enabled_ = false;
-  return FlushBufferedOperations();
+  return ResultToStatus(FlushBufferedOperations());
 }
 
 void PgSession::ResetOperationsBuffering() {
@@ -763,17 +761,19 @@ void PgSession::ResetOperationsBuffering() {
   buffering_enabled_ = false;
 }
 
-Status PgSession::FlushBufferedOperations() {
-  return buffer_.Flush();
+Result<SetupPerformOptionsAccessorTag> PgSession::FlushBufferedOperations() {
+  RETURN_NOT_OK(buffer_.Flush());
+  return SetupPerformOptionsAccessorTag{};
 }
 
-void PgSession::DropBufferedOperations() {
+SetupPerformOptionsAccessorTag PgSession::DropBufferedOperations() {
   buffer_.Clear();
+  return {};
 }
 
 Status PgSession::AdjustOperationsBuffering(int multiple) {
   SCHECK(buffering_enabled_, IllegalState, "Buffering has not started yet");
-  if (PREDICT_FALSE(!Empty(buffer_))) {
+  if (PREDICT_FALSE(!buffer_.IsEmpty())) {
     LOG(DFATAL) << "Buffer should be empty, but "
                 << buffer_.Size()
                 << " buffered operations found";
@@ -849,7 +849,7 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     }
     options.set_use_catalog_session(true);
   } else {
-    RETURN_NOT_OK(pg_txn_manager_->SetupPerformOptions(&options, ops_options.read_time_action));
+    RETURN_NOT_OK(SetupPerformOptions({}, &options, ops_options.read_time_action));
     if (pg_txn_manager_->IsTxnInProgress()) {
       options.mutable_in_txn_limit_ht()->set_value(ops_options.in_txn_limit.ToUint64());
     }
@@ -1041,49 +1041,17 @@ void PgSession::TrySetCatalogReadPoint(const ReadHybridTime& read_ht) {
   }
 }
 
-Status PgSession::SetupIsolationAndPerformOptionsForDdl(
-  tserver::PgPerformOptionsPB* options, bool use_regular_transaction_block) {
-  if (!use_regular_transaction_block) {
-    return Status::OK();
-  }
+Status PgSession::SetupPerformOptionsForDdl(tserver::PgPerformOptionsPB* options) {
   RSTATUS_DCHECK(
       pg_txn_manager_->IsDdlModeWithRegularTransactionBlock(), IllegalState,
       "Expected to be in DDL mode with regular transaction block");
-
+  RETURN_NOT_OK(FlushBufferedOperations());
   RETURN_NOT_OK(pg_txn_manager_->CalculateIsolation(
     false /* read_only */,
     GetTxnPriorityRequirement(
-        true /* is_ddl_mode */, GetIsolationLevel(),
-        RowMarkType::ROW_MARK_ABSENT /* ignored for ddl */)));
+        true /* is_ddl_mode */, GetIsolationLevel(), RowMarkType::ROW_MARK_ABSENT)));
 
-  return pg_txn_manager_->SetupPerformOptions(options);
-}
-
-Status PgSession::SetActiveSubTransaction(SubTransactionId id) {
-  // It's required that we flush all buffered operations before changing the SubTransactionMetadata
-  // used by the underlying batcher and RPC logic, as this will snapshot the current
-  // SubTransactionMetadata for use in construction of RPCs for already-queued operations, thereby
-  // ensuring that previous operations use previous SubTransactionMetadata. If we do not flush here,
-  // already queued operations may incorrectly use this newly modified SubTransactionMetadata when
-  // they are eventually sent to DocDB.
-  VLOG(4) << "SetActiveSubTransactionId " << id;
-  RETURN_NOT_OK(FlushBufferedOperations());
-  pg_txn_manager_->SetActiveSubTransactionId(id);
-
-  return Status::OK();
-}
-
-Status PgSession::RollbackToSubTransaction(SubTransactionId id) {
-  // See comment in SetActiveSubTransaction -- we must flush buffered operations before updating any
-  // SubTransactionMetadata.
-  // TODO(read committed): performance improvement -
-  // don't wait for ops which have already been sent ahead by pg_session i.e., to the batcher, then
-  // rpc layer and beyond. For such ops, rely on aborted sub txn list in status tablet to invalidate
-  // writes which will be asynchronously written to txn participants.
-  RETURN_NOT_OK(FlushBufferedOperations());
-  const auto status = pg_txn_manager_->RollbackToSubTransaction(id);
-  VLOG_WITH_FUNC(4) << "id: " << id << ", error: " << status;
-  return status;
+  return SetupPerformOptions(options);
 }
 
 void PgSession::SetTransactionHasWrites() {
@@ -1107,7 +1075,8 @@ Result<bool> PgSession::CurrentTransactionUsesFastPath() const {
   // operations bufferring. However, it is guaranteed to perform a flush at the end of the statement
   // and it cannot be invoked via EXPLAIN (the only caller of this function). So, we can safely
   // ignore this case here.
-  return VERIFY_RESULT(pg_txn_manager_->TransactionHasNonTransactionalWrites()) && !buffer_.Size();
+  return
+      VERIFY_RESULT(pg_txn_manager_->TransactionHasNonTransactionalWrites()) && buffer_.IsEmpty();
 }
 
 void PgSession::ResetHasCatalogWriteOperationsInDdlMode() {
@@ -1275,7 +1244,7 @@ Result<int64_t> PgSession::GetCronLastMinute() { return pg_client_.GetCronLastMi
 
 Status PgSession::AcquireAdvisoryLock(
     const YbcAdvisoryLockId& lock_id, YbcAdvisoryLockMode mode, bool wait, bool session) {
-
+  RETURN_NOT_OK(FlushBufferedOperations());
   tserver::PgAcquireAdvisoryLockRequestPB req;
   AdvisoryLockRequestInitCommon(req, pg_client_.SessionID(), lock_id, mode);
   req.set_wait(wait);
@@ -1289,7 +1258,7 @@ Status PgSession::AcquireAdvisoryLock(
       false /* read_only */,
       pg_txn_manager_->GetPgIsolationLevel() == PgIsolationLevel::READ_COMMITTED
           ? kHighestPriority : kLowerPriorityRange));
-    RETURN_NOT_OK(pg_txn_manager_->SetupPerformOptions(&options));
+    RETURN_NOT_OK(SetupPerformOptions(&options));
     // TODO(advisory-lock): Fully validate that the optimization of local txn will not be applied,
     // then it should be safe to skip set_force_global_transaction.
     options.set_force_global_transaction(true);
@@ -1310,6 +1279,24 @@ Status PgSession::ReleaseAllAdvisoryLocks(uint32_t db_oid) {
   req.set_session_id(pg_client_.SessionID());
   req.set_db_oid(db_oid);
   return pg_client_.ReleaseAdvisoryLock(&req, CoarseTimePoint());
+}
+
+Status PgSession::AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode) {
+  if (!PREDICT_FALSE(enable_table_locking_) || YBCIsInitDbModeEnvVarSet()) {
+    // Object locking feature is not enabled. YB makes best efforts to achieve necessary semantics
+    // using mechanisms like catalog version update by DDLs, DDLs aborting on progress DMLs etc.
+    // Also skip object locking during initdb bootstrap mode, since it's a single-process,
+    // non-concurrent setup with no running tservers and transaction status tablets.
+    return Status::OK();
+  }
+
+  auto fastpath_lock_type = docdb::MakeObjectLockFastpathLockType(TableLockType(mode));
+  if (fastpath_lock_type && pg_txn_manager_->TryAcquireObjectLock(lock_id, *fastpath_lock_type)) {
+    return Status::OK();
+  }
+  VLOG(1) << "Lock acquisition via shared memory not available";
+  return pg_txn_manager_->AcquireObjectLock(
+      VERIFY_RESULT(FlushBufferedOperations()), lock_id, mode);
 }
 
 }  // namespace yb::pggate
