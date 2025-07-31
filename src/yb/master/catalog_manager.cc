@@ -11060,19 +11060,19 @@ Status CatalogManager::HandleAssignCreatingTablet(const TabletInfoPtr& tablet,
 
   if (tablet->LockForRead()->pb.has_split_parent_tablet_id()) {
     // No need to recreate post-split tablets, since this is always done on source tablet replicas.
-    VLOG(2) << "Post-split tablet " << AsString(tablet) << " still being created.";
+    VLOG_WITH_FUNC(2) << "Post-split tablet " << AsString(tablet) << " still being created.";
     return Status::OK();
   }
 
   if (tablet->LockForRead()->pb.created_by_clone()) {
     // No need to recreate cloned tablets, since this is always done on source tablet replicas.
-    VLOG(2) << "Cloned tablet " << AsString(tablet) << " still being created.";
+    VLOG_WITH_FUNC(2) << "Cloned tablet " << AsString(tablet) << " still being created.";
     return Status::OK();
   }
 
   // Skip the tablet if the assignment timeout is not yet expired.
   if (remaining_timeout_ms > 0) {
-    VLOG(2) << "Tablet " << tablet->ToString() << " still being created. "
+    VLOG_WITH_FUNC(2) << "Tablet " << tablet->ToString() << " still being created. "
             << remaining_timeout_ms << "ms remain until timeout.";
     return Status::OK();
   }
@@ -11102,7 +11102,7 @@ Status CatalogManager::HandleAssignCreatingTablet(const TabletInfoPtr& tablet,
   deferred->modified_tablets.push_back(tablet);
   deferred->modified_tablets.push_back(replacement);
   deferred->needs_create_rpc.push_back(replacement);
-  VLOG(1) << "Replaced tablet " << tablet->tablet_id()
+  VLOG_WITH_FUNC(1) << "Replaced tablet " << tablet->tablet_id()
           << " with " << replacement->tablet_id()
           << " (table " << tablet->table()->ToString() << ")";
 
@@ -11157,7 +11157,7 @@ Status CatalogManager::HandleTabletSchemaVersionReport(
 Status CatalogManager::ProcessPendingAssignmentsPerTable(
     const TableId& table_id, const TabletInfos& tablets, const LeaderEpoch& epoch,
     CMGlobalLoadState* global_load_state) {
-  VLOG(1) << "Processing pending assignments";
+  VLOG_WITH_FUNC(1) << "table_id: " << table_id;
 
   TSDescriptorVector ts_descs = GetAllLiveNotBlacklistedTServers();
 
@@ -11197,8 +11197,9 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
         break;
 
       default:
-        VLOG(2) << "Nothing to do for tablet " << tablet->tablet_id() << ": state = "
-                << SysTabletsEntryPB_State_Name(t_state);
+        VLOG_WITH_FUNC(2)
+            << "Nothing to do for tablet " << tablet->tablet_id() << ": state = "
+            << SysTabletsEntryPB_State_Name(t_state);
         break;
     }
   }
@@ -11218,14 +11219,14 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
     // again unless the tablet/table creation is cancelled.
     s = SelectReplicasForTablet(ts_descs, tablet, &table_load_state, global_load_state);
     if (!s.ok()) {
-      LOG(INFO) << "Select replicas for tablet " << tablet->id() << " failed: " << s;
+      LOG_WITH_FUNC(INFO) << "Select replicas for tablet " << tablet->id() << " failed: " << s;
       s = s.CloneAndPrepend(Substitute(
           "An error occurred while selecting replicas for tablet $0: $1",
           tablet->tablet_id(), s.ToString()));
       tablet->table()->SetCreateTableErrorStatus(s);
       break;
     } else {
-      LOG(INFO)
+      LOG_WITH_FUNC(INFO)
           << "Selected replicas for tablet " << tablet->id() << ": "
           << AsString(tablet->mutable_metadata()->mutable_dirty()->pb.committed_consensus_state());
       ok_status_tables.emplace(tablet->table().get());
@@ -11248,7 +11249,7 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
   }
 
   if (!s.ok()) {
-    LOG(WARNING) << "Aborting the current task due to error: " << s.ToString();
+    LOG_WITH_FUNC(WARNING) << "Aborting the current task due to error: " << s;
     // If there was an error, abort any mutations started by the current task.
     // NOTE: Lock order should be lock_ -> table -> tablet.
     // We currently have a bunch of tablets locked and need to unlock first to ensure this holds.
@@ -11266,8 +11267,9 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
               current_table = tablet_to_remove->table();
               current_table_name = current_table->name();
             }
-            LOG(INFO) << "Removed tablet " << tablet_to_remove->tablet_id() << " from table "
-                      << current_table_name;
+            LOG_WITH_FUNC(INFO)
+                << "Removed tablet " << tablet_to_remove->tablet_id() << " from table "
+                << current_table_name;
           }
         }
       }
@@ -11353,7 +11355,8 @@ Status CatalogManager::SelectReplicasForTablet(
       replication_info, ts_descs, config, per_table_state, global_state));
 
   LOG_WITH_FUNC(INFO)
-      << "Initial tserver uuids for tablet " << tablet->tablet_id() << ": "
+      << "Initial tserver uuids for tablet " << tablet->tablet_id() << " [table_id="
+      << tablet->table()->id() << "]: "
       << CollectionToString(config->peers(), [](const auto& p) { return p.permanent_uuid(); });
 
   // Select a protege for the initial leader election. The selected protege is stored in 'tablet'
