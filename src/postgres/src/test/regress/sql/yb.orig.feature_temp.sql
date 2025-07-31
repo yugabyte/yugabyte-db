@@ -98,33 +98,57 @@ SELECT * FROM temptest;
 
 DROP TABLE temptest;
 
--- test ON COMMIT DROP
--- TODO(dmitry) ON COMMIT DROP should be fixed in context of #7926
+-- Test ON COMMIT DROP
 
--- BEGIN;
+BEGIN;
 
--- CREATE TEMP TABLE temptest(col int) ON COMMIT DROP;
+CREATE TEMP TABLE temptest(col int) ON COMMIT DROP;
 
--- INSERT INTO temptest VALUES (1);
--- INSERT INTO temptest VALUES (2);
+INSERT INTO temptest VALUES (1);
+INSERT INTO temptest VALUES (2);
 
--- SELECT * FROM temptest;
--- COMMIT;
+SELECT * FROM temptest;
+COMMIT;
 
--- SELECT * FROM temptest;
+SELECT * FROM temptest;
 
--- BEGIN;
--- CREATE TEMP TABLE temptest(col) ON COMMIT DROP AS SELECT 1;
+BEGIN;
+CREATE TEMP TABLE temptest(col) ON COMMIT DROP AS SELECT 1;
 
--- SELECT * FROM temptest;
--- COMMIT;
+SELECT * FROM temptest;
+COMMIT;
 
--- SELECT * FROM temptest;
+SELECT * FROM temptest;
+
+-- Test it with a CHECK condition that produces a toasted pg_constraint entry
+BEGIN;
+do $$
+begin
+  execute format($cmd$
+    CREATE TEMP TABLE temptest (col text CHECK (col < %L)) ON COMMIT DROP
+  $cmd$,
+    (SELECT string_agg(g.i::text || ':' || random()::text, '|')
+     FROM generate_series(1, 100) g(i)));
+end$$;
+
+SELECT * FROM temptest;
+COMMIT;
+
+SELECT * FROM temptest;
 
 -- ON COMMIT is only allowed for TEMP
 
 CREATE TABLE temptest(col int) ON COMMIT DELETE ROWS;
 CREATE TABLE temptest(col) ON COMMIT DELETE ROWS AS SELECT 1;
+
+-- test on commit drop on a temp table with an index and pk
+BEGIN;
+
+CREATE TEMP TABLE temptest(col int primary key) ON COMMIT DROP;
+CREATE INDEX NONCONCURRENTLY temptest_idx ON temptest(col);
+
+COMMIT;
+SELECT * FROM temptest;
 
 -- test temp table updation
 

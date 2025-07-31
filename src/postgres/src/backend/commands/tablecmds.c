@@ -18512,12 +18512,16 @@ PreCommit_on_commit_actions(void)
 		 */
 		PushActiveSnapshot(GetTransactionSnapshot());
 
+		if (IsYugaByteEnabled() && !YBIsDdlTransactionBlockEnabled())
+			YBIncrementDdlNestingLevel(YB_DDL_MODE_SILENT_ALTERING);
 		/*
 		 * Since this is an automatic drop, rather than one directly initiated
 		 * by the user, we pass the PERFORM_DELETION_INTERNAL flag.
 		 */
 		performMultipleDeletions(targetObjects, DROP_CASCADE,
 								 PERFORM_DELETION_INTERNAL | PERFORM_DELETION_QUIETLY);
+		if (IsYugaByteEnabled() && !YBIsDdlTransactionBlockEnabled())
+			YBDecrementDdlNestingLevel();
 
 		PopActiveSnapshot();
 
