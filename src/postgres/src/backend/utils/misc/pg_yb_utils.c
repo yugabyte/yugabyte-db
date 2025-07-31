@@ -134,6 +134,7 @@
 #include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "yb_ash.h"
+#include "yb_qpm.h"
 #include "yb_query_diagnostics.h"
 
 static uint64_t yb_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
@@ -1223,6 +1224,8 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 
 			if (yb_enable_query_diagnostics)
 				YbQueryDiagnosticsInstallHook();
+
+			YbQpmInit();
 		}
 
 		/*
@@ -2254,6 +2257,16 @@ YBUpdateOptimizationOptions yb_update_optimization_options = {
 	.is_enabled = true,
 	.num_cols_to_compare = 50,
 	.max_cols_size_to_compare = 10 * 1024
+};
+
+YbQpmConfiguration yb_qpm_configuration = {
+	.track = YB_QPM_TRACK_NONE,
+	.cache_replacement_algorithm = YB_QPM_SIMPLE_CLOCK_LRU,
+	.max_cache_size = 5000,
+	.track_catalog_queries = true,
+	.plan_format = EXPLAIN_FORMAT_JSON,
+	.verbose_plans = false,
+	.compress_text = true
 };
 
 bool		yb_speculatively_execute_pl_statements = false;

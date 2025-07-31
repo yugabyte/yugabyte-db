@@ -273,8 +273,8 @@ set pg_hint_plan.yb_use_query_id_for_hinting to on;
 
 delete from hint_plan.hints;
 
--- Query id is expected to be 520905088486409542 for 'select * from information_schema.columns'.
-INSERT INTO hint_plan.hints (norm_query_string, application_name, hints) VALUES ('520905088486409542', '', 'Leading(((dep seq) ((co nco) (nt (((((c a) t) (bt nbt)) ad) nc))))) set(yb_prefer_bnl false) set(yb_enable_batchednl false) Set(from_collapse_limit 12) Set(join_collapse_limit 12) Set(geqo false)');
+-- Query id is expected to be -7371982929224359937 for 'select * from information_schema.columns'.
+INSERT INTO hint_plan.hints (norm_query_string, application_name, hints) VALUES ('-7371982929224359937', '', 'Leading(((dep seq) ((co nco) (nt (((((c a) t) (bt nbt)) ad) nc))))) set(yb_prefer_bnl false) set(yb_enable_batchednl false) Set(from_collapse_limit 12) Set(join_collapse_limit 12) Set(geqo false)');
 
 select * from hint_plan.hints;
 

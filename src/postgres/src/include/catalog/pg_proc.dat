@@ -12266,5 +12266,58 @@
   proname => 'levenshtein_less_equal', provolatile => 'i',
   prorettype => 'int4', proargtypes => 'text text int4 int4 int4 int4',
   prosrc => 'yb_levenshtein_less_equal_with_costs' },
+  
+# YB Query Plan Management (QPM)
+{ oid => '8106',
+  descr => 'Insert an entry into the QPM table',
+  proname => 'yb_pg_stat_plans_insert', proisstrict => 't',
+  proretset => 'f', provolatile => 'v', proparallel => 's',
+  prorettype => 'bool', proargtypes => 'oid oid int8 int8 text text timestamptz timestamptz float8 float8',
+  proargnames => '{dbid,user_id,query_id,plan_id,hint_text,plan_text,first_used,last_used,total_time,est_total_cost}',
+  proargmodes => '{i,i,i,i,i,i,i,i,i,i}',
+  prosrc => 'yb_pg_stat_plans_insert'},
 
+{ oid => '8107',
+  descr => 'Retrieve all QPM entries', proisstrict => 'f',
+  proname => 'yb_pg_stat_plans_get_all_entries',
+  proretset => 't', provolatile => 'v', proparallel => 's',
+  prorettype => 'record', proargtypes => '',
+  prosrc => 'yb_pg_stat_plans_get_all_entries'},
+
+{ oid => '8108',
+  descr => 'Remove QPM entries',
+  proname => 'yb_pg_stat_plans_reset', proisstrict => 'f',
+  proretset => 'f', provolatile => 'v', proparallel => 's',
+  prorettype => 'int8', proargtypes => 'oid oid int8 int8',
+  proargnames => '{dbid,user_id,query_id,plan_id}',
+  proargmodes => '{i,i,i,i}',
+  prosrc => 'yb_pg_stat_plans_reset'},
+
+{ oid => '8109',
+  descr => 'Total elapsed time spent in QPM code', proisstrict => 'f',
+  proname => 'yb_pg_stat_plans_total_time',
+  proretset => 'f', provolatile => 'v', proparallel => 's',
+  prorettype => 'float8', proargtypes => '',
+  prosrc => 'yb_pg_stat_plans_total_time'},
+
+{ oid => '8110',
+  descr => 'Total number of calls to QPM code', proisstrict => 'f',
+  proname => 'yb_pg_stat_plans_total_calls',
+  proretset => 'f', provolatile => 'v', proparallel => 's',
+  prorettype => 'int8', proargtypes => '',
+  prosrc => 'yb_pg_stat_plans_total_calls'},
+
+{ oid => '8111',
+  descr => 'Read the QPM dump file', proisstrict => 'f',
+  proname => 'yb_pg_stat_plans_read_file',
+  proretset => 'f', provolatile => 'v', proparallel => 's',
+  prorettype => 'int4', proargtypes => '',
+  prosrc => 'yb_pg_stat_plans_read_file'},
+
+{ oid => '8112',
+  descr => 'Write the QPM dump file', proisstrict => 'f',
+  proname => 'yb_pg_stat_plans_write_file',
+  proretset => 'f', provolatile => 'v', proparallel => 's',
+  prorettype => 'int4', proargtypes => '',
+  prosrc => 'yb_pg_stat_plans_write_file'}
 ]

@@ -1521,6 +1521,32 @@ typedef enum YbTxnError
 	YB_TXN_CONFLICT_KIND_COUNT, /* Must be last value of this enum */
 } YbTxnError;
 
+typedef enum
+{
+	YB_QPM_TRACK_NONE,
+	YB_QPM_TRACK_TOP,
+	YB_QPM_TRACK_ALL
+} YbQpmTrackEnum;
+
+typedef enum
+{
+	YB_QPM_SIMPLE_CLOCK_LRU,
+	YB_QPM_TRUE_LRU
+} YbCacheReplacementAlgorithmEnum;
+
+typedef struct YbQpmConfiguration
+{
+	int track;
+	int cache_replacement_algorithm;
+	int max_cache_size;
+	bool track_catalog_queries;
+	int plan_format;
+	bool verbose_plans;
+	bool compress_text;
+} YbQpmConfiguration;
+
+extern YbQpmConfiguration yb_qpm_configuration;
+
 extern void YbResetRetryCounts();
 extern void YbIncrementRetryCount(YbTxnError kind);
 extern uint64_t YbGetRetryCount(YbTxnError kind);

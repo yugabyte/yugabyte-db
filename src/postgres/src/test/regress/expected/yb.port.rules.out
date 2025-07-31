@@ -2712,6 +2712,55 @@ yb_local_tablets| SELECT yb_local_tablets.tablet_id,
     yb_local_tablets.partition_key_end,
     yb_local_tablets.state
    FROM yb_local_tablets() yb_local_tablets(tablet_id, table_id, table_type, namespace_name, ysql_schema_name, table_name, partition_key_start, partition_key_end, state);
+yb_pg_stat_plans| SELECT stat_plans.dbid,
+    stat_plans.userid,
+    stat_plans.queryid,
+    stat_plans.planid,
+    stat_plans.first_used,
+    stat_plans.last_used,
+    stat_plans.hints,
+    stat_plans.calls,
+    stat_plans.avg_exec_time,
+    stat_plans.max_exec_time,
+    stat_plans.max_exec_time_params,
+    stat_plans.avg_est_cost,
+    stat_plans.plan
+   FROM yb_pg_stat_plans_get_all_entries() stat_plans(dbid oid, userid oid, queryid bigint, planid bigint, first_used timestamp with time zone, last_used timestamp with time zone, hints text, calls bigint, avg_exec_time double precision, max_exec_time double precision, max_exec_time_params text, avg_est_cost double precision, plan text);
+yb_pg_stat_plans_insights| WITH cte AS (
+         SELECT yb_pg_stat_plans.dbid,
+            yb_pg_stat_plans.userid,
+            yb_pg_stat_plans.queryid,
+            yb_pg_stat_plans.planid,
+            yb_pg_stat_plans.first_used,
+            yb_pg_stat_plans.last_used,
+            yb_pg_stat_plans.hints,
+            yb_pg_stat_plans.avg_exec_time,
+            yb_pg_stat_plans.avg_est_cost,
+            min(yb_pg_stat_plans.avg_exec_time) OVER (PARTITION BY yb_pg_stat_plans.dbid, yb_pg_stat_plans.userid, yb_pg_stat_plans.queryid) AS min_avg_exec_time,
+            min(yb_pg_stat_plans.avg_est_cost) OVER (PARTITION BY yb_pg_stat_plans.dbid, yb_pg_stat_plans.userid, yb_pg_stat_plans.queryid) AS min_avg_est_cost
+           FROM yb_pg_stat_plans
+        )
+ SELECT cte.dbid,
+    cte.userid,
+    cte.queryid,
+    cte.planid,
+    cte.first_used,
+    cte.last_used,
+    cte.hints,
+    cte.avg_exec_time,
+    cte.avg_est_cost,
+    cte.min_avg_exec_time,
+    cte.min_avg_est_cost,
+        CASE
+            WHEN (((cte.avg_exec_time = cte.min_avg_exec_time) AND (cte.min_avg_est_cost <> cte.avg_est_cost)) OR ((cte.avg_exec_time <> cte.min_avg_exec_time) AND (cte.min_avg_est_cost = cte.avg_est_cost))) THEN 'Yes'::text
+            ELSE 'No'::text
+        END AS plan_require_evaluation,
+        CASE
+            WHEN (cte.avg_exec_time = cte.min_avg_exec_time) THEN 'Yes'::text
+            ELSE 'No'::text
+        END AS plan_min_exec_time
+   FROM cte
+  ORDER BY cte.queryid, cte.planid, cte.last_used;
 yb_query_diagnostics_status| SELECT yb_get_query_diagnostics_status.status,
     yb_get_query_diagnostics_status.description,
     yb_get_query_diagnostics_status.query_id,

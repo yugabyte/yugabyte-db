@@ -63,6 +63,8 @@ public class ExplainAnalyzeUtils {
 
   public static final String QUERY_ID = "Query Identifier";
 
+  public static final String PLAN_ID = "Plan Identifier";
+
   public interface TopLevelCheckerBuilder extends ObjectCheckerBuilder {
     TopLevelCheckerBuilder plan(ObjectChecker checker);
     TopLevelCheckerBuilder storageReadRequests(ValueChecker<Long> checker);
@@ -357,6 +359,21 @@ public class ExplainAnalyzeUtils {
       long queryId = rootArray.get(0).getAsJsonObject().get(QUERY_ID).getAsLong();
 
       return queryId;
+    }
+    throw new IllegalArgumentException("Explain plan for this query returned empty.");
+  }
+
+  public static long getExplainPlanId(Statement stmt, String query)
+  throws Exception {
+    ResultSet rs = stmt.executeQuery(String.format(
+      "EXPLAIN (FORMAT json, PLANID on) %s", query));
+    rs.next();
+    JsonElement json = JsonParser.parseString(rs.getString(1));
+    JsonArray rootArray = json.getAsJsonArray();
+    if (!rootArray.isEmpty()) {
+      long planId = rootArray.get(0).getAsJsonObject().get(PLAN_ID).getAsLong();
+
+      return planId;
     }
     throw new IllegalArgumentException("Explain plan for this query returned empty.");
   }

@@ -1566,6 +1566,9 @@ addRangeTableEntryForRelation(ParseState *pstate,
 	rte->updatedCols = NULL;
 	rte->extraUpdatedCols = NULL;
 
+	if (IsYugaByteEnabled())
+		rte->ybScannedObjectName = pstrdup(RelationGetRelationName(rel));
+
 	/*
 	 * Add completed RTE to pstate's range table list, so that we know its
 	 * index.  But we don't add it to the join list --- caller must do that if

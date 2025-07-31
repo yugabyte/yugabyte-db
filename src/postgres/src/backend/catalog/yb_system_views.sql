@@ -82,3 +82,23 @@ CREATE VIEW yb_tablet_metadata AS
         (
             t.type = 'YSQL' AND n.nspname NOT IN ('pg_catalog', 'information_schema')
         );
+
+CREATE VIEW yb_pg_stat_plans AS
+    SELECT *
+    FROM yb_pg_stat_plans_get_all_entries() AS stat_plans(dbid oid, userid oid, queryid BIGINT, 
+													planid bigint, first_used TIMESTAMPTZ, 
+	                                     			last_used TIMESTAMPTZ, hints text, calls bigint, 
+													 avg_exec_time double precision, 
+                                        			 max_exec_time double precision, max_exec_time_params text, 
+													 avg_est_cost double precision, plan text); 
+
+CREATE VIEW yb_pg_stat_plans_insights AS 
+	WITH cte AS (SELECT dbid, userid, queryid, planid, first_used, last_used, hints, avg_exec_time, avg_est_cost, 
+	             min(avg_exec_time) OVER (PARTITION BY dbid, userid, queryid) min_avg_exec_time, 
+				 min(avg_est_cost) OVER (PARTITION BY dbid, userid, queryid) min_avg_est_cost FROM yb_pg_stat_plans) 
+	SELECT dbid, userid, queryid, planid, first_used, last_used, hints, avg_exec_time, avg_est_cost, 
+	       min_avg_exec_time, min_avg_est_cost, CASE WHEN (avg_exec_time = min_avg_exec_time AND 
+		   min_avg_est_cost != avg_est_cost) OR (avg_exec_time != min_avg_exec_time AND 
+		   min_avg_est_cost = avg_est_cost) THEN 'Yes' ELSE 'No' END AS plan_require_evaluation, 
+		   CASE WHEN avg_exec_time = min_avg_exec_time THEN 'Yes' ELSE 'No' END AS plan_min_exec_time 
+		FROM cte ORDER BY queryid, planid, last_used;

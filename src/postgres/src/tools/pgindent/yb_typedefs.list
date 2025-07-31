@@ -51,6 +51,7 @@ YbBucketTupleInfo
 YbBundleInfo
 YbCRSLsnType
 YbCRSOrderingMode
+YbCacheReplacementAlgorithmEnum
 YbCatCListIterator
 YbCatCacheInfo
 YbCatNamePfId
@@ -114,6 +115,8 @@ YbInstrumentation
 YbIntCounters
 YbIssueDetectionCheck
 YbIssueDetectionPlan
+YbJumbleState
+YbLocationLen
 YbLockMechanism
 YbLogicalClientVersionType
 YbLsmBuildState
@@ -146,10 +149,20 @@ YbPgRpcStats
 YbPgssCounters
 YbPgssFillInConstantLengths
 YbPlanInfo
+YbPlanStatePtr
 YbPrefetcherStarterFunctor
 YbPrefetcherStarterWithCache
 YbPushdownExprs
 YbQdPgssStoreKind
+YbQpmConfiguration
+YbQpmHashEntry
+YbQpmHashKey
+YbQpmInfoEntry
+YbQpmLruClock
+YbQpmLruEntry
+YbQpmSharedState
+YbQpmTiming
+YbQpmTrackEnum
 YbQueryConstantsMetadata
 YbQueryDiagnosticsBundles
 YbQueryDiagnosticsEntry
