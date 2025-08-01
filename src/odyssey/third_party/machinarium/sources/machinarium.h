@@ -197,6 +197,8 @@ MACHINE_API int machine_set_compression(machine_io_t *, char algorithm);
 
 MACHINE_API int machine_io_verify(machine_io_t *, char *common_name);
 
+MACHINE_API int yb_machine_io_is_socket_closed(machine_io_t *obj);
+
 /* dns */
 
 MACHINE_API int machine_getsockname(machine_io_t *, struct sockaddr *, int *);
