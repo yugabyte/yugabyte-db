@@ -1,9 +1,13 @@
 package com.yugabyte.yw.models.configs.validators;
 
+import static com.azure.resourcemanager.marketplaceordering.models.OfferType.VIRTUALMACHINE;
 import static com.yugabyte.yw.common.Util.addJsonPathToLeafNodes;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.azure.resourcemanager.AzureResourceManager;
+import com.azure.resourcemanager.compute.models.GalleryImage;
+import com.azure.resourcemanager.compute.models.GalleryImageVersion;
+import com.azure.resourcemanager.compute.models.TargetRegion;
 import com.azure.resourcemanager.compute.models.VirtualMachineImage;
 import com.azure.resourcemanager.marketplaceordering.MarketplaceOrderingManager;
 import com.azure.resourcemanager.marketplaceordering.models.AgreementTerms;
@@ -11,7 +15,6 @@ import com.azure.resourcemanager.network.models.Network;
 import com.azure.resourcemanager.network.models.NetworkSecurityGroup;
 import com.azure.resourcemanager.network.models.Subnet;
 import com.azure.resourcemanager.privatedns.models.PrivateDnsZone;
-import com.azure.resourcemanager.resources.models.GenericResource;
 import com.azure.resourcemanager.resources.models.ResourceGroup;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -20,7 +23,9 @@ import com.google.common.collect.SetMultimap;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.cloud.azu.AZUResourceGroupApiClient;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.BeanValidator;
+import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -31,6 +36,7 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.provider.AzureCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -42,19 +48,27 @@ import play.libs.Json;
 public class AzureProviderValidator extends ProviderFieldsValidator {
 
   private final RuntimeConfGetter confGetter;
+  private final ConfigHelper configHelper;
+  private final String AZURE_NETWORK_PREFIX =
+      "^/subscriptions/([^/]+)/resourceGroups/([^/]+)/providers/Microsoft\\.Network/";
+  private final String AZURE_COMPUTE_PREFIX =
+      "^/subscriptions/([^/]+)/resourceGroups/([^/]+)/providers/Microsoft\\.Compute/";
   private final String AZURE_PRIVATE_DNS_ZONE_ID_REGEX =
-      "^/subscriptions/([^/]+)/resourceGroups/([^/]+)/providers/Microsoft\\.Network/privateDnsZones/([^/]+)$";
-  private final String AZURE_VNET_ID_REGEX =
-      "^/subscriptions/([^/]+)/resourceGroups/([^/]+)/providers/Microsoft\\.Network/virtualNetworks/([^/]+)$";
+      AZURE_NETWORK_PREFIX + "privateDnsZones/([^/]+)$";
+  private final String AZURE_VNET_ID_REGEX = AZURE_NETWORK_PREFIX + "virtualNetworks/([^/]+)$";
   private final String AZURE_SUBNET_ID_REGEX =
-      "^/subscriptions/([^/]+)/resourceGroups/([^/]+)/providers/Microsoft\\.Network/virtualNetworks/([^/]+)/subnets/([^/]+)$";
+      AZURE_NETWORK_PREFIX + "virtualNetworks/([^/]+)/subnets/([^/]+)$";
   private final String AZURE_SECURITY_GROUP_ID_REGEX =
-      "^/subscriptions/([^/]+)/resourceGroups/([^/]+)/providers/Microsoft\\.Network/networkSecurityGroups/([^/]+)$";
+      AZURE_NETWORK_PREFIX + "networkSecurityGroups/([^/]+)$";
+  private final String AZURE_GALLERY_IMAGE_ID_REGEX =
+      AZURE_COMPUTE_PREFIX + "galleries/([^/]+)/images/([^/]+)/versions/([^/]+)$";
 
   @Inject
-  public AzureProviderValidator(RuntimeConfGetter confGetter, BeanValidator beanValidator) {
+  public AzureProviderValidator(
+      RuntimeConfGetter confGetter, BeanValidator beanValidator, ConfigHelper configHelper) {
     super(beanValidator, confGetter);
     this.confGetter = confGetter;
+    this.configHelper = configHelper;
   }
 
   @Override
@@ -153,6 +167,7 @@ public class AzureProviderValidator extends ProviderFieldsValidator {
         provider,
         azure,
         client.getAzureMarketplaceOrderingManager(),
+        cloudInfo,
         processedJson,
         validationErrorsMap);
 
@@ -197,6 +212,7 @@ public class AzureProviderValidator extends ProviderFieldsValidator {
       Provider provider,
       AzureResourceManager azure,
       MarketplaceOrderingManager manager,
+      AzureCloudInfo cloudInfo,
       JsonNode processedJson,
       SetMultimap<String, String> validationErrorsMap) {
 
@@ -210,6 +226,63 @@ public class AzureProviderValidator extends ProviderFieldsValidator {
       }
       String imageJsonPath =
           imageBundleJson.get(index).get("details").get("globalYbImage").get("jsonPath").asText();
+      Matcher matcher = Pattern.compile(AZURE_GALLERY_IMAGE_ID_REGEX).matcher(image);
+      if (matcher.matches()) {
+        String subscriptionId = matcher.group(1);
+        String resourceGroupName = matcher.group(2);
+        String galleryName = matcher.group(3);
+        String imageName = matcher.group(4);
+        String version = matcher.group(5);
+        // Generate AzureResourceManager from gallery image details
+        AzureCloudInfo galleryCloudInfo =
+            cloudInfo.toBuilder()
+                .azuSubscriptionId(subscriptionId)
+                .azuRG(resourceGroupName)
+                .build();
+        AZUResourceGroupApiClient galleryClient = new AZUResourceGroupApiClient(galleryCloudInfo);
+        AzureResourceManager galleryAzure = galleryClient.getResourceManager(galleryCloudInfo, 3);
+        MarketplaceOrderingManager galleryManager =
+            galleryClient.getAzureMarketplaceOrderingManager();
+        GalleryImage galleryImage =
+            galleryAzure.galleryImages().getByGallery(resourceGroupName, galleryName, imageName);
+        GalleryImageVersion galleryImageVersion = galleryImage.getVersion(version);
+        List<TargetRegion> availableRegions = galleryImageVersion.availableRegions();
+
+        // Check if all provider regions are available in gallery image
+        for (Region region : provider.getRegions()) {
+          Map<String, Object> regionMetadata = configHelper.getRegionMetadata(CloudType.azu);
+          JsonNode metaData = Json.toJson(regionMetadata.get(region.getCode()));
+          String regionName = metaData.get("name").asText();
+          boolean regionAvailable =
+              availableRegions.stream()
+                  .map(TargetRegion::name)
+                  .anyMatch(name -> name.equalsIgnoreCase(regionName));
+
+          if (!regionAvailable) {
+            String err =
+                String.format("Gallery image %s is not available in region %s", image, regionName);
+            validationErrorsMap.put(imageJsonPath, err);
+          }
+        }
+
+        // make sure ImagePurchasePlan is agreed
+        if (galleryImage.purchasePlan() != null) {
+          String publisher = galleryImage.purchasePlan().publisher();
+          String offer = galleryImage.purchasePlan().product();
+          String plan = galleryImage.purchasePlan().name();
+          try {
+            AgreementTerms terms =
+                galleryManager.marketplaceAgreements().get(VIRTUALMACHINE, publisher, offer, plan);
+            if (!terms.accepted()) {
+              throw new Exception("Marketplace agreement terms not accepted.");
+            }
+          } catch (Exception e) {
+            String err = String.format("Need to accept the terms for the image %s", image);
+            validationErrorsMap.put(imageJsonPath, err);
+          }
+        }
+        return;
+      }
       String parts[] = image.strip().split(":");
       try {
         // verify correct format
@@ -233,7 +306,10 @@ public class AzureProviderValidator extends ProviderFieldsValidator {
               try {
                 String planID = vmImage.plan().name();
                 AgreementTerms terms =
-                    manager.marketplaceAgreements().getAgreement(publisher, offer, planID);
+                    manager.marketplaceAgreements().get(VIRTUALMACHINE, publisher, offer, planID);
+                if (!terms.accepted()) {
+                  throw new Exception("Marketplace agreement terms not accepted.");
+                }
               } catch (Exception e) {
                 String err = String.format("Need to accept the terms for the image %s", image);
                 validationErrorsMap.put(imageJsonPath, err);
@@ -414,7 +490,7 @@ public class AzureProviderValidator extends ProviderFieldsValidator {
               vnetName = subnetMatcher.group(3);
               String subnetName = subnetMatcher.group(4);
               try {
-                GenericResource subnetResource = azure.genericResources().getById(subnet);
+                azure.genericResources().getById(subnet);
               } catch (Exception e) {
                 log.error("Exception validating subnet: {}", e.getMessage());
                 String err =
