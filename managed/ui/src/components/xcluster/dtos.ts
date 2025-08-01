@@ -26,6 +26,7 @@ export interface XClusterTableDetails {
  * Source: managed/src/main/java/com/yugabyte/yw/models/XClusterConfig.java
  */
 export interface XClusterConfig {
+  automaticDdlMode: boolean;
   createTime: string;
   modifyTime: string;
   name: string;
