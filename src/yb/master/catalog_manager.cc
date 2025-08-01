@@ -7825,6 +7825,7 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
     return Status::OK();
   }
 
+  PgTableAllOids pg_tbl_oids;
   // Due to differences in the way proxies handle version mismatch (pull for yql vs push for sql).
   // For YQL tables, we will return the "set of indexes" being applied instead of the ones
   // that are fully completed.
@@ -7855,17 +7856,16 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
     }
 
     // Get pgschema_name for YSQL tables from PG Catalog. Skip for some special cases.
-    if (l->table_type() == TableType::PGSQL_TABLE_TYPE &&
-        resp->schema().deprecated_pgschema_name().empty() && !table->is_system() &&
+    if (l->table_type() == TableType::PGSQL_TABLE_TYPE && !table->is_system() &&
         !table->IsSequencesSystemTable() && !table->IsColocationParentTable()) {
-      TRACE("Acquired catalog manager lock for schema name lookup");
-
-      auto pgschema_name = ysql_manager_->GetPgSchemaName(table->id(), l.data());
-      if (!pgschema_name.ok() || pgschema_name->empty()) {
-        LOG(WARNING) << "Unable to find schema name for YSQL table " << table->namespace_name()
-                     << "." << table->name() << " due to error: " << pgschema_name;
+      // Store the table OIDs and use it after the Table lock releasing.
+      const auto pg_tbl_oids_res = table->GetPgTableAllOids();
+      if (pg_tbl_oids_res.ok()) {
+        pg_tbl_oids = *pg_tbl_oids_res;
       } else {
-        resp->mutable_schema()->set_deprecated_pgschema_name(*pgschema_name);
+        // Usually it happens for test cases when YSQL IDs are randomly generated UUIDs.
+        LOG(WARNING) << "Unable to get PG Oids from UUIDs for table "
+                     << table->id() << ": " << pg_tbl_oids_res.status();
       }
     }
 
@@ -7917,6 +7917,17 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
     }
     if (l->has_ysql_ddl_txn_verifier_state()) {
       resp->add_ysql_ddl_txn_verifier_state()->CopyFrom(l->ysql_ddl_txn_verifier_state());
+    }
+  }
+
+  if (pg_tbl_oids.initiated()) {
+    auto pgschema_name = ysql_manager_->GetPgSchemaName(pg_tbl_oids);
+    if (!pgschema_name.ok() || pgschema_name->empty()) {
+      LOG(WARNING) << "Unable to find schema name for YSQL table " << table->namespace_name()
+                   << "." << table->name() << " id " << table->id()
+                   << " due to error: " << pgschema_name;
+    } else {
+      resp->mutable_schema()->set_deprecated_pgschema_name(std::move(*pgschema_name));
     }
   }
 
@@ -8178,14 +8189,21 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
 
   PgDbRelNamespaceMap pg_rel_nsp_cache;
   for (auto [index, table_info] : pg_tables) {
-    auto& table = (*resp->mutable_tables())[index];
-    const auto pgschema_name_res = ysql_manager_->GetCachedPgSchemaName(
-        table.id(), table_info->LockForRead().data(), pg_rel_nsp_cache);
-    if (!pgschema_name_res.ok() || pgschema_name_res->empty()) {
-      LOG(WARNING) << "Unable to find schema name for YSQL table " << table.namespace_().name()
-                   << "." << table.name() << " due to error: " << pgschema_name_res;
+    const auto pg_tbl_oids_res = table_info->GetPgTableAllOids();
+    if (pg_tbl_oids_res.ok()) {
+      auto& table = (*resp->mutable_tables())[index];
+      const auto pgschema_name_res =
+          ysql_manager_->GetCachedPgSchemaName(*pg_tbl_oids_res, pg_rel_nsp_cache);
+      if (!pgschema_name_res.ok() || pgschema_name_res->empty()) {
+        LOG(WARNING) << "Unable to find schema name for YSQL table " << table.namespace_().name()
+                     << "." << table.name() << " due to error: " << pgschema_name_res;
+      } else {
+        table.set_pgschema_name(*pgschema_name_res);
+      }
     } else {
-      table.set_pgschema_name(*pgschema_name_res);
+      // Usually it happens for test cases when YSQL IDs are randomly generated UUIDs.
+      LOG(WARNING) << "Unable to get PG Oids from UUIDs for table "
+                   << table_info->id() << ": " << pg_tbl_oids_res.status();
     }
   }
 
@@ -8234,12 +8252,19 @@ scoped_refptr<TableInfo> CatalogManager::GetTableInfoFromNamespaceNameAndTableNa
 
     if (!ltm->started_deleting() && ltm->namespace_id() == ns->id() &&
         boost::iequals(ltm->name(), table_name)) {
-      auto tbl_pg_schema_name = ysql_manager_->GetPgSchemaName(table->id(), ltm.data());
-      if (!tbl_pg_schema_name.ok() || tbl_pg_schema_name->empty()) {
-        LOG(WARNING) << "Unable to find schema name for YSQL table " << ltm->namespace_name()
-                     << "." << ltm->name() << " due to error: " << tbl_pg_schema_name;
-      } else if (boost::iequals(*tbl_pg_schema_name, pg_schema_name)) {
-        return table;
+      auto pg_tbl_oids = table->GetPgTableAllOids();
+      if (pg_tbl_oids.ok()) {
+        auto tbl_pg_schema_name = ysql_manager_->GetPgSchemaName(*pg_tbl_oids);
+        if (!tbl_pg_schema_name.ok() || tbl_pg_schema_name->empty()) {
+          LOG(WARNING) << "Unable to find schema name for YSQL table " << ltm->namespace_name()
+                       << "." << ltm->name() << " due to error: " << tbl_pg_schema_name;
+        } else if (boost::iequals(*tbl_pg_schema_name, pg_schema_name)) {
+          return table;
+        }
+      } else {
+        LOG(WARNING) << "Unable to get PG Oids for YSQL table " << ltm->namespace_name()
+                     << "." << ltm->name() << " id " << table->id() << " due to error: "
+                     << pg_tbl_oids.status();
       }
     }
   }

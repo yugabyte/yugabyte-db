@@ -724,8 +724,8 @@ Status CatalogManager::BackfillMetadataForXRepl(
       if (!IsColocationParentTableId(table_id) &&
           (backfill_required || table_lock->schema().deprecated_pgschema_name().empty())) {
         LOG_WITH_FUNC(INFO) << "backfilling pgschema_name for table " << table_id;
-        string pgschema_name =
-            VERIFY_RESULT(GetYsqlManager().GetPgSchemaName(table_id, table_lock.data()));
+        const auto pgschema_name = VERIFY_RESULT(GetYsqlManager().GetPgSchemaName(
+            VERIFY_RESULT(table->GetPgTableAllOids())));
         VLOG(1) << "For table: " << table_lock->name() << " found pgschema_name: " << pgschema_name;
         alter_table_req_pg_type.set_pgschema_name(pgschema_name);
         backfill_required = true;

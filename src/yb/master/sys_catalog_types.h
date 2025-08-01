@@ -27,6 +27,14 @@ struct PgTypeInfo {
   PgTypeInfo(char typtype_, uint32_t typbasetype_) : typtype(typtype_), typbasetype(typbasetype_) {}
 };
 
+struct PgTableAllOids {
+  bool initiated() const { return database_oid != kPgInvalidOid; }
+
+  PgOid database_oid = kPgInvalidOid;
+  PgOid relfilenode_oid = kPgInvalidOid;
+  PgOid pg_table_oid = kPgInvalidOid;
+};
+
 // Generic PG OID -> PG OID map.
 // Used internally to store collections like: [table oid -> relnamespace oid].
 using PgOidToOidMap = std::unordered_map<PgOid, PgOid>;

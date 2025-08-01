@@ -50,6 +50,7 @@
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_client.fwd.h"
 #include "yb/master/master_fwd.h"
+#include "yb/master/sys_catalog_types.h"
 #include "yb/master/tasks_tracker.h"
 
 #include "yb/qlexpr/index.h"
@@ -584,7 +585,7 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
   Result<Schema> GetSchema() const;
 
   TableType GetTableType() const {
-    return pb.table_type();
+    return table_type();
   }
 };
 
@@ -701,6 +702,9 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // we cannot directly infer the PG OID from the table ID. Instead, we need to use the
   // stored pg_table_id field.
   Result<uint32_t> GetPgTableOid() const;
+
+  // Helper for returning all OIDs for the PG Table.
+  Result<PgTableAllOids> GetPgTableAllOids() const;
 
   // Return the table type of the table.
   TableType GetTableType() const;
