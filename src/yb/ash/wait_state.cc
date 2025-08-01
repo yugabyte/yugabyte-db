@@ -120,7 +120,7 @@ std::string GetWaitStateDescription(WaitStateCode code) {
     case WaitStateCode::kMVCC_WaitForSafeTime:
       return "A read/write rpc is waiting for the safe time to be at least the desired read-time.";
     case WaitStateCode::kWaitForReadTime:
-      return "A read/write rpc is waiting for the current time to catch up to passed read time.";
+      return "A read/write rpc is waiting for the current time to catch up to read time.";
     case WaitStateCode::kLockedBatchEntry_Lock:
       return "A read/write rpc is waiting for a DocDB row level lock.";
     case WaitStateCode::kBackfillIndex_WaitForAFreeSlot:
