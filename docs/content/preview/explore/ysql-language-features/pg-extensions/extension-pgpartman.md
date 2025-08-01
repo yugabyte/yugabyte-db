@@ -327,3 +327,68 @@ mo=# SELECT create_parent( p_parent_table => 'public.orders',
 ```output
 ERROR:  Partition table public.orders is a colocated table hence registering it to pg_partman maintenance is not supported
 ```
+
+### xCluster
+
+Depending on the type of xCluster deployment, pgPartman may be used.
+
+Note that if you are [using pg_cron to manage tasks](#maintain-partitions-using-pg_cron), you must instal it on a separate database that is not part of the xCluster configuration.
+
+#### Transactional xCluster and xCluster DR
+
+**Automatic DDL change handling mode**
+
+The pgPartman maintenance cron job can only be enabled on the primary. Disable it on the replica.
+
+During disaster recovery switchover (or failover and repair):
+
+1. Disable the pgPartman cron job on the original primary.
+1. Enable the pgPartman cron job the new primary.
+
+**Semi-automatic DDL change handling mode**
+
+At setup, do the following:
+
+1. On the source cluster, enable the pg_partman extension and the pg_audit extension.
+1. On the target cluster, enable the pg_partman extension, and disable the pg_partman maintenance cron job.
+
+During normal operations, as DDLs occur on the source cluster, do the following:
+
+1. Monitor the pg_audit log on the source cluster to detect partition-related DDLs.
+1. When any partition-related DDLs are detected, manually run them also on the target cluster; this must be done within the WAL log retention time (which is 4 hours by default).
+
+**Manual DDL change handling mode**
+
+pgPartman is not supported.
+
+#### Non-transactional xCluster (including bi-directional)
+
+pgPartman is not recommended. 
+
+Because pgPartman creates and drops tables, if you were to try to run pgPartman on both clusters, the partitions might not be created at the same time on both sides. Even if they were identical, manual work is needed to add the new tables and remove dropped tables from the xCluster configuration.
+
+If you were to try to run pgPartman on just one side, then any tables created or dropped by pgPartman would have to be created or dropped on the target, which would require difficult manual administration.
+
+Although not recommended, it is possible to use pgPartman using the following steps:
+
+**Setup**
+
+1. On one cluster (call this cluster A):
+
+    - Enable the pg_partman extension.
+    - Enable the pg_audit extension.
+
+    Note: in a uni-directional replication configuration, choose cluster A to be your source cluster. In a bi-directional replication configuration, both clusters act as source and target (usually for distinctly different tables, however). 
+
+1. On the other cluster (call this cluster B):
+
+    - Enable the pg_partman extension.
+    - Disable the pg_partman maintenance cron job.
+
+**Operation**
+
+During normal operations, as DDLs occur on the source cluster, monitor the pg_audit log (on the source cluster) to detect partition-related DDLs.
+
+When you detect partition-related DDLs, follow the instructions in [Handling DDL changes](../../../../deploy/multi-dc/async-replication/async-deployment/#handling-ddl-changes) to issue the same DDL command on the replica cluster.
+
+Note that the sequence of operations can vary by DDL command (for example, CREATE partition and DROP partition require different follow-up actions in different orders).
