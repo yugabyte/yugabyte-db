@@ -93,6 +93,12 @@ Create the target YugabyteDB database in your YugabyteDB cluster. The database n
 CREATE DATABASE target_db_name;
 ```
 
+Create the database with colocation if you want to assess migration using the following command:
+
+```sql
+CREATE DATABASE target_db_name WITH COLOCATION = true;
+```
+
 ### Create a user
 
 Create a user with [`SUPERUSER`](../../../api/ysql/the-sql-language/statements/dcl_create_role/#syntax) role.
@@ -185,13 +191,103 @@ target:
   db-password: <target-db-password> # Enclose the password in single quotes if it contains special characters.
 ```
 
-Refer to the [offline-migration.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/offline-migration.yaml) template for more information on the available global, source, and target configuration parameters supported by Voyager.
+Refer to the [offline-migration.yaml](<https://github.com/yugabyte/yb-voyager/blob/{{>< yb-voyager-release >}}/yb-voyager/config-templates/offline-migration.yaml) template for more information on the available global, source, and target configuration parameters supported by Voyager.
+
+## Configure yugabyted UI
+
+Install YugabyteDB to view migration assessment report in the [yugabyted](/preview/reference/configuration/yugabyted/) UI. Using the yugabyted UI, you can visualize and review the database migration workflow performed by YugabyteDB Voyager.
+
+  1. Start a local YugabyteDB cluster. Refer to the steps described in [Use a local cluster](/preview/tutorials/quick-start/macos/).
+
+  1. To see the Voyager migration workflow details in the UI, set the following environment variables before starting the migration:
+
+        ```sh
+        export CONTROL_PLANE_TYPE=yugabyted
+        export YUGABYTED_DB_CONN_STRING=<ysql-connection-parameters>
+        ```
+
+        Provide the standard PostgreSQL connection parameters, including user name, host name, and port. For example, `postgresql://yugabyte:yugabyte@127.0.0.1:5433`
+
+        {{< note title="Note" >}}
+
+Don't include the `dbname` parameter in the connection string; the default `yugabyte` database is used to store the meta information for showing the migration in the yugabyted UI.
+        {{< /note >}}
 
 ## Assess migration
 
 This step is optional and only applies to PostgreSQL and Oracle migrations.
 
 Assess migration analyzes the source database, captures essential metadata, and generates a report with recommended migration strategies and cluster configurations for optimal performance with YugabyteDB. You run assessments using the `yb-voyager assess-migration` command.
+
+Voyager supports two primary modes for conducting migration assessments, depending on your access to the source database as follows:<br><br>
+
+  {{< tabpane text=true >}}
+
+    {{% tab header="With source database connectivity" %}}
+
+This mode requires direct connectivity to the source database from the client machine where voyager is installed. You initiate the assessment by executing the `assess-migration` command of `yb-voyager`. This command facilitates a live analysis by interacting directly with the source database, to gather metadata required for assessment. A sample command is as follows:
+
+```sh
+yb-voyager assess-migration --source-db-type postgresql \
+    --source-db-host hostname --source-db-user ybvoyager \
+    --source-db-password password --source-db-name dbname \
+    --source-db-schema schema1,schema2 --export-dir /path/to/export/dir
+```
+
+If you are using a [configuration file](../../reference/configuration-file/), use the following:
+
+```sh
+yb-voyager assess-migration --config-file <path-to-config-file>
+```
+
+  {{% /tab %}}
+
+  {{% tab header="Without source database connectivity" %}}
+
+PostgreSQL only. In situations where direct access to the source database is restricted, there is an alternative approach. Voyager includes packages with scripts for PostgreSQL at `/etc/yb-voyager/gather-assessment-metadata`.
+
+You can perform the following steps with these scripts:
+
+1. On a machine which has access to the source database, copy the scripts and install dependencies psql and pg_dump version 14 or later. Alternatively, you can install yb-voyager on the machine to automatically get the dependencies.
+
+1. Run the `yb-voyager-pg-gather-assessment-metadata.sh` script by providing the source connection string, the schema names, path to a directory where metadata will be saved, and an optional argument of an interval to capture the IOPS metadata of the source (in seconds with a default value of 120). For example:
+
+    ```sh
+    /path/to/yb-voyager-pg-gather-assessment-metadata.sh 'postgresql://ybvoyager@host:port/dbname' 'schema1|schema2' '/path/to/assessment_metadata_dir' '60'
+    ```
+
+1. Copy the metadata directory to the client machine on which voyager is installed, and run the `assess-migration` command by specifying the path to the metadata directory as follows:
+
+    ```sh
+    yb-voyager assess-migration --source-db-type postgresql \
+        --assessment-metadata-dir /path/to/assessment_metadata_dir --export-dir /path/to/export/dir
+    ```
+
+    If you are using a [configuration file](../../reference/configuration-file/), use the following:
+
+    ```sh
+    yb-voyager assess-migration --config-file <path-to-config-file>
+    ```
+
+    {{% /tab %}}
+
+    {{< /tabpane >}}
+
+  The output is a migration assessment report, and its path is printed on the console. To View the assessment report, navigate to the **Migrations** tab in the [yugabyted UI](#configure-yugabyted-ui) at <http://127.0.0.1:15433> to see the available migrations.
+
+  {{< warning title="Important" >}}
+For the most accurate migration assessment, the source database must be actively handling its typical workloads at the time the metadata is gathered. This ensures that the recommendations for sharding strategies and cluster sizing are well-aligned with the database's real-world performance and operational needs.
+  {{< /warning >}}
+
+1. Resize your target YugabyteDB cluster in [Enhanced PostgreSQL Compatibility Mode](../../../develop/postgresql-compatibility/), based on the sizing recommendations in the assessment report.
+
+  For a universe in YugabyteDB Anywhere, [enable compatibility mode](../../../develop/postgresql-compatibility/#yugabytedb-anywhere) by setting flags on the universe.
+
+1. Check that your target YugabyteDB database is colocated in [ysqlsh](/preview/api/ysqlsh/) using the following command:
+
+    ```sql
+    select yb_is_database_colocated();
+    ```
 
 Refer to [Migration assessment](../../migrate/assess-migration/) for details.
 
@@ -231,7 +327,7 @@ Run the command as follows:
 yb-voyager export schema --config-file <path-to-config-file>
 ```
 
-You can specify additional `export schema` parameters in the `export-schema` section of the configuration file. For more details, refer to the [offline-migration.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/offline-migration.yaml) template.
+You can specify additional `export schema` parameters in the `export-schema` section of the configuration file. For more details, refer to the [offline-migration.yaml](<https://github.com/yugabyte/yb-voyager/blob/{{>< yb-voyager-release >}}/yb-voyager/config-templates/offline-migration.yaml) template.
 
   {{% /tab %}}
 
@@ -272,7 +368,7 @@ Run the command as follows:
 yb-voyager analyze-schema --config-file <path-to-config-file>
 ```
 
-You can specify additional `analyze-schema` parameters in the `analyze-schema` section of the configuration file. For more details, refer to the [offline-migration.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/offline-migration.yaml) template.
+You can specify additional `analyze-schema` parameters in the `analyze-schema` section of the configuration file. For more details, refer to the [offline-migration.yaml](<https://github.com/yugabyte/yb-voyager/blob/{{>< yb-voyager-release >}}/yb-voyager/config-templates/offline-migration.yaml) template.
 
  {{% /tab %}}
 
@@ -321,7 +417,7 @@ Run the command as follows:
 yb-voyager import schema --config-file <path-to-config-file>
 ```
 
-You can specify additional `import schema` parameters in the `import-schema` section of the configuration file. For more details, refer to the [offline-migration.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/offline-migration.yaml) template.
+You can specify additional `import schema` parameters in the `import-schema` section of the configuration file. For more details, refer to the [offline-migration.yaml](<https://github.com/yugabyte/yb-voyager/blob/{{>< yb-voyager-release >}}/yb-voyager/config-templates/offline-migration.yaml) template.
 
   {{% /tab %}}
 
@@ -367,7 +463,7 @@ Run the command as follows:
 yb-voyager export data --config-file <path-to-config-file>
 ```
 
-You can specify additional `export data` parameters in the `export-data` section of the configuration file. For more details, refer to the [offline-migration.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/offline-migration.yaml) template.
+You can specify additional `export data` parameters in the `export-data` section of the configuration file. For more details, refer to the [offline-migration.yaml](<https://github.com/yugabyte/yb-voyager/blob/{{>< yb-voyager-release >}}/yb-voyager/config-templates/offline-migration.yaml) template.
 
   {{% /tab %}}
 
@@ -427,7 +523,7 @@ Run the command as follows:
 yb-voyager export data status --config-file <path-to-config-file>
 ```
 
-You can specify additional `export data status` parameters in the `export-data-status` section of the configuration file. For more details, refer to the [offline-migration.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/offline-migration.yaml) template.
+You can specify additional `export data status` parameters in the `export-data-status` section of the configuration file. For more details, refer to the [offline-migration.yaml](<https://github.com/yugabyte/yb-voyager/blob/{{>< yb-voyager-release >}}/yb-voyager/config-templates/offline-migration.yaml) template.
 
   {{% /tab %}}
 
@@ -469,7 +565,7 @@ Run the command as follows:
 yb-voyager import data --config-file <path-to-config-file>
 ```
 
-You can specify additional `import data` parameters in the `import-data` section of the configuration file. For more details, refer to the [offline-migration.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/offline-migration.yaml) template.
+You can specify additional `import data` parameters in the `import-data` section of the configuration file. For more details, refer to the [offline-migration.yaml](<https://github.com/yugabyte/yb-voyager/blob/{{>< yb-voyager-release >}}/yb-voyager/config-templates/offline-migration.yaml) template.
 
   {{% /tab %}}
 
@@ -533,7 +629,7 @@ Run the command as follows:
 yb-voyager import data status --config-file <path-to-config-file>
 ```
 
-You can specify additional `import data status` parameters in the `import-data-status` section of the configuration file. For more details, refer to the [offline-migration.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/offline-migration.yaml) template.
+You can specify additional `import data status` parameters in the `import-data-status` section of the configuration file. For more details, refer to the [offline-migration.yaml](<https://github.com/yugabyte/yb-voyager/blob/{{>< yb-voyager-release >}}/yb-voyager/config-templates/offline-migration.yaml) template.
 
   {{% /tab %}}
 
