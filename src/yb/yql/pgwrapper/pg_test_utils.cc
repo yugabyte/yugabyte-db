@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include <fstream>
+
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
 #include "yb/common/pgsql_error.h"
@@ -127,6 +129,25 @@ Status IncrementAllDBCatalogVersions(
         "SELECT yb_increment_all_db_catalog_versions($0)", is_breaking ? "true" : "false"));
   }
   return result;
+}
+
+void GenerateCSVFileForCopy(
+    const std::string& filename, int num_rows, int num_columns, int offset) {
+  std::remove(filename.c_str());
+  std::ofstream temp_file(filename);
+  temp_file << "k";
+  for (int c = 0; c < num_columns - 1; ++c) {
+    temp_file << ",v" << c;
+  }
+  temp_file << std::endl;
+  for (int i = 0; i < num_rows; ++i) {
+    temp_file << i + offset;
+    for (int c = 0; c < num_columns - 1; ++c) {
+      temp_file << "," << i + c;
+    }
+    temp_file << std::endl;
+  }
+  temp_file.close();
 }
 
 } // namespace yb::pgwrapper

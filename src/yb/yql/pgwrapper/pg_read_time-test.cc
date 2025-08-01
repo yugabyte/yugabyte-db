@@ -86,25 +86,6 @@ class PgReadTimeTest : public PgMiniTestBase {
         stmt_executor, 0 /* expected_num_picked_read_time_on_doc_db_metric */);
   }
 
-  void generateCSVFileForCopy(const std::string& filename, int num_rows) {
-    std::remove(filename.c_str());
-    int num_columns = 2;
-    std::ofstream temp_file(filename);
-    temp_file << "k";
-    for (int c = 0; c < num_columns - 1; ++c) {
-      temp_file << ",v" << c;
-    }
-    temp_file << std::endl;
-    for (int i = 0; i < num_rows; ++i) {
-      temp_file << i + 10000;
-      for (int c = 0; c < num_columns - 1; ++c) {
-        temp_file << "," << i + c;
-      }
-      temp_file << std::endl;
-    }
-    temp_file.close();
-  }
-
  private:
   void CheckReadTimePickingLocation(
       const StmtExecutor& stmt_executor, uint64_t expected_num_picked_read_time_on_doc_db_metric) {
@@ -348,7 +329,7 @@ TEST_F(PgReadTimeTest, CheckReadTimePickingLocation) {
   ASSERT_OK(SetMaxBatchSize(&conn, 1024));
   ASSERT_OK(conn.Execute("SET yb_disable_transactional_writes = 1"));
   std::string csv_filename = "/tmp/pg_read_time-test-fastpath-copy.tmp";
-  generateCSVFileForCopy(csv_filename, 1);
+  GenerateCSVFileForCopy(csv_filename, 1);
   CheckReadTimePickedOnDocdb(
       [&conn, kTable, &csv_filename]() {
       ASSERT_OK(conn.ExecuteFormat("copy $0 from '$1' WITH (FORMAT CSV,HEADER)",
@@ -356,7 +337,7 @@ TEST_F(PgReadTimeTest, CheckReadTimePickingLocation) {
       }, 1);
 
   // (2) Copy multiple rows to table with single tserver
-  generateCSVFileForCopy(csv_filename, 100);
+  GenerateCSVFileForCopy(csv_filename, 100, 2 /* num_columns */, 10000 /* offset */);
   ASSERT_OK(conn.Execute("SET yb_disable_transactional_writes = 1"));
   CheckReadTimePickedOnDocdb(
       [&conn, kSingleTabletTable, &csv_filename]() {
@@ -412,7 +393,7 @@ TEST_F(PgReadTimeTest, TestFastPathCopyDuplicateKeyOnColocated) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = true", dbName));
   std::string csv_filename = "/tmp/pg_read_time-test-fastpath-copy.tmp";
-  generateCSVFileForCopy(csv_filename, 200000);
+  GenerateCSVFileForCopy(csv_filename, 200000);
   auto conn_colo = ASSERT_RESULT(ConnectToDB(dbName));
   ASSERT_OK(SetMaxBatchSize(&conn_colo, 2));
   ASSERT_OK(conn_colo.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kColocatedTable));
