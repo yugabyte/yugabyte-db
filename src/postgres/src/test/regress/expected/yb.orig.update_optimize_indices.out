@@ -13,12 +13,14 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) SELECT * FROM pkey_only_table;
 ---------------------------------------------------------
  Seq Scan on pkey_only_table (actual rows=10240 loops=1)
    Storage Table Read Requests: 4
+   Storage Table Read Ops: 12
    Storage Table Rows Scanned: 10240
  Storage Read Requests: 4
+ Storage Read Ops: 12
  Storage Rows Scanned: 10240
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(7 rows)
+(9 rows)
 
 -- Updating non-index column should be done in a single op
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 1 WHERE h = 1;
@@ -28,10 +30,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 1 WHERE h = 1
    ->  Result pkey_only_table (actual rows=1 loops=1)
          Storage Table Write Requests: 1
  Storage Read Requests: 0
+ Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 1
  Storage Flush Requests: 0
-(7 rows)
+(8 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 1, v2 = 1 WHERE h = 1;
                       QUERY PLAN                      
@@ -40,10 +43,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 1, v2 = 1 WHE
    ->  Result pkey_only_table (actual rows=1 loops=1)
          Storage Table Write Requests: 1
  Storage Read Requests: 0
+ Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 1
  Storage Flush Requests: 0
-(7 rows)
+(8 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 2 WHERE h = 1;
                       QUERY PLAN                      
@@ -52,10 +56,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 2 WHERE h = 1
    ->  Result pkey_only_table (actual rows=1 loops=1)
          Storage Table Write Requests: 1
  Storage Read Requests: 0
+ Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 1
  Storage Flush Requests: 0
-(7 rows)
+(8 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 3, v2 = 3 WHERE h = 1;
                       QUERY PLAN                      
@@ -64,10 +69,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 3, v2 = 3 WHE
    ->  Result pkey_only_table (actual rows=1 loops=1)
          Storage Table Write Requests: 1
  Storage Read Requests: 0
+ Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 1
  Storage Flush Requests: 0
-(7 rows)
+(8 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = v1 + 1, v2 = v1 + 1 WHERE h = 1;
                       QUERY PLAN                      
@@ -76,10 +82,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = v1 + 1, v2 = 
    ->  Result pkey_only_table (actual rows=1 loops=1)
          Storage Table Write Requests: 1
  Storage Read Requests: 0
+ Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 1
  Storage Flush Requests: 0
-(7 rows)
+(8 rows)
 
 -- Setting index column in the update should trigger a read, but no update of the index
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET h = 1 WHERE h = 1;
@@ -89,13 +96,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET h = 1 WHERE h = 1;
    ->  Index Scan using pkey_only_table_pkey on pkey_only_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 1, h = 1 WHERE h = 1;
                                        QUERY PLAN                                       
@@ -104,13 +113,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 1, h = 1 WHER
    ->  Index Scan using pkey_only_table_pkey on pkey_only_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 1, h = h WHERE h = 1;
                                        QUERY PLAN                                       
@@ -119,13 +130,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 1, h = h WHER
    ->  Index Scan using pkey_only_table_pkey on pkey_only_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 1, h = v1 WHERE h = 1;
                                        QUERY PLAN                                       
@@ -134,13 +147,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 1, h = v1 WHE
    ->  Index Scan using pkey_only_table_pkey on pkey_only_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 -- CREATE a table with a multi-column secondary index
 DROP TABLE IF EXISTS secindex_only_table;
@@ -156,13 +171,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = 1 WHERE h
    ->  Seq Scan on secindex_only_table (actual rows=1 loops=1)
          Storage Filter: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 10240
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 10240
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1 WHERE h = 1;
                           QUERY PLAN                           
@@ -171,13 +188,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1 WHERE 
    ->  Seq Scan on secindex_only_table (actual rows=1 loops=1)
          Storage Filter: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 10240
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 10240
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = h WHERE h = 1;
                           QUERY PLAN                           
@@ -186,13 +205,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = h WHERE h
    ->  Seq Scan on secindex_only_table (actual rows=1 loops=1)
          Storage Filter: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 10240
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 10240
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = h, h = h WHERE h = 1;
                           QUERY PLAN                           
@@ -201,13 +222,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = h, h = h 
    ->  Seq Scan on secindex_only_table (actual rows=1 loops=1)
          Storage Filter: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 10240
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 10240
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = h, h = v1 WHERE h = 1;
                           QUERY PLAN                           
@@ -216,13 +239,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = h, h = v1
    ->  Seq Scan on secindex_only_table (actual rows=1 loops=1)
          Storage Filter: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 10240
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 10240
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = h, h = v1 + v2 - h WHERE h = 1;
                           QUERY PLAN                           
@@ -231,13 +256,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = h, h = v1
    ->  Seq Scan on secindex_only_table (actual rows=1 loops=1)
          Storage Filter: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 10240
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 10240
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 -- Same cases as above, but not providing the primary key
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = 1 WHERE v1 = 1;
@@ -247,13 +274,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = 1 WHERE v
    ->  Seq Scan on secindex_only_table (actual rows=1 loops=1)
          Storage Filter: (v1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 10240
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 10240
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1 WHERE v1 = 1;
                           QUERY PLAN                           
@@ -262,13 +291,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1 WHERE 
    ->  Seq Scan on secindex_only_table (actual rows=1 loops=1)
          Storage Filter: (v1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 10240
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 10240
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = h WHERE v1 = 1;
                           QUERY PLAN                           
@@ -277,13 +308,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = h WHERE v
    ->  Seq Scan on secindex_only_table (actual rows=1 loops=1)
          Storage Filter: (v1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 10240
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 10240
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = h, h = h WHERE v1 = 1;
                           QUERY PLAN                           
@@ -292,13 +325,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = h, h = h 
    ->  Seq Scan on secindex_only_table (actual rows=1 loops=1)
          Storage Filter: (v1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 10240
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 10240
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = h, h = v1 WHERE v1 = 1;
                           QUERY PLAN                           
@@ -307,13 +342,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = h, h = v1
    ->  Seq Scan on secindex_only_table (actual rows=1 loops=1)
          Storage Filter: (v1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 10240
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 10240
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = h, h = v1 + v2 - h WHERE v1 = 1;
                           QUERY PLAN                           
@@ -322,13 +359,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = h, h = v1
    ->  Seq Scan on secindex_only_table (actual rows=1 loops=1)
          Storage Filter: (v1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 10240
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 10240
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 -- Queries with non-leading secondary index
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET h = h WHERE h = 1;
@@ -338,13 +377,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET h = h WHERE h 
    ->  Seq Scan on secindex_only_table (actual rows=1 loops=1)
          Storage Filter: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 10240
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 10240
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 --
 -- CREATE a table having secondary indices with NULL values
@@ -360,13 +401,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE nullable_table SET v1 = NULL WHERE h =
    ->  Index Scan using nullable_table_pkey on nullable_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE nullable_table SET v1 = NULL, v2 = NULL WHERE h = 1;
                                       QUERY PLAN                                      
@@ -375,13 +418,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE nullable_table SET v1 = NULL, v2 = NUL
    ->  Index Scan using nullable_table_pkey on nullable_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE nullable_table SET h = 1, v1 = NULL, v2 = NULL WHERE h = 1;
                                       QUERY PLAN                                      
@@ -390,13 +435,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE nullable_table SET h = 1, v1 = NULL, v
    ->  Index Scan using nullable_table_pkey on nullable_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE nullable_table SET h = h, v1 = NULL, v2 = NULL WHERE h = 1;
                                       QUERY PLAN                                      
@@ -405,13 +452,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE nullable_table SET h = h, v1 = NULL, v
    ->  Index Scan using nullable_table_pkey on nullable_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE nullable_table SET h = h, v1 = NULL, v2 = NULL WHERE v1 = NULL;
                      QUERY PLAN                      
@@ -420,10 +469,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE nullable_table SET h = h, v1 = NULL, v
    ->  Result nullable_table (actual rows=0 loops=1)
          One-Time Filter: false
  Storage Read Requests: 0
+ Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(7 rows)
+(8 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE nullable_table SET h = h, v1 = NULL, v2 = NULL WHERE v1 = NULL OR v2 = NULL;
                      QUERY PLAN                      
@@ -432,10 +482,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE nullable_table SET h = h, v1 = NULL, v
    ->  Result nullable_table (actual rows=0 loops=1)
          One-Time Filter: false
  Storage Read Requests: 0
+ Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(7 rows)
+(8 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE nullable_table SET h = h, v1 = NULL, v2 = NULL WHERE v1 = NULL AND v2 = NULL;
                      QUERY PLAN                      
@@ -444,10 +495,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE nullable_table SET h = h, v1 = NULL, v
    ->  Result nullable_table (actual rows=0 loops=1)
          One-Time Filter: false
  Storage Read Requests: 0
+ Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(7 rows)
+(8 rows)
 
 -- CREATE a table having secondary indices in a colocated database.
 -- CREATE a table having indexes of multiple data types
@@ -468,13 +520,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE number_type_table SET h = 0, v1 = 1, v
    ->  Index Scan using number_type_table_pkey on number_type_table (actual rows=1 loops=1)
          Index Cond: (h = 0)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE number_type_table SET h = h + 1, v1 = 1, v2 = 2, v3 = 3, v4 = 4, v5 = 5, v6 = 6.000001, v7 = 1, v8 = 1, v9 = '-9.12344', v10 = '-10.123455789' WHERE h = 0;
                                          QUERY PLAN                                         
@@ -483,14 +537,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE number_type_table SET h = h + 1, v1 = 
    ->  Index Scan using number_type_table_pkey on number_type_table (actual rows=1 loops=1)
          Index Cond: (h = 0)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 2
          Storage Index Write Requests: 10
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 12
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE number_type_table SET h = h + 1, v1 = 1, v2 = 2, v3 = 3, v4 = 4, v5 = 5, v6 = 6.000001, v7 = 1, v8 = 1, v9 = '-9.12344', v10 = '-10.123455789';
                          QUERY PLAN                          
@@ -498,14 +554,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE number_type_table SET h = h + 1, v1 = 
  Update on number_type_table (actual rows=0 loops=1)
    ->  Seq Scan on number_type_table (actual rows=2 loops=1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 2
          Storage Table Write Requests: 4
          Storage Index Write Requests: 20
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 2
  Storage Write Requests: 24
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 CREATE TYPE mood_type AS ENUM ('sad', 'ok', 'happy');
 DROP TABLE IF EXISTS non_number_type_table;
@@ -527,11 +585,13 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE non_number_type_table SET tscol = 'Jan
    ->  Index Scan using non_number_type_table_pkey on non_number_type_table (actual rows=0 loops=1)
          Index Cond: (tscol = 'Fri Jan 08 07:05:06 1999'::timestamp without time zone)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 0
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(8 rows)
+(10 rows)
 
 DROP TABLE pkey_only_table;
 DROP TABLE secindex_only_table;
@@ -554,13 +614,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_types_table SET v1 = 1 WHERE h = 
    ->  Index Scan using json_types_table_pkey on json_types_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 -- Two different representations of the same data type should be considered equal
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_types_table SET v1 = 1, v2 = '{"b": 2, "a": 1}'::jsonb WHERE h = 1;
@@ -570,13 +632,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_types_table SET v1 = 1, v2 = '{"b
    ->  Index Scan using json_types_table_pkey on json_types_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 -- JSONB is normalized, while JSON is not, causing an index update
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_types_table SET v1 = 1, v3 = '{"b": 2, "a": 1}'::json WHERE h = 1;
@@ -586,15 +650,17 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_types_table SET v1 = 1, v3 = '{"b
    ->  Index Scan using json_types_table_pkey on json_types_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
          Storage Flush Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 2
-(12 rows)
+(14 rows)
 
 -- One with white spaces
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_types_table SET v1 = 1, v2 = '{    "b" : 2   ,     "a" :  1}'::jsonb WHERE h = 1;
@@ -604,13 +670,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_types_table SET v1 = 1, v2 = '{  
    ->  Index Scan using json_types_table_pkey on json_types_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_types_table SET v1 = 1, v2 = '{"b":2,"a":1}'::json WHERE h = 1; ,
                                         QUERY PLAN                                        
@@ -619,13 +687,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_types_table SET v1 = 1, v2 = '{"b
    ->  Index Scan using json_types_table_pkey on json_types_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 -- Casting via not specifying type
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_types_table SET v1 = 1, v2 = '{"b": 2, "a": 1}', v3 = '{"a": 1, "b": 1}' WHERE h = 2;
@@ -640,14 +710,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_types_table SET v1 = 1, v2 = '{"b
    ->  Index Scan using json_types_table_pkey on json_types_table (actual rows=1 loops=1)
          Index Cond: (h = 2)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 -- Casting an un-normalized JSONB to JSON should cause an index update as the input will never be normalized
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_types_table SET v1 = 1, v2 = '{"b": 2, "a": 1}'::json, v3 = '{"a": 1, "b": 2}'::jsonb WHERE h = 2;
@@ -657,13 +729,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_types_table SET v1 = 1, v2 = '{"b
    ->  Index Scan using json_types_table_pkey on json_types_table (actual rows=1 loops=1)
          Index Cond: (h = 2)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 -- TODO(kramanathan): PG 15 has jsonpath support. Add tests for jsonpath
 -- Tests for geometric data types
@@ -678,13 +752,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v2 =
    ->  Index Scan using geometric_types_table_pkey on geometric_types_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 -- Individual coordinates are stored as float8. Test cases where input has higher precision
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v2 = '(2.999999999999999999, 3.999999999999999999)'::point, v3 = '[(0.999999999999999999, 2.00), (2.999999999999999999, 4)]'::line WHERE h = 1;
@@ -694,13 +770,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v2 =
    ->  Index Scan using geometric_types_table_pkey on geometric_types_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 -- Alternate line and line segment representations; note that line segment is directed
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v3 = '[(3, 4), (1, 2)]'::line, v4 = '[(1, 2), (3, 4)]'::lseg WHERE h = 1;
@@ -710,13 +788,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v3 =
    ->  Index Scan using geometric_types_table_pkey on geometric_types_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v3 = '((3, 4), (1, 2))'::line, v4 = '((1, 2), (3, 4))'::lseg WHERE h = 1;
                                              QUERY PLAN                                             
@@ -725,13 +805,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v3 =
    ->  Index Scan using geometric_types_table_pkey on geometric_types_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v3 = '(3, 4), (1, 2)'::line, v4 = '(1, 2), (3, 4)'::lseg WHERE h = 1;
                                              QUERY PLAN                                             
@@ -740,13 +822,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v3 =
    ->  Index Scan using geometric_types_table_pkey on geometric_types_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v3 = '3, 4, 1, 2'::line, v4 = '1, 2, 3, 4'::lseg WHERE h = 1;
                                              QUERY PLAN                                             
@@ -755,13 +839,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v3 =
    ->  Index Scan using geometric_types_table_pkey on geometric_types_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v3 = '[(3, 4), (1, 2)]'::line, v4 = '[(1, 2), (3, 4)]'::lseg WHERE h = 1;
                                              QUERY PLAN                                             
@@ -770,13 +856,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v3 =
    ->  Index Scan using geometric_types_table_pkey on geometric_types_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 -- Line is equivalent to x - y + 1 = 0 => A = 1, B = -1, C = 1
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v3 = '{1, -1, 1}'::line WHERE h = 1;
@@ -786,13 +874,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v3 =
    ->  Index Scan using geometric_types_table_pkey on geometric_types_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 -- A line can be represented by other points that lie outside the boundary of the supplied points
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v3 = '[(5, 6), (7, 8)]'::line WHERE h = 1;
@@ -802,13 +892,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v3 =
    ->  Index Scan using geometric_types_table_pkey on geometric_types_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 -- Alternate box representations
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v5 = '(3, 2), (1, 4)'::box WHERE h = 1;
@@ -818,13 +910,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v5 =
    ->  Index Scan using geometric_types_table_pkey on geometric_types_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v5 = '((3, 2), (1, 4))'::box WHERE h = 1;
                                              QUERY PLAN                                             
@@ -833,13 +927,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v5 =
    ->  Index Scan using geometric_types_table_pkey on geometric_types_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v5 = '3, 2, 1, 4'::box WHERE h = 1;
                                              QUERY PLAN                                             
@@ -848,13 +944,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v5 =
    ->  Index Scan using geometric_types_table_pkey on geometric_types_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 -- Alterate representations of a circle
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v8 = '(1, 2), 3'::circle WHERE h = 1;
@@ -864,13 +962,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v8 =
    ->  Index Scan using geometric_types_table_pkey on geometric_types_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v8 = '((1, 2), 3)'::circle WHERE h = 1;
                                              QUERY PLAN                                             
@@ -879,13 +979,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v8 =
    ->  Index Scan using geometric_types_table_pkey on geometric_types_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v8 = '1, 2, 3'::circle WHERE h = 1;
                                              QUERY PLAN                                             
@@ -894,13 +996,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v8 =
    ->  Index Scan using geometric_types_table_pkey on geometric_types_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 -- Test for array data types
 CREATE TABLE array_types_table (h INT PRIMARY KEY, v1 INT, v2 INT4[], v3 FLOAT4[], v4 TEXT[], v5 JSONB[], v6 BYTEA[]);
@@ -914,13 +1018,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE array_types_table SET v1 = 1, v2 = '{1
    ->  Index Scan using array_types_table_pkey on array_types_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE array_types_table SET v1 = 1, v2 = ARRAY[1, 2, 3], v3 = ARRAY[1, 2, 3], v4 = ARRAY['a', 'b', 'c'] WHERE h = 1;
                                          QUERY PLAN                                         
@@ -929,13 +1035,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE array_types_table SET v1 = 1, v2 = ARR
    ->  Index Scan using array_types_table_pkey on array_types_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE array_types_table SET v1 = 1, v5 = ARRAY['{"a": 1, "b": 2}', '{"c": 3, "d": 4}']::jsonb[], v6 = ARRAY['abc', 'def', 'ghi']::bytea[] WHERE h = 1;
                                          QUERY PLAN                                         
@@ -944,13 +1052,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE array_types_table SET v1 = 1, v5 = ARR
    ->  Index Scan using array_types_table_pkey on array_types_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE array_types_table SET v1 = 1, v6 = ARRAY['\x616263'::bytea, '\x646566'::bytea, '\x676869'::bytea] WHERE h = 1;
                                          QUERY PLAN                                         
@@ -959,13 +1069,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE array_types_table SET v1 = 1, v6 = ARR
    ->  Index Scan using array_types_table_pkey on array_types_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 -- Replace specific elements in the array
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE array_types_table SET v1 = 1, v2[2] = 2, v3[2] = 1.999999999999999999, v4[3] = 'c' WHERE h = 1;
@@ -975,13 +1087,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE array_types_table SET v1 = 1, v2[2] = 
    ->  Index Scan using array_types_table_pkey on array_types_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE array_types_table SET v1 = 1, v6[1] = '\x616263'::bytea WHERE h = 1;
                                          QUERY PLAN                                         
@@ -990,13 +1104,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE array_types_table SET v1 = 1, v6[1] = 
    ->  Index Scan using array_types_table_pkey on array_types_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE array_types_table SET v1 = 1, v2[2:3] = '{2, 3}', v3[1:2] = '{0.999999999999999999, 1.999999999999999999}', v4[1:3] = ARRAY['a', 'b', 'c'] WHERE h = 1;
                                          QUERY PLAN                                         
@@ -1005,13 +1121,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE array_types_table SET v1 = 1, v2[2:3] 
    ->  Index Scan using array_types_table_pkey on array_types_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 -- Test for type modifiers
 -- REAL has 6 decimal digits of precision, NUMERIC has type modifiers 'precision' and 'scale'.
@@ -1034,13 +1152,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE numeric_table SET v1 = 1.2345670, v2 =
    ->  Index Scan using numeric_table_pkey on numeric_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 -- Query to check that casting from a wider type to a narrower type results in "rounding" behavior.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE numeric_table SET v1 = 1.2345670, v2 = 12.336, v3 = 1.234650 WHERE h = 1;
@@ -1050,15 +1170,17 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE numeric_table SET v1 = 1.2345670, v2 =
    ->  Index Scan using numeric_table_pkey on numeric_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
          Storage Flush Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 2
-(12 rows)
+(14 rows)
 
 -- Casting from infinity to infinity should not cause a change in representation.
 -- Note that NUMERIC does not support infinity prior to PG 14.
@@ -1073,13 +1195,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE numeric_table SET v1 = 'inf'::real + 1
    ->  Index Scan using numeric_table_pkey on numeric_table (actual rows=1 loops=1)
          Index Cond: (h = 2)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE numeric_table SET v1 = v1 + 'inf'::real + 1, v4 = v4 + '-Infinity'::float4 + 1 WHERE h = 2;
                                      QUERY PLAN                                     
@@ -1088,13 +1212,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE numeric_table SET v1 = v1 + 'inf'::rea
    ->  Index Scan using numeric_table_pkey on numeric_table (actual rows=1 loops=1)
          Index Cond: (h = 2)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 -- Casting from infinity to NaN should however cause a change in representation.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE numeric_table SET v1 = v1 - 'inf'::real, v4 = v4 - '-Infinity'::float4 WHERE h = 2;
@@ -1104,14 +1230,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE numeric_table SET v1 = v1 - 'inf'::rea
    ->  Index Scan using numeric_table_pkey on numeric_table (actual rows=1 loops=1)
          Index Cond: (h = 2)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 SELECT * FROM numeric_table;
  h |   v1    |  v2   |   v3   |   v4    
@@ -1137,13 +1265,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE numeric_table SET v1 = v1 - 'inf'::rea
    ->  Index Scan using numeric_table_pkey on numeric_table (actual rows=1 loops=1)
          Index Cond: (h = 3)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 SELECT * FROM numeric_table;
  h |   v1    |  v2   |   v3   |   v4    
@@ -1170,13 +1300,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE number_table SET v2 = (1)::int8, v4 = 
    ->  Index Scan using number_table_pkey on number_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 -- Casting from a smaller to a larger type should either retain the same representation when the
 -- value is identical.
@@ -1187,13 +1319,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE number_table SET v3 = (1)::int4, v5 = 
    ->  Index Scan using number_table_pkey on number_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 -- Casting between types should not cause an index update if the value remains the same.
 INSERT INTO number_table VALUES (2, 2, 17, 15, 17.25, 15.75);
@@ -1204,13 +1338,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE number_table SET v2 = (17.0)::float4, 
    ->  Index Scan using number_table_pkey on number_table (actual rows=1 loops=1)
          Index Cond: (h = 2)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE number_table SET v2 = 17.0, v3 = 15.0 WHERE h = 2;
                                     QUERY PLAN                                    
@@ -1219,13 +1355,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE number_table SET v2 = 17.0, v3 = 15.0 
    ->  Index Scan using number_table_pkey on number_table (actual rows=1 loops=1)
          Index Cond: (h = 2)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE number_table SET v4 = 17::int4 + 0.25::float(8), v5 = 15::int8 + 0.75::float(4) WHERE h = 2;
                                     QUERY PLAN                                    
@@ -1234,13 +1372,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE number_table SET v4 = 17::int4 + 0.25:
    ->  Index Scan using number_table_pkey on number_table (actual rows=1 loops=1)
          Index Cond: (h = 2)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE number_table SET v4 = 17 + 0.25, v5 = 15 + 0.75 WHERE h = 2;
                                     QUERY PLAN                                    
@@ -1249,13 +1389,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE number_table SET v4 = 17 + 0.25, v5 = 
    ->  Index Scan using number_table_pkey on number_table (actual rows=1 loops=1)
          Index Cond: (h = 2)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 -- Test for padding in text data types.
 CREATE TABLE text_table (h INT PRIMARY KEY, v1 INT, v2 TEXT, v3 CHAR(8), v4 VARCHAR(8));
@@ -1269,13 +1411,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE text_table SET v2 = 'some-text', v3 = 
    ->  Index Scan using text_table_pkey on text_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 -- Postgres does not support NULL characters in strings. The padding does not end up adding any characters.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE text_table SET v2 = rpad('some-text'::char(12), 12, ''), v3 = rpad('abcdef'::char(8), 8, ''), v4 = rpad('abcde'::char(8), 8, '') WHERE h = 1;
@@ -1285,13 +1429,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE text_table SET v2 = rpad('some-text'::
    ->  Index Scan using text_table_pkey on text_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE text_table SET v2 = lpad('some-text'::text, 12, ''), v3 = lpad('abcdef'::text, 8, ''), v4 = lpad('abcde'::text, 8, '') WHERE h = 1;
                                   QUERY PLAN                                  
@@ -1300,13 +1446,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE text_table SET v2 = lpad('some-text'::
    ->  Index Scan using text_table_pkey on text_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE text_table SET v2 = ''::char(4) || 'some-text' || ''::char(4), v3 = 'abcdef' || ''::char(2), v4 = 'abcde' || ''::char(3) WHERE h = 1;
                                   QUERY PLAN                                  
@@ -1315,13 +1463,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE text_table SET v2 = ''::char(4) || 'so
    ->  Index Scan using text_table_pkey on text_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 -- The following query ends up updating the index because postgres truncates the trailing NULL characters.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE text_table SET v4 = 'abcde'::char(8) || '000' WHERE h = 1;
@@ -1331,14 +1481,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE text_table SET v4 = 'abcde'::char(8) |
    ->  Index Scan using text_table_pkey on text_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 2
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 SELECT * FROM text_table;
  h | v1 |    v2     |    v3    |    v4    
@@ -1359,13 +1511,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE composite_table SET c1.v1 = 100 WHERE 
    ->  Index Scan using composite_table_pkey on composite_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE composite_table SET v = 1, c1.v3 = 'some-text' WHERE h = 1;
                                        QUERY PLAN                                       
@@ -1374,13 +1528,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE composite_table SET v = 1, c1.v3 = 'so
    ->  Index Scan using composite_table_pkey on composite_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE composite_table SET c1.v2 = 123.45, c1.v5 = '{"c": 3, "d": 4}'::bytea, c1.v4 = '{"a": 1, "b": 2}'::jsonb WHERE h = 1;
                                        QUERY PLAN                                       
@@ -1389,13 +1545,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE composite_table SET c1.v2 = 123.45, c1
    ->  Index Scan using composite_table_pkey on composite_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE composite_table SET c1 = ROW(100, 123.45, 'some-text', '{"a": 1, "b": 2}'::jsonb, '{"c": 3, "d": 4}'::bytea) WHERE h = 1;
                                        QUERY PLAN                                       
@@ -1404,13 +1562,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE composite_table SET c1 = ROW(100, 123.
    ->  Index Scan using composite_table_pkey on composite_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE composite_table SET c1 = (100, 123.45, 'some-text', '{"a": 1, "b": 2}'::jsonb, '{"c": 3, "d": 4}'::bytea) WHERE h = 1;
                                        QUERY PLAN                                       
@@ -1419,13 +1579,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE composite_table SET c1 = (100, 123.45,
    ->  Index Scan using composite_table_pkey on composite_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 -- Queries with implicit casting
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE composite_table SET c1 = (100, 123.45, 'some-text', '{"a": 1, "b": 2}', '{"c": 3, "d": 4}') WHERE h = 1;
@@ -1435,13 +1597,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE composite_table SET c1 = (100, 123.45,
    ->  Index Scan using composite_table_pkey on composite_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE composite_table SET c1 = (100.40, 123.45, 'some-text', '{"b": 2, "a": 1}', '{"c": 3, "d": 4}') WHERE h = 1;
                                        QUERY PLAN                                       
@@ -1450,13 +1614,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE composite_table SET c1 = (100.40, 123.
    ->  Index Scan using composite_table_pkey on composite_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 SELECT * FROM composite_table;
  h | v |                                         c1                                          
@@ -1472,14 +1638,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE composite_table SET c1.v1 = (c1).v2 + 
    ->  Index Scan using composite_table_pkey on composite_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 2
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE composite_table SET v = v + 1, c1.v3 = 'some-text' WHERE h = 1;
                                        QUERY PLAN                                       
@@ -1488,14 +1656,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE composite_table SET v = v + 1, c1.v3 =
    ->  Index Scan using composite_table_pkey on composite_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE composite_table SET v = v + 1, c1.v3 = 'someother-text' WHERE h = 1;
                                        QUERY PLAN                                       
@@ -1504,14 +1674,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE composite_table SET v = v + 1, c1.v3 =
    ->  Index Scan using composite_table_pkey on composite_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE composite_table SET c1.v2 = 123.451, c1.v5 = '{"d": 4, "c": 3}'::bytea, c1.v4 = '{"a": 2, "b": 1}'::jsonb WHERE h = 1;
                                        QUERY PLAN                                       
@@ -1520,14 +1692,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE composite_table SET c1.v2 = 123.451, c
    ->  Index Scan using composite_table_pkey on composite_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 2
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE composite_table SET c1 = ROW((v) + 100, (c1).v1 + 123.45, 'someother-text', '{"a": 2, "b": 1}'::jsonb, '{"d": 4, "c": 3}'::bytea) WHERE h = 1;
                                        QUERY PLAN                                       
@@ -1536,14 +1710,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE composite_table SET c1 = ROW((v) + 100
    ->  Index Scan using composite_table_pkey on composite_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 2
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 SELECT * FROM composite_table;
  h | v |                                            c1                                            

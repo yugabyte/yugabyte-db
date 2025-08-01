@@ -507,6 +507,7 @@ typedef struct {
 
 typedef struct {
   uint64_t reads;
+  uint64_t read_ops;
   uint64_t writes;
   uint64_t read_wait;
   uint64_t rows_scanned;

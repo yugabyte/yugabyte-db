@@ -19,12 +19,14 @@ SELECT * FROM yb_locks_t WHERE k = 5;
  Index Scan using yb_locks_t_pkey on yb_locks_t (actual rows=1 loops=1)
    Index Cond: (k = 5)
    Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
    Storage Table Rows Scanned: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(8 rows)
+(10 rows)
 
 SELECT * FROM yb_locks_t WHERE k = 5;
  k 
@@ -41,12 +43,14 @@ SELECT * FROM yb_locks_t WHERE k = 5 FOR UPDATE;
    ->  Index Scan using yb_locks_t_pkey on yb_locks_t (actual rows=1 loops=1)
          Index Cond: (k = 5)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
  Storage Read Requests: 2
+ Storage Read Ops: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(9 rows)
+(11 rows)
 
 SELECT * FROM yb_locks_t WHERE k = 5 FOR UPDATE;
  k 
@@ -63,12 +67,14 @@ SELECT * FROM yb_locks_t WHERE k = 5 FOR SHARE;
    ->  Index Scan using yb_locks_t_pkey on yb_locks_t (actual rows=1 loops=1)
          Index Cond: (k = 5)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
  Storage Read Requests: 2
+ Storage Read Ops: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(9 rows)
+(11 rows)
 
 SELECT * FROM yb_locks_t WHERE k = 5 FOR SHARE;
  k 
@@ -84,12 +90,14 @@ SELECT * FROM yb_locks_t WHERE k = 5 FOR NO KEY UPDATE;
    ->  Index Scan using yb_locks_t_pkey on yb_locks_t (actual rows=1 loops=1)
          Index Cond: (k = 5)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
  Storage Read Requests: 2
+ Storage Read Ops: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(9 rows)
+(11 rows)
 
 SELECT * FROM yb_locks_t WHERE k = 5 FOR NO KEY UPDATE;
  k 
@@ -105,12 +113,14 @@ SELECT * FROM yb_locks_t WHERE k = 5 FOR KEY SHARE;
    ->  Index Scan using yb_locks_t_pkey on yb_locks_t (actual rows=1 loops=1)
          Index Cond: (k = 5)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
  Storage Read Requests: 2
+ Storage Read Ops: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(9 rows)
+(11 rows)
 
 SELECT * FROM yb_locks_t WHERE k = 5 FOR KEY SHARE;
  k 
@@ -126,12 +136,14 @@ SELECT * FROM yb_locks_t FOR UPDATE;
  LockRows (actual rows=15 loops=1)
    ->  Seq Scan on yb_locks_t (actual rows=15 loops=1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 15
  Storage Read Requests: 2
+ Storage Read Ops: 6
  Storage Rows Scanned: 30
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(8 rows)
+(10 rows)
 
 SELECT * FROM yb_locks_t FOR UPDATE;
  k  
@@ -161,12 +173,14 @@ SELECT * FROM yb_locks_t FOR UPDATE NOWAIT;
  LockRows (actual rows=15 loops=1)
    ->  Seq Scan on yb_locks_t (actual rows=15 loops=1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 15
  Storage Read Requests: 2
+ Storage Read Ops: 6
  Storage Rows Scanned: 30
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(8 rows)
+(10 rows)
 
 SELECT * FROM yb_locks_t FOR UPDATE NOWAIT;
  k  
@@ -196,12 +210,14 @@ SELECT * FROM yb_locks_t FOR UPDATE SKIP LOCKED;
  LockRows (actual rows=15 loops=1)
    ->  Seq Scan on yb_locks_t (actual rows=15 loops=1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 15
  Storage Read Requests: 16
+ Storage Read Ops: 48
  Storage Rows Scanned: 30
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(8 rows)
+(10 rows)
 
 SELECT * FROM yb_locks_t FOR UPDATE SKIP LOCKED;
  k  
@@ -233,12 +249,14 @@ SELECT * FROM yb_locks_t FOR UPDATE;
  LockRows (actual rows=15 loops=1)
    ->  Seq Scan on yb_locks_t (actual rows=15 loops=1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 15
  Storage Read Requests: 16
+ Storage Read Ops: 48
  Storage Rows Scanned: 30
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(8 rows)
+(10 rows)
 
 SELECT * FROM yb_locks_t FOR UPDATE;
  k  
@@ -272,12 +290,14 @@ SELECT * FROM yb_locks_t FOR UPDATE;
  LockRows (actual rows=15 loops=1)
    ->  Seq Scan on yb_locks_t (actual rows=15 loops=1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 15
  Storage Read Requests: 2
+ Storage Read Ops: 6
  Storage Rows Scanned: 30
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(8 rows)
+(10 rows)
 
 SELECT * FROM yb_locks_t FOR UPDATE;
  k  
@@ -310,12 +330,14 @@ SELECT * FROM yb_locks_t2 WHERE k1 = 1 AND k2 = 2 AND k3 = 3 FOR UPDATE;
    ->  Index Scan using yb_locks_t2_pkey on yb_locks_t2 (actual rows=1 loops=1)
          Index Cond: ((k1 = 1) AND (k2 = 2) AND (k3 = 3))
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
  Storage Read Requests: 2
+ Storage Read Ops: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(9 rows)
+(11 rows)
 
 SELECT * FROM yb_locks_t2 WHERE k1 = 1 AND k2 = 2 AND k3 = 3 FOR UPDATE;
  k1 | k2 | k3 | v 
@@ -332,12 +354,14 @@ SELECT * FROM yb_locks_t2 WHERE k1 = 1 AND k2 = 2 FOR UPDATE;
    ->  Index Scan using yb_locks_t2_pkey on yb_locks_t2 (actual rows=1 loops=1)
          Index Cond: ((k1 = 1) AND (k2 = 2))
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
  Storage Read Requests: 2
+ Storage Read Ops: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(9 rows)
+(11 rows)
 
 SELECT * FROM yb_locks_t2 WHERE k1 = 1 AND k2 = 2 FOR UPDATE;
  k1 | k2 | k3 | v 
@@ -355,16 +379,19 @@ SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UP
          Join Filter: (yb_locks_t2.k1 = yb_locks_t.k)
          ->  Seq Scan on yb_locks_t2 (actual rows=4 loops=1)
                Storage Table Read Requests: 1
+               Storage Table Read Ops: 3
                Storage Table Rows Scanned: 4
          ->  Index Scan using yb_locks_t_pkey on yb_locks_t (actual rows=4 loops=1)
                Index Cond: (k = ANY (ARRAY[yb_locks_t2.k1, $2, $3, ..., $1024]))
                Storage Table Read Requests: 1
+               Storage Table Read Ops: 2
                Storage Table Rows Scanned: 4
  Storage Read Requests: 3
+ Storage Read Ops: 9
  Storage Rows Scanned: 16
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(14 rows)
+(17 rows)
 
 SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UPDATE;
  k1 | k2 | k3 | v  | k  
@@ -385,17 +412,20 @@ SELECT * FROM yb_locks_t JOIN yb_locks_t2 ON yb_locks_t.k = yb_locks_t2.k1 WHERE
          Join Filter: (yb_locks_t.k = yb_locks_t2.k1)
          ->  Seq Scan on yb_locks_t2 (actual rows=4 loops=1)
                Storage Table Read Requests: 1
+               Storage Table Read Ops: 3
                Storage Table Rows Scanned: 4
          ->  Index Scan using yb_locks_t_pkey on yb_locks_t (actual rows=2 loops=1)
                Index Cond: (k = ANY (ARRAY[yb_locks_t2.k1, $2, $3, ..., $1024]))
                Storage Filter: ((k > 0) AND (k <= 5))
                Storage Table Read Requests: 1
+               Storage Table Read Ops: 2
                Storage Table Rows Scanned: 4
  Storage Read Requests: 3
+ Storage Read Ops: 7
  Storage Rows Scanned: 12
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(15 rows)
+(18 rows)
 
 SELECT * FROM yb_locks_t JOIN yb_locks_t2 ON yb_locks_t.k = yb_locks_t2.k1 WHERE yb_locks_t.k > 0 AND yb_locks_t.k <= 5 FOR UPDATE;
  k | k1 | k2 | k3 | v 
@@ -415,17 +445,20 @@ SELECT * FROM yb_locks_t JOIN (SELECT * FROM yb_locks_t2 FOR UPDATE) AS z ON yb_
          ->  LockRows (actual rows=4 loops=1)
                ->  Seq Scan on yb_locks_t2 (actual rows=4 loops=1)
                      Storage Table Read Requests: 1
+                     Storage Table Read Ops: 3
                      Storage Table Rows Scanned: 4
    ->  Index Scan using yb_locks_t_pkey on yb_locks_t (actual rows=2 loops=1)
          Index Cond: (k = ANY (ARRAY[z.k1, $2, $3, ..., $1024]))
          Storage Filter: ((k > 0) AND (k <= 5))
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 2
          Storage Table Rows Scanned: 4
  Storage Read Requests: 3
+ Storage Read Ops: 7
  Storage Rows Scanned: 12
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(16 rows)
+(19 rows)
 
 SELECT * FROM yb_locks_t JOIN (SELECT * FROM yb_locks_t2 FOR UPDATE) AS z ON yb_locks_t.k = z.k1 WHERE yb_locks_t.k > 0 AND yb_locks_t.k <= 5;
  k | k1 | k2 | k3 | v 
@@ -444,12 +477,14 @@ SELECT * FROM yb_locks_t WHERE yb_locks_t.k < 6 FOR UPDATE LIMIT 3;
          ->  Seq Scan on yb_locks_t (actual rows=3 loops=1)
                Storage Filter: (k < 6)
                Storage Table Read Requests: 1
+               Storage Table Read Ops: 3
                Storage Table Rows Scanned: 15
  Storage Read Requests: 2
+ Storage Read Ops: 5
  Storage Rows Scanned: 18
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(10 rows)
+(12 rows)
 
 SELECT * FROM yb_locks_t WHERE yb_locks_t.k < 6 FOR UPDATE LIMIT 3;
  k 
@@ -471,12 +506,14 @@ SELECT * FROM yb_locks_t ORDER BY k LIMIT 13 FOR UPDATE;
                Sort Method: quicksort
                ->  Seq Scan on yb_locks_t (actual rows=15 loops=1)
                      Storage Table Read Requests: 1
+                     Storage Table Read Ops: 3
                      Storage Table Rows Scanned: 15
  Storage Read Requests: 2
+ Storage Read Ops: 6
  Storage Rows Scanned: 28
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(12 rows)
+(14 rows)
 
 SELECT * FROM yb_locks_t ORDER BY k LIMIT 13 FOR UPDATE;
  k  
@@ -508,6 +545,7 @@ SELECT * FROM (SELECT * FROM yb_locks_t LIMIT 13 FOR UPDATE) AS y JOIN (SELECT *
                ->  LockRows (actual rows=13 loops=1)
                      ->  Seq Scan on yb_locks_t (actual rows=13 loops=1)
                            Storage Table Read Requests: 1
+                           Storage Table Read Ops: 3
                            Storage Table Rows Scanned: 15
    ->  Hash (actual rows=3 loops=1)
          Buckets: 1024 (originally 1024)  Original Batches: 1
@@ -516,12 +554,14 @@ SELECT * FROM (SELECT * FROM yb_locks_t LIMIT 13 FOR UPDATE) AS y JOIN (SELECT *
                      ->  LockRows (actual rows=3 loops=1)
                            ->  Seq Scan on yb_locks_t2 (actual rows=3 loops=1)
                                  Storage Table Read Requests: 1
+                                 Storage Table Read Ops: 3
                                  Storage Table Rows Scanned: 4
  Storage Read Requests: 3
+ Storage Read Ops: 10
  Storage Rows Scanned: 35
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(20 rows)
+(23 rows)
 
 SELECT * FROM (SELECT * FROM yb_locks_t LIMIT 13 FOR UPDATE) AS y JOIN (SELECT * FROM yb_locks_t2 LIMIT 3 FOR UPDATE) AS z ON y.k = z.k1;
  k  | k1 | k2 | k3 | v  
@@ -547,6 +587,7 @@ SELECT * FROM (SELECT * FROM yb_locks_t ORDER BY k LIMIT 10 FOR UPDATE) AS y JOI
                                  Sort Method: quicksort
                                  ->  Seq Scan on yb_locks_t (actual rows=15 loops=1)
                                        Storage Table Read Requests: 1
+                                       Storage Table Read Ops: 3
                                        Storage Table Rows Scanned: 15
          ->  Hash (actual rows=3 loops=1)
                Buckets: 1024 (originally 1024)  Original Batches: 1
@@ -558,12 +599,14 @@ SELECT * FROM (SELECT * FROM yb_locks_t ORDER BY k LIMIT 10 FOR UPDATE) AS y JOI
                                        Sort Method: quicksort
                                        ->  Seq Scan on yb_locks_t2 (actual rows=4 loops=1)
                                              Storage Table Read Requests: 1
+                                             Storage Table Read Ops: 3
                                              Storage Table Rows Scanned: 4
  Storage Read Requests: 3
+ Storage Read Ops: 9
  Storage Rows Scanned: 23
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(27 rows)
+(30 rows)
 
 SELECT * FROM (SELECT * FROM yb_locks_t ORDER BY k LIMIT 10 FOR UPDATE) AS y JOIN (SELECT * FROM yb_locks_t2 ORDER BY k1 LIMIT 3 FOR UPDATE) AS z ON y.k = z.k1 LIMIT 1;
  k | k1 | k2 | k3 | v 
@@ -581,12 +624,14 @@ WITH cte AS (SELECT * FROM yb_locks_t FOR UPDATE) SELECT * FROM cte;
      ->  LockRows (actual rows=15 loops=1)
            ->  Seq Scan on yb_locks_t (actual rows=15 loops=1)
                  Storage Table Read Requests: 1
+                 Storage Table Read Ops: 3
                  Storage Table Rows Scanned: 15
  Storage Read Requests: 2
+ Storage Read Ops: 6
  Storage Rows Scanned: 30
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(10 rows)
+(12 rows)
 
 WITH cte AS (SELECT * FROM yb_locks_t FOR UPDATE) SELECT * FROM cte;
  k  
@@ -618,11 +663,13 @@ WITH cte_yb_locks_t AS (SELECT * FROM yb_locks_t FOR UPDATE), cte_yb_locks_t2 AS
      ->  LockRows (actual rows=2 loops=1)
            ->  Seq Scan on yb_locks_t (actual rows=2 loops=1)
                  Storage Table Read Requests: 1
+                 Storage Table Read Ops: 3
                  Storage Table Rows Scanned: 6
    CTE cte_yb_locks_t2
      ->  LockRows (actual rows=4 loops=1)
            ->  Seq Scan on yb_locks_t2 (actual rows=4 loops=1)
                  Storage Table Read Requests: 2
+                 Storage Table Read Ops: 4
                  Storage Table Rows Scanned: 4
    ->  Nested Loop (actual rows=2 loops=1)
          Join Filter: (cte_yb_locks_t.k = cte_yb_locks_t2.k1)
@@ -630,10 +677,11 @@ WITH cte_yb_locks_t AS (SELECT * FROM yb_locks_t FOR UPDATE), cte_yb_locks_t2 AS
          ->  CTE Scan on cte_yb_locks_t (actual rows=2 loops=1)
          ->  CTE Scan on cte_yb_locks_t2 (actual rows=3 loops=2)
  Storage Read Requests: 4
+ Storage Read Ops: 10
  Storage Rows Scanned: 16
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(20 rows)
+(23 rows)
 
 WITH cte_yb_locks_t AS (SELECT * FROM yb_locks_t FOR UPDATE), cte_yb_locks_t2 AS (SELECT * FROM yb_locks_t2 FOR UPDATE) SELECT * FROM cte_yb_locks_t JOIN cte_yb_locks_t2 ON cte_yb_locks_t.k = cte_yb_locks_t2.k1 LIMIT 2;
  k | k1 | k2 | k3 | v 
@@ -652,11 +700,13 @@ WITH cte_yb_locks_t AS (SELECT * FROM yb_locks_t FOR UPDATE), cte_yb_locks_t2 AS
      ->  LockRows (actual rows=2 loops=1)
            ->  Seq Scan on yb_locks_t (actual rows=2 loops=1)
                  Storage Table Read Requests: 1
+                 Storage Table Read Ops: 3
                  Storage Table Rows Scanned: 6
    CTE cte_yb_locks_t2
      ->  LockRows (actual rows=4 loops=1)
            ->  Seq Scan on yb_locks_t2 (actual rows=4 loops=1)
                  Storage Table Read Requests: 2
+                 Storage Table Read Ops: 4
                  Storage Table Rows Scanned: 4
    ->  Nested Loop (actual rows=2 loops=1)
          Join Filter: (cte_yb_locks_t.k = cte_yb_locks_t2.k1)
@@ -664,10 +714,11 @@ WITH cte_yb_locks_t AS (SELECT * FROM yb_locks_t FOR UPDATE), cte_yb_locks_t2 AS
          ->  CTE Scan on cte_yb_locks_t (actual rows=2 loops=1)
          ->  CTE Scan on cte_yb_locks_t2 (actual rows=3 loops=2)
  Storage Read Requests: 4
+ Storage Read Ops: 10
  Storage Rows Scanned: 16
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(20 rows)
+(23 rows)
 
 WITH cte_yb_locks_t AS (SELECT * FROM yb_locks_t FOR UPDATE), cte_yb_locks_t2 AS (SELECT * FROM yb_locks_t2 FOR UPDATE) SELECT * FROM cte_yb_locks_t JOIN cte_yb_locks_t2 ON cte_yb_locks_t.k = cte_yb_locks_t2.k1 LIMIT 2;
  k | k1 | k2 | k3 | v 
@@ -685,12 +736,14 @@ SELECT * FROM yb_locks_tasc WHERE k = 1 FOR UPDATE;
    ->  Seq Scan on yb_locks_tasc (actual rows=1 loops=1)
          Storage Filter: (k = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 3
  Storage Read Requests: 2
+ Storage Read Ops: 2
  Storage Rows Scanned: 4
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(9 rows)
+(11 rows)
 
 /*+ SeqScan(yb_locks_tasc) */ SELECT * FROM yb_locks_tasc WHERE k = 1 FOR UPDATE;
  k 
@@ -709,12 +762,14 @@ SELECT * FROM yb_locks_t WHERE k = 5 FOR UPDATE;
    ->  Index Scan (Locked FOR UPDATE) using yb_locks_t_pkey on yb_locks_t (actual rows=1 loops=1)
          Index Cond: (k = 5)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(9 rows)
+(11 rows)
 
 SELECT * FROM yb_locks_t WHERE k = 5 FOR UPDATE;
  k 
@@ -730,12 +785,14 @@ SELECT * FROM yb_locks_t FOR UPDATE;
  LockRows (no-op) (actual rows=15 loops=1)
    ->  Seq Scan (Locked FOR UPDATE) on yb_locks_t (actual rows=15 loops=1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 15
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 15
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(8 rows)
+(10 rows)
 
 SELECT * FROM yb_locks_t FOR UPDATE;
  k  
@@ -767,16 +824,19 @@ SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UP
          Join Filter: (yb_locks_t2.k1 = yb_locks_t.k)
          ->  Seq Scan (Locked FOR UPDATE) on yb_locks_t2 (actual rows=4 loops=1)
                Storage Table Read Requests: 1
+               Storage Table Read Ops: 3
                Storage Table Rows Scanned: 4
          ->  Index Scan (Locked FOR UPDATE) using yb_locks_t_pkey on yb_locks_t (actual rows=4 loops=1)
                Index Cond: (k = ANY (ARRAY[yb_locks_t2.k1, $2, $3, ..., $1024]))
                Storage Table Read Requests: 1
+               Storage Table Read Ops: 4
                Storage Table Rows Scanned: 4
  Storage Read Requests: 2
+ Storage Read Ops: 7
  Storage Rows Scanned: 8
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(14 rows)
+(17 rows)
 
 SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UPDATE;
  k1 | k2 | k3 | v  | k  
@@ -796,12 +856,14 @@ SELECT * FROM yb_locks_tasc FOR UPDATE;
  LockRows (no-op) (actual rows=3 loops=1)
    ->  Seq Scan (Locked FOR UPDATE) on yb_locks_tasc (actual rows=3 loops=1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 3
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 3
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(8 rows)
+(10 rows)
 
 /*+ SeqScan(yb_locks_tasc) */ SELECT * FROM yb_locks_tasc FOR UPDATE;
  k 
@@ -819,12 +881,14 @@ SELECT * FROM yb_locks_tasc ORDER BY k FOR UPDATE;
  LockRows (no-op) (actual rows=3 loops=1)
    ->  Index Scan (Locked FOR UPDATE) using yb_locks_tasc_pkey on yb_locks_tasc (actual rows=3 loops=1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 3
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 3
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(8 rows)
+(10 rows)
 
 SELECT * FROM yb_locks_tasc ORDER BY k FOR UPDATE;
  k 
@@ -845,12 +909,14 @@ SELECT * FROM yb_locks_t WHERE k = 5 FOR UPDATE;
    ->  Index Scan using yb_locks_t_pkey on yb_locks_t (actual rows=1 loops=1)
          Index Cond: (k = 5)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
  Storage Read Requests: 2
+ Storage Read Ops: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(9 rows)
+(11 rows)
 
 SELECT * FROM yb_locks_t WHERE k = 5 FOR UPDATE;
  k 
@@ -869,12 +935,14 @@ SELECT * FROM yb_locks_t WHERE k = 5 FOR UPDATE;
    ->  Index Scan (Locked FOR UPDATE) using yb_locks_t_pkey on yb_locks_t (actual rows=1 loops=1)
          Index Cond: (k = 5)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(9 rows)
+(11 rows)
 
 SELECT * FROM yb_locks_t WHERE k = 5 FOR UPDATE;
  k 
@@ -894,14 +962,17 @@ SELECT * FROM yb_locks_t2 WHERE v = 4 FOR UPDATE;
    ->  Index Scan using yb_locks_t2_v_idx on yb_locks_t2 (actual rows=1 loops=1)
          Index Cond: (v = 4)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Index Read Requests: 1
+         Storage Index Read Ops: 1
          Storage Index Rows Scanned: 1
  Storage Read Requests: 3
+ Storage Read Ops: 3
  Storage Rows Scanned: 3
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(11 rows)
+(14 rows)
 
 SELECT * FROM yb_locks_t2 WHERE v = 4 FOR UPDATE;
  k1 | k2 | k3 | v 
@@ -918,14 +989,17 @@ SELECT v FROM yb_locks_t2 WHERE v = 4 FOR UPDATE;
    ->  Index Scan using yb_locks_t2_v_idx on yb_locks_t2 (actual rows=1 loops=1)
          Index Cond: (v = 4)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Index Read Requests: 1
+         Storage Index Read Ops: 1
          Storage Index Rows Scanned: 1
  Storage Read Requests: 3
+ Storage Read Ops: 3
  Storage Rows Scanned: 3
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(11 rows)
+(14 rows)
 
 SELECT v FROM yb_locks_t2 WHERE v = 4 FOR UPDATE;
  v 
@@ -943,14 +1017,17 @@ SELECT * FROM yb_locks_t2 WHERE v = 4 FOR UPDATE;
    ->  Index Scan (Locked FOR UPDATE) using yb_locks_t2_v_idx on yb_locks_t2 (actual rows=1 loops=1)
          Index Cond: (v = 4)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Index Read Requests: 1
+         Storage Index Read Ops: 1
          Storage Index Rows Scanned: 1
  Storage Read Requests: 2
+ Storage Read Ops: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(11 rows)
+(14 rows)
 
 SELECT * FROM yb_locks_t2 WHERE v = 4 FOR UPDATE;
  k1 | k2 | k3 | v 
@@ -970,11 +1047,13 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM yb_locks_partition WHERE 
    ->  Index Scan using yb_locks_partition_a_pkey on yb_locks_partition_a yb_locks_partition (actual rows=0 loops=1)
          Index Cond: (a = 'a'::bpchar)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 0
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(8 rows)
+(10 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM yb_locks_partition WHERE a = 'b' FOR UPDATE;
                                                            QUERY PLAN                                                            
@@ -983,11 +1062,13 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM yb_locks_partition WHERE 
    ->  Index Scan using yb_locks_partition_default_pkey on yb_locks_partition_default yb_locks_partition (actual rows=0 loops=1)
          Index Cond: (a = 'b'::bpchar)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 0
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(8 rows)
+(10 rows)
 
 BEGIN ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM yb_locks_partition WHERE a = 'a' FOR UPDATE;
@@ -997,11 +1078,13 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM yb_locks_partition WHERE 
    ->  Index Scan (Locked FOR UPDATE) using yb_locks_partition_a_pkey on yb_locks_partition_a yb_locks_partition (actual rows=0 loops=1)
          Index Cond: (a = 'a'::bpchar)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 0
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(8 rows)
+(10 rows)
 
 COMMIT;
 -- Test JSON.
@@ -1025,11 +1108,13 @@ SELECT * FROM yb_locks_t WHERE k = 5 FOR UPDATE;
        "Index Cond": "(k = 5)",           +
        "Rows Removed by Index Recheck": 0,+
        "Storage Table Read Requests": 1,  +
+       "Storage Table Read Ops": 1,       +
        "Storage Table Rows Scanned": 1    +
      },                                   +
      "Triggers": [                        +
      ],                                   +
      "Storage Read Requests": 1,          +
+     "Storage Read Ops": 1,               +
      "Storage Rows Scanned": 1,           +
      "Storage Write Requests": 0,         +
      "Storage Flush Requests": 0          +
@@ -1058,12 +1143,14 @@ EXECUTE yb_locks_plan_rr(1);
    ->  Index Scan using yb_locks_t_pkey on yb_locks_t (actual rows=1 loops=1)
          Index Cond: (k = $1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
  Storage Read Requests: 2
+ Storage Read Ops: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(9 rows)
+(11 rows)
 
 BEGIN ISOLATION LEVEL SERIALIZABLE;
 EXECUTE yb_locks_plan_rr(1);
@@ -1081,12 +1168,14 @@ EXECUTE yb_locks_plan_rr(1);
    ->  Index Scan (Locked FOR UPDATE) using yb_locks_t_pkey on yb_locks_t (actual rows=1 loops=1)
          Index Cond: (k = $1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(9 rows)
+(11 rows)
 
 -- In JSON mode, the LockRows node has an "Executes" field set to false.
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF, FORMAT JSON)
@@ -1118,6 +1207,7 @@ EXECUTE yb_locks_plan_rr(1);
            "Index Cond": "(k = $1)",          +
            "Rows Removed by Index Recheck": 0,+
            "Storage Table Read Requests": 1,  +
+           "Storage Table Read Ops": 1,       +
            "Storage Table Rows Scanned": 1    +
          }                                    +
        ]                                      +
@@ -1125,6 +1215,7 @@ EXECUTE yb_locks_plan_rr(1);
      "Triggers": [                            +
      ],                                       +
      "Storage Read Requests": 1,              +
+     "Storage Read Ops": 1,                   +
      "Storage Rows Scanned": 1,               +
      "Storage Write Requests": 0,             +
      "Storage Flush Requests": 0              +
@@ -1151,12 +1242,14 @@ EXECUTE yb_locks_plan_ser(1);
  Index Scan (Locked FOR UPDATE) using yb_locks_t_pkey on yb_locks_t (actual rows=1 loops=1)
    Index Cond: (k = $1)
    Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
    Storage Table Rows Scanned: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(8 rows)
+(10 rows)
 
 COMMIT;
 EXECUTE yb_locks_plan_ser(1);
@@ -1172,12 +1265,14 @@ EXECUTE yb_locks_plan_ser(1);
  Index Scan (Locked FOR UPDATE) using yb_locks_t_pkey on yb_locks_t (actual rows=1 loops=1)
    Index Cond: (k = $1)
    Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
    Storage Table Rows Scanned: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(8 rows)
+(10 rows)
 
 -- Test that prepared statements made in isolation level SERIALIZABLE, for a non-PK, have
 -- a LockRows node that functions in RR and RC.
@@ -1210,12 +1305,14 @@ EXECUTE yb_locks_plan_ser_all(1);
  LockRows (no-op) (actual rows=15 loops=1)
    ->  Seq Scan (Locked FOR UPDATE) on yb_locks_t (actual rows=15 loops=1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 15
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 15
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(8 rows)
+(10 rows)
 
 COMMIT;
 EXECUTE yb_locks_plan_ser_all(1);
@@ -1266,12 +1363,14 @@ SELECT * FROM yb_events WHERE event_time > NOW();
    Filter: (event_time > now())
    Rows Removed by Filter: 10
    Storage Table Read Requests: 1
+   Storage Table Read Ops: 3
    Storage Table Rows Scanned: 20
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 20
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(9 rows)
+(11 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 SELECT * FROM yb_events WHERE event_time < NOW();
@@ -1281,12 +1380,14 @@ SELECT * FROM yb_events WHERE event_time < NOW();
    Filter: (event_time < now())
    Rows Removed by Filter: 10
    Storage Table Read Requests: 1
+   Storage Table Read Ops: 3
    Storage Table Rows Scanned: 20
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 20
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(9 rows)
+(11 rows)
 
 -- Reset
 SET yb_lock_pk_single_rpc TO DEFAULT;

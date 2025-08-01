@@ -651,10 +651,18 @@ Status PgDocOp::SendRequestImpl(ForceNonBufferable force_non_bufferable) {
     }
   }
 
-  VLOG(1) << "Number of operations to send: " << send_count;
+  auto is_write = IsForWritePgDoc(IsWrite());
+  auto table_type = ResolveRelationType(**pgsql_ops_.data(), *table_);
+
+  // Count read ops.  Write ops should be the same as write requests, so no need to track them.
+  if (!is_write) {
+    pg_session_->metrics().ReadOp(table_type, send_count);
+  }
+
+  VLOG(1) << "Number of " << table_type << " operations to send: " << send_count;
   response_ = VERIFY_RESULT(sender_(
       pg_session_.get(), pgsql_ops_.data(), send_count, *table_,
-      HybridTime::FromPB(GetInTxnLimitHt()), force_non_bufferable, IsForWritePgDoc(IsWrite())));
+      HybridTime::FromPB(GetInTxnLimitHt()), force_non_bufferable, is_write));
   if (!result_stream_) {
     // Default PgDocResultStream
     result_stream_ = std::make_unique<ParallelPgDocResultStream>(
