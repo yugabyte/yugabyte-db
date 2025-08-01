@@ -315,7 +315,7 @@ void AppendTransactionKeyPrefix(const TransactionId& transaction_id, KeyBytes* o
   out->AppendRawBytes(transaction_id.AsSlice());
 }
 
-Result<ApplyTransactionState> GetIntentsBatch(
+Result<ApplyTransactionState> GetIntentsBatchForCDC(
     const TransactionId& transaction_id,
     const KeyBounds* key_bounds,
     const ApplyTransactionState* stream_state,
@@ -363,10 +363,23 @@ Result<ApplyTransactionState> GetIntentsBatch(
     // isolation level etc.).
     if (key_slice.size() > txn_reverse_index_prefix.size()) {
       auto reverse_index_value = reverse_index_iter.value();
+
+      // The intents with kDeleteVectorIds value type correspond to the tombstones added for
+      // optimal vector indexing. They do not contain a main intent data key in their value field
+      // and hence should be skipped.
+      if (dockv::DecodeValueEntryType(reverse_index_value) ==
+              dockv::ValueEntryType::kDeleteVectorIds) {
+        VLOG_WITH_FUNC(3) << "Skipping an intent of type kDeleteVectorIds, with key: "
+                          << key_slice.ToDebugHexString() << ", transactionId: " << transaction_id;
+        reverse_index_iter.Next();
+        continue;
+      }
+
       if (!reverse_index_value.empty() && reverse_index_value[0] == KeyEntryTypeAsChar::kBitSet) {
         reverse_index_value.remove_prefix(1);
         RETURN_NOT_OK(OneWayBitmap::Skip(&reverse_index_value));
       }
+
       // Value of reverse index is a key of original intent record, so seek it and check match.
       if ((!key_bounds || key_bounds->IsWithinBounds(reverse_index_iter.value()))) {
         // return when we have reached the batch limit.

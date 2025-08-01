@@ -1802,7 +1802,7 @@ Status ProcessIntents(
     FillBeginRecord(transaction_id, commit_time, resp, throughput_metrics);
   }
 
-  RETURN_NOT_OK(tablet->GetIntents(transaction_id, keyValueIntents, stream_state));
+  RETURN_NOT_OK(tablet->GetIntentsForCDC(transaction_id, keyValueIntents, stream_state));
   VLOG(1) << "The size of intentKeyValues for transaction id: " << transaction_id
           << ", with apply record op_id : " << op_id << ", is: " << (*keyValueIntents).size();
 
