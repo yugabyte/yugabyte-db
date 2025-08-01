@@ -20,6 +20,7 @@ import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeManager.CertRotateAction;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
@@ -36,6 +37,7 @@ import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -109,6 +111,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     public boolean masterJoinExistingCluster = true;
 
     public AuditLogConfig auditLogConfig = null;
+    public QueryLogConfig queryLogConfig = null;
     public MetricsExportConfig metricsExportConfig = null;
     public Map<String, String> ybcGflags = new HashMap<>();
     public boolean overrideNodePorts = false;
@@ -234,10 +237,9 @@ public class AnsibleConfigureServers extends NodeTaskBase {
         nodeAgentRpcPayload.runServerGFlagsWithNodeAgent(
             optional.get(), universe, nodeDetails, ServerType.CONTROLLER.toString(), taskParams());
       }
-      if (taskParams().otelCollectorEnabled && taskParams().auditLogConfig != null) {
-        AuditLogConfig config = taskParams().auditLogConfig;
-        if (!((config.getYsqlAuditConfig() == null || !config.getYsqlAuditConfig().isEnabled())
-            && (config.getYcqlAuditConfig() == null || !config.getYcqlAuditConfig().isEnabled()))) {
+      if (taskParams().otelCollectorEnabled) {
+        if (OtelCollectorUtil.isAuditLogEnabledInUniverse(taskParams().auditLogConfig)
+            || OtelCollectorUtil.isQueryLogEnabledInUniverse(taskParams().queryLogConfig)) {
           nodeAgentClient.runInstallOtelCollector(
               optional.get(),
               nodeAgentRpcPayload.setupInstallOtelCollectorBits(

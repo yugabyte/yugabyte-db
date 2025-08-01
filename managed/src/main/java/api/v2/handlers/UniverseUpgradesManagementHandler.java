@@ -8,6 +8,7 @@ import api.v2.mappers.UniverseDefinitionTaskParamsMapper;
 import api.v2.mappers.UniverseEditGFlagsMapper;
 import api.v2.mappers.UniverseEditKubernetesOverridesParamsMapper;
 import api.v2.mappers.UniverseMetricsExportConfigParamsMapper;
+import api.v2.mappers.UniverseQueryLogsExportMapper;
 import api.v2.mappers.UniverseRestartParamsMapper;
 import api.v2.mappers.UniverseRollbackUpgradeMapper;
 import api.v2.mappers.UniverseSoftwareFinalizeMapper;
@@ -50,6 +51,7 @@ import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.MetricsExportConfigParams;
+import com.yugabyte.yw.forms.QueryLogConfigParams;
 import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
@@ -342,16 +344,17 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
     log.info("Configure query log for universe with v2 spec: {}", prettyPrint(req));
-    // modify params to v1 param model
-    // UUID taskUUID = commissioner.submit(taskType, v1Params);
-    // log.info(
-    //     "Submitted {} for {} : {}, task uuid = {}.",
-    //     taskType,
-    //     uniUUID,
-    //     dbUniverse.getName(),
-    //     taskUUID);
-    UUID taskUUID = UUID.randomUUID();
-    return new YBATask().resourceUuid(uniUUID).taskUuid(taskUUID);
+
+    QueryLogConfigParams v1Params =
+        UniverseDefinitionTaskParamsMapper.INSTANCE.toQueryLogConfigParams(
+            universe.getUniverseDetails(), request);
+    v1Params = UniverseQueryLogsExportMapper.INSTANCE.copyToV1QueryLogConfigParams(req, v1Params);
+
+    UUID taskUUID = v1Handler.modifyQueryLoggingConfig(v1Params, customer, universe);
+    YBATask ybaTask = new YBATask().taskUuid(taskUUID).resourceUuid(uniUUID);
+    log.info("Started query log configuration task {}", mapper.writeValueAsString(ybaTask));
+
+    return ybaTask;
   }
 
   public YBATask configureMetricsExport(

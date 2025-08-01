@@ -46,6 +46,8 @@ import com.yugabyte.yw.models.helpers.UpgradeDetails;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.YCQLAuditConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.YSQLAuditConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig;
 import java.io.IOException;
 import java.io.StringReader;
 import java.io.StringWriter;
@@ -843,7 +845,9 @@ public class GFlagsUtil {
   }
 
   public static String getYsqlPgConfCsv(AnsibleConfigureServers.Params taskParams) {
-    return getYsqlPgConfCsv(taskParams.auditLogConfig);
+    String auditLogYsqlPgConfCsv = getYsqlPgConfCsv(taskParams.auditLogConfig);
+    String queryLogYsqlPgConfCsv = getYsqlPgConfCsv(taskParams.queryLogConfig);
+    return GFlagsUtil.mergeCSVs(auditLogYsqlPgConfCsv, queryLogYsqlPgConfCsv, true);
   }
 
   public static String getYsqlPgConfCsv(AuditLogConfig auditLogConfig) {
@@ -884,6 +888,42 @@ public class GFlagsUtil {
                 "pgaudit.log_statement_once", ysqlAuditConfig.isLogStatementOnce()));
       }
     }
+    return String.join(",", ysqlPgConfCsvEntries);
+  }
+
+  public static String getYsqlPgConfCsv(QueryLogConfig queryLogConfig) {
+    List<String> ysqlPgConfCsvEntries = new ArrayList<>();
+    if (queryLogConfig != null) {
+      if (queryLogConfig.getYsqlQueryLogConfig() != null
+          && queryLogConfig.getYsqlQueryLogConfig().isEnabled()) {
+        YSQLQueryLogConfig ysqlQueryLogConfig = queryLogConfig.getYsqlQueryLogConfig();
+        ysqlPgConfCsvEntries.add(
+            encodeBooleanPgAuditFlag("log_duration", ysqlQueryLogConfig.isLogDuration()));
+        ysqlPgConfCsvEntries.add(
+            encodeBooleanPgAuditFlag("debug_print_plan", ysqlQueryLogConfig.isDebugPrintPlan()));
+        ysqlPgConfCsvEntries.add(
+            encodeBooleanPgAuditFlag("log_connections", ysqlQueryLogConfig.isLogConnections()));
+        ysqlPgConfCsvEntries.add(
+            encodeBooleanPgAuditFlag(
+                "log_disconnections", ysqlQueryLogConfig.isLogDisconnections()));
+        ysqlPgConfCsvEntries.add(
+            "log_min_error_statement=" + ysqlQueryLogConfig.getLogMinErrorStatement().name());
+        ysqlPgConfCsvEntries.add(
+            "log_error_verbosity=" + ysqlQueryLogConfig.getLogErrorVerbosity().name());
+        ysqlPgConfCsvEntries.add("log_statement=" + ysqlQueryLogConfig.getLogStatement().name());
+        // Question for reviewers:
+        // Should this override all existing log line prefix values, or be appended?
+        if (ysqlQueryLogConfig.getLogLinePrefix() != null
+            && !ysqlQueryLogConfig.getLogLinePrefix().isEmpty()) {
+          ysqlPgConfCsvEntries.add("log_line_prefix=" + ysqlQueryLogConfig.getLogLinePrefix());
+        }
+        if (ysqlQueryLogConfig.getLogMinDurationStatement() != null) {
+          ysqlPgConfCsvEntries.add(
+              "log_min_duration_statement=" + ysqlQueryLogConfig.getLogMinDurationStatement());
+        }
+      }
+    }
+
     return String.join(",", ysqlPgConfCsvEntries);
   }
 
