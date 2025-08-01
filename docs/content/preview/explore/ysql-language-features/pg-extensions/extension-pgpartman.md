@@ -332,7 +332,9 @@ ERROR:  Partition table public.orders is a colocated table hence registering it 
 
 Depending on the type of xCluster deployment, pgPartman may be used.
 
-Note that if you are [using pg_cron to manage tasks](#maintain-partitions-using-pg_cron), you must instal it on a separate database that is not part of the xCluster configuration.
+Note that if you are [using pg_cron to manage tasks](#maintain-partitions-using-pg-cron), you must instal it on a separate database that is not part of the xCluster configuration.
+
+For more information on xCluster limitations, refer to [Limitations](../../../../architecture/docdb-replication/async-replication/#limitations).
 
 #### Transactional xCluster and xCluster DR
 
