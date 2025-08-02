@@ -20,6 +20,8 @@ import com.google.common.base.Joiner;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.logging.LogUtil;
 import java.io.BufferedReader;
 import java.io.File;
@@ -52,6 +54,7 @@ public class ShellProcessHandler {
   private static final Duration DESTROY_GRACE_TIMEOUT = Duration.ofMinutes(5);
 
   private final Config appConfig;
+  private final RuntimeConfGetter confGetter;
   private final boolean cloudLoggingEnabled;
   private final ShellLogsManager shellLogsManager;
 
@@ -65,10 +68,15 @@ public class ShellProcessHandler {
       Pattern.compile("(<yb-python-error>)(.*?)(</yb-python-error>)", Pattern.DOTALL);
   static final String ANSIBLE_IGNORING = "ignoring";
   static final String YB_LOGS_MAX_MSG_SIZE = "yb.logs.max_msg_size";
+  // GRPC environment variables.
+  static final String GRPC_KEEPALIVE_TIME_MS_ENV = "grpc_keepalive_time_ms";
+  static final String GRPC_KEEPALIVE_TIMEOUT_MS_ENV = "grpc_keepalive_timeout_ms";
 
   @Inject
-  public ShellProcessHandler(Config appConfig, ShellLogsManager shellLogsManager) {
+  public ShellProcessHandler(
+      Config appConfig, RuntimeConfGetter confGetter, ShellLogsManager shellLogsManager) {
     this.appConfig = appConfig;
+    this.confGetter = confGetter;
     this.cloudLoggingEnabled = appConfig.getBoolean("yb.cloud.enabled");
     this.shellLogsManager = shellLogsManager;
   }
@@ -122,13 +130,18 @@ public class ShellProcessHandler {
     if (MapUtils.isNotEmpty(extraEnvVars)) {
       envVars.putAll(extraEnvVars);
     }
-
+    Duration keepAliveTime =
+        confGetter.getGlobalConf(GlobalConfKeys.nodeAgentConnectionKeepAliveTime);
+    Duration keepAliveTimeout =
+        confGetter.getGlobalConf(GlobalConfKeys.nodeAgentConnectionKeepAliveTimeout);
     String correlationId = MDC.get(LogUtil.CORRELATION_ID);
     if (StringUtils.isEmpty(correlationId)) {
       correlationId = UUID.randomUUID().toString();
       log.debug("Using correlation ID {}", correlationId);
     }
     envVars.put(LogUtil.CORRELATION_ID.replaceAll("-", "_"), correlationId);
+    envVars.put(GRPC_KEEPALIVE_TIME_MS_ENV, String.valueOf(keepAliveTime.toMillis()));
+    envVars.put(GRPC_KEEPALIVE_TIMEOUT_MS_ENV, String.valueOf(keepAliveTimeout.toMillis()));
 
     String devopsHome = appConfig.getString("yb.devops.home");
     if (devopsHome != null) {

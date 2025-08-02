@@ -1719,4 +1719,52 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " the blob deletion fails due to some transient error.",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> nodeAgentConnectionCacheSize =
+      new ConfKeyInfo<>(
+          "yb.node_agent.connection_cache_size",
+          ScopeType.GLOBAL,
+          "Node Agent Client Connection Cache Size",
+          "Cache size for node agent client connections",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> nodeAgentConnectTimeout =
+      new ConfKeyInfo<>(
+          "yb.node_agent.connect_timeout",
+          ScopeType.GLOBAL,
+          "Node Agent Client Connection Time-out",
+          "Client connection time-out for node agent.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> nodeAgentIdleConnectionTimeout =
+      new ConfKeyInfo<>(
+          "yb.node_agent.idle_connection_timeout",
+          ScopeType.GLOBAL,
+          "Node Agent Client Idle Connection Time-out",
+          "Client idle connection timeout for node agent.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> nodeAgentConnectionKeepAliveTime =
+      new ConfKeyInfo<>(
+          "yb.node_agent.connection_keep_alive_time",
+          ScopeType.GLOBAL,
+          "Node Agent Client Keep Alive Time",
+          "Client connection keep-alive time for node agent.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> nodeAgentConnectionKeepAliveTimeout =
+      new ConfKeyInfo<>(
+          "yb.node_agent.connection_keep_alive_timeout",
+          ScopeType.GLOBAL,
+          "Node Agent Client Keep Alive Time-out",
+          "Client connection keep-alive timeout for node agent.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> nodeAgentDescribePollDeadline =
+      new ConfKeyInfo<>(
+          "yb.node_agent.describe_poll_deadline",
+          ScopeType.GLOBAL,
+          "Node Agent Describe Poll Deadline",
+          "Node agent describe polling deadline.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
