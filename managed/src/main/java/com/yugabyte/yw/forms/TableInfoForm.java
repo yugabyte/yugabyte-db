@@ -23,7 +23,7 @@ import org.yb.master.MasterTypes;
 public class TableInfoForm {
 
   @ApiModel(description = "Table information response")
-  @Builder
+  @Builder(toBuilder = true)
   @Jacksonized
   @ToString
   public static class TableInfoResp {

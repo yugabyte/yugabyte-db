@@ -629,7 +629,8 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
             targetUniverse.getUniverseUUID(),
             new BootstrapBackupParams(),
             new PitrParams(),
-            Set.of(sourceNamespace));
+            Set.of(sourceNamespace),
+            false);
     drConfig.setState(State.Replicating);
     drConfig.getActiveXClusterConfig().setStatus(XClusterConfigStatusType.Running);
     drConfig.update();
@@ -702,7 +703,8 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
             targetUniverse.getUniverseUUID(),
             new BootstrapBackupParams(),
             new PitrParams(),
-            Set.of(sourceNamespace));
+            Set.of(sourceNamespace),
+            false);
     drConfig.setState(State.Replicating);
     drConfig.getActiveXClusterConfig().setStatus(XClusterConfigStatusType.Running);
     drConfig.update();
@@ -745,7 +747,8 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
             targetUniverse.getUniverseUUID(),
             new BootstrapBackupParams(),
             new PitrParams(),
-            Set.of(sourceNamespace));
+            Set.of(sourceNamespace),
+            false);
     drConfig.setState(State.Replicating);
     drConfig.getActiveXClusterConfig().setStatus(XClusterConfigStatusType.Running);
     drConfig.update();
@@ -813,7 +816,8 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
             targetUniverse.getUniverseUUID(),
             new BootstrapBackupParams(),
             new PitrParams(),
-            Set.of(sourceNamespace));
+            Set.of(sourceNamespace),
+            false);
     drConfig.setState(State.Replicating);
     drConfig.getActiveXClusterConfig().setStatus(XClusterConfigStatusType.Running);
     drConfig.update();
@@ -853,7 +857,8 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
             targetUniverse.getUniverseUUID(),
             new BootstrapBackupParams(),
             new PitrParams(),
-            Set.of(sourceNamespace));
+            Set.of(sourceNamespace),
+            false);
     drConfig.setState(State.Halted);
     drConfig.getActiveXClusterConfig().setStatus(XClusterConfigStatusType.Initialized);
     drConfig.update();
@@ -893,7 +898,8 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
             targetUniverse.getUniverseUUID(),
             new BootstrapBackupParams(),
             new PitrParams(),
-            Set.of(sourceNamespace));
+            Set.of(sourceNamespace),
+            false);
     drConfig.setState(State.Halted);
     drConfig.getActiveXClusterConfig().setStatus(XClusterConfigStatusType.Initialized);
     drConfig.update();
@@ -929,7 +935,8 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
                 targetUniverse.getUniverseUUID(),
                 new BootstrapBackupParams(),
                 new PitrParams(),
-                Set.of("sourceNamespace")));
+                Set.of("sourceNamespace"),
+                false));
     drConfig.setState(State.Replicating);
     drConfig.update();
     UUID taskUUID = buildTaskInfo(null, TaskType.EditDrConfig);
@@ -975,7 +982,8 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
                 targetUniverse.getUniverseUUID(),
                 new BootstrapBackupParams(),
                 new PitrParams(),
-                Set.of("sourceNamespace")));
+                Set.of("sourceNamespace"),
+                false));
     drConfig.setState(State.Replicating);
     drConfig.update();
 
@@ -1008,7 +1016,8 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
             targetUniverse.getUniverseUUID(),
             new BootstrapBackupParams(),
             new PitrParams(),
-            Set.of("sourceNamespace"));
+            Set.of("sourceNamespace"),
+            false);
     drConfig.setState(State.Replicating);
     drConfig.getActiveXClusterConfig().setStatus(XClusterConfigStatusType.Running);
     drConfig.update();
@@ -1146,6 +1155,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
         targetUniverse.getUniverseUUID(),
         backupRequestParams,
         new PitrParams(),
-        Set.of("db1Id"));
+        Set.of("db1Id"),
+        false);
   }
 }

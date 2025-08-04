@@ -289,6 +289,13 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
 
   public static boolean isXClusterSupported(
       MasterDdlOuterClass.ListTablesResponsePB.TableInfo tableInfo) {
+    // Tables ddl_queue and sequences_data are supported for xCluster, although they are system
+    // tables.
+    if (tableInfo.getRelationType() == RelationType.SYSTEM_TABLE_RELATION
+        && (tableInfo.getName().equals("ddl_queue")
+            || tableInfo.getName().equals("sequences_data"))) {
+      return true;
+    }
     if (!X_CLUSTER_SUPPORTED_TABLE_RELATION_TYPE_SET.contains(tableInfo.getRelationType())) {
       return false;
     }
@@ -297,6 +304,13 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   }
 
   public static boolean isXClusterSupported(TableInfoResp tableInfoResp) {
+    // Tables ddl_queue and sequences_data are supported for xCluster, although they are system
+    // tables.
+    if (tableInfoResp.relationType == RelationType.SYSTEM_TABLE_RELATION
+        && (tableInfoResp.tableName.equals("ddl_queue")
+            || tableInfoResp.tableName.equals("sequences_data"))) {
+      return true;
+    }
     if (!X_CLUSTER_SUPPORTED_TABLE_RELATION_TYPE_SET.contains(tableInfoResp.relationType)) {
       return false;
     }
@@ -1597,13 +1611,20 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
           client.getTablesList(
               null /* nameFilter */, false /* excludeSystemTables */, null /* namespace */);
       tableInfoList = listTablesResponse.getTableInfoList();
+      log.debug(
+          "getTableInfoList for universe {} returned {}",
+          universe.getUniverseUUID(),
+          tableInfoList);
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
     // DB treats colocated parent tables as system tables. Thus need to filter system tables on YBA
-    // side.
+    // side. Also, ddl_queue is a system table that should not be excluded.
     return tableInfoList.stream()
-        .filter(tableInfo -> !TableInfoUtil.isSystemTable(tableInfo))
+        .filter(
+            tableInfo ->
+                (!TableInfoUtil.isSystemTable(tableInfo)
+                    || TableInfoUtil.isXClusterSystemTable(tableInfo)))
         .collect(Collectors.toList());
   }
 
@@ -1790,6 +1811,10 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
             });
   }
 
+  public static boolean isTableIdForSequencesDataTable(String tableId) {
+    return tableId.contains("sequences_data");
+  }
+
   /**
    * Finds all dbs in replication given tableIdsInReplication on the target universe, then validates
    * that all tables in these dbs are in replication. If not, throws exception.
@@ -1802,16 +1827,18 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList,
       Set<String> tableIdsInReplication,
       CustomerTask.TaskType taskType) {
-    // Set<String> tableIds = XClusterConfigTaskBase.getTableIds(tableIdsInReplication);
-
+    Set<String> filteredTableIdsInReplication =
+        tableIdsInReplication.stream()
+            .filter(tableId -> !isTableIdForSequencesDataTable(tableId))
+            .collect(Collectors.toSet());
     XClusterConfigTaskBase.groupByNamespaceId(
             XClusterConfigTaskBase.filterTableInfoListByTableIds(
-                targetTableInfoList, tableIdsInReplication))
+                targetTableInfoList, filteredTableIdsInReplication))
         .forEach(
             (namespaceId, tablesInfoList) -> {
               Set<String> requestedTableIdsInNamespace =
                   XClusterConfigTaskBase.getTableIds(tablesInfoList).stream()
-                      .filter(tableIdsInReplication::contains)
+                      .filter(filteredTableIdsInReplication::contains)
                       .collect(Collectors.toSet());
               if (!requestedTableIdsInNamespace.isEmpty()) {
                 Set<String> tableIdsInNamespace =
@@ -2151,21 +2178,25 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       filterTableInfoListByTableIds(
           List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList,
           Collection<String> tableIds) {
+    Set<String> truncatedTableIds =
+        tableIds.stream()
+            .map(XClusterConfigTaskBase::getTableIdTruncateAfterSequencesData)
+            .collect(Collectors.toSet());
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> filteredTableInfoList =
         tableInfoList.stream()
-            .filter(tableInfo -> tableIds.contains(getTableId(tableInfo)))
+            .filter(tableInfo -> truncatedTableIds.contains(getTableId(tableInfo)))
             .collect(Collectors.toList());
     // All tables are found.
-    if (filteredTableInfoList.size() != tableIds.size()) {
+    if (filteredTableInfoList.size() != truncatedTableIds.size()) {
       Set<String> foundTableIds = getTableIds(filteredTableInfoList);
       Set<String> missingTableIds =
-          tableIds.stream()
+          truncatedTableIds.stream()
               .filter(tableId -> !foundTableIds.contains(tableId))
               .collect(Collectors.toSet());
       throw new IllegalArgumentException(
           String.format(
               "Some of the tables were not found: was %d, found %d, missing tables: %s",
-              tableIds.size(), filteredTableInfoList.size(), missingTableIds));
+              truncatedTableIds.size(), filteredTableInfoList.size(), missingTableIds));
     }
     log.debug("filteredTableInfoList is {}", filteredTableInfoList);
     return filteredTableInfoList;
@@ -2213,6 +2244,19 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
           tableType.equals(XClusterConfig.TableType.YSQL)
               ? TableInfoUtil.getYsqlTables(replicationClusterData.targetTableInfoList)
               : TableInfoUtil.getYcqlTables(replicationClusterData.targetTableInfoList);
+
+      if (xClusterConfig.getType() == ConfigType.Db && xClusterConfig.isAutomaticDdlMode()) {
+        // Hide the `replicated_ddls` table from the xCluster config. This table is metadata and
+        // the user does not need to see it.
+        replicationClusterData.sourceTableInfoList =
+            replicationClusterData.sourceTableInfoList.stream()
+                .filter(tableInfo -> !TableInfoUtil.isReplicatedDdlsTable(tableInfo))
+                .collect(Collectors.toList());
+        replicationClusterData.targetTableInfoList =
+            replicationClusterData.targetTableInfoList.stream()
+                .filter(tableInfo -> !TableInfoUtil.isReplicatedDdlsTable(tableInfo))
+                .collect(Collectors.toList());
+      }
     } catch (Exception e) {
       log.error(
           "Error getting cluster details for xCluster config {}", xClusterConfig.getUuid(), e);
@@ -2283,6 +2327,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
           tableHandler,
           replicationClusterData.sourceTableInfoList,
           replicationClusterData.targetTableInfoList,
+          replicationClusterData.getSourceNamespaceInfoList(),
           replicationClusterData.clusterConfig);
       if (xClusterConfig.getType() == XClusterConfig.ConfigType.Db) {
         addSourceAndTargetDbInfo(
@@ -2682,7 +2727,8 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
         .filter(tableConfig -> tableConfig.getStatus() == XClusterTableConfig.Status.Running)
         .forEach(
             tableConfig -> {
-              if (!sourceUniverseTableIds.contains(tableConfig.getTableId())) {
+              if (!sourceUniverseTableIds.contains(
+                  getTableIdTruncateAfterSequencesData(tableConfig.getTableId()))) {
                 tableConfig.setStatus(XClusterTableConfig.Status.DroppedFromSource);
               }
             });
@@ -2701,7 +2747,9 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
                     .contains(tableConfig.getStatus()))
         .forEach(
             tableConfig -> {
-              String targetTableId = sourceTableIdToTargetTableIdMap.get(tableConfig.getTableId());
+              String targetTableId =
+                  sourceTableIdToTargetTableIdMap.get(
+                      getTableIdTruncateAfterSequencesData(tableConfig.getTableId()));
               if (targetTableId == null) {
                 if (xClusterConfig.getType().equals(ConfigType.Db)) {
                   // For DB replication, new tables missing from the target are added to the
@@ -2732,7 +2780,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
               xClusterConfig.getTableDetails().stream()
                   .filter(t -> t.getTableId().equals(tableConfig.getTableId()))
                   .findFirst();
-          if (!existingTableConfig.isPresent()) {
+          if (existingTableConfig.isEmpty()) {
             if (xClusterConfig.getType().equals(ConfigType.Db)) {
               // For DB replication, extra tables on the source are in the INITIATED state and
               // part of the replication group. However, tables that were previously part of
@@ -2767,13 +2815,18 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       tableConfigsNotInReplicationOnTarget.forEach(
           tableConfig -> {
             String targetTableId = tableConfig.getTableId();
-            String sourceTableId = targetTableIdToSourceTableIdMap.get(targetTableId);
+            String sourceTableId =
+                targetTableIdToSourceTableIdMap.get(
+                    getTableIdTruncateAfterSequencesData(targetTableId));
             if (sourceTableId != null) {
               Optional<XClusterTableConfig> existingTableConfig =
                   xClusterConfig.getTableDetails().stream()
-                      .filter(t -> t.getTableId().equals(sourceTableId))
+                      .filter(
+                          t ->
+                              getTableIdTruncateAfterSequencesData(t.getTableId())
+                                  .equals(sourceTableId))
                       .findFirst();
-              if (!existingTableConfig.isPresent()
+              if (existingTableConfig.isEmpty()
                   || existingTableConfig
                       .get()
                       .getStatus()
@@ -2817,6 +2870,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       UniverseTableHandler tableHandler,
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList,
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList,
+      @Nullable Set<MasterTypes.NamespaceIdentifierPB> sourceNamespaceInfoList,
       CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig) {
     Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
 
@@ -2827,10 +2881,19 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
             false /* includeParentTableInfo */,
             false /* excludeColocatedTables */,
             true /* includeColocatedParentTables */,
-            true /* xClusterSupportedOnly */);
+            true /* xClusterSupportedOnly */,
+            true /* includePostgresSystemTables */);
     Map<String, TableInfoResp> sourceTableIdTableInfoRespMap =
         sourceUniverseTableInfoRespList.stream()
             .collect(Collectors.toMap(TableInfoResp::getTableId, Function.identity()));
+    Map<String, String> keyspaceIdtoKeyspaceNameMap =
+        Objects.nonNull(sourceNamespaceInfoList)
+            ? sourceNamespaceInfoList.stream()
+                .collect(
+                    Collectors.toMap(
+                        namespaceInfo -> namespaceInfo.getId().toStringUtf8(),
+                        namespaceInfo -> namespaceInfo.getName()))
+            : Collections.emptyMap();
 
     // Update tableInfo from source universe
     xClusterConfig
@@ -2840,8 +2903,21 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
               if (tableConfig.getStatus().equals(XClusterTableConfig.Status.ExtraTableOnTarget)) {
                 return;
               }
-              tableConfig.setSourceTableInfo(
-                  sourceTableIdTableInfoRespMap.get(tableConfig.getTableId()));
+              TableInfoResp tableInfo =
+                  sourceTableIdTableInfoRespMap.get(
+                      getTableIdTruncateAfterSequencesData(tableConfig.getTableId()));
+              // For sequences_data table, we need to set the keyspace and pgSchemaName manually.
+              if (Boolean.TRUE.equals(xClusterConfig.isAutomaticDdlMode())
+                  && Objects.nonNull(tableInfo)
+                  && isSequencesDataTableId(tableConfig.getTableId())) {
+                String databaseId = getDatabaseIdFromSequencesDataTableId(tableConfig.getTableId());
+                tableInfo =
+                    tableInfo.toBuilder()
+                        .keySpace(keyspaceIdtoKeyspaceNameMap.get(databaseId))
+                        .pgSchemaName("_")
+                        .build();
+              }
+              tableConfig.setSourceTableInfo(tableInfo);
             });
 
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
@@ -2856,7 +2932,8 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
             false /* includeParentTableInfo */,
             false /* excludeColocatedTables */,
             true /* includeColocatedParentTables */,
-            true /* xClusterSupportedOnly */);
+            true /* xClusterSupportedOnly */,
+            true /* includePostgresSystemTables */);
     Map<String, TableInfoResp> targetTableIdTableInfoRespMap =
         targetUniverseTableInfoRespList.stream()
             .collect(Collectors.toMap(TableInfoResp::getTableId, Function.identity()));
@@ -2866,24 +2943,69 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
         .getTableDetails()
         .forEach(
             tableConfig -> {
+              TableInfoResp tableInfo;
               if (tableConfig.getStatus().equals(XClusterTableConfig.Status.ExtraTableOnSource)
                   || tableConfig.getStatus().equals(XClusterTableConfig.Status.DroppedFromTarget)) {
                 return;
-              } else if (tableConfig
-                  .getStatus()
-                  .equals(XClusterTableConfig.Status.ExtraTableOnTarget)) {
-                tableConfig.setTargetTableInfo(
-                    targetTableIdTableInfoRespMap.get(tableConfig.getTableId()));
-                return;
               }
-              String consumerTableId = producerConsumerTableIdMap.get(tableConfig.getTableId());
-              if (consumerTableId != null) {
-                tableConfig.setTargetTableInfo(targetTableIdTableInfoRespMap.get(consumerTableId));
+              if (tableConfig.getStatus().equals(XClusterTableConfig.Status.ExtraTableOnTarget)) {
+                tableInfo =
+                    targetTableIdTableInfoRespMap.get(
+                        getTableIdTruncateAfterSequencesData(tableConfig.getTableId()));
               } else {
-                tableConfig.setTargetTableInfo(
-                    targetTableIdTableInfoRespMap.get(tableConfig.getTableId()));
+                String consumerTableId = producerConsumerTableIdMap.get(tableConfig.getTableId());
+                if (consumerTableId != null) {
+                  tableInfo =
+                      targetTableIdTableInfoRespMap.get(
+                          getTableIdTruncateAfterSequencesData(consumerTableId));
+                  if (Objects.nonNull(tableInfo)) {
+                    // For sequences_data table, we need to set the keyspace and pgSchemaName
+                    // manually.
+                    if (Boolean.TRUE.equals(xClusterConfig.isAutomaticDdlMode())
+                        && isSequencesDataTableId(tableConfig.getTableId())) {
+                      String databaseId =
+                          getDatabaseIdFromSequencesDataTableId(tableConfig.getTableId());
+                      tableInfo =
+                          tableInfo.toBuilder()
+                              .keySpace(keyspaceIdtoKeyspaceNameMap.get(databaseId))
+                              .pgSchemaName("_")
+                              .build();
+                    }
+                  }
+                } else {
+                  tableInfo =
+                      targetTableIdTableInfoRespMap.get(
+                          getTableIdTruncateAfterSequencesData(tableConfig.getTableId()));
+                }
               }
+              tableConfig.setTargetTableInfo(tableInfo);
             });
+  }
+
+  public static String getTableIdTruncateAfterSequencesData(String tableId) {
+    // We need to truncate the tableId to drop everything after ".sequences_data".
+    int index = tableId.indexOf(".sequences_data_for");
+    return index != -1 ? tableId.substring(0, index) : tableId;
+  }
+
+  public static boolean isSequencesDataTableId(String tableId) {
+    // Check if the tableId contains ".sequences_data_for".
+    return tableId.contains(".sequences_data_for");
+  }
+
+  public static boolean isSequencesDataTable(TableInfoResp tableInfoResp) {
+    return tableInfoResp.keySpace.equals("system_postgres")
+        && tableInfoResp.tableName.equals("sequences_data");
+  }
+
+  public static String getDatabaseIdFromSequencesDataTableId(String tableId) {
+    // Extract the database ID from the sequences data table ID.
+    String marker = ".sequences_data_for.";
+    int index = tableId.indexOf(marker);
+    if (index == -1) {
+      throw new IllegalArgumentException("Table ID does not contain '" + marker + "': " + tableId);
+    }
+    return tableId.substring(index + marker.length());
   }
 
   /**
@@ -2979,7 +3101,10 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
                   }
                 });
         tableIdsInReplicationOnTargetUniverse.stream()
-            .filter(tableId -> !targetTableIdsForSourceTableIdsInReplication.contains(tableId))
+            .filter(
+                tableId ->
+                    !targetTableIdsForSourceTableIdsInReplication.contains(
+                        getTableIdTruncateAfterSequencesData(tableId)))
             .forEach(
                 tableId -> {
                   XClusterTableConfig tableConfig =

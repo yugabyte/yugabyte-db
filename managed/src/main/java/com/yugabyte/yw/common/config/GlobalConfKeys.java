@@ -361,6 +361,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "XCluster/DR config GET API timeout in milliseconds",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> xClusterDbScopedAutomaticDdlYbdbMinCompatibleVersion =
+      new ConfKeyInfo<>(
+          "yb.xcluster.db_scoped.automatic_ddl.ybdbMinCompatibleVersion",
+          ScopeType.GLOBAL,
+          "XCluster DB Scoped Automatic DDL YBDB Min Compatible Version",
+          "Minimum YBDB version for which XCluster DB Scoped Automatic DDL is supported",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> ybcSocketReadTimeoutMs =
       new ConfKeyInfo<>(
           "ybc.timeout.socket_read_timeout_ms",
