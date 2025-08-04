@@ -47,8 +47,8 @@ export interface ProxyAdvancedProps {
   enableProxyServer: boolean;
   secureWebProxy: boolean;
   secureWebProxyServer: string;
-  secureWebProxyPort: number;
+  secureWebProxyPort: number | undefined;
   webProxy: boolean;
   byPassProxyList: boolean;
-  byPassProxyListValues: string;
+  byPassProxyListValues: string[];
 }

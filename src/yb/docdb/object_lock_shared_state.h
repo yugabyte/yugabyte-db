@@ -14,6 +14,7 @@
 #pragma once
 
 #include <optional>
+#include <span>
 
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/lock_util.h"
@@ -29,6 +30,9 @@
 namespace yb::docdb {
 
 std::optional<ObjectLockFastpathLockType> MakeObjectLockFastpathLockType(TableLockType lock_type);
+
+[[nodiscard]] std::span<const LockTypeEntry> GetEntriesForFastpathLockType(
+    ObjectLockFastpathLockType lock_type);
 
 struct ObjectLockFastpathRequest {
   SessionLockOwnerTag owner;
@@ -56,7 +60,14 @@ class ObjectLockSharedState {
 
   [[nodiscard]] bool Lock(const ObjectLockFastpathRequest& request);
 
-  void ConsumePendingLockRequests(const FastLockRequestConsumer& consume) PARENT_PROCESS_ONLY;
+  size_t ConsumePendingLockRequests(const FastLockRequestConsumer& consume) PARENT_PROCESS_ONLY;
+
+  size_t ConsumeAndAcquireExclusiveLockIntents(
+      const FastLockRequestConsumer& consume,
+      std::span<const ObjectLockPrefix*> object_ids) PARENT_PROCESS_ONLY;
+
+  void ReleaseExclusiveLockIntent(const ObjectLockPrefix& object_id, size_t count = 1)
+      PARENT_PROCESS_ONLY;
 
   [[nodiscard]] SessionLockOwnerTag TEST_last_owner() PARENT_PROCESS_ONLY;
 

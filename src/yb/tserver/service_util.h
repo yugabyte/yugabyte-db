@@ -74,7 +74,7 @@ std::shared_ptr<TabletConsensusInfoPB> GetTabletConsensusInfoFromTabletPeer(
 
 std::string CatalogInvalMessagesDataDebugString(const master::TSHeartbeatResponsePB& resp);
 std::string CatalogInvalMessagesDataDebugString(
-    const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data);
+    const tserver::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data);
 
 // Template helpers.
 

@@ -206,6 +206,7 @@ export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
         </StyledFooter>
       </StyledPanel>
       <YBMaps
+        dataTestId='yb-maps-review-and-summary'
         mapHeight={360}
         coordinates={[
           [37.3688, -122.0363],

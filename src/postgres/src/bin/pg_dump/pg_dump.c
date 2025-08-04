@@ -17015,11 +17015,11 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 					{
 						appendPQExpBufferStr(q, "\n-- For binary upgrade, recreate dropped column.\n");
 						appendPQExpBuffer(q, "UPDATE pg_catalog.pg_attribute\n"
-										"SET attlen = %d, "
-										"attalign = '%c', attbyval = false\n"
-										"WHERE attname = ",
-										tbinfo->attlen[j],
-										tbinfo->attalign[j]);
+										  "SET attlen = %d, "
+										  "attalign = '%c', attbyval = false\n"
+										  "WHERE attname = ",
+										  tbinfo->attlen[j],
+										  tbinfo->attalign[j]);
 						appendStringLiteralAH(q, tbinfo->attnames[j], fout);
 						appendPQExpBufferStr(q, "\n  AND attrelid = ");
 						appendStringLiteralAH(q, qualrelname, fout);
@@ -17028,12 +17028,12 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 						if (tbinfo->relkind == RELKIND_RELATION ||
 							tbinfo->relkind == RELKIND_PARTITIONED_TABLE)
 							appendPQExpBuffer(q, "ALTER TABLE ONLY %s ",
-											qualrelname);
+											  qualrelname);
 						else
 							appendPQExpBuffer(q, "ALTER FOREIGN TABLE ONLY %s ",
-											qualrelname);
+											  qualrelname);
 						appendPQExpBuffer(q, "DROP COLUMN %s;\n",
-									  fmtId(tbinfo->attnames[j]));
+										  fmtId(tbinfo->attnames[j]));
 					}
 				}
 				else if (!tbinfo->attislocal[j] && (IsYugabyteEnabled && !tbinfo->ispartition))

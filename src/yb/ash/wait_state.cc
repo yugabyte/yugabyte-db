@@ -274,7 +274,7 @@ void AshMetadata::clear_rpc_request_id() {
 std::string AshMetadata::ToString() const {
   return YB_STRUCT_TO_STRING(
       top_level_node_id, root_request_id, query_id, database_id,
-      rpc_request_id, client_host_port);
+      rpc_request_id, client_host_port, addr_family, pid);
 }
 
 std::string AshAuxInfo::ToString() const {
@@ -293,8 +293,9 @@ void AshAuxInfo::UpdateFrom(const AshAuxInfo &other) {
   }
 }
 
-WaitStateInfo::WaitStateInfo()
-    : metadata_(AshMetadata{}) {}
+WaitStateInfo::WaitStateInfo(int64_t rpc_request_id)
+    : metadata_({ .rpc_request_id = rpc_request_id }) {
+}
 
 void WaitStateInfo::set_code(WaitStateCode code, const char* location) {
   auto prev_code = code_.exchange(code, std::memory_order_release);
@@ -652,6 +653,7 @@ namespace {
 WaitStateTracker flush_and_compaction_wait_states_tracker;
 WaitStateTracker raft_log_appender_wait_states_tracker;
 WaitStateTracker pg_shared_memory_perform_tracker;
+WaitStateTracker pg_shared_memory_acquire_object_lock_tracker;
 
 }  // namespace
 
@@ -665,6 +667,10 @@ WaitStateTracker& RaftLogWaitStatesTracker() {
 
 WaitStateTracker& SharedMemoryPgPerformTracker() {
   return pg_shared_memory_perform_tracker;
+}
+
+WaitStateTracker& SharedMemoryPgAcquireObjectLockTracker() {
+  return pg_shared_memory_acquire_object_lock_tracker;
 }
 
 }  // namespace yb::ash

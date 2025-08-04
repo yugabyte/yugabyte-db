@@ -724,8 +724,8 @@ Status CatalogManager::BackfillMetadataForXRepl(
       if (!IsColocationParentTableId(table_id) &&
           (backfill_required || table_lock->schema().deprecated_pgschema_name().empty())) {
         LOG_WITH_FUNC(INFO) << "backfilling pgschema_name for table " << table_id;
-        string pgschema_name =
-            VERIFY_RESULT(GetYsqlManager().GetPgSchemaName(table_id, table_lock.data()));
+        const auto pgschema_name = VERIFY_RESULT(GetYsqlManager().GetPgSchemaName(
+            VERIFY_RESULT(table->GetPgTableAllOids())));
         VLOG(1) << "For table: " << table_lock->name() << " found pgschema_name: " << pgschema_name;
         alter_table_req_pg_type.set_pgschema_name(pgschema_name);
         backfill_required = true;
@@ -2727,13 +2727,18 @@ Status CatalogManager::CleanUpCDCSDKStreamsMetadata(const LeaderEpoch& epoch) {
     if (!tablets->contains(entry.tablet_id)) {
       // Either this tablet belongs to a dropped table or a dynamic table. If the corresponding
       // table of the tablet (all the tables in case of a colocated tablet) belongs to the dropped
-      // table list computed previously, then the cdc_state entry will be deleted. If the tablet
-      // itself is not found, we can safely delete the cdc_state entry.
+      // table list computed previously, then the cdc_state entry will be deleted.
+      // There is a possible race if the tablet is not found for split tablets.
+      // So we require the tablet is found, or it is known to have been deleted.
       auto tablet_info_result = GetTabletInfo(entry.tablet_id);
       if (!tablet_info_result.ok()) {
-        LOG_WITH_FUNC(WARNING) << "Did not find tablet info for tablet_id: " << entry.tablet_id
-                               << " , will not delete its cdc_state entry for stream id:"
-                               << entry.stream_id << "in this iteration";
+        if (tablet_info_result.status().IsDeleted()) {
+          keys_to_delete.emplace_back(entry.tablet_id, entry.stream_id);
+        } else {
+          LOG_WITH_FUNC(WARNING) << "Did not find tablet info for tablet_id: " << entry.tablet_id
+                                 << " , will not delete its cdc_state entry for stream id:"
+                                 << entry.stream_id << "in this iteration";
+        }
         continue;
       }
 

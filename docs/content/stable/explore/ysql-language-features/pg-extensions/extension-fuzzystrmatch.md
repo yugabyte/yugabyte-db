@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-The [fuzzystrmatch](https://www.postgresql.org/docs/11/fuzzystrmatch.html) module provides several functions to determine similarities and distance between strings.
+The [fuzzystrmatch](https://www.postgresql.org/docs/15/fuzzystrmatch.html) module provides several functions to determine similarities and distance between strings.
 
 ```sql
 CREATE EXTENSION fuzzystrmatch;

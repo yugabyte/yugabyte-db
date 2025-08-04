@@ -378,7 +378,7 @@ TEST_F(LoadBalancerMultiTableTest, TestDeadNodesLeaderBalancing) {
   "Is TS dead",
   MonoDelta::FromSeconds(1)));
 
-  // All the leaders should now be on the first TS.
+  // All the leaders should now be on the third TS.
   zero_load_ts.insert(ts1_id);
   for (const auto& tn : table_names_) {
     const auto new_leader_counts = ASSERT_RESULT(yb_admin_client_->GetLeaderCounts(tn));
@@ -386,26 +386,21 @@ TEST_F(LoadBalancerMultiTableTest, TestDeadNodesLeaderBalancing) {
   }
 
   // Remove TS 2 from leader blacklist so that leader load gets transferred
-  // to TS2 in the presenece of a DEAD TS1.
-  LOG(INFO) << "Emptying blacklist";
-  ASSERT_OK(external_mini_cluster()->ClearBlacklist(
-      external_mini_cluster()->master()));
+  // to TS2 in the presence of a DEAD TS1.
+  LOG(INFO) << "Clearing leader blacklist";
+  ASSERT_OK(external_mini_cluster()->ClearBlacklist(external_mini_cluster()->master()));
 
-  WaitForLoadBalanceCompletion();
-
-  // Verify loads and leader loads.
-  tserver_loads = ASSERT_RESULT(GetTserverLoads({ 0, 1, 2 }));
-  ASSERT_TRUE(AreLoadsBalanced(tserver_loads));
-  ASSERT_EQ(tserver_loads[0], 15);
-  ASSERT_EQ(tserver_loads[1], 15);
-  ASSERT_EQ(tserver_loads[2], 15);
-
-  // Check new leader counts. TS 0 and 2 should contain all the leaders.
+  // Wait for load to be balanced and ts0 and ts2 to have the leaders.
   zero_load_ts.erase(ts2_id);
-  for (const auto& tn : table_names_) {
-    const auto new_leader_counts = ASSERT_RESULT(yb_admin_client_->GetLeaderCounts(tn));
-    ASSERT_TRUE(AreLoadsAsExpected(new_leader_counts, zero_load_ts));
-  }
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    tserver_loads = VERIFY_RESULT(GetTserverLoads({ 0, 1, 2 }));
+    if (tserver_loads[0] != 15 || tserver_loads[1] != 15 || tserver_loads[2] != 15) return false;
+    for (const auto& tn : table_names_) {
+      const auto new_leader_counts = VERIFY_RESULT(yb_admin_client_->GetLeaderCounts(tn));
+      if (!AreLoadsAsExpected(new_leader_counts, zero_load_ts)) return false;
+    }
+    return true;
+  }, MonoDelta::FromSeconds(30), "Wait for tserver loads to be balanced"));
 
   LOG(INFO) << "Resuming TS#1";
   ASSERT_OK(external_mini_cluster()->tablet_server(1)->Resume());

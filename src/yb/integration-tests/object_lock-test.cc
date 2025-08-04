@@ -1700,8 +1700,6 @@ ExternalMiniClusterOptions ExternalObjectLockTest::MakeExternalMiniClusterOption
   opts.replication_factor = ReplicationFactor();
   opts.enable_ysql = true;
   opts.extra_master_flags = {
-      "--allowed_preview_flags_csv=enable_object_locking_for_table_locks",
-      "--enable_object_locking_for_table_locks",
       Format("--master_ysql_operation_lease_ttl_ms=$0", kDefaultMasterYSQLLeaseTTLMilli),
       Format("--object_lock_cleanup_interval_ms=$0", kDefaultMasterObjectLockCleanupIntervalMilli),
       "--enable_load_balancing=false",
@@ -1765,8 +1763,6 @@ ExternalObjectLockTestOneTSWithoutLease::MakeExternalMiniClusterOptions() {
   opts.enable_ysql = true;
   opts.wait_for_tservers_to_accept_ysql_connections = false;
   opts.extra_master_flags = {
-      "--allowed_preview_flags_csv=enable_object_locking_for_table_locks",
-      "--enable_object_locking_for_table_locks",
       Format("--master_ysql_operation_lease_ttl_ms=$0", kDefaultMasterYSQLLeaseTTLMilli),
       Format("--object_lock_cleanup_interval_ms=$0", kDefaultMasterObjectLockCleanupIntervalMilli),
       "--enable_load_balancing=false"};

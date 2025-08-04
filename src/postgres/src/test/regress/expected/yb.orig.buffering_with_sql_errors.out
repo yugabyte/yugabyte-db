@@ -448,10 +448,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (11, 11), (12, 12);
          Storage Table Write Requests: 4
  Trigger trigger_bi: calls=2
  Storage Read Requests: 0
+ Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 4
  Storage Flush Requests: 1
-(8 rows)
+(9 rows)
 
 COMMIT;
 BEGIN ISOLATION LEVEL REPEATABLE READ;
@@ -464,10 +465,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (1, 1), (2, 2);
          Storage Table Write Requests: 4
  Trigger trigger_bi: calls=2
  Storage Read Requests: 0
+ Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 4
  Storage Flush Requests: 1
-(8 rows)
+(9 rows)
 
 COMMIT;
 BEGIN ISOLATION LEVEL SERIALIZABLE;
@@ -480,10 +482,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (3, 3), (4, 4);
          Storage Table Write Requests: 4
  Trigger trigger_bi: calls=2
  Storage Read Requests: 0
+ Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 4
  Storage Flush Requests: 1
-(8 rows)
+(9 rows)
 
 COMMIT;
 DROP TRIGGER trigger_bi ON t_test;
@@ -498,10 +501,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (13, 13), (14, 14);
          Storage Table Write Requests: 2
  Trigger trigger_ai: calls=2
  Storage Read Requests: 0
+ Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 4
  Storage Flush Requests: 1
-(8 rows)
+(9 rows)
 
 COMMIT;
 BEGIN ISOLATION LEVEL REPEATABLE READ;
@@ -514,10 +518,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (5, 5), (6, 6);
          Storage Table Write Requests: 2
  Trigger trigger_ai: calls=2
  Storage Read Requests: 0
+ Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 4
  Storage Flush Requests: 1
-(8 rows)
+(9 rows)
 
 COMMIT;
 BEGIN ISOLATION LEVEL SERIALIZABLE;
@@ -530,10 +535,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (7, 7), (8, 8);
          Storage Table Write Requests: 2
  Trigger trigger_ai: calls=2
  Storage Read Requests: 0
+ Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 4
  Storage Flush Requests: 1
-(8 rows)
+(9 rows)
 
 COMMIT;
 SELECT * FROM t_test ORDER BY k;
@@ -579,10 +585,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (21, 21), (22, 22);
          Storage Table Write Requests: 2
  Trigger trigger_ai: calls=2
  Storage Read Requests: 0
+ Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 10
  Storage Flush Requests: 1
-(8 rows)
+(9 rows)
 
 -- SELECTs should not interfere with the buffering logic as long as they do not
 -- require a storage lookup.
@@ -607,10 +614,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (23, 23), (24, 24);
          Storage Table Write Requests: 2
  Trigger trigger_ai: calls=2
  Storage Read Requests: 0
+ Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 10
  Storage Flush Requests: 1
-(8 rows)
+(9 rows)
 
 -- Conditional statements should automatically trigger a flush irrespective of
 -- the condition.
@@ -642,10 +650,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (25, 25), (26, 26);
          Storage Table Write Requests: 2
  Trigger trigger_ai: calls=2
  Storage Read Requests: 0
+ Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 6
  Storage Flush Requests: 3
-(8 rows)
+(9 rows)
 
 CREATE OR REPLACE FUNCTION sample_trigger() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
@@ -675,10 +684,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (27, 27), (28, 28);
          Storage Table Write Requests: 2
  Trigger trigger_ai: calls=2
  Storage Read Requests: 0
+ Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 6
  Storage Flush Requests: 3
-(8 rows)
+(9 rows)
 
 -- Similarly statements executed in an exception block should also
 -- automatically trigger a flush.
@@ -716,10 +726,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (29, 29), (30, 30);
          Storage Table Write Requests: 2
  Trigger trigger_ai: calls=2
  Storage Read Requests: 0
+ Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 8
  Storage Flush Requests: 5
-(8 rows)
+(9 rows)
 
 SELECT * FROM t_test ORDER BY k;
   k  |  v  

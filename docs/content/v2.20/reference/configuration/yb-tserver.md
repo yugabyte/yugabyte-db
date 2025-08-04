@@ -11,7 +11,13 @@ menu:
 type: docs
 ---
 
-Use the `yb-tserver` binary and its flags to configure the [YB-TServer](../../../architecture/yb-tserver/) server. The `yb-tserver` executable file is located in the `bin` directory of YugabyteDB home.
+Use the yb-tserver binary and its flags to configure the [YB-TServer](../../../architecture/yb-tserver/) server. The yb-tserver executable file is located in the `bin` directory of YugabyteDB home.
+
+{{< note title="Setting flags in YugabyteDB Anywhere" >}}
+
+If you are using YugabyteDB Anywhere, set flags using the [Edit Flags](../../../yugabyte-platform/manage-deployments/edit-config-flags/#modify-configuration-flags) feature.
+
+{{< /note >}}
 
 ## Syntax
 
@@ -61,7 +67,7 @@ Shows version and build info, then exits.
 
 ##### --tserver_master_addrs
 
-Specifies a comma-separated list of all the `yb-master` RPC addresses.
+Specifies a comma-separated list of all the yb-master RPC addresses.
 
 Required.
 
@@ -71,7 +77,7 @@ The number of comma-separated values should match the total number of YB-Master 
 
 ##### --fs_data_dirs
 
-Specifies a comma-separated list of mount directories, where `yb-tserver` will add a `yb-data/tserver` data directory, `tserver.err`, `tserver.out`, and `pg_data` directory.
+Specifies a comma-separated list of mount directories, where yb-tserver will add a `yb-data/tserver` data directory, `tserver.err`, `tserver.out`, and `pg_data` directory.
 
 Required.
 
@@ -79,7 +85,7 @@ Changing the value of this flag after the cluster has already been created is no
 
 ##### --fs_wal_dirs
 
-Specifies a comma-separated list of directories, where `yb-tserver` will store write-ahead (WAL) logs. This can be the same as one of the directories listed in `--fs_data_dirs`, but not a subdirectory of a data directory.
+Specifies a comma-separated list of directories, where yb-tserver will store write-ahead (WAL) logs. This can be the same as one of the directories listed in `--fs_data_dirs`, but not a subdirectory of a data directory.
 
 Default: The same value as `--fs_data_dirs`
 
@@ -93,7 +99,7 @@ Default: `500000` (500,000 µs = 500ms)
 
 Specifies the comma-separated list of the network interface addresses to which to bind for RPC connections.
 
-The values must match on all [`yb-master`](../yb-master/#rpc-bind-addresses) and `yb-tserver` configurations.
+The values must match on all [yb-master](../yb-master/#rpc-bind-addresses) and yb-tserver configurations.
 
 Default: Private IP address of the host on which the server is running, as defined in `/home/yugabyte/tserver/conf/server.conf`. For example:
 
@@ -180,7 +186,7 @@ Default: `""`
 
 ##### --log_dir
 
-The directory to write `yb-tserver` log files.
+The directory to write yb-tserver log files.
 
 Default: The same as [`--fs_data_dirs`](#fs-data-dirs)
 
@@ -216,7 +222,7 @@ Default: `false`
 
 ## Raft flags
 
-For a typical deployment, values used for Raft and the write ahead log (WAL) flags in `yb-tserver` configurations should match the values in [yb-master](../yb-master/#raft-flags) configurations.
+With the exception of flags that have different defaults for yb-master vs yb-tserver (for example, `--evict_failed_followers`), for a typical deployment, values used for Raft and the write ahead log (WAL) flags in yb-tserver configurations should match the values in [yb-master](../yb-master/#raft-flags) configurations.
 
 ##### --follower_unavailable_considered_failed_sec
 
@@ -224,7 +230,7 @@ The duration, in seconds, after which a follower is considered to be failed beca
 
 Default: `900` (15 minutes)
 
-The `--follower_unavailable_considered_failed_sec` value should match the value for [`--log_min_seconds_to_retain`](#log-min-seconds-to-retain).
+The `--follower_unavailable_considered_failed_sec` value should match the value for [--log_min_seconds_to_retain](#log-min-seconds-to-retain).
 
 ##### --evict_failed_followers
 
@@ -234,9 +240,9 @@ Default: `true`
 
 ##### --leader_failure_max_missed_heartbeat_periods
 
-The maximum heartbeat periods that the leader can fail to heartbeat in before the leader is considered to be failed. The total failure timeout, in milliseconds (ms), is [`--raft_heartbeat_interval_ms`](#raft-heartbeat-interval-ms) multiplied by `--leader_failure_max_missed_heartbeat_periods`.
+The maximum heartbeat periods that the leader can fail to heartbeat in before the leader is considered to be failed. The total failure timeout, in milliseconds (ms), is [--raft_heartbeat_interval_ms](#raft-heartbeat-interval-ms) multiplied by `--leader_failure_max_missed_heartbeat_periods`.
 
-For read replica clusters, set the value to `10` in all `yb-tserver` and `yb-master` configurations.  Because the data is globally replicated, RPC latencies are higher. Use this flag to increase the failure detection interval in such a higher RPC latency deployment.
+For read replica clusters, set the value to `10` in all yb-tserver and yb-master configurations.  Because the data is globally replicated, RPC latencies are higher. Use this flag to increase the failure detection interval in such a higher RPC latency deployment.
 
 Default: `6`
 
@@ -266,29 +272,29 @@ Default: `500`
 
 ### Write ahead log (WAL) flags
 
-Ensure that values used for the write ahead log (WAL) in `yb-tserver` configurations match the values for `yb-master` configurations.
+Ensure that values used for the write ahead log (WAL) in yb-tserver configurations match the values for yb-master configurations.
 
 ##### --fs_wal_dirs
 
-The directory where the `yb-tserver` retains WAL files. May be the same as one of the directories listed in [`--fs_data_dirs`](#fs-data-dirs), but not a subdirectory of a data directory.
+The directory where the yb-tserver retains WAL files. May be the same as one of the directories listed in [--fs_data_dirs](#fs-data-dirs), but not a subdirectory of a data directory.
 
 Default: The same as `--fs_data_dirs`
 
 ##### --durable_wal_write
 
-If set to `false`, the writes to the WAL are synchronized to disk every [`interval_durable_wal_write_ms`](#interval-durable-wal-write-ms) milliseconds (ms) or every [`bytes_durable_wal_write_mb`](#bytes-durable-wal-write-mb) megabyte (MB), whichever comes first. This default setting is recommended only for multi-AZ or multi-region deployments where the availability zones (AZs) or regions are independent failure domains and there is not a risk of correlated power loss. For single AZ deployments, this flag should be set to `true`.
+If set to `false`, the writes to the WAL are synchronized to disk every [interval_durable_wal_write_ms](#interval-durable-wal-write-ms) milliseconds (ms) or every [bytes_durable_wal_write_mb](#bytes-durable-wal-write-mb) megabyte (MB), whichever comes first. This default setting is recommended only for multi-AZ or multi-region deployments where the availability zones (AZs) or regions are independent failure domains and there is not a risk of correlated power loss. For single AZ deployments, this flag should be set to `true`.
 
 Default: `false`
 
 ##### --interval_durable_wal_write_ms
 
-When [`--durable_wal_write`](#durable-wal-write) is false, writes to the WAL are synced to disk every `--interval_durable_wal_write_ms` or [`--bytes_durable_wal_write_mb`](#bytes-durable-wal-write-mb), whichever comes first.
+When [--durable_wal_write](#durable-wal-write) is false, writes to the WAL are synced to disk every `--interval_durable_wal_write_ms` or [--bytes_durable_wal_write_mb](#bytes-durable-wal-write-mb), whichever comes first.
 
 Default: `1000`
 
 ##### --bytes_durable_wal_write_mb
 
-When [`--durable_wal_write`](#durable-wal-write) is `false`, writes to the WAL are synced to disk every `--bytes_durable_wal_write_mb` or `--interval_durable_wal_write_ms`, whichever comes first.
+When [--durable_wal_write](#durable-wal-write) is `false`, writes to the WAL are synced to disk every `--bytes_durable_wal_write_mb` or `--interval_durable_wal_write_ms`, whichever comes first.
 
 Default: `1`
 
@@ -314,7 +320,7 @@ Default: `64`
 
 When the server restarts from a previous crash, if the tablet's last WAL file size is less than or equal to this threshold value, the last WAL file will be reused. Otherwise, WAL will allocate a new file at bootstrap. To disable WAL reuse, set the value to `-1`.
 
-Default: The default value in `2.18.1` is `-1` - feature is disabled by default. The default value starting from `2.19.1` is `524288` (0.5 MB) - feature is enabled by default.
+Default: The default value in {{<release "2.18.1">}} is `-1` - feature is disabled by default. The default value starting from {{<release "2.19.1">}} is `524288` (0.5 MB) - feature is enabled by default.
 
 ## Sharding flags
 
@@ -332,13 +338,13 @@ Default: `-1`, where the number of shards is determined at runtime, as follows:
   - For servers with up to two CPU cores, the default value is considered as `4`.
   - For three or more CPU cores, the default value is considered as `8`.
 
-Local cluster installations created using `yb-ctl` and `yb-docker-ctl` use a default value of `2` for this flag.
+Local cluster installations created using yb-ctl and yb-docker-ctl use a default value of `2` for this flag.
 
-Clusters created using `yugabyted` always use a default value of `1`.
+Clusters created using yugabyted always use a default value of `1`.
 
 {{< note title="Note" >}}
 
-- This value must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
+- This value must match on all yb-master and yb-tserver configurations of a YugabyteDB cluster.
 - If the value is set to *Default* (`-1`), then the system automatically determines an appropriate value based on the number of CPU cores and internally *updates* the flag with the intended value during startup prior to version 2.18 and the flag remains *unchanged* starting from version 2.18.
 - The [`CREATE TABLE ... WITH TABLETS = <num>`](../../../api/ycql/ddl_create_table/#create-a-table-specifying-the-number-of-tablets) clause can be used on a per-table basis to override the `yb_num_shards_per_tserver` value.
 
@@ -359,13 +365,13 @@ Default: `-1`, where the number of shards is determined at runtime, as follows:
   - For servers with three or four CPU cores, the default value is considered as `4`.
   - Beyond four cores, the default value is considered as `8`.
 
-Local cluster installations created using `yb-ctl` and `yb-docker-ctl` use a default value of `2` for this flag.
+Local cluster installations created using yb-ctl and yb-docker-ctl use a default value of `2` for this flag.
 
-Clusters created using `yugabyted` always use a default value of `1`.
+Clusters created using yugabyted always use a default value of `1`.
 
 {{< note title="Note" >}}
 
-- This value must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
+- This value must match on all yb-master and yb-tserver configurations of a YugabyteDB cluster.
 - If the value is set to *Default* (`-1`), the system automatically determines an appropriate value based on the number of CPU cores and internally *updates* the flag with the intended value during startup prior to version 2.18 and the flag remains *unchanged* starting from version 2.18.
 - The [`CREATE TABLE ...SPLIT INTO`](../../../api/ysql/the-sql-language/statements/ddl_create_table/#split-into) clause can be used on a per-table basis to override the `ysql_num_shards_per_tserver` value.
 
@@ -385,7 +391,7 @@ Default: `true`
 
 {{< note title="Important" >}}
 
-This value must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
+This value must match on all yb-master and yb-tserver configurations of a YugabyteDB cluster.
 
 {{< /note >}}
 
@@ -469,7 +475,7 @@ Default: `50`
 
 When enabled, all databases created in the cluster are colocated by default. If you enable the flag after creating a cluster, you need to restart the YB-Master and YB-TServer services.
 
-For more details, see [clusters in colocated tables](../../../explore/colocation).
+For more details, see [clusters in colocated tables](../../../explore/colocation/).
 
 Default: `false`
 
@@ -551,7 +557,7 @@ Enables the YSQL API.
 
 Default: `true`
 
-Ensure that `enable_ysql` values in `yb-tserver` configurations match the values in `yb-master` configurations.
+Ensure that `enable_ysql` values in yb-tserver configurations match the values in yb-master configurations.
 
 ##### --ysql_enable_auth
 
@@ -662,14 +668,6 @@ Valid values: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, and `READ UNC
 Default: `READ COMMITTED`<sup>$</sup>
 
 <sup>$</sup> Read Committed support is currently in [Early Access](/preview/releases/versioning/#feature-availability). Read Committed Isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
-
-##### --ysql_disable_index_backfill
-
-Set this flag to `false` to enable online index backfill. When set to `false`, online index builds run while online, without failing other concurrent writes and traffic.
-
-For details on how online index backfill works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
-
-Default: `false`
 
 ##### --ysql_sequence_cache_method
 
@@ -786,14 +784,6 @@ Default: `12000`
 Specifies if YCQL tables are created with transactions enabled by default.
 
 Default: `false`
-
-##### --ycql_disable_index_backfill
-
-Set this flag to `false` to enable online index backfill. When set to `false`, online index builds run while online, without failing other concurrent writes and traffic.
-
-For details on how online index backfill works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
-
-Default: `true`
 
 ##### --ycql_require_drop_privs_for_truncate
 
@@ -936,7 +926,7 @@ Default: `5`
 
 Number of bits to use for sharding the block cache. The maximum permissible value is 19.
 
-Default: `-1` (indicates a dynamic scheme that evaluates to 4 if number of cores is less than or equal to 16, 5 for 17-32 cores, 6 for 33-64 cores and so on.)
+Default: `-1` (indicates a dynamic scheme that evaluates to 4 if number of cores is less than or equal to 16, 5 for 17-32 cores, 6 for 33-64 cores, and so on.)
 
 {{< note title="Note" >}}
 
@@ -987,7 +977,7 @@ Default: `""` (Use the same directory as certs_dir.)
 
 ##### --allow_insecure_connections
 
-Allow insecure connections. Set to `false` to prevent any process with unencrypted communication from joining a cluster. Note that this flag requires the [use_node_to_node_encryption](#use-node-to-node-encryption) to be enabled and [use_client_to_server_encryption](#use-client-to-server-encryption) to be enabled.
+Allow insecure connections. Set to `false` to prevent any process with unencrypted communication from joining a cluster. Note that this flag requires [use_node_to_node_encryption](#use-node-to-node-encryption) to be enabled and [use_client_to_server_encryption](#use-client-to-server-encryption) to be enabled.
 
 Default: `true`
 
@@ -1093,7 +1083,7 @@ Default: `0`
 
 ##### --ycql_enable_packed_row
 
-YCQL packed row support is currently in [Tech Preview](/preview/releases/versioning/#feature-availability).
+YCQL packed row support is currently in [Tech Preview](/preview/releases/versioning/#feature-maturity).
 
 Whether packed row is enabled for YCQL.
 
@@ -1117,7 +1107,7 @@ To learn about CDC, see [Change data capture (CDC)](../../../architecture/docdb-
 
 ##### --yb_enable_cdc_consistent_snapshot_streams
 
-Support for creating a stream for Transactional CDC is currently in [Tech Preview](/preview/releases/versioning/#feature-availability).
+Support for creating a stream for Transactional CDC is currently in [Tech Preview](/preview/releases/versioning/#feature-maturity).
 
 Enable support for creating streams for transactional CDC.
 
@@ -1298,6 +1288,52 @@ Defines what part of the catalog gets cached and preloaded by default. As a rule
 
 Default: `false`
 
+## Index backfill flags
+
+##### --ysql_disable_index_backfill
+
+Set this flag to `false` to enable online index backfill. When set to `false`, online index builds run while online, without failing other concurrent writes and traffic.
+
+For details on how online index backfill works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
+
+Default: `false`
+
+##### --ycql_disable_index_backfill
+
+Set this flag to `false` to enable online index backfill. When set to `false`, online index builds run while online, without failing other concurrent writes and traffic.
+
+For details on how online index backfill works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
+
+Default: `true`
+
+#### --num_concurrent_backfills_allowed
+
+[Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) uses a number of distributed workers to backfill older data from the main table into the index table. This flag sets the number of concurrent index backfill jobs that are allowed to execute on each yb-tserver process. By default, the number of jobs is set automatically as follows:
+
+- When the node has >= 16 cores, it is set to 8 jobs.
+- When the node has < 16 cores, it is set to (number of cores) / 2 jobs.
+
+Increasing the number of backfill jobs can allow the index creation to complete faster, however setting it to a higher number can impact foreground workload operations and also increase the chance of failures and retries of backfill jobs if CPU usage becomes too high.
+
+Default: -1 (automatic setting)
+
+##### backfill_index_client_rpc_timeout_ms
+
+Timeout (in milliseconds) for the backfill stage of a concurrent CREATE INDEX.
+
+Default: 86400000 (1 day)
+
+##### backfill_index_timeout_grace_margin_ms
+
+The time to exclude from the YB-Master flag [ysql_index_backfill_rpc_timeout_ms](../yb-master/#ysql-index-backfill-rpc-timeout-ms) in order to return results to YB-Master in the specified deadline. Should be set to at least the amount of time each batch would require, and less than `ysql_index_backfill_rpc_timeout_ms`.
+
+Default: -1, where the system automatically calculates the value to be approximately 1 second.
+
+##### backfill_index_write_batch_size
+
+The number of table rows to backfill in a single backfill job. In case of [GIN indexes](../../../explore/ysql-language-features/indexes-constraints/gin/), the number can include more index rows. When index creation is slower than expected on large tables, increasing this parameter to 1024 or 2048 may speed up the operation. However, care must be taken to also tune the associated timeouts for larger batch sizes.
+
+Default: 128
 
 ## Advanced flags
 
@@ -1318,24 +1354,6 @@ If you are using YugabyteDB Anywhere, as with other flags, set `allowed_preview_
 
 After adding a preview flag to the `allowed_preview_flags_csv` list, you still need to set the flag using **Edit Flags** as well.
 {{</note>}}
-
-##### backfill_index_client_rpc_timeout_ms
-
-Timeout (in milliseconds) for the backfill stage of a concurrent CREATE INDEX.
-
-Default: 1 day
-
-##### backfill_index_timeout_grace_margin_ms
-
-The time to exclude from the YB-Master flag [ysql_index_backfill_rpc_timeout_ms](../yb-master/#ysql-index-backfill-rpc-timeout-ms) in order to return results to YB-Master in the specified deadline. Should be set to at least the amount of time each batch would require, and less than `ysql_index_backfill_rpc_timeout_ms`.
-
-Default: -1, where the system automatically calculates the value to be approximately 1 second.
-
-##### backfill_index_write_batch_size
-
-The number of table rows to backfill at a time. In case of [GIN indexes](../../../explore/ysql-language-features/indexes-constraints/gin/), the number can include more index rows.
-
-Default: 128
 
 ## PostgreSQL server options
 

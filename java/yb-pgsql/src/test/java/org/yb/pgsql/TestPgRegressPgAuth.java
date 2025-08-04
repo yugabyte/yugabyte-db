@@ -29,14 +29,6 @@ public class TestPgRegressPgAuth extends BasePgRegressTestPorted {
   }
 
   @Override
-  protected Map<String, String> getMasterFlags() {
-    Map<String, String> flagMap = super.getMasterFlags();
-    flagMap.put("allowed_preview_flags_csv", "enable_object_locking_for_table_locks");
-    flagMap.put("enable_object_locking_for_table_locks", "true");
-    return flagMap;
-  }
-
-  @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("allowed_preview_flags_csv", "enable_object_locking_for_table_locks");

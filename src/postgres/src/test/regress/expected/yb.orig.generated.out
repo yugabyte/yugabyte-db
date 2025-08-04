@@ -46,10 +46,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v2 = v2 + 1 WHERE k = 1;
    ->  Result t0_gen (actual rows=1 loops=1)
          Storage Table Write Requests: 1
  Storage Read Requests: 0
+ Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 1
  Storage Flush Requests: 0
-(7 rows)
+(8 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v2 = (random() * 10)::int WHERE k = 2;
                  QUERY PLAN                  
@@ -58,10 +59,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v2 = (random() * 10)::int W
    ->  Result t0_gen (actual rows=1 loops=1)
          Storage Table Write Requests: 1
  Storage Read Requests: 0
+ Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 1
  Storage Flush Requests: 0
-(7 rows)
+(8 rows)
 
 -- Updates involving generated columns should not be eligible for single-row optimization
 -- and should not be pushed down.
@@ -72,13 +74,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v1 = v1 + 1 WHERE k = 3;
    ->  Index Scan using t0_gen_pkey on t0_gen (actual rows=1 loops=1)
          Index Cond: (k = 3)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v1 = v2 + 1, v2 = v1 + 1 WHERE k = 4;
                               QUERY PLAN                              
@@ -87,13 +91,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v1 = v2 + 1, v2 = v1 + 1 WH
    ->  Index Scan using t0_gen_pkey on t0_gen (actual rows=1 loops=1)
          Index Cond: (k = 4)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 SELECT * FROM t0_gen WHERE k NOT IN (2) ORDER BY k;
  k  | v1 | v2 | v1_gen  
@@ -119,10 +125,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t0_gen VALUES (101, 101, 101), (1
          Storage Table Write Requests: 2
          Storage Index Write Requests: 2
  Storage Read Requests: 0
+ Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 4
  Storage Flush Requests: 1
-(8 rows)
+(9 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t0_gen (k, v2) VALUES (103, 103);
                   QUERY PLAN                   
@@ -132,10 +139,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t0_gen (k, v2) VALUES (103, 103);
          Storage Table Write Requests: 1
          Storage Index Write Requests: 1
  Storage Read Requests: 0
+ Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 2
  Storage Flush Requests: 1
-(8 rows)
+(9 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t0_gen (k, v1) VALUES (104, 104);
                   QUERY PLAN                   
@@ -145,10 +153,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t0_gen (k, v1) VALUES (104, 104);
          Storage Table Write Requests: 1
          Storage Index Write Requests: 1
  Storage Read Requests: 0
+ Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 2
  Storage Flush Requests: 1
-(8 rows)
+(9 rows)
 
 SELECT * FROM t0_gen WHERE k >= 100 ORDER BY k;
   k  | v1  | v2  |  v1_gen  
@@ -181,14 +190,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v1 = v1 + 1, v2 = v2 + 1 WH
    ->  Seq Scan on t0_gen (actual rows=4 loops=1)
          Storage Filter: (k > 100)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 14
          Storage Table Write Requests: 4
          Storage Index Write Requests: 6
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 14
  Storage Write Requests: 10
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v2 = v2 - 1 WHERE k > 100;
                     QUERY PLAN                    
@@ -197,13 +208,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v2 = v2 - 1 WHERE k > 100;
    ->  Seq Scan on t0_gen (actual rows=4 loops=1)
          Storage Filter: (k > 100)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 14
          Storage Table Write Requests: 4
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 14
  Storage Write Requests: 4
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET k = k + 10 WHERE k > 100;
                     QUERY PLAN                    
@@ -212,14 +225,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET k = k + 10 WHERE k > 100;
    ->  Seq Scan on t0_gen (actual rows=4 loops=1)
          Storage Filter: (k > 100)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 14
          Storage Table Write Requests: 8
          Storage Index Write Requests: 8
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 14
  Storage Write Requests: 16
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 SELECT * FROM t0_gen WHERE k > 100 ORDER BY k;
   k  | v1  | v2  |  v1_gen  
@@ -243,14 +258,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) DELETE FROM t0_gen WHERE k > 110 AND k < 112;
    ->  Seq Scan on t0_gen (actual rows=1 loops=1)
          Storage Filter: ((k > 110) AND (k < 112))
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 14
          Storage Table Write Requests: 1
          Storage Index Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 14
  Storage Write Requests: 2
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) DELETE FROM t0_gen WHERE v1_gen = 'Text 103';
                      QUERY PLAN                      
@@ -259,14 +276,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) DELETE FROM t0_gen WHERE v1_gen = 'Text 103';
    ->  Seq Scan on t0_gen (actual rows=1 loops=1)
          Storage Filter: (v1_gen = 'Text 103'::text)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 13
          Storage Table Write Requests: 1
          Storage Index Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 13
  Storage Write Requests: 2
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) DELETE FROM t0_gen WHERE v1_gen IS NULL;
                     QUERY PLAN                    
@@ -275,14 +294,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) DELETE FROM t0_gen WHERE v1_gen IS NULL;
    ->  Seq Scan on t0_gen (actual rows=1 loops=1)
          Storage Filter: (v1_gen IS NULL)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 12
          Storage Table Write Requests: 1
          Storage Index Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 12
  Storage Write Requests: 2
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 SELECT * FROM t0_gen WHERE k > 100 ORDER BY k;
   k  | v1  | v2 |  v1_gen  
@@ -306,10 +327,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t0_gen VALUES (201, 201, 201), (2
          Storage Table Write Requests: 2
          Storage Index Write Requests: 4
  Storage Read Requests: 0
+ Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 6
  Storage Flush Requests: 1
-(8 rows)
+(9 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t0_gen (k, v2) VALUES (203, 203);
                   QUERY PLAN                   
@@ -319,10 +341,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t0_gen (k, v2) VALUES (203, 203);
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 0
+ Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(8 rows)
+(9 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t0_gen (k, v1) VALUES (204, 204);
                   QUERY PLAN                   
@@ -332,10 +355,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t0_gen (k, v1) VALUES (204, 204);
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 0
+ Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(8 rows)
+(9 rows)
 
 SELECT * FROM t0_gen WHERE k > 200 ORDER BY k;
   k  | v1  | v2  |  v1_gen  
@@ -371,14 +395,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v1 = v1 + 1, v2 = v2 + 1 WH
    ->  Seq Scan on t0_gen (actual rows=4 loops=1)
          Storage Filter: (k > 200)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 15
          Storage Table Write Requests: 4
          Storage Index Write Requests: 14
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 15
  Storage Write Requests: 18
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v2 = v2 - 1 WHERE k > 200;
                     QUERY PLAN                    
@@ -387,14 +413,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v2 = v2 - 1 WHERE k > 200;
    ->  Seq Scan on t0_gen (actual rows=4 loops=1)
          Storage Filter: (k > 200)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 15
          Storage Table Write Requests: 4
          Storage Index Write Requests: 6
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 15
  Storage Write Requests: 10
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v1 = v1 + 1 WHERE k = 204;
                               QUERY PLAN                              
@@ -403,14 +431,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v1 = v1 + 1 WHERE k = 204;
    ->  Index Scan using t0_gen_pkey on t0_gen (actual rows=1 loops=1)
          Index Cond: (k = 204)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 4
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 5
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 SELECT * FROM t0_gen WHERE k > 200 ORDER BY k;
   k  | v1  | v2  |  v1_gen  
@@ -434,14 +464,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) DELETE FROM t0_gen WHERE k = 201;
    ->  Index Scan using t0_gen_pkey on t0_gen (actual rows=1 loops=1)
          Index Cond: (k = 201)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) DELETE FROM t0_gen WHERE k > 200 AND (v1 < 203 OR v1 IS NULL);
                               QUERY PLAN                              
@@ -450,14 +482,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) DELETE FROM t0_gen WHERE k > 200 AND (v1 < 20
    ->  Seq Scan on t0_gen (actual rows=1 loops=1)
          Storage Filter: ((k > 200) AND ((v1 < 203) OR (v1 IS NULL)))
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 14
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 14
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) DELETE FROM t0_gen WHERE k > 100 AND v2 < 203;
                      QUERY PLAN                     
@@ -466,14 +500,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) DELETE FROM t0_gen WHERE k > 100 AND v2 < 203
    ->  Seq Scan on t0_gen (actual rows=1 loops=1)
          Storage Filter: ((k > 100) AND (v2 < 203))
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 13
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 13
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 SELECT * FROM t0_gen WHERE k > 200 ORDER BY k;
   k  | v1  | v2 |  v1_gen  
@@ -504,13 +540,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v1 = v1 + 1 WHERE k = 1;
    ->  Index Scan using t1_gen_pkey on t1_gen (actual rows=1 loops=1)
          Index Cond: (k = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v2 = 2 WHERE k = 1;
                               QUERY PLAN                              
@@ -519,13 +557,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v2 = 2 WHERE k = 1;
    ->  Index Scan using t1_gen_pkey on t1_gen (actual rows=1 loops=1)
          Index Cond: (k = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v1 = v2 + 1, v2 = v1 + 1 WHERE k = 2;
                               QUERY PLAN                              
@@ -534,13 +574,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v1 = v2 + 1, v2 = v1 + 1 WH
    ->  Index Scan using t1_gen_pkey on t1_gen (actual rows=1 loops=1)
          Index Cond: (k = 2)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v3 = 2 WHERE k = 2;
                  QUERY PLAN                  
@@ -549,10 +591,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v3 = 2 WHERE k = 2;
    ->  Result t1_gen (actual rows=1 loops=1)
          Storage Table Write Requests: 1
  Storage Read Requests: 0
+ Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 1
  Storage Flush Requests: 0
-(7 rows)
+(8 rows)
 
 SELECT * FROM t1_gen WHERE k IN (1, 2) ORDER BY k;
  k | k_gen  | v1 | v2 | v3 | v1_v2_gen 
@@ -570,14 +613,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v1 = v2 + 1, v2 = v1 + 1 WH
    ->  Index Scan using t1_gen_pkey on t1_gen (actual rows=1 loops=1)
          Index Cond: (k = 3)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v1 = v2, v3 = v3 + 1 WHERE k = 4;
                               QUERY PLAN                              
@@ -586,13 +631,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v1 = v2, v3 = v3 + 1 WHERE 
    ->  Index Scan using t1_gen_pkey on t1_gen (actual rows=1 loops=1)
          Index Cond: (k = 4)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v1 = k + 1 WHERE k = 5;
                               QUERY PLAN                              
@@ -601,14 +648,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v1 = k + 1 WHERE k = 5;
    ->  Index Scan using t1_gen_pkey on t1_gen (actual rows=1 loops=1)
          Index Cond: (k = 5)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET k = k + 10 WHERE k = 6;
                               QUERY PLAN                              
@@ -617,14 +666,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET k = k + 10 WHERE k = 6;
    ->  Index Scan using t1_gen_pkey on t1_gen (actual rows=1 loops=1)
          Index Cond: (k = 6)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 2
          Storage Index Write Requests: 4
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 6
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET k = k + 10, v1 = v1 + 5, v2 = v2 + 5 WHERE k = 7;
                               QUERY PLAN                              
@@ -633,14 +684,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET k = k + 10, v1 = v1 + 5, v2
    ->  Index Scan using t1_gen_pkey on t1_gen (actual rows=1 loops=1)
          Index Cond: (k = 7)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 2
          Storage Index Write Requests: 4
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 6
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 SELECT * FROM t1_gen ORDER BY k;
  k  |  k_gen  | v1 | v2 | v3 | v1_v2_gen 
@@ -689,15 +742,17 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v3 = v3 + 1 WHERE k = 8;
    ->  Index Scan using t1_gen_pkey on t1_gen (actual rows=1 loops=1)
          Index Cond: (k = 8)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Trigger t1_gen_v1_trigger: calls=1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(12 rows)
+(14 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v1 = v1 + 1, v2 = v2 + 1 WHERE k = 9;
                               QUERY PLAN                              
@@ -706,15 +761,17 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v1 = v1 + 1, v2 = v2 + 1 WH
    ->  Index Scan using t1_gen_pkey on t1_gen (actual rows=1 loops=1)
          Index Cond: (k = 9)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Trigger t1_gen_v1_trigger: calls=1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(12 rows)
+(14 rows)
 
 SELECT * FROM t1_gen WHERE k > 7 ORDER BY k;
  k  |  k_gen  | v1 | v2 | v3 | v1_v2_gen 
@@ -737,16 +794,18 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v2 = v2, v3 = v3 + 1 WHERE 
    ->  Index Scan using t1_gen_pkey on t1_gen (actual rows=1 loops=1)
          Index Cond: (k = 8)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Trigger t1_gen_v1_trigger: calls=1
  Trigger t1_gen_v2_trigger: calls=1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(13 rows)
+(15 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v1 = v1 + 1, v2 = v2 + 1 WHERE k = 9;
                               QUERY PLAN                              
@@ -755,16 +814,18 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v1 = v1 + 1, v2 = v2 + 1 WH
    ->  Index Scan using t1_gen_pkey on t1_gen (actual rows=1 loops=1)
          Index Cond: (k = 9)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Trigger t1_gen_v1_trigger: calls=1
  Trigger t1_gen_v2_trigger: calls=1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(13 rows)
+(15 rows)
 
 SELECT * FROM t1_gen WHERE k > 7 ORDER BY k;
  k  |  k_gen  | v1 | v2 | v3 | v1_v2_gen 
@@ -789,6 +850,7 @@ NOTICE:  AFTER ROW trigger on generated column invoked
    ->  Index Scan using t1_gen_pkey on t1_gen (actual rows=1 loops=1)
          Index Cond: (k = 10)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
@@ -796,10 +858,11 @@ NOTICE:  AFTER ROW trigger on generated column invoked
  Trigger t1_gen_before_gen: calls=1
  Trigger t1_gen_v1_trigger: calls=1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(14 rows)
+(16 rows)
 
 SELECT * FROM t1_gen WHERE k > 7 ORDER BY k;
  k  |  k_gen  | v1 | v2 | v3 | v1_v2_gen 
@@ -890,3 +953,65 @@ SELECT * FROM part ORDER BY amount;
     104 |              
 (8 rows)
 
+DROP TABLE part;
+--- DROP COLUMN CASCASE should DROP dependent columns
+-- base case
+CREATE TABLE table1(id INT, c1 INT, stored_col INT GENERATED ALWAYS AS (c1 * 2) STORED);
+ALTER TABLE table1 DROP COLUMN c1; -- error
+ERROR:  cannot drop column c1 of table table1 because other objects depend on it
+DETAIL:  column stored_col of table table1 depends on column c1 of table table1
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+ALTER TABLE table1 DROP COLUMN c1 CASCADE;
+NOTICE:  drop cascades to column stored_col of table table1
+ALTER TABLE table1 ADD COLUMN stored_col INT;
+ALTER TABLE table1 ADD COLUMN c1 INT;
+DROP TABLE table1;
+-- generated column is PK
+CREATE TABLE table1(id INT, c1 INT, stored_col INT GENERATED ALWAYS AS (c1 * 2) STORED, PRIMARY KEY (stored_col));
+ALTER TABLE table1 DROP COLUMN c1 CASCADE;
+NOTICE:  drop cascades to column stored_col of table table1
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+ALTER TABLE table1 ADD COLUMN stored_col INT;
+DROP TABLE table1;
+-- partitioned table
+CREATE TABLE part(a INT, b INT, c INT GENERATED ALWAYS AS (b * 2) STORED) PARTITION BY RANGE (a);
+CREATE TABLE part1_100 PARTITION OF part FOR VALUES FROM (1) TO (100);
+ALTER TABLE part DROP COLUMN b CASCADE;
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to column c of table part
+drop cascades to column c of table part1_100
+ALTER TABLE part ADD COLUMN c INT;
+DROP TABLE part;
+-- partitioned table where generated col is PK
+CREATE TABLE part(a INT, b INT, c INT GENERATED ALWAYS AS (b * 2) STORED, PRIMARY KEY (c, a)) PARTITION BY RANGE (a);
+CREATE TABLE part1_100 PARTITION OF part FOR VALUES FROM (1) TO (100);
+ALTER TABLE part DROP COLUMN b CASCADE;
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to column c of table part
+drop cascades to column c of table part1_100
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+ALTER TABLE part ADD COLUMN c INT;
+DROP TABLE part;
+-- partitioned table, generated col is PK but only in leaf
+CREATE TABLE part(a INT, b INT, c INT GENERATED ALWAYS AS (b * 2) STORED) PARTITION BY RANGE (a);
+CREATE TABLE part1_100(a INT, b INT, c INT GENERATED ALWAYS AS (b * 2) STORED, PRIMARY KEY (c));
+ALTER TABLE part ATTACH PARTITION part1_100 FOR VALUES FROM (1) TO (100);
+CREATE TABLE part2_200 PARTITION OF part FOR VALUES FROM (101) TO (200);
+ALTER TABLE part DROP COLUMN b CASCADE;
+NOTICE:  drop cascades to 3 other objects
+DETAIL:  drop cascades to column c of table part
+drop cascades to column c of table part1_100
+drop cascades to column c of table part2_200
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+ALTER TABLE part ADD COLUMN c INT;
+ALTER TABLE part ADD COLUMN b INT;
+DROP TABLE part;

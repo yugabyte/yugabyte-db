@@ -38,6 +38,7 @@
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_operation_buffer.h"
 #include "yb/yql/pggate/pg_perform_future.h"
+#include "yb/yql/pggate/pg_setup_perform_options_accessor_tag.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pg_txn_manager.h"
 
@@ -63,7 +64,8 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
       YbcPgExecStatsState& stats_state,
       bool is_pg_binary_upgrade,
       std::reference_wrapper<const WaitEventWatcher> wait_event_watcher,
-      BufferingSettings& buffering_settings);
+      BufferingSettings& buffering_settings,
+      bool enable_table_locking);
   ~PgSession();
 
   // Resets the read point for catalog tables.
@@ -156,9 +158,9 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   Status AdjustOperationsBuffering(int multiple = 1);
 
   // Flush all pending buffered operations. Buffering mode remain unchanged.
-  Status FlushBufferedOperations();
+  Result<SetupPerformOptionsAccessorTag> FlushBufferedOperations();
   // Drop all pending buffered operations. Buffering mode remain unchanged.
-  void DropBufferedOperations();
+  SetupPerformOptionsAccessorTag DropBufferedOperations();
 
   PgIsolationLevel GetIsolationLevel();
 
@@ -220,6 +222,7 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   std::string GenerateNewYbrowid();
 
   void InvalidateAllTablesCache(uint64_t min_ysql_catalog_version);
+  void UpdateTableCacheMinVersion(uint64_t min_ysql_catalog_version);
 
   // Check if initdb has already been run before. Needed to make initdb idempotent.
   Result<bool> IsInitDbDone();
@@ -245,11 +248,10 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
     return pg_client_;
   }
 
-  Status SetupIsolationAndPerformOptionsForDdl(
-      tserver::PgPerformOptionsPB* options, bool use_regular_transaction_block);
+  Status SetupPerformOptionsForDdl(tserver::PgPerformOptionsPB* options);
 
-  Status SetActiveSubTransaction(SubTransactionId id);
-  Status RollbackToSubTransaction(SubTransactionId id);
+  void SetTransactionHasWrites();
+  Result<bool> CurrentTransactionUsesFastPath() const;
 
   void ResetHasCatalogWriteOperationsInDdlMode();
   bool HasCatalogWriteOperationsInDdlMode() const;
@@ -289,6 +291,8 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   Status ReleaseAdvisoryLock(const YbcAdvisoryLockId& lock_id, YbcAdvisoryLockMode mode);
   Status ReleaseAllAdvisoryLocks(uint32_t db_oid);
 
+  Status AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode);
+
  private:
   Result<PgTableDescPtr> DoLoadTable(
       const PgObjectId& table_id, bool fail_on_cache_hit,
@@ -312,6 +316,17 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   Result<PerformFuture> DoRunAsync(
       const Generator& generator, HybridTime in_txn_limit, ForceNonBufferable force_non_bufferable,
       std::optional<CacheOptions>&& cache_options = std::nullopt);
+
+  template <class... Args>
+  auto SetupPerformOptions(Args&&... args) {
+    RSTATUS_DCHECK(buffer_.IsEmpty(), IllegalState, "No buffered operations are expected");
+    return SetupPerformOptions(SetupPerformOptionsAccessorTag{}, std::forward<Args>(args)...);
+  }
+
+  template <class... Args>
+  auto SetupPerformOptions(SetupPerformOptionsAccessorTag tag, Args&&... args) {
+    return pg_txn_manager_->SetupPerformOptions(tag, std::forward<Args>(args)...);
+  }
 
   struct TxnSerialNoPerformInfo {
     TxnSerialNoPerformInfo() : TxnSerialNoPerformInfo(0, ReadHybridTime()) {}
@@ -356,6 +371,14 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   const bool is_major_pg_version_upgrade_;
 
   const WaitEventWatcher& wait_event_watcher_;
+
+  const bool enable_table_locking_;
 };
+
+template<class PB>
+Status SetupPerformOptionsForDdlIfNeeded(PgSession& session, PB& req) {
+  return req.use_regular_transaction_block() ?
+    session.SetupPerformOptionsForDdl(req.mutable_options()) : Status::OK();
+}
 
 }  // namespace yb::pggate

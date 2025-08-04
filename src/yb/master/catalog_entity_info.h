@@ -50,6 +50,7 @@
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_client.fwd.h"
 #include "yb/master/master_fwd.h"
+#include "yb/master/sys_catalog_types.h"
 #include "yb/master/tasks_tracker.h"
 
 #include "yb/qlexpr/index.h"
@@ -145,11 +146,12 @@ struct TabletReplicaDriveInfo {
   uint64 wal_files_size = 0;
   uint64 uncompressed_sst_file_size = 0;
   bool may_have_orphaned_post_split_data = true;
+  uint64 total_size = 0;
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(
         sst_files_size, wal_files_size, uncompressed_sst_file_size,
-        may_have_orphaned_post_split_data);
+        may_have_orphaned_post_split_data, total_size);
   }
 };
 
@@ -583,7 +585,7 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
   Result<Schema> GetSchema() const;
 
   TableType GetTableType() const {
-    return pb.table_type();
+    return table_type();
   }
 };
 
@@ -701,6 +703,9 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // stored pg_table_id field.
   Result<uint32_t> GetPgTableOid() const;
 
+  // Helper for returning all OIDs for the PG Table.
+  Result<PgTableAllOids> GetPgTableAllOids() const;
+
   // Return the table type of the table.
   TableType GetTableType() const;
 
@@ -787,9 +792,14 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // tablet split) might not be running.
   Status CheckAllActiveTabletsRunning() const;
 
-  // Clears partitons_ and tablets_.
-  // If deactivate_only is set to true then clear only the partitions_.
-  void ClearTabletMaps(DeactivateOnly deactivate_only = DeactivateOnly::kFalse);
+  // Clears partitions_ and tablets_.
+  // N.B.: The deletion flow removes tablets from the Catalog Manager's tablet map by removing all
+  // tablets returned by TableInfo::TakeTablets of a DELETED table. So it is possible to leak
+  // tablets in the tablet map by calling this function on a primary table.
+  void ClearTabletMaps();
+
+  // Returns the value of the tablets_ map and clears partitions_ and tablets_.
+  std::map<TabletId, std::weak_ptr<TabletInfo>> TakeTablets();
 
   // Returns true if the table creation is in-progress.
   bool IsCreateInProgress() const;

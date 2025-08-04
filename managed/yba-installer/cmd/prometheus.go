@@ -17,9 +17,9 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/config"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/systemd"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/template"
 )
 
 type prometheusDirectories struct {
@@ -94,7 +94,7 @@ func (prom Prometheus) Version() string {
 // Install the prometheus service.
 func (prom Prometheus) Install() error {
 	log.Info("Starting Prometheus install")
-	config.GenerateTemplate(prom)
+	template.GenerateTemplate(prom)
 	if err := prom.FixBasicAuth(); err != nil {
 		return err
 	}
@@ -218,7 +218,7 @@ func (prom Prometheus) Uninstall(removeData bool) error {
 // Upgrade will NOT restart the service, the old version is expected to still be runnins
 func (prom Prometheus) Upgrade() error {
 	prom.prometheusDirectories = newPrometheusDirectories()
-	if err := config.GenerateTemplate(prom); err != nil {
+	if err := template.GenerateTemplate(prom); err != nil {
 		return err
 	}
 	if err := prom.FixBasicAuth(); err != nil {
@@ -284,7 +284,7 @@ func (prom Prometheus) Status() (common.Status, error) {
 // MigrateFromReplicated will install prometheus using data from replicated
 func (prom Prometheus) MigrateFromReplicated() error {
 	log.Info("Starting Prometheus migration")
-	config.GenerateTemplate(prom)
+	template.GenerateTemplate(prom)
 	if err := prom.FixBasicAuth(); err != nil {
 		return err
 	}
@@ -527,7 +527,7 @@ func (prom Prometheus) migrateReplicatedDirs() error {
 
 func (prom Prometheus) Reconfigure() error {
 	log.Info("Reconfiguring Prometheus")
-	if err := config.GenerateTemplate(prom); err != nil {
+	if err := template.GenerateTemplate(prom); err != nil {
 		return fmt.Errorf("failed to generate prometheus config template: %w", err)
 	}
 	if err := prom.FixBasicAuth(); err != nil {

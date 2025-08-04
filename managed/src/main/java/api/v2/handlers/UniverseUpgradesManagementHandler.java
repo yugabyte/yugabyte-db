@@ -20,6 +20,7 @@ import api.v2.models.UniverseCertRotateSpec;
 import api.v2.models.UniverseEditEncryptionInTransit;
 import api.v2.models.UniverseEditGFlags;
 import api.v2.models.UniverseEditKubernetesOverrides;
+import api.v2.models.UniverseQueryLogsExport;
 import api.v2.models.UniverseRestart;
 import api.v2.models.UniverseRollbackUpgradeReq;
 import api.v2.models.UniverseSoftwareUpgradeFinalize;
@@ -321,5 +322,22 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     YBATask ybaTask = new YBATask().taskUuid(taskUUID).resourceUuid(uniUUID);
     log.info("Started kubernetes overrides upgrade task {}", mapper.writeValueAsString(ybaTask));
     return ybaTask;
+  }
+
+  public YBATask configureQueryLogging(
+      Request request, UUID cUUID, UUID uniUUID, UniverseQueryLogsExport req) throws Exception {
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+    log.info("Configure query log for universe with v2 spec: {}", prettyPrint(req));
+    // modify params to v1 param model
+    // UUID taskUUID = commissioner.submit(taskType, v1Params);
+    // log.info(
+    //     "Submitted {} for {} : {}, task uuid = {}.",
+    //     taskType,
+    //     uniUUID,
+    //     dbUniverse.getName(),
+    //     taskUUID);
+    UUID taskUUID = UUID.randomUUID();
+    return new YBATask().resourceUuid(uniUUID).taskUuid(taskUUID);
   }
 }

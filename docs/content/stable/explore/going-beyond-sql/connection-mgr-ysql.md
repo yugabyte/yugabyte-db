@@ -26,23 +26,19 @@ To provide the advantages of connection pooling, but without the limitations, Yu
 
 ![Connection manager](/images/explore/ysql-connection-manager.png)
 
-{{< note title = "Note">}}
-YSQL Connection Manager is currently not supported for [YugabyteDB Aeon](/preview/yugabyte-cloud/).
-{{< /note >}}
-
 ## Key features
 
 YSQL Connection Manager is a modified version of the open-source connection pooler Odyssey. YSQL Connection Manager uses Odyssey in the transaction pooling mode and has been modified at the wire protocol level for tighter integration with YugabyteDB to overcome some SQL limitations.
 
 YSQL Connection Manager has the following key features:
 
-- No SQL limitations - Unlike other pooling solutions running in transaction mode, YSQL Connection Manager supports SQL features such as TEMP TABLE, WITH HOLD CURSORS, and more.
+- No SQL limitations. Unlike other pooling solutions running in transaction mode, YSQL Connection Manager supports SQL features such as TEMP TABLE, WITH HOLD CURSORS, and more.
 
-- Single pool per database - PgBouncer and Odyssey create a pool for every combination of users and databases, which significantly limits the number of users that can be supported and therefore impacts scalability. YSQL Connection Manager, however, creates one pool per database - all connections trying to access the same database share the same single pool meant for that database.
+- Per user and database pool, with quota sharing. Like PgBouncer and Odyssey, YSQL Connection Manager creates a pool for each unique combination of user and database. However, it also allows connection quotas to be shared across multiple such pools, enabling more efficient use of resources and improved scalability.
 
-- Support for session parameters - YSQL Connection Manager supports SET statements, which are not supported by other connection poolers.
+- Support for session parameters. YSQL Connection Manager supports SET statements, which are not supported by other connection poolers.
 
-- Support for prepared statements - Odyssey supports protocol-level prepared statements and YSQL Connection Manager inherits this feature.
+- Support for prepared statements. Odyssey supports protocol-level prepared statements and YSQL Connection Manager inherits this feature.
 
 ## Start YSQL Connection Manager
 
@@ -59,12 +55,6 @@ For example, to create a single-node cluster with YSQL Connection Manager using 
 ```
 
 When `enable_ysql_conn_mgr` is set, each YB-TServer starts the YSQL Connection Manager process along with the PostgreSQL process. You should see one YSQL Connection Manager process per YB-TServer.
-
-<!--YSQL Connection Manager needs to specify a TCP/IP connections listen port that is different from `pgsql_proxy_bind_address`. By default, both the postmaster as well as YSQL Connection Manager attempt to listen for TCP/IP connections on the port 5433, but in case of this specific conflict, the port for the postmaster process is resolved to instead listen on 6433. In case of conflicts on other ports, you will have to explicitly define both the postmaster TCP/IP listen port as well as the YSQL Connection Manager TCP/IP listen port:
-
-```sh
-./bin/yugabyted start --tserver_flags "enable_ysql_conn_mgr=true,pgsql_proxy_bind_address=6433,ysql_conn_mgr_port=5433" --ui false
-```-->
 
 {{< note >}}
 
@@ -91,6 +81,15 @@ Note that when managing universes using YugabyteDB Anywhere, do not set connecti
 To connect to the YSQL Connection Manager, use the [ysqlsh](../../../api/ysqlsh/) command with the [`-h <IP>`](../../../api/ysqlsh/#h-hostname-host-hostname) flag, instead of specifying the Unix-domain socket directory.
 
 Using the socket directory along with [`-p`](../../../api/ysqlsh/#p-port-port-port) (custom PostgreSQL port or default 6433) will connect you to the PostgreSQL process, not the YSQL connection manager process.
+
+### YugabyteDB Aeon
+
+{{<tags/feature/ea idea="1368">}}To enable built-in connection pooling for clusters deployed using YugabyteDB Aeon:
+
+- Turn on the **Connection Pooling** option when [creating a cluster](../../../yugabyte-cloud/cloud-basics/create-clusters/). (Connection Pooling is enabled by default for [Sandbox clusters](../../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/).)
+- Edit connection pooling on the cluster **Settings>Connection Pooling** tab.
+
+Enabling connection pooling on an Aeon cluster gives 10 client connections for every server connection by default.
 
 ## Configuration
 
@@ -120,8 +119,8 @@ The following table describes YB-TServer flags related to YSQL Connection Manage
 | ysql_conn_mgr_tcp_keepalive_probes | Number of TCP keepalive probes in YSQL Connection Manager. Only applicable if 'ysql_conn_mgr_tcp_keepalive' is enabled. | 9 |
 | ysql_conn_mgr_tcp_keepalive_usr_timeout | TCP user timeout (in milliseconds) in YSQL Connection Manager. Only applicable if 'ysql_conn_mgr_tcp_keepalive' is enabled. | 9 |
 | ysql_conn_mgr_pool_timeout | Server pool wait timeout (in milliseconds) in YSQL Connection Manager. This is the time clients wait for an available server, after which they are disconnected. If set to zero, clients wait for server connections indefinitely. | 0 |
-| ysql_conn_mgr_sequence_support_mode | Sequence support mode when YSQL connection manager is enabled. When set to 'pooled_without_curval_lastval', the currval() and lastval() functions are not supported. When set to 'pooled_with_curval_lastval', the currval() and lastval() functions are supported. For both settings, monotonic sequence order is not guaranteed if `ysql_sequence_cache_method` is set to `connection`. To also support monotonic order, set this flag to `session`. | pooled_without_curval_lastval |
-| ysql_conn_mgr_optimized_extended_query_protocol | Enables optimization of the [extended-query protocol](https://www.postgresql.org/docs/current/protocol-overview.html#PROTOCOL-QUERY-CONCEPTS) for improved performance. Note that while this optimization is enabled, schema changes to objects referenced in prepared statements may result in retryable errors (for example, due to stale cached plans). When set to false, extended-query protocol handling avoids such errors by disabling plan caching optimizations. | true |
+| ysql_conn_mgr_sequence_support_mode | Sequence support mode when YSQL connection manager is enabled. When set to  'pooled_without_curval_lastval', the currval() and lastval() functions are not supported. When set to 'pooled_with_curval_lastval', the currval() and lastval() functions are supported. For both settings, monotonic sequence order is not guaranteed if `ysql_sequence_cache_method` is set to `connection`. To also support monotonic order, set this flag to `session`. | pooled_without_curval_lastval |
+| ysql_conn_mgr_optimized_extended_query_protocol | Enables optimization of [extended-query protocol](https://www.postgresql.org/docs/current/protocol-overview.html#PROTOCOL-QUERY-CONCEPTS) to provide better performance; note that while optimization is enabled, you may have correctness issues if you alter the schema of objects used in prepared statements. If set to false, extended-query protocol handling is always fully correct but unoptimized. | true |
 | ysql_conn_mgr_optimized_session_parameters | Optimize usage of session parameters in YSQL Connection Manager. If set to false, all applied session parameters are replayed at transaction boundaries for each logical connection. | true |
 
 ## Authentication methods
@@ -139,7 +138,6 @@ The following table outlines the various authentication methods supported by Yug
 | {{<icon/no>}} | SCRAM-sha256  | A secure password-based authentication that protects credentials using hashing, salting, and challenge-response. |
 | {{<icon/yes>}} | MD5 | Password-based authentication where the user's password is by default stored in MD5 encryption format in the database. |
 | {{<icon/no>}} | Cert  | Certificate-based authentication requires the client to provide certificates to the server over a TLS connection for authentication. |
-
 
 ## Sticky connections
 
@@ -165,7 +163,7 @@ When using YSQL Connection Manager, sticky connections can form in the following
 
 ## Limitations
 
-- Changes to [configuration parameters](../../../reference/configuration/yb-tserver/#postgresql-server-options) for a user or database that are set using ALTER ROLE SET or ALTER DATABASE SET queries may reflect in other pre-existing active sessions.
+- Changes to [configuration parameters](../../../reference/configuration/yb-tserver/#postgresql-configuration-parameters) for a user or database that are set using ALTER ROLE SET or ALTER DATABASE SET queries may reflect in other pre-existing active sessions.
 - YSQL Connection Manager can route up to 10,000 connection pools. This includes pools corresponding to dropped users and databases.
 - Prepared statements may be visible to other sessions in the same connection pool. [#24652](https://github.com/yugabyte/yugabyte-db/issues/24652)
 - Attempting to use DEALLOCATE/DEALLOCATE ALL queries can result in unexpected behavior. [#24653](https://github.com/yugabyte/yugabyte-db/issues/24653)

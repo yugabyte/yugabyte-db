@@ -5,6 +5,7 @@ import { Row, Col } from 'react-bootstrap';
 import { UniverseCard } from './UniverseCard';
 import { useQuery } from 'react-query';
 
+import { CronToSystemdReminderBanner } from './CronToSystemdReminderBanner';
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { isDisabled, isNotHidden } from '../../../utils/LayoutUtils';
@@ -37,6 +38,9 @@ export const UniverseDisplayPanel = ({
   (providers.data as YBProvider[]).forEach(
     (provider) => (providerUuidToName[provider.uuid] = provider.name)
   );
+  const hasCronBasedUniverse = universeList.data?.some((universe: Universe) => {
+    return !universe.universeDetails.clusters[0].userIntent.useSystemd;
+  });
 
   const pausedUniverseUuids = new Set<string>();
   const inUseProviderUuids = new Set<string>();
@@ -133,6 +137,7 @@ export const UniverseDisplayPanel = ({
             hasNodeAgentFailures={hasNodeAgentFailures}
           />
         )}
+        {hasCronBasedUniverse && <CronToSystemdReminderBanner />}
         <Row className="list-group">{universeDisplayList}</Row>
       </div>
     );

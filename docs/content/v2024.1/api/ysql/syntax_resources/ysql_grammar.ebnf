@@ -885,6 +885,7 @@ close = 'CLOSE' ( name | 'ALL' ) ;
 (* 'DELETE' *)
 delete = [ with_clause ] \
          'DELETE' 'FROM' table_expr [ [ 'AS' ] alias ] \
+         [ 'USING' from_item ] \
          [ 'WHERE' boolean_expression | 'WHERE' 'CURRENT' 'OF' cursor_name ] \
          [ returning_clause ] ;
 
@@ -1278,7 +1279,7 @@ table_expr = [ 'ONLY' ] table_name [ '*' ] ;
 update = [ with_clause ] \
          'UPDATE' table_expr [ [ 'AS' ] alias ] \
          'SET' update_item { ',' update_item }
-         (* [ 'FROM' from_list ] \ *)
+         [ 'FROM' from_item ] \
          [ 'WHERE' boolean_expression | 'WHERE' 'CURRENT' 'OF' cursor_name ] \
          [ returning_clause ] ;
 

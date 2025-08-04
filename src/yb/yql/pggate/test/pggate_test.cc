@@ -53,6 +53,8 @@ namespace pggate {
 namespace {
 
 YbcPgMemctx global_test_memctx = nullptr;
+YbcAshMetadata ash_metadata;
+YbcPgAshConfig ash_config;
 
 YbcPgMemctx GetCurrentTestYbMemctx() {
   if (!global_test_memctx) {
@@ -77,9 +79,6 @@ const char* GetDebugQueryStringStub() {
 YbcWaitEventInfo PgstatReportWaitStartNoOp(YbcWaitEventInfo info) {
   return info;
 }
-
-// Not defined locally in PggateTest::Init to avoid asan use-after-return error
-bool yb_enable_ash = false;
 
 } // namespace
 
@@ -143,7 +142,6 @@ Status PggateTest::Init(
   CHECK_YBC_STATUS(YBCInit(test_name, PggateTestAlloc, PggateTestCStringToTextWithLen));
 
   YbcPgCallbacks callbacks;
-  YbcPgAshConfig ash_config;
 
   auto* session_stats =
       static_cast<YbcPgExecStatsState*>(PggateTestAlloc(sizeof(YbcPgExecStatsState)));
@@ -152,10 +150,11 @@ Status PggateTest::Init(
   callbacks.GetDebugQueryString = &GetDebugQueryStringStub;
   callbacks.PgstatReportWaitStart = &PgstatReportWaitStartNoOp;
 
-  ash_config.yb_enable_ash = &yb_enable_ash;
-
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_tserver_shared_memory_uuid) =
       cluster_->tablet_server(0)->instance_id().permanent_uuid();
+
+  ash_metadata.query_id = 5; // to make sure a DCHECK passes during metadata serilazation
+  ash_config.metadata = &ash_metadata;
 
   YBCInitPgGate(YBCTestGetTypeTable(), &callbacks, nullptr /* session_id */, &ash_config);
 

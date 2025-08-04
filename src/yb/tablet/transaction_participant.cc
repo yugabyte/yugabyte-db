@@ -295,6 +295,9 @@ class TransactionParticipant::Impl
       mem_tracker_->UnregisterFromParent();
     }
 
+    // Cannot move it to StartShutdown due to weird logic with aborting transactions
+    // on tablet delete.
+    rpcs_.StartShutdown();
     decltype(status_resolvers_) status_resolvers;
     {
       std::lock_guard lock(status_resolvers_mutex_);
@@ -304,7 +307,7 @@ class TransactionParticipant::Impl
     for (auto& resolver : status_resolvers) {
       resolver.Shutdown();
     }
-    rpcs_.Shutdown();
+    rpcs_.CompleteShutdown();
     shutdown_done_.store(true, std::memory_order_release);
   }
 

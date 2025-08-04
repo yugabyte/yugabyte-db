@@ -12,112 +12,78 @@
 
 #include <memory>
 #include <queue>
-#include <regex>
-#include <set>
 #include <unordered_set>
+
 #include <google/protobuf/repeated_field.h>
 #include <google/protobuf/util/message_differencer.h>
 
-#include "yb/common/colocated_util.h"
-#include "yb/common/common_fwd.h"
-#include "yb/common/common_types.pb.h"
-#include "yb/common/constants.h"
-#include "yb/common/common.pb.h"
-#include "yb/common/entity_ids.h"
-#include "yb/common/entity_ids_types.h"
-#include "yb/common/pg_system_attr.h"
-#include "yb/common/snapshot.h"
-#include "yb/master/ts_manager.h"
-#include "yb/qlexpr/ql_name.h"
-#include "yb/common/ql_type.h"
-#include "yb/common/ql_type_util.h"
-#include "yb/common/schema_pbutil.h"
-#include "yb/common/schema.h"
-
-#include "yb/master/catalog_entity_info.h"
-#include "yb/master/catalog_entity_info.pb.h"
-#include "yb/master/catalog_manager-internal.h"
-#include "yb/master/catalog_manager.h"
-#include "yb/master/xcluster_consumer_registry_service.h"
-#include "yb/master/cluster_balance.h"
-#include "yb/master/master.h"
-#include "yb/master/master_backup.pb.h"
-#include "yb/master/master_error.h"
-#include "yb/master/master_snapshot_coordinator.h"
-#include "yb/master/snapshot_state.h"
-#include "yb/master/tablet_split_manager.h"
-#include "yb/master/ysql_tablegroup_manager.h"
-
-#include "yb/client/client-internal.h"
 #include "yb/client/meta_cache.h"
-#include "yb/client/schema.h"
 #include "yb/client/session.h"
-#include "yb/client/table.h"
-#include "yb/client/table_alterer.h"
-#include "yb/client/table_handle.h"
 #include "yb/client/table_info.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/colocated_util.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/ql_type.h"
+#include "yb/common/ql_type_util.h"
+#include "yb/common/schema.h"
+#include "yb/common/schema_pbutil.h"
+#include "yb/common/snapshot.h"
+
 #include "yb/consensus/consensus.h"
 
-#include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_write_batch.h"
-#include "yb/docdb/docdb_pgapi.h"
 
-#include "yb/gutil/bind.h"
 #include "yb/gutil/casts.h"
-#include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/master/master_client.pb.h"
+
+#include "yb/master/async_rpc_tasks.h"
+#include "yb/master/async_snapshot_tasks.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/catalog_manager-internal.h"
+#include "yb/master/catalog_manager.h"
+#include "yb/master/encryption_manager.h"
+#include "yb/master/master.h"
+#include "yb/master/master_backup.pb.h"
 #include "yb/master/master_ddl.pb.h"
-#include "yb/master/master_defaults.h"
+#include "yb/master/master_error.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_replication.pb.h"
+#include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/master_util.h"
-#include "yb/master/sys_catalog.h"
-#include "yb/master/sys_catalog-internal.h"
-#include "yb/master/async_snapshot_tasks.h"
-#include "yb/master/async_rpc_tasks.h"
-#include "yb/master/encryption_manager.h"
 #include "yb/master/restore_sys_catalog_state.h"
-#include "yb/master/scoped_leader_shared_lock.h"
-#include "yb/master/scoped_leader_shared_lock-internal.h"
+#include "yb/master/sys_catalog.h"
+#include "yb/master/tablet_split_manager.h"
+#include "yb/master/ts_manager.h"
+#include "yb/master/xcluster_consumer_registry_service.h"
 #include "yb/master/ysql/ysql_manager_if.h"
+#include "yb/master/ysql_tablegroup_manager.h"
 
 #include "yb/rpc/messenger.h"
 
-#include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_snapshots.h"
 
-#include "yb/tserver/backup.proxy.h"
-#include "yb/tserver/service_util.h"
-#include "yb/tserver/tserver_admin.pb.h"
-
-#include "yb/util/cast.h"
-#include "yb/util/date_time.h"
-#include "yb/util/file_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/oid_generator.h"
-#include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/service_util.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/std_util.h"
 #include "yb/util/tostring.h"
-#include "yb/util/string_util.h"
 #include "yb/util/trace.h"
-
-#include "yb/yql/cql/ql/util/statement_result.h"
-
-#include "ybgate/ybgate_api.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -140,9 +106,11 @@ DEPRECATE_FLAG(bool, allow_consecutive_restore, "10_2022");
 DEFINE_test_flag(double, crash_during_sys_catalog_restoration, 0.0,
                  "Probability of crash during the RESTORE_SYS_CATALOG phase.");
 
-DEFINE_test_flag(
-    bool, import_snapshot_failed, false,
+DEFINE_test_flag(bool, import_snapshot_failed, false,
     "Return a error from ImportSnapshotMeta RPC for testing the RPC failure.");
+
+DEFINE_test_flag(bool, skip_oid_advance_on_restore, false,
+    "Skip advancing OID counters on restore if true.");
 
 DEFINE_RUNTIME_uint64(import_snapshot_max_concurrent_create_table_requests, 20,
     "Maximum number of create table requests to the master that can be outstanding "
@@ -516,8 +484,8 @@ Status CatalogManager::RepackSnapshotsForBackup(
           // - Orphaned tables: dropped in YSQL but still present in DocDB.
           // - Temporary tables: created during an ongoing DDL operation when the snapshot was
           // taken.
-          const auto res =
-              GetYsqlManager().GetPgSchemaName(table_info->id(), l.data(), snapshot_hybrid_time);
+          const auto res = GetYsqlManager().GetPgSchemaName(
+              VERIFY_RESULT(table_info->GetPgTableAllOids()), snapshot_hybrid_time);
           if (!res.ok()) {
             // Handle the case where the table was dropped in YSQL but not in DocDB.
             // This can occur in two scenarios:
@@ -742,9 +710,11 @@ Status CatalogManager::DoImportSnapshotMeta(
   ImportSnapshotRemoveInvalidTables(use_relfilenode, tables_data);
 
   // PHASE 6: Adjust OID counters.
-  for (const auto& [_old_namespace_id, external_namespace_snapshot_data] : *namespace_map) {
-    if (external_namespace_snapshot_data.db_type == YQL_DATABASE_PGSQL) {
-      RETURN_NOT_OK(AdvanceOidCounters(external_namespace_snapshot_data.new_namespace_id));
+  if (!FLAGS_TEST_skip_oid_advance_on_restore) {
+    for (const auto& [_old_namespace_id, external_namespace_snapshot_data] : *namespace_map) {
+      if (external_namespace_snapshot_data.db_type == YQL_DATABASE_PGSQL) {
+        RETURN_NOT_OK(AdvanceOidCounters(external_namespace_snapshot_data.new_namespace_id));
+      }
     }
   }
 
@@ -1979,7 +1949,7 @@ Result<bool> CatalogManager::CheckTableForImport(scoped_refptr<TableInfo> table,
       // If not a debug build, ignore pg_schema_name.
     } else {
       const string internal_schema_name = VERIFY_RESULT(GetYsqlManager().GetPgSchemaName(
-          table->id(), table_lock.data()));
+          VERIFY_RESULT(table->GetPgTableAllOids())));
       const string& external_schema_name = snapshot_data->pg_schema_name;
       if (internal_schema_name != external_schema_name) {
         LOG_WITH_FUNC(INFO) << "Schema names do not match: "
@@ -2026,24 +1996,21 @@ Status CatalogManager::ImportTableEntry(
       table_data->new_table_id = VERIFY_RESULT(
           GetRestoreTargetTableIdUsingRelfilenode(new_namespace_id, table_data->old_table_id));
     }
-    // A table with new_table_id might not exist if the old table doesn't have a corresponding table
-    // at restore side. This can happen if the old table is not committed while the backup was taken
-    // during a DDL.
+    // Make sure the new_table_id corresponds to an existing DocDB table at restore side.
+    // Return an error in case no table with new_table_id was found at restore side.
     TRACE("Looking up table");
     {
       SharedLock lock(mutex_);
       table = tables_->FindTableOrNull(table_data->new_table_id);
     }
     if (!table) {
-      LOG(INFO) << Format(
-          "Did not find a corresponding table at restore side for the table $0 from backup. "
-          "This mean that old table was not committed while taking the backup.",
+      LOG(WARNING) << Format(
+          "Did not find a corresponding table at restore side for the table $0 from backup.",
           table_data->old_table_id);
       // Clear the table_meta as this is an uncommited table at backup time.
       // This skips the following steps to import the table entry and doesn't add its TableMetaPB
       // the import_snapshot response.
       table_data->table_meta = std::nullopt;
-      return Status::OK();
     } else {
       LOG_WITH_FUNC(INFO) << "Found existing table " << table_data->new_table_id << " for "
                           << new_namespace_id << "/" << meta.name() << " (old table "
@@ -2847,7 +2814,6 @@ Status CatalogManager::RestoreSysCatalog(
   if (!s.ok() && leader_mode) {
     LOG_WITH_PREFIX_AND_FUNC(INFO)
         << "PITR: Accepting RPCs to the master leader because of restoration failure: " << s;
-    std::lock_guard l(leader_mutex_);
     restoring_sys_catalog_ = false;
   }
   // As RestoreSysCatalog is synchronous on Master it should be ok to set the completion
@@ -3303,12 +3269,31 @@ Result<size_t> CatalogManager::GetNumLiveTServersForActiveCluster() {
   return ts_descs.size();
 }
 
+// This function is used to fence other work in the catalog manager which modifies tables or tablets
+// with PITR restores. It is called during the apply of the RESTORE_SYS_CATALOG raft op.
+//
+// Ideally this function would use the leader lock to wait for all async tasks and rpc handlers
+// accessing catalog entities to return, but this is not possible:
+//  *  exclusively acquiring the CatalogManager::leader_mutex_ here introduces a lock inversion with
+//     ReplicaState::update_lock_.
+//  *  waiting to acquire the leader mutex here can add unbounded delay to a raft op apply,
+//     preventing raft heartbeats.
+//
+// Much existing code in the catalog manager acquires the locks in this order:
+//   shared CatalogManager::leader_mutex_, ReplicaState::update_lock_
+//
+// Instead of acquiring the CatalogManager::leader_mutex_, the fence works by failing any inflight
+// work (1) and preventing any new work until the sys catalog is reloaded (2).
+//   (1) Any logical unit of work in the catalog manager should grab a LeaderEpoch when it begins.
+//     The sys catalog mutation API for tables and tablets checks LeaderEpoch::pitr_count. If the
+//     catalog work began before PrepareRestore was called and tried to write after PrepareRestore
+//     was called, then the work's cached pitr_count will not match the sys catalog's pitr_count and
+//     the write will fail.
+//   (2) ScopedLeaderSharedLock checks restoring_sys_catalog_ and fails if it is set, so any new
+//     tasks will fail.
 void CatalogManager::PrepareRestore() {
   LOG_WITH_PREFIX(INFO) << "Disabling concurrent RPCs since restoration is ongoing";
-  {
-    std::lock_guard l(leader_mutex_);
-    restoring_sys_catalog_ = true;
-  }
+  restoring_sys_catalog_ = true;
   sys_catalog_->IncrementPitrCount();
 }
 

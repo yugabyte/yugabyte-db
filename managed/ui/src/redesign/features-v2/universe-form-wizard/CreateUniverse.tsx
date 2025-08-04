@@ -73,7 +73,7 @@ export const CreateUniverse = () => {
           </Grid>
           <Grid container spacing={2}>
             <Grid sx={{ borderRight: '1px solid #E9EEF2', height: '100vh' }}>
-              <YBMultiLevelStepper activeStep={activeStep} steps={steps} />
+              <YBMultiLevelStepper dataTestId='stepper' activeStep={activeStep} steps={steps} />
             </Grid>
             <Grid
               container
@@ -93,7 +93,7 @@ export const CreateUniverse = () => {
                 direction="row"
                 sx={{ marginTop: '32px' }}
               >
-                <YBButton variant="secondary" size="large">
+                <YBButton variant="secondary" size="large" dataTestId="create-universe-cancel-button">
                   {t('cancel', { keyPrefix: 'common' })}
                 </YBButton>
                 <Grid container alignItems="center" justifyContent="flex-end" spacing={2}>
@@ -104,6 +104,7 @@ export const CreateUniverse = () => {
                     disabled={activeStep === 1}
                     variant="secondary"
                     size="large"
+                    dataTestId="create-universe-back-button"
                   >
                     {t('back', { keyPrefix: 'common' })}
                   </YBButton>
@@ -113,6 +114,7 @@ export const CreateUniverse = () => {
                     }}
                     variant="ybaPrimary"
                     size="large"
+                    dataTestId="create-universe-next-button"
                   >
                     {t(activeStep === 9 ? 'create' : 'next', { keyPrefix: 'common' })}
                   </YBButton>

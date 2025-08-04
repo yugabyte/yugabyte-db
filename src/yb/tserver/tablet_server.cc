@@ -553,13 +553,7 @@ Status TabletServer::Init() {
 
   initted_.store(true, std::memory_order_release);
 
-  auto bound_addresses = rpc_server()->GetBoundAddresses();
   auto shared = shared_object();
-  if (!bound_addresses.empty()) {
-    ServerRegistrationPB reg;
-    RETURN_NOT_OK(GetRegistration(&reg, server::RpcOnly::kTrue));
-    shared->SetHostEndpoint(bound_addresses.front(), PublicHostPort(reg).host());
-  }
 
   // 5433 is kDefaultPort in src/yb/yql/pgwrapper/pg_wrapper.h.
   RETURN_NOT_OK(pgsql_proxy_bind_address_.ParseString(FLAGS_pgsql_proxy_bind_address, 5433));
@@ -824,11 +818,13 @@ tserver::TSLocalLockManagerPtr TabletServer::ResetAndGetTSLocalLockManager() {
 
 void TabletServer::StartTSLocalLockManager() {
   if (opts_.server_type == TabletServerOptions::kServerType &&
-      PREDICT_FALSE(FLAGS_enable_object_locking_for_table_locks)) {
+      PREDICT_FALSE(FLAGS_enable_object_locking_for_table_locks) &&
+      PREDICT_TRUE(FLAGS_enable_ysql)) {
     std::lock_guard l(lock_);
     ts_local_lock_manager_ = std::make_shared<tserver::TSLocalLockManager>(
         clock_, this /* TabletServerIf* */, *this /* RpcServerBase& */,
-        tablet_manager_->waiting_txn_pool(), object_lock_shared_state_manager_.get());
+        tablet_manager_->waiting_txn_pool(), metric_entity(),
+        object_lock_shared_state_manager_.get());
     ts_local_lock_manager_->Start(tablet_manager_->waiting_txn_registry());
   }
 }
@@ -1563,7 +1559,7 @@ void TabletServer::UpdateCatalogVersionsFingerprintUnlocked() {
 
 void TabletServer::SetYsqlDBCatalogVersionsWithInvalMessages(
     const tserver::DBCatalogVersionDataPB& db_catalog_version_data,
-    const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data) {
+    const tserver::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data) {
   // std::atomic needed to avoid tsan reporting data race.
   static std::atomic<uint64_t> next_debug_id{0};
   std::lock_guard l(lock_);
@@ -1573,8 +1569,8 @@ void TabletServer::SetYsqlDBCatalogVersionsWithInvalMessages(
 }
 
 void TabletServer::SetYsqlDBCatalogInvalMessagesUnlocked(
-    const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data,
-    uint64_t debug_id) {
+  const tserver::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data,
+  uint64_t debug_id) {
   if (db_catalog_inval_messages_data.db_catalog_inval_messages_size() == 0) {
     LOG(INFO) << "empty db_catalog_inval_messages, debug_id: " << debug_id;
     return;
@@ -1633,7 +1629,7 @@ void TabletServer::SetYsqlDBCatalogInvalMessagesUnlocked(
  */
 void TabletServer::MergeInvalMessagesIntoQueueUnlocked(
     uint32_t db_oid,
-    const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data,
+    const tserver::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data,
     int start_index, int end_index,
     uint64_t debug_id) {
   DCHECK_LT(start_index, end_index);
@@ -1676,7 +1672,7 @@ void TabletServer::MergeInvalMessagesIntoQueueUnlocked(
 
 void TabletServer::DoMergeInvalMessagesIntoQueueUnlocked(
     uint32_t db_oid,
-    const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data,
+    const tserver::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data,
     int start_index, int end_index, InvalidationMessagesQueue *db_message_lists,
     uint64_t debug_id) {
   bool changed = false;

@@ -363,6 +363,7 @@ class ClusterLoadBalancer {
   scoped_refptr<AtomicGauge<uint32_t>> tablets_in_wrong_placement_metric_;
   scoped_refptr<AtomicGauge<uint32_t>> blacklisted_leaders_metric_;
   scoped_refptr<AtomicGauge<uint32_t>> total_table_load_difference_metric_;
+  scoped_refptr<AtomicGauge<uint32_t>> estimated_data_to_balance_bytes_metric_;
 
   std::shared_ptr<YsqlTablespaceManager> tablespace_manager_;
 

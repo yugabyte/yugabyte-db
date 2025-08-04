@@ -44,7 +44,7 @@ typedef struct {
 // functions in this API are called.
 void YBCInitPgGate(
     YbcPgTypeEntities type_entities, const YbcPgCallbacks* pg_callbacks,
-    uint64_t *session_id, const YbcPgAshConfig* ash_config);
+    uint64_t *session_id, YbcPgAshConfig* ash_config);
 
 void YBCDestroyPgGate();
 void YBCInterruptPgGate();
@@ -75,6 +75,9 @@ void YBCPgDeleteStatement(YbcPgStatement handle);
 
 // Invalidate the sessions table cache.
 YbcStatus YBCPgInvalidateCache(uint64_t min_ysql_catalog_version);
+
+// Update the table cache's min_ysql_catalog_version.
+YbcStatus YBCPgUpdateTableCacheMinVersion(uint64_t min_ysql_catalog_version);
 
 // Check if initdb has been already run.
 YbcStatus YBCPgIsInitDbDone(bool* initdb_done);
@@ -364,6 +367,8 @@ YbcStatus YBCPgExecAlterTable(YbcPgStatement handle);
 YbcStatus YBCPgAlterTableInvalidateTableCacheEntry(YbcPgStatement handle);
 
 void YBCPgAlterTableInvalidateTableByOid(
+    const YbcPgOid database_oid, const YbcPgOid table_relfilenode_oid);
+void YBCPgRemoveTableCacheEntry(
     const YbcPgOid database_oid, const YbcPgOid table_relfilenode_oid);
 
 YbcStatus YBCPgNewDropTable(YbcPgOid database_oid,
@@ -697,6 +702,8 @@ YbcStatus YBCPgFetchRequestedYbctids(YbcPgStatement handle, const YbcPgExecParam
                                      YbcConstSliceVector ybctids);
 YbcStatus YBCPgBindYbctids(YbcPgStatement handle, int n, uintptr_t* datums);
 
+bool YBCPgIsValidYbctid(uint64_t ybctid);
+
 // Functions----------------------------------------------------------------------------------------
 YbcStatus YBCAddFunctionParam(
     YbcPgFunction handle, const char *name, const YbcPgTypeEntity *type_entity, uint64_t datum,
@@ -741,6 +748,7 @@ YbcTxnPriorityRequirement YBCGetTransactionPriorityType();
 YbcStatus YBCPgGetSelfActiveTransaction(YbcPgUuid *txn_id, bool *is_null);
 YbcStatus YBCPgActiveTransactions(YbcPgSessionTxnInfo *infos, size_t num_infos);
 bool YBCPgIsDdlMode();
+bool YBCCurrentTransactionUsesFastPath();
 
 // System validation -------------------------------------------------------------------------------
 // Validate whether placement information is theoretically valid. If check_satisfiable is true,

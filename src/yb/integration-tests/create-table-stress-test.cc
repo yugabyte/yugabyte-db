@@ -94,17 +94,16 @@ using yb::rpc::Messenger;
 using yb::rpc::MessengerBuilder;
 using yb::rpc::RpcController;
 
-DECLARE_int32(heartbeat_interval_ms);
-DECLARE_bool(log_preallocate_segments);
 DECLARE_bool(TEST_enable_remote_bootstrap);
-DECLARE_int32(tserver_unresponsive_timeout_ms);
-DECLARE_int32(max_create_tablets_per_ts);
-DECLARE_int32(tablet_report_limit);
-DECLARE_uint64(TEST_inject_latency_during_tablet_report_ms);
-DECLARE_int32(heartbeat_rpc_timeout_ms);
+DECLARE_bool(log_preallocate_segments);
 DECLARE_int32(catalog_manager_report_batch_size);
-DECLARE_int32(tablet_report_limit);
+DECLARE_int32(heartbeat_interval_ms);
+DECLARE_int32(heartbeat_rpc_timeout_ms);
+DECLARE_int32(max_create_tablets_per_ts);
 DECLARE_int32(tablet_creation_timeout_ms);
+DECLARE_int32(tablet_report_limit);
+DECLARE_int32(tserver_unresponsive_timeout_ms);
+DECLARE_uint64(TEST_inject_latency_during_tablet_report_ms);
 
 DEFINE_NON_RUNTIME_int32(num_test_tablets, 60, "Number of tablets for stress test");
 DEFINE_NON_RUNTIME_int32(benchmark_runtime_secs, 5, "Number of seconds to run the benchmark");
@@ -276,12 +275,11 @@ TEST_F(CreateTableStressTest, GetTableLocationsBenchmark) {
 }
 
 class CreateMultiHBTableStressTest : public CreateTableStressTest,
-                                     public testing::WithParamInterface<bool /* is_multiHb */> {
+                                     public testing::WithParamInterface<bool /* is_multi_hb */> {
   void SetUp() override {
     // "MultiHB" Tables are too large to be reported in a single heartbeat from a TS.
     // Setup so all 3 TS will have to break tablet report updates into multiple chunks.
-    bool is_multiHb = GetParam();
-    if (is_multiHb) {
+    if (GetParam()) {
       // 90 Tablets * 3 TS < 300 Tablets
       ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_report_limit) = 90;
       ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_test_tablets) = 300;
@@ -294,7 +292,11 @@ class CreateMultiHBTableStressTest : public CreateTableStressTest,
     CreateTableStressTest::SetUp();
   }
 };
-INSTANTIATE_TEST_CASE_P(MultiHeartbeat, CreateMultiHBTableStressTest, ::testing::Bool());
+INSTANTIATE_TEST_CASE_P(
+    , CreateMultiHBTableStressTest, ::testing::Bool(),
+    [](const testing::TestParamInfo<bool>& info) {
+      return info.param ? "MultiHB" : "Plain";
+    });
 
 // Replaces itest version, which requires an External Mini Cluster.
 Status ListRunningTabletIds(std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy,
@@ -368,16 +370,17 @@ TEST_P(CreateMultiHBTableStressTest, RestartServersAfterCreation) {
     LOG(INFO) << "Skipping slow test";
     return;
   }
+  FLAGS_tablet_creation_timeout_ms = 10000 * kTimeMultiplier;
   YBTableName table_name(YQL_DATABASE_CQL, "my_keyspace", "test_table");
   ASSERT_NO_FATALS(CreateBigTable(table_name, FLAGS_num_test_tablets));
 
   for (int i = 0; i < 3; i++) {
     SleepFor(MonoDelta::FromMicroseconds(500));
-    LOG(INFO) << "Restarting master...";
+    LOG(INFO) << i << ") Restarting master...";
     ASSERT_OK(cluster_->mini_master()->Restart());
     ASSERT_OK(cluster_->mini_master()->master()->
         WaitUntilCatalogManagerIsLeaderAndReadyForTests());
-    LOG(INFO) << "Master restarted.";
+    LOG(INFO) << i << ") Master restarted.";
   }
 
   // Restart TS#2, which forces a full tablet report on TS #2 and incremental updates on the others.

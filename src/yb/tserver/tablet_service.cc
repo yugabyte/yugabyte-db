@@ -471,13 +471,6 @@ Status PrintYSQLWriteRequest(
   return Status::OK();
 }
 
-template <class Req>
-void UpdateAshMetadataFrom(const Req* req) {
-  if (req->has_ash_metadata()) {
-    ash::WaitStateInfo::UpdateCurrentMetadataFromPB(req->ash_metadata());
-  }
-}
-
 } // namespace
 
 typedef ListTabletsResponsePB::StatusAndSchemaPB StatusAndSchemaPB;
@@ -1309,10 +1302,6 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
                                           rpc::RpcContext context) {
   TRACE("UpdateTransaction");
 
-  if (req->has_ash_metadata()) {
-    ash::WaitStateInfo::UpdateCurrentMetadataFromPB(req->ash_metadata());
-  }
-
   if (req->state().status() == TransactionStatus::CREATED &&
       RandomActWithProbability(TEST_delay_create_transaction_probability)) {
     std::this_thread::sleep_for(
@@ -1446,10 +1435,6 @@ void TabletServiceImpl::AbortTransaction(const AbortTransactionRequestPB* req,
                                          AbortTransactionResponsePB* resp,
                                          rpc::RpcContext context) {
   TRACE("AbortTransaction");
-
-  if (req->has_ash_metadata()) {
-    ash::WaitStateInfo::UpdateCurrentMetadataFromPB(req->ash_metadata());
-  }
 
   UpdateClock(*req, server_->Clock());
 
@@ -2617,7 +2602,6 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     return;
   }
 
-  UpdateAshMetadataFrom(req);
   auto status = PerformWrite(req, resp, &context);
   if (!status.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), std::move(status), &context);
@@ -2649,7 +2633,6 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     return;
   }
 
-  UpdateAshMetadataFrom(req);
   PerformRead(server_, this, req, resp, std::move(context));
 }
 
@@ -3689,7 +3672,6 @@ void TabletServiceImpl::AcquireObjectLocks(
         STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"), &context);
   }
   TRACE("Start AcquireObjectLocks");
-  UpdateAshMetadataFrom(req);
   VLOG(2) << "Received AcquireObjectLocks RPC: " << req->DebugString();
 
   auto ts_local_lock_manager = server_->ts_local_lock_manager();
@@ -3712,7 +3694,6 @@ void TabletServiceImpl::ReleaseObjectLocks(
         STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"), &context);
   }
   TRACE("Start ReleaseObjectLocks");
-  UpdateAshMetadataFrom(req);
   VLOG(2) << "Received ReleaseObjectLocks RPC: " << req->DebugString();
 
   auto ts_local_lock_manager = server_->ts_local_lock_manager();

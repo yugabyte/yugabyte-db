@@ -304,6 +304,11 @@ void HostPortToPB(const HostPort& host_port, HostPortPB* host_port_pb) {
   host_port_pb->set_port(host_port.port());
 }
 
+void HostPortToPB(const HostPort& host_port, LWHostPortPB* host_port_pb) {
+  host_port_pb->dup_host(host_port.host());
+  host_port_pb->set_port(host_port.port());
+}
+
 HostPortPB HostPortToPB(const HostPort& host_port) {
   HostPortPB hp_pb;
   hp_pb.set_host(host_port.host());

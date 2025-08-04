@@ -190,16 +190,20 @@ typedef enum YbStatLabel
 	YB_STAT_LABEL_FIRST = 0,
 
 	YB_STAT_LABEL_CATALOG_READ = YB_STAT_LABEL_FIRST,
+	YB_STAT_LABEL_CATALOG_READ_OP,
 	YB_STAT_LABEL_CATALOG_WRITE,
 
 	YB_STAT_LABEL_STORAGE_READ,
+	YB_STAT_LABEL_STORAGE_READ_OP,
 	YB_STAT_LABEL_STORAGE_WRITE,
 
 	YB_STAT_LABEL_STORAGE_TABLE_READ,
+	YB_STAT_LABEL_STORAGE_TABLE_READ_OP,
 	YB_STAT_LABEL_STORAGE_TABLE_WRITE,
 	YB_STAT_LABEL_STORAGE_TABLE_ROWS_SCANNED,
 
 	YB_STAT_LABEL_STORAGE_INDEX_READ,
+	YB_STAT_LABEL_STORAGE_INDEX_READ_OP,
 	YB_STAT_LABEL_STORAGE_INDEX_WRITE,
 	YB_STAT_LABEL_STORAGE_INDEX_ROWS_SCANNED,
 
@@ -235,6 +239,9 @@ typedef struct YbExplainState
 		NAME " Requests", NAME " Execution Time", IS_NON_DETERMINISTIC \
 	}
 
+#define BUILD_NON_DETERMINISTIC_STAT_LABEL_DATA(NAME) \
+	BUILD_STAT_LABEL_DATA(NAME, true)
+
 #define BUILD_DETERMINISTIC_STAT_LABEL_DATA(NAME) \
 	BUILD_STAT_LABEL_DATA(NAME, false)
 
@@ -247,11 +254,15 @@ typedef struct YbExplainState
 const YbStatLabelData yb_stat_label_data[] = {
 	[YB_STAT_LABEL_CATALOG_READ] =
 	BUILD_NON_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Catalog Read"),
+	[YB_STAT_LABEL_CATALOG_READ_OP] =
+	BUILD_NON_DETERMINISTIC_STAT_LABEL_DATA("Catalog Read Ops"),
 	[YB_STAT_LABEL_CATALOG_WRITE] =
 	BUILD_NON_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Catalog Write"),
 
 	[YB_STAT_LABEL_STORAGE_READ] =
 	BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Read"),
+	[YB_STAT_LABEL_STORAGE_READ_OP] =
+	BUILD_DETERMINISTIC_STAT_LABEL_DATA("Storage Read Ops"),
 	[YB_STAT_LABEL_STORAGE_WRITE] =
 	BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Write"),
 	[YB_STAT_LABEL_STORAGE_ROWS_SCANNED] =
@@ -259,6 +270,8 @@ const YbStatLabelData yb_stat_label_data[] = {
 
 	[YB_STAT_LABEL_STORAGE_TABLE_READ] =
 	BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Table Read"),
+	[YB_STAT_LABEL_STORAGE_TABLE_READ_OP] =
+	BUILD_DETERMINISTIC_STAT_LABEL_DATA("Storage Table Read Ops"),
 	[YB_STAT_LABEL_STORAGE_TABLE_WRITE] =
 	BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Table Write"),
 	[YB_STAT_LABEL_STORAGE_TABLE_ROWS_SCANNED] =
@@ -266,6 +279,8 @@ const YbStatLabelData yb_stat_label_data[] = {
 
 	[YB_STAT_LABEL_STORAGE_INDEX_READ] =
 	BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Index Read"),
+	[YB_STAT_LABEL_STORAGE_INDEX_READ_OP] =
+	BUILD_DETERMINISTIC_STAT_LABEL_DATA("Storage Index Read Ops"),
 	[YB_STAT_LABEL_STORAGE_INDEX_WRITE] =
 	BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Index Write"),
 	[YB_STAT_LABEL_STORAGE_INDEX_ROWS_SCANNED] =
@@ -301,8 +316,6 @@ const char *yb_metric_gauge_label[] = {
 	BUILD_METRIC_LABEL("rocksdb_block_cache_data_miss"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_DATA_HIT] =
 	BUILD_METRIC_LABEL("rocksdb_block_cache_data_hit"),
-	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_BYTES_READ] =
-	BUILD_METRIC_LABEL("rocksdb_block_cache_bytes_read"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_BYTES_WRITE] =
 	BUILD_METRIC_LABEL("rocksdb_block_cache_bytes_write"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOOM_FILTER_USEFUL] =
@@ -431,16 +444,12 @@ const char *yb_metric_gauge_label[] = {
 	BUILD_METRIC_LABEL("rocksdb_block_cache_single_touch_hit"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_SINGLE_TOUCH_ADD] =
 	BUILD_METRIC_LABEL("rocksdb_block_cache_single_touch_add"),
-	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_SINGLE_TOUCH_BYTES_READ] =
-	BUILD_METRIC_LABEL("rocksdb_block_cache_single_touch_bytes_read"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_SINGLE_TOUCH_BYTES_WRITE] =
 	BUILD_METRIC_LABEL("rocksdb_block_cache_single_touch_bytes_write"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_MULTI_TOUCH_HIT] =
 	BUILD_METRIC_LABEL("rocksdb_block_cache_multi_touch_hit"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_MULTI_TOUCH_ADD] =
 	BUILD_METRIC_LABEL("rocksdb_block_cache_multi_touch_add"),
-	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_MULTI_TOUCH_BYTES_READ] =
-	BUILD_METRIC_LABEL("rocksdb_block_cache_multi_touch_bytes_read"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_MULTI_TOUCH_BYTES_WRITE] =
 	BUILD_METRIC_LABEL("rocksdb_block_cache_multi_touch_bytes_write"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_MISS] =
@@ -463,8 +472,6 @@ const char *yb_metric_gauge_label[] = {
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_data_miss"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_DATA_HIT] =
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_data_hit"),
-	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_BYTES_READ] =
-	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_bytes_read"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_BYTES_WRITE] =
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_bytes_write"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOOM_FILTER_USEFUL] =
@@ -593,16 +600,12 @@ const char *yb_metric_gauge_label[] = {
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_single_touch_hit"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_SINGLE_TOUCH_ADD] =
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_single_touch_add"),
-	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_SINGLE_TOUCH_BYTES_READ] =
-	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_single_touch_bytes_read"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_SINGLE_TOUCH_BYTES_WRITE] =
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_single_touch_bytes_write"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_MULTI_TOUCH_HIT] =
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_multi_touch_hit"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_MULTI_TOUCH_ADD] =
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_multi_touch_add"),
-	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_MULTI_TOUCH_BYTES_READ] =
-	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_multi_touch_bytes_read"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_MULTI_TOUCH_BYTES_WRITE] =
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_multi_touch_bytes_write"),
 	[YB_STORAGE_GAUGE_ACTIVE_WRITE_QUERY_OBJECTS] =
@@ -921,7 +924,7 @@ YbExplainRpcRequestMetrics(YbExplainState *yb_es, YbcPgExecStorageMetrics *metri
 
 	for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i)
 		YbExplainRpcRequestEvent(yb_es, i, &metrics->events[i],
-								 nloops , is_mean);
+								 nloops, is_mean);
 
 	if (yb_es->es->format == EXPLAIN_FORMAT_TEXT)
 		--yb_es->es->indent;
@@ -1568,6 +1571,8 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 			YbExplainRpcRequestStat(&yb_es, YB_STAT_LABEL_STORAGE_READ,
 									es->yb_stats.read.count,
 									es->yb_stats.read.wait_time);
+			YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_STORAGE_READ_OP,
+									   es->yb_stats.read_op_count);
 			YbExplainStatWithoutTiming(&yb_es,
 									   YB_STAT_LABEL_STORAGE_ROWS_SCANNED,
 									   es->yb_stats.read.rows_scanned);
@@ -1579,6 +1584,8 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 			YbExplainRpcRequestStat(&yb_es, YB_STAT_LABEL_CATALOG_READ,
 									es->yb_stats.catalog_read.count,
 									es->yb_stats.catalog_read.wait_time);
+			YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_CATALOG_READ_OP,
+									   es->yb_stats.catalog_read_op_count);
 			YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_CATALOG_WRITE,
 									   es->yb_stats.catalog_write_count);
 			YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_STORAGE_WRITE,
@@ -1594,6 +1601,9 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 			if (es->timing)
 				ExplainPropertyFloat("Storage Execution Time", "ms",
 									 total_rpc_wait / 1000000.0, 3, es);
+
+			if (es->yb_debug && YBCCurrentTransactionUsesFastPath())
+				ExplainPropertyText("Transaction", "Fast Path", es);
 		}
 
 		if (IsYugaByteEnabled() && yb_enable_memory_tracking && show_variable_fields)
@@ -3042,14 +3052,18 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				 * as an OR condition.
 				 */
 				List	   *tidquals = ((TidScan *) plan)->tidquals;
+				List	   *yb_pushdown = ((TidScan *) plan)->yb_rel_pushdown.quals;
 
 				if (list_length(tidquals) > 1)
 					tidquals = list_make1(make_orclause(tidquals));
 				show_scan_qual(tidquals, "TID Cond", planstate, ancestors, es);
+				show_scan_qual(yb_pushdown, "Storage Filter", planstate, ancestors, es);
 				show_scan_qual(plan->qual, "Filter", planstate, ancestors, es);
 				if (plan->qual)
 					show_instrumentation_count("Rows Removed by Filter", 1,
 											   planstate, es);
+				if (is_yb_rpc_stats_required)
+					show_yb_rpc_stats(planstate, es);
 			}
 			break;
 		case T_TidRangeScan:
@@ -4994,8 +5008,10 @@ show_yb_rpc_stats(PlanState *planstate, ExplainState *es)
 	/* Read stats */
 	double		table_reads = yb_instr->tbl_reads.count / nloops;
 	double		table_read_wait = yb_instr->tbl_reads.wait_time / nloops;
+	double		table_read_ops = yb_instr->tbl_read_ops / nloops;
 	double		index_reads = yb_instr->index_reads.count / nloops;
 	double		index_read_wait = yb_instr->index_reads.wait_time / nloops;
+	double		index_read_ops = yb_instr->index_read_ops / nloops;
 	double		table_rows_scanned = yb_instr->tbl_reads.rows_scanned / nloops;
 	double		index_rows_scanned = yb_instr->index_reads.rows_scanned / nloops;
 
@@ -5009,10 +5025,14 @@ show_yb_rpc_stats(PlanState *planstate, ExplainState *es)
 
 	YbExplainRpcRequestStat(&yb_es, YB_STAT_LABEL_STORAGE_TABLE_READ,
 							table_reads, table_read_wait);
+	YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_STORAGE_TABLE_READ_OP,
+							   table_read_ops);
 	YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_STORAGE_TABLE_ROWS_SCANNED,
 							   table_rows_scanned);
 	YbExplainRpcRequestStat(&yb_es, YB_STAT_LABEL_STORAGE_INDEX_READ,
 							index_reads, index_read_wait);
+	YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_STORAGE_INDEX_READ_OP,
+							   index_read_ops);
 	YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_STORAGE_INDEX_ROWS_SCANNED,
 							   index_rows_scanned);
 
@@ -6390,6 +6410,7 @@ YbAggregateExplainableRpcMetrics(YbcPgExecStorageMetrics **metrics,
 	{
 		const YbcPgExecEventMetric *val = &instr_metrics->events[i];
 		YbcPgExecEventMetric *agg = &(*metrics)->events[i];
+
 		agg->sum += val->sum;
 		agg->count += val->count;
 	}
@@ -6404,12 +6425,15 @@ YbAggregateExplainableRPCRequestStat(ExplainState *es,
 		yb_instr->tbl_reads.count + yb_instr->index_reads.count;
 	es->yb_stats.read.wait_time +=
 		yb_instr->tbl_reads.wait_time + yb_instr->index_reads.wait_time;
+	es->yb_stats.read_op_count +=
+		yb_instr->tbl_read_ops + yb_instr->index_read_ops;
 
 	/* Storage Writes */
 	es->yb_stats.write_count += yb_instr->tbl_writes + yb_instr->index_writes;
 
 	/* Catalog Reads */
 	es->yb_stats.catalog_read.count += yb_instr->catalog_reads.count;
+	es->yb_stats.catalog_read_op_count += yb_instr->catalog_read_ops;
 	es->yb_stats.catalog_read.wait_time += yb_instr->catalog_reads.wait_time;
 
 	/* Catalog Writes */

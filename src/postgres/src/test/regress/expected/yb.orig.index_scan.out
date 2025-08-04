@@ -4230,8 +4230,9 @@ explain (analyze, dist, costs off, timing off, summary off)
    Rows Removed by Index Recheck: 996
    Heap Fetches: 0
    Storage Index Read Requests: 2
+   Storage Index Read Ops: 6
    Storage Index Rows Scanned: 1003
-(6 rows)
+(7 rows)
 
 reset yb_fetch_row_limit;
 reset yb_fetch_size_limit;

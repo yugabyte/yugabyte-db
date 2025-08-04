@@ -23,22 +23,6 @@ namespace yb::docdb {
 
 namespace {
 
-TableLockType FastpathLockTypeToTableLockType(ObjectLockFastpathLockType lock_type) {
-  switch (lock_type) {
-    case ObjectLockFastpathLockType::kAccessShare:
-      return TableLockType::ACCESS_SHARE;
-    case ObjectLockFastpathLockType::kRowShare:
-      return TableLockType::ROW_SHARE;
-    case ObjectLockFastpathLockType::kRowExclusive:
-      return TableLockType::ROW_EXCLUSIVE;
-  }
-  FATAL_INVALID_ENUM_VALUE(ObjectLockFastpathLockType, lock_type);
-}
-
-auto GetEntriesForFastpathLockType(ObjectLockFastpathLockType lock_type) {
-  return docdb::GetEntriesForLockType(FastpathLockTypeToTableLockType(lock_type));
-}
-
 ObjectLockPrefix MakeLockPrefix(
     const ObjectLockFastpathRequest& request, dockv::KeyEntryType entry_type) {
   return ObjectLockPrefix(
@@ -71,7 +55,6 @@ class ObjectLockOwnerRegistry::Impl {
     if (PREDICT_TRUE(i != owners_.end())) {
       return i->second;
     }
-    LOG(DFATAL) << "Attempting to access non registered lock owner tag";
     return {};
   }
 
@@ -104,13 +87,43 @@ void ObjectLockSharedStateManager::SetupShared(ObjectLockSharedState& shared) {
   shared_ = &shared;
 }
 
-void ObjectLockSharedStateManager::ConsumePendingSharedLockRequests(
+size_t ObjectLockSharedStateManager::ConsumePendingSharedLockRequests(
     const LockRequestConsumer& consume) {
+  return CallWithRequestConsumer(
+      [this](auto&& c) PARENT_PROCESS_ONLY { return shared_->ConsumePendingLockRequests(c); },
+      consume);
+}
+
+size_t ObjectLockSharedStateManager::ConsumeAndAcquireExclusiveLockIntents(
+    const LockRequestConsumer& consume, std::span<const ObjectLockPrefix*> object_ids) {
+  return CallWithRequestConsumer(
+      [this, object_ids](auto&& c) PARENT_PROCESS_ONLY {
+        return shared_->ConsumeAndAcquireExclusiveLockIntents(c, object_ids);
+      },
+      consume);
+}
+
+void ObjectLockSharedStateManager::ReleaseExclusiveLockIntent(
+    const ObjectLockPrefix& object_id, size_t count) {
   ParentProcessGuard g;
-  if (!shared_) {
-    return;
+  if (shared_) {
+    shared_->ReleaseExclusiveLockIntent(object_id, count);
   }
-  auto consume_fastpath_request = [&](ObjectLockFastpathRequest request) {
+}
+
+TransactionId ObjectLockSharedStateManager::TEST_last_owner() const {
+  ParentProcessGuard g;
+  return registry_.GetOwnerInfo(DCHECK_NOTNULL(shared_)->TEST_last_owner())->txn_id;
+}
+
+template<typename ConsumeMethod>
+size_t ObjectLockSharedStateManager::CallWithRequestConsumer(
+    ConsumeMethod&& method, const LockRequestConsumer& consume) {
+  if (!shared_) {
+    return 0;
+  }
+
+  auto consume_fastpath_request = [this, &consume](ObjectLockFastpathRequest request) {
     auto owner_info = registry_.GetOwnerInfo(request.owner);
     if (!owner_info) {
       return;
@@ -126,12 +139,9 @@ void ObjectLockSharedStateManager::ConsumePendingSharedLockRequests(
               .intent_types = intent_types}});
     }
   };
-  shared_->ConsumePendingLockRequests(make_lw_function(consume_fastpath_request));
-}
 
-TransactionId ObjectLockSharedStateManager::TEST_last_owner() const {
   ParentProcessGuard g;
-  return registry_.GetOwnerInfo(DCHECK_NOTNULL(shared_)->TEST_last_owner())->txn_id;
+  return method(make_lw_function(consume_fastpath_request));
 }
 
 } // namespace yb::docdb

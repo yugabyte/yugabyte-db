@@ -87,6 +87,7 @@ export const Zone: FC<ZoneProps> = ({ control, index, region, remove }) => {
               field.onChange(e.target.value);
             }}
             menuProps={menuProps}
+            dataTestId='availability-zone-select'
           >
             {region.zones.map((zone) => (
               <MenuItem key={zone.uuid} value={zone.name}>
@@ -114,6 +115,7 @@ export const Zone: FC<ZoneProps> = ({ control, index, region, remove }) => {
               resilienceAndRegionsSettings?.resilienceFormMode === ResilienceFormMode.GUIDED &&
               resilienceAndRegionsSettings?.faultToleranceType !== FaultToleranceType.NONE
             }
+            dataTestId='availability-zone-node-count-input'
           />
         )}
       />
@@ -144,6 +146,7 @@ export const Zone: FC<ZoneProps> = ({ control, index, region, remove }) => {
                 console.warn(value);
                 return value === 'false' ? 'No' : `Rank ${parseInt(value as string) + 1}`;
               }}
+              dataTestId='availability-zone-preferred-select'
             >
               {preferredMenuItems}
             </YBSelect>

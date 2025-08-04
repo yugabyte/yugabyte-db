@@ -55,6 +55,7 @@ DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 DECLARE_bool(TEST_tserver_enable_ysql_lease_refresh);
 DECLARE_int64(olm_poll_interval_ms);
+DECLARE_string(vmodule);
 
 using namespace std::literals;
 
@@ -67,6 +68,7 @@ constexpr uint64_t kDefaultLockManagerPollIntervalMs = 100;
 class PgObjectLocksTestRF1 : public PgMiniTestBase {
  protected:
   void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vmodule) = "libpq_utils=1";
     // Set reasonable high poll interavl to disable polling in tests., would help catch issues
     // with signaling logic if any.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_olm_poll_interval_ms) = 1000000;
@@ -476,22 +478,20 @@ TEST_F(PgObjectLocksTestRF1, ExclusiveLocksRemovedAfterDocDBSchemaChange) {
 class PgObjectLocksTest : public LibPqTestBase {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
-    const bool table_locks_enabled = EnableTableLocks();
+    LibPqTestBase::UpdateMiniClusterOptions(opts);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vmodule) = "libpq_utils=1";
     opts->extra_tserver_flags.emplace_back(
         yb::Format("--allowed_preview_flags_csv=enable_object_locking_for_table_locks,"
                    "ysql_yb_ddl_transaction_block_enabled"));
     opts->extra_tserver_flags.emplace_back(
-        yb::Format("--enable_object_locking_for_table_locks=$0", table_locks_enabled));
+        yb::Format("--enable_object_locking_for_table_locks=$0", EnableTableLocks()));
     opts->extra_tserver_flags.emplace_back("--enable_ysql_operation_lease=true");
     opts->extra_tserver_flags.emplace_back("--TEST_tserver_enable_ysql_lease_refresh=true");
     opts->extra_tserver_flags.emplace_back(
         Format("--ysql_lease_refresher_interval_ms=$0", kDefaultYSQLLeaseRefreshIntervalMilli));
 
     opts->extra_master_flags.emplace_back(
-        yb::Format("--allowed_preview_flags_csv=enable_object_locking_for_table_locks,"
-                   "ysql_yb_ddl_transaction_block_enabled"));
-    opts->extra_master_flags.emplace_back(
-        yb::Format("--enable_object_locking_for_table_locks=$0", table_locks_enabled));
+        yb::Format("--allowed_preview_flags_csv=ysql_yb_ddl_transaction_block_enabled"));
     opts->extra_master_flags.emplace_back("--enable_ysql_operation_lease=true");
     opts->extra_master_flags.emplace_back(
         Format("--master_ysql_operation_lease_ttl_ms=$0", kDefaultMasterYSQLLeaseTTLMilli));
@@ -580,10 +580,17 @@ TEST_F(PgObjectLocksTest, ExclusiveLockReleaseInvalidatesCatalogCache) {
   // The DML should now see the updated schema and not hit a catalog cache/schema version mismatch.
   ASSERT_OK(conn2.FetchMatrix("SELECT * FROM test WHERE k=1", 1 /* rows */, 3 /* columns */));
 }
+class TestWithTransactionalDDLRF3: public PgObjectLocksTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    PgObjectLocksTest::UpdateMiniClusterOptions(opts);
+    opts->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=true");
+  }
+};
 
-TEST_F(PgObjectLocksTest, ConsecutiveAltersSucceedWithoutCatalogVersionIssues) {
-  const auto ts1_idx = 1;
-  const auto ts2_idx = 2;
+TEST_F_EX(PgObjectLocksTest, ConcurrentAlterSelect, TestWithTransactionalDDLRF3) {
+  const auto ts1_idx = 0;
+  const auto ts2_idx = 1;
   auto* ts1 = cluster_->tablet_server(ts1_idx);
   auto* ts2 = cluster_->tablet_server(ts2_idx);
 
@@ -598,8 +605,30 @@ TEST_F(PgObjectLocksTest, ConsecutiveAltersSucceedWithoutCatalogVersionIssues) {
       "TEST_tserver_disable_catalog_refresh_on_heartbeat",
       "true"));
 
+  ASSERT_OK(conn1.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(conn2.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  LOG(INFO) << "conn1: Acquiring exclusive lock on test table";
   ASSERT_OK(conn1.Execute("ALTER TABLE t1 ADD COLUMN c3 INT"));
-  ASSERT_OK(conn2.Execute("ALTER TABLE t1 ADD COLUMN c4 INT"));
+
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&conn2]() {
+    LOG(INFO) << "conn2: going to wait on conn1's table lock";
+    // without propagation of inval msgs on lock acquire, this statement would hit a
+    // schema mismatch error
+    ASSERT_OK(conn2.Fetch("SELECT * FROM t1"));
+  });
+
+  ASSERT_OK(conn1.Execute("COMMIT"));
+  thread_holder.JoinAll();
+  ASSERT_OK(conn2.Execute("COMMIT"));
+
+  ASSERT_OK(cluster_->SetFlag(
+      ts2,
+      "TEST_tserver_disable_catalog_refresh_on_heartbeat",
+      "false"));
+  LOG(INFO) << "Verifying new conns go through";
+  auto conn4 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(conn4.Fetch("SELECT * FROM t1"));
 }
 
 TEST_F(PgObjectLocksTest, BackfillIndexSanityTest) {

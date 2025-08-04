@@ -4075,4 +4075,313 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     }
     conn.close();
   }
+
+  @Test
+  public void testPgVectorWithLogicalReplication() throws Exception {
+    final String slotName = "test_pgvector_cdc_slot";
+
+    try (Statement stmt = connection.createStatement()) {
+      // Drop table if exists and create vector extension
+      stmt.execute("DROP TABLE IF EXISTS test_table");
+      stmt.execute("CREATE EXTENSION IF NOT EXISTS vector");
+      stmt.execute("CREATE TABLE test_table (id int primary key, text_col text, " +
+          "vector_col vector)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE test_table");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      // Single shard insert.
+      stmt.execute("INSERT INTO test_table VALUES (1, 'abc', '[123,234,345,456,567,789]')");
+
+      // Multi shard insert.
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO test_table VALUES (2, 'xyz', ('[123,456]'))");
+      stmt.execute("INSERT INTO test_table VALUES (3, 'xyz', ('[123,456]'))");
+      stmt.execute("INSERT INTO test_table VALUES (4, 'xyz', ('[123,456]'))");
+      stmt.execute("INSERT INTO test_table VALUES (5, 'xyz', ('[123,456]'))");
+      stmt.execute("COMMIT");
+
+      // Update PK.
+      stmt.execute("UPDATE test_table SET id = 0 WHERE id = 1");
+
+      // Update vector column.
+      stmt.execute("UPDATE test_table SET  vector_col = ('[123,456,789]') WHERE id = 2");
+
+      // Update non vector column.
+      stmt.execute("UPDATE test_table SET text_col = 'xyz' WHERE id = 2");
+
+      // Multi shard update.
+      stmt.execute("BEGIN");
+      stmt.execute("UPDATE test_table SET text_col = 'mno' WHERE id > 3");
+      stmt.execute("UPDATE test_table SET  vector_col = ('[0,0,0,0,0,0,0]') WHERE id < 3");
+      stmt.execute("COMMIT");
+
+      // DDL to drop column.
+      stmt.execute("ALTER TABLE test_table DROP COLUMN text_col");
+
+      // Single shard delete.
+      stmt.execute("DELETE FROM test_table WHERE id = 5");
+
+      // DDL to add column.
+      stmt.execute("ALTER TABLE test_table ADD COLUMN int_col int");
+
+      // Multi shard delete.
+      stmt.execute("DELETE FROM test_table WHERE id < 3");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName(slotName)
+                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                     .withSlotOption("proto_version", 1)
+                                     .withSlotOption("publication_names", "pub")
+                                     .start();
+
+    List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
+    result.addAll(receiveMessage(stream, 35));
+
+    List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
+      {
+        // Txn 1.
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/4"), 2));
+        add(PgOutputRelationMessage.CreateForComparison("public", "test_table", 'c',
+          Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("id", 23),
+            PgOutputRelationMessageColumn.CreateForComparison("text_col", 25),
+            PgOutputRelationMessageColumn.CreateForComparison("vector_col", 8078))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
+          Arrays.asList(
+            new PgOutputMessageTupleColumnValue("1"),
+            new PgOutputMessageTupleColumnValue("abc"),
+            new PgOutputMessageTupleColumnValue("[123,234,345,456,567,789]")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+          LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
+
+        // Txn 2.
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/A"), 3));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
+          Arrays.asList(
+            new PgOutputMessageTupleColumnValue("2"),
+            new PgOutputMessageTupleColumnValue("xyz"),
+            new PgOutputMessageTupleColumnValue("[123,456]")))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
+          Arrays.asList(
+            new PgOutputMessageTupleColumnValue("3"),
+            new PgOutputMessageTupleColumnValue("xyz"),
+            new PgOutputMessageTupleColumnValue("[123,456]")))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
+          Arrays.asList(
+            new PgOutputMessageTupleColumnValue("4"),
+            new PgOutputMessageTupleColumnValue("xyz"),
+            new PgOutputMessageTupleColumnValue("[123,456]")))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
+          Arrays.asList(
+            new PgOutputMessageTupleColumnValue("5"),
+            new PgOutputMessageTupleColumnValue("xyz"),
+            new PgOutputMessageTupleColumnValue("[123,456]")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+          LogSequenceNumber.valueOf("0/A"), LogSequenceNumber.valueOf("0/B")));
+
+        // Txn 3.
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/E"), 4));
+        add(PgOutputDeleteMessage.CreateForComparison(/* hasKey */ true,
+          new PgOutputMessageTuple((short) 3,
+            Arrays.asList(
+              new PgOutputMessageTupleColumnValue("1"),
+              new PgOutputMessageTupleColumnNull(),
+              new PgOutputMessageTupleColumnNull()))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
+          Arrays.asList(
+            new PgOutputMessageTupleColumnValue("0"),
+            new PgOutputMessageTupleColumnValue("abc"),
+            new PgOutputMessageTupleColumnValue("[123,234,345,456,567,789]")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+          LogSequenceNumber.valueOf("0/E"), LogSequenceNumber.valueOf("0/F")));
+
+        // Txn 4.
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/11"), 5));
+        add(PgOutputUpdateMessage.CreateForComparison(null,
+          new PgOutputMessageTuple((short) 3,
+            Arrays.asList(
+              new PgOutputMessageTupleColumnValue("2"),
+              new PgOutputMessageTupleColumnToasted(),
+              new PgOutputMessageTupleColumnValue("[123,456,789]")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+          LogSequenceNumber.valueOf("0/11"), LogSequenceNumber.valueOf("0/12")));
+
+        // Txn 5.
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/14"), 6));
+        add(PgOutputUpdateMessage.CreateForComparison(null,
+          new PgOutputMessageTuple((short) 3,
+            Arrays.asList(
+              new PgOutputMessageTupleColumnValue("2"),
+              new PgOutputMessageTupleColumnValue("xyz"),
+              new PgOutputMessageTupleColumnToasted()))));
+        add(PgOutputCommitMessage.CreateForComparison(
+          LogSequenceNumber.valueOf("0/14"), LogSequenceNumber.valueOf("0/15")));
+
+        // Txn 6.
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/1A"), 7));
+        add(PgOutputUpdateMessage.CreateForComparison(null,
+          new PgOutputMessageTuple((short) 3,
+            Arrays.asList(
+              new PgOutputMessageTupleColumnValue("4"),
+              new PgOutputMessageTupleColumnValue("mno"),
+              new PgOutputMessageTupleColumnToasted()))));
+        add(PgOutputUpdateMessage.CreateForComparison(null,
+          new PgOutputMessageTuple((short) 3,
+            Arrays.asList(
+              new PgOutputMessageTupleColumnValue("5"),
+              new PgOutputMessageTupleColumnValue("mno"),
+              new PgOutputMessageTupleColumnToasted()))));
+        add(PgOutputUpdateMessage.CreateForComparison(null,
+          new PgOutputMessageTuple((short) 3,
+            Arrays.asList(
+              new PgOutputMessageTupleColumnValue("0"),
+              new PgOutputMessageTupleColumnToasted(),
+              new PgOutputMessageTupleColumnValue("[0,0,0,0,0,0,0]")))));
+        add(PgOutputUpdateMessage.CreateForComparison(null,
+          new PgOutputMessageTuple((short) 3,
+            Arrays.asList(
+              new PgOutputMessageTupleColumnValue("2"),
+              new PgOutputMessageTupleColumnToasted(),
+              new PgOutputMessageTupleColumnValue("[0,0,0,0,0,0,0]")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+          LogSequenceNumber.valueOf("0/1A"), LogSequenceNumber.valueOf("0/1B")));
+
+        // Txn 7.
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/1D"), 8));
+        add(PgOutputRelationMessage.CreateForComparison("public", "test_table", 'c',
+          Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("id", 23),
+            PgOutputRelationMessageColumn.CreateForComparison("vector_col", 8078))));
+        add(PgOutputDeleteMessage.CreateForComparison(/* hasKey */ true,
+          new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+              new PgOutputMessageTupleColumnValue("5"),
+              new PgOutputMessageTupleColumnNull()))));
+        add(PgOutputCommitMessage.CreateForComparison(
+          LogSequenceNumber.valueOf("0/1D"), LogSequenceNumber.valueOf("0/1E")));
+
+        // Txn 8.
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/21"), 9));
+        add(PgOutputRelationMessage.CreateForComparison("public", "test_table", 'c',
+          Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("id", 23),
+            PgOutputRelationMessageColumn.CreateForComparison("vector_col", 8078),
+            PgOutputRelationMessageColumn.CreateForComparison("int_col", 23))));
+        add(PgOutputDeleteMessage.CreateForComparison(/* hasKey */ true,
+          new PgOutputMessageTuple((short) 3,
+            Arrays.asList(
+              new PgOutputMessageTupleColumnValue("0"),
+              new PgOutputMessageTupleColumnNull(),
+              new PgOutputMessageTupleColumnNull()))));
+        add(PgOutputDeleteMessage.CreateForComparison(/* hasKey */ true,
+          new PgOutputMessageTuple((short) 3,
+            Arrays.asList(
+              new PgOutputMessageTupleColumnValue("2"),
+              new PgOutputMessageTupleColumnNull(),
+              new PgOutputMessageTupleColumnNull()))));
+        add(PgOutputCommitMessage.CreateForComparison(
+          LogSequenceNumber.valueOf("0/21"), LogSequenceNumber.valueOf("0/22")));
+      }
+    };
+
+    for (PgOutputMessage message : result) {
+      assertTrue("Message not found in expected results: " + message,
+                 expectedResult.contains(message));
+    }
+
+    stream.close();
+    conn.close();
+  }
+
+  public String getVectorString(int n, int value) {
+    StringBuilder vectorSb = new StringBuilder("[");
+    for (int i = 0; i < n; i++) {
+      if (i > 0) {
+        vectorSb.append(",");
+      }
+      vectorSb.append("" + value);
+    }
+    vectorSb.append("]");
+    return vectorSb.toString();
+  }
+
+  @Test
+  public void testLargeVectorWithLogicalReplication() throws Exception {
+    final String slotName = "test_large_vector_cdc_slot";
+    String vector2048Ones = getVectorString(2048, 1);
+    String vector2048Twos = getVectorString(2048, 2);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS test_table");
+      stmt.execute("CREATE EXTENSION IF NOT EXISTS vector");
+      stmt.execute("CREATE TABLE test_table (id int primary key, vector_col vector)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE test_table");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO test_table VALUES (1, '" + vector2048Ones + "')");
+      stmt.execute("UPDATE test_table SET vector_col = '" + vector2048Twos + "' WHERE id = 1");
+      stmt.execute("DELETE FROM test_table WHERE id = 1");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName(slotName)
+                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                     .withSlotOption("proto_version", 1)
+                                     .withSlotOption("publication_names", "pub")
+                                     .start();
+
+    List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
+    result.addAll(receiveMessage(stream, 10));
+
+    List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
+      {
+        // Txn 1 - Insert.
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/4"), 2));
+        add(PgOutputRelationMessage.CreateForComparison("public", "test_table", 'c',
+          Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("id", 23),
+            PgOutputRelationMessageColumn.CreateForComparison("vector_col", 8078))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+          Arrays.asList(
+            new PgOutputMessageTupleColumnValue("1"),
+            new PgOutputMessageTupleColumnValue(vector2048Ones)))));
+        add(PgOutputCommitMessage.CreateForComparison(
+          LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
+
+        // Txn 2 - Update.
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/7"), 3));
+        add(PgOutputUpdateMessage.CreateForComparison(null,
+          new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+              new PgOutputMessageTupleColumnValue("1"),
+              new PgOutputMessageTupleColumnValue(vector2048Twos)))));
+        add(PgOutputCommitMessage.CreateForComparison(
+          LogSequenceNumber.valueOf("0/7"), LogSequenceNumber.valueOf("0/8")));
+
+        // Txn 3 - Delete.
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/A"), 4));
+        add(PgOutputDeleteMessage.CreateForComparison(/* hasKey */ true,
+          new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+              new PgOutputMessageTupleColumnValue("1"),
+              new PgOutputMessageTupleColumnNull()))));
+        add(PgOutputCommitMessage.CreateForComparison(
+          LogSequenceNumber.valueOf("0/A"), LogSequenceNumber.valueOf("0/B")));
+      }
+    };
+
+    assertEquals(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
 }

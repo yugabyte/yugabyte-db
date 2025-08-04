@@ -18,9 +18,11 @@ import com.yugabyte.yw.commissioner.tasks.CloudProviderDelete;
 import com.yugabyte.yw.commissioner.tasks.CloudProviderEdit;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
+import com.yugabyte.yw.commissioner.tasks.PauseUniverse;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyKubernetesClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
+import com.yugabyte.yw.commissioner.tasks.ResumeUniverse;
 import com.yugabyte.yw.commissioner.tasks.SendUserNotification;
 import com.yugabyte.yw.commissioner.tasks.params.IProviderTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
@@ -555,13 +557,13 @@ public class CustomerTaskManager {
     Set<UUID> targetUuids = new HashSet<>();
     TaskInfo.getRecentParentTasksInStates(Collections.singleton(TaskInfo.State.Aborted), timeWindow)
         .stream()
-        .filter(t -> StringUtils.isNotEmpty(t.getVersion()))
+        .filter(t -> StringUtils.isNotEmpty(t.getYbaVersion()))
         .filter(t -> YBAError.Code.PLATFORM_SHUTDOWN == t.getTaskError().getCode())
         .filter(t -> Commissioner.isTaskTypeRetryable(t.getTaskType()))
         .filter(
             t ->
                 Util.areYbVersionsEqual(
-                    Util.getYbaVersion(), t.getVersion(), true /* suppressFormatError */))
+                    Util.getYbaVersion(), t.getYbaVersion(), true /* suppressFormatError */))
         .forEach(
             t -> {
               CustomerTask.maybeGet(t.getUuid())
@@ -1060,6 +1062,12 @@ public class CustomerTaskManager {
         taskParams = Json.fromJson(oldTaskParams, XClusterConfigTaskParams.class);
         XClusterConfigTaskParams xClusterConfigTaskParams = (XClusterConfigTaskParams) taskParams;
         xClusterConfigTaskParams.refreshIfExists();
+        break;
+      case PauseUniverse:
+        taskParams = Json.fromJson(oldTaskParams, PauseUniverse.Params.class);
+        break;
+      case ResumeUniverse:
+        taskParams = Json.fromJson(oldTaskParams, ResumeUniverse.Params.class);
         break;
       default:
         String errMsg =

@@ -42,6 +42,7 @@
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/util/pg_doc_data.h"
 #include "yb/yql/pggate/util/ybc_util.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 DECLARE_uint64(rpc_max_message_size);
 DECLARE_double(max_buffer_size_to_rpc_limit_ratio);
@@ -56,19 +57,17 @@ struct PgDocReadOpCachedHelper {
 class PgDocReadOpCached : private PgDocReadOpCachedHelper, public PgDocOp {
  public:
   PgDocReadOpCached(const PgSession::ScopedRefPtr& pg_session, PrefetchedDataHolder data)
-      : PgDocOp(pg_session, &dummy_table), data_(std::move(data)) {
+      : PgDocOp(pg_session, &dummy_table) {
+    std::list<PgDocResult> results;
+    for (const auto& d : *data) {
+      results.emplace_back(d);
+    }
+    result_stream_ = std::make_unique<CachedPgDocResultStream>(std::move(results));
+    VLOG(3) << "Created CachedPgDocResultStream";
   }
 
-  Result<std::list<PgDocResult>> GetResult() override {
-    std::list<PgDocResult> result;
-    PrefetchedDataHolder data;
-    data.swap(data_);
-    if (data) {
-      for (const auto& d : *data) {
-        result.emplace_back(d);
-      }
-    }
-    return result;
+  Status FetchMoreResults() override {
+    return STATUS(IllegalState, "FetchMoreResults is not valid for PgDocReadOpCached");
   }
 
   Status ExecuteInit(const YbcPgExecParameters* exec_params) override {
@@ -96,41 +95,7 @@ class PgDocReadOpCached : private PgDocReadOpCachedHelper, public PgDocOp {
   Status CompleteProcessResponse() override {
     return STATUS(InternalError, "CompleteProcessResponse is not defined for PgDocReadOpCached");
   }
-
-  PrefetchedDataHolder data_;
 };
-
-// Helper function to build row order. In the vast majority of cases order info came with response.
-// But there is 2 situations when response may not have row order info:
-// - response came from old t-server
-// - response belong to non ybctid request
-// In both these situation local order info is used.
-// The first case is rare and only possible in case of upgrade from quite old release.
-// In the second case op_row_order is empty and function will return empty result (which is valid)
-// Caution: local order info might be irrelevant in case of dynamic tablet splitting (case #1).
-auto BuildRowOrders(const LWPgsqlResponsePB& response,
-                    const PgDocOp::OperationRowOrders& op_row_order,
-                    const PgsqlOp& op) {
-  std::vector<int64_t> orders;
-  if (op_row_order.empty()) {
-    VLOG_WITH_FUNC(1) << "Unordered results";
-    return orders;
-  }
-  const auto& batch_orders = response.batch_orders();
-  if (!batch_orders.empty()) {
-    VLOG(1) << "Row orders came from DocDB";
-    orders.assign(batch_orders.begin(), batch_orders.end());
-  } else {
-    VLOG(1) << "Look up orders in " << op_row_order.size() << " element vector";
-    orders.reserve(op_row_order.size());
-    for (const auto& i : op_row_order) {
-      if (i.operation.lock().get() == &op) {
-        orders.push_back(i.order);
-      }
-    }
-  }
-  return orders;
-}
 
 [[nodiscard]] inline ash::WaitStateCode ResolveWaitEventCode(
     TableType table_type, IsForWritePgDoc is_write) {
@@ -217,19 +182,28 @@ Result<PgDocResponse::Data> GetResponse(
 
 } // namespace
 
-PgDocResult::PgDocResult(rpc::SidecarHolder data, std::vector<int64_t>&& row_orders)
-    : data_(std::move(data)),
-      row_orders_(std::move(row_orders)),
-      current_row_order_(row_orders_.begin()) {
+PgDocResult::PgDocResult(rpc::SidecarHolder data)
+    : data_(std::move(data)), current_row_idx_(0) {
   PgDocData::LoadCache(data_.second, &row_count_, &row_iterator_);
 }
 
-int64_t PgDocResult::NextRowOrder() {
-  return current_row_order_ != row_orders_.end() ? *current_row_order_ : -1;
+PgDocResult::PgDocResult(rpc::SidecarHolder data, const LWPgsqlResponsePB& response)
+    : PgDocResult(std::move(data)) {
+  if (!response.batch_orders().empty()) {
+    const auto& orders = response.batch_orders();
+    row_orders_.assign(orders.begin(), orders.end());
+    DCHECK(row_orders_.size() == static_cast<size_t>(row_count_))
+      << "Number of the row orders does not match the number of rows";
+  }
 }
 
-Status PgDocResult::WritePgTuple(const std::vector<PgFetchedTarget*>& targets, PgTuple *pg_tuple,
-                                 int64_t *row_order) {
+int64_t PgDocResult::NextRowOrder() const {
+  DCHECK(current_row_idx_ < static_cast<size_t>(row_count_));
+  DCHECK(!row_orders_.empty());
+  return row_orders_[current_row_idx_];
+}
+
+Status PgDocResult::WritePgTuple(const std::vector<PgFetchedTarget*>& targets, PgTuple *pg_tuple) {
   for (auto* target : targets) {
     if (PgDocData::ReadHeaderIsNull(&row_iterator_)) {
       target->SetNull(pg_tuple);
@@ -237,40 +211,299 @@ Status PgDocResult::WritePgTuple(const std::vector<PgFetchedTarget*>& targets, P
       target->SetValue(&row_iterator_, pg_tuple);
     }
   }
-
-  *row_order = current_row_order_ != row_orders_.end() ? *current_row_order_++ : -1;
+  ++current_row_idx_;
   return Status::OK();
 }
 
-Status PgDocResult::ProcessSystemColumns() {
-  if (syscol_processed_) {
-    return Status::OK();
-  }
-  syscol_processed_ = true;
-
-  for (int i = 0; i < row_count_; i++) {
-    SCHECK(!PgDocData::ReadHeaderIsNull(&row_iterator_), InternalError,
-           "System column ybctid cannot be NULL");
-
-    auto data_size = PgDocData::ReadNumber<int64_t>(&row_iterator_);
-
-    ybctids_.emplace_back(row_iterator_.data(), data_size);
-    row_iterator_.remove_prefix(data_size);
-  }
+Status PgDocResult::ProcessYbctidEntry(Slice* data) {
+  SCHECK(!PgDocData::ReadHeaderIsNull(data), InternalError, "System column ybctid cannot be NULL");
+  auto data_size = PgDocData::ReadNumber<int64_t>(data);
+  ybctids_.emplace_back(data->data(), data_size);
+  data->remove_prefix(data_size);
   return Status::OK();
 }
 
-Status PgDocResult::ProcessIndexedEntries(
-    std::function<Status(int32_t index, Slice* data)> processor) {
+Status PgDocResult::ProcessEntries(std::function<Status(Slice* data)> processor) {
+  // Sanity check: special rows must be unordered
+  // Row orders assume that multiple PgDocResults are merge sorted row by row.
+  // That contradicts ProcessEntries, which batch reads all the rows ignoring order.
+  // If there is a need to order non-PG rows, consider to add a row reading function
+  // like WritePgTuple.
+  DCHECK(row_orders_.empty()) << "System data rows can't be ordered";
   for (int i = 0; i < row_count_; i++) {
-    SCHECK(
-        !VERIFY_RESULT(PgDocData::CheckedReadHeaderIsNull(&row_iterator_)), InternalError,
-        "Entry index cannot be NULL");
-    const auto index = VERIFY_RESULT(PgDocData::CheckedReadNumber<int32_t>(&row_iterator_));
-    SCHECK_GE(index, 0, IllegalState, "Unexpected negative index");
-    RETURN_NOT_OK(processor(index, &row_iterator_));
+    RETURN_NOT_OK(processor(&row_iterator_));
   }
+  SCHECK(row_iterator_.empty(), IllegalState, "Unread row data");
   return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
+
+PgsqlResultStream::PgsqlResultStream(PgsqlOpPtr op) : op_(op) {}
+
+PgsqlResultStream::PgsqlResultStream(std::list<PgDocResult>&& results)
+    : results_queue_(std::move(results)) {}
+
+Result<PgDocResult*> PgsqlResultStream::GetNextDocResult() {
+  while (!results_queue_.empty() && results_queue_.front().is_eof()) {
+    results_queue_.pop_front();
+  }
+
+  if (!results_queue_.empty()) {
+    return &results_queue_.front();
+  }
+
+  RSTATUS_DCHECK(!op_ || !op_->is_active(), IllegalState, "Read from the stream requiring fetch");
+  return nullptr;
+}
+
+void PgsqlResultStream::EmplaceDocResult(
+    rpc::SidecarHolder&& data, const LWPgsqlResponsePB& response) {
+  results_queue_.emplace_back(std::move(data), response);
+  VLOG_WITH_FUNC(3) << "Operation " << (op_ ? op_->ToString() : "<empty>")
+                    << " received new response with " << results_queue_.back().row_count()
+                    << " rows. Now has " << results_queue_.size() << " responses in the queue";
+  // immediately discard empty response
+  if (results_queue_.back().is_eof()) {
+    results_queue_.pop_back();
+  }
+}
+
+int64_t PgsqlResultStream::NextRowOrder() {
+  auto res = GetNextDocResult();
+  DCHECK(res.ok());
+  return (*res)->NextRowOrder();
+}
+
+StreamFetchStatus PgsqlResultStream::FetchStatus() const {
+  for (const auto& result : results_queue_) {
+    if (!result.is_eof()) {
+      return StreamFetchStatus::kHasLocalData;
+    }
+  }
+  return (op_ && op_->is_active()) ? StreamFetchStatus::kNeedsFetch : StreamFetchStatus::kDone;
+}
+
+PgDocResultStream::PgDocResultStream(PgDocFetchCallback fetch_func) : fetch_func_(fetch_func) {}
+
+Result<PgDocResult*> PgDocResultStream::NextDocResult() {
+  auto pgsql_op_stream = VERIFY_RESULT(NextReadStream());
+  return pgsql_op_stream ? pgsql_op_stream->GetNextDocResult() : nullptr;
+}
+
+Status PgDocResultStream::EmplaceOpDocResult(
+    const PgsqlOpPtr& op, rpc::SidecarHolder&& data, const LWPgsqlResponsePB& response) {
+  auto& stream = VERIFY_RESULT_REF(FindReadStream(op, response));
+  stream.EmplaceDocResult(std::move(data), response);
+  return Status::OK();
+}
+
+Result<bool> PgDocResultStream::GetNextRow(
+    const std::vector<PgFetchedTarget*>& targets, PgTuple* pg_tuple) {
+  PgDocResult* result = VERIFY_RESULT(NextDocResult());
+  if (result) {
+    RETURN_NOT_OK(result->WritePgTuple(targets, pg_tuple));
+    return true;
+  }
+  return false;
+}
+
+Result<bool> PgDocResultStream::ProcessEntries(std::function<Status(Slice* data)> processor) {
+  auto result = VERIFY_RESULT(NextDocResult());
+  if (result) {
+    RETURN_NOT_OK(result->ProcessEntries(processor));
+    return true;
+  }
+  return false;
+}
+
+// TODO: consider removal of GetNextYbctidBatch in favor of direct usage of ProcessEntries.
+// Historically the ybctids array is owned by PgDocResult instance, as well as the underlaying data.
+// So it is convenient to have internal processor in PgDocResult.
+Result<std::optional<YbctidBatch>> PgDocResultStream::GetNextYbctidBatch(bool keep_order) {
+  auto result = VERIFY_RESULT(NextDocResult());
+  if (result) {
+    RETURN_NOT_OK(result->ProcessEntries(
+            [result](Slice* data) {
+              return result->ProcessYbctidEntry(data);
+            }));
+    return YbctidBatch(result->ybctids(), keep_order);
+  }
+  return std::nullopt;
+}
+
+ParallelPgDocResultStream::ParallelPgDocResultStream(
+    PgDocFetchCallback fetch_func, const std::vector<PgsqlOpPtr>& ops)
+    : PgDocResultStream(fetch_func) {
+  ResetOps(ops);
+}
+
+void ParallelPgDocResultStream::ResetOps(const std::vector<PgsqlOpPtr>& ops) {
+  read_streams_.clear();
+  for (const auto& op : ops) {
+    read_streams_.emplace_back(op);
+  }
+}
+
+Result<PgsqlResultStream*> ParallelPgDocResultStream::NextReadStream() {
+  for (;;) {
+    for (auto it = read_streams_.begin(); it != read_streams_.end();) {
+      switch (it->FetchStatus()) {
+        case StreamFetchStatus::kHasLocalData:
+          return &*it;
+        case StreamFetchStatus::kNeedsFetch:
+          ++it;
+          break;
+        case StreamFetchStatus::kDone:
+          it = read_streams_.erase(it);  // erase returns the next valid iterator
+          break;
+        default:
+          LOG(FATAL) << "Invalid stream fetch status: " << it->FetchStatus();
+      }
+    }
+
+    if (read_streams_.empty()) {
+      return nullptr;
+    }
+
+    RETURN_NOT_OK(fetch_func_());
+  }
+
+  return STATUS(RuntimeError, "Unreachable statement");
+}
+
+Result<PgsqlResultStream&> ParallelPgDocResultStream::FindReadStream(
+    const PgsqlOpPtr& op, const LWPgsqlResponsePB& response) {
+  auto it = std::find(read_streams_.begin(), read_streams_.end(), op);
+  if (it == read_streams_.end()) {
+    return STATUS(RuntimeError, Format("Operation $0 not found", op));
+  }
+  return *it;
+}
+
+CachedPgDocResultStream::CachedPgDocResultStream(std::list<PgDocResult>&& results)
+    : PgDocResultStream([]() {
+          return STATUS(RuntimeError, "CachedPgDocResultStream does not fetch");
+      }),
+      read_stream_(std::move(results)) {}
+
+void CachedPgDocResultStream::ResetOps(const std::vector<PgsqlOpPtr>& ops) {
+  LOG(FATAL) << "Can't reset CachedPgDocResultStream";
+}
+
+Result<PgsqlResultStream&> CachedPgDocResultStream::FindReadStream(
+    const PgsqlOpPtr& op, const LWPgsqlResponsePB& response) {
+  return STATUS(RuntimeError, Format("Operation $0 not found", op));
+}
+
+Result<PgsqlResultStream*> CachedPgDocResultStream::NextReadStream() {
+  return read_stream_.FetchStatus() == StreamFetchStatus::kDone ? nullptr : &read_stream_;
+}
+
+template <typename T>
+MergingPgDocResultStream<T>::MergingPgDocResultStream(
+    PgDocFetchCallback fetch_func, const std::vector<PgsqlOpPtr>& ops,
+    std::function<T(PgsqlResultStream*)> get_order_fn)
+    : PgDocResultStream(fetch_func), comp_({get_order_fn}), read_queue_(comp_) {
+  ResetOps(ops);
+}
+
+template <typename T>
+void MergingPgDocResultStream<T>::ResetOps(const std::vector<PgsqlOpPtr>& ops) {
+  current_stream_ = nullptr;
+  if (!read_queue_.empty()) {
+    MergeSortPQ pq(comp_);
+    read_queue_.swap(pq);
+  }
+  read_streams_.clear();
+  for (auto& op : ops) {
+    read_streams_.emplace_back(op);
+  }
+  started_ = false;
+}
+
+template <typename T>
+Result<PgsqlResultStream&> MergingPgDocResultStream<T>::FindReadStream(
+    const PgsqlOpPtr& op, const LWPgsqlResponsePB& response) {
+  if (response.has_paging_state()) {
+    // If request paginates, we don't know what it exactly means, has DocDB hit some limit and
+    // stopped, but requested rows are still being fetched in order, or tablet has split and some
+    // rows are to be fetched from other tablet. Here we assume the worst, that is, some requested
+    // rows are missing and will come in the next response, ordered, but probably not in the order
+    // continuing this response.
+    // Since rows within single response are properly ordered, data from this response would be
+    // valid participant of the merge sort. So we add it to the read list. And we separate them out
+    // from this operation's stream, as we don't know if next page will be valid continuation.
+    // Therefore this operation's stream continues to require fetch, and we won't start the merge
+    // sort as of yet.
+    // TODO: have DocDB to hint us. If DocDB is fetching specific rows with predefined order, it
+    // is OK to enqueue the request at the operation's stream as long as DocDB has found all
+    // requested rows so far in the list.
+    // When we fetching from the tablet in some order that is not predefined, and is not matching
+    // natural row order, (i.e. following vector index), if target tablet is split, the operation
+    // should actively split, too. Original operation's range should be truncated to tablet
+    // boundaries and new active operation should be created covering remaining range.
+    // Large part of such split is beyond the scope of the result stream management structures.
+    VLOG_WITH_FUNC(2) << "Adding split stream for operation " << op;
+    read_streams_.emplace_back(nullptr);
+    return read_streams_.back();
+  }
+  auto it = std::find(read_streams_.begin(), read_streams_.end(), op);
+  if (it == read_streams_.end()) {
+    return STATUS(RuntimeError, Format("Operation $0 not found", op));
+  }
+  return *it;
+}
+
+template <typename T>
+Result<PgsqlResultStream*> MergingPgDocResultStream<T>::NextReadStream() {
+  if (!started_) {
+    VLOG_WITH_FUNC(2) << "Initialize merge sort of " << read_streams_.size() << " streams";
+    DCHECK(current_stream_ == nullptr);
+    while (true) {
+      size_t num_not_ready = 0;
+      for (const auto& stream : read_streams_) {
+        if (stream.FetchStatus() == StreamFetchStatus::kNeedsFetch) {
+          ++num_not_ready;
+        }
+      }
+      if (num_not_ready == 0) {
+        VLOG_WITH_FUNC(3) << "All streams are ready";
+        break;
+      }
+      VLOG_WITH_FUNC(3) << num_not_ready << " streams need data, continue fetching";
+      RETURN_NOT_OK(fetch_func_());
+    }
+    for (auto it = read_streams_.begin(); it != read_streams_.end(); ++it) {
+      if (it->FetchStatus() == StreamFetchStatus::kHasLocalData) {
+        read_queue_.push(&*it);
+      }
+    }
+    started_ = true;
+    VLOG_WITH_FUNC(2) << "Start merging " << read_queue_.size() << " streams";
+  } else if (current_stream_) {
+    // If the last read stream has more data to read, return it to the read queue.
+    while (current_stream_->FetchStatus() == StreamFetchStatus::kNeedsFetch) {
+      VLOG_WITH_FUNC(2) << "Current stream needs data to be returned to the read queue";
+      RETURN_NOT_OK(fetch_func_());
+    }
+    if (current_stream_->FetchStatus() == StreamFetchStatus::kHasLocalData) {
+      read_queue_.push(current_stream_);
+    }
+    current_stream_ = nullptr;
+  }
+
+  if (read_queue_.empty()) {
+    VLOG_WITH_FUNC(2) << "Merging is done";
+    return nullptr;
+  }
+
+  // Take first element out of the queue. After reading it may have different priority when
+  // entering the queue again
+  current_stream_ = read_queue_.top();
+  VLOG_WITH_FUNC(4) << "Reading row's order: " << comp_.get_order_fn_(current_stream_);
+  read_queue_.pop();
+  return current_stream_;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -328,37 +561,49 @@ Result<RequestSent> PgDocOp::Execute(ForceNonBufferable force_non_bufferable) {
   return RequestSent(response_.Valid());
 }
 
-Result<std::list<PgDocResult>> PgDocOp::GetResult() {
+Status PgDocOp::FetchMoreResults() {
   // If the execution has error, return without reading any rows.
   RETURN_NOT_OK(exec_status_);
-  std::list<PgDocResult> result;
 
-  if (!end_of_data_) {
-    // Send request now in case prefetching was suppressed.
-    if (suppress_next_result_prefetching_ && !response_.Valid()) {
-      RETURN_NOT_OK(SendRequest());
-    }
-
-    const auto result_data = VERIFY_RESULT(response_.Get(*pg_session_));
-
-    result = VERIFY_RESULT(ProcessResponse(result_data));
-
-    // In case ProcessResponse doesn't fail with an error
-    // it should return non empty rows and/or set end_of_data_.
-    DCHECK(!result.empty() || end_of_data_);
-    // Prefetch next portion of data if needed.
-    if (!(end_of_data_ || suppress_next_result_prefetching_)) {
-      RETURN_NOT_OK(SendRequest());
-    }
+  if (end_of_data_) {
+    return Status::OK();
   }
 
-  return result;
+  // Send request now in case prefetching was suppressed.
+  if (suppress_next_result_prefetching_ && !response_.Valid()) {
+    RETURN_NOT_OK(SendRequest());
+  }
+
+  // This may block until results are available
+  const auto result_data = VERIFY_RESULT(response_.Get(*pg_session_));
+  RETURN_NOT_OK(ProcessResponse(result_data));
+
+  // In case ProcessResponse doesn't fail with an error
+  // it should return non empty rows, copy paging info from the responses into requests
+  // and set end_of_data_.
+  // Prefetch next portion of data if needed.
+  if (!(end_of_data_ || suppress_next_result_prefetching_)) {
+    RETURN_NOT_OK(SendRequest());
+  }
+
+  return Status::OK();
+}
+
+PgDocResultStream& PgDocOp::ResultStream() {
+  static CachedPgDocResultStream dummy_stream({});
+  return result_stream_ ? *result_stream_ : dummy_stream;
 }
 
 Result<int32_t> PgDocOp::GetRowsAffectedCount() const {
   RETURN_NOT_OK(exec_status_);
   DCHECK(end_of_data_);
   return rows_affected_count_;
+}
+
+void PgDocOp::ResetResultStream() {
+  if (result_stream_) {
+    result_stream_->ResetOps(pgsql_ops_);
+  }
 }
 
 void PgDocOp::MoveInactiveOpsOutside() {
@@ -379,33 +624,49 @@ Status PgDocOp::SendRequestImpl(ForceNonBufferable force_non_bufferable) {
   // Populate collected information into protobuf requests before sending to DocDB.
   RETURN_NOT_OK(CreateRequests());
 
-  if (active_op_count_ > 0) {
-    // Send at most "parallelism_level_" number of requests at one time.
-    size_t send_count = std::min(parallelism_level_, active_op_count_);
+  // Exit if there's nothing to send
+  if (active_op_count_ == 0) {
+    return Status::OK();
+  }
 
-    uint64_t max_size = FLAGS_rpc_max_message_size * FLAGS_max_buffer_size_to_rpc_limit_ratio
-                        / send_count;
+  // Send at most "parallelism_level_" number of requests at one time.
+  size_t send_count = std::min(parallelism_level_, active_op_count_);
 
-    for (const auto& op : pgsql_ops_) {
-      if (op->is_active() && op->is_read()) {
-        auto& read_op = down_cast<PgsqlReadOp&>(*op);
-        auto req_size_limit = read_op.read_request().size_limit();
-        if (req_size_limit > 0) {
-          VLOG(2) << "Capping read op at size limit: " << max_size
-                  << " (from " << req_size_limit << ")";
-        }
+  uint64_t max_size = FLAGS_rpc_max_message_size * FLAGS_max_buffer_size_to_rpc_limit_ratio
+                      / send_count;
 
-        // Cap the size limit if the size limit is unset or exceeds the maximum size.
-        if (req_size_limit > max_size || req_size_limit == 0) {
-              read_op.read_request().set_size_limit(max_size);
-        }
+  for (const auto& op : pgsql_ops_) {
+    if (op->is_active() && op->is_read()) {
+      auto& read_op = down_cast<PgsqlReadOp&>(*op);
+      auto req_size_limit = read_op.read_request().size_limit();
+      if (req_size_limit > 0) {
+        VLOG(2) << "Capping read op at size limit: " << max_size
+                << " (from " << req_size_limit << ")";
+      }
+
+      // Cap the size limit if the size limit is unset or exceeds the maximum size.
+      if (req_size_limit > max_size || req_size_limit == 0) {
+            read_op.read_request().set_size_limit(max_size);
       }
     }
+  }
 
-    VLOG(1) << "Number of operations to send: " << send_count;
-    response_ = VERIFY_RESULT(sender_(
-        pg_session_.get(), pgsql_ops_.data(), send_count, *table_,
-        HybridTime::FromPB(GetInTxnLimitHt()), force_non_bufferable, IsForWritePgDoc(IsWrite())));
+  auto is_write = IsForWritePgDoc(IsWrite());
+  auto table_type = ResolveRelationType(**pgsql_ops_.data(), *table_);
+
+  // Count read ops.  Write ops should be the same as write requests, so no need to track them.
+  if (!is_write) {
+    pg_session_->metrics().ReadOp(table_type, send_count);
+  }
+
+  VLOG(1) << "Number of " << table_type << " operations to send: " << send_count;
+  response_ = VERIFY_RESULT(sender_(
+      pg_session_.get(), pgsql_ops_.data(), send_count, *table_,
+      HybridTime::FromPB(GetInTxnLimitHt()), force_non_bufferable, is_write));
+  if (!result_stream_) {
+    // Default PgDocResultStream
+    result_stream_ = std::make_unique<ParallelPgDocResultStream>(
+        [this]() { return this->FetchMoreResults(); }, pgsql_ops_);
   }
   return Status::OK();
 }
@@ -440,40 +701,32 @@ void PgDocOp::RecordRequestMetrics() {
   }
 }
 
-Result<std::list<PgDocResult>> PgDocOp::ProcessResponse(
-  const Result<PgDocResponse::Data>& response) {
+Status PgDocOp::ProcessResponse(const Result<PgDocResponse::Data>& response) {
   VLOG(1) << __PRETTY_FUNCTION__ << ": Received response for request " << this;
   // Check operation status.
   DCHECK(exec_status_.ok());
 
   RecordRequestMetrics();
 
-  auto result = ProcessResponseImpl(response);
-  if (result.ok()) {
-    return result;
-  }
-  exec_status_ = result.status();
+  exec_status_ = ProcessResponseImpl(response);
   return exec_status_;
 }
 
-Result<std::list<PgDocResult>> PgDocOp::ProcessResponseImpl(
-    const Result<PgDocResponse::Data>& response) {
+Status PgDocOp::ProcessResponseImpl(const Result<PgDocResponse::Data>& response) {
   if (!response.ok()) {
     return response.status();
   }
   const auto& data = *response;
-  auto result = VERIFY_RESULT(ProcessCallResponse(*data.response));
+  RETURN_NOT_OK(ProcessCallResponse(*data.response));
 
   if (data.used_in_txn_limit) {
     GetInTxnLimitHt() = data.used_in_txn_limit.ToUint64();
   }
-  RETURN_NOT_OK(CompleteProcessResponse());
-  return result;
+  return CompleteProcessResponse();
 }
 
-Result<std::list<PgDocResult>> PgDocOp::ProcessCallResponse(const rpc::CallResponse& response) {
+Status PgDocOp::ProcessCallResponse(const rpc::CallResponse& response) {
   // Process data coming from tablet server.
-  std::list<PgDocResult> result;
 
   rows_affected_count_ = 0;
   for (auto& op : pgsql_ops_) {
@@ -517,11 +770,10 @@ Result<std::list<PgDocResult>> PgDocOp::ProcessCallResponse(const rpc::CallRespo
     // so that pg_gate can send responses to the postgres layer in the correct order.
 
     auto rows_data = VERIFY_RESULT(response.GetSidecarHolder(op_response->rows_data_sidecar()));
-    result.emplace_back(std::move(rows_data), BuildRowOrders(*op_response, batch_row_orders_, *op));
-    VLOG(3) << "From " << op->ToString() << " PgDocResult row count: " << result.back().row_count();
+    RETURN_NOT_OK(ResultStream().EmplaceOpDocResult(op, std::move(rows_data), *op_response));
   }
 
-  return result;
+  return Status::OK();
 }
 
 uint64_t& PgDocOp::GetInTxnLimitHt() {
@@ -701,7 +953,13 @@ Status PgDocReadOp::DoPopulateByYbctidOps(const YbctidGenerator& generator, Keep
   end_of_data_ = false;
   VLOG(1) << "Row order " << (keep_order ? "is" : "is not") << " important";
   if (keep_order) {
-    batch_row_orders_.reserve(generator.capacity);
+    if (!result_stream_) {
+      result_stream_ = std::make_unique<MergingPgDocResultStream<int64_t>>(
+          [this]() { return this->FetchMoreResults(); },
+          pgsql_ops_,
+          [](PgsqlResultStream* stream) { return stream->NextRowOrder(); });
+      VLOG(3) << "Created MergingPgDocResultStream";
+    }
   }
   while (true) {
     const auto ybctid = generator.next();
@@ -741,9 +999,7 @@ Status PgDocReadOp::DoPopulateByYbctidOps(const YbctidGenerator& generator, Keep
     // track of this order, each argument is assigned an order-number.
     auto* batch_arg = read_req.add_batch_arguments();
     if (keep_order) {
-      batch_arg->set_order(batch_row_ordering_counter_);
-      // Remember the order number for each request.
-      batch_row_orders_.emplace_back(pgsql_ops_[partition], batch_row_ordering_counter_++);
+      batch_arg->set_order(batch_row_ordering_counter_++);
     }
     auto* arg_value = batch_arg->mutable_ybctid()->mutable_value();
     arg_value->dup_binary_value(ybctid);
@@ -1328,6 +1584,12 @@ Status PgDocReadOp::CompleteProcessResponse() {
     end_of_data_ = request_population_completed_;
   }
 
+  if (exec_params_.out_param && has_out_param_backfill_spec()) {
+    YbcPgExecOutParamValue value;
+    value.bfoutput = out_param_backfill_spec();
+    YBCGetPgCallbacks()->WriteExecOutParam(exec_params_.out_param, &value);
+  }
+
   return Status::OK();
 }
 
@@ -1441,20 +1703,6 @@ void PgDocReadOp::ResetInactivePgsqlOps() {
     read_req.clear_lower_bound();
     read_req.clear_upper_bound();
   }
-
-  if (!active_op_count_) {
-    // Optimized version in case all operations are inactive
-    batch_row_orders_.clear();
-  } else {
-    batch_row_orders_.erase(
-      std::remove_if(
-          batch_row_orders_.begin(), batch_row_orders_.end(),
-          [](const auto& item) {
-            auto ptr = item.operation.lock();
-            return !ptr || !ptr->is_active();
-          }),
-      batch_row_orders_.end());
-  }
 }
 
 Status PgDocReadOp::ResetPgsqlOps() {
@@ -1516,6 +1764,7 @@ void PgDocReadOp::ClonePgsqlOps(size_t op_count) {
     // Initialize as inactive. Turn it on when setup argument for a specific partition.
     pgsql_ops_.back()->set_active(false);
   }
+  ResetResultStream();
   // Set parallelism_level_ to maximum possible of operators to be executed at one time.
   parallelism_level_ = pgsql_ops_.size();
 }
@@ -1537,6 +1786,7 @@ Result<bool> PgDocWriteOp::DoCreateRequests() {
   // Setup a singular operator.
   pgsql_ops_.push_back(write_op_);
   pgsql_ops_.back()->set_active(true);
+  ResetResultStream();
   active_op_count_ = 1;
 
   // Log non buffered request.

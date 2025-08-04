@@ -15,6 +15,8 @@
 
 #include <map>
 
+#include <rapidjson/document.h>
+
 #include "yb/common/pg_types.h"
 #include "yb/tserver/pg_mutation_counter.h"
 #include "yb/tserver/stateful_services/pg_auto_analyze_service.service.h"
@@ -28,19 +30,71 @@ class PGConn;
 
 namespace stateful_service {
 
-typedef std::function<Result<pgwrapper::PGConn>(const std::string&,
-  const std::optional<CoarseTimePoint>&)> ConnectToPostgresFunc;
+typedef std::function<Result<pgwrapper::PGConn>(
+    const std::string&, const std::optional<CoarseTimePoint>&)>
+    ConnectToPostgresFunc;
+
+struct AutoAnalyzeInfo {
+  explicit AutoAnalyzeInfo(int64_t mutations = 0) : mutations(mutations) {}
+  int64_t mutations;
+
+  struct AnalyzeEvent {
+    std::chrono::system_clock::time_point timestamp;
+    std::chrono::microseconds cooldown;
+
+    std::string ToString() const;
+    rapidjson::Value ToRapidJson(rapidjson::Document::AllocatorType& alloc) const;
+  };
+  std::vector<AnalyzeEvent> analyze_history;
+
+  std::string ToString() const;
+  rapidjson::Document ToRapidJson() const;
+};
+
+using AutoAnalyzeInfoMap = std::unordered_map<TableId, AutoAnalyzeInfo>;
+
+struct DbAutoAnalyzeParams {
+  double cooldown_scale_factor;
+  std::chrono::milliseconds max_cooldown_per_table;
+  std::chrono::milliseconds min_cooldown_per_table;
+};
+
+class AutoAnalyzeParams {
+ public:
+  void SetDbParams(const NamespaceId& namespace_id, const DbAutoAnalyzeParams& params) {
+    db_to_params_[namespace_id] = params;
+  }
+
+  double GetCooldownScaleFactor(const NamespaceId& namespace_id) const {
+    return db_to_params_.at(namespace_id).cooldown_scale_factor;
+  }
+
+  std::chrono::milliseconds GetMaxCooldownPerTable(const NamespaceId& namespace_id) const {
+    return db_to_params_.at(namespace_id).max_cooldown_per_table;
+  }
+
+  std::chrono::milliseconds GetMinCooldownPerTable(const NamespaceId& namespace_id) const {
+    return db_to_params_.at(namespace_id).min_cooldown_per_table;
+  }
+
+ private:
+  std::unordered_map<NamespaceId, DbAutoAnalyzeParams> db_to_params_;
+};
 
 class PgAutoAnalyzeService : public StatefulRpcServiceBase<PgAutoAnalyzeServiceIf> {
  public:
+  static constexpr char kAnalyzeHistoryKey[] = "analyze_history";
+
   explicit PgAutoAnalyzeService(
       const scoped_refptr<MetricEntity>& metric_entity,
       const std::shared_future<client::YBClient*>& client_future,
       ConnectToPostgresFunc connect_to_pg_func);
 
+  static Result<std::vector<AutoAnalyzeInfo::AnalyzeEvent>> ParseHistoryFromJsonb(
+      const QLValuePB& value);
+
  private:
   using NamespaceTablesMap = std::unordered_map<NamespaceId, std::vector<TableId>>;
-  using TableMutationsMap = std::unordered_map<TableId, int64_t>;
 
   void Activate() override;
   void Deactivate() override;
@@ -48,30 +102,36 @@ class PgAutoAnalyzeService : public StatefulRpcServiceBase<PgAutoAnalyzeServiceI
   virtual Result<bool> RunPeriodicTask() override;
   Status FlushMutationsToServiceTable();
   Status TriggerAnalyze();
-  Result<TableMutationsMap> ReadTableMutations();
-  Status GetTablePGSchemaAndName(const TableMutationsMap& table_id_to_mutations_maps);
+  Result<AutoAnalyzeInfoMap> ReadTableMutations();
+  Status GetTablePGSchemaAndName(const AutoAnalyzeInfoMap& table_id_to_info_maps);
   Status FetchUnknownReltuples(
-      const TableMutationsMap& table_id_to_mutations_maps,
+      const AutoAnalyzeInfoMap& table_id_to_info_maps,
       std::unordered_set<NamespaceId>& deleted_databases);
   Result<NamespaceTablesMap> DetermineTablesForAnalyze(
-      const TableMutationsMap& table_id_to_mutations_maps);
-  Result<std::pair<std::vector<TableId>, std::vector<TableId>>>
-      DoAnalyzeOnCandidateTables(
-          const NamespaceTablesMap& namespace_id_to_analyze_target_tables,
-          std::unordered_set<NamespaceId>& deleted_databases);
+      const AutoAnalyzeInfoMap& table_id_to_info_maps,
+      const std::chrono::system_clock::time_point& now);
+  Result<std::pair<std::vector<TableId>, std::vector<TableId>>> DoAnalyzeOnCandidateTables(
+      const NamespaceTablesMap& namespace_id_to_analyze_target_tables,
+      std::unordered_set<NamespaceId>& deleted_databases);
   Status UpdateTableMutationsAfterAnalyze(
-      const std::vector<TableId>& tables,
-      const TableMutationsMap& table_id_to_mutations_maps);
+      const std::vector<TableId>& tables, const AutoAnalyzeInfoMap& table_id_to_info_maps);
+  Status FlushAnalyzeHistory(
+      const std::vector<TableId>& tables, const AutoAnalyzeInfoMap& table_id_to_info_maps,
+      const std::chrono::system_clock::time_point& now);
+  Result<AutoAnalyzeInfoMap> UpdateAnalyzeHistory(
+      const std::vector<TableId>& analyzed_tables, AutoAnalyzeInfoMap&& table_id_to_info_maps,
+      const std::chrono::system_clock::time_point& now, const AutoAnalyzeParams& params);
   Status CleanUpDeletedTablesFromServiceTable(
-      const TableMutationsMap& table_id_to_mutations_maps,
-      const std::vector<TableId>& deleted_tables,
+      const AutoAnalyzeInfoMap& table_id_to_info_maps, const std::vector<TableId>& deleted_tables,
       const std::unordered_set<NamespaceId>& deleted_databases);
   Result<pgwrapper::PGConn> EstablishDBConnection(
-      const NamespaceId& namespace_id,
-      std::unordered_set<NamespaceId>& deleted_databases,
+      const NamespaceId& namespace_id, std::unordered_set<NamespaceId>& deleted_databases,
       bool* is_deleted_or_renamed);
   Result<bool> DoFetchReltuples(
       pgwrapper::PGConn& conn, TableId table_id, PgOid oid, bool use_relfilenode);
+  Result<AutoAnalyzeParams> GetAutoAnalyzeParams(
+      const AutoAnalyzeInfoMap& table_id_to_info_maps,
+      std::unordered_set<NamespaceId>& deleted_databases);
   std::string TableNamesForAnalyzeCmd(const std::vector<TableId>& table_ids);
 
   STATEFUL_SERVICE_IMPL_METHODS(IncreaseMutationCounters);
@@ -97,7 +157,7 @@ class PgAutoAnalyzeService : public StatefulRpcServiceBase<PgAutoAnalyzeServiceI
   bool refresh_name_cache_;
 
   // Each postgres database has its own pg_class table, so we use map instead of single value.
-  TableMutationsMap pg_class_id_mutations_;
+  AutoAnalyzeInfoMap pg_class_id_mutations_;
 };
 
 }  // namespace stateful_service

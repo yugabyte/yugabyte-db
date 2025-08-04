@@ -6828,6 +6828,7 @@ yb_get_baserel_primary_index(RelOptInfo *baserel)
 	foreach(lc, baserel->indexlist)
 	{
 		IndexOptInfo *index = (IndexOptInfo *) lfirst(lc);
+
 		if (!index->hypothetical)
 		{
 			Relation	index_rel = RelationIdGetRelation(index->indexoid);
@@ -6900,7 +6901,7 @@ yb_get_ybctid_width(Oid baserel_oid, RelOptInfo *baserel,
 					if (!index->hypothetical)
 					{
 						Relation	indexrel = index_open(index->indexoid,
-														   NoLock);
+														  NoLock);
 						Form_pg_attribute att = TupleDescAttr(indexrel->rd_att,
 															  i + 1);
 
@@ -7937,8 +7938,9 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 			  bool partial_path)
 {
 	IndexOptInfo *index = path->indexinfo;
-	bool is_primary_index;
+	bool		is_primary_index;
 	Oid			index_tablespace_id = index->reltablespace;
+
 	if (index->hypothetical)
 	{
 		is_primary_index = false;
@@ -7946,6 +7948,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	else
 	{
 		Relation	index_rel = RelationIdGetRelation(index->indexoid);
+
 		is_primary_index = index_rel->rd_index->indisprimary;
 		RelationClose(index_rel);
 	}
@@ -8168,6 +8171,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	double		num_nexts_prevs = 0;
 	double		num_bmscan_seeks = 0;
 	double		num_bmscan_nexts_prevs = 0;
+
 	if (yb_exist_conditions_on_all_hash_keys_)
 	{
 		yb_estimate_seeks_nexts_in_index_scan(root, index, baserel, baserel_oid,
@@ -8382,6 +8386,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 
 	int			index_ybctid_width = yb_get_ybctid_width(baserel_oid, baserel,
 														 index, false);
+
 	{
 		/*
 		 * If this path is used in a BitmapIndexScan, ybctids from multiple

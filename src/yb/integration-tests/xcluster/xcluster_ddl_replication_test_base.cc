@@ -139,23 +139,6 @@ Status XClusterDDLReplicationTestBase::RunBackupCommand(
       "XClusterDDLReplicationTestBase::RunBackupCommand does not work with yb_backup.py");
 }
 
-Result<std::shared_ptr<client::YBTable>> XClusterDDLReplicationTestBase::GetProducerTable(
-    const client::YBTableName& producer_table_name) {
-  std::shared_ptr<client::YBTable> producer_table;
-  RETURN_NOT_OK(producer_client()->OpenTable(producer_table_name, &producer_table));
-  return producer_table;
-}
-
-Result<std::shared_ptr<client::YBTable>> XClusterDDLReplicationTestBase::GetConsumerTable(
-    const client::YBTableName& producer_table_name) {
-  auto consumer_table_name = VERIFY_RESULT(GetYsqlTable(
-      &consumer_cluster_, producer_table_name.namespace_name(), producer_table_name.pgschema_name(),
-      producer_table_name.table_name()));
-  std::shared_ptr<client::YBTable> consumer_table;
-  RETURN_NOT_OK(consumer_client()->OpenTable(consumer_table_name, &consumer_table));
-  return consumer_table;
-}
-
 void XClusterDDLReplicationTestBase::InsertRowsIntoProducerTableAndVerifyConsumer(
     const client::YBTableName& producer_table_name, uint32_t start, uint32_t end,
     const xcluster::ReplicationGroupId replication_group) {

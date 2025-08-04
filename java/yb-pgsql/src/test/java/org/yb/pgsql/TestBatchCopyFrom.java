@@ -40,7 +40,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestBatchCopyFrom.class);
 
   private static final String INVALID_BATCH_OPTION_USAGE_WARNING_MSG =
-      "batched COPY is not supported";
+      "ROWS_PER_TRANSACTION is not supported";
   private static final String INVALID_BATCH_SIZE_ERROR_MSG =
       "argument to option \"rows_per_transaction\" must be a positive integer";
   private static final String INVALID_NUM_SKIPPED_ROWS_ERROR_MSG =
@@ -56,27 +56,6 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
       "yb_disable_transactional_writes";
   private static final String YB_ENABLE_UPSERT_MODE_VARIABLE_NAME =
       "yb_enable_upsert_mode";
-
-  private String getAbsFilePath(String fileName) {
-    return TestUtils.getBaseTmpDir() + "/" + fileName;
-  }
-
-  private void createFileInTmpDir(String absFilePath, int totalLines) throws IOException {
-    File myObj = new File(absFilePath);
-    myObj.createNewFile();
-
-    BufferedWriter writer = new BufferedWriter(new FileWriter(myObj));
-    writer.write("a,b,c,d\n");
-
-    int totalValues = totalLines * 4;
-    for (int i = 0; i < totalValues; i++) {
-      if (i != 0 && (i + 1) % 4 == 0)
-        writer.write("\n");
-      else
-        writer.write(i+",");
-    }
-    writer.close();
-  }
 
   private void writeToFileInTmpDir(String absFilePath, String line) throws IOException {
     File myObj = new File(absFilePath);
@@ -118,7 +97,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
     int totalValidLines = 2500;
     int totalInvalidLines = 500;
 
-    createFileInTmpDir(absFilePath, totalValidLines);
+    createCopyFileInTmpDir(absFilePath, totalValidLines);
     appendInvalidLines(absFilePath, totalInvalidLines);
 
     try (Statement statement = connection.createStatement()) {
@@ -149,7 +128,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
     int totalLines = 20;
     int batchSize = -1;
 
-    createFileInTmpDir(absFilePath, totalLines);
+    createCopyFileInTmpDir(absFilePath, totalLines);
 
     try (Statement statement = connection.createStatement()) {
       statement.execute(String.format(
@@ -171,7 +150,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
     int totalLines = 100000;
     int batchSize = 100;
 
-    createFileInTmpDir(absFilePath, totalLines);
+    createCopyFileInTmpDir(absFilePath, totalLines);
 
     try (Statement statement = connection.createStatement()) {
       statement.execute(String.format("CREATE TABLE %s (a int, b int, c text, d int)", tableName));
@@ -190,7 +169,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
     int totalLines = 100;
     int batchSize = 10000;
 
-    createFileInTmpDir(absFilePath, totalLines);
+    createCopyFileInTmpDir(absFilePath, totalLines);
 
     try (Statement statement = connection.createStatement()) {
       statement.execute(String.format(
@@ -211,7 +190,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
     int totalLines = 7;
     int batchSize = 1;
 
-    createFileInTmpDir(absFilePath, totalLines);
+    createCopyFileInTmpDir(absFilePath, totalLines);
 
     try (Statement statement = connection.createStatement()) {
       statement.execute(String.format("CREATE TABLE %s (a int, b text, c int, d int)", tableName));
@@ -256,7 +235,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
     int totalInvalidLines = 1;
     int batchSize = 1;
 
-    createFileInTmpDir(absFilePath, totalValidLines);
+    createCopyFileInTmpDir(absFilePath, totalValidLines);
     appendInvalidLines(absFilePath, totalInvalidLines);
 
     try (Statement statement = connection.createStatement()) {
@@ -307,7 +286,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
     int totalLines = 20;
     int batchSize = 5;
 
-    createFileInTmpDir(absFilePath, totalLines);
+    createCopyFileInTmpDir(absFilePath, totalLines);
 
     try (Statement statement = connection.createStatement()) {
       statement.execute(String.format(
@@ -330,7 +309,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
     int batchSize = 5;
     String dummyTableName = "sampleTable";
 
-    createFileInTmpDir(absFilePath, totalLines);
+    createCopyFileInTmpDir(absFilePath, totalLines);
 
     try (Statement statement = connection.createStatement()) {
       statement.execute(String.format(
@@ -358,7 +337,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
     int totalLines = 5;
     int batchSize = 1;
 
-    createFileInTmpDir(absFilePath, totalLines);
+    createCopyFileInTmpDir(absFilePath, totalLines);
 
     try (Statement statement = connection.createStatement()) {
       statement.execute(String.format("CREATE TABLE %s (a int, b int, c int, d text)", tableName));
@@ -382,7 +361,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
     int totalLines = 5;
     int batchSize = 1;
 
-    createFileInTmpDir(absFilePath, totalLines);
+    createCopyFileInTmpDir(absFilePath, totalLines);
 
     try (Statement statement = connection.createStatement()) {
       statement.execute(String.format("CREATE TABLE %s (a text, b int, c int, d int)", tableName));
@@ -413,7 +392,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
     int totalInvalidLines = 1;
     int batchSize = 1;
 
-    createFileInTmpDir(absFilePath, totalValidLines);
+    createCopyFileInTmpDir(absFilePath, totalValidLines);
     appendInvalidLines(absFilePath, totalInvalidLines);
 
     try (Statement statement = connection.createStatement()) {
@@ -453,7 +432,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
     int totalLines = 5;
     int batchSize = 2;
 
-    createFileInTmpDir(absFilePath, totalLines);
+    createCopyFileInTmpDir(absFilePath, totalLines);
 
     try (Statement statement = connection.createStatement()) {
       statement.execute(String.format("CREATE TABLE %s (a int, b int, c int, d int)", tableName));
@@ -484,7 +463,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
     // since starting from the 8th row, entry is invalid.
     int expectedCopiedLines = batchSessionSize * 3;
 
-    createFileInTmpDir(absFilePath, totalValidLines);
+    createCopyFileInTmpDir(absFilePath, totalValidLines);
     appendInvalidLines(absFilePath, totalInvalidLines);
 
     try (Statement statement = connection.createStatement()) {
@@ -523,7 +502,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
     int totalValidLines = 5;
     int expectedCopiedLines = totalValidLines;
 
-    createFileInTmpDir(absFilePath, totalValidLines);
+    createCopyFileInTmpDir(absFilePath, totalValidLines);
 
     try (Statement statement = connection.createStatement()) {
       // ensure non-txn session variable is off by default
@@ -555,7 +534,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
     int totalValidLines = 5;
     int expectedCopiedLines = totalValidLines;
 
-    createFileInTmpDir(absFilePath, totalValidLines);
+    createCopyFileInTmpDir(absFilePath, totalValidLines);
 
     try (Statement statement = connection.createStatement()) {
       // check that yb_enable_upsert_mode session is off by default
@@ -590,7 +569,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
     int totalValidLines = 5;
     int expectedCopiedLines = totalValidLines;
 
-    createFileInTmpDir(absFilePath, totalValidLines);
+    createCopyFileInTmpDir(absFilePath, totalValidLines);
 
     // add CSV line that shares the same primary key value as
     // another row but updates the indexed column b
@@ -637,7 +616,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
     int expectedForeignKeyLines = 5;
 
     // create tmp CSV file with header
-    createFileInTmpDir(foreignKeyFilePath, expectedForeignKeyLines);
+    createCopyFileInTmpDir(foreignKeyFilePath, expectedForeignKeyLines);
 
     // add CSV line that shares the same primary key as
     // another row but updates the foreign key column
@@ -697,7 +676,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
     int totalValidLines = 5;
     int expectedCopiedLines = totalValidLines;
 
-    createFileInTmpDir(absFilePath, totalValidLines);
+    createCopyFileInTmpDir(absFilePath, totalValidLines);
 
     try (Statement statement = connection.createStatement()) {
       // create and populate table with COPY command
@@ -724,7 +703,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
         statement,
         String.format("COPY %s FROM \'%s\' WITH (FORMAT CSV, HEADER)", tableName, absFilePath),
         Arrays.asList(
-          "batched COPY is not supported on table with non RI trigger",
+          "ROWS_PER_TRANSACTION is not supported on table with non RI trigger",
           "trigger_func(before_ins_stmt) called: action = INSERT, when = BEFORE, level = STATEMENT",
           "trigger_func(after_ins_stmt) called: action = INSERT, when = AFTER, level = STATEMENT"));
 
@@ -745,7 +724,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
     // since starting from the 8th row, entry is invalid.
     int expectedCopiedLines = batchOptionSize;
 
-    createFileInTmpDir(absFilePath, totalValidLines);
+    createCopyFileInTmpDir(absFilePath, totalValidLines);
     appendInvalidLines(absFilePath, totalInvalidLines);
 
     try (Statement statement = connection.createStatement()) {
@@ -768,7 +747,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
     int totalLines = 100000;
     int batchSize = 100;
 
-    createFileInTmpDir(absFilePath, totalLines);
+    createCopyFileInTmpDir(absFilePath, totalLines);
 
     final String createStmt = "CREATE TABLE %s (a int, b int, c text, d int) PARTITION BY %s(a)";
     final String createDefaultStmt = "CREATE TABLE %s PARTITION OF %s DEFAULT";
@@ -810,7 +789,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
     int totalLines = 100;
     int batchSize = totalLines;
 
-    createFileInTmpDir(absFilePath, totalLines);
+    createCopyFileInTmpDir(absFilePath, totalLines);
 
     try (Statement statement = connection.createStatement()) {
       // Both reference table and main table have the same key set from 0 to totalLines - 1.
@@ -840,7 +819,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
     int batchSize = totalLines;
     String referenceKey = "a_fkey";
 
-    createFileInTmpDir(absFilePath, totalLines);
+    createCopyFileInTmpDir(absFilePath, totalLines);
 
     String INVALID_FOREIGN_KEY_CHECK_ERROR_MSG =
         String.format("insert or update on table \"%s\" violates foreign key constraint \"%s_%s\"",
@@ -878,7 +857,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
     int batchSize = 1;
     String referenceKey = "a_fkey";
 
-    createFileInTmpDir(absFilePath, totalLines);
+    createCopyFileInTmpDir(absFilePath, totalLines);
 
     String INVALID_FOREIGN_KEY_CHECK_ERROR_MSG =
         String.format("insert or update on table \"%s\" violates foreign key constraint \"%s_%s\"",
@@ -918,7 +897,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
     int batchSize = 5;
     String INVALID_PRIMARY_KEY_TRIGGER_ERROR_MSG = "Primary key too large";
 
-    createFileInTmpDir(absFilePath, totalLines);
+    createCopyFileInTmpDir(absFilePath, totalLines);
 
     try (Statement statement = connection.createStatement()) {
       statement.execute(
@@ -959,7 +938,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
     int skippedLines = 10;
     int expectedCopiedLines = totalLines - skippedLines;
 
-    createFileInTmpDir(absFilePath, totalLines);
+    createCopyFileInTmpDir(absFilePath, totalLines);
     try (Statement statement = connection.createStatement()) {
       statement.execute(String.format(
           "CREATE TABLE %s (a Integer, b serial, c varchar, d int)", tableName));
@@ -981,7 +960,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
     int totalLines = 100;
     int skippedLines = 1000;
 
-    createFileInTmpDir(absFilePath, totalLines);
+    createCopyFileInTmpDir(absFilePath, totalLines);
 
     try (Statement statement = connection.createStatement()) {
       statement.execute(String.format(
@@ -1003,7 +982,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
     int totalLines = 100;
     int skippedLines = -1;
 
-    createFileInTmpDir(absFilePath, totalLines);
+    createCopyFileInTmpDir(absFilePath, totalLines);
 
     try (Statement statement = connection.createStatement()) {
       statement.execute(String.format(
@@ -1030,7 +1009,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
     int totalValidLines = 5;
     int skippedLines = totalInvalidLines;
 
-    createFileInTmpDir(absFilePath, 0);
+    createCopyFileInTmpDir(absFilePath, 0);
     appendInvalidLines(absFilePath, totalInvalidLines);
     appendValidLines(absFilePath, totalValidLines, 0);
 
@@ -1075,7 +1054,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
         String.format("insert or update on table \"%s\" violates foreign key constraint \"%s_%s\"",
                       tableName, tableName, referenceKey);
 
-    createFileInTmpDir(absFilePath, totalLines);
+    createCopyFileInTmpDir(absFilePath, totalLines);
 
     try (Statement statement = connection.createStatement()) {
       // Create reference table without the keys among the skipped rows.
@@ -1125,7 +1104,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
         String.format("insert or update on table \"%s\" violates foreign key constraint \"%s_%s\"",
                       tableName, tableName, referenceKey);
 
-    createFileInTmpDir(absFilePath, totalLines);
+    createCopyFileInTmpDir(absFilePath, totalLines);
 
     try (Statement statement = connection.createStatement()) {
       // Create reference table without the keys among the skipped tuples, and without the last key
@@ -1161,7 +1140,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
     int totalLines = 100;
     String referenceKey = "a_fkey";
 
-    createFileInTmpDir(absFilePath, totalLines);
+    createCopyFileInTmpDir(absFilePath, totalLines);
 
     String INVALID_FOREIGN_KEY_CHECK_ERROR_MSG =
         String.format("insert or update on table \"%s\" violates foreign key constraint \"%s_%s\"",
@@ -1201,8 +1180,8 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
 
     String tableName = "copy_with_replace";
     int totalLines = 100;
-    createFileInTmpDir(oldFilePath, totalLines / 2);
-    createFileInTmpDir(newFilePath, totalLines);
+    createCopyFileInTmpDir(oldFilePath, totalLines / 2);
+    createCopyFileInTmpDir(newFilePath, totalLines);
 
     try (Statement statement = connection.createStatement()) {
       statement.execute(

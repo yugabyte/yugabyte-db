@@ -18,9 +18,9 @@ import (
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common/shell"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/config"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/systemd"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/template"
 )
 
 /*
@@ -56,7 +56,7 @@ func newPostgresDirectories() postgresDirectories {
 		MountPath:           common.GetBaseInstall() + "/data/pgsql/run/postgresql",
 		dataDir:             common.GetBaseInstall() + "/data/postgres",
 		PgBin:               common.GetSoftwareRoot() + "/pgsql/bin",
-		LogFile:             common.GetBaseInstall() + "/data/logs/postgres.log",
+		LogFile:             common.GetBaseInstall() + "/data/logs/postgresql",
 	}
 }
 
@@ -105,7 +105,7 @@ func (pg Postgres) getPgUserName() string {
 // Install postgres and create the yugaware DB for YBA.
 func (pg Postgres) Install() error {
 	log.Info("Starting Postgres install")
-	config.GenerateTemplate(pg)
+	template.GenerateTemplate(pg)
 	if err := pg.extractPostgresPackage(); err != nil {
 		return err
 	}
@@ -150,6 +150,10 @@ func (pg Postgres) Initialize() error {
 
 	if viper.GetBool("postgres.install.enabled") {
 		pg.createYugawareDatabase()
+	}
+
+	if viper.GetBool("perfAdvisor.enabled") {
+		pg.createTSDatabase()
 	}
 
 	log.Info("Finishing Postgres initialize")
@@ -367,7 +371,7 @@ func (pg Postgres) UpgradeMajorVersion() error {
 	pg.CreateBackup()
 	pg.Stop()
 	pg.postgresDirectories = newPostgresDirectories()
-	config.GenerateTemplate(pg) // NOTE: This does not require systemd reload, start does it for us.
+	template.GenerateTemplate(pg) // NOTE: This does not require systemd reload, start does it for us.
 	if err := pg.extractPostgresPackage(); err != nil {
 		return err
 	}
@@ -397,7 +401,7 @@ func (pg Postgres) UpgradeMajorVersion() error {
 func (pg Postgres) Upgrade() error {
 	log.Info("Starting Postgres upgrade")
 	pg.postgresDirectories = newPostgresDirectories()
-	if err := config.GenerateTemplate(pg); err != nil {
+	if err := template.GenerateTemplate(pg); err != nil {
 		return err
 	}
 	if err := pg.extractPostgresPackage(); err != nil {
@@ -419,7 +423,7 @@ func (pg Postgres) Upgrade() error {
 // restored onto the new postgres install, we currently will just do a full install.
 // TODO: Implement the backup/restore of postgres.
 func (pg Postgres) MigrateFromReplicated() error {
-	config.GenerateTemplate(pg)
+	template.GenerateTemplate(pg)
 	if err := pg.extractPostgresPackage(); err != nil {
 		return fmt.Errorf("Error extracting postgres package: %s", err.Error())
 	}
@@ -525,38 +529,50 @@ func (pg Postgres) alterPassword() error {
 // Set the data directory in postgresql.conf
 // Also sets up LDAP if necessary
 func (pg Postgres) modifyPostgresConf() error {
-	// work to set data directory separate in postgresql.conf
 	pgConfPath := filepath.Join(pg.ConfFileLocation, "postgresql.conf")
-	conf, err := os.ReadFile(pgConfPath)
+	in, err := os.Open(pgConfPath)
 	if err != nil {
-		return fmt.Errorf("Error opening %s: %s", pgConfPath, err.Error())
+		return fmt.Errorf("error opening %s: %s", pgConfPath, err.Error())
 	}
-	lines := strings.Split(string(conf), "\n")
-	foundData := false
-	dataLine := fmt.Sprintf("data_directory = '%s'\n", pg.dataDir)
-	foundPort := false
-	portLine := fmt.Sprintf("port = %d\n", viper.GetInt("postgres.install.port"))
-	for i, line := range lines {
-		if strings.HasPrefix(line, "data_directory =") {
-			lines[i] = dataLine
-			foundData = true
-		} else if strings.HasPrefix(line, "port =") {
-			lines[i] = portLine
-			foundPort = true
+	defer in.Close()
+
+	out, err := os.CreateTemp(filepath.Dir(pgConfPath), "postgresql.conf.tmp")
+	if err != nil {
+		return fmt.Errorf("error creating temp file for %s: %s", pgConfPath, err.Error())
+	}
+	defer func() {
+		out.Close()
+		os.Remove(out.Name())
+	}()
+
+	entries := []common.ConfEntry{
+		{Key: "data_directory", Value: pg.dataDir, Quotes: true},
+		{Key: "port", Value: fmt.Sprintf("%d", viper.GetInt("postgres.install.port")), Quotes: false},
+		{Key: "logging_collector", Value: "on", Quotes: false},
+		{Key: "log_directory", Value: filepath.Dir(pg.LogFile), Quotes: true},
+		{Key: "log_filename", Value: "postgresql-%Y-%m-%d_%H%M%S.log", Quotes: true},
+		{Key: "log_rotation_age", Value: "1d", Quotes: false},
+		{Key: "log_rotation_size", Value: "10MB", Quotes: false},
+	}
+
+	updater := common.ConfUpdater{Entries: entries}
+	if err := updater.Update(in, out); err != nil {
+		return fmt.Errorf("failed to update postgresql.conf: %w", err)
+	}
+
+	// Overwrite the original file with the updated temp file
+	if err := out.Close(); err != nil {
+		return fmt.Errorf("failed to close temp file: %w", err)
+	}
+	if err := os.Rename(out.Name(), pgConfPath); err != nil {
+		return fmt.Errorf("failed to replace postgresql.conf: %w", err)
+	}
+	if common.HasSudoAccess() {
+		if err := common.Chown(pgConfPath, viper.GetString("service_username"), viper.GetString("service_username"), false); err != nil {
+			return fmt.Errorf("failed to change ownership of %s: %w", pgConfPath, err)
 		}
 	}
-
-	if !foundData {
-		lines = append(lines, dataLine)
-	}
-	if !foundPort {
-		lines = append(lines, portLine)
-	}
-
-	err = os.WriteFile(pgConfPath, []byte(strings.Join(lines, "\n")), 0600)
-	if err != nil {
-		return fmt.Errorf("error writing pg conf file to %s: %s", pgConfPath, err.Error())
-	}
+	log.Info("Modified postgresql.conf at " + pgConfPath)
 	return nil
 }
 
@@ -640,6 +656,31 @@ func (pg Postgres) copyConfFiles() error {
 	return nil
 }
 
+func (pg Postgres) createTSDatabase() {
+	cmd := pg.PgBin + "/createdb"
+	args := []string{
+		"-h", pg.MountPath,
+		"-U", pg.getPgUserName(),
+		"-p", viper.GetString("postgres.install.port"),
+		"ts",
+	}
+	var out *shell.Output
+	if common.HasSudoAccess() {
+		// RUns as service user
+		// This is needed for the ts db to be created in the right location
+		out = shell.RunAsUser(viper.GetString("service_username"), cmd, args...)
+	} else {
+		out = shell.Run(cmd, args...)
+	}
+	if !out.Succeeded() {
+		if strings.Contains(out.StderrString(), "already exists") {
+			// db already existing is fine because this may be a resumed failed install
+			return
+		}
+		log.Fatal(fmt.Sprintf("Could not create ts database: %s", out.Error.Error()))
+	}
+}
+
 func (pg Postgres) createYugawareDatabase() {
 	cmd := pg.PgBin + "/createdb"
 	args := []string{
@@ -664,15 +705,6 @@ func (pg Postgres) createYugawareDatabase() {
 }
 
 func (pg Postgres) createFilesAndDirs() error {
-	f, err := common.Create(pg.LogFile)
-	if err != nil && !errors.Is(err, os.ErrExist) {
-		log.Error("Failed to create postgres logfile: " + err.Error())
-		return err
-	}
-	if f != nil {
-		f.Close()
-	}
-
 	// Needed for socket acceptance in the non-root case.
 	if err := common.MkdirAll(pg.MountPath, os.ModePerm); err != nil {
 		log.Error("failed to create " + pg.MountPath + ": " + err.Error())
@@ -686,9 +718,6 @@ func (pg Postgres) createFilesAndDirs() error {
 
 		confDir := filepath.Dir(pg.ConfFileLocation)
 		if err := common.Chown(confDir, userName, userName, true); err != nil {
-			return err
-		}
-		if err := common.Chown(filepath.Dir(pg.LogFile), userName, userName, true); err != nil {
 			return err
 		}
 		if err := common.Chown(filepath.Join(common.GetBaseInstall(), "data/pgsql"),
@@ -714,7 +743,7 @@ func (pg Postgres) symlinkReplicatedDir() error {
 
 func (pg Postgres) Reconfigure() error {
 	log.Info("Reconfiguring Postgres")
-	if err := config.GenerateTemplate(pg); err != nil {
+	if err := template.GenerateTemplate(pg); err != nil {
 		return fmt.Errorf("failed to generate postgres config template: %w", err)
 	}
 	if err := pg.modifyPostgresConf(); err != nil {

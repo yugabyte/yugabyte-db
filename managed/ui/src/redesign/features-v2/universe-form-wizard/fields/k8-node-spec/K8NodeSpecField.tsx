@@ -1,30 +1,25 @@
 import { ReactElement, useContext, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Controller, useFormContext } from 'react-hook-form';
-import { useQuery } from 'react-query';
-import { Box, makeStyles } from '@material-ui/core';
-import { YBLabel, YBInput } from '@yugabyte-ui-library/core';
-import { api, QUERY_KEY } from '@app/redesign/features/universe/universe-form/utils/api';
+import { YBLabel, YBInput, mui } from '@yugabyte-ui-library/core';
 import {
   getDefaultK8NodeSpec,
   getK8MemorySizeRange,
   getK8CPUCoresRange
-} from './K8NodeSpecFieldHelper';
+} from '@app/redesign/features-v2/universe-form-wizard/fields/k8-node-spec/K8NodeSpecFieldHelper';
 import { NodeType } from '@app/redesign/utils/dtos';
-import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
-import { InstanceSettingProps } from '../../steps/hardware-settings/dtos';
-import { MASTER_K8_NODE_SPEC_FIELD, TSERVER_K8_NODE_SPEC_FIELD } from '../FieldNames';
+import { useRuntimeConfigValues } from '@app/redesign/features-v2/universe-form-wizard/helpers/utils';
+import {
+  CreateUniverseContext,
+  CreateUniverseContextMethods
+} from '@app/redesign/features-v2/universe-form-wizard/CreateUniverseContext';
+import { InstanceSettingProps } from '@app/redesign/features-v2/universe-form-wizard/steps/hardware-settings/dtos';
+import {
+  MASTER_K8_NODE_SPEC_FIELD,
+  TSERVER_K8_NODE_SPEC_FIELD
+} from '@app/redesign/features-v2/universe-form-wizard/fields/FieldNames';
 
-const useStyles = makeStyles((theme) => ({
-  volumeInfoTextField: {
-    width: theme.spacing(15.5)
-  },
-  unitLabelField: {
-    marginLeft: theme.spacing(2),
-    alignSelf: 'flex-end',
-    marginBottom: 8
-  }
-}));
+const { Box } = mui;
 
 interface K8NodeSpecFieldProps {
   isMaster: boolean;
@@ -34,13 +29,10 @@ interface K8NodeSpecFieldProps {
 export const K8NodeSpecField = ({ isMaster, disabled }: K8NodeSpecFieldProps): ReactElement => {
   const { watch, control, setValue } = useFormContext<InstanceSettingProps>();
   const { t } = useTranslation('translation', { keyPrefix: 'universeForm.instanceConfig' });
-  const classes = useStyles();
 
   const [{ generalSettings }] = (useContext(
     CreateUniverseContext
   ) as unknown) as CreateUniverseContextMethods;
-
-  // watchers
 
   const nodeTypeTag = isMaster ? NodeType.Master : NodeType.TServer;
 
@@ -53,28 +45,20 @@ export const K8NodeSpecField = ({ isMaster, disabled }: K8NodeSpecFieldProps): R
   const convertToString = (str: string | number) => str?.toString() ?? '';
 
   //fetch run time configs
-  const {
-    data: providerRuntimeConfigs,
-    refetch: providerConfigsRefetch
-  } = useQuery(
-    QUERY_KEY.fetchProviderRunTimeConfigs,
-    () => api.fetchRunTimeConfigs(true, provider?.uuid),
-    { enabled: !!provider?.uuid }
-  );
+  const { providerRuntimeConfigs } = useRuntimeConfigValues(provider?.uuid);
 
   //update memory and cpu from provider runtime configs
   useEffect(() => {
-    const getProviderRuntimeConfigs = async () => {
-      const providerRuntimeRefetch = await providerConfigsRefetch();
-      const { memorySize, CPUCores } = getDefaultK8NodeSpec(providerRuntimeRefetch?.data);
+    const updateDeviceInfo = () => {
+      const { memorySize, CPUCores } = getDefaultK8NodeSpec(providerRuntimeConfigs);
       const nodeSpec = {
         memoryGib: memorySize,
         cpuCoreCount: CPUCores
       };
       setValue(UPDATE_FIELD, nodeSpec);
     };
-    getProviderRuntimeConfigs();
-  }, [provider?.uuid]);
+    !fieldValue && updateDeviceInfo();
+  }, [fieldValue]);
 
   const { minMemorySize, maxMemorySize } = getK8MemorySizeRange(providerRuntimeConfigs);
   const { minCPUCores, maxCPUCores } = getK8CPUCoresRange(providerRuntimeConfigs);
@@ -125,6 +109,7 @@ export const K8NodeSpecField = ({ isMaster, disabled }: K8NodeSpecFieldProps): R
                   disabled={disabled}
                   onChange={(event) => onNumCoresChanged(event.target.value)}
                   inputMode="numeric"
+                  dataTestId={`K8NodeSpecField-${nodeTypeTag}-NumCoresInput`}
                 />
               </Box>
             </Box>
@@ -149,9 +134,19 @@ export const K8NodeSpecField = ({ isMaster, disabled }: K8NodeSpecFieldProps): R
                     disabled={disabled}
                     onChange={(event) => onMemoryChanged(event.target.value)}
                     inputMode="numeric"
+                    dataTestId={`K8NodeSpecField-${nodeTypeTag}-MemoryInput`}
                   />
                 </Box>
-                <Box ml={2} display="flex" alignItems="center" className={classes.unitLabelField}>
+                <Box
+                  ml={2}
+                  display="flex"
+                  alignItems="center"
+                  sx={(theme) => ({
+                    marginLeft: theme.spacing(2),
+                    alignSelf: 'flex-end',
+                    marginBottom: 1
+                  })}
+                >
                   {t('k8VolumeSizeUnit')}
                 </Box>
               </Box>

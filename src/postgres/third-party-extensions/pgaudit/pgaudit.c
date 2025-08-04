@@ -5,7 +5,7 @@
  * object level logging, and fully-qualified object names for all DML and DDL
  * statements where possible (See README.md for details).
  *
- * Copyright (c) 2014-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2014-2025, PostgreSQL Global Development Group
  *------------------------------------------------------------------------------
  */
 #include "postgres.h"
@@ -73,7 +73,7 @@ PG_FUNCTION_INFO_V1(pgaudit_sql_drop);
 #define LOG_ALL         (0xFFFFFFFF)    /* All */
 
 /* GUC variable for pgaudit.log, which defines the classes to log. */
-char *auditLog = NULL;
+static char *auditLog = NULL;
 
 /* Bitmap of classes selected */
 static int auditLogBitmap = LOG_NONE;
@@ -100,7 +100,7 @@ static int auditLogBitmap = LOG_NONE;
  * the query are in pg_catalog.  Interactive sessions (eg: psql) can cause
  * a lot of noise in the logs which might be uninteresting.
  */
-bool auditLogCatalog = true;
+static bool auditLogCatalog = true;
 
 /*
  * GUC variable for pgaudit.log_client
@@ -109,7 +109,7 @@ bool auditLogCatalog = true;
  * setting should generally be left disabled but may be useful for debugging or
  * other purposes.
  */
-bool auditLogClient = false;
+static bool auditLogClient = false;
 
 /*
  * GUC variable for pgaudit.log_level
@@ -118,8 +118,8 @@ bool auditLogClient = false;
  * at.  The default level is LOG, which goes into the server log but does
  * not go to the client.  Set to NOTICE in the regression tests.
  */
-char *auditLogLevelString = NULL;
-int auditLogLevel = LOG;
+static char *auditLogLevelString = NULL;
+static int auditLogLevel = LOG;
 
 /*
  * GUC variable for pgaudit.log_parameter
@@ -127,7 +127,7 @@ int auditLogLevel = LOG;
  * Administrators can choose if parameters passed into a statement are
  * included in the audit log.
  */
-bool auditLogParameter = false;
+static bool auditLogParameter = false;
 
 /*
  * GUC variable for pgaudit.log_relation
@@ -136,7 +136,7 @@ bool auditLogParameter = false;
  * in READ/WRITE class queries.  By default, SESSION logs include the query but
  * do not have a log entry for each relation.
  */
-bool auditLogRelation = false;
+static bool auditLogRelation = false;
 
 /*
  * GUC variable for pgaudit.log_rows
@@ -144,14 +144,14 @@ bool auditLogRelation = false;
  * Administrators can choose if the rows retrieved or affected by a statement
  * are included in the audit log.
  */
-bool auditLogRows = false;
+static bool auditLogRows = false;
 
 /*
  * GUC variable for pgaudit.log_statement
  *
  * Administrators can choose to not have the full statement text logged.
  */
-bool auditLogStatement = true;
+static bool auditLogStatement = true;
 
 /*
  * GUC variable for pgaudit.log_statement_once
@@ -159,9 +159,9 @@ bool auditLogStatement = true;
  * Administrators can choose to have the statement run logged only once instead
  * of on every line.  By default, the statement is repeated on every line of
  * the audit log to facilitate searching, but this can cause the log to be
- * unnecessairly bloated in some environments.
+ * unnecessarily bloated in some environments.
  */
-bool auditLogStatementOnce = false;
+static bool auditLogStatementOnce = false;
 
 /*
  * GUC variable for pgaudit.role
@@ -170,7 +170,7 @@ bool auditLogStatementOnce = false;
  * Object-level auditing uses the privileges which are granted to this role to
  * determine if a statement should be logged.
  */
-char *auditRole = NULL;
+static char *auditRole = NULL;
 
 /*
  * String constants for the audit log fields.
@@ -258,7 +258,7 @@ typedef struct AuditEventStackItem
     MemoryContextCallback contextCallback;
 } AuditEventStackItem;
 
-AuditEventStackItem *auditEventStack = NULL;
+static AuditEventStackItem *auditEventStack = NULL;
 
 /*
  * pgAudit runs queries of its own when using the event trigger system.
@@ -676,7 +676,7 @@ log_audit_event(AuditEventStackItem *stackItem)
     append_valid_csv(&auditStr, stackItem->auditEvent.objectName);
 
     /*
-     * If auditLogStatmentOnce is true, then only log the statement and
+     * If auditLogStatementOnce is true, then only log the statement and
      * parameters if they have not already been logged for this substatement.
      */
     appendStringInfoCharMacro(&auditStr, ',');
@@ -992,8 +992,11 @@ log_select_dml(Oid auditOid, List *rangeTabls)
         Oid relNamespaceOid;
         RangeTblEntry *rte = lfirst(lr);
 
-        /* We only care about tables, and can ignore subqueries etc. */
-        if (rte->rtekind != RTE_RELATION)
+        /*
+         * We only care about tables, and can ignore subqueries etc. Also detect
+         * and skip partitions by checking for missing requiredPerms.
+         */
+        if (rte->rtekind != RTE_RELATION || rte->requiredPerms == 0)
             continue;
 
         found = true;
@@ -1001,7 +1004,7 @@ log_select_dml(Oid auditOid, List *rangeTabls)
         /*
          * Don't log if the session user is not a member of the current
          * role.  This prevents contents of security definer functions
-         * from being logged and supresses foreign key queries unless the
+         * from being logged and suppresses foreign key queries unless the
          * session user is the owner of the referenced table.
          */
         if (!is_member_of_role(GetSessionUserId(), GetUserId()))
@@ -1035,7 +1038,7 @@ log_select_dml(Oid auditOid, List *rangeTabls)
         }
 
         /*
-         * We don't have access to the parsetree here, so we have to generate
+         * We don't have access to the parse tree here, so we have to generate
          * the node type, object type, and command tag by decoding
          * rte->requiredPerms and rte->relkind. For updates we also check
          * rellockmode so that only true UPDATE commands (not
@@ -1529,8 +1532,8 @@ pgaudit_ProcessUtility_hook(PlannedStmt *pstmt,
         if (context == PROCESS_UTILITY_TOPLEVEL)
         {
             /*
-             * If the stack is not empty then the only allowed entries are open
-             * select, show, and explain cursors
+             * If the stack is not empty then the only allowed entries are call
+             * statements or open, select, show, and explain cursors
              */
             if (auditEventStack != NULL)
             {
@@ -1541,6 +1544,7 @@ pgaudit_ProcessUtility_hook(PlannedStmt *pstmt,
                     if (nextItem->auditEvent.commandTag != T_SelectStmt &&
                         nextItem->auditEvent.commandTag != T_VariableShowStmt &&
                         nextItem->auditEvent.commandTag != T_ExplainStmt &&
+                        nextItem->auditEvent.commandTag != T_CallStmt &&
                         nextItem->auditEvent.commandTag != T_YbBackfillIndexStmt)
                     {
                         // TODO(Sudheer): Remove the following statements suppressing the
@@ -2171,7 +2175,7 @@ _PG_init(void)
 
         "Specifies whether logging will include the statement text and "
         "parameters with the first log entry for a statement/substatement "
-        "combination or with every entry.  Disabling this setting will result "
+        "combination or with every entry.  Enabling this setting will result "
         "in less verbose logging but may make it more difficult to determine "
         "the statement that generated a log entry, though the "
         "statement/substatement pair along with the process id should suffice "

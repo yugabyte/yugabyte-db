@@ -95,9 +95,11 @@ export const AdvancedConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
       )}
       {provider.code !== CloudType.kubernetes && (
         <>
-          <Box display="flex" width="100%" mt={2.5}>
-            <SystemDField disabled={!isCreatePrimary || !useAnsibleProvisioning} />
-          </Box>
+          {!isCreatePrimary && (
+            <Box display="flex" width="100%" mt={2.5}>
+              <SystemDField disabled={!useAnsibleProvisioning} />
+            </Box>
+          )}
           <Box display="flex" width="100%" mt={2.5}>
             <DeploymentPortsField
               disabled={provider.code === CloudType.kubernetes}

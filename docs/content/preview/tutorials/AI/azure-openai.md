@@ -85,6 +85,7 @@ YugabyteDB introduced support for the PostgreSQL pgvector extension in v2.19.2. 
 Start a 3-node YugabyteDB cluster in Docker (or feel free to use another deployment option):
 
 ```sh
+rm -rf ~/yb_docker_data
 mkdir ~/yb_docker_data
 
 docker network create yb-network
@@ -146,7 +147,6 @@ As long as the application provides a lodging recommendation service for San Fra
     ```sh
     ./bin/ysqlsh -h 127.0.0.1 -p 5433 -U yugabyte -c "\i {project_dir}/sql/1_airbnb_embeddings.sql"
     ```
-    This application uses cosine distance for indexing, as the backend query is using cosine similarity search. Using [vector indexing](../../../explore/ysql-language-features/pg-extensions/extension-pgvector/#vector-indexing) improves the search speed. YugabyteDB currently supports the Hierarchical Navigable Small World (HNSW) index type in pgvector.
 
 ## Generate embeddings for Airbnb listings
 
@@ -297,6 +297,23 @@ The application performs the following steps to generate the recommendations (se
     }
     return places;
     ```
+
+This application uses cosine distance for indexing, as the backend query is using cosine similarity search. Using [vector indexing](../../../explore/ysql-language-features/pg-extensions/extension-pgvector/#vector-indexing) improves the search speed. YugabyteDB currently supports the Hierarchical Navigable Small World (HNSW) index type in pgvector.
+
+```sql
+# sql/1_airbnb_embeddings.sql
+
+CREATE EXTENSION IF NOT EXISTS vector;
+
+ALTER TABLE airbnb_listing
+    ADD COLUMN description_embedding vector(1536);
+
+CREATE INDEX NONCONCURRENTLY ON airbnb_listing USING ybhnsw (description_embedding vector_cosine_ops);
+```
+
+{{<note>}}
+For smaller datasets, like the one used in this tutorial, you may observe that vector indexing does not appear in the query execution plan. As your dataset grows, vector index is automatically used by the planner.
+{{</note>}}
 
 ## Wrap-up
 

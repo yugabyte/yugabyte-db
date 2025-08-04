@@ -155,7 +155,7 @@ std::string GetFsRoot(const MiniClusterOptions& options) {
 
 template <typename PeersGetter>
 Status WaitAllReplicasRunning(MiniCluster* cluster, MonoDelta timeout, PeersGetter peers_getter) {
-  return LoggedWaitFor([cluster, list_peers = std::move(peers_getter)] {
+  return LoggedWaitFor([list_peers = std::move(peers_getter)] {
     std::unordered_set<std::string> tablet_ids;
     auto peers = list_peers();
     for (const auto& peer : peers) {
@@ -164,7 +164,7 @@ Status WaitAllReplicasRunning(MiniCluster* cluster, MonoDelta timeout, PeersGett
       }
       tablet_ids.insert(peer->tablet_id());
     }
-    auto replication_factor = cluster->num_tablet_servers();
+    auto replication_factor = FLAGS_replication_factor;
     return tablet_ids.size() * replication_factor == peers.size();
   }, timeout, "Wait all replicas to be ready");
 }
@@ -653,6 +653,13 @@ Status MiniCluster::FlushTablets(tablet::FlushMode mode, tablet::FlushFlags flag
 Status MiniCluster::CompactTablets(docdb::SkipFlush skip_flush) {
   for (const auto& tablet_server : mini_tablet_servers_) {
     RETURN_NOT_OK(tablet_server->CompactTablets(skip_flush));
+  }
+  return Status::OK();
+}
+
+Status MiniCluster::CompactTablet(const TabletId& tablet_id, docdb::SkipFlush skip_flush) {
+  for (const auto& tablet_server : mini_tablet_servers_) {
+    RETURN_NOT_OK(tablet_server->CompactTablet(tablet_id, skip_flush));
   }
   return Status::OK();
 }
@@ -1301,11 +1308,12 @@ std::thread RestartsThread(
   });
 }
 
-Status WaitAllReplicasReady(MiniCluster* cluster, MonoDelta timeout) {
+Status WaitAllReplicasReady(
+    MiniCluster* cluster, MonoDelta timeout, UserTabletsOnly user_tablets_only) {
   return WaitAllReplicasRunning(
       cluster, timeout,
-      [cluster]() {
-        return ListTabletPeers(cluster, ListPeersFilter::kAll);
+      [cluster, user_tablets_only]() {
+        return ListTabletPeers(cluster, ListPeersFilter::kAll, user_tablets_only);
   });
 }
 

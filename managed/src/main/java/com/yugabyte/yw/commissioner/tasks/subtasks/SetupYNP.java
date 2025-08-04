@@ -157,7 +157,7 @@ public class SetupYNP extends AbstractTaskBase {
         .append("--wildcards '*/thirdparty/*'");
 
     sb.append(" && tar --no-same-owner -zxf ").append(targetPackagePath);
-    sb.append(" --exclude='*/node-agent' --exclude='*/preflight_check.sh'");
+    sb.append(" --exclude='*/node-agent' --exclude='*/preflight_check.sh' --exclude='*/devops'");
     sb.append(" --strip-components=3 -C ").append(ynpStagingDir);
 
     // Move the node-agent source folder to the right location.

@@ -30,11 +30,21 @@ type: indexpage
     href="checklist/"
     icon="fa-thin fa-list-check">}}
 
+{{</index/block>}}
+
+{{<index/block>}}
+
   {{<index/item
-    title="Manual deployment"
-    body="Deploy YugabyteDB manually in a private data center using basic administration commands."
+    title="Single-DC deployments"
+    body="Deploy YugabyteDB in a private data center."
     href="manual-deployment/"
     icon="fa-thin fa-helmet-safety">}}
+
+  {{<index/item
+    title="Multi-DC deployments"
+    body="Deploy across multiple data centers in 3DC or 2DC configurations."
+    href="multi-dc/"
+    icon="fa-thin fa-buildings">}}
 
   {{<index/item
     title="Public clouds"
@@ -47,11 +57,5 @@ type: indexpage
     body="Orchestrated deployment of YugabyteDB using open source as well as managed Kubernetes services."
     href="kubernetes/"
     icon="fa-thin fa-dharmachakra">}}
-
-  {{<index/item
-    title="Multi-DC deployments"
-    body="Deploy across multiple data centers in 3DC or 2DC configurations."
-    href="multi-dc/"
-    icon="fa-thin fa-buildings">}}
 
 {{</index/block>}}

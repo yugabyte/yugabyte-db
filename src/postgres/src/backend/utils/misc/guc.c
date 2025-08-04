@@ -123,6 +123,7 @@
 #include "pg_yb_utils.h"
 #include "tcop/pquery.h"
 #include "utils/syscache.h"
+#include "yb/util/debug/leak_annotations.h"
 #include "yb_ash.h"
 #include "yb_query_diagnostics.h"
 #include "yb_tcmalloc_utils.h"
@@ -3425,6 +3426,18 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_invalidate_table_cache_entry", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable invalidation of individual table cache entry on "
+						 "catalog cache refresh."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_invalidate_table_cache_entry,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_extended_sql_codes", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("Allow to return to the client SQL status codes "
 						 "defined by YugabyteDB (YBxxx). Those codes are used "
@@ -5449,6 +5462,16 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_fk_references_cache_limit", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Sets the maximum size for the FK reference cache filled by the INSERT, SELECT ... FOR KEY SHARE or similar statmements"),
+			NULL
+		},
+		&yb_fk_references_cache_limit,
+		65535, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL, NULL
@@ -7332,6 +7355,7 @@ guc_strdup(int elevel, const char *src)
 		ereport(elevel,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("out of memory")));
+	__lsan_ignore_object(data);
 	return data;
 }
 

@@ -12,7 +12,7 @@ type: docs
 
 ## Synopsis
 
-Use the `COPY` statement to transfer data between tables and files. `COPY TO` copies from tables to files. `COPY FROM` copies from files to tables. `COPY` outputs the number of rows that were copied.
+Use the COPY statement to transfer data between tables and files. COPY TO copies from tables to files. COPY FROM copies from files to tables. COPY outputs the number of rows that were copied.
 
 ## Syntax
 
@@ -34,23 +34,23 @@ Specify the list of columns to be copied. If not specified, then all columns of 
 
 ### *query*
 
-Specify a `SELECT`, `VALUES`, `INSERT`, `UPDATE`, or `DELETE` statement whose results are to be copied. For `INSERT`, `UPDATE`, and `DELETE` statements, a RETURNING clause must be provided.
+Specify a SELECT, VALUES, INSERT, UPDATE, or DELETE statement whose results are to be copied. For INSERT, UPDATE, and DELETE statements, a RETURNING clause must be provided.
 
 ### *filename*
 
 Specify the path of the file to be copied. An input file name can be an absolute or relative path, but an output file name must be an absolute path. Critically, the file must be located _server-side_ on the local filesystem of the YB-TServer that you connect to.
 
-To work with files that reside on the client, nominate `stdin` as the argument for `FROM` or `stdout` as the argument for `TO`.
+To work with files that reside on the client, nominate `stdin` as the argument for FROM or `stdout` as the argument for TO.
 
 Alternatively, you can use the `\copy` meta-command in [`ysqlsh`](../../../../ysqlsh/#copy-table-column-list-query-from-to-filename-program-command-stdin-stdout-pstdin-pstdout-with-option).
 
 ### *stdin* and *stdout*
 
-Critically, these input and output channels are defined _client-side_ in the environment of the client where you run  [`ysqlsh`](../../../../ysqlsh/#copy-table-column-list-query-from-to-filename-program-command-stdin-stdout-pstdin-pstdout-with-option) or your preferred programming language. These options request that the data transmission goes via the connection between the client and the server.
+Critically, these input and output channels are defined _client-side_ in the environment of the client where you run  [ysqlsh](../../../../ysqlsh/#copy-table-column-list-query-from-to-filename-program-command-stdin-stdout-pstdin-pstdout-with-option) or your preferred programming language. These options request that the data transmission goes via the connection between the client and the server.
 
-If you execute the `COPY TO` or `COPY FROM` statements  from a client program written in a language like Python, then you cannot use ysqlsh features. Rather, you must rely on your chosen language's features to connect `stdin` and `stdout` to the file that you nominate.
+If you execute the COPY TO or COPY FROM statements  from a client program written in a language like Python, then you cannot use ysqlsh features. Rather, you must rely on your chosen language's features to connect `stdin` and `stdout` to the file that you nominate.
 
-However, if  you execute `COPY FROM` using  [`ysqlsh`](../../../../../api/ysqlsh/#copy-table-column-list-query-from-to-filename-program-command-stdin-stdout-pstdin-pstdout-with-option), you have the further option of including the `COPY` invocation at the start of the file that you start as a `.sql` script. Create a test table thus:
+However, if  you execute COPY FROM using  [ysqlsh](../../../../../api/ysqlsh/#copy-table-column-list-query-from-to-filename-program-command-stdin-stdout-pstdin-pstdout-with-option), you have the further option of including the COPY invocation at the start of the file that you start as a `.sql` script. Create a test table thus:
 
 ```plpgsql
 drop table if exists t cascade;
@@ -59,30 +59,36 @@ create table t(c1 text primary key, c2 text, c3 text);
 
 And prepare `t.sql` thus:
 
-```
+```plpgsql
 copy t(c1, c2, c3) from stdin with (format 'csv', header true);
 c1,c2,c3
 dog,cat,frog
 \.
 ```
 
-Notice the `\.` terminator. You can simply execute `\i t.sql` at the  [`ysqlsh`](../../../../ysqlsh/#copy-table-column-list-query-from-to-filename-program-command-stdin-stdout-pstdin-pstdout-with-option) prompt to copy in the data.
+Notice the `\.` terminator. You can simply execute `\i t.sql` at the  [ysqlsh](../../../../ysqlsh/#copy-table-column-list-query-from-to-filename-program-command-stdin-stdout-pstdin-pstdout-with-option) prompt to copy in the data.
 
 {{< note title="Some client-side languages have a dedicated exposure of COPY" >}}
 
-For example, the _"psycopg2"_ PostgreSQL driver for Python (and of course this works for YugabyteDB) has dedicated cursor methods for `COPY`. See [Using COPY TO and COPY FROM](https://www.psycopg.org/docs/usage.html#using-copy-to-and-copy-from).
+For example, the _"psycopg2"_ PostgreSQL driver for Python (and of course this works for YugabyteDB) has dedicated cursor methods for COPY. See [Using COPY TO and COPY FROM](https://www.psycopg.org/docs/usage.html#using-copy-to-and-copy-from).
 
 {{< /note >}}
+
+### _WHERE_
+
+The optional WHERE clause has the general form `WHERE <condition>`, where condition is any expression that evaluates to a result of type boolean. Any row that does not satisfy this condition will not be inserted into the table. A row satisfies the condition if it returns true when the actual row values are substituted for any variable references.
+
+This eliminates the need for preprocessing data files or loading unwanted rows into temporary tables for later deletion. It improves efficiency by directly applying conditional logic during the data import process.
 
 ## Copy options
 
 ### ROWS_PER_TRANSACTION
 
-The ROWS_PER_TRANSACTION option defines the transaction size to be used by the `COPY` command.
+The ROWS_PER_TRANSACTION option defines the transaction size to be used by the COPY command.
 
-Default: 20000 for YugabyteDB versions 2.14 and 2.15 or later, and 1000 for prior versions.
+Default: 20000 for v2.14 and v2.15 or later, and 1000 for prior versions.
 
-For example, if the total tuples to be copied are 5000 and `ROWS_PER_TRANSACTION` is set to 1000, then the database will create 5 transactions and each transaction will insert 1000 rows. If there is an error during the execution of the copy command, then some tuples can be persisted based on the already completed transaction. This implies that if an error occurs after inserting the 3500th row, then the first 3000 rows will be persisted in the database.
+For example, if the total tuples to be copied are 5000, and ROWS_PER_TRANSACTION is set to 1000, then the database will create 5 transactions and each transaction will insert 1000 rows. If there is an error during the execution of the copy command, then some tuples can be persisted based on the already completed transaction. This implies that if an error occurs after inserting the 3500th row, then the first 3000 rows will be persisted in the database.
 
 - 1 to 1000 →  Transaction_1
 - 1001 to 2000 → Transaction_2
@@ -93,23 +99,48 @@ First 3000 rows will be persisted to the table and `tuples_processed` will show 
 
 ### REPLACE
 
-The `REPLACE` option replaces the existing row in the table if the new row's primary/unique key conflicts with that of the existing row.
+The REPLACE option replaces the existing row in the table if the new row's primary/unique key conflicts with that of the existing row.
 
-Note that `REPLACE` doesn't work on tables that have more than 1 unique constraints (see [#13687](https://github.com/yugabyte/yugabyte-db/issues/13687) for explanation)
+Note that REPLACE doesn't work on tables that have more than 1 unique constraint (see [#13687](https://github.com/yugabyte/yugabyte-db/issues/13687)).
 
 Default: by default conflict error is reported.
 
+{{< warning title="Avoid using REPLACE if the target table has secondary indexes." >}}
+If the table has secondary indexes, a workaround is to COPY (without REPLACE) data into a temporary table, and then use [`INSERT ... ON CONFLICT`](../dml_insert/#on-conflict-clause) to transfer data from the temporary table to the target table.
+{{< /warning >}}
+
 ### DISABLE_FK_CHECK
 
-The `DISABLE_FK_CHECK` option skips the foreign key check when copying new rows to the table.
+The DISABLE_FK_CHECK option skips the foreign key check when copying new rows to the table.
 
-Default: by default, foreign key check is always performed when `DISABLE_FK_CHECK` option is not provided.
+Default: by default, foreign key check is always performed when DISABLE_FK_CHECK option is not provided.
 
 ### SKIP n
 
 The `SKIP n` option skips the first `n` rows of the file. `n` must be a non-negative integer ().
 
 Default: 0, no rows are skipped.
+
+## Copy with fast-path transaction for colocated tables
+
+YugabyteDB supports a fast-path mode for the COPY command on colocated tables, which can significantly improve performance during data import.
+
+### Enable fast-path COPY
+
+The fast-path copy feature is disabled by default. To enable it for your current PostgreSQL session, run:
+
+ ```plpgsql
+ SET yb_fast_path_for_colocated_copy = on;
+ ```
+
+The fast-path COPY is applied only when all of the following conditions are met:
+
+1. The `yb_fast_path_for_colocated_copy` setting is enabled.
+2. The `ROWS_PER_TRANSACTION` option is not specified in the COPY command.
+3. The target table does not have any triggers, rules, or foreign key constraints defined.
+4. The COPY command is executed **outside** of an explicit transaction.
+
+With fast-path enabled, the unit of atomicity is determined by `ysql_session_max_batch_size` rather than `ROWS_PER_TRANSACTION`. For example, if `ysql_session_max_batch_size` is set to 3072, which means at most 3072 writes will be included in the same batch. For a table without indexes, this results in an atomic unit of 3072 rows. For a table with two indexes, the unit of atomicity will be 1024 rows which ensure the 1024 rows and their indexes are written atomically. Only use fast-path COPY if this level of atomicity aligns with your requirements.
 
 ## Examples
 
@@ -137,7 +168,7 @@ yugabyte=# COPY users TO '/home/yuga/Desktop/users.txt.sql' DELIMITER ',' CSV HE
 
 ### Export a partial table using the WHERE clause with column selection
 
-In the following example, a `WHERE` clause is used to filter the rows and only the `name` column.
+In the following example, a WHERE clause is used to filter the rows and only the `name` column.
 
 ```plpgsql
 yugabyte=# COPY (SELECT name FROM users where name='Dorian Gray') TO '/home/yuga/Desktop/users.txt.sql' DELIMITER
@@ -155,17 +186,16 @@ yugabyte=# COPY users FROM '/home/yuga/Desktop/users.txt.sql' DELIMITER ',' CSV 
 ### Import with skipping rows
 
 Assume we ran the command one time, and it failed in the middle, as if the server had crashed.
-Since we use `ROWS_PER_TRANSACTION=5000`, we can resume importing at multiples of 5000:
+Because we use `ROWS_PER_TRANSACTION=5000`, we can resume importing at multiples of 5000:
 
 ```plpgsql
 yugabyte=# COPY users FROM '/home/yuga/Desktop/users.txt.sql' WITH (FORMAT CSV,
 HEADER, DELIMITER ',', ROWS_PER_TRANSACTION 5000, SKIP 50000);
 ```
 
-
 ### Import with replacing rows
 
-If duplicate rows exist in the database, we can use `REPLACE` to upsert new rows:
+If duplicate rows exist in the database, we can use REPLACE to upsert new rows:
 
 ```plpgsql
 yugabyte=# COPY users FROM '/home/yuga/Desktop/users.txt.sql' WITH (FORMAT CSV,
@@ -183,7 +213,7 @@ HEADER, DELIMITER ',', DISABLE_FK_CHECK);
 
 ### Using all options
 
-In the following example, we use all of the `COPY` command's options:
+In the following example, we use all of the COPY command's options:
 
 ```plpgsql
 yugabyte=# COPY users FROM '/home/yuga/Desktop/users.txt.sql' WITH (FORMAT CSV,

@@ -25,6 +25,10 @@ inline void IncRead(YbcPgExecReadWriteStats* stat, uint64_t wait_time) {
   stat->read_wait += wait_time;
 }
 
+inline void IncReadOp(YbcPgExecReadWriteStats* stat, size_t count) {
+  stat->read_ops += count;
+}
+
 inline void IncWrite(YbcPgExecReadWriteStats* stat) {
   ++stat->writes;
 }
@@ -72,6 +76,10 @@ PgDocMetrics::PgDocMetrics(YbcPgExecStatsState& state) : state_(state) {}
 
 void PgDocMetrics::ReadRequest(TableType relation, uint64_t wait_time) {
   IncRead(&GetStat(&state_, relation), wait_time);
+}
+
+void PgDocMetrics::ReadOp(TableType relation, size_t count) {
+  IncReadOp(&GetStat(&state_, relation), count);
 }
 
 void PgDocMetrics::WriteRequest(TableType relation) {

@@ -272,12 +272,14 @@ insert into p_in values (4);
          ->  Index Scan using p_out_a_idx on p_out (actual rows=4 loops=1)
                Storage Table Rows Scanned: 4
                Storage Index Read Requests: 2
+               Storage Index Read Ops: 2
                Storage Index Rows Scanned: 4
          ->  Index Scan using p_in_pkey on p_in (actual rows=0 loops=4)
                Index Cond: (a = p_out.a)
                Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
                Storage Table Rows Scanned: 0
-(10 rows)
+(12 rows)
 
 drop table p_out;
 drop table p_in;

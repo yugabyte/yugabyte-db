@@ -247,6 +247,10 @@ class PgOperationBuffer::Impl {
     return keys_.size() + InFlightOpsCount();
   }
 
+  bool IsEmpty() const {
+    return keys_.empty() && in_flight_ops_.empty();
+  }
+
   void Clear() {
     VLOG_IF(1, !keys_.empty()) << "Dropping " << keys_.size() << " pending operations";
     ops_.Clear();
@@ -500,11 +504,15 @@ Result<BufferableOperations> PgOperationBuffer::Take(bool transactional) {
 }
 
 size_t PgOperationBuffer::Size() const {
-    return impl_->Size();
+  return impl_->Size();
 }
 
 void PgOperationBuffer::Clear() {
-    impl_->Clear();
+  impl_->Clear();
+}
+
+bool PgOperationBuffer::IsEmpty() const {
+  return impl_->IsEmpty();
 }
 
 } // namespace yb::pggate

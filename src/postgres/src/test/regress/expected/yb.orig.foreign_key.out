@@ -618,10 +618,11 @@ INSERT INTO c VALUES(1, 1, 1, 1, 1);
  Trigger for constraint c_p2_fk_fkey: calls=1
  Trigger for constraint c_p4_fk_fkey: calls=1
  Storage Read Requests: 1
+ Storage Read Ops: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 1
  Storage Flush Requests: 0
-(9 rows)
+(10 rows)
 
 CREATE TABLE parent(k INT PRIMARY KEY, v INT UNIQUE);
 CREATE TABLE child_1(k INT PRIMARY KEY, v INT REFERENCES parent(k));

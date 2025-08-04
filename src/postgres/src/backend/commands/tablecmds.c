@@ -9284,7 +9284,8 @@ ATExecDropColumn(List **wqueue, AlteredTableInfo *yb_tab, Relation rel,
 	/*
 	 * In YB, dropping a key column requires a table rewrite.
 	 */
-	if (IsYBRelation(rel) && YbIsAttrPrimaryKeyColumn(rel, attnum))
+	if (IsYBRelation(rel) && (YbIsAttrPrimaryKeyColumn(rel, attnum) ||
+							  YbIsAnyDependentGeneratedColPK(rel, attnum)))
 	{
 		/*
 		 * In YB, the ADD/DROP primary key operation involves a table
@@ -9383,6 +9384,7 @@ ATExecDropColumn(List **wqueue, AlteredTableInfo *yb_tab, Relation rel,
 				if (childatt->attinhcount == 1 && !childatt->attislocal)
 				{
 					AlteredTableInfo *yb_childtab = ATGetQueueEntry(wqueue, childrel);
+
 					/* Time to delete this child column, too */
 					ATExecDropColumn(wqueue, yb_childtab, childrel, colName,
 									 behavior, true, true,
@@ -9442,7 +9444,7 @@ ATExecDropColumn(List **wqueue, AlteredTableInfo *yb_tab, Relation rel,
 		 * the ALTER TABLE flow.
 		 */
 		performMultipleDeletions(addrs, behavior,
-								 IsYugaByteEnabled() ? YB_SKIP_YB_DROP_COLUMN : 0);
+								 IsYugaByteEnabled() ? YB_SKIP_YB_DROP_ORIGNAL_COLUMN | YB_SKIP_YB_DROP_PK_COLUMN : 0);
 		free_object_addresses(addrs);
 	}
 
@@ -18512,12 +18514,16 @@ PreCommit_on_commit_actions(void)
 		 */
 		PushActiveSnapshot(GetTransactionSnapshot());
 
+		if (IsYugaByteEnabled() && !YBIsDdlTransactionBlockEnabled())
+			YBIncrementDdlNestingLevel(YB_DDL_MODE_SILENT_ALTERING);
 		/*
 		 * Since this is an automatic drop, rather than one directly initiated
 		 * by the user, we pass the PERFORM_DELETION_INTERNAL flag.
 		 */
 		performMultipleDeletions(targetObjects, DROP_CASCADE,
 								 PERFORM_DELETION_INTERNAL | PERFORM_DELETION_QUIETLY);
+		if (IsYugaByteEnabled() && !YBIsDdlTransactionBlockEnabled())
+			YBDecrementDdlNestingLevel();
 
 		PopActiveSnapshot();
 

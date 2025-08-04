@@ -99,6 +99,16 @@ public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
               + " states.");
     }
 
+    if (upgradeOption == UpgradeOption.NON_RESTART_UPGRADE && universe.nodesInTransit(nodeState)) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST,
+          "Cannot perform a non-restart upgrade on universe "
+              + universe.getUniverseUUID()
+              + " as it has nodes in one of "
+              + NodeDetails.IN_TRANSIT_STATES
+              + " states.");
+    }
+
     runtimeConfGetter = StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
 
     if (upgradeOption == UpgradeOption.NON_ROLLING_UPGRADE

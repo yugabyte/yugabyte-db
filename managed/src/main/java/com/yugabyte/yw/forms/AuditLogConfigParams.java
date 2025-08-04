@@ -6,7 +6,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import org.apache.commons.collections4.CollectionUtils;
 
 @JsonIgnoreProperties(ignoreUnknown = true)

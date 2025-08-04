@@ -111,7 +111,17 @@ public class TestYbAsh extends BasePgSQLTest {
   @Test
   public void testAshViewWithoutEnablingAsh() throws Exception {
     resetAshConfigAndRestartCluster();
+    final String tableName = "test_table";
     try (Statement statement = connection.createStatement()) {
+      statement.execute(String.format("CREATE TABLE %s(k INT, v INT)", tableName));
+      for (int i = 0; i < 100; ++i) {
+        statement.execute(String.format("INSERT INTO %s VALUES(%d, %d)",
+            tableName, i, i));
+      }
+      for (int i = 0; i < 100; ++i) {
+        getSingleRow(statement, String.format("SELECT * FROM %s WHERE k = %d",
+            tableName, i));
+      }
       runInvalidQuery(statement, "SELECT * FROM " + ASH_VIEW,
           "ysql_yb_enable_ash gflag must be enabled");
     }

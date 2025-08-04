@@ -62,6 +62,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import org.apache.commons.collections4.CollectionUtils;
 import org.slf4j.Logger;
@@ -203,12 +204,13 @@ public class CustomerTaskController extends AuthenticatedController {
                 (c1, c2) -> c1.getCompletionTime().after(c2.getCompletionTime()) ? c1 : c2));
   }
 
-  private Map<UUID, Set<String>> buildAllowRetryTasksByTargetMap(Customer customer) {
+  private Map<UUID, Set<String>> buildAllowRetryTasksByTargetMap(
+      Customer customer, @Nullable UUID targetUuid) {
     Map<UUID, Set<String>> allowRetryTasksByTargetMap = new HashMap<>();
     Map<UUID, String> updatingTaskByTargetMap =
-        commissioner.getUpdatingTaskUUIDsForTargets(customer.getId());
+        commissioner.getUpdatingTaskUUIDsForTargets(customer.getId(), targetUuid);
     Map<UUID, String> placementModificationTaskByTargetMap =
-        commissioner.getPlacementModificationTaskUUIDsForTargets(customer.getId());
+        commissioner.getPlacementModificationTaskUUIDsForTargets(customer.getId(), targetUuid);
 
     updatingTaskByTargetMap.forEach(
         (universeUUID, taskUUID) ->
@@ -224,12 +226,15 @@ public class CustomerTaskController extends AuthenticatedController {
     return allowRetryTasksByTargetMap;
   }
 
+  // The param customerTaskList must contain the latest customer tasks to correctly set the
+  // retryability field.
   private Map<UUID, List<CustomerTaskFormData>> buildTaskListMap(
       Customer customer, List<CustomerTask> customerTaskList) {
 
     Map<UUID, List<CustomerTaskFormData>> taskListMap = new HashMap<>();
     Map<UUID, CustomerTask> lastTaskByTargetMap = buildLastTaskByTargetMap(customerTaskList);
-    Map<UUID, Set<String>> allowRetryTasksByTargetMap = buildAllowRetryTasksByTargetMap(customer);
+    Map<UUID, Set<String>> allowRetryTasksByTargetMap =
+        buildAllowRetryTasksByTargetMap(customer, null /* specific target UUID */);
     List<List<CustomerTask>> batches =
         Lists.partition(
             customerTaskList,
@@ -256,6 +261,35 @@ public class CustomerTaskController extends AuthenticatedController {
                 });
       }
     }
+    return taskListMap;
+  }
+
+  // Build for a single customer task and also populate the subtasks.
+  private Map<UUID, List<CustomerTaskFormData>> buildSingleTaskListMap(
+      Customer customer, CustomerTask customerTask) {
+    Map<UUID, List<CustomerTaskFormData>> taskListMap = new HashMap<>();
+    Map<UUID, CustomerTask> lastTaskByTargetMap = new HashMap<>();
+    CustomerTask lastCustomerTask =
+        CustomerTask.getLastTaskByTargetUuid(customerTask.getTargetUUID());
+    if (lastCustomerTask != null) {
+      lastTaskByTargetMap.put(lastCustomerTask.getTargetUUID(), lastCustomerTask);
+    }
+    Map<UUID, Set<String>> allowRetryTasksByTargetMap =
+        buildAllowRetryTasksByTargetMap(customer, customerTask.getTargetUUID());
+    List<TaskInfo> subTaskInfos = customerTask.getTaskInfo().getSubTasks();
+    commissioner
+        .buildTaskStatus(
+            customerTask, subTaskInfos, allowRetryTasksByTargetMap, lastTaskByTargetMap)
+        .ifPresent(
+            taskProgress -> {
+              CustomerTaskFormData taskData = buildCustomerTaskFromData(customerTask, taskProgress);
+              if (taskData != null) {
+                taskData.subtaskInfos = subTaskInfos;
+                taskListMap
+                    .computeIfAbsent(customerTask.getTargetUUID(), k -> new ArrayList<>())
+                    .add(taskData);
+              }
+            });
     return taskListMap;
   }
 
@@ -320,7 +354,8 @@ public class CustomerTaskController extends AuthenticatedController {
         TaskInfo.getSubTasks(
             tasks.stream().map(CustomerTask::getTaskUUID).collect(Collectors.toSet()));
     Map<UUID, CustomerTask> lastTaskByTargetMap = buildLastTaskByTargetMap(tasks);
-    Map<UUID, Set<String>> allowRetryTasksByTargetMap = buildAllowRetryTasksByTargetMap(customer);
+    Map<UUID, Set<String>> allowRetryTasksByTargetMap =
+        buildAllowRetryTasksByTargetMap(customer, null /* specific target */);
     List<CustomerTaskFormData> taskList =
         tasks.parallelStream()
             .map(
@@ -619,21 +654,6 @@ public class CustomerTaskController extends AuthenticatedController {
   public Result getTaskStatusWithDetails(UUID customerUUID, UUID taskUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     CustomerTask customerTask = CustomerTask.getOrBadRequest(customerUUID, taskUUID);
-
-    Map<UUID, List<CustomerTaskFormData>> taskList =
-        buildTaskListMap(customer, Collections.singletonList(customerTask));
-    CustomerTaskFormData response =
-        taskList.values().stream()
-            .flatMap(List::stream)
-            .findFirst()
-            .orElseThrow(
-                () ->
-                    new IllegalStateException("Expecting exactly one task form data in response"));
-
-    response.taskInfo = TaskInfo.get(customerTask.getTaskUUID());
-    if (response.taskInfo != null) {
-      response.subtaskInfos = response.taskInfo.getSubTasks();
-    }
-    return PlatformResults.withData(taskList);
+    return PlatformResults.withData(buildSingleTaskListMap(customer, customerTask));
   }
 }

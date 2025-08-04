@@ -142,6 +142,16 @@ class XClusterYsqlTestBase : public XClusterTestBase {
       ExpectNoRecords expect_no_records,
       CheckColumnCounts check_col_counts = CheckColumnCounts::kTrue);
 
+  Status VerifyWrittenRecords(
+      const std::vector<TableName>& table_names, const NamespaceName& database_name = "",
+      const std::string& schema_name = "");
+
+  Result<std::shared_ptr<client::YBTable>> GetProducerTable(
+      const client::YBTableName& producer_table_name);
+
+  Result<std::shared_ptr<client::YBTable>> GetConsumerTable(
+      const client::YBTableName& producer_table_name);
+
   static Result<std::vector<xrepl::StreamId>> BootstrapCluster(
       const std::vector<std::shared_ptr<client::YBTable>>& tables,
       XClusterTestBase::Cluster* cluster);

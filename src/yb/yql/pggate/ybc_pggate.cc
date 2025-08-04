@@ -276,7 +276,7 @@ inline std::optional<Bound> MakeBound(YbcPgBoundType type, uint16_t value) {
 
 void InitPgGateImpl(
     YbcPgTypeEntities type_entities, const YbcPgCallbacks& pg_callbacks,
-    const YbcPgAshConfig& ash_config, std::optional<uint64_t> session_id) {
+    YbcPgAshConfig& ash_config, std::optional<uint64_t> session_id) {
   // TODO: We should get rid of hybrid clock usage in YSQL backend processes (see #16034).
   // However, this is added to allow simulating and testing of some known bugs until we remove
   // HybridClock usage.
@@ -565,7 +565,7 @@ extern "C" {
 
 void YBCInitPgGate(
     YbcPgTypeEntities type_entities, const YbcPgCallbacks *pg_callbacks, uint64_t *session_id,
-    const YbcPgAshConfig *ash_config) {
+    YbcPgAshConfig *ash_config) {
   CHECK_OK(WithMaskedYsqlSignals([&type_entities, pg_callbacks,  session_id, ash_config] {
     InitPgGateImpl(
         type_entities, *pg_callbacks, *ash_config,
@@ -691,6 +691,10 @@ void YBCPgDeleteStatement(YbcPgStatement handle) {
 
 YbcStatus YBCPgInvalidateCache(uint64_t min_ysql_catalog_version) {
   return ToYBCStatus(pgapi->InvalidateCache(min_ysql_catalog_version));
+}
+
+YbcStatus YBCPgUpdateTableCacheMinVersion(uint64_t min_ysql_catalog_version) {
+  return ToYBCStatus(pgapi->UpdateTableCacheMinVersion(min_ysql_catalog_version));
 }
 
 const YbcPgTypeEntity *YBCPgFindTypeEntity(YbcPgOid type_oid) {
@@ -1027,6 +1031,11 @@ YbcStatus YBCPgInvalidateTableCacheByTableId(const char *table_id) {
 void YBCPgAlterTableInvalidateTableByOid(
     const YbcPgOid database_oid, const YbcPgOid table_relfilenode_oid) {
   pgapi->InvalidateTableCache(PgObjectId(database_oid, table_relfilenode_oid));
+}
+
+void YBCPgRemoveTableCacheEntry(
+    const YbcPgOid database_oid, const YbcPgOid table_relfilenode_oid) {
+  pgapi->RemoveTableCacheEntry(PgObjectId(database_oid, table_relfilenode_oid));
 }
 
 // Tablegroup Operations ---------------------------------------------------------------------------
@@ -1755,6 +1764,10 @@ YbcStatus YBCPgBindYbctids(YbcPgStatement handle, int n, uintptr_t* ybctids) {
   return ToYBCStatus(pgapi->BindYbctids(handle, n, ybctids));
 }
 
+bool YBCPgIsValidYbctid(uint64_t ybctid) {
+  return pgapi->IsValidYbctid(ybctid);
+}
+
 //------------------------------------------------------------------------------------------------
 // Functions
 //------------------------------------------------------------------------------------------------
@@ -2038,6 +2051,15 @@ YbcStatus YBCPgActiveTransactions(YbcPgSessionTxnInfo *infos, size_t num_infos) 
 
 bool YBCPgIsDdlMode() {
   return pgapi->IsDdlMode();
+}
+
+bool YBCCurrentTransactionUsesFastPath() {
+  auto result = pgapi->CurrentTransactionUsesFastPath();
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+
+  return result.get();
 }
 
 //------------------------------------------------------------------------------------------------

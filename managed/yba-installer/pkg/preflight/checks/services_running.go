@@ -42,6 +42,10 @@ func (s *servicesRunningCheck) Execute() Result {
 
 	failedServices := make([]string, 0)
 	for _, service := range s.Services {
+		if service.Name() == "yb-logrotate" {
+			logging.Debug("Skipping yb-logrotate service in services running check")
+			continue // Skip yb-logrotate service in services running check
+		}
 		status, err := service.Status()
 		if err != nil {
 			logging.Error(fmt.Sprintf("Failed to get %s status: %s", service.Name(), err.Error()))

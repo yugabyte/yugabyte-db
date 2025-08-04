@@ -74,3 +74,21 @@ func (s Status) String() string {
 		return "unknown status value " + strconv.Itoa(int(s))
 	}
 }
+
+func MergeMappedResults(a, b *MappedResults) *MappedResults {
+  if a == nil && b == nil {
+	  return nil
+  }
+  if a == nil {
+	return b
+  }
+  if b == nil {
+	return a
+  }
+  return &MappedResults {
+		Passed:   append(a.Passed, b.Passed...),
+		Warning:  append(a.Warning, b.Warning...),
+		Critical: append(a.Critical, b.Critical...),
+		Skipped:  append(a.Skipped, b.Skipped...),
+  }
+}

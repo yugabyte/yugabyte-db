@@ -62,6 +62,7 @@ export const FaultToleranceTypeField = <T extends FieldValues>({
               return t(`${value}.title`);
             }}
             label={label}
+            dataTestId="fault-tolerance-type-field"
           >
             {Object.keys(FaultToleranceType).map((key) => {
               const value = FaultToleranceType[key as keyof typeof FaultToleranceType];

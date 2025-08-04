@@ -86,8 +86,7 @@ def create_suite(qid: str, suite_name: str, parent: str, method: str, planned: i
                  time_sec: float) -> Tuple[str, str]:
     csi = csi_env()
     varname = 'YB_CSI_' + suite_name
-    # If we have a launch, it is still possible creation of parent failed.
-    if not csi['launch'] or not parent:
+    if not csi['launch']:
         return (varname, '')
     suite_uuid = ''
 
@@ -133,11 +132,15 @@ def create_suite(qid: str, suite_name: str, parent: str, method: str, planned: i
         }
         if reps > 1:
             req_data['attributes'].append({'key': 'repititions', 'value': reps})
-        response = requests.post(csi['url'] + '/item/' + parent,
+        post_url = csi['url'] + '/item'
+        # If there is no parent ID, then this is a top-level suite.
+        if parent:
+            post_url += '/' + parent
+        response = requests.post(post_url,
                                  headers=csi['headers'],
                                  data=json.dumps(req_data))
         if response.status_code == 201:
-            logging.info(f"CSI create suite: {suite_name} under {parent}")
+            logging.info(f"CSI create suite: {suite_name}")
             suite_uuid = response.json()['id']
         else:
             logging.error(f"CSI Error: Creation of {suite_name} failed: {response.text}")
@@ -225,6 +228,10 @@ def create_test(test: TestDescriptor, time_sec: float, attempt: int) -> str:
             {'key': 'lang',  'value': test.language}
         ]
     }
+    # For cxx tests, the name might not be unique if in different directories, so we add
+    # parameter indicating the cxx_rel_binary that is included in test descriptor.
+    if pt.cxx_rel_test_binary:
+        req_data['parameters'] = [{'key': 'path', 'value': pt.cxx_rel_test_binary}]
     response = requests.post(csi['url'] + '/item/' + parent,
                              headers=csi['headers'],
                              data=json.dumps(req_data))

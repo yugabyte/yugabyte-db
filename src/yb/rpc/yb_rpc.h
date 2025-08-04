@@ -117,8 +117,16 @@ class YBInboundConnectionContext : public YBConnectionContext {
 
 class YBInboundCall : public InboundCall {
  public:
-  YBInboundCall(ConnectionPtr conn, CallProcessedListener* call_processed_listener);
-  explicit YBInboundCall(RpcMetrics* rpc_metrics, const RemoteMethod& remote_method);
+  YBInboundCall(
+      ConnectionPtr conn,
+      CallProcessedListener* call_processed_listener,
+      CallStateListenerFactory* call_state_listener_factory);
+
+  YBInboundCall(
+      RpcMetrics* rpc_metrics,
+      const RemoteMethod& remote_method,
+      CallStateListenerFactory* call_state_listener_factory);
+
   virtual ~YBInboundCall();
 
   // Parse an inbound call message.
@@ -204,7 +212,7 @@ class YBInboundCall : public InboundCall {
   // Serialize and queue the response.
   virtual void Respond(AnyMessageConstPtr response, bool is_success);
 
-  void UpdateWaitStateInfo();
+  virtual void UpdateWaitStateInfo();
 
  private:
   // Serialize a response message for either success or failure. If it is a success,

@@ -171,7 +171,6 @@
 | "Disable Node Agent Configure Server" | "yb.node_agent.disable_configure_server" | "GLOBAL" | "Disable server configuration RPCs in node agent. Defaults to ansible if it is enabled." | "Boolean" |
 | "Enable Node Agent Message Compression" | "yb.node_agent.enable_message_compression" | "GLOBAL" | "Enable compression for message sent over node agent channel." | "Boolean" |
 | "Disable Node Agent Background Installation After Migration" | "yb.node_agent.disable_bg_install_post_migration" | "GLOBAL" | "Install node agent synchronously during a task instead after migration if it is true." | "Boolean" |
-| "Enable Task Runtime Info on Retry" | "yb.task.enable_task_runtime_info_on_retry" | "GLOBAL" | "Use the runtime info from the previously failed task on retry" | "Boolean" |
 | "GCP Blob Delete Retry Count" | "yb.gcp.blob_delete_retry_count" | "GLOBAL" | "Number of times to retry deleting blobs in GCP. This is used to handle the case where the blob deletion fails due to some transient error." | "Integer" |
 | "Clock Skew" | "yb.alert.max_clock_skew_ms" | "UNIVERSE" | "Default threshold for Clock Skew alert" | "Duration" |
 | "Health Log Output" | "yb.health.logOutput" | "UNIVERSE" | "It determines whether to log the output of the node health check script to the console" | "Boolean" |
@@ -337,3 +336,4 @@
 | "Enable backups during DDL" | "yb.backup.enable_backups_during_ddl" | "UNIVERSE" | "Have YBC ysql-dump use read-time as of snapshot time to support backups during DDL" | "Boolean" |
 | "Whether to check if correct THP settings are applied" | "yb.health_checks.check_thp" | "UNIVERSE" | "Whether to check if correct Transparent Huge Pages settings are applied" | "Boolean" |
 | "Timeout for catalog upgrade admin operations" | "yb.upgrade.catalog_upgrade_admin_ops_timeout_ms" | "UNIVERSE" | "Timeout for catalog upgrade admin operations in milliseconds" | "Long" |
+| "Skip auto flags and YSQL migration files validation" | "yb.upgrade.skip_autoflags_and_ysql_migration_files_validation" | "UNIVERSE" | "Skip auto flags and YSQL migration files validation" | "Boolean" |

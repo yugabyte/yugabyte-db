@@ -89,8 +89,8 @@ s_lock_stuck(const char *file, int line, const char *func)
 			func, file, line);
 	exit(1);
 #else
-	bool yb_is_postmaster = IsPostmasterEnvironment && !IsUnderPostmaster;
-	int yb_level = YBIsEnabledInPostgresEnvVar() && yb_is_postmaster ? ERROR : PANIC;
+	bool		yb_is_postmaster = IsPostmasterEnvironment && !IsUnderPostmaster;
+	int			yb_level = YBIsEnabledInPostgresEnvVar() && yb_is_postmaster ? ERROR : PANIC;
 
 	elog(yb_level, "stuck spinlock detected at %s, %s:%d",
 		 func, file, line);

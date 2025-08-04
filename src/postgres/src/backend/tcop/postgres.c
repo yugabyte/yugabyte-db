@@ -4347,8 +4347,12 @@ YBRefreshCache()
 	finish_xact_command();
 }
 
-static void
-YBRefreshCacheWrapper(uint64_t catalog_master_version, bool is_retry)
+/*
+ * Return value true indicates that an incremental refresh was performed
+ */
+static bool
+YBRefreshCacheWrapperImpl(uint64_t catalog_master_version, bool is_retry,
+						  bool full_refresh_allowed)
 {
 	uint64_t	shared_catalog_version = YbGetSharedCatalogVersion();
 	uint64_t	local_catalog_version = YbGetCatalogCacheVersion();
@@ -4356,8 +4360,10 @@ YBRefreshCacheWrapper(uint64_t catalog_master_version, bool is_retry)
 		shared_catalog_version - local_catalog_version;
 	YbcCatalogMessageLists message_lists = {0};
 	const bool	enable_inval_messages = YbIsInvalidationMessageEnabled();
+
 	/* The reason that we need a full catalog cache refresh. */
-	int reason = 0;
+	int			reason = 0;
+
 	if (enable_inval_messages)
 	{
 		if (is_retry &&
@@ -4417,10 +4423,12 @@ YBRefreshCacheWrapper(uint64_t catalog_master_version, bool is_retry)
 	}
 	if (message_lists.num_lists > 0)
 	{
+		YbResetNeedInvalidateAllTableCache();
 		if (YbApplyInvalidationMessages(&message_lists))
 		{
 			YbNumCatalogCacheDeltaRefreshes++;
-			elog(DEBUG1, "YBRefreshCache skipped after applying %d message lists, "
+			elog(yb_debug_log_catcache_events ? LOG : DEBUG1,
+				"full cache refresh skipped after applying %d message lists, "
 				 "updating local catalog version from %" PRIu64 " to %" PRIu64
 				 " for database %u",
 				 message_lists.num_lists,
@@ -4428,10 +4436,15 @@ YBRefreshCacheWrapper(uint64_t catalog_master_version, bool is_retry)
 			YbUpdateCatalogCacheVersion(shared_catalog_version);
 			if (yb_test_delay_after_applying_inval_message_ms > 0)
 				pg_usleep(yb_test_delay_after_applying_inval_message_ms * 1000L);
-			/* TODO(myang): only invalidate affected entries in the pggate cache? */
-			HandleYBStatus(YBCPgInvalidateCache(YbGetCatalogCacheVersion()));
+			if (!yb_enable_invalidate_table_cache_entry || YbGetNeedInvalidateAllTableCache())
+			{
+				elog(LOG, "calling YBCPgInvalidateCache");
+				HandleYBStatus(YBCPgInvalidateCache(YbGetCatalogCacheVersion()));
+			}
+			else
+				HandleYBStatus(YBCPgUpdateTableCacheMinVersion(YbGetCatalogCacheVersion()));
 			yb_need_cache_refresh = false;
-			return;
+			return true;
 		}
 		/* apply failed */
 		reason = 5;
@@ -4440,14 +4453,32 @@ YBRefreshCacheWrapper(uint64_t catalog_master_version, bool is_retry)
 	if (enable_inval_messages)
 		/* must have a reason for doing full catalog cache refresh. */
 		Assert(reason > 0);
-	ereport(enable_inval_messages ? LOG : DEBUG1,
-			(errmsg("calling YBRefreshCache: %d %" PRIu64 " %" PRIu64 " %" PRIu64 " %u %d %d"
-					" for database %u",
-					message_lists.num_lists, local_catalog_version,
-					shared_catalog_version, catalog_master_version,
-					num_catalog_versions, is_retry, reason, MyDatabaseId)));
-	YbUpdateLastKnownCatalogCacheVersion(shared_catalog_version);
-	YBRefreshCache();
+	if (full_refresh_allowed)
+	{
+		ereport(enable_inval_messages ? LOG : DEBUG1,
+				(errmsg("full cache refresh: %d %" PRIu64 " %" PRIu64 " %" PRIu64 " %u %d %d"
+						" for database %u",
+						message_lists.num_lists, local_catalog_version,
+						shared_catalog_version, catalog_master_version,
+						num_catalog_versions, is_retry, reason, MyDatabaseId)));
+		YbUpdateLastKnownCatalogCacheVersion(shared_catalog_version);
+		YBRefreshCache();
+	}
+	return false;
+}
+
+bool
+YBRefreshCacheUsingInvalMsgs()
+{
+	return YBRefreshCacheWrapperImpl(YB_CATCACHE_VERSION_UNINITIALIZED,
+									 false /* is_retry */ ,
+									 false /* full_refresh_allowed */ );
+}
+
+static void
+YBRefreshCacheWrapper(uint64_t catalog_master_version, bool is_retry)
+{
+	(void) YBRefreshCacheWrapperImpl(catalog_master_version, is_retry, true);
 }
 
 static bool
@@ -6151,6 +6182,12 @@ PostgresMain(const char *dbname, const char *username)
 
 	if (!ignore_till_sync)
 		send_ready_for_query = true;	/* initially, or after error */
+
+	/*
+	 * YB: Refresh the session stats accumulated during catalog cache
+	 * prefetching.
+	 */
+	YbRefreshSessionStatsDuringExecution();
 
 	/*
 	 * Non-error queries loop here.

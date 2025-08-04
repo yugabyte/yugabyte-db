@@ -3082,6 +3082,15 @@ int yb_auth_via_auth_backend(od_client_t *client)
 
 	/* attach */
 	status = od_router_attach(router, control_conn_client, false, client);
+	od_server_t *server;
+	server = control_conn_client->server;
+	server->yb_auth_backend = true;
+
+	if (status == YB_OD_ROUTER_NO_CLIENT) {
+		od_debug(&instance->logger, "auth", control_conn_client,
+			 NULL, "client already timed out");
+		goto cleanup;
+	}
 	if (status != OD_ROUTER_OK) {
 		od_debug(
 			&instance->logger, "auth backend",
@@ -3096,10 +3105,6 @@ int yb_auth_via_auth_backend(od_client_t *client)
 		od_client_free(control_conn_client);
 		goto failed_to_acquire_auth_backend;
 	}
-
-	od_server_t *server;
-	server = control_conn_client->server;
-	server->yb_auth_backend = true;
 
 	od_debug(&instance->logger, "auth backend", control_conn_client,
 		 server, "attached to auth backend %s%.*s", server->id.id_prefix,
@@ -3178,6 +3183,9 @@ cleanup:
 		return NOT_OK_RESPONSE;
 	}
 
+	if (status == YB_OD_ROUTER_NO_CLIENT) {
+		return NOT_OK_RESPONSE;
+	}
 	return OK_RESPONSE;
 
 failed_to_acquire_auth_backend:

@@ -262,6 +262,9 @@ public class YbcBackupUtil {
 
     @JsonProperty("ysql_major_version")
     public String ysqlMajorVersion;
+
+    @JsonProperty("ysql_migration_files")
+    public Set<String> ysqlMigrationFiles;
   }
 
   @JsonIgnoreProperties(ignoreUnknown = true)
@@ -1082,6 +1085,12 @@ public class YbcBackupUtil {
           config.ysqlMajorVersion = String.valueOf(ysqlMajorVersionOptional.get());
         }
       }
+      if (!StringUtils.isEmpty(config.rollbackYbdbVersion)) {
+        config.ysqlMigrationFiles =
+            gFlagsValidation.getYsqlMigrationFilesList(config.rollbackYbdbVersion);
+      } else {
+        config.ysqlMigrationFiles = gFlagsValidation.getYsqlMigrationFilesList(ybdbSoftwareVersion);
+      }
 
       BackupServiceTaskExtendedArgs.Builder extendedArgsBuilder =
           BackupServiceTaskExtendedArgs.newBuilder();
@@ -1495,5 +1504,37 @@ public class YbcBackupUtil {
                     }));
     restorePreflightResponseBuilder.perLocationBackupInfoMap(perLocationBackupInfoMap);
     return restorePreflightResponseBuilder.build();
+  }
+
+  public void validateYsqlMigrationFiles(
+      Universe universe, Set<String> ysqlMigrationFilesDuringBackup) {
+    try {
+      String universeVersion =
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+      if (universe.getUniverseDetails().isSoftwareRollbackAllowed
+          && universe.getUniverseDetails().prevYBSoftwareConfig != null) {
+        universeVersion = universe.getUniverseDetails().prevYBSoftwareConfig.getSoftwareVersion();
+      }
+      if (universeVersion.startsWith("2025.1.0")) {
+        log.info("Skipping YSQL migration files validation for 2025.1.0 version");
+        return;
+      }
+      Set<String> universeMigrationFiles =
+          gFlagsValidation.getYsqlMigrationFilesList(universeVersion);
+      Set<String> missingFiles = new java.util.HashSet<>(ysqlMigrationFilesDuringBackup);
+      missingFiles.removeAll(universeMigrationFiles);
+      if (!missingFiles.isEmpty()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Cannot restore backup: the following YSQL migration files are missing in the target"
+                + " universe version: "
+                + missingFiles);
+      }
+    } catch (PlatformServiceException e) {
+      throw e;
+    } catch (Exception e) {
+      log.error("Error occurred while validating YSQL migration files for restore: ", e);
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+    }
   }
 }

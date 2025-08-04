@@ -21,6 +21,9 @@
 
 #include "yb/common/clock.h"
 #include "yb/common/transaction.h"
+
+#include "yb/docdb/object_lock_shared_fwd.h"
+
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/tserver/pg_client.fwd.h"
@@ -30,8 +33,9 @@
 #include "yb/util/enums.h"
 
 #include "yb/yql/pggate/pg_client.h"
-#include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_callbacks.h"
+#include "yb/yql/pggate/pg_gate_fwd.h"
+#include "yb/yql/pggate/pg_setup_perform_options_accessor_tag.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb::pggate {
@@ -50,9 +54,11 @@ YB_DEFINE_ENUM(ReadTimeAction, (ENSURE_IS_SET)(RESET));
 
 class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
  public:
-  PgTxnManager(PgClient* pg_client, scoped_refptr<ClockBase> clock, YbcPgCallbacks pg_callbacks);
+  PgTxnManager(
+      PgClient* pg_client, scoped_refptr<ClockBase> clock, YbcPgCallbacks pg_callbacks,
+      bool enable_table_locking);
 
-  virtual ~PgTxnManager();
+  ~PgTxnManager();
 
   Status BeginTransaction(int64_t start_time);
 
@@ -80,6 +86,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   void SetDdlHasSyscatalogChanges();
   Status SetInTxnBlock(bool in_txn_blk);
   Status SetReadOnlyStmt(bool read_only_stmt);
+  void SetTransactionHasWrites();
+  Result<bool> TransactionHasNonTransactionalWrites() const;
 
   bool IsTxnInProgress() const { return txn_in_progress_; }
   IsolationLevel GetIsolationLevel() const { return isolation_level_; }
@@ -95,7 +103,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   }
   bool ShouldEnableTracing() const { return enable_tracing_; }
 
-  Status SetupPerformOptions(
+  Status SetupPerformOptions(SetupPerformOptionsAccessorTag tag,
       tserver::PgPerformOptionsPB* options, std::optional<ReadTimeAction> read_time_action = {});
 
   double GetTransactionPriority() const;
@@ -109,12 +117,18 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   Result<YbcReadPointHandle> RegisterSnapshotReadTime(uint64_t read_time, bool use_read_time);
 
   Result<std::string> ExportSnapshot(
-      const YbcPgTxnSnapshot& snapshot, std::optional<YbcReadPointHandle> explicit_read_time);
-  Result<YbcPgTxnSnapshot> ImportSnapshot(std::string_view snapshot_id);
+      SetupPerformOptionsAccessorTag tag, const YbcPgTxnSnapshot& snapshot,
+      std::optional<YbcReadPointHandle> explicit_read_time);
+  Result<YbcPgTxnSnapshot> ImportSnapshot(
+      SetupPerformOptionsAccessorTag tag, std::string_view snapshot_id);
   [[nodiscard]] bool has_exported_snapshots() const { return has_exported_snapshots_; }
   void ClearExportedTxnSnapshots();
-  Status RollbackToSubTransaction(SubTransactionId id);
-  Status AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode);
+  Status RollbackToSubTransaction(SetupPerformOptionsAccessorTag tag, SubTransactionId id);
+  [[nodiscard]] bool TryAcquireObjectLock(
+      const YbcObjectLockId& lock_id, docdb::ObjectLockFastpathLockType lock_type);
+
+  Status AcquireObjectLock(
+      SetupPerformOptionsAccessorTag tag, const YbcObjectLockId& lock_id, YbcObjectLockMode mode);
   struct DdlState {
     bool has_docdb_schema_changes = false;
     bool force_catalog_modification = false;
@@ -207,6 +221,21 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   bool has_exported_snapshots_ = false;
 
   YbcPgCallbacks pg_callbacks_;
+  // The transaction manager tracks the following semantics:
+  // 1. read_only_: Is the current transaction marked as read-only? A read-only transaction is one
+  //                that does not write to non temporary tables. This is a postgres construct that
+  //                is determined by the GUCs "default_transaction_read_only" and
+  //                "transaction_read_only". Note that a transaction can be marked as read-only
+  //                after it has already performed some writes.
+  // 2. read_only_stmt_: Does the current statement write to non temporary tables? Relevant in the
+  //                     context of read-only transactions, where all statements must be read-only.
+  // 3. has_writes_: Has the current transaction performed any writes to non temporary tables?
+  //                 This is used to track whether the transaction writes use the "fast path".
+  //                 Note that a transaction can be marked as non-read-only and not have any writes.
+  //                 The reverse is also true: a transaction can be marked as read-only and still
+  //                 have writes (before it was marked as read-only). So, no conclusion can be drawn
+  //                 about the transaction's read-only status based on the has_writes_ flag.
+  bool has_writes_ = false;
 
   const bool enable_table_locking_;
 

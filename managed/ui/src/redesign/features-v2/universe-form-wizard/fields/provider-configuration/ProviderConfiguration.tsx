@@ -93,10 +93,11 @@ export const ProviderConfigurationField = <T extends FieldValues>({
                 ybInputProps={{
                   error: !!fieldState.error,
                   helperText: fieldState.error?.message,
-                  // 'data-testid': 'ProvidersField-AutoComplete',
-                  placeholder: placeholder
+                  placeholder: placeholder,
+                  dataTestId: 'ProvidersField-AutoComplete'
                 }}
                 sx={sx}
+                dataTestId="ProvidersField-AutoComplete-container"
               />
             </Box>
           </div>

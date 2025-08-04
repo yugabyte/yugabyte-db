@@ -42,6 +42,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.io.FileUtils;
@@ -604,6 +605,26 @@ public class NodeUniverseManager extends DevopsBase {
   }
 
   public Optional<NodeAgent> maybeGetNodeAgent(
+      String nodeIp, Provider provider, @Nullable Universe universe) {
+    if (provider.getCloudCode() == CloudType.kubernetes) {
+      log.debug("Node agent is not supported on provider type {}", provider.getCloudCode());
+      return Optional.empty();
+    }
+    Optional<NodeAgent> optional =
+        getNodeAgentClient().maybeGetNodeAgent(nodeIp, provider, universe);
+    if (!optional.isPresent()) {
+      log.debug(
+          "Node agent is not enabled for node {} with provider {}", nodeIp, provider.getUuid());
+      return optional;
+    }
+    NodeAgent nodeAgent = optional.get();
+    if (nodeAgentPoller.upgradeNodeAgent(nodeAgent.getUuid(), true)) {
+      nodeAgent.refresh();
+    }
+    return optional;
+  }
+
+  public Optional<NodeAgent> maybeGetNodeAgent(
       Universe universe, NodeDetails node, boolean checkJavaClient) {
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
@@ -619,22 +640,10 @@ public class NodeUniverseManager extends DevopsBase {
       log.debug("Node agent is not enabled for java client");
       return Optional.empty();
     }
-    UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
-    Provider provider = Provider.getOrBadRequest(providerUUID);
-    Optional<NodeAgent> optional =
-        getNodeAgentClient().maybeGetNodeAgent(node.cloudInfo.private_ip, provider, universe);
-    if (!optional.isPresent()) {
-      log.debug(
-          "Node agent is not enabled for node {} with provider {}",
-          node.getNodeName(),
-          provider.getUuid());
-      return optional;
-    }
-    NodeAgent nodeAgent = optional.get();
-    if (nodeAgentPoller.upgradeNodeAgent(nodeAgent.getUuid(), true)) {
-      nodeAgent.refresh();
-    }
-    return optional;
+    return maybeGetNodeAgent(
+        node.cloudInfo.private_ip,
+        Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider)),
+        universe);
   }
 
   private void addConnectionParams(

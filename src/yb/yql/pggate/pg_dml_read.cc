@@ -32,6 +32,7 @@
 #include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
+#include "yb/gutil/macros.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/debug-util.h"
@@ -112,64 +113,62 @@ auto GetKeyValue(
   return GetKeyValue(col, expr, &tmp, null_type);
 }
 
+using Slices = std::vector<Slice>;
+
 class SimpleYbctidProvider : public YbctidProvider {
  public:
-  explicit SimpleYbctidProvider(std::reference_wrapper<const std::vector<Slice>> ybctids)
-      : ybctids_(&ybctids.get()) {}
- private:
+  SimpleYbctidProvider(std::reference_wrapper<const Slices> ybctids, bool keep_order)
+      : ybctids_(ybctids.get()), keep_order_(keep_order) {}
+
   Result<std::optional<YbctidBatch>> Fetch() override {
     if (fetched_) {
       return std::nullopt;
     }
     fetched_ = true;
-    return YbctidBatch{*ybctids_, /* keep_order= */ true};
+    return YbctidBatch{ybctids_, keep_order_};
   }
 
   void Reset() override {
     fetched_ = false;
   }
 
-  const std::vector<Slice>* ybctids_;
+ private:
+  const Slices& ybctids_;
   bool fetched_ = false;
+  bool keep_order_;
+
+  DISALLOW_COPY_AND_ASSIGN(SimpleYbctidProvider);
 };
 
-class HoldingYbctidProvider : public YbctidProvider {
- public:
-  explicit HoldingYbctidProvider(ThreadSafeArena* arena) : arena_(*arena) {}
-  void reserve(size_t capacity) { ybctids_.reserve(capacity); }
-  void append(const Slice& ybctid) { ybctids_.push_back(arena_.DupSlice(ybctid)); }
- private:
-  Result<std::optional<YbctidBatch>> Fetch() override {
-    if (fetched_) {
-      return std::nullopt;
-    }
-    fetched_ = true;
-    return YbctidBatch{ybctids_, /* keep_order= */ true};
-  }
+struct HoldingYbctidProviderData {
+ protected:
+  explicit HoldingYbctidProviderData(ThreadSafeArena& arena) : arena_(arena) {}
 
-  void Reset() override {
-    fetched_ = false;
-  }
-
+  Slices ybctids_holder_;
   ThreadSafeArena& arena_;
-  std::vector<Slice> ybctids_;
-  bool fetched_ = false;
+};
+
+struct HoldingYbctidProvider final : public HoldingYbctidProviderData, public SimpleYbctidProvider {
+  explicit HoldingYbctidProvider(ThreadSafeArena& arena, bool keep_order)
+      : HoldingYbctidProviderData(arena), SimpleYbctidProvider(ybctids_holder_, keep_order) {}
+
+  void Reserve(size_t capacity) { ybctids_holder_.reserve(capacity); }
+  void Append(Slice ybctid) { ybctids_holder_.push_back(arena_.DupSlice(ybctid)); }
 };
 
 // Helper class to generalize logic of ybctid's generation for regular and reverse iterators.
 class InOperatorYbctidsGenerator {
  public:
-  InOperatorYbctidsGenerator(dockv::DocKey* doc_key, size_t value_placeholder_idx,
-                             HoldingYbctidProvider* ybctid_holder)
-      : doc_key_(*doc_key),
-        value_placeholder_(doc_key_.range_group()[value_placeholder_idx]),
-        ybctids_(*ybctid_holder) {}
+  InOperatorYbctidsGenerator(
+      dockv::DocKey& doc_key, size_t value_placeholder_idx, HoldingYbctidProvider& ybctids)
+      : doc_key_(doc_key), value_placeholder_(doc_key_.range_group()[value_placeholder_idx]),
+        ybctids_(ybctids) {}
 
   template <class It>
   void Generate(It it, const It& end) const {
     for (; it != end; ++it) {
       value_placeholder_ = *it;
-      ybctids_.append(doc_key_.Encode().AsSlice());
+      ybctids_.Append(doc_key_.Encode().AsSlice());
     }
   }
 
@@ -177,6 +176,8 @@ class InOperatorYbctidsGenerator {
   dockv::DocKey& doc_key_;
   dockv::KeyEntryValue& value_placeholder_;
   HoldingYbctidProvider& ybctids_;
+
+  DISALLOW_COPY_AND_ASSIGN(InOperatorYbctidsGenerator);
 };
 
 } // namespace
@@ -409,16 +410,20 @@ Status PgDmlRead::InitDocOp(const YbcPgExecParameters* params) {
 }
 
 void PgDmlRead::SetRequestedYbctids(std::reference_wrapper<const std::vector<Slice>> ybctids) {
-  SetYbctidProvider(std::make_unique<SimpleYbctidProvider>(ybctids));
+  SetYbctidProvider(std::make_unique<SimpleYbctidProvider>(ybctids, /* keep_order */ false));
 }
 
-void PgDmlRead::SetHoldingRequestedYbctids(const std::vector<Slice>& ybctids) {
-  HoldingYbctidProvider ybctid_holder(&arena());
-  size_t size = ybctids.size();
-  ybctid_holder.reserve(size);
-  for (size_t i = 0; i < size; i++)
-    ybctid_holder.append(ybctids[i]);
-  SetYbctidProvider(std::make_unique<HoldingYbctidProvider>(ybctid_holder));
+void PgDmlRead::SetRequestedYbctids(const YbctidGenerator& generator) {
+  auto ybctid_holder = std::make_unique<HoldingYbctidProvider>(arena(), false);
+  ybctid_holder->Reserve(generator.capacity);
+  while (true) {
+    const auto ybctid = generator.next();
+    if (ybctid.empty()) {
+      break;
+    }
+    ybctid_holder->Append(ybctid);
+  }
+  SetYbctidProvider(std::move(ybctid_holder));
 }
 
 Status PgDmlRead::ANNBindVector(PgExpr* vector) {
@@ -790,7 +795,8 @@ Result<std::unique_ptr<YbctidProvider>> PgDmlRead::BuildYbctidsFromPrimaryBinds(
   };
 
   std::optional<InOperatorInfo> in_operator_info;
-  HoldingYbctidProvider ybctid_holder(&arena());
+  auto ybctid_holder = std::make_unique<HoldingYbctidProvider>(
+      arena(), read_req_->has_is_forward_scan());
   for (auto i = num_hash_key_columns; i < bind_->num_key_columns(); ++i) {
     auto& col = bind_.ColumnForIndex(i);
     auto& expr = *col.bind_pb();
@@ -807,9 +813,9 @@ Result<std::unique_ptr<YbctidProvider>> PgDmlRead::BuildYbctidsFromPrimaryBinds(
     // Form ybctid for each argument in the IN operator.
     const auto& column = in_operator_info->column;
     const auto provider = column.BuildSubExprKeyColumnValueProvider();
-    ybctid_holder.reserve(provider.size());
+    ybctid_holder->Reserve(provider.size());
     InOperatorYbctidsGenerator generator(
-        &doc_key, in_operator_info->placeholder_idx, &ybctid_holder);
+        doc_key, in_operator_info->placeholder_idx, *ybctid_holder);
     // In some cases scan are sensitive to key values order. On DocDB side IN operator processes
     // based on column sort order and scan direction. It is necessary to preserve same order for
     // the constructed ybctids.
@@ -821,9 +827,9 @@ Result<std::unique_ptr<YbctidProvider>> PgDmlRead::BuildYbctidsFromPrimaryBinds(
       generator.Generate(begin, end);
     }
   } else {
-    ybctid_holder.append(doc_key.Encode().AsSlice());
+    ybctid_holder->Append(doc_key.Encode().AsSlice());
   }
-  return std::make_unique<HoldingYbctidProvider>(ybctid_holder);
+  return ybctid_holder;
 }
 
 // Returns true in case not more than one range key component has the IN operator

@@ -64,6 +64,7 @@ export const UserTagsField: FC<UserTagsProps> = ({ disabled }) => {
               label={index === 0 ? t('tagName') : null}
               control={control}
               placeholder={t('tagNamePlaceholder')}
+              dataTestId={`user-tags-field-name-${index}`}
             />
             <YBInputField
               name={`${USER_TAGS_FIELD}.${index}.value` as FieldArrayPath<InstanceTag>}
@@ -71,6 +72,7 @@ export const UserTagsField: FC<UserTagsProps> = ({ disabled }) => {
               label={index === 0 ? t('tagValue') : null}
               control={control}
               placeholder={t('tagValuePlaceholder')}
+              dataTestId={`user-tags-field-value-${index}`}
             />
             <IconButton
               color="default"
@@ -90,6 +92,7 @@ export const UserTagsField: FC<UserTagsProps> = ({ disabled }) => {
           size="medium"
           disabled={disabled}
           startIcon={<CircleAddIcon />}
+          dataTestId="user-tags-field-add-button"
         >
           {t('addTag')}
         </YBButton>

@@ -31,13 +31,11 @@ See the section [The WITH clause and common table expressions](../../with-clause
 
 ## Semantics
 
-- `USING` clause is not yet supported.
-
 - While the `WHERE` clause allows a wide range of operators, the exact conditions used in the `WHERE` clause have significant performance considerations (especially for large datasets). For the best performance, use a `WHERE` clause that provides values for all columns in `PRIMARY KEY` or `INDEX KEY`.
 
 ### *delete*
 
-#### WITH [ RECURSIVE ] *with_query* [ , ... ] DELETE FROM [ ONLY ] *table_name* [ * ] [ [ AS ] *alias* ] [ WHERE *condition* | WHERE CURRENT OF *cursor_name* ] [ [*returning_clause*] (#returning-clause) ]
+#### WITH [ RECURSIVE ] *with_query* [ , ... ] DELETE FROM [ ONLY ] *table_name* [ * ] [ [ AS ] *alias* ] [USING from_item] [ WHERE *condition* | WHERE CURRENT OF *cursor_name* ] [ [*returning_clause*] (#returning-clause) ]
 
 ##### *with_query*
 
@@ -50,6 +48,12 @@ Specify the name of the table to be deleted.
 ##### *alias*
 
 Specify the identifier of the target table within the DELETE statement. When an alias is specified, it must be used in place of the actual table in the statement.
+
+##### *from_item*
+
+A table expression that enables referencing columns from additional tables within the `WHERE` clause. 
+This follows the identical syntax conventions as the `FROM` clause in a `SELECT` statement, including the ability to define table aliases. 
+The target table should not be included as a `from_item` unless performing a self-join operation, in which case the target table must appear with an alias in the `from_item` list.
 
 ### *returning_clause*
 

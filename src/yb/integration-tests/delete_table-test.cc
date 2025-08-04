@@ -43,19 +43,28 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/dockv/partition.h"
-#include "yb/common/wire_protocol.h"
+
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol-test-util.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/integration-tests/test_workload.h"
+#include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
-#include "yb/master/master_defaults.h"
+#include "yb/master/catalog_manager.h"
+#include "yb/master/master.h"
+#include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_client.proxy.h"
+#include "yb/master/master_ddl.proxy.h"
+#include "yb/master/master_ddl_client.h"
+#include "yb/master/master_defaults.h"
 
 #include "yb/rpc/rpc_controller.h"
 
@@ -91,6 +100,8 @@ using std::vector;
 using strings::Substitute;
 
 using namespace std::literals;
+
+DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 
 namespace yb {
 
@@ -1511,5 +1522,126 @@ const char* tombstoned_faults[] = {"TEST_fault_crash_after_blocks_deleted",
 
 INSTANTIATE_TEST_CASE_P(FaultFlags, DeleteTableTombstonedParamTest,
                         ::testing::ValuesIn(tombstoned_faults));
+
+class RemoveTablesFromMapsTest : public MiniClusterTestWithClient<MiniCluster> {
+ public:
+  void SetUp() override;
+  virtual MiniClusterOptions MakeMiniClusterOptions();
+  Result<TableId> CreateTable(
+      master::MasterDDLClient& client, const NamespaceName& namespace_name,
+      const TableName& table_name, const Schema& schema);
+  Status WaitForTableAndTabletsToBeRemoved(
+      const std::string& table_id, std::vector<std::string> tablet_ids, MonoDelta timeout);
+};
+
+TEST_F(RemoveTablesFromMapsTest, RemoveDeletedTableFromMap) {
+  const NamespaceName kNamespaceName{"yugabyte"};
+  const TableName kTableName{"test_table"};
+  const MonoDelta kTimeout{60s};
+  auto ddl_client = master::MasterDDLClient(
+      ASSERT_RESULT(cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>()));
+  auto ns_id = ASSERT_RESULT(
+      ddl_client.CreateNamespaceAndWait(kNamespaceName, YQLDatabase::YQL_DATABASE_CQL, kTimeout));
+  auto table_id =
+      ASSERT_RESULT(itest::CreateSimpleTable(ddl_client, kNamespaceName, kTableName, kTimeout));
+  std::vector<std::string> tablet_ids;
+  auto cm = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager_impl();
+  {
+    auto table_info = ASSERT_RESULT(cm->FindTableById(table_id));
+    for (const auto& tablet : ASSERT_RESULT(table_info->GetTabletsIncludeInactive())) {
+      tablet_ids.push_back(tablet->id());
+    }
+  }
+  ASSERT_OK(ddl_client.DeleteTable(table_id, kTimeout));
+  std::string msg = "Wait for tables to be removed from catalog manager map";
+  ASSERT_OK(WaitForTableAndTabletsToBeRemoved(table_id, tablet_ids, MonoDelta::FromSeconds(15)));
+}
+
+TEST_F(RemoveTablesFromMapsTest, RemoveHiddenTableFromMap) {
+  const NamespaceName kNamespaceName{"yugabyte"};
+  const TableName kTableName{"test_table"};
+  const MonoDelta kTimeout{60s};
+
+  auto ddl_client = master::MasterDDLClient(
+      ASSERT_RESULT(cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>()));
+  auto ns_id = ASSERT_RESULT(
+      ddl_client.CreateNamespaceAndWait(kNamespaceName, YQLDatabase::YQL_DATABASE_CQL, kTimeout));
+
+  {
+    auto proxy = ASSERT_RESULT(cluster_->GetLeaderMasterProxy<master::MasterBackupProxy>());
+    master::CreateSnapshotScheduleRequestPB req;
+    auto table_identifier = req.mutable_options()->mutable_filter()->mutable_tables()->add_tables();
+    table_identifier->mutable_namespace_()->set_name("yugabyte");
+    table_identifier->mutable_namespace_()->set_database_type(YQLDatabase::YQL_DATABASE_CQL);
+    req.mutable_options()->set_interval_sec(2);
+    req.mutable_options()->set_retention_duration_sec(5);
+    rpc::RpcController rpc;
+    master::CreateSnapshotScheduleResponsePB resp;
+    ASSERT_OK(proxy.CreateSnapshotSchedule(req, &resp, &rpc));
+    ASSERT_OK(ResponseStatus(resp));
+  }
+
+  std::string table_id =
+      ASSERT_RESULT(itest::CreateSimpleTable(ddl_client, kNamespaceName, kTableName, kTimeout));
+  std::vector<std::string> tablet_ids;
+  auto cm = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager_impl();
+  {
+    auto table_info = ASSERT_RESULT(cm->FindTableById(table_id));
+    for (const auto& tablet : ASSERT_RESULT(table_info->GetTabletsIncludeInactive())) {
+      tablet_ids.push_back(tablet->id());
+    }
+  }
+  ASSERT_OK(ddl_client.DeleteTable(table_id, kTimeout));
+  std::string msg = "Wait for tables to be removed from catalog manager map";
+  ASSERT_OK(WaitForTableAndTabletsToBeRemoved(table_id, tablet_ids, MonoDelta::FromSeconds(15)));
+}
+
+void RemoveTablesFromMapsTest::SetUp() {
+  YBMiniClusterTestBase::SetUp();
+  cluster_ = std::make_unique<MiniCluster>(MakeMiniClusterOptions());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_poll_interval_ms) = 500;
+  ASSERT_OK(cluster_->Start());
+}
+
+MiniClusterOptions RemoveTablesFromMapsTest::MakeMiniClusterOptions() {
+  MiniClusterOptions opts;
+  opts.num_tablet_servers = 1;
+  opts.num_masters = 1;
+  return opts;
+}
+
+Result<TableId> RemoveTablesFromMapsTest::CreateTable(
+    master::MasterDDLClient& client, const NamespaceName& namespace_name,
+    const TableName& table_name, const Schema& schema) {
+  master::CreateTableRequestPB request;
+  request.set_name(table_name);
+  SchemaToPB(schema, request.mutable_schema());
+  if (!namespace_name.empty()) {
+    request.mutable_namespace_()->set_name(namespace_name);
+  }
+  request.mutable_partition_schema()->set_hash_schema(PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA);
+  request.mutable_schema()->mutable_table_properties()->set_num_tablets(1);
+  return client.CreateTable(request);
+}
+
+Status RemoveTablesFromMapsTest::WaitForTableAndTabletsToBeRemoved(
+    const std::string& table_id, std::vector<std::string> tablet_ids, MonoDelta timeout) {
+  auto cm = VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager_impl();
+  return WaitFor(
+      [&cm, &table_id, &tablet_ids]() -> Result<bool> {
+        auto result = cm->FindTableById(table_id);
+        if (result.ok()) {
+          return false;
+        }
+        for (const auto& tablet_id : tablet_ids) {
+          auto result = cm->GetTabletInfo(tablet_id);
+          if (result.ok()) {
+            return false;
+          }
+        }
+        return true;
+      },
+      timeout, "Wait for tables to be removed from catalog manager memory");
+}
 
 }  // namespace yb

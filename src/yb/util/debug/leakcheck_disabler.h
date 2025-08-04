@@ -31,11 +31,12 @@
 //
 #pragma once
 
-#include "yb/gutil/macros.h"
 #include "yb/util/debug/leak_annotations.h"
 
-namespace yb {
-namespace debug {
+#ifdef __cplusplus
+#include "yb/gutil/macros.h"
+
+namespace yb::debug {
 
 // Scoped object that generically disables LSAN leak checking in a given scope.
 // While this object is alive, calls to "new" will not be checked for leaks.
@@ -49,23 +50,21 @@ class ScopedLeakCheckDisabler {
   DISALLOW_COPY_AND_ASSIGN(ScopedLeakCheckDisabler);
 };
 
+} // namespace yb::debug
+
+#endif
+
 #if defined(__has_feature)
   #if __has_feature(address_sanitizer)
     #define DISABLE_ASAN __attribute__((no_sanitize("address")))
+    #define DISABLE_UBSAN __attribute__((no_sanitize("undefined")))
   #endif
 #endif
+
 #ifndef DISABLE_ASAN
 #define DISABLE_ASAN
 #endif
 
-#if defined(__has_feature)
-  #if __has_feature(address_sanitizer)
-    #define DISABLE_UBSAN __attribute__((no_sanitize("undefined")))
-  #endif
-#endif
 #ifndef DISABLE_UBSAN
 #define DISABLE_UBSAN
 #endif
-
-} // namespace debug
-} // namespace yb

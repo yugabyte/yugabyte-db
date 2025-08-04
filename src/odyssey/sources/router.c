@@ -384,10 +384,11 @@ clean:
 		instance->yb_stats[index].user_oid = -1;
 	}
 
+	/* unref route rule */
+	od_rules_unref(route->rule);
 	od_route_unlock(route);
 
-	/* unref route rule and free route object */
-	od_rules_unref(route->rule);
+	/* free route object */
 	od_route_free(route);
 	return 0;
 done:
@@ -813,7 +814,7 @@ static od_server_t *yb_get_idle_server_to_close(od_router_t *router,
 
 		od_route_lock(route);
 		uint32_t route_yb_in_use =
-				od_server_pool_total(&route->server_pool);
+			od_server_pool_total(&route->server_pool);
 		if (route_yb_in_use > per_route_quota) {
 			idle_server = od_pg_server_pool_next(&route->server_pool,
 				OD_SERVER_IDLE);
@@ -824,7 +825,6 @@ static od_server_t *yb_get_idle_server_to_close(od_router_t *router,
 			 * shutting down this server.
 			 */
 			if (idle_server) {
-				od_route_unlock(route);
 				od_router_unlock(router);
 				return idle_server;
 			}
@@ -886,7 +886,15 @@ od_router_status_t od_router_attach(od_router_t *router,
 		 "client_for_router logical client version = %d",
 		 client_for_router->logical_client_version);
 
+	bool client_timed_out = false;
 	for (;;) {
+		/* check for open socket here. Exit if closed */
+		if (yb_machine_io_is_socket_closed(external_client->io.io)) {
+			od_debug(&instance->logger, "router-attach",
+				external_client, NULL,
+				"Socket is closed. Queued client timed out. Aborting auth");
+			client_timed_out = true;
+		}
 		if (version_matching) {
 
 			server = yb_od_server_pool_idle_version_matching(
@@ -1070,7 +1078,7 @@ od_router_status_t od_router_attach(od_router_t *router,
 	}
 
 	od_route_unlock(route);
-	
+
 	if (!created_atleast_one)
 	{
 		server = od_server_allocate(
@@ -1115,6 +1123,9 @@ attach:
     od_stat_t *stats = &route->stats;
     od_atomic_u64_add(&stats->wait_time, time_taken_to_attach_server_ns);
 
+	if (client_timed_out) {
+		return YB_OD_ROUTER_NO_CLIENT;
+	}
 	return OD_ROUTER_OK;
 }
 
@@ -1126,7 +1137,14 @@ void od_router_detach(od_router_t *router, od_client_t *client)
 
 	/* detach from current machine event loop */
 	od_server_t *server = client->server;
-	od_io_detach(&server->io);
+
+	/* YB: Check that we actually have a valid connection with the server 
+	 * before detaching. We can arrive here even when we don't have a 
+	 * valid connection. For eg. when the external client times out waiting
+	 * in the queue. 
+	 */
+	if (server->io.io != NULL)
+		od_io_detach(&server->io);
 
 	od_route_lock(route);
 

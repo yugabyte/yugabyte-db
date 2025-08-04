@@ -17,17 +17,16 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 (5 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.val = t2.val;
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
- YB Batched Nested Loop Join
-   Join Filter: (t1.val = t2.val)
+                QUERY PLAN                 
+-------------------------------------------
+ Nested Loop
    ->  Seq Scan on t2
    ->  Memoize
          Cache Key: t2.val
          Cache Mode: logical
          ->  Index Scan using t1_val on t1
-               Index Cond: (val = ANY (ARRAY[t2.val, $1, $2, ..., $1023]))
-(8 rows)
+               Index Cond: (val = t2.val)
+(7 rows)
 
 LOAD 'pg_hint_plan';
 ERROR:  LOAD not supported yet
@@ -108,17 +107,16 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 (5 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.val = t2.val;
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
- YB Batched Nested Loop Join
-   Join Filter: (t1.val = t2.val)
+                QUERY PLAN                 
+-------------------------------------------
+ Nested Loop
    ->  Seq Scan on t2
    ->  Memoize
          Cache Key: t2.val
          Cache Mode: logical
          ->  Index Scan using t1_val on t1
-               Index Cond: (val = ANY (ARRAY[t2.val, $1, $2, ..., $1023]))
-(8 rows)
+               Index Cond: (val = t2.val)
+(7 rows)
 
 -- pg_hint_plan when enabled recognizes Test as an unknown keyword
 /*+ Test (t1 t2) */

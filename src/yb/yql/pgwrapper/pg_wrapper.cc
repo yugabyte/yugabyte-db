@@ -365,6 +365,10 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_mixed_mode_saop_pushdown, false,
 
 DEFINE_NON_RUNTIME_PREVIEW_bool(ysql_enable_documentdb, false, "Enable DocumentDB YSQL extension");
 
+DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_invalidate_table_cache_entry, true,
+    "Enables invalidation of individual table cache entry on catalog cache refresh, "
+    "only applicable when invalidation messages are enabled.");
+
 DECLARE_bool(enable_pg_cron);
 DECLARE_bool(enable_object_locking_for_table_locks);
 
@@ -983,19 +987,13 @@ Status PgWrapper::InitDb(InitdbParams initdb_params) {
     }
   }
 
-  Status initdb_status = initdb_subprocess.Run();
-  if (!initdb_status.ok()) {
-    auto log_path = initdb_log_path;
-    auto tmpdir_var = getenv("TEST_TMPDIR");
-    if (tmpdir_var != nullptr) {
-      log_path = boost::replace_all_copy(initdb_log_path, "${TEST_TMPDIR}", tmpdir_var);
-    }
-    LOG(ERROR) << "Initdb failed. Initdb log file path: " << log_path;
-    return initdb_status;
+  auto status = initdb_subprocess.Run();
+  if (!status.ok()) {
+    LOG(ERROR) << Format("initdb failed. initdb log path: $0", initdb_log_path);
+    return status;
   }
-
   LOG(INFO) << "initdb completed successfully. Database initialized at " << conf_.data_dir;
-  return Status::OK();
+  return status;
 }
 
 Status PgWrapper::RunPgUpgrade(const PgUpgradeParams& param) {

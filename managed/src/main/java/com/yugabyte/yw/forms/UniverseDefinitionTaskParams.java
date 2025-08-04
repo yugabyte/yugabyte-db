@@ -30,7 +30,8 @@ import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.*;
-import com.yugabyte.yw.models.helpers.audit.*;
+import com.yugabyte.yw.models.helpers.exporters.audit.*;
+import com.yugabyte.yw.models.helpers.exporters.query.*;
 import io.ebean.annotation.EnumValue;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -957,6 +958,15 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return auditLogConfig;
     }
 
+    // Query Logging Config
+    @ApiModelProperty(value = "YbaApi Internal. Query Logging configuration")
+    @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2025.2.0.0")
+    public QueryLogConfig queryLogConfig;
+
+    public QueryLogConfig getQueryLogConfig() {
+      return queryLogConfig;
+    }
+
     // Proxy config HTTP_RPOXY, HTTPS_PROXY, NO_PROXY
     @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.3.0")
     @Getter
@@ -1597,6 +1607,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty private int autoFlagConfigVersion;
 
     @ApiModelProperty private String targetUpgradeSoftwareVersion;
+
+    // This is used to track if all tservers are upgraded to the target ysql major version
+    @ApiModelProperty private boolean allTserversUpgradedToYsqlMajorVersion;
+
+    @ApiModelProperty private boolean canRollbackCatalogUpgrade;
   }
 
   // XCluster: All the xCluster related code resides in this section.

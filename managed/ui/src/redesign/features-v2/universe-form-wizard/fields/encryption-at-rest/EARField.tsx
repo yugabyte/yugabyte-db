@@ -49,6 +49,7 @@ export const EARField: FC<EARProps> = ({ disabled }) => {
         name={EAR_FIELD}
         control={control}
         label={t('createUniverseV2.securitySettings.earField.label')}
+        dataTestId="enable-encryption-at-rest-field"
       />
       {encryptionEnabled && (
         <Box
@@ -91,8 +92,10 @@ export const EARField: FC<EARProps> = ({ disabled }) => {
                           ),
                           error: !!fieldState.error,
                           helperText: fieldState.error?.message,
-                          InputProps: { autoFocus: true }
+                          InputProps: { autoFocus: true },
+                          dataTestId: 'kms-config-field'
                         }}
+                        dataTestId="kms-config-field-container"
                         ref={field.ref}
                         getOptionLabel={getOptionLabel}
                         onChange={handleChange}
