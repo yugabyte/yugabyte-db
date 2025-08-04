@@ -818,7 +818,8 @@ tserver::TSLocalLockManagerPtr TabletServer::ResetAndGetTSLocalLockManager() {
 
 void TabletServer::StartTSLocalLockManager() {
   if (opts_.server_type == TabletServerOptions::kServerType &&
-      PREDICT_FALSE(FLAGS_enable_object_locking_for_table_locks)) {
+      PREDICT_FALSE(FLAGS_enable_object_locking_for_table_locks) &&
+      PREDICT_TRUE(FLAGS_enable_ysql)) {
     std::lock_guard l(lock_);
     ts_local_lock_manager_ = std::make_shared<tserver::TSLocalLockManager>(
         clock_, this /* TabletServerIf* */, *this /* RpcServerBase& */,
