@@ -892,6 +892,12 @@ Status PgTxnManager::RollbackToSubTransaction(
 
 bool PgTxnManager::TryAcquireObjectLock(
     const YbcObjectLockId& lock_id, docdb::ObjectLockFastpathLockType lock_type) {
+  // It is safe to use fast path locking only for statements that would eventually be associated
+  // with kPlain type at PgClientSession, since fast path locking always assigns locks under the
+  // plain transaction.
+  if (IsDdlMode() && !IsDdlModeWithRegularTransactionBlock()) {
+    return false;
+  }
   return client_->TryAcquireObjectLockInSharedMemory(
       active_sub_transaction_id_, lock_id, lock_type);
 }
