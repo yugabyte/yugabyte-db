@@ -14,8 +14,6 @@ type: docs
 
 ## Start YSQL Connection Manager
 
-Currently, YSQL Connection Manager is supported in YugabyteDB and YugabyteDB Anywhere.
-
 ### YugabyteDB
 
 To start a YugabyteDB cluster with YSQL Connection Manager, set the [yb-tserver](../../reference/configuration/yb-tserver/) flag `enable_ysql_conn_mgr` to true.
