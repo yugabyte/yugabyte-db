@@ -143,11 +143,17 @@ var createAWSProviderCmd = &cobra.Command{
 			sshFileContent = string(sshFileContentByte)
 		}
 
+		skipKeyValidateAndUpload, err := cmd.Flags().GetBool("skip-ssh-keypair-validation")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
 		allAccessKeys := make([]ybaclient.AccessKey, 0)
 		accessKey := ybaclient.AccessKey{
 			KeyInfo: ybaclient.KeyInfo{
-				KeyPairName:          util.GetStringPointer(keyPairName),
-				SshPrivateKeyContent: util.GetStringPointer(sshFileContent),
+				KeyPairName:              util.GetStringPointer(keyPairName),
+				SshPrivateKeyContent:     util.GetStringPointer(sshFileContent),
+				SkipKeyValidateAndUpload: util.GetBoolPointer(skipKeyValidateAndUpload),
 			},
 		}
 		allAccessKeys = append(allAccessKeys, accessKey)
@@ -300,6 +306,8 @@ func init() {
 				formatter.GreenColor)))
 	createAWSProviderCmd.MarkFlagsRequiredTogether("custom-ssh-keypair-name",
 		"custom-ssh-keypair-file-path")
+	createAWSProviderCmd.Flags().Bool("skip-ssh-keypair-validation", false,
+		"[Optional] Skip ssh keypair validation and upload to AWS. (default false)")
 
 	createAWSProviderCmd.Flags().Bool("airgap-install", false,
 		"[Optional] Are YugabyteDB nodes installed in an air-gapped environment,"+
