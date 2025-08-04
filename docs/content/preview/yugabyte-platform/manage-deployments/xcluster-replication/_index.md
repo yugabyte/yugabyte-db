@@ -99,4 +99,6 @@ Video: [YFTT - Transactional xCluster](https://www.youtube.com/watch?lI6gw7ncBs8
 
 - xCluster Replication is not supported for [materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views).
 
+- Currently in YugabyteDB Anywhere, you cannot use xCluster Replication or xCluster Disaster Recovery with point-in-time recovery (PITR) on the same database. If you have PITR configured for a database and want to set up xCluster, disable PITR first.
+
 For more information on the YugabyteDB xCluster implementation and its limitations, refer to [xCluster implementation limitations](../../../architecture/docdb-replication/async-replication/#limitations).
