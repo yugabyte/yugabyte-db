@@ -90,5 +90,5 @@ To learn more, refer to [Manage tables and indexes](./disaster-recovery-tables/)
 
 - If a database operation requires a full copy, any application sessions on the database on the DR target will be interrupted while the database is dropped and recreated. Your application should either retry connections or redirect reads to the Source.
 
-- Currently in YugabyteDB Aeon, you cannot use xCluster Disaster Recovery with [point-in-time recovery](./aeon-pitr) (PITR) on the same database. If you have PITR configured for a database and want to set up xCluster Disaster Recovery, disable PITR first.
+- Currently in YugabyteDB Aeon, you cannot use xCluster Disaster Recovery with [point-in-time recovery](../aeon-pitr) (PITR) on the same database. If you have PITR configured for a database and want to set up xCluster Disaster Recovery, disable PITR first.
 
