@@ -12,7 +12,7 @@ type: docs
 
 ## Synopsis
 
-Use the `DROP POLICY` statement to remove the specified row level security policy from the table. Note that if all policies for a table are removed and the table still has `ENABLE ROW LEVEL SECURITY`, then a default deny all policy will be applied for the table.
+Use the DROP POLICY statement to remove the specified row level security policy from the table. Note that if all policies for a table are removed and the table still has ENABLE ROW LEVEL SECURITY, then a default deny all policy will be applied for the table.
 
 ## Syntax
 
@@ -24,7 +24,7 @@ Where
 
 - `name` is the name of the policy to be removed.
 - `table_name` is the name of the table that the policy is on.
-- `CASCADE` / `RESTRICT` don't have any effect because table policies don't have any dependent objects.
+- CASCADE / RESTRICT don't have any effect because table policies don't have any dependent objects.
 
 ## Example
 

@@ -17,7 +17,6 @@
 
 #include "yb/common/schema.h"
 
-#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb_compaction_context.h"
 #include "yb/docdb/docdb_fwd.h"
@@ -27,7 +26,15 @@
 
 #include "yb/rocksdb/compaction_filter.h"
 
+namespace yb {
+
+class Env;
+
+}
+
 namespace yb::docdb {
+
+extern const std::string kIntentsDirName;
 
 Status SetValueFromQLBinaryWrapper(
     QLValuePB ql_value,
@@ -279,5 +286,7 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
 
 std::string GetStorageDir(const std::string& data_dir, const std::string& storage);
 std::string GetStorageCheckpointDir(const std::string& data_dir, const std::string& storage);
+Status MoveChild(Env& env, const std::string& data_dir, const std::string& child);
+Status MoveChildren(Env& env, const std::string& db_dir, IncludeIntents include_intents);
 
 }  // namespace yb::docdb

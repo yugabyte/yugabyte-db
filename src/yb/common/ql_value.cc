@@ -261,7 +261,7 @@ void DoAppendToKey(const PB& value_pb, string* bytes) {
     case InternalType::kVirtualValue:
       LOG(FATAL) << "Runtime error: virtual value should not be used to construct hash key";
     case InternalType::kGinNullValue: {
-      LOG(ERROR) << "Runtime error: gin null value should not be used to construct hash key";
+      LOG(DFATAL) << "Runtime error: gin null value should not be used to construct hash key";
       YBPartition::AppendIntToKey<uint8, uint8>(value_pb.gin_null_value(), bytes);
       break;
     }

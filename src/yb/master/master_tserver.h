@@ -79,6 +79,10 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   ConcurrentPointerReference<tserver::TServerSharedData> SharedObject() override;
 
+  docdb::ObjectLockSharedStateManager* ObjectLockSharedStateManager() const override {
+    return nullptr;
+  }
+
   const std::shared_future<client::YBClient*>& client_future() const override;
 
   Status GetLiveTServers(
@@ -125,11 +129,19 @@ class MasterTabletServer : public tserver::TabletServerIf,
   void SetYsqlDBCatalogVersions(
       const tserver::DBCatalogVersionDataPB& db_catalog_version_data) override {}
 
-  Result<tserver::GetYSQLLeaseInfoResponsePB> GetYSQLLeaseInfo() const override;
+  void SetYsqlDBCatalogVersionsWithInvalMessages(
+      const tserver::DBCatalogVersionDataPB& db_catalog_version_data,
+      const tserver::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data) override {}
+
+  void ResetCatalogVersionsFingerprint() override {}
+
+  Result<tserver::YSQLLeaseInfo> GetYSQLLeaseInfo() const override;
   Status RestartPG() const override {
     return STATUS(NotSupported, "RestartPG not implemented for masters");
   }
-
+  Status KillPg() const override {
+    return STATUS(NotSupported, "KillPg not implemented for masters");
+  }
   const std::string& permanent_uuid() const override;
 
   Result<tserver::PgTxnSnapshot> GetLocalPgTxnSnapshot(

@@ -171,6 +171,17 @@ function yugabyteActiveLeftNav() {
   });
 }
 
+/**
+ * Add class to `right-nav-auto-scroll` in right menu.
+ */
+function rightnavAutoScroll() {
+  if ($('.td-sidebar-toc .td-toc').innerHeight() + 260 >= window.innerHeight) {
+    $('.td-sidebar-toc .td-toc').addClass('right-nav-auto-scroll');
+  } else {
+    $('.td-sidebar-toc .td-toc').removeClass('right-nav-auto-scroll');
+  }
+}
+
 $(document).ready(() => {
   const isSafari = /Safari/.test(navigator.userAgent) && /Apple Computer/.test(navigator.vendor);
   if (isSafari) {
@@ -251,6 +262,21 @@ $(document).ready(() => {
     });
   })();
 
+  (() => {
+    const contributeEditFilePath = document.querySelector('.contribute-edit-file-path');
+    if (contributeEditFilePath) {
+      const gitURL = contributeEditFilePath.getAttribute('data-git');
+      if (gitURL && gitURL.indexOf('ADD_FILE_PATH_HERE') !== -1) {
+        const navBar = document.getElementById('nav_bar');
+        const filePath = navBar.getAttribute('data-file');
+        if (filePath) {
+          const newEditUrl = gitURL.replace('ADD_FILE_PATH_HERE', filePath);
+          contributeEditFilePath.setAttribute('href', newEditUrl);
+        }
+      }
+    }
+  })();
+
   /**
    * Left sidebar nav.
    */
@@ -275,6 +301,7 @@ $(document).ready(() => {
         });
         $('body').addClass('dragging');
         yugabytePageFinderWidth();
+        rightnavAutoScroll();
       });
     });
 
@@ -346,6 +373,28 @@ $(document).ready(() => {
         });
       });
     });
+  })();
+
+  /**
+   * Check immediate heading before H5 on particular pages to apply divider on them.
+   * Like `/preview/reference/configuration/yb-tserver/`.
+   */
+  (() => {
+    if (document.body.classList.contains('configuration')) {
+      const headings = document.querySelectorAll('.configuration h2, .configuration h3, .configuration h4, .configuration h5');
+      let checkH5 = false;
+
+      headings.forEach(heading => {
+        const tag = heading.tagName;
+
+        if (tag === 'H2' || tag === 'H3' || tag === 'H4') {
+          checkH5 = true;
+        } else if (tag === 'H5' && checkH5) {
+          heading.classList.add('first-h5');
+          checkH5 = false;
+        }
+      });
+    }
   })();
 
   /**
@@ -552,7 +601,10 @@ $(document).ready(() => {
     }
   })(document);
 
+  let lastScrollTop = 0;
   $(window).on('scroll', () => {
+    let activeLink = '';
+
     // Active TOC link on scroll.
     if ($('.td-toc #TableOfContents').length > 0) {
       let rightMenuSelector = '.td-content > h2,.td-content > h3,.td-content > h4';
@@ -567,10 +619,39 @@ $(document).ready(() => {
         const scrollTop = $(window).scrollTop();
         const headingId = $(element).attr('id');
         if (offsetTop - 75 <= scrollTop) {
+          activeLink = $(`.td-toc #TableOfContents a[href="#${headingId}"]`);
           $('.td-toc #TableOfContents a').removeClass('active-scroll');
-          $(`.td-toc #TableOfContents a[href="#${headingId}"]`).addClass('active-scroll');
+          activeLink.addClass('active-scroll');
         }
       });
+
+      /*
+       * Autoscroll right nav where the right nav is a very long one.
+       */
+      const tocContainer = $('.td-sidebar-toc .td-toc.right-nav-auto-scroll');
+      if (tocContainer.length > 0) {
+        const linkOffset = activeLink.length ? activeLink.position().top : 0;
+        const containerHeight = tocContainer.height();
+        const linkHeight = activeLink.length ? activeLink.outerHeight() : 0;
+
+        let scrollFlag = 'up';
+        let currentScroll = window.pageYOffset || document.documentElement.scrollTop;
+        if (currentScroll > lastScrollTop) {
+          scrollFlag = 'down';
+        }
+        lastScrollTop = currentScroll <= 0 ? 0 : currentScroll;
+
+        if (scrollFlag === 'down') {
+          tocContainer.scrollTop(tocContainer.scrollTop() + linkOffset - (containerHeight - linkHeight) - 20);
+        } else if (scrollFlag === 'up') {
+          let currentPosition = linkOffset - 145 - linkHeight;
+          if (currentPosition > containerHeight) {
+            tocContainer.scrollTop(tocContainer.scrollTop() + linkOffset - ((containerHeight / 2) + linkHeight / 2));
+          } else if (currentPosition <= 18) {
+            tocContainer.scrollTop(tocContainer.scrollTop() + linkOffset - (150 + linkHeight));
+          }
+        }
+      }
     }
   });
 
@@ -683,10 +764,13 @@ $(document).ready(() => {
       yugabytePageFinderWidth();
     }, 500);
   });
+
+  rightnavAutoScroll();
 });
 
 $(window).resize(() => {
   rightnavAppend();
+  rightnavAutoScroll();
   $('.td-main .td-sidebar').attr('style', '');
   $('.td-main #dragbar').attr('style', '');
   $('.td-main').attr('style', '');

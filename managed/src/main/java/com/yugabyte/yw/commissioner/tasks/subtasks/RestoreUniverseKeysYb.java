@@ -29,13 +29,9 @@ public class RestoreUniverseKeysYb extends RestoreUniverseKeysTaskBase {
   @Override
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    String hostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodetoNode();
-    YBClient client = null;
     EncryptionKey activeKeyRef = null;
-    try {
-      log.info("Running {}: hostPorts={}.", getName(), hostPorts);
-      client = ybService.getClient(hostPorts, certificate);
+    try (YBClient client = ybService.getUniverseClient(universe)) {
+      log.info("Running {}: masterAddresses={}.", getName(), universe.getMasterAddresses());
 
       // Retrieve the universe key set (if one is set) to restore universe to original state
       // after restoration of backup completes
@@ -83,9 +79,6 @@ public class RestoreUniverseKeysYb extends RestoreUniverseKeysTaskBase {
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage(), e);
       throw new RuntimeException(e);
-    } finally {
-      // Close client
-      if (client != null) ybService.closeClient(client, hostPorts);
     }
   }
 }

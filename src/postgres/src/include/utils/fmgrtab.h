@@ -36,7 +36,7 @@ typedef struct
 								 * special cases */
 } FmgrBuiltin;
 
-extern PGDLLIMPORT FmgrBuiltin fmgr_builtins[];	/* YB: remove const */
+extern PGDLLIMPORT FmgrBuiltin fmgr_builtins[]; /* YB: remove const */
 
 extern PGDLLIMPORT const int fmgr_nbuiltins;	/* number of entries in table */
 

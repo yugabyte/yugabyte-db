@@ -26,8 +26,7 @@
 
 #include "yb/util/status_callback.h"
 
-namespace yb {
-namespace master {
+namespace yb::master {
 
 // Fire off the async create tablet.
 // This requires that the new tablet info is locked for write, and the
@@ -111,7 +110,7 @@ class AsyncTserverTabletHealthTask : public RetrySpecificTSRpcTask {
 
  protected:
   // Not associated with a tablet.
-  TabletId tablet_id() const override { return TabletId(); }
+  TabletId tablet_id() const override { return {}; }
 
   void HandleResponse(int attempt) override;
   bool SendRequest(int attempt) override;
@@ -254,18 +253,18 @@ class AsyncAlterTable : public AsyncTabletLeaderTask {
 
   AsyncAlterTable(
       Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
-      const scoped_refptr<TableInfo>& table, const TransactionId transaction_id, LeaderEpoch epoch)
-    : AsyncTabletLeaderTask(master, callback_pool, tablet, table, std::move(epoch)),
+      const scoped_refptr<TableInfo>& table, TransactionId transaction_id, LeaderEpoch epoch)
+      : AsyncTabletLeaderTask(master, callback_pool, tablet, table, std::move(epoch)),
         transaction_id_(transaction_id) {}
 
   AsyncAlterTable(
       Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
-      const scoped_refptr<TableInfo>& table, const TransactionId transaction_id, LeaderEpoch epoch,
-      const xrepl::StreamId& cdc_sdk_stream_id, const bool cdc_sdk_require_history_cutoff)
+      const scoped_refptr<TableInfo>& table, TransactionId transaction_id, LeaderEpoch epoch,
+      const xrepl::StreamId& cdc_sdk_stream_id, bool cdc_sdk_require_history_cutoff)
       : AsyncTabletLeaderTask(master, callback_pool, tablet, table, std::move(epoch)),
-          transaction_id_(transaction_id),
-          cdc_sdk_stream_id_(cdc_sdk_stream_id),
-          cdc_sdk_require_history_cutoff_(cdc_sdk_require_history_cutoff) {}
+        transaction_id_(transaction_id),
+        cdc_sdk_stream_id_(cdc_sdk_stream_id),
+        cdc_sdk_require_history_cutoff_(cdc_sdk_require_history_cutoff) {}
 
   server::MonitoredTaskType type() const override {
     return server::MonitoredTaskType::kAlterTable;
@@ -624,7 +623,7 @@ class AsyncTsTestRetry : public RetrySpecificTSRpcTask {
   std::string description() const override;
 
  private:
-  TabletId tablet_id() const override { return TabletId(); }
+  TabletId tablet_id() const override { return {}; }
 
   void HandleResponse(int attempt) override;
   bool SendRequest(int attempt) override;
@@ -675,7 +674,7 @@ class AsyncUpdateTransactionTablesVersion: public RetrySpecificTSRpcTask {
   std::string description() const override;
 
  private:
-  TabletId tablet_id() const override { return TabletId(); }
+  TabletId tablet_id() const override { return {}; }
 
   void HandleResponse(int attempt) override;
   bool SendRequest(int attempt) override;
@@ -686,5 +685,4 @@ class AsyncUpdateTransactionTablesVersion: public RetrySpecificTSRpcTask {
   tserver::UpdateTransactionTablesVersionResponsePB resp_;
 };
 
-} // namespace master
-} // namespace yb
+} // namespace yb::master

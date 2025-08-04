@@ -1024,15 +1024,15 @@ reportErrorIfLsnTypeNotEnabled()
 /*
  * YB: Throw an error if replication slot doesn't allow ordering modes.
  */
- static void
- reportErrorIfOrderingModeNotEnabled()
- {
-	 if (!yb_allow_replication_slot_ordering_modes)
-		 ereport(ERROR,
-				 (errcode(ERRCODE_SYNTAX_ERROR),
-				  errmsg("ordering mode parameter not allowed when "
-						 "ysql_yb_allow_replication_slot_ordering_modes is disabled")));
- }
+static void
+reportErrorIfOrderingModeNotEnabled()
+{
+	if (!yb_allow_replication_slot_ordering_modes)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("ordering mode parameter not allowed when "
+						"ysql_yb_allow_replication_slot_ordering_modes is disabled")));
+}
 
 /*
  * Process extra options given to CREATE_REPLICATION_SLOT.
@@ -1235,8 +1235,9 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 		}
 	}
 
-	const bool yb_is_pg_export_snapshot_enabled =
+	const bool	yb_is_pg_export_snapshot_enabled =
 		*YBCGetGFlags()->ysql_enable_pg_export_snapshot;
+
 	if (cmd->kind == REPLICATION_KIND_LOGICAL)
 	{
 		LogicalDecodingContext *ctx;
@@ -1270,9 +1271,9 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 									"CREATE_REPLICATION_SLOT ... (SNAPSHOT 'use')")));
 
 				if (YbIsBatchedExecution())
-						ereport(ERROR,
-								(errmsg("%s must not be called in batched execution mode",
-										"CREATE_REPLICATION_SLOT ... (SNAPSHOT 'use')")));
+					ereport(ERROR,
+							(errmsg("%s must not be called in batched execution mode",
+									"CREATE_REPLICATION_SLOT ... (SNAPSHOT 'use')")));
 			}
 
 			if (!IsTransactionBlock())
@@ -1326,7 +1327,7 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 
 			YBValidateOutputPlugin(cmd->plugin);
 
-			uint64_t yb_consistent_snapshot_time;
+			uint64_t	yb_consistent_snapshot_time;
 
 			ReplicationSlotCreate(cmd->slotname, true, RS_PERSISTENT, two_phase,
 								  cmd->plugin, snapshot_action,
@@ -1340,7 +1341,7 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 				/*
 				 * 23 digits is an upper bound for the decimal representation of a uint64
 				 */
-				char yb_consistent_snapshot_time_string[24];
+				char		yb_consistent_snapshot_time_string[24];
 
 				snprintf(yb_consistent_snapshot_time_string,
 						 sizeof(yb_consistent_snapshot_time_string), "%llu",
@@ -3918,11 +3919,13 @@ pg_stat_get_wal_senders(PG_FUNCTION_ARGS)
 
 			if (IsYugaByteEnabled())
 			{
-				int64_t lag_metric = -1;
-				int slotno;
+				int64_t		lag_metric = -1;
+				int			slotno;
+
 				for (slotno = 0; slotno < yb_numreplicationslots; slotno++)
 				{
 					YbcReplicationSlotDescriptor *slot = &yb_replication_slots[slotno];
+
 					if (slot->active_pid != pid)
 						continue;
 

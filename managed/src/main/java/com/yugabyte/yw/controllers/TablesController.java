@@ -656,16 +656,11 @@ public class TablesController extends AuthenticatedController {
       return Collections.emptyList();
     }
 
-    YBClient client = null;
-    try {
-      String certificate = universe.getCertificateNodetoNode();
-      client = ybService.getClient(masterAddresses, certificate);
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       return client.getTablesList().getTableInfoList();
     } catch (Exception e) {
       LOG.warn(e.toString());
       return Collections.emptyList();
-    } finally {
-      ybService.closeClient(client, masterAddresses);
     }
   }
 

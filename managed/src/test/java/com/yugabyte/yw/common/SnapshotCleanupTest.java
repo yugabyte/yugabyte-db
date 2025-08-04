@@ -63,8 +63,7 @@ public class SnapshotCleanupTest extends FakeDBApplication {
             testUniverse, UniverseConfKeys.deleteOrphanSnapshotOnStartup))
         .thenReturn(true);
     mockYBClient = mock(YBClient.class);
-    when(mockService.getClient(nullable(String.class), nullable(String.class)))
-        .thenReturn(mockYBClient);
+    when(mockService.getUniverseClient(nullable(Universe.class))).thenReturn(mockYBClient);
   }
 
   @Test

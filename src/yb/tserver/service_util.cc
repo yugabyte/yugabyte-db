@@ -19,6 +19,8 @@
 #include "yb/consensus/consensus_error.h"
 #include "yb/consensus/raft_consensus.h"
 
+#include "yb/master/master_heartbeat.pb.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_metrics.h"
@@ -171,6 +173,28 @@ Result<int64_t> LeaderTerm(const tablet::TabletPeer& tablet_peer) {
   return leader_state.term;
 }
 
+std::string CatalogInvalMessagesDataDebugString(const master::TSHeartbeatResponsePB& resp) {
+  std::string str;
+  if (resp.has_db_catalog_inval_messages_data()) {
+    str = CatalogInvalMessagesDataDebugString(resp.db_catalog_inval_messages_data());
+  }
+  return str;
+}
+
+std::string CatalogInvalMessagesDataDebugString(
+    const tserver::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data) {
+  std::map<uint32_t, std::vector<std::pair<uint64_t, size_t>>> dbg_map;
+  for (int i = 0; i < db_catalog_inval_messages_data.db_catalog_inval_messages_size(); ++i) {
+    const auto& db_inval_messages = db_catalog_inval_messages_data.db_catalog_inval_messages(i);
+    const uint32_t db_oid = db_inval_messages.db_oid();
+    const uint64_t current_version = db_inval_messages.current_version();
+    const size_t msg_sz =
+        db_inval_messages.has_message_list() ? db_inval_messages.message_list().size() : 0;
+    dbg_map[db_oid].emplace_back(current_version, msg_sz);
+  }
+  return yb::ToString(dbg_map);
+}
+
 void LeaderTabletPeer::FillTabletPeer(TabletPeerTablet source) {
   peer = std::move(source.tablet_peer);
   tablet = std::move(source.tablet);
@@ -179,7 +203,7 @@ void LeaderTabletPeer::FillTabletPeer(TabletPeerTablet source) {
 Status LeaderTabletPeer::FillTerm() {
   auto leader_term_result = LeaderTerm(*peer);
   if (!leader_term_result.ok()) {
-    auto tablet = peer->shared_tablet();
+    auto tablet = peer->shared_tablet_maybe_null();
     if (tablet) {
       // It could happen that tablet becomes nullptr due to shutdown.
       tablet->metrics()->Increment(tablet::TabletCounters::kNotLeaderRejections);
@@ -204,7 +228,7 @@ Status CheckPeerIsReady(
     return s.CloneAndAddErrorCode(TabletServerError(TabletServerErrorPB::TABLET_NOT_RUNNING));
   }
 
-  auto tablet = VERIFY_RESULT(tablet_peer.shared_tablet_safe());
+  auto tablet = VERIFY_RESULT(tablet_peer.shared_tablet());
   SCHECK(tablet != nullptr, IllegalState, "Expected tablet peer to have a tablet");
   const auto tablet_data_state = tablet->metadata()->tablet_data_state();
   if (!allow_split_tablet &&
@@ -273,7 +297,7 @@ Result<TabletPeerTablet> DoLookupTabletPeer(
     return s;
   }
 
-  auto tablet_result = result.tablet_peer->shared_tablet_safe();
+  auto tablet_result = result.tablet_peer->shared_tablet();
   if (!tablet_result.ok()) {
     return tablet_result.status().CloneAndAddErrorCode(TabletServerError(
         TabletServerErrorPB::TABLET_NOT_RUNNING));
@@ -309,7 +333,7 @@ Result<std::shared_ptr<tablet::AbstractTablet>> GetTablet(
   tablet::TabletPtr tablet_ptr = nullptr;
   if (tablet_peer) {
     DCHECK_EQ(tablet_peer->tablet_id(), tablet_id);
-    tablet_ptr = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
+    tablet_ptr = VERIFY_RESULT(tablet_peer->shared_tablet());
   } else {
     auto tablet_peer_result = VERIFY_RESULT(LookupTabletPeer(tablet_manager, tablet_id));
 
@@ -338,7 +362,7 @@ Result<std::shared_ptr<tablet::AbstractTablet>> GetTablet(
     if (PREDICT_FALSE(!s.ok())) {
       if (FLAGS_max_stale_read_bound_time_ms > 0) {
         // TODO(hector): This safe time could be reused by the read operation.
-        auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
+        auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet());
         auto safe_time = tablet->mvcc_manager()->SafeTimeForFollower(
             HybridTime::kMin, CoarseTimePoint::min());
         auto now = tablet_peer->clock_ptr()->Now();
@@ -371,7 +395,7 @@ Result<std::shared_ptr<tablet::AbstractTablet>> GetTablet(
       }
     }
   }
-  auto tablet = tablet_peer->shared_tablet();
+  auto tablet = tablet_peer->shared_tablet_maybe_null();
   if (PREDICT_FALSE(!tablet)) {
     return STATUS_EC_FORMAT(
         IllegalState, TabletServerError(TabletServerErrorPB::TABLET_NOT_RUNNING),
@@ -400,7 +424,7 @@ Status RejectWrite(
 Status CheckWriteThrottling(double score, tablet::TabletPeer* tablet_peer) {
   // Check for memory pressure; don't bother doing any additional work if we've
   // exceeded the limit.
-  auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
+  auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet());
   auto soft_limit_exceeded_result = tablet->mem_tracker()->AnySoftLimitExceeded(score);
   if (soft_limit_exceeded_result.exceeded) {
     tablet->metrics()->Increment(tablet::TabletCounters::kLeaderMemoryPressureRejections);

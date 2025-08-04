@@ -19,7 +19,9 @@
 #include "yb/common/schema_pbutil.h"
 
 #include "yb/master/catalog_manager.h"
+#include "yb/master/catalog_manager-internal.h"
 #include "yb/master/master_defaults.h"
+#include "yb/master/sys_catalog.h"
 #include "yb/master/ysql/ysql_initdb_major_upgrade_handler.h"
 
 #include "yb/tserver/ysql_advisory_lock_table.h"
@@ -243,6 +245,61 @@ Status YsqlManager::ValidateWriteToCatalogTableAllowed(
 
 Status YsqlManager::ValidateTServerVersion(const VersionInfoPB& version) const {
   return ysql_initdb_and_major_upgrade_helper_->ValidateTServerVersion(version);
+}
+
+Result<PgOid> YsqlManager::GetPgTableOidIfCommitted(
+    const PgTableAllOids& oids, const ReadHybridTime& read_time) const {
+  const auto committed_relfilenode_oid = VERIFY_RESULT(sys_catalog_.ReadPgClassColumnWithOidValue(
+      oids.database_oid, oids.pg_table_oid, kPgClassRelFileNodeColumnName, read_time));
+  if (committed_relfilenode_oid != oids.relfilenode_oid) {
+    return STATUS(
+        NotFound, Format("$0: $1", kCommittedPgsqlTableNotFoundErrorStr, oids.pg_table_oid),
+        MasterError(MasterErrorPB::DOCDB_TABLE_NOT_COMMITTED));
+  }
+  return oids.pg_table_oid;
+}
+
+Result<std::string> YsqlManager::GetCachedPgSchemaName(
+    const PgTableAllOids& oids, PgDbRelNamespaceMap& cache) const {
+  const auto pg_table_oid = VERIFY_RESULT(GetPgTableOidIfCommitted(oids));
+
+  const PgRelNamespaceData* nsp_data_ptr = FindOrNull(cache, oids.database_oid);
+  if (nsp_data_ptr == nullptr) {
+    PgRelNamespaceData nsp_data;
+    // Load the maps for this PG database.
+    nsp_data.rel_nsp_name_map = VERIFY_RESULT(sys_catalog_.ReadPgNamespaceNspnameMap(
+        oids.database_oid));
+    nsp_data.rel_nsp_oid_map = VERIFY_RESULT(sys_catalog_.ReadPgClassColumnWithOidValueMap(
+        oids.database_oid, kPgClassRelNamespaceColumnName));
+    nsp_data_ptr = &(cache.insert(std::make_pair(oids.database_oid,
+                                                 std::move(nsp_data))).first->second);
+  }
+
+  const PgOid* const nsp_oid_ptr =
+      FindOrNull(DCHECK_NOTNULL(nsp_data_ptr)->rel_nsp_oid_map, pg_table_oid);
+  const PgOid relnamespace_oid = (nsp_oid_ptr ? *nsp_oid_ptr : kPgInvalidOid);
+  SCHECK_NE(relnamespace_oid, kPgInvalidOid, NotFound,
+      Format("$0: $1", kRelnamespaceNotFoundErrorStr, pg_table_oid));
+
+  const std::string* const pg_schema_name_ptr =
+      FindOrNull(nsp_data_ptr->rel_nsp_name_map, relnamespace_oid);
+  // Return NotFound error if this relnamespace OID is not found in the pg_namespace table.
+  SCHECK_NE(pg_schema_name_ptr, nullptr, NotFound,
+      Format("Cannot find nspname for relnamespace oid $0", relnamespace_oid));
+  return *pg_schema_name_ptr;
+}
+
+Result<std::string> YsqlManager::GetPgSchemaName(
+    const PgTableAllOids& oids, const ReadHybridTime& read_time) const {
+  const auto pg_table_oid = VERIFY_RESULT(GetPgTableOidIfCommitted(oids, read_time));
+  const auto relnamespace_oid = VERIFY_RESULT(sys_catalog_.ReadPgClassColumnWithOidValue(
+      oids.database_oid, pg_table_oid, kPgClassRelNamespaceColumnName, read_time));
+  if (relnamespace_oid == kPgInvalidOid) {
+    return STATUS(
+        NotFound, Format("$0: $1", kRelnamespaceNotFoundErrorStr, pg_table_oid),
+        MasterError(MasterErrorPB::DOCDB_TABLE_NOT_COMMITTED));
+  }
+  return sys_catalog_.ReadPgNamespaceNspname(oids.database_oid, relnamespace_oid, read_time);
 }
 
 }  // namespace yb::master

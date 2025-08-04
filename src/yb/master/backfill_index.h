@@ -65,7 +65,8 @@ class MultiStageAlterTable {
   // INDEX_PERM_DELETE_ONLY -> INDEX_PERM_WRITE_AND_DELETE -> BACKFILL
   static Status LaunchNextTableInfoVersionIfNecessary(
       CatalogManager* mgr, const scoped_refptr<TableInfo>& Info, uint32_t current_version,
-      const LeaderEpoch& epoch, bool respect_backfill_deferrals = true);
+      const LeaderEpoch& epoch, bool respect_backfill_deferrals = true,
+      bool update_ysql_to_backfill = false);
 
   // Clears the fully_applied_* state for the given table and optionally sets it to RUNNING.
   // If the version has changed and does not match the expected version no
@@ -90,7 +91,7 @@ class MultiStageAlterTable {
       const LeaderEpoch& epoch,
       boost::optional<uint32_t> current_version = boost::none);
 
-  // TODO(jason): make this private when closing issue #6218.
+ private:
   // Start Index Backfill process/step for the specified table/index.
   static Status
   StartBackfillingData(CatalogManager *catalog_manager,

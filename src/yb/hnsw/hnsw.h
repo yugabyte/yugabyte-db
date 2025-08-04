@@ -26,6 +26,7 @@
 #include "yb/vector_index/vector_index_fwd.h"
 #include "yb/vector_index/distance.h"
 #include "yb/vector_index/hnsw_util.h"
+#include "yb/vector_index/usearch_include_wrapper_internal.h"
 
 namespace yb {
 
@@ -37,6 +38,52 @@ class RandomAccessFile;
 namespace yb::hnsw {
 
 struct YbHnswVectorData;
+
+// Provides access to a raw bytes data for a single search.
+// Could be reused between searches using Bind/Release method.
+class SearchCache {
+ public:
+  const std::byte* Data(size_t index);
+
+  void Bind(std::reference_wrapper<const Header> header, FileBlockCache& cache);
+  void Release();
+
+  boost::iterator_range<MisalignedPtr<const VectorNo>> GetNeighborsInNonBaseLayer(
+    size_t level, size_t vector);
+  MisalignedPtr<const YbHnswVectorData> VectorHeader(size_t vector);
+  boost::iterator_range<MisalignedPtr<const VectorNo>> GetNeighborsInBaseLayer(
+      size_t vector);
+  vector_index::VectorId GetVectorData(size_t vector);
+  const std::byte* CoordinatesPtr(size_t vector);
+
+ private:
+  Slice GetVectorDataSlice(size_t vector);
+  const std::byte* BlockPtr(
+      size_t block, size_t entries_per_block, size_t entry, size_t entry_size);
+
+  const Header* header_ = nullptr;
+  FileBlockCache* file_block_cache_ = nullptr;
+  std::vector<const std::byte*> blocks_;
+  std::vector<size_t> used_blocks_;
+};
+
+class SearchCacheScope {
+ public:
+  SearchCacheScope(SearchCache& cache, const YbHnsw& hnsw);
+
+  ~SearchCacheScope() {
+    cache_.Release();
+  }
+
+  SearchCache* operator->() const {
+    return &cache_;
+  }
+
+  SearchCacheScope(const SearchCacheScope&) = delete;
+  void operator=(const SearchCacheScope&) = delete;
+ private:
+  SearchCache& cache_;
+};
 
 struct YbHnswSearchContext {
   using HeapEntry = std::pair<HnswDistanceType, VectorNo>;
@@ -56,6 +103,7 @@ struct YbHnswSearchContext {
   Top top;
   ExtraTop extra_top;
   NextQueue next;
+  SearchCache search_cache;
 };
 
 class YbHnsw {
@@ -65,57 +113,52 @@ class YbHnsw {
   using Metric = unum::usearch::metric_punned_t;
   using SearchResult = std::vector<vector_index::VectorWithDistance<DistanceType>>;
 
-  explicit YbHnsw(Metric& metric) : metric_(metric) {}
+  YbHnsw(const Metric& metric, BlockCachePtr block_cache);
+  ~YbHnsw();
 
   // Imports specified index to YbHnsw structure, also storing this structure to disk.
   Status Import(
-    const unum::usearch::index_dense_gt<vector_index::VectorId>& index, const std::string& path,
-    BlockCachePtr block_cache);
+    const unum::usearch::index_dense_gt<vector_index::VectorId>& index, const std::string& path);
 
   // Initialize YbHnsw from specified file, using block_cache to cache blocks.
-  Status Init(const std::string& path, BlockCachePtr block_cache);
+  Status Init(const std::string& path);
 
   SearchResult Search(
-      const std::byte* query_vector, size_t max_results, const vector_index::VectorFilter& filter,
+      const std::byte* query_vector, const vector_index::SearchOptions& options,
       YbHnswSearchContext& context) const;
 
   SearchResult Search(
-      const CoordinateType* query_vector, size_t max_results,
-      const vector_index::VectorFilter& filter, YbHnswSearchContext& context) const {
-    return Search(pointer_cast<const std::byte*>(query_vector), max_results, filter, context);
+      const CoordinateType* query_vector, const vector_index::SearchOptions& options,
+      YbHnswSearchContext& context) const {
+    return Search(
+        pointer_cast<const std::byte*>(query_vector), options, context);
   }
 
+  DistanceType Distance(const std::byte* lhs, const std::byte* rhs) const;
+
+  const Header& header() const;
+
  private:
-  std::pair<VectorNo, DistanceType> SearchInNonBaseLayers(const std::byte* query_vector) const;
+  friend class SearchCacheScope;
+
+  std::pair<VectorNo, DistanceType> SearchInNonBaseLayers(
+      const std::byte* query_vector, SearchCache& cache) const;
   void SearchInBaseLayer(
       const std::byte* query_vector, VectorNo best_vector, DistanceType best_dist,
-      size_t max_results, const vector_index::VectorFilter& filter,
-      YbHnswSearchContext& context) const;
+      const vector_index::SearchOptions& options, YbHnswSearchContext& context) const;
   SearchResult MakeResult(size_t max_results, YbHnswSearchContext& context) const;
 
-  boost::iterator_range<MisalignedPtr<const VectorNo>> GetNeighborsInNonBaseLayer(
-      size_t level, size_t vector) const;
-
-  boost::iterator_range<MisalignedPtr<const VectorNo>> GetNeighborsInBaseLayer(
-      size_t vector) const;
-
-  const std::byte* BlockPtr(
-      size_t block, size_t entries_per_block, size_t entry, size_t entry_size) const;
-
-  Slice GetVectorDataSlice(size_t vector) const;
-  vector_index::VectorId GetVectorData(size_t vector) const;
-  DistanceType Distance(const std::byte* lhs, const std::byte* rhs) const;
-  DistanceType Distance(const std::byte* lhs, size_t vector) const;
-  MisalignedPtr<const YbHnswVectorData> VectorHeader(size_t vector) const;
-  const std::byte* CoordinatesPtr(size_t vector) const;
+  DistanceType Distance(const std::byte* lhs, size_t vector, SearchCache& cache) const;
   boost::iterator_range<MisalignedPtr<const CoordinateType>> MakeCoordinates(
       const std::byte* ptr) const;
-  boost::iterator_range<MisalignedPtr<const CoordinateType>> Coordinates(size_t vector) const;
+  boost::iterator_range<MisalignedPtr<const CoordinateType>> Coordinates(
+      size_t vector, SearchCache& cache) const;
 
-  Metric& metric_;
+  Metric metric_;
+  const BlockCachePtr block_cache_;
+
   Header header_;
-  std::shared_ptr<BlockCache> block_cache_;
-  FileBlockCache* file_block_cache_ = nullptr;
+  FileBlockCachePtr file_block_cache_;
 };
 
 }  // namespace yb::hnsw

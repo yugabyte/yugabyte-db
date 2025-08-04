@@ -19,6 +19,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include "yb/ash/rpc_wait_state.h"
+
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 
@@ -64,12 +66,13 @@ Result<std::unique_ptr<rpc::Messenger>> CreateClientMessenger(
   builder.set_num_reactors(num_reactors);
   builder.set_metric_entity(metric_entity);
   builder.UseDefaultConnectionContextFactory(parent_mem_tracker);
+  builder.UseLocalHostOutboundIpBaseInTests();
   if (secure_context) {
     rpc::ApplySecureContext(secure_context, &builder);
   }
   auto messenger = VERIFY_RESULT(builder.Build());
-  if (PREDICT_FALSE(FLAGS_TEST_running_test)) {
-    messenger->TEST_SetOutboundIpBase(VERIFY_RESULT(HostToAddress("127.0.0.1")));
+  if (FLAGS_ysql_yb_enable_ash) {
+    messenger->SetMetadataSerializerFactory(std::make_unique<ash::MetadataSerializerFactory>());
   }
   return messenger;
 }

@@ -52,7 +52,8 @@ public class CDCBaseClass extends BaseMiniClusterTest {
   protected String CDC_INTENT_SIZE_GFLAG = "cdc_max_stream_intent_records";
   protected String CDC_ENABLE_CONSISTENT_RECORDS = "cdc_enable_consistent_records";
   protected String CDC_POPULATE_SAFEPOINT_RECORD = "cdc_populate_safepoint_record";
-
+  protected String TEST_DCHECK_FOR_MISSING_SCHEMA_PACKING =
+      "TEST_dcheck_for_missing_schema_packing";
   // Postgres settings.
   protected static final String DEFAULT_PG_DATABASE = "yugabyte";
   protected static final String DEFAULT_PG_USER = "yugabyte";
@@ -97,8 +98,8 @@ public class CDCBaseClass extends BaseMiniClusterTest {
     return null;
   }
 
-  /** empty helper function */
   protected void setUp() throws Exception {
+    setServerFlag(getTserverHostAndPort(), TEST_DCHECK_FOR_MISSING_SCHEMA_PACKING, "false");
   }
 
   /**

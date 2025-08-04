@@ -80,6 +80,15 @@ Specify the instance to use for the universe nodes:
 
 - Choose the **Linux version** to be provisioned on the nodes of the universe.
 
+  This option only applies if you have selected an AWS, GCP, or Azure provider configuration. The available Linux versions are specified in the provider.
+
+  If you are performing an airgapped installation, you cannot use YBA-Managed Linux versions; you must use a custom image. Do the following before creating your universe:
+
+  1. Create a custom Linux version (AMI) that includes all of the software pre-requisites, including [additional software for airgapped deployment](../../prepare/server-nodes-software/#additional-software-for-airgapped-deployment).
+  1. Add your custom Linux version to the universe provider configuration **Linux Version Catalog**.
+
+  Refer to [Create cloud provider configuration](../../configure-yugabyte-platform/aws/).
+
 - Select the **Instance Type** to use for the nodes in the universe.
 
 - Specify the number and size of the storage volumes, and the storage type.
@@ -137,6 +146,12 @@ Enable Connection Pooling
 
 Enable Systemd Services
 : To use cron instead of systemd for managing nodes, you can disable systemd services. This is not recommended.
+
+{{< warning title="cron-based support deprecated" >}}
+
+cron-based universes will no longer be supported in YugabyteDB Anywhere v2025.2 and later. To upgrade to v2025.2 or later, all your universes must be using systemd. Universes that use a cloud provider configuration will be upgraded to systemd automatically. To upgrade on-premises cron-based universes, navigate to the universe and choose **Actions>Upgrade to Systemd**.
+
+{{< /warning >}}
 
 Override Deployment Ports
 : To customize the [ports used for the universe](../../prepare/networking/), select the **Override Deployment Ports** option and enter the custom port numbers for the services you want to change. Any value from `1024` to `65535` is valid, as long as it doesn't conflict with anything else running on nodes to be provisioned.

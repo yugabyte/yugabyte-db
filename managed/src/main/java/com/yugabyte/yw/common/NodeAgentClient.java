@@ -26,17 +26,27 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.YBAError;
 import com.yugabyte.yw.nodeagent.AbortTaskRequest;
+import com.yugabyte.yw.nodeagent.ConfigureServerInput;
+import com.yugabyte.yw.nodeagent.ConfigureServerOutput;
 import com.yugabyte.yw.nodeagent.ConfigureServiceInput;
 import com.yugabyte.yw.nodeagent.ConfigureServiceOutput;
 import com.yugabyte.yw.nodeagent.DescribeTaskRequest;
 import com.yugabyte.yw.nodeagent.DescribeTaskResponse;
+import com.yugabyte.yw.nodeagent.DestroyServerInput;
+import com.yugabyte.yw.nodeagent.DestroyServerOutput;
 import com.yugabyte.yw.nodeagent.DownloadFileRequest;
 import com.yugabyte.yw.nodeagent.DownloadFileResponse;
+import com.yugabyte.yw.nodeagent.DownloadSoftwareInput;
+import com.yugabyte.yw.nodeagent.DownloadSoftwareOutput;
 import com.yugabyte.yw.nodeagent.ExecuteCommandRequest;
 import com.yugabyte.yw.nodeagent.ExecuteCommandResponse;
 import com.yugabyte.yw.nodeagent.FileInfo;
+import com.yugabyte.yw.nodeagent.InstallOtelCollectorInput;
+import com.yugabyte.yw.nodeagent.InstallOtelCollectorOutput;
 import com.yugabyte.yw.nodeagent.InstallSoftwareInput;
 import com.yugabyte.yw.nodeagent.InstallSoftwareOutput;
+import com.yugabyte.yw.nodeagent.InstallYbcInput;
+import com.yugabyte.yw.nodeagent.InstallYbcOutput;
 import com.yugabyte.yw.nodeagent.NodeAgentGrpc;
 import com.yugabyte.yw.nodeagent.NodeAgentGrpc.NodeAgentBlockingStub;
 import com.yugabyte.yw.nodeagent.NodeAgentGrpc.NodeAgentStub;
@@ -48,6 +58,8 @@ import com.yugabyte.yw.nodeagent.ServerControlInput;
 import com.yugabyte.yw.nodeagent.ServerControlOutput;
 import com.yugabyte.yw.nodeagent.ServerGFlagsInput;
 import com.yugabyte.yw.nodeagent.ServerGFlagsOutput;
+import com.yugabyte.yw.nodeagent.SetupCGroupInput;
+import com.yugabyte.yw.nodeagent.SetupCGroupOutput;
 import com.yugabyte.yw.nodeagent.SubmitTaskRequest;
 import com.yugabyte.yw.nodeagent.SubmitTaskResponse;
 import com.yugabyte.yw.nodeagent.UpdateRequest;
@@ -70,6 +82,8 @@ import io.grpc.netty.shaded.io.grpc.netty.GrpcSslContexts;
 import io.grpc.netty.shaded.io.grpc.netty.NettyChannelBuilder;
 import io.grpc.netty.shaded.io.netty.channel.ChannelOption;
 import io.grpc.netty.shaded.io.netty.handler.ssl.SslContext;
+import io.grpc.stub.ClientCallStreamObserver;
+import io.grpc.stub.ClientResponseObserver;
 import io.grpc.stub.StreamObserver;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
@@ -97,8 +111,10 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import javax.inject.Singleton;
@@ -160,9 +176,7 @@ public class NodeAgentClient {
         nodeAgentEnablerProvider,
         config ->
             ChannelFactory.getDefaultChannel(
-                config,
-                new GrpcClientRequestInterceptor(config.getNodeAgent().getUuid(), confGetter),
-                executorService));
+                config, new GrpcClientRequestInterceptor(config, confGetter), executorService));
   }
 
   public NodeAgentClient(
@@ -203,33 +217,44 @@ public class NodeAgentClient {
 
   /** This class intercepts the client request to add the authorization token header. */
   public static class GrpcClientRequestInterceptor implements ClientInterceptor {
-    private final UUID nodeAgentUuid;
+    private final ChannelConfig config;
     private final RuntimeConfGetter confGetter;
 
-    GrpcClientRequestInterceptor(UUID nodeAgentUuid, RuntimeConfGetter confGetter) {
-      this.nodeAgentUuid = nodeAgentUuid;
+    GrpcClientRequestInterceptor(ChannelConfig config, RuntimeConfGetter confGetter) {
+      this.config = config;
       this.confGetter = confGetter;
     }
 
     public <ReqT, RespT> ClientCall<ReqT, RespT> interceptCall(
         MethodDescriptor<ReqT, RespT> methodDescriptor, CallOptions callOptions, Channel channel) {
-
+      String compression = config.getNodeAgent().getConfig().getCompressor();
+      if (StringUtils.isNotBlank(compression)
+          && confGetter.getGlobalConf(GlobalConfKeys.nodeAgentEnableMessageCompression)) {
+        callOptions = callOptions.withCompression(compression);
+      }
       return new ForwardingClientCall.SimpleForwardingClientCall<ReqT, RespT>(
           channel.newCall(methodDescriptor, callOptions)) {
 
         @Override
         public void start(ClientCall.Listener<RespT> responseListener, Metadata headers) {
+          UUID nodeAgentUuid = config.getNodeAgent().getUuid();
           log.trace("Setting custom headers for node agent {}", nodeAgentUuid);
           String correlationId = MDC.get(LogUtil.CORRELATION_ID);
           if (StringUtils.isEmpty(correlationId)) {
             correlationId = UUID.randomUUID().toString();
-            log.debug("Using correlation ID {} for node agent {}", correlationId, nodeAgentUuid);
           }
+          String requestId = UUID.randomUUID().toString();
+          log.debug(
+              "Using correlation ID {} and request ID {} for node agent {}",
+              correlationId,
+              requestId,
+              nodeAgentUuid);
           Duration tokenLifetime = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentTokenLifetime);
           String token = NodeAgentClient.getNodeAgentJWT(nodeAgentUuid, tokenLifetime);
           headers.put(Metadata.Key.of("authorization", Metadata.ASCII_STRING_MARSHALLER), token);
           headers.put(
               Metadata.Key.of("x-correlation-id", Metadata.ASCII_STRING_MARSHALLER), correlationId);
+          headers.put(Metadata.Key.of("x-request-id", Metadata.ASCII_STRING_MARSHALLER), requestId);
           super.start(responseListener, headers);
         }
       };
@@ -337,6 +362,12 @@ public class NodeAgentClient {
       if (!Objects.equals(nodeAgent.getUuid(), other.nodeAgent.getUuid())) {
         return false;
       }
+      if (!Objects.equals(nodeAgent.getIp(), other.nodeAgent.getIp())) {
+        return false;
+      }
+      if (!Objects.equals(nodeAgent.getVersion(), other.nodeAgent.getVersion())) {
+        return false;
+      }
       if (enableTls != other.enableTls) {
         return false;
       }
@@ -370,7 +401,7 @@ public class NodeAgentClient {
       this.correlationId = MDC.get(LogUtil.CORRELATION_ID);
     }
 
-    private void setCorrelationId() {
+    protected void setCorrelationId() {
       if (!StringUtils.isBlank(correlationId)) {
         MDC.put(LogUtil.CORRELATION_ID, correlationId);
       }
@@ -386,7 +417,7 @@ public class NodeAgentClient {
       setCorrelationId();
       this.throwable = throwable;
       latch.countDown();
-      log.error("Error encountered for {} - {}", getId(), throwable.getMessage());
+      log.error("Error encountered for {} - {}", getId(), throwable.getMessage(), throwable);
     }
 
     @Override
@@ -417,6 +448,45 @@ public class NodeAgentClient {
       if (throwOnError && throwable != null) {
         Throwables.propagate(throwable);
       }
+    }
+  }
+
+  static class StreamingClientResponseObserver<Req, Res> extends BaseResponseObserver<Res>
+      implements ClientResponseObserver<Req, Res> {
+    private static final int REQUEST_COUNT = 1;
+    private final Supplier<Req> requestSupplier;
+    private volatile ClientCallStreamObserver<Req> requestStream;
+
+    StreamingClientResponseObserver(String id, Supplier<Req> requestSupplier) {
+      super(id);
+      this.requestSupplier = requestSupplier;
+    }
+
+    // Initialization of the stream observer.
+    @Override
+    public void beforeStart(ClientCallStreamObserver<Req> requestStream) {
+      this.requestStream = requestStream;
+      // Set up manual flow control for the response stream.
+      this.requestStream.disableAutoRequestWithInitial(REQUEST_COUNT);
+      this.requestStream.setOnReadyHandler(
+          () -> {
+            setCorrelationId();
+            while (requestStream.isReady()) {
+              Req data = requestSupplier.get();
+              if (data == null) {
+                requestStream.onCompleted();
+              } else {
+                requestStream.onNext(data);
+              }
+            }
+          });
+    }
+
+    @Override
+    public void onNext(Res response) {
+      super.onNext(response);
+      // Signal to produce count more messages to be delivered to the 'inbound' StreamObserver.
+      requestStream.request(REQUEST_COUNT);
     }
   }
 
@@ -779,32 +849,39 @@ public class NodeAgentClient {
     try (InputStream inputStream = new BufferedInputStream(new FileInputStream(inputFile))) {
       NodeAgentStub stub = NodeAgentGrpc.newStub(channel);
       String id = String.format("%s-%s", nodeAgent.getUuid(), inputFile);
-      BaseResponseObserver<UploadFileResponse> responseObserver = new BaseResponseObserver<>(id);
-      StreamObserver<UploadFileRequest> requestObserver = stub.uploadFile(responseObserver);
       FileInfo fileInfo = FileInfo.newBuilder().setFilename(outputFile).build();
-      UploadFileRequest.Builder builder = UploadFileRequest.newBuilder().setFileInfo(fileInfo);
-      if (StringUtils.isNotBlank(user)) {
-        builder.setUser(user);
-      }
-      if (chmod > 0) {
-        builder.setChmod(chmod);
-      }
       if (timeout != null && !timeout.isZero()) {
         stub = stub.withDeadlineAfter(timeout.toMillis(), TimeUnit.MILLISECONDS);
       }
-      UploadFileRequest request = builder.build();
-      // Send metadata first.
-      requestObserver.onNext(builder.build());
+      AtomicBoolean isMetadataSent = new AtomicBoolean();
       byte[] bytes = new byte[FILE_UPLOAD_CHUNK_SIZE_BYTES];
-      int bytesRead = 0;
-      while ((bytesRead = inputStream.read(bytes)) > 0) {
-        request =
-            UploadFileRequest.newBuilder()
-                .setChunkData(ByteString.copyFrom(bytes, 0, bytesRead))
-                .build();
-        requestObserver.onNext(request);
-      }
-      requestObserver.onCompleted();
+      StreamingClientResponseObserver<UploadFileRequest, UploadFileResponse> responseObserver =
+          new StreamingClientResponseObserver<>(
+              id,
+              () -> {
+                if (isMetadataSent.compareAndSet(false, true)) {
+                  UploadFileRequest.Builder builder =
+                      UploadFileRequest.newBuilder().setFileInfo(fileInfo);
+                  if (StringUtils.isNotBlank(user)) {
+                    builder.setUser(user);
+                  }
+                  if (chmod > 0) {
+                    builder.setChmod(chmod);
+                  }
+                  return builder.build();
+                }
+                try {
+                  int bytesRead = inputStream.read(bytes);
+                  return bytesRead > 0
+                      ? UploadFileRequest.newBuilder()
+                          .setChunkData(ByteString.copyFrom(bytes, 0, bytesRead))
+                          .build()
+                      : null;
+                } catch (IOException e) {
+                  throw new RuntimeException(e);
+                }
+              });
+      stub.uploadFile(responseObserver);
       responseObserver.waitFor();
     } catch (Exception e) {
       throw new RuntimeException(
@@ -913,6 +990,18 @@ public class NodeAgentClient {
     return runAsyncTask(nodeAgent, builder.build(), ServerControlOutput.class);
   }
 
+  public ConfigureServerOutput runConfigureServer(
+      NodeAgent nodeAgent, ConfigureServerInput input, String user) {
+    SubmitTaskRequest.Builder builder =
+        SubmitTaskRequest.newBuilder()
+            .setConfigureServerInput(input)
+            .setTaskId(UUID.randomUUID().toString());
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
+    return runAsyncTask(nodeAgent, builder.build(), ConfigureServerOutput.class);
+  }
+
   public InstallSoftwareOutput runInstallSoftware(
       NodeAgent nodeAgent, InstallSoftwareInput input, String user) {
     SubmitTaskRequest.Builder builder =
@@ -925,6 +1014,54 @@ public class NodeAgentClient {
     return runAsyncTask(nodeAgent, builder.build(), InstallSoftwareOutput.class);
   }
 
+  public DownloadSoftwareOutput runDownloadSoftware(
+      NodeAgent nodeAgent, DownloadSoftwareInput input, String user) {
+    SubmitTaskRequest.Builder builder =
+        SubmitTaskRequest.newBuilder()
+            .setDownloadSoftwareInput(input)
+            .setTaskId(UUID.randomUUID().toString());
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
+    return runAsyncTask(nodeAgent, builder.build(), DownloadSoftwareOutput.class);
+  }
+
+  public InstallYbcOutput runInstallYbcSoftware(
+      NodeAgent nodeAgent, InstallYbcInput input, String user) {
+    SubmitTaskRequest.Builder builder =
+        SubmitTaskRequest.newBuilder()
+            .setInstallYbcInput(input)
+            .setTaskId(UUID.randomUUID().toString());
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
+    return runAsyncTask(nodeAgent, builder.build(), InstallYbcOutput.class);
+  }
+
+  public InstallOtelCollectorOutput runInstallOtelCollector(
+      NodeAgent nodeAgent, InstallOtelCollectorInput input, String user) {
+    SubmitTaskRequest.Builder builder =
+        SubmitTaskRequest.newBuilder()
+            .setInstallOtelCollectorInput(input)
+            .setTaskId(UUID.randomUUID().toString());
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
+    return runAsyncTask(nodeAgent, builder.build(), InstallOtelCollectorOutput.class);
+  }
+
+  public SetupCGroupOutput runSetupCGroupInput(
+      NodeAgent nodeAgent, SetupCGroupInput input, String user) {
+    SubmitTaskRequest.Builder builder =
+        SubmitTaskRequest.newBuilder()
+            .setSetupCGroupInput(input)
+            .setTaskId(UUID.randomUUID().toString());
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
+    return runAsyncTask(nodeAgent, builder.build(), SetupCGroupOutput.class);
+  }
+
   public ServerGFlagsOutput runServerGFlags(
       NodeAgent nodeAgent, ServerGFlagsInput input, String user) {
     SubmitTaskRequest.Builder builder =
@@ -935,6 +1072,18 @@ public class NodeAgentClient {
       builder.setUser(user);
     }
     return runAsyncTask(nodeAgent, builder.build(), ServerGFlagsOutput.class);
+  }
+
+  public DestroyServerOutput runDestroyServer(
+      NodeAgent nodeAgent, DestroyServerInput input, String user) {
+    SubmitTaskRequest.Builder builder =
+        SubmitTaskRequest.newBuilder()
+            .setTaskId(UUID.randomUUID().toString())
+            .setDestroyServerInput(input);
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
+    return runAsyncTask(nodeAgent, builder.build(), DestroyServerOutput.class);
   }
 
   public synchronized void cleanupCachedClients() {

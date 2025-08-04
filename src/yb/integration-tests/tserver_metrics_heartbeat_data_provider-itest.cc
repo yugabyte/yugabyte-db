@@ -125,13 +125,13 @@ class TServerFullCompactionStatusMetricsHeartbeatDataProviderITest
   }
 
   // should_wait determines whether the function is asynchronous or synchronous.
-  void TriggerAdminCompactions(bool should_wait) {
+  void TriggerAdminCompactions(ShouldWait should_wait) {
     for (const auto& tablet_server : cluster_->mini_tablet_servers()) {
       auto* ts_tablet_manager = tablet_server->server()->tablet_manager();
       const auto tablet_peers = ts_tablet_manager->GetTabletPeersWithTableId(test_table_id_);
       TSTabletManager::TabletPtrs test_tablet_ptrs;
       for (const auto& tablet_peer : tablet_peers) {
-        test_tablet_ptrs.push_back(tablet_peer->shared_tablet());
+        test_tablet_ptrs.push_back(tablet_peer->shared_tablet_maybe_null());
       }
       ASSERT_OK(ts_tablet_manager->TriggerAdminCompaction(
           test_tablet_ptrs, AdminCompactionOptions { should_wait }));
@@ -150,7 +150,7 @@ class TServerFullCompactionStatusMetricsHeartbeatDataProviderITest
 TEST_F(
     TServerFullCompactionStatusMetricsHeartbeatDataProviderITest,
     MetricsReportIdleCompactionState) {
-  TriggerAdminCompactions(true /* should_wait */);
+  TriggerAdminCompactions(ShouldWait::kTrue);
   ASSERT_TRUE(ASSERT_RESULT(AddDataSatisfies(
       GetMetricCheck([](const master::FullCompactionStatusPB& full_compaction_status) {
         return full_compaction_status.has_full_compaction_state() &&
@@ -164,7 +164,7 @@ TEST_F(
     TServerFullCompactionStatusMetricsHeartbeatDataProviderITest,
     MetricsReportCompactingCompactionState) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = true;
-  TriggerAdminCompactions(false /* should_wait */);
+  TriggerAdminCompactions(ShouldWait::kFalse);
   ASSERT_OK(WaitFor(
       [&]() {
         return AddDataSatisfies(

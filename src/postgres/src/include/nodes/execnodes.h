@@ -904,14 +904,12 @@ typedef struct TupleHashTableData
 
 	/* YB */
 	ExprState **yb_keyColExprs; /* expressions that are input to hash
-								 * functions. If these are null, we
-								 * revert to using keyColIdx to know
-								 * what tuple attributes to hash.
-								 */
+								 * functions. If these are null, we revert to
+								 * using keyColIdx to know what tuple
+								 * attributes to hash. */
 	AttrNumber *in_keyColIdx;	/* attr numbers of input key columns */
 	ExprState **yb_in_keycolExprs;	/* equivalent of yb_keyColExprs for input
-									 * tuples
-									 */
+									 * tuples */
 }			TupleHashTableData;
 
 typedef tuplehash_iterator TupleHashIterator;
@@ -1326,7 +1324,7 @@ typedef struct EPQStateExtra
 	 * passed to EvalPlanQual().
 	 */
 	bool	   *relsubs_blocked;
-} EPQStateExtra;
+}			EPQStateExtra;
 
 /* ----------------
  *	 ResultState information
@@ -1985,6 +1983,7 @@ typedef struct TidScanState
 	int			tss_TidPtr;
 	ItemPointerData *tss_TidList;
 	HeapTupleData tss_htup;
+	List	   *yb_tss_aggrefs;
 } TidScanState;
 
 /* ----------------

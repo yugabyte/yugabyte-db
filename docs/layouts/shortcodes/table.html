@@ -51,7 +51,7 @@
             {{- $row = print $row "|" $cell -}}
         {{- end -}}
     {{- end -}}
-    {{- replace (replace (markdownify $table) ";-vert-;" "|") "\x01" "\n" | markdownify  -}}
+    <div class="custom-yb-table">{{- replace (replace (markdownify $table) ";-vert-;" "|") "\x01" "\n" | markdownify  -}}</div>
     {{- /* warnf "%s" (replace (replace (markdownify $table) ";-vert-;" "|") "\x01" "\n" | markdownify ) */ -}}
 {{- else -}}
     {{- warnf "empty table in [%q]" $.Page.Permalink -}}

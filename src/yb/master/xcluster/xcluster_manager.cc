@@ -51,8 +51,7 @@ DEFINE_RUNTIME_AUTO_bool(enable_tablet_split_of_xcluster_replicated_tables, kExt
 DEFINE_RUNTIME_uint32(xcluster_ysql_statement_timeout_sec, 120,
     "Timeout for YSQL statements executed during xCluster operations.");
 
-// This flag will be converted to a kExternal Auto flag as the feature matures.
-DEFINE_RUNTIME_PREVIEW_bool(xcluster_enable_ddl_replication, false,
+DEFINE_RUNTIME_AUTO_bool(xcluster_enable_ddl_replication, kExternal, false, true,
     "Enables xCluster automatic DDL replication.");
 
 DEFINE_test_flag(bool, force_automatic_ddl_replication_mode, false,

@@ -151,7 +151,7 @@ Use **yugabyted** to deploy a YugabyteDB cluster across US East, Central, and We
 1. Start the first node assigning it to the US East region in GCP:
 
     ```shell
-    docker run -d --name yugabytedb-node1 --net yugaplus-network \
+    docker run -d --name yugabytedb-node1 --hostname yugabytedb-node1 --net yugaplus-network \
         -p 15433:15433 -p 5433:5433 \
         -v ~/yugabyte-volume/node1:/home/yugabyte/yb_data --restart unless-stopped \
         yugabytedb/yugabyte:latest \
@@ -167,7 +167,7 @@ Use **yugabyted** to deploy a YugabyteDB cluster across US East, Central, and We
     ```shell
     while ! docker exec -it yugabytedb-node1 postgres/bin/pg_isready -U yugabyte -h yugabytedb-node1; do sleep 1; done
 
-    docker run -d --name yugabytedb-node2 --net yugaplus-network \
+    docker run -d --name yugabytedb-node2 --hostname yugabytedb-node2 --net yugaplus-network \
         -p 15434:15433 -p 5434:5433 \
         -v ~/yugabyte-volume/node2:/home/yugabyte/yb_data --restart unless-stopped \
         yugabytedb/yugabyte:latest \
@@ -175,7 +175,7 @@ Use **yugabyted** to deploy a YugabyteDB cluster across US East, Central, and We
             --cloud_location=gcp.us-central1.us-central1-a \
             --fault_tolerance=region
 
-    docker run -d --name yugabytedb-node3 --net yugaplus-network \
+    docker run -d --name yugabytedb-node3 --hostname yugabytedb-node3 --net yugaplus-network \
         -p 15435:15433 -p 5435:5433 \
         -v ~/yugabyte-volume/node3:/home/yugabyte/yb_data --restart unless-stopped \
         yugabytedb/yugabyte:latest \
@@ -367,7 +367,7 @@ Finally, assuming that the US East region is restored after the outage:
 1. Bring the first node back to the cluster:
 
     ```shell
-    docker run -d --name yugabytedb-node1 --net yugaplus-network \
+    docker run -d --name yugabytedb-node1 --hostname yugabytedb-node1 --net yugaplus-network \
         -p 15433:15433 -p 5433:5433 \
         -v ~/yugabyte-volume/node1:/home/yugabyte/yb_data --restart unless-stopped \
         yugabytedb/yugabyte:latest \

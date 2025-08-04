@@ -705,6 +705,24 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 
 					case TRANS_STMT_SAVEPOINT:
 						RequireTransactionBlock(isTopLevel, "SAVEPOINT");
+
+						/*
+						 * Disallow savepoint if the user has executed a DDL
+						 * within the transaction block.
+						 *
+						 * TODO(#26734): Remove once savepoint for DDL is
+						 * supported.
+						 */
+						if (IsYugaByteEnabled() &&
+							YBGetDdlUseRegularTransactionBlock())
+							ereport(ERROR,
+									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+									 errmsg("interleaving SAVEPOINT & DDL in "
+											"transaction block not supported by"
+											" YugaByte yet"),
+									 errhint("See https://github.com/yugabyte/yugabyte-db/issues/26734."
+											 " React with thumbs up to raise its priority.")));
+
 						DefineSavepoint(stmt->savepoint_name);
 						break;
 
@@ -774,7 +792,13 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			break;
 
 		case T_TruncateStmt:
-			ExecuteTruncate((TruncateStmt *) parsetree, isTopLevel);
+			/* In Yugabyte TRUNCATE supports DDL event triggers */
+			if (IsYugaByteEnabled())
+				ProcessUtilitySlow(pstate, pstmt, queryString, context, params,
+								   queryEnv, dest, qc);
+			else
+				ExecuteTruncate((TruncateStmt *) parsetree, isTopLevel,
+								NULL /* yb_relids */ );
 			break;
 
 		case T_CopyStmt:
@@ -862,8 +886,11 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 				 * restriction by calling Async_Listen directly, but then it's
 				 * on them to provide some mechanism to process the message
 				 * queue.)  Note there seems no reason to forbid UNLISTEN.
+				 * YB: YB_YSQL_CONN_MGR denotes backend process created by
+				 * connection manager. They should be treated as regular backend
+				 * process, so they can execute LISTEN.
 				 */
-				if (MyBackendType != B_BACKEND)
+				if (MyBackendType != B_BACKEND && MyBackendType != YB_YSQL_CONN_MGR)
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					/* translator: %s is name of a SQL command, eg LISTEN */
@@ -1250,32 +1277,28 @@ ProcessUtilitySlow(ParseState *pstate,
 															 secondaryObject,
 															 stmt);
 
-							/* No need for toasting attributes in YB mode */
-							if (!IsYugaByteEnabled())
-							{
-								/*
-								 * Let NewRelationCreateToastTable decide if this
-								 * one needs a secondary relation too.
-								 */
-								CommandCounterIncrement();
+							/*
+							 * Let NewRelationCreateToastTable decide if this
+							 * one needs a secondary relation too.
+							 */
+							CommandCounterIncrement();
 
-								/*
-								 * parse and validate reloptions for the toast
-								 * table
-								 */
-								toast_options = transformRelOptions((Datum) 0,
-																	cstmt->options,
-																	"toast",
-																	validnsps,
-																	true,
-																	false);
-								(void) heap_reloptions(RELKIND_TOASTVALUE,
-													   toast_options,
-													   true);
+							/*
+							 * parse and validate reloptions for the toast
+							 * table
+							 */
+							toast_options = transformRelOptions((Datum) 0,
+																cstmt->options,
+																"toast",
+																validnsps,
+																true,
+																false);
+							(void) heap_reloptions(RELKIND_TOASTVALUE,
+												   toast_options,
+												   true);
 
-								NewRelationCreateToastTable(address.objectId,
-															toast_options);
-							}
+							NewRelationCreateToastTable(address.objectId,
+														toast_options);
 						}
 						else if (IsA(stmt, CreateForeignTableStmt))
 						{
@@ -2026,6 +2049,27 @@ ProcessUtilitySlow(ParseState *pstate,
 
 			case T_AlterCollationStmt:
 				address = AlterCollation((AlterCollationStmt *) parsetree);
+				break;
+
+			case T_TruncateStmt:
+				{
+					Assert(IsYugaByteEnabled());
+					List	   *relids = NIL;
+					ListCell   *cell;
+
+					ExecuteTruncate((TruncateStmt *) parsetree, isTopLevel,
+									&relids);
+
+					foreach(cell, relids)
+					{
+						Oid			relid = lfirst_oid(cell);
+
+						ObjectAddressSet(address, RelationRelationId, relid);
+						EventTriggerCollectSimpleCommand(address, secondaryObject,
+														 parsetree);
+					}
+					commandCollected = true;
+				}
 				break;
 
 			default:

@@ -144,11 +144,11 @@ parseCommandLine(int argc, char *argv[])
 				new_cluster.pgdata = pg_strdup(optarg);
 				break;
 
-			case 'h':	/* YB */
+			case 'h':			/* YB */
 				old_cluster.yb_hostaddr = pg_strdup(optarg);
 				break;
 
-			case 'H':	/* YB */
+			case 'H':			/* YB */
 				new_cluster.yb_hostaddr = pg_strdup(optarg);
 				break;
 
@@ -208,7 +208,7 @@ parseCommandLine(int argc, char *argv[])
 				old_cluster.sockdir = pg_strdup(optarg);
 				break;
 
-			case 'S':	/* YB */
+			case 'S':			/* YB */
 				new_cluster.sockdir = pg_strdup(optarg);
 				break;
 

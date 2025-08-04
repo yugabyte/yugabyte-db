@@ -2679,9 +2679,21 @@ check_object_ownership(Oid roleid, ObjectType objtype, ObjectAddress address,
 							 errmsg("must have CREATEROLE privilege")));
 			}
 			break;
+		case OBJECT_ACCESS_METHOD:
+			/*
+			 * YB: Access methods can be owned by super users (always) or
+			 * extension users (only while creating an extension).
+			 */
+			if (!superuser_arg(roleid) &&
+				!(IsYbExtensionUser(GetUserId()) && creating_extension))
+				ereport(ERROR,
+						(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+						 errmsg("must be superuser or command must be invoked "
+								"as part of creating an extension by a member "
+								"of the yb_extension role")));
+			break;
 		case OBJECT_TSPARSER:
 		case OBJECT_TSTEMPLATE:
-		case OBJECT_ACCESS_METHOD:
 		case OBJECT_PARAMETER_ACL:
 			/* We treat these object types as being owned by superusers */
 			if (!superuser_arg(roleid))

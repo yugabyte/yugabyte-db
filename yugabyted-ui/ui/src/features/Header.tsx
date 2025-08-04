@@ -19,6 +19,7 @@ import { YBDropdown } from "@app/components";
 import HelpIcon from "@app/assets/help.svg";
 import FileIcon from "@app/assets/file.svg";
 import SlackIcon from "@app/assets/slack.svg";
+import GithubIcon from "@app/assets/github.svg";
 import HeartCheckIcon from "@app/assets/heart-check.svg";
 import AlertGreenIcon from "@app/assets/alert-green.svg";
 import {
@@ -28,6 +29,13 @@ import {
     GflagsInfo,
 } from "@app/api/src";
 import { YBTextBadge } from "@app/components/YBTextBadge/YBTextBadge";
+import {
+  linkClickCallhome,
+  LINK_GITHUB,
+  LINK_SLACK,
+  POPUP_KEY_GITHUB,
+  POPUP_KEY_SLACK,
+} from "@app/features/popups/popups";
 
 const useStyles = makeStyles((theme) => ({
   divider: {
@@ -78,7 +86,6 @@ const useStyles = makeStyles((theme) => ({
 const LINK_DOCUMENTATION = "https://docs.yugabyte.com/preview/explore/";
 export const LINK_SUPPORT =
   "https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431";
-const LINK_SLACK = "https://yugabyte-db.slack.com/";
 
 export const Header: FC = () => {
   const classes = useStyles();
@@ -86,6 +93,7 @@ export const Header: FC = () => {
   // const { path } = useRouteMatch<App.RouteParams>();
   // const history = useHistory();
   // const queryClient = useQueryClient();
+
   const { data: clusterData } = useGetClusterQuery();
 
   const universeName = clusterData?.data?.spec.name || t("common.universe");
@@ -203,14 +211,25 @@ export const Header: FC = () => {
         )}
         <div className={classes.toRight}>
           <Box display="flex">
-            <MUILink className={classes.sendFeedback} href={LINK_SLACK} target="_blank">
+            <MUILink className={classes.sendFeedback} href={LINK_GITHUB} target="_blank"
+                id={"header_github"}
+                onClick={() => linkClickCallhome(POPUP_KEY_GITHUB, LINK_GITHUB)}>
+              <GithubIcon className={classes.menuIcon} />
+              <Typography variant="body2">{t("common.visitGithub")}</Typography>
+            </MUILink>
+          </Box>
+          <Box display="flex">
+            <MUILink
+                className={classes.sendFeedback} href={LINK_SLACK} target="_blank"
+                id={"header_slack"}
+                onClick={() => linkClickCallhome(POPUP_KEY_SLACK, LINK_SLACK)}>
               <SlackIcon className={classes.menuIcon} />
               <Typography variant="body2">{t("common.joinSlack")}</Typography>
             </MUILink>
           </Box>
           <YBDropdown
             origin={
-              <IconButton>
+              <IconButton id={"header_help"}>
                 <HelpIcon />
               </IconButton>
             }

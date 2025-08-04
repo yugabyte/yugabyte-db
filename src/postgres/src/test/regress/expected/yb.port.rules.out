@@ -1473,8 +1473,9 @@ pg_replication_slots| SELECT l.slot_name,
     l.two_phase,
     l.yb_stream_id,
     l.yb_restart_commit_ht,
-    l.yb_lsn_type
-   FROM (pg_get_replication_slots() l(slot_name, plugin, slot_type, datoid, temporary, active, active_pid, xmin, catalog_xmin, restart_lsn, confirmed_flush_lsn, wal_status, safe_wal_size, two_phase, yb_stream_id, yb_restart_commit_ht, yb_lsn_type)
+    l.yb_lsn_type,
+    l.yb_restart_time
+   FROM (pg_get_replication_slots() l(slot_name, plugin, slot_type, datoid, temporary, active, active_pid, xmin, catalog_xmin, restart_lsn, confirmed_flush_lsn, wal_status, safe_wal_size, two_phase, yb_stream_id, yb_restart_commit_ht, yb_lsn_type, yb_restart_time)
      LEFT JOIN pg_database d ON ((l.datoid = d.oid)));
 pg_roles| SELECT pg_authid.rolname,
     pg_authid.rolsuper,
@@ -1762,7 +1763,7 @@ pg_stat_activity| SELECT s.datid,
     s.backend_type,
     yb_pg_stat_get_backend_catalog_version(b.beid) AS catalog_version,
     yb_pg_stat_get_backend_allocated_mem_bytes(b.beid) AS allocated_mem_bytes,
-    yb_pg_stat_get_backend_rss_mem_bytes(b.beid) AS rss_mem_bytes,
+    yb_pg_stat_get_backend_pss_mem_bytes(b.beid) AS pss_mem_bytes,
     s.yb_backend_xid
    FROM (((pg_stat_get_activity(NULL::integer) s(datid, pid, usesysid, application_name, state, query, wait_event_type, wait_event, xact_start, query_start, backend_start, state_change, client_addr, client_hostname, client_port, backend_xid, backend_xmin, backend_type, ssl, sslversion, sslcipher, sslbits, ssl_client_dn, ssl_client_serial, ssl_issuer_dn, gss_auth, gss_princ, gss_enc, leader_pid, query_id, yb_backend_xid)
      LEFT JOIN pg_database d ON ((s.datid = d.oid)))

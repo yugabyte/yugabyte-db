@@ -334,7 +334,7 @@ int4send(PG_FUNCTION_ARGS)
 	PG_RETURN_BYTEA_P(data);
 }
 
-#ifdef WORDS_BIGENDIAN	/* YB */
+#ifdef WORDS_BIGENDIAN			/* YB */
 
 #error Not implemented!!!
 

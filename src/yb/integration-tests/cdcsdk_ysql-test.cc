@@ -1227,9 +1227,10 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointPersistencyNodeRest
       if (peer->tablet_id() == tablets[0].tablet_id()) {
         // What ever checkpoint persisted in the RAFT logs should be same as what ever in memory
         // transaction participant tablet peer.
+        auto tablet = ASSERT_RESULT(peer->shared_tablet());
         ASSERT_EQ(
             peer->cdc_sdk_min_checkpoint_op_id(),
-            peer->tablet()->transaction_participant()->GetRetainOpId());
+            tablet->transaction_participant()->GetRetainOpId());
       }
     }
   }
@@ -1553,20 +1554,21 @@ void CDCSDKYsqlTest::TestMultipleActiveStreamOnSameTablet(CDCCheckpointType chec
   ASSERT_OK(s);
 
   ASSERT_OK(WaitFor(
-      [&]() {
+      [&]() -> Result<bool> {
         // Read the tablet LEADER as well as FOLLOWER's transaction_participation
         // Check all the tserver checkpoint info it's should be valid.
         uint32_t i = 0;
         while (i < test_cluster()->num_tablet_servers()) {
           for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
             if (peer->tablet_id() == tablets[0].tablet_id()) {
-              if (peer->tablet()->transaction_participant()->GetRetainOpId() != min_checkpoint) {
+              auto tablet = VERIFY_RESULT(peer->shared_tablet());
+              if (tablet->transaction_participant()->GetRetainOpId() != min_checkpoint) {
                 SleepFor(MonoDelta::FromMilliseconds(2));
               } else {
                 i += 1;
                 LOG(INFO) << "In tserver: " << i
                           << " tablet peer have transaction_participant op_id set as: "
-                          << peer->tablet()->transaction_participant()->GetRetainOpId();
+                          << tablet->transaction_participant()->GetRetainOpId();
               }
               break;
             }
@@ -1690,16 +1692,15 @@ void CDCSDKYsqlTest::TestActiveAndInactiveStreamOnSameTablet(CDCCheckpointType c
         while (i < test_cluster()->num_tablet_servers()) {
           for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
             if (peer->tablet_id() == tablets[0].tablet_id()) {
-              if (peer->tablet()->transaction_participant()->GetRetainOpId() !=
-                      overall_min_checkpoint &&
-                  peer->tablet()->transaction_participant()->GetRetainOpId() !=
-                      active_stream_checkpoint) {
+              auto tablet = VERIFY_RESULT(peer->shared_tablet());
+              if (tablet->transaction_participant()->GetRetainOpId() != overall_min_checkpoint &&
+                  tablet->transaction_participant()->GetRetainOpId() != active_stream_checkpoint) {
                 SleepFor(MonoDelta::FromMilliseconds(2));
               } else {
                 i += 1;
                 LOG(INFO) << "In tserver: " << i
                           << " tablet peer have transaction_participant op_id set as: "
-                          << peer->tablet()->transaction_participant()->GetRetainOpId();
+                          << tablet->transaction_participant()->GetRetainOpId();
               }
               break;
             }
@@ -1782,8 +1783,9 @@ void CDCSDKYsqlTest::TestCheckpointPersistencyAllNodesRestart(CDCCheckpointType 
             [&]() -> Result<bool> {
               // Checkpoint persisted in the RAFT logs should be same as in memory transaction
               // participant tablet peer.
+              auto tablet = VERIFY_RESULT(peer->shared_tablet());
               if (peer->cdc_sdk_min_checkpoint_op_id() !=
-                      peer->tablet()->transaction_participant()->GetRetainOpId() ||
+                      tablet->transaction_participant()->GetRetainOpId() ||
                   checkpoints[0] != peer->cdc_sdk_min_checkpoint_op_id()) {
                 return false;
               }
@@ -5587,17 +5589,19 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBeginCommitRecordValidationWi
   uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
   ASSERT_GT(record_size, insert_count);
 
-  int expected_begin_records = 2;
-  int expected_commit_records = 2;
+  int expected_begin_records = 1;
+  int expected_commit_records = 1;
   int actual_begin_records = 0;
   int actual_commit_records = 0;
   std::vector<std::string> excepted_table_list{"test1", "test2"};
   for (uint32_t i = 0; i < record_size; ++i) {
     const auto record = change_resp.cdc_sdk_proto_records(i);
     LOG(INFO) << "Record found: " << record.ShortDebugString();
-    if (std::find(
+    if (record.row_message().op() != RowMessage::BEGIN &&
+        record.row_message().op() != RowMessage::COMMIT &&
+        std::find(
             excepted_table_list.begin(), excepted_table_list.end(), record.row_message().table()) ==
-        excepted_table_list.end()) {
+            excepted_table_list.end()) {
       LOG(INFO) << "Tablename got in the record is wrong: " << record.row_message().table();
       FAIL();
     }
@@ -6213,9 +6217,10 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointWithNoCDCStream)) {
         // What ever checkpoint persisted in the RAFT logs should be same as what ever in memory
         // transaction participant tablet peer.
         ASSERT_EQ(peer->cdc_sdk_min_checkpoint_op_id(), OpId::Invalid());
+        auto tablet = ASSERT_RESULT(peer->shared_tablet());
         ASSERT_EQ(
             peer->cdc_sdk_min_checkpoint_op_id(),
-            peer->tablet()->transaction_participant()->GetRetainOpId());
+            tablet->transaction_participant()->GetRetainOpId());
       }
     }
   }
@@ -6233,9 +6238,10 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointWithNoCDCStream)) {
         // What ever checkpoint persisted in the RAFT logs should be same as what ever in memory
         // transaction participant tablet peer.
         ASSERT_EQ(peer->cdc_sdk_min_checkpoint_op_id(), OpId::Invalid());
+        auto tablet = ASSERT_RESULT(peer->shared_tablet());
         ASSERT_EQ(
             peer->cdc_sdk_min_checkpoint_op_id(),
-            peer->tablet()->transaction_participant()->GetRetainOpId());
+            tablet->transaction_participant()->GetRetainOpId());
       }
     }
   }
@@ -6817,8 +6823,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithRepeatedRequest
   int expected_key2 = 0;
   int ddl_count = 0;
   std::unordered_set<string> ddl_tables;
-  for (uint32_t i = 0; i < record_size; ++i) {
-    const auto record = change_resp.records[i];
+  for (const auto& record : change_resp.records) {
     if (record.row_message().op() == RowMessage::INSERT) {
       if (record.row_message().table() == "test1") {
         ASSERT_EQ(expected_key1, record.row_message().new_tuple(0).datum_int32());
@@ -6863,8 +6868,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithRepeatedRequest
   expected_key1 = 30;
   expected_key2 = 30;
   ddl_count = 0;
-  for (uint32_t i = 0; i < record_size; ++i) {
-    const auto record = change_resp.records[i];
+  for (const auto& record : change_resp.records) {
     if (record.row_message().op() == RowMessage::INSERT) {
       if (record.row_message().table() == "test1") {
         ASSERT_EQ(expected_key1, record.row_message().new_tuple(0).datum_int32());
@@ -10758,7 +10762,7 @@ TEST_F(CDCSDKYsqlTest, TestWithMajorityReplicatedButNonCommittedMultiShardTxn) {
     if (peer->tablet_id() != tablet_id) {
       continue;
     }
-    auto tablet = ASSERT_RESULT(peer->shared_tablet_safe());
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
     ASSERT_OK(peer->log()->AllocateSegmentAndRollOver());
     ASSERT_OK(peer->log()->GetSegmentsSnapshot(&segments));
     ASSERT_EQ(segments.size(), 2);
@@ -11582,7 +11586,7 @@ TEST_F(CDCSDKYsqlTest, TestIntentSSTFileCleanupAfterConsumption) {
             if (peer->tablet_id() != tablet_id) {
               continue;
             }
-            auto tablet = VERIFY_RESULT(peer->shared_tablet_safe());
+            auto tablet = VERIFY_RESULT(peer->shared_tablet());
             if (tablet->transaction_participant()->GetNumRunningTransactions() != 0) {
               return false;
             }
@@ -11867,7 +11871,7 @@ TEST_F(CDCSDKYsqlTest, TestGetChangesAfterMultipleTabletBootstrap) {
             if (peer->tablet_id() != tablet_id) {
               continue;
             }
-            auto tablet = VERIFY_RESULT(peer->shared_tablet_safe());
+            auto tablet = VERIFY_RESULT(peer->shared_tablet());
             auto running_txns = tablet->transaction_participant()->GetNumRunningTransactions();
             if (running_txns != 0) {
               LOG(INFO) << "Running txns on tablet " << tablet_id
@@ -12035,6 +12039,73 @@ TEST_F(CDCSDKYsqlTest, TestEqualityOfTxnalRecordsWithColocatedTableHavingIndex) 
 
   ASSERT_EQ(begin_count, commit_count);
   ASSERT_EQ(commit_count, 1);
+}
+
+TEST_F(CDCSDKYsqlTest, TestDropTableWithXcluster) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ASSERT_OK(SetUpWithParams(3 /* rf */, 1 /* num_masters*/));
+
+  // Create 2 tables.
+  std::string table_suffix[2] = {"_1", "_2"};
+  auto table_1 =
+      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName + table_suffix[0]));
+  auto table_2 =
+      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName + table_suffix[1]));
+
+  // Create a replication slot and an Xcluster stream.
+  const auto slot_name = "test_slot";
+  ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(slot_name));
+  ASSERT_RESULT(cdc::CreateXClusterStream(*test_client(), table_1.table_id()));
+
+  // Verify that replica identity map contains two entries for two tables.
+  std::unordered_map<uint32_t, PgReplicaIdentity> replica_identities;
+  ASSERT_OK(test_client()->GetCDCStream(ReplicationSlotName(slot_name), &replica_identities));
+  ASSERT_EQ(replica_identities.size(), 2);
+
+  // Drop the table under xcluster replication.
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", kTableName + table_suffix[0]));
+
+  // Sleep for 5 seconds for master bg task to do its work.
+  SleepFor(MonoDelta::FromSeconds(5));
+
+  // The replica identity map should contain both the entries. This is because, xcluster will retain
+  // the dropped table by marking it as HIDDEN.
+  replica_identities.clear();
+  ASSERT_OK(test_client()->GetCDCStream(ReplicationSlotName(slot_name), &replica_identities));
+  ASSERT_EQ(replica_identities.size(), 2);
+}
+
+TEST_F(CDCSDKYsqlTest, TestYbRestartCommitTimeInPgReplicationSlots) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_consumption) = true;
+  ASSERT_OK(SetUpWithParams(3, 1, false, true));
+
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 3));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 3);
+
+  auto cdc_state_table = MakeCDCStateTable(test_client());
+  auto stream_id = ASSERT_RESULT(
+      CreateConsistentSnapshotStreamWithReplicationSlot(CDCSDKSnapshotOption::USE_SNAPSHOT));
+  auto checkpoint = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablets[0].tablet_id()));
+
+  auto entry = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
+      {kCDCSDKSlotEntryTabletId, stream_id}, CDCStateTableEntrySelector().IncludeAll()));
+  ASSERT_TRUE(entry.has_value());
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto result = ASSERT_RESULT(conn.Fetch(
+      "SELECT to_char(yb_restart_time, 'YYYY-MM-DD HH24:MI:SS.USOF') FROM pg_replication_slots"));
+
+  ASSERT_EQ(PQntuples(result.get()), 1);
+
+  std::string view_time = PQgetvalue(result.get(), 0, 0);
+  std::string expected_time =
+    ASSERT_RESULT(HybridTimeToReadableString(entry->record_id_commit_time.value()));
+
+  ASSERT_EQ(view_time, expected_time);
 }
 
 }  // namespace cdc

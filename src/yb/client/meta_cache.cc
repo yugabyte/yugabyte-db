@@ -575,7 +575,7 @@ void RemoteTablet::GetRemoteTabletServers(
               const Status status =
                   CHECK_NOTNULL(replica->ts->local_tserver())->GetTabletStatus(&req, &resp);
               if (!status.ok() || resp.has_error()) {
-                LOG_WITH_PREFIX(ERROR)
+                LOG_WITH_PREFIX(WARNING)
                     << "Received error from GetTabletStatus: "
                     << (!status.ok() ? status : StatusFromPB(resp.error().status()));
                 continue;
@@ -901,6 +901,7 @@ LookupRpc::LookupRpc(const scoped_refptr<MetaCache>& meta_cache,
       meta_cache_(meta_cache),
       table_(table) {
   DCHECK(deadline != CoarseTimePoint());
+  DCHECK(deadline != CoarseTimePoint::max());
 }
 
 LookupRpc::~LookupRpc() {

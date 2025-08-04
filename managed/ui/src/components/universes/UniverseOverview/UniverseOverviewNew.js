@@ -828,6 +828,7 @@ export default class UniverseOverviewNew extends Component {
       universeLbState,
       featureFlags
     } = this.props;
+    const updateInProgress = currentUniverse?.data?.universeDetails?.updateInProgress;
     const universeInfo = currentUniverse.data;
     const nodePrefixes = [universeInfo.universeDetails.nodePrefix];
     const isItKubernetesUniverse = getIsKubernetesUniverse(universeInfo);
@@ -895,9 +896,10 @@ export default class UniverseOverviewNew extends Component {
             )}
           </Col>
           <Col lg={4} md={6} sm={8} xs={12}>
-            {getPromiseState(universeLbState).isSuccess() && (
-              <DBLbState universeLbState={universeLbState?.data} />
-            )}
+            <DBLbState
+              universeLbState={universeLbState?.data}
+              updateInProgress={updateInProgress}
+            />
           </Col>
         </Row>
         <Row>

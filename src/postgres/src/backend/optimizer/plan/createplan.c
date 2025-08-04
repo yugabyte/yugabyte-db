@@ -254,7 +254,7 @@ static YbBitmapTableScan *make_yb_bitmap_tablescan(List *qptlist,
 												   List *fallback_local_quals,
 												   YbPlanInfo yb_plan_info);
 static TidScan *make_tidscan(List *qptlist, List *qpqual, Index scanrelid,
-							 List *tidquals);
+							 YbPushdownExprs yb_rel_pushdown, List *tidquals);
 static TidRangeScan *make_tidrangescan(List *qptlist, List *qpqual,
 									   Index scanrelid, List *tidrangequals);
 static SubqueryScan *make_subqueryscan(List *qptlist,
@@ -1600,6 +1600,7 @@ create_append_plan(PlannerInfo *root, AppendPath *best_path, int flags)
 				Sort	   *sort = make_sort(subplan, numsortkeys,
 											 sortColIdx, sortOperators,
 											 collations, nullsFirst);
+
 				yb_assign_unique_plan_node_id(root, (Plan *) sort);
 
 				label_sort_with_costsize(root, sort, best_path->limit_tuples);
@@ -1779,6 +1780,7 @@ create_merge_append_plan(PlannerInfo *root, MergeAppendPath *best_path,
 			Sort	   *sort = make_sort(subplan, numsortkeys,
 										 sortColIdx, sortOperators,
 										 collations, nullsFirst);
+
 			yb_assign_unique_plan_node_id(root, (Plan *) sort);
 
 			label_sort_with_costsize(root, sort, best_path->limit_tuples);
@@ -3582,7 +3584,8 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	 */
 	affected_generated_attrs = get_dependent_generated_columns(root, rt_index,
 															   update_attrs,
-															   &generated_cols_source_attrs);
+															   &generated_cols_source_attrs,
+															   NULL /* yb_relation */ );
 
 	if (bms_overlap(generated_cols_source_attrs, pushdown_update_attrs))
 		has_unpushable_exprs = true;
@@ -3740,7 +3743,8 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		expr = (Expr *) get_rightop(clause);
 
 		/* Check if leftop is a Var. */
-		Node *leftop = get_leftop(clause);
+		Node	   *leftop = get_leftop(clause);
+
 		if (!IsA(leftop, Var))
 		{
 			RelationClose(relation);
@@ -4066,7 +4070,8 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 			updatedCols =
 				bms_add_members(get_dependent_generated_columns(root, rt_index,
 																rte->updatedCols,
-																NULL /* yb_generated_cols_source */ ),
+																NULL /* yb_generated_cols_source */ ,
+																NULL /* yb_relation */ ),
 								rte->updatedCols);
 			plan->yb_update_affected_entities =
 				YbComputeAffectedEntitiesForRelation(plan, rel, updatedCols);
@@ -4173,7 +4178,7 @@ create_seqscan_plan(PlannerInfo *root, Path *best_path,
 	/* Reduce RestrictInfo list to bare expressions; ignore pseudoconstants */
 	if (best_path->parent->is_yb_relation)
 		yb_extract_pushdown_clauses(scan_clauses, NULL,
-									false, /* is_bitmap_index_scan */
+									false,	/* is_bitmap_index_scan */
 									&local_quals, &remote_quals, &colrefs, NULL,
 									NULL,
 									planner_rt_fetch(scan_relid, root)->relid);
@@ -4405,9 +4410,9 @@ create_indexscan_plan(PlannerInfo *root,
 		if (bitmapindex)
 			yb_extract_pushdown_clauses(best_path->yb_bitmap_idx_pushdowns,
 										best_path->indexinfo, bitmapindex,
-										NULL, /* local_quals */
-										NULL, /* rel_remote_quals */
-										NULL, /* rel_colrefs */
+										NULL,	/* local_quals */
+										NULL,	/* rel_remote_quals */
+										NULL,	/* rel_colrefs */
 										&idx_remote_quals, &idx_colrefs,
 										planner_rt_fetch(baserelid, root)->relid);
 
@@ -4745,11 +4750,11 @@ create_yb_bitmap_scan_plan(PlannerInfo *root,
 	List	   *rel_remote_quals = NIL;
 	List	   *rel_colrefs = NIL;
 
-	yb_extract_pushdown_clauses(qpqual, NULL, /* index_info */
+	yb_extract_pushdown_clauses(qpqual, NULL,	/* index_info */
 								false, /* bitmapindex */ &local_quals,
 								&rel_remote_quals, &rel_colrefs,
-								NULL, /* idx_remote_quals */
-								NULL, /* idx_colrefs */
+								NULL,	/* idx_remote_quals */
+								NULL,	/* idx_colrefs */
 								planner_rt_fetch(baserelid, root)->relid);
 
 	YbPushdownExprs rel_pushdown = {rel_remote_quals, rel_colrefs};
@@ -4801,8 +4806,8 @@ create_yb_bitmap_scan_plan(PlannerInfo *root,
 	yb_extract_pushdown_clauses(scan_clauses, NULL, /* index_info */
 								false, /* bitmapindex */ &fallback_local_quals,
 								&fallback_remote_quals, &fallback_colrefs,
-								NULL, /* idx_remote_quals */
-								NULL, /* idx_colrefs */
+								NULL,	/* idx_remote_quals */
+								NULL,	/* idx_colrefs */
 								planner_rt_fetch(baserelid, root)->relid);
 
 	YbPushdownExprs fallback_pushdown = {fallback_remote_quals, fallback_colrefs};
@@ -5079,6 +5084,9 @@ create_tidscan_plan(PlannerInfo *root, TidPath *best_path,
 	TidScan    *scan_plan;
 	Index		scan_relid = best_path->path.parent->relid;
 	List	   *tidquals = best_path->tidquals;
+	List	   *yb_local_quals = NIL;
+	List	   *yb_remote_quals = NIL;
+	List	   *yb_colrefs = NIL;
 
 	/* it should be a base rel... */
 	Assert(scan_relid > 0);
@@ -5128,7 +5136,14 @@ create_tidscan_plan(PlannerInfo *root, TidPath *best_path,
 
 	/* Reduce RestrictInfo lists to bare expressions; ignore pseudoconstants */
 	tidquals = extract_actual_clauses(tidquals, false);
-	scan_clauses = extract_actual_clauses(scan_clauses, false);
+	if (best_path->path.parent->is_yb_relation)
+		yb_extract_pushdown_clauses(scan_clauses, NULL,
+									false,	/* is_bitmap_index_scan */
+									&yb_local_quals, &yb_remote_quals,
+									&yb_colrefs, NULL, NULL,
+									planner_rt_fetch(scan_relid, root)->relid);
+	else
+		yb_local_quals = extract_actual_clauses(scan_clauses, false);
 
 	/*
 	 * If we have multiple tidquals, it's more convenient to remove duplicate
@@ -5142,21 +5157,25 @@ create_tidscan_plan(PlannerInfo *root, TidPath *best_path,
 	 * match it via equal() to any scan clause.
 	 */
 	if (list_length(tidquals) > 1)
-		scan_clauses = list_difference(scan_clauses,
-									   list_make1(make_orclause(tidquals)));
+		yb_local_quals = list_difference(yb_local_quals,
+										 list_make1(make_orclause(tidquals)));
 
 	/* Replace any outer-relation variables with nestloop params */
 	if (best_path->path.param_info)
 	{
 		tidquals = (List *)
 			replace_nestloop_params(root, (Node *) tidquals);
-		scan_clauses = (List *)
-			replace_nestloop_params(root, (Node *) scan_clauses);
+		yb_local_quals = (List *)
+			replace_nestloop_params(root, (Node *) yb_local_quals);
+		yb_remote_quals = (List *)
+			replace_nestloop_params(root, (Node *) yb_remote_quals);
 	}
 
+	YbPushdownExprs yb_rel_pushdown = {yb_remote_quals, yb_colrefs};
 	scan_plan = make_tidscan(tlist,
-							 scan_clauses,
+							 yb_local_quals,
 							 scan_relid,
+							 yb_rel_pushdown,
 							 tidquals);
 
 	copy_generic_path_info(&scan_plan->scan.plan, &best_path->path);
@@ -6172,6 +6191,7 @@ create_mergejoin_plan(PlannerInfo *root,
 		Sort	   *sort = make_sort_from_pathkeys(outer_plan,
 												   best_path->outersortkeys,
 												   outer_relids);
+
 		yb_assign_unique_plan_node_id(root, (Plan *) sort);
 
 		label_sort_with_costsize(root, sort, -1.0);
@@ -6187,6 +6207,7 @@ create_mergejoin_plan(PlannerInfo *root,
 		Sort	   *sort = make_sort_from_pathkeys(inner_plan,
 												   best_path->innersortkeys,
 												   inner_relids);
+
 		yb_assign_unique_plan_node_id(root, (Plan *) sort);
 
 		label_sort_with_costsize(root, sort, -1.0);
@@ -7596,6 +7617,7 @@ static TidScan *
 make_tidscan(List *qptlist,
 			 List *qpqual,
 			 Index scanrelid,
+			 YbPushdownExprs yb_rel_pushdown,
 			 List *tidquals)
 {
 	TidScan    *node = makeNode(TidScan);
@@ -7606,6 +7628,7 @@ make_tidscan(List *qptlist,
 	plan->lefttree = NULL;
 	plan->righttree = NULL;
 	node->scan.scanrelid = scanrelid;
+	node->yb_rel_pushdown = yb_rel_pushdown;
 	node->tidquals = tidquals;
 
 	return node;

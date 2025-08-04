@@ -98,6 +98,7 @@ public enum PlatformMetrics {
   UNIVERSE_NODE_PROCESS_STATUS("Flag, indicating expected node process status", Unit.STATUS, false),
   UNIVERSE_ENCRYPTION_KEY_EXPIRY_DAY(
       "Remaining Encryption-at-Rest config validity in days", Unit.DAY, false),
+  UNIVERSE_KMS_KEY_STATUS("Flag, indicating that KMS key is valid", Unit.STATUS, false),
   UNIVERSE_REPLICATION_FACTOR("Universe replication factor", Unit.COUNT, true),
   UNIVERSE_SSH_KEY_EXPIRY_DAY(
       "Remaining days to expiry for SSH key of the universe", Unit.DAY, false),

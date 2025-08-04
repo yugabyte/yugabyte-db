@@ -34,7 +34,7 @@ DROP TABLE t_multiple_binds;
 --- 2 --- Incomplete bindings to hash partition keys (#26742)
 --- - ---
 
-CREATE TABLE t_incomplete_binds (h1 int, h2 int, r1 int, r2 int);
+CREATE TABLE t_incomplete_binds (h1 int, h2 int, r1 int, r2 int, s serial PRIMARY KEY);
 INSERT INTO t_incomplete_binds SELECT i, j, i, j FROM generate_series(1, 10) i, generate_series(1, 10) j;
 CREATE INDEX t_hash_hash ON t_incomplete_binds(h1, h2);
 CREATE INDEX t_hash_range ON t_incomplete_binds(h1, r2 ASC);
@@ -57,7 +57,8 @@ DROP TABLE t_incomplete_binds;
 --- - ---
 
 ----- integer comparisons ----
-CREATE TABLE t_int(i2 int2, i4 int4, i8 int8, f4 float4, f8 float8);
+CREATE TABLE t_int(i2 int2, i4 int4, i8 int8, f4 float4, f8 float8,
+                   s serial PRIMARY KEY);
 CREATE INDEX t_int_i2 ON t_int(i2 ASC);
 CREATE INDEX t_int_i4 ON t_int(i4 ASC);
 CREATE INDEX t_int_i8 ON t_int(i8 ASC);
@@ -99,7 +100,7 @@ INSERT INTO t_int VALUES ( 32767,  2147483647,  9223372036854775807);
 DROP TABLE t_int;
 
 ----- float comparisons ----
-CREATE TABLE t_float(f4 float4, f8 float8);
+CREATE TABLE t_float(f4 float4, f8 float8, s serial PRIMARY KEY);
 CREATE INDEX t_float_f4 ON t_float(f4 ASC);
 CREATE INDEX t_float_f8 ON t_float(f8 ASC);
 
@@ -160,8 +161,8 @@ DROP TABLE t_name, t_text;
 CREATE DOMAIN positive_int AS INT CHECK (VALUE > 0);
 CREATE DOMAIN non_empty_text AS TEXT CHECK (VALUE <> '');
 
-CREATE TABLE t_domain_int(placeholder int, i positive_int);
-CREATE TABLE t_domain_text(placeholder int, t non_empty_text);
+CREATE TABLE t_domain_int(placeholder int, i positive_int, s serial PRIMARY KEY);
+CREATE TABLE t_domain_text(placeholder int, t non_empty_text, s serial PRIMARY KEY);
 
 CREATE INDEX ON t_domain_int(i ASC);
 CREATE INDEX ON t_domain_text(t ASC);

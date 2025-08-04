@@ -134,7 +134,7 @@ func init() {
 	configureLDAPCmd.Flags().String("ldap-tls-version", "TLSv1_2",
 		"[Optional] LDAP TLS version. Allowed values (case sensitive): TLSv1, TLSv1_1 and TLSv1_2.")
 	configureLDAPCmd.Flags().StringP("base-dn", "b", "",
-		"[Optional] Seach base DN for LDAP. Must be enclosed in double quotes.")
+		"[Optional] Search base DN for LDAP. Must be enclosed in double quotes.")
 	configureLDAPCmd.Flags().String("dn-prefix", "CN=",
 		"[Optional] Prefix to be appended to the username for LDAP search.\n"+
 			"           Must be enclosed in double quotes.")

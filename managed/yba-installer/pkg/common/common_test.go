@@ -2,8 +2,8 @@ package common
 
 import (
 	"os"
-	"testing"
 	"reflect"
+	"testing"
 
 	"github.com/spf13/viper"
 )
@@ -72,20 +72,20 @@ func TestSetYaml(t *testing.T) {
 	}
 
 	list := v.GetStringSlice("foo.bar.list")
-    expectedList := []string{"abcd", "efgh"}
+	expectedList := []string{"abcd", "efgh"}
 
-    if !reflect.DeepEqual(list, expectedList) {
-        t.Fatalf("yaml entry doesn't match expected %#v %#v", list, expectedList)
-    }
+	if !reflect.DeepEqual(list, expectedList) {
+		t.Fatalf("yaml entry doesn't match expected %#v %#v", list, expectedList)
+	}
 
 	list = v.GetStringSlice("foo.bar.list2")
 	if list == nil {
 		list = []string{}
 	}
-    expectedList = []string{}
+	expectedList = []string{}
 
-    if !reflect.DeepEqual(list, expectedList) {
-        t.Fatalf("yaml entry doesn't match expected %#v %#v", list, expectedList)
-    }
+	if !reflect.DeepEqual(list, expectedList) {
+		t.Fatalf("yaml entry doesn't match expected %#v %#v", list, expectedList)
+	}
 
 }

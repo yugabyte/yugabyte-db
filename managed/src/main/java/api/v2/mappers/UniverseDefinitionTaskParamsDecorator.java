@@ -121,6 +121,8 @@ public abstract class UniverseDefinitionTaskParamsDecorator
             cluster.userIntent.enableYSQL = universeSpec.getYsql().getEnable();
             cluster.userIntent.enableYSQLAuth = universeSpec.getYsql().getEnableAuth();
             cluster.userIntent.ysqlPassword = universeSpec.getYsql().getPassword();
+            cluster.userIntent.enableConnectionPooling =
+                universeSpec.getYsql().getEnableConnectionPooling();
           }
           // set ycql into all clusters
           if (universeSpec != null && universeSpec.getYcql() != null) {
@@ -172,6 +174,9 @@ public abstract class UniverseDefinitionTaskParamsDecorator
         if (cluster.userIntent != null) {
           if (universeCreateSpec.getSpec().getYsql() != null) {
             cluster.userIntent.ysqlPassword = universeCreateSpec.getSpec().getYsql().getPassword();
+            // why are the enable ones not set here?
+            // cluster.userIntent.enableConnectionPooling =
+            // universeCreateSpec.getSpec().getYsql().getEnableConnectionPooling();
           }
           if (universeCreateSpec.getSpec().getYcql() != null) {
             cluster.userIntent.ycqlPassword = universeCreateSpec.getSpec().getYcql().getPassword();

@@ -72,7 +72,7 @@ class Scheduler::Impl {
       strand_.dispatch([this] {
         boost::system::error_code ec;
         timer_.cancel(ec);
-        LOG_IF(ERROR, ec) << "Failed to cancel timer: " << ec.message();
+        LOG_IF(DFATAL, ec) << "Failed to cancel timer: " << ec.message();
 
         auto status = STATUS(
             ServiceUnavailable, "Scheduler is shutting down", "" /* msg2 */, Errno(ESHUTDOWN));
@@ -118,7 +118,7 @@ class Scheduler::Impl {
 
     boost::system::error_code ec;
     timer_.expires_at((*tasks_.begin())->time(), ec);
-    LOG_IF(ERROR, ec) << "Reschedule timer failed: " << ec.message();
+    LOG_IF(DFATAL, ec) << "Reschedule timer failed: " << ec.message();
     ++timer_counter_;
     timer_.async_wait(strand_.wrap(std::bind(&Impl::HandleTimer, this, _1)));
   }
@@ -128,7 +128,8 @@ class Scheduler::Impl {
     --timer_counter_;
 
     if (ec) {
-      LOG_IF(ERROR, ec != boost::asio::error::operation_aborted) << "Wait failed: " << ec.message();
+      LOG_IF(DFATAL, ec != boost::asio::error::operation_aborted)
+          << "Wait failed: " << ec.message();
       return;
     }
     if (closing_.load(std::memory_order_acquire)) {

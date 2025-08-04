@@ -40,7 +40,7 @@ void TestRowPacking(
   SchemaPacking schema_packing(TableType::PGSQL_TABLE_TYPE, schema);
   Packer packer(
       kVersion, schema_packing, /* packed_size_limit= */ std::numeric_limits<int64_t>::max(),
-      /* value_control_fields= */ Slice(), schema);
+      /* value_control_fields= */ Slice());
   size_t idx = schema.num_key_columns();
   for (const auto& value : values) {
     auto column_id = schema.column_id(idx);
@@ -146,7 +146,7 @@ TEST(PackedRowTest, RandomV2) {
 TEST(PackedRowTest, PackWithLimitV2) {
   auto schema = ASSERT_RESULT(BuildSchema({DataType::STRING, DataType::INT64}));
   SchemaPacking schema_packing(TableType::PGSQL_TABLE_TYPE, schema);
-  RowPackerV2 packer(0, schema_packing, 20, Slice(), schema);
+  RowPackerV2 packer(0, schema_packing, 20, Slice());
   QLValuePB value;
   value.set_string_value(RandomHumanReadableString(42));
   // Packed row does not provide strict limit for the data.
@@ -176,8 +176,7 @@ std::string TestPackWithControlFields() {
   dockv::ValueControlFields control_fields;
   control_fields.ttl = MonoDelta::FromMicroseconds(1000);
   Packer packer(
-      /* schema_version= */ 0, schema_packing, std::numeric_limits<size_t>::max(), control_fields,
-      schema);
+      /* schema_version= */ 0, schema_packing, std::numeric_limits<size_t>::max(), control_fields);
   QLValuePB value;
   value.set_string_value("privet");
   EXPECT_TRUE(EXPECT_RESULT(packer.AddValue(schema_packing.column_packing_data(0).id, value)));

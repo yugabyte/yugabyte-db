@@ -128,3 +128,67 @@ CREATE TRIGGER t1_gen_before_gen BEFORE UPDATE OF v1_v2_gen ON t1_gen FOR EACH R
 CREATE TRIGGER t1_gen_after_gen AFTER UPDATE OF v1_v2_gen ON t1_gen FOR EACH ROW EXECUTE FUNCTION zz_gen_col_notice('AFTER');
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v3 = v3 + 1 WHERE k = 10;
 SELECT * FROM t1_gen WHERE k > 7 ORDER BY k;
+
+-- Partitioned tables
+CREATE TABLE part (
+    amount NUMERIC,
+    double_amount NUMERIC GENERATED ALWAYS AS (amount * 2) STORED
+) partition by range(amount);
+
+CREATE TABLE part_1_100 partition of part for values from (1) to (100);
+CREATE TABLE part_2_200 partition of part for values from (101) to (200);
+INSERT INTO part VALUES (1), (101);
+INSERT INTO part_1_100 VALUES (2), (3);
+INSERT INTO part_2_200 VALUES (102), (103);
+SELECT * FROM part ORDER BY amount;
+SELECT * FROM part_1_100 ORDER BY amount;
+SELECT * FROM part_2_200 ORDER BY amount;
+
+ALTER TABLE part_1_100 ALTER COLUMN double_amount DROP EXPRESSION; -- error
+ALTER TABLE part ALTER COLUMN double_amount DROP EXPRESSION;
+\d part
+\d part_1_100
+\d part_2_200
+INSERT INTO part VALUES (4), (104);
+SELECT * FROM part ORDER BY amount;
+DROP TABLE part;
+
+--- DROP COLUMN CASCASE should DROP dependent columns
+
+-- base case
+CREATE TABLE table1(id INT, c1 INT, stored_col INT GENERATED ALWAYS AS (c1 * 2) STORED);
+ALTER TABLE table1 DROP COLUMN c1; -- error
+ALTER TABLE table1 DROP COLUMN c1 CASCADE;
+ALTER TABLE table1 ADD COLUMN stored_col INT;
+ALTER TABLE table1 ADD COLUMN c1 INT;
+DROP TABLE table1;
+
+-- generated column is PK
+CREATE TABLE table1(id INT, c1 INT, stored_col INT GENERATED ALWAYS AS (c1 * 2) STORED, PRIMARY KEY (stored_col));
+ALTER TABLE table1 DROP COLUMN c1 CASCADE;
+ALTER TABLE table1 ADD COLUMN stored_col INT;
+DROP TABLE table1;
+
+-- partitioned table
+CREATE TABLE part(a INT, b INT, c INT GENERATED ALWAYS AS (b * 2) STORED) PARTITION BY RANGE (a);
+CREATE TABLE part1_100 PARTITION OF part FOR VALUES FROM (1) TO (100);
+ALTER TABLE part DROP COLUMN b CASCADE;
+ALTER TABLE part ADD COLUMN c INT;
+DROP TABLE part;
+
+-- partitioned table where generated col is PK
+CREATE TABLE part(a INT, b INT, c INT GENERATED ALWAYS AS (b * 2) STORED, PRIMARY KEY (c, a)) PARTITION BY RANGE (a);
+CREATE TABLE part1_100 PARTITION OF part FOR VALUES FROM (1) TO (100);
+ALTER TABLE part DROP COLUMN b CASCADE;
+ALTER TABLE part ADD COLUMN c INT;
+DROP TABLE part;
+
+-- partitioned table, generated col is PK but only in leaf
+CREATE TABLE part(a INT, b INT, c INT GENERATED ALWAYS AS (b * 2) STORED) PARTITION BY RANGE (a);
+CREATE TABLE part1_100(a INT, b INT, c INT GENERATED ALWAYS AS (b * 2) STORED, PRIMARY KEY (c));
+ALTER TABLE part ATTACH PARTITION part1_100 FOR VALUES FROM (1) TO (100);
+CREATE TABLE part2_200 PARTITION OF part FOR VALUES FROM (101) TO (200);
+ALTER TABLE part DROP COLUMN b CASCADE;
+ALTER TABLE part ADD COLUMN c INT;
+ALTER TABLE part ADD COLUMN b INT;
+DROP TABLE part;

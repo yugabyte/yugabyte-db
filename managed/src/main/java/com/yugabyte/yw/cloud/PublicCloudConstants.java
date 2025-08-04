@@ -12,6 +12,7 @@ package com.yugabyte.yw.cloud;
 
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.utils.Pair;
+import java.util.EnumSet;
 import lombok.Getter;
 
 public class PublicCloudConstants {
@@ -74,6 +75,15 @@ public class PublicCloudConstants {
 
     public String getYbcGlob() {
       return ybcGlob;
+    }
+
+    public static Architecture parse(String strType) {
+      for (Architecture arch : EnumSet.allOf(Architecture.class)) {
+        if (arch.name().equalsIgnoreCase(strType)) {
+          return arch;
+        }
+      }
+      throw new IllegalArgumentException("Unknown architecture: " + strType);
     }
   }
 

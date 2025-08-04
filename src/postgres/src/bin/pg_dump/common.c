@@ -573,7 +573,14 @@ flagInhAttrs(DumpOptions *dopt, TableInfo *tblinfo, int numTables)
 			}
 
 			/* Remove generation expression from child */
-			if (foundGenerated && !tbinfo->ispartition && !dopt->binary_upgrade)
+			/*
+			 * YB: For backups, dump inheritance children
+			 * the same way as PG binary upgrade  - child table
+			 * schema with all columns, including inherited columns,
+			 * is fully output first and inheritance is established later.
+			 */
+			if (foundGenerated && !tbinfo->ispartition &&
+				!dopt->binary_upgrade && !dopt->include_yb_metadata)
 				tbinfo->attrdefs[j] = NULL;
 		}
 	}

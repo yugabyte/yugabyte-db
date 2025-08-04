@@ -73,7 +73,6 @@ public class PitrConfigPoller {
                 Collectors.groupingBy(
                     p -> p.getUniverse().getUniverseUUID(),
                     Collectors.toMap(PitrConfig::getUuid, Function.identity())));
-    YBClient client = null;
 
     List<Metric> metrics = new ArrayList<>();
     for (Map.Entry<UUID, Map<UUID, PitrConfig>> entry : scheduleMap.entrySet()) {
@@ -83,22 +82,17 @@ public class PitrConfigPoller {
         if (universe.getUniverseDetails().universePaused) {
           continue;
         }
-        String masterHostPorts = universe.getMasterAddresses();
-        String certificate = universe.getCertificateNodetoNode();
         ListSnapshotSchedulesResponse scheduleResp;
         List<SnapshotScheduleInfo> scheduleInfoList;
         Map<UUID, PitrConfig> snapshotScheduleMap = entry.getValue();
         Set<UUID> snapshotScheduleUUIDs = snapshotScheduleMap.keySet();
         log.info("Universe uuid: {}, schedule uuid: {}", universeUUID, snapshotScheduleUUIDs);
-        try {
-          client = ybClientService.getClient(masterHostPorts, certificate);
+        try (YBClient client = ybClientService.getUniverseClient(universe)) {
           scheduleResp = client.listSnapshotSchedules(null);
           scheduleInfoList = scheduleResp.getSnapshotScheduleInfoList();
         } catch (Exception ex) {
           log.error("Failed to get snapshots for universe {}", universeUUID, ex);
           continue;
-        } finally {
-          ybClientService.closeClient(client, masterHostPorts);
         }
 
         for (SnapshotScheduleInfo snapshotScheduleInfo : scheduleInfoList) {

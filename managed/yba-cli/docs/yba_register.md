@@ -23,6 +23,7 @@ yba register -f -n <name> -e <email> -p <password> -H <host>
   -e, --email string         [Optional] Email for the user. Required for non-interactive usage
   -p, --password string      [Optional] Password for the user. Password must contain at least 8 characters and at least 1 digit , 1 capital , 1 lowercase and 1 of the !@#$^&* (special) characters. Required for non-interactive usage. Use single quotes ('') to provide values with special characters.
       --environment string   [Optional] Environment of the installation. Allowed values: dev, demo, stage, prod. (default "dev")
+      --show-api-token       [Optional] Show the API token after registeration. (default false)
   -f, --force                [Optional] Bypass the prompt for non-interactive usage.
   -h, --help                 help for register
 ```

@@ -574,7 +574,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           universe.isYbcEnabled(),
           ybcManager.getStableYbcVersion(),
           PodUpgradeParams.DEFAULT,
-          null /* ysqlMajorVersionUpgradeState */);
+          null /* ysqlMajorVersionUpgradeState */,
+          null /* rootCAUUID */);
 
       upgradePodsTask(
           universe.getName(),
@@ -591,7 +592,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           universe.isYbcEnabled(),
           ybcManager.getStableYbcVersion(),
           PodUpgradeParams.DEFAULT,
-          null /* ysqlMajorVersionUpgradeState */);
+          null /* ysqlMajorVersionUpgradeState */,
+          null /* rootCAUUID */);
     } else if (instanceTypeChanged) {
       upgradePodsTask(
           universe.getName(),
@@ -608,7 +610,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           universe.isYbcEnabled(),
           ybcManager.getStableYbcVersion(),
           PodUpgradeParams.DEFAULT,
-          null /* ysqlMajorVersionUpgradeState */);
+          null /* ysqlMajorVersionUpgradeState */,
+          null /* rootCAUUID */);
     } else if (masterAddressesChanged) {
       // Update master_addresses flag on Master
       // and tserver_master_addrs flag on tserver without restart.
@@ -949,29 +952,30 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     UUID providerUUID = UUID.fromString(userIntent.provider);
     Provider provider = Provider.getOrBadRequest(providerUUID);
 
-    // Subtask groups( ignore Errors is false by default )
-    SubTaskGroup validateExpansion =
-        createSubTaskGroup(
-            KubernetesCheckVolumeExpansion.getSubTaskGroupName(), SubTaskGroupType.PreflightChecks);
-    SubTaskGroup stsDelete =
-        createSubTaskGroup(
-            KubernetesCommandExecutor.CommandType.STS_DELETE.getSubTaskGroupName(),
-            SubTaskGroupType.ResizingDisk);
-    SubTaskGroup pvcExpand =
-        createSubTaskGroup(
-            KubernetesCommandExecutor.CommandType.PVC_EXPAND_SIZE.getSubTaskGroupName(),
-            SubTaskGroupType.ResizingDisk,
-            true /* ignoreErrors */);
-    SubTaskGroup helmUpgrade =
-        createSubTaskGroup(
-            KubernetesCommandExecutor.CommandType.HELM_UPGRADE.getSubTaskGroupName(),
-            SubTaskGroupType.HelmUpgrade);
-    SubTaskGroup postExpansionValidate =
-        createSubTaskGroup(
-            KubernetesPostExpansionCheckVolume.getSubTaskGroupName(),
-            SubTaskGroupType.PostUpdateValidations);
-
     for (Entry<UUID, Map<String, String>> entry : placement.configs.entrySet()) {
+
+      // Subtask groups( ignore Errors is false by default )
+      SubTaskGroup validateExpansion =
+          createSubTaskGroup(
+              KubernetesCheckVolumeExpansion.getSubTaskGroupName(),
+              SubTaskGroupType.PreflightChecks);
+      SubTaskGroup stsDelete =
+          createSubTaskGroup(
+              KubernetesCommandExecutor.CommandType.STS_DELETE.getSubTaskGroupName(),
+              SubTaskGroupType.ResizingDisk);
+      SubTaskGroup pvcExpand =
+          createSubTaskGroup(
+              KubernetesCommandExecutor.CommandType.PVC_EXPAND_SIZE.getSubTaskGroupName(),
+              SubTaskGroupType.ResizingDisk,
+              true /* ignoreErrors */);
+      SubTaskGroup helmUpgrade =
+          createSubTaskGroup(
+              KubernetesCommandExecutor.CommandType.HELM_UPGRADE.getSubTaskGroupName(),
+              SubTaskGroupType.HelmUpgrade);
+      SubTaskGroup postExpansionValidate =
+          createSubTaskGroup(
+              KubernetesPostExpansionCheckVolume.getSubTaskGroupName(),
+              SubTaskGroupType.PostUpdateValidations);
 
       UUID azUUID = entry.getKey();
       String azName =
@@ -1046,7 +1050,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
                 null /* previousGflagsChecksumMap */,
                 false /* useNewMasterDiskSize */,
                 false /* useNewTserverDiskSize */,
-                null /* ysqlMajorVersionUpgradeState */));
+                null /* ysqlMajorVersionUpgradeState */,
+                null /* rootCAUUID */));
         // Add subtask to pvcExpand subtask group
         pvcExpand.addSubTask(
             getSingleKubernetesExecutorTaskForServerTypeTask(
@@ -1071,7 +1076,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
                 null /* previousGflagsChecksumMap */,
                 false /* useNewMasterDiskSize */,
                 false /* useNewTserverDiskSize */,
-                null /* ysqlMajorVersionUpgradeState */));
+                null /* ysqlMajorVersionUpgradeState */,
+                null /* rootCAUUID */));
       }
       // This helm upgrade will only create the new statefulset with the new disk size, nothing else
       // should change here and this is idempotent, since its a helm_upgrade.
@@ -1114,7 +1120,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               previousGflagsChecksumMap,
               true /* useNewMasterDiskSize */,
               serverType == ServerType.TSERVER ? true : false /* useNewTserverDiskSize */,
-              null /* ysqlMajorVersionUpgradeState */));
+              null /* ysqlMajorVersionUpgradeState */,
+              null /* rootCAUUID */));
       // Add subtask to postExpansionValidate subtask group
       postExpansionValidate.addSubTask(
           createPostExpansionValidateTask(
@@ -1126,13 +1133,15 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               providerUUID,
               newDiskSizeGi,
               serverType));
-    }
-    if (validateExpansion.getSubTaskCount() > 0) {
-      getRunnableTask().addSubTaskGroup(validateExpansion);
-      getRunnableTask().addSubTaskGroup(stsDelete);
-      getRunnableTask().addSubTaskGroup(pvcExpand);
-      getRunnableTask().addSubTaskGroup(helmUpgrade);
-      getRunnableTask().addSubTaskGroup(postExpansionValidate);
+
+      // Add all subtasks to runnable
+      if (validateExpansion.getSubTaskCount() > 0) {
+        getRunnableTask().addSubTaskGroup(validateExpansion);
+        getRunnableTask().addSubTaskGroup(stsDelete);
+        getRunnableTask().addSubTaskGroup(pvcExpand);
+        getRunnableTask().addSubTaskGroup(helmUpgrade);
+        getRunnableTask().addSubTaskGroup(postExpansionValidate);
+      }
     }
   }
 

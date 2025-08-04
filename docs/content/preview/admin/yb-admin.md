@@ -383,11 +383,11 @@ Returns tables in the following format, depending on the flags used:
 <db-type>.<namespace>.<table-name> <table-id> <table-type>
 ```
 
-* *db-type*: The type of database. Valid values include `ysql`, `ycql`, and `unknown`.
+* *db-type*: The type of database. Valid values are `ysql`, `ycql`, and `unknown`.
 * *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
 * *table-name*: The name of the table.
 * *table-id*: The UUID of the table.
-* *table-type*: The type of table. Valid values include `catalog`, `table`, `index`, and `other`.
+* *table-type*: The type of table. Valid values are `catalog`, `table`, `index`, and `other`.
 
 {{< note title="Tip" >}}
 
@@ -480,6 +480,65 @@ yb-admin \
 
 ```output
 Compacted [000033eb000030008000000000004002] tables.
+```
+
+#### compaction_status
+
+Show the status of full compaction on a table.
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    compaction_status <db-type>.<namespace> <table> [show_tablets]
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
+* *db-type*: The type of database. Valid values are `ysql` and `ycql`.
+* *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
+* *table*: The name of the table to show the full compaction status.
+* `show_tablets`: Show the compactions status of individual tablets.
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses $MASTER_RPC_ADDRS \
+    compaction_status ysql.yugabyte table_name show_tablets
+```
+
+```output
+tserver uuid: 1b9486461cdd48f59eb46b33992cd73a
+ tablet id | full compaction state | last full compaction completion time
+
+ 93c6933407e24adf8b3f12c11499673a IDLE 2025-06-03 15:36:22.395586
+ 9c1cddfe33ec440cbcd70770563c62ca IDLE 2025-06-03 15:36:22.743703
+ b739745bba254330805c259459c61a7e IDLE 2025-06-03 15:36:23.416460
+ 9d0155aa77b3441e8e8c78cc433b995c IDLE 2025-06-03 15:36:23.504400
+ 2b9f283301d14be2add2c3f2a0016531 IDLE 2025-06-03 15:36:23.892202
+ eff101a879f348778ed599cb79498c44 IDLE 2025-06-03 15:36:24.706769
+
+tserver uuid: c0505f1d31774a3d88fae26ce14cde10
+ tablet id | full compaction state | last full compaction completion time
+
+ 93c6933407e24adf8b3f12c11499673a IDLE 2025-06-03 15:36:22.769900
+ 9c1cddfe33ec440cbcd70770563c62ca IDLE 2025-06-03 15:36:23.142609
+ b739745bba254330805c259459c61a7e IDLE 2025-06-03 15:36:23.871247
+ 9d0155aa77b3441e8e8c78cc433b995c IDLE 2025-06-03 15:36:23.877126
+ 2b9f283301d14be2add2c3f2a0016531 IDLE 2025-06-03 15:36:24.294265
+ eff101a879f348778ed599cb79498c44 IDLE 2025-06-03 15:36:25.107964
+
+tserver uuid: f7b5e6fc38974cbabc330d944d564974
+ tablet id | full compaction state | last full compaction completion time
+
+ 93c6933407e24adf8b3f12c11499673a IDLE 2025-06-03 15:36:22.415413
+ 9c1cddfe33ec440cbcd70770563c62ca IDLE 2025-06-03 15:36:22.793145
+ b739745bba254330805c259459c61a7e IDLE 2025-06-03 15:36:23.473077
+ 9d0155aa77b3441e8e8c78cc433b995c IDLE 2025-06-03 15:36:23.475270
+ 2b9f283301d14be2add2c3f2a0016531 IDLE 2025-06-03 15:36:23.888733
+ eff101a879f348778ed599cb79498c44 IDLE 2025-06-03 15:36:24.705576
+
+Last full compaction completion time: 2025-06-03 15:36:22.395586
+Last admin compaction request time: 2025-06-03 15:36:22.061267
 ```
 
 #### modify_table_placement_info
@@ -615,7 +674,7 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
-* *db-type*: The type of database. Valid values include `ysql` and `ycql`.
+* *db-type*: The type of database. Valid values are `ysql` and `ycql`.
 * *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
 * *table*: The name of the table to flush.
 * *timeout-in-seconds*: Specifies duration (in seconds) yb-admin waits for flushing to end. Default is `20`.
@@ -1723,13 +1782,13 @@ This feature is {{<tags/feature/tp>}}. Use the [yb_enable_cdc_consistent_snapsho
 ```sh
 yb-admin \
     -master_addresses <master-addresses> \
-    create_change_data_stream ysql.<namespace-name> EXPLICIT CHANGE USE_SNAPSHOT
+    create_change_data_stream ysql.<namespace-name> [EXPLICIT] [<before-image-mode>] [USE_SNAPSHOT | NOEXPORT_SNAPSHOT]
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *namespace-name*: The namespace on which the DB stream ID is to be created.
-* EXPLICIT: Checkpointing type on the server.
-* CHANGE: Record type indicating to the server that the stream should send only the new values of the changed columns.
+* EXPLICIT: Checkpointing type on the server. See [Creating stream in EXPLICIT checkpointing mode](#creating-stream-in-explicit-checkpointing-mode).
+* *before-image-mode*: Record type indicating to the server that the stream should send only the new values of the changed columns. See [Enabling before image](#enabling-before-image).
 * USE_SNAPSHOT: Snapshot option indicating intention of client to consume the snapshot. If you don't want the client to consume the snapshot, use the NOEXPORT_SNAPSHOT option.
 
 For example:
@@ -1749,13 +1808,13 @@ To create a change data capture (CDC) DB stream which also supports sending the 
 ```sh
 yb-admin \
     -master_addresses <master-addresses> \
-    create_change_data_stream ysql.<namespace-name> EXPLICIT <before-image-mode>
+    create_change_data_stream ysql.<namespace-name> [EXPLICIT] <before-image-mode>
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *namespace-name*: The namespace on which the DB stream ID is to be created.
-* EXPLICIT: Checkpointing type on the server.
-* *before-image-mode*: Record type indicating the stream should include the before image.
+* EXPLICIT: Checkpointing type on the server. See [Creating stream in EXPLICIT checkpointing mode](#creating-stream-in-explicit-checkpointing-mode).
+* *before-image-mode*: Record type indicating to the server that the stream should send only the new values of the changed columns. Refer to [Before image modes](../../develop/change-data-capture/using-yugabytedb-grpc-replication/cdc-get-started/#before-image-modes).
 
 A successful operation of the above command returns a message with a DB stream ID:
 
@@ -2273,11 +2332,11 @@ yb-admin \
 * *source-master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *replication-group-id*: The replication group identifier.
 * *namespace_names*: Comma-separated list of namespaces.
-* `automatic_ddl_mode`: Use Automatic xCluster mode.
+* `automatic_ddl_mode`: Use Automatic xCluster mode. {{<tags/feature/ea idea="2176">}}
 
 #### is_xcluster_bootstrap_required
 
-Checks if the databases of a previously checkpointed replication group requires a bootstrap(backup/restore) of the database to the target universe.
+Checks if the databases of a previously checkpointed replication group requires a bootstrap (backup/restore) of the database to the target universe.
 
 **Syntax**
 
@@ -2501,7 +2560,7 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
-* ADD | REMOVE: Adds or removes the specified YB-TServer from leader blacklist.
+* ADD | REMOVE: Adds or removes the specified YB-Master, or YB-TServer from leader blacklist.
 * *ip_addr:port*: The IP address and port of the YB-TServer.
 
 **Example**
@@ -2719,6 +2778,8 @@ promoted_flags {
 
 After all YugabyteDB processes have been upgraded to the new version, these features can be enabled by promoting their AutoFlags.
 
+Note that `promote_auto_flags` is a cluster-level operation; you don't need to run it on every node.
+
 **Syntax**
 
 ```sh
@@ -2794,7 +2855,7 @@ In certain scenarios, a YSQL upgrade can take longer than 60 seconds, which is t
     upgrade_ysql
 ```
 
-Running this command is an online operation and doesn't require stopping a running cluster. This command is idempotent and can be run multiple times without any side effects.
+Running `upgrade_ysql` is an online operation and doesn't require stopping a running cluster. `upgrade_ysql` is also a cluster-level operation; you don't need to run it on every node.
 
 {{< note title="Note" >}}
 Concurrent operations in a cluster can lead to various transactional conflicts, catalog version mismatches, and read restart errors. This is expected, and should be addressed by rerunning the upgrade command.
@@ -2803,6 +2864,8 @@ Concurrent operations in a cluster can lead to various transactional conflicts, 
 #### finalize_upgrade
 
 Finalizes an upgrade after a successful [YSQL major upgrade](../../manage/ysql-major-upgrade-local/). You can run this command from any node in the cluster.
+
+Note that `finalize_upgrade` is a cluster-level operation; you don't need to run it on every node.
 
 **Syntax**
 

@@ -86,9 +86,15 @@ CheckAndCreateToastTable(Oid relOid, Datum reloptions, LOCKMODE lockmode,
 
 	rel = table_open(relOid, lockmode);
 
-	/* create_toast_table does all the work */
-	(void) create_toast_table(rel, InvalidOid, InvalidOid, reloptions, lockmode,
-							  check, OIDOldToast);
+	/* Skip toast table creation for non-temp relations in YB mode */
+	if (!IsYugaByteEnabled() || isTempOrTempToastNamespace(rel->rd_rel->relnamespace))
+	{
+		/* create_toast_table does all the work */
+
+		elog(DEBUG1, "Creating toast table for %d", relOid);
+		(void) create_toast_table(rel, InvalidOid, InvalidOid, reloptions, lockmode,
+								  check, OIDOldToast);
+	}
 
 	table_close(rel, NoLock);
 }

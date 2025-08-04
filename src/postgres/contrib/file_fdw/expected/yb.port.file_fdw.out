@@ -299,19 +299,35 @@ RESET constraint_exclusion;
 CREATE TABLE agg (a int2, b float4);
 -- YB note: Enable when ALTER TABLE INHERIT from #1124 is supported
 ALTER FOREIGN TABLE agg_csv INHERIT agg;
-ERROR:  ALTER action INHERIT not supported yet
-LINE 1: ALTER FOREIGN TABLE agg_csv INHERIT agg;
-                                    ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
---SELECT tableoid::regclass, * FROM agg;
---SELECT tableoid::regclass, * FROM agg_csv;
---SELECT tableoid::regclass, * FROM ONLY agg;
----- updates aren't supported
---UPDATE agg SET a = 1;
---DELETE FROM agg WHERE a = 100;
----- but this should be allowed
---SELECT tableoid::regclass, * FROM agg FOR UPDATE;
---ALTER FOREIGN TABLE agg_csv NO INHERIT agg;
+SELECT tableoid::regclass, * FROM agg;
+ tableoid |  a  |    b    
+----------+-----+---------
+ agg_csv  | 100 |  99.097
+ agg_csv  |   0 | 0.09561
+ agg_csv  |  42 |  324.78
+(3 rows)
+
+SELECT tableoid::regclass, * FROM agg_csv;
+ tableoid |  a  |    b    
+----------+-----+---------
+ agg_csv  | 100 |  99.097
+ agg_csv  |   0 | 0.09561
+ agg_csv  |  42 |  324.78
+(3 rows)
+
+SELECT tableoid::regclass, * FROM ONLY agg;
+ tableoid | a | b 
+----------+---+---
+(0 rows)
+
+-- updates aren't supported
+UPDATE agg SET a = 1;
+ERROR:  cannot update foreign table "agg_csv"
+DELETE FROM agg WHERE a = 100;
+ERROR:  cannot delete from foreign table "agg_csv"
+-- but this should be allowed
+--SELECT tableoid::regclass, * FROM agg FOR UPDATE;  -- YB: triggers a crash #27105
+ALTER FOREIGN TABLE agg_csv NO INHERIT agg;
 DROP TABLE agg;
 -- declarative partitioning tests
 SET ROLE regress_file_fdw_superuser;

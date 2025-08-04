@@ -23,6 +23,7 @@ message ServerInfo {
     string version = 1;
     bool restartNeeded = 2;
     bool offloadable = 3;
+    string compressor = 4;
 }
 
 message PingRequest {
@@ -58,6 +59,12 @@ message SubmitTaskRequest {
         ConfigureServiceInput configureServiceInput = 6;
         InstallSoftwareInput installSoftwareInput = 7;
         ServerGFlagsInput serverGFlagsInput = 8;
+        InstallYbcInput installYbcInput = 9;
+        ConfigureServerInput configureServerInput = 10;
+        InstallOtelCollectorInput installOtelCollectorInput = 11;
+        SetupCGroupInput setupCGroupInput = 12;
+        DownloadSoftwareInput downloadSoftwareInput = 13;
+        DestroyServerInput destroyServerInput = 14;
     }
 }
 
@@ -79,6 +86,12 @@ message DescribeTaskResponse {
         ConfigureServiceOutput configureServiceOutput = 6;
         InstallSoftwareOutput installSoftwareOutput = 7;
         ServerGFlagsOutput serverGFlagsOutput = 8;
+        InstallYbcOutput installYbcOutput = 9;
+        ConfigureServerOutput configureServerOutput = 10;
+        InstallOtelCollectorOutput installOtelCollectorOutput = 11;
+        SetupCGroupOutput setupCGroupOutput = 12;
+        DownloadSoftwareOutput DownloadSoftwareOutput = 13;
+        DestroyServerOutput destroyServerOutput = 14;
     }
 }
 

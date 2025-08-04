@@ -147,7 +147,8 @@ add_paths_to_joinrel(PlannerInfo *root,
 
 	if (IsYugaByteEnabled() && yb_enable_planner_trace)
 	{
-		char ybMsgBuf[30];
+		char		ybMsgBuf[30];
+
 		sprintf(ybMsgBuf, "(UID %u) ", ybGetNextUid(root->glob));
 		ereport(DEBUG1,
 				(errmsg("\n%s BEGIN add_paths_to_joinrel Level %d\n", ybMsgBuf,
@@ -226,9 +227,11 @@ add_paths_to_joinrel(PlannerInfo *root,
 
 	if (IsYugaByteEnabled() && yb_enable_planner_trace)
 	{
-		char ybMsgBuf[30];
+		char		ybMsgBuf[30];
+
 		sprintf(ybMsgBuf, "(UID %u) ", ybGetNextUid(root->glob));
 		StringInfoData buf;
+
 		initStringInfo(&buf);
 		ybBuildRelidsString(root, innerrel->relids, &buf);
 		ereport(DEBUG1,
@@ -393,7 +396,8 @@ add_paths_to_joinrel(PlannerInfo *root,
 
 	if (IsYugaByteEnabled() && yb_enable_planner_trace)
 	{
-		char ybMsgBuf[30];
+		char		ybMsgBuf[30];
+
 		sprintf(ybMsgBuf, "(UID %u) ", ybGetNextUid(root->glob));
 		ereport(DEBUG1,
 				(errmsg("\n%s END add_paths_to_joinrel\n", ybMsgBuf)));
@@ -640,6 +644,11 @@ get_memoize_path(PlannerInfo *root, RelOptInfo *innerrel,
 		(inner_path->param_info == NULL ||
 		 list_length(inner_path->param_info->ppi_clauses) <
 		 list_length(extra->restrictlist)))
+		return NULL;
+
+	/* YB: #25251 Disable BNL + Memoize until this pattern is supported */
+	if (IsYugaByteEnabled() &&
+		yb_is_outer_inner_batched(outer_path, inner_path))
 		return NULL;
 
 	/*

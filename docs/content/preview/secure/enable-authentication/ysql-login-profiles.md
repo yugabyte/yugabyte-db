@@ -49,7 +49,7 @@ To enable login profiles in deployable YugabyteDB clusters, you need to start yo
 
 You can also enable YSQL login profiles by adding the `--ysql_enable_profile=true` to the YB-TServer configuration file (`tserver.conf`).
 
-For more information, refer to [Start YB-TServers](../../../deploy/manual-deployment/start-tservers/).
+For more information, refer to [Start YB-TServers](../../../deploy/manual-deployment/start-masters/#yb-tserver-servers).
 
 ## Manage login profiles
 

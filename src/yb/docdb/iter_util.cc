@@ -209,8 +209,8 @@ const rocksdb::KeyValueEntry& SeekBackward(Slice upper_bound_key, rocksdb::Itera
   // positioned after the given key, which is confirmed by the above IsIterBeforeKey() call.
   DCHECK(entry.Valid()); // Maybe it's even better to put a CHECK here.
   if (PREDICT_FALSE(!entry.Valid())) {
-    LOG_WITH_FUNC(ERROR) << "Unexpected Seek() result -- invalid entry, key = '"
-                         << upper_bound_key.ToDebugHexString() << "', status: " << iter.status();
+    LOG_WITH_FUNC(DFATAL) << "Unexpected Seek() result -- invalid entry, key = '"
+                          << upper_bound_key.ToDebugHexString() << "', status: " << iter.status();
     return entry;
   }
 

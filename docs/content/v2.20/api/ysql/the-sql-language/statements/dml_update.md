@@ -56,6 +56,12 @@ Specify the column in the table to be updated.
 
 Specify the value to be assigned to a column. When the expression is referencing a column, the old value of this column is used to evaluate.
 
+### *from_item*
+
+A table expression that enables referencing columns from additional tables within the `WHERE` clause. 
+This follows the identical syntax conventions as the `FROM` clause in a `SELECT` statement, including the ability to define table aliases. 
+The target table should not be included as a `from_item` unless performing a self-join operation, in which case the target table must appear with an alias in the `from_item` list.
+
 ### *output_expression*
 
 Specify the value to be returned. When the `output_expression` is referencing a column, the new value of this column (updated value) is used to evaluate.

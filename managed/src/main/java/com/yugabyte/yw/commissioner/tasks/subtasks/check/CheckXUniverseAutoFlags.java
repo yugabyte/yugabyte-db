@@ -11,6 +11,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ServerSubTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.models.Universe;
@@ -66,15 +67,23 @@ public class CheckXUniverseAutoFlags extends ServerSubTaskBase {
       log.warn("Skipping auto flags compatibility check as both universe are not AF compatible.");
       return;
     }
+    if (confGetter.getConfForScope(
+            sourceUniverse, UniverseConfKeys.skipAutoflagsAndYsqlMigrationFilesValidation)
+        || confGetter.getConfForScope(
+            targetUniverse, UniverseConfKeys.skipAutoflagsAndYsqlMigrationFilesValidation)) {
+      log.info("Skipping auto flags and YSQL migration files validation");
+      return;
+    }
     try {
       // Check the existence of promoted auto flags on the other universe.
       checkPromotedAutoFlags(sourceUniverse, targetUniverse, ServerType.MASTER);
       checkPromotedAutoFlags(sourceUniverse, targetUniverse, ServerType.TSERVER);
+      validateYsqlMigrationFiles(sourceUniverse, targetUniverse);
       if (taskParams().checkAutoFlagsEqualityOnBothUniverses) {
         checkPromotedAutoFlags(targetUniverse, sourceUniverse, ServerType.MASTER);
         checkPromotedAutoFlags(targetUniverse, sourceUniverse, ServerType.TSERVER);
+        validateYsqlMigrationFiles(targetUniverse, sourceUniverse);
       }
-
     } catch (PlatformServiceException pe) {
       log.error("Error checking auto flags: ", pe);
       throw pe;
@@ -82,6 +91,7 @@ public class CheckXUniverseAutoFlags extends ServerSubTaskBase {
       log.error("Error checking auto flags: ", e);
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
+
     log.info("Completed {}", getName());
   }
 
@@ -124,5 +134,40 @@ public class CheckXUniverseAutoFlags extends ServerSubTaskBase {
                     + targetUniverse.getUniverseUUID());
           }
         });
+  }
+
+  private void validateYsqlMigrationFiles(Universe sourceUniverse, Universe targetUniverse)
+      throws IOException {
+    String sourceUniverseVersion =
+        sourceUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    if (sourceUniverse.getUniverseDetails().isSoftwareRollbackAllowed
+        && sourceUniverse.getUniverseDetails().prevYBSoftwareConfig != null) {
+      sourceUniverseVersion =
+          sourceUniverse.getUniverseDetails().prevYBSoftwareConfig.getSoftwareVersion();
+    }
+    String targetUniverseVersion =
+        targetUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    if (targetUniverse.getUniverseDetails().isSoftwareRollbackAllowed
+        && targetUniverse.getUniverseDetails().prevYBSoftwareConfig != null) {
+      targetUniverseVersion =
+          targetUniverse.getUniverseDetails().prevYBSoftwareConfig.getSoftwareVersion();
+    }
+    Set<String> sourceYsqlMigrationFiles =
+        gFlagsValidation.getYsqlMigrationFilesList(sourceUniverseVersion);
+    Set<String> targetYsqlMigrationFiles =
+        gFlagsValidation.getYsqlMigrationFilesList(targetUniverseVersion);
+    if (sourceUniverseVersion.startsWith("2025.1.0")
+        || targetUniverseVersion.startsWith("2025.1.0")) {
+      log.info("Skipping YSQL migration files validation for 2025.1.0 version");
+      return;
+    }
+    // Validate that the ysql migration files are the same.
+    if (!sourceYsqlMigrationFiles.equals(targetYsqlMigrationFiles)) {
+      log.error(
+          "Ysql migration files are not the same. Source: {}, Target: {}",
+          sourceYsqlMigrationFiles,
+          targetYsqlMigrationFiles);
+      throw new PlatformServiceException(BAD_REQUEST, "Ysql migration files are not the same.");
+    }
   }
 }

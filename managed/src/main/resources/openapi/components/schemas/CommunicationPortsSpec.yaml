@@ -87,3 +87,9 @@ properties:
     format: int32
     example: 5433
     default: 5433
+  internal_ysql_server_rpc_port:
+    description: Internal YSQL RPC port used when connection pooling is enabled
+    type: integer
+    format: int32
+    example: 6433
+    default: 6433

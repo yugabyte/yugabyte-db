@@ -1085,8 +1085,7 @@ TEST_F_EX(SnapshotTest, CrashAfterFlushedFrontierSaved, SnapshotExternalMiniClus
 
   for (int iter = 0; iter < kNumIters; ++iter) {
     const auto log_prefix = Format("Iteration $0: ", iter);
-    ASSERT_OK(
-        cluster_->FlushTabletsOnSingleTServer(ts1, {}, tserver::FlushTabletsRequestPB::FLUSH));
+    ASSERT_OK(ts1->FlushTablets({}));
     const auto snapshot_id = ASSERT_RESULT(snapshot_util.CreateSnapshot(table));
     auto ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(master_proxy, &client->proxy_cache()));
     for (const auto& tablet_id : tablet_ids) {

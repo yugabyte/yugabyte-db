@@ -36,6 +36,8 @@ tags:
     description: CRUD operations for YBA metrics
   - name: Universe
     description: CRUD operations for a Universe
+  - name: YBA Instance
+    description: YBA Instance operations
 paths:
   $ref: "paths/_index.yaml"
 components:

@@ -133,6 +133,14 @@ DEFINE_NON_RUNTIME_bool(force, false, "set_flag: If true, allows command to set 
             "from the memory, otherwise tablet metadata will be kept in memory with state "
             "TOMBSTONED.");
 
+DEFINE_NON_RUNTIME_bool(
+    remove_corrupt_data_blocks_unsafe, false,
+    "UNSAFE: If true, allows command to remove corrupt data blocks if found. This will result in "
+    "data loss. Use with extra care only when/while no other options are available.");
+TAG_FLAG(remove_corrupt_data_blocks_unsafe, advanced);
+TAG_FLAG(remove_corrupt_data_blocks_unsafe, hidden);
+TAG_FLAG(remove_corrupt_data_blocks_unsafe, unsafe);
+
 DEFINE_NON_RUNTIME_string(certs_dir_name, "",
     "Directory with certificates to use for secure server connection.");
 
@@ -618,8 +626,8 @@ Status TsAdminClient::CountIntents(int64_t* num_intents) {
 }
 
 Status TsAdminClient::FlushOrCompactsTabletsImpl(
-  const std::string& tablet_id, bool is_compaction,
-  std::optional<std::reference_wrapper<const TableIds>> vector_index_ids) {
+    const std::string& tablet_id, bool is_compaction,
+    std::optional<std::reference_wrapper<const TableIds>> vector_index_ids) {
   ServerStatusPB status_pb;
   RETURN_NOT_OK(GetStatus(&status_pb));
 
@@ -633,6 +641,8 @@ Status TsAdminClient::FlushOrCompactsTabletsImpl(
   } else {
     req.set_all_tablets(true);
   }
+
+  req.set_remove_corrupt_data_blocks_unsafe(FLAGS_remove_corrupt_data_blocks_unsafe);
 
   if (vector_index_ids.has_value()) {
     const auto& index_ids = vector_index_ids->get();

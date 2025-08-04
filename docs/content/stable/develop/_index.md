@@ -43,8 +43,8 @@ To learn how to build applications on top of YugabyteDB, see [Learn app developm
 
 Use these best practices to build distributed applications on top of YugabyteDB; this includes a list of techniques that you can adopt to make your application perform its best.
 
-{{<lead link="./best-practices-ysql">}}
-For more details, see [Best practices](./best-practices-ysql).
+{{<lead link="./best-practices-develop">}}
+For more details, see [Best practices](./best-practices-develop).
 {{</lead>}}
 
 ## Drivers and ORMs

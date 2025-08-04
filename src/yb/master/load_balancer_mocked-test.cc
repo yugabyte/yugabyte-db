@@ -732,6 +732,21 @@ TEST_F(LoadBalancerMockedTest, LimitRbsPerTserver) {
   ASSERT_EQ(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)), false);
 }
 
+TEST_F(LoadBalancerMockedTest, ExcludeOverreplicationInSourceLoad) {
+  PrepareTestStateMultiAz();
+  // Add another tserver in zone c.
+  const auto& new_ts = ts_descs_.emplace_back(SetupTS("3333", "c"));
+  for (int i = 0; i < 2; ++i) {
+    AddRunningReplica(tablets_[i].get(), new_ts);
+  }
+
+  // Should not find a replica to move because, after accounting for over-replicated replicas we
+  // might remove, we have only 2 tablets on ts2 (and 2 on ts3).
+  std::string tablet_id, from_ts, to_ts;
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)), false);
+}
+
 TEST_F(LoadBalancerMockedTest, TestLeaderBlacklist) {
   LOG(INFO) << "Testing moving overloaded leaders";
   PrepareTestStateMultiAz();
@@ -828,6 +843,205 @@ TEST_F(LoadBalancerRF5MockedTest, TestUnderReplicatedPriority) {
   // Shouldn't perform any more moves (can't move a tablet multiple times in one run).
   ASSERT_FALSE(ASSERT_RESULT(HandleOneAddIfMissingPlacement(placeholder, placeholder)));
   ASSERT_NOK(TestAddLoad(placeholder, placeholder, placeholder));
+}
+
+class OptimalLoadDistributionTest : public YBTest {
+ protected:
+  Status AssertLoadDistribution(
+      const std::vector<std::shared_ptr<TSDescriptor>>& ts_descs,
+      const TsTableLoadMap& load_map, const std::vector<int>& expected_load) {
+    if (expected_load.size() != ts_descs.size()) {
+      return STATUS(InvalidArgument, "Expected load size doesn't match ts_descs_ size");
+    }
+    for (size_t i = 0; i < ts_descs.size(); i++) {
+      SCHECK_EQ(load_map.at(ts_descs[i]->permanent_uuid()),
+                expected_load[i], IllegalState,
+                Format("Load for TS $0 does not match", ts_descs[i]->permanent_uuid()));
+    }
+    return Status::OK();
+  }
+
+  std::vector<std::shared_ptr<TSDescriptor>> SetupTservers(int rf) {
+    std::vector<std::shared_ptr<TSDescriptor>> ts_descs;
+    for (int i = 0; i < rf; ++i) {
+      // Create TS with uuid 0000, 1111, etc and AZ a, b, etc.
+      ts_descs.push_back(SetupTS(std::string(4, '0' + i), std::string(1, 'a' + i)));
+    }
+    return ts_descs;
+  }
+
+  ReplicationInfoPB GetReplicationInfo(std::vector<std::string> azs) {
+    ReplicationInfoPB replication_info;
+    SetupClusterConfig(azs, &replication_info);
+    return replication_info;
+  }
+};
+
+TEST_F(OptimalLoadDistributionTest, EvenDistribution) {
+  auto ts_descs = SetupTservers(3);
+  auto replication_info = GetReplicationInfo({"a", "b", "c"});
+  TsTableLoadMap current_load = {};
+  auto map = ASSERT_RESULT(CalculateOptimalLoadDistribution(
+      ts_descs, replication_info.live_replicas(), current_load, 1));
+  ASSERT_OK(AssertLoadDistribution(ts_descs, map, {1, 1, 1}));
+  // Same test with more tablets.
+  map = ASSERT_RESULT(CalculateOptimalLoadDistribution(
+      ts_descs, replication_info.live_replicas(), current_load, 3));
+  ASSERT_OK(AssertLoadDistribution(ts_descs, map, {3, 3, 3}));
+}
+
+TEST_F(OptimalLoadDistributionTest, UnevenTserverCount) {
+  auto ts_descs = SetupTservers(3);
+  auto replication_info = GetReplicationInfo({"a", "b", "c"});
+  TsTableLoadMap current_load = {};
+  // Add a new TS in AZ "c" and check the optimal load distribution.
+  ts_descs.push_back(SetupTS("3333", "c"));
+  auto map = ASSERT_RESULT(CalculateOptimalLoadDistribution(
+      ts_descs, replication_info.live_replicas(), current_load, 2 /* num_tablets */));
+  ASSERT_OK(AssertLoadDistribution(ts_descs, map, {2, 2, 1, 1}));
+}
+
+TEST_F(OptimalLoadDistributionTest, BreakTiesByCurrentLoad) {
+  // With 3 tablets in each zone and two tservers in zone c, we should prefer to put the extra
+  // tablet in zone c on the TS that already has more replicas.
+  auto ts_descs = SetupTservers(3);
+  ts_descs.push_back(SetupTS("3333", "c"));
+  auto replication_info = GetReplicationInfo({"a", "b", "c"});
+  TsTableLoadMap current_load = {};
+
+  // Give the second tserver in zone c an extra replica to start.
+  current_load[ts_descs[2]->permanent_uuid()] = 1;
+  current_load[ts_descs[3]->permanent_uuid()] = 2;
+  auto map = ASSERT_RESULT(CalculateOptimalLoadDistribution(
+      ts_descs, replication_info.live_replicas(), current_load, 3 /* num_tablets */));
+  ASSERT_OK(AssertLoadDistribution(ts_descs, map, {3, 3, 1, 2}));
+
+  // Give the first tserver in zone c more load and the optimal distribution should change (to
+  // minimize moves).
+  current_load[ts_descs[2]->permanent_uuid()] = 2;
+  current_load[ts_descs[3]->permanent_uuid()] = 1;
+  map = ASSERT_RESULT(CalculateOptimalLoadDistribution(
+      ts_descs, replication_info.live_replicas(), current_load, 3 /* num_tablets */));
+  ASSERT_OK(AssertLoadDistribution(ts_descs, map, {3, 3, 2, 1}));
+}
+
+TEST_F(OptimalLoadDistributionTest, NotEnoughTservers) {
+  auto ts_descs = SetupTservers(3);
+  auto replication_info = GetReplicationInfo({"a", "b", "c"});
+  TsTableLoadMap current_load = {};
+
+  // No tservers to host the tablet.
+  auto status = CalculateOptimalLoadDistribution(
+      {}, replication_info.live_replicas(), current_load, 1);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(
+      status.ToString(), "Not enough tservers to host the required number of replicas "
+      "(have 0, need 3)");
+
+  // There are enough tservers globally, but not enough in zone c.
+  ts_descs.push_back(SetupTS("3333", "a"));
+  status = CalculateOptimalLoadDistribution(
+      {ts_descs[0], ts_descs[1], ts_descs[3]}, replication_info.live_replicas(), current_load,
+      1);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(
+      status.ToString(),
+      "Not enough tservers to host the minimum number of replicas in placement block");
+}
+
+TEST_F(OptimalLoadDistributionTest, Slack) {
+  // Set up replication state with slack.
+  auto ts_descs = SetupTservers(3);
+  auto replication_info = GetReplicationInfo({"a", "b", "c"});
+  replication_info.mutable_live_replicas()->mutable_placement_blocks(0)->set_min_num_replicas(0);
+
+  // Zone a should take all the slack load.
+  TsTableLoadMap current_load = {};
+  auto map = ASSERT_RESULT(CalculateOptimalLoadDistribution(
+      ts_descs, replication_info.live_replicas(), current_load, 5));
+  ASSERT_OK(AssertLoadDistribution(ts_descs, map, {5, 5, 5}));
+
+  // With more tservers in zone b, zones a and b should share the slack load.
+  ts_descs.push_back(SetupTS("3333", "b"));
+  map = ASSERT_RESULT(CalculateOptimalLoadDistribution(
+      ts_descs, replication_info.live_replicas(), current_load, 6));
+  ASSERT_OK(AssertLoadDistribution(ts_descs, map, {4, 4, 6, 4}));
+}
+
+TEST_F(OptimalLoadDistributionTest, SlackManyTservers) {
+  // Create a replication info with min_num_replicas = 1 in 2 zones, leaving one slack replica.
+  auto replication_info = GetReplicationInfo({"a", "b"});
+  replication_info.mutable_live_replicas()->set_num_replicas(3);
+
+  // Create 5 tservers in zone a and 2 in zone b. Placing the slack replica in either zone should
+  // still be optimal even though adding to zone a results in lower average load (0.4 and 0.5
+  // tablets per tserver vs 0.2 and 1).
+  std::vector<std::shared_ptr<TSDescriptor>> ts_descs;
+  for (int i = 0; i < 5; i++) {
+    ts_descs.push_back(SetupTS(Format("zone_a_ts$0", i), "a"));
+  }
+  // Add two tservers to zone b so zone b can host the slack replica too.
+  ts_descs.push_back(SetupTS("zone_b_ts0", "b"));
+  ts_descs.push_back(SetupTS("zone_b_ts1", "b"));
+
+  // Place the slack replica in zone a. This should be optimal.
+  TsTableLoadMap current_load = {
+    {ts_descs[0]->permanent_uuid(), 1},
+    {ts_descs[1]->permanent_uuid(), 1},
+    {ts_descs[5]->permanent_uuid(), 1},
+  };
+  auto map = ASSERT_RESULT(CalculateOptimalLoadDistribution(
+      ts_descs, replication_info.live_replicas(), current_load, 1));
+  ASSERT_OK(AssertLoadDistribution(ts_descs, map, {1, 1, 0, 0, 0, 1, 0}));
+
+  // Placing the slack replica in zone b should also be optimal.
+  current_load = {
+    {ts_descs[0]->permanent_uuid(), 1},
+    {ts_descs[5]->permanent_uuid(), 1},
+    {ts_descs[6]->permanent_uuid(), 1},
+  };
+  map = ASSERT_RESULT(CalculateOptimalLoadDistribution(
+      ts_descs, replication_info.live_replicas(), current_load, 1));
+  ASSERT_OK(AssertLoadDistribution(ts_descs, map, {1, 0, 0, 0, 0, 1, 1}));
+}
+
+TEST_F(OptimalLoadDistributionTest, SlackRf5) {
+  // RF5 placement with 1 replica in zone a and b, 2 in zone c, and 1 slack replica.
+  auto replication_info = GetReplicationInfo({"a", "b", "c"});
+  replication_info.mutable_live_replicas()->set_num_replicas(5);
+  replication_info.mutable_live_replicas()->mutable_placement_blocks(0)->set_min_num_replicas(1);
+  replication_info.mutable_live_replicas()->mutable_placement_blocks(1)->set_min_num_replicas(1);
+  replication_info.mutable_live_replicas()->mutable_placement_blocks(2)->set_min_num_replicas(2);
+
+  // 5 tservers in each zone.
+  std::vector<std::shared_ptr<TSDescriptor>> ts_descs;
+  for (int i = 0; i < 5; i++) { ts_descs.push_back(SetupTS(Format("zone_a_ts$0", i), "a")); }
+  for (int i = 0; i < 5; i++) { ts_descs.push_back(SetupTS(Format("zone_b_ts$0", i), "b")); }
+  for (int i = 0; i < 5; i++) { ts_descs.push_back(SetupTS(Format("zone_c_ts$0", i), "c")); }
+
+  // The slack should get spread across zones a and b.
+  TsTableLoadMap current_load = {};
+  auto map = ASSERT_RESULT(CalculateOptimalLoadDistribution(
+      ts_descs, replication_info.live_replicas(), current_load, 30));
+  for (int i = 0; i < 10; i++) { ASSERT_EQ(map.at(ts_descs[i]->permanent_uuid()), 9); }
+  for (int i = 10; i < 15; i++) { ASSERT_EQ(map.at(ts_descs[i]->permanent_uuid()), 12); }
+}
+
+TEST_F(OptimalLoadDistributionTest, CalculateTableLoadDifference) {
+  // Test with no difference.
+  TsTableLoadMap current_load = {{"ts0", 1}, {"ts1", 1}, {"ts2", 1}};
+  TsTableLoadMap goal_load =    {{"ts0", 1}, {"ts1", 1}, {"ts2", 1}};
+  ASSERT_EQ(CalculateTableLoadDifference(current_load, goal_load), 0);
+
+  // Test with some removes and adds. Only the adds should be reported.
+  current_load = {{"ts0", 1}, {"ts1", 2}, {"ts2", 1}};
+  goal_load =    {{"ts0", 1}, {"ts1", 1}, {"ts2", 2}};
+  ASSERT_EQ(CalculateTableLoadDifference(current_load, goal_load), 1);
+
+  // Missing tservers in either map should count as 0 load.
+  current_load = {{"ts0", 1}, {"ts1", 1}};
+  goal_load =    {{"ts1", 1}, {"ts2", 1}};
+  ASSERT_EQ(CalculateTableLoadDifference(current_load, goal_load), 1);
 }
 
 } // namespace master

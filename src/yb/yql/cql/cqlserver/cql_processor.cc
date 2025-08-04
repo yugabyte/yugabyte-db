@@ -338,7 +338,7 @@ bool CQLProcessor::CheckAuthentication(const CQLRequest& req) const {
 
 unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const CQLRequest& req) {
   if (FLAGS_use_cassandra_authentication && !CheckAuthentication(req)) {
-    LOG(ERROR) << "Could not execute statement by not authenticated user!";
+    LOG(WARNING) << "Could not execute statement by not authenticated user!";
     return make_unique<ErrorResponse>(
         req, ErrorResponse::Code::SERVER_ERROR,
         "Could not execute statement by not authenticated user");
@@ -519,6 +519,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const BatchRequest& req) {
   // query if it is not prepared. Then execute the parse trees with the parameters.
   for (const BatchRequest::Query& query : req.queries()) {
     if (query.is_prepared) {
+      UpdateAshQueryId(b2a_hex(query.query_id));
       VLOG(1) << "BATCH EXECUTE " << b2a_hex(query.query_id);
       auto stmt_res = GetPreparedStatement(query.query_id, query.params.schema_version());
       if (!stmt_res.ok()) {
@@ -534,6 +535,8 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const BatchRequest& req) {
       }
       batch.emplace_back(*parse_tree, query.params);
     } else {
+      UpdateAshQueryId(ToString(std::to_underlying(
+          ash::FixedQueryId::kQueryIdForUncomputedQueryId)));
       VLOG(1) << "BATCH QUERY " << query.query;
       ParseTree::UniPtr parse_tree;
       s = Prepare(query.query, &parse_tree);
@@ -581,6 +584,8 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const AuthResponseRequest& 
                 << salted_hash_result;
     }
   }
+  UpdateAshQueryId(ToString(std::to_underlying(
+      ash::FixedQueryId::kQueryIdForYcqlAuthResponseRequest)));
   shared_ptr<Statement> stmt = service_impl_->GetAuthPreparedStatement();
   if (!stmt->Prepare(this, nullptr /* memtracker */, true /* internal */).ok()) {
     return make_unique<ErrorResponse>(
@@ -588,7 +593,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const AuthResponseRequest& 
         "Could not prepare statement for querying user " + params.username);
   }
   if (!stmt->ExecuteAsync(this, params, statement_executed_cb_).ok()) {
-    LOG(ERROR) << "Could not execute prepared statement to fetch login info!";
+    LOG(WARNING) << "Could not execute prepared statement to fetch login info!";
     return make_unique<ErrorResponse>(
         req, ErrorResponse::Code::SERVER_ERROR,
         "Could not execute prepared statement for querying roles for user " + params.username);
@@ -675,7 +680,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessError(const Status& s,
       }
     }
 
-    LOG(ERROR) << "Internal error: invalid error code " << static_cast<int64_t>(GetErrorCode(s));
+    LOG(WARNING) << "Internal error: invalid error code " << static_cast<int64_t>(GetErrorCode(s));
     return make_unique<ErrorResponse>(*request_, ErrorResponse::Code::SERVER_ERROR,
                                       "Invalid error code");
   } else if (s.IsNotAuthorized()) {
@@ -908,7 +913,7 @@ Result<bool> CheckLDAPAuth(const ql::AuthResponseRequest::AuthQueryParameters& p
         << FLAGS_ycql_ldap_server << "': " << LDAPError(r, ldap);
     auto error_msg = str.str();
     if (r == LDAP_INVALID_CREDENTIALS) {
-      LOG(ERROR) << error_msg;
+      LOG(WARNING) << error_msg;
       return false;
     }
 
@@ -1069,7 +1074,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessResult(const ExecutedResult::Shared
 
     // default: fall through.
   }
-  LOG(ERROR) << "Internal error: unknown result type " << static_cast<int>(result->type());
+  LOG(WARNING) << "Internal error: unknown result type " << static_cast<int>(result->type());
   return make_unique<ErrorResponse>(
       *request_, ErrorResponse::Code::SERVER_ERROR, "Internal error: unknown result type");
 }

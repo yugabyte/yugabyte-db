@@ -94,10 +94,6 @@ UPDATE atest1 SET a = 1 WHERE b = 'blech';
 TRUNCATE atest1;
 BEGIN;
 LOCK atest1 IN ACCESS EXCLUSIVE MODE;
-ERROR:  ACCESS EXCLUSIVE not supported yet
-LINE 1: LOCK atest1 IN ACCESS EXCLUSIVE MODE;
-                       ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 COMMIT;
 REVOKE ALL ON atest1 FROM PUBLIC;
 SELECT * FROM atest1;
@@ -159,10 +155,7 @@ TRUNCATE atest2; -- fail
 ERROR:  permission denied for table atest2
 BEGIN;
 LOCK atest2 IN ACCESS EXCLUSIVE MODE; -- fail
-ERROR:  ACCESS EXCLUSIVE not supported yet
-LINE 1: LOCK atest2 IN ACCESS EXCLUSIVE MODE;
-                       ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+ERROR:  permission denied for table atest2
 COMMIT;
 COPY atest2 FROM stdin; -- fail
 ERROR:  permission denied for table atest2
@@ -249,10 +242,6 @@ TRUNCATE atest2; -- fail
 ERROR:  permission denied for table atest2
 BEGIN;
 LOCK atest2 IN ACCESS EXCLUSIVE MODE; -- ok
-ERROR:  ACCESS EXCLUSIVE not supported yet
-LINE 1: LOCK atest2 IN ACCESS EXCLUSIVE MODE;
-                       ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 COMMIT;
 COPY atest2 FROM stdin; -- fail
 ERROR:  permission denied for table atest2
@@ -846,17 +835,10 @@ TRUNCATE atestc; -- fail
 ERROR:  permission denied for table atestc
 BEGIN;
 LOCK atestp1;
-ERROR:  ACCESS EXCLUSIVE lock mode not supported yet
-LINE 1: LOCK atestp1;
-             ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 END;
 BEGIN;
 LOCK atestc;
-ERROR:  ACCESS EXCLUSIVE lock mode not supported yet
-LINE 1: LOCK atestc;
-             ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+ERROR:  permission denied for table atestc
 END;
 -- privileges on functions, languages
 -- switch to superuser
@@ -2452,20 +2434,14 @@ GRANT SELECT ON lock_table TO regress_locktable_user;
 SET SESSION AUTHORIZATION regress_locktable_user;
 BEGIN;
 LOCK TABLE lock_table IN ROW EXCLUSIVE MODE; -- should fail
-ERROR:  ROW EXCLUSIVE not supported yet
-LINE 1: LOCK TABLE lock_table IN ROW EXCLUSIVE MODE;
-                                 ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+ERROR:  permission denied for table lock_table
 ROLLBACK;
 BEGIN;
 LOCK TABLE lock_table IN ACCESS SHARE MODE; -- should pass
 COMMIT;
 BEGIN;
 LOCK TABLE lock_table IN ACCESS EXCLUSIVE MODE; -- should fail
-ERROR:  ACCESS EXCLUSIVE not supported yet
-LINE 1: LOCK TABLE lock_table IN ACCESS EXCLUSIVE MODE;
-                                 ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+ERROR:  permission denied for table lock_table
 ROLLBACK;
 \c
 REVOKE SELECT ON lock_table FROM regress_locktable_user;
@@ -2474,10 +2450,6 @@ GRANT INSERT ON lock_table TO regress_locktable_user;
 SET SESSION AUTHORIZATION regress_locktable_user;
 BEGIN;
 LOCK TABLE lock_table IN ROW EXCLUSIVE MODE; -- should pass
-ERROR:  ROW EXCLUSIVE not supported yet
-LINE 1: LOCK TABLE lock_table IN ROW EXCLUSIVE MODE;
-                                 ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 COMMIT;
 BEGIN;
 LOCK TABLE lock_table IN ACCESS SHARE MODE; -- should fail
@@ -2485,10 +2457,7 @@ ERROR:  permission denied for table lock_table
 ROLLBACK;
 BEGIN;
 LOCK TABLE lock_table IN ACCESS EXCLUSIVE MODE; -- should fail
-ERROR:  ACCESS EXCLUSIVE not supported yet
-LINE 1: LOCK TABLE lock_table IN ACCESS EXCLUSIVE MODE;
-                                 ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+ERROR:  permission denied for table lock_table
 ROLLBACK;
 \c
 REVOKE INSERT ON lock_table FROM regress_locktable_user;
@@ -2497,10 +2466,6 @@ GRANT UPDATE ON lock_table TO regress_locktable_user;
 SET SESSION AUTHORIZATION regress_locktable_user;
 BEGIN;
 LOCK TABLE lock_table IN ROW EXCLUSIVE MODE; -- should pass
-ERROR:  ROW EXCLUSIVE not supported yet
-LINE 1: LOCK TABLE lock_table IN ROW EXCLUSIVE MODE;
-                                 ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 COMMIT;
 BEGIN;
 LOCK TABLE lock_table IN ACCESS SHARE MODE; -- should fail
@@ -2508,10 +2473,6 @@ ERROR:  permission denied for table lock_table
 ROLLBACK;
 BEGIN;
 LOCK TABLE lock_table IN ACCESS EXCLUSIVE MODE; -- should pass
-ERROR:  ACCESS EXCLUSIVE not supported yet
-LINE 1: LOCK TABLE lock_table IN ACCESS EXCLUSIVE MODE;
-                                 ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 COMMIT;
 \c
 REVOKE UPDATE ON lock_table FROM regress_locktable_user;
@@ -2520,10 +2481,6 @@ GRANT DELETE ON lock_table TO regress_locktable_user;
 SET SESSION AUTHORIZATION regress_locktable_user;
 BEGIN;
 LOCK TABLE lock_table IN ROW EXCLUSIVE MODE; -- should pass
-ERROR:  ROW EXCLUSIVE not supported yet
-LINE 1: LOCK TABLE lock_table IN ROW EXCLUSIVE MODE;
-                                 ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 COMMIT;
 BEGIN;
 LOCK TABLE lock_table IN ACCESS SHARE MODE; -- should fail
@@ -2531,10 +2488,6 @@ ERROR:  permission denied for table lock_table
 ROLLBACK;
 BEGIN;
 LOCK TABLE lock_table IN ACCESS EXCLUSIVE MODE; -- should pass
-ERROR:  ACCESS EXCLUSIVE not supported yet
-LINE 1: LOCK TABLE lock_table IN ACCESS EXCLUSIVE MODE;
-                                 ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 COMMIT;
 \c
 REVOKE DELETE ON lock_table FROM regress_locktable_user;
@@ -2543,10 +2496,6 @@ GRANT TRUNCATE ON lock_table TO regress_locktable_user;
 SET SESSION AUTHORIZATION regress_locktable_user;
 BEGIN;
 LOCK TABLE lock_table IN ROW EXCLUSIVE MODE; -- should pass
-ERROR:  ROW EXCLUSIVE not supported yet
-LINE 1: LOCK TABLE lock_table IN ROW EXCLUSIVE MODE;
-                                 ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 COMMIT;
 BEGIN;
 LOCK TABLE lock_table IN ACCESS SHARE MODE; -- should fail
@@ -2554,10 +2503,6 @@ ERROR:  permission denied for table lock_table
 ROLLBACK;
 BEGIN;
 LOCK TABLE lock_table IN ACCESS EXCLUSIVE MODE; -- should pass
-ERROR:  ACCESS EXCLUSIVE not supported yet
-LINE 1: LOCK TABLE lock_table IN ACCESS EXCLUSIVE MODE;
-                                 ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 COMMIT;
 \c
 REVOKE TRUNCATE ON lock_table FROM regress_locktable_user;

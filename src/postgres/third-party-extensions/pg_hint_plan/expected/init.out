@@ -199,7 +199,7 @@ SELECT * FROM settings;
  enable_parallel_append         | on        | Query Tuning / Planner Method Configuration
  enable_parallel_hash           | on        | Query Tuning / Planner Method Configuration
  enable_partition_pruning       | on        | Query Tuning / Planner Method Configuration
- enable_partitionwise_aggregate | off       | Query Tuning / Planner Method Configuration
+ enable_partitionwise_aggregate | on        | Query Tuning / Planner Method Configuration
  enable_partitionwise_join      | off       | Query Tuning / Planner Method Configuration
  enable_seqscan                 | on        | Query Tuning / Planner Method Configuration
  enable_sort                    | on        | Query Tuning / Planner Method Configuration

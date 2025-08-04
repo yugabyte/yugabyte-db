@@ -4,7 +4,7 @@ headerTitle: PostgreSQL Anonymizer extension
 linkTitle: Anonymizer
 description: Using the PostgreSQL Anonymizer extension in YugabyteDB
 tags:
-  feature: tech-preview
+  feature: early-access
 menu:
   preview:
     identifier: extension-pganon
@@ -21,13 +21,13 @@ YugabyteDB uses v1.3.1 of PostgreSQL Anonymizer.
 
 ## Enable Anonymizer
 
-To enable the Anonymizer extension, add `anon` to `shared_preload_libraries` in the PostgreSQL server configuration parameters using the YB-TServer [--ysql_pg_conf_csv](../../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) flag:
+While in early access, to enable the Anonymizer extension, you set the YB-TServer `--enable_pg_anonymizer` flag to true. For example, using [yugabyted](../../../../reference/configuration/yugabyted/), you would do the following:
 
 ```sh
---ysql_pg_conf_csv=shared_preload_libraries=anon
+./bin/yugabyted start --tserver_flags="enable_pg_anonymizer=true"
 ```
 
-Note that modifying `shared_preload_libraries` requires restarting the YB-TServer.
+Note that modifying `--enable_pg_anonymizer` requires restarting the YB-TServer.
 
 ## Customize Anonymizer
 

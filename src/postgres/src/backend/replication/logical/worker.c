@@ -2284,8 +2284,8 @@ apply_handle_tuple_routing(ApplyExecutionData *edata,
 					if (map)
 					{
 						TupleConversionMap *PartitionToRootMap =
-						convert_tuples_by_name(RelationGetDescr(partrel),
-											   RelationGetDescr(parentrel));
+							convert_tuples_by_name(RelationGetDescr(partrel),
+												   RelationGetDescr(parentrel));
 
 						remoteslot =
 							execute_attr_map_slot(PartitionToRootMap->attrMap,
@@ -2613,7 +2613,7 @@ get_flush_position(XLogRecPtr *write, XLogRecPtr *flush,
 	dlist_foreach_modify(iter, &lsn_mapping)
 	{
 		FlushPosition *pos =
-		dlist_container(FlushPosition, node, iter.cur);
+			dlist_container(FlushPosition, node, iter.cur);
 
 		*write = pos->remote_end;
 

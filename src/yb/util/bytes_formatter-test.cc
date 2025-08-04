@@ -16,6 +16,8 @@
 #include <string>
 #include <gtest/gtest.h>
 
+#include "yb/util/test_macros.h"
+
 using std::string;
 
 namespace yb {
@@ -55,6 +57,16 @@ TEST(BytesFormatterTest, TestMaxLength) {
   ASSERT_EQ(
       "\"foo'bar\\\"baz\"",
       FormatBytesAsStr(input_str, QuotesType::kDoubleQuotes, 20));
+}
+
+TEST(BytesFormatterTest, TestEmpty) {
+  ASSERT_EQ("\"\"", FormatBytesAsStr("", QuotesType::kDoubleQuotes, 20));
+}
+
+TEST(BytesFormatterTest, YB_DISABLE_TEST_IN_SANITIZERS(TestOverflow)) {
+  ASSERT_EQ(
+      "\"f<...18446744073709551614 bytes skipped>\"",
+      FormatBytesAsStr("foobar", -1uz, QuotesType::kDoubleQuotes, 1));
 }
 
 }  // namespace util

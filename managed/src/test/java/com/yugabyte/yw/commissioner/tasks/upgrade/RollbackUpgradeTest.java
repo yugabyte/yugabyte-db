@@ -13,9 +13,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -41,6 +39,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -100,12 +99,7 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
           TaskType.WaitStartingFromTime);
 
   private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE_INACTIVE_ROLE =
-      ImmutableList.of(
-          TaskType.SetNodeState,
-          TaskType.AnsibleClusterServerCtl,
-          TaskType.AnsibleConfigureServers,
-          TaskType.SetNodeState,
-          TaskType.WaitStartingFromTime);
+      ImmutableList.of(TaskType.AnsibleClusterServerCtl, TaskType.AnsibleConfigureServers);
 
   private static final List<TaskType> NON_ROLLING_UPGRADE_TASK_SEQUENCE_ACTIVE_ROLE =
       ImmutableList.of(
@@ -129,6 +123,7 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
     setCheckNodesAreSafeToTakeDown(mockClient);
     setUnderReplicatedTabletsMock();
     setFollowerLagMock();
+    lenient().when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
 
     factory
         .forUniverse(defaultUniverse)
@@ -148,6 +143,8 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
     PrevYBSoftwareConfig prevYBSoftwareConfig = new PrevYBSoftwareConfig();
     prevYBSoftwareConfig.setSoftwareVersion(initialVersion);
     prevYBSoftwareConfig.setTargetUpgradeSoftwareVersion(targetVersion);
+    prevYBSoftwareConfig.setCanRollbackCatalogUpgrade(true);
+    prevYBSoftwareConfig.setAllTserversUpgradedToYsqlMajorVersion(true);
     details.prevYBSoftwareConfig = prevYBSoftwareConfig;
     details.isSoftwareRollbackAllowed = true;
     defaultUniverse.setUniverseDetails(details);
@@ -177,12 +174,21 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
                   : ROLLING_UPGRADE_TASK_SEQUENCE_INACTIVE_ROLE)
               : ROLLING_UPGRADE_TASK_SEQUENCE_TSERVER;
       List<Integer> nodeOrder = getRollingUpgradeNodeOrder(serverType, activeRole);
+      List<List<Integer>> nodesOrder =
+          activeRole
+              ? nodeOrder.stream()
+                  .map(n -> Collections.singletonList(n))
+                  .collect(Collectors.toList())
+              : Collections.singletonList(nodeOrder);
 
-      for (int nodeIdx : nodeOrder) {
-        String nodeName = String.format("host-n%d", nodeIdx);
+      for (List<Integer> nodeIndexes : nodesOrder) {
+        List<String> nodeNames =
+            nodeIndexes.stream()
+                .map(nodeIdx -> String.format("host-n%d", nodeIdx))
+                .collect(Collectors.toList());
         int pos = position;
         for (TaskType type : taskSequence) {
-          log.debug("exp {} {} - {}", nodeName, pos++, type);
+          log.debug("exp {} {} - {}", nodeNames, pos++, type);
         }
         pos = position;
         for (TaskType type : taskSequence) {
@@ -200,12 +206,15 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
           TaskType taskType = tasks.get(0).getTaskType();
           UserTaskDetails.SubTaskGroupType subTaskGroupType = tasks.get(0).getSubTaskGroupType();
           // Leader blacklisting adds a ModifyBlackList task at position 0
-          int numTasksToAssert = position == 0 ? 2 : 1;
+          int numTasksToAssert = position == 0 ? 2 : nodeNames.size();
           assertEquals(numTasksToAssert, tasks.size());
           assertEquals(type, taskType);
           if (!NON_NODE_TASKS.contains(taskType)) {
             Map<String, Object> assertValues =
-                new HashMap<>(ImmutableMap.of("nodeName", nodeName, "nodeCount", 1));
+                nodeIndexes.size() == 1
+                    ? new HashMap<>(ImmutableMap.of("nodeName", nodeNames.get(0), "nodeCount", 1))
+                    : new HashMap<>(
+                        ImmutableMap.of("nodeNames", nodeNames, "nodeCount", nodeNames.size()));
 
             if (taskType.equals(TaskType.AnsibleConfigureServers)) {
               String version = "2.21.0.0-b1";
@@ -364,7 +373,7 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
     position = assertSequence(subTasksByPosition, MASTER, position, true, false);
     position = assertSequence(subTasksByPosition, MASTER, position, true, true);
     assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true);
-    assertEquals(125, position);
+    assertEquals(117, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
@@ -517,6 +526,7 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
         .task(TaskType.AnsibleConfigureServers)
         .applyToTservers()
         .addTasks(TaskType.RollbackYsqlMajorVersionCatalogUpgrade)
+        .addTasks(TaskType.UpdateSoftwareUpdatePrevConfig)
         .upgradeRound(UpgradeOption.NON_ROLLING_UPGRADE)
         .withContext(
             UpgradeTaskBase.UpgradeContext.builder()
@@ -534,6 +544,7 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
         .addSimultaneousTasks(
             TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
         .addTasks(TaskType.CleanUpPGUpgradeDataDir)
+        .addTasks(TaskType.UpdatePitrConfigIntermittentMinRecoverTime)
         .addSimultaneousTasks(TaskType.CheckSoftwareVersion, defaultUniverse.getTServers().size())
         .addTasks(TaskType.UpdateSoftwareVersion)
         .addTasks(TaskType.UpdateUniverseState)

@@ -269,15 +269,14 @@ Status XClusterInboundReplicationGroupSetupTask::FirstStep() {
   }
 
   ScheduleNextStep(
-      std::bind(
-          &XClusterInboundReplicationGroupSetupTask::SetupDDLReplicationExtension,
-          shared_from(this)),
+      [self = shared_from(this)] { return self->SetupDDLReplicationExtension(); },
       "SetupDDLReplicationExtension");
 
   return Status::OK();
 }
 
 Status XClusterInboundReplicationGroupSetupTask::SetupDDLReplicationExtension() {
+  bool need_to_bootstrap_sequences_data = false;
   if (data_.automatic_ddl_mode) {
     for (const auto& namespace_id : data_.target_namespace_ids) {
       auto namespace_name = VERIFY_RESULT(catalog_manager_.FindNamespaceById(namespace_id))->name();
@@ -286,31 +285,27 @@ Status XClusterInboundReplicationGroupSetupTask::SetupDDLReplicationExtension() 
       LOG_WITH_PREFIX(INFO) << "Setting up DDL replication extension for namespace " << namespace_id
                             << " (" << namespace_name << ")"
                             << (is_switchover ? " as part of a switchover" : "");
-      if (!is_switchover) {
-        // For regular setup cases, we want to clean up any existing state.
-        Synchronizer sync;
-        RETURN_NOT_OK(master::DropDDLReplicationExtensionIfExists(
-            catalog_manager_, namespace_id, sync.AsStdStatusCallback()));
-        RETURN_NOT_OK_PREPEND(sync.Wait(), "Failed to drop xCluster DDL replication extension");
-      }
       // Set up the extension and set our role as a target to prevent writes.
       Synchronizer sync;
       RETURN_NOT_OK(master::SetupDDLReplicationExtension(
           catalog_manager_, namespace_id, XClusterDDLReplicationRole::kTarget,
           sync.AsStdStatusCallback()));
       RETURN_NOT_OK_PREPEND(sync.Wait(), "Failed to setup xCluster DDL replication extension");
+
+      if (!is_switchover) {
+        // ALTERs to add/remove a table, and remove namespace do not reach this function.
+        need_to_bootstrap_sequences_data = true;
+      }
     }
   }
 
-  if (data_.automatic_ddl_mode && !is_alter_replication_) {
+  if (need_to_bootstrap_sequences_data) {
     ScheduleNextStep(
-        std::bind(
-            &XClusterInboundReplicationGroupSetupTask::BootstrapSequencesData, shared_from(this)),
+        [self = shared_from(this)] { return self->BootstrapSequencesData(); },
         "BootstrapSequencesData");
   } else {
     ScheduleNextStep(
-        std::bind(&XClusterInboundReplicationGroupSetupTask::CreateTableTasks, shared_from(this)),
-        "CreateTableTasks");
+        [self = shared_from(this)] { return self->CreateTableTasks(); }, "CreateTableTasks");
   }
   return Status::OK();
 }
@@ -325,8 +320,7 @@ Status XClusterInboundReplicationGroupSetupTask::BootstrapSequencesData() {
       data_.replication_group_id, data_.source_namespace_ids, deadline));
 
   ScheduleNextStep(
-      std::bind(&XClusterInboundReplicationGroupSetupTask::CreateTableTasks, shared_from(this)),
-      "CreateTableTasks");
+      [self = shared_from(this)] { return self->CreateTableTasks(); }, "CreateTableTasks");
   return Status::OK();
 }
 
@@ -378,9 +372,7 @@ void XClusterInboundReplicationGroupSetupTask::TableTaskCompletionCallback(
   }
 
   ScheduleNextStep(
-      std::bind(
-          &XClusterInboundReplicationGroupSetupTask::SetupReplicationAfterProcessingAllTables,
-          shared_from(this)),
+      [self = shared_from(this)] { return self->SetupReplicationAfterProcessingAllTables(); },
       "Process replication group after tables validated");
 }
 
@@ -753,7 +745,9 @@ void XClusterTableSetupTask::GetTableSchemaCallback(
     std::shared_ptr<XClusterTableSetupTask> shared_this,
     const std::shared_ptr<client::YBTableInfo>& source_table_info, const Status& s) {
   shared_this->ScheduleNextStep(
-      std::bind(&XClusterTableSetupTask::ProcessTable, shared_this, source_table_info, s),
+      [shared_this, source_table_info, s] {
+        return shared_this->ProcessTable(source_table_info, s);
+      },
       "Processing table");
 }
 
@@ -803,7 +797,9 @@ void XClusterTableSetupTask::GetTablegroupSchemaCallback(
     std::shared_ptr<XClusterTableSetupTask> shared_this,
     const std::shared_ptr<std::vector<client::YBTableInfo>>& source_table_infos, const Status& s) {
   shared_this->ScheduleNextStep(
-      std::bind(&XClusterTableSetupTask::ProcessTablegroup, shared_this, source_table_infos, s),
+      [shared_this, source_table_infos, s] {
+        return shared_this->ProcessTablegroup(source_table_infos, s);
+      },
       "Processing tablegroup");
 }
 
@@ -933,7 +929,7 @@ Result<GetTableSchemaResponsePB> XClusterTableSetupTask::ValidateSourceSchemaAnd
 
     // Double-check schema name here if the previous check was skipped.
     if (is_ysql_table && !has_valid_pgschema_name) {
-      std::string target_schema_name = table_schema_resp.schema().pgschema_name();
+      std::string target_schema_name = table_schema_resp.schema().deprecated_pgschema_name();
       if (target_schema_name != source_schema.SchemaName()) {
         table->clear_table_id();
         continue;

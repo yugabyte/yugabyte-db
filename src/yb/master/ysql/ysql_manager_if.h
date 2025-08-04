@@ -15,6 +15,7 @@
 
 #include "yb/common/entity_ids_types.h"
 #include "yb/master/leader_epoch.h"
+#include "yb/master/sys_catalog_types.h"
 #include "yb/util/status_fwd.h"
 
 namespace yb {
@@ -24,6 +25,7 @@ class VersionInfoPB;
 namespace master {
 
 class YsqlCatalogConfig;
+struct PersistentTableInfo;
 
 class YsqlManagerIf {
  public:
@@ -43,6 +45,11 @@ class YsqlManagerIf {
   virtual bool IsMajorUpgradeInProgress() const = 0;
 
   virtual Status ValidateTServerVersion(const VersionInfoPB& version) const = 0;
+
+  virtual Result<std::string> GetCachedPgSchemaName(
+      const PgTableAllOids& oids, PgDbRelNamespaceMap& cache) const = 0;
+  virtual Result<std::string> GetPgSchemaName(
+      const PgTableAllOids& oids, const ReadHybridTime& read_time = ReadHybridTime()) const = 0;
 };
 
 }  // namespace master

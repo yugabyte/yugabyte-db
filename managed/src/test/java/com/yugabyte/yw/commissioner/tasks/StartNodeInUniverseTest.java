@@ -86,6 +86,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
     } catch (Exception e) {
       fail();
     }
+    when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
     region = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");

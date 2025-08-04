@@ -30,6 +30,12 @@ namespace pgwrapper {
 class PgOnConflictTest : public LibPqTestBase {
  protected:
   void TestOnConflict(bool kill_master, const MonoDelta& duration);
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    // Disable tracing for this test to avoid generating too much logging output.
+    opts->extra_tserver_flags.push_back("--enable_tracing=false");
+    opts->extra_master_flags.push_back("--enable_tracing=false");
+  }
 };
 
 class PgFailOnConflictTest : public PgOnConflictTest {
@@ -40,6 +46,9 @@ class PgFailOnConflictTest : public PgOnConflictTest {
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
     opts->extra_tserver_flags.push_back("--enable_wait_queues=false");
     opts->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=true");
+    // Disable the tserver's lease expiry check as the window between killing and resuming a master
+    // can exceed the lease TTL.
+    opts->extra_tserver_flags.push_back("--TEST_enable_ysql_operation_lease_expiry_check=false");
   }
 };
 

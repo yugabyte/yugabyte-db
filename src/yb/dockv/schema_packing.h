@@ -26,6 +26,7 @@
 #include "yb/common/column_id.h"
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/id_mapping.h"
+#include "yb/common/value.pb.h"
 
 #include "yb/dockv/dockv_fwd.h"
 #include "yb/dockv/dockv.fwd.h"
@@ -56,6 +57,8 @@ struct ColumnPackingData {
 
   DataType data_type;
 
+  QLValuePB missing_value;
+
   static ColumnPackingData FromPB(const ColumnPackingPB& pb);
   void ToPB(ColumnPackingPB* out) const;
 
@@ -65,10 +68,10 @@ struct ColumnPackingData {
 
   std::string ToString() const;
 
-  bool operator==(const ColumnPackingData&) const = default;
-
   Slice FetchV1(const uint8_t* header, const uint8_t* body) const;
 };
+
+bool operator==(const ColumnPackingData& lhs, const ColumnPackingData& rhs);
 
 class SchemaPacking {
  public:
@@ -130,10 +133,51 @@ class SchemaPacking {
   size_t varlen_columns_count_;
 };
 
+class SchemaPackingRegistry {
+ public:
+  explicit SchemaPackingRegistry(const std::string& log_prefix);
+  ~SchemaPackingRegistry();
+
+  void Register(std::optional<SchemaVersion> old_version, std::optional<SchemaVersion> new_version);
+  std::optional<SchemaVersion> MinActiveVersion() const;
+
+  const std::string& LogPrefix() const {
+    return log_prefix_;
+  }
+
+ private:
+  const std::string log_prefix_;
+  mutable std::mutex mutex_;
+
+  // When representing a collection of non-unique integers, a common question arises:
+  // should we use a multiset or a map with a counter? Both approaches have their merits.
+  // Advantages of multiset:
+  //   Simpler code:
+  //     The multiset inherently handles duplicates, eliminating the need for manual count
+  //     management.
+  //   Straightforward usage:
+  //     Operations like insertion, deletion, and frequency checks are more intuitive.
+  // Advantages of map with counter:
+  //   Potential efficiency with duplicates:
+  //     If the dataset contains many repeated values, storing elements as keys with their counts
+  //     may reduce memory overhead and improve performance.
+  // Since we do not anticipate a large number of entries in this case, the simplicity and
+  // readability of a multiset make it the preferable choice.
+  std::multiset<SchemaVersion> versions_ GUARDED_BY(mutex_);
+};
+
+using SchemaPackingRegistryPtr = std::shared_ptr<SchemaPackingRegistry>;
+
 class SchemaPackingStorage {
  public:
-  explicit SchemaPackingStorage(TableType table_type);
+  SchemaPackingStorage(TableType table_type, SchemaPackingRegistryPtr registry);
   SchemaPackingStorage(const SchemaPackingStorage& rhs, SchemaVersion min_schema_version);
+  ~SchemaPackingStorage();
+
+  SchemaPackingStorage(const SchemaPackingStorage& rhs);
+  SchemaPackingStorage(SchemaPackingStorage&& rhs) = delete;
+  void operator=(const SchemaPackingStorage& rhs) = delete;
+  void operator=(SchemaPackingStorage&& rhs) = delete;
 
   Result<const SchemaPacking&> GetPacking(SchemaVersion schema_version) const;
   Result<const SchemaPacking&> GetPacking(Slice* packed_row) const;
@@ -169,15 +213,20 @@ class SchemaPackingStorage {
 
   std::string ToString() const;
 
-  bool operator==(const SchemaPackingStorage&) const = default;
-
   // Set could_present to true when schemas could contain the same packings as already present.
   Status InsertSchemas(
       const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas, bool could_present,
       OverwriteSchemaPacking overwrite);
 
+  SchemaPackingRegistry& registry() const {
+    return *registry_;
+  }
+
+  bool TEST_Equals(const SchemaPackingStorage& rhs) const;
+
  private:
-  static Status InsertSchemas(
+  // Returns max used schema version.
+  static Result<std::optional<SchemaVersion>> DoInsertSchemas(
       const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas, bool could_present,
       OverwriteSchemaPacking overwrite, std::unordered_map<SchemaVersion, SchemaPacking>* out);
 
@@ -190,8 +239,13 @@ class SchemaPackingStorage {
       TableType table_type, SchemaVersion version, const Schema& schema,
       std::unordered_map<SchemaVersion, SchemaPacking>* out);
 
+  void UpdateMaxSchemaVersion(std::optional<SchemaVersion> version);
+  void UpdateMaxSchemaVersionIfNecessary(std::optional<SchemaVersion> version);
+
   TableType table_type_;
   std::unordered_map<SchemaVersion, SchemaPacking> version_to_schema_packing_;
+  std::optional<SchemaVersion> max_schema_version_;
+  SchemaPackingRegistryPtr registry_;
 };
 
 class PackedRowDecoderBase {

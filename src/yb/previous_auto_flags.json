@@ -214,7 +214,7 @@
         },
         {
           "name": "enable_export_snapshot_using_relfilenode",
-          "class": 1
+          "class": 3
         },
         {
           "name": "enable_flush_retryable_requests",

@@ -302,11 +302,11 @@ class TransactionLoader::Executor {
     // relevant portion in the reverse index section. During the backward scan, we break after
     // processing the first encountered strong intent.
     //
-    // Note: We explicitly check if the transaction id is a strict prefix of the intent key so as
-    // not process the transaction meta record and instead terminate the loop. Else, we would error
-    // while processing transactions that executed statements of type 'FOR KEY SHARE' alone, since
-    // such statements don't write strong intents.
-    while (intents_iterator_.Valid() && intents_iterator_.key().size() > current_key_.size() &&
+    // Note: We explicitly check both that the transaction id is a prefix of the intent key and
+    // the intent key is longer than length(transaction id) + 1, so as to terminate the loop if we
+    // hit either the transaction meta record or tranaction post-apply meta record (which is only
+    // present in CDC use cases).
+    while (intents_iterator_.Valid() && intents_iterator_.key().size() > current_key_.size() + 1 &&
            intents_iterator_.key().starts_with(current_key_)) {
       auto decoded_key = dockv::DecodeIntentKey(intents_iterator_.value());
       LOG_IF_WITH_PREFIX(DFATAL, !decoded_key.ok())

@@ -55,7 +55,7 @@ go mod tidy
 
 ## Build and run the application
 
-Create the `ysql_gorm` database in YugabyteDB by running the following `ysqlsh` command from the YugabyteDB home directory.
+Create the `ysql_gorm` database in YugabyteDB by running the following ysqlsh command from the YugabyteDB home directory.
 
 ```sh
 $ ./bin/ysqlsh -c "CREATE DATABASE ysql_gorm"
@@ -122,7 +122,7 @@ $ ./bin/ysqlsh
 ```
 
 ```output
-ysqlsh (11.2)
+ysqlsh (15.2-YB-{{<yb-version version="stable">}}-b0)
 Type "help" for help.
 
 yugabyte=#

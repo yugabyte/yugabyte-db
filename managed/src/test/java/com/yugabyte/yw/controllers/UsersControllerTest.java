@@ -9,6 +9,8 @@ import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.models.Users.Role;
 import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.*;
 import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
@@ -30,6 +32,7 @@ import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.Role;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
+import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
 import com.yugabyte.yw.models.rbac.ResourceGroup.ResourceDefinition;
 import com.yugabyte.yw.models.rbac.Role.RoleType;
@@ -299,6 +302,8 @@ public class UsersControllerTest extends FakeDBApplication {
 
   @Test
   public void testResetPassword() {
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.SendUserNotification);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Users testUser1 = ModelFactory.testUser(customer1, "tc3@test.com", Role.Admin);
     String authTokenTest = testUser1.createAuthToken();
     assertEquals(testUser1.getRole(), Role.Admin);
@@ -345,6 +350,8 @@ public class UsersControllerTest extends FakeDBApplication {
 
   @Test
   public void testResetPasswordWithNewRbac() {
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.SendUserNotification);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
     ResourceGroup rG = new ResourceGroup(new HashSet<>(Arrays.asList(rd1)));
     RoleBinding.create(user1, RoleBindingType.Custom, role, rG);

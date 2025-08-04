@@ -84,7 +84,14 @@ struct TabletOnDiskSizeInfo {
   int64_t wal_files_disk_size = 0;
   int64_t sst_files_disk_size = 0;
   int64_t uncompressed_sst_files_disk_size = 0;
-  int64_t sum_on_disk_size = 0;
+
+  // Sum of consensus metadata, WALs, and SSTs. Excludes snapshots, retryable requests, MANIFEST,
+  // and other files in those directories. This is always up-to-date.
+  int64_t active_on_disk_size = 0;
+
+  // Estimated size of the tablet on disk, including snapshots, retryable requests, MANIFEST,
+  // and other files in those directories. This is updated periodically, so may be stale or 0.
+  int64_t total_on_disk_size = 0;
 
   template <class PB>
   static TabletOnDiskSizeInfo FromPB(const PB& pb) {
@@ -93,7 +100,8 @@ struct TabletOnDiskSizeInfo {
       .wal_files_disk_size = pb.wal_files_disk_size(),
       .sst_files_disk_size = pb.sst_files_disk_size(),
       .uncompressed_sst_files_disk_size = pb.uncompressed_sst_files_disk_size(),
-      .sum_on_disk_size = pb.estimated_on_disk_size()
+      .active_on_disk_size = pb.active_on_disk_size(),
+      .total_on_disk_size = pb.total_on_disk_size(),
     };
   }
 
@@ -103,7 +111,8 @@ struct TabletOnDiskSizeInfo {
     pb->set_wal_files_disk_size(wal_files_disk_size);
     pb->set_sst_files_disk_size(sst_files_disk_size);
     pb->set_uncompressed_sst_files_disk_size(uncompressed_sst_files_disk_size);
-    pb->set_estimated_on_disk_size(sum_on_disk_size);
+    pb->set_active_on_disk_size(active_on_disk_size);
+    pb->set_total_on_disk_size(total_on_disk_size);
   }
 
   void operator+=(const TabletOnDiskSizeInfo& other) {
@@ -111,11 +120,12 @@ struct TabletOnDiskSizeInfo {
     wal_files_disk_size += other.wal_files_disk_size;
     sst_files_disk_size += other.sst_files_disk_size;
     uncompressed_sst_files_disk_size += other.uncompressed_sst_files_disk_size;
-    sum_on_disk_size += other.sum_on_disk_size;
+    active_on_disk_size += other.active_on_disk_size;
+    total_on_disk_size += other.total_on_disk_size;
   }
 
   void RecomputeTotalSize() {
-    sum_on_disk_size =
+    active_on_disk_size =
         consensus_metadata_disk_size +
         sst_files_disk_size +
         wal_files_disk_size;
@@ -240,6 +250,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   // UpdateReplica -> EnqueuePreparesUnlocked on Raft heartbeats.
   void SetPropagatedSafeTime(HybridTime ht) override;
 
+  void SetMvccPropagatedSafeTime(HybridTime ht) override;
+
   // Returns false if it is preferable to don't apply write operation.
   bool ShouldApplyWrite() override;
 
@@ -257,20 +269,15 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   // checking and return a raw pointer.
   // ----------------------------------------------------------------------------------------------
 
-  // Returns the tablet associated with this TabletPeer as a raw pointer.
-  [[deprecated]] Tablet* tablet() const {
-    return shared_tablet().get();
-  }
-
-  TabletPtr shared_tablet() const {
-    auto tablet_result = shared_tablet_safe();
+  TabletPtr shared_tablet_maybe_null() const {
+    auto tablet_result = shared_tablet();
     if (tablet_result.ok()) {
       return *tablet_result;
     }
     return nullptr;
   }
 
-  Result<TabletPtr> shared_tablet_safe() const;
+  Result<TabletPtr> shared_tablet() const;
 
   RaftGroupStatePB state() const {
     return state_.load(std::memory_order_acquire);
@@ -393,7 +400,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   Result<OperationDriverPtr> NewReplicaOperationDriver(std::unique_ptr<Operation>* operation);
 
   // Tells the tablet's log to garbage collect.
-  Status RunLogGC();
+  Status RunLogGC(bool rollover = false);
 
   // Register the maintenance ops associated with this peer's tablet, also invokes
   // Tablet::RegisterMaintenanceOps().
@@ -498,6 +505,10 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   bool HasSufficientDiskSpaceForWrite();
 
+  TabletOnDiskSizeInfo GetOnDiskSizeInfo() const EXCLUDES(lock_);
+
+  void SetTabletOnDiskSize(size_t total_on_disk_size);
+
  protected:
   friend class RefCountedThreadSafe<TabletPeer>;
   friend class TabletPeerTest;
@@ -601,7 +612,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   Status CheckOperationAllowed(
       const OpId& op_id, consensus::OperationType op_type) override;
   // Return granular types of on-disk size of this tablet replica, in bytes.
-  TabletOnDiskSizeInfo GetOnDiskSizeInfo() const REQUIRES(lock_);
+  TabletOnDiskSizeInfo GetOnDiskSizeInfoUnlocked() const REQUIRES(lock_);
 
   bool FlushBootstrapStateEnabled() const;
 
@@ -627,6 +638,11 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   std::atomic<bool> flush_bootstrap_state_enabled_{false};
   std::shared_ptr<TabletBootstrapStateFlusher> bootstrap_state_flusher_;
+
+  // The size of the tablet on disk in bytes, including snapshots, retryable requests, MANIFEST,
+  // and other files in those directories. This can be stale as it is only updated every
+  // FLAGS_data_size_metric_updater_interval_sec seconds.
+  std::atomic<size_t> total_on_disk_size_{0};
 
   DISALLOW_COPY_AND_ASSIGN(TabletPeer);
 };

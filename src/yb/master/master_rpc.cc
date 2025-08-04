@@ -172,6 +172,10 @@ GetLeaderMasterRpc::GetLeaderMasterRpc(LeaderCallback user_cb,
 GetLeaderMasterRpc::~GetLeaderMasterRpc() {
 }
 
+std::string GetLeaderMasterRpc::LogPrefix() const {
+  return Format("$0{$1}: ", static_cast<const void*>(this), addrs_);
+}
+
 string GetLeaderMasterRpc::ToString() const {
   return Format("GetLeaderMasterRpc(addrs: $0, num_attempts: $1)", addrs_, num_attempts());
 }
@@ -188,6 +192,7 @@ void GetLeaderMasterRpc::SendRpc() {
   }
 
   for (size_t i = 0; i < size; i++) {
+    VLOG_WITH_PREFIX_AND_FUNC(4) << i << ") " << addrs_[i];
     auto handle = rpcs_.RegisterConstructed([this, i, self](const rpc::Rpcs::Handle& handle) {
       return std::make_shared<GetMasterRegistrationRpc>(
           std::bind(
@@ -216,7 +221,8 @@ void GetLeaderMasterRpc::Finished(const Status& status) {
   // nodes the error is retriable and we can perform a delayed retry.
   num_iters_++;
   if (status.IsNetworkError() || (wait_for_leader_election_ && status.IsNotFound())) {
-    VLOG(4) << "About to retry operation due to error: " << status.ToString();
+    VLOG_WITH_PREFIX_AND_FUNC(4)
+        << "About to retry operation due to error: " << status.ToString();
     // TODO (KUDU-573): Allow cancelling delayed tasks on reactor so
     // that we can safely use DelayedRetry here.
     auto retry_status = mutable_retrier()->DelayedRetry(this, status);
@@ -226,8 +232,8 @@ void GetLeaderMasterRpc::Finished(const Status& status) {
       return;
     }
   }
-  VLOG(4) << "Completed GetLeaderMasterRpc, calling callback with status "
-          << status.ToString();
+  VLOG_WITH_PREFIX_AND_FUNC(4)
+      << "Completed GetLeaderMasterRpc, calling callback with status " << status;
   {
     std::lock_guard l(lock_);
     // 'completed_' prevents 'user_cb_' from being invoked twice.
@@ -263,6 +269,7 @@ void GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode(
       return;
     }
     auto& resp = responses_[idx];
+    VLOG_WITH_PREFIX_AND_FUNC(4) << idx << ") " << new_status << ", resp: " << AsString(resp);
     if (new_status.ok()) {
       if (resp.role() != PeerRole::LEADER) {
         // Use a STATUS(NotFound, "") to indicate that the node is not
@@ -286,6 +293,7 @@ void GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode(
           new_status = STATUS(NotFound, "no leader found: " + ToString());
         }
       } else {
+        VLOG_WITH_PREFIX_AND_FUNC(4) << idx << ") " << addrs_[idx] << " is leader master";
         // We've found a leader.
         leader_master_ = addrs_[idx];
       }
@@ -302,6 +310,8 @@ void GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode(
       completed_ = true;
     }
   }
+
+  VLOG_WITH_PREFIX_AND_FUNC(4) << "Done: " << new_status;
 
   // Called if the leader has been determined, or if we've received
   // all of the responses.

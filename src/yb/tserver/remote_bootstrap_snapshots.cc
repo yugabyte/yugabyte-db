@@ -65,7 +65,8 @@ Status AddDirToSnapshotFiles(
 } // namespace
 
 RemoteBootstrapSnapshotsComponent::RemoteBootstrapSnapshotsComponent(
-    RemoteBootstrapFileDownloader* downloader, tablet::RaftGroupReplicaSuperBlockPB* new_superblock)
+    RemoteBootstrapFileDownloader* downloader,
+    tablet::RaftGroupReplicaSuperBlockPB* new_superblock)
     : downloader_(*downloader), new_superblock_(*new_superblock) {}
 
 Status RemoteBootstrapSnapshotsComponent::CreateDirectories(
@@ -151,13 +152,13 @@ Status RemoteBootstrapSnapshotsComponent::DownloadFileInto(
     // If we fail to fetch a snapshot file, delete the snapshot directory, log the error,
     // but don't fail the remote bootstrap as snapshot files are not needed for running
     // the tablet.
-    LOG(ERROR) << "Error downloading snapshot file " << file_path << ": " << s;
+    LOG(WARNING) << "Error downloading snapshot file " << file_path << ": " << s;
     failed_snapshot_ids->insert(file_pb.snapshot_id());
     LOG(INFO) << "Deleting snapshot dir " << snapshot_dir;
     auto delete_status = Env::Default()->DeleteRecursively(snapshot_dir);
     if (!delete_status.ok()) {
-      LOG(ERROR) << "Error deleting corrupted snapshot directory " << snapshot_dir << ": "
-                 << delete_status;
+      LOG(WARNING) << "Error deleting corrupted snapshot directory " << snapshot_dir << ": "
+                   << delete_status;
     }
   } else {
     LOG(INFO) << "Downloaded file " << file_path << " for snapshot " << file_pb.snapshot_id();

@@ -79,7 +79,7 @@ For each node in the universe, use the following general procedure:
 
     Ensure that the node retains its IP addresses after the patching of the Linux OS. Also ensure that the existing data volumes on the node remain untouched by the OS patching mechanism.
 
-1. Re-provision the node using the following API command:
+1. Reinstall YugabyteDB on the node using the following API command:
 
     ```shell
     curl '<platform-url>/api/v1/customers/<customer_uuid>/universes/<universe_uuid>/nodes/<node_name>' -X 'PUT' -H 'X-AUTH-YW-API-TOKEN: <api-token>' -H 'Content-Type: application/json' -H 'Accept: application/json, text/plain, */*' \

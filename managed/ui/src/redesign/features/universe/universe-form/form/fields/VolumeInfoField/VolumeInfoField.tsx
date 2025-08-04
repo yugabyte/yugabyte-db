@@ -514,6 +514,8 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
     );
   };
 
+  const isGcpDedicatedUniverse =
+    provider?.code === CloudType.gcp && masterPlacement === MasterPlacementMode.DEDICATED;
   return (
     <Controller
       control={control}
@@ -524,16 +526,17 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
             <Box display="flex" width="100%" flexDirection="column">
               <Box>
                 {renderVolumeInfo()}
-                {!(
-                  provider?.code === CloudType.gcp &&
-                  masterPlacement === MasterPlacementMode.DEDICATED
-                ) && <>{renderStorageType()}</>}
+                {!isGcpDedicatedUniverse && <>{renderStorageType()}</>}
               </Box>
 
               {fieldValue.storageType && (
                 <Box>
-                  {renderDiskIops()}
-                  {renderThroughput()}
+                  {!isGcpDedicatedUniverse && (
+                    <>
+                      {renderDiskIops()}
+                      {renderThroughput()}
+                    </>
+                  )}
                 </Box>
               )}
             </Box>

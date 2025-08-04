@@ -7,12 +7,15 @@ import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ConfigureOOMServiceOnNode;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.AdditionalServicesStateData;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Collection;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -48,9 +51,29 @@ public class UpdateOOMServiceState extends UniverseDefinitionTaskBase {
       // Lock the universe but don't freeze it because this task doesn't perform critical updates to
       // universe metadata.
       universe = lockUniverse(-1 /* expectedUniverseVersion */);
+      AdditionalServicesStateData additionalServicesStateData =
+          taskParams().additionalServicesStateData;
+      if (additionalServicesStateData.getEarlyoomConfig() == null) {
+        if (universe.getUniverseDetails().additionalServicesStateData != null
+            && universe.getUniverseDetails().additionalServicesStateData.getEarlyoomConfig()
+                != null) {
+          additionalServicesStateData.setEarlyoomConfig(
+              universe.getUniverseDetails().additionalServicesStateData.getEarlyoomConfig());
+        } else {
+          log.debug("No earlyoom config provided, using default settings");
+          Provider provider =
+              Provider.getOrBadRequest(
+                  UUID.fromString(
+                      universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+          String earlyoomArgs =
+              confGetter.getConfForScope(provider, ProviderConfKeys.earlyoomDefaultArgs);
+          additionalServicesStateData.setEarlyoomConfig(
+              AdditionalServicesStateData.fromArgs(earlyoomArgs, true));
+        }
+      }
 
       createConfigureOOMServiceSubtasks(
-          taskParams().additionalServicesStateData, universe.getUniverseDetails().nodeDetailsSet);
+          additionalServicesStateData, universe.getUniverseDetails().nodeDetailsSet);
 
       createUpdateUniverseFieldsTask(
           u -> {
@@ -60,7 +83,10 @@ public class UpdateOOMServiceState extends UniverseDefinitionTaskBase {
             }
             u.getUniverseDetails()
                 .additionalServicesStateData
-                .setEarlyoomConfig(taskParams().additionalServicesStateData.getEarlyoomConfig());
+                .setEarlyoomConfig(additionalServicesStateData.getEarlyoomConfig());
+            u.getUniverseDetails()
+                .additionalServicesStateData
+                .setEarlyoomEnabled(additionalServicesStateData.isEarlyoomEnabled());
           });
 
       createMarkUniverseUpdateSuccessTasks()
@@ -81,6 +107,7 @@ public class UpdateOOMServiceState extends UniverseDefinitionTaskBase {
     for (NodeDetails node : nodes) {
       ConfigureOOMServiceOnNode.Params params = new ConfigureOOMServiceOnNode.Params();
       params.earlyoomConfig = additionalServicesStateData.getEarlyoomConfig();
+      params.earlyoomEnabled = additionalServicesStateData.isEarlyoomEnabled();
       params.nodeName = node.nodeName;
       params.setUniverseUUID(taskParams().getUniverseUUID());
       ConfigureOOMServiceOnNode task = createTask(ConfigureOOMServiceOnNode.class);

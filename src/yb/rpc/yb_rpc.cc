@@ -42,19 +42,19 @@ using std::string;
 using namespace yb::size_literals;
 using namespace std::literals;
 
-DECLARE_bool(rpc_dump_all_traces);
-DECLARE_uint64(rpc_max_message_size);
-
 DEFINE_UNKNOWN_bool(enable_rpc_keepalive, true, "Whether to enable RPC keepalive mechanism");
 
 DEFINE_test_flag(uint64, yb_inbound_big_calls_parse_delay_ms, false,
                  "Test flag for simulating slow parsing of inbound calls larger than "
                  "rpc_throttle_threshold_bytes");
 
+DECLARE_bool(rpc_dump_all_traces);
 DECLARE_bool(ysql_yb_enable_ash);
-DECLARE_uint64(rpc_connection_timeout_ms);
+DECLARE_int32(print_trace_every);
 DECLARE_int32(rpc_slow_query_threshold_ms);
 DECLARE_int64(rpc_throttle_threshold_bytes);
+DECLARE_uint64(rpc_connection_timeout_ms);
+DECLARE_uint64(rpc_max_message_size);
 
 namespace yb {
 namespace rpc {
@@ -171,7 +171,8 @@ Status ThrottleRpcStatus(const MemTrackerPtr& throttle_tracker, const YBInboundC
 
 Status YBInboundConnectionContext::HandleCall(
     const ConnectionPtr& connection, CallData* call_data) {
-  auto call = InboundCall::Create<YBInboundCall>(connection, this);
+  auto call = InboundCall::Create<YBInboundCall>(
+      connection, this, connection->call_state_listener_factory());
 
   Status s = call->ParseFrom(call_tracker(), call_data);
   if (!s.ok()) {
@@ -255,12 +256,26 @@ void YBInboundConnectionContext::HandleTimeout(ev::timer& watcher, int revents) 
   }
 }
 
-YBInboundCall::YBInboundCall(ConnectionPtr conn, CallProcessedListener* call_processed_listener)
-    : InboundCall(std::move(conn), nullptr /* rpc_metrics */, call_processed_listener),
+YBInboundCall::YBInboundCall(
+    ConnectionPtr conn,
+    CallProcessedListener* call_processed_listener,
+    CallStateListenerFactory* call_state_listener_factory)
+    : InboundCall(
+          std::move(conn),
+          nullptr /* rpc_metrics */,
+          call_processed_listener,
+          call_state_listener_factory),
       sidecars_(&consumption_) {}
 
-YBInboundCall::YBInboundCall(RpcMetrics* rpc_metrics, const RemoteMethod& remote_method)
-    : InboundCall(nullptr /* conn */, rpc_metrics, nullptr /* call_processed_listener */),
+YBInboundCall::YBInboundCall(
+    RpcMetrics* rpc_metrics,
+    const RemoteMethod& remote_method,
+    CallStateListenerFactory* call_state_listener_factory)
+    : InboundCall(
+          nullptr /* conn */,
+          rpc_metrics,
+          nullptr /* call_processed_listener */,
+          call_state_listener_factory),
       sidecars_(&consumption_) {
   header_.remote_method = remote_method.serialized_body();
 }
@@ -275,14 +290,13 @@ CoarseTimePoint YBInboundCall::GetClientDeadline() const {
 }
 
 void YBInboundCall::UpdateWaitStateInfo() {
-  if (wait_state_) {
-    wait_state_->UpdateMetadata({.rpc_request_id = instance_id()});
-    wait_state_->UpdateAuxInfo({
-        .method = method_name().ToBuffer(),
-    });
-  } else {
-    LOG_IF(ERROR, GetAtomicFlag(&FLAGS_ysql_yb_enable_ash))
-        << "Wait state is nullptr for " << ToString();
+  if (auto* listener = call_state_listener()) {
+    const auto s = rpc::ParseMetadata(header_.metadata, listener->mutable_message());
+    if (!s.ok()) {
+      LOG(DFATAL) << "Failed to parse metadata for call " << header_.call_id << ": " << s;
+      return;
+    }
+    listener->UpdateInfo(IsLocalCall(), method_name().ToBuffer());
   }
 }
 
@@ -340,7 +354,7 @@ bool YBInboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
   if (req.get_wait_state()) {
     if (const auto& wait_state = this->wait_state()) {
       wait_state->ToPB(resp->mutable_wait_state(), req.export_wait_state_code_as_string());
-      TRACE_TO(
+      VTRACE_TO(3,
           trace(), "Pulled $0",
           yb::ToString(ash::WaitStateCode(resp->wait_state().wait_state_code())));
     }
@@ -352,34 +366,25 @@ bool YBInboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
 
 void YBInboundCall::LogTrace() const {
   MonoTime now = MonoTime::Now();
-  auto total_time = now.GetDeltaSince(timing_.time_received).ToMilliseconds();
+  auto total_time_ms = now.GetDeltaSince(timing_.time_received).ToMilliseconds();
 
+  bool must_log_trace = false;
   if (header_.timeout_ms > 0) {
     double log_threshold = header_.timeout_ms * 0.75f;
-    if (total_time > log_threshold) {
+    if (total_time_ms > log_threshold) {
       // TODO: consider pushing this onto another thread since it may be slow.
-      // The traces may also be too large to fit in a log message.
-      LOG(WARNING) << ToString() << " took " << total_time << "ms (client timeout "
+      LOG(WARNING) << ToString() << " took " << total_time_ms << "ms (client timeout "
                    << header_.timeout_ms << "ms).";
-      auto my_trace = trace();
-      if (my_trace) {
-        LOG(INFO) << "Trace:";
-        my_trace->DumpToLogInfo(true);
-      }
-      return;
+      must_log_trace = true;
     }
   }
-
-  auto my_trace = trace();
-  if (PREDICT_FALSE(
-          (my_trace && my_trace->must_print()) ||
-          FLAGS_rpc_dump_all_traces ||
-          total_time > FLAGS_rpc_slow_query_threshold_ms)) {
-    LOG(INFO) << ToString() << " took " << total_time << "ms. Trace:";
-    if (my_trace) {
-      my_trace->DumpToLogInfo(true);
-    }
+  if (!must_log_trace && total_time_ms > FLAGS_rpc_slow_query_threshold_ms) {
+    // If the call is slow, log it.
+    LOG(INFO) << ToString() << " took " << total_time_ms << "ms.";
+    must_log_trace = true;
   }
+  must_log_trace = must_log_trace || FLAGS_rpc_dump_all_traces;
+  Trace::DumpTraceIfNecessary(trace(), FLAGS_print_trace_every, must_log_trace);
 }
 
 void YBInboundCall::DoSerialize(ByteBlocks* output) {

@@ -101,13 +101,16 @@ typedef struct YbAshNestedQueryIdStack
 static YbAsh *yb_ash = NULL;
 static YbAshNestedQueryIdStack query_id_stack;
 static int	nested_level = 0;
+static bool pop_query_id_before_push = false;
+static uint64 query_id_to_be_popped_before_push = 0;
 
 static void YbAshInstallHooks(void);
 static int	yb_ash_cb_max_entries(void);
 static void YbAshSetQueryId(uint64 query_id);
 static void YbAshResetQueryId(uint64 query_id);
 static uint64 yb_ash_utility_query_id(const char *query, int query_len,
-									  int query_location);
+									  int query_location,
+									  bool is_sensitive_stmt);
 static void YbAshAcquireBufferLock(bool exclusive);
 static void YbAshReleaseBufferLock();
 static bool YbAshNestedQueryIdStackPush(uint64 query_id);
@@ -188,6 +191,8 @@ YbAshInit(void)
 		? YBCGetConstQueryId(QUERY_ID_TYPE_BACKGROUND_WORKER)
 		: YBCGetConstQueryId(QUERY_ID_TYPE_DEFAULT);
 	query_id_stack.num_query_ids_not_pushed = 0;
+
+	EnableQueryId();
 }
 
 void
@@ -260,6 +265,10 @@ YbAshNestedQueryIdStackPop(uint64 query_id)
 		return 0;
 	}
 
+	if (pop_query_id_before_push && query_id == query_id_to_be_popped_before_push)
+		Assert(query_id_stack.top_index > 0 &&
+			   query_id_stack.query_ids[query_id_stack.top_index] == query_id);
+
 	/*
 	 * When an extra ExecutorEnd is called during PortalCleanup,
 	 * we shouldn't pop the incorrect query_id from the stack.
@@ -321,7 +330,8 @@ yb_ash_ExecutorStart(QueryDesc *queryDesc, int eflags)
 					queryDesc->plannedstmt->queryId :
 					yb_ash_utility_query_id(queryDesc->sourceText,
 											queryDesc->plannedstmt->stmt_len,
-											queryDesc->plannedstmt->stmt_location));
+											queryDesc->plannedstmt->stmt_location,
+											false /* is_sensitive_stmt */ ));
 		YbAshSetQueryId(query_id);
 	}
 
@@ -438,11 +448,16 @@ yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 	{
 		if (yb_enable_ash)
 		{
+			/*
+			 * UTILITY statements can have password tokens that require
+			 * redaction
+			 */
 			query_id = (pstmt->queryId != 0 ?
 						pstmt->queryId :
 						yb_ash_utility_query_id(queryString,
 												pstmt->stmt_len,
-												pstmt->stmt_location));
+												pstmt->stmt_location,
+												true /* is_sensitive_stmt */ ));
 			YbAshSetQueryId(query_id);
 		}
 		++nested_level;
@@ -480,11 +495,27 @@ yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 	PG_END_TRY();
 }
 
+static uint64
+GetDefaultQueryId()
+{
+	YbcAshConstQueryIdType type =
+		IsBackgroundWorker ? QUERY_ID_TYPE_BACKGROUND_WORKER
+		: QUERY_ID_TYPE_DEFAULT;
+
+	return YBCGetConstQueryId(type);
+}
+
 static void
 YbAshSetQueryId(uint64 query_id)
 {
 	if (set_query_id())
 	{
+		if (pop_query_id_before_push)
+		{
+			YbAshNestedQueryIdStackPop(query_id_to_be_popped_before_push);
+			pop_query_id_before_push = false;
+			query_id_to_be_popped_before_push = 0;
+		}
 		if (YbAshNestedQueryIdStackPush(query_id))
 		{
 			LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
@@ -503,9 +534,18 @@ YbAshResetQueryId(uint64 query_id)
 
 		if (prev_query_id != 0)
 		{
-			LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
-			MyProc->yb_ash_metadata.query_id = prev_query_id;
-			LWLockRelease(&MyProc->yb_ash_metadata_lock);
+			if (prev_query_id == GetDefaultQueryId())
+			{
+				query_id_to_be_popped_before_push = query_id;
+				pop_query_id_before_push = true;
+				YbAshNestedQueryIdStackPush(query_id);
+			}
+			else
+			{
+				LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
+				MyProc->yb_ash_metadata.query_id = prev_query_id;
+				LWLockRelease(&MyProc->yb_ash_metadata_lock);
+			}
 		}
 	}
 }
@@ -532,6 +572,21 @@ YbAshUnsetMetadata(void)
 	 * returns an error. Reset the stack here. We can remove this if we
 	 * make query_id atomic
 	 */
+	if (pop_query_id_before_push)
+	{
+		uint64		prev_query_id = YbAshNestedQueryIdStackPop(query_id_to_be_popped_before_push);
+
+		pop_query_id_before_push = false;
+		query_id_to_be_popped_before_push = 0;
+
+		if (prev_query_id != 0)
+		{
+			LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
+			MyProc->yb_ash_metadata.query_id = prev_query_id;
+			LWLockRelease(&MyProc->yb_ash_metadata_lock);
+		}
+	}
+
 	query_id_stack.top_index = 0;
 	query_id_stack.num_query_ids_not_pushed = 0;
 
@@ -626,11 +681,10 @@ YbAshSetMetadataForBgworkers(void)
  * from pg_stat_statements.
  */
 static uint64
-yb_ash_utility_query_id(const char *query, int query_len, int query_location)
-{
-	const char *redacted_query;
-	int			redacted_query_len;
+yb_ash_utility_query_id(const char *query, int query_len, int query_location,
+						bool is_sensitive_stmt)
 
+{
 	Assert(query != NULL);
 
 	if (query_location >= 0)
@@ -659,11 +713,17 @@ yb_ash_utility_query_id(const char *query, int query_len, int query_location)
 	while (query_len > 0 && scanner_isspace(query[query_len - 1]))
 		query_len--;
 
-	/* Use the redacted query for checking purposes. */
-	YbGetRedactedQueryString(query, query_len, &redacted_query, &redacted_query_len);
+	/*
+	 * Use the redacted query for checking purposes.
+	 * The query string may include multiple statements, so consider only the
+	 * substring that we are interested in for redaction. Note that the
+	 * substring in question does not contain a semi-colon at the end.
+	 */
+	if (is_sensitive_stmt)
+		query = YbGetRedactedQueryString(pnstrdup(query, query_len), &query_len);
 
-	return DatumGetUInt64(hash_any_extended((const unsigned char *) redacted_query,
-											redacted_query_len, 0));
+	return DatumGetUInt64(hash_any_extended((const unsigned char *) query,
+											query_len, 0));
 }
 
 static void
@@ -1038,7 +1098,7 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 
 		if (ncols >= ACTIVE_SESSION_HISTORY_COLS_V4)
 			values[j++] =
-				UInt32GetDatum(YBCAshRemoveComponentFromWaitStateCode(sample->encoded_wait_event_code));
+				UInt32GetDatum(YBCAshNormalizeComponentForTServerEvents(sample->encoded_wait_event_code, true));
 
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 	}
@@ -1315,6 +1375,6 @@ FormatAshSampleAsCsv(YbcAshSample *ash_data_buffer, int total_elements_to_dump,
 						 sample->sample_weight,
 						 pgstat_get_wait_event_type(sample->encoded_wait_event_code),
 						 sample->metadata.database_id,
-						 YBCAshRemoveComponentFromWaitStateCode(sample->encoded_wait_event_code));
+						 YBCAshNormalizeComponentForTServerEvents(sample->encoded_wait_event_code, true));
 	}
 }

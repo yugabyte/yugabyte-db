@@ -42,6 +42,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.io.FileUtils;
@@ -511,6 +512,18 @@ public class NodeUniverseManager extends DevopsBase {
       return localNodeUniverseManager.runYsqlCommand(
           node, universe, dbName, ysqlCommand, timeoutSec, authEnabled, cpEnabled);
     }
+    return runYsqlBatchCommands(
+        node, universe, dbName, List.of(ysqlCommand), timeoutSec, authEnabled, cpEnabled);
+  }
+
+  public ShellResponse runYsqlBatchCommands(
+      NodeDetails node,
+      Universe universe,
+      String dbName,
+      List<String> ysqlCommands,
+      long timeoutSec,
+      boolean authEnabled,
+      boolean cpEnabled) {
     List<String> command = new ArrayList<>();
     command.add("bash");
     command.add("-c");
@@ -541,15 +554,17 @@ public class NodeUniverseManager extends DevopsBase {
       bashCommand.add("-d");
       bashCommand.add(dbName);
     }
-    bashCommand.add("-c");
-    // Escaping double quotes and $ at first.
-    String escapedYsqlCommand = ysqlCommand.replace("\"", "\\\"");
-    escapedYsqlCommand = escapedYsqlCommand.replace("$", "\\$");
-    // Escaping single quotes after for non k8s deployments.
-    if (!universe.getNodeDeploymentMode(node).equals(Common.CloudType.kubernetes)) {
-      escapedYsqlCommand = escapedYsqlCommand.replace("'", "'\"'\"'");
+    for (var ysqlCommand : ysqlCommands) {
+      bashCommand.add("-c");
+      // Escaping double quotes and $ at first.
+      String escapedYsqlCommand = ysqlCommand.replace("\"", "\\\"");
+      escapedYsqlCommand = escapedYsqlCommand.replace("$", "\\$");
+      // Escaping single quotes after for non k8s deployments.
+      if (!universe.getNodeDeploymentMode(node).equals(Common.CloudType.kubernetes)) {
+        escapedYsqlCommand = escapedYsqlCommand.replace("'", "'\"'\"'");
+      }
+      bashCommand.add("\"" + escapedYsqlCommand + "\"");
     }
-    bashCommand.add("\"" + escapedYsqlCommand + "\"");
     String bashCommandStr = String.join(" ", bashCommand);
     command.add(bashCommandStr);
     Map<String, String> valsToRedact = new HashMap<>();
@@ -590,6 +605,26 @@ public class NodeUniverseManager extends DevopsBase {
   }
 
   public Optional<NodeAgent> maybeGetNodeAgent(
+      String nodeIp, Provider provider, @Nullable Universe universe) {
+    if (provider.getCloudCode() == CloudType.kubernetes) {
+      log.debug("Node agent is not supported on provider type {}", provider.getCloudCode());
+      return Optional.empty();
+    }
+    Optional<NodeAgent> optional =
+        getNodeAgentClient().maybeGetNodeAgent(nodeIp, provider, universe);
+    if (!optional.isPresent()) {
+      log.debug(
+          "Node agent is not enabled for node {} with provider {}", nodeIp, provider.getUuid());
+      return optional;
+    }
+    NodeAgent nodeAgent = optional.get();
+    if (nodeAgentPoller.upgradeNodeAgent(nodeAgent.getUuid(), true)) {
+      nodeAgent.refresh();
+    }
+    return optional;
+  }
+
+  public Optional<NodeAgent> maybeGetNodeAgent(
       Universe universe, NodeDetails node, boolean checkJavaClient) {
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
@@ -605,22 +640,10 @@ public class NodeUniverseManager extends DevopsBase {
       log.debug("Node agent is not enabled for java client");
       return Optional.empty();
     }
-    UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
-    Provider provider = Provider.getOrBadRequest(providerUUID);
-    Optional<NodeAgent> optional =
-        getNodeAgentClient().maybeGetNodeAgent(node.cloudInfo.private_ip, provider, universe);
-    if (!optional.isPresent()) {
-      log.debug(
-          "Node agent is not enabled for node {} with provider {}",
-          node.getNodeName(),
-          provider.getUuid());
-      return optional;
-    }
-    NodeAgent nodeAgent = optional.get();
-    if (nodeAgentPoller.upgradeNodeAgent(nodeAgent.getUuid(), true)) {
-      nodeAgent.refresh();
-    }
-    return optional;
+    return maybeGetNodeAgent(
+        node.cloudInfo.private_ip,
+        Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider)),
+        universe);
   }
 
   private void addConnectionParams(

@@ -357,6 +357,9 @@ class ReplicaState {
   void SetPendingElectionOpIdUnlocked(const OpId& opid) { pending_election_opid_ = opid; }
   void ClearPendingElectionOpIdUnlocked() { pending_election_opid_ = OpId(); }
 
+  const OpId& GetPendingSplitOpIdUnlocked() { return pending_split_op_id_; }
+  void ClearPendingSplitOpIdUnlocked() { pending_split_op_id_ = OpId(); }
+
   std::string ToString() const;
   std::string ToStringUnlocked() const;
 
@@ -526,6 +529,8 @@ class ReplicaState {
 
   // If set, a leader election is pending upon the specific op id commitment to this peer's log.
   OpId pending_election_opid_;
+
+  OpId pending_split_op_id_;
 
   State state_ = State::kInitialized;
 

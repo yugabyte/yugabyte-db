@@ -184,7 +184,10 @@ class faststring {
 
   // Return a pointer to the data in this string. Note that this pointer
   // may be invalidated by any later non-const operation.
-  const char *c_str() const {
+  //
+  // WARNING: This used to be called c_str(), but does not meet the specification of that method:
+  // this method does not return a null-terminated string!  Accordingly it has been renamed.
+  const char *char_data() const {
     return reinterpret_cast<const char *>(data());
   }
 

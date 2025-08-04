@@ -156,14 +156,16 @@ class PgDocSampleOp : public PgDocReadOp {
     auto* sampling_state = res.mutable_sampling_state();
     VLOG_WITH_PREFIX_AND_FUNC(1) << "Received sampling state: "
                                  << sampling_state->ShortDebugString();
+    SCHECK(sampling_state->has_rand_state(), InvalidArgument,
+           "Invalid sampling state, random state is missing");
     sampling_stats_ = {
       .num_blocks_processed = sampling_state->num_blocks_processed(),
       .num_blocks_collected = sampling_state->num_blocks_collected(),
       .num_rows_processed = sampling_state->samplerows(),
       .num_rows_collected = sampling_state->numrows(),
-  };
+    };
 
-  RETURN_NOT_OK(PgDocReadOp::CompleteProcessResponse());
+    RETURN_NOT_OK(PgDocReadOp::CompleteProcessResponse());
 
     if (active_op_count_ > 0) {
       auto& next_active_op = GetReadOp(0);
@@ -363,30 +365,20 @@ class PgDocSampleOp : public PgDocReadOp {
 
 class SamplePickerBase : public PgSelect {
  public:
-  virtual Status ProcessResultEntry(int32_t index, Slice* data) = 0;
+  virtual Status ProcessResultEntry(Slice* data) = 0;
 
   virtual Status FetchDone() = 0;
 
   Result<bool> ProcessNextBlock() {
-    // Process previous responses
-    for (auto rowset_iter = rowsets_.begin(); rowset_iter != rowsets_.end();) {
-      if (rowset_iter->is_eof()) {
-        rowset_iter = rowsets_.erase(rowset_iter);
-      } else {
-        RETURN_NOT_OK(
-            rowset_iter->ProcessIndexedEntries([this](int32_t index, Slice* data) -> Status {
-              return ProcessResultEntry(index, data);
-            }));
-        return true;
-      }
-    }
-    if (VERIFY_RESULT(FetchDataFromServer())) {
-      // Continue fetching data.
-      return true;
+    if (!VERIFY_RESULT(doc_op_->ResultStream().ProcessEntries(
+            [this](Slice* data) -> Status {
+              return ProcessResultEntry(data);
+            }))) {
+      RETURN_NOT_OK(FetchDone());
+      return false;
     }
 
-    RETURN_NOT_OK(FetchDone());
-    return false;
+    return true;
   }
 
  protected:
@@ -426,6 +418,15 @@ class SamplePickerBase : public PgSelect {
   }
 };
 
+Result<int32_t> ReadIndexFromPgDocResult(Slice* src) {
+  SCHECK(
+      !VERIFY_RESULT(PgDocData::CheckedReadHeaderIsNull(src)), InternalError,
+      "Entry index cannot be NULL");
+  const auto index = VERIFY_RESULT(PgDocData::CheckedReadNumber<int32_t>(src));
+  SCHECK_GE(index, 0, IllegalState, "Unexpected negative index");
+  return index;
+}
+
 Status ReadKeyFromPgDocResult(Slice* src, KeyBuffer* buffer) {
   SCHECK(
       !VERIFY_RESULT(PgDocData::CheckedReadHeaderIsNull(src)), InternalError, "NULL not expected");
@@ -438,7 +439,8 @@ Status ReadKeyFromPgDocResult(Slice* src, KeyBuffer* buffer) {
 
 class SampleBlocksPicker : public SamplePickerBase {
  public:
-  Status ProcessResultEntry(int32_t index, Slice* data) override {
+  Status ProcessResultEntry(Slice* data) override {
+    const auto index = VERIFY_RESULT(ReadIndexFromPgDocResult(data));
     // Process 1st stage (getting sample blocks) result returned from DocDB.
     // Results come as (index, lower_bound_key, upper_bound_key) tuples where index is the position
     // in the blocks reservoir of predetermined size.
@@ -540,7 +542,8 @@ class SampleBlocksPicker : public SamplePickerBase {
 // Internal class to select sample rows ybctids.
 class SampleRowsPicker : public SamplePickerBase, public SampleRowsPickerIf {
  public:
-  Status ProcessResultEntry(int32_t index, Slice* data) override {
+  Status ProcessResultEntry(Slice* data) override {
+    const auto index = VERIFY_RESULT(ReadIndexFromPgDocResult(data));
     SCHECK_LT(index, rows_reservoir_.size(), IllegalState, "Rows reservoir index is too big");
     // Read ybctid column
     RETURN_NOT_OK(ReadKeyFromPgDocResult(data, &rows_reservoir_[index]));

@@ -24,8 +24,7 @@
 #include "yb/util/memory/arena_list.h"
 #include "yb/util/status.h"
 
-namespace yb {
-namespace rpc {
+namespace yb::rpc {
 
 class LightweightMessage {
  public:
@@ -277,11 +276,6 @@ auto AsSharedMessage(const T& t) {
   return AsSharedMessageHelper<T>(t);
 }
 
-template <class T, class S>
-std::shared_ptr<T> SharedField(std::shared_ptr<S> ptr, T* field) {
-  return std::shared_ptr<T>(std::move(ptr), field);
-}
-
 void AppendFieldTitle(const char* name, const char* suffix, bool* first, std::string* out);
 
 void SetupLimit(google::protobuf::io::CodedInputStream* in);
@@ -294,5 +288,4 @@ auto ToRepeatedPtrField(const ArenaList<T>& list) {
 }
 
 
-} // namespace rpc
-} // namespace yb
+} // namespace yb::rpc

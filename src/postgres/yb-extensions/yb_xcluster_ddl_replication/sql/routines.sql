@@ -3,49 +3,49 @@ SELECT yb_xcluster_ddl_replication.get_replication_role();
 
 
 -- Check can override with every possible role.
-CALL yb_xcluster_ddl_replication.TEST_override_replication_role('unspecified');
+SET yb_xcluster_ddl_replication.TEST_replication_role_override = 'unspecified';
 SELECT yb_xcluster_ddl_replication.get_replication_role();
 
-CALL yb_xcluster_ddl_replication.TEST_override_replication_role('unavailable');
+SET yb_xcluster_ddl_replication.TEST_replication_role_override = 'unavailable';
 SELECT yb_xcluster_ddl_replication.get_replication_role();
 
-CALL yb_xcluster_ddl_replication.TEST_override_replication_role('not_automatic_mode');
+SET yb_xcluster_ddl_replication.TEST_replication_role_override = 'not_automatic_mode';
 SELECT yb_xcluster_ddl_replication.get_replication_role();
 
-CALL yb_xcluster_ddl_replication.TEST_override_replication_role('automatic_source');
+SET yb_xcluster_ddl_replication.TEST_replication_role_override = 'automatic_source';
 SELECT yb_xcluster_ddl_replication.get_replication_role();
 
-CALL yb_xcluster_ddl_replication.TEST_override_replication_role('automatic_target');
+SET yb_xcluster_ddl_replication.TEST_replication_role_override = 'automatic_target';
 SELECT yb_xcluster_ddl_replication.get_replication_role();
 
 -- Shortcuts for automatic roles.
-CALL yb_xcluster_ddl_replication.TEST_override_replication_role('source');
+SET yb_xcluster_ddl_replication.TEST_replication_role_override = 'source';
 SELECT yb_xcluster_ddl_replication.get_replication_role();
 
-CALL yb_xcluster_ddl_replication.TEST_override_replication_role('target');
+SET yb_xcluster_ddl_replication.TEST_replication_role_override = 'target';
 SELECT yb_xcluster_ddl_replication.get_replication_role();
 
 
 -- Check for invalid roles.
-CALL yb_xcluster_ddl_replication.TEST_override_replication_role('invalid');
+SET yb_xcluster_ddl_replication.TEST_replication_role_override = 'invalid';
 SELECT yb_xcluster_ddl_replication.get_replication_role();
 
 
 
 -- Check we can turn off override.
-CALL yb_xcluster_ddl_replication.TEST_override_replication_role('source');
-CALL yb_xcluster_ddl_replication.TEST_override_replication_role('no_override');
+SET yb_xcluster_ddl_replication.TEST_replication_role_override = 'source';
+SET yb_xcluster_ddl_replication.TEST_replication_role_override = 'none';
 SELECT yb_xcluster_ddl_replication.get_replication_role();
 
-CALL yb_xcluster_ddl_replication.TEST_override_replication_role('target');
-CALL yb_xcluster_ddl_replication.TEST_override_replication_role('');
+SET yb_xcluster_ddl_replication.TEST_replication_role_override = 'target';
+SET yb_xcluster_ddl_replication.TEST_replication_role_override = '';
 SELECT yb_xcluster_ddl_replication.get_replication_role();
 
 
 -- Check override cannot be called if you are not superuser but
 -- get_replication_role can.
 SET SESSION AUTHORIZATION testuser;
-CALL yb_xcluster_ddl_replication.TEST_override_replication_role('target');
+SET yb_xcluster_ddl_replication.TEST_replication_role_override = 'target';
 SELECT yb_xcluster_ddl_replication.get_replication_role();
 
 

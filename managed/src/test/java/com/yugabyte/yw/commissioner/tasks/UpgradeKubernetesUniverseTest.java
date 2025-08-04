@@ -142,6 +142,7 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
     } catch (Exception ex) {
       fail();
     }
+    when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
   }
 

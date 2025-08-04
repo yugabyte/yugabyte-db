@@ -27,14 +27,6 @@ public class TestPgRegressPartitions extends BasePgRegressTest {
     return getPerfMaxRuntime(500, 1000, 1200, 1200, 1200);
   }
 
-
-  @Override
-  protected Map<String, String> getTServerFlags() {
-    Map<String, String> flags = super.getTServerFlags();
-    flags.put("ysql_enable_inheritance", "true");
-    return flags;
-  }
-
   @Test
   public void misc() throws Exception {
     runPgRegressTest("yb_pg_partitions_misc_schedule");

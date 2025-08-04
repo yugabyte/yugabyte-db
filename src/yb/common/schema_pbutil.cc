@@ -84,7 +84,7 @@ void SchemaToPB(const Schema& schema, SchemaPB *pb, int flags) {
   SchemaToColocatedTableIdentifierPB(schema, pb->mutable_colocated_table_id());
   SchemaToColumnPBs(schema, pb->mutable_columns(), flags);
   schema.table_properties().ToTablePropertiesPB(pb->mutable_table_properties());
-  pb->set_pgschema_name(schema.SchemaName());
+  pb->set_deprecated_pgschema_name(schema.SchemaName());
 }
 
 Status SchemaFromPB(const SchemaPB& pb, Schema *schema) {
@@ -97,8 +97,8 @@ Status SchemaFromPB(const SchemaPB& pb, Schema *schema) {
   TableProperties table_properties = TableProperties::FromTablePropertiesPB(pb.table_properties());
   RETURN_NOT_OK(schema->Reset(columns, column_ids, table_properties));
 
-  if(pb.has_pgschema_name()) {
-    schema->SetSchemaName(pb.pgschema_name());
+  if (pb.has_deprecated_pgschema_name()) {
+    schema->SetSchemaName(pb.deprecated_pgschema_name());
   }
 
   if (pb.has_colocated_table_id()) {

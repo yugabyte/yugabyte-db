@@ -51,9 +51,11 @@
 #include "commands/yb_tablegroup.h"
 #include "miscadmin.h"
 #include "nodes/nodeFuncs.h"
+#include "nodes/pathnodes.h"
 #include "optimizer/cost.h"
 #include "optimizer/optimizer.h"
 #include "optimizer/paths.h"
+#include "parser/parsetree.h"
 #include "pg_yb_utils.h"
 #include "pgstat.h"
 #include "postmaster/bgworker_internals.h"	/* for MAX_PARALLEL_WORKER_LIMIT */
@@ -227,7 +229,7 @@ static Oid
 ybc_get_atttypid(TupleDesc bind_desc, AttrNumber attnum)
 {
 	return attnum > 0 ? TupleDescAttr(bind_desc, attnum - 1)->atttypid :
-						SystemAttributeDefinition(attnum)->atttypid;
+		SystemAttributeDefinition(attnum)->atttypid;
 }
 
 /*
@@ -337,9 +339,9 @@ ybcBindTupleExprCondIn(YbScanDesc ybScan,
 	bool		is_null[n_attnum_values];
 
 	Oid			tupType =
-	HeapTupleHeaderGetTypeId(DatumGetHeapTupleHeader(values[0]));
+		HeapTupleHeaderGetTypeId(DatumGetHeapTupleHeader(values[0]));
 	Oid			tupTypmod =
-	HeapTupleHeaderGetTypMod(DatumGetHeapTupleHeader(values[0]));
+		HeapTupleHeaderGetTypMod(DatumGetHeapTupleHeader(values[0]));
 	YbcPgTypeAttrs type_attrs = {tupTypmod};
 
 	/* Form the lhs tuple. */
@@ -741,8 +743,8 @@ ybcFetchNextIndexTuple(YbScanDesc ybScan, ScanDirection dir)
 					ybcUpdateFKCache(ybScan, INDEXTUPLE_YBCTID(tuple));
 				}
 				if (syscols.ybuniqueidxkeysuffix != NULL)
-						tuple->t_ybuniqueidxkeysuffix =
-							PointerGetDatum(syscols.ybuniqueidxkeysuffix);
+					tuple->t_ybuniqueidxkeysuffix =
+						PointerGetDatum(syscols.ybuniqueidxkeysuffix);
 			}
 			break;
 		}
@@ -784,31 +786,34 @@ YbIsScanningEmbeddedIdx(Relation table, Relation index)
 	yb_table_properties_table = YbGetTableProperties(table);
 
 	/*
-	 * - All system tables and indexes are specially colocated to the sys
-	 *   catalog tablet.
-	 * - Some indexes may use copartitioning, which shards the table and index
-	 *   together.
+	 * There are a few cases where embedding happens.
+	 * 1. System table: all system tables and indexes are specially colocated
+	 *    to the sys catalog tablet.
+	 * 2. Copartitioning: some indexes may use copartitioning, which shards the
+	 *    table and index together.
 	 */
 	is_embedded = (IsSystemRelation(table) ||
-				   yb_table_properties_table->is_colocated ||
 				   (index && index->rd_indam->yb_amiscopartitioned));
 
 	/*
-	 * - If ysql_enable_colocated_tables_with_tablespaces, check that the table
-	 *   and index are in the same colocation tablet using tablegroup_oid.
-	 *   - TODO(#25940): index->rd_index->indisprimary seems irrelevant and
-	 *     should not be a pass condition.
-	 * - Else, simply check for colocation of the table because the index
-	 *   should follow the table.
-	 *   - TODO(#25940): index being NULL or pk index should not be a pass
-	 *     condition.
-	 * - TODO(#25940): the gflag could be turned on/off in the lifetime of
-	 *   a cluster, so it shouldn't even be involved in this logic.  Everything
-	 *   should be validated, likely using the tablegroup_oid check, assuming
-	 *   that holds even when indexes are created when the flag is false.
+	 * 3. Colocation: the table and index may be colocated to the same tablet:
+	 *    - If ysql_enable_colocated_tables_with_tablespaces, check that the
+	 *      table and index are in the same colocation tablet using
+	 *      tablegroup_oid.
+	 *      - TODO(#25940): index->rd_index->indisprimary seems irrelevant and
+	 *        should not be a pass condition.
+	 *    - Else, simply check for colocation of the table because the index
+	 *      should follow the table.
+	 *      - TODO(#25940): index being NULL or pk index should not be a pass
+	 *        condition.
+	 *    - TODO(#25940): the gflag could be turned on/off in the lifetime of
+	 *      a cluster, so it shouldn't even be involved in this logic.
+	 *      Everything should be validated, likely using the tablegroup_oid
+	 *      check, assuming that holds even when indexes are created when the
+	 *      flag is false.
 	 */
 	if (*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces)
-		is_embedded &= (yb_table_properties_table->is_colocated &&
+		is_embedded |= (yb_table_properties_table->is_colocated &&
 						((index && index->rd_index->indisprimary) ||
 						 (index &&
 						  (YbGetTableProperties(index)->tablegroup_oid ==
@@ -1239,7 +1244,8 @@ ybcSetupScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 	/*
 	 * Find the scan keys that are the primary key.
 	 */
-	bool sk_cols_has_ybctid = false;
+	bool		sk_cols_has_ybctid = false;
+
 	for (int i = 0; i < ybScan->nkeys; i++)
 	{
 		const AttrNumber attnum = scan_plan->bind_key_attnums[i];
@@ -2895,8 +2901,9 @@ YbDmlAppendTargetsAggregate(List *aggrefs, Scan *outer_plan,
 				}
 				else if (IsA(tle->expr, Var))
 				{
-					Var *var = castNode(Var, tle->expr);
-					int attno = var->varattno;
+					Var		   *var = castNode(Var, tle->expr);
+					int			attno = var->varattno;
+
 					/*
 					 * Change column reference in an aggregate to attribute
 					 * number. Given limited number of cases we support, we
@@ -2908,11 +2915,13 @@ YbDmlAppendTargetsAggregate(List *aggrefs, Scan *outer_plan,
 					 */
 					if (outer_plan)
 					{
-						List *tlist = outer_plan->plan.targetlist;
+						List	   *tlist = outer_plan->plan.targetlist;
+
 						Assert(var->varno == OUTER_VAR);
 						Assert(attno > 0);
 						Assert(attno <= list_length(tlist));
 						TargetEntry *scan_tle = list_nth_node(TargetEntry, tlist, attno - 1);
+
 						Assert(IsA(scan_tle->expr, Var));
 						attno = castNode(Var, scan_tle->expr)->varattno;
 					}
@@ -3673,8 +3682,7 @@ ybcEvalHashSelectivity(List *hashed_rinfos)
  * Evaluate the selectivity for some qualified cols given the hash and primary key cols.
  */
 static double
-ybcIndexEvalClauseSelectivity(Relation index,
-							  double reltuples,
+ybcIndexEvalClauseSelectivity(double reltuples,
 							  Bitmapset *qual_cols,
 							  bool is_unique_idx,
 							  Bitmapset *hash_key,
@@ -3757,31 +3765,72 @@ ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 					 Selectivity *selectivity, Cost *startup_cost,
 					 Cost *total_cost)
 {
-	Relation	index = RelationIdGetRelation(path->indexinfo->indexoid);
-	bool		isprimary = index->rd_index->indisprimary;
-	Relation	relation = (isprimary ?
-							RelationIdGetRelation(index->rd_index->indrelid) :
-							NULL);
+	IndexOptInfo *indexinfo = path->indexinfo;
+	bool		is_primary = false;
 	RelOptInfo *baserel = path->path.parent;
 	ListCell   *lc;
 	bool		is_backwards_scan = path->indexscandir == BackwardScanDirection;
-	bool		is_unique = index->rd_index->indisunique;
-	bool		is_partial_idx = (path->indexinfo->indpred != NIL &&
-								  path->indexinfo->predOK);
+	bool		is_unique = indexinfo->unique;
+	bool		is_partial_idx = (indexinfo->indpred != NIL &&
+								  indexinfo->predOK);
 	Bitmapset  *const_quals = NULL;
 	List	   *hashed_rinfos = NIL;
 	List	   *clauses = NIL;
 	double		baserel_rows_estimate;
 
+
+	if (!indexinfo->hypothetical)
+	{
+		/* Hypothetical index cannot be primary index */
+		Relation	index = RelationIdGetRelation(indexinfo->indexoid);
+
+		is_primary = index->rd_index->indisprimary;
+		RelationClose(index);
+	}
+
 	/* Primary-index scans are always covered in Yugabyte (internally) */
-	bool		is_uncovered_idx_scan = (!index->rd_index->indisprimary &&
+	bool		is_uncovered_idx_scan = (!is_primary &&
 										 path->path.pathtype != T_IndexOnlyScan);
 
 	YbScanPlanData scan_plan;
 
 	memset(&scan_plan, 0, sizeof(scan_plan));
-	scan_plan.target_relation = isprimary ? relation : index;
-	ybcLoadTableInfo(scan_plan.target_relation, &scan_plan);
+
+	if (is_primary || indexinfo->hypothetical)
+	{
+		RangeTblEntry *rte = planner_rt_fetch(indexinfo->rel->relid, root);
+
+		Assert(rte->rtekind == RTE_RELATION);
+		Oid			baserel_oid = rte->relid;
+
+		scan_plan.target_relation = RelationIdGetRelation(baserel_oid);
+	}
+	else
+	{
+		scan_plan.target_relation = RelationIdGetRelation(indexinfo->indexoid);
+	}
+
+	for (int i = 0; i < indexinfo->nkeycolumns; i++)
+	{
+		int			bms_idx;
+
+		if (indexinfo->hypothetical)
+			bms_idx = YBAttnumToBmsIndexWithMinAttr(YBFirstLowInvalidAttributeNumber,
+													i + 1);
+		else
+		{
+			if (is_primary)
+				bms_idx = YBAttnumToBmsIndex(scan_plan.target_relation, indexinfo->indexkeys[i]);
+			else
+				bms_idx = YBAttnumToBmsIndex(scan_plan.target_relation, i + 1);
+		}
+
+		if (i < indexinfo->nhashcolumns)
+		{
+			scan_plan.hash_key = bms_add_member(scan_plan.hash_key, bms_idx);
+		}
+		scan_plan.primary_key = bms_add_member(scan_plan.primary_key, bms_idx);
+	}
 
 	/* Find out the search conditions on the primary key columns */
 	foreach(lc, path->indexclauses)
@@ -3793,8 +3842,8 @@ ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 		foreach(lc2, iclause->indexquals)
 		{
 			RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc2);
-			AttrNumber	attnum = (isprimary ?
-								  index->rd_index->indkey.values[indexcol] :
+			AttrNumber	attnum = (is_primary ?
+								  path->indexinfo->indexkeys[indexcol] :
 								  (indexcol + 1));
 			Expr	   *clause = rinfo->clause;
 			int			bms_idx = YBAttnumToBmsIndex(scan_plan.target_relation, attnum);
@@ -3844,8 +3893,7 @@ ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 		}
 		else
 		{
-			*selectivity = ybcIndexEvalClauseSelectivity(index,
-														 baserel->tuples,
+			*selectivity = ybcIndexEvalClauseSelectivity(baserel->tuples,
 														 scan_plan.sk_cols,
 														 is_unique,
 														 scan_plan.hash_key,
@@ -3876,8 +3924,7 @@ ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 		 * they may not be applied if another join path is chosen.
 		 * So only use the t1.c1 = <const_value> quals (filtered above) for this.
 		 */
-		double		const_qual_selectivity = ybcIndexEvalClauseSelectivity(index,
-																		   baserel->tuples,
+		double		const_qual_selectivity = ybcIndexEvalClauseSelectivity(baserel->tuples,
 																		   const_quals,
 																		   is_unique,
 																		   scan_plan.hash_key,
@@ -3889,10 +3936,7 @@ ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 			baserel->rows = baserel_rows_estimate;
 	}
 
-	if (relation)
-		RelationClose(relation);
-
-	RelationClose(index);
+	RelationClose(scan_plan.target_relation);
 }
 
 static bool
@@ -4025,12 +4069,16 @@ HandleExplicitRowLockStatus(YbcPgExplicitRowLockStatus status)
 	if (status.error_info.is_initialized &&
 		YBCIsExplicitRowLockConflictStatus(status.ybc_status))
 	{
+		YBCFreeStatus(status.ybc_status);
 		YBCHandleConflictError((OidIsValid(status.error_info.conflicting_table_id) ?
 								RelationIdGetRelation(status.error_info.conflicting_table_id) :
 								NULL),
 							   status.error_info.pg_wait_policy);
 	}
-	HandleYBStatus(status.ybc_status);
+	else
+	{
+		HandleYBStatus(status.ybc_status);
+	}
 }
 
 /*

@@ -621,7 +621,7 @@ public class LdapUtilTest extends FakeDBApplication {
     List<RoleBinding> roleBindingList = RoleBinding.getAll(user.getUuid());
     assertEquals(1, roleBindingList.size());
     assertEquals(
-        20, roleBindingList.get(0).getRole().getPermissionDetails().getPermissionList().size());
+        21, roleBindingList.get(0).getRole().getPermissionDetails().getPermissionList().size());
     for (ResourceGroup.ResourceDefinition rD :
         roleBindingList.get(0).getResourceGroup().getResourceDefinitionSet()) {
       switch (rD.getResourceType()) {

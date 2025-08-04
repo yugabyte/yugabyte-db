@@ -19,16 +19,15 @@
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/constants.h"
-#include "yb/dockv/partition.h"
 #include "yb/common/pg_types.h"
+#include "yb/dockv/partition.h"
 
 #include "yb/tserver/pg_client.fwd.h"
 
 #include "yb/util/monotime.h"
 #include "yb/util/status_fwd.h"
 
-namespace yb {
-namespace tserver {
+namespace yb::tserver {
 
 class PgCreateTable {
  public:
@@ -63,12 +62,11 @@ class PgCreateTable {
   PgObjectId indexed_table_id_;
   bool ybbasectid_added_ = false;
   PgObjectId xcluster_source_table_id_;
-  uint64_t xcluster_backfill_hybrid_time_;
+  uint64_t xcluster_backfill_hybrid_time_ = 0;
   // If set, will overwrite the colocation id of the table being created.
   ColocationId overwrite_colocation_id_ = kColocationIdNotSet;
 };
 
 Status CreateSequencesDataTable(client::YBClient* client, CoarseTimePoint deadline);
 
-}  // namespace tserver
-}  // namespace yb
+} // namespace yb::tserver

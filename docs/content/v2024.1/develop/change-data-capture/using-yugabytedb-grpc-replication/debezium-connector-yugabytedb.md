@@ -114,7 +114,7 @@ The YugabyteDB gRPC Connector typically spends the vast majority of its time str
 
 The connector keeps polling for changes and whenever there is a change, the connector processes them, converts them to a specific format (Protobuf or JSON in the case of the Debezium plugin) and writes them on an output stream, which can then be consumed by clients.
 
-The connector acts as a YugabyteDB client. When the connector receives changes it transforms the events into Debezium create, update, or delete events that include the LSN of the event. The connector forwards these change events in records to the Kafka Connect framework, which is running in the same process. The Kafka Connect process asynchronously writes the change event records in the same order in which they were generated to the appropriate Kafka topic.
+The connector acts as a YugabyteDB client. When the connector receives changes it transforms the events into Debezium create, update, or delete events that include the Log Sequence Number ([LSN](../../using-logical-replication/key-concepts/#lsn)) of the event. The connector forwards these change events in records to the Kafka Connect framework, which is running in the same process. The Kafka Connect process asynchronously writes the change event records in the same order in which they were generated to the appropriate Kafka topic.
 
 Periodically, Kafka Connect records the most recent offset in another Kafka topic. The offset indicates source-specific position information that Debezium includes with each event.
 
@@ -715,13 +715,23 @@ A `delete` change event record provides a consumer with the information it needs
 
 When a row is deleted, the _delete_ event value still works with log compaction, because Kafka can remove all earlier messages that have that same key. However, for Kafka to remove all messages that have that same key, the message value must be `null`. To make this possible, the connector follows a delete event with a special _tombstone_ event that has the same key but a null value.
 
+If the downstream consumer from the topic relies on tombstone events to process deletions and uses the [YBExtractNewRecordState transformer](../yugabytedb-grpc-transformers/#ybextractnewrecordstate) (SMT), it is recommended to set the `delete.to.tombstone` SMT configuration property to `true`. This ensures that the connector converts the delete records to tombstone events and drops the tombstone events.
+
+To set the property, follow the SMT configuration conventions. For example:
+
+```json
+"transforms": "flatten",
+"transforms.flatten.type": "io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState",
+"transforms.flatten.delete.to.tombstone": "true"
+```
+
 {{< tip title="TRUNCATE tables when CDC is enabled" >}}
 
 By default, the YugabyteDB CDC implementation does not allow you to TRUNCATE a table while an active CDC stream is present on the namespace. To allow truncating tables while CDC is active, set the [enable_truncate_cdcsdk_table](../../../../reference/configuration/yb-tserver/#enable-truncate-cdcsdk-table) flag to true.
 
 {{< /tip >}}
 
-{{< tip title="Suppressing tombstone events" >}}
+##### Suppress tombstone events
 
 You can configure whether a connector emits tombstone events using its `tombstones.on.delete` property.
 
@@ -730,8 +740,6 @@ Whether you enable the connector to emit tombstones depends on how topics are co
 By default, a connector's `tombstones.on.delete` property is set to `true` so that the connector generates a tombstone after each delete event.
 
 If you set the property to `false` to prevent the connector from saving tombstone records to Kafka topics, the **absence of tombstone records might lead to unintended consequences if your sink is not designed to handle it properly**. For example, Kafka relies on tombstones during log compaction to remove records related to deleted keys.
-
-{{< /tip >}}
 
 ## Datatype mappings
 

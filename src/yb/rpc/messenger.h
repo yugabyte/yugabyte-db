@@ -124,6 +124,11 @@ class MessengerBuilder {
     return *this;
   }
 
+  MessengerBuilder& UseLocalHostOutboundIpBaseInTests() {
+    use_local_host_outbound_ip_base_in_tests_ = true;
+    return *this;
+  }
+
   Result<std::unique_ptr<Messenger>> Build();
 
   CoarseMonoClock::Duration connection_keepalive_time() const {
@@ -168,6 +173,7 @@ class MessengerBuilder {
   size_t workers_limit_;
   int num_connections_to_server_;
   std::shared_ptr<MemTracker> last_used_parent_mem_tracker_;
+  bool use_local_host_outbound_ip_base_in_tests_ = false;
 };
 
 // A Messenger is a container for the reactor threads which run event loops for the RPC services.
@@ -308,6 +314,22 @@ class Messenger : public ProxyContext {
     return next_task_id_.load(std::memory_order_acquire);
   }
 
+  void SetMetadataSerializerFactory(std::unique_ptr<MetadataSerializerFactory> factory) {
+    metadata_serializer_factory_ = std::move(factory);
+  }
+
+  MetadataSerializerFactory* metadata_serializer_factory() override {
+    return metadata_serializer_factory_.get();
+  }
+
+  void SetCallStateListenerFactory(std::unique_ptr<CallStateListenerFactory> factory) {
+    call_state_listener_factory_ = std::move(factory);
+  }
+
+  CallStateListenerFactory* call_state_listener_factory() override {
+    return call_state_listener_factory_.get();
+  }
+
  private:
   friend class DelayedTask;
 
@@ -325,7 +347,13 @@ class Messenger : public ProxyContext {
 
   bool TEST_ShouldArtificiallyRejectOutgoingCallsTo(const IpAddress &remote);
 
+  const std::string& LogPrefix() const {
+    return log_prefix_;
+  }
+
   const std::string name_;
+
+  const std::string log_prefix_;
 
   ConnectionContextFactoryPtr connection_context_factory_;
 
@@ -396,6 +424,9 @@ class Messenger : public ProxyContext {
   int num_connections_to_server_;
 
   std::unique_ptr<ReactorMonitor> reactor_monitor_ GUARDED_BY(lock_);
+
+  std::unique_ptr<CallStateListenerFactory> call_state_listener_factory_;
+  std::unique_ptr<MetadataSerializerFactory> metadata_serializer_factory_;
 
 #ifndef NDEBUG
   // This is so we can log where exactly a Messenger was instantiated to better diagnose a CHECK

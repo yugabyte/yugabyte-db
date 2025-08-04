@@ -622,3 +622,13 @@ SELECT COUNT(*) FROM t_temp;
      4
 (1 row)
 
+-- Concurrent refresh on an empty matview
+CREATE TABLE base_empty (t int);
+CREATE MATERIALIZED VIEW mv_empty AS SELECT * FROM base_empty;
+CREATE UNIQUE INDEX ON mv_empty(t);
+REFRESH MATERIALIZED VIEW CONCURRENTLY mv_empty;
+SELECT * FROM mv_empty;
+ t 
+---
+(0 rows)
+

@@ -121,7 +121,7 @@ public class ConcurrentTablespaceTest extends BaseTablespaceTest {
 
   private List<Thread> setupConcurrentDdlDmlThreads(String ddlTemplate) {
     final int totalThreads = numDmlThreads + numDdlThreads;
-    final CyclicBarrier barrier = new CyclicBarrier(totalThreads);
+    final Phaser phaser = new Phaser(totalThreads);
     final List<Thread> threads = new ArrayList<>();
 
     // Add the DDL thread.
@@ -131,14 +131,14 @@ public class ConcurrentTablespaceTest extends BaseTablespaceTest {
               connections[i],
               ddlTemplate,
               errorsDetected,
-              barrier,
+              phaser,
               numStmtsPerThread,
               tablespaces));
     }
 
     // Add the DML threads.
     for (int i = numDdlThreads; i < totalThreads; ++i) {
-      threads.add(new DMLRunner(connections[i], errorsDetected, barrier, numStmtsPerThread, i));
+      threads.add(new DMLRunner(connections[i], errorsDetected, phaser, numStmtsPerThread, i));
     }
     return threads;
   }
@@ -223,7 +223,7 @@ public class ConcurrentTablespaceTest extends BaseTablespaceTest {
     YBClient client = miniCluster.getClient();
     connections = setupConnections();
     final int totalThreads = numDmlThreads + numDdlThreads;
-    final CyclicBarrier barrier = new CyclicBarrier(totalThreads);
+    final Phaser phaser = new Phaser(totalThreads);
     final List<Thread> threads = new ArrayList<>();
     AtomicBoolean invalidPlacementError = new AtomicBoolean(false);
 
@@ -236,7 +236,7 @@ public class ConcurrentTablespaceTest extends BaseTablespaceTest {
             connections[0],
             "CREATE TABLE validplacementtable (a int) TABLESPACE %s",
             errorsDetected,
-            barrier,
+            phaser,
             1,
             new Tablespace[] {valid_ts}));
 
@@ -248,7 +248,7 @@ public class ConcurrentTablespaceTest extends BaseTablespaceTest {
             connections[1],
             "CREATE TABLE invalid_placementtable (a int) TABLESPACE %s",
             invalidPlacementError,
-            barrier,
+            phaser,
             1,
             new Tablespace[] {invalid_ts}));
 
@@ -268,19 +268,19 @@ public class ConcurrentTablespaceTest extends BaseTablespaceTest {
   public abstract class SQLRunner extends Thread {
     protected final Connection conn;
     protected final AtomicBoolean errorsDetected;
-    protected final CyclicBarrier barrier;
+    protected final Phaser phaser;
     protected final int numStmtsPerThread;
     protected int idx; // Only used by DMLRunner
 
     public SQLRunner(
         Connection conn,
         AtomicBoolean errorsDetected,
-        CyclicBarrier barrier,
+        Phaser phaser,
         int numStmtsPerThread,
         int idx) {
       this.conn = conn;
       this.errorsDetected = errorsDetected;
-      this.barrier = barrier;
+      this.phaser = phaser;
       this.numStmtsPerThread = numStmtsPerThread;
       this.idx = idx; // This field is not used in DDLRunner
     }
@@ -289,16 +289,22 @@ public class ConcurrentTablespaceTest extends BaseTablespaceTest {
     public void run() {
       int item_idx = 0;
       while (item_idx < numStmtsPerThread && !errorsDetected.get()) {
-        try (Statement lstmt = conn.createStatement()) {
-          barrier.await();
-          executeStatement(lstmt, item_idx);
+        try {
+          phaser.arriveAndAwaitAdvance();
+
+          try (Statement lstmt = conn.createStatement()) {
+            executeStatement(lstmt, item_idx);
+          }
+
           item_idx++;
         } catch (PSQLException e) {
           handlePSQLException(e);
-        } catch (SQLException | InterruptedException | BrokenBarrierException e) {
+        } catch (SQLException e) {
           logAndSetError(e);
         }
       }
+      // Thread finished: shrink the party count.
+      phaser.arriveAndDeregister();
     }
 
     protected abstract void executeStatement(Statement lstmt, int item_idx) throws SQLException;
@@ -324,7 +330,7 @@ public class ConcurrentTablespaceTest extends BaseTablespaceTest {
     protected void logAndSetError(Exception e) {
       LOG.info("SQL thread: Unexpected error: ", e);
       errorsDetected.set(true);
-      barrier.reset();
+      phaser.forceTermination();
     }
   }
 
@@ -337,10 +343,10 @@ public class ConcurrentTablespaceTest extends BaseTablespaceTest {
     public DMLRunner(
         Connection conn,
         AtomicBoolean errorsDetected,
-        CyclicBarrier barrier,
+        Phaser phaser,
         int numStmtsPerThread,
         int idx) {
-      super(conn, errorsDetected, barrier, numStmtsPerThread, idx);
+      super(conn, errorsDetected, phaser, numStmtsPerThread, idx);
     }
 
     @Override
@@ -372,10 +378,10 @@ public class ConcurrentTablespaceTest extends BaseTablespaceTest {
         Connection conn,
         String sql,
         AtomicBoolean errorsDetected,
-        CyclicBarrier barrier,
+        Phaser phaser,
         int numStmtsPerThread,
         Tablespace[] tablespaces) {
-      super(conn, errorsDetected, barrier, numStmtsPerThread, 0); // idx is not used here
+      super(conn, errorsDetected, phaser, numStmtsPerThread, 0); // idx is not used here
       this.sql = sql;
       this.tablespaces = tablespaces;
     }

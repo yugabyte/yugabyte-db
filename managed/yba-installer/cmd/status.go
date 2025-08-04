@@ -26,7 +26,7 @@ var statusCmd = &cobra.Command{
     applicable systemd and config files, and the running status of the service
     (active or inactive)`,
 	Args:      cobra.MatchAll(cobra.MaximumNArgs(1), cobra.OnlyValidArgs),
-	ValidArgs: []string{"postgres", "prometheus", "yb-platform"},
+	ValidArgs: []string{"postgres", "prometheus", "yb-platform", "performance-advisor"},
 	Run: func(cmd *cobra.Command, args []string) {
 		// Print status for given service.
 		state, err := ybactlstate.Initialize()
@@ -34,8 +34,8 @@ var statusCmd = &cobra.Command{
 			log.Fatal("unable to load yba installer state: " + err.Error())
 		}
 		if len(args) == 1 {
-			service, exists := services[args[0]]
-			if !exists {
+			service := serviceManager.ServiceByName(args[0])
+			if service == nil {
 				fmt.Printf("Service %s was not installed\n", args[0])
 				return
 			}
@@ -47,8 +47,8 @@ var statusCmd = &cobra.Command{
 		} else {
 			// Print status for all services.
 			var statuses []common.Status
-			for _, name := range serviceOrder {
-				status, err := services[name].Status()
+			for service := range serviceManager.Services() {
+				status, err := service.Status()
 				if err != nil {
 					log.Fatal("Failed to get status: " + err.Error())
 				}

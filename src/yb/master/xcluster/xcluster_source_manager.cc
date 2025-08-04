@@ -13,6 +13,8 @@
 
 #include "yb/master/xcluster/xcluster_source_manager.h"
 
+#include <algorithm>
+
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/cdc/cdc_state_table.h"
@@ -210,12 +212,14 @@ XClusterSourceManager::InitOutboundReplicationGroup(
                 CoarseMonoClock::now() +
                     MonoDelta::FromSeconds(FLAGS_xcluster_ysql_statement_timeout_sec));
           },
-      .set_normal_oid_counter_above_all_normal_oids_func =
-          [this](NamespaceId namespace_id) {
-            return SetNormalOidCounterAboveAllNormalOids(namespace_id);
+      .advance_oid_counters_func =
+          [&catalog_manager = catalog_manager_](const NamespaceId& namespace_id) {
+            RETURN_NOT_OK(catalog_manager.AdvanceOidCounters(namespace_id));
+            return catalog_manager.InvalidateTserverOidCaches();
           },
       .get_normal_oid_higher_than_any_used_normal_oid_func =
-          [client_future = master_.client_future()](NamespaceId namespace_id) -> Result<uint32_t> {
+          [client_future =
+               master_.client_future()](const NamespaceId& namespace_id) -> Result<uint32_t> {
         auto* yb_client = client_future.get();
         SCHECK(yb_client, IllegalState, "Client not initialized or shutting down");
         // While automatic mode xCluster replication is running, we have an invariant that all
@@ -225,8 +229,8 @@ XClusterSourceManager::InitOutboundReplicationGroup(
         uint32_t begin_oid;
         uint32_t end_oid;
         RETURN_NOT_OK(yb_client->ReservePgsqlOids(
-            namespace_id, /*next_oid=*/0, /*count=*/1, &begin_oid, &end_oid,
-            /*use_secondary_space=*/false));
+            namespace_id, /*next_oid=*/0, /*count=*/1, /*use_secondary_space=*/false, &begin_oid,
+            &end_oid));
         return begin_oid;
       },
       .get_namespace_func =
@@ -240,7 +244,7 @@ XClusterSourceManager::InitOutboundReplicationGroup(
                 catalog_manager, namespace_id, include_sequences_data);
           },
       .is_automatic_mode_switchover_func =
-          [xcluster_manager = master_.xcluster_manager()](NamespaceId namespace_id) {
+          [xcluster_manager = master_.xcluster_manager()](const NamespaceId& namespace_id) {
             // If a namespace under automatic replication mode is both a source and target at the
             // same time, then it is currently undergoing automatic mode switchover.
             return xcluster_manager->IsNamespaceInAutomaticModeSource(namespace_id) &&
@@ -369,7 +373,7 @@ Status XClusterSourceManager::CreateOutboundReplicationGroup(
   }
 
   // If we fail anywhere after this we need to return the Id we have reserved.
-  auto se = ScopeExit([this, &replication_group_id]() {
+  auto se = CancelableScopeExit([this, &replication_group_id] {
     std::lock_guard l(outbound_replication_group_map_mutex_);
     outbound_replication_group_map_.erase(replication_group_id);
   });
@@ -517,7 +521,7 @@ class XClusterCreateStreamContextImpl : public XClusterCreateStreamsContext {
   explicit XClusterCreateStreamContextImpl(
       CatalogManager& catalog_manager, XClusterSourceManager& xcluster_manager)
       : catalog_manager_(catalog_manager), xcluster_manager_(xcluster_manager) {}
-  virtual ~XClusterCreateStreamContextImpl() { Rollback(); }
+  ~XClusterCreateStreamContextImpl() override { Rollback(); }
 
   void Commit() override {
     for (auto& stream : streams_) {
@@ -537,22 +541,6 @@ class XClusterCreateStreamContextImpl : public XClusterCreateStreamsContext {
   XClusterSourceManager& xcluster_manager_;
   std::vector<TableId> table_ids;
 };
-
-Status XClusterSourceManager::SetNormalOidCounterAboveAllNormalOids(NamespaceId namespace_id) {
-  auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
-  VLOG(1) << "Calling ReadHighestNormalPreservableOid on database OID " << database_oid;
-  auto highest_oid = VERIFY_RESULT(sys_catalog_.ReadHighestNormalPreservableOid(database_oid));
-  auto* yb_client = master_.client_future().get();
-  SCHECK(yb_client, IllegalState, "Client not initialized or shutting down");
-  VLOG(1) << "Bumping normal space OID for database OID " << database_oid << " above "
-          << highest_oid;
-  uint32_t begin_oid, end_oid;
-  RETURN_NOT_OK(yb_client->ReservePgsqlOids(
-      namespace_id, /*next_oid=*/highest_oid, /*count=*/1, &begin_oid, &end_oid,
-      /*use_secondary_space=*/false));
-  VLOG(1) << "Invalidating TServer OID caches for database OID " << database_oid;
-  return catalog_manager_.InvalidateTserverOidCaches();
-}
 
 Result<std::unique_ptr<XClusterCreateStreamsContext>>
 XClusterSourceManager::CreateStreamsForDbScoped(
@@ -993,7 +981,7 @@ Result<bool> XClusterSourceManager::ProcessSplitChildStreams(
       LOG(INFO) << "Deleting tablet " << tablet_id << " from stream " << stream_id
                 << ". Reason: Consumer finished processing parent tablet after split.";
       ++count_streams_deleted;
-      entries_to_delete.emplace_back(cdc::CDCStateTableKey{tablet_id, stream_id});
+      entries_to_delete.emplace_back(tablet_id, stream_id);
     }
   }
 
@@ -1206,6 +1194,26 @@ Status XClusterSourceManager::RemoveStreamsFromSysCatalog(
 
 Status XClusterSourceManager::MarkIndexBackfillCompleted(
     const std::unordered_set<TableId>& index_ids, const LeaderEpoch& epoch) {
+  // Clear any remaining xcluster_table_info information; only the xcluster_backfill_hybrid_time
+  // field should be left at this point.
+  std::vector<TableId> sorted_index_ids{index_ids.begin(), index_ids.end()};
+  std::ranges::sort(sorted_index_ids);
+  std::vector<scoped_refptr<TableInfo>> index_infos;
+  for (const auto& index_id : sorted_index_ids) {
+    auto index_info = VERIFY_RESULT(catalog_manager_.FindTableById(index_id));
+    index_infos.push_back(std::move(index_info));
+  }
+  std::vector<TableInfo::WriteLock> index_locks;
+  for (const auto& index_info : index_infos) {
+    auto index_lock = index_info->LockForWrite();
+    index_lock.mutable_data()->pb.clear_xcluster_table_info();
+    index_locks.push_back(std::move(index_lock));
+  }
+  RETURN_NOT_OK(sys_catalog_.Upsert(epoch, index_infos));
+  for (auto& index_lock : index_locks) {
+    index_lock.Commit();
+  }
+
   // Checkpoint xCluster streams of indexes after the backfill completes. The backfilled data is not
   // replicated, and the target cluster performs its own backfill, so we can skip streaming changes
   // before the backfill completion.

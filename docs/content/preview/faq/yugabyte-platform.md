@@ -49,7 +49,7 @@ You install YugabyteDB Anywhere using a standalone installer that you download f
 
 {{< note title="Replicated end of life" >}}
 
-YugabyteDB Anywhere was previously installed using Replicated. However, YugabyteDB Anywhere ended support for Replicated installation at the end of 2024. You can migrate existing Replicated YugabyteDB Anywhere installations using YBA Installer. See [Migrate from Replicated](../../yugabyte-platform/install-yugabyte-platform/migrate-replicated/).
+YugabyteDB Anywhere was previously installed using Replicated. However, YugabyteDB Anywhere ended support for Replicated installation at the end of 2024. You can migrate existing Replicated YugabyteDB Anywhere installations using YBA Installer. See [Migrate from Replicated](/v2.20/yugabyte-platform/install-yugabyte-platform/migrate-replicated/).
 
 {{< /note >}}
 

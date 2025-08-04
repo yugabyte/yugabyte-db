@@ -46,7 +46,7 @@ static HTAB *TableSpaceCacheHash = NULL;
 typedef struct
 {
 	Oid			oid;			/* lookup key - must be first */
-	union	/* YB: change opts to union */
+	union						/* YB: change opts to union */
 	{
 		TableSpaceOpts *pg_opts;
 		YBTableSpaceOpts *yb_opts;
@@ -249,6 +249,7 @@ get_tablespace_distance(Oid spcid)
 	text	   *placement_array = json_get_value(tsp_options_json,
 												 "placement_blocks");
 	YbGeolocationDistance farthest = ZONE_LOCAL;
+
 	if (placement_array != NULL)
 	{
 		const int	length = get_json_array_length(placement_array);
@@ -276,25 +277,28 @@ get_tablespace_distance(Oid spcid)
 			YbGeolocationDistance current_dist;
 
 			const text *tsp_cloud_text = json_get_denormalized_value(json_element,
-				cloudKey);
+																	 cloudKey);
 			const char *tsp_cloud = (tsp_cloud_text != NULL) ?
 				text_to_cstring(tsp_cloud_text) : NULL;
 
 			const text *tsp_region_text = json_get_denormalized_value(json_element,
-				regionKey);
+																	  regionKey);
 			const char *tsp_region = (tsp_region_text != NULL) ?
 				text_to_cstring(tsp_region_text) : NULL;
 
 			const text *tsp_zone_text = json_get_denormalized_value(json_element,
-				zoneKey);
+																	zoneKey);
 			const char *tsp_zone = (tsp_zone_text != NULL) ?
 				text_to_cstring(tsp_zone_text) : NULL;
 
-			/* The region/zone values may be set to the wildcard value '*' */
-			/* In this case, it is not considered as matching any of existing  */
-			/* region/zone values because the actual value may change over time */
-			/* E.g. 'cloud.region.*' will be treated as REGION_LOCAL to cloud.region.zone */
-			/* even if the current placement zone is indeed zone. */
+			/*
+			 * The region/zone values may be set to the wildcard value '*'. In
+			 * this case, it is not considered as matching any of existing
+			 * region/zone values because the actual value may change over time
+			 * E.g. 'cloud.region.*' will be treated as REGION_LOCAL to
+			 * cloud.region.zone even if the current placement zone is indeed
+			 * zone.
+			 */
 			if (tsp_cloud != NULL && strcmp(tsp_cloud, current_cloud) == 0)
 			{
 				/* are the current region and the given region the same */

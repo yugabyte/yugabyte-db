@@ -5,7 +5,8 @@ export enum TelemetryProviderType {
   DATA_DOG = 'DATA_DOG',
   SPLUNK = 'SPLUNK',
   AWS_CLOUDWATCH = 'AWS_CLOUDWATCH',
-  GCP_CLOUD_MONITORING = 'GCP_CLOUD_MONITORING'
+  GCP_CLOUD_MONITORING = 'GCP_CLOUD_MONITORING',
+  LOKI = 'LOKI'
 }
 
 export interface ExportLogFormFields {
@@ -32,7 +33,16 @@ export interface ExportLogFormFields {
     project?: string;
     gcpCredentials?: File;
     credentials?: GCPServiceAccount;
+    // Loki
+    authType?: string;
+    organizationID?: string;
+    basicAuth?: BasicAuth;
   };
+}
+
+export interface BasicAuth {
+  username?: string;
+  password?: string;
 }
 
 export interface ExportLogPayload extends ExportLogFormFields {

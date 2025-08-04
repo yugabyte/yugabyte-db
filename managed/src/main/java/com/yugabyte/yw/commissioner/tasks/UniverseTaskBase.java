@@ -173,6 +173,7 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.Builder;
@@ -202,6 +203,7 @@ import org.yb.util.PeerInfo;
 import org.yb.util.TabletServerInfo;
 import play.libs.Json;
 import play.mvc.Http;
+import reactor.core.Exceptions;
 
 @Slf4j
 public abstract class UniverseTaskBase extends AbstractTaskBase {
@@ -333,7 +335,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.ResumeKubernetesUniverse,
           TaskType.ReadOnlyClusterDelete,
           TaskType.FailoverDrConfig,
-          TaskType.ResumeUniverse);
+          TaskType.ResumeUniverse,
+          TaskType.MigrateUniverse);
 
   private static final Set<TaskType> RERUNNABLE_PLACEMENT_MODIFICATION_TASKS =
       ImmutableSet.of(
@@ -711,6 +714,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    */
   protected void validateUniverseState(Universe universe) {
     TaskType taskType = getTaskExecutor().getTaskType(getClass());
+    validateUniverseMigrationPending(taskType, universe);
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     boolean isResumeOrDelete =
         (taskType == TaskType.ResumeUniverse
@@ -746,7 +750,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *
    * @param universe the locked universe.
    */
-  protected void createPrecheckTasks(Universe universe) {}
+  protected void createPrecheckTasks(Universe universe) {
+    validateUniverseMigrationPending(getRunnableTask().getTaskType(), universe);
+  }
+
+  private void validateUniverseMigrationPending(TaskType taskType, Universe universe) {
+    if (taskType != null && taskType != TaskType.MigrateUniverse) {
+      if (universe.getUniverseDetails().clusters.stream()
+          .anyMatch(c -> c.userIntent != null && c.userIntent.getMigrationConfig() != null)) {
+        String msg = "Migration is pending for universe " + universe.getName();
+        log.error(msg);
+        throw new IllegalStateException(msg);
+      }
+    }
+  }
 
   protected Universe getUniverse() {
     return Universe.getOrBadRequest(taskParams().getUniverseUUID());
@@ -1964,6 +1981,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       subTaskGroup.addSubTask(task);
     }
     getRunnableTask().addSubTaskGroup(subTaskGroup);
+
+    createMarkUniverseForHealthScriptReUploadTask();
+
     return subTaskGroup;
   }
 
@@ -2087,7 +2107,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
     int serverPort = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort);
     NodeAgentEnabler nodeAgentEnabler = getInstanceOf(NodeAgentEnabler.class);
-    if (reinstall == false && nodeAgentEnabler.shouldMarkUniverse(universe)) {
+    if (reinstall == false && nodeAgentEnabler.shouldSkipInstallAndMarkUniverse(universe)) {
       // Reinstall forces direct installation in the same task.
       log.info(
           "Skipping node agent installation for universe {} as it is not enabled",
@@ -2497,9 +2517,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    */
   public Set<String> getLeaderlessTablets(UUID universeUuid) {
     Universe universe = Universe.getOrBadRequest(universeUuid);
-    String masterAddresses = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodetoNode();
-    try (YBClient client = ybService.getClient(masterAddresses, certificate)) {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       HostAndPort leaderMasterHostAndPort = client.getLeaderMasterHostAndPort();
       if (leaderMasterHostAndPort == null) {
         throw new RuntimeException(
@@ -2568,9 +2586,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param universe the universe.
    */
   public void verifyNoTabletsOnBlacklistedTservers(Universe universe) {
-    String masterAddresses = universe.getMasterAddresses();
-    try (YBClient client =
-        ybService.getClient(masterAddresses, universe.getCertificateNodetoNode())) {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       Set<HostAndPort> backlistedHostAndPorts = getBlacklistedHostAndPorts(universe, client);
       if (CollectionUtils.isEmpty(backlistedHostAndPorts)) {
         log.info("No tserver is blacklisted for universe {}", universe.getUniverseUUID());
@@ -2688,10 +2704,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   protected boolean nodeInMasterConfig(Universe universe, NodeDetails node) {
     String ip = node.cloudInfo.private_ip;
     String secondaryIp = node.cloudInfo.secondary_private_ip;
-    String masterAddresses = universe.getMasterAddresses();
-
-    try (YBClient client =
-        ybService.getClient(masterAddresses, universe.getCertificateNodetoNode())) {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       ListMasterRaftPeersResponse response = client.listMasterRaftPeers();
       List<PeerInfo> peers = response.getPeersList();
       return peers.stream().anyMatch(p -> p.hasHost(ip) || p.hasHost(secondaryIp));
@@ -2712,8 +2725,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    */
   protected Set<NodeDetails> getRemoteMasterNodes(Universe universe) {
     String masterAddresses = universe.getMasterAddresses();
-    try (YBClient client =
-        ybService.getClient(masterAddresses, universe.getCertificateNodetoNode())) {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       return client.listMasterRaftPeers().getPeersList().stream()
           .map(
               peerInfo -> {
@@ -3444,9 +3456,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     HashMap<String, BackupTableParams> keyspaceMap = new HashMap<>();
     // Todo: add comments. Backup the whole keyspace.
     Universe universe = Universe.getOrBadRequest(backupRequestParams.getUniverseUUID());
-    String universeMasterAddresses = universe.getMasterAddresses();
-    String universeCertificate = universe.getCertificateNodetoNode();
-    try (YBClient client = ybService.getClient(universeMasterAddresses, universeCertificate)) {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       ListTablesResponse listTablesResponse =
           client.getTablesList(
               null /* nameFilter */, true /* excludeSystemTables */, null /* namespace */);
@@ -3627,6 +3637,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       backupTableParams.backupList = convertToPerTableParams(backupTableParamsList);
     } else {
       backupTableParams.backupList = backupTableParamsList;
+    }
+    if (confGetter.getConfForScope(universe, UniverseConfKeys.enableBackupsDuringDDL)) {
+      backupTableParams.setEnableBackupsDuringDDL(true);
     }
     return backupTableParams;
   }
@@ -4181,6 +4194,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                   backupParams.backupDBStates.get(paramsEntry.backupParamsIdentifier)
                       .currentYbcTaskId;
               backupYbcParams.scheduleRetention = scheduleRetention;
+              backupYbcParams.setEnableBackupsDuringDDL(backupParams.getEnableBackupsDuringDDL());
+              backupYbcParams.setRevertToPreRolesBehaviour(
+                  backupParams.getRevertToPreRolesBehaviour());
               task.initialize(backupYbcParams);
               task.setUserTaskUUID(getUserTaskUUID());
               subTaskGroup.addSubTask(task);
@@ -5184,9 +5200,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    */
   protected boolean isChangeMasterConfigDone(
       Universe universe, NodeDetails node, boolean isAddMasterOp, String ipToUse) {
-    String masterAddresses = universe.getMasterAddresses();
-    YBClient client = ybService.getClient(masterAddresses, universe.getCertificateNodetoNode());
-    try {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       ListMasterRaftPeersResponse response = client.listMasterRaftPeers();
       List<PeerInfo> peers = response.getPeersList();
       boolean anyMatched = peers.stream().anyMatch(p -> p.hasHost(ipToUse));
@@ -5198,8 +5212,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               node.nodeName, ipToUse, node.masterRpcPort, e.getMessage());
       log.error(msg, e);
       throw new RuntimeException(msg);
-    } finally {
-      ybService.closeClient(client, masterAddresses);
     }
   }
 
@@ -5207,9 +5219,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   // "follower_unavailable_considered_failed_sec" time, the tserver will be instantly marked as
   // "dead" and not "live".
   public List<TabletServerInfo> getLiveTabletServers(Universe universe) {
-    String masterAddresses = universe.getMasterAddresses();
-    try (YBClient client =
-        ybService.getClient(masterAddresses, universe.getCertificateNodetoNode())) {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       ListLiveTabletServersResponse response = client.listLiveTabletServers();
 
       return response.getTabletServers();
@@ -5238,15 +5248,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   protected boolean isServerAlive(NodeDetails node, ServerType server, String masterAddrs) {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     String certificate = universe.getCertificateNodetoNode();
-    YBClient client = ybService.getClient(masterAddrs, certificate);
-    try {
+    try (YBClient client = ybService.getClient(masterAddrs, certificate)) {
       HostAndPort hp =
           HostAndPort.fromParts(
               node.cloudInfo.private_ip,
               server == ServerType.MASTER ? node.masterRpcPort : node.tserverRpcPort);
       return client.waitForServer(hp, 5000);
-    } finally {
-      ybService.closeClient(client, masterAddrs);
+    } catch (Exception e) {
+      throw Exceptions.propagate(e);
     }
   }
 
@@ -5421,17 +5430,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   private int getClusterConfigVersion(Universe universe) {
-    final String hostPorts = universe.getMasterAddresses();
-    final String certificate = universe.getCertificateNodetoNode();
     int version;
-    YBClient client = ybService.getClient(hostPorts, certificate);
-    try {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       version = client.getMasterClusterConfig().getConfig().getVersion();
     } catch (Exception e) {
       log.error("Error occurred retrieving cluster config version", e);
       throw new RuntimeException("Error incrementing cluster config version", e);
-    } finally {
-      ybService.closeClient(client, hostPorts);
     }
     return version;
   }
@@ -5495,10 +5499,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   /** Increment the cluster config version */
   private synchronized void incrementClusterConfigVersion(UUID universeUUID) {
     Universe universe = Universe.getOrBadRequest(universeUUID);
-    final String hostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodetoNode();
-    YBClient client = ybService.getClient(hostPorts, certificate);
-    try {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       int version = universe.getVersion();
       ModifyClusterConfigIncrementVersion modifyConfig =
           new ModifyClusterConfigIncrementVersion(client, version);
@@ -5512,8 +5513,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       log.error(
           "Error occurred incrementing cluster config version for universe " + universeUUID, e);
       throw new RuntimeException("Error incrementing cluster config version", e);
-    } finally {
-      ybService.closeClient(client, hostPorts);
     }
   }
 
@@ -6884,6 +6883,21 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  public SubTaskGroup createUpdatePitrConfigIntermittentMinRecoverTimeTask() {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup(
+            "UpdatePitrConfigIntermittentMinRecoverTime", SubTaskGroupType.ConfigureUniverse);
+    UpdatePitrConfigIntermittentMinRecoverTime.Params params =
+        new UpdatePitrConfigIntermittentMinRecoverTime.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    UpdatePitrConfigIntermittentMinRecoverTime task =
+        createTask(UpdatePitrConfigIntermittentMinRecoverTime.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
   public Collection<NodeDetails> getActiveUniverseNodes(Universe universe) {
     Collection<NodeDetails> activeNodes = new HashSet<>();
     for (NodeDetails node : universe.getNodes()) {
@@ -6903,49 +6917,82 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   public void createPauseUniverseTasks(Universe universe, UUID customerUUID) {
 
-    // Set taskParams for universer uuid
     preTaskActions();
 
     Map<UUID, UniverseDefinitionTaskParams.Cluster> clusterMap =
         universe.getUniverseDetails().clusters.stream()
             .collect(Collectors.toMap(c -> c.uuid, c -> c));
 
-    Set<NodeDetails> tserverNodes =
-        universe.getTServers().stream()
-            .filter(tserverNode -> tserverNode.state == NodeDetails.NodeState.Live)
-            .collect(Collectors.toSet());
-    Set<NodeDetails> masterNodes =
-        universe.getMasters().stream()
-            .filter(masterNode -> masterNode.state == NodeDetails.NodeState.Live)
-            .collect(Collectors.toSet());
-
-    for (NodeDetails node : Sets.union(masterNodes, tserverNodes)) {
+    List<NodeDetails> masters = universe.getMasters();
+    List<NodeDetails> tservers = universe.getTServers();
+    Set<NodeDetails> allServers =
+        Stream.concat(masters.stream(), tservers.stream()).collect(Collectors.toSet());
+    for (NodeDetails node : allServers) {
       if (!node.disksAreMountedByUUID) {
         UniverseDefinitionTaskParams.Cluster cluster = clusterMap.get(node.placementUuid);
         createUpdateMountedDisksTask(
             node, node.getInstanceType(), cluster.userIntent.getDeviceInfoForNode(node));
       }
     }
-
+    boolean isNextFallThrough =
+        applyOnNodesWithStatus(
+            universe,
+            allServers,
+            false,
+            NodeStatus.builder().nodeState(NodeState.Live).build(),
+            filteredNodes -> {
+              createSetNodeStateTasks(filteredNodes, NodeState.Stopping)
+                  .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+            });
     // Stop yb-controller processes on nodes
     if (universe.isYbcEnabled()) {
-      createStopServerTasks(
-              Sets.union(masterNodes, tserverNodes),
-              ServerType.CONTROLLER,
-              params -> params.skipStopForPausedVM = true)
-          .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+      isNextFallThrough =
+          applyOnNodesWithStatus(
+              universe,
+              allServers,
+              isNextFallThrough,
+              NodeStatus.builder().nodeState(NodeState.Stopping).build(),
+              filteredNodes ->
+                  createStopServerTasks(
+                          filteredNodes,
+                          ServerType.CONTROLLER,
+                          params -> params.skipStopForPausedVM = true)
+                      .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses));
     }
 
-    createSetNodeStateTasks(tserverNodes, NodeState.Stopping)
-        .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-    createStopServerTasks(
-            tserverNodes, ServerType.TSERVER, params -> params.skipStopForPausedVM = true)
-        .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-    createSetNodeStateTasks(masterNodes, NodeState.Stopping);
-    createStopServerTasks(
-            masterNodes, ServerType.MASTER, params -> params.skipStopForPausedVM = true)
-        .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-
+    isNextFallThrough =
+        applyOnNodesWithStatus(
+            universe,
+            tservers,
+            isNextFallThrough,
+            NodeStatus.builder().nodeState(NodeState.Stopping).build(),
+            filteredNodes ->
+                createStopServerTasks(
+                        filteredNodes,
+                        ServerType.TSERVER,
+                        params -> params.skipStopForPausedVM = true)
+                    .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses));
+    isNextFallThrough =
+        applyOnNodesWithStatus(
+            universe,
+            masters,
+            isNextFallThrough,
+            NodeStatus.builder().nodeState(NodeState.Stopping).build(),
+            filteredNodes ->
+                createStopServerTasks(
+                        filteredNodes,
+                        ServerType.MASTER,
+                        params -> params.skipStopForPausedVM = true)
+                    .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses));
+    isNextFallThrough =
+        applyOnNodesWithStatus(
+            universe,
+            allServers,
+            isNextFallThrough,
+            NodeStatus.builder().nodeState(NodeState.Stopping).build(),
+            filteredNodes ->
+                createSetNodeStateTasks(filteredNodes, NodeState.Stopped)
+                    .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses));
     if (!universe.getUniverseDetails().isImportedUniverse()) {
       // Create tasks to pause the existing nodes.
       Collection<NodeDetails> activeUniverseNodes = getActiveUniverseNodes(universe);
@@ -6999,6 +7046,135 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     PodDisruptionBudgetPolicy task = createTask(PodDisruptionBudgetPolicy.class);
     task.initialize(params);
     task.setUserTaskUUID(getUserTaskUUID());
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * Fetch conf file information from the given IPs for the specific server type and name.
+   *
+   * @param ips the given IPs.
+   * @param serverType the given server type.
+   * @param serviceName the service name.
+   * @param userSystemd true if it is user systemd else false.
+   * @param consumer the callback for further processing of the output.
+   * @return the SubTaskGroup.
+   */
+  public SubTaskGroup createFetchServerConfTasks(
+      Set<String> ips,
+      ServerType serverType,
+      String serviceName,
+      boolean userSystemd,
+      Consumer<FetchServerConf.Output> consumer) {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup(FetchServerConf.class.getSimpleName(), SubTaskGroupType.Configuring);
+    ips.forEach(
+        ip -> {
+          FetchServerConf task = createTask(FetchServerConf.class);
+          FetchServerConf.Params params = new FetchServerConf.Params();
+          params.ip = ip;
+          params.serverType = serverType;
+          params.serviceName = serviceName;
+          params.userSystemd = userSystemd;
+          params.consumer = consumer;
+          task.initialize(params);
+          subTaskGroup.addSubTask(task);
+        });
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * Finds the given list of nodes in the universe. The lookup is done by the node name.
+   *
+   * @param universe Universe to which the node belongs.
+   * @param nodes Collection of nodes to be searched.
+   * @return stream of the matching nodes.
+   */
+  public Stream<NodeDetails> findNodesInUniverse(Universe universe, Collection<NodeDetails> nodes) {
+    // Node names to nodes in Universe map to find.
+    Map<String, NodeDetails> nodesInUniverseMap =
+        universe.getUniverseDetails().nodeDetailsSet.stream()
+            .collect(Collectors.toMap(NodeDetails::getNodeName, Function.identity()));
+
+    // Locate the given node in the Universe by using the node name.
+    return nodes.stream()
+        .map(
+            node -> {
+              String nodeName = node.getNodeName();
+              NodeDetails nodeInUniverse = nodesInUniverseMap.get(nodeName);
+              if (nodeInUniverse == null) {
+                log.warn(
+                    "Node {} is not found in the Universe {}",
+                    nodeName,
+                    universe.getUniverseUUID());
+              }
+              return nodeInUniverse;
+            })
+        .filter(Objects::nonNull);
+  }
+
+  /**
+   * The methods performs the following in order:
+   *
+   * <p>1. Filters out nodes that do not exist in the given Universe, 2. Finds nodes matching the
+   * given node state only if ignoreNodeStatus is set to false. Otherwise, it ignores the given node
+   * state, 3. Consumer callback is invoked with the nodes found in 2. 4. If the callback is invoked
+   * because of some nodes in 2, the method returns true.
+   *
+   * <p>The method is used to find nodes in a given state and perform subsequent operations on all
+   * the nodes without state checking to mimic fall-through case because node states differ by only
+   * one if any subtask operation fails (mix of completed and failed).
+   *
+   * @param universe the Universe to which the nodes belong.
+   * @param nodes subset of the universe nodes on which the filters are applied.
+   * @param ignoreNodeStatus the flag to ignore the node status.
+   * @param nodeStatus the status to be matched against.
+   * @param consumer the callback to be invoked with the filtered nodes.
+   * @return true if some nodes are found to invoke the callback.
+   */
+  public boolean applyOnNodesWithStatus(
+      Universe universe,
+      Collection<NodeDetails> nodes,
+      boolean ignoreNodeStatus,
+      NodeStatus nodeStatus,
+      Consumer<Set<NodeDetails>> consumer) {
+    boolean wasCallbackRun = false;
+    Set<NodeDetails> filteredNodes =
+        findNodesInUniverse(universe, nodes)
+            .filter(
+                n -> {
+                  if (ignoreNodeStatus) {
+                    log.info("Ignoring node status check");
+                    return true;
+                  }
+                  NodeStatus currentNodeStatus = NodeStatus.fromNode(n);
+                  log.info(
+                      "Expected node status {}, found {} for node {}",
+                      nodeStatus,
+                      currentNodeStatus,
+                      n.getNodeName());
+                  return currentNodeStatus.equalsIgnoreNull(nodeStatus);
+                })
+            .collect(Collectors.toSet());
+
+    if (CollectionUtils.isNotEmpty(filteredNodes)) {
+      consumer.accept(filteredNodes);
+      wasCallbackRun = true;
+    }
+    return wasCallbackRun;
+  }
+
+  public SubTaskGroup createUpdateSoftwareUpdatePrevConfigTask(
+      boolean canRollbackCatalogUpgrade, boolean allTserversUpgradedToYsqlMajorVersion) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateSoftwareUpdatePrevConfig");
+    UpdateSoftwareUpdatePrevConfig.Params params = new UpdateSoftwareUpdatePrevConfig.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.canRollbackCatalogUpgrade = canRollbackCatalogUpgrade;
+    params.allTserversUpgradedToYsqlMajorVersion = allTserversUpgradedToYsqlMajorVersion;
+    UpdateSoftwareUpdatePrevConfig task = createTask(UpdateSoftwareUpdatePrevConfig.class);
+    task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;

@@ -35,7 +35,7 @@ def request_retry_decorator(fn_to_call, exc_handler):
                 if i < MAX_ATTEMPTS and exc_handler(e):
                     sleep_duration_sec = \
                         SLEEP_SEC_MIN + random.random() * (SLEEP_SEC_MAX - SLEEP_SEC_MIN)
-                    logging.warn(
+                    logging.warning(
                         "API call failed, waiting for {} seconds before re-trying (this was attempt"
                         " {} out of {}).".format(sleep_duration_sec, i, MAX_ATTEMPTS))
                     time.sleep(sleep_duration_sec)

@@ -1,0 +1,43 @@
+#LICENSE Portions Copyright 2019-2021 ZomboDB, LLC.
+#LICENSE
+#LICENSE Portions Copyright 2021-2023 Technology Concepts & Design, Inc.
+#LICENSE
+#LICENSE Portions Copyright 2023-2023 PgCentral Foundation, Inc. <contact@pgcentral.org>
+#LICENSE
+#LICENSE All rights reserved.
+#LICENSE
+#LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
+ 
+[package]
+name = "pgrx-macros"
+version = "0.14.1"
+authors = ["PgCentral Foundation, Inc. <contact@pgcentral.org>"]
+license = "MIT"
+description = "Proc Macros for 'pgrx'"
+homepage = "https://github.com/pgcentralfoundation/pgrx/"
+repository = "https://github.com/pgcentralfoundation/pgrx/"
+documentation = "https://docs.rs/pgrx-macros"
+readme = "README.md"
+edition = "2021"
+
+[lib]
+proc-macro = true
+
+[package.metadata.docs.rs]
+# Enable `#[cfg(docsrs)]` (https://docs.rs/about/builds#cross-compiling)
+rustc-args = ["--cfg", "docsrs"]
+
+[features]
+no-schema-generation = ["pgrx-sql-entity-graph/no-schema-generation"]
+
+
+[dependencies]
+pgrx-sql-entity-graph.workspace = true
+
+proc-macro2.workspace = true
+quote.workspace = true
+syn.workspace = true
+
+
+[dev-dependencies]
+serde.workspace = true # for Documentation examples

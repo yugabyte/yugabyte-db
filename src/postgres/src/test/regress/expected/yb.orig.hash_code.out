@@ -730,7 +730,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_m
  Limit (actual rows=10 loops=1)
    ->  Seq Scan on test_table_multi_col_key (actual rows=10 loops=1)
          Filter: (yb_hash_code(h1, h2, h3, v1) < 60)
-         Rows Removed by Filter: 6445
+         Rows Removed by Filter: 7832
 (4 rows)
 
 SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3,v1) < 60 LIMIT 10;
@@ -738,14 +738,14 @@ SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3,v1) < 60 LIMI
 ------+------+------+------------------------------+------+------+------------+----
  6966 | 6966 | 6966 | Tue Dec 18 04:59:54 2018 PST | 6966 | 6966 | 06-02-2016 | f
  9179 | 9179 | 9179 | Tue Dec 18 04:59:54 2018 PST | 9179 | 9179 | 06-02-2016 | t
+ 6686 | 6686 | 6686 | Tue Dec 18 04:59:54 2018 PST | 6686 | 6686 | 06-02-2016 | f
+ 2584 | 2584 | 2584 | Tue Dec 18 04:59:54 2018 PST | 2584 | 2584 | 06-02-2016 | f
  2727 | 2727 | 2727 | Tue Dec 18 04:59:54 2018 PST | 2727 | 2727 | 06-02-2016 | t
  1338 | 1338 | 1338 | Tue Dec 18 04:59:54 2018 PST | 1338 | 1338 | 06-02-2016 | f
- 6686 | 6686 | 6686 | Tue Dec 18 04:59:54 2018 PST | 6686 | 6686 | 06-02-2016 | f
  4448 | 4448 | 4448 | Tue Dec 18 04:59:54 2018 PST | 4448 | 4448 | 06-02-2016 | f
  7669 | 7669 | 7669 | Tue Dec 18 04:59:54 2018 PST | 7669 | 7669 | 06-02-2016 | t
+ 8066 | 8066 | 8066 | Tue Dec 18 04:59:54 2018 PST | 8066 | 8066 | 06-02-2016 | f
  7275 | 7275 | 7275 | Tue Dec 18 04:59:54 2018 PST | 7275 | 7275 | 06-02-2016 | t
- 9145 | 9145 | 9145 | Tue Dec 18 04:59:54 2018 PST | 9145 | 9145 | 06-02-2016 | t
- 6927 | 6927 | 6927 | Tue Dec 18 04:59:54 2018 PST | 6927 | 6927 | 06-02-2016 | t
 (10 rows)
 
 -- sequential scan as no index has (h1,h3,h2) as the
@@ -756,7 +756,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_m
  Limit (actual rows=10 loops=1)
    ->  Seq Scan on test_table_multi_col_key (actual rows=10 loops=1)
          Filter: (yb_hash_code(h1, h3, h2) < 60)
-         Rows Removed by Filter: 8628
+         Rows Removed by Filter: 9338
 (4 rows)
 
 SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h3,h2) < 60 LIMIT 10;
@@ -764,14 +764,14 @@ SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h3,h2) < 60 LIMIT 1
 ------+------+------+------------------------------+------+------+------------+----
  1076 | 1076 | 1076 | Tue Dec 18 04:59:54 2018 PST | 1076 | 1076 | 06-02-2016 | f
  5545 | 5545 | 5545 | Tue Dec 18 04:59:54 2018 PST | 5545 | 5545 | 06-02-2016 | t
- 6373 | 6373 | 6373 | Tue Dec 18 04:59:54 2018 PST | 6373 | 6373 | 06-02-2016 | t
- 3834 | 3834 | 3834 | Tue Dec 18 04:59:54 2018 PST | 3834 | 3834 | 06-02-2016 | f
-  288 |  288 | 288  | Tue Dec 18 04:59:54 2018 PST |  288 |  288 | 06-02-2016 | f
- 7820 | 7820 | 7820 | Tue Dec 18 04:59:54 2018 PST | 7820 | 7820 | 06-02-2016 | f
- 4065 | 4065 | 4065 | Tue Dec 18 04:59:54 2018 PST | 4065 | 4065 | 06-02-2016 | t
   385 |  385 | 385  | Tue Dec 18 04:59:54 2018 PST |  385 |  385 | 06-02-2016 | t
+ 6373 | 6373 | 6373 | Tue Dec 18 04:59:54 2018 PST | 6373 | 6373 | 06-02-2016 | t
+ 7820 | 7820 | 7820 | Tue Dec 18 04:59:54 2018 PST | 7820 | 7820 | 06-02-2016 | f
  9903 | 9903 | 9903 | Tue Dec 18 04:59:54 2018 PST | 9903 | 9903 | 06-02-2016 | t
+ 3834 | 3834 | 3834 | Tue Dec 18 04:59:54 2018 PST | 3834 | 3834 | 06-02-2016 | f
+ 4065 | 4065 | 4065 | Tue Dec 18 04:59:54 2018 PST | 4065 | 4065 | 06-02-2016 | t
   563 |  563 | 563  | Tue Dec 18 04:59:54 2018 PST |  563 |  563 | 06-02-2016 | t
+  288 |  288 | 288  | Tue Dec 18 04:59:54 2018 PST |  288 |  288 | 06-02-2016 | f
 (10 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,v3,v2,r2) < 60 LIMIT 10;
@@ -780,7 +780,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_m
  Limit (actual rows=10 loops=1)
    ->  Seq Scan on test_table_multi_col_key (actual rows=10 loops=1)
          Filter: (yb_hash_code(r1, v3, v2, r2) < 60)
-         Rows Removed by Filter: 8001
+         Rows Removed by Filter: 6623
 (4 rows)
 
 SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,v3,v2,r2) < 60 LIMIT 10;
@@ -788,14 +788,14 @@ SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,v3,v2,r2) < 60 LIMI
 ------+------+------+------------------------------+------+------+------------+----
  4847 | 4847 | 4847 | Tue Dec 18 04:59:54 2018 PST | 4847 | 4847 | 06-02-2016 | t
  7474 | 7474 | 7474 | Tue Dec 18 04:59:54 2018 PST | 7474 | 7474 | 06-02-2016 | f
- 1627 | 1627 | 1627 | Tue Dec 18 04:59:54 2018 PST | 1627 | 1627 | 06-02-2016 | t
- 6694 | 6694 | 6694 | Tue Dec 18 04:59:54 2018 PST | 6694 | 6694 | 06-02-2016 | f
  5413 | 5413 | 5413 | Tue Dec 18 04:59:54 2018 PST | 5413 | 5413 | 06-02-2016 | t
+ 1627 | 1627 | 1627 | Tue Dec 18 04:59:54 2018 PST | 1627 | 1627 | 06-02-2016 | t
   923 |  923 | 923  | Tue Dec 18 04:59:54 2018 PST |  923 |  923 | 06-02-2016 | t
  7416 | 7416 | 7416 | Tue Dec 18 04:59:54 2018 PST | 7416 | 7416 | 06-02-2016 | f
  4545 | 4545 | 4545 | Tue Dec 18 04:59:54 2018 PST | 4545 | 4545 | 06-02-2016 | t
- 3851 | 3851 | 3851 | Tue Dec 18 04:59:54 2018 PST | 3851 | 3851 | 06-02-2016 | t
  9463 | 9463 | 9463 | Tue Dec 18 04:59:54 2018 PST | 9463 | 9463 | 06-02-2016 | t
+ 7547 | 7547 | 7547 | Tue Dec 18 04:59:54 2018 PST | 7547 | 7547 | 06-02-2016 | t
+ 6694 | 6694 | 6694 | Tue Dec 18 04:59:54 2018 PST | 6694 | 6694 | 06-02-2016 | f
 (10 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_multi_col_key WHERE yb_hash_code(r2,r1,v1) < 60 LIMIT 10;
@@ -804,22 +804,22 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_m
  Limit (actual rows=10 loops=1)
    ->  Seq Scan on test_table_multi_col_key (actual rows=10 loops=1)
          Filter: (yb_hash_code(r2, r1, v1) < 60)
-         Rows Removed by Filter: 8034
+         Rows Removed by Filter: 7831
 (4 rows)
 
 SELECT * from test_table_multi_col_key WHERE yb_hash_code(r2,r1,v1) < 60 LIMIT 10;
   h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3 
 ------+------+------+------------------------------+------+------+------------+----
- 8830 | 8830 | 8830 | Tue Dec 18 04:59:54 2018 PST | 8830 | 8830 | 06-02-2016 | f
  4254 | 4254 | 4254 | Tue Dec 18 04:59:54 2018 PST | 4254 | 4254 | 06-02-2016 | f
- 1269 | 1269 | 1269 | Tue Dec 18 04:59:54 2018 PST | 1269 | 1269 | 06-02-2016 | t
- 4669 | 4669 | 4669 | Tue Dec 18 04:59:54 2018 PST | 4669 | 4669 | 06-02-2016 | t
- 5325 | 5325 | 5325 | Tue Dec 18 04:59:54 2018 PST | 5325 | 5325 | 06-02-2016 | t
  2041 | 2041 | 2041 | Tue Dec 18 04:59:54 2018 PST | 2041 | 2041 | 06-02-2016 | t
  6305 | 6305 | 6305 | Tue Dec 18 04:59:54 2018 PST | 6305 | 6305 | 06-02-2016 | t
+ 8830 | 8830 | 8830 | Tue Dec 18 04:59:54 2018 PST | 8830 | 8830 | 06-02-2016 | f
+ 1269 | 1269 | 1269 | Tue Dec 18 04:59:54 2018 PST | 1269 | 1269 | 06-02-2016 | t
  8750 | 8750 | 8750 | Tue Dec 18 04:59:54 2018 PST | 8750 | 8750 | 06-02-2016 | f
  1372 | 1372 | 1372 | Tue Dec 18 04:59:54 2018 PST | 1372 | 1372 | 06-02-2016 | f
  8633 | 8633 | 8633 | Tue Dec 18 04:59:54 2018 PST | 8633 | 8633 | 06-02-2016 | t
+  707 |  707 | 707  | Tue Dec 18 04:59:54 2018 PST |  707 |  707 | 06-02-2016 | t
+ 4669 | 4669 | 4669 | Tue Dec 18 04:59:54 2018 PST | 4669 | 4669 | 06-02-2016 | t
 (10 rows)
 
 -- pushdown for multi_key_index_2 and multi_key_index_3

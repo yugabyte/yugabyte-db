@@ -67,10 +67,11 @@ public class RoleUtilTest extends FakeDBApplication {
                     new Permission(ResourceType.UNIVERSE, Action.CREATE),
                     new Permission(ResourceType.OTHER, Action.READ),
                     new Permission(ResourceType.UNIVERSE, Action.READ),
+                    new Permission(ResourceType.UNIVERSE, Action.DEBUG),
                     new Permission(ResourceType.UNIVERSE, Action.UPDATE))));
     assertNotNull(role.getRoleUUID());
     assertEquals("FakeRole1", role.getName());
-    assertEquals(4, role.getPermissionDetails().getPermissionList().size());
+    assertEquals(5, role.getPermissionDetails().getPermissionList().size());
     assertNotNull(role.getCreatedOn());
   }
 
@@ -121,10 +122,11 @@ public class RoleUtilTest extends FakeDBApplication {
                     new Permission(ResourceType.UNIVERSE, Action.CREATE),
                     new Permission(ResourceType.OTHER, Action.READ),
                     new Permission(ResourceType.UNIVERSE, Action.READ),
+                    new Permission(ResourceType.UNIVERSE, Action.DEBUG),
                     new Permission(ResourceType.UNIVERSE, Action.UPDATE))));
     assertNotNull(role.getRoleUUID());
     assertEquals("FakeRole1", role.getName());
-    assertEquals(4, role.getPermissionDetails().getPermissionList().size());
+    assertEquals(5, role.getPermissionDetails().getPermissionList().size());
     assertNotNull(role.getCreatedOn());
     assertEquals(0, RoleBinding.getAll().size());
 
@@ -186,10 +188,11 @@ public class RoleUtilTest extends FakeDBApplication {
             new HashSet<>(
                 Arrays.asList(
                     new Permission(ResourceType.UNIVERSE, Action.READ),
+                    new Permission(ResourceType.UNIVERSE, Action.DEBUG),
                     new Permission(ResourceType.OTHER, Action.READ),
                     new Permission(ResourceType.UNIVERSE, Action.UPDATE))));
     assertNotNull(role.getRoleUUID());
-    assertEquals(3, role.getPermissionDetails().getPermissionList().size());
+    assertEquals(4, role.getPermissionDetails().getPermissionList().size());
     assertEquals(0, RoleBinding.getAll().size());
 
     // Create a user with role bindings.
@@ -222,9 +225,10 @@ public class RoleUtilTest extends FakeDBApplication {
                 new Permission(ResourceType.OTHER, Action.READ),
                 new Permission(ResourceType.ROLE, Action.READ),
                 new Permission(ResourceType.UNIVERSE, Action.READ),
+                new Permission(ResourceType.UNIVERSE, Action.DEBUG),
                 new Permission(ResourceType.UNIVERSE, Action.UPDATE))));
     Role roleUpdated = Role.getOrBadRequest(customer.getUuid(), role.getRoleUUID());
-    assertEquals(5, roleUpdated.getPermissionDetails().getPermissionList().size());
+    assertEquals(6, roleUpdated.getPermissionDetails().getPermissionList().size());
     // 1 role binding for superadmin, and 1 for the custom role binding.
     assertEquals(2, RoleBinding.getAll().size());
     assertEquals(

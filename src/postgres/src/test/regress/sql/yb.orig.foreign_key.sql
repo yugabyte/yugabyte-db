@@ -444,7 +444,7 @@ INSERT INTO fk VALUES (500, 1); -- should fail
 SELECT * from fk;
 DROP TABLE pk, fk;
 
--- Test foreign key referencing partitioned table
+--- Test foreign key referencing partitioned table
 
 -- Base case
 CREATE TABLE pk(id INT PRIMARY KEY) PARTITION BY RANGE(id);
@@ -482,12 +482,16 @@ CREATE TABLE pk_1_100(a INT NOT NULL, c INT NOT NULL, d INT, b INT);
 ALTER TABLE pk ATTACH PARTITION pk_1_100 FOR VALUES FROM (1) TO (100);
 CREATE TABLE fk(a INT, c INT, FOREIGN KEY (a, c) REFERENCES pk(a, c));
 
-INSERT INTO pk VALUES (1, 100, 20, 150);
+INSERT INTO pk VALUES (1, 100, 20, 150), (1, 100, 21, 150);
 INSERT INTO fk VALUES (1, 20);
 INSERT INTO fk VALUES (150, 20); -- should fail
 SELECT * FROM fk;
 
-DROP TABLE pk, fk;
+CREATE TABLE fk2(a INT, c INT, FOREIGN KEY (a, c) REFERENCES pk(a, c) DEFERRABLE INITIALLY DEFERRED);
+INSERT INTO fk2 VALUES (1, 20), (1, 21);
+SELECT * FROM fk2;
+
+DROP TABLE pk, fk, fk2;
 
 -- Using index, PK root and leaf partition have different column orders
 CREATE TABLE pk(a INT, b INT, c INT, d INT, PRIMARY KEY(a, b), UNIQUE(a, c)) PARTITION BY RANGE(a);
@@ -538,6 +542,28 @@ INSERT INTO fk VALUES (1, 10); -- should fail
 SELECT * from fk;
 
 DROP TABLE pk, pk2, fk;
+
+-- Test foreign key constraint validation at the time of constraint creation
+CREATE TABLE pk(a INT, b INT, c INT, d INT, PRIMARY KEY(a, c)) PARTITION BY RANGE(a);
+CREATE TABLE pk_1_100 PARTITION OF pk FOR VALUES FROM (1) TO (100);
+INSERT INTO pk VALUES (1, 100, 20, 150);
+
+CREATE TABLE fk(a INT, c INT);
+INSERT INTO fk VALUES (1, 20);
+ALTER TABLE fk ADD FOREIGN KEY (a, c) REFERENCES pk(a, c);
+
+DROP TABLE pk, fk;
+
+CREATE TABLE pk(a INT, b INT, c INT, d INT, PRIMARY KEY(a, c)) PARTITION BY RANGE(a);
+CREATE TABLE pk_1_100(a INT NOT NULL, c INT NOT NULL, d INT, b INT);
+ALTER TABLE pk ATTACH PARTITION pk_1_100 FOR VALUES FROM (1) TO (100);
+INSERT INTO pk VALUES (1, 100, 20, 150);
+
+CREATE TABLE fk(a INT, c INT);
+INSERT INTO fk VALUES (1, 20);
+ALTER TABLE fk ADD FOREIGN KEY (a, c) REFERENCES pk(a, c);
+
+DROP TABLE pk, fk;
 
 -- test updating a subset of foreign constraint keys.
 CREATE TABLE pk(a INT, b INT, PRIMARY KEY (a, b));

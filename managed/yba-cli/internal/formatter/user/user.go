@@ -29,6 +29,9 @@ const (
 	groupMembershipsHeader = "Group Memberships"
 )
 
+// RoleBindings for the user
+var RoleBindings map[string][]ybaclient.RoleBinding
+
 // Context for user outputs
 type Context struct {
 	formatter.HeaderContext
@@ -115,7 +118,21 @@ func (c *Context) Email() string {
 
 // Role fetches User Role
 func (c *Context) Role() string {
-	return c.u.GetRole()
+	roles := "-"
+	roleBindings := RoleBindings[c.u.GetUuid()]
+	if len(roleBindings) == 0 {
+		return roles
+	}
+	for i, roleBinding := range roleBindings {
+		roleInRB := roleBinding.GetRole()
+		roleName := roleInRB.GetName()
+		if i == 0 {
+			roles = roleName
+		} else {
+			roles = fmt.Sprintf("%s, %s", roles, roleName)
+		}
+	}
+	return roles
 }
 
 // UserType fetches User Type
@@ -168,5 +185,15 @@ func (c *Context) GroupMemberships() string {
 
 // MarshalJSON function
 func (c *Context) MarshalJSON() ([]byte, error) {
-	return json.Marshal(c.u)
+	jsonBytes, err := json.Marshal(c.u)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal struct: %w", err)
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(jsonBytes, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal JSON to map: %w", err)
+	}
+	result["role"] = c.Role()
+	return json.Marshal(result)
 }

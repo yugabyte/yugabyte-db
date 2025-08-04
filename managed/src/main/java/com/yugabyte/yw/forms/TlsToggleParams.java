@@ -41,6 +41,10 @@ public class TlsToggleParams extends UpgradeTaskParams {
     this.enableClientToNodeEncrypt = enableClientToNodeEncrypt;
   }
 
+  public boolean isKubernetesUpgradeSupported() {
+    return true;
+  }
+
   @Override
   public void verifyParams(Universe universe, boolean isFirstTry) {
     // Due to a bug (PLAT-9434), temporarily disable rolling upgrade for TLS toggle.
@@ -140,6 +144,18 @@ public class TlsToggleParams extends UpgradeTaskParams {
             "RootCA and ClientRootCA cannot be different when rootAndClientRootCASame is true.");
       }
     }
+  }
+
+  /*
+   * Returns:
+   * 1: If task is to enable node-to-node encryption
+   * -1: If task is to disable node-to-node encryption
+   * 0: If there is no change in node-to-node encryption
+   */
+  public int getNodeToNodeChange(UserIntent userIntent) {
+    return userIntent.enableNodeToNodeEncrypt != enableNodeToNodeEncrypt
+        ? (enableNodeToNodeEncrypt ? 1 : -1)
+        : 0;
   }
 
   public static class Converter extends BaseConverter<TlsToggleParams> {}

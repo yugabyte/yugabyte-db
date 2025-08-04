@@ -34,18 +34,17 @@ class MonoDelta;
 
 namespace tserver {
 
-class RemoteBootstrapServiceProxy;
-
+using FetchDataFunction =
+    std::function<Status(const FetchDataRequestPB&, FetchDataResponsePB*, rpc::RpcController*)>;
 class RemoteBootstrapFileDownloader {
  public:
   RemoteBootstrapFileDownloader(const std::string* log_prefix, FsManager* fs_manager);
 
-  void Start(
-      std::shared_ptr<RemoteBootstrapServiceProxy> proxy, std::string session_id,
-      MonoDelta session_idle_timeout);
+  void Start(FetchDataFunction fetch_data, std::string session_id, MonoDelta session_idle_timeout);
 
   Status DownloadFile(
-      const tablet::FilePB& file_pb, const std::string& dir, DataIdPB* data_id);
+      const tablet::FilePB& file_pb, const std::string& dir, DataIdPB* data_id,
+      std::function<void(size_t)> chunk_download_cb = nullptr);
 
   // Download a single remote file. The block and WAL implementations delegate
   // to this method when downloading files.
@@ -55,7 +54,9 @@ class RemoteBootstrapFileDownloader {
   // Only used in one compilation unit, otherwise the implementation would
   // need to be in the header.
   template<class Appendable>
-  Status DownloadFile(const DataIdPB& data_id, Appendable* appendable);
+  Status DownloadFile(
+      const DataIdPB& data_id, Appendable* appendable,
+      std::function<void(size_t)> chunk_download_cb = nullptr);
 
   FsManager& fs_manager() const {
     return fs_manager_;
@@ -77,7 +78,7 @@ class RemoteBootstrapFileDownloader {
   const std::string& log_prefix_;
   FsManager& fs_manager_;
 
-  std::shared_ptr<RemoteBootstrapServiceProxy> proxy_;
+  FetchDataFunction fetch_data_;
   std::string session_id_;
   MonoDelta session_idle_timeout_ = MonoDelta::kZero;
   std::unordered_map<uint64_t, std::string> inode2file_;

@@ -17,18 +17,62 @@ CREATE USER foo PASSWORD 'fooooooo';
 ALTER USER foo PASSWORD 'foo2';
 CREATE ROLE fizzbuzz PASSWORD 'barrr';
 ALTER ROLE fizzbuzz PASSWORD 'barrr2';
--- YB: TODO(devansh): change output when re-enabling password redaction (see DB-11332)
+-- Passwords of all lengths must be redacted.
+CREATE ROLE minimalpass PASSWORD '1';
+CREATE ROLE smallpass PASSWORD '123';
+CREATE ROLE largepass PASSWORD '123456790123456';
+-- A NULL password must also be redacted.
+ALTER ROLE fizzbuzz PASSWORD NULL;
+-- Password must be redacted irrespective of its position in the query.
+ALTER ROLE fizzbuzz SUPERUSER PASSWORD 'test' NOLOGIN;
+-- Test that pgss handles pl/pgSQL statements well.
+CREATE FUNCTION returnArg(variadic NUMERIC[]) RETURNS NUMERIC LANGUAGE plpgsql AS $$
+DECLARE
+	r INTEGER := $1[1];
+BEGIN
+	RETURN r;
+END;
+$$;
+SELECT returnArg(10, 2);
+ returnarg 
+-----------
+        10
+(1 row)
+
+SELECT returnArg(1, 4, 7);
+ returnarg 
+-----------
+         1
+(1 row)
+
 SELECT query, calls, rows FROM pg_stat_statements ORDER BY query COLLATE "C";
-                                    query                                     | calls | rows 
-------------------------------------------------------------------------------+-------+------
- ALTER ROLE fizzbuzz PASSWORD 'barrr2'                                        |     1 |    0
- ALTER USER foo PASSWORD 'foo2'                                               |     1 |    0
- CREATE ROLE fizzbuzz PASSWORD 'barrr'                                        |     1 |    0
- CREATE USER foo PASSWORD 'fooooooo'                                          |     1 |    0
- SELECT pg_stat_statements_reset()                                            |     1 |    1
- SELECT query, calls, rows FROM pg_stat_statements ORDER BY query COLLATE "C" |     0 |    0
-(6 rows)
+                                        query                                         | calls | rows 
+--------------------------------------------------------------------------------------+-------+------
+ ALTER ROLE fizzbuzz PASSWORD <REDACTED>                                              |     1 |    0
+ ALTER ROLE fizzbuzz PASSWORD <REDACTED>                                              |     1 |    0
+ ALTER ROLE fizzbuzz SUPERUSER PASSWORD <REDACTED>                                    |     1 |    0
+ ALTER USER foo PASSWORD <REDACTED>                                                   |     1 |    0
+ CREATE FUNCTION returnArg(variadic NUMERIC[]) RETURNS NUMERIC LANGUAGE plpgsql AS $$+|     1 |    0
+ DECLARE                                                                             +|       | 
+         r INTEGER := $1[1];                                                         +|       | 
+ BEGIN                                                                               +|       | 
+         RETURN r;                                                                   +|       | 
+ END;                                                                                +|       | 
+ $$                                                                                   |       | 
+ CREATE ROLE fizzbuzz PASSWORD <REDACTED>                                             |     1 |    0
+ CREATE ROLE largepass PASSWORD <REDACTED>                                            |     1 |    0
+ CREATE ROLE minimalpass PASSWORD <REDACTED>                                          |     1 |    0
+ CREATE ROLE smallpass PASSWORD <REDACTED>                                            |     1 |    0
+ CREATE USER foo PASSWORD <REDACTED>                                                  |     1 |    0
+ SELECT pg_stat_statements_reset()                                                    |     1 |    1
+ SELECT query, calls, rows FROM pg_stat_statements ORDER BY query COLLATE "C"         |     0 |    0
+ SELECT returnArg($1, $2)                                                             |     1 |    1
+ SELECT returnArg($1, $2, $3)                                                         |     1 |    1
+(14 rows)
 
 DROP USER foo;
 DROP ROLE fizzbuzz;
+DROP ROLE minimalpass;
+DROP ROLE smallpass;
+DROP ROLE largepass;
 DROP EXTENSION pg_stat_statements;

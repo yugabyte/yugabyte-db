@@ -202,9 +202,6 @@ void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
   const auto& wait_state = ash::WaitStateInfo::CurrentWaitState();
 
   if (wait_state) {
-    if (req->has_ash_metadata()) {
-      wait_state->UpdateMetadataFromPB(req->ash_metadata());
-    }
     if (req->has_tablet_id()) {
       wait_state->UpdateAuxInfo({
         .tablet_id = req->tablet_id(),
@@ -294,9 +291,6 @@ void RemoteBootstrapServiceImpl::FetchData(const FetchDataRequestPB* req,
 
   const auto& wait_state = ash::WaitStateInfo::CurrentWaitState();
   if (wait_state) {
-    if (req->has_ash_metadata()) {
-      wait_state->UpdateMetadataFromPB(req->ash_metadata());
-    }
     wait_state->UpdateAuxInfo({.tablet_id = session->tablet_id(), .method = "FetchData"});
   }
 
@@ -586,9 +580,10 @@ Status RemoteBootstrapServiceImpl::DoEndRemoteBootstrapSession(
     num_sessions_serving_data_->Decrement();
     LOG_IF(DFATAL, nsessions_serving_data_.fetch_sub(1, std::memory_order_acq_rel) <= 0)
           << "found nsessions_serving_data_ <= 0 when updating rbs session " << session_id;
-    LOG(ERROR) << "Remote bootstrap session " << session_id << " on tablet " << session->tablet_id()
-               << " with peer " << session->requestor_uuid() << " failed. session_succeeded = "
-               << session_succeeded;
+    LOG(WARNING)
+        << "Remote bootstrap session " << session_id << " on tablet " << session->tablet_id()
+        << " with peer " << session->requestor_uuid() << " failed. session_succeeded = "
+        << session_succeeded;
   }
 
   return Status::OK();

@@ -63,6 +63,8 @@ Linux OS root permissions are required for the server, see [Servers for YBA](../
 
 When installing YugabyteDB Anywhere on an AWS VM, no cloud permissions are required.
 
+If you attach an IAM role with the appropriate permissions to the EC2 VM instance where YugabyteDB Anywhere will be running, you can use the YugabyteDB Anywhere instance's IAM role when setting up node servers and S3 backup. Refer to [Permissions to deploy nodes](../cloud-permissions-nodes-aws/) and [Permissions to back up and restore](../cloud-permissions-storage/).
+
 Linux OS root permissions are required for the server, see [Servers for YBA](../../server-yba/).
 
   </div>
@@ -70,6 +72,8 @@ Linux OS root permissions are required for the server, see [Servers for YBA](../
   <div id="gcp" class="tab-pane fade" role="tabpanel" aria-labelledby="gcp-tab">
 
 When installing YugabyteDB Anywhere on a GCP VM, no cloud permissions are required.
+
+If you attach a service account with appropriate permissions to the GCP VM where YugabyteDB Anywhere will be running, you can use the YugabyteDB Anywhere instance's role when setting up node servers and S3 backup. Refer to [Permissions to deploy nodes](../cloud-permissions-nodes-gcp/) and [Permissions to back up and restore](../cloud-permissions-storage/).
 
 Linux OS root permissions are required for the server, see [Servers for YBA](../../server-yba/).
 

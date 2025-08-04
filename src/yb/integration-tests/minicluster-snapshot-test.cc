@@ -41,6 +41,7 @@
 
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
+#include "yb/client/snapshot_test_util.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/table_info.h"
 #include "yb/client/transaction_manager.h"
@@ -83,6 +84,7 @@
 
 DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int32(data_size_metric_updater_interval_sec);
+DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_bool(enable_db_clone);
 DECLARE_int32(load_balancer_initial_delay_secs);
 DECLARE_bool(master_auto_run_initdb);
@@ -96,7 +98,6 @@ DECLARE_int32(ysql_sequence_cache_minval);
 DECLARE_int32(ysql_clone_pg_schema_rpc_timeout_ms);
 DECLARE_uint32(TEST_clone_pg_schema_delay_ms);
 DECLARE_int32(ysql_tablespace_info_refresh_secs);
-DECLARE_int32(TEST_clone_pg_schema_inject_latency_ms);
 DECLARE_bool(TEST_fail_clone_pg_schema);
 DECLARE_bool(TEST_fail_clone_tablets);
 DECLARE_string(TEST_mini_cluster_pg_host_port);
@@ -196,8 +197,8 @@ Status DeleteSnapshotSchedule(MasterBackupProxy* proxy, const SnapshotScheduleId
 
 Result<TxnSnapshotId> WaitNewSnapshot(MasterBackupProxy* proxy, const SnapshotScheduleId& id) {
   LOG(INFO) << "WaitNewSnapshot, schedule id: " << id;
-  std::string last_snapshot_id;
-  std::string new_snapshot_id;
+  TxnSnapshotId last_snapshot_id;
+  TxnSnapshotId new_snapshot_id;
   RETURN_NOT_OK(WaitFor(
       [&proxy, &id, &last_snapshot_id, &new_snapshot_id]() -> Result<bool> {
         // If there's a master leader failover then we should wait for the next cycle.
@@ -206,9 +207,10 @@ Result<TxnSnapshotId> WaitNewSnapshot(MasterBackupProxy* proxy, const SnapshotSc
         if (snapshots.empty()) {
           return false;
         }
-        auto snapshot_id = snapshots[snapshots.size() - 1].id();
+        auto snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(
+            snapshots[snapshots.size() - 1].id()));
         LOG(INFO) << "WaitNewSnapshot, last snapshot id: " << snapshot_id;
-        if (last_snapshot_id.empty()) {
+        if (last_snapshot_id.IsNil()) {
           last_snapshot_id = snapshot_id;
           return false;
         }
@@ -220,7 +222,7 @@ Result<TxnSnapshotId> WaitNewSnapshot(MasterBackupProxy* proxy, const SnapshotSc
         }
       },
       kInterval * 5, "Wait new schedule snapshot"));
-  return FullyDecodeTxnSnapshotId(new_snapshot_id);
+  return new_snapshot_id;
 }
 
 Status WaitForRestoration(
@@ -451,6 +453,16 @@ class PostgresMiniClusterTest : public pgwrapper::PgMiniTestBase {
 
   MiniCluster* mini_cluster() { return cluster_.get(); }
 
+  Result<TableInfoPtr> GetTable(const std::string& table_name, const std::string& db_name) {
+    auto leader_master = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
+    for (const auto& table : leader_master->catalog_manager_impl().GetTables(GetTablesMode::kAll)) {
+      if (table->name() == table_name && table->namespace_name() == db_name) {
+        return table;
+      }
+    }
+    return STATUS_FORMAT(NotFound, "Table $0 not found", table_name);
+  }
+
   Status CreateDatabase(
       const std::string& namespace_name,
       master::YsqlColocationConfig colocated = master::YsqlColocationConfig::kNotColocated) {
@@ -614,7 +626,7 @@ TEST_P(MasterExportSnapshotTest, ExportSnapshotAsOfTimeWithHiddenTables) {
   messenger_->Shutdown();
 }
 
-class PgCloneTest : public PostgresMiniClusterTest {
+class PgCloneInitiallyEmptyDBTest : public PostgresMiniClusterTest {
  protected:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_initial_delay_secs) = 0;
@@ -646,24 +658,12 @@ class PgCloneTest : public PostgresMiniClusterTest {
         master_backup_proxy_.get(), YQL_DATABASE_PGSQL, kSourceNamespaceName, kInterval, kRetention,
         kTimeout));
     RETURN_NOT_OK(WaitScheduleSnapshot(master_backup_proxy_.get(), schedule_id_, kTimeout));
-    RETURN_NOT_OK(source_conn_->ExecuteFormat(
-        "CREATE TABLE $0 (key INT PRIMARY KEY, value INT)", kSourceTableName));
      return Status::OK();
   }
 
   void DoTearDown() override {
     messenger_->Shutdown();
     PostgresMiniClusterTest::DoTearDown();
-  }
-
-  Result<TableInfoPtr> GetTable(const std::string& table_name, const std::string& db_name) {
-    auto leader_master = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
-    for (const auto& table : leader_master->catalog_manager_impl().GetTables(GetTablesMode::kAll)) {
-      if (table->name() == table_name && table->namespace_name() == db_name) {
-        return table;
-      }
-    }
-    return STATUS_FORMAT(NotFound, "Table $0 not found", table_name);
   }
 
   Status SplitTablet(const TabletId& tablet_id) {
@@ -695,6 +695,15 @@ class PgCloneTest : public PostgresMiniClusterTest {
   const std::string kTargetNamespaceName1 = "testdb_clone1";
   const std::string kTargetNamespaceName2 = "testdb_clone2";
   const MonoDelta kTimeout = MonoDelta::FromSeconds(30);
+};
+
+class PgCloneTest : public PgCloneInitiallyEmptyDBTest {
+ protected:
+  void SetUp() override {
+    PgCloneInitiallyEmptyDBTest::SetUp();
+    ASSERT_OK(source_conn_->ExecuteFormat(
+        "CREATE TABLE $0 (key INT PRIMARY KEY, value INT)", kSourceTableName));
+  }
 };
 
 class PgCloneTestWithColocatedDBParam
@@ -774,6 +783,28 @@ TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneYsqlS
   ASSERT_VECTORS_EQ(rows, kRows);
 }
 
+TEST_F_EX(PgCloneTest, TestOidsAdvancedAfterClone, PgCloneInitiallyEmptyDBTest) {
+  ASSERT_OK(source_conn_->Execute("CREATE TABLE my_table (a INT, b INT)"));
+  auto timestamp = ASSERT_RESULT(GetCurrentTime());
+
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName1, kSourceNamespaceName,
+      timestamp.ToInt64()));
+
+  // Ensure that the DROP below will only hide the table, not delete it.
+  SnapshotScheduleId schedule_id = ASSERT_RESULT(CreateSnapshotSchedule(
+      master_backup_proxy_.get(), YQL_DATABASE_PGSQL, kTargetNamespaceName1, kInterval, kRetention,
+      kTimeout));
+  ASSERT_OK(WaitScheduleSnapshot(master_backup_proxy_.get(), schedule_id, kTimeout));
+
+  auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+  ASSERT_OK(target_conn.Execute("DROP TABLE my_table"));
+
+  // At this point, if we have not advanced the normal space OID counter, then we will be attempting
+  // to create a table with the same OID as the one we just dropped.  That would fail.
+  ASSERT_OK(target_conn.Execute("CREATE TABLE my_table (a INT, b INT)"));
+}
+
 TEST_F(PgCloneTest, CloneVectorIndex) {
   ASSERT_OK(source_conn_->Execute("CREATE EXTENSION vector"));
   ASSERT_OK(source_conn_->Execute(
@@ -817,6 +848,70 @@ TEST_F(PgCloneTest, CloneVectorIndex) {
   }
   LOG(INFO) << "Drop second clone";
   ASSERT_OK(source_conn_->ExecuteFormat("DROP DATABASE $0", kTargetNamespaceName2));
+}
+
+class TabletDataSizeMetricsTest : public PostgresMiniClusterTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_data_size_metric_updater_interval_sec) = 1;
+    PostgresMiniClusterTest::SetUp();
+    messenger_ = ASSERT_RESULT(rpc::MessengerBuilder("test-msgr").set_num_reactors(1).Build());
+    proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
+    snapshot_util_ = std::make_unique<client::SnapshotTestUtil>();
+    snapshot_util_->SetProxy(&client_->proxy_cache());
+    snapshot_util_->SetCluster(cluster_.get());
+  }
+
+  void DoTearDown() override {
+    messenger_->Shutdown();
+    PostgresMiniClusterTest::DoTearDown();
+  }
+
+  std::unique_ptr<client::SnapshotTestUtil> snapshot_util_;
+  std::unique_ptr<rpc::Messenger> messenger_;
+  std::unique_ptr<rpc::ProxyCache> proxy_cache_;
+};
+
+TEST_F(TabletDataSizeMetricsTest, TotalOnDiskSizeIncludesSnapshots) {
+  ASSERT_OK(CreateDatabase("testdb"));
+  auto conn = ASSERT_RESULT(ConnectToDB("testdb"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t1 (key INT PRIMARY KEY, value INT) SPLIT INTO 1 TABLETS"));
+  auto table = ASSERT_RESULT(GetTable("t1", "testdb"));
+  auto tablet_id = ASSERT_RESULT(table->GetTablets())[0]->tablet_id();
+  auto tablet_peer = ASSERT_RESULT(
+      cluster_->mini_tablet_server(0)->server()->tablet_peer_lookup()->GetServingTablet(tablet_id));
+  LOG(INFO) << "Tablet id: " << tablet_id;
+
+  // Write some data and create a snapshot (this should create an SST file).
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO t1 VALUES (generate_series(1,1000), generate_series(1,1000))"));
+  ASSERT_RESULT(snapshot_util_->CreateSnapshot(table->id()));
+
+  // Get the on-disk size of the tablet.
+  tablet::TabletOnDiskSizeInfo size_before;
+  ASSERT_OK(WaitFor([&]() {
+    size_before = tablet_peer->GetOnDiskSizeInfo();
+    return size_before.sst_files_disk_size > 0 &&
+           size_before.total_on_disk_size > size_before.sst_files_disk_size;
+  }, 30s, "Wait for on-disk size to include the SST"));
+
+  // Delete the data in the tablet and re-compact. The SST file size should drop to 0.
+  ASSERT_OK(conn.Execute("DELETE FROM t1"));
+  ASSERT_OK(WaitFor([&]() {
+    // Retrigger compactions until this peer has no SST files. This is required because if the
+    // delete has only applied on the other two peers, the compaction would not do anything on this
+    // peer.
+    FlushAndCompactTablets();
+    return tablet_peer->GetOnDiskSizeInfo().sst_files_disk_size == 0;
+  }, 30s, "Wait for on-disk size to drop after delete"));
+
+  // Once the on-disk size metric updater has run, check that the total on-disk size has not
+  // decrease by a significant portion of the size of the SST we deleted.
+  SleepFor(FLAGS_data_size_metric_updater_interval_sec * 2s);
+  auto size_after = tablet_peer->GetOnDiskSizeInfo();
+  auto size_diff = size_before.total_on_disk_size - size_after.total_on_disk_size;
+  ASSERT_LT(size_diff, size_before.sst_files_disk_size * 0.9);
 }
 
 class TsDataSizeMetricsTest : public PgCloneTest {
@@ -925,10 +1020,10 @@ TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneWithA
   ASSERT_EQ(rows[0], kRow);
 }
 
-TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(CloneYsqlDbTiemout)) {
+TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(CloneYsqlDbTimeout)) {
   // Inject an artificial delay that would make CREATE DATABASE timeout in case clone is using
   // a timeout other than ysql_clone_pg_schema_rpc_timeout_ms.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_clone_pg_schema_inject_latency_ms) =
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_clone_pg_schema_delay_ms) =
       FLAGS_yb_client_admin_operation_timeout_sec * 1000;
   auto status = source_conn_->ExecuteFormat(
       "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName);

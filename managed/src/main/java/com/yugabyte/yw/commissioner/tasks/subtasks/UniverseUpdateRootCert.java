@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.CertificateInfo;
@@ -21,7 +22,6 @@ public class UniverseUpdateRootCert extends UniverseTaskBase {
   // Format is <cert UUID>.<universe UUID>.<Suffix>.
   private static final String MULTI_ROOT_CERT = "%s.%s.ca.multi.root.crt";
   private static final String MULTI_ROOT_CERT_KEY = "%s.%s.ca.multi.root.key.pem";
-  private static final String MULTI_ROOT_CERT_TMP_LABEL_SUFFIX = " (TEMPORARY)";
 
   @Inject
   protected UniverseUpdateRootCert(BaseTaskDependencies baseTaskDependencies) {
@@ -37,6 +37,7 @@ public class UniverseUpdateRootCert extends UniverseTaskBase {
   public static class Params extends UniverseTaskParams {
     public UUID rootCA;
     public UpdateRootCertAction action;
+    public UUID temporaryRootCAUUID;
   }
 
   protected UniverseUpdateRootCert.Params taskParams() {
@@ -72,13 +73,22 @@ public class UniverseUpdateRootCert extends UniverseTaskBase {
                 FileUtils.readFileToString(newRootCertFile, Charset.defaultCharset());
             FileUtils.write(multiCertFile, oldRootCertContent, Charset.defaultCharset());
             FileUtils.write(multiCertFile, newRootCertContent, Charset.defaultCharset(), true);
-            // Create a temporary certificate pointing to the new multi certificate
-            // Update universe details to temporarily point to the created certificate
-            CertificateInfo temporaryCert =
-                CertificateInfo.createCopy(
-                    oldRootCert,
-                    oldRootCert.getLabel() + MULTI_ROOT_CERT_TMP_LABEL_SUFFIX,
-                    multiCertFile.getAbsolutePath());
+
+            CertificateInfo temporaryCert;
+            if (taskParams().temporaryRootCAUUID != null) {
+              temporaryCert = CertificateInfo.getOrBadRequest(taskParams().temporaryRootCAUUID);
+              temporaryCert.update(multiCertFile.getAbsolutePath());
+            } else {
+              // Create a temporary certificate pointing to the new multi certificate
+              // Update universe details to temporarily point to the created certificate
+              temporaryCert =
+                  CertificateInfo.createCopy(
+                      oldRootCert,
+                      oldRootCert.getLabel()
+                          + EncryptionInTransitUtil.MULTI_ROOT_CERT_TMP_LABEL_SUFFIX,
+                      multiCertFile.getAbsolutePath());
+            }
+
             saveUniverseDetails(
                 universe -> {
                   UniverseDefinitionTaskParams details = universe.getUniverseDetails();

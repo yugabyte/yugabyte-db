@@ -76,26 +76,21 @@ typedef struct YbPgRpcStats
 	double		wait_time;		/* RPC wait time (ns) */
 } YbPgRpcStats;
 
-typedef struct YbPgEventMetric
-{
-	double		sum;
-	double		count;
-} YbPgEventMetric;
-
 typedef struct YbInstrumentation
 {
 	YbPgRpcStats tbl_reads;
 	YbPgRpcStats index_reads;
 	YbPgRpcStats catalog_reads;
 	YbPgRpcStats write_flushes;
+	double		tbl_read_ops;
+	double		index_read_ops;
+	double		catalog_read_ops;
 	double		tbl_writes;
 	double		index_writes;
 	double		catalog_writes;
 
-	uint64_t	storage_metrics_version;
-	double		storage_gauge_metrics[YB_STORAGE_GAUGE_COUNT];
-	double		storage_counter_metrics[YB_STORAGE_COUNTER_COUNT];
-	YbPgEventMetric storage_event_metrics[YB_STORAGE_EVENT_COUNT];
+	YbcPgExecStorageMetrics *read_metrics;
+	YbcPgExecStorageMetrics *write_metrics;
 
 	uint64_t	rows_removed_by_recheck;
 } YbInstrumentation;

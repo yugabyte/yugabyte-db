@@ -24,7 +24,6 @@
 #include "yb/docdb/deadline_info.h"
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_ql_scanspec.h"
-#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_reader.h"
 #include "yb/docdb/doc_rowwise_iterator_base.h"
 #include "yb/docdb/intent_aware_iterator.h"

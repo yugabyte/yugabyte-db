@@ -109,8 +109,8 @@ int			geqo_threshold;
 int			min_parallel_table_scan_size;
 int			min_parallel_index_scan_size;
 
-bool 		yb_enable_planner_trace;
-char		*yb_hinted_uids;
+bool		yb_enable_planner_trace;
+char	   *yb_hinted_uids;
 
 /* Hook for plugins to get control in set_rel_pathlist() */
 set_rel_pathlist_hook_type set_rel_pathlist_hook = NULL;
@@ -192,7 +192,7 @@ static void remove_unused_subquery_outputs(Query *subquery, RelOptInfo *rel,
 										   Bitmapset *extra_used_attrs);
 
 /* YB declarations */
-static int ybCmpRelOptInfo(const void *p1, const void *p2);
+static int	ybCmpRelOptInfo(const void *p1, const void *p2);
 
 
 /*
@@ -3603,65 +3603,106 @@ standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 #endif
 		}
 
-		if (IsYugaByteEnabled())
+		if (IsYugaByteEnabled() && root->ybHintedJoinsOuter != NULL)
 		{
 			/*
-			 * Sweep all joins at this level and look for disabled join
-			 * and non-disabled joins.
+			 * There is a Leading hint so sweep all joins at this level
+			 * and look for disabled and non-disabled joins. Also determine
+			 * if some join at this level has been hinted. If so, it is safe to
+			 * prune non-hinted joins.
 			 */
-			List *levelJoinRels = NIL;
-			bool foundDisabledRel = false;
-			ListCell *lc2;
+			List	   *ybLevelJoinRels = NIL;
+			bool		ybFoundDisabledRel = false;
+			bool		ybFoundHintedJoin = false;
+
+			ListCell   *lc2;
+
 			foreach(lc2, root->join_rel_level[lev])
 			{
-				RelOptInfo *rel = (RelOptInfo *) lfirst(lc2);
-				if (rel->cheapest_total_path->total_cost < disable_cost ||
-					rel->cheapest_total_path->ybIsHinted ||
-					rel->cheapest_total_path->ybHasHintedUid)
+				RelOptInfo *ybRel = (RelOptInfo *) lfirst(lc2);
+
+				Assert(IS_JOIN_REL(ybRel));
+
+				/*
+				 * Assuming that only join paths exist in the space
+				 * of enumerated joins.
+				 */
+				switch (ybRel->cheapest_total_path->type)
+				{
+					case T_NestPath:
+					case T_MergePath:
+					case T_HashPath:
+						break;
+					default:
+						ereport(ERROR,
+								(errmsg("expected a join path (%u)",
+										ybRel->cheapest_total_path->ybUniqueId)));
+						break;
+				}
+
+				if (ybRel->cheapest_total_path->ybIsHinted ||
+					ybRel->cheapest_total_path->ybHasHintedUid)
+				{
+					ybFoundHintedJoin = true;
+				}
+
+				if (ybRel->cheapest_total_path->total_cost < disable_cost ||
+					ybRel->cheapest_total_path->ybIsHinted ||
+					ybRel->cheapest_total_path->ybHasHintedUid)
 				{
 					/*
-					 * Found a join with cost < disable cost. Or cost could be
-					 * >= disable cost (because the join is really expensive)
-					 * but it is in a Leading hint.
+					 * Found a join with cost < disable cost,
+					 * or whose cost could be >= disable cost because the join is
+					 * really expensive. But it is in a Leading hint, or
+					 * has been hinted using its UID so add it to the list
+					 * of joins we want to keep at this level.
 					 */
-					levelJoinRels = lappend(levelJoinRels, rel);
+					ybLevelJoinRels = lappend(ybLevelJoinRels, ybRel);
 				}
 				else
 				{
 					/*
-					 * Found a path that has been disabled via hints.
+					 * Found a join that has been disabled,
+					 * or that perhaps has a "true" cost > disable cost.
+					 * It is a join and is not hinted so set a flag so we can
+					 * try pruning below.
 					 */
-					foundDisabledRel = true;
+					ybFoundDisabledRel = true;
 				}
 			}
 
 			/*
-			 * Now look for a mix of enabled and disabled join paths at this level.
+			 * Now look for a mix of enabled and disabled join paths at this level,
+			 * but only do this if some join at this level has been hinted.
 			 */
-			if (levelJoinRels != NIL && foundDisabledRel)
+			if (ybLevelJoinRels != NIL && ybFoundDisabledRel && ybFoundHintedJoin)
 			{
 				if (yb_enable_planner_trace)
 				{
 					StringInfoData dropMsg;
+
 					initStringInfo(&dropMsg);
 					appendStringInfo(&dropMsg, "\n++ Level %d DROP rel", lev);
 
 					StringInfoData keepMsg;
+
 					initStringInfo(&keepMsg);
 					appendStringInfo(&keepMsg, "\n++ Level %d KEEP rel", lev);
 
 					foreach(lc2, root->join_rel_level[lev])
 					{
 						RelOptInfo *rel = (RelOptInfo *) lfirst(lc2);
-						if (!list_member_ptr(levelJoinRels, rel))
+
+						if (!list_member_ptr(ybLevelJoinRels, rel))
 						{
 							ybTraceRelOptInfo(root, rel, dropMsg.data);
 						}
 					}
 
-					foreach(lc2, levelJoinRels)
+					foreach(lc2, ybLevelJoinRels)
 					{
 						RelOptInfo *rel = (RelOptInfo *) lfirst(lc2);
+
 						ybTraceRelOptInfo(root, rel, keepMsg.data);
 					}
 
@@ -3670,9 +3711,10 @@ standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 				}
 
 				/*
-				 * Keep only the non-disabled joins since the disabled ones cannot be part of the best plan.
+				 * Keep only the non-disabled joins since the disabled ones
+				 * cannot be part of the best plan.
 				 */
-				root->join_rel_level[lev] = levelJoinRels;
+				root->join_rel_level[lev] = ybLevelJoinRels;
 			}
 		}
 	}
@@ -3688,9 +3730,10 @@ standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 
 	root->join_rel_level = NULL;
 
-	if (IsYugaByteEnabled()&& yb_enable_planner_trace)
+	if (IsYugaByteEnabled() && yb_enable_planner_trace)
 	{
 		StringInfoData buf;
+
 		initStringInfo(&buf);
 		appendStringInfo(&buf, "final rel Level %d :", levels_needed);
 		ybTraceRelOptInfo(root, rel, buf.data);
@@ -4655,13 +4698,15 @@ generate_partitionwise_join_paths(PlannerInfo *root, RelOptInfo *rel)
 bool
 ybFindProhibitedJoin(PlannerInfo *root, NodeTag joinTag, Relids joinRelids)
 {
-	bool foundProhibitedJoin = false;
+	bool		foundProhibitedJoin = false;
 
-	ListCell *lc1, *lc2;
+	ListCell   *lc1,
+			   *lc2;
+
 	forboth(lc1, root->ybProhibitedJoinTypes, lc2, root->ybProhibitedJoins)
 	{
-		NodeTag prohibitedJoinTag = (NodeTag) lfirst_int(lc1);
-		Relids prohibitedJoinRelids = (Relids) lfirst(lc2);
+		NodeTag		prohibitedJoinTag = (NodeTag) lfirst_int(lc1);
+		Relids		prohibitedJoinRelids = (Relids) lfirst(lc2);
 
 		if (joinTag == prohibitedJoinTag && bms_equal(prohibitedJoinRelids, joinRelids))
 		{
@@ -4706,13 +4751,16 @@ ybFindProhibitedJoin(PlannerInfo *root, NodeTag joinTag, Relids joinRelids)
 bool
 ybFindHintedJoin(PlannerInfo *root, Relids outerRelids, Relids innerRelids, bool trySwapped)
 {
-	bool foundHintedJoin = false;
+	bool		foundHintedJoin = false;
 
-	ListCell *lc1, *lc2;
+	ListCell   *lc1,
+			   *lc2;
+
 	forboth(lc1, root->ybHintedJoinsOuter, lc2, root->ybHintedJoinsInner)
 	{
-		Relids hintedJoinOuterRelids = (Relids) lfirst(lc1);
-		Relids hintedJoinInnerRelids = (Relids) lfirst(lc2);
+		Relids		hintedJoinOuterRelids = (Relids) lfirst(lc1);
+		Relids		hintedJoinInnerRelids = (Relids) lfirst(lc2);
+
 		if ((bms_equal(outerRelids, hintedJoinOuterRelids) && bms_equal(innerRelids, hintedJoinInnerRelids)) ||
 			(trySwapped && bms_equal(outerRelids, hintedJoinInnerRelids) && bms_equal(innerRelids, hintedJoinOuterRelids)))
 		{
@@ -4760,10 +4808,10 @@ ybFindHintedJoin(PlannerInfo *root, Relids outerRelids, Relids innerRelids, bool
 static int
 ybCmpRelOptInfo(const void *p1, const void *p2)
 {
-	RelOptInfo *rel1 = * (RelOptInfo **) p1;
-	RelOptInfo *rel2 = * (RelOptInfo **) p1;
+	RelOptInfo *rel1 = *(RelOptInfo **) p1;
+	RelOptInfo *rel2 = *(RelOptInfo **) p1;
 
-	int cmp;
+	int			cmp;
 
 	if (rel1 == NULL)
 	{
@@ -4829,8 +4877,9 @@ ybBuildRelidsString(PlannerInfo *root, Relids relids, StringInfoData *buf)
 		int			pos;
 		bool		first = true;
 
-		size_t arrSize = root->simple_rel_array_size * sizeof(RelOptInfo *);
+		size_t		arrSize = root->simple_rel_array_size * sizeof(RelOptInfo *);
 		RelOptInfo **copy_simple_rel_array = (RelOptInfo **) palloc(arrSize);
+
 		memcpy(copy_simple_rel_array, root->simple_rel_array, arrSize);
 		qsort(copy_simple_rel_array, root->simple_rel_array_size, sizeof(RelOptInfo *), ybCmpRelOptInfo);
 
@@ -4842,10 +4891,12 @@ ybBuildRelidsString(PlannerInfo *root, Relids relids, StringInfoData *buf)
 				appendStringInfoSpaces(buf, 1);
 			}
 
-			bool printed = false;
+			bool		printed = false;
+
 			if (pos < root->simple_rel_array_size)
 			{
 				RelOptInfo *rel = copy_simple_rel_array[pos];
+
 				if (rel != NULL && rel->ybHintAlias != NULL)
 				{
 					appendStringInfo(buf, "%s", rel->ybHintAlias);
@@ -4876,7 +4927,7 @@ ybBuildRelOptInfoString(PlannerInfo *root, RelOptInfo *relOptInfo, StringInfoDat
 	if (relOptInfo->ybUniqueBaseId > 0)
 	{
 		appendStringInfo(buf, "table %s, block %d, UID = %d, relid = %d",
-			relOptInfo->ybHintAlias, relOptInfo->ybBlockId, relOptInfo->ybUniqueBaseId, relOptInfo->relid);
+						 relOptInfo->ybHintAlias, relOptInfo->ybBlockId, relOptInfo->ybUniqueBaseId, relOptInfo->relid);
 	}
 	else
 	{
@@ -4888,6 +4939,7 @@ void
 ybTraceRelOptInfo(PlannerInfo *root, RelOptInfo *relOptInfo, char *msg)
 {
 	StringInfoData buf;
+
 	initStringInfo(&buf);
 
 	if (msg != NULL)
@@ -4911,11 +4963,13 @@ ybTraceRelOptInfo(PlannerInfo *root, RelOptInfo *relOptInfo, char *msg)
 		ereport(DEBUG1,
 				(errmsg("\n%s Cheapest total path is NULL\n", ybMsgBuf)));
 
-		Path *bestCurrentPath = NULL;
-		ListCell *lc;
+		Path	   *bestCurrentPath = NULL;
+		ListCell   *lc;
+
 		foreach(lc, relOptInfo->pathlist)
 		{
-			Path *path = (Path *) lfirst(lc);
+			Path	   *path = (Path *) lfirst(lc);
+
 			if (bestCurrentPath == NULL || compare_path_costs(path, bestCurrentPath, TOTAL_COST) == -1)
 			{
 				bestCurrentPath = path;
@@ -4935,6 +4989,7 @@ void
 ybTraceRelds(PlannerInfo *root, Relids relids, char *msg)
 {
 	StringInfoData buf;
+
 	initStringInfo(&buf);
 
 	if (msg != NULL)
@@ -4955,6 +5010,7 @@ void
 ybTraceRelOptInfoList(PlannerInfo *root, List *relOptInfoList, char *msg)
 {
 	StringInfoData buf;
+
 	initStringInfo(&buf);
 
 	if (msg != NULL)
@@ -4964,8 +5020,9 @@ ybTraceRelOptInfoList(PlannerInfo *root, List *relOptInfoList, char *msg)
 
 	appendStringInfoString(&buf, "begin rels\n");
 
-	bool first = true;
-	ListCell *lc;
+	bool		first = true;
+	ListCell   *lc;
+
 	foreach(lc, relOptInfoList)
 	{
 		if (!first)
@@ -4973,6 +5030,7 @@ ybTraceRelOptInfoList(PlannerInfo *root, List *relOptInfoList, char *msg)
 			appendStringInfoString(&buf, "\n");
 		}
 		RelOptInfo *relOptInfo = (RelOptInfo *) lfirst(lc);
+
 		appendStringInfoSpaces(&buf, 4);
 		ybBuildRelOptInfoString(root, relOptInfo, &buf);
 		first = false;
@@ -4996,6 +5054,7 @@ void
 ybTracePathList(PlannerInfo *root, List *pathList, char *msg)
 {
 	StringInfoData buf;
+
 	initStringInfo(&buf);
 
 	if (msg != NULL)
@@ -5005,13 +5064,15 @@ ybTracePathList(PlannerInfo *root, List *pathList, char *msg)
 				(errmsg("\n%s %s :\n", ybMsgBuf, msg)));
 	}
 
-	int cnt = 0;
-	ListCell *lc;
+	int			cnt = 0;
+	ListCell   *lc;
+
 	foreach(lc, pathList)
 	{
 		resetStringInfo(&buf);
 		appendStringInfo(&buf, "\npath %d", cnt);
-		Path *path = (Path *) lfirst(lc);
+		Path	   *path = (Path *) lfirst(lc);
+
 		ybTracePath(root, path, buf.data);
 		++cnt;
 	}
@@ -5023,6 +5084,7 @@ void
 ybTracePath(PlannerInfo *root, Path *path, char *msg)
 {
 	StringInfoData buf;
+
 	initStringInfo(&buf);
 
 	if (msg != NULL)
@@ -5032,6 +5094,7 @@ ybTracePath(PlannerInfo *root, Path *path, char *msg)
 
 	const char *ptype;
 	bool		join = false;
+	bool		index = false;
 
 	switch (nodeTag(path))
 	{
@@ -5072,6 +5135,7 @@ ybTracePath(PlannerInfo *root, Path *path, char *msg)
 			break;
 		case T_IndexPath:
 			ptype = "IdxScan";
+			index = true;
 			break;
 		case T_BitmapHeapPath:
 			ptype = "BitmapHeapScan";
@@ -5186,9 +5250,18 @@ ybTracePath(PlannerInfo *root, Path *path, char *msg)
 	appendStringInfoSpaces(&buf, 2);
 	appendStringInfo(&buf, "%s (NODE %u , hinted = %s)\n", ptype, path->ybUniqueId, path->ybIsHinted ? "true" : "false");
 
+	if (index)
+	{
+		IndexPath  *indexPath = (IndexPath *) path;
+		char	   *indexName = get_rel_name(indexPath->indexinfo->indexoid);
+
+		appendStringInfoSpaces(&buf, 4);
+		appendStringInfo(&buf, "index name : %s\n", indexName);
+	}
+
 	appendStringInfoSpaces(&buf, 4);
 	appendStringInfo(&buf, "parallel aware = %s , parallel safe = %s, parallel workers = %d\n",
-						path->parallel_aware? "true" : "false", path->parallel_safe ? "true" : "false", path->parallel_workers);
+					 path->parallel_aware ? "true" : "false", path->parallel_safe ? "true" : "false", path->parallel_workers);
 
 	if (path->parent != NULL)
 	{
@@ -5208,7 +5281,7 @@ ybTracePath(PlannerInfo *root, Path *path, char *msg)
 
 	appendStringInfoSpaces(&buf, 4);
 	appendStringInfo(&buf, "rows = %.0f cost = %.2f..%.2f\n",
-						path->rows, path->startup_cost, path->total_cost);
+					 path->rows, path->startup_cost, path->total_cost);
 
 	if (join)
 	{
@@ -5217,6 +5290,7 @@ ybTracePath(PlannerInfo *root, Path *path, char *msg)
 		appendStringInfoSpaces(&buf, 4);
 		appendStringInfo(&buf, "outer join path : NODE %u\n", jp->outerjoinpath->ybUniqueId);
 		StringInfoData buf2;
+
 		initStringInfo(&buf2);
 		ybBuildRelidsString(root, jp->outerjoinpath->parent->relids, &buf2);
 		appendStringInfoSpaces(&buf, 6);
@@ -5244,12 +5318,13 @@ ybTraceCheapestPaths(RelOptInfo *rel, char *msg)
 			(errmsg("\n%s : cheapest total : NODE %d\n",
 					msg, rel->cheapest_total_path->ybUniqueId)));
 
-	ListCell *lc;
-	int cnt = 0;
+	ListCell   *lc;
+	int			cnt = 0;
 
-	foreach (lc, rel->cheapest_parameterized_paths)
+	foreach(lc, rel->cheapest_parameterized_paths)
 	{
-		Path *paramPath = (Path *) lfirst(lc);
+		Path	   *paramPath = (Path *) lfirst(lc);
+
 		ereport(DEBUG1,
 				(errmsg("\n%s : cheapest param path %d : NODE %d\n",
 						msg, cnt, paramPath->ybUniqueId)));

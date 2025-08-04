@@ -192,6 +192,10 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
                      GetLockStatusResponsePB* resp,
                      rpc::RpcContext context) override;
 
+  void GetObjectLockStatus(const GetObjectLockStatusRequestPB* req,
+                           GetObjectLockStatusResponsePB* resp,
+                           rpc::RpcContext context) override;
+
   void GetMetrics(const GetMetricsRequestPB* req,
                   GetMetricsResponsePB* resp,
                   rpc::RpcContext context) override;
@@ -358,6 +362,10 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
 
   void TestRetry(
       const TestRetryRequestPB* req, TestRetryResponsePB* resp, rpc::RpcContext context) override;
+
+  void GetActiveRbsInfo(
+      const GetActiveRbsInfoRequestPB* req, GetActiveRbsInfoResponsePB* resp,
+      rpc::RpcContext context) override;
 
   void GetPgSocketDir(
       const GetPgSocketDirRequestPB* req, GetPgSocketDirResponsePB* resp,

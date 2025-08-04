@@ -237,20 +237,21 @@ extern int yb_explicit_row_locking_batch_size;
  * Ease transition to YSQL by reducing read restart errors for new apps.
  *
  * This option doesn't affect SERIALIZABLE isolation level since
- * SERIALIZABLE can't face read restart errors anyway.
+ * SERIALIZABLE can't face read restart errors anyway. Also, does not affect
+ * fast path writes.
  *
  * See the help text for yb_read_after_commit_visibility GUC for more
  * information.
  *
  * XXX: This GUC is meant as a workaround only by relaxing the
- * read-after-commit-visibility guarantee. Ideally,
- * (a) Users should fix their apps to handle read restart errors, or
- * (b) TODO(#22317): YB should use very accurate clocks to avoid read restart
- *     errors altogether.
+ * read-after-commit-visibility guarantee. Ideally, user should
+ * (a) Fix their apps to handle read restart errors
+ * (b) Or use accurate clocks provided by time_source=clockbound
  */
 typedef enum {
   YB_STRICT_READ_AFTER_COMMIT_VISIBILITY = 0,
   YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY = 1,
+  YB_DEFERRED_READ_AFTER_COMMIT_VISIBILITY = 2,
 } YbcReadAfterCommitVisibilityEnum;
 
 /* GUC for the enum above. */
@@ -276,6 +277,12 @@ extern bool yb_mixed_mode_expression_pushdown;
 
 extern bool yb_mixed_mode_saop_pushdown;
 
+extern bool yb_use_internal_auto_analyze_service_conn;
+
+extern bool yb_ddl_transaction_block_enabled;
+
+extern bool yb_disable_ddl_transaction_block_for_read_committed;
+
 // Should be in sync with YsqlSamplingAlgorithm protobuf.
 typedef enum {
   YB_SAMPLING_ALGORITHM_FULL_TABLE_SCAN = 0,
@@ -283,6 +290,8 @@ typedef enum {
 } YbcSamplingAlgorithmEnum;
 
 extern int32_t yb_sampling_algorithm;
+
+extern int yb_fk_references_cache_limit;
 
 #ifdef __cplusplus
 } // extern "C"

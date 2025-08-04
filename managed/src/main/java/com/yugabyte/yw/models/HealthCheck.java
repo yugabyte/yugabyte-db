@@ -3,7 +3,7 @@
 package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
-import com.fasterxml.jackson.databind.PropertyNamingStrategy;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -33,11 +33,11 @@ public class HealthCheck extends Model {
 
   @Data
   @Accessors(chain = true)
-  @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
+  @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
   public static class Details {
     @Data
     @Accessors(chain = true)
-    @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public static class NodeData {
       private String node;
       private String process;

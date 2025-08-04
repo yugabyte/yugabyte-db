@@ -400,6 +400,22 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Query character limit in slow queries.",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> slowQueryRetentionDays =
+      new ConfKeyInfo<>(
+          "yb.query_stats.slow_queries.retention_period_days",
+          ScopeType.UNIVERSE,
+          "Slow queries retention period",
+          "Data retention period (in days) if slow query aggregation is enabled.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> slowQueryDisableAggregation =
+      new ConfKeyInfo<>(
+          "yb.query_stats.slow_queries.disable_aggregation",
+          ScopeType.UNIVERSE,
+          "Disable Slow queries aggregation",
+          "If enabled, slow queries data will be stored for universe, once per hour.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> ansibleStrategy =
       new ConfKeyInfo<>(
           "yb.ansible.strategy",
@@ -1193,6 +1209,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "If flag is enabled, allows DR creation with db scoped xCluster replication",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> XClusterDbScopedAutomaticDdlCreationEnabled =
+      new ConfKeyInfo<>(
+          "yb.xcluster.db_scoped.automatic_ddl.creationEnabled",
+          ScopeType.UNIVERSE,
+          "Flag indicating if db scoped xCluster replication should have automatic DDL replication",
+          "If flag and yb.xcluster.db_scoped.creationEnabled are enabled, newly created DR configs"
+              + " will have automatic DDL replication",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> leaderlessTabletsCheckEnabled =
       new ConfKeyInfo<>(
           "yb.checks.leaderless_tablets.enabled",
@@ -1638,4 +1663,52 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Have YBC ignore errors during restore. When false, can be overwritten via API",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> healthCollectTopKOtherProcessesCount =
+      new ConfKeyInfo<>(
+          "yb.health_checks.collect_other_processes_memory_count",
+          ScopeType.UNIVERSE,
+          "Number of non-yba managed processes to collect memory metrics for",
+          "Number of non-yba managed processes to collect memory metrics for",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> healthCollectTopKOtherProcessesMemThreshold =
+      new ConfKeyInfo<>(
+          "yb.health_checks.other_processes_memory_threshold_percent",
+          ScopeType.UNIVERSE,
+          "Threshold of memory percent for non-yba processes",
+          "Threshold of memory percent for non-yba processes",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableBackupsDuringDDL =
+      new ConfKeyInfo<>(
+          "yb.backup.enable_backups_during_ddl",
+          ScopeType.UNIVERSE,
+          "Enable backups during DDL",
+          "Have YBC ysql-dump use read-time as of snapshot time to support backups during DDL",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> healthCheckTHPSettings =
+      new ConfKeyInfo<>(
+          "yb.health_checks.check_thp",
+          ScopeType.UNIVERSE,
+          "Whether to check if correct THP settings are applied",
+          "Whether to check if correct Transparent Huge Pages settings are applied",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> catalogUpgradeAdminOpsTimeoutMs =
+      new ConfKeyInfo<>(
+          "yb.upgrade.catalog_upgrade_admin_ops_timeout_ms",
+          ScopeType.UNIVERSE,
+          "Timeout for catalog upgrade admin operations",
+          "Timeout for catalog upgrade admin operations in milliseconds",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> skipAutoflagsAndYsqlMigrationFilesValidation =
+      new ConfKeyInfo<>(
+          "yb.upgrade.skip_autoflags_and_ysql_migration_files_validation",
+          ScopeType.UNIVERSE,
+          "Skip auto flags and YSQL migration files validation",
+          "Skip auto flags and YSQL migration files validation",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

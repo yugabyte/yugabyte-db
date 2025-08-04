@@ -29,6 +29,7 @@ SET enable_mergejoin = off;
 SET enable_seqscan = off;
 SET enable_material = off;
 SET yb_prefer_bnl = on;
+SET enable_nestloop = off;
 
 SET yb_bnl_batch_size = 3;
 
@@ -500,14 +501,22 @@ DROP TABLE q2;
 DROP TABLE q3;
 
 -- GHI #25917
-/*+NestLoop(con pka) SeqScan(con) IndexScan(pka) Leading((pos (con pka))) Set(yb_bnl_batch_size 1024)*/
+create table names (namespace_id int, name_id smallint, name_value text);
+create index on names(name_id);
+create table name_refs (namespace_id int, ref_names smallint[], ref_comment text);
+insert into names values
+  (1, 1, 'One'), (1, 3, 'Three'), (1, 5, 'Five'), (1, 7, 'Seven'), (1, 9, 'Nine'),
+  (10, 1, 'Eleven'), (10, 4, 'Fourteen'), (10, 7, 'Seventeen');
+insert into name_refs values
+  (1, '{3, 7, 1}', 'All found'), (1, '{9, 2}', 'Some found'), (1, '{0, 2, 8, 4}', 'None found'),
+  (10, '{3, 7, 1}', 'Other namespace'), (10, '{}', 'Empty refs');
+/*+ NestLoop(r n) Leading((pos (r n))) IndexScan(n) Set(yb_bnl_batch_size 1024) */
 explain (analyze, costs off, timing off, summary off)
-SELECT 1
-FROM
-pg_catalog.pg_attribute pka,
-pg_catalog.pg_constraint con,
-pg_catalog.generate_series(1, 32) pos(n)
-WHERE pka.attnum = con.confkey[pos.n] and con.connamespace = pka.attnum;
+SELECT r.ref_comment, n.name_value
+FROM names n, name_refs r, generate_series(1, 32) pos(i)
+WHERE n.namespace_id = r.namespace_id AND n.name_id = r.ref_names[pos.i];
+drop table names;
+drop table name_refs;
 
 create table ss1(a int, primary key(a asc));
 insert into ss1 select generate_series(1,5);
@@ -1050,3 +1059,34 @@ select * from (select k, v from ot1 union all select k, v from ot2) s join it0 o
 drop table ot1;
 drop table ot2;
 drop table it0;
+
+
+-- #25251: Ensure no Memoize under BNL
+create table r (pk int primary key, a int);
+create index on r (a);
+insert into r select i, i from generate_series(1, 1000) i;
+
+create table s (pk int, x int, y int, primary key (pk asc));
+insert into s select i, i % 3, 2 from generate_series(1, 10) i;
+
+analyze r, s;
+
+explain (costs off)
+/*+ Leading((s r)) */
+select * from s join r on a = x;
+
+explain (costs off)
+/*+ Leading((s r)) */
+select * from s join r on a = y;
+
+-- Memoize under NL
+explain (costs off)
+/*+ Leading((s r)) NoYbBatchedNL(s r) */
+select * from s join r on a = x;
+
+explain (costs off)
+/*+ Leading((s r)) NoYbBatchedNL(s r) */
+select * from s join r on a = y;
+
+
+drop table r, s;

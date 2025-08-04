@@ -353,8 +353,7 @@ void OperationDriver::ReplicationFinished(
   // the tablet.
   if (prepare_state_copy != PrepareState::PREPARED) {
     LOG(DFATAL) << "Replicating an operation that has not been prepared: " << AsString(this);
-
-    LOG(ERROR) << "Attempting to wait for the operation to be prepared";
+    LOG(WARNING) << "Attempting to wait for the operation to be prepared";
 
     // This case should never happen, but if it happens we are trying to survive.
     for (;;) {

@@ -40,4 +40,4 @@ yugabyte=# DROP RULE t1_to_t2 ON t1;
 
 - [CREATE RULE](../ddl_create_rule)
 
-[postgresql-docs-drop-rule]: https://www.postgresql.org/docs/11/sql-droprule.html
+[postgresql-docs-drop-rule]: https://www.postgresql.org/docs/15/sql-droprule.html

@@ -143,6 +143,8 @@ METRIC_DECLARE_counter(rpcs_queue_overflow);
 
 DECLARE_bool(enable_metacache_partial_refresh);
 
+DECLARE_bool(ysql_enable_auto_analyze_infra);
+
 using namespace std::literals; // NOLINT
 using namespace std::placeholders;
 
@@ -173,7 +175,6 @@ constexpr int kNumTablets = 2;
 
 const std::string kKeyspaceName = "my_keyspace";
 const std::string kPgsqlKeyspaceName = "psql" + kKeyspaceName;
-const std::string kPgsqlSchemaName = "my_schema";
 const std::string kPgsqlTableName = "table";
 const std::string kPgsqlTableId = "tableid";
 const std::string kPgsqlNamespaceName = "test_namespace";
@@ -198,6 +199,9 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
 
     // Reduce the TS<->Master heartbeat interval
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = 10;
+
+    // Skip creating the auto analyze service.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze_infra) = false;
 
     // Start minicluster and wait for tablet servers to connect to master.
     auto opts = MiniClusterOptions();
@@ -436,7 +440,6 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     YBSchemaBuilder schema_builder;
     schema_builder.AddColumn("key")->PrimaryKey()->Type(DataType::STRING)->NotNull();
     schema_builder.AddColumn("value")->Type(DataType::INT64)->NotNull();
-    schema_builder.SetSchemaName(kPgsqlSchemaName);
     EXPECT_OK(client_->CreateNamespaceIfNotExists(
         kPgsqlNamespaceName, YQLDatabase::YQL_DATABASE_PGSQL, "" /* creator_role_name */,
         kNamespaceId));
@@ -1277,7 +1280,7 @@ TEST_F(ClientTest, TestAsyncFlushResponseAfterSessionDropped) {
   ApplyInsertToSession(session.get(), client_table_, 1, 1, "row");
   auto flush_future = session->FlushFuture();
   session.reset();
-  ASSERT_OK(flush_future.get().status);
+  ASSERT_EQ(flush_future.wait_for(3min), std::future_status::ready);
 
   // Try again, this time should not have an error response (to re-insert the same row).
   session = CreateSession();
@@ -1288,7 +1291,7 @@ TEST_F(ClientTest, TestAsyncFlushResponseAfterSessionDropped) {
   ASSERT_EQ(0, session->TEST_CountBufferedOperations());
   ASSERT_FALSE(session->HasNotFlushedOperations());
   session.reset();
-  ASSERT_OK(flush_future.get().status);
+  ASSERT_EQ(flush_future.wait_for(3min), std::future_status::ready);
 }
 
 TEST_F(ClientTest, TestSessionClose) {
@@ -1587,6 +1590,7 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
       break;
     }
   }
+  auto tablet = ASSERT_RESULT(tablet_peer->shared_tablet());
 
   {
     std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
@@ -1594,7 +1598,7 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
       ->AddColumn("new_col")->Type(DataType::INT32);
     ASSERT_OK(table_alterer->Alter());
     // TODO(nspiegelberg): The below assert is flakey because of KUDU-1539.
-    ASSERT_EQ(1, tablet_peer->tablet()->metadata()->primary_table_schema_version());
+    ASSERT_EQ(1, tablet->metadata()->primary_table_schema_version());
   }
 
   {
@@ -1604,8 +1608,8 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
               ->RenameTo(kRenamedTableName)
               ->Alter());
     // TODO(nspiegelberg): The below assert is flakey because of KUDU-1539.
-    ASSERT_EQ(2, tablet_peer->tablet()->metadata()->primary_table_schema_version());
-    ASSERT_EQ(kRenamedTableName.table_name(), tablet_peer->tablet()->metadata()->table_name());
+    ASSERT_EQ(2, tablet->metadata()->primary_table_schema_version());
+    ASSERT_EQ(kRenamedTableName.table_name(), tablet->metadata()->table_name());
 
     const auto tables = ASSERT_RESULT(client_->ListTables());
     ASSERT_TRUE(::util::gtl::contains(tables.begin(), tables.end(), kRenamedTableName));
@@ -1927,11 +1931,12 @@ TEST_F(ClientTest, TestReplicatedTabletWritesAndAltersWithLeaderElection) {
   {
     auto tablet_peer = ASSERT_RESULT(
         new_leader->server()->tablet_manager()->GetTablet(remote_tablet->tablet_id()));
-    auto old_version = tablet_peer->tablet()->metadata()->primary_table_schema_version();
+    auto tablet = ASSERT_RESULT(tablet_peer->shared_tablet());
+    auto old_version = tablet->metadata()->primary_table_schema_version();
     std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kReplicatedTable));
     table_alterer->AddColumn("new_col")->Type(DataType::INT32);
     ASSERT_OK(table_alterer->Alter());
-    ASSERT_EQ(old_version + 1, tablet_peer->tablet()->metadata()->primary_table_schema_version());
+    ASSERT_EQ(old_version + 1, tablet->metadata()->primary_table_schema_version());
   }
 }
 
@@ -2433,9 +2438,8 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
   YBSchemaBuilder schema_builder;
   schema_builder.AddColumn("key")->PrimaryKey()->Type(DataType::STRING)->NotNull();
   schema_builder.AddColumn("value")->Type(DataType::INT64)->NotNull();
-  // kPgsqlKeyspaceID is not a proper Pgsql id, so need to set a schema name to avoid hitting errors
+  // kPgsqlKeyspaceID is not a proper Pgsql id, so need to use a schema name to avoid hitting errors
   // in GetTableSchema (part of OpenTable).
-  schema_builder.SetSchemaName(kPgsqlSchemaName);
   YBSchema schema;
   EXPECT_OK(
       client_->CreateNamespaceIfNotExists(kPgsqlKeyspaceName, YQLDatabase::YQL_DATABASE_PGSQL));
@@ -2495,7 +2499,7 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
 }
 
 TEST_F(ClientTest, FlushTable) {
-  const tablet::Tablet* tablet;
+  tablet::TabletPtr tablet;
   constexpr int kTimeoutSecs = 30;
   int current_row = 0;
 
@@ -2508,7 +2512,7 @@ TEST_F(ClientTest, FlushTable) {
         break;
       }
     }
-    tablet = tablet_peer->tablet();
+    tablet = ASSERT_RESULT(tablet_peer->shared_tablet());
   }
 
   auto test_good_flush_and_compact = ([&]<class T>(T table_id_or_name) {
@@ -3043,9 +3047,8 @@ TEST_F(ClientTest, LegacyColocatedDBColocatedTablesLookupTablet) {
   YBSchemaBuilder schema_builder;
   schema_builder.AddColumn("key")->PrimaryKey()->Type(DataType::INT64);
   schema_builder.AddColumn("value")->Type(DataType::INT64);
-  // kPgsqlKeyspaceID is not a proper Pgsql id, so need to set a schema name to avoid hitting errors
+  // kPgsqlKeyspaceID is not a proper Pgsql id, so need to use a schema name to avoid hitting errors
   // in GetTableSchema (part of OpenTable).
-  schema_builder.SetSchemaName(kPgsqlSchemaName);
   YBSchema schema;
   ASSERT_OK(schema_builder.Build(&schema));
 

@@ -48,10 +48,8 @@ public class DeleteRemnantStreams extends XClusterConfigTaskBase {
   @Override
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    String universeMasterAddresses = universe.getMasterAddresses();
-    String universeCertificate = universe.getCertificateNodetoNode();
 
-    try (YBClient client = ybService.getClient(universeMasterAddresses, universeCertificate)) {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
 
       GetNamespaceInfoResponse getNamespaceInfoResponse =
           client.getNamespaceInfo(taskParams().namespaceName, YQLDatabase.YQL_DATABASE_PGSQL);
@@ -87,9 +85,7 @@ public class DeleteRemnantStreams extends XClusterConfigTaskBase {
                 .get()
                 .getId()
                 .toStringUtf8();
-        try (YBClient tgtClient =
-            ybService.getClient(
-                targetUniverse.getMasterAddresses(), targetUniverse.getCertificateNodetoNode())) {
+        try (YBClient tgtClient = ybService.getUniverseClient(targetUniverse)) {
           GetXClusterOutboundReplicationGroupsResponse outboundReplicationGroupsResp =
               tgtClient.getXClusterOutboundReplicationGroups(tgtDbId);
           if (!outboundReplicationGroupsResp.hasError()) {

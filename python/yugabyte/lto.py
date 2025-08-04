@@ -227,7 +227,7 @@ def find_shared_lib_from_static(static_lib_path: str) -> str:
     assert is_static_lib(static_lib_path)
     shared_lib_path = static_lib_path[:-2] + '.so'
     if not os.path.exists(shared_lib_path):
-        logging.warn("Shared library path does not exist: %s", shared_lib_path)
+        logging.warning("Shared library path does not exist: %s", shared_lib_path)
     return shared_lib_path
 
 

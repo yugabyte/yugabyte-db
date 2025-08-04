@@ -40,7 +40,8 @@ yba group update -n <group-name> --role-resource-definition <role-resource-defin
                                                    		 resource-uuid=<resource-uuid1>,<resource-uuid2>,<resource-uuid3>
                                                    		 --role-resource-definition
                                                    		 role-uuid=<role-uuid2>::resource-type=<resource-type2>::
-                                                   		 resource-uuid=<resource-uuid1>,<resource-uuid2>,<resource-uuid3>
+                                                   		 resource-uuid=<resource-uuid1>,<resource-uuid2>,<resource-uuid3>.
+                                                   		 Setting this will ignore add-role-resource-definition and remove-roles flags.
       --add-role-resource-definition stringArray   [Optional] Add one or more role-resource-definitions to the group.
                                                    		 Input format is same as --role-resource-definition.
                                                    		 Example: --add-role-resource-definition role-uuid=<role-uuid1>::resource-type=<resource-type1>::
@@ -48,7 +49,7 @@ yba group update -n <group-name> --role-resource-definition <role-resource-defin
                                                    		 --add-role-resource-definition role-uuid=<role-uuid2>::resource-type=<resource-type1>::
                                                    		 resource-uuid=<resource-uuid1>,<resource-uuid2>,<resource-uuid3> 
       --remove-roles strings                       [Optional] Remove one or more roles from the group. 
-                                                   Example: --remove-roles role1,role2 or --remove-roles role1 --remove-roles role2.
+                                                   Example: --remove-roles role1_uuid,role2_uuid or --remove-roles role1_uuid --remove-roles role2_uuid.
   -h, --help                                       help for update
 ```
 

@@ -19,9 +19,11 @@ option java_package = "org.yb.tserver";
 
 import "google/protobuf/any.proto";
 import "yb/common/common.proto";
+import "yb/rpc/service.proto";
 import "yb/tserver/tserver_types.proto";
 
 service TabletServerBackupService {
+  option (yb.rpc.service_send_metadata) = true;
   rpc TabletSnapshotOp(TabletSnapshotOpRequestPB) returns (TabletSnapshotOpResponsePB);
 }
 
@@ -94,6 +96,8 @@ message TabletSnapshotOpRequestPB {
   // before it is deleted. Set only for CREATE_ON_MASTER for non-pitr use-cases.
   // Set to -1 to retain indefinitely until an explicit delete_snapshot.
   int32 retention_duration_hours = 20;
+
+  reserved 21; // ASH metadata is now passed in RequestHeader PB
 }
 
 message TabletSnapshotOpResponsePB {

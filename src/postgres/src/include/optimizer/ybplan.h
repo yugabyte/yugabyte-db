@@ -39,10 +39,10 @@ bool		is_index_only_attribute_nums(List *colrefs, IndexOptInfo *indexinfo,
 										 bool bitmapindex);
 
 extern void yb_extract_pushdown_clauses(List *restrictinfo_list,
-							IndexOptInfo *indexinfo, bool bitmapindex,
-							List **local_quals, List **rel_remote_quals,
-							List **rel_colrefs, List **idx_remote_quals,
-							List **idx_colrefs, Oid relid);
+										IndexOptInfo *indexinfo, bool bitmapindex,
+										List **local_quals, List **rel_remote_quals,
+										List **rel_colrefs, List **idx_remote_quals,
+										List **idx_colrefs, Oid relid);
 
 /* YbSkippableEntities helper functions */
 extern YbSkippableEntities *YbInitSkippableEntities(List *no_update_index_list);

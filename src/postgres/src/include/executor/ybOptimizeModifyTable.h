@@ -33,7 +33,7 @@ extern void YbComputeModifiedColumnsAndSkippableEntities(ModifyTableState *mtsta
 														 ResultRelInfo *resultRelInfo,
 														 EState *estate,
 														 HeapTuple oldtuple,
-														 HeapTuple newtuple,
+														 TupleTableSlot *newtupleslot,
 														 Bitmapset **updatedCols,
 														 bool beforeRowUpdateTriggerFired);
 

@@ -193,65 +193,106 @@ standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 #endif
 		}
 
-		if (IsYugaByteEnabled())
+		if (IsYugaByteEnabled() && root->ybHintedJoinsOuter != NULL)
 		{
 			/*
-			 * Sweep all joins at this level and look for disabled join
-			 * and non-disabled joins.
+			 * There is a Leading hint so sweep all joins at this level
+			 * and look for disabled and non-disabled joins. Also determine
+			 * if some join at this level has been hinted. If so, it is safe to
+			 * prune non-hinted joins.
 			 */
-			List *levelJoinRels = NIL;
-			bool foundDisabledRel = false;
-			ListCell *lc2;
+			List	   *ybLevelJoinRels = NIL;
+			bool		ybFoundDisabledRel = false;
+			bool		ybFoundHintedJoin = false;
+
+			ListCell   *lc2;
+
 			foreach(lc2, root->join_rel_level[lev])
 			{
-				RelOptInfo *rel = (RelOptInfo *) lfirst(lc2);
-				if (rel->cheapest_total_path->total_cost < disable_cost ||
-					rel->cheapest_total_path->ybIsHinted ||
-					rel->cheapest_total_path->ybHasHintedUid)
+				RelOptInfo *ybRel = (RelOptInfo *) lfirst(lc2);
+
+				Assert(IS_JOIN_REL(ybRel));
+
+				/*
+				 * Assuming that only join paths exist in the space
+				 * of enumerated joins.
+				 */
+				switch (ybRel->cheapest_total_path->type)
+				{
+					case T_NestPath:
+					case T_MergePath:
+					case T_HashPath:
+						break;
+					default:
+						ereport(ERROR,
+							(errmsg("expected a join path (%u)",
+									ybRel->cheapest_total_path->ybUniqueId)));
+						break;
+				}
+
+				if (ybRel->cheapest_total_path->ybIsHinted ||
+					ybRel->cheapest_total_path->ybHasHintedUid)
+				{
+					ybFoundHintedJoin = true;
+				}
+
+				if (ybRel->cheapest_total_path->total_cost < disable_cost ||
+					ybRel->cheapest_total_path->ybIsHinted ||
+					ybRel->cheapest_total_path->ybHasHintedUid)
 				{
 					/*
-					 * Found a join with cost < disable cost. Or cost could be
-					 * >= disable cost (because the join is really expensive)
-					 * but it is in a Leading hint.
+					 * Found a join with cost < disable cost,
+					 * or whose cost could be >= disable cost because the join is
+					 * really expensive. But it is in a Leading hint, or
+					 * has been hinted using its UID so add it to the list
+					 * of joins we want to keep at this level.
 					 */
-					levelJoinRels = lappend(levelJoinRels, rel);
+					ybLevelJoinRels = lappend(ybLevelJoinRels, ybRel);
 				}
 				else
 				{
 					/*
-					 * Found a path that has been disabled via hints.
+					 * Found a join that has been disabled,
+					 * or that perhaps has a "true" cost > disable cost.
+					 * It is a join and is not hinted so set a flag so we can
+					 * try pruning below.
 					 */
-					foundDisabledRel = true;
+					ybFoundDisabledRel = true;
 				}
 			}
 
 			/*
-			 * Now look for a mix of enabled and disabled join paths at this level.
+			 * Now look for a mix of enabled and disabled join paths at this level,
+			 * but only do this if some join at this level has been hinted.
 			 */
-			if (levelJoinRels != NIL && foundDisabledRel)
+			if (ybLevelJoinRels != NIL && ybFoundDisabledRel && ybFoundHintedJoin)
 			{
 				if (yb_enable_planner_trace)
 				{
 					StringInfoData dropMsg;
+
 					initStringInfo(&dropMsg);
 					appendStringInfo(&dropMsg, "\n++ Level %d DROP rel", lev);
 
 					StringInfoData keepMsg;
+
 					initStringInfo(&keepMsg);
 					appendStringInfo(&keepMsg, "\n++ Level %d KEEP rel", lev);
 
 					foreach(lc2, root->join_rel_level[lev])
 					{
 						RelOptInfo *rel = (RelOptInfo *) lfirst(lc2);
-						if (!list_member_ptr(levelJoinRels, rel))
+
+						if (!list_member_ptr(ybLevelJoinRels, rel))
 						{
 							ybTraceRelOptInfo(root, rel, dropMsg.data);
 						}
 					}
 
-					foreach(lc2, levelJoinRels)
+					foreach(lc2, ybLevelJoinRels)
 					{
 						RelOptInfo *rel = (RelOptInfo *) lfirst(lc2);
+
 						ybTraceRelOptInfo(root, rel, keepMsg.data);
 					}
 
@@ -260,9 +301,10 @@ standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 				}
 
 				/*
-				 * Keep only the non-disabled joins since the disabled ones cannot be part of the best plan.
+				 * Keep only the non-disabled joins since the disabled ones
+				 * cannot be part of the best plan.
 				 */
-				root->join_rel_level[lev] = levelJoinRels;
+				root->join_rel_level[lev] = ybLevelJoinRels;
 			}
 		}
 	}
@@ -278,9 +320,10 @@ standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 
 	root->join_rel_level = NULL;
 
-	if (IsYugaByteEnabled()&& yb_enable_planner_trace)
+	if (IsYugaByteEnabled() && yb_enable_planner_trace)
 	{
 		StringInfoData buf;
+
 		initStringInfo(&buf);
 		appendStringInfo(&buf, "final rel Level %d :", levels_needed);
 		ybTraceRelOptInfo(root, rel, buf.data);
@@ -459,7 +502,7 @@ join_search_one_level(PlannerInfo *root, int level)
 			if (old_rel->joininfo == NIL && !old_rel->has_eclass_joins &&
 				!has_join_restriction(root, old_rel) &&
 				!ybFindHintedJoin(root, old_rel->relids, NULL,
-						true /* try swapped */ ))
+								  true /* try swapped */ ))
 				continue;
 
 			if (k == other_level)
@@ -488,9 +531,9 @@ join_search_one_level(PlannerInfo *root, int level)
 					 * YB : Also want any join that is in Leading Hint.
 					 */
 					if (have_relevant_joinclause(root, old_rel, new_rel) ||
-						have_join_order_restriction(root, old_rel, new_rel)  ||
+						have_join_order_restriction(root, old_rel, new_rel) ||
 						ybFindHintedJoin(root, old_rel->relids, new_rel->relids,
-								true /* try swapped */ ))
+										 true /* try swapped */ ))
 					{
 						(void) make_join_rel(root, old_rel, new_rel);
 					}
@@ -594,9 +637,9 @@ make_rels_by_clause_joins(PlannerInfo *root,
 
 		if (!bms_overlap(old_rel->relids, other_rel->relids) &&
 			(have_relevant_joinclause(root, old_rel, other_rel) ||
-			have_join_order_restriction(root, old_rel, other_rel) ||
-			ybFindHintedJoin(root, old_rel->relids, other_rel->relids,
-					true /* try swapped */ )))
+			 have_join_order_restriction(root, old_rel, other_rel) ||
+			 ybFindHintedJoin(root, old_rel->relids, other_rel->relids,
+							  true /* try swapped */ )))
 		{
 			(void) make_join_rel(root, old_rel, other_rel);
 		}

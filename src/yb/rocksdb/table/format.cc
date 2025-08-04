@@ -463,7 +463,7 @@ Status ReadBlockContents(RandomAccessFileReader* file, const Footer& footer,
   status = ReadBlock(file, footer, options, handle, &slice, used_buf);
 
   if (!status.ok()) {
-    LOG(ERROR) << __func__ << ": " << status << "\n" << yb::GetStackTrace();
+    LOG_WITH_FUNC(WARNING) << status;
     return status;
   }
 

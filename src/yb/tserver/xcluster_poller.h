@@ -62,10 +62,11 @@ class XClusterPoller : public XClusterAsyncExecutor {
       const std::shared_ptr<client::XClusterRemoteClientHolder>& source_client,
       XClusterConsumer* xcluster_consumer, int64_t leader_term,
       std::function<int64_t(const TabletId&)> get_leader_term, bool is_automatic_mode,
-      bool is_paused);
+      bool is_stream_paused);
   ~XClusterPoller();
 
-  void Init(bool use_local_tserver, rocksdb::RateLimiter* rate_limiter);
+  void Init(
+      bool use_local_tserver, rocksdb::RateLimiter* rate_limiter, bool is_ddl_queue_client = false);
   void InitDDLQueuePoller(
       bool use_local_tserver, rocksdb::RateLimiter* rate_limiter,
       const NamespaceId& source_namespace_id, const NamespaceName& target_namespace_name,
@@ -126,6 +127,7 @@ class XClusterPoller : public XClusterAsyncExecutor {
 
   void DoPoll() EXCLUDES(data_mutex_);
 
+  Status DoPausePoller();
   void HandleGetChangesResponse(Status status, std::shared_ptr<cdc::GetChangesResponsePB> resp)
       EXCLUDES(data_mutex_);
   void ScheduleApplyChanges(std::shared_ptr<cdc::GetChangesResponsePB> get_changes_response);
@@ -133,7 +135,7 @@ class XClusterPoller : public XClusterAsyncExecutor {
       EXCLUDES(data_mutex_);
   void VerifyApplyChangesResponse(XClusterOutputClientResponse response);
   void HandleApplyChangesResponse(XClusterOutputClientResponse response) EXCLUDES(data_mutex_);
-  void UpdateSafeTime(int64 new_time);
+  void UpdateSafeTime(HybridTime new_time);
   void InvalidateSafeTime();
   void UpdateSchemaVersionsForApply() EXCLUDES(schema_version_lock_);
   bool IsLeaderTermValid() REQUIRES(data_mutex_);
@@ -173,7 +175,7 @@ class XClusterPoller : public XClusterAsyncExecutor {
 
   std::atomic<HybridTime> producer_safe_time_;
 
-  std::atomic<bool> is_paused_;
+  std::atomic<bool> is_stream_paused_;
   std::atomic<uint32> poll_failures_ = 0;
   std::atomic<uint32> apply_failures_ = 0;
   std::atomic<uint32> idle_polls_ = 0;

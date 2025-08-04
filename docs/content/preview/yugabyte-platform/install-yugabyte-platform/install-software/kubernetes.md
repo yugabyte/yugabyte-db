@@ -518,7 +518,7 @@ In addition, it is recommended to set a large initial storage size, because resi
 
 If you are using Google Cloud Storage (GCS) for backups, you can enable GKE service account-based IAM (GCP IAM) so that Kubernetes universes can access GCS.
 
-Before enabling GCP IAM, ensure you have the prerequisites. Refer to [GCP IAM](../../../back-up-restore-universes/configure-backup-storage/#gke-service-account-based-iam-gcp-iam).
+Before enabling GCP IAM, ensure you have the prerequisites. Refer to [GCP IAM](../../../prepare/cloud-permissions/cloud-permissions-nodes-gcp/#gke-service-account-based-iam-gcp-iam).
 
 To enable GCP IAM, provide the following additional Helm values during installation to a version which supports this feature (v2.18.4 or later):
 

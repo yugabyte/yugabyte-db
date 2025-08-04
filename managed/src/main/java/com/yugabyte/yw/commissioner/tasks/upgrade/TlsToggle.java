@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
-import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
@@ -10,11 +9,9 @@ import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
-import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
@@ -98,11 +95,18 @@ public class TlsToggle extends UpgradeTaskBase {
           Set<NodeDetails> allNodes = toOrderedSet(nodes.asPair());
           // Copy any new certs to all nodes
           createCopyCertTasks(allNodes);
-          updateUniverseHttpsEnabledUI();
+          updateUniverseHttpsEnabledUI(taskParams().nodeToNodeChange);
           // Round 1 gflags upgrade
           createRound1GFlagUpdateTasks(nodes);
           // Update TLS related params in universe details
-          createUniverseSetTlsParamsTask();
+          createUniverseSetTlsParamsTask(
+              taskParams().getUniverseUUID(),
+              taskParams().enableNodeToNodeEncrypt,
+              taskParams().enableClientToNodeEncrypt,
+              taskParams().allowInsecure,
+              taskParams().rootAndClientRootCASame,
+              taskParams().rootCA,
+              taskParams().getClientRootCA());
           // Round 2 gflags upgrade
           createRound2GFlagUpdateTasks(nodes);
         },
@@ -214,25 +218,6 @@ public class TlsToggle extends UpgradeTaskBase {
     }
   }
 
-  protected void updateUniverseHttpsEnabledUI() {
-    int nodeToNodeChange = taskParams().nodeToNodeChange;
-    boolean isNodeUIHttpsEnabled =
-        confGetter.getConfForScope(getUniverse(), UniverseConfKeys.nodeUIHttpsEnabled);
-    // HTTPS_ENABLED_UI will piggyback node-to-node encryption.
-    if (nodeToNodeChange != 0) {
-      String httpsEnabledUI =
-          (nodeToNodeChange > 0
-                  && Universe.shouldEnableHttpsUI(
-                      true, getUserIntent().ybSoftwareVersion, isNodeUIHttpsEnabled))
-              ? "true"
-              : "false";
-      saveUniverseDetails(
-          u -> {
-            u.updateConfig(ImmutableMap.of(Universe.HTTPS_ENABLED_UI, httpsEnabledUI));
-          });
-    }
-  }
-
   private void createGFlagUpdateTasks(int round, List<NodeDetails> nodes, ServerType processType) {
     // If the node list is empty, we don't need to do anything.
     if (nodes.isEmpty()) {
@@ -279,25 +264,6 @@ public class TlsToggle extends UpgradeTaskBase {
           getAnsibleConfigureServerTaskForToggleTls(
               node, ServerType.TSERVER, UpgradeTaskSubType.CopyCerts));
     }
-    subTaskGroup.setSubTaskGroupType(getTaskSubGroupType());
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-  }
-
-  private void createUniverseSetTlsParamsTask() {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("UniverseSetTlsParams");
-    UniverseSetTlsParams.Params params = new UniverseSetTlsParams.Params();
-    params.setUniverseUUID(taskParams().getUniverseUUID());
-    params.enableNodeToNodeEncrypt = taskParams().enableNodeToNodeEncrypt;
-    params.enableClientToNodeEncrypt = taskParams().enableClientToNodeEncrypt;
-    params.allowInsecure = taskParams().allowInsecure;
-    params.rootCA = taskParams().rootCA;
-    params.clientRootCA = taskParams().getClientRootCA();
-    params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
-
-    UniverseSetTlsParams task = createTask(UniverseSetTlsParams.class);
-    task.initialize(params);
-    subTaskGroup.addSubTask(task);
-
     subTaskGroup.setSubTaskGroupType(getTaskSubGroupType());
     getRunnableTask().addSubTaskGroup(subTaskGroup);
   }

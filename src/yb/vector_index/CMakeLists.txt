@@ -26,20 +26,11 @@ ADD_YB_LIBRARY(vector_index_proto
         DEPS protobuf yb_common_proto
         NONLINK_DEPS ${VECTOR_PROTO_TGTS})
 
-YRPC_GENERATE(
-        VECTOR_INDEX_TEST_PROTO_SRCS VECTOR_INDEX_TEST_PROTO_HDRS VECTOR_INDEX_TEST_PROTO_TGTS
-        MESSAGES TRUE
-        SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
-        BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-        NO_SERVICE_PROTO_FILES vector_lsm-test.proto)
-
 set(VECTOR_INDEX_SRCS
   ann_validation.cc
   benchmark_data.cc
   hnsw_options.cc
   hnsw_util.cc
-  hnswlib_wrapper.cc
-  usearch_wrapper.cc
   vector_id.cc
   vector_lsm.cc
   vector_lsm_metadata.cc
@@ -61,14 +52,7 @@ add_dependencies(
         vector_index
         gen_src_yb_rpc_any_proto)
 
-ADD_YB_LIBRARY(vector_index_test_proto
-        SRCS ${VECTOR_INDEX_TEST_PROTO_SRCS}
-        DEPS protobuf yb_common_proto
-        NONLINK_DEPS ${VECTOR_INDEX_TEST_PROTO_TGTS})
-
 set(YB_TEST_LINK_LIBS
-    vector_index yb_common_test_util vector_index_test_proto ${YB_MIN_TEST_LIBS})
+    vector_index yb_common_test_util ${YB_MIN_TEST_LIBS})
 
 ADD_YB_TEST(hnsw_util-test)
-ADD_YB_TEST(vector_lsm-test)
-ADD_YB_TEST(index_merge-test)

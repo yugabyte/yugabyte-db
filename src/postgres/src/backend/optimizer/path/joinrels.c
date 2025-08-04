@@ -189,7 +189,7 @@ join_search_one_level(PlannerInfo *root, int level)
 			if (old_rel->joininfo == NIL && !old_rel->has_eclass_joins &&
 				!has_join_restriction(root, old_rel) &&
 				!ybFindHintedJoin(root, old_rel->relids, NULL,
-						true /* try swapped */ ))
+								  true /* try swapped */ ))
 				continue;
 
 			if (k == other_level)
@@ -218,9 +218,9 @@ join_search_one_level(PlannerInfo *root, int level)
 					 * YB : Also want any join that is in Leading Hint.
 					 */
 					if (have_relevant_joinclause(root, old_rel, new_rel) ||
-						have_join_order_restriction(root, old_rel, new_rel)  ||
+						have_join_order_restriction(root, old_rel, new_rel) ||
 						ybFindHintedJoin(root, old_rel->relids, new_rel->relids,
-								true /* try swapped */ ))
+										 true /* try swapped */ ))
 					{
 						(void) make_join_rel(root, old_rel, new_rel);
 					}
@@ -323,9 +323,9 @@ make_rels_by_clause_joins(PlannerInfo *root,
 
 		if (!bms_overlap(old_rel->relids, other_rel->relids) &&
 			(have_relevant_joinclause(root, old_rel, other_rel) ||
-			have_join_order_restriction(root, old_rel, other_rel) ||
-			ybFindHintedJoin(root, old_rel->relids, other_rel->relids,
-					true /* try swapped */ )))
+			 have_join_order_restriction(root, old_rel, other_rel) ||
+			 ybFindHintedJoin(root, old_rel->relids, other_rel->relids,
+							  true /* try swapped */ )))
 		{
 			(void) make_join_rel(root, old_rel, other_rel);
 		}

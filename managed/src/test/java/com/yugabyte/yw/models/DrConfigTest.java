@@ -59,7 +59,8 @@ public class DrConfigTest extends FakeDBApplication {
             targetUniverse.getUniverseUUID(),
             backupRequestParams,
             new PitrParams(),
-            sourceDbIds);
+            sourceDbIds,
+            false);
     DrConfig found = DrConfig.getOrBadRequest(drConfig.getUuid());
     XClusterConfig activeXClusterConfig = found.getActiveXClusterConfig();
 
@@ -105,7 +106,8 @@ public class DrConfigTest extends FakeDBApplication {
             targetUniverse.getUniverseUUID(),
             backupRequestParams,
             new PitrParams(),
-            sourceDbId1);
+            sourceDbId1,
+            false);
     DrConfig found1 = DrConfig.getOrBadRequest(drConfig1.getUuid());
     XClusterConfig activeXClusterConfig1 = found1.getActiveXClusterConfig();
     assertEquals(drConfig1.getUuid(), found1.getUuid());
@@ -118,7 +120,8 @@ public class DrConfigTest extends FakeDBApplication {
             targetUniverse.getUniverseUUID(),
             backupRequestParams,
             new PitrParams(),
-            sourceDbId2);
+            sourceDbId2,
+            false);
     DrConfig found2 = DrConfig.getOrBadRequest(drConfig2.getUuid());
     XClusterConfig activeXClusterConfig2 = found2.getActiveXClusterConfig();
     assertEquals(drConfig2.getUuid(), found2.getUuid());
@@ -137,7 +140,8 @@ public class DrConfigTest extends FakeDBApplication {
             targetUniverse.getUniverseUUID(),
             backupRequestParams,
             new PitrParams(),
-            sourceDbId1);
+            sourceDbId1,
+            false);
     drConfig.setXClusterConfigs(new ArrayList<>());
     assertFalse(drConfig.hasActiveXClusterConfig());
     assertThrows(IllegalStateException.class, drConfig::getActiveXClusterConfig);
@@ -153,7 +157,8 @@ public class DrConfigTest extends FakeDBApplication {
             targetUniverse.getUniverseUUID(),
             backupRequestParams,
             new PitrParams(),
-            sourceDbId1);
+            sourceDbId1,
+            false);
     assertTrue(drConfig.hasActiveXClusterConfig());
     XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
     assertNotNull(xClusterConfig);
@@ -174,10 +179,11 @@ public class DrConfigTest extends FakeDBApplication {
             targetUniverse.getUniverseUUID(),
             backupRequestParams,
             new PitrParams(),
-            sourceDbId1);
+            sourceDbId1,
+            false);
 
     drConfig.addXClusterConfig(
-        targetUniverse.getUniverseUUID(), sourceUniverse.getUniverseUUID(), ConfigType.Db);
+        targetUniverse.getUniverseUUID(), sourceUniverse.getUniverseUUID(), ConfigType.Db, false);
     drConfig.update();
     for (XClusterConfig xClusterConfig : drConfig.getXClusterConfigs()) {
       xClusterConfig.setSecondary(true);

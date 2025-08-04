@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include "yb/cdc/xcluster_types.h"
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 #include "yb/tools/tools_test_utils.h"
 
@@ -54,12 +55,6 @@ class XClusterDDLReplicationTestBase : public XClusterYsqlTestBase {
 
   std::string GetTempDir(const std::string& subdir) { return tmp_dir_ / subdir; }
 
-  Result<std::shared_ptr<client::YBTable>> GetProducerTable(
-      const client::YBTableName& producer_table_name);
-
-  Result<std::shared_ptr<client::YBTable>> GetConsumerTable(
-      const client::YBTableName& producer_table_name);
-
   void InsertRowsIntoProducerTableAndVerifyConsumer(
       const client::YBTableName& producer_table_name, uint32_t start = 0, uint32_t end = 50,
       const xcluster::ReplicationGroupId replication_group = kReplicationGroupId);
@@ -67,6 +62,10 @@ class XClusterDDLReplicationTestBase : public XClusterYsqlTestBase {
   Status WaitForSafeTimeToAdvanceToNowWithoutDDLQueue();
 
   Status PrintDDLQueue(Cluster& cluster);
+
+  Result<xcluster::SafeTimeBatch> FetchSafeTimeBatchFromReplicatedDdls();
+
+  Status StepDownDdlQueueTablet(Cluster& cluster);
 
   // We require at least one colocated table to exist before setting up replication.
   Status CreateInitialColocatedTable();

@@ -24,8 +24,9 @@ namespace tserver {
 
 class RemoteBootstrapSnapshotsComponent : public RemoteBootstrapComponent {
  public:
-  RemoteBootstrapSnapshotsComponent(RemoteBootstrapFileDownloader* downloader,
-                                    tablet::RaftGroupReplicaSuperBlockPB* new_superblock);
+  RemoteBootstrapSnapshotsComponent(
+      RemoteBootstrapFileDownloader* downloader,
+      tablet::RaftGroupReplicaSuperBlockPB* new_superblock);
 
   Status CreateDirectories(const std::string& db_dir, FsManager* fs) override;
   Status Download() override;

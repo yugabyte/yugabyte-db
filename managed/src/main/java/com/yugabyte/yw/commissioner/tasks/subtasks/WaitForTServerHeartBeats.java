@@ -10,6 +10,7 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -53,12 +54,13 @@ public class WaitForTServerHeartBeats extends AbstractTaskBase {
   @Override
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    String hostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodetoNode();
     int numTservers = universe.getTServers().size();
-    YBClient client = ybService.getClient(hostPorts, certificate);
-    try {
-      log.info("Running {}: hostPorts={}, numTservers={}.", getName(), hostPorts, numTservers);
+    try (YBClient client = ybService.getUniverseClient(universe)) {
+      log.info(
+          "Running {}: masterAddresses={}, numTservers={}.",
+          getName(),
+          universe.getMasterAddresses(),
+          numTservers);
       int numTries = 1;
       long start = System.currentTimeMillis();
       boolean timedOut = false;
@@ -90,8 +92,8 @@ public class WaitForTServerHeartBeats extends AbstractTaskBase {
       if (timedOut) {
         throw new RuntimeException(getName() + " timed out.");
       }
-    } finally {
-      ybService.closeClient(client, hostPorts);
+    } catch (Exception e) {
+      Throwables.propagate(e);
     }
   }
 }

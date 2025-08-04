@@ -261,7 +261,8 @@ Result<std::optional<SubDocument>> TEST_GetSubDocument(
     return std::nullopt;
   }
 
-  dockv::SchemaPackingStorage schema_packing_storage(TableType::YQL_TABLE_TYPE);
+  static const auto registry = std::make_shared<dockv::SchemaPackingRegistry>("TEST: ");
+  dockv::SchemaPackingStorage schema_packing_storage(TableType::YQL_TABLE_TYPE, registry);
   const Schema schema;
   auto deadline_info = DeadlineInfo(read_operation_data.deadline);
   DocDBTableReader doc_reader(
@@ -349,7 +350,7 @@ class PackedRowData {
     size_t id = context->Id();
     if (!schema_packing_version_.empty() &&
         value.starts_with(schema_packing_version_.AsSlice())) {
-      value.remove_prefix(schema_packing_version_.size());
+      value.RemovePrefix(schema_packing_version_.size());
     } else {
       RETURN_NOT_OK(UpdateSchemaPacking(version, &value));
     }
@@ -1972,6 +1973,10 @@ Result<DocReaderResult> DocDBTableReader::Get(
   data_.iter->Seek(root_doc_key->AsSlice(), SeekFilter::kAll);
   const auto& new_fetched_entry = VERIFY_RESULT_REF(data_.iter->Fetch());
   if (!new_fetched_entry) {
+    return DocReaderResult::kNotFound;
+  }
+
+  if (!new_fetched_entry.key.starts_with(root_doc_key->AsSlice())) {
     return DocReaderResult::kNotFound;
   }
 

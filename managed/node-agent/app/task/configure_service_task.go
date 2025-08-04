@@ -82,7 +82,7 @@ func (handler *ConfigureServiceHandler) Handle(
 	)
 
 	util.FileLogger().
-		Infof(ctx, "Starting install/configure earlyoom handler with %v", handler.shellTask.command.RedactCommandArgs())
+		Infof(ctx, "Starting install/configure earlyoom handler with %v", handler.shellTask.cmdInfo.RedactCommandArgs())
 
 	output, err := handler.shellTask.Process(ctx)
 	if err != nil {
@@ -108,11 +108,10 @@ func (handler *ConfigureServiceHandler) getCommandWithOptions(
 	ybHomeDir string,
 	earlyoomProvisioned bool,
 ) (string, []string) {
-	args := "\"" + handler.param.GetEarlyoomConfig().GetStartArgs() + "\""
+	args := handler.param.GetEarlyoomConfig().GetStartArgs()
 	if earlyoomProvisioned {
 		command := fmt.Sprintf(
-			"%s %s/bin/configure_earlyoom_service.sh",
-			util.DefaultShell,
+			"%s/bin/configure_earlyoom_service.sh",
 			ybHomeDir,
 		)
 		options := []string{"-a"}

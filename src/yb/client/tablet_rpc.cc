@@ -429,8 +429,7 @@ bool TabletInvoker::Done(Status* status) {
       IsTabletConsideredNotFound(rsp_err, *status) ||
       IsTabletConsideredNonLeader(rsp_err, *status) ||
       (status->IsTimedOut() && CoarseMonoClock::Now() < retrier_->deadline())) {
-    VLOG(4) << "Retryable failure: " << *status
-            << ", response: " << yb::ToString(rsp_err);
+    VLOG(4) << "Retryable failure: " << *status << ", response: " << AsString(rsp_err);
 
     const bool leader_is_not_ready =
         ErrorCode(rsp_err) ==

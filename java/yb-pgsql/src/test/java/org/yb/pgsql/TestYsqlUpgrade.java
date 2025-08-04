@@ -16,14 +16,16 @@ package org.yb.pgsql;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertGreaterThan;
+import static org.yb.AssertionWrappers.assertGreaterThanOrEqualTo;
 import static org.yb.AssertionWrappers.assertLessThanOrEqualTo;
 import static org.yb.AssertionWrappers.assertNotNull;
 import static org.yb.AssertionWrappers.assertNull;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.jdbc.PgArray;
-
+import com.yugabyte.util.PGobject;
 import java.io.File;
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -48,7 +50,6 @@ import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.LineIterator;
 import org.apache.commons.lang3.StringUtils;
@@ -68,9 +69,6 @@ import org.yb.minicluster.YsqlSnapshotVersion;
 import org.yb.util.BuildTypeUtil;
 import org.yb.util.CatchingThread;
 import org.yb.util.YBTestRunnerNonTsanOnly;
-
-import com.google.common.collect.ImmutableMap;
-import com.yugabyte.util.PGobject;
 
 /**
  * For now, this test covers creation of system and shared system relations that should be created
@@ -93,7 +91,13 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
   private interface ConvertedRowFetcher {
     // Ideally, args should be (String, TableInfo -> Object[]) but in Java that's too much
     // boilerplate
-    public List<Row> fetch(TableInfoSqlFormatter formatter) throws Exception;
+
+    List<Row> fetch(TableInfoSqlFormatter formatter, boolean replaceSysGeneratedOid)
+        throws Exception;
+
+    default public List<Row> fetch(TableInfoSqlFormatter formatter) throws Exception {
+      return fetch(formatter, false /* replaceSysGeneratedOid */);
+    }
   }
 
   private class TableInfo {
@@ -1409,7 +1413,8 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     // names and OIDs, etc - thus making them comparable
     // Also changes/removes values expected to mismatch due to PG vs YB difference.
 
-    ConvertedRowFetcher fetchExpected = (TableInfoSqlFormatter formatter) -> {
+    ConvertedRowFetcher fetchExpected = (TableInfoSqlFormatter formatter,
+        boolean replaceSysGeneratedOid) -> {
       String sql = formatter.format(origTi);
       LOG.info("Executing '{}'", sql);
       return getRowList(stmtForOrig, sql)
@@ -1420,10 +1425,13 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           .map(r -> excluded(r, "initprivs")) // pg_init_privs.initprivs will be compared separately.
           .map(r -> bootstrapRelation ? excluded(r, "relfrozenxid") : r)
           .map(r -> bootstrapRelation ? excluded(r, "relminmxid") : r)
+          .map(r -> (replaceSysGeneratedOid && r.getColumnName(0).equals("oid") &&
+              isSysGeneratedOid(r.getLong(0)) ? replaced(r, r.getLong(0), PLACEHOLDER_OID) : r))
           .collect(Collectors.toList());
     };
 
-    ConvertedRowFetcher fetchActual = (TableInfoSqlFormatter formatter) -> {
+    ConvertedRowFetcher fetchActual = (TableInfoSqlFormatter formatter,
+        boolean replaceSysGeneratedOid) -> {
       List<Row> rows = getRowList(stmtForNew, formatter.format(newTi));
       return rows.stream()
           .map(r -> excluded(r, "reltuples"))
@@ -1445,6 +1453,8 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
             }
             return r;
           })
+          .map(r -> (replaceSysGeneratedOid && r.getColumnName(0).equals("oid") &
+              isSysGeneratedOid(r.getLong(0)) ? replaced(r, r.getLong(0), PLACEHOLDER_OID) : r))
           .collect(Collectors.toList());
     };
 
@@ -1509,7 +1519,8 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           + " WHERE conrelid = %d ORDER BY conname";
       TableInfoSqlFormatter fmt = (ti) -> String.format(sql, ti.getOid());
       assertRows("pg_constraint",
-          fetchExpected.fetch(fmt), fetchActual.fetch(fmt));
+          fetchExpected.fetch(fmt, true /* replaceSysGeneratedOid */),
+          fetchActual.fetch(fmt, true /* replaceSysGeneratedOid */));
     }
 
     {
@@ -1889,13 +1900,22 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           totalMigrations + 1, appliedMigrations.size());
       assertRow(new Row(initialMajorVersion, initialMinorVersion, "<baseline>", null),
                 appliedMigrations.get(0));
+      int previousMajorVersion = initialMajorVersion;
+      int previousMinorVersion = initialMinorVersion;
       for (int i = 1; i <= totalMigrations; ++i) {
         // Rows should be like [1, 0, 'V1__...', <recent timestamp in ms>]
         Row migrationRow = appliedMigrations.get(i);
-        final int majorVersion = Math.min(i + initialMajorVersion, latestMajorVersion);
-        final int minorVersion = i - majorVersion + initialMajorVersion;
-        assertEquals(majorVersion, migrationRow.getInt(0).intValue());
-        assertEquals(minorVersion, migrationRow.getInt(1).intValue());
+        final int majorVersion = migrationRow.getInt(0);
+        final int minorVersion = migrationRow.getInt(1);
+        assertGreaterThanOrEqualTo(majorVersion, initialMajorVersion);
+        assertLessThanOrEqualTo(majorVersion, latestMajorVersion);
+        if (majorVersion != previousMajorVersion) {
+          assertEquals(previousMajorVersion + 1, majorVersion);
+          assertEquals(0, minorVersion);
+        } else {
+          assertEquals(previousMinorVersion + 1, minorVersion);
+        }
+
         String migrationNamePrefix;
         if (minorVersion > 0) {
           migrationNamePrefix = "V" + majorVersion + "." + minorVersion + "__";
@@ -1906,6 +1926,9 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
         assertTrue("Expected migration timestamp to be at most 10 mins old!",
             migrationRow.getLong(3) != null &&
                 System.currentTimeMillis() - migrationRow.getLong(3) < 10 * 60 * 1000);
+
+        previousMajorVersion = majorVersion;
+        previousMinorVersion = minorVersion;
       }
     }
 

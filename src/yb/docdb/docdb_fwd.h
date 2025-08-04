@@ -16,6 +16,7 @@
 #include "yb/common/common_fwd.h"
 
 #include "yb/docdb/docdb.fwd.h"
+#include "yb/docdb/object_lock_shared_fwd.h"
 #include "yb/dockv/dockv_fwd.h"
 
 #include "yb/qlexpr/qlexpr_fwd.h"
@@ -43,6 +44,7 @@ class HistoryRetentionPolicy;
 class IntentAwareIterator;
 class IntentAwareIteratorIf;
 class IntentIterator;
+class LocalWaitingTxnRegistry;
 class LockBatch;
 class ManualHistoryRetentionPolicy;
 class ObjectLockManager;
@@ -76,7 +78,7 @@ struct PgsqlReadOperationData;
 struct ReadOperationData;
 
 using DocKeyHash = uint16_t;
-using DocReadContextPtr = std::shared_ptr<DocReadContext>;
+using DocReadContextPtr = std::shared_ptr<const DocReadContext>;
 template <typename LockManager>
 using LockBatchEntries = std::vector<LockBatchEntry<LockManager>>;
 // Lock state stores the number of locks acquired for each intent type.
@@ -95,9 +97,10 @@ using DocVectorIndexesPtr = std::shared_ptr<DocVectorIndexes>;
 using DocVectorIndexInsertEntries = std::vector<DocVectorIndexInsertEntry>;
 using DocVectorIndexSearchResult = std::vector<DocVectorIndexSearchResultEntry>;
 
+YB_STRONGLY_TYPED_BOOL(FastBackwardScan);
+YB_STRONGLY_TYPED_BOOL(IncludeIntents);
 YB_STRONGLY_TYPED_BOOL(SkipFlush);
 YB_STRONGLY_TYPED_BOOL(SkipSeek);
-YB_STRONGLY_TYPED_BOOL(FastBackwardScan);
 YB_STRONGLY_TYPED_BOOL(UseVariableBloomFilter);
 
 }  // namespace yb::docdb

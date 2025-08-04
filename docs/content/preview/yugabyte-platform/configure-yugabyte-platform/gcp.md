@@ -44,7 +44,7 @@ Before you can deploy universes using YugabyteDB Anywhere (YBA), you must create
 When deploying a universe, YBA uses the provider configuration settings to do the following:
 
 - Create instances on GCP using the following:
-  - your cloud provider credentials
+  - your GCP service account credentials
   - specified regions and availability zones (this can be a subset of those specified in the provider configuration)
   - a Linux image
   - optionally, an [instance template](#gcp-instance-templates)
@@ -53,7 +53,7 @@ When deploying a universe, YBA uses the provider configuration settings to do th
 
 ## Prerequisites
 
-- Cloud provider credentials. YBA uses your credentials to automatically provision and de-provision instances that run YugabyteDB. An instance for YugabyteDB includes a compute instance, as well as local or remote disk storage attached to the compute instance.
+- GCP service account credentials. YBA uses your credentials to automatically provision and de-provision instances that run YugabyteDB. An instance for YugabyteDB includes a compute instance, as well as local or remote disk storage attached to the compute instance.
 
 For more information on setting up a GCP service account, refer to [Cloud permissions to deploy nodes](../../prepare/cloud-permissions/cloud-permissions-nodes-gcp/).
 
@@ -77,8 +77,6 @@ To create a GCP provider:
 
 The create provider process includes generating a new VPC, a network, subnetworks in all available regions, as well as a new firewall rule, VPC peering for network connectivity, and a custom SSH key pair for YugabyteDB Anywhere-to-YugabyteDB connectivity.
 
-Now you are ready to create a YugabyteDB universe on GCP.
-
 ### View and edit providers
 
 To view a provider, select it in the list of GCP Configs to display the **Overview**.
@@ -99,6 +97,7 @@ To edit the provider, select **Config Details**, make changes, and click **Apply
     If `new-project-yb` is a new GCE project, the backend request fails and you will be notified that you can't change the GCE project for an in-use provider.
 
 - Regions - You can add regions and zones to an in-use provider. Note that you cannot edit existing region details, delete a region if any of the region's zones are in use, or delete zones that are in use.
+- Linux version catalog
 
 To view the universes created using the provider, select **Universes**.
 
@@ -112,11 +111,17 @@ Enter a Provider name. The Provider name is an internal tag used for organizing 
 
 ### Cloud Info
 
-If your YBA instance is not running inside GCP, you need to supply YBA with credentials to the desired GCP project by uploading a configuration file. To do this, set **Credential Type** to **Upload Service Account config** and proceed to upload the JSON file that you obtained when you created your service account, as described in [Cloud permissions](../../prepare/cloud-permissions/cloud-permissions-nodes-gcp/).
+**Credential Type**. YBA requires the ability to create VMs in GCP. To do this, you can do one of the following:
 
-If your YBA instance is running inside GCP, the preferred method for authentication to the GCP APIs is to add a service account role to the GCP instance running YBA and then configure YBA to use the instance's service account. To do this, set **Credential Type** to **Use service account from this YBA host's instance**.
+- If your YBA instance is not running inside GCP, you need to supply YBA with credentials to the desired GCP project by uploading a configuration file.
 
-### VPC Setup
+    Set **Credential Type** to **Upload Service Account config** and upload the JSON file that you obtained when you created your service account, as described in [Cloud permissions](../../prepare/cloud-permissions/cloud-permissions-nodes-gcp/).
+
+- If your YBA instance is running inside GCP, the preferred method for authentication to the GCP APIs is to add a service account role to the GCP instance running YBA and then configure YBA to use the instance's service account.
+
+    Set **Credential Type** to **Use service account from this YBA host's instance**.
+
+#### VPC Setup
 
 Specify the VPC to use for deploying YugabyteDB nodes.
 

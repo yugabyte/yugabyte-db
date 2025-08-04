@@ -19,10 +19,19 @@ var InstallChecks = []Check{
 	checks.Prometheus,
 	checks.ReplicatedNotExists,
 	checks.SystemdUserSupported,
+	checks.Glibc,
+	checks.Logrotate,
 }
 
 // InstallChecksWithPostgres adds onto the base list with postgres checks
 var InstallChecksWithPostgres = append(InstallChecks, checks.Postgres)
+
+var InstallPerfAdvisorChecks = []Check{
+	checks.InstallNotExists,
+	checks.Cpu,
+	checks.Memory,
+	checks.DiskAvail,
+}
 
 // UpgradeChecks is the base list of checks for upgrade
 var UpgradeChecks = []Check{
@@ -36,7 +45,8 @@ var UpgradeChecks = []Check{
 	checks.Prometheus,
 	checks.NonRootUpgradeCheck,
 	checks.ServicesRunningCheck,
-	checks.UpgradeConfigCheck,
+	checks.Glibc,
+	checks.Logrotate,
 }
 
 var ReplicatedMigrateChecks = []Check{
@@ -47,4 +57,5 @@ var ReplicatedMigrateChecks = []Check{
 	checks.ValidateLocaleConfig,
 	checks.MigrateDiskCheck,
 	checks.HTTPHACheck,
+	checks.Logrotate,
 }

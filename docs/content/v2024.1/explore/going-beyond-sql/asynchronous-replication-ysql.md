@@ -6,7 +6,7 @@ description: Multi-region deployment using asynchronous replication across two o
 headContent: xCluster unidirectional and bidirectional replication (2+ regions)
 menu:
   v2024.1:
-    identifier: explore-multi-region-deployments-async-replication-1-ysql
+    identifier: asynchronous-replication-ysql
     parent: going-beyond-sql
     weight: 350
 type: docs

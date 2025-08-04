@@ -9,9 +9,16 @@ menu:
     parent: configuration
     weight: 2000
 type: docs
+body_class: configuration
 ---
 
 Use the yb-master binary and its flags to configure the [YB-Master](../../../architecture/yb-master/) server. The yb-master executable file is located in the `bin` directory of YugabyteDB home.
+
+{{< note title="Setting flags in YugabyteDB Anywhere" >}}
+
+If you are using YugabyteDB Anywhere, set flags using the [Edit Flags](../../../yugabyte-platform/manage-deployments/edit-config-flags/#modify-configuration-flags) feature.
+
+{{< /note >}}
 
 ## Syntax
 
@@ -283,9 +290,11 @@ Default: `true`
 
 These flags are used to determine how the RAM of a node is split between the [TServer](../../../architecture/key-concepts/#tserver) and other processes, including the PostgreSQL processes and a [Master](../../../architecture/key-concepts/#master-server) process if present, as well as how to split memory inside of a TServer between various internal components like the RocksDB block cache.
 
-{{< warning title="Warning" >}}
+{{< warning title="Do not oversubscribe memory" >}}
 
-Ensure you do not _oversubscribe memory_ when changing these flags: make sure the amount of memory reserved for the Master process and TServer (if present) leaves enough memory on the node for PostgreSQL and any required other processes like monitoring agents, plus the memory needed by the kernel.
+Ensure you do not oversubscribe memory when changing these flags.
+
+When reserving memory for TServer and Master (if present), you must leave enough memory on the node for PostgreSQL, any required other processes like monitoring agents, and the memory needed by the kernel.
 
 {{< /warning >}}
 
@@ -296,34 +305,11 @@ The memory division flags have multiple sets of defaults; which set of defaults 
 
 ##### --use_memory_defaults_optimized_for_ysql
 
-If true, the defaults for the memory division settings take into account the amount of RAM and cores available and are optimized for using YSQL.  If false, the defaults will be the old defaults, which are more suitable for YCQL but do not take into account the amount of RAM and cores available.
+If true, the defaults for the memory division settings take into account the amount of RAM and cores available and are optimized for using YSQL. If false, the defaults will be the old defaults, which are more suitable for YCQL but do not take into account the amount of RAM and cores available.
+
+For information on how memory is divided among processes when this flag is set, refer to [Memory division defaults](../../configuration/smart-defaults/).
 
 Default: `false`. When creating a new universe using yugabyted or YugabyteDB Anywhere, the flag is set to `true`.
-
-If this flag is true then the memory division flag defaults change to provide much more memory for PostgreSQL; furthermore, they optimize for the node size.
-
-If these defaults are used for both TServer and Master, then a node's available memory is partitioned as follows:
-
-| node RAM GiB (_M_): | _M_ &nbsp;&le;&nbsp; 4 | 4 < _M_ &nbsp;&le;&nbsp; 8 | 8 < _M_ &nbsp;&le;&nbsp; 16 | 16 < _M_ |
-| :--- | ---: | ---: | ---: | ---: |
-| TServer %  | 45% | 48% | 57% | 60% |
-| Master %   | 20% | 15% | 10% | 10% |
-| PostgreSQL % | 25% | 27% | 28% | 27% |
-| other %    | 10% | 10% |  5% |  3% |
-
-To read this table, take your node's available memory in GiB, call it _M_, and find the column who's heading condition _M_ meets.  For example, a node with 7 GiB of available memory would fall under the column labeled "4 < _M_ &le; 8" because 4 < 7 &le; 8.  The defaults for [--default_memory_limit_to_ram_ratio](#default-memory-limit-to-ram-ratio) on this node will thus be `0.48` for TServers and `0.15` for Masters. The PostgreSQL and other percentages are not set via a flag currently but rather consist of whatever memory is left after TServer and Master take their cut.  There is currently no distinction between PostgreSQL and other memory except on [YugabyteDB Aeon](/preview/yugabyte-cloud/) where a [cgroup](https://www.cybertec-postgresql.com/en/linux-cgroups-for-postgresql/) is used to limit the PostgreSQL memory.
-
-For comparison, when `--use_memory_defaults_optimized_for_ysql` is `false`, the split is TServer 85%, Master 10%, PostgreSQL 0%, and other 5%.
-
-The defaults for the Master process partitioning flags when `--use_memory_defaults_optimized_for_ysql` is `true` do not depend on the node size, and are described in the following table:
-
-| flag | default |
-| :--- | :--- |
-| --db_block_cache_size_percentage | 25 |
-| --tablet_overhead_size_percentage | 0 |
-
-Currently these are the same as the defaults when `--use_memory_defaults_optimized_for_ysql` is `false`, but may change in future releases.
-
 
 ### Flags controlling the split of memory among processes
 
@@ -341,7 +327,9 @@ The percentage of available RAM to use for this process if [--memory_limit_hard_
 
 Default: `0.10` unless [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is true.
 
-### Flags controlling the split of memory within a master process
+### Flags controlling the split of memory within a Master
+
+These settings control the division of memory available to the Master process.
 
 ##### --db_block_cache_size_bytes
 
@@ -976,6 +964,8 @@ Default: `UINT32_MAX`
 
 ## Catalog flags
 
+Catalog cache flags are {{<tags/feature/ea idea="599">}}. For information on setting these flags, see [Customize preloading of YSQL catalog caches](../../../best-practices-operations/ysql-catalog-cache-tuning-guide/).
+
 ##### --ysql_enable_db_catalog_version_mode
 
 Enable the per database catalog version mode. A DDL statement that
@@ -1044,6 +1034,24 @@ expensive when the number of YB-TServers, or the number of databases goes up.
 
 {{< /note >}}
 
+##### --ysql_yb_enable_invalidation_messages
+
+Enables YSQL backends to generate and consume invalidation messages incrementally for schema changes. When enabled (true), invalidation messages are propagated via the `pg_yb_invalidation_messages` per-database catalog table. Details of the invalidation messages generated by a DDL are also logged when [ysql_log_min_messages](../yb-tserver/#ysql-log-min-messages) is set to `DEBUG1` or when `yb_debug_log_catcache_events` is set to true. When disabled, schema changes cause a full catalog cache refresh on existing backends, which can result in a latency and memory spike on existing YSQL backends.
+
+Default: `true`
+
+## Auto Analyze service flags
+
+Auto analyze is {{<tags/feature/ea idea="590">}}.
+
+See also [Auto Analyze Service TServer flags](../yb-tserver/#auto-analyze-service-flags).
+
+##### ysql_enable_auto_analyze_service
+
+{{<tags/feature/ea idea="590">}}Enable the Auto Analyze service, which automatically runs ANALYZE to update table statistics for tables that have changed more than a configurable threshold.
+
+Default: false
+
 ## Advisory lock flags
 
 Support for advisory locks is {{<tags/feature/tp idea="812">}}.
@@ -1066,9 +1074,17 @@ Comma-separated values (CSV) formatted catalogue of [preview feature](/preview/r
 
 By adding a flag to this list, you explicitly acknowledge and accept any potential risks or instability that may arise from modifying these preview features. This process serves as a safeguard, ensuring that you are fully aware of the experimental nature of the flags you are working with.
 
-{{<warning>}}
-Adding flags to this list doesn't automatically change any settings. It only grants permission for the flag to be modified. You still need to configure the flag separately after adding it to this list.
+{{<warning title="You still need to set the flag">}}
+Adding flags to this list doesn't automatically change any settings. It only _grants permission_ for the flag to be modified.
+
+You still need to configure the flag separately after adding it to this list.
 {{</warning>}}
+
+{{<note title="Using YugabyteDB Anywhere">}}
+If you are using YugabyteDB Anywhere, as with other flags, set `allowed_preview_flags_csv` using the [Edit Flags](../../../yugabyte-platform/manage-deployments/edit-config-flags/#modify-configuration-flags) feature.
+
+After adding a preview flag to the `allowed_preview_flags_csv` list, you still need to set the flag using **Edit Flags** as well.
+{{</note>}}
 
 ##### --ysql_index_backfill_rpc_timeout_ms
 

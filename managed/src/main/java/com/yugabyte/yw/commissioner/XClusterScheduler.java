@@ -216,9 +216,7 @@ public class XClusterScheduler {
 
     // Get the cluster configuration for the target universe
     CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig;
-    try (YBClient client =
-        ybClientService.getClient(
-            targetUniverse.getMasterAddresses(), targetUniverse.getCertificateNodetoNode())) {
+    try (YBClient client = ybClientService.getUniverseClient(targetUniverse)) {
       clusterConfig =
           XClusterConfigTaskBase.getClusterConfig(client, config.getTargetUniverseUUID());
     } catch (Exception e) {
@@ -355,10 +353,6 @@ public class XClusterScheduler {
     }
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
     Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
-    if (sourceUniverse.getUniverseDetails().updateInProgress
-        || targetUniverse.getUniverseDetails().updateInProgress) {
-      return metricsList;
-    }
     if (sourceUniverse.getUniverseDetails().universePaused
         || targetUniverse.getUniverseDetails().universePaused) {
       return metricsList;

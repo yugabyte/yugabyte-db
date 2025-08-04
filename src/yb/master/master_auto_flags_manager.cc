@@ -374,23 +374,19 @@ Status MasterAutoFlagsManager::StoreConfig(AutoFlagsConfigPB& new_config)
 // No thread safety analysis, as it cannot detect that the mutex is locked by UniqueLock.
 Status MasterAutoFlagsManager::ProcessAutoFlagsConfigOperation(const AutoFlagsConfigPB new_config)
     NO_THREAD_SAFETY_ANALYSIS {
-  bool unlock_needed = false;
-  auto se = ScopeExit([&update_lock = update_lock_, &unlock_needed]() NO_THREAD_SAFETY_ANALYSIS {
-    if (unlock_needed) {
-      update_lock.unlock();
-    }
-  });
-
   // This function will be invoked when the ChangeAutoFlagsConfigOperation is applied. The
   // StoreUpdatedConfig may be holding the lock already and waiting for us to complete in which case
   // we do not have to reacquire the lock. If we crashed during StoreUpdatedConfig, then the
   // operation can get applied at tablet bootstrap or a later time, and in both cases we need to get
   // the lock.
+  auto unlock_needed = false;
   if (!update_lock_.owns_lock()) {
     update_lock_.lock();
     unlock_needed = true;
   }
-
+  auto se = unlock_needed
+      ? MakeOptionalScopeExit([this]() NO_THREAD_SAFETY_ANALYSIS { update_lock_.unlock(); })
+      : std::nullopt;
   return LoadFromConfigUnlocked(std::move(new_config));
 }
 

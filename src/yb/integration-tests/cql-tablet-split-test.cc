@@ -306,20 +306,20 @@ load_generator::ReadStatus CqlSecondaryIndexReader::PerformRead(
         "for v: '$0', expected key: '$1', key_index: $2", expected_value, key_str, key_index);
   };
   if (!iter.Next()) {
-    LOG(ERROR) << "No rows found " << values_formatter();
+    LOG(WARNING) << "No rows found " << values_formatter();
     return load_generator::ReadStatus::kNoRows;
   }
   auto row = iter.Row();
   const auto k = row.Value(0).ToString();
   if (k != key_str) {
-    LOG(ERROR) << "Invalid k " << values_formatter() << " got k: " << k;
+    LOG(WARNING) << "Invalid k " << values_formatter() << " got k: " << k;
     return load_generator::ReadStatus::kInvalidRead;
   }
   if (iter.Next()) {
     return load_generator::ReadStatus::kExtraRows;
-    LOG(ERROR) << "More than 1 row found " << values_formatter();
+    LOG(WARNING) << "More than 1 row found " << values_formatter();
     do {
-      LOG(ERROR) << "k: " << iter.Row().Value(0).ToString();
+      LOG(WARNING) << "k: " << iter.Row().Value(0).ToString();
     } while (iter.Next());
   }
   return load_generator::ReadStatus::kOk;

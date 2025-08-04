@@ -222,6 +222,22 @@ func GetTemplatesDir() string {
 	return GetFileMatchingGlobOrFatal(filepath.Join(GetBinaryDir(), tarTemplateDirGlob))
 }
 
+func GetSelfSignedServerCertPath() string {
+	return filepath.Join(GetSelfSignedCertsDir(), ServerCertPath)
+}
+
+func GetSelfSignedServerKeyPath() string {
+	return filepath.Join(GetSelfSignedCertsDir(), ServerKeyPath)
+}
+
+func GetSelfSignedCACertPath() string {
+	return filepath.Join(GetSelfSignedCertsDir(), "ca_cert.pem")
+}
+
+func GetSelfSignedCAKeyPath() string {
+	return filepath.Join(GetSelfSignedCertsDir(), "ca_key.pem")
+}
+
 func GetYBAInstallerDataDir() string {
 	return filepath.Join(GetDataRoot(), "yba-installer")
 }

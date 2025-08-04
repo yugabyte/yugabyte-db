@@ -732,4 +732,8 @@ void Connection::ListenShutdown(const std::function<void()>& listener) {
   }
 }
 
+CallStateListenerFactory* Connection::call_state_listener_factory() {
+  return reactor_->messenger().call_state_listener_factory();
+}
+
 }  // namespace yb::rpc

@@ -3479,6 +3479,7 @@ class ControlScript(object):
                                                             get("tserver_webserver_port")),
                                 "-data_dir={}".format(self.configs.saved_data.
                                                             get("data_dir")),
+                                "-conf_file={}".format(self.conf_file),
                                 "-warnings={}".format("|".join(warnings_for_ui))
                             ]
                         if self.configs.saved_data.get("secure"):
@@ -3514,6 +3515,8 @@ class ControlScript(object):
 
             if is_first_install and not join_ip:
                 self.first_install_init_auth()
+                self.configs.saved_data["created_on"] = int(time.time())
+                self.configs.save_configs()
 
             if warnings:
                 warning_msg = "\n" + Output.make_yellow(Output.ANIMATION_WARNING +
@@ -3579,6 +3582,11 @@ class ControlScript(object):
                 masters_list_update_thread = Thread(target=self.update_masters_list_loop)
                 masters_list_update_thread.daemon = True
                 masters_list_update_thread.start()
+
+                if join_ip:
+                    created_on_timestamp_thread = Thread(target=self.get_created_on_timestamp_loop)
+                    created_on_timestamp_thread.daemon = True
+                    created_on_timestamp_thread.start()
 
             is_first_run = False
             if should_callhome:
@@ -6448,6 +6456,49 @@ class ControlScript(object):
             # Persist the config if masters have changed
             self.configs.save_configs()
 
+    def get_created_on_timestamp_loop(self):
+        num_times_cmd_executed = 0
+        initial_interval = 60
+        fallback_time = int(time.time())
+        try:
+            while True:
+                self.get_created_on_timestamp()
+                if self.configs.saved_data.get("created_on") > 0:
+                    break
+                num_times_cmd_executed += 1
+                # Stop trying to get created_on timestamp after 30 attempts
+                if num_times_cmd_executed > 30:
+                    self.configs.saved_data["created_on"] = fallback_time
+                    self.configs.save_configs()
+                    break
+                time.sleep(initial_interval)
+        except Exception as e:
+                Output.log("get_created_on_timestamp: " + str(e))
+                pass
+
+    def get_created_on_timestamp(self, timeout = 30):
+        join_ip = self.configs.saved_data.get("join")
+        if self.configs.saved_data.get("created_on") == 0 and join_ip:
+            # Attempt to get created_on date from yugabyted_ui
+            yugabyted_ui_addr = "{}:{}".format(
+                                get_url_from_ip(join_ip),
+                                self.configs.saved_data.get("yugabyted_ui_port"))
+            try:
+                createdOnAPI = "http://{}/api/created_on".format(yugabyted_ui_addr)
+                Output.log("Trying to get cluster creation date from {}".format(createdOnAPI) +
+                            " (Timeout={})".format(timeout))
+                response = urlopen(Request(createdOnAPI), timeout=timeout)
+                responseBody = response.read().decode('utf-8')
+                Output.log("Got response from {}: {}".format(createdOnAPI, responseBody))
+                self.configs.saved_data["created_on"] = int(responseBody)
+                self.configs.save_configs()
+            except HTTPError as http_err:
+                Output.log('HTTP error occurred while fetching creation timestamp: {}', http_err)
+            except URLError as url_err:
+                Output.log('URL error occurred while fetching creation timestamp: {}', url_err)
+            except Exception as err:
+                Output.log('Other error occurred while fetching creation timestamp: {}', err)
+
     # Calls func after receiving certain exit signals.
     def set_signals(self, func):
         for sig in EXIT_SIGNALS:
@@ -8897,6 +8948,7 @@ class Configs(object):
             "upgrade_in_progress": False,
             "old_release_cmd": "",
             "catalog_upgrade_completed": False,
+            "created_on": 0,
         }
         # Used to store data specific to certain functions that we don't want to save.
         self.temp_data = {

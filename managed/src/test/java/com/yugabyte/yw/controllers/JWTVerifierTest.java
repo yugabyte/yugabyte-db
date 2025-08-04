@@ -23,7 +23,7 @@ import java.security.Security;
 import java.time.Instant;
 import java.util.Date;
 import java.util.UUID;
-import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.bouncycastle.jcajce.provider.BouncyCastleFipsProvider;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -41,7 +41,7 @@ public class JWTVerifierTest {
 
   @Before
   public void setup() throws Exception {
-    Security.addProvider(new BouncyCastleProvider());
+    Security.addProvider(new BouncyCastleFipsProvider());
     verfier = new JWTVerifier(keyProvider);
     keyPair = CertificateHelper.getKeyPairObject();
   }

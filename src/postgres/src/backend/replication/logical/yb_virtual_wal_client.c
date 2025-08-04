@@ -228,11 +228,11 @@ InitVirtualWal(List *publication_names,
 		if (list_length(tables) != 1)
 			ereport(ERROR,
 					(errmsg("publication should only contain 1 table "
-								   "for using hash range constraints on slot."),
-					errhint("Consider using an existing publication "
-									"created before the slot that contains 1 "
-									"table. Else, alter/create new publication "
-									"and use a new slot.")));
+							"for using hash range constraints on slot."),
+					 errhint("Consider using an existing publication "
+							 "created before the slot that contains 1 "
+							 "table. Else, alter/create new publication "
+							 "and use a new slot.")));
 	}
 	table_oids = YBCGetTableOids(tables);
 
@@ -468,7 +468,7 @@ TrackUnackedTransaction(YbVirtualWalRecord *record)
 		case YB_PG_ROW_MESSAGE_ACTION_COMMIT:
 			{
 				YBUnackedTransactionInfo *transaction =
-				palloc(sizeof(YBUnackedTransactionInfo));
+					palloc(sizeof(YBUnackedTransactionInfo));
 
 				transaction->xid = record->xid;
 				Assert(last_txn_begin_lsn != InvalidXLogRecPtr);
@@ -683,25 +683,26 @@ YBCRefreshReplicaIdentities()
 void
 ValidateAndExtractHashRange(const char *hash_range_str, uint32_t *hash_range)
 {
-	 /* Check for non-numeric characters */
+	/* Check for non-numeric characters */
 	if (strspn(hash_range_str, "0123456789") != strlen(hash_range_str))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				errmsg("invalid value for hash_range")));
+				 errmsg("invalid value for hash_range")));
 
 	unsigned long parsed_range;
 	char	   *endptr;
+
 	errno = 0;
 	parsed_range = strtoul(hash_range_str, &endptr, 10);
 	if (errno != 0 || *endptr != '\0')
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					errmsg("invalid value for hash_range")));
+				 errmsg("invalid value for hash_range")));
 
 	if (parsed_range < 0 || parsed_range > (PG_UINT16_MAX + 1))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					errmsg("hash_range out of bound")));
+				 errmsg("hash_range out of bound")));
 
 	*hash_range = (uint32_t) parsed_range;
 }
@@ -717,11 +718,12 @@ YBCGetTableHashRange(List **options)
 {
 	bool		hash_range_option_given = false;
 	ListCell   *lc;
-	List       *option_values = NIL;
+	List	   *option_values = NIL;
 	DefElem    *hash_range_option = NULL;
-	foreach (lc, *options)
+
+	foreach(lc, *options)
 	{
-		DefElem *defel = (DefElem *) lfirst(lc);
+		DefElem    *defel = (DefElem *) lfirst(lc);
 
 		Assert(defel->arg == NULL || IsA(defel->arg, String));
 
@@ -730,43 +732,45 @@ YBCGetTableHashRange(List **options)
 			if (!yb_enable_consistent_replication_from_hash_range)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						errmsg("hash_range option is unavailable"),
-						errdetail("hash_range option can be used after "
-								  "yb_enable_consistent_replication_"
-								  "from_hash_range is set to true on "
-								  "all nodes.")));
+						 errmsg("hash_range option is unavailable"),
+						 errdetail("hash_range option can be used after "
+								   "yb_enable_consistent_replication_"
+								   "from_hash_range is set to true on "
+								   "all nodes.")));
 
 			if (hash_range_option_given)
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
-						errmsg("conflicting or redundant options")));
+						 errmsg("conflicting or redundant options")));
 			hash_range_option_given = true;
 
 			elog(DEBUG2, "Value for hash_range option: %s", strVal(defel->arg));
 			if (!SplitIdentifierString(strVal(defel->arg), ',', &option_values))
 				ereport(ERROR,
-				(errcode(ERRCODE_INVALID_NAME),
-				errmsg("invalid syntax for hash ranges")));
+						(errcode(ERRCODE_INVALID_NAME),
+						 errmsg("invalid syntax for hash ranges")));
 
 			if (list_length(option_values) != 2)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						errmsg("hash_range option must only contain start range & end range")));
+						 errmsg("hash_range option must only contain start range & end range")));
 
-			uint32_t extracted_start_range;
+			uint32_t	extracted_start_range;
+
 			ValidateAndExtractHashRange((char *) linitial(option_values),
 										&extracted_start_range);
-			uint32_t extracted_end_range;
+			uint32_t	extracted_end_range;
+
 			ValidateAndExtractHashRange((char *) llast(option_values),
 										&extracted_end_range);
 
 			if (extracted_start_range == extracted_end_range)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						errmsg("start hash range & end hash range must be different")));
+						 errmsg("start hash range & end hash range must be different")));
 
 			slot_hash_range = (YbcReplicationSlotHashRange *)
-			palloc(sizeof(YbcReplicationSlotHashRange));
+				palloc(sizeof(YbcReplicationSlotHashRange));
 			slot_hash_range->start_range = extracted_start_range;
 			slot_hash_range->end_range = extracted_end_range;
 

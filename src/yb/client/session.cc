@@ -145,8 +145,8 @@ void YBSession::SetDeadline(CoarseTimePoint deadline) {
 
 namespace {
 
-internal::BatcherPtr CreateBatcher(const YBSession::BatcherConfig& config) {
-  auto session = config.session.lock();
+internal::BatcherPtr CreateBatcher(
+    const YBSessionPtr& session, const YBSession::BatcherConfig& config) {
   CHECK_NOTNULL(session);
 
   auto batcher = std::make_shared<internal::Batcher>(
@@ -185,13 +185,22 @@ void BatcherFlushDone(
     const internal::BatcherPtr& done_batcher, const Status& s,
     FlushCallback callback, YBSession::BatcherConfig batcher_config) {
   auto errors = done_batcher->GetAndClearPendingErrors();
-  size_t retriable_errors_count = 0;
-  for (auto& error : errors) {
-    retriable_errors_count += ShouldSessionRetryError(error->status());
-  }
-  if (errors.size() > retriable_errors_count || errors.empty()) {
-    // We only retry failed ops if all of them failed with retriable errors.
-    MoveErrorsAndRunCallback(done_batcher, std::move(errors), std::move(callback), s);
+
+  // We need a valid session in order to be able retry.
+  auto session = batcher_config.session.lock();
+
+  bool operation_done = !session || errors.empty() ||
+                        std::any_of(errors.begin(), errors.end(), [](const auto& error) {
+                          return !ShouldSessionRetryError(error->status());
+                        });
+  if (operation_done) {
+    auto status = s;
+    if (!session && s.ok()) {
+      status = STATUS(
+          IllegalState, "Session is closed, cannot retry operations", done_batcher->LogPrefix());
+    }
+    MoveErrorsAndRunCallback(
+        done_batcher, std::move(errors), std::move(callback), std::move(status));
     return;
   }
 
@@ -199,7 +208,7 @@ void BatcherFlushDone(
                     << done_batcher->LogPrefix() << " due to: " << s
                     << ": (first op error: " << errors[0]->status() << ")";
 
-  internal::BatcherPtr retry_batcher = CreateBatcher(batcher_config);
+  internal::BatcherPtr retry_batcher = CreateBatcher(session, batcher_config);
   retry_batcher->InitFromFailedBatcher(done_batcher, errors);
   DEBUG_ONLY_TEST_SYNC_POINT("BatcherFlushDone:Retry:1");
 
@@ -293,8 +302,9 @@ ConsistentReadPoint* YBSession::read_point() {
 
 internal::Batcher& YBSession::Batcher() {
   if (!batcher_) {
-    batcher_config_.session = shared_from_this();
-    batcher_ = CreateBatcher(batcher_config_);
+    auto shared_this = shared_from_this();
+    batcher_config_.session = shared_this;
+    batcher_ = CreateBatcher(shared_this, batcher_config_);
     if (deadline_ != CoarseTimePoint()) {
       batcher_->SetDeadline(deadline_);
     } else {
@@ -416,6 +426,10 @@ void YBSession::SetForceConsistentRead(ForceConsistentRead value) {
 void YBSession::SetBatcherBackgroundTransactionMeta(
     const TransactionMetadata& background_transaction_meta) {
   Batcher().SetBackgroundTransactionMeta(background_transaction_meta);
+}
+
+void YBSession::SetObjectLockingTxnMeta(const TransactionMetadata& object_locking_txn_meta) {
+  Batcher().SetObjectLockingTxnMeta(object_locking_txn_meta);
 }
 
 bool ShouldSessionRetryError(const Status& status) {

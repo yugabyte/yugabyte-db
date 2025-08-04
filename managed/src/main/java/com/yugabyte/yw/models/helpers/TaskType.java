@@ -487,6 +487,11 @@ public enum TaskType {
       CustomerTask.TaskType.ModifyAuditLoggingConfig,
       CustomerTask.TargetType.Universe),
 
+  ModifyQueryLoggingConfig(
+      com.yugabyte.yw.commissioner.tasks.upgrade.ModifyQueryLoggingConfig.class,
+      CustomerTask.TaskType.ModifyQueryLoggingConfig,
+      CustomerTask.TargetType.Universe),
+
   InstallYbcSoftware(
       com.yugabyte.yw.commissioner.tasks.InstallYbcSoftware.class,
       CustomerTask.TaskType.InstallYbcSoftware,
@@ -655,9 +660,29 @@ public enum TaskType {
       CustomerTask.TaskType.CloneNamespace,
       CustomerTask.TargetType.Universe),
 
+  TlsToggleKubernetes(
+      com.yugabyte.yw.commissioner.tasks.upgrade.TlsToggleKubernetes.class,
+      CustomerTask.TaskType.TlsToggle,
+      CustomerTask.TargetType.Universe),
+
   UpdateOOMServiceState(
       UpdateOOMServiceState.class,
       CustomerTask.TaskType.UpdateOOMServiceState,
+      CustomerTask.TargetType.Universe),
+
+  SendUserNotification(
+      com.yugabyte.yw.commissioner.tasks.SendUserNotification.class,
+      CustomerTask.TaskType.SendUserNotification,
+      CustomerTask.TargetType.User),
+
+  ImportUniverse(
+      com.yugabyte.yw.commissioner.tasks.ImportUniverse.class,
+      CustomerTask.TaskType.ImportUniverse,
+      CustomerTask.TargetType.Universe),
+
+  MigrateUniverse(
+      com.yugabyte.yw.commissioner.tasks.upgrade.MigrateUniverse.class,
+      CustomerTask.TaskType.MigrateUniverse,
       CustomerTask.TargetType.Universe),
 
   /* Subtasks start here */
@@ -1019,6 +1044,9 @@ public enum TaskType {
   ManageCatalogUpgradeSuperUser(
       com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser.class),
 
+  UpdatePitrConfigIntermittentMinRecoverTime(
+      com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePitrConfigIntermittentMinRecoverTime.class),
+
   MarkSourceMetric(com.yugabyte.yw.commissioner.tasks.subtasks.MarkSourceMetric.class),
 
   UniverseSetTlsParams(com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams.class),
@@ -1047,6 +1075,9 @@ public enum TaskType {
   RunYsqlUpgrade(com.yugabyte.yw.commissioner.tasks.subtasks.RunYsqlUpgrade.class),
 
   PromoteAutoFlags(com.yugabyte.yw.commissioner.tasks.subtasks.PromoteAutoFlags.class),
+
+  UpdateSoftwareUpdatePrevConfig(
+      com.yugabyte.yw.commissioner.tasks.subtasks.UpdateSoftwareUpdatePrevConfig.class),
 
   RollbackAutoFlags(com.yugabyte.yw.commissioner.tasks.subtasks.RollbackAutoFlags.class),
 
@@ -1178,7 +1209,9 @@ public enum TaskType {
   ConfigureOOMServiceOnNode(
       com.yugabyte.yw.commissioner.tasks.subtasks.ConfigureOOMServiceOnNode.class),
 
-  CheckSshConnection(com.yugabyte.yw.commissioner.tasks.subtasks.CheckSshConnection.class);
+  CheckSshConnection(com.yugabyte.yw.commissioner.tasks.subtasks.CheckSshConnection.class),
+
+  FetchServerConf(com.yugabyte.yw.commissioner.tasks.subtasks.FetchServerConf.class);
 
   private final Class<? extends ITask> taskClass;
 
@@ -1237,6 +1270,7 @@ public enum TaskType {
           .put(RollbackKubernetesUpgrade, 54)
           .put(ModifyAuditLoggingConfig, 55)
           .put(ModifyKubernetesAuditLoggingConfig, 56)
+          .put(ModifyQueryLoggingConfig, 57)
           // Node operations (70-89):
           .put(AddNodeToUniverse, 70)
           .put(DeleteNodeFromUniverse, 71)

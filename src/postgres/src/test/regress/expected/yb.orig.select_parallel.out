@@ -21,21 +21,23 @@ create table part_pa_test_p2 partition of part_pa_test for values from (0) to (m
 explain (costs off)
 	select (select max((select pa1.b from part_pa_test pa1 where pa1.a = pa2.a)))
 	from part_pa_test pa2;
-                   QUERY PLAN                    
--------------------------------------------------
- Aggregate
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ Finalize Aggregate
    ->  Append
-         ->  Seq Scan on part_pa_test_p1 pa2_1
-         ->  Seq Scan on part_pa_test_p2 pa2_2
+         ->  Partial Aggregate
+               ->  Seq Scan on part_pa_test_p1 pa2
+               SubPlan 1
+                 ->  Append
+                       ->  Seq Scan on part_pa_test_p1 pa1_1
+                             Storage Filter: (a = pa2.a)
+                       ->  Seq Scan on part_pa_test_p2 pa1_2
+                             Storage Filter: (a = pa2.a)
+         ->  Partial Aggregate
+               ->  Seq Scan on part_pa_test_p2 pa2_1
    SubPlan 2
      ->  Result *RESULT*
-   SubPlan 1
-     ->  Append
-           ->  Seq Scan on part_pa_test_p1 pa1_1
-                 Storage Filter: (a = pa2.a)
-           ->  Seq Scan on part_pa_test_p2 pa1_2
-                 Storage Filter: (a = pa2.a)
-(12 rows)
+(14 rows)
 
 drop table part_pa_test;
 -- test with leader participation disabled

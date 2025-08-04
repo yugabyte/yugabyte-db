@@ -103,6 +103,12 @@ var resetPasswordUserCmd = &cobra.Command{
 		r := make([]ybaclient.UserWithFeatures, 0)
 		r = append(r, rGet)
 
+		fetchRoleBindingsForListing(
+			r[0].GetUuid(),
+			authAPI,
+			"Reset Password",
+		)
+
 		userCtx := formatter.Context{
 			Command: "reset",
 			Output:  os.Stdout,

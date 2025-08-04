@@ -34,6 +34,10 @@ namespace yb {
 class RefCntBuffer;
 class RefCntSlice;
 class Slice;
+class Strand;
+class StrandTask;
+class ThreadPoolTask;
+class YBThreadPool;
 
 namespace rpc {
 
@@ -42,46 +46,45 @@ class AcceptorPool;
 class AnyMessageConstPtr;
 class AnyMessagePtr;
 class CallResponse;
+class CallStateListener;
+class CallStateListenerFactory;
 class ConnectionContext;
 class DelayedTask;
 class DumpRunningRpcsRequestPB;
 class DumpRunningRpcsResponsePB;
 class GrowableBufferAllocator;
 class LightweightMessage;
+class LocalYBInboundCall;
 class MessengerBuilder;
+class MetadataSerializer;
+class MetadataSerializerFactory;
 class PeriodicTimer;
+class Poller;
+class Protocol;
 class Proxy;
 class ProxyBase;
 class ProxyCache;
 class ProxyContext;
+class ProxySource;
 class Reactor;
 class ReactorMonitor;
 class ReactorTask;
 class ReceivedSidecars;
-class RpcCallParams;
+class RefinedStream;
 class RemoteMethod;
 class RequestHeader;
 class ResponseHeader;
+class RpcCallParams;
 class RpcConnectionPB;
 class RpcContext;
 class RpcController;
 class Rpcs;
-class Poller;
-class Protocol;
-class Proxy;
-class ProxySource;
-class RefinedStream;
 class Scheduler;
 class SecureContext;
 class ServicePoolImpl;
 class Sidecars;
-class Strand;
-class StrandTask;
 class Stream;
 class StreamReadBuffer;
-class ThreadPool;
-class ThreadPoolTask;
-class LocalYBInboundCall;
 
 struct CallData;
 struct OutboundCallMetrics;
@@ -122,6 +125,11 @@ using ServerEventListPtr = std::shared_ptr<ServerEventList>;
 
 class ServiceIf;
 using ServiceIfPtr = std::shared_ptr<ServiceIf>;
+
+using Strand = yb::Strand;
+using StrandTask = yb::StrandTask;
+using ThreadPool = YBThreadPool;
+using ThreadPoolTask = yb::ThreadPoolTask;
 
 using Publisher = std::function<int(const std::string&, const std::string&)>;
 

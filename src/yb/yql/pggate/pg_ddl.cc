@@ -102,7 +102,8 @@ PgCreateDatabase::PgCreateDatabase(const PgSession::ScopedRefPtr& pg_session,
 }
 
 Status PgCreateDatabase::Exec() {
-  bool is_clone = !req_.source_database_name().empty();
+  RETURN_NOT_OK(SetupPerformOptionsForDdlIfNeeded(*pg_session_, req_));
+  const auto is_clone = !req_.source_database_name().empty();
   return pg_session_->pg_client().CreateDatabase(&req_, CreateDatabaseDeadline(is_clone));
 }
 
@@ -147,6 +148,7 @@ PgCreateTablegroup::PgCreateTablegroup(
 }
 
 Status PgCreateTablegroup::Exec() {
+  RETURN_NOT_OK(SetupPerformOptionsForDdlIfNeeded(*pg_session_, req_));
   return pg_session_->pg_client().CreateTablegroup(&req_, DdlDeadline());
 }
 
@@ -159,6 +161,7 @@ PgDropTablegroup::PgDropTablegroup(
 }
 
 Status PgDropTablegroup::Exec() {
+  RETURN_NOT_OK(SetupPerformOptionsForDdlIfNeeded(*pg_session_, req_));
   return pg_session_->pg_client().DropTablegroup(&req_, DdlDeadline());
 }
 
@@ -286,6 +289,7 @@ Status PgCreateTableBase::AddSplitBoundary(PgExpr** exprs, int expr_count) {
 }
 
 Status PgCreateTableBase::Exec() {
+  RETURN_NOT_OK(SetupPerformOptionsForDdlIfNeeded(*pg_session_, req_));
   RETURN_NOT_OK(pg_session_->pg_client().CreateTable(&req_, DdlDeadline()));
 
   const auto base_table_id = PgObjectId::FromPB(req_.base_table_id());
@@ -474,9 +478,8 @@ Status PgAlterTable::SetReplicaIdentity(const char identity_type) {
   return Status::OK();
 }
 
-Status PgAlterTable::RenameTable(const char *db_name, const char *newname) {
+Status PgAlterTable::RenameTable(const char *newname) {
   auto& rename = *req_.mutable_rename_table();
-  rename.set_database_name(db_name);
   rename.set_table_name(newname);
   return Status::OK();
 }
@@ -498,6 +501,7 @@ Status PgAlterTable::SetSchema(const char *schema_name) {
 }
 
 Status PgAlterTable::Exec() {
+  RETURN_NOT_OK(SetupPerformOptionsForDdlIfNeeded(*pg_session_, req_));
   RETURN_NOT_OK(pg_session_->pg_client().AlterTable(&req_, DdlDeadline()));
   pg_session_->InvalidateTableCache(
       PgObjectId::FromPB(req_.table_id()), InvalidateOnPgClient::kFalse);

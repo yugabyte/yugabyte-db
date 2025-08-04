@@ -100,7 +100,7 @@ public class CertificateHelperTest extends FakeDBApplication {
       FileInputStream is =
           new FileInputStream(certPath + String.format("/%s/yugabytedb.crt", rootCA));
       X509Certificate clientCer = (X509Certificate) factory.generateCertificate(is);
-      clientCer.verify(cert.getPublicKey(), "BC");
+      clientCer.verify(cert.getPublicKey());
     } catch (Exception e) {
       fail(e.getMessage());
     }
@@ -129,7 +129,7 @@ public class CertificateHelperTest extends FakeDBApplication {
       FileInputStream is =
           new FileInputStream(certPath + String.format("/%s/yugabytedb.crt", clientRootCA));
       X509Certificate clientCer = (X509Certificate) factory.generateCertificate(is);
-      clientCer.verify(cert.getPublicKey(), "BC");
+      clientCer.verify(cert.getPublicKey());
     } catch (Exception e) {
       fail(e.getMessage());
     }
@@ -165,7 +165,7 @@ public class CertificateHelperTest extends FakeDBApplication {
     ByteArrayInputStream bytes = new ByteArrayInputStream(clientCert.getBytes());
     X509Certificate clientCer = (X509Certificate) fact.generateCertificate(bytes);
 
-    clientCer.verify(cer.getPublicKey(), "BC");
+    clientCer.verify(cer.getPublicKey());
   }
 
   @Test
@@ -199,7 +199,7 @@ public class CertificateHelperTest extends FakeDBApplication {
       is = new FileInputStream(String.format("/tmp/%s/yugabytedb.crt", rootCA));
       X509Certificate clientCer = (X509Certificate) fact.generateCertificate(is);
 
-      clientCer.verify(cer.getPublicKey(), "BC");
+      clientCer.verify(cer.getPublicKey());
     } else {
       fail();
     }

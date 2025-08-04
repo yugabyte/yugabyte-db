@@ -31,11 +31,10 @@ var (
 	dialOpts          []grpc.DialOption
 	serverAddr        = "localhost:0"
 	enableTLS         = false
-	disableMetricsTLS = false
+	disableMetricsTLS = true
 )
 
 func init() {
-	rand.Seed(time.Now().Unix())
 }
 
 func randomString(length int) string {
@@ -341,6 +340,9 @@ func TestDownloadFile(t *testing.T) {
 }
 
 func TestRunPreflightCheck(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping preflight-check as it is platform dependent")
+	}
 	conn, err := grpc.Dial(serverAddr, dialOpts...)
 	if err != nil {
 		log.Fatalf("Failed to dial: %v", err)

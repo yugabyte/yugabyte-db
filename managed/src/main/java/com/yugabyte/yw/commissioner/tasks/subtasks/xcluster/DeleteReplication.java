@@ -63,10 +63,7 @@ public class DeleteReplication extends XClusterConfigTaskBase {
         taskParams().ignoreErrors || xClusterConfig.getSourceUniverseUUID() == null;
 
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
-    String targetUniverseMasterAddresses = targetUniverse.getMasterAddresses();
-    String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
-    try (YBClient client =
-        ybService.getClient(targetUniverseMasterAddresses, targetUniverseCertificate)) {
+    try (YBClient client = ybService.getUniverseClient(targetUniverse)) {
 
       if (xClusterConfig.getType() != ConfigType.Db) {
         // Sync the state for the tables.

@@ -32,9 +32,12 @@
 #pragma once
 
 // API definitions from LLVM lsan_interface.h
-
+#ifdef __cplusplus
 extern "C" {
-  // Allocations made between calls to __lsan_disable() and __lsan_enable() will
+#endif
+
+#if defined(ADDRESS_SANITIZER)
+    // Allocations made between calls to __lsan_disable() and __lsan_enable() will
   // be treated as non-leaks. Disable/enable pairs may be nested.
   void __lsan_disable();
   void __lsan_enable();
@@ -52,10 +55,23 @@ extern "C" {
   // most once per process. This function will terminate the process if there
   // are memory leaks and the exit_code flag is non-zero.
   void __lsan_do_leak_check();
-}  // extern "C"
+#elif defined(__cplusplus)
+  inline void __lsan_disable() {}
+  inline void __lsan_enable() {}
+  inline void __lsan_ignore_object(const void *p) {}
+#else
+  static void __lsan_disable() {}
+  static void __lsan_enable() {}
+  static void __lsan_ignore_object(const void *p) {}
+#endif
 
-namespace yb {
-namespace debug {
+#ifdef __cplusplus
+}  // extern "C"
+#endif
+
+#ifdef __cplusplus
+
+namespace yb::debug {
 
 class ScopedLSANDisabler {
  public:
@@ -76,5 +92,6 @@ class ScopedLSANDisabler {
   }
 };
 
-} // namespace debug
-} // namespace yb
+} // namespace yb::debug
+
+#endif

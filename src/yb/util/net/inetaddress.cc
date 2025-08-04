@@ -156,8 +156,8 @@ void FilterAddresses(const string& filter_spec, vector<IpAddress>* addresses) {
     if (filter_it != kFilters->end()) {
       filters.push_back(&filter_it->second);
     } else {
-      LOG(ERROR) << "Unknown filter spec " << filter_name << " in filter spec "
-                 << filter_spec;
+      LOG(DFATAL) << "Unknown filter spec " << filter_name << " in filter spec "
+                  << filter_spec;
     }
   }
 

@@ -186,6 +186,7 @@ public class NodeAgent extends Model {
     private String serverCert;
     private String serverKey;
     private boolean offloadable;
+    private String compressor;
   }
 
   public static final Finder<UUID, NodeAgent> finder =
@@ -458,6 +459,9 @@ public class NodeAgent extends Model {
   }
 
   public void heartbeat() {
+    if (getState() == State.READY) {
+      clearLastError();
+    }
     updateTimestamp(new Date());
   }
 
@@ -571,10 +575,12 @@ public class NodeAgent extends Model {
   }
 
   public void updateServerInfo(ServerInfo serverInfo) {
-    if (getConfig().isOffloadable() != serverInfo.getOffloadable()) {
+    if (getConfig().isOffloadable() != serverInfo.getOffloadable()
+        || !Objects.equals(getConfig().getCompressor(), serverInfo.getCompressor())) {
       updateInTxn(
           n -> {
             n.getConfig().setOffloadable(serverInfo.getOffloadable());
+            n.getConfig().setCompressor(serverInfo.getCompressor());
             n.update();
           });
     }

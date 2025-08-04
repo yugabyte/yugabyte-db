@@ -34,13 +34,11 @@
 
 #include <algorithm>
 #include <limits>
-#include <map>
 #include <memory>
 #include <mutex>
 #include <set>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 #include <boost/container/small_vector.hpp>
@@ -49,9 +47,9 @@
 
 #include "yb/cdc/cdc_types.h"
 
-#include "yb/client/client_fwd.h"
 #include "yb/client/client-internal.h"
 #include "yb/client/client_builder-internal.h"
+#include "yb/client/client_fwd.h"
 #include "yb/client/client_utils.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/namespace_alterer.h"
@@ -64,23 +62,21 @@
 #include "yb/client/tablet_server.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/common_util.h"
-#include "yb/common/common.pb.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/init.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/ql_type.h"
-#include "yb/common/roles_permissions.h"
-#include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/dockv/partition.h"
 
 #include "yb/gutil/bind.h"
-#include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/master_admin.proxy.h"
@@ -90,9 +86,10 @@
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_dcl.proxy.h"
 #include "yb/master/master_ddl.proxy.h"
+#include "yb/master/master_encryption.pb.h"
 #include "yb/master/master_encryption.proxy.h"
-#include "yb/master/master_replication.proxy.h"
 #include "yb/master/master_error.h"
+#include "yb/master/master_replication.proxy.h"
 #include "yb/master/master_util.h"
 
 #include "yb/rpc/messenger.h"
@@ -100,14 +97,10 @@
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc.h"
 
-#include "yb/tools/yb-admin_util.h"
 #include "yb/tserver/pg_client.pb.h"
-#include "yb/util/atomic.h"
-#include "yb/util/debug-util.h"
-#include "yb/util/flags.h"
+
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
-#include "yb/util/logging_callback.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metric_entity.h"
 #include "yb/util/monotime.h"
@@ -115,16 +108,13 @@
 #include "yb/util/physical_time.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/size_literals.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
-#include "yb/util/trace.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/tsan_util.h"
 
-#include "yb/yql/cql/ql/ptree/pt_option.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 using namespace std::literals;
@@ -300,8 +290,7 @@ DEFINE_test_flag(int32, create_namespace_if_not_exist_inject_delay_ms, 0,
                  "After checking a namespace does not exist, inject delay "
                  "before creating the namespace.");
 
-namespace yb {
-namespace client {
+namespace yb::client {
 
 using internal::MetaCache;
 using std::shared_ptr;
@@ -775,10 +764,11 @@ Result<YBTableInfo> YBClient::GetYBTableInfo(const YBTableName& table_name) {
   return info;
 }
 
-Result<YBTableInfo> YBClient::GetYBTableInfoById(const TableId& table_id) {
+Result<YBTableInfo> YBClient::GetYBTableInfoById(const TableId& table_id, bool include_hidden) {
   YBTableInfo info;
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-  RETURN_NOT_OK(data_->GetTableSchema(this, table_id, deadline, &info));
+  RETURN_NOT_OK(data_->GetTableSchema(
+      this, table_id, deadline, &info, master::IncludeHidden(include_hidden)));
   return info;
 }
 
@@ -1138,8 +1128,8 @@ Status YBClient::ListClones(master::ListClonesResponsePB* ret) {
 }
 
 Status YBClient::ReservePgsqlOids(
-    const std::string& namespace_id, uint32_t next_oid, uint32_t count, uint32_t* begin_oid,
-    uint32_t* end_oid, bool use_secondary_space, uint32_t* oid_cache_invalidations_count) {
+    const std::string& namespace_id, uint32_t next_oid, uint32_t count, bool use_secondary_space,
+    uint32_t* begin_oid, uint32_t* end_oid, uint32_t* oid_cache_invalidations_count) {
   ReservePgsqlOidsRequestPB req;
   ReservePgsqlOidsResponsePB resp;
   req.set_namespace_id(namespace_id);
@@ -1639,7 +1629,7 @@ Result<CDCSDKStreamInfo> YBClient::GetCDCStream(
   if (replica_identities) {
     replica_identities->reserve(resp.stream().replica_identity_map_size());
     for (const auto& entry : resp.stream().replica_identity_map()) {
-      auto table_info = VERIFY_RESULT(GetYBTableInfoById(entry.first));
+      auto table_info = VERIFY_RESULT(GetYBTableInfoById(entry.first, true /* include_hidden */));
 
       const auto pg_table_id = table_info.pg_table_id;
       auto table_oid = VERIFY_RESULT(
@@ -1999,17 +1989,13 @@ void YBClient::DeleteNotServingTablet(const TabletId& tablet_id, StdStatusCallba
 
 void YBClient::AcquireObjectLocksGlobalAsync(
     const master::AcquireObjectLocksGlobalRequestPB& request, StdStatusCallback callback,
-    MonoDelta rpc_timeout) {
-  TRACE_FUNC();
-  auto deadline = CoarseMonoClock::Now() + rpc_timeout;
-  data_->AcquireObjectLocksGlobalAsync(this, request, deadline, callback);
+    CoarseTimePoint deadline, std::function<Status()>&& should_retry) {
+  data_->AcquireObjectLocksGlobalAsync(this, request, deadline, callback, std::move(should_retry));
 }
 
 void YBClient::ReleaseObjectLocksGlobalAsync(
     const master::ReleaseObjectLocksGlobalRequestPB& request, StdStatusCallback callback,
-    MonoDelta rpc_timeout) {
-  TRACE_FUNC();
-  auto deadline = CoarseMonoClock::Now() + rpc_timeout;
+    CoarseTimePoint deadline) {
   data_->ReleaseObjectLocksGlobalAsync(this, request, deadline, callback);
 }
 
@@ -2531,7 +2517,7 @@ Status YBClient::ListMasters(CoarseTimePoint deadline, std::vector<std::string>*
   master_uuids->clear();
   for (const ServerEntryPB& master : resp.masters()) {
     if (master.has_error()) {
-      LOG_WITH_PREFIX(ERROR) << "Master " << master.ShortDebugString() << " hit error "
+      LOG_WITH_PREFIX(WARNING) << "Master " << master.ShortDebugString() << " hit error "
         << master.error().ShortDebugString();
       return StatusFromPB(master.error());
     }
@@ -3084,5 +3070,4 @@ void YBClient::RequestAbortAllRpcs() {
   data_->rpcs_.RequestAbortAll();
 }
 
-}  // namespace client
-}  // namespace yb
+} // namespace yb::client

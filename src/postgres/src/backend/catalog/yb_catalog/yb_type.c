@@ -67,6 +67,7 @@
 #include "catalog/pg_enum.h"
 #include "catalog/pg_type.h"
 #include "catalog/yb_type.h"
+#include "fmgr.h"
 #include "mb/pg_wchar.h"
 #include "parser/parse_type.h"
 #include "pg_yb_utils.h"
@@ -195,7 +196,7 @@ YbDataTypeFromOidMod(int attnum, Oid type_id)
 		else
 		{
 			Oid			primitive_type_oid =
-			YbGetPrimitiveTypeOid(type_id, tp->typtype, tp->typbasetype);
+				YbGetPrimitiveTypeOid(type_id, tp->typtype, tp->typbasetype);
 
 			return YbDataTypeFromOidMod(InvalidAttrNumber, primitive_type_oid);
 		}
@@ -285,6 +286,7 @@ YbBoolToDatum(const bool *data, int64 bytes, const YbcPgTypeAttrs *type_attrs)
 void
 YbDatumToBinary(Datum datum, void **data, int64 *bytes)
 {
+	datum = PointerGetDatum(PG_DETOAST_DATUM(datum));
 	*data = VARDATA_ANY(datum);
 	*bytes = VARSIZE_ANY_EXHDR(datum);
 }
@@ -310,6 +312,7 @@ YbBinaryToDatum(const void *data, int64 bytes, const YbcPgTypeAttrs *type_attrs)
 void
 YbDatumToText(Datum datum, char **data, int64 *bytes)
 {
+	datum = PointerGetDatum(PG_DETOAST_DATUM(datum));
 	*data = VARDATA_ANY(datum);
 	*bytes = VARSIZE_ANY_EXHDR(datum);
 }
@@ -824,6 +827,7 @@ YbDatumToDocdb(Datum datum, uint8 **data, int64 *bytes)
 {
 	if (*bytes < 0)
 	{
+		datum = PointerGetDatum(PG_DETOAST_DATUM(datum));
 		*bytes = VARSIZE_ANY(datum);
 	}
 	*data = (uint8 *) datum;

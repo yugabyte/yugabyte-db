@@ -199,7 +199,9 @@ message QLWriteRequestPB {
   optional bool is_backfill = 19 [default = false];
   optional bool is_compatible_with_previous_version = 20 [ default = false ];
 
-  optional AshMetadataPB ash_metadata = 21;
+  // Used to be ASH metadata, but it was not used in the server side.
+  // The one in WriteRequestPB is used.
+  reserved 21;
 }
 
 //-------------------------------------- Read request ----------------------------------------
@@ -294,7 +296,9 @@ message QLReadRequestPB {
   optional bool is_aggregate = 19 [default = false];
   optional bool is_compatible_with_previous_version = 22 [ default = false ];
 
-  optional AshMetadataPB ash_metadata = 24;
+  // Used to be ASH metadata, but it was not used in the server side.
+  // The one in ReadRequestPB is used.
+  reserved 24;
 }
 
 //------------------------------ Response (for both read and write) -----------------------------

@@ -20,7 +20,7 @@ To gather insights, click the cluster **Perf Advisor** tab, choose **Insights**,
 
 For meaningful results, run your workload for at least an hour before running the scan.
 
-To monitor clusters in real time, use the performance metrics on the cluster [Overview and Performance](../overview/) tabs.
+To monitor clusters in real time, use the performance metrics on the cluster [Overview and Perf Advisor](../overview/) tabs.
 
 ![Insights](/images/yb-cloud/managed-monitor-advisor.png)
 
@@ -36,13 +36,13 @@ Indexes take up storage space on the same disk volume as the main table. They al
 
 Indexes can slow down some operations. For example:
 
-- When doing an `INSERT` or `DELETE` on a table, indexes need to be updated to remain consistent with the data in the main table. An index can also prevent a basic insert or delete operation from being executed as a single row transaction.
+- When doing an INSERT or DELETE on a table, indexes need to be updated to remain consistent with the data in the main table. An index can also prevent a basic insert or delete operation from being executed as a single row transaction.
 
-- When doing an `UPDATE` on a table, if the modified column is part of the index, then the index must be updated as well.
+- When doing an UPDATE on a table, if the modified column is part of the index, then the index must be updated as well.
 
 **Fix the problem**
 
-Connect to the database and use `DROP INDEX` to delete the unused indexes.
+Connect to the database and use DROP INDEX to delete the unused indexes.
 
 ### Schema suggestions
 

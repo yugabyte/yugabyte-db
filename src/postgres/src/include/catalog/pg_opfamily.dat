@@ -377,5 +377,7 @@
   opfmethod => 'lsm', opfname => 'range_ops' },
 { oid => '9938',
   opfmethod => 'lsm', opfname => 'jsonb_ops' },
+{ oid => '9949',
+  opfmethod => 'lsm', opfname => 'multirange_ops' },
 
 ]

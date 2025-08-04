@@ -164,7 +164,10 @@ Status MasterTestBase::CreatePgsqlTable(
   }
   request->mutable_partition_schema()->set_hash_schema(PartitionSchemaPB::PGSQL_HASH_SCHEMA);
   request->mutable_schema()->mutable_table_properties()->set_num_tablets(8);
-  request->mutable_schema()->set_pgschema_name("public");
+
+  // SchemaPB::pgschema_name is deprecated. See GHI: #12770.
+  // YB_TODO(#12770): THE LINE MUST BE DELETED AFTER REWORKING PG-SCHEMA-NAME USAGE IN CDC
+  request->mutable_schema()->set_deprecated_pgschema_name("public");
 
   // Dereferencing as the RPCs require const ref for request. Keeping request param as pointer
   // though, as that helps with readability and standardization.

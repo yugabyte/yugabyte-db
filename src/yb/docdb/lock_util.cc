@@ -13,6 +13,7 @@
 
 #include "yb/docdb/lock_util.h"
 
+#include <ranges>
 #include <type_traits>
 
 namespace yb::docdb {
@@ -80,11 +81,13 @@ Result<LockBatchEntry<ObjectLockManager>> FormSharedLock(
 }
 
 Status AddObjectsToLock(
-    LockBatchEntries<ObjectLockManager>& lock_batch, uint64_t database_oid, uint64_t object_oid,
-    TableLockType lock_type) {
-  for (const auto& [lock_key, intent_types] : GetEntriesForLockType(lock_type)) {
+    LockBatchEntries<ObjectLockManager>& lock_batch, auto lock_oid) {
+  for (const auto& [lock_key, intent_types] : GetEntriesForLockType(lock_oid.lock_type())) {
     lock_batch.push_back(VERIFY_RESULT(FormSharedLock(
-        ObjectLockPrefix(database_oid, object_oid, lock_key), intent_types)));
+        ObjectLockPrefix(
+            lock_oid.database_oid(), lock_oid.relation_oid(), lock_oid.object_oid(),
+            lock_oid.object_sub_oid(), lock_key),
+        intent_types)));
   }
   return Status::OK();
 }
@@ -114,6 +117,17 @@ bool IntentTypeSetsConflict(IntentTypeSet lhs, IntentTypeSet rhs) {
   return false;
 }
 
+bool IntentTypeReadOnly(IntentTypeSet intents) {
+  return std::ranges::all_of(intents, [](dockv::IntentType intent) {
+    return intent == dockv::IntentType::kWeakRead || intent == dockv::IntentType::kStrongRead;
+  });
+}
+
+size_t LockStateWriteIntentCount(LockState state) {
+  return LockStateIntentCount(state, dockv::IntentType::kWeakWrite) +
+         LockStateIntentCount(state, dockv::IntentType::kStrongWrite);
+}
+
 std::string LockStateDebugString(LockState state) {
   return Format(
       "{ num_weak_read: $0 num_weak_write: $1 num_strong_read: $2 num_strong_write: $3 }",
@@ -137,49 +151,47 @@ std::string LockStateDebugString(LockState state) {
 // in this case, we see that the intents requested are [kStrongRead] and [kStrongRead, kWeakWrite]
 // for modes 'ROW_SHARE' and 'EXCLUSIVE' respectively. And since the above intenttype sets conflict
 // among themselves, we successfully detect the conflict.
-std::span<const std::pair<KeyEntryType, dockv::IntentTypeSet>>
-GetEntriesForLockType(TableLockType lock) {
-  static const std::array<
-      std::vector<std::pair<KeyEntryType, dockv::IntentTypeSet>>,
-      TableLockType_ARRAYSIZE> lock_entries = {{
+std::span<const LockTypeEntry> GetEntriesForLockType(TableLockType lock) {
+  static const
+      std::array<std::initializer_list<LockTypeEntry>, TableLockType_ARRAYSIZE> lock_entries = {{
     // NONE
     {{}},
     // ACCESS_SHARE
-    {{
+    {
       {KeyEntryType::kWeakObjectLock, dockv::IntentTypeSet {dockv::IntentType::kWeakRead}}
-    }},
+    },
     // ROW_SHARE
-    {{
+    {
       {KeyEntryType::kWeakObjectLock, dockv::IntentTypeSet {dockv::IntentType::kStrongRead}}
-    }},
+    },
     // ROW_EXCLUSIVE
-    {{
+    {
       {KeyEntryType::kWeakObjectLock, dockv::IntentTypeSet {dockv::IntentType::kStrongRead}},
       {KeyEntryType::kStrongObjectLock, dockv::IntentTypeSet {dockv::IntentType::kWeakRead}}
-    }},
+    },
     // SHARE_UPDATE_EXCLUSIVE
-    {{
+    {
       {KeyEntryType::kWeakObjectLock, dockv::IntentTypeSet {dockv::IntentType::kStrongRead}},
       {
         KeyEntryType::kStrongObjectLock,
         dockv::IntentTypeSet {dockv::IntentType::kStrongRead, dockv::IntentType::kWeakWrite}
       }
-    }},
+    },
     // SHARE
-    {{
+    {
       {KeyEntryType::kWeakObjectLock, dockv::IntentTypeSet {dockv::IntentType::kStrongRead}},
       {KeyEntryType::kStrongObjectLock, dockv::IntentTypeSet {dockv::IntentType::kStrongWrite}}
-    }},
+    },
     // SHARE_ROW_EXCLUSIVE
-    {{
+    {
       {KeyEntryType::kWeakObjectLock, dockv::IntentTypeSet {dockv::IntentType::kStrongRead}},
       {
         KeyEntryType::kStrongObjectLock,
         dockv::IntentTypeSet {dockv::IntentType::kStrongRead, dockv::IntentType::kStrongWrite}
       }
-    }},
+    },
     // EXCLUSIVE
-    {{
+    {
       {
         KeyEntryType::kWeakObjectLock,
         dockv::IntentTypeSet {dockv::IntentType::kStrongRead, dockv::IntentType::kWeakWrite}},
@@ -187,9 +199,9 @@ GetEntriesForLockType(TableLockType lock) {
         KeyEntryType::kStrongObjectLock,
         dockv::IntentTypeSet {dockv::IntentType::kStrongRead, dockv::IntentType::kStrongWrite}
       }
-    }},
+    },
     // ACCESS_EXCLUSIVE
-    {{
+    {
       {
         KeyEntryType::kWeakObjectLock,
         dockv::IntentTypeSet {dockv::IntentType::kStrongRead, dockv::IntentType::kStrongWrite}},
@@ -197,7 +209,7 @@ GetEntriesForLockType(TableLockType lock) {
         KeyEntryType::kStrongObjectLock,
         dockv::IntentTypeSet {dockv::IntentType::kStrongRead, dockv::IntentType::kStrongWrite}
       }
-    }}
+    }
   }};
   return lock_entries[lock];
 }
@@ -208,10 +220,9 @@ Result<DetermineKeysToLockResult<ObjectLockManager>> DetermineObjectsToLock(
     const google::protobuf::RepeatedPtrField<ObjectLockPB>& objects_to_lock) {
   DetermineKeysToLockResult<ObjectLockManager> result;
   for (const auto& object_lock : objects_to_lock) {
-    SCHECK(object_lock.has_object_oid(), IllegalState, "ObjectLockPB has empty object oid");
     SCHECK(object_lock.has_database_oid(), IllegalState, "ObjectLockPB has empty database oid");
-    RETURN_NOT_OK(AddObjectsToLock(result.lock_batch, object_lock.database_oid(),
-                                   object_lock.object_oid(), object_lock.lock_type()));
+    SCHECK(object_lock.has_relation_oid(), IllegalState, "ObjectLockPB has empty relation oid");
+    RETURN_NOT_OK(AddObjectsToLock(result.lock_batch, object_lock));
   }
   FilterKeysToLock<ObjectLockManager>(&result.lock_batch);
   return result;

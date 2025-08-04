@@ -7,3 +7,4 @@ markupsafe==2.0.1          # Latest version supporting Python 3.6
 urllib3==1.26.16           # Last version supporting Python 3.6
 requests==2.27.1           # Compatible with Python 3.6+
 pyyaml==6.0.1              # Compatible with Python 3.6+
+certifi==2022.12.7         # Compatible with Python 3.6+

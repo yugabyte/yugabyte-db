@@ -65,9 +65,7 @@ public class AutoFlagUtil {
    * @return autoFlagConfig
    */
   private WireProtocol.AutoFlagsConfigPB getAutoFlagConfigForUniverse(Universe universe) {
-    String masterAddresses = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodetoNode();
-    try (YBClient client = ybClientService.getClient(masterAddresses, certificate)) {
+    try (YBClient client = ybClientService.getUniverseClient(universe)) {
       return client.autoFlagsConfig().getAutoFlagsConfig();
     } catch (Exception e) {
       LOG.error(

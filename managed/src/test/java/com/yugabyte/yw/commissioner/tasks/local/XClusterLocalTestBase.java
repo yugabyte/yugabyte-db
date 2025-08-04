@@ -40,7 +40,7 @@ public class XClusterLocalTestBase extends LocalProviderUniverseTestBase {
   public static Map<String, String> DEFAULT_TABLE_COLUMNS = Map.of("id", "int", "name", "text");
 
   // Set a higher timeout for xCluster tests to deflake the utest failures.
-  @Rule public Timeout globalTimeout = Timeout.seconds(1800);
+  @Rule public Timeout globalTimeout = Timeout.seconds(2400);
 
   public static class Db {
     public String name;

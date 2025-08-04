@@ -66,8 +66,8 @@ void CheckNumIntents(MiniCluster* cluster, size_t expected_num_records, const Ta
       continue;
     }
     found = true;
-    auto count = ASSERT_RESULT(
-        peer->tablet()->TEST_CountDBRecords(docdb::StorageDbType::kIntents));
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    auto count = ASSERT_RESULT(tablet->TEST_CountDBRecords(docdb::StorageDbType::kIntents));
     LOG(INFO) << peer->LogPrefix() << "records: " << count;
     ASSERT_EQ(count, expected_num_records);
   }

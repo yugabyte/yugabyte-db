@@ -3,7 +3,6 @@ import _ from 'lodash';
 import * as Yup from 'yup';
 import clsx from 'clsx';
 import { useQuery } from 'react-query';
-import { toast } from 'react-toastify';
 import { useSelector } from 'react-redux';
 import { Box } from '@material-ui/core';
 import { useFieldArray } from 'react-hook-form';
@@ -26,9 +25,10 @@ import { GFlagRowProps } from '../../../../../../../components/universes/Univers
 import { useWhenMounted } from '../../../../../../helpers/hooks';
 import { validateGFlags } from '../../../../../../../actions/universe';
 import { Gflag } from '../../../utils/dto';
-import { MULTILINE_GFLAGS_ARRAY } from '../../../../../../../utils/UniverseUtils';
+import { MULTILINE_GFLAGS_ARRAY, SENSITIVE_INFO } from '../../../../../../../utils/UniverseUtils';
 import {
   GFlagGroupObject,
+  GFlagValues,
   getFlagsByGroupName
 } from '../../../../universe-actions/edit-gflags/GflagHelper';
 import { api, QUERY_KEY } from '../../../../../../utils/api';
@@ -41,7 +41,7 @@ import Plus from '../../../../../../assets/plus.svg';
 import MoreIcon from '../../../../../../assets/ellipsis.svg';
 import '../../../../../../../components/universes/UniverseForm/UniverseForm.scss';
 
-/* TODO : 
+/* TODO :
 1. Rewrite this file with proper types
 2. Integrate with react-query
 3. Rewrite AddGflag and EditorGflag with typescript and react-query
@@ -126,6 +126,7 @@ export const GFlagsField = ({
     name: fieldPath as any,
     control
   });
+  const [modalProps, setModalProps] = useState<any>(null);
   const [selectedProps, setSelectedProps] = useState<SelectedOption | null>(null);
   const [toggleModal, setToggleModal] = useState(false);
   const [isJWKSKeyDialogOpen, setIsJWKSKeyDialogOpen] = useState<boolean>(false);
@@ -145,6 +146,11 @@ export const GFlagsField = ({
     }
   );
 
+  const { data: gflagValues } = useQuery<GFlagValues[]>([QUERY_KEY.getGflagGroups], () =>
+    api.fetchGFlags(dbVersion, selectedProps?.server ?? TSERVER)
+  );
+
+  // selectedProps
   const pgGroupFlags = isPGSupported
     ? getFlagsByGroupName(pgFlags, GFLAG_GROUPS.ENHANCED_POSTGRES_COMPATIBILITY)
     : {};
@@ -376,7 +382,20 @@ export const GFlagsField = ({
       mode: EDIT
     };
 
-    if (isReadOnly) return <span className="cell-font">{valueExists ? `${cell}` : ''}</span>;
+    const isPasswordField = gflagValues?.find(
+      (gflag: GFlagValues) => gflag.name === row?.Name && gflag.tags?.includes(SENSITIVE_INFO)
+    );
+
+    if (isReadOnly)
+      return (
+        <span className="cell-font">
+          {valueExists
+            ? isPasswordField
+              ? '*'.repeat(Math.min(String(cell).length, 15))
+              : `${cell}`
+            : ''}
+        </span>
+      );
     if (valueExists) {
       modalProps = {
         ...modalProps,
@@ -403,7 +422,9 @@ export const GFlagsField = ({
 
       return (
         <div className={clsx('table-val-column', isError && 'error-val-column')}>
-          <div className="cell-font">{`${cell}`}</div>
+          <div className="cell-font">
+            {isPasswordField ? '*'.repeat(Math.min(String(cell).length, 15)) : `${cell}`}
+          </div>
           <div className="icons">
             <div className="more-icon">
               <Button

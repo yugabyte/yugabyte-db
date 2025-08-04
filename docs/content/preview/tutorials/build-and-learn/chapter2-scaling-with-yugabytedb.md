@@ -51,7 +51,7 @@ To begin, start a single-node YugabyteDB cluster in Docker:
 1. Start the first database node:
 
     ```shell
-    docker run -d --name yugabytedb-node1 --net yugaplus-network \
+    docker run -d --name yugabytedb-node1 --hostname yugabytedb-node1 --net yugaplus-network \
         -p 15433:15433 -p 5433:5433 \
         -v ~/yugabyte-volume/node1:/home/yugabyte/yb_data --restart unless-stopped \
         yugabytedb/yugabyte:latest \
@@ -120,7 +120,7 @@ Use the **yugabyted** tool to scale the cluster by adding two more nodes:
 1. Start the second node:
 
     ```shell
-    docker run -d --name yugabytedb-node2 --net yugaplus-network \
+    docker run -d --name yugabytedb-node2 --hostname yugabytedb-node2 --net yugaplus-network \
         -p 15434:15433 -p 5434:5433 \
         -v ~/yugabyte-volume/node2:/home/yugabyte/yb_data --restart unless-stopped \
         yugabytedb/yugabyte:latest \
@@ -130,7 +130,7 @@ Use the **yugabyted** tool to scale the cluster by adding two more nodes:
 1. Start the third node:
 
     ```shell
-    docker run -d --name yugabytedb-node3 --net yugaplus-network \
+    docker run -d --name yugabytedb-node3 --hostname yugabytedb-node3 --net yugaplus-network \
         -p 15435:15433 -p 5435:5433 \
         -v ~/yugabyte-volume/node3:/home/yugabyte/yb_data --restart unless-stopped \
         yugabytedb/yugabyte:latest \

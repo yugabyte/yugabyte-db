@@ -76,7 +76,7 @@ SELECT * FROM onek_copy EXCEPT ALL SELECT * FROM onek;
 COPY BINARY stud_emp TO :'filename';
 CREATE TEMP TABLE stud_emp_copy (LIKE stud_emp);
 COPY BINARY stud_emp_copy FROM :'filename';
-WARNING:  batched COPY is not supported on temporary tables
+WARNING:  ROWS_PER_TRANSACTION is not supported on temporary tables
 DETAIL:  Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 SELECT * FROM stud_emp_copy;

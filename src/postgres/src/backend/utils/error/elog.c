@@ -274,10 +274,10 @@ yb_errstart(int elevel)
 		 * Static constants of YbgStatus type have NULL context. They are read
 		 * only, and can not be used with ereport/elog
 		 */
-		YBCLogImpl(3,	 /* severity (3=FATAL) */
-				   NULL, /* filename */
-				   0,	 /* lineno */
-				   true, /* stack trace */
+		YBCLogImpl(3,			/* severity (3=FATAL) */
+				   NULL,		/* filename */
+				   0,			/* lineno */
+				   true,		/* stack trace */
 				   "PG error state is missing memory context");
 		pg_unreachable();
 	}
@@ -295,10 +295,10 @@ yb_errstart(int elevel)
 		YBCPgSetThreadLocalErrStatus(NULL);
 		MemoryContextSwitchTo(old_context);
 		MemoryContextReset(error_context);
-		YBCLogImpl(3,	 /* severity (3=FATAL) */
-				   NULL, /* filename */
-				   0,	 /* lineno */
-				   true, /* stack trace */
+		YBCLogImpl(3,			/* severity (3=FATAL) */
+				   NULL,		/* filename */
+				   0,			/* lineno */
+				   true,		/* stack trace */
 				   "Error data stack is too deep");
 		pg_unreachable();
 	}
@@ -354,10 +354,10 @@ yb_write_status_to_server_log()
 	yb_format_and_append(&buf, edata->errmsg, edata->nargs, edata->errargs);
 	bool		is_error = edata->elevel >= ERROR;
 
-	YBCLogImpl(is_error ? 2 : 0, /* severity */
+	YBCLogImpl(is_error ? 2 : 0,	/* severity */
 			   edata->filename,
 			   edata->lineno,
-			   is_error, /* stack_trace */
+			   is_error,		/* stack_trace */
 			   "%s", buf.data);
 	pfree(buf.data);
 	MemoryContextSwitchTo(oldcontext);
@@ -1314,6 +1314,7 @@ set_backtrace(ErrorData *edata, int num_skip)
 	if (IsYugaByteEnabled() && !yb_debug_original_backtrace_format)
 	{
 		const char *backtrace = YBCGetStackTrace();
+
 		for (int i = 0; i <= num_skip; ++i)
 		{
 			backtrace = strchr(backtrace + 1, '\n');
@@ -1340,8 +1341,8 @@ set_backtrace(ErrorData *edata, int num_skip)
 		free(strfrms);
 	}
 #else
-	appendStringInfoString(&errtrace,
-						   "backtrace generation is not supported by this installation");
+		appendStringInfoString(&errtrace,
+							   "backtrace generation is not supported by this installation");
 #endif
 
 	edata->backtrace = errtrace.data;
@@ -3455,7 +3456,7 @@ log_line_prefix(StringInfo buf, ErrorData *edata)
 				else
 					appendStringInfoString(buf, unpack_sql_state(edata->sqlerrcode));
 				break;
-			case 'C':	/* YB */
+			case 'C':			/* YB */
 				{
 					const char *cloud = YBGetCurrentCloud();
 
@@ -3468,7 +3469,7 @@ log_line_prefix(StringInfo buf, ErrorData *edata)
 					}
 					break;
 				}
-			case 'R':	/* YB */
+			case 'R':			/* YB */
 				{
 					const char *region = YBGetCurrentRegion();
 
@@ -3481,7 +3482,7 @@ log_line_prefix(StringInfo buf, ErrorData *edata)
 					}
 					break;
 				}
-			case 'Z':	/* YB */
+			case 'Z':			/* YB */
 				{
 					const char *zone = YBGetCurrentZone();
 
@@ -3494,7 +3495,7 @@ log_line_prefix(StringInfo buf, ErrorData *edata)
 					}
 					break;
 				}
-			case 'U':	/* YB */
+			case 'U':			/* YB */
 				{
 					const char *uuid = YBGetCurrentUUID();
 
@@ -3507,7 +3508,7 @@ log_line_prefix(StringInfo buf, ErrorData *edata)
 					}
 					break;
 				}
-			case 'N':	/* YB */
+			case 'N':			/* YB */
 				{
 					const char *node = YBGetCurrentMetricNodeName();
 
@@ -3520,7 +3521,7 @@ log_line_prefix(StringInfo buf, ErrorData *edata)
 					}
 					break;
 				}
-			case 'H':	/* YB */
+			case 'H':			/* YB */
 				{
 					char		name[MAX_HOSTNAME_LENGTH];
 					const int	ret = gethostname(name, sizeof(name));

@@ -135,7 +135,7 @@ class ServicePoolImpl final : public InboundCallHandler {
         log_prefix_(Format("$0: ", service_->service_name())) {
 
           // Create per service counter for rpcs_in_queue_.
-          auto id = Format("rpcs_in_queue_$0", service_->service_name());
+          auto id = Format("rpcs_in_queue_$0", service_->metric_name());
           EscapeMetricNameForPrometheus(&id);
           string description = id + " metric for ServicePoolImpl";
           rpcs_in_queue_ = entity->FindOrCreateMetric<AtomicGauge<int64_t>>(

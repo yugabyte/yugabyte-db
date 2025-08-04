@@ -2007,7 +2007,7 @@ TEST_P(DocDBTestWrapper, SetHybridTimeFilterMap) {
   prefix = ASSERT_RESULT(WriteSimpleWithCotablePrefix(5, HybridTime::FromMicros(2000), uuids[1]));
 
   LOG(INFO) << "Inserted 2 key value pairs of cotables "
-            << uuids[0].ToString() << " and " << uuids[1].ToString()
+            << uuids[0].ToHexString() << " and " << uuids[1].ToHexString()
             << " of db oids " << db_oids[0] << " and " << db_oids[1]
             << " at hybrid time " << HybridTime::FromMicros(2000);
 
@@ -2016,19 +2016,19 @@ TEST_P(DocDBTestWrapper, SetHybridTimeFilterMap) {
   ASSERT_OK(SetHybridTimeFilter(db_oids[1], HybridTime::FromMicros(2000)));
   ASSERT_OK(SetHybridTimeFilter(db_oids[2], HybridTime::FromMicros(2000)));
   LOG(INFO) << "Set filter of hybrid time " << HybridTime::FromMicros(2000)
-            << " for cotables " << uuids[1].ToString() << " and " << uuids[2].ToString();
+            << " for cotables " << uuids[1].ToHexString() << " and " << uuids[2].ToHexString();
 
   expected.insert(Format(
       "SubDocKey(DocKey(CoTableId=$0, 0x0001, [\"row1\", 11111], []), "
-      "[ColumnId(10); HT{ physical: 4000 }]) -> 1", uuids[0].ToString()));
+      "[ColumnId(10); HT{ physical: 4000 }]) -> 1", uuids[0].ToHexString()));
 
   expected.insert(Format(
       "SubDocKey(DocKey(CoTableId=$0, 0x0004, [\"row4\", 44444], []), "
-      "[ColumnId(10); HT{ physical: 2000 }]) -> 4", uuids[0].ToString()));
+      "[ColumnId(10); HT{ physical: 2000 }]) -> 4", uuids[0].ToHexString()));
 
   expected.insert(Format(
       "SubDocKey(DocKey(CoTableId=$0, 0x0005, [\"row5\", 55555], []), "
-      "[ColumnId(10); HT{ physical: 2000 }]) -> 5", uuids[1].ToString()));
+      "[ColumnId(10); HT{ physical: 2000 }]) -> 5", uuids[1].ToHexString()));
 
   ASSERT_OK(ValidateRocksDbEntriesUnordered(&expected));
 
@@ -2043,7 +2043,7 @@ TEST_P(DocDBTestWrapper, SetHybridTimeFilterMap) {
   expected.clear();
   expected.insert(Format(
       "SubDocKey(DocKey(CoTableId=$0, 0x0004, [\"row4\", 44444], []), "
-      "[ColumnId(10); HT{ physical: 2000 }]) -> 4", uuids[0].ToString()));
+      "[ColumnId(10); HT{ physical: 2000 }]) -> 4", uuids[0].ToHexString()));
   ASSERT_OK(ValidateRocksDbEntriesUnordered(&expected));
 
   // Filter should be removed after compaction.
@@ -2085,7 +2085,7 @@ TEST_P(DocDBTestWrapper, CombinedHybridTimeFilterAndCotablesFilter) {
   ASSERT_OK(SetHybridTimeFilter(db_oids[2], HybridTime::FromMicros(7000)));
   LOG(INFO) << "Set filter of hybrid time " << HybridTime::FromMicros(3000)
             << " and " << HybridTime::FromMicros(7000)
-            << " for cotables " << uuids[1].ToString() << " and " << uuids[2].ToString();
+            << " for cotables " << uuids[1].ToHexString() << " and " << uuids[2].ToHexString();
   ASSERT_OK(SetHybridTimeFilter(std::nullopt, HybridTime::FromMicros(3000)));
   LOG(INFO) << "Set global HT Filter of " << HybridTime::FromMicros(3000);
 
@@ -2093,7 +2093,7 @@ TEST_P(DocDBTestWrapper, CombinedHybridTimeFilterAndCotablesFilter) {
   // filtered because of cotables filter. uuids[0] should not get filtered at all.
   expected.insert(Format(
       "SubDocKey(DocKey(CoTableId=$0, 0x0001, [\"row1\", 11111], []), "
-      "[ColumnId(10); HT{ physical: 2000 }]) -> 1", uuids[0].ToString()));
+      "[ColumnId(10); HT{ physical: 2000 }]) -> 1", uuids[0].ToHexString()));
   ASSERT_OK(ValidateRocksDbEntriesUnordered(&expected));
 
   // Both the filters should be removed after compaction.
@@ -2179,16 +2179,16 @@ TEST_F(DocDBTestWrapper, HistoryRetentionWithCotables) {
   expected = {
     Format(
       "SubDocKey(DocKey(CoTableId=$0, 0x0001, [\"cotablekey\", 10000], []), "
-      "[\"subkey1\"; HT{ physical: 1000 }]) -> \"value1\"", cotable_id.ToString()),
+      "[\"subkey1\"; HT{ physical: 1000 }]) -> \"value1\"", cotable_id.ToHexString()),
     Format(
       "SubDocKey(DocKey(CoTableId=$0, 0x0001, [\"cotablekey\", 10000], []), "
-      "[\"subkey1\"; HT{ physical: 2000 }]) -> \"value2\"", cotable_id.ToString()),
+      "[\"subkey1\"; HT{ physical: 2000 }]) -> \"value2\"", cotable_id.ToHexString()),
     Format(
       "SubDocKey(DocKey(CoTableId=$0, 0x0001, [\"cotablekey\", 10000], []), "
-      "[\"subkey1\"; HT{ physical: 3000 }]) -> \"value3\"", cotable_id.ToString()),
+      "[\"subkey1\"; HT{ physical: 3000 }]) -> \"value3\"", cotable_id.ToHexString()),
     Format(
       "SubDocKey(DocKey(CoTableId=$0, 0x0001, [\"cotablekey\", 10000], []), "
-      "[\"subkey1\"; HT{ physical: 4000 }]) -> \"value4\"", cotable_id.ToString()),
+      "[\"subkey1\"; HT{ physical: 4000 }]) -> \"value4\"", cotable_id.ToHexString()),
       "SubDocKey(DocKey(0x0002, [\"noncotablekey\", 10000], []), "
       "[\"subkey1\"; HT{ physical: 1000 }]) -> \"value1\"",
       "SubDocKey(DocKey(0x0002, [\"noncotablekey\", 10000], []), "
@@ -2199,7 +2199,7 @@ TEST_F(DocDBTestWrapper, HistoryRetentionWithCotables) {
       "[\"subkey1\"; HT{ physical: 4000 }]) -> \"value4\"",
     Format(
       "SubDocKey(DocKey(CoTableId=$0, 0x0003, [\"cotablekey2\", 10000], []), "
-      "[\"subkey1\"; HT{ physical: 1000 }]) -> \"value1\"", cotable_id2.ToString()) };
+      "[\"subkey1\"; HT{ physical: 1000 }]) -> \"value1\"", cotable_id2.ToHexString()) };
   ASSERT_OK(ValidateRocksDbEntriesUnordered(&expected));
   ASSERT_OK(FlushRocksDbAndWait());
   auto frontier = rocksdb()->GetFlushedFrontier();
@@ -2218,13 +2218,13 @@ TEST_F(DocDBTestWrapper, HistoryRetentionWithCotables) {
       "[\"subkey1\"; HT{ physical: 4000 }]) -> \"value4\"",
     Format(
       "SubDocKey(DocKey(CoTableId=$0, 0x0001, [\"cotablekey\", 10000], []), "
-      "[\"subkey1\"; HT{ physical: 3000 }]) -> \"value3\"", cotable_id.ToString()),
+      "[\"subkey1\"; HT{ physical: 3000 }]) -> \"value3\"", cotable_id.ToHexString()),
     Format(
       "SubDocKey(DocKey(CoTableId=$0, 0x0001, [\"cotablekey\", 10000], []), "
-      "[\"subkey1\"; HT{ physical: 4000 }]) -> \"value4\"", cotable_id.ToString()),
+      "[\"subkey1\"; HT{ physical: 4000 }]) -> \"value4\"", cotable_id.ToHexString()),
     Format(
       "SubDocKey(DocKey(CoTableId=$0, 0x0003, [\"cotablekey2\", 10000], []), "
-      "[\"subkey1\"; HT{ physical: 1000 }]) -> \"value1\"", cotable_id2.ToString()) };
+      "[\"subkey1\"; HT{ physical: 1000 }]) -> \"value1\"", cotable_id2.ToHexString()) };
   ASSERT_OK(ValidateRocksDbEntriesUnordered(&expected));
   frontier = rocksdb()->GetFlushedFrontier();
   auto consensus_frontier = down_cast<ConsensusFrontier&>(*frontier);

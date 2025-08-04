@@ -1,6 +1,6 @@
 ---
 title: System configuration
-headerTitle: System configuration
+headerTitle: 1. System configuration
 linkTitle: 1. System configuration
 description: How to configure system parameters to get the YugabyteDB database cluster to run correctly.
 menu:
@@ -13,11 +13,11 @@ type: docs
 
 Perform the following configuration on each node in the cluster:
 
-- set up time synchronization
-- set ulimits
-- enable transparent hugepages
+1. Set up time synchronization.
+1. Set ulimits.
+1. Enable transparent hugepages.
 
-Keep in mind that, although YugabyteDB is PostgreSQL compatible and runs a postgres process, it is not a PostgreSQL distribution. The PostgreSQL it runs doesn't need the same OS and system resources that open source PostgreSQL requires. For this reason, the kernel configuration requirements are different.
+Keep in mind that, although YugabyteDB is PostgreSQL compatible and runs a PostgreSQL process, it is not a PostgreSQL distribution. The PostgreSQL it runs doesn't need the same OS and system resources that open source PostgreSQL requires. For this reason, the kernel configuration requirements are different.
 
 In particular, the main YugabyteDB process, the YB-TServer, is multi-threaded. As a result, you don't need to modify settings for shared memory and inter-process communication (IPC), because there is no inter-process communication or shared memory in a multi-threaded process model (all memory is shared by the same process).
 
@@ -57,7 +57,7 @@ Configure ClockBound using the `configure_clockbound.sh` script in the bin direc
 sudo bash ./bin/configure_clockbound.sh
 ```
 
-After configuring ClockBound, you must configure the [YB-TServer](../start-tservers/) and [YB-Master](../start-masters/) servers with the `time_source=clockbound` flag.
+After configuring ClockBound, you must configure the YB-TServer and YB-Master servers with the `time_source=clockbound` flag.
 
 If the ClockBound agent is configured with PTP, use a more aggressive clock error estimate such as `clockbound_clock_error_estimate_usec=100`.
 
@@ -141,7 +141,7 @@ $ ulimit -n <value>
 
 {{< note title="Restart servers" >}}
 
-After changing a ulimit setting, the YB-Master and YB-TServer servers must be restarted in order for the new settings to take effect. Check the [yb-tserver.INFO](../start-tservers/#verify-health) file to verify that the ulimits are applied. You can also check the `/proc/<process pid>` file to see the current settings.
+After changing a ulimit setting, the YB-Master and YB-TServer servers must be restarted in order for the new settings to take effect. Check the [yb-tserver.INFO](../start-masters/#verify-tserver-health) file to verify that the ulimits are applied. You can also check the `/proc/<process pid>` file to see the current settings.
 
 {{< /note >}}
 

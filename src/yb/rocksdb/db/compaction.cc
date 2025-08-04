@@ -226,7 +226,8 @@ std::unique_ptr<Compaction> Compaction::Create(
     std::vector<CompactionInputFiles> inputs, int output_level, uint64_t target_file_size,
     uint64_t max_grandparent_overlap_bytes, uint32_t output_path_id, CompressionType compression,
     std::vector<FileMetaData*> grandparents, Logger* info_log, bool manual_compaction, double score,
-    bool deletion_compaction, CompactionReason compaction_reason) {
+    bool deletion_compaction, CompactionReason compaction_reason,
+    SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe) {
   bool has_input_files = false;
   for (auto& input : inputs) {
     yb::EraseIf([info_log](FileMetaData* file) {
@@ -257,19 +258,16 @@ std::unique_ptr<Compaction> Compaction::Create(
   return std::unique_ptr<Compaction>(new Compaction(
       vstorage, _mutable_cf_options, inputs, output_level, target_file_size,
       max_grandparent_overlap_bytes, output_path_id, compression, grandparents, manual_compaction,
-      score, deletion_compaction, compaction_reason));
+      score, deletion_compaction, compaction_reason, skip_corrupt_data_blocks_unsafe));
 }
 
-Compaction::Compaction(VersionStorageInfo* vstorage,
-                       const MutableCFOptions& _mutable_cf_options,
-                       std::vector<CompactionInputFiles> _inputs,
-                       int _output_level, uint64_t _target_file_size,
-                       uint64_t _max_grandparent_overlap_bytes,
-                       uint32_t _output_path_id, CompressionType _compression,
-                       std::vector<FileMetaData*> _grandparents,
-                       bool _manual_compaction, double _score,
-                       bool _deletion_compaction,
-                       CompactionReason _compaction_reason)
+Compaction::Compaction(
+    VersionStorageInfo* vstorage, const MutableCFOptions& _mutable_cf_options,
+    std::vector<CompactionInputFiles> _inputs, int _output_level, uint64_t _target_file_size,
+    uint64_t _max_grandparent_overlap_bytes, uint32_t _output_path_id, CompressionType _compression,
+    std::vector<FileMetaData*> _grandparents, bool _manual_compaction, double _score,
+    bool _deletion_compaction, CompactionReason _compaction_reason,
+    SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe)
     : start_level_(_inputs[0].level),
       output_level_(_output_level),
       max_output_file_size_(_target_file_size),
@@ -289,7 +287,8 @@ Compaction::Compaction(VersionStorageInfo* vstorage,
       bottommost_level_(IsBottommostLevel(output_level_, vstorage, inputs_)),
       is_full_compaction_(IsFullCompaction(vstorage, inputs_)),
       is_manual_compaction_(_manual_compaction),
-      compaction_reason_(_compaction_reason) {
+      compaction_reason_(_compaction_reason),
+      skip_corrupt_data_blocks_unsafe_(skip_corrupt_data_blocks_unsafe) {
   seen_key_.store(false, std::memory_order_release);
   MarkFilesBeingCompacted(true);
 

@@ -571,22 +571,22 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
                       onChange={(e) => setSelectedImpact(e.target.value)}
                     >
                       <MenuItem value={
-                        t("clusterDetail.voyager.planAndAssess.impactLevels.allImpacts")}>{
+                        String(t("clusterDetail.voyager.planAndAssess.impactLevels.allImpacts"))}>{
                         t("clusterDetail.voyager.planAndAssess.impactLevels.allImpacts")
                       }
                       </MenuItem>
                       <MenuItem value={
-                        t("clusterDetail.voyager.planAndAssess.impactLevels.Level1")
+                        String(t("clusterDetail.voyager.planAndAssess.impactLevels.Level1"))
                       }>
                         {t("clusterDetail.voyager.planAndAssess.impactLevels.Level1")}
                       </MenuItem>
                       <MenuItem value={
-                        t("clusterDetail.voyager.planAndAssess.impactLevels.Level2")
+                        String(t("clusterDetail.voyager.planAndAssess.impactLevels.Level2"))
                       }>
                         {t("clusterDetail.voyager.planAndAssess.impactLevels.Level2")}
                       </MenuItem>
                       <MenuItem value={
-                        t("clusterDetail.voyager.planAndAssess.impactLevels.Level3")
+                        String(t("clusterDetail.voyager.planAndAssess.impactLevels.Level3"))
                       }>
                         {t("clusterDetail.voyager.planAndAssess.impactLevels.Level3")}
                       </MenuItem>

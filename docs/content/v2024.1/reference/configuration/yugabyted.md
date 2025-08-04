@@ -620,6 +620,8 @@ For example, finalize the upgrade process after upgrading all the nodes of the Y
 yugabyted finalize_upgrade --upgrade_ysql_timeout <time_limit_ms>
 ```
 
+Note that `finalize_upgrade` is a cluster-level operation; you don't need to run it on every node.
+
 #### Flags
 
 -h | --help
@@ -1540,21 +1542,21 @@ mkdir ~/yb_docker_data
 
 docker network create yb-network
 
-docker run -d --name yugabytedb-node1 --net yb-network \
+docker run -d --name yugabytedb-node1 --hostname yugabytedb-node1 --net yb-network \
     -p 15433:15433 -p 7001:7000 -p 9001:9000 -p 5433:5433 \
     -v ~/yb_docker_data/node1:/home/yugabyte/yb_data --restart unless-stopped \
     yugabytedb/yugabyte:{{< yb-version version="v2024.1" format="build">}} \
     bin/yugabyted start \
     --base_dir=/home/yugabyte/yb_data --background=false
 
-docker run -d --name yugabytedb-node2 --net yb-network \
+docker run -d --name yugabytedb-node2 --hostname yugabytedb-node2 --net yb-network \
     -p 15434:15433 -p 7002:7000 -p 9002:9000 -p 5434:5433 \
     -v ~/yb_docker_data/node2:/home/yugabyte/yb_data --restart unless-stopped \
     yugabytedb/yugabyte:{{< yb-version version="v2024.1" format="build">}} \
     bin/yugabyted start --join=yugabytedb-node1 \
     --base_dir=/home/yugabyte/yb_data --background=false
 
-docker run -d --name yugabytedb-node3 --net yb-network \
+docker run -d --name yugabytedb-node3 --hostname yugabytedb-node3 --net yb-network \
     -p 15435:15433 -p 7003:7000 -p 9003:9000 -p 5435:5433 \
     -v ~/yb_docker_data/node3:/home/yugabyte/yb_data --restart unless-stopped \
     yugabytedb/yugabyte:{{< yb-version version="v2024.1" format="build">}} \
@@ -1970,7 +1972,7 @@ Upgrading an existing YugabyteDB cluster that was deployed using yugabyted inclu
 
 1. Repeat steps 1 and 2 for all nodes.
 
-1. Finish the upgrade by running `yugabyted finalize_upgrade` command. This command can be run from any node.
+1. Finish the upgrade by running the `yugabyted finalize_upgrade` command. Note that `finalize_upgrade` is a cluster-level operation; you don't need to run it on every node.
 
     ```sh
     ./bin/yugabyted finalize_upgrade --base_dir <path_to_base_dir>

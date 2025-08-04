@@ -99,16 +99,16 @@ class XClusterDRTest : public XClusterYsqlTestBase {
 
   Status WriteBatchOnSource() {
     RETURN_NOT_OK(WriteWorkload(
-        (*source_table_)->name(), written_rows_count_, written_rows_count_ + kNumRecordsPerBatch,
-        source_cluster_));
+        written_rows_count_, written_rows_count_ + kNumRecordsPerBatch, source_cluster_,
+        (*source_table_)->name()));
     written_rows_count_ += kNumRecordsPerBatch;
     return Status::OK();
   }
 
   Status WriteBatchOnTarget() {
     return WriteWorkload(
-        (*target_table_)->name(), written_rows_count_, written_rows_count_ + kNumRecordsPerBatch,
-        target_cluster_);
+        written_rows_count_, written_rows_count_ + kNumRecordsPerBatch,
+        target_cluster_, (*target_table_)->name());
   }
 
   Status ValidateBatchCountOnTarget(int expected_num_batches) {

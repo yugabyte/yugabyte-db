@@ -201,11 +201,11 @@ buildACLCommands(PGconn *yb_conn,
 			if (yb_dump_role_checks)
 			{
 				YBWwrapInRoleChecks(yb_conn, yb_sql, "revoke privilege",
-									/* if not PUBLIC role */
-									grantee->len > 0 ? grantee->data : NULL, /* role1 */
-									/* if ALTER DEFAULT PRIVILEGES FOR ROLE case */
-									(*prefix != '\0' && owner) ? owner : NULL, /* role2 */
-									NULL, /* role3 */
+				/* if not PUBLIC role */
+									grantee->len > 0 ? grantee->data : NULL,	/* role1 */
+				/* if ALTER DEFAULT PRIVILEGES FOR ROLE case */
+									(*prefix != '\0' && owner) ? owner : NULL,	/* role2 */
+									NULL,	/* role3 */
 									firstsql);
 				destroyPQExpBuffer(yb_sql);
 			}
@@ -262,7 +262,7 @@ buildACLCommands(PGconn *yb_conn,
 					thissql = secondsql;
 
 				PQExpBuffer yb_sql = yb_dump_role_checks ? createPQExpBuffer() : thissql;
-				const bool yb_need_session_auth =
+				const bool	yb_need_session_auth =
 					(grantor->len > 0 && (!owner || strcmp(owner, grantor->data) != 0));
 
 				if (yb_need_session_auth)
@@ -301,12 +301,12 @@ buildACLCommands(PGconn *yb_conn,
 				if (yb_dump_role_checks)
 				{
 					YBWwrapInRoleChecks(yb_conn, yb_sql, "grant privilege",
-										/* not PUBLIC role */
-										grantee->len > 0 ? grantee->data : NULL, /* role1 */
-										/* Additional SET SESSION AUTHORIZATION statement */
-										yb_need_session_auth ? grantor->data : NULL, /* role2 */
-										/* ALTER DEFAULT PRIVILEGES FOR ROLE case */
-										(*prefix != '\0' && owner) ? owner : NULL, /* role3 */
+					/* not PUBLIC role */
+										grantee->len > 0 ? grantee->data : NULL,	/* role1 */
+					/* Additional SET SESSION AUTHORIZATION statement */
+										yb_need_session_auth ? grantor->data : NULL,	/* role2 */
+					/* ALTER DEFAULT PRIVILEGES FOR ROLE case */
+										(*prefix != '\0' && owner) ? owner : NULL,	/* role3 */
 										thissql);
 					destroyPQExpBuffer(yb_sql);
 				}
@@ -449,10 +449,11 @@ YBWwrapInRoleChecks(PGconn *conn,
 		}
 
 		appendPQExpBufferStr(result, ") AS role_exists \\gset\n"
-									 "\\if :role_exists\n");
+							 "\\if :role_exists\n");
 
 		/* Replace "<str>EOL" by "<indent><str>EOL". */
 		const char *str = sql->data;
+
 		for (char *ptr = NULL; (ptr = strchr(str, '\n')) != NULL; str = ptr + 1)
 		{
 			(*ptr) = '\0';
@@ -460,13 +461,16 @@ YBWwrapInRoleChecks(PGconn *conn,
 			(*ptr) = '\n';
 		}
 
-		/* Print tail after the last EOL if it's available. Usually it's empty. */
+		/*
+		 * Print tail after the last EOL if it's available. Usually it's
+		 * empty.
+		 */
 		if (*str != '\0')
 			appendPQExpBuffer(result, "    %s\n", str);
 
 		appendPQExpBuffer(result, "\\else\n"
-								  "    \\echo 'Skipping %s due to missing role:' %s",
-								  op_name, fmtId(role1));
+						  "    \\echo 'Skipping %s due to missing role:' %s",
+						  op_name, fmtId(role1));
 		if (role2)
 			appendPQExpBuffer(result, " 'OR' %s", fmtId(role2));
 		if (role3)
@@ -474,7 +478,7 @@ YBWwrapInRoleChecks(PGconn *conn,
 
 		appendPQExpBufferStr(result, "\n\\endif\n\n");
 	}
-	else  /* NO not empty roles - skip role checks. */
+	else						/* NO not empty roles - skip role checks. */
 		appendPQExpBuffer(result, "%s", sql->data);
 }
 

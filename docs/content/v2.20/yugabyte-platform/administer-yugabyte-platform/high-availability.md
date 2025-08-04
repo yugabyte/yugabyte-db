@@ -151,7 +151,7 @@ You can make a standby instance active as follows:
 
 1. Click **Continue**. The restore takes a few seconds, after which expect to be signed out.
 
-1. Sign in using the credentials that you had configured on the previously active instance.
+1. Sign in using the credentials that you had configured on the previously active instance. If you are performing failover, you must sign in using your Super Admin account.
 
 You should be able to see that all of the data has been restored into the instance, including universes, users, metrics, alerts, task history, cloud providers, and so on.
 
@@ -243,6 +243,7 @@ After you have returned a standby instance to standalone mode, the information o
 ## Limitations
 
 - No automatic failover. If the active instance fails, follow the steps in [Promote a standby instance to active](#promote-a-standby-instance-to-active).
+- When performing failover, the first time you sign in after failover, you must use your Super Admin account.
 - The last backup time updates regardless of successful synchronization. To validate that backups are running, check the YBA logs for errors during synchronization.
 - After promotion, you may be unable to sign in to the new active instance for under a minute. You can wait and then reload the page, or you can restart the newly active YBA.
 - If you have a reverse proxy in front of the standby or primary instance (such as a Kubernetes ingress or a load balancer), ensure that it does not limit large requests. For example, if you are using nginx ingress, you might need to set the following annotations in your ingress specification to raise the default limit to 100 MB:

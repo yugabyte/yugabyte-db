@@ -239,13 +239,13 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
         committed_index, last_committed_op_id);
   }
 
-  yb::OpId GetLastReceivedOpId() override;
+  OpId GetLastReceivedOpId() override;
 
-  yb::OpId GetLastCommittedOpId() override;
+  OpId GetLastCommittedOpId() override;
 
-  yb::OpId GetLastAppliedOpId() override;
+  OpId GetLastAppliedOpId() override;
 
-  yb::OpId GetAllAppliedOpId();
+  OpId GetAllAppliedOpId();
 
   Result<MicrosTime> MajorityReplicatedHtLeaseExpiration(
       MicrosTime min_allowed, CoarseTimePoint deadline) const override;
@@ -253,7 +253,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // The on-disk size of the consensus metadata.
   uint64_t OnDiskSize() const;
 
-  yb::OpId MinRetryableRequestOpId();
+  OpId MinRetryableRequestOpId();
 
   Status StartElection(const LeaderElectionData& data) override {
     return DoStartElection(data, PreElected::kFalse);
@@ -275,10 +275,10 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   }
 
   Result<XClusterReadOpsResult> ReadReplicatedMessagesForXCluster(
-      const yb::OpId& from, const CoarseTimePoint deadline, bool fetch_single_entry) override;
+      const OpId& from, const CoarseTimePoint deadline, bool fetch_single_entry) override;
 
   Result<ReadOpsResult> ReadReplicatedMessagesForCDC(
-      const yb::OpId& from,
+      const OpId& from,
       int64_t* last_replicated_opid_index,
       const CoarseTimePoint deadline = CoarseTimePoint::max(),
       const bool fetch_single_entry = false) override;
@@ -299,10 +299,10 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
       HybridTime* consistent_stream_safe_time_footer = nullptr,
       bool* read_entire_wal = nullptr);
 
-  void UpdateCDCConsumerOpId(const yb::OpId& op_id) override;
+  void UpdateCDCConsumerOpId(const OpId& op_id) override;
 
   // Start memory tracking of following operation in case it is still present in our caches.
-  void TrackOperationMemory(const yb::OpId& op_id);
+  void TrackOperationMemory(const OpId& op_id);
 
   uint64_t MajorityNumSSTFiles() const {
     return majority_num_sst_files_.load(std::memory_order_acquire);
@@ -489,7 +489,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
       LWConsensusResponsePB* response, LeaderRequest* deduped_req);
 
   // Returns the most recent OpId written to the Log.
-  yb::OpId GetLatestOpIdFromLog();
+  OpId GetLatestOpIdFromLog();
 
   // Begin a replica operation. If the type of message in 'msg' is not a type
   // that uses operations, delegates to StartConsensusOnlyRoundUnlocked().
@@ -674,7 +674,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
                                        LeaderRequest* deduped_req,
                                        LWConsensusResponsePB* response);
   // Returns last op id received from leader.
-  yb::OpId EnqueueWritesUnlocked(const LeaderRequest& deduped_req, WriteEmpty write_empty);
+  OpId EnqueueWritesUnlocked(const LeaderRequest& deduped_req, WriteEmpty write_empty);
   Status MarkOperationsAsCommittedUnlocked(const LWConsensusRequestPB& request,
                                            const LeaderRequest& deduped_req,
                                            OpId last_from_leader);
@@ -686,7 +686,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // See comment for ReplicaState::CancelPendingOperation
   void RollbackIdAndDeleteOpId(const ReplicateMsgPtr& replicate_msg, bool should_exists);
 
-  yb::OpId WaitForSafeOpIdToApply(const yb::OpId& op_id) override;
+  OpId WaitForSafeOpIdToApply(const OpId& op_id) override;
 
   void AppendEmptyBatchToLeaderLog();
 

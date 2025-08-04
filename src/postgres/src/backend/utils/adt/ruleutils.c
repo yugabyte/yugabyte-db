@@ -1446,6 +1446,7 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 		AttrNumber	attnum = idxrec->indkey.values[keyno];
 		Oid			keycoltype;
 		Oid			keycolcollation;
+		bool		yb_close_hashcol_list = false;
 
 		/* YB: Put hash column group in a parenthesis */
 		if (!attrsOnly && keyno == 0 && !colno && hash_count > 1)
@@ -1555,16 +1556,51 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 					if (colno == keyno + 1 || hash_count == 1)
 						appendStringInfoString(&buf, " HASH");
 					else if (keyno == hash_count - 1)
-						appendStringInfoString(&buf, ") HASH");
+						yb_close_hashcol_list = true;
 				}
 			}
 
+			/* YB: we currently don't support exclusion operators */
+			Assert(IsYugaByteEnabled() && !excludeOps);
 			/* Add the exclusion operator if relevant */
 			if (excludeOps != NULL)
 				appendStringInfo(&buf, " WITH %s",
 								 generate_operator_name(excludeOps[keyno],
 														keycoltype,
 														keycoltype));
+		}
+
+		/*
+		 * YB: During a YSQL major upgrade, we want to recreate an index with
+		 * the correct original column names, even if the table
+		 * columns were renamed after the index's creation.
+		 * Therefore, when yb_major_version_upgrade_compatibility is set and
+		 * includeYbMetadata is true, for non-expression columns (attnum != 0)
+		 * we compare the index column name with the current table column name
+		 * If they differ, we emit the original index column name as an alias
+		 * (using "AS <name>") to preserve it in the recreated index definition.
+		 */
+		if (yb_major_version_upgrade_compatibility != 0 && includeYbMetadata
+			&& attnum != 0)
+		{
+			char	   *index_attname;
+			char	   *rel_attname;
+
+			index_attname = get_attname(indexrelid, keyno + 1, false);
+			rel_attname = get_attname(indrelid, attnum, false);
+			if (strcmp(index_attname, rel_attname) != 0)
+				/*
+				 * If the index column name differs from the table column name
+				 * emit the original index column name as an alias so that we
+				 * preserve it.
+				 */
+				appendStringInfo(&buf, " AS %s", quote_identifier(index_attname));
+		}
+
+		if (yb_close_hashcol_list)
+		{
+			appendStringInfoString(&buf, ") HASH");
+			yb_close_hashcol_list = false;
 		}
 	}
 
@@ -12726,7 +12762,7 @@ get_range_partbound_string(List *bound_datums)
 	foreach(cell, bound_datums)
 	{
 		PartitionRangeDatum *datum =
-		lfirst_node(PartitionRangeDatum, cell);
+			lfirst_node(PartitionRangeDatum, cell);
 
 		appendStringInfoString(buf, sep);
 		if (datum->kind == PARTITION_RANGE_DATUM_MINVALUE)

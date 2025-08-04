@@ -190,12 +190,7 @@ Status MiniTabletServer::Reconnect() {
   }
 
   tunnel_ = std::make_unique<Tunnel>(&server_->messenger()->io_service());
-  auto started_tunnel = false;
-  auto se = ScopeExit([this, &started_tunnel] {
-    if (!started_tunnel) {
-      tunnel_->Shutdown();
-    }
-  });
+  CancelableScopeExit shutdown_se{[this] {tunnel_->Shutdown(); }};
 
   std::vector<Endpoint> local;
   RETURN_NOT_OK(opts_.broadcast_addresses[0].ResolveAddresses(&local));
@@ -204,7 +199,7 @@ Status MiniTabletServer::Reconnect() {
       local.front(), remote, [messenger = server_->messenger()](const IpAddress& address) {
     return !messenger->TEST_ShouldArtificiallyRejectIncomingCallsFrom(address);
   }));
-  started_tunnel = true;
+  shutdown_se.Cancel();
   return Status::OK();
 }
 
@@ -254,7 +249,7 @@ Status MiniTabletServer::FlushTablets(tablet::FlushMode mode, tablet::FlushFlags
     return Status::OK();
   }
   return ForAllTablets(this, [mode, flags](TabletPeer* tablet_peer) -> Status {
-    auto tablet = tablet_peer->shared_tablet();
+    auto tablet = tablet_peer->shared_tablet_maybe_null();
     if (!tablet) {
       return Status::OK();
     }
@@ -267,7 +262,7 @@ Status MiniTabletServer::CompactTablets(docdb::SkipFlush skip_flush) {
     return Status::OK();
   }
   return ForAllTablets(this, [skip_flush](TabletPeer* tablet_peer) -> Status {
-    auto tablet = tablet_peer->shared_tablet();
+    auto tablet = tablet_peer->shared_tablet_maybe_null();
     if (!tablet) {
       return Status::OK();
     }
@@ -275,9 +270,21 @@ Status MiniTabletServer::CompactTablets(docdb::SkipFlush skip_flush) {
   });
 }
 
+Status MiniTabletServer::CompactTablet(const TabletId& tablet_id, docdb::SkipFlush skip_flush) {
+  if (!server_) {
+    return Status::OK();
+  }
+  auto tablet_peer = server_->tablet_manager()->LookupTablet(tablet_id);
+  if (!tablet_peer) {
+    return Status::OK();
+  }
+  auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet());
+  return tablet->ForceManualRocksDBCompact(skip_flush);
+}
+
 Status MiniTabletServer::SwitchMemtables() {
   return ForAllTablets(this, [](TabletPeer* tablet_peer) -> Status {
-    auto tablet = tablet_peer->shared_tablet();
+    auto tablet = tablet_peer->shared_tablet_maybe_null();
     if (!tablet) {
       return Status::OK();
     }

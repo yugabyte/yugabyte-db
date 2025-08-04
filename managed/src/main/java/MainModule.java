@@ -97,12 +97,16 @@ import com.yugabyte.yw.controllers.PlatformHttpActionAdapter;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.HealthCheck;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskTypesModule;
 import com.yugabyte.yw.queries.QueryHelper;
 import com.yugabyte.yw.scheduler.Scheduler;
 import de.dentrassi.crypto.pem.PemKeyStoreProvider;
 import io.prometheus.client.CollectorRegistry;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.security.KeyStore;
+import java.security.Provider;
 import java.security.SecureRandom;
 import java.security.Security;
 import javax.net.ssl.HttpsURLConnection;
@@ -112,7 +116,8 @@ import javax.net.ssl.TrustManagerFactory;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.validator.routines.DomainValidator;
-import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.bouncycastle.jcajce.provider.BouncyCastleFipsProvider;
+import org.bouncycastle.jsse.provider.BouncyCastleJsseProvider;
 import org.pac4j.core.client.Clients;
 import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.core.http.url.DefaultUrlResolver;
@@ -133,8 +138,9 @@ import play.Environment;
 @Slf4j
 public class MainModule extends AbstractModule {
   private final Config config;
-  private final String[] TLD_OVERRIDE = {"local"};
-  private final String DEFAULT_OIDC_SCOPE = "openid profile email";
+  private static final String[] TLD_OVERRIDE = {"local"};
+  private static final String DEFAULT_OIDC_SCOPE = "openid profile email";
+  private static final String TMPDIR_PROPERTY = "java.io.tmpdir";
 
   public MainModule(Environment environment, Config config) {
     this.config = config;
@@ -157,8 +163,56 @@ public class MainModule extends AbstractModule {
     }
     install(new TaskTypesModule());
 
-    Security.addProvider(new PemKeyStoreProvider());
-    Security.addProvider(new BouncyCastleProvider());
+    if (!config.getBoolean(CommonUtils.FIPS_ENABLED)) {
+      Security.addProvider(new PemKeyStoreProvider());
+    } else {
+      Provider[] providers = Security.getProviders();
+      log.info("Removing all providers configured in JVM (java.security file)");
+      if (providers != null) {
+        for (Provider provider : providers) {
+          // We have to leave SUN provider in place as it is used to get entropy for SecureRandom
+          // We'll have to figure out how to actually provide a proper entropy source.
+          // See https://github.com/bcgit/bc-java/issues/1285 for more details.
+          if (!provider.getName().equals("SUN")) {
+            Security.removeProvider(provider.getName());
+          }
+        }
+      }
+    }
+    log.info("Adding BC-FIPS providers");
+    Security.setProperty("ssl.KeyManagerFactory.algorithm", "PKIX");
+    Security.setProperty("ssl.TrustManagerFactory.algorithm", "PKIX");
+
+    // BC FIPS 2.1 provider is unpacking native libs to temp directory and tries to load them
+    // with JNI. As some linux distributions have temp dir mounted with noexec attribute - this
+    // can fail. See https://github.com/bcgit/bc-java/issues/1987 for more details.
+    // We're making sure java.io.tmpdir property is set to a directory inside the data directory
+    // temporarily while providers are being initialized and set back to the old value
+    // right after that.
+    Path storagePath = Paths.get(config.getString(AppConfigHelper.YB_STORAGE_PATH));
+    String oldTmpDir = System.getProperty(TMPDIR_PROPERTY);
+    if (!storagePath.toFile().exists()) {
+      if (!storagePath.toFile().mkdirs()) {
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR, "Failed to create storage dir " + storagePath);
+      }
+    }
+    Path bcTempPath = storagePath.resolve("bctemp");
+    if (!bcTempPath.toFile().exists()) {
+      if (!bcTempPath.toFile().mkdirs()) {
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR, "Failed to create BC temp dir " + bcTempPath);
+      }
+    }
+    System.setProperty(TMPDIR_PROPERTY, bcTempPath.toAbsolutePath().toString());
+    Security.insertProviderAt(new BouncyCastleFipsProvider("C:HYBRID;ENABLE{All};"), 1);
+    Security.insertProviderAt(new BouncyCastleJsseProvider("fips:BCFIPS"), 2);
+    if (oldTmpDir != null) {
+      System.setProperty(TMPDIR_PROPERTY, oldTmpDir);
+    } else {
+      System.clearProperty(TMPDIR_PROPERTY);
+    }
+
     TLSConfig.modifyTLSDisabledAlgorithms(config);
     bind(RuntimeConfigFactory.class).to(SettableRuntimeConfigFactory.class).asEagerSingleton();
     install(new CustomerConfKeys());

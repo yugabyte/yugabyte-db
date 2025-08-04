@@ -93,8 +93,12 @@ func (ybdb Ybdb) Status() (common.Status, error) {
 
 	if common.HasSudoAccess() {
 		//TODO: see if this common method can be moved to systemd.
-		props := systemd.Show(filepath.Base(ybdb.SystemdFileLocation), "LoadState", "SubState",
+		props, err := systemd.Show(filepath.Base(ybdb.SystemdFileLocation), "LoadState", "SubState",
 			"ActiveState", "ActiveEnterTimestamp", "ActiveExitTimestamp")
+		if err != nil {
+			log.Error("Error getting systemd status: " + err.Error())
+			return status, err
+		}
 		if props["LoadState"] == "not-found" {
 			status.Status = common.StatusNotInstalled
 		} else if props["SubState"] == "running" {

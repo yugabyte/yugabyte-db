@@ -186,6 +186,7 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
                                     TSTabletManager* ts_manager) {
   CHECK(!started_);
   start_time_micros_ = GetCurrentTimeMicros();
+  bootstrap_source_uuid_ = bootstrap_peer_uuid;
 
   // Set up an RPC proxy for the RemoteBootstrapService.
   proxy_.reset(new RemoteBootstrapServiceProxy(proxy_cache, bootstrap_peer_addr));
@@ -194,9 +195,6 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
   BeginRemoteBootstrapSessionRequestPB req;
   req.set_requestor_uuid(permanent_uuid());
   req.set_tablet_id(tablet_id_);
-  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
-    wait_state->MetadataToPB(req.mutable_ash_metadata());
-  }
 
   if (tablet_leader_conn_info.has_cloud_info()) {
     // If tablet_leader_conn_info is populated, propagate it to the RBS source (which is a follower
@@ -272,7 +270,11 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
   const auto& table = *table_ptr;
 
   downloader_.Start(
-      proxy_, resp.session_id(), MonoDelta::FromMilliseconds(resp.session_idle_timeout_millis()));
+      [proxy = this->proxy_](
+          const FetchDataRequestPB& req, FetchDataResponsePB* resp,
+          rpc::RpcController* controller) {
+        return proxy->FetchData(req, resp, controller);},
+      resp.session_id(), MonoDelta::FromMilliseconds(resp.session_idle_timeout_millis()));
 
   superblock_.reset(resp.release_superblock());
 
@@ -433,7 +435,11 @@ Status RemoteBootstrapClient::FetchAll(TabletStatusListener* status_listener) {
   // Replace rocksdb_dir with our rocksdb_dir
   new_superblock_.mutable_kv_store()->set_rocksdb_dir(meta_->rocksdb_dir());
 
+  auto scope_exit = ScopeExit([this] { status_listener_->ClearRbsProgressInfo(); });
+  status_listener_->SetInitialRbsProgressInfo(
+      bootstrap_source_uuid_, GetTotalDataSizeBytes(new_superblock_), start_time_micros_);
   RETURN_NOT_OK(DownloadRocksDBFiles());
+  status_listener_->SetSstDownloadDone();
   TEST_PAUSE_IF_FLAG_WITH_PREFIX(
       TEST_pause_rbs_before_download_wal, LogPrefix() + tablet_id_ + ": ");
   RETURN_NOT_OK(DownloadWALs());
@@ -636,27 +642,17 @@ Status RemoteBootstrapClient::DownloadRocksDBFiles() {
   data_id.set_type(DataIdPB::ROCKSDB_FILE);
   for (auto const& file_pb : new_superblock_.kv_store().rocksdb_files()) {
     auto start = MonoTime::Now();
-    RETURN_NOT_OK(downloader_.DownloadFile(file_pb, rocksdb_dir, &data_id));
+    RETURN_NOT_OK(downloader_.DownloadFile(
+        file_pb, rocksdb_dir, &data_id,
+        [&](size_t chunk_size) { status_listener_->IncrementSstDownloadProgress(chunk_size); }));
     auto elapsed = MonoTime::Now().GetDeltaSince(start);
-    LOG_WITH_PREFIX(INFO)
-        << "Downloaded file " << file_pb.name() << " of size " << file_pb.size_bytes()
-        << " in " << elapsed.ToSeconds() << " seconds";
+    UpdateStatusMessage(Format(
+        "Downloaded file $0 of size $1 in $2 seconds", file_pb.name(), file_pb.size_bytes(),
+        elapsed.ToSeconds()));
   }
   // To avoid adding new file type to remote bootstrap we move intents as subdir of regular DB.
   auto& env = this->env();
-  auto children = VERIFY_RESULT(env.GetChildren(rocksdb_dir, ExcludeDots::kTrue));
-  for (const auto& child : children) {
-    if (!child.starts_with(docdb::kVectorIndexDirPrefix) && child != tablet::kIntentsDirName) {
-      continue;
-    }
-    auto source_dir = JoinPathSegments(rocksdb_dir, child);
-    if (!env.DirExists(source_dir)) {
-      continue;
-    }
-    auto dest_dir = docdb::GetStorageDir(rocksdb_dir, child);
-    LOG_WITH_PREFIX(INFO) << "Moving " << source_dir << " => " << dest_dir;
-    RETURN_NOT_OK(env.RenameFile(source_dir, dest_dir));
-  }
+  RETURN_NOT_OK(MoveChildren(env, rocksdb_dir, docdb::IncludeIntents::kTrue));
   if (FLAGS_bytes_remote_bootstrap_durable_write_mb != 0) {
     // Persist directory so that recently downloaded files are accessible.
     RETURN_NOT_OK(env.SyncDir(rocksdb_dir));
@@ -670,15 +666,11 @@ Status RemoteBootstrapClient::DownloadWAL(uint64_t wal_segment_seqno) {
   DataIdPB data_id;
   data_id.set_type(DataIdPB::LOG_SEGMENT);
   data_id.set_wal_segment_seqno(wal_segment_seqno);
-  const string dest_path = fs_manager().GetWalSegmentFilePath(meta_->wal_dir(), wal_segment_seqno);
+  const auto dest_path = fs_manager().GetWalSegmentFilePath(meta_->wal_dir(), wal_segment_seqno);
   const auto temp_dest_path = dest_path + ".tmp";
-  bool ok = false;
-  auto se = ScopeExit([this, &temp_dest_path, &ok] {
-    if (!ok) {
-      WARN_NOT_OK(env().DeleteFile(temp_dest_path),
-                  "Failed to delete temporary WAL segment");
-    }
-  });
+  CancelableScopeExit delete_tmp_wal_se{[this, &temp_dest_path] {
+    WARN_NOT_OK(env().DeleteFile(temp_dest_path), "Failed to delete temporary WAL segment");
+  }};
 
   std::unique_ptr<WritableFile> writer;
   RETURN_NOT_OK_PREPEND(env().NewWritableFile(temp_dest_path, &writer),
@@ -693,7 +685,7 @@ Status RemoteBootstrapClient::DownloadWAL(uint64_t wal_segment_seqno) {
   LOG_WITH_PREFIX(INFO) << "Downloaded WAL segment with seq. number " << wal_segment_seqno
                         << " of size " << writer->Size() << " in " << elapsed.ToSeconds()
                         << " seconds";
-  ok = true;
+  delete_tmp_wal_se.Cancel();
 
   return Status::OK();
 }
@@ -704,13 +696,10 @@ Status RemoteBootstrapClient::DownloadTabletBootstrapStateFile() {
   data_id.set_type(DataIdPB::RETRYABLE_REQUESTS);
   auto dest_path = tablet::TabletBootstrapStateManager::FilePath(meta_->wal_dir());
   const auto temp_dest_path = dest_path + ".tmp";
-  bool ok = false;
-  auto se = ScopeExit([this, &temp_dest_path, &ok] {
-    if (!ok) {
-      WARN_NOT_OK(env().DeleteFile(temp_dest_path),
-                  "Failed to delete temporary retryable requests file");
-    }
-  });
+  CancelableScopeExit delete_tmp_file_se{[this, &temp_dest_path] {
+    WARN_NOT_OK(
+        env().DeleteFile(temp_dest_path), "Failed to delete temporary retryable requests file");
+  }};
 
   std::unique_ptr<WritableFile> writer;
   RETURN_NOT_OK_PREPEND(env().NewWritableFile(temp_dest_path, &writer),
@@ -723,7 +712,7 @@ Status RemoteBootstrapClient::DownloadTabletBootstrapStateFile() {
   auto elapsed = MonoTime::Now().GetDeltaSince(start);
   LOG_WITH_PREFIX(INFO) << "Downloaded retryable requests file of size " << writer->Size()
                         << " in " << elapsed.ToSeconds() << " seconds";
-  ok = true;
+  delete_tmp_file_se.Cancel();
 
   return Status::OK();
 }
@@ -753,18 +742,23 @@ Status RemoteBootstrapClient::WriteConsensusMetadata() {
   return Status::OK();
 }
 
+uint64_t RemoteBootstrapClient::GetTotalDataSizeBytes(
+    const tablet::RaftGroupReplicaSuperBlockPB& superblock) const {
+  uint64_t total_data_size_bytes = 0;
+  for (const auto& file : superblock.kv_store().rocksdb_files()) {
+    total_data_size_bytes += file.size_bytes();
+  }
+  return total_data_size_bytes;
+}
+
 Status RemoteBootstrapClient::CheckDiskSpace(
-    const tablet::RaftGroupReplicaSuperBlockPB& new_superblock,
-    const string& rocksdb_dir) {
+    const tablet::RaftGroupReplicaSuperBlockPB& superblock, const string& rocksdb_dir) {
   const auto max_size_ratio = FLAGS_rbs_data_size_to_disk_space_ratio_threshold;
   if (PREDICT_FALSE(max_size_ratio <= 0)) {
     return Status::OK();
   }
 
-  uint64_t total_data_size_bytes = 0;
-  for (const auto& file : new_superblock.kv_store().rocksdb_files()) {
-    total_data_size_bytes += file.size_bytes();
-  }
+  auto total_data_size_bytes = GetTotalDataSizeBytes(superblock);
   const uint64 free_space_bytes =
       VERIFY_RESULT(fs_manager().GetFreeSpaceBytes(rocksdb_dir));
   if (total_data_size_bytes > free_space_bytes * max_size_ratio) {

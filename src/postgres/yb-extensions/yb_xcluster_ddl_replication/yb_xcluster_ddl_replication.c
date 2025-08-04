@@ -36,33 +36,27 @@ PG_MODULE_MAGIC;
  */
 
 static bool enable_manual_ddl_replication = false;
-char *ddl_queue_primary_key_ddl_end_time = NULL;
-char *ddl_queue_primary_key_queue_id = NULL;
+char	   *ddl_queue_primary_key_ddl_end_time = NULL;
+char	   *ddl_queue_primary_key_queue_id = NULL;
 
-typedef enum YbXClusterReplicationRole
-{
-	/*
-	 * Taken from XClusterNamespaceInfoPB.XClusterRole in
-	 * yb/common/common_types.proto.
-	 */
-	UNSPECIFIED = 0,
-	UNAVAILABLE = 1,
-	NOT_AUTOMATIC_MODE = 2,
-	AUTOMATIC_SOURCE = 3,
-	AUTOMATIC_TARGET = 4,
-} YbXClusterReplicationRole;
+static const struct config_enum_entry replication_role_overrides[] = {
+	{"", XCLUSTER_ROLE_UNSPECIFIED, /* hidden */ false},
+	{"NONE", XCLUSTER_ROLE_UNSPECIFIED, /* hidden */ false},
+	{"UNSPECIFIED", XCLUSTER_ROLE_UNSPECIFIED, /* hidden */ true},
+	{"NOT_AUTOMATIC_MODE", XCLUSTER_ROLE_NOT_AUTOMATIC_MODE, /* hidden */ true},
+	{"UNAVAILABLE", XCLUSTER_ROLE_UNAVAILABLE, /* hidden */ true},
+	{"SOURCE", XCLUSTER_ROLE_AUTOMATIC_SOURCE, /* hidden */ false},
+	{"AUTOMATIC_SOURCE", XCLUSTER_ROLE_AUTOMATIC_SOURCE, /* hidden */ true},
+	{"TARGET", XCLUSTER_ROLE_AUTOMATIC_TARGET, /* hidden */ false},
+	{"AUTOMATIC_TARGET", XCLUSTER_ROLE_AUTOMATIC_TARGET, /* hidden */ true},
+{NULL, 0, false}};
 
 /*
  * Call FetchReplicationRole() at the start of every DDL to fill this variable
  * in before using it.
  */
-static int replication_role = UNAVAILABLE;
-static bool role_override_present = false;
-/*
- * If role_override_present, then this overrides the value of replication_role
- * fetched from the TServer.
- */
-static int replication_role_override = UNSPECIFIED;
+static int	replication_role = XCLUSTER_ROLE_UNAVAILABLE;
+static int	replication_role_override = XCLUSTER_ROLE_UNSPECIFIED;
 
 /*
  * Util functions.
@@ -83,6 +77,38 @@ static bool IsInIgnoreList(EventTriggerData *trig_data);
  */
 static bool yb_should_replicate_ddl = false;
 
+/*
+ * Assign hooks.
+ */
+
+/*
+ * The GUC variables `enable_manual_ddl_replication` and
+ * `TEST_replication_role_override` cannot be supported using connection
+ * manager due to how GUC variables are supported through connection manager.
+ * Any modifications to these variables should cause the connection to become
+ * sticky so as to not allow internal changes to the variables to occur while
+ * not servicing an active client connection.
+ *
+ * These assign hooks have no purpose if connection manager is not being used.
+ */
+
+static void
+assign_enable_manual_ddl_replication(bool newval, void *extra)
+{
+	if (!YbIsClientYsqlConnMgr())
+		return;
+	elog(LOG, "Making connection sticky for setting enable_manual_ddl_replication");
+	yb_ysql_conn_mgr_sticky_guc = true;
+}
+
+static void
+assign_TEST_replication_role_override(int newval, void *extra)
+{
+	if (!YbIsClientYsqlConnMgr())
+		return;
+	elog(LOG, "Making connection sticky for setting TEST_replication_role_override");
+	yb_ysql_conn_mgr_sticky_guc = true;
+}
 
 /*
  * _PG_init gets called when the extension is loaded.
@@ -102,7 +128,7 @@ _PG_init(void)
 							 false,
 							 PGC_USERSET,
 							 0,
-							 NULL, NULL, NULL);
+							 NULL, assign_enable_manual_ddl_replication, NULL);
 
 	DefineCustomStringVariable("yb_xcluster_ddl_replication.ddl_queue_primary_key_ddl_end_time",
 							   gettext_noop("Internal use only: Used by HandleTargetDDLEnd function."),
@@ -121,17 +147,27 @@ _PG_init(void)
 							   PGC_SUSET,
 							   0,
 							   NULL, NULL, NULL);
+
+	DefineCustomEnumVariable("yb_xcluster_ddl_replication.TEST_replication_role_override",
+							 gettext_noop("Test override for replication role."),
+							 NULL,
+							 &replication_role_override,
+							 XCLUSTER_ROLE_UNSPECIFIED,
+							 replication_role_overrides,
+							 PGC_SUSET,
+							 0,
+							 NULL, assign_TEST_replication_role_override, NULL);
 }
 
 void
 FetchReplicationRole()
 {
-	if (role_override_present)
+	if (replication_role_override != XCLUSTER_ROLE_UNSPECIFIED)
 		replication_role = replication_role_override;
 	else
 		replication_role = YBCGetXClusterRole(MyDatabaseId);
 
-	if (replication_role == UNAVAILABLE)
+	if (replication_role == XCLUSTER_ROLE_UNAVAILABLE)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_YB_ERROR),
@@ -142,20 +178,20 @@ FetchReplicationRole()
 bool
 IsDisabled()
 {
-	return (replication_role != AUTOMATIC_SOURCE &&
-			replication_role != AUTOMATIC_TARGET);
+	return (replication_role != XCLUSTER_ROLE_AUTOMATIC_SOURCE &&
+			replication_role != XCLUSTER_ROLE_AUTOMATIC_TARGET);
 }
 
 bool
 IsReplicationSource()
 {
-	return (replication_role == AUTOMATIC_SOURCE);
+	return (replication_role == XCLUSTER_ROLE_AUTOMATIC_SOURCE);
 }
 
 bool
 IsReplicationTarget()
 {
-	return (replication_role == AUTOMATIC_TARGET);
+	return (replication_role == XCLUSTER_ROLE_AUTOMATIC_TARGET);
 }
 
 PG_FUNCTION_INFO_V1(get_replication_role);
@@ -163,22 +199,23 @@ Datum
 get_replication_role(PG_FUNCTION_ARGS)
 {
 	FetchReplicationRole();
-	char *role_name;
+	char	   *role_name;
+
 	switch (replication_role)
 	{
-		case UNSPECIFIED:
+		case XCLUSTER_ROLE_UNSPECIFIED:
 			role_name = "unspecified";
 			break;
-		case UNAVAILABLE:
+		case XCLUSTER_ROLE_UNAVAILABLE:
 			role_name = "unavailable";
 			break;
-		case NOT_AUTOMATIC_MODE:
+		case XCLUSTER_ROLE_NOT_AUTOMATIC_MODE:
 			role_name = "not_automatic_mode";
 			break;
-		case AUTOMATIC_SOURCE:
+		case XCLUSTER_ROLE_AUTOMATIC_SOURCE:
 			role_name = "source";
 			break;
-		case AUTOMATIC_TARGET:
+		case XCLUSTER_ROLE_AUTOMATIC_TARGET:
 			role_name = "target";
 			break;
 		default:
@@ -186,41 +223,6 @@ get_replication_role(PG_FUNCTION_ARGS)
 			break;
 	}
 	PG_RETURN_TEXT_P(cstring_to_text(role_name));
-}
-
-PG_FUNCTION_INFO_V1(TEST_override_replication_role);
-Datum
-TEST_override_replication_role(PG_FUNCTION_ARGS)
-{
-	text       *role_text = PG_GETARG_TEXT_PP(0);
-	char       *role_name = text_to_cstring(role_text);
-
-	if (pg_strcasecmp(role_name, "no_override") == 0 ||
-		pg_strcasecmp(role_name, "") == 0)
-	{
-		role_override_present = false;
-		PG_RETURN_VOID();
-	}
-
-	if (pg_strcasecmp(role_name, "unspecified") == 0)
-		replication_role_override = UNSPECIFIED;
-	else if (pg_strcasecmp(role_name, "unavailable") == 0)
-		replication_role_override = UNAVAILABLE;
-	else if (pg_strcasecmp(role_name, "not_automatic_mode") == 0)
-		replication_role_override = NOT_AUTOMATIC_MODE;
-	else if (pg_strcasecmp(role_name, "source") == 0 ||
-			 pg_strcasecmp(role_name, "automatic_source") == 0)
-		replication_role_override = AUTOMATIC_SOURCE;
-	else if (pg_strcasecmp(role_name, "target") == 0 ||
-			 pg_strcasecmp(role_name, "automatic_target") == 0)
-		replication_role_override = AUTOMATIC_TARGET;
-	else
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("invalid replication role: '%s'", role_name)));
-
-	role_override_present = true;
-	PG_RETURN_VOID();
 }
 
 void
@@ -441,7 +443,7 @@ HandleSourceDDLEnd(EventTriggerData *trig_data)
 		 * applied, we are fine at this point to catch up the pg catalog changes.
 		 */
 		TimestampTz epoch_time = (GetCurrentTimestamp() - SetEpochTimestamp());
-		int64 query_id = random();
+		int64		query_id = random();
 
 		InsertIntoTable(DDL_QUEUE_TABLE_NAME, epoch_time, query_id, jsonb);
 
@@ -471,7 +473,7 @@ HandleTargetDDLEnd(EventTriggerData *trig_data)
 	 * the transaction by the ddl_queue handler.
 	 */
 	int64		pkey_ddl_end_time = GetInt64FromVariable(ddl_queue_primary_key_ddl_end_time,
-															 "ddl_queue_primary_key_ddl_end_time");
+														 "ddl_queue_primary_key_ddl_end_time");
 	int64		pkey_query_id = GetInt64FromVariable(ddl_queue_primary_key_queue_id,
 													 "ddl_queue_primary_key_query_id");
 

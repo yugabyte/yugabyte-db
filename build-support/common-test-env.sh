@@ -1193,93 +1193,76 @@ did_test_succeed() {
     return 1
   fi
 
-  if grep -q 'LeakSanitizer: detected memory leaks' "$log_path"; then
-    log 'Test failure reason: Detected memory leaks'
-    return 1
-  fi
+  declare -A patterns=(
+    ['LeakSanitizer: detected memory leaks']='Detected memory leaks'
+    ['AddressSanitizer: heap-use-after-free']='Detected use of freed memory'
+    ['Leak check.*detected leaks']='Leak check failures'
+    ['AddressSanitizer: undefined-behavior']='Detected ASAN undefined behavior'
+    ['UndefinedBehaviorSanitizer: undefined-behavior']='Detected UBSAN undefined behavior'
+    ['ThreadSanitizer']='ThreadSanitizer failures'
+    ['Segmentation fault: ']='Segmentation fault'
+    ['Check failed: ']='Check failed'
+    ['^\[INFO\] BUILD FAILURE$']='Java build or tests failed'
+    ['^\[  FAILED  \]']='GTest failures'
+  )
 
-  if grep -q 'AddressSanitizer: heap-use-after-free' "$log_path"; then
-    log 'Test failure reason: Detected use of freed memory'
-    return 1
-  fi
+  signals=(
+    SIGHUP
+    SIGINT
+    SIGQUIT
+    SIGILL
+    SIGTRAP
+    SIGIOT
+    SIGBUS
+    SIGFPE
+    SIGUSR1
+    SIGSEGV
+    SIGUSR2
+    SIGPIPE
+    SIGALRM
+    SIGTERM
+    SIGSTKFLT
+    SIGCHLD
+    SIGCONT
+    SIGSTOP
+    SIGTSTP
+    SIGTTIN
+    SIGTTOU
+    SIGURG
+    SIGXCPU
+    SIGXFSZ
+    SIGVTALRM
+    SIGPROF
+    SIGWINCH
+    SIGIO
+    SIGPWR
+  )
 
-  if grep -q 'AddressSanitizer: undefined-behavior' "$log_path"; then
-    log 'Test failure reason: Detected ASAN undefined behavior'
-    return 1
-  fi
-
-  if grep -q 'UndefinedBehaviorSanitizer: undefined-behavior' "$log_path"; then
-    log 'Test failure reason: Detected UBSAN undefined behavior'
-    return 1
-  fi
-
-  if grep -q 'ThreadSanitizer' "$log_path"; then
-    log 'Test failure reason: ThreadSanitizer failures'
-    return 1
-  fi
-
-  if grep -Eq 'Leak check.*detected leaks' "$log_path"; then
-    log 'Test failure reason: Leak check failures'
-    return 1
-  fi
-
-  if grep -Eq 'Segmentation fault: ' "$log_path"; then
-    log 'Test failure reason: Segmentation fault'
-    return 1
-  fi
-
-  if grep -Eq '^\[  FAILED  \]' "$log_path"; then
-    log 'Test failure reason: GTest failures'
-    return 1
-  fi
-
-  # When signals show up in the test log, that's usually not good. We can see how many of these we
-  # get and gradually prune false positives.
-  local signal_str
-  for signal_str in \
-      SIGHUP \
-      SIGINT \
-      SIGQUIT \
-      SIGILL \
-      SIGTRAP \
-      SIGIOT \
-      SIGBUS \
-      SIGFPE \
-      SIGKILL \
-      SIGUSR1 \
-      SIGSEGV \
-      SIGUSR2 \
-      SIGPIPE \
-      SIGALRM \
-      SIGTERM \
-      SIGSTKFLT \
-      SIGCHLD \
-      SIGCONT \
-      SIGSTOP \
-      SIGTSTP \
-      SIGTTIN \
-      SIGTTOU \
-      SIGURG \
-      SIGXCPU \
-      SIGXFSZ \
-      SIGVTALRM \
-      SIGPROF \
-      SIGWINCH \
-      SIGIO \
-      SIGPWR; do
-    if grep -q " $signal_str " "$log_path"; then
-      log "Test failure reason: Caught signal: $signal_str"
-      return 1
-    fi
+  for signal in "${signals[@]}"; do
+    patterns[" $signal "]="Caught signal: $signal"
   done
 
-  if grep -q 'Check failed: ' "$log_path"; then
-    log 'Test failure reason: Check failed'
-    return 1
-  fi
+  grep_args=("awk")
+  grep_args+=("/$(IFS="|"; echo "${!patterns[*]}")/")
+  grep_args+=("$log_path")
 
-  if grep -Eq '^\[INFO\] BUILD FAILURE$' "$log_path"; then
-    log "Test failure reason: Java build or tests failed"
+  found_results=$("${grep_args[@]}")
+
+  found_count=0
+  while IFS= read -r matched_line; do
+    for regex in "${!patterns[@]}"; do
+      if [[ "$matched_line" =~ $regex ]]; then
+        echo "Test failure reason: ${patterns[$regex]}"
+        ((found_count++))
+        break
+      fi
+    done
+    if [[ $found_count -ne 0 ]]; then
+      break
+    fi
+  done <<< "$found_results"
+
+  if [[ $found_count -ne 0 ]]; then
     return 1
   fi
 
@@ -2102,20 +2085,21 @@ prep_ybc_testing() {
   # YBC is supported only on linux.
   if is_linux; then
     ybc_dest="$YB_SRC_ROOT/build/ybc"
-    if [[ -d "${ybc_dest}" ]]; then
-      log "Found existing $ybc_dest directory, skipping YBC prep."
+    config_file="$YB_SRC_ROOT/managed/src/main/resources/ybc_version.conf"
+    if [[ -d "${ybc_dest}" ]] && diff "$config_file" "${ybc_dest}/ybc_version.conf"; then
+        log "Found up to date $ybc_dest directory, skipping YBC prep."
     else
       ybc_tarball_dir="/opt/yb-build/ybc"
-      config_file="$YB_SRC_ROOT/managed/src/main/resources/reference.conf"
       # check that current version is downloaded
       "$YB_SRC_ROOT"/managed/download_ybc.sh -i -c "$config_file" -d "$ybc_tarball_dir"
       # Extract version the same way as download_ybc.sh does.
-      ybc_version=$(grep ybc -A2 "${config_file}" |
-                    awk -F '= ' '/stable_version/ {print $2}' | tr -d \")
+      ybc_version=$(awk -F '= ' '/stable_version/ {print $2}' "${config_file}" | tr -d \")
       ybc_tar=$(compgen -G "${ybc_tarball_dir}/ybc-${ybc_version}-*-${YB_TARGET_ARCH}.tar.gz")
       log "Unpacking ${ybc_tar} bin/ binaries to ${ybc_dest}/"
+      rm -rf "${ybc_dest}"
       mkdir -p "${ybc_dest}"
       tar -x -f "${ybc_tar}" -C "${ybc_dest}" --strip-components=2 --wildcards 'yb*/bin/*'
+      cp "$config_file" "${ybc_dest}/ybc_version.conf"
     fi
   fi
 }

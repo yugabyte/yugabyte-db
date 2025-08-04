@@ -319,7 +319,7 @@ public class NodeInstanceController extends AuthenticatedController {
         parseJsonAndValidate(request, NodeInstanceFormData.class);
     List<NodeInstanceData> nodeDataList = nodeInstanceFormData.nodes;
     Optional<ClientType> clientTypeOp = maybeGetJWTClientType();
-    List<String> createdNodeUuids = new ArrayList<String>();
+    List<String> createdNodeUuids = new ArrayList<>(nodeDataList.size());
     Provider provider = az.getProvider();
     Map<String, NodeInstance> nodes = new HashMap<>();
     for (NodeInstanceData nodeData : nodeDataList) {

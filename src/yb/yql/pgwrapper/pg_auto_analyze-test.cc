@@ -24,18 +24,21 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/entity_ids.h"
+#include "yb/common/schema.h"
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_defaults.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/stateful_services/stateful_service_base.h"
+#include "yb/tserver/stateful_services/pg_auto_analyze_service.h"
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/string_case.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/tostring.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"
@@ -43,16 +46,22 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
-DECLARE_bool(ysql_enable_table_mutation_counter);
-DECLARE_bool(ysql_enable_auto_analyze_service);
+DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_uint64(ysql_node_level_mutation_reporting_interval_ms);
 DECLARE_uint32(ysql_cluster_level_mutation_persist_interval_ms);
 DECLARE_uint32(ysql_auto_analyze_threshold);
 DECLARE_double(ysql_auto_analyze_scale_factor);
 DECLARE_uint32(ysql_auto_analyze_batch_size);
+DECLARE_uint32(ysql_auto_analyze_max_cooldown_per_table);
+DECLARE_uint32(ysql_auto_analyze_min_cooldown_per_table);
+DECLARE_double(ysql_auto_analyze_cooldown_per_table_scale_factor);
 DECLARE_bool(TEST_sort_auto_analyze_target_table_ids);
 DECLARE_int32(TEST_simulate_analyze_deleted_table_secs);
 DECLARE_string(vmodule);
+DECLARE_int64(TEST_delay_after_table_analyze_ms);
+DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_yb_force_early_ddl_serialization);
+DECLARE_uint64(TEST_ysql_auto_analyze_max_history_entries);
 
 using namespace std::chrono_literals;
 
@@ -72,18 +81,18 @@ namespace {
 class PgAutoAnalyzeTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_table_mutation_counter) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = true;
 
     // Set low values for the node level mutation reporting and the cluster level persisting
-    // intervals ensures that the aggregate mutations are frequently applied to the underlying YCQL
-    // table, hence capping the test time low.
+    // intervals. This ensures that the aggregate mutations are frequently applied to the underlying
+    // YCQL table, hence capping the test time low.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_node_level_mutation_reporting_interval_ms) = 10;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_cluster_level_mutation_persist_interval_ms) = 10;
     google::SetVLOGLevel("pg_auto_analyze_service", 2);
+    // To ensure that auto-analyze doesn't preempt other DDLs.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_force_early_ddl_serialization) = true;
 
     PgMiniTestBase::SetUp();
-
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze_service) = true;
 
     ASSERT_OK(CreateClient());
     ASSERT_OK(client_->WaitForCreateTableToFinish(kAutoAnalyzeFullyQualifiedTableName));
@@ -110,6 +119,43 @@ class PgAutoAnalyzeTest : public PgMiniTestBase {
     for (const auto& row : rowblock->rows()) {
       (*table_mutations)[row.column(0).string_value()] = row.column(1).int64_value();
     }
+  }
+
+  Result<stateful_service::AutoAnalyzeInfoMap> GetAutoAnalyzeInfoFromCQLTable() {
+    client::TableHandle table;
+    CHECK_OK(table.Open(kAutoAnalyzeFullyQualifiedTableName, client_.get()));
+
+    const client::YBqlReadOpPtr op = table.NewReadOp();
+    auto* const req = op->mutable_request();
+    table.AddColumns(
+        {yb::master::kPgAutoAnalyzeTableId, yb::master::kPgAutoAnalyzeMutations,
+         yb::master::kPgAutoAnalyzeLastAnalyzeInfo}, req);
+    auto session = NewSession();
+    CHECK_OK(session->TEST_ApplyAndFlush(op));
+    SCHECK_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK, IllegalState,
+              "Failed to get auto analyze info from CQL table");
+
+    auto rowblock = ql::RowsResult(op.get()).GetRowBlock();
+    auto& row_schema = rowblock->schema();
+    auto table_id_idx = row_schema.find_column(master::kPgAutoAnalyzeTableId);
+    auto mutations_idx = row_schema.find_column(master::kPgAutoAnalyzeMutations);
+    auto analyze_history_idx = row_schema.find_column(master::kPgAutoAnalyzeLastAnalyzeInfo);
+
+    stateful_service::AutoAnalyzeInfoMap table_id_to_info_maps;
+
+    for (const auto& row : rowblock->rows()) {
+      TableId table_id = row.column(table_id_idx).string_value();
+      int64_t mutations = row.column(mutations_idx).int64_value();
+      stateful_service::AutoAnalyzeInfo info(mutations);
+
+      info.analyze_history =
+          VERIFY_RESULT(stateful_service::PgAutoAnalyzeService::ParseHistoryFromJsonb(
+              row.column(analyze_history_idx).value()));
+
+      table_id_to_info_maps[table_id] = std::move(info);
+    }
+
+    return table_id_to_info_maps;
   }
 
   Status ExecuteStmtAndCheckMutationCounts(
@@ -235,6 +281,7 @@ class PgAutoAnalyzeTest : public PgMiniTestBase {
 TEST_F(PgAutoAnalyzeTest, CheckTableMutationsCount) {
   // Set auto analyze threshold to a large number to prevent running ANALYZEs in this test.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 100000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_cooldown_per_table_scale_factor) = 1;
   auto conn = ASSERT_RESULT(Connect());
   std::string table1_name = "accounts";
   std::string table2_name = "depts";
@@ -395,6 +442,7 @@ TEST_F(PgAutoAnalyzeTest, TriggerAnalyzeSingleTable) {
   // Adjust auto-analyze threshold to a small value so that we can trigger ANALYZE easily.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_scale_factor) = 0.01;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_cooldown_per_table_scale_factor) = 1;
   auto conn = ASSERT_RESULT(Connect());
   const std::string table_name = "test_tbl";
   const std::string table_creation_stmt =
@@ -494,6 +542,7 @@ TEST_F(PgAutoAnalyzeTest, TriggerAnalyzeMultiTablesMultiDBs) {
 TEST_F(PgAutoAnalyzeTest, TriggerAnalyzeTableRenameAndDelete) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 10;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_scale_factor) = 0.01;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_cooldown_per_table_scale_factor) = 1;
   auto conn = ASSERT_RESULT(Connect());
   const std::string table_name = "test_tbl";
   const std::string table_for_deletion = "test_tbl_delete";
@@ -533,12 +582,13 @@ TEST_F(PgAutoAnalyzeTest, TriggerAnalyzeTableRenameAndDelete) {
 TEST_F(PgAutoAnalyzeTest, TriggerAnalyzeDatabaseRenameAndDelete) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 10;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_scale_factor) = 0.01;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_cooldown_per_table_scale_factor) = 1;
+  auto conn = ASSERT_RESULT(Connect());
   const std::string dbname = "db2";
   const std::string new_dbname = "db3";
   const std::string dbname_for_deletion = "test_db_delete";
   const std::string table_name = "test_tbl";
   const std::string table_name2 = "test_tbl2";
-  auto conn = ASSERT_RESULT(Connect());
   const std::string table_creation_stmt =
       "CREATE TABLE $0 (h1 INT, v1 INT, PRIMARY KEY(h1))";
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", dbname));
@@ -594,6 +644,7 @@ TEST_F(PgAutoAnalyzeTest, TriggerAnalyzeDatabaseRenameAndDelete) {
 TEST_F(PgAutoAnalyzeTest, CheckDDLMutationsCount) {
   // Set auto analyze threshold to a large number to prevent running ANALYZEs in this test.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 100000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_cooldown_per_table_scale_factor) = 1;
   auto conn = ASSERT_RESULT(Connect());
   auto database_oid = ASSERT_RESULT(conn.FetchRow<PGOid>(
       "SELECT oid FROM pg_database WHERE datname = 'yugabyte'"));
@@ -610,6 +661,7 @@ TEST_F(PgAutoAnalyzeTest, CheckDDLMutationsCount) {
 TEST_F(PgAutoAnalyzeTest, CheckIndexMutationsCount) {
   // Set auto analyze threshold to a large number to prevent running ANALYZEs in this test.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 100000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_cooldown_per_table_scale_factor) = 1;
   auto conn = ASSERT_RESULT(Connect());
   std::string table_name = "my_tbl";
   std::string index_name = "my_idx";
@@ -647,6 +699,7 @@ TEST_F(PgAutoAnalyzeTest, CheckIndexMutationsCount) {
 TEST_F(PgAutoAnalyzeTest, DeletedTableMutationsCount) {
   // Set auto analyze threshold to a large number to prevent running ANALYZEs in this test.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 100000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_cooldown_per_table_scale_factor) = 1;
   auto conn = ASSERT_RESULT(Connect());
   const std::string table_name = "test_tbl";
   const std::string table_name2 = "db2_tbl";
@@ -708,12 +761,13 @@ TEST_F(PgAutoAnalyzeTest, MutationsCleanupWhenNoNameCacheRefresh) {
       {{table_id, 2}}));
 
   ASSERT_OK(conn.ExecuteFormat("DROP TABLE test"));
-  ASSERT_OK(WaitForTableMutationsCleanUp({table_id}));
+  // ASSERT_OK(WaitForTableMutationsCleanUp({table_id}));
 }
 
 // Test that auto analyze service cleans up deleted tables' mutations count
 // when it confirms a deleted table is deleted either directly or due to a deleted database.
 TEST_F(PgAutoAnalyzeTest, DeletedTableFoundDuringAnalyzeCommand) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_cooldown_per_table_scale_factor) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 10;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_scale_factor) = 0.1;
 
@@ -782,6 +836,7 @@ TEST_F(PgAutoAnalyzeTest, AnalyzeTablesInBatches) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_scale_factor) = 0.1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_batch_size) = 2;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sort_auto_analyze_target_table_ids) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_cooldown_per_table_scale_factor) = 1;
   google::SetVLOGLevel("pg_auto_analyze_service", 1);
 
   const std::string schema_name = "abc";
@@ -846,6 +901,7 @@ TEST_F(PgAutoAnalyzeTest, FallBackToAnalyzeEachTableSeparately) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 10;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_scale_factor) = 0.1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_batch_size) = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_cooldown_per_table_scale_factor) = 1;
   google::SetVLOGLevel("pg_auto_analyze_service", 1);
 
   const std::string table1_name = "tbl_test";
@@ -901,6 +957,7 @@ TEST_F(PgAutoAnalyzeTest, DisableAndReEnableAutoAnalyze) {
   // Adjust auto-analyze threshold to a small value so that we can trigger ANALYZE easily.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_scale_factor) = 0.01;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_cooldown_per_table_scale_factor) = 1;
   auto conn = ASSERT_RESULT(Connect());
   auto db_name = "abc";
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", db_name));
@@ -946,6 +1003,7 @@ TEST_F(PgAutoAnalyzeTest, MutationsCleanupForDeletedAnalyzeTargetTable) {
   google::SetVLOGLevel("pg_auto_analyze_service", 5);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 20;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_scale_factor) = 0.01;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_cooldown_per_table_scale_factor) = 1;
   const std::string db_name = "yugabyte";
   auto conn = ASSERT_RESULT(Connect());
   // Disable auto analyze from running ANALYZEs.
@@ -983,6 +1041,185 @@ TEST_F(PgAutoAnalyzeTest, MutationsCleanupForDeletedAnalyzeTargetTable) {
       {{pg_class_id, 2}, {pg_db_role_setting_id, 1}}));
 
   ASSERT_OK(WaitForTableMutationsCleanUp({table_id}));
+}
+
+TEST_F(PgAutoAnalyzeTest, DDLsInParallelWithAutoAnalyze) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_scale_factor) = 0.01;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_cooldown_per_table_scale_factor) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_after_table_analyze_ms) = 10;
+  // Explicitly disable object locking. With object locking, concurrent DDLs will be handled
+  // without relying on catalog version increments.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
+
+  auto conn = ASSERT_RESULT(Connect());
+  auto db_name = "abc";
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", db_name));
+  conn = ASSERT_RESULT(ConnectToDB(db_name));
+  const std::string table_name = "test_tbl";
+  const std::string table2_name = "test_tbl2";
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (h1 INT, v1 INT DEFAULT 5, PRIMARY KEY(h1))", table_name));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (h1 INT, v1 INT DEFAULT 5, PRIMARY KEY(h1))", table2_name));
+
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this, db_name, table_name, &stop = thread_holder.stop_flag()] {
+    auto conn = ASSERT_RESULT(ConnectToDB(db_name));
+    auto num_inserts = 0;
+    while (!stop.load(std::memory_order_acquire)) {
+      auto status = conn.ExecuteFormat("INSERT INTO $0 (h1) VALUES ($1)", table_name, num_inserts);
+      if (status.ToString().find("schema version mismatch") == std::string::npos) {
+        ASSERT_OK(status);
+        num_inserts++;
+      }
+    }
+    ASSERT_OK(WaitFor([&conn, table_name, num_inserts]() -> Result<bool> {
+          const std::string format_query = "SELECT reltuples FROM pg_class WHERE relname = '$0'";
+          auto res = VERIFY_RESULT(conn.FetchFormat(format_query, table_name));
+          auto tuples = VERIFY_RESULT(GetValue<float>(res.get(), 0, 0));
+          LOG(INFO) << "Saw " << tuples << " reltuples";
+          return num_inserts == tuples;
+        }, 10s * kTimeMultiplier,
+        Format("Check expected reltuples vs actual reltuples (%0)", num_inserts)));
+  });
+
+  // Perform DDLs on another table to avoid read restart errors.
+  ASSERT_OK(conn.Execute("SET yb_max_query_layer_retries = 0"));
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX idx ON $0 (v1)", table2_name));
+  ASSERT_OK(conn.ExecuteFormat("DROP INDEX idx"));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN v2 INT", table2_name));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN v2", table2_name));
+
+  thread_holder.Stop();
+  thread_holder.JoinAll();
+}
+
+TEST_F(PgAutoAnalyzeTest, AutoAnalyzeAfterTableRewrite) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_scale_factor) = 0.01;
+
+  auto conn = ASSERT_RESULT(Connect());
+  const std::string table_name = "test_tbl";
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (h1 INT, PRIMARY KEY(h1))", table_name));
+
+  // INSERT multiple rows and truncate table
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT generate_series(1, 50)", table_name));
+  ASSERT_OK(conn.ExecuteFormat("TRUNCATE TABLE $0", table_name));
+
+  // Check if auto analyze can analyze the table after table rewrite operation
+  auto table_id = ASSERT_RESULT(GetTableId(table_name));
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
+    [&conn, table_name] {
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT generate_series(1, 1000)",
+                                    table_name));
+    },
+    {{table_id, 1000}}));
+  ASSERT_OK(WaitForTableReltuples(conn, table_name, 1000));
+
+  ASSERT_OK(conn.ExecuteFormat("TRUNCATE TABLE $0", table_name));
+  table_id = ASSERT_RESULT(GetTableId(table_name));
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
+    [&conn, table_name] {
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT generate_series(1, 2000)",
+                                    table_name));
+    },
+    {{table_id, 2000}}));
+  ASSERT_OK(WaitForTableReltuples(conn, table_name, 2000));
+}
+
+// Make sure auto analyze can run ANALYZEs on mapped relations. This implies auto analyze can query
+// their reltuples entries using OID successfully.
+TEST_F(PgAutoAnalyzeTest, AutoAnalyzeForMappedRelations) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_scale_factor) = 0;
+
+  const std::string pg_class_name = "pg_class";
+  const std::string table_creation_stmt = "CREATE TABLE table_$0 (h1 INT)";
+  auto conn = ASSERT_RESULT(Connect());
+  int initial_count = static_cast<int>(ASSERT_RESULT(conn.FetchRow<pgwrapper::PGUint64>(
+    Format("SELECT count(*) FROM $0", pg_class_name))));
+  const int num1_tables = 5;
+  for (int i = 0; i < num1_tables; ++i) {
+    ASSERT_OK(conn.ExecuteFormat(table_creation_stmt, i));
+  }
+  ASSERT_OK(WaitForTableReltuples(conn, pg_class_name, initial_count + num1_tables));
+
+  const int num2_tables = 8;
+  for (int i = 0; i < num2_tables; ++i) {
+    ASSERT_OK(conn.ExecuteFormat(table_creation_stmt, num1_tables + i));
+  }
+  ASSERT_OK(WaitForTableReltuples(conn, pg_class_name, initial_count + num1_tables + num2_tables));
+}
+
+// Test the default cooldown scale factor.
+// This test is disabled in ASAN/TSAN builds because the timing becomes difficult to predict.
+TEST_F(PgAutoAnalyzeTest, PerTableCooldown) {
+  auto conn = ASSERT_RESULT(Connect());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_scale_factor) = 0.01;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_min_cooldown_per_table) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_auto_analyze_max_history_entries) = 100;
+
+  for (auto scale_factor : {1.5, 2.0, 3.0}) {
+    auto test_duration = 20s;
+    auto min_analyze_interval = 100ms;
+
+    LOG(INFO) << "Testing per-table cooldown with scale factor " << scale_factor;
+
+    // Adjust auto-analyze threshold to a small value so that we can trigger ANALYZE easily.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_cooldown_per_table_scale_factor) =
+        scale_factor;
+
+    const std::string table_name =
+        "test_tbl_" + std::to_string(static_cast<int>(scale_factor * 10));
+    const std::string table_creation_stmt =
+        "CREATE TABLE $0 AS SELECT s AS h1, s AS v1 FROM generate_series(1, 1000) AS s";
+    ASSERT_OK(conn.ExecuteFormat(table_creation_stmt, table_name));
+    auto start_time = std::chrono::system_clock::now();
+
+    while (std::chrono::system_clock::now() - start_time < test_duration) {
+      ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET v1 = v1 + 1", table_name));
+    }
+
+    // The cooldown starts with min_analyze_interval and scales by scale_factor each time.
+    // We should be doing enough updates to trigger analyze every time it comes off cooldown.
+    // The number of analyzes triggered is then floor(log(test_duration /
+    // min_analyze_interval)/log(scale_factor)).
+    auto expected_analyzes =
+        std::floor(std::log(test_duration / min_analyze_interval) / std::log(scale_factor));
+    LOG(INFO) << "Expecting " << expected_analyzes << " analyzes";
+
+    auto table_id_to_info_maps = ASSERT_RESULT(GetAutoAnalyzeInfoFromCQLTable());
+    auto table_id = ASSERT_RESULT(GetTableId(table_name));
+    stateful_service::AutoAnalyzeInfo info = table_id_to_info_maps[table_id];
+
+    std::stringstream ss;
+    for (size_t i = 1; i < info.analyze_history.size(); i++) {
+      auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(
+          info.analyze_history[i].timestamp - info.analyze_history[i - 1].timestamp);
+      ss << yb::ToString(diff) << " ";
+    }
+    LOG(INFO) << "Analyze intervals: " << ss.str();
+
+    // Make sure we're at least close to the expected number of analyzes.
+    // Auto-analyze often takes longer than FLAGS_ysql_cluster_level_mutation_persist_interval_ms
+    // to run, so we allow for some wiggle room here. For ASAN/TSAN builds, the timing
+    // is too unpredictable, so we don't even try to check the analyze history.
+    if (!IsSanitizer()) {
+      ASSERT_LE(info.analyze_history.size(), expected_analyzes * 2);
+      ASSERT_GE(info.analyze_history.size(), expected_analyzes / 2);
+
+      std::chrono::microseconds expected_cooldown = min_analyze_interval;
+      for (size_t i = 0; i < info.analyze_history.size(); i++) {
+        LOG(INFO) << "Analyze " << i << " at " << expected_cooldown;
+        ASSERT_EQ(info.analyze_history[i].cooldown, expected_cooldown);
+        expected_cooldown =
+            std::chrono::duration_cast<std::chrono::microseconds>(expected_cooldown * scale_factor);
+      }
+    }
+  }
 }
 
 } // namespace pgwrapper

@@ -20,7 +20,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include "yb/ash/wait_state_fwd.h"
+#include "yb/ash/ash_fwd.h"
 
 #include "yb/common/consistent_read_point.h"
 #include "yb/common/read_hybrid_time.h"
@@ -163,6 +163,9 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   Status ApplyChildResult(const ChildTransactionResultPB& result);
 
   std::shared_future<Result<TransactionMetadata>> GetMetadata(CoarseTimePoint deadline) const;
+
+  // Returns metadata iff the transaction is ready and hasn't failed yet.
+  Result<TransactionMetadata> metadata() const;
 
   std::string ToString() const;
 

@@ -121,6 +121,7 @@ public class Util {
   public static final String DEFAULT_YCQL_PASSWORD = "cassandra";
   public static final String YUGABYTE_DB = "yugabyte";
   public static final String CONSISTENCY_CHECK_TABLE_NAME = "yba_consistency_check";
+  public static final String SLOW_QUERIES_AGGREGATATION_TABLE = "slow_queries_data";
   public static final int MIN_NUM_BACKUPS_TO_RETAIN = 3;
   public static final String REDACT = "REDACTED";
   public static final String KEY_LOCATION_SUFFIX = "/backup_keys.json";
@@ -180,6 +181,10 @@ public class Util {
       "{pod_name}.{service_name}.{namespace}.svc.{cluster_domain}";
 
   public static final String YBA_VERSION_REGEX = "^(\\d+.\\d+.\\d+.\\d+)(-(b(\\d+)|(\\w+)))?$";
+
+  /* The following DBs are reserved for system activity */
+  public static final List<String> RESERVED_DBS =
+      List.of("template0", "template1", "system_platform");
 
   public static final List<String> SPECIAL_CHARACTERS_STRING_LIST =
       ImmutableList.of("!", "@", "#", "$", "%", "^", "&", "*");

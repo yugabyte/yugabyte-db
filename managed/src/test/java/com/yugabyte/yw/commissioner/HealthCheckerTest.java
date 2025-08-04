@@ -153,6 +153,15 @@ public class HealthCheckerTest extends FakeDBApplication {
     when(mockConfGetter.getConfForScope(
             any(Universe.class), eq(UniverseConfKeys.ddlAtomicityIntervalSec)))
         .thenReturn(3600);
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.healthCollectTopKOtherProcessesCount)))
+        .thenReturn(0);
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.healthCollectTopKOtherProcessesMemThreshold)))
+        .thenReturn(0);
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.healthCheckTHPSettings)))
+        .thenReturn(false);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.backwardCompatibleDate))).thenReturn(false);
     when(mockFileHelperService.createTempFile(anyString(), anyString()))
         .thenAnswer(

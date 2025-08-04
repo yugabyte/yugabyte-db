@@ -98,6 +98,11 @@ enum TableLockType {
   ACCESS_EXCLUSIVE = 8;
 }
 
+enum ObjectLockState {
+  GRANTED = 0;
+  WAITING = 1;
+}
+
 message SubtxnSetPB {
   // This is not a simple set representation, but rather the encoded output of a
   // yb::UnsignedIntSet<uint32_t>.
@@ -196,4 +201,16 @@ message TabletLockInfoPB {
   // Advisory lock table has YQL table type and require different handling
   // compared to regular PGSQL table.
   optional bool is_advisory_lock_tablet = 6;
+}
+
+message ObjectLockInfoPB {
+  optional bytes transaction_id = 1;
+  optional uint32 subtransaction_id = 2;
+  optional uint64 database_oid = 3;
+  optional uint64 relation_oid = 4;
+  optional uint64 object_oid = 5;
+  optional uint64 object_sub_oid = 6;
+  optional TableLockType mode = 7;
+  optional ObjectLockState lock_state = 8;
+  optional fixed64 wait_start_ht = 9;
 }

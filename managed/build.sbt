@@ -1,15 +1,16 @@
 import jline.console.ConsoleReader
 import play.sbt.PlayImport.PlayKeys.{playInteractionMode, playMonitoredFiles}
 import play.sbt.PlayInteractionMode
+
 import java.io.File
 import java.nio.charset.StandardCharsets
 import java.nio.file.{FileSystems, Files, Paths}
 import sbt.complete.Parsers.spaceDelimited
-import sbt.Tests._
+import sbt.Tests.*
 
-import scala.collection.JavaConverters._
+import scala.collection.JavaConverters.*
 import scala.sys.process.Process
-import scala.sys.process._
+import scala.sys.process.*
 
 historyPath := Some(file(System.getenv("HOME") + "/.sbt/.yugaware-history"))
 
@@ -97,9 +98,9 @@ lazy val versionGenerate = taskKey[Int]("Add version_metadata.json file")
 lazy val buildVenv = taskKey[Int]("Build venv")
 lazy val generateCrdObjects = taskKey[Int]("Generating CRD classes..")
 lazy val generateOssConfig = taskKey[Int]("Generating OSS class.")
-lazy val buildModules = taskKey[Int]("Build modules")
 lazy val buildDependentArtifacts = taskKey[Int]("Build dependent artifacts")
 lazy val releaseModulesLocally = taskKey[Int]("Release modules locally")
+lazy val testDependentArtifacts = taskKey[Int]("Test dependent artifacts")
 lazy val downloadThirdPartyDeps = taskKey[Int]("Downloading thirdparty dependencies")
 lazy val devSpaceReload = taskKey[Int]("Do a build without UI for DevSpace and reload")
 
@@ -169,9 +170,12 @@ libraryDependencies ++= Seq(
   "org.apache.mina" % "mina-core" % "2.2.4",
   "org.flywaydb" %% "flyway-play" % "9.0.0",
   // https://github.com/YugaByte/cassandra-java-driver/releases
-  "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-7",
+  "com.yugabyte" % "java-driver-core" % "4.15.0-yb-3",
   "org.yaml" % "snakeyaml" % "2.1",
-  "org.bouncycastle" % "bcpkix-jdk18on" % "1.80",
+  "org.bouncycastle" % "bc-fips" % "2.1.0",
+  "org.bouncycastle" % "bcpkix-fips" % "2.1.9",
+  "org.bouncycastle" % "bctls-fips" % "2.1.20",
+  "org.mindrot" % "jbcrypt" % "0.4",
   "org.springframework.security" % "spring-security-core" % "5.8.16",
   "com.amazonaws" % "aws-java-sdk-ec2" % "1.12.768",
   "com.amazonaws" % "aws-java-sdk-kms" % "1.12.768",
@@ -241,7 +245,7 @@ libraryDependencies ++= Seq(
   "io.jsonwebtoken" % "jjwt-impl" % "0.11.5",
   "io.jsonwebtoken" % "jjwt-jackson" % "0.11.5",
   "io.swagger" % "swagger-annotations" % "1.6.1", // needed for annotations in prod code
-  "de.dentrassi.crypto" % "pem-keystore" % "2.2.1",
+  "de.dentrassi.crypto" % "pem-keystore" % "3.0.0",
   // Prod dependency temporary as we use HSQLDB as a dummy perf_advisor DB for YBM scenario
   // Remove once YBM starts using real PG DB.
   "org.hsqldb" % "hsqldb" % "2.7.1",
@@ -347,7 +351,7 @@ externalResolvers := {
   validateResolver(ybPublicSnapshotResolver, ybPublicSnapshotResolverDescription)
 }
 
-(Compile / compile) := ((Compile / compile) dependsOn buildDependentArtifacts).value
+(Compile / compile) := (Compile / compile).dependsOn(buildDependentArtifacts, testDependentArtifacts).value
 
 (Compile / compilePlatform) := {
   Def.sequential(
@@ -385,7 +389,7 @@ versionGenerate := {
     (Compile / resourceDirectory).value / "version_metadata.json").!
   ybLog("version_metadata.json Generated")
   Process("rm -f " + (Compile / resourceDirectory).value / "gen_version_info.log").!
-  var downloadYbcCmd = "./download_ybc.sh -c " + (Compile / resourceDirectory).value / "reference.conf" + " -i"
+  var downloadYbcCmd = "./download_ybc.sh -c " + (Compile / resourceDirectory).value / "ybc_version.conf" + " -i"
   if (moveYbcPackage) {
     downloadYbcCmd = downloadYbcCmd + " -s"
   }
@@ -412,8 +416,14 @@ buildVenv := {
   }
 }
 
+testDependentArtifacts := {
+  ybLog("Testing modules...")
+  val status = Process("mvn test", baseDirectory.value / "parent-module").!
+  status
+}
+
 releaseModulesLocally := {
-  ybLog("Building modules...")
+  ybLog("Releasing modules...")
   val status = Process("mvn install -DskipTests=true -P releaseLocally", baseDirectory.value / "parent-module").!
   status
 }
@@ -472,6 +482,7 @@ downloadThirdPartyDeps := {
 
 devSpaceReload := {
   (Universal / packageBin).value
+  Process("./devspace.sh", baseDirectory.value / "scripts") !
   val status = Process("devspace run extract-archive").!
   status
 }
@@ -641,6 +652,7 @@ lazy val javaGenV2Client = project.in(file("client/java"))
     openApiGenerateApiTests := SettingDisabled,
     openApiValidateSpec := SettingDisabled,
     openApiConfigFile := "client/java/openapi-java-config-v2.json",
+    openApiGlobalProperties += ("skipFormModel" -> "false"),
     target := file("client/java/target/v2"),
   )
 
@@ -710,6 +722,7 @@ lazy val goGenV2Client = project.in(file("client/go"))
     openApiValidateSpec := SettingDisabled,
     openApiConfigFile := "client/go/openapi-go-config-v2.json",
     target := file("client/go/target/v2"),
+    openApiGlobalProperties += ("skipFormModel" -> "false"),
   )
 
 // Compile generated go v1 and v2 clients
@@ -733,21 +746,13 @@ compileYbaCliBinary := {
 
   ybLog("Generating YBA CLI go binary.")
 
-  val (status1, fileList1) = makeYbaCliPackage("linux", "amd64", baseDirectory.value)
+  val (status1, fileList1) = makeYbaCliPackage("linux", baseDirectory.value)
   completeFileList = fileList1
   status = status1
 
-  val (status2, fileList2) = makeYbaCliPackage("linux", "arm64", baseDirectory.value)
+  val (status2, fileList2) = makeYbaCliPackage("darwin", baseDirectory.value)
   completeFileList = completeFileList ++ fileList2
   status = status max status2
-
-  val (status3, fileList3) = makeYbaCliPackage("darwin", "amd64", baseDirectory.value)
-  completeFileList = completeFileList ++ fileList3
-  status = status max status3
-
-  val (status4, fileList4) = makeYbaCliPackage("darwin", "arm64", baseDirectory.value)
-  completeFileList = completeFileList ++ fileList4
-  status = status max status4
 
 
   (status, completeFileList)
@@ -755,7 +760,7 @@ compileYbaCliBinary := {
 
 compileYbaCliBinary := ((compileYbaCliBinary) dependsOn versionGenerate).value
 
-def makeYbaCliPackage(goos: String, goarch: String, directory: java.io.File): (Int, Seq[String]) = {
+def makeYbaCliPackage(goos: String, directory: java.io.File): (Int, Seq[String]) = {
 
   var status = 0
   var output = Seq.empty[String]
@@ -765,7 +770,7 @@ def makeYbaCliPackage(goos: String, goarch: String, directory: java.io.File): (I
     line => output :+= line,
     line => println(s"Error: $line")
   )
-  val env = Seq("GOOS" -> goos, "GOARCH" -> goarch)
+  val env = Seq("GOOS" -> goos)
   val process = Process("make package", new File(directory + "/yba-cli/"), env: _*)
   status = process.!(processLogger)
   if (status == 0) {
@@ -783,16 +788,14 @@ lazy val cleanYbaCliBinary = taskKey[Int]("Clean YBA CLI Binary")
 cleanYbaCliBinary := {
   ybLog("Cleaning YBA CLI go binary.")
 
-  var status = cleanYbaCliPackage("linux", "amd64", baseDirectory.value)
-  status = cleanYbaCliPackage("linux", "arm64", baseDirectory.value)
-  status = cleanYbaCliPackage("darwin", "amd64", baseDirectory.value)
-  status = cleanYbaCliPackage("darwin", "arm64", baseDirectory.value)
+  var status = cleanYbaCliPackage("linux", baseDirectory.value)
+  status = cleanYbaCliPackage("darwin", baseDirectory.value)
 
   status
 }
 
-def cleanYbaCliPackage(goos: String, goarch: String, directory: java.io.File): Int = {
-  val env = Seq("GOOS" -> goos, "GOARCH" -> goarch)
+def cleanYbaCliPackage(goos: String, directory: java.io.File): Int = {
+  val env = Seq("GOOS" -> goos)
   val status = Process("make clean", new File(directory + "/yba-cli/"), env: _*).!
 
   status
@@ -859,6 +862,7 @@ lazy val javaGenV2Server = project.in(file("target/openapi"))
     // style plugin configurations
     openApiStyleSpec := baseDirectory.value / resDir / "openapi.yaml",
     openApiStyleConfig := Some(baseDirectory.value / resDir / "openapi_style_validator.conf"),
+    openApiGlobalProperties += ("skipFormModel" -> "false"),
   )
 
 // copy over the ignore file manually since openApiIgnoreFileOverride does not work
@@ -885,9 +889,6 @@ Universal / javaOptions += "-J-XX:+PreserveFramePointer"
 
 // Disable shutdown hook of ebean to let play manage its lifecycle.
 Universal / javaOptions += "-Debean.registerShutdownHook=false"
-
-// Set time zone.
-Universal / javaOptions += "-Duser.timezone=GMT"
 
 Universal / mappings ++= {
   val (status, cliFolders) = compileYbaCliBinary.value
@@ -934,8 +935,8 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.102-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.2-b2"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.105-SNAPSHOT"
+libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.2-b11"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
 
 libraryDependencies ++= Seq(
@@ -1016,6 +1017,10 @@ dependencyOverrides ++= jacksonOverrides
 excludeDependencies += "org.eclipse.jetty" % "jetty-io"
 excludeDependencies += "org.eclipse.jetty" % "jetty-server"
 excludeDependencies += "commons-collections" % "commons-collections"
+excludeDependencies += "org.bouncycastle" % "bcpkix-jdk15on"
+excludeDependencies += "org.bouncycastle" % "bcprov-jdk15on"
+excludeDependencies += "org.bouncycastle" % "bcpkix-jdk18on"
+excludeDependencies += "org.bouncycastle" % "bcprov-jdk18on"
 
 Global / concurrentRestrictions := Seq(Tags.limitAll(16))
 
@@ -1148,7 +1153,13 @@ lazy val swagger = project
     dependencyOverrides ++= jacksonOverrides,
     dependencyOverrides += "org.scala-lang.modules" %% "scala-xml" % "2.1.0",
 
-    swaggerGen := Def.taskDyn {
+    excludeDependencies += "org.bouncycastle" % "bcpkix-jdk15on",
+    excludeDependencies += "org.bouncycastle" % "bcprov-jdk15on",
+    excludeDependencies += "org.bouncycastle" % "bcpkix-jdk18on",
+    excludeDependencies += "org.bouncycastle" % "bcprov-jdk18on",
+
+
+swaggerGen := Def.taskDyn {
       // Consider generating this only in managedResources
       val swaggerJson = (root / Compile / resourceDirectory).value / "swagger.json"
       val swaggerStrictJson = (root / Compile / resourceDirectory).value / "swagger-strict.json"

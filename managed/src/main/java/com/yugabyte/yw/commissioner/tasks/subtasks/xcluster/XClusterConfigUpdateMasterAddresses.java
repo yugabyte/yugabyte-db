@@ -64,10 +64,7 @@ public class XClusterConfigUpdateMasterAddresses extends XClusterConfigTaskBase 
 
     checkUniverseVersion();
     Universe targetUniverse = lockUniverse(-1 /* expectedUniverseVersion */);
-    String targetUniverseMasterAddresses = targetUniverse.getMasterAddresses();
-    String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
-    try (YBClient client =
-        ybService.getClient(targetUniverseMasterAddresses, targetUniverseCertificate)) {
+    try (YBClient client = ybService.getUniverseClient(targetUniverse)) {
       GetMasterClusterConfigResponse getMasterClusterConfigResp = client.getMasterClusterConfig();
       if (getMasterClusterConfigResp.hasError()) {
         String errMsg =

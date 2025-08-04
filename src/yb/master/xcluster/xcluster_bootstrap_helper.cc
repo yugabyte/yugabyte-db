@@ -239,7 +239,7 @@ void SetupUniverseReplicationWithBootstrapHelper::DoReplicationBootstrap(
   // First get the universe.
   auto bootstrap_info = catalog_manager_.GetUniverseReplicationBootstrap(replication_id);
   if (bootstrap_info == nullptr) {
-    LOG(ERROR) << "UniverseReplicationBootstrap not found: " << replication_id;
+    LOG(DFATAL) << "UniverseReplicationBootstrap not found: " << replication_id;
     return;
   }
 

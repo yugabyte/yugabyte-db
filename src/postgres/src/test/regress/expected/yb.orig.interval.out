@@ -1,0 +1,56 @@
+--
+-- Part of yb.port.interval modified to use YB table instead of temp table.
+--
+SET DATESTYLE = 'ISO';
+SET IntervalStyle to postgres;
+-- Test intervals that are large enough to overflow 64 bits in comparisons
+CREATE TABLE INTERVAL_TBL_OF (f1 interval); -- YB: avoid TEMP to exercise YB table
+INSERT INTO INTERVAL_TBL_OF (f1) VALUES
+  ('2147483647 days 2147483647 months'),
+  ('2147483647 days -2147483648 months'),
+  ('1 year'),
+  ('-2147483648 days 2147483647 months'),
+  ('-2147483648 days -2147483648 months');
+SELECT r1.*, r2.*
+   FROM INTERVAL_TBL_OF r1, INTERVAL_TBL_OF r2
+   WHERE r1.f1 > r2.f1
+   ORDER BY r1.f1, r2.f1;
+                    f1                     |                    f1                     
+-------------------------------------------+-------------------------------------------
+ -178956970 years -8 mons +2147483647 days | -178956970 years -8 mons -2147483648 days
+ 1 year                                    | -178956970 years -8 mons -2147483648 days
+ 1 year                                    | -178956970 years -8 mons +2147483647 days
+ 178956970 years 7 mons -2147483648 days   | -178956970 years -8 mons -2147483648 days
+ 178956970 years 7 mons -2147483648 days   | -178956970 years -8 mons +2147483647 days
+ 178956970 years 7 mons -2147483648 days   | 1 year
+ 178956970 years 7 mons 2147483647 days    | -178956970 years -8 mons -2147483648 days
+ 178956970 years 7 mons 2147483647 days    | -178956970 years -8 mons +2147483647 days
+ 178956970 years 7 mons 2147483647 days    | 1 year
+ 178956970 years 7 mons 2147483647 days    | 178956970 years 7 mons -2147483648 days
+(10 rows)
+
+CREATE INDEX ON INTERVAL_TBL_OF USING btree (f1);
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
+ERROR:  INDEX on column of type 'INTERVAL' not yet supported
+SET enable_seqscan TO false;
+EXPLAIN (COSTS OFF)
+SELECT f1 FROM INTERVAL_TBL_OF r1 ORDER BY f1;
+              QUERY PLAN              
+--------------------------------------
+ Sort
+   Sort Key: f1
+   ->  Seq Scan on interval_tbl_of r1
+(3 rows)
+
+SELECT f1 FROM INTERVAL_TBL_OF r1 ORDER BY f1;
+                    f1                     
+-------------------------------------------
+ -178956970 years -8 mons -2147483648 days
+ -178956970 years -8 mons +2147483647 days
+ 1 year
+ 178956970 years 7 mons -2147483648 days
+ 178956970 years 7 mons 2147483647 days
+(5 rows)
+
+RESET enable_seqscan;
+DROP TABLE INTERVAL_TBL_OF;

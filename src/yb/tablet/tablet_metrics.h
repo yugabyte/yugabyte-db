@@ -56,7 +56,9 @@ YB_DEFINE_ENUM(TabletEventStats,
   (kQlWriteLatency)
   (kWriteOpDurationCommitWaitConsistency)
   (kReadTimeWait)
-  (kTotalWaitQueueTime))
+  (kTotalWaitQueueTime)
+  (kIntentDbWriteThreadJoinDuration)
+  (kIntentDbRemoveThreadJoinDuration))
 
 // Make sure to add new counters to the list in src/yb/yql/pggate/pg_metrics_list.h as well.
 YB_DEFINE_ENUM(TabletCounters,
@@ -163,6 +165,49 @@ class ScopedTabletMetricsLatencyTracker {
   TabletMetrics* metrics_;
   TabletEventStats event_stats_;
   MonoTime start_time_;
+};
+
+class TabletMetricsHolder {
+ public:
+  TabletMetricsHolder(
+      bool batch_tablet_metrics_update, TabletMetrics* global_metrics,
+      TabletMetrics* scoped_metrics)
+      : global_metrics_(global_metrics),
+        metrics_(batch_tablet_metrics_update && scoped_metrics
+            ? scoped_metrics : global_metrics_) {}
+
+  void Reset() {
+    std::lock_guard lock(mutex_);
+    metrics_ = global_metrics_;
+  }
+
+  void Increment(TabletEventStats event_stats, uint64_t value) {
+    std::lock_guard lock(mutex_);
+    DCHECK(metrics_ != nullptr);
+    metrics_->Increment(event_stats, value);
+  }
+
+  void Increment(TabletCounters counter) {
+    std::lock_guard lock(mutex_);
+    DCHECK(metrics_ != nullptr);
+    metrics_->Increment(counter);
+  }
+
+  void Increment(TabletGauges gauge) {
+    std::lock_guard lock(mutex_);
+    DCHECK(metrics_ != nullptr);
+    metrics_->Increment(gauge);
+  }
+
+  operator bool() const {
+    std::lock_guard lock(mutex_);
+    return metrics_ != nullptr;
+  }
+
+ private:
+  TabletMetrics* global_metrics_ = nullptr;
+  TabletMetrics* metrics_ = nullptr;
+  mutable std::mutex mutex_;
 };
 
 } // namespace tablet

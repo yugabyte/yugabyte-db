@@ -3069,7 +3069,7 @@ _bt_pendingfsm_add(BTVacState *vstate,
 	if (vstate->npendingpages > 0)
 	{
 		FullTransactionId lastsafexid =
-		vstate->pendingpages[vstate->npendingpages - 1].safexid;
+			vstate->pendingpages[vstate->npendingpages - 1].safexid;
 
 		Assert(FullTransactionIdFollowsOrEquals(safexid, lastsafexid));
 	}

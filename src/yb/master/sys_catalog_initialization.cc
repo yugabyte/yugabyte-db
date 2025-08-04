@@ -116,8 +116,8 @@ Status RestoreInitialSysCatalogSnapshot(
     const std::string& initial_snapshot_path,
     tablet::TabletPeer* sys_catalog_tablet_peer,
     int64_t term) {
-  auto operation = std::make_unique<SnapshotOperation>(
-      VERIFY_RESULT(sys_catalog_tablet_peer->shared_tablet_safe()));
+  auto operation =
+      std::make_unique<SnapshotOperation>(VERIFY_RESULT(sys_catalog_tablet_peer->shared_tablet()));
 
   auto& tablet_snapshot_req = *operation->AllocateRequest();
   tablet_snapshot_req.set_operation(yb::tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET);

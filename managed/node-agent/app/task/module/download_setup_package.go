@@ -43,7 +43,7 @@ func downloadSoftwareFromHTTP(httpPackagePath, tmpDownloadDir string) (string, e
 
 // DownloadSoftwareCommand returns the download command based on the input parameters.
 func DownloadSoftwareCommand(
-	params *pb.InstallSoftwareInput,
+	params *pb.DownloadSoftwareInput,
 	tmpDownloadDir string,
 ) (string, error) {
 	switch {

@@ -51,7 +51,7 @@ For information on key features planned for the upcoming releases, visit [Curren
 
 | Release series | Planned release |
 | :------------- | :-------------- |
-| Next STS       | Mid 2025        |
+| Next LTS       | End 2025        |
 
 ## Recommended release series for projects
 

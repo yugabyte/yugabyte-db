@@ -206,6 +206,9 @@ Status ParseHeader(
           in->Skip(length);
         }
         break;
+      case RequestHeader::kMetadataFieldNumber:
+        parsed_header->metadata = VERIFY_RESULT(ParseString(buf, "metadata", in));
+        break;
       default: {
         if (!SkipField(tag & 7, in)) {
           return STATUS_FORMAT(Corruption, "Unable to skip: $0", tag);
@@ -348,6 +351,25 @@ void ParsedRequestHeader::ToPB(RequestHeader* out) const {
     out->mutable_remote_method()->set_service_name(parsed_remote_method->service.ToBuffer());
     out->mutable_remote_method()->set_method_name(parsed_remote_method->method.ToBuffer());
   }
+}
+
+Status ParseMetadata(Slice buf, AnyMessagePtr out) {
+  CodedInputStream in(buf.data(), narrow_cast<int>(buf.size()));
+  in.PushLimit(narrow_cast<int>(buf.size()));
+  auto* message = out.protobuf();
+  if (PREDICT_FALSE(!message->ParseFromCodedStream(&in))) {
+    return STATUS(InvalidArgument, message->InitializationErrorString());
+  }
+  return Status::OK();
+}
+
+Status ParseMetadataFromSharedMemory(
+    uint8_t** input, size_t length, AnyMessagePtr out) {
+  CodedInputStream in(*input, narrow_cast<int>(length));
+  in.PushLimit(narrow_cast<int>(length));
+  auto metadata = VERIFY_RESULT(ParseString(Slice(*input, length), "metadata", &in));
+  *input += in.CurrentPosition();
+  return ParseMetadata(metadata, out);
 }
 
 }  // namespace rpc

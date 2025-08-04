@@ -88,9 +88,9 @@ import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
-import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
-import com.yugabyte.yw.models.helpers.audit.UniverseLogsExporterConfig;
-import com.yugabyte.yw.models.helpers.audit.YCQLAuditConfig;
+import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig;
+import com.yugabyte.yw.models.helpers.exporters.audit.YCQLAuditConfig;
 import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig;
@@ -1044,15 +1044,15 @@ public class NodeManager extends DevopsBase {
         if (!taskParam.skipDownloadSoftware) {
           subcommand.add("--package");
           subcommand.add(ybServerPackage);
-        }
-        if (taskParam.isEnableYbc()) {
-          subcommand.add("--ybc_flags");
-          subcommand.add(Json.stringify(Json.toJson(ybcFlags)));
-          subcommand.add("--configure_ybc");
-          subcommand.add("--ybc_package");
-          subcommand.add(ybcPackage);
-          subcommand.add("--ybc_dir");
-          subcommand.add(ybcDir);
+          if (taskParam.isEnableYbc()) {
+            subcommand.add("--ybc_flags");
+            subcommand.add(Json.stringify(Json.toJson(ybcFlags)));
+            subcommand.add("--configure_ybc");
+            subcommand.add("--ybc_package");
+            subcommand.add(ybcPackage);
+            subcommand.add("--ybc_dir");
+            subcommand.add(ybcDir);
+          }
         }
         if (!node.isInPlacement(universe.getUniverseDetails().getPrimaryCluster().uuid)) {
           // For RR we don't setup master
@@ -1099,9 +1099,11 @@ public class NodeManager extends DevopsBase {
             if (taskParam.isEnableYbc()) {
               subcommand.add("--ybc_flags");
               subcommand.add(Json.stringify(Json.toJson(ybcFlags)));
-              subcommand.add("--configure_ybc");
-              subcommand.add("--ybc_package");
-              subcommand.add(ybcPackage);
+              if (!taskParam.skipDownloadSoftware) {
+                subcommand.add("--configure_ybc");
+                subcommand.add("--ybc_package");
+                subcommand.add(ybcPackage);
+              }
               subcommand.add("--ybc_dir");
               subcommand.add(ybcDir);
             }
@@ -1406,12 +1408,12 @@ public class NodeManager extends DevopsBase {
         if (!taskParam.skipDownloadSoftware) {
           subcommand.add("--package");
           subcommand.add(ybServerPackage);
+          subcommand.add("--ybc_package");
+          subcommand.add(ybcPackage);
+          subcommand.add("--configure_ybc");
         }
-        subcommand.add("--ybc_package");
-        subcommand.add(ybcPackage);
         subcommand.add("--ybc_flags");
         subcommand.add(Json.stringify(Json.toJson(ybcFlags)));
-        subcommand.add("--configure_ybc");
         subcommand.add("--ybc_dir");
         subcommand.add(ybcDir);
         subcommand.add("--tags");
@@ -2177,6 +2179,9 @@ public class NodeManager extends DevopsBase {
           if (taskParam.installThirdPartyPackages) {
             commandArgs.add("--install_third_party_packages");
           }
+          if (taskParam.skipDownloadSoftware) {
+            commandArgs.add("--skip_ansible_configure_playbook");
+          }
           UniverseDefinitionTaskParams.Cluster cluster =
               universe.getCluster(nodeTaskParam.placementUuid);
           Map<String, String> gflags =
@@ -2206,8 +2211,10 @@ public class NodeManager extends DevopsBase {
             commandArgs.add(localPackagePath);
           }
 
-          commandArgs.add("--pg_max_mem_mb");
-          commandArgs.add(Integer.toString(taskParam.cgroupSize));
+          if (!taskParam.skipDownloadSoftware) {
+            commandArgs.add("--pg_max_mem_mb");
+            commandArgs.add(Integer.toString(taskParam.cgroupSize));
+          }
           break;
         }
       case List:

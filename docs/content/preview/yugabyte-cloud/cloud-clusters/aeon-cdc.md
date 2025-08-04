@@ -211,8 +211,8 @@ Use the following views to monitor replication.
 
 For example, to list the publication slots, use the following query:
 
-```sh
-yugabyte=> select * from pg_replication_slots;
+```sql
+yugabyte=> SELECT * FROM pg_replication_slots;
 ```
 
 ```output
@@ -232,6 +232,7 @@ On the cluster **Metrics** tab, you can view the following metrics:
 | cdcsdk_traffic_sent       | Total traffic sent, in bytes. |
 | cdcsdk_event_lag_micros   | Lag, calculated by subtracting the timestamp of the latest record in the WAL of a tablet from the last record sent to the connector. |
 | cdcsdk_expiry_time_ms     | The time left to read records from WAL is tracked by the Stream Expiry Time (ms). |
+| cdcsdk_flush_lag          | This lag metric shows the difference between the timestamp of the latest record in the WAL and the replication slot's restart time, in seconds. |
 
 ## Manage CDC
 

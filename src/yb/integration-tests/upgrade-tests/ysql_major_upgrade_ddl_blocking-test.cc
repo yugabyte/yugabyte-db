@@ -293,7 +293,8 @@ TEST_F(YsqlMajorUpgradeDdlBlockingTest, KillInFlightDDLs) {
   ASSERT_OK(PerformYsqlMajorCatalogUpgrade());
 
   // DDLs should be killed by the upgrade.
-  ASSERT_NOK_STR_CONTAINS(conn.Execute("COMMIT"), "current transaction is expired or aborted");
+  ASSERT_NOK_STR_CONTAINS(conn.Execute("COMMIT"),
+      "could not serialize access due to concurrent update");
 
   ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"));
   ASSERT_EQ(index_creation_future.wait_for(5min), std::future_status::ready);

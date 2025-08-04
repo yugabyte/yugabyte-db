@@ -128,13 +128,11 @@ Status MiniMaster::StartOnPorts(uint16_t rpc_port, uint16_t web_port) {
   }
   MasterOptions opts(master_addresses);
 
-  Status start_status = StartOnPorts(rpc_port, web_port, &opts);
-  if (!start_status.ok()) {
-    LOG(ERROR) << "MiniMaster failed to start on RPC port " << rpc_port
-               << ", web port " << web_port << ": " << start_status;
-    // Don't crash here. Handle the error in the caller (e.g. could retry there).
-  }
-  return start_status;
+  // Don't crash here. Handle the error in the caller (e.g. could retry there).
+  RETURN_NOT_OK_WITH_WARNING(
+      StartOnPorts(rpc_port, web_port, &opts),
+      Format("MiniMaster failed to start on RPC port $0, web port $1", rpc_port, web_port));
+  return Status::OK();
 }
 
 Status MiniMaster::StartOnPorts(uint16_t rpc_port, uint16_t web_port,

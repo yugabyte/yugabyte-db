@@ -52,10 +52,8 @@ public class UpdatePitrConfig extends UniverseTaskBase {
 
     PitrConfig pitrConfig = PitrConfig.getOrBadRequest(taskParams().pitrConfigUUID);
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    String masterAddresses = universe.getMasterAddresses();
-    String universeCertificate = universe.getCertificateNodetoNode();
 
-    try (YBClient client = ybService.getClient(masterAddresses, universeCertificate)) {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       ListSnapshotSchedulesResponse scheduleListResp =
           client.listSnapshotSchedules(pitrConfig.getUuid());
       if (!(CollectionUtils.size(scheduleListResp.getSnapshotScheduleInfoList()) == 1

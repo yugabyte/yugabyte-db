@@ -13,6 +13,8 @@
 
 #include "yb/master/xcluster/xcluster_target_manager.h"
 
+#include <algorithm>
+
 #include "yb/client/client.h"
 #include "yb/client/xcluster_client.h"
 
@@ -45,7 +47,6 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/jsonwriter.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 
 using namespace std::placeholders;
@@ -509,13 +510,22 @@ Result<XClusterInboundReplicationGroupStatus> XClusterTargetManager::GetUniverse
         if (stream_info) {
           table_status.target_table_id = stream_info->consumer_table_id();
 
-          auto stripped_target_table_id =
-              xcluster::StripSequencesDataAliasIfPresent(table_status.target_table_id);
+          const auto& unstripped_target_table_id = table_status.target_table_id;
+          const auto stripped_target_table_id =
+              xcluster::StripSequencesDataAliasIfPresent(unstripped_target_table_id);
           auto table_info_res = catalog_manager_.GetTableById(stripped_target_table_id);
           if (table_info_res) {
             const auto& table_info = table_info_res.get();
             namespace_name = table_info->namespace_name();
             table_status.full_table_name = GetFullTableName(*table_info);
+          }
+          if (xcluster::IsSequencesDataAlias(unstripped_target_table_id)) {
+            auto namespace_id = VERIFY_RESULT(
+                xcluster::GetReplicationNamespaceBelongsTo(unstripped_target_table_id));
+            namespace_name = catalog_manager_.GetNamespaceName(namespace_id);
+            RSTATUS_DCHECK(
+                !namespace_name.empty(), NotFound,
+                "Namespace ID $0 from sequences_data alias not found", namespace_id);
           }
 
           table_status.target_tablet_count = stream_info->consumer_producer_tablet_map_size();
@@ -622,7 +632,18 @@ Status XClusterTargetManager::ClearXClusterFieldsAfterYsqlDDL(
                          << ") in namespace " << table_info->namespace_id();
   }
 
-  table_pb.clear_xcluster_table_info();
+  // Clear xcluster_table_info if present.  Exception: leave just xcluster_backfill_hybrid_time if
+  // present: we will clear that when the backfill succeeds.  (We need it to start the backfill,
+  // which begins after this DDL finishes.)
+  if (table_pb.has_xcluster_table_info()) {
+    auto* xcluster_table_info = table_pb.mutable_xcluster_table_info();
+    if (table_info->is_index() && xcluster_table_info->has_xcluster_backfill_hybrid_time()) {
+      xcluster_table_info->clear_xcluster_source_table_id();
+      xcluster_table_info->clear_xcluster_colocated_old_schema_packings();
+    } else {
+      table_pb.clear_xcluster_table_info();
+    }
+  }
 
   return Status::OK();
 }
@@ -667,13 +688,14 @@ Status XClusterTargetManager::ReportNewAutoFlagConfigVersion(
 }
 
 Status XClusterTargetManager::RefreshLocalAutoFlagConfig(const LeaderEpoch& epoch) {
-  if (!auto_flags_revalidation_needed_) {
-    return Status::OK();
+  if (auto_flags_revalidation_needed_) {
+    RETURN_NOT_OK(DoRefreshLocalAutoFlagConfig(epoch));
+    auto_flags_revalidation_needed_ = false;
   }
+  return Status::OK();
+}
 
-  auto se = ScopeExit([this] { auto_flags_revalidation_needed_ = true; });
-  auto_flags_revalidation_needed_ = false;
-
+Status XClusterTargetManager::DoRefreshLocalAutoFlagConfig(const LeaderEpoch& epoch) {
   auto replication_groups = catalog_manager_.GetAllUniverseReplications();
   if (replication_groups.empty()) {
     return Status::OK();
@@ -694,9 +716,6 @@ Status XClusterTargetManager::RefreshLocalAutoFlagConfig(const LeaderEpoch& epoc
   }
 
   SCHECK(!update_failed, IllegalState, "Failed to handle local AutoFlags config change");
-
-  se.Cancel();
-
   return Status::OK();
 }
 
@@ -996,9 +1015,8 @@ Result<TableId> XClusterTargetManager::GetTableIdForStreamId(
     const xrepl::StreamId& stream_id) const {
   SharedLock l(table_stream_ids_map_mutex_);
 
-  auto iter = std::find_if(
-      table_stream_ids_map_.begin(), table_stream_ids_map_.end(),
-      [&replication_group_id, &stream_id](auto& id_map) {
+  auto iter = std::ranges::find_if(
+      table_stream_ids_map_, [&replication_group_id, &stream_id](auto& id_map) {
         return ContainsKeyValuePair(id_map.second, replication_group_id, stream_id);
       });
   SCHECK(
@@ -1253,8 +1271,8 @@ Status XClusterTargetManager::DeleteUniverseReplication(
         uint32_t begin_oid;
         uint32_t end_oid;
         RETURN_NOT_OK(yb_client->ReservePgsqlOids(
-            target_namespace_id, oid_to_bump, /*count=*/1, &begin_oid, &end_oid,
-            /*use_secondary_space=*/false));
+            target_namespace_id, oid_to_bump, /*count=*/1, /*use_secondary_space=*/false,
+            &begin_oid, &end_oid));
       }
       RETURN_NOT_OK(master_.catalog_manager()->InvalidateTserverOidCaches());
     }
@@ -1306,30 +1324,23 @@ Result<std::optional<HybridTime>> XClusterTargetManager::TryGetXClusterSafeTimeF
     return backfill_ht;
   }
 
-  if (is_colocated) {
-    // Colocated indexes in a transactional xCluster will use the regular tablet safe time.
-    // Only the parent table is part of the xCluster replication, so new data that is added to the
-    // index on the source universe automatically flows to the target universe even before the index
-    // is created on it.
-    // We still need to run backfill since the WAL entries for the backfill are NOT replicated via
-    // xCluster. This is because both backfill entries and xCluster replicated entries use the same
-    // external HT field. To ensure transactional correctness we just need to pick a time higher
-    // than the time that was picked on the source side. Since the table is created on the source
-    // universe before the target this is always guaranteed to be true.
-
-    // Special case for colocated indexes in xCluster automatic DDL replication.
-    // Here we need to use the safe time that the ddl_queue handler is going to update the safe time
-    // to. This is because we cannot wait for xCluster safe time to reach now, as the ddl_queue
-    // table is waiting for this index to complete. In this case, we pass the backfill time from the
-    // ddl_queue to here, and use that.
+  if (IsNamespaceInAutomaticDDLMode(indexed_table->namespace_id())) {
+    // For automatic DDL replication, use the backfill time provided by the ddl_queue handler.
+    //
+    // Here we need to use the safe time that the ddl_queue handler is going to update the safe
+    // time to. This is because we cannot wait for xCluster safe time to reach now, as the
+    // ddl_queue table is waiting for this index to complete.
 
     // Check that all indexes have the same xCluster backfill hybrid time or none at all.
     HybridTime xcluster_backfill_hybrid_time;
     for (const auto& index_table_id : index_table_ids) {
       auto index_table_info = VERIFY_RESULT(catalog_manager_.GetTableById(index_table_id));
+      const auto& xcluster_table_info = index_table_info->LockForRead()->pb.xcluster_table_info();
+      RSTATUS_DCHECK(
+          xcluster_table_info.has_xcluster_backfill_hybrid_time(), IllegalState,
+          "Index missing xcluster_backfill_hybrid_time");
       HybridTime ht;
-      RETURN_NOT_OK(ht.FromUint64(index_table_info->LockForRead()->pb.xcluster_table_info()
-                                      .xcluster_backfill_hybrid_time()));
+      RETURN_NOT_OK(ht.FromUint64(xcluster_table_info.xcluster_backfill_hybrid_time()));
       if (!ht.is_special()) {
         SCHECK(
             !xcluster_backfill_hybrid_time || ht != xcluster_backfill_hybrid_time, InvalidArgument,
@@ -1338,10 +1349,28 @@ Result<std::optional<HybridTime>> XClusterTargetManager::TryGetXClusterSafeTimeF
       }
     }
 
-    if (xcluster_backfill_hybrid_time) {
-      return xcluster_backfill_hybrid_time;
-    }
+      if (xcluster_backfill_hybrid_time) {
+        LOG(INFO) << "Using provided xcluster_backfill_hybrid_time "
+                  << xcluster_backfill_hybrid_time << " as the backfill read time";
+        return xcluster_backfill_hybrid_time;
+      }
 
+      // Possible to get here for manually created indexes.  Fallback to DB-scoped flow.
+      // (We allow this because we want to be able to create an index manually via backdoors that
+      // don't have this time set.)
+      LOG(WARNING) << "No xCluster backfill hybrid time set for indexes in automatic mode, "
+                   << "falling back to non-automatic mode flow.";
+  }
+
+  if (is_colocated) {
+    // Colocated indexes in transactional xCluster will use the regular tablet safe time.  Only the
+    // parent table is part of the xCluster replication, so new data that is added to the index on
+    // the source universe automatically flows to the target universe even before the index is
+    // created on it.  We still need to run backfill since the WAL entries for the backfill are NOT
+    // replicated via xCluster.  This is because both backfill entries and xCluster replicated
+    // entries use the same external HT field.  To ensure transactional correctness we just need to
+    // pick a time higher than the time that was picked on the source side.  Since the table is
+    // created on the source universe before the target this is always guaranteed to be true.
     return std::nullopt;
   }
 
@@ -1587,8 +1616,9 @@ Status XClusterTargetManager::SetReplicationGroupEnabled(
 
   if (!is_enabled) {
     return Wait(
-        std::bind(
-            &XClusterTargetManager::IsReplicationGroupFullyPaused, this, replication_group_id),
+        [this, replication_group_id] {
+          return IsReplicationGroupFullyPaused(replication_group_id);
+        },
         deadline, Format("Wait for replication group $0 to pause", replication_group_id));
   }
 

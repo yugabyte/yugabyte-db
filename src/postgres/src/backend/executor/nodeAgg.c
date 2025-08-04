@@ -1173,12 +1173,6 @@ finalize_partialaggregate(AggState *aggstate,
 		}
 		else
 		{
-#ifdef YB_TODO
-/* NEIL: Need to lookinto fcinfo->args[0]
- *    fcinfo->args[0].value vs fcinfo->arg[0]
- *    fcinfo->args[0].isnull vs fcinfo->argnull[0]
- */
-#endif
 			FunctionCallInfo fcinfo = pertrans->serialfn_fcinfo;
 
 			fcinfo->args[0].value =
@@ -2169,11 +2163,7 @@ yb_agg_pushdown_supported(AggState *aggstate)
 		return;
 
 	/* Supported outer plan. */
-	if (!(IsA(outerPlanState(aggstate), ForeignScanState) ||
-		  IsA(outerPlanState(aggstate), IndexOnlyScanState) ||
-		  IsA(outerPlanState(aggstate), IndexScanState) ||
-		  IsA(outerPlanState(aggstate), YbBitmapTableScanState) ||
-		  IsA(outerPlanState(aggstate), YbSeqScanState)))
+	if (!YbPlanStateTryGetAggrefs(outerPlanState(aggstate)))
 		return;
 	ss = (ScanState *) outerPlanState(aggstate);
 

@@ -67,14 +67,14 @@ SetPgStrTokPtr(const char *new_pg_strtok_ptr)
 int
 GetYbExpressionVersion(void)
 {
-  return IsMultiThreadedMode() ? YBCPgGetThreadLocalYbExpressionVersion() : PG_MAJORVERSION_NUM;
+	return IsMultiThreadedMode() ? YBCPgGetThreadLocalYbExpressionVersion() : PG_MAJORVERSION_NUM;
 }
 
 static void
 SetYbExpressionVersion(int yb_expr_version)
 {
-  Assert(IsMultiThreadedMode());
-  YBCPgSetThreadLocalYbExpressionVersion(yb_expr_version);
+	Assert(IsMultiThreadedMode());
+	YBCPgSetThreadLocalYbExpressionVersion(yb_expr_version);
 }
 
 /*

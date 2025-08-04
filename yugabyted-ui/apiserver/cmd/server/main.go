@@ -148,7 +148,6 @@ func main() {
     defer c.Cleanup()
 
     // Middleware
-    e.Use(middleware.CORS())
     e.Use(middleware.RecoverWithConfig(middleware.RecoverConfig{
         LogErrorFunc: func(c echo.Context, err error, stack []byte) error {
             log.Errorf("[PANIC RECOVER] %v %s\n", err, stack)
@@ -295,6 +294,13 @@ func main() {
 
     //Get the lag safe time metrics.
     e.GET("/api/xcluster_safe_time_metrics", c.GetXClusterSafeTime)
+
+    // GetCreatedOn - Get cluster creation date from config file
+    e.GET("/api/created_on", c.GetCreatedOn)
+
+    // Forward callhome request
+    e.POST("/api/callhome", c.PostCallhome)
+
     render_htmls := templates.NewTemplate()
 
     // Code for rendering UI Without embedding the files

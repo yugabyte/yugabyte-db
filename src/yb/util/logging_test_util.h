@@ -33,13 +33,12 @@
 #pragma once
 
 #include <atomic>
-#include <chrono>
-#include <regex>
 #include <string>
 #include <vector>
 
-#include "yb/util/logging.h"
+#include <boost/regex.hpp>
 
+#include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status_fwd.h"
 
@@ -84,7 +83,7 @@ class PatternWaiterLogSink : public google::LogSink {
 
   bool IsEventOccurred() { return event_occurred_; }
 
-  ~PatternWaiterLogSink() { google::RemoveLogSink(this); }
+  ~PatternWaiterLogSink() override { google::RemoveLogSink(this); }
 
  private:
   static const char* kWaitingMessage;
@@ -97,7 +96,9 @@ class PatternWaiterLogSink : public google::LogSink {
 };
 
 using StringWaiterLogSink = PatternWaiterLogSink<std::string>;
-using RegexWaiterLogSink = PatternWaiterLogSink<std::regex>;
+// We use boost::regex here instead of std::regex to avoid a bug where gcc's std::regex crashes due
+// to running out of stack space when it is applied to too large of an input.
+using RegexWaiterLogSink = PatternWaiterLogSink<boost::regex>;
 
 // RAII wrapper around registering a LogSink with GLog.
 struct ScopedRegisterSink {

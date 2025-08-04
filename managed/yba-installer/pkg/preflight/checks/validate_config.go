@@ -90,7 +90,7 @@ func validateJSONSchema() error {
 			errMsg += fmt.Sprintf("- %s\n", desc)
 		}
 		log.Info(errMsg)
-		return fmt.Errorf(errMsg)
+		return errors.New(errMsg)
 	}
 
 	log.Info("Config at " + common.InputFile() + " was found to be valid.")

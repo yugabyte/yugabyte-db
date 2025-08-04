@@ -10,11 +10,14 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
+import com.yugabyte.yw.models.helpers.TransactionUtil;
+import jakarta.persistence.PersistenceException;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import net.logstash.logback.encoder.org.apache.commons.lang3.StringUtils;
 import org.apache.commons.compress.utils.Sets;
 import org.junit.Before;
@@ -207,5 +210,31 @@ public class NodeInstanceTest extends FakeDBApplication {
     assertTrue(reservedInstances.containsKey(universeNodeName2));
     reservedInstance = reservedInstances.get(universeNodeName2);
     assertEquals(node2.getNodeUuid(), reservedInstance.getNodeUuid());
+  }
+
+  @Test
+  public void testCommitReserveNodeTxnAttempt() {
+    UUID cluserUuid = UUID.randomUUID();
+    String universeNodeName = "fake-name";
+    NodeInstance node = createNode();
+    Map<UUID, Set<String>> azNodeNames =
+        ImmutableMap.of(zone.getUuid(), Sets.newHashSet(universeNodeName));
+    Map<String, NodeInstance> reservedInstances =
+        NodeInstance.reserveNodes(cluserUuid, azNodeNames, node.getInstanceTypeCode());
+    AtomicInteger count = new AtomicInteger();
+    TransactionUtil.doInTxn(
+        () -> {
+          NodeInstance.commitReservedNodes(cluserUuid);
+          if (count.getAndIncrement() == 0) {
+            // This is a retryable exception.
+            throw new PersistenceException("could not serialize access due to concurrent update");
+          }
+        },
+        TransactionUtil.DEFAULT_RETRY_CONFIG);
+    // This does not have any effect.
+    NodeInstance.releaseReservedNodes(cluserUuid);
+    NodeInstance nodeInstance =
+        NodeInstance.getOrBadRequest(reservedInstances.get(universeNodeName).getNodeUuid());
+    assertEquals(NodeInstance.State.USED, nodeInstance.getState());
   }
 }

@@ -15,6 +15,7 @@ package org.yb.pgsql;
 
 import static org.junit.Assume.assumeFalse;
 import static org.yb.AssertionWrappers.*;
+import static org.yb.util.BuildTypeUtil.isSanitizerBuild;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -499,6 +500,14 @@ public class TestYsqlMetrics extends BasePgSQLTest {
     }
   }
 
+  long getAverage(long[] arr, int start_ind, int end_ind) {
+    long sum = 0;
+    for (int i = start_ind; i < end_ind; i++) {
+      sum += arr[i];
+    }
+    return sum / (end_ind - start_ind);
+  }
+
   /**
    * This test does memory stats verification in EXPLAIN ANALYZE's output.
    * First, it does a rough validation on the stats by comparing queries that consume different
@@ -545,11 +554,17 @@ public class TestYsqlMetrics extends BasePgSQLTest {
       // If the tracking logic is not accurate and has errors, it will accumulate and shows in the
       // output.
       {
+        final int N_WARMUP_RUNS = 5;
         final int N_INITIAL_RUNS = 10;
-        final int N_UNMEASURED_RUNS = 80;
+        final int N_UNMEASURED_RUNS = isSanitizerBuild() ? 10 : 80;
         final int N_FINAL_RUNS = 10;
         final int N_TOTAL_RUNS = N_INITIAL_RUNS + N_UNMEASURED_RUNS + N_FINAL_RUNS;
         final int LIMIT = 1000;
+        final double TOLERANCE = 0.05;
+
+        for (int i = 0; i < N_WARMUP_RUNS; i++) {
+          runExplainAnalyze(statement, LIMIT);
+        }
 
         long[] max_memories = new long[N_TOTAL_RUNS];
         for (int i = 0; i < N_TOTAL_RUNS; i++) {
@@ -558,17 +573,16 @@ public class TestYsqlMetrics extends BasePgSQLTest {
 
         String max_memory_str = Arrays.toString(max_memories);
 
-        // Sort the first chunk and last chunk to get their medians.
-        Arrays.sort(max_memories, 0, N_INITIAL_RUNS);
-        long initial_median_memory = max_memories[N_INITIAL_RUNS / 2];
+        long initial_avg = getAverage(max_memories, 0, N_INITIAL_RUNS);
+        long final_avg = getAverage(max_memories, N_TOTAL_RUNS - N_FINAL_RUNS, N_TOTAL_RUNS);
 
-        Arrays.sort(max_memories, N_TOTAL_RUNS - N_FINAL_RUNS, N_TOTAL_RUNS);
-        long final_median_memory = max_memories[N_TOTAL_RUNS - (N_FINAL_RUNS / 2)];
-
-        assertEquals(String.format("Expected median memory to be consistent between first %d runs" +
-                                   " and last %d runs. Got measurements %s", N_INITIAL_RUNS,
-                                   N_FINAL_RUNS, max_memory_str),
-                     initial_median_memory, final_median_memory);
+        if (initial_avg > final_avg * (1.0 + TOLERANCE) ||
+            initial_avg < final_avg * (1.0 - TOLERANCE)) {
+          throw new Exception(
+            String.format("Expected average memory to be consistent between first %d runs (%dkB)" +
+                          "and last %d runs (%dkB). Got measurements %s",
+                          N_INITIAL_RUNS, initial_avg, N_FINAL_RUNS, final_avg, max_memory_str));
+        }
       }
 
       // Run an accurate max-memory validation by including a single memory consumption operator

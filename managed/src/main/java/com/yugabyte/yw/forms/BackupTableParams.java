@@ -217,6 +217,11 @@ public class BackupTableParams extends TableManagerParams {
   @Setter
   private Boolean dumpRoleChecks = false;
 
+  @ApiModelProperty(hidden = true)
+  @Getter
+  @Setter
+  private Boolean enableBackupsDuringDDL = false;
+
   @ToString
   public static class ParallelBackupState {
     public String nodeIp;

@@ -246,7 +246,7 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
       pb.set_state(master::SysTablesEntryPB::PREPARING);
       pb.set_name(table_name);
       pb.set_namespace_id(namespace_id);
-      pb.mutable_schema()->set_pgschema_name(pg_schema_name);
+      pb.mutable_schema()->set_deprecated_pgschema_name(pg_schema_name);
       pb.set_table_type(PGSQL_TABLE_TYPE);
       l.Commit();
     }
@@ -312,10 +312,10 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
 
         return Status::OK();
       },
-      .set_normal_oid_counter_above_all_normal_oids_func =
-          [](NamespaceId namespace_id) -> Status { return Status::OK(); },
+      .advance_oid_counters_func =
+          [](const NamespaceId& namespace_id) -> Status { return Status::OK(); },
       .get_normal_oid_higher_than_any_used_normal_oid_func =
-          [](NamespaceId namespace_id) -> Result<uint32_t> { return 100'000; },
+          [](const NamespaceId& namespace_id) -> Result<uint32_t> { return 100'000; },
       .get_namespace_func =
           std::bind(&XClusterOutboundReplicationGroupMockedTest::GetNamespace, this, _1),
       .get_tables_func =
@@ -344,7 +344,7 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
             }
             return table_designators;
           },
-      .is_automatic_mode_switchover_func = [](NamespaceId) { return false; },
+      .is_automatic_mode_switchover_func = [](const NamespaceId&) { return false; },
       .create_xcluster_streams_func =
           [this](const std::vector<TableId>& table_ids, const LeaderEpoch&) {
             auto create_context = std::make_unique<XClusterCreateStreamsContext>();

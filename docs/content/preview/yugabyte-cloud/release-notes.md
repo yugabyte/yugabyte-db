@@ -21,6 +21,59 @@ rightNav:
 
 ### 2025
 
+#### July 28, 2025
+
+##### New features
+
+- {{<tags/feature/ea>}}Support for [point-in-time recovery](../cloud-clusters/aeon-pitr/) using database clones. Create a zero-copy, independent writable clone of your database at a point in time for recovery or testing.
+- {{<tags/feature/ea idea="1368">}}Support for built-in [YSQL Connection Pooling](../../explore/going-beyond-sql/connection-mgr-ysql/). Use built-in server-side connection pooling to support a larger number of connections from applications.
+- {{<tags/feature/ea>}}[Disaster Recovery](../cloud-clusters/disaster-recovery/). A turnkey solution for business continuity and disaster recovery, allowing you to recover from an unplanned outage (failover) or to perform a planned switchover. If you want to try this feature, contact {{% support-cloud %}}.
+- [Exported metrics](../cloud-monitor/metrics-export/) are now tagged with the cluster name for enhanced downstream processing.
+
+##### Database
+
+- Production track updated to 2.20.11.0.
+- Early Access track updated to 2024.2.4.0.
+
+#### June 25, 2025
+
+##### Database
+
+- Early Access track updated to 2024.2.3.2.
+- Preview track updated to 2.25.2.0.
+
+#### May 27, 2025
+
+##### Database
+
+- Early Access track updated to 2024.2.3.0.
+- Innovation track updated to 2024.1.6.0.
+
+#### May 6, 2025
+
+##### Database
+
+- Early Access track updated to 2024.2.2.2.
+- Production track updated to 2.20.10.0.
+
+#### April 2, 2025
+
+##### Database
+
+- Early Access track updated to 2024.2.2.1.
+- Preview track updated to 2.25.1.0.
+
+#### March 10, 2025
+
+##### New features
+
+- Enhanced [Table](../cloud-monitor/monitor-tables/) and [Nodes](../cloud-monitor/monitor-nodes/) views, including the ability to view the health of individual table [tablets](../../architecture/key-concepts/#tablet).
+- Support for changing fault tolerance of clusters using the [API](https://api-docs.yugabyte.com/docs/managed-apis/b05c2ea10b50e-edit-a-cluster) or [CLI](https://github.com/yugabyte/ybm-cli/blob/main/docs/ybm_cluster_update.md).
+
+##### Database
+
+- Innovation track updated to 2024.1.5.0.
+
 #### January 30, 2025
 
 ##### New features
@@ -566,8 +619,8 @@ rightNav:
 ##### New features
 
 - Additional [performance metrics](../cloud-monitor/overview/). The new cluster **Performance Metrics** tab features new metrics including YSQL and YCQL operations per second, YSQL and YCQL latency, network bytes per second, and more. Use these metrics to ensure the cluster configuration matches its performance requirements.
-- Ability to review running queries using the [Live Queries](../cloud-monitor/cloud-queries-live/) on the cluster **Performance** tab. Use this information to visually identify relevant database operations and evaluate query execution times.
-- Ability to review slow YSQL queries using the [YSQL Slow Queries](../cloud-monitor/cloud-queries-slow/) on the cluster **Performance** tab. You can use this information to identify slower-running database operations, look at query execution times over time, and discover potential queries for tuning.
+- Ability to review running queries using the [Live Queries](../cloud-monitor/cloud-queries-live/) on the cluster **Perf Advisor** tab. Use this information to visually identify relevant database operations and evaluate query execution times.
+- Ability to review slow YSQL queries using the [YSQL Slow Queries](../cloud-monitor/cloud-queries-slow/) on the cluster **Perf Advisor** tab. You can use this information to identify slower-running database operations, look at query execution times over time, and discover potential queries for tuning.
 
 ##### Database
 

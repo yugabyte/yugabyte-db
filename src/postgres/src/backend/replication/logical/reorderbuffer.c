@@ -1419,7 +1419,7 @@ ReorderBufferIterTXNNext(ReorderBuffer *rb, ReorderBufferIterTXNState *state)
 	{
 		dlist_node *next = dlist_next_node(&entry->txn->changes, &change->node);
 		ReorderBufferChange *next_change =
-		dlist_container(ReorderBufferChange, node, next);
+			dlist_container(ReorderBufferChange, node, next);
 
 		/* txn stays the same */
 		state->entries[off].lsn = next_change->lsn;
@@ -1450,8 +1450,8 @@ ReorderBufferIterTXNNext(ReorderBuffer *rb, ReorderBufferIterTXNState *state)
 		{
 			/* successfully restored changes from disk */
 			ReorderBufferChange *next_change =
-			dlist_head_element(ReorderBufferChange, node,
-							   &entry->txn->changes);
+				dlist_head_element(ReorderBufferChange, node,
+								   &entry->txn->changes);
 
 			elog(DEBUG2, "restored %u/%u changes from disk",
 				 (uint32) entry->txn->nentries_mem,
@@ -2733,6 +2733,8 @@ ReorderBufferReplay(ReorderBufferTXN *txn,
 	/* Process and send the changes to output plugin. */
 	ReorderBufferProcessTXN(rb, txn, commit_lsn, snapshot_now,
 							command_id, false);
+
+	UpdateDecodingStats((LogicalDecodingContext *) rb->private_data);
 }
 
 /*
@@ -2752,6 +2754,7 @@ ReorderBufferCommit(ReorderBuffer *rb, TransactionId xid,
 
 	txn = ReorderBufferTXNByXid(rb, xid, false, NULL, InvalidXLogRecPtr,
 								false);
+
 
 	/* unknown transaction, nothing to replay */
 	if (txn == NULL)
@@ -3590,7 +3593,10 @@ ReorderBufferCheckMemoryLimit(ReorderBuffer *rb)
 	ReorderBufferTXN *txn;
 
 	/* bail out if we haven't exceeded the memory limit */
-	if (rb->size < logical_decoding_work_mem * 1024L)
+	if (rb->size < (IsYugaByteEnabled() ?
+					yb_reorderbuffer_max_changes_in_memory :
+					logical_decoding_work_mem) *
+		1024L)
 		return;
 
 	/*
@@ -3602,7 +3608,10 @@ ReorderBufferCheckMemoryLimit(ReorderBuffer *rb)
 	 * logical_decoding_work_mem to a smaller value before the most recent
 	 * change.
 	 */
-	while (rb->size >= logical_decoding_work_mem * 1024L)
+	while (rb->size >= (IsYugaByteEnabled() ?
+						yb_reorderbuffer_max_changes_in_memory :
+						logical_decoding_work_mem) *
+		   1024L)
 	{
 		/*
 		 * Pick the largest transaction and evict it from memory by streaming,
@@ -3649,7 +3658,10 @@ ReorderBufferCheckMemoryLimit(ReorderBuffer *rb)
 	}
 
 	/* We must be under the memory limit now. */
-	Assert(rb->size < logical_decoding_work_mem * 1024L);
+	Assert(rb->size < (IsYugaByteEnabled() ?
+					   yb_reorderbuffer_max_changes_in_memory :
+					   logical_decoding_work_mem) *
+		   1024L);
 }
 
 /*
@@ -3892,7 +3904,7 @@ ReorderBufferSerializeChange(ReorderBuffer *rb, ReorderBufferTXN *txn,
 			{
 				char	   *data;
 				Size		inval_size = sizeof(SharedInvalidationMessage) *
-				change->data.inval.ninvalidations;
+					change->data.inval.ninvalidations;
 
 				sz += inval_size;
 
@@ -4257,7 +4269,7 @@ ReorderBufferRestoreChanges(ReorderBuffer *rb, ReorderBufferTXN *txn,
 	dlist_foreach_modify(cleanup_iter, &txn->changes)
 	{
 		ReorderBufferChange *cleanup =
-		dlist_container(ReorderBufferChange, node, cleanup_iter.cur);
+			dlist_container(ReorderBufferChange, node, cleanup_iter.cur);
 
 		dlist_delete(&cleanup->node);
 		ReorderBufferReturnChange(rb, cleanup, true);
@@ -4534,7 +4546,7 @@ ReorderBufferRestoreChange(ReorderBuffer *rb, ReorderBufferTXN *txn,
 		case REORDER_BUFFER_CHANGE_INVALIDATION:
 			{
 				Size		inval_size = sizeof(SharedInvalidationMessage) *
-				change->data.inval.ninvalidations;
+					change->data.inval.ninvalidations;
 
 				change->data.inval.invalidations =
 					MemoryContextAlloc(rb->context, inval_size);
@@ -5042,7 +5054,7 @@ ReorderBufferToastReset(ReorderBuffer *rb, ReorderBufferTXN *txn)
 		dlist_foreach_modify(it, &ent->chunks)
 		{
 			ReorderBufferChange *change =
-			dlist_container(ReorderBufferChange, node, it.cur);
+				dlist_container(ReorderBufferChange, node, it.cur);
 
 			dlist_delete(&change->node);
 			ReorderBufferReturnChange(rb, change, true);

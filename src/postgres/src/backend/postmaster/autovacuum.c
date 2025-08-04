@@ -1849,7 +1849,7 @@ autovac_balance_cost(void)
 			worker->wi_cost_limit_base > 0 && worker->wi_cost_delay > 0)
 		{
 			int			limit = (int)
-			(cost_avail * worker->wi_cost_limit_base / cost_total);
+				(cost_avail * worker->wi_cost_limit_base / cost_total);
 
 			/*
 			 * We put a lower bound of 1 on the cost_limit, to avoid division-

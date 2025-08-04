@@ -23,7 +23,10 @@ import { EncryptionInTransitFormValues } from '../features/universe/universe-act
 import { ReplicationSlotResponse } from '../features/universe/universe-tabs/replication-slots/utils/types';
 import { ExportLogPayload, ExportLogResponse } from '../features/export-log/utils/types';
 import { AuditLogPayload } from '../features/universe/universe-tabs/db-audit-logs/utils/types';
-import { GFlagGroupObject } from '../features/universe/universe-actions/edit-gflags/GflagHelper';
+import {
+  GFlagGroupObject,
+  GFlagValues
+} from '../features/universe/universe-actions/edit-gflags/GflagHelper';
 
 // define unique names to use them as query keys
 export enum QUERY_KEY {
@@ -179,6 +182,11 @@ class ApiService {
   getGflagGroups = (dbVersion: string, groupName: string): Promise<GFlagGroupObject[]> => {
     const requestUrl = `${ROOT_URL}/metadata/version/${dbVersion}/gflag_groups?group=${groupName}`;
     return axios.get<GFlagGroupObject[]>(requestUrl).then((resp) => resp.data);
+  };
+
+  fetchGFlags = (dbVersion: string, server: string): Promise<GFlagValues[]> => {
+    const requestUrl = `${ROOT_URL}/metadata/version/${dbVersion}/list_gflags?server=${server}`;
+    return axios.get<GFlagValues[]>(requestUrl).then((resp) => resp.data);
   };
 
   fetchUniverseTasks = (universeUuid: string): Promise<any> => {

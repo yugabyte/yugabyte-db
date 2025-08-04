@@ -60,6 +60,8 @@ class ObjectLockInfoManager {
 
   void Start();
 
+  void Shutdown();
+
   void LockObject(
       const AcquireObjectLocksGlobalRequestPB& req, AcquireObjectLocksGlobalResponsePB& resp,
       rpc::RpcContext rpc);

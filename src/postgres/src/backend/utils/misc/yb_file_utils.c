@@ -125,7 +125,7 @@ yb_read_struct_from_file(const char *file_name, void *struct_ptr,
 
 	if (!read_chunk(fpin, &format_id, sizeof(format_id)) || format_id != expected_format_id
 		|| !read_chunk(fpin, struct_ptr, struct_size))
-		ereport(LOG,(errmsg("corrupted yb file \"%s\"", file_name)));
+		ereport(LOG, (errmsg("corrupted yb file \"%s\"", file_name)));
 
 	FreeFile(fpin);
 

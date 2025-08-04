@@ -32,6 +32,7 @@
 
 #include "yb/master/sys_catalog.h"
 
+#include <algorithm>
 #include <cmath>
 #include <memory>
 
@@ -43,6 +44,7 @@
 #include "yb/common/colocated_util.h"
 #include "yb/common/pg_catversions.h"
 #include "yb/common/ql_protocol_util.h"
+#include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 #include "yb/common/schema_pbutil.h"
@@ -165,6 +167,18 @@ const std::string kLogPrefix = "system tablet: ";
 
 }
 
+void MaxOidPerSpace::UpdateWithOid(uint32_t oid) {
+  if (oid < kPgUpperBoundNormalObjectId) {
+    for_normal_space_ = std::max(for_normal_space_, oid);
+  } else if (oid >= kPgFirstSecondarySpaceObjectId && oid < kPgUpperBoundSecondarySpaceObjectId) {
+    for_secondary_space_ = std::max(for_secondary_space_, oid);
+  }
+}
+
+std::string MaxOidPerSpace::ToString() const {
+  return YB_CLASS_TO_STRING(for_normal_space, for_secondary_space);
+}
+
 std::string SysCatalogTable::schema_column_type() { return kSysCatalogTableColType; }
 
 std::string SysCatalogTable::schema_column_id() { return kSysCatalogTableColId; }
@@ -173,8 +187,9 @@ std::string SysCatalogTable::schema_column_metadata() { return kSysCatalogTableC
 
 SysCatalogTable::SysCatalogTable(Master* master, MetricRegistry* metrics)
     : doc_read_context_(std::make_unique<docdb::DocReadContext>(
-          kLogPrefix, TableType::YQL_TABLE_TYPE, docdb::Index::kFalse, BuildTableSchema(),
-          kSysCatalogSchemaVersion)),
+          kLogPrefix, TableType::YQL_TABLE_TYPE,
+          docdb::Index::kFalse, std::make_shared<dockv::SchemaPackingRegistry>(kLogPrefix),
+          BuildTableSchema(), kSysCatalogSchemaVersion)),
       metric_registry_(metrics),
       metric_entity_(METRIC_ENTITY_server.Instantiate(metric_registry_, "yb.master")),
       master_(master) {}
@@ -239,7 +254,7 @@ Status SysCatalogTable::ConvertConfigToMasterAddresses(
       break;
     }
 
-    loaded_master_addresses->push_back({});
+    loaded_master_addresses->emplace_back();
     auto& list = loaded_master_addresses->back();
     for (const auto& hp : peer.last_known_private_addr()) {
       list.push_back(HostPortFromPB(hp));
@@ -607,6 +622,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
       .metric_registry = metric_registry_,
       .log_anchor_registry = tablet_peer()->log_anchor_registry(),
       .tablet_options = tablet_options,
+      .mutable_tablet_options = tablet::MutableTabletOptions{},
       .log_prefix_suffix = " P " + tablet_peer()->permanent_uuid(),
       .transaction_participant_context = tablet_peer().get(),
       .local_tablet_filter = client::LocalTabletFilter(),
@@ -722,7 +738,7 @@ Status SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
     return Status::OK();
   }
 
-  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
+  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet());
   auto latch = std::make_shared<CountDownLatch>(1);
   auto query = std::make_unique<tablet::WriteQuery>(
       writer->leader_term(), CoarseTimePoint::max(), tablet_peer().get(),
@@ -745,8 +761,8 @@ Status SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
                    << "complete. Continuing to wait.";
       time = CoarseMonoClock::now();
       if (time >= deadline) {
-        LOG(ERROR) << "Already waited for a total of " << ::yb::ToString(waited_so_far) << ". "
-                   << "Returning a timeout from SyncWrite.";
+        LOG(WARNING) << "Already waited for a total of " << ::yb::ToString(waited_so_far) << ". "
+                     << "Returning a timeout from SyncWrite.";
         return STATUS_FORMAT(TimedOut, "SyncWrite timed out after $0", waited_so_far);
       }
     }
@@ -789,7 +805,7 @@ Schema SysCatalogTable::BuildTableSchema() {
 Status SysCatalogTable::GetTableSchema(
     const TableId& table_id, const ReadHybridTime read_hybrid_time, Schema* current_schema,
     uint32_t* schema_version) {
-  auto tablet = tablet_peer()->shared_tablet();
+  auto tablet = tablet_peer()->shared_tablet_maybe_null();
   if (!tablet) {
     return STATUS(ShutdownInProgress, "SysConfig is shutting down.");
   }
@@ -810,8 +826,8 @@ Status SysCatalogTable::GetTableSchema(
   QLAddInt8Condition(&cond, schema.column_id(type_col_idx), QL_OP_EQUAL, SysRowEntryType::TABLE);
   const dockv::KeyEntryValues empty_hash_components;
   docdb::DocQLScanSpec spec(
-      schema, boost::none /* hash_code */, boost::none /* max_hash_code */, empty_hash_components,
-      &cond, nullptr /* if_req */, rocksdb::kDefaultQueryId);
+      schema, /*hash_code=*/boost::none, /*max_hash_code=*/boost::none, empty_hash_components,
+      &cond, /*if_req=*/nullptr, rocksdb::kDefaultQueryId);
   auto request_scope = VERIFY_RESULT(tablet->CreateRequestScope());
   RETURN_NOT_OK(doc_iter->Init(spec));
 
@@ -825,7 +841,6 @@ Status SysCatalogTable::GetTableSchema(
         "Found wrong entry type");
     RETURN_NOT_OK(value_map.GetValue(schema.column_id(entry_id_col_idx), &entry_id));
     const Slice& entry_id_value = entry_id.binary_value();
-    string entry_id_name;
 
     if (table_id == entry_id_value.ToBuffer()) {
       RETURN_NOT_OK(value_map.GetValue(schema.column_id(metadata_col_idx), &metadata));
@@ -870,7 +885,7 @@ void SysCatalogTable::InitLocalRaftPeerPB() {
 Status SysCatalogTable::Visit(VisitorBase* visitor) {
   TRACE_EVENT0("master", "Visitor::VisitAll");
 
-  auto tablet = tablet_peer()->shared_tablet();
+  auto tablet = tablet_peer()->shared_tablet_maybe_null();
   if (!tablet) {
     return STATUS(ShutdownInProgress, "SysConfig is shutting down.");
   }
@@ -915,7 +930,7 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
 Status SysCatalogTable::ReadWithRestarts(
     const ReadRestartFn& read_fn, tablet::RequireLease require_lease) const {
   ReadHybridTime read_time;
-  auto tablet = tablet_peer()->shared_tablet();
+  auto tablet = tablet_peer()->shared_tablet_maybe_null();
   if (!tablet) {
     return STATUS(ShutdownInProgress, "SysConfig is shutting down.");
   }
@@ -940,28 +955,29 @@ Status SysCatalogTable::ReadWithRestarts(
 }
 
 // TODO (Sanket): Change this function to use ExtractPgYbCatalogVersionRow.
-Status SysCatalogTable::ReadYsqlCatalogVersion(const TableId& ysql_catalog_table_id,
-                                               uint64_t* catalog_version,
-                                               uint64_t* last_breaking_version) {
+Status SysCatalogTable::ReadYsqlCatalogVersion(
+    const TableId& ysql_catalog_table_id, uint64_t* catalog_version,
+    uint64_t* last_breaking_version) {
   TRACE_EVENT0("master", "ReadYsqlCatalogVersion");
   return ReadYsqlDBCatalogVersionImpl(
-      ysql_catalog_table_id, kInvalidOid, catalog_version, last_breaking_version, nullptr);
+      ysql_catalog_table_id, kInvalidOid, catalog_version, last_breaking_version,
+      /*versions=*/nullptr);
 }
 
-Status SysCatalogTable::ReadYsqlDBCatalogVersion(const TableId& ysql_catalog_table_id,
-                                                 uint32_t db_oid,
-                                                 uint64_t* catalog_version,
-                                                 uint64_t* last_breaking_version) {
+Status SysCatalogTable::ReadYsqlDBCatalogVersion(
+    const TableId& ysql_catalog_table_id, uint32_t db_oid, uint64_t* catalog_version,
+    uint64_t* last_breaking_version) {
   TRACE_EVENT0("master", "ReadYsqlCatalogVersion");
   return ReadYsqlDBCatalogVersionImpl(
-      ysql_catalog_table_id, db_oid, catalog_version, last_breaking_version, nullptr);
+      ysql_catalog_table_id, db_oid, catalog_version, last_breaking_version, /*versions=*/nullptr);
 }
 
 Status SysCatalogTable::ReadYsqlAllDBCatalogVersions(
     const TableId& ysql_catalog_table_id, DbOidToCatalogVersionMap* versions) {
   TRACE_EVENT0("master", "ReadYsqlAllDBCatalogVersions");
   return ReadYsqlDBCatalogVersionImpl(
-      ysql_catalog_table_id, kInvalidOid, nullptr, nullptr, versions);
+      ysql_catalog_table_id, kInvalidOid, /*catalog_version=*/nullptr,
+      /*last_breaking_version=*/nullptr, versions);
 }
 
 Status SysCatalogTable::ReadYsqlDBCatalogVersionImpl(
@@ -990,7 +1006,7 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersionImplWithReadTime(
   auto read_data = VERIFY_RESULT(TableReadData(ysql_catalog_table_id, read_time));
   const auto& schema = read_data.schema();
   dockv::ReaderProjection projection(schema);
-  auto tablet = tablet_peer()->shared_tablet();
+  auto tablet = tablet_peer()->shared_tablet_maybe_null();
   if (!tablet) {
     return STATUS(ShutdownInProgress, "SysConfig is shutting down.");
   }
@@ -1055,9 +1071,9 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersionImplWithReadTime(
     if (versions) {
       // When 'versions' is set we read all rows.
       const uint32_t db_oid = db_oid_value->uint32_value();
-      const uint64_t current_version =
+      const auto current_version =
         static_cast<uint64_t>(version_col_value->int64_value());
-      const uint64_t last_breaking_version =
+      const auto last_breaking_version =
         static_cast<uint64_t>(last_breaking_version_col_value->int64_value());
       if (FLAGS_TEST_check_catalog_version_overflow) {
         CHECK_GE(static_cast<int64_t>(current_version), 0)
@@ -1242,7 +1258,7 @@ Status SysCatalogTable::ReadPgClassInfo(
     return STATUS(InternalError, "table_to_tablespace_map not initialized");
   }
 
-  const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
+  const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet());
 
   auto read_data = VERIFY_RESULT(TableReadData(database_oid, kPgClassTableOid, ReadHybridTime()));
   const auto& schema = read_data.schema();
@@ -1367,16 +1383,69 @@ Status SysCatalogTable::ReadPgClassInfo(
   return Status::OK();
 }
 
-Result<uint32_t> SysCatalogTable::ReadPgClassColumnWithOidValue(const uint32_t database_oid,
-                                                                const uint32_t table_oid,
-                                                                const string& column_name) {
-  TRACE_EVENT0("master", "ReadPgClassOidColumn");
+Result<PgOidToOidMap> SysCatalogTable::ReadPgClassColumnWithOidValueMap(
+    const PgOid database_oid, const string& column_name) {
+  TRACE_EVENT0("master", "ReadPgClassColumnWithOidValueMap");
 
   auto read_data = VERIFY_RESULT(TableReadData(database_oid, kPgClassTableOid, ReadHybridTime()));
   const auto& schema = read_data.schema();
 
-  const auto oid_col_id = VERIFY_RESULT(schema.ColumnIdByName("oid")).rep();
-  const auto result_col_id = VERIFY_RESULT(schema.ColumnIdByName(column_name)).rep();
+  const auto oid_col_id = VERIFY_RESULT(schema.ColumnIdByName(kPgClassOidColumnName)).rep();
+  const auto result_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(column_name));
+  const auto result_col_id = schema.column_id(result_col_idx).rep();
+  const auto result_col_type = schema.column(result_col_idx).type()->main();
+  SCHECK_FORMAT(result_col_type == DataType::UINT32, Corruption,
+                "Invalid $0 column type: $1", column_name, result_col_type);
+
+  dockv::ReaderProjection projection(schema, {oid_col_id, result_col_id});
+  auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
+  auto request_scope = VERIFY_RESULT(VERIFY_RESULT(Tablet())->CreateRequestScope());
+  {
+    const dockv::KeyEntryValues empty_key_components;
+    docdb::DocPgsqlScanSpec spec(
+        schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
+        /*condition=*/nullptr, /*hash_code=*/std::nullopt, /*max_hash_code=*/std::nullopt);
+
+    RETURN_NOT_OK(iter->Init(spec));
+  }
+
+  // pg_class table contains a row for every database object (tables/indexes/
+  // composite types etc). Each such row contains a lot of information about the
+  // database object itself. But here, we are trying to fetch table->'column_name'
+  // (e.g. table->relnamespace) information only.
+  PgOidToOidMap result_oid_map;
+  qlexpr::QLTableRow row;
+  while (VERIFY_RESULT(iter->FetchNext(&row))) {
+    const auto& oid_col = row.GetValue(oid_col_id);
+    SCHECK(oid_col, Corruption, "Could not read oid column from pg_class");
+    const PgOid oid = oid_col->uint32_value();
+
+    // Process the 'column_name' (e.g. relnamespace) oid for this table/index.
+    const auto& result_oid_col = row.GetValue(result_col_id);
+    SCHECK(result_oid_col, Corruption, "Could not read " + column_name + " column from pg_class");
+    const PgOid result_oid = result_oid_col->uint32_value();
+    VLOG(1) << "oid: " << oid << " Column: " << column_name << " Result oid: " << result_oid;
+    result_oid_map.insert({oid, result_oid});
+  }
+
+  return result_oid_map;
+}
+
+Result<PgOid> SysCatalogTable::ReadPgClassColumnWithOidValue(
+    const PgOid database_oid, const PgOid table_oid, const string& column_name,
+    const ReadHybridTime& read_time) {
+  TRACE_EVENT0("master", "ReadPgClassColumnWithOidValue");
+
+  auto read_data = VERIFY_RESULT(TableReadData(database_oid, kPgClassTableOid, read_time));
+  const auto& schema = read_data.schema();
+
+  const auto oid_col_id = VERIFY_RESULT(schema.ColumnIdByName(kPgClassOidColumnName)).rep();
+  const auto result_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(column_name));
+  const auto result_col_id = schema.column_id(result_col_idx).rep();
+  const auto result_col_type = schema.column(result_col_idx).type()->main();
+  SCHECK_FORMAT(result_col_type == DataType::UINT32, Corruption,
+                "Invalid $0 column type: $1", column_name, result_col_type);
+
   dockv::ReaderProjection projection(schema, {oid_col_id, result_col_id});
   auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
   auto request_scope = VERIFY_RESULT(VERIFY_RESULT(Tablet())->CreateRequestScope());
@@ -1396,28 +1465,68 @@ Result<uint32_t> SysCatalogTable::ReadPgClassColumnWithOidValue(const uint32_t d
   // composite types etc). Each such row contains a lot of information about the
   // database object itself. But here, we are trying to fetch table->relnamespace
   // information only.
-  uint32 oid = kInvalidOid;
+  PgOid oid = kInvalidOid;
   qlexpr::QLTableRow row;
   if (VERIFY_RESULT(iter->FetchNext(&row))) {
     // Process the relnamespace oid for this table/index.
     const auto& result_oid_col = row.GetValue(result_col_id);
-    if (!result_oid_col) {
-      return STATUS(Corruption, "Could not read " + column_name + " column from pg_class");
-    }
-
+    SCHECK(result_oid_col, Corruption, "Could not read " + column_name + " column from pg_class");
     oid = result_oid_col->uint32_value();
-    VLOG(1) << "Table oid: " << table_oid << column_name << " oid: " << oid;
+    VLOG(1) << "Table oid: " << table_oid << " Column " << column_name << " oid: " << oid;
   }
 
   return oid;
 }
 
-Result<string> SysCatalogTable::ReadPgNamespaceNspname(const uint32_t database_oid,
-                                                       const uint32_t relnamespace_oid) {
-  TRACE_EVENT0("master", "ReadPgNamespaceNspname");
+Result<PgOidToStringMap> SysCatalogTable::ReadPgNamespaceNspnameMap(const PgOid database_oid) {
+  TRACE_EVENT0("master", "ReadPgNamespaceNspnameMap");
 
   auto read_data =
       VERIFY_RESULT(TableReadData(database_oid, kPgNamespaceTableOid, ReadHybridTime()));
+  const auto& schema = read_data.schema();
+
+  const auto oid_col_id = VERIFY_RESULT(schema.ColumnIdByName("oid")).rep();
+  const auto nspname_col_id = VERIFY_RESULT(schema.ColumnIdByName("nspname")).rep();
+  dockv::ReaderProjection projection(schema, {oid_col_id, nspname_col_id});
+  auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
+  auto request_scope = VERIFY_RESULT(VERIFY_RESULT(Tablet())->CreateRequestScope());
+  {
+    const dockv::KeyEntryValues empty_key_components;
+    docdb::DocPgsqlScanSpec spec(
+        schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
+        /*condition=*/nullptr, /*hash_code=*/std::nullopt, /*max_hash_code=*/std::nullopt);
+    RETURN_NOT_OK(iter->Init(spec));
+  }
+
+  PgOidToStringMap nspname_map;
+  qlexpr::QLTableRow row;
+  while (VERIFY_RESULT(iter->FetchNext(&row))) {
+    const auto& oid_col = row.GetValue(oid_col_id);
+    SCHECK(oid_col, Corruption, "Could not read oid column from pg_class");
+    const PgOid oid = oid_col->uint32_value();
+
+    // Process the nspname string for this relnamespace.
+    const auto& nspname_col = row.GetValue(nspname_col_id);
+    SCHECK(nspname_col, Corruption, "Could not read nspname column from pg_namespace");
+
+    const string nspname = nspname_col->string_value();
+    VLOG(1) << "relnamespace oid: " << oid << " nspname: " << nspname;
+    SCHECK_FORMAT(!nspname.empty(), IllegalState,
+                  "Not found or empty nspname for relnamespace oid $0", oid);
+
+    nspname_map.insert({oid, nspname});
+  }
+
+  return nspname_map;
+}
+
+Result<string> SysCatalogTable::ReadPgNamespaceNspname(const PgOid database_oid,
+                                                       const PgOid relnamespace_oid,
+                                                       const ReadHybridTime& read_time) {
+  TRACE_EVENT0("master", "ReadPgNamespaceNspname");
+
+  auto read_data =
+      VERIFY_RESULT(TableReadData(database_oid, kPgNamespaceTableOid, read_time));
   const auto& schema = read_data.schema();
 
   const auto oid_col_id = VERIFY_RESULT(schema.ColumnIdByName("oid")).rep();
@@ -1440,21 +1549,15 @@ Result<string> SysCatalogTable::ReadPgNamespaceNspname(const uint32_t database_o
   string name;
   qlexpr::QLTableRow row;
   if (VERIFY_RESULT(iter->FetchNext(&row))) {
-    // Process the relnamespace oid for this table/index.
+    // Process the nspname string for this relnamespace.
     const auto& nspname_col = row.GetValue(nspname_col_id);
-    if (!nspname_col) {
-      return STATUS(Corruption, "Could not read nspname column from pg_namespace");
-    }
-
+    SCHECK(nspname_col, Corruption, "Could not read nspname column from pg_namespace");
     name = nspname_col->string_value();
     VLOG(1) << "relnamespace oid: " << relnamespace_oid << " nspname: " << name;
   }
 
-  if (name.empty()) {
-    return STATUS(Corruption, "Not found or empty nspname for relnamespace oid " +
-        std::to_string(relnamespace_oid));
-  }
-
+  SCHECK_FORMAT(!name.empty(), IllegalState,
+                "Not found or empty nspname for relnamespace oid $0", relnamespace_oid);
   return name;
 }
 
@@ -1501,7 +1604,7 @@ Result<std::unordered_map<string, uint32_t>> SysCatalogTable::ReadPgAttNameTypid
     if (attnum_col->int16_value() < 0) {
       // Ignore system columns.
       VLOG(1) << "Ignoring system column (attnum = " << attnum_col->int16_value()
-              << ") for attrelid $0:" << table_oid;
+              << ") for attrelid: " << table_oid;
       continue;
     }
 
@@ -1521,7 +1624,7 @@ Result<std::unordered_map<string, uint32_t>> SysCatalogTable::ReadPgAttNameTypid
     if (atttypid == kPgInvalidOid) {
       // Ignore dropped columns.
       VLOG(1) << "Ignoring dropped column " << attname << " (atttypid = 0)"
-              << " for attrelid $0:" << table_oid;
+              << " for attrelid: " << table_oid;
       continue;
     }
 
@@ -1549,7 +1652,7 @@ Result<std::unordered_map<uint32_t, string>> SysCatalogTable::ReadPgEnum(
     const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
-        nullptr /* cond */, std::nullopt /* hash_code */, std::nullopt /* max_hash_code */);
+        /*condition=*/nullptr, /*hash_code=*/std::nullopt, /*max_hash_code=*/std::nullopt);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
@@ -1596,7 +1699,7 @@ Result<std::unordered_map<uint32_t, PgTypeInfo>> SysCatalogTable::ReadPgTypeInfo
     PgsqlConditionPB cond;
     cond.add_operands()->set_column_id(oid_col_id);
     cond.set_op(QL_OP_IN);
-    std::sort(type_oids->begin(), type_oids->end());
+    std::ranges::sort(*type_oids);
     auto seq_value = cond.add_operands()->mutable_value()->mutable_list_value();
     for (auto const type_oid : *type_oids) {
       seq_value->add_elems()->set_uint32_value(type_oid);
@@ -1682,14 +1785,14 @@ Result<uint32_t> SysCatalogTable::ReadPgYbTablegroupOid(const uint32_t database_
   return kPgInvalidOid;
 }
 
-Result<uint32_t> SysCatalogTable::ReadHighestNormalPreservableOid(uint32_t database_oid) {
+Result<MaxOidPerSpace> SysCatalogTable::ReadHighestPreservableOids(uint32_t database_oid) {
   auto request_scope = VERIFY_RESULT(VERIFY_RESULT(Tablet())->CreateRequestScope());
-  LongOperationTracker long_operation_tracker("ReadHighestNormalPreservableOid", 3s);
+  LongOperationTracker long_operation_tracker("ReadHighestPreservableOids", 3s);
 
   // XCluster needs to be able preserve OIDs for pg_enum, pg_type, and pg_class; pg_class's
   // relfilenodes needs to be kept distinct from its OIDs so we include those as well.
   const std::vector<uint32_t> table_oids = {kPgEnumTableOid, kPgTypeTableOid, kPgClassTableOid};
-  uint32_t maximum_normal_oid = 0;
+  MaxOidPerSpace maximum_oids;
   for (const auto table_oid : table_oids) {
     auto read_data = VERIFY_RESULT(TableReadData(database_oid, table_oid, ReadHybridTime()));
     const auto& schema = read_data.schema();
@@ -1724,16 +1827,7 @@ Result<uint32_t> SysCatalogTable::ReadHighestNormalPreservableOid(uint32_t datab
           oid_col, IllegalState,
           "Could not read oid column from table ID $0 from database ID $1:", read_data.table_id,
           database_oid);
-      const uint32_t oid = oid_col->uint32_value();
-      if (oid < kPgUpperBoundNormalObjectId) {
-        maximum_normal_oid = std::max(maximum_normal_oid, oid);
-      } else if (!relfilenode_present) {
-        // Because OID is the primary key (ascending) for these tables, if we do not need to look at
-        // relfilenode, then we can exit as soon as we have seen an OID at or above
-        // kPgUpperBoundNormalObjectId.
-        break;
-      }
-
+      maximum_oids.UpdateWithOid(oid_col->uint32_value());
       if (!relfilenode_present) {
         continue;
       }
@@ -1742,13 +1836,10 @@ Result<uint32_t> SysCatalogTable::ReadHighestNormalPreservableOid(uint32_t datab
           relfilenode_col, IllegalState,
           "Could not read relfilenode column from table ID $0 from database ID $1:",
           read_data.table_id, database_oid);
-      const uint32_t relfilenode = relfilenode_col->uint32_value();
-      if (relfilenode < kPgUpperBoundNormalObjectId) {
-        maximum_normal_oid = std::max(maximum_normal_oid, relfilenode);
-      }
+      maximum_oids.UpdateWithOid(relfilenode_col->uint32_value());
     }
   }
-  return maximum_normal_oid;
+  return maximum_oids;
 }
 
 Result<DbOidVersionToMessageListMap>
@@ -1758,11 +1849,27 @@ SysCatalogTable::ReadYsqlCatalogInvalationMessages() {
   }
 
   TRACE_EVENT0("master", "ReadYsqlCatalogInvalationMessages");
+  DbOidVersionToMessageListMap messages;
+  RETURN_NOT_OK(ReadWithRestarts(
+      [this, &messages](
+          const ReadHybridTime& read_ht, HybridTime* read_restart_ht) -> Status {
+        return SysCatalogTable::ReadYsqlCatalogInvalationMessagesImpl(
+            read_ht, read_restart_ht, messages);
+      }));
+  return messages;
+}
+
+Status SysCatalogTable::ReadYsqlCatalogInvalationMessagesImpl(
+    const ReadHybridTime& read_time,
+    HybridTime* read_restart_ht,
+    DbOidVersionToMessageListMap& messages) {
 
   auto read_data = VERIFY_RESULT(TableReadData(kTemplate1Oid, kPgYbInvalidationMessagesTableOid,
-                                 ReadHybridTime()));
+                                 read_time));
   const auto& schema = read_data.schema();
-
+  auto tablet = tablet_peer()->shared_tablet_maybe_null();
+  SCHECK(tablet, ShutdownInProgress, "SysConfig is shutting down.");
+  messages.clear();
   const auto db_oid_col_id = VERIFY_RESULT(schema.ColumnIdByName(kDbOidColumnName)).rep();
   const auto current_version_col_id = VERIFY_RESULT(
       schema.ColumnIdByName(kCurrentVersionColumnName)).rep();
@@ -1778,8 +1885,6 @@ SysCatalogTable::ReadYsqlCatalogInvalationMessages() {
   // Loop through the pg_yb_invalidation_messages catalog table. Each row in this table represents
   // a list of invalidation messages associated with a pair of (db_oid, current_version).
   // Populate 'messages' with (db_oid, current_version, messages).
-
-  DbOidVersionToMessageListMap messages;
   while (VERIFY_RESULT(iter->FetchNext(&source_row))) {
     // Fetch the db_oid.
     const auto db_oid_col = source_row.GetValue(db_oid_col_id);
@@ -1790,7 +1895,7 @@ SysCatalogTable::ReadYsqlCatalogInvalationMessages() {
     const auto& current_version_col = source_row.GetValue(current_version_col_id);
     SCHECK(current_version_col, IllegalState,
            "Could not read current_version from pg_yb_invalidation_messages");
-    const uint64_t current_version = static_cast<uint64_t>(current_version_col->int64_value());
+    const auto current_version = static_cast<uint64_t>(current_version_col->int64_value());
 
     // Fetch the messages.
     const auto& messages_col = source_row.GetValue(messages_col_id);
@@ -1803,9 +1908,9 @@ SysCatalogTable::ReadYsqlCatalogInvalationMessages() {
     // There should not be any duplicate (db_oid, current_version) because it is a primary key.
     DCHECK(insert_result.second);
   }
-  return messages;
+  *read_restart_ht = VERIFY_RESULT(iter->GetReadRestartData()).restart_time;
+  return Status::OK();
 }
-
 
 Status SysCatalogTable::WriteBatchIfNeeded(size_t max_batch_bytes,
                                            size_t rows_so_far,
@@ -1861,7 +1966,7 @@ Status SysCatalogTable::CopyPgsqlTables(
       "size mismatch between source tables and target tables");
 
   size_t batch_count = 0, rows_so_far = 0, total_bytes = 0;
-  const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
+  const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet());
   const auto* meta = tablet->metadata();
   for (size_t i = 0; i < source_table_ids.size(); ++i) {
     auto& source_table_id = source_table_ids[i];
@@ -1900,7 +2005,7 @@ Status SysCatalogTable::DeleteAllYsqlCatalogTableRows(const std::vector<TableId>
   std::unique_ptr<SysCatalogWriter> writer = NewWriter(leader_term);
 
   size_t batch_count = 0, rows_so_far = 0, total_bytes = 0;
-  const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
+  const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet());
   const auto* meta = tablet->metadata();
   for (const auto& table_id : table_ids) {
     const std::shared_ptr<tablet::TableInfo> table_info =
@@ -1942,7 +2047,7 @@ const docdb::DocReadContext& SysCatalogTable::doc_read_context() {
 }
 
 Status SysCatalogTable::FetchDdlLog(google::protobuf::RepeatedPtrField<DdlLogEntryPB>* entries) {
-  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
+  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet());
 
   return EnumerateSysCatalog(
       tablet.get(), doc_read_context_->schema(), SysRowEntryType::DDL_LOG_ENTRY,
@@ -2050,7 +2155,7 @@ Result<RelIdToAttributesMap> SysCatalogTable::ReadPgAttributeInfo(
     if (attnum < 0) {
       // Ignore system columns.
       VLOG(1) << "Ignoring system column (attnum = " << attnum_col->int16_value()
-              << ") for attrelid $0:" << attrelid;
+              << ") for attrelid: " << attrelid;
       continue;
     }
 
@@ -2059,7 +2164,7 @@ Result<RelIdToAttributesMap> SysCatalogTable::ReadPgAttributeInfo(
     if (atttypid == kPgInvalidOid) {
       // Ignore dropped columns.
       VLOG(1) << "Ignoring dropped column " << attname << " (atttypid = 0)"
-              << " for attrelid $0:" << attrelid;
+              << " for attrelid: " << attrelid;
       continue;
     }
 
@@ -2108,8 +2213,8 @@ Result<RelTypeOIDMap> SysCatalogTable::ReadCompositeTypeFromPgClass(
   {
     const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
-        schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, nullptr,
-        std::nullopt /* hash_code */, std::nullopt /* max_hash_code */);
+        schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
+        /*condition=*/nullptr, /*hash_code=*/std::nullopt, /*max_hash_code=*/std::nullopt);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
@@ -2156,7 +2261,7 @@ Result<tablet::TabletPtr> SysCatalogTable::Tablet() const {
   if (!tablet_peer) {
     return STATUS(ServiceUnavailable, "SysCatalog unavailable");
   }
-  return tablet_peer->shared_tablet_safe();
+  return tablet_peer->shared_tablet();
 }
 
 Result<PgTableReadData> SysCatalogTable::TableReadData(

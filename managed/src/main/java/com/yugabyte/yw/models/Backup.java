@@ -50,7 +50,6 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import java.text.SimpleDateFormat;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
@@ -66,6 +65,7 @@ import javax.annotation.Nullable;
 import lombok.Getter;
 import lombok.Setter;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.CommonTypes.TableType;
@@ -284,6 +284,19 @@ public class Backup extends Model {
   @Column
   // Unix timestamp at which backup will get deleted.
   private Date expiry;
+
+  @ApiModelProperty(value = "First snapshot time in this backup", accessMode = READ_ONLY)
+  @Column
+  private long firstSnapshotTime;
+
+  @JsonIgnore
+  public void upsertFirstSnapshotTime(long snapshotTime) {
+    if (this.getFirstSnapshotTime() == 0) {
+      this.setFirstSnapshotTime(snapshotTime);
+    } else {
+      this.setFirstSnapshotTime(Math.min(snapshotTime, this.getFirstSnapshotTime()));
+    }
+  }
 
   @JsonIgnore
   private void setExpiry(long timeBeforeDeleteFromPresent) {
@@ -1032,17 +1045,26 @@ public class Backup extends Model {
    */
   public static Optional<Backup> maybeGetRestorableBackup(
       UUID customerUUID, UUID baseBackupUUID, long restoreTimestampMillis) {
-    Date restoreTimestamp = Date.from(Instant.ofEpochMilli(restoreTimestampMillis));
-    return find.query()
-        .where()
-        .eq("customer_uuid", customerUUID)
-        .eq("base_backup_uuid", baseBackupUUID)
-        .eq("state", BackupState.Completed)
-        .ge("create_time", restoreTimestamp)
-        .orderBy()
-        .asc("create_time")
-        .setMaxRows(1)
-        .findOneOrEmpty();
+    Optional<Backup> optB =
+        find.query()
+            .where()
+            .eq("customer_uuid", customerUUID)
+            .eq("base_backup_uuid", baseBackupUUID)
+            .eq("state", BackupState.Completed)
+            .ge("first_snapshot_time", restoreTimestampMillis)
+            .orderBy()
+            .asc("create_time")
+            .setMaxRows(1)
+            .findOneOrEmpty();
+    if (optB.isPresent()) {
+      Map<String, KeyspaceTables> backupLocationKeyspaceTablesMap =
+          optB.get().getBackupLocationKeyspaceTablesMap(restoreTimestampMillis);
+      // If no params in restore window, return empty optional
+      if (MapUtils.isEmpty(backupLocationKeyspaceTablesMap)) {
+        return Optional.empty();
+      }
+    }
+    return optB;
   }
 
   public static ExpressionList<Backup> createQueryByFilter(BackupFilter filter) {

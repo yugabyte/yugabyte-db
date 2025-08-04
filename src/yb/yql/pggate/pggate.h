@@ -51,6 +51,7 @@
 #include "yb/yql/pggate/pg_fk_reference_cache.h"
 #include "yb/yql/pggate/pg_function.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
+#include "yb/yql/pggate/pg_setup_perform_options_accessor_tag.h"
 #include "yb/yql/pggate/pg_statement.h"
 #include "yb/yql/pggate/pg_sys_table_prefetcher.h"
 #include "yb/yql/pggate/pg_tools.h"
@@ -113,7 +114,7 @@ class PgApiImpl {
 
   PgApiImpl(
       YbcPgTypeEntities type_entities, const YbcPgCallbacks& pg_callbacks,
-      std::optional<uint64_t> session_id, const YbcPgAshConfig& ash_config);
+      std::optional<uint64_t> session_id, YbcPgAshConfig& ash_config);
 
   ~PgApiImpl();
 
@@ -123,7 +124,9 @@ class PgApiImpl {
 
   // Interrupt aborts all pending RPCs immediately to unblock main thread.
   void Interrupt();
+
   void ResetCatalogReadTime();
+  [[nodiscard]] ReadHybridTime GetCatalogReadTime() const;
 
   // Initialize a session to process statements that come from the same client connection.
   void InitSession(YbcPgExecStatsState& session_stats, bool is_binary_upgrade);
@@ -149,6 +152,9 @@ class PgApiImpl {
 
   // Invalidate the sessions table cache.
   Status InvalidateCache(uint64_t min_ysql_catalog_version);
+
+  // Update the table cache's min_ysql_catalog_version.
+  Status UpdateTableCacheMinVersion(uint64_t min_ysql_catalog_version);
 
   // Get the gflag TEST_ysql_disable_transparent_cache_refresh_retry.
   bool GetDisableTransparentCacheRefreshRetry();
@@ -272,6 +278,7 @@ class PgApiImpl {
 
   // Invalidate the cache entry corresponding to table_id from the PgSession table cache.
   void InvalidateTableCache(const PgObjectId& table_id);
+  void RemoveTableCacheEntry(const PgObjectId& table_id);
 
   //------------------------------------------------------------------------------------------------
   // Create and drop tablegroup.
@@ -334,8 +341,7 @@ class PgApiImpl {
 
   Status AlterTableSetReplicaIdentity(PgStatement *handle, const char identity_type);
 
-  Status AlterTableRenameTable(PgStatement *handle, const char *db_name,
-                               const char *newname);
+  Status AlterTableRenameTable(PgStatement *handle, const char *newname);
 
   Status AlterTableIncrementSchemaVersion(PgStatement *handle);
 
@@ -605,6 +611,8 @@ class PgApiImpl {
 
   Status BindYbctids(PgStatement* handle, int n, uintptr_t* ybctids);
 
+  bool IsValidYbctid(uint64_t ybctid);
+
   Status DmlANNBindVector(PgStatement *handle, PgExpr *vector);
 
   Status DmlANNSetPrefetchSize(PgStatement *handle, int prefetch_size);
@@ -674,6 +682,7 @@ class PgApiImpl {
   Result<Uuid> GetActiveTransaction() const;
   Status GetActiveTransactions(YbcPgSessionTxnInfo* infos, size_t num_infos);
   bool IsDdlMode() const;
+  Result<bool> CurrentTransactionUsesFastPath() const;
 
   //------------------------------------------------------------------------------------------------
   // Expressions.
@@ -756,6 +765,8 @@ class PgApiImpl {
 
   void StartSysTablePrefetching(const PrefetcherOptions& options);
   void StopSysTablePrefetching();
+  void PauseSysTablePrefetching();
+  void ResumeSysTablePrefetching();
   bool IsSysTablePrefetchingStarted() const;
   void RegisterSysTableForPrefetching(
       const PgObjectId& table_id, const PgObjectId& index_id, int row_oid_filtering_attr,
@@ -866,7 +877,7 @@ class PgApiImpl {
   Status AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode);
 
  private:
-  void ClearSessionState();
+  SetupPerformOptionsAccessorTag ClearSessionState();
 
   class Interrupter;
 
@@ -908,8 +919,8 @@ class PgApiImpl {
   // Local tablet-server shared memory data.
   tserver::TServerSharedData* tserver_shared_object_;
 
+  const bool enable_table_locking_;
   scoped_refptr<PgTxnManager> pg_txn_manager_;
-
   scoped_refptr<PgSession> pg_session_;
   std::optional<PgSysTablePrefetcher> pg_sys_table_prefetcher_;
   std::unordered_set<std::unique_ptr<PgMemctx>, PgMemctxHasher, PgMemctxComparator> mem_contexts_;
@@ -921,6 +932,8 @@ class PgApiImpl {
   YbctidReaderProvider ybctid_reader_provider_;
   PgFKReferenceCache fk_reference_cache_;
   ExplicitRowLockBuffer explicit_row_lock_buffer_;
+
+  ash::WaitStateInfoPtr wait_state_;
 };
 
 }  // namespace yb::pggate

@@ -36,7 +36,7 @@ Status PatchStatus(const Status& status, const PgObjectIds& relations) {
     const auto& actual_status =
         PgsqlRequestStatus(status) == PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR
           ? duplicate_key_status : status;
-    return  actual_status.CloneAndAddErrorCode(RelationOid(relations[op_index].object_oid));
+    return actual_status.CloneAndAddErrorCode(RelationOid(relations[op_index].object_oid));
   }
   return status;
 }
@@ -52,23 +52,23 @@ PerformFuture::~PerformFuture() {
     // In case object is valid nobody got the result from it.
     // This is possible in case of error handling. Transaction will be rolled back in this case.
     // We have to be sure that all requests are completed before performing rollback.
-    Wait(future_);
+    future_.Wait();
   }
 }
 
 bool PerformFuture::Valid() const {
-  return pggate::Valid(future_);
+  return future_.Valid();
 }
 
 bool PerformFuture::Ready() const {
-  return Valid() && pggate::Ready(future_);
+  return Valid() && future_.Ready();
 }
 
 Result<PerformFuture::Data> PerformFuture::Get(PgSession& session) {
   // Make sure Valid method will return false before thread will be blocked on call future.get()
   // This requirement is not necessary after fixing of #12884.
   auto future = std::move(future_);
-  auto result = pggate::Get(&future);
+  auto result = future.Get();
   RETURN_NOT_OK(PatchStatus(result.status, relations_));
   session.TrySetCatalogReadPoint(result.catalog_read_time);
   return Data{

@@ -12,8 +12,10 @@ different.
     the corresponding commit):
 
         diff \
-          <(cd src/postgres; git ls-files ^third-party-extensions ../yb/yql/pggate/***/ybc_*.h | ctags -L - --languages=c,c++ --c-kinds=gstu --c++-kinds=gstu -f /dev/stdout | awk '{print$1}' | uniq) \
-          <(cd ~/code/postgres; git ls-files | ctags -L - --languages=c,c++ --c-kinds=gstu --c++-kinds=gstu -f /dev/stdout | awk ' {print$1}' | uniq) | grep '<'
+          <(cd src/postgres; git ls-files ^third-party-extensions ../yb/yql/pggate/***/ybc_*.h | ctags -L - --languages=c,c++ --c-kinds=t --c++-kinds=t -f /dev/stdout | awk '{print$1}' | uniq) \
+          <(cd ~/code/postgres; git ls-files | ctags -L - --languages=c,c++ --c-kinds=t --c++-kinds=t -f /dev/stdout | awk ' {print$1}' | uniq) \
+          | grep '<' \
+          | sed 's/< //'
 
     ctags can find most type names.  The command above compares the ctags
     output between Yugabyte code and upstream postgres code and reports the
@@ -37,11 +39,7 @@ different.
 - The existing typedefs.list and exclude_file_patterns should not be touched
   and should be left under the control of upstream postgres.  In order to make
   use of the YB variants of these files, run yb_pgindent, a wrapper around
-  pgindent that merges the additional YB files with the PG ones.  One more
-  thing that is needed is the --indent option, pointing to
-  /path/to/pg_bsd_indent_repo/pg_bsd_indent.  For example,
-
-      src/tools/pgindent/yb_pgindent --indent=~/code/pg_bsd_indent/pg_bsd_indent
+  pgindent that merges the additional YB files with the PG ones.
 
 pgindent'ing the PostgreSQL source tree
 =======================================
@@ -55,9 +53,9 @@ http://adpgtech.blogspot.com/2015/05/running-pgindent-on-non-core-code-or.html
 
 PREREQUISITES:
 
-1) Install pg_bsd_indent in your PATH.  Fetch its source code with
-   git clone https://git.postgresql.org/git/pg_bsd_indent.git
-   then follow the directions in README.pg_bsd_indent therein.
+1) Install pg_bsd_indent in your PATH.  Its source code is in the
+   sibling directory src/tools/pg_bsd_indent; see the directions
+   in that directory's README file.
 
 2) Install perltidy.  Please be sure it is version 20170521 (older and newer
    versions make different formatting choices, and we want consistency).

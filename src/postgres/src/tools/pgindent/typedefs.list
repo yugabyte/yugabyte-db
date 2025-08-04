@@ -702,6 +702,7 @@ ExprEvalOp
 ExprEvalOpLookup
 ExprEvalRowtypeCache
 ExprEvalStep
+ExprSetupInfo
 ExprState
 ExprStateEvalFunc
 ExtensibleNode
@@ -1317,6 +1318,7 @@ JsonbTypeCategory
 JsonbValue
 JumbleState
 JunkFilter
+KAXCompressReason
 KeyAction
 KeyActions
 KeyArray
@@ -3546,6 +3548,7 @@ plperl_proc_key
 plperl_proc_ptr
 plperl_query_desc
 plperl_query_entry
+plpgsql_CastExprHashEntry
 plpgsql_CastHashEntry
 plpgsql_CastHashKey
 plpgsql_HashEnt
@@ -3590,6 +3593,7 @@ pull_varattnos_context
 pull_varnos_context
 pull_vars_context
 pullup_replace_vars_context
+pushdown_safe_type
 pushdown_safety_info
 qc_hash_func
 qsort_arg_comparator

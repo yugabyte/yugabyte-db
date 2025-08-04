@@ -2880,7 +2880,7 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 				 * mentioned above.
 				 */
 				Datum		attoptions =
-				get_attoptions(RelationGetRelid(index_rel), i + 1);
+					get_attoptions(RelationGetRelid(index_rel), i + 1);
 
 				defopclass = GetDefaultOpClass(attform->atttypid,
 											   index_rel->rd_rel->relam);
@@ -3935,10 +3935,12 @@ transformAlterTableStmt(Oid relid, AlterTableStmt *stmt,
 	 */
 
 	/*
-	 * YB expects system tables to be altered only during YSQL cluster upgrade.
+	 * YB expects system tables to be altered only during initdb / YSQL cluster
+	 * upgrade.
 	 */
 	cxt.isSystem = IsCatalogNamespace(RelationGetNamespace(rel));
-	if (IsYugaByteEnabled() && cxt.isSystem && !IsYsqlUpgrade)
+	if (IsYugaByteEnabled() && cxt.isSystem && !IsYsqlUpgrade &&
+		!YBCIsInitDbModeEnvVarSet())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied to alter \"%s\"",

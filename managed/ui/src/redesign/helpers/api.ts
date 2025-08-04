@@ -233,6 +233,9 @@ export interface EditDrConfigRequest {
       storageConfigUUID: string;
     };
   };
+  pitrParams: {
+    retentionPeriodSec: number;
+  };
 }
 
 export interface ReplaceDrReplicaRequest {

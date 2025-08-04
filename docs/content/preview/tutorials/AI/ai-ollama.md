@@ -1,14 +1,14 @@
 ---
 title: How to Develop AI Apps Locally with Ollama and YugabyteDB
-headerTitle: Build applications with locally-hosted embedding models using Ollama and YugabyteDB
-linkTitle: Ollama
+headerTitle: Similarity search using Ollama
+linkTitle: Similarity search - Ollama
 description: Learn to build LLM applications using Ollama.
 image: /images/tutorials/ai/icons/ollama-icon.svg
 headcontent: Use YugabyteDB as the database backend for LLM applications
 menu:
   preview_tutorials:
     identifier: tutorials-ai-ollama
-    parent: tutorials-ai
+    parent: tutorials-ai-vector
     weight: 60
 type: docs
 ---
@@ -17,10 +17,45 @@ This tutorial shows how you can use [Ollama](https://ollama.com/) to generate te
 
 ## Prerequisites
 
-- [YugabyteDB v2.19+](https://download.yugabyte.com/)
+- [YugabyteDB v2.25+](https://download.yugabyte.com/)
 - [Ollama](https://ollama.com/)
-- Node.js V18+
+- Node.js v18+
+- git-lfs
 - Docker
+
+## Set up YugabyteDB
+
+Start a 3-node YugabyteDB cluster in Docker (or feel free to use another deployment option):
+
+```sh
+rm -rf ~/yb_docker_data
+mkdir ~/yb_docker_data
+
+docker network create yb-network
+
+docker run -d --name ybnode1 --hostname ybnode1 --net yb-network \
+    -p 15433:15433 -p 7001:7000 -p 9001:9000 -p 5433:5433 \
+    -v ~/yb_docker_data/node1:/home/yugabyte/yb_data --restart unless-stopped \
+    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
+    bin/yugabyted start \
+    --base_dir=/home/yugabyte/yb_data --background=false
+
+docker run -d --name ybnode2 --hostname ybnode2  --net yb-network \
+    -p 15434:15433 -p 7002:7000 -p 9002:9000 -p 5434:5433 \
+    -v ~/yb_docker_data/node2:/home/yugabyte/yb_data --restart unless-stopped \
+    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
+    bin/yugabyted start --join=ybnode1 \
+    --base_dir=/home/yugabyte/yb_data --background=false
+    
+docker run -d --name ybnode3 --hostname ybnode3 --net yb-network \
+    -p 15435:15433 -p 7003:7000 -p 9003:9000 -p 5435:5433 \
+    -v ~/yb_docker_data/node3:/home/yugabyte/yb_data --restart unless-stopped \
+    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
+    bin/yugabyted start --join=ybnode1 \
+    --base_dir=/home/yugabyte/yb_data --background=false
+```
+
+Navigate to the YugabyteDB UI to confirm that the database is up and running, at <http://127.0.0.1:15433>.
 
 ## Set up the application
 
@@ -35,47 +70,14 @@ Download the application and provide settings specific to your deployment:
 1. Install the application dependencies.
 
    ```sh
+   cd ollama-news-archive
    git lfs fetch --all
    npm install
    cd backend/ && npm install
-   cd news-app-ui/ && npm install
+   cd ../news-app-ui/ && npm install
    ```
 
 1. Configure the database connection parameters in `{project_directory/backend/index.js}`.
-
-## Set up YugabyteDB
-
-Start a 3-node YugabyteDB cluster in Docker (or feel free to use another deployment option):
-
-```sh
-# NOTE: if the ~/yb_docker_data already exists on your machine, delete and re-create it
-mkdir ~/yb_docker_data
-
-docker network create custom-network
-
-docker run -d --name yugabytedb-node1 --net custom-network \
-    -p 15433:15433 -p 7001:7000 -p 9001:9000 -p 5433:5433 \
-    -v ~/yb_docker_data/node1:/home/yugabyte/yb_data --restart unless-stopped \
-    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
-    bin/yugabyted start \
-    --base_dir=/home/yugabyte/yb_data --background=false
-
-docker run -d --name yugabytedb-node2 --net custom-network \
-    -p 15434:15433 -p 7002:7000 -p 9002:9000 -p 5434:5433 \
-    -v ~/yb_docker_data/node2:/home/yugabyte/yb_data --restart unless-stopped \
-    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
-    bin/yugabyted start --join=yugabytedb-node1 \
-    --base_dir=/home/yugabyte/yb_data --background=false
-
-docker run -d --name yugabytedb-node3 --net custom-network \
-    -p 15435:15433 -p 7003:7000 -p 9003:9000 -p 5435:5433 \
-    -v ~/yb_docker_data/node3:/home/yugabyte/yb_data --restart unless-stopped \
-    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
-    bin/yugabyted start --join=yugabytedb-node1 \
-    --base_dir=/home/yugabyte/yb_data --background=false
-```
-
-Navigate to the YugabyteDB UI to confirm that the database is up and running, at <http://127.0.0.1:15433>.
 
 ## Get started with Ollama
 
@@ -109,20 +111,22 @@ This application requires a database table with information about news stories. 
 1. Copy the schema to the first node's Docker container as follows:
 
     ```sh
-    docker cp {project_dir}/database/schema.sql yugabytedb-node1:/home/database
+    docker cp {project_dir}/database/schema.sql ybnode1:/home/db_schema.sql
     ```
 
 1. Copy the seed data file to the Docker container as follows:
 
+    Because it's an LFS file, you'll need to copy the original file from the `.git` folder.
+
     ```sh
-    docker cp {project_dir}/sql/data.csv yugabytedb-node1:/home/database
+    docker cp {project_dir}/.git/lfs/objects/21/bb/21bbebed1d66c3cad2100ceeee82ac0034dfb806b52043fab7b64b79940d5863 ybnode1:/home/db_data.csv
     ```
 
 1. Execute the SQL files against the database:
 
     ```sh
-    docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 -f /home/database/schema.sql
-    docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 -c "\COPY news_stories(link,headline,category,short_description,authors,date,embeddings) from '/home/database/data.csv' DELIMITER ',' CSV HEADER;"
+    docker exec -it ybnode1 bin/ysqlsh -h ybnode1 -f /home/db_schema.sql
+    docker exec -it ybnode1 bin/ysqlsh -h ybnode1 -c "\COPY news_stories(link,headline,category,short_description,authors,date,embeddings) from '/home/db_data.csv' DELIMITER ',' CSV HEADER;"
     ```
 
 ## Start the application
@@ -149,8 +153,8 @@ This Node.js application uses a locally-running LLM to produce text embeddings. 
     {
         "data": [
             {
-                "headline": "17-Year-Old Snowboarder Wins United States’ First Gold Medal In Pyeongchang",
-                "short_description": "“I haven’t had time for it to sink in yet,\" Redmond Gerard said following his victory.",
+                "headline": "17-Year-Old Snowboarder Wins United States' First Gold Medal In Pyeongchang",
+                "short_description": ""I haven't had time for it to sink in yet,\" Redmond Gerard said following his victory.",
                 "link": "https://www.huffingtonpost.com/entry/red-gerard-gold-olympics_us_5a7fac94e4b0c6726e141850"
             },
             {
@@ -160,7 +164,7 @@ This Node.js application uses a locally-running LLM to produce text embeddings. 
             },
             {
                 "headline": "Simone Manuel And Simone Biles Pose For Ultimate Olympic Selfie",
-                "short_description": "The gold medalists are feeling the love. 💛",
+                "short_description": "The gold medalists are feeling the love.",
                 "link": "https://www.huffingtonpost.com/entry/simone-biles-simone-manuel-selfie_us_57ae111de4b069e7e5052acf"
             },
             {
@@ -186,7 +190,7 @@ This Node.js application uses a locally-running LLM to produce text embeddings. 
 
     ```output
       VITE ready in 138 ms
-      ➜  Local:   http://localhost:5173/
+        Local:   http://localhost:5173/
     ```
 
 ![YugaNews Archives UI](/images/tutorials/ai/ai-ollama/yuganews_archives.png "YugaNews Archives UI")
@@ -242,10 +246,30 @@ app.get("/api/search", async (req, res) => {
 
 The `/api/search` endpoint specifies the embedding model and prompt to be sent to Ollama to generate a vector representation. This is done using the Ollama JavaScript library. The response is then used to execute a cosine similarity search against the dataset stored in YugabyteDB using pgvector. Latency is reduced by pre-filtering by news category, thus reducing the search space.
 
-This application is quite straightforward. Before executing similarity searches, embeddings need to be generated for each news story and subsequently stored in the database. You can see how this is done in the `generate_embeddings.js` script.
+```sql
+# backend/schema.sql
+CREATE EXTENSION IF NOT EXISTS vector;
+
+CREATE TABLE
+    news_stories (
+        id serial primary key,
+        link text,
+        headline text,
+        category varchar(50),
+        short_description text,
+        authors text,
+        date date,
+        embeddings vector (768)
+    );
+
+CREATE INDEX NONCONCURRENTLY ON news_stories USING ybhnsw (embeddings vector_cosine_ops);
+```
+The search speed is further increased by using [vector indexing](../../../explore/ysql-language-features/pg-extensions/extension-pgvector/#vector-indexing). YugabyteDB currently supports the Hierarchical Navigable Small World (HNSW) index type. This application uses cosine distance for indexing, as the backend query is using cosine similarity search.
+
+This application is straightforward. Before executing similarity searches, embeddings for each news story must be generated and then stored in the database. Refer to the `generate_embeddings.js` script for details.
 
 ```javascript
-# generate_embeddings.py
+# generate_embeddings.js
 
 const ollama = require("ollama");
 const fs = require("fs");

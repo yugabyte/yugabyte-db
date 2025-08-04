@@ -833,11 +833,9 @@ public class AZUtil implements CloudUtil {
       // Iterate through all pages
       for (BlobItem blobItem : blobPages) {
         String key = blobItem.getName();
-        if (key != null && key.endsWith(YBA_BACKUP_MARKER)) {
-          String[] parts = key.split("/");
-          if (parts.length >= 2) {
-            backupDirs.add(parts[parts.length - 2]);
-          }
+        String backupDir = extractBackupDirFromKey(key, cLInfo.cloudPath);
+        if (StringUtils.isNotBlank(backupDir)) {
+          backupDirs.add(backupDir);
         }
       }
 
@@ -970,7 +968,7 @@ public class AZUtil implements CloudUtil {
 
       Set<String> releaseVersions = new HashSet<>();
       for (BlobItem release : releases) {
-        String version = extractReleaseVersion(release.getName(), backupDir);
+        String version = extractReleaseVersion(release.getName(), backupDir, cLInfo.cloudPath);
         if (version != null) {
           releaseVersions.add(version);
         }

@@ -80,6 +80,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/operation_counter.h"
+#include "yb/util/status_callback.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/threadpool.h"
 
@@ -98,7 +99,6 @@ namespace tablet {
 
 YB_STRONGLY_TYPED_BOOL(BlockingRocksDbShutdownStart);
 YB_STRONGLY_TYPED_BOOL(FlushOnShutdown);
-YB_STRONGLY_TYPED_BOOL(IncludeIntents);
 YB_STRONGLY_TYPED_BOOL(CheckRegularDB)
 YB_DEFINE_ENUM(Direction, (kForward)(kBackward));
 
@@ -122,8 +122,10 @@ YB_STRONGLY_TYPED_BOOL(AllowBootstrappingState);
 YB_STRONGLY_TYPED_BOOL(ResetSplit);
 
 struct AdminCompactionOptions {
-  std::function<void()> compaction_completion_callback;
+  StdStatusCallback compaction_completion_callback;
   TableIdsPtr vector_index_ids;
+  rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe =
+      rocksdb::SkipCorruptDataBlocksUnsafe::kFalse;
 };
 
 struct TabletScopedRWOperationPauses {
@@ -324,7 +326,7 @@ class Tablet : public AbstractTablet,
 
   Status WritePostApplyMetadata(std::span<const PostApplyTransactionMetadata> metadatas) override;
 
-  Status GetIntents(
+  Status GetIntentsForCDC(
       const TransactionId& id,
       std::vector<docdb::IntentKeyValueForCDC>* keyValueIntents,
       docdb::ApplyTransactionState* stream_state);
@@ -525,12 +527,13 @@ class Tablet : public AbstractTablet,
   const scoped_refptr<MetricEntity>& GetTableMetricsEntity() const {
     return table_metrics_entity_;
   }
+
   const scoped_refptr<MetricEntity>& GetTabletMetricsEntity() const {
     return tablet_metrics_entity_;
   }
 
   // Returns a reference to this tablet's memory tracker.
-  const std::shared_ptr<MemTracker>& mem_tracker() const { return mem_tracker_; }
+  const MemTrackerPtr& mem_tracker() const { return mem_tracker_; }
 
   TableType table_type() const override { return table_type_; }
 
@@ -611,7 +614,9 @@ class Tablet : public AbstractTablet,
 
   Status ForceRocksDBCompact(
       rocksdb::CompactionReason compaction_reason,
-      docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
+      docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse,
+      rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe =
+          rocksdb::SkipCorruptDataBlocksUnsafe::kFalse);
 
   rocksdb::DB* regular_db() const {
     return regular_db_.get();
@@ -644,13 +649,14 @@ class Tablet : public AbstractTablet,
   // range-based partitions always matches the returned middle key.
   Result<std::string> GetEncodedMiddleSplitKey(std::string *partition_split_key = nullptr) const;
 
-  std::string TEST_DocDBDumpStr(IncludeIntents include_intents = IncludeIntents::kFalse);
+  std::string TEST_DocDBDumpStr(
+      docdb::IncludeIntents include_intents = docdb::IncludeIntents::kFalse);
 
   void TEST_DocDBDumpToContainer(
-      IncludeIntents include_intents, std::unordered_set<std::string>* out);
+      docdb::IncludeIntents include_intents, std::unordered_set<std::string>* out);
 
   // Dumps DocDB contents to log, every record as a separate log message, with the given prefix.
-  void TEST_DocDBDumpToLog(IncludeIntents include_intents);
+  void TEST_DocDBDumpToLog(docdb::IncludeIntents include_intents);
 
   Result<size_t> TEST_CountDBRecords(docdb::StorageDbType db_type);
 
@@ -820,16 +826,7 @@ class Tablet : public AbstractTablet,
   Status TriggerAdminFullCompactionIfNeeded(const AdminCompactionOptions& options);
 
   bool HasActiveFullCompaction();
-
-  bool HasActiveFullCompactionUnlocked() const REQUIRES(full_compaction_token_mutex_) {
-    bool has_active_scheduled = full_compaction_task_pool_token_ != nullptr
-                                    ? !full_compaction_task_pool_token_->WaitFor(MonoDelta::kZero)
-                                    : false;
-    bool has_active_admin = admin_full_compaction_task_pool_token_ != nullptr
-                                ? !admin_full_compaction_task_pool_token_->WaitFor(MonoDelta::kZero)
-                                : false;
-    return has_active_scheduled || has_active_admin;
-  }
+  bool HasActiveFullCompactionUnlocked() const REQUIRES(full_compaction_token_mutex_);
 
   bool HasActiveTTLFileExpiration();
 
@@ -993,6 +990,8 @@ class Tablet : public AbstractTablet,
   void RefreshCompactFlushRateLimitBytesPerSec();
   void SetCompactFlushRateLimitBytesPerSec(int64_t bytes_per_sec);
 
+  void SetAllowCompactionFailures(rocksdb::AllowCompactionFailures allow_compaction_failures);
+
  private:
   friend class Iterator;
   friend class TabletPeerTest;
@@ -1047,7 +1046,14 @@ class Tablet : public AbstractTablet,
       const std::string& partition_key,
       size_t row_count) const;
 
-  void TriggerManualCompactionSync(rocksdb::CompactionReason reason);
+  Status TriggerManualCompactionSyncUnsafe(
+      rocksdb::CompactionReason reason,
+      rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe);
+
+  Status TriggerManualCompactionSync(rocksdb::CompactionReason reason) {
+    return TriggerManualCompactionSyncUnsafe(reason, rocksdb::SkipCorruptDataBlocksUnsafe::kFalse);
+  }
+
   void TriggerVectorIndexCompactionSync(const TableIds& vector_index_ids);
 
   Status ForceRocksDBCompact(
@@ -1152,6 +1158,9 @@ class Tablet : public AbstractTablet,
 
   // For the block cache and memory manager shared across tablets
   const TabletOptions tablet_options_;
+
+  mutable std::shared_mutex mutable_tablet_options_mutex_;
+  MutableTabletOptions mutable_tablet_options_ GUARDED_BY (mutable_tablet_options_mutex_);
 
   // A lightweight way to reject new operations when the tablet is shutting down. This is used to
   // prevent race conditions between destructing the RocksDB in-memory instance and read/write
@@ -1291,6 +1300,8 @@ class Tablet : public AbstractTablet,
   // Thread pool token for triggering admin full compactions.
   std::unique_ptr<ThreadPoolToken> admin_full_compaction_task_pool_token_
       GUARDED_BY(full_compaction_token_mutex_);
+
+  std::atomic<size_t> num_active_full_compactions_ GUARDED_BY(full_compaction_token_mutex_) = 0;
 
   // Pointer to shared thread pool in TsTabletManager. Managed by the FullCompactionManager.
   ThreadPool* full_compaction_pool_ = nullptr;

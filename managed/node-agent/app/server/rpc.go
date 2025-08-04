@@ -26,6 +26,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/encoding/gzip"
 	"google.golang.org/grpc/status"
 )
 
@@ -215,6 +216,7 @@ func (server *RPCServer) Ping(ctx context.Context, in *pb.PingRequest) (*pb.Ping
 			Version:       config.String(util.PlatformVersionKey),
 			RestartNeeded: config.Bool(util.NodeAgentRestartKey),
 			Offloadable:   util.IsPexEnvAvailable(),
+			Compressor:    gzip.Name,
 		},
 	}, nil
 }
@@ -292,6 +294,17 @@ func (server *RPCServer) SubmitTask(
 		}
 		return res, nil
 	}
+	downloadSoftwareInput := req.GetDownloadSoftwareInput()
+	if downloadSoftwareInput != nil {
+		downloadSoftwareHandler := task.NewDownloadSoftwareHandler(downloadSoftwareInput, username)
+		err := task.GetTaskManager().Submit(ctx, taskID, downloadSoftwareHandler)
+		if err != nil {
+			util.FileLogger().Errorf(ctx, "Error in running download software - %s", err.Error())
+			return res, status.Error(codes.Internal, err.Error())
+		}
+		res.TaskId = taskID
+		return res, nil
+	}
 	installSoftwareInput := req.GetInstallSoftwareInput()
 	if installSoftwareInput != nil {
 		installSoftwareHandler := task.NewInstallSoftwareHandler(installSoftwareInput, username)
@@ -327,14 +340,14 @@ func (server *RPCServer) SubmitTask(
 			if err2 != nil {
 				util.FileLogger().
 					Errorf(ctx, "Error in running configure handler - %s", err2.Error())
-				return res, status.Errorf(codes.Internal, err2.Error())
+				return res, status.Error(codes.Internal, err2.Error())
 			}
 			res.TaskId = taskID
 			return res, nil
 		default:
 			return res, status.Errorf(
 				codes.Unimplemented,
-				fmt.Sprintf("Unsupported type: %s", configureServiceInput.GetService()),
+				"Unsupported type: %s", configureServiceInput.GetService(),
 			)
 		}
 	}
@@ -345,6 +358,73 @@ func (server *RPCServer) SubmitTask(
 		err := task.GetTaskManager().Submit(ctx, taskID, serverGFlagsHandler)
 		if err != nil {
 			util.FileLogger().Errorf(ctx, "Error in running server gflags - %s", err.Error())
+			return res, status.Error(codes.Internal, err.Error())
+		}
+		res.TaskId = taskID
+		return res, nil
+	}
+	installYbcInput := req.GetInstallYbcInput()
+	if installYbcInput != nil {
+		installYbcHandler := task.NewInstallYbcHandler(installYbcInput, username)
+		err := task.GetTaskManager().Submit(ctx, taskID, installYbcHandler)
+		if err != nil {
+			util.FileLogger().Errorf(ctx, "Error in running install ybc - %s", err.Error())
+			return res, status.Error(codes.Internal, err.Error())
+		}
+		res.TaskId = taskID
+		return res, nil
+	}
+	configureServerInput := req.GetConfigureServerInput()
+	if configureServerInput != nil {
+		configureServerHandler := task.NewConfigureServerHandler(configureServerInput, username)
+		err := task.GetTaskManager().Submit(ctx, taskID, configureServerHandler)
+		if err != nil {
+			util.FileLogger().Errorf(ctx, "Error in running configure server - %s", err.Error())
+			return res, status.Error(codes.Internal, err.Error())
+		}
+		res.TaskId = taskID
+		return res, nil
+	}
+	installOtelCollectorInput := req.GetInstallOtelCollectorInput()
+	if installOtelCollectorInput != nil {
+		installOtelCollectorHandler := task.NewInstallOtelCollectorHandler(
+			installOtelCollectorInput,
+			username,
+		)
+		err := task.GetTaskManager().Submit(ctx, taskID, installOtelCollectorHandler)
+		if err != nil {
+			util.FileLogger().
+				Errorf(ctx, "Error in running install otel collector - %s", err.Error())
+			return res, status.Error(codes.Internal, err.Error())
+		}
+		res.TaskId = taskID
+		return res, nil
+	}
+	setupCGroupInput := req.GetSetupCGroupInput()
+	if setupCGroupInput != nil {
+		setupCgroupHandler := task.NewSetupCgroupHandler(
+			setupCGroupInput,
+			username,
+		)
+		err := task.GetTaskManager().Submit(ctx, taskID, setupCgroupHandler)
+		if err != nil {
+			util.FileLogger().
+				Errorf(ctx, "Error in running setup cGroup - %s", err.Error())
+			return res, status.Error(codes.Internal, err.Error())
+		}
+		res.TaskId = taskID
+		return res, nil
+	}
+	destroyServerInput := req.GetDestroyServerInput()
+	if destroyServerInput != nil {
+		destroyServerHandler := task.NewDestroyServerHandler(
+			destroyServerInput,
+			username,
+		)
+		err := task.GetTaskManager().Submit(ctx, taskID, destroyServerHandler)
+		if err != nil {
+			util.FileLogger().
+				Errorf(ctx, "Error in running destroy server - %s", err.Error())
 			return res, status.Error(codes.Internal, err.Error())
 		}
 		res.TaskId = taskID
@@ -458,6 +538,8 @@ func (server *RPCServer) UploadFile(stream pb.NodeAgent_UploadFileServer) error 
 	if !userDetail.IsCurrent {
 		err = file.Chown(int(userDetail.UserID), int(userDetail.GroupID))
 		if err != nil {
+			util.FileLogger().
+				Errorf(ctx, "Error in changing file owner %s - %s", filename, err.Error())
 			return status.Error(codes.Internal, err.Error())
 		}
 	}
@@ -529,13 +611,13 @@ func (server *RPCServer) DownloadFile(
 		}
 		if err != nil {
 			util.FileLogger().Errorf(ctx, "Error in reading file %s - %s", filename, err.Error())
-			return status.Errorf(codes.Internal, err.Error())
+			return status.Error(codes.Internal, err.Error())
 		}
 		res.ChunkData = res.ChunkData[:n]
 		err = stream.Send(res)
 		if err != nil {
 			util.FileLogger().Errorf(ctx, "Error in sending file %s - %s", filename, err.Error())
-			return status.Errorf(codes.Internal, err.Error())
+			return status.Error(codes.Internal, err.Error())
 		}
 	}
 	return nil

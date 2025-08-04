@@ -20,6 +20,7 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/secure_stream.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/file_util.h"
 #include "yb/util/env_util.h"
 #include "yb/util/string_util.h"
@@ -294,10 +295,14 @@ class ExternalMiniClusterSecureWithInterCATest : public ExternalMiniClusterSecur
         "-p", cluster_->ysql_hostport(0).port(),
         sslparam, "-c", "select now();"
     );
-    LOG(INFO) << "Running " << ToString(ysqlsh_command);
-    Subprocess proc(ysqlsh_command[0], ysqlsh_command);
-    proc.SetEnv("PGPASSWORD", "yugabyte");
-    ASSERT_OK(proc.Run());
+    ASSERT_OK(WaitFor([&ysqlsh_command] {
+      LOG(INFO) << "Running " << ToString(ysqlsh_command);
+      Subprocess proc(ysqlsh_command[0], ysqlsh_command);
+      proc.SetEnv("PGPASSWORD", "yugabyte");
+      auto status = proc.Run();
+      WARN_NOT_OK(status, "Failed executing ysqlsh");
+      return status.ok();
+    }, 10s * kTimeMultiplier, "Connected to ysqlsh"));
   }
 };
 

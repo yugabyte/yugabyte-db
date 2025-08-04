@@ -13,7 +13,7 @@ type: indexpage
 showRightNav: true
 ---
 
-YugabyteDB's [YCQL API](../../api/ycql/) has its roots in the [Cassandra Query Language (CQL)](http://cassandra.apache.org/doc/latest/cql/index.html) and runs on top of YugabyteDB's distributed storage layer called DocDB. This architecture allows YCQL to support most Cassandra features, such as data types, queries, expressions, operators, and so on, and at the same provide seamless scalability and resilience.
+YugabyteDB's [YCQL API](../../api/ycql/) has its roots in the [Cassandra Query Language (CQL)](https://cassandra.apache.org/doc/latest/cassandra/developing/cql/index.html) and runs on top of YugabyteDB's distributed storage layer called DocDB. This architecture allows YCQL to support most Cassandra features, such as data types, queries, expressions, operators, and so on, and at the same provide seamless scalability and resilience.
 
 {{< tip title="Tip" >}}
 A large portion of the documentation and examples written for Cassandra would work against YCQL.
@@ -25,7 +25,7 @@ The following table lists the most important YCQL features which you would find 
 
 | YCQL Feature | Description |
 | :----------- | :---------- |
-| [Data definition](../../api/ycql/#ddl-statements) | YCQL shell with `ycqlsh`, keysapces, tables, indexes, and types |
+| [Data definition](../../api/ycql/#ddl-statements) | YCQL shell with ycqlsh, keysapces, tables, indexes, and types |
 | [Data Types](../../api/ycql/#data-types) | String, numeric, frozen types, UUID, JSONB ... |
 | [Data Manipulation](../../api/ycql/#dml-statements) | `SELECT`, `INSERT`, `UPDATE`, `DELETE` ... |
 | [Expressions](../../api/ycql/#expressions) | Simple Values, Function calls, Subscript ... |

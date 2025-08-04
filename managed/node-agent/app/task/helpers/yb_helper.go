@@ -3,10 +3,12 @@
 package helpers
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 )
 
@@ -14,6 +16,15 @@ import (
 type Release struct {
 	Version string
 	Name    string
+}
+
+// OSInfo represents parsed OS release info
+type OSInfo struct {
+	ID      string // e.g., "ubuntu"
+	Family  string // e.g., "debian"
+	Pretty  string // e.g., "Ubuntu 22.04.4 LTS"
+	Arch    string // e.g., "x86_64"
+	Version string // e.g., "22"
 }
 
 var releaseFormat = regexp.MustCompile(`yugabyte[-_]([\d]+\.[\d]+\.[\d]+\.[\d]+-[a-z0-9]+)`)
@@ -65,4 +76,46 @@ func ListDirectoryContent(dirPath string) ([]string, error) {
 		names[i] = entry.Name()
 	}
 	return names, nil
+}
+
+// GetOSInfo parses /etc/os-release and returns OS info
+func GetOSInfo() (*OSInfo, error) {
+	file, err := os.Open("/etc/os-release")
+	if err != nil {
+		return nil, fmt.Errorf("failed to open /etc/os-release: %w", err)
+	}
+	defer file.Close()
+
+	info := &OSInfo{}
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		// Remove quotes from values
+		if keyVal := strings.SplitN(line, "=", 2); len(keyVal) == 2 {
+			key := keyVal[0]
+			val := strings.Trim(keyVal[1], `"`)
+			switch key {
+			case "ID":
+				info.ID = strings.ToLower(val)
+			case "ID_LIKE":
+				info.Family = strings.ToLower(val)
+			case "PRETTY_NAME":
+				info.Pretty = val
+			case "VERSION_ID":
+				if parts := strings.SplitN(val, ".", 2); len(parts) > 0 {
+					info.Version = parts[0]
+				}
+			}
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("error reading /etc/os-release: %w", err)
+	}
+	info.Arch = runtime.GOARCH
+	return info, nil
+}
+
+func IsRhel9(osInfo *OSInfo) bool {
+	return (strings.Contains(osInfo.Family, "rhel") || strings.Contains(osInfo.ID, "rhel")) &&
+		osInfo.Version == "9"
 }

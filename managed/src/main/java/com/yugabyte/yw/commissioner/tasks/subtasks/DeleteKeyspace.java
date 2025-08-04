@@ -59,7 +59,6 @@ public class DeleteKeyspace extends UniverseTaskBase {
     TableType tableType = taskParams().backupType;
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     final String keyspaceName = taskParams().getKeyspace();
-    YBClient client = null;
     final String masterAddresses = universe.getMasterAddresses();
     if (tableType == TableType.PGSQL_TABLE_TYPE) {
       try {
@@ -80,7 +79,6 @@ public class DeleteKeyspace extends UniverseTaskBase {
         throw new RuntimeException(exMsg);
       }
     } else if (tableType == TableType.YQL_TABLE_TYPE) {
-      String certificate = universe.getCertificateNodetoNode();
 
       if (masterAddresses.isEmpty()) {
         throw new PlatformServiceException(SERVICE_UNAVAILABLE, MASTERS_UNAVAILABLE_ERR_MSG);
@@ -89,9 +87,7 @@ public class DeleteKeyspace extends UniverseTaskBase {
           "Preparing to make a call on {} to delete keyspace {} if it exists",
           masterAddresses,
           keyspaceName);
-      try {
-        client = ybService.getClient(masterAddresses, certificate);
-
+      try (YBClient client = ybService.getUniverseClient(universe)) {
         // Get all tables in the keyspace name.
         ListTablesResponse response = client.getTablesList(null, false, keyspaceName);
         // Filter by table type YCQL.
@@ -104,11 +100,10 @@ public class DeleteKeyspace extends UniverseTaskBase {
         }
 
         // Delete YCQL tables in the keyspace.
-        YBClient finalClient = client;
         ycqlTableList.forEach(
             tableName -> {
               try {
-                finalClient.deleteTable(keyspaceName, tableName);
+                client.deleteTable(keyspaceName, tableName);
                 log.info(
                     "Dropped table {} from keyspace {}",
                     CommonUtils.logTableName(tableName),
@@ -125,8 +120,6 @@ public class DeleteKeyspace extends UniverseTaskBase {
         String msg = "Error " + e.getMessage() + " while deleting keyspace " + keyspaceName;
         log.error(msg, e);
         throw new RuntimeException(msg);
-      } finally {
-        ybService.closeClient(client, masterAddresses);
       }
     } else {
       String errMsg =

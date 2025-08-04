@@ -125,8 +125,8 @@ class PackedRowData {
     return !key_.empty();
   }
 
-  bool active_coprefix_dropped() const {
-    return active_coprefix_dropped_;
+  bool active_coprefix_missing_schema() const {
+    return active_coprefix_missing_schema_;
   }
 
   bool can_start_packing() const {
@@ -155,6 +155,12 @@ class PackedRowData {
 
   // Handle packed row that was forwarded to underlying feed w/o changes.
   Status ProcessForwardedPackedRow(Slice value) {
+    if (active_coprefix_missing_schema_) {
+      // This row does not have a matching schema, so don't update the schema versions.
+      // Either this is a record for a table that has been dropped, or it is for an xCluster
+      // automatic mode target colocated table that is upcoming.
+      return Status::OK();
+    }
     return UsedSchemaVersion(VERIFY_RESULT(ParseValueHeader(&value)).second);
   }
 
@@ -179,8 +185,11 @@ class PackedRowData {
     old_value_slice_ = old_value_.AsSlice().WithoutPrefix(control_fields_size);
     std::tie(old_packing_.packed_row_version, old_schema_version_) = VERIFY_RESULT(ParseValueHeader(
         &old_value_slice_));
-    if (old_schema_version_ != new_packing_.schema_version) {
+    if (old_schema_version_ < new_packing_.schema_version) {
       return StartRepacking();
+    }
+    if (old_schema_version_ > new_packing_.schema_version) {
+      RETURN_NOT_OK(UsedSchemaVersion(old_schema_version_));
     }
     packing_started_ = false;
     return Status::OK();
@@ -339,8 +348,7 @@ class PackedRowData {
   void InitPackerHelper() {
     packer_.emplace(
         std::in_place_type_t<Packer>(), new_packing_.schema_version, *new_packing_.schema_packing,
-        new_packing_.pack_limit(), old_value_.AsSlice().Prefix(control_fields_size_),
-        *new_packing_.schema);
+        new_packing_.pack_limit(), old_value_.AsSlice().Prefix(control_fields_size_));
   }
 
   Status Flush() {
@@ -380,8 +388,7 @@ class PackedRowData {
           decoder.GetPackedIndex(column_id) == dockv::SchemaPacking::kSkippedColumnIdx) {
         VLOG(4) << "Packing missing value for column " << column_id;
         const auto& missing_value = VERIFY_RESULT_REF(
-           dockv::PackerBase(&*packer_).missing_value_provider().GetMissingValueByColumnId(
-           column_id));
+            dockv::PackerBase(&*packer_).NextColumnData()).missing_value;
         return CheckPackOldValueResult(
             column_id, std::visit([column_id, missing_value](auto& packer) {
           return packer.AddValue(column_id, missing_value, kUnlimitedTail);
@@ -450,13 +457,13 @@ class PackedRowData {
     if (!packing.ok()) {
       if (packing.status().IsNotFound()) {
         active_coprefix_ = coprefix;
-        active_coprefix_dropped_ = true;
+        active_coprefix_missing_schema_ = true;
         return Status::OK();
       }
       return packing.status();
     }
     active_coprefix_ = coprefix;
-    active_coprefix_dropped_ = false;
+    active_coprefix_missing_schema_ = false;
     new_packing_ = *packing;
     used_schema_versions_it_ = used_schema_versions_.find(new_packing_.cotable_id);
     return Status::OK();
@@ -508,8 +515,8 @@ class PackedRowData {
   // So we will trigger table change on the first record.
   ByteBuffer<1 + kUuidSize> active_coprefix_{"FAKE_PREFIX"s};
 
-  // True if the active coprefix is for a dropped table.
-  bool active_coprefix_dropped_ = false;
+  // True if the active coprefix is for a table that does not exist.
+  bool active_coprefix_missing_schema_ = false;
 
   CompactionSchemaInfo new_packing_;
   std::optional<dockv::RowPackerVariant> packer_;
@@ -831,10 +838,6 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   RETURN_NOT_OK(dockv::SubDocKey::DecodeDocKeyAndSubKeyEnds(key, &sub_key_ends_));
   RETURN_NOT_OK(packed_row_.UpdateCoprefix(key.Prefix(sub_key_ends_[0])));
 
-  if (packed_row_.active_coprefix_dropped()) {
-    return Status::OK();
-  }
-
   bool key_contains_cotable_prefix = false;
   if (key[0] == dockv::KeyEntryTypeAsChar::kTableId) {
     VLOG(4) << "Key " << key.ToDebugHexString() << " contains cotable prefix";
@@ -949,6 +952,13 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
       RETURN_NOT_OK(packed_row_.ProcessForwardedPackedRow(value_slice));
     }
     return ForwardToNextFeed(internal_key, value);
+  }
+
+  // Only drop row with missing schema if the row is outside the history cutoff.
+  // This is used for xCluster DDL replication to handle upcoming colocated tables that have not yet
+  // been created on the target side.
+  if (packed_row_.active_coprefix_missing_schema()) {
+    return Status::OK();
   }
 
   Slice value_slice = value;

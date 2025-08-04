@@ -47,6 +47,8 @@ import "yb/tablet/operations.proto";
 import "yb/tserver/tserver.proto";
 
 service CDCService {
+  option (yb.rpc.service_send_metadata) = true;
+
   rpc CreateCDCStream (CreateCDCStreamRequestPB) returns (CreateCDCStreamResponsePB);
   rpc DeleteCDCStream (DeleteCDCStreamRequestPB) returns (DeleteCDCStreamResponsePB);
   rpc ListTablets (ListTabletsRequestPB) returns (ListTabletsResponsePB);
@@ -172,6 +174,7 @@ message InitVirtualWALForCDCRequestPB {
   // Tablets with start hash range falling in these slot's hash range will be polled.
   optional ReplicationSlotHashRangePB slot_hash_range = 4;
   optional uint64 active_pid = 5;
+  reserved 6; // ASH metadata is now passed in RequestHeader PB
 }
 
 message InitVirtualWALForCDCResponsePB {
@@ -180,6 +183,7 @@ message InitVirtualWALForCDCResponsePB {
 
 message GetLagMetricsRequestPB {
   optional bytes stream_id = 1;
+  reserved 2; // ASH metadata is now passed in RequestHeader PB
 }
 
 message GetLagMetricsResponsePB {
@@ -190,6 +194,7 @@ message GetLagMetricsResponsePB {
 message GetConsistentChangesRequestPB {
   optional uint64 session_id = 1;
   optional bytes stream_id = 2;
+  reserved 3; // ASH metadata is now passed in RequestHeader PB
 }
 
 message GetConsistentChangesResponsePB {
@@ -207,6 +212,7 @@ message GetConsistentChangesResponsePB {
 
 message DestroyVirtualWALForCDCRequestPB {
   optional uint64 session_id = 1;
+  reserved 2; // ASH metadata is now passed in RequestHeader PB
 }
 
 message DestroyVirtualWALForCDCResponsePB {
@@ -221,6 +227,7 @@ message UpdateAndPersistLSNRequestPB {
   // The actual value which is persisted might differ from this value
   // and is returned in the response of this RPC.
   optional uint64 restart_lsn = 4;
+  reserved 5; // ASH metadata is now passed in RequestHeader PB
 }
 
 message UpdateAndPersistLSNResponsePB {
@@ -232,6 +239,7 @@ message UpdatePublicationTableListRequestPB {
   optional uint64 session_id = 1;
   optional bytes stream_id = 2;
   repeated string table_id = 3;
+  reserved 4; // ASH metadata is now passed in RequestHeader PB
 }
 
 message UpdatePublicationTableListResponsePB {
@@ -400,6 +408,11 @@ message CDCRecordPB {
   // For intents, what subtransaction, if any, they are part of.
   // Omitted in cases where the subtransaction ID is kMinSubTransactionId.
   optional uint32 subtransaction_id = 12;
+
+  // If transaction_state.status is APPLYING, then encoded_start_key and encoded_end_key will be
+  // populated with the tablets encoded partition key range.
+  optional bytes encoded_start_key = 13;
+  optional bytes encoded_end_key = 14;
 }
 
 // CDCSDK: Column information used in case of DDL, as part of schema info

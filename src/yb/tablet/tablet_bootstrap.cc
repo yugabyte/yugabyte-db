@@ -555,7 +555,7 @@ class TabletBootstrap {
 
     if (FLAGS_TEST_dump_docdb_before_tablet_bootstrap) {
       LOG_WITH_PREFIX(INFO) << "DEBUG: DocDB dump before tablet bootstrap:";
-      tablet_->TEST_DocDBDumpToLog(IncludeIntents::kTrue);
+      tablet_->TEST_DocDBDumpToLog(docdb::IncludeIntents::kTrue);
     }
 
     const auto needs_recovery = VERIFY_RESULT(PrepareToReplay());
@@ -630,7 +630,7 @@ class TabletBootstrap {
     listener_->StatusMessage(message);
     if (FLAGS_TEST_dump_docdb_after_tablet_bootstrap) {
       LOG_WITH_PREFIX(INFO) << "DEBUG: DocDB debug dump after tablet bootstrap:\n";
-      tablet_->TEST_DocDBDumpToLog(IncludeIntents::kTrue);
+      tablet_->TEST_DocDBDumpToLog(docdb::IncludeIntents::kTrue);
     }
 
     *rebuilt_tablet = std::move(tablet_);

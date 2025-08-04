@@ -8,56 +8,58 @@
  */
 
 import { ReactElement } from 'react';
-import {
-  YBInputFieldProps,
-  yba,
-  mui,
-  YBToggleField,
-  YBPasswordField
-} from '@yugabyte-ui-library/core';
+import { mui, YBToggleField, YBPasswordField, YBTooltip } from '@yugabyte-ui-library/core';
+import { useTranslation } from 'react-i18next';
 import { useFormContext, useWatch } from 'react-hook-form';
 import { DatabaseSettingsProps } from '../../steps/database-settings/dtos';
+import { YCQL_FIELD } from '../ycql-settings/YCQLSettingsField';
+import { FieldContainer } from '../../components/DefaultComponents';
 
-const { Box, Typography } = mui;
+const { Box } = mui;
 
 import { ReactComponent as NextLineIcon } from '../../../../assets/next-line.svg';
 
 interface YSQLProps {
   disabled?: boolean;
 }
+//need to integrate enforceAuth runtime flag
 
 export const YSQL_FIELD = 'ysql.enable';
 const YSQL_AUTH_FIELD = 'ysql.enable_auth';
 const YSQL_PASSWORD_FIELD = 'ysql.password';
-const YSQL_CONFIRM_PWD = 'ysql_confirm_password';
+const YSQL_CONFIRM_PWD = 'ysql.confirm_pwd';
 
-export const YSQLField = ({ disabled }: YSQLProps): ReactElement => {
+export const YSQLField = (): ReactElement => {
   const { control } = useFormContext<DatabaseSettingsProps>();
+  const { t } = useTranslation('translation', {
+    keyPrefix: 'createUniverseV2.databaseSettings'
+  });
 
   //watchers
   const ysqlEnabled = useWatch({ name: YSQL_FIELD });
   const ysqlAuthEnabled = useWatch({ name: YSQL_AUTH_FIELD });
-  const ysqlPassword = useWatch({ name: YSQL_PASSWORD_FIELD });
+  const ycqlEnabled = useWatch({ name: YCQL_FIELD });
 
   return (
-    <Box
-      sx={{
-        display: 'flex',
-        flexDirection: 'column',
-        width: '548px',
-        height: 'auto',
-        bgcolor: '#FBFCFD',
-        border: '1px solid #D7DEE4',
-        borderRadius: '8px'
-      }}
-    >
+    <FieldContainer>
       <Box
         sx={{ display: 'flex', flexDirection: 'row', padding: '16px 24px', alignItems: 'center' }}
       >
         <Box sx={{ marginBottom: '-5px', mr: 1 }}>
-          <YBToggleField name={YSQL_FIELD} control={control} />
+          <YBTooltip
+            title={!ycqlEnabled && !ysqlEnabled ? (t('enableYsqlOrYcql') as string) : ''}
+            placement="top-start"
+          >
+            <div>
+              <YBToggleField
+                name={YSQL_FIELD}
+                control={control}
+                label={t('ysqlSettings.toggleLabel')}
+                dataTestId="ysql-settings-field"
+              />
+            </div>
+          </YBTooltip>
         </Box>
-        <Typography variant="body2">Enable YSQL End Point</Typography>
       </Box>
       {ysqlEnabled && (
         <Box
@@ -71,30 +73,36 @@ export const YSQLField = ({ disabled }: YSQLProps): ReactElement => {
           <Box sx={{ display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
             <NextLineIcon />
             <Box sx={{ marginBottom: '-5px', mr: 1, ml: 2 }}>
-              <YBToggleField name={YSQL_AUTH_FIELD} control={control} />
+              <YBToggleField
+                name={YSQL_AUTH_FIELD}
+                control={control}
+                label={t('ysqlSettings.authToggleLabel')}
+                dataTestId="ysql-settings-auth-field"
+              />
             </Box>
-            <Typography variant="body2">Enable YSQL Authentication</Typography>
           </Box>
           {ysqlAuthEnabled && (
             <Box sx={{ display: 'flex', flexDirection: 'column', mt: 4, pl: 5 }}>
               <YBPasswordField
                 name={YSQL_PASSWORD_FIELD}
                 control={control}
-                placeholder="YSQL Auth Password"
-                label="YSQL Auth Password"
+                placeholder={t('ysqlSettings.authPwd')}
+                label={t('ysqlSettings.authPwd')}
+                dataTestId="ysql-settings-auth-pwd-field"
               />
               <Box sx={{ display: 'flex', flexDirection: 'column', mt: 3, width: '100%' }}>
                 <YBPasswordField
                   name={YSQL_CONFIRM_PWD}
                   control={control}
-                  placeholder="Confirm YSQL Auth Password"
-                  label="Confirm Password"
+                  placeholder={t('ysqlSettings.authConfirmPwd')}
+                  label={t('ysqlSettings.authConfirmPwd')}
+                  dataTestId="ysql-settings-auth-confirm-pwd-field"
                 />
               </Box>
             </Box>
           )}
         </Box>
       )}
-    </Box>
+    </FieldContainer>
   );
 };

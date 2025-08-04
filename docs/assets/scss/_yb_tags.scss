@@ -20,7 +20,6 @@
     position: relative;
     top: -2px;
 
-
     &.early-access {
       background: #E8E9FE;
       color: #4F4FA4;
@@ -36,6 +35,28 @@
       color: #097345;
     }
 
+    &.restart-needed {
+      background: #E8E9FE;
+      color: #4F4FA4;
+    }
+
+    &.t-server {
+      background: #E5EDFF;
+      color: #2B59C3;
+
+      &::before {
+        content: "";
+        background: url(/icons/t-server.svg) center no-repeat;
+        width: 18px;
+        height: 18px;
+        margin-right: 4px;
+      }
+    }
+
+    &.deprecated {
+      background: #FEEDED;
+      color: #DA1515;
+    }
 
     &.ysql {
       background: #CBCCFB;
@@ -49,6 +70,80 @@
 
     &:hover {
       text-decoration: none !important;
+
+      .popup-details {
+        opacity: 1;
+        visibility: visible;
+      }
+    }
+
+    .popup-details {
+      border-radius: 8px;
+      border: 1px solid #E9EDF0;
+      padding: 10px;
+      background: #FFF;
+      box-shadow: 0 0 8px 0 rgba(0, 0, 0, 0.1);
+      color: #4E5F6D;
+      width: 165px;
+      font-size: 11.5px;
+      font-style: normal;
+      font-weight: 400;
+      line-height: 16px;
+      position: absolute;
+      top: 0;
+      left: calc(100% + 10px);
+      opacity: 0;
+      visibility: hidden;
+      transition: visibility, opacity 0.3s ease-in-out;
+      transform: translate(0, calc(-50% + 10px));
+      transform-origin: center;
+      white-space: normal;
+      text-transform: none;
+      z-index: 2;
+
+      @media(max-width: 991px) {
+        min-width: 150px;
+        width: calc(100% + 10px);
+        top: calc(100% + 5px);
+        left: -5px;
+        transform: translate(0, 0);
+        transform-origin: center;
+      }
+
+      &::before {
+        position: absolute;
+        left: -13px;
+        content: "";
+        display: inline-block;
+        width: 20px;
+        background: transparent;
+        height: 100%;
+        top: 0;
+        z-index: -40;
+        @media(max-width: 991px) {
+          left: -10px;
+          top: -10px;
+          width: 100%;
+        }
+      }
+    }
+  }
+
+  .tags-row {
+    margin-bottom: 16px;
+    display: flex;
+    flex-flow: wrap;
+    gap: 6px;
+    align-items: center;
+    position: relative;
+    z-index: 2;
+
+    p {
+      margin: 0;
+    }
+
+    .tag {
+      top: 0;
     }
   }
 }
@@ -94,7 +189,7 @@
     border: 1px solid #E9EDF0;
     padding: 10px;
     background: #FFF;
-    box-shadow: 0px 0px 8px 0px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 0 8px 0 rgba(0, 0, 0, 0.1);
     color: #4E5F6D;
     width: 165px;
     font-size: 11.5px;
@@ -102,7 +197,7 @@
     font-weight: 400;
     line-height: 16px;
     position: absolute;
-    top: 0px;
+    top: 0;
     left: calc(100% + 10px);
     opacity: 0;
     visibility: hidden;
@@ -112,7 +207,7 @@
     white-space: normal;
     text-transform: none;
 
-    &:before {
+    &::before {
       position: absolute;
       left: -13px;
       content: "";

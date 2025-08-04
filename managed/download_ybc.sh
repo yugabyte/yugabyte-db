@@ -57,7 +57,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 ybc_version=$(
-  grep ybc -A2 ${config_file} |  awk -F '= ' '/stable_version/ {print $2}' | tr -d \"
+  awk -F '= ' '/stable_version/ {print $2}' ${config_file} | tr -d \"
 )
 
 # Use http, so aws s3 command/credential setup is not required.

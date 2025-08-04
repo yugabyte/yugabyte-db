@@ -1282,6 +1282,9 @@ public class AlertController extends AuthenticatedController {
     if (alertTemplateDescription.getLabels().containsKey(AFFECTED_BACKUP_LOCATIONS)) {
       alert.setLabel(AFFECTED_BACKUP_LOCATIONS, "s3://bucket/backup_dir");
     }
+    if (AlertTemplate.ENCRYPTION_AT_REST_CONFIG_EXPIRY.equals(configuration.getTemplate())) {
+      alert.setLabel(KnownAlertLabels.KMS_CONFIG_NAME, "test_kms_config");
+    }
     alert.setMessage(
         buildTestAlertMessage(alertTemplateDescription, configuration, alert, testAlertPrefix));
     return alert;

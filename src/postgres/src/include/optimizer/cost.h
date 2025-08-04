@@ -44,15 +44,7 @@
 /* LSM Lookup costs */
 #define YB_DEFAULT_DOCDB_NEXT_CPU_CYCLES 5
 #define YB_DEFAULT_SEEK_COST_FACTOR 0.4
-#define YB_DEFAULT_BACKWARD_SEEK_COST_FACTOR 1
-/*
- * YB: The value for the fast backward scan seek cost factor has been selected
- * based on the smallest improvement (2.8 times) for the backward scan related
- * Order By workloads of Featurebench. It might be good to use a different
- * factor for colocated case, where the smallest improvement is 3 times higher
- * comparing to non-colocated case; refer to D35894 for the details.
- */
-#define YB_DEFAULT_FAST_BACKWARD_SEEK_COST_FACTOR (YB_DEFAULT_BACKWARD_SEEK_COST_FACTOR / 3.0)
+
 /* YB: DocDB row decode and process cost */
 #define YB_DEFAULT_DOCDB_MERGE_CPU_CYCLES 5
 /* YB: DocDB storage filter cost */
@@ -87,6 +79,15 @@ typedef enum
 	CONSTRAINT_EXCLUSION_ON,	/* apply c_e to all rels */
 	CONSTRAINT_EXCLUSION_PARTITION	/* apply c_e to otherrels only */
 }			ConstraintExclusionType;
+
+/* possible values for yb_enable_cbo */
+typedef enum
+{
+	YB_COST_MODEL_LEGACY = -2,
+	YB_COST_MODEL_LEGACY_STATS = -1,
+	YB_COST_MODEL_OFF = 0,
+	YB_COST_MODEL_ON,
+} YbCostModel;
 
 
 /*
@@ -139,12 +140,15 @@ extern PGDLLIMPORT double yb_local_transfer_cost;
 extern PGDLLIMPORT double yb_seek_cost_factor;
 extern PGDLLIMPORT bool yb_enable_bitmapscan;
 extern PGDLLIMPORT bool yb_enable_geolocation_costing;
+
 /*
  * YB: If true, we will always prefer batched nested loop join plans over
  * nested loop join plans.
  */
 extern PGDLLIMPORT bool yb_enable_batchednl;
 extern PGDLLIMPORT bool yb_enable_parallel_append;
+extern PGDLLIMPORT YbCostModel yb_enable_cbo;
+extern PGDLLIMPORT bool yb_ignore_stats;
 
 extern double index_pages_fetched(double tuples_fetched, BlockNumber pages,
 								  double index_pages, PlannerInfo *root);

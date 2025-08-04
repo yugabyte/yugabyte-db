@@ -146,7 +146,7 @@ void Acceptor::Shutdown() {
 void Acceptor::IoHandler(ev::io& io, int events) {
   auto it = sockets_.find(&io);
   if (it == sockets_.end()) {
-    LOG(ERROR) << "IoHandler for unknown socket: " << &io;
+    LOG(DFATAL) << "IoHandler for unknown socket: " << &io;
     return;
   }
   Socket& socket = it->second.socket;

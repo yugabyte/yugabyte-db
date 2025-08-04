@@ -42,6 +42,7 @@
 
 /* YB includes */
 #include "catalog/pg_class_d.h"
+#include "catalog/pg_database.h"
 #include "catalog/pg_yb_tablegroup_d.h"
 
 #define TEXT_DUMP_HEADER "--\n-- YSQL database dump\n--\n\n"
@@ -153,17 +154,43 @@ static void inhibit_data_for_failed_table(ArchiveHandle *AH, TocEntry *te);
 
 static void StrictNamesCheck(RestoreOptions *ropt);
 
+/* YB variables */
+static bool IsYugabyteEnabled = true;
+
 /*
- * Set the yb_disable_auto_analyze GUC on the database to disable auto analyze. For backwards
- * compatiblity, check for the presence of the GUC before setting it.
+ * Add the set GUC command to the archive handler in a backward compatible manner.
+ * Checks for the presence of the GUC before setting it.Example of usage:
+ * YbBackwardCompatibleSetGuc(AH, "yb_ignore_relfilenode_ids", "off", false);
  */
-static const char *yb_disable_auto_analyze_cmd =
-		"DO $$\n"
-		"BEGIN\n"
-		"IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN\n"
-		"EXECUTE format('ALTER DATABASE %%I SET yb_disable_auto_analyze TO %s', current_database());\n"
-		"END IF;\n"
-		"END $$;\n";
+void
+YbBackwardCompatibleSetGuc(ArchiveHandle *AH,
+						   const char *guc_name,
+						   const char *value,
+						   bool db_scoped)
+{
+	char	   *set_guc_command;
+
+	if (db_scoped)
+	{
+		set_guc_command = psprintf("format('ALTER DATABASE %%I SET %s TO %s', "
+								   "current_database())",
+								   guc_name, value);
+	}
+	else
+	{
+		set_guc_command = psprintf("'SET %s TO %s'", guc_name, value);
+	}
+	char	   *cmd = psprintf("DO $$\n"
+							   "BEGIN\n"
+							   "  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = '%s') THEN\n"
+							   "    EXECUTE %s;\n"
+							   "  END IF;\n"
+							   "END $$;\n", guc_name, set_guc_command);
+
+	ahprintf(AH, "%s", cmd);
+	free(set_guc_command);
+	free(cmd);
+}
 
 /*
  * Allocate a new DumpOptions block containing all default values.
@@ -756,7 +783,7 @@ RestoreArchive(Archive *AHX)
 	if (AH->public.dopt->include_yb_metadata && !AH->public.ropt->createDB)
 	{
 		ahprintf(AH, "-- YB: re-enable auto analyze after all catalog changes\n");
-		ahprintf(AH, yb_disable_auto_analyze_cmd, "off");
+		YbBackwardCompatibleSetGuc(AH, "yb_disable_auto_analyze", "off", true);
 		ahprintf(AH, "\n");
 	}
 
@@ -3267,7 +3294,7 @@ _doSetFixedOutputState(ArchiveHandle *AH)
 	{
 		ahprintf(AH, "SET yb_binary_restore = true;\n");
 		ahprintf(AH, "SET yb_ignore_pg_class_oids = false;\n");
-		ahprintf(AH, "SET yb_ignore_relfilenode_ids = false;\n");
+		YbBackwardCompatibleSetGuc(AH, "yb_ignore_relfilenode_ids", "false", false);
 		ahprintf(AH, "SET yb_non_ddl_txn_for_sys_tables_allowed = true;\n");
 	}
 	ahprintf(AH, "SET statement_timeout = 0;\n");
@@ -3325,18 +3352,19 @@ _doSetFixedOutputState(ArchiveHandle *AH)
 				 "\\set use_roles true\n"
 				 "\\endif\n");
 
-		/* If the --create option is specified, the target database will be created and connected to.
-		 * The current connection is to another database and we don't want to disable auto analyze on
-		 * that.
+		/*
+		 * If the --create option is specified, the target database will be
+		 * created and connected to. The current connection is to another
+		 * database and we don't want to disable auto analyze on that.
 		 *
-		 * TODO: If --create is specified, disable auto analyze after the target database is created
-		 * and we connect to it.
+		 * TODO: If --create is specified, disable auto analyze after the
+		 * target database is created and we connect to it.
 		 */
 		if (!AH->public.ropt->createDB)
 		{
 			ahprintf(AH,
-				"\n-- YB: disable auto analyze to avoid conflicts with catalog changes\n");
-			ahprintf(AH, yb_disable_auto_analyze_cmd, "on");
+					 "\n-- YB: disable auto analyze to avoid conflicts with catalog changes\n");
+			YbBackwardCompatibleSetGuc(AH, "yb_disable_auto_analyze", "on", true);
 		}
 	}
 
@@ -3802,10 +3830,9 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, const char *pfx)
 	 * "public" that is a comment.  We have to do this when --no-owner mode is
 	 * selected.  This is ugly, but I see no other good way ...
 	 *
-	 * Entries with a defnDumper need to call it to generate the
-	 * definition.  This is primarily intended to provide a way to save memory
-	 * for objects that would otherwise need a lot of it (e.g., statistics
-	 * data).
+	 * Entries with a defnDumper need to call it to generate the definition.
+	 * This is primarily intended to provide a way to save memory for objects
+	 * that would otherwise need a lot of it (e.g., statistics data).
 	 */
 	if (ropt->noOwner &&
 		strcmp(te->desc, "SCHEMA") == 0 && strncmp(te->defn, "--", 2) != 0)
@@ -3870,10 +3897,21 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, const char *pfx)
 			 *
 			 * We do the same for tablegroup creation because CREATE TABLEGROUP
 			 * cannot run inside a transaction block.
+			 *
+			 * We also do the same for the database properties TOC entry,
+			 * because it contains an ALTER DATABASE statement and an UPDATE
+			 * statement that modifies the same rows that the ALTER command
+			 * touched. The quick succession of these two statements can result
+			 * in read-restart errors, as the read time picked for the UPDATE
+			 * may be earlier than the commit time of the ALTER.
+			 * As a work-around, send the commands in separate requests.
+			 * Note: the database properties TOC entry does not have a catalogId
+			 * set, so we use te->desc in the condition below.
 			 */
-			if (AH->currentTE &&
+			if (IsYugabyteEnabled && AH->currentTE &&
 				(AH->currentTE->catalogId.tableoid == RelationRelationId ||
-				 AH->currentTE->catalogId.tableoid == YbTablegroupRelationId) &&
+				 AH->currentTE->catalogId.tableoid == YbTablegroupRelationId ||
+				 strcmp(te->desc, "DATABASE PROPERTIES") == 0) &&
 				AH->outputKind == OUTPUT_SQLCMDS)
 			{
 				ArchiverOutput yb_saved_output_kind = AH->outputKind;
@@ -3955,14 +3993,15 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, const char *pfx)
 				if (AH->public.dopt->yb_dump_role_checks)
 				{
 					PQExpBuffer role_buf = createPQExpBuffer();
+
 					appendStringLiteralAHX(role_buf, te->owner, AH);
 					ahprintf(AH, "SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = %s"
-								 ") AS role_exists \\gset\n"
-								 "\\if :role_exists\n"
-								 "    %s\n"
-								 "\\else\n"
-								 "    \\echo 'Skipping owner privilege due to missing role:' %s\n"
-								 "\\endif\n", role_buf->data, temp->data, fmtId(te->owner));
+							 ") AS role_exists \\gset\n"
+							 "\\if :role_exists\n"
+							 "    %s\n"
+							 "\\else\n"
+							 "    \\echo 'Skipping owner privilege due to missing role:' %s\n"
+							 "\\endif\n", role_buf->data, temp->data, fmtId(te->owner));
 					destroyPQExpBuffer(role_buf);
 				}
 				else

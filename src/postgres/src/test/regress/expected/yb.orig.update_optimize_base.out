@@ -48,10 +48,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v = v + 1 WHERE h 
    ->  Result pkey_only_table (actual rows=1 loops=1)
          Storage Table Write Requests: 1
  Storage Read Requests: 0
+ Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 1
  Storage Flush Requests: 0
-(7 rows)
+(8 rows)
 
 -- Point updates that include the primary key in the targetlist
 -- These queries do not go through the distributed transaction path either
@@ -62,13 +63,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET h = v - 1, v = v +
    ->  Index Scan using pkey_only_table_pkey on pkey_only_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET h = h, v = v + 1 WHERE h = 1;
                                        QUERY PLAN                                       
@@ -77,13 +80,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET h = h, v = v + 1 W
    ->  Index Scan using pkey_only_table_pkey on pkey_only_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET h = 1, v = v + 1 WHERE h = 1;
                                        QUERY PLAN                                       
@@ -92,13 +97,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET h = 1, v = v + 1 W
    ->  Index Scan using pkey_only_table_pkey on pkey_only_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 -- Queries affecting a range of rows
 -- Since the primary key is not specified in its entirety, these use the distributed txns
@@ -109,13 +116,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET h = h, v = v + 1 W
    ->  Seq Scan on pkey_only_table (actual rows=4 loops=1)
          Storage Filter: ((h > 10) AND (h < 15))
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 1024
          Storage Table Write Requests: 4
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 1024
  Storage Write Requests: 4
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET h = v, v = v + 1 WHERE h > 20 AND h < 25;
                         QUERY PLAN                         
@@ -124,13 +133,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET h = v, v = v + 1 W
    ->  Seq Scan on pkey_only_table (actual rows=4 loops=1)
          Storage Filter: ((h > 20) AND (h < 25))
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 1024
          Storage Table Write Requests: 4
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 1024
  Storage Write Requests: 4
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 -- Query that updates the primary key. This should involve multiple flushes
 -- over a distributed transaction.
@@ -141,13 +152,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET h = h + 1024, v = 
    ->  Seq Scan on pkey_only_table (actual rows=4 loops=1)
          Storage Filter: (h < 5)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 1024
          Storage Table Write Requests: 8
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 1024
  Storage Write Requests: 8
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET h = h + 1024, v = v + 1 WHERE h < 2000;
                           QUERY PLAN                          
@@ -156,13 +169,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET h = h + 1024, v = 
    ->  Seq Scan on pkey_only_table (actual rows=1024 loops=1)
          Storage Filter: (h < 2000)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 1024
          Storage Table Write Requests: 2048
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 1024
  Storage Write Requests: 2048
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 DROP TABLE pkey_only_table;
 -- CREATE a table with no primary key, but having a secondary indexes.
@@ -180,15 +195,18 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v3 = v2 + 1 WH
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
          Index Cond: (v1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Index Read Requests: 1
+         Storage Index Read Ops: 1
          Storage Index Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 2
+ Storage Read Ops: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(12 rows)
+(15 rows)
 
 -- This specifically tests the case where there is no overlap between the index
 -- and columns that are potentially modified. The index should be added to a
@@ -200,13 +218,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v2 = v2, v3 = 
    ->  Seq Scan on secindex_only_table (actual rows=1 loops=1)
          Storage Filter: (v2 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 1024
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 1024
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 -- Point updates that include the column referenced by the index in the targetlist.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1, v3 = v3 + 1 WHERE v1 = 1;
@@ -216,15 +236,18 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1, v3 = 
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
          Index Cond: (v1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Index Read Requests: 1
+         Storage Index Read Ops: 1
          Storage Index Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 2
+ Storage Read Ops: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(12 rows)
+(15 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v2, v3 = v3 + 1 WHERE v1 = 1;
                                           QUERY PLAN                                          
@@ -233,15 +256,18 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v2, v3 = 
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
          Index Cond: (v1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Index Read Requests: 1
+         Storage Index Read Ops: 1
          Storage Index Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 2
+ Storage Read Ops: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(12 rows)
+(15 rows)
 
 -- Queries affecting a range of rows
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1, v3 = v3 + 1 WHERE v1 < 5;
@@ -251,13 +277,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1, v3 = 
    ->  Seq Scan on secindex_only_table (actual rows=4 loops=1)
          Storage Filter: (v1 < 5)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 1024
          Storage Table Write Requests: 4
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 1024
  Storage Write Requests: 4
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v2, v3 = v3 + 1 WHERE v1 < 5;
                           QUERY PLAN                           
@@ -266,13 +294,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v2, v3 = 
    ->  Seq Scan on secindex_only_table (actual rows=4 loops=1)
          Storage Filter: (v1 < 5)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 1024
          Storage Table Write Requests: 4
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 1024
  Storage Write Requests: 4
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1, v3 = v3 + 1 WHERE v2 < 5;
                           QUERY PLAN                           
@@ -281,13 +311,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1, v3 = 
    ->  Seq Scan on secindex_only_table (actual rows=4 loops=1)
          Storage Filter: (v2 < 5)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 1024
          Storage Table Write Requests: 4
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 1024
  Storage Write Requests: 4
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 -- Special case where no column is affected. We should still see a flush in order
 -- to acquire necessary row lock on the main table. This is similar to SELECT FOR UPDATEs.
@@ -298,15 +330,18 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1 WHERE 
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
          Index Cond: (v1 = 5)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Index Read Requests: 1
+         Storage Index Read Ops: 1
          Storage Index Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 2
+ Storage Read Ops: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(12 rows)
+(15 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1 WHERE v1 < 5;
                           QUERY PLAN                           
@@ -315,13 +350,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1 WHERE 
    ->  Seq Scan on secindex_only_table (actual rows=4 loops=1)
          Storage Filter: (v1 < 5)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 1024
          Storage Table Write Requests: 4
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 1024
  Storage Write Requests: 4
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 -- Add a second index to the table which is a multi-column index
 CREATE INDEX NONCONCURRENTLY secindex_only_table_v1_v2 ON secindex_only_table (v1, v2);
@@ -333,15 +370,18 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v2 = v2, v3 = 
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
          Index Cond: (v1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Index Read Requests: 1
+         Storage Index Read Ops: 1
          Storage Index Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 2
+ Storage Read Ops: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(12 rows)
+(15 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v2 = v2, v3 = v3 WHERE v2 = 1;
                           QUERY PLAN                           
@@ -350,13 +390,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v2 = v2, v3 = 
    ->  Seq Scan on secindex_only_table (actual rows=1 loops=1)
          Storage Filter: (v2 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 1024
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 1024
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 -- Same as above but queries that actually modify one of the indexes exclusively.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v2 = v2 + 1, v3 = v3 WHERE v1 = 15;
@@ -366,16 +408,19 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v2 = v2 + 1, v
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
          Index Cond: (v1 = 15)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Index Read Requests: 1
+         Storage Index Read Ops: 1
          Storage Index Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 2
+ Storage Read Ops: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(13 rows)
+(16 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v2 = v2 + 1, v3 = v3 WHERE v2 = 16;
                           QUERY PLAN                           
@@ -384,14 +429,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v2 = v2 + 1, v
    ->  Seq Scan on secindex_only_table (actual rows=2 loops=1)
          Storage Filter: (v2 = 16)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 1024
          Storage Table Write Requests: 2
          Storage Index Write Requests: 4
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 1024
  Storage Write Requests: 6
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 -- Queries that cover both indexes.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1, v3 = v3 WHERE v1 = 15;
@@ -401,15 +448,18 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1, v3 = 
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
          Index Cond: (v1 = 15)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Index Read Requests: 1
+         Storage Index Read Ops: 1
          Storage Index Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 2
+ Storage Read Ops: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(12 rows)
+(15 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1, v2 = v2 + 1, v3 = v3 WHERE v1 = 15;
                                           QUERY PLAN                                          
@@ -418,16 +468,19 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1, v2 = 
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
          Index Cond: (v1 = 15)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Index Read Requests: 1
+         Storage Index Read Ops: 1
          Storage Index Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 2
+ Storage Read Ops: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(13 rows)
+(16 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1 + 1, v2 = v2 + 1, v3 = v3 WHERE v1 = 15;
                                           QUERY PLAN                                          
@@ -436,16 +489,19 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1 + 1, v
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
          Index Cond: (v1 = 15)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Index Read Requests: 1
+         Storage Index Read Ops: 1
          Storage Index Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 4
  Storage Read Requests: 2
+ Storage Read Ops: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 5
  Storage Flush Requests: 1
-(13 rows)
+(16 rows)
 
 -- Add a simple trigger to the table.
 CREATE TRIGGER secindex_only_table_no_update BEFORE UPDATE ON secindex_only_table FOR EACH ROW EXECUTE FUNCTION no_update();
@@ -458,16 +514,19 @@ NOTICE:  Trigger "no_update" invoked
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
          Index Cond: (v1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Index Read Requests: 1
+         Storage Index Read Ops: 1
          Storage Index Rows Scanned: 1
          Storage Table Write Requests: 1
  Trigger secindex_only_table_no_update: calls=1
  Storage Read Requests: 2
+ Storage Read Ops: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(13 rows)
+(16 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v2 = v2, v3 = v3 WHERE v2 = 1;
 NOTICE:  Trigger "no_update" invoked
@@ -477,14 +536,16 @@ NOTICE:  Trigger "no_update" invoked
    ->  Seq Scan on secindex_only_table (actual rows=1 loops=1)
          Storage Filter: (v2 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 1024
          Storage Table Write Requests: 1
  Trigger secindex_only_table_no_update: calls=1
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 1024
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v2 = v2 + 1, v3 = v3 WHERE v1 = 25;
 NOTICE:  Trigger "no_update" invoked
@@ -494,17 +555,20 @@ NOTICE:  Trigger "no_update" invoked
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
          Index Cond: (v1 = 25)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Index Read Requests: 1
+         Storage Index Read Ops: 1
          Storage Index Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Trigger secindex_only_table_no_update: calls=1
  Storage Read Requests: 2
+ Storage Read Ops: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(14 rows)
+(17 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1, v2 = v2 + 1, v3 = v3 WHERE v1 = 25;
 NOTICE:  Trigger "no_update" invoked
@@ -514,17 +578,20 @@ NOTICE:  Trigger "no_update" invoked
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
          Index Cond: (v1 = 25)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Index Read Requests: 1
+         Storage Index Read Ops: 1
          Storage Index Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Trigger secindex_only_table_no_update: calls=1
  Storage Read Requests: 2
+ Storage Read Ops: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(14 rows)
+(17 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1 + 1, v2 = v2 + 1, v3 = v3 WHERE v1 = 25;
 NOTICE:  Trigger "no_update" invoked
@@ -534,17 +601,20 @@ NOTICE:  Trigger "no_update" invoked
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
          Index Cond: (v1 = 25)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Index Read Requests: 1
+         Storage Index Read Ops: 1
          Storage Index Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 4
  Trigger secindex_only_table_no_update: calls=1
  Storage Read Requests: 2
+ Storage Read Ops: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 5
  Storage Flush Requests: 1
-(14 rows)
+(17 rows)
 
 -- Add a trigger that modifies v3 (no indexes on it)
 CREATE TRIGGER secindex_only_table_increment_v3 BEFORE UPDATE ON secindex_only_table FOR EACH ROW EXECUTE FUNCTION increment_v3();
@@ -564,17 +634,20 @@ NOTICE:  Trigger "no_update" invoked
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
          Index Cond: (v1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Index Read Requests: 1
+         Storage Index Read Ops: 1
          Storage Index Rows Scanned: 1
          Storage Table Write Requests: 1
  Trigger secindex_only_table_increment_v3: calls=1
  Trigger secindex_only_table_no_update: calls=1
  Storage Read Requests: 2
+ Storage Read Ops: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(14 rows)
+(17 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v2 = v2 + 1, v3 = v3 WHERE v1 = 35;
 NOTICE:  Trigger "no_update" invoked
@@ -584,18 +657,21 @@ NOTICE:  Trigger "no_update" invoked
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
          Index Cond: (v1 = 35)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Index Read Requests: 1
+         Storage Index Read Ops: 1
          Storage Index Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Trigger secindex_only_table_increment_v3: calls=1
  Trigger secindex_only_table_no_update: calls=1
  Storage Read Requests: 2
+ Storage Read Ops: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(15 rows)
+(18 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1, v2 = v2 + 1, v3 = v3 WHERE v1 = 35;
 NOTICE:  Trigger "no_update" invoked
@@ -605,18 +681,21 @@ NOTICE:  Trigger "no_update" invoked
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
          Index Cond: (v1 = 35)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Index Read Requests: 1
+         Storage Index Read Ops: 1
          Storage Index Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Trigger secindex_only_table_increment_v3: calls=1
  Trigger secindex_only_table_no_update: calls=1
  Storage Read Requests: 2
+ Storage Read Ops: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(15 rows)
+(18 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1 + 1, v2 = v2 + 1, v3 = v3 WHERE v1 = 35;
 NOTICE:  Trigger "no_update" invoked
@@ -626,18 +705,21 @@ NOTICE:  Trigger "no_update" invoked
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
          Index Cond: (v1 = 35)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Index Read Requests: 1
+         Storage Index Read Ops: 1
          Storage Index Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 4
  Trigger secindex_only_table_increment_v3: calls=1
  Trigger secindex_only_table_no_update: calls=1
  Storage Read Requests: 2
+ Storage Read Ops: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 5
  Storage Flush Requests: 1
-(15 rows)
+(18 rows)
 
 -- Read the values corresponding to v1 = 1 again to validate that v3 is incremented twice:
 -- once by the query, once by the trigger.
@@ -657,8 +739,10 @@ NOTICE:  Trigger "no_update" invoked
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
          Index Cond: (v1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Index Read Requests: 1
+         Storage Index Read Ops: 1
          Storage Index Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 4
@@ -666,10 +750,11 @@ NOTICE:  Trigger "no_update" invoked
  Trigger secindex_only_table_increment_v3: calls=1
  Trigger secindex_only_table_no_update: calls=1
  Storage Read Requests: 2
+ Storage Read Ops: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 5
  Storage Flush Requests: 1
-(16 rows)
+(19 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v2 = v2, v3 = v3 WHERE v2 = 1;
 NOTICE:  Trigger "no_update" invoked
@@ -679,6 +764,7 @@ NOTICE:  Trigger "no_update" invoked
    ->  Seq Scan on secindex_only_table (actual rows=1 loops=1)
          Storage Filter: (v2 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 1024
          Storage Table Write Requests: 1
          Storage Index Write Requests: 4
@@ -686,10 +772,11 @@ NOTICE:  Trigger "no_update" invoked
  Trigger secindex_only_table_increment_v3: calls=1
  Trigger secindex_only_table_no_update: calls=1
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 1024
  Storage Write Requests: 5
  Storage Flush Requests: 1
-(14 rows)
+(16 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1, v2 = v2 + 1, v3 = v3 WHERE v1 = 45;
 NOTICE:  Trigger "no_update" invoked
@@ -699,8 +786,10 @@ NOTICE:  Trigger "no_update" invoked
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
          Index Cond: (v1 = 45)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Index Read Requests: 1
+         Storage Index Read Ops: 1
          Storage Index Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 4
@@ -708,10 +797,11 @@ NOTICE:  Trigger "no_update" invoked
  Trigger secindex_only_table_increment_v3: calls=1
  Trigger secindex_only_table_no_update: calls=1
  Storage Read Requests: 2
+ Storage Read Ops: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 5
  Storage Flush Requests: 1
-(16 rows)
+(19 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1 + 1, v2 = v2 + 1, v3 = v3 WHERE v1 = 55;
 NOTICE:  Trigger "no_update" invoked
@@ -721,8 +811,10 @@ NOTICE:  Trigger "no_update" invoked
    ->  Index Scan using secindex_only_table_v1 on secindex_only_table (actual rows=1 loops=1)
          Index Cond: (v1 = 55)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Index Read Requests: 1
+         Storage Index Read Ops: 1
          Storage Index Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 4
@@ -730,10 +822,11 @@ NOTICE:  Trigger "no_update" invoked
  Trigger secindex_only_table_increment_v3: calls=1
  Trigger secindex_only_table_no_update: calls=1
  Storage Read Requests: 2
+ Storage Read Ops: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 5
  Storage Flush Requests: 1
-(16 rows)
+(19 rows)
 
 -- Read the values to confirm that there is/are:
 -- No row corresponding to v1 = 45
@@ -772,6 +865,7 @@ NOTICE:  Trigger "no_update" invoked
    ->  Seq Scan on secindex_only_table (actual rows=10 loops=1)
          Storage Filter: ((v1 > 60) AND (v1 <= 70))
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 1024
          Storage Table Write Requests: 10
          Storage Index Write Requests: 40
@@ -780,10 +874,11 @@ NOTICE:  Trigger "no_update" invoked
  Trigger secindex_only_table_increment_v3: calls=10
  Trigger secindex_only_table_no_update: calls=10
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 1024
  Storage Write Requests: 50
  Storage Flush Requests: 10
-(15 rows)
+(17 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE secindex_only_table SET v1 = v1 + 1, v3 = v3 + 1 WHERE v1 > 70 AND v1 <= 80;
 NOTICE:  Trigger "no_update" invoked
@@ -803,6 +898,7 @@ NOTICE:  Trigger "no_update" invoked
    ->  Seq Scan on secindex_only_table (actual rows=11 loops=1)
          Storage Filter: ((v1 > 70) AND (v1 <= 80))
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 1024
          Storage Table Write Requests: 11
          Storage Index Write Requests: 44
@@ -811,10 +907,11 @@ NOTICE:  Trigger "no_update" invoked
  Trigger secindex_only_table_increment_v3: calls=11
  Trigger secindex_only_table_no_update: calls=11
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 1024
  Storage Write Requests: 55
  Storage Flush Requests: 11
-(15 rows)
+(17 rows)
 
 DROP TABLE secindex_only_table;
 -- CREATE a table with no primary key or secondary indexes.
@@ -831,13 +928,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE no_index_table SET h = h, v = v WHERE 
    ->  Seq Scan on no_index_table (actual rows=1 loops=1)
          Storage Filter: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 1024
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 1024
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE no_index_table SET h = h WHERE h = 1;
                         QUERY PLAN                        
@@ -846,13 +945,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE no_index_table SET h = h WHERE h = 1;
    ->  Seq Scan on no_index_table (actual rows=1 loops=1)
          Storage Filter: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 1024
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 1024
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE no_index_table SET h = h + 1 WHERE h = 10;
                         QUERY PLAN                        
@@ -861,13 +962,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE no_index_table SET h = h + 1 WHERE h =
    ->  Seq Scan on no_index_table (actual rows=1 loops=1)
          Storage Filter: (h = 10)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 1024
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 1024
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE no_index_table SET v = v + 1 WHERE v = 10;
                         QUERY PLAN                        
@@ -876,13 +979,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE no_index_table SET v = v + 1 WHERE v =
    ->  Seq Scan on no_index_table (actual rows=1 loops=1)
          Storage Filter: (v = 10)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 1024
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 1024
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE no_index_table SET h = v + 1, v = h + 1 WHERE v = 20;
                         QUERY PLAN                        
@@ -891,13 +996,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE no_index_table SET h = v + 1, v = h + 
    ->  Seq Scan on no_index_table (actual rows=1 loops=1)
          Storage Filter: (v = 20)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 1024
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 1024
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 -- CREATE a hierarchy of tables of the order a <-- b <-- c where 'a' is the base
 -- table, 'b' references 'a' and is a reference to 'c', and so on.
@@ -929,13 +1036,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE a_test SET h = h, v1 = h, v2 = v2 + 1 
    ->  Index Scan using a_test_pkey on a_test (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE a_test SET v1 = v1, v2 = v2 + 1 WHERE h = 1;
                  QUERY PLAN                  
@@ -944,10 +1053,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE a_test SET v1 = v1, v2 = v2 + 1 WHERE 
    ->  Result a_test (actual rows=1 loops=1)
          Storage Table Write Requests: 1
  Storage Read Requests: 0
+ Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 1
  Storage Flush Requests: 0
-(7 rows)
+(8 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE a_test SET v1 = v1, v2 = v2 + 1 WHERE v1 = 1;
                                QUERY PLAN                               
@@ -956,15 +1066,18 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE a_test SET v1 = v1, v2 = v2 + 1 WHERE 
    ->  Index Scan using a_test_v1_key on a_test (actual rows=1 loops=1)
          Index Cond: (v1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Index Read Requests: 1
+         Storage Index Read Ops: 1
          Storage Index Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 2
+ Storage Read Ops: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(12 rows)
+(15 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE a_test SET v1 = v1, v2 = v2 + 1 WHERE v1 = h AND h = 2;
                               QUERY PLAN                              
@@ -974,13 +1087,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE a_test SET v1 = v1, v2 = v2 + 1 WHERE 
          Index Cond: (h = 2)
          Storage Filter: (v1 = 2)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 -- Same as above but update the rows to validate 'referenced-by' constraints.
 INSERT INTO a_test (SELECT i, i, i FROM generate_series(1025, 1034) AS i);
@@ -991,16 +1106,18 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE a_test SET h = h, v1 = v1 + 1 WHERE h 
    ->  Index Scan using a_test_pkey on a_test (actual rows=1 loops=1)
          Index Cond: (h = 1034)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 4
  Trigger for constraint b1_test_v1_fkey: calls=1
  Trigger for constraint b2_test_h_fkey: calls=1
  Storage Read Requests: 5
+ Storage Read Ops: 5
  Storage Rows Scanned: 1
  Storage Write Requests: 5
  Storage Flush Requests: 1
-(13 rows)
+(15 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE a_test SET h = h + 1, v1 = v1 + 1 WHERE h = 1034;
                               QUERY PLAN                              
@@ -1009,6 +1126,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE a_test SET h = h + 1, v1 = v1 + 1 WHER
    ->  Index Scan using a_test_pkey on a_test (actual rows=1 loops=1)
          Index Cond: (h = 1034)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 2
          Storage Index Write Requests: 4
@@ -1017,10 +1135,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE a_test SET h = h + 1, v1 = v1 + 1 WHER
  Trigger for constraint b2_test_h_fkey: calls=1
  Trigger for constraint b2_test_v1_fkey: calls=1
  Storage Read Requests: 9
+ Storage Read Ops: 9
  Storage Rows Scanned: 1
  Storage Write Requests: 6
  Storage Flush Requests: 1
-(15 rows)
+(17 rows)
 
 --
 -- The following sections tests updates when the update optimization is turned
@@ -1039,10 +1158,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET v1 = v1 + 1 WHERE k = 
    ->  Result base_table1 (actual rows=1 loops=1)
          Storage Table Write Requests: 1
  Storage Read Requests: 0
+ Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 1
  Storage Flush Requests: 0
-(7 rows)
+(8 rows)
 
 -- The queries below should use the distributed transaction path.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET k = v1 - 1, v1 = v1 + 1 WHERE k = 1;
@@ -1052,14 +1172,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET k = v1 - 1, v1 = v1 + 
    ->  Index Scan using base_table1_pkey on base_table1 (actual rows=1 loops=1)
          Index Cond: (k = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 2
          Storage Flush Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 2
  Storage Flush Requests: 2
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET k = 1, v2 = v2 + 1 WHERE k = 1;
                                    QUERY PLAN                                   
@@ -1068,14 +1190,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET k = 1, v2 = v2 + 1 WHE
    ->  Index Scan using base_table1_pkey on base_table1 (actual rows=1 loops=1)
          Index Cond: (k = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 2
          Storage Flush Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 2
  Storage Flush Requests: 2
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET k = k, v1 = v1 + 1 WHERE k > 5 AND k < 15;
                       QUERY PLAN                       
@@ -1084,14 +1208,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET k = k, v1 = v1 + 1 WHE
    ->  Seq Scan on base_table1 (actual rows=5 loops=1)
          Storage Filter: ((k > 5) AND (k < 15))
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 10
          Storage Table Write Requests: 10
          Storage Flush Requests: 5
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 10
  Storage Write Requests: 10
  Storage Flush Requests: 6
-(11 rows)
+(13 rows)
 
 -- Adding a trigger should automatically make the table use the distributed
 -- transaction path.
@@ -1104,14 +1230,16 @@ NOTICE:  Trigger "no_update" invoked
    ->  Index Scan using base_table1_pkey on base_table1 (actual rows=1 loops=1)
          Index Cond: (k = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Trigger base_table1_no_update: calls=1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 DROP TRIGGER base_table1_no_update ON base_table1;
 -- Add a trigger that updates values of v1.
@@ -1123,14 +1251,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET v2 = v2 + 1 WHERE k = 
    ->  Index Scan using base_table1_pkey on base_table1 (actual rows=1 loops=1)
          Index Cond: (k = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Trigger base_table1_increment_v1: calls=1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 -- v1 should be updated twice
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET v1 = v1 + 1 WHERE k = 1;
@@ -1140,14 +1270,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET v1 = v1 + 1 WHERE k = 
    ->  Index Scan using base_table1_pkey on base_table1 (actual rows=1 loops=1)
          Index Cond: (k = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Trigger base_table1_increment_v1: calls=1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 DROP TRIGGER base_table1_increment_v1 ON base_table1;
 -- Drop the trigger and adding a secondary index should produce the same result.
@@ -1159,15 +1291,17 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET k = 1, v2 = v2 + 1 WHE
    ->  Index Scan using base_table1_pkey on base_table1 (actual rows=1 loops=1)
          Index Cond: (k = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 2
          Storage Index Write Requests: 2
          Storage Flush Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 4
  Storage Flush Requests: 3
-(12 rows)
+(14 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET v1 = v1 + 1 WHERE k = 1;
                                    QUERY PLAN                                   
@@ -1176,14 +1310,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET v1 = v1 + 1 WHERE k = 
    ->  Index Scan using base_table1_pkey on base_table1 (actual rows=1 loops=1)
          Index Cond: (k = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET v1 = v1 WHERE k = 1;
                                    QUERY PLAN                                   
@@ -1192,15 +1328,17 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET v1 = v1 WHERE k = 1;
    ->  Index Scan using base_table1_pkey on base_table1 (actual rows=1 loops=1)
          Index Cond: (k = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
          Storage Flush Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 2
-(12 rows)
+(14 rows)
 
 -- Validate that the values have indeed been updated.
 SELECT * FROM base_table1 WHERE k = 1;
@@ -1241,10 +1379,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET v1 = v1 + 1 WHERE k = 
    ->  Result base_table1 (actual rows=1 loops=1)
          Storage Table Write Requests: 1
  Storage Read Requests: 0
+ Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 1
  Storage Flush Requests: 0
-(7 rows)
+(8 rows)
 
 -- The queries below should use the distributed transaction path.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET k = v1 - 1, v1 = v1 + 1 WHERE k = 1;
@@ -1254,13 +1393,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET k = v1 - 1, v1 = v1 + 
    ->  Index Scan using base_table1_pkey on base_table1 (actual rows=1 loops=1)
          Index Cond: (k = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET k = 1, v2 = v2 + 1 WHERE k = 1;
                                    QUERY PLAN                                   
@@ -1269,13 +1410,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET k = 1, v2 = v2 + 1 WHE
    ->  Index Scan using base_table1_pkey on base_table1 (actual rows=1 loops=1)
          Index Cond: (k = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET k = k, v1 = v1 + 1 WHERE k > 5 AND k < 15;
                                    QUERY PLAN                                   
@@ -1284,13 +1427,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET k = k, v1 = v1 + 1 WHE
    ->  Index Scan using base_table1_pkey on base_table1 (actual rows=5 loops=1)
          Index Cond: ((k > 5) AND (k < 15))
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 5
          Storage Table Write Requests: 5
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 5
  Storage Write Requests: 5
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 DROP TABLE base_table1;
 \c yugabyte
@@ -1323,13 +1468,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ancestry SET value = 'David' WHERE val
    ->  Seq Scan on ancestry (actual rows=1 loops=1)
          Storage Filter: (value = 'Dave'::text)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 10
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 10
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ancestry SET key = 'root', value = 'David' WHERE key = 'root';
                                 QUERY PLAN                                
@@ -1338,13 +1485,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ancestry SET key = 'root', value = 'Da
    ->  Index Scan using ancestry_pkey on ancestry (actual rows=1 loops=1)
          Index Cond: (key = 'root'::text)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 -- Query modifying one's parent should trigger trigger the referential
 -- constraint in only one direction to see if the parent exists. Grandparent
@@ -1356,14 +1505,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ancestry SET parent = 'ggparent2', gpa
    ->  Seq Scan on ancestry (actual rows=1 loops=1)
          Storage Filter: (value = 'Donatello'::text)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 10
          Storage Table Write Requests: 1
  Trigger for constraint fk_self_parent_to_key: calls=1
  Storage Read Requests: 2
+ Storage Read Ops: 4
  Storage Rows Scanned: 11
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 -- This query should throw an error as the parent doesn't exist
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ancestry SET parent = 'ggparent23', gparent = 'root' WHERE key = 'gparent2';
@@ -1378,15 +1529,17 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ancestry SET key = 'gparent30' WHERE v
    ->  Seq Scan on ancestry (actual rows=1 loops=1)
          Storage Filter: (value = 'Eddie'::text)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 10
          Storage Table Write Requests: 2
  Trigger for constraint fk_self_parent_to_key: calls=1
  Trigger for constraint fk_self_gparent_to_key: calls=1
  Storage Read Requests: 5
+ Storage Read Ops: 11
  Storage Rows Scanned: 30
  Storage Write Requests: 2
  Storage Flush Requests: 1
-(12 rows)
+(14 rows)
 
 -- Same query, no modification, no triggers
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ancestry SET key = 'gparent30' WHERE value = 'Eddie';
@@ -1396,13 +1549,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ancestry SET key = 'gparent30' WHERE v
    ->  Seq Scan on ancestry (actual rows=1 loops=1)
          Storage Filter: (value = 'Eddie'::text)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 10
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 10
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ancestry SET key = 'gparent3' WHERE key = 'gparent30';
                                 QUERY PLAN                                
@@ -1411,15 +1566,17 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ancestry SET key = 'gparent3' WHERE ke
    ->  Index Scan using ancestry_pkey on ancestry (actual rows=1 loops=1)
          Index Cond: (key = 'gparent30'::text)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 2
  Trigger for constraint fk_self_parent_to_key: calls=1
  Trigger for constraint fk_self_gparent_to_key: calls=1
  Storage Read Requests: 5
+ Storage Read Ops: 9
  Storage Rows Scanned: 21
  Storage Write Requests: 2
  Storage Flush Requests: 1
-(12 rows)
+(14 rows)
 
 DROP TABLE ancestry;
 ---
@@ -1447,13 +1604,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) EXECUTE updateplan1 (1, 1, 1, 1, 1);
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k = $1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 -- Step 2: Add an index and do not update the column on which the index is defined.
 -- If the cached plan is used, additional index write requests will not be be
@@ -1466,13 +1625,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) EXECUTE updateplan1 (1, 1, 1, 1, 1);
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k = $1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 -- Test that dropping an index on a column updated by the query causes replanning
 -- and recomputation of columns to be compared.
@@ -1493,13 +1654,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) EXECUTE updateplan1 (1, 1, 2, 1, 1);
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k = $1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXECUTE updateplan1 (1, 1, 2, 1, 1);
 EXECUTE updateplan1 (1, 1, 2, 1, 1);
@@ -1517,13 +1680,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) EXECUTE updateplan1 (1, 1, 2, 1, 1);
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k = $1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXECUTE updateplan1 (1, 1, 2, 1, 1);
 EXECUTE updateplan1 (1, 1, 2, 1, 1);
@@ -1539,13 +1704,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) EXECUTE updateplan1 (1, 1, 2, 1, 1);
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k = $1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 DEALLOCATE updateplan1;
 DROP TABLE t_simple;
@@ -1571,14 +1738,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO ioc_table VALUES ('user-id-1-1', 
    Tuples Inserted: 1
    Conflicting Tuples: 0
    Storage Index Read Requests: 1
+   Storage Index Read Ops: 1
    Storage Table Write Requests: 1
    Storage Index Write Requests: 3
    ->  Result *RESULT* (actual rows=1 loops=1)
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 0
  Storage Write Requests: 4
  Storage Flush Requests: 1
-(13 rows)
+(15 rows)
 
 -- conflict: update
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO ioc_table VALUES ('user-id-1-1', uuid_generate_v4(), 'Test Name 1')
@@ -1591,17 +1760,20 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO ioc_table VALUES ('user-id-1-1', 
    Tuples Inserted: 0
    Conflicting Tuples: 1
    Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
    Storage Table Rows Scanned: 1
    Storage Index Read Requests: 1
+   Storage Index Read Ops: 1
    Storage Index Rows Scanned: 1
    Storage Table Write Requests: 2
    Storage Index Write Requests: 4
    ->  Result *RESULT* (actual rows=1 loops=1)
  Storage Read Requests: 2
+ Storage Read Ops: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 6
  Storage Flush Requests: 1
-(16 rows)
+(19 rows)
 
 -- conflict: update again
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO ioc_table VALUES ('user-id-1-1', uuid_generate_v4(), 'Test Name 1')
@@ -1614,16 +1786,19 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO ioc_table VALUES ('user-id-1-1', 
    Tuples Inserted: 0
    Conflicting Tuples: 1
    Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
    Storage Table Rows Scanned: 1
    Storage Index Read Requests: 1
+   Storage Index Read Ops: 1
    Storage Index Rows Scanned: 1
    Storage Table Write Requests: 2
    Storage Index Write Requests: 4
    ->  Result *RESULT* (actual rows=1 loops=1)
  Storage Read Requests: 2
+ Storage Read Ops: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 6
  Storage Flush Requests: 1
-(16 rows)
+(19 rows)
 
 DROP TABLE IF EXISTS ioc_table;

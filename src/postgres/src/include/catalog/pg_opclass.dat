@@ -584,6 +584,8 @@
   opcfamily => 'lsm/range_ops', opcintype => 'anyrange' },
 { opcmethod => 'lsm', opcname => 'jsonb_ops',
   opcfamily => 'lsm/jsonb_ops', opcintype => 'jsonb' },
+{ opcmethod => 'lsm', opcname => 'multirange_ops',
+  opcfamily => 'lsm/multirange_ops', opcintype => 'anymultirange' },
 
 # YBGIN operator classes
 

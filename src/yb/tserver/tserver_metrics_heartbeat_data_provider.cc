@@ -74,21 +74,23 @@ void TServerMetricsHeartbeatDataProvider::DoAddData(
 
   for (const auto& tablet_peer : server().tablet_manager()->GetTabletPeers()) {
     if (tablet_peer) {
-      auto tablet = tablet_peer->shared_tablet();
+      auto tablet = tablet_peer->shared_tablet_maybe_null();
       if (tablet) {
-        auto sizes = tablet->GetCurrentVersionSstFilesAllSizes();
-        total_file_sizes += sizes.first;
-        uncompressed_file_sizes += sizes.second;
+        auto on_disk_size_info = tablet_peer->GetOnDiskSizeInfo();
+        total_file_sizes += on_disk_size_info.sst_files_disk_size;
+        uncompressed_file_sizes += on_disk_size_info.uncompressed_sst_files_disk_size;
         num_files += tablet->GetCurrentVersionNumSSTFiles();
         if (should_add_tablet_data && tablet_peer->log_available() &&
             CanServeTabletData(tablet_peer->tablet_metadata()->tablet_data_state())) {
           auto storage_metadata = req->add_storage_metadata();
           storage_metadata->set_tablet_id(tablet_peer->tablet_id());
-          storage_metadata->set_sst_file_size(sizes.first);
-          storage_metadata->set_wal_file_size(tablet_peer->log()->OnDiskSize());
-          storage_metadata->set_uncompressed_sst_file_size(sizes.second);
+          storage_metadata->set_sst_file_size(on_disk_size_info.sst_files_disk_size);
+          storage_metadata->set_wal_file_size(on_disk_size_info.wal_files_disk_size);
+          storage_metadata->set_uncompressed_sst_file_size(
+              on_disk_size_info.uncompressed_sst_files_disk_size);
           storage_metadata->set_may_have_orphaned_post_split_data(
                 tablet->MayHaveOrphanedPostSplitData());
+          storage_metadata->set_total_size(on_disk_size_info.total_on_disk_size);
           if (FLAGS_tserver_heartbeat_metrics_add_leader_info) {
             auto consensus_result = tablet_peer->GetRaftConsensus();
             if (consensus_result) {

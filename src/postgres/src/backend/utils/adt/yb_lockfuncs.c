@@ -88,7 +88,7 @@ yb_lock_status(PG_FUNCTION_ARGS)
 		if (yb_pg_locks_integrate_advisory_locks)
 		{
 			tupdesc = CreateTemplateTupleDesc(YB_NUM_LOCK_STATUS_COLUMNS +
-					YB_NUM_ADVISORY_LOCK_KEY_INFO_COLUMNS);
+											  YB_NUM_ADVISORY_LOCK_KEY_INFO_COLUMNS);
 			TupleDescInitEntry(tupdesc, (AttrNumber) YB_CLASSID_COLUMN_IDX, "classid",
 							   OIDOID, -1, 0);
 			TupleDescInitEntry(tupdesc, (AttrNumber) YB_OBJID_COLUMN_IDX, "objid",
@@ -168,9 +168,9 @@ yb_lock_status(PG_FUNCTION_ARGS)
 	 * leaving the extra space untouched and safe to remain uninitialized.
 	 */
 	Datum		values[YB_NUM_LOCK_STATUS_COLUMNS +
-			YB_NUM_ADVISORY_LOCK_KEY_INFO_COLUMNS];
+					   YB_NUM_ADVISORY_LOCK_KEY_INFO_COLUMNS];
 	bool		nulls[YB_NUM_LOCK_STATUS_COLUMNS +
-			YB_NUM_ADVISORY_LOCK_KEY_INFO_COLUMNS];
+					  YB_NUM_ADVISORY_LOCK_KEY_INFO_COLUMNS];
 
 	while (YbSRFGetNext(yb_funcctx, (uint64_t *) values, nulls))
 	{

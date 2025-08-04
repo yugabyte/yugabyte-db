@@ -513,6 +513,9 @@ public class BackupsController extends AuthenticatedController {
 
   @ApiOperation(
       value = "Restore from a backup V2",
+      notes =
+          "Restore from a backup V2. Running restore preflight before calling actual restore is"
+              + " recommended.",
       response = YBPTask.class,
       responseContainer = "Restore",
       nickname = "restoreBackupV2")
@@ -1048,7 +1051,12 @@ public class BackupsController extends AuthenticatedController {
   /*---- Preflight validation APIs ----*/
 
   @ApiOperation(
-      notes = "Restore preflight checks.",
+      notes =
+          "Restore preflight checks. Recommended to run before actual restore to retrieve the"
+              + " metadata associated with the backup, as well as check for conflicts with existing"
+              + " keyspaces. Additionally, this checks for unsupported tablespaces. In case of"
+              + " restore to PIT this returns the backup from the backup chain which can be"
+              + " restored to the timestamp provided, fails otherwise.",
       value = "Restore preflight checks",
       nickname = "restorePreflight",
       response = RestorePreflightResponse.class)
@@ -1133,7 +1141,11 @@ public class BackupsController extends AuthenticatedController {
   @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.0.0")
   @ApiOperation(
       notes =
-          "WARNING: This is a preview API that could change. Advanced Restore Preflight checks.",
+          "WARNING: This is a preview API that could change. Advanced restore preflight checks."
+              + " Recommended to run before actual restore to retrieve the metadata associated with"
+              + " the backup, as well as check for conflicts with existing keyspaces. Additionally,"
+              + " this checks for unsupported tablespaces. In case of restore to PIT this checks"
+              + " whether backup can restore to the timestamp provided, fails otherwise.",
       value = "Advanced Restore Preflight checks",
       nickname = "advancedRestorePreflight",
       response = RestorePreflightResponse.class)

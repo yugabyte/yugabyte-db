@@ -26,12 +26,15 @@
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
 
+#include "yb/docdb/object_lock_shared_fwd.h"
+
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
-#include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/pg_client.fwd.h"
+#include "yb/tserver/tserver_fwd.h"
+#include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
@@ -68,7 +71,6 @@ namespace tserver {
     (WaitForBackendsCatalogVersion) \
     (AcquireAdvisoryLock) \
     (ReleaseAdvisoryLock) \
-    (AcquireObjectLock) \
     /**/
 
 // These methods may respond with Status::OK() and continue async processing (including network
@@ -77,6 +79,7 @@ namespace tserver {
 // If such method responds with error Status, it will be handled by the upper layer that will fill
 // response with error status and call context.RespondSuccess.
 #define PG_CLIENT_SESSION_ASYNC_METHODS \
+    (AcquireObjectLock) \
     (GetTableKeyRanges) \
     /**/
 
@@ -94,12 +97,7 @@ struct PgClientSessionContext {
   PgSharedMemoryPool& shared_mem_pool;
   const EventStatsPtr& stats_exchange_response_size;
   const std::string& instance_uuid;
-};
-
-class LeaseEpochValidator {
- public:
-  virtual ~LeaseEpochValidator() = default;
-  virtual bool IsLeaseValid(uint64_t lease_epoch) = 0;
+  docdb::ObjectLockOwnerRegistry* lock_owner_registry;
 };
 
 class PgClientSession final {
@@ -113,14 +111,17 @@ class PgClientSession final {
   PgClientSession(
       TransactionBuilder&& transaction_builder, SharedThisSource shared_this_source,
       client::YBClient& client, std::reference_wrapper<const PgClientSessionContext> context,
-      uint64_t id, uint64_t lease_epoch, LeaseEpochValidator* lease_provider,
-      tserver::TSLocalLockManagerPtr ts_local_lock_manager, rpc::Scheduler& scheduler);
+      uint64_t id, uint64_t lease_epoch, tserver::TSLocalLockManagerPtr ts_local_lock_manager,
+      rpc::Scheduler& scheduler);
   ~PgClientSession();
 
   uint64_t id() const;
 
-  Status Perform(PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context,
-                 const PgTablesQueryResult& tables);
+  void SetupSharedObjectLocking(PgSessionLockOwnerTagShared& object_lock_shared);
+
+  void Perform(
+      PgPerformRequestPB& req, PgPerformResponsePB& resp, rpc::RpcContext&& context,
+      const PgTablesQueryResult& tables);
 
   void ProcessSharedRequest(size_t size, SharedExchange* exchange);
 
@@ -150,7 +151,8 @@ class PgClientSession final {
   BOOST_PP_SEQ_FOR_EACH(
         PG_CLIENT_SESSION_METHOD_DECLARE, (Status, rpc::RpcContext*), PG_CLIENT_SESSION_METHODS);
   BOOST_PP_SEQ_FOR_EACH(
-        PG_CLIENT_SESSION_METHOD_DECLARE, (void, rpc::RpcContext), PG_CLIENT_SESSION_ASYNC_METHODS);
+        PG_CLIENT_SESSION_METHOD_DECLARE,
+        (void, rpc::RpcContext&&), PG_CLIENT_SESSION_ASYNC_METHODS);
 
   #undef PG_CLIENT_SESSION_METHOD_DECLARE
   #undef PG_CLIENT_SESSION_METHOD_DECLARE_IMPL

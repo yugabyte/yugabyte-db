@@ -32,6 +32,7 @@ public class ConfigureDBApisTest extends UpgradeTaskTest {
   public void setUp() {
     super.setUp();
     configureDBApis.setUserTaskUUID(UUID.randomUUID());
+    attachHooks("ConfigureDBApis");
     setCheckNodesAreSafeToTakeDown(mockClient);
     setUnderReplicatedTabletsMock();
     setFollowerLagMock();

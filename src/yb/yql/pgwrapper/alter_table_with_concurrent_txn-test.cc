@@ -49,7 +49,7 @@ class AlterTableWithConcurrentTxnTest : public PgMiniTestBase {
       tserver::TSTabletManager* tm = ts->tablet_manager();
       auto peers = tm->GetTabletPeers();
       for (const std::shared_ptr<TabletPeer>& peer : peers) {
-        Tablet* tablet = peer->tablet();
+        auto tablet = ASSERT_RESULT(peer->shared_tablet());
         if (peer->LeaderTerm()) {
           tm->ApplyChange(tablet->tablet_id(), nullptr);
         }

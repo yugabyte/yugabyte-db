@@ -166,12 +166,16 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
     >
       <Typography variant="h4">{t('universeForm.instanceConfig.title')}</Typography>
       <Box width="100%" display="flex" flexDirection="column" mt={2}>
-        {osPatchingEnabled === 'true' && isImgBundleSupportedByProvider(provider) && (
+        {osPatchingEnabled === 'true' && (isImgBundleSupportedByProvider(provider) || provider?.code === CloudType.onprem) && (
           <Grid lg={6} item container>
             <CPUArchField disabled={!isCreatePrimary} />
-            <Box mt={2} width={'100%'}>
-              <LinuxVersionField disabled={!isCreateMode} />
-            </Box>
+            {
+              provider?.code !== CloudType.onprem && (
+                <Box mt={2} width={'100%'}>
+                  <LinuxVersionField disabled={!isCreateMode} />
+                </Box>
+              )
+            }
           </Grid>
         )}
       </Box>

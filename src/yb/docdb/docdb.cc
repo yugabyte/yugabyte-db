@@ -75,8 +75,8 @@ using std::vector;
 
 using namespace std::placeholders;
 
-DEFINE_UNKNOWN_int32(cdc_max_stream_intent_records, 1680,
-             "Max number of intent records allowed in single cdc batch. ");
+DEFINE_RUNTIME_uint64(cdc_max_stream_intent_records, 1680,
+                      "Max number of intent records allowed in single cdc batch.");
 
 DEFINE_RUNTIME_bool(cdc_enable_caching_db_block, true,
                     "When set to true, cache the DB block read for CDC in block cache.");
@@ -191,7 +191,7 @@ Result<DetermineKeysToLockResult<SharedLockManager>> DetermineKeysToLock(
 Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     const ArenaList<LWKeyValuePairPB>& read_pairs,
-    tablet::TabletMetrics* tablet_metrics,
+    const std::shared_ptr<tablet::TabletMetricsHolder>& tablet_metrics,
     IsolationLevel isolation_level,
     RowMarkType row_mark_type,
     bool transactional_table,
@@ -206,8 +206,8 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
       transactional_table, partial_range_key_intents));
   VLOG_WITH_FUNC(4) << "determine_keys_to_lock_result=" << determine_keys_to_lock_result.ToString();
   if (determine_keys_to_lock_result.lock_batch.empty() && !write_transaction_metadata) {
-    LOG(ERROR) << "Empty lock batch, doc_write_ops: " << yb::ToString(doc_write_ops)
-               << ", read pairs: " << AsString(read_pairs);
+    LOG(DFATAL) << "Empty lock batch, doc_write_ops: " << yb::ToString(doc_write_ops)
+                << ", read pairs: " << AsString(read_pairs);
     return STATUS(Corruption, "Empty lock batch");
   }
   result.need_read_snapshot = determine_keys_to_lock_result.need_read_snapshot;
@@ -220,13 +220,13 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
       lock_manager, std::move(determine_keys_to_lock_result.lock_batch), deadline);
   auto lock_status = result.lock_batch.status();
   if (!lock_status.ok()) {
-    if (tablet_metrics != nullptr) {
+    if (tablet_metrics) {
       tablet_metrics->Increment(tablet::TabletCounters::kFailedBatchLock);
     }
     return lock_status.CloneAndAppend(
         Format("Timeout: $0", deadline - ToCoarse(start_time)));
   }
-  if (tablet_metrics != nullptr) {
+  if (tablet_metrics) {
     const MonoDelta elapsed_time = MonoTime::Now().GetDeltaSince(start_time);
     tablet_metrics->Increment(
         tablet::TabletEventStats::kWriteLockLatency,
@@ -315,7 +315,7 @@ void AppendTransactionKeyPrefix(const TransactionId& transaction_id, KeyBytes* o
   out->AppendRawBytes(transaction_id.AsSlice());
 }
 
-Result<ApplyTransactionState> GetIntentsBatch(
+Result<ApplyTransactionState> GetIntentsBatchForCDC(
     const TransactionId& transaction_id,
     const KeyBounds* key_bounds,
     const ApplyTransactionState* stream_state,
@@ -350,7 +350,7 @@ Result<ApplyTransactionState> GetIntentsBatch(
     write_id = stream_state->write_id;
     reverse_index_iter.Next();
   }
-  const uint64_t& max_records = FLAGS_cdc_max_stream_intent_records;
+  const auto max_records = FLAGS_cdc_max_stream_intent_records;
   uint64_t cur_records = 0;
 
   while (reverse_index_iter.Valid()) {
@@ -363,10 +363,23 @@ Result<ApplyTransactionState> GetIntentsBatch(
     // isolation level etc.).
     if (key_slice.size() > txn_reverse_index_prefix.size()) {
       auto reverse_index_value = reverse_index_iter.value();
+
+      // The intents with kDeleteVectorIds value type correspond to the tombstones added for
+      // optimal vector indexing. They do not contain a main intent data key in their value field
+      // and hence should be skipped.
+      if (dockv::DecodeValueEntryType(reverse_index_value) ==
+              dockv::ValueEntryType::kDeleteVectorIds) {
+        VLOG_WITH_FUNC(3) << "Skipping an intent of type kDeleteVectorIds, with key: "
+                          << key_slice.ToDebugHexString() << ", transactionId: " << transaction_id;
+        reverse_index_iter.Next();
+        continue;
+      }
+
       if (!reverse_index_value.empty() && reverse_index_value[0] == KeyEntryTypeAsChar::kBitSet) {
         reverse_index_value.remove_prefix(1);
         RETURN_NOT_OK(OneWayBitmap::Skip(&reverse_index_value));
       }
+
       // Value of reverse index is a key of original intent record, so seek it and check match.
       if ((!key_bounds || key_bounds->IsWithinBounds(reverse_index_iter.value()))) {
         // return when we have reached the batch limit.

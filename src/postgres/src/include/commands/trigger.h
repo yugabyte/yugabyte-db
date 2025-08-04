@@ -313,6 +313,7 @@ extern int	RI_FKey_trigger_type(Oid tgfoid);
 extern void YbAddTriggerFKReferenceIntent(Trigger *trigger, Relation fk_rel,
 										  TupleTableSlot *new_slot,
 										  EState *estate, bool is_deferred);
+
 /* YB: Return true if the trigger description has non FK trigger. */
 extern bool HasNonRITrigger(const TriggerDesc *trigDesc);
 

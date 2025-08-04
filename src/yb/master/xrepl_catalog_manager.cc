@@ -47,6 +47,7 @@
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/master_util.h"
 #include "yb/master/snapshot_transfer_manager.h"
+#include "yb/master/ysql/ysql_manager_if.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug-util.h"
@@ -81,9 +82,6 @@ DEFINE_RUNTIME_bool(disable_universe_gc, false, "Whether to run the GC on univer
 DEFINE_RUNTIME_int32(cdc_parent_tablet_deletion_task_retry_secs, 30,
     "Frequency at which the background task will verify parent tablets retained for xCluster or "
     "CDCSDK replication and determine if they can be cleaned up.");
-
-DEFINE_NON_RUNTIME_uint32(max_replication_slots, 10,
-    "Controls the maximum number of replication slots that are allowed to exist.");
 
 DEFINE_test_flag(bool, hang_wait_replication_drain, false,
     "Used in tests to temporarily block WaitForReplicationDrain.");
@@ -150,6 +148,7 @@ DECLARE_bool(ysql_yb_allow_replication_slot_ordering_modes);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_bool(ysql_yb_enable_replica_identity);
 DECLARE_uint32(cdc_wal_retention_time_secs);
+DECLARE_uint32(max_replication_slots);
 DECLARE_uint64(cdc_intent_retention_ms);
 DECLARE_uint32(cdcsdk_tablet_not_of_interest_timeout_secs);
 DECLARE_bool(cdcsdk_enable_dynamic_table_addition_with_table_cleanup);
@@ -238,7 +237,7 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
       table = catalog_manager_->tables_->FindTableOrNull(
           xcluster::StripSequencesDataAliasIfPresent(metadata.table_id(0)));
       if (!table) {
-        LOG(ERROR) << "Invalid table ID " << metadata.table_id(0) << " for stream " << stream_id;
+        LOG(DFATAL) << "Invalid table ID " << metadata.table_id(0) << " for stream " << stream_id;
         // TODO (#2059): Potentially signals a race condition that table got deleted while stream
         //  was being created.
         // Log error and continue without loading the stream.
@@ -385,8 +384,8 @@ class UniverseReplicationLoader : public Visitor<PersistentUniverseReplicationIn
       : catalog_manager_(catalog_manager) {}
 
   Status Visit(
-      const std::string& replication_group_id_str, const SysUniverseReplicationEntryPB& metadata)
-      REQUIRES(catalog_manager_->mutex_) {
+      const std::string& replication_group_id_str,
+      const SysUniverseReplicationEntryPB& metadata) override REQUIRES(catalog_manager_->mutex_) {
     const xcluster::ReplicationGroupId replication_group_id(replication_group_id_str);
     DCHECK(!ContainsKey(
         catalog_manager_->universe_replication_map_,
@@ -467,7 +466,8 @@ class UniverseReplicationBootstrapLoader
 
   Status Visit(
       const std::string& replication_group_id_str,
-      const SysUniverseReplicationBootstrapEntryPB& metadata) REQUIRES(catalog_manager_->mutex_) {
+      const SysUniverseReplicationBootstrapEntryPB& metadata) override
+      REQUIRES(catalog_manager_->mutex_) {
     const xcluster::ReplicationGroupId replication_group_id(replication_group_id_str);
     DCHECK(!ContainsKey(
         catalog_manager_->universe_replication_bootstrap_map_,
@@ -722,9 +722,10 @@ Status CatalogManager::BackfillMetadataForXRepl(
       // is not present without backfilling it to master's disk or tservers.
       // Skip this check for colocated parent tables as they do not have pgschema names.
       if (!IsColocationParentTableId(table_id) &&
-          (backfill_required || table_lock->schema().pgschema_name().empty())) {
+          (backfill_required || table_lock->schema().deprecated_pgschema_name().empty())) {
         LOG_WITH_FUNC(INFO) << "backfilling pgschema_name for table " << table_id;
-        string pgschema_name = VERIFY_RESULT(GetPgSchemaName(table_id, table_lock.data()));
+        const auto pgschema_name = VERIFY_RESULT(GetYsqlManager().GetPgSchemaName(
+            VERIFY_RESULT(table->GetPgTableAllOids())));
         VLOG(1) << "For table: " << table_lock->name() << " found pgschema_name: " << pgschema_name;
         alter_table_req_pg_type.set_pgschema_name(pgschema_name);
         backfill_required = true;
@@ -975,7 +976,8 @@ Status CatalogManager::CreateNewCdcsdkStream(
   }
 
   stream_id = GenerateNewXreplStreamId();
-  auto se_recover_stream_id = ScopeExit([&stream_id, this] { RecoverXreplStreamId(stream_id); });
+  auto se_recover_stream_id = CancelableScopeExit(
+      [&stream_id, this] { RecoverXreplStreamId(stream_id); });
 
   stream = make_scoped_refptr<CDCStreamInfo>(stream_id);
   stream->mutable_metadata()->StartMutation();
@@ -2725,11 +2727,18 @@ Status CatalogManager::CleanUpCDCSDKStreamsMetadata(const LeaderEpoch& epoch) {
     if (!tablets->contains(entry.tablet_id)) {
       // Either this tablet belongs to a dropped table or a dynamic table. If the corresponding
       // table of the tablet (all the tables in case of a colocated tablet) belongs to the dropped
-      // table list computed previously, then the cdc_state entry will be deleted. If the tablet
-      // itself is not found, we can safely delete the cdc_state entry.
+      // table list computed previously, then the cdc_state entry will be deleted.
+      // There is a possible race if the tablet is not found for split tablets.
+      // So we require the tablet is found, or it is known to have been deleted.
       auto tablet_info_result = GetTabletInfo(entry.tablet_id);
       if (!tablet_info_result.ok()) {
-        keys_to_delete.emplace_back(entry.tablet_id, entry.stream_id);
+        if (tablet_info_result.status().IsDeleted()) {
+          keys_to_delete.emplace_back(entry.tablet_id, entry.stream_id);
+        } else {
+          LOG_WITH_FUNC(WARNING) << "Did not find tablet info for tablet_id: " << entry.tablet_id
+                                 << " , will not delete its cdc_state entry for stream id:"
+                                 << entry.stream_id << "in this iteration";
+        }
         continue;
       }
 
@@ -4751,7 +4760,7 @@ Status CatalogManager::ClearFailedReplicationBootstrap() {
     if (bootstrap_info == nullptr) {
       auto error_msg =
           Format("UniverseReplicationBootstrap not found: $0", replication_id.ToString());
-      LOG(ERROR) << error_msg;
+      LOG(WARNING) << error_msg;
       return STATUS(NotFound, error_msg);
     }
   }
@@ -4989,7 +4998,7 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion() {
 
   auto s = cdc_state_table_->DeleteEntries(entries_to_delete);
   if (!s.ok()) {
-    LOG(ERROR) << "Unable to flush operations to delete cdc streams: " << s;
+    LOG(WARNING) << "Unable to flush operations to delete cdc streams: " << s;
     return s.CloneAndPrepend("Error deleting cdc stream rows from cdc_state table");
   }
 

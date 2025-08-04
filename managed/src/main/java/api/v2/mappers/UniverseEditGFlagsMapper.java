@@ -65,6 +65,11 @@ public interface UniverseEditGFlagsMapper {
                         });
                 cluster.userIntent.specificGFlags.setPerAZ(perAZ);
               }
+              if (clusterGFlags.getGflagGroups() != null) {
+                cluster.userIntent.specificGFlags.setGflagGroups(
+                    UniverseDefinitionTaskParamsMapper.INSTANCE.mapGroupNameList(
+                        clusterGFlags.getGflagGroups()));
+              }
             });
     return targetClusters;
   }

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -154,6 +154,12 @@ size_t PerTableLoadState::GetLoad(const TabletServerId& ts_uuid) const {
   return ts_meta.starting_tablets.size() + ts_meta.running_tablets.size();
 }
 
+size_t PerTableLoadState::GetPossiblyTransientLoad(const TabletServerId& ts_uuid) const {
+  return std::ranges::count_if(
+      per_ts_meta_.at(ts_uuid).running_tablets,
+      [this](const auto& tablet_id) { return per_tablet_meta_.at(tablet_id).is_over_replicated; });
+}
+
 size_t PerTableLoadState::GetTabletDriveLoad(
     const TabletServerId& ts_uuid, const TabletId& tablet_id) const {
   const auto& ts_meta = per_ts_meta_.at(ts_uuid);
@@ -215,7 +221,7 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
   auto replica_map = tablet->GetReplicaLocations();
 
   // Get the number of relevant replicas in the replica map.
-  size_t replica_size = GetReplicaSize(replica_map);
+  size_t replica_count = GetReplicaSize(replica_map);
 
   // Set state information for both the tablet and the tablet server replicas.
   for (const auto& [ts_uuid, replica] : *replica_map) {
@@ -223,6 +229,11 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
     // know if we have any leader for this tablet, even if outside of our cluster.
     if (replica.role == PeerRole::LEADER) {
       tablet_meta.leader_uuid = ts_uuid;
+    }
+
+    // Use any voter to set the tablet size.
+    if (tablet_meta.size == 0 && replica.member_type == consensus::VOTER) {
+      tablet_meta.size = replica.drive_info.sst_files_size + replica.drive_info.wal_files_size;
     }
 
     if (ShouldSkipReplica(replica)) {
@@ -313,10 +324,8 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
   }
 
   // Only set the over-replication section if we need to.
-  size_t placement_num_replicas = placement_.num_replicas() > 0 ?
-      placement_.num_replicas() : FLAGS_replication_factor;
-  tablet_meta.is_over_replicated = placement_num_replicas < replica_size;
-  tablet_meta.is_under_replicated = placement_num_replicas > replica_size;
+  tablet_meta.is_over_replicated = placement_.num_replicas() < static_cast<int32_t>(replica_count);
+  tablet_meta.is_under_replicated = placement_.num_replicas() > static_cast<int32_t>(replica_count);
   if (VLOG_IS_ON(3)) {
     if (tablet_meta.is_over_replicated) {
       VLOG(3) << "Tablet " << tablet->tablet_id() << " is over-replicated";
@@ -977,6 +986,135 @@ Status PerTableLoadState::AddDisabledByTSTablet(
           Format(uninitialized_ts_meta_format_msg_, ts_uuid, table_id_));
   per_ts_meta_.at(ts_uuid).disabled_by_ts_tablets.insert(tablet_id);
   return Status::OK();
+}
+
+using TServerAndLoad = std::pair<TabletServerId, size_t>;
+using TServerAndLoadVector = std::vector<TServerAndLoad>;
+
+// Distributes n replicas across the tservers (in place), with extra replicas on the more loaded
+// tservers.
+void DistributeReplicas(
+    const TsTableLoadMap& current_loads, TServerAndLoadVector& optimal_load_distribution,
+    size_t start_idx, size_t end_idx, size_t num_replicas) {
+  // Sort tservers by decreasing current load.
+  std::sort(optimal_load_distribution.begin() + start_idx,
+      optimal_load_distribution.begin() + end_idx, [&current_loads](const auto& a, const auto& b) {
+      return FindWithDefault(current_loads, a.first, 0) >
+             FindWithDefault(current_loads, b.first, 0);
+  });
+
+  // Distribute the replicas across the tservers, with extra replicas on the already more loaded
+  // tservers (at the beginning).
+  size_t num_tservers = end_idx - start_idx;
+  if (num_tservers == 0) {
+    return;
+  }
+  auto replicas_per_tserver = num_replicas / num_tservers;
+  auto extra = num_replicas % num_tservers;
+  for (size_t i = 0; i < num_tservers; ++i) {
+    optimal_load_distribution[start_idx + i].second = replicas_per_tserver + (i < extra ? 1 : 0);
+  }
+}
+
+Result<TsTableLoadMap> CalculateOptimalLoadDistribution(
+    const TSDescriptorVector& valid_tservers, const PlacementInfoPB& placement_info,
+    const std::unordered_map<TabletServerId, size_t>& current_loads, size_t num_tablets) {
+  if (static_cast<int32_t>(valid_tservers.size()) < placement_info.num_replicas()) {
+    return STATUS_FORMAT(InvalidArgument,
+        "Not enough tservers to host the required number of replicas (have $0, need $1)",
+        valid_tservers.size(), placement_info.num_replicas());
+  }
+
+  // Find the (unique) placement block that each tserver belongs to.
+  TServerAndLoadVector optimal_load_distribution;
+  size_t slack = placement_info.num_replicas() * num_tablets;
+  for (auto& block : placement_info.placement_blocks()) {
+    auto block_replicas = block.min_num_replicas() * num_tablets;
+    slack -= block_replicas;
+    auto start_idx = optimal_load_distribution.size();
+    for (const auto& ts : valid_tservers) {
+      if (ts->MatchesCloudInfo(block.cloud_info())) {
+        optimal_load_distribution.emplace_back(ts->permanent_uuid(), 0);
+      }
+    }
+    auto end_idx = optimal_load_distribution.size();
+    if (end_idx - start_idx < static_cast<size_t>(block.min_num_replicas())) {
+      // If we don't have enough tservers to host the minimum number of replicas in the placement
+      // block, the algorithm below would return a distribution with more replicas on a tserver than
+      // there are distinct tablets (which implies a duplicate replica on that tserver).
+      return STATUS_FORMAT(InvalidArgument,
+          "Not enough tservers to host the minimum number of replicas in placement block '$0' "
+          "(have $1, need $2)",
+          block.ShortDebugString(), end_idx - start_idx, block.min_num_replicas());
+    }
+    DistributeReplicas(
+        current_loads, optimal_load_distribution, start_idx, end_idx, block_replicas);
+  }
+
+  // If there is slack, spread it across the least loaded tservers.
+  if (slack > 0) {
+    // Sort tservers by increasing load.
+    std::sort(optimal_load_distribution.begin(), optimal_load_distribution.end(),
+        [](const auto& a, const auto& b) { return a.second < b.second; });
+
+    // For some geometric intuition, picture the sorted tablet load of the tservers as a bar graph:
+    //          *
+    //    *  *  *
+    // *  *  *  *
+    // T0 T1 T2 T3
+    //
+    // The slack we want to add is like water: it should be added to the least loaded tservers.
+    // The slack will always be distributed on a prefix of the sorted list because the tablet loads
+    // are sorted. Computationally, we want to iterate from left to right and increase the load of
+    // all tservers seen so far until we have either:
+    //  1. Added all the slack OR
+    //  2. Increased the load of all tservers seen so far to the load of the current tserver.
+    //
+    // The above computation is equivalent to the following calculation:
+    //  i * load = the area of the rectangle from the tserver 0 to tserver i-1. It is the total load
+    //             those tservers could be assigned without exceeding the load on tserver i.
+    //  prefix_load = the ACTUAL sum of the load of tservers 0 to i-1.
+    //
+    // If i * load > prefix_load + slack, then we can put both the existing load of tservers 0 to
+    // i-1 PLUS all the slack into this rectangle.
+    // In the above chart, if 2 <= slack <= 4 then the algorithm halts at i == 3 because we can add
+    // the slack to T0, T1, and T2 without their load exceeding T3's load of 3.
+    // However if slack is 5 or greater than we cannot fit these 5 additional tablet replicas into
+    // this rectangle, which means we cannot evenly distribute slack across T0, T1, and T2 without
+    // their load exceeding that of T3's. So the loop iterates past i == 3.
+    size_t prefix_load = 0, i = 0;
+    for (; i < optimal_load_distribution.size(); ++i) {
+      auto& [_, load] = optimal_load_distribution[i];
+      if (i * load >= prefix_load + slack) {
+        // If the tservers in the prefix [0,i-1] can take all the slack without exceeding the load
+        // on the tserver i, we can stop.
+        break;
+      }
+      prefix_load += load;
+    }
+    // The load of each tserver in the prefix after distributing slack is at least the load on
+    // tserver i-1. Otherwise, we would have stopped earlier. So the minimum loads are still
+    // respected.
+    DistributeReplicas(current_loads, optimal_load_distribution, 0, i, prefix_load + slack);
+  }
+
+  TsTableLoadMap result;
+  for (auto& [ts_uuid, load] : optimal_load_distribution) {
+    result[ts_uuid] = load;
+  }
+  return result;
+}
+
+size_t CalculateTableLoadDifference(
+    const TsTableLoadMap& current_loads, const TsTableLoadMap& goal_loads) {
+  size_t adds = 0;
+  for (auto& [ts_uuid, goal_load] : goal_loads) {
+    auto current_load = FindWithDefault(current_loads, ts_uuid, 0);
+    if (goal_load > current_load) {
+      adds += goal_load - current_load;
+    }
+  }
+  return adds;
 }
 
 } // namespace master

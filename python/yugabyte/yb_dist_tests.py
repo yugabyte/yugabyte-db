@@ -226,6 +226,7 @@ ARCHIVED_PATHS_IN_SRC_DIR = [
     'requirements.txt',
     'requirements_frozen.txt',
     'build/yugabyte-bash-common',
+    'yb.env'
 ]
 
 

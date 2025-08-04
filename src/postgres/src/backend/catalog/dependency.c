@@ -217,9 +217,10 @@ static void reportDependentObjects(const ObjectAddresses *targetObjects,
 								   DropBehavior behavior,
 								   int flags,
 								   const ObjectAddress *origObject);
-static void deleteOneObject(const ObjectAddress *object,
-							Relation *depRel, int32 flags);
-static void doDeletion(const ObjectAddress *object, int flags);
+static void deleteOneObject(const ObjectAddress *object, Relation *depRel,
+							int32 flags, bool ybOriginalObject);
+static void doDeletion(const ObjectAddress *object, int flags,
+					   bool ybOriginalObject);
 static bool find_expr_references_walker(Node *node,
 										find_expr_references_context *context);
 static void process_function_rte_ref(RangeTblEntry *rte, AttrNumber attnum,
@@ -289,7 +290,8 @@ deleteObjectsInList(ObjectAddresses *targetObjects, Relation *depRel,
 			(thisextra->flags & DEPFLAG_ORIGINAL))
 			continue;
 
-		deleteOneObject(thisobj, depRel, flags);
+		deleteOneObject(thisobj, depRel, flags,
+						thisextra->flags & DEPFLAG_ORIGINAL);
 	}
 }
 
@@ -1309,7 +1311,8 @@ DropObjectById(const ObjectAddress *object)
  * *depRel is the already-open pg_depend relation.
  */
 static void
-deleteOneObject(const ObjectAddress *object, Relation *depRel, int flags)
+deleteOneObject(const ObjectAddress *object, Relation *depRel, int flags,
+				bool ybOriginalObject)
 {
 	ScanKeyData key[3];
 	int			nkeys;
@@ -1317,7 +1320,7 @@ deleteOneObject(const ObjectAddress *object, Relation *depRel, int flags)
 	HeapTuple	tup;
 	ObjectAddress implicit_tablegroup;
 	bool		is_colocated_tables_with_tablespace_enabled =
-	*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
+		*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
 
 	/* DROP hook of the objects being removed */
 	InvokeObjectDropHookArg(object->classId, object->objectId,
@@ -1340,7 +1343,7 @@ deleteOneObject(const ObjectAddress *object, Relation *depRel, int flags)
 	 * updates before calling doDeletion() --- they'd get committed right
 	 * away, which is not cool if the deletion then fails.
 	 */
-	doDeletion(object, flags);
+	doDeletion(object, flags, ybOriginalObject);
 
 	/*
 	 * Reopen depRel if we closed it above
@@ -1442,7 +1445,7 @@ deleteOneObject(const ObjectAddress *object, Relation *depRel, int flags)
  * doDeletion: actually delete a single object
  */
 static void
-doDeletion(const ObjectAddress *object, int flags)
+doDeletion(const ObjectAddress *object, int flags, bool ybOriginalObject)
 {
 	switch (getObjectClass(object))
 	{
@@ -1472,11 +1475,22 @@ doDeletion(const ObjectAddress *object, int flags)
 					if (object->objectSubId != 0)
 					{
 						Relation	yb_rel =
-						RelationIdGetRelation(object->objectId);
+							RelationIdGetRelation(object->objectId);
 
-						if (IsYBRelation(yb_rel) &&
-							!(flags & YB_SKIP_YB_DROP_COLUMN))
-							YBCDropColumn(yb_rel, object->objectSubId);
+						/* YB note: perform YBCDropColumn() */
+						if (IsYBRelation(yb_rel))
+						{
+							bool		skip_if_original =
+								(flags & YB_SKIP_YB_DROP_ORIGNAL_COLUMN) &&
+								ybOriginalObject;
+							bool		skip_if_pk =
+								(flags & YB_SKIP_YB_DROP_PK_COLUMN) &&
+								YbIsAttrPrimaryKeyColumn(yb_rel,
+														 object->objectSubId);
+
+							if (!skip_if_original && !skip_if_pk)
+								YBCDropColumn(yb_rel, object->objectSubId);
+						}
 
 						RelationClose(yb_rel);
 

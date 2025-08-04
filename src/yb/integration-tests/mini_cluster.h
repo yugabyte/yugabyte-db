@@ -52,6 +52,7 @@
 #include "yb/master/master_client.fwd.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_fwd.h"
+#include "yb/master/mini_master.h"
 #include "yb/master/ts_descriptor.h"
 
 #include "yb/tablet/tablet_fwd.h"
@@ -67,10 +68,6 @@
 using namespace std::literals;
 
 namespace yb {
-
-namespace master {
-class MiniMaster;
-}
 
 namespace server {
 class SkewedClockDeltaChanger;
@@ -155,6 +152,8 @@ class MiniCluster : public MiniClusterBase {
       tablet::FlushMode mode = tablet::FlushMode::kSync,
       tablet::FlushFlags flags = tablet::FlushFlags::kAllDbs);
   Status CompactTablets(docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
+  Status CompactTablet(
+      const TabletId& tablet_id, docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
   Status SwitchMemtables();
   Status CleanTabletLogs();
 
@@ -277,7 +276,14 @@ class MiniCluster : public MiniClusterBase {
   Status WaitForLoadBalancerToStabilize(MonoDelta timeout);
 
   template <typename T>
-  Result<T> GetLeaderMasterProxy();
+  Result<T> GetLeaderMasterProxy() {
+    return T(proxy_cache_.get(), VERIFY_RESULT(DoGetLeaderMasterBoundRpcAddr()));
+  }
+
+  template <typename T>
+  T GetMasterProxy() {
+    return T(proxy_cache_.get(), mini_master()->bound_rpc_addr());
+  }
 
   std::string GetClusterId() { return options_.cluster_id; }
 
@@ -291,6 +297,8 @@ class MiniCluster : public MiniClusterBase {
   }
 
   std::string GetTabletServerHTTPAddresses() const override;
+
+  rpc::ProxyCache& proxy_cache() override { return *proxy_cache_; }
 
  private:
 
@@ -415,10 +423,12 @@ Status WaitForLeaderOfSingleTablet(
     const std::string& description);
 
 Status WaitForTableLeaders(
-    MiniCluster* cluster, const TableId& table_id, CoarseTimePoint deadline);
+    MiniCluster* cluster, const TableId& table_id, CoarseTimePoint deadline,
+    RequireLeaderIsReady require_leader_is_ready = RequireLeaderIsReady::kFalse);
 
 Status WaitForTableLeaders(
-    MiniCluster* cluster, const TableId& table_id, CoarseDuration timeout);
+    MiniCluster* cluster, const TableId& table_id, CoarseDuration timeout,
+    RequireLeaderIsReady require_leader_is_ready = RequireLeaderIsReady::kFalse);
 
 Status WaitUntilMasterHasLeader(MiniCluster* cluster, MonoDelta timeout);
 
@@ -429,7 +439,9 @@ Status StepDown(
 // Waits until all tablet peers of the specified cluster are in the Running state.
 // And total number of those peers equals to the number of tablet servers for each known tablet.
 // Additionally checks peers for the specified table if table_id is specified.
-Status WaitAllReplicasReady(MiniCluster* cluster, MonoDelta timeout);
+Status WaitAllReplicasReady(
+    MiniCluster* cluster, MonoDelta timeout,
+    UserTabletsOnly user_tablets_only = UserTabletsOnly::kTrue);
 
 Status WaitAllReplicasReady(MiniCluster* cluster, const TableId& table_id, MonoDelta timeout);
 
@@ -472,6 +484,18 @@ Result<size_t> ServerWithLeaders(MiniCluster* cluster);
 // for already created tablets.
 void SetCompactFlushRateLimitBytesPerSec(MiniCluster* cluster, size_t bytes_per_sec);
 
+Status InvokeSplitTabletRpc(
+    MiniCluster* cluster, const TabletId& tablet_id,
+    MonoDelta timeout = MonoDelta::FromSeconds(60) * kTimeMultiplier);
+
+Status InvokeSplitTabletRpcAndWaitForDataCompacted(
+    MiniCluster* cluster, const master::TableInfoPtr& table, const master::TabletInfoPtr& tablet,
+    MonoDelta rpc_timeout = MonoDelta::FromSeconds(60) * kTimeMultiplier);
+
+Status InvokeSplitTabletRpcAndWaitForDataCompacted(
+    MiniCluster* cluster, const TabletId& tablet_id,
+    MonoDelta rpc_timeout = MonoDelta::FromSeconds(60) * kTimeMultiplier);
+
 Status WaitAllReplicasSynchronizedWithLeader(MiniCluster* cluster, CoarseTimePoint deadline);
 
 Status WaitAllReplicasSynchronizedWithLeader(MiniCluster* cluster, CoarseDuration timeout);
@@ -500,11 +524,6 @@ void ActivateCompactionTimeLogging(MiniCluster* cluster);
 void DumpDocDB(MiniCluster* cluster, ListPeersFilter filter = ListPeersFilter::kLeaders);
 std::vector<std::string> DumpDocDBToStrings(
     MiniCluster* cluster, ListPeersFilter filter = ListPeersFilter::kLeaders);
-
-template <typename T>
-Result<T> MiniCluster::GetLeaderMasterProxy() {
-  return T(proxy_cache_.get(), VERIFY_RESULT(DoGetLeaderMasterBoundRpcAddr()));
-}
 
 void DisableFlushOnShutdown(MiniCluster& cluster, bool disable);
 

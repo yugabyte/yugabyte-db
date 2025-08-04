@@ -2,6 +2,7 @@ import { Box, makeStyles, Typography } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
 import { YBWidget } from '../../../../components/panels';
+import { isNonEmptyObject } from '../../../../utils/ObjectUtils';
 import { ReactComponent as LoadingIcon } from '../../../assets/default-loading-circles.svg';
 
 export const useStyles = makeStyles((theme) => ({
@@ -44,9 +45,10 @@ interface LbState {
 
 interface UniverseLbStateProps {
   universeLbState: LbState;
+  updateInProgress: boolean;
 }
 
-export const DBLbState = ({ universeLbState }: UniverseLbStateProps) => {
+export const DBLbState = ({ universeLbState, updateInProgress }: UniverseLbStateProps) => {
   const { t } = useTranslation();
   const classes = useStyles();
   return (
@@ -67,30 +69,31 @@ export const DBLbState = ({ universeLbState }: UniverseLbStateProps) => {
           justifyContent={'space-between'}
           alignItems={'center'}
         >
-          <Typography variant="body1">
+          <Typography variant="body1" style={{ display: 'flex' }}>
             <i className="fa fa-balance-scale" />
             <span className={classes.textMargin}>
               {t('universeActions.lbState.loadBalancerEnabled')}
             </span>
-
-            {universeLbState.isEnabled ? (
-              <span className={clsx(classes.textLight, classes.textGreen, classes.textMargin)}>
-                <i className={'fa fa-check'} />
-              </span>
-            ) : (
-              <span className={clsx(classes.textLight, classes.textError, classes.textMargin)}>
-                <i className={'fa fa-exclamation-triangle'} />
-              </span>
-            )}
+            {updateInProgress && <LoadingIcon className={clsx(classes.icon)} />}
+            {isNonEmptyObject(universeLbState) &&
+              (universeLbState?.isEnabled ? (
+                <span className={clsx(classes.textLight, classes.textGreen, classes.textMargin)}>
+                  <i className={'fa fa-check'} />
+                </span>
+              ) : (
+                <span className={clsx(classes.textLight, classes.textError, classes.textMargin)}>
+                  <i className={'fa fa-exclamation-triangle'} />
+                </span>
+              ))}
           </Typography>
-          {universeLbState.isEnabled && (
+          {universeLbState?.isEnabled && (
             <Typography variant="body1" className={classes.loadBalancedText}>
               <span className={classes.textMargin}>
-                {universeLbState.isIdle
+                {universeLbState?.isIdle
                   ? t('universeActions.lbState.loadIsBalanced')
                   : t('universeActions.lbState.loadBalanceInProgress')}
               </span>
-              {universeLbState.isIdle ? (
+              {universeLbState?.isIdle ? (
                 <span className={clsx(classes.textLight, classes.textGreen, classes.textMargin)}>
                   <i className={'fa fa-check'} />
                 </span>

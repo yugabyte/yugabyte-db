@@ -1120,6 +1120,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext)
 	 * impossible to get here in backward scan, so make it work anyway.
 	 */
 	YbcPgExecParameters yb_params = estate->yb_exec_params;
+
 	estate->es_direction = ForwardScanDirection;
 
 	/* Initialize ArrayBuildStateAny in caller's context, if needed */

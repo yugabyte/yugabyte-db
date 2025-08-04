@@ -3721,7 +3721,7 @@ estimate_num_groups(PlannerInfo *root, List *groupExprs, double input_rows,
 
 double
 yb_estimate_num_groups(PlannerInfo *root, List *groupExprs, double input_rows,
-					List **pgset, EstimationInfo *estinfo)
+					   List **pgset, EstimationInfo *estinfo)
 {
 	List	   *varinfos = NIL;
 	double		srf_multiplier = 1.0;
@@ -4230,7 +4230,7 @@ estimate_multivariate_ndistinct(PlannerInfo *root, RelOptInfo *rel,
 	RangeTblEntry *rte = planner_rt_fetch(rel->relid, root);
 
 	/* bail out immediately if the table has no extended statistics */
-	if (!rel->statlist)
+	if (!rel->statlist || (rel->is_yb_relation && yb_ignore_stats))
 		return false;
 
 	/* look for the ndistinct statistics object matching the most vars */
@@ -5360,7 +5360,7 @@ examine_variable(PlannerInfo *root, Node *node, int varRelid,
 	vardata->atttype = exprType(node);
 	vardata->atttypmod = exprTypmod(node);
 
-	if (onerel)
+	if (onerel && !(onerel->is_yb_relation && yb_ignore_stats))
 	{
 		/*
 		 * We have an expression in vars of a single relation.  Try to match
@@ -5688,6 +5688,9 @@ examine_simple_variable(PlannerInfo *root, Var *var,
 	}
 	else if (rte->rtekind == RTE_RELATION)
 	{
+		if (vardata->rel->is_yb_relation && yb_ignore_stats)
+			return;
+
 		/*
 		 * Plain table or parent of an inheritance appendrel, so look up the
 		 * column in pg_statistic

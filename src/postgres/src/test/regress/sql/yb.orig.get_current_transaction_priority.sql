@@ -46,57 +46,76 @@
 -- i.e., kHighPriTxnUpperBound, then a single value "Highest priority transaction" is returned
 -- without any float.
 
+CREATE FUNCTION yb_get_current_transaction_priority_platform_independent()
+RETURNS TABLE (priority NUMERIC(3, 2), category TEXT)
+LANGUAGE SQL
+AS $$
+    SELECT
+        CASE
+            WHEN v::TEXT ~ '^\d+(\.\d+)? ' THEN
+                substring(v::TEXT, 1, position(' ' IN v::TEXT) - 1)::NUMERIC(3, 2)
+            ELSE
+                NULL
+        END AS priority,
+        CASE
+            WHEN v::TEXT ~ '^\d+(\.\d+)? ' THEN
+                substring(v::TEXT, position(' ' IN v::TEXT) + 1)
+            ELSE
+                v::TEXT
+        END AS category
+    FROM yb_get_current_transaction_priority() AS v;
+$$;
 SET yb_transaction_priority_lower_bound = 0.4;
 SET yb_transaction_priority_upper_bound = 0.4;
 
-CREATE TABLE test (k int primary key, v varchar(100));
-INSERT INTO test values (1, '1');
+CREATE TABLE test (k INT PRIMARY KEY, priority NUMERIC(3, 2), category VARCHAR(100));
+INSERT INTO test (k, priority) VALUES (1, '1');
 
 -- (1) Check that transaction priority is 0 until a distributed txn is started.
 BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
-SELECT yb_get_current_transaction_priority(); -- 0 since a distributed transaction hasn't started
+SELECT * FROM yb_get_current_transaction_priority_platform_independent(); -- 0 since a distributed transaction hasn't started
 SELECT * FROM test; -- this is a read-only operation and doesn't start a distributed transaction
-SELECT yb_get_current_transaction_priority(); -- still 0
+SELECT * FROM yb_get_current_transaction_priority_platform_independent(); -- still 0
 INSERT INTO test VALUES (2, '2'); -- start a distributed txn
-SELECT yb_get_current_transaction_priority(); -- non-zero now
+SELECT * FROM yb_get_current_transaction_priority_platform_independent(); -- non-zero now
 COMMIT;
 
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
-SELECT yb_get_current_transaction_priority(); -- 0 since a distributed transaction hasn't started
+SELECT * FROM yb_get_current_transaction_priority_platform_independent(); -- 0 since a distributed transaction hasn't started
 SELECT * FROM test; -- reads start a distributed txn in serializable isolation level
-SELECT yb_get_current_transaction_priority();
+SELECT * FROM yb_get_current_transaction_priority_platform_independent();
 COMMIT;
 
 -- (2) Showing yb_transaction_priority outside a transaction block
-SELECT yb_get_current_transaction_priority();
+SELECT * FROM yb_get_current_transaction_priority_platform_independent();
 
 -- (3) Normal priority
 BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
-INSERT INTO test (k, v) SELECT 3, yb_get_current_transaction_priority(); -- starts a distributed transaction
-SELECT yb_get_current_transaction_priority();
-INSERT INTO test (k, v) SELECT 4, yb_get_current_transaction_priority();
+INSERT INTO test (k, priority, category) SELECT 3, * FROM yb_get_current_transaction_priority_platform_independent(); -- starts a distributed transaction
+SELECT * FROM yb_get_current_transaction_priority_platform_independent();
+INSERT INTO test SELECT 4, * FROM yb_get_current_transaction_priority_platform_independent();
 SELECT * FROM test ORDER BY k;
 COMMIT;
 
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
-INSERT INTO test (k, v) SELECT 5, yb_get_current_transaction_priority(); -- starts a distributed transaction
-SELECT yb_get_current_transaction_priority();
-INSERT INTO test (k, v) SELECT 6, yb_get_current_transaction_priority();
+INSERT INTO test SELECT 5, * FROM yb_get_current_transaction_priority_platform_independent(); -- starts a distributed transaction
+SELECT * FROM yb_get_current_transaction_priority_platform_independent();
+INSERT INTO test SELECT 6, * FROM yb_get_current_transaction_priority_platform_independent();
 SELECT * FROM test ORDER BY k;
 COMMIT;
 
 -- (4) High priority
 BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 SELECT * FROM test WHERE k = 1 FOR UPDATE; -- starts a distributed transaction in high pri bucket
-SELECT yb_get_current_transaction_priority();
-INSERT INTO test (k, v) SELECT 7, yb_get_current_transaction_priority();
+SELECT * FROM yb_get_current_transaction_priority_platform_independent();
+INSERT INTO test SELECT 7, * FROM yb_get_current_transaction_priority_platform_independent();
 SELECT * FROM test ORDER BY k;
 COMMIT;
 
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 SELECT * FROM test WHERE k = 1 FOR UPDATE; -- starts a distributed transaction in high pri bucket
-SELECT yb_get_current_transaction_priority();
-INSERT INTO test (k, v) SELECT 8, yb_get_current_transaction_priority();
+SELECT * FROM yb_get_current_transaction_priority_platform_independent();
+INSERT INTO test SELECT 8, * FROM yb_get_current_transaction_priority_platform_independent();
 SELECT * FROM test ORDER BY k;
 COMMIT;
 
@@ -105,10 +124,10 @@ SET yb_transaction_priority_upper_bound = 1;
 SET yb_transaction_priority_lower_bound = 1;
 BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 SELECT * FROM test WHERE k = 1 FOR UPDATE;
-SELECT yb_get_current_transaction_priority();
+SELECT * FROM yb_get_current_transaction_priority_platform_independent();
 COMMIT;
 
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 SELECT * FROM test WHERE k = 1 FOR UPDATE;
-SELECT yb_get_current_transaction_priority();
+SELECT * FROM yb_get_current_transaction_priority_platform_independent();
 COMMIT;

@@ -276,7 +276,8 @@ class OutboundCall : public RpcCall {
                RpcController* controller,
                std::shared_ptr<RpcMetrics> rpc_metrics,
                ResponseCallback callback,
-               ThreadPool* callback_thread_pool);
+               ThreadPool* callback_thread_pool,
+               MetadataSerializerFactory* metadata_serializer_factory);
 
   virtual ~OutboundCall();
 
@@ -582,6 +583,8 @@ class OutboundCall : public RpcCall {
 
   // Set and hold a weak reference to the connection for the remaining lifetime of the call.
   WriteOnceWeakPtr<Connection> connection_weak_;
+
+  std::unique_ptr<MetadataSerializer> metadata_serializer_;
 
   // InvokeCallbackTask should be able to call InvokeCallbackSync and we don't want other that
   // method to be public.

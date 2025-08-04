@@ -107,7 +107,9 @@ void MasterLeaderPollScheduler::Impl::Run() {
   poller_->Init();
 
   for (;;) {
-    auto next_poll = MonoTime::Now() + poller_->IntervalToNextPoll(consecutive_failures_);
+    auto delta = poller_->IntervalToNextPoll(consecutive_failures_);
+    VLOG_IF(1, consecutive_failures_ > 0) << LogPrefix() << "Next poll in " << delta.ToString();
+    auto next_poll = MonoTime::Now() + delta;
 
     {
       MutexLock l(mutex_);
@@ -136,12 +138,16 @@ void MasterLeaderPollScheduler::Impl::Run() {
         // threshold, try determining the leader master again. Heartbeats function as a watchdog,
         // so timeouts should be considered normal failures.
         if (s.IsNetworkError() ||
-            consecutive_failures_ == FLAGS_heartbeat_max_failures_before_backoff) {
+            consecutive_failures_ >= FLAGS_heartbeat_max_failures_before_backoff) {
           poller_->ResetProxy();
         }
       }
       continue;
     }
+    VLOG_IF(1, consecutive_failures_ > 0)
+        << LogPrefix()
+        << "Successfully polled master leader at : " << finder_.get_master_leader_hostport()
+        << " after " << consecutive_failures_ << " failures.";
     consecutive_failures_ = 0;
   }
 }

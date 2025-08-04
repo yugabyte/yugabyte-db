@@ -470,7 +470,10 @@ CheckMyDatabase(const char *name, bool am_superuser, bool override_allow_connect
 			pfree((void *) default_locale.info.icu.locale);
 		if (default_locale.info.icu.ucol)
 			ucol_close(default_locale.info.icu.ucol);
-		default_locale = (struct pg_locale_struct){0};
+		default_locale = (struct pg_locale_struct)
+		{
+			0
+		};
 	}
 
 	if (dbform->datlocprovider == COLLPROVIDER_ICU)
@@ -1451,6 +1454,7 @@ YbPresetDatabaseCollation(HeapTuple tuple)
 		datum = SysCacheGetAttr(DATABASEOID, tuple, Anum_pg_database_daticulocale, &isnull);
 		Assert(!isnull);
 		char	   *iculocale = TextDatumGetCString(datum);
+
 		make_icu_collator(iculocale, &default_locale);
 		elog(DEBUG1, "iculocale of %u is set to %s", MyDatabaseId, iculocale);
 	}

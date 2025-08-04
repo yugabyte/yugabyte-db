@@ -288,22 +288,20 @@ export const HelmOverridesModal: FC<HelmOverridesModalProps> = ({
     <YBModalForm
       title={t('universeActions.helmOverrides.title')}
       showSubmitButton={false}
+      size="large"
       visible={visible}
       formName="HelmOverridesForm"
       className="helm-overrides-form"
       initialValues={initialValues}
-      pullRightFooter={true}
       onHide={onHide}
       footerAccessory={
-        <>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              width: '100%'
-            }}
-          >
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'row'
+          }}
+        >
+          <div>
             {forceUpdate ? (
               <YBCheckBox
                 label={
@@ -318,6 +316,16 @@ export const HelmOverridesModal: FC<HelmOverridesModalProps> = ({
                 className="yb-input-checkbox"
               />
             ) : null}
+          </div>
+          <div
+            style={{
+              display: 'flex',
+              gap: '8px',
+              // TODO: Ideally we need to change the YBModalForm footerAccessory styles as it uses pull-left or pull-right which does not allow us
+              // to individually float elements to left or right of our choice
+              marginLeft: '410px'
+            }}
+          >
             <YBRedesignedButton variant="secondary" size="large" data-testid="HelmOverrides-Cancel">
               {t('common.cancel')}
             </YBRedesignedButton>
@@ -342,7 +350,7 @@ export const HelmOverridesModal: FC<HelmOverridesModalProps> = ({
               {t('common.upgrade')}
             </YBRedesignedButton>
           </div>
-        </>
+        </div>
       }
       dialogClassName={visible ? 'modal-fade in' : 'modal-fade'}
       headerClassName="add-flag-header"

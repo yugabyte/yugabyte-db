@@ -126,11 +126,11 @@ For example:
 ```javascript
 async function createConnection(i){
     const config = {
-        connectionString: "postgresql://admin:yugabyte@us-west1.5afd2054-c213-4e53-9ec6-d15de0f2dcc5.aws.ybdb.io:5433/yugabyte?loadBalance=true",
+        connectionString: "postgresql://admin:yugabyte@us-west1.5afd2054-c213-4e53-9ec6-d15de0f2dcc5.aws.yugabyte.cloud:5433/yugabyte?loadBalance=true",
     ssl: {
         rejectUnauthorized: true,
             ca: fs.readFileSync('./root.crt').toString(),
-            servername: 'us-west1.5afd2054-c213-4e53-9ec6-d15de0f2dcc5.aws.ybdb.io',
+            servername: 'us-west1.5afd2054-c213-4e53-9ec6-d15de0f2dcc5.aws.yugabyte.cloud',
         },
     }
 ```

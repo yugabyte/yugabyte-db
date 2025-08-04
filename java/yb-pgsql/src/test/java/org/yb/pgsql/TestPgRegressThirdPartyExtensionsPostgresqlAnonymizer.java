@@ -53,16 +53,16 @@ public class TestPgRegressThirdPartyExtensionsPostgresqlAnonymizer extends BaseP
 
   @Test
   public void schedule1() throws Exception {
-    runPgRegressTest(regress_schedule, "yb_schedule_1");
+    runPgRegressTest(regress_schedule, "yb_1_schedule");
   }
 
   @Test
   public void schedule2() throws Exception {
-    runPgRegressTest(regress_schedule, "yb_schedule_2");
+    runPgRegressTest(regress_schedule, "yb_2_schedule");
   }
 
   @Test
   public void schedule3() throws Exception {
-    runPgRegressTest(regress_schedule, "yb_schedule_3");
+    runPgRegressTest(regress_schedule, "yb_3_schedule");
   }
 }

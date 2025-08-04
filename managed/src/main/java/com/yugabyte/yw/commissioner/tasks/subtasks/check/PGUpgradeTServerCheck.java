@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.check;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
@@ -12,6 +13,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
+import com.yugabyte.yw.commissioner.tasks.payload.NodeAgentRpcPayload;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ServerSubTaskBase;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
@@ -24,13 +26,17 @@ import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.audit.AuditService;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
@@ -40,6 +46,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -54,6 +61,7 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
   private final KubernetesManagerFactory kubernetesManagerFactory;
   private final LocalNodeManager localNodeManager;
   private final AuditService auditService;
+  private final NodeAgentRpcPayload nodeAgentRpcPayload;
 
   private static final String PG_UPGRADE_CHECK_LOG_FILE = "pg_upgrade_check.log";
 
@@ -73,13 +81,15 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
       NodeManager nodeManager,
       KubernetesManagerFactory kubernetesManagerFactory,
       LocalNodeManager localNodeManager,
-      AuditService auditService) {
+      AuditService auditService,
+      NodeAgentRpcPayload nodeAgentRpcPayload) {
     super(baseTaskDependencies);
     this.nodeUniverseManager = nodeUniverseManager;
     this.nodeManager = nodeManager;
     this.kubernetesManagerFactory = kubernetesManagerFactory;
     this.localNodeManager = localNodeManager;
     this.auditService = auditService;
+    this.nodeAgentRpcPayload = nodeAgentRpcPayload;
   }
 
   @Override
@@ -223,10 +233,21 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
           .executeCommandInPodContainer(
               zoneConfig, namespace, podName, "yb-tserver", extractPackageCommand);
     } else {
+      Optional<NodeAgent> optional =
+          confGetter.getGlobalConf(GlobalConfKeys.nodeAgentDisableConfigureServer)
+              ? Optional.empty()
+              : nodeUniverseManager.maybeGetNodeAgent(universe, node, true /*check feature flag*/);
       AnsibleConfigureServers.Params params =
           getAnsibleConfigureServerParamsToDownloadSoftware(
               universe, node, taskParams().ybSoftwareVersion);
-      nodeManager.nodeCommand(NodeCommandType.Configure, params).processErrors();
+      if (!optional.isPresent()) {
+        nodeManager.nodeCommand(NodeCommandType.Configure, params).processErrors();
+      } else {
+        nodeAgentClient.runDownloadSoftware(
+            optional.get(),
+            nodeAgentRpcPayload.setupDownloadSoftwareBits(universe, node, params, optional.get()),
+            NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
+      }
     }
   }
 
@@ -306,7 +327,8 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
     }
     command.add(pgDataDir);
     command.add("--old-host");
-    if (primaryCluster.userIntent.enableYSQLAuth) {
+    boolean authEnabled = GFlagsUtil.isYsqlAuthEnabled(universe, node);
+    if (authEnabled) {
       command.add(String.format("'$(ls -d -t %s/.yb.* | head -1)'", customTmpDirectory));
     } else {
       command.add(node.cloudInfo.private_ip);
@@ -340,9 +362,9 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
         "Reading PG15 upgrade check logs on node: {} with command: {}", node.nodeName, command);
     ShellResponse readLogsResponse =
         nodeUniverseManager.runCommand(node, universe, readLogsCommand, context).processErrors();
-    JsonNode output = parsePGUpgradeOutput(readLogsResponse.extractRunCommandOutput());
+    ObjectNode output = parsePGUpgradeOutput(readLogsResponse.extractRunCommandOutput());
     log.info("PG upgrade check output on node: {} is: {}", node.nodeName, output);
-    auditService.updateAdditionalDetails(getUserTaskUUID(), output);
+    appendAuditDetails(output);
     if (output != null
         && output.has("overallStatus")
         && output.get("overallStatus").asText().equals("Failure, exiting")) {
@@ -352,6 +374,24 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
     } else {
       log.info("PG upgrade check passed on node: {}", node.nodeName);
     }
+  }
+
+  private void appendAuditDetails(ObjectNode output) {
+    Audit audit = auditService.getFromTaskUUID(getUserTaskUUID());
+    if (audit == null) {
+      return;
+    }
+    JsonNode auditDetails = audit.getAdditionalDetails();
+    ObjectNode modifiedNode;
+    if (auditDetails != null) {
+      modifiedNode = auditDetails.deepCopy();
+    } else {
+      ObjectMapper mapper = new ObjectMapper();
+      modifiedNode = mapper.createObjectNode();
+    }
+    modifiedNode.setAll(output);
+    log.debug("Software upgrade task audit details: {}", modifiedNode);
+    auditService.updateAdditionalDetails(getUserTaskUUID(), modifiedNode);
   }
 
   private String extractVersionName(String ybServerPackage) {
@@ -444,7 +484,7 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
    *      Failure, exiting"
    *
    */
-  public static JsonNode parsePGUpgradeOutput(String input) {
+  public static ObjectNode parsePGUpgradeOutput(String input) {
     Map<String, Object> result = new HashMap<>();
     String[] lines = input.split("\n");
     String title = lines[0].trim();

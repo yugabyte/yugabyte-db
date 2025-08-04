@@ -39,7 +39,7 @@ import { Replication } from './pages/Replication';
 import UniverseNewView from './pages/UniverseNewView';
 import { DataCenterConfiguration } from './pages/DataCenterConfiguration';
 import { SlotDetail } from './redesign/features/universe/universe-tabs/replication-slots/components/SlotDetail';
-import { SecondaryDashboard } from './pages/SecondaryDashboard';
+import { PerfAdvisorAnalysisView } from './pages/PerfAdvisorAnalysisView';
 import {
   clearRbacCreds,
   getRbacEnabledVal,
@@ -246,7 +246,12 @@ export default (store) => {
       <Route path="/login" component={Login} />
       <Route path="/jwt_token" component={OIDCJWTToken} />
       <Route path="/register" component={Register} />
-      {/* <Route path="/create-universe" component={CreateUniverse} onEnter={authenticatedSession} onChange={checkIfAuthenticated} /> */}
+      <Route
+        path="/create-universe"
+        component={CreateUniverse}
+        onEnter={authenticatedSession}
+        onChange={checkIfAuthenticated}
+      />
       <Route
         onEnter={authenticatedSession}
         onChange={checkIfAuthenticated}
@@ -255,10 +260,7 @@ export default (store) => {
         <IndexRoute component={Dashboard} />
         <Route path="/universes" component={Universes}>
           <IndexRoute component={UniverseConsole} />
-          <Route
-            path="/universes/:uuid/troubleshoot/:troubleshootUUID"
-            component={SecondaryDashboard}
-          />
+          <Route path="/universes/:uuid/perfAdvisor/:id" component={PerfAdvisorAnalysisView} />
           <Route path="/universes/:uuid/replication-slots/:streamID" component={SlotDetail} />
           <Route path="/universes/create" component={UniverseNewView} />
           <Route path="/universes/:uuid" component={UniverseDetail} />

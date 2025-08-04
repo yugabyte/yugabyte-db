@@ -2,9 +2,13 @@
 
 package api.v2.controllers;
 
+import static play.mvc.Results.ok;
+
 import api.v2.handlers.UniverseManagementHandler;
 import api.v2.handlers.UniverseUpgradesManagementHandler;
+import api.v2.models.AttachUniverseSpec;
 import api.v2.models.ClusterAddSpec;
+import api.v2.models.DetachUniverseSpec;
 import api.v2.models.Universe;
 import api.v2.models.UniverseCertRotateSpec;
 import api.v2.models.UniverseCreateSpec;
@@ -13,6 +17,8 @@ import api.v2.models.UniverseEditEncryptionInTransit;
 import api.v2.models.UniverseEditGFlags;
 import api.v2.models.UniverseEditKubernetesOverrides;
 import api.v2.models.UniverseEditSpec;
+import api.v2.models.UniverseQueryLogsExport;
+import api.v2.models.UniverseResourceDetails;
 import api.v2.models.UniverseRestart;
 import api.v2.models.UniverseRollbackUpgradeReq;
 import api.v2.models.UniverseSoftwareUpgradeFinalize;
@@ -24,8 +30,12 @@ import api.v2.models.UniverseSystemdEnableStart;
 import api.v2.models.UniverseThirdPartySoftwareUpgradeStart;
 import api.v2.models.YBATask;
 import com.google.inject.Inject;
+import com.yugabyte.yw.models.Audit;
+import java.io.InputStream;
 import java.util.UUID;
+import play.mvc.Http;
 import play.mvc.Http.Request;
+import play.mvc.Result;
 
 public class UniverseApiControllerImp extends UniverseApiControllerImpInterface {
   @Inject private UniverseManagementHandler universeHandler;
@@ -148,5 +158,59 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
       Request request, UUID cUUID, UUID uniUUID, UniverseEditKubernetesOverrides spec)
       throws Exception {
     return universeUpgradeHandler.editKubernetesOverrides(request, cUUID, uniUUID, spec);
+  }
+
+  // Overrode this method to improve response handling in clients - the Content-Disposition lets the
+  // client know to handle this response as a downloaded file named "attachDetachSpec.tar.gz". Also,
+  // the content type is specified as "application/gzip" to set the MIME type of the response. If we
+  // were to add UI for this feature without this addition, the browser might try to display the
+  // file instead of downloading it. Accessing the API through curl is fine regardless.
+  @Override
+  public Result detachUniverseHttp(
+      Http.Request request, UUID cUUID, UUID uniUUID, DetachUniverseSpec detachUniverseSpec)
+      throws Exception {
+    InputStream obj = detachUniverse(request, cUUID, uniUUID, detachUniverseSpec);
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.Universe,
+            uniUUID.toString(),
+            Audit.ActionType.Detach,
+            request.body().asJson());
+    return ok(obj)
+        .withHeader("Content-Disposition", "attachment; filename=attachDetachSpec.tar.gz")
+        .as("application/gzip");
+  }
+
+  @Override
+  public InputStream detachUniverse(
+      Request request, UUID cUUID, UUID uniUUID, DetachUniverseSpec detachUniverseSpec)
+      throws Exception {
+    return universeHandler.detachUniverse(request, cUUID, uniUUID, detachUniverseSpec);
+  }
+
+  @Override
+  public void attachUniverse(
+      Request request, UUID cUUID, UUID uniUUID, AttachUniverseSpec attachUniverseSpec)
+      throws Exception {
+    universeHandler.attachUniverse(request, cUUID, uniUUID, attachUniverseSpec);
+  }
+
+  @Override
+  public void deleteAttachDetachMetadata(Request request, UUID cUUID, UUID uniUUID)
+      throws Exception {
+    universeHandler.deleteAttachDetachMetadata(request, cUUID, uniUUID);
+  }
+
+  @Override
+  public UniverseResourceDetails getUniverseResources(
+      Request request, UUID cUUID, UniverseCreateSpec universeSpec) throws Exception {
+    return universeHandler.getUniverseResources(request, cUUID, universeSpec);
+  }
+
+  @Override
+  public YBATask configureQueryLogging(
+      Request request, UUID cUUID, UUID uniUUID, UniverseQueryLogsExport req) throws Exception {
+    return universeUpgradeHandler.configureQueryLogging(request, cUUID, uniUUID, req);
   }
 }

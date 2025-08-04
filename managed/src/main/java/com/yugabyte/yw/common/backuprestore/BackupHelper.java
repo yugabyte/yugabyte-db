@@ -755,16 +755,11 @@ public class BackupHelper {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Masters are not currently queryable.");
     }
-    YBClient client = null;
-    try {
-      String certificate = universe.getCertificateNodetoNode();
-      client = ybClientService.getClient(masterAddresses, certificate);
+    try (YBClient client = ybClientService.getUniverseClient(universe)) {
       return client.getTablesList().getTableInfoList();
     } catch (Exception e) {
       log.warn(e.toString());
       return Collections.emptyList();
-    } finally {
-      ybClientService.closeClient(client, masterAddresses);
     }
   }
 

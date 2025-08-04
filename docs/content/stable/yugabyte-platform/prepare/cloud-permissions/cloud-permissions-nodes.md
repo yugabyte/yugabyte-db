@@ -48,7 +48,9 @@ type: docs
 
 ## On-premises
 
-Because you are creating the VMs manually, nodes for on-premises providers don't require any cloud permissions.
+Because you are creating the VMs manually (on a private cloud, bare metal, or cloud provider), nodes for on-premises providers don't require any cloud permissions.
+
+If you will be deploying on-premises universes in AWS, you can attach a service account to nodes to be used to access storage in S3. The IAM role used should be sufficient to access S3. For more information, refer to [Enable IAM roles for service accounts](https://docs.aws.amazon.com/eks/latest/userguide/enable-iam-roles-for-service-accounts.html) in the AWS documentation.
 
 With an on-premises provider, permissions against your infrastructure are generally not needed to deploy VMs, modify VMs, and so on.
 

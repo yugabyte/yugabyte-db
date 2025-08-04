@@ -42,13 +42,11 @@ func cleanCmd() *cobra.Command {
 
 			// TODO: Only clean up per service.
 			// Clean up services in reverse order.
-			serviceNames := []string{}
-			for i := len(serviceOrder) - 1; i >= 0; i-- {
-				services[serviceOrder[i]].Uninstall(removeData)
-				serviceNames = append(serviceNames, services[serviceOrder[i]].Name())
+			for service := range serviceManager.ServicesReverse() {
+				service.Uninstall(removeData)
 			}
 
-			common.Uninstall(serviceNames, removeData)
+			common.Uninstall(removeData)
 			// If this is a soft clean, update internal state. Otherwise skip, as there is nothing left to
 			// update.
 			if !removeData {
