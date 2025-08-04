@@ -5068,6 +5068,17 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 	bool		is_read = command_tag == CMDTAG_SELECT;
 	bool		is_dml = YBIsDmlCommandTag(command_tag);
 
+	if (command_tag == CMDTAG_COPY || command_tag == CMDTAG_COPY_FROM)
+	{
+		const char *retry_err = ("query layer retries not possible for COPY commands");
+
+		edata->message = psprintf("%s (%s)", edata->message, retry_err);
+		if (yb_debug_log_internal_restarts)
+			elog(LOG, "%s", retry_err);
+
+		return false;
+	}
+
 	if (IsYBReadCommitted())
 	{
 		if (YBGetDdlNestingLevel() != 0)
