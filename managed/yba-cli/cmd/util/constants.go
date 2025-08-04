@@ -420,6 +420,20 @@ const (
 	OnpremProviderType = "onprem"
 )
 
+// Different telemetry provider types
+const (
+	// DataDogTelemetryProviderType type
+	DataDogTelemetryProviderType = "DATA_DOG"
+	// SplunkTelemetryProviderType type
+	SplunkTelemetryProviderType = "SPLUNK"
+	// AWSCloudWatchTelemetryProviderType type
+	AWSCloudWatchTelemetryProviderType = "AWS_CLOUDWATCH"
+	// GCPCloudMonitoringTelemetryProviderType type
+	GCPCloudMonitoringTelemetryProviderType = "GCP_CLOUD_MONITORING"
+	// LokiTelemetryProviderType type
+	LokiTelemetryProviderType = "LOKI"
+)
+
 // Different kms types
 const (
 	// util.AWSEARType type

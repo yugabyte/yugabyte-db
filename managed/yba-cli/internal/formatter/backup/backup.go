@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/sirupsen/logrus"
 	ybaclient "github.com/yugabyte/platform-go-client"
@@ -156,12 +155,7 @@ func (c *Context) KMSConfig() string {
 
 // ExpiryTime fetches Expiry Time
 func (c *Context) ExpiryTime() string {
-	expiryTime := c.b.GetExpiryTime()
-	if expiryTime.IsZero() {
-		return ""
-	}
-	return expiryTime.Format(time.RFC1123Z)
-
+	return util.PrintTime(c.b.GetExpiryTime())
 }
 
 // Category fetches Category
@@ -212,16 +206,14 @@ func (c *Context) Universe() string {
 
 // CreateTime fetches Create Time
 func (c *Context) CreateTime() string {
-	return c.b.GetCommonBackupInfo().CreateTime.Format(time.RFC1123Z)
+	commonBackupInfo := c.b.GetCommonBackupInfo()
+	return util.PrintTime(commonBackupInfo.GetCreateTime())
 }
 
 // CompletionTime fetches Completion Time
 func (c *Context) CompletionTime() string {
-	completionTime := c.b.GetCommonBackupInfo().CompletionTime
-	if completionTime == nil {
-		return ""
-	}
-	return completionTime.Format(time.RFC1123Z)
+	commonBackupInfo := c.b.GetCommonBackupInfo()
+	return util.PrintTime(commonBackupInfo.GetCompletionTime())
 }
 
 // MarshalJSON function
