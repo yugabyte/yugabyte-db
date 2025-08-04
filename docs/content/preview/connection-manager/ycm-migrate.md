@@ -14,7 +14,7 @@ type: docs
 
 ## PgBouncer
 
-PgBouncer is a generic PostgreSQL connection pooler and YB-Controller is purpose-built for YugabyteDB, optimizing connection management for distributed PostgreSQL (YSQL). Both support transaction pooling, session pooling, or statement pooling.
+PgBouncer is a generic PostgreSQL connection pooler and Connection Manager is purpose-built for YugabyteDB, optimizing connection management for distributed PostgreSQL (YSQL). Both support transaction pooling, session pooling, or statement pooling.
 
 The following table describes key differences between PgBouncer and YugabyteDB Connection Manager.
 
@@ -35,25 +35,23 @@ The following table describes key differences between PgBouncer and YugabyteDB C
 | Connection string | `postgresql://<username>:<password>@<pgbouncer_host>:<pgbouncer_port>/<database_name>?sslmode=require` | `postgresql://<username>:<password>@<host>:<port>/<database_name>?sslmode=require`<br><br>Connection Manager remains transparent, connection string (by default) is same as without connection manager enabled. |
 | Scalability | Single process/thread. To scale, you need to start multiple instances of PgBouncer. | The number of threads for multiplexing is configurable using `ysql_conn_mgr_worker_threads` (default is CPU cores divided by 2). |
 
-To migrate from PgBouncer, do the following:
+### Migrate
 
-1. Understand the differences.
+After reviewing the differences bewtween PgBouncer and Connection Manager, migrate from PgBouncer as follows:
 
-    Review how PgBouncer differs from YugabyteDB Connection Manager (YugabyteDB-native pooling and load balancing) as explained in the previous table.
+1. Make sure your application works with session-level pooling.
 
-1. Choose pooling mode.
-
-    - Use session pooling in YugabyteDB (default session level) compared to PgBouncer.
-    - Plan application adjustments if PgBouncer was using transaction pooling.
+    Connection Manager uses session-level pooling. If you are using transaction pooling with PgBouncer, you may need to make changes to your application.
 
 1. Deploy YugabyteDB Connection Manager.
 
-    - Enable and configure YugabyteDB Connection Manager. Refer to [setup](../ycm-setup/).
-    - How to configure to connect to a local region (without using sticky session).
+    Enable and configure YugabyteDB Connection Manager. Refer to [setup](../ycm-setup/).
+
+    [How to configure to connect to a local region (without using sticky session).]
 
 1. Update connection strings.
 
-    Change your application's database connection URL to point to the YugabyteDB endpoint (default port 5433).
+    Change your application's database connection URL to point to the YugabyteDB endpoint (default port is 5433).
 
 1. Test in a staging environment.
 
@@ -62,18 +60,15 @@ To migrate from PgBouncer, do the following:
 
 1. Set up [monitoring](../ycm-monitor/).
 
-    - Integrate YugabyteDB metrics into Prometheus, Grafana, Datadog, or preferred APM.
+    - Integrate YugabyteDB metrics into Prometheus, Grafana, Datadog, or your preferred APM.
     - Track active connections, error rates, and latency.
 
-1. Scale horizontally.
+1. Understand how YugabyteDB scales horizontally.
 
-    PgBouncer is a single process/thread. To scale, you need to start multiple instances of PgBouncer.
+    PgBouncer is a single process/thread, and to scale you need to start multiple instances of PgBouncer. Connection manager on the other hand is multi-threaded and creates a number of threads based on the available CPU.
 
-    YSQL Connection manager on the other hand is multi-threaded and creates a number of threads based on the available CPU.
+1. Update your failover and high availability strategy.
 
-1. Update failover and high availability strategy.
-
-    - Ensure the application handles dynamic leader changes.
-    - Remove PgBouncer-specific manual failover scripts, if any custom scripts are used to failover and bring your application online.
+    Make sure your application handles dynamic leader changes. Remove PgBouncer-specific manual failover scripts, if any custom scripts are used to fail over and bring your application online.
 
 <!-- ## HikariPool -->
