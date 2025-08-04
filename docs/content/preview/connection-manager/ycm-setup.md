@@ -18,9 +18,9 @@ Currently, YSQL Connection Manager is supported in YugabyteDB and YugabyteDB Any
 
 ### YugabyteDB
 
-To start a YugabyteDB cluster with YSQL Connection Manager, set the [yb-tserver](../../../reference/configuration/yb-tserver/) flag `enable_ysql_conn_mgr` to true.
+To start a YugabyteDB cluster with YSQL Connection Manager, set the [yb-tserver](../../reference/configuration/yb-tserver/) flag `enable_ysql_conn_mgr` to true.
 
-For example, to create a single-node cluster with YSQL Connection Manager using [yugabyted](../../../reference/configuration/yugabyted/), use the following command:
+For example, to create a single-node cluster with YSQL Connection Manager using [yugabyted](../../reference/configuration/yugabyted/), use the following command:
 
 ```sh
 ./bin/yugabyted start --tserver_flags "enable_ysql_conn_mgr=true" --ui false
@@ -30,7 +30,7 @@ When `enable_ysql_conn_mgr` is set, each YB-TServer starts the YSQL Connection M
 
 {{< note >}}
 
-To create a large number of client connections, ensure that "SHMMNI" (the maximum number of concurrent shared memory segments an OS allows) as well as [ulimit](../../../deploy/manual-deployment/system-config/#set-ulimits) is set correctly as follows:
+To create a large number of client connections, ensure that "SHMMNI" (the maximum number of concurrent shared memory segments an OS allows) as well as [ulimit](../../deploy/manual-deployment/system-config/#set-ulimits) is set correctly as follows:
 
 1. Open the file `/etc/sysctl.conf`.
 1. Add `kernel.shmmni = 32768` (support for 30000 clients) at the end of the file.
@@ -39,12 +39,12 @@ To create a large number of client connections, ensure that "SHMMNI" (the maximu
 
 ### YugabyteDB Anywhere
 
-{{<tags/feature/ea idea="1368">}}While in Early Access, YSQL Connection Manager is not available in YugabyteDB Anywhere by default. To make connection pooling available, set the **Allow users to enable or disable connection pooling** Global Runtime Configuration option (config key yb.universe.allow_connection_pooling) to true. Refer to [Manage runtime configuration settings](../../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
+{{<tags/feature/ea idea="1368">}}While in Early Access, YSQL Connection Manager is not available in YugabyteDB Anywhere by default. To make connection pooling available, set the **Allow users to enable or disable connection pooling** Global Runtime Configuration option (config key yb.universe.allow_connection_pooling) to true. Refer to [Manage runtime configuration settings](../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
 
 To enable built-in connection pooling for universes deployed using YugabyteDB Anywhere:
 
-- Turn on the **Connection pooling** option when creating a universe. Refer to [Create a multi-zone universe](../../../yugabyte-platform/create-deployments/create-universe-multi-zone/#advanced-configuration).
-- Edit connection pooling on an existing universe. Refer to [Edit connection pooling](../../../yugabyte-platform/manage-deployments/edit-universe/#edit-connection-pooling).
+- Turn on the **Connection pooling** option when creating a universe. Refer to [Create a multi-zone universe](../../yugabyte-platform/create-deployments/create-universe-multi-zone/#advanced-configuration).
+- Edit connection pooling on an existing universe. Refer to [Edit connection pooling](../../yugabyte-platform/manage-deployments/edit-universe/#edit-connection-pooling).
 
 Note that when managing universes using YugabyteDB Anywhere, do not set connection pooling flags, `enable_ysql_conn_mgr`, `ysql_conn_mgr_port`, and `pgsql_proxy_bind_address`.
 
@@ -52,7 +52,7 @@ Note that when managing universes using YugabyteDB Anywhere, do not set connecti
 
 By default, when YSQL Connection Manager is enabled, it uses the port 5433, and the backend database is assigned a random free port.
 
-To explicitly set a port for YSQL, you should specify ports for the flags `ysql_conn_mgr_port` and [ysql_port](../../../reference/configuration/yugabyted/#advanced-flags).
+To explicitly set a port for YSQL, you should specify ports for the flags `ysql_conn_mgr_port` and [ysql_port](../../reference/configuration/yugabyted/#advanced-flags).
 
 The following table describes YB-TServer flags related to YSQL Connection Manager:
 
@@ -103,7 +103,7 @@ When using YSQL Connection Manager, sticky connections can form in the following
 
 ## Limitations
 
-- Changes to [configuration parameters](../../../reference/configuration/yb-tserver/#postgresql-configuration-parameters) for a user or database that are set using ALTER ROLE SET or ALTER DATABASE SET queries may reflect in other pre-existing active sessions.
+- Changes to [configuration parameters](../../reference/configuration/yb-tserver/#postgresql-configuration-parameters) for a user or database that are set using ALTER ROLE SET or ALTER DATABASE SET queries may reflect in other pre-existing active sessions.
 - YSQL Connection Manager can route up to 10,000 connection pools. This includes pools corresponding to dropped users and databases.
 - Prepared statements may be visible to other sessions in the same connection pool. [#24652](https://github.com/yugabyte/yugabyte-db/issues/24652)
 - Attempting to use DEALLOCATE/DEALLOCATE ALL queries can result in unexpected behavior. [#24653](https://github.com/yugabyte/yugabyte-db/issues/24653)

@@ -48,7 +48,7 @@ To migrate from PgBouncer, do the following:
 
 1. Deploy YugabyteDB Connection Manager.
 
-    - Enable and configure YugabyteDB Connection Manager. Refer to [setup](./ycm-setup/).
+    - Enable and configure YugabyteDB Connection Manager. Refer to [setup](../ycm-setup/).
     - How to configure to connect to a local region (without using sticky session).
 
 1. Update connection strings.
@@ -60,7 +60,7 @@ To migrate from PgBouncer, do the following:
     - Validate connection handling when running your workload.
     - Simulate failover scenarios and node failures.
 
-1. Set up [monitoring](./ycm-monitor/).
+1. Set up [monitoring](../ycm-monitor/).
 
     - Integrate YugabyteDB metrics into Prometheus, Grafana, Datadog, or preferred APM.
     - Track active connections, error rates, and latency.
