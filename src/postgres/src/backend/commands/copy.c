@@ -2728,24 +2728,26 @@ CopyFrom(CopyState cstate)
 					resultRelInfo->ri_RelationDesc->rd_rel->relkind == RELKIND_FOREIGN_TABLE);
 			ereport(WARNING,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-			 	 errmsg("Batched COPY is not supported on %s tables. "
+			 	 errmsg("ROWS_PER_TRANSACTION is not supported on %s tables. "
 						"Defaulting to using one transaction for the entire copy.",
 						YbIsTempRelation(resultRelInfo->ri_RelationDesc) ? "temporary" : "foreign"),
 				 errhint("Either copy onto non-temporary table or set rows_per_transaction "
 						 "option to `0` to disable batching and remove this warning.")));
 		}
-		else if (YBIsDataSent())
+		else if (IsTransactionBlock() || YbIsBatchedExecution())
+    {
+      const char *context = IsTransactionBlock() ? "transaction block" : "batch of commands";
 			ereport(WARNING,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("Batched COPY is not supported in transaction blocks. "
-						"Defaulting to using one transaction for the entire copy."),
-				 errhint("Either run this COPY outside of a transaction block or set "
-						 "rows_per_transaction option to `0` to disable batching and "
-						 "remove this warning.")));
+				 errmsg("ROWS_PER_TRANSACTION is not supported in a %s. "
+						"Defaulting to using one transaction for all statements in the %s.", context, context),
+				 errhint("Either run this COPY outside of a %s or set "
+						 "rows_per_transaction option to `0` to remove this warning.", context)));
+    }
 		else if (HasNonRITrigger(cstate->rel->trigdesc))
 			ereport(WARNING,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-			 	 errmsg("Batched COPY is not supported on table with non RI trigger. "
+			 	 errmsg("ROWS_PER_TRANSACTION is not supported on table with non RI trigger. "
 						"Defaulting to using one transaction for the entire copy."),
 				 errhint("Set rows_per_transaction option to `0` to disable batching "
 				 		 "and remove this warning.")));
