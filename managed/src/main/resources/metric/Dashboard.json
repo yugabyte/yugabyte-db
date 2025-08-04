@@ -8416,9 +8416,14 @@
     "id" : 103,
     "targets" : [ {
       "hide" : false,
-      "legendFormat" : "Max",
-      "expr" : "max(max_over_time(hybrid_clock_skew{node_prefix=~\"$dbcluster\", export_type=~\"(tserver_export|master_export)\"}[300s])) by (saved_name)",
+      "legendFormat" : "Max Clock Skew",
+      "expr" : "max(max_over_time({node_prefix=~\"$dbcluster\", saved_name=\"hybrid_clock_skew\", export_type=~\"(tserver_export|master_export)\"}[300s])) by (saved_name)",
       "refId" : "A"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Max Clock Error",
+      "expr" : "max(max_over_time({node_prefix=~\"$dbcluster\", saved_name=\"hybrid_clock_error\", export_type=~\"(tserver_export|master_export)\"}[300s])) by (saved_name)",
+      "refId" : "B"
     } ],
     "gridPos" : {
       "w" : 12,
