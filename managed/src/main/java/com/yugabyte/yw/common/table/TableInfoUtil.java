@@ -4,6 +4,7 @@ import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
 
 import com.yugabyte.yw.models.XClusterConfig;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 import org.yb.CommonTypes;
 import org.yb.master.MasterDdlOuterClass;
@@ -70,7 +71,9 @@ public class TableInfoUtil {
   }
 
   public static boolean isDdlQueueTable(MasterDdlOuterClass.ListTablesResponsePB.TableInfo table) {
-    return table.getRelationType() == MasterTypes.RelationType.SYSTEM_TABLE_RELATION
+    return table.getRelationType() == MasterTypes.RelationType.USER_TABLE_RELATION
+        && Objects.nonNull(table.getPgschemaName())
+        && table.getPgschemaName().equals("yb_xcluster_ddl_replication")
         && table.getName().equals("ddl_queue");
   }
 
@@ -78,6 +81,14 @@ public class TableInfoUtil {
       MasterDdlOuterClass.ListTablesResponsePB.TableInfo table) {
     return table.getRelationType() == MasterTypes.RelationType.SYSTEM_TABLE_RELATION
         && table.getName().equals("sequences_data");
+  }
+
+  public static boolean isReplicatedDdlsTable(
+      MasterDdlOuterClass.ListTablesResponsePB.TableInfo table) {
+    return table.getRelationType() == MasterTypes.RelationType.USER_TABLE_RELATION
+        && Objects.nonNull(table.getPgschemaName())
+        && table.getPgschemaName().equals("yb_xcluster_ddl_replication")
+        && table.getName().equals("replicated_ddls");
   }
 
   public static boolean isSystemRedis(MasterDdlOuterClass.ListTablesResponsePB.TableInfo table) {

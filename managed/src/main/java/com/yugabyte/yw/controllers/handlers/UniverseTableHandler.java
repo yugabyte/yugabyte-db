@@ -93,7 +93,7 @@ public class UniverseTableHandler {
   private static final String COLOCATION_NAME_SUFFIX = ".colocation.parent.tablename";
 
   private static final Set<String> PGSQL_SYSTEM_NAMESPACE_LIST =
-      new HashSet<>(Arrays.asList("system_platform", "template0", "template1"));
+      new HashSet<>(Arrays.asList("system_platform", "template0", "template1", "system_postgres"));
   private static final Set<String> YCQL_SYSTEM_NAMESPACES_LIST =
       new HashSet<>(Arrays.asList("system_schema", "system_auth", "system"));
 
@@ -143,6 +143,23 @@ public class UniverseTableHandler {
         xClusterSupportedOnly);
   }
 
+  public List<TableInfoResp> getTableInfoRespFromTableInfo(
+      Universe universe,
+      List<TableInfo> tableInfoList,
+      boolean includeParentTableInfo,
+      boolean excludeColocatedTables,
+      boolean includeColocatedParentTables,
+      boolean xClusterSupportedOnly) {
+    return getTableInfoRespFromTableInfo(
+        universe,
+        tableInfoList,
+        includeParentTableInfo,
+        excludeColocatedTables,
+        includeColocatedParentTables,
+        xClusterSupportedOnly,
+        false /* includePostgresSystemTables */);
+  }
+
   /**
    * Converts a list of TableInfo objects into a list of TableInfoResp objects.
    *
@@ -152,6 +169,8 @@ public class UniverseTableHandler {
    * @param excludeColocatedTables Flag indicating whether to exclude colocated tables.
    * @param includeColocatedParentTables Flag indicating whether to include colocated parent tables.
    * @param xClusterSupportedOnly Flag indicating whether to include only xCluster supported tables.
+   * @param includePostgresSystemTables Flag indicating whether to include Postgres system tables.
+   *     It will be used for xCluster table list population in ddl replication mode.
    * @return The list of TableInfoResp objects.
    */
   public List<TableInfoResp> getTableInfoRespFromTableInfo(
@@ -160,8 +179,8 @@ public class UniverseTableHandler {
       boolean includeParentTableInfo,
       boolean excludeColocatedTables,
       boolean includeColocatedParentTables,
-      boolean xClusterSupportedOnly) {
-
+      boolean xClusterSupportedOnly,
+      boolean includePostgresSystemTables) {
     if (xClusterSupportedOnly && (!includeColocatedParentTables || excludeColocatedTables)) {
       throw new PlatformServiceException(
           BAD_REQUEST,
@@ -185,7 +204,8 @@ public class UniverseTableHandler {
                     !TableInfoUtil.isSystemTable(table)
                         || TableInfoUtil.isSystemRedis(table)
                         || TableInfoUtil.isDdlQueueTable(table)
-                        || TableInfoUtil.isSequencesDataTable(table))
+                        || (includePostgresSystemTables
+                            && TableInfoUtil.isSequencesDataTable(table)))
             .collect(Collectors.toList());
     List<TableInfoResp> tableInfoRespList = new ArrayList<>(tableInfoList.size());
 
