@@ -678,14 +678,17 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     return -1;
   }
 
-  private void populatePreviousGflagsChecksum() {
+  private void populatePreviousGflagsChecksum(boolean newNamingStyle) {
     if (taskParams().usePreviousGflagsChecksum
         && MapUtils.isEmpty(taskParams().previousGflagsChecksumMap)) {
       taskParams().previousGflagsChecksumMap =
           kubernetesManagerFactory
               .getManager()
               .getServerTypeGflagsChecksumMap(
-                  taskParams().namespace, taskParams().helmReleaseName, taskParams().config);
+                  taskParams().namespace,
+                  taskParams().helmReleaseName,
+                  taskParams().config,
+                  newNamingStyle);
     }
   }
 
@@ -1243,7 +1246,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     // Gflags checksum override
     if (taskParams().usePreviousGflagsChecksum) {
       if (MapUtils.isEmpty(taskParams().previousGflagsChecksumMap)) {
-        populatePreviousGflagsChecksum();
+        populatePreviousGflagsChecksum(taskUniverseDetails.useNewHelmNamingStyle);
       }
       String masterGflagsChecksum =
           taskParams().previousGflagsChecksumMap.getOrDefault(ServerType.MASTER, "");
