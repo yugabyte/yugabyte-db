@@ -352,6 +352,10 @@ There are 4 possible values for `REPLICA IDENTITY`:
 
 YugabyteDB supports the replica identity CHANGE only with the plugin `yboutput`.
 
+The PostgreSQL replica identity `INDEX` is not supported in YugabyteDB.
+
+For information on setting the replica identity of tables, refer to [Replica identity](../key-concepts/#replica-identity).
+
 {{< /note >}}
 
 #### Message formats for replica identities
