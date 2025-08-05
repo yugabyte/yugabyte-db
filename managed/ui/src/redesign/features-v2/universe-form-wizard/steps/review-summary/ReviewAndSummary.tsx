@@ -209,13 +209,15 @@ export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
         dataTestId='yb-maps-review-and-summary'
         mapHeight={360}
         coordinates={[
-          [37.3688, -122.0363],
-          [34.052235, -118.243683]
+          [0,0],
+          [0,0]
         ]}
         initialBounds={undefined}
         mapWidth={360}
         mapContainerProps={{
-          scrollWheelZoom: false
+          scrollWheelZoom: false,
+          zoom: 1,
+          center: [0, 0]
         }}
       >
         {

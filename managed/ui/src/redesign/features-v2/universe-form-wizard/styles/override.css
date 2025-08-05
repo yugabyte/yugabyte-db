@@ -1,0 +1,11 @@
+/*
+    These styles overrides the default styles from the UniverseDetail.scss and App.scss
+**/
+
+h2 {
+    height: unset;
+    span {
+        color: unset;
+        font-size: unset;
+    }
+}
