@@ -683,6 +683,7 @@ Status PgTxnManager::SetupPerformOptions(
   options->set_trace_requested(enable_tracing_);
   options->set_txn_serial_no(serial_no_.txn());
   options->set_active_sub_transaction_id(active_sub_transaction_id_);
+  options->set_xcluster_target_ddl_bypass(yb_xcluster_target_ddl_bypass);
 
   if (use_saved_priority_) {
     options->set_use_existing_priority(true);

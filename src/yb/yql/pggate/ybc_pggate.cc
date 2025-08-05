@@ -209,6 +209,9 @@ bool PreloadAdditionalCatalogListValidator(const char* flag_name, const std::str
 
 DEFINE_validator(ysql_catalog_preload_additional_table_list, PreloadAdditionalCatalogListValidator);
 
+YbcRecordTempRelationDDL_hook_type YBCRecordTempRelationDDL_hook =
+    &YBCDdlEnableForceCatalogModification;
+
 namespace yb::pggate {
 
 //--------------------------------------------------------------------------------------------------
@@ -3159,6 +3162,12 @@ YbcStatus YBCPgRegisterSnapshotReadTime(
   YbcReadPointHandle tmp_handle;
   return ExtractValueFromResult(
       pgapi->RegisterSnapshotReadTime(read_time, use_read_time), handle ? handle : &tmp_handle);
+}
+
+void YBCRecordTempRelationDDL() {
+  if (YBCRecordTempRelationDDL_hook) {
+    YBCRecordTempRelationDDL_hook();
+  }
 }
 
 void YBCDdlEnableForceCatalogModification() {

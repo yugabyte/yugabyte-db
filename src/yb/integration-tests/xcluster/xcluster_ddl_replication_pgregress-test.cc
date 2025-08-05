@@ -191,7 +191,9 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
     const auto sub_dir = "test_xcluster_ddl_replication_sql";
     const auto test_sql_dir = JoinPathSegments(env_util::GetRootDir(sub_dir), sub_dir, "sql");
 
-    RETURN_NOT_OK(SetUpClusters(is_colocated_));
+    auto params = XClusterDDLReplicationTestBase::kDefaultParams;
+    params.is_colocated = is_colocated_;
+    RETURN_NOT_OK(SetUpClusters(params));
 
     if (!pre_execution_sql_text.empty()) {
       RETURN_NOT_OK(RunOnBothClusters([&](Cluster* cluster) -> Status {

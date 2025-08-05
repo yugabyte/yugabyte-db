@@ -727,6 +727,7 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 	List	   *sequence_info_list = NIL;
 	List	   *type_info_list = NIL;
 	bool		found_temp = false;
+	bool		found_matview = false;
 
 	/*
 	 * As long as there is at least one command that needs to be replicated, we
@@ -837,6 +838,10 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 					ShouldReplicateTruncatedRelation(obj_id, &new_rel_list);
 
 		}
+		else if (IsMatViewCommand(command_tag))
+		{
+			found_matview = true;
+		}
 		else if (IsPassThroughDdlSupported(command_tag_name))
 		{
 			should_replicate_ddl = !is_temporary_object;
@@ -848,11 +853,20 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 		}
 	}
 
-	if (found_temp && should_replicate_ddl)
-		ereport(ERROR,
+	if (should_replicate_ddl)
+	{
+		if (found_temp)
+			ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("unsupported mix of temporary and persisted objects in DDL command"),
-				 errdetail("%s", kManualReplicationErrorMsg)));
+				errmsg("unsupported mix of temporary and persisted objects in DDL command"),
+				errdetail("%s", kManualReplicationErrorMsg)));
+
+		if (found_matview)
+			ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				errmsg("unsupported mix of materialized view and other DDL commands"),
+				errdetail("%s", kManualReplicationErrorMsg)));
+	}
 
 	ProcessNewRelationsList(state, &new_rel_list);
 
@@ -901,8 +915,14 @@ ProcessSourceEventTriggerTableRewrite()
 }
 
 bool
-ProcessSourceEventTriggerDroppedObjects()
+ProcessSourceEventTriggerDroppedObjects(CommandTag	tag)
 {
+	/*
+	 * Matview related DDLs are not replicated.
+	 */
+	if (IsMatViewCommand(tag))
+		return false;
+
 	StringInfoData query_buf;
 
 	initStringInfo(&query_buf);

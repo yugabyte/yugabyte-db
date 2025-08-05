@@ -2726,14 +2726,33 @@ class PgClientSession::Impl {
     return ReleaseObjectLocksIfNecessary(txn, used_session_kind, deadline);
   }
 
-  Status DoPerform(
-      const PgTablesQueryResult& tables, const PerformQueryDataPtr& data, CoarseTimePoint deadline,
-      rpc::RpcContext* context = nullptr) {
-    auto& options = *data->req.mutable_options();
-    VLOG(5) << "Perform request: " << data->req.ShortDebugString();
-    if (!(options.ddl_mode() || options.yb_non_ddl_txn_for_sys_tables_allowed()) &&
-        xcluster_context() &&
-        xcluster_context()->IsReadOnlyMode(options.namespace_id())) {
+  template <class DataPtr, class Options>
+  Status ValidateRequestForXCluster(const Options& options, const DataPtr& data) {
+    if (options.yb_non_ddl_txn_for_sys_tables_allowed() || !xcluster_context()) {
+      return Status::OK();
+    }
+
+    if (options.ddl_mode()) {
+      // In xCluster Automatic mode, DDLs are not allowed on the target database unless it is run
+      // via the target poller or in forced manual mode.
+      if (xcluster_context()->GetXClusterRole(options.namespace_id()) ==
+              XClusterNamespaceInfoPB::AUTOMATIC_TARGET &&
+          !options.xcluster_target_ddl_bypass()) {
+        // Force catalog modifications is set for temp table, and in-place materialized view
+        // refresh. These DDLs are safe to perform on xCluster target in automatic mode.
+        for (const auto& op : data->req.ops()) {
+          SCHECK(
+              !op.has_write(), IllegalState,
+              "DDL operations are forbidden on a database that is the target of automatic mode "
+              "xCluster replication");
+        }
+      }
+
+      return Status::OK();
+    }
+
+    // DMLs.
+    if (xcluster_context()->IsReadOnlyMode(options.namespace_id())) {
       for (const auto& op : data->req.ops()) {
         if (op.has_write() && !op.write().is_backfill()) {
           TEST_SYNC_POINT_CALLBACK("WriteDetectedOnXClusterReadOnlyModeTarget", nullptr);
@@ -2745,6 +2764,17 @@ class PgClientSession::Impl {
         }
       }
     }
+
+    return Status::OK();
+  }
+
+  Status DoPerform(
+      const PgTablesQueryResult& tables, const PerformQueryDataPtr& data, CoarseTimePoint deadline,
+      rpc::RpcContext* context = nullptr) {
+    auto& options = *data->req.mutable_options();
+    VLOG(5) << "Perform request: " << data->req.ShortDebugString();
+
+    RETURN_NOT_OK(ValidateRequestForXCluster(options, data));
 
     if (options.has_caching_info()) {
       VLOG_WITH_PREFIX(3)
