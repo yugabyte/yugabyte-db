@@ -107,7 +107,9 @@ The [ysql_yb_default_replica_identity](../../../../reference/configuration/yb-ts
 You should refrain from altering the replica identity of a dynamically created table for at least 5 minutes after its creation.
 {{< /note >}}
 
-For more information, refer to [Replica Identity](https://www.postgresql.org/docs/11/sql-altertable.html#SQL-ALTERTABLE-REPLICA-IDENTITY) in the PostgreSQL documentation.
+For more information, refer to [Replica Identity](../yugabytedb-connector/#replica-identity).
+
+For information on replica identity in PostgreSQL, refer to [REPLICA IDENTITY](https://www.postgresql.org/docs/15/sql-altertable.html#SQL-ALTERTABLE-REPLICA-IDENTITY) in the PostgreSQL documentation.
 
 ### Replication protocols
 
