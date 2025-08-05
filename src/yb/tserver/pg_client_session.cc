@@ -1496,7 +1496,6 @@ class PgClientSession::Impl {
 
   void SetupSharedObjectLocking(PgSessionLockOwnerTagShared& object_lock_shared) {
     DCHECK(!object_lock_shared_);
-    DCHECK(lock_owner_registry());
     object_lock_shared_ = &object_lock_shared;
   }
 
@@ -2677,8 +2676,8 @@ class PgClientSession::Impl {
     return context_.instance_uuid;
   }
 
-  docdb::ObjectLockOwnerRegistry* lock_owner_registry() const {
-    return context_.lock_owner_registry;
+  docdb::ObjectLockOwnerRegistry& lock_owner_registry() const {
+    return *DCHECK_NOTNULL(context_.lock_owner_registry);
   }
 
   PrefixLogger LogPrefix() const { return PrefixLogger{id_}; }
@@ -3555,7 +3554,7 @@ class PgClientSession::Impl {
   void RegisterLockOwner(const TransactionId& txn_id, const TabletId& status_tablet) {
     if (object_lock_shared_ && (!object_lock_owner_ || object_lock_owner_->txn_id() != txn_id)) {
       object_lock_owner_.emplace(
-          *object_lock_shared_, *DCHECK_NOTNULL(lock_owner_registry()), txn_id, status_tablet);
+          *object_lock_shared_, lock_owner_registry(), txn_id, status_tablet);
     }
   }
 
