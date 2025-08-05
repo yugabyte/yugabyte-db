@@ -13059,11 +13059,7 @@ void CatalogManager::SysCatalogLoaded(SysCatalogLoadingState&& state) {
 
   xcluster_manager_->SysCatalogLoaded(state.epoch);
   SchedulePostTabletCreationTasksForPendingTables(state.epoch);
-
-  {
-    std::lock_guard lock(leader_mutex_);
-    restoring_sys_catalog_ = false;
-  }
+  restoring_sys_catalog_ = false;
 
   if (FLAGS_ysql_enable_db_catalog_version_mode && FLAGS_enable_ysql) {
     // Initialize the catalog version cache.
