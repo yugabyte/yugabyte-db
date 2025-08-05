@@ -1071,7 +1071,7 @@ When the flag `ysql_ddl_transaction_wait_for_ddl_verification` is enabled, YSQL 
 
 ### Change data capture (CDC) flags
 
-To learn about CDC, see [Change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture/).
+To learn about CDC, see [Change data capture (CDC)](../../../develop/change-data-capture/).
 
 ##### --yb_enable_cdc_consistent_snapshot_streams
 

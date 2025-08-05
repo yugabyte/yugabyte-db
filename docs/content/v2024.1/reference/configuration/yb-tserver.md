@@ -1223,7 +1223,7 @@ Default: `0`
 
 ## Change data capture (CDC) flags
 
-To learn about CDC, see [Change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture/).
+To learn about CDC, see [Change data capture (CDC)](../../../develop/change-data-capture/).
 
 ##### --yb_enable_cdc_consistent_snapshot_streams
 
