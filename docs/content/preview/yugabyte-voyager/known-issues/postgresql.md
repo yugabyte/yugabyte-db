@@ -1908,14 +1908,14 @@ An example schema on the source database is as follows:
 ```sql
 -- Parent table
 CREATE TABLE parent (
-id INT PRIMARY KEY
+  id INT PRIMARY KEY
 );
 
 -- Child table without index on foreign key
 CREATE TABLE child (
-id INT,
-parent_id INT,
-CONSTRAINT fk_parent FOREIGN KEY (parent_id) REFERENCES parent(id)
+  id INT,
+  parent_id INT,
+  CONSTRAINT fk_parent FOREIGN KEY (parent_id) REFERENCES parent(id)
 );
 ```
 
@@ -1924,14 +1924,14 @@ Suggested change to the schema is as follows:
 ```sql
 -- Parent table
 CREATE TABLE parent (
-id INT PRIMARY KEY
+  id INT PRIMARY KEY
 );
 
 -- Child table with index on foreign key
 CREATE TABLE child (
-id INT,
-parent_id INT,
-CONSTRAINT fk_parent FOREIGN KEY (parent_id) REFERENCES parent(id)
+  id INT,
+  parent_id INT,
+  CONSTRAINT fk_parent FOREIGN KEY (parent_id) REFERENCES parent(id)
 );
 
 -- Add index on foreign key column
