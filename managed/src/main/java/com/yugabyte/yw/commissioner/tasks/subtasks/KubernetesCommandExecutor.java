@@ -325,11 +325,13 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     if (taskParams().commandType.equals(CommandType.COPY_PACKAGE)
         || taskParams().commandType.equals(CommandType.YBC_ACTION)) {
       Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-      PlacementInfo pi;
-      if (taskParams().isReadOnlyCluster) {
-        pi = universe.getUniverseDetails().getReadOnlyClusters().get(0).placementInfo;
-      } else {
-        pi = universe.getUniverseDetails().getPrimaryCluster().placementInfo;
+      PlacementInfo pi = taskParams().placementInfo;
+      if (pi == null) {
+        if (taskParams().isReadOnlyCluster) {
+          pi = universe.getUniverseDetails().getReadOnlyClusters().get(0).placementInfo;
+        } else {
+          pi = universe.getUniverseDetails().getPrimaryCluster().placementInfo;
+        }
       }
       Map<String, Map<String, String>> k8sConfigMap =
           KubernetesUtil.getKubernetesConfigPerPodName(
