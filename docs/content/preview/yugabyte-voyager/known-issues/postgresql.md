@@ -1901,7 +1901,7 @@ CREATE TABLE child (
 
 **Workaround**: Create indexes on foreign key columns in child tables. The index must include all foreign key columns as leading columns (either in exact order, any permutation, or as a prefix of a composite index).
 
-**Example**:
+**Example**
 
 An example schema on the source database is as follows:
 

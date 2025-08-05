@@ -193,7 +193,7 @@ import-data:
   error-policy-snapshot:
 ```
 
-| Defines the desired behavior when an error occurs while processing and importing rows to target YugabyteDB during the snapshot phase. Errors can arise from reading data from file, transforming rows, or ingesting them into YugabyteDB. <br> Accepted parameters: <ul><li> `abort` (Default): Immediately aborts the process.</li><li> `stash-and-continue` : Stashes the errored rows to a file and continues the import.</li></ul> |
+| Specifies how to handle errors when processing and importing rows to the target YugabyteDB database during the snapshot phase. Errors can arise from reading data from file, transforming rows, or ingesting them into YugabyteDB. <br> Accepted parameters: <ul><li> `abort` (Default) - Immediately aborts the process.</li><li> `stash-and-continue` - Stashes the errored rows to a file and continues the import.</li></ul> |
 
 | -e, --export-dir |
 

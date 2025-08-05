@@ -87,7 +87,7 @@ export-schema:
   skip-performance-optimizations:
 ```
 
-| Disable automatically applying performance optimizations in the exported schema. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| Disable automatic performance optimizations in the exported schema. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --source-db-type |
 
 ```yaml{.nocopy}
