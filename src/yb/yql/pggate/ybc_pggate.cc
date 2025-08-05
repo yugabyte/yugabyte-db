@@ -2002,6 +2002,15 @@ bool YBCPgIsDdlMode() {
   return pgapi->IsDdlMode();
 }
 
+bool YBCCurrentTransactionUsesFastPath() {
+  auto result = pgapi->CurrentTransactionUsesFastPath();
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+
+  return result.get();
+}
+
 //------------------------------------------------------------------------------------------------
 // System validation.
 //------------------------------------------------------------------------------------------------

@@ -916,6 +916,30 @@ Status PgSession::RollbackToSubTransaction(SubTransactionId id) {
   return status;
 }
 
+void PgSession::SetTransactionHasWrites() {
+  pg_txn_manager_->SetTransactionHasWrites();
+}
+
+Result<bool> PgSession::CurrentTransactionUsesFastPath() const {
+  // Single-shard modifications outside of an explicit transaction block are considered "fast-path"
+  // when:
+  // 1. The isolation level is NON_TRANSACTIONAL.
+  // 2. The statement has performed at least one write - this is required because standalone read
+  //    statements and reads before the first write/explicit lock in a transaction block will have
+  //    its isolation level set to NON_TRANSACTIONAL.
+  // Further, we also check if the operations buffer is empty because in some scenarios, such as
+  // stored procedures, writes can be buffered and not flushed at the statement boundary, but rather
+  // at a later point in the execution of the procedure. In such cases, the isolation level for the
+  // buffered writes is not computed at the time of calling this function, leading the transaction
+  // manager to report the isolation level as NON_TRANSACTIONAL (the default).
+  //
+  // Note that the fast-path variant of the COPY command uses a combination of the fast-path with
+  // operations bufferring. However, it is guaranteed to perform a flush at the end of the statement
+  // and it cannot be invoked via EXPLAIN (the only caller of this function). So, we can safely
+  // ignore this case here.
+  return VERIFY_RESULT(pg_txn_manager_->TransactionHasNonTransactionalWrites()) && !buffer_.Size();
+}
+
 void PgSession::ResetHasWriteOperationsInDdlMode() {
   has_write_ops_in_ddl_mode_ = false;
 }

@@ -332,6 +332,9 @@ Status PgTxnManager::CalculateIsolation(
     return RecreateTransaction(SavePriority::kFalse);
   }
 
+  if (!read_only_op)
+    has_writes_ = true;
+
   // Using pg_isolation_level_, read_only_, and deferrable_, determine the effective isolation level
   // to use at the DocDB layer, and the "deferrable" flag.
   //
@@ -341,7 +344,7 @@ Status PgTxnManager::CalculateIsolation(
   // timestamps, i.e. read timestamps (for read-only transactions executed at snapshot isolation)
   // and commit timestamps of serializable transactions.
   //
-  // The "deferrable" flag that in SERIALIZABLE DEFERRABLE READ ONLY mode we will choose the read
+// The "deferrable" flag that in SERIALIZABLE DEFERRABLE READ ONLY mode we will choose the read
   // timestamp as global_limit to avoid the possibility of read restarts. This results in waiting
   // out the maximum clock skew and is appropriate for non-latency-sensitive operations.
 
@@ -488,6 +491,7 @@ void PgTxnManager::ResetTxnAndSession() {
 
   enable_follower_reads_ = false;
   read_only_ = false;
+  has_writes_ = false;
   enable_tracing_ = false;
   read_time_for_follower_reads_ = HybridTime();
   snapshot_read_time_is_set_ = false;
@@ -753,6 +757,17 @@ void PgTxnManager::ClearExportedTxnSnapshots() {
   has_exported_snapshots_ = false;
   const auto s = client_->ClearExportedTxnSnapshots();
   LOG_IF(DFATAL, !s.ok()) << "Faced error while deleting exported snapshots. Error Details: " << s;
+}
+
+void PgTxnManager::SetTransactionHasWrites() {
+  has_writes_ = true;
+}
+
+Result<bool> PgTxnManager::TransactionHasNonTransactionalWrites() const {
+  RSTATUS_DCHECK(
+      txn_in_progress_, IllegalState,
+      "Transaction is not in progress, cannot check fast-path writes");
+  return has_writes_ && isolation_level_ == NON_TRANSACTIONAL;
 }
 
 }  // namespace yb::pggate

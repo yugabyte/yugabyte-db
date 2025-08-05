@@ -36,6 +36,7 @@ PgDmlWrite::PgDmlWrite(
     : PgDml(std::move(pg_session), table_id, is_region_local),
       transaction_setting_(transaction_setting),
       packed_(packed) {
+  pg_session_->SetTransactionHasWrites();
 }
 
 Status PgDmlWrite::Prepare() {
