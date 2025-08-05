@@ -21,20 +21,21 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 
 ## New feature
 
-- Automatically apply performance optimizations (like removing redundant indexes) during export schema phase and export the optimized schema. A schema optimization report is also generated for user review.
+- Automatically apply performance optimizations recommended by the migration assessment (such as removing redundant indexes) during the export schema phase. Voyager also generates a schema optimization report detailing the optimizations that were applied. To turn on automatic optimization, set the new `--skip-performance-optimizations` flag in the `export schema` command to false.
+- Introduced the ability to stash errors and continue when importing snapshot data in `import data` and `import-data-file` commands by using the flags `error-policy-snapshot` or `error-policy`.
 
 ### Enhancements
 
 - Migration assessment now detects missing indexes on foreign‑key columns. This provides more comprehensive performance optimization recommendations in the migration assessment report.
 - Updated the latest stable YugabyteDB version to v2025.1.0.0, ensuring compatibility with the newest features and fixes. Advisory locks are now supported in YugabyteDB and will no longer be reported from this target version onwards.
-- Improved the import data performance by increasing the max CPU threshold for adaptive parallelism to 80.
-- Improved ANALYZE checks in assess-migration command to honor auto‑analyze settings and gracefully handle user prompts.
+- Improved the performance of `import data` by increasing the max CPU threshold for adaptive parallelism to 80.
+- Improved ANALYZE checks in the `assess migration` command to honor auto‑analyze settings and gracefully handle user prompts.
 - Improved error handling by throwing clear errors when connection to the source database fails, making troubleshooting easier.
 
 ### Bug fixes
 
-- Addressed nil pointer exceptions in end‑migration when the database configuration is not set, preventing unexpected errors during migration processes.
-- Fixed an issue where import data with `--on-primary-key-conflict ignore` failed if import to source replica started earlier.
+- Addressed nil pointer exceptions in `end migration` when the database configuration is not set, preventing unexpected errors during migration processes.
+- Fixed an issue where `import data` with `--on-primary-key-conflict ignore` failed if import to source replica started earlier.
 
 ## v2025.7.2 - July 15, 2025
 
