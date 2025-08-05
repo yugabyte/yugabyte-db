@@ -193,13 +193,12 @@ public class CloudProviderHelper {
           getKubernetesConfigType(kubernetesCloudInfo.getKubernetesProvider());
       if (kubernetesConfigType != null) {
         Map<String, Object> k8sRegionMetadata = configHelper.getConfig(kubernetesConfigType);
-        if (!k8sRegionMetadata.containsKey(regionCode)) {
-          throw new RuntimeException("Region " + regionCode + " metadata not found");
+        if (k8sRegionMetadata.containsKey(regionCode)) {
+          JsonNode metadata = Json.toJson(k8sRegionMetadata.get(regionCode));
+          regionName = metadata.get("name").asText();
+          latitude = metadata.get("latitude").asDouble();
+          longitude = metadata.get("longitude").asDouble();
         }
-        JsonNode metadata = Json.toJson(k8sRegionMetadata.get(regionCode));
-        regionName = metadata.get("name").asText();
-        latitude = metadata.get("latitude").asDouble();
-        longitude = metadata.get("longitude").asDouble();
       }
       region =
           Region.create(
