@@ -93,7 +93,7 @@ Create the target YugabyteDB database in your YugabyteDB cluster. The database n
 CREATE DATABASE target_db_name;
 ```
 
-Create the database with colocation if you want to assess migration using the following command:
+Create the database with colocation if you want to [assess your migration](#assess-migration) using the following command:
 
 ```sql
 CREATE DATABASE target_db_name WITH COLOCATION = true;
@@ -219,9 +219,9 @@ This step is optional and only applies to PostgreSQL and Oracle migrations.
 
 Assess migration analyzes the source database, captures essential metadata, and generates a report with recommended migration strategies and cluster configurations for optimal performance with YugabyteDB. You run assessments using the `yb-voyager assess-migration` command.
 
-Voyager supports two primary modes for conducting migration assessments, depending on your access to the source database as follows:<br><br>
+1. Choose from one of the supported modes for conducting migration assessments, depending on your access to the source database as follows:<br><br>
 
-  {{< tabpane text=true >}}
+    {{< tabpane text=true >}}
 
     {{% tab header="With source database connectivity" %}}
 
@@ -273,15 +273,15 @@ You can perform the following steps with these scripts:
 
     {{< /tabpane >}}
 
-  The output is a migration assessment report, and its path is printed on the console. To View the assessment report, navigate to the **Migrations** tab in the [yugabyted UI](#configure-yugabyted-ui) at <http://127.0.0.1:15433> to see the available migrations.
+1. The output is a migration assessment report, and its path is printed on the console. To view the assessment report, navigate to the **Migrations** tab in the [yugabyted UI](#configure-yugabyted-ui) at <http://127.0.0.1:15433> to see the available migrations.
 
-  {{< warning title="Important" >}}
+    {{< warning title="Important" >}}
 For the most accurate migration assessment, the source database must be actively handling its typical workloads at the time the metadata is gathered. This ensures that the recommendations for sharding strategies and cluster sizing are well-aligned with the database's real-world performance and operational needs.
-  {{< /warning >}}
+    {{< /warning >}}
 
 1. Resize your target YugabyteDB cluster in [Enhanced PostgreSQL Compatibility Mode](../../../develop/postgresql-compatibility/), based on the sizing recommendations in the assessment report.
 
-  For a universe in YugabyteDB Anywhere, [enable compatibility mode](../../../develop/postgresql-compatibility/#yugabytedb-anywhere) by setting flags on the universe.
+   For a universe in YugabyteDB Anywhere, [enable compatibility mode](../../../develop/postgresql-compatibility/#yugabytedb-anywhere) by setting flags on the universe.
 
 1. Check that your target YugabyteDB database is colocated in [ysqlsh](/preview/api/ysqlsh/) using the following command:
 
@@ -289,7 +289,7 @@ For the most accurate migration assessment, the source database must be actively
     select yb_is_database_colocated();
     ```
 
-Refer to [Migration assessment](../../migrate/assess-migration/) for details.
+Refer to [Migration assessment](../../migrate/assess-migration/) for more information.
 
 ## Migrate your database to YugabyteDB
 

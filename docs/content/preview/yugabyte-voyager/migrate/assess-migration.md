@@ -56,11 +56,97 @@ The following table describes the type of data that is collected during a migrat
 | Performance metrics | Optional | Voyager captures performance metrics from the database (IOPS) for rightsizing the target environment. |
 | Server or database credentials | No | No server or database credentials are collected. |
 
-## Get started with migration assessment
+## Prepare for migration assessment
 
 To get started with migration assessment, do the following:
 
 1. [Install yb-voyager](../../install-yb-voyager/).
+1. Prepare the source database as follows: <br>
+
+    Create a new database user, and assign the necessary user permissions.
+    <ul class="nav nav-tabs nav-tabs-yb">
+      <li >
+        <a href="#postgresql" class="nav-link active" id="postgresql-tab" data-bs-toggle="tab" role="tab" aria-controls="postgresql" aria-selected="true">
+          <i class="icon-postgres" aria-hidden="true"></i>
+          PostgreSQL
+        </a>
+      </li>
+      <li>
+        <a href="#oracle" class="nav-link" id="oracle-tab" data-bs-toggle="tab" role="tab" aria-controls="oracle" aria-selected="true">
+          <i class="icon-oracle" aria-hidden="true"></i>
+          Oracle
+        </a>
+      </li>
+    </ul>
+
+    <div class="tab-content">
+      <div id="postgresql" class="tab-pane fade show active" role="tabpanel" aria-labelledby="postgresql-tab">
+      {{% includeMarkdown "./postgresql.md" %}}
+      </div>
+      <div id="oracle" class="tab-pane fade" role="tabpanel" aria-labelledby="oracle-tab">
+      {{% includeMarkdown "./oracle.md" %}}
+      </div>
+    </div>
+
+1. Create an export directory on a file system that has enough space to keep the entire source database. Ideally, create this export directory inside a parent folder named after your migration for better organization. For example:
+
+    ```sh
+    mkdir -p $HOME/my-migration/export
+    ```
+
+    You need to provide the full path to your export directory in the `export-dir` parameter of your [configuration file](../../reference/configuration-file/), or in the `--export-dir` flag when running `yb-voyager` commands.
+
+1. Set up a [configuration file](../../reference/configuration-file/) to specify the parameters required when running Voyager commands (v2025.6.2 or later).
+
+    To get started, copy the `offline-migration.yaml` template configuration file from one of the following locations to the migration folder you created (for example, `$HOME/my-migration/`):<br><br>
+
+    {{< tabpane text=true >}}
+
+  {{% tab header="Linux (apt/yum/airgapped)" lang="linux" %}}
+
+```bash
+/opt/yb-voyager/config-templates/offline-migration.yaml
+```
+
+  {{% /tab %}}
+
+  {{% tab header="MacOS (Homebrew)" lang="macos" %}}
+
+```bash
+$(brew --cellar)/yb-voyager@<voyager-version>/<voyager-version>/config-templates/offline-migration.yaml
+```
+
+Replace `<voyager-version>` with your installed Voyager version, for example, `2025.5.2`.
+
+  {{% /tab %}}
+
+  {{< /tabpane >}}
+
+    Set the export-dir, source, and target arguments in the configuration file:
+
+    ```yaml
+    # Replace the argument values with those applicable for your migration.
+
+    export-dir: <absolute-path-to-export-dir>
+
+    source:
+      db-type: <source-db-type>
+      db-host: <source-db-host>
+      db-port: <source-db-port>
+      db-name: <source-db-name>
+      db-schema: <source-db-schema> # Not applicable for MySQL
+      db-user: <source-db-user>
+      db-password: <source-db-password> # Enclose the password in single quotes if it contains special characters.
+
+    target:
+      db-host: <target-db-host>
+      db-port: <target-db-port>
+      db-name: <target-db-name>
+      db-schema: <target-db-schema> # MySQL and Oracle only
+      db-user: <target-db-username>
+      db-password: <target-db-password> # Enclose the password in single quotes if it contains special characters.
+    ```
+
 1. Install YugabyteDB to view migration assessment report in the [yugabyted](/preview/reference/configuration/yugabyted/) UI. Using the yugabyted UI, you can visualize and review the database migration workflow performed by YugabyteDB Voyager.
     1. Start a local YugabyteDB cluster. Refer to the steps described in [Use a local cluster](/preview/tutorials/quick-start/macos/).
     1. To see the Voyager migration workflow details in the UI, set the following environment variables before starting the migration:
@@ -77,9 +163,9 @@ To get started with migration assessment, do the following:
 Don't include the `dbname` parameter in the connection string; the default `yugabyte` database is used to store the meta information for showing the migration in the yugabyted UI.
         {{< /note >}}
 
-1. Assess your migration.
+## Assess your migration
 
-    Voyager supports two primary modes for conducting migration assessments, depending on your access to the source database as follows:<br><br>
+1. Voyager supports two primary modes for conducting migration assessments, depending on your access to the source database as follows:<br><br>
 
     {{< tabpane text=true >}}
 
