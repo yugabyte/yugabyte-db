@@ -786,7 +786,11 @@ od_scram_create_server_final_message(od_scram_state_t *scram_state)
 
 	size_t size = strlen("v=") + strlen(signature);
 	char *result = malloc(size + 1);
-	if (result == NULL)
+	/*
+	 * YB: Need to add the check on size to allow GCC 13 to verify 
+	 * that there are no overflows.
+	 */
+	if (result == NULL || size > INT_MAX - 1)
 		goto error;
 
 	snprintf(result, size + 1, "v=%s", signature);
