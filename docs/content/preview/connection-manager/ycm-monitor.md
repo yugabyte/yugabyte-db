@@ -14,7 +14,7 @@ type: docs
 
 ## Metrics
 
-Use the following metrics to monitor YugabyteDB Connection Manager.
+Use the following metrics to monitor YSQL Connection Manager.
 
 | Metric Name | Description |
 | :--- | :--- |
