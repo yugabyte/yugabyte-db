@@ -86,6 +86,7 @@
 /* YB includes */
 #include "catalog/yb_catalog_version.h"
 #include "commands/portalcmds.h"
+#include "commands/variable.h"
 #include "libpq/auth.h"
 #include "libpq/yb_pqcomm_extensions.h"
 #include "pg_yb_utils.h"
@@ -4884,6 +4885,9 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 					  "kConflict/kReadRestart/kDeadlock/kAborted");
 		return false;
 	}
+
+	edata->detail = psprintf("%s [%s]", edata->detail,
+							 yb_fetch_effective_transaction_isolation_level());
 
 	if (yb_is_multi_statement_query)
 	{
