@@ -28,7 +28,7 @@ Use the 13000/connections endpoint, and search for `sticky_connections`.
 
 Search for "sticky" in Connection Manager logs with `log_debug` enabled.
 
-To offer complete correctness/range of support, connection manager makes connections for some features [sticky by default](./ycm-setup/#sticky-connections). You can verify this using the sticky connections metrics.
+To offer complete correctness/range of support, connection manager makes connections for some features [sticky by default](../ycm-setup/#sticky-connections). You can verify this using the sticky connections metrics.
 
 Depending on your use case, you can enable flags or workarounds to avoid stickiness.
 
@@ -54,12 +54,14 @@ If you have high multiplexity (many more logical connections than physical conne
 
 - CERT authentication. Connection Manager does not support CERT authentication (verify-full/verify-ca). CERT authentication requires connections to be SSL encrypted. Authentication with Connection Manager still happens on the database side. Therefore Connection Manager should forward all client credentials (for example, the password) along with setting up the SSL context on the database while doing authentication. The logical connection presents client certificates to Connection Manager and it's difficult to pass the same certificates to the database to perform authentication. If it were to pass, the physical connections are Unix socket connections (no SSL/Encryption), which makes it difficult to set up a fake SSL context in which client certificates are needed to be processed for the purpose of certificate authentication via Connection Manager. Client certificates are loaded during the initial SSL handshake of the client with the postmaster process without Connection Manager.
 
-## Different SSL behaviour
+## SSL behaviour
 
-Although Connection Manager doesn't throw errors and supports all SSL modes that clients can set in a connection, the behaviour could be slightly different. The following scenarios are the corner cases which do not show the same behaviour as YugabyteDB does without Connection Manager. The main reason for the difference in behaviour is sometimes authentication is done at the Connection Manager layer itself, rather than following the standard authentication mechanism (where authentication happens on the server based on credentials forwarded by Connection Manager).
+Although Connection Manager supports all SSL modes that clients can set in a connection, the behaviour can be slightly different. The following corner cases can result in different behavior when using Connection Manager compared to a direct database connection:
 
 - Enable TLS in cluster, add `{host all all all trust}` in the HBA file, and try making a connection using sslmode=disable. The connection will fail with Connection Manager, whereas it will be successfully created if connected directly to the database port.
 
 - Enable TLS in cluster, add `{host all all all trust}` in the HBA file, and try making a connection using sslmode=allow. An encrypted connection will be created with Connection Manager, whereas when connecting to a database port an unencrypted connection will be created.
 
 - Enable TLS in cluster and create a connection using sslmode=disable. Connection Manager will throw the following error: `odyssey: c8240c445726f: SSL is required`; whereas when connecting to the database port, the error message is `FATAL:  no pg_hba.conf entry for host`.
+
+The main reason for these differences in behaviour is because sometimes authentication is done at the Connection Manager layer itself, rather than following the standard authentication mechanism (where authentication happens on the server based on credentials forwarded by Connection Manager).
