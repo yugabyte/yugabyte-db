@@ -37,7 +37,7 @@ To create a large number of client connections, ensure that "SHMMNI" (the maximu
 
 ### YugabyteDB Anywhere
 
-{{<tags/feature/ea idea="1368">}}While in Early Access, YSQL Connection Manager is not available in YugabyteDB Anywhere by default. To make connection pooling available, set the **Allow users to enable or disable connection pooling** Global Runtime Configuration option (config key yb.universe.allow_connection_pooling) to true. Refer to [Manage runtime configuration settings](../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
+{{<tags/feature/ea idea="1368">}}While in Early Access, YSQL Connection Manager is not available in YugabyteDB Anywhere by default. To make connection pooling available, set the **Allow users to enable or disable connection pooling** Global Runtime Configuration option (config key `yb.universe.allow_connection_pooling`) to true. Refer to [Manage runtime configuration settings](../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
 
 To enable built-in connection pooling for universes deployed using YugabyteDB Anywhere:
 
@@ -48,20 +48,20 @@ Note that when managing universes using YugabyteDB Anywhere, do not set connecti
 
 #### Connect
 
-To connect to the YSQL Connection Manager, use the [ysqlsh](../../../api/ysqlsh/) command with the [`-h <IP>`](../../../api/ysqlsh/#h-hostname-host-hostname) flag, instead of specifying the Unix-domain socket directory.
+To connect to the YSQL Connection Manager, use the [ysqlsh](../../api/ysqlsh/) command with the [`-h <IP>`](../../api/ysqlsh/#h-hostname-host-hostname) flag, instead of specifying the Unix-domain socket directory.
 
-Using the socket directory along with [`-p`](../../../api/ysqlsh/#p-port-port-port) (custom PostgreSQL port or default 6433) will connect you to the PostgreSQL process, not the YSQL connection manager process.
+Using the socket directory along with [`-p`](../../api/ysqlsh/#p-port-port-port) (custom PostgreSQL port or default 6433) will connect you to the PostgreSQL process, not the YSQL connection manager process.
 
 ### YugabyteDB Aeon
 
 {{<tags/feature/ea idea="1368">}}To enable built-in connection pooling for clusters deployed using YugabyteDB Aeon:
 
-- Turn on the **Connection Pooling** option when [creating a cluster](../../../yugabyte-cloud/cloud-basics/create-clusters/). (Connection Pooling is enabled by default for [Sandbox clusters](../../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/).)
+- Turn on the **Connection Pooling** option when [creating a cluster](../../yugabyte-cloud/cloud-basics/create-clusters/). (Connection Pooling is enabled by default for [Sandbox clusters](../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/).)
 - Edit connection pooling on the cluster **Settings>Connection Pooling** tab.
 
 Enabling connection pooling on an Aeon cluster gives 10 client connections for every server connection by default.
 
-## Configuration
+## Configure
 
 By default, when YSQL Connection Manager is enabled, it uses the port 5433, and the backend database is assigned a random free port.
 
