@@ -93,7 +93,7 @@ public class Common {
     }
 
     public boolean isHostedZoneEnabled() {
-      return this == aws || this == azu;
+      return this == aws || this == azu || this == local;
     }
 
     public String getSshUser() {

@@ -1132,7 +1132,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     createWaitForTServerHeartBeatsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
     // Update the DNS entry for all the nodes once, using the primary cluster type.
-    createDnsManipulationTask(DnsManager.DnsCommandType.Create, false, primaryCluster)
+    createDnsManipulationTask(
+            DnsManager.DnsCommandType.Create, false, primaryCluster, Collections.emptySet())
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
     // Update the swamper target file.

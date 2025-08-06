@@ -17,7 +17,9 @@ import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
@@ -40,6 +42,7 @@ public class ManipulateDnsRecordTask extends UniverseTaskBase {
     public String hostedZoneId;
     public String domainNamePrefix;
     public Boolean isForceDelete;
+    public Set<String> serversToExclude;
   }
 
   @Override
@@ -50,10 +53,17 @@ public class ManipulateDnsRecordTask extends UniverseTaskBase {
   @Override
   public void run() {
     try {
+      Set<String> toExclude = new HashSet<>();
+      if (taskParams().serversToExclude != null) {
+        toExclude.addAll(taskParams().serversToExclude);
+      }
       List<NodeDetails> tserverNodes =
           Universe.getOrBadRequest(taskParams().getUniverseUUID()).getTServers();
       String nodeIpCsv =
-          tserverNodes.stream().map(nd -> nd.cloudInfo.private_ip).collect(Collectors.joining(","));
+          tserverNodes.stream()
+              .map(nd -> nd.cloudInfo.private_ip)
+              .filter(ip -> !toExclude.contains(ip))
+              .collect(Collectors.joining(","));
       // Create the process to fetch information about the node from the cloud provider.
       dnsManager
           .manipulateDnsRecord(

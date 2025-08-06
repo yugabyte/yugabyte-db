@@ -2,10 +2,12 @@
 
 package com.yugabyte.yw.models.helpers.provider;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 import lombok.Data;
 
@@ -20,9 +22,16 @@ public class LocalCloudInfo implements CloudInfoInterface {
 
   private String dataHomeDir;
 
+  @JsonAlias("HOSTED_ZONE_ID")
+  private String hostedZoneId;
+
   @Override
   public Map<String, String> getEnvVars() {
-    return Collections.emptyMap();
+    Map<String, String> res = new HashMap<>();
+    if (hostedZoneId != null) {
+      res.put("HOSTED_ZONE_ID", hostedZoneId);
+    }
+    return res;
   }
 
   @Override

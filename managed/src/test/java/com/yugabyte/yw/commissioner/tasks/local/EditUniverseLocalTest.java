@@ -32,6 +32,7 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import lombok.extern.slf4j.Slf4j;
+import org.junit.Before;
 import org.junit.Test;
 import org.yb.client.YBClient;
 import play.libs.Json;
@@ -42,6 +43,13 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
   @Override
   protected Pair<Integer, Integer> getIpRange() {
     return new Pair<>(2, 30);
+  }
+
+  @Before
+  public void setUpDNS() {
+    provider.getDetails().getCloudInfo().local.setHostedZoneId("test");
+    provider.update();
+    localNodeManager.setCheckDNS(true);
   }
 
   @Test

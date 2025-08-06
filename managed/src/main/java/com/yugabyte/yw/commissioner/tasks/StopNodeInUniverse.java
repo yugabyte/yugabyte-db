@@ -144,6 +144,15 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
       taskParams().azUuid = currentNode.azUuid;
       taskParams().placementUuid = currentNode.placementUuid;
       boolean instanceExists = instanceExists(taskParams());
+      if (currentNode.isTserver) {
+        // Update the DNS entry for this universe.
+        createDnsManipulationTask(
+                DnsManager.DnsCommandType.Edit,
+                false,
+                universe,
+                Collections.singleton(currentNode.cloudInfo.private_ip))
+            .setSubTaskGroupType(SubTaskGroupType.StoppingNode);
+      }
       if (instanceExists) {
         if (currentNode.isTserver) {
           stopProcessesOnNodes(
@@ -181,10 +190,6 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
 
       // Update the swamper target file.
       createSwamperTargetUpdateTask(false /* removeFile */);
-
-      // Update the DNS entry for this universe.
-      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, universe)
-          .setSubTaskGroupType(SubTaskGroupType.StoppingNode);
 
       // Mark universe task state to success
       createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.StoppingNode);

@@ -7207,6 +7207,9 @@
           },
           "type" : "object"
         },
+        "hostedZoneId" : {
+          "type" : "string"
+        },
         "ybcBinDir" : {
           "type" : "string"
         },
@@ -7214,7 +7217,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "dataHomeDir", "envVars", "ybcBinDir", "yugabyteBinDir" ],
+      "required" : [ "dataHomeDir", "envVars", "hostedZoneId", "ybcBinDir", "yugabyteBinDir" ],
       "type" : "object"
     },
     "LogData" : {

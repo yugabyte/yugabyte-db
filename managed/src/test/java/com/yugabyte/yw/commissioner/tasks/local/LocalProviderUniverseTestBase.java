@@ -10,6 +10,7 @@ import static org.hamcrest.Matchers.lessThan;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static play.inject.Bindings.bind;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -25,6 +26,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckClusterConsistency;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.LocalNodeManager;
 import com.yugabyte.yw.common.LocalNodeUniverseManager;
 import com.yugabyte.yw.common.ModelFactory;
@@ -222,6 +224,8 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
   protected RuntimeConfService runtimeConfService;
   protected JobScheduler jobScheduler;
   protected AutoMasterFailoverScheduler autoMasterFailoverScheduler;
+  protected LocalNodeManager.LocalDNSManager localDnsManager =
+      new LocalNodeManager.LocalDNSManager();
 
   @BeforeClass
   public static void setUpEnv() {
@@ -574,6 +578,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
   protected Application provideApplication() {
     return configureApplication(
             new GuiceApplicationBuilder().disable(GuiceModule.class).configure(testDatabase()))
+        .overrides(bind(DnsManager.class).toInstance(localDnsManager))
         .build();
   }
 
@@ -868,6 +873,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
 
   protected void verifyUniverseState(Universe universe) {
     String certificate = universe.getCertificateNodetoNode();
+    verifyDNS(universe);
     try (YBClient client = ybClientService.getClient(universe.getMasterAddresses(), certificate)) {
       GetMasterClusterConfigResponse masterClusterConfig = client.getMasterClusterConfig();
       CatalogEntityInfo.SysClusterConfigEntryPB config = masterClusterConfig.getConfig();
@@ -1187,5 +1193,28 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
         metaMasterHandler.getMasterLBState(customer.getUuid(), universe.getUniverseUUID());
     assertEquals(resp.isEnabled, isEnabled);
     assertEquals(resp.isIdle, isLoadBalancerIdle);
+  }
+
+  private void verifyDNS(Universe universe) {
+    UUID providerUUID =
+        UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider);
+    Provider curProvider = Provider.getOrBadRequest(providerUUID);
+    if (curProvider.getDetails().getCloudInfo().local.getHostedZoneId() != null) {
+      Set<String> dns = localDnsManager.ipsList.getOrDefault(providerUUID, Collections.emptySet());
+      Set<NodeDetails> nodes = universe.getUniverseDetails().getTServers();
+      if (dns.size() != nodes.size()) {
+        throw new IllegalStateException(
+            "Dns doesn't match nodes: "
+                + dns
+                + " vs "
+                + nodes.stream().map(n -> n.cloudInfo.private_ip).collect(Collectors.toSet()));
+      }
+      for (NodeDetails node : nodes) {
+        if (!dns.contains(node.cloudInfo.private_ip)) {
+          throw new RuntimeException(
+              "Node " + node.cloudInfo.private_ip + " is not in accessible the dns list " + dns);
+        }
+      }
+    }
   }
 }
