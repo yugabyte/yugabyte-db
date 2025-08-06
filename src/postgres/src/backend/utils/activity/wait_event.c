@@ -331,6 +331,9 @@ pgstat_get_wait_activity(WaitEventActivity w)
 		case WAIT_EVENT_YB_ASH_MAIN:
 			event_name = "YbAshMain";
 			break;
+		case WAIT_EVENT_YB_IDLE_SLEEP:
+			event_name = "YbIdleSleep";
+			break;
 		case WAIT_EVENT_YB_ACTIVITY_END:
 			Assert(false);		/* should not be used to instrument */
 			break;
@@ -937,6 +940,7 @@ yb_get_wait_activity_desc(WaitEventActivity w)
 		case WAIT_EVENT_SYSLOGGER_MAIN:
 		case WAIT_EVENT_WAL_RECEIVER_MAIN:
 		case WAIT_EVENT_WAL_WRITER_MAIN:
+		case WAIT_EVENT_YB_IDLE_SLEEP:
 		case WAIT_EVENT_YB_ACTIVITY_END:
 			break;
 			/* no default case, so that compiler will warn */

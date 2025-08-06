@@ -34,6 +34,7 @@
 #include "replication/yb_virtual_wal_client.h"
 #include "utils/memutils.h"
 #include "utils/varlena.h"
+#include "utils/wait_event.h"
 
 static MemoryContext virtual_wal_context = NULL;
 static MemoryContext cached_records_context = NULL;
@@ -431,6 +432,9 @@ PreProcessBeforeFetchingNextBatch()
 	if (cached_records)
 		MemoryContextReset(cached_records_context);
 
+	/* Don't track idle sleep time */
+	pgstat_report_wait_start(WAIT_EVENT_YB_IDLE_SLEEP);
+
 	if (last_getconsistentchanges_response_empty)
 	{
 		elog(DEBUG4, "YBCReadRecord: Sleeping for %d ms due to empty response.",
@@ -445,6 +449,8 @@ PreProcessBeforeFetchingNextBatch()
 			 yb_walsender_poll_sleep_duration_nonempty_ms);
 		pg_usleep(1000L * yb_walsender_poll_sleep_duration_nonempty_ms);
 	}
+
+	pgstat_report_wait_end();
 
 	elog(DEBUG5, "YBCReadRecord: Fetching a fresh batch of changes.");
 }

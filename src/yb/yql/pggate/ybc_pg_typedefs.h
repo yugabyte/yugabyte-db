@@ -829,7 +829,8 @@ typedef struct {
 
 typedef enum {
   QUERY_ID_TYPE_DEFAULT,
-  QUERY_ID_TYPE_BACKGROUND_WORKER
+  QUERY_ID_TYPE_BACKGROUND_WORKER,
+  QUERY_ID_TYPE_WALSENDER,
 } YbcAshConstQueryIdType;
 
 typedef struct {
