@@ -179,6 +179,7 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_retention_policy.h"
+#include "yb/tablet/transaction_participant.h"
 
 #include "yb/tserver/remote_bootstrap_client.h"
 #include "yb/tserver/ts_tablet_manager.h"
@@ -595,6 +596,7 @@ DEFINE_test_flag(int32, system_table_num_tablets, -1,
 DECLARE_bool(enable_pg_cron);
 DECLARE_bool(enable_truncate_cdcsdk_table);
 DECLARE_bool(ysql_yb_enable_replica_identity);
+DECLARE_bool(TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 
 namespace yb::master {
 
@@ -10724,6 +10726,32 @@ Status CatalogManager::SendAlterTableRequestInternal(
       LOG(INFO) << " CDC stream id context : " << req->cdc_sdk_stream_id();
       xrepl::StreamId stream_id =
           VERIFY_RESULT(xrepl::StreamId::FromString(req->cdc_sdk_stream_id()));
+      // TODO(#26423): The AsyncAlterTable fails for master tablet with peer not found error as this
+      // RPC goes to tservers. As a workaround we simply set the retention barriers on master tablet
+      // and return. This is a temporary workaround and sets the retention barriers only on the
+      // leader master.
+      auto tablets = VERIFY_RESULT(table->GetTablets());
+      if (tablets.size() > 0 && tablets[0]->tablet_id() == master::kSysCatalogTabletId &&
+          FLAGS_TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
+        auto tablet_peer = sys_catalog_->tablet_peer();
+        tablet::RemoveIntentsData data;
+        RETURN_NOT_OK(tablet_peer->GetLastReplicatedData(&data));
+        OpIdPB safe_op_id;
+        safe_op_id.set_term(data.op_id.term);
+        safe_op_id.set_index(data.op_id.index);
+
+        RETURN_NOT_OK(ResultToStatus(tablet_peer->SetAllInitialCDCSDKRetentionBarriers(
+            data.op_id, master_->clock()->Now(), false /* require_history_cutoff */)));
+
+        // Here instead of kInitial we could've sent last replicated time. But it will
+        // anyway get overridden.
+        RETURN_NOT_OK(PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails(
+            table, sys_catalog_->tablet_id(), stream_id, safe_op_id,
+            HybridTime::kInitial /* proposed_snapshot_time */,
+            req->cdc_sdk_require_history_cutoff()));
+
+        continue;
+      }
       call = std::make_shared<AsyncAlterTable>(
           master_, AsyncTaskPool(), tablet, table, txn_id, epoch, stream_id,
           req->cdc_sdk_require_history_cutoff());

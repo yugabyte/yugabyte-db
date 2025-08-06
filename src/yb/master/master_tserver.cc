@@ -19,6 +19,9 @@
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
 
+#include "yb/cdc/cdc_service.h"
+#include "yb/cdc/cdc_service_context.h"
+
 #include "yb/client/client.h"
 
 #include "yb/common/pg_types.h"
@@ -41,12 +44,56 @@
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
+DEFINE_NON_RUNTIME_int32(master_xrepl_get_changes_concurrency, 3,
+  "This determines the max number of concurrent GetChanges RPCs that can be "
+  "processed on master.");
+TAG_FLAG(master_xrepl_get_changes_concurrency, advanced);
+
+DEFINE_RUNTIME_int32(update_min_cdc_indices_master_interval_secs, 300 /* 5 minutes */,
+  "How often to read cdc_state table on master and move the retention barriers for the sys "
+  "catalog tablet.");
+
 DECLARE_bool(create_initial_sys_catalog_snapshot);
+DECLARE_bool(TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 
 namespace yb {
 namespace master {
 
 using consensus::StartRemoteBootstrapRequestPB;
+
+class MasterCDCServiceContextImpl : public cdc::CDCServiceContext {
+ public:
+  explicit MasterCDCServiceContextImpl(MasterTabletServer* master_tablet_server)
+      : master_tablet_server_(*master_tablet_server) {}
+
+  tablet::TabletPeerPtr LookupTablet(const TabletId& tablet_id) const override {
+    auto serving_tablet_res = master_tablet_server_.GetServingTablet(tablet_id);
+    return serving_tablet_res.ok() ? *serving_tablet_res : nullptr;
+  }
+
+  Result<tablet::TabletPeerPtr> GetTablet(const TabletId& tablet_id) const override {
+    SCHECK_EQ(
+        tablet_id, kSysCatalogTabletId, NotFound, Format("Tablet ID $0 not found.", tablet_id));
+    return master_tablet_server_.GetServingTablet(tablet_id);
+  }
+
+  Result<tablet::TabletPeerPtr> GetServingTablet(const TabletId& tablet_id) const override {
+    SCHECK_EQ(
+        tablet_id, kSysCatalogTabletId, NotFound, Format("Tablet ID $0 not found.", tablet_id));
+    return master_tablet_server_.GetServingTablet(tablet_id);
+  }
+
+  const std::string& permanent_uuid() const override {
+    return master_tablet_server_.permanent_uuid();
+  }
+
+  Result<uint32> GetAutoFlagsConfigVersion() const override {
+    return STATUS(InternalError, "Unexpected call to GetAutoFlagsConfigVersion in master_tserver.");
+  }
+
+ private:
+  MasterTabletServer& master_tablet_server_;
+};
 
 MasterTabletServer::MasterTabletServer(Master* master, scoped_refptr<MetricEntity> metric_entity)
     : master_(master), metric_entity_(metric_entity) {
@@ -265,6 +312,27 @@ const std::string& MasterTabletServer::permanent_uuid() const {
 Result<std::string> MasterTabletServer::GetUniverseUuid() const {
   LOG(DFATAL) << "Unexpected call of GetUniverseUuid()";
   return STATUS_FORMAT(InternalError, "Unexpected call of GetUniverseUuid()");
+}
+
+rpc::ServiceIfPtr MasterTabletServer::CreateCDCService(
+    const scoped_refptr<MetricEntity>& metric_entity,
+    const std::shared_future<client::YBClient*>& client_future, MetricRegistry* metric_registry) {
+  cdc_service_ = std::make_shared<cdc::CDCServiceImpl>(
+      std::make_unique<MasterCDCServiceContextImpl>(this), metric_entity, metric_registry,
+      FLAGS_master_xrepl_get_changes_concurrency, client_future,
+      []() { return FLAGS_update_min_cdc_indices_master_interval_secs; });
+
+  return std::static_pointer_cast<rpc::ServiceIf>(cdc_service_);
+}
+
+void MasterTabletServer::EnableCDCService() {
+  if (!FLAGS_TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
+    return;
+  }
+
+  CHECK_NOTNULL(cdc_service_);
+  cdc_service_->SetCDCServiceEnabled();
+  LOG(INFO) << "CDC service enabled on master";
 }
 
 } // namespace master
