@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <future>
 #include <memory>
 #include <optional>
 #include <string>
@@ -71,14 +72,6 @@ struct DdlMode {
     (DropDatabase)(DropReplicationSlot)(DropTablegroup)(TruncateTable) \
     (AcquireAdvisoryLock)(ReleaseAdvisoryLock)
 
-struct AcquireObjectLockResult {
-  Status status;
-
-  std::string ToString() const {
-    return YB_STRUCT_TO_STRING(status);
-  }
-};
-
 struct PerformResult {
   Status status;
   ReadHybridTime catalog_read_time;
@@ -92,26 +85,27 @@ struct PerformResult {
 
 namespace pg_client::internal {
 
-template <class Data, class Result>
-struct RequestTraits {
-  using DataType = Data;
-  using ResultType = Result;
+template <class Data>
+struct ResultTypeResolver {
+  using ResultType = Data::ResultType;
 };
 
-template <class T>
-concept RequestTraitsType =
-    std::is_same_v<T, RequestTraits<typename T::DataType, typename T::ResultType>>;
+struct PerformData;
 
-template <RequestTraitsType T>
+template <>
+struct ResultTypeResolver<PerformData> {
+  using ResultType = PerformResult;
+};
+
+template <class Data>
 class ExchangeFuture {
  public:
-  using Data = typename T::DataType;
-  using Result = typename T::ResultType;
+  using Result = typename ResultTypeResolver<Data>::ResultType;
 
   ExchangeFuture();
   explicit ExchangeFuture(std::shared_ptr<Data> data);
-  ExchangeFuture(ExchangeFuture<T>&& rhs) noexcept;
-  ExchangeFuture<T>& operator=(ExchangeFuture<T>&& rhs) noexcept;
+  ExchangeFuture(ExchangeFuture&& rhs) noexcept;
+  ExchangeFuture& operator=(ExchangeFuture&& rhs) noexcept;
 
   bool valid() const;
   void wait() const;
@@ -123,10 +117,10 @@ class ExchangeFuture {
   mutable std::optional<Result> value_;
 };
 
-template <RequestTraitsType T>
+template <class Data>
 class ResultFuture {
  public:
-  using Result = typename T::ResultType;
+  using Result = typename ResultTypeResolver<Data>::ResultType;
 
   template <class... Args>
   ResultFuture(Args&&... args) : variant_(std::forward<Args>(args)...) {} // NOLINT
@@ -157,17 +151,14 @@ class ResultFuture {
 
  private:
   using SimpleFuture = std::future<Result>;
-  std::variant<SimpleFuture, ExchangeFuture<T>> variant_;
+  std::variant<SimpleFuture, ExchangeFuture<Data>> variant_;
 };
 
-struct PerformData;
-using PerformTraits = RequestTraits<PerformData, PerformResult>;
-
-}  // namespace pg_client::internal
+} // namespace pg_client::internal
 
 using TableKeyRanges = boost::container::small_vector<RefCntSlice, 2>;
 
-using PerformResultFuture = pg_client::internal::ResultFuture<pg_client::internal::PerformTraits>;
+using PerformResultFuture = pg_client::internal::ResultFuture<pg_client::internal::PerformData>;
 
 using WaitEventWatcher = std::function<PgWaitEventWatcher(ash::WaitStateCode, ash::PggateRPC)>;
 
