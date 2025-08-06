@@ -94,6 +94,7 @@
 #include "utils/varlena.h"
 
 /* YB includes */
+#include "commands/variable.h"
 #include "replication/walsender_private.h"
 #include "utils/guc_tables.h"
 #include "yb_ysql_conn_mgr_helper.h"
@@ -4387,6 +4388,9 @@ yb_is_retry_possible(
 					  "kConflict/kReadRestart/kDeadlock/kAborted");
 		return false;
 	}
+
+	edata->detail = psprintf("%s [%s]", edata->detail,
+							 yb_fetch_effective_transaction_isolation_level());
 
 	if (yb_is_multi_statement_query)
 	{
