@@ -463,7 +463,7 @@ MasterPathHandlers::UniverseTabletCounts MasterPathHandlers::CalculateUniverseTa
 
   auto limits = GetTabletReplicaPerResourceLimits();
   for (auto& [placement_uuid, cluster_counts] : counts.per_placement_cluster_counts) {
-    auto cluster_info = ComputeAggregatedClusterInfo(descs, placement_uuid);
+    auto cluster_info = ComputeAggregatedClusterInfo(descs, blacklist_set, placement_uuid);
     cluster_counts.tablet_replica_limit =
         ToUnsignedOrNullopt(ComputeTabletReplicaLimit(cluster_info, limits));
   }

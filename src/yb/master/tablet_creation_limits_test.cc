@@ -27,11 +27,198 @@ namespace yb::master {
 namespace {
 const std::string kLivePlacementUUID = "rw";
 const std::string kReadPlacementUUID = "r";
-}
+}  // namespace
 
 Result<TSDescriptorPtr> CreateTSDescriptor(
     std::string placement_uuid, std::optional<int64_t> core_count = std::nullopt,
-    std::optional<int64_t> tablet_overhead_ram_in_bytes = std::nullopt, int num_live_replicas = 0) {
+    std::optional<int64_t> tablet_overhead_ram_in_bytes = std::nullopt, int num_live_replicas = 0);
+
+Result<TSDescriptorVector> CreateHomogeneousTSDescriptors(
+    uint64_t count, const std::string& placement_uuid, int64_t cores_count,
+    int64_t tablet_overhead_ram_in_bytes, int num_live_replicas = 0);
+
+ReplicationInfoPB CreateReplicationInfo(int32_t num_replicas, std::string placement_uuid);
+
+void SetExistingTabletCount(int num_live_replicas, TSDescriptorVector* ts_descriptors);
+
+void SetTabletLimits(uint32_t tablet_replicas_per_core, uint32_t tablet_replicas_per_gib);
+
+Status CanCreateTabletReplicasEmptyBlacklist(
+    int num_tablets, const ReplicationInfoPB& replication_info, const TSDescriptorVector& ts_descs);
+
+AggregatedClusterInfo ComputeAggregatedClusterInfoEmptyBlacklist(
+    const TSDescriptorVector& ts_descs, const std::string& placement_uuid);
+
+TEST(HomogeneousTabletLimitsTest, RF1OneTablet) {
+  int64_t cores = 1;
+  int64_t memory = 1_GB;
+  TSDescriptorVector ts_descriptors =
+      ASSERT_RESULT(CreateHomogeneousTSDescriptors(1, kLivePlacementUUID, cores, memory));
+  auto replication_info = CreateReplicationInfo(1, kLivePlacementUUID);
+  SetTabletLimits(/* tablet_replicas_per_core */ 1, /* tablet_replicas_per_gib */ 1);
+  EXPECT_OK(CanCreateTabletReplicasEmptyBlacklist(1, replication_info, ts_descriptors));
+  SetExistingTabletCount(1, &ts_descriptors);
+  EXPECT_NOK(CanCreateTabletReplicasEmptyBlacklist(1, replication_info, ts_descriptors));
+}
+
+TEST(HomogeneousTabletLimitsTest, RF3OneTablet) {
+  int64_t cores = 1;
+  int64_t memory = 1_GB;
+  TSDescriptorVector ts_descriptors =
+      ASSERT_RESULT(CreateHomogeneousTSDescriptors(3, kLivePlacementUUID, cores, memory));
+  auto replication_info = CreateReplicationInfo(3, kLivePlacementUUID);
+  SetTabletLimits(/* tablet_replicas_per_core */ 1, /* tablet_replicas_per_gib */ 1);
+  EXPECT_OK(CanCreateTabletReplicasEmptyBlacklist(1, replication_info, ts_descriptors));
+  SetExistingTabletCount(1, &ts_descriptors);
+  EXPECT_NOK(CanCreateTabletReplicasEmptyBlacklist(1, replication_info, ts_descriptors));
+}
+
+TEST(HomogeneousTabletLimitsTest, RF3HalfGigabyte) {
+  int64_t cores = 10;
+  int64_t memory = 512_MB;
+  TSDescriptorVector ts_descriptors =
+      ASSERT_RESULT(CreateHomogeneousTSDescriptors(3, kLivePlacementUUID, cores, memory, 1));
+  auto replication_info = CreateReplicationInfo(3, kLivePlacementUUID);
+  SetTabletLimits(/* tablet_replicas_per_core */ 10, /* tablet_replicas_per_gib */ 4);
+  EXPECT_OK(CanCreateTabletReplicasEmptyBlacklist(1, replication_info, ts_descriptors));
+  SetExistingTabletCount(2, &ts_descriptors);
+  EXPECT_NOK(CanCreateTabletReplicasEmptyBlacklist(1, replication_info, ts_descriptors));
+}
+
+TEST(HomogeneousTabletLimitsTest, RF3CoresLimit) {
+  int64_t cores = 1;
+  int64_t memory = 10_GB;
+  TSDescriptorVector ts_descriptors =
+      ASSERT_RESULT(CreateHomogeneousTSDescriptors(3, kLivePlacementUUID, cores, memory));
+  auto replication_info = CreateReplicationInfo(3, kLivePlacementUUID);
+  SetTabletLimits(/* tablet_replicas_per_core */ 1, /* tablet_replicas_per_gib */ 10);
+  EXPECT_OK(CanCreateTabletReplicasEmptyBlacklist(1, replication_info, ts_descriptors));
+  SetExistingTabletCount(1, &ts_descriptors);
+  EXPECT_NOK(CanCreateTabletReplicasEmptyBlacklist(1, replication_info, ts_descriptors));
+}
+
+TEST(HomogeneousTabletLimitsTest, RF3MultipleTablets) {
+  int64_t cores = 2;
+  int64_t memory = 2_GB;
+  int num_tablets = 3;
+  TSDescriptorVector ts_descriptors =
+      ASSERT_RESULT(CreateHomogeneousTSDescriptors(3, kLivePlacementUUID, cores, memory, 1));
+  auto replication_info = CreateReplicationInfo(3, kLivePlacementUUID);
+  SetTabletLimits(/* tablet_replicas_per_core */ 2, /* tablet_replicas_per_gib */ 2);
+  // With these settings each TServer can host 4 replicas.
+  // 3 tablets at RF3 is an additional three replicas per tserver.
+  EXPECT_OK(CanCreateTabletReplicasEmptyBlacklist(num_tablets, replication_info, ts_descriptors));
+  SetExistingTabletCount(2, &ts_descriptors);
+  // Now each tserver hosts 2 replicas already, so this should fail.
+  EXPECT_NOK(CanCreateTabletReplicasEmptyBlacklist(num_tablets, replication_info, ts_descriptors));
+}
+
+TEST(HomogeneousTabletLimitsTest, RF1WithReadTServer) {
+  TSDescriptorVector ts_descriptors;
+  ts_descriptors.push_back(ASSERT_RESULT(CreateTSDescriptor(kLivePlacementUUID, 1, 1_GB)));
+  ts_descriptors.push_back(ASSERT_RESULT(CreateTSDescriptor(kReadPlacementUUID, 1, 1_GB)));
+  SetTabletLimits(/* tablet_replicas_per_core */ 1, /* tablet_replicas_per_gib */ 1);
+  auto replication_info = CreateReplicationInfo(1, kLivePlacementUUID);
+  // We have room for one tablet replicas.
+  EXPECT_OK(CanCreateTabletReplicasEmptyBlacklist(1, replication_info, ts_descriptors));
+  // We don't have room for two tablet replicas. We can't use the read tserver because it is
+  // reserved for read replicas.
+  EXPECT_NOK(CanCreateTabletReplicasEmptyBlacklist(2, replication_info, ts_descriptors));
+}
+
+TEST(HomogeneousTabletLimitsTest, EnforcementFlagIndependentOfLimitFlags) {
+  int64_t cores = 1;
+  int64_t memory = 1_GB;
+  TSDescriptorVector ts_descriptors =
+      ASSERT_RESULT(CreateHomogeneousTSDescriptors(1, kLivePlacementUUID, cores, memory));
+  auto replication_info = CreateReplicationInfo(1, kLivePlacementUUID);
+  SetTabletLimits(/* tablet_replicas_per_core */ 1, /* tablet_replicas_per_gib */ 1);
+  SetExistingTabletCount(1, &ts_descriptors);
+  EXPECT_NOK(CanCreateTabletReplicasEmptyBlacklist(1, replication_info, ts_descriptors));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enforce_tablet_replica_limits) = false;
+  EXPECT_OK(CanCreateTabletReplicasEmptyBlacklist(1, replication_info, ts_descriptors));
+}
+
+TEST(ComputeAggregatedClusterInfoTest, SingleTS) {
+  TSDescriptorVector ts_descriptors;
+  ts_descriptors.push_back(ASSERT_RESULT(CreateTSDescriptor(kLivePlacementUUID, 2, 3_GB, 1)));
+  auto cluster_info =
+      ComputeAggregatedClusterInfoEmptyBlacklist(ts_descriptors, kLivePlacementUUID);
+  EXPECT_EQ(cluster_info.total_memory, 3_GB);
+  EXPECT_EQ(cluster_info.total_cores, 2);
+  EXPECT_EQ(cluster_info.total_live_replicas, 1);
+}
+
+TEST(ComputeAggregatedClusterInfoTest, ThreeTSs) {
+  TSDescriptorVector ts_descriptors;
+  ts_descriptors.push_back(ASSERT_RESULT(CreateTSDescriptor(kLivePlacementUUID, 2, 3_GB, 1)));
+  ts_descriptors.push_back(ASSERT_RESULT(CreateTSDescriptor(kLivePlacementUUID, 3, 4_GB, 2)));
+  ts_descriptors.push_back(ASSERT_RESULT(CreateTSDescriptor(kLivePlacementUUID, 4, 5_GB, 3)));
+  auto cluster_info =
+      ComputeAggregatedClusterInfoEmptyBlacklist(ts_descriptors, kLivePlacementUUID);
+  EXPECT_EQ(cluster_info.total_memory, 12_GB);
+  EXPECT_EQ(cluster_info.total_cores, 9);
+  EXPECT_EQ(cluster_info.total_live_replicas, 6);
+}
+
+TEST(ComputeAggregatedClusterInfoTest, ThreeTSsOneMissingCores) {
+  TSDescriptorVector ts_descriptors;
+  ts_descriptors.push_back(ASSERT_RESULT(CreateTSDescriptor(kLivePlacementUUID, 2, 3_GB, 1)));
+  ts_descriptors.push_back(ASSERT_RESULT(CreateTSDescriptor(kLivePlacementUUID, {}, 4_GB, 2)));
+  ts_descriptors.push_back(ASSERT_RESULT(CreateTSDescriptor(kLivePlacementUUID, 3, 5_GB, 3)));
+  auto cluster_info =
+      ComputeAggregatedClusterInfoEmptyBlacklist(ts_descriptors, kLivePlacementUUID);
+  EXPECT_EQ(cluster_info.total_memory, 12_GB);
+  EXPECT_EQ(cluster_info.total_cores, std::nullopt);
+  EXPECT_EQ(cluster_info.total_live_replicas, 6);
+}
+
+TEST(ComputeAggregatedClusterInfoTest, ThreeTSsOneMissingMemory) {
+  TSDescriptorVector ts_descriptors;
+  ts_descriptors.push_back(ASSERT_RESULT(CreateTSDescriptor(kLivePlacementUUID, 3, {}, 2)));
+  ts_descriptors.push_back(ASSERT_RESULT(CreateTSDescriptor(kLivePlacementUUID, 4, 4_GB, 3)));
+  ts_descriptors.push_back(ASSERT_RESULT(CreateTSDescriptor(kLivePlacementUUID, 2, 3_GB, 1)));
+  auto cluster_info =
+      ComputeAggregatedClusterInfoEmptyBlacklist(ts_descriptors, kLivePlacementUUID);
+  EXPECT_EQ(cluster_info.total_memory, std::nullopt);
+  EXPECT_EQ(cluster_info.total_cores, 9);
+  EXPECT_EQ(cluster_info.total_live_replicas, 6);
+}
+
+TEST(ComputeAggregatedClusterInfoTest, OneTSMissingCores) {
+  TSDescriptorVector ts_descriptors;
+  ts_descriptors.push_back(ASSERT_RESULT(CreateTSDescriptor(kLivePlacementUUID, {}, 1_GB, 0)));
+  auto cluster_info =
+      ComputeAggregatedClusterInfoEmptyBlacklist(ts_descriptors, kLivePlacementUUID);
+  EXPECT_EQ(cluster_info.total_memory, 1_GB);
+  EXPECT_FALSE(cluster_info.total_cores.has_value());
+  EXPECT_EQ(cluster_info.total_live_replicas, 0);
+}
+
+TEST(ComputeAggregatedClusterInfoTest, OneTSMissingMemory) {
+  TSDescriptorVector ts_descriptors;
+  ts_descriptors.push_back(ASSERT_RESULT(CreateTSDescriptor(kLivePlacementUUID, 1, {}, 0)));
+  auto cluster_info =
+      ComputeAggregatedClusterInfoEmptyBlacklist(ts_descriptors, kLivePlacementUUID);
+  EXPECT_FALSE(cluster_info.total_memory.has_value());
+  EXPECT_EQ(cluster_info.total_cores, 1);
+  EXPECT_EQ(cluster_info.total_live_replicas, 0);
+}
+
+TEST(ComputeAggregatedClusterInfoTest, LivePlacementAndReadPlacement) {
+  TSDescriptorVector ts_descriptors;
+  ts_descriptors.push_back(ASSERT_RESULT(CreateTSDescriptor(kLivePlacementUUID, 1, 1_GB, 1)));
+  ts_descriptors.push_back(ASSERT_RESULT(CreateTSDescriptor(kReadPlacementUUID, 2, 2_GB, 2)));
+  auto cluster_info =
+      ComputeAggregatedClusterInfoEmptyBlacklist(ts_descriptors, kLivePlacementUUID);
+  EXPECT_EQ(cluster_info.total_memory, 1_GB);
+  EXPECT_EQ(cluster_info.total_cores, 1);
+  EXPECT_EQ(cluster_info.total_live_replicas, 1);
+}
+
+Result<TSDescriptorPtr> CreateTSDescriptor(
+    std::string placement_uuid, std::optional<int64_t> core_count,
+    std::optional<int64_t> tablet_overhead_ram_in_bytes, int num_live_replicas) {
   TSRegistrationPB ts_reg;
   ts_reg.mutable_common()->set_placement_uuid(std::move(placement_uuid));
   if (core_count) {
@@ -50,7 +237,7 @@ Result<TSDescriptorPtr> CreateTSDescriptor(
 
 Result<TSDescriptorVector> CreateHomogeneousTSDescriptors(
     uint64_t count, const std::string& placement_uuid, int64_t cores_count,
-    int64_t tablet_overhead_ram_in_bytes, int num_live_replicas = 0) {
+    int64_t tablet_overhead_ram_in_bytes, int num_live_replicas) {
   TSDescriptorVector ts_descriptors;
   for (uint64_t i = 0; i < count; ++i) {
     ts_descriptors.push_back(VERIFY_RESULT(CreateTSDescriptor(
@@ -78,164 +265,15 @@ void SetTabletLimits(uint32_t tablet_replicas_per_core, uint32_t tablet_replicas
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enforce_tablet_replica_limits) = true;
 }
 
-TEST(HomogeneousTabletLimitsTest, RF1OneTablet) {
-  int64_t cores = 1;
-  int64_t memory = 1_GB;
-  TSDescriptorVector ts_descriptors =
-      ASSERT_RESULT(CreateHomogeneousTSDescriptors(1, kLivePlacementUUID, cores, memory));
-  auto replication_info = CreateReplicationInfo(1, kLivePlacementUUID);
-  SetTabletLimits(/* tablet_replicas_per_core */ 1, /* tablet_replicas_per_gib */ 1);
-  EXPECT_OK(CanCreateTabletReplicas(1, replication_info, ts_descriptors));
-  SetExistingTabletCount(1, &ts_descriptors);
-  EXPECT_NOK(CanCreateTabletReplicas(1, replication_info, ts_descriptors));
+Status CanCreateTabletReplicasEmptyBlacklist(
+    int num_tablets, const ReplicationInfoPB& replication_info,
+    const TSDescriptorVector& ts_descs) {
+  return CanCreateTabletReplicas(num_tablets, replication_info, ts_descs, BlacklistSet());
 }
 
-TEST(HomogeneousTabletLimitsTest, RF3OneTablet) {
-  int64_t cores = 1;
-  int64_t memory = 1_GB;
-  TSDescriptorVector ts_descriptors =
-      ASSERT_RESULT(CreateHomogeneousTSDescriptors(3, kLivePlacementUUID, cores, memory));
-  auto replication_info = CreateReplicationInfo(3, kLivePlacementUUID);
-  SetTabletLimits(/* tablet_replicas_per_core */ 1, /* tablet_replicas_per_gib */ 1);
-  EXPECT_OK(CanCreateTabletReplicas(1, replication_info, ts_descriptors));
-  SetExistingTabletCount(1, &ts_descriptors);
-  EXPECT_NOK(CanCreateTabletReplicas(1, replication_info, ts_descriptors));
-}
-
-TEST(HomogeneousTabletLimitsTest, RF3HalfGigabyte) {
-  int64_t cores = 10;
-  int64_t memory = 512_MB;
-  TSDescriptorVector ts_descriptors =
-      ASSERT_RESULT(CreateHomogeneousTSDescriptors(3, kLivePlacementUUID, cores, memory, 1));
-  auto replication_info = CreateReplicationInfo(3, kLivePlacementUUID);
-  SetTabletLimits(/* tablet_replicas_per_core */ 10, /* tablet_replicas_per_gib */ 4);
-  EXPECT_OK(CanCreateTabletReplicas(1, replication_info, ts_descriptors));
-  SetExistingTabletCount(2, &ts_descriptors);
-  EXPECT_NOK(CanCreateTabletReplicas(1, replication_info, ts_descriptors));
-}
-
-TEST(HomogeneousTabletLimitsTest, RF3CoresLimit) {
-  int64_t cores = 1;
-  int64_t memory = 10_GB;
-  TSDescriptorVector ts_descriptors =
-      ASSERT_RESULT(CreateHomogeneousTSDescriptors(3, kLivePlacementUUID, cores, memory));
-  auto replication_info = CreateReplicationInfo(3, kLivePlacementUUID);
-  SetTabletLimits(/* tablet_replicas_per_core */ 1, /* tablet_replicas_per_gib */ 10);
-  EXPECT_OK(CanCreateTabletReplicas(1, replication_info, ts_descriptors));
-  SetExistingTabletCount(1, &ts_descriptors);
-  EXPECT_NOK(CanCreateTabletReplicas(1, replication_info, ts_descriptors));
-}
-
-TEST(HomogeneousTabletLimitsTest, RF3MultipleTablets) {
-  int64_t cores = 2;
-  int64_t memory = 2_GB;
-  int num_tablets = 3;
-  TSDescriptorVector ts_descriptors =
-      ASSERT_RESULT(CreateHomogeneousTSDescriptors(3, kLivePlacementUUID, cores, memory, 1));
-  auto replication_info = CreateReplicationInfo(3, kLivePlacementUUID);
-  SetTabletLimits(/* tablet_replicas_per_core */ 2, /* tablet_replicas_per_gib */ 2);
-  // With these settings each TServer can host 4 replicas.
-  // 3 tablets at RF3 is an additional three replicas per tserver.
-  EXPECT_OK(CanCreateTabletReplicas(num_tablets, replication_info, ts_descriptors));
-  SetExistingTabletCount(2, &ts_descriptors);
-  // Now each tserver hosts 2 replicas already, so this should fail.
-  EXPECT_NOK(CanCreateTabletReplicas(num_tablets, replication_info, ts_descriptors));
-}
-
-TEST(HomogeneousTabletLimitsTest, RF1WithReadTServer) {
-  TSDescriptorVector ts_descriptors;
-  ts_descriptors.push_back(ASSERT_RESULT(CreateTSDescriptor(kLivePlacementUUID, 1, 1_GB)));
-  ts_descriptors.push_back(ASSERT_RESULT(CreateTSDescriptor(kReadPlacementUUID, 1, 1_GB)));
-  SetTabletLimits(/* tablet_replicas_per_core */ 1, /* tablet_replicas_per_gib */ 1);
-  auto replication_info = CreateReplicationInfo(1, kLivePlacementUUID);
-  // We have room for one tablet replicas.
-  EXPECT_OK(CanCreateTabletReplicas(1, replication_info, ts_descriptors));
-  // We don't have room for two tablet replicas. We can't use the read tserver because it is
-  // reserved for read replicas.
-  EXPECT_NOK(CanCreateTabletReplicas(2, replication_info, ts_descriptors));
-}
-
-TEST(HomogeneousTabletLimitsTest, EnforcementFlagIndependentOfLimitFlags) {
-  int64_t cores = 1;
-  int64_t memory = 1_GB;
-  TSDescriptorVector ts_descriptors =
-      ASSERT_RESULT(CreateHomogeneousTSDescriptors(1, kLivePlacementUUID, cores, memory));
-  auto replication_info = CreateReplicationInfo(1, kLivePlacementUUID);
-  SetTabletLimits(/* tablet_replicas_per_core */ 1, /* tablet_replicas_per_gib */ 1);
-  SetExistingTabletCount(1, &ts_descriptors);
-  EXPECT_NOK(CanCreateTabletReplicas(1, replication_info, ts_descriptors));
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enforce_tablet_replica_limits) = false;
-  EXPECT_OK(CanCreateTabletReplicas(1, replication_info, ts_descriptors));
-}
-
-TEST(ComputeAggregatedClusterInfoTest, SingleTS) {
-  TSDescriptorVector ts_descriptors;
-  ts_descriptors.push_back(ASSERT_RESULT(CreateTSDescriptor(kLivePlacementUUID, 2, 3_GB, 1)));
-  auto cluster_info = ComputeAggregatedClusterInfo(ts_descriptors, kLivePlacementUUID);
-  EXPECT_EQ(cluster_info.total_memory, 3_GB);
-  EXPECT_EQ(cluster_info.total_cores, 2);
-  EXPECT_EQ(cluster_info.total_live_replicas, 1);
-}
-
-TEST(ComputeAggregatedClusterInfoTest, ThreeTSs) {
-  TSDescriptorVector ts_descriptors;
-  ts_descriptors.push_back(ASSERT_RESULT(CreateTSDescriptor(kLivePlacementUUID, 2, 3_GB, 1)));
-  ts_descriptors.push_back(ASSERT_RESULT(CreateTSDescriptor(kLivePlacementUUID, 3, 4_GB, 2)));
-  ts_descriptors.push_back(ASSERT_RESULT(CreateTSDescriptor(kLivePlacementUUID, 4, 5_GB, 3)));
-  auto cluster_info = ComputeAggregatedClusterInfo(ts_descriptors, kLivePlacementUUID);
-  EXPECT_EQ(cluster_info.total_memory, 12_GB);
-  EXPECT_EQ(cluster_info.total_cores, 9);
-  EXPECT_EQ(cluster_info.total_live_replicas, 6);
-}
-
-TEST(ComputeAggregatedClusterInfoTest, ThreeTSsOneMissingCores) {
-  TSDescriptorVector ts_descriptors;
-  ts_descriptors.push_back(ASSERT_RESULT(CreateTSDescriptor(kLivePlacementUUID, 2, 3_GB, 1)));
-  ts_descriptors.push_back(ASSERT_RESULT(CreateTSDescriptor(kLivePlacementUUID, {}, 4_GB, 2)));
-  ts_descriptors.push_back(ASSERT_RESULT(CreateTSDescriptor(kLivePlacementUUID, 3, 5_GB, 3)));
-  auto cluster_info = ComputeAggregatedClusterInfo(ts_descriptors, kLivePlacementUUID);
-  EXPECT_EQ(cluster_info.total_memory, 12_GB);
-  EXPECT_EQ(cluster_info.total_cores, std::nullopt);
-  EXPECT_EQ(cluster_info.total_live_replicas, 6);
-}
-
-TEST(ComputeAggregatedClusterInfoTest, ThreeTSsOneMissingMemory) {
-  TSDescriptorVector ts_descriptors;
-  ts_descriptors.push_back(ASSERT_RESULT(CreateTSDescriptor(kLivePlacementUUID, 3, {}, 2)));
-  ts_descriptors.push_back(ASSERT_RESULT(CreateTSDescriptor(kLivePlacementUUID, 4, 4_GB, 3)));
-  ts_descriptors.push_back(ASSERT_RESULT(CreateTSDescriptor(kLivePlacementUUID, 2, 3_GB, 1)));
-  auto cluster_info = ComputeAggregatedClusterInfo(ts_descriptors, kLivePlacementUUID);
-  EXPECT_EQ(cluster_info.total_memory, std::nullopt);
-  EXPECT_EQ(cluster_info.total_cores, 9);
-  EXPECT_EQ(cluster_info.total_live_replicas, 6);
-}
-
-TEST(ComputeAggregatedClusterInfoTest, OneTSMissingCores) {
-  TSDescriptorVector ts_descriptors;
-  ts_descriptors.push_back(ASSERT_RESULT(CreateTSDescriptor(kLivePlacementUUID, {}, 1_GB, 0)));
-  auto cluster_info = ComputeAggregatedClusterInfo(ts_descriptors, kLivePlacementUUID);
-  EXPECT_EQ(cluster_info.total_memory, 1_GB);
-  EXPECT_FALSE(cluster_info.total_cores.has_value());
-  EXPECT_EQ(cluster_info.total_live_replicas, 0);
-}
-
-TEST(ComputeAggregatedClusterInfoTest, OneTSMissingMemory) {
-  TSDescriptorVector ts_descriptors;
-  ts_descriptors.push_back(ASSERT_RESULT(CreateTSDescriptor(kLivePlacementUUID, 1, {}, 0)));
-  auto cluster_info = ComputeAggregatedClusterInfo(ts_descriptors, kLivePlacementUUID);
-  EXPECT_FALSE(cluster_info.total_memory.has_value());
-  EXPECT_EQ(cluster_info.total_cores, 1);
-  EXPECT_EQ(cluster_info.total_live_replicas, 0);
-}
-
-TEST(ComputeAggregatedClusterInfoTest, LivePlacementAndReadPlacement) {
-  TSDescriptorVector ts_descriptors;
-  ts_descriptors.push_back(ASSERT_RESULT(CreateTSDescriptor(kLivePlacementUUID, 1, 1_GB, 1)));
-  ts_descriptors.push_back(ASSERT_RESULT(CreateTSDescriptor(kReadPlacementUUID, 2, 2_GB, 2)));
-  auto cluster_info = ComputeAggregatedClusterInfo(ts_descriptors, kLivePlacementUUID);
-  EXPECT_EQ(cluster_info.total_memory, 1_GB);
-  EXPECT_EQ(cluster_info.total_cores, 1);
-  EXPECT_EQ(cluster_info.total_live_replicas, 1);
+AggregatedClusterInfo ComputeAggregatedClusterInfoEmptyBlacklist(
+    const TSDescriptorVector& ts_descs, const std::string& placement_uuid) {
+  return ComputeAggregatedClusterInfo(ts_descs, BlacklistSet(), placement_uuid);
 }
 
 }  // namespace yb::master
