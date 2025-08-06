@@ -29,6 +29,8 @@
 
 namespace yb::docdb {
 
+TableLockType FastpathLockTypeToTableLockType(ObjectLockFastpathLockType lock_type);
+
 std::optional<ObjectLockFastpathLockType> MakeObjectLockFastpathLockType(TableLockType lock_type);
 
 [[nodiscard]] std::span<const LockTypeEntry> GetEntriesForFastpathLockType(

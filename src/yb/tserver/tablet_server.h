@@ -89,6 +89,7 @@ namespace yb {
 
 class Env;
 class MaintenanceManager;
+class ObjectLockTracker;
 
 namespace cdc {
 
@@ -663,6 +664,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   std::atomic<yb::server::RpcAndWebServerBase*> cql_server_{nullptr};
   std::atomic<yb::server::YCQLStatementStatsProvider*> cql_stmt_provider_{nullptr};
+
+  std::shared_ptr<ObjectLockTracker> object_lock_tracker_;
 
   // Lock Manager to maintain table/object locking activity in memory.
   tserver::TSLocalLockManagerPtr ts_local_lock_manager_ GUARDED_BY(lock_);

@@ -372,7 +372,9 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
       master_config_index_(0),
       xcluster_context_(new TserverXClusterContext()),
-      object_lock_shared_state_manager_(new docdb::ObjectLockSharedStateManager()) {
+      object_lock_tracker_(std::make_shared<ObjectLockTracker>()),
+      object_lock_shared_state_manager_(
+          new docdb::ObjectLockSharedStateManager(object_lock_tracker_)) {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
       FLAGS_inbound_rpc_memory_limit, mem_tracker()));
   if (FLAGS_ysql_enable_db_catalog_version_mode) {
@@ -824,7 +826,8 @@ void TabletServer::StartTSLocalLockManager() {
     std::lock_guard l(lock_);
     ts_local_lock_manager_ = std::make_shared<tserver::TSLocalLockManager>(
         clock_, this /* TabletServerIf* */, *this /* RpcServerBase& */,
-        tablet_manager_->waiting_txn_pool(), object_lock_shared_state_manager_.get());
+        tablet_manager_->waiting_txn_pool(), object_lock_tracker_,
+        object_lock_shared_state_manager_.get());
     ts_local_lock_manager_->Start(tablet_manager_->waiting_txn_registry());
   }
 }

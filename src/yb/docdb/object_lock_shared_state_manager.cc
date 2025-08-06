@@ -138,6 +138,14 @@ void ObjectLockSharedStateManager::CallWithRequestConsumer(
               .key = MakeLockPrefix(request, entry_type),
               .intent_types = intent_types}});
     }
+
+    // Track fastpath object locks for pg_locks.
+    object_lock_tracker_->TrackLock(
+        ObjectLockContext{
+            owner_info->txn_id, request.subtxn_id, request.database_oid, request.relation_oid,
+            request.object_oid, request.object_sub_oid,
+            FastpathLockTypeToTableLockType(request.lock_type)},
+        ObjectLockState::GRANTED);
   };
 
   ParentProcessGuard g;
