@@ -23,7 +23,7 @@ Note that retries for the statement in YugabyteDB's Read Committed isolation are
 
 {{< tip title="Enable Read Committed" >}}
 
-To enable Read committed, set the YB-TServer flag [yb_enable_read_committed_isolation](../../../reference/configuration/yb-tserver/#yb-enable-read-committed-isolation) to `true`. By default this flag is `false` and in this case the Read committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot isolation).
+To enable Read Committed isolation, set the YB-TServer flag [yb_enable_read_committed_isolation](../../../reference/configuration/yb-tserver/#yb-enable-read-committed-isolation) to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot isolation).
 
 Refer to [Usage](#usage) to start a Read Committed transaction after enabling the flag.
 {{< /tip >}}
