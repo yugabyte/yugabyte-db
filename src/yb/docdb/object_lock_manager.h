@@ -85,6 +85,8 @@ class ObjectLockManager {
 
   void DumpStatusHtml(std::ostream& out);
 
+  void ConsumePendingSharedLockRequests();
+
   size_t TEST_GrantedLocksSize();
   size_t TEST_WaitingLocksSize();
   std::unordered_map<ObjectLockPrefix, LockState>
