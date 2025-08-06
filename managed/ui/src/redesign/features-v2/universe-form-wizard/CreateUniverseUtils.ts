@@ -310,7 +310,8 @@ export const mapCreateUniversePayload = (
         ...databaseSettings.ycql
       },
       ysql: {
-        ...databaseSettings.ysql
+        ...databaseSettings.ysql,
+        enable_connection_pooling: databaseSettings.enableConnectionPooling ?? false
       },
       networking_spec: {
         assign_public_ip: securitySettings.assignPublicIP,
@@ -333,14 +334,16 @@ export const mapCreateUniversePayload = (
             },
             tserver: {
               ...gflags.tserver
-            }
+            },
+            
+            ...(databaseSettings.enablePGCompatibitilty && {["gflag_groups"] : ['ENHANCED_POSTGRES_COMPATIBILITY']})
           },
           instance_tags: otherAdvancedSettings.instanceTags.reduce((acc, tag) => {
             acc[tag.name] = tag.value;
             return acc;
           }, {} as Record<string, string>),
           networking_spec: {
-            enable_lb: false,
+            enable_lb: true,
             enable_exposing_service: 'UNEXPOSED',
             proxy_config: {
               http_proxy: proxySettings.enableProxyServer ? `${proxySettings.webProxy}` : '',
