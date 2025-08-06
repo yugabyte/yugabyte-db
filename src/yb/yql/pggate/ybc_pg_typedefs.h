@@ -761,6 +761,10 @@ typedef struct {
   unsigned char client_addr[16];
   uint16_t client_port;
   uint8_t addr_family;
+
+  // Postgres-specific memory usage in bytes. On Apple devices this falls back to
+  // resident set size (RSS), since proportional set size (PSS) is not available.
+  int64_t pss_mem_bytes;
 } YbcAshMetadata;
 
 typedef struct {

@@ -12,7 +12,7 @@
 [
 
 # For better version control conflict detection, list latest migration filename
-# here: V85__27764__yb_restart_time_in_pg_replication_slots.sql
-{ major => '85', minor => '0', name => '<baseline>', time_applied => '_null_' }
+# here: V86__27474__pss_mem_bytes_in_yb_ash.sql
+{ major => '86', minor => '0', name => '<baseline>', time_applied => '_null_' }
 
 ]
