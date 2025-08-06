@@ -888,13 +888,18 @@ Status PgTxnManager::AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObject
     return Status::OK();
   }
 
-  auto fastpath_lock_type = docdb::MakeObjectLockFastpathLockType(TableLockType(mode));
-  if (fastpath_lock_type &&
-      client_->TryAcquireObjectLockInSharedMemory(
-          active_sub_transaction_id_, lock_id, *fastpath_lock_type)) {
-    return Status::OK();
+  // It is safe to use fast path locking only for statements that would eventually be associated
+  // with kPlain type at PgClientSession, since fast path locking always assigns locks under the
+  // plain transaction.
+  if (!IsDdlMode() || IsDdlModeWithRegularTransactionBlock()) {
+    auto fastpath_lock_type = docdb::MakeObjectLockFastpathLockType(TableLockType(mode));
+    if (fastpath_lock_type &&
+        client_->TryAcquireObjectLockInSharedMemory(
+            active_sub_transaction_id_, lock_id, *fastpath_lock_type)) {
+      return Status::OK();
+    }
+    VLOG(1) << "Lock acquisition via shared memory not available";
   }
-  VLOG(1) << "Lock acquisition via shared memory not available";
 
   RETURN_NOT_OK(CalculateIsolation(
       mode <= YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK /* read_only */,
