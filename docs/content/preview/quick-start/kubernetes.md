@@ -6,7 +6,7 @@ headcontent: Get started in less than 5 minutes in the cloud or on your desktop
 description: Get started using YugabyteDB in less than five minutes on Kubernetes (Minikube).
 aliases:
   - /quick-start-kubernetes/
-  - /preview/quick-start/kubernetes/
+  - /preview/tutorials/quick-start/kubernetes/
 type: docs
 unversioned: true
 ---

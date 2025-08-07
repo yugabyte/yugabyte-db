@@ -9,7 +9,7 @@ aliases:
   - /preview/quick-start/install/
   - /preview/quick-start/macos/
   - /preview/quick-start/
-  - /preview/quick-start/
+  - /preview/tutorials/quick-start/
 layout: single
 type: docs
 rightNav:
