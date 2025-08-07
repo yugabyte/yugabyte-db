@@ -16,6 +16,8 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.utils.CapacityReservationUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.models.Universe;
@@ -73,6 +75,7 @@ public class EditUniverse extends EditUniverseTaskBase {
     checkUniverseVersion();
     String errorString = null;
     Universe universe = null;
+    boolean deleteCapacityReservation = false;
     try {
       universe =
           lockAndFreezeUniverseForUpdate(
@@ -87,7 +90,6 @@ public class EditUniverse extends EditUniverseTaskBase {
       }
       Set<NodeDetails> addedMasters = getAddedMasters();
       Set<NodeDetails> removedMasters = getRemovedMasters();
-      boolean updateMasters = !addedMasters.isEmpty() || !removedMasters.isEmpty();
       // Primary is always the first but there is no rule. So, sort it to do primary first.
       List<Cluster> clusters =
           taskParams().clusters.stream()
@@ -97,6 +99,17 @@ public class EditUniverse extends EditUniverseTaskBase {
                   Comparator.<Cluster, Integer>comparing(
                       c -> c.clusterType == ClusterType.PRIMARY ? -1 : c.index))
               .collect(Collectors.toList());
+      Set<NodeDetails> nodesToProvision =
+          PlacementInfoUtil.getNodesToProvision(taskParams().nodeDetailsSet);
+      if (!nodesToProvision.isEmpty()) {
+        deleteCapacityReservation =
+            createCapacityReservationsIfNeeded(
+                nodesToProvision,
+                CapacityReservationUtil.OperationType.EDIT,
+                node ->
+                    node.state == NodeDetails.NodeState.ToBeAdded
+                        || node.state == NodeDetails.NodeState.Adding);
+      }
       for (Cluster cluster : clusters) {
         // Updating cluster in memory
         universe
@@ -111,10 +124,12 @@ public class EditUniverse extends EditUniverseTaskBase {
             cluster,
             getNodesInCluster(cluster.uuid, addedMasters),
             getNodesInCluster(cluster.uuid, removedMasters),
-            updateMasters,
             cluster.userIntent.providerType == CloudType.onprem /* force destroy servers */);
         // Updating placement info and userIntent in DB
         createUpdateUniverseIntentTask(cluster);
+      }
+      if (deleteCapacityReservation) {
+        createDeleteReservationTask();
       }
       if (taskParams().communicationPorts != null
           && !Objects.equals(

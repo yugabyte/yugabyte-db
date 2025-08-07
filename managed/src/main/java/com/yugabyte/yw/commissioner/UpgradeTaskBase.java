@@ -302,10 +302,9 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       // disabled, so we enable it again in case of errors.
       if (!isLoadBalancerOn) {
         setTaskQueueAndRun(
-            () -> {
-              createLoadBalancerStateChangeTask(true)
-                  .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-            });
+            () ->
+                createLoadBalancerStateChangeTask(true)
+                    .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse));
       }
       if (onFailureTask != null) {
         log.info("Running on failure upgrade task");

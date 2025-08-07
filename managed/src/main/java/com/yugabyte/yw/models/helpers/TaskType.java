@@ -1224,7 +1224,12 @@ public enum TaskType {
 
   CheckSshConnection(com.yugabyte.yw.commissioner.tasks.subtasks.CheckSshConnection.class),
 
-  FetchServerConf(com.yugabyte.yw.commissioner.tasks.subtasks.FetchServerConf.class);
+  FetchServerConf(com.yugabyte.yw.commissioner.tasks.subtasks.FetchServerConf.class),
+
+  DoCapacityReservation(com.yugabyte.yw.commissioner.tasks.subtasks.DoCapacityReservation.class),
+
+  DeleteCapacityReservation(
+      com.yugabyte.yw.commissioner.tasks.subtasks.DeleteCapacityReservation.class);
 
   private final Class<? extends ITask> taskClass;
 

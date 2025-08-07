@@ -1915,6 +1915,11 @@ public class NodeManager extends DevopsBase {
           Common.CloudType cloudType = userIntent.providerType;
           if (!cloudType.equals(Common.CloudType.onprem)) {
             addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, false);
+            if (taskParam.capacityReservation != null) {
+              commandArgs.add("--capacity_reservation");
+              commandArgs.add(taskParam.capacityReservation);
+            }
+
             commandArgs.add("--cloud_subnet");
             commandArgs.add(taskParam.subnetId);
 
@@ -2316,6 +2321,10 @@ public class NodeManager extends DevopsBase {
           }
           ResumeServer.Params taskParam = (ResumeServer.Params) nodeTaskParam;
           addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, true);
+          if (taskParam.capacityReservation != null) {
+            commandArgs.add("--capacity_reservation");
+            commandArgs.add(taskParam.capacityReservation);
+          }
           if (!Strings.isNullOrEmpty(taskParam.nodeIP)) {
             commandArgs.add("--node_ip");
             commandArgs.add(taskParam.nodeIP);
@@ -2460,6 +2469,10 @@ public class NodeManager extends DevopsBase {
             commandArgs.add(Integer.toString(taskParam.cgroupSize));
           }
 
+          if (taskParam.capacityReservation != null) {
+            commandArgs.add("--capacity_reservation");
+            commandArgs.add(taskParam.capacityReservation);
+          }
           if (taskParam.force) {
             commandArgs.add("--force");
           }

@@ -2795,7 +2795,9 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation"
           ],
           "type" : "string"
         },
@@ -5460,7 +5462,9 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation"
           ],
           "type" : "string"
         },
@@ -8484,7 +8488,9 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation"
           ],
           "type" : "string"
         },
@@ -9267,7 +9273,9 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation"
           ],
           "type" : "string"
         },
@@ -10668,7 +10676,9 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation"
           ],
           "type" : "string"
         },
@@ -14902,7 +14912,9 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation"
           ],
           "type" : "string"
         },
@@ -15916,7 +15928,9 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation"
           ],
           "type" : "string"
         },
@@ -16730,7 +16744,9 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation"
           ],
           "type" : "string"
         },
@@ -18225,7 +18241,9 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation"
           ],
           "type" : "string"
         },
@@ -18771,7 +18789,9 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation"
           ],
           "type" : "string"
         },
@@ -19159,7 +19179,9 @@
               "YNPProvisioning",
               "ConfigureOOMServiceOnNode",
               "CheckSshConnection",
-              "FetchServerConf"
+              "FetchServerConf",
+              "DoCapacityReservation",
+              "DeleteCapacityReservation"
             ],
             "type" : "string"
           },
@@ -19968,7 +19990,9 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation"
           ],
           "type" : "string"
         },
@@ -21047,7 +21071,9 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation"
           ],
           "type" : "string"
         },
@@ -22332,7 +22358,9 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation"
           ],
           "type" : "string"
         },
@@ -22989,7 +23017,9 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation"
           ],
           "type" : "string"
         },
@@ -23901,7 +23931,9 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation"
           ],
           "type" : "string"
         },
@@ -24522,7 +24554,9 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation"
           ],
           "type" : "string"
         },
@@ -25143,7 +25177,9 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation"
           ],
           "type" : "string"
         },
@@ -26250,7 +26286,9 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation"
           ],
           "type" : "string"
         },
@@ -27354,7 +27392,9 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation"
           ],
           "type" : "string"
         },
