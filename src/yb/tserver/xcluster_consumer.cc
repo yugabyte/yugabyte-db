@@ -155,7 +155,8 @@ XClusterConsumer::XClusterConsumer(
       last_safe_time_published_at_(MonoTime::Now()),
       connect_to_pg_func_(std::move(connect_to_pg_func)),
       get_namespace_info_func_(std::move(get_namespace_info_func)),
-      xcluster_context_(xcluster_context) {
+      xcluster_context_(xcluster_context),
+      ts_uuid_(ts_uuid) {
   rate_limiter_ = std::unique_ptr<rocksdb::RateLimiter>(rocksdb::NewGenericRateLimiter(
       GetAtomicFlag(&FLAGS_apply_changes_max_send_rate_mbps) * 1_MB));
   rate_limiter_->EnableLoggingWithDescription("XCluster Output Client");
@@ -561,7 +562,7 @@ void XClusterConsumer::TriggerPollForNewTablets() {
                 producer_tablet_info.replication_group_id),
             thread_pool_.get(), rpcs_.get(), local_client_, remote_clients_[replication_group_id],
             this, leader_term, get_leader_term_func_, entry.automatic_ddl_mode,
-            entry.disable_stream);
+            entry.disable_stream, ts_uuid_);
 
         if (ddl_queue_streams_.contains(producer_tablet_info.stream_id)) {
           auto source_namespace_id = GetNamespaceIdFromYsqlTableId(producer_tablet_info.table_id);

@@ -164,6 +164,7 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kSnapshot_WaitingForFlush)
     (kSnapshot_CleanupSnapshotDir)
     (kSnapshot_RestoreCheckpoint)
+    (kXCluster_WaitingForGetChanges)
 
     // Wait states related to consensus
     ((kRaft_WaitingForReplication, YB_ASH_MAKE_EVENT(Consensus)))
@@ -216,6 +217,7 @@ YB_DEFINE_TYPED_ENUM(FixedQueryId, uint8_t,
   ((kQueryIdForSnapshot, 9))
   ((kQueryIdForYcqlAuthResponseRequest, 10))
   ((kQueryIdForWalsender, 11))
+  ((kQueryIdForXCluster, 12))
 );
 
 YB_DEFINE_TYPED_ENUM(WaitStateType, uint8_t,
@@ -484,11 +486,12 @@ class WaitStateInfo {
 
   void UpdateMetadata(const AshMetadata& meta) EXCLUDES(mutex_);
   void UpdateAuxInfo(const AshAuxInfo& aux) EXCLUDES(mutex_);
+  void UpdateTabletId(const TabletId& tablet_id);
+  static void UpdateCurrentTabletId(const TabletId& tablet_id);
 
   template <class PB>
   static void UpdateCurrentMetadataFromPB(const PB& pb) {
-    const auto& wait_state = CurrentWaitState();
-    if (wait_state) {
+    if (const auto& wait_state = CurrentWaitState()) {
       wait_state->UpdateMetadataFromPB(pb);
     }
   }
@@ -627,5 +630,6 @@ WaitStateTracker& FlushAndCompactionWaitStatesTracker();
 WaitStateTracker& RaftLogWaitStatesTracker();
 WaitStateTracker& SharedMemoryPgPerformTracker();
 WaitStateTracker& SharedMemoryPgAcquireObjectLockTracker();
+WaitStateTracker& XClusterPollerTracker();
 
 }  // namespace yb::ash
