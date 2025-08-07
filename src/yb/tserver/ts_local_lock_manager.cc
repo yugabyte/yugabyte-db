@@ -320,6 +320,7 @@ class TSLocalLockManager::Impl {
 
     auto keys_to_lock = VERIFY_RESULT(DetermineObjectsToLock(req.object_locks()));
 
+    DVLOG_WITH_FUNC(4) << "Dumping before acquire : " << DumpLocksToHtml();
     // Track all locks as waiting
     std::vector<ObjectLockContext> lock_contexts;
     lock_contexts.reserve(req.object_locks_size());
@@ -341,10 +342,13 @@ class TSLocalLockManager::Impl {
           .start_time = MonoTime::FromUint64(req.propagated_hybrid_time()),
           .callback = [this, lock_contexts = std::move(lock_contexts),
                        cb = std::move(callback)](Status status) -> void {
-            Status tracker_status;
             if (status.ok()) {
+              DVLOG_WITH_FUNC(3) << "Dumping after locks were acquired : " << DumpLocksToHtml();
               lock_tracker_->TrackLocks(lock_contexts, ObjectLockState::GRANTED);
             } else {
+              DVLOG_WITH_FUNC(3) << "Lock acquire failed for " << yb::ToString(lock_contexts)
+                                << " with " << status << " current state : "
+                                << DumpLocksToHtml();
               lock_tracker_->UntrackLocks(lock_contexts);
             }
             // Call the original callback with the final status
@@ -508,6 +512,12 @@ class TSLocalLockManager::Impl {
     return object_lock_manager_.TEST_GetLockStateMapForTxn(txn);
   }
 
+  std::string DumpLocksToHtml() {
+    std::stringstream output;
+    DumpLocksToHtml(output);
+    return output.str();
+  }
+
   void DumpLocksToHtml(std::ostream& out) {
     object_lock_manager_.DumpStatusHtml(out);
   }
@@ -575,17 +585,9 @@ void TSLocalLockManager::AcquireObjectLocksAsync(
 
 Status TSLocalLockManager::ReleaseObjectLocks(
     const tserver::ReleaseObjectLockRequestPB& req, CoarseTimePoint deadline) {
-  if (VLOG_IS_ON(4)) {
-    std::stringstream output;
-    impl_->DumpLocksToHtml(output);
-    VLOG(4) << "Dumping current state Before release : " << output.str();
-  }
+  DVLOG_WITH_FUNC(4) << "Dumping before release : " << impl_->DumpLocksToHtml();
   auto ret = impl_->ReleaseObjectLocks(req, deadline);
-  if (VLOG_IS_ON(3)) {
-    std::stringstream output;
-    impl_->DumpLocksToHtml(output);
-    VLOG(3) << "Dumping current state After release : " << output.str();
-  }
+  DVLOG_WITH_FUNC(3) << "Dumping after release : " << impl_->DumpLocksToHtml();
   return ret;
 }
 
