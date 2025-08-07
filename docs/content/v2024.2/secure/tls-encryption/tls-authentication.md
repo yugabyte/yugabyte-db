@@ -153,7 +153,7 @@ Type "help" for help.
 
 The other modes (that is, `sslmode=require` or `disable`) behave analogously.
 
-###TLS with SCRAM based password authentication (SCRAM-SHA-256-PLUS)
+### TLS with SCRAM based password authentication (SCRAM-SHA-256-PLUS)
 
 This configuration, also known as SCRAM-SHA-256-PLUS, enables authentication with SCRAM using TLS channel-binding as described in [RFC 7677](https://tools.ietf.org/html/rfc7677). When SCRAM-SHA-256-PLUS is used, information about the TLS channel being used is encoded in the authentication messages exchanged, ensuring the client and server are sharing the same TLS channel (i.e. binding the channel to the authentication mechanism).
 
