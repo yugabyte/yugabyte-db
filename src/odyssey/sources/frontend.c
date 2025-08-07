@@ -914,11 +914,19 @@ static od_frontend_status_t od_frontend_remote_server(od_relay_t *relay,
 		break;
 	case KIWI_BE_COPY_IN_RESPONSE:
 	case KIWI_BE_COPY_OUT_RESPONSE:
-		server->is_copy = 1;
+		server->in_out_response_received++;
 		break;
 	case KIWI_BE_COPY_DONE:
-		server->is_copy = 0;
+		/* should go after copy out
+		* states that backend copy ended
+		*/
+		server->done_fail_response_received++;
 		break;
+	case KIWI_BE_COPY_FAIL:
+		/*
+		* states that backend copy failed
+		*/
+		return relay->error_write;
 	case KIWI_BE_READY_FOR_QUERY: {
 		is_ready_for_query = 1;
 		od_backend_ready(server, data, size);
@@ -1206,7 +1214,8 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 	switch (type) {
 	case KIWI_FE_COPY_DONE:
 	case KIWI_FE_COPY_FAIL:
-		server->is_copy = 0;
+		/* client finished copy */
+		server->done_fail_response_received++;
 		break;
 	case KIWI_FE_QUERY:
 		if (instance->config.log_query || route->rule->log_query)
