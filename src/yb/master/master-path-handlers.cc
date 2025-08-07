@@ -448,7 +448,7 @@ MasterPathHandlers::UniverseTabletCounts MasterPathHandlers::CalculateUniverseTa
 
   auto limits = GetTabletReplicaPerResourceLimits();
   for (auto& [placement_uuid, cluster_counts] : counts.per_placement_cluster_counts) {
-    auto cluster_info = ComputeAggregatedClusterInfo(descs, placement_uuid);
+    auto cluster_info = ComputeAggregatedClusterInfo(descs, blacklist_set, placement_uuid);
     cluster_counts.tablet_replica_limit =
         ToUnsignedOrNullopt(ComputeTabletReplicaLimit(cluster_info, limits));
   }
@@ -590,7 +590,7 @@ void MasterPathHandlers::DisplayUniverseSummary(
   // auto include_placement_uuids = universe_counts.per_placement_cluster_counts.size() > 1;
   // auto placement_uuid_header = include_placement_uuids ? "<th>Cluster UUID</th>\n" : "";
   *output << "<h2>Universe Summary</h2>\n"
-          << "<table class='table table-striped'>\n"
+          << "<table class='table table-striped' id='universe_summary'>\n"
           << "  <tr>\n"
           << "    <th>Cluster UUID</th>\n"
           << "    <th>Total Live TServers</th>\n"
@@ -623,7 +623,8 @@ void MasterPathHandlers::DisplayUniverseSummary(
             << "  <td>" << system_total << "</td>\n"
             << "  <td>" << cluster_counts.counts.hidden_tablet_peers << "</td>\n"
             << "  <td>" << cluster_counts.active_tablet_peer_count << "</td>\n"
-            << "  <td>" << limit_entry << "</td>\n";
+            << "  <td>" << limit_entry << "</td>\n"
+            << "</tr>";
   }
   *output << "</table>\n";
 }
