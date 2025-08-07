@@ -7,9 +7,8 @@ description: Get started using YugabyteDB in less than five minutes on macOS.
 aliases:
   - /preview/quick-start/create-local-cluster/
   - /preview/quick-start/install/
-  - /preview/quick-start/macos/
   - /preview/quick-start/
-  - /preview/tutorials/quick-start/
+  - /preview/tutorials/quick-start/macos/
 layout: single
 type: docs
 rightNav:
