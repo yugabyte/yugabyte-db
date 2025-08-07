@@ -151,8 +151,7 @@ DECLARE_uint32(max_replication_slots);
 DECLARE_uint64(cdc_intent_retention_ms);
 DECLARE_uint32(cdcsdk_tablet_not_of_interest_timeout_secs);
 DECLARE_bool(cdcsdk_enable_dynamic_table_addition_with_table_cleanup);
-
-
+DECLARE_bool(TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 
 #define RETURN_ACTION_NOT_OK(expr, action) \
   RETURN_NOT_OK_PREPEND((expr), Format("An error occurred while $0", action))
@@ -845,6 +844,18 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
     RETURN_NOT_OK(BackfillMetadataForXRepl(table, epoch));
     table_ids.push_back(table->id());
   }
+
+  // We add the pg_class and pg_publication_rel catalog tables to the stream metadata as we will
+  // poll them to figure out changes to the publications. This will not be done for gRPC streams.
+  if (FLAGS_TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication &&
+      req.has_cdcsdk_ysql_replication_slot_name()) {
+    auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
+    table_ids.push_back(GetPgsqlTableId(database_oid, kPgClassTableOid));
+    table_ids.push_back(GetPgsqlTableId(database_oid, kPgPublicationRelOid));
+    VLOG_WITH_FUNC(1) << "Added the catalog tables pg_class and pg_publication_rel to the stream "
+                         "metadata tables list.";
+  }
+
   VLOG_WITH_FUNC(1) << Format("Creating CDCSDK stream for $0 tables", table_ids.size());
 
   return CreateNewCdcsdkStream(req, table_ids, ns->id(), resp, epoch, rpc);
@@ -987,7 +998,11 @@ Status CatalogManager::CreateNewCdcsdkStream(
     if (FLAGS_ysql_yb_enable_replica_identity && has_replication_slot_name) {
       auto table = VERIFY_RESULT(FindTableById(table_id));
       auto schema = VERIFY_RESULT(table->GetSchema());
-      PgReplicaIdentity replica_identity = schema.table_properties().replica_identity();
+      // For catalog tables we will use replica identity CHANGE.
+      PgReplicaIdentity replica_identity = PgReplicaIdentity::CHANGE;
+      if (!table->is_system()) {
+        replica_identity = schema.table_properties().replica_identity();
+      }
 
       // If atleast one of the tables in the stream has replica identity other than CHANGE &
       // NOTHING, we will set the history cutoff. UpdatepPeersAndMetrics thread will remove the
@@ -1337,6 +1352,7 @@ Status CatalogManager::SetAllCDCSDKRetentionBarriers(
   const std::vector<TableId>& table_ids, const xrepl::StreamId& stream_id,
   const bool has_consistent_snapshot_option, const bool require_history_cutoff) {
   VLOG_WITH_FUNC(4) << "Setting All retention barriers for stream: " << stream_id;
+  std::unordered_set<TableId> system_table_ids;
 
   for (const auto& table_id : table_ids) {
     auto table = VERIFY_RESULT(FindTableById(table_id));
@@ -1347,6 +1363,10 @@ Status CatalogManager::SetAllCDCSDKRetentionBarriers(
             NotFound, "Table does not exist", table_id,
             MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
       }
+    }
+
+    if (table->is_system()) {
+      system_table_ids.insert(table_id);
     }
 
     AlterTableRequestPB alter_table_req;
@@ -1372,6 +1392,11 @@ Status CatalogManager::SetAllCDCSDKRetentionBarriers(
     auto deadline = rpc->GetClientDeadline();
     // TODO(#18934): Handle partial failures by rolling back all changes.
     for (const auto& table_id : table_ids) {
+      // TODO(#26423): The check WaitForAlterTableToFinish fails for catalog tables because we do
+      // not perform a RAFT operation yet to set the retention barriers on catalog tables.
+      if (system_table_ids.contains(table_id)) {
+        continue;
+      }
       RETURN_NOT_OK(WaitForAlterTableToFinish(table_id, deadline));
     }
     RETURN_NOT_OK(WaitForSnapshotSafeOpIdToBePopulated(stream_id, table_ids, deadline));
@@ -1494,9 +1519,19 @@ Status CatalogManager::WaitForSnapshotSafeOpIdToBePopulated(
     CoarseTimePoint deadline) {
 
   auto num_expected_tablets = 0;
+  auto sys_catalog_tablet_seen = false;
   for (const auto& table_id : table_ids) {
     auto table = VERIFY_RESULT(FindTableById(table_id));
-    num_expected_tablets += table->TabletCount();
+    if (table->is_system()) {
+      // We do not add snapshot entries for catalog tables. Since all the catalog tables reside on
+      // the same tablet we count them only once.
+      if (!sys_catalog_tablet_seen) {
+        num_expected_tablets += table->TabletCount();
+        sys_catalog_tablet_seen = true;
+      }
+    } else {
+      num_expected_tablets += table->TabletCount();
+    }
   }
 
   return WaitFor(
@@ -5017,7 +5052,10 @@ std::shared_ptr<cdc::CDCServiceProxy> CatalogManager::GetCDCServiceProxy(RemoteT
   return cdc_service;
 }
 
-void CatalogManager::SetCDCServiceEnabled() { cdc_enabled_.store(true, std::memory_order_release); }
+void CatalogManager::SetCDCServiceEnabled() {
+  master_->EnableCDCService();
+  cdc_enabled_.store(true, std::memory_order_release);
+}
 
 Result<scoped_refptr<TableInfo>> CatalogManager::GetTableById(const TableId& table_id) const {
   return FindTableById(table_id);

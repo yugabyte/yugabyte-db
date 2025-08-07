@@ -831,17 +831,29 @@ class CDCServiceImpl::Impl {
 CDCServiceImpl::CDCServiceImpl(
     std::unique_ptr<CDCServiceContext> context,
     const scoped_refptr<MetricEntity>& metric_entity_server, MetricRegistry* metric_registry,
-    const std::shared_future<client::YBClient*>& client_future)
+    const std::shared_future<client::YBClient*>& client_future,
+    const std::function<int32()>& get_update_peers_interval)
+    : CDCServiceImpl(
+          std::move(context), metric_entity_server, metric_registry,
+          std::max(
+              1.0, floor(FLAGS_rpc_workers_limit * (1 - FLAGS_cdc_get_changes_free_rpc_ratio))),
+          client_future, get_update_peers_interval) {}
+
+CDCServiceImpl::CDCServiceImpl(
+    std::unique_ptr<CDCServiceContext> context,
+    const scoped_refptr<MetricEntity>& metric_entity_server, MetricRegistry* metric_registry,
+    int get_changes_concurrency, const std::shared_future<client::YBClient*>& client_future,
+    const std::function<int32()>& get_update_peers_interval)
     : CDCServiceIf(metric_entity_server),
       context_(std::move(context)),
       metric_registry_(metric_registry),
       server_metrics_(std::make_shared<xrepl::CDCServerMetrics>(metric_entity_server)),
-      get_changes_rpc_sem_(std::max(
-          1.0, floor(FLAGS_rpc_workers_limit * (1 - FLAGS_cdc_get_changes_free_rpc_ratio)))),
+      get_changes_rpc_sem_(get_changes_concurrency),
       rate_limiter_(std::unique_ptr<rocksdb::RateLimiter>(rocksdb::NewGenericRateLimiter(
           GetAtomicFlag(&FLAGS_xcluster_get_changes_max_send_rate_mbps) * 1_MB))),
       impl_(new Impl(context_.get(), &mutex_)),
-      client_future_(client_future) {
+      client_future_(client_future),
+      get_update_peers_interval_(get_update_peers_interval) {
   cdc_state_table_ = std::make_unique<cdc::CDCStateTable>(client_future);
 
   CHECK_OK(Thread::Create(
@@ -1631,6 +1643,14 @@ void CDCServiceImpl::GetChanges(
       GetStream(stream_id, RefreshStreamMapOption::kIfInitiatedState), resp->mutable_error(),
       CDCErrorPB::INTERNAL_ERROR, context);
   StreamMetadata& record = *stream_meta_ptr;
+
+  // Polling sys catalog tablet is only supported for CDC.
+  RPC_CHECK_AND_RETURN_ERROR(
+      !tablet_peer->tablet_metadata()->IsSysCatalog() || record.GetSourceType() == CDCSDK,
+      STATUS(InvalidArgument, "Polling sys catalog tablet is only supported for CDC"),
+      resp->mutable_error(),
+      CDCErrorPB::INVALID_REQUEST,
+      context);
 
   if (record.GetSourceType() == CDCSDK) {
     RPC_STATUS_RETURN_ERROR(
@@ -3382,11 +3402,10 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
       time_since_update_metrics = MonoTime::Now();
     }
 
-    // If its not been 60s since the last peer update, continue.
+    const auto& update_peers_interval = MonoDelta::FromSeconds(get_update_peers_interval_());
     if (!GetAtomicFlag(&FLAGS_enable_log_retention_by_op_idx) ||
         (time_since_update_peers != MonoTime::kUninitialized &&
-         MonoTime::Now() - time_since_update_peers <
-             MonoDelta::FromSeconds(GetAtomicFlag(&FLAGS_update_min_cdc_indices_interval_secs)))) {
+         MonoTime::Now() - time_since_update_peers < update_peers_interval)) {
       continue;
     }
     TEST_SYNC_POINT("UpdatePeersAndMetrics::Start");

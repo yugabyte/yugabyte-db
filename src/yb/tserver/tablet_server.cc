@@ -266,6 +266,8 @@ DEFINE_test_flag(int32, delay_set_catalog_version_table_mode_count, 0,
     "Delay set catalog version table mode by this many times of heartbeat responses "
     "after tserver starts");
 
+DECLARE_int32(update_min_cdc_indices_interval_secs);
+
 namespace yb::tserver {
 
 namespace {
@@ -641,7 +643,7 @@ Status TabletServer::RegisterServices() {
 
   cdc_service_ = std::make_shared<cdc::CDCServiceImpl>(
       std::make_unique<CDCServiceContextImpl>(this), metric_entity(), metric_registry(),
-      client_future());
+      client_future(), []() { return FLAGS_update_min_cdc_indices_interval_secs; });
 
   RETURN_NOT_OK(RegisterService(
       FLAGS_ts_backup_svc_queue_length,

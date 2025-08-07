@@ -141,6 +141,10 @@ DEFINE_UNKNOWN_int32(master_remote_bootstrap_svc_queue_length, 50,
              "RPC queue length for master remote bootstrap service");
 TAG_FLAG(master_remote_bootstrap_svc_queue_length, advanced);
 
+DEFINE_NON_RUNTIME_int32(master_xrepl_svc_queue_length, 50,
+              "RPC queue length for the CDC service");
+TAG_FLAG(master_xrepl_svc_queue_length, advanced);
+
 DEFINE_test_flag(string, master_extra_list_host_port, "",
                  "Additional host port used in list masters");
 
@@ -149,6 +153,8 @@ DECLARE_int64(inbound_rpc_memory_limit);
 DECLARE_int32(master_ts_rpc_timeout_ms);
 
 DECLARE_bool(ysql_enable_db_catalog_version_mode);
+
+DECLARE_bool(TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 
 namespace yb {
 namespace master {
@@ -303,6 +309,12 @@ Status Master::RegisterServices() {
   RETURN_NOT_OK(RegisterService(
       FLAGS_master_tserver_svc_queue_length,
       std::make_shared<MasterTabletServiceImpl>(master_tablet_server_.get(), this)));
+
+  if (FLAGS_TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
+    auto cdc_service = master_tablet_server_->CreateCDCService(
+        metric_entity(), client_future(), metric_registry());
+    RETURN_NOT_OK(RegisterService(FLAGS_master_xrepl_svc_queue_length, cdc_service));
+  }
 
   RETURN_NOT_OK(RegisterService(
       FLAGS_master_consensus_svc_queue_length,
@@ -713,6 +725,10 @@ Status Master::SetTserverCatalogMessageList(
   // This is called during major upgrade when pg_restore executes SQL commands
   // from the restore script.
   return Status::OK();
+}
+
+void Master::EnableCDCService() {
+  master_tablet_server_->EnableCDCService();
 }
 
 Status Master::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {

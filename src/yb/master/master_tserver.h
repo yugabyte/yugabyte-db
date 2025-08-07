@@ -21,6 +21,8 @@
 #include "yb/tserver/ts_local_lock_manager.h"
 #include "yb/tserver/tserver_fwd.h"
 
+#include "yb/util/metrics_fwd.h"
+
 namespace yb::master {
 
 class Master;
@@ -108,10 +110,14 @@ class MasterTabletServer : public tserver::TabletServerIf,
   rpc::Messenger* GetMessenger(ash::Component component) const override;
 
   std::shared_ptr<cdc::CDCServiceImpl> GetCDCService() const override {
-    // We don't have a CDC service on master, so return null from here.
-    // The caller is expected to do a null check.
-    return nullptr;
+    return cdc_service_;
   }
+
+  rpc::ServiceIfPtr CreateCDCService(
+      const scoped_refptr<MetricEntity>& metric_entity,
+      const std::shared_future<client::YBClient*>& client_future, MetricRegistry* metric_registry);
+
+  void EnableCDCService();
 
   void ClearAllMetaCachesOnServer() override;
 
@@ -149,6 +155,9 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   Master* master_ = nullptr;
   scoped_refptr<MetricEntity> metric_entity_;
+
+  // CDC service.
+  std::shared_ptr<cdc::CDCServiceImpl> cdc_service_;
 };
 
 } // namespace yb::master
