@@ -1453,6 +1453,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const UpdateConsumerOnProducerMetadataRequestPB* req,
       UpdateConsumerOnProducerMetadataResponsePB* resp, rpc::RpcContext* rpc);
 
+  // Store packing schemas for upcoming colocated tables on an xCluster automatic mode target,
+  // since their rows are replicated before the corresponding table is created.
   Status InsertHistoricalColocatedSchemaPacking(
       const xcluster::ReplicationGroupId& replication_group_id, const TablegroupId& tablegroup_id,
       const ColocationId colocation_id,
