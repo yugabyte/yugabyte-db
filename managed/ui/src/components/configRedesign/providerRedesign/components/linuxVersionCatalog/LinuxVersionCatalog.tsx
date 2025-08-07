@@ -280,6 +280,7 @@ export const LinuxVersionCatalog: FC<LinuxVersionCatalogProps> = ({
             onActionButtonClick={() => toggleShowLinuxVersionModal(true)}
             isDisabled={isDisabled}
             data-testid="LinuxVersionEmpty-AddLinuxVersion"
+            isCustomPrimaryAction={false}
           />
         ) : (
           <LinuxVersionsList
@@ -304,9 +305,10 @@ export const LinuxVersionCatalog: FC<LinuxVersionCatalogProps> = ({
             metadata: {
               type: ImageBundleType.CUSTOM
             } as any,
-            useAsDefault: imageBundles.filter(
-              (i) => i.details.arch === img.details.arch && i.useAsDefault === true
-            ).length === 0
+            useAsDefault:
+              imageBundles.filter(
+                (i) => i.details.arch === img.details.arch && i.useAsDefault === true
+              ).length === 0
           });
           toggleShowLinuxVersionModal(false);
         }}
