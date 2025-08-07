@@ -91,7 +91,7 @@ To get started with migration assessment, do the following:
 1. Create an export directory on a file system that has enough space to keep the entire source database. Ideally, create this export directory inside a parent folder named after your migration for better organization. For example:
 
     ```sh
-    mkdir -p $HOME/my-migration/export
+    mkdir -p $HOME/<migration-name>/export-dir
     ```
 
     You need to provide the full path to your export directory in the `export-dir` parameter of your [configuration file](../../reference/configuration-file/), or in the `--export-dir` flag when running `yb-voyager` commands.
@@ -122,7 +122,7 @@ Replace `<voyager-version>` with your installed Voyager version, for example, `2
 
   {{< /tabpane >}}
 
-    Set the export-dir, source, and target arguments in the configuration file:
+    Set the export-dir and source arguments in the configuration file:
 
     ```yaml
     # Replace the argument values with those applicable for your migration.
@@ -137,23 +137,19 @@ Replace `<voyager-version>` with your installed Voyager version, for example, `2
       db-schema: <source-db-schema> # Not applicable for MySQL
       db-user: <source-db-user>
       db-password: <source-db-password> # Enclose the password in single quotes if it contains special characters.
-
-    target:
-      db-host: <target-db-host>
-      db-port: <target-db-port>
-      db-name: <target-db-name>
-      db-schema: <target-db-schema> # MySQL and Oracle only
-      db-user: <target-db-username>
-      db-password: <target-db-password> # Enclose the password in single quotes if it contains special characters.
     ```
 
 1. Install YugabyteDB to view migration assessment report in the [yugabyted](/preview/reference/configuration/yugabyted/) UI. Using the yugabyted UI, you can visualize and review the database migration workflow performed by YugabyteDB Voyager.
     1. Start a local YugabyteDB cluster. Refer to the steps described in [Use a local cluster](/preview/tutorials/quick-start/macos/).
-    1. To see the Voyager migration workflow details in the UI, set the following environment variables before starting the migration:
+    1. To see the Voyager migration workflow details in the UI, set the following configuration parameters before starting the migration:
 
-        ```sh
-        export CONTROL_PLANE_TYPE=yugabyted
-        export YUGABYTED_DB_CONN_STRING=<ysql-connection-parameters>
+        ```yaml
+        ### Control plane type refers to the deployment type of YugabyteDB
+        control-plane-type: yugabyted
+
+        ### YSQL connection string
+        ### Provide the standard PostgreSQL connection parameters, including user name, host name, and port. For example, postgresql://yugabyte:yugabyte@127.0.0.1:5433
+        yugabyted-db-conn-string: postgresql://yugabyte:yugabyte@127.0.0.1:5433
         ```
 
         Provide the standard PostgreSQL connection parameters, including user name, host name, and port. For example, `postgresql://yugabyte:yugabyte@127.0.0.1:5433`

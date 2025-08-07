@@ -122,13 +122,11 @@ If you want yb-voyager to connect to the target YugabyteDB database over SSL, re
 
 yb-voyager keeps all of its migration state, including exported schema and data, in a local directory called the _export directory_.
 
-Before starting migration, create the export directory on a file system that has enough space to keep the entire source database. Ideally, create this export directory inside a parent folder named after your migration for better organization. For example:
+Before starting migration, you should create the export directory on a file system that has enough space to keep the entire source database. Ideally, create this export directory inside a parent folder named after your migration for better organization. You need to provide the full path to the export directory in the `export-dir` parameter of your [configuration file](#setup-a-configuration-file), or in the `--export-dir` flag when running `yb-voyager` commands.
 
 ```sh
-mkdir -p $HOME/my-migration/export
+mkdir -p $HOME/<migration-name>/export-dir
 ```
-
-You need to provide the full path to your export directory in the `export-dir` parameter of your [configuration file](#set-up-a-configuration-file), or in the `--export-dir` flag when running `yb-voyager` commands.
 
 The export directory has the following sub-directories and files:
 
@@ -199,14 +197,16 @@ Install YugabyteDB to view migration assessment report in the [yugabyted](/previ
 
   1. Start a local YugabyteDB cluster. Refer to the steps described in [Use a local cluster](/preview/tutorials/quick-start/macos/).
 
-  1. To see the Voyager migration workflow details in the UI, set the following environment variables before starting the migration:
+  1. To see the Voyager migration workflow details in the UI, set the following configuration parameters before starting the migration:
 
-        ```sh
-        export CONTROL_PLANE_TYPE=yugabyted
-        export YUGABYTED_DB_CONN_STRING=<ysql-connection-parameters>
+        ```yaml
+        ### Control plane type refers to the deployment type of YugabyteDB
+        control-plane-type: yugabyted
+
+        ### YSQL connection string
+        ### Provide the standard PostgreSQL connection parameters, including user name, host name, and port. For example, postgresql://yugabyte:yugabyte@127.0.0.1:5433
+        yugabyted-db-conn-string: postgresql://yugabyte:yugabyte@127.0.0.1:5433
         ```
-
-        Provide the standard PostgreSQL connection parameters, including user name, host name, and port. For example, `postgresql://yugabyte:yugabyte@127.0.0.1:5433`
 
         {{< note title="Note" >}}
 
@@ -215,7 +215,7 @@ Don't include the `dbname` parameter in the connection string; the default `yuga
 
 ## Assess migration
 
-This step is optional and only applies to PostgreSQL and Oracle migrations.
+This step applies to PostgreSQL and Oracle migrations only.
 
 Assess migration analyzes the source database, captures essential metadata, and generates a report with recommended migration strategies and cluster configurations for optimal performance with YugabyteDB. You run assessments using the `yb-voyager assess-migration` command.
 
@@ -283,7 +283,7 @@ For the most accurate migration assessment, the source database must be actively
 
    For a universe in YugabyteDB Anywhere, [enable compatibility mode](../../../develop/postgresql-compatibility/#yugabytedb-anywhere) by setting flags on the universe.
 
-1. Check that your target YugabyteDB database is colocated in [ysqlsh](/preview/api/ysqlsh/) using the following command:
+1. If the assessment recommended creating some tables as colocated, check that your target YugabyteDB database is colocated in [ysqlsh](/preview/api/ysqlsh/) using the following command:
 
     ```sql
     select yb_is_database_colocated();
