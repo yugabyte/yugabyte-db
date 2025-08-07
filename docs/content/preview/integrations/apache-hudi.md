@@ -23,7 +23,7 @@ To use Apache Hudi, ensure that you have the following:
 
 - Docker.
 
-- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/preview/tutorials/quick-start/docker).
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/preview/quick-start/docker).
 
 - Install Apache Spark (version 3.4, 3.3, or 3.2) and Scala. Verify installation using `spark-submit` and `spark-shell` commands.
 

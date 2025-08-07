@@ -1,6 +1,6 @@
 ---
 title: Build Scala applications using Apache Spark and YugabyteDB YCQL
-headerTitle: Build a Scala application using Apache Spark and YugabyteDB 
+headerTitle: Build a Scala application using Apache Spark and YugabyteDB
 linkTitle: YCQL
 description: Learn how to build a Scala application using Apache Spark and YugabyteDB YCQL
 aliases:
@@ -45,7 +45,7 @@ The following tutorial describes how to build a Scala application using the Yuga
 
 This tutorial assumes that you have:
 
-- YugabyteDB running. If you are new to YugabyteDB, follow the steps in [Quick start](/preview/tutorials/quick-start/macos/).
+- YugabyteDB running. If you are new to YugabyteDB, follow the steps in [Quick start](/preview/quick-start/macos/).
 - Scala version 2.12 or later.
 - sbt 1.3.8 or later.
 - installed the [`sbt-assembly`](https://github.com/sbt/sbt-assembly) plugin in your sbt project, as follows:
