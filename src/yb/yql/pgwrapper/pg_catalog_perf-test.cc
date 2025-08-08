@@ -357,7 +357,8 @@ class PgCatalogWithStaleResponseCacheTest : public PgCatalogWithUnlimitedCachePe
     // get 'Snapshot too old' error on attempt to read at this read time.
     ANNOTATE_UNPROTECTED_WRITE(
         FLAGS_TEST_pg_response_cache_catalog_read_time_usec) = kHistoryCutoffInitialValue - 1;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_cache_response_renew_soft_lifetime_limit_ms) = 1000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_cache_response_renew_soft_lifetime_limit_ms) =
+        ReleaseVsDebugVsAsanVsTsan(1000, 5000, 5000, 10000);
     PgCatalogWithUnlimitedCachePerfTest::SetUp();
   }
 };
@@ -574,6 +575,27 @@ TEST_F_EX(PgCatalogPerfTest,
   ASSERT_EQ(second_connection_cache_metrics.renew_soft, 1);
   ASSERT_EQ(second_connection_cache_metrics.hits, 1);
   ASSERT_EQ(second_connection_cache_metrics.queries, 7);
+}
+
+TEST_F_EX(PgCatalogPerfTest,
+          ResponseCacheWithHardRenewTooOldSnapshot,
+          PgCatalogWithStaleResponseCacheTest) {
+  auto connector = [this] {
+    RETURN_NOT_OK(Connect());
+    return static_cast<Status>(Status::OK());
+  };
+
+  auto first_connection_cache_metrics = ASSERT_RESULT(metrics_->Delta(connector)).cache;
+  ASSERT_EQ(first_connection_cache_metrics.renew_hard, 0);
+  ASSERT_EQ(first_connection_cache_metrics.renew_soft, 0);
+  ASSERT_EQ(first_connection_cache_metrics.hits, 0);
+  ASSERT_EQ(first_connection_cache_metrics.queries, 5);
+
+  auto second_connection_cache_metrics = ASSERT_RESULT(metrics_->Delta(connector)).cache;
+  ASSERT_EQ(second_connection_cache_metrics.renew_hard, 1);
+  ASSERT_EQ(second_connection_cache_metrics.renew_soft, 0);
+  ASSERT_EQ(second_connection_cache_metrics.hits, 2);
+  ASSERT_EQ(second_connection_cache_metrics.queries, 9);
 }
 
 // The test checks that GC keeps response cache memory lower than limit
