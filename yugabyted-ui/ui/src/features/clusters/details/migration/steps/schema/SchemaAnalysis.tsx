@@ -146,7 +146,7 @@ export const SchemaAnalysis: FC<SchemaAnalysisProps> = ({ /* migration, */ schem
           <YBAccordion
             key={index}
             titleContent={
-              <Typography variant="body2" className={classes.accordionHeader}>
+              <Typography variant="body2" component="div" className={classes.accordionHeader}>
                 {t("clusterDetail.voyager.migrateSchema.analysis")}
                 <Box display="flex" alignItems="center" gridGap={theme.spacing(1)}>
                   {item.completedOn && (

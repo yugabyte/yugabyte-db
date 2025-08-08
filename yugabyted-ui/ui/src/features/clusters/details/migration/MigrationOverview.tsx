@@ -158,11 +158,22 @@ export const MigrationOverview: FC<MigrationOverviewProps> = () => {
 
   return (
     <Box display="flex" flexDirection="column" gridGap={10}>
-      <Box>
-        {(selectedMigration || isNewMigration) && (
-          <Breadcrumbs aria-label="breadcrumb">
+      {/* Center the breadcrumb row */}
+      {(selectedMigration || isNewMigration) && (
+        <Box display="flex" alignItems="center" minHeight="48px" style={{ padding: 0, margin: 0 }}>
+          <Breadcrumbs
+            aria-label="breadcrumb"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              width: '100%',
+              padding: 0,
+              margin: 0
+            }}
+          >
             <Link
               className={classes.link}
+              style={{ display: 'flex', alignItems: 'center', padding: 0, margin: 0 }}
               onClick={() => {
                 setQueryParams({ migration_uuid: undefined, new_migration: undefined });
               }}
@@ -172,41 +183,48 @@ export const MigrationOverview: FC<MigrationOverviewProps> = () => {
               </Typography>
             </Link>
             {(selectedMigration || isNewMigration) && (
-              <YBDropdown
-                origin={
-                  <Box display="flex" alignItems="center" className={classes.dropdownContent}>
-                    {isNewMigration ?
-                      t("clusterDetail.voyager.newMigration") :
-                      selectedMigration?.migration_name}
-                    <TriangleDownIcon />
-                  </Box>
-                }
-                position={"bottom"}
-                growDirection={"right"}
-                className={classes.dropdown}
-              >
-                <Box className={classes.dropdownHeader}>
-                  {t("clusterDetail.voyager.migrations")}
-                </Box>
-                <Box display="flex" flexDirection="column" minWidth="150px">
-                  {migrationData?.map((migration) => (
-                    <MenuItem
-                      key={migration.migration_name}
-                      selected={migration.migration_name === selectedMigration?.migration_name}
-                      onClick={() => setQueryParams({
-                        migration_uuid: migration.migration_uuid,
-                        new_migration: undefined,
-                      })}
+              <Box display="flex" alignItems="center" style={{ padding: 0, margin: 0 }}>
+                <YBDropdown
+                  origin={
+                    <Box
+                      display="flex"
+                      alignItems="center"
+                      className={classes.dropdownContent}
+                      style={{ padding: 0, margin: 0 }}
                     >
-                      {migration.migration_name}
-                    </MenuItem>
-                  ))}
-                </Box>
-              </YBDropdown>
+                      {isNewMigration
+                        ? t("clusterDetail.voyager.newMigration")
+                        : selectedMigration?.migration_name}
+                      <TriangleDownIcon />
+                    </Box>
+                  }
+                  position={"bottom"}
+                  growDirection={"right"}
+                  className={classes.dropdown}
+                >
+                  <Box className={classes.dropdownHeader}>
+                    {t("clusterDetail.voyager.migrations")}
+                  </Box>
+                  <Box display="flex" flexDirection="column" minWidth="150px">
+                    {migrationData?.map((migration) => (
+                      <MenuItem
+                        key={migration.migration_name}
+                        selected={migration.migration_name === selectedMigration?.migration_name}
+                        onClick={() => setQueryParams({
+                          migration_uuid: migration.migration_uuid,
+                          new_migration: undefined,
+                        })}
+                      >
+                        {migration.migration_name}
+                      </MenuItem>
+                    ))}
+                  </Box>
+                </YBDropdown>
+              </Box>
             )}
           </Breadcrumbs>
+        </Box>
         )}
-      </Box>
 
       {(isLoadingMigrationTasks || isFetchingMigrationTasks) ? (
           <Box textAlign="center" pt={4} pb={4} width="100%">

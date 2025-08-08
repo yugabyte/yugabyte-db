@@ -14,10 +14,11 @@ const useStyles = makeStyles((theme) => ({
     borderRight: `1px solid ${theme.palette.grey[300]}`,
   },
   label: {
-    color: theme.palette.grey[500],
-    fontWeight: theme.typography.fontWeightMedium as number,
     textTransform: "uppercase",
     textAlign: "left",
+    fontSize: '11.5px',
+    fontWeight: 500,
+    color: '#6D7C88',
   },
   muted: {
     color: theme.palette.grey[500],
