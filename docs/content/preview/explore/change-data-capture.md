@@ -60,6 +60,8 @@ To set up pg_recvlogical, create and start the local cluster by running the foll
   --tserver_flags="cdcsdk_publication_list_refresh_interval_secs=120"
 ```
 
+When you create a table, it is added to the replication slot after the publication list is refreshed. This is done at an interval specified using the cdcsdk_publication_list_refresh_interval_secs flag. Any data that is written between table creation and when the table is added to the publication list is not be delivered as part of the publication. By default, the interval is 15 minutes. Setting the flag to 2 minutes (120 seconds) reduces this delay. For more information, refer to [YugabyteDB semantics](../../develop/change-data-capture/using-logical-replication/advanced-topic/#yugabytedb-semantics).
+
 ### Create tables
 
 1. Use ysqlsh to connect to the default `yugabyte` database with the default superuser `yugabyte`, as follows:
