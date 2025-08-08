@@ -28,6 +28,7 @@
 
 #include "yb/client/client_fwd.h"
 #include "yb/client/in_flight_op.h"
+#include "yb/common/pg_types.h"
 
 #include "yb/util/status_callback.h"
 #include "yb/util/status_fwd.h"
@@ -85,7 +86,7 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
  public:
   explicit YBTransaction(TransactionManager* manager,
-                         TransactionLocality locality = TransactionLocality::GLOBAL);
+                         TransactionFullLocality locality = TransactionFullLocality::Global());
 
   // Trick to allow std::make_shared with this ctor only from methods of this class.
   YBTransaction(TransactionManager* manager, const TransactionMetadata& metadata, PrivateOnlyTag);

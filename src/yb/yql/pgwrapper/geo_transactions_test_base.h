@@ -88,7 +88,13 @@ class GeoTransactionsTestBase : public pgwrapper::PgMiniTestBase {
 
   void ValidateAllTabletLeaderInZone(std::vector<TabletId> tablet_uuids, int region);
   bool AllTabletLeaderInZone(std::vector<TabletId> tablet_uuids, int region);
-  Result<uint32_t> GetTablespaceOidForRegion(int region) const;
+
+  Result<PgTablespaceOid> GetTablespaceOid(std::string_view tablespace) const;
+  Result<PgTablespaceOid> GetTablespaceOidForRegion(int region) const;
+  Result<std::vector<TabletId>> GetStatusTabletsWithTableName(
+      const std::string& local_txn_table, ExpectedLocality expected);
+  Result<std::vector<TabletId>> GetStatusTablets(
+      std::string_view tablespace, ExpectedLocality locality);
   Result<std::vector<TabletId>> GetStatusTablets(int region, ExpectedLocality locality);
 
   TransactionManager* transaction_manager_;

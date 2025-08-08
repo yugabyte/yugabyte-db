@@ -45,7 +45,7 @@ class TransactionPool {
   // Ready means that transaction is registered at status tablet and intents could be written
   // immediately.
   YBTransactionPtr Take(
-      ForceGlobalTransaction force_global_transaction, CoarseTimePoint deadline,
+      TransactionFullLocality locality, CoarseTimePoint deadline,
       ForceCreateTransaction force_create_txn = ForceCreateTransaction::kFalse);
 
   // Takes and initializes a transaction from the pool. See Take for details.

@@ -106,6 +106,9 @@ DEFINE_RUNTIME_bool(ysql_ddl_transaction_wait_for_ddl_verification, true,
                     "If set, DDL transactions will wait for DDL verification to complete before "
                     "returning to the client. ");
 
+DEFINE_RUNTIME_bool(use_tablespace_based_transaction_placement, false,
+                    "Use tablespace-local locality will be used instead of region-local locality.");
+
 DEFINE_RUNTIME_uint64(big_shared_memory_segment_session_expiration_time_ms, 5000,
     "Time to release unused allocated big memory segment from session to pool.");
 
@@ -1174,7 +1177,9 @@ class TransactionProvider {
     client::internal::InFlightOpsGroupsWithMetadata ops_info;
     if (!next_plain_) {
       VLOG_WITH_FUNC(1) << "requesting new transaction";
-      auto txn = Build(deadline, {});
+      // TODO(#28317): We should figure out the correct locality and use it here. With table-level
+      // locks, this will prevent transactions from being started as global or tablespace-local(X).
+      auto txn = Build(TransactionFullLocality::RegionLocal(), deadline, {});
       // Don't execute txn->GetMetadata() here since the transaction is not iniatialized with
       // its full metadata yet, like isolation level.
       Synchronizer synchronizer;
@@ -1213,13 +1218,13 @@ class TransactionProvider {
  private:
   struct BuildStrategy {
     bool is_ddl = false;
-    bool force_global = false;
     bool force_create = false;
   };
 
-  client::YBTransactionPtr Build(CoarseTimePoint deadline, const BuildStrategy& strategy) {
+  client::YBTransactionPtr Build(
+      TransactionFullLocality locality, CoarseTimePoint deadline, const BuildStrategy& strategy) {
     return builder_(
-        IsDDL{strategy.is_ddl}, client::ForceGlobalTransaction{strategy.force_global}, deadline,
+        IsDDL{strategy.is_ddl}, locality, deadline,
         client::ForceCreateTransaction{strategy.force_create});
   }
 
@@ -1231,19 +1236,16 @@ class TransactionProvider {
     //
     // Advisory locks table is not placement local, hence we need a global transaction for tagging
     // the requested session advisory locks.
-    return Build(deadline, {.force_global = true, .force_create = true});
+    return Build(TransactionFullLocality::Global(), deadline, {.force_create = true});
   }
 
   client::YBTransactionPtr TakeForDdl(CoarseTimePoint deadline) {
-    return Build(deadline, {.is_ddl = true, .force_global = true});
+    return Build(TransactionFullLocality::Global(), deadline, {.is_ddl = true});
   }
 
-  using TakeForPlainRT = std::pair<client::YBTransactionPtr, EnsureGlobal>;
-  TakeForPlainRT TakeForPlain(
-      client::ForceGlobalTransaction force_global, CoarseTimePoint deadline) {
-    return next_plain_
-        ? TakeForPlainRT{std::exchange(next_plain_, {}), EnsureGlobal{force_global}}
-        : TakeForPlainRT{Build(deadline, {.force_global = force_global}), EnsureGlobal::kFalse};
+  client::YBTransactionPtr TakeForPlain(
+      TransactionFullLocality locality, CoarseTimePoint deadline) {
+    return next_plain_ ? std::exchange(next_plain_, {}) : Build(locality, deadline, {});
   }
 
   const PgClientSession::TransactionBuilder builder_;
@@ -1981,7 +1983,7 @@ class PgClientSession::Impl {
         return Status::OK();
       }
       txn = transaction_provider_.Take<PgClientSessionKind::kPlain>(
-          client::ForceGlobalTransaction::kFalse, deadline).first;
+          TransactionFullLocality::RegionLocal(), deadline);
       VLOG_WITH_PREFIX_AND_FUNC(1) << "Consuming re-usable kPlain txn " << txn->id();
     }
 
@@ -2832,8 +2834,10 @@ class PgClientSession::Impl {
 
     const auto in_txn_limit = GetInTxnLimit(options, clock().get());
     VLOG_WITH_PREFIX(5) << "using in_txn_limit_ht: " << in_txn_limit;
+
+    TransactionFullLocality locality = GetTargetTransactionLocality(data->req);
     auto setup_session_result = VERIFY_RESULT(SetupSession(
-        data->req.options(), deadline, in_txn_limit));
+        data->req.options(), deadline, in_txn_limit, locality));
     auto* session = setup_session_result.session_data.session.get();
     auto& transaction = setup_session_result.session_data.transaction;
 
@@ -3010,7 +3014,8 @@ class PgClientSession::Impl {
   }
 
   Result<SetupSessionResult> SetupSession(
-      const PgPerformOptionsPB& options, CoarseTimePoint deadline, HybridTime in_txn_limit = {}) {
+      const PgPerformOptionsPB& options, CoarseTimePoint deadline, HybridTime in_txn_limit = {},
+      TransactionFullLocality locality = TransactionFullLocality::RegionLocal()) {
     const auto txn_serial_no = options.txn_serial_no();
     const auto read_time_serial_no = options.read_time_serial_no();
     auto kind = PgClientSessionKind::kPlain;
@@ -3037,7 +3042,7 @@ class PgClientSession::Impl {
           read_time_serial_no_ = read_time_serial_no;
         }
       }
-      RETURN_NOT_OK(BeginTransactionIfNecessary(options, deadline));
+      RETURN_NOT_OK(BeginTransactionIfNecessary(options, deadline, locality));
     }
 
     auto& session_data = GetSessionData(kind);
@@ -3154,15 +3159,17 @@ class PgClientSession::Impl {
   }
 
   Status BeginTransactionIfNecessary(
-      const PgPerformOptionsPB& options, CoarseTimePoint deadline) {
-    RETURN_NOT_OK(DoBeginTransactionIfNecessary(options, deadline));
+      const PgPerformOptionsPB& options, CoarseTimePoint deadline,
+      TransactionFullLocality locality) {
+    RETURN_NOT_OK(DoBeginTransactionIfNecessary(options, deadline, locality));
     const auto& data = GetSessionData(PgClientSessionKind::kPlain);
     data.session->SetForceConsistentRead(client::ForceConsistentRead(!data.transaction));
     return Status::OK();
   }
 
   Status DoBeginTransactionIfNecessary(
-      const PgPerformOptionsPB& options, CoarseTimePoint deadline) {
+      const PgPerformOptionsPB& options, CoarseTimePoint deadline,
+      TransactionFullLocality locality) {
     const auto isolation = static_cast<IsolationLevel>(options.isolation());
 
     auto priority = options.priority();
@@ -3208,12 +3215,13 @@ class PgClientSession::Impl {
                  : Status::OK();
     }
 
-    const client::ForceGlobalTransaction force_global_transaction{
+    const bool global_required =
         options.force_global_transaction() ||
-        (options.ddl_mode() && options.ddl_use_regular_transaction_block())};
-    TransactionProvider::EnsureGlobal ensure_global{false};
-    std::tie(txn, ensure_global) = transaction_provider_.Take<kSessionKind>(
-      force_global_transaction, deadline);
+        (options.ddl_mode() && options.ddl_use_regular_transaction_block());
+    if (global_required) {
+      locality = TransactionFullLocality::Global();
+    }
+    txn = transaction_provider_.Take<kSessionKind>(locality, deadline);
     txn->SetLogPrefixTag(kTxnLogPrefixTag, id_);
     RETURN_NOT_OK(txn->SetPgTxnStart(options.pg_txn_start_us()));
     auto* read_point = session->read_point();
@@ -3231,7 +3239,7 @@ class PgClientSession::Impl {
                           << ", new read time";
       RETURN_NOT_OK(txn->Init(isolation));
     }
-    if (ensure_global) {
+    if (global_required) {
       RETURN_NOT_OK(txn->EnsureGlobal(deadline));
     }
 
@@ -3259,7 +3267,8 @@ class PgClientSession::Impl {
                         << options.ShortDebugString();
     const auto in_txn_limit = GetInTxnLimit(options, clock().get());
     VLOG_WITH_PREFIX(5) << "using in_txn_limit_ht: " << in_txn_limit;
-    RETURN_NOT_OK(SetupSession(options, deadline, in_txn_limit));
+    RETURN_NOT_OK(SetupSession(
+        options, deadline, in_txn_limit, TransactionFullLocality::Global()));
     return Status::OK();
   }
 
@@ -3629,6 +3638,27 @@ class PgClientSession::Impl {
       object_lock_owner_.emplace(
           *object_lock_shared_, lock_owner_registry(), txn_id, status_tablet);
     }
+  }
+
+  TransactionFullLocality GetTargetTransactionLocality(const PgPerformRequestPB& request) const {
+    if (!FLAGS_use_tablespace_based_transaction_placement) {
+      return request.options().is_all_region_local()
+          ? TransactionFullLocality::RegionLocal() : TransactionFullLocality::Global();
+    }
+
+    PgTablespaceOid tablespace_oid = kInvalidOid;
+    for (const auto& op : request.ops()) {
+      PgTablespaceOid oid =
+          op.has_write() ? op.write().tablespace_oid() : op.read().tablespace_oid();
+      if (tablespace_oid == kInvalidOid) {
+        tablespace_oid = oid;
+      } else if (tablespace_oid != oid) {
+        return TransactionFullLocality::Global();
+      }
+    }
+    return tablespace_oid == kInvalidOid
+        ? TransactionFullLocality::Global()
+        : TransactionFullLocality::TablespaceLocal(tablespace_oid);
   }
 
   client::YBClient& client_;

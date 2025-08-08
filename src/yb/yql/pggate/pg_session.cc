@@ -930,11 +930,10 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     }
   }
 
-  options.set_force_global_transaction(
-      yb_force_global_transaction ||
-      std::any_of(
+  options.set_force_global_transaction(yb_force_global_transaction);
+  options.set_is_all_region_local(std::all_of(
           ops.operations().begin(), ops.operations().end(),
-          [](const auto& op) { return !op->is_region_local(); }));
+          [](const auto& op) { return op->is_region_local(); }));
 
   // For DDLs, ysql_upgrades and PGCatalog accesses, we always use the default read-time
   // and effectively skip xcluster_database_consistency which enables reads as of xcluster safetime.

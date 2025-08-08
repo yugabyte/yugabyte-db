@@ -51,7 +51,8 @@ enum TransactionStatus {
 
 enum TransactionLocality {
   GLOBAL = 1;
-  LOCAL = 2;
+  REGION_LOCAL = 2;
+  TABLESPACE_LOCAL = 3;
 }
 
 // This enum matches enum RowMarkType defined in src/include/nodes/plannodes.h.
