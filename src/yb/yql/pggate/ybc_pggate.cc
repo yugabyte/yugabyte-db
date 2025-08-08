@@ -1789,7 +1789,7 @@ void YBCStartSysTablePrefetching(
       mode = PrefetchingCacheMode::RENEW_CACHE_SOFT;
       break;
     case YB_YQL_PREFETCHER_RENEW_CACHE_HARD:
-      LOG(DFATAL) << "Emergency fallback prefetching cache mode is used";
+      LOG(ERROR) << "Emergency fallback prefetching cache mode is used";
       mode = PrefetchingCacheMode::RENEW_CACHE_HARD;
       break;
     default:
