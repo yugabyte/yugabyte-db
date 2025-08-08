@@ -182,3 +182,4 @@ func (l LogRotate) Reconfigure() error {
 func (l LogRotate) Initialize() error {
 	return l.Start()
 }
+func (l LogRotate) PreUpgrade() error { return nil }
