@@ -16,6 +16,12 @@ type: indexpage
     icon="fa-thin fa-rocket-launch">}}
 
   {{<index/item
+    title="Additional features"
+    body="Deploy added feature for your YugabyteDB universe."
+    href="../additional-features/"
+    icon="fa-thin fa-rocket-launch">}}
+
+  {{<index/item
     title="Manage"
     body="Manage YugabyteDB clusters."
     href="../manage/"

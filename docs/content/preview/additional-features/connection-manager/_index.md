@@ -9,7 +9,7 @@ tags:
 menu:
   preview:
     identifier: connection-manager
-    parent: launch-and-manage
+    parent: additional-features
     weight: 40
 type: indexpage
 ---
@@ -20,13 +20,13 @@ YugabyteDB includes a built-in connection pooler, YSQL Connection Manager. Becau
 
   {{<index/item
     title="Set up Connection Manager"
-    body="Enable YSQL Connection Manager and configure connection pooling."
+    body="Enable and configure built-in connection pooling."
     href="ycm-setup/"
     icon="fa-thin fa-dharmachakra">}}
 
   {{<index/item
     title="Best practices"
-    body="Explore recommended configurations and usage patterns for optimizing your application's performance."
+    body="Optimize application performance for YSQL Connection Manager."
     href="ycm-best-practices/"
     icon="fa-thin fa-dharmachakra">}}
 
