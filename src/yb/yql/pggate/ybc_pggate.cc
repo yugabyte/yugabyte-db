@@ -298,7 +298,7 @@ PrefetchingCacheMode YBCMapPrefetcherCacheMode(YBCPgSysTablePrefetcherCacheMode 
     case YB_YQL_PREFETCHER_RENEW_CACHE_SOFT:
       return PrefetchingCacheMode::RENEW_CACHE_SOFT;
     case YB_YQL_PREFETCHER_RENEW_CACHE_HARD:
-      LOG(DFATAL) << "Emergency fallback prefetching cache mode is used";
+      LOG(ERROR) << "Emergency fallback prefetching cache mode is used";
       return PrefetchingCacheMode::RENEW_CACHE_HARD;
   }
   LOG(DFATAL) << "Unexpected PgSysTablePrefetcherCacheMode value " << mode;
