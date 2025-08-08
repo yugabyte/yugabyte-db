@@ -43,11 +43,16 @@ Status PgSelectIndex::PrepareSubquery(
 }
 
 Result<std::optional<YbctidBatch>> PgSelectIndex::FetchYbctidBatch() {
-  auto s = doc_op_->ResultStream().GetNextYbctidBatch(read_req_->has_is_forward_scan());
-  if (s) {
-    AtomicFlagSleepMs(&FLAGS_TEST_inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms);
+  ybctids_.clear();
+  if (!VERIFY_RESULT(doc_op_->ResultStream().ProcessNextYbctids(
+          [this](Slice ybctid, const RefCntBuffer&) {
+            ybctids_.push_back(ybctid);
+            return Status::OK();
+          }))) {
+    return std::nullopt;
   }
-  return s;
+  AtomicFlagSleepMs(&FLAGS_TEST_inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms);
+  return YbctidBatch{ybctids_, read_req_->has_is_forward_scan()};
 }
 
 Result<std::unique_ptr<PgSelectIndex>> PgSelectIndex::Make(

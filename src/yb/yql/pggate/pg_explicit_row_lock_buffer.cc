@@ -21,6 +21,8 @@
 
 #include "yb/util/scope_exit.h"
 
+#include "yb/yql/pggate/pg_ybctid_reader_provider.h"
+
 #include "yb/yql/pggate/util/ybc_util.h"
 
 namespace yb::pggate {
@@ -44,7 +46,7 @@ Status ExplicitRowLockBuffer::Add(
     region_local_tables_.insert(key.table_id);
   }
   DCHECK(is_region_local || !region_local_tables_.contains(key.table_id));
-  intents_.emplace(key.table_id, std::string(key.ybctid));
+  intents_.emplace(key.table_id, key.ybctid);
   return narrow_cast<int>(intents_.size()) >= yb_explicit_row_locking_batch_size
       ? DoFlush(error_info) : Status::OK();
 }
@@ -70,9 +72,11 @@ Status ExplicitRowLockBuffer::DoFlushImpl() {
   const auto intents_count = intents_.size();
   auto reader = reader_provider_();
   reader.Reserve(intents_count);
-  for (auto it = intents_.begin(); it != intents_.end();) {
-    auto node = intents_.extract(it++);
-    reader.Add(std::move(node.value()));
+  // The reader accepts Slice. It is required to keep data alive.
+  MemoryOptimizedTableYbctidSet intents;
+  intents.swap(intents_);
+  for (const auto& intent : intents) {
+    reader.Add(intent);
   }
   const auto existing_ybctids_count = VERIFY_RESULT(reader.Read(
       info_->database_id, region_local_tables_,
@@ -82,6 +86,9 @@ Status ExplicitRowLockBuffer::DoFlushImpl() {
             params.pg_wait_policy = info.pg_wait_policy;
             params.docdb_wait_policy = info.docdb_wait_policy;
           }))).size();
+  // Make a swap back to preserve memory allocated for buckets
+  intents.clear();
+  intents_.swap(intents);
   SCHECK_EQ(
       existing_ybctids_count, intents_count, NotFound, "Some of the requested ybctids are missing");
   return Status::OK();
