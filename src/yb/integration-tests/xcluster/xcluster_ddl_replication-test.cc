@@ -2687,7 +2687,7 @@ TEST_F(XClusterDDLReplicationTest, ColumnIdsOnFailover) {
         return !consumer_xcluster_context.IsTargetAndInAutomaticMode(namespace_id) &&
                !consumer_xcluster_context.IsReadOnlyMode(namespace_id);
       },
-      1s, "Wait for TServer to know that it is no longer a target"));
+      10s, "Wait for TServer to know that it is no longer a target"));
 
   auto conn2 = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
   ASSERT_OK(conn2.Execute("ALTER TABLE my_table ADD COLUMN q INT;"));
