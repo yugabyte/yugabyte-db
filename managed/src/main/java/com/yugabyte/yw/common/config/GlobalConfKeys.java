@@ -1710,4 +1710,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " the blob deletion fails due to some transient error.",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableYbcBackgroundUpgrade =
+      new ConfKeyInfo<>(
+          "ybc.upgrade.enable_background_upgrade",
+          ScopeType.GLOBAL,
+          "Enable YBC Background Upgrade",
+          "Enable background upgrade for YBC.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
