@@ -531,12 +531,12 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
       if (viewType == TServersViewType::kTServersClocksView) {
         // Render physical time.
         const Timestamp p_ts(desc->physical_time());
-        *output << "    <td>" << p_ts.ToHumanReadableTime() << "</td>";
+        *output << "    <td>" << p_ts.ToHumanReadableTime(UseUTC::kTrue) << "</td>";
 
         // Render the physical and logical components of the hybrid time.
         const HybridTime ht = desc->hybrid_time();
         const Timestamp h_ts(ht.GetPhysicalValueMicros());
-        *output << "    <td>" << h_ts.ToHumanReadableTime();
+        *output << "    <td>" << h_ts.ToHumanReadableTime(UseUTC::kTrue);
         if (ht.GetLogicalValue()) {
           *output << " / Logical: " << ht.GetLogicalValue();
         }
