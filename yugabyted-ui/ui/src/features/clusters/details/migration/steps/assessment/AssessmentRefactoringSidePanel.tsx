@@ -15,14 +15,28 @@ import YBLogo from "@app/assets/yb-logo.svg";
 import { YBTable } from "@app/components";
 
 const useStyles = makeStyles((theme) => ({
+  assessmentBadge: {
+    height: theme.spacing(3),
+    padding: theme.spacing(0.5, 0.75),
+    gap: theme.spacing(0.5),
+    borderRadius: theme.spacing(0.75),
+    background: theme.palette.primary[100],
+    color: theme.palette.primary[600],
+    fontFamily: theme.typography.fontFamily,
+    fontSize: theme.typography.fontSize,
+    fontStyle: 'normal',
+    fontWeight: theme.typography.body2.fontWeight,
+    lineHeight: '16px',
+  },
   heading: {
     marginBottom: theme.spacing(4),
   },
   label: {
-    color: theme.palette.grey[500],
-    fontWeight: theme.typography.fontWeightMedium as number,
     textTransform: "uppercase",
     textAlign: "left",
+    fontSize: '11.5px',
+    fontWeight: 500,
+    color: '#6D7C88',
   },
   dividerHorizontal: {
     width: "100%",
@@ -490,6 +504,7 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
               icon={false}
               text={`${currValue} / ${totalItemCount} ${title}`}
               variant={BadgeVariant.Light}
+              className={classes.assessmentBadge}
             />
           )}
           graySummaryBg

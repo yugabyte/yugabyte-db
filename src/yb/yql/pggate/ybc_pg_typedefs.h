@@ -430,6 +430,7 @@ typedef struct {
   const uint32_t* ysql_max_replication_slots;
   const uint32_t* yb_max_recursion_depth;
   const uint32_t* ysql_conn_mgr_stats_interval;
+  const bool*     ysql_enable_read_request_cache_for_connection_auth;
 } YbcPgGFlagsAccessor;
 
 typedef struct {
@@ -761,6 +762,10 @@ typedef struct {
   unsigned char client_addr[16];
   uint16_t client_port;
   uint8_t addr_family;
+
+  // Postgres-specific memory usage in bytes. On Apple devices this falls back to
+  // resident set size (RSS), since proportional set size (PSS) is not available.
+  int64_t pss_mem_bytes;
 } YbcAshMetadata;
 
 typedef struct {

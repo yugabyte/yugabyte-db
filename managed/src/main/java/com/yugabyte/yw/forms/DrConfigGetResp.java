@@ -105,6 +105,11 @@ public class DrConfigGetResp {
     return xClusterConfig.getType();
   }
 
+  @ApiModelProperty(value = "Whether the config is using automatic DDL replication mode.")
+  public Boolean isAutomaticDdlMode() {
+    return xClusterConfig.isAutomaticDdlMode();
+  }
+
   @ApiModelProperty(value = "Whether the underlying xCluster config is paused")
   public boolean isPaused() {
     return xClusterConfig.isPaused();

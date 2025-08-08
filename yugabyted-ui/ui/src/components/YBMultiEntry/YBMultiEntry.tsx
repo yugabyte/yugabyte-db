@@ -29,11 +29,11 @@ export interface YBMultiEntryProps {
 
 const useStyles = makeStyles<Theme, Partial<YBMultiEntryProps>>((theme) => ({
   label: {
+    fontSize: '11.5px',
+    fontWeight: 500,
+    color: '#6D7C88',
     marginBottom: theme.spacing(0.4),
-    marginTop: theme.spacing(0.4),
-    color: theme.palette.grey[600],
-    textTransform: 'uppercase',
-    fontSize: '11.5px'
+    marginTop: theme.spacing(0.4)
   },
   subLabel: {
     marginTop: theme.spacing(0.4),
@@ -170,7 +170,8 @@ export const YBMultiEntry: FC<YBMultiEntryProps> = (props: YBMultiEntryProps) =>
                 key={entry}
                 icon={
                   invalid ? (
-                    <ErrorIcon width={16} height={16} className={clsx(classes.icon, classes.error)} />
+                    <ErrorIcon width={16} height={16}
+                      className={clsx(classes.icon, classes.error)} />
                   ) : undefined
                 }
                 deleteIcon={<CloseIcon className={clsx(classes.icon)} />}
@@ -191,7 +192,8 @@ export const YBMultiEntry: FC<YBMultiEntryProps> = (props: YBMultiEntryProps) =>
         />
       </Paper>
       <Box className={classes.subLabel}>{t('common.multiEntryFieldLabel')}</Box>
-      {error && textInputRef.current?.value.length === 0 && <FormHelperText error>{helperText}</FormHelperText>}
+      {error && textInputRef.current?.value.length === 0 &&
+        <FormHelperText error>{helperText}</FormHelperText>}
       {Array.isArray(error) && error.length > 0 && (
         <FormHelperText error>{t('common.removeInvalidEntries')}</FormHelperText>
       )}

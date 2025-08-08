@@ -1,16 +1,21 @@
 import React, { useState, useEffect, ReactElement } from 'react';
 import { Box, makeStyles, Popover, Typography } from '@material-ui/core';
 import { Trans, useTranslation } from 'react-i18next';
+import clsx from 'clsx';
 
-import { ReactComponent as UnavailableIcon } from '../../../redesign/assets/unavailable.svg';
 import {
   I18N_KEY_PREFIX_XCLUSTER_TERMS,
+  XClusterSchemaChangeMode,
   XCLUSTER_DR_DDL_STEPS_DOCUMENTATION_URL,
   XCLUSTER_REPLICATION_DDL_STEPS_DOCUMENTATION_URL
 } from '../constants';
+import { usePillStyles } from '@app/redesign/styles/styles';
+
+import { ReactComponent as UnavailableIcon } from '../../../redesign/assets/unavailable.svg';
 
 interface InfoPopoverProps {
   isDrInterface: boolean;
+  schemaChangeMode: XClusterSchemaChangeMode;
   children: ReactElement;
 }
 
@@ -50,26 +55,8 @@ const useStyles = makeStyles((theme) => ({
       marginTop: -10
     }
   },
-  importantLabel: {
-    display: 'flex',
-
-    width: 'fit-content',
-    padding: theme.spacing(0.25, 0.75),
-
-    fontSize: '10px',
-    fontWeight: 700,
-    lineHeight: '16px',
-    color: theme.palette.ybacolors.purple300,
-    borderRadius: '4px',
-    border: `1px solid ${theme.palette.grey[300]}`
-  },
-  gradientTitle: {
-    background: 'linear-gradient(273deg, #ED35EC 10%, #ED35C5 50%, #7879F1 85.17%, #5E60F0 99.9%)',
-    WebkitBackgroundClip: 'text',
-    WebkitTextFillColor: 'transparent',
-    backgroundClip: 'text',
-    color: 'transparent',
-    display: 'inline-block'
+  importantTag: {
+    height: 24
   },
   closeButton: {
     display: 'flex',
@@ -85,7 +72,7 @@ const useStyles = makeStyles((theme) => ({
 
     lineHeight: '16px',
     borderRadius: theme.shape.borderRadius,
-    backgroundColor: theme.palette.ybacolors.purple300,
+    backgroundColor: theme.palette.orange[500],
     color: theme.palette.common.white,
     textDecoration: 'none',
 
@@ -103,11 +90,13 @@ const TRANSLATION_KEY_PREFIX = 'clusterDetail.xCluster.shared.schemaChangesInfoP
 
 export const SchemaChangesInfoPopover: React.FC<InfoPopoverProps> = ({
   isDrInterface,
+  schemaChangeMode,
   children
 }) => {
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const [isAcknowledged, setIsAcknowledged] = useState<boolean>(true);
   const classes = useStyles();
+  const pillClasses = usePillStyles();
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
 
   const childElementId = children.props.id ?? ACKNOWLEDGED_STATUS_LOCAL_STORAGE_KEY;
@@ -143,6 +132,13 @@ export const SchemaChangesInfoPopover: React.FC<InfoPopoverProps> = ({
   const learnMoreUrl = isDrInterface
     ? XCLUSTER_DR_DDL_STEPS_DOCUMENTATION_URL
     : XCLUSTER_REPLICATION_DDL_STEPS_DOCUMENTATION_URL;
+  const schemaChangeInstructionsI18nKey = `${TRANSLATION_KEY_PREFIX}.description.${
+    schemaChangeMode === XClusterSchemaChangeMode.AUTOMATIC_DDL_REPLICATION
+      ? 'automaticSchemaChangeMode'
+      : schemaChangeMode === XClusterSchemaChangeMode.DB_SCOPED
+      ? 'dbScopedSchemaChangeMode'
+      : 'tableLevelSchemaChangeMode'
+  }`;
   return (
     <>
       {React.cloneElement(children, {
@@ -169,15 +165,23 @@ export const SchemaChangesInfoPopover: React.FC<InfoPopoverProps> = ({
         }}
       >
         <div className={classes.popoverCanvas}>
-          <div className={classes.importantLabel}>{t('important')}</div>
-          <Typography variant="h6" className={classes.gradientTitle}>
-            {t('title')}
-          </Typography>
+          <div className={clsx(pillClasses.pill, pillClasses.metadataGrey, classes.importantTag)}>
+            {t('important')}
+          </div>
+          <Typography variant="h6">{t('title')}</Typography>
           <Typography variant="body2">
             <Trans
-              i18nKey={`${TRANSLATION_KEY_PREFIX}.description`}
+              i18nKey={schemaChangeInstructionsI18nKey}
               components={{ bold: <b /> }}
-              values={{ xClusterOffering: xClusterOffering }}
+              values={{
+                xClusterOffering: xClusterOffering,
+                sourceUniverseTerm: t(`source.${isDrInterface ? 'dr' : 'xClusterReplication'}`, {
+                  keyPrefix: I18N_KEY_PREFIX_XCLUSTER_TERMS
+                }),
+                targetUniverseTerm: t(`target.${isDrInterface ? 'dr' : 'xClusterReplication'}`, {
+                  keyPrefix: I18N_KEY_PREFIX_XCLUSTER_TERMS
+                })
+              }}
             />
           </Typography>
           <Box display="flex" justifyContent="space-between" marginTop={5}>

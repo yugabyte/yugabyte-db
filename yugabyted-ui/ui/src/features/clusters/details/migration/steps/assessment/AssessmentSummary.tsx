@@ -5,46 +5,70 @@ import {
   ComplexityComponent,
   getComplexityString,
 } from "../../ComplexityComponent";
-import HelpIcon from "@app/assets/help.svg";
+import HelpIcon from "@app/assets/help-new.svg";
 import { YBTooltip } from "@app/components";
+import { MetadataItem } from "../../components/MetadataItem";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingTop: theme.spacing(3),
-    paddingBottom: theme.spacing(3),
-    paddingRight: theme.spacing(3),
-    paddingLeft: theme.spacing(3),
+    padding: 24,
+    flex: "0 0 auto"
   },
   label: {
-    color: theme.palette.grey[500],
-    fontWeight: theme.typography.fontWeightMedium as number,
     marginBottom: theme.spacing(0.75),
     textTransform: "uppercase",
     textAlign: "left",
+    fontSize: '11.5px',
+    fontWeight: 500,
+    color: '#6D7C88',
+  },
+  migrationComplexityLabel: {
+    color: '#6D7C88',
+    fontFamily: 'Inter',
+    fontSize: '11.5px',
+    fontStyle: 'normal',
+    fontWeight: 500,
+    lineHeight: '16px',
+    textTransform: 'uppercase',
+    marginBottom: theme.spacing(1),
   },
   paper: {
     overflow: "clip",
+    border: "1px solid #E9EEF2",
+    borderRadius: theme.shape.borderRadius,
     height: "100%",
+    display: "flex",
+    flexDirection: "column"
   },
   boxBody: {
     display: "flex",
     flexDirection: "column",
     gridGap: theme.spacing(2),
     backgroundColor: theme.palette.info[400],
-    height: "100%",
-    paddingRight: theme.spacing(3),
-    paddingLeft: theme.spacing(3),
-    paddingTop: theme.spacing(3),
-    paddingBottom: theme.spacing(3),
+    paddingTop: 24,
+    paddingBottom: 24,
+    paddingRight: 24,
+    paddingLeft: 24,
+    flex: 1,
+    height: "100%"
   },
   icon: {
     display: "flex",
     cursor: "pointer",
     color: theme.palette.grey[500],
     alignItems: "center",
+    width: 20,
+    height: 20,
+  },
+  complexityText: {
+    fontFamily: 'Inter',
+    fontSize: '11.5px',
+    fontStyle: 'normal',
+    fontWeight: 500,
+    lineHeight: '16px',
   },
 }));
 
@@ -81,11 +105,17 @@ export const MigrationAssessmentSummary: FC<MigrationAssessmentSummaryProps> = (
         )
     );
 
-  // Making the Hard Medium Easy keywords bold
-  const finalTranslationOutput =
-    migCompexityExp?.split(/\b(Hard|Medium|Easy)\b/g).map((part, index) =>
-      ["Hard", "Medium", "Easy"].includes(part) ? <strong key={index}>{part}</strong> : part
-    );
+  // Making the Hard/Medium/Easy migration phrases bold
+  const finalTranslationOutput = migCompexityExp?.replace(
+    /(Hard|Medium|Easy)\s+migration/g,
+    (match) => `<strong>${match}</strong>`
+  );
+
+  const renderTranslationOutput = (
+    <Typography variant="body2" className={classes.complexityText}>
+      <span dangerouslySetInnerHTML={{ __html: finalTranslationOutput || '' }} />
+    </Typography>
+  );
 
   const convertTime = (timeInMin: string | number) => {
     if (typeof timeInMin === "string") {
@@ -100,48 +130,46 @@ export const MigrationAssessmentSummary: FC<MigrationAssessmentSummaryProps> = (
 
   return (
     <Paper className={classes.paper}>
-      <Box height="100%">
-        <Box className={classes.heading}>
-          <Typography variant="h5">
-            {t("clusterDetail.voyager.planAndAssess.summary.heading")}
+      <Box className={classes.heading}>
+        <Typography variant="h5">
+          {t("clusterDetail.voyager.planAndAssess.summary.heading")}
+        </Typography>
+      </Box>
+
+      <Divider orientation="horizontal" />
+
+      <Box className={classes.boxBody}>
+        <Box>
+          <Typography className={classes.migrationComplexityLabel}>
+            {t("clusterDetail.voyager.planAndAssess.summary.migrationComplexity")}
           </Typography>
+          <Box display="flex" gridGap={theme.spacing(2)}>
+            <Typography variant="h4">
+              {getComplexityString(complexity.toLowerCase(), t)}
+            </Typography>
+            <ComplexityComponent complexity={complexity}/>
+            <YBTooltip title=
+              {
+                <Box>
+                  <Typography variant="body1" className={classes.label}>
+                    {t("clusterDetail.voyager.planAndAssess.summary.migrationComplexity")}
+                  </Typography>
+                  {renderTranslationOutput}
+                </Box>
+              }
+            >
+              <Box className={classes.icon}>
+                <HelpIcon/>
+              </Box>
+            </YBTooltip>
+          </Box>
         </Box>
 
-        <Divider orientation="horizontal" />
-
-        <Box className={classes.boxBody}>
-          <Box>
-            <Typography variant="body1" className={classes.label}>
-              {t("clusterDetail.voyager.planAndAssess.summary.migrationComplexity")}
-            </Typography>
-            <Box display="flex" gridGap={theme.spacing(2)}>
-              <Typography variant="h4">
-                {getComplexityString(complexity.toLowerCase(), t)}
-              </Typography>
-              <ComplexityComponent complexity={complexity}/>
-              <YBTooltip title=
-                {
-                  <Box>
-                    <Typography variant="body1" className={classes.label}>
-                      {t("clusterDetail.voyager.planAndAssess.summary.migrationComplexity")}
-                    </Typography>
-                    <Typography variant="body2">{finalTranslationOutput}</Typography>
-                  </Box>
-                }
-              >
-                <Box className={classes.icon}>
-                  <HelpIcon/>
-                </Box>
-              </YBTooltip>
-            </Box>
-          </Box>
-
-          <Box>
-            <Typography variant="body1" className={classes.label}>
-              {t("clusterDetail.voyager.planAndAssess.summary.estimatedDataMigrationTime")}
-            </Typography>
-            <Typography variant="body2">{convertTime(estimatedMigrationTime)}</Typography>
-          </Box>
+        <Box>
+          <MetadataItem
+            label={[t("clusterDetail.voyager.planAndAssess.summary.estimatedDataMigrationTime")]}
+            value={[convertTime(estimatedMigrationTime)]}
+          />
         </Box>
       </Box>
     </Paper>

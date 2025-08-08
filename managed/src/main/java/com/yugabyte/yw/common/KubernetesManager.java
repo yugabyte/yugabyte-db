@@ -46,7 +46,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.UUID;
-import java.util.function.Function;
+import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import lombok.AllArgsConstructor;
@@ -80,9 +80,9 @@ public abstract class KubernetesManager {
 
   private static final long HELM_UNINSTALL_RETRY = 5;
 
-  protected Function<ObjectMeta, ServerType> serverTypeLabelConverter =
-      (oM) ->
-          oM.getLabels().get("app.kubernetes.io/name").equals("yb-tserver")
+  protected BiFunction<ObjectMeta, Boolean, ServerType> serverTypeLabelConverter =
+      (oM, newNamingStyle) ->
+          oM.getLabels().get(newNamingStyle ? "app.kubernetes.io/name" : "app").equals("yb-tserver")
               ? ServerType.TSERVER
               : ServerType.MASTER;
 
@@ -910,7 +910,7 @@ public abstract class KubernetesManager {
       Map<String, String> config, String resourceType, String resourceName, String namespace);
 
   public abstract Map<ServerType, String> getServerTypeGflagsChecksumMap(
-      String namespace, String helmReleaseName, Map<String, String> config);
+      String namespace, String helmReleaseName, Map<String, String> config, boolean newNamingStyle);
 
   public abstract void deleteNamespacedService(
       Map<String, String> config, String namespace, String universeName);

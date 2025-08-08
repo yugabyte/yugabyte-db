@@ -31,7 +31,9 @@ class XClusterDDLReplicationTestBase : public XClusterYsqlTestBase {
     return true;
   }
 
-  Status SetUpClusters(bool is_colocated = false, bool start_yb_controller_servers = false);
+  static SetupParams kDefaultParams;
+
+  Status SetUpClusters(const SetupParams& params = kDefaultParams);
 
   virtual Status CheckpointReplicationGroup(
       const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId,
@@ -84,6 +86,9 @@ class XClusterDDLReplicationTestBase : public XClusterYsqlTestBase {
   virtual bool SetReplicationDirection(ReplicationDirection replication_direction);
 
   const std::string kInitialColocatedTableName = "initial_colocated_table";
+
+  std::unique_ptr<pgwrapper::PGConn> producer_conn_;
+  std::unique_ptr<pgwrapper::PGConn> consumer_conn_;
 
  private:
   tools::TmpDirProvider tmp_dir_;

@@ -73,6 +73,7 @@ import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.TlsConfigUpdateParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
+import com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -359,10 +360,14 @@ public class UniverseCRUDHandler {
     if (taskParams.clusterOperation == null) {
       throw new PlatformServiceException(BAD_REQUEST, "clusterOperation must be set");
     }
-
-    // TODO(Rahul): When we support multiple read only clusters, change clusterType to cluster
-    //  uuid.
     Cluster cluster = getClusterFromTaskParams(taskParams);
+    if (taskParams.clusterOperation == ClusterOperationType.CREATE
+        && taskParams.currentClusterType == ClusterType.PRIMARY
+        && !cluster.userIntent.useSystemd) {
+      // Fail only for new primary cluster creation.
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Only systemd is supported. Set useSystemd=true for the primary cluster");
+    }
     UniverseDefinitionTaskParams.UserIntent userIntent = cluster.userIntent;
     if (userIntent.deviceInfo != null) {
       userIntent.deviceInfo.validate();

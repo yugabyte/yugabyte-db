@@ -593,7 +593,7 @@ void XClusterPoller::HandleApplyChangesResponse(XClusterOutputClientResponse res
 
       // If processing ddl_queue table fails, then retry just this part (don't repeat ApplyChanges).
       ScheduleFuncWithDelay(
-          GetAtomicFlag(&FLAGS_xcluster_safe_time_update_interval_secs),
+          FLAGS_xcluster_safe_time_update_interval_secs * MonoTime::kMillisecondsPerSecond,
           BIND_FUNCTION_AND_ARGS(XClusterPoller::HandleApplyChangesResponse, std::move(response)));
       return;
     }

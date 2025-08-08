@@ -848,7 +848,6 @@
             "DB_REDIS_CONNECTION",
             "DB_MEMORY_OVERLOAD",
             "DB_COMPACTION_OVERLOAD",
-            "DB_QUEUES_OVERFLOW",
             "DB_DRIVE_FAILURE",
             "DB_WRITE_READ_TEST_ERROR",
             "DDL_ATOMICITY_CHECK",
@@ -1027,7 +1026,6 @@
             "DB_REDIS_CONNECTION",
             "DB_MEMORY_OVERLOAD",
             "DB_COMPACTION_OVERLOAD",
-            "DB_QUEUES_OVERFLOW",
             "DB_DRIVE_FAILURE",
             "DB_WRITE_READ_TEST_ERROR",
             "DDL_ATOMICITY_CHECK",
@@ -1302,7 +1300,6 @@
             "DB_REDIS_CONNECTION",
             "DB_MEMORY_OVERLOAD",
             "DB_COMPACTION_OVERLOAD",
-            "DB_QUEUES_OVERFLOW",
             "DB_DRIVE_FAILURE",
             "DB_WRITE_READ_TEST_ERROR",
             "DDL_ATOMICITY_CHECK",
@@ -7328,6 +7325,10 @@
     "DrConfigGetResp" : {
       "description" : "disaster recovery get response",
       "properties" : {
+        "automaticDdlMode" : {
+          "description" : "Whether the config is using automatic DDL replication mode.",
+          "type" : "boolean"
+        },
         "bootstrapParams" : {
           "$ref" : "#/definitions/RestartBootstrapParams",
           "description" : "Bootstrap backup params for DR config"
@@ -13971,15 +13972,15 @@
     "PresetThrottleValues" : {
       "properties" : {
         "defaultValue" : {
-          "format" : "int32",
+          "format" : "int64",
           "type" : "integer"
         },
         "maxValue" : {
-          "format" : "int32",
+          "format" : "int64",
           "type" : "integer"
         },
         "minValue" : {
-          "format" : "int32",
+          "format" : "int64",
           "type" : "integer"
         }
       },
@@ -22242,7 +22243,7 @@
     "ThrottleParamValue" : {
       "properties" : {
         "currentValue" : {
-          "format" : "int32",
+          "format" : "int64",
           "type" : "integer"
         },
         "presetValues" : {
@@ -28336,24 +28337,34 @@
     "YbcThrottleParameters" : {
       "description" : "YB-Controller throttle parameters",
       "properties" : {
+        "diskReadBytesPerSecond" : {
+          "description" : "WARNING: This is a preview API that could change. Disk read bytes per second to throttle disk usage during backups",
+          "format" : "int64",
+          "type" : "integer"
+        },
+        "diskWriteBytesPerSecond" : {
+          "description" : "WARNING: This is a preview API that could change. Disk write bytes per second to throttle disk usage during restore",
+          "format" : "int64",
+          "type" : "integer"
+        },
         "maxConcurrentDownloads" : {
           "description" : "Max concurrent downloads per node",
-          "format" : "int32",
+          "format" : "int64",
           "type" : "integer"
         },
         "maxConcurrentUploads" : {
           "description" : "Max concurrent uploads per node",
-          "format" : "int32",
+          "format" : "int64",
           "type" : "integer"
         },
         "perDownloadNumObjects" : {
           "description" : "Max objects per download per node",
-          "format" : "int32",
+          "format" : "int64",
           "type" : "integer"
         },
         "perUploadNumObjects" : {
           "description" : "Max objects per upload per node",
-          "format" : "int32",
+          "format" : "int64",
           "type" : "integer"
         },
         "resetDefaults" : {

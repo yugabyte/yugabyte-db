@@ -48,7 +48,7 @@ func Start() {
 	util.FileLogger().Infof(Context(), "Dumping config %s", dump)
 	executor.Init(Context())
 	session.Init(Context())
-	disableMetricsTLS := config.Bool(util.NodeAgentDisableMetricsTLS)
+	disableMetricsTLS := config.Bool(util.NodeAgentDisableMetricsTLSKey)
 	host := config.String(util.NodeBindIpKey)
 	port := config.String(util.NodePortKey)
 

@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -56,9 +57,13 @@ public class ShellProcessHandlerTest extends TestCase {
     when(mockConfig.getBoolean(COMMAND_OUTPUT_LOGS_DELETE)).thenReturn(true);
     when(mockConfig.getBytes(YB_LOGS_MAX_MSG_SIZE)).thenReturn(2000L);
     when(runtimeConfGetter.getGlobalConf(eq(GlobalConfKeys.ybTmpDirectoryPath))).thenReturn("/tmp");
+    when(runtimeConfGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentConnectionKeepAliveTime)))
+        .thenReturn(Duration.ofSeconds(10));
+    when(runtimeConfGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentConnectionKeepAliveTimeout)))
+        .thenReturn(Duration.ofSeconds(10));
     ShellLogsManager shellLogsManager =
         new ShellLogsManager(mockPlatformScheduler, mockRuntimeConfigFactory, runtimeConfGetter);
-    shellProcessHandler = new ShellProcessHandler(mockConfig, shellLogsManager);
+    shellProcessHandler = new ShellProcessHandler(mockConfig, runtimeConfGetter, shellLogsManager);
   }
 
   @After

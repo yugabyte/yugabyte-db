@@ -179,6 +179,7 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_retention_policy.h"
+#include "yb/tablet/transaction_participant.h"
 
 #include "yb/tserver/remote_bootstrap_client.h"
 #include "yb/tserver/ts_tablet_manager.h"
@@ -595,6 +596,7 @@ DEFINE_test_flag(int32, system_table_num_tablets, -1,
 DECLARE_bool(enable_pg_cron);
 DECLARE_bool(enable_truncate_cdcsdk_table);
 DECLARE_bool(ysql_yb_enable_replica_identity);
+DECLARE_bool(TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 
 namespace yb::master {
 
@@ -3818,8 +3820,7 @@ Status CatalogManager::CanAddPartitionsToTable(
 }
 
 Status CatalogManager::CanSupportAdditionalTabletsForTableCreation(
-    int num_tablets, const ReplicationInfoPB& replication_info,
-    const TSDescriptorVector& ts_descs) {
+    int num_tablets, const ReplicationInfoPB& replication_info) const {
   // Don't check for tablet limits if we potentially don't have information from all the live
   // TServers.  To make sure we have the needed information, don't check for
   // FLAGS_initial_tserver_registration_duration_secs after a master leadership change.
@@ -3827,12 +3828,20 @@ Status CatalogManager::CanSupportAdditionalTabletsForTableCreation(
       MonoDelta::FromSeconds(FLAGS_initial_tserver_registration_duration_secs)) {
     return Status::OK();
   }
-  return CanCreateTabletReplicas(num_tablets, replication_info, GetAllLiveNotBlacklistedTServers());
+  TSDescriptorVector ts_descs;
+  auto blacklist_result = BlacklistSetFromPB();
+  master_->ts_manager()->GetAllDescriptors(&ts_descs);
+  // todo(zdrudi): We probably don't want to replace the blacklist with a dummy here.
+  // If getting the blacklist failed, we were probably called during a sys catalog load.
+  // so we should error out.
+  return CanCreateTabletReplicas(
+      num_tablets, replication_info, ts_descs,
+      blacklist_result ? *blacklist_result : BlacklistSet());
 }
 
 Status CatalogManager::CanSupportAdditionalTablet(
     const TableInfoPtr& table, const ReplicationInfoPB& replication_info) const {
-  return CanCreateTabletReplicas(1, replication_info, GetAllLiveNotBlacklistedTServers());
+  return CanSupportAdditionalTabletsForTableCreation(1, replication_info);
 }
 
 namespace {
@@ -4114,8 +4123,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     return SetupError(resp->mutable_error(), MasterErrorPB::TOO_MANY_TABLETS, s);
   }
   if (!joining_colocation_group) {
-    s = CanSupportAdditionalTabletsForTableCreation(
-        num_tablets, replication_info, GetAllLiveNotBlacklistedTServers());
+    s = CanSupportAdditionalTabletsForTableCreation(num_tablets, replication_info);
     if (!s.ok()) {
       IncrementCounter(metric_create_table_too_many_tablets_);
       return SetupError(resp->mutable_error(), MasterErrorPB::TOO_MANY_TABLETS, s);
@@ -10724,6 +10732,32 @@ Status CatalogManager::SendAlterTableRequestInternal(
       LOG(INFO) << " CDC stream id context : " << req->cdc_sdk_stream_id();
       xrepl::StreamId stream_id =
           VERIFY_RESULT(xrepl::StreamId::FromString(req->cdc_sdk_stream_id()));
+      // TODO(#26423): The AsyncAlterTable fails for master tablet with peer not found error as this
+      // RPC goes to tservers. As a workaround we simply set the retention barriers on master tablet
+      // and return. This is a temporary workaround and sets the retention barriers only on the
+      // leader master.
+      auto tablets = VERIFY_RESULT(table->GetTablets());
+      if (tablets.size() > 0 && tablets[0]->tablet_id() == master::kSysCatalogTabletId &&
+          FLAGS_TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
+        auto tablet_peer = sys_catalog_->tablet_peer();
+        tablet::RemoveIntentsData data;
+        RETURN_NOT_OK(tablet_peer->GetLastReplicatedData(&data));
+        OpIdPB safe_op_id;
+        safe_op_id.set_term(data.op_id.term);
+        safe_op_id.set_index(data.op_id.index);
+
+        RETURN_NOT_OK(ResultToStatus(tablet_peer->SetAllInitialCDCSDKRetentionBarriers(
+            data.op_id, master_->clock()->Now(), false /* require_history_cutoff */)));
+
+        // Here instead of kInitial we could've sent last replicated time. But it will
+        // anyway get overridden.
+        RETURN_NOT_OK(PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails(
+            table, sys_catalog_->tablet_id(), stream_id, safe_op_id,
+            HybridTime::kInitial /* proposed_snapshot_time */,
+            req->cdc_sdk_require_history_cutoff()));
+
+        continue;
+      }
       call = std::make_shared<AsyncAlterTable>(
           master_, AsyncTaskPool(), tablet, table, txn_id, epoch, stream_id,
           req->cdc_sdk_require_history_cutoff());
@@ -12289,7 +12323,7 @@ bool CatalogManager::IsLoadBalancerEnabled() {
   return load_balance_policy_->IsLoadBalancerEnabled();
 }
 
-MonoDelta CatalogManager::TimeSinceElectedLeader() {
+MonoDelta CatalogManager::TimeSinceElectedLeader() const {
   return MonoTime::Now() - time_elected_leader_.load();
 }
 

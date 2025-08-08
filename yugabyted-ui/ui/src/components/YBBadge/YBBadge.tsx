@@ -22,27 +22,42 @@ export interface BadgeProps {
   icon?: boolean;
   iconComponent?: typeof WarningIcon;
   className?: string;
+  noText?: boolean;
+  style?: React.CSSProperties;
 }
 
 const useStyles = makeStyles((theme) => ({
-  root: ({ icon }: BadgeProps) => ({
-    padding: icon
-      ? `${theme.spacing(0.6)}px ${theme.spacing(1)}px`
-      : `${theme.spacing(0.2)}px ${theme.spacing(0.8)}px`,
-    borderRadius: icon ? theme.shape.borderRadius : theme.shape.borderRadius / 2,
-    display: "flex",
-    gap: theme.spacing(0.5),
-    alignItems: "center",
+  root: () => ({
+    display: "inline-flex",
+    height: theme.spacing(3),
+    padding: theme.spacing(0.5, 0.75),
     justifyContent: "center",
-    width: "fit-content",
-    "& span:first-letter": {
-      textTransform: "uppercase",
+    alignItems: "center",
+    gap: theme.spacing(0.25),
+    borderRadius: theme.spacing(0.75),
+    fontFamily: theme.typography.fontFamily,
+    fontSize: `${theme.typography.subtitle1.fontSize}px !important`,
+    fontStyle: "normal",
+    fontWeight: theme.typography.body2.fontWeight,
+    lineHeight: "16px",
+    "& span": {
+      fontSize: `${theme.typography.subtitle1.fontSize}px !important`,
+      fontFamily: theme.typography.fontFamily,
+      fontStyle: "normal",
+      fontWeight: theme.typography.body2.fontWeight,
+      lineHeight: "16px",
     },
-    minHeight: "24px",
+    "& .MuiTypography-root": {
+      fontSize: `${theme.typography.subtitle1.fontSize}px !important`,
+      fontFamily: theme.typography.fontFamily,
+      fontStyle: "normal",
+      fontWeight: theme.typography.body2.fontWeight,
+      lineHeight: "16px",
+    }
   }),
   icon: {
-    height: "14px",
-    width: "14px",
+    height: theme.spacing(1.75),
+    width: theme.spacing(1.75),
   },
   light: {
     background: theme.palette.primary[100],
@@ -52,28 +67,28 @@ const useStyles = makeStyles((theme) => ({
     color: theme.palette.primary[700],
   },
   warning: {
-    background: theme.palette.warning[100],
+    background: "var(--Warning-Warning-100, #FFF3DC)",
     color: theme.palette.warning[900],
   },
   warningIcon: {
     color: theme.palette.warning[500],
   },
   info: {
-    background: theme.palette.info[100],
+    background: "var(--Info-Info-100, #EBF1FF)",
     color: theme.palette.info[900],
   },
   infoIcon: {
     color: theme.palette.info[700],
   },
   success: {
-    background: theme.palette.success[100],
+    background: "var(--Success-Success-100, #CDEFE1)",
     color: theme.palette.success[700],
   },
   successIcon: {
-    color: theme.palette.success[500],
+    color: theme.palette.success[700],
   },
   error: {
-    background: theme.palette.error[100],
+    background: "var(--Error-Error-100, #FFE5E5)",
     color: theme.palette.error[500],
   },
   errorIcon: {
@@ -86,6 +101,15 @@ const useStyles = makeStyles((theme) => ({
   inprogressIcon: {
     color: theme.palette.primary[700],
   },
+  iconOnly: {
+    minWidth: 24,
+    width: 24,
+    height: 24,
+    padding: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 }));
 
 export const YBBadge: FC<BadgeProps> = (props: BadgeProps) => {
@@ -95,9 +119,11 @@ export const YBBadge: FC<BadgeProps> = (props: BadgeProps) => {
     icon = true,
     iconComponent: CustomIcon,
     className,
+    noText = false,
+    style,
   } = props;
 
-  const classes = useStyles({ ...props, icon });
+  const classes = useStyles();
   let alertClassName = classes.root;
   let alertIcon = <span />;
   let alertText = text;
@@ -135,6 +161,12 @@ export const YBBadge: FC<BadgeProps> = (props: BadgeProps) => {
       break;
   }
 
+  if (noText) {
+    alertClassName = clsx(alertClassName, classes.iconOnly, className);
+  } else {
+    alertClassName = clsx(alertClassName, className);
+  }
+
   const getIcon = () => {
     if (!icon) {
       return null;
@@ -147,8 +179,8 @@ export const YBBadge: FC<BadgeProps> = (props: BadgeProps) => {
   };
 
   return (
-    <div className={clsx(alertClassName, className)} role="alert" aria-label={`alert ${variant}`}>
-      {alertText && <span>{alertText}</span>}
+    <div className={alertClassName} style={style} role="alert" aria-label={`alert ${variant}`}>
+      {!noText && alertText && <span>{alertText}</span>}
       {getIcon()}
     </div>
   );

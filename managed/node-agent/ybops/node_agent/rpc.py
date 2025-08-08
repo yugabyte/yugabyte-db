@@ -38,6 +38,10 @@ FILE_UPLOAD_CHUNK_BYTES = 524288
 
 # GRPC specific configurations.
 GRPC_WAIT_FOR_READY = False
+GRPC_KEEPALIVE_TIME_MS_ENV = "grpc_keepalive_time_ms"
+GRPC_KEEPALIVE_TIMEOUT_MS_ENV = "grpc_keepalive_timeout_ms"
+GRPC_KEEPALIVE_TIME_MS_DEFAULT = "10000"
+GRPC_KEEPALIVE_TIMEOUT_MS_DEFAULT = "10000"
 
 # Max attempt is capped at 5 internally by the underlying client.
 # Below values are large enough to detect permanently unreachable server much faster,
@@ -106,7 +110,13 @@ class RpcClient(object):
         # Prepare channel options.
         self.channel_options = None
         if not GRPC_WAIT_FOR_READY:
-            self.channel_options = (("grpc.service_config", json.dumps(GRPC_SERVICE_CONFIG)),)
+            keep_alive_time_ms = int(os.getenv(GRPC_KEEPALIVE_TIME_MS_ENV,
+                                               GRPC_KEEPALIVE_TIME_MS_DEFAULT))
+            keep_alive_timeout_ms = int(os.getenv(GRPC_KEEPALIVE_TIMEOUT_MS_ENV,
+                                                  GRPC_KEEPALIVE_TIMEOUT_MS_DEFAULT))
+            self.channel_options = (("grpc.service_config", json.dumps(GRPC_SERVICE_CONFIG)),
+                                    ("grpc.keepalive_time_ms", keep_alive_time_ms),
+                                    ("grpc.keepalive_timeout_ms", keep_alive_timeout_ms))
 
     def connect(self):
         """

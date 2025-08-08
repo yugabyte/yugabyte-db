@@ -60,7 +60,7 @@ ERROR: adding primary key to a partitioned table is not yet implemented (SQLSTAT
 
 **Workaround**: Manual intervention needed. Add primary key in the `CREATE TABLE` statement.
 
-**Fixed In**: {{<release "2024.1.0.0, 2024.2.0.0, 2.23.0.0, 2.25">}}.
+**Fixed In**: {{<release "2024.1.0.0, 2024.2.0.0, 2.23.0.0, 2.25, 2025.1">}}.
 
 **Example**
 
@@ -156,7 +156,7 @@ ERROR:  UNLOGGED database object not supported yet
 
 **Workaround**: Convert it to a LOGGED table.
 
-**Fixed In**: {{<release "2024.2.0.0, 2.25">}}
+**Fixed In**: {{<release "2024.2.0.0, 2.25, 2025.1">}}
 
 **Example**
 
@@ -339,7 +339,7 @@ ERROR: syntax error at or near "(" (SQLSTATE 42601)
 
 **Workaround**: Create a trigger on this table that updates its value on any INSERT/UPDATE operation, and set a default value for this column. This provides functionality similar to PostgreSQL's GENERATED ALWAYS AS STORED columns using a trigger.
 
-**Fixed In**: {{<release "2.25">}}.
+**Fixed In**: {{<release "2.25, 2025.1">}}.
 
 **Example**
 
@@ -690,7 +690,7 @@ ERROR: cannot subscript type jsonb because it is not an array
 
 **Workaround**: You can use the Arrow ( `-> / ->>` ) operators to access JSONB fields.
 
-**Fixed In**: {{<release "2.25">}}.
+**Fixed In**: {{<release "2.25, 2025.1">}}.
 
 **Example**
 
@@ -873,6 +873,8 @@ HINT:  To enable this preview feature, set the GFlag ysql_yb_enable_advisory_loc
 ```
 
 **Workaround**: Implement a custom locking mechanism in the application to coordinate actions without relying on database-level advisory locks.
+
+**Fixed In**: {{<release "2025.1">}}.
 
 ---
 
@@ -1073,7 +1075,7 @@ ERROR: Partitioned tables cannot have BEFORE / FOR EACH ROW triggers.
 
 **Workaround**: Create this trigger on the individual partitions.
 
-**Fixed In**: {{<release "2.25">}}.
+**Fixed In**: {{<release "2.25, 2025.1">}}.
 
 **Example**
 
@@ -1231,7 +1233,7 @@ $$;
 - [COMPRESSION clause](https://www.postgresql.org/docs/current/sql-createtable.html#SQL-CREATETABLE-PARMS-COMPRESSION) in TABLE Column for TOASTing method.
 - [CREATE DATABASE options](https://www.postgresql.org/docs/15/sql-createdatabase.html) (locale, collation, strategy, and OID related).
 
-In addition, if any of the following PostgreSQL features are present in the source schema, the import schema step on the target YugabyteDB will fail, unless you are importing to YugabyteDB [v2.25](/preview/releases/ybdb-releases/v2.25) (which supports PG15).
+In addition, if any of the following PostgreSQL features are present in the source schema, the import schema step on the target YugabyteDB will fail, unless you are importing to YugabyteDB [v2.25](/preview/releases/ybdb-releases/v2.25) or [v2025.1](/preview/releases/ybdb-releases/v2025.1) (which supports PG15).
 
 - [Multirange datatypes](https://www.postgresql.org/docs/current/rangetypes.html#RANGETYPES-BUILTIN).
 - [UNIQUE NULLS NOT DISTINCT clause](https://www.postgresql.org/about/featurematrix/detail/392/) in constraint and index.
@@ -1889,4 +1891,49 @@ CREATE TABLE child (
   id BIGINT,
   CONSTRAINT fk_parent FOREIGN KEY (id) REFERENCES parent(id)
 );
+```
+
+---
+
+### Missing foreign key indexes
+
+**Description**: Missing indexes on foreign key columns can cause performance issues during DML operations on parent tables. An index is needed on the foreign key column of the child table whenever there are DML operations on the parent table. For example, if a row is deleted from the parent table, the database must check whether any child rows reference that parent row. Without an index on the child table's foreign key, the database has to scan the entire child table and may need to lock it, which can lead to performance issues and blocking.
+
+**Workaround**: Create indexes on foreign key columns in child tables. The index must include all foreign key columns as leading columns (either in exact order, any permutation, or as a prefix of a composite index).
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+-- Parent table
+CREATE TABLE parent (
+  id INT PRIMARY KEY
+);
+
+-- Child table without index on foreign key
+CREATE TABLE child (
+  id INT,
+  parent_id INT,
+  CONSTRAINT fk_parent FOREIGN KEY (parent_id) REFERENCES parent(id)
+);
+```
+
+Suggested change to the schema is as follows:
+
+```sql
+-- Parent table
+CREATE TABLE parent (
+  id INT PRIMARY KEY
+);
+
+-- Child table with index on foreign key
+CREATE TABLE child (
+  id INT,
+  parent_id INT,
+  CONSTRAINT fk_parent FOREIGN KEY (parent_id) REFERENCES parent(id)
+);
+
+-- Add index on foreign key column
+CREATE INDEX idx_child_parent_id ON child (parent_id);
 ```

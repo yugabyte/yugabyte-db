@@ -183,7 +183,7 @@
       "resendActivationSubtitle": "Enter the email address associated with your account",
       "resetPasswordSubtitle": "Enter the email address associated with your account and we'll send you a link to reset your password.",
       "setPasswordSubtitle": "Enter the new password to continue reset.",
-      "dontHaveAccount": "Don’t have an account?<1>{{signup}}</1>",
+      "dontHaveAccount": "Don't have an account?<1>{{signup}}</1>",
       "inputEmail": "Email Address",
       "inputPassword": "Password",
       "forgotPassword": "Forgot your password?",
@@ -215,7 +215,7 @@
       "submitButton": "Start using YugabyteDB Managed",
       "submitButtonNew": "Sign Up",
       "passwordHelper": "Minimum 8 characters; must have a combination of at least one lower case, one uppercase, one numbers and one special character",
-      "agreeToTermsAndPolicy": "By clicking the \"Start using YugabyteDB Managed\" button, you are creating a Yugabyte account, and you agree to Yugabyte’s <1>{{termsOfUse}}</1>.",
+      "agreeToTermsAndPolicy": "By clicking the \"Start using YugabyteDB Managed\" button, you are creating a Yugabyte account, and you agree to Yugabyte's <1>{{termsOfUse}}</1>.",
       "genericError": "Unable to authorise",
       "termsOfUse": "Terms of Use",
       "privacyPolicy": "privacy policy",
@@ -235,14 +235,14 @@
       "title": "Verify your email address",
       "checkInbox": "If an account is associated with email address, you will receive a verification link. Check your inbox at {{mailAddress}} Click the verification link in the email to verify your email address.",
       "buttonResend": "Resend verification email",
-      "couldNotFindVerificationMail": "If you don’t see an email make sure to check your spam folder. <br/> Link expired? <1>{{resendMail}}</1>.",
+      "couldNotFindVerificationMail": "If you don't see an email make sure to check your spam folder. <br/> Link expired? <1>{{resendMail}}</1>.",
       "successMessage": "If an account is associated with {{mailAddress}}, you will receive a verification link."
     },
     "sendResetPasswordMail": {
       "title": "Reset your password",
       "checkInbox": "If an account is associated with email address, you will receive a reset link. Check your inbox at {{mailAddress}} Click the reset link in the email to continue the password reset process.",
       "buttonResend": "Resend password reset mail",
-      "couldNotFindResetPasswordMail": "If you don’t see an email make sure to check your spam folder. <br/> Link expired? <1>{{resendMail}}</1>.",
+      "couldNotFindResetPasswordMail": "If you don't see an email make sure to check your spam folder. <br/> Link expired? <1>{{resendMail}}</1>.",
       "successMessage": "If an account is associated with {{mailAddress}}, you will receive a reset link."
     },
     "activateSignupUser": {
@@ -993,6 +993,7 @@
           "assessMigration": "Assess migration",
           "assessMigrationDesc": "Assess the source database to be migrated to check for database compatibility, evaluate cluster size requirements, and estimate migration complexity.",
           "assessMigrationLearn": "Learn more about migration assessment",
+          "voyagerCapitalize": "Voyager",
           "summary": {
             "heading": "Summary",
             "voyagerVersion": "Voyager Version",
@@ -1028,6 +1029,8 @@
             "viewSourceObjects": "View Source Objects",
             "viewDetails": "View Details",
             "schemaDetails": "Schema Details",
+            "groupByObjectType": "Group by object type",
+            "listAllObjects": "List all objects",
             "sourceObjects": {
               "heading": "Source Objects",
               "totalObjects": "Total Objects",
@@ -1035,6 +1038,8 @@
               "tableCount": "Table Count",
               "indexCount": "Index Count",
               "functionCount": "Function Count",
+              "count": "Count",
+              "totalSize": "Total Size",
               "type": "Type",
               "search": "Search",
               "searchPlaceholder": "Search object name",
@@ -1061,7 +1066,19 @@
               "memory": "Memory",
               "optimalSelectConn": "Optimal Select Connections",
               "optimalInsertConn": "Optimal Insert Connections",
-              "noOfConnections": "Number of Connections"
+              "noOfConnections": "Number of Connections",
+              "metric": "Metric",
+              "recommendedCluster": "Recommended Cluster",
+              "currentCluster": "Current Cluster",
+              "status": "Status",
+              "nodeConfig": "Node Configuration",
+              "total": "Total",
+              "comparisonModalTitle": "Recommended Cluster vs. Current Cluster",
+              "throughputNotAchieved": "Throughput will not be achieved",
+              "withCurrentCluster": "with the current cluster.",
+              "compareDifferences": "Compare Differences",
+              "successPrefix": "The ",
+              "successSuffix": "meets our recommendation."
             },
             "schema": {
               "heading": "Schema Recommendation",
@@ -1109,14 +1126,14 @@
               "category": "Category",
               "issueType": "Issue Type",
               "occurrences": "Occurrences",
-              "objectName": "Object Name : ",
+              "objectName": "Object Name",
               "previewSqlStatement": "Preview SQL Statement/Object",
               "workaround": "Workaround",
               "linkToDocs": "Link to docs",
               "linkToGithub": "Link to Github issue",
               "notAvailable": "N/A",
               "issueDetails": "Issue Details",
-              "targetDBVersion": "Target Database Version : ",
+              "targetDBVersion": "Target Database Version ",
               "targetDBVersionTooltip": "Problems reported are according to target DB version.",
               "minVersionsFixedIn": "Minimum Versions Fixed In",
               "minVersionsFixedInTooltip": "This column shows the minimum target database versions where the issue is resolved."
@@ -1146,6 +1163,7 @@
             "objectCount": "Object Count",
             "expandAll": "Expand All",
             "collapseAll": "Collapse All",
+            "seeDetails": "See Details",
             "details": {
               "heading": "Unsupported Data Type: {{datatype}}",
               "search": "Search",
@@ -1819,7 +1837,7 @@
         "help1": "Reads and writes will be disabled.",
         "help2": "Any configured alerts and health checks will not be triggered.",
         "help3": "Scheduled backups will be stopped.",
-        "help4": "Regular updates and maintenance won’t be performed.",
+        "help4": "Regular updates and maintenance won't be performed.",
         "title2": "While the cluster is paused:",
         "help5": "Any changes to the cluster configuration are not allowed.",
         "help6": "All data in the cluster will be saved and the cluster can be resumed at any time."
@@ -1859,7 +1877,7 @@
         "viewDetails": "View Details",
         "reschedule": "Reschedule",
         "upgradeScheduled": "This cluster is scheduled to upgrade to YugabyteDB v{{version}}. See <1>{{whatsNew}}</1>.",
-        "whatsNew": "What’s New",
+        "whatsNew": "What's New",
         "upgradeWindow": "Upgrade Window",
         "whatWillHappen": "What will happen?",
         "noDownTimeUpgrade": "YugabyteDB Managed will upgrade the cluster in a <1>{{rollingManner}}</1> which will upgrade one node at a time with zero downtime. ",
@@ -2022,7 +2040,7 @@
         "recipients": "Recipient(s)",
         "invaidEmail": "Invalid email",
         "sendTestEmail": "Send Test Email",
-        "testEmailSent": "Test email is sent, please check your inbox. If you didn’t receive the email, ",
+        "testEmailSent": "Test email is sent, please check your inbox. If you didn't receive the email, ",
         "emailSuccess1": "1. Check your spam emails",
         "emailSuccess2": "2. Ensure emails from Yugabyte are not blocked by your admin"
       },
@@ -2058,10 +2076,10 @@
           "name": "Name",
           "noFilterResults": "No notification matches the enabled filters. Adjust the filter for more results.",
           "noNotifications": "No notifications found",
-          "noNotificationsToReview": "You don’t have any notification to review.",
+          "noNotificationsToReview": "You don't have any notification to review.",
           "openNotifications": "Open Notifications",
           "triggerTime": "Trigger Time",
-          "validateNoNotifications": "If this doesn’t look right to you, go to the <1>{{alertConfigurations}}</1> page to enable the alerts that you want to monitor."
+          "validateNoNotifications": "If this doesn't look right to you, go to the <1>{{alertConfigurations}}</1> page to enable the alerts that you want to monitor."
         }
       },
       "severityLabels": {
@@ -2392,6 +2410,6 @@
         "message_title": "Review YugabyteDB on G2",
         "link_text": "Click here"
       }
-    }    
+    }
   }
 }

@@ -15,7 +15,7 @@ import ArrowRightIcon from "@app/assets/caret-right-circle.svg";
 import { GenericFailure, YBButton, YBInput, YBSelect, YBTable } from "@app/components";
 import type { Migration } from "./MigrationOverview";
 import { MigrationsGetStarted } from "./MigrationGetStarted";
-import RefreshIcon from "@app/assets/refresh.svg";
+import RefreshCustomIcon from "@app/assets/refresh.svg";
 import SearchIcon from "@app/assets/search.svg";
 import { MigrationListSourceDBSidePanel, SourceDBProps } from "./MigrationListSourceDBSidePanel";
 import CaretRightIcon from "@app/assets/caret-right.svg";
@@ -30,6 +30,7 @@ import { useLocalStorage } from "react-use";
 import { getMemorySizeUnits } from '@app/helpers';
 import PlusIcon from '@app/assets/plus.svg';
 import { ComplexityComponent } from "./ComplexityComponent";
+import { formatTimestampWithTz } from "@app/helpers/utils";
 
 const useStyles = makeStyles((theme) => ({
   arrowComponent: {
@@ -39,8 +40,8 @@ const useStyles = makeStyles((theme) => ({
     },
   },
   complexity: {
-    width: 16,
-    height: 16,
+    width: theme.spacing(2),
+    height: theme.spacing(2),
     borderRadius: "100%",
     border: `1px solid ${theme.palette.grey[300]}`,
   },
@@ -51,6 +52,42 @@ const useStyles = makeStyles((theme) => ({
   heading: {
     marginBottom: theme.spacing(2),
   },
+  assessmentBadge: {
+    height: theme.spacing(3),
+    padding: theme.spacing(0.5, 0.75),
+    gap: theme.spacing(0.5),
+    borderRadius: theme.spacing(0.75),
+    background: theme.palette.primary[100],
+    color: theme.palette.primary[600],
+    fontFamily: theme.typography.fontFamily,
+    fontSize: theme.typography.fontSize,
+    fontStyle: 'normal',
+    fontWeight: theme.typography.body2.fontWeight,
+    lineHeight: '16px',
+  },
+  migrationsHeading: {
+    color: theme.palette.text.primary,
+    fontFamily: theme.typography.fontFamily,
+    fontSize: theme.typography.fontSize,
+    fontStyle: 'normal',
+    fontWeight: theme.typography.body1.fontWeight,
+    lineHeight: '16px',
+  },
+  migrationsHeader: {
+    paddingTop: theme.spacing(1),
+    paddingBottom: theme.spacing(3),
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center"
+  },
+  fullWidthDivider: {
+    height: "1px",
+    backgroundColor: theme.palette.divider,
+    marginBottom: theme.spacing(3.5),
+    marginLeft: theme.spacing(-12.5),
+    marginRight: theme.spacing(-12.5),
+    width: `calc(100% + ${theme.spacing(25)})`
+  },
   stat: {
     display: "flex",
     gap: theme.spacing(6),
@@ -59,10 +96,11 @@ const useStyles = makeStyles((theme) => ({
     borderRight: `1px solid ${theme.palette.grey[300]}`,
   },
   label: {
-    color: theme.palette.grey[500],
-    fontWeight: theme.typography.fontWeightMedium as number,
-    textTransform: "uppercase",
+    fontSize: theme.typography.subtitle1.fontSize,
+    fontWeight: theme.typography.button.fontWeight,
+    color: theme.palette.text.secondary,
     textAlign: "left",
+    textTransform: "uppercase",
   },
   statLabel: {
     marginBottom: theme.spacing(0.75),
@@ -88,8 +126,25 @@ const useStyles = makeStyles((theme) => ({
     cursor: "pointer",
   },
   noMigrationsPaper: {
-    paddingBottom: "10px",
+    paddingBottom: theme.spacing(1.25),
   },
+  tableRowBg: {
+    '& .MuiTableBody-root .MuiTableRow-root:nth-of-type(odd)': {
+      background: '#F7F9FB !important'
+    }
+  },
+  refreshButton: {
+    padding: `${theme.spacing(0.5, 1.875, 0.5, 1.5)} !important`,
+    "& .MuiButton-startIcon": {
+      marginRight: `${theme.spacing(0.625)} !important`
+    },
+    "& .MuiButton-label": {
+      display: "flex",
+      alignItems: "center",
+      gap: theme.spacing(0.625)
+    }
+  },
+
 }));
 
 interface MigrationListProps {
@@ -147,72 +202,72 @@ export const MigrationList: FC<MigrationListProps> = ({
   // This is passed to the mui-datatable component to prevent it from
   // rendering a message if the table is empty, so we can use our own
   // component which is rendered when there are no migrations.
-  var migrationSampleData: (typeof migrationNewData) = [{landing_step: 0}]
-//   var migrationSampleData: (typeof migrationNewData) = [
-//     {
-//       migration_uuid: "c8fc9318-4872-11ee-bdc6-42010a97001c",
-//       migration_name: "migration000002",
-//       migration_type: "Offline",
-//       source_db: {
-//         ip: "120.120.120.112",
-//         port: "24",
-//         engine: "PostgreSQL",
-//         version: "15.6",
-//         database: "dbpublic-staging",
-//         schema: "Public",
-//       },
-//       voyager: {
-//         machine_ip: "120.24.10.224",
-//         os: "Ubuntu",
-//         avail_disk_bytes: "123456789",
-//         export_dir: "file://folder/subfolder/filename",
-//         exported_schema_location: "file://folder/subfolder/filename",
-//       },
-//       target_cluster: {
-//         ip: "123.123.123.123",
-//         port: "5433",
-//         engine: "yugabytedb",
-//         version: "11.2-YB-2.23.1.0-b0"
-//       },
-//       complexity: "LOW",
-//       progress: "Assessment",
-//       landing_step: 0,
-//       start_timestamp: "2024-09-19 14:05:58",
-//     },
-//     {
-//       migration_uuid: "a728a3d7-486c-11ee-8b83-42010a97001a",
-//       migration_name: "migration000003",
-//       migration_type: "Live",
-//       source_db: {
-//         ip: "120.120.120.113",
-//         port: "24",
-//         engine: "Oracle",
-//         version: "19c",
-//         database: "dbpublic-staging",
-//         schema: "Public",
-//       },
-//       voyager: {
-//         machine_ip: "120.24.10.225",
-//         os: "Ubuntu",
-//         avail_disk_bytes: "123456789",
-//         export_dir: "file://folder/subfolder/filename",
-//         exported_schema_location: "file://folder/subfolder/filename",
-//       },
-//       target_cluster: {
-//         ip: "123.123.123.123",
-//         port: "5433",
-//         engine: "yugabytedb",
-//         version: "11.2-YB-2.23.1.0-b0"
-//     },
-//       complexity: "HIGH",
-//       progress: "Schema migration",
-//       landing_step: 1,
-//       start_timestamp: "2024-09-19 14:57:36",
-//     },
-//   ];
+  var migrationSampleData: (typeof migrationNewData) = [{ landing_step: 0 }]
+  //   var migrationSampleData: (typeof migrationNewData) = [
+  //     {
+  //       migration_uuid: "c8fc9318-4872-11ee-bdc6-42010a97001c",
+  //       migration_name: "migration000002",
+  //       migration_type: "Offline",
+  //       source_db: {
+  //         ip: "120.120.120.112",
+  //         port: "24",
+  //         engine: "PostgreSQL",
+  //         version: "15.6",
+  //         database: "dbpublic-staging",
+  //         schema: "Public",
+  //       },
+  //       voyager: {
+  //         machine_ip: "120.24.10.224",
+  //         os: "Ubuntu",
+  //         avail_disk_bytes: "123456789",
+  //         export_dir: "file://folder/subfolder/filename",
+  //         exported_schema_location: "file://folder/subfolder/filename",
+  //       },
+  //       target_cluster: {
+  //         ip: "123.123.123.123",
+  //         port: "5433",
+  //         engine: "yugabytedb",
+  //         version: "11.2-YB-2.23.1.0-b0"
+  //       },
+  //       complexity: "LOW",
+  //       progress: "Assessment",
+  //       landing_step: 0,
+  //       start_timestamp: "2024-09-19 14:05:58",
+  //     },
+  //     {
+  //       migration_uuid: "a728a3d7-486c-11ee-8b83-42010a97001a",
+  //       migration_name: "migration000003",
+  //       migration_type: "Live",
+  //       source_db: {
+  //         ip: "120.120.120.113",
+  //         port: "24",
+  //         engine: "Oracle",
+  //         version: "19c",
+  //         database: "dbpublic-staging",
+  //         schema: "Public",
+  //       },
+  //       voyager: {
+  //         machine_ip: "120.24.10.225",
+  //         os: "Ubuntu",
+  //         avail_disk_bytes: "123456789",
+  //         export_dir: "file://folder/subfolder/filename",
+  //         exported_schema_location: "file://folder/subfolder/filename",
+  //       },
+  //       target_cluster: {
+  //         ip: "123.123.123.123",
+  //         port: "5433",
+  //         engine: "yugabytedb",
+  //         version: "11.2-YB-2.23.1.0-b0"
+  //     },
+  //       complexity: "HIGH",
+  //       progress: "Schema migration",
+  //       landing_step: 1,
+  //       start_timestamp: "2024-09-19 14:57:36",
+  //     },
+  //   ];
 
   const getDbEngineString = (engine: string | undefined): string | undefined => {
-    switch(engine?.toLowerCase()) {
+    switch (engine?.toLowerCase()) {
       case "yugabytedb":
         return "YugabyteDB";
       case "postgresql":
@@ -245,13 +300,18 @@ export const MigrationList: FC<MigrationListProps> = ({
             <Box>
               <Typography variant="body1">{migrations[dataIndex]?.migration_name}</Typography>
               {migrationColSettings.migration_type && (
-                <Typography variant="body2">{migrations[dataIndex]?.migration_type}</Typography>
+                <Typography
+                  variant="body2"
+                  style={{ fontSize: theme.typography.subtitle1.fontSize }}
+                >
+                  {migrations[dataIndex]?.migration_type}
+                </Typography>
               )}
             </Box>
           );
         },
-        setCellHeaderProps: () => ({ style: { padding: "24px 16px" } }),
-        setCellProps: () => ({ style: { padding: "16px 16px" } }),
+        setCellHeaderProps: () => ({ style: { padding: theme.spacing(3, 2) } }),
+        setCellProps: () => ({ style: { padding: theme.spacing(2) } }),
       },
     },
     {
@@ -270,15 +330,18 @@ export const MigrationList: FC<MigrationListProps> = ({
                 </Link>
               )}
               {migrationColSettings.engineVersion && (
-                <Typography variant="body2">
+                <Typography
+                  variant="body2"
+                  style={{ fontSize: theme.typography.subtitle1.fontSize }}
+                >
                   {getDbEngineString(sourceDB?.engine)} {sourceDB?.version}
                 </Typography>
               )}
             </Box>
           );
         },
-        setCellHeaderProps: () => ({ style: { padding: "24px 16px" } }),
-        setCellProps: () => ({ style: { padding: "16px 16px" } }),
+        setCellHeaderProps: () => ({ style: { padding: theme.spacing(3, 2) } }),
+        setCellProps: () => ({ style: { padding: theme.spacing(2) } }),
       },
     },
     {
@@ -293,8 +356,10 @@ export const MigrationList: FC<MigrationListProps> = ({
             </Box>
           );
         },
-        setCellHeaderProps: () => ({ style: { width: "120px", padding: "24px 16px" } }),
-        setCellProps: () => ({ style: { padding: "16px 16px" } }),
+        setCellHeaderProps: () => ({
+          style: { width: theme.spacing(15), padding: theme.spacing(3, 2) },
+        }),
+        setCellProps: () => ({ style: { padding: theme.spacing(2) } }),
       },
     },
     {
@@ -309,8 +374,10 @@ export const MigrationList: FC<MigrationListProps> = ({
             </Box>
           );
         },
-        setCellHeaderProps: () => ({ style: { width: "110px", padding: "24px 16px" } }),
-        setCellProps: () => ({ style: { padding: "16px 16px" } }),
+        setCellHeaderProps: () => ({
+          style: { width: theme.spacing(13.75), padding: theme.spacing(3, 2) },
+        }),
+        setCellProps: () => ({ style: { padding: theme.spacing(2) } }),
       },
     },
     {
@@ -318,8 +385,8 @@ export const MigrationList: FC<MigrationListProps> = ({
       label: t("clusterDetail.voyager.voyagerInstance"),
       options: {
         display: migrationColSettings.voyagerInstance || migrationColSettings.machine_ip ||
-                 migrationColSettings.os || migrationColSettings.availableDiskSpace ||
-                 migrationColSettings.exportDir,
+          migrationColSettings.os || migrationColSettings.availableDiskSpace ||
+          migrationColSettings.exportDir,
         customBodyRender: (voyager: (typeof migrationNewData)[number]["voyager"]) => {
           return (
             <Box>
@@ -333,8 +400,8 @@ export const MigrationList: FC<MigrationListProps> = ({
             </Box>
           );
         },
-        setCellHeaderProps: () => ({ style: { padding: "24px 16px" } }),
-        setCellProps: () => ({ style: { padding: "16px 16px" } }),
+        setCellHeaderProps: () => ({ style: { padding: theme.spacing(3, 2) } }),
+        setCellProps: () => ({ style: { padding: theme.spacing(2) } }),
       },
     },
     {
@@ -342,7 +409,7 @@ export const MigrationList: FC<MigrationListProps> = ({
       label: t("clusterDetail.voyager.targetCluster"),
       options: {
         display: migrationColSettings.targetCluster || migrationColSettings.target_engineVersion ||
-                 migrationColSettings.target_host_ip,
+          migrationColSettings.target_host_ip,
         customBodyRender: (targetCluster: (typeof migrationNewData)[number]["target_cluster"]) => {
           return (
             <Box>
@@ -360,24 +427,26 @@ export const MigrationList: FC<MigrationListProps> = ({
             </Box>
           );
         },
-        setCellHeaderProps: () => ({ style: { padding: "24px 16px" } }),
-        setCellProps: () => ({ style: { padding: "16px 16px" } }),
+        setCellHeaderProps: () => ({ style: { padding: theme.spacing(3, 2) } }),
+        setCellProps: () => ({ style: { padding: theme.spacing(2) } }),
       },
     },
     ...(migrationColSettings.complexity
       ? [
-          {
-            name: "complexity",
-            label: t("clusterDetail.voyager.complexity"),
-            options: {
-              customBodyRender: (complexity: (typeof migrationNewData)[number]["complexity"]) => {
-                return <ComplexityComponent complexity={complexity ?? ""}/>;
-              },
-              setCellHeaderProps: () => ({ style: { width: "120px", padding: "24px 16px" } }),
-              setCellProps: () => ({ style: { padding: "16px 16px" } }),
+        {
+          name: "complexity",
+          label: t("clusterDetail.voyager.complexity"),
+          options: {
+            customBodyRender: (complexity: (typeof migrationNewData)[number]["complexity"]) => {
+              return <ComplexityComponent complexity={complexity ?? ""} />;
             },
+            setCellHeaderProps: () => ({
+              style: { width: theme.spacing(15), padding: theme.spacing(3, 2) },
+            }),
+            setCellProps: () => ({ style: { padding: theme.spacing(2) } }),
           },
-        ]
+        },
+      ]
       : []),
     {
       name: "start_timestamp",
@@ -389,13 +458,15 @@ export const MigrationList: FC<MigrationListProps> = ({
           return (
             <Box>
               {migrationColSettings.start_timestamp && (
-                <Typography variant="body2">{migrations[dataIndex].start_timestamp}</Typography>
+                <Typography variant="body2">
+                  {formatTimestampWithTz(migrations[dataIndex].start_timestamp || "")}
+                </Typography>
               )}
             </Box>
           );
-        },  
-        setCellHeaderProps: () => ({ style: { padding: "24px 16px" } }),
-        setCellProps: () => ({ style: { padding: "16px 16px" } }),
+        },
+        setCellHeaderProps: () => ({ style: { padding: theme.spacing(3, 2) } }),
+        setCellProps: () => ({ style: { padding: theme.spacing(2) } }),
       },
     },
     {
@@ -404,21 +475,24 @@ export const MigrationList: FC<MigrationListProps> = ({
       options: {
         display: true, // always display this one since it has the clickable arrow
         customBodyRenderLite: (dataIndex: number) => {
+          const progress = migrations[dataIndex].progress;
+          const isAssessment = progress === "Assessment";
           return (
             <Box display="flex" alignItems="center" justifyContent="space-between" gridGap={10}>
               <YBBadge
                 variant={
-                  migrations[dataIndex].progress === "Assessment"
+                  isAssessment
                     ? BadgeVariant.Light
-                    : migrations[dataIndex].progress === "Schema migration"
-                    ? BadgeVariant.InProgress
-                    : migrations[dataIndex].progress === "Data migration"
-                    ? BadgeVariant.Info
-                    : migrations[dataIndex].progress === "Completed"
-                    ? BadgeVariant.Success
-                    : undefined
+                    : progress === "Schema migration"
+                      ? BadgeVariant.InProgress
+                      : progress === "Data migration"
+                        ? BadgeVariant.Info
+                        : progress === "Completed"
+                          ? BadgeVariant.Success
+                          : undefined
                 }
-                text={migrations[dataIndex].progress}
+                className={isAssessment ? classes.assessmentBadge : ""}
+                text={progress}
                 icon={false}
               />
               {!mode && (
@@ -430,8 +504,8 @@ export const MigrationList: FC<MigrationListProps> = ({
             </Box>
           );
         },
-        setCellHeaderProps: () => ({ style: { padding: "24px 16px" } }),
-        setCellProps: () => ({ style: { padding: "16px 16px" } }),
+        setCellHeaderProps: () => ({ style: { padding: theme.spacing(3, 2) } }),
+        setCellProps: () => ({ style: { padding: theme.spacing(2) } }),
       },
     },
   ];
@@ -459,12 +533,12 @@ export const MigrationList: FC<MigrationListProps> = ({
         }
 
         if (migrationType &&
-            migrationType.toLowerCase() !== migration.migration_type?.toLowerCase()) {
+          migrationType.toLowerCase() !== migration.migration_type?.toLowerCase()) {
           return false;
         }
 
         if (sourceEngine &&
-            sourceEngine.toLowerCase() !== migration.source_db?.engine?.toLowerCase()) {
+          sourceEngine.toLowerCase() !== migration.source_db?.engine?.toLowerCase()) {
           return false;
         }
 
@@ -478,13 +552,13 @@ export const MigrationList: FC<MigrationListProps> = ({
       unarchivedMigrations: !filteredMigrations
         ? []
         : filteredMigrations.filter(
-            (m) => !archivedMigrations.find((uuid) => uuid === m.migration_uuid)
-          ),
+          (m) => !archivedMigrations.find((uuid) => uuid === m.migration_uuid)
+        ),
       archivedMigrations: !filteredMigrations
         ? []
         : filteredMigrations.filter((m) =>
-            archivedMigrations.find((uuid) => uuid === m.migration_uuid)
-          ),
+          archivedMigrations.find((uuid) => uuid === m.migration_uuid)
+        ),
     }),
     [filteredMigrations, archivedMigrations]
   );
@@ -496,7 +570,27 @@ export const MigrationList: FC<MigrationListProps> = ({
           <GenericFailure />
         ) : (
           <Box>
-            <Box display="flex" justifyContent="space-between" my={2} alignItems="end" gridGap={10}>
+            {/* Migrations heading and Migrate Database button - same horizontal line */}
+            <Box className={classes.migrationsHeader}>
+              <Typography className={classes.migrationsHeading}>
+                {"Migrations"}
+              </Typography>
+              {!!migrationDataProp?.length && !hasError && (
+                <YBButton
+                  variant="primary"
+                  onClick={onNewMigration}
+                  startIcon={<PlusIcon />}
+                >
+                  {t('clusterDetail.voyager.gettingStarted.migrateDatabase')}
+                </YBButton>
+              )}
+            </Box>
+
+            {/* Custom divider - full width */}
+            <Box className={classes.fullWidthDivider} />
+
+            {/* Search and filter controls */}
+            <Box display="flex" justifyContent="space-between" alignItems="end" mb={2} mt="28px">
               <Box display="flex" alignItems="center" gridGap={10} maxWidth={1024} flex={1}>
                 <Box flex={3}>
                   <Typography variant="body1" className={classes.label}>
@@ -508,7 +602,8 @@ export const MigrationList: FC<MigrationListProps> = ({
                     InputProps={{
                       startAdornment: <SearchIcon />,
                     }}
-                    onChange={(ev) => setSearch(ev.target.value)}
+                    onChange={(ev: React.ChangeEvent<HTMLInputElement>) =>
+                      setSearch(ev.target.value)}
                     value={search}
                   />
                 </Box>
@@ -519,7 +614,8 @@ export const MigrationList: FC<MigrationListProps> = ({
                   <YBSelect
                     className={classes.fullWidth}
                     value={migrationType}
-                    onChange={(e) => setMigrationType(e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                      setMigrationType(e.target.value)}
                   >
                     <MenuItem value="">All</MenuItem>
                     <Divider className={classes.divider} />
@@ -534,7 +630,8 @@ export const MigrationList: FC<MigrationListProps> = ({
                   <YBSelect
                     className={classes.fullWidth}
                     value={sourceEngine}
-                    onChange={(e) => setSourceEngine(e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                      setSourceEngine(e.target.value)}
                   >
                     <MenuItem value="">{t("common.all")}</MenuItem>
                     <Divider className={classes.divider} />
@@ -545,18 +642,6 @@ export const MigrationList: FC<MigrationListProps> = ({
                 </Box>
               </Box>
               <Box>
-                {!!migrationDataProp?.length && (
-                  <YBButton
-                    variant="primary"
-                    onClick={onNewMigration}
-                    startIcon={<PlusIcon />}
-                  >
-                    {t('clusterDetail.voyager.gettingStarted.migrateDatabase')}
-                  </YBButton>
-                )}
-                <YBButton variant="ghost" startIcon={<RefreshIcon />} onClick={onRefresh}>
-                    {t("clusterDetail.performance.actions.refresh")}
-                </YBButton>
                 <YBButton
                   variant="ghost"
                   startIcon={<EditIcon />}
@@ -564,60 +649,71 @@ export const MigrationList: FC<MigrationListProps> = ({
                 >
                   {t("clusterDetail.nodes.editColumns")}
                 </YBButton>
+                <YBButton
+                  variant="secondary"
+                  startIcon={<RefreshCustomIcon />}
+                  onClick={onRefresh}
+                  className={classes.refreshButton}
+                >
+                  {t("clusterDetail.performance.actions.refresh")}
+                </YBButton>
               </Box>
             </Box>
 
-            
-            {!migrationDataProp?.length && !hasError ? (
-                <Paper className={classes.noMigrationsPaper}>
-                    <YBTable
-                      data={migrationData.unarchivedMigrations}
-                      columns={migrationColumns(migrationData.unarchivedMigrations, archiveMode)}
-                      options={{
-                        customRowRender: () => <></>,
-                        pagination: !!(migrationData.unarchivedMigrations.length >= 10),
-                        selectableRows: archiveMode ? "multiple" : undefined,
-                        rowsSelected: selectedMigrations,
-                        onRowSelectionChange: (
-                          _currentRowsSelected: { index: number; dataIndex: number }[], // Single item array?
-                          _allRowsSelected: { index: number; dataIndex: number }[],
-                          rowsSelected: undefined | number[]
-                        ) => {
-                          setSelectedMigrations(rowsSelected ? [...rowsSelected] : []);
-                        },
-                      }}
-                      touchBorder
-                      alternateRowShading={!archiveMode}
-                      cellBorder
-                      noCellBottomBorder={!archiveMode}
-                      noHeaderBottomBorder
-                      withBorder={false}
-                    />
 
-                    <MigrationsGetStarted onNewMigration={onNewMigration}/>
-                </Paper>
-            ) : (
+            {!migrationDataProp?.length && !hasError ? (
+              <Paper className={classes.noMigrationsPaper}>
                 <YBTable
-                data={migrationData.unarchivedMigrations}
-                columns={migrationColumns(migrationData.unarchivedMigrations, archiveMode)}
-                options={{
-                  pagination: !!(migrationData.unarchivedMigrations.length >= 10),
-                  selectableRows: archiveMode ? "multiple" : undefined,
-                  rowsSelected: selectedMigrations,
-                  onRowSelectionChange: (
-                    _currentRowsSelected: { index: number; dataIndex: number }[], // Single item array?
-                    _allRowsSelected: { index: number; dataIndex: number }[],
-                    rowsSelected: undefined | number[]
-                  ) => {
-                    setSelectedMigrations(rowsSelected ? [...rowsSelected] : []);
-                  },
-                }}
-                touchBorder
-                alternateRowShading={!archiveMode}
-                cellBorder
-                noCellBottomBorder={!archiveMode}
-                withBorder
-              />
+                  data={migrationData.unarchivedMigrations}
+                  columns={migrationColumns(migrationData.unarchivedMigrations, archiveMode)}
+                  options={{
+                    customRowRender: () => <></>,
+                    pagination: !!(migrationData.unarchivedMigrations.length >= 10),
+                    selectableRows: archiveMode ? "multiple" : undefined,
+                    rowsSelected: selectedMigrations,
+                    onRowSelectionChange: (
+                      // Single item array?
+                      _currentRowsSelected: { index: number; dataIndex: number }[],
+                      _allRowsSelected: { index: number; dataIndex: number }[],
+                      rowsSelected: undefined | number[]
+                    ) => {
+                      setSelectedMigrations(rowsSelected ? [...rowsSelected] : []);
+                    },
+                  }}
+                  touchBorder
+                  alternateRowShading={!archiveMode}
+                  cellBorder
+                  noCellBottomBorder={!archiveMode}
+                  noHeaderBottomBorder
+                  withBorder={false}
+                />
+
+                <MigrationsGetStarted onNewMigration={onNewMigration} />
+              </Paper>
+            ) : (
+              <Box className={classes.tableRowBg}>
+                <YBTable
+                  data={migrationData.unarchivedMigrations}
+                  columns={migrationColumns(migrationData.unarchivedMigrations, archiveMode)}
+                  options={{
+                    pagination: !!(migrationData.unarchivedMigrations.length >= 10),
+                    selectableRows: archiveMode ? "multiple" : undefined,
+                    rowsSelected: selectedMigrations,
+                    onRowSelectionChange: (
+                      _currentRowsSelected: { index: number; dataIndex: number }[],
+                      _allRowsSelected: { index: number; dataIndex: number }[],
+                      rowsSelected: undefined | number[]
+                    ) => {
+                      setSelectedMigrations(rowsSelected ? [...rowsSelected] : []);
+                    }
+                  }}
+                  touchBorder
+                  alternateRowShading={!archiveMode}
+                  cellBorder
+                  noCellBottomBorder={!archiveMode}
+                  withBorder
+                />
+              </Box>
             )}
             <MigrationListSourceDBSidePanel
               open={!!sourceDBSelection}
@@ -724,7 +820,8 @@ export const MigrationList: FC<MigrationListProps> = ({
                   selectableRows: unarchiveMode ? "multiple" : undefined,
                   rowsSelected: selectedMigrations,
                   onRowSelectionChange: (
-                    _currentRowsSelected: { index: number; dataIndex: number }[], // Single item array?
+                    // Single item array?
+                    _currentRowsSelected: { index: number; dataIndex: number }[],
                     _allRowsSelected: { index: number; dataIndex: number }[],
                     rowsSelected: undefined | number[]
                   ) => {

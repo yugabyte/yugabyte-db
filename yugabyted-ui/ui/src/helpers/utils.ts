@@ -1,11 +1,11 @@
 import {
-    differenceInDays,
-    Interval,
-    intervalToDuration,
-    intlFormat,
-    subDays,
-    subHours,
-    subMinutes
+  differenceInDays,
+  Interval,
+  intervalToDuration,
+  intlFormat,
+  subDays,
+  subHours,
+  subMinutes
 } from 'date-fns';
 import { PASSWORD_MIN_LENGTH } from '@app/helpers/const';
 import {
@@ -455,4 +455,30 @@ export const extractUrlsAndText = (text: string): URLTextExtractionType[] => {
   }
 
   return parts;
+};
+
+export const capitalizeFirstLetter = (str: string) => {
+  if (!str)
+    return "";
+  return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+}
+
+// Formats a timestamp string as 'YYYY-MM-DD HH:mm:ss ZZZ' in the user's local timezone
+export const formatTimestampWithTz = (timestamp: string | number | Date): string => {
+  const date = new Date(timestamp);
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  const year = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  const hour = pad(date.getHours());
+  const minute = pad(date.getMinutes());
+  const second = pad(date.getSeconds());
+  // Try to get the short timezone abbreviation
+  let tz = date.toLocaleTimeString(undefined, { timeZoneName: 'short' }).split(' ').pop() || '';
+  // Fallback to getTimeZoneAbbreviated if needed
+  if (!tz || tz.length > 5) {
+    // getTimeZoneAbbreviated is already defined in this file
+    tz = getTimeZoneAbbreviated(date);
+  }
+  return `${year}-${month}-${day} ${hour}:${minute}:${second} ${tz}`;
 };

@@ -180,6 +180,11 @@ DEFINE_RUNTIME_PG_FLAG(
     "concurrent DDLs block on each other for serialization. Also, this flag is valid only if "
     "ysql_enable_db_catalog_version_mode and yb_enable_invalidation_messages are enabled.");
 
+DEFINE_NON_RUNTIME_bool(ysql_enable_read_request_cache_for_connection_auth, false,
+            "If true, use tserver response cache for authorization processing "
+            "during connection setup. Only applicable when connection manager "
+            "is used.");
+
 DECLARE_bool(TEST_ash_debug_aux);
 DECLARE_bool(TEST_generate_ybrowid_sequentially);
 DECLARE_bool(TEST_ysql_log_perdb_allocated_new_objectid);
@@ -208,6 +213,9 @@ bool PreloadAdditionalCatalogListValidator(const char* flag_name, const std::str
 } // namespace
 
 DEFINE_validator(ysql_catalog_preload_additional_table_list, PreloadAdditionalCatalogListValidator);
+
+YbcRecordTempRelationDDL_hook_type YBCRecordTempRelationDDL_hook =
+    &YBCDdlEnableForceCatalogModification;
 
 namespace yb::pggate {
 
@@ -2339,7 +2347,9 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_max_replication_slots = &FLAGS_max_replication_slots,
       .yb_max_recursion_depth = &FLAGS_yb_max_recursion_depth,
       .ysql_conn_mgr_stats_interval =
-          &FLAGS_ysql_conn_mgr_stats_interval
+          &FLAGS_ysql_conn_mgr_stats_interval,
+      .ysql_enable_read_request_cache_for_connection_auth =
+          &FLAGS_ysql_enable_read_request_cache_for_connection_auth,
   };
   // clang-format on
   return &accessor;
@@ -3159,6 +3169,12 @@ YbcStatus YBCPgRegisterSnapshotReadTime(
   YbcReadPointHandle tmp_handle;
   return ExtractValueFromResult(
       pgapi->RegisterSnapshotReadTime(read_time, use_read_time), handle ? handle : &tmp_handle);
+}
+
+void YBCRecordTempRelationDDL() {
+  if (YBCRecordTempRelationDDL_hook) {
+    YBCRecordTempRelationDDL_hook();
+  }
 }
 
 void YBCDdlEnableForceCatalogModification() {

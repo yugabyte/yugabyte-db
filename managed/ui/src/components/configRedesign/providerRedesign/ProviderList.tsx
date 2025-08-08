@@ -7,9 +7,9 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from 'react-query';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
-import { Dropdown, MenuItem } from 'react-bootstrap';
+import { Dropdown, DropdownButton, MenuItem } from 'react-bootstrap';
 import { Link } from 'react-router';
-import { Box, Typography } from '@material-ui/core';
+import { Box, makeStyles, Typography, useTheme } from '@material-ui/core';
 import { useInterval } from 'react-use';
 
 import { api, providerQueryKey, universeQueryKey } from '../../../redesign/helpers/api';
@@ -39,15 +39,16 @@ import { usePillStyles } from '../../../redesign/styles/styles';
 import { YBButton } from '../../../redesign/components';
 import { ProviderStatusLabel } from './components/ProviderStatusLabel';
 import { SortOrder } from '../../../redesign/helpers/constants';
-
-import { YBProvider, YBRegion } from './types';
-
 import {
   RbacValidator,
   hasNecessaryPerm
 } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { isRbacEnabled } from '../../../redesign/features/rbac/common/RbacUtils';
+import { useDropdownButtonStyles } from './useSplitButtonStyles';
+
+import { YBProvider, YBRegion } from './types';
+
 import styles from './ProviderList.module.scss';
 
 interface ProviderListCommonProps {
@@ -65,13 +66,44 @@ type ProviderListItem = YBProvider & {
   linkedUniverses: UniverseItem[];
 };
 
+const useStyles = makeStyles((theme) => ({
+  menuItemHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1)
+  },
+  menuItem: {
+    height: 'fit-content',
+
+    '& a': {
+      height: 'fit-content !important'
+    }
+  },
+  gradientTitle: {
+    padding: theme.spacing(0.25, 0.75),
+
+    border: `1px solid ${theme.palette.grey[300]}`,
+    borderRadius: '4px',
+    background: 'linear-gradient(273deg, #ED35EC 10%, #ED35C5 50%, #7879F1 85.17%, #5E60F0 99.9%)',
+    WebkitBackgroundClip: 'text',
+    WebkitTextFillColor: 'transparent',
+    backgroundClip: 'text',
+    color: 'transparent'
+  }
+}));
+
+const AUTOMATIC_PROVISIONING_DOC_URL =
+  'https://docs.yugabyte.com/preview/yugabyte-platform/prepare/server-nodes-software/software-on-prem';
 const TABLE_MIN_PAGE_SIZE = 10;
 
 export const ProviderList = (props: ProviderListProps) => {
   const { providerCode, setCurrentView } = props;
   const [isDeleteProviderModalOpen, setIsDeleteProviderModalOpen] = useState<boolean>(false);
   const [deleteProviderConfigSelection, setDeleteProviderConfigSelection] = useState<YBProvider>();
-  const classes = usePillStyles();
+  const splitButtonClasses = useDropdownButtonStyles();
+  const pillClasses = usePillStyles();
+  const classes = useStyles();
+  const theme = useTheme();
   const providerListQuery = useQuery(providerQueryKey.ALL, () => api.fetchProviderList());
   const universeListQuery = useQuery(universeQueryKey.ALL, () => api.fetchUniverseList());
   const queryClient = useQueryClient();
@@ -182,7 +214,7 @@ export const ProviderList = (props: ProviderListProps) => {
     return row.linkedUniverses.length ? (
       <Box display="flex" gridGap="5px" alignItems="center">
         <Typography variant="body2">In Use</Typography>
-        <div className={classes.pill}>{row.linkedUniverses.length}</div>
+        <div className={pillClasses.pill}>{row.linkedUniverses.length}</div>
       </Box>
     ) : (
       <Typography variant="body2">Not in Use</Typography>
@@ -203,6 +235,49 @@ export const ProviderList = (props: ProviderListProps) => {
       return { ...provider, linkedUniverses: linkedUniverses };
     });
 
+  const createOnPremProviderDropdown = (
+    <DropdownButton
+      className={splitButtonClasses.splitButton}
+      title="Create Config"
+      id="ProviderListView-CreateConfigDropdownMenu"
+      data-testid="ProviderListView-CreateConfigDropdownMenu"
+      pullRight={filteredProviderList.length > 0}
+    >
+      <MenuItem
+        eventKey="1"
+        onSelect={() => window.open(AUTOMATIC_PROVISIONING_DOC_URL, '_black', 'noopener')}
+        className={classes.menuItem}
+      >
+        <Box
+          display="flex"
+          flexDirection="column"
+          component="span"
+          height="fit-content"
+          gridGap={theme.spacing(1)}
+        >
+          <span className={classes.menuItemHeader}>
+            <Typography variant="body1">Automatic Provisioning</Typography>
+            <Typography variant="subtitle2" className={classes.gradientTitle}>
+              New
+            </Typography>
+          </span>
+          <span>
+            <Typography variant="subtitle1">Create a provider automatically. <u>Learn More</u></Typography>
+          </span>
+        </Box>
+      </MenuItem>
+      <MenuItem divider />
+      <RbacValidator
+        accessRequiredOn={ApiPermissionMap.CREATE_PROVIDER}
+        overrideStyle={{ display: 'block' }}
+        isControl
+      >
+        <MenuItem eventKey="2" onSelect={() => setCurrentView(ProviderDashboardView.CREATE)}>
+          <Typography variant="body1">Legacy Provisioning</Typography>
+        </MenuItem>
+      </RbacValidator>
+    </DropdownButton>
+  );
   const providerLabel =
     providerCode === ProviderCode.KUBERNETES && props.kubernetesProviderType
       ? KubernetesProviderTypeLabel[props.kubernetesProviderType]
@@ -210,34 +285,43 @@ export const ProviderList = (props: ProviderListProps) => {
   return (
     <>
       <Box display="flex" marginBottom="35px" justifyContent="space-between">
-        <Typography variant="h4">{`${
-          providerCode === ProviderCode.KUBERNETES && props.kubernetesProviderType
-            ? KubernetesProviderTypeLabel[props.kubernetesProviderType]
-            : ProviderLabel[providerCode]
-        } Configs`}</Typography>
-        {filteredProviderList.length > 0 && (
-          <RbacValidator accessRequiredOn={ApiPermissionMap.CREATE_PROVIDER} isControl>
-            <YBButton
-              style={{ marginLeft: 'auto', width: '200px' }}
-              variant="primary"
-              onClick={() => setCurrentView(ProviderDashboardView.CREATE)}
-              data-testid="ProviderListView-CreateConfigButton"
-            >
-              <i className="fa fa-plus" />
-              Create Config
-            </YBButton>
-          </RbacValidator>
-        )}
+        <Typography variant="h4">{`${providerLabel} Configs`}</Typography>
+        {filteredProviderList.length > 0 &&
+          (providerCode !== ProviderCode.ON_PREM ? (
+            <RbacValidator accessRequiredOn={ApiPermissionMap.CREATE_PROVIDER} isControl>
+              <YBButton
+                style={{ marginLeft: 'auto', width: 'fit-content' }}
+                variant="primary"
+                onClick={() => setCurrentView(ProviderDashboardView.CREATE)}
+                data-testid="ProviderListView-CreateConfigButton"
+              >
+                <i className="fa fa-plus" />
+                Create Config
+              </YBButton>
+            </RbacValidator>
+          ) : (
+            createOnPremProviderDropdown
+          ))}
       </Box>
       {filteredProviderList.length === 0 ? (
-        <EmptyListPlaceholder
-          variant="primary"
-          accessRequiredOn={ApiPermissionMap.CREATE_PROVIDER}
-          actionButtonText={`Create ${providerLabel} Config`}
-          descriptionText={`No ${providerLabel} config to show`}
-          onActionButtonClick={handleCreateProviderAction}
-          dataTestIdPrefix="ProviderEmptyList"
-        />
+        providerCode === ProviderCode.ON_PREM ? (
+          <EmptyListPlaceholder
+            variant="primary"
+            isCustomPrimaryAction
+            customPrimaryAction={createOnPremProviderDropdown}
+            descriptionText={`No ${providerLabel} config to show`}
+          />
+        ) : (
+          <EmptyListPlaceholder
+            variant="primary"
+            accessRequiredOn={ApiPermissionMap.CREATE_PROVIDER}
+            actionButtonText={`Create ${providerLabel} Config`}
+            descriptionText={`No ${providerLabel} config to show`}
+            onActionButtonClick={handleCreateProviderAction}
+            dataTestIdPrefix="ProviderEmptyList"
+            isCustomPrimaryAction={false}
+          />
+        )
       ) : (
         <>
           <div className={styles.bootstrapTableContainer}>

@@ -2672,7 +2672,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       Map<ServerType, String> previousGflagsChecksum =
           kubernetesManagerFactory
               .getManager()
-              .getServerTypeGflagsChecksumMap(namespace, helmReleaseName, azConfig);
+              .getServerTypeGflagsChecksumMap(namespace, helmReleaseName, azConfig, newNamingStyle);
       perAZServerTypeGflagsChecksumMap.put(azUUID, previousGflagsChecksum);
     }
     return perAZServerTypeGflagsChecksumMap;

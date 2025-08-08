@@ -26,7 +26,10 @@ struct od_server {
 	od_relay_t relay;
 	int is_allocated;
 	int is_transaction;
-	int is_copy;
+	/* Copy stmt state */
+	uint64_t done_fail_response_received;
+	uint64_t in_out_response_received;
+	/**/
 	int deploy_sync;
 	od_stat_state_t stats_state;
 
@@ -94,7 +97,8 @@ static inline void od_server_init(od_server_t *server, int reserve_prep_stmts)
 	server->idle_time = 0;
 	server->is_allocated = 0;
 	server->is_transaction = 0;
-	server->is_copy = 0;
+	server->done_fail_response_received = 0;
+	server->in_out_response_received = 0;
 	server->deploy_sync = 0;
 	server->sync_request = 0;
 	server->sync_reply = 0;

@@ -184,7 +184,16 @@ import-data:
   on-primary-key-conflict:
 ```
 
-| Action to take on primary key conflict during data import.<br>Accepted parameters: <ul><li> `ERROR` (Default): Import in this mode fails if any primary key conflict is encountered, indicating such conflicts are unexpected.</li><li>`IGNORE`: Skips rows that have an existing primary key allowing the import to continue for the remaining data.</li></ul> |
+| Action to take on primary key conflict during data import.<br> Accepted parameters: <ul><li> `ERROR` (Default): Import in this mode fails if any primary key conflict is encountered, indicating such conflicts are unexpected.</li><li>`IGNORE`: Skips rows that have an existing primary key allowing the import to continue for the remaining data.</li></ul> |
+
+| --error-policy-snapshot |
+
+```yaml{.nocopy}
+import-data:
+  error-policy-snapshot:
+```
+
+| Specifies how to handle errors when processing and importing rows to the target YugabyteDB database during the snapshot phase. Errors can arise from reading data from file, transforming rows, or ingesting them into YugabyteDB. <br> Accepted parameters: <ul><li> `abort` (Default) - Immediately aborts the process.</li><li> `stash-and-continue` - Stashes the errored rows to a file and continues the import.</li></ul> |
 
 | -e, --export-dir |
 

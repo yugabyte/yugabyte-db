@@ -875,7 +875,6 @@ TEST_F(PgAshTest, TestTServerMetadataSerializer) {
 }
 
 TEST_F(PgAshMasterMetadataSerializerTest, TestMasterMetadataSerializer) {
-  GTEST_SKIP() << "Skipping until #28129 is fixed";
   static constexpr auto kTableName = "test_table";
 
   ASSERT_OK(conn_->Execute(Format("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTableName)));

@@ -50,6 +50,9 @@ static const uint32_t kTemplate1Oid = 1;              // Hardcoded for template1
 // Hardcoded for pg_yb_invalidation_messages hardcoded (in pg_yb_invalidation_messages.h).
 static const uint32_t kPgYbInvalidationMessagesTableOid = 8080;
 
+// Hardcoded for pg_publication_rel (in pg_publication_rel.h).
+static const uint32_t kPgPublicationRelOid = 6106;
+
 extern const TableId kPgProcTableId;
 extern const TableId kPgYbCatalogVersionTableId;
 extern const TableId kPgYbCatalogVersionTableIdPriorVersion;

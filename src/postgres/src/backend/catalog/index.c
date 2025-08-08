@@ -2347,7 +2347,7 @@ index_drop(Oid indexId, bool concurrent, bool concurrent_lock_mode)
 
 	if (IsYugaByteEnabled() &&
 		userIndexRelation->rd_rel->relpersistence == RELPERSISTENCE_TEMP)
-		YBCDdlEnableForceCatalogModification();
+		YBCRecordTempRelationDDL();
 
 	/*
 	 * Drop Index Concurrently is more or less the reverse process of Create

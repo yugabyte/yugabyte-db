@@ -24,6 +24,8 @@
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 
 #include "yb/master/tasks_tracker.h"
+#include "yb/master/master_replication.proxy.h"
+#include "yb/master/sys_catalog_constants.h"
 
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
@@ -12106,6 +12108,74 @@ TEST_F(CDCSDKYsqlTest, TestYbRestartCommitTimeInPgReplicationSlots) {
     ASSERT_RESULT(HybridTimeToReadableString(entry->record_id_commit_time.value()));
 
   ASSERT_EQ(view_time, expected_time);
+}
+
+// This test verifies that we are able to call GetChanges successfully on master tablet.
+TEST_F(CDCSDKYsqlTest, TestPollingPgCatalogTables) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_dynamic_table_support) = false;
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication) = true;
+
+  ASSERT_OK(SetUpWithParams(3, 1));
+  xrepl::StreamId stream_id =
+      ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot("test_poll_catalog_tables"));
+
+  GetChangesRequestPB change_req;
+  GetChangesResponsePB change_resp;
+  change_req.set_stream_id(stream_id.ToString());
+  change_req.set_tablet_id(master::kSysCatalogTabletId);
+  change_req.set_wal_segment_index(0);
+  change_req.set_safe_hybrid_time(-1);
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute("CREATE TABLE test_1 (a int primary key, b text)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE test_2 (a int primary key, b text)"));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub_1 FOR TABLE test_1"));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub_2 FOR ALL TABLES"));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE test_3 (a int primary key, b text)"));
+  ASSERT_OK(conn.Execute("ALTER PUBLICATION pub_1 ADD TABLE test_3"));
+  ASSERT_OK(conn.Execute("ALTER PUBLICATION pub_1 DROP TABLE test_3"));
+
+  ASSERT_OK(conn.Execute("ALTER TABLE test_1 ADD COLUMN c text"));
+
+  rpc::RpcController change_rpc;
+  change_rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
+
+  // Just set the address as master.
+  cdc::CDCServiceProxy master_proxy_(
+      &test_client()->proxy_cache(),
+      ASSERT_RESULT(test_cluster_.mini_cluster_->GetLeaderMasterBoundRpcAddr()));
+  ASSERT_OK(master_proxy_.GetChanges(change_req, &change_resp, &change_rpc));
+  ASSERT_FALSE(change_resp.has_error());
+
+  // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
+  int record_count[] = {0, 0, 0, 0, 0, 0, 0, 0};
+
+  // We will receive 2 DDLs, one for pg_class and one for pg_publication_rel.
+  // Each CREATE TABLE will give 2 inserts and an update to pg_class in debug builds. In release
+  // build we get 3 inserts.
+  // Creation of pub_1 will result into one insert to pg_publication_rel.
+  // ALTER PUB ADD TABLE will give one insert and ALTER PUB DROP TABLE will give one delete.
+  // Creation of an all tables publication does not give any change record to us.
+  // ALTER TABLE will give one update to pg_class in debug builds and one insert in release builds.
+  // We will not receive any record corresponding to the addition of column in other catalog tables
+  // such as pg_attribute.
+  const int expected_count_without_packed_row[] = {2, 8, 4, 1, 0, 0, 8, 8};
+  const int expected_count_with_packed_row[] = {2, 12, 0, 1, 0, 0, 8, 8};
+
+  for (auto record : change_resp.cdc_sdk_proto_records()) {
+    UpdateRecordCount(record, record_count);
+  }
+
+  for (int i = 0; i < 8; i++) {
+    if (FLAGS_ysql_enable_packed_row) {
+      ASSERT_EQ(record_count[i], expected_count_with_packed_row[i]);
+    } else {
+      ASSERT_EQ(record_count[i], expected_count_without_packed_row[i]);
+    }
+  }
 }
 
 }  // namespace cdc

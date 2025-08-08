@@ -66,6 +66,7 @@ export const InstanceTypeList = ({
       onActionButtonClick={showAddInstanceTypeFormModal}
       className={clsx(isError && styles.emptyListError)}
       dataTestIdPrefix="InstanceTypeEmptyList"
+      isCustomPrimaryAction={false}
     />
   ) : (
     <div className={styles.bootstrapTableContainer}>
