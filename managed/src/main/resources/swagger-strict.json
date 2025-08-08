@@ -7294,6 +7294,10 @@
     "DrConfigGetResp" : {
       "description" : "disaster recovery get response",
       "properties" : {
+        "automaticDdlMode" : {
+          "description" : "Whether the config is using automatic DDL replication mode.",
+          "type" : "boolean"
+        },
         "bootstrapParams" : {
           "$ref" : "#/definitions/RestartBootstrapParams",
           "description" : "Bootstrap backup params for DR config"
