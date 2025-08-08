@@ -154,6 +154,7 @@ const std::unordered_set<std::string> kSupportedCommandTags {
     "ALTER AGGREGATE",
     "ALTER CAST",
     "ALTER COLLATION",
+    "ALTER DEFAULT PRIVILEGES",
     "ALTER DOMAIN",
     "ALTER FUNCTION",
     "ALTER OPERATOR",
