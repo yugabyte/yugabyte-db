@@ -2111,90 +2111,91 @@ Status Tablet::DoHandlePgsqlReadRequest(
   return status;
 }
 
-// Returns true if the query can be satisfied by rows present in current tablet.
-// Returns false if query requires other tablets to also be scanned. Examples of this include:
-//   (1) full table scan queries
-//   (2) queries that whose key conditions are such that the query will require a multi tablet
-//       scan.
-//
-// Requests that are of the form batched index lookups of ybctids are sent only to a single tablet.
-// However there can arise situations where tablets splitting occurs after such requests are being
-// prepared by the pggate layer (specifically pg_doc_op.cc). Under such circumstances, if tablets
-// are split into two sub-tablets, then such batched index lookups of ybctid requests should be sent
-// to multiple tablets (the two sub-tablets). Hence, the request ends up not being a single tablet
-// request.
-Result<bool> Tablet::IsQueryOnlyForTablet(
+// Find out if the request's scope is limited to only one tablet "permanently".
+// That means, the request has already been fulfilled, or request is conditioned to
+// a "non-splittable" area of the tablet.
+bool Tablet::MayTargetMultipleTablets(
     const PgsqlReadRequestPB& pgsql_read_request, size_t row_count) const {
-  // For cases when neither partition_column_values nor range_column_values are set,
-  // https://github.com/yugabyte/yugabyte-db/commit/57bee5a77d0df959c7fe0f000b65be97de9f90a0 removed
-  // routing to exact tablet containing requested key and ybctid is simply set to lower/upper bound
-  // key in order to have unified approach on setting partition_key.
-
-  // If ybctid is specified without batch_arguments we don't treat it as a single tablet request
-  // automatically, it can be continued until we hit upper bound (scan tablet with upper bound
-  // matching request upper bound).
-  if ((!pgsql_read_request.ybctid_column_value().value().binary_value().empty() &&
-       std::cmp_equal(std::max(pgsql_read_request.batch_arguments_size(), 1), row_count)) ||
-      !pgsql_read_request.partition_column_values().empty()) {
-    return true;
+  // Request is for ybctids and all they are processed
+  size_t ybctid_count = pgsql_read_request.batch_arguments_size();
+  // TODO The ybctid_column_value may be removed as well as this block
+  // See https://github.com/yugabyte/yugabyte-db/issues/28017 for details
+  if (ybctid_count == 0 &&
+      !pgsql_read_request.ybctid_column_value().value().binary_value().empty()) {
+    ybctid_count = 1;
   }
-
-  std::shared_ptr<const Schema> schema = metadata_->schema();
-  if (schema->has_cotable_id() || schema->has_colocation_id())  {
-    // This is a colocated table.
-    return true;
+  if (ybctid_count > 0 && ybctid_count == row_count) {
+    return false;
   }
-
-  if (schema->num_hash_key_columns() == 0 &&
-      schema->num_range_key_columns() ==
+  // Request was for specific number of rows, now completed.
+  // TODO may not be needed, see https://github.com/yugabyte/yugabyte-db/issues/28018
+  if (!pgsql_read_request.return_paging_state() &&
+      pgsql_read_request.has_limit() && row_count == pgsql_read_request.limit()) {
+    return false;
+  }
+  // Cases when request can't span onto multiple tablets:
+  // - colocated;
+  // - has partition_column_values (we currently don't allow partial partition_column_values, so it
+  // actually means "full partition_column_values", or specific hash code, in other words);
+  // - range partitioned and has full range_column_values, or specific PK value.
+  if (schema()->is_colocated()) {
+    return false;
+  }
+  if (!pgsql_read_request.partition_column_values().empty()) {
+    return false;
+  }
+  if (schema()->num_hash_key_columns() == 0 &&
+      schema()->num_range_key_columns() ==
           implicit_cast<size_t>(pgsql_read_request.range_column_values_size())) {
-    // PK is contained within this tablet.
-    return true;
+    return false;
   }
-  return false;
+  return true;
 }
 
-Result<bool> Tablet::HasScanReachedMaxPartitionKey(
-    const PgsqlReadRequestPB& pgsql_read_request,
-    const string& partition_key,
-    size_t row_count) const {
-  auto schema = metadata_->schema();
-
-  if (schema->num_hash_key_columns() > 0) {
-    uint16_t next_hash_code = dockv::PartitionSchema::DecodeMultiColumnHashValue(partition_key);
-    // For batched index lookup of ybctids, check if the current partition hash is lesser than
-    // upper bound. If it is, we can then avoid paging. Paging of batched index lookup of ybctids
-    // occur when tablets split after request is prepared.
-    if (implicit_cast<size_t>(pgsql_read_request.batch_arguments_size()) > row_count) {
-      if (!pgsql_read_request.upper_bound().has_key()) {
-          return false;
-      }
-      uint16_t upper_bound_hash = dockv::PartitionSchema::DecodeMultiColumnHashValue(
-          pgsql_read_request.upper_bound().key());
-      uint16_t partition_hash =
-          dockv::PartitionSchema::DecodeMultiColumnHashValue(partition_key);
-      return pgsql_read_request.upper_bound().is_inclusive() ?
-          partition_hash > upper_bound_hash :
-          partition_hash >= upper_bound_hash;
-    }
-    if (pgsql_read_request.has_max_hash_code() &&
-        next_hash_code > pgsql_read_request.max_hash_code()) {
-      return true;
-    }
-  } else if (pgsql_read_request.has_upper_bound()) {
-    dockv::DocKey partition_doc_key(*schema);
-    VERIFY_RESULT(partition_doc_key.DecodeFrom(
-        partition_key, dockv::DocKeyPart::kWholeDocKey, dockv::AllowSpecial::kTrue));
-    dockv::DocKey max_partition_doc_key(*schema);
-    VERIFY_RESULT(max_partition_doc_key.DecodeFrom(
-        pgsql_read_request.upper_bound().key(), dockv::DocKeyPart::kWholeDocKey,
-        dockv::AllowSpecial::kTrue));
-
-    auto cmp = partition_doc_key.CompareTo(max_partition_doc_key);
-    return pgsql_read_request.upper_bound().is_inclusive() ? cmp > 0 : cmp >= 0;
+// Find if the next partition is in the read scope, so the scan should (eventually) switch
+// partitions. Return pointer to the partition key if it is, nullptr otherwise.
+const std::string* Tablet::NextReadPartitionKey(
+    const PgsqlReadRequestPB& pgsql_read_request) const {
+  const auto& partition_key =
+      pgsql_read_request.is_forward_scan()
+          ? metadata_->partition()->partition_key_end()
+          : metadata_->partition()->partition_key_start();
+  if (partition_key.empty()) {
+    return nullptr;
   }
-
-  return false;
+  if (pgsql_read_request.is_forward_scan()) {
+    // Scan bound by hash code (always inclusive)
+    if (schema()->num_hash_key_columns() > 0 && pgsql_read_request.has_max_hash_code()) {
+      auto hash_code = dockv::PartitionSchema::DecodeMultiColumnHashValue(partition_key);
+      if (pgsql_read_request.max_hash_code() < hash_code) {
+        return nullptr;
+      }
+    }
+    if (pgsql_read_request.has_upper_bound()) {
+      if (pgsql_read_request.upper_bound().is_inclusive()) {
+        if (pgsql_read_request.upper_bound().key() < partition_key) {
+          return nullptr;
+        }
+      } else { // exclusive
+        if (pgsql_read_request.upper_bound().key() <= partition_key) {
+          return nullptr;
+        }
+      }
+    }
+  } else { // backward
+    if (schema()->num_hash_key_columns() > 0 && pgsql_read_request.has_hash_code()) {
+      auto hash_code = dockv::PartitionSchema::DecodeMultiColumnHashValue(partition_key);
+      if (pgsql_read_request.hash_code() >= hash_code) {
+        return nullptr;
+      }
+    }
+    if (pgsql_read_request.has_lower_bound() &&
+        pgsql_read_request.lower_bound().key() >= partition_key) {
+      return nullptr;
+    }
+  }
+  // No applicable bound, the partition key is in the read range
+  return &partition_key;
 }
 
 namespace {
@@ -2233,32 +2234,18 @@ void SetBackfillSpecForYsqlBackfill(
 Status Tablet::CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_read_request,
                                         const size_t row_count,
                                         PgsqlResponsePB* response) const {
-  // If there is no hash column in the read request, this is a full-table query. And if there is no
-  // paging state in the response, we are done reading from the current tablet. In this case, we
-  // should return the exclusive end partition key of this tablet if not empty which is the start
-  // key of the next tablet. Do so only if the request has no row count limit, or there is and we
-  // haven't hit it, or we are asked to return paging state even when we have hit the limit.
-  // Otherwise, leave the paging state empty which means we are completely done reading for the
-  // whole SELECT statement.
-  const bool single_tablet_query =
-      VERIFY_RESULT(IsQueryOnlyForTablet(pgsql_read_request, row_count));
-  if (!single_tablet_query &&
-      !response->has_paging_state() &&
-      (!pgsql_read_request.has_limit() || row_count < pgsql_read_request.limit() ||
-       pgsql_read_request.return_paging_state())) {
-    // For backward scans partition_key_start must be used as next_partition_key.
-    // Client level logic will check it and route next request to the preceding tablet.
-    const auto& next_partition_key =
-        pgsql_read_request.has_hash_code() ||
-        pgsql_read_request.is_forward_scan()
-            ? metadata_->partition()->partition_key_end()
-            : metadata_->partition()->partition_key_start();
-    // Check we did not reach the last tablet.
-    const bool end_scan = next_partition_key.empty() ||
-        VERIFY_RESULT(HasScanReachedMaxPartitionKey(
-            pgsql_read_request, next_partition_key, row_count));
-    if (!end_scan) {
-      response->mutable_paging_state()->set_next_partition_key(next_partition_key);
+  // Paging state may already be set by DocDB to resume scan of the local partition.
+  // Here we check if the request needs to switch to other partition. If DocDB haven't set the
+  // paging state the switch should happen now, so facilitate it.
+  // Hint PgGate about possible future partition switch by setting current_partition_end.
+  if (MayTargetMultipleTablets(pgsql_read_request, row_count)) {
+    const auto* next_partition_key = NextReadPartitionKey(pgsql_read_request);
+    if (next_partition_key) {
+      if (!response->has_paging_state()) {
+        // DocDB has done with the current tablet, time to switch to the next one
+        response->mutable_paging_state()->set_next_partition_key(*next_partition_key);
+      }
+      response->mutable_paging_state()->set_next_tablet_bound(*next_partition_key);
     }
   }
 
