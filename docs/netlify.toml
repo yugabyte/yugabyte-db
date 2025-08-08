@@ -124,6 +124,10 @@
   to = "/preview/drivers-orms/"
 
 [[redirects]]
+  from = "/explore/tunable-reads/"
+  to = "/preview/explore/going-beyond-sql/follower-reads-ycql/"
+
+[[redirects]]
   from = "/explore/*"
   to = "/preview/explore/:splat"
 
@@ -152,6 +156,10 @@
   to = "/preview/explore/ycql-language/indexes-constraints/unique-index-ycql"
 
 [[redirects]]
+  from = "/preview/explore/indexes-constraints/indexes-1/"
+  to = "/preview/explore/indexes-constraints/unique-index-ysql/"
+
+[[redirects]]
   from = "/preview/explore/indexes-constraints/*"
   to = "/preview/explore/ysql-language-features/indexes-constraints/:splat"
 
@@ -170,10 +178,6 @@
 [[redirects]]
   from = "/preview/explore/ysql-language-features/going-beyond-sql/*"
   to = "/preview/explore/going-beyond-sql/:splat"
-
-[[redirects]]
-  from = "/explore/tunable-reads/"
-  to = "/preview/explore/going-beyond-sql/follower-reads-ycql/"
 
 [[redirects]]
   from = "/preview/admin/cqlsh/"
@@ -355,10 +359,6 @@
 [[redirects]]
   from = "/preview/explore/high-performance/tunable-reads/"
   to = "/preview/explore/going-beyond-sql/follower-reads-ycql/"
-
-[[redirects]]
-  from = "/preview/explore/indexes-constraints/indexes-1/"
-  to = "/preview/explore/indexes-constraints/unique-index-ysql/"
 
 [[redirects]]
   from = "/preview/explore/linear-scalability/macos/"
