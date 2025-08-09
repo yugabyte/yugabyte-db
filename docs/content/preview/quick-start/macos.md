@@ -7,9 +7,8 @@ description: Get started using YugabyteDB in less than five minutes on macOS.
 aliases:
   - /preview/quick-start/create-local-cluster/
   - /preview/quick-start/install/
-  - /preview/quick-start/macos/
   - /preview/quick-start/
-  - /preview/tutorials/quick-start/
+  - /preview/tutorials/quick-start/macos/
 layout: single
 type: docs
 rightNav:
@@ -246,7 +245,7 @@ Alternatively, you can disable AirPlay receiving, then start YugabyteDB normally
 
 {{< /tabpane >}}
 
-{{< readfile "/preview/tutorials/quick-start/include-connect.md" >}}
+{{< readfile "/preview/quick-start/include-connect.md" >}}
 
 ## Build an application
 
@@ -254,7 +253,7 @@ Applications connect to and interact with YugabyteDB using API client libraries 
 
 ### Choose your language
 
-{{< readfile "/preview/tutorials/quick-start-yugabytedb-managed/quick-start-buildapps-include.md" >}}
+{{< readfile "/preview/quick-start-yugabytedb-managed/quick-start-buildapps-include.md" >}}
 
 ## Migrate from PostgreSQL
 

@@ -59,7 +59,7 @@ The flag `--no-cython` is necessary on MacOS Catalina and further MacOS releases
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start](/preview/tutorials/quick-start/macos/).
+- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start](/preview/quick-start/macos/).
 
 ### Write the sample Python application
 

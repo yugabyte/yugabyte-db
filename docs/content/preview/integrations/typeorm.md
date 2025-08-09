@@ -16,14 +16,14 @@ This document describes how to use [TypeORM](https://typeorm.io/), an ORM that c
 
 Before you can start using TypeORM, ensure that you have the following available:
 
-- YugabyteDB version 2.4 or later (see [Quick Start](/preview/tutorials/quick-start/macos/)).
+- YugabyteDB version 2.4 or later (see [Quick Start](/preview/quick-start/macos/)).
 
 - Node.js version 20.16.0 along with npm and npx (see [Downloading and installing Node.js](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm#using-a-node-installer-to-install-node-js-and-npm)).
 
 -  pg, the Node.js driver for yugabytedb
 ```
 npm install pg --save
-``` 
+```
 
 ## Using TypeORM
 
@@ -99,8 +99,8 @@ You can verify the code execution by looking for the changes inside the database
   The output should be as follows:
 
   ```output
-   id | firstName | lastName | age 
+   id | firstName | lastName | age
    ----+-----------+----------+-----
    1 | Timber    | Saw      |  25
    (1 row)
-  ```  
+  ```

@@ -6,7 +6,7 @@ headcontent: Get started in less than 5 minutes in the cloud or on your desktop
 description: Get started using YugabyteDB in less than five minutes on Linux.
 aliases:
   - /quick-start/linux/
-  - /preview/quick-start/linux/
+  - /preview/tutorials/quick-start/linux/
 type: docs
 rightNav:
   hideH4: true
@@ -119,7 +119,7 @@ To create a single-node local cluster with a replication factor (RF) of 1, run t
 
 Note: By default, yugabyted on Linux-based machines binds to the internal IP address. If it fails to do so, set the --advertise_address flag.
 
-{{< readfile "/preview/tutorials/quick-start/include-connect.md" >}}
+{{< readfile "/preview/quick-start/include-connect.md" >}}
 
 ## Build an application
 
@@ -127,7 +127,7 @@ Applications connect to and interact with YugabyteDB using API client libraries 
 
 ### Choose your language
 
-{{< readfile "/preview/tutorials/quick-start-yugabytedb-managed/quick-start-buildapps-include.md" >}}
+{{< readfile "/preview/quick-start-yugabytedb-managed/quick-start-buildapps-include.md" >}}
 
 ## Migrate from PostgreSQL
 

@@ -22,7 +22,7 @@ YugabyteDB provides PostgreSQL without limits and is an excellent fit for new or
     title="Get Started"
     description="Create your first cluster and build a sample application in 15 minutes."
     buttonText="Get started"
-    buttonUrl="/preview/tutorials/quick-start-yugabytedb-managed/"
+    buttonUrl="/preview/quick-start-yugabytedb-managed/"
     imageAlt="Laptop" imageUrl="/images/homepage/locally-laptop.svg"
   >}}
 

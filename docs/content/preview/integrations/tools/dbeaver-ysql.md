@@ -26,7 +26,7 @@ Before you can start using DBeaver with YSQL, you need to perform the following:
 
 - Start YugabyteDB.
 
-  For more information, see [Quick Start](/preview/tutorials/quick-start/macos/).
+  For more information, see [Quick Start](/preview/quick-start/macos/).
 
 - Install JRE or JDK for Java 8 or later.
 

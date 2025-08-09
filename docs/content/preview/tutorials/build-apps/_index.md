@@ -16,7 +16,7 @@ Applications connect to and interact with YugabyteDB using API client libraries 
 
 The tutorials in this section show how to connect applications to YugabyteDB using available [Drivers and ORMs](../../drivers-orms/).
 
-The tutorials assume you have deployed a YugabyteDB cluster in YugabyteDB Aeon or locally. Refer to [Quick start](/preview/tutorials/quick-start-yugabytedb-managed/).<br><br>
+The tutorials assume you have deployed a YugabyteDB cluster in YugabyteDB Aeon or locally. Refer to [Quick start](/preview/quick-start-yugabytedb-managed/).<br><br>
 
 {{<index/block>}}
 

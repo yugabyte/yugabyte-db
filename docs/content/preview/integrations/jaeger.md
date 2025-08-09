@@ -34,7 +34,7 @@ The following example is for testing purposes only. For production deployment, r
 
 To use Jaeger, ensure that you have the following:
 
-- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/preview/tutorials/quick-start/macos/).
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/preview/quick-start/macos/).
 
 - [Go 1.20](https://go.dev/doc/go1.20).
 

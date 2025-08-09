@@ -81,7 +81,7 @@ Find resources for getting started, migrating existing databases, using your dat
 **Product Lab**: [Create Global Applications](/preview/yugabyte-cloud/managed-labs/)
 : Test YugabyteDB features using a demo application in real time.
 
-**Documentation**: [Quick Start](/preview/tutorials/quick-start-yugabytedb-managed/)
+**Documentation**: [Quick Start](/preview/quick-start-yugabytedb-managed/)
 : Try it out for free, in the cloud or on your laptop.
 
 **Documentation**: [Start a multi-node cluster with Yugabyted](../reference/configuration/yugabyted/#create-a-local-multi-node-cluster)

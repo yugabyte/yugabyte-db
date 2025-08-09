@@ -28,7 +28,7 @@ The source for this application can be found in the [Using ORMs with YugabyteDB]
 
 This tutorial assumes that you have:
 
-- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/preview/tutorials/quick-start/macos/).
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/preview/quick-start/macos/).
 - PHP 7.3+
 - Laravel 8.40+
 - Composer (Dependency Manager for PHP)

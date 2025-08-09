@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-The tutorials assume you have deployed a YugabyteDB cluster in YugabyteDB Aeon or locally. Refer to [Quick start](/preview/tutorials/quick-start-yugabytedb-managed/).
+The tutorials assume you have deployed a YugabyteDB cluster in YugabyteDB Aeon or locally. Refer to [Quick start](/preview/quick-start-yugabytedb-managed/).
 
 In addition, if you are using YugabyteDB Aeon, you need the following to run the sample applications:
 

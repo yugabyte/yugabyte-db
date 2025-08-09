@@ -17,7 +17,7 @@ type: docs
 
 To use RabbitMQ, ensure that you have the following:
 
-- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/preview/tutorials/quick-start/macos/).
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/preview/quick-start/macos/).
 - [RabbitMQ](https://www.rabbitmq.com/download.html) installed and running.
 - IntelliJ Idea CE
 

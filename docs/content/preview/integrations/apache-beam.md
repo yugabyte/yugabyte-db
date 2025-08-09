@@ -16,7 +16,7 @@ type: docs
 
 ## Prerequisite
 
-To use Apache Beam, ensure that you have YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/preview/tutorials/quick-start/macos/).
+To use Apache Beam, ensure that you have YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/preview/quick-start/macos/).
 
 ## Setup
 

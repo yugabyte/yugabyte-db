@@ -20,7 +20,7 @@ Before you start using Keycloak, ensure that you have the following:
 
 - OpenJDK 21.
 - The latest version of [Keycloak](https://www.keycloak.org/downloads).
-- A YugabyteDB cluster. Refer to [YugabyteDB Quick start guide](/preview/tutorials/quick-start/macos/) to install and start a local cluster.
+- A YugabyteDB cluster. Refer to [YugabyteDB Quick start guide](/preview/quick-start/macos/) to install and start a local cluster.
 
 ## Configure and start Keycloak
 

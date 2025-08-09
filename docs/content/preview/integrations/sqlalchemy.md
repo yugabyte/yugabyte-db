@@ -15,7 +15,7 @@ This document describes how to use [SQLAlchemy](https://www.sqlalchemy.org/), a 
 
 ## Prerequisites
 
-- YugabyteDB version 2.6 or later (see [YugabyteDB Quick Start Guide](/preview/tutorials/quick-start/macos/)).
+- YugabyteDB version 2.6 or later (see [YugabyteDB Quick Start Guide](/preview/quick-start/macos/)).
 
 - Python version 2.7 or later.
 
