@@ -2,7 +2,7 @@
 title: Concurrency control
 headerTitle: Concurrency control
 linkTitle: Concurrency control
-description: Details about Concurrency control in YSQL
+description: Details about Concurrency control and optimistic and pessimistic locking in YSQL
 menu:
   v2024.2:
     identifier: architecture-concurrency-control
@@ -13,7 +13,7 @@ type: docs
 
 [Concurrency control](https://en.wikipedia.org/wiki/Concurrency_control) in databases ensures that multiple transactions can execute concurrently while preserving data integrity. Concurrency control is essential for correctness in environments where two or more transactions can access the same data at the same time.
 
-YugabyteDB provides two policies to handle conflicts between concurrent transactions as described in the following sections.
+YugabyteDB supports both "optimistic locking" and "pessimistic locking", however YugabyteDB uses the more precise terminology _Fail-on-conflict_ and _Wait-on-conflict_ to describe its concurrency control mechanisms.
 
 For information on how row-level explicit locking clauses behave with these concurrency control policies, refer to [Row-level explicit locking clauses](#row-level-explicit-locking-clauses).
 
@@ -308,7 +308,7 @@ Note that the retries will not be performed in case the amount of data to be sen
 
 ## Wait-on-Conflict
 
-This mode of concurrency control is applicable only for YSQL and provides the same semantics as PostgreSQL.
+This mode of concurrency control (sometimes referred to as "pessimistic locking") is applicable only for YSQL and provides the same semantics as PostgreSQL.
 
 In this mode, transactions are not assigned priorities. If a conflict occurs when a transaction T1 tries to read, write, or lock a row in a conflicting mode with a few other concurrent transactions, T1 will **wait** until all conflicting transactions finish by either committing or rolling back. Once all conflicting transactions have finished, T1 will:
 
