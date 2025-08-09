@@ -477,7 +477,12 @@ TEST_F(PgWrapperOneNodeClusterTest, TestPgStatUserTablesPersistence) {
 
   auto last_analyze_time_before_restart = ASSERT_RESULT(get_last_analyze_time());
 
-  pg_ts->Shutdown(SafeShutdown::kFalse);
+  auto shutdown_mode = SafeShutdown::kTrue;
+#ifdef HAVE_SYS_PRCTL_H
+  shutdown_mode = SafeShutdown::kFalse;
+#endif
+
+  pg_ts->Shutdown(shutdown_mode);
   LOG(INFO) << "Starting the tablet server again";
   ASSERT_OK(pg_ts->Restart(/* start_cql_proxy= */ false));
 
