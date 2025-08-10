@@ -16,8 +16,8 @@ type: indexpage
 
   {{<index/item
     title="YSQL Connection Manager"
-    body="Set up the built-in connection pooling manager for YSQL."
+    body="Built-in connection pooling for YSQL."
     href="connection-manager/"
-    icon="fa-thin fa-helmet-safety">}}
+    icon="fa-thin fa-phone-connection">}}
 
 {{</index/block>}}
