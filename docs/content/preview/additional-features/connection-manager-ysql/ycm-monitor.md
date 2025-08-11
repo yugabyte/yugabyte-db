@@ -14,7 +14,7 @@ type: docs
 
 ## Metrics
 
-Use the following metrics to monitor YSQL Connection Manager.
+Use the following metrics to monitor connections when using YSQL Connection Manager.
 
 | Metric Name | Description |
 | :--- | :--- |
@@ -25,28 +25,37 @@ Use the following metrics to monitor YSQL Connection Manager.
 | waiting_logical_connections | Specifies on a pool-by-pool basis the number of waiting/idle logical connections.<br>A session that is neither queued to attach to a physical connection nor currently using a physical connection is in a "waiting" state. |
 | active_physical_connections | Specifies on a pool-by-pool basis the number of active physical (server) connections.<br>(At the start of a transaction) After a server connection is picked up from the connection pool (or freshly created) to serve a logical connection, it is marked as "active". |
 | idle_physical_connections | Specifies on a pool-by-pool basis the number of idle physical connections.<br>(At the end of a transaction) Once a server connection detaches from its logical connection and returns to the physical connection pool, it is marked as "idle". |
-| sticky_connections | Specifies on a pool-by-pool basis the number of sticky connections.<br>Physical connections that do not return to the connection pool at the end of a transaction remain "stuck" to the logical connection for the lifetime of the session. |
-| avg_wait_time_ns | Specifies on a pool-by-pool basis the time (in ns) on average clients have to be "queued" before attaching to a physical connection. |
+| sticky_connections | Specifies on a pool-by-pool basis the number of [sticky connections](../ycm-setup/#sticky-connections).<br>Physical connections that do not return to the connection pool at the end of a transaction remain stuck to the logical connection for the lifetime of the session. |
+| avg_wait_time_ns | Specifies on a pool-by-pool basis the time (in ns) on average clients have to be queued before attaching to a physical connection. |
 | qps / tps | Specifies on a pool-by-pool basis some basic performance metrics.<br>qps = queries per second<br>tps = transactions per second |
 
-Some further implications from these metrics:
+### Logical and physical connections
 
-- Interaction between logical and physical connection metrics
-  - The sum of waiting, queued, and active logical connections signify the number of client connections that are currently open.
-  - The sum of idle and active physical connections signify the number of server-side backend processes that have been spawned.
-  - The number of active logical connections will always be equal to the number of active physical connections.
-- Pool utilization (idle physical conns/waiting logical conns)
-  - Generally it's acceptable to have idle physical connections, as they can be used for connection burst scenarios. You can configure the timeout for idle connections depending on your use case.
-  - It makes sense to reduce `ysql_max_connections` such that active:idle ratio is higher, provided that idle connections are not completely extinguished in the long run.
-- Queued clients
-  - Usually okay to have some "queued" state clients. However, if clients start timing out or query latency is too high, increase `ysql_max_connections`.
-- Sticky connections
-  - Can be the cause for higher connection acquisition latency in some cases (sticky connections are destroyed once used).
-  - Can be the cause for connection exhaustion/client wait timeout scenarios.
+The sum of waiting, queued, and active logical connections provides the number of client connections that are currently open.
+
+The sum of idle and active physical connections provides the number of server-side backend processes that have been spawned.
+
+The number of active logical connections will always be equal to the number of active physical connections.
+
+### Pool use (idle physical connections/waiting logical connections)
+
+In general, you can have idle physical connections, as they can be used for connection burst scenarios. Configure the [timeout for idle connections](../ycm-setup/#configure) using the `ysql_conn_mgr_idle_time` flag, depending on your use case.
+
+You can reduce `ysql_max_connections` such that the active to idle ratio is higher, provided that idle connections are not completely extinguished in the long run.
+
+### Queued clients
+
+You can have some queued state clients. However, if clients start timing out or query latency is too high, increase `ysql_max_connections`.
+
+### Sticky connections
+
+[Sticky connections](../ycm-setup/#sticky-connections) can be the cause of higher connection acquisition latency in some cases (sticky connections are destroyed once used).
+
+They may also be the cause for connection exhaustion or client wait timeouts.
 
 ## Logging
 
-Connection Manager offers various log levels that you can set using the flag `ysql_conn_mgr_log_settings`:
+Connection Manager provides the following log levels that you can set using the `ysql_conn_mgr_log_settings` flag:
 
 - log_debug
 - log_query
@@ -56,17 +65,17 @@ Connection Manager offers various log levels that you can set using the flag `ys
 
 The structure of a log line is as follows:
 
-```sh
+```prolog
 PID YYYY-MM-DD HH:MM:SS UTC log_level [clientID serverID] (context) This is a sample log!
 ```
 
 For example:
 
-```sh
+```prolog
 2986790 2025-04-22 20:55:08.236 UTC debug [c960b6b7a6030 scb5ee95439f2] (reset) ReadyForQuery
 ```
 
-Connection Manager logs are stored in the same directory as TServer logs, depending on your cluster setup. They are rotated daily and have the following file naming convention:
+Connection Manager logs are stored in the same directory as [TServer logs](../../../explore/observability/logging/), depending on your cluster setup. They are rotated daily and have the following file naming convention:
 
 ```sh
 ysql-conn-mgr-YYYY-MM-DD_HHMMSS.log.PID
@@ -78,7 +87,7 @@ For example:
 ysql-conn-mgr-2025-04-22_205456.log.2986790
 ```
 
-is a log file created for a Connection Manager process with a PID of 2986790, which started logging at 20:54:56 UTC on 22nd April 2025.
+The log file was created for a Connection Manager process with a PID of 2986790, which started logging at 20:54:56 UTC on 22nd April 2025.
 
 <!--
 Monitoring in YBA & YBM (screenshots)
