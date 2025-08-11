@@ -87,8 +87,8 @@ const vector<CommandHandler> kCommandHandlers = {
 
 void PrintUsageToStream(const std::string& prog_name, std::ostream* out) {
   *out << "Usage: " << prog_name
-       << " [-headers_only] [-nrows <num rows>] "
-       << "-fs_wal_dirs <dirs> -fs_data_dirs <dirs> <command> <options> "
+       << " [--headers_only] [--nrows <num rows>] "
+       << "--fs_wal_dirs <dirs> --fs_data_dirs <dirs> <command> <options> "
        << std::endl << std::endl;
   *out << "Commands: " << std::endl;
   for (const CommandHandler& handler : kCommandHandlers) {

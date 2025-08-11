@@ -323,7 +323,7 @@ class XClusterTestBase : public YBTest {
   template <class... Args>
   Result<std::string> CallAdmin(MiniCluster* cluster, Args&&... args) {
     return CallAdminVec(ToStringVector(
-        GetAdminToolPath(), "-master_addresses", cluster->GetMasterAddresses(),
+        GetAdminToolPath(), "--master_addresses", cluster->GetMasterAddresses(),
         std::forward<Args>(args)...));
   }
 
