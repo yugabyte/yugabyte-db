@@ -675,6 +675,8 @@ static const struct config_enum_entry yb_cost_model_options[] = {
 	{"on", YB_COST_MODEL_ON, false},
 	{"legacy_mode", YB_COST_MODEL_LEGACY, false},
 	{"legacy_stats_mode", YB_COST_MODEL_LEGACY_STATS, false},
+	{"legacy_bnl_mode", YB_COST_MODEL_LEGACY_BNL, false},
+	{"legacy_stats_bnl_mode", YB_COST_MODEL_LEGACY_STATS_BNL, false},
 	{"true", YB_COST_MODEL_ON, true},
 	{"false", YB_COST_MODEL_OFF, true},
 	{"yes", YB_COST_MODEL_ON, true},
@@ -15896,6 +15898,7 @@ assign_yb_enable_cbo(int new_value, void *extra)
 	yb_enable_base_scans_cost_model = false;
 	yb_enable_optimizer_statistics = false;
 	yb_ignore_stats = false;
+	yb_legacy_bnl_cost = false;
 
 	switch (new_value)
 	{
@@ -15913,6 +15916,15 @@ assign_yb_enable_cbo(int new_value, void *extra)
 		case YB_COST_MODEL_LEGACY_STATS:
 			yb_enable_optimizer_statistics = true;
 			break;
+
+		case YB_COST_MODEL_LEGACY_BNL:
+			yb_legacy_bnl_cost = true;
+			break;
+
+		case YB_COST_MODEL_LEGACY_STATS_BNL:
+			yb_enable_optimizer_statistics = true;
+			yb_legacy_bnl_cost = true;
+			break;
 	}
 }
 
@@ -15926,6 +15938,7 @@ assign_yb_enable_optimizer_statistics(bool new_value, void *extra)
 					  YB_COST_MODEL_LEGACY_STATS : YB_COST_MODEL_LEGACY));
 
 	yb_ignore_stats = false;
+	yb_legacy_bnl_cost = false;
 }
 
 static void
@@ -15937,6 +15950,7 @@ assign_yb_enable_base_scans_cost_model(bool new_value, void *extra)
 					  YB_COST_MODEL_LEGACY_STATS :
 					  YB_COST_MODEL_LEGACY));
 	yb_ignore_stats = false;
+	yb_legacy_bnl_cost = false;
 }
 
 static bool
