@@ -1371,26 +1371,27 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
             shm_index < static_cast<int>(TServerSharedData::kMaxNumDbCatalogVersions))
             << "Invalid shm_index: " << shm_index;
       } else if (new_version < existing_entry.current_version) {
-        ++existing_entry.new_version_ignored_count;
-        // If the new version is continuously older than what we have seen, it implies that master's
-        // current version has somehow gone backwards which isn't expected. Crash this tserver to
-        // sync up with master again. Do so with RandomUniformInt to reduce the chance that all
-        // tservers are crashed at the same time.
-        auto new_version_ignored_count =
-          RandomUniformInt<uint32_t>(FLAGS_ysql_min_new_version_ignored_count,
-                                     FLAGS_ysql_min_new_version_ignored_count + 180);
-        // Because the session that executes the DDL sets its incremented new version in the
-        // local tserver, for this local tserver it is possible the heartbeat response has
-        // not read the latest version from master yet. It is legitimate to see the following
-        // as a WARNING. However we should not see this continuously for new_version_ignored_count
-        // times.
-        (existing_entry.new_version_ignored_count >= new_version_ignored_count ?
-         LOG(FATAL) : LOG(WARNING))
-            << "Ignoring ysql db " << db_oid
-            << " catalog version update: new version too old. "
-            << "New: " << new_version << ", Old: " << existing_entry.current_version
-            << ", ignored count: " << existing_entry.new_version_ignored_count
-            << ", debug_id: " << debug_id;
+        if (!db_catalog_version_data.ignore_catalog_version_staleness_check()) {
+          ++existing_entry.new_version_ignored_count;
+          // If the new version is continuously older than what we have seen, it implies that
+          // master's current version has somehow gone backwards which isn't expected. Crash this
+          // tserver to sync up with master again. Do so with RandomUniformInt to reduce the chance
+          // that all tservers are crashed at the same time.
+          auto new_version_ignored_count = RandomUniformInt<uint32_t>(
+              FLAGS_ysql_min_new_version_ignored_count,
+              FLAGS_ysql_min_new_version_ignored_count + 180);
+          // Because the session that executes the DDL sets its incremented new version in the
+          // local tserver, for this local tserver it is possible the heartbeat response has
+          // not read the latest version from master yet. It is legitimate to see the following
+          // as a WARNING. However we should not see this continuously for new_version_ignored_count
+          // times.
+          (existing_entry.new_version_ignored_count >= new_version_ignored_count ? LOG(FATAL)
+                                                                                 : LOG(WARNING))
+              << "Ignoring ysql db " << db_oid << " catalog version update: new version too old. "
+              << "New: " << new_version << ", Old: " << existing_entry.current_version
+              << ", ignored count: " << existing_entry.new_version_ignored_count
+              << ", debug_id: " << debug_id;
+        }
       } else {
         // It is possible to have same current_version but a newer last_breaking_version.
         // Following is a scenario that this can happen.

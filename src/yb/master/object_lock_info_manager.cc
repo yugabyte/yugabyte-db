@@ -818,6 +818,9 @@ void ObjectLockInfoManager::Impl::PopulateDbCatalogVersionCache(ReleaseObjectLoc
     return;
   }
   auto* db_catalog_version_data = req.mutable_db_catalog_version_data();
+  // The catalog version data may become out of date by the time these requests are
+  // retried and processed by the TServer.
+  db_catalog_version_data->set_ignore_catalog_version_staleness_check(true);
   for (const auto& it : versions) {
     auto* const catalog_version_pb = db_catalog_version_data->add_db_catalog_versions();
     catalog_version_pb->set_db_oid(it.first);

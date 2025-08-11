@@ -445,6 +445,7 @@ message YsqlCatalogVersionPB {
 
 message DBCatalogVersionDataPB {
   repeated YsqlCatalogVersionPB db_catalog_versions = 1;
+  optional bool ignore_catalog_version_staleness_check = 2 [ default = false ];
 }
 
 // This matches a row in pg_yb_invalidation_messages table, which has a composite primary
@@ -480,6 +481,16 @@ message ReleaseObjectLockRequestPB {
   optional fixed64 apply_after_hybrid_time = 5;
   optional fixed64 propagated_hybrid_time = 6;
 
+  // Note: These fields represent the db_catalog_* information as of when the
+  // ReleaseObjectLockRequestPB is created. Thus, may not stale/out-of-date and
+  // *not* represent the latest db_catalog_* information at the master. This
+  // information is added here to optimize the case where a DDL release causes
+  // the catalog-version to increase -- where the release request can update the
+  // TServers instead of waiting for the next heartbeat. However, for a lot of
+  // other cases (including retries of this request), the information presented
+  // here may even be stale than what is present at the TServer. This is not a
+  // problem as as the TServer would just not update it's db_catalog_*
+  // information.
   optional DBCatalogVersionDataPB db_catalog_version_data = 7;
   // Used for tracking in-progress DDL unlock requests at the master.
   optional uint64 request_id = 8;
