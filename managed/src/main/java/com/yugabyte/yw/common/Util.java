@@ -1108,14 +1108,13 @@ public class Util {
   }
 
   public static boolean isKubernetesBasedUniverse(Universe universe) {
+    return isKubernetesBasedUniverse(universe.getUniverseDetails());
+  }
+
+  public static boolean isKubernetesBasedUniverse(UniverseDefinitionTaskParams params) {
     boolean isKubernetesUniverse =
-        universe
-            .getUniverseDetails()
-            .getPrimaryCluster()
-            .userIntent
-            .providerType
-            .equals(CloudType.kubernetes);
-    for (Cluster cluster : universe.getUniverseDetails().getReadOnlyClusters()) {
+        params.getPrimaryCluster().userIntent.providerType.equals(CloudType.kubernetes);
+    for (Cluster cluster : params.getReadOnlyClusters()) {
       isKubernetesUniverse =
           isKubernetesUniverse || cluster.userIntent.providerType.equals(CloudType.kubernetes);
     }
