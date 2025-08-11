@@ -139,27 +139,7 @@ Replace `<voyager-version>` with your installed Voyager version, for example, `2
       db-password: <source-db-password> # Enclose the password in single quotes if it contains special characters.
     ```
 
-1. Install YugabyteDB to view migration assessment report in the [yugabyted](/preview/reference/configuration/yugabyted/) UI. Using the yugabyted UI, you can visualize and review the database migration workflow performed by YugabyteDB Voyager.
-    1. Start a local YugabyteDB cluster. Refer to the steps described in [Use a local cluster](/preview/tutorials/quick-start/macos/).
-    1. To see the Voyager migration workflow details in the UI, set the following configuration parameters before starting the migration:
-
-        ```yaml
-        ### Control plane type refers to the deployment type of YugabyteDB
-        control-plane-type: yugabyted
-
-        ### YSQL connection string
-        ### Provide the standard PostgreSQL connection parameters, including user name, host name, and port. For example, postgresql://yugabyte:yugabyte@127.0.0.1:5433
-        yugabyted-db-conn-string: postgresql://yugabyte:yugabyte@127.0.0.1:5433
-        ```
-
-        Provide the standard PostgreSQL connection parameters, including user name, host name, and port. For example, `postgresql://yugabyte:yugabyte@127.0.0.1:5433`
-
-        {{< note title="Note" >}}
-
-Don't include the `dbname` parameter in the connection string; the default `yugabyte` database is used to store the meta information for showing the migration in the yugabyted UI.
-        {{< /note >}}
-
-## Assess your migration
+## Assess migration
 
 Assess your migration using the following steps:
 
@@ -223,14 +203,35 @@ You can perform the following steps with these scripts:
 For the most accurate migration assessment, the source database must be actively handling its typical workloads at the time the metadata is gathered. This ensures that the recommendations for sharding strategies and cluster sizing are well-aligned with the database's real-world performance and operational needs.
     {{< /warning >}}
 
-1. View the assessment report.
+1. View the assessment report by configuring the [yugabyted](/preview/reference/configuration/yugabyted/) UI. Use the yugabyted UI to review the assessment report, which includes migration strategies, complexity, and effort estimates.
+    1. Start a local YugabyteDB cluster. Refer to the steps described in [Use a local cluster](/preview/tutorials/quick-start/macos/).
 
-    Use the yugabyted UI to review the assessment report, which includes migration strategies, complexity, and effort estimates.
+        {{< note title="Note" >}}
+  After a migration assessment, if you choose to migrate using the open source YugabyteDB, you will be using this same local cluster as your [target database](../../introduction/#target-database).
+        {{< /note >}}
 
-    After generating the report, navigate to the **Migrations** tab in the yugabyted UI at <http://127.0.0.1:15433> to see the available migrations.
+    1. To see the Voyager migration workflow details in the UI, set the following configuration parameters before starting the migration:
 
-    ![Migration Landing Page](/images/migrate/migration-list-page.png)
-    ![Migration Assessment Page](/images/migrate/ybd-assessment-page.png)
+        ```yaml
+        ### Control plane type refers to the deployment type of YugabyteDB
+        control-plane-type: yugabyted
+
+        ### YSQL connection string
+        ### Provide the standard PostgreSQL connection parameters, including user name, host name, and port. For example, postgresql://yugabyte:yugabyte@127.0.0.1:5433
+        yugabyted-db-conn-string: postgresql://yugabyte:yugabyte@127.0.0.1:5433
+        ```
+
+        Provide the standard PostgreSQL connection parameters, including user name, host name, and port. For example, `postgresql://yugabyte:yugabyte@127.0.0.1:5433`
+
+        {{< note title="Note" >}}
+
+  Don't include the `dbname` parameter in the connection string; the default `yugabyte` database is used to store the meta information for showing the migration in the yugabyted UI.
+        {{< /note >}}
+
+    1. After generating the report, navigate to the **Migrations** tab in the yugabyted UI at <http://127.0.0.1:15433> to see the available migrations.
+
+        ![Migration Landing Page](/images/migrate/migration-list-page.png)
+        ![Migration Assessment Page](/images/migrate/ybd-assessment-page.png)
 
 1. Create a target YugabyteDB cluster as follows:
 

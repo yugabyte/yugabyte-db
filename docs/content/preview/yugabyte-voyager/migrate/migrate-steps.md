@@ -191,9 +191,15 @@ target:
 
 Refer to the [offline-migration.yaml](<https://github.com/yugabyte/yb-voyager/blob/{{>< yb-voyager-release >}}/yb-voyager/config-templates/offline-migration.yaml) template for more information on the available global, source, and target configuration parameters supported by Voyager.
 
-## Configure yugabyted UI
+## Assess migration
 
-Install YugabyteDB to view migration assessment report in the [yugabyted](/preview/reference/configuration/yugabyted/) UI. Using the yugabyted UI, you can visualize and review the database migration workflow performed by YugabyteDB Voyager.
+This step applies to PostgreSQL and Oracle migrations only.
+
+Assess migration analyzes the source database, captures essential metadata, and generates a report with recommended migration strategies and cluster configurations for optimal performance with YugabyteDB.
+
+### Configure yugabyted UI
+
+Before you can assess your migration, configure the [yugabyted](/preview/reference/configuration/yugabyted/) UI to view the migration assessment report. Using the yugabyted UI, you can visualize and review the database migration workflow performed by YugabyteDB Voyager.
 
   1. Start a local YugabyteDB cluster. Refer to the steps described in [Use a local cluster](/preview/tutorials/quick-start/macos/).
 
@@ -213,11 +219,7 @@ Install YugabyteDB to view migration assessment report in the [yugabyted](/previ
 Don't include the `dbname` parameter in the connection string; the default `yugabyte` database is used to store the meta information for showing the migration in the yugabyted UI.
         {{< /note >}}
 
-## Assess migration
-
-This step applies to PostgreSQL and Oracle migrations only.
-
-Assess migration analyzes the source database, captures essential metadata, and generates a report with recommended migration strategies and cluster configurations for optimal performance with YugabyteDB. You run assessments using the `yb-voyager assess-migration` command.
+You run assessments using the `yb-voyager assess-migration` command as follows:
 
 1. Choose from one of the supported modes for conducting migration assessments, depending on your access to the source database as follows:<br><br>
 
