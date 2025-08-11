@@ -96,7 +96,7 @@ Having two identical tables on your clusters allows you to set up xCluster repli
 To configure "Data Center - West" to be the target of data changes from the "Data Center - East" cluster, you need to use the [yb-admin](../../../admin/yb-admin/) utility [setup_universe_replication](../../../admin/yb-admin/#xcluster-replication-commands) command. The syntax is as follows:
 
 ```sh.output
-yb-admin -master_addresses <target-master-addresses> \
+yb-admin --master_addresses <target-master-addresses> \
     setup_universe_replication <source-universe-uuid> \
     <source-master-addresses> <source-table-ids>
 ```
@@ -109,7 +109,7 @@ yb-admin -master_addresses <target-master-addresses> \
 Based on actual values you obtained from the YB-Master UI, run the yb-admin `setup_universe_replication` command from your YugabyteDB home directory similar to the one shown in the following example:
 
 ```sh
-./bin/yb-admin -master_addresses 127.0.0.2:7100 \
+./bin/yb-admin --master_addresses 127.0.0.2:7100 \
     setup_universe_replication 7acd6399-657d-42dc-a90a-646869898c2d \
     127.0.0.1:7100 000033e8000030008000000000004000
 ```
@@ -170,7 +170,7 @@ Look up the source UUID in the source YB-Master UI (<http://127.0.0.2:7000>), an
 Based on actual values you obtained from the YB-Master UI, run the yb-admin `setup_universe_replication` command similar to the one shown in the following example:
 
 ```sh
-./bin/yb-admin -master_addresses 127.0.0.1:7100 \
+./bin/yb-admin --master_addresses 127.0.0.1:7100 \
     setup_universe_replication 0a315687-e9bd-430f-b6f4-ac831193a394 \
     127.0.0.2:7100 000030a9000030008000000000004000
 ```
@@ -227,7 +227,7 @@ When the bidirectional replication has been configured, you can add data to the 
 You can add more tables to an existing replication using the yb-admin command `alter_universe_replication` `add_table`:
 
 ```sh.output
-yb-admin -master_addresses <target-master-addresses> \
+yb-admin --master_addresses <target-master-addresses> \
         alter_universe_replication <source-universe-uuid> \
         add_table <source-table-ids>
 ```
@@ -235,7 +235,7 @@ yb-admin -master_addresses <target-master-addresses> \
 The following is an example command:
 
 ```sh
-./bin/yb-admin -master_addresses 127.0.0.2:7100 \
+./bin/yb-admin --master_addresses 127.0.0.2:7100 \
     alter_universe_replication 7acd6399-657d-42dc-a90a-646869898c2d \
     add_table 000030a9000030008000000000004000
 ```

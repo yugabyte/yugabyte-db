@@ -101,13 +101,13 @@ The following commands can be run from one of the old master nodes. You can firs
 
 ```sh
 export MASTERS=node1:7100,node2:7100,node3:7100
-~/master/bin/yb-admin -master_addresses $MASTERS change_blacklist ADD node1:9100 node2:9100 node3:9100 node4:9100 node5:9100 node6:9100
+~/master/bin/yb-admin --master_addresses $MASTERS change_blacklist ADD node1:9100 node2:9100 node3:9100 node4:9100 node5:9100 node6:9100
 ```
 
 Verify that the blacklist information looks similar to the following:
 
 ```sh
-~/master/bin/yb-admin -master_addresses $MASTERS get_universe_config
+~/master/bin/yb-admin --master_addresses $MASTERS get_universe_config
 Config:
 version: 5
 server_blacklist {
@@ -131,7 +131,7 @@ server_blacklist {
 Next, wait for the data move to complete. You can check the percentage completion by running the following command:
 
 ```sh
-~/master/bin/yb-admin -master_addresses $MASTERS get_load_move_completion
+~/master/bin/yb-admin --master_addresses $MASTERS get_load_move_completion
 Percent complete = 66.6
 ```
 
@@ -158,19 +158,19 @@ If any error log is reported on the command line from the following steps, check
 
 ```sh
 export MASTERS=node1:7100,node2:7100,node3:7100,node7:7100,node8:7100,node9:7100
-~/master/bin/yb-admin -master_addresses $MASTERS change_master_config ADD_SERVER node7 7100
-~/master/bin/yb-admin -master_addresses $MASTERS change_master_config REMOVE_SERVER node1 7100
-~/master/bin/yb-admin -master_addresses $MASTERS change_master_config ADD_SERVER node8 7100
-~/master/bin/yb-admin -master_addresses $MASTERS change_master_config REMOVE_SERVER node2 7100
-~/master/bin/yb-admin -master_addresses $MASTERS change_master_config ADD_SERVER node9 7100
-~/master/bin/yb-admin -master_addresses $MASTERS change_master_config REMOVE_SERVER node3 7100
+~/master/bin/yb-admin --master_addresses $MASTERS change_master_config ADD_SERVER node7 7100
+~/master/bin/yb-admin --master_addresses $MASTERS change_master_config REMOVE_SERVER node1 7100
+~/master/bin/yb-admin --master_addresses $MASTERS change_master_config ADD_SERVER node8 7100
+~/master/bin/yb-admin --master_addresses $MASTERS change_master_config REMOVE_SERVER node2 7100
+~/master/bin/yb-admin --master_addresses $MASTERS change_master_config ADD_SERVER node9 7100
+~/master/bin/yb-admin --master_addresses $MASTERS change_master_config REMOVE_SERVER node3 7100
 ```
 
 Now ensure that the master leader is one of the new master nodes as follows:
 
 ```sh
 $ export MASTERS=node7:7100,node8:7100,node9:7100
-$ ~/master/bin/yb-admin -master_addresses $MASTERS list_all_masters
+$ ~/master/bin/yb-admin --master_addresses $MASTERS list_all_masters
 ```
 
 ```output
@@ -197,7 +197,7 @@ Updating master addresses is needed in case the yb-tserver server is restarted.
 The old nodes are not part of the universe any more and can be shut down. After the old YB-TServers are terminated, you can cleanup the blacklist from the master configuration using the following command:
 
 ```sh
-~/master/bin/yb-admin -master_addresses $MASTERS change_blacklist REMOVE node1:9100 node2:9100 node3:9100 node4:9100 node5:9100 node6:9100
+~/master/bin/yb-admin --master_addresses $MASTERS change_blacklist REMOVE node1:9100 node2:9100 node3:9100 node4:9100 node5:9100 node6:9100
 ```
 
 {{< note title="Tip" >}}
@@ -207,5 +207,5 @@ Cleaning up the blacklist server will help reuse the older IPs in case they get 
 Ensure there are no `server_blacklist` entries returned by the command:
 
 ```sh
-~/master/bin/yb-admin -master_addresses $MASTERS get_universe_config
+~/master/bin/yb-admin --master_addresses $MASTERS get_universe_config
 ```

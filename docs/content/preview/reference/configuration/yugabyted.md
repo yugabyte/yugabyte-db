@@ -78,7 +78,7 @@ $ ./bin/yugabyted -h
 ```
 
 ```sh
-$ ./bin/yugabyted -help
+$ ./bin/yugabyted --help
 ```
 
 For help with specific yugabyted commands, run 'yugabyted [ command ] -h'. For example, you can print the command-line help for the `yugabyted start` command by running the following:

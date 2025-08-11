@@ -36,7 +36,7 @@ Pause replication on the Standby (B). This step is required to avoid unexpected 
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses <B_master_addresses> \
+    --master_addresses <B_master_addresses> \
     set_universe_replication_enabled <replication_name> 0
 ```
 
@@ -52,7 +52,7 @@ Get the latest consistent time on Standby (B). The `get_xcluster_safe_time` comm
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses <B_master_addresses> \
+    --master_addresses <B_master_addresses> \
     get_xcluster_safe_time include_lag_and_skew
 ```
 
@@ -122,7 +122,7 @@ Restore the database to the `safe_time`:
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <B_master_addresses> \
+        --master_addresses <B_master_addresses> \
         list_snapshot_schedules
     ```
 
@@ -153,7 +153,7 @@ Restore the database to the `safe_time`:
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <B_master_addresses> \
+        --master_addresses <B_master_addresses> \
         restore_snapshot_schedule <schedule_id> "<safe_time>"
     ```
 
@@ -170,7 +170,7 @@ Restore the database to the `safe_time`:
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <B_master_addresses> \
+        --master_addresses <B_master_addresses> \
         list_snapshot_restorations
     ```
 
@@ -195,7 +195,7 @@ Restore the database to the `safe_time`:
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses <B_master_addresses> \
+    --master_addresses <B_master_addresses> \
     delete_universe_replication <replication_group_id>
 ```
 
@@ -261,7 +261,7 @@ Disable point-in-time recovery for the database(s) on A:
 - List the snapshot schedules to obtain the schedule ID:
 
     ```sh
-    ./bin/yb-admin -master_addresses <A_master_addresses> \
+    ./bin/yb-admin --master_addresses <A_master_addresses> \
         list_snapshot_schedules
     ```
 
@@ -269,7 +269,7 @@ Disable point-in-time recovery for the database(s) on A:
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <A_master_addresses> \
+        --master_addresses <A_master_addresses> \
         delete_snapshot_schedule <schedule_id>
     ```
 
@@ -299,7 +299,7 @@ Drop the replication group on A using the following command:
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses <A_master_addresses> \
+    --master_addresses <A_master_addresses> \
     drop_xcluster_replication <replication_group_id>
 ```
 
@@ -317,7 +317,7 @@ Outbound xCluster Replication group rg1 deleted successfully
 
     ```sh
     ./bin/yb-admin \
-    -master_addresses <A_master_ips> \
+    --master_addresses <A_master_ips> \
     list_cdc_streams
     ```
 
@@ -325,7 +325,7 @@ Outbound xCluster Replication group rg1 deleted successfully
 
     ```sh
     ./bin/yb-admin \
-    -master_addresses <A_master_ips> \
+    --master_addresses <A_master_ips> \
     delete_cdc_stream <streamID>
     ```
 
