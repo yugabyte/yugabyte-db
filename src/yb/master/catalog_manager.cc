@@ -3733,8 +3733,7 @@ Status CatalogManager::CanAddPartitionsToTable(
 }
 
 Status CatalogManager::CanSupportAdditionalTabletsForTableCreation(
-    int num_tablets, const ReplicationInfoPB& replication_info,
-    const TSDescriptorVector& ts_descs) {
+    int num_tablets, const ReplicationInfoPB& replication_info) const {
   // Don't check for tablet limits if we potentially don't have information from all the live
   // TServers.  To make sure we have the needed information, don't check for
   // FLAGS_initial_tserver_registration_duration_secs after a master leadership change.
@@ -3742,12 +3741,20 @@ Status CatalogManager::CanSupportAdditionalTabletsForTableCreation(
       MonoDelta::FromSeconds(FLAGS_initial_tserver_registration_duration_secs)) {
     return Status::OK();
   }
-  return CanCreateTabletReplicas(num_tablets, replication_info, GetAllLiveNotBlacklistedTServers());
+  TSDescriptorVector ts_descs;
+  auto blacklist_result = BlacklistSetFromPB();
+  master_->ts_manager()->GetAllDescriptors(&ts_descs);
+  // todo(zdrudi): We probably don't want to replace the blacklist with a dummy here.
+  // If getting the blacklist failed, we were probably called during a sys catalog load.
+  // so we should error out.
+  return CanCreateTabletReplicas(
+      num_tablets, replication_info, ts_descs,
+      blacklist_result ? *blacklist_result : BlacklistSet());
 }
 
 Status CatalogManager::CanSupportAdditionalTablet(
     const TableInfoPtr& table, const ReplicationInfoPB& replication_info) const {
-  return CanCreateTabletReplicas(1, replication_info, GetAllLiveNotBlacklistedTServers());
+  return CanSupportAdditionalTabletsForTableCreation(1, replication_info);
 }
 
 // Create a new table.
@@ -3917,8 +3924,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     return SetupError(resp->mutable_error(), MasterErrorPB::TOO_MANY_TABLETS, s);
   }
   if (!joining_colocation_group) {
-    s = CanSupportAdditionalTabletsForTableCreation(
-        num_tablets, replication_info, GetAllLiveNotBlacklistedTServers());
+    s = CanSupportAdditionalTabletsForTableCreation(num_tablets, replication_info);
     if (!s.ok()) {
       IncrementCounter(metric_create_table_too_many_tablets_);
       return SetupError(resp->mutable_error(), MasterErrorPB::TOO_MANY_TABLETS, s);
@@ -11754,7 +11760,7 @@ bool CatalogManager::IsLoadBalancerEnabled() {
   return load_balance_policy_->IsLoadBalancerEnabled();
 }
 
-MonoDelta CatalogManager::TimeSinceElectedLeader() {
+MonoDelta CatalogManager::TimeSinceElectedLeader() const {
   return MonoTime::Now() - time_elected_leader_.load();
 }
 

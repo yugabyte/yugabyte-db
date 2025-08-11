@@ -73,6 +73,16 @@ Result<std::pair<TSDescriptorPtr, TSDescriptor::WriteLock>> TSDescriptor::Create
   return std::make_pair(std::move(desc), std::move(lock));
 }
 
+bool PersistentServerInfo::IsLive() const { return pb.state() == SysTServerEntryPB::MAYBE_LIVE; }
+
+bool PersistentServerInfo::IsBlacklisted(const BlacklistSet& blacklist) const {
+  return yb::master::IsBlacklisted(pb.registration(), blacklist);
+}
+
+std::string PersistentServerInfo::placement_uuid() const {
+  return pb.registration().placement_uuid();
+}
+
 TSDescriptor::TSDescriptor(const std::string& permanent_uuid,
                            RegisteredThroughHeartbeat registered_through_heartbeat)
   : permanent_uuid_(permanent_uuid),
@@ -237,10 +247,6 @@ ServerRegistrationPB TSDescriptor::GetRegistration() const {
   return LockForRead()->pb.registration();
 }
 
-ResourcesPB TSDescriptor::GetResources() const {
-  return LockForRead()->pb.resources();
-}
-
 TSInformationPB TSDescriptor::GetTSInformationPB() const {
   auto l = LockForRead();
   TSInformationPB ts_info_pb;
@@ -276,7 +282,7 @@ CloudInfoPB TSDescriptor::GetCloudInfo() const {
 }
 
 bool TSDescriptor::IsBlacklisted(const BlacklistSet& blacklist) const {
-  return yb::master::IsBlacklisted(LockForRead()->pb.registration(), blacklist);
+  return LockForRead()->IsBlacklisted(blacklist);
 }
 
 bool TSDescriptor::IsRunningOn(const HostPortPB& hp) const {
