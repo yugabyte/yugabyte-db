@@ -104,6 +104,31 @@ namespace yb {
 
 namespace tserver {
 
+namespace {
+Result<SchemaVersion> ProcessSchemaVersionsAndGetMinSchemaVersion(
+    const cdc::SchemaVersionsPB& versions,
+    std::unordered_map<SchemaVersion, SchemaVersion>& schema_version_map) {
+  schema_version_map[versions.current_producer_schema_version()] =
+      versions.current_consumer_schema_version();
+
+  auto min_schema_version = versions.current_consumer_schema_version();
+  RSTATUS_DCHECK(
+      versions.old_producer_schema_versions_size() == versions.old_consumer_schema_versions_size(),
+      IllegalState, "Mismatch in old producer and consumer schema versions sizes");
+
+  for (int i = 0; i < versions.old_producer_schema_versions_size(); ++i) {
+    RSTATUS_DCHECK(
+        versions.old_producer_schema_versions(i) < versions.current_producer_schema_version(),
+        IllegalState,
+        "Old producer schema version should be less than current producer schema version");
+    schema_version_map[versions.old_producer_schema_versions(i)] =
+        versions.old_consumer_schema_versions(i);
+    min_schema_version = std::min(min_schema_version, versions.old_consumer_schema_versions(i));
+  }
+  return min_schema_version;
+}
+}  // namespace
+
 Result<std::unique_ptr<XClusterConsumerIf>> CreateXClusterConsumer(
     std::function<int64_t(const TabletId&)> get_leader_term, const std::string& ts_uuid,
     client::YBClient& local_client, ConnectToPostgresFunc connect_to_pg_func,
@@ -378,44 +403,15 @@ void XClusterConsumer::UpdateReplicationGroupInMemState(
     if (stream_entry_pb.has_schema_versions()) {
       auto& schema_version_map = stream_schema_version_map_[stream_id];
       auto schema_versions = stream_entry_pb.schema_versions();
-      schema_version_map[schema_versions.current_producer_schema_version()] =
-          schema_versions.current_consumer_schema_version();
-      // Update the old producer schema version, only if it is not the same as
-      // current producer schema version.
-      if (schema_versions.old_producer_schema_version() !=
-          schema_versions.current_producer_schema_version()) {
-        DCHECK(
-            schema_versions.old_producer_schema_version() <
-            schema_versions.current_producer_schema_version());
-        schema_version_map[schema_versions.old_producer_schema_version()] =
-            schema_versions.old_consumer_schema_version();
-      }
-
-      auto min_schema_version = schema_versions.old_consumer_schema_version() > 0
-                                    ? schema_versions.old_consumer_schema_version()
-                                    : schema_versions.current_consumer_schema_version();
-      min_schema_version_map_[std::make_pair(
-          stream_entry_pb.consumer_table_id(), kColocationIdNotSet)] = min_schema_version;
+      ProcessStreamSchemaVersions(
+          stream_id, stream_entry_pb.consumer_table_id(), schema_versions, schema_version_map);
     }
 
     for (const auto& [colocated_id, versions] : stream_entry_pb.colocated_schema_versions()) {
       auto& schema_version_map = stream_colocated_schema_version_map_[stream_id][colocated_id];
-      schema_version_map[versions.current_producer_schema_version()] =
-          versions.current_consumer_schema_version();
-
-        // Update the old producer schema version, only if it is not the same as
-        // current producer schema version - handles the case where versions are 0.
-      if (versions.old_producer_schema_version() != versions.current_producer_schema_version()) {
-        DCHECK(versions.old_producer_schema_version() < versions.current_producer_schema_version());
-        schema_version_map[versions.old_producer_schema_version()] =
-            versions.old_consumer_schema_version();
-      }
-
-      auto min_schema_version = versions.old_consumer_schema_version() > 0
-                                    ? versions.old_consumer_schema_version()
-                                    : versions.current_consumer_schema_version();
-      min_schema_version_map_[std::make_pair(stream_entry_pb.consumer_table_id(), colocated_id)] =
-          min_schema_version;
+      ProcessStreamSchemaVersions(
+          stream_id, stream_entry_pb.consumer_table_id(), versions, schema_version_map,
+          colocated_id);
     }
 
     for (const auto& [consumer_tablet_id, producer_tablet_list] :
@@ -432,6 +428,23 @@ void XClusterConsumer::UpdateReplicationGroupInMemState(
       }
     }
   }
+}
+
+void XClusterConsumer::ProcessStreamSchemaVersions(
+    const xrepl::StreamId& stream_id, const TableId& consumer_table_id,
+    const cdc::SchemaVersionsPB& schema_versions,
+    std::unordered_map<SchemaVersion, SchemaVersion>& schema_version_map,
+    const ColocationId& colocation_id) {
+  auto min_schema_version_result =
+      ProcessSchemaVersionsAndGetMinSchemaVersion(schema_versions, schema_version_map);
+  if (!min_schema_version_result) {
+    LOG_WITH_PREFIX(ERROR) << Format(
+        "Failed to process schema versions for stream $0: $1", stream_id,
+        min_schema_version_result);
+    return;
+  }
+  min_schema_version_map_[std::make_pair(consumer_table_id, colocation_id)] =
+      *min_schema_version_result;
 }
 
 SchemaVersion XClusterConsumer::GetMinXClusterSchemaVersion(const TableId& table_id,

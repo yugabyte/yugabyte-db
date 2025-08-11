@@ -362,7 +362,7 @@ class CDCServiceImpl : public CDCServiceIf {
       const TabletStreamInfo& producer_tablet, const OpId& sent_op_id, const OpId& commit_op_id,
       uint64_t last_record_hybrid_time, const std::optional<HybridTime>& cdc_sdk_safe_time,
       const CDCRequestSource& request_source = CDCRequestSource::CDCSDK, bool force_update = false,
-      const bool is_snapshot = false, const std::string& snapshot_key = "",
+      bool is_snapshot = false, const std::string& snapshot_key = "",
       const TableId& colocated_table_id = "");
 
   Status UpdateSnapshotDone(

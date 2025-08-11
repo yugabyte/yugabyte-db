@@ -140,6 +140,13 @@ DEFINE_test_flag(bool, cdcsdk_skip_table_removal_from_qualified_list, false,
 DEFINE_RUNTIME_bool(enable_truncate_cdcsdk_table, false,
     "When set, enables truncating tables currently part of a CDCSDK Stream");
 
+DEFINE_RUNTIME_AUTO_bool(xcluster_store_older_schema_versions, kLocalPersisted, false, true,
+    "When set, enables storing multiple older schema versions in xCluster replication stream "
+    "metadata instead of just storing the current and previous schema versions.");
+
+DEFINE_RUNTIME_uint32(xcluster_max_old_schema_versions, 50,
+    "Maximum number of old schema versions to keep in xCluster replication stream metadata");
+
 DECLARE_int32(master_rpc_timeout_ms);
 DECLARE_bool(ysql_yb_enable_replication_commands);
 DECLARE_bool(ysql_yb_allow_replication_slot_lsn_types);
@@ -3924,47 +3931,79 @@ Status CatalogManager::UpdateConsumerOnProducerMetadata(
       schema_versions_pb->current_producer_schema_version();
   SchemaVersion current_consumer_schema_version =
       schema_versions_pb->current_consumer_schema_version();
-  SchemaVersion old_producer_schema_version =
-      schema_versions_pb->old_producer_schema_version();
-  SchemaVersion old_consumer_schema_version =
-      schema_versions_pb->old_consumer_schema_version();
+  auto* old_producer_schema_versions = schema_versions_pb->mutable_old_producer_schema_versions();
+  auto* old_consumer_schema_versions = schema_versions_pb->mutable_old_consumer_schema_versions();
+  std::map<SchemaVersion, SchemaVersion> old_schema_versions_map;
+  for (int i = 0; i < old_producer_schema_versions->size(); ++i) {
+    old_schema_versions_map[old_producer_schema_versions->Get(i)] =
+        old_consumer_schema_versions->Get(i);
+  }
 
-  // Incoming producer version is greater than anything we've seen before, update our cache.
-  if (req->producer_schema_version() > current_producer_schema_version) {
-    old_producer_schema_version = current_producer_schema_version;
-    old_consumer_schema_version = current_consumer_schema_version;
-    current_producer_schema_version = req->producer_schema_version();
-    current_consumer_schema_version = req->consumer_schema_version();
-    schema_versions_updated = true;
-  } else if (req->producer_schema_version() < current_producer_schema_version) {
-    // We are seeing an older schema version that we need to keep track of to handle old rows.
-    if (req->producer_schema_version() > old_producer_schema_version) {
-      old_producer_schema_version = req->producer_schema_version();
-      old_consumer_schema_version = req->consumer_schema_version();
-      schema_versions_updated = true;
-    } else {
-      // If we have already seen this producer schema version in the past, we can ignore it OR
-      // We recieved an update from a different tablet, so consumer schema version should match
-      // or we received a new consumer schema version than what was cached locally.
-      DCHECK(req->producer_schema_version() < old_producer_schema_version ||
-             req->consumer_schema_version() >= old_consumer_schema_version);
-    }
-  } else {
+  if (req->producer_schema_version() == current_producer_schema_version ||
+      old_schema_versions_map.contains(req->producer_schema_version())) {
     // If we have already seen this producer schema version, then verify that the consumer schema
     // version matches what we saw from other tablets or we received a new one.
     // If we get an older schema version from the consumer, that's an indication that it
     // has not yet performed the ALTER and caught up to the latest schema version so fail the
     // request until it catches up to the latest schema version.
-    SCHECK(req->consumer_schema_version() >= current_consumer_schema_version, InternalError,
+    auto prev_consumer_schema_version = FindWithDefault(
+        old_schema_versions_map, req->producer_schema_version(), current_consumer_schema_version);
+    SCHECK_GE(
+        req->consumer_schema_version(), prev_consumer_schema_version, InternalError,
         Format(
-            "Received Older Consumer schema version $0 for replication group $1, table $2",
-            req->consumer_schema_version(), replication_group_id, consumer_table_id));
+            "Received older consumer schema version for replication group $1, consumer table $2",
+            replication_group_id, consumer_table_id));
+  } else if (req->producer_schema_version() > current_producer_schema_version) {
+    // Incoming producer version is greater than anything we've seen before, update stored versions.
+    old_schema_versions_map[current_producer_schema_version] = current_consumer_schema_version;
+    current_producer_schema_version = req->producer_schema_version();
+    current_consumer_schema_version = req->consumer_schema_version();
+    schema_versions_updated = true;
+  } else {
+    // This is an older producer schema version that we haven't seen before, need to keep track of
+    // it to handle old rows.
+    old_schema_versions_map[req->producer_schema_version()] = req->consumer_schema_version();
+    schema_versions_updated = true;
   }
 
+  // Clean up the oldest schema versions if we've reached our max limit.
+  auto max_num_schemas =
+      FLAGS_xcluster_store_older_schema_versions ? FLAGS_xcluster_max_old_schema_versions : 1;
+  while (old_schema_versions_map.size() > max_num_schemas) {
+    LOG(INFO) << Format(
+        "Removing oldest schema version (producer version: $0, consumer version: $1) for "
+        "replication group $2, consumer table $3",
+        old_schema_versions_map.begin()->first, old_schema_versions_map.begin()->second,
+        replication_group_id, consumer_table_id);
+    old_schema_versions_map.erase(old_schema_versions_map.begin());
+    schema_versions_updated = true;
+  }
+
+  // Update the schema versions in the stream entry.
   schema_versions_pb->set_current_producer_schema_version(current_producer_schema_version);
   schema_versions_pb->set_current_consumer_schema_version(current_consumer_schema_version);
-  schema_versions_pb->set_old_producer_schema_version(old_producer_schema_version);
-  schema_versions_pb->set_old_consumer_schema_version(old_consumer_schema_version);
+  if (schema_versions_updated) {
+    old_producer_schema_versions->Clear();
+    old_consumer_schema_versions->Clear();
+    for (const auto& [producer_schema_version, consumer_schema_version] : old_schema_versions_map) {
+      old_producer_schema_versions->Add(producer_schema_version);
+      old_consumer_schema_versions->Add(consumer_schema_version);
+    }
+  }
+
+  // Set the values for the response.
+  auto resp_schema_versions = resp->mutable_schema_versions();
+  resp_schema_versions->set_current_producer_schema_version(current_producer_schema_version);
+  resp_schema_versions->set_current_consumer_schema_version(current_consumer_schema_version);
+  resp_schema_versions->mutable_old_producer_schema_versions()->Add(
+      old_producer_schema_versions->begin(), old_producer_schema_versions->end());
+  resp_schema_versions->mutable_old_consumer_schema_versions()->Add(
+      old_consumer_schema_versions->begin(), old_consumer_schema_versions->end());
+
+  SchemaVersion last_old_producer_schema_version =
+      old_producer_schema_versions->empty() ? 0 : *old_producer_schema_versions->rbegin();
+  SchemaVersion last_old_consumer_schema_version =
+      old_consumer_schema_versions->empty() ? 0 : *old_consumer_schema_versions->rbegin();
 
   if (schema_versions_updated) {
     // Bump the ClusterConfig version so we'll broadcast new schema versions.
@@ -3977,20 +4016,14 @@ Status CatalogManager::UpdateConsumerOnProducerMetadata(
     l.Unlock();
   }
 
-  // Set the values for the response.
-  auto resp_schema_versions = resp->mutable_schema_versions();
-  resp_schema_versions->set_current_producer_schema_version(current_producer_schema_version);
-  resp_schema_versions->set_current_consumer_schema_version(current_consumer_schema_version);
-  resp_schema_versions->set_old_producer_schema_version(old_producer_schema_version);
-  resp_schema_versions->set_old_consumer_schema_version(old_consumer_schema_version);
-
   LOG(INFO) << Format(
       "Updated the schema versions for table $0 with stream id $1, colocation id $2."
-      "Current producer schema version:$3, current consumer schema version:$4 "
-      "old producer schema version:$5, old consumer schema version:$6, replication group:$7",
+      "Current producer schema version:$3, current consumer schema version:$4, "
+      "last old producer schema version:$5, last old consumer schema version:$6, "
+      "replication group:$7",
       replication_group_id, stream_id, req->colocation_id(), current_producer_schema_version,
-      current_consumer_schema_version, old_producer_schema_version, old_consumer_schema_version,
-      replication_group_id);
+      current_consumer_schema_version, last_old_producer_schema_version,
+      last_old_consumer_schema_version, replication_group_id);
   return Status::OK();
 }
 
