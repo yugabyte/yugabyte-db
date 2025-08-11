@@ -128,7 +128,7 @@
     - block:
       - block:
         - name: Check node exporter service exists
-          shell: "systemctl cat node_exporter.service 2>/dev/null | head -1 | sed -e 's/#\\s*//g'"
+          shell: "systemctl cat node_exporter.service --no-pager 2>/dev/null | head -1 | sed -e 's/#\\s*//g'"
           register: node_exporter_stat
           ignore_errors: True
 

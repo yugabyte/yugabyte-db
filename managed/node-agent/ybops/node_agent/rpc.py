@@ -36,12 +36,14 @@ PING_TIMEOUT_SEC = 10
 RPC_TIMEOUT_SEC = 900
 FILE_UPLOAD_CHUNK_BYTES = 524288
 
-# GRPC specific configurations.
+# GRPC and Node Agent specific configurations.
 GRPC_WAIT_FOR_READY = False
 GRPC_KEEPALIVE_TIME_MS_ENV = "grpc_keepalive_time_ms"
 GRPC_KEEPALIVE_TIMEOUT_MS_ENV = "grpc_keepalive_timeout_ms"
 GRPC_KEEPALIVE_TIME_MS_DEFAULT = "10000"
 GRPC_KEEPALIVE_TIMEOUT_MS_DEFAULT = "10000"
+DESCRIBE_POLL_DEADLINE_MS_ENV = "node_agent_describe_poll_deadline"
+DESCRIBE_POLL_DEADLINE_MS_DEFAULT = "10000"
 
 # Max attempt is capped at 5 internally by the underlying client.
 # Below values are large enough to detect permanently unreachable server much faster,
@@ -105,6 +107,8 @@ class RpcClient(object):
         self.rpc_timeout_sec = int(claims.get('exp', 0)) - int(claims.get('iat', time.time()))
         if self.rpc_timeout_sec < RPC_TIMEOUT_SEC:
             self.rpc_timeout_sec = RPC_TIMEOUT_SEC
+        self.describe_poll_deadline_ms = int(os.getenv(DESCRIBE_POLL_DEADLINE_MS_ENV,
+                                                       DESCRIBE_POLL_DEADLINE_MS_DEFAULT))
         logging.info("RPC time-out is set to {} secs".format(self.rpc_timeout_sec))
 
         # Prepare channel options.
@@ -225,7 +229,8 @@ class RpcClient(object):
                 try:
                     for response in self.stub.DescribeTask(
                             DescribeTaskRequest(taskId=task_id),
-                            timeout=timeout_sec, wait_for_ready=GRPC_WAIT_FOR_READY):
+                            timeout=self.describe_poll_deadline_ms,
+                            wait_for_ready=GRPC_WAIT_FOR_READY):
                         if response.HasField('error'):
                             output.rc = response.error.code
                             output.stderr = response.error.message

@@ -75,7 +75,6 @@ func (h *ConfigureServerHandler) Handle(ctx context.Context) (*pb.DescribeTaskRe
 		util.FileLogger().Error(ctx, err.Error())
 		return nil, err
 	}
-
 	// 2) determine yb_metric_dir
 	yb_metrics_dir := filepath.Join(h.param.GetRemoteTmp(), "yugabyte/metrics")
 	cmd := "systemctl show node_exporter | grep -oP '(?<=--collector.textfile.directory=)[^ ]+' | head -n1"
