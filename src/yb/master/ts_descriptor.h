@@ -91,6 +91,12 @@ typedef util::SharedPtrTuple<
     consensus::ConsensusServiceProxy>
     ProxyTuple;
 
+// struct PersistentTServerInfo : public Persistent<SysTabletServerEntryPB> {
+//   bool IsLive() const;
+//   bool IsBlacklisted(const BlacklistSet& blacklist) const;
+//   std::string placement_uuid() const;
+// };
+
 // Master-side view of a single tablet server.
 //
 // Tracks the last heartbeat, status, instance identifier, etc.

@@ -1148,7 +1148,7 @@ class CatalogManager : public TabletSplitCandidateFilterIf,
   Status ScheduleTask(std::shared_ptr<server::RunnableMonitoredTask> task) override;
 
   // Time since this peer became master leader. Caller should verify that it is leader before.
-  MonoDelta TimeSinceElectedLeader();
+  MonoDelta TimeSinceElectedLeader() const;
 
   Result<std::vector<TableDescription>> CollectTables(
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& table_identifiers,
@@ -2593,8 +2593,7 @@ class CatalogManager : public TabletSplitCandidateFilterIf,
       const TableInfoPtr& table, const ReplicationInfoPB& replication_info) const override;
 
   Status CanSupportAdditionalTabletsForTableCreation(
-    int num_tablets, const ReplicationInfoPB& replication_info,
-    const TSDescriptorVector& ts_descs);
+    int num_tablets, const ReplicationInfoPB& replication_info) const;
 
   void IncrementSplitBlockedByTabletLimitCounter() override;
 

@@ -53,18 +53,20 @@ class Aggregator {
 }  // namespace
 
 AggregatedClusterInfo ComputeAggregatedClusterInfo(
-    const TSDescriptorVector& ts_descs, const std::string& placement_uuid) {
+    const TSDescriptorVector& ts_descs, const BlacklistSet& blacklist,
+    const std::string& placement_uuid) {
   Aggregator memory_aggregator;
   Aggregator cores_aggregator;
   int64_t live_replicas_count = 0;
   for (const auto& ts : ts_descs) {
-    if (ts->placement_uuid() != placement_uuid) {
+    // todo(zdrudi): We probably shouldn't skip tablet replicas on blacklisted tservers.
+    if (!ts->IsLive() || ts->IsBlacklisted(blacklist) || ts->placement_uuid() != placement_uuid) {
       continue;
     }
     const auto resources = ts->GetRegistration().resources();
     cores_aggregator.Add(resources.has_core_count(), resources.core_count());
-    memory_aggregator.Add(
-        resources.has_tablet_overhead_ram_in_bytes(), resources.tablet_overhead_ram_in_bytes());
+    memory_aggregator.Add(resources.has_tablet_overhead_ram_in_bytes(),
+                          resources.tablet_overhead_ram_in_bytes());
     live_replicas_count += ts->num_live_replicas();
   }
   return AggregatedClusterInfo{
@@ -74,14 +76,9 @@ AggregatedClusterInfo ComputeAggregatedClusterInfo(
   };
 }
 
-// TODO(zdrudi): This function is passed a filtered version of TSDescriptorVector - blacklisted and
-// non-live tservers are removed.  But tablet replicas hosted on blacklisted tservers aren't going
-// to be deleted so they should be counted towards the total number of live tablet replicas.  Alter
-// this function to take the complete, unfiltered TSDescriptorVector and put logic directly into
-// ComputeAggregatedClusterInfo to do the right thing with blacklisted and non-live tservers.
 Status CanCreateTabletReplicas(
     int num_tablets, const ReplicationInfoPB& replication_info,
-    const TSDescriptorVector& ts_descs) {
+    const TSDescriptorVector& ts_descs, const BlacklistSet& blacklist) {
   if (!GetAtomicFlag(&FLAGS_enforce_tablet_replica_limits)) {
     return Status::OK();
   }
@@ -91,8 +88,8 @@ Status CanCreateTabletReplicas(
   }
   int64_t tablet_replicas_to_create =
       num_tablets * GetNumReplicasOrGlobalReplicationFactor(replication_info.live_replicas());
-  auto cluster_info =
-      ComputeAggregatedClusterInfo(ts_descs, replication_info.live_replicas().placement_uuid());
+  auto cluster_info = ComputeAggregatedClusterInfo(
+      ts_descs, blacklist, replication_info.live_replicas().placement_uuid());
   int64_t cluster_limit = ComputeTabletReplicaLimit(cluster_info, limits);
   int64_t new_tablet_count = cluster_info.total_live_replicas + tablet_replicas_to_create;
   if (new_tablet_count > cluster_limit) {

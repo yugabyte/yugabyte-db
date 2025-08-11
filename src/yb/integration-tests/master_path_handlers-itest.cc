@@ -13,6 +13,7 @@
 
 #include <chrono>
 #include <memory>
+#include <ranges>
 #include <regex>
 #include <string>
 #include <unordered_set>
@@ -39,8 +40,9 @@
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
-#include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master-path-handlers.h"
+#include "yb/master/master_cluster.proxy.h"
+#include "yb/master/master_cluster_client.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/mini_master.h"
 
@@ -81,9 +83,9 @@ DECLARE_bool(TEST_skip_deleting_split_tablets);
 DECLARE_uint32(leaderless_tablet_alert_delay_secs);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_bool(enable_load_balancing);
+DECLARE_int32(tablet_overhead_size_percentage);
 
-namespace yb {
-namespace master {
+namespace yb::master {
 
 using std::string;
 using std::vector;
@@ -192,6 +194,7 @@ class MasterPathHandlersItest : public MasterPathHandlersBaseItest<MiniCluster> 
     MiniClusterOptions opts;
     // Set low heartbeat timeout.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 5000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_overhead_size_percentage) = 20;
     opts.num_tablet_servers = num_tablet_servers();
     opts.num_masters = num_masters();
     cluster_.reset(new MiniCluster(opts));
@@ -207,6 +210,74 @@ class MasterPathHandlersItest : public MasterPathHandlersBaseItest<MiniCluster> 
   void SetUp() override {
     MasterPathHandlersBaseItest<MiniCluster>::SetUp();
     client_ = ASSERT_RESULT(cluster_->CreateClient());
+  }
+
+  // Returns the rows in a table with a given id, excluding the header row.
+  Result<std::vector<std::vector<std::string>>> GetHtmlTableRows(
+      const std::string& url, const std::string& html_table_tag_id, bool include_header = false) {
+    faststring result;
+    RETURN_NOT_OK(GetUrl(url, &result));
+    const auto webpage = result.ToString();
+    // Using [^]* to matches all characters instead of .* because . does not match newlines.
+    const std::regex table_regex(
+        Format("<table[^>]*id='$0'[^>]*>([^]*?)</table>", html_table_tag_id));
+    const std::regex row_regex(Format("<tr>([^]*?)</tr>"));
+    const std::regex col_regex(Format("<td[^>]*>([^]*?)</td>"));
+    const std::regex header_regex("<th[^>]*>([^>]*?)</th>");
+
+    std::smatch match;
+    std::regex_search(webpage, match, table_regex);
+
+    // [0] is the full match.
+    if (match.size() < 1) {
+      LOG(INFO) << "Full webpage: " << webpage;
+      return STATUS_FORMAT(NotFound, "Table with id $0 not found", html_table_tag_id);
+    }
+    // Match[1] is the first capture group, and contains everything inside the <table> tags.
+    std::string table = match[1];
+
+    std::vector<std::vector<std::string>> rows;
+    // Start at the second row to skip the header.
+    auto table_begin = std::sregex_iterator(table.begin(), table.end(), row_regex);
+    if (!include_header) {
+      ++table_begin;
+    }
+    for (auto row_it = table_begin; row_it != std::sregex_iterator(); ++row_it) {
+      auto row = row_it->str(1);
+      std::vector<std::string> cols;
+      std::regex regex;
+      if (include_header && rows.empty()) {
+        regex = header_regex;
+      } else {
+        regex = col_regex;
+      }
+      const auto row_begin = std::sregex_iterator(row.begin(), row.end(), regex);
+      for (auto col_it = row_begin; col_it != std::sregex_iterator(); ++col_it) {
+        cols.push_back(col_it->str(1));
+      }
+      rows.push_back(std::move(cols));
+    }
+    return rows;
+  }
+
+  Result<std::vector<std::string>> GetHtmlTableColumn(
+      const std::string& url, const std::string& html_table_tag_id,
+      const std::string& column_header) {
+    auto rows = VERIFY_RESULT(GetHtmlTableRows(url, html_table_tag_id, /* include_header= */ true));
+    if (rows.size() < 1) {
+      return STATUS_FORMAT(
+          NotFound, "Couldn't find table at url $0 with tag id $1", url, html_table_tag_id);
+    }
+    auto it = std::find(rows[0].begin(), rows[0].end(), column_header);
+    if (it == rows[0].end()) {
+      return STATUS_FORMAT(
+          NotFound, "Couldn't find column with header $0 at url $1 with tag id $2", column_header,
+          url, html_table_tag_id);
+    }
+    auto col_idx = it - rows[0].begin();
+    auto rng = rows | std::views::drop(1) |
+               std::views::transform([&col_idx](const auto& row) { return row[col_idx]; });
+    return std::vector(std::ranges::begin(rng), std::ranges::end(rng));
   }
 
  protected:
@@ -1570,5 +1641,48 @@ TEST_F(MasterPathHandlersItestExtraTS, LoadDistributionViewWithFailedTServer) {
   ASSERT_OK(GetUrl("/load-distribution", &out));
 }
 
-}  // namespace master
-}  // namespace yb
+TEST_F(MasterPathHandlersItest, TabletLimitsSkipDeadTServers) {
+  const std::string kTargetHeader = "Tablet Peer Limit";
+  auto cols =
+      ASSERT_RESULT(GetHtmlTableColumn("/tablet-servers", "universe_summary", kTargetHeader));
+  ASSERT_FALSE(cols.empty());
+  auto original_value = std::stoll(cols[0]);
+
+  cluster_->mini_tablet_server(0)->Shutdown();
+  ASSERT_OK(WaitFor(
+      [this, &original_value, &kTargetHeader]() -> Result<bool> {
+        auto new_cols =
+            VERIFY_RESULT(GetHtmlTableColumn("/tablet-servers", "universe_summary", kTargetHeader));
+        SCHECK(!new_cols.empty(), IllegalState, "Unexpected empty table");
+        auto new_value = std::stoll(new_cols[0]);
+        return new_value < original_value;
+      },
+      10s, "Reported tablet limit should decrease"));
+  ASSERT_OK(cluster_->mini_tablet_server(0)->Start());
+}
+
+TEST_F(MasterPathHandlersItest, TabletLimitsSkipBlacklistedTServers) {
+  const std::string kTargetHeader = "Tablet Peer Limit";
+  auto cols =
+      ASSERT_RESULT(GetHtmlTableColumn("/tablet-servers", "universe_summary", kTargetHeader));
+  ASSERT_FALSE(cols.empty());
+  auto original_value = std::stoll(cols[0]);
+
+  auto ts = cluster_->mini_tablet_server(0);
+  auto cluster_client = MasterClusterClient(
+      ASSERT_RESULT(cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>()));
+  for (const auto& hp : ts->options()->broadcast_addresses) {
+    ASSERT_OK(cluster_client.BlacklistHost(hp.ToPB<HostPortPB>()));
+  }
+  ASSERT_OK(WaitFor(
+      [this, &original_value, &kTargetHeader]() -> Result<bool> {
+        auto new_cols =
+            VERIFY_RESULT(GetHtmlTableColumn("/tablet-servers", "universe_summary", kTargetHeader));
+        SCHECK(!new_cols.empty(), IllegalState, "Unexpected empty table");
+        auto new_value = std::stoll(new_cols[0]);
+        return new_value < original_value;
+      },
+      10s, "Reported tablet limit should decrease"));
+}
+
+} // namespace yb::master
