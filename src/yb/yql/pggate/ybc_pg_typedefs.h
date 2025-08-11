@@ -428,6 +428,7 @@ typedef struct {
   const bool*     enable_object_locking_for_table_locks;
   const uint32_t* ysql_max_invalidation_message_queue_size;
   const uint32_t* ysql_max_replication_slots;
+  const bool*     TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication;
 } YbcPgGFlagsAccessor;
 
 typedef struct {

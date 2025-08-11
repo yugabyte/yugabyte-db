@@ -261,6 +261,8 @@ class CDCSDKTestBase : public YBTest {
 
   Result<std::string> HybridTimeToReadableString(uint64_t hybrid_time);
 
+  Result<GetChangesResponsePB> GetChangesFromMaster(const xrepl::StreamId& stream_id);
+
  protected:
   // Every test needs to initialize this cdc_proxy_.
   std::unique_ptr<CDCServiceProxy> cdc_proxy_;

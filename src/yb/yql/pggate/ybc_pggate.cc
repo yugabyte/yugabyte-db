@@ -180,6 +180,7 @@ DEFINE_RUNTIME_PG_FLAG(
 DECLARE_bool(TEST_ash_debug_aux);
 DECLARE_bool(TEST_generate_ybrowid_sequentially);
 DECLARE_bool(TEST_ysql_log_perdb_allocated_new_objectid);
+DECLARE_bool(TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 
 DECLARE_bool(use_fast_backward_scan);
 DECLARE_uint32(ysql_max_invalidation_message_queue_size);
@@ -2288,7 +2289,9 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
           &FLAGS_enable_object_locking_for_table_locks,
       .ysql_max_invalidation_message_queue_size =
           &FLAGS_ysql_max_invalidation_message_queue_size,
-      .ysql_max_replication_slots                = &FLAGS_max_replication_slots
+      .ysql_max_replication_slots                = &FLAGS_max_replication_slots,
+      .TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication =
+          &FLAGS_TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication,
   };
   // clang-format on
   return &accessor;
@@ -2722,7 +2725,8 @@ void YBCStoreTServerAshSamples(
 
 YbcStatus YBCPgInitVirtualWalForCDC(
     const char *stream_id, const YbcPgOid database_oid, YbcPgOid *relations, YbcPgOid *relfilenodes,
-    size_t num_relations, const YbcReplicationSlotHashRange *slot_hash_range, uint64_t active_pid) {
+    size_t num_relations, const YbcReplicationSlotHashRange *slot_hash_range, uint64_t active_pid,
+    YbcPgOid *publications, size_t num_publications, bool yb_is_pub_all_tables) {
   std::vector<PgObjectId> tables;
   tables.reserve(num_relations);
 
@@ -2731,8 +2735,16 @@ YbcStatus YBCPgInitVirtualWalForCDC(
     tables.push_back(std::move(table_id));
   }
 
+  std::vector<PgOid> publications_oid_list;
+  publications_oid_list.reserve(num_publications);
+
+  for (size_t i = 0; i < num_publications; i++) {
+    publications_oid_list.push_back(std::move(publications[i]));
+  }
+
   const auto result = pgapi->InitVirtualWALForCDC(
-    std::string(stream_id), tables, slot_hash_range, active_pid);
+      std::string(stream_id), tables, slot_hash_range, active_pid, publications_oid_list,
+      yb_is_pub_all_tables);
   if (!result.ok()) {
     return ToYBCStatus(result.status());
   }

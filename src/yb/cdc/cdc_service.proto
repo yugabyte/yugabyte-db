@@ -172,6 +172,9 @@ message InitVirtualWALForCDCRequestPB {
   // Tablets with start hash range falling in these slot's hash range will be polled.
   optional ReplicationSlotHashRangePB slot_hash_range = 4;
   optional uint64 active_pid = 5;
+  repeated uint32 publication_oid = 7;
+  // Boolean to indicate whether any publication associated with VWAL is an ALL TABLES publication.
+  optional bool pub_all_tables = 8;
 }
 
 message InitVirtualWALForCDCResponsePB {
