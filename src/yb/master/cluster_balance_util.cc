@@ -154,6 +154,12 @@ size_t PerTableLoadState::GetLoad(const TabletServerId& ts_uuid) const {
   return ts_meta.starting_tablets.size() + ts_meta.running_tablets.size();
 }
 
+size_t PerTableLoadState::GetPossiblyTransientLoad(const TabletServerId& ts_uuid) const {
+  return std::ranges::count_if(
+      per_ts_meta_.at(ts_uuid).running_tablets,
+      [this](const auto& tablet_id) { return per_tablet_meta_.at(tablet_id).is_over_replicated; });
+}
+
 size_t PerTableLoadState::GetTabletDriveLoad(
     const TabletServerId& ts_uuid, const TabletId& tablet_id) const {
   const auto& ts_meta = per_ts_meta_.at(ts_uuid);
