@@ -35,6 +35,9 @@ typedef const void * YbcConstSliceVector;
 typedef void * YbcSliceSet;
 typedef const void * YbcConstSliceSet;
 
+typedef void (*YbcRecordTempRelationDDL_hook_type)();
+extern YbcRecordTempRelationDDL_hook_type YBCRecordTempRelationDDL_hook;
+
 typedef struct {
   YbcStatus ybc_status;
   YbcPgExplicitRowLockErrorInfo error_info;
@@ -997,6 +1000,11 @@ YbcStatus YBCPgRestoreReadPoint(YbcReadPointHandle read_point);
 YbcStatus YBCPgRegisterSnapshotReadTime(
     uint64_t read_time, bool use_read_time, YbcReadPointHandle* handle);
 
+// Records the current statement as a temporary relation DDL statement.
+void YBCRecordTempRelationDDL();
+
+// Allow the DDL to modify the pg catalog even if it has been blocked for YSQL major upgrades. This
+// should only be used for DDLs that are safe to perform during a YSQL major upgrade.
 void YBCDdlEnableForceCatalogModification();
 
 uint64_t YBCGetCurrentHybridTimeLsn();
