@@ -80,7 +80,9 @@ export const MetadataItem: FC<MetadataItemProps> = ({
               style={{ marginBottom: idx < label.length - 1 ? 16 : 0, gap: 4 }}
             >
               <Typography className={classes.label}>{lbl}</Typography>
-              <Typography className={classes.value}>{(value as React.ReactNode[])[idx]}</Typography>
+              <Typography className={classes.value} component="div">
+                {(value as React.ReactNode[])[idx]}
+              </Typography>
             </Box>
           ))}
         </Box>
@@ -109,7 +111,7 @@ export const MetadataItem: FC<MetadataItemProps> = ({
           {/* Values column */}
           <Box display="flex" flexDirection="column" alignItems="flex-start" style={{ rowGap: 8 }}>
             {(value as React.ReactNode[]).map((val, idx) => (
-              <Typography className={classes.value} key={idx}>{val}</Typography>
+              <Typography className={classes.value} key={idx} component="div">{val}</Typography>
             ))}
           </Box>
         </Box>
@@ -126,7 +128,7 @@ export const MetadataItem: FC<MetadataItemProps> = ({
       ].filter(Boolean).join(' ')}
     >
       <Typography className={classes.label}>{label}</Typography>
-      <Typography className={classes.value}>{value}</Typography>
+      <Typography className={classes.value} component="div">{value}</Typography>
     </Box>
   );
 };

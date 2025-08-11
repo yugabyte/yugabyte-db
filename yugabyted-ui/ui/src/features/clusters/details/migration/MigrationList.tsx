@@ -57,13 +57,21 @@ const useStyles = makeStyles((theme) => ({
     padding: theme.spacing(0.5, 0.75),
     gap: theme.spacing(0.5),
     borderRadius: theme.spacing(0.75),
-    background: theme.palette.primary[100],
-    color: theme.palette.primary[600],
+    background: theme.palette.secondary[200],
+    color: theme.palette.secondary[700],
     fontFamily: theme.typography.fontFamily,
     fontSize: theme.typography.fontSize,
     fontStyle: 'normal',
     fontWeight: theme.typography.body2.fontWeight,
     lineHeight: '16px',
+  },
+  migrationBadge: {
+    background: theme.palette.primary[300],
+    color: theme.palette.primary[700],
+  },
+  validationBadge: {
+    background: theme.palette.info[100],
+    color: theme.palette.info[700],
   },
   migrationsHeading: {
     color: theme.palette.text.primary,
@@ -483,15 +491,21 @@ export const MigrationList: FC<MigrationListProps> = ({
                 variant={
                   isAssessment
                     ? BadgeVariant.Light
-                    : progress === "Schema migration"
+                    : progress === "Schema migration" || progress === "Data migration"
                       ? BadgeVariant.InProgress
-                      : progress === "Data migration"
-                        ? BadgeVariant.Info
-                        : progress === "Completed"
-                          ? BadgeVariant.Success
-                          : undefined
+                      : progress === "Completed"
+                        ? BadgeVariant.Success
+                        : undefined
                 }
-                className={isAssessment ? classes.assessmentBadge : ""}
+                className={
+                  isAssessment
+                    ? classes.assessmentBadge
+                    : progress === "Schema migration" || progress === "Data migration"
+                      ? classes.migrationBadge
+                      : progress === "Completed"
+                        ? classes.validationBadge
+                        : ""
+                }
                 text={progress}
                 icon={false}
               />
