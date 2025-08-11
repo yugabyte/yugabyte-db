@@ -18,6 +18,7 @@
 #include <list>
 #include <memory>
 #include <queue>
+#include <ranges>
 #include <string>
 #include <utility>
 #include <variant>
@@ -27,6 +28,7 @@
 
 #include "yb/gutil/macros.h"
 
+#include "yb/util/concepts.h"
 #include "yb/util/locks.h"
 #include "yb/util/lw_function.h"
 #include "yb/util/ref_cnt_buffer.h"
@@ -42,6 +44,12 @@ namespace yb::pggate {
 
 YB_STRONGLY_TYPED_BOOL(RequestSent);
 YB_STRONGLY_TYPED_BOOL(KeepOrder);
+
+template <class T>
+concept PgDocResultSysEntryProcessor = InvocableAs<T, Status(Slice&)>;
+
+template <class T>
+concept PgDocResultYbctidProcessor = InvocableAs<T, void(Slice, const RefCntBuffer&)>;
 
 //--------------------------------------------------------------------------------------------------
 // PgDocResult represents a batch of rows in ONE reply from tablet servers.
@@ -64,17 +72,28 @@ class PgDocResult {
   // Get the postgres tuple from this batch.
   Status WritePgTuple(const std::vector<PgFetchedTarget*>& targets, PgTuple* pg_tuple);
 
-  // TODO consider moving it out, can be a standalone function
-  Status ProcessYbctidEntry(Slice* data);
+  template <PgDocResultYbctidProcessor Processor>
+  Status ProcessYbctids(const Processor& processor) {
+    return ProcessSysEntries([this, &processor](Slice& data) -> Status {
+      processor(VERIFY_RESULT(ReadYbctid(data)), data_.first);
+      return Status::OK();
+    });
+  }
 
   // Processes rows containing data other than PG rows. (currently ybctids or sampling reservoir)
-  Status ProcessEntries(std::function<Status(Slice* data)> processor);
-
-  // Access function to ybctids value in this batch.
-  // The ybctid entries must be processed before this function is called.
-  const std::vector<Slice>& ybctids() const {
-    DCHECK(row_iterator_.empty()) << "System columns are not yet setup";
-    return ybctids_;
+  template <PgDocResultSysEntryProcessor Processor>
+  Status ProcessSysEntries(const Processor& processor) {
+    // Sanity check: special rows must be unordered
+    // Row orders assume that multiple PgDocResults are merge sorted row by row.
+    // That contradicts ProcessEntries, which batch reads all the rows ignoring order.
+    // If there is a need to order non-PG rows, consider to add a row reading function
+    // like WritePgTuple.
+    DCHECK(row_orders_.empty()) << "System data rows can't be ordered";
+    for ([[maybe_unused]] auto _ : std::views::iota(0, row_count_)) {
+      RETURN_NOT_OK(processor(row_iterator_));
+    }
+    SCHECK(row_iterator_.empty(), IllegalState, "Unread row data");
+    return Status::OK();
   }
 
   // Row count in this batch.
@@ -83,6 +102,8 @@ class PgDocResult {
   }
 
  private:
+  static Result<Slice> ReadYbctid(Slice& data);
+
   // Data selected from DocDB.
   rpc::SidecarHolder data_;
 
@@ -94,11 +115,6 @@ class PgDocResult {
 
   std::vector<int64_t> row_orders_;
   size_t current_row_idx_;
-
-  // System columns.
-  // - ybctids_ contains pointers to the buffers "data_".
-  // - System columns must be processed before these fields have any meaning.
-  std::vector<Slice> ybctids_;
 };
 
 class PgDocOp;
@@ -166,16 +182,25 @@ class PgDocResultStream {
   // Read next one row into the tuple. It is caller responsibility to provide matching targets
   Result<bool> GetNextRow(const std::vector<PgFetchedTarget*>& targets, PgTuple* pg_tuple);
 
-  // Block read accessors. Process data in one PgDocResult.
-  // Caller is supposed to provide a processor function matching the content of the response.
+  template <PgDocResultSysEntryProcessor Processor>
+  Result<bool> ProcessNextSysEntries(const Processor& processor) {
+    auto* result = VERIFY_RESULT(NextDocResult());
+    if (result) {
+      RETURN_NOT_OK(result->ProcessSysEntries(processor));
+      return true;
+    }
+    return false;
+  }
 
-  // Generic data processor.
-  Result<bool> ProcessEntries(std::function<Status(Slice* data)> processor);
-
-  // Reads ybctid batch from the response using internal processor.
-  // TODO consider to get rid of it in favor of generic ProcessEntries.
-  Result<std::optional<YbctidBatch>> GetNextYbctidBatch(bool keep_order);
-  // End of accessor methods
+  template <PgDocResultYbctidProcessor Processor>
+  Result<bool> ProcessNextYbctids(const Processor& processor) {
+    auto* result = VERIFY_RESULT(NextDocResult());
+    if (result) {
+      RETURN_NOT_OK(result->ProcessYbctids(processor));
+      return true;
+    }
+    return false;
+  }
 
   // To be used by the PgDocOp's fetcher.
   // Find PgsqlResultStream for the op and put the fetched data into the queue.

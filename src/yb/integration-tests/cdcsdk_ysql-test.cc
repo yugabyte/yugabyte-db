@@ -24,8 +24,6 @@
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 
 #include "yb/master/tasks_tracker.h"
-#include "yb/master/master_replication.proxy.h"
-#include "yb/master/sys_catalog_constants.h"
 
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
@@ -12121,13 +12119,6 @@ TEST_F(CDCSDKYsqlTest, TestPollingPgCatalogTables) {
   xrepl::StreamId stream_id =
       ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot("test_poll_catalog_tables"));
 
-  GetChangesRequestPB change_req;
-  GetChangesResponsePB change_resp;
-  change_req.set_stream_id(stream_id.ToString());
-  change_req.set_tablet_id(master::kSysCatalogTabletId);
-  change_req.set_wal_segment_index(0);
-  change_req.set_safe_hybrid_time(-1);
-
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
   ASSERT_OK(conn.Execute("CREATE TABLE test_1 (a int primary key, b text)"));
   ASSERT_OK(conn.Execute("CREATE TABLE test_2 (a int primary key, b text)"));
@@ -12140,14 +12131,7 @@ TEST_F(CDCSDKYsqlTest, TestPollingPgCatalogTables) {
 
   ASSERT_OK(conn.Execute("ALTER TABLE test_1 ADD COLUMN c text"));
 
-  rpc::RpcController change_rpc;
-  change_rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
-
-  // Just set the address as master.
-  cdc::CDCServiceProxy master_proxy_(
-      &test_client()->proxy_cache(),
-      ASSERT_RESULT(test_cluster_.mini_cluster_->GetLeaderMasterBoundRpcAddr()));
-  ASSERT_OK(master_proxy_.GetChanges(change_req, &change_resp, &change_rpc));
+  auto change_resp = ASSERT_RESULT(GetChangesFromMaster(stream_id));
   ASSERT_FALSE(change_resp.has_error());
 
   // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
@@ -12175,6 +12159,58 @@ TEST_F(CDCSDKYsqlTest, TestPollingPgCatalogTables) {
     } else {
       ASSERT_EQ(record_count[i], expected_count_without_packed_row[i]);
     }
+  }
+}
+
+TEST_F(CDCSDKYsqlTest, TestStreamIndependenceWhilePollingCatalogTablet) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_dynamic_table_support) = false;
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication) = true;
+
+  ASSERT_OK(SetUpWithParams(1, 1));
+
+  // Create second DB.
+  const auto kNamespaceName_2 = "test_namespace_2";
+  ASSERT_OK(CreateDatabase(&test_cluster_, kNamespaceName_2, false /* colocated*/));
+
+  // Create one table on each DB.
+  ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test_table_1"));
+  ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName_2, "test_table_2"));
+
+  auto conn_1 = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn_2 = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName_2));
+
+  // Create a publication in each DB.
+  ASSERT_OK(conn_1.Execute("CREATE PUBLICATION test_pub_1 FOR TABLE test_table_1"));
+  ASSERT_OK(conn_2.Execute("CREATE PUBLICATION test_pub_2 FOR TABLE test_table_2"));
+
+  // Create streams on both DBs.
+  auto stream_id_1 = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(
+      "test_slot_1", CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT, false, kNamespaceName));
+  auto stream_id_2 = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(
+      "test_slot_2", CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT, false, kNamespaceName_2));
+
+  // Create a dynamic table and add it to the publication in first DB.
+  ASSERT_OK(conn_1.Execute("CREATE TABLE dynamic_table (id int primary key)"));
+  ASSERT_OK(conn_1.Execute("ALTER PUBLICATION test_pub_1 ADD TABLE dynamic_table"));
+
+  // Call GetChanges on sys catalog tablet using stream_1. We will get 10 records: 6 corresponding
+  // to the CREATE TABLES (BEGIN, DDL, 2 INSERTS, 1 UPDATE, COMMIT) and 4 corresponding to the ALTER
+  // PUB (BEGIN, DDL, INSERT, COMMIT).
+  auto change_resp = ASSERT_RESULT(GetChangesFromMaster(stream_id_1));
+  ASSERT_FALSE(change_resp.has_error());
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 10);
+
+  // Call GetChanges on sys catalog tablet using stream_2. We will not get any DMLs as sys catalog
+  // tablet only has change records corresponding to the DB 1. These records will be filtered by CDC
+  // producer and empty BEGIN - COMMIT pairs will be received here.
+  auto change_resp_2 = ASSERT_RESULT(GetChangesFromMaster(stream_id_2));
+  ASSERT_FALSE(change_resp_2.has_error());
+  for (auto record : change_resp_2.cdc_sdk_proto_records()) {
+    ASSERT_TRUE(
+        (record.row_message().op() == RowMessage_Op_BEGIN) ||
+        (record.row_message().op() == RowMessage_Op_COMMIT));
   }
 }
 

@@ -1,0 +1,22 @@
+title: ConfigureMetricsExportSpec
+description: |
+  ConfigureMetricsExportSpec
+
+  Configuration for metrics export from a universe to telemetry providers.
+type: object
+allOf:
+  - $ref: "./SleepAfterRestartSchema.yaml"
+  - type: object
+    properties:
+      install_otel_collector:
+        description: |
+          Similar to DBAL request body. Optional - default false.
+          Requires true if "universe_metrics_exporter_config" is not empty
+          and "universeDetails.otelCollectorEnabled" is false.
+        type: boolean
+        example: true
+        default: false
+      metrics_export_config:
+        description: |
+          This root level object will be stored in the universe details directly, similar to auditLogConfig in DBAL.
+        $ref: "./MetricsExportConfig.yaml"

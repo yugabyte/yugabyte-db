@@ -28,6 +28,7 @@ import com.yugabyte.yw.commissioner.NodeAgentEnabler;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase.KubernetesPlacement;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.PortType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
@@ -1321,6 +1322,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     params.auditLogConfig =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.auditLogConfig;
+    params.metricsExportConfig =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.metricsExportConfig;
 
     // The software package to install for this cluster.
     params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
@@ -4378,13 +4381,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param providerUUID
    * @param ybcSoftwareVersion
    * @param ybcGflags
+   * @param placement (Optional)
    */
   public void createKubernetesYbcCopyPackageSubTask(
       SubTaskGroup subTaskGroup,
       NodeDetails node,
       UUID providerUUID,
       String ybcSoftwareVersion,
-      Map<String, String> ybcGflags) {
+      Map<String, String> ybcGflags,
+      @Nullable KubernetesPlacement placement) {
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
     params.commandType = KubernetesCommandExecutor.CommandType.COPY_PACKAGE;
     params.setUniverseUUID(taskParams().getUniverseUUID());
@@ -4392,6 +4397,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.setYbcSoftwareVersion(ybcSoftwareVersion);
     params.ybcGflags = ybcGflags;
     params.providerUUID = providerUUID;
+    if (placement != null) {
+      params.placementInfo = placement.placementInfo;
+    }
     KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
     task.initialize(params);
     task.setUserTaskUUID(getUserTaskUUID());
@@ -4406,13 +4414,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param providerUUID
    * @param isReadOnlyCluster
    * @param command
+   * @param placement (Optional)
    */
   public void createKubernetesYbcActionSubTask(
       SubTaskGroup subTaskGroup,
       NodeDetails node,
       UUID providerUUID,
       boolean isReadOnlyCluster,
-      String command) {
+      String command,
+      @Nullable KubernetesPlacement placement) {
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
     params.commandType = KubernetesCommandExecutor.CommandType.YBC_ACTION;
     params.setUniverseUUID(taskParams().getUniverseUUID());
@@ -4420,6 +4430,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.isReadOnlyCluster = isReadOnlyCluster;
     params.providerUUID = providerUUID;
     params.command = command;
+    if (placement != null) {
+      params.placementInfo = placement.placementInfo;
+    }
     KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
     task.initialize(params);
     task.setUserTaskUUID(getUserTaskUUID());
@@ -4462,13 +4475,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                       node,
                       UUID.fromString(cluster.userIntent.provider),
                       ybcSoftwareVersion,
-                      ybcGflags);
+                      ybcGflags,
+                      null /* placement */);
                   createKubernetesYbcActionSubTask(
                       stopYbcActionGroup,
                       node,
                       UUID.fromString(cluster.userIntent.provider),
                       cluster.clusterType == ClusterType.ASYNC,
-                      "stop" /* command */);
+                      "stop" /* command */,
+                      null /* placement */);
                 } else {
                   AnsibleConfigureServers.Params params =
                       ybcManager.getAnsibleConfigureYbcServerTaskParams(

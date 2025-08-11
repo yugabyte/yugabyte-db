@@ -4,6 +4,7 @@ import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 import { useTranslation } from "react-i18next";
 import { YBAccordion, YBButton, YBModal, YBCodeBlock} from "@app/components";
 import RestartIcon from "@app/assets/restart2.svg";
+import ViewCommandIcon from "@app/assets/view_command_icon.svg";
 import BookIcon from "@app/assets/book.svg";
 import { SchemaAnalysisTabs } from "./SchemaAnalysisTabs";
 import type { Migration } from "../../MigrationOverview";
@@ -96,7 +97,12 @@ export const SchemaAnalysis: FC<SchemaAnalysisProps> = ({ /* migration, */ schem
           <Typography variant="body2" align="left">
             {t("clusterDetail.voyager.migrateSchema.rerunAnalysis")}
           </Typography>
-          <YBButton variant="secondary" onClick={()=>setIsSchemaModalOpen(true)}>
+          <YBButton
+            variant="secondary"
+            onClick={() => setIsSchemaModalOpen(true)}
+            startIcon={<ViewCommandIcon />}
+            style={{ gap: '5px' }}
+          >
             {t("clusterDetail.voyager.migrateSchema.viewAnalyzeCommand")}
           </YBButton>
           <YBModal
@@ -146,7 +152,7 @@ export const SchemaAnalysis: FC<SchemaAnalysisProps> = ({ /* migration, */ schem
           <YBAccordion
             key={index}
             titleContent={
-              <Typography variant="body2" className={classes.accordionHeader}>
+              <Typography variant="body2" component="div" className={classes.accordionHeader}>
                 {t("clusterDetail.voyager.migrateSchema.analysis")}
                 <Box display="flex" alignItems="center" gridGap={theme.spacing(1)}>
                   {item.completedOn && (

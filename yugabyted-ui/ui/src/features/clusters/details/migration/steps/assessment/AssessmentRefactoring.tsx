@@ -1,4 +1,4 @@
-import React, { FC, useMemo } from "react";
+import React, { FC, useMemo, useRef } from "react";
 import { Box, Divider, MenuItem, Link, makeStyles, useTheme, Typography } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
 import { Trans } from "react-i18next";
@@ -13,7 +13,10 @@ import { YBAccordion, YBSelect, YBTable, YBTooltip } from "@app/components";
 import { MigrationRefactoringIssueSidePanel } from "./AssessmentRefactoringIssueSidePanel";
 import { formatSnakeCase } from "@app/helpers";
 import HelpIcon from "@app/assets/help.svg";
+import ArrowRightIcon from "@app/assets/arrow-right.svg";
+import ArrowRightIconBlue from "@app/assets/caretRightIconBlue.svg";
 import { getComplexityString } from "../../ComplexityComponent";
+
 
 const useStyles = makeStyles((theme) => ({
   label: {
@@ -37,30 +40,75 @@ const useStyles = makeStyles((theme) => ({
     padding: theme.spacing(1),
     borderRadius: theme.shape.borderRadius,
     boxShadow: theme.shadows[2],
+    maxWidth: 300,
+    overflow: 'hidden',
+    wordWrap: 'break-word',
+    zIndex: 1500
   },
   recommendationCard: {
     display: "flex",
     flexDirection: "column",
     justifyContent: "space-between",
     width: "100%",
+    position: "relative",
   },
   greyBox: {
     backgroundColor: '#f5f5f5',
-    marginLeft: 20,
+    marginLeft: theme.spacing(2.5),
     display: 'flex',
     alignItems: 'center',
-    borderRadius: 6,
-    fontWeight: 500,
+    borderRadius: theme.spacing(0.75),
+    fontWeight: theme.typography.button.fontWeight,
     border: '1px solid #eaeaea',
     borderColor: 'divider',
-    padding: '8px 20px',
+    padding: theme.spacing(1, 2.5),
   },
-  icon: {
+  titleContainer: {
+    display: 'flex',
+    alignItems: 'center'
+  },
+  separator: {
+    margin: theme.spacing(0, 1)
+  },
+  versionText: {
+    color: theme.palette.text.primary,
+    fontFamily: theme.typography.fontFamily,
+    fontSize: theme.typography.subtitle1.fontSize,
+    fontStyle: "normal",
+    fontWeight: theme.typography.body2.fontWeight,
+    lineHeight: "16px",
     display: "flex",
-    cursor: "pointer",
-    color: theme.palette.grey[500],
-    alignItems: "center",
+    alignItems: "center"
   },
+  versionValue: {
+    marginLeft: theme.spacing(1)
+  },
+  issueBox: {
+    display: 'flex',
+    padding: theme.spacing(2),
+    marginBottom: theme.spacing(4),
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    alignSelf: 'stretch',
+    backgroundColor: theme.palette.background.default,
+    borderRadius: theme.shape.borderRadius,
+    border: `1px solid ${theme.palette.divider}`,
+    '& > *:not(:last-child)': {
+      marginBottom: theme.spacing(1)
+    }
+  },
+  filterContainer: {
+    display: 'flex',
+    alignItems: 'center',
+    '& > *:not(:last-child)': {
+      marginRight: theme.spacing(1)
+    }
+  },
+  translationContainer: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1)
+  }
 }));
 
 interface MigrationAssessmentRefactoringProps {
@@ -94,10 +142,20 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
   const { t } = useTranslation();
   const theme = useTheme();
 
+  // Ensure smooth scrolling is enabled globally
+  React.useEffect(() => {
+    const originalScrollBehavior = document.documentElement.style.scrollBehavior;
+    document.documentElement.style.scrollBehavior = 'smooth';
+
+    return () => {
+      document.documentElement.style.scrollBehavior = originalScrollBehavior;
+    };
+  }, []);
+
   const translatedAllIssueTypes: string =
     t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.allIssueTypes");
 
-  const ALL_OBJECTS: string = "All object types selected";
+  const ALL_OBJECTS: string = "All object types";
   const ALL_IMPACTS: string = t("clusterDetail.voyager.planAndAssess.impactLevels.allImpacts");
   const [typeFilter, setTypeFilter] = React.useState<string>(translatedAllIssueTypes);
   const [showOccurrences, setShowOccurrences] = React.useState<boolean>(false);
@@ -113,12 +171,15 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
     [sqlObjects]
   );
 
-  const referenceToIssueTable: React.MutableRefObject<HTMLDivElement | null> =
-    React.useRef<HTMLDivElement | null>(null);
+  const objectTypeSelectRef = useRef<HTMLInputElement>(null);
+  const filterSectionRef = useRef<HTMLDivElement>(null);
 
   const scrollToIssueTable: () => void = () => {
-    if (referenceToIssueTable.current) {
-      referenceToIssueTable.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (filterSectionRef.current) {
+      filterSectionRef.current.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
     }
   };
 
@@ -190,11 +251,18 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
         )
     );
 
-  // Making the Hard Medium Easy keywords bold
-  const finalTranslationOutput =
-    migCompexityExp?.split(/\b(Hard|Medium|Easy)\b/g).map((part, index) =>
-      ["Hard", "Medium", "Easy"].includes(part) ? <strong key={index}>{part}</strong> : part
-    );
+  // Making the Hard/Medium/Easy migration phrases bold
+  const finalTranslationOutput = migCompexityExp?.replace(
+    /(Hard|Medium|Easy)\s+migration/g,
+    (match) => `<strong>${match}</strong>`
+  );
+
+  const renderTranslationOutput = (
+    <Typography variant="body2" className={classes.translationContainer}>
+      <ArrowRightIcon />
+      <span dangerouslySetInnerHTML={{ __html: finalTranslationOutput || '' }} />
+    </Typography>
+  );
 
   const types = useMemo(() => {
     const typeSet = new Set<string>();
@@ -208,7 +276,7 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
     return Array.from(typeSet);
   }, [assessmentCategoryInfo]);
 
-  // Although I could have inlined the description directly in each row,
+  // Although we could have inlined the description directly in each row,
   // the number of distinct categories is small, so a map provides a cleaner,
   // more efficient way to avoid redundant data duplication across rows.
   const categoryDescriptionMap = useMemo(() => {
@@ -282,11 +350,13 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
       name: "issue_name",
       label: t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.issueName"),
       options: {
-        setCellHeaderProps: () => ({ style: { padding: "2px 4px", maxWidth: "120px" } }),
+        setCellHeaderProps: () => ({
+          style: { padding: theme.spacing(0.25, 0.5), maxWidth: theme.spacing(15) },
+        }),
         setCellProps: () => ({
           style: {
-            padding: "2px 4px",
-            maxWidth: "120px",
+            padding: theme.spacing(0.25, 0.5),
+            maxWidth: theme.spacing(15),
             wordBreak: "break-word",
             whiteSpace: "normal",
             hyphens: "auto"
@@ -295,37 +365,16 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
       },
     },
     {
-      name: "count",
-      label: t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.occurrences"),
-      options: {
-        setCellHeaderProps: () => ({ style: { padding: "2px 4px", maxWidth: "60px" } }),
-        setCellProps: () => ({
-          style: {
-            padding: "2px 4px",
-            maxWidth: "60px", wordBreak: "break-word", whiteSpace: "normal", hyphens: "auto"
-          }
-        }),
-        customBodyRenderLite: (dataIndex: number) => (
-          <Link
-            onClick={() => {
-              setSelectedIssue(unsupportedObjectsData[dataIndex]);
-              setShowOccurrences(true);
-            }}
-          >
-            {unsupportedObjectsData[dataIndex].count}
-          </Link>
-        ),
-      },
-    },
-    {
       name: "category",
       label: t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.category"),
       options: {
-        setCellHeaderProps: () => ({ style: { padding: "2px 4px", maxWidth: "100px" } }),
+        setCellHeaderProps: () => ({
+          style: { padding: theme.spacing(0.25, 0.5), maxWidth: theme.spacing(12.5) },
+        }),
         setCellProps: () => ({
           style: {
-            padding: "2px 4px",
-            maxWidth: "100px",
+            padding: theme.spacing(0.25, 0.5),
+            maxWidth: theme.spacing(12.5),
             wordBreak: "break-word",
             whiteSpace: "normal",
             hyphens: "auto",
@@ -365,15 +414,28 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
       name: "impact",
       label: t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.impact"),
       options: {
-        setCellHeaderProps: () => ({ style: { padding: "2px 4px", maxWidth: "80px" } }),
+        setCellHeaderProps: () => ({
+          style: { padding: theme.spacing(0.25, 0.5), maxWidth: theme.spacing(10) },
+        }),
         setCellProps: () => ({
           style: {
-            padding: "2px 4px",
-            maxWidth: "80px", wordBreak: "break-word", whiteSpace: "normal", hyphens: "auto"
-          }
+            padding: theme.spacing(0.25, 0.5),
+            maxWidth: theme.spacing(10),
+            wordBreak: "break-word",
+            whiteSpace: "normal",
+            hyphens: "auto",
+          },
         }),
         customBodyRender: (value: string) => (
-          <YBBadge text={formatSnakeCase(value ?? "N/A")} variant={BadgeVariant.Warning} />
+          <YBBadge
+            text={
+                  <Typography
+                    style={{ minWidth: '45px', display: 'inline-block', textAlign: 'left' }}
+                    variant="body2">{formatSnakeCase(value ?? "N/A")}
+                  </Typography>
+                }
+            variant={BadgeVariant.Warning}
+          />
         ),
         customHeadLabelRender: createCustomHeaderLabelRender(
           "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.impact",
@@ -385,13 +447,17 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
               </Trans>
             </Typography>
             <Typography variant="body2">
-              <Trans i18nKey="clusterDetail.voyager.planAndAssess.impactLevels.level1">
+              <Trans
+                i18nKey="clusterDetail.voyager.planAndAssess.impactLevels.level1">
                 <strong />
               </Trans><br />
-              <Trans i18nKey="clusterDetail.voyager.planAndAssess.impactLevels.level2">
+              <Trans
+                i18nKey="clusterDetail.voyager.planAndAssess.impactLevels.level2">
                 <strong />
               </Trans><br />
-              <Trans i18nKey="clusterDetail.voyager.planAndAssess.impactLevels.level3">
+              <Trans
+                i18nKey="clusterDetail.voyager.planAndAssess.impactLevels.level3"
+              >
                 <strong />
               </Trans>
             </Typography>
@@ -403,12 +469,17 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
       name: "docs_link",
       label: t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.workaround"),
       options: {
-        setCellHeaderProps: () => ({ style: { padding: "2px 4px", maxWidth: "120px" } }),
+        setCellHeaderProps: () => ({
+          style: { padding: theme.spacing(0.25, 0.5), maxWidth: theme.spacing(15) },
+        }),
         setCellProps: () => ({
           style: {
-            padding: "2px 4px",
-            maxWidth: "120px", wordBreak: "break-word", whiteSpace: "normal", hyphens: "auto"
-          }
+            padding: theme.spacing(0.25, 0.5),
+            maxWidth: theme.spacing(15),
+            wordBreak: "break-word",
+            whiteSpace: "normal",
+            hyphens: "auto",
+          },
         }),
         customBodyRender: (url: string) =>
           url ? (
@@ -421,15 +492,53 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
       },
     },
     {
-      name: "minimum_versions_fixed_in",
-      label: t("clusterDetail.voyager.planAndAssess.recommendation." +
-        "schemaChanges.minVersionsFixedIn"),
+      name: "count",
+      label: t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.occurrences"),
       options: {
-        setCellHeaderProps: () => ({ style: { padding: "2px 4px", maxWidth: "90px" } }),
+        setCellHeaderProps: () => ({
+          style: { padding: theme.spacing(0.25, 0.5), maxWidth: theme.spacing(7.5) },
+        }),
         setCellProps: () => ({
           style: {
-            padding: "2px 4px",
-            maxWidth: "90px",
+            padding: theme.spacing(0.25, 0.5),
+            maxWidth: theme.spacing(7.5),
+            wordBreak: "break-word",
+            whiteSpace: "normal",
+            hyphens: "auto",
+          },
+        }),
+        customBodyRenderLite: (dataIndex: number) => (
+          <Box display="flex" alignItems="center">
+            <Box width="24px" textAlign="left">
+              {unsupportedObjectsData[dataIndex].count}
+            </Box>
+            <Link
+              onClick={() => {
+                setSelectedIssue(unsupportedObjectsData[dataIndex]);
+                setShowOccurrences(true);
+              }}
+              style={{
+                fontSize: theme.typography.subtitle1.fontSize
+              }}
+            >
+              {t("clusterDetail.voyager.planAndAssess.refactoring.seeDetails")}
+            </Link>
+          </Box>
+        ),
+      },
+    },
+    {
+      name: "minimum_versions_fixed_in",
+      label:
+        t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.minVersionsFixedIn"),
+      options: {
+        setCellHeaderProps: () => ({
+          style: { padding: theme.spacing(0.25, 0.5), maxWidth: theme.spacing(11.25) },
+        }),
+        setCellProps: () => ({
+          style: {
+            padding: theme.spacing(0.25, 0.5),
+            maxWidth: theme.spacing(11.25),
             wordBreak: "break-word",
             whiteSpace: "normal",
             hyphens: "auto",
@@ -440,7 +549,30 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
         "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.minVersionsFixedInTooltip"
         ),
       },
-    }
+    },
+    {
+      name: "rightArrowSidePanel",
+      options: {
+        sort: false,
+        setCellHeaderProps: () => ({
+          style: { width: theme.spacing(6.25), padding: theme.spacing(1) },
+        }),
+        setCellProps: () => ({ style: { width: theme.spacing(6.25), padding: theme.spacing(1) } }),
+        customBodyRenderLite: (dataIndex: number) => (
+          <Box display="flex" alignItems="center">
+            <Link
+              onClick={() => {
+                setSelectedIssue(unsupportedObjectsData[dataIndex]);
+                setShowOccurrences(true);
+              }}
+            >
+              <ArrowRightIconBlue />
+            </Link>
+          </Box>
+        ),
+        customHeadLabelRender: () => null,
+      },
+    },
 
   ];
 
@@ -450,30 +582,29 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
     <>
       <YBAccordion
         titleContent={
-          <>
+          <Box className={classes.titleContainer}>
             {t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.heading")}
             {targetDBVersion != null && (
-              <Box className={classes.greyBox} display="flex" alignItems="center">
-                {t("clusterDetail.voyager.planAndAssess.recommendation." +
-                  "schemaChanges.targetDBVersion")}
-                <Box marginLeft={1} fontWeight="bold">{targetDBVersion}</Box>
-
-                <YBTooltip
-                  title={
-                    <Trans
-                      i18nKey={"clusterDetail.voyager.planAndAssess.recommendation." +
-                        "schemaChanges.targetDBVersionTooltip"}
-                      components={{ bold: <Typography variant="body1" display="inline" /> }}
-                    />
-                  }
+              <>
+                <Typography className={classes.separator} component="span">-</Typography>
+                <Typography
+                  className={classes.versionText}
+                  component="span"
                 >
-                  <Box marginLeft={1} className={classes.icon}>
-                    <HelpIcon />
-                  </Box>
-                </YBTooltip>
-              </Box>
+                  {t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges."
+                    + "targetDBVersion")}   {targetDBVersion}
+                  <YBTooltip
+                    title={
+                      <Trans
+                        i18nKey={"clusterDetail.voyager.planAndAssess.recommendation.schemaChanges."
+                          + "targetDBVersionTooltip"}
+                      />
+                    }
+                  />
+                </Typography>
+              </>
             )}
-          </>
+          </Box>
         }
         defaultExpanded
         contentSeparator
@@ -483,121 +614,156 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
             sqlObjects={sqlObjects} isAssessmentPage={true}
             setSelectedObjectType={setSelectedObjectType}
             scrollToIssueTable={scrollToIssueTable}
+            objectTypeSelectRef={objectTypeSelectRef}
           />
           {assessmentCategoryInfo?.length ? (
             <Box display="flex" flexDirection="column" gridGap={theme.spacing(3)}>
-              <Divider className={classes.divider} />
-              <Box>
-                <Box display="flex" alignItems="center" gridGap={3} fontWeight={600}>
-                  <Typography variant="h5">
-                   {t("clusterDetail.voyager.planAndAssess.summary.migrationComplexityExplanation")}
-                  </Typography>
-                  <YBTooltip
-                    title={
-                      <Box>
-                        <Typography variant="body1">
-                          <Trans i18nKey="clusterDetail.voyager.planAndAssess.impactLevels.title">
-                            <strong />
-                          </Trans>
-                        </Typography>
-                        <Typography variant="body2">
-                          <Trans i18nKey="clusterDetail.voyager.planAndAssess.impactLevels.level1">
-                            <strong />
-                          </Trans><br />
-                          <Trans i18nKey="clusterDetail.voyager.planAndAssess.impactLevels.level2">
-                            <strong />
-                          </Trans><br />
-                          <Trans i18nKey="clusterDetail.voyager.planAndAssess.impactLevels.level3">
-                            <strong />
-                          </Trans>
-                        </Typography>
-                      </Box>
-                    }
+              <Box
+                sx={{
+                  display: 'flex',
+                  padding: '24px',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  alignSelf: 'stretch',
+                  borderRadius: '8px',
+                  border: '1px solid var(--Greyscale-Greyscale-200, #E9EEF2)',
+                  marginBottom: '56px',
+                  width: '100%'
+                }}
+              >
+                <Box width="100%" mb="24px">
+                  <Box
+                    display="flex" alignItems="center" gridGap={3}
+                    fontWeight={600}
+                    style={{ fontSize: '13px' }}
                   >
-                    <Box display="flex" alignItems="center" ml={1}>
-                      <HelpIcon />
-                    </Box>
-                  </YBTooltip>
-                </Box>
-                <Box marginTop={1.4}>
-                  <Typography variant="body2">
-                    {finalTranslationOutput}
-                  </Typography>
-                </Box>
-              </Box>
-              <Box>
-                {/* div is needed here so as to use `ref` */}
-                <div ref={referenceToIssueTable}>
-                  <Box display="flex" alignItems="center" marginBottom="20px 0px">
-                    <YBSelect
-                      className={classes.noGrow}
-                      style={{ marginRight: "16px" }}
-                      value={typeFilter}
-                      onChange={
-                        (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-                          setTypeFilter(e.target.value)
+                    <Typography variant="h5">
+                     {t("clusterDetail.voyager.planAndAssess.summary."
+                      + "migrationComplexityExplanation")}
+                    </Typography>
+                    <YBTooltip
+                      title={
+                        <Box>
+                          <Typography variant="body1">
+                            <Trans i18nKey="clusterDetail.voyager.planAndAssess.impactLevels.title">
+                              <strong />
+                            </Trans>
+                          </Typography>
+                          <Typography variant="body2">
+                            <Trans
+                              i18nKey="clusterDetail.voyager.planAndAssess.impactLevels.level1">
+                              <strong />
+                            </Trans><br />
+                            <Trans
+                              i18nKey="clusterDetail.voyager.planAndAssess.impactLevels.level2">
+                              <strong />
+                            </Trans><br />
+                            <Trans
+                              i18nKey="clusterDetail.voyager.planAndAssess.impactLevels.level3"
+                            >
+                              <strong />
+                            </Trans>
+                          </Typography>
+                        </Box>
                       }
                     >
-                      <MenuItem value={translatedAllIssueTypes}>
-                        {translatedAllIssueTypes}
-                      </MenuItem>
-                      <Divider className={classes.menuDivider} />
-                      {types.map((type) => (
-                        <MenuItem key={type} value={type}>
-                          {formatSnakeCase(type)}
-                        </MenuItem>
-                      ))}
-                    </YBSelect>
-                    <YBSelect
-                      className={classes.noGrow}
-                      style={{ marginRight: "16px" }}
-                      value={formatSnakeCase(selectedObjectType)}
-                      onChange={(e) => setSelectedObjectType(e.target.value)}
-                    >
-                      <MenuItem value={ALL_OBJECTS}>{ALL_OBJECTS}</MenuItem>
-                      <Divider className={classes.menuDivider} />
-                      {sqlObjects?.map((sqlObject) => {
-                        const formattedValue = formatSnakeCase(sqlObject?.sql_object_type ?? "");
-                        return (
-                          <MenuItem key={formattedValue} value={formattedValue}>
-                            {formattedValue}
-                          </MenuItem>
-                        );
-                      })}
-                    </YBSelect>
-                    <YBSelect
-                      className={classes.noGrow}
-                      value={selectedImpact}
-                      onChange={(e) => setSelectedImpact(e.target.value)}
-                    >
-                      <MenuItem value={
-                        String(t("clusterDetail.voyager.planAndAssess.impactLevels.allImpacts"))}>{
-                        t("clusterDetail.voyager.planAndAssess.impactLevels.allImpacts")
-                      }
-                      </MenuItem>
-                      <MenuItem value={
-                        String(t("clusterDetail.voyager.planAndAssess.impactLevels.Level1"))
-                      }>
-                        {t("clusterDetail.voyager.planAndAssess.impactLevels.Level1")}
-                      </MenuItem>
-                      <MenuItem value={
-                        String(t("clusterDetail.voyager.planAndAssess.impactLevels.Level2"))
-                      }>
-                        {t("clusterDetail.voyager.planAndAssess.impactLevels.Level2")}
-                      </MenuItem>
-                      <MenuItem value={
-                        String(t("clusterDetail.voyager.planAndAssess.impactLevels.Level3"))
-                      }>
-                        {t("clusterDetail.voyager.planAndAssess.impactLevels.Level3")}
-                      </MenuItem>
-                    </YBSelect>
+                      <Box display="flex" alignItems="center" ml={1}>
+                        <HelpIcon />
+                      </Box>
+                    </YBTooltip>
                   </Box>
-                </div>
-                <YBTable
-                  data={unsupportedObjectsData}
-                  columns={columns}
-                  withBorder={false}
-                />
+                </Box>
+                <Box width="100%" marginTop={1.4}>
+                  <div ref={filterSectionRef}>
+                    <Box
+                      className={classes.issueBox}
+                    >
+                      <Box className={classes.filterContainer}>
+                        <YBSelect
+                          className={classes.noGrow}
+                          value={typeFilter}
+                          onChange={
+                            (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+                              setTypeFilter(e.target.value)
+                          }
+                          style={{ minWidth: '160px' }}
+                        >
+                          <MenuItem value={translatedAllIssueTypes}>
+                            {translatedAllIssueTypes}
+                          </MenuItem>
+                          <Divider className={classes.menuDivider} />
+                          {types.map((type) => (
+                            <MenuItem key={type} value={type}>
+                              {formatSnakeCase(type)}
+                            </MenuItem>
+                          ))}
+                        </YBSelect>
+                        <YBSelect
+                          ref={objectTypeSelectRef}
+                          className={classes.noGrow}
+                          value={formatSnakeCase(selectedObjectType)}
+                          onChange={(e) => setSelectedObjectType(e.target.value)}
+                          style={{ minWidth: '160px' }}
+                        >
+                          <MenuItem value={ALL_OBJECTS} selected={
+                            formatSnakeCase(selectedObjectType) === ALL_OBJECTS
+                           }>
+                            {ALL_OBJECTS}
+                          </MenuItem>
+                          <Divider className={classes.menuDivider} />
+                          {sqlObjects?.map((sqlObject) => {
+                            const formattedValue =
+                              formatSnakeCase(sqlObject?.sql_object_type ?? "");
+                            return (
+                              <MenuItem
+                                key={formattedValue}
+                                value={formattedValue}
+                                selected={formatSnakeCase(selectedObjectType) === formattedValue}
+                              >
+                                {formattedValue}
+                              </MenuItem>
+                            );
+                          })}
+                        </YBSelect>
+                        <YBSelect
+                          className={classes.noGrow}
+                          value={selectedImpact}
+                          onChange={(e) => setSelectedImpact(e.target.value)}
+                          style={{ minWidth: '160px' }}
+                        >
+                          <MenuItem value={
+                            String(t("clusterDetail.voyager.planAndAssess.impactLevels.allImpacts"))
+                          }>
+                            {t("clusterDetail.voyager.planAndAssess.impactLevels.allImpacts")}
+                          </MenuItem>
+                          <MenuItem value={
+                            String(t("clusterDetail.voyager.planAndAssess.impactLevels.Level1"))
+                          }>
+                            {t("clusterDetail.voyager.planAndAssess.impactLevels.Level1")}
+                          </MenuItem>
+                          <MenuItem value={
+                            String(t("clusterDetail.voyager.planAndAssess.impactLevels.Level2"))
+                          }>
+                            {t("clusterDetail.voyager.planAndAssess.impactLevels.Level2")}
+                          </MenuItem>
+                          <MenuItem value={
+                            String(t("clusterDetail.voyager.planAndAssess.impactLevels.Level3"))
+                          }>
+                            {t("clusterDetail.voyager.planAndAssess.impactLevels.Level3")}
+                          </MenuItem>
+                        </YBSelect>
+                      </Box>
+                      {renderTranslationOutput}
+                    </Box>
+                  </div>
+                  <Box sx={{ marginTop: '24px' }}>
+                    <YBTable
+                      data={unsupportedObjectsData}
+                      columns={columns}
+                      withBorder={false}
+                    />
+                  </Box>
+                </Box>
               </Box>
             </Box>
           ) : null}

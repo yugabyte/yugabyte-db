@@ -29,10 +29,10 @@ export const MigrationDetails: FC<MigrationDetailsProps> = ({
   const { t } = useTranslation();
 
   return (
-    <Box ml={-2} pt={2}>
+    <Box ml={-2}>
       <Divider orientation="horizontal" />
       <Box display="flex" flexDirection="column">
-        <Box flexShrink={0} >
+        <Box flexShrink={0} px={2}>
           <MigrationTiles
             steps={steps}
             currentStep={selectedStep}
@@ -43,10 +43,10 @@ export const MigrationDetails: FC<MigrationDetailsProps> = ({
             isNewMigration={isNewMigration}
           />
         </Box>
-        <Box mr={2}>
+        <Box>
           <Divider orientation="horizontal" />
         </Box>
-        <Box ml={4} mt={3} minWidth={0}>
+        <Box pl={2} pr={2} minWidth={0}>
           <MigrationStep
             steps={steps}
             migration={migration}

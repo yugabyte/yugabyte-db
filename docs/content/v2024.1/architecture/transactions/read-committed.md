@@ -23,7 +23,14 @@ A read committed transaction in PostgreSQL doesn't raise serialization errors be
 
 YugabyteDB's Read Committed isolation provides slightly stronger guarantees than PostgreSQL's read committed, while providing the same semantics and benefits, that is, a user doesn't have to retry serialization errors in the application logic (modulo [limitation 2](#limitations) around `ysql_output_buffer_size` which is not of relevance for most OLTP workloads). In YugabyteDB, a read committed transaction retries the whole statement instead of retrying only the conflicting rows. This leads to a stronger guarantee where each statement in a YugabyteDB read committed transaction always uses a consistent snapshot of the database, while in PostgreSQL an inconsistent snapshot can be used for statements when conflicts are present. For a detailed example, see [Stronger guarantees in YugabyteDB's read committed isolation](#yugabytedb-s-implementation-with-a-stronger-guarantee).
 
-NOTE: Retries for the statement in YugabyteDB's Read Committed isolation are limited to the per-session YSQL configuration parameter `yb_max_query_layer_retries`. To set it at the cluster level, use the `ysql_pg_conf_csv` TServer gflag. If a serialization error isn't resolved within `yb_max_query_layer_retries`, the error will be returned to the client.
+Note that retries for the statement in YugabyteDB's Read Committed isolation are limited to the per-session YSQL configuration parameter `yb_max_query_layer_retries`. To set it at the cluster level, use the `ysql_pg_conf_csv` TServer flag. If a serialization error isn't resolved within `yb_max_query_layer_retries`, the error will be returned to the client.
+
+{{< tip title="Enable Read Committed" >}}
+
+To enable Read Committed isolation, set the YB-TServer flag [yb_enable_read_committed_isolation](../../../reference/configuration/yb-tserver/#yb-enable-read-committed-isolation) to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot isolation).
+
+Refer to [Usage](#usage) to start a Read Committed transaction after enabling the flag.
+{{< /tip >}}
 
 ## Implementation and semantics (as in PostgreSQL)
 
@@ -338,14 +345,14 @@ The retries for serialization errors are done at the statement level. Each retry
 
 ## Usage
 
-By setting the YB-TServer flag `yb_enable_read_committed_isolation=true`, the syntactic `Read Committed` isolation in YSQL maps to the Read Committed implementation in DocDB. If set to `false`, it has the earlier behavior of mapping syntactic `Read Committed` on YSQL to Snapshot isolation in DocDB, meaning it behaves as `Repeatable Read`.
+To use Read Committed isolation, first set the YB-TServer flag `yb_enable_read_committed_isolation=true`; this maps the syntactic Read Committed isolation in YSQL to the Read Committed implementation in DocDB. (When set to `false`, syntactic Read Committed in YSQL is mapped to Snapshot isolation in DocDB, meaning it behaves as Repeatable Read.)
 
-The following ways can be used to start a Read Committed transaction after setting the flag:
+Assuming the flag has been set, you can start a Read Committed transaction in the following ways:
 
 1. `START TRANSACTION isolation level read committed [read write | read only];`
 1. `BEGIN [TRANSACTION] isolation level read committed [read write | read only];`
-1. `BEGIN [TRANSACTION]; SET TRANSACTION ISOLATION LEVEL READ COMMITTED;` (this will be supported after [#12494](https://github.com/yugabyte/yugabyte-db/issues/12494) is resolved)
-1. `BEGIN [TRANSACTION]; SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL READ COMMITTED;` (this will be supported after [#12494](https://github.com/yugabyte/yugabyte-db/issues/12494) is resolved)
+1. `BEGIN [TRANSACTION]; SET TRANSACTION ISOLATION LEVEL READ COMMITTED;`
+1. `BEGIN [TRANSACTION]; SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL READ COMMITTED;`
 
 ## Examples
 

@@ -18,6 +18,8 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/util/logging_test_util.h"
+
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
@@ -44,6 +46,7 @@ using namespace std::literals;
 DECLARE_string(time_source);
 DECLARE_int32(replication_factor);
 DECLARE_bool(yb_enable_read_committed_isolation);
+DECLARE_uint64(ysql_lease_refresher_interval_ms);
 
 namespace yb::pgwrapper {
 
@@ -208,6 +211,12 @@ class PgReadAfterCommitVisibilityTest : public PgMiniTestBase {
         // Postmaster already started for this tserver.
         continue;
       }
+      // PgMiniTestBase starts pg supervisor on just one node (by default, tserver with idx 0).
+      // Manually start the YSQL lease poller on other tservers as pg connections are being spawned.
+      auto log_waiter = StringWaiterLogSink("PG restarter callback not registered");
+      ASSERT_OK(cluster_->mini_tablet_server(idx)->server()->StartYSQLLeaseRefresher());
+      ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromMilliseconds(
+          5 * kTimeMultiplier * FLAGS_ysql_lease_refresher_interval_ms)));
       // Prefix registered to avoid name clash among callback
       // registrations.
       TEST_SetThreadPrefixScoped prefix_se(std::to_string(idx));

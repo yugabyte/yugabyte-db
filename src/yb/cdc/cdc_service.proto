@@ -175,6 +175,9 @@ message InitVirtualWALForCDCRequestPB {
   optional ReplicationSlotHashRangePB slot_hash_range = 4;
   optional uint64 active_pid = 5;
   reserved 6; // ASH metadata is now passed in RequestHeader PB
+  repeated uint32 publication_oid = 7;
+  // Boolean to indicate whether any publication associated with VWAL is an ALL TABLES publication.
+  optional bool pub_all_tables = 8;
 }
 
 message InitVirtualWALForCDCResponsePB {
@@ -365,6 +368,9 @@ message GetChangesRequestPB {
   // limit the size of GetChanges response. Otherwise consider the value
   // of the gflag 'cdc_stream_records_threshold_size_bytes'
   optional uint64 getchanges_resp_max_size_bytes = 16;
+
+  // If true, update the cdc_state checkpoint as part of this request.
+  optional bool force_update_cdc_state_checkpoint = 17;
 }
 
 message KeyValuePairPB {

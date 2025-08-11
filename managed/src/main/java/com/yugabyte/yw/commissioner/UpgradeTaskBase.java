@@ -33,6 +33,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -1030,6 +1031,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       List<NodeDetails> nodes,
       boolean installOtelCollector,
       AuditLogConfig auditLogConfig,
+      MetricsExportConfig metricsExportConfig,
       Function<NodeDetails, Map<String, String>> nodeToGflags) {
     // If the node list is empty, we don't need to do anything.
     if (nodes.isEmpty()) {
@@ -1049,6 +1051,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       params.otelCollectorEnabled =
           installOtelCollector || getUniverse().getUniverseDetails().otelCollectorEnabled;
       params.auditLogConfig = auditLogConfig;
+      params.metricsExportConfig = metricsExportConfig;
       params.deviceInfo = userIntent.getDeviceInfoForNode(node);
       params.gflags = nodeToGflags.apply(node);
 

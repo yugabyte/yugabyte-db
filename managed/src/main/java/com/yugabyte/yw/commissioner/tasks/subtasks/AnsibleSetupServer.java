@@ -20,6 +20,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -53,6 +54,8 @@ public class AnsibleSetupServer extends NodeTaskBase {
     public int cgroupSize = 0;
     // Setup Audit Log Config for the node
     public AuditLogConfig auditLogConfig = null;
+    // Setup Metrics Export Config for the node
+    public MetricsExportConfig metricsExportConfig = null;
     /*
      Reboot node for applying the ulimits, needed for 3 flows.
      1. Create Universe.

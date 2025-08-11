@@ -7,6 +7,7 @@ import api.v2.mappers.UniverseCertsRotateParamsMapper;
 import api.v2.mappers.UniverseDefinitionTaskParamsMapper;
 import api.v2.mappers.UniverseEditGFlagsMapper;
 import api.v2.mappers.UniverseEditKubernetesOverridesParamsMapper;
+import api.v2.mappers.UniverseMetricsExportConfigParamsMapper;
 import api.v2.mappers.UniverseRestartParamsMapper;
 import api.v2.mappers.UniverseRollbackUpgradeMapper;
 import api.v2.mappers.UniverseSoftwareFinalizeMapper;
@@ -16,6 +17,7 @@ import api.v2.mappers.UniverseSoftwareUpgradeStartMapper;
 import api.v2.mappers.UniverseSystemdUpgradeMapper;
 import api.v2.mappers.UniverseThirdPartySoftwareUpgradeMapper;
 import api.v2.mappers.UniverseTlsToggleParamsMapper;
+import api.v2.models.ConfigureMetricsExportSpec;
 import api.v2.models.UniverseCertRotateSpec;
 import api.v2.models.UniverseEditEncryptionInTransit;
 import api.v2.models.UniverseEditGFlags;
@@ -38,6 +40,7 @@ import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -46,21 +49,29 @@ import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
+import com.yugabyte.yw.forms.MetricsExportConfigParams;
 import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.SystemdUpgradeParams;
 import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Release;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.extended.FinalizeUpgradeInfoResponse;
 import com.yugabyte.yw.models.extended.SoftwareUpgradeInfoRequest;
 import com.yugabyte.yw.models.extended.SoftwareUpgradeInfoResponse;
+import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.TelemetryProviderService;
+import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import play.mvc.Http.Request;
 
 @Singleton
@@ -69,6 +80,8 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
   @Inject public UpgradeUniverseHandler v1Handler;
   @Inject public Commissioner commissioner;
   @Inject private RuntimeConfGetter confGetter;
+  @Inject private TelemetryProviderService telemetryProviderService;
+  @Inject private SoftwareUpgradeHelper softwareUpgradeHelper;
 
   public YBATask editGFlags(
       Request request, UUID cUUID, UUID uniUUID, UniverseEditGFlags editGFlags)
@@ -338,6 +351,85 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     //     dbUniverse.getName(),
     //     taskUUID);
     UUID taskUUID = UUID.randomUUID();
+    return new YBATask().resourceUuid(uniUUID).taskUuid(taskUUID);
+  }
+
+  public YBATask configureMetricsExport(
+      Request request, UUID cUUID, UUID uniUUID, ConfigureMetricsExportSpec req) throws Exception {
+    telemetryProviderService.throwExceptionIfMetricsExportRuntimeFlagDisabled();
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
+    log.info("Configure metrics export for universe with v2 spec: {}", prettyPrint(req));
+
+    MetricsExportConfigParams v1Params =
+        UniverseDefinitionTaskParamsMapper.INSTANCE.toMetricsExportConfigParams(
+            universeDetails, request);
+    v1Params =
+        UniverseMetricsExportConfigParamsMapper.INSTANCE.copyToV1MetricsExportConfigParams(
+            req, v1Params);
+
+    // Verify if the metrics export payload is same as existing metrics export config.
+    if (v1Params.getMetricsExportConfig() != null
+        && v1Params.getMetricsExportConfig().equals(userIntent.metricsExportConfig)) {
+      String errorMessage =
+          String.format(
+              "Metrics export config is same as existing config on universe '%s'.",
+              universe.getUniverseUUID());
+      log.error(errorMessage);
+      throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+    }
+
+    // Verify if exporter config is set to export active.
+    if (v1Params.getMetricsExportConfig().isExportActive()) {
+      // If exporter config is set to export active, verify if any exporter is configured.
+      if (CollectionUtils.isEmpty(
+          v1Params.getMetricsExportConfig().getUniverseMetricsExporterConfig())) {
+        String errorMessage =
+            String.format(
+                "Metrics export config is set to export active, but no exporter configured on"
+                    + " universe '%s'.",
+                universe.getUniverseUUID());
+        log.error(errorMessage);
+        throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+      }
+
+      // If exporter config is set to export active, verify if given exporter uuid(s) are empty.
+      for (UniverseMetricsExporterConfig exporterConfig :
+          v1Params.getMetricsExportConfig().getUniverseMetricsExporterConfig()) {
+        UUID exporterUUID = exporterConfig.getExporterUuid();
+        if (exporterUUID == null
+            || !telemetryProviderService.checkIfExists(customer.getUuid(), exporterUUID)) {
+          String errorMessage =
+              String.format(
+                  "Exporter config UUID '%s' is invalid for universe '%s'.",
+                  exporterUUID, universe.getUniverseUUID());
+          log.error(errorMessage);
+          throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+        }
+      }
+    }
+
+    v1Params.verifyParams(universe, true);
+
+    // Submit the task to the commissioner
+    UUID taskUUID = commissioner.submit(TaskType.ModifyMetricsExportConfig, v1Params);
+    log.info(
+        "Submitted ModifyMetricsExportConfig for {} : {}, task uuid = {}.",
+        uniUUID,
+        universe.getName(),
+        taskUUID);
+
+    // Add this task uuid to the user universe.
+    CustomerTask.create(
+        customer,
+        universe.getUniverseUUID(),
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.ModifyMetricsExportConfig,
+        universe.getName());
+
     return new YBATask().resourceUuid(uniUUID).taskUuid(taskUUID);
   }
 }

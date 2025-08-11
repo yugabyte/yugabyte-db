@@ -419,6 +419,9 @@ public class Audit extends Model {
     @EnumValue("Modify Universe's Query Logging Config")
     ModifyQueryLogging,
 
+    @EnumValue("Configure Metrics Export")
+    ConfigureMetricsExport,
+
     @EnumValue("Tls Configuration Update")
     TlsConfigUpdate,
 
