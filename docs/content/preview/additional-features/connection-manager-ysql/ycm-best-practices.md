@@ -28,7 +28,7 @@ In the meantime, you can explicitly request sticky connections by using a role w
 
 ## Coordinate connection scaling using a smart driver
 
-YugabyteDB YSQL [Smart Drivers](../../drivers-orms/smart-drivers/) and Connection Manager are designed to work together and complement each other for optimal scalability and performance.
+YugabyteDB YSQL [Smart Drivers](../../../drivers-orms/smart-drivers/) and Connection Manager are designed to work together and complement each other for optimal scalability and performance.
 
 A smart driver intelligently routes connections across nodes in a distributed YugabyteDB cluster, ensuring that application traffic is load-balanced efficiently, and can dynamically route queries to appropriate TServers.
 
@@ -48,7 +48,7 @@ In a YugabyteDB node, the TServer and PostgreSQL (YSQL) processes run side-by-si
 - The TServer handles data storage, replication (DocDB), and tablet-level operations.
 - The PostgreSQL process provides the SQL layer (YSQL), but it's tightly integrated and communicates with the TServer over RPCs.
 
-For optimal distribution of memory between TServer and PostgreSQL processes, set the `use_memory_defaults_optimized_for_ysql` flag to true when you create a cluster. Refer to [Memory division smart defaults](../../reference/configuration/smart-defaults/#memory-division-smart-defaults) for more details.
+For optimal distribution of memory between TServer and PostgreSQL processes, set the `use_memory_defaults_optimized_for_ysql` flag to true when you create a cluster. Refer to [Memory division smart defaults](../../../reference/configuration/smart-defaults/#memory-division-smart-defaults) for more details.
 
 Note that when Connection Manager is enabled, an instance of the odyssey process is also run on each database node, which can take up to 200MB of RAM.
 

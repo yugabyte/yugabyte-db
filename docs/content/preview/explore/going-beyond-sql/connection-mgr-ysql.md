@@ -121,5 +121,5 @@ Enabling connection pooling on an Aeon cluster gives 10 client connections for e
 
 ## Learn more
 
-- [YSQL Connection Manager documentation](../../../additional-features/connection-manager/)
+- [YSQL Connection Manager documentation](../../../additional-features/connection-manager-ysql/)
 - Blog: [Built-in Connection Manager Turns Key PostgreSQL Weakness into a Strength](https://www.yugabyte.com/blog/connection-pooling-management/)
