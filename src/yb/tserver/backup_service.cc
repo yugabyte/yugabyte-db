@@ -57,9 +57,6 @@ void TabletServiceBackupImpl::TabletSnapshotOp(const TabletSnapshotOpRequestPB* 
   }
 
   if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
-    if (req->has_ash_metadata()) {
-      wait_state->UpdateMetadataFromPB(req->ash_metadata());
-    }
     if (req->tablet_id_size()) {
       wait_state->UpdateAuxInfo({.tablet_id = req->tablet_id(0)});
     }

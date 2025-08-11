@@ -694,6 +694,8 @@ _copyTidScan(const TidScan *from)
 	/*
 	 * copy remainder of node
 	 */
+	COPY_NODE_FIELD(yb_rel_pushdown.quals);
+	COPY_NODE_FIELD(yb_rel_pushdown.colrefs);
 	COPY_NODE_FIELD(tidquals);
 
 	return newnode;

@@ -1223,7 +1223,7 @@ Default: `0`
 
 ## Change data capture (CDC) flags
 
-To learn about CDC, see [Change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture/).
+To learn about CDC, see [Change data capture (CDC)](../../../develop/change-data-capture/).
 
 ##### --yb_enable_cdc_consistent_snapshot_streams
 
@@ -1315,7 +1315,9 @@ The following set of flags are only relevant for CDC using the PostgreSQL replic
 
 ##### --ysql_yb_default_replica_identity
 
-The default replica identity to be assigned to user defined tables at the time of creation. The flag is case sensitive and can take only one of the four possible values, `FULL`, `DEFAULT`,`'NOTHING` and `CHANGE`.
+The default replica identity to be assigned to user-defined tables at the time of creation. The flag is case sensitive and can take only one of the four possible values, `FULL`, `DEFAULT`, `NOTHING`, and `CHANGE`.
+
+For more information, refer to [Replica identity](../../../develop/change-data-capture/using-logical-replication/yugabytedb-connector/#replica-identity).
 
 Default: `CHANGE`
 

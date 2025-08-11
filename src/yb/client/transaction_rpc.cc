@@ -169,11 +169,6 @@ void PrepareRequest(tserver::UpdateTransactionRequestPB& req, rpc::RpcController
     auto id = TransactionId::GenerateRandom();
     req.mutable_state()->set_transaction_id(id.data(), id.size());
   }
-  ash::WaitStateInfo::CurrentMetadataToPB(req.mutable_ash_metadata());
-}
-
-void PrepareRequest(tserver::AbortTransactionRequestPB& req, rpc::RpcController& controller) {
-  ash::WaitStateInfo::CurrentMetadataToPB(req.mutable_ash_metadata());
 }
 
 void PrepareRequest(tserver::GetTransactionStatusRequestPB& req, rpc::RpcController& controller) {

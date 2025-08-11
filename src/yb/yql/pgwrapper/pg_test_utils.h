@@ -119,5 +119,8 @@ Status IncrementAllDBCatalogVersions(
     PGConn& conn,
     IsBreakingCatalogVersionChange is_breaking = IsBreakingCatalogVersionChange::kTrue);
 
+void GenerateCSVFileForCopy(
+    const std::string& filename, int num_rows, int num_columns = 2, int offset = 0);
+
 } // namespace pgwrapper
 } // namespace yb

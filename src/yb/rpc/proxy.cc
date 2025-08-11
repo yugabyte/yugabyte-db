@@ -120,10 +120,11 @@ void Proxy::AsyncRequest(const RemoteMethod* method,
                          const google::protobuf::Message& req,
                          google::protobuf::Message* resp,
                          RpcController* controller,
-                         ResponseCallback callback) {
+                         ResponseCallback callback,
+                         bool send_metadata) {
   DoAsyncRequest(
       method, std::move(method_metrics), AnyMessageConstPtr(&req), AnyMessagePtr(resp), controller,
-      std::move(callback), false /* force_run_callback_on_reactor */);
+      std::move(callback), false /* force_run_callback_on_reactor */, send_metadata);
 }
 
 void Proxy::AsyncRequest(const RemoteMethod* method,
@@ -131,10 +132,11 @@ void Proxy::AsyncRequest(const RemoteMethod* method,
                          const LightweightMessage& req,
                          LightweightMessage* resp,
                          RpcController* controller,
-                         ResponseCallback callback) {
+                         ResponseCallback callback,
+                         bool send_metadata) {
   DoAsyncRequest(
       method, std::move(method_metrics), AnyMessageConstPtr(&req), AnyMessagePtr(resp), controller,
-      std::move(callback), false /* force_run_callback_on_reactor */);
+      std::move(callback), false /* force_run_callback_on_reactor */, send_metadata);
 }
 
 ThreadPool* Proxy::GetCallbackThreadPool(
@@ -180,7 +182,7 @@ bool Proxy::PrepareCall(AnyMessageConstPtr req, RpcController* controller) {
 void Proxy::AsyncLocalCall(
     const RemoteMethod* method, AnyMessageConstPtr req, AnyMessagePtr resp,
     RpcController* controller, ResponseCallback callback,
-    const bool force_run_callback_on_reactor) {
+    const bool force_run_callback_on_reactor, bool send_metadata) {
   controller->call_ = std::make_shared<LocalOutboundCall>(
       *method, outbound_call_metrics_, resp, controller, context_->rpc_metrics(),
       std::move(callback),
@@ -201,7 +203,8 @@ void Proxy::AsyncLocalCall(
   // If current thread is RPC worker thread, it is ok to call the handler in the current thread.
   // Otherwise, enqueue the call to be handled by the service's handler thread.
   const shared_ptr<LocalYBInboundCall>& local_call =
-      static_cast<LocalOutboundCall*>(call)->CreateLocalInboundCall();
+      static_cast<LocalOutboundCall*>(call)->CreateLocalInboundCall(
+          send_metadata ? context_->call_state_listener_factory() : nullptr);
   Queue queue(!controller->allow_local_calls_in_curr_thread());
   context_->Handle(local_call, queue);
 }
@@ -209,13 +212,14 @@ void Proxy::AsyncLocalCall(
 void Proxy::AsyncRemoteCall(
     const RemoteMethod* method, std::shared_ptr<const OutboundMethodMetrics> method_metrics,
     AnyMessageConstPtr req, AnyMessagePtr resp, RpcController* controller,
-    ResponseCallback callback, const bool force_run_callback_on_reactor) {
+    ResponseCallback callback, const bool force_run_callback_on_reactor, bool send_metadata) {
   // Do not use make_shared to allow for long-lived weak OutboundCall pointers without wasting
   // memory.
   controller->call_ = std::shared_ptr<OutboundCall>(new OutboundCall(
       *method, outbound_call_metrics_, std::move(method_metrics), resp, controller,
       context_->rpc_metrics(), std::move(callback),
-      GetCallbackThreadPool(force_run_callback_on_reactor, controller->invoke_callback_mode())));
+      GetCallbackThreadPool(force_run_callback_on_reactor, controller->invoke_callback_mode()),
+      send_metadata ? context_->metadata_serializer_factory() : nullptr));
   if (!PrepareCall(req, controller)) {
     return;
   }
@@ -234,16 +238,18 @@ void Proxy::DoAsyncRequest(const RemoteMethod* method,
                            AnyMessagePtr resp,
                            RpcController* controller,
                            ResponseCallback callback,
-                           const bool force_run_callback_on_reactor) {
+                           const bool force_run_callback_on_reactor,
+                           bool send_metadata) {
   CHECK(controller->call_.get() == nullptr) << "Controller should be reset";
 
   if (call_local_service_) {
     AsyncLocalCall(
-        method, req, resp, controller, std::move(callback), force_run_callback_on_reactor);
+        method, req, resp, controller, std::move(callback), force_run_callback_on_reactor,
+        send_metadata);
   } else {
     AsyncRemoteCall(
         method, std::move(method_metrics), req, resp, controller, std::move(callback),
-        force_run_callback_on_reactor);
+        force_run_callback_on_reactor, send_metadata);
   }
 }
 
@@ -343,13 +349,14 @@ Status Proxy::DoSyncRequest(const RemoteMethod* method,
                             std::shared_ptr<const OutboundMethodMetrics> method_metrics,
                             AnyMessageConstPtr request,
                             AnyMessagePtr resp,
-                            RpcController* controller) {
+                            RpcController* controller,
+                            bool send_metadata) {
   CountDownLatch latch(1);
   // We want to execute this fast callback in reactor thread to avoid overhead on putting in
   // separate pool.
   DoAsyncRequest(
       method, std::move(method_metrics), request, DCHECK_NOTNULL(resp), controller,
-      latch.CountDownCallback(), true /* force_run_callback_on_reactor */);
+      latch.CountDownCallback(), true /* force_run_callback_on_reactor */, send_metadata);
   latch.Wait();
   return controller->status();
 }
@@ -358,18 +365,22 @@ Status Proxy::SyncRequest(const RemoteMethod* method,
                           std::shared_ptr<const OutboundMethodMetrics> method_metrics,
                           const google::protobuf::Message& req,
                           google::protobuf::Message* resp,
-                          RpcController* controller) {
+                          RpcController* controller,
+                          bool send_metadata) {
   return DoSyncRequest(
-      method, std::move(method_metrics), AnyMessageConstPtr(&req), AnyMessagePtr(resp), controller);
+      method, std::move(method_metrics), AnyMessageConstPtr(&req), AnyMessagePtr(resp), controller,
+      send_metadata);
 }
 
 Status Proxy::SyncRequest(const RemoteMethod* method,
                           std::shared_ptr<const OutboundMethodMetrics> method_metrics,
                           const LightweightMessage& req,
                           LightweightMessage* resp,
-                          RpcController* controller) {
+                          RpcController* controller,
+                          bool send_metadata) {
   return DoSyncRequest(
-      method, std::move(method_metrics), AnyMessageConstPtr(&req), AnyMessagePtr(resp), controller);
+      method, std::move(method_metrics), AnyMessageConstPtr(&req), AnyMessagePtr(resp), controller,
+      send_metadata);
 }
 
 scoped_refptr<MetricEntity> Proxy::metric_entity() const {

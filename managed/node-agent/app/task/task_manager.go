@@ -89,6 +89,7 @@ type taskInfo struct {
 func InitTaskManager(ctx context.Context) *TaskManager {
 	onceTaskManager.Do(func() {
 		taskManager = &TaskManager{ctx: ctx, taskInfos: &sync.Map{}}
+		taskExpirySecs := util.CurrentConfig().Int(util.NodeAgentTaskExpirySecsKey)
 		// Start the scanner on a schedule.
 		// Completed tasks are not immediately removed as the client can ask for status.
 		scheduler.GetInstance().
@@ -106,8 +107,8 @@ func InitTaskManager(ctx context.Context) *TaskManager {
 					default:
 						tInfo.mutex.Lock()
 						defer tInfo.mutex.Unlock()
-						elapsed := time.Now().Sub(tInfo.updatedAt)
-						if elapsed > TaskExpiry {
+						elapsed := int(time.Since(tInfo.updatedAt).Seconds())
+						if elapsed > taskExpirySecs {
 							// Task has expired. Client has not asked for progress on this.
 							tInfo.cancel()
 							util.FileLogger().Infof(ctx, "Task %s is cancelled.",

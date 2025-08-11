@@ -3,14 +3,14 @@ import type { RefactoringCount } from "@app/api/src";
 import { useTranslation } from "react-i18next";
 import { YBTable, YBButton, YBTooltip } from "@app/components";
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
-import { Box, TableCell, TableRow, makeStyles } from "@material-ui/core";
+import { Box, TableCell, TableRow, makeStyles, Typography, useTheme } from "@material-ui/core";
 import type { SqlObjectsDetails, AnalysisIssueDetails } from "@app/api/src";
 import MinusIcon from "@app/assets/minus_icon.svg";
 import PlusIcon from "@app/assets/plus_icon.svg";
-import ArrowRightIcon from "@app/assets/caret-right-circle.svg";
+import ArrowRightIcon from "@app/assets/caretRightIconBlue.svg";
 import ExpandIcon from "@app/assets/expand.svg";
 import CollapseIcon from "@app/assets/collapse.svg";
-import { formatSnakeCase, useQueryParams } from "@app/helpers";
+import { capitalizeFirstLetter, formatSnakeCase, useQueryParams } from "@app/helpers";
 import { MigrationRefactoringSidePanel } from "../assessment/AssessmentRefactoringSidePanel";
 interface RefactoringGraphProps {
   sqlObjects: RefactoringCount[] | undefined;
@@ -18,6 +18,7 @@ interface RefactoringGraphProps {
   isAssessmentPage?: boolean | undefined;
   setSelectedObjectType?: React.Dispatch<React.SetStateAction<string>> | undefined;
   scrollToIssueTable?: () => void;
+  objectTypeSelectRef?: React.RefObject<HTMLInputElement>;
 }
 
 type AID = AnalysisIssueDetails;
@@ -42,7 +43,73 @@ const useStyles = makeStyles((theme) => ({
   },
   innerTableParent: {
     padding: theme.spacing(0.5, 0, 1, 0),
+    position: "relative",
   },
+  seeDetailsLink: {
+    color: theme.palette.primary[600],
+    fontFamily: theme.typography.fontFamily,
+    fontSize: theme.typography.subtitle1.fontSize,
+    fontStyle: 'normal',
+    fontWeight: theme.typography.body2.fontWeight,
+    lineHeight: '32px',
+    marginLeft: theme.spacing(2),
+    cursor: 'pointer',
+    textDecoration: 'none',
+    '&:hover': {
+      textDecoration: 'underline',
+    },
+  },
+  seeDetailsHyphen: {
+    color: theme.palette.text.disabled,
+    fontFamily: theme.typography.fontFamily,
+    fontSize: theme.typography.subtitle1.fontSize,
+    fontStyle: 'normal',
+    fontWeight: theme.typography.body2.fontWeight,
+    lineHeight: '32px',
+    cursor: 'default',
+    textDecoration: 'none',
+  },
+  tableWrapper: {
+    marginTop: theme.spacing(4),
+    marginBottom: theme.spacing(7),
+    "& .MuiTableRow-root": {
+      height: "32px !important",
+    },
+    "& .MuiTableCell-root": {
+      height: "32px !important",
+      padding: "0 !important",
+      lineHeight: "32px !important",
+      borderBottom: `1px solid ${theme.palette.divider}`
+    },
+    "& .MuiTableHead-root + .MuiTableBody-root": {
+      marginTop: theme.spacing(1)
+    }
+  },
+  accordionContent: {
+    padding: 0,
+    "& .MuiAccordionDetails-root": {
+      padding: 0
+    }
+  },
+  innerTableWithDividers: {
+    position: "relative",
+  },
+  cellHeader: {
+    width: theme.spacing(4),
+    padding: 0,
+    textAlign: 'center',
+    verticalAlign: 'middle',
+  },
+  badgeTextStyle: {
+    minWidth: '16px',
+    display: 'inline-block',
+    textAlign: 'center',
+    fontSize: `${theme.typography.subtitle1.fontSize}px !important`,
+    fontFamily: theme.typography.fontFamily,
+    fontStyle: 'normal',
+    fontWeight: theme.typography.body2.fontWeight,
+    lineHeight: '16px'
+  }
 }));
 
 const ACKNOWLEDGED_OBJECTS_LOCAL_STORAGE_KEY: string = "acknowledgedObjects";
@@ -52,10 +119,12 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({
     sqlObjectsList,
     isAssessmentPage,
     setSelectedObjectType,
-    scrollToIssueTable
+    scrollToIssueTable,
+    objectTypeSelectRef
   }) => {
   const { t } = useTranslation();
   const classes = useStyles();
+  const theme = useTheme();
   const queryParams = useQueryParams();
   const migrationUUID: string = queryParams.get("migration_uuid") ?? "";
 
@@ -236,13 +305,13 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({
             mapReturnedArrayLength: doesMapReturnArray ? mapReturnedArray?.length : 0,
             index,
           },
-          objectType: sql_object_type?.trim().toLowerCase(),
+          objectType: sql_object_type?.trim(),
           automaticDDLImport: automatic ?? 0,
           manualRefactoring: manual ?? 0,
           invalidObjCount: invalid ?? 0,
           rightArrowSidePanel: {
             mapReturnedArrayLength: doesMapReturnArray ? mapReturnedArray?.length : 0,
-            sqlObjectType: sql_object_type?.trim().toLowerCase(),
+            sqlObjectType: sql_object_type?.trim(),
           },
         };
       });
@@ -284,8 +353,8 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({
       label: t("clusterDetail.voyager.planAndAssess.refactoring.objectType"),
       options: {
         sort: false,
-        setCellHeaderProps: () => ({ style: { padding: "6px 16px" } }),
-        setCellProps: () => ({ style: { padding: "6px 16px" } }),
+        setCellHeaderProps: () => ({ style: { padding: theme.spacing(0.75, 0) } }),
+        setCellProps: () => ({ style: { padding: theme.spacing(0.75, 0) } }),
       },
     },
     {
@@ -293,8 +362,10 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({
       label: t("clusterDetail.voyager.planAndAssess.refactoring.fileDirectory"),
       options: {
         sort: false,
-        setCellHeaderProps: () => ({ style: { padding: "6px 16px" } }),
-        setCellProps: () => ({ style: { padding: "6px 16px", "word-break": "break-word" } }),
+        setCellHeaderProps: () => ({ style: { padding: theme.spacing(0.75, 0) } }),
+        setCellProps: () => ({
+          style: { padding: theme.spacing(0.75, 0), "word-break": "break-word" },
+        }),
       },
     },
     {
@@ -302,8 +373,8 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({
       label: t("clusterDetail.voyager.planAndAssess.refactoring.sqlObject"),
       options: {
         sort: false,
-        setCellHeaderProps: () => ({ style: { padding: "6px 16px" } }),
-        setCellProps: () => ({ style: { padding: "6px 16px" } }),
+        setCellHeaderProps: () => ({ style: { padding: theme.spacing(0.75, 0) } }),
+        setCellProps: () => ({ style: { padding: theme.spacing(0.75, 0) } }),
       },
     },
     {
@@ -311,8 +382,8 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({
       label: t("clusterDetail.voyager.planAndAssess.refactoring.issuesAck/Total"),
       options: {
         sort: false,
-        setCellHeaderProps: () => ({ style: { padding: "6px 16px" } }),
-        setCellProps: () => ({ style: { padding: "6px 16px" } }),
+        setCellHeaderProps: () => ({ style: { padding: theme.spacing(0.75, 0) } }),
+        setCellProps: () => ({ style: { padding: theme.spacing(0.75, 0) } }),
         customBodyRender: (count: any) => {
           return <>{`${count.ackCount} / ${count.totalCount}`}</>;
         },
@@ -350,13 +421,27 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({
       options: {
         sort: false,
         display: showPlusMinusExpansion,
-        setCellHeaderProps: () => ({ style: { width: "20px", padding: "8px 8px" } }),
-        setCellProps: () => ({ style: { width: "20px", padding: "8px 8px" } }),
+        setCellHeaderProps: () => ({ className: classes.cellHeader }),
+        setCellProps: () => ({
+          width: "32px",
+          height: "32px",
+          padding: "0",
+          textAlign: "center",
+          verticalAlign: "middle"
+        }),
         customBodyRender: (plusMinusExpansion: { mapReturnedArrayLength: number; index: number }) =>
           plusMinusExpansion.mapReturnedArrayLength > 0 && (
             <Box
-              p={1}
-              style={{ cursor: "pointer" }}
+              style={{
+                cursor: "pointer",
+                height: theme.spacing(4),
+                width: theme.spacing(4),
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                margin: 0,
+                padding: 0
+              }}
               onClick={() => {
                 setExpandedSuggestions((prev) => ({
                   ...prev,
@@ -375,34 +460,36 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({
       label: t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.objectType"),
       options: {
         sort: false,
-        setCellHeaderProps: () => ({ style: { padding: "8px 30px" } }),
-        setCellProps: () => ({ style: { padding: "8px 30px" } }),
+        setCellHeaderProps: () => ({ style: { padding: theme.spacing(1, 0) } }),
+        setCellProps: () => ({ style: { padding: theme.spacing(1, 0) } }),
         customHeadLabelRender: createCustomHeaderLabelRender(
           "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.objectType"
         ),
         customBodyRender: (value: string) => (
-          isAssessmentPage ? (
-            <YBButton
-              onClick={() => {
-              setSelectedObjectType?.(formatSnakeCase(value));
-              scrollToIssueTable?.();
-            }}
-           >
-            {formatSnakeCase(value)}
-           </YBButton>
-          ) : (
-            (value)
-          )
+          <Typography style={{
+            fontSize: theme.typography.fontSize,
+            fontWeight: theme.typography.body2.fontWeight,
+            color: theme.palette.text.primary,
+            textTransform: 'capitalize'
+          }}>
+            {capitalizeFirstLetter(value)}
+          </Typography>
         ),
       },
     },
     {
       name: "automaticDDLImport",
       options: {
-        setCellHeaderProps: () => ({ style: { padding: "8px 30px" } }),
-        setCellProps: () => ({ style: { padding: "8px 30px" } }),
+        setCellHeaderProps: () => ({ style: { padding: theme.spacing(1, 0) } }),
+        setCellProps: () => ({ style: { padding: theme.spacing(1, 0) } }),
         customBodyRender: (count: number) => (
-          <YBBadge text={count} variant={BadgeVariant.Success} />
+          <YBBadge text={
+            <Typography
+              className={classes.badgeTextStyle}
+              variant="body2">
+                {count}
+              </Typography>
+          } variant={BadgeVariant.Success}/>
         ),
         customHeadLabelRender: createCustomHeaderLabelRender(
         "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.automaticDDLImport",
@@ -413,11 +500,45 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({
     {
       name: "invalidObjCount",
       options: {
-        setCellHeaderProps: () => ({ style: { padding: "8px 25px" } }),
-        setCellProps: () => ({ style: { padding: "8px 30px" } }),
-        customBodyRender: (count: number) => (
-          <YBBadge text={count} variant={count > 0 ? BadgeVariant.Warning : BadgeVariant.Success} />
-        ),
+        setCellHeaderProps: () => ({ style: { padding: theme.spacing(1, 0) } }),
+        setCellProps: () => ({ style: { padding: theme.spacing(1, 0) } }),
+        customBodyRender: (count: number, tableMeta: any) => {
+          const objectType = tableMeta?.rowData?.[1]?.toLowerCase();
+
+          if (count > 0) {
+            return (
+              <Box display="flex" flexDirection="row" alignItems="center">
+                <YBBadge
+                  text={
+                    <Typography className={classes.badgeTextStyle} variant="body2">
+                      {count}
+                    </Typography>
+                  }
+                  variant={BadgeVariant.Warning}
+                />
+                {isAssessmentPage && (
+                  <Box
+                    component="span"
+                    className={classes.seeDetailsLink}
+                    onClick={() => {
+                      setSelectedObjectType?.(formatSnakeCase(objectType));
+                      scrollToIssueTable?.();
+                      objectTypeSelectRef?.current?.focus();
+                    }}
+                  >
+                    {t("clusterDetail.voyager.planAndAssess.refactoring.seeDetails")}
+                  </Box>
+                )}
+              </Box>
+            );
+          }
+
+          return (
+            <Box component="span" className={classes.seeDetailsHyphen}>
+              -
+            </Box>
+          );
+        },
         customHeadLabelRender: createCustomHeaderLabelRender(
         "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.invalidObjectCount",
         "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.invalidObjectCountTooltip"
@@ -427,10 +548,16 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({
     {
       name: "manualRefactoring",
       options: {
-        setCellHeaderProps: () => ({ style: { padding: "8px 25px" } }),
-        setCellProps: () => ({ style: { padding: "8px 30px" } }),
+        setCellHeaderProps: () => ({ style: { padding: theme.spacing(1, 3.125) } }),
+        setCellProps: () => ({ style: { padding: theme.spacing(1, 3.75) } }),
         customBodyRender: (count: number) => (
-          <YBBadge text={count} variant={BadgeVariant.Warning} />
+          <YBBadge text={
+            <Typography
+              className={classes.badgeTextStyle}
+              variant="body2">
+                {count}
+            </Typography>
+          } variant={BadgeVariant.Warning}/>
         ),
         display: isAssessmentPage === false, // Hiding this column in assessment page.
         customHeadLabelRender: createCustomHeaderLabelRender(
@@ -444,15 +571,24 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({
       options: {
         sort: false,
         display: showRightArrowSidePanel,
-        setCellHeaderProps: () => ({ style: { width: "50px", padding: "8px 8px" } }),
-        setCellProps: () => ({ style: { width: "50px", padding: "8px 8px" } }),
+        setCellHeaderProps: () => ({
+          style: { width: theme.spacing(6.25), padding: theme.spacing(1) },
+        }),
+        setCellProps: () => ({ style: { width: theme.spacing(6.25), padding: theme.spacing(1) } }),
         customBodyRender: (rightArrowSidePanel: {
           sqlObjectType: string | undefined | null;
           mapReturnedArrayLength: number;
         }) =>
           rightArrowSidePanel.mapReturnedArrayLength > 0 && (
             <Box
-              style={{ cursor: "pointer" }}
+              style={{
+                cursor: "pointer",
+                height: theme.spacing(4),
+                width: theme.spacing(6.25),
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center"
+              }}
               onClick={() => {
                 const objectType: string = rightArrowSidePanel.sqlObjectType?.toLowerCase() ?? "";
                 let dataForSidePanel: SqlObjectsDetails = {
@@ -498,7 +634,7 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({
 
   return (
     <>
-      <Box position="relative">
+      <Box position="relative" className={classes.tableWrapper}>
         <YBTable
           data={graphData}
           columns={columns}
@@ -512,8 +648,9 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({
                     {data.map((cellData, cellIndex) => {
                       const cellProps = columns[cellIndex]?.options?.setCellProps?.() || {};
                       return (
-                        columns[cellIndex].options.display !== false && (
-                          <TableCell key={`cell-${dataIndex}-${cellIndex}`} style={cellProps.style}>
+                        columns[cellIndex].options.display !== false && cellData !== undefined && (
+                          <TableCell key={`cell-${dataIndex}-${cellIndex}`}
+                            style={(cellProps as any).style || cellProps}>
                             {typeof cellData === "function"
                               ? (cellData as any)(dataIndex)
                               : cellData}
@@ -528,7 +665,11 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({
                         <Box className={classes.innerTable}>
                           <YBTable
                             key={`innerTable`}
-                            data={expandableGraphData.get(data[1]) ?? []}
+                            data={
+                              expandableGraphData.get(
+                                graphData[dataIndex]?.objectType?.toLowerCase() ?? ''
+                              ) ?? []
+                            }
                             columns={innerColumns}
                             options={{
                               pagination: true,
@@ -544,7 +685,9 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({
             },
           }}
         />
-       {/* Display Collapse/Expand button only if there are expandable objects in the graph data */}
+        {/*
+          Display Collapse/Expand button only if there are expandable objects in the graph data
+        */}
         {(graphData?.some(
           ({ plusMinusExpansion }: { plusMinusExpansion: { mapReturnedArrayLength: number } }) =>
             plusMinusExpansion.mapReturnedArrayLength > 0

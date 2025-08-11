@@ -28,6 +28,10 @@ using std::string;
 using namespace std::literals;
 
 DECLARE_string(vmodule);
+METRIC_DECLARE_counter(handler_latency_yb_tserver_PgClientService_OpenTable);
+METRIC_DECLARE_counter(handler_latency_yb_master_MasterDdl_GetTableSchema);
+
+METRIC_DECLARE_counter(handler_latency_yb_tserver_TabletServerService_Read);
 
 namespace yb {
 namespace pgwrapper {
@@ -3166,6 +3170,154 @@ TEST_F(PgCatalogVersionTest, TestAlterRoleSetGUCHasGlobalImpact) {
   ASSERT_EQ(row4, "on");
   ASSERT_EQ(row5, "off");
   ASSERT_EQ(row6, "off");
+}
+
+TEST_F(PgCatalogVersionTest, InvalMessageDeltaTableLoad) {
+  for (int i = 0; i < 2; i++) {
+    if (i == 0) {
+      RestartClusterWithInvalMessageEnabled();
+    } else {
+      RestartClusterWithInvalMessageEnabled(
+          { "--ysql_yb_enable_invalidate_table_cache_entry=false" });
+    }
+    auto conn = CHECK_RESULT(Connect());
+    ASSERT_OK(conn.ExecuteFormat("create table test_table$0(id int)", i));
+    auto conn1 = ASSERT_RESULT(Connect());
+    auto conn2 = ASSERT_RESULT(Connect());
+    auto open_table_count = [this]() -> Result<int64_t> {
+      int64_t result = 0;
+      for (auto* tserver : cluster_->tserver_daemons()) {
+        int64_t count = CHECK_RESULT(tserver->GetMetric<int64>(
+            &METRIC_ENTITY_server, "yb.tabletserver",
+            &METRIC_handler_latency_yb_tserver_PgClientService_OpenTable, "total_count"));
+        result += count;
+      }
+      return result;
+    };
+
+    auto get_schema_count = [this]() -> Result<int64_t> {
+      int64_t result = 0;
+      for (auto* master : cluster_->master_daemons()) {
+        int64_t count = CHECK_RESULT(master->GetMetric<int64>(
+            &METRIC_ENTITY_server, "yb.master",
+            &METRIC_handler_latency_yb_master_MasterDdl_GetTableSchema, "total_count"));
+        result += count;
+      }
+      return result;
+    };
+    auto open_table_count_before = CHECK_RESULT(open_table_count());
+    auto get_schema_count_before = CHECK_RESULT(open_table_count());
+    for (int col = 0; col < 100; col++) {
+      ASSERT_OK(conn1.ExecuteFormat("alter table test_table$0 add column c$1 int", i, col));
+      auto res = CHECK_RESULT(conn2.FetchFormat("select * from test_table$0", i));
+    }
+    auto open_table_count_after = CHECK_RESULT(open_table_count());
+    auto get_schema_count_after = CHECK_RESULT(get_schema_count());
+    LOG(INFO) << "i: " << i
+              << ", open_table_count_before: " << open_table_count_before
+              << ", open_table_count_after: " << open_table_count_after
+              << ", get_schema_count_before: " << get_schema_count_before
+              << ", get_schema_count_after: " << get_schema_count_after;
+    if (i == 0) {
+      ASSERT_EQ(open_table_count_after - open_table_count_before, 143);
+      ASSERT_EQ(get_schema_count_after - get_schema_count_before, 681);
+    } else {
+      ASSERT_EQ(open_table_count_after - open_table_count_before, 638);
+      ASSERT_EQ(get_schema_count_after - get_schema_count_before, 781);
+    }
+  }
+}
+
+class PgCatalogVersionConnManagerTest
+    : public PgCatalogVersionTest,
+      public ::testing::WithParamInterface<bool> {
+  const bool enable_ysql_conn_mgr = GetParam();
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->enable_ysql_conn_mgr = enable_ysql_conn_mgr;
+    PgCatalogVersionTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back(
+        "--ysql_enable_read_request_cache_for_connection_auth=true");
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(, PgCatalogVersionConnManagerTest,
+                        ::testing::Values(false, true));
+
+TEST_P(PgCatalogVersionConnManagerTest,
+       YB_DISABLE_TEST_IN_SANITIZERS(TestConnectionManagerRpcCount)) {
+  const bool enable_ysql_conn_mgr = GetParam();
+  // Create the first logical connection to warm up the tserver cache
+  // for later auth backends to use.
+  auto conn = ASSERT_RESULT(Connect());
+
+  auto master_read_count = [this]() -> Result<int64_t> {
+    int64_t result = 0;
+    for (auto* tserver : cluster_->master_daemons()) {
+      int64_t count = CHECK_RESULT(tserver->GetMetric<int64>(
+          &METRIC_ENTITY_server, "yb.master",
+          &METRIC_handler_latency_yb_tserver_TabletServerService_Read, "total_count"));
+      result += count;
+    }
+    return result;
+  };
+
+  const int num_logical_connections = 250;
+  auto master_read_count_before = ASSERT_RESULT(master_read_count());
+  LOG(INFO) << "Create " << num_logical_connections << " logical connections";
+  std::vector<PGConn> conns;
+  // Create additional number of logical connections. The setup process of each logical
+  // connection triggers a PG auth backend, which uses tserver cache for its work.
+  // In contrast, a regular PG backend does not use tserver cache for its auth work.
+  for (int i = 0; i < num_logical_connections; i++) {
+    conns.emplace_back(ASSERT_RESULT(Connect()));
+  }
+  auto master_read_count_after = ASSERT_RESULT(master_read_count());
+  LOG(INFO) << ", master_read_count_before: " << master_read_count_before
+            << ", master_read_count_after: " << master_read_count_after;
+  auto expected_count = (enable_ysql_conn_mgr ? 2 : 3) * num_logical_connections + 1;
+  ASSERT_EQ(master_read_count_after - master_read_count_before, expected_count);
+}
+
+TEST_P(PgCatalogVersionConnManagerTest,
+       YB_DISABLE_TEST_IN_SANITIZERS(TestConnectionManagerChangePassword)) {
+  // Create a test user with password.
+  auto conn = ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "yugabyte"));
+  ASSERT_OK(conn.ExecuteFormat("CREATE USER test_user PASSWORD 'password'"));
+
+  RestartClusterWithInvalMessageEnabled(
+      { "--ysql_enable_auth=true" });
+
+  // Connect as test_user with the right password.
+  setenv("PGPASSWORD", "password", /*overwrite=*/true);
+  auto conn_test = ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "test_user"));
+
+  auto version = ASSERT_RESULT(GetCatalogVersion(&conn_test));
+
+  // Connect as yugabyte and change the test_user's password.
+  setenv("PGPASSWORD", "yugabyte", /*overwrite=*/true);
+  conn = ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "yugabyte"));
+  ASSERT_OK(conn.ExecuteFormat("ALTER USER test_user WITH PASSWORD 'new_password'"));
+
+  WaitForCatalogVersionToPropagate();
+  // Verify the old password no longer works.
+  ASSERT_NOK_STR_CONTAINS(ConnectToDBAsUser("yugabyte", "test_user"),
+      "password authentication failed for user \"test_user\"");
+
+  // Verify the new password works.
+  setenv("PGPASSWORD", "new_password", /*overwrite=*/true);
+  ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "test_user"));
+
+  auto new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
+  const bool enable_ysql_conn_mgr = GetParam();
+  if (enable_ysql_conn_mgr) {
+    // When connection manager is enabled, we increment the catalog version for
+    // changing password.
+    ASSERT_EQ(version + 1, new_version);
+  } else {
+    // When connection manager is not enabled, we do not increment the catalog
+    // version for changing password.
+    ASSERT_EQ(version, new_version);
+  }
 }
 
 } // namespace pgwrapper

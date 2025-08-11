@@ -37,6 +37,8 @@
 #include <limits>
 #include <utility>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/common/hybrid_time.h"
 
 #include "yb/consensus/consensus.messages.h"
@@ -889,6 +891,7 @@ Status ReadableLogSegment::MakeCorruptionStatus(
 Result<std::shared_ptr<LWLogEntryBatchPB>> ReadableLogSegment::ReadEntryHeaderAndBatch(
     int64_t* offset) {
   EntryHeader header;
+  SCOPED_WAIT_STATUS(WAL_Read);
   RETURN_NOT_OK(ReadEntryHeader(offset, &header));
   return ReadEntryBatch(offset, header);
 }

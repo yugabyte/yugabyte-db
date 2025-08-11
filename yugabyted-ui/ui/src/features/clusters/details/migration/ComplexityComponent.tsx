@@ -6,8 +6,8 @@ import { useTranslation, TFunction } from "react-i18next";
 
 const useStyles = makeStyles((theme) => ({
   complexity: {
-    width: 16,
-    height: 16,
+    width: 12,
+    height: 12,
     borderRadius: "100%",
     border: `1px solid ${theme.palette.grey[300]}`,
   },

@@ -927,8 +927,9 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
             self.extra_vars.update({"otel_col_aws_secret_key": args.otel_col_aws_secret_key})
         if args.otel_col_gcp_creds_file:
             self.extra_vars.update({"otel_col_gcp_creds_local": args.otel_col_gcp_creds_file})
-        if args.ycql_audit_log_level:
-            self.extra_vars.update({"ycql_audit_log_level": args.ycql_audit_log_level})
+        self.extra_vars.update({
+            "ycql_audit_log_level": getattr(args, 'ycql_audit_log_level', 'NONE')
+        })
         if args.reboot_node_allowed:
             self.extra_vars.update({"reboot_node_allowed": args.reboot_node_allowed})
 
@@ -1686,8 +1687,9 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
             self.extra_vars.update({"otel_col_aws_secret_key": args.otel_col_aws_secret_key})
         if args.otel_col_gcp_creds_file:
             self.extra_vars.update({"otel_col_gcp_creds_local": args.otel_col_gcp_creds_file})
-        if args.ycql_audit_log_level:
-            self.extra_vars.update({"ycql_audit_log_level": args.ycql_audit_log_level})
+        self.extra_vars.update({
+            "ycql_audit_log_level": getattr(args, 'ycql_audit_log_level', 'NONE')
+        })
 
         if args.reset_master_state and args.extra_gflags is not None:
             delete_paths = []
@@ -2269,8 +2271,9 @@ class ManageOtelCollector(AbstractInstancesMethod):
             self.extra_vars.update({"otel_col_aws_secret_key": args.otel_col_aws_secret_key})
         if args.otel_col_gcp_creds_file:
             self.extra_vars.update({"otel_col_gcp_creds_local": args.otel_col_gcp_creds_file})
-        if args.ycql_audit_log_level:
-            self.extra_vars.update({"ycql_audit_log_level": args.ycql_audit_log_level})
+        self.extra_vars.update({
+            "ycql_audit_log_level": getattr(args, 'ycql_audit_log_level', 'NONE')
+        })
         if args.use_sudo:
             self.extra_vars.update({"use_sudo": args.use_sudo})
 

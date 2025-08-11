@@ -89,3 +89,6 @@ To learn more, refer to [Manage tables and indexes](./disaster-recovery-tables/)
 - Currently, automatic replication of DDL (SQL-level changes such as creating or dropping tables or indexes) is not supported. For more details on how to propagate DDL changes from the Source to the Target, see [Manage tables and indexes](./disaster-recovery-tables/).
 
 - If a database operation requires a full copy, any application sessions on the database on the DR target will be interrupted while the database is dropped and recreated. Your application should either retry connections or redirect reads to the Source.
+
+- Currently in YugabyteDB Aeon, you cannot use xCluster Disaster Recovery with point-in-time recovery (PITR) on the same database. If you have PITR configured for a database and want to set up xCluster Disaster Recovery, [disable PITR](../aeon-pitr/#disable-pitr) first.
+

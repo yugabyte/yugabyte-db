@@ -56,9 +56,6 @@
 #include "port/atomics.h"
 #include "storage/s_lock.h"
 
-/* YB includes */
-#include "miscadmin.h"
-
 #define MIN_SPINS_PER_DELAY 10
 #define MAX_SPINS_PER_DELAY 1000
 /*
@@ -89,10 +86,7 @@ s_lock_stuck(const char *file, int line, const char *func)
 			func, file, line);
 	exit(1);
 #else
-	bool		yb_is_postmaster = IsPostmasterEnvironment && !IsUnderPostmaster;
-	int			yb_level = YBIsEnabledInPostgresEnvVar() && yb_is_postmaster ? ERROR : PANIC;
-
-	elog(yb_level, "stuck spinlock detected at %s, %s:%d",
+	elog(PANIC, "stuck spinlock detected at %s, %s:%d",
 		 func, file, line);
 #endif
 }

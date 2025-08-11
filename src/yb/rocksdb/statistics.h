@@ -69,8 +69,6 @@ enum Tickers : uint32_t {
   BLOCK_CACHE_DATA_MISS,
   // # of times cache hit when accessing data block from block cache.
   BLOCK_CACHE_DATA_HIT,
-  // # of bytes read from cache.
-  BLOCK_CACHE_BYTES_READ,
   // # of bytes written into cache.
   BLOCK_CACHE_BYTES_WRITE,
   // # of times bloom filter has avoided file reads.
@@ -207,11 +205,9 @@ enum Tickers : uint32_t {
   // Single-touch and multi-touch statistics.
   BLOCK_CACHE_SINGLE_TOUCH_HIT,
   BLOCK_CACHE_SINGLE_TOUCH_ADD,
-  BLOCK_CACHE_SINGLE_TOUCH_BYTES_READ,
   BLOCK_CACHE_SINGLE_TOUCH_BYTES_WRITE,
   BLOCK_CACHE_MULTI_TOUCH_HIT,
   BLOCK_CACHE_MULTI_TOUCH_ADD,
-  BLOCK_CACHE_MULTI_TOUCH_BYTES_READ,
   BLOCK_CACHE_MULTI_TOUCH_BYTES_WRITE,
 
   // Files filtered during compaction due to TTL expiration

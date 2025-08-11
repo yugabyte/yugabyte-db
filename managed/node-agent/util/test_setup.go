@@ -54,7 +54,8 @@ func setUp() {
 	config.Update(NodeZoneKey, dummyZone)
 	config.Update(NodeAzIdKey, "az1234")
 	config.Update(NodeInstanceTypeKey, dummyInstanceType)
-	config.Update(NodeLoggerKey, "node_agent_test.log")
+	config.Update(NodeAgentLoggerKey, "node_agent_test.log")
+	config.Update(NodeAgentGrpcLoggerKey, "grpc_test.log")
 	config.Update(PlatformCertsKey, "test")
 	private, public := GetPublicAndPrivateKey()
 	SaveCerts(

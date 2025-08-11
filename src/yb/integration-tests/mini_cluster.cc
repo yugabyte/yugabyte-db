@@ -657,6 +657,13 @@ Status MiniCluster::CompactTablets(docdb::SkipFlush skip_flush) {
   return Status::OK();
 }
 
+Status MiniCluster::CompactTablet(const TabletId& tablet_id, docdb::SkipFlush skip_flush) {
+  for (const auto& tablet_server : mini_tablet_servers_) {
+    RETURN_NOT_OK(tablet_server->CompactTablet(tablet_id, skip_flush));
+  }
+  return Status::OK();
+}
+
 Status MiniCluster::SwitchMemtables() {
   for (const auto& tablet_server : mini_tablet_servers_) {
     RETURN_NOT_OK(tablet_server->SwitchMemtables());

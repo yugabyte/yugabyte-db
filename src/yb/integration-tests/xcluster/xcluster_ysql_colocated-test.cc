@@ -369,7 +369,7 @@ TEST_F(XClusterYsqlColocatedTest, IsBootstrapRequired) {
   ASSERT_FALSE(ASSERT_RESULT(producer_client()->IsBootstrapRequired({colocated_parent_table_id})));
 
   // Adding table to replication should not make it require bootstrap.
-  ASSERT_OK(SetupUniverseReplication(producer_tables_));
+  ASSERT_OK(SetupUniverseReplication({colocated_parent_table_id}));
   ASSERT_FALSE(ASSERT_RESULT(producer_client()->IsBootstrapRequired({colocated_parent_table_id})));
 
   // Inserting data into one table should make it require bootstrap.

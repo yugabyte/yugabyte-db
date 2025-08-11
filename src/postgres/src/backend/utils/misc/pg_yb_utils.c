@@ -137,6 +137,7 @@ static uint64_t yb_last_known_catalog_cache_version = YB_CATCACHE_VERSION_UNINIT
 static uint64_t yb_new_catalog_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 
 static uint64_t yb_logical_client_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
+static bool yb_need_invalidate_all_table_cache = false;
 
 static bool YbHasDdlMadeChanges();
 
@@ -160,6 +161,32 @@ uint64_t
 YbGetNewCatalogVersion()
 {
 	return yb_new_catalog_version;
+}
+
+void
+YbSetNeedInvalidateAllTableCache()
+{
+	yb_need_invalidate_all_table_cache = true;
+}
+
+void
+YbResetNeedInvalidateAllTableCache()
+{
+	yb_need_invalidate_all_table_cache = false;
+}
+
+bool
+YbGetNeedInvalidateAllTableCache()
+{
+	return yb_need_invalidate_all_table_cache;
+}
+
+bool
+YbCanTryInvalidateTableCacheEntry()
+{
+	return IsYugaByteEnabled() &&
+		   yb_enable_invalidate_table_cache_entry &&
+		   !yb_need_invalidate_all_table_cache;
 }
 
 uint64_t
@@ -1032,6 +1059,8 @@ typedef struct YbSessionStats
 
 static YbSessionStats yb_session_stats = {0};
 
+static YbcPgAshConfig ash_config;
+
 static void
 IpAddressToBytes(YbcPgAshConfig *ash_config)
 {
@@ -1083,10 +1112,8 @@ YBInitPostgresBackend(const char *program_name, uint64_t *session_id)
 			.CheckUserMap = &check_usermap,
 			.PgstatReportWaitStart = &yb_pgstat_report_wait_start
 		};
-		YbcPgAshConfig ash_config = {
-			.metadata = &MyProc->yb_ash_metadata,
-			.yb_enable_ash = &yb_enable_ash
-		};
+
+		ash_config.metadata = &MyProc->yb_ash_metadata;
 
 		IpAddressToBytes(&ash_config);
 		YBCInitPgGate(YbGetTypeTable(), &callbacks, session_id, &ash_config);
@@ -2140,6 +2167,7 @@ bool		yb_enable_inplace_index_update = true;
 bool		yb_ignore_freeze_with_copy = true;
 bool		yb_enable_docdb_vector_type = false;
 bool		yb_enable_invalidation_messages = true;
+bool		yb_enable_invalidate_table_cache_entry = true;
 int			yb_invalidation_message_expiration_secs = 10;
 int			yb_max_num_invalidation_messages = 4096;
 
@@ -3092,11 +3120,27 @@ YBCommitTransactionContainingDDL()
 			GetCommandTagName(ddl_transaction_state.current_stmt_ddl_command_tag);
 
 		is_breaking_change = mode & YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE;
+		bool increment_for_conn_mgr_needed = false;
+		if (YbIsYsqlConnMgrEnabled())
+		{
+			/* We should not come here on auth backend. */
+			Assert(!yb_is_auth_backend);
+			/*
+			 * Auth backends only read shared relations. If tserver cache is used by
+			 * auth backends, we need to make sure stale tserver cache entries are
+			 * detected by incrementing the catalog version.
+			 */
+			if (ddl_transaction_state.is_global_ddl &&
+				YbCheckTserverResponseCacheForAuthGflags())
+				increment_for_conn_mgr_needed = true;
+		}
+
 		/*
 		 * We can skip incrementing catalog version if nmsgs is 0.
 		 */
 		increment_done =
-			(mode & YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT) &&
+			((mode & YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT) ||
+			 increment_for_conn_mgr_needed) &&
 			(!enable_inval_msgs || nmsgs > 0) &&
 			YbIncrementMasterCatalogVersionTableEntry(is_breaking_change,
 													  ddl_transaction_state.is_global_ddl,
@@ -6664,18 +6708,21 @@ aggregateStats(YbInstrumentation *instr, const YbcPgExecStats *exec_stats)
 	/* User Table stats */
 	instr->tbl_reads.count += exec_stats->tables.reads;
 	instr->tbl_reads.wait_time += exec_stats->tables.read_wait;
+	instr->tbl_read_ops += exec_stats->tables.read_ops;
 	instr->tbl_writes += exec_stats->tables.writes;
 	instr->tbl_reads.rows_scanned += exec_stats->tables.rows_scanned;
 
 	/* Secondary Index stats */
 	instr->index_reads.count += exec_stats->indices.reads;
 	instr->index_reads.wait_time += exec_stats->indices.read_wait;
+	instr->index_read_ops += exec_stats->indices.read_ops;
 	instr->index_writes += exec_stats->indices.writes;
 	instr->index_reads.rows_scanned += exec_stats->indices.rows_scanned;
 
 	/* System Catalog stats */
 	instr->catalog_reads.count += exec_stats->catalog.reads;
 	instr->catalog_reads.wait_time += exec_stats->catalog.read_wait;
+	instr->catalog_read_ops += exec_stats->catalog.read_ops;
 	instr->catalog_writes += exec_stats->catalog.writes;
 	instr->catalog_reads.rows_scanned += exec_stats->catalog.rows_scanned;
 
@@ -6696,6 +6743,7 @@ getDiffReadWriteStats(const YbcPgExecReadWriteStats *current,
 	return (YbcPgExecReadWriteStats)
 	{
 		current->reads - old->reads,
+			current->read_ops - old->read_ops,
 			current->writes - old->writes,
 			current->read_wait - old->read_wait,
 			current->rows_scanned - old->rows_scanned,
@@ -7582,6 +7630,16 @@ YbIsYsqlConnMgrWarmupModeEnabled()
 }
 
 bool
+YbIsYsqlConnMgrEnabled()
+{
+	static int	cached_value = -1;
+
+	if (cached_value == -1)
+		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_enable_ysql_conn_mgr", false);
+	return cached_value;
+}
+
+bool
 YbIsAuthBackend()
 {
 	return yb_is_auth_backend;
@@ -7870,4 +7928,18 @@ YbIsAnyDependentGeneratedColPK(Relation rel, AttrNumber attnum)
 	bms_free(target_cols);
 
 	return false;
+}
+
+bool
+YbCheckTserverResponseCacheForAuthGflags()
+{
+	/*
+	 * Do not use tserver cache if we do not have incremental catalog cache
+	 * refresh because the cost of global-impact DDLs (which is needed to
+	 * use tserver cache for auth processing) is too high.
+	 */
+	return
+		*YBCGetGFlags()->ysql_enable_read_request_caching &&
+		*YBCGetGFlags()->ysql_enable_read_request_cache_for_connection_auth &&
+		yb_enable_invalidation_messages;
 }

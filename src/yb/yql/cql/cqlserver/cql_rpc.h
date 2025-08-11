@@ -110,7 +110,8 @@ class CQLInboundCall : public rpc::InboundCall {
  public:
   explicit CQLInboundCall(rpc::ConnectionPtr conn,
                           CallProcessedListener* call_processed_listener,
-                          ql::QLSession::SharedPtr ql_session);
+                          ql::QLSession::SharedPtr ql_session,
+                          rpc::CallStateListenerFactory* call_state_listener_factory);
 
   // Takes ownership of call_data content.
   Status ParseFrom(const MemTrackerPtr& call_tracker, rpc::CallData* call_data);

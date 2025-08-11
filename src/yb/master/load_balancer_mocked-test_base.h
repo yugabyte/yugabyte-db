@@ -55,11 +55,12 @@ class LoadBalancerMockedBase : public YBTest {
     scoped_refptr<TableInfo> table(new TableInfo(kTableId, /* colocated */ false));
     std::vector<TabletInfoPtr> tablets;
 
-    // Generate 12 tablets total: 4 splits and 3 replicas each.
-    std::vector<std::string> splits = {"a", "b", "c"};
+    std::vector<std::string> splits;
+    for (int i = 0; i < NumTablets() - 1; ++i) {
+      splits.push_back(std::to_string(i));
+    }
     const int num_replicas = NumReplicas();
     total_num_tablets_ = narrow_cast<int>(num_replicas * (splits.size() + 1));
-
     ASSERT_OK(CreateTable(splits, num_replicas, false, table.get(), &tablets));
 
     tablets_ = std::move(tablets);
@@ -69,6 +70,7 @@ class LoadBalancerMockedBase : public YBTest {
 
  protected:
   virtual int NumReplicas() const { return 3; }
+  virtual int NumTablets() const { return 4; }
 
   struct PendingTasks {
     int adds, removes, stepdowns;
@@ -220,6 +222,7 @@ class LoadBalancerMockedBase : public YBTest {
         bool is_leader = i % ts_descs_.size() == j;
         PeerRole role = is_leader ? PeerRole::LEADER : PeerRole::FOLLOWER;
         NewReplica(ts_desc, state, role, &replica);
+        replica.member_type = consensus::PeerMemberType::VOTER;
         InsertOrDie(replica_map.get(), ts_desc->permanent_uuid(), replica);
       }
       // Set the replica locations directly into the tablet map.

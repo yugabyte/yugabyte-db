@@ -34,6 +34,8 @@ syntax = "proto2";
 
 package yb.rpc_test;
 
+import "yb/common/common.proto";
+
 import "google/protobuf/any.proto";
 import "yb/rpc/lightweight_message.proto";
 import "yb/rpc/rpc_header.proto";
@@ -163,6 +165,28 @@ service CalculatorService {
   };
 
   rpc Sidecar(SidecarRequestPB) returns (SidecarResponsePB);
+
+  rpc Ash(AshRequestPB) returns (AshResponsePB) {
+    option (yb.rpc.send_metadata) = true;
+  }
+
+  rpc AshLightweight(AshLightweightRequestPB) returns (AshLightweightResponsePB) {
+    option (yb.rpc.lightweight_method).sides = SERVICE;
+    option (yb.rpc.send_metadata) = true;
+  };
+}
+
+service AshTestService {
+  option (yb.rpc.service_send_metadata) = true;
+
+  rpc Ash(AshRequestPB) returns (AshResponsePB);
+  rpc NoAsh(NoAshRequestPB) returns (NoAshResponsePB) {
+    option (yb.rpc.exclude_metadata) = true;
+  }
+  rpc AshLightweight(AshLightweightRequestPB)
+      returns (AshLightweightResponsePB) {
+    option (yb.rpc.lightweight_method).sides = SERVICE;
+  };
 }
 
 message ConcatRequestPB {
@@ -321,4 +345,31 @@ message TestObjectPBv2 {
   optional int32 int32_2 = 5;
   optional int32 int32_3 = 6;
   optional TestStringOptionalPB record2 = 7;
+}
+
+message AshLightweightRequestPB {
+  optional int32 value = 1;
+}
+
+message AshLightweightResponsePB {
+  optional int32 value = 1;
+  optional AshMetadataPB ash_metadata = 2;
+}
+
+message AshRequestPB {
+  optional int32 value = 1;
+}
+
+message AshResponsePB {
+  optional int32 value = 1;
+  optional AshMetadataPB ash_metadata = 2;
+}
+
+message NoAshRequestPB {
+  optional int32 value = 1;
+}
+
+message NoAshResponsePB {
+  optional int32 value = 1;
+  optional AshMetadataPB ash_metadata = 2;
 }

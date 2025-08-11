@@ -234,7 +234,7 @@ struct ApplyStateWithCommitInfo {
   }
 };
 
-Result<ApplyTransactionState> GetIntentsBatch(
+Result<ApplyTransactionState> GetIntentsBatchForCDC(
     const TransactionId& transaction_id,
     const KeyBounds* key_bounds,
     const ApplyTransactionState* stream_state,

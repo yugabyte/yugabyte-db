@@ -133,6 +133,11 @@ DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_consistent_replication_from_hash_
                        "Enable consumption of consistent changes via replication slots from "
                        "a hash range of a table.");
 
+DEFINE_test_flag(bool, ysql_yb_enable_implicit_dynamic_tables_logical_replication, false,
+    "When set to true, modifications to publication will be reflected implicitly. "
+    "This replaces the previous mechanism of periodic publication refresh with PG "
+    "like semantics for dynamic tables");
+
 DEFINE_NON_RUNTIME_bool(TEST_hide_details_for_pg_regress, false,
     "For pg_regress tests, alter error messages that contain unstable items such as ybctid, oids, "
     "and catalog version numbers to hide such details or omit the message entirely.");

@@ -56,7 +56,6 @@
 #include "yb/rpc/scheduler.h"
 
 #include "yb/tserver/pg_client.pb.h"
-#include "yb/tserver/pg_client_service_util.h"
 #include "yb/tserver/pg_create_table.h"
 #include "yb/tserver/pg_mutation_counter.h"
 #include "yb/tserver/pg_response_cache.h"
@@ -909,7 +908,9 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
   // Initialize query from data stored in exchange with specified size.
   // The serialized query has the following format:
   // 8 bytes - timeout in milliseconds.
-  // remaining bytes - serialized ReqPB protobuf.
+  // next - size of serialized AshMetadataPB protobuf (say 'x').
+  // next 'x' bytes - serialized AshMetadataPB protobuf.
+  // remaining bytes - serialized PgPerformRequestPB protobuf.
   template <class... Args>
   Result<RequestInfo> ParseRequest(
       uint8_t* input, size_t size, uint64_t session_id, Args&&... args) {
@@ -918,6 +919,8 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
     const auto end = input + size;
     const auto timeout = MonoDelta::FromMilliseconds(LittleEndian::Load64(input));
     input += sizeof(uint64_t);
+    RETURN_NOT_OK(rpc::ParseMetadataFromSharedMemory(
+        &input, end - input, rpc::AnyMessagePtr(&ash_metadata_)));
     RETURN_NOT_OK(pb_util::ParseFromArray(&req_, input, end - input));
     data_.emplace(
         std::forward<Args>(args)..., session_id, req_, resp_, sidecars_,
@@ -936,6 +939,8 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
   [[nodiscard]] static auto MakeShared(Args&&... args) {
     return std::make_shared<SharedExchangeQuery>(PrivateTag{}, std::forward<Args>(args)...);
   }
+
+  const AshMetadataPB& ash_metadata() const { return ash_metadata_; }
 
  private:
   void SendResponse() {
@@ -999,6 +1004,7 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
 
   std::remove_const_t<typename T::ReqPB> req_;
   typename T::RespPB resp_;
+  AshMetadataPB ash_metadata_;
   rpc::Sidecars sidecars_;
   std::weak_ptr<PgClientSession> session_;
   SharedExchange& exchange_;
@@ -1367,9 +1373,6 @@ Request AcquireRequestFor(
     CoarseTimePoint deadline, const TabletId& status_tablet) {
   auto now = clock->Now();
   Request req;
-  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
-    wait_state->MetadataToPB(req.mutable_ash_metadata());
-  }
   req.set_txn_id(txn_id.data(), txn_id.size());
   req.set_subtxn_id(subtxn_id);
   req.set_session_host_uuid(session_host_uuid);
@@ -1395,9 +1398,6 @@ Request ReleaseRequestFor(
     std::optional<SubTransactionId> subtxn_id, uint64_t lease_epoch = 0,
     ClockBase* clock = nullptr) {
   Request req;
-  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
-    wait_state->MetadataToPB(req.mutable_ash_metadata());
-  }
   req.set_txn_id(txn_id.data(), txn_id.size());
   if (subtxn_id) {
     req.set_subtxn_id(*subtxn_id);
@@ -1445,9 +1445,11 @@ class ObjectLockOwnerInfo {
 };
 
 [[nodiscard]] auto DoTrackSharedMemoryPgMethodExecution(
-    const std::shared_ptr<yb::ash::WaitStateInfo>& wait_state, const char* method_name) {
+    const std::shared_ptr<yb::ash::WaitStateInfo>& wait_state, const AshMetadataPB& metadata,
+    const char* method_name) {
   static std::atomic<int64_t> next_rpc_id{0};
   DCHECK(wait_state);
+  wait_state->UpdateMetadataFromPB(metadata);
   wait_state->UpdateMetadata(
     {.rpc_request_id = next_rpc_id.fetch_add(1, std::memory_order_relaxed)});
   wait_state->UpdateAuxInfo({.method = method_name});
@@ -1458,18 +1460,18 @@ class ObjectLockOwnerInfo {
 
 template <QueryTraitsType T>
 [[nodiscard]] auto TrackSharedMemoryPgMethodExecution(
-    const std::shared_ptr<yb::ash::WaitStateInfo>& wait_state);
+    const std::shared_ptr<yb::ash::WaitStateInfo>& wait_state, const AshMetadataPB& metadata);
 
 template <>
 [[nodiscard]] auto TrackSharedMemoryPgMethodExecution<PerformQueryTraits>(
-    const std::shared_ptr<yb::ash::WaitStateInfo>& wait_state) {
-  return DoTrackSharedMemoryPgMethodExecution(wait_state, "Perform");
+    const std::shared_ptr<yb::ash::WaitStateInfo>& wait_state, const AshMetadataPB& metadata) {
+  return DoTrackSharedMemoryPgMethodExecution(wait_state, metadata, "Perform");
 }
 
 template <>
 [[nodiscard]] auto TrackSharedMemoryPgMethodExecution<ObjectLockQueryTraits>(
-    const std::shared_ptr<yb::ash::WaitStateInfo>& wait_state) {
-  return DoTrackSharedMemoryPgMethodExecution(wait_state, "AcquireObjectLock");
+    const std::shared_ptr<yb::ash::WaitStateInfo>& wait_state, const AshMetadataPB& metadata) {
+  return DoTrackSharedMemoryPgMethodExecution(wait_state, metadata, "AcquireObjectLock");
 }
 
 } // namespace
@@ -1494,7 +1496,6 @@ class PgClientSession::Impl {
 
   void SetupSharedObjectLocking(PgSessionLockOwnerTagShared& object_lock_shared) {
     DCHECK(!object_lock_shared_);
-    DCHECK(lock_owner_registry());
     object_lock_shared_ = &object_lock_shared;
   }
 
@@ -2382,7 +2383,7 @@ class PgClientSession::Impl {
     ADOPT_WAIT_STATE(wait_state);
     SCOPED_WAIT_STATUS(OnCpu_Active);
     auto track_guard = wait_state
-        ? TrackSharedMemoryPgMethodExecution<T>(wait_state)
+        ? TrackSharedMemoryPgMethodExecution<T>(wait_state, query.ash_metadata())
         : std::nullopt;
     return DoHandleSharedExchangeQuery(std::move(data), deadline);
   }
@@ -2675,8 +2676,8 @@ class PgClientSession::Impl {
     return context_.instance_uuid;
   }
 
-  docdb::ObjectLockOwnerRegistry* lock_owner_registry() const {
-    return context_.lock_owner_registry;
+  docdb::ObjectLockOwnerRegistry& lock_owner_registry() const {
+    return *DCHECK_NOTNULL(context_.lock_owner_registry);
   }
 
   PrefixLogger LogPrefix() const { return PrefixLogger{id_}; }
@@ -2725,15 +2726,33 @@ class PgClientSession::Impl {
     return ReleaseObjectLocksIfNecessary(txn, used_session_kind, deadline);
   }
 
-  Status DoPerform(
-      const PgTablesQueryResult& tables, const PerformQueryDataPtr& data, CoarseTimePoint deadline,
-      rpc::RpcContext* context = nullptr) {
-    auto& options = *data->req.mutable_options();
-    VLOG(5) << "Perform request: " << data->req.ShortDebugString();
-    TryUpdateAshWaitState(options);
-    if (!(options.ddl_mode() || options.yb_non_ddl_txn_for_sys_tables_allowed()) &&
-        xcluster_context() &&
-        xcluster_context()->IsReadOnlyMode(options.namespace_id())) {
+  template <class DataPtr, class Options>
+  Status ValidateRequestForXCluster(const Options& options, const DataPtr& data) {
+    if (options.yb_non_ddl_txn_for_sys_tables_allowed() || !xcluster_context()) {
+      return Status::OK();
+    }
+
+    if (options.ddl_mode()) {
+      // In xCluster Automatic mode, DDLs are not allowed on the target database unless it is run
+      // via the target poller or in forced manual mode.
+      if (xcluster_context()->GetXClusterRole(options.namespace_id()) ==
+              XClusterNamespaceInfoPB::AUTOMATIC_TARGET &&
+          !options.xcluster_target_ddl_bypass()) {
+        // Force catalog modifications is set for temp table, and in-place materialized view
+        // refresh. These DDLs are safe to perform on xCluster target in automatic mode.
+        for (const auto& op : data->req.ops()) {
+          SCHECK(
+              !op.has_write(), IllegalState,
+              "DDL operations are forbidden on a database that is the target of automatic mode "
+              "xCluster replication");
+        }
+      }
+
+      return Status::OK();
+    }
+
+    // DMLs.
+    if (xcluster_context()->IsReadOnlyMode(options.namespace_id())) {
       for (const auto& op : data->req.ops()) {
         if (op.has_write() && !op.write().is_backfill()) {
           TEST_SYNC_POINT_CALLBACK("WriteDetectedOnXClusterReadOnlyModeTarget", nullptr);
@@ -2745,6 +2764,17 @@ class PgClientSession::Impl {
         }
       }
     }
+
+    return Status::OK();
+  }
+
+  Status DoPerform(
+      const PgTablesQueryResult& tables, const PerformQueryDataPtr& data, CoarseTimePoint deadline,
+      rpc::RpcContext* context = nullptr) {
+    auto& options = *data->req.mutable_options();
+    VLOG(5) << "Perform request: " << data->req.ShortDebugString();
+
+    RETURN_NOT_OK(ValidateRequestForXCluster(options, data));
 
     if (options.has_caching_info()) {
       VLOG_WITH_PREFIX(3)
@@ -3554,7 +3584,7 @@ class PgClientSession::Impl {
   void RegisterLockOwner(const TransactionId& txn_id, const TabletId& status_tablet) {
     if (object_lock_shared_ && (!object_lock_owner_ || object_lock_owner_->txn_id() != txn_id)) {
       object_lock_owner_.emplace(
-          *object_lock_shared_, *DCHECK_NOTNULL(lock_owner_registry()), txn_id, status_tablet);
+          *object_lock_shared_, lock_owner_registry(), txn_id, status_tablet);
     }
   }
 

@@ -614,14 +614,10 @@ Cache::Handle* LRUCache::Lookup(const Slice& key, uint32_t hash, const QueryId q
     if (statistics != nullptr) {
       // overall cache hit
       statistics->recordTick(BLOCK_CACHE_HIT);
-      // total bytes read from cache
-      statistics->recordTick(BLOCK_CACHE_BYTES_READ, e->charge);
       if (e->GetSubCacheType() == SubCacheType::SINGLE_TOUCH) {
         statistics->recordTick(BLOCK_CACHE_SINGLE_TOUCH_HIT);
-        statistics->recordTick(BLOCK_CACHE_SINGLE_TOUCH_BYTES_READ, e->charge);
       } else if (e->GetSubCacheType() == SubCacheType::MULTI_TOUCH) {
         statistics->recordTick(BLOCK_CACHE_MULTI_TOUCH_HIT);
-        statistics->recordTick(BLOCK_CACHE_MULTI_TOUCH_BYTES_READ, e->charge);
       }
     }
   } else {

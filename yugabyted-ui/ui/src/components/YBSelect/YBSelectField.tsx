@@ -7,13 +7,15 @@ type YBSelectFieldProps<T extends FieldValues> = UseControllerProps<T> & YBSelec
 
 export const YBSelectField =
   <T extends FieldValues,>(props: YBSelectFieldProps<T>): ReactElement => {
-  const { name, rules, defaultValue, control, shouldUnregister, children, ...ybSelectProps } = props;
-  const { field, fieldState } = useController({ name, rules, defaultValue, control, shouldUnregister });
+  const { name, rules, defaultValue, control, shouldUnregister, children, ...ybSelectProps } =
+    props;
+  const { field, fieldState } =
+    useController({ name, rules, defaultValue, control, shouldUnregister });
   return (
     <YBSelect
       {...ybSelectProps}
       name={field.name}
-      inputRef={field.ref}
+      ref={field.ref}
       onBlur={field.onBlur}
       onChange={field.onChange}
       value={field.value}

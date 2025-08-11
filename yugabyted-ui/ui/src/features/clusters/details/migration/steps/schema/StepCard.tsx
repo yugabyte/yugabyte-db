@@ -5,6 +5,8 @@ import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 import { useTranslation } from "react-i18next";
 import { YBAccordion, YBTooltip } from "@app/components";
 import type { Trans as TransType } from "react-i18next";
+import CheckCircleSuccess from "@app/assets/CheckCircleSuccess.svg";
+
 const useStyles = makeStyles((theme) => ({
   paper: {
     borderColor: theme.palette.grey[200],
@@ -106,11 +108,17 @@ export const StepCard: FC<StepCardProps> = ({
             </Box>
           )}
           {((isDone && !isTodo) || isLoading) && (
-            <YBBadge
-              className={classes.badge}
-              text=""
-              variant={isDone ? BadgeVariant.Success : BadgeVariant.InProgress}
-            />
+            <>
+              {isDone ? (
+                <CheckCircleSuccess />
+              ) : (
+                <YBBadge
+                  className={classes.badge}
+                  text=""
+                  variant={BadgeVariant.InProgress}
+                />
+              )}
+            </>
           )}
           {isTodo &&  (
             <YBBadge

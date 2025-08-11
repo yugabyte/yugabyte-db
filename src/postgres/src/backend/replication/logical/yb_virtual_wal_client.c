@@ -34,6 +34,7 @@
 #include "replication/yb_virtual_wal_client.h"
 #include "utils/memutils.h"
 #include "utils/varlena.h"
+#include "utils/wait_event.h"
 
 static MemoryContext virtual_wal_context = NULL;
 static MemoryContext cached_records_context = NULL;
@@ -93,7 +94,7 @@ static List *unacked_transactions = NIL;
  */
 static YbcReplicationSlotHashRange *slot_hash_range = NULL;
 
-static List *YBCGetTables(List *publication_names);
+static List *YBCGetTables(List *publication_names, bool *yb_is_pub_all_tables);
 static void InitVirtualWal(List *publication_names,
 						   const YbcReplicationSlotHashRange *slot_hash_range);
 
@@ -178,7 +179,7 @@ YBCDestroyVirtualWal()
 }
 
 static List *
-YBCGetTables(List *publication_names)
+YBCGetTables(List *publication_names, bool *yb_is_pub_all_tables)
 {
 	List	   *yb_publications;
 	List	   *tables;
@@ -190,7 +191,7 @@ YBCGetTables(List *publication_names)
 		yb_publications =
 			YBGetPublicationsByNames(publication_names, false /* missing_ok */ );
 
-		tables = yb_pg_get_publications_tables(yb_publications);
+		tables = yb_pg_get_publications_tables(yb_publications, yb_is_pub_all_tables);
 		list_free(yb_publications);
 	}
 	else
@@ -201,6 +202,7 @@ YBCGetTables(List *publication_names)
 		 * publish_via_partition_root = false (default).
 		 */
 		tables = GetAllTablesPublicationRelations(false /* pubviaroot */ );
+		*yb_is_pub_all_tables = true;
 	}
 
 
@@ -213,14 +215,32 @@ InitVirtualWal(List *publication_names,
 {
 	List	   *tables;
 	Oid		   *table_oids;
+	Oid		   *yb_publication_oids;
+	bool		yb_is_pub_all_tables = false;
 
-	elog(DEBUG2,
-		 "Setting yb_read_time to last_pub_refresh_time for "
-		 "InitVirtualWal: %" PRIu64,
-		 MyReplicationSlot->data.yb_last_pub_refresh_time);
-	YBCUpdateYbReadTimeAndInvalidateRelcache(MyReplicationSlot->data.yb_last_pub_refresh_time);
+	/*
+	 * YB_TODO(#27686): Using the value of TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication
+	 * for decision making here will yield improper behaviour when streams with pub refresh
+	 * mechanism are upgraded to a version where the flag is true by default.
+	 */
+	if (*YBCGetGFlags()->TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication)
+	{
+		elog(DEBUG2,
+			"Setting yb_read_time to initial_record_commit_time for %" PRIu64,
+			MyReplicationSlot->data.yb_initial_record_commit_time_ht);
+		YBCUpdateYbReadTimeAndInvalidateRelcache(MyReplicationSlot->data.yb_initial_record_commit_time_ht);
+	}
+	else
+	{
+		elog(DEBUG2,
+			"Setting yb_read_time to last_pub_refresh_time for "
+			"InitVirtualWal: %" PRIu64,
+			MyReplicationSlot->data.yb_last_pub_refresh_time);
+		YBCUpdateYbReadTimeAndInvalidateRelcache(MyReplicationSlot->data.yb_last_pub_refresh_time);
+	}
 
-	tables = YBCGetTables(publication_names);
+	tables = YBCGetTables(publication_names, &yb_is_pub_all_tables);
+	yb_publication_oids = YBGetPublicationOidsByNames(publication_names);
 
 	if (yb_enable_consistent_replication_from_hash_range &&
 		slot_hash_range != NULL)
@@ -259,15 +279,21 @@ InitVirtualWal(List *publication_names,
 	}
 
 	YBCInitVirtualWalForCDC(MyReplicationSlot->data.yb_stream_id, table_oids,
-							list_length(tables), slot_hash_range, MyProcPid);
+							list_length(tables), slot_hash_range, MyProcPid,
+							yb_publication_oids, list_length(publication_names),
+							yb_is_pub_all_tables);
 
-	elog(DEBUG2,
-		 "Setting yb_read_time to initial_record_commit_time for %" PRIu64,
-		 MyReplicationSlot->data.yb_initial_record_commit_time_ht);
-	YBCUpdateYbReadTimeAndInvalidateRelcache(MyReplicationSlot->data.yb_initial_record_commit_time_ht);
+	if (!*YBCGetGFlags()->TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication)
+	{
+		elog(DEBUG2,
+			"Setting yb_read_time to initial_record_commit_time for %" PRIu64,
+			MyReplicationSlot->data.yb_initial_record_commit_time_ht);
+		YBCUpdateYbReadTimeAndInvalidateRelcache(MyReplicationSlot->data.yb_initial_record_commit_time_ht);
+	}
 
 	pfree(table_oids);
 	list_free(tables);
+	pfree(yb_publication_oids);
 }
 
 static const YbcPgTypeEntity *
@@ -300,6 +326,7 @@ YBCReadRecord(XLogReaderState *state, List *publication_names, char **errormsg)
 	YbVirtualWalRecord *record = NULL;
 	List	   *tables;
 	Oid		   *table_oids;
+	bool		yb_is_pub_all_tables = false;
 
 	elog(DEBUG4, "YBCReadRecord");
 
@@ -329,7 +356,7 @@ YBCReadRecord(XLogReaderState *state, List *publication_names, char **errormsg)
 			YBCUpdateYbReadTimeAndInvalidateRelcache(publication_refresh_time);
 
 			/* Get tables in publication and call UpdatePublicationTableList. */
-			tables = YBCGetTables(publication_names);
+			tables = YBCGetTables(publication_names, &yb_is_pub_all_tables);
 			table_oids = YBCGetTableOids(tables);
 			YBCUpdatePublicationTableList(MyReplicationSlot->data.yb_stream_id,
 										  table_oids, list_length(tables));
@@ -431,6 +458,9 @@ PreProcessBeforeFetchingNextBatch()
 	if (cached_records)
 		MemoryContextReset(cached_records_context);
 
+	/* Don't track idle sleep time */
+	pgstat_report_wait_start(WAIT_EVENT_YB_IDLE_SLEEP);
+
 	if (last_getconsistentchanges_response_empty)
 	{
 		elog(DEBUG4, "YBCReadRecord: Sleeping for %d ms due to empty response.",
@@ -445,6 +475,8 @@ PreProcessBeforeFetchingNextBatch()
 			 yb_walsender_poll_sleep_duration_nonempty_ms);
 		pg_usleep(1000L * yb_walsender_poll_sleep_duration_nonempty_ms);
 	}
+
+	pgstat_report_wait_end();
 
 	elog(DEBUG5, "YBCReadRecord: Fetching a fresh batch of changes.");
 }

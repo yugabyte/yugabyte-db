@@ -361,14 +361,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "XCluster/DR config GET API timeout in milliseconds",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<String> xClusterDbScopedAutomaticDdlYbdbMinCompatibleVersion =
-      new ConfKeyInfo<>(
-          "yb.xcluster.db_scoped.automatic_ddl.ybdbMinCompatibleVersion",
-          ScopeType.GLOBAL,
-          "XCluster DB Scoped Automatic DDL YBDB Min Compatible Version",
-          "Minimum YBDB version for which XCluster DB Scoped Automatic DDL is supported",
-          ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
+
   public static final ConfKeyInfo<Integer> ybcSocketReadTimeoutMs =
       new ConfKeyInfo<>(
           "ybc.timeout.socket_read_timeout_ms",
@@ -1414,6 +1407,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " enable/disable YSQL query logging on universes.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> metricsExportEnabled =
+      new ConfKeyInfo<>(
+          "yb.universe.metrics_export_enabled",
+          ScopeType.GLOBAL,
+          "Enable Metrics Export",
+          "If this flag is enabled, user will be able to create telemetry providers and"
+              + " enable/disable metrics export on universes.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> allowConnectionPooling =
       new ConfKeyInfo<>(
           "yb.universe.allow_connection_pooling",
@@ -1718,5 +1720,61 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Number of times to retry deleting blobs in GCP. This is used to handle the case where"
               + " the blob deletion fails due to some transient error.",
           ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> nodeAgentConnectionCacheSize =
+      new ConfKeyInfo<>(
+          "yb.node_agent.connection_cache_size",
+          ScopeType.GLOBAL,
+          "Node Agent Client Connection Cache Size",
+          "Cache size for node agent client connections",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> nodeAgentConnectTimeout =
+      new ConfKeyInfo<>(
+          "yb.node_agent.connect_timeout",
+          ScopeType.GLOBAL,
+          "Node Agent Client Connection Time-out",
+          "Client connection time-out for node agent.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> nodeAgentIdleConnectionTimeout =
+      new ConfKeyInfo<>(
+          "yb.node_agent.idle_connection_timeout",
+          ScopeType.GLOBAL,
+          "Node Agent Client Idle Connection Time-out",
+          "Client idle connection timeout for node agent.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> nodeAgentConnectionKeepAliveTime =
+      new ConfKeyInfo<>(
+          "yb.node_agent.connection_keep_alive_time",
+          ScopeType.GLOBAL,
+          "Node Agent Client Keep Alive Time",
+          "Client connection keep-alive time for node agent.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> nodeAgentConnectionKeepAliveTimeout =
+      new ConfKeyInfo<>(
+          "yb.node_agent.connection_keep_alive_timeout",
+          ScopeType.GLOBAL,
+          "Node Agent Client Keep Alive Time-out",
+          "Client connection keep-alive timeout for node agent.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> nodeAgentDescribePollDeadline =
+      new ConfKeyInfo<>(
+          "yb.node_agent.describe_poll_deadline",
+          ScopeType.GLOBAL,
+          "Node Agent Describe Poll Deadline",
+          "Node agent describe polling deadline.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableYbcBackgroundUpgrade =
+      new ConfKeyInfo<>(
+          "ybc.upgrade.enable_background_upgrade",
+          ScopeType.GLOBAL,
+          "Enable YBC Background Upgrade",
+          "Enable background upgrade for YBC.",
+          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

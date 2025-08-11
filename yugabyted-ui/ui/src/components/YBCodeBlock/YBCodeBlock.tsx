@@ -89,13 +89,13 @@ const useStyles = makeStyles((theme) => ({
     fontFamily: 'Menlo-Regular, Courier, monospace',
     whiteSpace: 'pre-wrap',
     margin: 0,
-    lineHeight: 2.7,
+    lineHeight: 1.7,
   },
   hashLine: {
-    color: 'green',
+    color: '#13A868',
   },
   tagWord: {
-    color: 'blue'
+    color: '#2B59C3'
   }
 }));
 
@@ -118,11 +118,55 @@ export const YBCodeBlock: FC<CodeBlockProps> = ({
   const { addToast } = useToast();
 
   const copy = async (value: string) => {
-    await navigator.clipboard.writeText(value);
-    addToast(AlertVariant.Success, t('common.copyCodeSuccess'));
+    try {
+      // Try modern clipboard API first
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(value);
+        addToast(AlertVariant.Success, t('common.copyCodeSuccess'), 3000);
+      } else {
+        // Fallback for older browsers or non-secure contexts
+        const textArea = document.createElement('textarea');
+        textArea.value = value;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        textArea.style.top = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+
+        try {
+          const successful = document.execCommand('copy');
+          document.body.removeChild(textArea);
+
+          if (successful) {
+            addToast(AlertVariant.Success, t('common.copyCodeSuccess'), 3000);
+          } else {
+            addToast(AlertVariant.Error, 'Failed to copy to clipboard', 5000);
+          }
+        } catch (err) {
+          document.body.removeChild(textArea);
+          addToast(AlertVariant.Error, 'Copy operation not supported', 5000);
+        }
+      }
+    } catch (err) {
+      addToast(AlertVariant.Error, 'Failed to copy to clipboard', 5000);
+    }
   };
 
-  const copyBlock = () => {copy(ref?.current?.innerText ?? '')};
+  const copyBlock = () => {
+    let textToCopy = ref?.current?.innerText ?? '';
+
+    // Fallback to original text prop if ref doesn't contain text
+    if (textToCopy.trim() === '' && typeof text === 'string') {
+      textToCopy = text;
+    }
+
+    if (textToCopy.trim() === '') {
+      addToast(AlertVariant.Error, 'No text found to copy', 5000);
+      return;
+    }
+    copy(textToCopy);
+  };
   const copyLineBlock = (ev: React.MouseEvent) => copy((ev?.currentTarget?.previousSibling as HTMLElement).innerText);
   const specialChars: string[] = [' ','\t',',',';','.',':','!','?','(',')','[',']','{','}','"',"'"];
   const parseText = (text: string) => {

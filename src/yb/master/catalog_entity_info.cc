@@ -560,6 +560,18 @@ Result<uint32_t> TableInfo::GetPgTableOid() const {
   return LockForRead()->GetPgTableOid(id());
 }
 
+Result<PgTableAllOids> TableInfo::GetPgTableAllOids() const {
+  PgTableAllOids oids;
+  auto l = LockForRead();
+  RSTATUS_DCHECK_EQ(
+      l->table_type(), PGSQL_TABLE_TYPE, InternalError,
+      Format("Invalid table type of table $0", table_id_));
+  oids.database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(l->namespace_id()));
+  oids.relfilenode_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id_));
+  oids.pg_table_oid = VERIFY_RESULT(l->GetPgTableOid(table_id_));
+  return oids;
+}
+
 TableType TableInfo::GetTableType() const {
   return LockForRead()->pb.table_type();
 }

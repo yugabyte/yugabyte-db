@@ -484,8 +484,8 @@ Status CatalogManager::RepackSnapshotsForBackup(
           // - Orphaned tables: dropped in YSQL but still present in DocDB.
           // - Temporary tables: created during an ongoing DDL operation when the snapshot was
           // taken.
-          const auto res =
-              GetYsqlManager().GetPgSchemaName(table_info->id(), l.data(), snapshot_hybrid_time);
+          const auto res = GetYsqlManager().GetPgSchemaName(
+              VERIFY_RESULT(table_info->GetPgTableAllOids()), snapshot_hybrid_time);
           if (!res.ok()) {
             // Handle the case where the table was dropped in YSQL but not in DocDB.
             // This can occur in two scenarios:
@@ -1949,7 +1949,7 @@ Result<bool> CatalogManager::CheckTableForImport(scoped_refptr<TableInfo> table,
       // If not a debug build, ignore pg_schema_name.
     } else {
       const string internal_schema_name = VERIFY_RESULT(GetYsqlManager().GetPgSchemaName(
-          table->id(), table_lock.data()));
+          VERIFY_RESULT(table->GetPgTableAllOids())));
       const string& external_schema_name = snapshot_data->pg_schema_name;
       if (internal_schema_name != external_schema_name) {
         LOG_WITH_FUNC(INFO) << "Schema names do not match: "

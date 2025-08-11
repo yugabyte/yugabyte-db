@@ -192,7 +192,7 @@ export const MigrationListColumns: FC<MigrationListColumnsProps> = ({
       <div className={classes.modalCheckboxesComponent}>
         {Object.entries(CHECKBOXES).map(([key, value]) => {
           return (
-            <div className={classes.modalCheckboxSection}>
+            <div key={key} className={classes.modalCheckboxSection}>
               <YBCheckboxField
                 name={key}
                 label={
@@ -218,6 +218,7 @@ export const MigrationListColumns: FC<MigrationListColumnsProps> = ({
                 {value.columns.map((column: any) => {
                   return (
                     <YBCheckboxField
+                      key={column.name}
                       name={column.name}
                       label={column.label}
                       control={control}

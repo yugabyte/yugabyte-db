@@ -48,7 +48,7 @@ YRPC_GENERATE(
   PROTO_FILES rpc_header.proto)
 ADD_YB_LIBRARY(rpc_header_proto
   SRCS ${RPC_HEADER_PROTO_SRCS}
-  DEPS protobuf yrpc_base
+  DEPS protobuf yrpc_base yb_common_proto
   NONLINK_DEPS ${RPC_HEADER_PROTO_TGTS})
 
 PROTOBUF_GENERATE_CPP(

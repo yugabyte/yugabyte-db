@@ -7581,7 +7581,7 @@ select tableoid::regclass, * FROM remp2 order by 1, 2, 3;
 
 -- Copying into foreign partitions directly should work as well
 copy remp1 from stdin;
-WARNING:  batched COPY is not supported on foreign tables
+WARNING:  ROWS_PER_TRANSACTION is not supported on foreign tables
 DETAIL:  Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 -- YB note: The following line is a YB test. This should ideally be in a yb.orig file.
@@ -7612,7 +7612,7 @@ NOTICE:  storage parameters are currently ignored in YugabyteDB
 create foreign table rem2 (f1 int, f2 text) server loopback options(table_name 'loc2');
 -- Test basic functionality
 copy rem2 from stdin;
-WARNING:  batched COPY is not supported on foreign tables
+WARNING:  ROWS_PER_TRANSACTION is not supported on foreign tables
 DETAIL:  Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 select * from rem2;
@@ -7628,11 +7628,11 @@ alter table loc2 add constraint loc2_f1positive check (f1 >= 0);
 alter foreign table rem2 add constraint rem2_f1positive check (f1 >= 0);
 -- check constraint is enforced on the remote side, not locally
 copy rem2 from stdin;
-WARNING:  batched COPY is not supported on foreign tables
+WARNING:  ROWS_PER_TRANSACTION is not supported on foreign tables
 DETAIL:  Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 copy rem2 from stdin; -- ERROR
-WARNING:  batched COPY is not supported on foreign tables
+WARNING:  ROWS_PER_TRANSACTION is not supported on foreign tables
 DETAIL:  Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 ERROR:  new row for relation "loc2" violates check constraint "loc2_f1positive"
@@ -7659,7 +7659,7 @@ create trigger trig_row_before before insert on rem2
 create trigger trig_row_after after insert on rem2
 	for each row execute procedure trigger_data(23,'skidoo');
 copy rem2 from stdin;
-WARNING:  batched COPY is not supported on foreign tables
+WARNING:  ROWS_PER_TRANSACTION is not supported on foreign tables
 DETAIL:  Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 NOTICE:  trigger_func(<NULL>) called: action = INSERT, when = BEFORE, level = STATEMENT
@@ -7689,7 +7689,7 @@ create trigger trig_row_before_insert before insert on rem2
 for each row execute procedure trig_row_before_insupdate(); -- YB note: see above
 -- The new values are concatenated with ' triggered !'
 copy rem2 from stdin;
-WARNING:  batched COPY is not supported on foreign tables
+WARNING:  ROWS_PER_TRANSACTION is not supported on foreign tables
 DETAIL:  Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 select * from rem2;
@@ -7705,7 +7705,7 @@ create trigger trig_null before insert on rem2
 	for each row execute procedure trig_null();
 -- Nothing happens
 copy rem2 from stdin;
-WARNING:  batched COPY is not supported on foreign tables
+WARNING:  ROWS_PER_TRANSACTION is not supported on foreign tables
 DETAIL:  Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 select * from rem2;
@@ -7720,7 +7720,7 @@ create trigger trig_row_before_insert before insert on loc2
 	for each row execute procedure trig_row_before_insupdate();
 -- The new values are concatenated with ' triggered !'
 copy rem2 from stdin;
-WARNING:  batched COPY is not supported on foreign tables
+WARNING:  ROWS_PER_TRANSACTION is not supported on foreign tables
 DETAIL:  Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 select * from rem2;
@@ -7736,7 +7736,7 @@ create trigger trig_null before insert on loc2
 	for each row execute procedure trig_null();
 -- Nothing happens
 copy rem2 from stdin;
-WARNING:  batched COPY is not supported on foreign tables
+WARNING:  ROWS_PER_TRANSACTION is not supported on foreign tables
 DETAIL:  Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 select * from rem2;
@@ -7754,7 +7754,7 @@ create trigger rem2_trig_row_after after insert on rem2
 create trigger loc2_trig_row_before_insert before insert on loc2
 	for each row execute procedure trig_row_before_insupdate();
 copy rem2 from stdin;
-WARNING:  batched COPY is not supported on foreign tables
+WARNING:  ROWS_PER_TRANSACTION is not supported on foreign tables
 DETAIL:  Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 NOTICE:  rem2_trig_row_before(23, skidoo) BEFORE ROW INSERT ON rem2
@@ -7782,7 +7782,7 @@ begin;
 create foreign table rem3 (f1 int, f2 text)
 	server loopback options(table_name 'loc3');
 copy rem3 from stdin;
-WARNING:  batched COPY is not supported on foreign tables
+WARNING:  ROWS_PER_TRANSACTION is not supported on foreign tables
 DETAIL:  Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 commit;

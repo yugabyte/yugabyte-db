@@ -18,6 +18,11 @@
 
 namespace yb::ash {
 
+class CallStateListener;
+class CallStateListenerFactory;
+class MetadataSerializer;
+class MetadataSerializerFactory;
+
 class WaitStateInfo;
 using WaitStateInfoPtr = std::shared_ptr<WaitStateInfo>;
 

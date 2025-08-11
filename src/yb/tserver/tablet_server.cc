@@ -265,6 +265,7 @@ DEFINE_test_flag(int32, delay_set_catalog_version_table_mode_count, 0,
     "after tserver starts");
 
 DECLARE_bool(ysql_enable_auto_analyze_infra);
+DECLARE_int32(update_min_cdc_indices_interval_secs);
 
 namespace yb::tserver {
 
@@ -640,7 +641,7 @@ Status TabletServer::RegisterServices() {
 
   cdc_service_ = std::make_shared<cdc::CDCServiceImpl>(
       std::make_unique<CDCServiceContextImpl>(this), metric_entity(), metric_registry(),
-      client_future());
+      client_future(), []() { return FLAGS_update_min_cdc_indices_interval_secs; });
 
   RETURN_NOT_OK(RegisterService(
       FLAGS_ts_backup_svc_queue_length,
@@ -818,7 +819,8 @@ tserver::TSLocalLockManagerPtr TabletServer::ResetAndGetTSLocalLockManager() {
 
 void TabletServer::StartTSLocalLockManager() {
   if (opts_.server_type == TabletServerOptions::kServerType &&
-      PREDICT_FALSE(FLAGS_enable_object_locking_for_table_locks)) {
+      PREDICT_FALSE(FLAGS_enable_object_locking_for_table_locks) &&
+      PREDICT_TRUE(FLAGS_enable_ysql)) {
     std::lock_guard l(lock_);
     ts_local_lock_manager_ = std::make_shared<tserver::TSLocalLockManager>(
         clock_, this /* TabletServerIf* */, *this /* RpcServerBase& */,

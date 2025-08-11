@@ -104,6 +104,7 @@ export const convertSecondsToLargestDurationUnit = (
  * Extract an XClusterConfig object from the fields of the provided DrConfig object.
  */
 export const getXClusterConfig = (drConfig: DrConfig): XClusterConfig => ({
+  automaticDdlMode: drConfig.automaticDdlMode,
   createTime: drConfig.createTime,
   modifyTime: drConfig.modifyTime,
   name: drConfig.name,

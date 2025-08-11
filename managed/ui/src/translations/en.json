@@ -1268,7 +1268,10 @@
             "tableLevel_pill": "MANUAL",
             "dbScoped": "semi-automatic DDL Mode",
             "dbScoped_titleCase": "Semi-Automatic DDL Mode",
-            "dbScoped_pill": "SEMI-AUTOMATIC"
+            "dbScoped_pill": "SEMI-AUTOMATIC",
+            "automaticDdlReplication": "automatic DDL mode",
+            "automaticDdlReplication_titleCase": "Automatic DDL Mode",
+            "automaticDdlReplication_pill": "AUTOMATIC"
           },
           "infoPopover": {
             "title": "Schema Change Mode",
@@ -1445,11 +1448,13 @@
               "label": "{{universeTerm}} Database Version",
               "universeLevelTooltip": "Schema change mode is tied to the database version during xCluster setup.",
               "tooltip": "Schema change mode is tied to the database version during {{xClusterOffering}} setup.",
-              "tooltipUpgradePrompt": "To leverage the new {{xClusterOffering}} features with streamlined table and index management, upgrade the {{targetUniverseTerm}} followed by the {{sourceUniverseTerm}}. Then remove and reconfigure your {{xClusterOffering}} setup."
+              "tooltipUpgradePrompt": "To leverage the new {{xClusterOffering}} features with streamlined table and index management, upgrade the {{targetUniverseTerm}} followed by the {{sourceUniverseTerm}}. Ensure the desired schema change mode is enabled via runtime configuration. Then remove and reconfigure your {{xClusterOffering}} setup."
             },
             "schemaChanges": "Schema Changes",
-            "universeLevelSchemaChangesInstructions": "To make schema changes (such as creating, altering, or dropping tables or partitions) to databases with xCluster Disaster Recovery or xCluster Replication enabled, you need to complete the <bold>specified steps</bold> on the <bold>source universe, target universe, and the xCluster configuration in the specified order.<bold>",
-            "schemaChangesInstructions": "To make schema changes to databases in replication for xCluster DR (such as creating, altering, or dropping tables or partitions), you need to complete the <bold>specified steps in a specific order.</bold>",
+            "automaticSchemaChangeModeInstructions": "To make schema changes (such as creating, altering, or dropping tables or partitions), make the change on the {{sourceUniverseTerm}}. Note that some DDL changes are not supported",
+            "dbScopedSchemaChangeModeInstructions": "To make schema changes (such as creating, altering, or dropping tables or partitions), make the change on the {{sourceUniverseTerm}}, then on the {{targetUniverseTerm}}.",
+            "tableLevelSchemaChangesInstructions": "To make schema changes to databases in replication (such as creating, altering, or dropping tables or partitions), you may need to complete the <bold>specified steps in a specific order.</bold>",
+            "universeLevelSchemaChangesInstructions": "To make schema changes (such as creating, altering, or dropping tables or partitions) to databases with xCluster Disaster Recovery or xCluster Replication enabled, you may need to complete the <bold>specified steps</bold> on the <bold>source universe, target universe, and the xCluster configuration in the specified order.<bold>",
             "universeLevelLearnMore": "Learn more about making schema changes for:",
             "universeLevelLearnMoreDrDocsLink": "xCluster Disaster Recovery",
             "universeLevelLearnMoreXClusterReplicationDocsLink": "xCluster Replication",
@@ -1458,13 +1463,17 @@
           "schemaChangesInfoPopover": {
             "important": "IMPORTANT",
             "title": "Schema Changes",
-            "description": "When making schema changes to databases with {{xClusterOffering}} enabled, you must complete the <bold>specified steps in a specific order.</bold>",
+            "description": {
+              "automaticSchemaChangeMode": "When making schema changes to databases with {{xClusterOffering}} enabled, make the changes on the <bold>{{sourceUniverseTerm}}</bold>. The change will be automatically replicaed to the <bold>{{targetUniverseTerm}}</bold> (with some exceptions).",
+              "dbScopedSchemaChangeMode": "When making schema changes to databases with {{xClusterOffering}} enabled, make the changes on the <bold>{{sourceUniverseTerm}}</bold>, and then on the <bold>{{targetUniverseTerm}}</bold>.",
+              "tableLevelSchemaChangeMode": "When making schema changes to databases with {{xClusterOffering}} enabled, you must complete the <bold>specified steps in a specific order.</bold>"
+            },
             "close": "Close",
             "learnMore": "Learn More"
           },
           "upgradeModal": {
             "title": "Upgrade Available",
-            "upgradeInfo": "<paragraph>Congratulations for completing your database upgrade.</paragraph><br/><paragraph>The new database version streamlines table and index management for databases with {{xClusterOffering}} enabled, but your {{xClusterOffering}} configuration is still in <bold>{{schemaChangeMode}}</bold>.</paragraph><br/><paragraph>To leverage the new schema change mode, upgrade your {{xClusterOffering}} configuration.</paragraph>",
+            "upgradeInfo": "<paragraph>The participant universes support newer schema change modes with greatly simplified table and index management.</paragraph><br/><paragraph>To leverage the new schema change mode, remove your {{xClusterOffering}} configuration, ensure the desired schema change mode is enabled via runtime configuration, and then recreate the {{xClusterOffering}} configuration.</paragraph>",
             "learnMore": "Learn more"
           }
         },
@@ -2224,6 +2233,7 @@
       "linuxVersions": "Linux versions",
       "infoContent": "You can use the Linux versions that you add to this catalog to deploy universes using this provider",
       "sshOverrideMsg": "You should configure or override the SSH user and port inside the Linux versions",
+      "internetConnectivityRequired": "Internet connectivity is required for YBA managed linux versions. Please use a custom linux version with all the <airGappedPrerequisitesDocLink>pre-requisites</airGappedPrerequisitesDocLink> instead.",
       "emptyCard": {
         "info": "Add Linux versions that you want to use to deploy universes using this provider"
       },

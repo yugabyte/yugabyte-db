@@ -17,6 +17,26 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, where `YYYY` is the release year, `M` is the month, and `N` is the number of the release in that month.
 
+## v2025.8.1 - August 5, 2025
+
+## New feature
+
+- Automatically apply performance optimizations recommended by the migration assessment (such as removing redundant indexes) during the export schema phase. Voyager also generates a schema optimization report detailing the optimizations that were applied. To turn automatic optimization off, set the new `--skip-performance-optimizations` flag in the `export schema` command to true.
+- Introduced the ability to stash errors and continue when importing snapshot data in `import data` and `import-data-file` commands by using the flags `error-policy-snapshot` or `error-policy`.
+
+### Enhancements
+
+- Migration assessment now detects missing indexes on foreign‑key columns. This provides more comprehensive performance optimization recommendations in the migration assessment report.
+- Updated the latest stable YugabyteDB version to v2025.1.0.0, ensuring compatibility with the newest features and fixes. Advisory locks are now supported in YugabyteDB and will no longer be reported from this target version onwards.
+- Improved the performance of `import data` by increasing the max CPU threshold for adaptive parallelism to 80.
+- Improved ANALYZE checks in the `assess-migration` command to honor auto‑analyze settings and gracefully handle user prompts.
+- Improved error handling by throwing clear errors when connection to the source database fails, making troubleshooting easier.
+
+### Bug fixes
+
+- Addressed nil pointer exceptions in `end migration` when the database configuration is not set, preventing unexpected errors during migration processes.
+- Fixed an issue where `import data` with `--on-primary-key-conflict ignore` failed if import to source replica started earlier.
+
 ## v2025.7.2 - July 15, 2025
 
 ### New feature
@@ -26,7 +46,7 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
   - ERROR: Fails the import if a primary key conflict is encountered.
   - IGNORE: Ignores rows that have a primary key conflict.
 
-## Enhancements
+### Enhancements
 
 - Foreign keys with mismatched datatypes are now detected and reported in the Migration Assessment Report under **Performance Optimizations**.
 - Automatically clean up leftover metadata when `assess-migration` is aborted via a prompt, eliminating the need to rerun with `--start-clean`.
@@ -34,7 +54,7 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 - Improved error messages when multiple Debezium processes or active replication slots are detected, so that you can identify and kill orphaned processes and retry the command.
 - Upgraded the [YugabyteDB gRPC Connector](/preview/develop/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/) for live migration with fall-back and fall-forward workflows to support new YugabyteDB releases.
 
-## Bug fixes
+### Bug fixes
 
 - Fixed incorrect error message shown during schema export failures; now correctly reports "schema export unsuccessful".
 - Fixed import report output for import data file when the same file is mapped to multiple tables; all target tables are now correctly listed in the report.

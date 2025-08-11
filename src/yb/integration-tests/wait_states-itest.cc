@@ -823,6 +823,7 @@ class AshTestVerifyOccurrenceBase : public AshTestWithCompactions {
   void AddNodesUntilStopped(std::atomic<bool>& stop);
   void DoPgDeferrableReadsUntilStopped(std::atomic<bool>& stop);
   void CreateAndRestoreSnapshot();
+  void CreateWalSender(TestThreadHolder* thread_holder);
   std::atomic<size_t> num_indexes_created_{0};
 };
 
@@ -893,6 +894,26 @@ void AshTestVerifyOccurrenceBase::CreateAndRestoreSnapshot() {
   ASSERT_OK(yb_admin_client->RestoreSnapshot(snapshot_id, timestamp));
 }
 
+void AshTestVerifyOccurrenceBase::CreateWalSender(TestThreadHolder* thread_holder) {
+  static constexpr auto kSlotName = "test_slot";
+  ASSERT_OK(main_thread_connection_->FetchFormat(
+      "SELECT * FROM pg_create_logical_replication_slot('$0', 'test_decoding')", kSlotName));
+  thread_holder->AddThreadFunctor([host = pg_host_port().host(), port = pg_host_port().port()] {
+    std::vector<std::string> argv = {
+        GetPgToolPath("pg_recvlogical"),
+        "--dbname=yugabyte",
+        "--username=yugabyte",
+        Format("--host=$0", host),
+        Format("--port=$0", port),
+        Format("--slot=$0", kSlotName),
+        "--endpos=0/2",
+        "--file=-",
+        "--start"
+    };
+    ASSERT_OK(Subprocess::Call(argv));
+  });
+}
+
 std::string WaitStateCodeToString(const testing::TestParamInfo<ash::WaitStateCode>& param_info) {
   return yb::ToString(param_info.param);
 }
@@ -923,8 +944,10 @@ void AshTestVerifyOccurrenceBase::LaunchWorkers(TestThreadHolder* thread_holder)
     case ash::WaitStateCode::kSnapshot_RestoreCheckpoint:
     case ash::WaitStateCode::kSnapshot_CleanupSnapshotDir:
     case ash::WaitStateCode::kRocksDB_CreateCheckpoint:
-      thread_holder->AddThreadFunctor(
-        [this] { CreateAndRestoreSnapshot(); });
+      thread_holder->AddThreadFunctor([this] { CreateAndRestoreSnapshot(); });
+      break;
+    case ash::WaitStateCode::kWAL_Read:
+      CreateWalSender(thread_holder);
       break;
     default: {
     }
@@ -959,6 +982,7 @@ INSTANTIATE_TEST_SUITE_P(
       ash::WaitStateCode::kReplicaState_TakeUpdateLock,
       ash::WaitStateCode::kWAL_Append,
       ash::WaitStateCode::kWAL_Sync,
+      ash::WaitStateCode::kWAL_Read,
       ash::WaitStateCode::kConsensusMeta_Flush,
       ash::WaitStateCode::kRocksDB_ReadBlockFromFile,
       ash::WaitStateCode::kRocksDB_OpenFile,

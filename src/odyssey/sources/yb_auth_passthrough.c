@@ -146,7 +146,7 @@ static machine_msg_t *yb_read_auth_pkt_from_server(od_client_t *client,
 static void yb_client_exit_mid_passthrough(od_server_t *server,
 					   od_instance_t *instance)
 {
-	machine_msg_t *msg = kiwi_fe_write_password(NULL, "", 0);
+	machine_msg_t *msg = kiwi_fe_write_password(NULL, "", 1);
 	if (od_write(&server->io, msg) == -1) {
 		od_error(&instance->logger, CONTEXT_AUTH_PASSTHROUGH, NULL,
 			 server, "write error in sever: %s",
@@ -497,6 +497,7 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 			/* Physical connection is broken, no need to wait for readyForQuery pkt */
 			machine_msg_free(msg);
 			server->offline = 1;
+			break;
 		default:
 			machine_msg_free(msg);
 			return -1;

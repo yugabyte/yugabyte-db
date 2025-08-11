@@ -463,7 +463,7 @@ MasterPathHandlers::UniverseTabletCounts MasterPathHandlers::CalculateUniverseTa
 
   auto limits = GetTabletReplicaPerResourceLimits();
   for (auto& [placement_uuid, cluster_counts] : counts.per_placement_cluster_counts) {
-    auto cluster_info = ComputeAggregatedClusterInfo(descs, placement_uuid);
+    auto cluster_info = ComputeAggregatedClusterInfo(descs, blacklist_set, placement_uuid);
     cluster_counts.tablet_replica_limit =
         ToUnsignedOrNullopt(ComputeTabletReplicaLimit(cluster_info, limits));
   }
@@ -579,13 +579,13 @@ void TServerClockDisplay(
 
     // Render physical time.
     const Timestamp p_ts(desc->physical_time());
-    html_row.AddColumn(p_ts.ToHumanReadableTime());
+    html_row.AddColumn(p_ts.ToHumanReadableTime(UseUTC::kTrue));
 
     // Render the physical and logical components of the hybrid time.
     const HybridTime ht = desc->hybrid_time();
     const Timestamp h_ts(ht.GetPhysicalValueMicros());
     {
-      auto uptime = h_ts.ToHumanReadableTime();
+      auto uptime = h_ts.ToHumanReadableTime(UseUTC::kTrue);
       const auto logical_value = ht.GetLogicalValue();
       if (logical_value) {
         uptime += Format(" / Logical: $0", logical_value);

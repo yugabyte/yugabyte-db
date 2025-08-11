@@ -17,6 +17,8 @@
 
 #include <thread>
 
+#include "yb/ash/rpc_wait_state.h"
+
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/yb_rpc.h"
@@ -114,6 +116,13 @@ constexpr std::chrono::milliseconds kDefaultKeepAlive = 15s;
 #else
 constexpr std::chrono::milliseconds kDefaultKeepAlive = 1s;
 #endif
+
+template <class PB>
+void CurrentMetadataToPB(PB* pb) {
+  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
+    wait_state->MetadataToPB(pb);
+  }
+}
 
 } // namespace
 
@@ -436,6 +445,23 @@ class CalculatorService: public CalculatorServiceIf {
     context.RespondSuccess();
   }
 
+  void Ash(
+      const rpc_test::AshRequestPB* req, rpc_test::AshResponsePB* resp,
+      RpcContext context) override {
+    CurrentMetadataToPB(resp->mutable_ash_metadata());
+    resp->set_value(req->value());
+    context.RespondSuccess();
+  }
+
+  void AshLightweight(
+      const rpc_test::LWAshLightweightRequestPB* req,
+      rpc_test::LWAshLightweightResponsePB* resp,
+      RpcContext context) override {
+    CurrentMetadataToPB(resp->mutable_ash_metadata());
+    resp->set_value(req->value());
+    context.RespondSuccess();
+  }
+
  private:
   void DoSleep(const SleepRequestPB* req, RpcContext context) {
     SleepFor(MonoDelta::FromMicroseconds(req->sleep_micros()));
@@ -444,6 +470,38 @@ class CalculatorService: public CalculatorServiceIf {
 
   std::string name_;
   Messenger* messenger_ = nullptr;
+};
+
+class AshTestService: public rpc_test::AshTestServiceIf {
+ public:
+  explicit AshTestService(const scoped_refptr<MetricEntity>& entity)
+      : AshTestServiceIf(entity) {
+  }
+
+  void Ash(
+      const rpc_test::AshRequestPB* req, rpc_test::AshResponsePB* resp,
+      RpcContext context) override {
+    CurrentMetadataToPB(resp->mutable_ash_metadata());
+    resp->set_value(req->value());
+    context.RespondSuccess();
+  }
+
+  void AshLightweight(
+      const rpc_test::LWAshLightweightRequestPB* req,
+      rpc_test::LWAshLightweightResponsePB* resp,
+      RpcContext context) override {
+    CurrentMetadataToPB(resp->mutable_ash_metadata());
+    resp->set_value(req->value());
+    context.RespondSuccess();
+  }
+
+  void NoAsh(
+      const rpc_test::NoAshRequestPB* req, rpc_test::NoAshResponsePB* resp,
+      RpcContext context) override {
+    CurrentMetadataToPB(resp->mutable_ash_metadata());
+    resp->set_value(req->value());
+    context.RespondSuccess();
+  }
 };
 
 std::unique_ptr<CalculatorService> CreateCalculatorService(
@@ -619,11 +677,15 @@ TestServer RpcTestBase::StartTestServer(
   if (!messenger) {
     messenger = CreateMessenger("TestServer", options.messenger_options);
   }
+  if (FLAGS_ysql_yb_enable_ash) {
+    messenger->SetCallStateListenerFactory(std::make_unique<ash::CallStateListenerFactory>());
+  }
   TestServer result(std::move(messenger), options);
   auto service = CreateCalculatorService(metric_entity(), name);
   service->SetMessenger(result.messenger());
   EXPECT_OK(result.RegisterService(std::move(service)));
   EXPECT_OK(result.RegisterService(std::make_unique<AbacusService>(metric_entity())));
+  EXPECT_OK(result.RegisterService(std::make_unique<AshTestService>(metric_entity())));
   EXPECT_OK(result.Start());
   return result;
 }

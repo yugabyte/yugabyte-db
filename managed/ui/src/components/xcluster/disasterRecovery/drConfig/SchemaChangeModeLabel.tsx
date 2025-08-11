@@ -100,7 +100,7 @@ export const SchemaChangeModeLabel = ({ drConfig }: SchemaChangeModeLabelProps) 
         >
           {t(`mode.${schemaChangeMode}_titleCase`)}
         </Typography>
-        <SchemaChangesInfoPopover isDrInterface={true}>
+        <SchemaChangesInfoPopover isDrInterface={true} schemaChangeMode={schemaChangeMode}>
           <QuestionCircle />
         </SchemaChangesInfoPopover>
       </div>

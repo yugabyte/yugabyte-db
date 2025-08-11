@@ -70,6 +70,7 @@ DECLARE_string(ysql_pg_conf_csv);
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_uint64(ysql_session_max_batch_size);
 DECLARE_bool(TEST_disable_proactive_txn_cleanup_on_abort);
+DECLARE_bool(enable_object_locking_for_table_locks);
 
 using namespace std::literals;
 
@@ -81,12 +82,16 @@ YB_STRONGLY_TYPED_BOOL(UseMaxBatchSize1);
 class PgWaitQueuesTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
+    InitFlags();
+    PgMiniTestBase::SetUp();
+  }
+
+  virtual void InitFlags() {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_select_all_status_tablets) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_single_shard_waiter_retry_ms) = 10000;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = GetYsqlPgConf();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
-    PgMiniTestBase::SetUp();
   }
 
   virtual std::string GetYsqlPgConf() const {
@@ -115,6 +120,14 @@ class PgWaitQueuesTest : public PgMiniTestBase {
 
   virtual IsolationLevel GetIsolationLevel() const {
     return SNAPSHOT_ISOLATION;
+  }
+};
+
+class PgWaitQueuesTestWithoutObjectLocking : public PgWaitQueuesTest {
+ protected:
+  void InitFlags() override {
+    PgWaitQueuesTest::InitFlags();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
   }
 };
 
@@ -826,7 +839,7 @@ TEST_F(PgLeaderChangeWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(StepDownOneServer))
 }
 
 class PgTabletSplittingWaitQueuesTest : public PgTabletSplitTestBase,
-                                                public ConcurrentBlockedWaitersTest {
+                                        public ConcurrentBlockedWaitersTest {
  protected:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_connection_timeout_ms) = 60000;
@@ -1383,8 +1396,10 @@ TEST_F(PgWaitQueuesMaxBatchSize1Test, YB_DISABLE_TEST_IN_TSAN(MultiTabletFairnes
   TestMultiTabletFairness();
 }
 
+// Below test only makes sence when object locking is disabled. When object locking is enabled,
+// DDLs wait for in-progress DML waiters to finish.
 #ifndef NDEBUG
-TEST_F(PgWaitQueuesTest, TestDDLsNotBlockedOnWaiters) {
+TEST_F_EX(PgWaitQueuesTest, TestDDLsNotBlockedOnWaiters, PgWaitQueuesTestWithoutObjectLocking) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_refresh_waiter_timeout_ms) = 120000;
 
   constexpr int kNumTxns = 2;
@@ -1499,7 +1514,24 @@ INSTANTIATE_TEST_SUITE_P(
     MaxBatchSize1, PgWaitQueueRF1Test, ::testing::Values(UseMaxBatchSize1::kTrue));
 
 #ifndef NDEBUG
-TEST_P(PgWaitQueueRF1Test, TestResumingWaitersDoesntBlockTabletShutdown) {
+class PgWaitQueueRF1TestWithoutObjectLocking : public PgWaitQueueRF1Test {
+ protected:
+  void InitFlags() override {
+    PgWaitQueuesTest::InitFlags();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
+  }
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    , PgWaitQueueRF1TestWithoutObjectLocking, ::testing::Values(UseMaxBatchSize1::kFalse));
+INSTANTIATE_TEST_SUITE_P(
+    MaxBatchSize1, PgWaitQueueRF1TestWithoutObjectLocking,
+    ::testing::Values(UseMaxBatchSize1::kTrue));
+
+// Below test issues a drop table DDL while a DML is pending and tests that waiter resumption logic
+// doesn't cause a deadlock when object locking is disabled (i.e. DDLs abprt in-progress DMLs).
+// With object locking enabled, the test doesn't make sense as the DDL will wait for DML to finish.
+TEST_P(PgWaitQueueRF1TestWithoutObjectLocking, TestResumingWaitersDoesntBlockTabletShutdown) {
   static const char* sync_points[1][4] = {
       {"WaitQueue::Impl::SetupWaiterUnlocked:1", "PgWaitQueueRF1Test::CommitConnection1:1",
        "TabletPeer::StartShutdown:1", "WaiterData::Impl::InvokeCallback:1"}};
@@ -1751,6 +1783,8 @@ class PgWaitQueuesWithRetriesTest : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = "yb_debug_log_internal_restarts=true";
+    // TODO(#24877): Remove the below once we enable query layer retries for object locking.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
     PgMiniTestBase::SetUp();
   }
 };

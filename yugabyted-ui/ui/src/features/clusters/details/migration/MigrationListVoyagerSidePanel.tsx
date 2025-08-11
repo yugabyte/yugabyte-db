@@ -8,9 +8,9 @@ const useStyles = makeStyles((theme) => ({
     marginBottom: theme.spacing(4),
   },
   label: {
-    color: theme.palette.grey[500],
-    fontWeight: theme.typography.fontWeightMedium as number,
-    textTransform: "uppercase",
+    fontSize: '11.5px',
+    fontWeight: 500,
+    color: '#6D7C88',
     textAlign: "left",
   },
   value: {

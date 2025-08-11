@@ -35,7 +35,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include "yb/ash/wait_state_fwd.h"
+#include "yb/ash/ash_fwd.h"
 
 #include "yb/client/async_rpc.h"
 #include "yb/client/error_collector.h"

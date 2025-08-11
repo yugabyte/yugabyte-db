@@ -13,11 +13,16 @@ import {
 } from "@app/api/src";
 import type { Migration } from "./MigrationOverview";
 import CaretRightIcon from "@app/assets/caret-right.svg";
+import CheckCircleSuccess from '@app/assets/CheckCircleSuccess.svg';
 
 const useStyles = makeStyles((theme) => ({
   wrapper: {
     display: "flex",
     flexDirection: "row",
+    paddingLeft: 16,
+    paddingRight: 16,
+    paddingTop: 0,
+    paddingBottom: 0
   },
   tile: {
     padding: theme.spacing(2, 3, 2, 3),
@@ -192,9 +197,8 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
         const tooltip = getTooltip(step);
 
         return (
-        <>
+        <React.Fragment key={stepIndex}>
           <Box
-            key={step}
             className={clsx(
               classes.tile,
               currentStep === stepIndex && classes.tileSelected,
@@ -210,11 +214,7 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
             ) : (
               <>
                 {completed && (
-                  <YBBadge
-                    className={classes.badge}
-                    text=""
-                    variant={BadgeVariant.Success}
-                  />
+                  <CheckCircleSuccess />
                 )}
                 {running && (
                   <YBBadge
@@ -243,7 +243,7 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
               <CaretRightIcon/>
             </Box>
           )}
-          </>
+        </React.Fragment>
         );
       })}
     </Box>

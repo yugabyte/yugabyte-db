@@ -75,6 +75,7 @@ struct ParsedRequestHeader {
   int32_t call_id = 0;
   uint32_t timeout_ms = 0;
   boost::iterator_range<const uint32_t*> sidecar_offsets;
+  Slice metadata;
 
   std::string RemoteMethodAsString() const;
   void ToPB(RequestHeader* out) const;
@@ -99,6 +100,8 @@ struct ParsedRemoteMethod {
 };
 
 Result<ParsedRemoteMethod> ParseRemoteMethod(const Slice& buf);
+Status ParseMetadata(Slice buf, AnyMessagePtr out);
+Status ParseMetadataFromSharedMemory(uint8_t** input, size_t length, AnyMessagePtr out);
 
 }  // namespace rpc
 }  // namespace yb

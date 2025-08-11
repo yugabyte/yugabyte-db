@@ -35,6 +35,9 @@ typedef const void * YbcConstSliceVector;
 typedef void * YbcSliceSet;
 typedef const void * YbcConstSliceSet;
 
+typedef void (*YbcRecordTempRelationDDL_hook_type)();
+extern YbcRecordTempRelationDDL_hook_type YBCRecordTempRelationDDL_hook;
+
 typedef struct {
   YbcStatus ybc_status;
   YbcPgExplicitRowLockErrorInfo error_info;
@@ -44,7 +47,7 @@ typedef struct {
 // functions in this API are called.
 void YBCInitPgGate(
     YbcPgTypeEntities type_entities, const YbcPgCallbacks* pg_callbacks,
-    uint64_t *session_id, const YbcPgAshConfig* ash_config);
+    uint64_t *session_id, YbcPgAshConfig* ash_config);
 
 void YBCDestroyPgGate();
 void YBCInterruptPgGate();
@@ -75,6 +78,9 @@ void YBCPgDeleteStatement(YbcPgStatement handle);
 
 // Invalidate the sessions table cache.
 YbcStatus YBCPgInvalidateCache(uint64_t min_ysql_catalog_version);
+
+// Update the table cache's min_ysql_catalog_version.
+YbcStatus YBCPgUpdateTableCacheMinVersion(uint64_t min_ysql_catalog_version);
 
 // Check if initdb has been already run.
 YbcStatus YBCPgIsInitDbDone(bool* initdb_done);
@@ -364,6 +370,8 @@ YbcStatus YBCPgExecAlterTable(YbcPgStatement handle);
 YbcStatus YBCPgAlterTableInvalidateTableCacheEntry(YbcPgStatement handle);
 
 void YBCPgAlterTableInvalidateTableByOid(
+    const YbcPgOid database_oid, const YbcPgOid table_relfilenode_oid);
+void YBCPgRemoveTableCacheEntry(
     const YbcPgOid database_oid, const YbcPgOid table_relfilenode_oid);
 
 YbcStatus YBCPgNewDropTable(YbcPgOid database_oid,
@@ -697,6 +705,8 @@ YbcStatus YBCPgFetchRequestedYbctids(YbcPgStatement handle, const YbcPgExecParam
                                      YbcConstSliceVector ybctids);
 YbcStatus YBCPgBindYbctids(YbcPgStatement handle, int n, uintptr_t* datums);
 
+bool YBCPgIsValidYbctid(uint64_t ybctid);
+
 // Functions----------------------------------------------------------------------------------------
 YbcStatus YBCAddFunctionParam(
     YbcPgFunction handle, const char *name, const YbcPgTypeEntity *type_entity, uint64_t datum,
@@ -951,7 +961,8 @@ YbcStatus YBCPgExecDropReplicationSlot(YbcPgStatement handle);
 
 YbcStatus YBCPgInitVirtualWalForCDC(
     const char *stream_id, const YbcPgOid database_oid, YbcPgOid *relations, YbcPgOid *relfilenodes,
-    size_t num_relations, const YbcReplicationSlotHashRange *slot_hash_range, uint64_t active_pid);
+    size_t num_relations, const YbcReplicationSlotHashRange *slot_hash_range, uint64_t active_pid,
+    YbcPgOid *publications, size_t num_publications, bool yb_is_pub_all_tables);
 
 YbcStatus YBCPgGetLagMetrics(const char *stream_id, int64_t *lag_metric);
 
@@ -990,6 +1001,11 @@ YbcStatus YBCPgRestoreReadPoint(YbcReadPointHandle read_point);
 YbcStatus YBCPgRegisterSnapshotReadTime(
     uint64_t read_time, bool use_read_time, YbcReadPointHandle* handle);
 
+// Records the current statement as a temporary relation DDL statement.
+void YBCRecordTempRelationDDL();
+
+// Allow the DDL to modify the pg catalog even if it has been blocked for YSQL major upgrades. This
+// should only be used for DDLs that are safe to perform during a YSQL major upgrade.
 void YBCDdlEnableForceCatalogModification();
 
 uint64_t YBCGetCurrentHybridTimeLsn();
