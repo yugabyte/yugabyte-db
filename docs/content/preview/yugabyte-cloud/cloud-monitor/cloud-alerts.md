@@ -228,7 +228,7 @@ If your cluster experiences frequent spikes in connections, consider optimizing 
 
 If connections are opened but never closed, your application will eventually exceed the connection limit.
 
-You may need to implement some form of connection pooling, such as enabling built-in [Connection Pooling](../../../explore/going-beyond-sql/connection-mgr-ysql/).
+You may need to implement some form of connection pooling, such as enabling built-in [Connection Pooling](../../../additional-features/connection-manager-ysql/).
 
 If the number of connections is continuously higher than 60%, your workload may also exceed the capacity of your cluster. Be sure to size your cluster with enough spare capacity to remain fault tolerant during maintenance events and outages. For example, during an outage or a rolling restart for maintenance, a 3 node cluster loses a third of its capacity. The remaining nodes need to be able to handle the traffic from the absent node.
 
