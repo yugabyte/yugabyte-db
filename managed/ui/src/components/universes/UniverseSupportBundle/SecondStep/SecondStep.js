@@ -125,7 +125,7 @@ export const DEFAULT_PROMETHEUS_METRICS_PARAMS = {
 };
 
 export const DEFAULT_UNIVERSE_LOGS_PARAMS = {
-  filterPgAuditLogs: false
+  filterPgAuditLogs: true
 };
 
 export const updateOptions = (
@@ -287,7 +287,7 @@ export const SecondStep = ({
     // prometheus export is not required by default
     prometheusMetricsOptions.map(() => true)
   );
-  const [universeLogsParams, setUniverseLogsParams] = useState(false);
+  const [universeLogsParams, setUniverseLogsParams] = useState(DEFAULT_UNIVERSE_LOGS_PARAMS);
   const [coreFileParams, setCoreFileParams] = useState(CoreFilesProps);
   const [prometheusMetricsParams, setPrometheusMetricsParams] = useState(
     DEFAULT_PROMETHEUS_METRICS_PARAMS
