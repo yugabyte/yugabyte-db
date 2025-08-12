@@ -1246,11 +1246,11 @@ SubDocKey(DocKey(ColocationId=16385, [], ["row1", 11111]), [SystemColumnId(0); \
   Schema schema_copy = doc_read_context().schema();
   schema_copy.set_colocation_id(colocation_id);
   Schema projection;
-  auto doc_read_context = DocReadContext::TEST_Create(schema_copy);
   auto pending_op = ScopedRWOperation::TEST_Create();
 
   // Read should have results before delete...
   {
+    auto doc_read_context = DocReadContext::TEST_Create(schema_copy);
     auto iter = ASSERT_RESULT(CreateIterator(
         projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
         ReadOperationData::TEST_FromReadTimeMicros(1500),
@@ -1259,6 +1259,7 @@ SubDocKey(DocKey(ColocationId=16385, [], ["row1", 11111]), [SystemColumnId(0); \
   }
   // ...but there should be no results after delete.
   {
+    auto doc_read_context = DocReadContext::TEST_Create(schema_copy);
     auto iter = ASSERT_RESULT(CreateIterator(
         projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
         ReadOperationData(), pending_op));
