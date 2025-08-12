@@ -588,7 +588,7 @@ class VectorIndexQuery {
         sidecar_offset = new_offset;
       }
       partitions_[op.partition_idx].number_of_vectors_fetched_from_tablet += distances.size();
-      if (make_unsigned(distances.size()) < prefetch_size_) {
+      if (!op_resp.vector_index_could_have_more_data()) {
         partitions_[op.partition_idx].whether_all_vectors_was_fetched = true;
       }
     }

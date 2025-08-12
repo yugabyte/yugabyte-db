@@ -172,6 +172,7 @@ struct PgsqlReadOperationData {
   const YQLStorageIf& ql_storage;
   const ScopedRWOperation& pending_op;
   DocVectorIndexPtr vector_index;
+  bool table_has_vector_deletion = false;
 };
 
 class PgsqlReadOperation : public DocExprExecutor {

@@ -133,6 +133,7 @@ message ConsensusFrontierPB {
 
   optional bool backfill_done = 9;
   optional bytes backfill_key = 10;
+  optional bool has_vector_deletion = 11;
 }
 
 message ApplyTransactionStatePB {
