@@ -87,6 +87,34 @@ To create a basic Node.js project and install the `typeorm` package, do the foll
     npm install --save-dev typescript ts-node @types/node
     ```
 
+    **Optional: Use YugabyteDB Smart Driver with TypeORM**
+
+    For better features like load balancing, topology awareness, and multinode cluster support, you can use the YugabyteDB smart driver as a replacement for the PostgreSQL driver (TypeORM uses the `pg` driver under the hood):
+
+    ```sh
+    npm install typeorm reflect-metadata "pg@npm:@yugabytedb/pg"
+    npm install --save-dev typescript ts-node @types/node
+    ```
+
+    Refer to [YugabyteDB Node.js smart driver documentation](https://docs.yugabyte.com/preview/drivers-orms/nodejs/yugabyte-node-driver/) for more information on smart driver with Node.js.
+
+    When using the smart driver, your `package.json` dependencies section will look like this:
+
+    ```json
+    {
+      "dependencies": {
+        "typeorm": "^0.3.17",
+        "pg": "npm:@yugabytedb/pg",
+        "reflect-metadata": "^0.1.13"
+      },
+      "devDependencies": {
+        "typescript": "^5.0.0",
+        "ts-node": "^10.9.0",
+        "@types/node": "^20.0.0"
+      }
+    }
+    ```
+
 ### Step 2: Implement ORM mapping for YugabyteDB
 
 1. To start with TypeORM, in your project directory, create a directory `src` with the following structure:
