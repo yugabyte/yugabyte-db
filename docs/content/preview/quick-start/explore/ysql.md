@@ -40,7 +40,7 @@ type: docs
 
 </ul>
 
-After [creating a local cluster](../../../quick-start/macos/), you can start exploring YugabyteDB's PostgreSQL-compatible, fully-relational [Yugabyte SQL API](../../../../api/ysql/).
+After [creating a local cluster](/preview/quick-start/macos/), you can start exploring YugabyteDB's PostgreSQL-compatible, fully-relational [Yugabyte SQL API](/preview/api/ysql/).
 
 ## Set up the sample database
 
@@ -48,7 +48,7 @@ The examples in this tutorial use two tables, representing departments and emplo
 
 ### Open the YSQL shell
 
-Using the YugabyteDB SQL shell, [ysqlsh](../../../../api/ysqlsh/), you can connect to your cluster and interact with it using distributed SQL. ysqlsh is installed with YugabyteDB and is located in the bin directory of the YugabyteDB home directory.
+Using the YugabyteDB SQL shell, [ysqlsh](/preview/api/ysqlsh/), you can connect to your cluster and interact with it using distributed SQL. ysqlsh is installed with YugabyteDB and is located in the bin directory of the YugabyteDB home directory.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
@@ -220,7 +220,7 @@ Referenced by:
 
 ### SQL updates
 
-The [UPDATE](../../../../api/ysql/the-sql-language/statements/dml_update/) statement can compute a new value and return it without the need to do another query. Using the `RETURNING` clause returns the new values in the same call.
+The [UPDATE](/preview/api/ysql/the-sql-language/statements/dml_update/) statement can compute a new value and return it without the need to do another query. Using the `RETURNING` clause returns the new values in the same call.
 
 The following adds 100 to the salaries of all employees who are not managers and shows the new value:
 
@@ -249,7 +249,7 @@ UPDATE emp SET sal=sal+100
 
 ### Join
 
-A self-join is a regular [join](../../../../explore/ysql-language-features/queries/#join-columns) where the table is joined with itself. The following statement matches employees with their manager and filters those that are earning more than their manager.
+A self-join is a regular [join](/preview/explore/ysql-language-features/queries/#join-columns) where the table is joined with itself. The following statement matches employees with their manager and filters those that are earning more than their manager.
 
 ```sql
 SELECT
@@ -276,7 +276,7 @@ ORDER BY employee.sal;
 
 ### Prepared statements
 
-Use a [prepared statement](../../../../api/ysql/the-sql-language/statements/perf_prepare/) with typed input to prevent SQL injection. A prepared statement declares parameterized SQL.
+Use a [prepared statement](/preview/api/ysql/the-sql-language/statements/perf_prepare/) with typed input to prevent SQL injection. A prepared statement declares parameterized SQL.
 
 1. Prepare the statement `employee_salary` with a parameterized query. The following prepared statement accepts the input of an employee number as an integer only and displays the name and salary:
 
@@ -327,7 +327,7 @@ Use a [prepared statement](../../../../api/ysql/the-sql-language/statements/perf
 
 ### Indexes
 
-Use [indexes](../../../../explore/ysql-language-features/indexes-constraints/secondary-indexes-ysql/) to query table values more efficiently.
+Use [indexes](/preview/explore/ysql-language-features/indexes-constraints/secondary-indexes-ysql/) to query table values more efficiently.
 
 1. Create a table with randomly generated rows. You can use the `generate_series()` function to generate rows. The following uses `generate_series()` to create a table with 42 rows and a random value from 1 to 10:
 
@@ -404,7 +404,7 @@ Use [indexes](../../../../explore/ysql-language-features/indexes-constraints/sec
 
 ### Recursive queries
 
-The following example uses a [recursive common table expression](../../../../explore/ysql-language-features/queries/#ctes) (CTE) to show the manager hierarchy. The `emp_manager` CTE is built using the `WITH RECURSIVE` clause to follow the hierarchy under JONES, down to the last level. The first subquery in the recursive clause starts at JONES. The second lists the employees who have JONES as a manager. They are declared with a `UNION ALL` and are executed recursively to get the other levels. The main query is then run on the CTE.
+The following example uses a [recursive common table expression](/preview/explore/ysql-language-features/queries/#ctes) (CTE) to show the manager hierarchy. The `emp_manager` CTE is built using the `WITH RECURSIVE` clause to follow the hierarchy under JONES, down to the last level. The first subquery in the recursive clause starts at JONES. The second lists the employees who have JONES as a manager. They are declared with a `UNION ALL` and are executed recursively to get the other levels. The main query is then run on the CTE.
 
 ```sql
 WITH RECURSIVE emp_manager AS (
@@ -430,7 +430,7 @@ SELECT * FROM emp_manager;
 
 ### Window functions
 
-Use analytic [window functions](../../../../api/ysql/exprs/window_functions/) to compare the hiring time interval by department.
+Use analytic [window functions](/preview/api/ysql/exprs/window_functions/) to compare the hiring time interval by department.
 
 The following SQL statement uses `WINDOW` to define groups of employees by department, ordered by hiring date. The LAG window function is used to access the previous row to compare the hiring date interval between two employees. `FORMAT` builds text from column values, and `COALESCE` handles the first hire for which there is no previous row in the group. Without these window functions, this query would need to read the table twice.
 
@@ -471,7 +471,7 @@ SELECT
 
 ### REGEXP matching
 
-Use [regular expressions](../../../../develop/learn/strings-and-text-ysql/) in an array to do pattern matching. REGEXP performs a pattern match of a string expression. The following lists employees with an e-mail ending in '.org' or a domain starting with 'gmail.':
+Use [regular expressions](/preview/develop/learn/strings-and-text-ysql/) in an array to do pattern matching. REGEXP performs a pattern match of a string expression. The following lists employees with an e-mail ending in '.org' or a domain starting with 'gmail.':
 
 ```sql
 SELECT * FROM emp
@@ -489,7 +489,7 @@ SELECT * FROM emp
 
 ### Arithmetic date intervals
 
-Using arithmetic on [date intervals](../../../../explore/ysql-language-features/data-types/#date-and-time), you can find employees with overlapping evaluation periods.
+Using arithmetic on [date intervals](/preview/explore/ysql-language-features/data-types/#date-and-time), you can find employees with overlapping evaluation periods.
 
 The interval data type allows you to store and manipulate a period of time in years, months, days, and so forth. The following example compares overlapping evaluation periods. The `WITH` clause defines the evaluation period length depending on the job:
 
@@ -518,7 +518,7 @@ SELECT * FROM emp_evaluation_period e1
 
 ### Cross table pivots
 
-Use a cross table to show the sum of salary per job, by department. The shell [\crosstabview](../../../../api/ysqlsh-meta-commands/#crosstabview-colv-colh-cold-sortcolh) meta-command displays rows as columns. The following statement sums the salaries across jobs and departments and displays them as a cross table:
+Use a cross table to show the sum of salary per job, by department. The shell [\crosstabview](/preview/api/ysqlsh-meta-commands/#crosstabview-colv-colh-cold-sortcolh) meta-command displays rows as columns. The following statement sums the salaries across jobs and departments and displays them as a cross table:
 
 ```sql
 SELECT job, dname, sum(sal)
@@ -540,7 +540,7 @@ SELECT job, dname, sum(sal)
 
 ### ntile function
 
-To send the e-mails to all employees in different batches, split them into three groups using the [ntile() window function](../../../../api/ysql/exprs/window_functions/function-syntax-semantics/percent-rank-cume-dist-ntile/#ntile). Then format them using the `format()` function, and aggregate them in a comma-separated list using the `string_agg()` function:
+To send the e-mails to all employees in different batches, split them into three groups using the [ntile() window function](/preview/api/ysql/exprs/window_functions/function-syntax-semantics/percent-rank-cume-dist-ntile/#ntile). Then format them using the `format()` function, and aggregate them in a comma-separated list using the `string_agg()` function:
 
 ```sql
 WITH groups AS (
@@ -563,7 +563,7 @@ FROM groups GROUP BY group_num;
 
 ### GIN index on documents
 
-The employee skills are stored in a semi-structured JSON document. You can query them using the `@>`, `?`, `?&`, and `?|` operators. For best performance, index them using a [GIN index](../../../../explore/ysql-language-features/indexes-constraints/gin/). GIN indexes provide quick access to elements inside a JSON document.
+The employee skills are stored in a semi-structured JSON document. You can query them using the `@>`, `?`, `?&`, and `?|` operators. For best performance, index them using a [GIN index](/preview/explore/ysql-language-features/indexes-constraints/gin/). GIN indexes provide quick access to elements inside a JSON document.
 
 (GIN indexes are only available in YugabyteDB v2.11.0 or later. If you are using an earlier version, skip this scenario.)
 
@@ -620,7 +620,7 @@ Thanks to the GIN index, this search doesn't need to read all rows and text.
 
 ### Stored procedures
 
-A [stored procedure](../../../../architecture/query-layer/join-strategies/#batched-nested-loop-join-bnl) encapsulates procedural logic into an atomic operation. Use stored procedures to encapsulate transactions with error handling. The following example creates a procedure in PL/pgSQL, named "commission_transfer", that transfers a commission "amount" from `empno1` to `empno2`.
+A [stored procedure](/preview/architecture/query-layer/join-strategies/#batched-nested-loop-join-bnl) encapsulates procedural logic into an atomic operation. Use stored procedures to encapsulate transactions with error handling. The following example creates a procedure in PL/pgSQL, named "commission_transfer", that transfers a commission "amount" from `empno1` to `empno2`.
 
 1. Create the procedure for the commission transfer between employees. The procedure has two SQL operations: decrease from `empno1` and add to `empno2`. It also adds error checking to raise a custom exception if `empno1` doesn't have sufficient funds to transfer.
 
@@ -682,7 +682,7 @@ This raises the "Cannot transfer" error defined in the procedure, and automatica
 
 ### Triggers
 
-Use [triggers](../../../../explore/ysql-language-features/advanced-features/triggers/) to automatically update data. This example uses a trigger to record the last time each row is updated automatically.
+Use [triggers](/preview/explore/ysql-language-features/advanced-features/triggers/) to automatically update data. This example uses a trigger to record the last time each row is updated automatically.
 
 1. Add a column to store the last update time.
 
@@ -779,7 +779,7 @@ In addition to the changed location, the last update timestamp has been automati
 
 ### Materialized views
 
-To get fast on-demand reports, create a [materialized view](../../../../explore/ysql-language-features/advanced-features/views/#materialized-views) to store pre-joined and pre-aggregated data.
+To get fast on-demand reports, create a [materialized view](/preview/explore/ysql-language-features/advanced-features/views/#materialized-views) to store pre-joined and pre-aggregated data.
 
 (Materialized views are only available in YugabyteDB v2.11.2 or later. If you are using an earlier version, skip this scenario.)
 
@@ -811,7 +811,7 @@ To get fast on-demand reports, create a [materialized view](../../../../explore/
     CREATE INDEX
     ```
 
-1. You can schedule a daily refresh to recompute the view in the background. Use the [REFRESH MATERIALIZED VIEW](../../../../api/ysql/the-sql-language/statements/ddl_refresh_matview/) command to refresh the view:
+1. You can schedule a daily refresh to recompute the view in the background. Use the [REFRESH MATERIALIZED VIEW](/preview/api/ysql/the-sql-language/statements/ddl_refresh_matview/) command to refresh the view:
 
     ```sql
     REFRESH MATERIALIZED VIEW report_sal_per_dept;

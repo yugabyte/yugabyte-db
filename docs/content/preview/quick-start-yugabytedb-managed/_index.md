@@ -128,9 +128,9 @@ To connect to your cluster, do the following:
     yugabyte=>
     ```
 
-The command line interface (CLI) being used is called [ysqlsh](../../api/ysqlsh/). ysqlsh is the CLI for interacting with YugabyteDB using the PostgreSQL-compatible [YSQL API](../../api/ysql/). Cloud Shell also supports [ycqlsh](../../api/ycqlsh/), a CLI for the [YCQL API](../../api/ycql/).
+The command line interface (CLI) being used is called [ysqlsh](/preview/api/ysqlsh/). ysqlsh is the CLI for interacting with YugabyteDB using the PostgreSQL-compatible [YSQL API](/preview/api/ysql/). Cloud Shell also supports [ycqlsh](/preview/api/ycqlsh/), a CLI for the [YCQL API](/preview/api/ycql/).
 
-For information on other ways to connect to your cluster, refer to [Connect to clusters](../../yugabyte-cloud/cloud-connect).
+For information on other ways to connect to your cluster, refer to [Connect to clusters](/preview/yugabyte-cloud/cloud-connect).
 
 ## Explore distributed SQL
 
@@ -148,11 +148,13 @@ Before you begin, you need the following:
 - the cluster CA certificate; YugabyteDB Aeon uses TLS to secure connections to the database.
 - your computer added to the cluster IP allow list.
 
-Refer to [Before you begin](../build-apps/cloud-add-ip/).
+Refer to [Before you begin](/preview/tutorials/build-apps/cloud-add-ip/).
 
 ### Choose your language
 
+<details><summary>Choose the language you want to use to build your application.</summary><br>
 {{< readfile "quick-start-buildapps-include.md" >}}
+</details>
 
 ## Migrate from PostgreSQL
 
@@ -160,24 +162,24 @@ For PostgreSQL users seeking to transition to a modern, horizontally scalable da
 
 YugabyteDB enables midsize applications running on single-node instances to effortlessly migrate to a fully distributed database environment. As applications grow, YugabyteDB seamlessly transitions to distributed mode, allowing for massive scaling capabilities.
 
-[YugabyteDB Voyager](../../yugabyte-voyager/) simplifies the end-to-end database migration process, including cluster setup, schema migration, and data migration. It supports migrating data from PostgreSQL, MySQL, and Oracle databases to various YugabyteDB offerings, including Aeon, Anywhere, and the core open-source database.
+[YugabyteDB Voyager](/preview/yugabyte-voyager/) simplifies the end-to-end database migration process, including cluster setup, schema migration, and data migration. It supports migrating data from PostgreSQL, MySQL, and Oracle databases to various YugabyteDB offerings, including Aeon, Anywhere, and the core open-source database.
 
-You can [install](../../yugabyte-voyager/install-yb-voyager/) YugabyteDB Voyager on different operating systems such as RHEL, Ubuntu, macOS, or deploy it via Docker or Airgapped installations.
+You can [install](/preview/yugabyte-voyager/install-yb-voyager/) YugabyteDB Voyager on different operating systems such as RHEL, Ubuntu, macOS, or deploy it via Docker or Airgapped installations.
 
 Voyager provides a powerful migration assessment that scans your existing applications and databases. This detailed assessment provides valuable insights into the readiness of your applications, data, and schema for migration.
 
-When you're ready to migrate, you can perform an [offline migration](../../yugabyte-voyager/migrate/migrate-steps/); or do a non-disruptive [live migration](../../yugabyte-voyager/migrate/live-migrate/), with [fall-forward](../../yugabyte-voyager/migrate/live-fall-forward/) and [fall-back](../../yugabyte-voyager/migrate/live-fall-back/) capabilities.
+When you're ready to migrate, you can perform an [offline migration](/preview/yugabyte-voyager/migrate/migrate-steps/); or do a non-disruptive [live migration](/preview/yugabyte-voyager/migrate/live-migrate/), with [fall-forward](/preview/yugabyte-voyager/migrate/live-fall-forward/) and [fall-back](/preview/yugabyte-voyager/migrate/live-fall-back/) capabilities.
 
 ## Learn more
 
-[YugabyteDB Aeon Documentation](../../yugabyte-cloud/)
+[YugabyteDB Aeon Documentation](/preview/yugabyte-cloud/)
 
-[Deploy clusters in YugabyteDB Aeon](../../yugabyte-cloud/cloud-basics/)
+[Deploy clusters in YugabyteDB Aeon](/preview/yugabyte-cloud/cloud-basics/)
 
-[Connect applications to YugabyteDB Aeon](../../yugabyte-cloud/cloud-connect/connect-applications/)
+[Connect applications to YugabyteDB Aeon](/preview/yugabyte-cloud/cloud-connect/connect-applications/)
 
-[YugabyteDB Voyager Documentation](../../yugabyte-voyager/)
+[YugabyteDB Voyager Documentation](/preview/yugabyte-voyager/)
 
-[Explore YugabyteDB](../../explore/)
+[Explore YugabyteDB](/preview/explore/)
 
-[Drivers and ORMS](../../drivers-orms/)
+[Drivers and ORMS](/preview/drivers-orms/)

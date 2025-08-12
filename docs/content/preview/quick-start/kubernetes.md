@@ -6,7 +6,7 @@ headcontent: Get started in less than 5 minutes in the cloud or on your desktop
 description: Get started using YugabyteDB in less than five minutes on Kubernetes (Minikube).
 aliases:
   - /quick-start-kubernetes/
-  - /preview/quick-start/kubernetes/
+  - /preview/tutorials/quick-start/kubernetes/
 type: docs
 unversioned: true
 ---
@@ -26,7 +26,7 @@ unversioned: true
   </li>
 </ul>
 
-The local cluster setup on a single host is intended for development and learning. For production deployment, performance benchmarking, or deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](../../../deploy/).
+The local cluster setup on a single host is intended for development and learning. For production deployment, performance benchmarking, or deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](/preview/deploy/).
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
@@ -172,7 +172,7 @@ replicas.master=1,replicas.tserver=1,enableLoadBalancer=False --namespace yb-dem
 
 ### Check cluster status with kubectl
 
-Run the following command to verify that you have two services with one running pod in each: one YB-Master pod (`yb-master-0`) and one YB-Tserver pod (`yb-tserver-0`). For details on the roles of these pods in a YugabyteDB cluster (also known as universe), see [Architecture](../../../architecture/).
+Run the following command to verify that you have two services with one running pod in each: one YB-Master pod (`yb-master-0`) and one YB-Tserver pod (`yb-tserver-0`). For details on the roles of these pods in a YugabyteDB cluster (also known as universe), see [Architecture](/preview/architecture/).
 
 ```sh
 kubectl --namespace yb-demo get pods
@@ -208,7 +208,7 @@ yb-tservers          ClusterIP      None           <none>        7100/TCP,9000/T
 
 ### Check cluster status with Admin UI
 
-The cluster you have created consists of two processes: [YB-Master](../../../architecture/yb-master/) that keeps track of various metadata (list of tables, users, roles, permissions, and so on) and [YB-TServer](../../../architecture/yb-tserver/) that is responsible for the actual end-user requests for data updates and queries.
+The cluster you have created consists of two processes: [YB-Master](/preview/architecture/yb-master/) that keeps track of various metadata (list of tables, users, roles, permissions, and so on) and [YB-TServer](/preview/architecture/yb-tserver/) that is responsible for the actual end-user requests for data updates and queries.
 
 Each of the processes exposes its own Admin UI that can be used to check the status of the corresponding process and perform certain administrative operations.
 
@@ -224,7 +224,7 @@ If you've created the cluster with `enableLoadBalancer=False`, then the service 
 
 {{< /note >}}
 
-Now you can view the [yb-master-0 Admin UI](../../../reference/configuration/yb-master/#admin-ui) at <http://localhost:7000>.
+Now you can view the [yb-master-0 Admin UI](/preview/reference/configuration/yb-master/#admin-ui) at <http://localhost:7000>.
 
 #### Overview and YB-Master status
 
@@ -242,7 +242,7 @@ Click **See all nodes** to open the **Tablet Servers** page that lists the YB-TS
 
 ## Connect to the database
 
-Using the YugabyteDB SQL shell, [ysqlsh](../../../api/ysqlsh/), you can connect to your cluster and interact with it using distributed SQL. ysqlsh is installed with YugabyteDB and is located in the bin directory of the YugabyteDB home directory.
+Using the YugabyteDB SQL shell, [ysqlsh](/preview/api/ysqlsh/), you can connect to your cluster and interact with it using distributed SQL. ysqlsh is installed with YugabyteDB and is located in the bin directory of the YugabyteDB home directory.
 
 To open the YSQL shell (ysqlsh), run the following.
 
@@ -257,7 +257,7 @@ Type "help" for help.
 yugabyte=#
 ```
 
-To load sample data and explore an example using ysqlsh, refer to [Retail Analytics](../../../sample-data/retail-analytics/).
+To load sample data and explore an example using ysqlsh, refer to [Retail Analytics](/preview/sample-data/retail-analytics/).
 
 <!--## Build a Java application
 
@@ -265,7 +265,7 @@ To load sample data and explore an example using ysqlsh, refer to [Retail Analyt
 
 Before building a Java application, perform the following:
 
-- While YugabyteDB is running, use the [yb-ctl](../../../admin/yb-ctl/#root) utility to create a universe with a 3-node RF-3 cluster with some fictitious geo-locations assigned, as follows:
+- While YugabyteDB is running, use the [yb-ctl](/preview/admin/yb-ctl/#root) utility to create a universe with a 3-node RF-3 cluster with some fictitious geo-locations assigned, as follows:
 
   ```sh
   cd <path-to-yugabytedb-installation>

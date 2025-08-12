@@ -46,7 +46,7 @@ The following table describes how the data flows through each of these component
 
 You have multiple options to [install or deploy YugabyteDB](../../../deploy/).
 
-If you're running a Windows Machine then you can [leverage Docker on Windows with YugabyteDB](/preview/tutorials/quick-start/docker/).
+If you're running a Windows Machine then you can [leverage Docker on Windows with YugabyteDB](/preview/quick-start/docker/).
 
 ### Install and set up Redpanda
 

@@ -5,8 +5,6 @@ block_indexing = true
 +++
 -->
 
-Choose the language you want to use to build your application.
-
 {{< tabpane text=true >}}
 
   {{% tab header="Java" lang="java" %}}

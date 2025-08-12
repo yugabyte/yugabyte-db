@@ -7,9 +7,8 @@ description: Get started using YugabyteDB in less than five minutes on macOS.
 aliases:
   - /preview/quick-start/create-local-cluster/
   - /preview/quick-start/install/
-  - /preview/quick-start/macos/
   - /preview/quick-start/
-  - /preview/tutorials/quick-start/
+  - /preview/tutorials/quick-start/macos/
 layout: single
 type: docs
 rightNav:
@@ -32,7 +31,7 @@ unversioned: true
   </li>
 </ul>
 
-The local cluster setup on a single host is intended for development and learning. For production deployment, performance benchmarking, or deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](../../../deploy/).
+The local cluster setup on a single host is intended for development and learning. For production deployment, performance benchmarking, or deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](/preview/deploy/).
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li class="active">
@@ -67,29 +66,7 @@ Installing YugabyteDB involves completing [prerequisites](#prerequisites) and [d
 
 ### Prerequisites
 
-Before installing YugabyteDB, ensure that you have the following available:
-
-- <i class="fa-brands fa-apple" aria-hidden="true"></i> macOS 10.12 or later. If you are on Apple silicon, you need to download the macOS ARM package.
-
-- Python 3. To check the version, execute the following command:
-
-    ```sh
-    python --version
-    ```
-
-    ```output
-    Python 3.7.3
-    ```
-
-- `wget` or `curl`.
-
-    Note that the following instructions use the `wget` command to download files. If you prefer to use `curl` (included in macOS), you can replace `wget` with `curl -O`.
-
-    To install `wget` on your Mac, you can run the following command if you use Homebrew:
-
-    ```sh
-    brew install wget
-    ```
+{{% readfile "include-prerequisites-macos.md" %}}
 
 #### Set file limits
 
@@ -182,7 +159,7 @@ You download YugabyteDB as follows:
 
 {{< tabpane text=true >}}
 
-{{% tab header="macOS x86" lang="macOS x86" %}}
+{{% tab header="macOS x86" lang="x86" %}}
 
 1. Download the YugabyteDB `tar.gz` file by executing the following `wget` command:
 
@@ -198,7 +175,7 @@ You download YugabyteDB as follows:
 
 {{% /tab %}}
 
-{{% tab header="macOS ARM" lang="macOS ARM" %}}
+{{% tab header="macOS ARM" lang="arm" %}}
 
 1. Download the YugabyteDB `tar.gz` file by executing the following `wget` command:
 
@@ -218,7 +195,7 @@ You download YugabyteDB as follows:
 
 ## Create a local cluster
 
-Use the [yugabyted](../../../reference/configuration/yugabyted/) utility to create and manage universes.
+Use the [yugabyted](/preview/reference/configuration/yugabyted/) utility to create and manage universes.
 
 {{< tabpane text=true >}}
 
@@ -234,7 +211,7 @@ On macOS pre-Monterey, create a single-node local cluster with a replication fac
 
   {{% tab header="macOS Monterey" lang="Monterey" %}}
 
-macOS Monterey enables AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail. Use the [--master_webserver_port flag](../../../reference/configuration/yugabyted/#advanced-flags) when you start the cluster to change the default port number, as follows:
+macOS Monterey enables AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail. Use the [--master_webserver_port flag](/preview/reference/configuration/yugabyted/#advanced-flags) when you start the cluster to change the default port number, as follows:
 
 ```sh
 ./bin/yugabyted start --master_webserver_port=9999
@@ -246,7 +223,7 @@ Alternatively, you can disable AirPlay receiving, then start YugabyteDB normally
 
 {{< /tabpane >}}
 
-{{< readfile "/preview/tutorials/quick-start/include-connect.md" >}}
+{{< readfile "/preview/quick-start/include-connect.md" >}}
 
 ## Build an application
 
@@ -254,7 +231,9 @@ Applications connect to and interact with YugabyteDB using API client libraries 
 
 ### Choose your language
 
-{{< readfile "/preview/tutorials/quick-start-yugabytedb-managed/quick-start-buildapps-include.md" >}}
+<details><summary>Choose the language you want to use to build your application.</summary><br>
+{{< readfile "/preview/quick-start-yugabytedb-managed/quick-start-buildapps-include.md" >}}
+</details>
 
 ## Migrate from PostgreSQL
 
@@ -262,14 +241,14 @@ For PostgreSQL users seeking to transition to a modern, horizontally scalable da
 
 YugabyteDB enables midsize applications running on single-node instances to effortlessly migrate to a fully distributed database environment. As applications grow, YugabyteDB seamlessly transitions to distributed mode, allowing for massive scaling capabilities.
 
-[YugabyteDB Voyager](../../../yugabyte-voyager/) simplifies the end-to-end database migration process, including cluster setup, schema migration, and data migration. It supports migrating data from PostgreSQL, MySQL, and Oracle databases to various YugabyteDB offerings, including Aeon, Anywhere, and the core open-source database.
+[YugabyteDB Voyager](/preview/yugabyte-voyager/) simplifies the end-to-end database migration process, including cluster setup, schema migration, and data migration. It supports migrating data from PostgreSQL, MySQL, and Oracle databases to various YugabyteDB offerings, including Aeon, Anywhere, and the core open-source database.
 
-You can [install](../../../yugabyte-voyager/install-yb-voyager/) YugabyteDB Voyager on different operating systems such as RHEL, Ubuntu, macOS, or deploy it via Docker or Airgapped installations.
+You can [install](/preview/yugabyte-voyager/install-yb-voyager/) YugabyteDB Voyager on different operating systems such as RHEL, Ubuntu, macOS, or deploy it via Docker or Airgapped installations.
 
-In addition to [offline migration](../../../yugabyte-voyager/migrate/migrate-steps/), the latest release of YugabyteDB Voyager introduces [live, non-disruptive migration](../../../yugabyte-voyager/migrate/live-migrate/) from PostgreSQL, along with new live migration workflows featuring [fall-forward](../../../yugabyte-voyager/migrate/live-fall-forward/) and [fall-back](../../../yugabyte-voyager/migrate/live-fall-back/) capabilities.
+In addition to [offline migration](/preview/yugabyte-voyager/migrate/migrate-steps/), the latest release of YugabyteDB Voyager introduces [live, non-disruptive migration](/preview/yugabyte-voyager/migrate/live-migrate/) from PostgreSQL, along with new live migration workflows featuring [fall-forward](/preview/yugabyte-voyager/migrate/live-fall-forward/) and [fall-back](/preview/yugabyte-voyager/migrate/live-fall-back/) capabilities.
 
 Furthermore, Voyager previews a powerful migration assessment that scans existing applications and databases. This detailed assessment provides organizations with valuable insights into the readiness of their applications, data, and schema for migration, thereby accelerating modernization efforts.
 
 ## Next step
 
-[Explore YugabyteDB](../../../explore/)
+[Explore YugabyteDB](/preview/explore/)

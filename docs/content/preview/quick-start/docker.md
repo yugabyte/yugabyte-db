@@ -5,7 +5,7 @@ linkTitle: Quick start
 headcontent: Get started in less than 5 minutes in the cloud or on your desktop
 description: Get started using YugabyteDB in less than five minutes on Docker.
 aliases:
-  - /preview/quick-start/docker/
+  - /preview/tutorials/quick-start/docker/
   - /preview/deploy/docker/docker-compose
 type: docs
 unversioned: true
@@ -26,7 +26,7 @@ unversioned: true
   </li>
 </ul>
 
-The local cluster setup on a single host is intended for development and learning. For production deployment, performance benchmarking, or deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](../../../deploy/).
+The local cluster setup on a single host is intended for development and learning. For production deployment, performance benchmarking, or deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](/preview/deploy/).
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
@@ -83,7 +83,7 @@ docker pull yugabytedb/yugabyte:{{< yb-version version="preview" format="build">
 
 ## Create a local cluster
 
-Use the [yugabyted](../../../reference/configuration/yugabyted/) utility to create and manage universes.
+Use the [yugabyted](/preview/reference/configuration/yugabyted/) utility to create and manage universes.
 
 To create a 1-node cluster with a replication factor (RF) of 1, run the following command:
 
@@ -168,10 +168,10 @@ It is important to use a static container hostname to avoid startup errors if th
 
 The cluster you have created consists of two processes:
 
-- [YB-Master](../../../architecture/yb-master/) keeps track of various metadata (list of tables, users, roles, permissions, and so on).
-- [YB-TServer](../../../architecture/yb-tserver/) is responsible for the actual end user requests for data updates and queries.
+- [YB-Master](/preview/architecture/yb-master/) keeps track of various metadata (list of tables, users, roles, permissions, and so on).
+- [YB-TServer](/preview/architecture/yb-tserver/) is responsible for the actual end user requests for data updates and queries.
 
-Using the YugabyteDB SQL shell, [ysqlsh](../../../api/ysqlsh/), you can connect to your cluster and interact with it using distributed SQL. ysqlsh is installed with YugabyteDB and is located in the bin directory of the YugabyteDB home directory.
+Using the YugabyteDB SQL shell, [ysqlsh](/preview/api/ysqlsh/), you can connect to your cluster and interact with it using distributed SQL. ysqlsh is installed with YugabyteDB and is located in the bin directory of the YugabyteDB home directory.
 
 To open the YSQL shell, run ysqlsh.
 
@@ -186,7 +186,7 @@ Type "help" for help.
 yugabyte=#
 ```
 
-To load sample data and explore an example using ysqlsh, refer to [Retail Analytics](../../../sample-data/retail-analytics/).
+To load sample data and explore an example using ysqlsh, refer to [Retail Analytics](/preview/sample-data/retail-analytics/).
 
 ## Monitor your cluster
 
@@ -202,7 +202,7 @@ The YugabyteDB UI provides cluster status, node information, performance metrics
 
 Before building a Java application, perform the following:
 
-- While YugabyteDB is running, use the [yb-ctl](../../../admin/yb-ctl/#root) utility to create a universe with a 3-node RF-3 cluster with some fictitious geo-locations assigned, as follows:
+- While YugabyteDB is running, use the [yb-ctl](/preview/admin/yb-ctl/#root) utility to create a universe with a 3-node RF-3 cluster with some fictitious geo-locations assigned, as follows:
 
   ```sh
   cd <path-to-yugabytedb-installation>
