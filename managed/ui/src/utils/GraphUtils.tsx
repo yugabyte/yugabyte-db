@@ -54,7 +54,9 @@ export const getTabContent = (
         let uniqueOperations: any = new Set();
         const metric = metrics[type][metricKey];
         if (
-          (metricMeasure === MetricMeasure.OUTLIER || type === MetricTypes.OUTLIER_TABLES) &&
+          (metricMeasure === MetricMeasure.OUTLIER ||
+            type === MetricTypes.OUTLIER_TABLES ||
+            type === MetricTypes.OUTLIER_DATABASES) &&
           isNonEmptyObject(metric)
         ) {
           metric.data.forEach((metricItem: any) => {
