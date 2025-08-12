@@ -42,7 +42,7 @@ The limits are controlled by the following YB-TServer configuration flags: `--ss
 After configuring [encryption in transit](../../../secure/tls-encryption/) for a YugabyteDB cluster, you may encounter the following error when trying to use yb-admin:
 
 ```sh
-./bin/yb-admin -master_addresses <master-addresses> list_all_masters
+./bin/yb-admin --master_addresses <master-addresses> list_all_masters
 ```
 
 ```output

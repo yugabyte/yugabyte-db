@@ -23,7 +23,7 @@ Before trying to optimize individual statements, make sure the YugabyteDB cluste
 To view the nodes and servers that make up your cluster, use the `yb-admin` command to request the master and tablet servers. For example:
 
 ```sh
-$ ./bin/yb-admin -init_master_addrs=$(hostname):7100 list_all_masters
+$ ./bin/yb-admin --init_master_addrs=$(hostname):7100 list_all_masters
 ```
 
 ```output
@@ -34,7 +34,7 @@ a637b88dfc0c4476862ca79872d763d7   172.158.22.229:7100     ALIVE       LEADER
 ```
 
 ```sh
-$ ./bin/yb-admin -init_master_addrs=$(hostname):7100 list_all_tablet_servers
+$ ./bin/yb-admin --init_master_addrs=$(hostname):7100 list_all_tablet_servers
 ```
 
 ```output

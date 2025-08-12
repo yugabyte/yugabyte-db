@@ -80,7 +80,7 @@ Create a snapshot as follows:
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
         create_snapshot_schedule 1 10 ysql.yugabyte
     ```
 
@@ -94,7 +94,7 @@ Create a snapshot as follows:
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
         list_snapshot_schedules
     ```
 
@@ -155,7 +155,7 @@ Create a snapshot as follows:
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
         restore_snapshot_schedule 0e4ceb83-fe3d-43da-83c3-013a8ef592ca 1620418817729963
     ```
 
@@ -170,7 +170,7 @@ Create a snapshot as follows:
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
         list_snapshots
     ```
 
@@ -235,7 +235,7 @@ Before you begin, if a local universe is currently running, first [destroy it](.
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
         create_snapshot_schedule 1 10 ysql.yugabyte
     ```
 
@@ -249,7 +249,7 @@ Before you begin, if a local universe is currently running, first [destroy it](.
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
         list_snapshot_schedules
     ```
 
@@ -290,7 +290,7 @@ Before you begin, if a local universe is currently running, first [destroy it](.
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
         restore_snapshot_schedule 1fb2d85a-3608-4cb1-af63-3e4062300dc1 1681964544554620
     ```
 
@@ -305,7 +305,7 @@ Before you begin, if a local universe is currently running, first [destroy it](.
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
         list_snapshots
     ```
 
@@ -342,7 +342,7 @@ Before you begin, if a local universe is currently running, first [destroy it](.
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
         list_snapshot_schedules
     ```
 
@@ -402,7 +402,7 @@ Before you begin, if a local universe is currently running, first [destroy it](.
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
         restore_snapshot_schedule 1fb2d85a-3608-4cb1-af63-3e4062300dc1 1681965106732671
     ```
 
@@ -417,7 +417,7 @@ Before you begin, if a local universe is currently running, first [destroy it](.
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
         list_snapshots
     ```
 
@@ -465,7 +465,7 @@ Before you begin, if a local universe is currently running, first [destroy it](.
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
         list_snapshot_schedules
     ```
 
@@ -533,7 +533,7 @@ Before you begin, if a local universe is currently running, first [destroy it](.
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
         restore_snapshot_schedule 1fb2d85a-3608-4cb1-af63-3e4062300dc1 1681965472490517
     ```
 
@@ -548,7 +548,7 @@ Before you begin, if a local universe is currently running, first [destroy it](.
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
         list_snapshots
     ```
 
@@ -620,7 +620,7 @@ Before you begin, if a local universe is currently running, first [destroy it](.
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
         restore_snapshot_schedule 1fb2d85a-3608-4cb1-af63-3e4062300dc1 1681965684502460
     ```
 
@@ -635,7 +635,7 @@ Before you begin, if a local universe is currently running, first [destroy it](.
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
         list_snapshots
     ```
 
@@ -710,7 +710,7 @@ Before you begin, if a local universe is currently running, first [destroy it](.
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
         restore_snapshot_schedule 1fb2d85a-3608-4cb1-af63-3e4062300dc1 1681965868912921
     ```
 
@@ -725,7 +725,7 @@ Before you begin, if a local universe is currently running, first [destroy it](.
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
         list_snapshots
     ```
 
