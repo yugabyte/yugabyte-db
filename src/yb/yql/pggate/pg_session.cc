@@ -267,40 +267,6 @@ void AdvisoryLockRequestInitCommon(
 
 }
 
-YbcTxnPriorityRequirement GetTxnPriorityRequirement(
-    bool is_ddl_mode, PgIsolationLevel isolation_level, RowMarkType row_mark_type) {
-  YbcTxnPriorityRequirement txn_priority_requirement;
-  if (is_ddl_mode) {
-    // DDLs acquire object locks to serialize conflicting concurrent DDLs. Concurrent DDLs that
-    // don't conflict can make progress without blocking each other.
-    //
-    // However, if object locks are disabled, concurrent DDLs are disallowed for safety.
-    // This is done by relying on conflicting increments to the catalog version (most DDLs do this
-    // except some like CREATE TABLE). Note that global DDLs (those that affect catalog tables
-    // shared across databases) conflict with all other DDLs since they increment all per-db
-    // catalog versions.
-    //
-    // For detecting and resolving these conflicts, DDLs use Fail-on-Conflict concurrency
-    // control (system catalog table doesn't have wait queues enabled). All DDLs except
-    // Auto-ANALYZEs use kHighestPriority priority to mimic first-come-first-serve behavior. We
-    // want to give Auto-ANALYZEs a lower priority to ensure they don't abort already running
-    // user DDLs. Also, user DDLs should preempt Auto-ANALYZEs.
-    //
-    // With object level locking, priorities are meaningless since DDLs don't rely on DocDB's
-    // conflict resolution for concurrent DDLs.
-    if (!yb_use_internal_auto_analyze_service_conn)
-      txn_priority_requirement = kHighestPriority;
-    else
-      txn_priority_requirement = kHigherPriorityRange;
-  } else {
-    txn_priority_requirement =
-        isolation_level == PgIsolationLevel::READ_COMMITTED ? kHighestPriority :
-            (RowMarkNeedsHigherPriority(row_mark_type) ?
-                kHigherPriorityRange : kLowerPriorityRange);
-  }
-  return txn_priority_requirement;
-}
-
 bool IsTableAffectedByOperations(
   const PgObjectId& table_id, const PgsqlOp& op, std::span<const PgObjectId> buffered_rels) {
 
@@ -430,10 +396,7 @@ class PgSession::RunHelper {
     read_only = read_only && !IsValidRowMarkType(row_mark_type);
 
     return pg_session_.pg_txn_manager_->CalculateIsolation(
-        read_only,
-        GetTxnPriorityRequirement(
-            pg_session_.pg_txn_manager_->IsDdlMode(), pg_session_.GetIsolationLevel(),
-            row_mark_type));
+        read_only, pg_session_.pg_txn_manager_->GetTxnPriorityRequirement(row_mark_type));
   }
 
   Result<PerformFuture> Flush(std::optional<CacheOptions>&& cache_options) {
@@ -816,8 +779,7 @@ Result<FlushFuture> PgSession::FlushOperations(BufferableOperations&& ops, bool 
   if (transactional) {
     RETURN_NOT_OK(pg_txn_manager_->CalculateIsolation(
         false /* read_only */,
-        GetTxnPriorityRequirement(
-            pg_txn_manager_->IsDdlMode(), GetIsolationLevel(), RowMarkType::ROW_MARK_ABSENT)));
+        pg_txn_manager_->GetTxnPriorityRequirement(RowMarkType::ROW_MARK_ABSENT)));
   }
 
   // When YSQL is flushing a pipeline of Perform rpcs asynchronously i.e., without waiting for
@@ -1048,8 +1010,7 @@ Status PgSession::SetupPerformOptionsForDdl(tserver::PgPerformOptionsPB* options
   RETURN_NOT_OK(FlushBufferedOperations());
   RETURN_NOT_OK(pg_txn_manager_->CalculateIsolation(
     false /* read_only */,
-    GetTxnPriorityRequirement(
-        true /* is_ddl_mode */, GetIsolationLevel(), RowMarkType::ROW_MARK_ABSENT)));
+    pg_txn_manager_->GetTxnPriorityRequirement(RowMarkType::ROW_MARK_ABSENT)));
 
   return SetupPerformOptions(options);
 }
@@ -1256,8 +1217,7 @@ Status PgSession::AcquireAdvisoryLock(
     // If isolation level is READ_COMMITTED, set priority of the transaction to kHighestPriority.
     RETURN_NOT_OK(pg_txn_manager_->CalculateIsolation(
       false /* read_only */,
-      pg_txn_manager_->GetPgIsolationLevel() == PgIsolationLevel::READ_COMMITTED
-          ? kHighestPriority : kLowerPriorityRange));
+      pg_txn_manager_->GetTxnPriorityRequirement(RowMarkType::ROW_MARK_ABSENT)));
     RETURN_NOT_OK(SetupPerformOptions(&options));
     // TODO(advisory-lock): Fully validate that the optimization of local txn will not be applied,
     // then it should be safe to skip set_force_global_transaction.
