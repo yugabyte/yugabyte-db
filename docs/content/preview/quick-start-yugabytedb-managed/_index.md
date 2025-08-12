@@ -152,7 +152,9 @@ Refer to [Before you begin](/preview/tutorials/build-apps/cloud-add-ip/).
 
 ### Choose your language
 
+<details><summary>Choose the language you want to use to build your application.</summary><br>
 {{< readfile "quick-start-buildapps-include.md" >}}
+</details>
 
 ## Migrate from PostgreSQL
 

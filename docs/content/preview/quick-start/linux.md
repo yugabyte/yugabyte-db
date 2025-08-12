@@ -127,7 +127,9 @@ Applications connect to and interact with YugabyteDB using API client libraries 
 
 ### Choose your language
 
+<details><summary>Choose the language you want to use to build your application.</summary><br>
 {{< readfile "/preview/quick-start-yugabytedb-managed/quick-start-buildapps-include.md" >}}
+</details>
 
 ## Migrate from PostgreSQL
 
