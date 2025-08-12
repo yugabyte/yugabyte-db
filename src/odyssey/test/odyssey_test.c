@@ -74,6 +74,11 @@ extern void machinarium_test_tls_read_10mb1(void);
 extern void machinarium_test_tls_read_10mb2(void);
 extern void machinarium_test_tls_read_multithread(void);
 extern void machinarium_test_tls_read_var(void);
+extern void machinarium_test_wait_list_without_notify(void);
+extern void machinarium_test_wait_list_notify_after_wait(void);
+extern void machinarium_test_wait_list_one_producer_multiple_consumers(void);
+extern void
+machinarium_test_wait_list_one_producer_multiple_consumers_threads(void);
 
 extern void odyssey_test_tdigest(void);
 extern void odyssey_test_attribute(void);
@@ -144,6 +149,12 @@ int main(int argc, char *argv[])
 	odyssey_test(machinarium_test_tls_read_10mb2);
 	odyssey_test(machinarium_test_tls_read_multithread);
 	odyssey_test(machinarium_test_tls_read_var);
+	odyssey_test(machinarium_test_wait_list_without_notify);
+	odyssey_test(machinarium_test_wait_list_notify_after_wait);
+	odyssey_test(
+		machinarium_test_wait_list_one_producer_multiple_consumers);
+	odyssey_test(
+		machinarium_test_wait_list_one_producer_multiple_consumers_threads);
 	odyssey_test(odyssey_test_tdigest);
 	odyssey_test(odyssey_test_attribute);
 	odyssey_test(odyssey_test_util);
