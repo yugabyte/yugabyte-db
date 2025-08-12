@@ -16,7 +16,6 @@
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
-#include "yb/client/table.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/table_info.h"
 #include "yb/client/xcluster_client.h"
@@ -25,21 +24,13 @@
 #include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/pg_system_attr.h"
-#include "yb/common/schema_pbutil.h"
 #include "yb/common/xcluster_util.h"
 
 #include "yb/docdb/docdb_pgapi.h"
 
-#include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
-#include "yb/util/is_operation_done_result.h"
-#include "yb/master/xcluster/xcluster_manager.h"
-#include "yb/master/xcluster/xcluster_replication_group.h"
-#include "yb/master/xcluster/master_xcluster_util.h"
-#include "yb/master/xcluster_consumer_registry_service.h"
-#include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/master.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_heartbeat.pb.h"
@@ -47,6 +38,10 @@
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/master_util.h"
 #include "yb/master/snapshot_transfer_manager.h"
+#include "yb/master/xcluster/master_xcluster_util.h"
+#include "yb/master/xcluster/xcluster_manager.h"
+#include "yb/master/xcluster_consumer_registry_service.h"
+#include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/ysql/ysql_manager_if.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -708,7 +703,7 @@ Status CatalogManager::BackfillMetadataForXRepl(
           uint32_t pg_type_oid = entry.second;
 
           const YbcPgTypeEntity* type_entity =
-              docdb::DocPgGetTypeEntity({(int32_t)pg_type_oid, -1});
+              docdb::DocPgGetTypeEntity({.type_id = (int32_t)pg_type_oid, .type_mod = -1});
 
           if (type_entity == nullptr && type_oid_info_map.contains(pg_type_oid)) {
             VLOG(1) << "Looking up primitive type for: " << pg_type_oid;
@@ -1758,7 +1753,7 @@ Status CatalogManager::FindCDCSDKStreamsForAddedTables(
           continue;
         }
 
-        if (!IsTableEligibleForCDCSDKStream(table, table->LockForRead(), true)) {
+        if (!IsTableEligibleForCDCSDKStream(table, table->LockForRead(), /*check_schema=*/true)) {
           RemoveTableFromCDCSDKUnprocessedMap(unprocessed_table_id, stream_info->namespace_id());
           continue;
         }
@@ -1924,7 +1919,8 @@ void CatalogManager::FindAllNonEligibleTablesInCDCSDKStream(
       auto table_info = GetTableInfoUnlocked(table_id);
       if (table_info) {
         // Re-confirm this table is not meant to be part of a CDC stream.
-        if (!IsTableEligibleForCDCSDKStream(table_info, table_info->LockForRead(), true)) {
+        if (!IsTableEligibleForCDCSDKStream(
+                table_info, table_info->LockForRead(), /*check_schema=*/true)) {
           LOG(INFO) << "Found a non-eligible table: " << table_info->id()
                     << ", for stream: " << stream_id;
           LockGuard lock(cdcsdk_non_eligible_table_mutex_);
@@ -2107,7 +2103,7 @@ std::vector<TableInfoPtr> CatalogManager::FindAllTablesForCDCSDK(const Namespace
       continue;
     }
 
-    if (!IsTableEligibleForCDCSDKStream(table_info.get(), ltm, true)) {
+    if (!IsTableEligibleForCDCSDKStream(table_info.get(), ltm, /*check_schema=*/true)) {
       continue;
     }
 
@@ -2236,7 +2232,7 @@ Status CatalogManager::ProcessNewTablesForCDCSDKStreams(
       alter_table_req.mutable_table()->set_table_id(table_id);
       alter_table_req.set_wal_retention_secs(FLAGS_cdc_wal_retention_time_secs);
       AlterTableResponsePB alter_table_resp;
-      s = this->AlterTable(&alter_table_req, &alter_table_resp, nullptr, epoch);
+      s = this->AlterTable(&alter_table_req, &alter_table_resp, /*rpc=*/nullptr, epoch);
       if (!s.ok()) {
         LOG(WARNING) << "Unable to change the WAL retention time for table " << table_id;
         continue;
@@ -2371,7 +2367,7 @@ Status CatalogManager::ValidateTableForRemovalFromCDCSDKStream(
   }
 
   if (check_for_ineligibility) {
-    if (!IsTableEligibleForCDCSDKStream(table, lock, true)) {
+    if (!IsTableEligibleForCDCSDKStream(table, lock, /*check_schema=*/true)) {
       return STATUS(InvalidArgument, "Only allowed to remove user tables from CDC streams");
     }
   }
@@ -3494,7 +3490,8 @@ Status CatalogManager::UpdateCDCProducerOnTabletSplit(
         // table splits and concurrently we are removing such tables from stream, the child tables
         // do not get added.
         {
-          if (!IsTableEligibleForCDCSDKStream(table_info, table_info->LockForRead(), false)) {
+          if (!IsTableEligibleForCDCSDKStream(
+                  table_info, table_info->LockForRead(), /*check_schema=*/false)) {
             LOG(INFO) << "Skipping adding children tablets to cdc state for table "
                       << producer_table_id << " as it is not meant to part of a CDC stream";
             continue;
@@ -4778,7 +4775,7 @@ Status CatalogManager::DoClearFailedReplicationBootstrap(
     case SysUniverseReplicationBootstrapEntryPB_State_BOOTSTRAP_PRODUCER: {
       DeleteCDCStreamResponsePB resp;
       s = xcluster_rpc_task->client()->DeleteCDCStream(
-          bootstrap_ids, /* force_delete = */ true, /* ignore_failures = */ false, &resp);
+          bootstrap_ids, /*force_delete=*/ true, /*ignore_errors=*/false, &resp);
       if (!s.ok()) {
         LOG(WARNING) << Format(
             "Failed to send delete CDC streams request to producer on status: $0", s);
@@ -4915,7 +4912,7 @@ void CatalogManager::ScheduleXReplParentTabletDeletionTask() {
   xrepl_parent_tablet_deletion_task_.Schedule(
       [this](const Status& status) {
         Status s = background_tasks_thread_pool_->SubmitFunc(
-            std::bind(&CatalogManager::ProcessXReplParentTabletDeletionPeriodically, this));
+            [this] { ProcessXReplParentTabletDeletionPeriodically(); });
         if (!s.IsOk()) {
           // Failed to submit task to the thread pool. Mark that the task is now no longer running.
           LOG(WARNING) << "Failed to schedule: ProcessXReplParentTabletDeletionPeriodically";
@@ -5036,7 +5033,7 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion() {
                   << ". Reason: Consumer finished processing parent tablet after split.";
 
         // Also delete the parent tablet from cdc_state for all completed streams.
-        entries_to_delete.emplace_back(cdc::CDCStateTableKey{tablet_id, stream_id});
+        entries_to_delete.emplace_back(tablet_id, stream_id);
         count_tablet_streams_to_delete++;
         continue;
       }
@@ -5054,7 +5051,7 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion() {
           (hidden_tablet.hide_time_ < min_restart_time_across_slots ||
            IsCDCSDKTabletExpiredOrNotOfInterest(
                last_active_time, stream_creation_time_map.at(stream_id)))) {
-        entries_to_delete.emplace_back(cdc::CDCStateTableKey{tablet_id, stream_id});
+        entries_to_delete.emplace_back(tablet_id, stream_id);
         count_tablet_streams_to_delete++;
       }
     }

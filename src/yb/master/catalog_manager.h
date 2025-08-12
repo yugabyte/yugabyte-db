@@ -61,13 +61,13 @@
 #include "yb/master/master_dcl.fwd.h"
 #include "yb/master/master_ddl.fwd.h"
 #include "yb/master/master_encryption.fwd.h"
-#include "yb/master/master_heartbeat.fwd.h"
 #include "yb/master/master_fwd.h"
+#include "yb/master/master_heartbeat.fwd.h"
 #include "yb/master/master_types.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/snapshot_coordinator_context.h"
-#include "yb/master/sys_catalog_types.h"
 #include "yb/master/sys_catalog_initialization.h"
+#include "yb/master/sys_catalog_types.h"
 
 #include "yb/rocksdb/rocksdb_fwd.h"
 
@@ -86,12 +86,12 @@
 
 namespace yb {
 
-class Schema;
-class ThreadPool;
 class AddTransactionStatusTabletRequestPB;
 class AddTransactionStatusTabletResponsePB;
-class UniverseKeyRegistryPB;
 class IsOperationDoneResult;
+class Schema;
+class ThreadPool;
+class UniverseKeyRegistryPB;
 
 template<class T>
 class AtomicGauge;
@@ -127,12 +127,12 @@ struct CDCStateTableEntry;
 namespace master {
 
 struct DeferredAssignmentActions;
-struct SysCatalogLoadingState;
 struct KeyRange;
+struct SysCatalogLoadingState;
 class RestoreSysCatalogState;
 class YsqlInitDBAndMajorUpgradeHandler;
-class YsqlManagerIf;
 class YsqlManager;
+class YsqlManagerIf;
 
 using PlacementId = std::string;
 
@@ -814,7 +814,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   ClusterLoadBalancer* load_balancer() override { return load_balance_policy_.get(); }
 
+  // This never returns nullptr.
   XClusterManagerIf* GetXClusterManager() override;
+  // This never returns nullptr.
   XClusterManager* GetXClusterManagerImpl() override { return xcluster_manager_.get(); }
 
   YsqlManagerIf& GetYsqlManager();
