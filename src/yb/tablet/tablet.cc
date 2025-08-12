@@ -1017,13 +1017,13 @@ Status Tablet::OpenKeyValueTablet() {
 
   // Don't allow reads at timestamps lower than the highest history cutoff of a past compaction.
   auto regular_flushed_frontier = regular_db_->GetFlushedFrontier();
+  const docdb::ConsensusFrontier* consensus_frontier = nullptr;
   if (regular_flushed_frontier) {
-    retention_policy_->UpdateCommittedHistoryCutoff(
-        static_cast<const docdb::ConsensusFrontier&>(*regular_flushed_frontier).
-            history_cutoff());
+    consensus_frontier = down_cast<const docdb::ConsensusFrontier*>(regular_flushed_frontier.get());
+    retention_policy_->UpdateCommittedHistoryCutoff(consensus_frontier->history_cutoff());
   }
 
-  RETURN_NOT_OK(vector_indexes_->Open());
+  RETURN_NOT_OK(vector_indexes_->Open(consensus_frontier));
 
   LOG_WITH_PREFIX(INFO)
       << "Successfully opened a RocksDB database at " << metadata()->rocksdb_dir();
@@ -1708,7 +1708,7 @@ Status Tablet::WriteTransactionalBatch(
     const docdb::LWKeyValueWriteBatchPB& put_batch,
     HybridTime hybrid_time,
     const rocksdb::UserFrontiers& frontiers) {
-  auto transaction_id = CHECK_RESULT(
+  auto transaction_id = VERIFY_RESULT(
       FullyDecodeTransactionId(put_batch.transaction().transaction_id()));
 
   bool store_metadata = false;
@@ -2062,6 +2062,7 @@ Status Tablet::DoHandlePgsqlReadRequest(
       .ql_storage = storage,
       .pending_op = *scoped_read_operation,
       .vector_index = vector_index,
+      .table_has_vector_deletion = vector_indexes().has_vector_deletion(),
     };
 
     status = ProcessPgsqlReadRequest(data, result);
@@ -2344,10 +2345,18 @@ docdb::ApplyTransactionState Tablet::ApplyIntents(const TransactionApplyData& da
   docdb::ConsensusFrontiers frontiers;
   InitFrontiers(data, frontiers);
   auto vector_indexes = vector_indexes_->List();
+  docdb::ApplyIntentsContextCompleteListener complete_listener;
+  if (!vector_indexes_->has_vector_deletion()) {
+    complete_listener = [this](const docdb::ConsensusFrontiers& frontiers) {
+      if (frontiers.Largest().has_vector_deletion()) {
+        vector_indexes_->SetHasVectorDeletion();
+      }
+    };
+  }
   docdb::ApplyIntentsContext context(
       tablet_id(), data.transaction_id, data.apply_state, data.aborted, data.commit_ht, data.log_ht,
       min_running_ht, data.op_id, &key_bounds_, *metadata_, frontiers, intents_db_.get(),
-      vector_indexes, data.apply_to_storages);
+      vector_indexes, data.apply_to_storages, std::move(complete_listener));
   docdb::IntentsWriter intents_writer(
       data.apply_state ? data.apply_state->key : Slice(), min_running_ht,
       intents_db_.get(), &context);

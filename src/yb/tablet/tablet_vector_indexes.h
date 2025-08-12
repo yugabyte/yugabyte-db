@@ -61,7 +61,7 @@ class TabletVectorIndexes : public TabletComponent {
         thread_pool_provider_(thread_pool_provider),
         priority_thread_pool_provider_(priority_thread_pool_provider) {}
 
-  Status Open();
+  Status Open(const docdb::ConsensusFrontier* frontier);
   // Creates vector index for specified index and indexed tables.
   // bootstrap is set to true only during initial tablet bootstrap, so nobody should
   // hold external pointer to vector index list at this moment.
@@ -96,6 +96,14 @@ class TabletVectorIndexes : public TabletComponent {
 
   Status Verify();
 
+  void SetHasVectorDeletion() {
+    has_vector_deletion_.store(true);
+  }
+
+  bool has_vector_deletion() {
+    return has_vector_deletion_.load();
+  }
+
  private:
   void ScheduleBackfill(
       const docdb::DocVectorIndexPtr& vector_index, HybridTime backfill_ht, OpId op_id,
@@ -122,6 +130,7 @@ class TabletVectorIndexes : public TabletComponent {
   std::unordered_map<TableId, docdb::DocVectorIndexPtr> vector_indexes_map_
       GUARDED_BY(vector_indexes_mutex_);
   docdb::DocVectorIndexesPtr vector_indexes_list_ GUARDED_BY(vector_indexes_mutex_);
+  std::atomic<bool> has_vector_deletion_{false};
 };
 
 }  // namespace yb::tablet

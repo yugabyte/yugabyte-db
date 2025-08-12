@@ -53,6 +53,13 @@ struct DocVectorIndexSearchResultEntry {
   }
 };
 
+using DocVectorIndexSearchResultEntries = std::vector<DocVectorIndexSearchResultEntry>;
+
+struct DocVectorIndexSearchResult {
+  bool could_have_more_data;
+  DocVectorIndexSearchResultEntries entries;
+};
+
 class DocVectorIndex {
  public:
   virtual ~DocVectorIndex() = default;
@@ -66,7 +73,8 @@ class DocVectorIndex {
   virtual Status Insert(
       const DocVectorIndexInsertEntries& entries, const rocksdb::UserFrontiers& frontiers) = 0;
   virtual Result<DocVectorIndexSearchResult> Search(
-      Slice vector, const vector_index::SearchOptions& options) = 0;
+      Slice vector, const vector_index::SearchOptions& options,
+      bool could_have_missing_entries) = 0;
   virtual Result<EncodedDistance> Distance(Slice lhs, Slice rhs) = 0;
   virtual Status Compact() = 0;
   virtual Status Flush() = 0;

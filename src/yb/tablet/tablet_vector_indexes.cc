@@ -109,7 +109,11 @@ class IndexedTableReader {
 // A way to block backfilling vector index after the first vector index chunk is flushed.
 bool TEST_block_after_backfilling_first_vector_index_chunks = false;
 
-Status TabletVectorIndexes::Open() NO_THREAD_SAFETY_ANALYSIS {
+Status TabletVectorIndexes::Open(const docdb::ConsensusFrontier* frontier)
+    NO_THREAD_SAFETY_ANALYSIS {
+  if (frontier && frontier->has_vector_deletion()) {
+    SetHasVectorDeletion();
+  }
   std::unique_lock lock(vector_indexes_mutex_, std::defer_lock);
   auto tables = metadata().GetAllColocatedTableInfos();
   std::sort(tables.begin(), tables.end(), [](const auto& lhs, const auto& rhs) {
