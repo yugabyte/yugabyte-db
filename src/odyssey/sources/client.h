@@ -191,6 +191,24 @@ static inline void od_client_free(od_client_t *client)
 	free(client);
 }
 
+/*
+ * for service clients (auth, watchdog, etc) usage
+ *
+ * adds od_io_close which is performed in od_frontend_close and
+ * must be performed for service clients too
+ * YB: Free up notify_io if set (not part of upstream Odyssey change).
+ */
+ static inline void od_client_free_extended(od_client_t *client)
+ {
+	od_io_close(&client->io);
+	if (client->notify_io) {
+		machine_close(client->notify_io);
+		machine_io_free(client->notify_io);
+		client->notify_io = NULL;
+	}
+	od_client_free(client);
+ }
+
 static inline od_retcode_t od_client_notify_read(od_client_t *client)
 {
 	uint64_t value;

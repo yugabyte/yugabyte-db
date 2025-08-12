@@ -152,7 +152,7 @@ static inline int update_oid_entry_via_ctrl_conn(const int obj_type,
 			control_conn_client, NULL,
 			"failed to route internal client for control connection: %s",
 			od_router_status_to_str(status));
-		od_client_free(control_conn_client);
+		od_client_free_extended(control_conn_client);
 		goto failed_to_acquire_control_connection;
 	}
 
@@ -166,7 +166,7 @@ static inline int update_oid_entry_via_ctrl_conn(const int obj_type,
 			"failed to attach internal client for control connection to route: %s",
 			od_router_status_to_str(status));
 		od_router_unroute(router, control_conn_client);
-		od_client_free(control_conn_client);
+		od_client_free_extended(control_conn_client);
 		goto failed_to_acquire_control_connection;
 	}
 
@@ -189,7 +189,7 @@ static inline int update_oid_entry_via_ctrl_conn(const int obj_type,
 				 od_io_error(&server->io));
 			od_router_close(router, control_conn_client);
 			od_router_unroute(router, control_conn_client);
-			od_client_free(control_conn_client);
+			od_client_free_extended(control_conn_client);
 			goto failed_to_acquire_control_connection;
 		}
 	}
@@ -204,11 +204,7 @@ static inline int update_oid_entry_via_ctrl_conn(const int obj_type,
 		server->offline = true;
 	od_router_detach(router, control_conn_client);
 	od_router_unroute(router, control_conn_client);
-	if (instance->config.yb_use_auth_backend && control_conn_client->io.io) {
-		machine_close(control_conn_client->io.io);
-		machine_io_free(control_conn_client->io.io);
-	}
-	od_client_free(control_conn_client);
+	od_client_free_extended(control_conn_client);
 
 	if (rc == -1)
 		return -1;
