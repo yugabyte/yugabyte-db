@@ -26,13 +26,7 @@ static inline void od_frontend_close(od_client_t *client)
 	od_router_t *router = client->global->router;
 	od_atomic_u32_dec(&router->clients);
 
-	od_io_close(&client->io);
-	if (client->notify_io) {
-		machine_close(client->notify_io);
-		machine_io_free(client->notify_io);
-		client->notify_io = NULL;
-	}
-	od_client_free(client);
+	od_client_free_extended(client);
 }
 
 int od_frontend_info(od_client_t *client, char *fmt, ...)
@@ -2541,9 +2535,7 @@ void od_frontend(void *arg)
 	if (rc == -1) {
 		od_error(&instance->logger, "startup", client, NULL,
 			 "failed to transfer client io");
-		od_io_close(&client->io);
-		machine_close(client->notify_io);
-		od_client_free(client);
+		od_client_free_extended(client);
 		od_atomic_u32_dec(&router->clients_routing);
 		return;
 	}
@@ -2552,9 +2544,7 @@ void od_frontend(void *arg)
 	if (rc == -1) {
 		od_error(&instance->logger, "startup", client, NULL,
 			 "failed to transfer client notify io");
-		od_io_close(&client->io);
-		machine_close(client->notify_io);
-		od_client_free(client);
+		od_client_free_extended(client);
 		od_atomic_u32_dec(&router->clients_routing);
 		return;
 	}
@@ -2924,11 +2914,7 @@ int yb_execute_on_control_connection(od_client_t *client,
 			"failed to route internal client for control connection: %s",
 			od_router_status_to_str(status));
 
-		if (control_conn_client->io.io) {
-			machine_close(control_conn_client->io.io);
-			machine_io_free(control_conn_client->io.io);
-		}
-		od_client_free(control_conn_client);
+		od_client_free_extended(control_conn_client);
 		goto failed_to_acquire_control_connection;
 	}
 
@@ -2941,11 +2927,7 @@ int yb_execute_on_control_connection(od_client_t *client,
 			"failed to attach internal client for control connection to route: %s",
 			od_router_status_to_str(status));
 		od_router_unroute(router, control_conn_client);
-		if (control_conn_client->io.io) {
-			machine_close(control_conn_client->io.io);
-			machine_io_free(control_conn_client->io.io);
-		}
-		od_client_free(control_conn_client);
+		od_client_free_extended(control_conn_client);
 		goto failed_to_acquire_control_connection;
 	}
 
@@ -2968,11 +2950,7 @@ int yb_execute_on_control_connection(od_client_t *client,
 				 od_io_error(&server->io));
 			od_router_close(router, control_conn_client);
 			od_router_unroute(router, control_conn_client);
-			if (control_conn_client->io.io) {
-				machine_close(control_conn_client->io.io);
-				machine_io_free(control_conn_client->io.io);
-			}
-			od_client_free(control_conn_client);
+			od_client_free_extended(control_conn_client);
 			goto failed_to_acquire_control_connection;
 		}
 	}
@@ -2987,11 +2965,7 @@ int yb_execute_on_control_connection(od_client_t *client,
 		server->offline = true;
 	od_router_detach(router, control_conn_client);
 	od_router_unroute(router, control_conn_client);
-	if (instance->config.yb_use_auth_backend && control_conn_client->io.io) {
-		machine_close(control_conn_client->io.io);
-		machine_io_free(control_conn_client->io.io);
-	}
-	od_client_free(control_conn_client);
+	od_client_free_extended(control_conn_client);
 
 	if (rc == -1)
 		return -1;
@@ -3081,11 +3055,7 @@ int yb_auth_via_auth_backend(od_client_t *client)
 			"failed to route internal client for auth backend: %s",
 			od_router_status_to_str(status));
 
-		if (control_conn_client->io.io) {
-			machine_close(control_conn_client->io.io);
-			machine_io_free(control_conn_client->io.io);
-		}
-		od_client_free(control_conn_client);
+		od_client_free_extended(control_conn_client);
 		goto failed_to_acquire_auth_backend;
 	}
 
@@ -3107,11 +3077,7 @@ int yb_auth_via_auth_backend(od_client_t *client)
 			"failed to attach internal client for auth backend to route: %s",
 			od_router_status_to_str(status));
 		od_router_unroute(router, control_conn_client);
-		if (control_conn_client->io.io) {
-			machine_close(control_conn_client->io.io);
-			machine_io_free(control_conn_client->io.io);
-		}
-		od_client_free(control_conn_client);
+		od_client_free_extended(control_conn_client);
 		goto failed_to_acquire_auth_backend;
 	}
 
@@ -3180,11 +3146,7 @@ cleanup:
 	server->offline = true;
 	od_router_detach(router, control_conn_client);
 	od_router_unroute(router, control_conn_client);
-	if (control_conn_client->io.io) {
-		machine_close(control_conn_client->io.io);
-		machine_io_free(control_conn_client->io.io);
-	}
-	od_client_free(control_conn_client);
+	od_client_free_extended(control_conn_client);
 
 	if (rc == NOT_OK_RESPONSE) {
 		od_frontend_fatal(client, KIWI_CONNECTION_FAILURE,
