@@ -1,25 +1,36 @@
-## yba ear azure refresh
+## yba ear ciphertrust create
 
-Refresh an Azure YugabyteDB Anywhere Encryption In Transit (EAR) configuration
+Create a YugabyteDB Anywhere CipherTrust encryption at rest configuration
 
 ### Synopsis
 
-Refresh an Azure YugabyteDB Anywhere Encryption In Transit (EAR) configuration
+Create a CipherTrust encryption at rest configuration in YugabyteDB Anywhere
 
 ```
-yba ear azure refresh [flags]
+yba ear ciphertrust create [flags]
 ```
 
 ### Examples
 
 ```
-yba ear azure refresh --name <config-name>
+yba ear ciphertrust create --name <config-name> \
+    --manager-url <ciphertrust-manager-url> --auth-type <PASSWORD|REFRESH_TOKEN> \
+    [--username <username> --password <password> | --refresh-token <token>] \
+    --key-name <key-name> --key-algorithm AES --key-size <128|192|256>
 ```
 
 ### Options
 
 ```
-  -h, --help   help for refresh
+      --manager-url string     [Required] CipherTrust Manager URL.
+      --auth-type string       [Optional]Authentication type. Allowed values (case sensitive): PASSWORD, REFRESH_TOKEN (default "PASSWORD")
+      --username string        [Optional] CipherTrust username (for auth-type PASSWORD)
+      --password string        [Optional] CipherTrust password (for auth-type PASSWORD)
+      --refresh-token string   [Optional] CipherTrust refresh token (for auth-type REFRESH_TOKEN)
+      --key-name string        [Required] CipherTrust key name
+      --key-algorithm string   [Optional] CipherTrust key algorithm. Allowed values (case sensitive): AES (default "AES")
+      --key-size int           [Optional] CipherTrust key size for algorithm AES. Allowed values: 128, 192, 256 (default 256)
+  -h, --help                   help for create
 ```
 
 ### Options inherited from parent commands
@@ -42,5 +53,5 @@ yba ear azure refresh --name <config-name>
 
 ### SEE ALSO
 
-* [yba ear azure](yba_ear_azure.md)	 - Manage a YugabyteDB Anywhere Azure encryption at rest (EAR) configuration
+* [yba ear ciphertrust](yba_ear_ciphertrust.md)	 - Manage a YugabyteDB Anywhere CipherTrust encryption at rest (EAR) configuration
 

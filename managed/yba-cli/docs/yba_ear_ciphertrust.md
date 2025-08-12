@@ -1,25 +1,20 @@
-## yba ear azure refresh
+## yba ear ciphertrust
 
-Refresh an Azure YugabyteDB Anywhere Encryption In Transit (EAR) configuration
+Manage a YugabyteDB Anywhere CipherTrust encryption at rest (EAR) configuration
 
 ### Synopsis
 
-Refresh an Azure YugabyteDB Anywhere Encryption In Transit (EAR) configuration
+Manage a CipherTrust encryption at rest (EAR) configuration in YugabyteDB Anywhere
 
 ```
-yba ear azure refresh [flags]
-```
-
-### Examples
-
-```
-yba ear azure refresh --name <config-name>
+yba ear ciphertrust [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help   help for refresh
+  -n, --name string   [Optional] The name of the configuration for the action. Required for create, delete, describe, update and refresh.
+  -h, --help          help for ciphertrust
 ```
 
 ### Options inherited from parent commands
@@ -34,7 +29,6 @@ yba ear azure refresh --name <config-name>
   -H, --host string        YugabyteDB Anywhere Host (default "http://localhost:9000")
       --insecure           Allow insecure connections to YugabyteDB Anywhere. Value ignored for http endpoints. Defaults to false for https.
   -l, --logLevel string    Select the desired log level format. Allowed values: debug, info, warn, error, fatal. (default "info")
-  -n, --name string        [Optional] The name of the configuration for the action. Required for create, delete, describe, update and refresh.
   -o, --output string      Select the desired output format. Allowed values: table, json, pretty. (default "table")
       --timeout duration   Wait command timeout, example: 5m, 1h. (default 168h0m0s)
       --wait               Wait until the task is completed, otherwise it will exit immediately. (default true)
@@ -42,5 +36,11 @@ yba ear azure refresh --name <config-name>
 
 ### SEE ALSO
 
-* [yba ear azure](yba_ear_azure.md)	 - Manage a YugabyteDB Anywhere Azure encryption at rest (EAR) configuration
+* [yba ear](yba_ear.md)	 - Manage YugabyteDB Anywhere Encryption at Rest Configurations
+* [yba ear ciphertrust create](yba_ear_ciphertrust_create.md)	 - Create a YugabyteDB Anywhere CipherTrust encryption at rest configuration
+* [yba ear ciphertrust delete](yba_ear_ciphertrust_delete.md)	 - Delete a YugabyteDB Anywhere CipherTrust encryption at rest configuration
+* [yba ear ciphertrust describe](yba_ear_ciphertrust_describe.md)	 - Describe a CipherTrust YugabyteDB Anywhere Encryption In Transit (EAR) configuration
+* [yba ear ciphertrust list](yba_ear_ciphertrust_list.md)	 - List CipherTrust YugabyteDB Anywhere Encryption In Transit (EAR) configurations
+* [yba ear ciphertrust refresh](yba_ear_ciphertrust_refresh.md)	 - Refresh a CipherTrust YugabyteDB Anywhere Encryption In Transit (EAR) configuration
+* [yba ear ciphertrust update](yba_ear_ciphertrust_update.md)	 - Update a YugabyteDB Anywhere CipherTrust encryption at rest (EAR) configuration
 

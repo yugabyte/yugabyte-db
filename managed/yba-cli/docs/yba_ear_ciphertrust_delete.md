@@ -1,25 +1,26 @@
-## yba ear azure refresh
+## yba ear ciphertrust delete
 
-Refresh an Azure YugabyteDB Anywhere Encryption In Transit (EAR) configuration
+Delete a YugabyteDB Anywhere CipherTrust encryption at rest configuration
 
 ### Synopsis
 
-Refresh an Azure YugabyteDB Anywhere Encryption In Transit (EAR) configuration
+Delete a CipherTrust encryption at rest configuration in YugabyteDB Anywhere
 
 ```
-yba ear azure refresh [flags]
+yba ear ciphertrust delete [flags]
 ```
 
 ### Examples
 
 ```
-yba ear azure refresh --name <config-name>
+yba ear ciphertrust delete --name <config-name>
 ```
 
 ### Options
 
 ```
-  -h, --help   help for refresh
+  -f, --force   [Optional] Bypass the prompt for non-interactive usage.
+  -h, --help    help for delete
 ```
 
 ### Options inherited from parent commands
@@ -42,5 +43,5 @@ yba ear azure refresh --name <config-name>
 
 ### SEE ALSO
 
-* [yba ear azure](yba_ear_azure.md)	 - Manage a YugabyteDB Anywhere Azure encryption at rest (EAR) configuration
+* [yba ear ciphertrust](yba_ear_ciphertrust.md)	 - Manage a YugabyteDB Anywhere CipherTrust encryption at rest (EAR) configuration
 

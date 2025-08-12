@@ -1,19 +1,19 @@
-## yba ear azure refresh
+## yba ear ciphertrust refresh
 
-Refresh an Azure YugabyteDB Anywhere Encryption In Transit (EAR) configuration
+Refresh a CipherTrust YugabyteDB Anywhere Encryption In Transit (EAR) configuration
 
 ### Synopsis
 
-Refresh an Azure YugabyteDB Anywhere Encryption In Transit (EAR) configuration
+Refresh a CipherTrust YugabyteDB Anywhere Encryption In Transit (EAR) configuration
 
 ```
-yba ear azure refresh [flags]
+yba ear ciphertrust refresh [flags]
 ```
 
 ### Examples
 
 ```
-yba ear azure refresh --name <config-name>
+yba ear ciphertrust refresh --name <config-name>
 ```
 
 ### Options
@@ -42,5 +42,5 @@ yba ear azure refresh --name <config-name>
 
 ### SEE ALSO
 
-* [yba ear azure](yba_ear_azure.md)	 - Manage a YugabyteDB Anywhere Azure encryption at rest (EAR) configuration
+* [yba ear ciphertrust](yba_ear_ciphertrust.md)	 - Manage a YugabyteDB Anywhere CipherTrust encryption at rest (EAR) configuration
 
