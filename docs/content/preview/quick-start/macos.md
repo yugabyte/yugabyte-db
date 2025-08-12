@@ -76,10 +76,6 @@ Before installing YugabyteDB, ensure that you have the following available:
     python --version
     ```
 
-    ```output
-    Python 3.7.3
-    ```
-
 - `wget` or `curl`.
 
     Note that the following instructions use the `wget` command to download files. If you prefer to use `curl` (included in macOS), you can replace `wget` with `curl -O`.
@@ -181,7 +177,7 @@ You download YugabyteDB as follows:
 
 {{< tabpane text=true >}}
 
-{{% tab header="macOS x86" lang="macOS x86" %}}
+{{% tab header="macOS x86" lang="x86" %}}
 
 1. Download the YugabyteDB `tar.gz` file by executing the following `wget` command:
 
@@ -197,7 +193,7 @@ You download YugabyteDB as follows:
 
 {{% /tab %}}
 
-{{% tab header="macOS ARM" lang="macOS ARM" %}}
+{{% tab header="macOS ARM" lang="arm" %}}
 
 1. Download the YugabyteDB `tar.gz` file by executing the following `wget` command:
 
