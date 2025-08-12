@@ -855,7 +855,13 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     @ApiModelProperty() public boolean enableClientToNodeEncrypt = false;
 
-    @ApiModelProperty() public boolean enableVolumeEncryption = false;
+    @Deprecated
+    @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2025.1")
+    @ApiModelProperty(
+        value =
+            "<b style=\"color:#ff0000\">Deprecated since YBA version 2025.1.</b> "
+                + "Use userIntent.deviceInfo.cloudVolumeEncryption instead")
+    public boolean enableVolumeEncryption = false;
 
     @ApiModelProperty() public boolean enableIPV6 = false;
 

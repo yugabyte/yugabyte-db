@@ -61,6 +61,7 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.CertificateParams;
@@ -85,6 +86,7 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.CloudVolumeEncryption;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
@@ -587,6 +589,18 @@ public class NodeManager extends DevopsBase {
     if (params.deviceInfo.volumeSize != null) {
       args.add("--volume_size");
       args.add(Integer.toString(params.deviceInfo.volumeSize));
+    }
+    if (params.deviceInfo.cloudVolumeEncryption != null) {
+      CloudVolumeEncryption paramsCloudVolumeEncryption = params.deviceInfo.cloudVolumeEncryption;
+      if (paramsCloudVolumeEncryption.enableVolumeEncryption) {
+        UUID kmsConfigUUID = params.deviceInfo.cloudVolumeEncryption.kmsConfigUUID;
+        String cmkId = AwsEARServiceUtil.getCMKId(kmsConfigUUID);
+        if (cmkId != null) {
+          String cmkArn = AwsEARServiceUtil.getCMK(kmsConfigUUID, cmkId).getKeyArn();
+          args.add("--cmk_res_name");
+          args.add(cmkArn);
+        }
+      }
     }
     if (includeIopsAndThroughput && params.deviceInfo.storageType != null) {
       if (params.deviceInfo.diskIops != null
@@ -2006,11 +2020,6 @@ public class NodeManager extends DevopsBase {
           }
           addInstanceTags(universe, userIntent, nodeTaskParam, commandArgs);
           if (cloudType.equals(Common.CloudType.aws)) {
-            if (taskParam.getCmkArn() != null) {
-              commandArgs.add("--cmk_res_name");
-              commandArgs.add(taskParam.getCmkArn());
-            }
-
             if (taskParam.ipArnString != null) {
               commandArgs.add("--iam_profile_arn");
               commandArgs.add(taskParam.ipArnString);
