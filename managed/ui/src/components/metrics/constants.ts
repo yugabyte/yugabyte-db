@@ -17,7 +17,8 @@ export const MetricTypes = {
   CONTAINER: 'container',
   TSERVER_TABLE: 'tserver_table',
   LSMDB_TABLE: 'lsmdb_table',
-  OUTLIER_TABLES: 'outlier_tables'
+  OUTLIER_TABLES: 'outlier_tables',
+  OUTLIER_DATABASES: 'outlier_databases'
 } as const;
 
 export const MetricTypesWithOperations = {
@@ -282,6 +283,26 @@ export const MetricTypesWithOperations = {
       'table_mem_tracker_db_memtable',
       'ysql_catalog_cache_misses'
     ]
+  },
+  outlier_databases: {
+    title: 'Outlier Databases',
+    metrics: [
+      'table_read_latency',
+      'table_read_rps',
+      'table_write_latency',
+      'table_write_rps',
+      'table_log_latency',
+      'table_log_ops_second',
+      'table_log_bytes_written',
+      'table_write_lock_latency',
+      'table_seek_next_prev',
+      'table_ops_in_flight',
+      'table_write_rejections',
+      'table_memory_rejections',
+      'table_compaction',
+      'table_block_cache_hit_miss',
+      'table_mem_tracker_db_memtable'
+    ]
   }
 } as const;
 
@@ -298,7 +319,8 @@ export const MetricTypesByOrigin = {
       'master',
       'master_advanced',
       'lsmdb',
-      'outlier_tables'
+      'outlier_tables',
+      'outlier_databases'
     ]
   },
   customer: {
@@ -312,7 +334,8 @@ export const MetricTypesByOrigin = {
       'master',
       'master_advanced',
       'lsmdb',
-      'outlier_tables'
+      'outlier_tables',
+      'outlier_databases'
     ]
   },
   table: {
@@ -348,7 +371,8 @@ export const NodeType = {
 export enum MetricMeasure {
   OVERALL = 'Overall',
   OUTLIER = 'Outlier',
-  OUTLIER_TABLES = 'Outlier_Tables'
+  OUTLIER_TABLES = 'Outlier_Tables',
+  OUTLIER_DATABASES = 'Outlier_Databases'
 }
 
 export const DEFAULT_OUTLIER_NUM_NODES = 3;
