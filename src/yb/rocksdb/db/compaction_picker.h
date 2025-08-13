@@ -303,7 +303,7 @@ class UniversalCompactionPicker : public CompactionPicker {
   static std::vector<std::vector<SortedRun>> CalculateSortedRuns(
       const VersionStorageInfo& vstorage,
       const ImmutableCFOptions& ioptions,
-      uint64_t max_file_size);
+      const std::function<bool(const FileMetaData& file)>& exclude_from_compaction);
 
   // Pick a path ID to place a newly generated file, with its estimated file
   // size.
