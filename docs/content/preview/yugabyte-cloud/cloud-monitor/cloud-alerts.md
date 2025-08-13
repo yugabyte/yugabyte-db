@@ -219,10 +219,17 @@ If your cluster generates this alert but isn't under a very large workload, cont
 
 #### Fix YSQL connection alerts
 
-YugabyteDB Aeon clusters support [15 simultaneous connections](../../cloud-basics/create-clusters-overview/#sizing) per vCPU. YugabyteDB Aeon sends a notification when the number of YSQL connections on any node in the cluster exceeds the threshold, as follows:
+YugabyteDB Aeon clusters support [15 simultaneous connections](../../cloud-basics/create-clusters-overview/#sizing) per vCPU. If built-in Connection Pooling is enabled, then clusters support 10 logical connections per physical connection.
+
+YugabyteDB Aeon sends a notification when the number of YSQL connections on any node in the cluster exceeds the threshold, as follows:
 
 - YSQL connections exceeds 60% of the limit (Warning).
 - YSQL connections exceeds 95% of the limit (Severe).
+
+If Connection Pooling is enabled, the thresholds are as follows:
+
+- YSQL logical connections exceeds 60% of the limit (Warning).
+- YSQL logical connections exceeds 85% of the limit (Severe).
 
 If your cluster experiences frequent spikes in connections, consider optimizing your application's connection code.
 
