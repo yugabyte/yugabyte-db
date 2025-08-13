@@ -36,6 +36,7 @@ dependencies {
 
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.9.3")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 
     testImplementation("org.testcontainers:testcontainers:1.18.0")
     testImplementation("org.postgresql:postgresql:42.6.0")
