@@ -604,6 +604,7 @@ typedef struct {
 static const int32_t kYBCMaxNumDbCatalogVersions = 10000;
 
 typedef enum PgSysTablePrefetcherCacheMode {
+  YB_YQL_PREFETCHER_TRUST_CACHE_AUTH,
   YB_YQL_PREFETCHER_TRUST_CACHE,
   YB_YQL_PREFETCHER_RENEW_CACHE_SOFT,
   YB_YQL_PREFETCHER_RENEW_CACHE_HARD

@@ -259,5 +259,51 @@ void LibPqTestBase::SerializableColoringHelper(int min_duration_seconds) {
   }
 }
 
+// Parse metrics from the JSON output of the /metrics endpoint.
+// Ignores the "sum" field for each metric, as it is empty for the catcache metrics.
+std::vector<YsqlMetric> LibPqTestBase::ParseJsonMetrics(const std::string& metrics_output) {
+  std::vector<YsqlMetric> parsed_metrics;
+
+  // Parse the JSON string
+  rapidjson::Document document;
+  document.Parse(metrics_output.c_str());
+
+  EXPECT_TRUE(document.IsArray() && document.Size() > 0);
+  const auto& server = document[0];
+  EXPECT_TRUE(server.HasMember("metrics") && server["metrics"].IsArray());
+  const auto& metrics = server["metrics"];
+  for (const auto& metric : metrics.GetArray()) {
+    EXPECT_TRUE(
+        metric.HasMember("name") && metric.HasMember("count") && metric.HasMember("sum") &&
+        metric.HasMember("rows"));
+    std::unordered_map<std::string, std::string> labels;
+    if (metric.HasMember("table_name")) {
+      labels["table_name"] = metric["table_name"].GetString();
+    } else {
+      LOG(INFO) << "No table name found for metric: " << metric["name"].GetString();
+    }
+
+    parsed_metrics.emplace_back(
+        metric["name"].GetString(), std::move(labels), metric["count"].GetInt64(),
+        0  // JSON doesn't include timestamp
+    );
+  }
+
+  return parsed_metrics;
+}
+
+// Helper function to get JSON metrics from the /metrics endpoint and parse them into YsqlMetrics.
+std::vector<YsqlMetric> LibPqTestBase::GetJsonMetrics() {
+  ExternalTabletServer* ts = cluster_->tablet_server(0);
+  auto hostport = Format("$0:$1", ts->bind_host(), ts->pgsql_http_port());
+  EasyCurl c;
+  faststring buf;
+
+  auto json_metrics_url =
+      Substitute("http://$0/metrics?reset_histograms=false&show_help=true", hostport);
+  EXPECT_OK(c.FetchURL(json_metrics_url, &buf));
+  return ParseJsonMetrics(buf.ToString());
+}
+
 } // namespace pgwrapper
 } // namespace yb

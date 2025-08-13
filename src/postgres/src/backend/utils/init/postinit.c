@@ -736,7 +736,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 				};
 			YBCStartSysTablePrefetching(TemplateDbOid,
 										catalog_version,
-										YB_YQL_PREFETCHER_TRUST_CACHE);
+										YB_YQL_PREFETCHER_TRUST_CACHE_AUTH);
 		}
 		else
 			YBCStartSysTablePrefetchingNoCache();

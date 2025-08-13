@@ -93,27 +93,6 @@ METRIC_DECLARE_counter(rpc_inbound_calls_created);
 namespace yb {
 namespace pgwrapper {
 
-struct YsqlMetric {
-  std::string name;
-  std::unordered_map<std::string, std::string> labels;
-  int64_t value;
-  int64_t time;
-  std::string type;
-  std::string description;
-
-  YsqlMetric(
-      std::string name, std::unordered_map<std::string, std::string> labels, int64_t value,
-      int64_t time, std::string type = "", std::string description = "")
-      : name(std::move(name)),
-        labels(std::move(labels)),
-        value(value),
-        time(time),
-        type(type),
-        description(description) {}
-};
-
-static std::vector<YsqlMetric> ParseJsonMetrics(const std::string& metrics_output);
-
 class PgLibPqTest : public LibPqTestBase {
  protected:
   typedef std::function<Result<master::TabletLocationsPB>(client::YBClient* client,
@@ -4088,39 +4067,6 @@ static std::vector<YsqlMetric> ParsePrometheusMetrics(const std::string& metrics
           metric_name, std::move(labels), std::stoll(metric_match[3].str()),
           std::stoll(metric_match[4].str()), types[metric_name], descriptions[metric_name]);
     }
-  }
-
-  return parsed_metrics;
-}
-
-// Parse metrics from the JSON output of the /metrics endpoint.
-// Ignores the "sum" field for each metric, as it is empty for the catcache metrics.
-static std::vector<YsqlMetric> ParseJsonMetrics(const std::string& metrics_output) {
-  std::vector<YsqlMetric> parsed_metrics;
-
-  // Parse the JSON string
-  rapidjson::Document document;
-  document.Parse(metrics_output.c_str());
-
-  EXPECT_TRUE(document.IsArray() && document.Size() > 0);
-  const auto& server = document[0];
-  EXPECT_TRUE(server.HasMember("metrics") && server["metrics"].IsArray());
-  const auto& metrics = server["metrics"];
-  for (const auto& metric : metrics.GetArray()) {
-    EXPECT_TRUE(
-        metric.HasMember("name") && metric.HasMember("count") && metric.HasMember("sum") &&
-        metric.HasMember("rows"));
-    std::unordered_map<std::string, std::string> labels;
-    if (metric.HasMember("table_name")) {
-      labels["table_name"] = metric["table_name"].GetString();
-    } else {
-      LOG(INFO) << "No table name found for metric: " << metric["name"].GetString();
-    }
-
-    parsed_metrics.emplace_back(
-        metric["name"].GetString(), std::move(labels), metric["count"].GetInt64(),
-        0  // JSON doesn't include timestamp
-    );
   }
 
   return parsed_metrics;
