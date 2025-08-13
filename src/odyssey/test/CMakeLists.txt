@@ -40,6 +40,10 @@ set(od_test_src
     machinarium/test_connect_cancel1.c
     machinarium/test_accept_timeout.c
     machinarium/test_accept_cancel.c
+    machinarium/test_wait_list_without_notify.c
+    machinarium/test_wait_list_notify_after_wait.c
+    machinarium/test_wait_list_one_producer_multiple_consumers.c
+    machinarium/test_wait_list_one_producer_multiple_consumers_threads.c
     machinarium/test_getaddrinfo0.c
     machinarium/test_getaddrinfo1.c
     machinarium/test_getaddrinfo2.c
