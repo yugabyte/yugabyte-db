@@ -14,10 +14,20 @@ int od_reset(od_server_t *server)
 	od_instance_t *instance = server->global->instance;
 	od_route_t *route = server->route;
 
-	/* server left in copy mode */
-	if (server->is_copy) {
+	/* server left in copy mode
+	 * check that number of received CopyIn/CopyOut Responses 
+	 * is equal to number received CopyDone msgs.
+	 * it is indeed very strange situation if this numbers diffence
+	 * is more that 1 (in absolute value).
+	 *
+	 * However, during client relay step this diffence may be negative,
+	 * if msg pipelining is used by driver.
+	 * Else drop connection, to avoid complexness of state maintenance
+	 */
+	if (server->in_out_response_received !=
+	    server->done_fail_response_received) {
 		od_log(&instance->logger, "reset", server->client, server,
-		       "in copy, closing");
+		       "server left in copy, closing and drop connection");
 		goto drop;
 	}
 
