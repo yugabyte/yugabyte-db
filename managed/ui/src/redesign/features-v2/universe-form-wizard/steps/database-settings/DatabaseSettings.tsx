@@ -83,20 +83,18 @@ export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
         </StyledContent>
       </StyledPanel>
       <Box sx={{ mt: 3 }}></Box>
-      <StyledPanel>
-        <YBAccordion titleContent={t('advFlags')} sx={{ width: '100%' }}>
-          <GFlagsFieldNew
-            control={control}
-            fieldPath={'gFlags'}
-            dbVersion={generalSettings?.databaseVersion ?? ''}
-            isReadReplica={false}
-            editMode={false}
-            isGFlagMultilineConfEnabled={false}
-            isPGSupported={false}
-            isReadOnly={false}
-          />
-        </YBAccordion>
-      </StyledPanel>
+      <YBAccordion titleContent={t('advFlags')} sx={{ width: '100%' }}>
+        <GFlagsFieldNew
+          control={control}
+          fieldPath={'gFlags'}
+          dbVersion={generalSettings?.databaseVersion ?? ''}
+          isReadReplica={false}
+          editMode={false}
+          isGFlagMultilineConfEnabled={false}
+          isPGSupported={false}
+          isReadOnly={false}
+        />
+      </YBAccordion>
     </FormProvider>
   );
 });

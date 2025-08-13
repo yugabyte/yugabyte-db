@@ -10,6 +10,8 @@ import {
   SECURE_WEB_PROXY_SERVER_FIELD,
   SECURE_WEB_PROXY_PORT_FIELD,
   WEB_PROXY_FIELD,
+  WEB_PROXY_PORT_FIELD,
+  WEB_PROXY_SERVER_FIELD,
   BYPASS_PROXY_LIST_FIELD,
   BYPASS_PROXY_LIST_VALUES_FIELD
 } from '@app/redesign/features-v2/universe-form-wizard/fields/FieldNames';
@@ -47,6 +49,7 @@ export const EnableProxyServer: FC<EnableProxyServerProps> = ({ disabled }) => {
 
   const enableProxyValue = useWatch({ name: ENABLE_PROXY_SERVER_FIELD });
   const secureWebProxyValue = useWatch({ name: SECURE_WEB_PROXY_FIELD });
+  const webProxyValue = useWatch({ name: WEB_PROXY_FIELD });
   const byPassProxyValue = useWatch({ name: BYPASS_PROXY_LIST_FIELD });
 
   return (
@@ -112,14 +115,44 @@ export const EnableProxyServer: FC<EnableProxyServerProps> = ({ disabled }) => {
               )}
             </Box>
           </Box>
-          <Box sx={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '16px' }}>
+          <Box
+            sx={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-start', gap: '16px' }}
+          >
             <NextLineIcon />
-            <YBToggleField
-              name={WEB_PROXY_FIELD}
-              control={control}
-              label={t('webProxy')}
-              dataTestId="web-proxy-field"
-            />
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <YBToggleField
+                name={WEB_PROXY_FIELD}
+                control={control}
+                label={t('webProxy')}
+                dataTestId="web-proxy-field"
+              />
+              {webProxyValue && (
+                <Box
+                  sx={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '16px' }}
+                >
+                  <YBInputField
+                    control={control}
+                    name={WEB_PROXY_SERVER_FIELD}
+                    fullWidth
+                    disabled={disabled}
+                    label={t('serverLabel')}
+                    sx={{ width: '444px' }}
+                    placeholder={t('webServerPlacehoder')}
+                    dataTestId="web-proxy-server-field"
+                  />
+                  <YBInputField
+                    control={control}
+                    name={WEB_PROXY_PORT_FIELD}
+                    fullWidth
+                    disabled={disabled}
+                    label={t('portLabel')}
+                    sx={{ width: '96px' }}
+                    placeholder={t('portPlaceholder')}
+                    dataTestId="web-proxy-port-field"
+                  />
+                </Box>
+              )}
+            </Box>
           </Box>
           <Box
             sx={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-start', gap: '16px' }}

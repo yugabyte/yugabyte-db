@@ -3293,6 +3293,7 @@
           "secureWebProxyLabel": "Secure Web Proxy (HTTPS)",
           "serverLabel": "Server",
           "serverPlaceholder": "https://proxy.example.com",
+          "webServerPlacehoder": "http://proxy.example.com",
           "portLabel": "Port",
           "portPlaceholder": "8080",
           "webProxy": "Web Proxy (HTTP)",
