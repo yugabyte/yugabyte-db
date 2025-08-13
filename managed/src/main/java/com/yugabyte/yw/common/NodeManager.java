@@ -2436,8 +2436,11 @@ public class NodeManager extends DevopsBase {
           }
           ChangeInstanceType.Params taskParam = (ChangeInstanceType.Params) nodeTaskParam;
           addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, false);
-          commandArgs.add("--pg_max_mem_mb");
-          commandArgs.add(Integer.toString(taskParam.cgroupSize));
+
+          if (!taskParam.skipAnsiblePlaybookForCGroup) {
+            commandArgs.add("--pg_max_mem_mb");
+            commandArgs.add(Integer.toString(taskParam.cgroupSize));
+          }
 
           if (taskParam.force) {
             commandArgs.add("--force");

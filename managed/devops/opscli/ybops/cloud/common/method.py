@@ -1219,7 +1219,8 @@ class ChangeInstanceTypeMethod(AbstractInstancesMethod):
             self.cloud.start_instance(host_info, server_ports)
             logging.info('Instance {} is started'.format(args.search_pattern))
         # Make sure we are using the updated cgroup value if instance type is changing.
-        self.cloud.setup_ansible(args).run("setup-cgroup.yml", self.extra_vars, host_info)
+        if args.pg_max_mem_mb > 0:
+            self.cloud.setup_ansible(args).run("setup-cgroup.yml", self.extra_vars, host_info)
 
 
 class CronCheckMethod(AbstractInstancesMethod):

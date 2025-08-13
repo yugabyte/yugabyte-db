@@ -12,6 +12,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageOtelCollector;
 import com.yugabyte.yw.common.FileHelperService;
 import com.yugabyte.yw.common.NodeAgentClient;
@@ -728,6 +729,9 @@ public class NodeAgentRpcPayload {
     setupSetupCGroupBuilder.setYbHomeDir(provider.getYbHome());
     if (taskParams instanceof AnsibleConfigureServers.Params) {
       AnsibleConfigureServers.Params params = (AnsibleConfigureServers.Params) taskParams;
+      setupSetupCGroupBuilder.setPgMaxMemMb(params.cgroupSize);
+    } else if (taskParams instanceof ChangeInstanceType.Params) {
+      ChangeInstanceType.Params params = (ChangeInstanceType.Params) taskParams;
       setupSetupCGroupBuilder.setPgMaxMemMb(params.cgroupSize);
     }
 
