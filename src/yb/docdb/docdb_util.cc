@@ -528,10 +528,8 @@ Status DocDBRocksDBUtil::ReinitDBOptions(const TabletId& tablet_id) {
         return delete_marker_retention_time_;
       } ,
       this);
-  regular_db_options_.compaction_file_filter_factory =
-      compaction_file_filter_factory_;
-  regular_db_options_.max_file_size_for_compaction =
-      max_file_size_for_compaction_;
+  regular_db_options_.compaction_file_filter_factory = compaction_file_filter_factory_;
+  regular_db_options_.exclude_from_compaction = exclude_from_compaction_;
   if (!regular_db_) {
     return Status::OK();
   }

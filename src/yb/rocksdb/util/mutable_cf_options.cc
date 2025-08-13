@@ -70,11 +70,11 @@ uint64_t MutableCFOptions::MaxFileSizeForLevel(int level) const {
   return max_file_size[level];
 }
 
-uint64_t MutableCFOptions::MaxFileSizeForCompaction() const {
-  if (!max_file_size_for_compaction) {
-    return std::numeric_limits<uint64_t>::max();
+bool MutableCFOptions::ExcludeFromCompaction(const FileMetaData& file) const {
+  if (!exclude_from_compaction) {
+    return false;
   }
-  return (*max_file_size_for_compaction)();
+  return (*exclude_from_compaction)(file);
 }
 
 uint64_t MutableCFOptions::MaxGrandParentOverlapBytes(int level) const {
