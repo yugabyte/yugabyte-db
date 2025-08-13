@@ -35,4 +35,9 @@ mm_retcode_t mm_channelfast_write(mm_channelfast_t *, mm_msg_t *);
 
 mm_msg_t *mm_channelfast_read(mm_channelfast_t *, uint32_t);
 
+static inline int mm_channelfast_get_size(mm_channelfast_t *chan)
+{
+	return chan->incoming_count;
+}
+
 #endif /* MM_CHANNEL_FAST_H */

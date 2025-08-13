@@ -28,7 +28,7 @@ struct od_route {
 	kiwi_params_lock_t params;
 	int64_t tcp_connections;
 	int last_heartbeat;
-	machine_channel_t *wait_bus;
+	machine_wait_list_t *wait_bus;
 	pthread_mutex_t lock;
 
 	od_error_logger_t *err_logger;
@@ -89,7 +89,7 @@ static inline void od_route_free(od_route_t *route)
 
 	kiwi_params_lock_free(&route->params);
 	if (route->wait_bus)
-		machine_channel_free(route->wait_bus);
+		machine_wait_list_destroy(route->wait_bus);
 	if (route->stats.enable_quantiles) {
 		od_stat_free(&route->stats);
 	}
@@ -109,7 +109,7 @@ static inline od_route_t *od_route_allocate()
 	if (route == NULL)
 		return NULL;
 	od_route_init(route, true);
-	route->wait_bus = machine_channel_create();
+	route->wait_bus = machine_wait_list_create();
 	if (route->wait_bus == NULL) {
 		od_route_free(route);
 		return NULL;
@@ -215,10 +215,9 @@ static inline void od_route_reload_pool(od_route_t *route)
 
 static inline int od_route_wait(od_route_t *route, uint32_t time_ms)
 {
-	machine_msg_t *msg;
-	msg = machine_channel_read(route->wait_bus, time_ms);
-	if (msg) {
-		machine_msg_free(msg);
+	int rc;
+	rc = machine_wait_list_wait(route->wait_bus, time_ms);
+	if (rc == 0) {
 		return 0;
 	}
 	return -1;
@@ -226,12 +225,7 @@ static inline int od_route_wait(od_route_t *route, uint32_t time_ms)
 
 static inline int od_route_signal(od_route_t *route)
 {
-	machine_msg_t *msg;
-	msg = machine_msg_create(0);
-	if (msg == NULL) {
-		return -1;
-	}
-	machine_channel_write(route->wait_bus, msg);
+	machine_wait_list_notify(route->wait_bus);
 	return 0;
 }
 
