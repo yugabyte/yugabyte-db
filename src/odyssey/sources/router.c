@@ -824,7 +824,6 @@ static od_server_t *yb_get_idle_server_to_close(od_router_t *router,
 			 * shutting down this server.
 			 */
 			if (idle_server) {
-				od_route_unlock(route);
 				od_router_unlock(router);
 				return idle_server;
 			}
