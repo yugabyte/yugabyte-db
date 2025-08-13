@@ -58,7 +58,7 @@ The following table describes the type of data that is collected during a migrat
 
 ## Prepare for migration assessment
 
-Before you can assess your migration, do the following:
+Before you run a migration assessment, do the following:
 
 1. [Install yb-voyager](../../install-yb-voyager/).
 1. Prepare the source database as follows: <br>
@@ -143,7 +143,9 @@ Replace `<voyager-version>` with your installed Voyager version, for example, `2
 
 Assess your migration using the following steps:
 
-1. Voyager supports two primary modes for conducting migration assessments, depending on your access to the source database as follows:<br><br>
+1. Run the assessment.
+
+    Voyager supports two primary modes for conducting migration assessments, depending on your access to the source database as follows:<br><br>
 
     {{< tabpane text=true >}}
 

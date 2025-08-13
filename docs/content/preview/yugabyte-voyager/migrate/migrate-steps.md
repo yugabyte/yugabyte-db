@@ -122,7 +122,7 @@ If you want yb-voyager to connect to the target YugabyteDB database over SSL, re
 
 yb-voyager keeps all of its migration state, including exported schema and data, in a local directory called the _export directory_.
 
-Before starting migration, you should create the export directory on a file system that has enough space to keep the entire source database. Ideally, create this export directory inside a parent folder named after your migration for better organization. You need to provide the full path to the export directory in the `export-dir` parameter of your [configuration file](#setup-a-configuration-file), or in the `--export-dir` flag when running `yb-voyager` commands.
+Before starting migration, you should create the export directory on a file system that has enough space to keep the entire source database. Ideally, create this export directory inside a parent folder named after your migration for better organization. You need to provide the full path to the export directory in the `export-dir` parameter of your [configuration file](#set-up-a-configuration-file), or in the `--export-dir` flag when running `yb-voyager` commands.
 
 ```sh
 mkdir -p $HOME/<migration-name>/export-dir
@@ -329,7 +329,7 @@ Run the command as follows:
 yb-voyager export schema --config-file <path-to-config-file>
 ```
 
-You can specify additional `export schema` parameters in the `export-schema` section of the configuration file. For more details, refer to the [offline-migration.yaml](<https://github.com/yugabyte/yb-voyager/blob/{{>< yb-voyager-release >}}/yb-voyager/config-templates/offline-migration.yaml) template.
+You can specify additional `export schema` parameters in the `export-schema` section of the configuration file. For more details, refer to the [offline-migration.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/offline-migration.yaml) template.
 
   {{% /tab %}}
 
@@ -370,7 +370,7 @@ Run the command as follows:
 yb-voyager analyze-schema --config-file <path-to-config-file>
 ```
 
-You can specify additional `analyze-schema` parameters in the `analyze-schema` section of the configuration file. For more details, refer to the [offline-migration.yaml](<https://github.com/yugabyte/yb-voyager/blob/{{>< yb-voyager-release >}}/yb-voyager/config-templates/offline-migration.yaml) template.
+You can specify additional `analyze-schema` parameters in the `analyze-schema` section of the configuration file. For more details, refer to the [offline-migration.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/offline-migration.yaml) template.
 
  {{% /tab %}}
 

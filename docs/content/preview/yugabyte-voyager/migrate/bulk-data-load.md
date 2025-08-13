@@ -57,7 +57,7 @@ DROP USER ybvoyager;
 
 yb-voyager keeps all of its migration state, including exported schema and data, in a local directory called the _export directory_.
 
-Before starting migration, you should create the export directory on a file system that has enough space to keep the entire source database. Ideally, create this export directory inside a parent folder named after your migration for better organization. You need to provide the full path to the export directory in the `export-dir` parameter of your [configuration file](#setup-a-configuration-file), or in the `--export-dir` flag when running `yb-voyager` commands.
+Before starting migration, you should create the export directory on a file system that has enough space to keep the entire source database. Ideally, create this export directory inside a parent folder named after your migration for better organization. You need to provide the full path to the export directory in the `export-dir` parameter of your [configuration file](#set-up-a-configuration-file), or in the `--export-dir` flag when running `yb-voyager` commands.
 
 ```sh
 mkdir -p $HOME/<migration-name>/export-dir
