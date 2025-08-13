@@ -197,6 +197,28 @@ extern int yb_reorderbuffer_max_changes_in_memory;
  */
 extern int yb_walsender_poll_sleep_duration_empty_ms;
 
+/*
+ * Ease transition to YSQL by reducing read restart errors for new apps.
+ *
+ * This option doesn't affect SERIALIZABLE isolation level since
+ * SERIALIZABLE can't face read restart errors anyway. Also, does not affect
+ * fast path writes.
+ *
+ * See the help text for yb_read_after_commit_visibility GUC for more
+ * information.
+ *
+ * XXX: This GUC is meant as a workaround only by relaxing the
+ * read-after-commit-visibility guarantee. Ideally, user should
+ * (a) Fix their apps to handle read restart errors
+ * (b) Or use accurate clocks provided by time_source=clockbound
+ */
+typedef enum {
+  YB_STRICT_READ_AFTER_COMMIT_VISIBILITY = 0,
+  YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY = 1,
+  YB_DEFERRED_READ_AFTER_COMMIT_VISIBILITY = 2,
+} YbcReadAfterCommitVisibilityEnum;
+
+/* GUC for the enum above. */
 extern int yb_read_after_commit_visibility;
 
 extern bool yb_refresh_matview_in_place;

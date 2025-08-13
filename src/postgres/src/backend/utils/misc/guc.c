@@ -504,6 +504,7 @@ static struct config_enum_entry shared_memory_options[] = {
 const struct config_enum_entry yb_read_after_commit_visibility_options[] = {
   {"strict", YB_STRICT_READ_AFTER_COMMIT_VISIBILITY, false},
   {"relaxed", YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY, false},
+  {"deferred", YB_DEFERRED_READ_AFTER_COMMIT_VISIBILITY, false},
   {NULL, 0, false}
 };
 
@@ -5917,19 +5918,20 @@ static struct config_enum ConfigureNamesEnum[] =
 		{
 			"yb_read_after_commit_visibility", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("Control read-after-commit-visibility guarantee."),
-			gettext_noop(
-				"This GUC is intended as a crutch for users migrating from PostgreSQL and new to"
-				" read restart errors. Users can now largely avoid these errors when"
-				" read-after-commit-visibility guarantee is not a strong requirement."
-				" This option cannot be set from within a transaction block."
-				" Configure one of the following options:"
-				" (a) strict: Default Behavior. The read-after-commit-visibility guarantee is"
-				" maintained by the database. However, users may see read restart errors that"
-				" show \"ERROR:  Query error: Restart read required at: ...\". The database"
-				" attempts to retry on such errors internally but that is not always possible."
-				" (b) relaxed: With this option, the read-after-commit-visibility guarantee is"
-				" relaxed. Read only statements/transactions do not see read restart errors but"
-				" may miss recent updates with staleness bounded by clock skew."
+			gettext_noop("This GUC is intended as a crutch for users migrating from PostgreSQL and new to"
+						 " read restart errors. Users can now largely avoid these errors when"
+						 " read-after-commit-visibility guarantee is not a strong requirement."
+						 " This option cannot be set from within a transaction block."
+						 " Configure one of the following options:"
+						 " (a) strict: Default Behavior. The read-after-commit-visibility guarantee is"
+						 " maintained by the database. However, users may see read restart errors that"
+						 " show \"ERROR:  Query error: Restart read required at: ...\". The database"
+						 " attempts to retry on such errors internally but that is not always possible."
+						 " (b) relaxed: With this option, the read-after-commit-visibility guarantee is"
+						 " relaxed. Read only statements/transactions do not see read restart errors but"
+						 " may miss recent updates with staleness bounded by clock skew."
+						 " (c) deferred: Defers read point. Higher latency but read-after-commit-visibility"
+						 " guarantee is maintained."
 			),
 			0
 		},

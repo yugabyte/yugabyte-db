@@ -351,7 +351,23 @@ Status PgTxnManager::CalculateIsolation(
           : (pg_isolation_level_ == PgIsolationLevel::READ_COMMITTED
               ? IsolationLevel::READ_COMMITTED
               : IsolationLevel::SNAPSHOT_ISOLATION);
-  const bool defer = read_only_ && deferrable_;
+  // Users can use the deferrable mode via:
+  // (1) DEFERRABLE READ ONLY setting in transaction blocks
+  // (2) SET yb_read_after_commit_visibility = 'deferred';
+  //
+  // The feature doesn't take affect for non-read only serializable isolation txns
+  // and fast-path transactions because they don't face read restart errors in the first place.
+  //
+  // (1) Serializable isolation txns don't face read restart errors because
+  //    they use the latest timestamp for reading.
+  // (2) Fast-path txns don't face read restart errors because
+  //    they pick a read time after conflict resolution.
+  // We already skip (2) because CalculateIsolation is not called for fast-path
+  //    (i.e., NON_TRANSACTIONAL).
+  need_defer_read_point_ =
+      ((read_only_ && deferrable_)
+        || yb_read_after_commit_visibility == YB_DEFERRED_READ_AFTER_COMMIT_VISIBILITY)
+      && docdb_isolation != IsolationLevel::SERIALIZABLE_ISOLATION;
 
   VLOG_TXN_STATE(2) << "DocDB isolation level: " << IsolationLevel_Name(docdb_isolation);
 
@@ -368,9 +384,7 @@ Status PgTxnManager::CalculateIsolation(
   } else if (read_only_op &&
              (docdb_isolation == IsolationLevel::SNAPSHOT_ISOLATION ||
               docdb_isolation == IsolationLevel::READ_COMMITTED)) {
-    if (defer) {
-      need_defer_read_point_ = true;
-    }
+    // Preserves isolation_level_ as NON_TRANSACTIONAL
   } else {
     if (!use_saved_priority_) {
       priority_ = NewPriority(txn_priority_requirement);
@@ -479,6 +493,7 @@ void PgTxnManager::ResetTxnAndSession() {
   snapshot_read_time_is_set_ = false;
   read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
   read_only_stmt_ = false;
+  need_defer_read_point_ = false;
 }
 
 Status PgTxnManager::EnterSeparateDdlTxnMode() {
@@ -571,9 +586,14 @@ Status PgTxnManager::SetupPerformOptions(
     options->set_restart_transaction(true);
     need_restart_ = false;
   }
+  // Two ways to defer read point:
+  // 1. SET TRANSACTION READ ONLY DEFERRABLE
+  // 2. SET yb_read_after_commit_visibility = 'deferred'
   if (need_defer_read_point_) {
     options->set_defer_read_point(true);
-    need_defer_read_point_ = false;
+    // Setting read point at pg client. Reset other time manipulations.
+    ensure_read_time = EnsureReadTimeIsSet::kFalse;
+    read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
   }
   if (!IsDdlMode()) {
     // The state in read_time_manipulation_ is only for kPlain transactions. And if YSQL switches to
@@ -588,7 +608,7 @@ Status PgTxnManager::SetupPerformOptions(
     // Do not clamp in the serializable case since
     // - SERIALIZABLE reads do not pick read time until later.
     // - SERIALIZABLE reads do not observe read restarts anyways.
-    if (yb_read_after_commit_visibility
+    if (!IsDdlMode() && yb_read_after_commit_visibility
           == YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY
         && isolation_level_ != IsolationLevel::SERIALIZABLE_ISOLATION)
       // We clamp uncertainty window when
@@ -706,8 +726,8 @@ Status PgTxnManager::CheckSnapshotTimeConflict() const {
   SCHECK(
       yb_read_time == 0, NotSupported,
       "Cannot set both 'transaction snapshot' and 'yb_read_time' in the same transaction.");
-  SCHECK(
-      yb_read_after_commit_visibility != YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY, NotSupported,
+  SCHECK_EQ(
+      yb_read_after_commit_visibility, YB_STRICT_READ_AFTER_COMMIT_VISIBILITY, NotSupported,
       "Cannot set both 'transaction snapshot' and 'yb_read_after_commit_visibility' in the same "
       "transaction.");
   return Status::OK();
