@@ -4,10 +4,6 @@ headerTitle: Best practices
 linkTitle: Best practices
 description: Tips and tricks to run YugabyteDB deployments
 headcontent: Tips and tricks to run YugabyteDB deployments
-menu:
-  preview:
-    identifier: best-practices-operations
-    parent: launch-and-manage
 type: indexpage
 ---
 

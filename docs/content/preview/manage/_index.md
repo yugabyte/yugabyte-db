@@ -4,11 +4,6 @@ headerTitle: Manage YugabyteDB
 linkTitle: Manage
 description: Managing YugabyteDB deployments
 headcontent: Manage your YugabyteDB deployment
-menu:
-  preview:
-    identifier: manage
-    parent: launch-and-manage
-    weight: 50
 type: indexpage
 ---
 

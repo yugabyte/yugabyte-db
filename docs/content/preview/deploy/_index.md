@@ -8,11 +8,6 @@ aliases:
   - /deploy/
   - /preview/architecture/layered-architecture/
   - /preview/architecture/overview/
-menu:
-  preview:
-    identifier: deploy
-    parent: launch-and-manage
-    weight: 10
 type: indexpage
 ---
 
