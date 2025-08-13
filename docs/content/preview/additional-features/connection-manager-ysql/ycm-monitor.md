@@ -20,26 +20,26 @@ Use the following metrics to monitor connections when using YSQL Connection Mana
 | :--- | :--- |
 | database_name (DB OID) | Specifies information regarding the database being used in each pool. |
 | user_name (User OID) | Specifies information regarding the user being used in each pool. |
-| active_logical_connections | Specifies on a pool-by-pool basis the number of active logical (client) connections.<br>An "active" logical connection corresponds to a session in an active transaction on a physical connection. |
-| queued_logical_connections | Specifies on a pool-by-pool basis the number of queued logical connections.<br>A "queued" logical connection corresponds to a session that is queued up to attach to a physical connection. |
-| waiting_logical_connections | Specifies on a pool-by-pool basis the number of waiting/idle logical connections.<br>A session that is neither queued to attach to a physical connection nor currently using a physical connection is in a "waiting" state. |
-| active_physical_connections | Specifies on a pool-by-pool basis the number of active physical (server) connections.<br>(At the start of a transaction) After a server connection is picked up from the connection pool (or freshly created) to serve a logical connection, it is marked as "active". |
-| idle_physical_connections | Specifies on a pool-by-pool basis the number of idle physical connections.<br>(At the end of a transaction) Once a server connection detaches from its logical connection and returns to the physical connection pool, it is marked as "idle". |
-| sticky_connections | Specifies on a pool-by-pool basis the number of [sticky connections](../ycm-setup/#sticky-connections).<br>Physical connections that do not return to the connection pool at the end of a transaction remain stuck to the logical connection for the lifetime of the session. |
-| avg_wait_time_ns | Specifies on a pool-by-pool basis the time (in ns) on average clients have to be queued before attaching to a physical connection. |
+| active_logical_connections | Specifies on a pool-by-pool basis the number of active logical (client) connections.<br>An "active" client connection corresponds to a session in an active transaction on a server connection. |
+| queued_logical_connections | Specifies on a pool-by-pool basis the number of queued client connections.<br>A "queued" client connection corresponds to a session that is queued up to attach to a server connection. |
+| waiting_logical_connections | Specifies on a pool-by-pool basis the number of waiting/idle client connections.<br>A session that is neither queued to attach to a server connection nor currently using a server connection is in a "waiting" state. |
+| active_physical_connections | Specifies on a pool-by-pool basis the number of active physical (server) connections.<br>(At the start of a transaction) After a server connection is picked up from the connection pool (or freshly created) to serve a client connection, it is marked as "active". |
+| idle_physical_connections | Specifies on a pool-by-pool basis the number of idle server connections.<br>(At the end of a transaction) Once a server connection detaches from its client connection and returns to the server connection pool, it is marked as "idle". |
+| sticky_connections | Specifies on a pool-by-pool basis the number of [sticky connections](../ycm-setup/#sticky-connections).<br>server connections that do not return to the connection pool at the end of a transaction remain stuck to the client connection for the lifetime of the session. |
+| avg_wait_time_ns | Specifies on a pool-by-pool basis the time (in ns) on average clients have to be queued before attaching to a server connection. |
 | qps / tps | Specifies on a pool-by-pool basis some basic performance metrics.<br>qps = queries per second<br>tps = transactions per second |
 
-### Logical and physical connections
+### Logical and server connections
 
-The sum of waiting, queued, and active logical connections provides the number of client connections that are currently open.
+The sum of waiting, queued, and active client connections provides the number of client connections that are currently open.
 
-The sum of idle and active physical connections provides the number of server-side backend processes that have been spawned.
+The sum of idle and active server connections provides the number of server-side backend processes that have been spawned.
 
-The number of active logical connections will always be equal to the number of active physical connections.
+The number of active client connections will always be equal to the number of active server connections.
 
-### Pool use (idle physical connections/waiting logical connections)
+### Pool use (idle server connections/waiting client connections)
 
-In general, you can have idle physical connections, as they can be used for connection burst scenarios. Configure the [timeout for idle connections](../ycm-setup/#configure) using the `ysql_conn_mgr_idle_time` flag, depending on your use case.
+In general, you can have idle server connections, as they can be used for connection burst scenarios. Configure the [timeout for idle connections](../ycm-setup/#configure) using the `ysql_conn_mgr_idle_time` flag, depending on your use case.
 
 You can reduce `ysql_max_connections` such that the active to idle ratio is higher, provided that idle connections are not completely extinguished in the long run.
 
