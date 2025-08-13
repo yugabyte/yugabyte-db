@@ -251,8 +251,8 @@ class CompactionTest : public YBTest {
     workload_->set_num_read_threads(kNumReadThreads);
     workload_->set_num_tablets(num_tablets);
     workload_->set_transactional(isolation_level, transaction_pool_.get());
-    workload_->set_ttl(ttl_to_use());
-    workload_->set_table_ttl(table_ttl_to_use());
+    workload_->set_ttl(TtlSec());
+    workload_->set_table_ttl(TableTtlSec());
     workload_->set_sequential_write(sequential_write());
     workload_->Setup();
 
@@ -264,12 +264,12 @@ class CompactionTest : public YBTest {
  protected:
 
   // -1 implies no ttl.
-  virtual int ttl_to_use() {
+  virtual int TtlSec() {
     return -1;
   }
 
   // -1 implies no table ttl.
-  virtual int table_ttl_to_use() {
+  virtual int TableTtlSec() {
     return -1;
   }
 
@@ -694,7 +694,7 @@ TEST_F(CompactionTest, FilesOverMaxSizeWithTableTTLDoNotGetAutoCompacted) {
 
   SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
   // Change the table to have a default time to live.
-  ASSERT_OK(ChangeTableTTL(workload_->table_name(), 1000));
+  ASSERT_OK(ChangeTableTTL(workload_->table_name(), /* ttl_sec = */ 1000));
   ASSERT_OK(WriteAtLeastFilesPerDb(kNumFilesToWrite));
 
   auto dbs = GetAllRocksDbs(cluster_.get(), false);
@@ -715,7 +715,7 @@ TEST_F(CompactionTest, FilesOverMaxSizeWithTableTTLStillGetManualCompacted) {
 
   SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
   // Change the table to have a default time to live.
-  ASSERT_OK(ChangeTableTTL(workload_->table_name(), 1000));
+  ASSERT_OK(ChangeTableTTL(workload_->table_name(), /* ttl_sec = */ 1000));
   ASSERT_OK(WriteAtLeastFilesPerDb(10));
 
   ASSERT_OK(ExecuteManualCompaction());
@@ -740,6 +740,31 @@ TEST_F(CompactionTest, YB_DISABLE_TEST_ON_MACOS(MaxFileSizeIgnoredIfNoTableTTL))
   auto dbs = GetAllRocksDbs(cluster_.get(), false);
   for (auto* db : dbs) {
     ASSERT_LT(db->GetCurrentVersionNumSSTFiles(), kNumFilesToWrite);
+  }
+}
+
+// Covers https://github.com/yugabyte/yugabyte-db/issues/26014.
+// In case of flakiness on MAC build consider using of YB_DISABLE_TEST_ON_MACOS.
+TEST_F(CompactionTest, MaxFileSizeIgnoredIfValueTTLHigherThanTableTTL) {
+  constexpr int kValueLargeTTLSec = 5 * 24 * 3600;
+  const int kNumFilesToWrite = 10;
+
+  // Auto compactions will be triggered every kNumFilesToWrite files written.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = kNumFilesToWrite;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_file_size_for_compaction) = 10_KB;
+
+  SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
+  workload_->set_ttl(kValueLargeTTLSec);
+
+  ASSERT_OK(ChangeTableTTL(workload_->table_name(), /* ttl_sec = */ 1000));
+  ASSERT_OK(WriteAtLeastFilesPerDb(kNumFilesToWrite));
+  ASSERT_OK(WaitForNumCompactionsPerDb(1));
+
+  auto dbs = GetAllRocksDbs(cluster_.get(), false);
+  for (auto* db : dbs) {
+    const auto num_files = db->GetCurrentVersionNumSSTFiles();
+    LOG(INFO) << "Num files after compaction: " << num_files;
+    ASSERT_LT(num_files, kNumFilesToWrite);
   }
 }
 
@@ -1244,9 +1269,9 @@ TEST_F(ScheduledFullCompactionsTest, AutoCompactionsBasedOnStatsDelete) {
 }
 
 TEST_F(ScheduledFullCompactionsTest, AutoCompactionsBasedOnStatsTTL) {
-  const auto kTTLSec = 5;
+  constexpr auto kTTLSec = 5;
   SetupWorkload(IsolationLevel::NON_TRANSACTIONAL, 1 /* num_tablets */);
-  workload_->set_ttl(kTTLSec * MonoTime::kMillisecondsPerSecond);
+  workload_->set_ttl(kTTLSec);
 
   const auto delete_fn = [&]() -> Status {
     // Wait for TTL seconds to make all rows obsolete.
@@ -1261,7 +1286,7 @@ TEST_F(ScheduledFullCompactionsTest, AutoCompactionsBasedOnStatsTTL) {
 
 class CompactionTestWithTTL : public CompactionTest {
  protected:
-  int ttl_to_use() override {
+  int TtlSec() override {
     return kTTLSec;
   }
   const int kTTLSec = 1;
@@ -1350,10 +1375,10 @@ class CompactionTestWithFileExpiration : public CompactionTest {
   void AssertNoFilesExpired();
   void AssertAllFilesExpired();
   bool CheckAtLeastFileExpirationsPerDb(size_t num_expirations);
-  int table_ttl_to_use() override {
+  int TableTtlSec() override {
     return kTableTTLSec;
   }
-  const int kTableTTLSec = 1;
+  static constexpr int kTableTTLSec = 1;
 };
 
 size_t CompactionTestWithFileExpiration::GetTotalSizeOfDbs() {
@@ -1472,7 +1497,7 @@ TEST_F(CompactionTestWithFileExpiration, FileExpirationAfterExpiry) {
 TEST_F(CompactionTestWithFileExpiration, ValueTTLOverridesTableTTL) {
   SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
   // Set the value-level TTL to too high to expire.
-  workload_->set_ttl(10000000);
+  workload_->set_ttl(/* ttl_sec = */ 1000);
 
   ASSERT_OK(WriteAtLeastFilesPerDb(10));
   LogSizeAndFilesInDbs();
@@ -1489,7 +1514,7 @@ TEST_F(CompactionTestWithFileExpiration, ValueTTLWillNotOverrideTableTTLWhenTabl
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_file_expiration_ignore_value_ttl) = true;
   SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
   // Set the value-level TTL to too high to expire.
-  workload_->set_ttl(10000000);
+  workload_->set_ttl(/* ttl_sec = */ 1000);
 
   ASSERT_OK(WriteAtLeastFilesPerDb(10));
   LogSizeAndFilesInDbs();
@@ -1505,7 +1530,7 @@ TEST_F(CompactionTestWithFileExpiration, ValueTTLWillNotOverrideTableTTLWhenTabl
 TEST_F(CompactionTestWithFileExpiration, ValueTTLWillOverrideTableTTLWhenFlagSet) {
   SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
   // Change the table TTL to a large value that won't expire.
-  ASSERT_OK(ChangeTableTTL(workload_->table_name(), 1000000));
+  ASSERT_OK(ChangeTableTTL(workload_->table_name(), /* ttl_sec = */ 1000000));
   // Set the value-level TTL that will expire.
   const auto kValueExpiryTimeSec = 1;
   workload_->set_ttl(kValueExpiryTimeSec);
@@ -1586,7 +1611,7 @@ TEST_F(CompactionTestWithFileExpiration, FileThatNeverExpires) {
 
   // Write 10 more files that would expire if not for the non-expiring file previously written.
   rocksdb_listener_->Reset();
-  workload_->set_ttl(-1);
+  workload_->set_ttl(/* ttl_sec = */ -1);
   ASSERT_OK(WriteAtLeastFilesPerDb(kNumFilesToWrite));
 
   LOG(INFO) << "Sleeping to expire files";
@@ -1622,7 +1647,7 @@ TEST_F(CompactionTestWithFileExpiration, TableTTLChangesWillChangeWhetherFilesEx
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
   SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
   // Change the table TTL to a large value that won't expire.
-  ASSERT_OK(ChangeTableTTL(workload_->table_name(), 1000000));
+  ASSERT_OK(ChangeTableTTL(workload_->table_name(), /* ttl_sec = */ 1000000));
 
   ASSERT_OK(WriteAtLeastFilesPerDb(10));
   LogSizeAndFilesInDbs();
@@ -1674,7 +1699,7 @@ TEST_F(CompactionTestWithFileExpiration, FewerFilesThanCompactionTriggerCanExpir
   ASSERT_TRUE(CheckAtLeastFileExpirationsPerDb(1));
 }
 
-// In the past, we have observed behavior of one disporportionately large file
+// In the past, we have observed behavior of one disproportionately large file
 // being unable to be directly deleted after it expires (and preventing subsequent
 // files from also being deleted). This test verifies that large files will not
 // prevent expiration.
@@ -1683,7 +1708,7 @@ TEST_F(CompactionTestWithFileExpiration, LargeFileDoesNotPreventExpiration) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger)
       = kNumFilesTriggerCompaction;
   SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
-  // Write a disporportionately large amount of data, then compact into one file.
+  // Write a disproportionately large amount of data, then compact into one file.
   ASSERT_OK(WriteAtLeast(1000_KB));
   ASSERT_OK(ExecuteManualCompaction());
   LogSizeAndFilesInDbs();
@@ -1737,7 +1762,7 @@ TEST_F(CompactionTestWithFileExpiration, TTLExpiryDisablesScheduledFullCompactio
   ASSERT_TRUE(CheckEachDbHasAtLeastNumFiles(kNumFilesToWrite));
 
   // Remove table TTL and try again.
-  ASSERT_OK(ChangeTableTTL(workload_->table_name(), 0));
+  ASSERT_OK(ChangeTableTTL(workload_->table_name(), /* ttl_sec = */ 0));
   compact_manager->ScheduleFullCompactions();
   ASSERT_OK(WaitForNumCompactionsPerDb(1));
   ASSERT_TRUE(CheckEachDbHasExactlyNumFiles(1));
@@ -1755,7 +1780,7 @@ class FileExpirationWithRF3 : public CompactionTestWithFileExpiration {
   int NumTabletServers() override {
     return 3;
   }
-  int ttl_to_use() override {
+  int TtlSec() override {
     return kTTLSec;
   }
   const int kTTLSec = 1;
@@ -1797,10 +1822,10 @@ void FileExpirationWithRF3::ExpirationWhenReplicated(bool withValueTTL) {
   SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
   if (withValueTTL) {
     // Change the table TTL to a large value that won't expire.
-    ASSERT_OK(ChangeTableTTL(workload_->table_name(), 1000000));
+    ASSERT_OK(ChangeTableTTL(workload_->table_name(), /* ttl_sec = */ 1000000));
   } else {
     // Set workload to not have value TTL.
-    workload_->set_ttl(-1);
+    workload_->set_ttl(/* ttl_sec = */ -1);
   }
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_file_expiration_value_ttl_overrides_table_ttl) = withValueTTL;
 

@@ -830,12 +830,9 @@ auto MakeMemTableFlushFilterFactory(const F& f) {
 }
 
 template <class F>
-auto MakeMaxFileSizeWithTableTTLFunction(const F& f) {
-  // Trick to get type of max_file_size_for_compaction field.
-  typedef typename decltype(
-      static_cast<rocksdb::Options*>(nullptr)->max_file_size_for_compaction)::element_type
-      MaxFileSizeWithTableTTLFunction;
-  return std::make_shared<MaxFileSizeWithTableTTLFunction>(f);
+auto MakeExcludeFromCompactionFunction(const F& f) {
+  using ExcludeFromCompaction = decltype(std::declval<rocksdb::Options>().exclude_from_compaction);
+  return std::make_shared<typename ExcludeFromCompaction::element_type>(f);
 }
 
 struct Tablet::IntentsDbFlushFilterState {
@@ -991,12 +988,30 @@ Status Tablet::OpenKeyValueTablet() {
 
   // Use a function that checks the table TTL before returning a value for max file size
   // for compactions.
-  rocksdb_options.max_file_size_for_compaction = MakeMaxFileSizeWithTableTTLFunction([this] {
-    if (HasActiveTTLFileExpiration()) {
-      return FLAGS_rocksdb_max_file_size_for_compaction;
+  rocksdb_options.exclude_from_compaction = MakeExcludeFromCompactionFunction(
+    [this](const rocksdb::FileMetaData& file) {
+      if (!HasActiveTTLFileExpiration()) {
+        return false;
+      }
+
+      auto status = docdb::CheckTtlFileExpirationConsistency(
+          file, retention_policy_->GetRetentionDirective().table_ttl);
+      if (!status.ok()) {
+        LOG_WITH_PREFIX(INFO)
+            << "File TTL expiry cannot be applied for the file "
+            << file.ToString() << ", status: " << status;
+        return false;
+      }
+
+      // Exclude based on file size.
+      const auto max_file_size = FLAGS_rocksdb_max_file_size_for_compaction;
+      const bool need_exclude = max_file_size && (file.fd.GetTotalFileSize() > max_file_size);
+      LOG_IF_WITH_PREFIX(INFO, need_exclude)
+          << "File " << file.ToString() << " excluded from the compaction based on "
+          << "File TTL expiration and max file size of " << max_file_size << " bytes";
+      return need_exclude;
     }
-    return std::numeric_limits<uint64_t>::max();
-  });
+  );
 
   rocksdb_options.disable_auto_compactions = true;
   rocksdb_options.level0_slowdown_writes_trigger = std::numeric_limits<int>::max();
