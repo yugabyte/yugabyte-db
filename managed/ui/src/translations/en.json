@@ -572,7 +572,10 @@
         "aarch64": "AArch6 (ARM)",
         "linuxVersion": "Linux Version",
         "showRetired": "Show retired recommendations",
-        "cooldownHours": "Resizing device within cooldown period of 6 hours causes resize to happen only by moving to different nodes"
+        "cooldownHours": "Resizing device within cooldown period of 6 hours causes resize to happen only by moving to different nodes",
+         "EBSVolume": {
+          "title": "EBS Volume Encryption"
+        }
       },
       "securityConfig": {
         "title": "Security Configurations",

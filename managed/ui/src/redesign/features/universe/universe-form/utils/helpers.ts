@@ -1,4 +1,4 @@
-import _ from 'lodash';
+import _, { omit } from 'lodash';
 import { browserHistory } from 'react-router';
 import { toast } from 'react-toastify';
 import {
@@ -27,6 +27,7 @@ import {
 } from './constants';
 import { api } from './api';
 import { getPlacementsFromCluster } from '../form/fields/PlacementsField/PlacementsFieldHelper';
+
 import {
   compareYBSoftwareVersions,
   isVersionStable
@@ -40,6 +41,7 @@ import {
 } from '../../../../helpers/constants';
 import { YBProvider } from '../../../../../components/configRedesign/providerRedesign/types';
 import { ProviderCode } from '../../../../../components/configRedesign/providerRedesign/constants';
+import { isDefinedNotNull } from '../../../../../utils/ObjectUtils';
 
 export const transitToUniverse = (universeUUID?: string) =>
   universeUUID
@@ -377,6 +379,10 @@ export const getUserIntent = (
 
   if (instanceConfig.enableYCQLAuth && instanceConfig.ycqlPassword)
     intent.ycqlPassword = instanceConfig.ycqlPassword;
+
+  if(!instanceConfig.deviceInfo?.cloudVolumeEncryption?.enableVolumeEncryption || !isDefinedNotNull(instanceConfig.deviceInfo?.cloudVolumeEncryption?.kmsConfigUUID)){
+    intent.deviceInfo = omit(intent.deviceInfo, 'cloudVolumeEncryption');
+  }
 
   return intent;
 };
