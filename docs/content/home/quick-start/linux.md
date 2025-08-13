@@ -119,7 +119,7 @@ To create a single-node local cluster with a replication factor (RF) of 1, run t
 
 Note: By default, yugabyted on Linux-based machines binds to the internal IP address. If it fails to do so, set the --advertise_address flag.
 
-{{< readfile "/preview/quick-start/include-connect.md" >}}
+{{< readfile "/home/quick-start/include-connect.md" >}}
 
 ## Build an application
 
@@ -128,7 +128,7 @@ Applications connect to and interact with YugabyteDB using API client libraries 
 ### Choose your language
 
 <details><summary>Choose the language you want to use to build your application.</summary><br>
-{{< readfile "/preview/quick-start-yugabytedb-managed/quick-start-buildapps-include.md" >}}
+{{< readfile "/home/quick-start-yugabytedb-managed/quick-start-buildapps-include.md" >}}
 </details>
 
 ## Migrate from PostgreSQL

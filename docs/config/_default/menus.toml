@@ -368,7 +368,7 @@
   weight = 4
   identifier = "quick-start"
   pre = "<i class='icon-quick-start'></i>"
-  url = "/preview/quick-start-yugabytedb-managed/"
+  url = "/home/quick-start-yugabytedb-managed/"
   [home.params]
     classes = "no-transform"
     showSection = true
@@ -1529,7 +1529,7 @@
   name = "Quick Start"
   weight = 4
   identifier = "quick-start"
-  url = "/preview/quick-start-yugabytedb-managed/"
+  url = "/home/quick-start-yugabytedb-managed/"
   ["v2025.1".params]
     classes = "separator"
     showSection = true
