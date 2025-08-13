@@ -55,6 +55,8 @@ export const CONST_VALUES = {
   JWT_JWKS_URL: 'jwt_jwks_url'
 };
 
+export const SENSITIVE_INFO = 'sensitive_info';
+
 export const GFLAG_EDIT = 'EDIT';
 
 export const nodeInClusterStates = [
