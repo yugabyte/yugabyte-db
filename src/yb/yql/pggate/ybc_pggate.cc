@@ -385,6 +385,8 @@ void YBCStartSysTablePrefetchingImpl(std::optional<PrefetcherOptions::CachingInf
 
 PrefetchingCacheMode YBCMapPrefetcherCacheMode(YbcPgSysTablePrefetcherCacheMode mode) {
   switch (mode) {
+    case YB_YQL_PREFETCHER_TRUST_CACHE_AUTH:
+      return PrefetchingCacheMode::TRUST_CACHE_AUTH;
     case YB_YQL_PREFETCHER_TRUST_CACHE:
       return PrefetchingCacheMode::TRUST_CACHE;
     case YB_YQL_PREFETCHER_RENEW_CACHE_SOFT:
