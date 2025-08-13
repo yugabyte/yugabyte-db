@@ -7777,7 +7777,7 @@ select tableoid::regclass, * FROM remp2 order by 1, 2, 3;
 
 -- Copying into foreign partitions directly should work as well
 copy remp1 from stdin;
-WARNING:  Batched COPY is not supported on foreign tables. Defaulting to using one transaction for the entire copy.
+WARNING:  ROWS_PER_TRANSACTION is not supported on foreign tables. Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 SELECT relid::regclass, command, yb_status, type, bytes_processed, bytes_total,
           tuples_processed, tuples_excluded FROM pg_stat_progress_copy;
@@ -7815,7 +7815,7 @@ select pg_sleep(1);
 
 -- Test basic functionality
 copy rem2 from stdin;
-WARNING:  Batched COPY is not supported on foreign tables. Defaulting to using one transaction for the entire copy.
+WARNING:  ROWS_PER_TRANSACTION is not supported on foreign tables. Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 select * from rem2 order by f1;
  f1 | f2
@@ -7837,10 +7837,10 @@ select pg_sleep(1);
 
 -- check constraint is enforced on the remote side, not locally
 copy rem2 from stdin;
-WARNING:  Batched COPY is not supported on foreign tables. Defaulting to using one transaction for the entire copy.
+WARNING:  ROWS_PER_TRANSACTION is not supported on foreign tables. Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 copy rem2 from stdin; -- ERROR
-WARNING:  Batched COPY is not supported on foreign tables. Defaulting to using one transaction for the entire copy.
+WARNING:  ROWS_PER_TRANSACTION is not supported on foreign tables. Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 ERROR:  new row for relation "loc2" violates check constraint "loc2_f1positive"
 DETAIL:  Failing row contains (-1, xyzzy).
@@ -7884,7 +7884,7 @@ select pg_sleep(1);
 (1 row)
 
 copy rem2 from stdin;
-WARNING:  Batched COPY is not supported on foreign tables. Defaulting to using one transaction for the entire copy.
+WARNING:  ROWS_PER_TRANSACTION is not supported on foreign tables. Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 select * from rem2 order by f1;
  f1 | f2
@@ -7913,7 +7913,7 @@ select pg_sleep(1);
 
 -- The new values are concatenated with ' triggered !'
 copy rem2 from stdin;
-WARNING:  Batched COPY is not supported on foreign tables. Defaulting to using one transaction for the entire copy.
+WARNING:  ROWS_PER_TRANSACTION is not supported on foreign tables. Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 select * from rem2 order by f1;
  f1 |       f2
@@ -7935,7 +7935,7 @@ select pg_sleep(1);
 
 -- Nothing happens
 copy rem2 from stdin;
-WARNING:  Batched COPY is not supported on foreign tables. Defaulting to using one transaction for the entire copy.
+WARNING:  ROWS_PER_TRANSACTION is not supported on foreign tables. Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 select * from rem2 order by f1;
  f1 | f2
@@ -7956,7 +7956,7 @@ select pg_sleep(1);
 
 -- The new values are concatenated with ' triggered !'
 copy rem2 from stdin;
-WARNING:  Batched COPY is not supported on foreign tables. Defaulting to using one transaction for the entire copy.
+WARNING:  ROWS_PER_TRANSACTION is not supported on foreign tables. Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 select * from rem2 order by f1;
  f1 |       f2
@@ -7978,7 +7978,7 @@ select pg_sleep(2);
 
 -- Nothing happens
 copy rem2 from stdin;
-WARNING:  Batched COPY is not supported on foreign tables. Defaulting to using one transaction for the entire copy.
+WARNING:  ROWS_PER_TRANSACTION is not supported on foreign tables. Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 select * from rem2 order by f1;
  f1 | f2
@@ -8004,7 +8004,7 @@ select pg_sleep(1);
 (1 row)
 
 copy rem2 from stdin;
-WARNING:  Batched COPY is not supported on foreign tables. Defaulting to using one transaction for the entire copy.
+WARNING:  ROWS_PER_TRANSACTION is not supported on foreign tables. Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 select * from rem2 order by f1;
  f1 |       f2
@@ -8025,7 +8025,7 @@ begin;
 create foreign table rem3 (f1 int, f2 text)
 	server loopback options(table_name 'loc3');
 copy rem3 from stdin;
-WARNING:  Batched COPY is not supported on foreign tables. Defaulting to using one transaction for the entire copy.
+WARNING:  ROWS_PER_TRANSACTION is not supported on foreign tables. Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 commit;
 select * from rem3 order by f1;

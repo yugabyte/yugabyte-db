@@ -25,6 +25,7 @@ import com.yugabyte.util.PSQLException;
 import java.sql.BatchUpdateException;
 import java.sql.Connection;
 import java.sql.Statement;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -410,5 +411,30 @@ public class TestPgBatch extends BasePgSQLTest {
     testMultipleStatementsPerQueryHelper(true, false, RC);
     testMultipleStatementsPerQueryHelper(true, false, RR);
     testMultipleStatementsPerQueryHelper(true, false, SR);
+  }
+
+  @Test
+  public void testCopyFromInBatch() throws Throwable {
+    IsolationLevel isolationLevel = RR;
+    setUpTable(0, isolationLevel);
+    String absFilePath = getAbsFilePath("batch-of-copyfrom.txt");
+    createCopyFileInTmpDir(absFilePath, 25, Arrays.asList("k", "v"));
+    try (Connection c = getConnectionBuilder().connect();
+         Statement s = c.createStatement()) {
+      s.addBatch(String.format(
+          "COPY t FROM \'%s\' WITH (FORMAT CSV, HEADER, ROWS_PER_TRANSACTION 10)", absFilePath));
+      s.addBatch(String.format(
+          "COPY t FROM \'%s\' WITH (FORMAT CSV, HEADER, ROWS_PER_TRANSACTION 10)", absFilePath));
+      try {
+        s.executeBatch();
+        fail("Should face duplicate key value violates unique constraint error");
+      } catch (BatchUpdateException e) {
+        LOG.info(e.toString());
+      }
+      // ROWS_PER_TRANSACTION is ignored when using batch execution. Both COPY statements are
+      // executed in a single transaction. So, duplicate key errors in the second COPY statement
+      // lead to the whole transaction being rolled back.
+      assertRowSet(s, "SELECT * FROM t", new HashSet<>());
+    }
   }
 }
