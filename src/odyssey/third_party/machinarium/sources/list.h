@@ -52,4 +52,6 @@ static inline mm_list_t *mm_list_pop(mm_list_t *list)
 #define mm_list_foreach_safe(H, I, N) \
 	for (I = (H)->next; I != H && (N = I->next); I = N)
 
+#define mm_list_peek(H, type) mm_container_of((H).next, type, link)
+
 #endif /* MM_LIST_H */
