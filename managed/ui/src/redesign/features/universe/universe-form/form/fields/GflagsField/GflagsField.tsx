@@ -26,9 +26,10 @@ import { GFlagRowProps } from '../../../../../../../components/universes/Univers
 import { useWhenMounted } from '../../../../../../helpers/hooks';
 import { validateGFlags } from '../../../../../../../actions/universe';
 import { Gflag } from '../../../utils/dto';
-import { MULTILINE_GFLAGS_ARRAY } from '../../../../../../../utils/UniverseUtils';
+import { MULTILINE_GFLAGS_ARRAY, SENSITIVE_INFO } from '../../../../../../../utils/UniverseUtils';
 import {
   GFlagGroupObject,
+  GFlagValues,
   getFlagsByGroupName
 } from '../../../../universe-actions/edit-gflags/GflagHelper';
 import { api, QUERY_KEY } from '../../../../../../utils/api';
@@ -41,7 +42,7 @@ import Plus from '../../../../../../assets/plus.svg';
 import MoreIcon from '../../../../../../assets/ellipsis.svg';
 import '../../../../../../../components/universes/UniverseForm/UniverseForm.scss';
 
-/* TODO : 
+/* TODO :
 1. Rewrite this file with proper types
 2. Integrate with react-query
 3. Rewrite AddGflag and EditorGflag with typescript and react-query
@@ -126,6 +127,7 @@ export const GFlagsField = ({
     name: fieldPath as any,
     control
   });
+  const [modalProps, setModalProps] = useState<any>(null);
   const [selectedProps, setSelectedProps] = useState<SelectedOption | null>(null);
   const [toggleModal, setToggleModal] = useState(false);
   const [isJWKSKeyDialogOpen, setIsJWKSKeyDialogOpen] = useState<boolean>(false);
@@ -145,6 +147,11 @@ export const GFlagsField = ({
     }
   );
 
+  const { data: gflagValues } = useQuery<GFlagValues[]>([QUERY_KEY.getGflagGroups], () =>
+    api.fetchGFlags(dbVersion, selectedProps?.server ?? TSERVER)
+  );
+
+  // selectedProps
   const pgGroupFlags = isPGSupported
     ? getFlagsByGroupName(pgFlags, GFLAG_GROUPS.ENHANCED_POSTGRES_COMPATIBILITY)
     : {};
@@ -199,7 +206,7 @@ export const GFlagsField = ({
       const currentArr = fields;
       const duplicateArr = _.remove(currentArr, (e: any) => flagArr.some((f) => f.Name === e.Name));
       const transformedArr = flagArr.map((e) => {
-        const dupEl = duplicateArr.find((f: any) => f.Name === e.Name) || {};
+        const dupEl = duplicateArr.find((f: any) => f.Name === e.Name) ?? {};
         return { ...dupEl, ...e };
       });
       const payload = { gflags: [...currentArr, ...transformedArr] };
@@ -380,7 +387,20 @@ export const GFlagsField = ({
       mode: EDIT
     };
 
-    if (isReadOnly) return <span className="cell-font">{valueExists ? `${cell}` : ''}</span>;
+    const isPasswordField = gflagValues?.find(
+      (gflag: GFlagValues) => gflag.name === row?.Name && gflag.tags?.includes(SENSITIVE_INFO)
+    );
+
+    if (isReadOnly)
+      return (
+        <span className="cell-font">
+          {valueExists
+            ? isPasswordField
+              ? '*'.repeat(Math.min(String(cell).length, 15))
+              : `${cell}`
+            : ''}
+        </span>
+      );
     if (valueExists) {
       modalProps = {
         ...modalProps,
@@ -407,7 +427,9 @@ export const GFlagsField = ({
 
       return (
         <div className={clsx('table-val-column', isError && 'error-val-column')}>
-          <div className="cell-font">{`${cell}`}</div>
+          <div className="cell-font">
+            {isPasswordField ? '*'.repeat(Math.min(String(cell).length, 15)) : `${cell}`}
+          </div>
           <div className="icons">
             <div className="more-icon">
               <Button
@@ -587,7 +609,7 @@ export const GFlagsField = ({
           t('universeForm.gFlags.addFlag');
     }
 
-    const disableForm = _.get(pgGroupFlags, selectedProps?.flagname || '', false);
+    const disableForm = _.get(pgGroupFlags, selectedProps?.flagname ?? '', false);
     return (
       <YBModalForm
         title={modalTitle}
