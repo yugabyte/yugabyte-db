@@ -19,6 +19,12 @@ It is strongly recommended that you take appropriate measures as outlined in the
 {{%table%}}
 | Advisory&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Synopsis | Product | Affected Versions | Date |
 | :------------------------------- | :------- | :-----: | :---------------: | :--- |
+| {{<ta 26440>}}
+| Transparent Huge Pages causing Memory Issues
+| {{<product "ybdb,yba">}}
+| {{<release "All">}}
+| {{<nobreak "12 August 2025">}}
+|
 | {{<ta 25106>}}
 | TServer fatals with schema packing not found error
 | {{<product "ysql">}}
