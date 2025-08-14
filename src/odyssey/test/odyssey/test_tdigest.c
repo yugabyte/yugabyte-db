@@ -27,7 +27,7 @@ void monotonicity_test()
 	td_histogram_t *histogram = td_new(100);
 	unsigned short xseed[3] = { 123, 42, 21 };
 	for (size_t i = 0; i < 100000; ++i) {
-		td_add(histogram, pg_erand48(xseed), 1);
+		td_add(histogram, mm_pg_erand48(xseed), 1);
 	}
 	double last_quantile = -1;
 	double last_x = -1;
