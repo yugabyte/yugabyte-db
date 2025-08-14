@@ -29,6 +29,9 @@ struct od_router {
 	od_list_t servers;
 };
 
+#define CONTROL_CONN_USER "control_connection_user"
+#define CONTROL_CONN_DB "control_connection_db"
+
 extern bool version_matching;
 extern bool version_matching_connect_higher_version;
 
