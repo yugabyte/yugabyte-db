@@ -2938,12 +2938,30 @@ int yb_execute_on_control_connection(od_client_t *client,
 		 server, "attached to server %s%.*s", server->id.id_prefix,
 		 (int)sizeof(server->id.id), server->id.id);
 
+	int rc = -1;
+
+	/*
+	 * YB: check for open socket here. Exit if closed.
+	 * This check is an auth-specific check to allow early exit
+	 * in case a client times out during authentication, where we
+	 * skip requisitioning a physical backend to save time
+	 * (and avoid a "cascading timeout" situation).
+	 */
+	bool client_timed_out = false;
+	if (yb_machine_io_is_socket_closed(client->io.io)) {
+		od_debug(
+			&instance->logger, "control connection", client, NULL,
+			"socket is closed. Queued client timed out. Aborting auth");
+		rc = NOT_OK_RESPONSE;
+		goto cleanup;
+	}
+
 	/* connect to server, if necessary */
-	int rc;
 	if (server->io.io == NULL) {
 		rc = od_backend_connect(server, "control connection", NULL,
 					control_conn_client);
 		if (rc == NOT_OK_RESPONSE) {
+			/* [#28252] TODO: Merge the code below into the cleanup label */
 			od_debug(&instance->logger, "control connection",
 				 control_conn_client, server,
 				 "failed to acquire backend connection: %s",
@@ -2961,6 +2979,8 @@ int yb_execute_on_control_connection(od_client_t *client,
 	 * close the backend connection as we don't want to reuse machines in this
 	 * pool if auth-backend is enabled.
 	 */
+
+cleanup:
 	if (instance->config.yb_use_auth_backend)
 		server->offline = true;
 	od_router_detach(router, control_conn_client);
@@ -2968,7 +2988,7 @@ int yb_execute_on_control_connection(od_client_t *client,
 	od_client_free_extended(control_conn_client);
 
 	if (rc == -1)
-		return -1;
+		return NOT_OK_RESPONSE;
 
 	return OK_RESPONSE;
 
@@ -3061,15 +3081,6 @@ int yb_auth_via_auth_backend(od_client_t *client)
 
 	/* attach */
 	status = od_router_attach(router, control_conn_client, false, client);
-	od_server_t *server;
-	server = control_conn_client->server;
-	server->yb_auth_backend = true;
-
-	if (status == YB_OD_ROUTER_NO_CLIENT) {
-		od_debug(&instance->logger, "auth", control_conn_client,
-			 NULL, "client already timed out");
-		goto cleanup;
-	}
 	if (status != OD_ROUTER_OK) {
 		od_debug(
 			&instance->logger, "auth backend",
@@ -3081,9 +3092,30 @@ int yb_auth_via_auth_backend(od_client_t *client)
 		goto failed_to_acquire_auth_backend;
 	}
 
+	od_server_t *server;
+	server = control_conn_client->server;
+	server->yb_auth_backend = true;
+
 	od_debug(&instance->logger, "auth backend", control_conn_client,
 		 server, "attached to auth backend %s%.*s", server->id.id_prefix,
 		 (int)sizeof(server->id.id), server->id.id);
+	
+	int rc;
+
+	/*
+	 * YB: check for open socket here. Exit if closed.
+	 * This check is an auth-specific check to allow early exit
+	 * in case a client times out during authentication, where we
+	 * skip requisitioning a physical backend to save time
+	 * (and avoid a "cascading timeout" situation).
+	 */
+	if (yb_machine_io_is_socket_closed(client->io.io)) {
+		od_debug(&instance->logger, "auth backend",
+			client, NULL,
+			"socket is closed. Queued client timed out. Aborting auth");
+		rc = NOT_OK_RESPONSE;
+		goto cleanup;
+	}
 
 	/*
 	 * Set the client user and database for authentication. Once, the control
@@ -3104,7 +3136,6 @@ int yb_auth_via_auth_backend(od_client_t *client)
 #endif
 
 	/* connect to server */
-	int rc;
 	assert(server->io.io == NULL);
 	control_conn_client->yb_external_client = client;
 	control_conn_client->yb_is_authenticating = true;
@@ -3154,9 +3185,6 @@ cleanup:
 		return NOT_OK_RESPONSE;
 	}
 
-	if (status == YB_OD_ROUTER_NO_CLIENT) {
-		return NOT_OK_RESPONSE;
-	}
 	return OK_RESPONSE;
 
 failed_to_acquire_auth_backend:
