@@ -886,15 +886,7 @@ od_router_status_t od_router_attach(od_router_t *router,
 		 "client_for_router logical client version = %d",
 		 client_for_router->logical_client_version);
 
-	bool client_timed_out = false;
 	for (;;) {
-		/* check for open socket here. Exit if closed */
-		if (yb_machine_io_is_socket_closed(external_client->io.io)) {
-			od_debug(&instance->logger, "router-attach",
-				external_client, NULL,
-				"Socket is closed. Queued client timed out. Aborting auth");
-			client_timed_out = true;
-		}
 		if (version_matching) {
 
 			server = yb_od_server_pool_idle_version_matching(
@@ -1123,9 +1115,6 @@ attach:
     od_stat_t *stats = &route->stats;
     od_atomic_u64_add(&stats->wait_time, time_taken_to_attach_server_ns);
 
-	if (client_timed_out) {
-		return YB_OD_ROUTER_NO_CLIENT;
-	}
 	return OD_ROUTER_OK;
 }
 
