@@ -1129,10 +1129,48 @@ attach:
 	return OD_ROUTER_OK;
 }
 
+void yb_signal_all_routes(od_router_t *router, od_route_t *detached_route,
+    bool enable_multi_route_pool)
+{
+    if (!enable_multi_route_pool) {
+        if (detached_route == NULL) {
+            return;
+        }
+        od_route_lock(detached_route);
+        int signal = detached_route->client_pool.count_queue > 0;
+        if (signal) {
+            od_route_signal(detached_route);
+        }
+		od_route_unlock(detached_route);
+        return;
+    }
+
+    // TODO (#28097): It can be CPU intensive for large number of routes. As every time there is a
+    // detach all other pool will try to attach if they are waiting for an server to attach.
+    od_router_lock(router);
+
+    od_route_pool_t *pool = &router->route_pool;
+    od_list_t *i;
+    od_list_foreach(&pool->list, i)
+    {
+        od_route_t *route = od_container_of(i, od_route_t, link);
+
+        od_route_lock(route);
+        int signal = route->client_pool.count_queue > 0;
+        if (signal) {
+            od_route_signal(route);
+        }
+        od_route_unlock(route);
+    }
+
+    od_router_unlock(router);
+}
+
 void od_router_detach(od_router_t *router, od_client_t *client)
 {
 	(void)router;
 	od_route_t *route = client->route;
+	od_instance_t *instance = router->global->instance;
 	assert(route != NULL);
 
 	/* detach from current machine event loop */
@@ -1197,13 +1235,10 @@ void od_router_detach(od_router_t *router, od_client_t *client)
 	}
 	od_client_pool_set(&route->client_pool, client, OD_CLIENT_PENDING);
 
-	int signal = route->client_pool.count_queue > 0;
 	od_route_unlock(route);
 
 	/* notify waiters */
-	if (signal) {
-		od_route_signal(route);
-	}
+	yb_signal_all_routes(router, route, instance->config.yb_enable_multi_route_pool);
 }
 
 void od_router_close(od_router_t *router, od_client_t *client)
