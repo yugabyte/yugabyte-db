@@ -316,7 +316,7 @@ Improper use can compromise replication consistency and lead to data divergence.
 
 - CDC
 
-  For moving data out of YugabyteDB, set up CDC on the source. CDC on the target is not supported.
+  For moving data out of YugabyteDB, set up CDC on the xCluster source. CDC on the xCluster target is not supported.
 
 #### Transactional Automatic mode
 
@@ -375,7 +375,7 @@ Improper use can compromise replication consistency and lead to data divergence.
 
 - CDC
 
-  For moving data out of YugabyteDB, set up CDC on the source. CDC on the target is not supported.
+  For moving data out of YugabyteDB, set up CDC on the xCluster source. CDC on the xCluster target is not supported.
 
 #### Bi-directional
 

@@ -58,7 +58,7 @@ Wait for any pending updates to propagate to B:
 The lag and skew values might be non-zero as they are estimates based on the last time the tablets were polled. Because no new writes can occur during this period, you can be certain that no data is lost within this timeframe.
 {{< /note >}}
 
-If you are using CDC to move data out of YugabyteDB, as no new writes are occurring, you must also wait for the CDC target to catch up. Check that the lag is zero (or close to zero), and verify the event count metrics of the connector being streamed is 0.
+If you are using CDC to move data out of YugabyteDB, while no new writes are occurring, you must also wait for the CDC target to catch up. Check that the lag is zero (or close to zero), and verify the event count metrics of the connector being streamed are 0.
 
 ### Fix up sequences and serial columns
 
@@ -86,4 +86,3 @@ delete CDC on A (that is, de-configure CDC by deleting publications and slots), 
 The old Standby (B) is now the new Primary universe, and the old Primary (A) is the new Standby universe. Update the application connection strings to point to the new Primary universe (B).
 
 If you are using CDC to move data out of YugabyteDB, point your CDC target to pull from B (the newly promoted database) by starting the connector in `snapshot.mode=never`.
-

@@ -221,7 +221,7 @@ You can fix CDC in either of the following ways:
 
 - Clear your CDC target of all data, and start CDC on B from a fresh copy, making another full copy.
 
-Then point your CDC target to pull from B (the newly promoted database).
+    Then point your CDC target to pull from B (the newly promoted database).
 
 ### Switch applications to B
 

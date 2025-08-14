@@ -332,32 +332,32 @@ ERROR:  Partition table public.orders is a colocated table hence registering it 
 
 Depending on the type of xCluster deployment, pgPartman may be used.
 
-Note that if you are [using pg_cron to manage tasks](#maintain-partitions-using-pg-cron), you must instal it on a separate database that is not part of the xCluster configuration.
+Note that if you are [using pg_cron to manage tasks](#maintain-partitions-using-pg-cron), you must install it on a separate database that is not part of the xCluster configuration.
 
 For more information on xCluster limitations, refer to [Limitations](../../../../architecture/docdb-replication/async-replication/#limitations).
 
 #### Transactional xCluster and xCluster DR
 
-**Automatic DDL change handling mode**
+**Automatic mode**
 
-The pgPartman maintenance cron job can only be enabled on the primary. Disable it on the replica.
+The pgPartman maintenance cron job can only be enabled on the xCluster primary. Disable it on the xCluster standby.
 
 During disaster recovery switchover (or failover and repair):
 
-1. Disable the pgPartman cron job on the original primary.
-1. Enable the pgPartman cron job the new primary.
+1. Disable the pgPartman cron job on the original xCluster primary before initiating switchover.
+1. After switchover or failover, enable the pgPartman cron job on the new primary.
 
-**Semi-automatic DDL change handling mode**
+**Semi-automatic mode**
 
 At setup, do the following:
 
-1. On the source cluster, enable the pg_partman extension and the pg_audit extension.
-1. On the target cluster, enable the pg_partman extension, and disable the pg_partman maintenance cron job.
+1. On the primary universe, enable the pg_partman extension and the pg_audit extension.
+1. On the standby universe, enable the pg_partman extension, and disable the pg_partman maintenance cron job.
 
-During normal operations, as DDLs occur on the source cluster, do the following:
+During normal operations, as DDLs occur on the primary universe, do the following:
 
-1. Monitor the pg_audit log on the source cluster to detect partition-related DDLs.
-1. When any partition-related DDLs are detected, manually run them also on the target cluster; this must be done within the WAL log retention time (which is 4 hours by default).
+1. Monitor the pg_audit log on the primary universe to detect partition-related DDLs.
+1. When any partition-related DDLs are detected, manually run them also on the standby universe; this must be done within the WAL log retention time (which is 4 hours by default).
 
 **Manual DDL change handling mode**
 
@@ -365,9 +365,9 @@ pgPartman is not supported.
 
 #### Non-transactional xCluster (including bi-directional)
 
-pgPartman is not recommended. 
+pgPartman is not recommended.
 
-Because pgPartman creates and drops tables, if you were to try to run pgPartman on both clusters, the partitions might not be created at the same time on both sides. Even if they were identical, manual work is needed to add the new tables and remove dropped tables from the xCluster configuration.
+Because pgPartman creates and drops tables, if you were to try to run pgPartman on both universes, the partitions might not be created at the same time on both sides. Even if they were identical, manual work is needed to add the new tables and remove dropped tables from the xCluster configuration.
 
 If you were to try to run pgPartman on just one side, then any tables created or dropped by pgPartman would have to be created or dropped on the target, which would require difficult manual administration.
 
@@ -375,22 +375,22 @@ Although not recommended, it is possible to use pgPartman using the following st
 
 **Setup**
 
-1. On one cluster (call this cluster A):
+1. On one universe (call this universe A):
 
     - Enable the pg_partman extension.
     - Enable the pg_audit extension.
 
-    Note: in a uni-directional replication configuration, choose cluster A to be your source cluster. In a bi-directional replication configuration, both clusters act as source and target (usually for distinctly different tables, however). 
+    Note: in a uni-directional replication configuration, choose universe A to be your source universe. In a bi-directional replication configuration, both universes act as source and target (usually for distinctly different tables, however).
 
-1. On the other cluster (call this cluster B):
+1. On the other universe (call this universe B):
 
     - Enable the pg_partman extension.
     - Disable the pg_partman maintenance cron job.
 
 **Operation**
 
-During normal operations, as DDLs occur on the source cluster, monitor the pg_audit log (on the source cluster) to detect partition-related DDLs.
+During normal operations, as DDLs occur on the source universe, monitor the pg_audit log (on the source universe) to detect partition-related DDLs.
 
-When you detect partition-related DDLs, follow the instructions in [Handling DDL changes](../../../../deploy/multi-dc/async-replication/async-deployment/#handling-ddl-changes) to issue the same DDL command on the replica cluster.
+When you detect partition-related DDLs, follow the instructions in [Handling DDL changes](../../../../deploy/multi-dc/async-replication/async-deployment/#handling-ddl-changes) to issue the same DDL command on the replica universe.
 
 Note that the sequence of operations can vary by DDL command (for example, CREATE partition and DROP partition require different follow-up actions in different orders).
