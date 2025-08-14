@@ -65,7 +65,7 @@ public class NodeAgentPoller {
   private static final String UPGRADER_POOL_NAME = "node_agent.upgrader";
   private static final int MAX_FAILED_CONN_COUNT = 50;
 
-  private static final String NODE_AGENT_VERSION_MISMATCH_NAME = "yba_nodeagent_version_mismatch";
+  private static final String NODE_AGENT_VERSION_MISMATCH_NAME = "ybp_nodeagent_version_mismatch";
   private static final Gauge NODE_AGENT_VERSION_MISMATCH_GAUGE =
       Gauge.build(NODE_AGENT_VERSION_MISMATCH_NAME, "Has Node Agent version mismatched")
           .labelNames(
@@ -74,7 +74,7 @@ public class NodeAgentPoller {
           .register(CollectorRegistry.defaultRegistry);
 
   private static final String NODE_AGENT_SERVER_CERT_EXPIRING_NAME =
-      "yba_nodeagent_server_cert_expiring";
+      "ybp_nodeagent_server_cert_expiring";
   private static final Gauge NODE_AGENT_SERVER_CERT_EXPIRING_GAUGE =
       Gauge.build(NODE_AGENT_SERVER_CERT_EXPIRING_NAME, "Is Node Agent server cert expiring")
           .labelNames(
@@ -82,7 +82,7 @@ public class NodeAgentPoller {
               KnownAlertLabels.NODE_ADDRESS.labelName())
           .register(CollectorRegistry.defaultRegistry);
 
-  private static final String NODE_AGENT_CONNECTION_NAME = "yba_nodeagent_connection";
+  private static final String NODE_AGENT_CONNECTION_NAME = "ybp_nodeagent_connection";
   private static final Gauge NODE_AGENT_CONNECTION_GAUGE =
       Gauge.build(NODE_AGENT_CONNECTION_NAME, "Is Node Agent connection successful")
           .labelNames(
@@ -168,7 +168,9 @@ public class NodeAgentPoller {
           pollerExecutor.submit(this);
         } catch (RejectedExecutionException e) {
           stateRef.set(PollerTaskState.IDLE);
-          log.error("Failed to schedule poller task for {}", param.getNodeAgentUuid());
+          log.warn(
+              "Failed to schedule poller task for {}. Will be retried later",
+              param.getNodeAgentUuid());
         }
       }
     }
@@ -247,9 +249,12 @@ public class NodeAgentPoller {
       if (stateRef.compareAndSet(PollerTaskState.SCHEDULED, PollerTaskState.RUNNING)) {
         try {
           NodeAgent.maybeGet(param.getNodeAgentUuid()).ifPresent(n -> poll(n));
-        } catch (Exception e) {
+        } catch (Throwable t) {
           log.error(
-              "Error in polling for node {} - {}", param.getNodeAgentUuid(), e.getMessage(), e);
+              "Error in polling for node {} - {}", param.getNodeAgentUuid(), t.getMessage(), t);
+          if (t instanceof Error) {
+            throw (Error) t;
+          }
         } finally {
           stateRef.set(PollerTaskState.IDLE);
         }

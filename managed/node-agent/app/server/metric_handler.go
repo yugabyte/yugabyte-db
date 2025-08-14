@@ -37,9 +37,17 @@ func UnaryMetricHandler() grpc.UnaryServerInterceptor {
 			if strings.HasSuffix(info.FullMethod, "/Ping") {
 				util.FileLogger().
 					Debugf(ctx, "Received request at %s from %s", info.FullMethod, p.Addr.String())
+				defer func() {
+					util.FileLogger().
+						Debugf(ctx, "Completed request at %s from %s", info.FullMethod, p.Addr.String())
+				}()
 			} else {
 				util.FileLogger().
 					Infof(ctx, "Received request at %s from %s", info.FullMethod, p.Addr.String())
+				defer func() {
+					util.FileLogger().
+						Infof(ctx, "Completed request at %s from %s", info.FullMethod, p.Addr.String())
+				}()
 			}
 		}
 		sName, mName := serviceMethodNames(info.FullMethod)
@@ -68,6 +76,10 @@ func StreamMetricHandler() grpc.StreamServerInterceptor {
 		if ok {
 			util.FileLogger().
 				Infof(ctx, "Received request at %s from %s", info.FullMethod, p.Addr.String())
+			defer func() {
+				util.FileLogger().
+					Infof(ctx, "Completed request at %s from %s", info.FullMethod, p.Addr.String())
+			}()
 		}
 		sName, mName := serviceMethodNames(info.FullMethod)
 		startTime := time.Now()
