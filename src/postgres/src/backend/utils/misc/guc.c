@@ -3426,6 +3426,18 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_invalidate_table_cache_entry", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable invalidation of individual table cache entry on "
+						 "catalog cache refresh."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_invalidate_table_cache_entry,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_extended_sql_codes", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("Allow to return to the client SQL status codes "
 						 "defined by YugabyteDB (YBxxx). Those codes are used "
@@ -7252,6 +7264,8 @@ static const char *const YbDbAdminVariables[] = {
 	"yb_make_next_ddl_statement_nonincrementing",
 	"yb_tcmalloc_sample_period",
 	"yb_binary_restore",
+	"yb_speculatively_execute_pl_statements",
+	"yb_whitelist_extra_statements_for_pl_speculative_execution",
 };
 
 

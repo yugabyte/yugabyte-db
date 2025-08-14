@@ -16,6 +16,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.Optional;
@@ -47,6 +48,7 @@ public class ManageOtelCollector extends NodeTaskBase {
   public static class Params extends NodeTaskParams {
     public boolean installOtelCollector;
     public AuditLogConfig auditLogConfig;
+    public MetricsExportConfig metricsExportConfig;
     public Map<String, String> gflags;
     public boolean useSudo = false;
   }

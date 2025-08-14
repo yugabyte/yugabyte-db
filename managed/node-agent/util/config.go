@@ -16,7 +16,6 @@ import (
 )
 
 var (
-	instance      Config
 	syncMap       *sync.Map
 	mutex         *sync.Mutex
 	currentConfig = DefaultConfig
@@ -248,7 +247,7 @@ func (config *Config) Dump(ctx context.Context) (string, error) {
 func MustVersion() string {
 	version, err := Version()
 	if err != nil {
-		FileLogger().Fatalf(nil, "Error in getting version - %s", err.Error())
+		FileLogger().Fatalf(context.TODO(), "Error in getting version - %s", err.Error())
 	}
 	return version
 }

@@ -1,4 +1,4 @@
-import { useContext } from 'react';
+import { useCallback, useContext } from 'react';
 import { useQuery } from 'react-query';
 import { isEmpty, uniqBy } from 'lodash';
 import { useFormContext } from 'react-hook-form';
@@ -63,6 +63,22 @@ export const RegionSelection = () => {
   const icon = useGetMapIcons({ type: MarkerType.REGION_SELECTED });
   const allowmultipleRegionsSelection =
     canSelectMultipleRegions(resilienceType) && faultToleranceType !== FaultToleranceType.NONE;
+
+
+  const mapCoordinates = useCallback(() => {
+    const coordinates = regions?.map((region) => ([
+      region.latitude ?? [0],
+      region.longitude ?? [0]
+    ]));
+    if (coordinates?.length === 0) {
+      return [[0, 0], [0, 0]];
+    }
+    if (coordinates?.length === 1) {
+      return [[coordinates[0][0], coordinates[0][1]], [0, 0]];
+    }
+    return coordinates;
+  }, [regions]);
+
   return (
     <div
       style={{
@@ -141,11 +157,8 @@ export const RegionSelection = () => {
       <YBMaps
         mapHeight={345}
         dataTestId='yb-maps-region-selection'
-        coordinates={[
-          [37.3688, -122.0363],
-          [34.052235, -118.243683]
-        ]}
-        initialBounds={undefined}
+        coordinates={mapCoordinates()}
+        initialBounds={[[37.3688, -122.0363]]}
         mapContainerProps={{
           scrollWheelZoom: false,
           zoom: 2,
@@ -166,6 +179,7 @@ export const RegionSelection = () => {
         }
         <>
           {(regionsList ?? [])
+            .filter((region) => !regions?.some((r) => r.code === region.code))
             .map((region) => (
               <YBMapMarker
                 key={region.code}

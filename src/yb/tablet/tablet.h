@@ -326,7 +326,7 @@ class Tablet : public AbstractTablet,
 
   Status WritePostApplyMetadata(std::span<const PostApplyTransactionMetadata> metadatas) override;
 
-  Status GetIntents(
+  Status GetIntentsForCDC(
       const TransactionId& id,
       std::vector<docdb::IntentKeyValueForCDC>* keyValueIntents,
       docdb::ApplyTransactionState* stream_state);

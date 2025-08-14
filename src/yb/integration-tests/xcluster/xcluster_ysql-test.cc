@@ -75,13 +75,25 @@ using std::string;
 
 DECLARE_bool(TEST_cdc_skip_replication_poll);
 DECLARE_bool(TEST_create_table_with_empty_pgschema_name);
+DECLARE_bool(TEST_dcheck_for_missing_schema_packing);
+DECLARE_bool(TEST_enable_sync_points);
 DECLARE_bool(TEST_force_get_checkpoint_from_cdc_state);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
+DECLARE_double(TEST_xcluster_simulate_random_failure_after_apply);
 
 DECLARE_uint64(aborted_intent_cleanup_ms);
+DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
+DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
+DECLARE_uint32(cdc_wal_retention_time_secs);
 DECLARE_bool(check_bootstrap_required);
+DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_uint64(consensus_max_batch_size_bytes);
+DECLARE_int64(db_block_size_bytes);
+DECLARE_int64(db_filter_block_size_bytes);
+DECLARE_int64(db_index_block_size_bytes);
+DECLARE_int64(db_write_buffer_size);
+DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_delete_truncate_xcluster_replicated_table);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_tablet_split_of_xcluster_replicated_tables);
@@ -92,27 +104,17 @@ DECLARE_int32(log_min_segments_to_retain);
 DECLARE_uint64(log_segment_size_bytes);
 DECLARE_int32(replication_factor);
 DECLARE_int32(rpc_workers_limit);
+DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
+DECLARE_int64(tablet_force_split_threshold_bytes);
 DECLARE_int32(tablet_server_svc_queue_length);
+DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
+DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
+DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(update_min_cdc_indices_interval_secs);
+DECLARE_uint32(xcluster_max_old_schema_versions);
 DECLARE_bool(ysql_disable_index_backfill);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_uint64(ysql_packed_row_size_limit);
-DECLARE_int32(cleanup_split_tablets_interval_sec);
-DECLARE_int64(db_block_size_bytes);
-DECLARE_int64(db_filter_block_size_bytes);
-DECLARE_int64(db_index_block_size_bytes);
-DECLARE_int64(db_write_buffer_size);
-DECLARE_bool(enable_automatic_tablet_splitting);
-DECLARE_int64(tablet_force_split_threshold_bytes);
-DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
-DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
-DECLARE_double(TEST_xcluster_simulate_random_failure_after_apply);
-DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
-DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
-DECLARE_uint32(cdc_wal_retention_time_secs);
-DECLARE_int32(catalog_manager_bg_task_wait_ms);
-DECLARE_bool(TEST_enable_sync_points);
-DECLARE_bool(TEST_dcheck_for_missing_schema_packing);
 
 namespace yb {
 
@@ -1564,6 +1566,113 @@ TEST_F(XClusterYsqlTest, ReplicationWithCreateIndexDDL) {
       "INSERT INTO $0 VALUES (generate_series($1,      $1 + $2), "
       "generate_series($1 + 11, $1 + $2 + 11))",
       producer_table_->name().table_name(), count, kRecordBatch - 1));
+  ASSERT_OK(VerifyWrittenRecords());
+}
+
+TEST_F(XClusterYsqlTest, ReplicationWithDropColumnDdlAndNodeRestart) {
+  // This test verifies that xCluster replication continues to work correctly when a column is
+  // dropped from a table and a target node is restarted.
+  // When the poller restarts, the next GetChanges call will start from the previous cdc_state
+  // checkpoint.
+  // Previously, this checkpoint would be before the drop column, in which case we wouldn't be able
+  // to process earlier rows since we'd be missing their packing schema versions in our packing
+  // schema mapping.
+  // Now with cdc_state checkpointing after ChangeMetadataOps, the poller will start back at the
+  // last CMOP before the restart, so we will not have to process rows with those older schema
+  // versions.
+
+  auto new_column = "col2";
+  constexpr auto kRecordBatch = 100;
+  constexpr int kNTabletsPerTable = 4;
+
+  // Test that we handle packed schema mappings properly.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  // Drop interval to speed up initial cdc_state writes.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 1000;
+  // Only need to store current and 1 previous schema version for non-automatic replication.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_max_old_schema_versions) = 1;
+
+  ASSERT_OK(SetUpWithParams({kNTabletsPerTable}, {kNTabletsPerTable}, 1));
+  ASSERT_OK(SetupUniverseReplication());
+  auto producer_conn =
+      EXPECT_RESULT(producer_cluster_.ConnectToDB(producer_table_->name().namespace_name()));
+  auto consumer_conn =
+      EXPECT_RESULT(consumer_cluster_.ConnectToDB(consumer_table_->name().namespace_name()));
+
+  // Add a column.
+  ASSERT_OK(producer_conn.ExecuteFormat(
+      "ALTER TABLE $0 ADD COLUMN $1 VARCHAR", producer_table_->name().table_name(), new_column));
+  ASSERT_OK(consumer_conn.ExecuteFormat(
+      "ALTER TABLE $0 ADD COLUMN $1 VARCHAR", consumer_table_->name().table_name(), new_column));
+
+  // Wait a bit to ensure that a checkpoint is created.
+  SleepFor(MonoDelta::FromMilliseconds(FLAGS_cdc_state_checkpoint_update_interval_ms * 5));
+  // Bump up the checkpoint interval to prevent any further checkpoints from the cdc_service
+  // background thread.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 1000 * 60 * 60;
+
+  // Get the cdc_state checkpoints.
+  auto cdc_state_table = cdc::MakeCDCStateTable(producer_client());
+  Status s;
+  auto cdc_state_range = ASSERT_RESULT(
+      cdc_state_table.GetTableRange(cdc::CDCStateTableEntrySelector().IncludeCheckpoint(), &s));
+  ASSERT_OK(s);
+  ASSERT_EQ(std::distance(cdc_state_range.begin(), cdc_state_range.end()), kNTabletsPerTable);
+  std::optional<OpId> initial_cdc_state_checkpoint;
+  // Go through each row in the cdc_state table. For each row (tablet), we should have the same
+  // checkpoint.
+  for (auto tablet_state : cdc_state_range) {
+    if (!initial_cdc_state_checkpoint) {
+      initial_cdc_state_checkpoint = tablet_state->checkpoint;
+    } else {
+      ASSERT_EQ(tablet_state->checkpoint->index, initial_cdc_state_checkpoint->index);
+    }
+  }
+
+  // Insert some data after this checkpoint.
+  auto next_id = 0;
+  ASSERT_OK(producer_conn.ExecuteFormat(
+      "INSERT INTO $0 VALUES (generate_series($1, $1 + $2), "
+      "generate_series($1 + 11, $1 + $2 + 11))",
+      producer_table_->name().table_name(), next_id, kRecordBatch - 1));
+  next_id += kRecordBatch;
+  ASSERT_OK(VerifyWrittenRecords());
+
+  // Run a DROP COLUMN, this will create 2 new schemas on the source (one to mark the column as
+  // to-be-dropped and one to actually drop the column).
+  ASSERT_OK(producer_conn.ExecuteFormat(
+      "ALTER TABLE $0 DROP COLUMN $1", producer_table_->name().table_name(), new_column));
+  ASSERT_OK(consumer_conn.ExecuteFormat(
+      "ALTER TABLE $0 DROP COLUMN $1", consumer_table_->name().table_name(), new_column));
+  ASSERT_OK(producer_conn.ExecuteFormat(
+      "INSERT INTO $0 VALUES (generate_series($1, $1 + $2))", producer_table_->name().table_name(),
+      next_id, kRecordBatch - 1));
+  next_id += kRecordBatch;
+  ASSERT_OK(VerifyWrittenRecords());
+
+  // Check the cdc_state checkpoints now, they should be larger since we've processed some CMOPs.
+  cdc_state_range = ASSERT_RESULT(
+      cdc_state_table.GetTableRange(cdc::CDCStateTableEntrySelector().IncludeCheckpoint(), &s));
+  ASSERT_OK(s);
+  ASSERT_EQ(std::distance(cdc_state_range.begin(), cdc_state_range.end()), kNTabletsPerTable);
+  for (auto tablet_state : cdc_state_range) {
+    ASSERT_GT(tablet_state->checkpoint->index, initial_cdc_state_checkpoint->index);
+  }
+
+  // Pause replication to recreate pollers.
+  ASSERT_OK(
+      ToggleUniverseReplication(consumer_cluster(), consumer_client(), kReplicationGroupId, false));
+  SleepFor(5s);
+  // Replication will restart using the cdc_state checkpoints instead of any cached schema versions.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_force_get_checkpoint_from_cdc_state) = true;
+  ASSERT_OK(
+      ToggleUniverseReplication(consumer_cluster(), consumer_client(), kReplicationGroupId, true));
+
+  // Insert more rows to ensure replication continues.
+  ASSERT_OK(producer_conn.ExecuteFormat(
+      "INSERT INTO $0 VALUES (generate_series($1, $1 + $2))", producer_table_->name().table_name(),
+      next_id, kRecordBatch - 1));
+  next_id += kRecordBatch;
   ASSERT_OK(VerifyWrittenRecords());
 }
 

@@ -671,6 +671,8 @@ message PgsqlResponsePB {
   repeated uint64 vector_index_distances = 19;
   // The offset of end of encoded row for particular vector.
   repeated uint64 vector_index_ends = 20;
+  // Whether this replica could have more vectors, used for paging.
+  optional bool vector_index_could_have_more_data = 21;
 
   // Number of rows affected by the operation. Currently only used for update and delete.
   optional int32 rows_affected_count = 7;

@@ -34,6 +34,7 @@ import javax.inject.Inject;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.client.YbcClient;
 import org.yb.ybc.BackupServiceTaskCreateRequest;
@@ -348,7 +349,7 @@ public class RestoreBackupYbc extends YbcTaskBase {
       // restore universe version.
       if (!confGetter.getConfForScope(
               universe, UniverseConfKeys.skipAutoflagsAndYsqlMigrationFilesValidation)
-          && !backupConfig.ysqlMigrationFiles.isEmpty()) {
+          && CollectionUtils.isNotEmpty(backupConfig.ysqlMigrationFiles)) {
         ybcBackupUtil.validateYsqlMigrationFiles(universe, backupConfig.ysqlMigrationFiles);
       }
     } catch (IOException e) {

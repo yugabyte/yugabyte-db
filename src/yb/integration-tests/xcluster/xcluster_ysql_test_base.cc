@@ -632,6 +632,39 @@ Status XClusterYsqlTestBase::VerifyWrittenRecords(
   return s;
 }
 
+Status XClusterYsqlTestBase::VerifyWrittenRecords(
+    const std::vector<TableName>& table_names, const NamespaceName& database_name,
+    const std::string& schema_name) {
+  auto db_name = database_name.empty() ? namespace_name : database_name;
+  for (const auto& table_name : table_names) {
+    auto producer_table = VERIFY_RESULT(GetProducerTable(
+        VERIFY_RESULT(GetYsqlTable(&producer_cluster_, db_name, schema_name, table_name))));
+    auto consumer_table = VERIFY_RESULT(GetConsumerTable(
+        VERIFY_RESULT(GetYsqlTable(&consumer_cluster_, db_name, schema_name, table_name))));
+    RETURN_NOT_OK_PREPEND(
+        VerifyWrittenRecords(producer_table, consumer_table),
+        Format("Failed to verify written records for table $0", table_name));
+  }
+  return Status::OK();
+}
+
+Result<std::shared_ptr<client::YBTable>> XClusterYsqlTestBase::GetProducerTable(
+    const client::YBTableName& producer_table_name) {
+  std::shared_ptr<client::YBTable> producer_table;
+  RETURN_NOT_OK(producer_client()->OpenTable(producer_table_name, &producer_table));
+  return producer_table;
+}
+
+Result<std::shared_ptr<client::YBTable>> XClusterYsqlTestBase::GetConsumerTable(
+    const client::YBTableName& producer_table_name) {
+  auto consumer_table_name = VERIFY_RESULT(GetYsqlTable(
+      &consumer_cluster_, producer_table_name.namespace_name(), producer_table_name.pgschema_name(),
+      producer_table_name.table_name()));
+  std::shared_ptr<client::YBTable> consumer_table;
+  RETURN_NOT_OK(consumer_client()->OpenTable(consumer_table_name, &consumer_table));
+  return consumer_table;
+}
+
 Result<std::vector<xrepl::StreamId>> XClusterYsqlTestBase::BootstrapCluster(
     const std::vector<std::shared_ptr<client::YBTable>>& tables,
     XClusterTestBase::Cluster* cluster) {

@@ -17,10 +17,13 @@
 
 
 set(ASH_SRCS
+  pg_wait_state.cc
+  rpc_wait_state.cc
   wait_state.cc
   )
 
 set(ASH_LIBS
+  rpc_introspection_proto
   yb_common
   yb_common_proto
   yb_util

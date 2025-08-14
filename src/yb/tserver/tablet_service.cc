@@ -44,6 +44,7 @@
 #include "yb/client/transaction_pool.h"
 
 #include "yb/common/pg_types.h"
+#include "yb/common/pgsql_error.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/row_mark.h"
@@ -141,6 +142,7 @@
 #include "yb/util/trace.h"
 #include "yb/util/uuid.h"
 #include "yb/util/write_buffer.h"
+#include "yb/util/yb_pg_errcodes.h"
 #include "yb/util/ysql_binary_runner.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -195,6 +197,9 @@ TAG_FLAG(index_backfill_wait_for_old_txns_ms, evolving);
 
 DEFINE_test_flag(double, respond_write_failed_probability, 0.0,
     "Probability to respond that write request is failed");
+
+DEFINE_test_flag(double, respond_write_with_abort_probability, 0.0,
+    "Probability to respond that write request is aborted");
 
 DEFINE_test_flag(bool, rpc_delete_tablet_fail, false, "Should delete tablet RPC fail.");
 
@@ -469,13 +474,6 @@ Status PrintYSQLWriteRequest(
   }
   LOG(INFO) << ss.str();
   return Status::OK();
-}
-
-template <class Req>
-void UpdateAshMetadataFrom(const Req* req) {
-  if (req->has_ash_metadata()) {
-    ash::WaitStateInfo::UpdateCurrentMetadataFromPB(req->ash_metadata());
-  }
 }
 
 } // namespace
@@ -1309,10 +1307,6 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
                                           rpc::RpcContext context) {
   TRACE("UpdateTransaction");
 
-  if (req->has_ash_metadata()) {
-    ash::WaitStateInfo::UpdateCurrentMetadataFromPB(req->ash_metadata());
-  }
-
   if (req->state().status() == TransactionStatus::CREATED &&
       RandomActWithProbability(TEST_delay_create_transaction_probability)) {
     std::this_thread::sleep_for(
@@ -1446,10 +1440,6 @@ void TabletServiceImpl::AbortTransaction(const AbortTransactionRequestPB* req,
                                          AbortTransactionResponsePB* resp,
                                          rpc::RpcContext context) {
   TRACE("AbortTransaction");
-
-  if (req->has_ash_metadata()) {
-    ash::WaitStateInfo::UpdateCurrentMetadataFromPB(req->ash_metadata());
-  }
 
   UpdateClock(*req, server_->Clock());
 
@@ -2594,6 +2584,14 @@ Status TabletServiceImpl::PerformWrite(
     return Status::OK();
   }
 
+  if (RandomActWithProbability(GetAtomicFlag(&FLAGS_TEST_respond_write_with_abort_probability))) {
+    LOG(INFO) << "Responding with transaction aborted failure to " << req->DebugString();
+    SetupErrorAndRespond(resp->mutable_error(), STATUS_EC_FORMAT(
+        Expired, PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED),
+        "Transaction expired or aborted by a conflict"), context_ptr.get());
+    return Status::OK();
+  }
+
   FillTabletConsensusInfoIfRequestOpIdStale(tablet.peer, req, resp);
   query->set_callback(WriteQueryCompletionCallback(
       tablet.peer, context_ptr, resp, query.get(), server_->Clock(), req->include_trace(),
@@ -2617,7 +2615,6 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     return;
   }
 
-  UpdateAshMetadataFrom(req);
   auto status = PerformWrite(req, resp, &context);
   if (!status.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), std::move(status), &context);
@@ -2649,7 +2646,6 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     return;
   }
 
-  UpdateAshMetadataFrom(req);
   PerformRead(server_, this, req, resp, std::move(context));
 }
 
@@ -3689,7 +3685,6 @@ void TabletServiceImpl::AcquireObjectLocks(
         STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"), &context);
   }
   TRACE("Start AcquireObjectLocks");
-  UpdateAshMetadataFrom(req);
   VLOG(2) << "Received AcquireObjectLocks RPC: " << req->DebugString();
 
   auto ts_local_lock_manager = server_->ts_local_lock_manager();
@@ -3712,7 +3707,6 @@ void TabletServiceImpl::ReleaseObjectLocks(
         STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"), &context);
   }
   TRACE("Start ReleaseObjectLocks");
-  UpdateAshMetadataFrom(req);
   VLOG(2) << "Received ReleaseObjectLocks RPC: " << req->DebugString();
 
   auto ts_local_lock_manager = server_->ts_local_lock_manager();

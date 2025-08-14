@@ -40,8 +40,9 @@ class CDCSDKVirtualWAL {
   using TabletRecordInfoPair = std::pair<TabletId, RecordInfo>;
 
   Status InitVirtualWALInternal(
-      const std::unordered_set<TableId>& table_list, const HostPort hostport,
-      const CoarseTimePoint deadline, std::unique_ptr<ReplicationSlotHashRange> slot_hash_range);
+      std::unordered_set<TableId> table_list, const HostPort hostport,
+      const CoarseTimePoint deadline, std::unique_ptr<ReplicationSlotHashRange> slot_hash_range,
+      const std::unordered_set<uint32_t>& publications_list, bool pub_all_tables);
 
   Status GetConsistentChangesInternal(
       GetConsistentChangesResponsePB* resp, const HostPort hostport,
@@ -196,6 +197,8 @@ class CDCSDKVirtualWAL {
 
   Status UpdateRestartTimeIfRequired();
 
+  bool DeterminePubRefreshFromMasterRecord(const RecordInfo& record_info);
+
   CDCServiceImpl* cdc_service_;
 
   xrepl::StreamId stream_id_;
@@ -320,6 +323,18 @@ class CDCSDKVirtualWAL {
   // The time at which slot entry was last read to compare restart lsn with the last shipped lsn.
   HybridTime last_restart_lsn_read_time_ = HybridTime::kInvalid;
 
+  // The table ID of pg_class catalog table for the database on which virtual WAL is polling.
+  TableId pg_class_table_id_;
+
+  // The table ID of pg_publication_rel catalog table for the database on which virtual WAL is
+  // polling.
+  TableId pg_publication_rel_table_id_;
+
+  // The list of publication OIDs that are being polled by the virtual WAL.
+  std::unordered_set<uint32_t> publications_list_;
+
+  // Indicates whether any of the publications being polled is an "ALL TABLES" publication.
+  bool pub_all_tables_ = false;
 };
 
 }  // namespace cdc

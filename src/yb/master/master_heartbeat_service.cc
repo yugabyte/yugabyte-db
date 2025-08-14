@@ -1438,6 +1438,7 @@ void MasterHeartbeatServiceImpl::ProcessTabletMetadata(
     .wal_files_size = storage_metadata.wal_file_size(),
     .uncompressed_sst_file_size = storage_metadata.uncompressed_sst_file_size(),
     .may_have_orphaned_post_split_data = storage_metadata.may_have_orphaned_post_split_data(),
+    .total_size = storage_metadata.total_size(),
   };
   tablet->UpdateReplicaInfo(ts_uuid, drive_info, leader_lease_info);
 }

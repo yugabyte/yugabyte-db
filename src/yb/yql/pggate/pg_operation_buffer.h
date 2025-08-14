@@ -62,6 +62,7 @@ class PgOperationBuffer {
   Status Add(const PgTableDesc& table, PgsqlWriteOpPtr op, bool transactional);
   Status Flush();
   Result<BufferableOperations> Take(bool transactional);
+  bool IsEmpty() const;
   size_t Size() const;
   void Clear();
 

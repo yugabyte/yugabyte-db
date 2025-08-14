@@ -1976,6 +1976,10 @@ Result<DocReaderResult> DocDBTableReader::Get(
     return DocReaderResult::kNotFound;
   }
 
+  if (!new_fetched_entry.key.starts_with(root_doc_key->AsSlice())) {
+    return DocReaderResult::kNotFound;
+  }
+
   GetHelper<std::nullptr_t> helper(&data_, root_doc_key, nullptr);
   return helper.Run(new_fetched_entry);
 }

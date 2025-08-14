@@ -56,9 +56,15 @@ Status WaitForRunningTabletCount(MiniMaster* mini_master,
         return Status::OK();
       }
     }
+    std::vector<std::string> tablets;
+    for (const auto& loc : resp->tablet_locations()) {
+      tablets.push_back(loc.tablet_id());
+    }
+    std::sort(tablets.begin(), tablets.end());
 
     LOG(INFO) << "Waiting for " << expected_count << " tablets for table "
-              << table_name.ToString() << ". So far we have " << resp->tablet_locations_size();
+              << table_name.ToString() << ". So far we have " << resp->tablet_locations_size()
+              << ", existing tablets: " << AsString(tablets);
 
     SleepFor(MonoDelta::FromMicroseconds(wait_time));
     wait_time = std::min(wait_time * 5 / 4, 1000000);

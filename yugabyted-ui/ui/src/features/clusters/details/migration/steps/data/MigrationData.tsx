@@ -169,6 +169,12 @@ export const MigrationData: FC<MigrationProps> = ({
     },
   ];
 
+  // Add pagination state for both tables
+  const [exportTablePage, setExportTablePage] = React.useState(0);
+  const [exportTableRowsPerPage, setExportTableRowsPerPage] = React.useState(10);
+  const [importTablePage, setImportTablePage] = React.useState(0);
+  const [importTableRowsPerPage, setImportTableRowsPerPage] = React.useState(10);
+
   return (
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="start">
@@ -240,6 +246,11 @@ export const MigrationData: FC<MigrationProps> = ({
                     columns={migrationExportColumns}
                     options={{
                       pagination: true,
+                      page: exportTablePage,
+                      rowsPerPage: exportTableRowsPerPage,
+                      onChangePage: (currentPage: number) => setExportTablePage(currentPage),
+                      onChangeRowsPerPage: (numberOfRows: number) =>
+                        setExportTableRowsPerPage(numberOfRows)
                     }}
                     withBorder={false}
                   />
@@ -281,6 +292,11 @@ export const MigrationData: FC<MigrationProps> = ({
                     columns={migrationImportColumns}
                     options={{
                       pagination: true,
+                      page: importTablePage,
+                      rowsPerPage: importTableRowsPerPage,
+                      onChangePage: (currentPage: number) => setImportTablePage(currentPage),
+                      onChangeRowsPerPage: (numberOfRows: number) =>
+                        setImportTableRowsPerPage(numberOfRows)
                     }}
                     withBorder={false}
                   />

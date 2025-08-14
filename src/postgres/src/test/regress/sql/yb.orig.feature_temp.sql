@@ -98,33 +98,57 @@ SELECT * FROM temptest;
 
 DROP TABLE temptest;
 
--- test ON COMMIT DROP
--- TODO(dmitry) ON COMMIT DROP should be fixed in context of #7926
+-- Test ON COMMIT DROP
 
--- BEGIN;
+BEGIN;
 
--- CREATE TEMP TABLE temptest(col int) ON COMMIT DROP;
+CREATE TEMP TABLE temptest(col int) ON COMMIT DROP;
 
--- INSERT INTO temptest VALUES (1);
--- INSERT INTO temptest VALUES (2);
+INSERT INTO temptest VALUES (1);
+INSERT INTO temptest VALUES (2);
 
--- SELECT * FROM temptest;
--- COMMIT;
+SELECT * FROM temptest;
+COMMIT;
 
--- SELECT * FROM temptest;
+SELECT * FROM temptest;
 
--- BEGIN;
--- CREATE TEMP TABLE temptest(col) ON COMMIT DROP AS SELECT 1;
+BEGIN;
+CREATE TEMP TABLE temptest(col) ON COMMIT DROP AS SELECT 1;
 
--- SELECT * FROM temptest;
--- COMMIT;
+SELECT * FROM temptest;
+COMMIT;
 
--- SELECT * FROM temptest;
+SELECT * FROM temptest;
+
+-- Test it with a CHECK condition that produces a toasted pg_constraint entry
+BEGIN;
+do $$
+begin
+  execute format($cmd$
+    CREATE TEMP TABLE temptest (col text CHECK (col < %L)) ON COMMIT DROP
+  $cmd$,
+    (SELECT string_agg(g.i::text || ':' || random()::text, '|')
+     FROM generate_series(1, 100) g(i)));
+end$$;
+
+SELECT * FROM temptest;
+COMMIT;
+
+SELECT * FROM temptest;
 
 -- ON COMMIT is only allowed for TEMP
 
 CREATE TABLE temptest(col int) ON COMMIT DELETE ROWS;
 CREATE TABLE temptest(col) ON COMMIT DELETE ROWS AS SELECT 1;
+
+-- test on commit drop on a temp table with an index and pk
+BEGIN;
+
+CREATE TEMP TABLE temptest(col int primary key) ON COMMIT DROP;
+CREATE INDEX NONCONCURRENTLY temptest_idx ON temptest(col);
+
+COMMIT;
+SELECT * FROM temptest;
 
 -- test temp table updation
 
@@ -370,3 +394,22 @@ reset search_path;
 create temp table p(f1 int, f2 int);
 alter table p alter column f2 type bigint;
 select * from p;
+-- tests for row locking on temp tables
+CREATE TEMP TABLE locktest(f1 int, f2 text);
+INSERT INTO locktest VALUES (1, 'one'), (2, 'two'), (3, 'three');
+SELECT * FROM locktest ORDER BY f1 FOR UPDATE;
+SELECT * FROM locktest WHERE f1 = 2 FOR UPDATE;
+SELECT * FROM locktest WHERE f1 IN (SELECT f1 FROM locktest WHERE f1 < 3) FOR UPDATE;
+SELECT a.f1, a.f2 FROM locktest a JOIN locktest b ON a.f1 = b.f1 WHERE a.f1 = 1 FOR UPDATE;
+BEGIN;
+SELECT * FROM locktest WHERE f1 = 3 FOR UPDATE;
+ROLLBACK;
+CREATE TEMP TABLE locktest_join(id int, note text);
+INSERT INTO locktest_join VALUES (2, 'x'), (3, 'y'), (4, 'z');
+SELECT l.f1, l.f2, j.note FROM locktest l JOIN locktest_join j ON l.f1 = j.id FOR UPDATE;
+CREATE TABLE regtable(id int, name text);
+INSERT INTO regtable VALUES (1, 'a'), (2, 'b'), (3, 'c');
+CREATE TEMP TABLE temptable(id int, note text);
+INSERT INTO temptable VALUES (1, 'x'), (2, 'y'), (4, 'z');
+SELECT r.id, r.name FROM regtable r WHERE r.id IN
+    (SELECT id FROM temptable FOR UPDATE) ORDER BY r.id;

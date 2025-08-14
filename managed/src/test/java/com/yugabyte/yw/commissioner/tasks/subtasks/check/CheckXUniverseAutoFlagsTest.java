@@ -176,6 +176,34 @@ public class CheckXUniverseAutoFlagsTest extends CommissionerBaseTest {
     task.initialize(params);
     PlatformServiceException ex = assertThrows(PlatformServiceException.class, task::run);
     assertEquals(BAD_REQUEST, ex.getHttpStatus());
-    assertEquals("Ysql migration files are not the same.", ex.getMessage());
+    assertEquals(
+        "Universe "
+            + sourceUniverse.getUniverseUUID()
+            + " YSQL migration files are not a subset of universe "
+            + targetUniverse.getUniverseUUID()
+            + " YSQL migration files.",
+        ex.getMessage());
+  }
+
+  @Test
+  public void testYsqlMigrationFileValidationSuccessOnSubset() throws Exception {
+    when(mockAutoFlagUtil.getPromotedAutoFlags(any(), any(), anyInt())).thenReturn(new HashSet<>());
+    GFlagsValidation.AutoFlagsPerServer autoFlagsPerServer =
+        new GFlagsValidation.AutoFlagsPerServer();
+    autoFlagsPerServer.autoFlagDetails = new ArrayList<>();
+    when(mockGFlagsValidation.extractAutoFlags(anyString(), anyString()))
+        .thenReturn(autoFlagsPerServer);
+    Set<String> targetMigrations =
+        new HashSet<>(Arrays.asList("001_init.sql", "002_add_table.sql"));
+    Set<String> sourceMigrations = Collections.singleton("001_init.sql");
+    when(mockGFlagsValidation.getYsqlMigrationFilesList(anyString()))
+        .thenReturn(sourceMigrations)
+        .thenReturn(targetMigrations);
+    CheckXUniverseAutoFlags task = AbstractTaskBase.createTask(CheckXUniverseAutoFlags.class);
+    CheckXUniverseAutoFlags.Params params = new CheckXUniverseAutoFlags.Params();
+    params.sourceUniverseUUID = sourceUniverse.getUniverseUUID();
+    params.targetUniverseUUID = targetUniverse.getUniverseUUID();
+    task.initialize(params);
+    task.run(); // Should not throw
   }
 }

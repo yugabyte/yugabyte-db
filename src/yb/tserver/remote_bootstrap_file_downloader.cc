@@ -194,9 +194,6 @@ Status RemoteBootstrapFileDownloader::DownloadFile(
       max_length = std::min(max_length, decltype(max_length)(max_size));
     }
     req.set_max_length(max_length);
-    if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
-      wait_state->MetadataToPB(req.mutable_ash_metadata());
-    }
 
     FetchDataResponsePB resp;
     Status status;

@@ -47,11 +47,9 @@ class YsqlManagerIf {
   virtual Status ValidateTServerVersion(const VersionInfoPB& version) const = 0;
 
   virtual Result<std::string> GetCachedPgSchemaName(
-      const TableId& table_id, const PersistentTableInfo& table_info,
-      PgDbRelNamespaceMap& cache) const = 0;
+      const PgTableAllOids& oids, PgDbRelNamespaceMap& cache) const = 0;
   virtual Result<std::string> GetPgSchemaName(
-      const TableId& table_id, const PersistentTableInfo& table_info,
-      const ReadHybridTime& read_time = ReadHybridTime()) const = 0;
+      const PgTableAllOids& oids, const ReadHybridTime& read_time = ReadHybridTime()) const = 0;
 };
 
 }  // namespace master

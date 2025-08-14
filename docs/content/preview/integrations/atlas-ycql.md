@@ -17,7 +17,7 @@ This tutorial describes how to set up Apache Atlas with YugabyteDB and run the q
 
 To use [Apache Atlas](https://doc.akka.io/docs/akka-persistence-r2dbc/current/overview.html), ensure that you have the following:
 
-- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/preview/tutorials/quick-start/macos/).
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/preview/quick-start/macos/).
 
 - [Apache Solr 5.5.1](https://solr.apache.org/guide/6_6/installing-solr.html) installed. [Solr](https://solr.apache.org/) is an open-source indexing platform that serves as an indexing backend to run Apache Atlas.
 

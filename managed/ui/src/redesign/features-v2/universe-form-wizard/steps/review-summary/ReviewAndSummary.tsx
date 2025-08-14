@@ -1,4 +1,6 @@
 import { forwardRef, useContext, useImperativeHandle } from 'react';
+import { useQuery } from 'react-query';
+import { toast } from 'react-toastify';
 import { useTranslation } from 'react-i18next';
 import {
   CreateUniverseContext,
@@ -15,12 +17,12 @@ import {
 } from '@yugabyte-ui-library/core';
 import { Region } from '../../../../features/universe/universe-form/utils/dto';
 import { styled } from '@material-ui/core';
-import { useCreateUniverse } from '../../../../../v2/api/universe/universe';
+import { getUniverseResources, useCreateUniverse } from '../../../../../v2/api/universe/universe';
 import { mapCreateUniversePayload } from '../../CreateUniverseUtils';
+import { YBLoadingCircleIcon } from '@app/components/common/indicators';
 
 import { ReactComponent as UniverseIcon } from '../../../../assets/clusters.svg';
 import { ReactComponent as Money } from '../../../../assets/money.svg';
-import { toast } from 'react-toastify';
 
 const StyledPanel = styled('div')(({ theme }) => ({
   borderRadius: '8px',
@@ -87,13 +89,22 @@ export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
 
   const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.reviewAndSummary' });
 
+  const payload = mapCreateUniversePayload({ ...context });
   const createUniverse = useCreateUniverse();
+  const { data: pricingData, isLoading: isLoadingPricing } = useQuery(
+    ['getUniversePricing', payload],
+    () => getUniverseResources(payload),
+    {
+      enabled: !!payload,
+      refetchOnWindowFocus: false,
+      retry: false
+    }
+  );
 
   useImperativeHandle(
     forwardRef,
     () => ({
       onNext: () => {
-        const payload = mapCreateUniversePayload({ ...context });
         createUniverse
           .mutateAsync({
             data: payload
@@ -118,6 +129,13 @@ export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
   );
 
   const icon = useGetMapIcons({ type: MarkerType.REGION_SELECTED });
+
+  if(isLoadingPricing){
+    return <YBLoadingCircleIcon />;
+  }
+
+  const costDaily = pricingData?.price_per_hour ? (pricingData.price_per_hour * 24) : 0.00;
+  const costMonthly = costDaily * 31;
 
   return (
     <div style={{ display: 'flex', gap: '24px' }}>
@@ -152,7 +170,7 @@ export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
                 }}
               >
                 <StyledAttrib>{t('nodes')}</StyledAttrib>
-                <StyledValue>2</StyledValue>
+                <StyledValue>{pricingData?.num_nodes}</StyledValue>
               </div>
               <div
                 style={{
@@ -163,7 +181,7 @@ export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
                 }}
               >
                 <StyledAttrib>{t('totalCores')}</StyledAttrib>
-                <StyledValue>144</StyledValue>
+                <StyledValue>{pricingData?.num_cores}</StyledValue>
               </div>
               <div
                 style={{
@@ -175,7 +193,7 @@ export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
               >
                 <StyledAttrib>{t('totalMemory')}</StyledAttrib>
                 <StyledValue>
-                  288 <span style={{ fontWeight: '200' }}>GB</span>
+                  {pricingData?.mem_size_gb} <span style={{ fontWeight: '200' }}>GB</span>
                 </StyledValue>
               </div>
               <div
@@ -188,34 +206,36 @@ export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
               >
                 <StyledAttrib>{t('totalStorage')}</StyledAttrib>
                 <StyledValue>
-                  300 <span style={{ fontWeight: '200' }}>GB</span>
+                  {pricingData?.volume_size_gb} <span style={{ fontWeight: '200' }}>GB</span>
                 </StyledValue>
               </div>
             </div>
           </div>
-          <StyledCost>$1234</StyledCost>
-          <StyledCost>$1234</StyledCost>
+          <StyledCost>${costDaily.toFixed(2)}</StyledCost>
+          <StyledCost>${costMonthly.toFixed(2)}</StyledCost>
         </div>
         <StyledFooter>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginRight: 'auto' }}>
             <Money />
             <StyledBoldValue>{t('universeTotal')}</StyledBoldValue>
           </div>
-          <StyledBoldValue style={{ width: '120px', textAlign: 'right' }}>$248.00</StyledBoldValue>
-          <StyledBoldValue style={{ width: '120px', textAlign: 'right' }}>$248.00</StyledBoldValue>
+          <StyledBoldValue style={{ width: '120px', textAlign: 'right' }}>${costDaily.toFixed(2)}</StyledBoldValue>
+          <StyledBoldValue style={{ width: '120px', textAlign: 'right' }}>${costMonthly.toFixed(2)}</StyledBoldValue>
         </StyledFooter>
       </StyledPanel>
       <YBMaps
         dataTestId='yb-maps-review-and-summary'
         mapHeight={360}
         coordinates={[
-          [37.3688, -122.0363],
-          [34.052235, -118.243683]
+          [0,0],
+          [0,0]
         ]}
         initialBounds={undefined}
         mapWidth={360}
         mapContainerProps={{
-          scrollWheelZoom: false
+          scrollWheelZoom: false,
+          zoom: 1,
+          center: [0, 0]
         }}
       >
         {

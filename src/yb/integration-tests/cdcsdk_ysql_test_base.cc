@@ -2516,7 +2516,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     string tool_path = GetToolPath("../bin", "yb-admin");
     vector<string> argv;
     argv.push_back(tool_path);
-    argv.push_back("-master_addresses");
+    argv.push_back("--master_addresses");
     argv.push_back(AsString(test_cluster_.mini_cluster_->mini_master(0)->bound_rpc_addr()));
     argv.push_back("leader_stepdown");
     argv.push_back(tablet_id);
@@ -2556,7 +2556,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     string tool_path = GetToolPath("../bin", "yb-admin");
     vector<string> argv;
     argv.push_back(tool_path);
-    argv.push_back("-master_addresses");
+    argv.push_back("--master_addresses");
     argv.push_back(AsString(test_cluster_.mini_cluster_->mini_master(0)->bound_rpc_addr()));
     argv.push_back("create_database_snapshot");
     argv.push_back(ns);
@@ -2594,7 +2594,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     string tool_path = GetToolPath("../bin", "yb-ts-cli");
     vector<string> argv;
     argv.push_back(tool_path);
-    argv.push_back("-server_address");
+    argv.push_back("--server_address");
     argv.push_back(AsString(test_cluster_.mini_cluster_->mini_tablet_server(0)->bound_rpc_addr()));
     argv.push_back("compact_tablet");
     argv.push_back(tablet_id);
@@ -2606,7 +2606,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     string tool_path = GetToolPath("../bin", "yb-admin");
     vector<string> argv;
     argv.push_back(tool_path);
-    argv.push_back("-master_addresses");
+    argv.push_back("--master_addresses");
     argv.push_back(AsString(test_cluster_.mini_cluster_->mini_master(0)->bound_rpc_addr()));
     argv.push_back("compact_sys_catalog");
     RETURN_NOT_OK(Subprocess::Call(argv));

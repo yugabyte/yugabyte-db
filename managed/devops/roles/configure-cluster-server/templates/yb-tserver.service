@@ -6,10 +6,6 @@ After=network.target network-online.target multi-user.target
 StartLimitInterval=0
 Wants=yb-ysql-cgroup.service
 
-[Path]
-PathExists={{yb_home_dir}}/tserver/bin/yb-tserver
-PathExists={{yb_home_dir}}/tserver/conf/server.conf
-
 [Service]
 # Start
 {% set use_system_level_systemd = use_system_level_systemd | default(false) %}
@@ -27,8 +23,8 @@ KillSignal=SIGTERM
 TimeoutStopSec=10
 FinalKillSignal=SIGKILL
 # Logs
-StandardOutput=syslog
-StandardError=syslog
+StandardOutput=journal
+StandardError=journal
 # ulimit
 LimitCORE=infinity
 LimitNOFILE=1048576

@@ -39,6 +39,8 @@
 
 #include <boost/algorithm/string/predicate.hpp>
 
+#include "yb/ash/rpc_wait_state.h"
+
 #include "yb/common/wire_protocol.h"
 
 #include "yb/encryption/encryption_util.h"
@@ -318,6 +320,12 @@ Status RpcServerBase::Init() {
   builder.UseDefaultConnectionContextFactory(mem_tracker());
   RETURN_NOT_OK(SetupMessengerBuilder(&builder));
   messenger_ = VERIFY_RESULT(builder.Build());
+
+  if (FLAGS_ysql_yb_enable_ash) {
+    messenger_->SetCallStateListenerFactory(std::make_unique<ash::CallStateListenerFactory>());
+    messenger_->SetMetadataSerializerFactory(std::make_unique<ash::MetadataSerializerFactory>());
+  }
+
   proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
 
   if (PREDICT_FALSE(FLAGS_TEST_running_test)) {

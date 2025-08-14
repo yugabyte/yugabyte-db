@@ -14,6 +14,7 @@ import (
 	"github.com/apex/log"
 	"github.com/apex/log/handlers/cli"
 	"github.com/apex/log/handlers/logfmt"
+	"google.golang.org/grpc/grpclog"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
@@ -52,13 +53,27 @@ func ConsoleLogger() *AppLogger {
 	return consoleLogger
 }
 
+func setupGrpcLogger(config *Config) {
+	logFilepath := filepath.Join(LogsDir(), config.String(NodeAgentGrpcLoggerKey))
+	os.Setenv("GRPC_GO_LOG_SEVERITY_LEVEL", "INFO")
+	os.Setenv("GRPC_GO_LOG_VERBOSITY_LEVEL", config.String(NodeAgentGrpcLogVerbosityKey))
+	writer := &lumberjack.Logger{
+		Filename:   logFilepath,
+		MaxSize:    config.Int(NodeAgentGrpcLogMaxMbKey),
+		MaxBackups: config.Int(NodeAgentGrpcLogMaxBackupsKey),
+		MaxAge:     config.Int(NodeAgentGrpcLogMaxDaysKey),
+		Compress:   true,
+	}
+	grpclog.SetLoggerV2(grpclog.NewLoggerV2(writer, writer, writer))
+}
+
 // Returns the file logger.
 func FileLogger() *AppLogger {
 	onceFileLogger.Do(func() {
 		config := CurrentConfig()
 		err := os.MkdirAll(LogsDir(), os.ModePerm)
 		if err != nil {
-			panic("Unable to create logs dir.")
+			panic("Unable to create logs dir - " + err.Error())
 		}
 		if pathPrefix == "" {
 			_, file, _, ok := runtime.Caller(0)
@@ -66,7 +81,8 @@ func FileLogger() *AppLogger {
 				pathPrefix = filepath.Dir(filepath.Dir(file))
 			}
 		}
-		logFilepath := filepath.Join(LogsDir(), config.String(NodeLoggerKey))
+		setupGrpcLogger(config)
+		logFilepath := filepath.Join(LogsDir(), config.String(NodeAgentLoggerKey))
 		writer := &lumberjack.Logger{
 			Filename:   logFilepath,
 			MaxSize:    config.Int(NodeAgentLogMaxMbKey),

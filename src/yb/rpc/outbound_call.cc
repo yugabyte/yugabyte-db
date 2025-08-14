@@ -52,6 +52,7 @@
 #include "yb/rpc/rpc_metrics.h"
 #include "yb/rpc/serialization.h"
 #include "yb/rpc/sidecars.h"
+#include "yb/rpc/wait_state_if.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
@@ -220,7 +221,8 @@ OutboundCall::OutboundCall(const RemoteMethod& remote_method,
                            RpcController* controller,
                            std::shared_ptr<RpcMetrics> rpc_metrics,
                            ResponseCallback callback,
-                           ThreadPool* callback_thread_pool)
+                           ThreadPool* callback_thread_pool,
+                           MetadataSerializerFactory* metadata_serializer_factory)
     : hostname_(&kEmptyString),
       start_(CoarseMonoClock::Now()),
       controller_(DCHECK_NOTNULL(controller)),
@@ -232,7 +234,10 @@ OutboundCall::OutboundCall(const RemoteMethod& remote_method,
       callback_thread_pool_(callback_thread_pool),
       outbound_call_metrics_(outbound_call_metrics),
       rpc_metrics_(std::move(rpc_metrics)),
-      method_metrics_(std::move(method_metrics)) {
+      method_metrics_(std::move(method_metrics)),
+      metadata_serializer_(metadata_serializer_factory
+          ? metadata_serializer_factory->Create(rpc::MetadataSerializationMode::kSkipOnZero)
+          : nullptr) {
   TRACE_TO_WITH_TIME(trace_, start_, "$0.", remote_method_.ToString());
 
   DVLOG(4) << "OutboundCall " << this << " constructed with state_: " << StateName(state_)
@@ -316,15 +321,24 @@ Status OutboundCall::SetRequestParam(
   size_t message_size = SerializedMessageSize(req_size, sidecars_size);
 
   using Output = google::protobuf::io::CodedOutputStream;
+  using google::protobuf::internal::WireFormatLite;
   auto timeout_ms = VERIFY_RESULT(TimeoutMs());
   size_t call_id_size = Output::VarintSize32(call_id_);
   size_t timeout_ms_size = Output::VarintSize32(timeout_ms);
   auto serialized_remote_method = remote_method_.serialized();
 
+  auto metadata_size = metadata_serializer_
+      ? metadata_serializer_->SerializedSize() : 0;
+
+  if (metadata_size > 0) {
+    metadata_size += 1; // add tag size of RequestHeader::kMetadataFieldNumber
+  }
+
   // We use manual encoding for header in protobuf format. So should add 1 byte for tag before
   // each field.
   // serialized_remote_method already contains tag byte, so don't add extra byte for it.
-  size_t header_pb_len = 1 + call_id_size + serialized_remote_method.size() + 1 + timeout_ms_size;
+  size_t header_pb_len = 1 + call_id_size + serialized_remote_method.size() + 1 +
+                         timeout_ms_size + metadata_size;
   const google::protobuf::RepeatedField<uint32_t>* sidecar_offsets = nullptr;
   size_t encoded_sidecars_len = 0;
   if (sidecars_size) {
@@ -353,13 +367,18 @@ Status OutboundCall::SetRequestParam(
   dst = CodedOutputStream::WriteTagToArray(RequestHeader::kTimeoutMillisFieldNumber << 3, dst);
   dst = Output::WriteVarint32ToArray(timeout_ms, dst);
   if (sidecars_size) {
-    using google::protobuf::internal::WireFormatLite;
     constexpr auto kTag = (RequestHeader::kSidecarOffsetsFieldNumber << 3) |
                           WireFormatLite::WIRETYPE_LENGTH_DELIMITED;
     dst = PackedWrite<LightweightSerialization<WireFormatLite::TYPE_FIXED32, uint32_t>, kTag>(
         *sidecar_offsets | boost::adaptors::transformed(
             [req_size](auto offset) { return narrow_cast<uint32_t>(offset + req_size); }),
         encoded_sidecars_len, dst);
+  }
+
+  if (metadata_size > 0) {
+    dst = Output::WriteTagToArray((RequestHeader::kMetadataFieldNumber << 3) |
+        WireFormatLite::WIRETYPE_LENGTH_DELIMITED, dst);
+    dst = metadata_serializer_->SerializeToArray(dst);
   }
 
   DCHECK_EQ(dst - buffer_.udata(), header_size);

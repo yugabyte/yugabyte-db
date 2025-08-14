@@ -42,6 +42,7 @@
 
 /* YB includes */
 #include "catalog/pg_class_d.h"
+#include "catalog/pg_database.h"
 #include "catalog/pg_yb_tablegroup_d.h"
 
 #define TEXT_DUMP_HEADER "--\n-- YSQL database dump\n--\n\n"
@@ -153,6 +154,8 @@ static void inhibit_data_for_failed_table(ArchiveHandle *AH, TocEntry *te);
 
 static void StrictNamesCheck(RestoreOptions *ropt);
 
+/* YB variables */
+static bool IsYugabyteEnabled = true;
 
 /*
  * Add the set GUC command to the archive handler in a backward compatible manner.
@@ -3894,10 +3897,21 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, const char *pfx)
 			 *
 			 * We do the same for tablegroup creation because CREATE TABLEGROUP
 			 * cannot run inside a transaction block.
+			 *
+			 * We also do the same for the database properties TOC entry,
+			 * because it contains an ALTER DATABASE statement and an UPDATE
+			 * statement that modifies the same rows that the ALTER command
+			 * touched. The quick succession of these two statements can result
+			 * in read-restart errors, as the read time picked for the UPDATE
+			 * may be earlier than the commit time of the ALTER.
+			 * As a work-around, send the commands in separate requests.
+			 * Note: the database properties TOC entry does not have a catalogId
+			 * set, so we use te->desc in the condition below.
 			 */
-			if (AH->currentTE &&
+			if (IsYugabyteEnabled && AH->currentTE &&
 				(AH->currentTE->catalogId.tableoid == RelationRelationId ||
-				 AH->currentTE->catalogId.tableoid == YbTablegroupRelationId) &&
+				 AH->currentTE->catalogId.tableoid == YbTablegroupRelationId ||
+				 strcmp(te->desc, "DATABASE PROPERTIES") == 0) &&
 				AH->outputKind == OUTPUT_SQLCMDS)
 			{
 				ArchiverOutput yb_saved_output_kind = AH->outputKind;

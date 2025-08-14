@@ -42,6 +42,8 @@ typedef struct YbExplainExecStats
 	YbPgRpcStats read;
 	YbPgRpcStats catalog_read;
 	YbPgRpcStats flush;
+	double		read_op_count;
+	double		catalog_read_op_count;
 	double		write_count;
 	double		catalog_write_count;
 

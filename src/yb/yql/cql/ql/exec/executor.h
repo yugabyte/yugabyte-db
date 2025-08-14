@@ -22,7 +22,7 @@
 
 #include <rapidjson/document.h>
 
-#include "yb/ash/wait_state_fwd.h"
+#include "yb/ash/ash_fwd.h"
 
 #include "yb/client/yb_op.h"
 

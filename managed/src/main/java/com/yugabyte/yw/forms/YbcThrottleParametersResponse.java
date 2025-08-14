@@ -19,7 +19,7 @@ public class YbcThrottleParametersResponse {
   @Getter
   @Setter
   public static class ThrottleParamValue {
-    int currentValue;
+    long currentValue;
     PresetThrottleValues presetValues;
   }
 
@@ -27,8 +27,8 @@ public class YbcThrottleParametersResponse {
   @Getter
   @Setter
   public static class PresetThrottleValues {
-    int defaultValue;
-    int minValue;
-    int maxValue;
+    long defaultValue;
+    long minValue;
+    long maxValue;
   }
 }

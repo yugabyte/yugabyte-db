@@ -13,7 +13,6 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.Descriptors.FieldDescriptor;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.NodeAgentEnabler;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -137,14 +136,11 @@ import play.libs.Json;
 @Singleton
 public class NodeAgentClient {
   public static final String NODE_AGENT_SERVICE_CONFIG_FILE = "node_agent/service_config.json";
-  public static final String NODE_AGENT_CONNECT_TIMEOUT_PROPERTY = "yb.node_agent.connect_timeout";
-  public static final Duration IDLE_CONNECT_TIMEOUT = Duration.ofMinutes(5);
   public static final int FILE_UPLOAD_CHUNK_SIZE_BYTES = 4096;
 
   // Cache of the channels for re-use.
   private final LoadingCache<ChannelConfig, ManagedChannel> cachedChannels;
 
-  private final Config appConfig;
   private final ChannelFactory channelFactory;
   private final RuntimeConfGetter confGetter;
   // Late binding to prevent circular dependency.
@@ -152,12 +148,10 @@ public class NodeAgentClient {
 
   @Inject
   public NodeAgentClient(
-      Config appConfig,
       RuntimeConfGetter confGetter,
       com.google.inject.Provider<NodeAgentEnabler> nodeAgentEnablerProvider,
       PlatformExecutorFactory platformExecutorFactory) {
     this(
-        appConfig,
         confGetter,
         nodeAgentEnablerProvider,
         platformExecutorFactory.createExecutor(
@@ -166,12 +160,10 @@ public class NodeAgentClient {
   }
 
   public NodeAgentClient(
-      Config appConfig,
       RuntimeConfGetter confGetter,
       com.google.inject.Provider<NodeAgentEnabler> nodeAgentEnablerProvider,
       ExecutorService executorService) {
     this(
-        appConfig,
         confGetter,
         nodeAgentEnablerProvider,
         config ->
@@ -180,11 +172,9 @@ public class NodeAgentClient {
   }
 
   public NodeAgentClient(
-      Config appConfig,
       RuntimeConfGetter confGetter,
       com.google.inject.Provider<NodeAgentEnabler> nodeAgentEnablerProvider,
       ChannelFactory channelFactory) {
-    this.appConfig = appConfig;
     this.confGetter = confGetter;
     this.nodeAgentEnablerProvider = nodeAgentEnablerProvider;
     this.channelFactory = channelFactory;
@@ -199,7 +189,7 @@ public class NodeAgentClient {
                   }
                 })
             .expireAfterAccess(10, TimeUnit.MINUTES)
-            .maximumSize(100)
+            .maximumSize(confGetter.getGlobalConf(GlobalConfKeys.nodeAgentConnectionCacheSize))
             .build(
                 new CacheLoader<ChannelConfig, ManagedChannel>() {
                   @Override
@@ -227,7 +217,13 @@ public class NodeAgentClient {
 
     public <ReqT, RespT> ClientCall<ReqT, RespT> interceptCall(
         MethodDescriptor<ReqT, RespT> methodDescriptor, CallOptions callOptions, Channel channel) {
+      Duration tokenLifetime = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentTokenLifetime);
       String compression = config.getNodeAgent().getConfig().getCompressor();
+      if (callOptions.getDeadline() == null) {
+        // Set the default deadline if is not set.
+        callOptions =
+            callOptions.withDeadlineAfter(tokenLifetime.toMillis(), TimeUnit.MILLISECONDS);
+      }
       if (StringUtils.isNotBlank(compression)
           && confGetter.getGlobalConf(GlobalConfKeys.nodeAgentEnableMessageCompression)) {
         callOptions = callOptions.withCompression(compression);
@@ -249,7 +245,6 @@ public class NodeAgentClient {
               correlationId,
               requestId,
               nodeAgentUuid);
-          Duration tokenLifetime = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentTokenLifetime);
           String token = NodeAgentClient.getNodeAgentJWT(nodeAgentUuid, tokenLifetime);
           headers.put(Metadata.Key.of("authorization", Metadata.ASCII_STRING_MARSHALLER), token);
           headers.put(
@@ -271,6 +266,11 @@ public class NodeAgentClient {
       NettyChannelBuilder channelBuilder =
           NettyChannelBuilder.forAddress(nodeAgent.getIp(), nodeAgent.getPort())
               .idleTimeout(config.getIdleTimeout().toMinutes(), TimeUnit.MINUTES)
+              .keepAliveTime(config.getKeepAliveTime().toSeconds(), TimeUnit.SECONDS)
+              .keepAliveTimeout(config.keepAliveTimeout.toSeconds(), TimeUnit.SECONDS)
+              .withOption(
+                  ChannelOption.CONNECT_TIMEOUT_MILLIS, (int) config.getConnectTimeout().toMillis())
+              .keepAliveWithoutCalls(false)
               // Override the default cached pool.
               .executor(executor)
               .offloadExecutor(executor);
@@ -293,10 +293,6 @@ public class NodeAgentClient {
         }
       } else {
         channelBuilder = channelBuilder.usePlaintext();
-      }
-      if (config.getConnectTimeout() != null) {
-        channelBuilder.withOption(
-            ChannelOption.CONNECT_TIMEOUT_MILLIS, (int) config.getConnectTimeout().toMillis());
       }
       Map<String, ?> serviceConfig = getServiceConfig(NODE_AGENT_SERVICE_CONFIG_FILE);
       if (MapUtils.isNotEmpty(serviceConfig)) {
@@ -335,6 +331,8 @@ public class NodeAgentClient {
     private Path certPath;
     private Duration connectTimeout;
     private Duration idleTimeout;
+    private Duration keepAliveTime;
+    private Duration keepAliveTimeout;
 
     @Override
     public int hashCode() {
@@ -344,6 +342,8 @@ public class NodeAgentClient {
           .append(certPath)
           .append(connectTimeout)
           .append(idleTimeout)
+          .append(keepAliveTime)
+          .append(keepAliveTimeout)
           .toHashCode();
     }
 
@@ -378,6 +378,12 @@ public class NodeAgentClient {
         return false;
       }
       if (!Objects.equals(idleTimeout, other.idleTimeout)) {
+        return false;
+      }
+      if (!Objects.equals(keepAliveTime, other.keepAliveTime)) {
+        return false;
+      }
+      if (!Objects.equals(keepAliveTimeout, other.keepAliveTimeout)) {
         return false;
       }
       return true;
@@ -685,13 +691,20 @@ public class NodeAgentClient {
   }
 
   private ManagedChannel getManagedChannel(NodeAgent nodeAgent, boolean enableTls) {
-    Duration connectTimeout = appConfig.getDuration(NODE_AGENT_CONNECT_TIMEOUT_PROPERTY);
+    Duration connectTimeout = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentConnectTimeout);
+    Duration idleTimeout = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentIdleConnectionTimeout);
+    Duration keepAliveTime =
+        confGetter.getGlobalConf(GlobalConfKeys.nodeAgentConnectionKeepAliveTime);
+    Duration keepAliveTimeout =
+        confGetter.getGlobalConf(GlobalConfKeys.nodeAgentConnectionKeepAliveTimeout);
     ChannelConfig.ChannelConfigBuilder builder =
         ChannelConfig.builder()
             .nodeAgent(nodeAgent)
             .enableTls(enableTls)
             .connectTimeout(connectTimeout)
-            .idleTimeout(IDLE_CONNECT_TIMEOUT);
+            .idleTimeout(idleTimeout)
+            .keepAliveTime(keepAliveTime)
+            .keepAliveTimeout(keepAliveTimeout);
     if (enableTls) {
       Path certPath = nodeAgent.getCaCertFilePath();
       if (nodeAgent.getState() == State.UPGRADE || nodeAgent.getState() == State.UPGRADED) {
@@ -1098,6 +1111,8 @@ public class NodeAgentClient {
   private <T> T runAsyncTask(
       NodeAgent nodeAgent, SubmitTaskRequest request, Class<T> responseClass) {
     Objects.requireNonNull(request.getTaskId(), "Task ID must be set");
+    long pollDeadlineMs =
+        confGetter.getGlobalConf(GlobalConfKeys.nodeAgentDescribePollDeadline).toMillis();
     ManagedChannel channel = getManagedChannel(nodeAgent, true);
     SubmitTaskResponse response = NodeAgentGrpc.newBlockingStub(channel).submitTask(request);
     String taskId = response.getTaskId();
@@ -1110,7 +1125,8 @@ public class NodeAgentClient {
         log.info("Describing task {}", taskId);
         DescribeTaskResponseObserver<T> responseObserver =
             new DescribeTaskResponseObserver<>(id, responseClass);
-        stub.describeTask(describeTaskRequest, responseObserver);
+        stub.withDeadlineAfter(pollDeadlineMs, TimeUnit.MILLISECONDS)
+            .describeTask(describeTaskRequest, responseObserver);
         return responseObserver.waitForResponse();
       } catch (StatusRuntimeException e) {
         if (e.getStatus().getCode() != Code.DEADLINE_EXCEEDED) {

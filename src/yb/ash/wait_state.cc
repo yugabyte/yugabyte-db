@@ -120,7 +120,7 @@ std::string GetWaitStateDescription(WaitStateCode code) {
     case WaitStateCode::kMVCC_WaitForSafeTime:
       return "A read/write rpc is waiting for the safe time to be at least the desired read-time.";
     case WaitStateCode::kWaitForReadTime:
-      return "A read/write rpc is waiting for the current time to catch up to passed read time.";
+      return "A read/write rpc is waiting for the current time to catch up to read time.";
     case WaitStateCode::kLockedBatchEntry_Lock:
       return "A read/write rpc is waiting for a DocDB row level lock.";
     case WaitStateCode::kBackfillIndex_WaitForAFreeSlot:
@@ -168,6 +168,8 @@ std::string GetWaitStateDescription(WaitStateCode code) {
       return "A write rpc is persisting WAL edits.";
     case WaitStateCode::kWAL_Sync:
       return "A write rpc is synchronizing WAL edits.";
+    case WaitStateCode::kWAL_Read:
+      return "An rpc is reading WAL.";
     case WaitStateCode::kConsensusMeta_Flush:
       return "ConsensusMetadata is flushed, say during Raft term/config change or remote "
           "bootstrap etc.";
@@ -274,7 +276,7 @@ void AshMetadata::clear_rpc_request_id() {
 std::string AshMetadata::ToString() const {
   return YB_STRUCT_TO_STRING(
       top_level_node_id, root_request_id, query_id, database_id,
-      rpc_request_id, client_host_port);
+      rpc_request_id, client_host_port, addr_family, pid);
 }
 
 std::string AshAuxInfo::ToString() const {
@@ -293,8 +295,9 @@ void AshAuxInfo::UpdateFrom(const AshAuxInfo &other) {
   }
 }
 
-WaitStateInfo::WaitStateInfo()
-    : metadata_(AshMetadata{}) {}
+WaitStateInfo::WaitStateInfo(int64_t rpc_request_id)
+    : metadata_({ .rpc_request_id = rpc_request_id }) {
+}
 
 void WaitStateInfo::set_code(WaitStateCode code, const char* location) {
   auto prev_code = code_.exchange(code, std::memory_order_release);
@@ -602,6 +605,7 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
 
     case WaitStateCode::kWAL_Append:
     case WaitStateCode::kWAL_Sync:
+    case WaitStateCode::kWAL_Read:
     case WaitStateCode::kConsensusMeta_Flush:
     case WaitStateCode::kSnapshot_WaitingForFlush:
     case WaitStateCode::kSnapshot_CleanupSnapshotDir:

@@ -430,6 +430,8 @@ typedef struct {
   const uint32_t* ysql_max_replication_slots;
   const uint32_t* yb_max_recursion_depth;
   const uint32_t* ysql_conn_mgr_stats_interval;
+  const bool*     ysql_enable_read_request_cache_for_connection_auth;
+  const bool*     TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication;
 } YbcPgGFlagsAccessor;
 
 typedef struct {
@@ -507,6 +509,7 @@ typedef struct {
 
 typedef struct {
   uint64_t reads;
+  uint64_t read_ops;
   uint64_t writes;
   uint64_t read_wait;
   uint64_t rows_scanned;
@@ -760,6 +763,10 @@ typedef struct {
   unsigned char client_addr[16];
   uint16_t client_port;
   uint8_t addr_family;
+
+  // Postgres-specific memory usage in bytes. On Apple devices this falls back to
+  // resident set size (RSS), since proportional set size (PSS) is not available.
+  int64_t pss_mem_bytes;
 } YbcAshMetadata;
 
 typedef struct {
@@ -811,7 +818,6 @@ typedef struct {
 // A struct to pass ASH postgres config to PgClient
 typedef struct {
   YbcAshMetadata* metadata;
-  bool* yb_enable_ash;
   unsigned char top_level_node_id[16];
   // length of host should be equal to INET6_ADDRSTRLEN
   char host[46];
@@ -824,7 +830,8 @@ typedef struct {
 
 typedef enum {
   QUERY_ID_TYPE_DEFAULT,
-  QUERY_ID_TYPE_BACKGROUND_WORKER
+  QUERY_ID_TYPE_BACKGROUND_WORKER,
+  QUERY_ID_TYPE_WALSENDER,
 } YbcAshConstQueryIdType;
 
 typedef struct {

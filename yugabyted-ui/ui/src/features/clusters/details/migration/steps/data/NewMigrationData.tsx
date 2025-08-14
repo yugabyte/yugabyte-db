@@ -12,7 +12,6 @@ import {
 import type { Migration } from "../../MigrationOverview";
 import { GenericFailure, YBButton, YBCodeBlock, YBModal } from "@app/components";
 import { useTranslation } from "react-i18next";
-import RefreshIcon from "@app/assets/refresh.svg";
 import BookIcon from "@app/assets/book.svg";
 import { StepCard } from "../schema/StepCard";
 import { Prereqs } from "../schema/Prereqs";
@@ -21,7 +20,7 @@ import { MigrationPhase } from "../../migration";
 import { Trans } from "react-i18next";
 import RestartIcon from "@app/assets/restart2.svg";
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
-import VoyagerVersionBox from "../../VoyagerVersionBox";
+import { HeadingWithVersion } from "../../components/HeadingWithVersion";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -236,35 +235,15 @@ export const MigrationData: FC<MigrationDataProps> = ({
 
   return (
     <Box>
-      <Box display="flex" justifyContent="space-between" alignItems="start">
-        <Box display="flex" alignItems="center" position="relative">
-          <Typography variant="h4" className={classes.heading}>
-            {heading}
-          </Typography>
-
-          {
-            !(isFetching && !isNewMigration && !!voyagerVersion) && !!voyagerVersion && (
-              <Box
-                sx={{
-                  position: 'absolute',
-                  top: -3,
-                  left: '100%',
-                  width: '150%'
-                }}
-              >
-                <VoyagerVersionBox voyagerVersion={voyagerVersion} />
-              </Box>
-            )
-          }
-
-        </Box>
-
-
-
-        <YBButton variant="ghost" startIcon={<RefreshIcon />} onClick={onRefetch}>
-          {t("clusterDetail.performance.actions.refresh")}
-        </YBButton>
-      </Box>
+      <HeadingWithVersion
+        heading={heading}
+        voyagerVersion={voyagerVersion}
+        onRefetch={onRefetch}
+        isFetching={isFetching}
+        isNewMigration={isNewMigration}
+        showVoyagerText={true}
+        buttonVariant="secondary"
+      />
 
       {isErrorMigrationMetrics && !isNewMigration && <GenericFailure />}
 

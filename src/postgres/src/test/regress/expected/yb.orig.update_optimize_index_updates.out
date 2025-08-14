@@ -18,15 +18,18 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE no_pkey_table SET v4 = v4 + 1 WHERE v1
    ->  Index Scan using no_pkey_v1 on no_pkey_table (actual rows=1 loops=1)
          Index Cond: (v1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Index Read Requests: 1
+         Storage Index Read Ops: 1
          Storage Index Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 2
+ Storage Read Ops: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(12 rows)
+(15 rows)
 
 -- Updating the key columns of an index should require a DELETE + INSERT
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE no_pkey_table SET v2 = v2 + 1 WHERE v1 = 1;
@@ -36,16 +39,19 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE no_pkey_table SET v2 = v2 + 1 WHERE v1
    ->  Index Scan using no_pkey_v1 on no_pkey_table (actual rows=1 loops=1)
          Index Cond: (v1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Index Read Requests: 1
+         Storage Index Read Ops: 1
          Storage Index Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 4
  Storage Read Requests: 2
+ Storage Read Ops: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 5
  Storage Flush Requests: 1
-(13 rows)
+(16 rows)
 
 -- Updating non-key columns of an index should only require an UPDATE
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE no_pkey_table SET v3 = v3 + 1 WHERE v1 = 1;
@@ -55,16 +61,19 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE no_pkey_table SET v3 = v3 + 1 WHERE v1
    ->  Index Scan using no_pkey_v1 on no_pkey_table (actual rows=1 loops=1)
          Index Cond: (v1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Index Read Requests: 1
+         Storage Index Read Ops: 1
          Storage Index Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 2
+ Storage Read Ops: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(13 rows)
+(16 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE no_pkey_table SET v3 = v3 + 1, v4 = v4 + 1 WHERE v1 = 1;
                                  QUERY PLAN                                 
@@ -73,16 +82,19 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE no_pkey_table SET v3 = v3 + 1, v4 = v4
    ->  Index Scan using no_pkey_v1 on no_pkey_table (actual rows=1 loops=1)
          Index Cond: (v1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Index Read Requests: 1
+         Storage Index Read Ops: 1
          Storage Index Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 2
+ Storage Read Ops: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(13 rows)
+(16 rows)
 
 -- Updating a mix of key and non-key columns of an index should require a DELETE + INSERT
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE no_pkey_table SET v2 = v2 + 1, v3 = v3 + 1 WHERE v1 = 1;
@@ -92,16 +104,19 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE no_pkey_table SET v2 = v2 + 1, v3 = v3
    ->  Index Scan using no_pkey_v1 on no_pkey_table (actual rows=1 loops=1)
          Index Cond: (v1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Index Read Requests: 1
+         Storage Index Read Ops: 1
          Storage Index Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 4
  Storage Read Requests: 2
+ Storage Read Ops: 2
  Storage Rows Scanned: 2
  Storage Write Requests: 5
  Storage Flush Requests: 1
-(13 rows)
+(16 rows)
 
 -- Validate the updates above using both SeqScan and IndexOnlyScan
 /*+ SeqScan(no_pkey_table) */ SELECT * FROM no_pkey_table WHERE v1 = 1 ORDER BY v1;
@@ -141,13 +156,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v4 = v4 + 1 WHERE k1 = 1;
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 -- Updating the key columns of an index should require a DELETE + INSERT
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v2 = v2 + 1 WHERE k1 = 1;
@@ -157,14 +174,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v2 = v2 + 1 WHERE k1 = 1;
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 4
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 5
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 -- Updating non-key columns of an index should only require an UPDATE
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v3 = v3 + 1 WHERE k1 = 1;
@@ -174,14 +193,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v3 = v3 + 1 WHERE k1 = 1;
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v3 = v3 + 1, v4 = v4 + 1 WHERE k1 = 1;
                                 QUERY PLAN                                
@@ -190,14 +211,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v3 = v3 + 1, v4 = v4 + 1 
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 -- Updating a mix of key and non-key columns of an index should require a DELETE + INSERT
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v2 = v2 + 1, v3 = v3 + 1 WHERE k1 = 1;
@@ -207,14 +230,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v2 = v2 + 1, v3 = v3 + 1 
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 4
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 5
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 -- Validate the updates above using both SeqScan and IndexOnlyScan
 /*+ SeqScan(t_simple) */ SELECT * FROM t_simple WHERE k1 = 1 ORDER BY (k1, k2);
@@ -246,14 +271,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k1 = k1 + 10, v3 = v3 + 1
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 2
          Storage Index Write Requests: 6
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 8
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k2 = k2 + 10, v3 = v3 + 1 WHERE k1 = 11;
                                 QUERY PLAN                                
@@ -262,14 +289,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k2 = k2 + 10, v3 = v3 + 1
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 11)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 2
          Storage Index Write Requests: 6
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 8
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k1 = 12, k2 = 22, v3 = v3 + 1 WHERE k1 < 3;
                      QUERY PLAN                     
@@ -278,14 +307,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k1 = 12, k2 = 22, v3 = v3
    ->  Seq Scan on t_simple (actual rows=1 loops=1)
          Storage Filter: (k1 < 3)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 10
          Storage Table Write Requests: 2
          Storage Index Write Requests: 6
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 10
  Storage Write Requests: 8
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k1 = k1 + 10, k2 = k2 + 10, v2 = v2 + 1 WHERE k2 = 3;
                      QUERY PLAN                     
@@ -294,14 +325,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k1 = k1 + 10, k2 = k2 + 1
    ->  Seq Scan on t_simple (actual rows=1 loops=1)
          Storage Filter: (k2 = 3)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 10
          Storage Table Write Requests: 2
          Storage Index Write Requests: 6
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 10
  Storage Write Requests: 8
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k1 = k1 + 10, k2 = k2 + 10, v2 = v2 + 1, v3 = v3 + 1 WHERE k2 = 4;
                      QUERY PLAN                     
@@ -310,14 +343,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k1 = k1 + 10, k2 = k2 + 1
    ->  Seq Scan on t_simple (actual rows=1 loops=1)
          Storage Filter: (k2 = 4)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 10
          Storage Table Write Requests: 2
          Storage Index Write Requests: 6
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 10
  Storage Write Requests: 8
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 /*+ SeqScan(t_simple) */ SELECT * FROM t_simple WHERE k1 > 10 ORDER BY (k1, k2);
  k1 | k2 | v1 | v2 | v3 | v4 
@@ -386,14 +421,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v2 = v2 + 10 WHERE k1 = 1
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 4
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 5
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 -- Updating non-key columns of an index should only require an UPDATE
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v3 = v3 + 1 WHERE k1 = 1;
@@ -403,14 +440,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v3 = v3 + 1 WHERE k1 = 1;
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v3 = v3 + 1, v4 = v4 + 1 WHERE k1 = 1;
                                 QUERY PLAN                                
@@ -419,14 +458,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v3 = v3 + 1, v4 = v4 + 1 
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 -- Updating a mix of key and non-key columns of an index should require a DELETE + INSERT
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v2 = v2 + 10, v3 = v3 + 1 WHERE k1 = 1;
@@ -436,14 +477,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v2 = v2 + 10, v3 = v3 + 1
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 4
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 5
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 -- Updating the primary key columns should require a DELETE + INSERT on the main table
 -- but only an UPDATE on a non-unique index.
@@ -454,14 +497,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k1 = k1 + 10, v3 = v3 + 1
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 2
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 4
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k2 = k2 + 10, v3 = v3 + 1 WHERE k1 = 11;
                                 QUERY PLAN                                
@@ -470,14 +515,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k2 = k2 + 10, v3 = v3 + 1
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 11)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 2
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 4
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k1 = 12, k2 = 22, v3 = v3 + 1 WHERE k1 < 3;
                      QUERY PLAN                     
@@ -486,14 +533,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k1 = 12, k2 = 22, v3 = v3
    ->  Seq Scan on t_simple (actual rows=1 loops=1)
          Storage Filter: (k1 < 3)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 10
          Storage Table Write Requests: 2
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 10
  Storage Write Requests: 4
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k1 = k1 + 10, k2 = k2 + 10, v2 = v2 + 10 WHERE k2 = 3;
                      QUERY PLAN                     
@@ -502,14 +551,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k1 = k1 + 10, k2 = k2 + 1
    ->  Seq Scan on t_simple (actual rows=1 loops=1)
          Storage Filter: (k2 = 3)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 10
          Storage Table Write Requests: 2
          Storage Index Write Requests: 4
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 10
  Storage Write Requests: 6
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k1 = k1 + 10, k2 = k2 + 10, v2 = v2 + 10, v3 = v3 + 1 WHERE k2 = 4;
                      QUERY PLAN                     
@@ -518,14 +569,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k1 = k1 + 10, k2 = k2 + 1
    ->  Seq Scan on t_simple (actual rows=1 loops=1)
          Storage Filter: (k2 = 4)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 10
          Storage Table Write Requests: 2
          Storage Index Write Requests: 4
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 10
  Storage Write Requests: 6
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 /*+ SeqScan(t_simple) */ SELECT * FROM t_simple WHERE k1 > 10 ORDER BY (k1, k2);
  k1 | k2 | v1 | v2 | v3 | v4 
@@ -580,14 +633,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v1 = v1 + 10, v2 = v2 + 1
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v1 = v1 + 10, v3 = v3 + 1 WHERE k1 = 2;
                                 QUERY PLAN                                
@@ -596,14 +651,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v1 = v1 + 10, v3 = v3 + 1
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 2)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v2 = v1 + 10, v3 = v3 + 1 WHERE k1 = 3;
                                 QUERY PLAN                                
@@ -612,14 +669,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v2 = v1 + 10, v3 = v3 + 1
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 3)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 -- Similaryly, updating the primary key should require a DELETE + INSERT
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k2 = k2 + 10, v3 = v3 + 1 WHERE k1 = 4;
@@ -629,14 +688,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k2 = k2 + 10, v3 = v3 + 1
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 4)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 2
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 4
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 -- Updating non-key columns of the index should only require an UPDATE
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v3 = v3 + 1, v4 = v4 + 1 WHERE k1 = 5;
@@ -646,14 +707,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v3 = v3 + 1, v4 = v4 + 1 
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 5)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 2
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 /*+ IndexOnlyScan(t_simple simple_v1_v2_v3) */ SELECT v1, v2, v3 FROM t_simple WHERE v2 <= 5 ORDER BY (v1, v2);
  v1 | v2 | v3 
@@ -683,14 +746,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v1 = v1 + 10, v2 = v2 + 1
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v1 = v1 + 10, v3 = v3 + 1 WHERE k1 = 2;
                                 QUERY PLAN                                
@@ -699,14 +764,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v1 = v1 + 10, v3 = v3 + 1
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 2)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v2 = v1 + 10, v3 = v3 + 1 WHERE k1 = 3;
                                 QUERY PLAN                                
@@ -715,14 +782,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v2 = v1 + 10, v3 = v3 + 1
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 3)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k2 = k2 + 10, v2 = v2 + 1 WHERE k1 = 1;
                                 QUERY PLAN                                
@@ -731,14 +800,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k2 = k2 + 10, v2 = v2 + 1
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 2
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 4
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v2 = v2 + 1, v4 = v4 + 1 WHERE k1 = 1;
                                 QUERY PLAN                                
@@ -747,14 +818,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v2 = v2 + 1, v4 = v4 + 1 
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 2
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 /*+ IndexOnlyScan(t_simple out_of_order_v1_v2_v3) */ SELECT v1, v2, v3 FROM t_simple WHERE v2 <= 5 ORDER BY (v1, v2);
  v1 | v2 | v3 
@@ -787,14 +860,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v2 = NULL WHERE k1 = 1;
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v2 = NULL, v3 = NULL WHERE k1 = 2;
                                 QUERY PLAN                                
@@ -803,14 +878,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v2 = NULL, v3 = NULL WHER
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 2)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v3 = NULL, v4 = NULL WHERE k1 = 3;
                                 QUERY PLAN                                
@@ -819,14 +896,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v3 = NULL, v4 = NULL WHER
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 3)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 2
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v1 = NULL WHERE k1 = 4;
                                 QUERY PLAN                                
@@ -835,14 +914,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v1 = NULL WHERE k1 = 4;
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 4)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v1 = NULL, v2 = NULL, v3 = NULL WHERE k1 = 5;
                                 QUERY PLAN                                
@@ -851,14 +932,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v1 = NULL, v2 = NULL, v3 
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 5)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 /*+ IndexOnlyScan(t_simple simple_v1_v2_v3) */ SELECT v1, v2, v3 FROM t_simple WHERE v1 <= 25 OR v1 IS NULL ORDER BY (v1, v2);
  v1 | v2 | v3 
@@ -892,14 +975,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v2 = 1 WHERE k1 = 1;
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v2 = 2, v3 = k1 WHERE k1 = 2;
                                 QUERY PLAN                                
@@ -908,14 +993,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v2 = 2, v3 = k1 WHERE k1 
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 2)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v4 = k1 - k2 + v1, v3 = 3 WHERE k1 = 3;
                                 QUERY PLAN                                
@@ -924,14 +1011,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v4 = k1 - k2 + v1, v3 = 3
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 3)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 2
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v1 = 4 WHERE k1 = 4;
                                 QUERY PLAN                                
@@ -940,14 +1029,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v1 = 4 WHERE k1 = 4;
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 4)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v1 = 5, v2 = 5, v3 = 5 WHERE k1 = 5;
                                 QUERY PLAN                                
@@ -956,14 +1047,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v1 = 5, v2 = 5, v3 = 5 WH
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 5)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 /*+ IndexOnlyScan(t_simple simple_v1_v2_v3) */ SELECT v1, v2, v3 FROM t_simple WHERE v1 <= 25 OR v1 IS NULL ORDER BY (v1, v2);
  v1 | v2 | v3 
@@ -1002,14 +1095,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v2 = NULL WHERE k1 = 1;
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v2 = NULL, v3 = NULL WHERE k1 = 2;
                                 QUERY PLAN                                
@@ -1018,14 +1113,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v2 = NULL, v3 = NULL WHER
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 2)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v3 = NULL, v4 = NULL WHERE k1 = 3;
                                 QUERY PLAN                                
@@ -1034,14 +1131,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v3 = NULL, v4 = NULL WHER
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 3)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 2
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v1 = NULL WHERE k1 = 4;
                                 QUERY PLAN                                
@@ -1050,14 +1149,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v1 = NULL WHERE k1 = 4;
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 4)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v1 = NULL, v2 = NULL, v3 = NULL WHERE k1 = 5;
                                 QUERY PLAN                                
@@ -1066,14 +1167,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v1 = NULL, v2 = NULL, v3 
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 5)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 /*+ IndexOnlyScan(t_simple simple_unique_v1_v2_v3) */ SELECT v1, v2, v3 FROM t_simple WHERE v1 <= 25 OR v1 IS NULL ORDER BY (v1, v2);
  v1 | v2 | v3 
@@ -1107,14 +1210,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v2 = 1 WHERE k1 = 1;
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v2 = 2, v3 = k1 WHERE k1 = 2;
                                 QUERY PLAN                                
@@ -1123,14 +1228,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v2 = 2, v3 = k1 WHERE k1 
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 2)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v4 = k1 - k2 + v1, v3 = 3 WHERE k1 = 3;
                                 QUERY PLAN                                
@@ -1139,14 +1246,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v4 = k1 - k2 + v1, v3 = 3
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 3)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 2
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v1 = 4 WHERE k1 = 4;
                                 QUERY PLAN                                
@@ -1155,14 +1264,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v1 = 4 WHERE k1 = 4;
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 4)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v1 = 5, v2 = 5, v3 = 5 WHERE k1 = 5;
                                 QUERY PLAN                                
@@ -1171,14 +1282,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v1 = 5, v2 = 5, v3 = 5 WH
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 5)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 /*+ IndexOnlyScan(t_simple simple_unique_v1_v2_v3) */ SELECT v1, v2, v3 FROM t_simple WHERE v1 <= 25 OR v1 IS NULL ORDER BY (v1, v2);
  v1 | v2 | v3 
@@ -1221,14 +1334,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v1 = 11, v2 = 10 WHERE k1
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 -- The rows must be deleted from the AND index but not the OR index
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v1 = 12, v2 = 8 WHERE k1 = 2;
@@ -1238,14 +1353,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v1 = 12, v2 = 8 WHERE k1 
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 2)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 3
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 4
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v2 = 15 WHERE k1 = 3;
                                 QUERY PLAN                                
@@ -1254,14 +1371,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v2 = 15 WHERE k1 = 3;
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 3)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 3
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 4
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 -- Modifying the INCLUDE columns should have no impact on the index
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v3 = v3 + 10 WHERE k1 = 6;
@@ -1271,14 +1390,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v3 = v3 + 10 WHERE k1 = 6
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 6)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 2
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 -- The row must be inserted into both indexes
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v1 = 5, v2 = -5 WHERE k1 = 1;
@@ -1288,14 +1409,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v1 = 5, v2 = -5 WHERE k1 
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 2
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 -- The row must be inserted into one of the indexes but not the other
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v1 = 4 WHERE k1 = 2;
@@ -1305,14 +1428,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v1 = 4 WHERE k1 = 2;
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 2)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 3
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 4
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v1 = 4, v2 = 8, v3 = 100 WHERE k1 = 7;
                                 QUERY PLAN                                
@@ -1321,14 +1446,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v1 = 4, v2 = 8, v3 = 100 
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 7)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 3
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 4
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 -- Modifying the primary key columns should neither delete nor insert into the index
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k2 = k1 + 10, v3 = v3 + 1 WHERE k1 = 8;
@@ -1338,14 +1465,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k2 = k1 + 10, v3 = v3 + 1
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 8)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 2
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 4
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 /*+ IndexOnlyScan(t_simple simple_partial_or) */ SELECT v1, v2, v3 FROM t_simple WHERE v1 < 5 OR v2 < 10 ORDER BY (v1, v2);
  v1 | v2 | v3  
@@ -1422,14 +1551,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v1 = 11 WHERE k1 = 1;
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 -- Any other column update should only require an UPDATE
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k2 = k2 + 1 WHERE k1 = 2;
@@ -1439,14 +1570,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k2 = k2 + 1 WHERE k1 = 2;
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 2)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 2
          Storage Index Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k1 = k1 + 10 WHERE k1 = 3;
                                 QUERY PLAN                                
@@ -1455,14 +1588,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k1 = k1 + 10 WHERE k1 = 3
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 3)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 2
          Storage Index Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k2 = k2 + 5, v3 = v3 + 5 WHERE k1 = 4;
                                 QUERY PLAN                                
@@ -1471,14 +1606,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k2 = k2 + 5, v3 = v3 + 5 
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 4)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 2
          Storage Index Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 /*+ IndexScan(simple_expr) */ SELECT *, v1 + 10 FROM t_simple WHERE v1 + 10 IN (21, 12, 13, 14, 15, 16, 17, 18, 19, 20) ORDER BY (v1, v2);
  k1 | k2 | v1 | v2 | v3 | v4 | ?column? 
@@ -1525,14 +1662,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v1 = 11 WHERE k1 = 1;
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 4
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 5
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v2 = v2 + 1 WHERE k1 = 2;
                                 QUERY PLAN                                
@@ -1541,14 +1680,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v2 = v2 + 1 WHERE k1 = 2;
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 2)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v1 = v2 + 10, v2 = v1 + 1 WHERE k1 = 3;
                                 QUERY PLAN                                
@@ -1557,14 +1698,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v1 = v2 + 10, v2 = v1 + 1
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 3)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 4
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 5
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 -- Any other column update should only require an UPDATE
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v3 = v3 + 1 WHERE k1 = 4;
@@ -1574,14 +1717,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v3 = v3 + 1 WHERE k1 = 4;
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 4)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v3 = v4, v4 = v3 WHERE k1 = 5;
                                 QUERY PLAN                                
@@ -1590,13 +1735,15 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v3 = v4, v4 = v3 WHERE k1
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 5)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(10 rows)
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v4 = v2 + 1 WHERE k1 = 6;
                                 QUERY PLAN                                
@@ -1605,14 +1752,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET v4 = v2 + 1 WHERE k1 = 6;
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 6)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 2
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k1 = k1 + 10, k2 = k2 + 1 WHERE k1 = 7;
                                 QUERY PLAN                                
@@ -1621,14 +1770,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k1 = k1 + 10, k2 = k2 + 1
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 7)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 2
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 4
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k1 = k1 + 10, k2 = k2 + 1 WHERE k1 = 8;
                                 QUERY PLAN                                
@@ -1637,14 +1788,16 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k1 = k1 + 10, k2 = k2 + 1
    ->  Index Scan using t_simple_pkey on t_simple (actual rows=1 loops=1)
          Index Cond: (k1 = 8)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 2
          Storage Index Write Requests: 2
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 4
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 EXPLAIN (VERBOSE) /*+ IndexOnlyScan(t_simple multi_include) */ SELECT v1, v2, v3, v4 FROM t_simple ORDER BY (v1, v2);
 WARNING:  GUC yb_explain_hide_non_deterministic_fields disables EXPLAIN option VERBOSE

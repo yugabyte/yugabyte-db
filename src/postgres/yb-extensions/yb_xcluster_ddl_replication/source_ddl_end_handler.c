@@ -106,6 +106,7 @@ static List *rewritten_table_oid_list = NIL;
 	X(CMDTAG_ALTER_AGGREGATE) \
 	X(CMDTAG_ALTER_CAST) \
 	X(CMDTAG_ALTER_COLLATION) \
+	X(CMDTAG_ALTER_DEFAULT_PRIVILEGES) \
 	X(CMDTAG_ALTER_DOMAIN) \
 	X(CMDTAG_ALTER_EXTENSION) \
 	X(CMDTAG_ALTER_FUNCTION) \
@@ -621,8 +622,12 @@ GetSourceEventTriggerDDLCommands(YbCommandInfo **info_array_out)
 			SPI_GetText(spi_tuple, DDL_END_COMMAND_TAG_COLUMN_ID);
 		CommandTag	command_tag = GetCommandTagEnum(info->command_tag_name);
 
-		/* Only commands that don't have an oid are GRANT, REVOKE */
-		if (command_tag != CMDTAG_GRANT && command_tag != CMDTAG_REVOKE)
+		/*
+		 * Only commands that don't have an oid are GRANT, REVOKE, and
+		 * ALTER DEFAULT PRIVILEGES.
+		 */
+		if (command_tag != CMDTAG_GRANT && command_tag != CMDTAG_REVOKE
+			&& command_tag != CMDTAG_ALTER_DEFAULT_PRIVILEGES)
 		{
 			info->oid = SPI_GetOid(spi_tuple, DDL_END_OBJID_COLUMN_ID);
 		}
@@ -727,6 +732,7 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 	List	   *sequence_info_list = NIL;
 	List	   *type_info_list = NIL;
 	bool		found_temp = false;
+	bool		found_matview = false;
 
 	/*
 	 * As long as there is at least one command that needs to be replicated, we
@@ -837,6 +843,10 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 					ShouldReplicateTruncatedRelation(obj_id, &new_rel_list);
 
 		}
+		else if (IsMatViewCommand(command_tag))
+		{
+			found_matview = true;
+		}
 		else if (IsPassThroughDdlSupported(command_tag_name))
 		{
 			should_replicate_ddl = !is_temporary_object;
@@ -848,11 +858,20 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 		}
 	}
 
-	if (found_temp && should_replicate_ddl)
-		ereport(ERROR,
+	if (should_replicate_ddl)
+	{
+		if (found_temp)
+			ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("unsupported mix of temporary and persisted objects in DDL command"),
-				 errdetail("%s", kManualReplicationErrorMsg)));
+				errmsg("unsupported mix of temporary and persisted objects in DDL command"),
+				errdetail("%s", kManualReplicationErrorMsg)));
+
+		if (found_matview)
+			ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				errmsg("unsupported mix of materialized view and other DDL commands"),
+				errdetail("%s", kManualReplicationErrorMsg)));
+	}
 
 	ProcessNewRelationsList(state, &new_rel_list);
 
@@ -901,8 +920,14 @@ ProcessSourceEventTriggerTableRewrite()
 }
 
 bool
-ProcessSourceEventTriggerDroppedObjects()
+ProcessSourceEventTriggerDroppedObjects(CommandTag	tag)
 {
+	/*
+	 * Matview related DDLs are not replicated.
+	 */
+	if (IsMatViewCommand(tag))
+		return false;
+
 	StringInfoData query_buf;
 
 	initStringInfo(&query_buf);

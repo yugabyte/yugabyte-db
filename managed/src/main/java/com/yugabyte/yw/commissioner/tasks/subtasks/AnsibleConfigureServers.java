@@ -35,6 +35,7 @@ import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -108,6 +109,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     public boolean masterJoinExistingCluster = true;
 
     public AuditLogConfig auditLogConfig = null;
+    public MetricsExportConfig metricsExportConfig = null;
     public Map<String, String> ybcGflags = new HashMap<>();
     public boolean overrideNodePorts = false;
     // Amount of memory to limit the postgres process to via the ysql cgroup (in megabytes)

@@ -119,7 +119,7 @@ static void InitPostgresImpl(const char *in_dbname, Oid dboid,
 							 bool *yb_sys_table_prefetching_started);
 static void YbEnsureSysTablePrefetchingStopped();
 static void YbPresetDatabaseCollation(HeapTuple tuple);
-
+static bool YbUseTserverResponseCacheForAuth(int64_t shared_catalog_version);
 
 /*** InitPostgres support ***/
 
@@ -880,7 +880,28 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		 * catalog version mode is impossible in case prefething is started.
 		 */
 		YBIsDBCatalogVersionMode();
-		YBCStartSysTablePrefetchingNoCache();
+		uint64_t	shared_catalog_version;
+		HandleYBStatus(YBCGetSharedCatalogVersion(&shared_catalog_version));
+		if (YbUseTserverResponseCacheForAuth(shared_catalog_version))
+		{
+			/*
+			 * If YB connection manager is enabled, for scalability reason we use
+			 * shared catalog version instead of YbGetMasterCatalogVersion() to
+			 * avoid one master RPC.
+			 */
+			YbcPgLastKnownCatalogVersionInfo catalog_version =
+				(YbcPgLastKnownCatalogVersionInfo)
+				{
+					.version = shared_catalog_version,
+					.version_read_time = {},
+					.is_db_catalog_version_mode = YBIsDBCatalogVersionMode(),
+				};
+			YBCStartSysTablePrefetching(Template1DbOid,
+										catalog_version,
+										YB_YQL_PREFETCHER_TRUST_CACHE);
+		}
+		else
+			YBCStartSysTablePrefetchingNoCache();
 		YbRegisterSysTableForPrefetching(AuthIdRelationId); /* pg_authid */
 		YbRegisterSysTableForPrefetching(DatabaseRelationId);	/* pg_database */
 
@@ -1410,6 +1431,38 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 	/* close the transaction we started above */
 	if (!bootstrap)
 		CommitTransactionCommand();
+}
+
+static bool
+YbUseTserverResponseCacheForAuth(int64_t shared_catalog_version)
+{
+	if (!YbIsAuthBackend())
+		return false;
+	/* We should only see auth backend if connection manager is enabled. */
+	Assert(YbIsYsqlConnMgrEnabled());
+
+	if (!YbCheckTserverResponseCacheForAuthGflags())
+		return false;
+
+	/*
+	 * For now we do not allow using tserver response cache for auth processing
+	 * if login profile is enabled. This is because the login process itself
+	 * writes to pg_yb_role_profile table but this is not done under a DDL
+	 * statement context. As a result the catalog version isn't incremented
+	 * but the tserver response cache becomes stale. Newer login processing
+	 * will continue to use the stale cache which isn't right.
+	 */
+	if (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist)
+		return false;
+
+	/*
+	 * Tserver response cache requires a valid catalog version. Use the shared
+	 * memory catalog version as an approximation of the latest master catalog
+	 * version.
+	 */
+	if (shared_catalog_version == YB_CATCACHE_VERSION_UNINITIALIZED)
+		return false;
+	return true;
 }
 
 static void

@@ -762,6 +762,7 @@ typedef struct YbBitmapTableScan
 typedef struct TidScan
 {
 	Scan		scan;
+	YbPushdownExprs yb_rel_pushdown;
 	List	   *tidquals;		/* qual(s) involving CTID = something */
 } TidScan;
 

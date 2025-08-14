@@ -10,10 +10,12 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF) SELECT yb_index_check('abcd_b_c_
 -----------------------------------------
  Result *RESULT* (actual rows=1 loops=1)
    Storage Table Read Requests: 5
+   Storage Table Read Ops: 11
    Storage Table Rows Scanned: 20
    Storage Index Read Requests: 1
+   Storage Index Read Ops: 1
    Storage Index Rows Scanned: 10
-(5 rows)
+(7 rows)
 
 SELECT yb_index_check('abcd_b_c_d_idx'::regclass::oid);
  yb_index_check 

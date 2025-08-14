@@ -1174,7 +1174,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status ScheduleTask(std::shared_ptr<server::RunnableMonitoredTask> task) override;
 
   // Time since this peer became master leader. Caller should verify that it is leader before.
-  MonoDelta TimeSinceElectedLeader();
+  MonoDelta TimeSinceElectedLeader() const;
 
   Result<std::vector<TableDescription>> CollectTables(
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& table_identifiers,
@@ -1440,6 +1440,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const UpdateConsumerOnProducerMetadataRequestPB* req,
       UpdateConsumerOnProducerMetadataResponsePB* resp, rpc::RpcContext* rpc);
 
+  // Store packing schemas for upcoming colocated tables on an xCluster automatic mode target,
+  // since their rows are replicated before the corresponding table is created.
   Status InsertHistoricalColocatedSchemaPacking(
       const xcluster::ReplicationGroupId& replication_group_id, const TablegroupId& tablegroup_id,
       const ColocationId colocation_id,
@@ -2425,8 +2427,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const TableInfoPtr& table, const ReplicationInfoPB& replication_info) const override;
 
   Status CanSupportAdditionalTabletsForTableCreation(
-    int num_tablets, const ReplicationInfoPB& replication_info,
-    const TSDescriptorVector& ts_descs);
+    int num_tablets, const ReplicationInfoPB& replication_info) const;
 
   Status CDCSDKValidateCreateTableRequest(const CreateTableRequestPB& req);
 

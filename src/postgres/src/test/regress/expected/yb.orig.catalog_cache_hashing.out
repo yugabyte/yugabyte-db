@@ -24,7 +24,7 @@ CREATE TEMP TABLE catcache_keys (
 \getenv abs_srcdir PG_ABS_SRCDIR
 \set filename :abs_srcdir '/data/yb_catcache_keys.data'
 COPY catcache_keys FROM :'filename';
-WARNING:  batched COPY is not supported on temporary tables
+WARNING:  ROWS_PER_TRANSACTION is not supported on temporary tables
 DETAIL:  Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 -- This table will store the results of hashing the keys.

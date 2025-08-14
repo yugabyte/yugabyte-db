@@ -34,8 +34,10 @@ std::string Timestamp::ToFormattedString() const {
   return DateTime::TimestampToString(*this, DateTime::CqlOutputFormat);
 }
 
-std::string Timestamp::ToHumanReadableTime() const {
-  return DateTime::TimestampToString(*this, DateTime::HumanReadableOutputFormat);
+std::string Timestamp::ToHumanReadableTime(UseUTC use_utc) const {
+  auto format = DateTime::HumanReadableOutputFormat;
+  format.use_utc = use_utc;
+  return DateTime::TimestampToString(*this, format);
 }
 
 } // namespace yb

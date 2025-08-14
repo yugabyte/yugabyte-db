@@ -226,14 +226,15 @@ public class KubernetesManagerTest extends FakeDBApplication {
   @Test
   @Parameters({
     "kubernetes/statefulset_list_without_gflags_checksum.json",
-    "kubernetes/statefulset_list_with_gflags_checksum.json"
+    "kubernetes/statefulset_list_with_gflags_checksum.json",
   })
   public void testGetStatefulSetServerTypeGflagsChecksum(String outputFilePath) throws IOException {
     String kubectlResponse = TestUtils.readResource(outputFilePath);
     ShellResponse response = ShellResponse.create(0, kubectlResponse);
     when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class))).thenReturn(response);
     Map<ServerType, String> serverTypeChecksumMap =
-        kubernetesManager.getServerTypeGflagsChecksumMap("test-ns", "test-release", configProvider);
+        kubernetesManager.getServerTypeGflagsChecksumMap(
+            "test-ns", "test-release", configProvider, true /* newNamingStyle */);
     Mockito.verify(shellProcessHandler, times(1)).run(command.capture(), context.capture());
     assertEquals(
         ImmutableList.of(
@@ -262,6 +263,47 @@ public class KubernetesManagerTest extends FakeDBApplication {
           .get("app.kubernetes.io/name")
           .asText()
           .equals("yb-master")) {
+        assertEquals(expected, serverTypeChecksumMap.get(ServerType.MASTER));
+      } else {
+        assertEquals(expected, serverTypeChecksumMap.get(ServerType.TSERVER));
+      }
+    }
+  }
+
+  @Test
+  @Parameters({"kubernetes/statefulset_oldnaming_list_with_gflags_checksum.json"})
+  public void testGetStatefulSetServerTypeGflagsChecksumOldNaming(String outputFilePath)
+      throws IOException {
+    String kubectlResponse = TestUtils.readResource(outputFilePath);
+    ShellResponse response = ShellResponse.create(0, kubectlResponse);
+    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class))).thenReturn(response);
+    Map<ServerType, String> serverTypeChecksumMap =
+        kubernetesManager.getServerTypeGflagsChecksumMap(
+            "test-ns", "test-release", configProvider, false /* newNamingStyle */);
+    Mockito.verify(shellProcessHandler, times(1)).run(command.capture(), context.capture());
+    assertEquals(
+        ImmutableList.of(
+            "kubectl",
+            "get",
+            "sts",
+            "--namespace",
+            "test-ns",
+            "-o",
+            "json",
+            "-l",
+            "release=" + "test-release"),
+        command.getValue());
+
+    // Verify checksum entries are as expected
+    ObjectMapper mapper = new ObjectMapper();
+    ArrayNode stsArray = (ArrayNode) mapper.readTree(kubectlResponse).get("items");
+    for (JsonNode sts : stsArray) {
+      JsonNode annotations = sts.get("spec").get("template").get("metadata").get("annotations");
+      String expected =
+          annotations.hasNonNull("checksum/gflags")
+              ? annotations.get("checksum/gflags").asText()
+              : "";
+      if (sts.get("metadata").get("labels").get("app").asText().equals("yb-master")) {
         assertEquals(expected, serverTypeChecksumMap.get(ServerType.MASTER));
       } else {
         assertEquals(expected, serverTypeChecksumMap.get(ServerType.TSERVER));

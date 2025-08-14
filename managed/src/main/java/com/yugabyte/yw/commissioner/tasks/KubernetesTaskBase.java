@@ -1545,20 +1545,38 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       boolean isReadOnlyCluster,
       String ybcSoftwareVersion,
       Map<String, String> ybcGflags) {
+    installYbcOnThePods(
+        servers, isReadOnlyCluster, ybcSoftwareVersion, ybcGflags, null /* placement */);
+  }
+
+  public void installYbcOnThePods(
+      Set<NodeDetails> servers,
+      boolean isReadOnlyCluster,
+      String ybcSoftwareVersion,
+      Map<String, String> ybcGflags,
+      @Nullable KubernetesPlacement placement) {
     SubTaskGroup ybcUpload =
         createSubTaskGroup(KubernetesCommandExecutor.CommandType.COPY_PACKAGE.getSubTaskGroupName())
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     createKubernetesYbcCopyPackageTask(
-        ybcUpload, servers, isReadOnlyCluster, ybcSoftwareVersion, ybcGflags);
+        ybcUpload, servers, isReadOnlyCluster, ybcSoftwareVersion, ybcGflags, placement);
     getRunnableTask().addSubTaskGroup(ybcUpload);
   }
 
   public void performYbcAction(
       Set<NodeDetails> servers, boolean isReadOnlyCluster, String command) {
+    performYbcAction(servers, isReadOnlyCluster, command, null /* placement */);
+  }
+
+  public void performYbcAction(
+      Set<NodeDetails> servers,
+      boolean isReadOnlyCluster,
+      String command,
+      @Nullable KubernetesPlacement placement) {
     SubTaskGroup ybcAction =
         createSubTaskGroup(KubernetesCommandExecutor.CommandType.YBC_ACTION.getSubTaskGroupName())
             .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
-    createKubernetesYbcActionTask(ybcAction, servers, isReadOnlyCluster, command);
+    createKubernetesYbcActionTask(ybcAction, servers, isReadOnlyCluster, command, placement);
     getRunnableTask().addSubTaskGroup(ybcAction);
   }
 
@@ -1568,7 +1586,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       Set<NodeDetails> servers,
       boolean isReadOnlyCluster,
       String ybcSoftwareVersion,
-      Map<String, String> ybcGflags) {
+      Map<String, String> ybcGflags,
+      @Nullable KubernetesPlacement placement) {
     for (NodeDetails node : servers) {
       Cluster primaryCluster = taskParams().getPrimaryCluster();
       Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
@@ -1584,7 +1603,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
               ? UUID.fromString(readOnlyClusters.get(0).userIntent.provider)
               : UUID.fromString(primaryCluster.userIntent.provider);
       createKubernetesYbcCopyPackageSubTask(
-          subTaskGroup, node, providerUUID, ybcSoftwareVersion, ybcGflags);
+          subTaskGroup, node, providerUUID, ybcSoftwareVersion, ybcGflags, placement);
     }
   }
 
@@ -1698,7 +1717,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       SubTaskGroup subTaskGroup,
       Set<NodeDetails> servers,
       boolean isReadOnlyCluster,
-      String command) {
+      String command,
+      @Nullable KubernetesPlacement placement) {
     for (NodeDetails node : servers) {
       Cluster primaryCluster = taskParams().getPrimaryCluster();
       List<Cluster> readOnlyClusters = taskParams().getReadOnlyClusters();
@@ -1714,7 +1734,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
               ? UUID.fromString(readOnlyClusters.get(0).userIntent.provider)
               : UUID.fromString(primaryCluster.userIntent.provider);
       createKubernetesYbcActionSubTask(
-          subTaskGroup, node, providerUUID, isReadOnlyCluster, command);
+          subTaskGroup, node, providerUUID, isReadOnlyCluster, command, placement);
     }
   }
 
@@ -2672,7 +2692,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       Map<ServerType, String> previousGflagsChecksum =
           kubernetesManagerFactory
               .getManager()
-              .getServerTypeGflagsChecksumMap(namespace, helmReleaseName, azConfig);
+              .getServerTypeGflagsChecksumMap(namespace, helmReleaseName, azConfig, newNamingStyle);
       perAZServerTypeGflagsChecksumMap.put(azUUID, previousGflagsChecksum);
     }
     return perAZServerTypeGflagsChecksumMap;

@@ -74,12 +74,13 @@ class TSLocalLockManagerTest : public TabletServerTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_assert_olm_empty_locks_map) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_olm_skip_sending_wait_for_probes) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_lock_fastpath) = true;
-    // We don't start PG in this test, so there's no need to run code gated under this flag,
-    // namely shared memory negotiation.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = true;
     TabletServerTestBase::SetUp();
     StartTabletServer();
     auto& server = *mini_server_->server();
+    // Skip shared mem negotiation since there is no pg supervisor managing conections,
+    // and hence the negotiation callback never happens.
+    ASSERT_OK(server.SkipSharedMemoryNegotiation());
     shared_mem_state_ = server.shared_mem_manager()->SharedData()->object_lock_state();
     shared_manager_ = server.ObjectLockSharedStateManager();
     lock_owner_registry_ = &shared_manager_->registry();

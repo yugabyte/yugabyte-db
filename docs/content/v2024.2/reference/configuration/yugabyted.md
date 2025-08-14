@@ -28,7 +28,7 @@ You can use yugabyted for production deployments (v2.18.4 and later). You can al
 
 The yugabyted executable file is packaged with YugabyteDB and located in the YugabyteDB home `bin` directory.
 
-For information on installing YugabyteDB, see [Use a local cluster](/preview/tutorials/quick-start/linux/) or [Get started](https://download.yugabyte.com).
+For information on installing YugabyteDB, see [Use a local cluster](/preview/quick-start/linux/) or [Get started](https://download.yugabyte.com).
 
 After installing YugabyteDB, if you want to use [backup](#backup) and [restore](#restore), you also need to install YB Controller. For example, if you installed v{{< yb-version version="stable" format="short">}}, do the following:
 
@@ -82,7 +82,7 @@ $ ./bin/yugabyted -h
 ```
 
 ```sh
-$ ./bin/yugabyted -help
+$ ./bin/yugabyted --help
 ```
 
 For help with specific yugabyted commands, run 'yugabyted [ command ] -h'. For example, you can print the command-line help for the `yugabyted start` command by running the following:
@@ -1654,7 +1654,7 @@ You can set the replication factor of the cluster manually using the `--rf` flag
 
 ### Create a multi-region cluster in Docker
 
-You can run yugabyted in a Docker container. For more information, see the [Quick Start](/preview/tutorials/quick-start/docker/).
+You can run yugabyted in a Docker container. For more information, see the [Quick Start](/preview/quick-start/docker/).
 
 The following example shows how to create a multi-region cluster. If the `~/yb_docker_data` directory already exists, delete and re-create it.
 

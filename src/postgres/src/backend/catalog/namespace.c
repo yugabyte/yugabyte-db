@@ -4008,7 +4008,7 @@ InitTempTableNamespace(void)
 	Assert(!OidIsValid(myTempNamespace));
 
 	if (IsYugaByteEnabled())
-		YBCDdlEnableForceCatalogModification();
+		YBCRecordTempRelationDDL();
 
 	/*
 	 * First, do permission check to see if we are authorized to make temp
@@ -4315,7 +4315,7 @@ RemoveTempRelations(Oid tempNamespaceId)
 			YBAddDdlTxnState(YB_DDL_MODE_SILENT_ALTERING);
 		else
 			YBIncrementDdlNestingLevel(YB_DDL_MODE_SILENT_ALTERING);
-		YBCDdlEnableForceCatalogModification();
+		YBCRecordTempRelationDDL();
 	}
 	performDeletion(&object, DROP_CASCADE,
 					PERFORM_DELETION_INTERNAL |

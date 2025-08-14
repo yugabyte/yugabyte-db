@@ -786,7 +786,7 @@ message AcquireObjectLocksGlobalRequestPB {
   optional uint64 lease_epoch = 5;
   optional fixed64 ignore_after_hybrid_time = 6;
   optional fixed64 propagated_hybrid_time = 7;
-  optional AshMetadataPB ash_metadata = 8;
+  reserved 8;  // ASH metadata is now passed in RequestHeader PB
   optional bytes status_tablet = 9;
 }
 
@@ -804,7 +804,7 @@ message ReleaseObjectLocksGlobalRequestPB {
   optional uint64 lease_epoch = 4;
   optional fixed64 apply_after_hybrid_time = 5;
   optional fixed64 propagated_hybrid_time = 6;
-  optional AshMetadataPB ash_metadata = 7;
+  reserved 7; // ASH metadata is now passed in RequestHeader PB
   // Should generally not be used. Only used by yb-admin to manually
   // clear out locks (that may have leaked).
   optional bool wait_for_completion = 8;
@@ -903,9 +903,13 @@ service MasterDdl {
       (IsYsqlDdlVerificationDoneResponsePB);
 
   rpc AcquireObjectLocksGlobal(AcquireObjectLocksGlobalRequestPB)
-      returns (AcquireObjectLocksGlobalResponsePB);
+      returns (AcquireObjectLocksGlobalResponsePB) {
+    option (yb.rpc.send_metadata) = true;
+  }
   rpc ReleaseObjectLocksGlobal(ReleaseObjectLocksGlobalRequestPB)
-      returns (ReleaseObjectLocksGlobalResponsePB);
+      returns (ReleaseObjectLocksGlobalResponsePB) {
+    option (yb.rpc.send_metadata) = true;
+  }
   rpc RefreshYsqlLease(RefreshYsqlLeaseRequestPB)
     returns (RefreshYsqlLeaseResponsePB);
 

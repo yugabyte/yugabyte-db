@@ -63,7 +63,10 @@ export default class MetricsPanel extends Component {
     } = this.props;
     const newMetricKey = printMode ? `${metricKey}-printMode` : metricKey;
     const metric =
-      metricMeasure === MetricMeasure.OUTLIER || metricType === MetricTypes.OUTLIER_TABLES
+      metricMeasure === MetricMeasure.OUTLIER ||
+      metricType === MetricTypes.OUTLIER_TABLES ||
+      metricMeasure === MetricMeasure.OUTLIER ||
+      metricType === MetricTypes.OUTLIER_DATABASES
         ? _.cloneDeep(this.props.metric)
         : this.props.metric;
     if (isNonEmptyObject(metric)) {
@@ -89,6 +92,8 @@ export default class MetricsPanel extends Component {
           dataItem['fullname'] = MetricConsts.NODE_AVERAGE;
         } else if (metricType === MetricTypes.OUTLIER_TABLES) {
           dataItem['fullname'] = dataItem['tableName'];
+        } else if (metricType === MetricTypes.OUTLIER_DATABASES) {
+          dataItem['fullname'] = dataItem['namespaceName'];
         } else {
           dataItem['fullname'] = dataItem['name'];
         }
@@ -110,6 +115,8 @@ export default class MetricsPanel extends Component {
           dataItem['name'] = dataItem['namespaceName']
             ? `${dataItem['namespaceName']}.${dataItem['tableName']}`
             : dataItem['tableName'];
+        } else if (metricType === MetricTypes.OUTLIER_DATABASES) {
+          dataItem['name'] = dataItem['namespaceName'];
         }
         // Only show upto first 8 traces in the legend
         if (i >= 8) {
@@ -141,7 +148,11 @@ export default class MetricsPanel extends Component {
       // TODO: send this data from backend.
       let max = 0;
       metric.data.forEach(function (data) {
-        if (metricType === MetricTypes.OUTLIER_TABLES && data?.namespaceName) {
+        if (
+          (metricType === MetricTypes.OUTLIER_TABLES ||
+            metricType === MetricTypes.OUTLIER_DATABASES) &&
+          data?.namespaceName
+        ) {
           data.hovertemplate =
             '%{data.namespaceName}.%{data.fullname}: %{y} at %{x} <extra></extra>';
         } else {
@@ -345,7 +356,9 @@ export default class MetricsPanel extends Component {
     return (
       <div id={newMetricKey} className={clsx(className, 'metrics-panel')}>
         <span ref={this.outlierButtonsRef} className="outlier-buttons-container">
-          {(metricMeasure === MetricMeasure.OUTLIER || metricType === MetricTypes.OUTLIER_TABLES) &&
+          {(metricMeasure === MetricMeasure.OUTLIER ||
+            metricType === MetricTypes.OUTLIER_TABLES ||
+            metricType === MetricTypes.OUTLIER_DATABASES) &&
             operations.length > 0 &&
             metricOperationsDisplayed.map((operation, idx) => {
               return (

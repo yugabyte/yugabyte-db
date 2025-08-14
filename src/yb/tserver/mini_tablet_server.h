@@ -36,6 +36,7 @@
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
 
 #include "yb/docdb/docdb_fwd.h"
 
@@ -115,6 +116,8 @@ class MiniTabletServer {
       tablet::FlushMode mode = tablet::FlushMode::kSync,
       tablet::FlushFlags flags = tablet::FlushFlags::kAllDbs);
   Status CompactTablets(docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
+  Status CompactTablet(
+      const TabletId& tablet_id, docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
   Status SwitchMemtables();
   Status CleanTabletLogs();
 

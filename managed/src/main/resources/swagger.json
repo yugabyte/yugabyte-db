@@ -863,7 +863,6 @@
             "DB_REDIS_CONNECTION",
             "DB_MEMORY_OVERLOAD",
             "DB_COMPACTION_OVERLOAD",
-            "DB_QUEUES_OVERFLOW",
             "DB_DRIVE_FAILURE",
             "DB_WRITE_READ_TEST_ERROR",
             "DDL_ATOMICITY_CHECK",
@@ -1042,7 +1041,6 @@
             "DB_REDIS_CONNECTION",
             "DB_MEMORY_OVERLOAD",
             "DB_COMPACTION_OVERLOAD",
-            "DB_QUEUES_OVERFLOW",
             "DB_DRIVE_FAILURE",
             "DB_WRITE_READ_TEST_ERROR",
             "DDL_ATOMICITY_CHECK",
@@ -1317,7 +1315,6 @@
             "DB_REDIS_CONNECTION",
             "DB_MEMORY_OVERLOAD",
             "DB_COMPACTION_OVERLOAD",
-            "DB_QUEUES_OVERFLOW",
             "DB_DRIVE_FAILURE",
             "DB_WRITE_READ_TEST_ERROR",
             "DDL_ATOMICITY_CHECK",
@@ -1991,6 +1988,7 @@
             "ToggleTls",
             "ModifyAuditLogging",
             "ModifyQueryLogging",
+            "ConfigureMetricsExport",
             "TlsConfigUpdate",
             "UpdateDiskSize",
             "CreateCluster",
@@ -2554,6 +2552,7 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -2771,6 +2770,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -5234,6 +5234,7 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -5451,6 +5452,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -5785,6 +5787,21 @@
         "useTimeSync" : {
           "description" : "True if `use time sync` is enabled",
           "type" : "boolean"
+        }
+      },
+      "type" : "object"
+    },
+    "CloudVolumeEncryption" : {
+      "description" : "Volume encryption settings for AWS EBS volumes",
+      "properties" : {
+        "enableVolumeEncryption" : {
+          "description" : "To enable volume encryption or not",
+          "type" : "boolean"
+        },
+        "kmsConfigUUID" : {
+          "description" : "KMS config UUID to be used for volume encryption",
+          "format" : "uuid",
+          "type" : "string"
         }
       },
       "type" : "object"
@@ -7221,6 +7238,10 @@
     "DeviceInfo" : {
       "description" : "Device information",
       "properties" : {
+        "cloudVolumeEncryption" : {
+          "$ref" : "#/definitions/CloudVolumeEncryption",
+          "description" : "Volume encryption settings for AWS EBS volumes"
+        },
         "diskIops" : {
           "description" : "Desired IOPS for the volumes mounted on this instance",
           "format" : "int32",
@@ -7366,6 +7387,10 @@
     "DrConfigGetResp" : {
       "description" : "disaster recovery get response",
       "properties" : {
+        "automaticDdlMode" : {
+          "description" : "Whether the config is using automatic DDL replication mode.",
+          "type" : "boolean"
+        },
         "bootstrapParams" : {
           "$ref" : "#/definitions/RestartBootstrapParams",
           "description" : "Bootstrap backup params for DR config"
@@ -8231,6 +8256,7 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -8448,6 +8474,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -9014,6 +9041,7 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -9231,6 +9259,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -10415,6 +10444,7 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -10632,6 +10662,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -11368,6 +11399,45 @@
       "required" : [
         "labels",
         "value"
+      ],
+      "type" : "object"
+    },
+    "MetricsExportConfig" : {
+      "description" : "Metrics Export Configuration",
+      "properties" : {
+        "collectionLevel" : {
+          "description" : "The level of metrics collection. Allowed values are: ALL, NORMAL, MINIMAL, OFF",
+          "enum" : [
+            "ALL",
+            "NORMAL",
+            "MINIMAL",
+            "OFF"
+          ],
+          "example" : "NORMAL",
+          "type" : "string"
+        },
+        "scrapeIntervalSeconds" : {
+          "description" : "Scrape interval in seconds. Applied on all scrape jobs commonly.",
+          "example" : 30,
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "scrapeTimeoutSeconds" : {
+          "description" : "Scrape timeout in seconds. Applied on all scrape jobs commonly.",
+          "example" : 20,
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "universeMetricsExporterConfig" : {
+          "description" : "List of universe metrics exporter configurations. If empty, no metrics will be sent anywhere.",
+          "items" : {
+            "$ref" : "#/definitions/UniverseMetricsExporterConfig"
+          },
+          "type" : "array"
+        }
+      },
+      "required" : [
+        "universeMetricsExporterConfig"
       ],
       "type" : "object"
     },
@@ -14038,15 +14108,15 @@
     "PresetThrottleValues" : {
       "properties" : {
         "defaultValue" : {
-          "format" : "int32",
+          "format" : "int64",
           "type" : "integer"
         },
         "maxValue" : {
-          "format" : "int32",
+          "format" : "int64",
           "type" : "integer"
         },
         "minValue" : {
-          "format" : "int32",
+          "format" : "int64",
           "type" : "integer"
         }
       },
@@ -14065,6 +14135,9 @@
         "autoFlagConfigVersion" : {
           "format" : "int32",
           "type" : "integer"
+        },
+        "canRollbackCatalogUpgrade" : {
+          "type" : "boolean"
         },
         "softwareVersion" : {
           "type" : "string"
@@ -14642,6 +14715,7 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -14859,6 +14933,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -15665,6 +15740,7 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -15882,6 +15958,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -16475,6 +16552,7 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -16692,6 +16770,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -17974,6 +18053,7 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -18191,6 +18271,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -18516,6 +18597,7 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -18733,6 +18815,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -18900,6 +18983,7 @@
               "ModifyAuditLoggingConfig",
               "ModifyKubernetesAuditLoggingConfig",
               "ModifyQueryLoggingConfig",
+              "ModifyMetricsExportConfig",
               "InstallYbcSoftware",
               "UpgradeUniverseYbc",
               "UpgradeYbcGFlags",
@@ -19117,6 +19201,7 @@
               "CreateTableSpaces",
               "ManageOtelCollector",
               "UpdateAndPersistAuditLoggingConfig",
+              "UpdateAndPersistMetricsExportConfig",
               "MarkUniverseForHealthScriptReUpload",
               "RebootServer",
               "HardRebootServer",
@@ -19705,6 +19790,7 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -19922,6 +20008,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -20780,6 +20867,7 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -20997,6 +21085,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -21542,6 +21631,7 @@
               "ThirdpartySoftwareUpgrade",
               "ModifyAuditLoggingConfig",
               "ModifyQueryLoggingConfig",
+              "ModifyMetricsExportConfig",
               "RotateAccessKey",
               "CreateAndRotateAccessKey",
               "RunApiTriggeredHooks",
@@ -22060,6 +22150,7 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -22277,6 +22368,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -22367,7 +22459,7 @@
     "ThrottleParamValue" : {
       "properties" : {
         "currentValue" : {
-          "format" : "int32",
+          "format" : "int64",
           "type" : "integer"
         },
         "presetValues" : {
@@ -22713,6 +22805,7 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -22930,6 +23023,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -23621,6 +23715,7 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -23838,6 +23933,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -24238,6 +24334,7 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -24455,6 +24552,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -24855,6 +24953,7 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -25072,6 +25171,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -25197,6 +25297,52 @@
           "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
+        }
+      },
+      "required" : [
+        "additionalTags",
+        "exporterUuid"
+      ],
+      "type" : "object"
+    },
+    "UniverseMetricsExporterConfig" : {
+      "description" : "Metrics Exporter Configuration",
+      "properties" : {
+        "additionalTags" : {
+          "additionalProperties" : {
+            "type" : "string"
+          },
+          "description" : "Additional tags",
+          "type" : "object"
+        },
+        "exporterUuid" : {
+          "description" : "Exporter uuid",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "metricsPrefix" : {
+          "description" : "Custom prefix to add to all exported metric names. Can be customised to each exporter differently.",
+          "example" : "ybdb.",
+          "type" : "string"
+        },
+        "sendBatchMaxSize" : {
+          "description" : "Maximum batch size for sending metrics. Can be customised to each exporter differently.",
+          "example" : 1000,
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "sendBatchSize" : {
+          "description" : "Batch size for sending metrics. Can be customised to each exporter differently.",
+          "example" : 100,
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "sendBatchTimeoutSeconds" : {
+          "description" : "Batch timeout in seconds for sending metrics. Can be customised to each exporter differently.",
+          "example" : 10,
+          "format" : "int32",
+          "type" : "integer"
         }
       },
       "required" : [
@@ -25911,6 +26057,7 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -26128,6 +26275,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -26270,6 +26418,7 @@
           "type" : "boolean"
         },
         "enableVolumeEncryption" : {
+          "description" : "<b style=\"color:#ff0000\">Deprecated since YBA version 2025.1.</b> Use userIntent.deviceInfo.cloudVolumeEncryption instead",
           "type" : "boolean"
         },
         "enableYCQL" : {
@@ -27085,6 +27234,7 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -27302,6 +27452,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -28532,24 +28683,34 @@
     "YbcThrottleParameters" : {
       "description" : "YB-Controller throttle parameters",
       "properties" : {
+        "diskReadBytesPerSecond" : {
+          "description" : "WARNING: This is a preview API that could change. Disk read bytes per second to throttle disk usage during backups",
+          "format" : "int64",
+          "type" : "integer"
+        },
+        "diskWriteBytesPerSecond" : {
+          "description" : "WARNING: This is a preview API that could change. Disk write bytes per second to throttle disk usage during restore",
+          "format" : "int64",
+          "type" : "integer"
+        },
         "maxConcurrentDownloads" : {
           "description" : "Max concurrent downloads per node",
-          "format" : "int32",
+          "format" : "int64",
           "type" : "integer"
         },
         "maxConcurrentUploads" : {
           "description" : "Max concurrent uploads per node",
-          "format" : "int32",
+          "format" : "int64",
           "type" : "integer"
         },
         "perDownloadNumObjects" : {
           "description" : "Max objects per download per node",
-          "format" : "int32",
+          "format" : "int64",
           "type" : "integer"
         },
         "perUploadNumObjects" : {
           "description" : "Max objects per upload per node",
-          "format" : "int32",
+          "format" : "int64",
           "type" : "integer"
         },
         "resetDefaults" : {

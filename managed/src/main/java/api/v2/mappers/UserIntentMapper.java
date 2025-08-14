@@ -4,6 +4,7 @@ package api.v2.mappers;
 import api.v2.models.AvailabilityZoneGFlags;
 import api.v2.models.AvailabilityZoneNetworking;
 import api.v2.models.AvailabilityZoneNodeSpec;
+import api.v2.models.CloudVolumeEncryption;
 import api.v2.models.ClusterAddSpec;
 import api.v2.models.ClusterEditSpec;
 import api.v2.models.ClusterGFlags;
@@ -171,6 +172,10 @@ public interface UserIntentMapper {
 
   EnableExposingServiceEnum toV2EnableExposingServiceEnum(
       ExposingServiceState v1ExposingServiceState);
+
+  @Mapping(target = "kmsConfigUuid", source = "kmsConfigUUID")
+  CloudVolumeEncryption toV2CloudVolumeEncryption(
+      com.yugabyte.yw.models.helpers.CloudVolumeEncryption v1CloudVolumeEncryption);
 
   default ClusterGFlags specificGFlagsToClusterGFlags(
       UniverseDefinitionTaskParams.UserIntent userIntent) {
@@ -378,6 +383,10 @@ public interface UserIntentMapper {
   }
 
   DeviceInfo storageSpecToDeviceInfo(ClusterStorageSpec storageSpec);
+
+  @Mapping(target = "kmsConfigUUID", source = "kmsConfigUuid")
+  com.yugabyte.yw.models.helpers.CloudVolumeEncryption toV1CloudVolumeEncryption(
+      CloudVolumeEncryption v2CloudVolumeEncryption);
 
   K8SNodeResourceSpec toV1K8SNodeResourceSpec(
       api.v2.models.K8SNodeResourceSpec v2K8SNodeResourceSpec);

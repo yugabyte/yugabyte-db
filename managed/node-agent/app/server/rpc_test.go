@@ -16,6 +16,7 @@ import (
 	"node-agent/app/scheduler"
 	"node-agent/app/task"
 	pb "node-agent/generated/service"
+	"node-agent/util"
 	"os"
 	"strings"
 	"testing"
@@ -27,7 +28,6 @@ import (
 
 var (
 	server            *RPCServer
-	clientCtx         context.Context
 	dialOpts          []grpc.DialOption
 	serverAddr        = "localhost:0"
 	enableTLS         = false
@@ -43,6 +43,10 @@ func randomString(length int) string {
 		bytes[i] = byte('a' + rand.Intn(26))
 	}
 	return string(bytes)
+}
+
+func taskUUID() string {
+	return util.NewUUID().String()
 }
 
 // TestMain is invoked before the tests.
@@ -171,10 +175,10 @@ func TestSubmitTask(t *testing.T) {
 	}
 	defer conn.Close()
 	client := pb.NewNodeAgentClient(conn)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 	echoWord := "Hello Test"
-	taskID := "task1"
+	taskID := taskUUID()
 	cmd := fmt.Sprintf("sleep 5 & echo -n \"%s\"", echoWord)
 	req := pb.SubmitTaskRequest{TaskId: taskID, Data: &pb.SubmitTaskRequest_CommandInput{
 		CommandInput: &pb.CommandInput{
@@ -188,6 +192,7 @@ func TestSubmitTask(t *testing.T) {
 	buffer := bytes.Buffer{}
 	rc := 0
 	retryCount := 0
+	retryDeadline := time.Now().Add(10 * time.Second)
 outer:
 	for {
 		ctx, cancel = context.WithTimeout(context.Background(), 2*time.Second)
@@ -196,18 +201,27 @@ outer:
 			ctx,
 			&pb.DescribeTaskRequest{TaskId: taskID},
 		)
-		if err != nil {
-			t.Fatalf("Error in describe call: %s", err.Error())
-		}
+
 		for {
-			res, err := stream.Recv()
+			if time.Until(retryDeadline) <= 0 {
+				t.Fatal("Task was not cancelled due to deadline")
+			}
 			if err == io.EOF {
 				break outer
 			}
-			if err != nil {
+			if err != nil && strings.Contains(err.Error(), "DeadlineExceeded") {
 				retryCount++
 				t.Logf("Retrying because the error is not EOF - %s", err.Error())
 				break
+			}
+			if err != nil {
+				t.Fatalf("Failing test due to error - %s", err.Error())
+			}
+			var res *pb.DescribeTaskResponse
+			res, err = stream.Recv()
+			if err != nil {
+				t.Logf("Checking non-null error response - %s", err.Error())
+				continue
 			}
 			if res.GetError() != nil {
 				rc = int(res.GetError().Code)
@@ -227,6 +241,71 @@ outer:
 	}
 	if retryCount == 0 {
 		t.Fatal("Expected retry")
+	}
+}
+
+func TestSubmitTaskTimeout(t *testing.T) {
+	conn, err := grpc.Dial(serverAddr, dialOpts...)
+	if err != nil {
+		t.Fatalf("Failed to dial: %v", err)
+	}
+	defer conn.Close()
+	client := pb.NewNodeAgentClient(conn)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	echoWord := "Hello Test"
+	taskID := taskUUID()
+	cmd := fmt.Sprintf("sleep 5 & echo -n \"%s\"", echoWord)
+	req := pb.SubmitTaskRequest{TaskId: taskID, Data: &pb.SubmitTaskRequest_CommandInput{
+		CommandInput: &pb.CommandInput{
+			Command: []string{"bash", "-c", cmd},
+		},
+	}}
+	_, err = client.SubmitTask(ctx, &req)
+	if err != nil {
+		t.Fatalf("Failed to submit task - %s", err.Error())
+	}
+	buffer := bytes.Buffer{}
+	retryDeadline := time.Now().Add(10 * time.Second)
+outer:
+	for {
+		ctx, cancel = context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		stream, err := client.DescribeTask(
+			ctx,
+			&pb.DescribeTaskRequest{TaskId: taskID},
+		)
+		for {
+			if time.Until(retryDeadline) <= 0 {
+				t.Fatal("Task was not cancelled due to deadline")
+			}
+			if err == io.EOF {
+				break outer
+			}
+			if err != nil && strings.Contains(err.Error(), "DeadlineExceeded") {
+				t.Logf("Retrying because the error is DeadlineExceeded - %s", err.Error())
+				break
+			}
+			if err != nil {
+				t.Fatalf("Failing test due to error - %s", err.Error())
+			}
+			var res *pb.DescribeTaskResponse
+			res, err = stream.Recv()
+			if err != nil {
+				t.Logf("Checking non-null error response - %s", err.Error())
+				continue
+			}
+			if res.GetError() != nil {
+				buffer.WriteString(res.GetError().Message)
+			} else {
+				buffer.WriteString(res.GetOutput())
+			}
+		}
+	}
+	out := buffer.String()
+	t.Logf("Output: %s\n", out)
+	if !strings.Contains(out, "cancelled") {
+		t.Fatalf("Task was not cancelled - %s", buffer.String())
 	}
 }
 
@@ -351,7 +430,7 @@ func TestRunPreflightCheck(t *testing.T) {
 	client := pb.NewNodeAgentClient(conn)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	taskID := "PreflightCheckTask1"
+	taskID := taskUUID()
 	req := pb.SubmitTaskRequest{TaskId: taskID, Data: &pb.SubmitTaskRequest_PreflightCheckInput{
 		PreflightCheckInput: &pb.PreflightCheckInput{
 			SkipProvisioning:    false,

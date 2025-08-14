@@ -20,7 +20,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include "yb/ash/wait_state_fwd.h"
+#include "yb/ash/ash_fwd.h"
 
 #include "yb/common/consistent_read_point.h"
 #include "yb/common/read_hybrid_time.h"

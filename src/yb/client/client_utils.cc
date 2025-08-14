@@ -19,6 +19,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include "yb/ash/rpc_wait_state.h"
+
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 
@@ -69,6 +71,9 @@ Result<std::unique_ptr<rpc::Messenger>> CreateClientMessenger(
     rpc::ApplySecureContext(secure_context, &builder);
   }
   auto messenger = VERIFY_RESULT(builder.Build());
+  if (FLAGS_ysql_yb_enable_ash) {
+    messenger->SetMetadataSerializerFactory(std::make_unique<ash::MetadataSerializerFactory>());
+  }
   return messenger;
 }
 

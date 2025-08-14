@@ -31,6 +31,7 @@ import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.*;
 import com.yugabyte.yw.models.helpers.exporters.audit.*;
+import com.yugabyte.yw.models.helpers.exporters.metrics.*;
 import com.yugabyte.yw.models.helpers.exporters.query.*;
 import io.ebean.annotation.EnumValue;
 import io.swagger.annotations.ApiModel;
@@ -856,7 +857,13 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     @ApiModelProperty() public boolean enableClientToNodeEncrypt = false;
 
-    @ApiModelProperty() public boolean enableVolumeEncryption = false;
+    @Deprecated
+    @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2025.1")
+    @ApiModelProperty(
+        value =
+            "<b style=\"color:#ff0000\">Deprecated since YBA version 2025.1.</b> "
+                + "Use userIntent.deviceInfo.cloudVolumeEncryption instead")
+    public boolean enableVolumeEncryption = false;
 
     @ApiModelProperty() public boolean enableIPV6 = false;
 
@@ -887,7 +894,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // setup and will be in-place of privateIP
     @Deprecated @ApiModelProperty() public boolean useHostname = false;
 
-    @ApiModelProperty() public Boolean useSystemd = false;
+    @ApiModelProperty() public Boolean useSystemd = true;
 
     // Info of all the gflags that the user would like to save to the universe. These will be
     // used during edit universe, for example, to set the flags on new nodes to match
@@ -965,6 +972,15 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     public QueryLogConfig getQueryLogConfig() {
       return queryLogConfig;
+    }
+
+    // Metrics Export Config
+    @ApiModelProperty(value = "YbaApi Internal. Metrics Export configuration")
+    @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2025.2.0.0")
+    public MetricsExportConfig metricsExportConfig;
+
+    public MetricsExportConfig getMetricsExportConfig() {
+      return metricsExportConfig;
     }
 
     // Proxy config HTTP_RPOXY, HTTPS_PROXY, NO_PROXY
@@ -1609,8 +1625,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty private String targetUpgradeSoftwareVersion;
 
     // This is used to track if all tservers are upgraded to the target ysql major version
-    // and only used for rollback on kubernetes universes.
     @ApiModelProperty private boolean allTserversUpgradedToYsqlMajorVersion;
+
+    @ApiModelProperty private boolean canRollbackCatalogUpgrade;
   }
 
   // XCluster: All the xCluster related code resides in this section.

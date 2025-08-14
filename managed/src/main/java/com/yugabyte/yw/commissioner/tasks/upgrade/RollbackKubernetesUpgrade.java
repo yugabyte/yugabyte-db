@@ -128,8 +128,12 @@ public class RollbackKubernetesUpgrade extends KubernetesUpgradeTaskBase {
                       : null));
 
           if (ysqlMajorVersionUpgrade
-              && softwareUpgradeHelper.isAllMasterUpgradedToYsqlMajorVersion(universe, "15")) {
+              && prevYBSoftwareConfig != null
+              && prevYBSoftwareConfig.isCanRollbackCatalogUpgrade()) {
             createRollbackYsqlMajorVersionCatalogUpgradeTask();
+            createUpdateSoftwareUpdatePrevConfigTask(
+                false /* canRollbackCatalogUpgrade */,
+                false /* allTserversUpgradedToYsqlMajorVersion */);
           }
 
           // Create Kubernetes Upgrade Task

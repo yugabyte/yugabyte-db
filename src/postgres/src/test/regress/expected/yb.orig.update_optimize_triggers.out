@@ -38,15 +38,17 @@ NOTICE:  Musical chairs invoked with h = 1
    ->  Index Scan using mchairs_table_pkey on mchairs_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Trigger mchairs_table_trigger: calls=1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(12 rows)
+(14 rows)
 
 -- The value of v1 should be updated again, indexes v1_v2, v3 should be updated.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE mchairs_table SET h = h, v3 = v3 + 1 WHERE h = 1;
@@ -57,15 +59,17 @@ NOTICE:  Musical chairs invoked with h = 1
    ->  Index Scan using mchairs_table_pkey on mchairs_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 4
  Trigger mchairs_table_trigger: calls=1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 5
  Storage Flush Requests: 1
-(12 rows)
+(14 rows)
 
 -- Multi-row scenario affecting 4 successive rows exactly with 4 flushes.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE mchairs_table SET h = h, v1 = v1, v2 = v3, v3 = v2 WHERE h > 8 AND h <= 12;
@@ -79,16 +83,18 @@ NOTICE:  Musical chairs invoked with h = 10
    ->  Seq Scan on mchairs_table (actual rows=4 loops=1)
          Storage Filter: ((h > 8) AND (h <= 12))
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 12
          Storage Table Write Requests: 5
          Storage Index Write Requests: 10
          Storage Flush Requests: 3
  Trigger mchairs_table_trigger: calls=4
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 12
  Storage Write Requests: 15
  Storage Flush Requests: 4
-(13 rows)
+(15 rows)
 
 -- Validate the updates
 SELECT * FROM mchairs_table ORDER BY h;
@@ -118,14 +124,16 @@ NOTICE:  Musical chairs invoked with h = 1
    ->  Index Scan using mchairs_table_pkey on mchairs_table (actual rows=1 loops=1)
          Index Cond: (h = 1)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
  Trigger mchairs_table_trigger: calls=1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 1
  Storage Flush Requests: 1
-(11 rows)
+(13 rows)
 
 -- Same as above but for the primary key
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE mchairs_table SET h = h - 40, v1 = v1 + 1 WHERE h = 4;
@@ -136,15 +144,17 @@ NOTICE:  Musical chairs invoked with h = -36
    ->  Index Scan using mchairs_table_pkey on mchairs_table (actual rows=1 loops=1)
          Index Cond: (h = 4)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
  Trigger mchairs_table_trigger: calls=1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
  Storage Flush Requests: 1
-(12 rows)
+(14 rows)
 
 -- A subtle variation of the above to test the scenario that the decrement of
 -- h is applied on the value of h that is returned by the before row trigger.
@@ -156,15 +166,17 @@ NOTICE:  Musical chairs invoked with h = 3
    ->  Index Scan using mchairs_table_pkey on mchairs_table (actual rows=1 loops=1)
          Index Cond: (h = 4)
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 2
          Storage Index Write Requests: 4
  Trigger mchairs_table_trigger: calls=1
  Storage Read Requests: 1
+ Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 6
  Storage Flush Requests: 1
-(12 rows)
+(14 rows)
 
 -- Multi-row scenario.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE mchairs_table SET v1 = v1 - 1, v2 = v2 - 1, v3 = v3 - 1 WHERE h > 4 AND h <= 8;
@@ -178,16 +190,18 @@ NOTICE:  Musical chairs invoked with h = 8
    ->  Seq Scan on mchairs_table (actual rows=4 loops=1)
          Storage Filter: ((h > 4) AND (h <= 8))
          Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 12
          Storage Table Write Requests: 5
          Storage Index Write Requests: 14
          Storage Flush Requests: 3
  Trigger mchairs_table_trigger: calls=4
  Storage Read Requests: 1
+ Storage Read Ops: 3
  Storage Rows Scanned: 12
  Storage Write Requests: 19
  Storage Flush Requests: 4
-(13 rows)
+(15 rows)
 
 -- Again, validate the updates
 SELECT * FROM mchairs_table ORDER BY h;

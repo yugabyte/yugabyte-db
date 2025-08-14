@@ -209,16 +209,23 @@ const PanelBody = ({
         </YBTabsPanel>
       );
     }
-  } else if (metricMeasure === MetricMeasure.OUTLIER_TABLES) {
+  } else if (
+    metricMeasure === MetricMeasure.OUTLIER_TABLES ||
+    metricMeasure === MetricMeasure.OUTLIER_DATABASES
+  ) {
+    const typeSelected =
+      metricMeasure === MetricMeasure.OUTLIER_TABLES
+        ? MetricTypes.OUTLIER_TABLES
+        : MetricTypes.OUTLIER_DATABASES;
     if (printMode) {
       result = (
         <div id="print-metrics" style={{ marginBottom: '20px' }}>
           <GraphTab
-            type={MetricTypes.OUTLIER_TABLES}
-            metricsKey={MetricTypesWithOperations[MetricTypes.OUTLIER_TABLES].metrics}
+            type={typeSelected}
+            metricsKey={MetricTypesWithOperations[typeSelected].metrics}
             nodePrefixes={nodePrefixes}
             selectedUniverse={selectedUniverse}
-            title={MetricTypesWithOperations[MetricTypes.OUTLIER_TABLES].title}
+            title={MetricTypesWithOperations[typeSelected].title}
             width={width}
             tableName={tableName}
             isMetricsTimezoneEnabled={isMetricsTimezoneEnabled}
@@ -230,23 +237,23 @@ const PanelBody = ({
     } else {
       result = (
         <YBTabsPanel
-          defaultTab={MetricTypes.OUTLIER_TABLES}
-          activeTab={MetricTypes.OUTLIER_TABLES}
+          defaultTab={typeSelected}
+          activeTab={typeSelected}
           className="overall-metrics-by-origin"
         >
           <Tab
-            eventKey={MetricTypes.OUTLIER_TABLES}
-            title={MetricTypesWithOperations[MetricTypes.OUTLIER_TABLES].title}
-            key={`${MetricTypes.OUTLIER_TABLES}-tab`}
+            eventKey={typeSelected}
+            title={MetricTypesWithOperations[typeSelected].title}
+            key={`${typeSelected}-tab`}
             mountOnEnter={true}
             unmountOnExit={true}
           >
             <GraphTab
-              type={MetricTypes.OUTLIER_TABLES}
-              metricsKey={MetricTypesWithOperations[MetricTypes.OUTLIER_TABLES].metrics}
+              type={typeSelected}
+              metricsKey={MetricTypesWithOperations[typeSelected].metrics}
               nodePrefixes={nodePrefixes}
               selectedUniverse={selectedUniverse}
-              title={MetricTypesWithOperations[MetricTypes.OUTLIER_TABLES].title}
+              title={MetricTypesWithOperations[typeSelected].title}
               width={width}
               tableName={tableName}
               isMetricsTimezoneEnabled={isMetricsTimezoneEnabled}

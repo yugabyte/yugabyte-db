@@ -339,7 +339,7 @@ The value portion of a change event for a change to this table varies according 
 
 ### Replica Identity
 
-[REPLICA IDENTITY](https://www.postgresql.org/docs/11/sql-altertable.html#SQL-CREATETABLE-REPLICA-IDENTITY) is a YugabyteDB-specific table-level setting that determines the amount of information that is available to the logical decoding plugin for `UPDATE` and `DELETE` events. More specifically, the setting of `REPLICA IDENTITY` controls what (if any) information is available for the previous values of the table columns involved, whenever an `UPDATE` or `DELETE` event occurs.
+[REPLICA IDENTITY](https://www.postgresql.org/docs/11/sql-altertable.html#SQL-ALTERTABLE-REPLICA-IDENTITY) is a YugabyteDB-specific table-level setting that determines the amount of information that is available to the logical decoding plugin for `UPDATE` and `DELETE` events. More specifically, the `REPLICA IDENTITY` setting controls what (if any) information is available for the previous values of the table columns involved, whenever an `UPDATE` or `DELETE` event occurs.
 
 There are 4 possible values for `REPLICA IDENTITY`:
 
@@ -352,7 +352,11 @@ There are 4 possible values for `REPLICA IDENTITY`:
 
 YugabyteDB supports the replica identity CHANGE only with the plugin `yboutput`.
 
+The PostgreSQL replica identity `INDEX` is not supported in YugabyteDB.
+
 {{< /note >}}
+
+For information on setting the replica identity of tables, refer to [Replica identity](../key-concepts/#replica-identity).
 
 #### Message formats for replica identities
 

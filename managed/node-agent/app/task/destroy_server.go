@@ -15,21 +15,22 @@ import (
 )
 
 var registeredServices = []struct {
-	unitName string
-	home     string
+	unitName          string
+	home              string
+	needsProvisioning bool
 }{
-	{"yb-master.service", "master"},
-	{"yb-tserver.service", "tserver"},
-	{"yb-controller.service", "controller"},
-	{"yb-clean_cores.service", ""},
-	{"yb-clean_cores.timer", ""},
-	{"yb-zip_purge_yb_logs.service", ""},
-	{"yb-zip_purge_yb_logs.timer", ""},
-	{"yb-bind_check.service", ""},
-	{"yb-collect_metrics.service", ""},
-	{"yb-collect_metrics.timer", ""},
-	{"otel-collector.service", ""},
-	{"node_exporter.service", ""},
+	{"yb-master.service", "master", false},
+	{"yb-tserver.service", "tserver", false},
+	{"yb-controller.service", "controller", false},
+	{"yb-clean_cores.service", "", false},
+	{"yb-clean_cores.timer", "", false},
+	{"yb-zip_purge_yb_logs.service", "", false},
+	{"yb-zip_purge_yb_logs.timer", "", false},
+	{"yb-bind_check.service", "", false},
+	{"yb-collect_metrics.service", "", false},
+	{"yb-collect_metrics.timer", "", false},
+	{"otel-collector.service", "", false},
+	{"node_exporter.service", "", true},
 }
 
 type DestroyServerHandler struct {
@@ -61,12 +62,18 @@ func (h *DestroyServerHandler) String() string {
 }
 
 func (h *DestroyServerHandler) cleanupNode(ctx context.Context) error {
+	cleanupScript := filepath.Join(h.param.GetYbHomeDir(), "bin/yb-server-ctl.sh")
+	if _, err := os.Stat(cleanupScript); err != nil && os.IsNotExist(err) {
+		h.logOut.WriteLine("Skipping node cleanup as file %s is not found", cleanupScript)
+		util.FileLogger().Warnf(ctx, "Skipping node cleanup as file %s is not found", cleanupScript)
+		return nil
+	}
 	for _, info := range registeredServices {
 		if info.home != "" {
 			util.FileLogger().
 				Infof(ctx, "Running control script to clean and clean-logs for %s", info.unitName)
 			for _, action := range []string{"clean", "clean-logs"} {
-				cmd := fmt.Sprintf("yb-server-ctl.sh %s %s", info.home, action)
+				cmd := fmt.Sprintf("%s %s %s", cleanupScript, info.home, action)
 				h.logOut.WriteLine("Running cleanup command %s", cmd)
 				util.FileLogger().Infof(ctx, "Running command: %s", cmd)
 				if _, err := module.RunShellCmd(ctx, h.username, action, cmd, h.logOut); err != nil {
@@ -83,7 +90,7 @@ func (h *DestroyServerHandler) cleanupNode(ctx context.Context) error {
 		ctx,
 		h.username,
 		"clean-instance",
-		"yb-server-ctl.sh clean-instance",
+		fmt.Sprintf("%s clean-instance", cleanupScript),
 		h.logOut,
 	); err != nil {
 		util.FileLogger().Errorf(ctx, "Failed to run clean-instance - %s", err.Error())
@@ -102,16 +109,23 @@ func (h *DestroyServerHandler) Handle(
 		return nil, err
 	}
 	for _, info := range registeredServices {
+		if info.needsProvisioning && !h.param.GetIsProvisioningCleanup() {
+			h.logOut.WriteLine(
+				"Skipping %s as it is not part of provisioning cleanup",
+				info.unitName,
+			)
+			continue
+		}
 		unitPath, err := module.SystemdUnitPath(ctx, h.username, info.unitName, h.logOut)
 		if err != nil {
 			return nil, err
 		}
-		unitPathToBeRemoved := ""
-		if h.param.GetIsProvisioningCleanup() {
-			unitPathToBeRemoved = unitPath
-		}
 		h.logOut.WriteLine("Found systemd unit path for %s: %s", info.unitName, unitPath)
 		if strings.HasPrefix(unitPath, "/") {
+			unitPathToBeRemoved := ""
+			if h.param.GetIsProvisioningCleanup() {
+				unitPathToBeRemoved = unitPath
+			}
 			if err := module.DisableSystemdService(ctx, h.username, info.unitName, unitPathToBeRemoved, h.logOut); err != nil {
 				return nil, err
 			}
