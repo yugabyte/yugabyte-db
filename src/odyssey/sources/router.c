@@ -384,10 +384,11 @@ clean:
 		instance->yb_stats[index].user_oid = -1;
 	}
 
+	/* unref route rule */
+	od_rules_unref(route->rule);
 	od_route_unlock(route);
 
-	/* unref route rule and free route object */
-	od_rules_unref(route->rule);
+	/* free route object */
 	od_route_free(route);
 	return 0;
 done:
