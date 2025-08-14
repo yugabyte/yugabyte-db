@@ -46,6 +46,9 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
+#include "yb/yql/pgwrapper/libpq_test_base.h"
+#include "yb/yql/pgwrapper/pg_test_utils.h"
+
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_uint64(ysql_node_level_mutation_reporting_interval_ms);
 DECLARE_uint32(ysql_cluster_level_mutation_persist_interval_ms);
@@ -60,7 +63,7 @@ DECLARE_int32(TEST_simulate_analyze_deleted_table_secs);
 DECLARE_string(vmodule);
 DECLARE_int64(TEST_delay_after_table_analyze_ms);
 DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(ysql_yb_force_early_ddl_serialization);
+DECLARE_bool(ysql_yb_user_ddls_preempt_auto_analyze);
 DECLARE_uint64(TEST_ysql_auto_analyze_max_history_entries);
 
 using namespace std::chrono_literals;
@@ -90,7 +93,7 @@ class PgAutoAnalyzeTest : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_cluster_level_mutation_persist_interval_ms) = 10;
     google::SetVLOGLevel("pg_auto_analyze_service", 2);
     // To ensure that auto-analyze doesn't preempt other DDLs.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_force_early_ddl_serialization) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_user_ddls_preempt_auto_analyze) = true;
 
     PgMiniTestBase::SetUp();
 
@@ -1058,6 +1061,7 @@ TEST_F(PgAutoAnalyzeTest, DDLsInParallelWithAutoAnalyze) {
   conn = ASSERT_RESULT(ConnectToDB(db_name));
   const std::string table_name = "test_tbl";
   const std::string table2_name = "test_tbl2";
+  const std::string table3_name = "test_tbl3";
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE $0 (h1 INT, v1 INT DEFAULT 5, PRIMARY KEY(h1))", table_name));
   ASSERT_OK(conn.ExecuteFormat(
@@ -1090,6 +1094,8 @@ TEST_F(PgAutoAnalyzeTest, DDLsInParallelWithAutoAnalyze) {
   ASSERT_OK(conn.ExecuteFormat("DROP INDEX idx"));
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN v2 INT", table2_name));
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN v2", table2_name));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (h1 INT PRIMARY KEY REFERENCES $1(h1))",
+                                 table3_name, table_name));
 
   thread_holder.Stop();
   thread_holder.JoinAll();
@@ -1220,6 +1226,79 @@ TEST_F(PgAutoAnalyzeTest, PerTableCooldown) {
       }
     }
   }
+}
+
+class PgConcurrentDDLAnalyzeTest : public LibPqTestBase {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    // we want to trigger ANALYZE explicitly similar to what auto analyze would have
+    options->extra_tserver_flags.push_back("--ysql_enable_auto_analyze=false");
+    options->extra_tserver_flags.push_back("--ysql_yb_user_ddls_preempt_auto_analyze=true");
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vmodule) = "libpqutils*=1";
+  }
+};
+
+TEST_F(PgConcurrentDDLAnalyzeTest, ConcurrentDDLAnalyze) {
+  auto* ts1 = cluster_->tserver_daemons()[0];
+  auto* ts2 = cluster_->tserver_daemons()[1];
+  auto conn1 = ASSERT_RESULT(PGConnBuilder({
+                                               .host = ts1->bind_host(),
+                                               .port = ts1->ysql_port(),
+                                           })
+                                 .Connect());
+  auto conn2 = ASSERT_RESULT(PGConnBuilder({
+                                               .host = ts2->bind_host(),
+                                               .port = ts2->ysql_port(),
+                                           })
+                                 .Connect());
+
+  const std::string wait_string = "sleeping for 20000000 us before next ddl";
+  const std::string wait_time_str = "'20s'";
+
+  ASSERT_OK(conn1.Execute("CREATE TABLE test1(k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn1.Execute("INSERT INTO test1 (SELECT * FROM generate_series(1,10))"));
+
+  // All DDLs on conn1 are delayed 20s prior to commit. Top-level retries are disabled.
+  ASSERT_OK(conn1.Execute(
+      "SET yb_test_delay_next_ddl=" + wait_time_str + "; SET yb_max_query_layer_retries=0;" +
+      "SET log_min_messages=DEBUG1"));
+  ASSERT_OK(conn2.Execute("SET yb_max_query_layer_retries=0; SET log_min_messages=DEBUG1;"));
+
+  // Case: A long (auto) ANALYZE can be interrupted by any later regular DDL
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&conn1]() -> void {
+    ASSERT_OK(conn1.Execute("SET yb_use_internal_auto_analyze_service_conn=true"));
+    ASSERT_NOK(conn1.Execute("ANALYZE test1"));
+    ASSERT_OK(conn1.Execute("SET yb_use_internal_auto_analyze_service_conn=false"));
+  });
+  ASSERT_OK(LogWaiter(ts1, wait_string).WaitFor(30s));
+  ASSERT_OK(conn2.Execute("CREATE TABLE test2(k INT PRIMARY KEY REFERENCES test1(k))"));
+  thread_holder.JoinAll();
+
+  // Case: A long regular DDL cannot be interrupted by (auto) ANALYZE
+  thread_holder.AddThreadFunctor(
+      [&conn1]() -> void { ASSERT_OK(conn1.Execute("ALTER TABLE test2 ADD COLUMN v1 INT")); });
+  ASSERT_OK(LogWaiter(ts1, wait_string).WaitFor(30s));
+  ASSERT_OK(conn2.Execute("SET yb_use_internal_auto_analyze_service_conn=true"));
+  ASSERT_NOK(conn2.Execute("ANALYZE test1"));
+  ASSERT_OK(conn2.Execute("SET yb_use_internal_auto_analyze_service_conn=false"));
+  thread_holder.JoinAll();
+
+  // Case: Two CREATE TABLEs can still run concurrently
+  thread_holder.AddThreadFunctor([&conn1]() -> void {
+    ASSERT_OK(conn1.Execute("CREATE TABLE test3(k INT PRIMARY KEY, v INT) split into 1 tablets"));
+  });
+  ASSERT_OK(LogWaiter(ts1, wait_string).WaitFor(30s));
+  ASSERT_OK(conn2.Execute("CREATE TABLE test4(k INT PRIMARY KEY, v INT) split into 1 tablets"));
+  thread_holder.JoinAll();
+
+  // Case: A CREATE TABLE can still run concurrently with an ALTER
+  thread_holder.AddThreadFunctor([&conn1]() -> void {
+    ASSERT_OK(conn1.Execute("CREATE TABLE test5(k INT PRIMARY KEY, v INT) split into 1 tablets"));
+  });
+  ASSERT_OK(LogWaiter(ts1, wait_string).WaitFor(30s));
+  ASSERT_OK(conn2.Execute("ALTER TABLE test4 ADD COLUMN v1 INT"));
+  thread_holder.JoinAll();
 }
 
 } // namespace pgwrapper

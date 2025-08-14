@@ -3479,7 +3479,7 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_force_early_ddl_serialization", PGC_USERSET, DEVELOPER_OPTIONS,
+		{"yb_user_ddls_preempt_auto_analyze", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("If object locking is off (i.e., "
 						 "enable_object_locking_for_table_locks=false), concurrent DDLs might face a "
 						 "conflict error on the catalog version increment at the end after doing all the work. "
@@ -3492,8 +3492,8 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
-		&yb_force_early_ddl_serialization,
-		false,
+		&yb_user_ddls_preempt_auto_analyze,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -5843,6 +5843,17 @@ static struct config_real ConfigureNamesReal[] =
 		},
 		&yb_test_ybgin_disable_cost_factor,
 		2.0, 0.0, 10.0,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_test_delay_next_ddl", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("When set, the next DDL will be delayed by this many ms prior to commit."),
+			NULL,
+			GUC_UNIT_MS
+		},
+		&yb_test_delay_next_ddl,
+		0, 0, 86400000,
 		NULL, NULL, NULL
 	},
 

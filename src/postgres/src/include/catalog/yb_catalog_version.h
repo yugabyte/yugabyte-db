@@ -35,7 +35,7 @@ extern YbCatalogVersionType yb_catalog_version_type;
 
 /* Get the latest catalog version from the master leader. */
 extern uint64_t YbGetMasterCatalogVersion();
-extern void YbMaybeLockMasterCatalogVersion(YbDdlMode mode);
+extern void YbMaybeLockMasterCatalogVersion();
 
 /* Send a request to increment the master catalog version. */
 extern bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change,
