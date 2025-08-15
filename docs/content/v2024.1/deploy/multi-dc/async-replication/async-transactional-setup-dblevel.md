@@ -17,13 +17,11 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="../async-transactional-setup-dblevel/" class="nav-link active">
-      <i class="icon-shell"></i>
       Semi-Automatic
     </a>
   </li>
   <li >
     <a href="../async-transactional-setup/" class="nav-link">
-      <i class="icon-shell"></i>
       Manual
     </a>
   </li>

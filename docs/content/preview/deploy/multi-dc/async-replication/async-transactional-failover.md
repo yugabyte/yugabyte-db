@@ -36,7 +36,7 @@ Pause replication on the Standby (B). This step is required to avoid unexpected 
 
 ```sh
 ./bin/yb-admin \
-    --master_addresses <B_master_addresses> \
+    --master_addresses <B-master-addresses> \
     set_universe_replication_enabled <replication_name> 0
 ```
 
@@ -52,7 +52,7 @@ Get the latest consistent time on Standby (B). The `get_xcluster_safe_time` comm
 
 ```sh
 ./bin/yb-admin \
-    --master_addresses <B_master_addresses> \
+    --master_addresses <B-master-addresses> \
     get_xcluster_safe_time include_lag_and_skew
 ```
 
@@ -122,7 +122,7 @@ Restore the database to the `safe_time`:
 
     ```sh
     ./bin/yb-admin \
-        --master_addresses <B_master_addresses> \
+        --master_addresses <B-master-addresses> \
         list_snapshot_schedules
     ```
 
@@ -153,7 +153,7 @@ Restore the database to the `safe_time`:
 
     ```sh
     ./bin/yb-admin \
-        --master_addresses <B_master_addresses> \
+        --master_addresses <B-master-addresses> \
         restore_snapshot_schedule <schedule_id> "<safe_time>"
     ```
 
@@ -170,7 +170,7 @@ Restore the database to the `safe_time`:
 
     ```sh
     ./bin/yb-admin \
-        --master_addresses <B_master_addresses> \
+        --master_addresses <B-master-addresses> \
         list_snapshot_restorations
     ```
 
@@ -195,7 +195,7 @@ Restore the database to the `safe_time`:
 
 ```sh
 ./bin/yb-admin \
-    --master_addresses <B_master_addresses> \
+    --master_addresses <B-master-addresses> \
     delete_universe_replication <replication_group_id>
 ```
 
@@ -210,6 +210,18 @@ xCluster only replicates sequence data in automatic mode.  If you are not using 
 For example, if you have a SERIAL column in a table and the highest value in that column after failover is 500, you need to set the sequence associated with that column to a value higher than 500, such as 501. This ensures that new writes on universe B do not conflict with existing data.
 
 Use the [nextval](../../../../api/ysql/exprs/sequence_functions/func_nextval/) function to set the sequence next values appropriately.
+
+### Fix CDC
+
+If you are using CDC to move data out of YugabyteDB, note that failover may incur data loss for your CDC replication; data lost on the CDC target may be different from data lost on the xCluster target.
+
+You can fix CDC in either of the following ways:
+
+- Start CDC on B (that is, create publications and slots on B). This resumes CDC from the failover point (subject to possible data loss).
+
+- Clear your CDC target of all data, and start CDC on B from a fresh copy, making another full copy.
+
+    Then point your CDC target to pull from B (the newly promoted database).
 
 ### Switch applications to B
 
@@ -261,7 +273,7 @@ Disable point-in-time recovery for the database(s) on A:
 - List the snapshot schedules to obtain the schedule ID:
 
     ```sh
-    ./bin/yb-admin --master_addresses <A_master_addresses> \
+    ./bin/yb-admin --master_addresses <A-master-addresses> \
         list_snapshot_schedules
     ```
 
@@ -269,7 +281,7 @@ Disable point-in-time recovery for the database(s) on A:
 
     ```sh
     ./bin/yb-admin \
-        --master_addresses <A_master_addresses> \
+        --master_addresses <A-master-addresses> \
         delete_snapshot_schedule <schedule_id>
     ```
 
@@ -299,7 +311,7 @@ Drop the replication group on A using the following command:
 
 ```sh
 ./bin/yb-admin \
-    --master_addresses <A_master_addresses> \
+    --master_addresses <A-master-addresses> \
     drop_xcluster_replication <replication_group_id>
 ```
 

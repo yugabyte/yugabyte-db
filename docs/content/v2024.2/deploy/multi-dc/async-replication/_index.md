@@ -35,9 +35,9 @@ For information on xCluster deployment architecture, replication scenarios, and 
 
 - If the root certificates for the source and target clusters are different, (for example, the node certificates for target and source nodes were not created on the same machine), copy the `ca.crt` for the source cluster to all target nodes, and vice-versa. If the root certificate for both source and target clusters is the same, you can skip this step.
 
-    Locate the `ca.crt` file for the source cluster on any node at `<base-dir>/certs/ca.crt`. Copy this file to all target nodes at `<base-dir>/certs/xcluster/<replication-id>/`. The `<replication-id>` must be the same as you configured in Step 1.
+    Locate the `ca.crt` file for the source universe on any node at `<base-dir>/certs/ca.crt`. Copy this file to all target nodes at `<base-dir>/certs/xcluster/<xcluster-replication-id>/` (create the directory if it is not there). The `<xcluster-replication-id>` must be the same as the replication ID you are using for your xCluster configuration.
 
-    Similarly, copy the `ca.crt` file for the target cluster on any node at `<base-dir>/certs/ca.crt` to source cluster nodes at `<base-dir>/certs/xcluster/<replication-id>/`.
+    Similarly, copy the `ca.crt` file for the target universe on any node at `<base-dir>/certs/ca.crt` to source universe nodes at `<base-dir>/certs/xcluster/<xcluster-replication-id>/` (create the directory if it is not there).
 
 - Global objects like users, roles, tablespaces are not managed by xCluster. You must explicitly create and manage these objects on both source and target universes.
 
