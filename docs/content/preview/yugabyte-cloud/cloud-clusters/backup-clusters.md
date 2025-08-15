@@ -45,7 +45,7 @@ To review previous backups, click **Backup**. To review previous restores, click
 
 Backups are located in cloud storage of the provider where the cluster is deployed. The storage is located is the same region as the cluster. For example, for a cluster deployed in AWS and located in us-east-2, backups are stored in an S3 bucket in us-east-2.
 
-For [Replicate across region](../../cloud-basics/create-clusters-topology/#replicate-across-regions) clusters, the backup is stored in one of the cluster regions, as determined automatically by Aeon when the cluster is created.
+For [Replicate across region](../../cloud-basics/create-clusters-topology/#replicate-across-regions) clusters, all backups are stored in one of the cluster regions, as determined automatically by Aeon when the cluster is created.
 
 For [Partition by region](../../cloud-basics/create-clusters-topology/#partition-by-region) clusters, the database schema and tablet details are stored in the primary region, and the regional tablespace data is stored in its respective region to preserve data residency.
 
@@ -117,3 +117,42 @@ To restore a backup of a cluster:
 1. Choose the databases or keyspaces to restore and click **Next**.
 1. Select the target cluster.
 1. Click **Restore Now**.
+
+## Remote backup replication
+
+Use remote backup replication to copy all your cluster backups (scheduled, incremental, and on demand) to a storage bucket in the same cloud provider.
+
+Remote backup replication counts against your data transfer allowance. This may incur additional costs for network transfer, especially for cross-region transfers, if usage exceeds your cluster allowance. Refer to [Data transfer costs](../../cloud-admin/cloud-billing-costs/#data-transfer-costs).
+
+To avoid cross-region data transfer costs, use a bucket in the same region as the cluster.
+
+To restore from a remote backup, contact {{% support-cloud %}}.  
+
+### Prerequisites
+
+- Currently, only clusters deployed to GCP are supported.
+- The cluster must be deployed in a VPC.
+- The remote storage bucket must be on the same cloud provider as the cluster (for example, for clusters deployed in GCP, the bucket must be in Google Cloud Storage).
+
+### Bucket permissions
+
+The storage bucket must have the following permissions:
+
+```sh
+roles/storage.admin
+```
+
+ See [IAM roles for Cloud Storage](https://cloud.google.com/storage/docs/access-control/iam-roles) in the GCS documentation.
+
+### Manage remote backup replication
+
+To enable or modify remote backup repliction, do the following:
+
+1. On the **Backups** tab, click **Remote Backup Replication**.
+1. Enter the address of the bucket.
+
+    For Replicate by regions clusters, provide the bucket address. To reduce transfer costs, use a bucket in the same region as the current backup region (the region selected by Aeon to store cluster backups). See [Location of backups](#location-of-backups) for more information.
+
+    For Partition by region clusters, provide a bucket address for each region. To reduce transfer costs and for compliance, use buckets located in the same regions.
+
+1. Click **Apply Changes**.
