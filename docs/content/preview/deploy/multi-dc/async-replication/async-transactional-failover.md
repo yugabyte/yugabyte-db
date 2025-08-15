@@ -217,7 +217,7 @@ If you are using CDC to move data out of YugabyteDB, note that failover may incu
 
 You can fix CDC in either of the following ways:
 
-- Start CDC on B (that is, create publications and slots on B). This resumes CDC where you left off (subject to possible data loss).
+- Start CDC on B (that is, create publications and slots on B). This resumes CDC from the failover point (subject to possible data loss).
 
 - Clear your CDC target of all data, and start CDC on B from a fresh copy, making another full copy.
 

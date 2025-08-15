@@ -255,13 +255,11 @@ The following deployment scenarios are not yet supported:
 <div class="tab-content">
 <div id="xcluster-ysql-limitations" class="tab-pane fade show active" role="tabpanel" aria-labelledby="xcluster-ysql-limitations-tab">
 
+- `CREATE TABLE AS` and `SELECT INTO` DDL statements are not supported. You can work around this by breaking the DDL into a `CREATE TABLE` followed by `INSERT SELECT`.
+
 - Materialized views
 
   [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) are not replicated by xCluster. When setting up replication for a database, materialized views need to be excluded. You can create them on the target universe after the replication is set up. When refreshing, make sure to refresh on both sides.
-
-- Truncate
-
-  The `TRUNCATE` command is not supported. See {{<issue 23958>}} for supporting it in automatic mode.
 
 - Modifications of Array Types
 
@@ -308,8 +306,6 @@ The following deployment scenarios are not yet supported:
 Improper use can compromise replication consistency and lead to data divergence. Use this setting only when absolutely necessary and with a clear understanding of its implications.
   {{< /warning >}}
 
-- In Semi-automatic and Manual modes, schema changes are not automatically replicated. They must be manually applied to both source and target universes. Refer to [DDLs in semi-automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/#making-ddl-changes) and [DDLs in manual mode](../../../deploy/multi-dc/async-replication/async-transactional-tables) for more information.
-
 - Backups
 
   Take backups on the source universe. Backups against the target universe are not transactionally consistent.
@@ -320,24 +316,24 @@ Improper use can compromise replication consistency and lead to data divergence.
 
 #### Transactional Automatic mode
 
-- Global objects like Users, Roles, and Tablespaces are not replicated. These objects must be manually created on the standby universe.
+- Global objects like Users, Roles, and Tablespaces are not replicated. These objects must be manually managed on the standby universe.
 - DDLs related to Materialized Views (`CREATE`, `DROP`, and `REFRESH`) are not replicated. You can manually run these on both universes by setting the YSQL configuration parameter `yb_xcluster_ddl_replication.enable_manual_ddl_replication` to `true`.
-- `CREATE TABLE AS` and `SELECT INTO` DDL statements are not supported. You can work around this by breaking the DDL into a `CREATE TABLE` followed by `INSERT SELECT`.
 - `ALTER COLUMN TYPE`, `ADD COLUMN ... SERIAL`, and `ALTER LARGE OBJECT` DDLs are not supported.
 - DDLs related to `PUBLICATION` and `SUBSCRIPTION` are not supported.
 - Replication of colocated tables is not yet supported.  See {{<issue 25926>}}.
 - Rewinding of sequences (for example, restarting a sequence so it will repeat values) is discouraged because it may not be fully rolled back during unplanned failovers.
+- The `TRUNCATE` command is only supported in v2025.1.1 and later (see {{<issue 23958>}}).
 - While Automatic mode is active, you can only `CREATE`, `DROP`, or `ALTER` the following extensions: `file_fdw`, `fuzzystrmatch`, `pgcrypto`, `postgres_fdw`, `sslinfo`, `uuid-ossp`, `hypopg`, `pg_stat_monitor`, and `pgaudit`. All other extensions must be created _before_ setting up automatic mode.
 - If using pgPartman, enable the cron job on the source cluster only. After switchover or failover, move the cron job to the new primary. Refer to pgPartman [Limitations](../../../explore/ysql-language-features/pg-extensions/extension-pgpartman/#xcluster).
 
 #### Transactional Semi-Automatic and Manual mode
 
-- All DDL changes must be manually applied to both source and target universes. For more information, refer to [DDLs in semi-automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/#making-ddl-changes) and [DDLs in manual mode](../../../deploy/multi-dc/async-replication/async-transactional-tables).
+- Schema changes are not automatically replicated. All DDL changes must be manually applied to both source and target universes. For more information, refer to [DDLs in semi-automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/#making-ddl-changes) and [DDLs in manual mode](../../../deploy/multi-dc/async-replication/async-transactional-tables).
   - Exception: DDLs related to PUBLICATION and SUBSCRIPTION should only be used on the source universe.
 
 - `ALTER TABLE` DDLs that involve table rewrites (see [Alter table operations that involve a table rewrite](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-table-operations-that-involve-a-table-rewrite)) may not be performed while replication is running; you will need to drop replication, perform those DDL(s) on the source universe, then create replication again.
 
-- `CREATE TABLE AS` and `SELECT INTO` DDL statements are not supported. You can work around this by breaking the DDL into a `CREATE TABLE` (done on both universes) followed by `INSERT SELECT` (done only on the source universe).
+- The `TRUNCATE` command is not supported.
 
 - Sequence data is not replicated by these modes. Serial columns use sequences internally. Avoid serial columns in primary keys, as both universes would generate the same sequence numbers, resulting in conflicting rows. It is recommended to use UUIDs instead.
 
@@ -362,6 +358,8 @@ Improper use can compromise replication consistency and lead to data divergence.
 - Composite, enum, and range (array) types
 
   While xCluster is active, user-defined composite, enum, and range types and arrays of those types should not be created, altered, or dropped. Create these types before xCluster is set up. If you need to modify these types, you must first drop xCluster replication, make the necessary changes, and then re-enable xCluster via [bootstrap](#replication-bootstrapping).
+
+- The `TRUNCATE` command is not supported.
 
 - pgPartman
 
