@@ -205,9 +205,9 @@ To begin, export the schema from the source database. Once exported, analyze the
 
 #### Export schema
 
-{{< warning title="Technical Advisory" >}}
+{{< warning title="Technical Advisory " >}}
 
-* Impacts: [v1.1](../../release-notes/#v1-1-march-7-2023) to [v2025.8.1](../..release-notes/#v2025-8-1-august-5-2025) - {{<ta 2968>}} : Import-schema fails on all Voyager installs done after August 14, 2025
+{{<ta 2968>}} : Import schema fails on all Voyager installs done after August 14, 2025. Impacts [v1.1](../../release-notes/#v1-1-march-7-2023) to [v2025.8.1](../..release-notes/#v2025-8-1-august-5-2025).
 
 {{< /warning >}}
 
@@ -264,7 +264,7 @@ Refer to [export schema](../../reference/schema-migration/export-schema/) for mo
 
 {{< warning title="Technical Advisory" >}}
 
-* Impacts: [v1.1](../../release-notes/#v1-1-march-7-2023) to [v2025.8.1](../..release-notes/#v2025-8-1-august-5-2025) - {{<ta 2968>}} : Import-schema fails on all Voyager installs done after August 14, 2025
+{{<ta 2968>}} : Import schema fails on all Voyager installs done after August 14, 2025. Impacts [v1.1](../../release-notes/#v1-1-march-7-2023) to [v2025.8.1](../..release-notes/#v2025-8-1-august-5-2025).
 
 {{< /warning >}}
 
@@ -321,7 +321,7 @@ Refer to the [Manual review guideline](../../known-issues/) for a detailed list 
 
 {{< warning title="Technical Advisory" >}}
 
-* Impacts: [v1.1](../../release-notes/#v1-1-march-7-2023) to [v2025.8.1](../..release-notes/#v2025-8-1-august-5-2025) - {{<ta 2968>}} : Import-schema fails on all Voyager installs done after August 14, 2025
+{{<ta 2968>}} : Import schema fails on all Voyager installs done after August 14, 2025. Impacts [v1.1](../../release-notes/#v1-1-march-7-2023) to [v2025.8.1](../..release-notes/#v2025-8-1-august-5-2025).
 
 {{< /warning >}}
 
