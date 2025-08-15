@@ -13,7 +13,7 @@ type: docs
 
 What follows are the release notes for the YugabyteDB Voyager v1 release series. Content will be added as new notable features and changes are available in the patch releases of the YugabyteDB v1 series.
 
-{{< warning title="Technical Advisories" >}}
+{{< warning title="Technical Advisory" >}}
 
 * Impacts: [v1.1](#v1-1-march-7-2023) to [v2025.8.1](#v2025-8-1-august-5-2025) - {{<ta 2968>}} : Import-schema fails on all Voyager installs done after August 14, 2025
 
