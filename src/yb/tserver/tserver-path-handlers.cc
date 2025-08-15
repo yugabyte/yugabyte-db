@@ -663,16 +663,17 @@ bool CompareByTabletId(const std::shared_ptr<TabletPeer>& a,
 string GetOnDiskSizeInHtml(const yb::tablet::TabletOnDiskSizeInfo& info) {
   std::ostringstream disk_size_html;
   disk_size_html << "<ul>"
-                 << "<li>" << "Total: "
-                 << HumanReadableNumBytes::ToString(info.sum_on_disk_size)
-                 << "<li>" << "Consensus Metadata: "
-                 << HumanReadableNumBytes::ToString(info.consensus_metadata_disk_size)
-                 << "<li>" << "WAL Files: "
-                 << HumanReadableNumBytes::ToString(info.wal_files_disk_size)
+                 << "<li>" << "Total (may be stale): "
+                 << (info.total_on_disk_size > 0 ?
+                        HumanReadableNumBytes::ToString(info.total_on_disk_size) : "N/A")
+                 << "<ul>"
                  << "<li>" << "SST Files: "
                  << HumanReadableNumBytes::ToString(info.sst_files_disk_size)
-                 << "<li>" << "SST Files Uncompressed: "
-                 << HumanReadableNumBytes::ToString(info.uncompressed_sst_files_disk_size)
+                 << "<li>" << "WAL Files: "
+                 << HumanReadableNumBytes::ToString(info.wal_files_disk_size)
+                 << "<li>" << "Consensus Metadata: "
+                 << HumanReadableNumBytes::ToString(info.consensus_metadata_disk_size)
+                 << "</ul>"
                  << "</ul>";
   return disk_size_html.str();
 }
@@ -716,7 +717,7 @@ std::map<TableIdentifier, TableInfo> GetTablesInfo(
         .is_hidden = is_hidden,
         .num_sst_files = num_sst_files,
         .disk_size_info = yb::tablet::TabletOnDiskSizeInfo::FromPB(status),
-        .has_on_disk_size = status.has_estimated_on_disk_size(),
+        .has_on_disk_size = status.has_active_on_disk_size(),
         .raft_role = raft_role
     };
 
@@ -1290,9 +1291,13 @@ void TabletServerPathHandlers::HandleTabletsJSON(const Webserver::WebRequest& re
     jw.StartObject();
     const yb::tablet::TabletOnDiskSizeInfo& info = yb::tablet::TabletOnDiskSizeInfo::FromPB(status);
     jw.String("total_size");
-    jw.String(HumanReadableNumBytes::ToString(info.sum_on_disk_size));
+    jw.String(HumanReadableNumBytes::ToString(info.active_on_disk_size));
     jw.String("total_size_bytes");
-    jw.Uint64(info.sum_on_disk_size);
+    jw.Uint64(info.active_on_disk_size);
+    jw.String("total_size_including_snapshots");
+    jw.String(HumanReadableNumBytes::ToString(info.total_on_disk_size));
+    jw.String("total_size_including_snapshots_bytes");
+    jw.Uint64(info.total_on_disk_size);
     jw.String("consensus_metadata_size");
     jw.String(HumanReadableNumBytes::ToString(info.consensus_metadata_disk_size));
     jw.String("consensus_metadata_size_bytes");
