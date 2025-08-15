@@ -17,9 +17,23 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, where `YYYY` is the release year, `M` is the month, and `N` is the number of the release in that month.
 
+## v2025.8.2 - August 19, 2025
+
+### New feature
+
+- Introduced the `--allow-oracle-clob-data-export` flag for the export data command, to enable exporting data from CLOB datatype columns in Oracle offline migrations.
+
+### Enhancements
+
+- Improved sizing calculations in `assess-migration` by factoring in throughput gains based on the recommended number of nodes for more accurate import time estimation.
+- Enhanced PostgreSQL permissions grant script by adding an option for live migrations to either transfer table ownership to the migration user or grant the original owner's permissions to it.
+- Improved import data retry logic to skip non-retryable errors such as data exceptions and integrity violations.
+- Removed redundant index performance optimization reports from the `assess-migration` report as `export schema` now automatically removes redundant indexes.
+- Enhanced schema optimization report in `export schema` to list all recommendations—applied or skipped with the `--skip-performance-optimizations` / `--skip-recommendations` flags.
+
 ## v2025.8.1 - August 5, 2025
 
-## New feature
+### New feature
 
 - Automatically apply performance optimizations recommended by the migration assessment (such as removing redundant indexes) during the export schema phase. Voyager also generates a schema optimization report detailing the optimizations that were applied. To turn automatic optimization off, set the new `--skip-performance-optimizations` flag in the `export schema` command to true.
 - Introduced the ability to stash errors and continue when importing snapshot data in `import data` and `import-data-file` commands by using the flags `error-policy-snapshot` or `error-policy`.
