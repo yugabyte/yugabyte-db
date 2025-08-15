@@ -43,6 +43,7 @@ class AnsibleProcess(object):
         self.connection_target = "localhost"
         self.sensitive_data_keywords = ["KEY", "SECRET", "CREDENTIALS", "API", "POLICY",
                                         "NODE_AGENT_AUTH_TOKEN", "YCQL_LDAP", "YSQL_HBA_CONF"]
+        self.keep_remote_files = False
 
     def set_connection_params(self, conn_type, target):
         self.connection_type = conn_type
@@ -73,6 +74,7 @@ class AnsibleProcess(object):
             extra_vars: A dictionary of KVs to pass as extra-vars to ansible-playbook
             host_info: A dictionary of host level attributes which is empty for localhost.
             disable_offloading: A flag to disable ansible offloading.
+            keep_remote_files: Pass environment variable ANSIBLE_KEEP_REMOTE_FILES=1 for debugging.
         """
 
         if host_info is None:
@@ -106,6 +108,8 @@ class AnsibleProcess(object):
         env = os.environ.copy()
         if env.get('APPLICATION_CONSOLE_LOG_LEVEL') != 'INFO':
             env['PROFILE_TASKS_TASK_OUTPUT_LIMIT'] = '30'
+        if self.keep_remote_files:
+            env['ANSIBLE_KEEP_REMOTE_FILES'] = '1'
 
         playbook_args.update(vars)
         process_args = [os.path.join(ybutils.YB_DEVOPS_HOME, "bin/ansible-playbook.sh")]
@@ -158,6 +162,9 @@ class AnsibleProcess(object):
                 for env_var, value in os.environ.items():
                     if env_var.startswith("ANSIBLE") and env_var != "ANSIBLE_LOCAL_TEMP":
                         process_args.append("{}={}".format(env_var, value))
+
+                if self.keep_remote_files:
+                    process_args.append("ANSIBLE_KEEP_REMOTE_FILES=1")
 
                 process_args.extend([os.path.join(devops_path, "bin", "ansible-playbook.sh"),
                                      os.path.join(devops_path, os.path.basename(filename))])
