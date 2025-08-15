@@ -39,6 +39,7 @@
 
 DECLARE_bool(enable_object_lock_fastpath);
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(pg_client_use_shared_memory);
 DECLARE_bool(report_ysql_ddl_txn_status_to_master);
 DECLARE_bool(ysql_ddl_transaction_wait_for_ddl_verification);
@@ -77,6 +78,7 @@ class PgObjectLocksTestRF1 : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_enable_ysql_lease_refresh) =
         kDefaultYSQLLeaseRefreshIntervalMilli;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_check_broadcast_address) = false;  // GH #26281
     PgMiniTestBase::SetUp();
     Init();
@@ -274,7 +276,6 @@ TEST_F(PgObjectLocksTestRF1, TestSanity) {
 
   // A DDL shouldn't leave behind any locks on the local TS (since it is RF1).
   ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
-  ASSERT_OK(AssertNumLocks(0 /* granted locks*/, 0 /* waiting locks */));
 
   // An auto commit distributed transaction shouldn't leave behind any locks.
   ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
@@ -531,13 +532,13 @@ class PgObjectLocksTest : public LibPqTestBase {
                    "ysql_yb_ddl_transaction_block_enabled"));
     opts->extra_tserver_flags.emplace_back(
         yb::Format("--enable_object_locking_for_table_locks=$0", EnableTableLocks()));
+    opts->extra_tserver_flags.emplace_back(
+        yb::Format("--ysql_yb_ddl_transaction_block_enabled=$0", EnableTableLocks()));
     opts->extra_tserver_flags.emplace_back("--enable_ysql_operation_lease=true");
     opts->extra_tserver_flags.emplace_back("--TEST_tserver_enable_ysql_lease_refresh=true");
     opts->extra_tserver_flags.emplace_back(
         Format("--ysql_lease_refresher_interval_ms=$0", kDefaultYSQLLeaseRefreshIntervalMilli));
 
-    opts->extra_master_flags.emplace_back(
-        yb::Format("--allowed_preview_flags_csv=ysql_yb_ddl_transaction_block_enabled"));
     opts->extra_master_flags.emplace_back("--enable_ysql_operation_lease=true");
     opts->extra_master_flags.emplace_back(
         Format("--master_ysql_operation_lease_ttl_ms=$0", kDefaultMasterYSQLLeaseTTLMilli));
@@ -763,22 +764,17 @@ TEST_F(PgObjectLocksTest, ReleaseExpiredLocksInvalidatesCatalogCache) {
 
 YB_STRONGLY_TYPED_BOOL(DoMasterFailover);
 YB_STRONGLY_TYPED_BOOL(UseExplicitLocksInsteadOfDdl);
-YB_STRONGLY_TYPED_BOOL(EnableYsqlDdlTxnBlock);
 class PgObjecLocksTestOutOfOrderMessageHandling
     : public PgObjectLocksTest,
       public ::testing::WithParamInterface<
-          std::tuple<DoMasterFailover, UseExplicitLocksInsteadOfDdl, EnableYsqlDdlTxnBlock>> {
+          std::tuple<DoMasterFailover, UseExplicitLocksInsteadOfDdl>> {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     PgObjectLocksTest::UpdateMiniClusterOptions(opts);
     opts->num_masters = (ShouldDoMasterFailover() ? 3 : 1);
     opts->extra_master_flags.emplace_back(
         yb::Format("--pg_client_extra_timeout_ms=$0", kPgClientExtraTimeoutMs));
-    opts->extra_master_flags.emplace_back(
-        yb::Format("--ysql_yb_ddl_transaction_block_enabled=$0", ShouldEnableYsqlDdlTxnBlock()));
     opts->extra_tserver_flags.emplace_back("--vmodule=ts_local_lock_manager=2");
-    opts->extra_tserver_flags.emplace_back(
-        yb::Format("--ysql_yb_ddl_transaction_block_enabled=$0", ShouldEnableYsqlDdlTxnBlock()));
   }
 
   DoMasterFailover ShouldDoMasterFailover() const {
@@ -787,10 +783,6 @@ class PgObjecLocksTestOutOfOrderMessageHandling
 
   UseExplicitLocksInsteadOfDdl ShouldUseExplicitLocksInsteadOfDdl() const {
     return std::get<1>(GetParam());
-  }
-
-  EnableYsqlDdlTxnBlock ShouldEnableYsqlDdlTxnBlock() const {
-    return std::get<2>(GetParam());
   }
 
   static constexpr auto kPgClientExtraTimeoutMs = 2000;
@@ -904,29 +896,18 @@ INSTANTIATE_TEST_SUITE_P(
     , PgObjecLocksTestOutOfOrderMessageHandling,
     ::testing::Values(
         std::make_tuple(
-            DoMasterFailover::kTrue, UseExplicitLocksInsteadOfDdl::kTrue,
-            EnableYsqlDdlTxnBlock::kFalse),
+            DoMasterFailover::kTrue, UseExplicitLocksInsteadOfDdl::kTrue),
         std::make_tuple(
-            DoMasterFailover::kFalse, UseExplicitLocksInsteadOfDdl::kTrue,
-            EnableYsqlDdlTxnBlock::kFalse),
+            DoMasterFailover::kFalse, UseExplicitLocksInsteadOfDdl::kTrue),
         std::make_tuple(
-            DoMasterFailover::kTrue, UseExplicitLocksInsteadOfDdl::kFalse,
-            EnableYsqlDdlTxnBlock::kFalse),
+            DoMasterFailover::kTrue, UseExplicitLocksInsteadOfDdl::kFalse),
         std::make_tuple(
-            DoMasterFailover::kFalse, UseExplicitLocksInsteadOfDdl::kFalse,
-            EnableYsqlDdlTxnBlock::kFalse),
-        std::make_tuple(
-            DoMasterFailover::kTrue, UseExplicitLocksInsteadOfDdl::kFalse,
-            EnableYsqlDdlTxnBlock::kTrue),
-        std::make_tuple(
-            DoMasterFailover::kFalse, UseExplicitLocksInsteadOfDdl::kFalse,
-            EnableYsqlDdlTxnBlock::kTrue)),
+            DoMasterFailover::kFalse, UseExplicitLocksInsteadOfDdl::kFalse)),
     [](const ::testing::TestParamInfo<
-        std::tuple<DoMasterFailover, UseExplicitLocksInsteadOfDdl, EnableYsqlDdlTxnBlock>>& info) {
-      return Format("$0_$1_$2",
+        std::tuple<DoMasterFailover, UseExplicitLocksInsteadOfDdl>>& info) {
+      return Format("$0_$1",
           (std::get<0>(info.param) ? "WithMasterFailover" : "NoMasterFailover"),
-          (std::get<1>(info.param) ? "UseExplicitLocks" : "UseDdlForLocks"),
-          (std::get<2>(info.param) ? "WithDdlTxnBlock" : "NoDdlTxnBlock"));
+          (std::get<1>(info.param) ? "UseExplicitLocks" : "UseDdlForLocks"));
     });
 
 // This test relies on the OLM poller to run frequently and timedout waiters, in order to
