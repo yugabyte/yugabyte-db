@@ -36,7 +36,7 @@ VERSION_METADATA_JSON:=$(CURDIR)/version_metadata.json
 PREREQS_DIR := ${TOP_BUILDDIR}/prereqs
 
 # Prometheus Version
-PROMETHEUS_VERSION ?= 3.2.1
+PROMETHEUS_VERSION ?= 3.5.0
 
 # https://github.com/yugabyte/yba-pg-build/releases/tag/2025-03-05-17-09
 POSTGRES_VERSION ?= 14.17
