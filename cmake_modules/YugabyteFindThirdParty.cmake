@@ -419,4 +419,10 @@ macro(yb_find_third_party_dependencies)
       STATIC_LIB "${BID_STATIC_LIB}")
   endif()
 
+  ## Pcre2
+  find_package(Pcre REQUIRED)
+  include_directories(SYSTEM ${PCRE_INCLUDE_DIR})
+  ADD_THIRDPARTY_LIB(pcre
+    STATIC_LIB "${PCRE_STATIC_LIB}")
+
 endmacro()
