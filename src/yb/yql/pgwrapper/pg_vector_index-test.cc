@@ -56,6 +56,12 @@ DECLARE_uint64(vector_index_max_insert_tasks);
 
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 
+namespace yb::docdb {
+
+extern bool TEST_vector_index_filter_allowed;
+
+}
+
 namespace yb::tablet {
 
 extern bool TEST_block_after_backfilling_first_vector_index_chunks;
@@ -271,6 +277,8 @@ uint64_t SumHistograms(const std::vector<const HdrHistogram*>& histograms) {
 }
 
 void PgVectorIndexTest::TestSimple(bool table_exists) {
+  docdb::TEST_vector_index_filter_allowed = false;
+
   auto conn = ASSERT_RESULT(MakeIndex(3, table_exists));
 
   size_t num_found_peers = 0;

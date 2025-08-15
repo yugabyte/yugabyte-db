@@ -222,6 +222,7 @@ class WriteQuery {
   // is managed by the rpc subsystem. These pointers maybe nullptr if the
   // operation was not initiated by an RPC call.
   const tserver::WriteRequestPB* client_request_ = nullptr;
+  RequestScope request_scope_;
   ReadHybridTime read_time_;
   bool allow_immediate_read_restart_ = false;
   std::unique_ptr<tserver::WriteRequestPB> client_request_holder_;

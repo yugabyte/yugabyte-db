@@ -63,7 +63,6 @@ import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
-import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -1713,18 +1712,10 @@ public class PlacementInfoUtil {
     // Set the region.
     PlacementRegion placementRegion = placementCloud.regionList.get(index.regionIdx);
     nodeDetails.cloudInfo.region = placementRegion.code;
-    // Set machineImage if it exists for region
+    // Set ybPrebuiltAmi for region
     for (NodeDetails existingNode : nodeDetailsSet) {
-      if (existingNode.getRegion().equals(placementRegion.code)
-          && existingNode.machineImage != null) {
-        nodeDetails.machineImage = existingNode.machineImage;
+      if (existingNode.getRegion().equals(placementRegion.code)) {
         nodeDetails.ybPrebuiltAmi = existingNode.ybPrebuiltAmi;
-        if (existingNode.sshPortOverride != null) {
-          nodeDetails.sshPortOverride = existingNode.sshPortOverride;
-        }
-        if (StringUtils.isNotBlank(existingNode.sshUserOverride)) {
-          nodeDetails.sshUserOverride = existingNode.sshUserOverride;
-        }
         break;
       }
     }
@@ -1777,13 +1768,6 @@ public class PlacementInfoUtil {
   public static NodeDetails createToBeAddedNode(NodeDetails templateNode) {
     NodeDetails newNode = new NodeDetails();
     newNode.cloudInfo = new CloudSpecificInfo();
-    newNode.machineImage = templateNode.machineImage;
-    if (templateNode.sshPortOverride != null) {
-      newNode.sshPortOverride = templateNode.sshPortOverride;
-    }
-    if (StringUtils.isNotBlank(templateNode.sshUserOverride)) {
-      newNode.sshUserOverride = templateNode.sshUserOverride;
-    }
     newNode.ybPrebuiltAmi = templateNode.ybPrebuiltAmi;
     newNode.placementUuid = templateNode.placementUuid;
     newNode.azUuid = templateNode.azUuid;

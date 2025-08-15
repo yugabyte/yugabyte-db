@@ -106,14 +106,16 @@ def create_suite(qid: str, suite_name: str, parent: str, method: str, planned: i
             if len(results) > 0:
                 suite_id = str(results[0]['id'])
                 suite_uuid = results[0]['uuid']
+                suite_attrib = results[0]['attributes']
 
     if suite_uuid:
         # Update attributes of existing suite
-        up_data = {
-            'attributes': [{'key': method, 'value': planned}],
-        }
+        suite_attrib.append({'key': method, 'value': planned})
         if reps > 1:
-            up_data['attributes'].append({'key': 'repititions', 'value': reps})
+            suite_attrib.append({'key': 'repetitions', 'value': reps})
+        up_data = {
+            'attributes': suite_attrib,
+        }
         response = requests.put(csi['url_sync'] + '/item/' + suite_id + '/update',
                                 headers=csi['headers'],
                                 data=json.dumps(up_data))

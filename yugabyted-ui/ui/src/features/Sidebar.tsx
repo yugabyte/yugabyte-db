@@ -144,8 +144,9 @@ const useStyles = makeStyles((theme) => ({
     height: 9,
   },
   label: {
-    color: theme.palette.grey[500],
-    fontWeight: theme.typography.fontWeightMedium as number,
+    fontSize: '11.5px',
+    fontWeight: 500,
+    color: '#6D7C88',
     margin: theme.spacing(3, 0, 2, 2.2),
     textTransform: "uppercase",
     textAlign: "left",

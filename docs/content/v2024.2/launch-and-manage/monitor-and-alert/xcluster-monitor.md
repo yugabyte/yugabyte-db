@@ -77,7 +77,7 @@ To list outgoing groups on the Primary universe, use the [list_xcluster_outbound
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses <primary_master_addresses> \
+    --master_addresses <primary_master_addresses> \
     list_xcluster_outbound_replication_groups \
     [namespace_id]
 ```
@@ -86,7 +86,7 @@ To list inbound groups on the Standby universe, use the [list_universe_replicati
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses <standby_master_addresses> \
+    --master_addresses <standby_master_addresses> \
     list_universe_replications \
     [namespace_id]
 ```
@@ -95,7 +95,7 @@ To get the status of the replication group, use [get_replication_status](../../.
 
 ```sh
 yb-admin \
-    -master_addresses <target-master-addresses> \
+    --master_addresses <target-master-addresses> \
     get_replication_status \
     [<replication_id>]
 ```
@@ -160,7 +160,7 @@ Inbound xCluster Replications:
 
   ```sh
   yb-admin \
-      -master_addresses <standby_master_addresses> \
+      --master_addresses <standby_master_addresses> \
       get_xcluster_safe_time \
       [include_lag_and_skew]
   ```

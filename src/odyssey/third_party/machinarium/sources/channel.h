@@ -33,4 +33,9 @@ mm_retcode_t mm_channel_write(mm_channel_t *, mm_msg_t *);
 
 mm_msg_t *mm_channel_read(mm_channel_t *, uint32_t);
 
+static inline int mm_channel_get_size(mm_channel_t *chan)
+{
+	return chan->msg_list_count;
+}
+
 #endif /* MM_CHANNEL_H */

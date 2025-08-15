@@ -61,6 +61,7 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.CertificateParams;
@@ -85,12 +86,15 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.CloudVolumeEncryption;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.YCQLAuditConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
 import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig;
@@ -115,6 +119,7 @@ import java.util.TreeMap;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
@@ -587,6 +592,18 @@ public class NodeManager extends DevopsBase {
     if (params.deviceInfo.volumeSize != null) {
       args.add("--volume_size");
       args.add(Integer.toString(params.deviceInfo.volumeSize));
+    }
+    if (params.deviceInfo.cloudVolumeEncryption != null) {
+      CloudVolumeEncryption paramsCloudVolumeEncryption = params.deviceInfo.cloudVolumeEncryption;
+      if (paramsCloudVolumeEncryption.enableVolumeEncryption) {
+        UUID kmsConfigUUID = params.deviceInfo.cloudVolumeEncryption.kmsConfigUUID;
+        String cmkId = AwsEARServiceUtil.getCMKId(kmsConfigUUID);
+        if (cmkId != null) {
+          String cmkArn = AwsEARServiceUtil.getCMK(kmsConfigUUID, cmkId).getKeyArn();
+          args.add("--cmk_res_name");
+          args.add(cmkArn);
+        }
+      }
     }
     if (includeIopsAndThroughput && params.deviceInfo.storageType != null) {
       if (params.deviceInfo.diskIops != null
@@ -2013,11 +2030,6 @@ public class NodeManager extends DevopsBase {
           }
           addInstanceTags(universe, userIntent, nodeTaskParam, commandArgs);
           if (cloudType.equals(Common.CloudType.aws)) {
-            if (taskParam.getCmkArn() != null) {
-              commandArgs.add("--cmk_res_name");
-              commandArgs.add(taskParam.getCmkArn());
-            }
-
             if (taskParam.ipArnString != null) {
               commandArgs.add("--iam_profile_arn");
               commandArgs.add(taskParam.ipArnString);
@@ -2127,6 +2139,7 @@ public class NodeManager extends DevopsBase {
               taskParam,
               taskParam.otelCollectorEnabled,
               taskParam.auditLogConfig,
+              taskParam.metricsExportConfig,
               GFlagsUtil.getLogLinePrefix(gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
               provider,
               userIntent);
@@ -2196,6 +2209,7 @@ public class NodeManager extends DevopsBase {
               taskParam,
               taskParam.otelCollectorEnabled,
               taskParam.auditLogConfig,
+              taskParam.metricsExportConfig,
               GFlagsUtil.getLogLinePrefix(gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
               provider,
               userIntent);
@@ -2422,8 +2436,11 @@ public class NodeManager extends DevopsBase {
           }
           ChangeInstanceType.Params taskParam = (ChangeInstanceType.Params) nodeTaskParam;
           addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, false);
-          commandArgs.add("--pg_max_mem_mb");
-          commandArgs.add(Integer.toString(taskParam.cgroupSize));
+
+          if (!taskParam.skipAnsiblePlaybookForCGroup) {
+            commandArgs.add("--pg_max_mem_mb");
+            commandArgs.add(Integer.toString(taskParam.cgroupSize));
+          }
 
           if (taskParam.force) {
             commandArgs.add("--force");
@@ -2607,6 +2624,7 @@ public class NodeManager extends DevopsBase {
               params,
               params.installOtelCollector,
               params.auditLogConfig,
+              params.metricsExportConfig,
               GFlagsUtil.getLogLinePrefix(params.gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
               provider,
               userIntent);
@@ -2964,32 +2982,39 @@ public class NodeManager extends DevopsBase {
       List<String> commandArgs,
       NodeTaskParams taskParams,
       boolean installOtelCollector,
-      AuditLogConfig config,
+      AuditLogConfig auditLogConfig,
+      MetricsExportConfig metricsExportConfig,
       String logLinePrefix,
       Provider provider,
       UserIntent userIntent) {
     if (installOtelCollector) {
       commandArgs.add("--install_otel_collector");
     }
-    if (config == null) {
+    if (auditLogConfig == null && metricsExportConfig == null) {
       return;
     }
-    if ((config.getYsqlAuditConfig() == null || !config.getYsqlAuditConfig().isEnabled())
-        && (config.getYcqlAuditConfig() == null || !config.getYcqlAuditConfig().isEnabled())) {
+    if (auditLogConfig != null
+        && (auditLogConfig.getYsqlAuditConfig() == null
+            || !auditLogConfig.getYsqlAuditConfig().isEnabled())
+        && (auditLogConfig.getYcqlAuditConfig() == null
+            || !auditLogConfig.getYcqlAuditConfig().isEnabled())) {
       return;
     }
-    commandArgs.add("--ycql_audit_log_level");
-    if (config.getYcqlAuditConfig() != null) {
+    if (auditLogConfig != null && auditLogConfig.getYcqlAuditConfig() != null) {
       YCQLAuditConfig.YCQLAuditLogLevel logLevel =
-          config.getYcqlAuditConfig().getLogLevel() != null
-              ? config.getYcqlAuditConfig().getLogLevel()
+          auditLogConfig.getYcqlAuditConfig().getLogLevel() != null
+              ? auditLogConfig.getYcqlAuditConfig().getLogLevel()
               : YCQLAuditConfig.YCQLAuditLogLevel.ERROR;
+      commandArgs.add("--ycql_audit_log_level");
       commandArgs.add(logLevel.name());
-    } else {
-      commandArgs.add("NONE");
     }
-    if (config.isExportActive()
-        && CollectionUtils.isNotEmpty(config.getUniverseLogsExporterConfig())) {
+    if ((auditLogConfig != null
+            && auditLogConfig.isExportActive()
+            && CollectionUtils.isNotEmpty(auditLogConfig.getUniverseLogsExporterConfig()))
+        || (metricsExportConfig != null
+            && metricsExportConfig.isExportActive()
+            && CollectionUtils.isNotEmpty(
+                metricsExportConfig.getUniverseMetricsExporterConfig()))) {
 
       commandArgs.add("--otel_col_config_file");
       commandArgs.add(
@@ -2998,15 +3023,31 @@ public class NodeManager extends DevopsBase {
                   taskParams,
                   provider,
                   userIntent,
-                  config,
+                  auditLogConfig,
+                  metricsExportConfig,
                   logLinePrefix,
                   getOtelColMetricsPort(taskParams))
               .toAbsolutePath()
               .toString());
 
-      for (UniverseLogsExporterConfig logsExporterConfig : config.getUniverseLogsExporterConfig()) {
-        TelemetryProvider telemetryProvider =
-            telemetryProviderService.get(logsExporterConfig.getExporterUuid());
+      // Combine exporter UUIDs from audit log config and metrics export config to setup telemetry
+      // provider configs.
+      List<UUID> exporterUUIDs = new ArrayList<>();
+      if (auditLogConfig != null) {
+        exporterUUIDs.addAll(
+            auditLogConfig.getUniverseLogsExporterConfig().stream()
+                .map(UniverseLogsExporterConfig::getExporterUuid)
+                .collect(Collectors.toList()));
+      }
+      if (metricsExportConfig != null) {
+        exporterUUIDs.addAll(
+            metricsExportConfig.getUniverseMetricsExporterConfig().stream()
+                .map(UniverseMetricsExporterConfig::getExporterUuid)
+                .collect(Collectors.toList()));
+      }
+
+      for (UUID exporterUUID : exporterUUIDs) {
+        TelemetryProvider telemetryProvider = telemetryProviderService.get(exporterUUID);
         switch (telemetryProvider.getConfig().getType()) {
           case AWS_CLOUDWATCH -> {
             AWSCloudWatchConfig awsCloudWatchConfig =

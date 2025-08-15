@@ -34,7 +34,7 @@ class AdminCliTestBase : public client::KeyValueTableTest<MiniCluster> {
   template <class... Args>
   Status RunAdminToolCommandAndGetErrorOutput(std::string* error_msg, Args&&... args) {
     auto command = ToStringVector(
-        GetToolPath("yb-admin"), "-master_addresses", cluster_->GetMasterAddresses(),
+        GetToolPath("yb-admin"), "--master_addresses", cluster_->GetMasterAddresses(),
         "--never_fsync=true", std::forward<Args>(args)...);
     LOG(INFO) << "Run tool: " << AsString(command);
     return Subprocess::Call(command, /* output */ nullptr, error_msg);

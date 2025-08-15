@@ -518,7 +518,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
             ybcManager.getStableYbcVersion(),
             isReadOnlyCluster
                 ? universe.getUniverseDetails().getReadOnlyClusters().get(0).userIntent.ybcFlags
-                : universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags);
+                : universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags,
+            newPlacement);
         createWaitForYbcServerTask(tserversToAdd);
       }
     }

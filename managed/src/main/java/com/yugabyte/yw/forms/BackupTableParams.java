@@ -215,7 +215,7 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "Add role exists checks for roles metadata", hidden = true)
   @Getter
   @Setter
-  private Boolean dumpRoleChecks = false;
+  private Boolean dumpRoleChecks = true;
 
   @ApiModelProperty(hidden = true)
   @Getter

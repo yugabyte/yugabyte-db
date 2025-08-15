@@ -46,9 +46,11 @@ export interface AccessKey {
 export interface ProxyAdvancedProps {
   enableProxyServer: boolean;
   secureWebProxy: boolean;
-  secureWebProxyServer: string;
-  secureWebProxyPort: number | undefined;
+  secureWebProxyServer?: string;
+  secureWebProxyPort?: number | undefined;
   webProxy: boolean;
+  webProxyServer?: string;
+  webProxyPort?: number;
   byPassProxyList: boolean;
   byPassProxyListValues: string[];
 }

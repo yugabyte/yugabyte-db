@@ -43,3 +43,6 @@ properties:
     description: 'Desired throughput for the volumes mounted on this aws, gcp or azu instance'
     type: integer
     format: int32
+  cloud_volume_encryption:
+    description: Volume encryption settings for cloud volumes (currently AWS EBS volumes only)
+    $ref: "./CloudVolumeEncryption.yaml"

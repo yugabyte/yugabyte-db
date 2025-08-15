@@ -17,6 +17,8 @@ import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.YCQLAuditConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
 import com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig;
 import com.yugabyte.yw.models.helpers.telemetry.DataDogConfig;
 import com.yugabyte.yw.models.helpers.telemetry.GCPCloudMonitoringConfig;
@@ -60,6 +62,7 @@ public class OtelCollectorConfigGenerator {
       Provider provider,
       UniverseDefinitionTaskParams.UserIntent userIntent,
       AuditLogConfig auditLogConfig,
+      MetricsExportConfig metricsExportConfig,
       String logLinePrefix,
       int otelColMetricsPort) {
     Path path =
@@ -67,7 +70,14 @@ public class OtelCollectorConfigGenerator {
             "otel_collector_config_" + nodeParams.getUniverseUUID() + "_" + nodeParams.nodeUuid,
             ".yml");
     generateConfigFile(
-        nodeParams, provider, userIntent, auditLogConfig, logLinePrefix, path, otelColMetricsPort);
+        nodeParams,
+        provider,
+        userIntent,
+        auditLogConfig,
+        metricsExportConfig,
+        logLinePrefix,
+        path,
+        otelColMetricsPort);
     return path;
   }
 
@@ -76,69 +86,154 @@ public class OtelCollectorConfigGenerator {
       Provider provider,
       UniverseDefinitionTaskParams.UserIntent userIntent,
       AuditLogConfig auditLogConfig,
+      MetricsExportConfig metricsExportConfig,
       String logLinePrefix,
       Path path,
       int otelColMetricsPort) {
-    Customer customer = Customer.getOrBadRequest(provider.getCustomerUUID());
-    Universe universe = Universe.getOrBadRequest(nodeParams.getUniverseUUID());
     try (BufferedWriter writer = new BufferedWriter(new FileWriter(path.toFile()))) {
       Yaml yaml = new Yaml(new SkipNullRepresenter());
       OtelCollectorConfigFormat collectorConfigFormat = new OtelCollectorConfigFormat();
-      // Receivers
-      if (auditLogConfig.getYsqlAuditConfig() != null
-          && auditLogConfig.getYsqlAuditConfig().isEnabled()) {
-        collectorConfigFormat
-            .getReceivers()
-            .put("filelog/ysql", createYsqlReceiver(provider, logLinePrefix));
+      addCommonService(collectorConfigFormat, provider, userIntent, otelColMetricsPort);
+      if (auditLogConfig != null) {
+        addAuditLogPipelines(
+            collectorConfigFormat, nodeParams, provider, userIntent, auditLogConfig, logLinePrefix);
       }
-      if (auditLogConfig.getYcqlAuditConfig() != null
-          && auditLogConfig.getYcqlAuditConfig().isEnabled()) {
-        collectorConfigFormat
-            .getReceivers()
-            .put("filelog/ycql", createYcqlReceiver(provider, auditLogConfig.getYcqlAuditConfig()));
+      if (metricsExportConfig != null) {
+        addMetricsExporterPipelines(
+            collectorConfigFormat,
+            nodeParams,
+            provider,
+            userIntent,
+            metricsExportConfig,
+            logLinePrefix);
       }
 
-      // Extensions
-      collectorConfigFormat
-          .getExtensions()
-          .put("file_storage/queue", createStorageExtension(provider, userIntent));
-
-      // Service
-      OtelCollectorConfigFormat.Service service = new OtelCollectorConfigFormat.Service();
-      service.setExtensions(new ArrayList<>(collectorConfigFormat.getExtensions().keySet()));
-      OtelCollectorConfigFormat.TelemetryConfig telemetryConfig =
-          new OtelCollectorConfigFormat.TelemetryConfig();
-      service.setTelemetry(telemetryConfig);
-      OtelCollectorConfigFormat.LogsConfig logsConfig = new OtelCollectorConfigFormat.LogsConfig();
-      telemetryConfig.setLogs(logsConfig);
-      logsConfig.setOutput_paths(
-          ImmutableList.of(provider.getYbHome() + "/otel-collector/logs/otel-collector.logs"));
-      OtelCollectorConfigFormat.MetricsConfig metricsConfig =
-          new OtelCollectorConfigFormat.MetricsConfig();
-      telemetryConfig.setMetrics(metricsConfig);
-      metricsConfig.setAddress("0.0.0.0:" + otelColMetricsPort);
-      collectorConfigFormat.setService(service);
-
-      // Exporters
-      if (CollectionUtils.isNotEmpty(auditLogConfig.getUniverseLogsExporterConfig())) {
-        List<String> currentProcessors =
-            new ArrayList<>(collectorConfigFormat.getProcessors().keySet());
-        auditLogConfig
-            .getUniverseLogsExporterConfig()
-            .forEach(
-                config ->
-                    appendExporter(
-                        customer,
-                        universe,
-                        collectorConfigFormat,
-                        config,
-                        currentProcessors,
-                        nodeParams.nodeName,
-                        logLinePrefix));
-      }
       yaml.dump(collectorConfigFormat, writer);
     } catch (Exception e) {
       throw new RuntimeException("Error creating OpenTelemetry collector config file", e);
+    }
+  }
+
+  private void addCommonService(
+      OtelCollectorConfigFormat collectorConfigFormat,
+      Provider provider,
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      int otelColMetricsPort) {
+    OtelCollectorConfigFormat.Service service = new OtelCollectorConfigFormat.Service();
+
+    // Add extensions
+    collectorConfigFormat
+        .getExtensions()
+        .put("file_storage/queue", createStorageExtension(provider, userIntent));
+    service.setExtensions(new ArrayList<>(collectorConfigFormat.getExtensions().keySet()));
+
+    // Add internal telemetry config
+    OtelCollectorConfigFormat.TelemetryConfig telemetryConfig =
+        new OtelCollectorConfigFormat.TelemetryConfig();
+    service.setTelemetry(telemetryConfig);
+
+    // Add internal otel logs config
+    OtelCollectorConfigFormat.LogsConfig logsConfig = new OtelCollectorConfigFormat.LogsConfig();
+    logsConfig.setOutput_paths(
+        ImmutableList.of(provider.getYbHome() + "/otel-collector/logs/otel-collector.logs"));
+    telemetryConfig.setLogs(logsConfig);
+
+    // Add internal otel metrics config
+    OtelCollectorConfigFormat.MetricsConfig metricsConfig =
+        new OtelCollectorConfigFormat.MetricsConfig();
+    metricsConfig.setAddress("0.0.0.0:" + otelColMetricsPort);
+    telemetryConfig.setMetrics(metricsConfig);
+
+    // Add service to collector config
+    collectorConfigFormat.setService(service);
+  }
+
+  private void addAuditLogPipelines(
+      OtelCollectorConfigFormat collectorConfigFormat,
+      NodeTaskParams nodeParams,
+      Provider provider,
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      AuditLogConfig auditLogConfig,
+      String logLinePrefix) {
+    Customer customer = Customer.getOrBadRequest(provider.getCustomerUUID());
+    Universe universe = Universe.getOrBadRequest(nodeParams.getUniverseUUID());
+    // Receivers
+    if (auditLogConfig != null
+        && auditLogConfig.getYsqlAuditConfig() != null
+        && auditLogConfig.getYsqlAuditConfig().isEnabled()) {
+      collectorConfigFormat
+          .getReceivers()
+          .put("filelog/ysql", createYsqlReceiver(provider, logLinePrefix));
+    }
+    if (auditLogConfig != null
+        && auditLogConfig.getYcqlAuditConfig() != null
+        && auditLogConfig.getYcqlAuditConfig().isEnabled()) {
+      collectorConfigFormat
+          .getReceivers()
+          .put("filelog/ycql", createYcqlReceiver(provider, auditLogConfig.getYcqlAuditConfig()));
+    }
+
+    // Exporters
+    if (CollectionUtils.isNotEmpty(auditLogConfig.getUniverseLogsExporterConfig())) {
+      List<String> currentProcessors =
+          new ArrayList<>(collectorConfigFormat.getProcessors().keySet());
+      auditLogConfig
+          .getUniverseLogsExporterConfig()
+          .forEach(
+              config ->
+                  appendExporter(
+                      customer,
+                      universe,
+                      collectorConfigFormat,
+                      config,
+                      currentProcessors,
+                      nodeParams.nodeName,
+                      logLinePrefix));
+    }
+  }
+
+  private void addMetricsExporterPipelines(
+      OtelCollectorConfigFormat collectorConfigFormat,
+      NodeTaskParams nodeParams,
+      Provider provider,
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      MetricsExportConfig metricsExportConfig,
+      String logLinePrefix) {
+    if (metricsExportConfig != null
+        && !CollectionUtils.isEmpty(metricsExportConfig.getUniverseMetricsExporterConfig())) {
+      // Add a new pipeline for each active metrics exporter config, since they can have different
+      // additional tags
+      for (UniverseMetricsExporterConfig exporterConfig :
+          metricsExportConfig.getUniverseMetricsExporterConfig()) {
+        OtelCollectorConfigFormat.Pipeline pipeline = new OtelCollectorConfigFormat.Pipeline();
+        // Add Prometheus receiver for metrics collection
+        Universe universe = Universe.getOrBadRequest(nodeParams.getUniverseUUID());
+        NodeDetails nodeDetails = universe.getNode(nodeParams.getNodeName());
+        collectorConfigFormat
+            .getReceivers()
+            .put(
+                "prometheus/yugabyte",
+                createPrometheusReceiver(metricsExportConfig, nodeDetails.cloudInfo.private_ip));
+        pipeline.setReceivers(ImmutableList.of("prometheus/yugabyte"));
+
+        // Add AttributesProcessor for metrics
+        collectorConfigFormat
+            .getProcessors()
+            .put(
+                "attributes/metrics_export_" + exporterConfig.getExporterUuid(),
+                createAttributesProcessor(exporterConfig));
+        pipeline.setProcessors(
+            ImmutableList.of("attributes/metrics_export_" + exporterConfig.getExporterUuid()));
+
+        // Add metrics exporter for each active exporter config
+        String exporterName = addMetricsExporter(collectorConfigFormat, exporterConfig);
+        pipeline.setExporters(ImmutableList.of(exporterName));
+
+        collectorConfigFormat
+            .getService()
+            .getPipelines()
+            .put("metrics/" + exporterConfig.getExporterUuid(), pipeline);
+      }
     }
   }
 
@@ -273,6 +368,70 @@ public class OtelCollectorConfigGenerator {
     receiver.setOperators(operators);
     receiver.setAttributes(ImmutableMap.of("yugabyte.audit_log_type", logType));
     return receiver;
+  }
+
+  private OtelCollectorConfigFormat.PrometheusReceiver createPrometheusReceiver(
+      MetricsExportConfig metricsExportConfig, String nodeAddress) {
+    OtelCollectorConfigFormat.PrometheusReceiver receiver =
+        new OtelCollectorConfigFormat.PrometheusReceiver();
+    OtelCollectorConfigFormat.PrometheusConfig config =
+        new OtelCollectorConfigFormat.PrometheusConfig();
+
+    // Create scrape config for yugabyte level metrics.
+    OtelCollectorConfigFormat.ScrapeConfig scrapeConfig =
+        new OtelCollectorConfigFormat.ScrapeConfig();
+    scrapeConfig.setJob_name("yugabyte");
+    scrapeConfig.setScrape_interval(metricsExportConfig.getScrapeIntervalSeconds() + "s");
+    scrapeConfig.setScrape_timeout(metricsExportConfig.getScrapeTimeoutSeconds() + "s");
+    scrapeConfig.setScheme("http");
+    scrapeConfig.setMetrics_path("/prometheus-metrics");
+
+    // Create static config for master node.
+    OtelCollectorConfigFormat.StaticConfig staticConfig = createMasterStaticConfig(nodeAddress);
+
+    // TODO: Add static config for other services.
+    scrapeConfig.setStatic_configs(ImmutableList.of(staticConfig));
+    config.setScrape_configs(ImmutableList.of(scrapeConfig));
+    receiver.setConfig(config);
+    return receiver;
+  }
+
+  public OtelCollectorConfigFormat.StaticConfig createMasterStaticConfig(String nodeAddress) {
+    OtelCollectorConfigFormat.StaticConfig staticConfig =
+        new OtelCollectorConfigFormat.StaticConfig();
+    staticConfig.setTargets(ImmutableList.of(nodeAddress + ":7000"));
+    staticConfig.setLabels(ImmutableMap.of("export_type", "master_export"));
+    staticConfig.setLabels(ImmutableMap.of("service", "yb-master"));
+    return staticConfig;
+  }
+
+  private OtelCollectorConfigFormat.AttributesProcessor createAttributesProcessor(
+      UniverseMetricsExporterConfig exporterConfig) {
+    // Add additional tags from the exporter config.
+    List<OtelCollectorConfigFormat.AttributeAction> attributeActions = new ArrayList<>();
+    for (Map.Entry<String, String> entry : exporterConfig.getAdditionalTags().entrySet()) {
+      attributeActions.add(
+          new OtelCollectorConfigFormat.AttributeAction(
+              entry.getKey(), entry.getValue(), "upsert", null));
+    }
+
+    OtelCollectorConfigFormat.AttributesProcessor processor =
+        new OtelCollectorConfigFormat.AttributesProcessor();
+    processor.setActions(attributeActions);
+    return processor;
+  }
+
+  private String addMetricsExporter(
+      OtelCollectorConfigFormat collectorConfigFormat,
+      UniverseMetricsExporterConfig exporterConfig) {
+    TelemetryProvider telemetryProvider =
+        telemetryProviderService.getOrBadRequest(exporterConfig.getExporterUuid());
+
+    String exporterName =
+        appendExporterConfig(
+            telemetryProvider, collectorConfigFormat.getExporters(), new ArrayList<>());
+
+    return exporterName;
   }
 
   private OtelCollectorConfigFormat.RegexOperator getRegexOperator(String logPrefix) {

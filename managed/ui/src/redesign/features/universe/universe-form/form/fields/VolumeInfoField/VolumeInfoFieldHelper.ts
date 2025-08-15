@@ -302,7 +302,8 @@ export const getDeviceInfoFromInstance = (
         ? volumeDetailsList.flatMap((item) => item.mountPath).join(',')
         : null,
     diskIops: diskIops,
-    throughput: throughput
+    throughput: throughput,
+    cloudVolumeEncryption: deviceInfo?.cloudVolumeEncryption
   };
 };
 

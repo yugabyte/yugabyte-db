@@ -12,6 +12,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageOtelCollector;
 import com.yugabyte.yw.common.FileHelperService;
 import com.yugabyte.yw.common.NodeAgentClient;
@@ -44,6 +45,7 @@ import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.YCQLAuditConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
 import com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig;
 import com.yugabyte.yw.models.helpers.telemetry.GCPCloudMonitoringConfig;
 import com.yugabyte.yw.nodeagent.ConfigureServerInput;
@@ -444,12 +446,15 @@ public class NodeAgentRpcPayload {
     String customTmpDirectory =
         confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
     AuditLogConfig config = null;
+    MetricsExportConfig metricsExportConfig = null;
     if (taskParams instanceof ManageOtelCollector.Params) {
       ManageOtelCollector.Params params = (ManageOtelCollector.Params) taskParams;
       config = params.auditLogConfig;
+      metricsExportConfig = params.metricsExportConfig;
     } else if (taskParams instanceof AnsibleConfigureServers.Params) {
       AnsibleConfigureServers.Params params = (AnsibleConfigureServers.Params) taskParams;
       config = params.auditLogConfig;
+      metricsExportConfig = params.metricsExportConfig;
     }
     Map<String, String> gflags =
         GFlagsUtil.getGFlagsForAZ(
@@ -484,8 +489,12 @@ public class NodeAgentRpcPayload {
     installOtelCollectorInputBuilder.setYcqlAuditLogLevel(ycqlAuditLogLevel);
     installOtelCollectorInputBuilder.addAllMountPoints(getMountPoints(taskParams));
 
-    if (config.isExportActive()
-        && CollectionUtils.isNotEmpty(config.getUniverseLogsExporterConfig())) {
+    if ((config.isExportActive()
+            && CollectionUtils.isNotEmpty(config.getUniverseLogsExporterConfig()))
+        || (metricsExportConfig != null
+            && metricsExportConfig.isExportActive()
+            && CollectionUtils.isNotEmpty(
+                metricsExportConfig.getUniverseMetricsExporterConfig()))) {
       String otelCollectorConfigFile =
           otelCollectorConfigGenerator
               .generateConfigFile(
@@ -493,6 +502,7 @@ public class NodeAgentRpcPayload {
                   provider,
                   universe.getUniverseDetails().getPrimaryCluster().userIntent,
                   config,
+                  metricsExportConfig,
                   GFlagsUtil.getLogLinePrefix(gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
                   NodeManager.getOtelColMetricsPort(taskParams))
               .toAbsolutePath()
@@ -719,6 +729,9 @@ public class NodeAgentRpcPayload {
     setupSetupCGroupBuilder.setYbHomeDir(provider.getYbHome());
     if (taskParams instanceof AnsibleConfigureServers.Params) {
       AnsibleConfigureServers.Params params = (AnsibleConfigureServers.Params) taskParams;
+      setupSetupCGroupBuilder.setPgMaxMemMb(params.cgroupSize);
+    } else if (taskParams instanceof ChangeInstanceType.Params) {
+      ChangeInstanceType.Params params = (ChangeInstanceType.Params) taskParams;
       setupSetupCGroupBuilder.setPgMaxMemMb(params.cgroupSize);
     }
 

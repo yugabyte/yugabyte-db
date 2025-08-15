@@ -2,6 +2,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
@@ -50,7 +51,7 @@ public class UpgradeYbcTest extends FakeDBApplication {
   }
 
   @Test
-  public void testUpgradeSuccess() {
+  public void testUpgradeSuccessOnlyMasterLeader() {
     UpgradeYbc.Params params = new UpgradeYbc.Params();
     params.universeUUID = defaultUniverse.getUniverseUUID();
     params.validateOnlyMasterLeader = false;
@@ -64,8 +65,33 @@ public class UpgradeYbcTest extends FakeDBApplication {
     }
     when(mockYbcUpgrade.checkYBCUpgradeProcessExists(any())).thenReturn(false);
     when(mockYbcUpgrade.pollUpgradeTaskResult(any(), any(), anyBoolean())).thenReturn(true);
-    when(mockYbcUpgrade.getUniverseYbcVersion(any())).thenReturn(TARGET_YBC_VERSION);
+    when(mockYbcUpgrade.getUniverseNodeYbcVersions(any(), anyBoolean()))
+        .thenReturn(defaultUniverse.getNodes().stream().map(n -> TARGET_YBC_VERSION).toList());
     upgradeYbcTask.run();
+    Universe postUpgradeUni = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertEquals(TARGET_YBC_VERSION, postUpgradeUni.getUniverseDetails().getYbcSoftwareVersion());
+  }
+
+  @Test
+  public void testUpgradeSuccess() {
+    UpgradeYbc.Params params = new UpgradeYbc.Params();
+    params.universeUUID = defaultUniverse.getUniverseUUID();
+    params.validateOnlyLiveNodes = false;
+    params.ybcVersion = TARGET_YBC_VERSION;
+    UpgradeYbc upgradeYbcTask = AbstractTaskBase.createTask(UpgradeYbc.class);
+    upgradeYbcTask.initialize(params);
+    try {
+      doNothing().when(mockYbcUpgrade).upgradeYBC(any(), any(), anyBoolean());
+    } catch (Exception e) {
+      assertNull(e);
+    }
+    when(mockYbcUpgrade.checkYBCUpgradeProcessExists(any())).thenReturn(false);
+    when(mockYbcUpgrade.pollUpgradeTaskResult(any(), any(), anyBoolean())).thenReturn(true);
+    when(mockYbcUpgrade.getUniverseNodeYbcVersions(any(), anyBoolean()))
+        .thenReturn(defaultUniverse.getNodes().stream().map(n -> TARGET_YBC_VERSION).toList());
+    upgradeYbcTask.run();
+    Universe postUpgradeUni = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertEquals(TARGET_YBC_VERSION, postUpgradeUni.getUniverseDetails().getYbcSoftwareVersion());
   }
 
   @Test

@@ -217,7 +217,13 @@ public class NodeAgentClient {
 
     public <ReqT, RespT> ClientCall<ReqT, RespT> interceptCall(
         MethodDescriptor<ReqT, RespT> methodDescriptor, CallOptions callOptions, Channel channel) {
+      Duration tokenLifetime = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentTokenLifetime);
       String compression = config.getNodeAgent().getConfig().getCompressor();
+      if (callOptions.getDeadline() == null) {
+        // Set the default deadline if is not set.
+        callOptions =
+            callOptions.withDeadlineAfter(tokenLifetime.toMillis(), TimeUnit.MILLISECONDS);
+      }
       if (StringUtils.isNotBlank(compression)
           && confGetter.getGlobalConf(GlobalConfKeys.nodeAgentEnableMessageCompression)) {
         callOptions = callOptions.withCompression(compression);
@@ -239,7 +245,6 @@ public class NodeAgentClient {
               correlationId,
               requestId,
               nodeAgentUuid);
-          Duration tokenLifetime = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentTokenLifetime);
           String token = NodeAgentClient.getNodeAgentJWT(nodeAgentUuid, tokenLifetime);
           headers.put(Metadata.Key.of("authorization", Metadata.ASCII_STRING_MARSHALLER), token);
           headers.put(

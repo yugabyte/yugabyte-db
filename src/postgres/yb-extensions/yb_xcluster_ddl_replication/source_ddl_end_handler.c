@@ -106,6 +106,7 @@ static List *rewritten_table_oid_list = NIL;
 	X(CMDTAG_ALTER_AGGREGATE) \
 	X(CMDTAG_ALTER_CAST) \
 	X(CMDTAG_ALTER_COLLATION) \
+	X(CMDTAG_ALTER_DEFAULT_PRIVILEGES) \
 	X(CMDTAG_ALTER_DOMAIN) \
 	X(CMDTAG_ALTER_EXTENSION) \
 	X(CMDTAG_ALTER_FUNCTION) \
@@ -621,8 +622,12 @@ GetSourceEventTriggerDDLCommands(YbCommandInfo **info_array_out)
 			SPI_GetText(spi_tuple, DDL_END_COMMAND_TAG_COLUMN_ID);
 		CommandTag	command_tag = GetCommandTagEnum(info->command_tag_name);
 
-		/* Only commands that don't have an oid are GRANT, REVOKE */
-		if (command_tag != CMDTAG_GRANT && command_tag != CMDTAG_REVOKE)
+		/*
+		 * Only commands that don't have an oid are GRANT, REVOKE, and
+		 * ALTER DEFAULT PRIVILEGES.
+		 */
+		if (command_tag != CMDTAG_GRANT && command_tag != CMDTAG_REVOKE
+			&& command_tag != CMDTAG_ALTER_DEFAULT_PRIVILEGES)
 		{
 			info->oid = SPI_GetOid(spi_tuple, DDL_END_OBJID_COLUMN_ID);
 		}

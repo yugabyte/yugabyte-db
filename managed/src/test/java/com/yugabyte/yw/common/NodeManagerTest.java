@@ -876,10 +876,6 @@ public class NodeManagerTest extends FakeDBApplication {
         }
 
         if (cloud.equals(Common.CloudType.aws)) {
-          if (createParams.getCmkArn() != null) {
-            expectedCommand.add("--cmk_res_name");
-            expectedCommand.add(createParams.getCmkArn());
-          }
           if (createParams.ipArnString != null) {
             expectedCommand.add("--iam_profile_arn");
             expectedCommand.add(createParams.ipArnString);

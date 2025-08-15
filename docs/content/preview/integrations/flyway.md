@@ -19,7 +19,7 @@ YugabyteDB has developed a plugin for better integration with Flyway. This plugi
 
 To use Flyway with YugabyteDB, you need the following:
 
-- YugabyteDB version 2.20 or later (see [Quick Start](/preview/tutorials/quick-start/macos/)).
+- YugabyteDB version 2.20 or later (see [Quick Start](/preview/quick-start/macos/)).
 
 - Flyway community edition version 10.12.0 or later (see [Download Flyway](https://www.red-gate.com/products/flyway/editions)).
 

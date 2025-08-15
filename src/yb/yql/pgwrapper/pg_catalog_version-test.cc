@@ -953,7 +953,7 @@ TEST_F(PgCatalogVersionTest, FixCatalogVersionTable) {
   // Do not force early serialization for DDLs since the pg_yb_catalog_version table is in global
   // catalog version mode and early serialization requires taking a lock on the per-db catalog
   // version row.
-  ASSERT_OK(conn_yugabyte.Execute("SET yb_force_early_ddl_serialization=false"));
+  ASSERT_OK(conn_yugabyte.Execute("SET yb_user_ddls_preempt_auto_analyze=false"));
 
   // At this time, an existing connection is still in per-db catalog version mode
   // but the table pg_yb_catalog_version has only one row for template1 and is out
@@ -3244,7 +3244,7 @@ INSTANTIATE_TEST_CASE_P(, PgCatalogVersionConnManagerTest,
                         ::testing::Values(false, true));
 
 TEST_P(PgCatalogVersionConnManagerTest,
-       YB_DISABLE_TEST_IN_SANITIZERS(TestConnectionManagerRpcCount)) {
+       YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestConnectionManagerRpcCount)) {
   const bool enable_ysql_conn_mgr = GetParam();
   // Create the first logical connection to warm up the tserver cache
   // for later auth backends to use.
@@ -3279,7 +3279,7 @@ TEST_P(PgCatalogVersionConnManagerTest,
 }
 
 TEST_P(PgCatalogVersionConnManagerTest,
-       YB_DISABLE_TEST_IN_SANITIZERS(TestConnectionManagerChangePassword)) {
+       YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestConnectionManagerChangePassword)) {
   // Create a test user with password.
   auto conn = ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "yugabyte"));
   ASSERT_OK(conn.ExecuteFormat("CREATE USER test_user PASSWORD 'password'"));

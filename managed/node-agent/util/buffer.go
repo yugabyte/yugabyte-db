@@ -99,7 +99,7 @@ func (p *simpleBuffer) StringWithLen() (string, int) {
 // WriteLine writes a string line to the buffer.
 func (p *simpleBuffer) WriteLine(s string, v ...interface{}) error {
 	line := s
-	if v != nil && len(v) > 0 {
+	if len(v) > 0 {
 		line = fmt.Sprintf(line, v...)
 	}
 	line += "\n"

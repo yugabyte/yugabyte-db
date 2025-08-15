@@ -141,6 +141,7 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
 
   void SetBackfillDone();
   void SetBackfillPosition(Slice key);
+  void SetHasVectorDeletion();
 
   bool backfill_done() const {
     return backfill_done_;
@@ -148,6 +149,10 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
 
   Slice backfill_key() const {
     return backfill_key_;
+  }
+
+  bool has_vector_deletion() const {
+    return has_vector_deletion_;
   }
 
  private:
@@ -189,6 +194,7 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
 
   bool backfill_done_ = false;
   std::string backfill_key_;
+  bool has_vector_deletion_ = false;
 };
 
 using ConsensusFrontiers = rocksdb::UserFrontiersBase<ConsensusFrontier>;

@@ -5,11 +5,11 @@ import {
   Link,
   Paper,
   TablePagination,
-  Typography,
   makeStyles,
 } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
 import { YBCodeBlock, YBModal } from "@app/components";
+import { MetadataItem } from "../../components/MetadataItem";
 import type { UnsupportedObjectData } from "./AssessmentRefactoring";
 
 const useStyles = makeStyles((theme) => ({
@@ -17,12 +17,13 @@ const useStyles = makeStyles((theme) => ({
     marginBottom: theme.spacing(4),
   },
   label: {
-    color: theme.palette.grey[500],
-    fontWeight: theme.typography.fontWeightMedium as number,
     textTransform: "uppercase",
     marginBottom: theme.spacing(0.75),
     padding: 0,
     textAlign: "left",
+    fontSize: '11.5px',
+    fontWeight: 500,
+    color: '#6D7C88',
   },
   dividerHorizontal: {
     width: "100%",
@@ -48,7 +49,22 @@ const useStyles = makeStyles((theme) => ({
   },
   borderForNameAndSQL: {
     border: "1px solid #ddd"
-  }
+  },
+  linkDocs: {
+    alignSelf: 'stretch',
+    color: '#2B59C3',
+    fontFamily: 'Inter',
+    fontSize: 13,
+    fontStyle: 'normal',
+    fontWeight: 400,
+    lineHeight: '16px',
+    textDecorationLine: 'underline',
+    textDecorationStyle: 'solid',
+    textDecorationSkipInk: 'none',
+    textDecorationThickness: 'auto',
+    textUnderlineOffset: 'auto',
+    textUnderlinePosition: 'from-font',
+  },
 }));
 
 interface MigrationRefactoringIssueSidePanel {
@@ -87,14 +103,25 @@ export const MigrationRefactoringIssueSidePanel: FC<MigrationRefactoringIssueSid
         <Paper>
           <Box p={2} className={classes.grayBg} display="flex" gridGap={20}>
             <Grid container spacing={2}>
+              {paginatedObjects?.[0].object_type && (
+                <Grid item xs={3}>
+                  <MetadataItem
+                    layout="vertical"
+                    label={t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges."
+                      + "objectType")}
+                    value={paginatedObjects?.[0].object_type}
+                  />
+                </Grid>
+              )}
+
               {issue?.issue_name && (
-                <Grid item xs={4}>
-                  <Typography variant="subtitle2" className={classes.label}>
-                    {t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.issue")}
-                  </Typography>
-                  <Typography variant="body2" className={classes.value}>
-                    {issue?.issue_name}
-                  </Typography>
+                <Grid item xs={3}>
+                  <MetadataItem
+                    layout="vertical"
+                    label={t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges."
+                      + "issue")}
+                    value={issue?.issue_name}
+                  />
                 </Grid>
               )}
 
@@ -110,33 +137,45 @@ export const MigrationRefactoringIssueSidePanel: FC<MigrationRefactoringIssueSid
               )} */}
 
               {issue?.count && (
-                <Grid item xs={4}>
-                  <Typography variant="subtitle2" className={classes.label}>
-                 {t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.occurrences")}
-                  </Typography>
-                  <Typography variant="body2" className={classes.value}>
-                    {issue?.count}
-                  </Typography>
+                <Grid item xs={3}>
+                  <MetadataItem
+                    layout="vertical"
+                    label={t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges."
+                      + "occurrences")}
+                    value={issue?.count}
+                  />
                 </Grid>
               )}
+              {issue?.docs_link && (
+                  <Grid item xs={3}>
+                    <MetadataItem
+                      layout="vertical"
+                      label={t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges."
+                        + "workaround")}
+                      value={
+                        <Link
+                          href={issue?.docs_link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={classes.linkDocs}
+                        >
+                          {t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges."
+                            + "linkToDocs")}
+                        </Link>
+                      }
+                    />
+                  </Grid>
+                )
+              }
 
               {description && (
-                <Grid item xs={4}>
-                  <Typography variant="subtitle2" className={classes.label}>
-                  {t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges." +
-                      "description")}
-                  </Typography>
-                  <Typography variant="body2" className={classes.value}>
-                    {description}
-                  </Typography>
-                </Grid>
-              )}
-
-              {issue?.docs_link && (
                 <Grid item xs={12}>
-                  <Link href={issue?.docs_link} target="_blank">
-                  {t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.linkToDocs")}
-                  </Link>
+                  <MetadataItem
+                    layout="vertical"
+                    label={t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges."
+                      + "description")}
+                    value={description}
+                  />
                 </Grid>
               )}
             </Grid>
@@ -144,31 +183,25 @@ export const MigrationRefactoringIssueSidePanel: FC<MigrationRefactoringIssueSid
         </Paper>
       </Box>
 
-      {paginatedObjects?.map(({ object_name, object_type, sql_statement }) => (
+      {paginatedObjects?.map(({ object_name, sql_statement }) => (
         (object_name || sql_statement) && (
           <Box key={object_name} className={classes.borderForNameAndSQL}
-            sx={{ mb: 2, p: 2, borderRadius: 2 }}>
-            {(object_name || object_type) && (
+            sx={{ mb: 2, p: 2, borderRadius: 8 }}>
+            {(object_name) && (
               <Box>
                 {object_name && (
-                  <Typography>
-                    {t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges." +
+                  <MetadataItem
+                    layout="vertical"
+                    label={t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges." +
                       "objectName")}
-                    {object_name}
-                  </Typography>
-                )}
-                {object_type && (
-                  <Typography>
-                    {t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges." +
-                      "objectTypeColon")}
-                    {object_type}
-                  </Typography>
+                    value={object_name}
+                  />
                 )}
               </Box>
             )}
             {sql_statement && (
               <Box sx={{ mt: 2 }}>
-                <YBCodeBlock text={sql_statement} />
+                <YBCodeBlock text={sql_statement} showCopyIconButton={true}/>
               </Box>
             )}
           </Box>

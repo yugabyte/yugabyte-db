@@ -1735,4 +1735,13 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Default disk IO write bytes per second during restore in Yb-Controller",
           ConfDataType.LongType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> autoRecoverFromPendingUpgrade =
+      new ConfKeyInfo<>(
+          "yb.helm.auto_recover_from_pending_upgrade",
+          ScopeType.UNIVERSE,
+          "Auto Recover from Pending Upgrade",
+          "If true, YBA will automatically recover from stuck Helm upgrades before performing Helm"
+              + " upgrade operations",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

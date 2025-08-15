@@ -78,8 +78,8 @@ std::string CBTabletMetadata::ToString() const {
   return YB_STRUCT_TO_STRING(
       running, starting, is_under_replicated, under_replicated_placements,
       is_over_replicated, over_replicated_tablet_servers,
-      wrong_placement_tablet_servers, blacklisted_tablet_servers,
-      leader_uuid, leader_stepdown_failures, leader_blacklisted_tablet_servers);
+      wrong_placement_tablet_servers, blacklisted_tablet_servers, leader_blacklisted_tablet_servers,
+      leader_uuid, leader_stepdown_failures, size);
 }
 
 int GlobalLoadState::GetGlobalLoad(const TabletServerId& ts_uuid) const {
@@ -133,18 +133,18 @@ bool PerTableLoadState::CompareLoad(
   if (load_a != load_b) {
     return load_a < load_b;
   }
+  // Use global load as a heuristic to help break ties.
+  load_a = global_state_->GetGlobalLoad(a);
+  load_b = global_state_->GetGlobalLoad(b);
+  if (load_a != load_b) {
+    return load_a < load_b;
+  }
   if (tablet_id) {
     load_a = GetTabletDriveLoad(a, *tablet_id);
     load_b = GetTabletDriveLoad(b, *tablet_id);
     if (load_a != load_b) {
       return load_a < load_b;
     }
-  }
-  // Use global load as a heuristic to help break ties.
-  load_a = global_state_->GetGlobalLoad(a);
-  load_b = global_state_->GetGlobalLoad(b);
-  if (load_a != load_b) {
-    return load_a < load_b;
   }
   return a < b;
 }
@@ -200,7 +200,7 @@ bool PerTableLoadState::ShouldSkipReplica(const TabletReplica& replica) {
   return false;
 }
 
-size_t PerTableLoadState::GetReplicaSize(std::shared_ptr<const TabletReplicaMap> replica_map) {
+size_t PerTableLoadState::GetReplicaCount(std::shared_ptr<const TabletReplicaMap> replica_map) {
   size_t replica_size = 0;
   for (const auto& replica_it : *replica_map) {
     if (ShouldSkipReplica(replica_it.second)) {
@@ -221,7 +221,7 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
   auto replica_map = tablet->GetReplicaLocations();
 
   // Get the number of relevant replicas in the replica map.
-  size_t replica_count = GetReplicaSize(replica_map);
+  size_t replica_count = GetReplicaCount(replica_map);
 
   // Set state information for both the tablet and the tablet server replicas.
   for (const auto& [ts_uuid, replica] : *replica_map) {
@@ -231,10 +231,7 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
       tablet_meta.leader_uuid = ts_uuid;
     }
 
-    // Use any voter to set the tablet size.
-    if (tablet_meta.size == 0 && replica.member_type == consensus::VOTER) {
-      tablet_meta.size = replica.drive_info.sst_files_size + replica.drive_info.wal_files_size;
-    }
+    tablet_meta.size = std::max(tablet_meta.size, replica.drive_info.total_size);
 
     if (ShouldSkipReplica(replica)) {
       continue;
@@ -293,12 +290,10 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
     } else if (!replica_is_stale && !replica_is_running) {
       // Keep track of transitioning state (not running, but not in a stopped or failed state).
       RETURN_NOT_OK(AddStartingTablet(tablet_id, ts_uuid));
-      auto counter_it = meta_ts.path_to_starting_tablets_count.find(replica.fs_data_dir);
-      if (counter_it != meta_ts.path_to_starting_tablets_count.end()) {
-        ++counter_it->second;
-      } else {
-        meta_ts.path_to_starting_tablets_count.insert({replica.fs_data_dir, 1});
-      }
+      ++meta_ts.path_to_starting_tablets_count[replica.fs_data_dir];
+      // If there are any starting, non-stale tablets, there are ongoing remote bootstraps, so the
+      // cluster balancer is not idle.
+      global_state_->activity_info_.has_ongoing_remote_bootstraps_ = true;
     } else if (replica_is_stale) {
       VLOG(3) << "Replica is stale: " << replica.ToString();
     }
@@ -324,6 +319,9 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
   }
 
   // Only set the over-replication section if we need to.
+  if (placement_.num_replicas() == 0) {
+    placement_.set_num_replicas(FLAGS_replication_factor);
+  }
   tablet_meta.is_over_replicated = placement_.num_replicas() < static_cast<int32_t>(replica_count);
   tablet_meta.is_under_replicated = placement_.num_replicas() > static_cast<int32_t>(replica_count);
   if (VLOG_IS_ON(3)) {
@@ -447,7 +445,7 @@ void PerTableLoadState::UpdateTabletServer(std::shared_ptr<TSDescriptor> ts_desc
   ts_meta.descriptor = ts_desc;
 
   // Also insert into per_ts_global_meta_ if we have yet to.
-  global_state_->per_ts_global_meta_.emplace(ts_uuid, CBTabletServerLoadCounts());
+  global_state_->per_ts_global_meta_.emplace(ts_uuid, CBTabletServerGlobalMetadata());
 
   // Set as blacklisted if it matches.
   bool is_blacklisted = (global_state_->blacklisted_servers_.count(ts_uuid) != 0);
@@ -556,10 +554,25 @@ Result<bool> PerTableLoadState::CanAddTabletToTabletServer(
     return false;
   }
 
-  if (ts_meta.starting_tablets.size() >=
-      static_cast<size_t>(options_->kMaxInboundRemoteBootstrapsPerTs)) {
-    VLOG(4) << "TS " << to_ts << " already has " << ts_meta.starting_tablets.size()
+  auto& ts_global_meta = global_state_->per_ts_global_meta_.at(to_ts);
+  if (ts_global_meta.starting_tablets_count >= options_->kMaxInboundRemoteBootstrapsPerTs) {
+    VLOG(4) << "TS " << to_ts << " already has "
+            << global_state_->per_ts_global_meta_.at(to_ts).starting_tablets_count
             << " starting tablets. Not allowing it to host another tablet.";
+    return false;
+  }
+
+  // If this tablet server already has enough starting tablets to satisfy the desired parallelism
+  // and enough pending data to keep it busy until the next cluster balancer run, do not add more
+  // starting tablets.
+  auto& tablet_meta = per_tablet_meta_.at(tablet_id);
+  if (ts_global_meta.starting_tablets_count >= options_->kMinInboundRemoteBootstrapsPerTs &&
+      tablet_meta.GetSizeOrDefault() + ts_global_meta.starting_tablets_size >
+          options_->kMaxInboundBytesPerTs) {
+    VLOG(4) << Format("TS $0 already has $1 bytes of inbound data scheduled. Not allowing it to "
+                      "host tablet $2 with size $3 bytes. Max inbound bytes per ts: $4",
+                      to_ts, ts_global_meta.starting_tablets_size, tablet_id,
+                      tablet_meta.GetSizeOrDefault(), options_->kMaxInboundBytesPerTs);
     return false;
   }
 
@@ -719,13 +732,14 @@ Status PerTableLoadState::RemoveReplica(const TabletId& tablet_id, const TabletS
   if (per_tablet_meta_[tablet_id].leader_uuid == from_ts) {
     RETURN_NOT_OK(MoveLeader(tablet_id, from_ts));
   }
-  // This artificially constrains the removes to only handle one over_replication/wrong_placement
-  // per run.
   // Create a copy of tablet_id because tablet_id could be a const reference from
   // tablets_wrong_placement_ (if the requests comes from HandleRemoveIfWrongPlacement) or a const
   // reference from tablets_over_replicated_ (if the request comes from HandleRemoveReplicas).
   TabletId tablet_id_key(tablet_id);
+  // It's possible that the tablet is over-replicated multiple times, but we won't remove multiple
+  // replicas in one run anyways because we only iterate over the over-replicated tablets once.
   tablets_over_replicated_.erase(tablet_id_key);
+  per_tablet_meta_[tablet_id].is_over_replicated = false;
   tablets_wrong_placement_.erase(tablet_id_key);
   SortLoad();
   return Status::OK();
@@ -935,6 +949,8 @@ Status PerTableLoadState::AddStartingTablet(
   auto ret = per_ts_meta_.at(ts_uuid).starting_tablets.insert(tablet_id);
   if (ret.second) {
     ++global_state_->per_ts_global_meta_[ts_uuid].starting_tablets_count;
+    global_state_->per_ts_global_meta_[ts_uuid].starting_tablets_size +=
+        per_tablet_meta_[tablet_id].GetSizeOrDefault();
     ++total_starting_;
     ++global_state_->total_starting_tablets_;
     ++per_tablet_meta_[tablet_id].starting;
@@ -943,6 +959,7 @@ Status PerTableLoadState::AddStartingTablet(
     // If we have already initialized and the tablet wasn't over replicated before the
     // add, it's over replicated now.
     if (initialized_ && tablets_missing_replicas_.count(tablet_id) == 0) {
+      per_tablet_meta_[tablet_id].is_over_replicated = true;
       tablets_over_replicated_.insert(tablet_id);
     }
     VLOG(3) << "Increased total_starting to "

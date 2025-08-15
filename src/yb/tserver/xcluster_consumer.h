@@ -17,6 +17,9 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "yb/common/common_types.pb.h"
+#include "yb/common/constants.h"
+
 #include <boost/functional/hash.hpp>
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/mem_fun.hpp>
@@ -27,7 +30,6 @@
 #include "yb/cdc/cdc_types.h"
 #include "yb/cdc/xcluster_types.h"
 #include "yb/client/client_fwd.h"
-#include "yb/common/common_types.pb.h"
 
 #include "yb/tserver/xcluster_consumer_if.h"
 #include "yb/tserver/xcluster_consumer_replication_error.h"
@@ -146,6 +148,12 @@ class XClusterConsumer : public XClusterConsumerIf {
   void UpdateReplicationGroupInMemState(
       const xcluster::ReplicationGroupId& replication_group_id,
       const yb::cdc::ProducerEntryPB& producer_entry_pb) REQUIRES(master_data_mutex_);
+
+  void ProcessStreamSchemaVersions(
+      const xrepl::StreamId& stream_id, const TableId& consumer_table_id,
+      const cdc::SchemaVersionsPB& schema_versions,
+      std::unordered_map<SchemaVersion, SchemaVersion>& schema_version_map,
+      const ColocationId& colocation_id = kColocationIdNotSet) REQUIRES(master_data_mutex_);
 
   // Loops through all entries in registry from master to check if all producer tablets are being
   // polled for.

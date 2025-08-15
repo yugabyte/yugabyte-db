@@ -173,6 +173,7 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kRaft_ApplyingEdits)
     (kWAL_Append)
     (kWAL_Sync)
+    (kWAL_Read)
     (kConsensusMeta_Flush)
     (kReplicaState_TakeUpdateLock)
 
@@ -217,6 +218,7 @@ YB_DEFINE_TYPED_ENUM(FixedQueryId, uint8_t,
   ((kQueryIdForRemoteBootstrap, 8))
   ((kQueryIdForSnapshot, 9))
   ((kQueryIdForYcqlAuthResponseRequest, 10))
+  ((kQueryIdForWalsender, 11))
 );
 
 YB_DEFINE_TYPED_ENUM(WaitStateType, uint8_t,

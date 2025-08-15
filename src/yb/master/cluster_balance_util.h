@@ -26,23 +26,19 @@
 #include "yb/master/cluster_balance_activity_info.h"
 #include "yb/master/ts_descriptor.h"
 
+#include "yb/util/size_literals.h"
+
 DECLARE_int32(leader_balance_threshold);
-
 DECLARE_int32(load_balancer_max_concurrent_tablet_remote_bootstraps);
-
 DECLARE_int32(load_balancer_max_concurrent_tablet_remote_bootstraps_per_table);
-
 DECLARE_int32(load_balancer_max_inbound_remote_bootstraps_per_tserver);
-
 DECLARE_int32(load_balancer_max_over_replicated_tablets);
-
 DECLARE_int32(load_balancer_max_concurrent_adds);
-
 DECLARE_int32(load_balancer_max_concurrent_removals);
-
 DECLARE_int32(load_balancer_max_concurrent_moves);
-
 DECLARE_int32(load_balancer_max_concurrent_moves_per_table);
+DECLARE_int32(load_balancer_min_inbound_remote_bootstraps_per_tserver);
+DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
 
 namespace yb {
 namespace master {
@@ -109,10 +105,15 @@ struct CBTabletMetadata {
   // Leader stepdown failures. We use this to prevent retrying the same leader stepdown too soon.
   LeaderStepDownFailureTimes leader_stepdown_failures;
 
-  // The size of the tablet in bytes.
-  size_t size = 0;
+  // The size of the largest replica of this tablet, in bytes.
+  uint64_t size = 0;
 
   std::string ToString() const;
+
+  // If the size is 0, conservatively assume it is very big.
+  size_t GetSizeOrDefault() const {
+    return size == 0 ? 1_GB : size;
+  }
 };
 
 using PathToTablets = std::unordered_map<std::string, std::set<TabletId>>;
@@ -163,16 +164,18 @@ struct CBTabletServerMetadata {
   std::set<TabletId> disabled_by_ts_tablets;
 };
 
-struct CBTabletServerLoadCounts {
+struct CBTabletServerGlobalMetadata {
   std::string ToString() {
-    return Format("{ Running tablets count: $0, starting tablets count: $1, leaders count: $2 }",
-                  running_tablets_count, starting_tablets_count, leaders_count);
+    return YB_STRUCT_TO_STRING(
+        running_tablets_count, starting_tablets_count, leaders_count, starting_tablets_size);
   }
   // Stores global load counts for a tablet server.
   // See definitions of these counts in CBTabletServerMetadata.
   int running_tablets_count = 0;
   int starting_tablets_count = 0;
   int leaders_count = 0;
+  // Size of all starting tablets on this TS, in bytes.
+  size_t starting_tablets_size = 0;
 };
 
 struct Options {
@@ -185,6 +188,12 @@ struct Options {
     }
     if (kMaxOverReplicatedTabletsPerTable < 0) {
       kMaxOverReplicatedTabletsPerTable = std::numeric_limits<int>::max();
+    }
+    if (kMaxTabletRemoteBootstrapsPerTable < 0) {
+      kMaxTabletRemoteBootstrapsPerTable = std::numeric_limits<int>::max();
+    }
+    if (kMaxInboundRemoteBootstrapsPerTs < 0) {
+      kMaxInboundRemoteBootstrapsPerTs = std::numeric_limits<int>::max();
     }
   }
   virtual ~Options() {}
@@ -232,6 +241,13 @@ struct Options {
   // Max bootstrapping tablets per tablet server.
   int kMaxInboundRemoteBootstrapsPerTs =
       FLAGS_load_balancer_max_inbound_remote_bootstraps_per_tserver;
+
+  int kMinInboundRemoteBootstrapsPerTs =
+      FLAGS_load_balancer_min_inbound_remote_bootstraps_per_tserver;
+
+  size_t kMaxInboundBytesPerTs =
+      FLAGS_remote_bootstrap_rate_limit_bytes_per_sec * FLAGS_catalog_manager_bg_task_wait_ms
+      / 1000;
 
   // Whether to limit the number of tablets that have more peers than configured at any given
   // time.
@@ -305,7 +321,7 @@ class GlobalLoadState {
 
  private:
   // Map from tablet server ids to the global metadata we store for each.
-  std::unordered_map<TabletServerId, CBTabletServerLoadCounts> per_ts_global_meta_;
+  std::unordered_map<TabletServerId, CBTabletServerGlobalMetadata> per_ts_global_meta_;
 
   friend class PerTableLoadState;
 };
@@ -567,7 +583,7 @@ class PerTableLoadState {
   bool initialized_ = false;
 
   bool ShouldSkipReplica(const TabletReplica& replica);
-  size_t GetReplicaSize(std::shared_ptr<const TabletReplicaMap> replica_map);
+  size_t GetReplicaCount(std::shared_ptr<const TabletReplicaMap> replica_map);
   const std::string uninitialized_ts_meta_format_msg_ =
       "Found uninitialized ts_meta: ts_uuid: $0, table_uuid: $1";
 

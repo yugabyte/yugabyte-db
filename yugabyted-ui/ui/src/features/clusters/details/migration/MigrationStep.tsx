@@ -87,7 +87,7 @@ export const MigrationStep: FC<MigrationStepProps> = ({
     refetchMigrationMetrics();
   }, []);
   return (
-    <Box mt={1}>
+    <Box>
       {stepComponents.map((StepComponent, index) => {
         if (index === step) {
           return (

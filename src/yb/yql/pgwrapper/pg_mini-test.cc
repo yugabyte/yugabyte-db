@@ -192,19 +192,15 @@ class PgMiniTest : public PgMiniTestBase {
 
   void TestAnalyze(int row_width);
 
-  void CreateTableAndInitialize(std::string table_name, int num_tablets);
-
-  void DestroyTable(std::string table_name);
-
-  void StartReadWriteThreads(std::string table_name, TestThreadHolder *thread_holder);
+  void DestroyTable(const std::string& table_name);
 
   void TestConcurrentDeleteRowAndUpdateColumn(bool select_before_update);
 
   void CreateDBWithTablegroupAndTables(
-      const std::string database_name, const std::string tablegroup_name, const int num_tables,
-      const int keys, PGConn* conn);
+      const std::string& database_name, const std::string& tablegroup_name, size_t num_tables,
+      size_t keys, PGConn* conn);
 
-  void VerifyFileSizeAfterCompaction(PGConn* conn, const int num_tables);
+  void VerifyFileSizeAfterCompaction(PGConn* conn, size_t num_tables);
 
   void RunManyConcurrentReadersTest();
 
@@ -743,6 +739,11 @@ TEST_F(PgMiniTest, With) {
   ASSERT_OK(conn.Execute(
       "WITH test2 AS (UPDATE test SET v = 2 WHERE k = 1) "
       "UPDATE test SET v = 3 WHERE k = 1"));
+}
+
+void PgMiniTest::DestroyTable(const std::string& table_name) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", table_name));
 }
 
 void PgMiniTest::TestReadRestart(const bool deferrable) {
@@ -1836,89 +1837,93 @@ class PgMiniTabletSplitTest : public PgMiniTest {
   Status SetupConnection(PGConn* conn) const override {
     return conn->Execute("SET yb_fetch_row_limit = 32");
   }
-};
 
-void PgMiniTest::CreateTableAndInitialize(std::string table_name, int num_tablets) {
-  auto conn = ASSERT_RESULT(Connect());
-
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
-  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (h1 int, h2 int, r int, i int, "
-                               "PRIMARY KEY ((h1, h2) HASH, r ASC)) "
-                               "SPLIT INTO $1 TABLETS", table_name, num_tablets));
-
-  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx "
-                               "ON $1(i HASH, r ASC)", table_name, table_name));
-
-  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT i, i, i, 1 FROM "
-                               "(SELECT generate_series(1, 500) i) t", table_name));
-}
-
-void PgMiniTest::DestroyTable(std::string table_name) {
-  auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", table_name));
-}
-
-void PgMiniTest::StartReadWriteThreads(const std::string table_name,
-    TestThreadHolder *thread_holder) {
-  // Writer thread that does parallel writes into table
-  thread_holder->AddThread([this, table_name] {
-    LOG(INFO) << "Starting writes to " << table_name;
-    auto conn = ASSERT_RESULT(Connect());
-    for (int i = 501; i < 2000; i++) {
-      ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ($1, $2, $3, $4)",
-                                   table_name, i, i, i, 1));
-    }
-    LOG(INFO) << "Completed writes to " << table_name;
-  });
-
-  // Index read from the table
-  thread_holder->AddThread([this, &stop = thread_holder->stop_flag(), table_name] {
-    auto conn = ASSERT_RESULT(Connect());
-    do {
-      auto result = ASSERT_RESULT(conn.FetchFormat("SELECT * FROM  $0 WHERE i = 1 order by r",
-                                                   table_name));
-      std::vector<int> sort_check;
-      for(int x = 0; x < PQntuples(result.get()); x++) {
-        auto value = ASSERT_RESULT(GetValue<int32_t>(result.get(), x, 2));
-        sort_check.push_back(value);
+  void ExecuteReadWriteThreads(const std::string& table_name) {
+    CountDownLatch latch{2};
+    TestThreadHolder thread_holder;
+    // Writer thread that does parallel writes into table
+    thread_holder.AddThreadFunctor([this, &table_name, &latch] {
+      LOG(INFO) << "Starting writes to " << table_name;
+      auto conn = ASSERT_RESULT(Connect());
+      latch.CountDown();
+      latch.Wait();
+      for (size_t i = 501; i < 2000; ++i) {
+        ASSERT_OK(conn.ExecuteFormat(
+            "INSERT INTO $0 VALUES ($1, $2, $3, $4)", table_name, i, i, i, 1));
       }
-      ASSERT_TRUE(std::is_sorted(sort_check.begin(), sort_check.end()));
-    }  while (!stop.load(std::memory_order_acquire));
-  });
-}
+      LOG(INFO) << "Completed writes to " << table_name;
+    });
+
+    // Index read from the table
+    thread_holder.AddThread([this, &stop = thread_holder.stop_flag(), &table_name, &latch] {
+      auto conn = ASSERT_RESULT(Connect());
+      latch.CountDown();
+      latch.Wait();
+      do {
+        auto result = ASSERT_RESULT(conn.FetchFormat(
+            "SELECT * FROM  $0 WHERE i = 1 ORDER BY r", table_name));
+        std::optional<int32_t> prev_value;
+        for(int row = 0, row_count = PQntuples(result.get()); row < row_count; ++row) {
+          const auto value = ASSERT_RESULT(GetValue<int32_t>(result.get(), row, 2));
+          if (prev_value) {
+            // Check all the rows are sorted in ascending order
+            ASSERT_LE(*prev_value, value);
+          }
+          prev_value = value;
+        }
+      } while (!stop.load(std::memory_order_acquire));
+    });
+  }
+
+  void CreateTableAndInitialize(const std::string& table_name, size_t num_tablets) {
+    auto conn = ASSERT_RESULT(Connect());
+
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (h1 int, h2 int, r int, i int, "
+                                "PRIMARY KEY ((h1, h2) HASH, r ASC)) "
+                                "SPLIT INTO $1 TABLETS", table_name, num_tablets));
+
+    ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx "
+                                "ON $1(i HASH, r ASC)", table_name, table_name));
+
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT i, i, i, 1 FROM "
+                                "(SELECT generate_series(1, 500) i) t", table_name));
+  }
+
+};
 
 TEST_F_EX(
     PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(TabletSplitSecondaryIndexYSQL),
     PgMiniTabletSplitTest) {
+  auto test_runner = [this](int num_tablets) {
+    LOG(INFO) << "Run test with num_tablets = " << num_tablets;
+    static const std::string table_name = "update_pk_complex_two_hash_one_range_keys";
 
-  std::string table_name = "update_pk_complex_two_hash_one_range_keys";
-  CreateTableAndInitialize(table_name, 1);
+    CreateTableAndInitialize(table_name, 1);
 
-  auto table_id = ASSERT_RESULT(GetTableIDFromTableName(table_name));
-  auto start_num_tablets = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id).size();
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
+    const auto table_id = ASSERT_RESULT(GetTableIDFromTableName(table_name));
+    const auto start_num_tablets = ListTableActiveTabletLeadersPeers(
+        cluster_.get(), table_id).size();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
 
-  // Insert elements into the table using a parallel thread
-  TestThreadHolder thread_holder;
+    /*
+    * Writer thread writes into the table continuously, while the index read thread does a
+    * secondary index lookup. During the index lookup, we inject artificial delays, specified by
+    * the flag FLAGS_TEST_tablet_split_injected_delay_ms. Tablets will split in between those
+    * delays into two different partitions.
+    *
+    * The purpose of this test is to verify that when the secondary index read request is being
+    * executed, the results from both the tablets are being represented. Without the fix from
+    * the pggate layer, only one half of the results will be obtained. Hence we verify that after
+    * the split the number of elements is > 500, which is the number of elements inserted before
+    * the split.
+    */
+    ExecuteReadWriteThreads(table_name);
+    const auto end_num_tablets = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id).size();
+    ASSERT_GT(end_num_tablets, start_num_tablets);
+    DestroyTable(table_name);
+  };
 
-  /*
-   * Writer thread writes into the table continously, while the index read thread does a secondary
-   * index lookup. During the index lookup, we inject artificial delays, specified by the flag
-   * FLAGS_TEST_tablet_split_injected_delay_ms. Tablets will split in between those delays into
-   * two different partitions.
-   *
-   * The purpose of this test is to verify that when the secondary index read request is being
-   * executed, the results from both the tablets are being represented. Without the fix from
-   * the pggate layer, only one half of the results will be obtained. Hence we verify that after the
-   * split the number of elements is > 500, which is the number of elements inserted before the
-   * split.
-   */
-  StartReadWriteThreads(table_name, &thread_holder);
-
-  thread_holder.WaitAndStop(200s);
-  auto end_num_tablets = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id).size();
-  ASSERT_GT(end_num_tablets, start_num_tablets);
-  DestroyTable(table_name);
+  test_runner(/* num_tables= */ 1);
 
   // Rerun the same test where table is created with 3 tablets.
   // When a table is created with three tablets, the lower and upper bounds are as follows;
@@ -1928,17 +1933,8 @@ TEST_F_EX(
   // However, in situations where tables are created with just one tablet lower_bound and
   // upper_bound for the tablet is empty to empty. Hence, to test both situations we run this test
   // with one tablet and three tablets respectively.
-  CreateTableAndInitialize(table_name, 3);
-  table_id = ASSERT_RESULT(GetTableIDFromTableName(table_name));
-  start_num_tablets = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id).size();
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
 
-  StartReadWriteThreads(table_name, &thread_holder);
-  thread_holder.WaitAndStop(200s);
-
-  end_num_tablets = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id).size();
-  ASSERT_GT(end_num_tablets, start_num_tablets);
-  DestroyTable(table_name);
+  test_runner(/* num_tables= */ 3);
 }
 
 void PgMiniTest::ValidateAbortedTxnMetric() {
@@ -2157,7 +2153,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST(TestSerializableStrongReadLockNotAborted)) {
   ValidateAbortedTxnMetric();
 }
 
-void PgMiniTest::VerifyFileSizeAfterCompaction(PGConn* conn, const int num_tables) {
+void PgMiniTest::VerifyFileSizeAfterCompaction(PGConn* conn, size_t num_tables) {
   ASSERT_OK(cluster_->FlushTablets());
   uint64_t files_size = 0;
   for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
@@ -2217,12 +2213,12 @@ TEST_F(PgMiniTest, ColocatedCompaction) {
 }
 
 void PgMiniTest::CreateDBWithTablegroupAndTables(
-    const std::string database_name, const std::string tablegroup_name, const int num_tables,
-    const int keys, PGConn* conn) {
+    const std::string& database_name, const std::string& tablegroup_name, size_t num_tables,
+    size_t keys, PGConn* conn) {
   ASSERT_OK(conn->ExecuteFormat("CREATE DATABASE $0", database_name));
   *conn = ASSERT_RESULT(ConnectToDB(database_name));
   ASSERT_OK(conn->ExecuteFormat("CREATE TABLEGROUP $0", tablegroup_name));
-  for (int i = 0; i < num_tables; ++i) {
+  for (size_t i = 0; i < num_tables; ++i) {
     ASSERT_OK(conn->ExecuteFormat(R"#(
         CREATE TABLE test$0 (
           key INTEGER NOT NULL PRIMARY KEY,
@@ -2230,7 +2226,7 @@ void PgMiniTest::CreateDBWithTablegroupAndTables(
           string VARCHAR
         ) tablegroup $1
       )#", i, tablegroup_name));
-    for (int j = 0; j < keys; ++j) {
+    for (size_t j = 0; j < keys; ++j) {
       ASSERT_OK(conn->ExecuteFormat(
           "INSERT INTO test$0(key, value, string) VALUES($1, -$1, '$2')", i, j,
           RandomHumanReadableString(128_KB)));
@@ -2256,24 +2252,24 @@ TEST_F(PgMiniTest, TablegroupCompaction) {
 TEST_F(PgMiniTest, TablegroupCompactionWithRestart) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_history_cutoff_propagation_interval_ms) = 1;
-  const auto num_tables = 3;
-  constexpr int keys = 100;
+  constexpr size_t kNumTables = 3;
+  constexpr size_t kKeys = 100;
 
   PGConn conn = ASSERT_RESULT(Connect());
   CreateDBWithTablegroupAndTables(
       "testdb" /* database_name */,
       "testtg" /* tablegroup_name */,
-      num_tables,
-      keys,
+      kNumTables,
+      kKeys,
       &conn);
   ASSERT_OK(cluster_->FlushTablets());
   ASSERT_OK(cluster_->RestartSync());
   ASSERT_OK(cluster_->CompactTablets());
   conn = ASSERT_RESULT(ConnectToDB("testdb" /* database_name */));
-  for (int i = 0; i < num_tables; ++i) {
+  for (size_t i = 0; i < kNumTables; ++i) {
     auto res =
         ASSERT_RESULT(conn.template FetchRow<PGUint64>(Format("SELECT COUNT(*) FROM test$0", i)));
-    ASSERT_EQ(res, keys);
+    ASSERT_EQ(res, kKeys);
   }
 }
 

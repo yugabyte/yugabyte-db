@@ -72,6 +72,7 @@ DECLARE_bool(TEST_export_wait_state_names);
 DECLARE_bool(ysql_enable_db_catalog_version_mode);
 DECLARE_int32(ysql_yb_ash_sample_size);
 DECLARE_bool(ysql_yb_enable_consistent_replication_from_hash_range);
+DECLARE_bool(TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 
 extern int yb_locks_min_txn_age;
 extern int yb_locks_max_transactions;
@@ -1469,7 +1470,8 @@ class PgClient::Impl : public BigDataFetcher {
 
   Result<cdc::InitVirtualWALForCDCResponsePB> InitVirtualWALForCDC(
       const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
-      const YbcReplicationSlotHashRange* slot_hash_range, uint64_t active_pid) {
+      const YbcReplicationSlotHashRange* slot_hash_range, uint64_t active_pid,
+      const std::vector<PgOid>& publication_oids, bool pub_all_tables) {
     cdc::InitVirtualWALForCDCRequestPB req;
 
     req.set_session_id(session_id_);
@@ -1477,6 +1479,13 @@ class PgClient::Impl : public BigDataFetcher {
     req.set_active_pid(active_pid);
     for (const auto& table_id : table_ids) {
       *req.add_table_id() = table_id.GetYbTableId();
+    }
+
+    if (FLAGS_TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
+      for (const auto& publication_oid : publication_oids) {
+        req.add_publication_oid(publication_oid);
+      }
+      req.set_pub_all_tables(pub_all_tables);
     }
 
     if (FLAGS_ysql_yb_enable_consistent_replication_from_hash_range) {
@@ -2005,8 +2014,10 @@ Result<tserver::PgYCQLStatementStatsResponsePB> PgClient::YCQLStatementStats() {
 
 Result<cdc::InitVirtualWALForCDCResponsePB> PgClient::InitVirtualWALForCDC(
     const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
-    const YbcReplicationSlotHashRange* slot_hash_range, uint64_t active_pid) {
-  return impl_->InitVirtualWALForCDC(stream_id, table_ids, slot_hash_range, active_pid);
+    const YbcReplicationSlotHashRange* slot_hash_range, uint64_t active_pid,
+    const std::vector<PgOid>& publication_oids, bool pub_all_tables) {
+  return impl_->InitVirtualWALForCDC(
+      stream_id, table_ids, slot_hash_range, active_pid, publication_oids, pub_all_tables);
 }
 
 Result<cdc::GetLagMetricsResponsePB> PgClient::GetLagMetrics(

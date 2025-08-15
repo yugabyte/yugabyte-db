@@ -60,6 +60,7 @@ import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
 import jakarta.mail.MessagingException;
 import java.io.IOException;
 import java.io.InputStream;
@@ -852,6 +853,11 @@ public class HealthChecker {
         AuditLogConfig auditLogConfig = cluster.userIntent.auditLogConfig;
         if (auditLogConfig != null) {
           nodeInfo.setOtelCollectorEnabled(auditLogConfig.isExportActive());
+        }
+        // Check if metrics export was ever enabled and disabled.
+        MetricsExportConfig metricsExportConfig = cluster.userIntent.metricsExportConfig;
+        if (metricsExportConfig != null && !nodeInfo.isOtelCollectorEnabled()) {
+          nodeInfo.setOtelCollectorEnabled(metricsExportConfig.isExportActive());
         }
         nodeInfo.setClockboundEnabled(
             params.universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseClockbound());

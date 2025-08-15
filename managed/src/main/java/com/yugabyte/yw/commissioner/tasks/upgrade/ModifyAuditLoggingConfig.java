@@ -127,6 +127,7 @@ public class ModifyAuditLoggingConfig extends UpgradeTaskBase {
         nodes,
         taskParams().installOtelCollector,
         taskParams().auditLogConfig,
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.metricsExportConfig,
         nodeDetails ->
             GFlagsUtil.getGFlagsForNode(
                 nodeDetails,

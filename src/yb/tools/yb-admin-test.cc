@@ -113,7 +113,7 @@ namespace {
 class BlacklistChecker {
  public:
   BlacklistChecker(const string& yb_admin_exe, const string& master_address) :
-      args_{yb_admin_exe, "-master_addresses", master_address, "get_universe_config"} {
+      args_{yb_admin_exe, "--master_addresses", master_address, "get_universe_config"} {
   }
 
   Status operator()(const vector<HostPort>& servers) const {
@@ -427,8 +427,8 @@ TEST_F(AdminCliTest, InvalidMasterAddresses) {
   string unreachable_host = Substitute("127.0.0.1:$0", port);
   std::string error_string;
   ASSERT_NOK(Subprocess::Call(ToStringVector(
-      GetAdminToolPath(), "-master_addresses", unreachable_host,
-      "-timeout_ms", "1000", "list_tables"), /* output */ nullptr, &error_string));
+      GetAdminToolPath(), "--master_addresses", unreachable_host,
+      "--timeout_ms", "1000", "list_tables"), /* output */ nullptr, &error_string));
   ASSERT_STR_CONTAINS(error_string, "verify the addresses");
 }
 
@@ -443,7 +443,7 @@ TEST_F(AdminCliTest, CheckTableIdUsage) {
   const auto table_id = tables.front().table_id();
   const auto table_id_arg = Format("tableid.$0", table_id);
   auto args = ToStringVector(
-      exe_path, "-master_addresses", master_address, "list_tablets", table_id_arg);
+      exe_path, "--master_addresses", master_address, "list_tablets", table_id_arg);
   const auto args_size = args.size();
   ASSERT_OK(Subprocess::Call(args));
   // Check good optional integer argument.
@@ -1317,7 +1317,7 @@ class AdminCliListTabletsTest : public AdminCliTest {
   template <class... Args>
   Result<std::string> ListTablets(Args&&... args) {
     return CallAdminVec(ToStringVector(
-        GetAdminToolPath(), "-master_addresses", GetMasterAddresses(), "list_tablets",
+        GetAdminToolPath(), "--master_addresses", GetMasterAddresses(), "list_tablets",
         std::forward<Args>(args)...));
   }
 };
@@ -1753,7 +1753,7 @@ TEST_F(AdminCliTest, TestAdminRpcTimeout) {
 
   const auto before_ts = DateTime::TimestampNow();
   auto result = CallAdmin(
-      "-yb_client_admin_rpc_timeout_sec",
+      "--yb_client_admin_rpc_timeout_sec",
       std::to_string(kAdminRpcTimeout / MonoTime::kMillisecondsPerSecond),
       "compact_table", kTableName.namespace_name(), kTableName.table_name(),
       std::to_string(kAdminCmdTimeout / MonoTime::kMillisecondsPerSecond));

@@ -360,6 +360,12 @@ TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressRolesOwnersPermissions) {
       {"owners_and_permissions1.sql", "owners_and_permissions2.sql"}, pre_execute_sql_text));
 }
 
+TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressAlterDefaultPrivileges) {
+  std::string pre_execute_sql_text = "CREATE ROLE sandeep WITH LOGIN PASSWORD 'password';";
+  ASSERT_OK(TestPgRegress(
+      {"alter_default_privileges.sql"}, pre_execute_sql_text));
+}
+
 TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressAlterPgOnlyDdls) {
   // Tests create and alters of pass through ddls that dont require special handling.
   ASSERT_OK(TestPgRegress({"pgonly_ddls_create.sql", "pgonly_ddls_alter.sql"}));

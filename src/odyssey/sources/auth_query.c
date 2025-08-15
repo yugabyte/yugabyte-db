@@ -135,7 +135,7 @@ int od_auth_query(od_client_t *client, char *peer)
 		od_debug(&instance->logger, "auth_query", auth_client, NULL,
 			 "failed to route internal auth query client: %s",
 			 od_router_status_to_str(status));
-		od_client_free(auth_client);
+		od_client_free_extended(auth_client);
 		return NOT_OK_RESPONSE;
 	}
 
@@ -147,7 +147,7 @@ int od_auth_query(od_client_t *client, char *peer)
 			"failed to attach internal auth query client to route: %s",
 			od_router_status_to_str(status));
 		od_router_unroute(router, auth_client);
-		od_client_free(auth_client);
+		od_client_free_extended(auth_client);
 		return NOT_OK_RESPONSE;
 	}
 	od_server_t *server;
@@ -169,7 +169,7 @@ int od_auth_query(od_client_t *client, char *peer)
 				 od_io_error(&server->io));
 			od_router_close(router, auth_client);
 			od_router_unroute(router, auth_client);
-			od_client_free(auth_client);
+			od_client_free_extended(auth_client);
 			return NOT_OK_RESPONSE;
 		}
 	}
@@ -181,7 +181,7 @@ int od_auth_query(od_client_t *client, char *peer)
 			 "failed to allocate memory for auth query");
 		od_router_close(router, auth_client);
 		od_router_unroute(router, auth_client);
-		od_client_free(auth_client);
+		od_client_free_extended(auth_client);
 		return NOT_OK_RESPONSE;
 	}
 	query[yb_max_query_size] = '\0';
@@ -198,7 +198,7 @@ int od_auth_query(od_client_t *client, char *peer)
 			 "auth query returned empty msg");
 		od_router_close(router, auth_client);
 		od_router_unroute(router, auth_client);
-		od_client_free(auth_client);
+		od_client_free_extended(auth_client);
 		return NOT_OK_RESPONSE;
 	}
 	if (od_auth_parse_passwd_from_datarow(&instance->logger, msg,
@@ -207,17 +207,13 @@ int od_auth_query(od_client_t *client, char *peer)
 			 "auth query returned datarow in incompatable format");
 		od_router_close(router, auth_client);
 		od_router_unroute(router, auth_client);
-		od_client_free(auth_client);
+		od_client_free_extended(auth_client);
 		return NOT_OK_RESPONSE;
 	}
 
 	/* detach and unroute */
 	od_router_detach(router, auth_client);
 	od_router_unroute(router, auth_client);
-	if (auth_client->io.io) {
-		machine_close(auth_client->io.io);
-		machine_io_free(auth_client->io.io);
-	}
-	od_client_free(auth_client);
+	od_client_free_extended(auth_client);
 	return OK_RESPONSE;
 }

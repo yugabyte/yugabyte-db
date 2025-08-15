@@ -476,8 +476,7 @@ class PgResponseCache::Impl : private GarbageCollector {
     if (!cache_info.has_lifetime_threshold_ms()) {
       return false;
     }
-
-    const auto threshold = cache_info.has_lifetime_threshold_ms();
+    const auto threshold = cache_info.lifetime_threshold_ms().value();
     if (!threshold) {
       *renew_metric = renew_hard_.get();
       return true;
