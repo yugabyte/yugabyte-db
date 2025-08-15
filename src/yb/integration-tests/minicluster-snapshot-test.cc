@@ -572,8 +572,10 @@ TEST_P(MasterExportSnapshotTest, ExportSnapshotAsOfTime) {
   LOG(INFO) << Format("SnapshotInfoPB ground_truth: $0", ground_truth.ShortDebugString());
   LOG(INFO) << Format(
       "SnapshotInfoPB as of time=$0 :$1", time, snapshot_info_as_of_time.ShortDebugString());
-  ASSERT_TRUE(pb_util::ArePBsEqual(
-      std::move(ground_truth), std::move(snapshot_info_as_of_time), /* diff_str */ nullptr));
+  std::string diff;
+  ASSERT_TRUE(
+      pb_util::ArePBsEqual(std::move(ground_truth), std::move(snapshot_info_as_of_time), &diff))
+      << diff;
   messenger_->Shutdown();
 }
 
@@ -615,8 +617,10 @@ TEST_P(MasterExportSnapshotTest, ExportSnapshotAsOfTimeWithHiddenTables) {
   LOG(INFO) << Format("SnapshotInfoPB ground_truth: $0", ground_truth.ShortDebugString());
   LOG(INFO) << Format(
       "SnapshotInfoPB as of time=$0 :$1", time, snapshot_info_as_of_time.ShortDebugString());
-  ASSERT_TRUE(pb_util::ArePBsEqual(
-      std::move(ground_truth), std::move(snapshot_info_as_of_time), /* diff_str */ nullptr));
+  std::string diff;
+  ASSERT_TRUE(
+      pb_util::ArePBsEqual(std::move(ground_truth), std::move(snapshot_info_as_of_time), &diff))
+      << diff;
   messenger_->Shutdown();
 }
 

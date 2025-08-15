@@ -219,6 +219,8 @@ Result<TxnSnapshotId> SnapshotTestUtil::StartSnapshot(const YBTableName& table_n
     table->set_table_name(table_name.table_name());
     table->mutable_namespace_()->set_name(table_name.namespace_name());
     table->mutable_namespace_()->set_database_type(table_name.namespace_type());
+    CHECK(!table_name.namespace_id().empty());
+    table->mutable_namespace_()->set_id(table_name.namespace_id());
   });
 }
 
