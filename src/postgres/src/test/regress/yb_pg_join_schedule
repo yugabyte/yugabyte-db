@@ -13,3 +13,4 @@ test: yb.port.join
 
 test: yb.orig.join_batching
 test: yb.orig.join_batching_plans
+test: yb.orig.legacy_join_plan
