@@ -38,6 +38,10 @@ class PgDmlWrite : public PgDml {
     DoSetCatalogCacheVersion(write_req_.get(), db_oid, catalog_cache_version);
   }
 
+  void SetTablespaceOid(uint32_t tablespace_oid) override {
+    DoSetTablespaceOid(write_req_.get(), tablespace_oid);
+  }
+
   [[nodiscard]] int32_t GetRowsAffectedCount() { return rows_affected_count_; }
 
   Status SetWriteTime(const HybridTime& write_time);

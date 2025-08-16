@@ -168,6 +168,8 @@ struct BufferingSettings {
   int multiple;
 };
 
+using TablespaceMap = std::unordered_map<PgObjectId, PgOid, PgObjectIdHash>;
+
 class YbctidReaderProvider {
   using PgSessionPtr = scoped_refptr<PgSession>;
 
@@ -185,10 +187,11 @@ class YbctidReaderProvider {
     }
 
     auto Read(PgOid database_id, const OidSet& region_local_tables,
+              const TablespaceMap& tablespace_map,
               const ExecParametersMutator& exec_params_mutator) {
       DCHECK(!read_called_);
       read_called_ = true;
-      return DoRead(database_id, region_local_tables, exec_params_mutator);
+      return DoRead(database_id, region_local_tables, tablespace_map, exec_params_mutator);
     }
 
    private:
@@ -199,6 +202,7 @@ class YbctidReaderProvider {
 
     Result<std::span<TableYbctid>> DoRead(
       PgOid database_id, const OidSet& region_local_tables,
+      const TablespaceMap& tablespace_map,
       const ExecParametersMutator& exec_params_mutator);
 
     const PgSessionPtr& session_;

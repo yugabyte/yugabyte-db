@@ -19,6 +19,7 @@
 #include "yb/common/pg_types.h"
 
 #include "yb/util/result.h"
+#include "yb/yql/pggate/pg_tools.h"
 
 namespace yb::pggate {
 
@@ -34,7 +35,8 @@ class PgFKReferenceCache {
   };
 
   PgFKReferenceCache(YbctidReaderProvider& reader_provider,
-                     std::reference_wrapper<const BufferingSettings> buffering_settings);
+                     std::reference_wrapper<const BufferingSettings> buffering_settings,
+                     std::reference_wrapper<const TablespaceMap> tablespace_map);
   ~PgFKReferenceCache();
 
   void Clear();

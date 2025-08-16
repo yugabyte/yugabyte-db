@@ -230,6 +230,7 @@ YBCExecWriteStmt(YbcPgStatement ybc_stmt,
 				 int *rows_affected_count)
 {
 	YbSetCatalogCacheVersion(ybc_stmt, YbGetCatalogCacheVersion());
+	YbMaybeSetNonSystemTablespaceOid(ybc_stmt, rel);
 
 	bool		is_syscatalog_version_inc = YbMarkStatementIfCatalogVersionIncrement(ybc_stmt, rel);
 

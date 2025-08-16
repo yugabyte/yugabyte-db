@@ -1143,6 +1143,8 @@ extern void YBCheckServerAccessIsAllowed();
 
 void		YbSetCatalogCacheVersion(YbcPgStatement handle, uint64_t version);
 
+extern void	YbMaybeSetNonSystemTablespaceOid(YbcPgStatement handle, Relation rel);
+
 uint64_t	YbGetSharedCatalogVersion();
 uint32_t	YbGetNumberOfDatabases();
 bool		YbCatalogVersionTableInPerdbMode();

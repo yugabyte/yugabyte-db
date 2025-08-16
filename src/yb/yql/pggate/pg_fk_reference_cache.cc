@@ -40,8 +40,10 @@ void Erase(Container& container, const Key& key) {
 
 class PgFKReferenceCache::Impl {
  public:
-  Impl(YbctidReaderProvider& reader_provider, const BufferingSettings& buffering_settings)
-      : reader_provider_(reader_provider), buffering_settings_(buffering_settings) {
+  Impl(YbctidReaderProvider& reader_provider, const BufferingSettings& buffering_settings,
+       const TablespaceMap& tablespace_map)
+      : reader_provider_(reader_provider), buffering_settings_(buffering_settings),
+        tablespace_map_(tablespace_map) {
   }
 
   void Clear() {
@@ -101,7 +103,7 @@ class PgFKReferenceCache::Impl {
 
     // Add the keys found in docdb to the FK cache.
     auto ybctids = VERIFY_RESULT(reader.Read(
-        database_id, region_local_tables_,
+        database_id, region_local_tables_, tablespace_map_,
         make_lw_function([](YbcPgExecParameters& params) { params.rowmark = ROW_MARK_KEYSHARE; })));
     for (const auto& ybctid : ybctids) {
       references_.emplace(ybctid.table_id, ybctid.ybctid);
@@ -141,6 +143,7 @@ class PgFKReferenceCache::Impl {
 
   YbctidReaderProvider& reader_provider_;
   const BufferingSettings& buffering_settings_;
+  const TablespaceMap& tablespace_map_;
   MemoryOptimizedTableYbctidSet references_;
   TableYbctidSet regular_intents_;
   TableYbctidSet deferred_intents_;
@@ -151,8 +154,9 @@ class PgFKReferenceCache::Impl {
 
 PgFKReferenceCache::PgFKReferenceCache(
     YbctidReaderProvider& reader_provider,
-    std::reference_wrapper<const BufferingSettings> buffering_settings)
-    : impl_(new Impl(reader_provider, buffering_settings)) {}
+    std::reference_wrapper<const BufferingSettings> buffering_settings,
+    std::reference_wrapper<const TablespaceMap> tablespace_map)
+    : impl_(new Impl(reader_provider, buffering_settings, tablespace_map)) {}
 
 PgFKReferenceCache::~PgFKReferenceCache() = default;
 
