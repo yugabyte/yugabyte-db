@@ -1,14 +1,14 @@
 ---
-title: Additional features
-headerTitle: Additional features
-linkTitle: Additional features
-description: How to deploy additional features for your YugabyteDB deployment.
-headcontent: Deploy and manage additional features for your YugabyteDB universe
+title: Advanced capabilities
+headerTitle: Advanced capabilities
+linkTitle: Advanced capabilities
+description: How to deploy advanced capabilities for your YugabyteDB deployment.
+headcontent: Deploy and manage advanced capabilities for your YugabyteDB universe
 menu:
   preview:
     identifier: additional-features
     parent: launch-and-manage
-    weight: 15
+    weight: 40
 type: indexpage
 ---
 
@@ -18,6 +18,6 @@ type: indexpage
     title="YSQL Connection Manager"
     body="Built-in connection pooling for YSQL."
     href="connection-manager-ysql/"
-    icon="fa-thin fa-phone-connection">}}
+    icon="fa-thin fa-phone">}}
 
 {{</index/block>}}

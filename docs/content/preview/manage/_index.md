@@ -8,7 +8,7 @@ menu:
   preview:
     identifier: manage
     parent: launch-and-manage
-    weight: 50
+    weight: 60
 type: indexpage
 ---
 
