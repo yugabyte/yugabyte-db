@@ -1,0 +1,37 @@
+{{- $os := .Get "os" -}}
+{{- $version := .Get "version" }}
+{{- $build := .Get "build" }}
+{{- $urlformat := "https://downloads.yugabyte.com/releases/%s/yugabyte-%s-%s-%s.tar.gz" -}}
+
+<ul>
+{{- if strings.Contains $os "darwin" -}}
+    <li>
+    <a href="{{printf $urlformat $version $version $build "darwin"}}">
+      <i class="fa-brands fa-apple"></i>
+      <span>macOS</span>
+    </a>
+  </li>
+{{- else if strings.Contains $os "linux86" -}}
+  <li>
+        <a href="{{printf $urlformat $version $version $build "linux-x86_64"}}">
+      <i class="fa-brands fa-linux"></i>
+      <span>Linux x86</span>
+    </a>
+  </li>
+{{- else if strings.Contains $os "linuxarm" -}}
+  <li>
+    <a href="{{printf $urlformat $version $version $build "el8-aarch64"}}">
+      <i class="fa-brands fa-linux"></i>
+      <span>Linux ARM</span>
+    </a>
+    </li>
+{{- end -}}
+</ul>
+
+{{if strings.Contains $os "docker" }}
+**Docker:**
+
+```sh
+docker pull yugabytedb/yugabyte:{{$version}}-${{$build}}
+```
+{{end}}

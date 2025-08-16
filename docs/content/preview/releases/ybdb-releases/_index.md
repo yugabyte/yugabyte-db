@@ -29,6 +29,135 @@ For information on stable release support policy, see [Stable Release support po
 
 For information on release versioning, see [Versioning](../versioning/).
 
+## Downloads
+
+### v2024.1
+
+{{<nav/tabs list="custom">}}
+{{<nav/tab text="macOS" name="macos" active="true">}}
+{{<nav/tab text="Linux x86" name="linux86">}}
+{{<nav/tab text="Linux ARM" name="linuxarm">}}
+{{<nav/tab text="Docker" name="docker">}}
+{{</nav/tabs>}}
+
+<!-- Panels begin-->
+{{<nav/panels>}}
+
+{{<nav/panel name="macos" active="true">}}
+
+| Version | Binary |
+|----| ------|
+| {{<release "2024.1.2.0">}} | {{<download/link version="2024.1.2.0" build="b77" os="macos">}} |
+
+{{</nav/panel>}}
+
+{{<nav/panel name="linux86">}}
+
+| Version | Binary |
+|----| ------|
+| {{<release "2024.1.2.0">}} | {{<download/link version="2024.1.2.0" build="b77" os="linux86">}} |
+
+{{</nav/panel>}}
+
+{{<nav/panel name="linuxarm">}}
+
+| Version | Binary |
+|----| ------|
+| {{<release "2024.1.2.0">}} | {{<download/link version="2024.1.2.0" build="b77" os="linuxarm">}} |
+
+{{</nav/panel>}}
+
+{{<nav/panel name="docker">}}
+
+| Version | Binary |
+|----| ------|
+| {{<release "2024.1.2.0">}} | `docker pull yugabytedb/yugabyte:2024.1.2.0-b77` |
+
+{{</nav/panel>}}
+
+{{</nav/panels>}}
+<!-- Panels end-->
+
+### v2.21
+
+{{<nav/tabs list="none" repeatedTabs="true">}}
+{{<nav/tab text="macOS" name="macos" active="true">}}
+{{<nav/tab text="Linux x86" name="linux86">}}
+{{<nav/tab text="Linux ARM" name="linuxarm">}}
+{{<nav/tab text="Docker" name="docker">}}
+{{</nav/tabs>}}
+
+<!-- Panels begin-->
+{{<nav/panels>}}
+
+{{<nav/panel name="macos" active="true">}}
+
+| Version | Binary |
+|----| ------|
+| {{<release "2.21.1.0">}} | {{<download/link version="2.21.1.0" build="b271" os="macos">}} |
+
+#### Instructions
+
+```bash
+curl -O {{<download/link version="2.21.1.0" build="b271" os="macos" mode="plain">}}
+tar xvfz {{<download/link version="2.21.1.0" build="b271" os="macos" mode="filename">}} && cd {{<download/link version="2.21.1.0" build="b271" os="macos" mode="dir">}}/
+./bin/yugabyted start
+```
+
+{{</nav/panel>}}
+
+{{<nav/panel name="linux86">}}
+
+| Version | Binary |
+|----| ------|
+| {{<release "2.21.1.0">}} | {{<download/link version="2.21.1.0" build="b271" os="linux86">}} |
+
+#### Instructions
+
+```bash
+wget {{<download/link version="2.21.1.0" build="b271" os="linux86" mode="plain">}}
+tar xvfz {{<download/link version="2.21.1.0" build="b271" os="linux86" mode="filename">}} && cd {{<download/link version="2.21.1.0" build="b271" os="linux86" mode="dir">}}/
+./bin/post_install.sh
+./bin/yugabyted start
+```
+
+{{</nav/panel>}}
+
+{{<nav/panel name="linuxarm">}}
+
+| Version | Binary |
+|----| ------|
+| {{<release "2.21.1.0">}} | {{<download/link version="2.21.1.0" build="b271" os="linuxarm">}} |
+
+#### Instructions
+
+```bash
+wget {{<download/link version="2.21.1.0" build="b271" os="linuxarm" mode="plain">}}
+tar xvfz {{<download/link version="2.21.1.0" build="b271" os="linuxarm" mode="filename">}} && cd {{<download/link version="2.21.1.0" build="b271" os="linuxarm" mode="dir">}}/
+./bin/post_install.sh
+./bin/yugabyted start
+```
+
+{{</nav/panel>}}
+
+{{<nav/panel name="docker">}}
+
+| Version | Binary |
+|----| ------|
+| {{<release "2.21.1.0">}} | `docker pull yugabytedb/yugabyte:2.21.1.0-b271` |
+
+#### Instructions
+
+```bash
+docker pull yugabytedb/yugabyte:2.21.1.0-b271
+docker run -d --name yugabyte -p7000:7000 -p9000:9000 -p15433:15433 -p5433:5433 -p9042:9042  yugabytedb/yugabyte:2.21.1.0-b271 bin/yugabyted start  --background=false
+```
+
+{{</nav/panel>}}
+
+{{</nav/panels>}}
+<!-- Panels end-->
+
 ## Releases at end of life (EOL) {#eol-releases}
 
 {{<note title="Archived docs available">}}
