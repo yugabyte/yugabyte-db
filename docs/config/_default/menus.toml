@@ -62,10 +62,17 @@
 ########## Secondary header menu
 
 [[main]]
-  name = "Products"
+  name = "Docs Home"
   weight = 1
-  identifier = "products"
+  identifier = "home"
   url = "/"
+  [main.params]
+    excludeVersion = true
+
+[[main]]
+  name = "Products"
+  weight = 2
+  identifier = "products"
   [main.params]
     excludeVersion = true
 
@@ -106,13 +113,6 @@
     description = "Database migration service"
     excludeVersion = true
     imageUrl = "/images/migrate/migration-icon.svg"
-
-[[main]]
-  name = "Tutorials"
-  weight = 2
-  url = "/preview/tutorials/"
-  [main.params]
-    excludeVersion = true
 
 [[main]]
   name = "Integrations"
@@ -368,22 +368,125 @@
   weight = 4
   identifier = "quick-start"
   pre = "<i class='icon-quick-start'></i>"
-  url = "/preview/quick-start-yugabytedb-managed/"
+  url = "/home/quick-start-yugabytedb-managed/"
   [home.params]
-    classes = "separator spacing no-transform"
+    classes = "no-transform"
     showSection = true
     hideChildren = true
 
 [[home]]
-  name = "Products"
+  name = "Explore"
   weight = 6
+  identifier = "explore"
+  url = "/home/explore/"
+  [home.params]
+		classes = "no-transform"
+    showSection = true
+
+[[home]]
+  name = "Develop"
+  weight = 8
+  identifier = "develop"
+  url = "/home/develop/"
+  [home.params]
+		classes = "no-transform"
+    showSection = true
+
+[[home]]
+  name = "Tutorials"
+  weight = 10
+  identifier = "tutorials"
+  url = "/home/tutorials/"
+  [home.params]
+		classes = "no-transform"
+    showSection = true
+
+[[home]]
+  name = "Hello world"
+  weight = 5
+  identifier = "build-apps"
+  parent = "tutorials"
+  url = "/home/tutorials/build-apps/"
+  [home.params]
+    showSection = true
+
+[[home]]
+  name = "Build and learn"
+  weight = 10
+  identifier = "tutorials-build-and-learn"
+  parent = "tutorials"
+  url = "/home/tutorials/build-and-learn/"
+  [home.params]
+    showSection = true
+
+[[home]]
+  name = "AI"
+  weight = 20
+  identifier = "tutorials-ai"
+  parent = "tutorials"
+  url = "/home/tutorials/ai/"
+  [home.params]
+    showSection = true
+
+[[home]]
+  name = "RAG"
+  weight = 10
+  identifier = "tutorials-ai-rag"
+  parent = "tutorials-ai"
+  [home.params]
+    showSection = true
+
+[[home]]
+  name = "Vector basics"
+  weight = 20
+  identifier = "tutorials-ai-vector"
+  parent = "tutorials-ai"
+  [home.params]
+    showSection = true
+
+[[home]]
+  name = "Agentic"
+  weight = 30
+  identifier = "tutorials-ai-agentic"
+  parent = "tutorials-ai"
+  [home.params]
+    showSection = true
+
+[[home]]
+  name = "Cloud"
+  weight = 30
+  identifier = "tutorials-cloud"
+  parent = "tutorials"
+  [home.params]
+    showSection = true
+
+[[home]]
+  name = "CDC"
+  weight = 40
+  identifier = "tutorials-cdc"
+  parent = "tutorials"
+  [home.params]
+    showSection = true
+
+[[home]]
+  name = "Benchmark"
+  weight = 12
+  identifier = "benchmark"
+  url = "/home/benchmark/"
+  [home.params]
+		classes = "separator spacing no-transform"
+    showSection = true
+
+[[home]]
+  name = "Products"
+  weight = 14
   [home.params]
     showSection = true
     classes = "no-link"
 
 [[home]]
   name = "YugabyteDB"
-  weight = 10
+  weight = 16
   identifier = "yugabytedb"
   pre = "<i class='icon-database'></i>"
   url = "/stable/"
@@ -393,7 +496,7 @@
 
 [[home]]
   name = "YugabyteDB Anywhere"
-  weight = 11
+  weight = 18
   identifier = "yugabytedb-anywhere"
   pre = "<i class='icon-server'></i>"
   url = "/stable/yugabyte-platform/"
@@ -403,7 +506,7 @@
 
 [[home]]
   name = "YugabyteDB Aeon"
-  weight = 12
+  weight = 20
   identifier = "yugabytedb-managed"
   pre = "<i class='icon-cloud'></i>"
   url = "/preview/yugabyte-cloud/"
@@ -414,7 +517,7 @@
 
 [[home]]
   name = "YugabyteDB Voyager"
-  weight = 13
+  weight = 22
   identifier = "migrate"
   pre = "<i class='icon-migrate'></i>"
   url = "/preview/yugabyte-voyager/"
@@ -475,47 +578,43 @@
   [preview.params]
     showSection = true
 
-# [[preview]]
-#   name = "Key benefits"
-#   weight = 3
-#   identifier = "features"
-#   url = "/preview/features/"
-#   [preview.params]
-#     showSection = true
-#     hideChildren = true
-
-# [[preview]]
-#   name = "Resource guide"
-#   weight = 4
-#   identifier = "get-started-guide"
-#   url = "/preview/get-started-guide/"
-#   [preview.params]
-#     showSection = true
-#     hideChildren = true
+[[preview]]
+  name = "Deploy"
+  weight = 3
+  identifier = "deploy"
+  url = "/preview/deploy/"
+  [preview.params]
+    showSection = true
 
 [[preview]]
-  name = "Quick Start"
+  name = "Monitor"
+  weight = 4
+  identifier = "monitor-and-alert"
+  url = "/preview/launch-and-manage/monitor-and-alert/"
+  [preview.params]
+    showSection = true
+
+[[preview]]
+  name = "Manage"
   weight = 5
-  identifier = "quick-start"
-  url = "/preview/quick-start/macos/"
+  identifier = "manage"
+  url = "/preview/manage/"
   [preview.params]
-    classes = "separator"
     showSection = true
-    hideChildren = true
 
 [[preview]]
-  name = "Explore"
+  name = "Best practices"
   weight = 6
-  identifier = "explore"
-  url = "/preview/explore/"
+  identifier = "best-practices-operations"
+  url = "/preview/best-practices-operations/"
   [preview.params]
     showSection = true
 
 [[preview]]
-  name = "Develop"
+  name = "Troubleshoot"
   weight = 7
-  identifier = "develop"
-  url = "/preview/develop/"
+  identifier = "troubleshoot"
+  url = "/preview/troubleshoot/"
   [preview.params]
     showSection = true
 
@@ -528,25 +627,9 @@
     showSection = true
 
 [[preview]]
-  name = "Launch and Manage"
-  weight = 9
-  identifier = "launch-and-manage"
-  url = "/preview/launch-and-manage/"
-  [preview.params]
-    showSection = true
-
-[[preview]]
   name = "Reference"
   weight = 10
   identifier = "reference"
-  [preview.params]
-    showSection = true
-
-[[preview]]
-  name = "Benchmark"
-  weight = 11
-  identifier = "benchmark"
-  url = "/preview/benchmark/"
   [preview.params]
     showSection = true
 
@@ -666,96 +749,6 @@
   weight = 14
   identifier = "integrations-other"
   [preview_integrations.params]
-    showSection = true
-
-########## Menus (in preview) for Tutorials
-
-# [[preview_tutorials]]
-#   name = "Docs Home"
-#   weight = 1
-#   identifier = "home"
-#   url = "/"
-#   [preview_tutorials.params]
-#     showSection = true
-
-[[preview_tutorials]]
-  name = "Tutorials"
-  weight = 3
-  identifier = "tutorials"
-  url = "/preview/tutorials/"
-  [preview_tutorials.params]
-    classes = "separator"
-    showSection = true
-
-# [[preview_tutorials]]
-#   name = "Quick Start"
-#   weight = 4
-#   identifier = "quick-start"
-#   url = "/preview/quick-start-yugabytedb-managed/"
-#   [preview_tutorials.params]
-#     showSection = true
-#     hideChildren = true
-
-[[preview_tutorials]]
-  name = "Hello world"
-  weight = 5
-  identifier = "build-apps"
-  url = "/preview/tutorials/build-apps/"
-  [preview_tutorials.params]
-    showSection = true
-
-[[preview_tutorials]]
-  name = "Build and learn"
-  weight = 10
-  identifier = "tutorials-build-and-learn"
-  url = "/preview/tutorials/build-and-learn/"
-  [preview_tutorials.params]
-    showSection = true
-
-[[preview_tutorials]]
-  name = "AI"
-  weight = 20
-  identifier = "tutorials-ai"
-  url = "/preview/tutorials/ai/"
-  [preview_tutorials.params]
-    showSection = true
-
-[[preview_tutorials]]
-  name = "RAG"
-  weight = 10
-  identifier = "tutorials-ai-rag"
-  parent = "tutorials-ai"
-  [preview_tutorials.params]
-    showSection = true
-
-[[preview_tutorials]]
-  name = "Vector basics"
-  weight = 20
-  identifier = "tutorials-ai-vector"
-  parent = "tutorials-ai"
-  [preview_tutorials.params]
-    showSection = true
-
-[[preview_tutorials]]
-  name = "Agentic"
-  weight = 30
-  identifier = "tutorials-ai-agentic"
-  parent = "tutorials-ai"
-  [preview_tutorials.params]
-    showSection = true
-
-[[preview_tutorials]]
-  name = "Cloud"
-  weight = 30
-  identifier = "tutorials-cloud"
-  [preview_tutorials.params]
-    showSection = true
-
-[[preview_tutorials]]
-  name = "CDC"
-  weight = 40
-  identifier = "tutorials-cdc"
-  [preview_tutorials.params]
     showSection = true
 
 ########## Menus (in preview) for APIs
@@ -1536,7 +1529,7 @@
   name = "Quick Start"
   weight = 4
   identifier = "quick-start"
-  url = "/preview/quick-start-yugabytedb-managed/"
+  url = "/home/quick-start-yugabytedb-managed/"
   ["v2025.1".params]
     classes = "separator"
     showSection = true

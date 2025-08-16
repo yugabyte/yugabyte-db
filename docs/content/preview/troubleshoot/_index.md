@@ -3,10 +3,6 @@ title: Troubleshoot YugabyteDB
 headerTitle: Troubleshoot YugabyteDB
 linkTitle: Troubleshoot
 description: Diagnose and solve YugabyteDB cluster and node issues
-menu:
-  preview:
-    identifier: troubleshoot
-    parent: launch-and-manage
 type: indexpage
 cascade:
   unversioned: true

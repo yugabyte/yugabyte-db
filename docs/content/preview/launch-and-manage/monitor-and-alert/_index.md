@@ -4,11 +4,6 @@ headerTitle: Monitor YugabyteDB
 linkTitle: Monitor
 description: Overview of monitoring and alerts for YugabyteDB databases
 headcontent: Monitor cluster performance and activity
-menu:
-  preview:
-    identifier: monitor-and-alert
-    parent: launch-and-manage
-    weight: 30
 type: indexpage
 ---
 

@@ -128,4 +128,4 @@ Refer to [Before you begin](/preview/tutorials/build-apps/cloud-add-ip/).
 
 ### Choose your language
 
-{{< readfile "/preview/quick-start-yugabytedb-managed/quick-start-buildapps-include.md" >}}
+{{< readfile "/home/quick-start-yugabytedb-managed/quick-start-buildapps-include.md" >}}
