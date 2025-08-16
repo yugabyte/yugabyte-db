@@ -387,6 +387,7 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 	ybc_state->is_exec_done = false;
 
 	YbSetCatalogCacheVersion(ybc_state->handle, YbGetCatalogCacheVersion());
+	YbMaybeSetNonSystemTablespaceOid(ybc_state->handle, relation);
 }
 
 /*

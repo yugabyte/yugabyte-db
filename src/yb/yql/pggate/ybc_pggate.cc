@@ -1261,6 +1261,16 @@ YbcStatus YBCPgSetDBCatalogCacheVersion(
   return ToYBCStatus(pgapi->SetCatalogCacheVersion(handle, version, db_oid));
 }
 
+YbcStatus YBCPgSetTablespaceOid(YbcPgStatement handle, uint32_t tablespace_oid) {
+  return ToYBCStatus(pgapi->SetTablespaceOid(handle, tablespace_oid));
+}
+
+#ifndef NDEBUG
+void YBCPgCheckTablespaceOid(uint32_t db_oid, uint32_t table_oid, uint32_t tablespace_oid) {
+  pgapi->CheckTablespaceOid(db_oid, table_oid, tablespace_oid);
+}
+#endif
+
 YbcStatus YBCPgDmlModifiesRow(YbcPgStatement handle, bool *modifies_row) {
   return ExtractValueFromResult(pgapi->DmlModifiesRow(handle), modifies_row);
 }
@@ -3232,6 +3242,14 @@ bool YBCIsBinaryUpgrade() {
 
 void YBCSetBinaryUpgrade(bool value) {
   yb_is_binary_upgrade = value;
+}
+
+void YBCRecordTablespaceOid(YbcPgOid db_oid, YbcPgOid table_oid, YbcPgOid tablespace_oid) {
+  pgapi->RecordTablespaceOid(db_oid, table_oid, tablespace_oid);
+}
+
+void YBCClearTablespaceOid(YbcPgOid db_oid, YbcPgOid table_oid) {
+  pgapi->ClearTablespaceOid(db_oid, table_oid);
 }
 
 } // extern "C"

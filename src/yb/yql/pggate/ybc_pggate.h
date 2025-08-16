@@ -402,6 +402,10 @@ YbcStatus YBCPgSetCatalogCacheVersion(YbcPgStatement handle, uint64_t version);
 YbcStatus YBCPgSetDBCatalogCacheVersion(YbcPgStatement handle,
                                         YbcPgOid db_oid,
                                         uint64_t version);
+YbcStatus YBCPgSetTablespaceOid(YbcPgStatement handle, uint32_t tablespace_oid);
+#ifndef NDEBUG
+void YBCPgCheckTablespaceOid(uint32_t db_oid, uint32_t table_oid, uint32_t tablespace_oid);
+#endif
 
 YbcStatus YBCPgTableExists(const YbcPgOid database_oid,
                            const YbcPgOid table_relfilenode_oid,
@@ -1034,6 +1038,9 @@ bool YBCPgYsqlMajorVersionUpgradeInProgress();
 
 bool YBCIsBinaryUpgrade();
 void YBCSetBinaryUpgrade(bool value);
+
+void YBCRecordTablespaceOid(YbcPgOid db_oid, YbcPgOid table_oid, YbcPgOid tablespace_oid);
+void YBCClearTablespaceOid(YbcPgOid db_oid, YbcPgOid table_oid);
 
 #ifdef __cplusplus
 }  // extern "C"

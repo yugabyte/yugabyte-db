@@ -3164,6 +3164,7 @@ ybcBeginScan(Relation relation,
 	if (!(is_internal_scan && IsSystemRelation(relation)))
 		YbSetCatalogCacheVersion(ybScan->handle,
 								 YbGetCatalogCacheVersion());
+	YbMaybeSetNonSystemTablespaceOid(ybScan->handle, relation);
 
 	/* Set distinct prefix length. */
 	if (distinct_prefixlen > 0)
