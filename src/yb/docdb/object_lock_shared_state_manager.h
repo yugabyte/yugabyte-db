@@ -99,9 +99,10 @@ class ObjectLockSharedStateManager {
 
  private:
   template<typename ConsumeMethod>
-  size_t CallWithRequestConsumer(ConsumeMethod&& m, const LockRequestConsumer& consume);
+  size_t CallWithRequestConsumer(
+      ObjectLockSharedState* shared, ConsumeMethod&& m, const LockRequestConsumer& consume);
 
-  ObjectLockSharedState* shared_ = nullptr;
+  std::atomic<ObjectLockSharedState*> shared_{nullptr};
   ObjectLockOwnerRegistry registry_;
 
   const std::shared_ptr<ObjectLockTracker> object_lock_tracker_;
