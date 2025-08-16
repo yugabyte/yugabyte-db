@@ -46,7 +46,7 @@ If you are only using the YCQL API, you must turn off [YSQL memory optimization]
 
 ### YSQL Connection Manager
 
-If you want to use [YSQL Connection Manager](../../../explore/going-beyond-sql/connection-mgr-ysql/) for connection pooling, add the following to `--tserver_flags`:
+If you want to use [YSQL Connection Manager](../../../additional-features/connection-manager-ysql/) for connection pooling, add the following to `--tserver_flags`:
 
 ```sh
 --tserver_flags "enable_ysql_conn_mgr=true"

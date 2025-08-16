@@ -16,6 +16,12 @@ type: indexpage
     icon="fa-thin fa-rocket-launch">}}
 
   {{<index/item
+    title="Advanced capabilities"
+    body="Deploy advanced capabilities for your YugabyteDB universe."
+    href="../additional-features/"
+    icon="fa-thin fa-raygun">}}
+
+  {{<index/item
     title="Manage"
     body="Manage YugabyteDB clusters."
     href="../manage/"
@@ -26,6 +32,12 @@ type: indexpage
     body="Make the best use of YugabyteDB metrics and alerts."
     href="monitor-and-alert/"
     icon="fa-thin fa-chart-column">}}
+
+  {{<index/item
+    title="Best practices"
+    body="Operations tips for YugabyteDB databases."
+    href="monitor-and-alert/"
+    icon="fa-thin fa-thumbs-up">}}
 
   {{<index/item
     title="Troubleshoot"
