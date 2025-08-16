@@ -6953,6 +6953,32 @@ YbSetCatalogCacheVersion(YbcPgStatement handle, uint64_t version)
 				   : YBCPgSetCatalogCacheVersion(handle, version));
 }
 
+static Oid
+YbGetNonSystemTablespaceOid(Relation rel)
+{
+	if (rel->rd_rel->reltablespace < FirstNormalObjectId)
+	{
+		Assert(OidIsValid(rel->rd_id));
+		Assert(rel->rd_rel->reltablespace == InvalidOid ||
+			   rel->rd_rel->reltablespace == GLOBALTABLESPACE_OID);
+		return InvalidOid;
+	}
+	return rel->rd_rel->reltablespace;
+}
+
+void
+YbMaybeSetNonSystemTablespaceOid(YbcPgStatement handle, Relation rel)
+{
+	Oid tablespace_oid = YbGetNonSystemTablespaceOid(rel);
+	if (OidIsValid(tablespace_oid))
+	{
+		YBCPgSetTablespaceOid(handle, tablespace_oid);
+#ifndef NDEBUG
+		YBCPgCheckTablespaceOid(MyDatabaseId, rel->rd_id, tablespace_oid);
+#endif
+	}
+}
+
 uint64_t
 YbGetSharedCatalogVersion()
 {

@@ -182,4 +182,6 @@ struct YbctidGenerator {
 const std::string ToString(const YbcAdvisoryLockId& lock_id);
 const std::string ToString(const YbcObjectLockId& lock_id);
 
+using TablespaceMap = std::unordered_map<PgObjectId, PgOid, PgObjectIdHash>;
+
 } // namespace yb::pggate

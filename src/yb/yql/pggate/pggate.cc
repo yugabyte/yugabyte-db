@@ -671,8 +671,8 @@ PgApiImpl::PgApiImpl(
       enable_table_locking_(ShouldEnableTableLocks()),
       pg_txn_manager_(new PgTxnManager(&pg_client_, clock_, pg_callbacks_, enable_table_locking_)),
       ybctid_reader_provider_(pg_session_),
-      fk_reference_cache_(ybctid_reader_provider_, buffering_settings_),
-      explicit_row_lock_buffer_(ybctid_reader_provider_) {
+      fk_reference_cache_(ybctid_reader_provider_, buffering_settings_, tablespace_map_),
+      explicit_row_lock_buffer_(ybctid_reader_provider_, tablespace_map_) {
   PgBackendSetupSharedMemory();
   // This is an RCU object, but there are no concurrent updates on PG side, only on tserver, so
   // it's safe to just save the pointer.
@@ -1203,6 +1203,28 @@ Status PgApiImpl::SetCatalogCacheVersion(
       })).SetCatalogCacheVersion(db_oid, version);
   return Status::OK();
 }
+
+Status PgApiImpl::SetTablespaceOid(
+    PgStatement* handle, uint32_t tablespace_oid) {
+  VERIFY_RESULT_REF(GetStatementAs<PgDml>(handle, {
+          StatementTag<PgInsert>(),
+          StatementTag<PgUpdate>(),
+          StatementTag<PgDelete>(),
+          StatementTag<PgSelect>()
+      })).SetTablespaceOid(tablespace_oid);
+  return Status::OK();
+}
+
+#ifndef NDEBUG
+void PgApiImpl::CheckTablespaceOid(
+    uint32_t db_oid, uint32_t table_oid, uint32_t tablespace_oid) {
+  PgObjectId id(db_oid, table_oid);
+  CHECK(id.IsValid());
+  auto it = tablespace_map_.find(id);
+  CHECK(it != tablespace_map_.end());
+  CHECK_EQ(it->second, tablespace_oid);
+}
+#endif
 
 Result<client::TableSizeInfo> PgApiImpl::GetTableDiskSize(const PgObjectId& table_oid) {
   return pg_session_->GetTableDiskSize(table_oid);
@@ -2504,5 +2526,19 @@ Result<YbcPgTxnSnapshot> PgApiImpl::ImportSnapshot(std::string_view snapshot_id)
 bool PgApiImpl::HasExportedSnapshots() const { return pg_txn_manager_->has_exported_snapshots(); }
 
 void PgApiImpl::ClearExportedTxnSnapshots() { pg_txn_manager_->ClearExportedTxnSnapshots(); }
+
+void PgApiImpl::RecordTablespaceOid(uint32_t db_oid, uint32_t table_oid, uint32_t tablespace_oid) {
+  PgObjectId id(db_oid, table_oid);
+  CHECK(id.IsValid());
+  VLOG(1) << __func__ << ": " << yb::ToString(id) << ", tablespace_oid: " << tablespace_oid;
+  tablespace_map_[id] = tablespace_oid;
+}
+
+void PgApiImpl::ClearTablespaceOid(uint32_t db_oid, uint32_t table_oid) {
+  PgObjectId id(db_oid, table_oid);
+  CHECK(id.IsValid());
+  VLOG(1) << __func__ << ": " << yb::ToString(id);
+  CHECK_EQ(tablespace_map_.erase(id), 1) << yb::ToString(id);
+}
 
 } // namespace yb::pggate
