@@ -1115,6 +1115,20 @@ attach:
     od_stat_t *stats = &route->stats;
     od_atomic_u64_add(&stats->wait_time, time_taken_to_attach_server_ns);
 
+	/*
+	 * YB: Instead of number of transactions, count number of route/attach 
+	 * attempts for conn mgr's control backends instead as these backends
+	 * do not do any transactions. This allows populating avg_wait_time_ns.
+	 */
+	if (yb_od_streq(CONTROL_CONN_USER, sizeof(CONTROL_CONN_USER),
+			client_for_router->startup.user.value,
+			client_for_router->startup.user.value_len) &&
+	    yb_od_streq(CONTROL_CONN_DB, sizeof(CONTROL_CONN_DB),
+			client_for_router->startup.database.value,
+			client_for_router->startup.database.value_len)) {
+		od_atomic_u64_inc(&stats->count_tx);
+	}
+
 	return OD_ROUTER_OK;
 }
 
