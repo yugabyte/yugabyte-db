@@ -5,11 +5,12 @@ description: Enhance your application performance for PostgreSQL parity
 aliases:
   - /preview/ysql/postgresql-compatibility/
   - /preview/explore/ysql-language-features/postgresql-compatibility/
+  - /preview/develop/postgresql-compatibility/
 menu:
   preview:
     identifier: ysql-postgresql-compatibility
-    parent: develop
-    weight: 600
+    parent: configuration
+    weight: 3500
 type: docs
 rightNav:
   hideH3: true
