@@ -14,7 +14,7 @@
 //
 
 #include "yb/util/thread_pool.h"
-
+#include <vector>
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
@@ -31,8 +31,8 @@
 
 using namespace std::literals;
 
-DEFINE_NON_RUNTIME_uint64(default_idle_timeout_ms, 15000,
-    "Default RPC YBThreadPool idle timeout value in milliseconds");
+DEFINE_NON_RUNTIME_uint64(
+    default_idle_timeout_ms, 15000, "Default RPC YBThreadPool idle timeout value in milliseconds");
 
 namespace yb {
 
@@ -52,8 +52,12 @@ struct ThreadPoolShare {
   WaitingWorkers waiting_workers;
   std::atomic<size_t> num_workers{0};
 
-  explicit ThreadPoolShare(ThreadPoolOptions o)
-      : options(std::move(o)) {}
+  // Number of threads currently executing waiting_workers.Pop().
+  // Used to defer deletion of Worker nodes until no Pop() is in flight,
+  // avoiding a heap-use-after-free when a node may be concurrently read.
+  std::atomic<size_t> waiting_workers_active_pops{0};
+
+  explicit ThreadPoolShare(ThreadPoolOptions o) : options(std::move(o)) {}
 
   void PushTask(ThreadPoolTask* task) {
     if (options.metrics.queue_time_us_stats) {
@@ -85,8 +89,7 @@ YB_DEFINE_ENUM(WorkerState, (kRunning)(kWaitingTask)(kIdleStop)(kExternalStop));
 class Worker : public boost::intrusive::list_base_hook<> {
  public:
   explicit Worker(ThreadPoolShare& share, bool persistent)
-      : share_(share), persistent_(persistent) {
-  }
+      : share_(share), persistent_(persistent) {}
 
   Status Start(size_t index, ThreadPoolTask* task) EXCLUDES(mutex_) {
     UniqueLock lock(mutex_);
@@ -251,13 +254,9 @@ class Worker : public boost::intrusive::list_base_hook<> {
     }
   }
 
-  friend void SetNext(Worker& worker, Worker* next) {
-    worker.next_waiting_worker_ = next;
-  }
+  friend void SetNext(Worker& worker, Worker* next) { worker.next_waiting_worker_ = next; }
 
-  friend Worker* GetNext(Worker& worker) {
-    return worker.next_waiting_worker_;
-  }
+  friend Worker* GetNext(Worker& worker) { return worker.next_waiting_worker_; }
 
   ThreadPoolShare& share_;
   const bool persistent_;
@@ -272,12 +271,11 @@ class Worker : public boost::intrusive::list_base_hook<> {
 
 using Workers = boost::intrusive::list<Worker>;
 
-} // namespace
+}  // namespace
 
 class YBThreadPool::Impl {
  public:
-  explicit Impl(ThreadPoolOptions options)
-      : share_(std::move(options)) {
+  explicit Impl(ThreadPoolOptions options) : share_(std::move(options)) {
     LOG(INFO) << "Starting thread pool " << share_.options.ToString();
     for (size_t index = 0; index != options.min_workers; ++index) {
       if (!TryStartNewWorker(nullptr, /* persistent = */ true)) {
@@ -286,9 +284,7 @@ class YBThreadPool::Impl {
     }
   }
 
-  const ThreadPoolOptions& options() const {
-    return share_.options;
-  }
+  const ThreadPoolOptions& options() const { return share_.options; }
 
   bool Enqueue(ThreadPoolTask* task) EXCLUDES(mutex_) {
     ++adding_;
@@ -363,7 +359,15 @@ class YBThreadPool::Impl {
 
   // Returns true if we found worker that will pick up this task, false otherwise.
   bool NotifyWorker(ThreadPoolTask* task) {
-    while (auto worker = share_.waiting_workers.Pop()) {
+    while (true) {
+      share_.waiting_workers_active_pops.fetch_add(1, std::memory_order_acq_rel);
+      auto worker = share_.waiting_workers.Pop();
+      share_.waiting_workers_active_pops.fetch_sub(1, std::memory_order_acq_rel);
+
+      if (!worker) {
+        break;
+      }
+
       auto state = worker->Notify(task);
       switch (state) {
         case WorkerState::kWaitingTask:
@@ -371,14 +375,23 @@ class YBThreadPool::Impl {
             share_.options.metrics.queue_time_us_stats->Increment(0);
           }
           return true;
-        case WorkerState::kExternalStop: [[fallthrough]];
+
+        case WorkerState::kExternalStop:
+          [[fallthrough]];
         case WorkerState::kRunning:
           break;
+
         case WorkerState::kIdleStop: {
           std::lock_guard lock(mutex_);
           if (!closing_) {
-            workers_.erase_and_dispose(
-                workers_.iterator_to(*worker), std::default_delete<Worker>());
+            // Defer deletion if any Pop() is in flight
+            if (share_.waiting_workers_active_pops.load(std::memory_order_acquire) == 0) {
+              workers_.erase_and_dispose(
+                  workers_.iterator_to(*worker), std::default_delete<Worker>());
+            } else {
+              // Option 1: put in a deferred delete list
+              deferred_deletes_.push_back(worker);
+            }
           }
         } break;
       }
@@ -386,9 +399,7 @@ class YBThreadPool::Impl {
     return false;
   }
 
-  std::string LogPrefix() const {
-    return share_.options.name + ": ";
-  }
+  std::string LogPrefix() const { return share_.options.name + ": "; }
 
   void Shutdown() EXCLUDES(mutex_) {
     // Prevent new worker threads from being created by pretending a large number of workers have
@@ -425,13 +436,21 @@ class YBThreadPool::Impl {
     while (auto* task = share_.PopTask()) {
       task->Done(kShuttingDownStatus);
     }
+    while (share_.waiting_workers_active_pops.load(std::memory_order_acquire) != 0) {
+      std::this_thread::yield();
+    }
+    {
+      std::lock_guard lock(mutex_);
+      for (auto* w : deferred_deletes_) {
+        delete w;
+      }
+      deferred_deletes_.clear();
+    }
 
     workers.clear_and_dispose(std::default_delete<Worker>());
   }
 
-  bool Owns(Thread* thread) {
-    return thread && thread->user_data() == &share_;
-  }
+  bool Owns(Thread* thread) { return thread && thread->user_data() == &share_; }
 
   bool BusyWait(MonoTime deadline) {
     while (!Idle()) {
@@ -473,12 +492,9 @@ class YBThreadPool::Impl {
 
 // ------------------------------------------------------------------------------------------------
 
-YBThreadPool::YBThreadPool(ThreadPoolOptions options)
-    : impl_(new Impl(std::move(options))) {
-}
+YBThreadPool::YBThreadPool(ThreadPoolOptions options) : impl_(new Impl(std::move(options))) {}
 
-YBThreadPool::YBThreadPool(YBThreadPool&& rhs) noexcept
-    : impl_(std::move(rhs.impl_)) {}
+YBThreadPool::YBThreadPool(YBThreadPool&& rhs) noexcept : impl_(std::move(rhs.impl_)) {}
 
 YBThreadPool& YBThreadPool::operator=(YBThreadPool&& rhs) noexcept {
   impl_->Shutdown();
@@ -492,37 +508,21 @@ YBThreadPool::~YBThreadPool() {
   }
 }
 
-bool YBThreadPool::Enqueue(ThreadPoolTask* task) {
-  return impl_->Enqueue(task);
-}
+bool YBThreadPool::Enqueue(ThreadPoolTask* task) { return impl_->Enqueue(task); }
 
-void YBThreadPool::Shutdown() {
-  impl_->Shutdown();
-}
+void YBThreadPool::Shutdown() { impl_->Shutdown(); }
 
-const ThreadPoolOptions& YBThreadPool::options() const {
-  return impl_->options();
-}
+const ThreadPoolOptions& YBThreadPool::options() const { return impl_->options(); }
 
-bool YBThreadPool::Owns(Thread* thread) {
-  return impl_->Owns(thread);
-}
+bool YBThreadPool::Owns(Thread* thread) { return impl_->Owns(thread); }
 
-bool YBThreadPool::OwnsThisThread() {
-  return Owns(Thread::current_thread());
-}
+bool YBThreadPool::OwnsThisThread() { return Owns(Thread::current_thread()); }
 
-bool YBThreadPool::BusyWait(MonoTime deadline) {
-  return impl_->BusyWait(deadline);
-}
+bool YBThreadPool::BusyWait(MonoTime deadline) { return impl_->BusyWait(deadline); }
 
-size_t YBThreadPool::NumWorkers() const {
-  return impl_->NumWorkers();
-}
+size_t YBThreadPool::NumWorkers() const { return impl_->NumWorkers(); }
 
-bool YBThreadPool::Idle() const {
-  return impl_->Idle();
-}
+bool YBThreadPool::Idle() const { return impl_->Idle(); }
 
 // ------------------------------------------------------------------------------------------------
 // ThreadSubPoolBase
@@ -550,18 +550,15 @@ void ThreadSubPoolBase::Shutdown() {
   active_enqueues_.fetch_add(kStoppedMark, std::memory_order_acq_rel);
 }
 
-void ThreadSubPoolBase::AbortTasks() {
-}
+void ThreadSubPoolBase::AbortTasks() {}
 
 // ------------------------------------------------------------------------------------------------
 // ThreadSubPool
 // ------------------------------------------------------------------------------------------------
 
-ThreadSubPool::ThreadSubPool(YBThreadPool* thread_pool) : ThreadSubPoolBase(thread_pool) {
-}
+ThreadSubPool::ThreadSubPool(YBThreadPool* thread_pool) : ThreadSubPoolBase(thread_pool) {}
 
-ThreadSubPool::~ThreadSubPool() {
-}
+ThreadSubPool::~ThreadSubPool() {}
 
 bool ThreadSubPool::Enqueue(ThreadPoolTask* task) {
   return EnqueueHelper([this, task](bool ok) {
@@ -578,4 +575,4 @@ MonoDelta DefaultIdleTimeout() {
   return MonoDelta::FromMilliseconds(FLAGS_default_idle_timeout_ms);
 }
 
-} // namespace yb
+}  // namespace yb
