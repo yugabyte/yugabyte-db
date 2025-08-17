@@ -9,10 +9,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"text/template"
-	"time"
 
 	"github.com/sirupsen/logrus"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
@@ -183,12 +183,12 @@ func (t *TableDetailContext) Status() string {
 
 // BootstrapCreateTime function
 func (t *TableDetailContext) BootstrapCreateTime() string {
-	return t.t.GetBootstrapCreateTime().Format(time.RFC1123Z)
+	return util.PrintTime(t.t.GetBootstrapCreateTime())
 }
 
 // RestoreTime function
 func (t *TableDetailContext) RestoreTime() string {
-	return t.t.GetRestoreTime().Format(time.RFC1123Z)
+	return util.PrintTime(t.t.GetRestoreTime())
 }
 
 // StreamID function

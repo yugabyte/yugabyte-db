@@ -7,10 +7,10 @@ package role
 import (
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/sirupsen/logrus"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
@@ -126,20 +126,12 @@ func (c *Context) PermissionDetails() string {
 
 // CreatedOn fetches Role CreatedOn
 func (c *Context) CreatedOn() string {
-	createdTime := c.r.CreatedOn
-	if createdTime == nil {
-		return ""
-	}
-	return createdTime.Format(time.RFC1123Z)
+	return util.PrintTime(c.r.GetCreatedOn())
 }
 
 // UpdatedOn fetches Role UpdatedOn
 func (c *Context) UpdatedOn() string {
-	updatedTime := c.r.UpdatedOn
-	if updatedTime == nil {
-		return ""
-	}
-	return updatedTime.Format(time.RFC1123Z)
+	return util.PrintTime(c.r.GetUpdatedOn())
 }
 
 // MarshalJSON function

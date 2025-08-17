@@ -7,10 +7,10 @@ package user
 import (
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/sirupsen/logrus"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
@@ -147,12 +147,7 @@ func (c *Context) Primary() string {
 
 // CreationDate fetches User Creation Date
 func (c *Context) CreationDate() string {
-	creationTime := c.u.GetCreationDate()
-	if creationTime.IsZero() {
-		return ""
-	}
-	return creationTime.Format(time.RFC1123Z)
-
+	return util.PrintTime(c.u.GetCreationDate())
 }
 
 // TimeZone fetches User Timezone
