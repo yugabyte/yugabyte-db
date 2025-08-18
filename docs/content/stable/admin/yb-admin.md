@@ -1362,6 +1362,26 @@ You can verify the new placement information by running the following `curl` com
 curl -s http://<any-master-ip>:7000/cluster-config
 ```
 
+The wildcard `*` can be used to allow placement in any zone in a specific region or any region in a specific cloud. For example, 
+
+```sh
+./bin/yb-admin \
+    -master_addresses $MASTER_RPC_ADDRS \
+    modify_placement_info  \
+    aws.*.*:5 5`
+```
+
+requests a placement of 5 copies anywhere in the aws cloud. Similarly,
+
+```sh
+./bin/yb-admin \
+    -master_addresses $MASTER_RPC_ADDRS \
+    modify_placement_info  \
+    aws.us-east-1.*:3 3`
+```
+requests a placement of 3 copies anywhere in the us-east-1 region of aws cloud.
+
+
 #### set_preferred_zones
 
 Sets the preferred availability zones (AZs) and regions. Tablet leaders are placed in alive and healthy nodes of AZs in order of preference. When no healthy node is available in the most preferred AZs (preference value 1), then alive and healthy nodes from the next preferred AZs are picked. AZs with no preference are equally eligible to host tablet leaders.
