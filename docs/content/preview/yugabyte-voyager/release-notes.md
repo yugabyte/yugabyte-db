@@ -35,7 +35,11 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 - Enhanced PostgreSQL permissions grant script by adding an option for live migrations to either transfer table ownership to the migration user or grant the original owner's permissions to it.
 - Improved import data retry logic to skip non-retryable errors such as data exceptions and integrity violations.
 - Removed redundant index performance optimization reports from the `assess-migration` report as `export schema` now automatically removes redundant indexes.
-- Enhanced schema optimization report in `export schema` to list all recommendations—applied or skipped with the `--skip-performance-optimizations` / `--skip-recommendations` flags.
+- Enhanced schema optimization report in `export schema` to list all recommendations—applied or skipped, even when the `--skip-performance-optimizations` / `--skip-recommendations` flags are used.
+
+### Bug fix
+
+- Fixed an [issue](https://github.com/yugabyte/yb-voyager/issues/2968) where import schema fails while parsing some unnecessary statements on all Voyager installs done after August 14, 2025. Refer to [TA-2968](/preview/releases/techadvisories/ta-2968/).
 
 ## v2025.8.1 - August 5, 2025
 
