@@ -4556,6 +4556,18 @@ ERROR:  function age_left() does not exist
 LINE 1: SELECT * FROM age_left();
                       ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT * FROM cypher('expr', $$
+    RETURN left('abcdef', -2147483648)
+$$) AS (result agtype);
+ERROR:  left() negative values are not supported for length
+SELECT * FROM cypher('expr', $$
+    RETURN left('abcdef', -2147483649)
+$$) AS (result agtype);
+ERROR:  left() length value is out of INT range
+SELECT * FROM cypher('expr', $$
+    RETURN left('abcdef', 2147483649)
+$$) AS (result agtype);
+ERROR:  left() length value is out of INT range
 --right()
 SELECT * FROM cypher('expr', $$
     RETURN right("123456789", 1)
@@ -4636,6 +4648,18 @@ ERROR:  function age_right() does not exist
 LINE 1: SELECT * FROM age_right();
                       ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT * FROM cypher('expr', $$
+    RETURN right('abcdef', -2147483648)
+$$) AS (result agtype);
+ERROR:  right() negative values are not supported for length
+SELECT * FROM cypher('expr', $$
+    RETURN right('abcdef', -2147483649)
+$$) AS (result agtype);
+ERROR:  right() length value is out of INT range
+SELECT * FROM cypher('expr', $$
+    RETURN right('abcdef', 2147483649)
+$$) AS (result agtype);
+ERROR:  right() length value is out of INT range
 -- substring()
 SELECT * FROM cypher('expr', $$
     RETURN substring("0123456789", 0, 1)
@@ -4731,6 +4755,30 @@ SELECT * FROM age_substring(null, 1);
  
 (1 row)
 
+SELECT * FROM cypher('expr', $$
+    RETURN substring('abcdef', -2147483648, 0)
+$$) AS (result agtype);
+ERROR:  substring() negative values are not supported for offset or length
+SELECT * FROM cypher('expr', $$
+    RETURN substring('abcdef', -2147483649, 0)
+$$) AS (result agtype);
+ERROR:  substring() parameter value is out of INT range
+SELECT * FROM cypher('expr', $$
+    RETURN substring('abcdef', 2147483649, 0)
+$$) AS (result agtype);
+ERROR:  substring() parameter value is out of INT range
+SELECT * FROM cypher('expr', $$
+    RETURN substring('abcdef', 0, -2147483648)
+$$) AS (result agtype);
+ERROR:  substring() negative values are not supported for offset or length
+SELECT * FROM cypher('expr', $$
+    RETURN substring('abcdef', 0, -2147483649)
+$$) AS (result agtype);
+ERROR:  substring() parameter value is out of INT range
+SELECT * FROM cypher('expr', $$
+    RETURN substring('abcdef', 0, 2147483649)
+$$) AS (result agtype);
+ERROR:  substring() parameter value is out of INT range
 -- should fail
 SELECT * FROM cypher('expr', $$
     RETURN substring("123456789", null)
