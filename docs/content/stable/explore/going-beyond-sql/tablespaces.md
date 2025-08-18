@@ -233,8 +233,8 @@ For example, assume a cluster is spread out over regions `us-east-1` (AZs `us-ea
 CREATE TABLESPACE multi_region_wildcard_tablespace
   WITH (replica_placement='{"num_replicas": 3, "placement_blocks": [
     {"cloud":"aws","region":"us-east-1","zone":"*","min_num_replicas":1},
-    {"cloud":"aws","region":"ap-south-1","zone":"*","min_num_replicas":1},
-    {"cloud":"aws","region":"eu-west-2","zone":"*","min_num_replicas":1}]}');
+    {"cloud":"aws","region":"us-west-1","zone":"*","min_num_replicas":1},
+    {"cloud":"aws","region":"us-central-1","zone":"*","min_num_replicas":1}]}');
 
 CREATE TABLE multi_region_table (id INTEGER, field text)
   TABLESPACE multi_region_wildcard_tablespace SPLIT INTO 1 TABLETS;
