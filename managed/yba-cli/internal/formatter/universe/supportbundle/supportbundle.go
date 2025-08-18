@@ -131,12 +131,12 @@ func (c *Context) UUID() string {
 
 // StartDate fetches SupportBundle start date
 func (c *Context) StartDate() string {
-	return c.s.GetStartDate().Format(time.RFC1123Z)
+	return util.PrintTime(c.s.GetStartDate())
 }
 
 // EndDate fetches SupportBundle end date
 func (c *Context) EndDate() string {
-	return c.s.GetEndDate().Format(time.RFC1123Z)
+	return util.PrintTime(c.s.GetEndDate())
 }
 
 // SizeInBytes fetches SupportBundle size in bytes
@@ -175,12 +175,12 @@ func (c *Context) Path() string {
 
 // CreationDate fetches SupportBundle creation date
 func (c *Context) CreationDate() string {
-	return c.s.GetCreationDate().Format(time.RFC1123Z)
+	return util.PrintTime(c.s.GetCreationDate())
 }
 
 // ExpirationDate fetches SupportBundle expiration date
 func (c *Context) ExpirationDate() string {
-	return c.s.GetExpirationDate().Format(time.RFC1123Z)
+	return util.PrintTime(c.s.GetExpirationDate())
 }
 
 // Components fetches SupportBundle components
@@ -217,14 +217,17 @@ func (c *Context) MaxNumRecentCores() string {
 func (c *Context) PromDumpEndDate() string {
 	details := c.s.GetBundleDetails()
 
-	return details.GetPromDumpEndDate().Format(time.RFC1123Z)
-
+	return util.PrintTime(details.GetPromDumpEndDate())
 }
 
 // PromDumpStartDate fetches SupportBundle prometheus dump start date
 func (c *Context) PromDumpStartDate() string {
 	details := c.s.GetBundleDetails()
-	return details.GetPromDumpStartDate().Format(time.RFC1123Z)
+	promDumpStartDate := details.GetPromDumpStartDate()
+	if promDumpStartDate.IsZero() {
+		return ""
+	}
+	return promDumpStartDate.Format(time.RFC1123Z)
 }
 
 // PrometheusMetricsTypes fetches SupportBundle prometheus metrics types

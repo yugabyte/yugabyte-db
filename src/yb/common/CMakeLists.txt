@@ -91,6 +91,7 @@ set(COMMON_SRCS
   id_mapping.cc
   init.cc
   key_encoder.cc
+  object_lock_tracker.cc
   opid.cc
   pgsql_error.cc
   pg_types.cc

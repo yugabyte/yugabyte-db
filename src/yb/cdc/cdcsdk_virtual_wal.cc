@@ -14,6 +14,8 @@
 #include "yb/cdc/cdcsdk_virtual_wal.h"
 #include "yb/cdc/xrepl_stream_metadata.h"
 
+#include "yb/common/entity_ids.h"
+
 #include "yb/master/sys_catalog_constants.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -104,8 +106,7 @@ DECLARE_uint64(cdc_stream_records_threshold_size_bytes);
 DECLARE_bool(ysql_yb_enable_consistent_replication_from_hash_range);
 DECLARE_bool(TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 
-namespace yb {
-namespace cdc {
+namespace yb::cdc {
 
 using RecordInfo = CDCSDKVirtualWAL::RecordInfo;
 using TabletRecordInfoPair = CDCSDKVirtualWAL::TabletRecordInfoPair;
@@ -1726,5 +1727,4 @@ bool CDCSDKVirtualWAL::DeterminePubRefreshFromMasterRecord(const RecordInfo& rec
   return false;
 }
 
-}  // namespace cdc
-}  // namespace yb
+} // namespace yb::cdc

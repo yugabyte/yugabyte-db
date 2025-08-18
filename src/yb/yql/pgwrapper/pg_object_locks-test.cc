@@ -125,12 +125,65 @@ class PgObjectLocksTestRF1 : public PgMiniTestBase {
     ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
   }
 
+  void TestAllBlockingPairs(bool test_pg_locks) {
+    static const std::vector<std::pair<std::string, std::string>> kBlockingPairs = {
+      {"ACCESS EXCLUSIVE", "ACCESS SHARE"},
+      {"ACCESS EXCLUSIVE", "ROW SHARE"},
+      {"ACCESS EXCLUSIVE", "ROW EXCLUSIVE"},
+      {"ACCESS EXCLUSIVE", "SHARE UPDATE EXCLUSIVE"},
+      {"ACCESS EXCLUSIVE", "SHARE"},
+      {"ACCESS EXCLUSIVE", "SHARE ROW EXCLUSIVE"},
+      {"ACCESS EXCLUSIVE", "EXCLUSIVE"},
+      {"ACCESS EXCLUSIVE", "ACCESS EXCLUSIVE"},
+      {"EXCLUSIVE", "ROW SHARE"},
+      {"EXCLUSIVE", "ROW EXCLUSIVE"},
+      {"EXCLUSIVE", "SHARE UPDATE EXCLUSIVE"},
+      {"EXCLUSIVE", "SHARE"},
+      {"EXCLUSIVE", "SHARE ROW EXCLUSIVE"},
+      {"EXCLUSIVE", "EXCLUSIVE"},
+      {"SHARE ROW EXCLUSIVE", "ROW EXCLUSIVE"},
+      {"SHARE ROW EXCLUSIVE", "SHARE UPDATE EXCLUSIVE"},
+      {"SHARE ROW EXCLUSIVE", "SHARE"},
+      {"SHARE ROW EXCLUSIVE", "SHARE ROW EXCLUSIVE"},
+      {"SHARE", "ROW EXCLUSIVE"},
+      {"SHARE", "SHARE UPDATE EXCLUSIVE"},
+      {"SHARE UPDATE EXCLUSIVE", "SHARE UPDATE EXCLUSIVE"},
+    };
+
+    CreateTestTable();
+    auto conn1 = ASSERT_RESULT(Connect());
+    auto conn2 = ASSERT_RESULT(Connect());
+    for (const auto& lock_types : kBlockingPairs) {
+      VerifyBlockingBehavior(conn1, conn2, lock_types.first, lock_types.second, test_pg_locks);
+      VerifyBlockingBehavior(conn1, conn2, lock_types.second, lock_types.first, test_pg_locks);
+    }
+  }
+
+  std::string ToMode(const std::string& table_lock_type_str) {
+    static const std::map<std::string, std::string> kLockModeMap = {
+      {"ACCESS SHARE", "AccessShareLock"},
+      {"ROW SHARE", "RowShareLock"},
+      {"ROW EXCLUSIVE", "RowExclusiveLock"},
+      {"SHARE UPDATE EXCLUSIVE", "ShareUpdateExclusiveLock"},
+      {"SHARE", "ShareLock"},
+      {"SHARE ROW EXCLUSIVE", "ShareRowExclusiveLock"},
+      {"EXCLUSIVE", "ExclusiveLock"},
+      {"ACCESS EXCLUSIVE", "AccessExclusiveLock"}
+    };
+    auto mode_it = kLockModeMap.find(table_lock_type_str);
+    if (mode_it == kLockModeMap.end()) {
+      return "UnknownLockMode";
+    }
+    return mode_it->second;
+  }
+
   void VerifyBlockingBehavior(
-      PGConn& conn1, PGConn& conn2, const std::string& lock_stmt_1,
-      const std::string& lock_stmt_2) {
-    LOG(INFO) << "Checking blocking behavior: " << lock_stmt_1 << " and " << lock_stmt_2;
+      PGConn& conn1, PGConn& conn2, const std::string& holder_lock_type,
+      const std::string& waiter_lock_type, bool test_pg_locks) {
+    LOG(INFO) << "Checking blocking behavior: " << holder_lock_type << " and " << waiter_lock_type;
+    static const std::string lock_query = "LOCK TABLE test IN $0 MODE";
     ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-    ASSERT_OK(conn1.Execute(lock_stmt_1));
+    ASSERT_OK(conn1.ExecuteFormat(lock_query, holder_lock_type));
 
     // In sync point ObjectLockManagerImpl::DoLockSingleEntry, the lock is in waiting state.
     SyncPoint::GetInstance()->LoadDependency(
@@ -140,7 +193,17 @@ class PgObjectLocksTestRF1 : public PgMiniTestBase {
 
     auto conn2_lock_future = std::async(std::launch::async, [&]() -> Status {
       RETURN_NOT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-      RETURN_NOT_OK(conn2.Execute(lock_stmt_2));
+      RETURN_NOT_OK(conn2.ExecuteFormat(lock_query, waiter_lock_type));
+
+      if (test_pg_locks) {
+        SleepFor(500ms * kTimeMultiplier);
+        auto granted_lock_mode = VERIFY_RESULT(conn2.FetchRow<std::string>(
+            "SELECT mode FROM pg_locks WHERE granted = true AND relation = 'test'::regclass"));
+        // The waiter should have acquired the lock at this point.
+        SCHECK_EQ(granted_lock_mode, ToMode(waiter_lock_type),
+            IllegalState, "Expected the waiter to be unblocked");
+      }
+
       RETURN_NOT_OK(conn2.Execute("INSERT INTO test (k, v) VALUES (11, 1)"));
       RETURN_NOT_OK(conn2.CommitTransaction());
       return Status::OK();
@@ -148,6 +211,17 @@ class PgObjectLocksTestRF1 : public PgMiniTestBase {
 
     // Ensure lock is in waiting state.
     DEBUG_ONLY_TEST_SYNC_POINT("WaitingLock");
+
+    if (test_pg_locks) {
+      SleepFor(500ms * kTimeMultiplier);
+      auto granted_lock_mode = ASSERT_RESULT(conn1.FetchRow<std::string>(
+          "SELECT mode FROM pg_locks WHERE granted = true AND relation = 'test'::regclass"));
+      ASSERT_EQ(granted_lock_mode, ToMode(holder_lock_type));
+      auto waiting_lock_mode = ASSERT_RESULT(conn1.FetchRow<std::string>(
+          "SELECT mode FROM pg_locks WHERE granted = false AND relation = 'test'::regclass"));
+      ASSERT_EQ(waiting_lock_mode, ToMode(waiter_lock_type));
+    }
+
     ASSERT_EQ(ASSERT_RESULT(conn1.FetchRow<PGUint64>("SELECT COUNT(*) FROM test WHERE v = 1")), 0);
 
     // After conn1 releases the lock, conn2 should be able to acquire it.
@@ -247,39 +321,11 @@ TEST_F(PgObjectLocksTestRF1, TestWaitingOnConflictingLocks) {
 }
 
 TEST_F(PgObjectLocksTestRF1, VerifyTableLockBlockingBehavior) {
-  CreateTestTable();
-  auto conn1 = ASSERT_RESULT(Connect());
-  auto conn2 = ASSERT_RESULT(Connect());
-  const std::vector<std::pair<std::string, std::string>> blocking_pairs = {
-    {"ACCESS EXCLUSIVE", "ACCESS SHARE"},
-    {"ACCESS EXCLUSIVE", "ROW SHARE"},
-    {"ACCESS EXCLUSIVE", "ROW EXCLUSIVE"},
-    {"ACCESS EXCLUSIVE", "SHARE UPDATE EXCLUSIVE"},
-    {"ACCESS EXCLUSIVE", "SHARE"},
-    {"ACCESS EXCLUSIVE", "SHARE ROW EXCLUSIVE"},
-    {"ACCESS EXCLUSIVE", "EXCLUSIVE"},
-    {"ACCESS EXCLUSIVE", "ACCESS EXCLUSIVE"},
-    {"EXCLUSIVE", "ROW SHARE"},
-    {"EXCLUSIVE", "ROW EXCLUSIVE"},
-    {"EXCLUSIVE", "SHARE UPDATE EXCLUSIVE"},
-    {"EXCLUSIVE", "SHARE"},
-    {"EXCLUSIVE", "SHARE ROW EXCLUSIVE"},
-    {"EXCLUSIVE", "EXCLUSIVE"},
-    {"SHARE ROW EXCLUSIVE", "ROW EXCLUSIVE"},
-    {"SHARE ROW EXCLUSIVE", "SHARE UPDATE EXCLUSIVE"},
-    {"SHARE ROW EXCLUSIVE", "SHARE"},
-    {"SHARE ROW EXCLUSIVE", "SHARE ROW EXCLUSIVE"},
-    {"SHARE", "ROW EXCLUSIVE"},
-    {"SHARE", "SHARE UPDATE EXCLUSIVE"},
-    {"SHARE UPDATE EXCLUSIVE", "SHARE UPDATE EXCLUSIVE"},
-  };
+  TestAllBlockingPairs(/*test_pg_locks=*/false);
+}
 
-  for (const auto& pair : blocking_pairs) {
-    std::string lock_stmt_1 = "LOCK TABLE test IN " + pair.first + " MODE";
-    std::string lock_stmt_2 = "LOCK TABLE test IN " + pair.second + " MODE";
-    VerifyBlockingBehavior(conn1, conn2, lock_stmt_1, lock_stmt_2);
-    VerifyBlockingBehavior(conn1, conn2, lock_stmt_2, lock_stmt_1);
-  }
+TEST_F(PgObjectLocksTestRF1, TestPgLocks) {
+  TestAllBlockingPairs(/*test_pg_locks=*/true);
 }
 
 class PgObjectLocksTestRF1SessionExpiry : public PgObjectLocksTestRF1 {

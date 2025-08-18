@@ -939,15 +939,18 @@ YbcTxnPriorityRequirement PgTxnManager::GetTxnPriorityRequirement(RowMarkType ro
     // shared across databases) conflict with all other DDLs since they increment all per-db
     // catalog versions.
     //
-    // For detecting and resolving these conflicts, DDLs use Fail-on-Conflict concurrency
-    // control (system catalog table doesn't have wait queues enabled). All DDLs except
-    // Auto-ANALYZEs use kHighestPriority priority to mimic first-come-first-serve behavior. We
-    // want to give Auto-ANALYZEs a lower priority to ensure they don't abort already running
-    // user DDLs. Also, user DDLs should preempt Auto-ANALYZEs.
+    // We want ANALYZE DDLs spawned by auto-analyze to be pre-empted in case of such concurrent
+    // DDL conflicts. To achieve this, all regular DDL take a FOR KEY SHARE lock on the catalog
+    // version row with a high priority and ANALZYE spawned by auto-analyze takes a
+    // FOR UPDATE exclusive lock with a lower priority. Given DDLs run with fail-on-conflict
+    // concurrency control, these priorities achieve the goal.
     //
     // With object level locking, priorities are meaningless since DDLs don't rely on DocDB's
     // conflict resolution for concurrent DDLs.
-    return yb_use_internal_auto_analyze_service_conn ? kHigherPriorityRange : kHighestPriority;
+    if (!yb_use_internal_auto_analyze_service_conn)
+      return kHighestPriority;
+    else
+      return kHigherPriorityRange;
   }
   if (GetPgIsolationLevel() == PgIsolationLevel::READ_COMMITTED) {
     return kHighestPriority;

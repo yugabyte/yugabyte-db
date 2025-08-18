@@ -7,7 +7,6 @@ package customer
 import (
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/sirupsen/logrus"
 	ybaclient "github.com/yugabyte/platform-go-client"
@@ -147,7 +146,7 @@ func (c *Context) Code() string {
 
 // CreationTime fetches Customer CreationTime
 func (c *Context) CreationTime() string {
-	return c.c.GetCreationDate().Format(time.RFC1123Z)
+	return util.PrintTime(c.c.GetCreationDate())
 }
 
 // CallhomeLevel fetches Customer CallhomeLevel

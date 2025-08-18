@@ -953,7 +953,7 @@ TEST_F(PgCatalogVersionTest, FixCatalogVersionTable) {
   // Do not force early serialization for DDLs since the pg_yb_catalog_version table is in global
   // catalog version mode and early serialization requires taking a lock on the per-db catalog
   // version row.
-  ASSERT_OK(conn_yugabyte.Execute("SET yb_force_early_ddl_serialization=false"));
+  ASSERT_OK(conn_yugabyte.Execute("SET yb_user_ddls_preempt_auto_analyze=false"));
 
   // At this time, an existing connection is still in per-db catalog version mode
   // but the table pg_yb_catalog_version has only one row for template1 and is out

@@ -15,7 +15,9 @@ declare
                		 '{"(on, on, off)"}'::text[] ||
                          '{"(legacy_mode, off, off)"}'::text[] ||
                          '{"(off, off, off)"}'::text[] || /* legacy ignore stats */
-                         '{"(legacy_stats_mode, off, on)"}'::text[];
+                         '{"(legacy_stats_mode, off, on)"}'::text[] ||
+                         '{"(legacy_bnl_mode, off, off)"}'::text[] ||
+                         '{"(legacy_stats_bnl_mode, off, on)"}'::text[];
 begin
     execute 'show yb_enable_cbo' into cbo;
     execute 'show yb_enable_base_scans_cost_model' into bscm;
@@ -37,7 +39,9 @@ select check_optimizer_guc() "(cbo, bscm, stats)";
  (legacy_mode, off, off)
 (1 row)
 
--- change yb_enable_cbo
+--------------------------
+-- change yb_enable_cbo --
+--------------------------
 set yb_enable_cbo = on;
 select check_optimizer_guc() "(cbo, bscm, stats)";
  (cbo, bscm, stats) 
@@ -64,6 +68,20 @@ select check_optimizer_guc() "(cbo, bscm, stats)";
    (cbo, bscm, stats)    
 -------------------------
  (legacy_mode, off, off)
+(1 row)
+
+set yb_enable_cbo = on;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+ (cbo, bscm, stats) 
+--------------------
+ (on, on, off)
+(1 row)
+
+set yb_enable_cbo = legacy_bnl_mode;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+     (cbo, bscm, stats)      
+-----------------------------
+ (legacy_bnl_mode, off, off)
 (1 row)
 
 set yb_enable_cbo = on;
@@ -115,6 +133,20 @@ select check_optimizer_guc() "(cbo, bscm, stats)";
  (legacy_stats_mode, off, on)
 (1 row)
 
+set yb_enable_cbo = on;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+ (cbo, bscm, stats) 
+--------------------
+ (on, on, off)
+(1 row)
+
+set yb_enable_cbo = legacy_bnl_mode;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+     (cbo, bscm, stats)      
+-----------------------------
+ (legacy_bnl_mode, off, off)
+(1 row)
+
 set yb_enable_cbo = off;
 select check_optimizer_guc() "(cbo, bscm, stats)";
  (cbo, bscm, stats) 
@@ -122,7 +154,9 @@ select check_optimizer_guc() "(cbo, bscm, stats)";
  (off, off, off)
 (1 row)
 
--- turn on/off old parameters
+--------------------------------
+-- turn on/off old parameters --
+--------------------------------
 -- (bscm, stats) off, off -> stats = on
 set yb_enable_optimizer_statistics = on;
 select check_optimizer_guc() "(cbo, bscm, stats)";
@@ -187,7 +221,124 @@ select check_optimizer_guc() "(cbo, bscm, stats)";
  (legacy_mode, off, off)
 (1 row)
 
--- boolean aliases
+--------------------------------------------------------------------
+-- no legacy_(stats_)bnl_mode after changing either bscm or stats --
+--------------------------------------------------------------------
+set yb_enable_cbo = legacy_bnl_mode;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+     (cbo, bscm, stats)      
+-----------------------------
+ (legacy_bnl_mode, off, off)
+(1 row)
+
+set yb_enable_base_scans_cost_model = on;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+ (cbo, bscm, stats) 
+--------------------
+ (on, on, off)
+(1 row)
+
+set yb_enable_cbo = legacy_bnl_mode;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+     (cbo, bscm, stats)      
+-----------------------------
+ (legacy_bnl_mode, off, off)
+(1 row)
+
+set yb_enable_base_scans_cost_model = off;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+   (cbo, bscm, stats)    
+-------------------------
+ (legacy_mode, off, off)
+(1 row)
+
+set yb_enable_cbo = legacy_bnl_mode;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+     (cbo, bscm, stats)      
+-----------------------------
+ (legacy_bnl_mode, off, off)
+(1 row)
+
+set yb_enable_optimizer_statistics = on;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+      (cbo, bscm, stats)      
+------------------------------
+ (legacy_stats_mode, off, on)
+(1 row)
+
+set yb_enable_cbo = legacy_bnl_mode;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+     (cbo, bscm, stats)      
+-----------------------------
+ (legacy_bnl_mode, off, off)
+(1 row)
+
+set yb_enable_optimizer_statistics = off;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+   (cbo, bscm, stats)    
+-------------------------
+ (legacy_mode, off, off)
+(1 row)
+
+set yb_enable_cbo = legacy_stats_bnl_mode;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+        (cbo, bscm, stats)        
+----------------------------------
+ (legacy_stats_bnl_mode, off, on)
+(1 row)
+
+set yb_enable_base_scans_cost_model = on;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+ (cbo, bscm, stats) 
+--------------------
+ (on, on, on)
+(1 row)
+
+set yb_enable_cbo = legacy_stats_bnl_mode;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+        (cbo, bscm, stats)        
+----------------------------------
+ (legacy_stats_bnl_mode, off, on)
+(1 row)
+
+set yb_enable_base_scans_cost_model = off;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+      (cbo, bscm, stats)      
+------------------------------
+ (legacy_stats_mode, off, on)
+(1 row)
+
+set yb_enable_cbo = legacy_stats_bnl_mode;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+        (cbo, bscm, stats)        
+----------------------------------
+ (legacy_stats_bnl_mode, off, on)
+(1 row)
+
+set yb_enable_optimizer_statistics = on;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+      (cbo, bscm, stats)      
+------------------------------
+ (legacy_stats_mode, off, on)
+(1 row)
+
+set yb_enable_cbo = legacy_stats_bnl_mode;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+        (cbo, bscm, stats)        
+----------------------------------
+ (legacy_stats_bnl_mode, off, on)
+(1 row)
+
+set yb_enable_optimizer_statistics = off;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+   (cbo, bscm, stats)    
+-------------------------
+ (legacy_mode, off, off)
+(1 row)
+
+---------------------
+-- boolean aliases --
+---------------------
 set yb_enable_cbo = true;
 show yb_enable_cbo;
  yb_enable_cbo 
@@ -230,13 +381,15 @@ show yb_enable_cbo;
  off
 (1 row)
 
--- error
+-----------
+-- error --
+-----------
 set yb_enable_cbo = oui;
 ERROR:  invalid value for parameter "yb_enable_cbo": "oui"
-HINT:  Available values: off, on, legacy_mode, legacy_stats_mode.
---
--- test GUC_EXPLAIN flag
---
+HINT:  Available values: off, on, legacy_mode, legacy_stats_mode, legacy_bnl_mode, legacy_stats_bnl_mode.
+---------------------------
+-- test GUC_EXPLAIN flag --
+---------------------------
 reset all;
 explain (settings, costs off)
 select * from pg_class;
@@ -277,21 +430,21 @@ set yb_enable_base_scans_cost_model = on;
 set yb_enable_optimizer_statistics = on;
 set yb_bnl_batch_size = 1;
 set yb_fetch_row_limit = 0;
-set yb_fetch_size_limit = '4GB';
-ERROR:  invalid value for parameter "yb_fetch_size_limit": "4GB"
-HINT:  Value exceeds integer range.
+set yb_fetch_size_limit = '2kB';
 set yb_parallel_range_rows = 10;
 set yb_parallel_range_size = '1kB';
 set yb_network_fetch_cost = 100;
 explain (settings, costs off)
 select * from pg_class;
-                                                                                                                                                                                                                                                                                                 QUERY PLAN                                                                                                                                                                                                                                                                                                 
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                                                                                                                                                                                                               QUERY PLAN                                                                                                                                                                                                                                                                                                                
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Seq Scan on pg_class
- Settings: yb_bnl_batch_size = '1', yb_bnl_optimize_first_batch = 'off', yb_bypass_cond_recheck = 'off', yb_enable_base_scans_cost_model = 'on', yb_enable_batchednl = 'off', yb_enable_bitmapscan = 'on', yb_enable_cbo = 'on', yb_enable_distinct_pushdown = 'off', yb_enable_geolocation_costing = 'off', yb_enable_optimizer_statistics = 'on', yb_enable_parallel_append = 'on', yb_fetch_row_limit = '0', yb_network_fetch_cost = '100', yb_parallel_range_rows = '10', yb_parallel_range_size = '1kB', yb_prefer_bnl = 'off', yb_pushdown_is_not_null = 'off', yb_pushdown_strict_inequality = 'off'
+ Settings: yb_bnl_batch_size = '1', yb_bnl_optimize_first_batch = 'off', yb_bypass_cond_recheck = 'off', yb_enable_base_scans_cost_model = 'on', yb_enable_batchednl = 'off', yb_enable_bitmapscan = 'on', yb_enable_cbo = 'on', yb_enable_distinct_pushdown = 'off', yb_enable_geolocation_costing = 'off', yb_enable_optimizer_statistics = 'on', yb_enable_parallel_append = 'on', yb_fetch_row_limit = '0', yb_fetch_size_limit = '2kB', yb_network_fetch_cost = '100', yb_parallel_range_rows = '10', yb_parallel_range_size = '1kB', yb_prefer_bnl = 'off', yb_pushdown_is_not_null = 'off', yb_pushdown_strict_inequality = 'off'
 (2 rows)
 
--- reset all then try a few yb_ parameters that won't affect plans
+---------------------------------------------------------------------
+-- reset all then try a few yb_ parameters that won't affect plans --
+---------------------------------------------------------------------
 reset all;
 explain (settings, costs off)
 select * from pg_class;

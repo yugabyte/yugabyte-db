@@ -19,6 +19,12 @@ It is strongly recommended that you take appropriate measures as outlined in the
 {{%table%}}
 | Advisory&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Synopsis | Product | Affected Versions | Date |
 | :------------------------------- | :------- | :-----: | :---------------: | :--- |
+| {{<ta 2968>}}
+| Import schema fails on all Voyager installs done after August 14, 2025
+| {{<product "voyager">}}
+| {{<release "All">}}
+| {{<nobreak "15 August 2025">}}
+|
 | {{<ta 26440>}}
 | Transparent Huge Pages causing Memory Issues
 | {{<product "ybdb,yba">}}
