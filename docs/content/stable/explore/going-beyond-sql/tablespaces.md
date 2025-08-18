@@ -237,8 +237,20 @@ CREATE TABLESPACE multi_region_wildcard_tablespace
     {"cloud":"aws","region":"us-central-1","zone":"*","min_num_replicas":1}]}');
 
 CREATE TABLE multi_region_table (id INTEGER, field text)
-  TABLESPACE multi_region_wildcard_tablespace SPLIT INTO 1 TABLETS;
+  TABLESPACE multi_region_wildcard_tablespace;
 ```
+
+Similarly, a tablespace like below allows copies to be placed in any zone and region in the aws cloud.
+
+```sql
+CREATE TABLESPACE aws_wildcard_tablespace
+  WITH (replica_placement='{"num_replicas": 3, "placement_blocks": [
+    {"cloud":"aws","region":"*","zone":"*","min_num_replicas":3}]}');
+
+CREATE TABLE aws_wildcard_table (id INTEGER, field text)
+  TABLESPACE aws_wildcard_tablespace;
+```
+
 
 
 ## Leader preference
