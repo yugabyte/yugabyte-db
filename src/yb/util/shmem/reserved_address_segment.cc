@@ -311,8 +311,8 @@ class AddressSegmentNegotiator::Impl {
     constexpr uintptr_t kMaxAddress = 0x0a0000000000;
 #else
     // For x86_64 and Apple arm64.
-    constexpr uintptr_t kMinAddress = 0x7e8000000000;
-    constexpr uintptr_t kMaxAddress = 0x7f6000000000;
+    constexpr uintptr_t kMinAddress = 0x010000000000;
+    constexpr uintptr_t kMaxAddress = 0x020000000000;
 #endif
 #else
     // Postmaster and TServer typically have addresses reserved near the following:
