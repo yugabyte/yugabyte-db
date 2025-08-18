@@ -112,6 +112,12 @@ ALTER ROLE yugabyte WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION
 -- User Configurations
 --
 
+--
+-- User Config "regress_priv_user7"
+--
+
+ALTER ROLE regress_priv_user7 SET log_min_messages TO 'LOG';
+
 
 --
 -- Role memberships
@@ -567,6 +573,37 @@ SET row_security = off;
 
 COMMENT ON DATABASE yugabyte IS 'default administrative connection database';
 
+
+--
+-- Name: yugabyte; Type: DATABASE PROPERTIES; Schema: -; Owner: postgres
+--
+
+\if :use_roles
+ALTER ROLE regress_priv_user8 IN DATABASE yugabyte SET log_min_messages TO 'LOG';
+\endif
+
+
+\connect yugabyte
+
+SET yb_binary_restore = true;
+SET yb_ignore_pg_class_oids = false;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_ignore_relfilenode_ids') THEN
+    EXECUTE 'SET yb_ignore_relfilenode_ids TO false';
+  END IF;
+END $$;
+SET yb_non_ddl_txn_for_sys_tables_allowed = true;
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
 
 \if :use_tablespaces
     SET default_tablespace = tsp1;

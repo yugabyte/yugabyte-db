@@ -1491,7 +1491,7 @@ dumpUserConfig(PGconn *conn, const char *username)
 		resetPQExpBuffer(buf);
 		makeAlterConfigCommand(conn, PQgetvalue(res, i, 0),
 							   "ROLE", username, NULL, NULL,
-							   buf);
+							   yb_dump_role_checks, buf);
 		fprintf(OPF, "%s", buf->data);
 	}
 
