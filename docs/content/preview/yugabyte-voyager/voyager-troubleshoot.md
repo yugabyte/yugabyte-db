@@ -26,8 +26,6 @@ pg_dump: detail: Query was: EXECUTE getDomainConstraints('16452')
 This error happens if the source database contains domain objects with NOT NULL constraints.
 A bug in PostgreSQL versions 17.0–17.2 causes `pg_get_constraintdef()` to not interpret NOT NULL domain constraints, leading to failure in `pg_dump` version 17.6 when using this function to fetch schema information.
 
-Affected releases: [v1.1](../release-notes/#v1-1-march-7-2023) - [v2025.8.1](release-notes/#v2025-8-1-august-5-2025)
-
 Resolution: You can choose from one of the two options as follows:
 
 - Use an older `pg_dump` version.
