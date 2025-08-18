@@ -223,6 +223,24 @@ yugabyte=# SELECT * FROM multi_region_table;
 Time: 337.154 ms
 ```
 
+### Using wildcards for zones
+
+In certain cases, it may be useful to use the wildcard `*` for a zone in the placement block list. It is mostly useful when there are more than `RF` zones in the cluster, where `RF` is the desired placement of the table. In such cases, the wildcard `*` allows choosing for any of the zones in a given region, or any of the regions in a given cloud. 
+
+For example, assume a cluster is spread out over regions `us-east-1` (AZs `us-east-1a`, `us-east-1b`), `us-central-1` (AZs `us-central-1a`, `us-central-1b`), `us-west-1` (AZs `us-west-1a`, `us-west-1b`) and we wish to create an RF3 tablespace. An example tablespace like below allows copies to be placed in each of the three regions without specifying the exact AZs in those regions. This can increase the resilience of the cluster compared to explicitly specifing exactly one AZ per region. However, note that, in the wildcard placement mode, each AZ in the region must be over-provisioned appropriately to handle the tablets that it may receive from the other AZ's failover.
+
+```sql
+CREATE TABLESPACE multi_region_wildcard_tablespace
+  WITH (replica_placement='{"num_replicas": 3, "placement_blocks": [
+    {"cloud":"aws","region":"us-east-1","zone":"*","min_num_replicas":1},
+    {"cloud":"aws","region":"ap-south-1","zone":"*","min_num_replicas":1},
+    {"cloud":"aws","region":"eu-west-2","zone":"*","min_num_replicas":1}]}');
+
+CREATE TABLE multi_region_table (id INTEGER, field text)
+  TABLESPACE multi_region_wildcard_tablespace SPLIT INTO 1 TABLETS;
+```
+
+
 ## Leader preference
 
 {{< note title=" " >}}
@@ -397,6 +415,7 @@ You can see the replication info for our table has changed:
 The RaftConfig has also changed to match the new tablespace:
 
 ![YB-Master UI: critical_table raft config](/images/explore/tablespaces/5_critical_table_raft_config_final.png)
+
 
 ## What's next?
 
