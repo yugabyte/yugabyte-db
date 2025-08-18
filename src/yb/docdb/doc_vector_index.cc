@@ -367,6 +367,10 @@ class DocVectorIndexImpl : public DocVectorIndex {
     return lsm_.TotalEntries();
   }
 
+  bool TEST_HasBackgroundInserts() const override {
+    return lsm_.TEST_HasBackgroundInserts();
+  }
+
  private:
   std::string DirName() const {
     return kVectorIndexDirPrefix + index_id_;
