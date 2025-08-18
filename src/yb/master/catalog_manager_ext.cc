@@ -1445,10 +1445,20 @@ Result<RepeatedPtrField<BackupRowEntryPB>> CatalogManager::GetBackupEntriesAsOfT
       [&source_ns_id, &tables_to_tablets, &colocation_parent_table_id, &found_colocated_user_table](
           const Slice& id, const Slice& data) -> Status {
         auto pb = VERIFY_RESULT(pb_util::ParseFromSlice<SysTablesEntryPB>(data));
-        if (pb.namespace_id() == source_ns_id && pb.state() == SysTablesEntryPB::RUNNING &&
+        // Skip including tables in PREPARING state, even though they are normally considered
+        // running because their tablets are not all created, so they are not ready to be cloned.
+        // The table is also not committed in PG while it is still PREPARING.
+        if (pb.namespace_id() == source_ns_id &&
+            (pb.state() == SysTablesEntryPB::RUNNING || pb.state() == SysTablesEntryPB::ALTERING) &&
             pb.hide_state() == SysTablesEntryPB_HideState_VISIBLE &&
             !pb.schema().table_properties().is_ysql_catalog_table()) {
-          VLOG_WITH_FUNC(1) << "Found SysTablesEntryPB: " << pb.ShortDebugString();
+          if (pb.state() == SysTablesEntryPB::ALTERING) {
+            // This should be fixed after #28814.
+            return STATUS_FORMAT(
+                IllegalState, "Table $0 is in altering state (cloning to a time when a DDL is in "
+                "progress is not supported yet. See GitHub issue #28814.)", id.ToBuffer());
+          }
+          VLOG_WITH_FUNC(1) << "Included SysTablesEntryPB: " << pb.ShortDebugString();
           const auto id_str = id.ToBuffer();
           if (pb.colocated()) {
             if (IsColocationParentTableId(id_str)) {
@@ -1460,6 +1470,8 @@ Result<RepeatedPtrField<BackupRowEntryPB>> CatalogManager::GetBackupEntriesAsOfT
           // Tables and tablets will be added to backup entries at the end.
           tables_to_tablets.insert(std::make_pair(
               id_str, TableWithTabletsEntries(pb, SysTabletsEntriesWithIds())));
+        } else {
+          VLOG_WITH_FUNC(2) << "Skipped SysTablesEntryPB: " << pb.ShortDebugString();
         }
         return Status::OK();
       }));
@@ -1482,9 +1494,11 @@ Result<RepeatedPtrField<BackupRowEntryPB>> CatalogManager::GetBackupEntriesAsOfT
         // when running ImportSnapshot.
         if (tables_to_tablets.contains(pb.table_id()) && pb.split_tablet_ids_size() == 0 &&
             pb.state() != SysTabletsEntryPB::DELETED && pb.state() != SysTabletsEntryPB::REPLACED) {
-          VLOG_WITH_FUNC(1) << "Found SysTabletsEntryPB: " << pb.ShortDebugString();
+          VLOG_WITH_FUNC(1) << "Included SysTabletsEntryPB: " << pb.ShortDebugString();
           tables_to_tablets[pb.table_id()].tablets_entries.push_back(
               std::make_pair(id.ToBuffer(), pb));
+        } else {
+          VLOG_WITH_FUNC(2) << "Skipped SysTabletsEntryPB: " << pb.ShortDebugString();
         }
         return Status::OK();
       }));
