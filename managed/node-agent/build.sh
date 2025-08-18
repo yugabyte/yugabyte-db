@@ -121,12 +121,32 @@ build_for_platform() {
     pushd "$project_dir"
     WHEEL_DIR="./pywheels"
     mkdir -p "$WHEEL_DIR"
-    # Read requirements.txt and download platform-agnostic wheels
+    # Read requirements.txt and download packages
     while IFS= read -r pkg || [ -n "$pkg" ]; do
         echo "Downloading $pkg..."
-        python3 -m pip download "$pkg" --no-binary=:all: --dest "$WHEEL_DIR" \
-        --constraint constraints.txt
+
+        # Special handling for setuptools - download as wheel
+        if [[ "$pkg" == setuptools* || "$pkg" == wheel* ]]; then
+            echo "Downloading setuptools as wheel (no build dependencies)..."
+            python3 -m pip download "$pkg" --only-binary=:all: --dest "$WHEEL_DIR"
+        else
+            echo "Downloading $pkg as source distribution..."
+            python3 -m pip download "$pkg" --no-binary=:all: --dest "$WHEEL_DIR"
+        fi
     done < ynp_requirements.txt
+
+    while IFS= read -r pkg || [ -n "$pkg" ]; do
+        echo "Downloading $pkg..."
+
+        # Special handling for setuptools - download as wheel
+        if [[ "$pkg" == setuptools* || "$pkg" == wheel* ]]; then
+            echo "Downloading setuptools as wheel (no build dependencies)..."
+            python3 -m pip download "$pkg" --only-binary=:all: --dest "$WHEEL_DIR"
+        else
+            echo "Downloading $pkg as source distribution..."
+            python3 -m pip download "$pkg" --no-binary=:all: --dest "$WHEEL_DIR"
+        fi
+    done < ynp_requirements_3.6.txt
     env GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 \
     go build -o "$executable" "$project_dir"/cmd/cli/main.go
     if [ $? -ne 0 ]; then
@@ -220,6 +240,8 @@ package_for_platform() {
     cp -rf configure_earlyoom_service.sh "${script_dir}"/configure_earlyoom_service.sh
     cp -rf earlyoom "${script_dir}"/earlyoom #TODO: build
     cp -rf node-agent-provision.yaml "${script_dir}"/node-agent-provision.yaml
+    cp -rf ../ynp_requirements.txt "${script_dir}"/ynp_requirements.txt
+    cp -rf ../ynp_requirements_3.6.txt "${script_dir}"/ynp_requirements_3.6.txt
     pushd "$project_dir"
     cp -rf ../devops/roles/configure-cluster-server/templates/* "${script_dir}"/ynp/modules/provision/systemd/templates/
     cp -rf ../devops/roles/install_mount_ephemeral_drives_script/templates/mount_ephemeral_drives.sh.j2 "${script_dir}"/ynp/modules/provision/mount_ephemeral_drives/templates/run.j2

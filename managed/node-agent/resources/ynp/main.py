@@ -3,13 +3,12 @@ import sys
 import argparse
 import pkg_resources
 import os
-import yaml
 import pprint
 import json
-
 from configs.config import parse_config, validate_config
 from configs import setup_logger
 from executor import Executor
+import yaml
 
 
 def get_absolute_path(relative_path):
@@ -79,7 +78,7 @@ def main():
                 else:
                     ynp_config[key] = value
     except Exception as e:
-        print("Parsing YAML failed with ", e)
+        print("Parsing config file failed with ", e)
         raise
     conf = parse_config(ynp_config)
     validate_config(conf)

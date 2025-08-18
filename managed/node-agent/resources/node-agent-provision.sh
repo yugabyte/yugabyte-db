@@ -27,6 +27,29 @@ err_msg() {
 is_csp=false
 cloud_type=""
 is_airgap=false
+# By default, we use the virtual environment.
+use_system_python=false
+sudo_user="${SUDO_USER:-$USER}"
+
+# Retry function with 30 seconds delay between retries.
+retry_cmd() {
+    local retries=5
+    local count=0
+    local delay=30
+
+    until "$@"; do
+        exit_code=$?
+        count=$((count + 1))
+        if [ $count -lt $retries ]; then
+            echo "Command failed. Attempt $count/$retries. Retrying in $delay seconds..."
+            sleep $delay
+        else
+            echo "Command failed after $retries attempts."
+            return $exit_code
+        fi
+    done
+    return 0
+}
 
 # Install Python3 on the node.
 install_python3() {
@@ -77,57 +100,96 @@ setup_symlinks() {
 
 # Function to install the python wheels
 install_pywheels() {
-    WHEEL_DIR="pywheels"
-    echo "Installing Python wheels from directory: $WHEEL_DIR"
-
+    WHEEL_DIR="$(pwd)/pywheels"
     # Check if the wheel directory exists
     if [[ ! -d "$WHEEL_DIR" ]]; then
         err_msg "Wheel directory $WHEEL_DIR does not exist."
     fi
 
-   # Extract package names (without version) from filenames
-    declare -A PACKAGE_FILES
-    for package in "$WHEEL_DIR"/*.tar.gz; do
-        if [[ -f "$package" ]]; then
-            # Extract package name
-            base_name=$(basename "$package" | sed -E 's/-[0-9].*//')
-            # Convert to lowercase
-            base_name_lower=$(echo "$base_name" | tr '[:upper:]' '[:lower:]')
-            PACKAGE_FILES["$base_name_lower"]="$package"
-        fi
-    done
-    # Define the dependency order (without versions)
-    declare -a DEP_ORDER=(
-        "setuptools"          # Python devtools
-        "wheel"               # Python devtools
-        "markupsafe"          # Required by Jinja2
-        "jinja2"              # Needs MarkupSafe
-        "charset-normalizer"  # Used by Requests
-        "idna"                # Used by Requests
-        "urllib3"             # Used by Requests
-        "certifi"             # Used by Requests
-        "requests"            # Needs urllib3, certifi, idna, charset-normalizer
-        "pyyaml"              # Independent
+    PYTHON_CMD=$(command -v python3)
+    PYTHON_VERSION_DETECTED=$(
+        $PYTHON_CMD -c "import sys; print('python' + '.'.join(map(str, sys.version_info[:2])))"
     )
+    PYTHON_MAJOR_MINOR=$(
+        $PYTHON_CMD -c "import sys; print('.'.join(map(str, sys.version_info[:2])))"
+    )
+    # Select the appropriate requirements file based on Python version
+    if [[ "$PYTHON_MAJOR_MINOR" == "3.6" || "$PYTHON_MAJOR_MINOR" == "3.7" ]]; then
+        REQUIREMENTS_FILE="$(pwd)/ynp_requirements_3.6.txt"
+        echo "Using Python 3.6/3.7 compatible requirements file: $REQUIREMENTS_FILE"
+    else
+        REQUIREMENTS_FILE="$(pwd)/ynp_requirements.txt"
+        echo "Using Python 3.8+ requirements file: $REQUIREMENTS_FILE"
+    fi
 
-    # Step 1: Install dependencies in order
-    for package in "${DEP_ORDER[@]}"; do
-        if [[ -n "${PACKAGE_FILES[$package]:-}" ]]; then
-            echo "Installing $package from ${PACKAGE_FILES[$package]}..."
-            python3 -m pip install \
-                    --no-index --no-build-isolation \
-                    --find-links="$WHEEL_DIR" "${PACKAGE_FILES[$package]}" || {
-                echo "Retrying without --no-build-isolation for $package..."
-                python3 -m pip install --no-index \
-                        --find-links="$WHEEL_DIR" "${PACKAGE_FILES[$package]}" || {
-                    echo "Error installing $package" >&2
-                    exit 1
-                }
+    echo "Installing Python wheels from directory: $WHEEL_DIR using requirements: $REQUIREMENTS_FILE"
+
+    # Check if requirements file exists
+    if [[ ! -f "$REQUIREMENTS_FILE" ]]; then
+        err_msg "Requirements file $REQUIREMENTS_FILE does not exist."
+    fi
+    # If we are using system python, we need to use --break-system-packages to install packages.
+    extra_pip_flags=""
+    if [[ "$PYTHON_MAJOR_MINOR" > "3.11" && "$use_system_python" == true ]]; then
+        extra_pip_flags="--break-system-packages"
+    fi
+
+    echo "Using Python version: $PYTHON_VERSION_DETECTED"
+
+    # Get the virtual environment path
+    VENV_PATH=$(get_activated_venv_path)
+    echo "Using virtual environment path: $VENV_PATH"
+
+    # Check if virtual environment exists and use it
+    if [[ -d "$VENV_PATH" && "$use_system_python" == false ]]; then
+        echo "Using virtual environment at $VENV_PATH"
+        # Use the virtual environment's pip directly (no need to source activate)
+        PIP_CMD="$VENV_PATH/bin/pip"
+        PYTHON_CMD="$VENV_PATH/bin/python"
+
+    elif [[ "$use_system_python" == true ]]; then
+        echo "Using system Python"
+        PIP_CMD="python3 -m pip"
+        PYTHON_CMD="python3"
+    else
+        echo "Error: Virtual environment not found and system Python not enabled"
+        exit 1
+    fi
+
+    # Install packages in specific order to handle build dependencies
+    if [[ "$PYTHON_MAJOR_MINOR" == "3.6" || "$PYTHON_MAJOR_MINOR" == "3.7" ]]; then
+        echo "Installing packages in order for Python 3.6/3.7 compatibility..."
+
+        # Install setuptools and wheel first
+        $PIP_CMD install --no-index --ignore-installed $extra_pip_flags \
+            --find-links="$WHEEL_DIR" setuptools==53.0.0 wheel==0.37.1 || {
+            echo "Error installing setuptools and wheel"
+            exit 1
+        }
+        $PIP_CMD install --no-index --ignore-installed $extra_pip_flags \
+            --find-links="$WHEEL_DIR" -r "$REQUIREMENTS_FILE" || {
+            echo "Error installing packages from requirements file"
+            exit 1
+        }
+    else
+        # Install setuptools and wheel first for Python 3.8+
+        $PIP_CMD install --no-index --ignore-installed $extra_pip_flags \
+            --find-links="$WHEEL_DIR" setuptools==69.5.1 wheel==0.43.0 || {
+            echo "Error installing setuptools and wheel"
+            exit 1
+        }
+        # For Python 3.8+, install all packages at once
+        $PIP_CMD install --no-index --no-build-isolation --ignore-installed $extra_pip_flags \
+            --find-links="$WHEEL_DIR" -r "$REQUIREMENTS_FILE" || {
+            echo "Retrying without --no-build-isolation installing packages from requirements file"
+            $PIP_CMD install --no-index --ignore-installed --find-links="$WHEEL_DIR" $extra_pip_flags \
+                -r "$REQUIREMENTS_FILE" || {
+                echo "Error installing packages from requirements file"
+                exit 1
             }
-        else
-            echo "Warning: Package $package not found in PACKAGE_FILES."
-        fi
-    done
+        }
+    fi
+    echo "All packages installed successfully."
 }
 
 # Function to setup the virtual env.
@@ -141,11 +203,11 @@ setup_virtualenv() {
             echo "venv module is missing. Installing it..."
 
             if grep -q -i "ubuntu\|debian" /etc/os-release; then
-                apt update && apt install -y python3-venv
+                retry_cmd apt update && retry_cmd apt install -y python3-venv
             elif grep -q -i "almalinux\|rocky\|rhel\|amazon linux 2023" /etc/os-release; then
-                dnf install -y python3-venv
+                retry_cmd dnf install -y python3-venv
             elif grep -q -i "sles\|suse" /etc/os-release; then
-                zypper install -y python3-venv
+                retry_cmd zypper install -y python3-venv
             fi
         fi
     fi
@@ -163,22 +225,24 @@ setup_virtualenv() {
         echo "Virtual environment already exists at $VENV_PATH."
     fi
     if source "$VENV_PATH/bin/activate"; then
-        USER_NAME=$(logname 2>/dev/null || echo "$SUDO_USER" || whoami)
-        chown -R $USER_NAME:$USER_NAME $VENV_PATH
         echo "Virtual environment activated."
     else
-        echo "Failed to activate virtual environment. Continuing without it..."
+        if [[ "$use_system_python" == true ]]; then
+            echo "Using system python..."
+        else
+            echo "Failed to activate virtual environment. Continuing without it..."
+            err_msg "Failed to activate virtual environment. Please check if the virtual \
+                    environment is correctly set up."
+        fi
     fi
 }
 
-# Funvtion to setup pip in venv.
+# Function to setup pip in venv.
 setup_pip() {
-    # Get the installed Python3 version dynamically
     PYTHON_CMD=$(command -v python3)
     PYTHON_VERSION_DETECTED=$(
         $PYTHON_CMD -c "import sys; print('python' + '.'.join(map(str, sys.version_info[:2])))"
     )
-
     echo "Detected Python version: $PYTHON_VERSION_DETECTED"
 
     # Install pip for detected Python version
@@ -257,6 +321,8 @@ main() {
             fi
         elif [[ "${!i}" == "--is_airgap" ]]; then
             is_airgap=true  # Set the flag
+        elif [[ "${!i}" == "--use_system_python" ]]; then
+            use_system_python=true  # Set the flag
         else
             filtered_args+=("${!i}")  # Keep all other arguments
         fi

@@ -2,7 +2,10 @@ from ...base_module import BaseYnpModule
 import logging
 import time
 import json
-import requests
+import urllib.request
+import urllib.error
+import urllib.parse
+import ssl
 import os
 import sys
 
@@ -17,12 +20,49 @@ class InstallNodeAgent(BaseYnpModule):
         }
 
     def _get_provider_url(self, context):
-        return (f'{context.get("url")}/api/v1/customers/{context.get("customer_uuid")}'
-                f'/providers?name={context.get("provider_name")}')
+        url = context.get("url")
+        customer_uuid = context.get("customer_uuid")
+        provider_name = context.get("provider_name")
+        return (f'{url}/api/v1/customers/{customer_uuid}'
+                f'/providers?name={provider_name}')
 
     def _get_instance_type(self, yba_url, customer_uuid, p_uuid, code):
         return (f'{yba_url}/api/v1/customers/{customer_uuid}/providers/'
                 f'{p_uuid}/instance_types/{code}')
+
+    def _make_request(self, url, headers=None, method='GET', data=None, verify_ssl=True):
+        """Make HTTP request using urllib"""
+        if headers is None:
+            headers = {}
+
+        # Create request
+        req = urllib.request.Request(url, headers=headers, method=method)
+
+        # Add data for POST requests
+        if data and method in ['POST', 'PUT']:
+            req.data = json.dumps(data).encode('utf-8')
+
+        # Create SSL context
+        ssl_context = ssl.create_default_context()
+        if not verify_ssl:
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
+
+        try:
+            with urllib.request.urlopen(req, context=ssl_context) as response:
+                response_data = response.read()
+                if 200 <= response.status < 300:
+                    return {
+                        'status_code': response.status,
+                        'json': lambda: json.loads(response_data.decode('utf-8'))
+                    }
+                else:
+                    raise urllib.error.HTTPError(url, response.status, response.reason,
+                                                 response.headers, None)
+        except urllib.error.HTTPError as e:
+            raise e
+        except urllib.error.URLError as e:
+            raise Exception(f"Request error: {e.reason}")
 
     def _generate_provider_payload(self, context):
         # Generates the body for provider payload.
@@ -108,8 +148,12 @@ class InstallNodeAgent(BaseYnpModule):
                 'volumeDetailsList': []
             }
         }
-        mount_points = context.get('instance_type_mount_points').strip(
-            "[]").replace("'", "").split(", ")
+        mount_points = context.get('instance_type_mount_points')
+        if not mount_points:
+            raise ValueError(
+                "instance_type_mount_points is required but not provided in configuration")
+
+        mount_points = mount_points.strip("[]").replace("'", "").split(", ")
         for mp in mount_points:
             volume_detail = {
                 'volumeSizeGB': context.get('instance_type_volume_size'),
@@ -139,9 +183,9 @@ class InstallNodeAgent(BaseYnpModule):
         provider_url = self._get_provider_url(context)
         yba_url = context.get('url')
         skip_tls_verify = not yba_url.lower().startswith('https')
-        response = requests.get(provider_url,
-                                headers=self._get_headers(context.get('api_key')),
-                                verify=skip_tls_verify)
+        response = self._make_request(provider_url,
+                                      headers=self._get_headers(context.get('api_key')),
+                                      verify_ssl=skip_tls_verify)
         return response
 
     def _create_instance_if_not_exists(self, context, provider):
@@ -151,15 +195,14 @@ class InstallNodeAgent(BaseYnpModule):
             'customer_uuid'), provider.get('uuid'), context.get('instance_type_name'))
 
         try:
-            response = requests.get(get_instance_type_url,
-                                    headers=self._get_headers(context.get('api_key')),
-                                    verify=skip_tls_verify)
-            response.raise_for_status()
-            data = response.json()
+            response = self._make_request(get_instance_type_url,
+                                          headers=self._get_headers(context.get('api_key')),
+                                          verify_ssl=skip_tls_verify)
+            data = response['json']()
             if not data:  # If the instance type does not exist
                 raise ValueError("Instance type does not exist")
-        except requests.exceptions.HTTPError as http_err:
-            if response.status_code == 400:
+        except urllib.error.HTTPError as http_err:
+            if http_err.code == 400:
                 logging.info("Instance type does not exist, creating it.")
                 instance_data = self._generate_instance_type_payload(context)
 
@@ -170,7 +213,7 @@ class InstallNodeAgent(BaseYnpModule):
             else:
                 logging.error(f"Request error: {http_err}")
                 sys.exit(1)
-        except requests.exceptions.RequestException as req_err:
+        except Exception as req_err:
             logging.error(f"Request error: {req_err}")
             sys.exit(1)
         except ValueError as json_err:
@@ -200,11 +243,10 @@ class InstallNodeAgent(BaseYnpModule):
         try:
             # Make the GET request
             response = self._get_provider(context)
-            response.raise_for_status()  # Raise an HTTPError for bad responses (4xx and 5xx)
 
             # Parse the JSON response
             try:
-                provider_data = response.json()
+                provider_data = response['json']()
                 if isinstance(provider_data, list) and len(provider_data) > 0:
                     provider_data = provider_data[0]
                     provider_details = provider_data.get('details', {})
@@ -245,7 +287,7 @@ class InstallNodeAgent(BaseYnpModule):
             except ValueError as json_err:
                 logging.error(f"Error parsing JSON response: {json_err}")
                 sys.exit(1)
-        except requests.exceptions.RequestException as req_err:
+        except Exception as req_err:
             logging.error(f"Request error: {req_err}")
             sys.exit(1)
 

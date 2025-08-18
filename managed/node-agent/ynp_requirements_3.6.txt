@@ -1,0 +1,5 @@
+setuptools==53.0.0
+wheel==0.37.1
+markupsafe==2.0.1
+Jinja2==3.0.3
+PyYAML==6.0.1
