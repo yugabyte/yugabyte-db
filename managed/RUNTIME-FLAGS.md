@@ -147,6 +147,8 @@
 | "Enable Node Agent Message Compression" | "yb.node_agent.enable_message_compression" | "GLOBAL" | "Enable compression for message sent over node agent channel." | "Boolean" |
 | "Disable Node Agent Background Installation After Migration" | "yb.node_agent.disable_bg_install_post_migration" | "GLOBAL" | "Install node agent synchronously during a task instead after migration if it is true." | "Boolean" |
 | "Enable Task Runtime Info on Retry" | "yb.task.enable_task_runtime_info_on_retry" | "GLOBAL" | "Use the runtime info from the previously failed task on retry" | "Boolean" |
+| "Enable Systemd Debug Logging" | "yb.ansible.systemd_debug" | "GLOBAL" | "Enable systemd debug logging for systemctl service management commands." | "Boolean" |
+| "Keep Remote Files from an ansible run" | "yb.ansible.keep_remote_files" | "GLOBAL" | "Keep remote files after ansible run for debugging." | "Boolean" |
 | "Clock Skew" | "yb.alert.max_clock_skew_ms" | "UNIVERSE" | "Default threshold for Clock Skew alert" | "Duration" |
 | "Health Log Output" | "yb.health.logOutput" | "UNIVERSE" | "It determines whether to log the output of the node health check script to the console" | "Boolean" |
 | "Node Checkout Time" | "yb.health.nodeCheckTimeoutSec" | "UNIVERSE" | "The timeout (in seconds) for node check operation as part of universe health check" | "Integer" |

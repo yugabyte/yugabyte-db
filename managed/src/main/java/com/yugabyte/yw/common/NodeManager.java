@@ -276,6 +276,13 @@ public class NodeManager extends DevopsBase {
       command.add("--node_metadata");
       command.add(detailsJson.toString());
     }
+    // Add systemd debugging for any systemctl service management commands.
+    if (confGetter.getGlobalConf(GlobalConfKeys.enableSystemdDebugLogging)) {
+      command.add("--systemd_debug");
+    }
+    if (confGetter.getGlobalConf(GlobalConfKeys.ansibleKeepRemoteFiles)) {
+      command.add("--ansible_keep_remote_files");
+    }
     return command;
   }
 
