@@ -225,9 +225,9 @@ Time: 337.154 ms
 
 ### Using wildcards for zones
 
-In certain cases, it may be necessary to use the wildcard `*` for a zone in the placement block list. It is mostly useful when there are more than `RF` zones in the cluster, where `RF` is the desired placement of the table. In such cases, the wildcard `*` allows choosing for any of the zones in a given region, or any of the regions in a given cloud. 
+In certain cases, it may be necessary to use the wildcard `*` for a zone in the placement block list. It is mostly useful when there are more than `RF` zones in the cluster, where `RF` is the desired replication factor of the table. In such cases, the wildcard `*` allows choosing for any of the zones in a given region, or any of the regions in a given cloud. 
 
-For example, assume a cluster is spread out over regions `us-east-1` (AZs `us-east-1a`, `us-east-1b`), `us-central-1` (AZs `us-central-1a`, `us-central-1b`), `us-west-1` (AZs `us-west-1a`, `us-west-1b`) and we wish to create an RF3 tablespace. An example tablespace like below allows copies to be placed in each of the three regions without specifying the exact AZs in those regions. This can increase the resilience of the cluster compared to explicitly specifing exactly one AZ per region. However, note that, in the wildcard placement mode, each AZ in the region must be over-provisioned appropriately to handle the tablets that it may receive from the other AZ's failover.
+For example, assume a cluster is spread out over regions `us-east-1` (AZs `us-east-1a`, `us-east-1b`), `us-central-1` (AZs `us-central-1a`, `us-central-1b`) and `us-west-1` (AZs `us-west-1a`, `us-west-1b`) and we wish to create an RF3 tablespace. The tablespace below allows copies to be placed in each of the three regions without specifying the exact AZs in those regions. This can increase the resilience of the cluster compared to explicitly specifying exactly one AZ per region. However, note that, in the wildcard placement mode, each AZ in the region must be over-provisioned appropriately to handle the tablets that it may receive from the other AZ's failover.
 
 ```sql
 CREATE TABLESPACE multi_region_wildcard_tablespace
@@ -240,7 +240,7 @@ CREATE TABLE multi_region_table (id INTEGER, field text)
   TABLESPACE multi_region_wildcard_tablespace;
 ```
 
-Similarly, a tablespace like below allows copies to be placed in any zone and region in the aws cloud.
+Similarly, the tablespace below allows copies to be placed in any zone and region in the `aws` cloud.
 
 ```sql
 CREATE TABLESPACE aws_wildcard_tablespace
@@ -427,7 +427,6 @@ You can see the replication info for our table has changed:
 The RaftConfig has also changed to match the new tablespace:
 
 ![YB-Master UI: critical_table raft config](/images/explore/tablespaces/5_critical_table_raft_config_final.png)
-
 
 ## What's next?
 
