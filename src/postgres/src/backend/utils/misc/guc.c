@@ -13354,9 +13354,11 @@ static void
 assign_yb_enable_optimizer_statistics(bool new_value, void *extra)
 {
 	yb_enable_optimizer_statistics = new_value;
-	yb_enable_cbo = (new_value? YB_COST_MODEL_LEGACY_STATS:
-							(yb_enable_base_scans_cost_model? YB_COST_MODEL_ON:
-							 YB_COST_MODEL_LEGACY));
+
+	yb_enable_cbo = (yb_enable_base_scans_cost_model ? YB_COST_MODEL_ON :
+					 (new_value ?
+					  YB_COST_MODEL_LEGACY_STATS : YB_COST_MODEL_LEGACY));
+
 	yb_ignore_stats = false;
 }
 
