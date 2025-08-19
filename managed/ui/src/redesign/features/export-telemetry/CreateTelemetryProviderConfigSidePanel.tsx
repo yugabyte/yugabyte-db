@@ -115,7 +115,7 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
             try {
               payload.config.credentials = JSON.parse(jsonVal);
             } catch (error) {
-              toast.error(`An error occured while parsing the service account JSON: ${error}`);
+              toast.error(`An error occurred while parsing the service account JSON: ${error}`);
               return;
             }
           }
@@ -148,10 +148,13 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
           payload.config.basicAuth = values.config?.basicAuth;
         }
       }
-      await createTelemetryProvider.mutateAsync(payload);
-    } catch (e) {
-      toast.error(createErrorMessage(e));
-    }
+      if (values.config.type === TelemetryProviderType.DYNATRACE) {
+        payload.config.endpoint = values.config?.endpointUrl;
+        payload.config.apiToken = values.config?.apiToken;
+      }
+      return await createTelemetryProvider.mutateAsync(payload);
+    } catch (e) {}
+    return;
   });
 
   const renderDatadogForm = () => {
@@ -525,6 +528,73 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
     );
   };
 
+  /**
+   * Tech debt: For consistency this follows the existing render<telemetryProvider>Form
+   * pattern where each of the form fields are returned by a function in this React
+   * component.
+   * Given we are supporting more providers, we should refactor this so each provider
+   * integration is a separate file.
+   * Opened a ticket to track this refactoring:
+   */
+  const renderDynatraceForm = () => {
+    return (
+      <>
+        <Box display={'flex'} flexDirection={'column'} mt={3} width="100%">
+          <YBLabel>{t('dynatrace.endpointUrl')}</YBLabel>
+          <YBInputField
+            control={control}
+            name="config.endpointUrl"
+            fullWidth
+            disabled={isViewMode}
+            inputProps={{
+              'data-testid': 'DynatraceForm-EndpointUrl'
+            }}
+            required={true}
+            rules={{
+              required: 'This field is required',
+              validate: {
+                validUrl: (value) => {
+                  if (!value || typeof value !== 'string') {
+                    return t('dynatrace.endpointUrlValidationError');
+                  }
+                  try {
+                    const url = new URL(value);
+                    if (!url.protocol || !url.hostname) {
+                      return t('dynatrace.endpointUrlValidationError');
+                    }
+                    return true;
+                  } catch (error) {
+                    return t('dynatrace.endpointUrlValidationError');
+                  }
+                }
+              }
+            }}
+          />
+        </Box>
+        <Box display="flex" flexDirection="column" width="100%" mt={3}>
+          <YBLabel>{t('dynatrace.apiToken')}</YBLabel>
+          <YBInputField
+            control={control}
+            name="config.apiToken"
+            fullWidth
+            disabled={isViewMode}
+            inputProps={{
+              'data-testid': 'DynatraceForm-AccessToken'
+            }}
+            required={true}
+            rules={{
+              required: 'This field is required',
+              pattern: {
+                value: /^[a-zA-Z0-9]{6}\.[a-zA-Z0-9]{24}\.[a-zA-Z0-9]{64}$/,
+                message: t('dynatrace.apiTokenValidationError')
+              }
+            }}
+          />
+        </Box>
+      </>
+    );
+  };
+
   const canCreateTelemetryProvider = hasNecessaryPerm(ApiPermissionMap.CREATE_TELEMETRY_PROVIDER);
 
   return (
@@ -589,6 +659,7 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
             {providerTypeValue === TelemetryProviderType.LOKI &&
               isLokiTelemetryEnabled &&
               renderLokiForm()}
+            {providerTypeValue === TelemetryProviderType.DYNATRACE && renderDynatraceForm()}
           </Box>
         </Box>
       </FormProvider>

@@ -1,5 +1,5 @@
 import { GCPServiceAccount } from '../../../components/configRedesign/providerRedesign/types';
-import { UniverseItem } from '@app/components/configRedesign/providerRedesign/providerView/providerDetails/UniverseTable';
+import { Universe } from '@app/redesign/helpers/dtos';
 
 export enum TelemetryProviderType {
   DATA_DOG = 'DATA_DOG',
@@ -38,6 +38,9 @@ export interface ExportLogFormFields {
     authType?: string;
     organizationID?: string;
     basicAuth?: BasicAuth;
+    // Dynatrace
+    endpointUrl?: string;
+    apiToken?: string;
   };
 }
 
@@ -47,11 +50,14 @@ export interface BasicAuth {
 }
 
 export interface ExportLogPayload extends ExportLogFormFields {
-  tags?: {
-    audit_user: string;
-  };
+  tags?: Record<string, string>;
 }
 
 export interface TelemetryProviderItem extends ExportLogPayload {
-  linkedUniverses: UniverseItem[];
+  linkedUniverses: {
+    universesWithLogExporter: Universe[];
+    universesWithMetricsExporter: Universe[];
+  };
+
+  uuid?: string;
 }

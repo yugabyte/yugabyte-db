@@ -46,18 +46,28 @@ export const usePillStyles = makeStyles((theme) => ({
       color: theme.palette.ybacolors.pillInactiveText,
       backgroundColor: theme.palette.ybacolors.pillInactiveBackground
     },
+    '&$metadataWhite': {
+      color: theme.palette.grey[900],
+      backgroundColor: theme.palette.common.white,
+      border: `1px solid ${theme.palette.grey[300]}`
+    },
     '&$productOrange': {
       fontWeight: 500,
       color: theme.palette.common.white,
       backgroundColor: theme.palette.orange[500]
+    },
+    '&$small': {
+      height: 20
     }
   },
+  small: {},
   icon: {},
   ready: {},
   inProgress: {},
   warning: {},
   danger: {},
   metadataGrey: {},
+  metadataWhite: {},
   productOrange: {}
 }));
 

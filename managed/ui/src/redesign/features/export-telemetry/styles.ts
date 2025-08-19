@@ -65,5 +65,12 @@ export const useExportTelemetryStyles = makeStyles((theme) => ({
   },
   mr4: {
     marginRight: theme.spacing(0.5)
+  },
+  universeList: {
+    paddingInlineStart: theme.spacing(2),
+
+    '& li': {
+      listStyleType: 'disc'
+    }
   }
 }));

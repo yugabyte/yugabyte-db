@@ -1,11 +1,12 @@
-import { FC, useState } from 'react';
-import clsx from 'clsx';
-import { get, isEmpty } from 'lodash';
+import { useState } from 'react';
+import { isEmpty } from 'lodash';
 import { useQuery } from 'react-query';
 import { useTranslation, Trans } from 'react-i18next';
 import { Dropdown, MenuItem } from 'react-bootstrap';
 import { TableHeaderColumn } from 'react-bootstrap-table';
 import { Box, Typography, Link } from '@material-ui/core';
+import clsx from 'clsx';
+
 import { YBButton, YBTooltip } from '../../components';
 import { YBTable } from '../../../components/common/YBTable';
 import { YBLoading } from '../../../components/common/indicators';
@@ -15,8 +16,8 @@ import { DeleteTelemetryProviderConfigModal } from './DeleteTelemetryProviderCon
 import { api, telemetryProviderQueryKey, universeQueryKey } from '../../helpers/api';
 import { TelemetryProviderItem } from './types';
 import { TelemetryProviderMin } from './DeleteTelemetryProviderConfigModal';
-import { getLinkedUniverses } from './helpers';
-import { TP_FRIENDLY_NAMES } from './constants';
+import { TelemetryType, TP_FRIENDLY_NAMES } from './constants';
+import { getIsTelemetryProviderConfigInUse, getLinkedUniverses } from './utils';
 
 //RBAC
 import { ApiPermissionMap } from '../rbac/ApiAndUserPermMapping';
@@ -55,70 +56,58 @@ export const ExportTelemetryConfigurations = () => {
 
   if (logslistLoading || universeListLoading || isFetching) return <YBLoading />;
 
-  const finalData = data?.map((logData) => {
-    const linkedUniverses = getLinkedUniverses(logData?.uuid, universeList || []);
-    return { ...logData, type: logData?.config?.type || '', linkedUniverses };
-  });
+  const telemetryProviderTableData: TelemetryProviderItem[] =
+    data?.map((telemetryProvider) => {
+      const linkedUniverses = getLinkedUniverses(telemetryProvider.uuid, universeList ?? []);
+      return { ...telemetryProvider, type: telemetryProvider?.config?.type ?? '', linkedUniverses };
+    }) ?? [];
 
   const handleRowClick = (row: TelemetryProviderItem) => {
     setExportModalProps(row);
     setOpenExportModal(true);
   };
 
-  const formatUsage = (_: unknown, row: any) => {
-    return row.linkedUniverses.length ? (
+  const formatLogExporterUsage = (_: unknown, row: TelemetryProviderItem) => {
+    return formatUsage(TelemetryType.LOGS, row);
+  };
+
+  const formatMetricsExporterUsage = (_: unknown, row: TelemetryProviderItem) => {
+    return formatUsage(TelemetryType.METRICS, row);
+  };
+
+  const formatUsage = (
+    telemetryType: TelemetryType,
+    telemetryProviderItem: TelemetryProviderItem
+  ) => {
+    const universesConfiguredForTelemetryExport =
+      telemetryType === TelemetryType.LOGS
+        ? telemetryProviderItem.linkedUniverses.universesWithLogExporter
+        : telemetryProviderItem.linkedUniverses.universesWithMetricsExporter;
+    return universesConfiguredForTelemetryExport.length ? (
       <Box display="flex" gridGap="5px" alignItems="center">
         <Typography variant="body2">{t('inUse')}</Typography>
-        <div className={pillClasses.pill}>{row.linkedUniverses.length}</div>
+        <YBTooltip
+          title={
+            <>
+              <ul className={classes.universeList}>
+                {universesConfiguredForTelemetryExport.map((universe) => (
+                  <li key={universe.universeUUID}>{universe.name}</li>
+                ))}
+              </ul>
+            </>
+          }
+        >
+          <div className={clsx(pillClasses.pill, pillClasses.small, pillClasses.metadataWhite)}>
+            {universesConfiguredForTelemetryExport.length}
+          </div>
+        </YBTooltip>
       </Box>
     ) : (
       <Typography variant="body2">{t('notInUse')}</Typography>
     );
   };
 
-  const formatUniverseList = (_: unknown, row: any) => {
-    const universeNameArr = row.linkedUniverses.map((ul: any) =>
-      get(ul, 'linkedClusters[0].userIntent.universeName')
-    );
-    const displayCount = 4;
-    const beforeDisplayCount = universeNameArr.slice(0, displayCount);
-    let afterDisplayCount = [];
-    if (universeNameArr.length > displayCount) {
-      afterDisplayCount = universeNameArr.slice(displayCount);
-    }
-
-    return row.linkedUniverses.length ? (
-      <Box display="flex" flexDirection={'row'}>
-        {beforeDisplayCount.map((un: string) => {
-          return (
-            <div className={clsx(pillClasses.pill, classes.mr4)} key={un}>
-              {un}
-            </div>
-          );
-        })}
-        {afterDisplayCount.length > 0 && (
-          <YBTooltip
-            title={
-              <>
-                {afterDisplayCount.map((un: string) => (
-                  <span key={un}>
-                    {un}
-                    <br />
-                  </span>
-                ))}
-              </>
-            }
-          >
-            <div className={clsx(pillClasses.pill)}>+{afterDisplayCount.length}</div>
-          </YBTooltip>
-        )}
-      </Box>
-    ) : (
-      <span>-</span>
-    );
-  };
-
-  const formatActions = (cell: any, row: any) => {
+  const formatActions = (cell: any, telemetryProviderItem: TelemetryProviderItem) => {
     return (
       <Dropdown id="table-actions-dropdown" pullRight onClick={(e) => e.stopPropagation()}>
         <Dropdown.Toggle noCaret>
@@ -133,11 +122,14 @@ export const ExportTelemetryConfigurations = () => {
             <MenuItem
               eventKey="1"
               onSelect={() => {
-                setDeleteModalProps({ name: row.name, uuid: row.uuid });
+                setDeleteModalProps({
+                  name: telemetryProviderItem.name,
+                  uuid: telemetryProviderItem.uuid ?? ''
+                });
                 setDeleteModal(true);
               }}
               data-testid="ExportLog-DeleteConfiguration"
-              disabled={!isEmpty(row.linkedUniverses)}
+              disabled={getIsTelemetryProviderConfigInUse(telemetryProviderItem)}
             >
               <YBLabelWithIcon icon="fa fa-trash">{t('deleteConfig')}</YBLabelWithIcon>
             </MenuItem>
@@ -151,7 +143,7 @@ export const ExportTelemetryConfigurations = () => {
       <Box mb={4}>
         <Typography className={classes.mainTitle}>{t('heading')}</Typography>
       </Box>
-      {!isEmpty(finalData) ? (
+      {!isEmpty(telemetryProviderTableData) ? (
         <Box className={classes.exportListContainer}>
           <Box display={'flex'} flexDirection={'row'} justifyContent={'flex-end'}>
             <RbacValidator accessRequiredOn={ApiPermissionMap.CREATE_TELEMETRY_PROVIDER} isControl>
@@ -168,7 +160,7 @@ export const ExportTelemetryConfigurations = () => {
           </Box>
           <Box mt={4} width="100%" height="100%">
             <YBTable
-              data={finalData || []}
+              data={telemetryProviderTableData || []}
               options={{
                 onRowClick: handleRowClick
               }}
@@ -185,18 +177,18 @@ export const ExportTelemetryConfigurations = () => {
                 <span>{t('exportName')}</span>
               </TableHeaderColumn>
               <TableHeaderColumn
-                width="200"
+                width="100"
                 dataField="type"
                 dataSort
                 dataFormat={(cell) => <span>{TP_FRIENDLY_NAMES[cell]}</span>}
               >
                 <span>{t('exportTo')}</span>
               </TableHeaderColumn>
-              <TableHeaderColumn dataFormat={formatUsage} width="200">
-                {t('usageHeader')}
+              <TableHeaderColumn dataFormat={formatLogExporterUsage} width="200">
+                {t('logsExportUsage')}
               </TableHeaderColumn>
-              <TableHeaderColumn dataFormat={formatUniverseList}>
-                {t('assignedUniverses')}
+              <TableHeaderColumn dataFormat={formatMetricsExporterUsage} width="200">
+                {t('metricsExportUsage')}
               </TableHeaderColumn>
               <TableHeaderColumn
                 columnClassName={styles.exportActionsColumn}

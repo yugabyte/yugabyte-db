@@ -1,5 +1,6 @@
 import { TelemetryProviderType } from './types';
 
+// TODO: move this to en.json
 export const TP_FRIENDLY_NAMES = {
   [TelemetryProviderType.DATA_DOG]: 'Datadog',
   [TelemetryProviderType.SPLUNK]: 'Splunk',
@@ -53,5 +54,11 @@ export const LOKI_AUTH_TYPES = [
   {
     label: 'No Auth',
     value: 'NoAuth'
-  },
+  }
 ];
+
+export const TelemetryType = {
+  LOGS: 'logs',
+  METRICS: 'metrics'
+};
+export type TelemetryType = typeof TelemetryType[keyof typeof TelemetryType];

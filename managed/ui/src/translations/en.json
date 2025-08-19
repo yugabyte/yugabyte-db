@@ -2781,7 +2781,8 @@
       "deleteConfiguration": "Delete Configuration",
       "exportName": "Export Configuration name",
       "exportTo": "Export to",
-      "usageHeader": "Usage",
+      "logsExportUsage": "Logs Export",
+      "metricsExportUsage": "Metrics Export",
       "inUse": "In Use",
       "notInUse": "Not in Use",
       "assignedUniverses": "Assigned Universes",
@@ -2815,6 +2816,12 @@
       "gcpProject": "Project (Optional)",
       "uploadGCPCredentails": "Upload GCP credentails",
       "gcpDescription": "Only JSON Files allowed. <br /><br />Find your GCP service account key under Service Accounts<br /> in Google Cloud console.",
+      "dynatrace": {
+        "endpointUrl": "Dynatrace Endpoint URL",
+        "apiToken": "Dynatrace Access Token",
+        "endpointUrlValidationError": "Invalid endpoint format. Must be a valid URL.",
+        "apiTokenValidationError": "The access token should start with 6-character prefix, followed by 24-character public identifier, and 64-character string secret portion."
+      },
       "deleteModalTitle": "Delete Export Configuration",
       "deleteModalMsg": "Are you sure you want to delete <strong>{{name}}</strong> ?",
       "deleteModalSubmitLabel": "Delete Export Configuration",
