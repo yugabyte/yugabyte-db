@@ -50,6 +50,7 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/entity_ids_types.h"
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol.pb.h"
@@ -1599,6 +1600,23 @@ Status WaitForTabletIsDeletedOrHidden(
     },
     timeout,
     Format("Wait for tablet is deleted or hidden: $0", tablet_id));
+}
+
+Result<TableId> CreateSimpleTable(
+    master::MasterDDLClient& client, const NamespaceName& namespace_name,
+    const TableName& table_name, MonoDelta timeout) {
+  Schema schema{{ColumnSchema("key", DataType::INT32, ColumnKind::HASH)}};
+  master::CreateTableRequestPB request;
+  request.set_name(table_name);
+  SchemaToPB(schema, request.mutable_schema());
+  if (!namespace_name.empty()) {
+    request.mutable_namespace_()->set_name(namespace_name);
+  }
+  request.mutable_partition_schema()->set_hash_schema(PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA);
+  request.mutable_schema()->mutable_table_properties()->set_num_tablets(1);
+  auto table_id = VERIFY_RESULT(client.CreateTable(request));
+  RETURN_NOT_OK(client.WaitForCreateTableDone(table_id, timeout));
+  return table_id;
 }
 
 } // namespace itest

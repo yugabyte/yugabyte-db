@@ -69,9 +69,10 @@
 
 #include "yb/integration-tests/mini_cluster.h"
 
-#include "yb/master/master_client.pb.h"
-#include "yb/master/master_fwd.h"
 #include "yb/master/master_client.fwd.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_ddl_client.h"
+#include "yb/master/master_fwd.h"
 
 #include "yb/rpc/rpc_controller.h"
 
@@ -576,6 +577,10 @@ Status GetLastOpIdForMasterReplica(
 
 Status WaitForTabletIsDeletedOrHidden(
     master::CatalogManagerIf* catalog_manager, const TabletId& tablet_id, MonoDelta timeout);
+
+Result<TableId> CreateSimpleTable(
+    master::MasterDDLClient& client, const NamespaceName& namespace_name,
+    const TableName& table_name, MonoDelta timeout);
 
 } // namespace itest
 } // namespace yb
