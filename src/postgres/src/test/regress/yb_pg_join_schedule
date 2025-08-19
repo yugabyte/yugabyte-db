@@ -13,3 +13,4 @@ test: yb_pg_join
 
 test: yb_join_batching
 test: yb_join_batching_plans
+test: yb_legacy_join_plan

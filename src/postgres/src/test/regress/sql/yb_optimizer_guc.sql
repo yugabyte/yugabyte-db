@@ -17,7 +17,9 @@ declare
                		 '{"(on, on, off)"}'::text[] ||
                          '{"(legacy_mode, off, off)"}'::text[] ||
                          '{"(off, off, off)"}'::text[] || /* legacy ignore stats */
-                         '{"(legacy_stats_mode, off, on)"}'::text[];
+                         '{"(legacy_stats_mode, off, on)"}'::text[] ||
+                         '{"(legacy_bnl_mode, off, off)"}'::text[] ||
+                         '{"(legacy_stats_bnl_mode, off, on)"}'::text[];
 begin
     execute 'show yb_enable_cbo' into cbo;
     execute 'show yb_enable_base_scans_cost_model' into bscm;
@@ -38,7 +40,9 @@ reset yb_enable_optimizer_statistics;
 
 select check_optimizer_guc() "(cbo, bscm, stats)";
 
--- change yb_enable_cbo
+--------------------------
+-- change yb_enable_cbo --
+--------------------------
 
 set yb_enable_cbo = on;
 select check_optimizer_guc() "(cbo, bscm, stats)";
@@ -50,6 +54,12 @@ set yb_enable_cbo = on;
 select check_optimizer_guc() "(cbo, bscm, stats)";
 
 set yb_enable_cbo = legacy_mode;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+
+set yb_enable_cbo = on;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+
+set yb_enable_cbo = legacy_bnl_mode;
 select check_optimizer_guc() "(cbo, bscm, stats)";
 
 set yb_enable_cbo = on;
@@ -73,11 +83,19 @@ select check_optimizer_guc() "(cbo, bscm, stats)";
 set yb_enable_cbo = legacy_stats_mode;
 select check_optimizer_guc() "(cbo, bscm, stats)";
 
+set yb_enable_cbo = on;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+
+set yb_enable_cbo = legacy_bnl_mode;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+
 set yb_enable_cbo = off;
 select check_optimizer_guc() "(cbo, bscm, stats)";
 
 
--- turn on/off old parameters
+--------------------------------
+-- turn on/off old parameters --
+--------------------------------
 
 -- (bscm, stats) off, off -> stats = on
 set yb_enable_optimizer_statistics = on;
@@ -112,7 +130,63 @@ set yb_enable_base_scans_cost_model = off;
 select check_optimizer_guc() "(cbo, bscm, stats)";
 
 
--- boolean aliases
+--------------------------------------------------------------------
+-- no legacy_(stats_)bnl_mode after changing either bscm or stats --
+--------------------------------------------------------------------
+
+set yb_enable_cbo = legacy_bnl_mode;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+
+set yb_enable_base_scans_cost_model = on;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+
+set yb_enable_cbo = legacy_bnl_mode;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+
+set yb_enable_base_scans_cost_model = off;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+
+set yb_enable_cbo = legacy_bnl_mode;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+
+set yb_enable_optimizer_statistics = on;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+
+set yb_enable_cbo = legacy_bnl_mode;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+
+set yb_enable_optimizer_statistics = off;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+
+
+set yb_enable_cbo = legacy_stats_bnl_mode;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+
+set yb_enable_base_scans_cost_model = on;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+
+set yb_enable_cbo = legacy_stats_bnl_mode;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+
+set yb_enable_base_scans_cost_model = off;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+
+set yb_enable_cbo = legacy_stats_bnl_mode;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+
+set yb_enable_optimizer_statistics = on;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+
+set yb_enable_cbo = legacy_stats_bnl_mode;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+
+set yb_enable_optimizer_statistics = off;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+
+
+---------------------
+-- boolean aliases --
+---------------------
 
 set yb_enable_cbo = true;
 show yb_enable_cbo;
@@ -128,7 +202,8 @@ set yb_enable_cbo = 0;
 show yb_enable_cbo;
 
 
--- error
+-----------
+-- error --
+-----------
 
 set yb_enable_cbo = oui;
-
