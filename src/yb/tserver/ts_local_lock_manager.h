@@ -28,6 +28,7 @@
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tserver.pb.h"
 
+#include "yb/util/metrics.h"
 #include "yb/util/status_callback.h"
 
 namespace yb {
@@ -61,6 +62,7 @@ class TSLocalLockManager {
   TSLocalLockManager(
       const server::ClockPtr& clock, TabletServerIf* tablet_server,
       server::RpcServerBase& messenger_server, ThreadPool* thread_pool,
+      const MetricEntityPtr& metric_entity,
       std::shared_ptr<ObjectLockTracker> lock_tracker = nullptr,
       docdb::ObjectLockSharedStateManager* shared_manager = nullptr);
   ~TSLocalLockManager();

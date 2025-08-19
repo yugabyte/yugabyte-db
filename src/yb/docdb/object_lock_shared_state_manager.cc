@@ -87,18 +87,18 @@ void ObjectLockSharedStateManager::SetupShared(ObjectLockSharedState& shared) {
   shared_ = &shared;
 }
 
-void ObjectLockSharedStateManager::ConsumePendingSharedLockRequests(
+size_t ObjectLockSharedStateManager::ConsumePendingSharedLockRequests(
     const LockRequestConsumer& consume) {
-  CallWithRequestConsumer(
-      [this](auto&& c) PARENT_PROCESS_ONLY { shared_->ConsumePendingLockRequests(c); },
+  return CallWithRequestConsumer(
+      [this](auto&& c) PARENT_PROCESS_ONLY { return shared_->ConsumePendingLockRequests(c); },
       consume);
 }
 
-void ObjectLockSharedStateManager::ConsumeAndAcquireExclusiveLockIntents(
+size_t ObjectLockSharedStateManager::ConsumeAndAcquireExclusiveLockIntents(
     const LockRequestConsumer& consume, std::span<const ObjectLockPrefix*> object_ids) {
-  CallWithRequestConsumer(
+  return CallWithRequestConsumer(
       [this, object_ids](auto&& c) PARENT_PROCESS_ONLY {
-        shared_->ConsumeAndAcquireExclusiveLockIntents(c, object_ids);
+        return shared_->ConsumeAndAcquireExclusiveLockIntents(c, object_ids);
       },
       consume);
 }
@@ -117,10 +117,10 @@ TransactionId ObjectLockSharedStateManager::TEST_last_owner() const {
 }
 
 template<typename ConsumeMethod>
-void ObjectLockSharedStateManager::CallWithRequestConsumer(
+size_t ObjectLockSharedStateManager::CallWithRequestConsumer(
     ConsumeMethod&& method, const LockRequestConsumer& consume) {
   if (!shared_) {
-    return;
+    return 0;
   }
 
   auto consume_fastpath_request = [this, &consume](ObjectLockFastpathRequest request) {
@@ -149,7 +149,7 @@ void ObjectLockSharedStateManager::CallWithRequestConsumer(
   };
 
   ParentProcessGuard g;
-  method(make_lw_function(consume_fastpath_request));
+  return method(make_lw_function(consume_fastpath_request));
 }
 
 } // namespace yb::docdb

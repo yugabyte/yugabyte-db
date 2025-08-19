@@ -19,6 +19,7 @@
 
 #include "yb/server/server_fwd.h"
 
+#include "yb/util/metrics.h"
 #include "yb/util/status_callback.h"
 
 namespace yb {
@@ -65,7 +66,7 @@ class ObjectLockManagerImpl;
 class ObjectLockManager {
  public:
   ObjectLockManager(
-      ThreadPool* thread_pool, server::RpcServerBase& server,
+      ThreadPool* thread_pool, server::RpcServerBase& server, const MetricEntityPtr& metric_entity,
       ObjectLockSharedStateManager* shared_manager = nullptr);
   ~ObjectLockManager();
 

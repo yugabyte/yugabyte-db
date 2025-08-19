@@ -125,10 +125,10 @@ class TSLocalLockManager::Impl {
   Impl(
       const server::ClockPtr& clock, TabletServerIf* tablet_server,
       server::RpcServerBase& messenger_server, ThreadPool* thread_pool,
-      std::shared_ptr<ObjectLockTracker> lock_tracker,
+      const MetricEntityPtr& metric_entity, std::shared_ptr<ObjectLockTracker> lock_tracker,
       docdb::ObjectLockSharedStateManager* shared_manager)
       : clock_(clock), server_(tablet_server), messenger_base_(messenger_server),
-        object_lock_manager_(thread_pool, messenger_server, shared_manager),
+        object_lock_manager_(thread_pool, messenger_server, metric_entity, shared_manager),
         poller_("TSLocalLockManager", std::bind(&Impl::Poll, this)) {
     if (lock_tracker) {
       lock_tracker_ = std::move(lock_tracker);
@@ -559,11 +559,11 @@ class TSLocalLockManager::Impl {
 TSLocalLockManager::TSLocalLockManager(
     const server::ClockPtr& clock, TabletServerIf* tablet_server,
     server::RpcServerBase& messenger_server, ThreadPool* thread_pool,
-    std::shared_ptr<ObjectLockTracker> lock_tracker,
+    const MetricEntityPtr& metric_entity, std::shared_ptr<ObjectLockTracker> lock_tracker,
     docdb::ObjectLockSharedStateManager* shared_manager)
       : impl_(new Impl(
           clock, CHECK_NOTNULL(tablet_server), messenger_server, CHECK_NOTNULL(thread_pool),
-          lock_tracker, shared_manager)) {}
+          metric_entity, lock_tracker, shared_manager)) {}
 
 TSLocalLockManager::~TSLocalLockManager() {}
 
