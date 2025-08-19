@@ -94,7 +94,7 @@
 #include "commands/yb_profile.h"
 #include "commands/yb_tablegroup.h"
 #include "miscadmin.h"
-#include "pg_yb_utils.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 
 
 /*

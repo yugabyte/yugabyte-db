@@ -138,10 +138,10 @@
 #include "commands/yb_tablegroup.h"
 #include "executor/ybModifyTable.h"
 #include "parser/analyze.h"
-#include "pg_yb_utils.h"
 #include "statistics/statistics.h"
 #include "utils/plancache.h"
 #include "utils/regproc.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 
 /*
  * ON COMMIT action list

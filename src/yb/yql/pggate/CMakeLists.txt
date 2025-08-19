@@ -60,6 +60,7 @@ set(PGGATE_SRCS
     pg_txn_manager.cc
     pg_value.cc
     pg_ybctid_reader_provider.cc
+    ybc_gflags.cc
     ybc_pg_shared_mem.cc
     ybc_pggate.cc)
 

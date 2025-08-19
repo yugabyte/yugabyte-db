@@ -37,8 +37,8 @@
 #include "catalog/pg_collation.h"
 #include "catalog/pg_namespace.h"
 #include "commands/yb_cmds.h"
-#include "pg_yb_utils.h"
 #include "utils/fmgroids.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 
 
 /* Number of OIDs to prefetch (preallocate) per XLOG write */

@@ -110,12 +110,12 @@
 #include "commands/dbcommands.h"
 #include "commands/yb_cmds.h"
 #include "partitioning/partdesc.h"
-#include "pg_yb_utils.h"
 #include "utils/catcache.h"
 #include "utils/partcache.h"
 #include "utils/relcache.h"
 #include "utils/yb_inheritscache.h"
 #include "utils/yb_tuplecache.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 
 #define RELCACHE_INIT_FILEMAGIC		0x573266	/* version ID value */
 

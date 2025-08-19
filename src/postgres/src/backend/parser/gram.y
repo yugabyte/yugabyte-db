@@ -67,8 +67,8 @@
 
 /* YB includes */
 #include "miscadmin.h"
-#include "pg_yb_utils.h"
 #include "utils/builtins.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 
 
 /*
