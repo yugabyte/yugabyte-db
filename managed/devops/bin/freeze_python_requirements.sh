@@ -12,6 +12,8 @@ set -euo pipefail
 
 . "${BASH_SOURCE%/*}"/common.sh
 
+SETUPTOOLS_PY38_VERSION="72.2.0"
+
 if [[ ! ${1:-} =~ ^(-y|--yes)$ ]]; then
   echo >&2 "This will remove and re-create the entire virtualenv from ${virtualenv_dir} in order"
   echo >&2 "to re-generate 'frozen' python dependency versions. It is only necessary to run this"
@@ -48,6 +50,10 @@ log "Generating $FROZEN_REQUIREMENTS_FILE"
 # Use LANG=C to force case-sensitive sorting.
 # https://stackoverflow.com/questions/10326933/case-sensitive-sort-unix-bash
 ( set -x; run_pip freeze --all | LANG=C sort >"$FROZEN_REQUIREMENTS_FILE" )
+
+# Handle the different setup tool version requirements (78.1.1 is only on 3.9 and up
+sed -ie "s/\(setuptools.*==.*\)/\1;python_version >= '3.9'/" $FROZEN_REQUIREMENTS_FILE
+echo "setuptools==${SETUPTOOLS_PY38_VERSION};python_version < '3.9'" >> $FROZEN_REQUIREMENTS_FILE
 
 log_empty_line
 log "Contents of $FROZEN_REQUIREMENTS_FILE:"
