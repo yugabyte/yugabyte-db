@@ -35,7 +35,7 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 - Enhanced PostgreSQL permissions grant script by adding an option for live migrations to either transfer table ownership to the migration user or grant the original owner's permissions to it.
 - Improved import data retry logic to skip non-retryable errors such as data exceptions and integrity violations.
 - Removed redundant index performance optimization reports from the `assess-migration` report as `export schema` now automatically removes redundant indexes.
-- Enhanced schema optimization report in `export schema` to list all recommendations—applied or skipped, even when the `--skip-performance-optimizations` / `--skip-recommendations` flags are used.
+- Enhanced schema optimization report in `export schema` to list all recommendations, whether they are applied or skipped, even when the `--skip-performance-optimizations` / `--skip-recommendations` flags are used.
 
 ### Bug fix
 

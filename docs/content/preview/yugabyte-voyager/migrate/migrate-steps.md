@@ -216,11 +216,11 @@ The `yb-voyager export schema` command extracts the schema from the source datab
 **For PostgreSQL migrations**:
 
 - Recommended schema optimizations from the [assess migration](#assess-migration) report are applied to ensure YugabyteDB compatibility and optimal performance.
-- A **Schema Optimization Report** is generated, that details every change with explanations for your review.
+- A **Schema Optimization Report**, with details and an explanation of every change, is generated for your review.
 
 **For MySQL migrations**:
 
-- YugabyteDB Voyager renames the indexes to avoid naming conflicts. MySQL supports two or more indexes to have the same name in the same database, provided they are for different tables. Similarly to PostgreSQL, YugabyteDB does not support duplicate index names in the same schema. To avoid index name conflicts during export schema, yb-voyager prefixes each index name with the associated table name.
+- YugabyteDB Voyager renames the indexes to avoid naming conflicts. MySQL allows two or more indexes to have the same name in the same database, provided they are for different tables. Like PostgreSQL, YugabyteDB does not support duplicate index names in the same schema. To avoid index name conflicts during export schema, Voyager prefixes each index name with the associated table name.
 
 You specify the schema(s) to migrate from the source database using the `db-schema` parameter (configuration file), or `--source-db-schema` flag (CLI).
 
