@@ -45,6 +45,7 @@ import com.yugabyte.yw.common.CloudUtilFactory;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.LdapUtil;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NetworkManager;
@@ -209,6 +210,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected CustomerTaskManager customerTaskManager;
   protected ReleaseManager.ReleaseMetadata releaseMetadata;
   protected ReleaseContainer releaseContainer;
+  protected ImageBundleUtil imageBundleUtil;
 
   @Before
   public void setUp() {
@@ -229,6 +231,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     taskExecutor = app.injector().instanceOf(TaskExecutor.class);
     providerEditRestrictionManager =
         app.injector().instanceOf(ProviderEditRestrictionManager.class);
+    imageBundleUtil = app.injector().instanceOf(ImageBundleUtil.class);
     mockCloudUtilFactory = mock(CloudUtilFactory.class);
     mockReleasesUtils = mock(ReleasesUtils.class);
 
@@ -265,6 +268,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     when(mockBaseTaskDependencies.getGFlagsValidation()).thenReturn(mockGFlagsValidation);
     when(mockBaseTaskDependencies.getNodeUniverseManager()).thenReturn(mockNodeUniverseManager);
     when(mockBaseTaskDependencies.getNodeAgentClient()).thenReturn(mockNodeAgentClient);
+    when(mockBaseTaskDependencies.getImageBundleUtil()).thenReturn(imageBundleUtil);
     releaseMetadata = ReleaseManager.ReleaseMetadata.create("1.0.0.0-b1");
     releaseContainer =
         new ReleaseContainer(releaseMetadata, mockCloudUtilFactory, mockConfig, mockReleasesUtils);
@@ -284,12 +288,24 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     lenient()
         .when(mockNodeAgentManager.getNodeAgentPackagePath(any(), any()))
         .thenReturn(Paths.get("/opt/yugabyte"));
-    NodeAgent nodeAgent = new NodeAgent();
-    nodeAgent.setIp("127.0.0.1");
-    nodeAgent.setName("nodeAgent");
-    nodeAgent.setHome("/opt/yugabyte");
-    nodeAgent.setUuid(UUID.randomUUID());
-    lenient().when(mockNodeAgentManager.create(any(), anyBoolean())).thenReturn(nodeAgent);
+    lenient()
+        .doAnswer(
+            inv -> {
+              NodeAgent nodeAgent = spy((NodeAgent) inv.getArgument(0));
+              nodeAgent.setUuid(UUID.randomUUID());
+              nodeAgent.setState(NodeAgent.State.REGISTERING);
+              lenient()
+                  .doAnswer(
+                      inv1 -> {
+                        nodeAgent.setState((NodeAgent.State) inv1.getArgument(0));
+                        return nodeAgent;
+                      })
+                  .when(nodeAgent)
+                  .saveState(any());
+              return nodeAgent;
+            })
+        .when(mockNodeAgentManager)
+        .create(any(), anyBoolean());
   }
 
   @Override

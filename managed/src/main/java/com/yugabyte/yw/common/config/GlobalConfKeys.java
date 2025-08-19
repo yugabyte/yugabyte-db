@@ -1646,14 +1646,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Skip YBA Minimum Version Check when adding a new YugabyteDB Release.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Boolean> disableNodeAgentOnProviderCreation =
-      new ConfKeyInfo<>(
-          "yb.internal.disable_node_agent_on_provider_creation",
-          ScopeType.GLOBAL,
-          "Disable Node Agent on Provider Creation",
-          "Disable node agent on provider creation by setting the internal flag in the provider.",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> enablePathStyleAccess =
       new ConfKeyInfo<>(
           "yb.ui.feature_flags.enable_path_style_access",
