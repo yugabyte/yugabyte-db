@@ -3,7 +3,7 @@ title: Troubleshoot YugabyteDB Voyager
 headerTitle: Troubleshoot
 linkTitle: Troubleshoot
 description: Troubleshoot issues in YugabyteDB Voyager.
-headcontent: Diagnose and troubleshoot issues when migrating to YugabyteDB Voyager
+headcontent: Diagnose and troubleshoot issues when migrating to YugabyteDB using YugabyteDB Voyager
 menu:
   preview_yugabyte-voyager:
     identifier: voyager-troubleshoot
@@ -26,9 +26,9 @@ pg_dump: detail: Query was: EXECUTE getDomainConstraints('16452')
 This error happens if the source database contains domain objects with NOT NULL constraints.
 A bug in PostgreSQL versions 17.0-17.2 causes `pg_get_constraintdef()` to not interpret NOT NULL domain constraints, leading to failure in pg_dump version 17.6 when using this function to fetch schema information.
 
-Resolution: You can choose from one of the two options as follows:
+Resolution: You can do one of the following:
 
-- Use an older pg_dump version.
+- Use an older version of pg_dump.
 
     1. Install pg_dump v17.5 or earlier (recommended to use a version same as your PostgreSQL version).
     1. Ensure this version is the first `pg_dump` executable in your system's PATH before you run Voyager.
