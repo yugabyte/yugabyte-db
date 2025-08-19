@@ -1366,20 +1366,20 @@ The wildcard `*` can be used to allow placement in any zone in a specific region
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses $MASTER_RPC_ADDRS \
+    --master_addresses $MASTER_RPC_ADDRS \
     modify_placement_info  \
     aws.*.*:5 5`
 ```
 
-requests a placement of 5 copies anywhere in the aws cloud. Similarly,
+requests a placement of 5 copies anywhere in the `aws` cloud. Similarly,
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses $MASTER_RPC_ADDRS \
+    --master_addresses $MASTER_RPC_ADDRS \
     modify_placement_info  \
     aws.us-east-1.*:3 3`
 ```
-requests a placement of 3 copies anywhere in the us-east-1 region of aws cloud.
+requests a placement of 3 copies anywhere in the `us-east-1` region of `aws` cloud.
 
 
 #### set_preferred_zones
