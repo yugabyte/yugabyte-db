@@ -147,6 +147,30 @@ SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user7') AND E
 
 
 --
+-- YB Profiles
+--
+
+CREATE PROFILE profile_3_failed LIMIT FAILED_LOGIN_ATTEMPTS 3;
+
+
+--
+-- YB Role-Profile Mappings
+--
+
+SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user7') AS role_exists \gset
+\if :role_exists
+    ALTER ROLE regress_priv_user7 PROFILE profile_3_failed;
+    UPDATE pg_catalog.pg_yb_role_profile
+    SET rolprfstatus = 'o',
+        rolprffailedloginattempts = 0
+    WHERE rolprfrole = (SELECT oid FROM pg_authid WHERE rolname = 'regress_priv_user7')
+      AND rolprfprofile = (SELECT oid FROM pg_yb_profile WHERE prfname = 'profile_3_failed');
+\else
+    \echo 'Skipping alter role due to missing role:' regress_priv_user7
+\endif
+
+
+--
 -- Tablespaces
 --
 

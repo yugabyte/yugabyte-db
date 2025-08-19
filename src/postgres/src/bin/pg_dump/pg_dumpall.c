@@ -2199,7 +2199,20 @@ dumpYbRoleProfiles(PGconn *conn)
 		appendPQExpBuffer(stmt,
 			");\n");
 
-		fprintf(OPF, "%s\n", stmt->data);
+		if (yb_dump_role_checks)
+		{
+			PQExpBuffer yb_source_sql = stmt;
+
+			stmt = createPQExpBuffer();
+			YBWwrapInRoleChecks(conn, yb_source_sql, "alter role",
+								role_name, /* role1 */
+								NULL,	/* role2 */
+								NULL,	/* role3 */
+								stmt);
+			destroyPQExpBuffer(yb_source_sql);
+		}
+
+		fprintf(OPF, "%s%s", stmt->data, yb_dump_role_checks ? "" : "\n");
 		destroyPQExpBuffer(stmt);
 	}
 
