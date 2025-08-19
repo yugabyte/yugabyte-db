@@ -210,7 +210,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
                   << SysTabletsEntryPB::State_Name(metadata.state())
                   << ", unknown table for this tablet: " << metadata.table_id();
     }
-    catalog_manager_->deleted_tablets_loaded_from_sys_catalog_.insert(tablet_id);
+    catalog_manager_->deleted_tablets_.insert(tablet_id);
     return Status::OK();
   }
 
@@ -258,7 +258,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
     listed_as_hidden = l.mutable_data()->ListedAsHidden();
 
     if (tablet_deleted) {
-      catalog_manager_->deleted_tablets_loaded_from_sys_catalog_.insert(tablet_id);
+      catalog_manager_->deleted_tablets_.insert(tablet_id);
     }
 
     // Assume we need to delete/hide this tablet until we find an active table using this tablet.
@@ -361,7 +361,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
       std::string deletion_msg = "Tablet deleted at " + LocalTimeAsString();
       l.mutable_data()->set_state(SysTabletsEntryPB::DELETED, deletion_msg);
       needs_async_write_to_sys_catalog = true;
-      catalog_manager_->deleted_tablets_loaded_from_sys_catalog_.insert(tablet_id);
+      catalog_manager_->deleted_tablets_.insert(tablet_id);
     } else if (should_hide_tablet) {
       LOG(INFO) << "Will mark tablet " << tablet->id() << " for table " << first_table->ToString()
                 << " as HIDDEN post loading sys.catalog";
