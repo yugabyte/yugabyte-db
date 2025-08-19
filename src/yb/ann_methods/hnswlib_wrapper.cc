@@ -42,6 +42,7 @@
 
 #include "yb/vector_index/distance.h"
 #include "yb/vector_index/index_wrapper_base.h"
+#include "yb/vector_index/usearch_include_wrapper_internal.h"
 #include "yb/vector_index/vector_index_if.h"
 
 namespace yb::ann_methods {
@@ -63,6 +64,86 @@ namespace {
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 class HnswlibVectorIterator;
 
+class HnswlibVectorFilter : public hnswlib::BaseFilterFunctor<VectorId> {
+ public:
+  explicit HnswlibVectorFilter(std::reference_wrapper<const vector_index::VectorFilter> filter)
+      : filter_(filter) {}
+
+  bool operator()(VectorId id) override {
+    return filter_(id);
+  }
+
+ private:
+  const vector_index::VectorFilter& filter_;
+};
+
+template <vector_index::CoordinateScalarType CoordinateType, ValidDistanceResultType DistanceResult,
+          unum::usearch::metric_kind_t kMetricKind>
+class YbSpace : public hnswlib::SpaceInterface<DistanceResult> {
+ public:
+  explicit YbSpace(size_t dim)
+      : metric_(dim, kMetricKind, unum::usearch::scalar_kind<CoordinateType>()),
+        data_size_(dim * sizeof(CoordinateType)) {
+  }
+
+  size_t get_data_size() override {
+    return data_size_;
+  }
+
+  hnswlib::DISTFUNC<DistanceResult> get_dist_func() override {
+    return &DistFunc;
+  }
+
+  void* get_dist_func_param() override {
+    return &metric_;
+  }
+
+ private:
+  static DistanceResult DistFunc(const void* lhs, const void* rhs, const void* arg) {
+    auto& metric = *static_cast<const unum::usearch::metric_punned_t*>(arg);
+    return metric(pointer_cast<const unum::usearch::byte_t*>(lhs),
+                  pointer_cast<const unum::usearch::byte_t*>(rhs));
+  }
+
+  unum::usearch::metric_punned_t metric_;
+  size_t data_size_;
+};
+
+template <vector_index::CoordinateScalarType CoordinateType, ValidDistanceResultType DistanceResult>
+Result<std::unique_ptr<hnswlib::SpaceInterface<DistanceResult>>> CreateSpace(
+    const HNSWOptions& options) {
+  switch (options.distance_kind) {
+    case DistanceKind::kL2Squared: {
+      if constexpr (std::is_same<CoordinateType, float>::value) {
+        return std::make_unique<hnswlib::L2Space>(options.dimensions);
+      } else if constexpr (std::is_same<CoordinateType, uint8_t>::value) {
+        return std::make_unique<hnswlib::L2SpaceI>(options.dimensions);
+      } else {
+        // Actually underlying code does not compile, because CoordinateTypeTraits does not have
+        // Kind. So when we instantiate CreateSpace with unsupported coordiate type build will fail.
+        return STATUS_FORMAT(
+            InvalidArgument,
+            "Unsupported combination of distance type and vector type: $0 and $1",
+            options.distance_kind, CoordinateTypeTraits<CoordinateType>::Kind());
+      }
+    }
+    case DistanceKind::kInnerProduct:
+      if constexpr (std::is_same<CoordinateType, float>::value) {
+        return std::make_unique<hnswlib::InnerProductSpace>(options.dimensions);
+      } else {
+        return std::make_unique<YbSpace<
+            CoordinateType, DistanceResult, unum::usearch::metric_kind_t::ip_k>>(
+                options.dimensions);
+      }
+    case DistanceKind::kCosine:
+      return std::make_unique<YbSpace<
+          CoordinateType, DistanceResult, unum::usearch::metric_kind_t::cos_k>>(options.dimensions);
+  }
+
+  return STATUS_FORMAT(
+      InvalidArgument, "Unsupported distance type for Hnswlib: $0", options.distance_kind);
+}
+
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 class HnswlibIndex :
     public IndexWrapperBase<HnswlibIndex<Vector, DistanceResult>, Vector, DistanceResult> {
@@ -72,7 +153,8 @@ class HnswlibIndex :
   using HNSWImpl = hnswlib::HierarchicalNSW<DistanceResult, VectorId>;
 
   explicit HnswlibIndex(const HNSWOptions& options)
-      : options_(options) {
+      : options_(options),
+        space_(CHECK_RESULT((CreateSpace<Scalar, DistanceResult>(options)))) {
   }
 
   std::unique_ptr<AbstractIterator<std::pair<VectorId, Vector>>> BeginImpl() const override {
@@ -91,7 +173,6 @@ class HnswlibIndex :
           IllegalState, "Cannot reserve space for $0 vectors: Hnswlib index already initialized",
           num_vectors);
     }
-    RETURN_NOT_OK(CreateSpaceImpl());
     // Please be careful about adding and removing arguments here and make sure they match the
     // actual list of arguments in hnswalg.h.
     hnsw_ = std::make_unique<HNSWImpl>(
@@ -152,7 +233,9 @@ class HnswlibIndex :
   std::vector<VectorWithDistance<DistanceResult>> DoSearch(
       const Vector& query_vector, const SearchOptions& options) const {
     std::vector<VectorWithDistance<DistanceResult>> result;
-    auto tmp_result = hnsw_->searchKnnCloserFirst(query_vector.data(), options.max_num_results);
+    HnswlibVectorFilter filter(options.filter);
+    auto tmp_result = hnsw_->searchKnnCloserFirst(
+        query_vector.data(), options.max_num_results, &filter, options.ef);
     result.reserve(tmp_result.size());
     for (const auto& entry : tmp_result) {
       // Being careful to avoid switching the order of distance and vertex id.
@@ -209,29 +292,6 @@ class HnswlibIndex :
   }
 
  private:
-  Status CreateSpaceImpl() {
-    switch (options_.distance_kind) {
-      case DistanceKind::kL2Squared: {
-        if constexpr (std::is_same<Vector, FloatVector>::value) {
-          space_ = std::make_unique<hnswlib::L2Space>(options_.dimensions);
-        } else if constexpr (std::is_same<Vector, std::vector<uint8_t>>::value) {
-          space_ = std::make_unique<hnswlib::L2SpaceI>(options_.dimensions);
-        } else {
-          return STATUS_FORMAT(
-              InvalidArgument,
-              "Unsupported combination of distance type and vector type: $0 and $1",
-              options_.distance_kind, CoordinateTypeTraits<Scalar>::Kind());
-        }
-
-        return Status::OK();
-      }
-      default:
-        return STATUS_FORMAT(
-            InvalidArgument, "Unsupported distance type for Hnswlib: $0",
-            options_.distance_kind);
-    }
-  }
-
   HNSWOptions options_;
   std::unique_ptr<hnswlib::SpaceInterface<DistanceResult>> space_;
   std::unique_ptr<HNSWImpl> hnsw_;
