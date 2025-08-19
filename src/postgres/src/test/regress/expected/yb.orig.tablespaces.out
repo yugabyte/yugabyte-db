@@ -1024,3 +1024,171 @@ EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
 DROP TABLE foo;
 DROP TABLESPACE close_far_pref;
 DROP TABLESPACE medium_pref;
+/* Disallow setting tablespace for ALTER TABLE ADD CONSTRAINT PRIMARY KEY. */
+CREATE TABLESPACE ts1 LOCATION '';
+WARNING:  LOCATION not supported yet and will be ignored
+LINE 2: CREATE TABLESPACE ts1 LOCATION '';
+                              ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/6569. React with thumbs up to raise its priority
+CREATE TABLE t1 (a int, b int);
+ALTER TABLE t1
+  ADD CONSTRAINT t1_pkey
+  PRIMARY KEY (a)
+  USING INDEX TABLESPACE ts1;
+ERROR:  cannot set TABLESPACE for PRIMARY KEY INDEX
+DETAIL:  The tablespace of the indexed table will be used.
+DROP TABLE t1;
+DROP TABLESPACE ts1;
+/*
+ * Check that pg_shdepend is updated correctly when various tablespace
+ * operations are performed.
+ */
+CREATE TABLESPACE ts_dep1 LOCATION '/data';
+WARNING:  LOCATION not supported yet and will be ignored
+LINE 5: CREATE TABLESPACE ts_dep1 LOCATION '/data';
+                                  ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/6569. React with thumbs up to raise its priority
+CREATE TABLESPACE ts_dep2 LOCATION '/data';
+WARNING:  LOCATION not supported yet and will be ignored
+LINE 1: CREATE TABLESPACE ts_dep2 LOCATION '/data';
+                                  ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/6569. React with thumbs up to raise its priority
+CREATE TABLE dep_t (a int PRIMARY KEY) TABLESPACE ts_dep1;
+-- Query to get the dependencies for the table/index.
+PREPARE dep_shdeps AS
+SELECT CASE c.relkind WHEN 'r' THEN 'table' WHEN 'i' THEN 'index' ELSE c.relkind::text END AS objtype,
+       c.relname, ts.spcname
+FROM pg_shdepend d
+JOIN pg_class c ON d.classid = 'pg_class'::regclass AND d.objid = c.oid
+JOIN pg_tablespace ts ON d.refclassid = 'pg_tablespace'::regclass AND d.refobjid = ts.oid
+WHERE d.dbid = (SELECT oid FROM pg_database WHERE datname = current_database())
+  AND c.relnamespace = 'public'::regnamespace
+  AND c.relname LIKE 'dep\_%' ESCAPE '\'
+ORDER BY c.relname;
+-- Query to check reltablespace in pg_class for the table/index.
+PREPARE dep_relts AS
+SELECT CASE c.relkind WHEN 'r' THEN 'table' WHEN 'i' THEN 'index' ELSE c.relkind::text END AS objtype,
+       c.relname, ts.spcname
+FROM pg_class c
+LEFT JOIN pg_tablespace ts ON c.reltablespace = ts.oid
+WHERE c.relnamespace = 'public'::regnamespace
+  AND c.relname LIKE 'dep\_%' ESCAPE '\'
+ORDER BY c.relname;
+-- Verify dependencies for table after creation.
+EXECUTE dep_shdeps;
+ objtype |  relname   | spcname 
+---------+------------+---------
+ table   | dep_t      | ts_dep1
+ index   | dep_t_pkey | ts_dep1
+(2 rows)
+
+EXECUTE dep_relts;
+ objtype |  relname   | spcname 
+---------+------------+---------
+ table   | dep_t      | ts_dep1
+ index   | dep_t_pkey | ts_dep1
+(2 rows)
+
+-- Move the table to ts_dep2, which should also move the PK index
+ALTER TABLE dep_t SET TABLESPACE ts_dep2;
+NOTICE:  data movement for table dep_t is successfully initiated
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
+EXECUTE dep_shdeps;
+ objtype |  relname   | spcname 
+---------+------------+---------
+ table   | dep_t      | ts_dep2
+ index   | dep_t_pkey | ts_dep2
+(2 rows)
+
+EXECUTE dep_relts;
+ objtype |  relname   | spcname 
+---------+------------+---------
+ table   | dep_t      | ts_dep2
+ index   | dep_t_pkey | ts_dep2
+(2 rows)
+
+-- Move all relations in ts_dep2 back to ts_dep1
+ALTER TABLE ALL IN TABLESPACE ts_dep2 SET TABLESPACE ts_dep1;
+NOTICE:  data movement for table dep_t is successfully initiated
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
+EXECUTE dep_shdeps;
+ objtype |  relname   | spcname 
+---------+------------+---------
+ table   | dep_t      | ts_dep1
+ index   | dep_t_pkey | ts_dep1
+(2 rows)
+
+EXECUTE dep_relts;
+ objtype |  relname   | spcname 
+---------+------------+---------
+ table   | dep_t      | ts_dep1
+ index   | dep_t_pkey | ts_dep1
+(2 rows)
+
+-- Drop the table and verify dependencies are removed
+DROP TABLE dep_t;
+EXECUTE dep_shdeps;
+ objtype | relname | spcname 
+---------+---------+---------
+(0 rows)
+
+EXECUTE dep_relts;
+ objtype | relname | spcname 
+---------+---------+---------
+(0 rows)
+
+-- Table rewrites: dropping and re-adding a primary key
+CREATE TABLE dep_rw (a int PRIMARY KEY) TABLESPACE ts_dep1;
+EXECUTE dep_shdeps;
+ objtype |   relname   | spcname 
+---------+-------------+---------
+ table   | dep_rw      | ts_dep1
+ index   | dep_rw_pkey | ts_dep1
+(2 rows)
+
+EXECUTE dep_relts;
+ objtype |   relname   | spcname 
+---------+-------------+---------
+ table   | dep_rw      | ts_dep1
+ index   | dep_rw_pkey | ts_dep1
+(2 rows)
+
+-- Drop the primary key (rewrite) and verify the index dependency disappears
+ALTER TABLE dep_rw DROP CONSTRAINT dep_rw_pkey;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+EXECUTE dep_shdeps;
+ objtype | relname | spcname 
+---------+---------+---------
+ table   | dep_rw  | ts_dep1
+(1 row)
+
+EXECUTE dep_relts;
+ objtype | relname | spcname 
+---------+---------+---------
+ table   | dep_rw  | ts_dep1
+(1 row)
+
+-- Re-add the primary key (rewrite) and verify the index dependency reappears
+ALTER TABLE dep_rw ADD PRIMARY KEY(a);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+EXECUTE dep_shdeps;
+ objtype |   relname   | spcname 
+---------+-------------+---------
+ table   | dep_rw      | ts_dep1
+ index   | dep_rw_pkey | ts_dep1
+(2 rows)
+
+EXECUTE dep_relts;
+ objtype |   relname   | spcname 
+---------+-------------+---------
+ table   | dep_rw      | ts_dep1
+ index   | dep_rw_pkey | ts_dep1
+(2 rows)
+
+DROP TABLE dep_rw;
+DROP TABLESPACE ts_dep2;
+DROP TABLESPACE ts_dep1;

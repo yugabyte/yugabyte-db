@@ -734,6 +734,51 @@ public class TestTablespaceProperties extends BaseTablespaceTest {
     }
   }
 
+  /**
+   * Test that we can drop a tablespace after moving all objects out of it
+   * using ALTER TABLE SET TABLESPACE.
+   */
+  @Test
+  public void testAlterTableMovesPkAndDropOldTablespace() throws Exception {
+    Tablespace src = new Tablespace("ts_pk_src", Collections.singletonList(1));
+    Tablespace dst = new Tablespace("ts_pk_dst", Collections.singletonList(1));
+    src.create(connection);
+    dst.create(connection);
+
+    // Test moving a single object out of a tablespace and then dropping the tablespace.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t_pk (a INT PRIMARY KEY) TABLESPACE " + src.name);
+      stmt.execute("ALTER TABLE t_pk SET TABLESPACE " + dst.name);
+      stmt.execute("DROP TABLESPACE " + src.name);
+    }
+
+    // Test dropping a tablespace after moving all objects out using
+    // ALTER TABLE ALL IN TABLESPACE.
+    src.create(connection);
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t_pk_2 (a INT PRIMARY KEY) TABLESPACE " + src.name);
+
+      stmt.execute("CREATE TABLE t_pk_part (a INT PRIMARY KEY) PARTITION BY RANGE (a) TABLESPACE "
+        + src.name);
+      stmt.execute(
+        "CREATE TABLE t_pk_part_p1 PARTITION OF t_pk_part FOR VALUES FROM (0) TO (100) TABLESPACE "
+          + src.name);
+      stmt.execute(
+        "CREATE TABLE t_pk_part_p2 PARTITION OF t_pk_part FOR VALUES FROM (100) TO (200) "
+          + "TABLESPACE " + src.name);
+      stmt.execute(
+        "CREATE TABLE t_pk_part_p3 PARTITION OF t_pk_part FOR VALUES FROM (200) TO (300);");
+    }
+
+    // ALTER TABLE ALL IN TABLESPACE without CASCADE should move all objects out of the tablespace,
+    // including the PK index.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute(
+        "ALTER TABLE ALL IN TABLESPACE " + src.name + " SET TABLESPACE " + dst.name);
+      stmt.execute("DROP TABLESPACE " + src.name);
+    }
+  }
+
   private void testAlterTableWithPlacementUuidHelper() throws Exception {
     // Create a table.
     final String testTable = "test_table";
