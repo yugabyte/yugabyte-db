@@ -30,11 +30,9 @@ Resolution: You can do one of the following:
 
 - Use an older version of pg_dump.
 
-The best practice is to use a pg_dump version that matches your PostgreSQL server version (for example, use pg_dump 17.2 with PostgreSQL 17.2).
+The best practice is to use a pg_dump version that matches your PostgreSQL server version (for example, use pg_dump 17.2 with PostgreSQL 17.2). If this is not feasible, use pg_dump version 17.5 or earlier as follows:
 
-If this is not feasible, use pg_dump version 17.5 or earlier as follows:
-
-  1. Install pg_dump v17.5 or earlier.
+  1. Install the recommended pg_dump version (such as 17.2 or 17.5).
   1. Ensure this version is the first `pg_dump` executable in your system's PATH before you run Voyager.
 
 - Upgrade PostgreSQL.
