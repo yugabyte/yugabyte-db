@@ -271,6 +271,8 @@ extern bool yb_upgrade_to_pg15_completed;
 
 extern bool yb_debug_log_catcache_events;
 
+extern bool yb_debug_log_snapshot_mgmt;
+
 extern bool yb_extension_upgrade;
 
 extern bool yb_mixed_mode_expression_pushdown;
