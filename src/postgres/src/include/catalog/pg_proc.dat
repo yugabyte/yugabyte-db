@@ -12075,9 +12075,9 @@
   proname => 'yb_wait_event_desc', prorows => '100',
   proretset => 't', prorettype => 'record', proargtypes => '',
   provolatile => 'i', proparallel => 'r',
-  proallargtypes => '{text,text,text,text,int8}',
-  proargnames => '{wait_event_class,wait_event_type,wait_event,wait_event_description,wait_event_code}',
-  proargmodes => '{o,o,o,o,o}',
+  proallargtypes => '{text,text,text,text,int8,text}',
+  proargnames => '{wait_event_class,wait_event_type,wait_event,wait_event_description,wait_event_code,wait_event_aux_description}',
+  proargmodes => '{o,o,o,o,o,o}',
   prosrc => 'yb_wait_event_desc'},
 
 { oid => '8070',
