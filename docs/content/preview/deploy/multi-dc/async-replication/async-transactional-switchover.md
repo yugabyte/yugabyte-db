@@ -85,4 +85,4 @@ delete CDC on A (that is, de-configure CDC by deleting publications and slots), 
 
 The old Standby (B) is now the new Primary universe, and the old Primary (A) is the new Standby universe. Update the application connection strings to point to the new Primary universe (B).
 
-If you are using CDC to move data out of YugabyteDB, point your CDC target to pull from B (the newly promoted database) by starting the connector in `snapshot.mode=never`.
+If you are using CDC to move data out of YugabyteDB, point your CDC sink to pull from B (the newly promoted database) by starting the connector in `snapshot.mode=never`.
