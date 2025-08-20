@@ -105,6 +105,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
@@ -369,6 +370,12 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     PlacementCloud placementCloud =
         placementFromProvider(
             primaryClusterSpec.getNumNodes(), primaryClusterSpec.getReplicationFactor());
+    AtomicInteger prio = new AtomicInteger();
+    for (PlacementRegion placementRegion : placementCloud.getRegionList()) {
+      for (PlacementAZ placementAZ : placementRegion.getAzList()) {
+        placementAZ.setLeaderPreference(prio.incrementAndGet());
+      }
+    }
     primaryClusterSpec.setPlacementSpec(
         new ClusterPlacementSpec().cloudList(List.of(placementCloud)));
     ClusterProviderSpec providerSpec = new ClusterProviderSpec();
@@ -1134,6 +1141,8 @@ public class UniverseTestBase extends UniverseControllerTestBase {
       assertThat(v2Az.getReplicationFactor(), is(dbAz.replicationFactor));
       assertThat(v2Az.getSecondarySubnet(), is(dbAz.secondarySubnet));
       assertThat(v2Az.getSubnet(), is(dbAz.subnet));
+      assertThat(
+          Optional.ofNullable(v2Az.getLeaderPreference()).orElse(0), is(dbAz.leaderPreference));
     }
   }
 

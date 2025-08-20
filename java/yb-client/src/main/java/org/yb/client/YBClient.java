@@ -2552,6 +2552,14 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  public SetPreferredZonesResponse setPreferredZones(
+      Map<Integer, List<CommonNet.CloudInfoPB>> prioritiesMap)
+      throws Exception {
+    Deferred<SetPreferredZonesResponse> d =
+        asyncClient.setPreferredZones(prioritiesMap);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
   /**
    * Analogous to {@link #shutdown()}.
    *

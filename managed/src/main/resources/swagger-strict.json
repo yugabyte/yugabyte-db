@@ -9423,6 +9423,10 @@
         "lbName" : {
           "type" : "string"
         },
+        "leaderPreference" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
         "name" : {
           "type" : "string"
         },
