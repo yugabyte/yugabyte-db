@@ -61,13 +61,8 @@ The following table describes the type of data that is collected during a migrat
 Before you run a migration assessment, do the following:
 
 1. [Install yb-voyager](../../install-yb-voyager/).
-<<<<<<< HEAD
+
 1. Prepare the source database as follows: <br>
-=======
-1. Install YugabyteDB to view migration assessment report in the [yugabyted](/preview/reference/configuration/yugabyted/) UI. Using the yugabyted UI, you can visualize and review the database migration workflow performed by YugabyteDB Voyager.
-    1. Start a local YugabyteDB cluster. Refer to the steps described in [Use a local cluster](/preview/quick-start/macos/).
-    1. To see the Voyager migration workflow details in the UI, set the following environment variables before starting the migration:
->>>>>>> master
 
     Create a new database user, and assign the necessary user permissions.
     <ul class="nav nav-tabs nav-tabs-yb">
