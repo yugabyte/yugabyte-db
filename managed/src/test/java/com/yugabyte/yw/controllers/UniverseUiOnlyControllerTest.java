@@ -2086,6 +2086,51 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   }
 
   @Test
+  public void testUniverseCreateIncorrectOrderFail() {
+    Provider p = ModelFactory.awsProvider(customer);
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
+    InstanceType i =
+        InstanceType.upsert(
+            p.getUuid(), "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    ObjectNode bodyJson = Json.newObject();
+    UserIntent userIntent = new UserIntent();
+    userIntent.instanceType = i.getInstanceTypeCode();
+    userIntent.universeName = "foo";
+    userIntent.numNodes = 3;
+    userIntent.provider = p.getUuid().toString();
+    userIntent.regionList = Arrays.asList(r.getUuid());
+
+    DeviceInfo di = new DeviceInfo();
+    di.storageType = PublicCloudConstants.StorageType.GP2;
+    di.volumeSize = 100;
+    di.numVolumes = 2;
+    userIntent.deviceInfo = di;
+    PlacementInfo placementInfo =
+        PlacementInfoUtil.getPlacementInfo(
+            UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+            userIntent,
+            2,
+            null,
+            Collections.emptyList());
+    AtomicInteger j = new AtomicInteger(1);
+    placementInfo.azStream().forEach(az -> az.leaderPreference = j.addAndGet(2));
+    UniverseDefinitionTaskParams.Cluster cluster =
+        new UniverseDefinitionTaskParams.Cluster(
+            UniverseDefinitionTaskParams.ClusterType.PRIMARY, userIntent);
+    cluster.placementInfo = placementInfo;
+
+    ArrayNode clustersJsonArray = Json.newArray().add(Json.toJson(cluster));
+    bodyJson.set("clusters", clustersJsonArray);
+    bodyJson.set("nodeDetailsSet", Json.newArray());
+    Result result = assertPlatformException(() -> sendCreateRequest(bodyJson));
+    assertErrorResponse(result, "Found a gap between priorities");
+    assertBadRequest(result, "");
+    assertAuditEntry(0, customer.getUuid());
+  }
+
+  @Test
   public void testUniverseUpdateUnchangedFail() {
     Universe u = setUpUniverse();
     String url = "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID();
