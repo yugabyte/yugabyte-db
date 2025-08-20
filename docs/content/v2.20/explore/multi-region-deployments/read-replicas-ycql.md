@@ -26,7 +26,7 @@ Stale reads are possible with an upper bound on the amount of staleness. Reads a
 
 ## Prerequisites
 
-Ensure that you have downloaded and configured YugabyteDB, as described in [Quick start](/preview/tutorials/quick-start/macos/).
+Ensure that you have downloaded and configured YugabyteDB, as described in [Quick start](/preview/quick-start/macos/).
 
 {{< note title="Note" >}}
 
@@ -63,7 +63,7 @@ For more info, please use: yb-ctl status
 The following command instructs the masters to create three replicas for each tablet distributed across the three zones:
 
 ```shell
-$ ./bin/yb-admin -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 modify_placement_info c.r.z1,c.r.z2,c.r.z3 3 live
+$ ./bin/yb-admin --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 modify_placement_info c.r.z1,c.r.z2,c.r.z3 3 live
 ```
 
 The following illustration demonstrates the primary cluster visible via [YugabyteDB Anywhere](../../../yugabyte-platform/):
@@ -167,7 +167,7 @@ The following commands add three new nodes to a read replica cluster in region `
 ./bin/yb-ctl add_node --placement_info "c.r2.z22" --tserver_flags "placement_uuid=rr"
 ./bin/yb-ctl add_node --placement_info "c.r2.z23" --tserver_flags "placement_uuid=rr"
 
-./bin/yb-admin -master_addresses 127.0.0.1:7100,127.0.0.2,127.0.0.3 add_read_replica_placement_info c.r2.z21:1,c.r2.z22:1,c.r2.z23:1 3 rr
+./bin/yb-admin --master_addresses 127.0.0.1:7100,127.0.0.2,127.0.0.3 add_read_replica_placement_info c.r2.z21:1,c.r2.z22:1,c.r2.z23:1 3 rr
 ```
 
 The following illustration demonstrates the setup of the two clusters, one of which is primary and another one is read replica visible via YugabyteDB Anywhere:

@@ -131,6 +131,8 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.TlsToggle,
           TaskType.SystemdUpgrade,
           TaskType.ModifyAuditLoggingConfig,
+          TaskType.ModifyQueryLoggingConfig,
+          TaskType.ModifyMetricsExportConfig,
           TaskType.StartMasterOnNode,
           TaskType.MasterFailover,
           TaskType.SyncMasterAddresses,
@@ -153,7 +155,9 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.EditDrConfig,
           TaskType.SetDatabasesDrConfig,
           TaskType.SetTablesDrConfig,
-          TaskType.DecommissionNode);
+          TaskType.DecommissionNode,
+          TaskType.PauseUniverse,
+          TaskType.ResumeUniverse);
 
   @Override
   protected Application provideApplication() {
@@ -237,7 +241,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
               taskInfo.setTaskParams(
                   RedactingService.filterSecretFields(task.getTaskParams(), RedactionTarget.APIS));
               taskInfo.setOwner("test-owner");
-              taskInfo.setVersion(Util.getYbaVersion());
+              taskInfo.setYbaVersion(Util.getYbaVersion());
               return taskInfo;
             })
         .when(taskExecutor)
@@ -267,8 +271,8 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
     String errMsg = taskInfo.getTaskError().getMessage();
     assertTrue("Found " + errMsg, errMsg.contains("Error occurred in task"));
-    assertNotNull(taskInfo.getVersion());
-    assertEquals(Util.getYbaVersion(), taskInfo.getVersion());
+    assertNotNull(taskInfo.getYbaVersion());
+    assertEquals(Util.getYbaVersion(), taskInfo.getYbaVersion());
   }
 
   @Test
@@ -421,8 +425,8 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
     assertEquals(TaskInfo.State.Success, subTaskInfos.get(0).getTaskState());
     assertEquals(TaskInfo.State.Aborted, subTaskInfos.get(1).getTaskState());
-    assertNotNull(taskInfo.getVersion());
-    assertEquals(Util.getYbaVersion(), taskInfo.getVersion());
+    assertNotNull(taskInfo.getYbaVersion());
+    assertEquals(Util.getYbaVersion(), taskInfo.getYbaVersion());
   }
 
   @Test
@@ -877,8 +881,8 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
         subTasksByPosition.get(1).stream().map(TaskInfo::getTaskState).collect(Collectors.toList());
     assertEquals(1, subTaskStates.size());
     assertTrue(subTaskStates.contains(TaskInfo.State.Success));
-    assertNotNull(taskInfo.getVersion());
-    assertEquals(Util.getYbaVersion(), taskInfo.getVersion());
+    assertNotNull(taskInfo.getYbaVersion());
+    assertEquals(Util.getYbaVersion(), taskInfo.getYbaVersion());
   }
 
   @Test

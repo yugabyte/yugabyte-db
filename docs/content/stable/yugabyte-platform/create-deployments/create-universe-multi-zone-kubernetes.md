@@ -77,7 +77,7 @@ Complete the **Instance Configuration** section for **TServer** and **Master** a
 - **Memory(GiB)** - specify the memory allocation of the TServer and Master.
 - **Volume Info** - specify the number of volumes multiplied by size for the TServer and Master. The default is 1 x 100GB.
 
-{{<tags/feature/ea idea="1486">}}YugabyteDB Kubernetes supports ARM instances, which are specified using Helm overrides. See [Helm Overrides](#helm-overrides).
+YugabyteDB supports ARM instances, which are specified using Helm overrides. See [Helm Overrides](#helm-overrides).
 
 ### Security Configurations
 
@@ -174,6 +174,23 @@ If you don't provide namespace names for each zone/region during [provider creat
 1. Follow the steps in [Upgrade universes for GKE service account-based IAM](../../manage-deployments/edit-helm-overrides/#upgrade-universes-for-gke-service-account-based-iam) to add the annotated Kubernetes service account to pods.
 
 To enable the GKE service account service at the provider level, refer to [Overrides](../../configure-yugabyte-platform/kubernetes/#overrides).
+
+#### EKS service account
+
+In AWS, you can attach a service account to database pods; the account can then be used to access storage. The service account used for the database pods should have annotations for the IAM role. The service account to be used can be applied to the DB pods as helm override with provider/universe level overrides. The IAM role used should be sufficient to access S3 storage.
+
+To enable IAM roles for S3, set the **Use S3 IAM roles attached to DB node for Backup/Restore** Universe Configuration option (config key `yb.backup.s3.use_db_nodes_iam_role_for_backup`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
+
+For more information, refer to [Enable IAM roles for service accounts](https://docs.aws.amazon.com/eks/latest/userguide/enable-iam-roles-for-service-accounts.html) in the AWS documentation.
+
+If you want to enable EKS service account-based IAM for backup and restore using S3 at the universe level, add the following overrides:
+
+```yaml
+tserver:
+  serviceAccount: <KSA_NAME>
+```
+
+To enable the EKS service account service at the provider level, refer to [Overrides](../../configure-yugabyte-platform/kubernetes/#overrides).
 
 #### Readiness probes
 

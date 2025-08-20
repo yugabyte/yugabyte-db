@@ -1181,7 +1181,10 @@ public class ShellKubernetesManager extends KubernetesManager {
 
   @Override
   public Map<ServerType, String> getServerTypeGflagsChecksumMap(
-      String namespace, String helmReleaseName, Map<String, String> config) {
+      String namespace,
+      String helmReleaseName,
+      Map<String, String> config,
+      boolean newNamingStyle) {
     Map<ServerType, String> serverTypeGflagsChecksumMap = new HashMap<>();
     List<String> commandList =
         ImmutableList.of(
@@ -1202,7 +1205,7 @@ public class ShellKubernetesManager extends KubernetesManager {
           stsList.stream()
               .collect(
                   Collectors.toMap(
-                      sts -> serverTypeLabelConverter.apply(sts.getMetadata()),
+                      sts -> serverTypeLabelConverter.apply(sts.getMetadata(), newNamingStyle),
                       sts -> {
                         Map<String, String> annotations =
                             sts.getSpec().getTemplate().getMetadata().getAnnotations();

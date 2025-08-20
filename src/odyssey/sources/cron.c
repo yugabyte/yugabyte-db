@@ -288,6 +288,8 @@ static inline void od_cron_expire(od_cron_t *cron)
 			od_debug(&instance->logger, "expire", NULL, server,
 				 "closing idle server connection (%d secs)",
 				 server->idle_time);
+			od_route_t *route = server->route;
+			yb_signal_all_routes(router, route, instance->config.yb_enable_multi_route_pool);
 			server->route = NULL;
 			od_backend_close_connection(server);
 			od_backend_close(server);

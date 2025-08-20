@@ -157,7 +157,7 @@ func (handler *PreflightCheckHandler) getOptions(preflightScriptPath string) []s
 			options, "--yb_controller_rpc_port", fmt.Sprint(handler.param.YbControllerRpcPort),
 		)
 	}
-	if handler.param.MountPaths != nil && len(handler.param.MountPaths) > 0 {
+	if len(handler.param.MountPaths) > 0 {
 		options = append(options, "--mount_points")
 		options = append(options, strings.Join(handler.param.MountPaths, ","))
 	}

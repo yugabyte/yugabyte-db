@@ -99,6 +99,10 @@ extern uint64_t YBGetActiveCatalogCacheVersion();
 
 extern uint64_t YbGetCatalogCacheVersion();
 extern uint64_t YbGetNewCatalogVersion();
+extern void YbSetNeedInvalidateAllTableCache();
+extern void YbResetNeedInvalidateAllTableCache();
+extern bool YbGetNeedInvalidateAllTableCache();
+extern bool YbCanTryInvalidateTableCacheEntry();
 
 extern void YbUpdateCatalogCacheVersion(uint64_t catalog_cache_version);
 extern void YbResetNewCatalogVersion();
@@ -722,6 +726,11 @@ extern int	yb_test_delay_after_applying_inval_message_ms;
 extern int	yb_test_delay_set_local_tserver_inval_message_ms;
 
 /*
+ * If > 0, sleep for this many ms before committing the DDL
+ */
+extern double yb_test_delay_next_ddl;
+
+/*
  * Denotes whether DDL operations touching DocDB system catalog will be rolled
  * back upon failure. These two GUC variables are used together. See comments
  * for the gflag --ysql_enable_ddl_atomicity_infra in common_flags.cc.
@@ -759,6 +768,7 @@ extern bool yb_enable_advisory_locks;
  * Enable invalidation messages.
  */
 extern bool yb_enable_invalidation_messages;
+extern bool yb_enable_invalidate_table_cache_entry;
 extern int	yb_invalidation_message_expiration_secs;
 extern int	yb_max_num_invalidation_messages;
 
@@ -790,7 +800,7 @@ extern bool yb_silence_advisory_locks_not_supported_error;
  */
 extern bool yb_xcluster_automatic_mode_target_ddl;
 
-extern bool yb_force_early_ddl_serialization;
+extern bool yb_user_ddls_preempt_auto_analyze;
 
 /*
  * See also ybc_util.h which contains additional such variable declarations for
@@ -1366,6 +1376,8 @@ extern bool YbIsYsqlConnMgrWarmupModeEnabled();
 
 extern bool YbIsAuthBackend();
 
+extern bool YbIsYsqlConnMgrEnabled();
+
 bool		YbIsAttrPrimaryKeyColumn(Relation rel, AttrNumber attnum);
 
 SortByDir	YbGetIndexKeySortOrdering(Relation indexRel);
@@ -1404,5 +1416,9 @@ extern bool YbRefreshMatviewInPlace();
 extern void YbForceSendInvalMessages();
 
 extern long YbGetPeakRssKb();
+
+extern bool YbIsAnyDependentGeneratedColPK(Relation rel, AttrNumber attnum);
+
+extern bool YbCheckTserverResponseCacheForAuthGflags();
 
 #endif							/* PG_YB_UTILS_H */

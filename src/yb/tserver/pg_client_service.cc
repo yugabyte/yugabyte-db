@@ -61,7 +61,6 @@
 
 #include "yb/server/server_base.h"
 
-#include "yb/tserver/pg_client_service_util.h"
 #include "yb/tserver/pg_create_table.h"
 #include "yb/tserver/pg_response_cache.h"
 #include "yb/tserver/pg_sequence_cache.h"
@@ -448,7 +447,8 @@ class PerformQuery : public std::enable_shared_from_this<PerformQuery>, public r
 
   PerformQuery(
       SessionProvider& provider, ContextHolder&& context)
-      : provider_(provider), context_(std::move(context)), tid_(Thread::UniqueThreadId()) {
+      : provider_(provider), context_(std::move(context)), tid_(Thread::UniqueThreadId()),
+        wait_state_ptr_(ash::WaitStateInfo::CurrentWaitState()) {
   }
 
   void Ready() override {
@@ -474,6 +474,8 @@ class PerformQuery : public std::enable_shared_from_this<PerformQuery>, public r
   }
 
   void Run() override {
+    ADOPT_WAIT_STATE(wait_state_ptr_);
+    SCOPED_WAIT_STATUS(OnCpu_Active);
     auto& context = context_.context();
     auto session = provider_.GetSession(req().session_id());
     if (!session.ok()) {
@@ -492,6 +494,9 @@ class PerformQuery : public std::enable_shared_from_this<PerformQuery>, public r
   const int64_t tid_;
   PgTablesQueryResult tables_;
   std::shared_ptr<PerformQuery> retained_self_;
+
+  // kept here in case the task is scheduled in another thread.
+  const ash::WaitStateInfoPtr wait_state_ptr_;
 };
 
 class OpenTableQuery : public PgTablesQueryListener {
@@ -2776,7 +2781,6 @@ void PgClientServiceImpl::method( \
     const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)* req, \
     BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)* resp, \
     rpc::RpcContext context) { \
-  TryUpdateAshWaitState(*req); \
   Respond(impl_->method(*req, resp, &context), resp, &context); \
 }
 
@@ -2785,7 +2789,6 @@ void PgClientServiceImpl::method( \
     const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)* req, \
     BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)* resp, \
     rpc::RpcContext context) { \
-  TryUpdateAshWaitState(*req); \
   impl_->method(*req, resp, std::move(context)); \
 }
 
@@ -2793,7 +2796,6 @@ void PgClientServiceImpl::method( \
 Result<BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)> PgClientServiceImpl::method( \
     const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)& req, \
     CoarseTimePoint deadline) { \
-  TryUpdateAshWaitState(req); \
   return impl_->method(req, deadline); \
 }
 

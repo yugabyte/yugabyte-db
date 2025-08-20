@@ -62,7 +62,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$master_addresses" ]]; then
-  echo "Need to specify -master_addresses" >&2
+  echo "Need to specify --master_addresses" >&2
   print_help >&2
   exit 1
 fi
@@ -75,7 +75,7 @@ fi
 # 33b3a57874f74ae9a6416d29cfee6412        127.0.0.3:9100
 # e812de390ca448d9bd30f0cdb6a16ea9        127.0.0.2:9100
 # bbc4dc1482b9405d81a8e4c4574e05df        127.0.0.1:9100
-ts_uuid_ts_ip_port_s=$("$binary_path"/yb-admin -master_addresses "$master_addresses" \
+ts_uuid_ts_ip_port_s=$("$binary_path"/yb-admin --master_addresses "$master_addresses" \
   list_all_tablet_servers | grep -v "Tablet Server" | awk '{print $2"-"$1}' | sort)
 # Output after grepping:
 # 127.0.0.1:9100-bbc4dc1482b9405d81a8e4c4574e05df
@@ -102,7 +102,7 @@ for ts_uuid_ts_ip_port in $ts_uuid_ts_ip_port_s; do
   # cassandrakeyvalue  ce3c59a4... 0     FAILED  0       0
   # cassandrakeyvalue  af739719... 1     RUNNING         1       2
   # cassandrakeyvalue  feb651b8... 0     RUNNING         1       2
-  failed_tablet_ids=$("$binary_path"/yb-admin -master_addresses "$master_addresses" \
+  failed_tablet_ids=$("$binary_path"/yb-admin --master_addresses "$master_addresses" \
     list_tablets_for_tablet_server "$ts_uuid" | grep -w FAILED | awk '{print $2}');
   # Output after grepping:
   # ce3c59a4a3834b4cab430b778289ec14

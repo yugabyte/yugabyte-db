@@ -100,6 +100,14 @@ class HostPort {
     return HostPort(pb.host(), pb.port());
   }
 
+  template <class PB>
+  PB ToPB() const {
+    PB out;
+    out.set_host(host());
+    out.set_port(port());
+    return out;
+  }
+
   // Takes a vector of HostPort objects and returns a comma separated
   // string containing of "host:port" pairs. This method is the
   // "inverse" of ParseStrings().

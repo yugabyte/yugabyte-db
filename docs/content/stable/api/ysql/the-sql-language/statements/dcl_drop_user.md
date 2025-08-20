@@ -12,7 +12,7 @@ type: docs
 
 ## Synopsis
 
-Use the `DROP USER` statement to drop a user or role. `DROP USER` is an alias for [DROP ROLE](../dcl_drop_role) and is used to drop a role.
+Use the DROP USER statement to drop a user or role. DROP USER is an alias for [DROP ROLE](../dcl_drop_role) and is used to drop a role.
 
 ## Syntax
 

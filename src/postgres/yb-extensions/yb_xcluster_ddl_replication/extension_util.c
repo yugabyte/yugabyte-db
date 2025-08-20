@@ -263,3 +263,12 @@ get_typname(Oid pg_type_oid)
 	ReleaseSysCache(type_tuple);
 	return type_name;
 }
+
+bool
+IsMatViewCommand(CommandTag command_tag)
+{
+	return command_tag == CMDTAG_CREATE_MATERIALIZED_VIEW ||
+		   command_tag == CMDTAG_ALTER_MATERIALIZED_VIEW ||
+		   command_tag == CMDTAG_REFRESH_MATERIALIZED_VIEW ||
+		   command_tag == CMDTAG_DROP_MATERIALIZED_VIEW;
+}

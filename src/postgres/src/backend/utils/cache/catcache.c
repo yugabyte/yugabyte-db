@@ -706,6 +706,48 @@ CatCacheInvalidate(CatCache *cache, uint32 hashValue)
 
 		if (hashValue == ct->hash_value)
 		{
+			if (YbCanTryInvalidateTableCacheEntry())
+			{
+				if (cache->id == RELOID)
+				{
+					Form_pg_class classForm = (Form_pg_class) GETSTRUCT(&ct->tuple);
+					Oid			relid = classForm->oid;
+					Oid			relfilenode = classForm->relfilenode;
+					Oid			dbid = classForm->relisshared ? Template1DbOid : MyDatabaseId;
+					Oid			table_relfilenode_oid = OidIsValid(relfilenode) ? relfilenode : relid;
+					elog(DEBUG1, "catcache removing tuple for relation %u:%u", dbid, relid);
+					YBCPgRemoveTableCacheEntry(dbid, table_relfilenode_oid);
+				}
+				else if (cache->id == INDEXRELID)
+				{
+					Form_pg_index indexForm = (Form_pg_index) GETSTRUCT(&ct->tuple);
+					Oid			indexrelid = indexForm->indexrelid;
+					Oid			relid = indexForm->indrelid;
+					Oid			dbid = InvalidOid;
+					Relation	index_rel = YbRelationIdCacheLookup(indexrelid);
+					Relation	table_rel = YbRelationIdCacheLookup(relid);
+
+					Oid			index_relfilenode = index_rel ? YbGetRelfileNodeId(index_rel) : InvalidOid;
+					Oid			rel_relfilenode = table_rel ? YbGetRelfileNodeId(table_rel) : InvalidOid;
+
+					if (index_rel)
+						dbid = index_rel->rd_rel->relisshared ? Template1DbOid : MyDatabaseId;
+					if (!OidIsValid(dbid) && table_rel)
+						dbid = table_rel->rd_rel->relisshared ? Template1DbOid : MyDatabaseId;
+					/*
+					 * When index's docdb schema changes, the base table's docdb schema also
+					 * changes, therefore even though PG is only invalidating the index, we
+					 * need to invalidate the base table as well.
+					 */
+					elog(DEBUG1, "catcache removing tuple for index and relation %u:%u/%u",
+						 dbid, indexrelid, relid);
+					if (OidIsValid(index_relfilenode))
+						YBCPgRemoveTableCacheEntry(dbid, index_relfilenode);
+					if (OidIsValid(rel_relfilenode))
+						YBCPgRemoveTableCacheEntry(dbid, rel_relfilenode);
+				}
+			}
+
 			if (ct->refcount > 0 ||
 				(ct->c_list && ct->c_list->refcount > 0))
 			{

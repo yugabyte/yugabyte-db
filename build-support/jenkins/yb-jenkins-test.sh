@@ -168,7 +168,10 @@ if [[ ${YB_COMPILE_ONLY} != "1" ]]; then
       if [[ ${YB_BUILD_CPP} == "1" ]]; then
         run_tests_extra_args+=( "--cpp" )
       fi
-      if [[ ${YB_RUN_AFFECTED_TESTS_ONLY} == "1" ]]; then
+      if [[ -n "${YB_TEST_LIST_FILE:-}" && -f "$YB_TEST_LIST_FILE" ]]; then
+        log "Using test list file: $YB_TEST_LIST_FILE"
+        run_tests_extra_args+=( "--test_list" "$YB_TEST_LIST_FILE" )
+      elif [[ ${YB_RUN_AFFECTED_TESTS_ONLY} == "1" ]]; then
         # The build-stage should have already generated a conf file based on modified files.
         test_conf_path="${BUILD_ROOT}/test_conf.json"
         # If the conf file is missing or we have a filter specified, we need to re-run.

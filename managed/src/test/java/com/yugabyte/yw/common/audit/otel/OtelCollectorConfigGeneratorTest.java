@@ -23,10 +23,10 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
-import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
-import com.yugabyte.yw.models.helpers.audit.UniverseLogsExporterConfig;
-import com.yugabyte.yw.models.helpers.audit.YCQLAuditConfig;
-import com.yugabyte.yw.models.helpers.audit.YSQLAuditConfig;
+import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig;
+import com.yugabyte.yw.models.helpers.exporters.audit.YCQLAuditConfig;
+import com.yugabyte.yw.models.helpers.exporters.audit.YSQLAuditConfig;
 import com.yugabyte.yw.models.helpers.telemetry.*;
 import java.io.BufferedWriter;
 import java.io.File;
@@ -124,6 +124,8 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
           provider,
           null,
           auditLogConfig,
+          null,
+          null,
           "%t | %u%d : ",
           file.toPath(),
           NodeManager.getOtelColMetricsPort(nodeTaskParams));
@@ -168,6 +170,8 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
           provider,
           null,
           auditLogConfig,
+          null,
+          null,
           "%t | %u%d : ",
           file.toPath(),
           NodeManager.getOtelColMetricsPort(nodeTaskParams));
@@ -216,6 +220,8 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
           provider,
           null,
           auditLogConfig,
+          null,
+          null,
           "%t | %u%d : ",
           file.toPath(),
           NodeManager.getOtelColMetricsPort(nodeTaskParams));
@@ -284,6 +290,8 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
           provider,
           null,
           auditLogConfig,
+          null,
+          null,
           "%t | %u%d : ",
           file.toPath(),
           NodeManager.getOtelColMetricsPort(nodeTaskParams));

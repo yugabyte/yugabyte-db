@@ -24,7 +24,7 @@ Application instances are active in all regions and do consistent reads with the
 
 Suppose you have an RF 3 [Global Database](../global-database) spread across `us-east`, `us-central`, and `us-west`, your application is running in `us-east`, and so you have set the leader preference to `us-east`.
 
-{{<cluster-setup-tabs>}}
+{{<cluster-setup-tabs-new>}}
 
 ![RF3 Global Database](/images/develop/global-apps/duplicate-indexes-global-database.png)
 

@@ -12,21 +12,21 @@
 # all api_keys were generated from btoa(orig_key)
 [context.deploy-preview.environment]
   GO_VERSION = "1.20"
-  HUGO_VERSION = "0.145.0"
+  HUGO_VERSION = "0.148.2"
   NODE_VERSION = "22"
   CXXFLAGS = "-std=c++17"
   RUDDERSTACK_API_KEY = "Mmo5Zmp5M1lONWFLM2xYS044N3k5cGhic3R4"
 
 [context.branch-deploy.environment]
   GO_VERSION = "1.20"
-  HUGO_VERSION = "0.145.0"
+  HUGO_VERSION = "0.148.2"
   NODE_VERSION = "22"
   CXXFLAGS = "-std=c++17"
   RUDDERSTACK_API_KEY = "Mmo5Zmp5M1lONWFLM2xYS044N3k5cGhic3R4"
 
 [context.production.environment]
   GO_VERSION = "1.20"
-  HUGO_VERSION = "0.145.0"
+  HUGO_VERSION = "0.148.2"
   NODE_VERSION = "22"
   CXXFLAGS = "-std=c++17"
   RUDDERSTACK_API_KEY = "Mmo5Y252MjZ6R290ZjhPa3BROUx4cFl6VFVK"
@@ -124,6 +124,10 @@
   to = "/preview/drivers-orms/"
 
 [[redirects]]
+  from = "/explore/tunable-reads/"
+  to = "/preview/explore/going-beyond-sql/follower-reads-ycql/"
+
+[[redirects]]
   from = "/explore/*"
   to = "/preview/explore/:splat"
 
@@ -152,6 +156,10 @@
   to = "/preview/explore/ycql-language/indexes-constraints/unique-index-ycql"
 
 [[redirects]]
+  from = "/preview/explore/indexes-constraints/indexes-1/"
+  to = "/preview/explore/indexes-constraints/unique-index-ysql/"
+
+[[redirects]]
   from = "/preview/explore/indexes-constraints/*"
   to = "/preview/explore/ysql-language-features/indexes-constraints/:splat"
 
@@ -170,10 +178,6 @@
 [[redirects]]
   from = "/preview/explore/ysql-language-features/going-beyond-sql/*"
   to = "/preview/explore/going-beyond-sql/:splat"
-
-[[redirects]]
-  from = "/explore/tunable-reads/"
-  to = "/preview/explore/going-beyond-sql/follower-reads-ycql/"
 
 [[redirects]]
   from = "/preview/admin/cqlsh/"
@@ -355,10 +359,6 @@
 [[redirects]]
   from = "/preview/explore/high-performance/tunable-reads/"
   to = "/preview/explore/going-beyond-sql/follower-reads-ycql/"
-
-[[redirects]]
-  from = "/preview/explore/indexes-constraints/indexes-1/"
-  to = "/preview/explore/indexes-constraints/unique-index-ysql/"
 
 [[redirects]]
   from = "/preview/explore/linear-scalability/macos/"
@@ -1129,19 +1129,6 @@
   to = "/preview/yedis/"
   force = true
 
-# Make sure preview quick-start doesn't get redirected.
-# (All other versions get redirected to preview.)
-
-[[redirects]]
-  from = "/preview/quick-start/*"
-  to = "/preview/tutorials/quick-start/:splat"
-  status = 200
-
-[[redirects]]
-  from = "/preview/quick-start-yugabytedb-managed/*"
-  to = "/preview/tutorials/quick-start-yugabytedb-managed/:splat"
-  force = true
-
 # Yugabyte Extensions top hit
 
 [[redirects]]
@@ -1151,64 +1138,64 @@
 
 [[redirects]]
   from = "/quick-start/install/"
-  to = "/preview/tutorials/quick-start/macos/#install-yugabytedb"
+  to = "/preview/quick-start/macos/#install-yugabytedb"
   force = true
 
 [[redirects]]
   from = "/:version/quick-start/install/linux/"
-  to = "/preview/tutorials/quick-start/linux/#install-yugabytedb"
+  to = "/preview/quick-start/linux/#install-yugabytedb"
   force = true
 
 [[redirects]]
   from = "/:version/quick-start/install/docker/"
-  to = "/preview/tutorials/quick-start/docker/#install-yugabytedb"
+  to = "/preview/quick-start/docker/#install-yugabytedb"
   force = true
 
 [[redirects]]
   from = "/:version/quick-start/install/kubernetes/"
-  to = "/preview/tutorials/quick-start/kubernetes/#install-yugabytedb"
+  to = "/preview/quick-start/kubernetes/#install-yugabytedb"
   force = true
 
 [[redirects]]
   from = "/:version/quick-start/install/*"
-  to = "/preview/tutorials/quick-start/macos/#install-yugabytedb"
+  to = "/preview/quick-start/macos/#install-yugabytedb"
   force = true
 
 [[redirects]]
   from = "/quick-start/create-local-cluster/"
-  to = "/preview/tutorials/quick-start/macos/#create-a-local-cluster"
+  to = "/preview/quick-start/macos/#create-a-local-cluster"
   force = true
 
 [[redirects]]
   from = "/:version/quick-start/create-local-cluster/linux/"
-  to = "/preview/tutorials/quick-start/linux/#create-a-local-cluster"
+  to = "/preview/quick-start/linux/#create-a-local-cluster"
   force = true
 
 [[redirects]]
   from = "/:version/quick-start/create-local-cluster/docker/"
-  to = "/preview/tutorials/quick-start/docker/#create-a-local-cluster"
+  to = "/preview/quick-start/docker/#create-a-local-cluster"
   force = true
 
 [[redirects]]
   from = "/:version/quick-start/create-local-cluster/kubernetes/"
-  to = "/preview/tutorials/quick-start/kubernetes/#create-a-local-cluster"
+  to = "/preview/quick-start/kubernetes/#create-a-local-cluster"
   force = true
 
 [[redirects]]
   from = "/:version/quick-start/create-local-cluster/*"
-  to = "/preview/tutorials/quick-start/macos/#create-a-local-cluster"
+  to = "/preview/quick-start/macos/#create-a-local-cluster"
   force = true
 
 # Redirect all non-preview quick start links to preview
 
 [[redirects]]
-  from = "/:version/quick-start/*"
-  to = "/preview/tutorials/quick-start/macos/"
+  from = "/:version/quick-start/"
+  to = "/preview/quick-start/macos/"
   force = true
 
 [[redirects]]
   from = "/:version/quick-start-yugabytedb-managed/*"
-  to = "/preview/tutorials/quick-start-yugabytedb-managed/"
+  to = "/preview/quick-start-yugabytedb-managed/"
   force = true
 
 # Foreign data wrappers from SQL features to Advanced features

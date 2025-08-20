@@ -7,6 +7,7 @@ import static play.mvc.Http.Status.METHOD_NOT_ALLOWED;
 
 import api.v2.mappers.ClusterMapper;
 import api.v2.mappers.UniverseDefinitionTaskParamsMapper;
+import api.v2.mappers.UniverseResourceDetailsMapper;
 import api.v2.mappers.UniverseRespMapper;
 import api.v2.models.AttachUniverseSpec;
 import api.v2.models.ClusterAddSpec;
@@ -22,6 +23,7 @@ import api.v2.models.YBATask;
 import api.v2.utils.ApiControllerUtils;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.inject.Inject;
+import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.AppConfigHelper;
@@ -38,6 +40,7 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler.OpType;
+import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -76,6 +79,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
   @Inject private SwamperHelper swamperHelper;
   @Inject private ConfigHelper configHelper;
   @Inject private UniverseCRUDHandler universeCRUDHandler;
+  @Inject private UniverseInfoHandler universeInfoHandler;
   @Inject private Commissioner commissioner;
 
   private static final String RELEASES_PATH = "yb.releases.path";
@@ -483,5 +487,41 @@ public class UniverseManagementHandler extends ApiControllerUtils {
             String.valueOf(
                 configHelper.getConfig(ConfigHelper.ConfigType.SoftwareVersion).get("version")),
             "-");
+  }
+
+  public api.v2.models.UniverseResourceDetails getUniverseResources(
+      Request request, UUID cUUID, UniverseCreateSpec universeSpec) throws JsonProcessingException {
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    log.info("Get Universe resource details with v2 spec: {}", prettyPrint(universeSpec));
+    // map universeSpec to v1 universe details
+    UniverseDefinitionTaskParams v1DefnParams =
+        UniverseDefinitionTaskParamsMapper.INSTANCE.toV1UniverseDefinitionTaskParamsFromCreateSpec(
+            universeSpec);
+    log.debug("Get Universe resource details translated to v1 spec: {}", prettyPrint(v1DefnParams));
+    UniverseConfigureTaskParams v1Params =
+        UniverseDefinitionTaskParamsMapper.INSTANCE.toUniverseConfigureTaskParams(
+            v1DefnParams, request);
+
+    v1Params.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.CREATE;
+    v1Params.currentClusterType = ClusterType.PRIMARY;
+    universeCRUDHandler.configure(customer, v1Params);
+
+    if (v1Params.clusters.stream().anyMatch(cluster -> cluster.clusterType == ClusterType.ASYNC)) {
+      v1Params.currentClusterType = ClusterType.ASYNC;
+      universeCRUDHandler.configure(customer, v1Params);
+    }
+
+    v1DefnParams.nodeDetailsSet = v1Params.nodeDetailsSet;
+
+    UniverseResourceDetails v1UniverseResourceDetails =
+        universeInfoHandler.getUniverseResources(customer, v1DefnParams);
+    // map to v2 UniverseResourceDetails
+    api.v2.models.UniverseResourceDetails v2Response =
+        UniverseResourceDetailsMapper.INSTANCE.toV2UniverseResourceDetails(
+            v1UniverseResourceDetails);
+    if (log.isTraceEnabled()) {
+      log.trace("Got Universe resource details {}", prettyPrint(v2Response));
+    }
+    return v2Response;
   }
 }

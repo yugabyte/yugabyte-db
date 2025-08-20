@@ -66,7 +66,7 @@ The basic flow of bootstrapping is as follows:
 1. Create a checkpoint for all the tables in the AWS universe. For example:
 
     ```bash
-    ./bin/yb-admin -master_addresses <AWS_universe_master_addresses> \
+    ./bin/yb-admin --master_addresses <AWS_universe_master_addresses> \
             bootstrap_cdc_producer <comma_separated_source_universe_table_ids>
     ```
 
@@ -85,7 +85,7 @@ For detailed instructions on how to set up replication, see [Set up unidirection
 A simple way to set up replication is as follows:
 
 ```bash
-./bin/yb-admin -master_addresses <GCP_universe_master_addresses> setup_universe_replication \
+./bin/yb-admin --master_addresses <GCP_universe_master_addresses> setup_universe_replication \
   <AWS_universe_uuid>_<replication_stream_name> <AWS_universe_master_addresses> \
   <comma_separated_source_universe_table_ids> <comma_separated_bootstrap_ids>
 ```
@@ -111,8 +111,8 @@ The basic flow of switchover is as follows:
 
   ```bash
   ./bin/yb-admin \
-      -master_addresses <GCP_master_addresses> \
-      -certs_dir_name <cert_dir> \
+      --master_addresses <GCP_master_addresses> \
+      --certs_dir_name <cert_dir> \
       change_xcluster_role ACTIVE
   ```
 

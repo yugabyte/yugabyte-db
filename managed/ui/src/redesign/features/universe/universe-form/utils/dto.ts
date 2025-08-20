@@ -330,6 +330,10 @@ export interface DeviceInfo {
   storageClass: 'standard'; // hardcoded in DeviceInfo.java
   mountPoints: string | null;
   storageType: StorageType | null;
+  cloudVolumeEncryption? : {
+    enableVolumeEncryption: boolean;
+    kmsConfigUUID: string;
+  }
 }
 
 export interface K8NodeSpec {

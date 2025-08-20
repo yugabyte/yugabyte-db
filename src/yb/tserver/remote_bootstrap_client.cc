@@ -195,9 +195,6 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
   BeginRemoteBootstrapSessionRequestPB req;
   req.set_requestor_uuid(permanent_uuid());
   req.set_tablet_id(tablet_id_);
-  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
-    wait_state->MetadataToPB(req.mutable_ash_metadata());
-  }
 
   if (tablet_leader_conn_info.has_cloud_info()) {
     // If tablet_leader_conn_info is populated, propagate it to the RBS source (which is a follower

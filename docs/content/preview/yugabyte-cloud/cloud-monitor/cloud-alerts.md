@@ -53,7 +53,7 @@ YugabyteDB monitors the health of your clusters based on [cluster alert](#cluste
 | Status | Alert | Level |
 | :----- | :---- | :---- |
 | Healthy | No alerts<br/>[Disk throughput](#fix-throughput-alerts)<br/>[Disk IOPS](#fix-iops-alerts)<br/>[Fewer than 34% of nodes down](#fix-nodes-reporting-as-down-alerts) | <br/>Warning<br/>Warning<br/>Info |
-| Needs Attention | [Tablet peers](#fix-storage-alerts)<br/>[Node free storage](#fix-storage-alerts)<br/>[More than 34% of nodes down](#fix-nodes-reporting-as-down-alerts)<br/>[Memory Utilization](#fix-memory-alerts)<br/>[YSQL Connections](#fix-ysql-connection-alerts)<br/>[CPU Utilization](#fix-cpu-alerts) | Warning or Severe<br/>Warning or Severe<br/>Warning<br/>Warning or Severe<br/>Warning or Severe<br/>Warning or Severe |
+| Needs Attention | [Tablet peers](#fix-tablet-peer-alerts)<br/>[Node free storage](#fix-storage-alerts)<br/>[More than 34% of nodes down](#fix-nodes-reporting-as-down-alerts)<br/>[Memory Utilization](#fix-memory-alerts)<br/>[YSQL Connections](#fix-ysql-connection-alerts)<br/>[CPU Utilization](#fix-cpu-alerts) | Warning or Severe<br/>Warning or Severe<br/>Warning<br/>Warning or Severe<br/>Warning or Severe<br/>Warning or Severe |
 | Unhealthy | [More than 66% of nodes down](#fix-nodes-reporting-as-down-alerts)<br/>[CMK unavailable](#fix-cmk-unavailable-alerts)  | Severe<br/>Warning |
 
 To see the alert conditions that caused the current health condition, click the cluster health icon.
@@ -80,6 +80,7 @@ When you receive a cluster alert, the first step is to review the chart for the 
 | [Node Free Storage](#fix-storage-alerts) | Disk Usage metric |
 | [Nodes Down](#fix-nodes-reporting-as-down-alerts) | Go to the cluster [Nodes tab](../monitor-nodes/) to see which nodes are down |
 | [Memory Use](#fix-memory-alerts) | Memory Usage metric |
+| [Disaster recovery](#fix-disaster-recovery-alerts) | Safe time and Replication lag metric |
 | [Cluster Queues Overflow](#fix-database-overload-alerts) | RPC Queue Size metric |
 | [Compaction Overload](#fix-database-overload-alerts) | Compaction metric |
 | [YSQL Connections](#fix-ysql-connection-alerts) | YSQL Operations/Sec metric |
@@ -96,7 +97,9 @@ If you get frequent cluster alerts on a [Sandbox cluster](../../cloud-basics/cre
 
 #### Fix tablet peer alerts
 
-YugabyteDB Aeon sends a notification when the number of [tablet peers](../../../architecture/docdb-replication/replication/#tablet-peers) in the cluster exceeds the threshold, as follows:
+YugabyteDB Aeon automatically enforces [tablet peer](../../../architecture/docdb-replication/replication/#tablet-peers) limits for clusters.
+
+If a cluster exceeds the limit, YugabyteDB Aeon sends a notification as follows:
 
 - Number of tablet peers is 85% of the cluster limit (Warning).
 - Number of tablet peers is 100% of the cluster limit (Severe).
@@ -108,6 +111,8 @@ You can also drop tables. There may be a lag in clearing the associated tablets.
 For Sandbox clusters, if you reach the tablet peer limit, you cannot create any more tables, and table splitting is stopped.
 
 For information on scaling clusters, refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
+
+For information on tablet limits in YugabyteDB, refer to [Memory and tablet limits](../../../deploy/checklist/#memory-and-tablet-limits).
 
 Currently, this alert is only available for Sandbox clusters running v2024.1 or later.
 
@@ -178,6 +183,17 @@ If memory use is continuously higher than 80%, your workload may also exceed the
 
 High memory use could also indicate a problem and may require debugging by {{% support-cloud %}}.
 
+#### Fix disaster recovery alerts
+
+If you have set up disaster recovery (DR) for a cluster, YugabyteDB Aeon sends a notification when the safe time or replication lag exceeds the threshold, as follows:
+
+- Safe time lag exceeds 5 minutes (Warning).
+- Safe time lag exceeds 10 minutes (Severe).
+- Replication lag exceeds 5 minutes (Warning).
+- Replication lag exceeds 10 minutes (Severe).
+
+If you receive DR alerts, navigate to the primary cluster **Disaster Recovery** tab and check the status. See [Disaster Recovery alerts](../../cloud-clusters/disaster-recovery/disaster-recovery-setup/#disaster-recovery-alerts) for more information.
+
 #### Fix database overload alerts
 
 YugabyteDB Aeon sends the following database overload alert:
@@ -212,7 +228,7 @@ If your cluster experiences frequent spikes in connections, consider optimizing 
 
 If connections are opened but never closed, your application will eventually exceed the connection limit.
 
-You may need to implement some form of connection pooling.
+You may need to implement some form of connection pooling, such as enabling built-in [Connection Pooling](../../../explore/going-beyond-sql/connection-mgr-ysql/).
 
 If the number of connections is continuously higher than 60%, your workload may also exceed the capacity of your cluster. Be sure to size your cluster with enough spare capacity to remain fault tolerant during maintenance events and outages. For example, during an outage or a rolling restart for maintenance, a 3 node cluster loses a third of its capacity. The remaining nodes need to be able to handle the traffic from the absent node.
 
@@ -244,6 +260,22 @@ Unoptimized queries can lead to CPU alerts. Use the [Slow Queries](../cloud-quer
 High CPU use could also indicate a problem and may require debugging by {{% support-cloud %}}.
 
 If CPU use is continuously higher than 80%, your workload may also exceed the capacity of your cluster. Consider scaling your cluster vertically by adding vCPUs to increase capacity per node, or horizontally by adding nodes to reduce the load per node. Refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
+
+### Disaster recovery alerts
+
+If disaster recovery is configured, YugabyteDB Aeon can alert you when the safe time or replication lag to the replica cluster exceeds a threshold.
+
+| Alert | Metric |
+| :--- | :--- |
+| Safe time lag | Time |
+| Replication lag | Time |
+
+YugabyteDB Aeon sends a notification when lag exceeds the threshold, as follows:
+
+- Safe time lag exceeds 5 minutes (Warning) or 10 minutes (Severe).
+- Replication lag exceeds 5 minutes (Warning) or 10 minutes (Severe).
+
+For more information, refer to [Monitor replication](../../cloud-clusters/disaster-recovery/disaster-recovery-setup/#monitor-replication).
 
 ### Billing alerts
 

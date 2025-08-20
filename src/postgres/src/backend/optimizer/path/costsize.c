@@ -213,6 +213,7 @@ bool		yb_enable_batchednl = false;
 bool		yb_enable_parallel_append = false;
 YbCostModel yb_enable_cbo = YB_COST_MODEL_LEGACY;
 bool		yb_ignore_stats = false;
+bool		yb_legacy_bnl_cost = false;
 
 extern int	yb_bnl_batch_size;
 
@@ -3281,7 +3282,8 @@ initial_cost_nestloop(PlannerInfo *root, JoinCostWorkspace *workspace,
 	int			yb_batch_size = 1;
 	bool		yb_is_batched = false;
 
-	if (IsYugaByteEnabled() && yb_enable_base_scans_cost_model)
+	if (IsYugaByteEnabled() &&
+		(yb_enable_base_scans_cost_model || yb_legacy_bnl_cost))
 	{
 		yb_is_batched = yb_is_outer_inner_batched(outer_path, inner_path);
 		if (yb_is_batched)
@@ -3380,7 +3382,8 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 	int			yb_batch_size = 1;
 	bool		yb_is_batched = IsYugaByteEnabled() && yb_is_nestloop_batched(path);
 
-	if (IsYugaByteEnabled() && yb_enable_base_scans_cost_model && yb_is_batched)
+	if (IsYugaByteEnabled() && yb_is_batched &&
+		(yb_enable_base_scans_cost_model || yb_legacy_bnl_cost))
 		yb_batch_size = yb_bnl_batch_size;
 
 	bool		yb_costing_bnl = yb_batch_size > 1;
@@ -3561,7 +3564,7 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 	 */
 	if (IsYugaByteEnabled() &&
 		yb_is_outer_inner_batched(outer_path, inner_path) &&
-		!yb_enable_base_scans_cost_model)
+		!yb_enable_base_scans_cost_model && !yb_legacy_bnl_cost)
 	{
 		restrict_qual_cost.startup = 0.0;
 		restrict_qual_cost.per_tuple = 0.0;
@@ -6828,6 +6831,7 @@ yb_get_baserel_primary_index(RelOptInfo *baserel)
 	foreach(lc, baserel->indexlist)
 	{
 		IndexOptInfo *index = (IndexOptInfo *) lfirst(lc);
+
 		if (!index->hypothetical)
 		{
 			Relation	index_rel = RelationIdGetRelation(index->indexoid);
@@ -6900,7 +6904,7 @@ yb_get_ybctid_width(Oid baserel_oid, RelOptInfo *baserel,
 					if (!index->hypothetical)
 					{
 						Relation	indexrel = index_open(index->indexoid,
-														   NoLock);
+														  NoLock);
 						Form_pg_attribute att = TupleDescAttr(indexrel->rd_att,
 															  i + 1);
 
@@ -7937,8 +7941,9 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 			  bool partial_path)
 {
 	IndexOptInfo *index = path->indexinfo;
-	bool is_primary_index;
+	bool		is_primary_index;
 	Oid			index_tablespace_id = index->reltablespace;
+
 	if (index->hypothetical)
 	{
 		is_primary_index = false;
@@ -7946,6 +7951,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	else
 	{
 		Relation	index_rel = RelationIdGetRelation(index->indexoid);
+
 		is_primary_index = index_rel->rd_index->indisprimary;
 		RelationClose(index_rel);
 	}
@@ -8168,6 +8174,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	double		num_nexts_prevs = 0;
 	double		num_bmscan_seeks = 0;
 	double		num_bmscan_nexts_prevs = 0;
+
 	if (yb_exist_conditions_on_all_hash_keys_)
 	{
 		yb_estimate_seeks_nexts_in_index_scan(root, index, baserel, baserel_oid,
@@ -8382,6 +8389,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 
 	int			index_ybctid_width = yb_get_ybctid_width(baserel_oid, baserel,
 														 index, false);
+
 	{
 		/*
 		 * If this path is used in a BitmapIndexScan, ybctids from multiple

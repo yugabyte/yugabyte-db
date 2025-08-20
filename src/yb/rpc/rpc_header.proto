@@ -35,6 +35,8 @@ package yb.rpc;
 
 option java_package = "org.yb.rpc";
 
+import "yb/common/common.proto";
+
 // The YB RPC protocol is similar to the RPC protocol of Hadoop and HBase.
 // See the following for reference on those other protocols:
 //  - https://issues.apache.org/jira/browse/HBASE-7898
@@ -73,6 +75,8 @@ message RequestHeader {
   optional uint32 timeout_millis = 3;
 
   repeated fixed32 sidecar_offsets = 4 [packed = true];
+
+  optional AshMetadataPB metadata = 5;
 }
 
 message ResponseHeader {

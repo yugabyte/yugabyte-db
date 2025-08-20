@@ -103,6 +103,8 @@ using ProxyTuple = util::SharedPtrTuple<
 
 struct PersistentTServerInfo : public Persistent<SysTabletServerEntryPB> {
   bool IsLive() const;
+  bool IsBlacklisted(const BlacklistSet& blacklist) const;
+  std::string placement_uuid() const;
 };
 
 // Master-side view of a single tablet server.
@@ -171,7 +173,6 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   bool registered_through_heartbeat() const;
 
   ServerRegistrationPB GetRegistration() const;
-  ResourcesPB GetResources() const;
 
   // Returns TSInformationPB for this TSDescriptor.
   // todo(zdrudi): See if we can remove at least some of these functions.
@@ -336,7 +337,7 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   bool IsLive() const;
 
-  virtual bool IsLiveAndHasReported() const;
+  bool IsLiveAndHasReported() const;
 
   bool HasYsqlCatalogLease() const;
 

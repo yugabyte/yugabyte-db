@@ -18,10 +18,10 @@ import (
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common/shell"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/config"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/replicated/replicatedctl"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/systemd"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/template"
 )
 
 type platformDirectories struct {
@@ -111,7 +111,7 @@ func (plat Platform) Version() string {
 // Install YBA service.
 func (plat Platform) Install() error {
 	log.Info("Starting Platform install")
-	config.GenerateTemplate(plat)
+	template.GenerateTemplate(plat)
 
 	if err := plat.createSoftwareDirectories(); err != nil {
 		return err
@@ -445,7 +445,7 @@ func (plat Platform) Status() (common.Status, error) {
 // Upgrade will NOT restart the service, the old version is expected to still be running
 func (plat Platform) Upgrade() error {
 	plat.platformDirectories = newPlatDirectories(plat.version)
-	if err := config.GenerateTemplate(plat); err != nil {
+	if err := template.GenerateTemplate(plat); err != nil {
 		return err
 	} // systemctl reload is not needed, start handles it for us.
 	if err := plat.createSoftwareDirectories(); err != nil {
@@ -501,7 +501,7 @@ func changeAllPermissions(user string) error {
 }
 
 func (plat Platform) MigrateFromReplicated() error {
-	config.GenerateTemplate(plat)
+	template.GenerateTemplate(plat)
 
 	if err := plat.createSoftwareDirectories(); err != nil {
 		return err
@@ -696,7 +696,7 @@ func (plat Platform) pemFromDocker() (string, error) {
 
 func (plat Platform) Reconfigure() error {
 	log.Info("Reconfiguring platform")
-	if err := config.GenerateTemplate(plat); err != nil {
+	if err := template.GenerateTemplate(plat); err != nil {
 		return fmt.Errorf("failed to generate template: %w", err)
 	}
 	log.Info("Platform reconfigured")

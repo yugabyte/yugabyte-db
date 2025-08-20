@@ -31,7 +31,7 @@ Legacy provisioning of on-premises nodes is deprecated. Provision your nodes usi
   <li>
     <a href="../software-on-prem-assist/" class="nav-link active">
       <i class="fa-regular fa-scroll"></i>
-      Assisted
+      Assisted manual
     </a>
   </li>
 

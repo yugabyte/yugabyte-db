@@ -1,5 +1,5 @@
 -- hash pk
-create table ybctid_test_hash(k int primary key, v text);
+create table ybctid_test_hash(k int primary key, v text) split into 1 tablets;
 insert into ybctid_test_hash values (1, 'one'), (2, 'two'), (3, 'three'), (4, 'four');
 select ybctid, * from ybctid_test_hash;
          ybctid         | k |   v   
@@ -10,12 +10,314 @@ select ybctid, * from ybctid_test_hash;
  \x47fca048800000032121 | 3 | three
 (4 rows)
 
+-------------
+-- tid scan
+-------------
+explain (costs off)
+select k, v from ybctid_test_hash where ybctid = '\x47121048800000012121';
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Tid Scan on ybctid_test_hash
+   TID Cond: (ybctid = '\x47121048800000012121'::bytea)
+(2 rows)
+
 select k, v from ybctid_test_hash where ybctid = '\x47121048800000012121';
  k |  v  
 ---+-----
  1 | one
 (1 row)
 
+-- key for 5 is not in the table
+explain (costs off)
+select k, v from ybctid_test_hash where ybctid = '\x470a7348800000052121';
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Tid Scan on ybctid_test_hash
+   TID Cond: (ybctid = '\x470a7348800000052121'::bytea)
+(2 rows)
+
+select k, v from ybctid_test_hash where ybctid = '\x470a7348800000052121';
+ k | v 
+---+---
+(0 rows)
+
+-- key is invalid
+explain (costs off)
+select k, v from ybctid_test_hash where ybctid = '\x0123456789abcdef';
+                     QUERY PLAN                     
+----------------------------------------------------
+ Tid Scan on ybctid_test_hash
+   TID Cond: (ybctid = '\x0123456789abcdef'::bytea)
+(2 rows)
+
+select k, v from ybctid_test_hash where ybctid = '\x0123456789abcdef';
+ k | v 
+---+---
+(0 rows)
+
+-- or semantics
+explain (costs off)
+select k, v from ybctid_test_hash where ybctid = '\x47121048800000012121' or ybctid = '\x47c0c448800000022121';
+                                               QUERY PLAN                                               
+--------------------------------------------------------------------------------------------------------
+ Tid Scan on ybctid_test_hash
+   TID Cond: ((ybctid = '\x47121048800000012121'::bytea) OR (ybctid = '\x47c0c448800000022121'::bytea))
+(2 rows)
+
+select k, v from ybctid_test_hash where ybctid = '\x47121048800000012121' or ybctid = '\x47c0c448800000022121';
+ k |  v  
+---+-----
+ 1 | one
+ 2 | two
+(2 rows)
+
+explain (costs off)
+select k, v from ybctid_test_hash where ybctid = '\x47121048800000012121' or ybctid = '\x470a7348800000052121';
+                                               QUERY PLAN                                               
+--------------------------------------------------------------------------------------------------------
+ Tid Scan on ybctid_test_hash
+   TID Cond: ((ybctid = '\x47121048800000012121'::bytea) OR (ybctid = '\x470a7348800000052121'::bytea))
+(2 rows)
+
+select k, v from ybctid_test_hash where ybctid = '\x47121048800000012121' or ybctid = '\x470a7348800000052121';
+ k |  v  
+---+-----
+ 1 | one
+(1 row)
+
+explain (costs off)
+select k, v from ybctid_test_hash where ybctid = '\x47121048800000012121' or ybctid = '\x47121048800000012121' or ybctid = '\x0123456789abcdef';
+                                                                    QUERY PLAN                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------
+ Tid Scan on ybctid_test_hash
+   TID Cond: ((ybctid = '\x47121048800000012121'::bytea) OR (ybctid = '\x47121048800000012121'::bytea) OR (ybctid = '\x0123456789abcdef'::bytea))
+(2 rows)
+
+select k, v from ybctid_test_hash where ybctid = '\x47121048800000012121' or ybctid = '\x47121048800000012121' or ybctid = '\x0123456789abcdef';
+ k |  v  
+---+-----
+ 1 | one
+(1 row)
+
+-- in
+explain (costs off)
+select k, v from ybctid_test_hash where ybctid IN ('\x47fca048800000032121', '\x479eaf48800000042121');
+                                          QUERY PLAN                                           
+-----------------------------------------------------------------------------------------------
+ Tid Scan on ybctid_test_hash
+   TID Cond: (ybctid = ANY ('{"\\x47fca048800000032121","\\x479eaf48800000042121"}'::bytea[]))
+(2 rows)
+
+select k, v from ybctid_test_hash where ybctid IN ('\x47fca048800000032121', '\x479eaf48800000042121');
+ k |   v   
+---+-------
+ 4 | four
+ 3 | three
+(2 rows)
+
+explain (costs off)
+select k, v from ybctid_test_hash where ybctid IN ('\x47fca048800000032121', '\x470a7348800000052121');
+                                          QUERY PLAN                                           
+-----------------------------------------------------------------------------------------------
+ Tid Scan on ybctid_test_hash
+   TID Cond: (ybctid = ANY ('{"\\x47fca048800000032121","\\x470a7348800000052121"}'::bytea[]))
+(2 rows)
+
+select k, v from ybctid_test_hash where ybctid IN ('\x47fca048800000032121', '\x470a7348800000052121');
+ k |   v   
+---+-------
+ 3 | three
+(1 row)
+
+explain (costs off)
+select k, v from ybctid_test_hash where ybctid IN ('\x47fca048800000032121', '\x0123456789abcdef', '\x47fca048800000032121');
+                                                     QUERY PLAN                                                      
+---------------------------------------------------------------------------------------------------------------------
+ Tid Scan on ybctid_test_hash
+   TID Cond: (ybctid = ANY ('{"\\x47fca048800000032121","\\x0123456789abcdef","\\x47fca048800000032121"}'::bytea[]))
+(2 rows)
+
+select k, v from ybctid_test_hash where ybctid IN ('\x47fca048800000032121', '\x0123456789abcdef', '\x47fca048800000032121');
+ k |   v   
+---+-------
+ 3 | three
+(1 row)
+
+-- or + in
+explain (costs off)
+select k, v from ybctid_test_hash where ybctid = '\x47121048800000012121' or ybctid = '\x47c0c448800000022121'
+              or ybctid IN ('\x47fca048800000032121', '\x479eaf48800000042121');
+                                                                                         QUERY PLAN                                                                                          
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Tid Scan on ybctid_test_hash
+   TID Cond: ((ybctid = '\x47121048800000012121'::bytea) OR (ybctid = '\x47c0c448800000022121'::bytea) OR (ybctid = ANY ('{"\\x47fca048800000032121","\\x479eaf48800000042121"}'::bytea[])))
+(2 rows)
+
+select k, v from ybctid_test_hash where ybctid = '\x47121048800000012121' or ybctid = '\x47c0c448800000022121'
+              or ybctid IN ('\x47fca048800000032121', '\x479eaf48800000042121');
+ k |   v   
+---+-------
+ 1 | one
+ 4 | four
+ 2 | two
+ 3 | three
+(4 rows)
+
+explain (costs off)
+select k, v from ybctid_test_hash where ybctid = '\x470a7348800000052121' or ybctid = '\x47c0c448800000022121'
+              or ybctid IN ('\x470a7348800000052121', '\x479eaf48800000042121');
+                                                                                         QUERY PLAN                                                                                          
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Tid Scan on ybctid_test_hash
+   TID Cond: ((ybctid = '\x470a7348800000052121'::bytea) OR (ybctid = '\x47c0c448800000022121'::bytea) OR (ybctid = ANY ('{"\\x470a7348800000052121","\\x479eaf48800000042121"}'::bytea[])))
+(2 rows)
+
+select k, v from ybctid_test_hash where ybctid = '\x470a7348800000052121' or ybctid = '\x47c0c448800000022121'
+              or ybctid IN ('\x470a7348800000052121', '\x479eaf48800000042121');
+ k |  v   
+---+------
+ 4 | four
+ 2 | two
+(2 rows)
+
+explain (costs off)
+select k, v from ybctid_test_hash where ybctid = '\x0123456789abcdef' or ybctid = '\x47c0c448800000022121' or ybctid = '\x47c0c448800000022121'
+              or ybctid IN ('\x0123456789abcdef', '\x479eaf48800000042121', '\x479eaf48800000042121', '\x47c0c448800000022121');
+                                                                                                                                      QUERY PLAN                                                                                                                                       
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Tid Scan on ybctid_test_hash
+   TID Cond: ((ybctid = '\x0123456789abcdef'::bytea) OR (ybctid = '\x47c0c448800000022121'::bytea) OR (ybctid = '\x47c0c448800000022121'::bytea) OR (ybctid = ANY ('{"\\x0123456789abcdef","\\x479eaf48800000042121","\\x479eaf48800000042121","\\x47c0c448800000022121"}'::bytea[])))
+(2 rows)
+
+select k, v from ybctid_test_hash where ybctid = '\x0123456789abcdef' or ybctid = '\x47c0c448800000022121' or ybctid = '\x47c0c448800000022121'
+              or ybctid IN ('\x0123456789abcdef', '\x479eaf48800000042121', '\x479eaf48800000042121', '\x47c0c448800000022121');
+ k |  v   
+---+------
+ 4 | four
+ 2 | two
+(2 rows)
+
+-- expression pushdown
+explain (costs off)
+select k, v from ybctid_test_hash where
+    ybctid IN ('\x47121048800000012121', '\x47c0c448800000022121', '\x47fca048800000032121', '\x479eaf48800000042121', '\x470a7348800000052121') and v like '%e';
+                                                                                 QUERY PLAN                                                                                  
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Tid Scan on ybctid_test_hash
+   TID Cond: (ybctid = ANY ('{"\\x47121048800000012121","\\x47c0c448800000022121","\\x47fca048800000032121","\\x479eaf48800000042121","\\x470a7348800000052121"}'::bytea[]))
+   Storage Filter: (v ~~ '%e'::text)
+(3 rows)
+
+select k, v from ybctid_test_hash where
+    ybctid IN ('\x47121048800000012121', '\x47c0c448800000022121', '\x47fca048800000032121', '\x479eaf48800000042121', '\x470a7348800000052121') and v like '%e';
+ k |   v   
+---+-------
+ 1 | one
+ 3 | three
+(2 rows)
+
+set yb_enable_expression_pushdown to false;
+explain (costs off)
+select k, v from ybctid_test_hash where
+    ybctid IN ('\x47121048800000012121', '\x47c0c448800000022121', '\x47fca048800000032121', '\x479eaf48800000042121', '\x470a7348800000052121') and v like '%e';
+                                                                                 QUERY PLAN                                                                                  
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Tid Scan on ybctid_test_hash
+   TID Cond: (ybctid = ANY ('{"\\x47121048800000012121","\\x47c0c448800000022121","\\x47fca048800000032121","\\x479eaf48800000042121","\\x470a7348800000052121"}'::bytea[]))
+   Filter: (v ~~ '%e'::text)
+(3 rows)
+
+select k, v from ybctid_test_hash where
+    ybctid IN ('\x47121048800000012121', '\x47c0c448800000022121', '\x47fca048800000032121', '\x479eaf48800000042121', '\x470a7348800000052121') and v like '%e';
+ k |   v   
+---+-------
+ 1 | one
+ 3 | three
+(2 rows)
+
+reset yb_enable_expression_pushdown;
+-- aggregate pushdown
+explain (costs off)
+select count(*), sum(k) from ybctid_test_hash where
+    ybctid IN ('\x47121048800000012121', '\x47c0c448800000022121', '\x47fca048800000032121', '\x479eaf48800000042121', '\x470a7348800000052121');
+                                                                                    QUERY PLAN                                                                                     
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Tid Scan on ybctid_test_hash
+         TID Cond: (ybctid = ANY ('{"\\x47121048800000012121","\\x47c0c448800000022121","\\x47fca048800000032121","\\x479eaf48800000042121","\\x470a7348800000052121"}'::bytea[]))
+         Partial Aggregate: true
+(4 rows)
+
+select count(*), sum(k) from ybctid_test_hash where
+    ybctid IN ('\x47121048800000012121', '\x47c0c448800000022121', '\x47fca048800000032121', '\x479eaf48800000042121', '\x470a7348800000052121');
+ count | sum 
+-------+-----
+     4 |  10
+(1 row)
+
+explain (costs off)
+select count(*), sum(k) from ybctid_test_hash where
+    ybctid IN ('\x47121048800000012121', '\x47c0c448800000022121', '\x47fca048800000032121', '\x479eaf48800000042121', '\x470a7348800000052121') and v like '%e';
+                                                                                    QUERY PLAN                                                                                     
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Tid Scan on ybctid_test_hash
+         TID Cond: (ybctid = ANY ('{"\\x47121048800000012121","\\x47c0c448800000022121","\\x47fca048800000032121","\\x479eaf48800000042121","\\x470a7348800000052121"}'::bytea[]))
+         Storage Filter: (v ~~ '%e'::text)
+         Partial Aggregate: true
+(5 rows)
+
+select count(*), sum(k) from ybctid_test_hash where
+    ybctid IN ('\x47121048800000012121', '\x47c0c448800000022121', '\x47fca048800000032121', '\x479eaf48800000042121', '\x470a7348800000052121') and v like '%e';
+ count | sum 
+-------+-----
+     2 |   4
+(1 row)
+
+set yb_enable_expression_pushdown to false;
+explain (costs off)
+select count(*), sum(k) from ybctid_test_hash where
+    ybctid IN ('\x47121048800000012121', '\x47c0c448800000022121', '\x47fca048800000032121', '\x479eaf48800000042121', '\x470a7348800000052121') and v like '%e';
+                                                                                    QUERY PLAN                                                                                     
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate
+   ->  Tid Scan on ybctid_test_hash
+         TID Cond: (ybctid = ANY ('{"\\x47121048800000012121","\\x47c0c448800000022121","\\x47fca048800000032121","\\x479eaf48800000042121","\\x470a7348800000052121"}'::bytea[]))
+         Filter: (v ~~ '%e'::text)
+(4 rows)
+
+select count(*), sum(k) from ybctid_test_hash where
+    ybctid IN ('\x47121048800000012121', '\x47c0c448800000022121', '\x47fca048800000032121', '\x479eaf48800000042121', '\x470a7348800000052121') and v like '%e';
+ count | sum 
+-------+-----
+     2 |   4
+(1 row)
+
+reset yb_enable_expression_pushdown;
+-- join
+create table ybctid_test_hash_master(k_int int, k_data bytea, primary key(k_int asc));
+insert into ybctid_test_hash_master values (1, '\x47121048800000012121'), (2, '\x47c0c448800000022121'), (3, '\x47fca048800000032121'),
+                                           (4, '\x479eaf48800000042121'), (5, '\x470a7348800000052121');
+explain (costs off)
+/*+ NestLoop(ybctid_test_hash_master ybctid_test_hash) Leading((ybctid_test_hash_master ybctid_test_hash)) */ select k_int, v from ybctid_test_hash_master join ybctid_test_hash on k_data = ybctid_test_hash.ybctid;
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on ybctid_test_hash_master
+   ->  Tid Scan on ybctid_test_hash
+         TID Cond: (ybctid = ybctid_test_hash_master.k_data)
+(4 rows)
+
+/*+ NestLoop(ybctid_test_hash_master ybctid_test_hash) Leading((ybctid_test_hash_master ybctid_test_hash)) */ select k_int, v from ybctid_test_hash_master join ybctid_test_hash on k_data = ybctid_test_hash.ybctid;
+ k_int |   v   
+-------+-------
+     1 | one
+     2 | two
+     3 | three
+     4 | four
+(4 rows)
+
+drop table ybctid_test_hash_master;
 select ybctid, k, v from ybctid_test_hash order by ybctid;
          ybctid         | k |   v   
 ------------------------+---+-------
@@ -53,12 +355,314 @@ select ybctid, * from ybctid_test_range;
  \x488000000421 | 4 | four
 (4 rows)
 
-select k, v from ybctid_test_range where ybctid = '\x488000000221';
+-------------
+-- tid scan
+-------------
+explain (costs off)
+select k, v from ybctid_test_range where ybctid = '\x488000000121';
+                   QUERY PLAN                   
+------------------------------------------------
+ Tid Scan on ybctid_test_range
+   TID Cond: (ybctid = '\x488000000121'::bytea)
+(2 rows)
+
+select k, v from ybctid_test_range where ybctid = '\x488000000121';
  k |  v  
 ---+-----
- 2 | two
+ 1 | one
 (1 row)
 
+-- key for 5 is not in the table
+explain (costs off)
+select k, v from ybctid_test_range where ybctid = '\x488000000521';
+                   QUERY PLAN                   
+------------------------------------------------
+ Tid Scan on ybctid_test_range
+   TID Cond: (ybctid = '\x488000000521'::bytea)
+(2 rows)
+
+select k, v from ybctid_test_range where ybctid = '\x488000000521';
+ k | v 
+---+---
+(0 rows)
+
+-- key is invalid
+explain (costs off)
+select k, v from ybctid_test_range where ybctid = '\x0123456789abcdef';
+                     QUERY PLAN                     
+----------------------------------------------------
+ Tid Scan on ybctid_test_range
+   TID Cond: (ybctid = '\x0123456789abcdef'::bytea)
+(2 rows)
+
+select k, v from ybctid_test_range where ybctid = '\x0123456789abcdef';
+ k | v 
+---+---
+(0 rows)
+
+-- or semantics
+explain (costs off)
+select k, v from ybctid_test_range where ybctid = '\x488000000121' or ybctid = '\x488000000221';
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Tid Scan on ybctid_test_range
+   TID Cond: ((ybctid = '\x488000000121'::bytea) OR (ybctid = '\x488000000221'::bytea))
+(2 rows)
+
+select k, v from ybctid_test_range where ybctid = '\x488000000121' or ybctid = '\x488000000221';
+ k |  v  
+---+-----
+ 1 | one
+ 2 | two
+(2 rows)
+
+explain (costs off)
+select k, v from ybctid_test_range where ybctid = '\x488000000121' or ybctid = '\x488000000521';
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Tid Scan on ybctid_test_range
+   TID Cond: ((ybctid = '\x488000000121'::bytea) OR (ybctid = '\x488000000521'::bytea))
+(2 rows)
+
+select k, v from ybctid_test_range where ybctid = '\x488000000121' or ybctid = '\x488000000521';
+ k |  v  
+---+-----
+ 1 | one
+(1 row)
+
+explain (costs off)
+select k, v from ybctid_test_range where ybctid = '\x488000000121' or ybctid = '\x488000000121' or ybctid = '\x0123456789abcdef';
+                                                            QUERY PLAN                                                            
+----------------------------------------------------------------------------------------------------------------------------------
+ Tid Scan on ybctid_test_range
+   TID Cond: ((ybctid = '\x488000000121'::bytea) OR (ybctid = '\x488000000121'::bytea) OR (ybctid = '\x0123456789abcdef'::bytea))
+(2 rows)
+
+select k, v from ybctid_test_range where ybctid = '\x488000000121' or ybctid = '\x488000000121' or ybctid = '\x0123456789abcdef';
+ k |  v  
+---+-----
+ 1 | one
+(1 row)
+
+-- in
+explain (costs off)
+select k, v from ybctid_test_range where ybctid IN ('\x488000000321', '\x488000000421');
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Tid Scan on ybctid_test_range
+   TID Cond: (ybctid = ANY ('{"\\x488000000321","\\x488000000421"}'::bytea[]))
+(2 rows)
+
+select k, v from ybctid_test_range where ybctid IN ('\x488000000321', '\x488000000421');
+ k |   v   
+---+-------
+ 3 | three
+ 4 | four
+(2 rows)
+
+explain (costs off)
+select k, v from ybctid_test_range where ybctid IN ('\x488000000321', '\x488000000521');
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Tid Scan on ybctid_test_range
+   TID Cond: (ybctid = ANY ('{"\\x488000000321","\\x488000000521"}'::bytea[]))
+(2 rows)
+
+select k, v from ybctid_test_range where ybctid IN ('\x488000000321', '\x488000000521');
+ k |   v   
+---+-------
+ 3 | three
+(1 row)
+
+explain (costs off)
+select k, v from ybctid_test_range where ybctid IN ('\x488000000321', '\x0123456789abcdef', '\x488000000321');
+                                             QUERY PLAN                                              
+-----------------------------------------------------------------------------------------------------
+ Tid Scan on ybctid_test_range
+   TID Cond: (ybctid = ANY ('{"\\x488000000321","\\x0123456789abcdef","\\x488000000321"}'::bytea[]))
+(2 rows)
+
+select k, v from ybctid_test_range where ybctid IN ('\x488000000321', '\x0123456789abcdef', '\x488000000321');
+ k |   v   
+---+-------
+ 3 | three
+(1 row)
+
+-- or + in
+explain (costs off)
+select k, v from ybctid_test_range where ybctid = '\x488000000121' or ybctid = '\x488000000221'
+                                      or ybctid IN ('\x488000000321', '\x488000000421');
+                                                                         QUERY PLAN                                                                          
+-------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Tid Scan on ybctid_test_range
+   TID Cond: ((ybctid = '\x488000000121'::bytea) OR (ybctid = '\x488000000221'::bytea) OR (ybctid = ANY ('{"\\x488000000321","\\x488000000421"}'::bytea[])))
+(2 rows)
+
+select k, v from ybctid_test_range where ybctid = '\x488000000121' or ybctid = '\x488000000221'
+                                      or ybctid IN ('\x488000000321', '\x488000000421');
+ k |   v   
+---+-------
+ 1 | one
+ 2 | two
+ 3 | three
+ 4 | four
+(4 rows)
+
+explain (costs off)
+select k, v from ybctid_test_range where ybctid = '\x488000000521' or ybctid = '\x488000000221'
+                                      or ybctid IN ('\x488000000521', '\x488000000421');
+                                                                         QUERY PLAN                                                                          
+-------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Tid Scan on ybctid_test_range
+   TID Cond: ((ybctid = '\x488000000521'::bytea) OR (ybctid = '\x488000000221'::bytea) OR (ybctid = ANY ('{"\\x488000000521","\\x488000000421"}'::bytea[])))
+(2 rows)
+
+select k, v from ybctid_test_range where ybctid = '\x488000000521' or ybctid = '\x488000000221'
+                                      or ybctid IN ('\x488000000521', '\x488000000421');
+ k |  v   
+---+------
+ 2 | two
+ 4 | four
+(2 rows)
+
+explain (costs off)
+select k, v from ybctid_test_range where ybctid = '\x0123456789abcdef' or ybctid = '\x488000000221' or ybctid = '\x488000000221'
+                                      or ybctid IN ('\x0123456789abcdef', '\x488000000421', '\x488000000421', '\x488000000221');
+                                                                                                                  QUERY PLAN                                                                                                                   
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Tid Scan on ybctid_test_range
+   TID Cond: ((ybctid = '\x0123456789abcdef'::bytea) OR (ybctid = '\x488000000221'::bytea) OR (ybctid = '\x488000000221'::bytea) OR (ybctid = ANY ('{"\\x0123456789abcdef","\\x488000000421","\\x488000000421","\\x488000000221"}'::bytea[])))
+(2 rows)
+
+select k, v from ybctid_test_range where ybctid = '\x0123456789abcdef' or ybctid = '\x488000000221' or ybctid = '\x488000000221'
+                                      or ybctid IN ('\x0123456789abcdef', '\x488000000421', '\x488000000421', '\x488000000221');
+ k |  v   
+---+------
+ 2 | two
+ 4 | four
+(2 rows)
+
+-- expression pushdown
+explain (costs off)
+select k, v from ybctid_test_range where
+    ybctid IN ('\x488000000121', '\x488000000221', '\x488000000321', '\x488000000421', '\x488000000521') and v like '%e';
+                                                             QUERY PLAN                                                              
+-------------------------------------------------------------------------------------------------------------------------------------
+ Tid Scan on ybctid_test_range
+   TID Cond: (ybctid = ANY ('{"\\x488000000121","\\x488000000221","\\x488000000321","\\x488000000421","\\x488000000521"}'::bytea[]))
+   Storage Filter: (v ~~ '%e'::text)
+(3 rows)
+
+select k, v from ybctid_test_range where
+    ybctid IN ('\x488000000121', '\x488000000221', '\x488000000321', '\x488000000421', '\x488000000521') and v like '%e';
+ k |   v   
+---+-------
+ 1 | one
+ 3 | three
+(2 rows)
+
+set yb_enable_expression_pushdown to false;
+explain (costs off)
+select k, v from ybctid_test_range where
+    ybctid IN ('\x488000000121', '\x488000000221', '\x488000000321', '\x488000000421', '\x488000000521') and v like '%e';
+                                                             QUERY PLAN                                                              
+-------------------------------------------------------------------------------------------------------------------------------------
+ Tid Scan on ybctid_test_range
+   TID Cond: (ybctid = ANY ('{"\\x488000000121","\\x488000000221","\\x488000000321","\\x488000000421","\\x488000000521"}'::bytea[]))
+   Filter: (v ~~ '%e'::text)
+(3 rows)
+
+select k, v from ybctid_test_range where
+    ybctid IN ('\x488000000121', '\x488000000221', '\x488000000321', '\x488000000421', '\x488000000521') and v like '%e';
+ k |   v   
+---+-------
+ 1 | one
+ 3 | three
+(2 rows)
+
+reset yb_enable_expression_pushdown;
+-- aggregate pushdown
+explain (costs off)
+select count(*), sum(k) from ybctid_test_range where
+    ybctid IN ('\x488000000121', '\x488000000221', '\x488000000321', '\x488000000421', '\x488000000521');
+                                                                QUERY PLAN                                                                 
+-------------------------------------------------------------------------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Tid Scan on ybctid_test_range
+         TID Cond: (ybctid = ANY ('{"\\x488000000121","\\x488000000221","\\x488000000321","\\x488000000421","\\x488000000521"}'::bytea[]))
+         Partial Aggregate: true
+(4 rows)
+
+select count(*), sum(k) from ybctid_test_range where
+    ybctid IN ('\x488000000121', '\x488000000221', '\x488000000321', '\x488000000421', '\x488000000521');
+ count | sum 
+-------+-----
+     4 |  10
+(1 row)
+
+explain (costs off)
+select count(*), sum(k) from ybctid_test_range where
+    ybctid IN ('\x488000000121', '\x488000000221', '\x488000000321', '\x488000000421', '\x488000000521') and v like '%e';
+                                                                QUERY PLAN                                                                 
+-------------------------------------------------------------------------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Tid Scan on ybctid_test_range
+         TID Cond: (ybctid = ANY ('{"\\x488000000121","\\x488000000221","\\x488000000321","\\x488000000421","\\x488000000521"}'::bytea[]))
+         Storage Filter: (v ~~ '%e'::text)
+         Partial Aggregate: true
+(5 rows)
+
+select count(*), sum(k) from ybctid_test_range where
+    ybctid IN ('\x488000000121', '\x488000000221', '\x488000000321', '\x488000000421', '\x488000000521') and v like '%e';
+ count | sum 
+-------+-----
+     2 |   4
+(1 row)
+
+set yb_enable_expression_pushdown to false;
+explain (costs off)
+select count(*), sum(k) from ybctid_test_range where
+    ybctid IN ('\x488000000121', '\x488000000221', '\x488000000321', '\x488000000421', '\x488000000521') and v like '%e';
+                                                                QUERY PLAN                                                                 
+-------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate
+   ->  Tid Scan on ybctid_test_range
+         TID Cond: (ybctid = ANY ('{"\\x488000000121","\\x488000000221","\\x488000000321","\\x488000000421","\\x488000000521"}'::bytea[]))
+         Filter: (v ~~ '%e'::text)
+(4 rows)
+
+select count(*), sum(k) from ybctid_test_range where
+    ybctid IN ('\x488000000121', '\x488000000221', '\x488000000321', '\x488000000421', '\x488000000521') and v like '%e';
+ count | sum 
+-------+-----
+     2 |   4
+(1 row)
+
+reset yb_enable_expression_pushdown;
+-- join
+create table ybctid_test_range_master(k_int int, k_data bytea, primary key(k_int desc));
+insert into ybctid_test_range_master values (1, '\x488000000121'), (2, '\x488000000221'), (3, '\x488000000321'),
+                                            (4, '\x488000000421'), (5, '\x488000000521');
+explain (costs off)
+/*+ NestLoop(ybctid_test_range_master ybctid_test_range) Leading((ybctid_test_range_master ybctid_test_range)) */ select k_int, v from ybctid_test_range_master join ybctid_test_range on k_data = ybctid_test_range.ybctid;
+                          QUERY PLAN                          
+--------------------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on ybctid_test_range_master
+   ->  Tid Scan on ybctid_test_range
+         TID Cond: (ybctid = ybctid_test_range_master.k_data)
+(4 rows)
+
+/*+ NestLoop(ybctid_test_range_master ybctid_test_range) Leading((ybctid_test_range_master ybctid_test_range)) */ select k_int, v from ybctid_test_range_master join ybctid_test_range on k_data = ybctid_test_range.ybctid;
+ k_int |   v   
+-------+-------
+     4 | four
+     3 | three
+     2 | two
+     1 | one
+(4 rows)
+
+drop table ybctid_test_range_master;
 select ybctid, k, v from ybctid_test_range order by ybctid;
      ybctid     | k |   v   
 ----------------+---+-------
@@ -98,12 +702,57 @@ select ybctid, * from ybctid_test_hash_range;
  \x47a9014880000001488000000421536f6e65000021     |  1 |  4 | one   | four
 (4 rows)
 
-select k1, k2, k3, v from ybctid_test_hash_range
-  where ybctid = '\x4707b64880000003488000000221537468726565000021';
+explain (costs off)
+select k1, k2, k3, v from ybctid_test_hash_range where ybctid = '\x4707b64880000003488000000221537468726565000021';
+                                    QUERY PLAN                                    
+----------------------------------------------------------------------------------
+ Tid Scan on ybctid_test_hash_range
+   TID Cond: (ybctid = '\x4707b64880000003488000000221537468726565000021'::bytea)
+(2 rows)
+
+select k1, k2, k3, v from ybctid_test_hash_range where ybctid = '\x4707b64880000003488000000221537468726565000021';
  k1 | k2 |  k3   |  v  
 ----+----+-------+-----
   3 |  2 | three | two
 (1 row)
+
+explain (costs off)
+select k1, k2, k3, v from ybctid_test_hash_range where
+    ybctid in ('\x47a9014880000001488000000421536f6e65000021', '\x47801748800000024880000003215374776f000021');
+                                                                QUERY PLAN                                                                 
+-------------------------------------------------------------------------------------------------------------------------------------------
+ Tid Scan on ybctid_test_hash_range
+   TID Cond: (ybctid = ANY ('{"\\x47a9014880000001488000000421536f6e65000021","\\x47801748800000024880000003215374776f000021"}'::bytea[]))
+(2 rows)
+
+select k1, k2, k3, v from ybctid_test_hash_range where
+    ybctid in ('\x47a9014880000001488000000421536f6e65000021', '\x47801748800000024880000003215374776f000021');
+ k1 | k2 | k3  |   v   
+----+----+-----+-------
+  2 |  3 | two | three
+  1 |  4 | one | four
+(2 rows)
+
+explain (costs off)
+select k1, k2, k3, v from ybctid_test_hash_range where
+    ybctid = '\x47a9014880000001488000000421536f6e65000021' or
+    ybctid = '\x0123456789abcdef' or
+    ybctid in ('\x47a9014880000001488000000421536f6e65000021', '\x47801748800000024880000003215374776f000021', '\x4783434880000004488000000121536f6e65000021');
+                                                                                                                                                QUERY PLAN                                                                                                                                                 
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Tid Scan on ybctid_test_hash_range
+   TID Cond: ((ybctid = '\x47a9014880000001488000000421536f6e65000021'::bytea) OR (ybctid = '\x0123456789abcdef'::bytea) OR (ybctid = ANY ('{"\\x47a9014880000001488000000421536f6e65000021","\\x47801748800000024880000003215374776f000021","\\x4783434880000004488000000121536f6e65000021"}'::bytea[])))
+(2 rows)
+
+select k1, k2, k3, v from ybctid_test_hash_range where
+    ybctid = '\x47a9014880000001488000000421536f6e65000021' or
+    ybctid = '\x0123456789abcdef' or
+    ybctid in ('\x47a9014880000001488000000421536f6e65000021', '\x47801748800000024880000003215374776f000021', '\x4783434880000004488000000121536f6e65000021');
+ k1 | k2 | k3  |   v   
+----+----+-----+-------
+  2 |  3 | two | three
+  1 |  4 | one | four
+(2 rows)
 
 select ybctid, k1, k2, k3, v from ybctid_test_hash_range order by ybctid;
                       ybctid                      | k1 | k2 |  k3   |   v   
@@ -169,11 +818,189 @@ select ybctid, * from ybctid_test_with_pk;
  \x488000000421 | 4 | four
 (4 rows)
 
+explain (costs off)
+select k, v from ybctid_test_with_pk where ybctid = '\x488000000121';
+                   QUERY PLAN                   
+------------------------------------------------
+ Tid Scan on ybctid_test_with_pk
+   TID Cond: (ybctid = '\x488000000121'::bytea)
+(2 rows)
+
 select k, v from ybctid_test_with_pk where ybctid = '\x488000000121';
  k |  v  
 ---+-----
  1 | one
 (1 row)
+
+-- key for 5 is not in the table
+explain (costs off)
+select k, v from ybctid_test_with_pk where ybctid = '\x488000000521';
+                   QUERY PLAN                   
+------------------------------------------------
+ Tid Scan on ybctid_test_with_pk
+   TID Cond: (ybctid = '\x488000000521'::bytea)
+(2 rows)
+
+select k, v from ybctid_test_with_pk where ybctid = '\x488000000521';
+ k | v 
+---+---
+(0 rows)
+
+-- key is invalid
+explain (costs off)
+select k, v from ybctid_test_with_pk where ybctid = '\x0123456789abcdef';
+                     QUERY PLAN                     
+----------------------------------------------------
+ Tid Scan on ybctid_test_with_pk
+   TID Cond: (ybctid = '\x0123456789abcdef'::bytea)
+(2 rows)
+
+select k, v from ybctid_test_with_pk where ybctid = '\x0123456789abcdef';
+ k | v 
+---+---
+(0 rows)
+
+-- or semantics
+explain (costs off)
+select k, v from ybctid_test_with_pk where ybctid = '\x488000000121' or ybctid = '\x488000000221';
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Tid Scan on ybctid_test_with_pk
+   TID Cond: ((ybctid = '\x488000000121'::bytea) OR (ybctid = '\x488000000221'::bytea))
+(2 rows)
+
+select k, v from ybctid_test_with_pk where ybctid = '\x488000000121' or ybctid = '\x488000000221';
+ k |  v  
+---+-----
+ 1 | one
+ 2 | two
+(2 rows)
+
+explain (costs off)
+select k, v from ybctid_test_with_pk where ybctid = '\x488000000121' or ybctid = '\x488000000521';
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Tid Scan on ybctid_test_with_pk
+   TID Cond: ((ybctid = '\x488000000121'::bytea) OR (ybctid = '\x488000000521'::bytea))
+(2 rows)
+
+select k, v from ybctid_test_with_pk where ybctid = '\x488000000121' or ybctid = '\x488000000521';
+ k |  v  
+---+-----
+ 1 | one
+(1 row)
+
+explain (costs off)
+select k, v from ybctid_test_with_pk where ybctid = '\x488000000121' or ybctid = '\x488000000121' or ybctid = '\x0123456789abcdef';
+                                                            QUERY PLAN                                                            
+----------------------------------------------------------------------------------------------------------------------------------
+ Tid Scan on ybctid_test_with_pk
+   TID Cond: ((ybctid = '\x488000000121'::bytea) OR (ybctid = '\x488000000121'::bytea) OR (ybctid = '\x0123456789abcdef'::bytea))
+(2 rows)
+
+select k, v from ybctid_test_with_pk where ybctid = '\x488000000121' or ybctid = '\x488000000121' or ybctid = '\x0123456789abcdef';
+ k |  v  
+---+-----
+ 1 | one
+(1 row)
+
+-- in
+explain (costs off)
+select k, v from ybctid_test_with_pk where ybctid IN ('\x488000000321', '\x488000000421');
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Tid Scan on ybctid_test_with_pk
+   TID Cond: (ybctid = ANY ('{"\\x488000000321","\\x488000000421"}'::bytea[]))
+(2 rows)
+
+select k, v from ybctid_test_with_pk where ybctid IN ('\x488000000321', '\x488000000421');
+ k |   v   
+---+-------
+ 3 | three
+ 4 | four
+(2 rows)
+
+explain (costs off)
+select k, v from ybctid_test_with_pk where ybctid IN ('\x488000000321', '\x488000000521');
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Tid Scan on ybctid_test_with_pk
+   TID Cond: (ybctid = ANY ('{"\\x488000000321","\\x488000000521"}'::bytea[]))
+(2 rows)
+
+select k, v from ybctid_test_with_pk where ybctid IN ('\x488000000321', '\x488000000521');
+ k |   v   
+---+-------
+ 3 | three
+(1 row)
+
+explain (costs off)
+select k, v from ybctid_test_with_pk where ybctid IN ('\x488000000321', '\x0123456789abcdef', '\x488000000321');
+                                             QUERY PLAN                                              
+-----------------------------------------------------------------------------------------------------
+ Tid Scan on ybctid_test_with_pk
+   TID Cond: (ybctid = ANY ('{"\\x488000000321","\\x0123456789abcdef","\\x488000000321"}'::bytea[]))
+(2 rows)
+
+select k, v from ybctid_test_with_pk where ybctid IN ('\x488000000321', '\x0123456789abcdef', '\x488000000321');
+ k |   v   
+---+-------
+ 3 | three
+(1 row)
+
+-- or + in
+explain (costs off)
+select k, v from ybctid_test_with_pk where ybctid = '\x488000000121' or ybctid = '\x488000000221'
+                                      or ybctid IN ('\x488000000321', '\x488000000421');
+                                                                         QUERY PLAN                                                                          
+-------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Tid Scan on ybctid_test_with_pk
+   TID Cond: ((ybctid = '\x488000000121'::bytea) OR (ybctid = '\x488000000221'::bytea) OR (ybctid = ANY ('{"\\x488000000321","\\x488000000421"}'::bytea[])))
+(2 rows)
+
+select k, v from ybctid_test_with_pk where ybctid = '\x488000000121' or ybctid = '\x488000000221'
+                                      or ybctid IN ('\x488000000321', '\x488000000421');
+ k |   v   
+---+-------
+ 1 | one
+ 2 | two
+ 3 | three
+ 4 | four
+(4 rows)
+
+explain (costs off)
+select k, v from ybctid_test_with_pk where ybctid = '\x488000000521' or ybctid = '\x488000000221'
+                                      or ybctid IN ('\x488000000521', '\x488000000421');
+                                                                         QUERY PLAN                                                                          
+-------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Tid Scan on ybctid_test_with_pk
+   TID Cond: ((ybctid = '\x488000000521'::bytea) OR (ybctid = '\x488000000221'::bytea) OR (ybctid = ANY ('{"\\x488000000521","\\x488000000421"}'::bytea[])))
+(2 rows)
+
+select k, v from ybctid_test_with_pk where ybctid = '\x488000000521' or ybctid = '\x488000000221'
+                                      or ybctid IN ('\x488000000521', '\x488000000421');
+ k |  v   
+---+------
+ 2 | two
+ 4 | four
+(2 rows)
+
+explain (costs off)
+select k, v from ybctid_test_with_pk where ybctid = '\x0123456789abcdef' or ybctid = '\x488000000221' or ybctid = '\x488000000221'
+                                      or ybctid IN ('\x0123456789abcdef', '\x488000000421', '\x488000000421', '\x488000000221');
+                                                                                                                  QUERY PLAN                                                                                                                   
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Tid Scan on ybctid_test_with_pk
+   TID Cond: ((ybctid = '\x0123456789abcdef'::bytea) OR (ybctid = '\x488000000221'::bytea) OR (ybctid = '\x488000000221'::bytea) OR (ybctid = ANY ('{"\\x0123456789abcdef","\\x488000000421","\\x488000000421","\\x488000000221"}'::bytea[])))
+(2 rows)
+
+select k, v from ybctid_test_with_pk where ybctid = '\x0123456789abcdef' or ybctid = '\x488000000221' or ybctid = '\x488000000221'
+                                      or ybctid IN ('\x0123456789abcdef', '\x488000000421', '\x488000000421', '\x488000000221');
+ k |  v   
+---+------
+ 2 | two
+ 4 | four
+(2 rows)
 
 select ybctid, k, v from ybctid_test_with_pk order by ybctid;
      ybctid     | k |   v   

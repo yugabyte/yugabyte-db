@@ -46,6 +46,7 @@ DECLARE_bool(TEST_skip_process_apply);
 DECLARE_bool(TEST_use_custom_varz);
 DECLARE_bool(TEST_usearch_exact);
 DECLARE_bool(vector_index_disable_compactions);
+DECLARE_bool(vector_index_no_deletions_skip_filter_check);
 DECLARE_bool(vector_index_use_yb_hnsw);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
@@ -55,6 +56,13 @@ DECLARE_uint64(vector_index_initial_chunk_size);
 DECLARE_uint64(vector_index_max_insert_tasks);
 
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
+
+namespace yb::docdb {
+
+extern bool TEST_vector_index_filter_allowed;
+extern size_t TEST_vector_index_max_checked_entries;
+
+}
 
 namespace yb::tablet {
 
@@ -252,6 +260,8 @@ class PgVectorIndexTest :
     return Format(" ORDER BY $0 LIMIT $1", DistanceToQuery(vector), limit);
   }
 
+  Status WaitNoBackgroundInserts();
+
   std::vector<FloatVector> vectors_;
   std::uniform_real_distribution<> distribution_;
   std::mt19937_64 rng_{42};
@@ -271,6 +281,8 @@ uint64_t SumHistograms(const std::vector<const HdrHistogram*>& histograms) {
 }
 
 void PgVectorIndexTest::TestSimple(bool table_exists) {
+  docdb::TEST_vector_index_filter_allowed = false;
+
   auto conn = ASSERT_RESULT(MakeIndex(3, table_exists));
 
   size_t num_found_peers = 0;
@@ -333,6 +345,26 @@ void PgVectorIndexTest::TestSimple(bool table_exists) {
   ASSERT_EQ(result, "1, [1, 0.5, 0.25]; 2, [0.125, 0.375, 0.25]");
 
   LOG(INFO) << "Memory usage:\n" << DumpMemoryUsage();
+}
+
+Status PgVectorIndexTest::WaitNoBackgroundInserts() {
+  auto cond = [this]() -> Result<bool> {
+    auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+    for (const auto& peer : peers) {
+      auto list = VERIFY_RESULT(peer->shared_tablet())->vector_indexes().List();
+      if (!list) {
+        continue;
+      }
+      for (const auto& index : *list) {
+        if (index->TEST_HasBackgroundInserts()) {
+          LOG(INFO) << "Index " << index->ToString() << " has background inserts";
+          return false;
+        }
+      }
+    }
+    return true;
+  };
+  return WaitFor(cond, 30s * kTimeMultiplier, "Wait no background inserts");
 }
 
 TEST_P(PgVectorIndexTest, Simple) {
@@ -834,6 +866,8 @@ TEST_P(PgVectorIndexTest, Cosine) {
 }
 
 TEST_P(PgVectorIndexTest, EfSearch) {
+  FLAGS_vector_index_no_deletions_skip_filter_check = false;
+
   constexpr size_t kNumRows = 1000;
   constexpr int kIterations = 10;
   constexpr int kSmallEf = 1;
@@ -844,26 +878,16 @@ TEST_P(PgVectorIndexTest, EfSearch) {
   num_tablets_ = 1;
   auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
   ASSERT_NO_FATALS(VerifyRead(conn, 1, AddFilter::kFalse));
+  ASSERT_OK(WaitNoBackgroundInserts());
 
-  std::unordered_map<int, std::vector<MonoDelta>> times;
   for (int i = 0; i != kIterations; ++i) {
     for (int ef : {kSmallEf, kBigEf}) {
       ASSERT_OK(conn.ExecuteFormat("SET ybhnsw.ef_search = $0", ef));
-      auto start = MonoTime::Now();
+      ANNOTATE_UNPROTECTED_WRITE(docdb::TEST_vector_index_max_checked_entries) = ef * 100;
       auto valid = RowsMatch(conn, "", ExpectedRows(1));
-      auto passed = MonoTime::Now() - start;
-      times[ef].push_back(passed);
       ASSERT_TRUE(valid || ef == kSmallEf);
     }
   }
-  std::ranges::sort(times[kSmallEf]);
-  std::ranges::sort(times[kBigEf]);
-
-  auto small_median = times[kSmallEf][kIterations / 2];
-  auto big_median = times[kBigEf][kIterations / 2];
-  LOG(INFO) << "ef=" << kSmallEf << ": " << small_median.ToPrettyString()
-            << ", ef=" << kBigEf << ": " << big_median.ToPrettyString();
-  ASSERT_LT(small_median, big_median);
 }
 
 TEST_P(PgVectorIndexTest, Paging) {

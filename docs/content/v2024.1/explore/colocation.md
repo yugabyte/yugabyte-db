@@ -212,7 +212,7 @@ To set up xCluster for colocated tables, do the following:
 1. Get the parent table UUID for the colocated database.
 
     ```sh
-    ./yb-admin -master_addresses <source_master_addresses> list_tables include_table_id | grep -i <database_name> | grep -i "colocation.parent.uuid"
+    ./yb-admin --master_addresses <source_master_addresses> list_tables include_table_id | grep -i <database_name> | grep -i "colocation.parent.uuid"
     ```
 
     ```output
@@ -222,13 +222,13 @@ To set up xCluster for colocated tables, do the following:
 1. Set up replication for the parent colocation table using yb-admin.
 
     ```sh
-    ./yb-admin -master_addresses <target_master_addresses> setup_universe_replication <replication_group_name> <source_master_addresses> <parent_colocated_table_uuid>
+    ./yb-admin --master_addresses <target_master_addresses> setup_universe_replication <replication_group_name> <source_master_addresses> <parent_colocated_table_uuid>
     ```
 
     For example:
 
     ```sh
-    ./yb-admin -master_addresses 127.0.0.2 setup_universe_replication A1-B2 127.0.0.1 00004000000030008000000000004004.colocation.parent.uuid
+    ./yb-admin --master_addresses 127.0.0.2 setup_universe_replication A1-B2 127.0.0.1 00004000000030008000000000004004.colocation.parent.uuid
     ```
 
     ```output

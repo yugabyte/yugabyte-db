@@ -137,8 +137,8 @@ void UpdateFrontiers(UserFrontiersPtr& frontiers, const UserFrontiers& update);
 template<class Frontier>
 class UserFrontiersBase : public rocksdb::UserFrontiers {
  public:
-  const UserFrontier& Smallest() const override { return smallest_; }
-  const UserFrontier& Largest() const override { return largest_; }
+  const Frontier& Smallest() const override { return smallest_; }
+  const Frontier& Largest() const override { return largest_; }
 
   Frontier& Smallest() override { return smallest_; }
   Frontier& Largest() override { return largest_; }

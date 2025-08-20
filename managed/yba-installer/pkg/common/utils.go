@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net"
 	"os"
@@ -427,6 +428,11 @@ func InitViper() {
 // Checks if Postgres is enabled in config.
 func IsPostgresEnabled() bool {
 	return viper.GetBool("postgres.install.enabled") || viper.GetBool("postgres.useExisting.enabled")
+}
+
+// Checks if PerfAdvisor is enabled in config.
+func IsPerfAdvisorEnabled() bool {
+	return viper.GetBool("perfAdvisor.enabled")
 }
 
 func GetUserHomeDir() string {
@@ -897,6 +903,9 @@ func Bool2Int(b bool) int {
 
 // StatusSince takes a timestamp in UTC and returns the time since then in a human readable format
 func StatusSince(timestamp string) string {
+	if timestamp == "" {
+		return ""
+	}
 	// Define the layout of the input string
 	layout := "Mon 2006-01-02 15:04:05 MST"
 
@@ -1042,6 +1051,68 @@ func SetDataPermissions() error {
 	userName := viper.GetString("service_username")
 	if err := Chown(GetDataRoot(), userName, userName, true); err != nil {
 		return err
+	}
+	return nil
+}
+
+type ConfEntry struct {
+	Key, Value string
+	Found      bool
+	Quotes     bool
+}
+
+func (ce ConfEntry) String() string {
+	// Format the key-value pair for postgresql.conf
+	if ce.Quotes {
+		return fmt.Sprintf("%s = '%s'", ce.Key, ce.Value)
+	}
+	return fmt.Sprintf("%s = %s", ce.Key, ce.Value)
+}
+
+type ConfUpdater struct {
+	Entries []ConfEntry
+}
+
+func (cu ConfUpdater) updateLine(line *string) {
+	// Check if the line contains a key-value pair
+	for _, entry := range cu.Entries {
+		if strings.HasPrefix(*line, entry.Key+" =") {
+			entry.Found = true
+			*line = entry.String()
+		}
+	}
+}
+
+func (cu ConfUpdater) addRemaining(resp io.Writer) error {
+	// Add any entries that were not found in the input
+	for _, entry := range cu.Entries {
+		if !entry.Found {
+			line := entry.String()
+			if _, err := resp.Write([]byte(line + "\n")); err != nil {
+				return fmt.Errorf("failed to write line '%s': %w", line, err)
+			}
+		}
+	}
+	return nil
+}
+
+func (cu ConfUpdater) Update(f io.Reader, resp io.Writer) error {
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		// Only update lines that are not comments and not empty
+		if !strings.HasPrefix(line, "#") && strings.TrimSpace(line) != "" {
+			cu.updateLine(&line)
+		}
+		if _, err := resp.Write([]byte(line + "\n")); err != nil {
+			return fmt.Errorf("failed to write line '%s': %w", line, err)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("failed to read pg conf: %w", err)
+	}
+	if err := cu.addRemaining(resp); err != nil {
+		return fmt.Errorf("failed to add remaining lines: %w", err)
 	}
 	return nil
 }

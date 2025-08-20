@@ -124,14 +124,15 @@ YbPgGetCurRssPssMemUsage(int pid, int64_t *rss, int64_t *pss)
 	 * We need to sum each of the RSS and PSS lines.
 	 */
 	if (fp == NULL)
-		return;				/* Can't open */
+		return;					/* Can't open */
 
 	*pss = 0;
 	*rss = 0;
 
 	while (fgets(line, sizeof(line), fp))
 	{
-		int64_t temp;
+		int64_t		temp;
+
 		if (sscanf(line, "Rss: %lu", &temp) == 1)
 			*rss += temp * 1024;
 		else if (sscanf(line, "Pss: %lu", &temp) == 1)
@@ -144,10 +145,10 @@ YbPgGetCurRssPssMemUsage(int pid, int64_t *rss, int64_t *pss)
 									  sizeof(struct proc_taskallinfo));
 
 	if (result == 0 || result < sizeof(info))
-		return;				/* Can't be determined or wrong value */
+		return;					/* Can't be determined or wrong value */
 
 	*rss = info.ptinfo.pti_resident_size;
-	*pss = -1; /* PSS is not available on Apple devices */
+	*pss = -1;					/* PSS is not available on Apple devices */
 #endif
 }
 
@@ -828,7 +829,7 @@ MemoryContextStatsDetail(MemoryContext context, int max_children,
 			"YB PGGate bytes: %lld"
 		};
 
-		int64_t values[] = {
+		int64_t		values[] = {
 			tcmallocStats.heap_size_bytes,
 			tcmallocStats.total_physical_bytes,
 			tcmallocStats.current_allocated_bytes,

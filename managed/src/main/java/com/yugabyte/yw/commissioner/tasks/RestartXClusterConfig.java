@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.google.common.collect.Sets;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
@@ -91,8 +92,10 @@ public class RestartXClusterConfig extends EditXClusterConfig {
           // A replication group with no tables in it cannot exist in YBDB. If all the tables
           // must be removed from the replication group, remove the replication group.
           isRestartWholeConfig =
-              xClusterConfig.getTableIdsWithReplicationSetup(tableIds, true /* done */).size()
-                  >= xClusterConfig.getTableIdsWithReplicationSetup().size();
+              Sets.difference(
+                      xClusterConfig.getTableIdsWithReplicationSetup(),
+                      xClusterConfig.getTableIdsWithReplicationSetup(tableIds, true /* done */))
+                  .isEmpty();
         } else {
           isRestartWholeConfig =
               taskParams().getDbs().size() == xClusterConfig.getNamespaces().size();

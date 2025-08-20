@@ -196,6 +196,7 @@ YbInstrAggRpcMetrics(YbcPgExecStorageMetrics **dst, YbcPgExecStorageMetrics *add
 	{
 		YbcPgExecEventMetric *add_event = &add->events[i];
 		YbcPgExecEventMetric *dst_event = &(*dst)->events[i];
+
 		dst_event->sum += add_event->sum;
 		dst_event->count += add_event->count;
 	}

@@ -48,6 +48,7 @@
 #include "yb/rpc/remote_method.h"
 #include "yb/rpc/rpc_header.pb.h"
 #include "yb/rpc/thread_pool.h"
+#include "yb/rpc/wait_state_if.h"
 
 #include "yb/yql/cql/ql/ql_session.h"
 
@@ -107,7 +108,8 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   };
 
   InboundCall(ConnectionPtr conn, RpcMetrics* rpc_metrics,
-              CallProcessedListener* call_processed_listener);
+              CallProcessedListener* call_processed_listener,
+              CallStateListenerFactory* call_state_listener_factory);
   virtual ~InboundCall();
 
   void SetRpcMethodMetrics(std::reference_wrapper<const RpcMethodMetrics> value);
@@ -236,12 +238,21 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
 
   // Returns the WaitStateInfo associated with this call. This is used to
   // track what this RPC is currently waiting on.
+  // TODO(#27659): Remove usage of ash namespace from here
   const ash::WaitStateInfoPtr& wait_state() const {
-    return wait_state_;
+    if (call_state_listener_) {
+      return call_state_listener_->wait_state();
+    }
+    static const ash::WaitStateInfoPtr kNullPtr = nullptr;
+    return kNullPtr;
   }
 
   int64_t instance_id() const {
     return instance_id_;
+  }
+
+  CallStateListener* call_state_listener() {
+    return call_state_listener_.get();
   }
 
  protected:
@@ -281,8 +292,6 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   mutable simple_spinlock mutex_;
   bool cleared_ GUARDED_BY(mutex_) = false;
 
-  const ash::WaitStateInfoPtr wait_state_;
-
  private:
   // The trace buffer.
   scoped_refptr<Trace> trace_holder_ GUARDED_BY(mutex_);
@@ -294,6 +303,7 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   ConnectionPtr conn_ = nullptr;
   RpcMetrics* rpc_metrics_;
   CallProcessedListener* call_processed_listener_;
+  std::unique_ptr<CallStateListener> call_state_listener_;
 
   class InboundCallTask : public ThreadPoolTask {
    public:

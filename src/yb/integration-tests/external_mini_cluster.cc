@@ -2391,7 +2391,7 @@ void ExternalMiniCluster::SetMaxGracefulShutdownWaitSec(int max_graceful_shutdow
 Status ExternalMiniCluster::CallYbAdmin(
     const std::vector<std::string>& args, MonoDelta timeout, std::string* output) {
   auto command = ToStringVector(
-      GetToolPath("yb-admin"), "-master_addresses", GetMasterAddresses(), "-timeout_ms",
+      GetToolPath("yb-admin"), "--master_addresses", GetMasterAddresses(), "--timeout_ms",
       timeout.ToMilliseconds());
   command.insert(command.end(), args.begin(), args.end());
 

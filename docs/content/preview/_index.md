@@ -14,7 +14,7 @@ YugabyteDB is an open source PostgreSQL-compatible distributed database for clou
     title="Get started locally on your laptop"
     description="Download and install YugabyteDB on your laptop, create a cluster, and build a sample application."
     buttonText="Quick Start"
-    buttonUrl="/preview/tutorials/quick-start/macos/"
+    buttonUrl="/preview/quick-start/macos/"
     imageAlt="Locally Laptop" imageUrl="/images/homepage/locally-laptop.svg"
   >}}
 

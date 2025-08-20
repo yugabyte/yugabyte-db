@@ -228,6 +228,8 @@ class Master : public tserver::DbServerBase {
       uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
       const std::optional<std::string>& message_list);
 
+  void EnableCDCService();
+
   Status ReloadKeysAndCertificates() override;
 
   std::string GetCertificateDetails() override;

@@ -1,5 +1,4 @@
 import { DeviceInfo, K8NodeSpec } from '@app/redesign/features/universe/universe-form/utils/dto';
-import { UniverseInfo, UniverseSpec } from '../../../../../v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { ArchitectureType } from '../../helpers/constants';
 
 export interface InstanceSettingProps {

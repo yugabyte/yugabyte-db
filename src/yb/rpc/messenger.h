@@ -314,6 +314,22 @@ class Messenger : public ProxyContext {
     return next_task_id_.load(std::memory_order_acquire);
   }
 
+  void SetMetadataSerializerFactory(std::unique_ptr<MetadataSerializerFactory> factory) {
+    metadata_serializer_factory_ = std::move(factory);
+  }
+
+  MetadataSerializerFactory* metadata_serializer_factory() override {
+    return metadata_serializer_factory_.get();
+  }
+
+  void SetCallStateListenerFactory(std::unique_ptr<CallStateListenerFactory> factory) {
+    call_state_listener_factory_ = std::move(factory);
+  }
+
+  CallStateListenerFactory* call_state_listener_factory() override {
+    return call_state_listener_factory_.get();
+  }
+
  private:
   friend class DelayedTask;
 
@@ -408,6 +424,9 @@ class Messenger : public ProxyContext {
   int num_connections_to_server_;
 
   std::unique_ptr<ReactorMonitor> reactor_monitor_ GUARDED_BY(lock_);
+
+  std::unique_ptr<CallStateListenerFactory> call_state_listener_factory_;
+  std::unique_ptr<MetadataSerializerFactory> metadata_serializer_factory_;
 
 #ifndef NDEBUG
   // This is so we can log where exactly a Messenger was instantiated to better diagnose a CHECK

@@ -402,3 +402,26 @@ ssize_t mm_io_read(mm_io_t *io, void *buf, size_t size)
 	io->connected = 0;
 	return rc;
 }
+
+MACHINE_API int yb_machine_io_is_socket_closed(machine_io_t *obj)
+{
+	mm_io_t *io = mm_cast(mm_io_t *, obj);
+	int socket_fd = io->fd;
+	char buffer[1];
+	ssize_t result = recv(socket_fd, buffer, sizeof(buffer),
+			      MSG_PEEK | MSG_DONTWAIT);
+	if (result == 0) {
+		/* Client has closed the connection */
+		return 1;
+	} else if (result < 0) {
+		if (errno == EAGAIN || errno == EWOULDBLOCK) {
+			/* No data available, but the socket is still open */
+			return 0;
+		} else {
+			/* An error occurred, likely the socket is closed */
+			return 1;
+		}
+	}
+	/* Data is available, socket is still open */
+	return 0;
+}

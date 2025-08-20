@@ -1703,4 +1703,45 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Timeout for catalog upgrade admin operations in milliseconds",
           ConfDataType.LongType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> skipAutoflagsAndYsqlMigrationFilesValidation =
+      new ConfKeyInfo<>(
+          "yb.upgrade.skip_autoflags_and_ysql_migration_files_validation",
+          ScopeType.UNIVERSE,
+          "Skip auto flags and YSQL migration files validation",
+          "Skip auto flags and YSQL migration files validation",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> ybcPerDiskIoRequestSize =
+      new ConfKeyInfo<>(
+          "ybc.disk_io_request_size_bytes",
+          ScopeType.UNIVERSE,
+          "Per disk IO request size",
+          "Per disk IO request size during backup/restore in Yb-Controller",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> defaultDiskIoReadBytesPerSecond =
+      new ConfKeyInfo<>(
+          "ybc.default_disk_io_read_bytes_per_sec",
+          ScopeType.UNIVERSE,
+          "Default disk IO read bytes per second",
+          "Default disk IO read bytes per second during backup in Yb-Controller",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> defaultDiskIoWriteBytesPerSecond =
+      new ConfKeyInfo<>(
+          "ybc.default_disk_io_write_bytes_per_sec",
+          ScopeType.UNIVERSE,
+          "Default disk IO write bytes per second",
+          "Default disk IO write bytes per second during restore in Yb-Controller",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> autoRecoverFromPendingUpgrade =
+      new ConfKeyInfo<>(
+          "yb.helm.auto_recover_from_pending_upgrade",
+          ScopeType.UNIVERSE,
+          "Auto Recover from Pending Upgrade",
+          "If true, YBA will automatically recover from stuck Helm upgrades before performing Helm"
+              + " upgrade operations",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

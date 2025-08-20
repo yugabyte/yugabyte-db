@@ -45,12 +45,14 @@ import com.yugabyte.yba.v2.client.models.NodeProxyConfig;
 import com.yugabyte.yba.v2.client.models.PlacementAZ;
 import com.yugabyte.yba.v2.client.models.PlacementCloud;
 import com.yugabyte.yba.v2.client.models.PlacementRegion;
+import com.yugabyte.yba.v2.client.models.QueryLogConfig;
 import com.yugabyte.yba.v2.client.models.UniverseCreateSpec;
 import com.yugabyte.yba.v2.client.models.UniverseCreateSpec.ArchEnum;
 import com.yugabyte.yba.v2.client.models.UniverseEditSpec;
 import com.yugabyte.yba.v2.client.models.UniverseInfo;
 import com.yugabyte.yba.v2.client.models.UniverseLogsExporterConfig;
 import com.yugabyte.yba.v2.client.models.UniverseNetworkingSpec;
+import com.yugabyte.yba.v2.client.models.UniverseQueryLogsExporterConfig;
 import com.yugabyte.yba.v2.client.models.UniverseResourceDetails;
 import com.yugabyte.yba.v2.client.models.UniverseSpec;
 import com.yugabyte.yba.v2.client.models.User;
@@ -248,6 +250,11 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     return auditLogConfig;
   }
 
+  protected QueryLogConfig createPrimaryQueryLogConfig() {
+    QueryLogConfig queryLogConfig = new QueryLogConfig();
+    return queryLogConfig;
+  }
+
   protected PlacementRegion getOrCreatePlacementRegion(
       PlacementCloud placementCloud, Region region) {
     PlacementRegion placementRegion = null;
@@ -390,6 +397,7 @@ public class UniverseTestBase extends UniverseControllerTestBase {
             .proxyConfig(proxy));
     primaryClusterSpec.setGflags(createPrimaryClusterGFlags());
     primaryClusterSpec.setAuditLogConfig(createPrimaryAuditLogConfig());
+    primaryClusterSpec.setQueryLogConfig(createPrimaryQueryLogConfig());
     universeSpec.addClustersItem(primaryClusterSpec);
     return universeCreateSpec;
   }
@@ -640,6 +648,10 @@ public class UniverseTestBase extends UniverseControllerTestBase {
         v2Cluster.getAuditLogConfig(),
         dbCluster.userIntent.auditLogConfig,
         v2PrimaryCluster.getAuditLogConfig());
+    validateQueryLogConfig(
+        v2Cluster.getQueryLogConfig(),
+        dbCluster.userIntent.queryLogConfig,
+        v2PrimaryCluster.getQueryLogConfig());
   }
 
   private void validateClusterNodeSpec(
@@ -847,7 +859,7 @@ public class UniverseTestBase extends UniverseControllerTestBase {
 
   private void validateAuditLogConfig(
       AuditLogConfig v2AuditLogConfig,
-      com.yugabyte.yw.models.helpers.audit.AuditLogConfig dbAuditLogConfig,
+      com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig dbAuditLogConfig,
       AuditLogConfig v2PrimaryAuditLogConfig) {
     if (v2AuditLogConfig == null) {
       v2AuditLogConfig = v2PrimaryAuditLogConfig;
@@ -875,9 +887,56 @@ public class UniverseTestBase extends UniverseControllerTestBase {
         v2AuditLogConfig.getYcqlAuditConfig(), dbAuditLogConfig.getYcqlAuditConfig());
   }
 
+  private void validateQueryLogConfig(
+      QueryLogConfig v2QueryLogConfig,
+      com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig dbQueryLogConfig,
+      QueryLogConfig v2PrimaryQueryLogConfig) {
+    if (v2QueryLogConfig == null) {
+      v2QueryLogConfig = v2PrimaryQueryLogConfig;
+    }
+    if (v2QueryLogConfig == null) {
+      assertThat(dbQueryLogConfig, is(nullValue()));
+      return;
+    }
+    if (v2QueryLogConfig.getExportActive() == null) {
+      assertThat(dbQueryLogConfig.isExportActive(), is(true));
+    } else {
+      assertThat(v2QueryLogConfig.getExportActive(), is(dbQueryLogConfig.isExportActive()));
+    }
+    assertThat(
+        v2QueryLogConfig.getUniverseLogsExporterConfig().size(),
+        is(dbQueryLogConfig.getUniverseLogsExporterConfig().size()));
+    for (int i = 0; i < v2QueryLogConfig.getUniverseLogsExporterConfig().size(); i++) {
+      validateUniverseLogsExportedConfig(
+          v2QueryLogConfig.getUniverseLogsExporterConfig().get(i),
+          dbQueryLogConfig.getUniverseLogsExporterConfig().get(i));
+    }
+  }
+
   private void validateUniverseLogsExportedConfig(
       UniverseLogsExporterConfig v2UniverseLogsExporterConfig,
-      com.yugabyte.yw.models.helpers.audit.UniverseLogsExporterConfig
+      com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig
+          dbUniverseLogsExporterConfig) {
+    if (v2UniverseLogsExporterConfig == null) {
+      assertThat(dbUniverseLogsExporterConfig, is(nullValue()));
+      return;
+    }
+    assertThat(
+        v2UniverseLogsExporterConfig.getExporterUuid(),
+        is(dbUniverseLogsExporterConfig.getExporterUuid()));
+    v2UniverseLogsExporterConfig
+        .getAdditionalTags()
+        .entrySet()
+        .forEach(
+            e ->
+                assertThat(
+                    dbUniverseLogsExporterConfig.getAdditionalTags(),
+                    hasEntry(e.getKey(), e.getValue())));
+  }
+
+  private void validateUniverseLogsExportedConfig(
+      UniverseQueryLogsExporterConfig v2UniverseLogsExporterConfig,
+      com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig
           dbUniverseLogsExporterConfig) {
     if (v2UniverseLogsExporterConfig == null) {
       assertThat(dbUniverseLogsExporterConfig, is(nullValue()));
@@ -898,7 +957,7 @@ public class UniverseTestBase extends UniverseControllerTestBase {
 
   private void validateYsqlAuditConfig(
       YSQLAuditConfig v2YsqlAuditConfig,
-      com.yugabyte.yw.models.helpers.audit.YSQLAuditConfig dbYsqlAuditConfig) {
+      com.yugabyte.yw.models.helpers.exporters.audit.YSQLAuditConfig dbYsqlAuditConfig) {
     if (v2YsqlAuditConfig == null) {
       assertThat(dbYsqlAuditConfig, is(nullValue()));
       return;
@@ -928,7 +987,7 @@ public class UniverseTestBase extends UniverseControllerTestBase {
 
   private void validateYcqlAuditConfig(
       YCQLAuditConfig v2YcqlAuditConfig,
-      com.yugabyte.yw.models.helpers.audit.YCQLAuditConfig dbYcqlAuditConfig) {
+      com.yugabyte.yw.models.helpers.exporters.audit.YCQLAuditConfig dbYcqlAuditConfig) {
     if (v2YcqlAuditConfig == null) {
       assertThat(dbYcqlAuditConfig, is(nullValue()));
       return;

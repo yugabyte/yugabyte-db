@@ -21,6 +21,20 @@ rightNav:
 
 ### 2025
 
+#### July 28, 2025
+
+##### New features
+
+- {{<tags/feature/ea>}}Support for [point-in-time recovery](../cloud-clusters/aeon-pitr/) using database clones. Create a zero-copy, independent writable clone of your database at a point in time for recovery or testing.
+- {{<tags/feature/ea idea="1368">}}Support for built-in [YSQL Connection Pooling](../../explore/going-beyond-sql/connection-mgr-ysql/). Use built-in server-side connection pooling to support a larger number of connections from applications.
+- {{<tags/feature/ea>}}[Disaster Recovery](../cloud-clusters/disaster-recovery/). A turnkey solution for business continuity and disaster recovery, allowing you to recover from an unplanned outage (failover) or to perform a planned switchover. If you want to try this feature, contact {{% support-cloud %}}. Note that currently, Disaster Recovery is not compatible with point-in-time recovery. Refer to the [Limitations](../cloud-clusters/disaster-recovery/#limitations).
+- [Exported metrics](../cloud-monitor/metrics-export/) are now tagged with the cluster name for enhanced downstream processing.
+
+##### Database
+
+- Production track updated to 2.20.11.0.
+- Early Access track updated to 2024.2.4.0.
+
 #### June 25, 2025
 
 ##### Database

@@ -33,6 +33,7 @@
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/sync_point.h"
+#include "yb/util/tsan_util.h"
 
 DEFINE_test_flag(int32, inject_status_resolver_delay_ms, 0,
                  "Inject delay before launching transaction status resolver RPC.");
@@ -66,7 +67,7 @@ class TransactionStatusResolver::Impl {
   void Shutdown() {
     closing_.store(true, std::memory_order_release);
     for (;;) {
-      if (run_latch_.WaitFor(10s)) {
+      if (run_latch_.WaitFor(10s * kTimeMultiplier)) {
         break;
       }
       LOG_WITH_PREFIX(DFATAL) << "Long wait for transaction status resolver to shutdown";
@@ -127,6 +128,7 @@ class TransactionStatusResolver::Impl {
     auto client = client_result.get();
     if (!client) {
       Complete(STATUS(Aborted, "Aborted because cannot start RPC"));
+      return;
     }
     client->LookupTabletById(
         tablet_id_and_queue.first,

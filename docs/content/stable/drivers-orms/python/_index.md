@@ -2,7 +2,7 @@
 title: Python drivers and ORMs
 headerTitle: Python
 linkTitle: Python
-description: Python Drivers and ORMs support for YugabyteDB.
+description: Python drivers and ORMs support for YugabyteDB.
 menu:
   stable:
     identifier: python-drivers
@@ -46,8 +46,8 @@ To develop Python applications for YugabyteDB, you need the following:
 
 - **YugabyteDB cluster**
 
-  - Create a free cluster on YugabyteDB Aeon. Refer to [Use a cloud cluster](/preview/tutorials/quick-start-yugabytedb-managed/). Note that YugabyteDB Aeon requires SSL.
-  - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/preview/tutorials/quick-start/macos/).
+  - Create a free cluster on YugabyteDB Aeon. Refer to [Use a cloud cluster](/preview/quick-start-yugabytedb-managed/). Note that YugabyteDB Aeon requires SSL.
+  - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/preview/quick-start/macos/).
 
 ## Next step
 

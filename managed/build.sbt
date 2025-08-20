@@ -196,7 +196,7 @@ libraryDependencies ++= Seq(
   "com.azure" % "azure-storage-blob" % "12.19.1",
   "com.azure" % "azure-storage-blob-batch" % "12.19.1",
   "com.azure.resourcemanager" % "azure-resourcemanager" % "2.43.0",
-  "com.azure.resourcemanager" % "azure-resourcemanager-marketplaceordering" % "1.0.0-beta.2",
+  "com.azure.resourcemanager" % "azure-resourcemanager-marketplaceordering" % "1.0.0",
   "jakarta.mail" % "jakarta.mail-api" % "2.1.2",
   "org.eclipse.angus" % "jakarta.mail" % "1.0.0",
   "javax.validation" % "validation-api" % "2.0.1.Final",
@@ -482,6 +482,7 @@ downloadThirdPartyDeps := {
 
 devSpaceReload := {
   (Universal / packageBin).value
+  Process("./devspace.sh", baseDirectory.value / "scripts") !
   val status = Process("devspace run extract-archive").!
   status
 }
@@ -889,9 +890,6 @@ Universal / javaOptions += "-J-XX:+PreserveFramePointer"
 // Disable shutdown hook of ebean to let play manage its lifecycle.
 Universal / javaOptions += "-Debean.registerShutdownHook=false"
 
-// Set time zone.
-Universal / javaOptions += "-Duser.timezone=GMT"
-
 Universal / mappings ++= {
   val (status, cliFolders) = compileYbaCliBinary.value
   if (status == 0) {
@@ -938,7 +936,7 @@ runPlatform := {
 }
 
 libraryDependencies += "org.yb" % "yb-client" % "0.8.105-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.2-b6"
+libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.3-b4"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
 
 libraryDependencies ++= Seq(

@@ -12,6 +12,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.Sets;
+import com.yugabyte.yw.commissioner.ITask;
 import com.yugabyte.yw.commissioner.TaskExecutor.TaskCache;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskDetails;
@@ -253,6 +254,7 @@ public class TaskInfo extends Model {
             TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUuid);
             updater.accept(taskInfo);
             taskInfo.save();
+            taskInfoRef.set(taskInfo);
           },
           TransactionUtil.DEFAULT_RETRY_CONFIG);
       return taskInfoRef.get();
@@ -300,16 +302,68 @@ public class TaskInfo extends Model {
   }
 
   @JsonIgnore
-  public synchronized String getVersion() {
-    return details == null ? "" : details.getVersion();
+  public synchronized long getQueuedTimeMs() {
+    return details == null ? 0L : details.getQueuedTimeMs();
   }
 
   @JsonIgnore
-  public synchronized void setVersion(String version) {
+  public synchronized void setQueuedTimeMs(long queuedTimeMs) {
     if (details == null) {
       details = new TaskDetails();
     }
-    details.setVersion(version);
+    details.setQueuedTimeMs(queuedTimeMs);
+  }
+
+  @JsonIgnore
+  public synchronized long getExecutionTimeMs() {
+    return details == null ? 0L : details.getQueuedTimeMs();
+  }
+
+  @JsonIgnore
+  public synchronized void setExecutionTimeMs(long executionTimeMs) {
+    if (details == null) {
+      details = new TaskDetails();
+    }
+    details.setExecutionTimeMs(executionTimeMs);
+  }
+
+  @JsonIgnore
+  public synchronized long getTotalTimeMs() {
+    return details == null ? 0L : details.getQueuedTimeMs();
+  }
+
+  @JsonIgnore
+  public synchronized void setTotalTimeMs(long totalTimeMs) {
+    if (details == null) {
+      details = new TaskDetails();
+    }
+    details.setTotalTimeMs(totalTimeMs);
+  }
+
+  @JsonIgnore
+  public synchronized int getTaskVersion() {
+    return details == null ? ITask.DEFAULT_TASK_VERSION : details.getTaskVersion();
+  }
+
+  @JsonIgnore
+  public synchronized void setTaskVersion(int version) {
+    if (details == null) {
+      details = new TaskDetails();
+    }
+    details.setTaskVersion(version);
+  }
+
+  @JsonIgnore
+  public synchronized String getYbaVersion() {
+    return details == null ? "" : details.getYbaVersion();
+  }
+
+  @JsonIgnore
+  public synchronized void setYbaVersion(String version) {
+    if (details == null) {
+      details = new TaskDetails();
+    }
+    details.setYbaVersion(version);
   }
 
   @JsonIgnore

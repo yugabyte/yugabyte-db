@@ -117,20 +117,18 @@ class YsqlManager : public YsqlManagerIf {
   // Returns a non-OK status if the DocDB table is uncommitted. Uncommitted DocDB tables can be:
   // - Orphaned: dropped in YSQL but still present in DocDB.
   // - Transient: created during an ongoing DDL operation.
-  Result<uint32_t> GetPgTableOidIfCommitted(
-      const TableId& table_id, const PersistentTableInfo& table_info,
-      const ReadHybridTime& read_time = ReadHybridTime()) const;
+  Result<PgOid> GetPgTableOidIfCommitted(
+      const PgTableAllOids& oids, const ReadHybridTime& read_time = ReadHybridTime()) const;
 
   // Use GetCachedPgSchemaName() with internal cache if you need to get PgSchemaName
   // for several tables.
   // cache : [db oid -> ( [relnamespace oid -> relnamespace name],
   //                      [table oid -> relnamespace oid] )]
   Result<std::string> GetCachedPgSchemaName(
-      const TableId& table_id, const PersistentTableInfo& table_info,
-      PgDbRelNamespaceMap& cache) const override;
+      const PgTableAllOids& oids, PgDbRelNamespaceMap& cache) const override;
   // Use GetPgSchemaName() if you need to get PgSchemaName for a single table.
   Result<std::string> GetPgSchemaName(
-      const TableId& table_id, const PersistentTableInfo& table_info,
+      const PgTableAllOids& oids,
       const ReadHybridTime& read_time = ReadHybridTime()) const override;
 
  private:

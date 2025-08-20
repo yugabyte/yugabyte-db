@@ -1071,7 +1071,7 @@ When the flag `ysql_ddl_transaction_wait_for_ddl_verification` is enabled, YSQL 
 
 ### Change data capture (CDC) flags
 
-To learn about CDC, see [Change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture/).
+To learn about CDC, see [Change data capture (CDC)](../../../develop/change-data-capture/).
 
 ##### --yb_enable_cdc_consistent_snapshot_streams
 
@@ -1217,7 +1217,9 @@ The following set of flags are only relevant for CDC using the PostgreSQL replic
 Default: `CHANGE`
 {{% /tags/wrap %}}
 
-The default replica identity to be assigned to user defined tables at the time of creation. The flag is case sensitive and can take only one of the four possible values, `FULL`, `DEFAULT`,`'NOTHING` and `CHANGE`.
+The default replica identity to be assigned to user-defined tables at the time of creation. The flag is case sensitive and can take only one of the four possible values, `FULL`, `DEFAULT`, `NOTHING`, and `CHANGE`.
+
+For more information, refer to [Replica identity](../../../develop/change-data-capture/using-logical-replication/yugabytedb-connector/#replica-identity).
 
 ##### --cdcsdk_enable_dynamic_table_support
 
@@ -2101,6 +2103,109 @@ Enables the YugabyteDB [cost-based optimizer](../../../architecture/query-layer/
 When enabling CBO, you must run ANALYZE on user tables to maintain up-to-date statistics.
 
 For information on using this parameter to configure CBO, refer to [Enable cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/).
+
+### Auto Analyze service flags
+
+Auto analyze is {{<tags/feature/ea idea="590">}}.
+
+{{< note title="Note" >}}
+
+To fully enable the Auto Analyze service, you need to enable `ysql_enable_auto_analyze_service` on all YB-Masters and YB-TServers, and `ysql_enable_table_mutation_counter` on all YB-TServers.
+
+{{< /note >}}
+
+See also [Auto Analyze Service Master flags](../yb-master#auto-analyze-service-flags).
+
+##### ysql_enable_auto_analyze_service
+
+{{% tags/wrap %}}
+{{<tags/feature/ea idea="590">}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Enable the Auto Analyze service, which automatically runs ANALYZE to update table statistics for tables that have changed more than a configurable threshold.
+
+##### ysql_enable_table_mutation_counter
+
+{{% tags/wrap %}}
+
+
+Default: `false`
+{{% /tags/wrap %}}
+
+Enable per table mutation (INSERT, UPDATE, DELETE) counting. The Auto Analyze service runs ANALYZE when the number of mutations of a table exceeds the threshold determined by the [ysql_auto_analyze_threshold](#ysql-auto-analyze-threshold) and [ysql_auto_analyze_scale_factor](#ysql-auto-analyze-scale-factor) settings.
+
+##### ysql_auto_analyze_threshold
+
+{{% tags/wrap %}}
+
+
+Default: `50`
+{{% /tags/wrap %}}
+
+The minimum number of mutations needed to run ANALYZE on a table.
+
+##### ysql_auto_analyze_scale_factor
+
+{{% tags/wrap %}}
+
+
+Default: `0.1`
+{{% /tags/wrap %}}
+
+The fraction defining when sufficient mutations have been accumulated to run ANALYZE for a table.
+
+ANALYZE runs when the mutation count exceeds `ysql_auto_analyze_scale_factor * <table_size> + ysql_auto_analyze_threshold`, where table_size is the value of the `reltuples` column in the `pg_class` catalog.
+
+##### ysql_auto_analyze_batch_size
+
+{{% tags/wrap %}}
+
+
+Default: `10`
+{{% /tags/wrap %}}
+
+The maximum number of tables the Auto Analyze service tries to analyze in a single ANALYZE statement.
+
+##### ysql_cluster_level_mutation_persist_interval_ms
+
+{{% tags/wrap %}}
+
+
+Default: `10000`
+{{% /tags/wrap %}}
+
+Interval at which the reported node level table mutation counts are persisted to the underlying auto-analyze mutations table.
+
+##### ysql_cluster_level_mutation_persist_rpc_timeout_ms
+
+{{% tags/wrap %}}
+
+
+Default: `10000`
+{{% /tags/wrap %}}
+
+Timeout for the RPCs used to persist mutation counts in the auto-analyze mutations table.
+
+##### ysql_node_level_mutation_reporting_interval_ms
+
+{{% tags/wrap %}}
+
+
+Default: `5000`
+{{% /tags/wrap %}}
+
+Interval, in milliseconds, at which the node-level table mutation counts are sent to the Auto Analyze service, which tracks table mutation counts at the cluster level.
+
+##### ysql_node_level_mutation_reporting_timeout_ms
+
+{{% tags/wrap %}}
+
+
+Default: `5000`
+{{% /tags/wrap %}}
+
+Timeout, in milliseconds, for the node-level mutation reporting RPC to the Auto Analyze service.
 
 ### Advisory lock flags
 

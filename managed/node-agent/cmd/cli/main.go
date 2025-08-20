@@ -13,11 +13,7 @@ import (
 
 func setDefaultConfigs() {
 	config := util.CurrentConfig()
-	_, err := config.CompareAndUpdate(util.NodeLoggerKey, nil, util.NodeAgentDefaultLog)
-	if err != nil {
-		panic(err)
-	}
-	_, err = config.CompareAndUpdate(util.NodePortKey, nil, util.NodePort)
+	_, err := config.CompareAndUpdate(util.NodePortKey, nil, util.NodePort)
 	if err != nil {
 		panic(err)
 	}
@@ -26,6 +22,10 @@ func setDefaultConfigs() {
 		panic(err)
 	}
 	_, err = config.CompareAndUpdate(util.RequestTimeoutKey, nil, "20")
+	if err != nil {
+		panic(err)
+	}
+	_, err = config.CompareAndUpdate(util.NodeAgentLoggerKey, nil, util.NodeAgentDefaultLog)
 	if err != nil {
 		panic(err)
 	}
@@ -45,7 +45,32 @@ func setDefaultConfigs() {
 	if err != nil {
 		panic(err)
 	}
-	_, err = config.CompareAndUpdate(util.NodeAgentDisableMetricsTLS, nil, "true")
+	// Grpc log settings.
+	_, err = config.CompareAndUpdate(util.NodeAgentGrpcLoggerKey, nil, util.NodeAgentGrpcDefaultLog)
+	if err != nil {
+		panic(err)
+	}
+	_, err = config.CompareAndUpdate(util.NodeAgentGrpcLogVerbosityKey, nil, "99" /* Detailed */)
+	if err != nil {
+		panic(err)
+	}
+	_, err = config.CompareAndUpdate(util.NodeAgentGrpcLogMaxMbKey, nil, "100")
+	if err != nil {
+		panic(err)
+	}
+	_, err = config.CompareAndUpdate(util.NodeAgentLogMaxBackupsKey, nil, "5")
+	if err != nil {
+		panic(err)
+	}
+	_, err = config.CompareAndUpdate(util.NodeAgentGrpcLogMaxDaysKey, nil, "15")
+	if err != nil {
+		panic(err)
+	}
+	_, err = config.CompareAndUpdate(util.NodeAgentDisableMetricsTLSKey, nil, "true")
+	if err != nil {
+		panic(err)
+	}
+	_, err = config.CompareAndUpdate(util.NodeAgentTaskExpirySecsKey, nil, "30")
 	if err != nil {
 		panic(err)
 	}

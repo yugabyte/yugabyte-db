@@ -335,6 +335,9 @@ InitWalSender(void)
 
 	/* Initialize empty timestamp buffer for lag tracking. */
 	lag_tracker = MemoryContextAllocZero(TopMemoryContext, sizeof(LagTracker));
+
+	if (IsYugaByteEnabled())
+		MyProc->yb_ash_metadata.query_id = YBCGetConstQueryId(QUERY_ID_TYPE_WALSENDER);
 }
 
 /*

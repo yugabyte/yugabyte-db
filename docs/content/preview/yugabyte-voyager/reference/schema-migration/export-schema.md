@@ -80,6 +80,14 @@ export-schema:
 
 | Use the Orafce extension. Oracle migrations only. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
 
+| --skip-performance-optimizations |
+
+```yaml{.nocopy}
+export-schema:
+  skip-performance-optimizations:
+```
+
+| Disable automatic [performance optimizations](../../../known-issues/postgresql/#performance-optimizations) in the exported schema. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --source-db-type |
 
 ```yaml{.nocopy}

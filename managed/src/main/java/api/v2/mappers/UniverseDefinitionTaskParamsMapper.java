@@ -23,6 +23,8 @@ import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
+import com.yugabyte.yw.forms.MetricsExportConfigParams;
+import com.yugabyte.yw.forms.QueryLogConfigParams;
 import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
@@ -110,6 +112,14 @@ public interface UniverseDefinitionTaskParamsMapper {
 
   @InheritConfiguration(name = "defaultMapping")
   public KubernetesOverridesUpgradeParams toKubernetesOverridesUpgradeParams(
+      UniverseDefinitionTaskParams source, @Context Request request);
+
+  @InheritConfiguration(name = "defaultMapping")
+  public QueryLogConfigParams toQueryLogConfigParams(
+      UniverseDefinitionTaskParams source, @Context Request request);
+
+  @InheritConfiguration(name = "defaultMapping")
+  public MetricsExportConfigParams toMetricsExportConfigParams(
       UniverseDefinitionTaskParams source, @Context Request request);
 
   @Mapping(target = "spec", source = ".")
@@ -283,7 +293,9 @@ public interface UniverseDefinitionTaskParamsMapper {
     @ValueMapping(target = "TERMINATED", source = "Terminated"),
     @ValueMapping(target = "REBOOTING", source = "Rebooting"),
     @ValueMapping(target = "HARDREBOOTING", source = "HardRebooting"),
-    @ValueMapping(target = "VMIMAGEUPGRADE", source = "VMImageUpgrade")
+    @ValueMapping(target = "VMIMAGEUPGRADE", source = "VMImageUpgrade"),
+    @ValueMapping(target = "INSTANCESTOPPING", source = "InstanceStopping"),
+    @ValueMapping(target = "INSTANCESTOPPED", source = "InstanceStopped")
   })
   NodeDetails.StateEnum toV2NodeState(
       com.yugabyte.yw.models.helpers.NodeDetails.NodeState v1NodeState);

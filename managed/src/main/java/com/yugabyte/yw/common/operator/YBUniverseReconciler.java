@@ -1046,15 +1046,31 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
                   .get(GFlagsUtil.YBC_PER_UPLOAD_OBJECTS)
                   .getPresetValues()
                   .getDefaultValue());
+    if (specParams.getDiskReadBytesPerSec() == null)
+      specParams.setDiskReadBytesPerSec(
+          (long)
+              currentParamsMap
+                  .get(GFlagsUtil.YBC_DISK_READ_BYTES_PER_SECOND)
+                  .getPresetValues()
+                  .getDefaultValue());
+    if (specParams.getDiskWriteBytesPerSec() == null)
+      specParams.setDiskWriteBytesPerSec(
+          (long)
+              currentParamsMap
+                  .get(GFlagsUtil.YBC_DISK_WRITE_BYTES_PER_SECOND)
+                  .getPresetValues()
+                  .getDefaultValue());
     validateThrottleParams(specParams, currentParamsMap);
     com.yugabyte.yw.forms.YbcThrottleParameters newParams =
         new com.yugabyte.yw.forms.YbcThrottleParameters();
     // We are casting a Long to an int, but this is only because the java code generated from the
     // CRD uses Longs.
-    newParams.maxConcurrentDownloads = specParams.getMaxConcurrentDownloads().intValue();
-    newParams.maxConcurrentUploads = specParams.getMaxConcurrentUploads().intValue();
-    newParams.perDownloadNumObjects = specParams.getPerDownloadNumObjects().intValue();
-    newParams.perUploadNumObjects = specParams.getPerUploadNumObjects().intValue();
+    newParams.maxConcurrentDownloads = specParams.getMaxConcurrentDownloads();
+    newParams.maxConcurrentUploads = specParams.getMaxConcurrentUploads();
+    newParams.perDownloadNumObjects = specParams.getPerDownloadNumObjects();
+    newParams.perUploadNumObjects = specParams.getPerUploadNumObjects();
+    newParams.diskReadBytesPerSecond = specParams.getDiskReadBytesPerSec();
+    newParams.diskReadBytesPerSecond = specParams.getDiskWriteBytesPerSec();
     ybcManager.setThrottleParams(universe.getUniverseUUID(), newParams);
   }
 

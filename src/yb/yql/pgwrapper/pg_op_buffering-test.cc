@@ -359,28 +359,10 @@ Status CreateTableWithIndex(PGConn* conn, const std::string& name, int num_indic
   return Status::OK();
 }
 
-void generateCSVFileForCopy(const std::string& filename, int num_rows, int num_columns) {
-  std::remove(filename.c_str());
-  std::ofstream temp_file(filename);
-  temp_file << "k";
-  for (int c = 0; c < num_columns - 1; ++c) {
-    temp_file << ",v" << c;
-  }
-  temp_file << std::endl;
-  for (int i = 0; i < num_rows; ++i) {
-    temp_file << i;
-    for (int c = 0; c < num_columns - 1; ++c) {
-      temp_file << "," << i + c;
-    }
-    temp_file << std::endl;
-  }
-  temp_file.close();
-}
-
 void TestBulkLoadUseFastPathForColocated(PGConn* conn, const std::string& table_name,
     int num_rows, int num_indices, std::optional<SingleMetricWatcher>& write_rpc_watcher) {
   std::string csv_filename = "/tmp/PgOpBufferingTest_copy_test.tmp";
-  generateCSVFileForCopy(csv_filename, num_rows, num_indices + 2);
+  GenerateCSVFileForCopy(csv_filename, num_rows, num_indices + 2);
   const int total_write_entries = num_rows * (num_indices + 1);
   ASSERT_OK(CreateTableWithIndex(conn, table_name, num_indices));
   ASSERT_OK(conn->Execute("SET yb_fast_path_for_colocated_copy=true"));
@@ -504,7 +486,7 @@ TEST_F(PgOpBufferingTest, BulkLoadForColocatedUseDistributedTxnTest) {
   std::string csv_filename = "/tmp/PgOpBufferingTest_copy_test.tmp";
   const int num_rows = 100;
   const std::string table_name = kTable;
-  generateCSVFileForCopy(csv_filename, num_rows, /* num_columns = */ 3);
+  GenerateCSVFileForCopy(csv_filename, num_rows, /* num_columns = */ 3);
   auto conn = ASSERT_RESULT(CreateColocatedDB("colo_db"));
   ASSERT_OK(SetMaxBatchSize(&conn, num_rows * 2 - 1));
   ASSERT_OK(conn.Execute("SET yb_fast_path_for_colocated_copy=true"));
@@ -524,7 +506,7 @@ TEST_F(PgOpBufferingTest, BulkLoadForColocatedUseDistributedTxnTest) {
 TEST_F(PgOpBufferingTest, BulkLoadForNonColocatedTest) {
   std::string csv_filename = "/tmp/PgOpBufferingTest_copy_test.tmp";
   const int num_rows = 100;
-  generateCSVFileForCopy(csv_filename, num_rows, /* num_columns = */ 3);
+  GenerateCSVFileForCopy(csv_filename, num_rows, /* num_columns = */ 3);
   auto conn = ASSERT_RESULT(Connect());
   const std::string table_name = kTable;
   ASSERT_OK(CreateTableWithIndex(&conn, table_name, /* num_indices = */ 1));
@@ -618,7 +600,7 @@ TEST_F(PgOpBufferingTest, BulkLoadForColocatedUseFastPathTxnTest) {
   std::string csv_filename = "/tmp/PgOpBufferingTest_copy_test.tmp";
   const int num_rows = 100;
   const std::string table_name = kTable;
-  generateCSVFileForCopy(csv_filename, num_rows, /* num_columns = */ 2);
+  GenerateCSVFileForCopy(csv_filename, num_rows, /* num_columns = */ 2);
   auto conn = ASSERT_RESULT(CreateColocatedDB("colo_db"));
   ASSERT_OK(SetMaxBatchSize(&conn, num_rows * 2 - 1));
   ASSERT_OK(conn.Execute("SET yb_fast_path_for_colocated_copy=true"));

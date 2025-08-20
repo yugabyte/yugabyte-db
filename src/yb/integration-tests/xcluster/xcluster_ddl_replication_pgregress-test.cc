@@ -191,7 +191,9 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
     const auto sub_dir = "test_xcluster_ddl_replication_sql";
     const auto test_sql_dir = JoinPathSegments(env_util::GetRootDir(sub_dir), sub_dir, "sql");
 
-    RETURN_NOT_OK(SetUpClusters(is_colocated_));
+    auto params = XClusterDDLReplicationTestBase::kDefaultParams;
+    params.is_colocated = is_colocated_;
+    RETURN_NOT_OK(SetUpClusters(params));
 
     if (!pre_execution_sql_text.empty()) {
       RETURN_NOT_OK(RunOnBothClusters([&](Cluster* cluster) -> Status {
@@ -356,6 +358,12 @@ TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressRolesOwnersPermissions) {
   std::string pre_execute_sql_text = "CREATE ROLE sandeep WITH LOGIN PASSWORD 'password';";
   ASSERT_OK(TestPgRegress(
       {"owners_and_permissions1.sql", "owners_and_permissions2.sql"}, pre_execute_sql_text));
+}
+
+TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressAlterDefaultPrivileges) {
+  std::string pre_execute_sql_text = "CREATE ROLE sandeep WITH LOGIN PASSWORD 'password';";
+  ASSERT_OK(TestPgRegress(
+      {"alter_default_privileges.sql"}, pre_execute_sql_text));
 }
 
 TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressAlterPgOnlyDdls) {

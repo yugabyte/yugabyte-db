@@ -93,3 +93,14 @@ MACHINE_API machine_msg_t *machine_channel_read(machine_channel_t *obj,
 	msg = mm_channelfast_read(channel, time_ms);
 	return (machine_msg_t *)msg;
 }
+
+MACHINE_API size_t machine_channel_get_size(machine_channel_t *chan)
+{
+	mm_channeltype_t *type;
+	type = mm_cast(mm_channeltype_t *, chan);
+	if (type->is_shared) {
+		return mm_channel_get_size(mm_cast(mm_channel_t *, chan));
+	}
+
+	return mm_channelfast_get_size(mm_cast(mm_channelfast_t *, chan));
+}

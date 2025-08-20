@@ -27,10 +27,23 @@ using std::string;
 
 using namespace std::literals;
 
+DECLARE_string(vmodule);
+METRIC_DECLARE_counter(handler_latency_yb_tserver_PgClientService_OpenTable);
+METRIC_DECLARE_counter(handler_latency_yb_master_MasterDdl_GetTableSchema);
+
+METRIC_DECLARE_counter(handler_latency_yb_tserver_TabletServerService_Read);
+
 namespace yb {
 namespace pgwrapper {
 
 class PgCatalogVersionTest : public LibPqTestBase {
+
+ public:
+  void SetUp() override {
+    LibPqTestBase::SetUp();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vmodule) = "libpq_utils=1";
+  }
+
  protected:
   using Version = uint64_t;
 
@@ -80,12 +93,6 @@ class PgCatalogVersionTest : public LibPqTestBase {
       Format("--ysql_enable_db_catalog_version_mode=$0", enabled ? "true" : "false");
     for (size_t i = 0; i != cluster_->num_masters(); ++i) {
       cluster_->master(i)->mutable_flags()->push_back(db_catalog_version_gflag);
-      if (!enabled) {
-        cluster_->master(i)->mutable_flags()->push_back(
-            "--allowed_preview_flags_csv=enable_object_locking_for_table_locks");
-        cluster_->master(i)->mutable_flags()->push_back(
-            "--enable_object_locking_for_table_locks=false");
-      }
     }
     for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
       cluster_->tablet_server(i)->mutable_flags()->push_back(db_catalog_version_gflag);
@@ -610,6 +617,17 @@ class PgCatalogVersionTest : public LibPqTestBase {
                               &migration_content));
     return migration_content.ToString();
   }
+
+  Result<int64_t> GetMasterReadRPCCount() {
+    int64_t result = 0;
+    for (auto* tserver : cluster_->master_daemons()) {
+      int64_t count = CHECK_RESULT(tserver->GetMetric<int64>(
+          &METRIC_ENTITY_server, "yb.master",
+          &METRIC_handler_latency_yb_tserver_TabletServerService_Read, "total_count"));
+      result += count;
+    }
+    return result;
+  }
 };
 
 TEST_F(PgCatalogVersionTest, DBCatalogVersion) {
@@ -946,7 +964,7 @@ TEST_F(PgCatalogVersionTest, FixCatalogVersionTable) {
   // Do not force early serialization for DDLs since the pg_yb_catalog_version table is in global
   // catalog version mode and early serialization requires taking a lock on the per-db catalog
   // version row.
-  ASSERT_OK(conn_yugabyte.Execute("SET yb_force_early_ddl_serialization=false"));
+  ASSERT_OK(conn_yugabyte.Execute("SET yb_user_ddls_preempt_auto_analyze=false"));
 
   // At this time, an existing connection is still in per-db catalog version mode
   // but the table pg_yb_catalog_version has only one row for template1 and is out
@@ -3163,6 +3181,228 @@ TEST_F(PgCatalogVersionTest, TestAlterRoleSetGUCHasGlobalImpact) {
   ASSERT_EQ(row4, "on");
   ASSERT_EQ(row5, "off");
   ASSERT_EQ(row6, "off");
+}
+
+TEST_F(PgCatalogVersionTest, InvalMessageDeltaTableLoad) {
+  for (int i = 0; i < 2; i++) {
+    if (i == 0) {
+      RestartClusterWithInvalMessageEnabled();
+    } else {
+      RestartClusterWithInvalMessageEnabled(
+          { "--ysql_yb_enable_invalidate_table_cache_entry=false" });
+    }
+    auto conn = CHECK_RESULT(Connect());
+    ASSERT_OK(conn.ExecuteFormat("create table test_table$0(id int)", i));
+    auto conn1 = ASSERT_RESULT(Connect());
+    auto conn2 = ASSERT_RESULT(Connect());
+    auto open_table_count = [this]() -> Result<int64_t> {
+      int64_t result = 0;
+      for (auto* tserver : cluster_->tserver_daemons()) {
+        int64_t count = CHECK_RESULT(tserver->GetMetric<int64>(
+            &METRIC_ENTITY_server, "yb.tabletserver",
+            &METRIC_handler_latency_yb_tserver_PgClientService_OpenTable, "total_count"));
+        result += count;
+      }
+      return result;
+    };
+
+    auto get_schema_count = [this]() -> Result<int64_t> {
+      int64_t result = 0;
+      for (auto* master : cluster_->master_daemons()) {
+        int64_t count = CHECK_RESULT(master->GetMetric<int64>(
+            &METRIC_ENTITY_server, "yb.master",
+            &METRIC_handler_latency_yb_master_MasterDdl_GetTableSchema, "total_count"));
+        result += count;
+      }
+      return result;
+    };
+    auto open_table_count_before = CHECK_RESULT(open_table_count());
+    auto get_schema_count_before = CHECK_RESULT(open_table_count());
+    for (int col = 0; col < 100; col++) {
+      ASSERT_OK(conn1.ExecuteFormat("alter table test_table$0 add column c$1 int", i, col));
+      auto res = CHECK_RESULT(conn2.FetchFormat("select * from test_table$0", i));
+    }
+    auto open_table_count_after = CHECK_RESULT(open_table_count());
+    auto get_schema_count_after = CHECK_RESULT(get_schema_count());
+    LOG(INFO) << "i: " << i
+              << ", open_table_count_before: " << open_table_count_before
+              << ", open_table_count_after: " << open_table_count_after
+              << ", get_schema_count_before: " << get_schema_count_before
+              << ", get_schema_count_after: " << get_schema_count_after;
+    if (i == 0) {
+      ASSERT_EQ(open_table_count_after - open_table_count_before, 143);
+      ASSERT_EQ(get_schema_count_after - get_schema_count_before, 681);
+    } else {
+      ASSERT_EQ(open_table_count_after - open_table_count_before, 638);
+      ASSERT_EQ(get_schema_count_after - get_schema_count_before, 781);
+    }
+  }
+}
+
+class PgCatalogVersionConnManagerTest
+    : public PgCatalogVersionTest,
+      public ::testing::WithParamInterface<bool> {
+  const bool enable_ysql_conn_mgr = GetParam();
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->enable_ysql_conn_mgr = enable_ysql_conn_mgr;
+    PgCatalogVersionTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back(
+        "--ysql_enable_read_request_cache_for_connection_auth=true");
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(, PgCatalogVersionConnManagerTest,
+                        ::testing::Values(false, true));
+
+TEST_P(PgCatalogVersionConnManagerTest,
+       YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestConnectionManagerRpcCount)) {
+  const bool enable_ysql_conn_mgr = GetParam();
+  // Create the first logical connection to warm up the tserver cache
+  // for later auth backends to use.
+  auto conn = ASSERT_RESULT(Connect());
+
+  const int num_logical_connections = 250;
+  auto master_read_count_before = ASSERT_RESULT(GetMasterReadRPCCount());
+  LOG(INFO) << "Create " << num_logical_connections << " logical connections";
+  std::vector<PGConn> conns;
+  // Create additional number of logical connections. The setup process of each logical
+  // connection triggers a PG auth backend, which uses tserver cache for its work.
+  // In contrast, a regular PG backend does not use tserver cache for its auth work.
+  for (int i = 0; i < num_logical_connections; i++) {
+    conns.emplace_back(ASSERT_RESULT(Connect()));
+  }
+  auto master_read_count_after = ASSERT_RESULT(GetMasterReadRPCCount());
+  LOG(INFO) << ", master_read_count_before: " << master_read_count_before
+            << ", master_read_count_after: " << master_read_count_after;
+  auto expected_count = (enable_ysql_conn_mgr ? 2 : 3) * num_logical_connections + 1;
+  ASSERT_EQ(master_read_count_after - master_read_count_before, expected_count);
+}
+
+TEST_P(PgCatalogVersionConnManagerTest,
+       YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestConnectionManagerChangePassword)) {
+  // Create a test user with password.
+  auto conn = ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "yugabyte"));
+  ASSERT_OK(conn.ExecuteFormat("CREATE USER test_user PASSWORD 'old_password'"));
+
+  RestartClusterWithInvalMessageEnabled(
+      { "--ysql_enable_auth=true" });
+
+  // Connect as test_user with the right password.
+  setenv("PGPASSWORD", "old_password", /*overwrite=*/true);
+  auto conn_test = ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "test_user"));
+
+  auto version = ASSERT_RESULT(GetCatalogVersion(&conn_test));
+
+  // Connect as yugabyte and change the test_user's password.
+  setenv("PGPASSWORD", "yugabyte", /*overwrite=*/true);
+  conn = ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "yugabyte"));
+  ASSERT_OK(conn.ExecuteFormat("ALTER USER test_user WITH PASSWORD 'new_password'"));
+
+  WaitForCatalogVersionToPropagate();
+  // Verify the old password no longer works.
+  setenv("PGPASSWORD", "old_password", /*overwrite=*/true);
+  ASSERT_NOK_STR_CONTAINS(ConnectToDBAsUser("yugabyte", "test_user"),
+      "password authentication failed for user \"test_user\"");
+
+  // Verify the new password works.
+  setenv("PGPASSWORD", "new_password", /*overwrite=*/true);
+  ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "test_user"));
+
+  auto new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
+  const bool enable_ysql_conn_mgr = GetParam();
+  if (enable_ysql_conn_mgr) {
+    // When connection manager is enabled, we increment the catalog version for
+    // changing password.
+    ASSERT_EQ(version + 1, new_version);
+  } else {
+    // When connection manager is not enabled, we do not increment the catalog
+    // version for changing password.
+    ASSERT_EQ(version, new_version);
+  }
+}
+
+TEST_P(PgCatalogVersionConnManagerTest,
+       YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestConnectionManagerBoundedStaleness)) {
+  const bool enable_ysql_conn_mgr = GetParam();
+  // Create a test user with password.
+  auto conn = ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "yugabyte"));
+  ASSERT_OK(conn.ExecuteFormat("CREATE USER test_user PASSWORD 'old_password'"));
+
+  const int stale_cache_bound_ms = 15000; /* 15 seconds */
+  RestartClusterWithInvalMessageEnabled(
+      { "--ysql_enable_auth=true",
+        Format("--pg_cache_response_trust_auth_lifetime_limit_ms=$0", stale_cache_bound_ms) });
+
+  // Connect as test_user with the right password, this will create tserver cache
+  // entry used for auth in node at index 0.
+  setenv("PGPASSWORD", "old_password", /*overwrite=*/true);
+  pg_ts = cluster_->tablet_server(0);
+  auto conn_test = ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "test_user"));
+
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "TEST_tserver_disable_catalog_refresh_on_heartbeat", "true"));
+
+  // Connect as yugabyte and change the test_user's password from node at index 1.
+  setenv("PGPASSWORD", "yugabyte", /*overwrite=*/true);
+  pg_ts = cluster_->tablet_server(1);
+  conn = ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "yugabyte"));
+  ASSERT_OK(conn.ExecuteFormat("ALTER USER test_user WITH PASSWORD 'new_password'"));
+
+  pg_ts = cluster_->tablet_server(0);
+  if (enable_ysql_conn_mgr) {
+    setenv("PGPASSWORD", "old_password", /*overwrite=*/true);
+    // Verify the old password still works because we have set the gflag
+    // --TEST_tserver_disable_catalog_refresh_on_heartbeat=true.
+    ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "test_user"));
+
+    // Wait for the stale cache in tserver expires.
+    SleepFor(1ms * stale_cache_bound_ms);
+
+    // Verify the old password no longer works after the threshold specified by
+    // --pg_cache_response_trust_auth_lifetime_limit_ms has passed.
+
+    auto verify = [this]() -> void {
+      setenv("PGPASSWORD", "old_password", /*overwrite=*/true);
+      ASSERT_NOK_STR_CONTAINS(ConnectToDBAsUser("yugabyte", "test_user"),
+          "password authentication failed for user \"test_user\"");
+      // Verify the new password works.
+      setenv("PGPASSWORD", "new_password", /*overwrite=*/true);
+      ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "test_user"));
+    };
+
+    verify();
+    auto master_read_count_before = ASSERT_RESULT(GetMasterReadRPCCount());
+    ASSERT_OK(cluster_->SetFlagOnTServers(
+        "TEST_tserver_disable_catalog_refresh_on_heartbeat", "false"));
+    WaitForCatalogVersionToPropagate();
+
+    const int verify_count = 5;
+    for (int i = 0; i < verify_count; i++) {
+      verify();
+    }
+    auto master_read_count_after = ASSERT_RESULT(GetMasterReadRPCCount());
+    LOG(INFO) << ", master_read_count_before: " << master_read_count_before
+              << ", master_read_count_after: " << master_read_count_after;
+
+    // Rebuilding the expired tserver cache entry costs 1 master RPCs.
+    const int num_rebuild_rpcs = 1;
+    // Each pg auth backend still costs 2 master RPCs due to:
+    // (1) logical catalog version read
+    // (2) master catalog version read for prefetching.
+    ASSERT_EQ(master_read_count_before + num_rebuild_rpcs + 2 * verify_count,
+              master_read_count_after);
+  } else {
+    // Bounded staleness only applies when connection manager is used.
+    // When connection manager is not used, we do not use tserver cache
+    // for auth processing so there is no staleness.
+    setenv("PGPASSWORD", "old_password", /*overwrite=*/true);
+    ASSERT_NOK_STR_CONTAINS(ConnectToDBAsUser("yugabyte", "test_user"),
+        "password authentication failed for user \"test_user\"");
+
+    // Verify the new password works.
+    setenv("PGPASSWORD", "new_password", /*overwrite=*/true);
+    ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "test_user"));
+  }
 }
 
 } // namespace pgwrapper

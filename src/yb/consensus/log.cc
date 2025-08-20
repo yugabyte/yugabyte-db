@@ -243,22 +243,23 @@ DEFINE_RUNTIME_uint64(cdc_intent_retention_ms, 8 * 3600 * 1000,
     "Interval up to which CDC consumer's checkpoint is considered for retaining intents."
     "If we haven't received an updated checkpoint from CDC consumer within the interval "
     "specified by cdc_checkpoint_opid_interval, then CDC does not consider that "
-    "consumer while determining which op IDs to delete from the intent.");
+    "consumer while determining which op IDs to delete from the intent. NOTE: Must be no larger "
+    "than cdc_wal_retention_time_secs * 1000.");
 TAG_FLAG(cdc_intent_retention_ms, advanced);
 
 DEFINE_RUNTIME_uint32(cdc_wal_retention_time_secs, 8 * 3600,
     "WAL retention time in seconds to be used for tables which have a xCluster, "
-    "or CDCSDK outbound stream.");
+    "or CDCSDK outbound stream. NOTE: Must be at least cdc_intent_retention_ms (in seconds).");
 
 DEFINE_validator(cdc_intent_retention_ms,
     FLAG_DELAYED_COND_VALIDATOR(
         _value <= static_cast<uint64_t>(FLAGS_cdc_wal_retention_time_secs) * 1000,
-        "Must be less than cdc_wal_retention_time_secs * 1000"));
+        "Must be no larger than cdc_wal_retention_time_secs * 1000"));
 
 DEFINE_validator(cdc_wal_retention_time_secs,
     FLAG_DELAYED_COND_VALIDATOR(
         FLAGS_cdc_intent_retention_ms <= static_cast<uint64_t>(_value) * 1000,
-        "Must be greater than cdc_intent_retention_ms (in seconds)"));
+        "Must be at least cdc_intent_retention_ms (in seconds)"));
 
 DEFINE_RUNTIME_bool(enable_xcluster_timed_based_wal_retention, true,
     "If true, enable time-based WAL retention for tables with xCluster "

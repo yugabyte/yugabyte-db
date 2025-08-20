@@ -261,18 +261,17 @@ public class EditXClusterConfig extends CreateXClusterConfig {
     Set<String> tableIdsNotNeedBootstrap =
         getTableIdsNotNeedBootstrap(taskParams().getTableIdsToAdd());
 
-    // If the status for at least one table is Running, it means the replication is set up for all
-    //  of them and this task should not run.
-    if (!tableIdsNotNeedBootstrap.isEmpty()
-        && xClusterConfig
-                .getTableById(tableIdsNotNeedBootstrap.stream().findFirst().get())
-                .getStatus()
-            != XClusterTableConfig.Status.Running) {
-      createXClusterConfigSetStatusForTablesTask(
-          xClusterConfig, tableIdsNotNeedBootstrap, XClusterTableConfig.Status.Updating);
-    }
-
     if (!tableIdsNotNeedBootstrap.isEmpty()) {
+      // If the status for at least one table is Running, it means the replication is set up for all
+      //  of them and this task should not run.
+      if (xClusterConfig
+              .getTableById(tableIdsNotNeedBootstrap.stream().findFirst().get())
+              .getStatus()
+          != XClusterTableConfig.Status.Running) {
+        createXClusterConfigSetStatusForTablesTask(
+            xClusterConfig, tableIdsNotNeedBootstrap, XClusterTableConfig.Status.Updating);
+      }
+
       addSubtasksForTablesNotNeedBootstrap(
           xClusterConfig,
           tableIdsNotNeedBootstrap,
@@ -306,8 +305,11 @@ public class EditXClusterConfig extends CreateXClusterConfig {
       // A replication group with no tables in it cannot exist in YBDB. If all the tables must be
       // removed from the replication group, remove the replication group.
       boolean isRestartWholeConfig =
-          tableIdsDeleteReplication.size() + tableIdsScheduledForBeingRemoved.size()
-              >= tableIdsWithReplicationSetup.size() + tableIdsNotNeedBootstrap.size();
+          Sets.difference(
+                  Sets.union(tableIdsWithReplicationSetup, tableIdsNotNeedBootstrap),
+                  Sets.union(tableIdsDeleteReplication, tableIdsScheduledForBeingRemoved))
+              .isEmpty();
+
       log.info(
           "tableIdsDeleteReplication is {} and isRestartWholeConfig is {}",
           tableIdsDeleteReplication,

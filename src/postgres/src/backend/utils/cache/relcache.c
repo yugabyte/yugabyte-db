@@ -9213,6 +9213,14 @@ YbSharedRelationIdNeedsGlobalImpact(Oid relationId)
 			relationId == DbRoleSettingDatidRolidIndexId);
 }
 
+Relation
+YbRelationIdCacheLookup(Oid relid)
+{
+	Relation rel;
+	RelationIdCacheLookup(relid, rel);
+	return rel;
+}
+
 /*
  * Invalidate (remove) the init file during commit of a transaction that
  * changed one or more of the relation cache entries that are kept in the

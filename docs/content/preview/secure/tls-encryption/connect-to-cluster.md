@@ -61,7 +61,7 @@ For example, the following command lists the master information for the TLS-enab
 
 ```sh
 export MASTERS=node1:7100,node2:7100,node3:7100
-./bin/yb-admin --master_addresses $MASTERS -certs_dir_name ~/yugabyte-tls-config list_all_masters
+./bin/yb-admin --master_addresses $MASTERS --certs_dir_name ~/yugabyte-tls-config list_all_masters
 ```
 
 You should see the following output format:

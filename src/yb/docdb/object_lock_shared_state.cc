@@ -58,8 +58,9 @@ class PendingLockRequests {
     return true;
   }
 
-  void ConsumeLockRequests(const FastLockRequestConsumer& consume) PARENT_PROCESS_ONLY {
-    for (size_t i = 0, end = next_.Get(); i < end; ++i) {
+  size_t ConsumeLockRequests(const FastLockRequestConsumer& consume) PARENT_PROCESS_ONLY {
+    size_t end = next_.Get();
+    for (size_t i = 0; i < end; ++i) {
       auto& entry = requests_[i];
       if (!entry.finalized.Get()) {
         continue;
@@ -69,6 +70,7 @@ class PendingLockRequests {
     }
     UpdateLastOwner();
     SHARED_MEMORY_STORE(next_, 0);
+    return end;
   }
 
   SessionLockOwnerTag TEST_last_owner() PARENT_PROCESS_ONLY {
@@ -162,20 +164,21 @@ class ObjectLockSharedState::Impl {
     return true;
   }
 
-  void ConsumePendingLockRequests(const FastLockRequestConsumer& consume)
+  size_t ConsumePendingLockRequests(const FastLockRequestConsumer& consume)
       EXCLUDES(mutex_) PARENT_PROCESS_ONLY {
     std::lock_guard lock(mutex_);
-    shared_requests_.ConsumeLockRequests(consume);
+    return shared_requests_.ConsumeLockRequests(consume);
   }
 
-  void ConsumeAndAcquireExclusiveLockIntents(
+  size_t ConsumeAndAcquireExclusiveLockIntents(
       const FastLockRequestConsumer& consume,
       std::span<const ObjectLockPrefix*> object_ids) PARENT_PROCESS_ONLY {
     std::lock_guard lock(mutex_);
-    shared_requests_.ConsumeLockRequests(consume);
+    size_t consumed = shared_requests_.ConsumeLockRequests(consume);
     for (auto object_id : object_ids) {
       AcquireExclusiveLockIntent(*object_id);
     }
+    return consumed;
   }
 
   void ReleaseExclusiveLockIntent(const ObjectLockPrefix& object_id, size_t count)
@@ -220,10 +223,10 @@ bool ObjectLockSharedState::Lock(const ObjectLockFastpathRequest& request) {
   return impl_->Lock(request);
 }
 
-void ObjectLockSharedState::ConsumeAndAcquireExclusiveLockIntents(
+size_t ObjectLockSharedState::ConsumeAndAcquireExclusiveLockIntents(
     const FastLockRequestConsumer& consume,
     std::span<const ObjectLockPrefix*> object_ids) {
-  impl_->ConsumeAndAcquireExclusiveLockIntents(consume, object_ids);
+  return impl_->ConsumeAndAcquireExclusiveLockIntents(consume, object_ids);
 }
 
 void ObjectLockSharedState::ReleaseExclusiveLockIntent(
@@ -231,8 +234,8 @@ void ObjectLockSharedState::ReleaseExclusiveLockIntent(
   impl_->ReleaseExclusiveLockIntent(object_id, count);
 }
 
-void ObjectLockSharedState::ConsumePendingLockRequests(const FastLockRequestConsumer& consume) {
-  impl_->ConsumePendingLockRequests(consume);
+size_t ObjectLockSharedState::ConsumePendingLockRequests(const FastLockRequestConsumer& consume) {
+  return impl_->ConsumePendingLockRequests(consume);
 }
 
 SessionLockOwnerTag ObjectLockSharedState::TEST_last_owner() {

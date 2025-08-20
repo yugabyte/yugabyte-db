@@ -7,10 +7,10 @@ package configuration
 import (
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/sirupsen/logrus"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
@@ -192,7 +192,7 @@ func (c *Context) Template() string {
 
 // CreateTime fetches AlertConfiguration CreateTime
 func (c *Context) CreateTime() string {
-	return c.a.GetCreateTime().Format(time.RFC1123Z)
+	return util.PrintTime(c.a.GetCreateTime())
 }
 
 // AlertCount fetches AlertConfiguration AlertCount

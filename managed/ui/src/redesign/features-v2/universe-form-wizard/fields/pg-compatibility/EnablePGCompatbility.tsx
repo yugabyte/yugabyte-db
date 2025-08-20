@@ -1,7 +1,6 @@
 import { FC, useState } from 'react';
 import { useUpdateEffect } from 'react-use';
 import { useTranslation, Trans } from 'react-i18next';
-import { styled } from '@material-ui/core';
 import { useFormContext, useWatch } from 'react-hook-form';
 import { mui, YBToggleField, YBTooltip } from '@yugabyte-ui-library/core';
 import { YBEarlyAccessTag } from '../../../../components';
@@ -10,7 +9,7 @@ import { isVersionPGSupported } from '../../../../features/universe/universe-for
 
 import { DatabaseSettingsProps } from '../../steps/database-settings/dtos';
 
-const { Box, Typography, Link } = mui;
+const { Box, Typography, Link, styled } = mui;
 
 interface PGCompatibiltyFieldProps {
   disabled: boolean;

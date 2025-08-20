@@ -68,7 +68,19 @@ var installCmd = &cobra.Command{
 			skippedPreflightChecks = append(skippedPreflightChecks, "disk-availability")
 		}
 		var results *checks.MappedResults
-		if common.IsPostgresEnabled() {
+
+		if common.IsPerfAdvisorEnabled() && common.IsPostgresEnabled() {
+			// Run both Perf Advisor and Postgres checks, then merge results
+    	paResults := preflight.Run(preflight.InstallPerfAdvisorChecks, skippedPreflightChecks...)
+    	pgResults := preflight.Run(preflight.InstallChecksWithPostgres, skippedPreflightChecks...)
+    	results = checks.MergeMappedResults(paResults, pgResults)
+
+			combined := append(preflight.InstallPerfAdvisorChecks, preflight.InstallChecksWithPostgres...)
+			deduped := deduplicateChecks(combined)
+			results = preflight.Run(deduped, skippedPreflightChecks...)
+		}	else if common.IsPerfAdvisorEnabled() {
+    	results = preflight.Run(preflight.InstallPerfAdvisorChecks, skippedPreflightChecks...)
+		} else if common.IsPostgresEnabled() {
 			results = preflight.Run(preflight.InstallChecksWithPostgres, skippedPreflightChecks...)
 		} else {
 			results = preflight.Run(preflight.InstallChecks, skippedPreflightChecks...)
@@ -160,6 +172,20 @@ func getAndPrintStatus(state *ybactlstate.State) {
 	}
 
 	common.PrintStatus(state.CurrentStatus.String(), statuses...)
+}
+
+// Deduplicate checks by Name
+func deduplicateChecks(checks []preflight.Check) []preflight.Check {
+  seen := make(map[string]bool)
+  unique := make([]preflight.Check, 0, len(checks))
+
+  for _, check := range checks {
+		if !seen[check.Name()] {
+			seen[check.Name()] = true
+			unique = append(unique, check)
+		}
+  }
+  return unique
 }
 
 func init() {

@@ -10,12 +10,12 @@ create temp view gstest1(a,b,v)
 create temp table gstest2 (a integer, b integer, c integer, d integer,
                            e integer, f integer, g integer, h integer);
 copy gstest2 from stdin;
-WARNING:  batched COPY is not supported on temporary tables
+WARNING:  ROWS_PER_TRANSACTION is not supported on temporary tables
 DETAIL:  Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 create temp table gstest3 (a integer, b integer, c integer, d integer);
 copy gstest3 from stdin;
-WARNING:  batched COPY is not supported on temporary tables
+WARNING:  ROWS_PER_TRANSACTION is not supported on temporary tables
 DETAIL:  Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
 alter table gstest3 add primary key (a);

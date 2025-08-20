@@ -2063,6 +2063,8 @@ _readTidScan(void)
 
 	ReadCommonScan(&local_node->scan);
 
+	READ_NODE_FIELD(yb_rel_pushdown.quals);
+	READ_NODE_FIELD(yb_rel_pushdown.colrefs);
 	READ_NODE_FIELD(tidquals);
 
 	READ_DONE();

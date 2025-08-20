@@ -1174,7 +1174,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status ScheduleTask(std::shared_ptr<server::RunnableMonitoredTask> task) override;
 
   // Time since this peer became master leader. Caller should verify that it is leader before.
-  MonoDelta TimeSinceElectedLeader();
+  MonoDelta TimeSinceElectedLeader() const;
 
   Result<std::vector<TableDescription>> CollectTables(
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& table_identifiers,
@@ -1440,6 +1440,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const UpdateConsumerOnProducerMetadataRequestPB* req,
       UpdateConsumerOnProducerMetadataResponsePB* resp, rpc::RpcContext* rpc);
 
+  // Store packing schemas for upcoming colocated tables on an xCluster automatic mode target,
+  // since their rows are replicated before the corresponding table is created.
   Status InsertHistoricalColocatedSchemaPacking(
       const xcluster::ReplicationGroupId& replication_group_id, const TablegroupId& tablegroup_id,
       const ColocationId colocation_id,
@@ -2233,7 +2235,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // issuing a DeleteTablet call to tservers. It is possible in the case of corrupted sys catalog or
   // tservers heartbeating into wrong clusters that live data is considered to be orphaned. So make
   // sure that the tablet was explicitly deleted before deleting any on-disk data from tservers.
-  std::unordered_set<TabletId> deleted_tablets_loaded_from_sys_catalog_ GUARDED_BY(mutex_);
+  std::unordered_set<TabletId> deleted_tablets_ GUARDED_BY(mutex_);
 
   // Split parent tablets that are now hidden and still being replicated by some CDC stream. Keep
   // track of these tablets until their children tablets start being polled, at which point they
@@ -2337,9 +2339,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   std::atomic<int64_t> leader_ready_term_ = -1;
 
   // This field is set to true when the leader master has is restoring sys catalog.
-  // In this case ScopedLeaderSharedLock cannot be acquired on this master.
-  // So all RPCs that requires this lock will fail.
-  bool restoring_sys_catalog_ GUARDED_BY(leader_mutex_) = false;
+  // While this is true, the ScopedLeaderSharedLock cannot be acquired on this master, so all RPCs
+  // that require this lock will fail.
+  std::atomic_bool restoring_sys_catalog_ = false;
 
   // Lock used to fence operations and leader elections. All logical operations
   // (i.e. create table, alter table, etc.) should acquire this lock for
@@ -2425,8 +2427,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const TableInfoPtr& table, const ReplicationInfoPB& replication_info) const override;
 
   Status CanSupportAdditionalTabletsForTableCreation(
-    int num_tablets, const ReplicationInfoPB& replication_info,
-    const TSDescriptorVector& ts_descs);
+    int num_tablets, const ReplicationInfoPB& replication_info) const;
 
   Status CDCSDKValidateCreateTableRequest(const CreateTableRequestPB& req);
 

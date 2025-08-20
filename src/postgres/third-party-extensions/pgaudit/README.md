@@ -48,13 +48,17 @@ To limit the number of relations audit logged for `SELECT` and `DML` statements,
 
 ## PostgreSQL Version Compatibility
 
-pgAudit was developed to support PostgreSQL 9.5 or greater.
+pgAudit supports PostgreSQL 12 or greater.
 
-In order to support new functionality introduced in each PostgreSQL release, pgAudit maintains a separate branch for each PostgreSQL major version (currently PostgreSQL 9.5 - 15) which will be maintained in a manner similar to the PostgreSQL project.
+In order to support new functionality introduced in each PostgreSQL release, pgAudit maintains a separate branch for each PostgreSQL major version (currently PostgreSQL 12 - 17) which will be maintained in a manner similar to the PostgreSQL project.
 
-Aside from bug fixes, no further development is planned for stable branches. New development, if any, will be strictly for next unreleased major version of PostgreSQL.
+Aside from bug fixes, no further development is allowed for stable branches. New development, if any, will be strictly for the next unreleased major version of PostgreSQL.
 
 pgAudit versions relate to PostgreSQL major versions as follows:
+
+- **pgAudit v17.X** is intended to support PostgreSQL 17.
+
+- **pgAudit v16.X** is intended to support PostgreSQL 16.
 
 - **pgAudit v1.7.X** is intended to support PostgreSQL 15.
 
@@ -63,14 +67,6 @@ pgAudit versions relate to PostgreSQL major versions as follows:
 - **pgAudit v1.5.X** is intended to support PostgreSQL 13.
 
 - **pgAudit v1.4.X** is intended to support PostgreSQL 12.
-
-- **pgAudit v1.3.X** is intended to support PostgreSQL 11.
-
-- **pgAudit v1.2.X** is intended to support PostgreSQL 10.
-
-- **pgAudit v1.1.X** is intended to support PostgreSQL 9.6.
-
-- **pgAudit v1.0.X** is intended to support PostgreSQL 9.5.
 
 ## Compile and Install
 
@@ -168,7 +164,7 @@ The default is `off`.
 
 ### pgaudit.log_rows
 
-Specifies that audit logging should include the rows retrieved or affected by a statement. When enabled the rows field will be included after the parameter field.
+Specifies that audit logging should include the number of rows retrieved or affected by a statement. When enabled the rows field will be included after the parameter field.
 
 The default is `off`.
 
@@ -180,7 +176,7 @@ The default is `on`.
 
 ### pgaudit.log_statement_once
 
-Specifies whether logging will include the statement text and parameters with the first log entry for a statement/substatement combination or with every entry. Disabling this setting will result in less verbose logging but may make it more difficult to determine the statement that generated a log entry, though the statement/substatement pair along with the process id should suffice to identify the statement text logged with a previous entry.
+Specifies whether logging will include the statement text and parameters with the first log entry for a statement/substatement combination or with every entry. Enabling this setting will result in less verbose logging but may make it more difficult to determine the statement that generated a log entry, though the statement/substatement pair along with the process id should suffice to identify the statement text logged with a previous entry.
 
 The default is `off`.
 

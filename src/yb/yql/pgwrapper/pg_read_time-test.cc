@@ -91,21 +91,6 @@ class PgReadTimeTest : public PgMiniTestBase {
         stmt_executor, 0 /* expected_num_picked_read_time_on_doc_db_metric */);
   }
 
-  static void GenerateCSVFileForCopy(const std::string& filename, size_t num_rows) {
-    constexpr auto kNumColumns = 2;
-    std::ofstream out(filename);
-    out << "k";
-    for (auto c : std::views::iota(0, kNumColumns - 1)) {
-      out << ",v" << c;
-    }
-    for (auto i : std::views::iota(0U, num_rows)) {
-      out << std::endl << i + 10000;
-      for (auto c : std::views::iota(0, kNumColumns - 1)) {
-        out << "," << i + c;
-      }
-    }
-  }
-
   static Status ExecuteCopyFromCSV(
       PGConn& conn, const std::string_view& table, const std::string_view& file_name) {
     return conn.ExecuteFormat("COPY $0 FROM '$1' WITH (FORMAT CSV, HEADER)", table, file_name);
@@ -361,7 +346,7 @@ TEST_F(PgReadTimeTest, CheckReadTimePickingLocation) {
       }, 1);
 
   // (2) Copy multiple rows to table with single tserver
-  GenerateCSVFileForCopy(csv_filename, 100);
+  GenerateCSVFileForCopy(csv_filename, 100, 2 /* num_columns */, 10000 /* offset */);
   ASSERT_OK(conn.Execute("SET yb_disable_transactional_writes = 1"));
   CheckReadTimePickedOnDocdb(
       [&conn, kSingleTabletTable, &csv_filename]() {

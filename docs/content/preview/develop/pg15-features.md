@@ -28,7 +28,7 @@ PostgreSQL 15 support is in Tech Preview and included with the YugabyteDB 2.25 p
 
 | Product | To try it out |
 | :--- | :--- |
-| YugabyteDB | Follow the instructions in [Quick Start](/preview/tutorials/quick-start/macos/).<br>For information on upgrading a PostgreSQL 11-based universe (v2024.2 and earlier) to a version based on PostgreSQL 15 (v2.25.1 or later), refer to [YSQL major upgrade](../../manage/ysql-major-upgrade-yugabyted/). |
+| YugabyteDB | Follow the instructions in [Quick Start](/preview/quick-start/macos/).<br>For information on upgrading a PostgreSQL 11-based universe (v2024.2 and earlier) to a version based on PostgreSQL 15 (v2.25.1 or later), refer to [YSQL major upgrade](../../manage/ysql-major-upgrade-yugabyted/). |
 | YugabyteDB&nbsp;Anywhere | [Install YugabyteDB Anywhere v2.25.0.0 or later](../../yugabyte-platform/install-yugabyte-platform/install-software/installer/#quick-start) and [create a universe](../../yugabyte-platform/create-deployments/create-universe-multi-zone/) using DB Version 2.25.0.0 or later. |
 | YugabyteDB Aeon| [Create a Sandbox cluster](/preview/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/) with the Database version set to Preview Track (v2.25). |
 

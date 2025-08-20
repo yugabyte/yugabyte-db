@@ -73,6 +73,9 @@ class PgDdlAtomicityTest : public PgDdlAtomicityTestBase {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_master_flags.push_back("--ysql_transaction_bg_task_wait_ms=5000");
     options->extra_tserver_flags.push_back("--ysql_pg_conf_csv=log_statement=all");
+    options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
+    AppendCsvFlagValue(options->extra_tserver_flags, "allowed_preview_flags_csv",
+                       "ysql_yb_ddl_transaction_block_enabled");
   }
 
   void CreateTable(const string& tablename) {

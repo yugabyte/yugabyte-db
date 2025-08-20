@@ -6,11 +6,15 @@ import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.DetachedNodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.payload.NodeAgentRpcPayload;
 import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.nodeagent.DestroyServerInput;
+import java.util.Optional;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -45,9 +49,22 @@ public class RecommissionNodeInstance extends AbstractTaskBase {
       log.debug("Cleaning up node instance {}", nodeInstance.getNodeUuid());
       Provider provider = taskParams().getProvider();
       try {
-        nodeManager
-            .detachedNodeCommand(NodeManager.NodeCommandType.Destroy, taskParams())
-            .processErrors();
+        Optional<NodeAgent> optional =
+            confGetter.getGlobalConf(GlobalConfKeys.nodeAgentDisableConfigureServer)
+                ? Optional.empty()
+                : nodeUniverseManager.maybeGetNodeAgent(
+                    nodeInstance.getDetails().ip, provider, null /* optional universe */);
+        if (optional.isPresent()) {
+          DestroyServerInput.Builder builder = DestroyServerInput.newBuilder();
+          builder.setIsProvisioningCleanup(!provider.getDetails().skipProvisioning);
+          builder.setYbHomeDir(provider.getYbHome());
+          nodeAgentClient.runDestroyServer(
+              optional.get(), builder.build(), NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
+        } else {
+          nodeManager
+              .detachedNodeCommand(NodeManager.NodeCommandType.Destroy, taskParams())
+              .processErrors();
+        }
       } catch (Exception e) {
         log.error("Clean up failed for node instance: {}", nodeInstance.getNodeUuid(), e);
         throw e;

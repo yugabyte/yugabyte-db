@@ -127,7 +127,8 @@ Result<rpc::ProcessCallsResult> RedisConnectionContext::ProcessCalls(
 Status RedisConnectionContext::HandleInboundCall(const rpc::ConnectionPtr& connection,
                                                  size_t commands_in_batch,
                                                  rpc::CallData* data) {
-  auto call = rpc::InboundCall::Create<RedisInboundCall>(connection, data->size(), this);
+  auto call = rpc::InboundCall::Create<RedisInboundCall>(
+      connection, data->size(), this, connection->call_state_listener_factory());
 
   Status s = call->ParseFrom(call_mem_tracker_, commands_in_batch, data);
   if (!s.ok()) {
@@ -194,8 +195,12 @@ void RedisConnectionContext::Shutdown(const Status& status) {
 
 RedisInboundCall::RedisInboundCall(rpc::ConnectionPtr conn,
                                    size_t weight_in_bytes,
-                                   CallProcessedListener* call_processed_listener)
-    : QueueableInboundCall(std::move(conn), weight_in_bytes, call_processed_listener) {}
+                                   CallProcessedListener* call_processed_listener,
+                                   rpc::CallStateListenerFactory* call_state_listener_factory)
+    : QueueableInboundCall(std::move(conn),
+                           weight_in_bytes,
+                           call_processed_listener,
+                           call_state_listener_factory) {}
 
 RedisInboundCall::~RedisInboundCall() {
   Status status =

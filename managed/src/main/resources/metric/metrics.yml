@@ -448,12 +448,13 @@ disk_bytes_per_second_per_node:
         "node_disk_write_bytes_irate": "Write"
 
 node_clock_skew:
-  metric: "hybrid_clock_skew"
+  metric: ""
+  filters:
+    saved_name: "hybrid_clock_skew|hybrid_clock_error"
+    export_type: "(tserver_export|master_export)"
   function: "max_over_time|max"
   range: true
   group_by: "saved_name"
-  filters:
-    export_type: "(tserver_export|master_export)"
   panel_group: "Node Metrics"
   layout:
     title: "Clock Skew"
@@ -461,7 +462,8 @@ node_clock_skew:
       type: "date"
     yaxis:
       alias:
-        "hybrid_clock_skew": "Max"
+        "hybrid_clock_skew": "Max Clock Skew"
+        "hybrid_clock_error": "Max Clock Error"
       ticksuffix: "&nbsp;\u00B5s"
 
 redis_rpcs_per_sec_all:

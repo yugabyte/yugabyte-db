@@ -13,7 +13,7 @@
 
 #pragma once
 
-#include "yb/ash/wait_state_fwd.h"
+#include "yb/ash/ash_fwd.h"
 
 #include "yb/client/client.h"
 #include "yb/client/client-internal.h"

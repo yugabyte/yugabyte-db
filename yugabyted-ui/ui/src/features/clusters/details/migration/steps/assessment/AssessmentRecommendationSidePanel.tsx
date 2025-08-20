@@ -24,17 +24,23 @@ const useStyles = makeStyles((theme) => ({
     marginBottom: theme.spacing(4),
   },
   label: {
-    color: theme.palette.grey[500],
-    fontWeight: theme.typography.fontWeightMedium as number,
-    textTransform: "uppercase",
-    marginBottom: theme.spacing(0.75),
+    color: '#6D7C88',
+    fontWeight: 500,
+    fontSize: '11.5px',
     padding: 0,
-    textAlign: "left",
+    textAlign: 'left',
+    textTransform: 'uppercase',
   },
   dividerHorizontal: {
     width: "100%",
     marginTop: theme.spacing(2.5),
     marginBottom: theme.spacing(2.5),
+  },
+  dividerVertical: {
+    marginLeft: theme.spacing(2),
+    marginRight: theme.spacing(1),
+    height: 'auto',
+    alignSelf: 'stretch',
   },
   value: {
     paddingTop: theme.spacing(0.36),
@@ -53,6 +59,10 @@ const useStyles = makeStyles((theme) => ({
   divider: {
     margin: theme.spacing(1, 0, 1, 0),
   },
+  headingCSS: {
+    fontSize: '13px',
+    fontWeight: 600,
+  }
 }));
 
 interface MigrationRecommendationSidePanel {
@@ -125,7 +135,9 @@ export const MigrationRecommendationSidePanel: FC<MigrationRecommendationSidePan
   const sourceObjectsColumns = [
     {
       name: "tableName",
-      label: t("clusterDetail.voyager.planAndAssess.recommendation.schema.tableName"),
+      label: t(
+        "clusterDetail.voyager.planAndAssess.recommendation.schema.tableName"
+      ),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
@@ -133,7 +145,9 @@ export const MigrationRecommendationSidePanel: FC<MigrationRecommendationSidePan
     },
     {
       name: "diskSize",
-      label: t("clusterDetail.voyager.planAndAssess.recommendation.schema.diskSize"),
+      label: t(
+        "clusterDetail.voyager.planAndAssess.recommendation.schema.diskSize"
+      ),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
@@ -142,7 +156,9 @@ export const MigrationRecommendationSidePanel: FC<MigrationRecommendationSidePan
     },
     {
       name: "schemaRecommendation",
-      label: t("clusterDetail.voyager.planAndAssess.recommendation.schema.schemaRecommendation"),
+      label: t(
+        "clusterDetail.voyager.planAndAssess.recommendation.schema.schemaRecommendation"
+      ),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
@@ -150,10 +166,16 @@ export const MigrationRecommendationSidePanel: FC<MigrationRecommendationSidePan
     },
   ];
 
+  // Add pagination state for the recommendation objects table
+  const [recommendationTablePage, setRecommendationTablePage] = React.useState(0);
+  const [recommendationTableRowsPerPage, setRecommendationTableRowsPerPage] = React.useState(10);
+
   return (
     <YBModal
       open={open}
-      title={t("clusterDetail.voyager.planAndAssess.recommendation.schema.heading")}
+      title={t(
+        "clusterDetail.voyager.planAndAssess.recommendation.dataDistribution.heading"
+      )}
       onClose={onClose}
       enableBackdropDismiss
       titleSeparator
@@ -171,11 +193,18 @@ export const MigrationRecommendationSidePanel: FC<MigrationRecommendationSidePan
       {!isFetchingTargetRecommendationData && (
         <>
           <Box my={2}>
-            <Paper>
-              <Box p={2} className={classes.grayBg} display="flex" gridGap={20}>
+            <Paper
+              style={{ border: '1px solid #E9EEF2' }}
+            >
+              <Box p={2}
+                className={classes.grayBg}
+                alignItems="stretch"
+                display="flex"
+                gridGap={16}
+              >
                 <Grid container spacing={2}>
                   <Grid item xs={12}>
-                    <Typography variant="h5">
+                    <Typography variant="h5" className={classes.headingCSS}>
                       {t(
                         "clusterDetail.voyager.planAndAssess.recommendation.schema.colocatedTables"
                       )}
@@ -183,7 +212,9 @@ export const MigrationRecommendationSidePanel: FC<MigrationRecommendationSidePan
                   </Grid>
                   <Grid item xs={6}>
                     <Typography variant="subtitle2" className={classes.label}>
-                      {t("clusterDetail.voyager.planAndAssess.recommendation.schema.noOfTables")}
+                      {t(
+                        "clusterDetail.voyager.planAndAssess.recommendation.schema.noOfTables"
+                      )}
                     </Typography>
                     <Typography variant="body2" className={classes.value}>
                       {recommendationObjects.colocated.totalCount}
@@ -191,17 +222,19 @@ export const MigrationRecommendationSidePanel: FC<MigrationRecommendationSidePan
                   </Grid>
                   <Grid item xs={6}>
                     <Typography variant="subtitle2" className={classes.label}>
-                      {t("clusterDetail.voyager.planAndAssess.recommendation.schema.totalSize")}
+                      {t(
+                        "clusterDetail.voyager.planAndAssess.recommendation.schema.totalSize"
+                      )}
                     </Typography>
                     <Typography variant="body2" className={classes.value}>
                       {recommendationObjects.colocated.totalSize}
                     </Typography>
                   </Grid>
                 </Grid>
-                <Divider orientation="vertical" flexItem />
+                <Divider orientation="vertical" flexItem className={classes.dividerVertical} />
                 <Grid container spacing={2}>
                   <Grid item xs={12}>
-                    <Typography variant="h5">
+                    <Typography variant="h5" className={classes.headingCSS}>
                       {t("clusterDetail.voyager.planAndAssess.recommendation.schema.shardedTables")}
                     </Typography>
                   </Grid>
@@ -273,6 +306,11 @@ export const MigrationRecommendationSidePanel: FC<MigrationRecommendationSidePan
               columns={sourceObjectsColumns}
               options={{
                 pagination: true,
+                page: recommendationTablePage,
+                rowsPerPage: recommendationTableRowsPerPage,
+                onChangePage: (currentPage: number) => setRecommendationTablePage(currentPage),
+                onChangeRowsPerPage: (numberOfRows: number) =>
+                  setRecommendationTableRowsPerPage(numberOfRows)
               }}
             />
           </Box>

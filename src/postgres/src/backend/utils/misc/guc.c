@@ -675,6 +675,8 @@ static const struct config_enum_entry yb_cost_model_options[] = {
 	{"on", YB_COST_MODEL_ON, false},
 	{"legacy_mode", YB_COST_MODEL_LEGACY, false},
 	{"legacy_stats_mode", YB_COST_MODEL_LEGACY_STATS, false},
+	{"legacy_bnl_mode", YB_COST_MODEL_LEGACY_BNL, false},
+	{"legacy_stats_bnl_mode", YB_COST_MODEL_LEGACY_STATS_BNL, false},
 	{"true", YB_COST_MODEL_ON, true},
 	{"false", YB_COST_MODEL_OFF, true},
 	{"yes", YB_COST_MODEL_ON, true},
@@ -3426,6 +3428,18 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_invalidate_table_cache_entry", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable invalidation of individual table cache entry on "
+						 "catalog cache refresh."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_invalidate_table_cache_entry,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_extended_sql_codes", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("Allow to return to the client SQL status codes "
 						 "defined by YugabyteDB (YBxxx). Those codes are used "
@@ -3465,7 +3479,7 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_force_early_ddl_serialization", PGC_USERSET, DEVELOPER_OPTIONS,
+		{"yb_user_ddls_preempt_auto_analyze", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("If object locking is off (i.e., "
 						 "enable_object_locking_for_table_locks=false), concurrent DDLs might face a "
 						 "conflict error on the catalog version increment at the end after doing all the work. "
@@ -3478,8 +3492,8 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
-		&yb_force_early_ddl_serialization,
-		false,
+		&yb_user_ddls_preempt_auto_analyze,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -5450,6 +5464,16 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_fk_references_cache_limit", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Sets the maximum size for the FK reference cache filled by the INSERT, SELECT ... FOR KEY SHARE or similar statmements"),
+			NULL
+		},
+		&yb_fk_references_cache_limit,
+		65535, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL, NULL
@@ -5819,6 +5843,17 @@ static struct config_real ConfigureNamesReal[] =
 		},
 		&yb_test_ybgin_disable_cost_factor,
 		2.0, 0.0, 10.0,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_test_delay_next_ddl", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("When set, the next DDL will be delayed by this many ms prior to commit."),
+			NULL,
+			GUC_UNIT_MS
+		},
+		&yb_test_delay_next_ddl,
+		0, 0, 86400000,
 		NULL, NULL, NULL
 	},
 
@@ -7242,6 +7277,8 @@ static const char *const YbDbAdminVariables[] = {
 	"yb_make_next_ddl_statement_nonincrementing",
 	"yb_tcmalloc_sample_period",
 	"yb_binary_restore",
+	"yb_speculatively_execute_pl_statements",
+	"yb_whitelist_extra_statements_for_pl_speculative_execution",
 };
 
 
@@ -15872,6 +15909,7 @@ assign_yb_enable_cbo(int new_value, void *extra)
 	yb_enable_base_scans_cost_model = false;
 	yb_enable_optimizer_statistics = false;
 	yb_ignore_stats = false;
+	yb_legacy_bnl_cost = false;
 
 	switch (new_value)
 	{
@@ -15889,6 +15927,15 @@ assign_yb_enable_cbo(int new_value, void *extra)
 		case YB_COST_MODEL_LEGACY_STATS:
 			yb_enable_optimizer_statistics = true;
 			break;
+
+		case YB_COST_MODEL_LEGACY_BNL:
+			yb_legacy_bnl_cost = true;
+			break;
+
+		case YB_COST_MODEL_LEGACY_STATS_BNL:
+			yb_enable_optimizer_statistics = true;
+			yb_legacy_bnl_cost = true;
+			break;
 	}
 }
 
@@ -15896,10 +15943,13 @@ static void
 assign_yb_enable_optimizer_statistics(bool new_value, void *extra)
 {
 	yb_enable_optimizer_statistics = new_value;
-	yb_enable_cbo = (new_value ? YB_COST_MODEL_LEGACY_STATS :
-					 (yb_enable_base_scans_cost_model ? YB_COST_MODEL_ON :
-					  YB_COST_MODEL_LEGACY));
+
+	yb_enable_cbo = (yb_enable_base_scans_cost_model ? YB_COST_MODEL_ON :
+					 (new_value ?
+					  YB_COST_MODEL_LEGACY_STATS : YB_COST_MODEL_LEGACY));
+
 	yb_ignore_stats = false;
+	yb_legacy_bnl_cost = false;
 }
 
 static void
@@ -15911,6 +15961,7 @@ assign_yb_enable_base_scans_cost_model(bool new_value, void *extra)
 					  YB_COST_MODEL_LEGACY_STATS :
 					  YB_COST_MODEL_LEGACY));
 	yb_ignore_stats = false;
+	yb_legacy_bnl_cost = false;
 }
 
 static bool

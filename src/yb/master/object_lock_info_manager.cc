@@ -19,6 +19,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "yb/common/common_flags.h"
 #include "yb/common/pg_catversions.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/ysql_operation_lease.h"
@@ -78,6 +79,8 @@ DEFINE_test_flag(bool, allow_unknown_txn_release_request, false,
 
 DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
 DECLARE_int32(send_wait_for_report_interval_ms);
+DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_yb_enable_invalidation_messages);
 
 namespace yb {
 namespace master {
@@ -124,7 +127,8 @@ class ObjectLockInfoManager::Impl {
         poller_(std::bind(&Impl::CleanupExpiredLeaseEpochs, this)) {
     CHECK_OK(ThreadPoolBuilder("object_lock_info_manager").Build(&lock_manager_thread_pool_));
     local_lock_manager_ = std::make_shared<tserver::TSLocalLockManager>(
-        clock_, master_.tablet_server(), master_, lock_manager_thread_pool_.get());
+        clock_, master_.tablet_server(), master_, lock_manager_thread_pool_.get(),
+        master_.metric_entity());
   }
 
   void Start() {
@@ -309,6 +313,7 @@ class UpdateAll {
   virtual CoarseTimePoint GetClientDeadline() const = 0;
   virtual bool TabletServerHasLiveLease(const std::string& uuid) = 0;
   virtual std::string LogPrefix() const = 0;
+  virtual const ash::WaitStateInfoPtr& wait_state() const = 0;
 };
 
 template <class Req>
@@ -342,6 +347,10 @@ class UpdateAllTServers : public std::enable_shared_from_this<UpdateAllTServers<
 
   Trace *trace() const {
     return trace_.get();
+  }
+
+  const ash::WaitStateInfoPtr& wait_state() const override {
+    return wait_state_;
   }
 
   bool IsReleaseRequest() const;
@@ -379,6 +388,7 @@ class UpdateAllTServers : public std::enable_shared_from_this<UpdateAllTServers<
   std::optional<uint64_t> requestor_latest_lease_epoch_;
   CoarseTimePoint deadline_;
   const TracePtr trace_;
+  const ash::WaitStateInfoPtr wait_state_;
   bool launched_ = false;
 };
 
@@ -449,9 +459,6 @@ AcquireObjectLockRequestPB TserverRequestFor(
   if (master_request.has_propagated_hybrid_time()) {
     req.set_propagated_hybrid_time(master_request.propagated_hybrid_time());
   }
-  if (master_request.has_ash_metadata()) {
-    req.mutable_ash_metadata()->CopyFrom(master_request.ash_metadata());
-  }
   req.set_status_tablet(master_request.status_tablet());
   return req;
 }
@@ -472,9 +479,6 @@ ReleaseObjectLockRequestPB TserverRequestFor(
     req.set_propagated_hybrid_time(master_request.propagated_hybrid_time());
   }
   req.set_request_id(request_id);
-  if (master_request.has_ash_metadata()) {
-    req.mutable_ash_metadata()->CopyFrom(master_request.ash_metadata());
-  }
   return req;
 }
 
@@ -820,6 +824,28 @@ void ObjectLockInfoManager::Impl::PopulateDbCatalogVersionCache(ReleaseObjectLoc
     catalog_version_pb->set_current_version(it.second.current_version);
     catalog_version_pb->set_last_breaking_version(it.second.last_breaking_version);
   }
+
+  if (!FLAGS_ysql_yb_enable_invalidation_messages && !FLAGS_ysql_enable_db_catalog_version_mode) {
+    return;
+  }
+
+  // Populate all known invalidation messages
+  Result<DbOidVersionToMessageListMap> inval_messages =
+    catalog_manager_.GetYsqlCatalogInvalationMessages(false /*use_cache*/);
+  if (!inval_messages.ok()) {
+    LOG(WARNING) << "Couldn't populate invalidation messages in lock release request " << s;
+    return;
+  }
+  auto* const mutable_messages_data = req.mutable_db_catalog_inval_messages_data();
+  for (auto& [db_oid_version, message_list] : *inval_messages) {
+    auto* const db_inval_messages = mutable_messages_data->add_db_catalog_inval_messages();
+    db_inval_messages->set_db_oid(db_oid_version.first);
+    db_inval_messages->set_current_version(db_oid_version.second);
+    if (message_list.has_value()) {
+      db_inval_messages->set_message_list(std::move(*message_list));
+    }
+  }
+
 }
 
 Status ObjectLockInfoManager::Impl::UnlockObjectSync(
@@ -1057,7 +1083,8 @@ void ObjectLockInfoManager::Impl::Clear() {
     local_lock_manager_->Shutdown();
   }
   local_lock_manager_.reset(new tserver::TSLocalLockManager(
-      clock_, master_.tablet_server(), master_, lock_manager_thread_pool_.get()));
+      clock_, master_.tablet_server(), master_, lock_manager_thread_pool_.get(),
+      master_.metric_entity()));
   local_lock_manager_->Start(waiting_txn_registry_.get());
 }
 
@@ -1179,7 +1206,8 @@ UpdateAllTServers<Req>::UpdateAllTServers(
       callback_(std::move(callback)),
       requestor_latest_lease_epoch_(requestor_latest_lease_epoch),
       deadline_(deadline),
-      trace_(Trace::CurrentTrace()) {
+      trace_(Trace::CurrentTrace()),
+      wait_state_(ash::WaitStateInfo::CurrentWaitState()) {
   VLOG(3) << __PRETTY_FUNCTION__;
 }
 
@@ -1195,7 +1223,8 @@ UpdateAllTServers<Req>::UpdateAllTServers(
       epoch_(std::move(leader_epoch)),
       callback_(std::move(callback)),
       deadline_(CoarseMonoClock::Now() + kTserverRpcsTimeoutDefaultSecs),
-      trace_(Trace::CurrentTrace()) {
+      trace_(Trace::CurrentTrace()),
+      wait_state_(ash::WaitStateInfo::CurrentWaitState()) {
   VLOG(3) << __PRETTY_FUNCTION__;
 }
 
@@ -1475,6 +1504,7 @@ template <>
 bool UpdateTServer<AcquireObjectLockRequestPB, AcquireObjectLockResponsePB>::SendRequest(
     int attempt) {
   VLOG_WITH_PREFIX(3) << __func__ << " attempt " << attempt;
+  ADOPT_WAIT_STATE(shared_all_tservers_->wait_state());
   ts_proxy_->AcquireObjectLocksAsync(request(), &resp_, &rpc_, BindRpcCallback());
   return true;
 }
@@ -1483,6 +1513,7 @@ template <>
 bool UpdateTServer<ReleaseObjectLockRequestPB, ReleaseObjectLockResponsePB>::SendRequest(
     int attempt) {
   VLOG_WITH_PREFIX(3) << __func__ << " attempt " << attempt;
+  ADOPT_WAIT_STATE(shared_all_tservers_->wait_state());
   ts_proxy_->ReleaseObjectLocksAsync(request(), &resp_, &rpc_, BindRpcCallback());
   return true;
 }

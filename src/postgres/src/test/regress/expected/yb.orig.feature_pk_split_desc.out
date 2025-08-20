@@ -517,8 +517,9 @@ SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer <= 1 ORDER BY col_
  Index Scan using feature_pk_split_desc_min_max_pkey on feature_pk_split_desc_min_max (actual rows=2 loops=1)
    Index Cond: (col_integer <= 1)
    Storage Table Read Requests: 2
+   Storage Table Read Ops: 2
    Storage Table Rows Scanned: 2
-(4 rows)
+(5 rows)
 
 SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer <= 1 ORDER BY col_integer DESC;
  col_integer | col_varchar |  col_text   | col_double 
@@ -535,8 +536,9 @@ SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer > 1 AND col_intege
  Index Scan using feature_pk_split_desc_min_max_pkey on feature_pk_split_desc_min_max (actual rows=3 loops=1)
    Index Cond: ((col_integer > 1) AND (col_integer < 10))
    Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
    Storage Table Rows Scanned: 3
-(4 rows)
+(5 rows)
 
 SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer > 1 AND col_integer < 10 ORDER BY col_integer DESC;
  col_integer | col_varchar |  col_text   | col_double 
@@ -554,8 +556,9 @@ SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer >= 10 AND col_inte
  Index Scan using feature_pk_split_desc_min_max_pkey on feature_pk_split_desc_min_max (actual rows=4 loops=1)
    Index Cond: ((col_integer >= 10) AND (col_integer < 100))
    Storage Table Read Requests: 2
+   Storage Table Read Ops: 2
    Storage Table Rows Scanned: 4
-(4 rows)
+(5 rows)
 
 SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer >= 10 AND col_integer < 100 ORDER BY col_integer DESC;
  col_integer | col_varchar |  col_text   | col_double 
@@ -574,8 +577,9 @@ SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer >= 100 ORDER BY co
  Index Scan using feature_pk_split_desc_min_max_pkey on feature_pk_split_desc_min_max (actual rows=5 loops=1)
    Index Cond: (col_integer >= 100)
    Storage Table Read Requests: 2
+   Storage Table Read Ops: 2
    Storage Table Rows Scanned: 5
-(4 rows)
+(5 rows)
 
 SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer >= 100 ORDER BY col_integer DESC;
  col_integer | col_varchar |  col_text   | col_double 

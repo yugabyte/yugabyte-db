@@ -1,3 +1,4 @@
+# OS generated files
 */.DS_STORE
 */.DS_Store
 .DS_Store
@@ -10,6 +11,10 @@ node_modules
 *.swp
 *~
 
+# Dynamically generated files.
+config/_default/module.toml
+assets/scss/fontawesome/_default.scss
+
 static/css/site.css
 static/js/
 
@@ -18,3 +23,9 @@ static/js/
 *.sw?
 
 .hugo_build.lock
+
+# Environment variables
+.env
+
+# NPM configuration
+.npmrc

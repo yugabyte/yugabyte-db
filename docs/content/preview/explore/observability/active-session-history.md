@@ -176,6 +176,7 @@ These are the wait events introduced by YugabyteDB. Some of the following [wait 
 | DumpRunningRpc_WaitOnReactor | WaitOnCondition | DumpRunningRpcs is waiting on reactor threads. |
 | ConflictResolution_ResolveConficts | Network | A read/write RPC is waiting to identify conflicting transactions. |
 | ConflictResolution_WaitOnConflictingTxns | WaitOnCondition | A read/write RPC is waiting for conflicting transactions to complete. |
+| WaitForReadTime | WaitOnCondition | A read/write RPC is waiting for the current time to catch up to [read time](../../../architecture/transactions/single-row-transactions/#safe-timestamp-assignment-for-a-read-request). |
 
 #### Consensus class
 

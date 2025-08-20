@@ -14,6 +14,7 @@
 #include "yb/yql/pggate/pg_txn_manager.h"
 
 #include "yb/common/common.pb.h"
+#include "yb/common/row_mark.h"
 #include "yb/common/transaction_priority.h"
 
 #include "yb/docdb/object_lock_shared_state.h"
@@ -66,7 +67,6 @@ TAG_FLAG(ysql_yb_follower_reads_behavior_before_fixing_20482, advanced);
                      << "; query: { " << ::yb::pggate::GetDebugQueryString(pg_callbacks_) << " }; "
 
 DECLARE_uint64(max_clock_skew_usec);
-DECLARE_bool(enable_object_locking_for_table_locks);
 
 namespace {
 
@@ -200,14 +200,12 @@ Status PgTxnManager::SerialNo::RestoreReadTime(uint64_t read_time_serial_no) {
 }
 
 PgTxnManager::PgTxnManager(
-    PgClient* client,
-    scoped_refptr<ClockBase> clock,
-    YbcPgCallbacks pg_callbacks)
+    PgClient* client, scoped_refptr<ClockBase> clock, YbcPgCallbacks pg_callbacks,
+    bool enable_table_locking)
     : client_(client),
       clock_(std::move(clock)),
       pg_callbacks_(pg_callbacks),
-      enable_table_locking_(FLAGS_enable_object_locking_for_table_locks) {
-}
+      enable_table_locking_(enable_table_locking) {}
 
 PgTxnManager::~PgTxnManager() {
   // Abort the transaction before the transaction manager gets destroyed.
@@ -248,7 +246,7 @@ Status PgTxnManager::SetPgIsolationLevel(int level) {
   return Status::OK();
 }
 
-PgIsolationLevel PgTxnManager::GetPgIsolationLevel() {
+PgIsolationLevel PgTxnManager::GetPgIsolationLevel() const {
   return pg_isolation_level_;
 }
 
@@ -328,13 +326,13 @@ uint64_t PgTxnManager::NewPriority(YbcTxnPriorityRequirement txn_priority_requir
     return RandomUniformInt(txn_priority_highpri_lower_bound,
                             txn_priority_highpri_upper_bound);
   }
-
   return RandomUniformInt(txn_priority_regular_lower_bound,
                           txn_priority_regular_upper_bound);
 }
 
 Status PgTxnManager::CalculateIsolation(
-    bool read_only_op, YbcTxnPriorityRequirement txn_priority_requirement) {
+    bool read_only_op, YbcTxnPriorityRequirement txn_priority_requirement,
+    IsLocalObjectLockOp is_local_object_lock_op) {
   if (yb_ddl_transaction_block_enabled ? IsDdlModeWithSeparateTransaction() : IsDdlMode()) {
     VLOG_TXN_STATE(2);
     if (!priority_.has_value())
@@ -347,6 +345,9 @@ Status PgTxnManager::CalculateIsolation(
     return RecreateTransaction(SavePriority::kFalse);
   }
 
+  if (!read_only_op)
+    has_writes_ = true;
+
   // Force use of a docdb distributed txn for YSQL read only transactions involving savepoints when
   // object locking feature is enabled (only for isolation != read committed case).
   //
@@ -356,6 +357,7 @@ Status PgTxnManager::CalculateIsolation(
       pg_isolation_level_ != PgIsolationLevel::READ_COMMITTED) {
     read_only_op = false;
   }
+
   // Using pg_isolation_level_, read_only_, and deferrable_, determine the effective isolation level
   // to use at the DocDB layer, and the "deferrable" flag.
   //
@@ -405,12 +407,13 @@ Status PgTxnManager::CalculateIsolation(
           isolation_level_, IsolationLevel_Name(docdb_isolation), pg_isolation_level_,
           read_only_);
     }
-  } else if (read_only_op &&
-             (docdb_isolation == IsolationLevel::SNAPSHOT_ISOLATION ||
-              docdb_isolation == IsolationLevel::READ_COMMITTED) &&
-             (!yb_ddl_transaction_block_enabled || !IsDdlMode())) {
-    // Preserves isolation_level_ as NON_TRANSACTIONAL
-  } else {
+    return Status::OK();
+  }
+  auto skip_picking_isolation_level = read_only_op &&
+      (docdb_isolation == IsolationLevel::SNAPSHOT_ISOLATION ||
+       docdb_isolation == IsolationLevel::READ_COMMITTED);
+  skip_picking_isolation_level |= is_local_object_lock_op;
+  if (!skip_picking_isolation_level || (yb_ddl_transaction_block_enabled && IsDdlMode())) {
     if (IsDdlMode()) {
       DCHECK(yb_ddl_transaction_block_enabled)
           << "Unexpected DDL state found in plain transaction";
@@ -425,7 +428,7 @@ Status PgTxnManager::CalculateIsolation(
                       << " priority_: " << (priority_ ? std::to_string(*priority_) : "nullopt")
                       << "; transaction started successfully.";
   }
-
+  // Else, preserve isolation_level_ as NON_TRANSACTIONAL.
   return Status::OK();
 }
 
@@ -548,6 +551,7 @@ void PgTxnManager::ResetTxnAndSession() {
 
   enable_follower_reads_ = false;
   read_only_ = false;
+  has_writes_ = false;
   enable_tracing_ = false;
   read_time_for_follower_reads_ = HybridTime();
   snapshot_read_time_is_used_ = false;
@@ -659,7 +663,8 @@ std::string PgTxnManager::TxnStateDebugStr() const {
 }
 
 Status PgTxnManager::SetupPerformOptions(
-    tserver::PgPerformOptionsPB* options, std::optional<ReadTimeAction> read_time_action) {
+    SetupPerformOptionsAccessorTag, tserver::PgPerformOptionsPB* options,
+    std::optional<ReadTimeAction> read_time_action) {
   if (!IsDdlModeWithSeparateTransaction() && !txn_in_progress_) {
     IncTxnSerialNo();
   }
@@ -680,6 +685,7 @@ Status PgTxnManager::SetupPerformOptions(
   options->set_trace_requested(enable_tracing_);
   options->set_txn_serial_no(serial_no_.txn());
   options->set_active_sub_transaction_id(active_sub_transaction_id_);
+  options->set_xcluster_target_ddl_bypass(yb_xcluster_target_ddl_bypass);
 
   if (use_saved_priority_) {
     options->set_use_existing_priority(true);
@@ -800,7 +806,8 @@ Result<YbcReadPointHandle> PgTxnManager::RegisterSnapshotReadTime(
 }
 
 Result<std::string> PgTxnManager::ExportSnapshot(
-    const YbcPgTxnSnapshot& snapshot, std::optional<YbcReadPointHandle> explicit_read_time) {
+    SetupPerformOptionsAccessorTag tag, const YbcPgTxnSnapshot& snapshot,
+    std::optional<YbcReadPointHandle> explicit_read_time) {
   RETURN_NOT_OK(CheckSnapshotTimeConflict());
   tserver::PgExportTxnSnapshotRequestPB req;
   auto& snapshot_pb = *req.mutable_snapshot();
@@ -816,7 +823,7 @@ Result<std::string> PgTxnManager::ExportSnapshot(
     read_time_action.reset();
   }
   auto& options = *req.mutable_options();
-  RETURN_NOT_OK(SetupPerformOptions(&options, read_time_action));
+  RETURN_NOT_OK(SetupPerformOptions(tag, &options, read_time_action));
 
   if (explicit_read_time_value) {
     ReadHybridTime::FromUint64(*explicit_read_time_value).ToPB(options.mutable_read_time());
@@ -828,10 +835,11 @@ Result<std::string> PgTxnManager::ExportSnapshot(
   return res;
 }
 
-Result<YbcPgTxnSnapshot> PgTxnManager::ImportSnapshot(std::string_view snapshot_id) {
+Result<YbcPgTxnSnapshot> PgTxnManager::ImportSnapshot(
+    SetupPerformOptionsAccessorTag tag, std::string_view snapshot_id) {
   RETURN_NOT_OK(CheckSnapshotTimeConflict());
   tserver::PgPerformOptionsPB options;
-  RETURN_NOT_OK(SetupPerformOptions(&options));
+  RETURN_NOT_OK(SetupPerformOptions(tag, &options));
   const auto snapshot = VERIFY_RESULT(client_->ImportTxnSnapshot(snapshot_id, std::move(options)));
   snapshot_read_time_is_used_ = true;
 
@@ -869,7 +877,8 @@ void PgTxnManager::ClearExportedTxnSnapshots() {
   LOG_IF(DFATAL, !s.ok()) << "Faced error while deleting exported snapshots. Error Details: " << s;
 }
 
-Status PgTxnManager::RollbackToSubTransaction(SubTransactionId id) {
+Status PgTxnManager::RollbackToSubTransaction(
+    SetupPerformOptionsAccessorTag tag, SubTransactionId id) {
   if (!txn_in_progress_) {
     VLOG_TXN_STATE(2) << "No transaction in progress, nothing to rollback.";
     return Status::OK();
@@ -880,33 +889,73 @@ Status PgTxnManager::RollbackToSubTransaction(SubTransactionId id) {
     return Status::OK();
   }
   tserver::PgPerformOptionsPB options;
-  RETURN_NOT_OK(SetupPerformOptions(&options));
+  RETURN_NOT_OK(SetupPerformOptions(tag, &options));
   return client_->RollbackToSubTransaction(id, &options);
 }
 
-Status PgTxnManager::AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode) {
-  if (!PREDICT_FALSE(enable_table_locking_) || YBCIsInitDbModeEnvVarSet()) {
-    // Object locking feature is not enabled. YB makes best efforts to achieve necessary semantics
-    // using mechanisms like catalog version update by DDLs, DDLs aborting on progress DMLs etc.
-    // Also skip object locking during initdb bootstrap mode, since it's a single-process,
-    // non-concurrent setup with no running tservers and transaction status tablets.
-    return Status::OK();
+bool PgTxnManager::TryAcquireObjectLock(
+    const YbcObjectLockId& lock_id, docdb::ObjectLockFastpathLockType lock_type) {
+  // It is safe to use fast path locking only for statements that would eventually be associated
+  // with kPlain type at PgClientSession, since fast path locking always assigns locks under the
+  // plain transaction.
+  if (IsDdlMode() && !IsDdlModeWithRegularTransactionBlock()) {
+    return false;
   }
+  return client_->TryAcquireObjectLockInSharedMemory(
+      active_sub_transaction_id_, lock_id, lock_type);
+}
 
-  auto fastpath_lock_type = docdb::MakeObjectLockFastpathLockType(TableLockType(mode));
-  if (fastpath_lock_type &&
-      client_->TryAcquireObjectLockInSharedMemory(
-          active_sub_transaction_id_, lock_id, *fastpath_lock_type)) {
-    return Status::OK();
-  }
-  VLOG(1) << "Lock acquisition via shared memory not available";
-
+Status PgTxnManager::AcquireObjectLock(
+    SetupPerformOptionsAccessorTag tag,
+    const YbcObjectLockId& lock_id, YbcObjectLockMode mode) {
   RETURN_NOT_OK(CalculateIsolation(
-      mode <= YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK /* read_only */,
-      isolation_level_ == IsolationLevel::READ_COMMITTED ? kHighestPriority : kLowerPriorityRange));
+      false /* read_only, doesn't matter */,
+      GetTxnPriorityRequirement(RowMarkType::ROW_MARK_ABSENT),
+      IsLocalObjectLockOp(mode <= YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK)));
   tserver::PgPerformOptionsPB options;
-  RETURN_NOT_OK(SetupPerformOptions(&options));
+  RETURN_NOT_OK(SetupPerformOptions(tag, &options));
   return client_->AcquireObjectLock(&options, lock_id, mode);
+}
+
+void PgTxnManager::SetTransactionHasWrites() {
+  has_writes_ = true;
+}
+
+Result<bool> PgTxnManager::TransactionHasNonTransactionalWrites() const {
+  RSTATUS_DCHECK(
+      txn_in_progress_, IllegalState,
+      "Transaction is not in progress, cannot check fast-path writes");
+  return has_writes_ && isolation_level_ == NON_TRANSACTIONAL;
+}
+
+YbcTxnPriorityRequirement PgTxnManager::GetTxnPriorityRequirement(RowMarkType row_mark_type) const {
+  if (IsDdlMode()) {
+    // DDLs acquire object locks to serialize conflicting concurrent DDLs. Concurrent DDLs that
+    // don't conflict can make progress without blocking each other.
+    //
+    // However, if object locks are disabled, concurrent DDLs are disallowed for safety.
+    // This is done by relying on conflicting increments to the catalog version (most DDLs do this
+    // except some like CREATE TABLE). Note that global DDLs (those that affect catalog tables
+    // shared across databases) conflict with all other DDLs since they increment all per-db
+    // catalog versions.
+    //
+    // We want ANALYZE DDLs spawned by auto-analyze to be pre-empted in case of such concurrent
+    // DDL conflicts. To achieve this, all regular DDL take a FOR KEY SHARE lock on the catalog
+    // version row with a high priority and ANALZYE spawned by auto-analyze takes a
+    // FOR UPDATE exclusive lock with a lower priority. Given DDLs run with fail-on-conflict
+    // concurrency control, these priorities achieve the goal.
+    //
+    // With object level locking, priorities are meaningless since DDLs don't rely on DocDB's
+    // conflict resolution for concurrent DDLs.
+    if (!yb_use_internal_auto_analyze_service_conn)
+      return kHighestPriority;
+    else
+      return kHigherPriorityRange;
+  }
+  if (GetPgIsolationLevel() == PgIsolationLevel::READ_COMMITTED) {
+    return kHighestPriority;
+  }
+  return RowMarkNeedsHigherPriority(row_mark_type) ? kHigherPriorityRange : kLowerPriorityRange;
 }
 
 }  // namespace yb::pggate

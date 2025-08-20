@@ -2,11 +2,20 @@ import { TFunction } from 'i18next';
 import { find, keys, values } from 'lodash';
 import { NodeAvailabilityProps, Zone } from './steps/nodes-availability/dtos';
 import { createUniverseFormProps } from './CreateUniverseContext';
-import { FaultToleranceType, ResilienceAndRegionsProps, ResilienceType } from './steps/resilence-regions/dtos';
+import {
+  FaultToleranceType,
+  ResilienceAndRegionsProps,
+  ResilienceType
+} from './steps/resilence-regions/dtos';
 import { AvailabilityZone, ClusterType, Region } from '../../helpers/dtos';
 import { OtherAdvancedProps } from './steps/advanced-settings/dtos';
-import { CommunicationPortsSpec, PlacementRegion, UniverseCreateReqBody } from '../../../v2/api/yugabyteDBAnywhereV2APIs.schemas';
-import { GFlag } from './steps/database-settings/dtos';
+import {
+  ClusterNodeSpec,
+  CommunicationPortsSpec,
+  PlacementRegion,
+  UniverseCreateReqBody
+} from '../../../v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import { CloudType, DeviceInfo } from '@app/redesign/features/universe/universe-form/utils/dto';
 
 export function getCreateUniverseSteps(t: TFunction, resilienceType?: ResilienceType) {
   return [
@@ -24,9 +33,13 @@ export function getCreateUniverseSteps(t: TFunction, resilienceType?: Resilience
         {
           title: t('resilienceAndRegions')
         },
-        ...(resilienceType === ResilienceType.REGULAR ? [{
-          title: t('nodesAndAvailabilityZone')
-        }] : [])
+        ...(resilienceType === ResilienceType.REGULAR
+          ? [
+              {
+                title: t('nodesAndAvailabilityZone')
+              }
+            ]
+          : [])
       ]
     },
     {
@@ -75,17 +88,13 @@ export function getCreateUniverseSteps(t: TFunction, resilienceType?: Resilience
   ];
 }
 
-export function getFaultToleranceNeeded(
-  replicationFactor: number,
-) {
+export function getFaultToleranceNeeded(replicationFactor: number) {
   return replicationFactor + 2;
-};
+}
 
-export function getFaultToleranceNeededForAZ(
-  replicationFactor: number,
-) {
+export function getFaultToleranceNeededForAZ(replicationFactor: number) {
   return replicationFactor * 2 + 1;
-};
+}
 
 export const getNodeCount = (availabilityZones: NodeAvailabilityProps['availabilityZones']) => {
   if (keys(availabilityZones).length === 0) {
@@ -96,44 +105,61 @@ export const getNodeCount = (availabilityZones: NodeAvailabilityProps['availabil
   }, 0);
 };
 
-export const getNodeCountForRegion = (totalNodesCount: number, totalRegions: number, regionIndex: number) => {
+export const getNodeCountForRegion = (
+  totalNodesCount: number,
+  totalRegions: number,
+  regionIndex: number
+) => {
   const base = Math.floor(totalNodesCount / totalRegions);
-  const extra = regionIndex < (totalNodesCount % totalRegions) ? 1 : 0;
+  const extra = regionIndex < totalNodesCount % totalRegions ? 1 : 0;
   return base + extra;
 };
 
 export const assignRegionsAZNodeByReplicationFactor = (
   resilienceAndRegionsSettings: ResilienceAndRegionsProps
 ): NodeAvailabilityProps['availabilityZones'] => {
+  const {
+    regions = [],
+    replicationFactor,
+    resilienceType,
+    faultToleranceType,
+    singleAvailabilityZone
+  } = resilienceAndRegionsSettings;
 
-  const { regions = [], replicationFactor, resilienceType, faultToleranceType, singleAvailabilityZone } = resilienceAndRegionsSettings;
-
-  if (resilienceType === ResilienceType.SINGLE_NODE || faultToleranceType === FaultToleranceType.NONE) {
+  if (
+    resilienceType === ResilienceType.SINGLE_NODE ||
+    faultToleranceType === FaultToleranceType.NONE
+  ) {
     let singleZone: Region | AvailabilityZone | undefined;
     if (resilienceType === ResilienceType.SINGLE_NODE) {
-      singleZone = singleAvailabilityZone ? regions[0].zones.find(region => region.code === singleAvailabilityZone) : regions[0];
+      singleZone = singleAvailabilityZone
+        ? regions[0].zones.find((region) => region.code === singleAvailabilityZone)
+        : regions[0];
     }
     if (resilienceAndRegionsSettings.faultToleranceType === FaultToleranceType.NONE) {
       singleZone = regions[0].zones[0];
     }
     if (singleZone) {
       return {
-        [regions[0].code]: [{
-          ...singleZone,
-          nodeCount: 1,
-          preffered: '0'
-        }
+        [regions[0].code]: [
+          {
+            ...singleZone,
+            nodeCount: 1,
+            preffered: '0'
+          }
         ]
       };
-    };
+    }
     return {};
   }
 
   const updatedRegions: NodeAvailabilityProps['availabilityZones'] = {};
 
-
-  const faultToleranceNeeded = faultToleranceType === FaultToleranceType.AZ_LEVEL ? getFaultToleranceNeededForAZ(replicationFactor)
-    : faultToleranceType === FaultToleranceType.NODE_LEVEL ? 1
+  const faultToleranceNeeded =
+    faultToleranceType === FaultToleranceType.AZ_LEVEL
+      ? getFaultToleranceNeededForAZ(replicationFactor)
+      : faultToleranceType === FaultToleranceType.NODE_LEVEL
+      ? 1
       : getFaultToleranceNeeded(replicationFactor);
 
   values(regions).forEach((region, index) => {
@@ -151,7 +177,6 @@ export const assignRegionsAZNodeByReplicationFactor = (
   return updatedRegions;
 };
 
-
 export const rebalanceRegionNodes = (
   az: NodeAvailabilityProps['availabilityZones'],
   newTotalNodes: number,
@@ -166,15 +191,14 @@ export const rebalanceRegionNodes = (
     }
   }
 
-  regions.forEach(region => {
-    region.zones.forEach(zone => {
+  regions.forEach((region) => {
+    region.zones.forEach((zone) => {
       const existingZone = find(allZones, { zone: { uuid: zone.uuid } });
       if (!existingZone) {
-        allZones.push({ region: region.code, zone: { ...zone, nodeCount: 0, preffered: "false" } });
+        allZones.push({ region: region.code, zone: { ...zone, nodeCount: 0, preffered: 'false' } });
       }
     });
   });
-
 
   const totalZones = allZones.length;
 
@@ -188,7 +212,7 @@ export const rebalanceRegionNodes = (
 
   // Step 2: Distribute remaining nodes (round-robin, prefer preferred zones if needed)
   const sortedZones = allZones.sort((a, b) =>
-    b.zone.preffered === "true" ? 1 : a.zone.name.localeCompare(b.zone.name) ? 1 : -1
+    b.zone.preffered === 'true' ? 1 : a.zone.name.localeCompare(b.zone.name) ? 1 : -1
   );
 
   let index = 0;
@@ -198,7 +222,6 @@ export const rebalanceRegionNodes = (
     newTotalNodes--;
     index++;
   }
-
 
   // Step 3: Reconstruct the structure
   const updatedRegions: NodeAvailabilityProps['availabilityZones'] = {};
@@ -213,14 +236,13 @@ export const rebalanceRegionNodes = (
   return updatedRegions;
 };
 
-
 export const canSelectMultipleRegions = (resilienceType?: ResilienceType) => {
   return resilienceType !== ResilienceType.SINGLE_NODE;
 };
 
-
-export const mapCreateUniversePayload = (formValues: createUniverseFormProps): UniverseCreateReqBody => {
-
+export const mapCreateUniversePayload = (
+  formValues: createUniverseFormProps
+): UniverseCreateReqBody => {
   const {
     generalSettings,
     resilienceAndRegionsSettings,
@@ -250,7 +272,9 @@ export const mapCreateUniversePayload = (formValues: createUniverseFormProps): U
   const regionList: PlacementRegion[] = keys(azs).map((regionuuid) => {
     const region = find(resilienceAndRegionsSettings.regions, { code: regionuuid });
     if (!region) {
-      throw new Error(`Region with code ${regionuuid} not found in resilience and regions settings`);
+      throw new Error(
+        `Region with code ${regionuuid} not found in resilience and regions settings`
+      );
     }
     return {
       uuid: region.uuid,
@@ -264,7 +288,7 @@ export const mapCreateUniversePayload = (formValues: createUniverseFormProps): U
           num_nodes_in_az: az.nodeCount,
           subnet: azFromRegion!.subnet,
           leader_affinity: true,
-          replication_factor: resilienceAndRegionsSettings.replicationFactor,
+          replication_factor: resilienceAndRegionsSettings.replicationFactor
         };
       })
     };
@@ -278,7 +302,7 @@ export const mapCreateUniversePayload = (formValues: createUniverseFormProps): U
       name: generalSettings.universeName,
       yb_software_version: generalSettings.databaseVersion!,
       encryption_at_rest_spec: {
-        kms_config_uuid: securitySettings.kmsConfig,
+        kms_config_uuid: securitySettings.kmsConfig
       },
       encryption_in_transit_spec: {
         root_ca: securitySettings.rootCertificate,
@@ -288,16 +312,17 @@ export const mapCreateUniversePayload = (formValues: createUniverseFormProps): U
       },
       use_time_sync: otherAdvancedSettings.useTimeSync,
       ycql: {
-        ...databaseSettings.ycql,
+        ...databaseSettings.ycql
       },
       ysql: {
         ...databaseSettings.ysql,
+        enable_connection_pooling: databaseSettings.enableConnectionPooling ?? false
       },
       networking_spec: {
         assign_public_ip: securitySettings.assignPublicIP,
         assign_static_public_ip: false,
         communication_ports: mapCommunicationPorts(otherAdvancedSettings),
-        enable_ipv6: false,
+        enable_ipv6: false
       },
       clusters: [
         {
@@ -314,19 +339,28 @@ export const mapCreateUniversePayload = (formValues: createUniverseFormProps): U
             },
             tserver: {
               ...gflags.tserver
-            }
+            },
+
+            ...(databaseSettings.enablePGCompatibitilty && {
+              ['gflag_groups']: ['ENHANCED_POSTGRES_COMPATIBILITY']
+            })
           },
           instance_tags: otherAdvancedSettings.instanceTags.reduce((acc, tag) => {
             acc[tag.name] = tag.value;
             return acc;
           }, {} as Record<string, string>),
           networking_spec: {
-            enable_lb: false,
-            enable_exposing_service: "UNEXPOSED",
+            enable_lb: true,
+            enable_exposing_service: 'UNEXPOSED',
             proxy_config: {
-              http_proxy: proxySettings.enableProxyServer ? `${proxySettings.webProxy}` : "",
-              https_proxy: proxySettings.secureWebProxy ? `${proxySettings.secureWebProxyServer}:${proxySettings.secureWebProxyPort}` : "",
-              no_proxy_list: proxySettings.byPassProxyListValues?.split('\n') ?? []
+              http_proxy:
+                proxySettings.enableProxyServer && proxySettings.webProxy
+                  ? `${proxySettings.webProxyServer}:${proxySettings.webProxyPort}`
+                  : '',
+              https_proxy: proxySettings.secureWebProxy
+                ? `${proxySettings.secureWebProxyServer}:${proxySettings.secureWebProxyPort}`
+                : '',
+              no_proxy_list: proxySettings.byPassProxyListValues ?? []
             }
           },
           num_nodes: getNodeCount(nodesAvailabilitySettings.availabilityZones),
@@ -337,7 +371,8 @@ export const mapCreateUniversePayload = (formValues: createUniverseFormProps): U
               num_volumes: 1,
               storage_type: instanceSettings.deviceInfo!.storageType!,
               storage_class: instanceSettings.deviceInfo!.storageClass!,
-              volume_size: instanceSettings.deviceInfo!.numVolumes * instanceSettings.deviceInfo!.volumeSize!,
+              volume_size:
+                instanceSettings.deviceInfo!.numVolumes * instanceSettings.deviceInfo!.volumeSize!,
               disk_iops: instanceSettings.deviceInfo!.diskIops!,
               throughput: instanceSettings.deviceInfo!.throughput!
             }
@@ -354,13 +389,13 @@ export const mapCreateUniversePayload = (formValues: createUniverseFormProps): U
           },
           provider_spec: {
             provider: generalSettings.providerConfiguration.uuid,
-            region_list: regionList.map(r => r.uuid!),
+            region_list: regionList.map((r) => r.uuid!),
             image_bundle_uuid: instanceSettings.imageBundleUUID!,
             access_key_code: otherAdvancedSettings.accessKeyCode
-          },
-        },
-      ],
-    },
+          }
+        }
+      ]
+    }
   };
 
   return payload;
@@ -379,17 +414,20 @@ const mapCommunicationPorts = (otherSettings: OtherAdvancedProps): Communication
     redis_server_http_port: otherSettings.redisServerHttpPort,
     redis_server_rpc_port: otherSettings.redisServerRpcPort,
     node_exporter_port: otherSettings.nodeExporterPort,
-    yb_controller_rpc_port: otherSettings.ybControllerrRpcPort,
+    yb_controller_rpc_port: otherSettings.ybControllerrRpcPort
   };
 };
 
-const mapGFlags = (gflags: { Name: string, MASTER?: string | boolean | number, TSERVER?: string | boolean | number }[]) => {
-
-  const gflagsMap: { master: Record<string, string>, tserver: Record<string, string> } = {
-    master: {
-    },
-    tserver: {
-    }
+const mapGFlags = (
+  gflags: {
+    Name: string;
+    MASTER?: string | boolean | number;
+    TSERVER?: string | boolean | number;
+  }[]
+) => {
+  const gflagsMap: { master: Record<string, string>; tserver: Record<string, string> } = {
+    master: {},
+    tserver: {}
   };
   gflags.forEach((gflag) => {
     if (gflag.MASTER) {
@@ -400,4 +438,56 @@ const mapGFlags = (gflags: { Name: string, MASTER?: string | boolean | number, T
     }
   });
   return gflagsMap;
+};
+
+const fillNodeSpec = (deviceType?: string | null, deviceInfo?: DeviceInfo | null) => {
+  if (!deviceInfo || !deviceType) {
+    throw new Error('Instance settings are required to fill node spec');
+  }
+  return {
+    instance_type: deviceType,
+    storage_spec: {
+      num_volumes: 1,
+      storage_type: deviceInfo.storageType!,
+      storage_class: deviceInfo.storageClass!,
+      volume_size: deviceInfo.numVolumes * deviceInfo.volumeSize!,
+      disk_iops: deviceInfo.diskIops!,
+      throughput: deviceInfo.throughput!
+    }
+  };
+};
+
+export const getNodeSpec = (formContext: createUniverseFormProps): ClusterNodeSpec => {
+  const { generalSettings, instanceSettings, nodesAvailabilitySettings } = formContext;
+  if (!instanceSettings || !nodesAvailabilitySettings) {
+    throw new Error('Missing required form values to get node spec');
+  }
+  if (!nodesAvailabilitySettings.useDedicatedNodes) {
+    return fillNodeSpec(instanceSettings.instanceType, instanceSettings.deviceInfo);
+  }
+
+  if (nodesAvailabilitySettings.useDedicatedNodes) {
+    if (instanceSettings.keepMasterTserverSame) {
+      return {
+        master: fillNodeSpec(instanceSettings.instanceType, instanceSettings.deviceInfo),
+        tserver: fillNodeSpec(instanceSettings.instanceType, instanceSettings.deviceInfo)
+      };
+    }
+    if (generalSettings?.cloud === CloudType.kubernetes) {
+      return {
+        k8s_master_resource_spec: {
+          cpu_core_count: instanceSettings.masterK8SNodeResourceSpec?.cpuCoreCount,
+          memory_gib: instanceSettings.masterK8SNodeResourceSpec?.memoryGib
+        },
+        k8s_tserver_resource_spec: {
+          cpu_core_count: instanceSettings.tserverK8SNodeResourceSpec?.cpuCoreCount,
+          memory_gib: instanceSettings.tserverK8SNodeResourceSpec?.memoryGib
+        }
+      };
+    }
+  }
+  return {
+    master: fillNodeSpec(instanceSettings.masterInstanceType, instanceSettings.masterDeviceInfo),
+    tserver: fillNodeSpec(instanceSettings.instanceType, instanceSettings.deviceInfo)
+  };
 };

@@ -1,5 +1,3 @@
-SET enable_bitmapscan = false; -- TODO(#20573): update bitmap scan cost model
-
 -- This file is meant to test and track the optimizer's plan choices with BNL
 -- enabled. yb.orig.join_batching on the other hand is meant to test BNL execution
 -- and planning when we force the creation of a BNL.
@@ -277,7 +275,6 @@ ANALYZE t_nopart;
   Set(enable_hashjoin off)
   Set(enable_mergejoin off)
   Set(enable_material off)
-  Set(enable_memoize off)
   Set(yb_prefer_bnl on)
 */
 EXPLAIN (COSTS OFF)SELECT * FROM t_nopart np JOIN t_part p ON np.a = p.b and np.b < 1000 and p.i <= 201;

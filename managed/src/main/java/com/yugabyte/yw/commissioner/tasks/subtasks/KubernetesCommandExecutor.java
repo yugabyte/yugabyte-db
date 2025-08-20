@@ -59,7 +59,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.UpgradeDetails;
 import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
-import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.provider.region.WellKnownIssuerKind;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.Service;
@@ -325,11 +325,13 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     if (taskParams().commandType.equals(CommandType.COPY_PACKAGE)
         || taskParams().commandType.equals(CommandType.YBC_ACTION)) {
       Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-      PlacementInfo pi;
-      if (taskParams().isReadOnlyCluster) {
-        pi = universe.getUniverseDetails().getReadOnlyClusters().get(0).placementInfo;
-      } else {
-        pi = universe.getUniverseDetails().getPrimaryCluster().placementInfo;
+      PlacementInfo pi = taskParams().placementInfo;
+      if (pi == null) {
+        if (taskParams().isReadOnlyCluster) {
+          pi = universe.getUniverseDetails().getReadOnlyClusters().get(0).placementInfo;
+        } else {
+          pi = universe.getUniverseDetails().getPrimaryCluster().placementInfo;
+        }
       }
       Map<String, Map<String, String>> k8sConfigMap =
           KubernetesUtil.getKubernetesConfigPerPodName(
@@ -376,6 +378,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 overridesFile);
         break;
       case HELM_UPGRADE:
+        handleHelmUpgradeAutoRecovery();
         overridesFile = this.generateHelmOverride();
         kubernetesManagerFactory
             .getManager()
@@ -749,14 +752,17 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     return -1;
   }
 
-  private void populatePreviousGflagsChecksum() {
+  private void populatePreviousGflagsChecksum(boolean newNamingStyle) {
     if (taskParams().usePreviousGflagsChecksum
         && MapUtils.isEmpty(taskParams().previousGflagsChecksumMap)) {
       taskParams().previousGflagsChecksumMap =
           kubernetesManagerFactory
               .getManager()
               .getServerTypeGflagsChecksumMap(
-                  taskParams().namespace, taskParams().helmReleaseName, taskParams().config);
+                  taskParams().namespace,
+                  taskParams().helmReleaseName,
+                  taskParams().config,
+                  newNamingStyle);
     }
   }
 
@@ -1413,7 +1419,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     // Gflags checksum override
     if (taskParams().usePreviousGflagsChecksum) {
       if (MapUtils.isEmpty(taskParams().previousGflagsChecksumMap)) {
-        populatePreviousGflagsChecksum();
+        populatePreviousGflagsChecksum(taskUniverseDetails.useNewHelmNamingStyle);
       }
       String masterGflagsChecksum =
           taskParams().previousGflagsChecksumMap.getOrDefault(ServerType.MASTER, "");
@@ -1827,5 +1833,19 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       }
     }
     return certManager;
+  }
+
+  /**
+   * Helper method to handle auto-recovery from pending Helm upgrade state. Checks if auto-recovery
+   * is enabled for the universe and performs recovery if needed.
+   */
+  private void handleHelmUpgradeAutoRecovery() {
+    Universe helmUniverse = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+    if (confGetter.getConfForScope(helmUniverse, UniverseConfKeys.autoRecoverFromPendingUpgrade)) {
+      kubernetesManagerFactory
+          .getManager()
+          .checkAndRecoverFromHelmPendingState(
+              getConfig(), taskParams().helmReleaseName, taskParams().namespace);
+    }
   }
 }

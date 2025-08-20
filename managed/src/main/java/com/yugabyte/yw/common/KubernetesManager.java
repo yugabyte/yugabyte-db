@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -46,7 +47,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.UUID;
-import java.util.function.Function;
+import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import lombok.AllArgsConstructor;
@@ -80,9 +81,9 @@ public abstract class KubernetesManager {
 
   private static final long HELM_UNINSTALL_RETRY = 5;
 
-  protected Function<ObjectMeta, ServerType> serverTypeLabelConverter =
-      (oM) ->
-          oM.getLabels().get("app.kubernetes.io/name").equals("yb-tserver")
+  protected BiFunction<ObjectMeta, Boolean, ServerType> serverTypeLabelConverter =
+      (oM, newNamingStyle) ->
+          oM.getLabels().get(newNamingStyle ? "app.kubernetes.io/name" : "app").equals("yb-tserver")
               ? ServerType.TSERVER
               : ServerType.MASTER;
 
@@ -282,6 +283,101 @@ public abstract class KubernetesManager {
             "--wait");
     ShellResponse response = execCommand(config, commandList);
     processHelmResponse(config, helmReleaseName, namespace, response);
+  }
+
+  public void checkAndRecoverFromHelmPendingState(
+      Map<String, String> config, String helmReleaseName, String namespace) {
+    List<String> commandList =
+        ImmutableList.of("helm", "status", helmReleaseName, "-n", namespace, "-o", "json");
+    ShellResponse response = execCommand(config, commandList, false);
+    if (response != null && response.isSuccess()) {
+      try {
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode statusJson = mapper.readTree(response.getMessage());
+        String status = statusJson.path("info").path("status").asText();
+        String currentVersion = statusJson.path("version").asText();
+        LOG.info(
+            "Helm release {} status: {}, current version: {}",
+            helmReleaseName,
+            status,
+            currentVersion);
+
+        if (status.startsWith("pending-")) {
+          LOG.info(
+              "Helm release {} is stuck in {} state, triggering recovery mechanism",
+              helmReleaseName,
+              status);
+          handleStuckHelmUpgrade(config, helmReleaseName, namespace, currentVersion);
+        }
+      } catch (Exception e) {
+        LOG.error("Error parsing helm status response for release {}", helmReleaseName, e);
+      }
+    } else {
+      LOG.warn(
+          "Failed to get helm status for release {}: {}", helmReleaseName, response.getMessage());
+    }
+  }
+
+  public void handleStuckHelmUpgrade(
+      Map<String, String> config, String helmReleaseName, String namespace, String currentVersion) {
+    LOG.info(
+        "Handling stuck helm upgrade for release {} in namespace {}", helmReleaseName, namespace);
+
+    String secretName = "sh.helm.release.v1." + helmReleaseName + ".v" + currentVersion;
+    String storagePath = AppConfigHelper.getStoragePath();
+    File backupDir = new File(storagePath, "helm-backups");
+    if (!backupDir.exists()) {
+      backupDir.mkdirs();
+    }
+    String backupFileName =
+        new File(backupDir, secretName + "-backup-" + System.currentTimeMillis() + ".yaml")
+            .getAbsolutePath();
+
+    try {
+      LOG.info("Backing up helm version secret: {} to file: {}", secretName, backupFileName);
+      List<String> getSecretCommand =
+          ImmutableList.of("kubectl", "get", "secret", secretName, "-n", namespace, "-o", "yaml");
+      ShellResponse getResponse = execCommand(config, getSecretCommand);
+      if (getResponse != null && getResponse.isSuccess()) {
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(backupFileName))) {
+          writer.write(getResponse.getMessage());
+        }
+        LOG.info(
+            "Successfully backed up helm version secret: {} to file: {}",
+            secretName,
+            backupFileName);
+      } else {
+        LOG.warn(
+            "Failed to get helm version secret for backup: {}. Response: {}. Skipping deletion.",
+            secretName,
+            getResponse != null ? getResponse.getMessage() : "null response");
+        return;
+      }
+      LOG.info("Deleting helm version secret: {} in namespace: {}", secretName, namespace);
+      List<String> deleteSecretCommand =
+          ImmutableList.of(
+              "kubectl",
+              "delete",
+              "secret",
+              secretName,
+              "-n",
+              namespace,
+              "--ignore-not-found=true");
+      ShellResponse response = execCommand(config, deleteSecretCommand);
+      if (response != null && response.isSuccess()) {
+        LOG.info(
+            "Successfully deleted helm version secret: {}. Backup available at: {}",
+            secretName,
+            backupFileName);
+      } else {
+        LOG.warn(
+            "Failed to delete helm version secret: {}. Response: {}",
+            secretName,
+            response != null ? response.getMessage() : "null response");
+      }
+    } catch (Exception e) {
+      LOG.error("Error handling helm version secret: {}", secretName, e);
+    }
   }
 
   public void helmDelete(Map<String, String> config, String helmReleaseName, String namespace) {
@@ -910,7 +1006,7 @@ public abstract class KubernetesManager {
       Map<String, String> config, String resourceType, String resourceName, String namespace);
 
   public abstract Map<ServerType, String> getServerTypeGflagsChecksumMap(
-      String namespace, String helmReleaseName, Map<String, String> config);
+      String namespace, String helmReleaseName, Map<String, String> config, boolean newNamingStyle);
 
   public abstract void deleteNamespacedService(
       Map<String, String> config, String namespace, String universeName);

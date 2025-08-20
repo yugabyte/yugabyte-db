@@ -19,15 +19,15 @@ const useStyles = makeStyles((theme) => ({
     padding: theme.spacing(2),
     marginTop: theme.spacing(1),
     marginBottom: theme.spacing(1.5),
-    border: "1px solid #E9EEF2",
+    border: `1px solid ${theme.palette.divider}`,
     borderRadius: theme.shape.borderRadius,
   },
   label: {
-    color: theme.palette.grey[600],
-    fontWeight: theme.typography.fontWeightMedium as number,
+    fontSize: theme.typography.subtitle1.fontSize,
+    fontWeight: theme.typography.button.fontWeight,
+    color: theme.palette.text.secondary,
     marginTop: theme.spacing(1),
     marginBottom: theme.spacing(0.5),
-    textTransform: "uppercase",
     textAlign: "start",
   },
   value: {
@@ -35,7 +35,7 @@ const useStyles = makeStyles((theme) => ({
     textAlign: "start",
   },
   selectBox: {
-    minWidth: "200px",
+    minWidth: theme.spacing(25),
   },
   selectBoxWrapper: {
     margin: theme.spacing(-1, 0, 1.5, 0),
@@ -113,8 +113,8 @@ export const ActivityTab: FC = () => {
       name: "Name",
       label: t("clusterDetail.activity.activity"),
       options: {
-        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
-        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellHeaderProps: () => ({ style: { padding: theme.spacing(1, 2) } }),
+        setCellProps: () => ({ style: { padding: theme.spacing(1, 2) } }),
       },
     },
     {
@@ -129,16 +129,16 @@ export const ActivityTab: FC = () => {
             />
           );
         },
-        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
-        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellHeaderProps: () => ({ style: { padding: theme.spacing(1, 2) } }),
+        setCellProps: () => ({ style: { padding: theme.spacing(1, 2) } }),
       },
     },
     {
       name: "IndexName",
       label: t("clusterDetail.activity.index"),
       options: {
-        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
-        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellHeaderProps: () => ({ style: { padding: theme.spacing(1, 2) } }),
+        setCellProps: () => ({ style: { padding: theme.spacing(1, 2) } }),
       },
     },
     {

@@ -317,6 +317,15 @@ import-data-file:
 
 | Truncate tables on target YugabyteDB database before importing data. This option is only valid if `--start-clean` is set to true. <br>Default: false |
 
+| --error-policy |
+
+```yaml{.nocopy}
+import-data-file:
+  error-policy:
+```
+
+| Specifies how to handle errors when processing and importing rows to the target YugabyteDB database. Errors can arise from reading data from file, transforming rows, or ingesting them into YugabyteDB. <br> Accepted parameters: <ul><li> `abort` (Default) - Immediately aborts the process.</li><li> `stash-and-continue` - Stashes the errored rows to a file and continues the import.</li></ul> |
+
 | --start-clean | — | Starts a fresh import with data files present in the `data` directory.<br>If there's any non-empty table on the target YugabyteDB database, you get a prompt whether to continue the import without truncating those tables.<br> **Note** that for cases where a table doesn't have a primary key, it may lead to insertion of duplicate data. In that case, you can avoid the duplication by excluding the table from the `--file-table-map`, or truncating those tables manually before using the `start-clean` flag.<br> Default: false <br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -h, --help | — | Command line help. |
 | -y, --yes | — | Answer yes to all prompts during the export schema operation. <br>Default: false |

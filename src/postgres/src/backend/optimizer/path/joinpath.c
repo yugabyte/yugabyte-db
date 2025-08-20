@@ -646,6 +646,11 @@ get_memoize_path(PlannerInfo *root, RelOptInfo *innerrel,
 		 list_length(extra->restrictlist)))
 		return NULL;
 
+	/* YB: #25251 Disable BNL + Memoize until this pattern is supported */
+	if (IsYugaByteEnabled() &&
+		yb_is_outer_inner_batched(outer_path, inner_path))
+		return NULL;
+
 	/*
 	 * We can't use a memoize node if there are volatile functions in the
 	 * inner rel's target list or restrict list.  A cache hit could reduce the

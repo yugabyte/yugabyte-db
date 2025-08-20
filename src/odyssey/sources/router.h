@@ -29,6 +29,9 @@ struct od_router {
 	od_list_t servers;
 };
 
+#define CONTROL_CONN_USER "control_connection_user"
+#define CONTROL_CONN_DB "control_connection_db"
+
 extern bool version_matching;
 extern bool version_matching_connect_higher_version;
 
@@ -55,6 +58,8 @@ od_router_status_t od_router_route(od_router_t *router, od_client_t *client);
 void od_router_unroute(od_router_t *, od_client_t *);
 
 od_router_status_t od_router_attach(od_router_t *, od_client_t *, bool, od_client_t *);
+void yb_signal_all_routes(od_router_t *router, od_route_t *detached_route,
+	bool enable_multi_route_pool);
 void od_router_detach(od_router_t *, od_client_t *);
 void od_router_close(od_router_t *, od_client_t *);
 

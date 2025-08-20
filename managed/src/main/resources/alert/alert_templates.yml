@@ -451,31 +451,6 @@ templates:
 
         Affected nodes: {{ $labels.affected_node_names }}
 
-  DB_QUEUES_OVERFLOW:
-    name: DB queues overflow
-    description: DB queues overflow detected during last 10 minutes
-    queryTemplate: sum by (universe_uuid) (increase(rpcs_queue_overflow{universe_uuid="__universeUuid__"}[10m]))
-      + sum by (universe_uuid) (increase(rpcs_timed_out_in_queue{universe_uuid="__universeUuid__"}[10m]))
-      {{ query_condition }} {{ query_threshold }}
-    createForNewCustomer: true
-    defaultThresholdMap:
-      WARNING:
-        threshold: 100.0
-    targetType: UNIVERSE
-    defaultThresholdCondition: GREATER_THAN
-    defaultThresholdUnit: COUNT
-    thresholdUnitName: occurrence(s)
-    labels:
-      affected_node_names: >-
-        {{ range $index, $element := query "sum by (universe_uuid, node_name) (increase(rpcs_queue_overflow{universe_uuid='{{ $labels.universe_uuid }}'}[10m]))
-        + sum by (universe_uuid, node_name) (increase(rpcs_timed_out_in_queue{universe_uuid='{{ $labels.universe_uuid }}'}[10m]))
-        > 0" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
-    annotations:
-      summary: >-
-        DB queues overflow detected for universe '{{ $labels.source_name }}'.
-
-        Affected nodes: {{ $labels.affected_node_names }}
-
   DB_YCQL_CONNECTION:
     name: DB CQLSH connection
     description: CQLSH connection to DB instances failed
@@ -2112,11 +2087,11 @@ templates:
     thresholdConditionReadOnly: true
     labels:
       affected_node_names: >-
-        {{ range $index, $element := query "count by (universe_uuid) ((avg_over_time(yb_process_memory_kb{type='resident', process='yb-tserver', universe_uuid='{{$labels.universe_uuid }}'}[5m]) * 1024 
-        - on (universe_uuid, node_name) avg_over_time(generic_current_allocated_bytes{export_type='tserver_export', universe_uuid='{{$labels.universe_uuid }}'}[5m]) 
-        - on (universe_uuid, node_name) avg_over_time(tcmalloc_pageheap_free_bytes{export_type='tserver_export', universe_uuid='{{$labels.universe_uuid }}'}[5m])) 
-        / on (universe_uuid, node_name) (node_memory_MemTotal_bytes{universe_uuid='{{$labels.universe_uuid }}'}) {{ query_condition }} {{ query_threshold }} 
-        and on (universe_uuid, node_name) ((node_memory_MemTotal_bytes{universe_uuid='{{$labels.universe_uuid }}'} - on (universe_uuid, node_name) node_memory_MemAvailable_bytes {universe_uuid='{{$labels.universe_uuid }}'}) 
+        {{ range $index, $element := query "count by (universe_uuid) ((avg_over_time(yb_process_memory_kb{type='resident', process='yb-tserver', universe_uuid='{{$labels.universe_uuid }}'}[5m]) * 1024
+        - on (universe_uuid, node_name) avg_over_time(generic_current_allocated_bytes{export_type='tserver_export', universe_uuid='{{$labels.universe_uuid }}'}[5m])
+        - on (universe_uuid, node_name) avg_over_time(tcmalloc_pageheap_free_bytes{export_type='tserver_export', universe_uuid='{{$labels.universe_uuid }}'}[5m]))
+        / on (universe_uuid, node_name) (node_memory_MemTotal_bytes{universe_uuid='{{$labels.universe_uuid }}'}) {{ query_condition }} {{ query_threshold }}
+        and on (universe_uuid, node_name) ((node_memory_MemTotal_bytes{universe_uuid='{{$labels.universe_uuid }}'} - on (universe_uuid, node_name) node_memory_MemAvailable_bytes {universe_uuid='{{$labels.universe_uuid }}'})
         / on (universe_uuid, node_name) node_memory_MemTotal_bytes {universe_uuid='{{$labels.universe_uuid }}'}) > 0.6) > 0" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-

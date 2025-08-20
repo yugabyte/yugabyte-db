@@ -20,6 +20,7 @@
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/object_lock_manager.h"
+#include "yb/docdb/object_lock_shared_state_manager.h"
 
 #include "yb/master/master_ddl.pb.h"
 
@@ -28,6 +29,7 @@
 
 #include "yb/server/server_base.h"
 
+#include "yb/tserver/service_util.h"
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -38,6 +40,7 @@
 
 using namespace std::literals;
 DECLARE_bool(dump_lock_keys);
+DECLARE_bool(ysql_yb_enable_invalidation_messages);
 
 DEFINE_NON_RUNTIME_int64(olm_poll_interval_ms, 100,
     "Poll interval for Object lock Manager. Waiting requests that are unblocked by other release "
@@ -59,174 +62,6 @@ DECLARE_uint64(refresh_waiter_timeout_ms);
 namespace yb::tserver {
 
 YB_STRONGLY_TYPED_BOOL(WaitForBootstrap);
-
-// This class tracks object locks specifically for the pg_locks view.
-// An alternative would be to extract and decrypt locks directly from ObjectLockManager,
-// but for simplicity, we decided to maintain a separate tracker here.
-class ObjectLockTracker {
- public:
-
-  Status TrackLocks(
-    const std::vector<ObjectLockContext>& lock_contexts, ObjectLockState lock_state,
-    HybridTime wait_start = HybridTime::kInvalid) {
-    for (const auto& lock_context : lock_contexts) {
-      RETURN_NOT_OK(TrackLock(lock_context, lock_state, wait_start));
-    }
-    return Status::OK();
-  }
-
-  Status TrackLock(
-      const ObjectLockContext& lock_context, ObjectLockState lock_state,
-      HybridTime wait_start = HybridTime::kInvalid) {
-    const auto txn_id = lock_context.txn_id;
-    const auto subtxn_id = lock_context.subtxn_id;
-    const auto lock_id = LockId{
-      .database_oid = lock_context.database_oid,
-      .relation_oid = lock_context.relation_oid,
-      .object_oid = lock_context.object_oid,
-      .object_sub_oid = lock_context.object_sub_oid,
-      .lock_type = lock_context.lock_type
-    };
-
-    std::lock_guard l(mutex_);
-    auto& lock_id_map = lock_map_[txn_id][subtxn_id];
-
-    auto lock_it = lock_id_map.find(lock_id);
-    if (lock_it != lock_id_map.end()) {
-      auto& existing = lock_it->second;
-      existing.counter++;
-      if (existing.lock_state == ObjectLockState::WAITING &&
-          lock_state == ObjectLockState::GRANTED) {
-        // Upgrade from WAITING to GRANTED state and
-        // keep the wait_start time as it is for pg_locks view.
-        existing.lock_state = ObjectLockState::GRANTED;
-      }
-      return Status::OK();
-    }
-
-    LockInfo new_lock{
-      .lock_state = lock_state,
-      .wait_start = (lock_state == ObjectLockState::WAITING) ? wait_start : HybridTime::kInvalid,
-      .counter = 1
-    };
-    lock_id_map.emplace(lock_id, new_lock);
-
-    return Status::OK();
-  }
-
-  Status UntrackLocks(const std::vector<ObjectLockContext>& lock_contexts) {
-    for (const auto& lock_context : lock_contexts) {
-      RETURN_NOT_OK(UntrackLock(lock_context));
-    }
-    return Status::OK();
-  }
-
-  Status UntrackLock(const ObjectLockContext& lock_context) {
-    if (lock_context.subtxn_id == 0) {
-      return UntrackAllLocks(lock_context.txn_id, lock_context.subtxn_id);
-    }
-
-    std::lock_guard l(mutex_);
-    auto txn_it = lock_map_.find(lock_context.txn_id);
-    if (txn_it == lock_map_.end()) {
-      return Status::OK();
-    }
-    auto subtxn_it = txn_it->second.find(lock_context.subtxn_id);
-    if (subtxn_it == txn_it->second.end()) {
-      return Status::OK();
-    }
-
-    auto& lock_id_map = subtxn_it->second;
-    const auto lock_id = LockId{
-      .database_oid = lock_context.database_oid,
-      .relation_oid = lock_context.relation_oid,
-      .object_oid = lock_context.object_oid,
-      .object_sub_oid = lock_context.object_sub_oid,
-      .lock_type = lock_context.lock_type
-    };
-    auto lock_it = lock_id_map.find(lock_id);
-    DCHECK(lock_it != lock_id_map.end());
-    if (lock_it->second.counter > 1) {
-      lock_it->second.counter--;
-      return Status::OK();
-    }
-
-    // cleanup
-    lock_id_map.erase(lock_it);
-    if (lock_id_map.empty()) {
-      txn_it->second.erase(subtxn_it);
-      if (txn_it->second.empty()) {
-        lock_map_.erase(txn_it);
-      }
-    }
-
-    return Status::OK();
-  }
-
-  Status UntrackAllLocks(TransactionId txn_id, SubTransactionId subtxn_id) {
-    std::lock_guard l(mutex_);
-    if (subtxn_id == 0) {
-      // Remove all subtransactions for this transaction
-      lock_map_.erase(txn_id);
-    } else {
-      auto txn_iter = lock_map_.find(txn_id);
-      if (txn_iter != lock_map_.end()) {
-        txn_iter->second.erase(subtxn_id);
-        if (txn_iter->second.empty()) {
-          lock_map_.erase(txn_iter);
-        }
-      }
-    }
-    return Status::OK();
-  }
-
-  void PopulateObjectLocks(
-      google::protobuf::RepeatedPtrField<ObjectLockInfoPB>* object_lock_infos) const {
-    object_lock_infos->Clear();
-    SharedLock l(mutex_);
-    for (const auto& [txn_id, subtxn_map] : lock_map_) {
-      for (const auto& [subtxn_id, lock_id_map] : subtxn_map) {
-        for (const auto& [lock_id, lock_info] : lock_id_map) {
-          auto* object_lock_info_pb = object_lock_infos->Add();
-          object_lock_info_pb->set_transaction_id(txn_id.data(), txn_id.size());
-          object_lock_info_pb->set_subtransaction_id(subtxn_id);
-          object_lock_info_pb->set_database_oid(lock_id.database_oid);
-          object_lock_info_pb->set_relation_oid(lock_id.relation_oid);
-          object_lock_info_pb->set_object_oid(lock_id.object_oid);
-          object_lock_info_pb->set_object_sub_oid(lock_id.object_sub_oid);
-          object_lock_info_pb->set_mode(lock_id.lock_type);
-          object_lock_info_pb->set_lock_state(lock_info.lock_state);
-          DCHECK_NE(lock_info.wait_start, HybridTime::kInvalid);
-          object_lock_info_pb->set_wait_start_ht(lock_info.wait_start.ToUint64());
-        }
-      }
-    }
-  }
-
- private:
-  mutable std::shared_mutex mutex_;
-
-  struct LockId {
-    YB_STRUCT_DEFINE_HASH(
-        LockId, database_oid, relation_oid, object_oid, object_sub_oid, lock_type);
-    auto operator<=>(const LockId&) const = default;
-    uint64_t database_oid;
-    uint64_t relation_oid;
-    uint64_t object_oid;
-    uint64_t object_sub_oid;
-    TableLockType lock_type;
-  };
-
-  struct LockInfo {
-    ObjectLockState lock_state;
-    HybridTime wait_start = HybridTime::kInvalid;
-    size_t counter = 0;
-  };
-
-  std::unordered_map<TransactionId,
-      std::unordered_map<SubTransactionId,
-          std::unordered_map<LockId, LockInfo>>> lock_map_;
-};
 
 namespace {
 
@@ -292,10 +127,17 @@ class TSLocalLockManager::Impl {
   Impl(
       const server::ClockPtr& clock, TabletServerIf* tablet_server,
       server::RpcServerBase& messenger_server, ThreadPool* thread_pool,
+      const MetricEntityPtr& metric_entity, std::shared_ptr<ObjectLockTracker> lock_tracker,
       docdb::ObjectLockSharedStateManager* shared_manager)
       : clock_(clock), server_(tablet_server), messenger_base_(messenger_server),
-        object_lock_manager_(thread_pool, messenger_server, shared_manager),
-        poller_("TSLocalLockManager", std::bind(&Impl::Poll, this)) {}
+        object_lock_manager_(thread_pool, messenger_server, metric_entity, shared_manager),
+        poller_("TSLocalLockManager", std::bind(&Impl::Poll, this)) {
+    if (lock_tracker) {
+      lock_tracker_ = std::move(lock_tracker);
+    } else {
+      lock_tracker_ = std::make_shared<ObjectLockTracker>();
+    }
+  }
 
   ~Impl() = default;
 
@@ -431,17 +273,22 @@ class TSLocalLockManager::Impl {
     VLOG(1) << "Blocking acquire request to simulate out-of-order requests: "
             << req.ShortDebugString();
     TRACE("Blocking acquire request to simulate out-of-order requests");
+    const auto wait_start = CoarseMonoClock::Now();
     while (!FLAGS_TEST_release_blocked_acquires_to_simulate_out_of_order) {
       constexpr auto kSpinWait = 100ms;
       VLOG(2) << Format("Blocking $0 for $1", __func__, kSpinWait);
       SleepFor(kSpinWait);
-      // Update the deadline so that this request does not get rejected later on due
-      // to the delay caused here.
-      deadline += kSpinWait;
     }
     TRACE("Unblocked acquire request");
-    VLOG(1) << "Unblocking acquire request. Updated deadline to : "
-            << ToStringRelativeToNow(deadline, CoarseMonoClock::Now());
+    const auto now = CoarseMonoClock::Now();
+    const auto spin_wait_duration = now - wait_start;
+    const auto previous_deadline = deadline;
+    // Update the deadline so that this request does not get rejected later on due
+    // to the delay caused here.
+    deadline = previous_deadline + spin_wait_duration;
+    VLOG(1) << "Unblocking acquire request. Updated deadline from "
+            << ToStringRelativeToNow(previous_deadline, now)
+            << " to " << ToStringRelativeToNow(deadline, now);
   }
 
   Status WaitUntilBootstrapped(CoarseTimePoint deadline) {
@@ -483,9 +330,7 @@ class TSLocalLockManager::Impl {
           txn, req.subtxn_id(), object_lock.database_oid(), object_lock.relation_oid(),
           object_lock.object_oid(), object_lock.object_sub_oid(), object_lock.lock_type());
     }
-    auto tracker_status =
-        lock_tracker_.TrackLocks(lock_contexts, ObjectLockState::WAITING, clock_->Now());
-    DCHECK_OK(tracker_status);
+    lock_tracker_->TrackLocks(lock_contexts, ObjectLockState::WAITING, clock_->Now());
 
     object_lock_manager_.Lock(
       docdb::LockData{
@@ -500,11 +345,10 @@ class TSLocalLockManager::Impl {
                        cb = std::move(callback)](Status status) -> void {
             Status tracker_status;
             if (status.ok()) {
-              tracker_status = lock_tracker_.TrackLocks(lock_contexts, ObjectLockState::GRANTED);
+              lock_tracker_->TrackLocks(lock_contexts, ObjectLockState::GRANTED);
             } else {
-              tracker_status = lock_tracker_.UntrackLocks(lock_contexts);
+              lock_tracker_->UntrackLocks(lock_contexts);
             }
-            DCHECK_OK(tracker_status);
             // Call the original callback with the final status
             cb(status);
           }
@@ -560,11 +404,28 @@ class TSLocalLockManager::Impl {
     RETURN_NOT_OK(add_to_in_progress.status());
     // In case of exclusive locks, invalidate the db table cache before releasing them.
     if (req.has_db_catalog_version_data()) {
-      server_->SetYsqlDBCatalogVersions(req.db_catalog_version_data());
+      if (FLAGS_ysql_yb_enable_invalidation_messages && req.has_db_catalog_inval_messages_data()) {
+        VLOG(4) << "Received inval msgs during lock release "
+        << tserver::CatalogInvalMessagesDataDebugString(req.db_catalog_inval_messages_data());
+
+        server_->SetYsqlDBCatalogVersionsWithInvalMessages(
+          req.db_catalog_version_data(),
+          req.db_catalog_inval_messages_data());
+      } else {
+        VLOG(4) << "Received cat version without inval msgs during lock release "
+                << req.db_catalog_version_data().ShortDebugString();
+        server_->SetYsqlDBCatalogVersions(req.db_catalog_version_data());
+        // If we only have catalog versions but not invalidation messages, it means that
+        // the master lock release request was only able to read pg_yb_catalog_version,
+        // but the reading of pg_yb_invalidation_messages failed.
+        // Clear the fingerprint so that next heartbeat response from master
+        // can read pg_yb_invalidation_messages again.
+        server_->ResetCatalogVersionsFingerprint();
+      }
     }
+
     object_lock_manager_.Unlock(object_lock_owner);
-    auto tracker_status = lock_tracker_.UntrackAllLocks(txn, req.subtxn_id());
-    DCHECK_OK(tracker_status);
+    lock_tracker_->UntrackAllLocks(txn, req.subtxn_id());
     return Status::OK();
   }
 
@@ -688,8 +549,10 @@ class TSLocalLockManager::Impl {
   server::ClockPtr clock() const { return clock_; }
 
   void PopulateObjectLocks(
-      google::protobuf::RepeatedPtrField<ObjectLockInfoPB>* object_lock_infos) const {
-    lock_tracker_.PopulateObjectLocks(object_lock_infos);
+      google::protobuf::RepeatedPtrField<ObjectLockInfoPB>* object_lock_infos) {
+    // We need to load and track the fastpath object locks from shared memory first
+    object_lock_manager_.ConsumePendingSharedLockRequests();
+    lock_tracker_->PopulateObjectLocks(object_lock_infos);
   }
 
  private:
@@ -710,16 +573,17 @@ class TSLocalLockManager::Impl {
   docdb::ObjectLockManager object_lock_manager_;
   std::atomic<bool> shutdown_{false};
   rpc::Poller poller_;
-  ObjectLockTracker lock_tracker_;
+  std::shared_ptr<ObjectLockTracker> lock_tracker_;
 };
 
 TSLocalLockManager::TSLocalLockManager(
     const server::ClockPtr& clock, TabletServerIf* tablet_server,
     server::RpcServerBase& messenger_server, ThreadPool* thread_pool,
+    const MetricEntityPtr& metric_entity, std::shared_ptr<ObjectLockTracker> lock_tracker,
     docdb::ObjectLockSharedStateManager* shared_manager)
       : impl_(new Impl(
           clock, CHECK_NOTNULL(tablet_server), messenger_server, CHECK_NOTNULL(thread_pool),
-          shared_manager)) {}
+          metric_entity, lock_tracker, shared_manager)) {}
 
 TSLocalLockManager::~TSLocalLockManager() {}
 
@@ -775,7 +639,7 @@ server::ClockPtr TSLocalLockManager::clock() const {
 }
 
 void TSLocalLockManager::PopulateObjectLocks(
-    google::protobuf::RepeatedPtrField<ObjectLockInfoPB>* object_lock_infos) const {
+    google::protobuf::RepeatedPtrField<ObjectLockInfoPB>* object_lock_infos) {
   impl_->PopulateObjectLocks(object_lock_infos);
 }
 

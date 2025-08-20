@@ -38,7 +38,7 @@ import { YBDropdown, mui, YBButton } from '@yugabyte-ui-library/core';
 
 const { MenuItem } = mui;
 
-/* TODO : 
+/* TODO :
 1. Rewrite this file with proper types
 2. Integrate with react-query
 3. Rewrite AddGflag and EditorGflag with typescript and react-query
@@ -651,7 +651,7 @@ export const GFlagsFieldNew = ({
                     {btnLabel}
                   </YBButton>
                 }
-                dataTestId='yb-gflags-dropdown'
+                dataTestId="yb-gflags-dropdown"
               >
                 {SERVER_LIST.filter((e) => e.visible).map((server) => {
                   const { serverName, label } = server;

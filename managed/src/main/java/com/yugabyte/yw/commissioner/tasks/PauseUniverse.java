@@ -13,6 +13,8 @@ package com.yugabyte.yw.commissioner.tasks;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -23,6 +25,8 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
+@Abortable
+@Retryable
 public class PauseUniverse extends UniverseTaskBase {
 
   @Inject
@@ -52,17 +56,22 @@ public class PauseUniverse extends UniverseTaskBase {
   }
 
   @Override
+  protected void createPrecheckTasks(Universe universe) {
+    if (isFirstTry() && universe.getUniverseDetails().universePaused) {
+      String msg =
+          "Unable to pause universe \"" + universe.getName() + "\" as it is already paused.";
+      log.error(msg);
+      throw new RuntimeException(msg);
+    }
+    super.createPrecheckTasks(universe);
+  }
+
+  @Override
   public void run() {
     try {
       // Update the universe DB with the update to be performed and set the
       // 'updateInProgress' flag to prevent other updates from happening.
       Universe universe = lockAndFreezeUniverseForUpdate(-1, null /* Txn callback */);
-      if (universe.getUniverseDetails().universePaused) {
-        String msg =
-            "Unable to pause universe \"" + universe.getName() + "\" as it is already paused.";
-        log.error(msg);
-        throw new RuntimeException(msg);
-      }
 
       createPauseUniverseTasks(universe, params().customerUUID);
 

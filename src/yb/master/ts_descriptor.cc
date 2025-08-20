@@ -58,6 +58,14 @@ namespace master {
 
 bool PersistentTServerInfo::IsLive() const { return pb.state() == SysTabletServerEntryPB::LIVE; }
 
+bool PersistentTServerInfo::IsBlacklisted(const BlacklistSet& blacklist) const {
+  return yb::master::IsBlacklisted(pb.registration(), blacklist);
+}
+
+std::string PersistentTServerInfo::placement_uuid() const {
+  return pb.registration().placement_uuid();
+}
+
 TSDescriptor::TSDescriptor(const std::string& permanent_uuid,
                            RegisteredThroughHeartbeat registered_through_heartbeat,
                            CloudInfoPB&& local_cloud_info,
@@ -275,10 +283,6 @@ ServerRegistrationPB TSDescriptor::GetRegistration() const {
   return LockForRead()->pb.registration();
 }
 
-ResourcesPB TSDescriptor::GetResources() const {
-  return LockForRead()->pb.resources();
-}
-
 TSInformationPB TSDescriptor::GetTSInformationPB() const {
   auto l = LockForRead();
   TSInformationPB ts_info_pb;
@@ -314,7 +318,7 @@ CloudInfoPB TSDescriptor::GetCloudInfo() const {
 }
 
 bool TSDescriptor::IsBlacklisted(const BlacklistSet& blacklist) const {
-  return yb::master::IsBlacklisted(LockForRead()->pb.registration(), blacklist);
+  return LockForRead()->IsBlacklisted(blacklist);
 }
 
 bool TSDescriptor::IsRunningOn(const HostPortPB& hp) const {

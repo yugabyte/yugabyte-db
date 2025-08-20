@@ -16,6 +16,7 @@
 #include <memory>
 
 #include "yb/common/transaction.h"
+#include "yb/common/object_lock_tracker.h"
 
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/lock_util.h"
@@ -80,13 +81,16 @@ class ObjectLockOwnerRegistry {
 
 class ObjectLockSharedStateManager {
  public:
+  explicit ObjectLockSharedStateManager(std::shared_ptr<ObjectLockTracker> object_lock_tracker)
+      : object_lock_tracker_(std::move(object_lock_tracker)) {}
+
   void SetupShared(ObjectLockSharedState& shared);
 
   [[nodiscard]] ObjectLockOwnerRegistry& registry() { return registry_; }
 
-  void ConsumePendingSharedLockRequests(const LockRequestConsumer& consume);
+  size_t ConsumePendingSharedLockRequests(const LockRequestConsumer& consume);
 
-  void ConsumeAndAcquireExclusiveLockIntents(
+  size_t ConsumeAndAcquireExclusiveLockIntents(
       const LockRequestConsumer& consume, std::span<const ObjectLockPrefix*> object_ids);
 
   void ReleaseExclusiveLockIntent(const ObjectLockPrefix& object_id, size_t count = 1);
@@ -95,10 +99,13 @@ class ObjectLockSharedStateManager {
 
  private:
   template<typename ConsumeMethod>
-  void CallWithRequestConsumer(ConsumeMethod&& m, const LockRequestConsumer& consume);
+  size_t CallWithRequestConsumer(
+      ObjectLockSharedState* shared, ConsumeMethod&& m, const LockRequestConsumer& consume);
 
-  ObjectLockSharedState* shared_ = nullptr;
+  std::atomic<ObjectLockSharedState*> shared_{nullptr};
   ObjectLockOwnerRegistry registry_;
+
+  const std::shared_ptr<ObjectLockTracker> object_lock_tracker_;
 };
 
 } // namespace yb::docdb

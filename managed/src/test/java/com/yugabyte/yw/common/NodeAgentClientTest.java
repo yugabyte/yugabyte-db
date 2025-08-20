@@ -6,15 +6,17 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.fail;
 import static org.mockito.AdditionalAnswers.delegatesTo;
+import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterables;
 import com.google.protobuf.ByteString;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.NodeAgentEnabler;
 import com.yugabyte.yw.common.NodeAgentClient.ChannelFactory;
 import com.yugabyte.yw.common.NodeAgentClient.NodeAgentUpgradeParam;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
 import com.yugabyte.yw.forms.NodeAgentForm;
@@ -52,6 +54,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
@@ -74,7 +77,8 @@ public class NodeAgentClientTest extends FakeDBApplication {
   private NodeAgent nodeAgent;
   private NodeAgentImplBase nodeAgentImpl;
   private UploadFileRequestObserver requestObserver;
-  private NodeAgentImplBase serviceImpl;
+  private NodeAgentImplBase mockServiceImpl;
+  private RuntimeConfGetter mockConfGetter;
   private volatile AsyncTaskData asyncTaskData;
 
   // Graceful shutdown of the registered servers and their channels after the tests.
@@ -182,7 +186,13 @@ public class NodeAgentClientTest extends FakeDBApplication {
           }
         };
 
-    serviceImpl = mock(NodeAgentImplBase.class, delegatesTo(nodeAgentImpl));
+    mockServiceImpl = mock(NodeAgentImplBase.class, delegatesTo(nodeAgentImpl));
+    mockConfGetter = mock(RuntimeConfGetter.class);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentConnectionCacheSize)))
+        .thenReturn(100);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentDescribePollDeadline)))
+        .thenReturn(Duration.ofSeconds(5));
+
     // Generate a unique in-process server name.
     String serverName = InProcessServerBuilder.generateName();
 
@@ -190,7 +200,7 @@ public class NodeAgentClientTest extends FakeDBApplication {
     grpcCleanup.register(
         InProcessServerBuilder.forName(serverName)
             .directExecutor()
-            .addService(serviceImpl)
+            .addService(mockServiceImpl)
             .build()
             .start());
 
@@ -205,8 +215,7 @@ public class NodeAgentClientTest extends FakeDBApplication {
 
     nodeAgentClient =
         new NodeAgentClient(
-            mock(Config.class),
-            mock(RuntimeConfGetter.class),
+            mockConfGetter,
             com.google.inject.util.Providers.of(mock(NodeAgentEnabler.class)),
             config -> channel);
   }

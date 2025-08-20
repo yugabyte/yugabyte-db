@@ -45,7 +45,7 @@
 
 #include <boost/atomic.hpp>
 
-#include "yb/ash/wait_state_fwd.h"
+#include "yb/ash/ash_fwd.h"
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/hybrid_time.h"

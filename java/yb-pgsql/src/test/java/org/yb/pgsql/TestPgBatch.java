@@ -26,6 +26,7 @@ import java.sql.BatchUpdateException;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -489,6 +490,27 @@ public class TestPgBatch extends BasePgSQLTest {
       }
       assertThrows("cannot export/import a snapshot in Batch Execution.",
           BatchUpdateException.class, () -> s.executeBatch());
+    }
+  }
+
+  @Test
+  public void testCopyFromInBatch() throws Throwable {
+    IsolationLevel isolationLevel = RR;
+    setUpTable(0, isolationLevel);
+    String absFilePath = getAbsFilePath("batch-of-copyfrom.txt");
+    createCopyFileInTmpDir(absFilePath, 25, Arrays.asList("k", "v"));
+    try (Connection c = getConnectionBuilder().connect();
+         Statement s = c.createStatement()) {
+      s.addBatch(String.format(
+          "COPY t FROM \'%s\' WITH (FORMAT CSV, HEADER, ROWS_PER_TRANSACTION 10)", absFilePath));
+      s.addBatch(String.format(
+          "COPY t FROM \'%s\' WITH (FORMAT CSV, HEADER, ROWS_PER_TRANSACTION 10)", absFilePath));
+      assertThrows("duplicate key value violates unique constraint",
+          BatchUpdateException.class, () -> s.executeBatch());
+      // ROWS_PER_TRANSACTION is ignored when using batch execution. Both COPY statements are
+      // executed in a single transaction. So, duplicate key errors in the second COPY statement
+      // lead to the whole transaction being rolled back.
+      assertRowSet(s, "SELECT * FROM t", new HashSet<>());
     }
   }
 }

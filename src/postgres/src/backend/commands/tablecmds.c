@@ -838,7 +838,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 
 	if (IsYugaByteEnabled() &&
 		stmt->relation->relpersistence == RELPERSISTENCE_TEMP)
-		YBCDdlEnableForceCatalogModification();
+		YBCRecordTempRelationDDL();
 
 	/*
 	 * Determine the lockmode to use when scanning parents.  A self-exclusive
@@ -1776,7 +1776,7 @@ RemoveRelations(DropStmt *drop)
 	}
 
 	if (only_temp_tables)
-		YBCDdlEnableForceCatalogModification();
+		YBCRecordTempRelationDDL();
 
 	performMultipleDeletions(objects, drop->behavior, flags);
 
@@ -1956,6 +1956,7 @@ ExecuteTruncate(TruncateStmt *stmt, bool yb_is_top_level, List **yb_relids)
 	List	   *relids = NIL;
 	List	   *relids_logged = NIL;
 	ListCell   *cell;
+	bool yb_only_temp_tables = true;
 
 	/*
 	 * Open, exclusive-lock, and check all the explicitly-specified relations
@@ -1978,6 +1979,8 @@ ExecuteTruncate(TruncateStmt *stmt, bool yb_is_top_level, List **yb_relids)
 
 		/* open the relation, we already hold a lock on it */
 		rel = table_open(myrelid, NoLock);
+		yb_only_temp_tables = yb_only_temp_tables &&
+			rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP;
 
 		/*
 		 * RangeVarGetRelidExtended() has done most checks with its callback,
@@ -2008,6 +2011,8 @@ ExecuteTruncate(TruncateStmt *stmt, bool yb_is_top_level, List **yb_relids)
 
 				/* find_all_inheritors already got lock */
 				rel = table_open(childrelid, NoLock);
+				yb_only_temp_tables = yb_only_temp_tables &&
+					rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP;
 
 				/*
 				 * It is possible that the parent table has children that are
@@ -2047,6 +2052,9 @@ ExecuteTruncate(TruncateStmt *stmt, bool yb_is_top_level, List **yb_relids)
 					 errmsg("cannot truncate only a partitioned table"),
 					 errhint("Do not specify the ONLY keyword, or use TRUNCATE ONLY on the partitions directly.")));
 	}
+
+	if (yb_only_temp_tables)
+		YBCRecordTempRelationDDL();
 
 	ExecuteTruncateGuts(rels, relids, relids_logged,
 						stmt->behavior, stmt->restart_seqs, yb_is_top_level);
@@ -4537,7 +4545,7 @@ AlterTable(AlterTableStmt *stmt, LOCKMODE lockmode,
 
 	if (IsYugaByteEnabled() &&
 		rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP)
-		YBCDdlEnableForceCatalogModification();
+		YBCRecordTempRelationDDL();
 
 	ATController(stmt, rel, stmt->cmds, stmt->relation->inh, lockmode, context);
 }
@@ -9284,7 +9292,8 @@ ATExecDropColumn(List **wqueue, AlteredTableInfo *yb_tab, Relation rel,
 	/*
 	 * In YB, dropping a key column requires a table rewrite.
 	 */
-	if (IsYBRelation(rel) && YbIsAttrPrimaryKeyColumn(rel, attnum))
+	if (IsYBRelation(rel) && (YbIsAttrPrimaryKeyColumn(rel, attnum) ||
+							  YbIsAnyDependentGeneratedColPK(rel, attnum)))
 	{
 		/*
 		 * In YB, the ADD/DROP primary key operation involves a table
@@ -9383,6 +9392,7 @@ ATExecDropColumn(List **wqueue, AlteredTableInfo *yb_tab, Relation rel,
 				if (childatt->attinhcount == 1 && !childatt->attislocal)
 				{
 					AlteredTableInfo *yb_childtab = ATGetQueueEntry(wqueue, childrel);
+
 					/* Time to delete this child column, too */
 					ATExecDropColumn(wqueue, yb_childtab, childrel, colName,
 									 behavior, true, true,
@@ -9442,7 +9452,7 @@ ATExecDropColumn(List **wqueue, AlteredTableInfo *yb_tab, Relation rel,
 		 * the ALTER TABLE flow.
 		 */
 		performMultipleDeletions(addrs, behavior,
-								 IsYugaByteEnabled() ? YB_SKIP_YB_DROP_COLUMN : 0);
+								 IsYugaByteEnabled() ? YB_SKIP_YB_DROP_ORIGNAL_COLUMN | YB_SKIP_YB_DROP_PK_COLUMN : 0);
 		free_object_addresses(addrs);
 	}
 
@@ -18512,12 +18522,16 @@ PreCommit_on_commit_actions(void)
 		 */
 		PushActiveSnapshot(GetTransactionSnapshot());
 
+		if (IsYugaByteEnabled() && !YBIsDdlTransactionBlockEnabled())
+			YBIncrementDdlNestingLevel(YB_DDL_MODE_SILENT_ALTERING);
 		/*
 		 * Since this is an automatic drop, rather than one directly initiated
 		 * by the user, we pass the PERFORM_DELETION_INTERNAL flag.
 		 */
 		performMultipleDeletions(targetObjects, DROP_CASCADE,
 								 PERFORM_DELETION_INTERNAL | PERFORM_DELETION_QUIETLY);
+		if (IsYugaByteEnabled() && !YBIsDdlTransactionBlockEnabled())
+			YBDecrementDdlNestingLevel();
 
 		PopActiveSnapshot();
 

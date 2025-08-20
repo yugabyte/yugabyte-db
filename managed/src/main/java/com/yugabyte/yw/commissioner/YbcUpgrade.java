@@ -44,6 +44,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.YbcClient;
 import org.yb.ybc.ControllerStatus;
@@ -51,6 +52,8 @@ import org.yb.ybc.ShutdownRequest;
 import org.yb.ybc.ShutdownResponse;
 import org.yb.ybc.UpgradeResultRequest;
 import org.yb.ybc.UpgradeResultResponse;
+import org.yb.ybc.VersionRequest;
+import org.yb.ybc.VersionResponse;
 
 @Singleton
 @Slf4j
@@ -123,7 +126,7 @@ public class YbcUpgrade {
   }
 
   public void start() {
-    if (config.getBoolean("yb.cloud.enabled")) {
+    if (!confGetter.getGlobalConf(GlobalConfKeys.enableYbcBackgroundUpgrade)) {
       return;
     }
     Duration duration = this.upgradeInterval();
@@ -242,13 +245,14 @@ public class YbcUpgrade {
             }
           });
 
-      while (ybcUpgradeUniverseSet.size() > 0) {
+      if (ybcUpgradeUniverseSet.size() > 0) {
         Iterator<UUID> iter = targetUniverseList.iterator();
         while (iter.hasNext()) {
           UUID universeUUID = iter.next();
           Optional<Universe> optional = Universe.maybeGet(universeUUID);
           if (!optional.isPresent()) {
             iter.remove();
+            removeYBCUpgradeProcess(universeUUID);
             continue;
           } else if (checkYBCUpgradeProcessExists(universeUUID)
               && !failedYBCUpgradeUniverseSet.contains(universeUUID)) {
@@ -268,6 +272,7 @@ public class YbcUpgrade {
           Optional<Universe> optional = Universe.maybeGet(universeUUID);
           if (!optional.isPresent()) {
             iter.remove();
+            removeYBCUpgradeProcessOnK8s(universeUUID);
             continue;
           } else if (checkYBCUpgradeProcessExistsOnK8s(universeUUID)
               && !failedYBCUpgradeUniverseSetOnK8s.contains(universeUUID)) {
@@ -595,6 +600,44 @@ public class YbcUpgrade {
 
   public String getUniverseYbcVersion(UUID universeUUID) {
     return Universe.getOrBadRequest(universeUUID).getUniverseDetails().getYbcSoftwareVersion();
+  }
+
+  public List<String> getUniverseNodeYbcVersions(Universe universe, boolean onlyLive) {
+    List<String> ybcVersions =
+        universe.getNodes().stream()
+            .map(
+                node -> {
+                  YbcClient client = null;
+                  try {
+                    client =
+                        ybcClientService.getNewClient(
+                            node.cloudInfo.private_ip,
+                            universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort,
+                            universe.getCertificateNodetoNode());
+                    if (client != null) {
+                      VersionRequest req = VersionRequest.newBuilder().build();
+                      VersionResponse resp = client.version(req);
+                      return resp.getServerVersion();
+                    }
+                  } catch (Exception e) {
+                    log.error(
+                        "Failed to get YBC version for node {}: {}",
+                        node.cloudInfo.private_ip,
+                        e.getMessage());
+                    return "";
+                  } finally {
+                    ybcClientService.closeClient(client);
+                  }
+                  if (onlyLive) {
+                    log.warn("Skipping node {} as it is not reachable", node.cloudInfo.private_ip);
+                    return null;
+                  } else {
+                    return "UNKNOWN";
+                  }
+                })
+            .filter(version -> version != null && !version.isEmpty())
+            .collect(Collectors.toList());
+    return ybcVersions;
   }
 
   private void placeYbcPackageOnDBNode(Universe universe, NodeDetails node, String ybcVersion) {
