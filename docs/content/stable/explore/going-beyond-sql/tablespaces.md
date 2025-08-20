@@ -240,7 +240,7 @@ CREATE TABLE multi_region_table (id INTEGER, field text)
   TABLESPACE multi_region_wildcard_tablespace;
 ```
 
-Similarly, the tablespace below allows copies to be placed in any zone and region in the `aws` cloud.
+Similarly, the following tablespace allows copies to be placed in any zone and region in the `aws` cloud.
 
 ```sql
 CREATE TABLESPACE aws_wildcard_tablespace
@@ -250,8 +250,6 @@ CREATE TABLESPACE aws_wildcard_tablespace
 CREATE TABLE aws_wildcard_table (id INTEGER, field text)
   TABLESPACE aws_wildcard_tablespace;
 ```
-
-
 
 ## Leader preference
 
