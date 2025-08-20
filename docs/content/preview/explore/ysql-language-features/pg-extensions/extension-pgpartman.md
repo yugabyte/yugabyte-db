@@ -330,7 +330,7 @@ ERROR:  Partition table public.orders is a colocated table hence registering it 
 
 ### xCluster
 
-Depending on the type of xCluster deployment, pgPartman may be used.
+Depending on the type of xCluster deployment, pg_partman may be used.
 
 Note that if you are [using pg_cron to manage tasks](#maintain-partitions-using-pg-cron), you must install it on a separate database that is not part of the xCluster configuration.
 
@@ -340,12 +340,12 @@ For more information on xCluster limitations, refer to [Limitations](../../../..
 
 **Automatic mode**
 
-The pgPartman maintenance cron job can only be enabled on the xCluster primary. Disable it on the xCluster standby.
+The pg_partman maintenance cron job can only be enabled on the xCluster primary. Disable it on the xCluster standby.
 
 During disaster recovery switchover (or failover and repair):
 
-1. Disable the pgPartman cron job on the original xCluster primary before initiating switchover.
-1. After switchover or failover, enable the pgPartman cron job on the new primary.
+1. Disable the pg_partman cron job on the original xCluster primary before initiating switchover.
+1. After switchover or failover, enable the pg_partman cron job on the new primary.
 
 **Semi-automatic mode**
 
@@ -361,17 +361,17 @@ During normal operations, as DDLs occur on the primary universe, do the followin
 
 **Manual DDL change handling mode**
 
-pgPartman is not supported.
+pg_partman is not supported.
 
 #### Non-transactional xCluster (including bi-directional)
 
-pgPartman is not recommended.
+pg_partman is not recommended.
 
-Because pgPartman creates and drops tables, if you were to try to run pgPartman on both universes, the partitions might not be created at the same time on both sides. Even if they were identical, manual work is needed to add the new tables and remove dropped tables from the xCluster configuration.
+Because pg_partman creates and drops tables, if you were to try to run pg_partman on both universes, the partitions might not be created at the same time on both sides. Even if they were identical, manual work is needed to add the new tables and remove dropped tables from the xCluster configuration.
 
-If you were to try to run pgPartman on just one side, then any tables created or dropped by pgPartman would have to be created or dropped on the target, which would require difficult manual administration.
+If you were to try to run pg_partman on just one side, then any tables created or dropped by pg_partman would have to be created or dropped on the target, which would require difficult manual administration.
 
-Although not recommended, it is possible to use pgPartman using the following steps:
+Although not recommended, it is possible to use pg_partman using the following steps:
 
 **Setup**
 
