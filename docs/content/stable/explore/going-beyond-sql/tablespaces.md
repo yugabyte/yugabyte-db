@@ -225,9 +225,9 @@ Time: 337.154 ms
 
 ### Using wildcards for zones
 
-In certain cases, it may be necessary to use the wildcard `*` for a zone in the placement block list. It is mostly useful when there are more than `RF` zones in the cluster, where `RF` is the desired replication factor of the table. In such cases, the wildcard `*` allows choosing for any of the zones in a given region, or any of the regions in a given cloud. 
+Sometimes, you may want to use the wildcard `*` for a zone in the placement block list. This is handy when the number of zones is greater than the replication factor (RF) of your cluster. In these cases, you can use the wildcard to randomly choose any of the zones in a given region, or any of the regions in a given cloud. 
 
-For example, assume a cluster is spread out over regions `us-east-1` (AZs `us-east-1a`, `us-east-1b`), `us-central-1` (AZs `us-central-1a`, `us-central-1b`) and `us-west-1` (AZs `us-west-1a`, `us-west-1b`) and we wish to create an RF3 tablespace. The tablespace below allows copies to be placed in each of the three regions without specifying the exact AZs in those regions. This can increase the resilience of the cluster compared to explicitly specifying exactly one AZ per region. However, note that, in the wildcard placement mode, each AZ in the region must be over-provisioned appropriately to handle the tablets that it may receive from the other AZ's failover.
+For example, assume a cluster is spread out over regions `us-east-1` (AZs `us-east-1a`, `us-east-1b`), `us-central-1` (AZs `us-central-1a`, `us-central-1b`) and `us-west-1` (AZs `us-west-1a`, `us-west-1b`) and you want to create an RF3 tablespace. The tablespace in the following example allows copies to be placed in each of the three regions without specifying the exact AZs in those regions. This can increase the resilience of the cluster compared to explicitly specifying exactly one AZ per region. However, note that when using wildcard placement mode, each AZ in the region must be over-provisioned appropriately to handle the tablets that it may receive from the other AZ's failover.
 
 ```sql
 CREATE TABLESPACE multi_region_wildcard_tablespace

@@ -1421,7 +1421,7 @@ You can verify the new placement information by running the following `curl` com
 curl -s http://<any-master-ip>:7000/cluster-config
 ```
 
-The wildcard `*` can be used to allow placement in any zone in a specific region or any region in a specific cloud. For example, 
+Use the wildcard `*` to allow placement in any zone in a specific region or any region in a specific cloud. For example:
 
 ```sh
 ./bin/yb-admin \
@@ -1430,7 +1430,7 @@ The wildcard `*` can be used to allow placement in any zone in a specific region
     aws.*.*:5 5`
 ```
 
-requests a placement of 5 copies anywhere in the `aws` cloud. Similarly,
+This requests a placement of 5 replicas anywhere in the `aws` cloud. Similarly:
 
 ```sh
 ./bin/yb-admin \
@@ -1438,7 +1438,7 @@ requests a placement of 5 copies anywhere in the `aws` cloud. Similarly,
     modify_placement_info  \
     aws.us-east-1.*:3 3`
 ```
-requests a placement of 3 copies anywhere in the `us-east-1` region of `aws` cloud.
+This requests a placement of 3 replicas anywhere in the `us-east-1` region of `aws` cloud.
 
 
 #### set_preferred_zones
