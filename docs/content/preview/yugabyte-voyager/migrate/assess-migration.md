@@ -213,14 +213,15 @@ For the most accurate migration assessment, the source database must be actively
   After a migration assessment, if you choose to migrate using the open source YugabyteDB, you will be using this same local cluster as your [target database](../../introduction/#target-database).
         {{< /note >}}
 
-    1. To see the Voyager migration workflow details in the UI, set the following configuration parameters before starting the migration:
+    1. To see the Voyager migration workflow details in the UI, set the following configuration parameters before starting the assessment:
 
         ```yaml
         ### Control plane type refers to the deployment type of YugabyteDB
         control-plane-type: yugabyted
 
         ### YSQL connection string
-        ### Provide the standard PostgreSQL connection parameters, including user name, host name, and port. For example, postgresql://yugabyte:yugabyte@127.0.0.1:5433
+        ### Provide the standard PostgreSQL connection parameters, including user name,
+        ### host name, and port. For example, postgresql://yugabyte:yugabyte@127.0.0.1:5433
         yugabyted-db-conn-string: postgresql://yugabyte:yugabyte@127.0.0.1:5433
         ```
 
@@ -242,7 +243,7 @@ Based on the sizing recommendations in the assessment report, do the following w
 1. Create your target YugabyteDB cluster in [Enhanced PostgreSQL Compatibility Mode](../../../develop/postgresql-compatibility/).
 
     For a universe in YugabyteDB Anywhere, [enable compatibility mode](../../../develop/postgresql-compatibility/#yugabytedb-anywhere) by setting flags on the universe.
-1. Create a database with colocation set to TRUE.
+1. Create a database with [colocation](../../../explore/colocation/#databases) set to TRUE.
         {{</tip>}}
 
 1. Proceed with migration with one of the migration workflows:
