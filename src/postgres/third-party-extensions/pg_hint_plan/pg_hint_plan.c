@@ -2125,6 +2125,13 @@ get_hints_from_table(const char *client_query, const char *client_application)
 	text   *qry;
 	text   *app;
 
+	if (IsYugaByteEnabled() && yb_enable_planner_trace)
+	{
+		ereport(DEBUG1,
+				(errmsg("\nget_hints_from_table : using hint table cache? %s",
+						yb_enable_hint_table_cache ? "true" : "false")));
+	}
+
 	if (IsYugaByteEnabled() && yb_enable_hint_table_cache)
 	{
 		bool found;
@@ -2146,6 +2153,15 @@ get_hints_from_table(const char *client_query, const char *client_application)
 		return NULL;
 	}
 
+	/*
+ 	 * YB GH26621 
+	 *
+	 * Save and restore current_hint_retrieved flag since we could change
+	 * its value if not using the hint table cache. In particular,
+	 * pg_hint_ExecutorEnd() sets the value to FALSE when we are 
+	 * at the top of a PL recursion level.
+	 */
+	bool yb_save_current_hint_retrieved = current_hint_retrieved;
 	PG_TRY();
 	{
 		bool snapshot_set = false;
@@ -2198,10 +2214,12 @@ get_hints_from_table(const char *client_query, const char *client_application)
 			PopActiveSnapshot();
 
 		hint_inhibit_level--;
+		current_hint_retrieved = yb_save_current_hint_retrieved;
 	}
 	PG_CATCH();
 	{
 		hint_inhibit_level--;
+		current_hint_retrieved = yb_save_current_hint_retrieved;
 		PG_RE_THROW();
 	}
 	PG_END_TRY();

@@ -160,6 +160,8 @@ class AbstractCloud(AbstractCommandParser):
             ansible.playbook_args["cloud_zone"] = args.zone
         if hasattr(args, "custom_ssh_port") and args.custom_ssh_port:
             ansible.playbook_args["custom_ssh_port"] = args.custom_ssh_port
+        if args.ansible_keep_remote_files:
+            ansible.keep_remote_files = True
         return ansible
 
     def add_extra_args(self):
@@ -168,6 +170,10 @@ class AbstractCloud(AbstractCommandParser):
         self.parser.add_argument("--region", required=False)
         self.parser.add_argument("--zone", required=False)
         self.parser.add_argument("--network", required=False)
+        self.parser.add_argument("--systemd_debug", action="store_true", default=False,
+                                 required=False)
+        self.parser.add_argument("--ansible_keep_remote_files", action="store_true", default=False,
+                                 required=False)
 
     def add_subcommand(self, command):
         """Subclass override to set a reference to the cloud into the subcommands we add.
@@ -179,7 +185,8 @@ class AbstractCloud(AbstractCommandParser):
         updated_vars = {
             "process": process,
             "command": command,
-            "ssh2_enabled": args.ssh2_enabled
+            "ssh2_enabled": args.ssh2_enabled,
+            "systemd_debug": args.systemd_debug,
         }
         if args.systemd_services:
             updated_vars.update({"systemd_services": args.systemd_services})

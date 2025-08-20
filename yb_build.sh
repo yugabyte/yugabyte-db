@@ -102,7 +102,7 @@ set_vars_for_cxx_test() {
   test_existence_check=false
 }
 
-# shellcheck disable=SC2317
+# shellcheck disable=SC2317,SC2329
 print_report_line() {
   local format_suffix=$1
   shift
@@ -111,7 +111,7 @@ print_report_line() {
 
 # Report the time taken for a particular operation, based on the start and end time variables.
 # If these variables are not set, then no report line is printed.
-# shellcheck disable=SC2317
+# shellcheck disable=SC2317,SC2329
 report_time() {
   expect_num_args 2 "$@"
   local description=$1
@@ -129,7 +129,7 @@ report_time() {
   fi
 }
 
-# shellcheck disable=SC2317
+# shellcheck disable=SC2317,SC2329
 print_report() {
   if [[ ${show_report} == "true" ]]; then
     (
@@ -514,7 +514,7 @@ disable_initdb() {
   export YB_SKIP_INITIAL_SYS_CATALOG_SNAPSHOT=1
 }
 
-# shellcheck disable=SC2317
+# shellcheck disable=SC2317,SC2329
 cleanup() {
   local YB_BUILD_EXIT_CODE=$?
   print_report

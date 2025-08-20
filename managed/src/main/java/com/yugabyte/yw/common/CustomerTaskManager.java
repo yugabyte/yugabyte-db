@@ -43,6 +43,7 @@ import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.MetricsExportConfigParams;
+import com.yugabyte.yw.forms.QueryLogConfigParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
@@ -886,6 +887,17 @@ public class CustomerTaskManager {
           }
         }
         break;
+      case ModifyQueryLoggingConfig:
+        taskParams = Json.fromJson(oldTaskParams, QueryLogConfigParams.class);
+        QueryLogConfigParams queryLogConfigParams = (QueryLogConfigParams) taskParams;
+        if (queryLogConfigParams != null && queryLogConfigParams.getUniverseUUID() != null) {
+          Universe universe = Universe.getOrBadRequest(queryLogConfigParams.getUniverseUUID());
+          if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(universe)) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                "Cannot retry modifying query logging task as YSQL major upgrade is in progress.");
+          }
+        }
       case ModifyMetricsExportConfig:
         taskParams = Json.fromJson(oldTaskParams, MetricsExportConfigParams.class);
         break;

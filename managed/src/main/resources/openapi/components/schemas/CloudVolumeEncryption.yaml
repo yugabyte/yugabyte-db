@@ -1,0 +1,13 @@
+title: CloudVolumeEncryption
+description: Volume encryption settings for cloud volumes (currently AWS EBS volumes only)
+type: object
+properties:
+  enable_volume_encryption:
+    description: To enable volume encryption or not
+    type: boolean
+    default: false
+  kms_config_uuid:
+    description: KMS config UUID to be used for volume encryption
+    type: string
+    format: uuid
+    example: 123e4567-e89b-12d3-a456-426614174000

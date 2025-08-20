@@ -1,4 +1,4 @@
-import _ from 'lodash';
+import _, { omit } from 'lodash';
 import { browserHistory } from 'react-router';
 import { toast } from 'react-toastify';
 import {
@@ -27,6 +27,7 @@ import {
 } from './constants';
 import { api } from './api';
 import { getPlacementsFromCluster } from '../form/fields/PlacementsField/PlacementsFieldHelper';
+import { isDefinedNotNull } from '@app/utils/ObjectUtils';
 import {
   compareYBSoftwareVersions,
   isVersionStable
@@ -377,6 +378,10 @@ export const getUserIntent = (
 
   if (instanceConfig.enableYCQLAuth && instanceConfig.ycqlPassword)
     intent.ycqlPassword = instanceConfig.ycqlPassword;
+
+  if(!instanceConfig.deviceInfo?.cloudVolumeEncryption?.enableVolumeEncryption || !isDefinedNotNull(instanceConfig.deviceInfo?.cloudVolumeEncryption?.kmsConfigUUID)){
+    intent.deviceInfo = omit(intent.deviceInfo, 'cloudVolumeEncryption');
+  }
 
   return intent;
 };

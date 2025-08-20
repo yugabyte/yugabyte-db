@@ -9,7 +9,12 @@ import {
 } from './steps/resilence-regions/dtos';
 import { AvailabilityZone, ClusterType, Region } from '../../helpers/dtos';
 import { OtherAdvancedProps } from './steps/advanced-settings/dtos';
-import { ClusterNodeSpec, CommunicationPortsSpec, PlacementRegion, UniverseCreateReqBody } from '../../../v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import {
+  ClusterNodeSpec,
+  CommunicationPortsSpec,
+  PlacementRegion,
+  UniverseCreateReqBody
+} from '../../../v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { CloudType, DeviceInfo } from '@app/redesign/features/universe/universe-form/utils/dto';
 
 export function getCreateUniverseSteps(t: TFunction, resilienceType?: ResilienceType) {
@@ -335,8 +340,10 @@ export const mapCreateUniversePayload = (
             tserver: {
               ...gflags.tserver
             },
-            
-            ...(databaseSettings.enablePGCompatibitilty && {["gflag_groups"] : ['ENHANCED_POSTGRES_COMPATIBILITY']})
+
+            ...(databaseSettings.enablePGCompatibitilty && {
+              ['gflag_groups']: ['ENHANCED_POSTGRES_COMPATIBILITY']
+            })
           },
           instance_tags: otherAdvancedSettings.instanceTags.reduce((acc, tag) => {
             acc[tag.name] = tag.value;
@@ -346,7 +353,10 @@ export const mapCreateUniversePayload = (
             enable_lb: true,
             enable_exposing_service: 'UNEXPOSED',
             proxy_config: {
-              http_proxy: proxySettings.enableProxyServer ? `${proxySettings.webProxy}` : '',
+              http_proxy:
+                proxySettings.enableProxyServer && proxySettings.webProxy
+                  ? `${proxySettings.webProxyServer}:${proxySettings.webProxyPort}`
+                  : '',
               https_proxy: proxySettings.secureWebProxy
                 ? `${proxySettings.secureWebProxyServer}:${proxySettings.secureWebProxyPort}`
                 : '',
@@ -431,7 +441,6 @@ const mapGFlags = (
 };
 
 const fillNodeSpec = (deviceType?: string | null, deviceInfo?: DeviceInfo | null) => {
-
   if (!deviceInfo || !deviceType) {
     throw new Error('Instance settings are required to fill node spec');
   }
@@ -455,7 +464,7 @@ export const getNodeSpec = (formContext: createUniverseFormProps): ClusterNodeSp
   }
   if (!nodesAvailabilitySettings.useDedicatedNodes) {
     return fillNodeSpec(instanceSettings.instanceType, instanceSettings.deviceInfo);
-  };
+  }
 
   if (nodesAvailabilitySettings.useDedicatedNodes) {
     if (instanceSettings.keepMasterTserverSame) {
@@ -468,7 +477,7 @@ export const getNodeSpec = (formContext: createUniverseFormProps): ClusterNodeSp
       return {
         k8s_master_resource_spec: {
           cpu_core_count: instanceSettings.masterK8SNodeResourceSpec?.cpuCoreCount,
-          memory_gib: instanceSettings.masterK8SNodeResourceSpec?.memoryGib,
+          memory_gib: instanceSettings.masterK8SNodeResourceSpec?.memoryGib
         },
         k8s_tserver_resource_spec: {
           cpu_core_count: instanceSettings.tserverK8SNodeResourceSpec?.cpuCoreCount,
@@ -476,7 +485,7 @@ export const getNodeSpec = (formContext: createUniverseFormProps): ClusterNodeSp
         }
       };
     }
-  };
+  }
   return {
     master: fillNodeSpec(instanceSettings.masterInstanceType, instanceSettings.masterDeviceInfo),
     tserver: fillNodeSpec(instanceSettings.instanceType, instanceSettings.deviceInfo)

@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/sirupsen/logrus"
 	ybaclient "github.com/yugabyte/platform-go-client"
@@ -168,22 +167,12 @@ func (c *Context) CronExpression() string {
 
 // NextTaskTime fetches Schedule Next Task Time
 func (c *Context) NextTaskTime() string {
-	nextTime := c.s.GetNextScheduleTaskTime()
-	if nextTime.IsZero() {
-		return ""
-	}
-	return nextTime.Format(time.RFC1123Z)
-
+	return util.PrintCustomTime(c.s.GetNextScheduleTaskTime())
 }
 
 // NextIncrementTaskTime fetches Schedule Next Increment Task Time
 func (c *Context) NextIncrementTaskTime() string {
-	nextIncrementTaskTime := c.s.GetNextIncrementScheduleTaskTime()
-	if nextIncrementTaskTime.IsZero() {
-		return ""
-	}
-	return nextIncrementTaskTime.Format(time.RFC1123Z)
-
+	return util.PrintCustomTime(c.s.GetNextIncrementScheduleTaskTime())
 }
 
 // TaskType fetches Schedule Task Type

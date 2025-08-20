@@ -51,8 +51,7 @@ static inline void od_worker(void *arg)
 			if (coroutine_id == -1) {
 				od_error(&instance->logger, "worker", client,
 					 NULL, "failed to create coroutine");
-				od_io_close(&client->io);
-				od_client_free(client);
+				od_client_free_extended(client);
 				od_atomic_u32_dec(&router->clients_routing);
 				break;
 			}

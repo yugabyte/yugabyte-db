@@ -139,11 +139,18 @@ DEFINE_RUNTIME_AUTO_bool(ysql_skip_row_lock_for_update, kExternal, true, false,
 DEFINE_RUNTIME_bool(vector_index_skip_filter_check, false,
                     "Whether to skip filter check during vector index search.");
 
+DEFINE_RUNTIME_bool(vector_index_no_deletions_skip_filter_check, true,
+    "Whether to skip filter check during vector index search if table does not have "
+    "updates/deletions.");
+
 DECLARE_uint64(rpc_max_message_size);
 DECLARE_double(max_buffer_size_to_rpc_limit_ratio);
 DECLARE_bool(vector_index_dump_stats);
 
 namespace yb::docdb {
+
+bool TEST_vector_index_filter_allowed = true;
+size_t TEST_vector_index_max_checked_entries = std::numeric_limits<size_t>::max();
 
 using dockv::DocKey;
 using dockv::DocPath;
@@ -834,21 +841,22 @@ class VectorIndexKeyProvider {
       DocVectorIndexSearchResult& search_result, PgsqlResponsePB& response,
       DocVectorIndex& vector_index, Slice vector_slice, size_t num_top_vectors_to_remove,
       size_t max_results, WriteBuffer& result_buffer)
-      : search_result_(search_result), response_(response), vector_index_(vector_index),
+      : could_have_more_data_(search_result.could_have_more_data),
+        result_entries_(search_result.entries), response_(response), vector_index_(vector_index),
         vector_slice_(vector_slice), num_top_vectors_to_remove_(num_top_vectors_to_remove),
         max_results_(max_results), result_buffer_(result_buffer) {}
 
   Slice FetchKey() {
-    if (index_ >= search_result_.size()) {
+    if (index_ >= result_entries_.size()) {
       return Slice();
     }
     // TODO(vector_index) When row came from intents, we already have all necessary data,
     // so could avoid refetching it.
-    return search_result_[index_++].key.AsSlice();
+    return result_entries_[index_++].key.AsSlice();
   }
 
   void AddedKeyToResultSet() {
-    response_.add_vector_index_distances(search_result_[index_ - 1].encoded_distance);
+    response_.add_vector_index_distances(result_entries_[index_ - 1].encoded_distance);
     response_.add_vector_index_ends(result_buffer_.size());
   }
 
@@ -863,45 +871,47 @@ class VectorIndexKeyProvider {
                    vector_index_.column_id(), projection);
     // TODO(vector_index) Use limit during prefetch.
     dockv::PgTableRow table_row(projection);
-    size_t old_size = search_result_.size();
+    size_t old_size = result_entries_.size();
     while (VERIFY_RESULT(iterator.FetchNextMatch(&table_row))) {
       auto vector_value = table_row.GetValueByIndex(indexed_column_index);
       RSTATUS_DCHECK(vector_value, Corruption, "Vector column ($0) missing in row: $1",
                      vector_index_.column_id(), table_row.ToString());
       auto encoded_value = dockv::EncodedDocVectorValue::FromSlice(vector_value->binary_value());
-      search_result_.push_back(DocVectorIndexSearchResultEntry {
+      result_entries_.push_back(DocVectorIndexSearchResultEntry {
         // TODO(vector_index) Avoid decoding vector_slice for each vector
         .encoded_distance = VERIFY_RESULT(vector_index_.Distance(
             vector_slice_, encoded_value.data)),
         .key = KeyBuffer(iterator.impl().GetTupleId()),
       });
     }
-    found_intents_ = search_result_.size() - old_size;
+    found_intents_ = result_entries_.size() - old_size;
     prefetch_done_time_ = MonoTime::NowIf(FLAGS_vector_index_dump_stats);
 
     auto cmp_keys = [](const auto& lhs, const auto& rhs) {
       return lhs.key < rhs.key;
     };
-    std::ranges::sort(search_result_, cmp_keys);
+    std::ranges::sort(result_entries_, cmp_keys);
 
     if (found_intents_) {
-      auto range = std::ranges::unique(search_result_, [](const auto& lhs, const auto& rhs) {
+      auto range = std::ranges::unique(result_entries_, [](const auto& lhs, const auto& rhs) {
         return lhs.key == rhs.key;
       });
-      search_result_.erase(range.begin(), range.end());
+      result_entries_.erase(range.begin(), range.end());
     }
 
-    if (search_result_.size() > max_results_ || num_top_vectors_to_remove_ != 0) {
-      std::ranges::sort(search_result_, [](const auto& lhs, const auto& rhs) {
+    could_have_more_data_ = could_have_more_data_ || result_entries_.size() >= max_results_;
+    if (result_entries_.size() > max_results_ || num_top_vectors_to_remove_ != 0) {
+      std::ranges::sort(result_entries_, [](const auto& lhs, const auto& rhs) {
         return lhs.encoded_distance < rhs.encoded_distance;
       });
-      search_result_.erase(
-          search_result_.begin(), search_result_.begin() + num_top_vectors_to_remove_);
-      std::ranges::sort(search_result_, cmp_keys);
+      result_entries_.erase(
+          result_entries_.begin(), result_entries_.begin() + num_top_vectors_to_remove_);
+      std::ranges::sort(result_entries_, cmp_keys);
     }
 
     merge_done_time_ = MonoTime::NowIf(FLAGS_vector_index_dump_stats);
 
+    response_.set_vector_index_could_have_more_data(could_have_more_data_);
     return Status::OK();
   }
 
@@ -918,7 +928,8 @@ class VectorIndexKeyProvider {
   }
 
  private:
-  DocVectorIndexSearchResult& search_result_;
+  bool could_have_more_data_;
+  DocVectorIndexSearchResultEntries& result_entries_;
   PgsqlResponsePB& response_;
   DocVectorIndex& vector_index_;
   Slice vector_slice_;
@@ -948,12 +959,21 @@ class PgsqlVectorFilter {
         << "VI_STATS: PgsqlVectorFilter, checked: " << num_checked_entries_ << ", accepted: "
         << num_accepted_entries_ << ", num removed: " << num_removed_
         << (iter_.has_filter() ? Format(", found: $0", num_found_entries_) : "");
+    DCHECK_LE(num_checked_entries_, TEST_vector_index_max_checked_entries);
   }
 
-  Status Init(const PgsqlReadOperationData& data) {
+  Result<bool> Init(const PgsqlReadOperationData& data) {
     if (FLAGS_vector_index_skip_filter_check) {
-      return Status::OK();
+      return false;
     }
+    if (!data.table_has_vector_deletion && !iter_.has_filter() &&
+        FLAGS_vector_index_no_deletions_skip_filter_check) {
+      LOG_IF(INFO, FLAGS_vector_index_dump_stats)
+          << "VI_STATS: PgsqlVectorFilter, "
+             "skip because filter not specified and table does not have deletions";
+      return false;
+    }
+    CHECK(TEST_vector_index_filter_allowed);
     std::vector<ColumnId> columns;
     ColumnId index_column = data.vector_index->column_id();
     for (const auto& col_ref : data.request.col_refs()) {
@@ -969,7 +989,8 @@ class PgsqlVectorFilter {
     dockv::ReaderProjection projection;
     projection_.Init(data.doc_read_context.schema(), columns);
     row_.emplace(projection_);
-    return iter_.InitForYbctid(data, projection_, data.doc_read_context, {});
+    RETURN_NOT_OK(iter_.InitForYbctid(data, projection_, data.doc_read_context, {}));
+    return true;
   }
 
   bool operator()(const vector_index::VectorId& vector_id) {
@@ -2722,7 +2743,7 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
 
   table_iter_.reset();
   PgsqlVectorFilter filter(&table_iter_);
-  RETURN_NOT_OK(filter.Init(data_));
+  auto could_have_missing_entries = !VERIFY_RESULT(filter.Init(data_));
   RSTATUS_DCHECK(
       data_.vector_index->BackfillDone(), IllegalState,
       "Vector index query on non ready index: $0", *data_.vector_index);
@@ -2732,15 +2753,16 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
         .max_num_results = max_results,
         .ef = options.hnsw_options().ef_search(),
         .filter = std::ref(filter),
-      }
+      },
+      could_have_missing_entries
   ));
 
   // TODO(vector_index) Order keys by ybctid for fetching.
   auto dump_stats = FLAGS_vector_index_dump_stats;
   auto read_start_time = MonoTime::NowIf(dump_stats);
   VectorIndexKeyProvider key_provider(
-      result, response_, *data_.vector_index, vector_slice, options.num_top_vectors_to_remove(),
-      max_results, *result_buffer_);
+      result, response_, *data_.vector_index, vector_slice,
+      options.num_top_vectors_to_remove(), max_results, *result_buffer_);
   auto res = ExecuteBatchKeys(key_provider);
   LOG_IF(INFO, dump_stats)
       << "VI_STATS: Read rows data time: "

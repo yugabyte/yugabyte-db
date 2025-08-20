@@ -482,3 +482,45 @@ export const formatTimestampWithTz = (timestamp: string | number | Date): string
   }
   return `${year}-${month}-${day} ${hour}:${minute}:${second} ${tz}`;
 };
+
+export const truncateString = (str: string, maxLength: number = 45): string => {
+  if (str.length <= maxLength) return str;
+  return `${str.substring(0, maxLength - 3)}...`;
+};
+
+// Copies text to clipboard with a DOM fallback. Use onSuccess/onError to show toasts.
+export const copyToClipboard = async (
+  text: string,
+  opts?: { onSuccess?: () => void; onError?: (message?: string) => void }
+): Promise<void> => {
+  try {
+    if (navigator.clipboard && (window as any).isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      opts?.onSuccess?.();
+      return;
+    }
+
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.left = '-999999px';
+    textArea.style.top = '-999999px';
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    try {
+      const successful = document.execCommand('copy');
+      document.body.removeChild(textArea);
+      if (successful) {
+        opts?.onSuccess?.();
+      } else {
+        opts?.onError?.('Copy failed');
+      }
+    } catch (err) {
+      document.body.removeChild(textArea);
+      opts?.onError?.('Copy operation not supported');
+    }
+  } catch (err) {
+    opts?.onError?.('Failed to copy to clipboard');
+  }
+};

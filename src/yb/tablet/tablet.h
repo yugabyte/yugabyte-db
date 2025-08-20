@@ -1038,13 +1038,10 @@ class Tablet : public AbstractTablet,
 
   std::string LogPrefix(docdb::StorageDbType db_type) const;
 
-  Result<bool> IsQueryOnlyForTablet(const PgsqlReadRequestPB& pgsql_read_request,
-      size_t row_count) const;
+  bool MayTargetMultipleTablets(
+      const PgsqlReadRequestPB& pgsql_read_request, size_t row_count) const;
 
-  Result<bool> HasScanReachedMaxPartitionKey(
-      const PgsqlReadRequestPB& pgsql_read_request,
-      const std::string& partition_key,
-      size_t row_count) const;
+  const std::string* NextReadPartitionKey(const PgsqlReadRequestPB& pgsql_read_request) const;
 
   Status TriggerManualCompactionSyncUnsafe(
       rocksdb::CompactionReason reason,

@@ -71,12 +71,12 @@ TEST_F(YBAdminMultiMasterTest, InitialMasterAddresses) {
   HostPort non_leader_hp = non_leader->bound_rpc_hostport();
   std::string output1;
   ASSERT_OK(Subprocess::Call(ToStringVector(
-      admin_path, "-init_master_addrs", non_leader_hp.ToString(),
+      admin_path, "--init_master_addrs", non_leader_hp.ToString(),
       "list_all_masters"), &output1));
   LOG(INFO) << "init_master_addrs: list_all_masters: " << output1;
   std::string output2;
   ASSERT_OK(Subprocess::Call(ToStringVector(
-      admin_path, "-master_addresses", cluster_->GetMasterAddresses(),
+      admin_path, "--master_addresses", cluster_->GetMasterAddresses(),
       "list_all_masters"), &output2));
   LOG(INFO) << "full master_addresses: list_all_masters: " << output2;
   ASSERT_EQ(output1, output2);
@@ -85,12 +85,12 @@ TEST_F(YBAdminMultiMasterTest, InitialMasterAddresses) {
   output2.clear();
 
   ASSERT_OK(Subprocess::Call(ToStringVector(
-      admin_path, "-init_master_addrs", non_leader_hp.ToString(),
+      admin_path, "--init_master_addrs", non_leader_hp.ToString(),
       "get_universe_config"), &output1));
   // Remove the time output from list_all_tablet_servers since it doesn't match
   LOG(INFO) << "init_master_addrs: get_universe_config: " << output1;
   ASSERT_OK(Subprocess::Call(ToStringVector(
-      admin_path, "-master_addresses", cluster_->GetMasterAddresses(),
+      admin_path, "--master_addresses", cluster_->GetMasterAddresses(),
       "get_universe_config"), &output2));
   LOG(INFO) << "full master_addresses: get_universe_config: " << output2;
   ASSERT_EQ(output1, output2);
@@ -108,7 +108,7 @@ void YBAdminMultiMasterTest::TestRemoveDownMaster(UseUUID use_uuid) {
 
   std::string output2;
   ASSERT_OK(Subprocess::Call(ToStringVector(
-      admin_path, "-master_addresses", cluster_->GetMasterAddresses(),
+      admin_path, "--master_addresses", cluster_->GetMasterAddresses(),
       "list_all_masters"), &output2));
   LOG(INFO) << "list_all_masters \n" << output2;
   const auto lines2 = StringSplit(output2, '\n');
@@ -116,7 +116,7 @@ void YBAdminMultiMasterTest::TestRemoveDownMaster(UseUUID use_uuid) {
 
   std::string output3;
   auto args = ToStringVector(
-      admin_path, "-master_addresses", cluster_->GetMasterAddresses(), "change_master_config",
+      admin_path, "--master_addresses", cluster_->GetMasterAddresses(), "change_master_config",
       "REMOVE_SERVER", addr.host(), addr.port());
   if (use_uuid) {
     args.push_back(uuid);
@@ -126,7 +126,7 @@ void YBAdminMultiMasterTest::TestRemoveDownMaster(UseUUID use_uuid) {
 
   std::string output4;
   ASSERT_OK(Subprocess::Call(ToStringVector(
-      admin_path, "-master_addresses", cluster_->GetMasterAddresses(),
+      admin_path, "--master_addresses", cluster_->GetMasterAddresses(),
       "list_all_masters"), &output4));
   LOG(INFO) << "list_all_masters \n" << output4;
   const auto lines4 = StringSplit(output4, '\n');
@@ -149,7 +149,7 @@ TEST_F(YBAdminMultiMasterTest, AddShellMaster) {
 
   std::string output2;
   ASSERT_OK(Subprocess::Call(ToStringVector(
-      admin_path, "-master_addresses", cluster_->GetMasterAddresses(),
+      admin_path, "--master_addresses", cluster_->GetMasterAddresses(),
       "list_all_masters"), &output2));
   LOG(INFO) << "list_all_masters \n" << output2;
   const auto lines2 = StringSplit(output2, '\n');
@@ -162,13 +162,13 @@ TEST_F(YBAdminMultiMasterTest, AddShellMaster) {
 
   std::string output3;
   ASSERT_OK(Subprocess::Call(ToStringVector(
-      admin_path, "-master_addresses", cluster_->GetMasterAddresses(),
+      admin_path, "--master_addresses", cluster_->GetMasterAddresses(),
       "change_master_config", "ADD_SERVER", shell_addr.host(), shell_addr.port()), &output3));
   LOG(INFO) << "change_master_config: ADD_SERVER\n" << output3;
 
   std::string output4;
   ASSERT_OK(Subprocess::Call(ToStringVector(
-      admin_path, "-master_addresses", cluster_->GetMasterAddresses(),
+      admin_path, "--master_addresses", cluster_->GetMasterAddresses(),
       "list_all_masters"), &output4));
   LOG(INFO) << "list_all_masters \n" << output4;
   const auto lines4 = StringSplit(output4, '\n');
@@ -184,7 +184,7 @@ TEST_F(YBAdminMultiMasterTest, TestMasterLeaderStepdown) {
       admin_path = GetToolPath(kAdminToolName),
       master_address = ToString(cluster_->GetMasterAddresses())] (
       const std::initializer_list<std::string>& args) mutable {
-    auto cmds = ToStringVector(admin_path, "-master_addresses", master_address);
+    auto cmds = ToStringVector(admin_path, "--master_addresses", master_address);
     std::copy(args.begin(), args.end(), std::back_inserter(cmds));
     return Subprocess::Call(cmds, &out);
   };

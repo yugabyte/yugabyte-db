@@ -23,7 +23,8 @@ import {
   PROVIDER_FIELD,
   MASTER_PLACEMENT_FIELD,
   DEVICE_INFO_FIELD,
-  LINUX_VERSION_FIELD
+  LINUX_VERSION_FIELD,
+  ENABLE_EBS_CONFIG_FIELD
 } from '../../../utils/constants';
 import { useSectionStyles } from '../../../universeMainStyle';
 import { CPUArchField } from '../../fields/CPUArchField/CPUArchField';
@@ -32,6 +33,8 @@ import {
   VM_PATCHING_RUNTIME_CONFIG,
   isImgBundleSupportedByProvider
 } from '../../../../../../../components/configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
+import { EBSVolumeField } from '../../fields/EBSVolumeField/EBSVolumeField';
+import { EBSKmsConfigField } from '../../fields/EBSVolumeField/EBSKmsConfigField';
 import { getDiffHours } from '../../../../../../helpers/DateUtils';
 import { isNonEmptyString } from '../../../../../../../utils/ObjectUtils';
 import { useQuery } from 'react-query';
@@ -80,6 +83,10 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
     (c: RunTimeConfigEntry) => c.key === VM_PATCHING_RUNTIME_CONFIG
   )?.value;
 
+  const ebsVolumeEnabledInRuntimeConfig = runtimeConfigs?.configEntries?.find(
+    (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.ENABLE_EBS_VOLUME
+  )?.value === 'true';
+
   //form context
   const { getValues, setValue } = useFormContext<UniverseFormData>();
   const { mode, clusterType, newUniverse, universeConfigureTemplate, isViewMode } = useContext(
@@ -94,6 +101,8 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
   //field data
   const provider = useWatch({ name: PROVIDER_FIELD });
   const deviceInfo = useWatch({ name: DEVICE_INFO_FIELD });
+  const ebsEnabled = useWatch({ name: ENABLE_EBS_CONFIG_FIELD });
+
   const masterPlacement = isPrimary
     ? useWatch({ name: MASTER_PLACEMENT_FIELD })
     : getValues(MASTER_PLACEMENT_FIELD);
@@ -215,6 +224,22 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
               <StorageTypeField isViewMode={isViewMode} isEditMode={!isCreateMode} />
             </Box>
           )}
+
+        {
+         ebsVolumeEnabledInRuntimeConfig && provider?.code === CloudType.aws && (
+            <Box width="50%" mt={2}>
+              <EBSVolumeField disabled={!isCreatePrimary} />
+            </Box>
+          )
+        }
+        {
+          ebsVolumeEnabledInRuntimeConfig && provider?.code === CloudType.aws && ebsEnabled && (
+            <Box mt={2} mb={2}>
+              <EBSKmsConfigField disabled={!isCreatePrimary} />
+            </Box>
+          )
+        }
+
       </Box>
     </Box>
   );

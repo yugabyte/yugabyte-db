@@ -20,3 +20,17 @@ CREATE TABLEGROUP grp_with_spc TABLESPACE tsp1;
 CREATE TABLE tbl_with_grp_with_spc (a int) WITH (autovacuum_enabled = true) TABLEGROUP grp_with_spc;
 
 DROP TABLESPACE tsp_dropped;
+
+ALTER ROLE regress_priv_user7 SET log_min_messages TO 'LOG';
+ALTER ROLE regress_priv_user8 IN DATABASE yugabyte SET log_min_messages TO 'LOG';
+
+-- Create and set profile.
+CREATE PROFILE profile_3_failed LIMIT FAILED_LOGIN_ATTEMPTS 3;
+ALTER ROLE regress_priv_user7 PROFILE profile_3_failed;
+
+-- Simulate 4 failed login attempts for user regress_priv_user7.
+UPDATE pg_catalog.pg_yb_role_profile
+SET rolprfstatus = 'l',
+    rolprffailedloginattempts = 4
+WHERE rolprfrole = (SELECT oid FROM pg_roles WHERE rolname = 'regress_priv_user7')
+  AND rolprfprofile = (SELECT oid FROM pg_yb_profile WHERE prfname = 'profile_3_failed');

@@ -238,6 +238,8 @@ class FrontierSchemaVersionUpdater {
   SchemaVersion max_schema_version_ = std::numeric_limits<SchemaVersion>::min();
 };
 
+using ApplyIntentsContextCompleteListener = boost::function<void(const ConsensusFrontiers&)>;
+
 class ApplyIntentsContext : public IntentsWriterContext, public FrontierSchemaVersionUpdater {
  public:
   ApplyIntentsContext(
@@ -254,7 +256,8 @@ class ApplyIntentsContext : public IntentsWriterContext, public FrontierSchemaVe
       ConsensusFrontiers& frontiers,
       rocksdb::DB* intents_db,
       const DocVectorIndexesPtr& vector_indexes,
-      const StorageSet& apply_to_storages);
+      const StorageSet& apply_to_storages,
+      ApplyIntentsContextCompleteListener complete_listener);
 
   void Start(const boost::optional<Slice>& first_key) override;
 
@@ -298,6 +301,7 @@ class ApplyIntentsContext : public IntentsWriterContext, public FrontierSchemaVe
   std::shared_ptr<const dockv::SchemaPacking> schema_packing_;
   SchemaVersion schema_packing_version_ = std::numeric_limits<SchemaVersion>::max();
   KeyBuffer schema_packing_table_prefix_;
+  ApplyIntentsContextCompleteListener complete_listener_;
 };
 
 class RemoveIntentsContext : public IntentsWriterContext {

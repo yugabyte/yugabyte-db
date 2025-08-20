@@ -23,6 +23,7 @@ import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.telemetry.ProviderType;
 import io.ebean.annotation.Transactional;
 import java.util.Collection;
@@ -232,6 +233,20 @@ public class TelemetryProviderService {
 
         // Check if the provider is in the list of export configs in the audit log config.
         for (UniverseLogsExporterConfig config : universeLogsExporterConfigs) {
+          if (config != null && providerUUID.equals(config.getExporterUuid())) {
+            return true;
+          }
+        }
+      }
+
+      // Check if the provider is in the list of query log exporters.
+      if (primaryUserIntent.getQueryLogConfig() != null
+          && primaryUserIntent.getQueryLogConfig().getUniverseLogsExporterConfig() != null) {
+        List<UniverseQueryLogsExporterConfig> universeLogsExporterConfigs =
+            primaryUserIntent.getQueryLogConfig().getUniverseLogsExporterConfig();
+
+        // Check if the provider is in the list of export configs in the audit log config.
+        for (UniverseQueryLogsExporterConfig config : universeLogsExporterConfigs) {
           if (config != null && providerUUID.equals(config.getExporterUuid())) {
             return true;
           }

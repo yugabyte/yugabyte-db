@@ -70,9 +70,9 @@ class ExternalMiniClusterSecureTest :
 
   Status CallYBAdmin(const std::string& client_node, const std::string& what) {
     auto command = ToStringVector(
-        GetToolPath("yb-admin"), "-master_addresses", cluster_->GetMasterAddresses(),
-        "-certs_dir_name", ToolCertDirectory(), "-timeout_ms", "5000",
-        strings::Substitute("-client_node_name=$0", client_node), what);
+        GetToolPath("yb-admin"), "--master_addresses", cluster_->GetMasterAddresses(),
+        "--certs_dir_name", ToolCertDirectory(), "--timeout_ms", "5000",
+        strings::Substitute("--client_node_name=$0", client_node), what);
     LOG(INFO) << "Running " << ToString(command);
     return Subprocess::Call(command);
   }
@@ -80,9 +80,9 @@ class ExternalMiniClusterSecureTest :
   Status CallYBTSCli(const std::string& client_node, const std::string& what,
                      const HostPort& server) {
     auto command = yb::ToStringVector(
-        GetToolPath("yb-ts-cli"), "-server_address", server,
-        "-certs_dir_name", ToolCertDirectory(),
-        strings::Substitute("-client_node_name=$0", client_node), what);
+        GetToolPath("yb-ts-cli"), "--server_address", server,
+        "--certs_dir_name", ToolCertDirectory(),
+        strings::Substitute("--client_node_name=$0", client_node), what);
     LOG(INFO) << "Running " << ToString(command);
     return Subprocess::Call(command);
   }

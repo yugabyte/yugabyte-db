@@ -68,9 +68,11 @@ public class ShellProcessHandler {
       Pattern.compile("(<yb-python-error>)(.*?)(</yb-python-error>)", Pattern.DOTALL);
   static final String ANSIBLE_IGNORING = "ignoring";
   static final String YB_LOGS_MAX_MSG_SIZE = "yb.logs.max_msg_size";
-  // GRPC environment variables.
+  // GRPC and Node Agent environment variables.
   static final String GRPC_KEEPALIVE_TIME_MS_ENV = "grpc_keepalive_time_ms";
   static final String GRPC_KEEPALIVE_TIMEOUT_MS_ENV = "grpc_keepalive_timeout_ms";
+  static final String NODE_AGENT_DESCRIBE_POLL_DEADLINE_MS_ENV =
+      "node_agent_describe_poll_deadline";
 
   @Inject
   public ShellProcessHandler(
@@ -134,6 +136,8 @@ public class ShellProcessHandler {
         confGetter.getGlobalConf(GlobalConfKeys.nodeAgentConnectionKeepAliveTime);
     Duration keepAliveTimeout =
         confGetter.getGlobalConf(GlobalConfKeys.nodeAgentConnectionKeepAliveTimeout);
+    Duration describePollDeadline =
+        confGetter.getGlobalConf(GlobalConfKeys.nodeAgentDescribePollDeadline);
     String correlationId = MDC.get(LogUtil.CORRELATION_ID);
     if (StringUtils.isEmpty(correlationId)) {
       correlationId = UUID.randomUUID().toString();
@@ -142,6 +146,8 @@ public class ShellProcessHandler {
     envVars.put(LogUtil.CORRELATION_ID.replaceAll("-", "_"), correlationId);
     envVars.put(GRPC_KEEPALIVE_TIME_MS_ENV, String.valueOf(keepAliveTime.toMillis()));
     envVars.put(GRPC_KEEPALIVE_TIMEOUT_MS_ENV, String.valueOf(keepAliveTimeout.toMillis()));
+    envVars.put(
+        NODE_AGENT_DESCRIBE_POLL_DEADLINE_MS_ENV, String.valueOf(describePollDeadline.toMillis()));
 
     String devopsHome = appConfig.getString("yb.devops.home");
     if (devopsHome != null) {

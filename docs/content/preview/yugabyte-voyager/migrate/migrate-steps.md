@@ -303,15 +303,22 @@ To begin, export the schema from the source database. Once exported, analyze the
 
 #### Export schema
 
+{{< warning title="Technical Advisory " >}}
+
+{{<ta 2968>}} : Import schema fails on all Voyager installs done after August 14, 2025. Impacts [v1.1](../../release-notes/#v1-1-march-7-2023) to [v2025.8.1](../..release-notes/#v2025-8-1-august-5-2025).
+
+{{< /warning >}}
+
 The `yb-voyager export schema` command extracts the schema from the source database, converts it into PostgreSQL format (if the source database is Oracle or MySQL), and dumps the SQL DDL files in the `EXPORT_DIR/schema/*` directories.
 
-{{< note title="Renaming index names for MySQL" >}}
+**For PostgreSQL migrations**:
 
-YugabyteDB Voyager renames the indexes for MySQL migrations while exporting the schema.
+- Recommended schema optimizations from the [assess migration](#assess-migration) report are applied to ensure YugabyteDB compatibility and optimal performance.
+- A **Schema Optimization Report**, with details and an explanation of every change, is generated for your review.
 
-MySQL supports two or more indexes to have the same name in the same database, provided they are for different tables. Similarly to PostgreSQL, YugabyteDB does not support duplicate index names in the same schema. To avoid index name conflicts during export schema, yb-voyager prefixes each index name with the associated table name.
+**For MySQL migrations**:
 
-{{< /note >}}
+- YugabyteDB Voyager renames the indexes to avoid naming conflicts. MySQL allows two or more indexes to have the same name in the same database, provided they are for different tables. Like PostgreSQL, YugabyteDB does not support duplicate index names in the same schema. To avoid index name conflicts during export schema, Voyager prefixes each index name with the associated table name.
 
 You specify the schema(s) to migrate from the source database using the `db-schema` parameter (configuration file), or `--source-db-schema` flag (CLI).
 
@@ -353,6 +360,12 @@ yb-voyager export schema --export-dir <EXPORT_DIR> \
 Refer to [export schema](../../reference/schema-migration/export-schema/) for more information on the use of the command.
 
 #### Analyze schema
+
+{{< warning title="Technical Advisory" >}}
+
+{{<ta 2968>}} : Import schema fails on all Voyager installs done after August 14, 2025. Impacts [v1.1](../../release-notes/#v1-1-march-7-2023) to [v2025.8.1](../..release-notes/#v2025-8-1-august-5-2025).
+
+{{< /warning >}}
 
 The schema exported in the previous step may not yet be suitable for importing into YugabyteDB. Even though YugabyteDB is PostgreSQL compatible, given its distributed nature, you may need to make minor manual changes to the schema.
 
@@ -404,6 +417,12 @@ Include the primary key definition in the `CREATE TABLE` statement. Primary Key 
 Refer to the [Manual review guideline](../../known-issues/) for a detailed list of limitations and suggested workarounds associated with the source databases when migrating to YugabyteDB Voyager.
 
 ### Import schema
+
+{{< warning title="Technical Advisory" >}}
+
+{{<ta 2968>}} : Import schema fails on all Voyager installs done after August 14, 2025. Impacts [v1.1](../../release-notes/#v1-1-march-7-2023) to [v2025.8.1](../..release-notes/#v2025-8-1-august-5-2025).
+
+{{< /warning >}}
 
 Import the schema using the `yb-voyager import schema` command.
 

@@ -17,7 +17,7 @@ This document describes how to migrate data using [Liquibase](https://www.liquib
 To use Liquibase with YugabyteDB, you need the following:
 
 - JDK version 8 or later.
-- YugabyteDB version 2.6 or later (see [Quick start](/preview/tutorials/quick-start/macos/)).
+- YugabyteDB version 2.6 or later (see [Quick start](/preview/quick-start/macos/)).
 - Liquibase (see [Download Liquibase](https://www.liquibase.org/download)). For information on how to extract the package and configure Liquibase, see [Configuring Liquibase](#configuring-liquibase).
 - Liquibase-YugabyteDB extension JAR (access [liquibase-yugabytedb repository](https://github.com/liquibase/liquibase-yugabytedb) and download the latest `liquibase-yugabytedb-.jar`). The driver must be located in the `/lib` sub-directory of the directory to which you extracted Liquibase.
 - PostgreSQL JDBC driver (see [PostgreSQL JDBC driver](https://jdbc.postgresql.org)). The driver must be located in the `/lib` sub-directory of the directory to which you extracted Liquibase.

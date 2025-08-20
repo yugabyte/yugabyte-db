@@ -20,7 +20,7 @@ Before you start using the KairosDB plugin, ensure that you have:
 - Java version 1.8 or later.
 - The latest version of [KairosDB](https://kairosdb.github.io/docs/GettingStarted.html).
 - The latest version of [YugabyteDB plugin for KairosDB](https://github.com/yugabyte/kairosdb-yb-plugin/releases/); read the README for details about the plugin.
-- A YugabyteDB cluster. Refer to [YugabyteDB Quick start guide](/preview/tutorials/quick-start/macos/) to install and start a local cluster.
+- A YugabyteDB cluster. Refer to [YugabyteDB Quick start guide](/preview/quick-start/macos/) to install and start a local cluster.
 - [Postman API Platform](https://www.postman.com/downloads/).
 - (Optional) YugabyteDB [cassandra-driver-core-3.10.3-yb-2.jar](https://repo1.maven.org/maven2/com/yugabyte/cassandra-driver-core/3.10.3-yb-2/cassandra-driver-core-3.10.3-yb-2.jar), for better performance.
 

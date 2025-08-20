@@ -1769,12 +1769,37 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Node agent describe polling deadline.",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowCloudVolumeEncryption =
+      new ConfKeyInfo<>(
+          "yb.universe.allow_cloud_volume_encryption",
+          ScopeType.GLOBAL,
+          "Allow Cloud Volume Encryption feature",
+          "Allows enabling the volume encryption feature for new universes. Currently only"
+              + " supported for AWS universes.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> enableYbcBackgroundUpgrade =
       new ConfKeyInfo<>(
           "ybc.upgrade.enable_background_upgrade",
           ScopeType.GLOBAL,
           "Enable YBC Background Upgrade",
           "Enable background upgrade for YBC.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableSystemdDebugLogging =
+      new ConfKeyInfo<>(
+          "yb.ansible.systemd_debug",
+          ScopeType.GLOBAL,
+          "Enable Systemd Debug Logging",
+          "Enable systemd debug logging for systemctl service management commands.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> ansibleKeepRemoteFiles =
+      new ConfKeyInfo<>(
+          "yb.ansible.keep_remote_files",
+          ScopeType.GLOBAL,
+          "Keep Remote Files from an ansible run",
+          "Keep remote files after ansible run for debugging.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

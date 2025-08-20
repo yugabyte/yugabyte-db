@@ -2996,6 +2996,15 @@ CREATE POLICY p3 ON public.rls_private FOR UPDATE USING (((k % 2) = 1));
 
 
 --
+-- Name: rls_public p4; Type: POLICY; Schema: public; Owner: yugabyte_test
+--
+
+\if :use_roles
+CREATE POLICY p4 ON public.rls_public FOR UPDATE TO rls_user USING ((v = CURRENT_USER));
+\endif
+
+
+--
 -- Name: rls_private; Type: ROW SECURITY; Schema: public; Owner: yugabyte_test
 --
 

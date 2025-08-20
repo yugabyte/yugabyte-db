@@ -18,10 +18,10 @@ import (
 const (
 	// TaskPollInterval is the interval to check the running tasks.
 	TaskPollInterval = time.Second * 3
-	// TaskExpiry is the expiry after which a running task is cancelled.
-	TaskExpiry = time.Second * 30
 	// TaskProgressWaitTime is the wait time to check the status of running task.
 	TaskProgressWaitTime = time.Millisecond * 200
+	// DefaultAsyncTaskTimeout is the maximum time an async task is allowed to run.
+	DefaultAsyncTaskTimeout = time.Minute * 5
 )
 
 var (
@@ -109,9 +109,8 @@ func InitTaskManager(ctx context.Context) *TaskManager {
 						defer tInfo.mutex.Unlock()
 						elapsed := int(time.Since(tInfo.updatedAt).Seconds())
 						if elapsed > taskExpirySecs {
-							// Task has expired. Client has not asked for progress on this.
 							tInfo.cancel()
-							util.FileLogger().Infof(ctx, "Task %s is cancelled.",
+							util.FileLogger().Infof(ctx, "Task %s is no longer tracked.",
 								taskID)
 						}
 					}
@@ -126,7 +125,7 @@ func InitTaskManager(ctx context.Context) *TaskManager {
 // GetTaskManager returns the task manager instance.
 func GetTaskManager() *TaskManager {
 	if taskManager == nil {
-		util.FileLogger().Fatal(nil, "Task manager is not initialized")
+		util.FileLogger().Fatal(context.TODO(), "Task manager is not initialized")
 	}
 	return taskManager
 }
@@ -151,13 +150,24 @@ func (m *TaskManager) Submit(
 	if taskID == "" {
 		return errors.New("Task ID is not valid")
 	}
-	bgCtx, cancel := context.WithCancel(context.Background())
-	bgCtx = util.InheritTracingIDs(ctx, bgCtx)
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		deadline = time.Now().Add(DefaultAsyncTaskTimeout)
+	}
+	util.FileLogger().
+		Infof(ctx, "Submitted task %s with timeout in %.2f secs", taskID, time.Until(deadline).Seconds())
+	parentCtx := util.InheritTracingIDs(ctx, context.Background())
+	tInfoCtx, tInfoCancel := context.WithCancel(parentCtx)
+	deadlineCtx, deadlineCancel := context.WithDeadline(tInfoCtx, deadline)
+	cancelFnc := func() {
+		deadlineCancel()
+		tInfoCancel()
+	}
 	i, ok := m.taskInfos.LoadOrStore(
 		taskID,
 		&taskInfo{
-			ctx:       bgCtx,
-			cancel:    cancel,
+			ctx:       tInfoCtx,
+			cancel:    cancelFnc,
 			mutex:     &sync.Mutex{},
 			updatedAt: time.Now(),
 			asyncTask: asyncTask,
@@ -167,11 +177,12 @@ func (m *TaskManager) Submit(
 		return fmt.Errorf("Task %s already exists", taskID)
 	}
 	tInfo := i.(*taskInfo)
-	future, err := executor.GetInstance().SubmitTask(bgCtx, ToHandler(asyncTask.Handle))
+	future, err := executor.GetInstance().SubmitTask(deadlineCtx, ToHandler(asyncTask.Handle))
 	if err != nil {
+		cancelFnc()
 		m.taskInfos.Delete(taskID)
 		util.FileLogger().
-			Errorf(bgCtx, "Error in submitting command: %v - %s", asyncTask, err.Error())
+			Errorf(parentCtx, "Error in submitting command: %v - %s", asyncTask, err.Error())
 		return err
 	}
 	tInfo.mutex.Lock()
@@ -204,14 +215,15 @@ func (m *TaskManager) Subscribe(
 			return errors.New("Task manager is cancelled")
 		case <-ctx.Done():
 			m.updateTime(taskID)
-			return errors.New("Subscriber is cancelled")
+			// Client is cancelled or deadline exceeded.
+			return nil
 		case <-tInfo.future.Done():
 			// Task is completed.
 			size := 0
 			m.updateTime(taskID)
-			callbackData := &TaskCallbackData{State: tInfo.future.State()}
 			taskStatus := tInfo.asyncTask.CurrentTaskStatus()
 			if taskStatus != nil {
+				callbackData := &TaskCallbackData{State: tInfo.future.State()}
 				callbackData.Info, size = taskStatus.Info.StringWithLen()
 				if size > 0 {
 					// Send the info messages first before any error.
@@ -224,13 +236,27 @@ func (m *TaskManager) Subscribe(
 			}
 
 			size = 0
-			if taskStatus == nil || taskStatus.ExitStatus == nil ||
-				taskStatus.ExitStatus.Code == 0 {
+			exitCode := 0
+			if taskStatus != nil && taskStatus.ExitStatus != nil {
+				exitCode = taskStatus.ExitStatus.Code
+			}
+			if exitCode == 0 {
 				result, err := tInfo.future.Get()
 				if err != nil {
-					return err
-				}
-				if response, ok := result.(*pb.DescribeTaskResponse); ok {
+					exitCode = 1
+					if status, ok := err.(*util.StatusError); ok {
+						exitCode = status.Code()
+					}
+					callbackData := &TaskCallbackData{
+						State:    tInfo.future.State(),
+						ExitCode: exitCode,
+						Error:    err.Error(),
+					}
+					err = callback(callbackData)
+					if err != nil {
+						return err
+					}
+				} else if response, ok := result.(*pb.DescribeTaskResponse); ok {
 					callbackData := &TaskCallbackData{State: tInfo.future.State()}
 					callbackData.RPCResponse = response
 					err = callback(callbackData)
@@ -240,6 +266,7 @@ func (m *TaskManager) Subscribe(
 				}
 			} else {
 				// Send the error messages.
+				callbackData := &TaskCallbackData{State: tInfo.future.State()}
 				callbackData.ExitCode = taskStatus.ExitStatus.Code
 				callbackData.Error, size = taskStatus.ExitStatus.Error.StringWithLen()
 				err := callback(callbackData)

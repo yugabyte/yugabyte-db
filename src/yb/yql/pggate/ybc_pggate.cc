@@ -171,7 +171,7 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_neghit_full_inheritscache, true,
     " right away without incurring a master lookup");
 
 DEFINE_RUNTIME_PG_FLAG(
-    bool, yb_force_early_ddl_serialization, false,
+    bool, yb_user_ddls_preempt_auto_analyze, true,
     "If object locking is off (i.e., enable_object_locking_for_table_locks=false), concurrent "
     "DDLs might face a conflict error on the catalog version increment at the end after doing all "
     "the work. Setting this flag enables a fail-fast strategy by locking the catalog version at "
@@ -388,12 +388,14 @@ void YBCStartSysTablePrefetchingImpl(std::optional<PrefetcherOptions::CachingInf
 
 PrefetchingCacheMode YBCMapPrefetcherCacheMode(YbcPgSysTablePrefetcherCacheMode mode) {
   switch (mode) {
+    case YB_YQL_PREFETCHER_TRUST_CACHE_AUTH:
+      return PrefetchingCacheMode::TRUST_CACHE_AUTH;
     case YB_YQL_PREFETCHER_TRUST_CACHE:
       return PrefetchingCacheMode::TRUST_CACHE;
     case YB_YQL_PREFETCHER_RENEW_CACHE_SOFT:
       return PrefetchingCacheMode::RENEW_CACHE_SOFT;
     case YB_YQL_PREFETCHER_RENEW_CACHE_HARD:
-      LOG(DFATAL) << "Emergency fallback prefetching cache mode is used";
+      LOG(ERROR) << "Emergency fallback prefetching cache mode is used";
       return PrefetchingCacheMode::RENEW_CACHE_HARD;
   }
   LOG(DFATAL) << "Unexpected YbcPgSysTablePrefetcherCacheMode value " << mode;

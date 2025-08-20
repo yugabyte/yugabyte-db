@@ -34,7 +34,7 @@ import {
   UserIntent
 } from '../../../../universe/universe-form/utils/dto';
 
-const DeviceInfoFields: Record<keyof Omit<DeviceInfo, 'mountPoints'>, string> = {
+const DeviceInfoFields: Record<keyof Omit<DeviceInfo, 'mountPoints' | 'cloudVolumeEncryption'>, string> = {
   volumeSize: 'Volume Size',
   numVolumes: 'Number of Volumes',
   diskIops: 'Disk IOPS',

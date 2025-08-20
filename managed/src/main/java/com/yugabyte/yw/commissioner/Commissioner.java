@@ -347,6 +347,11 @@ public class Commissioner {
     if (taskInfo.getTaskParams().has("auditLogConfig")) {
       details.set("auditLogConfig", taskInfo.getTaskParams().get("auditLogConfig"));
     }
+    // Add queryLogConfig from the task details if it is present.
+    if (taskInfo.getTaskParams().has("queryLogConfig")) {
+      details.set("queryLogConfig", taskInfo.getTaskParams().get("queryLogConfig"));
+    }
+
     responseJson.set("details", details);
 
     // Set abortable if eligible.

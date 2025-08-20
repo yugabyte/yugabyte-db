@@ -5,10 +5,6 @@ After=network.target network-online.target multi-user.target
 # Disable restart limits, using RestartSec to rate limit restarts
 StartLimitInterval=0
 
-[Path]
-PathExists={{yb_home_dir}}/controller/bin/yb-controller-server
-PathExists={{yb_home_dir}}/controller/conf/server.conf
-
 [Service]
 # Start
 {% set use_system_level_systemd = use_system_level_systemd | default(false) %}
@@ -26,8 +22,8 @@ KillSignal=SIGTERM
 TimeoutStopSec=10
 FinalKillSignal=SIGKILL
 # Logs
-StandardOutput=syslog
-StandardError=syslog
+StandardOutput=journal
+StandardError=journal
 # ulimit
 LimitCORE=infinity
 LimitNOFILE=1048576

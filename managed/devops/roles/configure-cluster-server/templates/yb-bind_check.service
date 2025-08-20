@@ -6,10 +6,6 @@ Before=yb-controller.service yb-tserver.service yb-master.service
 # Disable restart limits, using RestartSec to rate limit restarts
 StartLimitInterval=0
 
-[Path]
-PathExists={{yb_home_dir}}/controller/bin/yb-controller-server
-PathExists={{yb_home_dir}}/controller/conf/server.conf
-
 [Service]
 # Start
 ExecStart={{yb_home_dir}}/controller/bin/yb-controller-server \
@@ -20,8 +16,8 @@ KillMode=control-group
 KillSignal=SIGTERM
 TimeoutStopSec=10
 # Logs
-StandardOutput=syslog
-StandardError=syslog
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=default.target

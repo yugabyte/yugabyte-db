@@ -2755,6 +2755,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
@@ -5414,6 +5415,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
@@ -5749,6 +5751,21 @@
         "useTimeSync" : {
           "description" : "True if `use time sync` is enabled",
           "type" : "boolean"
+        }
+      },
+      "type" : "object"
+    },
+    "CloudVolumeEncryption" : {
+      "description" : "Volume encryption settings for AWS EBS volumes",
+      "properties" : {
+        "enableVolumeEncryption" : {
+          "description" : "To enable volume encryption or not",
+          "type" : "boolean"
+        },
+        "kmsConfigUUID" : {
+          "description" : "KMS config UUID to be used for volume encryption",
+          "format" : "uuid",
+          "type" : "string"
         }
       },
       "type" : "object"
@@ -7185,6 +7202,10 @@
     "DeviceInfo" : {
       "description" : "Device information",
       "properties" : {
+        "cloudVolumeEncryption" : {
+          "$ref" : "#/definitions/CloudVolumeEncryption",
+          "description" : "Volume encryption settings for AWS EBS volumes"
+        },
         "diskIops" : {
           "description" : "Desired IOPS for the volumes mounted on this instance",
           "format" : "int32",
@@ -8417,6 +8438,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
@@ -9198,6 +9220,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
@@ -10597,6 +10620,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
@@ -14807,6 +14831,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
@@ -15819,6 +15844,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
@@ -16631,6 +16657,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
@@ -18124,6 +18151,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
@@ -18668,6 +18696,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
@@ -19054,6 +19083,7 @@
               "CreateTableSpaces",
               "ManageOtelCollector",
               "UpdateAndPersistAuditLoggingConfig",
+              "UpdateAndPersistQueryLoggingConfig",
               "UpdateAndPersistMetricsExportConfig",
               "MarkUniverseForHealthScriptReUpload",
               "RebootServer",
@@ -19861,6 +19891,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
@@ -20938,6 +20969,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
@@ -22221,6 +22253,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
@@ -22876,6 +22909,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
@@ -23786,6 +23820,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
@@ -24405,6 +24440,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
@@ -25024,6 +25060,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
@@ -25230,9 +25267,10 @@
           "format" : "int32",
           "type" : "integer"
         },
-        "sendBatchTimeout" : {
-          "description" : "Maximum batch timeout for query logs exporter",
-          "type" : "string"
+        "sendBatchTimeoutSeconds" : {
+          "description" : "Maximum batch timeout for query logs exporter in seconds",
+          "format" : "int32",
+          "type" : "integer"
         }
       },
       "required" : [
@@ -26128,6 +26166,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
@@ -26268,9 +26307,6 @@
           "type" : "boolean"
         },
         "enableNodeToNodeEncrypt" : {
-          "type" : "boolean"
-        },
-        "enableVolumeEncryption" : {
           "type" : "boolean"
         },
         "enableYCQL" : {
@@ -27233,6 +27269,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",

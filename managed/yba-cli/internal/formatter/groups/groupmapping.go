@@ -6,10 +6,10 @@ package groupmapping
 
 import (
 	"encoding/json"
-	"time"
 
 	"github.com/sirupsen/logrus"
 	ybav2client "github.com/yugabyte/platform-go-client/v2"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
@@ -102,11 +102,7 @@ func (c *Context) Type() string {
 
 // CreationDate fetches GroupMapping Creation Date
 func (c *Context) CreationDate() string {
-	creationTime := c.gm.GetCreationDate()
-	if creationTime.IsZero() {
-		return ""
-	}
-	return creationTime.Format(time.RFC1123Z)
+	return util.PrintTime(c.gm.GetCreationDate())
 }
 
 // Roles fetches GroupMapping Roles

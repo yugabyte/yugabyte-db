@@ -74,6 +74,24 @@ const (
 	// AzureKeySizeField field name to denote in Json request
 	AzureKeySizeField = "AZU_KEY_SIZE"
 
+	// CipherTrust fields for KMS config request
+	// CipherTrustManagerURLField field name to denote in Json request
+	CipherTrustManagerURLField = "CIPHERTRUST_MANAGER_URL"
+	// CipherTrustAuthTypeField field name to denote in Json request
+	CipherTrustAuthTypeField = "AUTH_TYPE"
+	// CipherTrustUsernameField field name to denote in Json request
+	CipherTrustUsernameField = "USERNAME"
+	// CipherTrustPasswordField field name to denote in Json request
+	CipherTrustPasswordField = "PASSWORD"
+	// CipherTrustRefreshTokenField field name to denote in Json request
+	CipherTrustRefreshTokenField = "REFRESH_TOKEN"
+	// CipherTrustKeyNameField field name to denote in Json request
+	CipherTrustKeyNameField = "KEY_NAME"
+	// CipherTrustKeyAlgorithmField field name to denote in Json request
+	CipherTrustKeyAlgorithmField = "KEY_ALGORITHM"
+	// CipherTrustKeySizeField field name to denote in Json request
+	CipherTrustKeySizeField = "KEY_SIZE"
+
 	// HashicorpVaultTokenEnv env variable name for hashicorp vault
 	HashicorpVaultTokenEnv = "VAULT_TOKEN"
 	// HashicorpVaultAddressEnv env variable name for hashicorp vault
@@ -420,6 +438,20 @@ const (
 	OnpremProviderType = "onprem"
 )
 
+// Different telemetry provider types
+const (
+	// DataDogTelemetryProviderType type
+	DataDogTelemetryProviderType = "DATA_DOG"
+	// SplunkTelemetryProviderType type
+	SplunkTelemetryProviderType = "SPLUNK"
+	// AWSCloudWatchTelemetryProviderType type
+	AWSCloudWatchTelemetryProviderType = "AWS_CLOUDWATCH"
+	// GCPCloudMonitoringTelemetryProviderType type
+	GCPCloudMonitoringTelemetryProviderType = "GCP_CLOUD_MONITORING"
+	// LokiTelemetryProviderType type
+	LokiTelemetryProviderType = "LOKI"
+)
+
 // Different kms types
 const (
 	// util.AWSEARType type
@@ -430,6 +462,8 @@ const (
 	GCPEARType = "GCP"
 	// HashicorpVaultEARType type
 	HashicorpVaultEARType = "HASHICORP"
+	// CipherTrustEARType type
+	CipherTrustEARType = "CIPHERTRUST"
 )
 
 // Different storage configuration types

@@ -283,6 +283,7 @@ void od_storage_watchdog_watch(void *arg)
 		od_error(&instance->logger, "watchdog", watchdog_client, NULL,
 			 "route storage watchdog failed: %s",
 			 od_router_status_to_str(status));
+		od_client_free_extended(watchdog_client);
 		return;
 	}
 
@@ -363,11 +364,7 @@ void od_storage_watchdog_watch(void *arg)
 			od_debug(&instance->logger, "watchdog", watchdog_client,
 				 NULL,
 				 "deallocating obsolete storage watchdog");
-			if (watchdog_client->io.io) {
-				machine_close(watchdog_client->io.io);
-				machine_io_free(watchdog_client->io.io);
-			}
-			od_client_free(watchdog_client);
+			od_client_free_extended(watchdog_client);
 			od_storage_watchdog_free(watchdog);
 			return;
 		}

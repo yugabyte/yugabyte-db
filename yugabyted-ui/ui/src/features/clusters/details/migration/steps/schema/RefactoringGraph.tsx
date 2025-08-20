@@ -3,14 +3,34 @@ import type { RefactoringCount } from "@app/api/src";
 import { useTranslation } from "react-i18next";
 import { YBTable, YBButton, YBTooltip } from "@app/components";
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
-import { Box, TableCell, TableRow, makeStyles, Typography, useTheme } from "@material-ui/core";
+import { AlertVariant } from "@app/components";
+import {
+  Box,
+  TableCell,
+  TableRow,
+  makeStyles,
+  Typography,
+  Theme,
+  Collapse,
+  useTheme
+} from "@material-ui/core";
 import type { SqlObjectsDetails, AnalysisIssueDetails } from "@app/api/src";
 import MinusIcon from "@app/assets/minus_icon.svg";
-import PlusIcon from "@app/assets/plus_icon.svg";
-import ArrowRightIcon from "@app/assets/caretRightIconBlue.svg";
+import PlusIcon from "@app/assets/plus_icon_24.svg";
+import ArrowRightIcon from "@app/assets/arrow-right.svg";
+import InnerTableDivider from "@app/assets/inner_table_divider.svg";
+import CaretRightIconBlue from "@app/assets/caretRightIconBlue.svg";
+import CopyIconBlue from "@app/assets/copyIconBlue.svg";
 import ExpandIcon from "@app/assets/expand.svg";
 import CollapseIcon from "@app/assets/collapse.svg";
-import { capitalizeFirstLetter, formatSnakeCase, useQueryParams } from "@app/helpers";
+import {
+  capitalizeFirstLetter,
+  formatSnakeCase,
+  useQueryParams,
+  useToast,
+  truncateString,
+  copyToClipboard,
+} from "@app/helpers";
 import { MigrationRefactoringSidePanel } from "../assessment/AssessmentRefactoringSidePanel";
 interface RefactoringGraphProps {
   sqlObjects: RefactoringCount[] | undefined;
@@ -32,25 +52,39 @@ interface FileIssue {
   };
 }
 
-const useStyles = makeStyles((theme) => ({
+const useStyles = makeStyles((theme: Theme) => ({
   innerTable: {
     borderRadius: theme.shape.borderRadius,
     backgroundColor: theme.palette.background.default,
     marginLeft: theme.spacing(5),
+    marginRight: theme.spacing(2),
+    padding: theme.spacing(1),
+    marginBottom: theme.spacing(1),
     "& .MuiPaper-root": {
       backgroundColor: "transparent !important",
     },
+    "& .MuiTable-root": {
+      tableLayout: "auto !important",
+      "& .MuiTableBody-root .MuiTableRow-root:last-child .MuiTableCell-root": {
+        borderBottom: `1px solid ${theme.palette.divider}`,
+      },
+    },
+    "& .MuiTableCell-root": {
+      overflow: "visible !important",
+      minHeight: "50px !important",
+    },
+
   },
   innerTableParent: {
     padding: theme.spacing(0.5, 0, 1, 0),
     position: "relative",
   },
   seeDetailsLink: {
-    color: theme.palette.primary[600],
+    color: theme.palette.primary.main,
     fontFamily: theme.typography.fontFamily,
-    fontSize: theme.typography.subtitle1.fontSize,
+    fontSize: theme.typography.pxToRem(11.5),
     fontStyle: 'normal',
-    fontWeight: theme.typography.body2.fontWeight,
+    fontWeight: theme.typography.fontWeightRegular as number,
     lineHeight: '32px',
     marginLeft: theme.spacing(2),
     cursor: 'pointer',
@@ -62,9 +96,9 @@ const useStyles = makeStyles((theme) => ({
   seeDetailsHyphen: {
     color: theme.palette.text.disabled,
     fontFamily: theme.typography.fontFamily,
-    fontSize: theme.typography.subtitle1.fontSize,
+    fontSize: theme.typography.pxToRem(11.5),
     fontStyle: 'normal',
-    fontWeight: theme.typography.body2.fontWeight,
+    fontWeight: theme.typography.fontWeightRegular as number,
     lineHeight: '32px',
     cursor: 'default',
     textDecoration: 'none',
@@ -83,6 +117,16 @@ const useStyles = makeStyles((theme) => ({
     },
     "& .MuiTableHead-root + .MuiTableBody-root": {
       marginTop: theme.spacing(1)
+    },
+    // Collapsible row must not reserve space when collapsed
+    "& $collapsibleRow": {
+      height: "auto !important",
+    },
+    "& $collapsibleCell": {
+      height: "auto !important",
+      padding: "0 !important",
+      lineHeight: "normal !important",
+      borderBottom: "none !important",
     }
   },
   accordionContent: {
@@ -95,7 +139,7 @@ const useStyles = makeStyles((theme) => ({
     position: "relative",
   },
   cellHeader: {
-    width: theme.spacing(4),
+    width: '40px',
     padding: 0,
     textAlign: 'center',
     verticalAlign: 'middle',
@@ -104,29 +148,183 @@ const useStyles = makeStyles((theme) => ({
     minWidth: '16px',
     display: 'inline-block',
     textAlign: 'center',
-    fontSize: `${theme.typography.subtitle1.fontSize}px !important`,
+    fontSize: `${theme.typography.pxToRem(11.5)} !important`,
     fontFamily: theme.typography.fontFamily,
     fontStyle: 'normal',
-    fontWeight: theme.typography.body2.fontWeight,
+    fontWeight: theme.typography.fontWeightRegular as any,
     lineHeight: '16px'
+  },
+  viewDetailsLink: {
+    color: theme.palette.primary[600],
+    fontFamily: theme.typography.fontFamily,
+    fontSize: theme.typography.pxToRem(11.5),
+    fontStyle: 'normal',
+    fontWeight: theme.typography.fontWeightRegular as any,
+    lineHeight: 'normal',
+    cursor: 'pointer',
+    textDecoration: 'none',
+    marginLeft: theme.spacing(1),
+    '&:hover': {
+      textDecoration: 'underline',
+    },
+  },
+  filePathText: {
+    color: theme.palette.grey[900],
+    fontFamily: theme.typography.fontFamily,
+    fontSize: theme.typography.pxToRem(13),
+    fontWeight: theme.typography.fontWeightRegular as any,
+    lineHeight: '20px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5)
+  },
+  copyButtonBox: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    padding: theme.spacing(0.25),
+    borderRadius: theme.shape.borderRadius,
+    '&:hover': {
+      backgroundColor: theme.palette.action.hover
+    }
+  },
+  copyIconStyle: {
+    width: '24px',
+    height: '24px',
+    flexShrink: 0
+  },
+  expandedRowTitle: {
+    marginBottom: theme.spacing(2),
+    color: theme.palette.grey[900],
+    fontFamily: theme.typography.fontFamily,
+    fontSize: theme.typography.pxToRem(13),
+    fontStyle: 'normal',
+    fontWeight: theme.typography.fontWeightBold as any,
+    lineHeight: '16px',
+    display: 'flex',
+    alignItems: 'center',
+    marginTop: theme.spacing(2),
+    gap: theme.spacing(1),
+    backgroundColor: theme.palette.background.paper,
+    paddingLeft: theme.spacing(6)
+  },
+  arrowIcon: {
+    width: '24px',
+    height: '24px'
+  },
+  expandedContent: {
+    display: 'flex',
+    alignItems: 'flex-start'
+  },
+  dividerContainer: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 0,
+    marginRight: theme.spacing(1.25),
+    marginLeft: theme.spacing(1),
+    marginTop: theme.spacing(4.75)
+  },
+  dividerRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    paddingTop: 0,
+    marginBottom: theme.spacing(1.375),
+    marginLeft: theme.spacing(2),
+    marginRight: theme.spacing(2)
+  },
+  tableContainer: {
+    flex: 1,
+    marginBottom: theme.spacing(1.25)
+  },
+  expansionButton: {
+    cursor: "pointer",
+    height: "32px",
+    width: "40px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    margin: 0,
+    padding: theme.spacing(0, 1)
+  },
+  objectTypeText: {
+    color: theme.palette.grey[900],
+    fontFamily: theme.typography.fontFamily,
+    fontSize: theme.typography.pxToRem(13),
+    fontStyle: 'normal',
+    fontWeight: theme.typography.fontWeightRegular as any,
+    lineHeight: '32px',
+  },
+  rightArrowButton: {
+    cursor: "pointer",
+    height: "32px",
+    width: "50px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  outerTableRow: {
+    height: "40px !important",
+    "& .MuiTableCell-root": {
+      height: "40px !important",
+      padding: theme.spacing(1, 3.75),
+    }
+  },
+  cellWithPadding: {
+    padding: theme.spacing(1, 0)
+  },
+  cellWithPaddingManual: {
+    padding: theme.spacing(1, 3.125)
+  },
+  cellWithPaddingRight: {
+    padding: theme.spacing(1, 1)
+  },
+  flexContainer: {
+    display: "flex",
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  expandCollapseButtonContainer: {
+    position: "absolute",
+    right: 0,
+    top: 0
+  },
+  collapsibleRow: {
+    height: 'auto !important',
+  },
+  collapsibleCell: {
+    padding: '0 !important',
+    border: 'none !important',
+    height: 'auto !important',
   }
 }));
 
 const ACKNOWLEDGED_OBJECTS_LOCAL_STORAGE_KEY: string = "acknowledgedObjects";
 
 export const RefactoringGraph: FC<RefactoringGraphProps> = ({
-    sqlObjects,
-    sqlObjectsList,
-    isAssessmentPage,
-    setSelectedObjectType,
-    scrollToIssueTable,
-    objectTypeSelectRef
-  }) => {
+  sqlObjects,
+  sqlObjectsList,
+  isAssessmentPage,
+  setSelectedObjectType,
+  scrollToIssueTable,
+  objectTypeSelectRef
+}) => {
   const { t } = useTranslation();
   const classes = useStyles();
   const theme = useTheme();
   const queryParams = useQueryParams();
+  const { addToast } = useToast();
   const migrationUUID: string = queryParams.get("migration_uuid") ?? "";
+
+
+  // Function to copy file path (reused util)
+  const copyFilePath = async (filePath: string) =>
+    copyToClipboard(filePath, {
+      onSuccess: () => addToast(AlertVariant.Success, t('common.copyCodeSuccess'), 3000),
+      onError: (msg?: string) =>
+        addToast(AlertVariant.Error, msg || 'Failed to copy to clipboard', 5000)
+    });
 
   // migrationUUID not in lowerCase, filePath in lowerCase, sql in lowerCase, reason in lowerCase
   const [acknowledgedObjects, setAcknowledgedObjects] = React.useState<{
@@ -141,6 +339,9 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({
 
   const [expandedSuggestions, setExpandedSuggestions] =
     React.useState<{ [key: number]: boolean }>({});
+  const [paginationState, setPaginationState] = React.useState<{
+    [key: string]: { currentPage: number; rowsPerPage: number }
+  }>({});
   React.useEffect(() => {
     if (!sqlObjectsList) {
       return;
@@ -170,7 +371,6 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({
     React.useState<SqlObjectsDetails | undefined>(undefined);
 
   const [sidePanelHeader, setSidePanelHeader] = React.useState<string>("");
-  const [sidePanelTitle, setSidePanelTitle] = React.useState<string>("");
 
   const toggleAcknowledgment = (filePath: string, sqlStatement: string, reason: string) => {
     const updatedAcknowledgedObjects = { ...acknowledgedObjects };
@@ -353,8 +553,11 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({
       label: t("clusterDetail.voyager.planAndAssess.refactoring.objectType"),
       options: {
         sort: false,
-        setCellHeaderProps: () => ({ style: { padding: theme.spacing(0.75, 0) } }),
-        setCellProps: () => ({ style: { padding: theme.spacing(0.75, 0) } }),
+        setCellHeaderProps: () => ({ style: { padding: theme.spacing(0.75) } }),
+        setCellProps: () => ({ style: { padding: theme.spacing(2) } }),
+        customBodyRender: (value: string) => (
+          capitalizeFirstLetter(value) || ""
+        ),
       },
     },
     {
@@ -362,10 +565,28 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({
       label: t("clusterDetail.voyager.planAndAssess.refactoring.fileDirectory"),
       options: {
         sort: false,
-        setCellHeaderProps: () => ({ style: { padding: theme.spacing(0.75, 0) } }),
+        setCellHeaderProps: () => ({ style: { padding: theme.spacing(0.75) } }),
         setCellProps: () => ({
-          style: { padding: theme.spacing(0.75, 0), "word-break": "break-word" },
+          style: {
+            padding: theme.spacing(2, 1, 2, 0.5),
+            wordBreak: "break-word",
+            overflow: "visible",
+            whiteSpace: "nowrap",
+            minWidth: theme.spacing(31.25)
+          }
         }),
+        customBodyRender: (filePath: string) => (
+          <Typography className={classes.filePathText}>
+            {truncateString(filePath)}
+            <Box
+              className={classes.copyButtonBox}
+              onClick={() => copyFilePath(filePath)}
+              title={`Click to copy: ${filePath}`}
+            >
+              <CopyIconBlue className={classes.copyIconStyle} />
+            </Box>
+          </Typography>
+        ),
       },
     },
     {
@@ -373,8 +594,8 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({
       label: t("clusterDetail.voyager.planAndAssess.refactoring.sqlObject"),
       options: {
         sort: false,
-        setCellHeaderProps: () => ({ style: { padding: theme.spacing(0.75, 0) } }),
-        setCellProps: () => ({ style: { padding: theme.spacing(0.75, 0) } }),
+        setCellHeaderProps: () => ({ style: { padding: theme.spacing(0.75) } }),
+        setCellProps: () => ({ style: { padding: theme.spacing(1.5) } }),
       },
     },
     {
@@ -382,17 +603,23 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({
       label: t("clusterDetail.voyager.planAndAssess.refactoring.issuesAck/Total"),
       options: {
         sort: false,
-        setCellHeaderProps: () => ({ style: { padding: theme.spacing(0.75, 0) } }),
-        setCellProps: () => ({ style: { padding: theme.spacing(0.75, 0) } }),
+        setCellHeaderProps: () => ({ style: { padding: theme.spacing(0.75) } }),
+        setCellProps: () => ({ style: { padding: theme.spacing(1.5) } }),
         customBodyRender: (count: any) => {
           return <>{`${count.ackCount} / ${count.totalCount}`}</>;
         },
       },
     },
+
   ];
 
   const showPlusMinusExpansion: boolean = graphData.some(
-    (item) => item.plusMinusExpansion.mapReturnedArrayLength > 0
+    (item: {
+      plusMinusExpansion: {
+        mapReturnedArrayLength: number
+      }
+    }) =>
+      item.plusMinusExpansion.mapReturnedArrayLength > 0
   );
 
   const showRightArrowSidePanel: boolean = graphData.some(
@@ -415,6 +642,98 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({
       );
     };
 
+  const renderExpandedRow = (dataIndex: number, isExpanded: boolean) => {
+    const isExpandable: boolean =
+      graphData[dataIndex]?.plusMinusExpansion?.mapReturnedArrayLength > 0;
+    if (!isExpandable) {
+      return null;
+    }
+    // Access raw data from graphData using dataIndex
+    const rawObjectType: string | undefined = graphData[dataIndex]?.objectType;
+    const objectType: string = rawObjectType?.toLowerCase?.() ?? "";
+    const rawTableData: FileIssue[] = expandableGraphData.get(objectType) ?? [];
+    const tableData: FileIssue[] = rawTableData;
+
+    // Get or initialize pagination state for this object type
+    const hardcodedValues: { currentPage: number; rowsPerPage: number } = {
+      currentPage: 0,
+      rowsPerPage: 10,
+    };
+    const currentPagination: {
+      currentPage: number;
+      rowsPerPage: number;
+    } = paginationState[objectType] || hardcodedValues;
+    const { currentPage, rowsPerPage } = currentPagination;
+
+    // Calculate visible rows for current page
+    const startIndex: number = currentPage * rowsPerPage;
+    const endIndex: number = Math.min(startIndex + rowsPerPage, tableData.length);
+    const visibleRowsCount: number = endIndex - startIndex;
+
+    // Helper functions to update pagination
+    const updateCurrentPage = (newPage: number) => {
+      setPaginationState((prev: {
+        [key: string]: { currentPage: number; rowsPerPage: number }
+      }) => ({
+        ...prev,
+        [objectType]: { ...currentPagination, currentPage: newPage }
+      }));
+    };
+
+    const updateRowsPerPage = (newRowsPerPage: number) => {
+      setPaginationState((prev: {
+        [key: string]: { currentPage: number; rowsPerPage: number }
+      }) => ({
+        ...prev,
+        [objectType]: { currentPage: 0, rowsPerPage: newRowsPerPage }
+      }));
+    };
+
+    return (
+      <TableRow className={classes.collapsibleRow}>
+        <TableCell colSpan={columns.length} className={classes.collapsibleCell}>
+          <Collapse in={isExpanded} timeout="auto" collapsedSize={0}>
+            <Box className={classes.innerTableParent}>
+              <Typography variant="h6" className={classes.expandedRowTitle}>
+                <ArrowRightIcon className={classes.arrowIcon} />
+                {t("clusterDetail.voyager.planAndAssess.refactoring.invalidObjects")}
+              </Typography>
+              <Box className={classes.innerTable}>
+                <Box className={classes.expandedContent}>
+                  {/* Left side dividers */}
+                  <Box className={classes.dividerContainer}>
+                    {Array.from({ length: visibleRowsCount }).map((_, index) => (
+                      <Box key={index} className={classes.dividerRow}>
+                        <InnerTableDivider />
+                      </Box>
+                    ))}
+                  </Box>
+
+                  {/* Table */}
+                  <Box className={classes.tableContainer}>
+                    <YBTable
+                      key={`innerTable`}
+                      data={tableData}
+                      columns={innerColumns}
+                      options={{
+                        pagination: true,
+                        responsive: 'standard',
+                        onChangePage: (currentPage: number) => updateCurrentPage(currentPage),
+                        onChangeRowsPerPage: (numberOfRows: number) =>
+                          updateRowsPerPage(numberOfRows)
+                      }}
+                      withBorder={true}
+                    />
+                  </Box>
+                </Box>
+              </Box>
+            </Box>
+          </Collapse>
+        </TableCell>
+      </TableRow>
+    );
+  };
+
   const columns = [
     {
       name: "plusMinusExpansion",
@@ -423,7 +742,7 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({
         display: showPlusMinusExpansion,
         setCellHeaderProps: () => ({ className: classes.cellHeader }),
         setCellProps: () => ({
-          width: "32px",
+          width: "40px",
           height: "32px",
           padding: "0",
           textAlign: "center",
@@ -432,16 +751,7 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({
         customBodyRender: (plusMinusExpansion: { mapReturnedArrayLength: number; index: number }) =>
           plusMinusExpansion.mapReturnedArrayLength > 0 && (
             <Box
-              style={{
-                cursor: "pointer",
-                height: theme.spacing(4),
-                width: theme.spacing(4),
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                margin: 0,
-                padding: 0
-              }}
+              className={classes.expansionButton}
               onClick={() => {
                 setExpandedSuggestions((prev) => ({
                   ...prev,
@@ -460,18 +770,13 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({
       label: t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.objectType"),
       options: {
         sort: false,
-        setCellHeaderProps: () => ({ style: { padding: theme.spacing(1, 0) } }),
-        setCellProps: () => ({ style: { padding: theme.spacing(1, 0) } }),
+        setCellHeaderProps: () => ({ style: { padding: "8px 0" } }),
+        setCellProps: () => ({ style: { padding: "8px 0" } }),
         customHeadLabelRender: createCustomHeaderLabelRender(
           "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.objectType"
         ),
         customBodyRender: (value: string) => (
-          <Typography style={{
-            fontSize: theme.typography.fontSize,
-            fontWeight: theme.typography.body2.fontWeight,
-            color: theme.palette.text.primary,
-            textTransform: 'capitalize'
-          }}>
+          <Typography className={classes.objectTypeText}>
             {capitalizeFirstLetter(value)}
           </Typography>
         ),
@@ -480,43 +785,72 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({
     {
       name: "automaticDDLImport",
       options: {
-        setCellHeaderProps: () => ({ style: { padding: theme.spacing(1, 0) } }),
-        setCellProps: () => ({ style: { padding: theme.spacing(1, 0) } }),
+        setCellHeaderProps: () => ({ style: { padding: "8px 0" } }),
+        setCellProps: () => ({ style: { padding: "8px 0" } }),
         customBodyRender: (count: number) => (
           <YBBadge text={
             <Typography
               className={classes.badgeTextStyle}
               variant="body2">
-                {count}
-              </Typography>
-          } variant={BadgeVariant.Success}/>
+              {count}
+            </Typography>
+          } variant={BadgeVariant.Success} />
         ),
         customHeadLabelRender: createCustomHeaderLabelRender(
-        "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.automaticDDLImport",
-        "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.automaticDDLImportTooltip"
+          "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.automaticDDLImport",
+          "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges." +
+          "automaticDDLImportTooltip"
         ),
       },
     },
     {
       name: "invalidObjCount",
       options: {
-        setCellHeaderProps: () => ({ style: { padding: theme.spacing(1, 0) } }),
-        setCellProps: () => ({ style: { padding: theme.spacing(1, 0) } }),
+        setCellHeaderProps: () => ({ style: { padding: "8px 0" } }),
+        setCellProps: () => ({ style: { padding: "8px 0" } }),
         customBodyRender: (count: number, tableMeta: any) => {
+          const rowIndex = tableMeta?.rowIndex;
           const objectType = tableMeta?.rowData?.[1]?.toLowerCase();
-
-          if (count > 0) {
-            return (
-              <Box display="flex" flexDirection="row" alignItems="center">
-                <YBBadge
-                  text={
-                    <Typography className={classes.badgeTextStyle} variant="body2">
-                      {count}
-                    </Typography>
-                  }
-                  variant={BadgeVariant.Warning}
-                />
-                {isAssessmentPage && (
+          return (
+            <Box display="flex" flexDirection="row" alignItems="center">
+              {
+                count > 0 && (
+                  <>
+                    <YBBadge
+                      text={
+                        <Typography
+                          className={classes.badgeTextStyle}
+                          variant="body2">
+                          {count}
+                        </Typography>
+                      }
+                      variant={BadgeVariant.Warning}
+                    />
+                    {isAssessmentPage === false && <Box
+                      component="span"
+                      className={classes.viewDetailsLink}
+                      onClick={() => {
+                        setExpandedSuggestions((prev) => ({
+                          ...prev,
+                          [rowIndex]: !prev[rowIndex],
+                        }));
+                      }}
+                    >
+                      {t("clusterDetail.voyager.planAndAssess.sourceEnv.viewDetails")}
+                    </Box>}
+                  </>
+                )
+              }
+              {count === 0 && isAssessmentPage === false && (
+                <Box
+                  component="span"
+                  className={classes.seeDetailsHyphen}
+                >
+                  -
+                </Box>
+              )}
+              {isAssessmentPage && (
+                count > 0 ? (
                   <Box
                     component="span"
                     className={classes.seeDetailsLink}
@@ -528,41 +862,74 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({
                   >
                     {t("clusterDetail.voyager.planAndAssess.refactoring.seeDetails")}
                   </Box>
-                )}
-              </Box>
-            );
-          }
-
-          return (
-            <Box component="span" className={classes.seeDetailsHyphen}>
-              -
+                ) : (
+                  <Box
+                    component="span"
+                    className={classes.seeDetailsHyphen}
+                  >
+                    -
+                  </Box>
+                )
+              )}
             </Box>
           );
         },
         customHeadLabelRender: createCustomHeaderLabelRender(
-        "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.invalidObjectCount",
-        "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.invalidObjectCountTooltip"
+          "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.invalidObjectCount",
+          "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges." +
+          "invalidObjectCountTooltip"
         ),
       },
     },
     {
       name: "manualRefactoring",
       options: {
-        setCellHeaderProps: () => ({ style: { padding: theme.spacing(1, 3.125) } }),
-        setCellProps: () => ({ style: { padding: theme.spacing(1, 3.75) } }),
-        customBodyRender: (count: number) => (
-          <YBBadge text={
-            <Typography
-              className={classes.badgeTextStyle}
-              variant="body2">
-                {count}
-            </Typography>
-          } variant={BadgeVariant.Warning}/>
-        ),
+        setCellHeaderProps: () => ({ style: { padding: "8px 25px" } }),
+        setCellProps: () => ({ style: { padding: "8px 30px" } }),
+        customBodyRender: (count: number, tableMeta: any) => {
+          const rowIndex = tableMeta?.rowIndex;
+          return (
+            <Box display="flex" flexDirection="row" alignItems="center">
+              {count > 0 ? (
+                <>
+                  <YBBadge text={
+                    <Typography
+                      className={classes.badgeTextStyle}
+                      variant="body2">
+                      {count}
+                    </Typography>
+                  } variant={BadgeVariant.Warning} />
+                  {isAssessmentPage === false && (
+                    <Box
+                      component="span"
+                      className={classes.viewDetailsLink}
+                      onClick={() => {
+                        setExpandedSuggestions((prev) => ({
+                          ...prev,
+                          [rowIndex]: !prev[rowIndex],
+                        }));
+                      }}
+                    >
+                      {t("clusterDetail.voyager.planAndAssess.sourceEnv.viewDetails")}
+                    </Box>
+                  )}
+                </>
+              ) : (
+                <Box
+                  component="span"
+                  className={classes.seeDetailsHyphen}
+                >
+                  -
+                </Box>
+              )}
+            </Box>
+          );
+        },
         display: isAssessmentPage === false, // Hiding this column in assessment page.
         customHeadLabelRender: createCustomHeaderLabelRender(
-         "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.manualRefactoring",
-         "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.manualRefactoringTooltip"
+          "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.manualRefactoring",
+          "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges." +
+          "manualRefactoringTooltip"
         ),
       },
     },
@@ -571,24 +938,15 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({
       options: {
         sort: false,
         display: showRightArrowSidePanel,
-        setCellHeaderProps: () => ({
-          style: { width: theme.spacing(6.25), padding: theme.spacing(1) },
-        }),
-        setCellProps: () => ({ style: { width: theme.spacing(6.25), padding: theme.spacing(1) } }),
+        setCellHeaderProps: () => ({ style: { width: "50px", padding: "8px 8px" } }),
+        setCellProps: () => ({ style: { width: "50px", padding: "8px 8px" } }),
         customBodyRender: (rightArrowSidePanel: {
           sqlObjectType: string | undefined | null;
           mapReturnedArrayLength: number;
         }) =>
           rightArrowSidePanel.mapReturnedArrayLength > 0 && (
             <Box
-              style={{
-                cursor: "pointer",
-                height: theme.spacing(4),
-                width: theme.spacing(6.25),
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center"
-              }}
+              className={classes.rightArrowButton}
               onClick={() => {
                 const objectType: string = rightArrowSidePanel.sqlObjectType?.toLowerCase() ?? "";
                 let dataForSidePanel: SqlObjectsDetails = {
@@ -603,9 +961,9 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({
                 sqlObjectsList?.forEach((sqlObjects) => {
                   sqlObjects.issues?.forEach((currentIssue) => {
                     if (currentIssue && sqlObjects &&
-                        sqlObjects?.objectType?.toLowerCase() === objectType) {
-                          sidePanelSuggestionIssues.push(currentIssue);
-                        totalCount = sqlObjects?.totalCount ?? 0;
+                      sqlObjects?.objectType?.toLowerCase() === objectType) {
+                      sidePanelSuggestionIssues.push(currentIssue);
+                      totalCount = sqlObjects?.totalCount ?? 0;
                     }
                   });
                 });
@@ -615,16 +973,13 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({
                 dataForSidePanel.totalCount = totalCount;
                 setSelectedDataType(dataForSidePanel);
                 const sideHeader = t(
-              "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.compatibilityIssues"
+                  "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges." +
+                  "compatibilityIssues"
                 );
                 setSidePanelHeader(sideHeader);
-                const sideTitle = t(
-                  "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.issues"
-                );
-                setSidePanelTitle(sideTitle);
               }}
             >
-              <ArrowRightIcon />
+              <CaretRightIconBlue />
             </Box>
           ),
         customHeadLabelRender: () => null, // No heading needed here
@@ -641,16 +996,16 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({
           withBorder={false}
           options={{
             pagination: false,
-            customRowRender: (data, dataIndex) => {
+            customRowRender: (data: any, dataIndex: number) => {
               return (
                 <Fragment key={`row-${dataIndex}`}>
                   <TableRow>
-                    {data.map((cellData, cellIndex) => {
+                    {data.map((cellData: any, cellIndex: number) => {
                       const cellProps = columns[cellIndex]?.options?.setCellProps?.() || {};
+                      const style = 'style' in cellProps ? cellProps.style : cellProps;
                       return (
-                        columns[cellIndex].options.display !== false && cellData !== undefined && (
-                          <TableCell key={`cell-${dataIndex}-${cellIndex}`}
-                            style={(cellProps as any).style || cellProps}>
+                        columns[cellIndex].options.display !== false && (
+                          <TableCell key={`cell-${dataIndex}-${cellIndex}`} style={style}>
                             {typeof cellData === "function"
                               ? (cellData as any)(dataIndex)
                               : cellData}
@@ -659,27 +1014,7 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({
                       );
                     })}
                   </TableRow>
-                  {expandedSuggestions[dataIndex] === true && (
-                    <TableRow>
-                      <TableCell colSpan={columns.length} className={classes.innerTableParent}>
-                        <Box className={classes.innerTable}>
-                          <YBTable
-                            key={`innerTable`}
-                            data={
-                              expandableGraphData.get(
-                                graphData[dataIndex]?.objectType?.toLowerCase() ?? ''
-                              ) ?? []
-                            }
-                            columns={innerColumns}
-                            options={{
-                              pagination: true,
-                            }}
-                            withBorder={true}
-                          />
-                        </Box>
-                      </TableCell>
-                    </TableRow>
-                  )}
+                  {renderExpandedRow(dataIndex, expandedSuggestions[dataIndex] === true)}
                 </Fragment>
               );
             },
@@ -721,11 +1056,9 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({
         onClose={() => {
           setSelectedDataType(undefined);
           setSidePanelHeader("");
-          setSidePanelTitle("");
         }}
         acknowledgedObjects={acknowledgedObjects}
         header={sidePanelHeader}
-        title={sidePanelTitle}
         toggleAcknowledgment={toggleAcknowledgment}
       />
     </>

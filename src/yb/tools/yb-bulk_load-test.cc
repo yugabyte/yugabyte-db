@@ -515,8 +515,10 @@ TEST_F(YBBulkLoadTest, InvalidLines) {
 
 TEST_F_EX(YBBulkLoadTest, TestCLITool, YBBulkLoadTestWithoutRebalancing) {
   string exe_path = GetToolPath(kPartitionToolName);
-  vector<string> argv = {kPartitionToolName, "-master_addresses", master_addresses_comma_separated_,
-      "-table_name", kTableName, "-namespace_name", kNamespace};
+  vector<string> argv = {kPartitionToolName,
+      "--master_addresses", master_addresses_comma_separated_,
+      "--table_name", kTableName,
+      "--namespace_name", kNamespace};
   FILE *out;
   FILE *in;
   std::unique_ptr<Subprocess> partition_process;
@@ -579,15 +581,15 @@ TEST_F_EX(YBBulkLoadTest, TestCLITool, YBBulkLoadTestWithoutRebalancing) {
   // tablet which ensures we would compact some files.
   vector<string> bulk_load_argv = {
       kBulkLoadToolName,
-      "-master_addresses", master_addresses_comma_separated_,
-      "-table_name", kTableName,
-      "-namespace_name", kNamespace,
-      "-base_dir", bulk_load_data,
-      "-initial_seqno", "0",
-      "-row_batch_size", std::to_string(kNumIterations/kNumTablets/10),
-      "-bulk_load_num_files_per_tablet", std::to_string(kNumFilesPerTablet),
-      "-flush_batch_for_tests",
-      "-never_fsync", "true"
+      "--master_addresses", master_addresses_comma_separated_,
+      "--table_name", kTableName,
+      "--namespace_name", kNamespace,
+      "--base_dir", bulk_load_data,
+      "--initial_seqno", "0",
+      "--row_batch_size", std::to_string(kNumIterations/kNumTablets/10),
+      "--bulk_load_num_files_per_tablet", std::to_string(kNumFilesPerTablet),
+      "--flush_batch_for_tests",
+      "--never_fsync", "true"
   };
 
   std::unique_ptr<Subprocess> bulk_load_process;

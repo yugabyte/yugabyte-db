@@ -51,6 +51,9 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_read_request_caching, true, "Enable read req
 DEFINE_NON_RUNTIME_uint32(
     pg_cache_response_renew_soft_lifetime_limit_ms, 3 * 60 * 1000,
     "Lifetime limit for response cache soft renewing process");
+DEFINE_NON_RUNTIME_uint32(
+    pg_cache_response_trust_auth_lifetime_limit_ms, 60 * 1000,
+    "Lifetime limit for response cache used for auth process when connection manager is used.");
 
 namespace yb::pggate {
 namespace {
@@ -280,6 +283,8 @@ class VersionInfoWriter {
 
 [[nodiscard]] std::optional<uint32_t> GetCacheLifetimeThreshold(PrefetchingCacheMode mode) {
   switch(mode) {
+    case PrefetchingCacheMode::TRUST_CACHE_AUTH:
+      return FLAGS_pg_cache_response_trust_auth_lifetime_limit_ms;
     case PrefetchingCacheMode::TRUST_CACHE:
       return std::nullopt;
     case PrefetchingCacheMode::RENEW_CACHE_SOFT:
@@ -515,7 +520,9 @@ class PgSysTablePrefetcher::Impl {
     //   catalog version N.
     // - Reading missed data at same read time when catalog version N has been read guaranties that
     //   data will be consistent to catalog version N
-    return options_.caching_info && options_.caching_info->mode == PrefetchingCacheMode::TRUST_CACHE
+    return options_.caching_info &&
+           (options_.caching_info->mode == PrefetchingCacheMode::TRUST_CACHE ||
+            options_.caching_info->mode == PrefetchingCacheMode::TRUST_CACHE_AUTH)
         ?  std::optional(options_.caching_info->version_info.version_read_time) : std::nullopt;
   }
 

@@ -164,6 +164,7 @@ class AbstractInstancesMethod(AbstractMethod):
         self.parser.add_argument("--private_key_file", default=default_key_pair)
         self.parser.add_argument("--volume_size", type=int, default=250,
                                  help="desired size (gb) of each volume mounted on instance")
+        self.parser.add_argument("--cmk_res_name", help="CMK arn to enable encrypted EBS volumes")
         self.parser.add_argument("--instance_type",
                                  required=False,
                                  help="The instance type to act on")
@@ -1218,7 +1219,8 @@ class ChangeInstanceTypeMethod(AbstractInstancesMethod):
             self.cloud.start_instance(host_info, server_ports)
             logging.info('Instance {} is started'.format(args.search_pattern))
         # Make sure we are using the updated cgroup value if instance type is changing.
-        self.cloud.setup_ansible(args).run("setup-cgroup.yml", self.extra_vars, host_info)
+        if args.pg_max_mem_mb > 0:
+            self.cloud.setup_ansible(args).run("setup-cgroup.yml", self.extra_vars, host_info)
 
 
 class CronCheckMethod(AbstractInstancesMethod):

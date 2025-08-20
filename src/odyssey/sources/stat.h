@@ -23,6 +23,12 @@ struct od_stat {
 	uint8_t current_tdigest;
 
 	od_atomic_u64_t count_query;
+	/*
+	 * YB: While count_tx counts the number of transactions finished for
+	 * most pools, it has been modified to count the number of successful
+	 * calls to od_router_attach for the control connection pool as control
+	 * backends do not do any transactions.
+	*/
 	od_atomic_u64_t count_tx;
 
 	od_atomic_u64_t query_time;

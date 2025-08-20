@@ -78,13 +78,13 @@ To create a schedule and enable PITR, use the [`create_snapshot_schedule`](../..
 For example, to create a schedule that produces a snapshot of a YSQL database once a day (every 1,440 minutes) and retains it for three days (4,320 minutes), you would execute the following command:
 
 ```sh
-./bin/yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> create_snapshot_schedule 1440 4320 ysql.<database_name>
+./bin/yb-admin --master_addresses <ip1:7100,ip2:7100,ip3:7100> create_snapshot_schedule 1440 4320 ysql.<database_name>
 ```
 
 The equivalent command for a YCQL keyspace would be the following:
 
 ```sh
-./bin/yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> create_snapshot_schedule 1440 4320 <keyspace_name>
+./bin/yb-admin --master_addresses <ip1:7100,ip2:7100,ip3:7100> create_snapshot_schedule 1440 4320 <keyspace_name>
 ```
 
 The following output is a unique ID of the newly-created snapshot schedule:
@@ -102,7 +102,7 @@ You can use this ID to [delete the schedule](#delete-a-schedule) or [restore to 
 To delete a schedule and disable PITR, use the following [`delete_snapshot_schedule`](../../../admin/yb-admin/#delete-snapshot-schedule) command that takes the ID of the schedule to be deleted as a parameter:
 
 ```sh
-./bin/yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> delete_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
+./bin/yb-admin --master_addresses <ip1:7100,ip2:7100,ip3:7100> delete_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
 ```
 
 ### List schedules
@@ -110,7 +110,7 @@ To delete a schedule and disable PITR, use the following [`delete_snapshot_sched
 To see a list of schedules that currently exist in the cluster, use the following [`list_snapshot_schedules`](../../../admin/yb-admin/#list-snapshot-schedules) command:
 
 ```sh
-./bin/yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> list_snapshot_schedules
+./bin/yb-admin --master_addresses <ip1:7100,ip2:7100,ip3:7100> list_snapshot_schedules
 ```
 
 ```output.json
@@ -141,7 +141,7 @@ To see a list of schedules that currently exist in the cluster, use the followin
 You can also use the same command to view the information about a particular schedule by providing its ID as a parameter, as follows:
 
 ```sh
-./bin/yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> list_snapshot_schedules 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
+./bin/yb-admin --master_addresses <ip1:7100,ip2:7100,ip3:7100> list_snapshot_schedules 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
 ```
 
 ## Restore to a point in time
@@ -162,7 +162,7 @@ If a database or a keyspace has an associated snapshot schedule, you can use tha
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <ip1:7100,ip2:7100,ip3:7100> \
+        --master_addresses <ip1:7100,ip2:7100,ip3:7100> \
         restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 1651435200
     ```
 
@@ -170,7 +170,7 @@ If a database or a keyspace has an associated snapshot schedule, you can use tha
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <ip1:7100,ip2:7100,ip3:7100> \
+        --master_addresses <ip1:7100,ip2:7100,ip3:7100> \
         restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 "2022-05-01 13:00-0700"
     ```
 
@@ -180,7 +180,7 @@ If a database or a keyspace has an associated snapshot schedule, you can use tha
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <ip1:7100,ip2:7100,ip3:7100> \
+        --master_addresses <ip1:7100,ip2:7100,ip3:7100> \
         restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 minus 5m
     ```
 
@@ -188,7 +188,7 @@ If a database or a keyspace has an associated snapshot schedule, you can use tha
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <ip1:7100,ip2:7100,ip3:7100> \
+        --master_addresses <ip1:7100,ip2:7100,ip3:7100> \
         restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 minus 1h
     ```
 

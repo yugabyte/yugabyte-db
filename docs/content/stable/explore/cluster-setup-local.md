@@ -37,7 +37,7 @@ Use the following instructions to set up universes for running the examples in E
 
 ## Set up YugabyteDB universe
 
-You can run examples using a universe set up on your local machine, assuming you have [Installed](/preview/tutorials/quick-start/linux/) YugabyteDB.
+You can run examples using a universe set up on your local machine, assuming you have [Installed](/preview/quick-start/linux/) YugabyteDB.
 
 Use the [yugabyted](../../reference/configuration/yugabyted/) utility to create and manage universes.
 
@@ -64,7 +64,7 @@ To check the status of a running single-node universe, run the following command
 ./bin/yugabyted status
 ```
 
-For more information, refer to [Quick Start](/preview/tutorials/quick-start/linux/#create-a-local-cluster).
+For more information, refer to [Quick Start](/preview/quick-start/linux/#create-a-local-cluster).
 
 ### Multi-node universe
 

@@ -61,6 +61,8 @@ public class ShellProcessHandlerTest extends TestCase {
         .thenReturn(Duration.ofSeconds(10));
     when(runtimeConfGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentConnectionKeepAliveTimeout)))
         .thenReturn(Duration.ofSeconds(10));
+    when(runtimeConfGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentDescribePollDeadline)))
+        .thenReturn(Duration.ofSeconds(2));
     ShellLogsManager shellLogsManager =
         new ShellLogsManager(mockPlatformScheduler, mockRuntimeConfigFactory, runtimeConfGetter);
     shellProcessHandler = new ShellProcessHandler(mockConfig, runtimeConfGetter, shellLogsManager);

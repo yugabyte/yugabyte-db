@@ -462,7 +462,8 @@ void ExternalDaemon::Shutdown(SafeShutdown safe_shutdown, RequireExitCode0 requi
   bound_rpc_ = bound_rpc_hostport();
   bound_http_ = bound_http_hostport();
 
-  LOG_WITH_PREFIX(INFO) << "Starting Shutdown() of daemon with id " << id();
+  LOG_WITH_PREFIX(INFO) << "Starting Shutdown() of daemon with id " << id()
+                        << " in " << (safe_shutdown ? "safe" : "unsafe") << " mode";
 
   const auto start_time = CoarseMonoClock::Now();
   auto process_name_and_pid = exe_;

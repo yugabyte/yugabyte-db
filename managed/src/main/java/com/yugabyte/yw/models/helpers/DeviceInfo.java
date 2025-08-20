@@ -5,11 +5,14 @@ package com.yugabyte.yw.models.helpers;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.cloud.PublicCloudConstants;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
+import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.models.KmsConfig;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Objects;
@@ -48,6 +51,10 @@ public class DeviceInfo {
   @ApiModelProperty(value = "Storage type used for this instance")
   public PublicCloudConstants.StorageType storageType;
 
+  // This field is only used for AWS EBS volumes currently.
+  @ApiModelProperty(value = "Volume encryption settings for AWS EBS volumes")
+  public CloudVolumeEncryption cloudVolumeEncryption;
+
   @Override
   public String toString() {
     StringBuilder sb = new StringBuilder("DeviceInfo: ");
@@ -70,6 +77,7 @@ public class DeviceInfo {
     checkVolumeBaseInfo();
     checkDiskIops();
     checkThroughput();
+    checkVolumeEncryption();
   }
 
   public DeviceInfo clone() {
@@ -159,6 +167,48 @@ public class DeviceInfo {
                 "Disk throughput for storage type %s should be in range [%d, %d]",
                 storageType.name(), throughputRange.getFirst(), throughputRange.getSecond()));
       }
+    }
+  }
+
+  private void checkVolumeEncryption() {
+    if (cloudVolumeEncryption == null) {
+      return;
+    }
+    // Check runtime conf for volume encryption
+    RuntimeConfGetter runtimeConfGetter =
+        StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
+    boolean allowCloudVolumeEncryption =
+        runtimeConfGetter.getGlobalConf(GlobalConfKeys.allowCloudVolumeEncryption);
+    if (!allowCloudVolumeEncryption
+        && cloudVolumeEncryption != null
+        && cloudVolumeEncryption.enableVolumeEncryption) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Volume encryption runtime config is not enabled. Please turn on runtime config "
+              + "'yb.universe.allow_cloud_volume_encryption' to enable volume encryption.");
+    }
+    if (!Common.CloudType.aws.equals(storageType.getCloudType())) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Volume encryption is currently supported only for AWS EBS volumes");
+    }
+    if (cloudVolumeEncryption.enableVolumeEncryption
+        && cloudVolumeEncryption.kmsConfigUUID == null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "KMS config UUID is required if volume encryption is enabled");
+    }
+    if (!cloudVolumeEncryption.enableVolumeEncryption
+        && cloudVolumeEncryption.kmsConfigUUID != null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "KMS config UUID should not be set when volume encryption is disabled");
+    }
+    KmsConfig kmsConfig = KmsConfig.getOrBadRequest(cloudVolumeEncryption.kmsConfigUUID);
+    if (!KeyProvider.AWS.equals(kmsConfig.getKeyProvider())) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "KMS config '%s' must be of provider AWS KMS instead of `%s` for volume"
+                  + " encryption.",
+              cloudVolumeEncryption.kmsConfigUUID, kmsConfig.getKeyProvider()));
     }
   }
 }
