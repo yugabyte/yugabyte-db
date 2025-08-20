@@ -39,6 +39,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -477,6 +478,13 @@ public class KubernetesUtil {
       podToConfig.put(nd.nodeName, ImmutableMap.of("KUBECONFIG", kubeconfig));
     }
     return podToConfig;
+  }
+
+  public static Map<String, String> getKubernetesConfigPerPod(Universe universe, NodeDetails node) {
+    PlacementInfo placementInfo = Universe.getCluster(universe, node.nodeName).placementInfo;
+    Map<String, Map<String, String>> k8sConfigMap =
+        KubernetesUtil.getKubernetesConfigPerPodName(placementInfo, Collections.singleton(node));
+    return k8sConfigMap.get(node.nodeName);
   }
 
   /**
