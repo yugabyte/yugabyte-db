@@ -37,6 +37,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
@@ -63,7 +64,23 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
   public void testExpand() throws InterruptedException {
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
     userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
-    Universe universe = createUniverse(userIntent);
+    Universe universe =
+        createUniverse(
+            userIntent,
+            params -> {
+              AtomicInteger i = new AtomicInteger(1);
+              params
+                  .getPrimaryCluster()
+                  .placementInfo
+                  .azStream()
+                  .forEach(
+                      az -> {
+                        az.leaderPreference = i.get();
+                        if (i.get() == 1) {
+                          i.incrementAndGet();
+                        }
+                      });
+            });
     initYSQL(universe);
     initAndStartPayload(universe);
     verifyMasterLBStatus(customer, universe, true /*enabled*/, true /*idle*/);

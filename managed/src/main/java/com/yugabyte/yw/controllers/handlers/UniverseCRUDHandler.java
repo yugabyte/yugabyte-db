@@ -375,7 +375,9 @@ public class UniverseCRUDHandler {
     if (userIntent.masterDeviceInfo != null && userIntent.dedicatedNodes) {
       userIntent.masterDeviceInfo.validate();
     }
-
+    if (cluster.placementInfo != null && cluster.placementInfo.hasRankOrdering()) {
+      PlacementInfoUtil.validatePriority(cluster.placementInfo);
+    }
     checkGeoPartitioningParameters(customer, taskParams, OpType.CONFIGURE);
 
     userIntent.masterGFlags = trimFlags(userIntent.masterGFlags);
@@ -700,6 +702,9 @@ public class UniverseCRUDHandler {
         c.userIntent.dedicatedNodes = true;
       }
 
+      if (c.placementInfo != null && c.placementInfo.hasRankOrdering()) {
+        PlacementInfoUtil.validatePriority(c.placementInfo);
+      }
       PlacementInfoUtil.updatePlacementInfo(taskParams.getNodesInCluster(c.uuid), c.placementInfo);
       PlacementInfoUtil.finalSanityCheckConfigure(c, taskParams.getNodesInCluster(c.uuid));
 
@@ -2418,6 +2423,9 @@ public class UniverseCRUDHandler {
 
     for (Cluster newCluster : taskParams.clusters) {
       Cluster curCluster = universe.getCluster(newCluster.uuid);
+      if (newCluster.placementInfo != null && newCluster.placementInfo.hasRankOrdering()) {
+        PlacementInfoUtil.validatePriority(newCluster.placementInfo);
+      }
       if (curCluster.userIntent.replicationFactor != newCluster.userIntent.replicationFactor
           && !rfChangeEnabled
           && curCluster.clusterType == ClusterType.PRIMARY) {
