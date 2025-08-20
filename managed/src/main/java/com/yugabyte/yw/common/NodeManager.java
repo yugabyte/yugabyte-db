@@ -80,6 +80,7 @@ import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
@@ -3028,6 +3029,14 @@ public class NodeManager extends DevopsBase {
     if (OtelCollectorUtil.isAuditLogExportEnabledInUniverse(auditLogConfig)
         || OtelCollectorUtil.isQueryLogExportEnabledInUniverse(queryLogConfig)
         || OtelCollectorUtil.isMetricsExportEnabledInUniverse(metricsExportConfig)) {
+      // Get the node agent for the node if its present.
+      Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
+      NodeDetails nodeDetails = universe.getNode(taskParams.nodeName);
+      NodeAgent nodeAgent =
+          getNodeAgentClient()
+              .maybeGetNodeAgent(nodeDetails.cloudInfo.private_ip, provider, universe)
+              .orElse(null);
+
       commandArgs.add("--otel_col_config_file");
       commandArgs.add(
           otelCollectorConfigGenerator
@@ -3039,7 +3048,8 @@ public class NodeManager extends DevopsBase {
                   queryLogConfig,
                   metricsExportConfig,
                   logLinePrefix,
-                  getOtelColMetricsPort(taskParams))
+                  getOtelColMetricsPort(taskParams),
+                  nodeAgent)
               .toAbsolutePath()
               .toString());
 

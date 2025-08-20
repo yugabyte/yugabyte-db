@@ -518,7 +518,8 @@ public class NodeAgentRpcPayload {
                   queryLogConfig,
                   metricsExportConfig,
                   GFlagsUtil.getLogLinePrefix(gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
-                  NodeManager.getOtelColMetricsPort(taskParams))
+                  NodeManager.getOtelColMetricsPort(taskParams),
+                  nodeAgent)
               .toAbsolutePath()
               .toString();
       nodeAgentClient.uploadFile(

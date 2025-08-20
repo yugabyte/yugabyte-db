@@ -6,7 +6,9 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.models.helpers.MetricCollectionLevel;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 import javax.validation.constraints.NotNull;
 import lombok.Data;
 import org.apache.commons.collections4.CollectionUtils;
@@ -32,6 +34,17 @@ public class MetricsExportConfig {
       accessMode = READ_WRITE,
       example = "NORMAL")
   private MetricCollectionLevel collectionLevel = MetricCollectionLevel.NORMAL;
+
+  @ApiModelProperty(
+      value =
+          "Set of target types to include in scrape configuration. If not specified, all supported"
+              + " target types will be included.",
+      accessMode = READ_WRITE,
+      example =
+          "[\"MASTER_EXPORT\", \"TSERVER_EXPORT\", \"YSQL_EXPORT\", \"CQL_EXPORT\","
+              + " \"NODE_EXPORT\", \"NODE_AGENT_EXPORT\", \"OTEL_EXPORT\"]")
+  private Set<ScrapeConfigTargetType> scrapeConfigTargets =
+      EnumSet.allOf(ScrapeConfigTargetType.class);
 
   @NotNull
   @ApiModelProperty(

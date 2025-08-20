@@ -11430,6 +11430,24 @@
           "example" : "NORMAL",
           "type" : "string"
         },
+        "scrapeConfigTargets" : {
+          "description" : "Set of target types to include in scrape configuration. If not specified, all supported target types will be included.",
+          "example" : "[\"MASTER_EXPORT\", \"TSERVER_EXPORT\", \"YSQL_EXPORT\", \"CQL_EXPORT\", \"NODE_EXPORT\", \"NODE_AGENT_EXPORT\", \"OTEL_EXPORT\"]",
+          "items" : {
+            "enum" : [
+              "MASTER_EXPORT",
+              "TSERVER_EXPORT",
+              "YSQL_EXPORT",
+              "CQL_EXPORT",
+              "NODE_EXPORT",
+              "NODE_AGENT_EXPORT",
+              "OTEL_EXPORT"
+            ],
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
         "scrapeIntervalSeconds" : {
           "description" : "Scrape interval in seconds. Applied on all scrape jobs commonly.",
           "example" : 30,
