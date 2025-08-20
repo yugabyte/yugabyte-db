@@ -95,6 +95,9 @@ public class YNPProvisioning extends AbstractTaskBase {
           "tmp_directory",
           confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory));
       ynpNode.put("is_configure_clockbound", userIntent.isUseClockbound());
+      if (!provider.getYbHome().isEmpty()) {
+        ynpNode.put("yb_home_dir", provider.getYbHome());
+      }
       Customer customer = Customer.getOrBadRequest(provider.getCustomerUUID());
       boolean enableEarlyoomFeature =
           confGetter.getConfForScope(customer, CustomerConfKeys.enableEarlyoomFeature);
