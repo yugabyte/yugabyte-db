@@ -18,6 +18,7 @@
 #include <atomic>
 #include <algorithm>
 #include <mutex>
+#include <optional>
 #include <queue>
 #include <unordered_set>
 #include <vector>
@@ -368,8 +369,8 @@ using OldTxnMetadataVariant =
 using OldTxnMetadataPtrVariant =
     std::variant<OldSingleShardWaiterMetadataPBPtr, OldTransactionMetadataPBPtr>;
 
-void GetTablePartitionList(const client::YBTablePtr& table, PgTablePartitionsPB* partition_list) {
-  const auto table_partition_list = table->GetVersionedPartitions();
+void GetTablePartitionList(const client::YBTable& table, PgTablePartitionsPB* partition_list) {
+  const auto table_partition_list = table.GetVersionedPartitions();
   const auto& partition_keys = partition_list->mutable_keys();
   partition_keys->Clear();
   partition_keys->Reserve(narrow_cast<int>(table_partition_list->keys.size()));
@@ -451,17 +452,14 @@ class PerformQuery : public std::enable_shared_from_this<PerformQuery>, public r
         wait_state_ptr_(ash::WaitStateInfo::CurrentWaitState()) {
   }
 
-  void Ready() override {
+  void Ready(const PgTablesQueryResult& tables) override {
+    tables_ = tables;
     if (Thread::UniqueThreadId() == tid_) {
       Run();
     } else {
       retained_self_ = shared_from_this();
       provider_.Messenger().ThreadPool().Enqueue(this);
     }
-  }
-
-  PgTablesQueryResult& tables() {
-    return tables_;
   }
 
  private:
@@ -482,7 +480,7 @@ class PerformQuery : public std::enable_shared_from_this<PerformQuery>, public r
       Respond(session.status(), &resp(), &context);
       return;
     }
-    (*session)->Perform(req(), resp(), std::move(context), tables_);
+    (*session)->Perform(req(), resp(), std::move(context), *tables_);
   }
 
   void Done(const Status& status) override {
@@ -492,7 +490,7 @@ class PerformQuery : public std::enable_shared_from_this<PerformQuery>, public r
   SessionProvider& provider_;
   rpc::TypedPBRpcContextHolder<PgPerformRequestPB, PgPerformResponsePB> context_;
   const int64_t tid_;
-  PgTablesQueryResult tables_;
+  std::optional<PgTablesQueryResult> tables_;
   std::shared_ptr<PerformQuery> retained_self_;
 
   // kept here in case the task is scheduled in another thread.
@@ -506,25 +504,20 @@ class OpenTableQuery : public PgTablesQueryListener {
   explicit OpenTableQuery(ContextHolder&& context) : context_(std::move(context)) {
   }
 
-  PgTablesQueryResult& tables() {
-    return tables_;
-  }
-
-  void Ready() override {
-    auto res = tables_.GetInfo(context_.req().table_id());
+  void Ready(const PgTablesQueryResult& tables) override {
+    auto res = tables.GetInfo(context_.req().table_id());
     auto& resp = context_.resp();
     if (!res.ok()) {
       Respond(res.status(), &resp, &context_.context());
       return;
     }
     *resp.mutable_info() = *res->schema;
-    GetTablePartitionList(res->table, resp.mutable_partitions());
+    GetTablePartitionList(*res->table, resp.mutable_partitions());
     context_->RespondSuccess();
   }
 
  private:
   ContextHolder context_;
-  PgTablesQueryResult tables_;
 };
 
 }  // namespace
@@ -704,8 +697,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     };
     auto query = std::make_shared<OpenTableQuery>(
         MakeTypedPBRpcContextHolder(req, resp, std::move(context)));
-    table_cache_.GetTables(
-        std::span(&req.table_id(), 1), options, SharedField(query, &query->tables()), query);
+    table_cache_.GetTables(std::span(&req.table_id(), 1), query, options);
   }
 
   Status GetTablePartitionList(
@@ -713,7 +705,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       PgGetTablePartitionListResponsePB* resp,
       rpc::RpcContext* context) {
     const auto table = VERIFY_RESULT(table_cache_.Get(req.table_id()));
-    tserver::GetTablePartitionList(table, resp->mutable_partitions());
+    tserver::GetTablePartitionList(*table, resp->mutable_partitions());
     return Status::OK();
   }
 
@@ -2079,7 +2071,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     PreparePgTablesQuery(*req, table_ids);
     auto query = std::make_shared<PerformQuery>(
       *this, MakeTypedPBRpcContextHolder(*req, resp, std::move(*context)));
-    table_cache_.GetTables(table_ids, {}, SharedField(query, &query->tables()), query);
+    table_cache_.GetTables(table_ids, query);
   }
 
   void InvalidateTableCache() {

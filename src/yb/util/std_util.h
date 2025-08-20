@@ -15,7 +15,10 @@
 
 #include <algorithm>
 #include <future>
+#include <ranges>
 #include <type_traits>
+
+#include "yb/gutil/stl_util.h"
 
 // Implementation of std functions we want to use, but cannot until we switch to newer C++.
 
@@ -134,6 +137,13 @@ using optional_ref = std::optional<std::reference_wrapper<T>>;
 template <class T, class S>
 auto SharedField(std::shared_ptr<S> ptr, T* field) {
   return std::shared_ptr<T>(std::move(ptr), field);
+}
+
+template <class Container, class T>
+void AddIfMissing(Container& container, T&& value) {
+    if (std::ranges::find(container, value) == container.end()) {
+      InsertIntoContainer(container, std::move(value));
+    }
 }
 
 } // namespace yb
