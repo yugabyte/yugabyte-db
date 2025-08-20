@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ServerSubTaskBase;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.LocalNodeManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeManager.NodeCommandType;
@@ -30,10 +31,8 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
-import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -123,14 +122,13 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
       Universe universe, NodeDetails node, boolean isK8sUniverse) {
     ReleaseContainer release = releaseManager.getReleaseByVersion(taskParams().ybSoftwareVersion);
     if (isK8sUniverse) {
-      String ybServerPackage = release.getFilePath(getArchitectureOnK8sPod(node));
+      String ybServerPackage = release.getFilePath(getArchitectureOnK8sPod(universe, node));
       String packageName = extractPackageName(ybServerPackage);
       String versionName = extractVersionName(ybServerPackage);
-      Map<String, String> zoneConfig =
-          CloudInfoInterface.fetchEnvVars(AvailabilityZone.getOrBadRequest(node.azUuid));
+      Map<String, String> podConfig = KubernetesUtil.getKubernetesConfigPerPod(universe, node);
       String namespace = node.cloudInfo.kubernetesNamespace;
       String podName = node.cloudInfo.kubernetesPodName;
-      String dataDirectory = Util.getDataDirectoryPath(universe, node, config);
+      String dataDirectory = Util.getDataDirectoryPath(universe, node, this.config);
       List<String> deletePackageCommand =
           ImmutableList.of(
               "/bin/bash",
@@ -142,7 +140,7 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
       kubernetesManagerFactory
           .getManager()
           .executeCommandInPodContainer(
-              zoneConfig, namespace, podName, "yb-tserver", deletePackageCommand);
+              podConfig, namespace, podName, "yb-tserver", deletePackageCommand);
     } else {
       String ybServerPackage = release.getFilePath(universe.getUniverseDetails().arch);
       String packageName = extractPackageName(ybServerPackage);
@@ -172,21 +170,20 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
   private void downloadPackage(Universe universe, NodeDetails node, boolean isk8sUniverse) {
     ReleaseContainer release = releaseManager.getReleaseByVersion(taskParams().ybSoftwareVersion);
     if (isk8sUniverse) {
-      Map<String, String> zoneConfig =
-          CloudInfoInterface.fetchEnvVars(AvailabilityZone.getOrBadRequest(node.azUuid));
+      Map<String, String> podConfig = KubernetesUtil.getKubernetesConfigPerPod(universe, node);
       String namespace = node.cloudInfo.kubernetesNamespace;
       String podName = node.cloudInfo.kubernetesPodName;
-      Architecture arch = getArchitectureOnK8sPod(node);
+      Architecture arch = getArchitectureOnK8sPod(universe, node);
       String ybServerPackage = release.getFilePath(arch);
       String packageName = extractPackageName(ybServerPackage);
       String versionName = extractVersionName(ybServerPackage);
-      String dataDirectory = Util.getDataDirectoryPath(universe, node, config);
+      String dataDirectory = Util.getDataDirectoryPath(universe, node, this.config);
       // Copy the package to the node in temp directory
       if (release.isHttpDownload(ybServerPackage)) {
         kubernetesManagerFactory
             .getManager()
             .executeCommandInPodContainer(
-                zoneConfig,
+                podConfig,
                 namespace,
                 podName,
                 "yb-tserver",
@@ -203,7 +200,7 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
         kubernetesManagerFactory
             .getManager()
             .copyFileToPod(
-                zoneConfig,
+                podConfig,
                 namespace,
                 podName,
                 "yb-tserver",
@@ -221,7 +218,7 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
       kubernetesManagerFactory
           .getManager()
           .executeCommandInPodContainer(
-              zoneConfig, namespace, podName, "yb-tserver", extractPackageCommand);
+              podConfig, namespace, podName, "yb-tserver", extractPackageCommand);
     } else {
       AnsibleConfigureServers.Params params =
           getAnsibleConfigureServerParamsToDownloadSoftware(
@@ -232,14 +229,13 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
 
   private void runCheckOnPod(Universe universe, NodeDetails node) {
     ReleaseContainer release = releaseManager.getReleaseByVersion(taskParams().ybSoftwareVersion);
-    Architecture arch = getArchitectureOnK8sPod(node);
+    Architecture arch = getArchitectureOnK8sPod(universe, node);
     String ybServerPackage = release.getFilePath(arch);
     String versionName = extractVersionName(ybServerPackage);
     String tmpDirectory = nodeUniverseManager.getRemoteTmpDir(node, universe);
-    String dataDirectory = Util.getDataDirectoryPath(universe, node, config);
+    Map<String, String> podConfig = KubernetesUtil.getKubernetesConfigPerPod(universe, node);
+    String dataDirectory = Util.getDataDirectoryPath(universe, node, this.config);
 
-    Map<String, String> zoneConfig =
-        CloudInfoInterface.fetchEnvVars(AvailabilityZone.getOrBadRequest(node.azUuid));
     String namespace = node.cloudInfo.kubernetesNamespace;
     String podName = node.cloudInfo.kubernetesPodName;
     UniverseDefinitionTaskParams.Cluster primaryCluster =
@@ -263,7 +259,7 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
     kubernetesManagerFactory
         .getManager()
         .executeCommandInPodContainer(
-            zoneConfig, namespace, podName, "yb-tserver", pgUpgradeCheckCommand);
+            podConfig, namespace, podName, "yb-tserver", pgUpgradeCheckCommand);
   }
 
   private void runCheckOnNode(Universe universe, NodeDetails node) {
@@ -363,14 +359,13 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
     return parts[parts.length - 1];
   }
 
-  private Architecture getArchitectureOnK8sPod(NodeDetails node) {
-    Map<String, String> zoneConfig =
-        CloudInfoInterface.fetchEnvVars(AvailabilityZone.getOrBadRequest(node.azUuid));
+  private Architecture getArchitectureOnK8sPod(Universe universe, NodeDetails node) {
+    Map<String, String> podConfig = KubernetesUtil.getKubernetesConfigPerPod(universe, node);
     String architecture =
         kubernetesManagerFactory
             .getManager()
             .executeCommandInPodContainer(
-                zoneConfig,
+                podConfig,
                 node.cloudInfo.kubernetesNamespace,
                 node.cloudInfo.kubernetesPodName,
                 "yb-controller",
