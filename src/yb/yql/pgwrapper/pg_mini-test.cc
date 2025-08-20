@@ -1623,6 +1623,16 @@ TEST_F_EX(PgMiniTest, VerifyTombstoneTimeCache, PgMiniTestSingleNode) {
   result = ASSERT_RESULT(conn.FetchRows<int>(Format("SELECT v FROM $0 ORDER BY v", kTableName)));
   ASSERT_VECTORS_EQ(result, kNewData);
   VerifyTombstoneTimeCache(/*tombstone_time_should_exist = */true);
+
+  // Verify that no tombstone time has been cached for pg_class.
+  ASSERT_OK(conn.FetchRows<int64_t>("SELECT count(*) from pg_class"));
+  auto pg_class_table_id = ASSERT_RESULT(GetTableIDFromTableName("pg_class"));
+  const auto& sys_catalog = cluster_->mini_master(0)->master()->sys_catalog();
+  auto table_info = ASSERT_RESULT(
+      sys_catalog.tablet_peer()->tablet_metadata()->GetTableInfo(pg_class_table_id));
+  ASSERT_TRUE(table_info && table_info->doc_read_context);
+  auto tombstone_time = table_info->doc_read_context->table_tombstone_time();
+  ASSERT_FALSE(tombstone_time.has_value());
 }
 
 

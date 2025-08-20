@@ -86,8 +86,10 @@ struct DocReadContext {
     return Slice(shared_key_prefix_buffer_.data(), shared_key_prefix_len_);
   }
 
+  // Tombstone time cache is valid only for colocated tables.
   std::optional<DocHybridTime> table_tombstone_time() const;
 
+  // Tombstone time cache is valid only for colocated tables.
   void set_table_tombstone_time(DocHybridTime table_tombstone_time) const;
 
   Slice upperbound() const {

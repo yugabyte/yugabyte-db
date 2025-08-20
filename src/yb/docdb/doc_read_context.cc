@@ -87,6 +87,7 @@ std::optional<DocHybridTime> DocReadContext::table_tombstone_time() const {
 }
 
 void DocReadContext::set_table_tombstone_time(DocHybridTime table_tombstone_time) const {
+  DCHECK(schema_.has_colocation_id());
   boost::atomic_ref<DocHybridTime> ref(table_tombstone_time_);
   ref.store(table_tombstone_time, boost::memory_order_relaxed);
 }

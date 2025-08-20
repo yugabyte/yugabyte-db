@@ -486,6 +486,11 @@ const dockv::SchemaPackingStorage& DocRowwiseIteratorBase::schema_packing_storag
 }
 
 Result<DocHybridTime> DocRowwiseIteratorBase::GetTableTombstoneTime(Slice root_doc_key) const {
+  if (!doc_read_context_.schema().has_colocation_id()) {
+    return docdb::GetTableTombstoneTime(
+        root_doc_key, doc_db_, txn_op_context_, read_operation_data_);
+  }
+
   auto cached_tombstone_time = doc_read_context_.table_tombstone_time();
   if (cached_tombstone_time.has_value()) {
     return *cached_tombstone_time;
