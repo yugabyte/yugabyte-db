@@ -1020,6 +1020,19 @@ public class DrConfigController extends AuthenticatedController {
       GetUniverseReplicationInfoResponse inboundReplicationResp;
       GetXClusterOutboundReplicationGroupInfoResponse outboundReplicationResp;
 
+      if (xClusterConfig.isAutomaticDdlMode()) {
+        // Hide the `replicated_ddls` table from the xCluster config. This table is metadata and
+        // the user does not need to see it.
+        sourceTableInfoList =
+            sourceTableInfoList.stream()
+                .filter(tableInfo -> !TableInfoUtil.isReplicatedDdlsTable(tableInfo))
+                .collect(Collectors.toList());
+        targetTableInfoList =
+            targetTableInfoList.stream()
+                .filter(tableInfo -> !TableInfoUtil.isReplicatedDdlsTable(tableInfo))
+                .collect(Collectors.toList());
+      }
+
       try {
         inboundReplicationResp =
             XClusterConfigTaskBase.getUniverseReplicationInfo(
