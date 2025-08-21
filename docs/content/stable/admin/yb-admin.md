@@ -1438,8 +1438,8 @@ This requests a placement of 5 replicas anywhere in the `aws` cloud. Similarly:
     modify_placement_info  \
     aws.us-east-1.*:3 3`
 ```
-This requests a placement of 3 replicas anywhere in the `us-east-1` region of `aws` cloud.
 
+This requests a placement of 3 replicas anywhere in the `us-east-1` region of `aws` cloud.
 
 #### set_preferred_zones
 
