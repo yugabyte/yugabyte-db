@@ -18,46 +18,38 @@ With on-premises providers, VMs are _not_ auto-created by YBA; you must manually
 
 ## Automatic provisioning
 
-Using the YugabyteDB Anywhere node agent package to provision VMs, you can have the provisioning script additionally create an on-premises provider for you.
+Using the YugabyteDB Anywhere node agent package, you can provision VMs, create an on-premises provider, and add the VMs to the provider.
 
-### Stage 1: Prepare your infrastructure
+1. [Install YugabyteDB Anywhere](../../install-yugabyte-platform/).
+1. Have your network administrator set up firewalls to open the ports required for YBA and the nodes to communicate. Refer to [Networking](../../prepare/networking/).
+1. Have your system administrator create VMs that will be used as nodes in universes. This is typically done using your hypervisor or cloud provider. Do the following:
 
-- Have your network administrator set up firewalls to open the ports required for YBA and the nodes to communicate. Refer to [Networking](../../prepare/networking/).
-- Have your system administrator create VMs that will be used as nodes in universes. This is typically done using your hypervisor or cloud provider. Do the following:
-  - Locate the VMs in the regions and availability zones where you will be deploying universes.
-  - Install a YugabyteDB-supported Linux OS on the VMs.
+    - Locate the VMs in the regions and availability zones where you will be deploying universes.
+    - Install a YugabyteDB-supported Linux OS on the VMs.
 
-  For instructions on creating VMs that are suitable for deploying YugabyteDB, refer to [Software requirements for on-premises nodes](../../prepare/server-nodes-software/).
+    For instructions on creating VMs that are suitable for deploying YugabyteDB, refer to [Software requirements for on-premises nodes](../../prepare/server-nodes-software/).
 
-- Have your system administrator provision the VMs. This requires:
+1. Have your system administrator provision the VMs. This requires:
 
-    1. Downloading the YugabyteDB Anywhere node agent package to the VM.
-    1. Modifying the configuration file.
-    1. Running the provisioning script (as root or via sudo).
+    - Downloading the YugabyteDB Anywhere node agent package to the VM.
+    - Modifying the configuration file.
+    - Running the provisioning script (as root or via sudo).
 
-    These steps prepare the node for use by YugabyteDB Anywhere. Refer to [Automatically provision on-premises nodes](../../prepare/server-nodes-software/software-on-prem/).
+    These steps prepare the node for use by YugabyteDB Anywhere.
 
-If you have already installed and are running YugabyteDB Anywhere, running the provisioning script can additionally:
+    If you have already installed and are running YugabyteDB Anywhere, running the provisioning script can additionally:
 
-- Create (or updates) the on-premises provider.
-- Create the instance type.
-- Add the node instance to the provider.
+    - Create (or updates) the on-premises provider.
+    - Create the instance type.
+    - Add the node instance to the provider.
 
-### Stage 2: Create an on-premises provider configuration
+    Refer to [Automatically provision on-premises nodes](../../prepare/server-nodes-software/software-on-prem/).
 
-_If the on-premises provider wasn't created when provisioning the VMs_, you will need to create the on-premises provider.
+### Creating a provider manually
 
-Refer to [Create the provider configuration](../on-premises-provider/).
+_If the on-premises provider wasn't created when provisioning the VMs_, you can manually create the provider using the YugabyteDB Anywhere UI. Refer to [Create the provider configuration](../on-premises-provider/). Note: You must enable the **Manually Provision Nodes** option (under **Advanced**).
 
-Note: You must enable the **Manually Provision Nodes** option (under **Advanced**).
-
-### Stage 3: Add nodes to the provider free pool
-
-_If the on-premises provider wasn't created when provisioning the VMs_, you will need to add the provisioned VMs to the provider.
-
-- Obtain the IP addresses of the provisioned VMs from your system administrator. You need these to add the nodes to the provider.
-
-Refer to [Add nodes to the on-premises provider](../on-premises-nodes/).
+_If the instance type and instances weren't created when provisioning the VMs_, you can manually add the provisioned VMs to the provider. Obtain the IP addresses of the provisioned VMs from your system administrator. You need these to add the nodes to the provider. Refer to [Add nodes to the on-premises provider](../on-premises-nodes/).
 
 ## Legacy provisioning
 
