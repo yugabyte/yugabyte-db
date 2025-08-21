@@ -369,6 +369,12 @@ void XClusterPoller::DoPoll() {
   req.set_stream_id(producer_tablet_info_.stream_id.ToString());
   req.set_tablet_id(producer_tablet_info_.tablet_id);
   req.set_serve_as_proxy(GetAtomicFlag(&FLAGS_cdc_consumer_use_proxy_forwarding));
+  // If we finished processing a ChangeMetadataOp, then we need to force update the cdc_state
+  // checkpoint. This ensures that if the poller restarts, it will only go back at most 1 schema
+  // version.
+  // If this poller ever restarts while processed_change_metadata_op_in_last_poll_ is still true,
+  // then the next poller will start at the previous checkpoint (before the ChangeMetadataOp).
+  req.set_force_update_cdc_state_checkpoint(processed_change_metadata_op_in_last_poll_);
 
   if (FLAGS_enable_xcluster_auto_flag_validation && auto_flags_version_) {
     req.set_auto_flags_config_version(auto_flags_version_->GetCompatibleVersion());
@@ -553,6 +559,10 @@ void XClusterPoller::VerifyApplyChangesResponse(XClusterOutputClientResponse res
       poll_stats_history_.SetError(std::move(response.status));
     }
 
+    // We've ack-ed the previous batch to the source, so it will have updated the cdc_state
+    // checkpoint already - can reset the flag now.
+    processed_change_metadata_op_in_last_poll_ = false;
+
     // Repeat the ApplyChanges step, with exponential backoff.
     apply_failures_ =
         std::min(apply_failures_ + 1, GetAtomicFlag(&FLAGS_replication_failure_delay_exponent));
@@ -593,7 +603,7 @@ void XClusterPoller::HandleApplyChangesResponse(XClusterOutputClientResponse res
 
       // If processing ddl_queue table fails, then retry just this part (don't repeat ApplyChanges).
       ScheduleFuncWithDelay(
-          GetAtomicFlag(&FLAGS_xcluster_safe_time_update_interval_secs),
+          FLAGS_xcluster_safe_time_update_interval_secs * MonoTime::kMillisecondsPerSecond,
           BIND_FUNCTION_AND_ARGS(XClusterPoller::HandleApplyChangesResponse, std::move(response)));
       return;
     }
@@ -626,6 +636,8 @@ void XClusterPoller::HandleApplyChangesResponse(XClusterOutputClientResponse res
       // Once all changes have been successfully applied we can update the safe time.
       UpdateSafeTime(HybridTime(response.get_changes_response->safe_hybrid_time()));
     }
+
+    processed_change_metadata_op_in_last_poll_ = response.processed_change_metadata_op;
   }
 
   SchedulePoll();

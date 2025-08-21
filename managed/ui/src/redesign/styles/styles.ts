@@ -41,7 +41,7 @@ export const usePillStyles = makeStyles((theme) => ({
         color: theme.palette.ybacolors.pillDangerIcon
       }
     },
-    '&$inactive': {
+    '&$metadataGrey': {
       color: theme.palette.ybacolors.pillInactiveText,
       backgroundColor: theme.palette.ybacolors.pillInactiveBackground
     },
@@ -56,7 +56,7 @@ export const usePillStyles = makeStyles((theme) => ({
   inProgress: {},
   warning: {},
   danger: {},
-  inactive: {},
+  metadataGrey: {},
   productOrange: {}
 }));
 

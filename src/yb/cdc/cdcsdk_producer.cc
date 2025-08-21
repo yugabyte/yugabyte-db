@@ -187,6 +187,11 @@ Status AddColumnToMap(
       ql_value.set_decimal_value(v.ToString());
     }
 
+    if (tablet_peer->tablet_metadata()->IsSysCatalog()) {
+      cdc_datum_message->mutable_pg_catalog_value()->CopyFrom(ql_value);
+      col_schema.type()->ToQLTypePB(cdc_datum_message->mutable_pg_catalog_type());
+      return Status::OK();
+    }
     cdc_datum_message->mutable_cql_value()->CopyFrom(ql_value);
     col_schema.type()->ToQLTypePB(cdc_datum_message->mutable_cql_type());
   }
@@ -497,9 +502,10 @@ Status DoPopulateBeforeImage(
     const EnumOidLabelMap& enum_oid_label_map,
     const CompositeAttsMap& composite_atts_map, CDCSDKRequestSource request_source,
     const dockv::SubDocKey& decoded_primary_key, const Schema& schema,
-    const SchemaVersion schema_version, const ColocationId& colocation_id,
+    const SchemaVersion schema_version,
     const std::unordered_set<std::string>& modified_columns,
-    const cdc::CDCRecordType& record_type) {
+    const cdc::CDCRecordType& record_type,
+    tablet::TableInfoPtr table_info) {
   if (record_type == cdc::CDCRecordType::CHANGE || row_message->op() == RowMessage_Op_INSERT) {
     return Status::OK();
   }
@@ -509,8 +515,7 @@ Status DoPopulateBeforeImage(
   auto pending_op = tablet->CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
 
   const auto log_prefix = tablet->LogPrefix();
-  auto doc_read_context = VERIFY_RESULT(
-      tablet_peer->tablet_metadata()->GetTableInfo(colocation_id))->doc_read_context;
+  auto doc_read_context = table_info->doc_read_context;
   dockv::ReaderProjection projection(schema);
   docdb::DocRowwiseIterator iter(
       projection, *doc_read_context, TransactionOperationContext(), docdb,
@@ -866,6 +871,38 @@ Result<std::pair<SchemaVersion, Schema>> GetSchemaAndVersion(
   return std::make_pair(schema_version, *schema_details.schema);
 }
 
+Result<tablet::TableInfoPtr> WarnIfNotFoundOrReturn(
+    Result<tablet::TableInfoPtr> result, const std::string& id, const std::string& tablet_id) {
+  if (result.ok()) {
+    return *result;
+  }
+
+  if (!result.status().IsNotFound()) {
+    return result;
+  }
+
+  LOG(WARNING) << "Did not find table info for table with colocation / cotable id: " << id
+               << " and tablet id: " << tablet_id
+               << ". This could be because the object corresponding to colocation id has "
+                  "been deleted.";
+  return nullptr;
+}
+
+Result<tablet::TableInfoPtr> GetTableInfoForColocatedTable(
+    const dockv::SubDocKey& decoded_key, tablet::TabletPtr tablet_ptr) {
+  const auto& colocation_id = decoded_key.doc_key().colocation_id();
+  auto table_info_result = tablet_ptr->metadata()->GetTableInfo(colocation_id);
+  return WarnIfNotFoundOrReturn(
+      table_info_result, std::to_string(colocation_id), tablet_ptr->tablet_id());
+}
+
+Result<tablet::TableInfoPtr> GetTableInfoForSysCatalogTable(
+    const dockv::SubDocKey& decoded_key, tablet::TabletPtr tablet_ptr) {
+  const auto& cotable_id = decoded_key.doc_key().cotable_id();
+  auto table_info_result = tablet_ptr->metadata()->GetTableInfo(cotable_id.ToHexString());
+  return WarnIfNotFoundOrReturn(table_info_result, cotable_id.ToString(), tablet_ptr->tablet_id());
+}
+
 // Populate CDC record corresponding to WAL batch in ReplicateMsg.
 Status PopulateCDCSDKIntentRecord(
     const OpId& op_id,
@@ -888,10 +925,12 @@ Status PopulateCDCSDKIntentRecord(
     CDCThroughputMetrics* throughput_metrics) {
   auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet());
 
-  bool colocated = tablet->metadata()->colocated();
+  const bool colocated = tablet->metadata()->colocated();
+  const bool is_sys_catalog_tablet = tablet->metadata()->IsSysCatalog();
+
   Schema schema = Schema();
   SchemaVersion schema_version = std::numeric_limits<uint32_t>::max();
-  ColocationId colocation_id = kColocationIdNotSet;
+  tablet::TableInfoPtr table_info;
   CDCRecordType record_type = CDCRecordType::CHANGE;
   std::string table_name = tablet->metadata()->table_name();
   auto table_id = tablet->metadata()->table_id();
@@ -931,12 +970,14 @@ Status PopulateCDCSDKIntentRecord(
     auto value_type = dockv::DecodeValueEntryType(value_slice);
     value_slice.consume_byte();
 
-    if (!colocated) {
+    if (!colocated && !is_sys_catalog_tablet) {
       std::tie(schema_version, schema) = VERIFY_RESULT(GetSchemaAndVersion(
           tablet_peer, tablet->metadata()->table_id(), intent.intent_ht.hybrid_time().ToUint64(),
           cached_schema_details, schema_packing_storage, IsPackedRow(value_type), value_slice,
           client, resp, throughput_metrics));
+
       record_type = VERIFY_RESULT(GetRecordTypeForPopulatingBeforeImage(metadata, table_id));
+      table_info = VERIFY_RESULT(tablet->metadata()->GetTableInfo(table_id));
     }
 
     if (column_id_opt && column_id_opt->type() == dockv::KeyEntryType::kColumnId &&
@@ -972,7 +1013,7 @@ Status PopulateCDCSDKIntentRecord(
             RETURN_NOT_OK(PopulateBeforeImage(
                 tablet_peer, commit_time, row_message,
                 enum_oid_label_map, composite_atts_map, request_source, prev_decoded_key, schema,
-                schema_version, colocation_id, modified_columns, record_type));
+                schema_version, modified_columns, record_type, table_info));
             if (!commit_time) {
               for (size_t index = 0; index < schema.num_columns(); ++index) {
                 row_message->add_old_tuple();
@@ -996,20 +1037,15 @@ Status PopulateCDCSDKIntentRecord(
       null_value_columns.clear();
       is_packed_row_record = false;
 
-      if (colocated) {
-        colocation_id = decoded_key.doc_key().colocation_id();
-        auto tablet_info_result = tablet->metadata()->GetTableInfo(colocation_id);
-        if (!tablet_info_result.ok()) {
-          if (!tablet_info_result.status().IsNotFound()) {
-            return tablet_info_result.status();
-          }
-          LOG(WARNING) << "Did not find table info for colocated table with colocation id: "
-                       << colocation_id << " and tablet id: " << tablet->tablet_id()
-                       << ". This could be because the object corresponding to colocation id has "
-                          "been deleted.";
+      if (colocated || is_sys_catalog_tablet) {
+        table_info = is_sys_catalog_tablet
+                         ? VERIFY_RESULT(GetTableInfoForSysCatalogTable(decoded_key, tablet))
+                         : VERIFY_RESULT(GetTableInfoForColocatedTable(decoded_key, tablet));
+        // If the table_info is null, then it means that the decoded_key belongs to a dropped
+        // object on the colocated tablet.
+        if (!table_info) {
           continue;
         }
-        auto table_info = *tablet_info_result;
         table_id = table_info->table_id;
         if (!IsColocatedTableQualifiedForStreaming(table_id, metadata)) {
           continue;
@@ -1059,7 +1095,7 @@ Status PopulateCDCSDKIntentRecord(
         RETURN_NOT_OK(PopulateBeforeImage(
             tablet_peer, commit_time, row_message, enum_oid_label_map,
             composite_atts_map, request_source, decoded_key, schema, schema_version,
-            colocation_id, modified_columns, record_type));
+            modified_columns, record_type, table_info));
 
         if (row_message->old_tuple_size() == 0) {
           RETURN_NOT_OK(AddPrimaryKey(
@@ -1165,7 +1201,7 @@ Status PopulateCDCSDKIntentRecord(
           RETURN_NOT_OK(PopulateBeforeImage(
               tablet_peer, commit_time, row_message,
               enum_oid_label_map, composite_atts_map, request_source, decoded_key, schema,
-              schema_version, colocation_id, modified_columns, record_type));
+              schema_version, modified_columns, record_type, table_info));
           if (!commit_time) {
             for (size_t index = 0; index < schema.num_columns(); ++index) {
               row_message->add_old_tuple();
@@ -1190,7 +1226,7 @@ Status PopulateCDCSDKIntentRecord(
       RETURN_NOT_OK(PopulateBeforeImage(
           tablet_peer, commit_time, row_message, enum_oid_label_map,
           composite_atts_map, request_source, prev_decoded_key, schema, schema_version,
-          colocation_id, modified_columns, record_type));
+          modified_columns, record_type, table_info));
       if (!commit_time) {
         for (size_t index = 0; index < schema.num_columns(); ++index) {
           row_message->add_old_tuple();
@@ -1274,17 +1310,21 @@ Status PopulateCDCSDKWriteRecord(
 
   uint32_t records_added = 0;
 
-  bool colocated = tablet_ptr->metadata()->colocated();
+  const bool colocated = tablet_ptr->metadata()->colocated();
+  const bool is_sys_catalog_tablet = tablet_ptr->metadata()->IsSysCatalog();
+
   Schema schema = Schema();
   SchemaVersion schema_version = std::numeric_limits<uint32_t>::max();
-  auto colocation_id = kColocationIdNotSet;
+  tablet::TableInfoPtr table_info;
   CDCRecordType record_type = CDCRecordType::CHANGE;
   auto table_name = tablet_ptr->metadata()->table_name();
   auto table_id = tablet_ptr->metadata()->table_id();
   SchemaPackingStorage* schema_packing_storage = &schema_packing_storages->at(table_id);
   // TODO: This function and PopulateCDCSDKIntentRecord have a lot of code in common. They should
   // be refactored to use some common row-column iterator.
-  for (auto it = batch.write_pairs().cbegin(); it != batch.write_pairs().cend(); ++it) {
+  int record_batch_idx = 0;
+  for (auto it = batch.write_pairs().cbegin(); it != batch.write_pairs().cend();
+       ++it, ++record_batch_idx) {
     const yb::docdb::LWKeyValuePairPB& write_pair = *it;
     Slice key = write_pair.key();
     const auto key_size =
@@ -1295,13 +1335,14 @@ Status PopulateCDCSDKWriteRecord(
     auto value_type = dockv::DecodeValueEntryType(value_slice);
     value_slice.consume_byte();
 
-    if (!colocated) {
+    if (!colocated && !is_sys_catalog_tablet) {
       std::tie(schema_version, schema) = VERIFY_RESULT(GetSchemaAndVersion(
           tablet_peer, tablet_ptr->metadata()->table_id(), msg->hybrid_time(),
           cached_schema_details, schema_packing_storage, IsPackedRow(value_type), value_slice,
           client, resp, throughput_metrics));
 
       record_type = VERIFY_RESULT(GetRecordTypeForPopulatingBeforeImage(metadata, table_id));
+      table_info = VERIFY_RESULT(tablet_ptr->metadata()->GetTableInfo(table_id));
     }
 
     Slice sub_doc_key = key;
@@ -1326,20 +1367,16 @@ Status PopulateCDCSDKWriteRecord(
       }
 
       RETURN_NOT_OK(decoded_key.DecodeFrom(&sub_doc_key, dockv::HybridTimeRequired::kFalse));
-      if (colocated) {
-        colocation_id = decoded_key.doc_key().colocation_id();
-        auto tablet_info_result = tablet_ptr->metadata()->GetTableInfo(colocation_id);
-        if (!tablet_info_result.ok()) {
-          if (!tablet_info_result.status().IsNotFound()) {
-            return tablet_info_result.status();
-          }
-          LOG(WARNING) << "Did not find table info for colocated table with colocation id: "
-                       << colocation_id << " and tablet id: " << tablet_ptr->tablet_id()
-                       << ". This could be because the object corresponding to colocation id has "
-                          "been deleted.";
+      if (colocated || is_sys_catalog_tablet) {
+        table_info = is_sys_catalog_tablet
+                         ? VERIFY_RESULT(GetTableInfoForSysCatalogTable(decoded_key, tablet_ptr))
+                         : VERIFY_RESULT(GetTableInfoForColocatedTable(decoded_key, tablet_ptr));
+
+        // If the table_info is null, then it means that the decoded_key belongs to a dropped
+        // object on the colocated tablet.
+        if (!table_info) {
           continue;
         }
-        auto table_info = *tablet_info_result;
         table_id = table_info->table_id;
         if (!IsColocatedTableQualifiedForStreaming(table_id, metadata)) {
           continue;
@@ -1359,7 +1396,7 @@ Status PopulateCDCSDKWriteRecord(
           RETURN_NOT_OK(PopulateBeforeImage(
               tablet_peer, HybridTime::FromPB(msg->hybrid_time()), row_message,
               enum_oid_label_map, composite_atts_map, request_source, prev_decoded_key, schema,
-              schema_version, colocation_id, modified_columns, record_type));
+              schema_version, modified_columns, record_type, table_info));
         } else {
           for (int new_tuple_index = 0; new_tuple_index < row_message->new_tuple_size();
                ++new_tuple_index) {
@@ -1384,7 +1421,7 @@ Status PopulateCDCSDKWriteRecord(
       row_message->set_table_id(table_id);
       row_message->set_primary_key(primary_key.ToBuffer());
       CDCSDKOpIdPB* cdc_sdk_op_id_pb = proto_record->mutable_cdc_sdk_op_id();
-      SetCDCSDKOpId(msg->id().term(), msg->id().index(), 0, "", cdc_sdk_op_id_pb);
+      SetCDCSDKOpId(msg->id().term(), msg->id().index(), record_batch_idx, "", cdc_sdk_op_id_pb);
       is_packed_row_record = false;
 
       // Check whether operation is WRITE or DELETE.
@@ -1411,7 +1448,7 @@ Status PopulateCDCSDKWriteRecord(
         RETURN_NOT_OK(PopulateBeforeImage(
             tablet_peer, HybridTime::FromPB(msg->hybrid_time()), row_message,
             enum_oid_label_map, composite_atts_map, request_source, decoded_key, schema,
-            schema_version, colocation_id, modified_columns, record_type));
+            schema_version, modified_columns, record_type, table_info));
 
         if (row_message->old_tuple_size() == 0) {
           RETURN_NOT_OK(AddPrimaryKey(
@@ -1499,7 +1536,7 @@ Status PopulateCDCSDKWriteRecord(
       RETURN_NOT_OK(PopulateBeforeImage(
           tablet_peer, HybridTime::FromPB(msg->hybrid_time()), row_message,
           enum_oid_label_map, composite_atts_map, request_source, prev_decoded_key, schema,
-          schema_version, colocation_id, modified_columns, record_type));
+          schema_version, modified_columns, record_type, table_info));
     } else {
       for (int index = 0; index < row_message->new_tuple_size(); ++index) {
         row_message->add_old_tuple();

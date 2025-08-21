@@ -72,7 +72,8 @@ const outlierTypes = [
 const metricMeasureTypes = [
   { value: MetricMeasure.OVERALL, label: 'Overall' },
   { value: MetricMeasure.OUTLIER, label: 'Outlier Nodes', k8label: 'Outlier Pods' },
-  { value: MetricMeasure.OUTLIER_TABLES, label: 'Outlier Tables' }
+  { value: MetricMeasure.OUTLIER_TABLES, label: 'Outlier Tables' },
+  { value: MetricMeasure.OUTLIER_DATABASES, label: 'Outlier Databases' }
 ];
 const DEFAULT_FILTER_KEY = 0;
 const DEFAULT_INTERVAL_KEY = 0;
@@ -652,8 +653,16 @@ class GraphPanelHeader extends Component {
       );
     });
 
-    const splitType =
-      this.state.metricMeasure === MetricMeasure.OUTLIER_TABLES ? SplitType.TABLE : SplitType.NODE;
+    let splitType = SplitType.NONE;
+    const metricMeasure = this.state.metricMeasure;
+    if (metricMeasure === MetricMeasure.OUTLIER_TABLES) {
+      splitType = SplitType.TABLE;
+    } else if (metricMeasure === MetricMeasure.OUTLIER_DATABASES) {
+      splitType = SplitType.NAMESPACE;
+    } else if (metricMeasure === MetricMeasure.OUTLIER) {
+      splitType = SplitType.NODE;
+    }
+
     // TODO: Need to fix handling of query params on Metrics tab
     const liveQueriesLink =
       this.state.currentSelectedUniverse &&
@@ -843,7 +852,7 @@ class GraphPanelHeader extends Component {
                       this.props.origin !== MetricOrigin.TABLE && (
                         <MetricsMeasureSelector
                           metricMeasureTypes={metricMeasureTypes}
-                          selectedMetricMeasureValue={this.state.metricMeasure}
+                          selectedMetricMeasureValue={metricMeasure}
                           onMetricMeasureChanged={this.onMetricMeasureChanged}
                           isSingleNodeSelected={this.state.isSingleNodeSelected}
                           isK8Universe={isK8Universe}
@@ -868,8 +877,9 @@ class GraphPanelHeader extends Component {
                     {/* Show Outlier Selector component if user has selected Outlier section
                   or if user has selected TopTables tab in Overall section  */}
                     {currentSelectedUniverse !== MetricConsts.ALL &&
-                      (this.state.metricMeasure === MetricMeasure.OUTLIER ||
-                        this.state.metricMeasure === MetricMeasure.OUTLIER_TABLES) && (
+                      (metricMeasure === MetricMeasure.OUTLIER ||
+                        metricMeasure === MetricMeasure.OUTLIER_TABLES ||
+                        metricMeasure === MetricMeasure.OUTLIER_DATABASES) && (
                         <OutlierSelector
                           outlierTypes={outlierTypes}
                           selectedOutlierType={this.state.outlierType}

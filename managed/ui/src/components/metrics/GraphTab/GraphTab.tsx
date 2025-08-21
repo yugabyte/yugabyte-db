@@ -75,11 +75,12 @@ export const GraphTab: FC<MetricsData> = ({
         settings.splitCount = outlierNumNodes;
         settings.splitType = SplitType.NODE;
         // Top K tables section will be displayed only in case of Metrics Measure "Overall"
-      } else if (type === MetricTypes.OUTLIER_TABLES) {
+      } else if (type === MetricTypes.OUTLIER_TABLES || type === MetricTypes.OUTLIER_DATABASES) {
         settings.splitMode = outlierType;
         settings.splitCount = outlierNumNodes;
         settings.returnAggregatedValue = false;
-        settings.splitType = SplitType.TABLE;
+        settings.splitType =
+          type === MetricTypes.OUTLIER_TABLES ? SplitType.TABLE : SplitType.NAMESPACE;
       }
       return settings;
     });

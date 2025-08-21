@@ -128,6 +128,7 @@
 #include "utils/syscache.h"
 #include "utils/uuid.h"
 #include "yb/yql/pggate/util/ybc_util.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "yb_ash.h"
 #include "yb_query_diagnostics.h"
@@ -1260,10 +1261,11 @@ typedef struct YbUserIdAndSecContext
 	int			sec_context;
 } YbUserIdAndSecContext;
 
-typedef struct YbDatabaseAndRelfileNodeId {
+typedef struct YbDatabaseAndRelfileNodeId
+{
 	Oid			database_oid;
 	Oid			relfilenode_id;
-} YbDatabaseAndRelfileNodeOid;
+}			YbDatabaseAndRelfileNodeOid;
 
 typedef struct
 {
@@ -2224,6 +2226,7 @@ bool		yb_test_collation = false;
 bool		yb_test_inval_message_portability = false;
 int			yb_test_delay_after_applying_inval_message_ms = 0;
 int			yb_test_delay_set_local_tserver_inval_message_ms = 0;
+double		yb_test_delay_next_ddl = 0;
 
 /*
  * These two GUC variables are used together to control whether DDL atomicity
@@ -2241,7 +2244,7 @@ bool		yb_xcluster_automatic_mode_target_ddl = false;
 
 bool		yb_enable_extended_sql_codes = false;
 
-bool		yb_force_early_ddl_serialization = true;
+bool		yb_user_ddls_preempt_auto_analyze = true;
 
 const char *
 YBDatumToString(Datum datum, Oid typid)
@@ -2548,6 +2551,7 @@ YbTrackAlteredTableId(Oid relid)
 	oldcontext = MemoryContextSwitchTo(TopTransactionContext);
 
 	YbDatabaseAndRelfileNodeOid *entry;
+
 	entry = (YbDatabaseAndRelfileNodeOid *) palloc0(sizeof(YbDatabaseAndRelfileNodeOid));
 	entry->database_oid = YBCGetDatabaseOidByRelid(relid);
 	entry->relfilenode_id = YbGetRelfileNodeIdFromRelId(relid);
@@ -2584,7 +2588,7 @@ YBIncrementDdlNestingLevel(YbDdlMode mode)
 				YbSendParameterStatusForConnectionManager("yb_force_catalog_update_on_next_ddl",
 														  "false");
 		}
-		YbMaybeLockMasterCatalogVersion(mode);
+		YbMaybeLockMasterCatalogVersion();
 	}
 
 	++ddl_transaction_state.nesting_level;
@@ -2881,8 +2885,8 @@ YbCheckNewSharedCatalogVersionOptimization(bool is_breaking_change,
 	}
 
 	elog(DEBUG2,
-		"YbCheckNewSharedCatalogVersionOptimization: "
-		"updating tserver shared catalog version to %"PRIu64, new_version);
+		 "YbCheckNewSharedCatalogVersionOptimization: "
+		 "updating tserver shared catalog version to %" PRIu64, new_version);
 	if (yb_test_delay_set_local_tserver_inval_message_ms > 0)
 		pg_usleep(yb_test_delay_set_local_tserver_inval_message_ms * 1000L);
 	YbcStatus	status = YBCPgSetTserverCatalogMessageList(MyDatabaseId,
@@ -2970,6 +2974,13 @@ YBCommitTransactionContainingDDL()
 		if (YbIsClientYsqlConnMgr())
 			YbSendParameterStatusForConnectionManager("yb_test_fail_next_ddl", "false");
 		elog(ERROR, "Failed DDL operation as requested");
+	}
+
+	if (yb_test_delay_next_ddl > 0)
+	{
+		elog(LOG, "sleeping for %d us before next ddl",
+			 (int) (yb_test_delay_next_ddl * 1000));
+		pg_usleep((int) (yb_test_delay_next_ddl * 1000));
 	}
 
 	/*
@@ -3120,11 +3131,27 @@ YBCommitTransactionContainingDDL()
 			GetCommandTagName(ddl_transaction_state.current_stmt_ddl_command_tag);
 
 		is_breaking_change = mode & YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE;
+		bool increment_for_conn_mgr_needed = false;
+		if (YbIsYsqlConnMgrEnabled())
+		{
+			/* We should not come here on auth backend. */
+			Assert(!yb_is_auth_backend);
+			/*
+			 * Auth backends only read shared relations. If tserver cache is used by
+			 * auth backends, we need to make sure stale tserver cache entries are
+			 * detected by incrementing the catalog version.
+			 */
+			if (ddl_transaction_state.is_global_ddl &&
+				YbCheckTserverResponseCacheForAuthGflags())
+				increment_for_conn_mgr_needed = true;
+		}
+
 		/*
 		 * We can skip incrementing catalog version if nmsgs is 0.
 		 */
 		increment_done =
-			(mode & YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT) &&
+			((mode & YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT) ||
+			 increment_for_conn_mgr_needed) &&
 			(!enable_inval_msgs || nmsgs > 0) &&
 			YbIncrementMasterCatalogVersionTableEntry(is_breaking_change,
 													  ddl_transaction_state.is_global_ddl,
@@ -4180,7 +4207,7 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 									 " React with thumbs up to raise its priority.")));
 
 				YBAddDdlTxnState(ddl_mode.value);
-				YbMaybeLockMasterCatalogVersion(ddl_mode.value);
+				YbMaybeLockMasterCatalogVersion();
 			}
 
 			if (YbShouldIncrementLogicalClientVersion(pstmt) &&
@@ -7614,6 +7641,16 @@ YbIsYsqlConnMgrWarmupModeEnabled()
 }
 
 bool
+YbIsYsqlConnMgrEnabled()
+{
+	static int	cached_value = -1;
+
+	if (cached_value == -1)
+		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_enable_ysql_conn_mgr", false);
+	return cached_value;
+}
+
+bool
 YbIsAuthBackend()
 {
 	return yb_is_auth_backend;
@@ -7902,4 +7939,18 @@ YbIsAnyDependentGeneratedColPK(Relation rel, AttrNumber attnum)
 	bms_free(target_cols);
 
 	return false;
+}
+
+bool
+YbCheckTserverResponseCacheForAuthGflags()
+{
+	/*
+	 * Do not use tserver cache if we do not have incremental catalog cache
+	 * refresh because the cost of global-impact DDLs (which is needed to
+	 * use tserver cache for auth processing) is too high.
+	 */
+	return
+		*YBCGetGFlags()->ysql_enable_read_request_caching &&
+		*YBCGetGFlags()->ysql_enable_read_request_cache_for_connection_auth &&
+		yb_enable_invalidation_messages;
 }

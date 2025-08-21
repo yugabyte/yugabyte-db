@@ -91,8 +91,10 @@ class PgIndexBackfillTest : public LibPqTestBase, public ::testing::WithParamInt
       options->extra_master_flags.push_back("--enable_ysql_operation_lease=true");
 
       options->extra_tserver_flags.push_back(
-          "--allowed_preview_flags_csv=enable_object_locking_for_table_locks");
+          Format("--allowed_preview_flags_csv=$0,$1",
+                 "enable_object_locking_for_table_locks", "ysql_yb_ddl_transaction_block_enabled"));
       options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=true");
+      options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
       options->extra_tserver_flags.push_back("--enable_ysql_operation_lease=true");
       options->extra_tserver_flags.push_back("--TEST_tserver_enable_ysql_lease_refresh=true");
     }
@@ -910,7 +912,7 @@ TEST_P(PgIndexBackfillTestSimultaneously, CreateIndexSimultaneously) {
       // TODO (#19975): Enable read committed isolation
       PGConn create_conn = ASSERT_RESULT(SetDefaultTransactionIsolation(
           ConnectToDB(kDatabaseName), IsolationLevel::SNAPSHOT_ISOLATION));
-      ASSERT_OK(create_conn.Execute("SET yb_force_early_ddl_serialization=false"));
+      ASSERT_OK(create_conn.Execute("SET yb_user_ddls_preempt_auto_analyze=false"));
       statuses[i] = MoveStatus(create_conn.ExecuteFormat(
           "CREATE INDEX $0 ON $1 (i)",
           kIndexName, kTableName));
@@ -1874,7 +1876,7 @@ TEST_P(PgIndexBackfillFastClientTimeout, DropWhileBackfilling) {
     PGConn create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
     // We don't want the DROP INDEX to face a serialization error when acquiring the FOR UPDATE lock
     // on the catalog version row.
-    ASSERT_OK(create_conn.Execute("SET yb_force_early_ddl_serialization=false"));
+    ASSERT_OK(create_conn.Execute("SET yb_user_ddls_preempt_auto_analyze=false"));
     Status status = create_conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i)", kIndexName, kTableName);
     // Expect timeout because
     // DROP INDEX is currently not online and removes the index info from the indexed table
@@ -2470,7 +2472,7 @@ TEST_P(PgIndexBackfillReadCommittedBlockIndisliveBlockDoBackfill, CatVerBumps) {
     auto create_idx_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
     // We don't want the catalog version increments to conflict with the FOR UPDATE lock on the
     // catalog version row.
-    ASSERT_OK(create_idx_conn.Execute("SET yb_force_early_ddl_serialization=false"));
+    ASSERT_OK(create_idx_conn.Execute("SET yb_user_ddls_preempt_auto_analyze=false"));
     ASSERT_OK(create_idx_conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i)", kIndexName, kTableName));
     LOG(INFO) << "End create index thread";
   });

@@ -296,6 +296,7 @@ func (perf PerfAdvisor) Install() error {
 
 func (perf PerfAdvisor) MigrateFromReplicated() error   { return nil }
 func (perf PerfAdvisor) FinishReplicatedMigrate() error { return nil }
+func (perf PerfAdvisor) PreUpgrade() error              { return nil }
 
 // Upgrade will upgrade the perf advisor and install it into the alt install directory.
 // Upgrade will NOT restart the service, the old version is expected to still be running

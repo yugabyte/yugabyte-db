@@ -37,32 +37,39 @@ using namespace std::chrono_literals;
 
 namespace yb {
 
+XClusterYsqlTestBase::SetupParams XClusterDDLReplicationTestBase::kDefaultParams{
+    // By default start with no consumer or producer tables.
+    .num_consumer_tablets = {},
+    .num_producer_tablets = {},
+    // We only create one pg proxy per cluster, so we need to ensure that the target ddl_queue
+    // table leader is on that tserver (so that setting xcluster context works properly).
+    .replication_factor = 1,
+    .num_masters = 1,
+    .ranged_partitioned = false,
+    .is_colocated = false,
+    .use_different_database_oids = false,
+    .start_yb_controller_servers = false,
+};
+
 void XClusterDDLReplicationTestBase::SetUp() {
-  XClusterYsqlTestBase::SetUp();
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_xcluster_api_v2) = true;
+  TEST_SETUP_SUPER(XClusterYsqlTestBase);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_log_queries) = true;
 }
 
-Status XClusterDDLReplicationTestBase::SetUpClusters(
-    bool is_colocated, bool start_yb_controller_servers) {
-  namespace_name = is_colocated ? "colocated_test_db" : "test_db";
-  const SetupParams kDefaultParams{
-      // By default start with no consumer or producer tables.
-      .num_consumer_tablets = {},
-      .num_producer_tablets = {},
-      // We only create one pg proxy per cluster, so we need to ensure that the target ddl_queue
-      // table leader is on that tserver (so that setting xcluster context works properly).
-      .replication_factor = 1,
-      .num_masters = 1,
-      .ranged_partitioned = false,
-      .is_colocated = is_colocated,
-      .use_different_database_oids = true,
-      .start_yb_controller_servers = start_yb_controller_servers,
-  };
-  RETURN_NOT_OK(XClusterYsqlTestBase::SetUpClusters(kDefaultParams));
-  if (is_colocated) {
+Status XClusterDDLReplicationTestBase::SetUpClusters(const SetupParams& params) {
+  namespace_name = params.is_colocated
+                       ? "colocated_test_db"
+                       : (params.use_different_database_oids ? "test_db" : "yugabyte");
+
+  RETURN_NOT_OK(XClusterYsqlTestBase::SetUpClusters(params));
+  if (params.is_colocated) {
     RETURN_NOT_OK(CreateInitialColocatedTable());
   }
+
+  producer_conn_ = std::make_unique<pgwrapper::PGConn>(
+      VERIFY_RESULT(producer_cluster_.ConnectToDB(namespace_name)));
+  consumer_conn_ = std::make_unique<pgwrapper::PGConn>(
+      VERIFY_RESULT(consumer_cluster_.ConnectToDB(namespace_name)));
   return Status::OK();
 }
 
@@ -115,14 +122,17 @@ Status XClusterDDLReplicationTestBase::RestoreToConsumer(
     return GetTempDir(Format("backup_$0", namespace_name));
   };
 
+  consumer_conn_.reset();
   // Restore to new databases on the consumer.
   for (const auto& namespace_name : namespace_names) {
-    (void)DropDatabase(consumer_cluster_, namespace_name);
+    RETURN_NOT_OK(DropDatabase(consumer_cluster_, namespace_name));
     RETURN_NOT_OK(RunBackupCommand(
         {"--backup_location", BackupDir(namespace_name), "--keyspace",
          Format("ysql.$0", namespace_name), "restore"},
         &*consumer_cluster_.mini_cluster_));
   }
+  consumer_conn_ = std::make_unique<pgwrapper::PGConn>(
+      VERIFY_RESULT(consumer_cluster_.ConnectToDB(namespace_name)));
   return Status::OK();
 }
 
@@ -262,6 +272,7 @@ bool XClusterDDLReplicationTestBase::SetReplicationDirection(
   replication_direction_ = replication_direction;
   std::swap(consumer_cluster_, producer_cluster_);
   std::swap(consumer_table_, producer_table_);
+  std::swap(consumer_conn_, producer_conn_);
   LOG(INFO) << "Switched replication direction to "
             << (replication_direction_ == ReplicationDirection::AToB ? "A -> B" : "B -> A");
   return true;

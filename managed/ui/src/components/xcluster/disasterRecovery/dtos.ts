@@ -24,6 +24,7 @@ export interface DrConfig {
   primaryUniverseUuid?: string;
 
   // Replication Fields
+  automaticDdlMode: boolean;
   paused: boolean;
   pitrConfigs: PitrConfig[];
   pitrRetentionPeriodSec: number;

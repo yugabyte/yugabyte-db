@@ -51,6 +51,7 @@ import org.yb.ybc.ControllerStatus;
 import org.yb.ybc.RpcControllerStatus;
 import org.yb.ybc.UpgradeResponse;
 import org.yb.ybc.UpgradeResultResponse;
+import org.yb.ybc.VersionResponse;
 
 @RunWith(MockitoJUnitRunner.Silent.class)
 public class YbcUpgradeTest extends FakeDBApplication {
@@ -433,5 +434,64 @@ public class YbcUpgradeTest extends FakeDBApplication {
         Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
             .getUniverseDetails()
             .getYbcSoftwareVersion());
+  }
+
+  @Test
+  public void testGetUniverseNodeYbcVersions() {
+    String version = "2.0.0";
+    when(mockYbcClient.version(any()))
+        .thenReturn(VersionResponse.newBuilder().setServerVersion(version).build());
+    when(mockYbcClientService.getNewClient(any(), anyInt(), any())).thenReturn(mockYbcClient);
+    List<String> ybcVersions = ybcUpgrade.getUniverseNodeYbcVersions(defaultUniverse, false);
+    assertEquals(2, ybcVersions.size());
+    assertEquals(version, ybcVersions.get(0));
+    assertEquals(version, ybcVersions.get(1));
+  }
+
+  @Test
+  public void testGetUniverseNodeYbcVersionsOnlyLiveTrueWithNullClient() {
+    String version = "2.0.0";
+    List<NodeDetails> nodes = new ArrayList<>(defaultUniverse.getNodes());
+    // For the first node, return a valid client; for the second, return null
+    when(mockYbcClient.version(any()))
+        .thenReturn(VersionResponse.newBuilder().setServerVersion(version).build());
+    when(mockYbcClientService.getNewClient(
+            eq(nodes.get(0).cloudInfo.private_ip),
+            eq(defaultUniverse.getUniverseDetails().communicationPorts.ybControllerrRpcPort),
+            any()))
+        .thenReturn(mockYbcClient);
+    when(mockYbcClientService.getNewClient(
+            eq(nodes.get(1).cloudInfo.private_ip),
+            eq(defaultUniverse.getUniverseDetails().communicationPorts.ybControllerrRpcPort),
+            any()))
+        .thenReturn(null);
+    List<String> ybcVersions = ybcUpgrade.getUniverseNodeYbcVersions(defaultUniverse, true);
+    // Only one live node should return a version
+    assertEquals(1, ybcVersions.size());
+    assertEquals(version, ybcVersions.get(0));
+  }
+
+  @Test
+  public void testGetUniverseNodeYbcVersionsOnlyLiveFalseWithNullClient() {
+    String version = "2.0.0";
+    List<NodeDetails> nodes = new ArrayList<>(defaultUniverse.getNodes());
+    // For the first node, return a valid client; for the second, return null
+    when(mockYbcClient.version(any()))
+        .thenReturn(VersionResponse.newBuilder().setServerVersion(version).build());
+    when(mockYbcClientService.getNewClient(
+            eq(nodes.get(0).cloudInfo.private_ip),
+            eq(defaultUniverse.getUniverseDetails().communicationPorts.ybControllerrRpcPort),
+            any()))
+        .thenReturn(mockYbcClient);
+    when(mockYbcClientService.getNewClient(
+            eq(nodes.get(1).cloudInfo.private_ip),
+            eq(defaultUniverse.getUniverseDetails().communicationPorts.ybControllerrRpcPort),
+            any()))
+        .thenReturn(null);
+    List<String> ybcVersions = ybcUpgrade.getUniverseNodeYbcVersions(defaultUniverse, false);
+    // Both nodes should return a version, but the second one will be "UNKNOWN"
+    assertEquals(2, ybcVersions.size());
+    assertEquals(version, ybcVersions.get(0));
+    assertEquals("UNKNOWN", ybcVersions.get(1));
   }
 }

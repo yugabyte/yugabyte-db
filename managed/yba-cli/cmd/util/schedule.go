@@ -444,22 +444,22 @@ func (o *Schedule) SetIncrementBacklogStatus(v bool) {
 
 // GetNextIncrementScheduleTaskTime returns
 // the NextIncrementScheduleTaskTime field value if set, zero value otherwise.
-func (o *Schedule) GetNextIncrementScheduleTaskTime() *CustomTime {
+func (o *Schedule) GetNextIncrementScheduleTaskTime() CustomTime {
 	if o == nil || o.NextIncrementScheduleTaskTime == nil {
 		var ret CustomTime
-		return &ret
+		return ret
 	}
-	return o.NextIncrementScheduleTaskTime
+	return *o.NextIncrementScheduleTaskTime
 }
 
 // GetNextIncrementScheduleTaskTimeOk returns
 // a tuple with the NextIncrementScheduleTaskTime field value if set, nil otherwise
 // and a boolean to check if the value has been set.
-func (o *Schedule) GetNextIncrementScheduleTaskTimeOk() (*CustomTime, bool) {
+func (o *Schedule) GetNextIncrementScheduleTaskTimeOk() (CustomTime, bool) {
 	if o == nil || o.NextIncrementScheduleTaskTime == nil {
-		return nil, false
+		return CustomTime{}, false
 	}
-	return o.NextIncrementScheduleTaskTime, true
+	return *o.NextIncrementScheduleTaskTime, true
 }
 
 // HasNextIncrementScheduleTaskTime returns a boolean if a field has been set.

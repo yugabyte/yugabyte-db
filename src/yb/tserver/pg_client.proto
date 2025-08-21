@@ -770,6 +770,8 @@ message PgPerformOptionsPB {
   // - Clamps the read uncertainty window.
   // See the commit desc for more info.
   bool clamp_uncertainty_window = 24;
+
+  bool xcluster_target_ddl_bypass = 26;
 }
 
 message PgPerformRequestPB {

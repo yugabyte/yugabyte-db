@@ -30,8 +30,8 @@ If the Primary (A) is terminated for some reason, do the following:
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <standby_master_addresses> \
-        -certs_dir_name <cert_dir> \
+        --master_addresses <standby_master_addresses> \
+        --certs_dir_name <cert_dir> \
         set_universe_replication_enabled <replication_name> 0
     ```
 
@@ -45,8 +45,8 @@ If the Primary (A) is terminated for some reason, do the following:
 
     ```sh
     ./bin/yb-admin \
-    -master_addresses <standby_master_addresses> \
-    -certs_dir_name <cert_dir> \
+    --master_addresses <standby_master_addresses> \
+    --certs_dir_name <cert_dir> \
     get_xcluster_safe_time include_lag_and_skew
     ```
 
@@ -104,8 +104,8 @@ To do a PITR on a database:
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <standby_master_addresses> \
-        -certs_dir_name <cert_dir> \
+        --master_addresses <standby_master_addresses> \
+        --certs_dir_name <cert_dir> \
         list_snapshot_schedules
     ```
 
@@ -136,8 +136,8 @@ To do a PITR on a database:
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <standby_master_addresses> \
-        -certs_dir_name <cert_dir> \
+        --master_addresses <standby_master_addresses> \
+        --certs_dir_name <cert_dir> \
         restore_snapshot_schedule <schedule_id> "<safe_time>"
     ```
 
@@ -154,8 +154,8 @@ To do a PITR on a database:
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <standby_master_addresses> \
-        -certs_dir_name <cert_dir> \
+        --master_addresses <standby_master_addresses> \
+        --certs_dir_name <cert_dir> \
         list_snapshot_restorations
     ```
 
@@ -176,8 +176,8 @@ To do a PITR on a database:
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <standby_master_addresses> \
-        -certs_dir_name <cert_dir> \
+        --master_addresses <standby_master_addresses> \
+        --certs_dir_name <cert_dir> \
         change_xcluster_role ACTIVE
     ```
 
@@ -189,7 +189,7 @@ To do a PITR on a database:
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <standby_master_addresses> \
+        --master_addresses <standby_master_addresses> \
         delete_universe_replication <primary_universe_uuid>_<replication_name>
     ```
 
@@ -223,8 +223,8 @@ To do a PITR on a database:
 
     ```sh
     ./bin/yb-admin \
-    -master_addresses <standby_master_addresses> \
-    -certs_dir_name <cert_dir> \
+    --master_addresses <standby_master_addresses> \
+    --certs_dir_name <cert_dir> \
     change_xcluster_role ACTIVE
     ```
 
@@ -288,7 +288,7 @@ Do the following:
     - List the snapshot schedules to obtain the schedule ID:
 
         ```sh
-        ./bin/yb-admin -master_addresses <A_master_addresses> \
+        ./bin/yb-admin --master_addresses <A_master_addresses> \
         list_snapshot_schedules
         ```
 
@@ -296,7 +296,7 @@ Do the following:
 
         ```sh
         ./bin/yb-admin \
-            -master_addresses <A_master_addresses> \
+            --master_addresses <A_master_addresses> \
             delete_snapshot_schedule <schedule_id>
         ```
 
@@ -314,8 +314,8 @@ Do the following:
 
         ```sh
         ./bin/yb-admin \
-        -master_addresses <A_master_ips> \
-        -certs_dir_name <dir_name> \
+        --master_addresses <A_master_ips> \
+        --certs_dir_name <dir_name> \
         list_cdc_streams
         ```
 
@@ -323,8 +323,8 @@ Do the following:
 
         ```sh
         ./bin/yb-admin \
-        -master_addresses <A_master_ips> \
-        -certs_dir_name <dir_name> \
+        --master_addresses <A_master_ips> \
+        --certs_dir_name <dir_name> \
         delete_cdc_stream <streamID>
         ```
 
@@ -358,8 +358,8 @@ Do the following:
 
         ```sh
         ./bin/yb-admin \
-        -master_addresses <A_master_ips> \
-        -certs_dir_name <dir_name> \
+        --master_addresses <A_master_ips> \
+        --certs_dir_name <dir_name> \
         list_cdc_streams
         ```
 
@@ -367,8 +367,8 @@ Do the following:
 
         ```sh
         ./bin/yb-admin \
-        -master_addresses <A_master_ips> \
-        -certs_dir_name <dir_name> \
+        --master_addresses <A_master_ips> \
+        --certs_dir_name <dir_name> \
         delete_cdc_stream <streamID>
         ```
 

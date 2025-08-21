@@ -157,7 +157,7 @@ public class RestoreBackupParams extends UniverseTaskParams {
     @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2025.1.0.0")
     @Getter
     @Setter
-    private Boolean ignoreErrors = true;
+    private Boolean ignoreErrors = false;
   }
 
   public RestoreBackupParams(

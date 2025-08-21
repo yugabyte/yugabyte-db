@@ -84,7 +84,8 @@ export const RuntimeConfigKey = {
   HYPERDISKS_STORAGE_TYPE: 'yb.gcp.show_hyperdisks_storage_type',
   CIPHERTRUST_KMS_ENABLE: 'yb.kms.allow_ciphertrust',
   ENABLE_AUTO_NODE_AGENT_INSTALLATION: 'yb.node_agent.enabler.run_installer',
-  LOKI_TELEMETRY_ALLOW: "yb.telemetry.allow_loki"
+  LOKI_TELEMETRY_ALLOW: "yb.telemetry.allow_loki",
+  ENABLE_EBS_VOLUME: 'yb.universe.allow_cloud_volume_encryption'
 } as const;
 
 /**

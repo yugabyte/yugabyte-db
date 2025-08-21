@@ -2237,6 +2237,19 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
           tableType.equals(XClusterConfig.TableType.YSQL)
               ? TableInfoUtil.getYsqlTables(replicationClusterData.targetTableInfoList)
               : TableInfoUtil.getYcqlTables(replicationClusterData.targetTableInfoList);
+
+      if (xClusterConfig.getType() == ConfigType.Db && xClusterConfig.isAutomaticDdlMode()) {
+        // Hide the `replicated_ddls` table from the xCluster config. This table is metadata and
+        // the user does not need to see it.
+        replicationClusterData.sourceTableInfoList =
+            replicationClusterData.sourceTableInfoList.stream()
+                .filter(tableInfo -> !TableInfoUtil.isReplicatedDdlsTable(tableInfo))
+                .collect(Collectors.toList());
+        replicationClusterData.targetTableInfoList =
+            replicationClusterData.targetTableInfoList.stream()
+                .filter(tableInfo -> !TableInfoUtil.isReplicatedDdlsTable(tableInfo))
+                .collect(Collectors.toList());
+      }
     } catch (Exception e) {
       log.error(
           "Error getting cluster details for xCluster config {}", xClusterConfig.getUuid(), e);
@@ -2859,7 +2872,8 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
             false /* includeParentTableInfo */,
             false /* excludeColocatedTables */,
             true /* includeColocatedParentTables */,
-            true /* xClusterSupportedOnly */);
+            true /* xClusterSupportedOnly */,
+            true /* includePostgresSystemTables */);
     Map<String, TableInfoResp> sourceTableIdTableInfoRespMap =
         sourceUniverseTableInfoRespList.stream()
             .collect(Collectors.toMap(TableInfoResp::getTableId, Function.identity()));
@@ -2909,7 +2923,8 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
             false /* includeParentTableInfo */,
             false /* excludeColocatedTables */,
             true /* includeColocatedParentTables */,
-            true /* xClusterSupportedOnly */);
+            true /* xClusterSupportedOnly */,
+            true /* includePostgresSystemTables */);
     Map<String, TableInfoResp> targetTableIdTableInfoRespMap =
         targetUniverseTableInfoRespList.stream()
             .collect(Collectors.toMap(TableInfoResp::getTableId, Function.identity()));

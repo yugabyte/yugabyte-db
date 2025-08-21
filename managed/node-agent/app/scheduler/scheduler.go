@@ -52,7 +52,7 @@ func Init(ctx context.Context) *Scheduler {
 
 func GetInstance() *Scheduler {
 	if instance == nil {
-		util.FileLogger().Fatal(nil, "Scheduler is not initialized")
+		util.FileLogger().Fatal(context.TODO(), "Scheduler is not initialized")
 	}
 	return instance
 }

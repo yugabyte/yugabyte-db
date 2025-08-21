@@ -26,13 +26,7 @@ static inline void od_frontend_close(od_client_t *client)
 	od_router_t *router = client->global->router;
 	od_atomic_u32_dec(&router->clients);
 
-	od_io_close(&client->io);
-	if (client->notify_io) {
-		machine_close(client->notify_io);
-		machine_io_free(client->notify_io);
-		client->notify_io = NULL;
-	}
-	od_client_free(client);
+	od_client_free_extended(client);
 }
 
 int od_frontend_info(od_client_t *client, char *fmt, ...)
@@ -914,11 +908,19 @@ static od_frontend_status_t od_frontend_remote_server(od_relay_t *relay,
 		break;
 	case KIWI_BE_COPY_IN_RESPONSE:
 	case KIWI_BE_COPY_OUT_RESPONSE:
-		server->is_copy = 1;
+		server->in_out_response_received++;
 		break;
 	case KIWI_BE_COPY_DONE:
-		server->is_copy = 0;
+		/* should go after copy out
+		* states that backend copy ended
+		*/
+		server->done_fail_response_received++;
 		break;
+	case KIWI_BE_COPY_FAIL:
+		/*
+		* states that backend copy failed
+		*/
+		return relay->error_write;
 	case KIWI_BE_READY_FOR_QUERY: {
 		is_ready_for_query = 1;
 		od_backend_ready(server, data, size);
@@ -1206,7 +1208,8 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 	switch (type) {
 	case KIWI_FE_COPY_DONE:
 	case KIWI_FE_COPY_FAIL:
-		server->is_copy = 0;
+		/* client finished copy */
+		server->done_fail_response_received++;
 		break;
 	case KIWI_FE_QUERY:
 		if (instance->config.log_query || route->rule->log_query)
@@ -2532,9 +2535,7 @@ void od_frontend(void *arg)
 	if (rc == -1) {
 		od_error(&instance->logger, "startup", client, NULL,
 			 "failed to transfer client io");
-		od_io_close(&client->io);
-		machine_close(client->notify_io);
-		od_client_free(client);
+		od_client_free_extended(client);
 		od_atomic_u32_dec(&router->clients_routing);
 		return;
 	}
@@ -2543,9 +2544,7 @@ void od_frontend(void *arg)
 	if (rc == -1) {
 		od_error(&instance->logger, "startup", client, NULL,
 			 "failed to transfer client notify io");
-		od_io_close(&client->io);
-		machine_close(client->notify_io);
-		od_client_free(client);
+		od_client_free_extended(client);
 		od_atomic_u32_dec(&router->clients_routing);
 		return;
 	}
@@ -2915,11 +2914,7 @@ int yb_execute_on_control_connection(od_client_t *client,
 			"failed to route internal client for control connection: %s",
 			od_router_status_to_str(status));
 
-		if (control_conn_client->io.io) {
-			machine_close(control_conn_client->io.io);
-			machine_io_free(control_conn_client->io.io);
-		}
-		od_client_free(control_conn_client);
+		od_client_free_extended(control_conn_client);
 		goto failed_to_acquire_control_connection;
 	}
 
@@ -2932,11 +2927,7 @@ int yb_execute_on_control_connection(od_client_t *client,
 			"failed to attach internal client for control connection to route: %s",
 			od_router_status_to_str(status));
 		od_router_unroute(router, control_conn_client);
-		if (control_conn_client->io.io) {
-			machine_close(control_conn_client->io.io);
-			machine_io_free(control_conn_client->io.io);
-		}
-		od_client_free(control_conn_client);
+		od_client_free_extended(control_conn_client);
 		goto failed_to_acquire_control_connection;
 	}
 
@@ -2947,23 +2938,37 @@ int yb_execute_on_control_connection(od_client_t *client,
 		 server, "attached to server %s%.*s", server->id.id_prefix,
 		 (int)sizeof(server->id.id), server->id.id);
 
+	int rc = -1;
+
+	/*
+	 * YB: check for open socket here. Exit if closed.
+	 * This check is an auth-specific check to allow early exit
+	 * in case a client times out during authentication, where we
+	 * skip requisitioning a physical backend to save time
+	 * (and avoid a "cascading timeout" situation).
+	 */
+	bool client_timed_out = false;
+	if (yb_machine_io_is_socket_closed(client->io.io)) {
+		od_debug(
+			&instance->logger, "control connection", client, NULL,
+			"socket is closed. Queued client timed out. Aborting auth");
+		rc = NOT_OK_RESPONSE;
+		goto cleanup;
+	}
+
 	/* connect to server, if necessary */
-	int rc;
 	if (server->io.io == NULL) {
 		rc = od_backend_connect(server, "control connection", NULL,
 					control_conn_client);
 		if (rc == NOT_OK_RESPONSE) {
+			/* [#28252] TODO: Merge the code below into the cleanup label */
 			od_debug(&instance->logger, "control connection",
 				 control_conn_client, server,
 				 "failed to acquire backend connection: %s",
 				 od_io_error(&server->io));
 			od_router_close(router, control_conn_client);
 			od_router_unroute(router, control_conn_client);
-			if (control_conn_client->io.io) {
-				machine_close(control_conn_client->io.io);
-				machine_io_free(control_conn_client->io.io);
-			}
-			od_client_free(control_conn_client);
+			od_client_free_extended(control_conn_client);
 			goto failed_to_acquire_control_connection;
 		}
 	}
@@ -2974,18 +2979,16 @@ int yb_execute_on_control_connection(od_client_t *client,
 	 * close the backend connection as we don't want to reuse machines in this
 	 * pool if auth-backend is enabled.
 	 */
+
+cleanup:
 	if (instance->config.yb_use_auth_backend)
 		server->offline = true;
 	od_router_detach(router, control_conn_client);
 	od_router_unroute(router, control_conn_client);
-	if (instance->config.yb_use_auth_backend && control_conn_client->io.io) {
-		machine_close(control_conn_client->io.io);
-		machine_io_free(control_conn_client->io.io);
-	}
-	od_client_free(control_conn_client);
+	od_client_free_extended(control_conn_client);
 
 	if (rc == -1)
-		return -1;
+		return NOT_OK_RESPONSE;
 
 	return OK_RESPONSE;
 
@@ -3072,25 +3075,12 @@ int yb_auth_via_auth_backend(od_client_t *client)
 			"failed to route internal client for auth backend: %s",
 			od_router_status_to_str(status));
 
-		if (control_conn_client->io.io) {
-			machine_close(control_conn_client->io.io);
-			machine_io_free(control_conn_client->io.io);
-		}
-		od_client_free(control_conn_client);
+		od_client_free_extended(control_conn_client);
 		goto failed_to_acquire_auth_backend;
 	}
 
 	/* attach */
 	status = od_router_attach(router, control_conn_client, false, client);
-	od_server_t *server;
-	server = control_conn_client->server;
-	server->yb_auth_backend = true;
-
-	if (status == YB_OD_ROUTER_NO_CLIENT) {
-		od_debug(&instance->logger, "auth", control_conn_client,
-			 NULL, "client already timed out");
-		goto cleanup;
-	}
 	if (status != OD_ROUTER_OK) {
 		od_debug(
 			&instance->logger, "auth backend",
@@ -3098,17 +3088,34 @@ int yb_auth_via_auth_backend(od_client_t *client)
 			"failed to attach internal client for auth backend to route: %s",
 			od_router_status_to_str(status));
 		od_router_unroute(router, control_conn_client);
-		if (control_conn_client->io.io) {
-			machine_close(control_conn_client->io.io);
-			machine_io_free(control_conn_client->io.io);
-		}
-		od_client_free(control_conn_client);
+		od_client_free_extended(control_conn_client);
 		goto failed_to_acquire_auth_backend;
 	}
+
+	od_server_t *server;
+	server = control_conn_client->server;
+	server->yb_auth_backend = true;
 
 	od_debug(&instance->logger, "auth backend", control_conn_client,
 		 server, "attached to auth backend %s%.*s", server->id.id_prefix,
 		 (int)sizeof(server->id.id), server->id.id);
+	
+	int rc;
+
+	/*
+	 * YB: check for open socket here. Exit if closed.
+	 * This check is an auth-specific check to allow early exit
+	 * in case a client times out during authentication, where we
+	 * skip requisitioning a physical backend to save time
+	 * (and avoid a "cascading timeout" situation).
+	 */
+	if (yb_machine_io_is_socket_closed(client->io.io)) {
+		od_debug(&instance->logger, "auth backend",
+			client, NULL,
+			"socket is closed. Queued client timed out. Aborting auth");
+		rc = NOT_OK_RESPONSE;
+		goto cleanup;
+	}
 
 	/*
 	 * Set the client user and database for authentication. Once, the control
@@ -3129,7 +3136,6 @@ int yb_auth_via_auth_backend(od_client_t *client)
 #endif
 
 	/* connect to server */
-	int rc;
 	assert(server->io.io == NULL);
 	control_conn_client->yb_external_client = client;
 	control_conn_client->yb_is_authenticating = true;
@@ -3171,11 +3177,7 @@ cleanup:
 	server->offline = true;
 	od_router_detach(router, control_conn_client);
 	od_router_unroute(router, control_conn_client);
-	if (control_conn_client->io.io) {
-		machine_close(control_conn_client->io.io);
-		machine_io_free(control_conn_client->io.io);
-	}
-	od_client_free(control_conn_client);
+	od_client_free_extended(control_conn_client);
 
 	if (rc == NOT_OK_RESPONSE) {
 		od_frontend_fatal(client, KIWI_CONNECTION_FAILURE,
@@ -3183,9 +3185,6 @@ cleanup:
 		return NOT_OK_RESPONSE;
 	}
 
-	if (status == YB_OD_ROUTER_NO_CLIENT) {
-		return NOT_OK_RESPONSE;
-	}
 	return OK_RESPONSE;
 
 failed_to_acquire_auth_backend:

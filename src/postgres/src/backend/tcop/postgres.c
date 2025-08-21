@@ -86,9 +86,9 @@
 /* YB includes */
 #include "catalog/yb_catalog_version.h"
 #include "commands/portalcmds.h"
+#include "commands/variable.h"
 #include "libpq/auth.h"
 #include "libpq/yb_pqcomm_extensions.h"
-#include "pg_yb_utils.h"
 #include "replication/walsender_private.h"
 #include "utils/builtins.h"
 #include "utils/catcache.h"
@@ -97,6 +97,7 @@
 #include "utils/rel.h"
 #include "utils/relcache.h"
 #include "utils/syscache.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 #include "yb_tcmalloc_utils.h"
 #include "yb_ysql_conn_mgr_helper.h"
 #include <arpa/inet.h>
@@ -4919,6 +4920,9 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 		return false;
 	}
 
+	edata->detail = psprintf("%s [%s]", edata->detail,
+							 yb_fetch_effective_transaction_isolation_level());
+
 	if (yb_is_multi_statement_query)
 	{
 		const char *retry_err = ("query layer retries aren't supported for "
@@ -7005,6 +7009,7 @@ PostgresMain(const char *dbname, const char *username)
 					char	   *db_name = MyProcPort->database_name;
 					char	   *user_name = MyProcPort->user_name;
 					char	   *host = MyProcPort->remote_host;
+					const char *authn_id = MyProcPort->authn_id;
 					sa_family_t conn_type = MyProcPort->raddr.addr.ss_family;
 
 					/* Update the Port details with the new context. */
@@ -7014,6 +7019,12 @@ PostgresMain(const char *dbname, const char *username)
 						(char *) pq_getmsgstring(&input_message);
 					MyProcPort->remote_host =
 						(char *) pq_getmsgstring(&input_message);
+
+					/*
+					 * This will be set when authenticating and needs to be
+					 * NULL before that
+					 */
+					MyProcPort->authn_id = NULL;
 
 					/*
 					 * HARD Code connection type between client and
@@ -7047,6 +7058,13 @@ PostgresMain(const char *dbname, const char *username)
 					MyProcPort->raddr.addr.ss_family = conn_type;
 					inet_pton(AF_INET, MyProcPort->remote_host,
 							  &(ip_address_1->sin_addr));
+
+					/*
+					 * NOTE: We don't need to free previous
+					 * MyProcPort->authn_id since it was allocated in the
+					 * transaction MemoryContext which has been free'd now
+					 */
+					MyProcPort->authn_id = authn_id;
 
 					send_ready_for_query = true;
 				}

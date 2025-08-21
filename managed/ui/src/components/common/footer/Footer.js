@@ -1,14 +1,18 @@
 // Copyright (c) YugaByte, Inc.
 import * as moment from 'moment';
+import { get } from 'lodash';
 import { useSelector } from 'react-redux';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from 'react-query';
 
 import { api, QUERY_KEY } from '../../../redesign/helpers/api';
+import { apiV2, V2_QUERY_KEY } from '@app/redesign/helpers/apiV2';
+import { getFIPSInfo } from '@app/redesign/helpers/apiV2';
 import slackLogo from './images/slack-logo-full.svg';
 import githubLogo from './images/github-light-small.png';
 import ybLogoImage from '../YBLogo/images/yb_ybsymbol_dark.png';
 import YBLogo from '../YBLogo/YBLogo';
+import FIPSIcon from '../../../redesign/assets/fips.svg';
 
 import './stylesheets/Footer.scss';
 
@@ -18,6 +22,10 @@ export const Footer = () => {
   const { data: haConfig } = useQuery(QUERY_KEY.getHAConfig, api.getHAConfig, {
     refetchInterval: 60_000
   });
+
+  const data = useQuery(V2_QUERY_KEY.getFIPSInfo, apiV2.getFIPSInfo);
+
+  const isFIPSEnabled = get(data, 'fips_enabled', false);
 
   const currentInstance = haConfig?.instances?.find((item) => item.is_local);
   const ybaVersion = ybaVersionResponse?.data?.version;
@@ -34,6 +42,12 @@ export const Footer = () => {
         {currentInstance?.address && isCurrentOriginUnderDifferentAddress && (
           <span>
             {t('platformHostUrl')}: {currentInstance.address}
+          </span>
+        )}
+
+        {isFIPSEnabled && (
+          <span>
+            <img alt="FIPS" src={FIPSIcon} width="50" height="20" />
           </span>
         )}
       </div>

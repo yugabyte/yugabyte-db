@@ -196,7 +196,7 @@ libraryDependencies ++= Seq(
   "com.azure" % "azure-storage-blob" % "12.19.1",
   "com.azure" % "azure-storage-blob-batch" % "12.19.1",
   "com.azure.resourcemanager" % "azure-resourcemanager" % "2.43.0",
-  "com.azure.resourcemanager" % "azure-resourcemanager-marketplaceordering" % "1.0.0-beta.2",
+  "com.azure.resourcemanager" % "azure-resourcemanager-marketplaceordering" % "1.0.0",
   "jakarta.mail" % "jakarta.mail-api" % "2.1.2",
   "org.eclipse.angus" % "jakarta.mail" % "1.0.0",
   "javax.validation" % "validation-api" % "2.0.1.Final",
@@ -935,8 +935,8 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.105-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.2-b11"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.106-SNAPSHOT"
+libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.3-b5"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
 
 libraryDependencies ++= Seq(

@@ -133,6 +133,11 @@ DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_consistent_replication_from_hash_
                        "Enable consumption of consistent changes via replication slots from "
                        "a hash range of a table.");
 
+DEFINE_test_flag(bool, ysql_yb_enable_implicit_dynamic_tables_logical_replication, false,
+    "When set to true, modifications to publication will be reflected implicitly. "
+    "This replaces the previous mechanism of periodic publication refresh with PG "
+    "like semantics for dynamic tables");
+
 DEFINE_NON_RUNTIME_bool(TEST_hide_details_for_pg_regress, false,
     "For pg_regress tests, alter error messages that contain unstable items such as ybctid, oids, "
     "and catalog version numbers to hide such details or omit the message entirely.");
@@ -140,13 +145,6 @@ TAG_FLAG(TEST_hide_details_for_pg_regress, hidden);
 
 DEFINE_NON_RUNTIME_uint32(max_replication_slots, 10,
      "Controls the maximum number of replication slots that are allowed to exist on a cluster.");
-
-DEFINE_RUNTIME_PREVIEW_bool(enable_object_locking_for_table_locks, false,
-    "This test flag enables the object lock APIs provided by tservers and masters - "
-    "AcquireObject(Global)Lock, ReleaseObject(Global)Lock. These APIs are used to "
-    "implement pg table locks.");
-DEFINE_validator(enable_object_locking_for_table_locks,
-    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_enable_db_catalog_version_mode));
 
 // The following flags related to the cloud, region and availability zone that an instance is
 // started in. These are passed in from whatever provisioning mechanics start the servers. They
@@ -179,6 +177,18 @@ DEFINE_NON_RUNTIME_PG_FLAG(bool, yb_disable_ddl_transaction_block_for_read_commi
     "instead of the as part of the enclosing transaction block even if "
     "ysql_yb_ddl_transaction_block_enabled is true. In other words, for Read Committed, fall back "
     "to the mode when ysql_yb_ddl_transaction_block_enabled is false.");
+
+DEFINE_RUNTIME_PREVIEW_bool(enable_object_locking_for_table_locks, false,
+    "This test flag enables the object lock APIs provided by tservers and masters - "
+    "AcquireObject(Global)Lock, ReleaseObject(Global)Lock. These APIs are used to "
+    "implement pg table locks.");
+DEFINE_validator(enable_object_locking_for_table_locks,
+    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_enable_db_catalog_version_mode),
+    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_yb_ddl_transaction_block_enabled));
+DEFINE_validator(ysql_enable_db_catalog_version_mode,
+    FLAG_REQUIRED_BY_FLAG_VALIDATOR(enable_object_locking_for_table_locks));
+DEFINE_validator(ysql_yb_ddl_transaction_block_enabled,
+    FLAG_REQUIRED_BY_FLAG_VALIDATOR(enable_object_locking_for_table_locks));
 
 namespace {
 

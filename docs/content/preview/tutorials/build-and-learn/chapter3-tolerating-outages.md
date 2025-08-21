@@ -223,7 +223,7 @@ Complete the multi-region cluster configuration by setting the US East region as
 
 ```shell
 docker exec -it yugabytedb-node1 bin/yb-admin \
-    -master_addresses yugabytedb-node1:7100,yugabytedb-node2:7100,yugabytedb-node3:7100 \
+    --master_addresses yugabytedb-node1:7100,yugabytedb-node2:7100,yugabytedb-node3:7100 \
     set_preferred_zones gcp.us-east1.us-east1-a:1 gcp.us-central1.us-central1-a:2 gcp.us-west2.us-west2-a:3
 ```
 

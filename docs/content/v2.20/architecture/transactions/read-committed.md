@@ -15,11 +15,20 @@ rightNav:
   hideH4: true
 ---
 
-Read Committed is one of the three isolation levels in PostgreSQL, and also its default. A unique property of this isolation level is that, for transactions running with this isolation, clients do not need to retry or handle serialization errors (40001) in application logic.
+Read Committed is one of the three isolation levels in PostgreSQL, and also its default. A unique property of this isolation level is that, for transactions running with this isolation, clients do not need to retry or handle serialization errors (40001) in application logic. The other two isolation levels (Serializable and Repeatable Read) require applications to have retry logic for serialization errors. Also, each statement in a read committed transactions works on a new latest snapshot of the database, implying that any data committed before the statement was issued, is visible to the statement.
 
-The other two isolation levels (Serializable and Repeatable Read) require applications to have retry logic for serialization errors. Read Committed in PostgreSQL works around conflicts by allowing single statements to work on an inconsistent snapshot (in other words, non-conflicting rows are read as of the statement's snapshot, but conflict resolution is done by reading and attempting re-execution or locking on the latest version of the row).
+A read committed transaction in PostgreSQL doesn't raise serialization errors because it internally retries conflicting rows in the statement's execution as of the latest versions of those rows, as soon as conflicting concurrent transactions have finished. This mechanism allows single statements to work on an inconsistent snapshot (in other words, non-conflicting rows are read as of the statement's snapshot, but conflicting rows are re-attempted on the latest version of the row after the conflicting transactions are complete).
 
-YSQL supports the Read Committed isolation level, and its behavior is the same as that of PostgreSQL's [Read Committed level](https://www.postgresql.org/docs/13/transaction-iso.html#XACT-READ-COMMITTED).
+YugabyteDB's Read Committed isolation provides slightly stronger guarantees than PostgreSQL's read committed, while providing the same semantics and benefits, that is, a user doesn't have to retry serialization errors in the application logic (modulo [limitation 2](#limitations) around `ysql_output_buffer_size` which is not of relevance for most OLTP workloads).
+
+Note that retries for the statement in YugabyteDB's Read Committed isolation are limited to the per-session YSQL configuration parameter `yb_max_query_layer_retries`. To set it at the cluster level, use the `ysql_pg_conf_csv` TServer flag. If a serialization error isn't resolved within `yb_max_query_layer_retries`, the error will be returned to the client.
+
+{{< tip title="Enable Read Committed" >}}
+
+To enable Read Committed isolation, set the YB-TServer flag [yb_enable_read_committed_isolation](../../../reference/configuration/yb-tserver/#yb-enable-read-committed-isolation) to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot isolation).
+
+Refer to [Usage](#usage) to start a Read Committed transaction after enabling the flag.
+{{< /tip >}}
 
 ## Semantics
 
@@ -338,14 +347,14 @@ However, when Read Committed isolation provides Wait-on-Conflict semantics witho
 
 ## Usage
 
-By setting the YB-TServer flag `yb_enable_read_committed_isolation=true`, the syntactic `Read Committed` isolation in YSQL maps to the Read Committed implementation in DocDB. If set to `false`, it has the earlier behavior of mapping syntactic `Read Committed` on YSQL to Snapshot isolation in DocDB, meaning it behaves as `Repeatable Read`.
+To use Read Committed isolation, first set the YB-TServer flag `yb_enable_read_committed_isolation=true`; this maps the syntactic Read Committed isolation in YSQL to the Read Committed implementation in DocDB. (When set to `false`, syntactic Read Committed in YSQL is mapped to Snapshot isolation in DocDB, meaning it behaves as Repeatable Read.)
 
-The following ways can be used to start a Read Committed transaction after setting the flag:
+Assuming the flag has been set, you can start a Read Committed transaction in the following ways:
 
 1. `START TRANSACTION isolation level read committed [read write | read only];`
 1. `BEGIN [TRANSACTION] isolation level read committed [read write | read only];`
-1. `BEGIN [TRANSACTION]; SET TRANSACTION ISOLATION LEVEL READ COMMITTED;` (this will be supported after [#12494](https://github.com/yugabyte/yugabyte-db/issues/12494) is resolved)
-1. `BEGIN [TRANSACTION]; SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL READ COMMITTED;` (this will be supported after [#12494](https://github.com/yugabyte/yugabyte-db/issues/12494) is resolved)
+1. `BEGIN [TRANSACTION]; SET TRANSACTION ISOLATION LEVEL READ COMMITTED;`
+1. `BEGIN [TRANSACTION]; SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL READ COMMITTED;`
 
 ## Examples
 

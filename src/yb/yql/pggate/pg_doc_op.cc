@@ -215,26 +215,13 @@ Status PgDocResult::WritePgTuple(const std::vector<PgFetchedTarget*>& targets, P
   return Status::OK();
 }
 
-Status PgDocResult::ProcessYbctidEntry(Slice* data) {
-  SCHECK(!PgDocData::ReadHeaderIsNull(data), InternalError, "System column ybctid cannot be NULL");
-  auto data_size = PgDocData::ReadNumber<int64_t>(data);
-  ybctids_.emplace_back(data->data(), data_size);
-  data->remove_prefix(data_size);
-  return Status::OK();
-}
-
-Status PgDocResult::ProcessEntries(std::function<Status(Slice* data)> processor) {
-  // Sanity check: special rows must be unordered
-  // Row orders assume that multiple PgDocResults are merge sorted row by row.
-  // That contradicts ProcessEntries, which batch reads all the rows ignoring order.
-  // If there is a need to order non-PG rows, consider to add a row reading function
-  // like WritePgTuple.
-  DCHECK(row_orders_.empty()) << "System data rows can't be ordered";
-  for (int i = 0; i < row_count_; i++) {
-    RETURN_NOT_OK(processor(&row_iterator_));
-  }
-  SCHECK(row_iterator_.empty(), IllegalState, "Unread row data");
-  return Status::OK();
+Result<Slice> PgDocResult::ReadYbctid(Slice& data) {
+  SCHECK(!PgDocData::ReadHeaderIsNull(&data), InternalError, "System column ybctid cannot be NULL");
+  const auto data_size = PgDocData::ReadNumber<int64_t>(&data);
+  const auto* data_ptr = data.data();
+  Slice ybctid{data_ptr, data_ptr + data_size};
+  data.remove_prefix(data_size);
+  return ybctid;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -300,36 +287,12 @@ Status PgDocResultStream::EmplaceOpDocResult(
 
 Result<bool> PgDocResultStream::GetNextRow(
     const std::vector<PgFetchedTarget*>& targets, PgTuple* pg_tuple) {
-  PgDocResult* result = VERIFY_RESULT(NextDocResult());
+  auto* result = VERIFY_RESULT(NextDocResult());
   if (result) {
     RETURN_NOT_OK(result->WritePgTuple(targets, pg_tuple));
     return true;
   }
   return false;
-}
-
-Result<bool> PgDocResultStream::ProcessEntries(std::function<Status(Slice* data)> processor) {
-  auto result = VERIFY_RESULT(NextDocResult());
-  if (result) {
-    RETURN_NOT_OK(result->ProcessEntries(processor));
-    return true;
-  }
-  return false;
-}
-
-// TODO: consider removal of GetNextYbctidBatch in favor of direct usage of ProcessEntries.
-// Historically the ybctids array is owned by PgDocResult instance, as well as the underlaying data.
-// So it is convenient to have internal processor in PgDocResult.
-Result<std::optional<YbctidBatch>> PgDocResultStream::GetNextYbctidBatch(bool keep_order) {
-  auto result = VERIFY_RESULT(NextDocResult());
-  if (result) {
-    RETURN_NOT_OK(result->ProcessEntries(
-            [result](Slice* data) {
-              return result->ProcessYbctidEntry(data);
-            }));
-    return YbctidBatch(result->ybctids(), keep_order);
-  }
-  return std::nullopt;
 }
 
 ParallelPgDocResultStream::ParallelPgDocResultStream(

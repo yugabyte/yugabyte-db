@@ -138,10 +138,10 @@
 #include "commands/yb_tablegroup.h"
 #include "executor/ybModifyTable.h"
 #include "parser/analyze.h"
-#include "pg_yb_utils.h"
 #include "statistics/statistics.h"
 #include "utils/plancache.h"
 #include "utils/regproc.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 
 /*
  * ON COMMIT action list
@@ -838,7 +838,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 
 	if (IsYugaByteEnabled() &&
 		stmt->relation->relpersistence == RELPERSISTENCE_TEMP)
-		YBCDdlEnableForceCatalogModification();
+		YBCRecordTempRelationDDL();
 
 	/*
 	 * Determine the lockmode to use when scanning parents.  A self-exclusive
@@ -1776,7 +1776,7 @@ RemoveRelations(DropStmt *drop)
 	}
 
 	if (only_temp_tables)
-		YBCDdlEnableForceCatalogModification();
+		YBCRecordTempRelationDDL();
 
 	performMultipleDeletions(objects, drop->behavior, flags);
 
@@ -1956,6 +1956,7 @@ ExecuteTruncate(TruncateStmt *stmt, bool yb_is_top_level, List **yb_relids)
 	List	   *relids = NIL;
 	List	   *relids_logged = NIL;
 	ListCell   *cell;
+	bool yb_only_temp_tables = true;
 
 	/*
 	 * Open, exclusive-lock, and check all the explicitly-specified relations
@@ -1978,6 +1979,8 @@ ExecuteTruncate(TruncateStmt *stmt, bool yb_is_top_level, List **yb_relids)
 
 		/* open the relation, we already hold a lock on it */
 		rel = table_open(myrelid, NoLock);
+		yb_only_temp_tables = yb_only_temp_tables &&
+			rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP;
 
 		/*
 		 * RangeVarGetRelidExtended() has done most checks with its callback,
@@ -2008,6 +2011,8 @@ ExecuteTruncate(TruncateStmt *stmt, bool yb_is_top_level, List **yb_relids)
 
 				/* find_all_inheritors already got lock */
 				rel = table_open(childrelid, NoLock);
+				yb_only_temp_tables = yb_only_temp_tables &&
+					rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP;
 
 				/*
 				 * It is possible that the parent table has children that are
@@ -2047,6 +2052,9 @@ ExecuteTruncate(TruncateStmt *stmt, bool yb_is_top_level, List **yb_relids)
 					 errmsg("cannot truncate only a partitioned table"),
 					 errhint("Do not specify the ONLY keyword, or use TRUNCATE ONLY on the partitions directly.")));
 	}
+
+	if (yb_only_temp_tables)
+		YBCRecordTempRelationDDL();
 
 	ExecuteTruncateGuts(rels, relids, relids_logged,
 						stmt->behavior, stmt->restart_seqs, yb_is_top_level);
@@ -3731,13 +3739,69 @@ SetRelationTableSpace(Relation rel,
 	/*
 	 * Record dependency on tablespace.  This is only required for relations
 	 * that have no physical storage.
+	 *
+	 * YB: Also record the dependency for YB relations.
 	 */
-	if (!RELKIND_HAS_STORAGE(rel->rd_rel->relkind))
+	if (!RELKIND_HAS_STORAGE(rel->rd_rel->relkind) ||
+		IsYBRelation(rel))
 		changeDependencyOnTablespace(RelationRelationId, reloid,
 									 rd_rel->reltablespace);
 
 	heap_freetuple(tuple);
 	table_close(pg_class, RowExclusiveLock);
+
+	/*
+	 * YB: For YB relations, the PK index is the same as the base table.
+	 * Also update the primary key index's pg_class.reltablespace and
+	 * pg_shdepend entries.
+	 */
+	if (IsYBRelation(rel) &&
+		(rel->rd_rel->relkind == RELKIND_RELATION ||
+		 rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE))
+	{
+		List	   *indexIds = RelationGetIndexList(rel);
+		ListCell   *lc;
+		Oid newPrimaryKeyTableSpaceId = (newTableSpaceId == MyDatabaseTableSpace) ?
+			InvalidOid : newTableSpaceId;
+
+		foreach(lc, indexIds)
+		{
+			Oid			idxOid = lfirst_oid(lc);
+			Relation	idxRel = RelationIdGetRelation(idxOid);
+			bool		isPrimaryIndex = (idxRel != NULL &&
+										 idxRel->rd_index &&
+										 idxRel->rd_index->indisprimary);
+			RelationClose(idxRel);
+
+			if (!isPrimaryIndex)
+				continue;
+
+			Relation	idx_pg_class = table_open(RelationRelationId,
+													RowExclusiveLock);
+			HeapTuple	idx_tuple = SearchSysCacheCopy1(RELOID,
+													ObjectIdGetDatum(idxOid));
+			if (!HeapTupleIsValid(idx_tuple))
+				elog(ERROR, "cache lookup failed for relation %u", idxOid);
+			Form_pg_class idx_rd_rel = (Form_pg_class) GETSTRUCT(idx_tuple);
+
+			/* Update PK's pg_class entry */
+			idx_rd_rel->reltablespace = newPrimaryKeyTableSpaceId;
+			CatalogTupleUpdate(idx_pg_class, &idx_tuple->t_self, idx_tuple);
+			UnlockTuple(idx_pg_class, &idx_tuple->t_self, InplaceUpdateTupleLock);
+
+			/* Update PK's pg_shdepend entry */
+			changeDependencyOnTablespace(RelationRelationId, idxOid,
+				newPrimaryKeyTableSpaceId);
+
+			heap_freetuple(idx_tuple);
+			table_close(idx_pg_class, RowExclusiveLock);
+
+			/* Only one primary key index per table */
+			break;
+		}
+
+		list_free(indexIds);
+	}
 }
 
 /*
@@ -4537,7 +4601,7 @@ AlterTable(AlterTableStmt *stmt, LOCKMODE lockmode,
 
 	if (IsYugaByteEnabled() &&
 		rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP)
-		YBCDdlEnableForceCatalogModification();
+		YBCRecordTempRelationDDL();
 
 	ATController(stmt, rel, stmt->cmds, stmt->relation->inh, lockmode, context);
 }

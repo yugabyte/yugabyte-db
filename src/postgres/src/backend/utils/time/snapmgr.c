@@ -73,7 +73,7 @@
 
 /* YB includes */
 #include "pg_yb_utils.h"
-#include "yb/yql/pggate/ybc_pggate.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 
 
 /*

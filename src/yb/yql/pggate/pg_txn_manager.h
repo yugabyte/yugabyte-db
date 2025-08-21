@@ -51,6 +51,7 @@ YB_DEFINE_ENUM(
 );
 
 YB_DEFINE_ENUM(ReadTimeAction, (ENSURE_IS_SET)(RESET));
+YB_STRONGLY_TYPED_BOOL(IsLocalObjectLockOp);
 
 class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
  public:
@@ -62,7 +63,9 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   Status BeginTransaction(int64_t start_time);
 
-  Status CalculateIsolation(bool read_only_op, YbcTxnPriorityRequirement txn_priority_requirement);
+  Status CalculateIsolation(
+      bool read_only_op, YbcTxnPriorityRequirement txn_priority_requirement,
+      IsLocalObjectLockOp is_local_object_lock_op = IsLocalObjectLockOp::kFalse);
   Status RecreateTransaction();
   Status RestartTransaction();
   Status ResetTransactionReadPoint();
@@ -74,7 +77,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   Status CommitPlainTransaction(const std::optional<PgDdlCommitInfo>& ddl_commit_info);
   Status AbortPlainTransaction();
   Status SetPgIsolationLevel(int isolation);
-  PgIsolationLevel GetPgIsolationLevel();
+  PgIsolationLevel GetPgIsolationLevel() const;
   Status SetReadOnly(bool read_only);
   Status SetEnableTracing(bool tracing);
   Status UpdateFollowerReadsConfig(bool enable_follower_reads, int32_t staleness);
@@ -139,6 +142,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
           has_docdb_schema_changes, force_catalog_modification, use_regular_transaction_block);
     }
   };
+
+  YbcTxnPriorityRequirement GetTxnPriorityRequirement(RowMarkType row_mark_type) const;
 
  private:
   class SerialNo {

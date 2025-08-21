@@ -1,18 +1,33 @@
 import React, { FC, useMemo } from "react";
-import { Box, Divider, MenuItem, TablePagination, Typography, makeStyles } from "@material-ui/core";
+import {
+  Box,
+  Divider,
+  MenuItem,
+  TablePagination,
+  Typography,
+  makeStyles,
+  Paper,
+  Grid
+} from "@material-ui/core";
 import { useTranslation } from "react-i18next";
-import { YBAccordion, YBInput, YBModal, YBSelect, YBToggle, YBCodeBlock } from "@app/components";
+import { YBInput, YBModal, YBSelect, YBToggle } from "@app/components";
+import { AlertVariant } from "@app/components";
 import SearchIcon from "@app/assets/search.svg";
-import ExternalLink from "@app/assets/external-link.svg"
-import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
+import ExternalLink from "@app/assets/book.svg"
 import type { SqlObjectsDetails } from "@app/api/src";
 import { getMappedData } from "./refactoringUtils";
-import { formatSnakeCase, useQueryParams } from "@app/helpers";
+import {
+  formatSnakeCase,
+  useQueryParams,
+  useToast,
+  copyToClipboard,
+} from "@app/helpers";
 import { Link } from "@material-ui/core";
-import GithubIcon from "@app/assets/github.svg";
-import WarningIcon from "@app/assets/alert-solid.svg";
-import YBLogo from "@app/assets/yb-logo.svg";
-import { YBTable } from "@app/components";
+import GithubMarkIcon from "@app/assets/github-mark.png";
+import WarningIcon from "@app/assets/warning_triangle.svg";
+import { MetadataItem } from "../../components/MetadataItem";
+import CopyIconBlue from "@app/assets/copyIconBlue.svg";
+import BulletCircle from "@app/assets/bullet-circle.svg";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -23,11 +38,6 @@ const useStyles = makeStyles((theme) => ({
     fontWeight: theme.typography.fontWeightMedium as number,
     textTransform: "uppercase",
     textAlign: "left",
-  },
-  dividerHorizontal: {
-    width: "100%",
-    marginTop: theme.spacing(2.5),
-    marginBottom: theme.spacing(2.5),
   },
   value: {
     paddingTop: theme.spacing(0.36),
@@ -44,59 +54,204 @@ const useStyles = makeStyles((theme) => ({
     width: "100%",
   },
   divider: {
-    margin: theme.spacing(1, 0, 1, 0),
-  },
-  dividerNew: {
-    margin: theme.spacing(1, 0, 1, 0),
-    backgroundColor: "#181818",
-  },
-  queryCodeBlock: {
-    lineHeight: 1.5,
-    padding: theme.spacing(1),
-    fontSize: '12px',
+    margin: theme.spacing(1, 0),
   },
   toggleSwitch: {
     flexShrink: 0,
   },
   icon: {
-    height: "14px",
-    width: "14px",
-    marginBottom: "2px",
+    height: theme.spacing(1.75),
+    width: theme.spacing(1.75),
+    marginBottom: theme.spacing(0.25),
     color: theme.palette.warning[500],
   },
-  warningBox: {
-    background: theme.palette.warning[100],
-    color: theme.palette.warning[900],
-    padding: `${theme.spacing(0.6)}px ${theme.spacing(1)}px`,
+  linkIcon: {
+    width: theme.spacing(3),
+    height: theme.spacing(3),
+    display: 'inline-block',
+    verticalAlign: 'middle'
+  },
+  filePathContainer: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+    maxWidth: '100%'
+  },
+  filePathSpan: {
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-word',
+    overflowWrap: 'anywhere'
+  },
+  copyButton: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    padding: theme.spacing(0.25),
     borderRadius: theme.shape.borderRadius,
+    '&:hover': {
+      backgroundColor: theme.palette.action.hover
+    }
   },
-  githubIcon: {
-    height: "40px",
-    width: "40px",
-    marginBottom: "2px",
+  copyIcon: {
+    width: theme.spacing(3),
+    height: theme.spacing(3),
+    flexShrink: 0,
+    verticalAlign: 'middle'
   },
-  sqlSection: {
-    marginBottom: theme.spacing(2),
-    marginTop: theme.spacing(3),
+  acknowledgmentContainer: {
+    display: 'flex',
+    padding: theme.spacing(0.5, 0.75),
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+    borderRadius: theme.shape.borderRadius,
+    background: theme.palette.primary[100],
+    color: theme.palette.primary[600],
+    fontFamily: theme.typography.fontFamily,
+    fontSize: theme.typography.pxToRem(11.5),
+    fontStyle: 'normal',
+    fontWeight: theme.typography.fontWeightRegular as number,
+    lineHeight: '16px'
   },
-  linkContainer: {
-    display: "flex",
-    alignItems: "center",
+  issueCard: {
+    border: `1px solid ${theme.palette.grey[300]}`,
+    borderRadius: theme.shape.borderRadius,
+    padding: theme.spacing(2),
+    backgroundColor: theme.palette.background.paper,
+    width: '100%'
+  },
+  issueTitle: {
+    fontWeight: theme.typography.fontWeightBold as number,
+    fontSize: theme.typography.pxToRem(16)
+  },
+  sqlCodeBlock: {
+    display: 'flex',
+    padding: theme.spacing(2),
+    alignItems: 'flex-start',
+    gap: theme.spacing(1.25),
+    flex: '1 0 0',
+    width: '100%',
+    borderRadius: theme.shape.borderRadius,
+    border: `1px solid ${theme.palette.divider}`,
+    background: theme.palette.grey[100],
+    position: 'relative'
+  },
+  copyIconClickable: {
+    width: theme.spacing(3),
+    height: theme.spacing(3),
+    cursor: 'pointer',
+    opacity: 0.75,
+    transition: 'opacity 120ms ease',
+    '&:hover': {
+      opacity: 1
+    }
+  },
+  sqlText: {
+    wordBreak: 'break-word',
+    overflowWrap: 'anywhere',
+    whiteSpace: 'pre-wrap',
+    color: theme.palette.text.primary,
+    fontFamily: 'Menlo',
+    fontSize: theme.typography.pxToRem(13),
+    fontStyle: 'normal',
+    fontWeight: theme.typography.fontWeightRegular as number,
+    lineHeight: '200%',
+    flex: '1 0 0'
+  },
+  suggestionContainer: {
+    display: 'flex',
+    flexDirection: 'column',
     gap: theme.spacing(2),
-    marginTop: theme.spacing(2),
+    alignSelf: 'stretch',
+    position: 'relative',
+    width: '100%'
   },
-  linkItem: {
-    display: "flex",
-    alignItems: "center",
+  suggestionRow: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: theme.spacing(2),
+    alignSelf: 'stretch',
+    position: 'relative'
+  },
+  bulletContainer: {
+    width: theme.spacing(5),
+    height: theme.spacing(2.5),
+    flexShrink: 0,
+    position: 'relative'
+  },
+  bulletIcon: {
+    position: 'absolute',
+    left: theme.spacing(1),
+    top: theme.spacing(-0.5)
+  },
+  suggestionContent: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    flex: 1
+  },
+  suggestionLabel: {
+    minWidth: '200px'
+  },
+  suggestionText: {
+    lineHeight: '20px'
+  },
+  suggestionTextWithIcon: {
+    lineHeight: '20px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5)
+  },
+  warningIcon: {
+    width: theme.spacing(2.5),
+    height: theme.spacing(2.5),
+    flexShrink: 0
+  },
+  linkButton: {
+    display: 'inline-flex',
+    alignItems: 'center',
     gap: theme.spacing(1),
+    verticalAlign: 'middle',
+    textDecoration: 'none',
+    color: theme.palette.primary.main
   },
+  flexContainer: {
+    display: 'flex',
+    alignItems: 'center'
+  },
+  spaceBetween: {
+    justifyContent: 'space-between'
+  },
+  justifyEnd: {
+    justifyContent: 'flex-end'
+  },
+  flexColumn: {
+    flexDirection: 'column'
+  },
+  gap2: {
+    gap: theme.spacing(2)
+  },
+  my2: {
+    margin: theme.spacing(2, 0)
+  },
+  mlAuto: {
+    marginLeft: 'auto'
+  },
+  p2: {
+    padding: theme.spacing(2)
+  },
+  mb2: {
+    marginBottom: theme.spacing(2)
+  },
+  mb3: {
+    marginBottom: theme.spacing(3)
+  }
 }));
 
 interface MigrationRefactoringSidePanelProps {
   data: SqlObjectsDetails | undefined;
   onClose: () => void;
   header: string;
-  title: string;
   acknowledgedObjects?: {
     [key: string]: {
       [key: string]: {
@@ -113,12 +268,12 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
   data,
   onClose,
   header,
-  title,
   acknowledgedObjects,
   toggleAcknowledgment,
 }) => {
   const classes = useStyles();
   const { t } = useTranslation();
+  const { addToast } = useToast();
 
   const [page, setPage] = React.useState<number>(0);
   const [perPage, setPerPage] = React.useState<number>(5);
@@ -139,6 +294,14 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
 
   const queryParams = useQueryParams();
   const migrationUUID: string = queryParams.get("migration_uuid") ?? "";
+
+  // Function to copy file path
+  const copyFilePath = async (filePath: string) =>
+    copyToClipboard(filePath, {
+      onSuccess: () => addToast(AlertVariant.Success, t('common.copyCodeSuccess'), 3000),
+      onError: (msg?: string) =>
+        addToast(AlertVariant.Error, msg || 'Failed to copy to clipboard', 5000)
+    });
 
   React.useEffect(() => {
     setLocalAcknowledgedObjects(acknowledgedObjects || {});
@@ -353,7 +516,7 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
           (it, index) =>
             it &&
             acknowledgedObjects?.[migrationUUID]?.[obj.groupKey.toLowerCase()]?.[
-              it.toLowerCase()
+            it.toLowerCase()
             ]?.[obj.reasons?.[index].toLowerCase()] === true
         ).length || 0)
       );
@@ -376,7 +539,7 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
   return (
     <YBModal
       open={!!data}
-      title={header + (data?.objectType ? `: ${data.objectType}` : "")}
+      title={header}
       onClose={() => {
         setPage(0);
         setSelectedAck("All");
@@ -390,7 +553,64 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
       cancelLabel={t("common.close")}
       isSidePanel
     >
-      <Box display="flex" alignItems="center" gridGap={10} my={2}>
+      <Box className={classes.my2}>
+        <Paper>
+          <Box className={`${classes.p2} ${classes.grayBg} ${classes.flexContainer}`}>
+            <Grid container spacing={2} alignItems="flex-start">
+              {data?.objectType && (
+                <Grid item xs={12} sm={3}>
+                  <MetadataItem
+                    layout="vertical"
+                    label={t(
+                      "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.objectType"
+                    )}
+                    value={data.objectType}
+                  />
+                </Grid>
+              )}
+
+              {mappedData.length > 0 && mappedData[0]?.groupKey && (
+                <Grid item xs={12} sm={6}>
+                  <Box style={{ marginTop: '-4px' }}>
+                    <MetadataItem
+                      layout="vertical"
+                      label={t("clusterDetail.voyager.planAndAssess.refactoring.fileDirectory")}
+                      value={
+                          <Box className={classes.filePathContainer}>
+                          <span className={classes.filePathSpan}>
+                            {(mappedData[0].groupKey)}
+                          </span>
+                          <Box
+                            className={classes.copyButton}
+                            onClick={() => copyFilePath(mappedData[0].groupKey)}
+                            title={`Click to copy: ${mappedData[0].groupKey}`}
+                          >
+                            <CopyIconBlue className={classes.copyIcon} />
+                          </Box>
+                        </Box>
+                      }
+                    />
+                  </Box>
+                </Grid>
+              )}
+
+               <Grid item xs={12} sm={3}>
+                <MetadataItem
+                  layout="vertical"
+                  label={t("clusterDetail.voyager.planAndAssess.refactoring.details.acknowledged")}
+                  value={
+                    <Box className={classes.acknowledgmentContainer}>
+                      {`${currValue} / ${totalItemCount} objects`}
+                    </Box>
+                  }
+                />
+              </Grid>
+            </Grid>
+          </Box>
+        </Paper>
+      </Box>
+
+      <Box className={`${classes.flexContainer} ${classes.gap2} ${classes.my2}`}>
         <Box flex={0.75}>
           <Typography variant="body1" className={classes.label}>
             {t("clusterDetail.voyager.planAndAssess.refactoring.details.searchBy")}
@@ -427,6 +647,22 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
             </MenuItem>
           </YBSelect>
         </Box>
+        <Box flex={3}>
+          <Typography variant="body1" className={classes.label}>
+            {t("clusterDetail.voyager.planAndAssess.refactoring.details.search")}
+          </Typography>
+          <YBInput
+            className={classes.fullWidth}
+            placeholder={t(
+              "clusterDetail.voyager.planAndAssess.refactoring.details.searchPlaceholder"
+            )}
+            InputProps={{
+              startAdornment: <SearchIcon />,
+            }}
+            onChange={(ev) => setSearch(ev.target.value as string)}
+            value={search}
+          />
+        </Box>
         <Box flex={1.25}>
           <Typography variant="body1" className={classes.label}>
             {t("clusterDetail.voyager.planAndAssess.refactoring.details.filterBy")}
@@ -444,22 +680,6 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
               <MenuItem value={currentIssue}>{currentIssue}</MenuItem>
             ))}
           </YBSelect>
-        </Box>
-        <Box flex={3}>
-          <Typography variant="body1" className={classes.label}>
-            {t("clusterDetail.voyager.planAndAssess.refactoring.details.search")}
-          </Typography>
-          <YBInput
-            className={classes.fullWidth}
-            placeholder={t(
-              "clusterDetail.voyager.planAndAssess.refactoring.details.searchPlaceholder"
-            )}
-            InputProps={{
-              startAdornment: <SearchIcon />,
-            }}
-            onChange={(ev) => setSearch(ev.target.value as string)}
-            value={search}
-          />
         </Box>
         <Box flex={1.25}>
           <Typography variant="body1" className={classes.label}>
@@ -482,187 +702,166 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
         </Box>
       </Box>
 
-      <Box>
-        <YBAccordion
-          titleContent={title}
-          renderChips={() => (
-            <YBBadge
-              icon={false}
-              text={`${currValue} / ${totalItemCount} ${title}`}
-              variant={BadgeVariant.Light}
-            />
-          )}
-          graySummaryBg
-          defaultExpanded
-        >
-          <Box display="flex" flexDirection="column" gridGap={10}>
-            {filteredPaginatedData?.map(({
-              groupKey,
-              sqlStatements,
-              reasons,
-              issueTypes,
-              GHs,
-              docs_links,
-              suggestions,
-              minimumVersionsFixedIn
-            }) => (
-              <React.Fragment key={groupKey}>
-                <Box display="flex" flexDirection="column">
-                  <Box my={2}>
-                    <Typography variant="body2">{groupKey}</Typography>
-                  </Box>
-                  <Box display="flex" flexDirection="column" gridGap={10}>
-                    {sqlStatements.map((sql, index) => {
-                      const tableData = [
-                        {
-                          key: t("clusterDetail.voyager.planAndAssess.refactoring.details.reason"),
-                          value: reasons[index] ? (
-                            <Box
-                              display="flex"
-                              alignItems="center"
-                              gridGap={6}
-                              className={classes.warningBox}
-                            >
-                              <WarningIcon className={classes.icon} />
-                              {reasons[index]}
-                            </Box>
-                          ) : "N/A",
-                        },
-                        {
-                          key: t("clusterDetail.voyager.planAndAssess.refactoring.details."
-                            + "issueType"),
-                          value: issueTypes[index] ? formatSnakeCase(issueTypes[index]) : "N/A",
-                        },
-                        {
-                          key: t("clusterDetail.voyager.planAndAssess.refactoring.details." +
-                            "suggestion"),
-                          value: suggestions[index] || "N/A",
-                        },
-                        {
-                          key: t("clusterDetail.voyager.planAndAssess.refactoring.details."
-                            +"minVersionsFixedIn"),
-                          value: minimumVersionsFixedIn[index] || "N/A",
-                        },
-                      ];
+      <Box className={`${classes.flexContainer} ${classes.flexColumn} ${classes.gap2}`}>
+        {filteredPaginatedData?.map(({
+          groupKey,
+          sqlStatements,
+          reasons,
+          issueTypes,
+          GHs,
+          docs_links,
+          suggestions,
+          minimumVersionsFixedIn
+        }) => (
+          <React.Fragment key={groupKey}>
+            {sqlStatements.map((sql, index) => (
+              <Box
+                key={`${groupKey}-${index}`}
+                className={classes.issueCard}
+              >
+                {/* Header with Issue title and Acknowledge toggle */}
+                <Box className={`${classes.flexContainer} ${classes.spaceBetween} ${classes.mb2}`}>
+                  <Typography variant="h6" className={classes.issueTitle}>
+                    Issue
+                  </Typography>
+                  <YBToggle
+                    className={classes.toggleSwitch}
+                    label={t("clusterDetail.voyager.planAndAssess.refactoring.details.acknowledge")}
+                    checked={
+                      localAcknowledgedObjects?.[migrationUUID ?? ""]?.
+                      [groupKey.toLowerCase()]?.[
+                      sql.toLowerCase()
+                      ]?.[reasons[index]?.toLowerCase()] ?? false
+                    }
+                    onChange={() => handleLocalToggle(groupKey, sql, reasons[index])}
+                  />
+                </Box>
 
-                      const columns: any[] = [
-                        {
-                          name: "key",
-                          label: t("clusterDetail.voyager.planAndAssess.refactoring.details.key"),
-                          options: {
-                            setCellHeaderProps: () => ({ style:
-                              { padding: "8px 16px", textAlign: "center" } }),
-                            setCellProps: () => ({ style:
-                              { padding: "8px 16px", textAlign: "center" } }),
-                            customBodyRender: (value: string) => (
-                              <Typography variant="body2" className={classes.label}>
-                                {value}
-                              </Typography>
-                            ),
-                          },
-                        },
-                        {
-                          name: "value",
-                          label: t("clusterDetail.voyager.planAndAssess.refactoring.details.value"),
-                          options: {
-                            setCellHeaderProps: () => ({ style:
-                              { padding: "8px 16px", textAlign: "center" } }),
-                            setCellProps: () => ({ style:
-                              { padding: "8px 16px", textAlign: "center" } }),
-                            customBodyRender: (value: string) => (
-                              <Box display="flex" justifyContent="center"
-                                alignItems="center" sx={{ fontSize: "12px" }}>
-                                {value}
-                              </Box>
-                            ),
-                          },
-                        },
-                      ];
-
-                      return (
-                        <React.Fragment key={index}>
-                          {index > 0 && (
-                            <>
-                              <Divider className={classes.dividerNew} />
-                            </>
-                          )}
-                          <Box display="flex" flexDirection="column" gridGap={2}>
-                            <YBToggle
-                              className={classes.toggleSwitch}
-                              label={t("clusterDetail.voyager.planAndAssess.refactoring."
-                                +"details.acknowledge")}
-                              checked={
-                                localAcknowledgedObjects?.[migrationUUID ?? ""]?.
-                                  [groupKey.toLowerCase()]?.[
-                                  sql.toLowerCase()
-                                ]?.[reasons[index]?.toLowerCase()] ?? false
-                              }
-                              onChange={() => handleLocalToggle(groupKey, sql, reasons[index])}
-                            />
-                            <Box className={classes.sqlSection}>
-                              <YBCodeBlock
-                                text={(sql)}
-                                preClassName={classes.queryCodeBlock}
-                              />
-                            </Box>
-                            <YBTable
-                              title=""
-                              data={tableData}
-                              columns={columns}
-                              options={{
-                                selectableRows: "none",
-                                pagination: false,
-                                setTableProps: () => ({ size: "small" }),
-                              }}
-                              withBorder
-                              cellBorder
-                              hideHeader
-                            />
-                            <Box className={classes.linkContainer}>
-                              {GHs[index] && (
-                                <Link href={GHs[index]} target="_blank"
-                                  className={classes.linkItem}>
-                                  <GithubIcon className={classes.githubIcon} />
-                                  <Typography variant="body2">
-                                    {t("clusterDetail.voyager.planAndAssess.recommendation."
-                                      + "schemaChanges.linkToGithub")}
-                                  </Typography>
-                                  <ExternalLink />
-                                </Link>
-                              )}
-                              {docs_links[index] && (
-                                <Link href={docs_links[index]} target="_blank"
-                                  className={classes.linkItem}>
-                                  <YBLogo />
-                                  <Typography variant="body2">
-                                    {t("clusterDetail.voyager.planAndAssess.recommendation."
-                                      + "schemaChanges.linkToDocs")}
-                                  </Typography>
-                                  <ExternalLink />
-                                </Link>
-                              )}
-                            </Box>
-                          </Box>
-                        </React.Fragment>
-                      );
-                    })}
+                {/* SQL Code Block with copy icon */}
+                <Box className={classes.sqlCodeBlock} mb={3}>
+                  <Box className={classes.sqlText}>{sql}</Box>
+                  <Box
+                    className={classes.copyButton}
+                    onClick={() => copyFilePath(sql)}
+                  >
+                    <CopyIconBlue className={classes.copyIconClickable} />
                   </Box>
                 </Box>
-              </React.Fragment>
+
+                {/* Details Grid */}
+                <Box className={`${classes.suggestionContainer} ${classes.mb3}`}>
+                  {/* Reason */}
+                  <Box className={classes.suggestionRow}>
+                    <Box className={classes.bulletContainer}>
+                      <BulletCircle className={classes.bulletIcon} />
+                    </Box>
+                    <Box className={classes.suggestionContent}>
+                      <Typography className={`${classes.label} ${classes.suggestionLabel}`}>
+                        {t("clusterDetail.voyager.planAndAssess.refactoring.details.reason")}
+                      </Typography>
+                      <Typography variant="body2" className={classes.suggestionTextWithIcon}>
+                        {reasons[index] || "N/A"}
+                        <WarningIcon className={classes.warningIcon} />
+                      </Typography>
+                    </Box>
+                  </Box>
+
+                  {/* Issue Type */}
+                  <Box className={classes.suggestionRow}>
+                    <Box className={classes.bulletContainer}>
+                      <BulletCircle className={classes.bulletIcon} />
+                    </Box>
+                    <Box className={classes.suggestionContent}>
+                      <Typography className={`${classes.label} ${classes.suggestionLabel}`}>
+                        {t("clusterDetail.voyager.planAndAssess.refactoring.details.issueType")}
+                      </Typography>
+                      <Typography variant="body2" className={classes.suggestionText}>
+                        {issueTypes[index] ? formatSnakeCase(issueTypes[index]) : "N/A"}
+                      </Typography>
+                    </Box>
+                  </Box>
+
+                  {/* Suggestion */}
+                  <Box className={classes.suggestionRow}>
+                    <Box className={classes.bulletContainer}>
+                      <BulletCircle className={classes.bulletIcon} />
+                    </Box>
+                    <Box className={classes.suggestionContent}>
+                      <Typography className={`${classes.label} ${classes.suggestionLabel}`}>
+                        {t("clusterDetail.voyager.planAndAssess.refactoring.details.suggestion")}
+                      </Typography>
+                      <Typography variant="body2" className={classes.suggestionText}>
+                        {suggestions[index] || "N/A"}
+                      </Typography>
+                    </Box>
+                  </Box>
+
+                  {/* Minimum Version Fixed In */}
+                  <Box className={classes.suggestionRow}>
+                    <Box className={classes.bulletContainer}>
+                      <BulletCircle className={classes.bulletIcon} />
+                    </Box>
+                    <Box className={classes.suggestionContent}>
+                      <Typography className={`${classes.label} ${classes.suggestionLabel}`}>
+                        {t(
+                          "clusterDetail.voyager.planAndAssess.refactoring.details." +
+                          "minVersionsFixedIn"
+                        )}
+                      </Typography>
+                      <Typography variant="body2" className={classes.suggestionText}>
+                        {minimumVersionsFixedIn[index] || "N/A"}
+                      </Typography>
+                    </Box>
+                  </Box>
+                </Box>
+
+                {/* Links */}
+                <Box
+                  className={`${classes.flexContainer} ${classes.justifyEnd} ${classes.gap2}`}
+                  style={{ alignItems: 'center' }}
+                >
+                  {GHs[index] && (
+                    <Link
+                      href={GHs[index]}
+                      target="_blank"
+                      className={classes.linkButton}
+                    >
+                      <img
+                        src={GithubMarkIcon}
+                        alt="GitHub"
+                        className={classes.linkIcon}
+                      />
+                      <Typography variant="body2">Github Issue</Typography>
+                    </Link>
+                  )}
+                  {docs_links[index] && (
+                    <Link
+                      href={docs_links[index]}
+                      target="_blank"
+                      className={classes.linkButton}
+                    >
+                      <ExternalLink className={classes.linkIcon} />
+                      <Typography variant="body2">Learn more</Typography>
+                    </Link>
+                  )}
+                </Box>
+              </Box>
             ))}
-            <Box ml="auto">
-              <TablePagination
-                component="div"
-                count={filteredData?.reduce((acc, obj) => acc + obj.sqlStatements.length, 0) || 0}
-                page={page}
-                onPageChange={(_, newPage) => setPage(newPage)}
-                rowsPerPageOptions={[5, 10, 20]}
-                rowsPerPage={perPage}
-                onRowsPerPageChange={(e) => setPerPage(parseInt(e.target.value, 10))}
-              />
-            </Box>
-          </Box>
-        </YBAccordion>
+          </React.Fragment>
+        ))}
+
+        {/* Pagination */}
+        <Box className={classes.mlAuto}>
+          <TablePagination
+            component="div"
+            count={filteredData?.reduce((acc, obj) => acc + obj.sqlStatements.length, 0) || 0}
+            page={page}
+            onPageChange={(_, newPage) => setPage(newPage)}
+            rowsPerPageOptions={[5, 10, 20]}
+            rowsPerPage={perPage}
+            onRowsPerPageChange={(e) => setPerPage(parseInt(e.target.value, 10))}
+          />
+        </Box>
       </Box>
     </YBModal>
   );

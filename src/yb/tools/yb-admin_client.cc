@@ -84,10 +84,12 @@
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
+#include "yb/rpc/secure.h"
 #include "yb/rpc/secure_stream.h"
 
-#include "yb/rpc/secure.h"
+#include "yb/tools/tools_utils.h"
 #include "yb/tools/yb-admin_util.h"
+
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
@@ -109,11 +111,6 @@ DEFINE_NON_RUNTIME_bool(wait_if_no_leader_master, false,
             "When yb-admin connects to the cluster and no leader master is present, "
             "this flag determines if yb-admin should wait for the entire duration of timeout or"
             "in case a leader master appears in that duration or return error immediately.");
-
-DEFINE_NON_RUNTIME_string(certs_dir_name, "",
-              "Directory with certificates to use for secure server connection.");
-
-DEFINE_NON_RUNTIME_string(client_node_name, "", "Client node name.");
 
 DEFINE_NON_RUNTIME_bool(disable_graceful_transition, false,
     "During a leader stepdown, disable graceful leadership transfer "
@@ -613,14 +610,7 @@ Status ClusterAdminClient::Init() {
 
   // Check if caller will initialize the client and related parts.
   rpc::MessengerBuilder messenger_builder("yb-admin");
-  if (!FLAGS_certs_dir_name.empty()) {
-    LOG(INFO) << "Built secure client using certs dir " << FLAGS_certs_dir_name;
-    const auto& cert_name = FLAGS_client_node_name;
-    secure_context_ = VERIFY_RESULT(rpc::CreateSecureContext(
-        FLAGS_certs_dir_name, rpc::UseClientCerts(!cert_name.empty()), cert_name));
-    rpc::ApplySecureContext(secure_context_.get(), &messenger_builder);
-  }
-
+  secure_context_ = VERIFY_RESULT(CreateSecureContextIfNeeded(messenger_builder));
   messenger_ = VERIFY_RESULT(messenger_builder.Build());
   proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
 

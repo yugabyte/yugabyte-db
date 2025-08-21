@@ -46,6 +46,8 @@ import com.yugabyte.yw.models.helpers.UpgradeDetails;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.YCQLAuditConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.YSQLAuditConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig;
 import java.io.IOException;
 import java.io.StringReader;
 import java.io.StringWriter;
@@ -174,6 +176,9 @@ public class GFlagsUtil {
   public static final String YBC_MAX_CONCURRENT_DOWNLOADS = "max_concurrent_downloads";
   public static final String YBC_PER_UPLOAD_OBJECTS = "per_upload_num_objects";
   public static final String YBC_PER_DOWNLOAD_OBJECTS = "per_download_num_objects";
+  public static final String YBC_DISK_READ_BYTES_PER_SECOND = "disk_read_bytes_per_sec";
+  public static final String YBC_DISK_WRITE_BYTES_PER_SECOND = "disk_write_bytes_per_sec";
+  public static final String YBC_DISK_IO_REQUEST_SIZE = "disk_io_request_size_bytes";
   public static final String YBC_LOG_FILENAME = "yb-controller-server";
   public static final String TMP_DIRECTORY = "tmp_dir";
   public static final String JWKS_FILE_CONTENT_KEY = "jwks=";
@@ -510,6 +515,22 @@ public class GFlagsUtil {
     ybcFlags.put("ycqlsh", getYbHomeDir(providerUUID) + YCQLSH_PATH);
     ybcFlags.put("log_filename", YBC_LOG_FILENAME);
     ybcFlags.put("log_utc_time", "true");
+    ybcFlags.put(
+        YBC_DISK_IO_REQUEST_SIZE,
+        Long.toString(
+            confGetter.getConfForScope(universe, UniverseConfKeys.ybcPerDiskIoRequestSize)));
+    // Write default values for disk read/write bytes per sec so that resetToDefaults for throttle
+    // params falls back to these values.
+    ybcFlags.put(
+        YBC_DISK_READ_BYTES_PER_SECOND,
+        Long.toString(
+            confGetter.getConfForScope(
+                universe, UniverseConfKeys.defaultDiskIoReadBytesPerSecond)));
+    ybcFlags.put(
+        YBC_DISK_WRITE_BYTES_PER_SECOND,
+        Long.toString(
+            confGetter.getConfForScope(
+                universe, UniverseConfKeys.defaultDiskIoWriteBytesPerSecond)));
 
     if (taskParam.enableNodeToNodeEncrypt) {
       ybcFlags.put(CERT_NODE_FILENAME, node.cloudInfo.private_ip);
@@ -542,12 +563,12 @@ public class GFlagsUtil {
 
   /** Return the map of ybc flags which will be passed to the db nodes. */
   public static Map<String, String> getYbcFlagsForK8s(
-      UUID universeUUID,
+      Universe universe,
       String nodeName,
       boolean listenOnAllInterfaces,
       int hardwareConcurrency,
-      Map<String, String> customYbcGflags) {
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+      Map<String, String> customYbcGflags,
+      RuntimeConfGetter confGetter) {
     NodeDetails node = universe.getNode(nodeName);
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     UserIntent userIntent = universeDetails.getClusterByUuid(node.placementUuid).userIntent;
@@ -577,6 +598,22 @@ public class GFlagsUtil {
     ybcFlags.put("ycqlsh", ybHomeDir + YCQLSH_PATH);
     ybcFlags.put("log_filename", YBC_LOG_FILENAME);
     ybcFlags.put("log_utc_time", "true");
+    ybcFlags.put(
+        YBC_DISK_IO_REQUEST_SIZE,
+        Long.toString(
+            confGetter.getConfForScope(universe, UniverseConfKeys.ybcPerDiskIoRequestSize)));
+    // Write default values for disk read/write bytes per sec so that resetToDefaults for throttle
+    // params falls back to these values.
+    ybcFlags.put(
+        YBC_DISK_READ_BYTES_PER_SECOND,
+        Long.toString(
+            confGetter.getConfForScope(
+                universe, UniverseConfKeys.defaultDiskIoReadBytesPerSecond)));
+    ybcFlags.put(
+        YBC_DISK_WRITE_BYTES_PER_SECOND,
+        Long.toString(
+            confGetter.getConfForScope(
+                universe, UniverseConfKeys.defaultDiskIoWriteBytesPerSecond)));
 
     if (MapUtils.isNotEmpty(userIntent.ybcFlags)) {
       ybcFlags.putAll(userIntent.ybcFlags);
@@ -808,7 +845,9 @@ public class GFlagsUtil {
   }
 
   public static String getYsqlPgConfCsv(AnsibleConfigureServers.Params taskParams) {
-    return getYsqlPgConfCsv(taskParams.auditLogConfig);
+    String auditLogYsqlPgConfCsv = getYsqlPgConfCsv(taskParams.auditLogConfig);
+    String queryLogYsqlPgConfCsv = getYsqlPgConfCsv(taskParams.queryLogConfig);
+    return GFlagsUtil.mergeCSVs(auditLogYsqlPgConfCsv, queryLogYsqlPgConfCsv, true);
   }
 
   public static String getYsqlPgConfCsv(AuditLogConfig auditLogConfig) {
@@ -849,6 +888,42 @@ public class GFlagsUtil {
                 "pgaudit.log_statement_once", ysqlAuditConfig.isLogStatementOnce()));
       }
     }
+    return String.join(",", ysqlPgConfCsvEntries);
+  }
+
+  public static String getYsqlPgConfCsv(QueryLogConfig queryLogConfig) {
+    List<String> ysqlPgConfCsvEntries = new ArrayList<>();
+    if (queryLogConfig != null) {
+      if (queryLogConfig.getYsqlQueryLogConfig() != null
+          && queryLogConfig.getYsqlQueryLogConfig().isEnabled()) {
+        YSQLQueryLogConfig ysqlQueryLogConfig = queryLogConfig.getYsqlQueryLogConfig();
+        ysqlPgConfCsvEntries.add(
+            encodeBooleanPgAuditFlag("log_duration", ysqlQueryLogConfig.isLogDuration()));
+        ysqlPgConfCsvEntries.add(
+            encodeBooleanPgAuditFlag("debug_print_plan", ysqlQueryLogConfig.isDebugPrintPlan()));
+        ysqlPgConfCsvEntries.add(
+            encodeBooleanPgAuditFlag("log_connections", ysqlQueryLogConfig.isLogConnections()));
+        ysqlPgConfCsvEntries.add(
+            encodeBooleanPgAuditFlag(
+                "log_disconnections", ysqlQueryLogConfig.isLogDisconnections()));
+        ysqlPgConfCsvEntries.add(
+            "log_min_error_statement=" + ysqlQueryLogConfig.getLogMinErrorStatement().name());
+        ysqlPgConfCsvEntries.add(
+            "log_error_verbosity=" + ysqlQueryLogConfig.getLogErrorVerbosity().name());
+        ysqlPgConfCsvEntries.add("log_statement=" + ysqlQueryLogConfig.getLogStatement().name());
+        // Question for reviewers:
+        // Should this override all existing log line prefix values, or be appended?
+        if (ysqlQueryLogConfig.getLogLinePrefix() != null
+            && !ysqlQueryLogConfig.getLogLinePrefix().isEmpty()) {
+          ysqlPgConfCsvEntries.add("log_line_prefix=" + ysqlQueryLogConfig.getLogLinePrefix());
+        }
+        if (ysqlQueryLogConfig.getLogMinDurationStatement() != null) {
+          ysqlPgConfCsvEntries.add(
+              "log_min_duration_statement=" + ysqlQueryLogConfig.getLogMinDurationStatement());
+        }
+      }
+    }
+
     return String.join(",", ysqlPgConfCsvEntries);
   }
 

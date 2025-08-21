@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/sirupsen/logrus"
 	ybaclient "github.com/yugabyte/platform-go-client"
@@ -142,26 +141,17 @@ func (c *Context) TotalBackupSizeInBytes() string {
 
 // CreateTime fetches whether Backup CreateTime
 func (c *Context) CreateTime() string {
-	return c.c.GetCreateTime().Format(time.RFC1123Z)
+	return util.PrintTime(c.c.GetCreateTime())
 }
 
 // UpdateTime fetches whether Backup UpdateTime
 func (c *Context) UpdateTime() string {
-	updateTime := c.c.GetUpdateTime()
-	if updateTime.IsZero() {
-		return ""
-	}
-	return updateTime.Format(time.RFC1123Z)
+	return util.PrintTime(c.c.GetUpdateTime())
 }
 
 // CompletionTime fetches whether Backup CompletionTime
 func (c *Context) CompletionTime() string {
-	completionTime := c.c.GetCompletionTime()
-	if completionTime.IsZero() {
-		return ""
-	}
-	return completionTime.Format(time.RFC1123Z)
-
+	return util.PrintTime(c.c.GetCompletionTime())
 }
 
 // MarshalJSON function

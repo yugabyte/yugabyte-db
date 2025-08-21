@@ -136,4 +136,45 @@ public class XClusterUtilTest extends FakeDBApplication {
       fail("Source and target universe versions should be valid for db scoped");
     }
   }
+
+  @Test
+  public void testSupportsAutomaticDdlSuccess() {
+    Universe universe = ModelFactory.createUniverse("test Universe");
+
+    // Test with preview version that supports automatic DDL
+    TestHelper.updateUniverseVersion(universe, "2.25.1.0-b1");
+    assert XClusterUtil.supportsAutomaticDdl(universe) : "Universe should support automatic DDL";
+    TestHelper.updateUniverseVersion(universe, "2.25.1.0-b100");
+    assert XClusterUtil.supportsAutomaticDdl(universe) : "Universe should support automatic DDL";
+
+    // Test with stable version that supports automatic DDL
+    TestHelper.updateUniverseVersion(universe, "2025.1.0.0-b168");
+    assert XClusterUtil.supportsAutomaticDdl(universe) : "Universe should support automatic DDL";
+    TestHelper.updateUniverseVersion(universe, "2025.1.0.0-b200");
+    assert XClusterUtil.supportsAutomaticDdl(universe) : "Universe should support automatic DDL";
+  }
+
+  @Test
+  public void testSupportsAutomaticDdlFailure() {
+    Universe universe = ModelFactory.createUniverse("test Universe");
+    TestHelper.updateUniverseVersion(universe, "2.badversion");
+    assert !XClusterUtil.supportsAutomaticDdl(universe)
+        : "Universe should not support automatic DDL";
+
+    // Test with preview version that doesn't support automatic DDL
+    TestHelper.updateUniverseVersion(universe, "2.25.1.0-b0");
+    assert !XClusterUtil.supportsAutomaticDdl(universe)
+        : "Universe should not support automatic DDL";
+    TestHelper.updateUniverseVersion(universe, "2.25.0.0-b100");
+    assert !XClusterUtil.supportsAutomaticDdl(universe)
+        : "Universe should not support automatic DDL";
+
+    // Test with stable version that doesn't support automatic DDL
+    TestHelper.updateUniverseVersion(universe, "2025.1.0.0-b167");
+    assert !XClusterUtil.supportsAutomaticDdl(universe)
+        : "Universe should not support automatic DDL";
+    TestHelper.updateUniverseVersion(universe, "2024.1.0.0-b100");
+    assert !XClusterUtil.supportsAutomaticDdl(universe)
+        : "Universe should not support automatic DDL";
+  }
 }

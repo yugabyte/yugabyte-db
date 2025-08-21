@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/sirupsen/logrus"
 	ybaclient "github.com/yugabyte/platform-go-client"
@@ -148,12 +147,12 @@ func (c *Context) TargetUniverse() string {
 
 // CreateTime fetches Create Time
 func (c *Context) CreateTime() string {
-	return c.x.GetCreateTime().Format(time.RFC1123Z)
+	return util.PrintTime(c.x.GetCreateTime())
 }
 
 // ModifyTime fetches Modify Time
 func (c *Context) ModifyTime() string {
-	return c.x.GetModifyTime().Format(time.RFC1123Z)
+	return util.PrintTime(c.x.GetModifyTime())
 }
 
 // TableType fetches Table Type

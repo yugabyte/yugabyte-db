@@ -265,6 +265,7 @@ DEFINE_test_flag(int32, delay_set_catalog_version_table_mode_count, 0,
     "after tserver starts");
 
 DECLARE_bool(ysql_enable_auto_analyze_infra);
+DECLARE_int32(update_min_cdc_indices_interval_secs);
 
 namespace yb::tserver {
 
@@ -370,7 +371,9 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
       master_config_index_(0),
       xcluster_context_(new TserverXClusterContext()),
-      object_lock_shared_state_manager_(new docdb::ObjectLockSharedStateManager()) {
+      object_lock_tracker_(std::make_shared<ObjectLockTracker>()),
+      object_lock_shared_state_manager_(
+          new docdb::ObjectLockSharedStateManager(object_lock_tracker_)) {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
       FLAGS_inbound_rpc_memory_limit, mem_tracker()));
   if (FLAGS_ysql_enable_db_catalog_version_mode) {
@@ -640,7 +643,7 @@ Status TabletServer::RegisterServices() {
 
   cdc_service_ = std::make_shared<cdc::CDCServiceImpl>(
       std::make_unique<CDCServiceContextImpl>(this), metric_entity(), metric_registry(),
-      client_future());
+      client_future(), []() { return FLAGS_update_min_cdc_indices_interval_secs; });
 
   RETURN_NOT_OK(RegisterService(
       FLAGS_ts_backup_svc_queue_length,
@@ -824,7 +827,7 @@ void TabletServer::StartTSLocalLockManager() {
     ts_local_lock_manager_ = std::make_shared<tserver::TSLocalLockManager>(
         clock_, this /* TabletServerIf* */, *this /* RpcServerBase& */,
         tablet_manager_->waiting_txn_pool(), metric_entity(),
-        object_lock_shared_state_manager_.get());
+        object_lock_tracker_, object_lock_shared_state_manager_.get());
     ts_local_lock_manager_->Start(tablet_manager_->waiting_txn_registry());
   }
 }

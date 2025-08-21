@@ -23,8 +23,10 @@ const useStyles = makeStyles((theme) => ({
     paddingLeft: theme.spacing(2),
   },
   paper: {
-    overflow: "clip",
+    overflow: "visible",
     height: "100%",
+    border: "1px solid #E9EEF2",
+    borderRadius: theme.shape.borderRadius
   },
   boxBody: {
     display: "flex",
@@ -36,6 +38,10 @@ const useStyles = makeStyles((theme) => ({
     paddingLeft: theme.spacing(3),
     paddingTop: theme.spacing(2),
     paddingBottom: theme.spacing(2),
+    '& > *': {
+      minHeight: '68px',
+      flexShrink: 0
+    }
   },
   gradientText: {
     background: "linear-gradient(91deg, #ED35EC 3.97%, #ED35C5 33%, #5E60F0 50%)",
@@ -103,11 +109,11 @@ export const MigrationAssessmentRecommendation: FC<MigrationAssessmentRecommenda
 
         <Box className={classes.boxBody}>
           <RecommendedClusterSize
-            nodeCount={nodeCount}
-            vCpuPerNode={vCpuPerNode}
-            memoryPerNode={memoryPerNode}
-            optimalSelectConnPerNode={optimalSelectConnPerNode}
-            optimalInsertConnPerNode={optimalInsertConnPerNode}
+            recommendedNodeCount={nodeCount}
+            recommendedVCpuPerNode={vCpuPerNode}
+            recommendedMemoryPerNode={memoryPerNode}
+            recommendedOptimalSelectConnPerNode={optimalSelectConnPerNode}
+            recommendedOptimalInsertConnPerNode={optimalInsertConnPerNode}
           />
 
           <RecommendedDataDistribution

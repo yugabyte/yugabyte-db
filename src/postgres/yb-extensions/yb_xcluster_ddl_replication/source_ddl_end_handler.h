@@ -42,7 +42,7 @@ bool		ProcessSourceEventTriggerDDLCommands(JsonbParseState *state);
 /*
  * Same as above but for pg_catalog.pg_event_trigger_dropped_objects().
  */
-bool		ProcessSourceEventTriggerDroppedObjects();
+bool		ProcessSourceEventTriggerDroppedObjects(CommandTag	tag);
 
 /*
  * Retrieve and store the OID of the table that is about to be rewritten.

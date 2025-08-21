@@ -4506,5 +4506,84 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestColocatedMultiShardUpdateAffe
   TestColocatedUpdateAffectingNoRows(true /* use_multi_shard*/);
 }
 
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCheckpointNoUpdateUponCdcStateUpdateFailure) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_interval_secs) = 0;
+  ASSERT_OK(SetUpWithParams(
+      3 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+
+  // Create a table with 1 tablet.
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr /* partition_list_version */));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}, kVWALSessionId1));
+
+  //  We sleep for 5 seconds to ensure that leader safe time has moved beyond consistent snapshot
+  //  time.
+  SleepFor(MonoDelta::FromSeconds(5));
+
+  // Insert 1 record, consume and acknowledge it.
+  ASSERT_OK(WriteRows(0, 1, &test_cluster_));
+  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 3);
+
+  // Acknowledging this record should move the restart time forward.
+  auto commit_lsn = change_resp.cdc_sdk_proto_records().Get(2).row_message().pg_lsn();
+  ASSERT_OK(UpdateAndPersistLSN(stream_id, commit_lsn, commit_lsn));
+
+  auto slot_entry = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
+  auto restart_time_1 = slot_entry->record_id_commit_time;
+
+  // Introduce a DDL and then add a failure so that the entry cannot be updated in cdc_state table.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_fail_before_updating_cdc_state) = true;
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD col_2 int DEFAULT 123;", kTableName));
+
+  // Insert more records.
+  ASSERT_OK(WriteRows(1, 2, &test_cluster_));
+  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 4 /* DDL + BEGIN + INSERT + COMMIT */);
+
+  // The call to UpdateAndPersistLSN would fail because of our artificially introduced
+  // failure resulting in a scenario where the local map will be truncated but the update
+  // to cdc_state table has failed.
+  commit_lsn = change_resp.cdc_sdk_proto_records().Get(3).row_message().pg_lsn();
+  ASSERT_NOK(UpdateAndPersistLSN(stream_id, commit_lsn, commit_lsn));
+
+  // Ensure that another GetChanges has been called to simulate the scenario
+  // of an explicit checkpoint being sent to individual tablets.
+  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+
+  // Assert that restart time has not moved forward.
+  slot_entry = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
+  auto restart_time_2 = slot_entry->record_id_commit_time;
+  ASSERT_EQ(restart_time_2, restart_time_1);
+
+  // Restart virtual WAL now and ensure that there is no failure now.
+  ASSERT_OK(DestroyVirtualWAL());
+  ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_fail_before_updating_cdc_state) = false;
+
+  // Upon restart, since the slot restart time is not updated, we should be getting the
+  // DDL and the INSERT record again.
+  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 4 /* DDL + BEGIN + INSERT + COMMIT */);
+
+  // Update the slot restart time and ensure that it has moved forward now.
+  commit_lsn = change_resp.cdc_sdk_proto_records().Get(3).row_message().pg_lsn();
+  ASSERT_OK(UpdateAndPersistLSN(stream_id, commit_lsn, commit_lsn));
+
+  slot_entry = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
+  auto restart_time_3 = slot_entry->record_id_commit_time;
+  ASSERT_GT(restart_time_3, restart_time_1);
+}
+
 }  // namespace cdc
 }  // namespace yb

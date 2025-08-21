@@ -161,13 +161,24 @@ public class CheckXUniverseAutoFlags extends ServerSubTaskBase {
       log.info("Skipping YSQL migration files validation for 2025.1.0 version");
       return;
     }
-    // Validate that the ysql migration files are the same.
-    if (!sourceYsqlMigrationFiles.equals(targetYsqlMigrationFiles)) {
+    // Check if the sourceYsqlMigrationFiles is subset of targetYsqlMigrationFiles.
+    if (!targetYsqlMigrationFiles.containsAll(sourceYsqlMigrationFiles)) {
       log.error(
-          "Ysql migration files are not the same. Source: {}, Target: {}",
+          "Universe {} YSQL migration files are not a subset of universe {} YSQL migration files."
+              + " Universe {} YSQL migration files: {}, Universe {} YSQL migration files: {}",
+          sourceUniverse.getUniverseUUID(),
+          targetUniverse.getUniverseUUID(),
+          sourceUniverse.getUniverseUUID(),
           sourceYsqlMigrationFiles,
+          targetUniverse.getUniverseUUID(),
           targetYsqlMigrationFiles);
-      throw new PlatformServiceException(BAD_REQUEST, "Ysql migration files are not the same.");
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Universe "
+              + sourceUniverse.getUniverseUUID()
+              + " YSQL migration files are not a subset of universe "
+              + targetUniverse.getUniverseUUID()
+              + " YSQL migration files.");
     }
   }
 }

@@ -8,6 +8,7 @@ import { formatYbSoftwareVersionString } from '../../../utils/Formatters';
 import {
   I18N_KEY_PREFIX_XCLUSTER_SCHEMA_CHANGE_MODE,
   I18N_KEY_PREFIX_XCLUSTER_TERMS,
+  XClusterSchemaChangeMode,
   XCLUSTER_DR_DDL_STEPS_DOCUMENTATION_URL,
   XCLUSTER_REPLICATION_DDL_STEPS_DOCUMENTATION_URL
 } from '../constants';
@@ -218,6 +219,15 @@ export const SchemaChangeModeInfoModal = (props: SchemaChangeModeInfoModalProps)
   ) : null;
   // -------------
 
+  const schemaChangeInstructionsI18nKey = `${TRANSLATION_KEY_PREFIX}.${
+    props.isConfigInterface
+      ? schemaChangeMode === XClusterSchemaChangeMode.AUTOMATIC_DDL_REPLICATION
+        ? 'automaticSchemaChangeModeInstructions'
+        : schemaChangeMode === XClusterSchemaChangeMode.DB_SCOPED
+        ? 'dbScopedSchemaChangeModeInstructions'
+        : 'tableLevelSchemaChangesInstructions'
+      : 'universeLevelSchemaChangesInstructions'
+  }`;
   return (
     <YBModal
       customTitle={modalTitle}
@@ -298,12 +308,26 @@ export const SchemaChangeModeInfoModal = (props: SchemaChangeModeInfoModalProps)
         >
           <Typography variant="body2">
             <Trans
-              i18nKey={`${TRANSLATION_KEY_PREFIX}.${
-                props.isConfigInterface
-                  ? 'schemaChangesInstructions'
-                  : 'universeLevelSchemaChangesInstructions'
-              }`}
+              i18nKey={schemaChangeInstructionsI18nKey}
               components={{ bold: <b /> }}
+              values={{
+                sourceUniverseTerm: t(
+                  `source.${
+                    props.isConfigInterface && props.isDrInterface ? 'dr' : 'xClusterReplication'
+                  }`,
+                  {
+                    keyPrefix: I18N_KEY_PREFIX_XCLUSTER_TERMS
+                  }
+                ),
+                targetUniverseTerm: t(
+                  `target.${
+                    props.isConfigInterface && props.isDrInterface ? 'dr' : 'xClusterReplication'
+                  }`,
+                  {
+                    keyPrefix: I18N_KEY_PREFIX_XCLUSTER_TERMS
+                  }
+                )
+              }}
             />
           </Typography>
           {props.isConfigInterface ? (

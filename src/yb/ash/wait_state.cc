@@ -168,6 +168,8 @@ std::string GetWaitStateDescription(WaitStateCode code) {
       return "A write rpc is persisting WAL edits.";
     case WaitStateCode::kWAL_Sync:
       return "A write rpc is synchronizing WAL edits.";
+    case WaitStateCode::kWAL_Read:
+      return "An rpc is reading WAL.";
     case WaitStateCode::kConsensusMeta_Flush:
       return "ConsensusMetadata is flushed, say during Raft term/config change or remote "
           "bootstrap etc.";
@@ -603,6 +605,7 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
 
     case WaitStateCode::kWAL_Append:
     case WaitStateCode::kWAL_Sync:
+    case WaitStateCode::kWAL_Read:
     case WaitStateCode::kConsensusMeta_Flush:
     case WaitStateCode::kSnapshot_WaitingForFlush:
     case WaitStateCode::kSnapshot_CleanupSnapshotDir:

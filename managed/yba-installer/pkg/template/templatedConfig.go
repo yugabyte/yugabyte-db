@@ -8,8 +8,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	// "path/filepath"
 
@@ -166,6 +168,11 @@ func WriteBytes(byteSlice []byte, fileName []byte) ([]byte, error) {
 
 // GenerateTemplate of a particular component.
 func GenerateTemplate(component components.Service) error {
+	return GenerateTemplateWithPredicate(component, func(string) bool { return true })
+}
+
+// GenerateTemplateWithPredicate allows filtering out services by name.
+func GenerateTemplateWithPredicate(component components.Service, servicePredicate func(string) bool) error {
 	log.Debug("Generating config files for " + component.Name())
 	createdBytes, err := readConfigAndTemplate(component.TemplateFile(), component)
 	if err != nil {
@@ -182,8 +189,19 @@ func GenerateTemplate(component components.Service) error {
 	for i := 0; i < numberOfServices; i++ {
 		service := jsonData["services"].([]interface{})[i]
 		serviceName := fmt.Sprint(service.(map[string]interface{})["name"])
+		if !servicePredicate(serviceName) {
+			continue
+		}
 		serviceFileName := fmt.Sprint(service.(map[string]interface{})["fileName"])
 		serviceContents := fmt.Sprint(service.(map[string]interface{})["contents"])
+		fileMode := fs.FileMode(0)
+		if modeStr, ok := service.(map[string]interface{})["fileMode"]; ok {
+			modeOctal, err := strconv.ParseUint(fmt.Sprint(modeStr), 8, 32)
+			if err != nil {
+				return err
+			}
+			fileMode = fs.FileMode(modeOctal)
+		}
 
 		// Only write the service files to the appropriate file location if we are
 		// running as root (since we might not be able to write to /etc/systemd)
@@ -206,6 +224,12 @@ func GenerateTemplate(component components.Service) error {
 
 			log.DebugLF("Writing addition data to yb-platform config: " + additionalEntryString)
 			if _, err := file.WriteString(additionalEntryString); err != nil {
+				return err
+			}
+		}
+
+		if int(fileMode) != 0 {
+			if err := os.Chmod(serviceFileName, fileMode); err != nil {
 				return err
 			}
 		}

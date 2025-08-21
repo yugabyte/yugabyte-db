@@ -48,12 +48,14 @@ import com.google.gson.JsonParser;
 
 import com.yugabyte.jdbc.PgArray;
 import com.yugabyte.util.PGobject;
+import com.google.gson.JsonArray;
 
 public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   protected static final Logger LOG = LoggerFactory.getLogger(BaseYsqlConnMgr.class);
   protected static final int NUM_TSERVER = 3;
   private static final String DEFAULT_PG_USER = "yugabyte";
   protected static final int STATS_UPDATE_INTERVAL = 2;
+  protected static final int TSERVER_IDX = 0;
   private boolean warmup_random_mode = true;
   private static boolean ysql_conn_mgr_superuser_sticky = false;
   private static boolean ysql_conn_mgr_optimized_extended_query_protocol = true;
@@ -182,6 +184,55 @@ protected void enableVersionMatchingAndRestartCluster(boolean higher_version_mat
     waitForProperShutdown();
     createMiniCluster();
     waitForDatabaseToStart();
+  }
+
+  protected JsonObject getConnectionStats() throws IOException {
+    String host_name = getPgHost(TSERVER_IDX);
+    MiniYBDaemon[] ts_list = miniCluster.getTabletServers()
+                                        .values()
+                                        .toArray(new MiniYBDaemon[0]);
+    MiniYBDaemon ts = null;
+
+    for (MiniYBDaemon daemon : ts_list) {
+      if (host_name.equals(daemon.getLocalhostIP())) {
+        ts = daemon;
+        break;
+      }
+    }
+
+    assertNotNull(ts);
+
+    String connection_endpoint = String.format("http://%s:%d/connections",
+      ts.getLocalhostIP(), ts.getPgsqlWebPort());
+    URL url = new URL(connection_endpoint);
+    LOG.info("Trying to gather stats at the endpoint " + connection_endpoint);
+
+    try (Scanner scanner = new Scanner(url.openConnection().getInputStream())) {
+      JsonElement tree = JsonParser.parseString(scanner.useDelimiter("\\A").next());
+      return tree.getAsJsonObject();
+    } catch (Exception e) {
+       LOG.error(e.getMessage());
+      return null;
+    }
+  }
+
+  protected JsonObject getPool(String db_name, String user_name) throws Exception {
+    JsonObject obj = getConnectionStats();
+    assertNotNull("Got a null response from the connections endpoint",
+        obj);
+    JsonArray pools = obj.getAsJsonArray("pools");
+    assertNotNull("Got empty pool", pools);
+    for (int i = 0; i < pools.size(); ++i) {
+      JsonObject pool = pools.get(i).getAsJsonObject();
+      String databaseName = pool.get("database_name").getAsString();
+      String userName = pool.get("user_name").getAsString();
+
+      if (db_name.equals(databaseName) && user_name.equals(userName)) {
+          return pool;
+      }
+    }
+
+    return null;
   }
 
   protected static class Row implements Comparable<Row>, Cloneable {

@@ -33,25 +33,28 @@
 
 #include <memory>
 
-#include "yb/dockv/partition.h"
-#include "yb/qlexpr/ql_rowblock.h"
-#include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.proxy.h"
+#include "yb/consensus/metadata.pb.h"
+
+#include "yb/dockv/partition.h"
+
+#include "yb/qlexpr/ql_rowblock.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/secure_stream.h"
 
-#include "yb/consensus/metadata.pb.h"
-#include "yb/rpc/secure.h"
 #include "yb/server/server_base.proxy.h"
 
 #include "yb/tablet/tablet.pb.h"
+
+#include "yb/tools/tools_utils.h"
 
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_admin.proxy.h"
@@ -140,11 +143,6 @@ DEFINE_NON_RUNTIME_bool(
 TAG_FLAG(remove_corrupt_data_blocks_unsafe, advanced);
 TAG_FLAG(remove_corrupt_data_blocks_unsafe, hidden);
 TAG_FLAG(remove_corrupt_data_blocks_unsafe, unsafe);
-
-DEFINE_NON_RUNTIME_string(certs_dir_name, "",
-    "Directory with certificates to use for secure server connection.");
-
-DEFINE_NON_RUNTIME_string(client_node_name, "", "Client node name.");
 
 PB_ENUM_FORMATTERS(yb::consensus::LeaderLeaseStatus);
 
@@ -316,12 +314,7 @@ Status TsAdminClient::Init() {
   HostPort host_port;
   RETURN_NOT_OK(host_port.ParseString(addr_, tserver::TabletServer::kDefaultPort));
   auto messenger_builder = MessengerBuilder("ts-cli");
-  if (!FLAGS_certs_dir_name.empty()) {
-    const std::string& cert_name = FLAGS_client_node_name;
-    secure_context_ = VERIFY_RESULT(rpc::CreateSecureContext(
-        FLAGS_certs_dir_name, rpc::UseClientCerts(!cert_name.empty()), cert_name));
-    rpc::ApplySecureContext(secure_context_.get(), &messenger_builder);
-  }
+  secure_context_ = VERIFY_RESULT(CreateSecureContextIfNeeded(messenger_builder));
   messenger_ = VERIFY_RESULT(messenger_builder.Build());
 
   rpc::ProxyCache proxy_cache(messenger_.get());

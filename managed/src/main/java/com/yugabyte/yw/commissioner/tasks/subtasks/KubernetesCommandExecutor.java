@@ -325,11 +325,13 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     if (taskParams().commandType.equals(CommandType.COPY_PACKAGE)
         || taskParams().commandType.equals(CommandType.YBC_ACTION)) {
       Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-      PlacementInfo pi;
-      if (taskParams().isReadOnlyCluster) {
-        pi = universe.getUniverseDetails().getReadOnlyClusters().get(0).placementInfo;
-      } else {
-        pi = universe.getUniverseDetails().getPrimaryCluster().placementInfo;
+      PlacementInfo pi = taskParams().placementInfo;
+      if (pi == null) {
+        if (taskParams().isReadOnlyCluster) {
+          pi = universe.getUniverseDetails().getReadOnlyClusters().get(0).placementInfo;
+        } else {
+          pi = universe.getUniverseDetails().getPrimaryCluster().placementInfo;
+        }
       }
       Map<String, Map<String, String>> k8sConfigMap =
           KubernetesUtil.getKubernetesConfigPerPodName(
@@ -376,6 +378,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 overridesFile);
         break;
       case HELM_UPGRADE:
+        handleHelmUpgradeAutoRecovery();
         overridesFile = this.generateHelmOverride();
         kubernetesManagerFactory
             .getManager()
@@ -1830,5 +1833,19 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       }
     }
     return certManager;
+  }
+
+  /**
+   * Helper method to handle auto-recovery from pending Helm upgrade state. Checks if auto-recovery
+   * is enabled for the universe and performs recovery if needed.
+   */
+  private void handleHelmUpgradeAutoRecovery() {
+    Universe helmUniverse = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+    if (confGetter.getConfForScope(helmUniverse, UniverseConfKeys.autoRecoverFromPendingUpgrade)) {
+      kubernetesManagerFactory
+          .getManager()
+          .checkAndRecoverFromHelmPendingState(
+              getConfig(), taskParams().helmReleaseName, taskParams().namespace);
+    }
   }
 }

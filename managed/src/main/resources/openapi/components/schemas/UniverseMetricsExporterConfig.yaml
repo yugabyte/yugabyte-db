@@ -1,0 +1,29 @@
+title: UniverseMetricsExporterConfig
+type: object
+description: |
+  UniverseMetricsExporterConfig
+  Individual Metrics Exporter Configuration Specification.
+allOf:
+  - $ref: "./UniverseExporterConfig.yaml"
+  - type: object
+    properties:
+      send_batch_max_size:
+        description: Maximum batch size for sending metrics. Can be customised to each exporter differently.
+        type: integer
+        example: 1000
+        default: 1000
+      send_batch_size:
+        description: Batch size for sending metrics. Can be customised to each exporter differently.
+        type: integer
+        example: 100
+        default: 100
+      send_batch_timeout_seconds:
+        description: Batch timeout in seconds for sending metrics. Can be customised to each exporter differently.
+        type: integer
+        example: 10
+        default: 10
+      metrics_prefix:
+        description: Custom prefix to be added to all the metrics. Can be customised to each exporter differently.
+        type: string
+        example: ybdb.
+        default: ybdb.

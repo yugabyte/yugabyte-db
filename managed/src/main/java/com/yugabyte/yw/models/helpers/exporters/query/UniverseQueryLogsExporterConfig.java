@@ -6,8 +6,10 @@ import com.yugabyte.yw.models.helpers.exporters.UniverseExporterConfig;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 
 @Data
+@EqualsAndHashCode(callSuper = true)
 @ApiModel(description = "Universe Logs Exporter Config")
 public class UniverseQueryLogsExporterConfig extends UniverseExporterConfig {
   @ApiModelProperty(value = "Maximum batch size for query logs exporter", accessMode = READ_WRITE)
@@ -17,7 +19,7 @@ public class UniverseQueryLogsExporterConfig extends UniverseExporterConfig {
   int sendBatchSize = 100;
 
   @ApiModelProperty(
-      value = "Maximum batch timeout for query logs exporter",
+      value = "Maximum batch timeout for query logs exporter in seconds",
       accessMode = READ_WRITE)
-  String sendBatchTimeout = "10s";
+  Integer sendBatchTimeoutSeconds = 10;
 }

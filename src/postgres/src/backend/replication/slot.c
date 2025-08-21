@@ -55,6 +55,7 @@
 #include "commands/yb_cmds.h"
 #include "pg_yb_utils.h"
 #include "replication/walsender.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 
 /*
  * Replication slot on-disk data structure.

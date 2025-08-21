@@ -831,17 +831,29 @@ class CDCServiceImpl::Impl {
 CDCServiceImpl::CDCServiceImpl(
     std::unique_ptr<CDCServiceContext> context,
     const scoped_refptr<MetricEntity>& metric_entity_server, MetricRegistry* metric_registry,
-    const std::shared_future<client::YBClient*>& client_future)
+    const std::shared_future<client::YBClient*>& client_future,
+    const std::function<int32()>& get_update_peers_interval)
+    : CDCServiceImpl(
+          std::move(context), metric_entity_server, metric_registry,
+          std::max(
+              1.0, floor(FLAGS_rpc_workers_limit * (1 - FLAGS_cdc_get_changes_free_rpc_ratio))),
+          client_future, get_update_peers_interval) {}
+
+CDCServiceImpl::CDCServiceImpl(
+    std::unique_ptr<CDCServiceContext> context,
+    const scoped_refptr<MetricEntity>& metric_entity_server, MetricRegistry* metric_registry,
+    int get_changes_concurrency, const std::shared_future<client::YBClient*>& client_future,
+    const std::function<int32()>& get_update_peers_interval)
     : CDCServiceIf(metric_entity_server),
       context_(std::move(context)),
       metric_registry_(metric_registry),
       server_metrics_(std::make_shared<xrepl::CDCServerMetrics>(metric_entity_server)),
-      get_changes_rpc_sem_(std::max(
-          1.0, floor(FLAGS_rpc_workers_limit * (1 - FLAGS_cdc_get_changes_free_rpc_ratio)))),
+      get_changes_rpc_sem_(get_changes_concurrency),
       rate_limiter_(std::unique_ptr<rocksdb::RateLimiter>(rocksdb::NewGenericRateLimiter(
           GetAtomicFlag(&FLAGS_xcluster_get_changes_max_send_rate_mbps) * 1_MB))),
       impl_(new Impl(context_.get(), &mutex_)),
-      client_future_(client_future) {
+      client_future_(client_future),
+      get_update_peers_interval_(get_update_peers_interval) {
   cdc_state_table_ = std::make_unique<cdc::CDCStateTable>(client_future);
 
   CHECK_OK(Thread::Create(
@@ -1281,7 +1293,7 @@ Result<SetCDCCheckpointResponsePB> CDCServiceImpl::SetCDCCheckpoint(
   RETURN_NOT_OK_SET_CODE(
       UpdateCheckpointAndActiveTime(
           producer_tablet, checkpoint, checkpoint, GetCurrentTimeMicros(), cdc_sdk_safe_time,
-          CDCRequestSource::CDCSDK, true, !set_latest_entry),
+          CDCRequestSource::CDCSDK, /*force_update=*/true, !set_latest_entry),
       CDCError(CDCErrorPB::INTERNAL_ERROR));
 
   if (req.has_initial_checkpoint() || set_latest_entry) {
@@ -1631,6 +1643,14 @@ void CDCServiceImpl::GetChanges(
       GetStream(stream_id, RefreshStreamMapOption::kIfInitiatedState), resp->mutable_error(),
       CDCErrorPB::INTERNAL_ERROR, context);
   StreamMetadata& record = *stream_meta_ptr;
+
+  // Polling sys catalog tablet is only supported for CDC.
+  RPC_CHECK_AND_RETURN_ERROR(
+      !tablet_peer->tablet_metadata()->IsSysCatalog() || record.GetSourceType() == CDCSDK,
+      STATUS(InvalidArgument, "Polling sys catalog tablet is only supported for CDC"),
+      resp->mutable_error(),
+      CDCErrorPB::INVALID_REQUEST,
+      context);
 
   if (record.GetSourceType() == CDCSDK) {
     RPC_STATUS_RETURN_ERROR(
@@ -2011,12 +2031,12 @@ void CDCServiceImpl::GetChanges(
         commit_op_id = explicit_op_id;
       }
 
+      bool force_update = req->force_update_cdc_state_checkpoint() || snapshot_bootstrap;
       RPC_STATUS_RETURN_ERROR(
           UpdateCheckpointAndActiveTime(
               producer_tablet, OpId::FromPB(resp->checkpoint().op_id()), commit_op_id,
-              last_record_hybrid_time, cdc_sdk_safe_time, record.GetSourceType(),
-              snapshot_bootstrap, is_snapshot, snapshot_key,
-              (is_snapshot && is_colocated) ? req->table_id() : ""),
+              last_record_hybrid_time, cdc_sdk_safe_time, record.GetSourceType(), force_update,
+              is_snapshot, snapshot_key, (is_snapshot && is_colocated) ? req->table_id() : ""),
           resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
     }
 
@@ -3373,11 +3393,10 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
       time_since_update_metrics = MonoTime::Now();
     }
 
-    // If its not been 60s since the last peer update, continue.
+    const auto& update_peers_interval = MonoDelta::FromSeconds(get_update_peers_interval_());
     if (!GetAtomicFlag(&FLAGS_enable_log_retention_by_op_idx) ||
         (time_since_update_peers != MonoTime::kUninitialized &&
-         MonoTime::Now() - time_since_update_peers <
-             MonoDelta::FromSeconds(GetAtomicFlag(&FLAGS_update_min_cdc_indices_interval_secs)))) {
+         MonoTime::Now() - time_since_update_peers < update_peers_interval)) {
       continue;
     }
     TEST_SYNC_POINT("UpdatePeersAndMetrics::Start");
@@ -4488,10 +4507,10 @@ Status CDCServiceImpl::InsertRowForColocatedTableInCDCStateTable(
 Status CDCServiceImpl::UpdateCheckpointAndActiveTime(
     const TabletStreamInfo& producer_tablet, const OpId& sent_op_id, const OpId& commit_op_id,
     uint64_t last_record_hybrid_time, const std::optional<HybridTime>& cdc_sdk_safe_time,
-    const CDCRequestSource& request_source, const bool snapshot_bootstrap, const bool is_snapshot,
+    const CDCRequestSource& request_source, bool force_update, bool is_snapshot,
     const std::string& snapshot_key, const TableId& colocated_table_id) {
   bool update_cdc_state = impl_->UpdateCheckpoint(producer_tablet, sent_op_id, commit_op_id);
-  if (!update_cdc_state && !snapshot_bootstrap) {
+  if (!update_cdc_state && !force_update) {
     return Status::OK();
   }
 
@@ -4553,10 +4572,10 @@ Status CDCServiceImpl::UpdateCheckpointAndActiveTime(
     auto checkpoint = VERIFY_RESULT(GetLastCheckpointFromCdcState(
         producer_tablet.stream_id, producer_tablet.tablet_id, CDCRequestSource::CDCSDK));
 
-    if (snapshot_bootstrap && checkpoint.term() == 0 && checkpoint.index() == 0) {
+    if (force_update && checkpoint.term() == 0 && checkpoint.index() == 0) {
       RETURN_NOT_OK(UpdateCheckpointAndActiveTime(
           producer_tablet, sent_op_id, commit_op_id, last_record_hybrid_time, cdc_sdk_safe_time,
-          request_source, snapshot_bootstrap, is_snapshot, "", ""));
+          request_source, force_update, is_snapshot, "", ""));
     } else {
       CDCStateTableEntry entry(producer_tablet.tablet_id, producer_tablet.stream_id);
       entry.active_time = last_active_time;
@@ -5141,9 +5160,22 @@ void CDCServiceImpl::InitVirtualWALForCDC(
     table_list.insert(table_id);
   }
 
+  bool pub_all_tables = false;
+  std::unordered_set<uint32_t> publications_list;
+  if (FLAGS_cdcsdk_enable_dynamic_table_addition_with_table_cleanup) {
+    for (const auto& publication : req->publication_oid()) {
+      publications_list.insert(publication);
+    }
+
+    if (req->has_pub_all_tables()) {
+      pub_all_tables = req->pub_all_tables();
+    }
+  }
+
   HostPort hostport(context.local_address());
   Status s = virtual_wal->InitVirtualWALInternal(
-      table_list, hostport, GetDeadline(context, client()), std::move(slot_hash_range));
+      table_list, hostport, GetDeadline(context, client()), std::move(slot_hash_range),
+      publications_list, pub_all_tables);
   if (!s.ok()) {
     {
       std::lock_guard l(mutex_);

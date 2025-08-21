@@ -19,6 +19,7 @@
     is_destroy_command: "{{ is_clean_command or  command == 'stop-destroy' }}"
     cron_command:  "{{ 'stop' if command == 'stop-destroy' else command}}"
     remove_conf_file: "{{ deconfigure | default(false) }}"
+    systemd_debug_log: "{{ systemd_debug | default(false) }}"
   tasks:
     - block:
       - name: Check ctl script exists
@@ -45,9 +46,13 @@
         - name: Print systemd_user
           debug:
             var: systemd_user
-        - name: Set the systemd prefix
+        - name: Set systemd log level
           set_fact:
-            systemd_prefix: "{{ 'systemctl --user' if systemd_user.stat.exists else 'sudo systemctl'}}"
+            systemd_log_level: "{{ 'SYSTEMD_LOG_LEVEL=debug ' if systemd_debug_log else '' }}"
+        - name: Set the systemd prefix for user level
+          set_fact:
+            systemd_prefix: "{{ systemd_log_level }}systemctl --user"
+          when: systemd_user.stat.exists
         - name: Set systemd name
           set_fact:
             systemd_process: "{{ process if process == 'otel-collector' else 'yb-' ~ process }}"
@@ -62,17 +67,44 @@
         - block:
           - name: Reload daemon
             shell: "{{ systemd_prefix }} daemon-reload"
+            register: reload_daemon_result1
+            retries: 10
+            delay: 10
+            until: reload_daemon_result1.rc == 0
           - name: Enable the {{ systemd_process }}
             shell: "{{ systemd_prefix }} enable {{ systemd_process }}"
             when: command == 'start'
+            register: enable_process_result
+            retries: 10
+            delay: 10
+            until: enable_process_result.rc == 0
           - name: Perform {{ command }} on the {{ systemd_process }}
             shell: "{{ systemd_prefix }} {{ command }} {{ systemd_process }}"
             when: command == 'start' or command == 'stop'
+            register: perform_command_result
+            retries: 10
+            delay: 10
+            until: perform_command_result.rc == 0
+          - name: Reload daemon after stop
+            shell: "{{ systemd_prefix }} daemon-reload"
+            register: reload_daemon_result2
+            retries: 10
+            delay: 10
+            until: reload_daemon_result2.rc == 0
+            when: command == 'stop'
           - name: Disable the {{ systemd_process }}
             shell: "{{ systemd_prefix }} disable {{ systemd_process }}"
             when: command == 'stop'
+            register: disable_process_result
+            retries: 10
+            delay: 10
+            until: disable_process_result.rc == 0
           - name: Reload daemon
             shell: "{{ systemd_prefix }} daemon-reload"
+            register: reload_daemon_result3
+            retries: 10
+            delay: 10
+            until: reload_daemon_result3.rc == 0
           when: command != "stop-destroy"
         - name: Check if the logs cleanup script exists
           stat:
@@ -128,7 +160,7 @@
     - block:
       - block:
         - name: Check node exporter service exists
-          shell: "systemctl cat node_exporter.service 2>/dev/null | head -1 | sed -e 's/#\\s*//g'"
+          shell: "systemctl cat node_exporter.service --no-pager 2>/dev/null | head -1 | sed -e 's/#\\s*//g'"
           register: node_exporter_stat
           ignore_errors: True
 

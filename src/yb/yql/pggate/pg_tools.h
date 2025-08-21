@@ -85,7 +85,7 @@ struct SampleRandomState {
 struct LightweightTableYbctid {
   LightweightTableYbctid(PgOid table_id_, const std::string_view& ybctid_)
       : table_id(table_id_), ybctid(ybctid_) {}
-  LightweightTableYbctid(PgOid table_id_, const Slice& ybctid_)
+  LightweightTableYbctid(PgOid table_id_, Slice ybctid_)
       : LightweightTableYbctid(table_id_, static_cast<std::string_view>(ybctid_)) {}
 
   PgOid table_id;
@@ -145,7 +145,6 @@ using TableYbctidSetHelper =
     std::unordered_set<T, TableYbctidHasher, TableYbctidComparator>;
 using MemoryOptimizedTableYbctidSet = TableYbctidSetHelper<MemoryOptimizedTableYbctid>;
 using TableYbctidSet = TableYbctidSetHelper<TableYbctid>;
-using TableYbctidVector = std::vector<TableYbctid>;
 
 template <class U>
 using TableYbctidMap = std::unordered_map<TableYbctid, U, TableYbctidHasher, TableYbctidComparator>;
@@ -153,10 +152,10 @@ using TableYbctidMap = std::unordered_map<TableYbctid, U, TableYbctidHasher, Tab
 using ExecParametersMutator = LWFunction<void(YbcPgExecParameters&)>;
 
 struct YbctidBatch {
-  YbctidBatch(std::reference_wrapper<const std::vector<Slice>> ybctids_, bool keep_order_)
+  YbctidBatch(std::span<const Slice> ybctids_, bool keep_order_)
       : ybctids(ybctids_), keep_order(keep_order_) {}
 
-  const std::vector<Slice>& ybctids;
+  std::span<const Slice> ybctids;
   bool keep_order;
 };
 
@@ -166,59 +165,6 @@ struct BufferingSettings {
   size_t max_batch_size;
   size_t max_in_flight_operations;
   int multiple;
-};
-
-class YbctidReaderProvider {
-  using PgSessionPtr = scoped_refptr<PgSession>;
-
- public:
-  class Reader {
-   public:
-    ~Reader() { ybctids_.clear(); }
-    void Reserve(size_t capacity) {
-      DCHECK(!read_called_);
-      ybctids_.reserve(capacity);
-    }
-    void Add(TableYbctid&& ybctid) {
-      DCHECK(!read_called_);
-      ybctids_.push_back(std::move(ybctid));
-    }
-
-    auto Read(PgOid database_id, const OidSet& region_local_tables,
-              const ExecParametersMutator& exec_params_mutator) {
-      DCHECK(!read_called_);
-      read_called_ = true;
-      return DoRead(database_id, region_local_tables, exec_params_mutator);
-    }
-
-   private:
-    friend class YbctidReaderProvider;
-
-    Reader(const PgSessionPtr& session, TableYbctidVector& ybctids)
-        : session_(session), ybctids_(ybctids) {}
-
-    Result<std::span<TableYbctid>> DoRead(
-      PgOid database_id, const OidSet& region_local_tables,
-      const ExecParametersMutator& exec_params_mutator);
-
-    const PgSessionPtr& session_;
-    TableYbctidVector& ybctids_;
-    bool read_called_ = false;
-
-    DISALLOW_COPY_AND_ASSIGN(Reader);
-  };
-
-  explicit YbctidReaderProvider(std::reference_wrapper<const PgSessionPtr> session)
-      : session_(session) {}
-
-  Reader operator()() { return Reader(session_, container_); }
-
- private:
-  const PgSessionPtr& session_;
-  TableYbctidVector container_;
-  bool read_done_ = false;
-
-  DISALLOW_COPY_AND_ASSIGN(YbctidReaderProvider);
 };
 
 struct YbctidGenerator {

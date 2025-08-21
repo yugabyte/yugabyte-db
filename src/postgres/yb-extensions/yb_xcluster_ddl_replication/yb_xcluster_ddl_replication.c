@@ -58,12 +58,30 @@ static const struct config_enum_entry replication_role_overrides[] = {
 static int	replication_role = XCLUSTER_ROLE_UNAVAILABLE;
 static int	replication_role_override = XCLUSTER_ROLE_UNSPECIFIED;
 
+/* Current nesting depth of ExecutorRun+ProcessUtility calls */
+static int	exec_nested_level = 0;
+
+static bool captured_by_extension = false;
+
+/* Check if the top level statement is a extension DDL. */
+static bool is_extension_ddl = false;
+
+/* Check if this is a DDL related to our own extension. */
+static bool is_self_extension_ddl = false;
+
 /*
  * Util functions.
  */
-
-static bool IsInIgnoreList(EventTriggerData *trig_data);
-
+static void EvaluateTopDdlCommand(CommandTag command_tag);
+static void RecordTempRelationDDL();
+static void XClusterProcessUtility(PlannedStmt *pstmt,
+								   const char *queryString,
+								   bool readOnlyTree,
+								   ProcessUtilityContext context,
+								   ParamListInfo params,
+								   QueryEnvironment *queryEnv,
+								   DestReceiver *dest,
+								   QueryCompletion *qc);
 
 /*
  * Per DDL Variables.
@@ -77,9 +95,8 @@ static bool IsInIgnoreList(EventTriggerData *trig_data);
  */
 static bool yb_should_replicate_ddl = false;
 
-/*
- * Assign hooks.
- */
+static YbcRecordTempRelationDDL_hook_type prev_YBCRecordTempRelationDDL = NULL;
+static ProcessUtility_hook_type prev_ProcessUtility = NULL;
 
 /*
  * The GUC variables `enable_manual_ddl_replication` and
@@ -157,6 +174,13 @@ _PG_init(void)
 							 PGC_SUSET,
 							 0,
 							 NULL, assign_TEST_replication_role_override, NULL);
+
+	prev_YBCRecordTempRelationDDL = YBCRecordTempRelationDDL_hook;
+	YBCRecordTempRelationDDL_hook = RecordTempRelationDDL;
+
+	prev_ProcessUtility = ProcessUtility_hook;
+	ProcessUtility_hook = XClusterProcessUtility;
+
 }
 
 void
@@ -178,7 +202,7 @@ FetchReplicationRole()
 bool
 IsDisabled()
 {
-	return (replication_role != XCLUSTER_ROLE_AUTOMATIC_SOURCE &&
+	return !captured_by_extension || (replication_role != XCLUSTER_ROLE_AUTOMATIC_SOURCE &&
 			replication_role != XCLUSTER_ROLE_AUTOMATIC_TARGET);
 }
 
@@ -300,29 +324,9 @@ IsExtensionDdl(CommandTag command_tag)
  * extension.
  */
 bool
-IsCurrentDdlPartOfExtensionDdlBatch(CommandTag command_tag)
+IsCurrentDdlPartOfExtensionDdlBatch()
 {
-	/* Extension DDL cannot be executed within another extension DDL. */
-	if (IsExtensionDdl(command_tag))
-	{
-		return false;
-	}
-
-	List	   *parse_tree = pg_parse_query(debug_query_string);
-	ListCell   *lc;
-
-	foreach(lc, parse_tree)
-	{
-		RawStmt    *stmt = (RawStmt *) lfirst(lc);
-		CommandTag	stmt_command_tag = CreateCommandTag(stmt->stmt);
-
-		if (IsExtensionDdl(stmt_command_tag))
-		{
-			return true;
-		}
-	}
-
-	return false;
+	return is_extension_ddl && exec_nested_level > 1;
 }
 
 /*
@@ -468,6 +472,15 @@ HandleTargetDDLEnd(EventTriggerData *trig_data)
 	/* Manual DDLs are not captured at all on the target. */
 	if (enable_manual_ddl_replication)
 		return;
+
+	/*
+	 * DDLs on target are blocked in pg_client_session before they can modify
+	 * the catalog, so if a user executed DDL got this far then it means this is a
+	 * pass through DDL command.
+	 */
+	if (!yb_xcluster_automatic_mode_target_ddl)
+		return;
+
 	/*
 	 * We expect ddl_queue_primary_key_* variables to have been set earlier in
 	 * the transaction by the ddl_queue handler.
@@ -494,7 +507,7 @@ HandleSourceSQLDrop(EventTriggerData *trig_data)
 
 	INIT_MEM_CONTEXT_AND_SPI_CONNECT("yb_xcluster_ddl_replication.HandleSourceSQLDrop context");
 
-	yb_should_replicate_ddl |= ProcessSourceEventTriggerDroppedObjects();
+	yb_should_replicate_ddl |= ProcessSourceEventTriggerDroppedObjects(trig_data->tag);
 
 	CLOSE_MEM_CONTEXT_AND_SPI;
 }
@@ -521,6 +534,9 @@ HandleSourceTableRewrite(EventTriggerData *trig_data)
 void
 HandleSourceDDLStart(EventTriggerData *trig_data)
 {
+	if (is_self_extension_ddl)
+		return;
+
 	/* By default we don't replicate. */
 	yb_should_replicate_ddl = false;
 	if (enable_manual_ddl_replication)
@@ -540,6 +556,33 @@ HandleSourceDDLStart(EventTriggerData *trig_data)
 	ClearRewrittenTableOidList();
 }
 
+void
+HandleTargetDDLStart(EventTriggerData *trig_data)
+{
+	if (IsCurrentDdlPartOfExtensionDdlBatch())
+		return;
+
+	yb_xcluster_target_ddl_bypass = false;
+
+	/* Bypass DDLs executed in manual mode, or from the target poller. */
+	if (enable_manual_ddl_replication ||
+		yb_xcluster_automatic_mode_target_ddl || is_self_extension_ddl)
+	{
+		yb_xcluster_target_ddl_bypass = true;
+		return;
+	}
+
+	DisallowMultiStatementQueries(trig_data->tag);
+
+	/*
+	 * Allow DDLs related to materialized views.
+	 * Temp relations are bypassed in RecordTempRelationDDL.
+	 * DDLs that are not caught by the trigger (ex CREATE DATABASE) are bypassed
+	 * in XClusterProcessUtility.
+	 */
+	yb_xcluster_target_ddl_bypass = IsMatViewCommand(trig_data->tag);
+}
+
 PG_FUNCTION_INFO_V1(handle_ddl_start);
 Datum
 handle_ddl_start(PG_FUNCTION_ARGS)
@@ -547,18 +590,32 @@ handle_ddl_start(PG_FUNCTION_ARGS)
 	if (!CALLED_AS_EVENT_TRIGGER(fcinfo))	/* internal error */
 		elog(ERROR, "not fired by event trigger manager");
 
+	/*
+	 * Only process statements that have been captured by the trigger at the top
+	 * level. This allows us to bypass creation of our own extension which we
+	 * won't capture until the trigger is created, which happens in a nested
+	 * level.
+	 */
+	if (exec_nested_level == 1)
+		captured_by_extension = true;
+
 	FetchReplicationRole();
 	if (IsDisabled())
 		PG_RETURN_NULL();
 
 	EventTriggerData *trig_data = (EventTriggerData *) fcinfo->context;
 
-	if (IsInIgnoreList(trig_data))
-		PG_RETURN_NULL();
+	if (exec_nested_level == 1)
+		EvaluateTopDdlCommand(trig_data->tag);
 
 	if (IsReplicationSource())
 	{
 		HandleSourceDDLStart(trig_data);
+	}
+
+	if (IsReplicationTarget())
+	{
+		HandleTargetDDLStart(trig_data);
 	}
 
 	PG_RETURN_NULL();
@@ -576,14 +633,14 @@ handle_ddl_end(PG_FUNCTION_ARGS)
 
 	EventTriggerData *trig_data = (EventTriggerData *) fcinfo->context;
 
-	if (IsInIgnoreList(trig_data))
+	if (is_self_extension_ddl)
 		PG_RETURN_NULL();
 
 	/*
 	 * Capture the DDL as long as its not a step within another Extension DDL
 	 * batch.
 	 */
-	if (!IsCurrentDdlPartOfExtensionDdlBatch(trig_data->tag))
+	if (!IsCurrentDdlPartOfExtensionDdlBatch())
 	{
 		if (IsReplicationSource())
 		{
@@ -610,15 +667,13 @@ handle_sql_drop(PG_FUNCTION_ARGS)
 
 	EventTriggerData *trig_data = (EventTriggerData *) fcinfo->context;
 
-	if (IsInIgnoreList(trig_data))
+	if (is_self_extension_ddl)
 		PG_RETURN_NULL();
 
-	if (IsReplicationSource() && !IsCurrentDdlPartOfExtensionDdlBatch(trig_data->tag))
+	if (IsReplicationSource() && !IsCurrentDdlPartOfExtensionDdlBatch())
 	{
 		HandleSourceSQLDrop(trig_data);
 	}
-
-	/* HandleTargetDDLEnd will be handled in handle_ddl_end. */
 
 	PG_RETURN_NULL();
 }
@@ -635,7 +690,7 @@ handle_table_rewrite(PG_FUNCTION_ARGS)
 
 	EventTriggerData *trig_data = (EventTriggerData *) fcinfo->context;
 
-	if (IsInIgnoreList(trig_data))
+	if (is_self_extension_ddl)
 		PG_RETURN_NULL();
 
 	if (IsReplicationSource())
@@ -698,21 +753,88 @@ GetExtensionName(CommandTag tag, List *parse_tree)
 	}
 }
 
-static bool
-IsInIgnoreList(EventTriggerData *trig_data)
+static void
+EvaluateTopDdlCommand(CommandTag command_tag)
 {
-	if (!IsExtensionDdl(trig_data->tag))
+	is_extension_ddl = false;
+	is_self_extension_ddl = false;
+
+	if (IsExtensionDdl(command_tag))
 	{
-		return false;
+		is_extension_ddl = true;
+		List *parse_tree = pg_parse_query(debug_query_string);
+		char *extname = GetExtensionName(command_tag, parse_tree);
+		is_self_extension_ddl = extname != NULL &&
+								strcmp(extname, EXTENSION_NAME) == 0;
 	}
 
-	List	   *parse_tree = pg_parse_query(debug_query_string);
-	char	   *extname = GetExtensionName(trig_data->tag, parse_tree);
+}
 
-	if (extname != NULL && strcmp(extname, EXTENSION_NAME) == 0)
+static void
+RecordTempRelationDDL()
+{
+	/*
+	 * If we are manually running a DDL on a temp relation on the target, then do not block it.
+	 */
+	if (IsReplicationTarget())
+		yb_xcluster_target_ddl_bypass = true;
+
+	if (prev_YBCRecordTempRelationDDL)
+		prev_YBCRecordTempRelationDDL();
+}
+
+void
+HandleTopUtilityCommandStart()
+{
+	captured_by_extension = false;
+
+	/*
+	 * For DDLs that are handled by the handle_ddl_start event trigger,
+	 * HandleTargetDDLStart will set yb_xcluster_target_ddl_bypass to false and
+	 * then allow them on a case by case basis. For any DDL that is not handled
+	 * by the trigger, we will set yb_xcluster_target_ddl_bypass to true and
+	 * allow it to pass through.
+	 */
+	yb_xcluster_target_ddl_bypass = true;
+}
+
+void
+HandleTopUtilityCommandEnd()
+{
+	captured_by_extension = false;
+	yb_xcluster_target_ddl_bypass = false;
+}
+
+static void
+XClusterProcessUtility(PlannedStmt *pstmt,
+					   const char *queryString,
+					   bool readOnlyTree,
+					   ProcessUtilityContext context,
+					   ParamListInfo params,
+					   QueryEnvironment *queryEnv,
+					   DestReceiver *dest,
+					   QueryCompletion *qc)
+{
+	exec_nested_level++;
+
+	if (exec_nested_level == 1)
+		HandleTopUtilityCommandStart();
+
+	PG_TRY();
 	{
-		return true;
+		if (prev_ProcessUtility)
+			prev_ProcessUtility(pstmt, queryString, readOnlyTree, context,
+								params, queryEnv, dest, qc);
+		else
+			standard_ProcessUtility(pstmt, queryString, readOnlyTree, context,
+									params, queryEnv, dest, qc);
 	}
+	PG_FINALLY();
+	{
+		if (exec_nested_level == 1)
+			HandleTopUtilityCommandEnd();
 
-	return false;
+		exec_nested_level--;
+	}
+	PG_END_TRY();
 }

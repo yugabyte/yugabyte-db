@@ -30,7 +30,7 @@ You can use yugabyted for production deployments. You can also administer [YB-TS
 
 The yugabyted executable file is packaged with YugabyteDB and located in the YugabyteDB home `bin` directory.
 
-For information on installing YugabyteDB, see [Use a local cluster](/preview/tutorials/quick-start/linux/) or [Get started](https://download.yugabyte.com).
+For information on installing YugabyteDB, see [Use a local cluster](/preview/quick-start/linux/) or [Get started](https://download.yugabyte.com).
 
 After installing YugabyteDB, if you want to use [backup](#backup) and [restore](#restore), you also need to install the YB Controller service, which manages backup and restore operations. YB Controller is included in the `share` directory of your YugabyteDB installation.
 
@@ -78,7 +78,7 @@ $ ./bin/yugabyted -h
 ```
 
 ```sh
-$ ./bin/yugabyted -help
+$ ./bin/yugabyted --help
 ```
 
 For help with specific yugabyted commands, run 'yugabyted [ command ] -h'. For example, you can print the command-line help for the `yugabyted start` command by running the following:
@@ -1762,7 +1762,7 @@ You can set the replication factor of the universe manually using the `--rf` fla
 
 Docker-based deployments are in {{<tags/feature/ea>}}.
 
-You can run yugabyted in a Docker container. For more information, see the [Quick Start](/preview/tutorials/quick-start/docker/).
+You can run yugabyted in a Docker container. For more information, see the [Quick Start](/preview/quick-start/docker/).
 
 The following example shows how to create a multi-region universe. If the `~/yb_docker_data` directory already exists, delete and re-create it.
 

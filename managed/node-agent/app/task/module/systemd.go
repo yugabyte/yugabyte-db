@@ -229,7 +229,7 @@ func SystemdUnitPath(
 		return "", err
 	}
 	cmd := fmt.Sprintf(
-		"systemctl %scat %s 2>/dev/null | head -1 | sed -e 's/#\\s*//g' || true",
+		"systemctl %scat %s --no-pager 2>/dev/null | head -1 | sed -e 's/#\\s*//g' || true",
 		userOption,
 		serverName,
 	)

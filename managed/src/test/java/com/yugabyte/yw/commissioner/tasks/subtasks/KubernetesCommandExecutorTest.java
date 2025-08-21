@@ -1578,4 +1578,34 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
       assertEquals("namespace can be null only in case of POD_INFO", e.getMessage());
     }
   }
+
+  @Test
+  public void testHelmUpgradeWithoutStuckRelease() {
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        createExecutor(
+            KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
+            defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo);
+    kubernetesCommandExecutor.taskParams().namespace = namespace;
+    kubernetesCommandExecutor.run();
+
+    // Verify that checkAndRecoverFromHelmPendingState was called
+    verify(kubernetesManager, times(1))
+        .checkAndRecoverFromHelmPendingState(
+            eq(config), eq(defaultUniverse.getUniverseDetails().nodePrefix), eq(namespace));
+
+    // Verify that handleStuckHelmUpgrade was NOT called
+    verify(kubernetesManager, times(0))
+        .handleStuckHelmUpgrade(
+            any(Map.class), any(String.class), any(String.class), any(String.class));
+
+    // Verify that helmUpgrade was still called
+    verify(kubernetesManager, times(1))
+        .helmUpgrade(
+            eq(defaultUniverse.getUniverseUUID()),
+            eq(ybSoftwareVersion),
+            eq(config),
+            eq(defaultUniverse.getUniverseDetails().nodePrefix),
+            eq(namespace),
+            any(String.class));
+  }
 }

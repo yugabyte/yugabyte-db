@@ -72,12 +72,11 @@ class PgAshTest : public LibPqTestBase {
 class PgAshMasterMetadataSerializerTest : public PgAshTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=true");
     options->extra_tserver_flags.push_back(
-        "--allowed_preview_flags_csv=enable_object_locking_for_table_locks");
-    options->extra_master_flags.push_back("--enable_object_locking_for_table_locks=true");
-    options->extra_master_flags.push_back(
-        "--allowed_preview_flags_csv=enable_object_locking_for_table_locks");
+        Format("--allowed_preview_flags_csv=$0,$1",
+               "enable_object_locking_for_table_locks", "ysql_yb_ddl_transaction_block_enabled"));
+    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=true");
+    options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
     PgAshTest::UpdateMiniClusterOptions(options);
   }
 };
@@ -875,7 +874,6 @@ TEST_F(PgAshTest, TestTServerMetadataSerializer) {
 }
 
 TEST_F(PgAshMasterMetadataSerializerTest, TestMasterMetadataSerializer) {
-  GTEST_SKIP() << "Skipping until #28129 is fixed";
   static constexpr auto kTableName = "test_table";
 
   ASSERT_OK(conn_->Execute(Format("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTableName)));

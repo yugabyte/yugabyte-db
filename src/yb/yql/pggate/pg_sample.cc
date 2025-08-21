@@ -370,9 +370,9 @@ class SamplePickerBase : public PgSelect {
   virtual Status FetchDone() = 0;
 
   Result<bool> ProcessNextBlock() {
-    if (!VERIFY_RESULT(doc_op_->ResultStream().ProcessEntries(
-            [this](Slice* data) -> Status {
-              return ProcessResultEntry(data);
+    if (!VERIFY_RESULT(doc_op_->ResultStream().ProcessNextSysEntries(
+            [this](Slice& data) {
+              return ProcessResultEntry(&data);
             }))) {
       RETURN_NOT_OK(FetchDone());
       return false;

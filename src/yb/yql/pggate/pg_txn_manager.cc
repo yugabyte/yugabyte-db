@@ -14,6 +14,7 @@
 #include "yb/yql/pggate/pg_txn_manager.h"
 
 #include "yb/common/common.pb.h"
+#include "yb/common/row_mark.h"
 #include "yb/common/transaction_priority.h"
 
 #include "yb/docdb/object_lock_shared_state.h"
@@ -245,7 +246,7 @@ Status PgTxnManager::SetPgIsolationLevel(int level) {
   return Status::OK();
 }
 
-PgIsolationLevel PgTxnManager::GetPgIsolationLevel() {
+PgIsolationLevel PgTxnManager::GetPgIsolationLevel() const {
   return pg_isolation_level_;
 }
 
@@ -325,13 +326,13 @@ uint64_t PgTxnManager::NewPriority(YbcTxnPriorityRequirement txn_priority_requir
     return RandomUniformInt(txn_priority_highpri_lower_bound,
                             txn_priority_highpri_upper_bound);
   }
-
   return RandomUniformInt(txn_priority_regular_lower_bound,
                           txn_priority_regular_upper_bound);
 }
 
 Status PgTxnManager::CalculateIsolation(
-    bool read_only_op, YbcTxnPriorityRequirement txn_priority_requirement) {
+    bool read_only_op, YbcTxnPriorityRequirement txn_priority_requirement,
+    IsLocalObjectLockOp is_local_object_lock_op) {
   if (yb_ddl_transaction_block_enabled ? IsDdlModeWithSeparateTransaction() : IsDdlMode()) {
     VLOG_TXN_STATE(2);
     if (!priority_.has_value())
@@ -406,12 +407,13 @@ Status PgTxnManager::CalculateIsolation(
           isolation_level_, IsolationLevel_Name(docdb_isolation), pg_isolation_level_,
           read_only_);
     }
-  } else if (read_only_op &&
-             (docdb_isolation == IsolationLevel::SNAPSHOT_ISOLATION ||
-              docdb_isolation == IsolationLevel::READ_COMMITTED) &&
-             (!yb_ddl_transaction_block_enabled || !IsDdlMode())) {
-    // Preserves isolation_level_ as NON_TRANSACTIONAL
-  } else {
+    return Status::OK();
+  }
+  auto skip_picking_isolation_level = read_only_op &&
+      (docdb_isolation == IsolationLevel::SNAPSHOT_ISOLATION ||
+       docdb_isolation == IsolationLevel::READ_COMMITTED);
+  skip_picking_isolation_level |= is_local_object_lock_op;
+  if (!skip_picking_isolation_level || (yb_ddl_transaction_block_enabled && IsDdlMode())) {
     if (IsDdlMode()) {
       DCHECK(yb_ddl_transaction_block_enabled)
           << "Unexpected DDL state found in plain transaction";
@@ -426,7 +428,7 @@ Status PgTxnManager::CalculateIsolation(
                       << " priority_: " << (priority_ ? std::to_string(*priority_) : "nullopt")
                       << "; transaction started successfully.";
   }
-
+  // Else, preserve isolation_level_ as NON_TRANSACTIONAL.
   return Status::OK();
 }
 
@@ -683,6 +685,7 @@ Status PgTxnManager::SetupPerformOptions(
   options->set_trace_requested(enable_tracing_);
   options->set_txn_serial_no(serial_no_.txn());
   options->set_active_sub_transaction_id(active_sub_transaction_id_);
+  options->set_xcluster_target_ddl_bypass(yb_xcluster_target_ddl_bypass);
 
   if (use_saved_priority_) {
     options->set_use_existing_priority(true);
@@ -892,6 +895,12 @@ Status PgTxnManager::RollbackToSubTransaction(
 
 bool PgTxnManager::TryAcquireObjectLock(
     const YbcObjectLockId& lock_id, docdb::ObjectLockFastpathLockType lock_type) {
+  // It is safe to use fast path locking only for statements that would eventually be associated
+  // with kPlain type at PgClientSession, since fast path locking always assigns locks under the
+  // plain transaction.
+  if (IsDdlMode() && !IsDdlModeWithRegularTransactionBlock()) {
+    return false;
+  }
   return client_->TryAcquireObjectLockInSharedMemory(
       active_sub_transaction_id_, lock_id, lock_type);
 }
@@ -900,8 +909,9 @@ Status PgTxnManager::AcquireObjectLock(
     SetupPerformOptionsAccessorTag tag,
     const YbcObjectLockId& lock_id, YbcObjectLockMode mode) {
   RETURN_NOT_OK(CalculateIsolation(
-      mode <= YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK /* read_only */,
-      isolation_level_ == IsolationLevel::READ_COMMITTED ? kHighestPriority : kLowerPriorityRange));
+      false /* read_only, doesn't matter */,
+      GetTxnPriorityRequirement(RowMarkType::ROW_MARK_ABSENT),
+      IsLocalObjectLockOp(mode <= YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK)));
   tserver::PgPerformOptionsPB options;
   RETURN_NOT_OK(SetupPerformOptions(tag, &options));
   return client_->AcquireObjectLock(&options, lock_id, mode);
@@ -916,6 +926,36 @@ Result<bool> PgTxnManager::TransactionHasNonTransactionalWrites() const {
       txn_in_progress_, IllegalState,
       "Transaction is not in progress, cannot check fast-path writes");
   return has_writes_ && isolation_level_ == NON_TRANSACTIONAL;
+}
+
+YbcTxnPriorityRequirement PgTxnManager::GetTxnPriorityRequirement(RowMarkType row_mark_type) const {
+  if (IsDdlMode()) {
+    // DDLs acquire object locks to serialize conflicting concurrent DDLs. Concurrent DDLs that
+    // don't conflict can make progress without blocking each other.
+    //
+    // However, if object locks are disabled, concurrent DDLs are disallowed for safety.
+    // This is done by relying on conflicting increments to the catalog version (most DDLs do this
+    // except some like CREATE TABLE). Note that global DDLs (those that affect catalog tables
+    // shared across databases) conflict with all other DDLs since they increment all per-db
+    // catalog versions.
+    //
+    // We want ANALYZE DDLs spawned by auto-analyze to be pre-empted in case of such concurrent
+    // DDL conflicts. To achieve this, all regular DDL take a FOR KEY SHARE lock on the catalog
+    // version row with a high priority and ANALZYE spawned by auto-analyze takes a
+    // FOR UPDATE exclusive lock with a lower priority. Given DDLs run with fail-on-conflict
+    // concurrency control, these priorities achieve the goal.
+    //
+    // With object level locking, priorities are meaningless since DDLs don't rely on DocDB's
+    // conflict resolution for concurrent DDLs.
+    if (!yb_use_internal_auto_analyze_service_conn)
+      return kHighestPriority;
+    else
+      return kHigherPriorityRange;
+  }
+  if (GetPgIsolationLevel() == PgIsolationLevel::READ_COMMITTED) {
+    return kHighestPriority;
+  }
+  return RowMarkNeedsHigherPriority(row_mark_type) ? kHigherPriorityRange : kLowerPriorityRange;
 }
 
 }  // namespace yb::pggate

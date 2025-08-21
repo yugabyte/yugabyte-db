@@ -506,8 +506,8 @@ void ClusterAdminCli::Register(
 void ClusterAdminCli::SetUsage(const string& prog_name) {
   ostringstream str;
 
-  str << prog_name << " [-master_addresses server1:port,server2:port,server3:port,...] "
-      << " [-timeout_ms <millisec>] [-certs_dir_name <dir_name>] <operation>" << endl
+  str << prog_name << " [--master_addresses server1:port,server2:port,server3:port,...] "
+      << " [--timeout_ms <millisec>] [--certs_dir_name <dir_name>] <operation>" << endl
       << "<operation> must be one of:" << endl;
 
   for (size_t i = 0; i < commands_.size(); ++i) {
@@ -2710,10 +2710,10 @@ Status get_universe_replication_info_action(
 //
 // If no entry_id is provided all entries of the given type will be dumped
 // out. entry_id can be an empty string. Ex:
-// ./bin/yb-admin -master_addresses 127.0.0.1.9:7100 dump_sys_catalog_entries
+// ./bin/yb-admin --master_addresses 127.0.0.1.9:7100 dump_sys_catalog_entries
 //    UNIVERSE_REPLICATION  /tmp/catalog_dump "rg1"
 //
-// ./bin/yb-admin -master_addresses 127.0.0.1.9:7100 dump_sys_catalog_entries
+// ./bin/yb-admin --master_addresses 127.0.0.1.9:7100 dump_sys_catalog_entries
 //    CLUSTER_CONFIG /tmp/catalog_dump ""
 const auto dump_sys_catalog_entries_args = "<entry_type> <folder_path> [entry_id]";
 Status dump_sys_catalog_entries_action(
@@ -2763,13 +2763,13 @@ Result<master::WriteSysCatalogEntryRequestPB::WriteOp> ToCatalogEntryWriteOp(
 // - file_path is not required for DELETE operation.
 // - force will bypass the confirmation prompt.
 // Ex:
-// ./bin/yb-admin -master_addresses 127.0.0.1.9:7100 write_sys_catalog_entry INSERT
+// ./bin/yb-admin --master_addresses 127.0.0.1.9:7100 write_sys_catalog_entry INSERT
 //    UNIVERSE_REPLICATION "rg1" /tmp/catalog_dump/UNIVERSE_REPLICATION-rg1
 //
-// ./bin/yb-admin -master_addresses 127.0.0.1.9:7100 write_sys_catalog_entry DELETE
+// ./bin/yb-admin --master_addresses 127.0.0.1.9:7100 write_sys_catalog_entry DELETE
 //    XCLUSTER_CONFIG ""
 //
-// ./bin/yb-admin -master_addresses 127.0.0.1.9:7100 write_sys_catalog_entry UPDATE
+// ./bin/yb-admin --master_addresses 127.0.0.1.9:7100 write_sys_catalog_entry UPDATE
 //    UNIVERSE_REPLICATION "rg1" /tmp/catalog_dump/UNIVERSE_REPLICATION-rg1
 const auto write_sys_catalog_entry_args =
     "<insert/update/delete> <entry_type> <entry_id> [file_path] [force]";

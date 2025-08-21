@@ -27,6 +27,7 @@ DECLARE_int64(rpcs_shutdown_extra_delay_ms);
 DECLARE_int64(rpcs_shutdown_timeout_ms);
 DECLARE_string(TEST_fetch_next_delay_column);
 DECLARE_bool(TEST_ysql_disable_transparent_cache_refresh_retry);
+DECLARE_bool(enable_object_locking_for_table_locks);
 
 namespace yb::pgwrapper {
 
@@ -34,6 +35,9 @@ class PgTabletShutdownTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_disable_transparent_cache_refresh_retry) = true;
+    // Test asserts DROP/TRUNCATE table to abort all in progress DMLs and make progress, which
+    // doesn't hold true with object locking enabled.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
     pgwrapper::PgMiniTestBase::SetUp();
   }
   void SetUpTable() {

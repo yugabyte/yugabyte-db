@@ -2456,6 +2456,19 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
+   * Get the list of all the masters.
+   *
+   * @return a deferred object that yields a list of masters
+   */
+  public Deferred<SetPreferredZonesResponse> setPreferredZones(Map<Integer,
+      List<CommonNet.CloudInfoPB>> prioritiesMap) {
+    checkIsClosed();
+    SetPreferredZonesRequest rpc = new SetPreferredZonesRequest(this.masterTable, prioritiesMap);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
    * An RPC that we're never going to send, but can be used to keep track of timeouts and to access
    * its Deferred. Specifically created for the openTable functions. If the table was just created,
    * the Deferred will only get returned when all the tablets have been successfully created.

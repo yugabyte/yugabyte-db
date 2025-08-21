@@ -18,10 +18,13 @@
 #include <utility>
 
 #include "yb/gutil/port.h"
+
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/logging.h"
+#include "yb/util/scope_exit.h"
 
 #include "yb/yql/pggate/pg_tools.h"
+#include "yb/yql/pggate/pg_ybctid_reader_provider.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
 
 namespace yb::pggate {
@@ -78,8 +81,7 @@ class PgFKReferenceCache::Impl {
 
     // Check existence of required FK intent.
     const auto intents_end = intents_->end();
-    auto it = intents_->find(key);
-    if (it == intents_end) {
+    if (const auto it = intents_->find(key); it == intents_end) {
       if (!IsDeferredTriggersProcessingStarted()) {
         // In case of processing non deferred intents absence means the key was checked by previous
         // batched request and was not found. We don't need to call the reader in this case.
@@ -87,18 +89,19 @@ class PgFKReferenceCache::Impl {
       }
       // In case of processing deferred intents absence of intent could be caused by
       // subtxnransaction rollback. In this case we have to make a read attempt.
-      reader.Add(TableYbctid{key.table_id, std::string{key.ybctid}});
     } else {
-      // If the reader fails to get the result, we fail the whole operation (and transaction).
-      // Hence it's ok to extract (erase) the keys from intent before calling reader.
-      reader.Add(std::move(intents_->extract(it).value()));
+      intents_->erase(it);
     }
+    reader.Add(LightweightTableYbctid{key.table_id, key.ybctid});
     --residual_capacity;
 
-    for (auto it = intents_->begin(); it != intents_end && residual_capacity; --residual_capacity) {
-      reader.Add(std::move(intents_->extract(it++).value()));
+    auto it = intents_->begin();
+    for (; it != intents_end && residual_capacity; --residual_capacity, ++it) {
+      reader.Add(*it);
     }
-
+    ScopeExit intents_cleanup([this, erase_end = it] {
+      intents_->erase(intents_->begin(), erase_end);
+    });
     // Add the keys found in docdb to the FK cache.
     auto ybctids = VERIFY_RESULT(reader.Read(
         database_id, region_local_tables_,

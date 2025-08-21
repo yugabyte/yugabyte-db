@@ -27,6 +27,8 @@ import AuthenticatedArea from '@app/pages/AuthenticatedArea';
 import { ReactComponent as YBLogo } from '../../assets/yb_logo.svg';
 import { ReactComponent as Close } from '../../assets/close rounded.svg';
 
+import './styles/override.css';
+
 const { YBButton } = yba;
 
 const { Grid2: Grid, Typography } = mui;

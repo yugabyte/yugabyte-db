@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/sirupsen/logrus"
 	ybaclient "github.com/yugabyte/platform-go-client"
@@ -158,12 +157,12 @@ func (c *Context) Configuration() string {
 
 // AcknowledgedTime fetches the alert Acknowledged Time
 func (c *Context) AcknowledgedTime() string {
-	return c.a.GetAcknowledgedTime().Format(time.RFC1123Z)
+	return util.PrintTime(c.a.GetAcknowledgedTime())
 }
 
 // CreateTime fetches the alert Create Time
 func (c *Context) CreateTime() string {
-	return c.a.GetCreateTime().Format(time.RFC1123Z)
+	return util.PrintTime(c.a.GetCreateTime())
 }
 
 // DefinitionUUID fetches the alert Definition UUID
@@ -173,7 +172,7 @@ func (c *Context) DefinitionUUID() string {
 
 // ResolvedTime fetches the alert Resolved Time
 func (c *Context) ResolvedTime() string {
-	return c.a.GetResolvedTime().Format(time.RFC1123Z)
+	return util.PrintTime(c.a.GetResolvedTime())
 }
 
 // Labels fetches the alert Labels
@@ -201,12 +200,12 @@ func (c *Context) Message() string {
 
 // NextNotificationTime fetches the alert Next Notification Time
 func (c *Context) NextNotificationTime() string {
-	return c.a.GetNextNotificationTime().Format(time.RFC1123Z)
+	return util.PrintTime(c.a.GetNextNotificationTime())
 }
 
 // NotificationAttemptTime fetches the alert Notification Attempt Time
 func (c *Context) NotificationAttemptTime() string {
-	return c.a.GetNotificationAttemptTime().Format(time.RFC1123Z)
+	return util.PrintTime(c.a.GetNotificationAttemptTime())
 }
 
 // NotificationsFailed fetches the alert Notifications Failed

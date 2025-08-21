@@ -206,10 +206,6 @@ public class AlertControllerTest extends FakeDBApplication {
                   + " 'Test Universe'."
                   + "\nAffected nodes: node1 node2 node3")
           .put(
-              DB_QUEUES_OVERFLOW,
-              "DB queues overflow detected for universe 'Test Universe'."
-                  + "\nAffected nodes: node1 node2 node3")
-          .put(
               NODE_TO_NODE_CA_CERT_EXPIRY,
               "Node to node CA certificate for universe"
                   + " 'Test Universe' will expire in 29 days."

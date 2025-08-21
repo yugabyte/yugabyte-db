@@ -7,6 +7,8 @@ test: yb.port.test_setup
 test: roleattributes
 test: yb.port.privileges
 test: init_privs
-test: yb.port.rowsecurity
+# TODO(bkolagani): Enable the below once #26734 is addresses. The test includes DDL transactional
+# blocks with savepoints, which isn't currently supported.
+# test: yb.port.rowsecurity
 test: password
 test: yb.port.create_role

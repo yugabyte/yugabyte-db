@@ -26,9 +26,11 @@ namespace yb::master {
 // Computes the amount of memory, cores, and live tablet replicas on the TServers with the given
 // placement_uuid.
 AggregatedClusterInfo ComputeAggregatedClusterInfo(
-    const TSDescriptorVector& ts_descs, const std::string& placement_uuid);
+    const TSDescriptorVector& ts_descs, const BlacklistSet& blacklist,
+    const std::string& placement_uuid);
 
 Status CanCreateTabletReplicas(
-    int num_tablets, const ReplicationInfoPB& replication_info, const TSDescriptorVector& ts_descs);
+    int num_tablets, const ReplicationInfoPB& replication_info, const TSDescriptorVector& ts_descs,
+    const BlacklistSet& blacklist);
 
 }  // namespace yb::master

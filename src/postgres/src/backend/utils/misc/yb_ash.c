@@ -61,6 +61,7 @@
 #define ACTIVE_SESSION_HISTORY_COLS_V2 13
 #define ACTIVE_SESSION_HISTORY_COLS_V3 14
 #define ACTIVE_SESSION_HISTORY_COLS_V4 15
+#define ACTIVE_SESSION_HISTORY_COLS_V5 16
 
 #define MAX_NESTED_QUERY_LEVEL 64
 
@@ -912,6 +913,8 @@ static void
 copy_non_pgproc_sample_fields(TimestampTz sample_time, int index)
 {
 	YbcAshSample *cb_sample = &yb_ash->circular_buffer[index];
+	int64_t rss_mem_bytes = 0;
+	int64_t pss_mem_bytes = 0;
 
 	/* top_level_node_id is constant for all PG samples */
 	if (get_top_level_node_id())
@@ -922,6 +925,9 @@ copy_non_pgproc_sample_fields(TimestampTz sample_time, int index)
 	/* rpc_request_id is 0 for PG samples */
 	cb_sample->rpc_request_id = 0;
 	cb_sample->sample_time = sample_time;
+
+	YbPgGetCurRssPssMemUsage(cb_sample->metadata.pid, &rss_mem_bytes, &pss_mem_bytes);
+	cb_sample->metadata.pss_mem_bytes = (pss_mem_bytes != -1) ? pss_mem_bytes : rss_mem_bytes;
 }
 
 /*
@@ -973,7 +979,7 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 	int			i;
 	static int	ncols = 0;
 
-	if (ncols < ACTIVE_SESSION_HISTORY_COLS_V4)
+	if (ncols < ACTIVE_SESSION_HISTORY_COLS_V5)
 		ncols = YbGetNumberOfFunctionOutputColumns(F_YB_ACTIVE_SESSION_HISTORY);
 
 	/* ASH must be loaded first */
@@ -1099,6 +1105,9 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 		if (ncols >= ACTIVE_SESSION_HISTORY_COLS_V4)
 			values[j++] =
 				UInt32GetDatum(YBCAshNormalizeComponentForTServerEvents(sample->encoded_wait_event_code, true));
+
+		if (ncols >= ACTIVE_SESSION_HISTORY_COLS_V5)
+			values[j++] = Int64GetDatum(metadata->pss_mem_bytes);
 
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 	}
