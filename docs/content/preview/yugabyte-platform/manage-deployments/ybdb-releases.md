@@ -16,11 +16,9 @@ Before you can upgrade your universe to a specific version of YugabyteDB, verify
 
 ## View YugabyteDB releases
 
-To view the YugabyteDB releases that are available in your YugabyteDB Anywhere instance, do the following:
+To view the YugabyteDB releases that are available in your YugabyteDB Anywhere instance, click the user profile icon and choose **Releases**.
 
-- Click the user profile icon and choose **Releases**.
-
-    ![Releases](/images/yp/releases-list-2024.png)
+![Releases](/images/yp/releases-list-2024.png)
 
 You can filter the list by text and release type, and choose to display only allowed releases.
 
@@ -30,13 +28,13 @@ To delete or disable a release, click its corresponding **Actions**. Disabled re
 
 ## Import a YugabyteDB release
 
-If the YugabyteDB release you want to use for your universe is not available in your YugabyteDB Anywhere instance, you must import it.
+If the YugabyteDB release you want to use for your universe is not in the **Releases** list, you must import it to your YugabyteDB Anywhere instance.
 
-If you are running YugabyteDB Anywhere airgapped, download the YugabyteDB Linux release package and copy it to the VM where your YugabyteDB Anywhere instance is running.
+If you are running YugabyteDB Anywhere airgapped, download the YugabyteDB release to a machine that is accessible to your instance so that you can upload the file.
 
 If your YugabyteDB Anywhere instance has internet access, you can import the release from a bucket or an internal server using a URL.
 
-You can obtain YugabyteDB releases by navigating to the release from the [Releases](../../../releases/ybdb-releases/) page.
+You can obtain YugabyteDB releases by navigating to the release from the [YugabyteDB releases](../../../releases/ybdb-releases/) page.
 
 {{< warning title="Importing a YugabyteDB release in YugabyteDB Anywhere" >}}
 Note that by default, you cannot import the latest stable YugabyteDB versions (v2024.1.x) in preview YugabyteDB Anywhere versions (for example, v2.23.x).
@@ -46,7 +44,7 @@ To enable this import, you need to set the YugabyteDB Anywhere runtime flag `yb.
 
 To import a YugabyteDB release, do the following:
 
-1. On the **Releases** page, click **New Release** to open the **Import Database Release** dialog as shown in the following illustration:
+1. Navigate to **Releases** and click **New Release** to open the **Import Database Release** dialog.
 
     ![Import Release](/images/yp/import-releases-2024.png)
 
@@ -72,7 +70,7 @@ When imported, the release is added to the **Releases** list.
 
 If a the architecture for a YugabyteDB release that you want to install on a universe is not available (for example, you have x86 but require ARM), add it as follows:
 
-1. On the **Releases** page, locate the YugabyteDB release in the list and click the plus button in the **Imported Architecture** column, or click **Actions** and **Add Architecture** to open the **New Architecture** dialog.
+1. Navigate to **Releases**, locate the YugabyteDB release in the list, and click the plus button in the **Imported Architecture** column; or click **Actions** and **Add Architecture** to open the **New Architecture** dialog.
 
 1. Choose whether to upload the release as a file, or download the release via a URL.
 
