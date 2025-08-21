@@ -36,11 +36,11 @@ If your YugabyteDB Anywhere instance has internet access, you can import the rel
 
 You can obtain YugabyteDB releases by navigating to the release from the [YugabyteDB releases](../../../releases/ybdb-releases/) page.
 
-{{< warning title="Importing a YugabyteDB release in YugabyteDB Anywhere" >}}
-Note that by default, you cannot import the latest stable YugabyteDB versions (v2024.1.x) in preview YugabyteDB Anywhere versions (for example, v2.23.x).
+{{< note title="Importing Stable and Preview versions" >}}
+By default, you cannot import the latest stable YugabyteDB versions (v2024.1.x) in preview YugabyteDB Anywhere versions (for example, v2.23.x).
 
 To enable this import, you need to set the YugabyteDB Anywhere runtime flag `yb.allow_db_version_more_than_yba_version` to true. See [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
-{{< /warning >}}
+{{< /note >}}
 
 To import a YugabyteDB release, do the following:
 
