@@ -101,9 +101,6 @@ static bool ThereIsAtLeastOneRole(void);
 static void process_startup_options(Port *port, bool am_superuser);
 static void process_settings(Oid databaseid, Oid roleid);
 
-/* YB functions */
-static bool YbUseTserverResponseCacheForAuth(int64_t shared_catalog_version);
-
 /*** InitPostgres support ***/
 
 
@@ -1247,38 +1244,6 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 	/* close the transaction we started above */
 	if (!bootstrap)
 		CommitTransactionCommand();
-}
-
-static bool
-YbUseTserverResponseCacheForAuth(int64_t shared_catalog_version)
-{
-	if (!YbIsAuthBackend())
-		return false;
-	/* We should only see auth backend if connection manager is enabled. */
-	Assert(YbIsYsqlConnMgrEnabled());
-
-	if (!YbCheckTserverResponseCacheForAuthGflags())
-		return false;
-
-	/*
-	 * For now we do not allow using tserver response cache for auth processing
-	 * if login profile is enabled. This is because the login process itself
-	 * writes to pg_yb_role_profile table but this is not done under a DDL
-	 * statement context. As a result the catalog version isn't incremented
-	 * but the tserver response cache becomes stale. Newer login processing
-	 * will continue to use the stale cache which isn't right.
-	 */
-	if (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist)
-		return false;
-
-	/*
-	 * Tserver response cache requires a valid catalog version. Use the shared
-	 * memory catalog version as an approximation of the latest master catalog
-	 * version.
-	 */
-	if (shared_catalog_version == YB_CATCACHE_VERSION_UNINITIALIZED)
-		return false;
-	return true;
 }
 
 static void
