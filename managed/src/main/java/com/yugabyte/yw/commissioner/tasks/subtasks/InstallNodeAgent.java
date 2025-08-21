@@ -37,7 +37,7 @@ public class InstallNodeAgent extends AbstractTaskBase {
   private final NodeUniverseManager nodeUniverseManager;
   private final NodeAgentManager nodeAgentManager;
   private final ShellProcessContext defaultShellContext =
-      ShellProcessContext.builder().logCmdOutput(true).build();
+      ShellProcessContext.builder().useSshConnectionOnly(true).logCmdOutput(true).build();
 
   @Inject
   protected InstallNodeAgent(

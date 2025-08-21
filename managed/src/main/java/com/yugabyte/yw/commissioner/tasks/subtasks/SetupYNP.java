@@ -35,7 +35,7 @@ public class SetupYNP extends AbstractTaskBase {
   private final NodeAgentManager nodeAgentManager;
   private final RuntimeConfGetter confGetter;
   private final ShellProcessContext defaultShellContext =
-      ShellProcessContext.builder().logCmdOutput(true).build();
+      ShellProcessContext.builder().useSshConnectionOnly(true).logCmdOutput(true).build();
 
   @Inject
   protected SetupYNP(
@@ -107,7 +107,6 @@ public class SetupYNP extends AbstractTaskBase {
     Path ynpStagingDir = Paths.get(customTmpDirectory, "ynp");
     Path targetPackagePath = ynpStagingDir.resolve(Paths.get("release", "node-agent.tgz"));
     Path nodeAgentHomePath = Paths.get(taskParams().nodeAgentInstallDir, NodeAgent.NODE_AGENT_DIR);
-    Path packagePath = getNodeAgentPackagePath(universe, node, shellContext);
 
     // Clean up the previous stale data.
     Optional<NodeAgent> optional = NodeAgent.maybeGetByIp(node.cloudInfo.private_ip);
@@ -118,6 +117,7 @@ public class SetupYNP extends AbstractTaskBase {
       }
     }
     removeNodeAgentDirectory(node, universe, shellContext, nodeAgentHomePath.toString());
+    Path packagePath = getNodeAgentPackagePath(universe, node, shellContext);
 
     // Clean and create the staging path where the node agent release will be uploaded.
     StringBuilder sb = new StringBuilder();
