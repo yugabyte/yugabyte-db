@@ -20,3 +20,6 @@ CREATE TABLEGROUP grp_with_spc TABLESPACE tsp1;
 CREATE TABLE tbl_with_grp_with_spc (a int) WITH (autovacuum_enabled = true) TABLEGROUP grp_with_spc;
 
 DROP TABLESPACE tsp_dropped;
+
+ALTER ROLE regress_priv_user7 SET log_min_messages TO 'LOG';
+ALTER ROLE regress_priv_user8 IN DATABASE yugabyte SET log_min_messages TO 'LOG';

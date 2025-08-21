@@ -65,7 +65,7 @@ extern bool SplitGUCList(char *rawstring, char separator,
 extern void makeAlterConfigCommand(PGconn *conn, const char *configitem,
 								   const char *type, const char *name,
 								   const char *type2, const char *name2,
-								   PQExpBuffer buf);
+								   bool yb_dump_role_checks, PQExpBuffer buf);
 
 extern void YBWwrapInRoleChecks(PGconn *conn,
 								PQExpBuffer sql, const char *op_name,
