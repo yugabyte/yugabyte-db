@@ -142,7 +142,7 @@ To verify that your system supports SSE4.2, run the following command:
 cat /proc/cpuinfo | grep sse4.2
 ```
 
-### Disks
+## Disks
 
 - SSDs (solid state disks) are required.
 
@@ -173,6 +173,103 @@ YugabyteDB uses per-tablet [size tiered compaction](../../architecture/yb-tserve
 YugabyteDB stores data compressed by default. The effectiveness of compression depends on the data set. For example, if the data has already been compressed, then the additional compression at the storage layer of YugabyteDB will not be very effective.
 
 It is recommended to plan for about 20% headroom on each node to allow space for miscellaneous overheads such as temporary additional space needed for compactions, metadata overheads, and so on.
+
+### Ephemeral disks
+
+{{<tags/feature/ea idea="2298">}} Ephemeral or local disks are physically attached storage that exists only for the life of the virtual machine (VM). They deliver extremely fast I/O but data is not persistent. If a VM stops, hard reboots, or terminates, its local disk data is lost. Only the boot disk (with the OS) is persistent, but the database data directory on the ephemeral disk will be wiped.  On the major public clouds, such disks are variously called "Instance Stores" (on AWS), "Local SSDs" (on GCP), and "Temporary Disks" (on Azure).
+
+**Why Use Ephemeral Storage with YugabyteDB?**
+
+Ephemeral storage is an excellent choice for YugabyteDB if your primary goal is to optimize for low-latency read-heavy workloads. Our internal benchmarks show that using local SSDs instead of remote, network-attached cloud disks can reduce latency for read-heavy operations by up to 30%. This performance gain can be significant for applications where every millisecond of latency is critical.
+
+However, if performance is not your primary concern, network-attached storage offers more reliability and easier manageability.
+
+#### Key considerations and risks
+
+Operating a distributed database on ephemeral storage requires careful planning. There's also an increased risk of multiple node failures leading to data loss or downtime.
+
+- Data loss: Data stored on an ephemeral disk is not persistent. The data is wiped out in the following scenarios:
+
+  - VM stop/start and (in some clouds) hard reboot. If a YugabyteDB node's VM is stopped and started (simulating a power off, and then power on), its ephemeral disk will be empty. On some clouds (for example, Azure), hard reboots (that is, BIOS reset commands that force reset a server) may also result in an empty ephemeral disk.
+
+  - Unplanned events. Events like power outages or host failures result in lost data on the local disk. While the node's OS and binaries (on the boot disk) may survive, all YugabyteDB data on the ephemeral volume is lost.
+
+  - Planned operations. Any planned operations that cause VMs to start, stop, or reboot will wipe the VMs' ephemeral disks.  While Yugabyte software does not (and cannot) directly trigger such VM actions when using the on-premises infrastructure provider, be aware that user operations, such as Disaster Recovery (DR) tests and DR simulations can trigger such VM actions and be problematic.
+
+- Double fault scenarios: The probability of a "double fault" (losing two nodes at once) is higher with ephemeral storage. Losing two out of three replicas (in an RF3 configuration of a cluster or a tablespace) can result in an RF1 scenario, leading to cluster (or tablespace) downtime. This is because if in case a node goes down and then revives within 15 minutes, nodes with persistent disks can recover quickly via an incremental (WAL-based) replication, but nodes with ephemeral disks require much longer time (minutes to hours) to recover because they must perform a full (and not incremental) re-replication of all data destined for that node. This extended recovery window increases the chance of a second node failure.
+
+- Operational complexity: Certain standard operations become dangerous with ephemeral disks. For instance, shutting down all nodes in a cluster with persistent disks is safe, but doing the same with an ephemeral disk cluster will result in total data loss. Operational workflows must be carefully reviewed to avoid these situations.
+
+- Higher reliance on backups: Because the probability of a majority failure (such as a double fault in an RF3 configuration) is higher, the need to restore from a backup increases. High frequency backups are recommended; YugabyteDB Anywhere allows for incremental backups as frequently as every 15 minutes.
+
+#### Cluster design and configuration guidelines
+
+To safely and effectively use ephemeral disks with YugabyteDB, follow these design and configuration guidelines:
+
+- Use sufficient replication and redundancy: Always use a minimum of Replication Factor (RF) of 3 for any production universe (and for all tablespaces for which you might override the RF) when using ephemeral disks. Due to the increased risk of "quorum-loss" scenarios, an even higher RF is recommended even higher RF if your environment and performance tolerances allow. For example, an RF5 deployment can survive node failures in two fault domains without data loss (at the cost of more storage and write overhead).
+
+- Distribute across zones: Spread nodes across availability zones to prevent a single zone outage drop all replicas of a tablet, and therefore cause data loss. Spread your cluster across Availability Zones (AZs), and (if you are using tablespaces to override replication settings for particular tables), also spread each tablespace across multiple AZs.
+
+- Persistent boot disk for OS and binaries: Configure YugabyteDB nodes so that the YugabyteDB software, configuration files, and logs reside on a persistent disk, and only the data directory is on the ephemeral disk. This design allows for quicker provisioning of nodes back into the cluster. It's also recommended to place logs on an independent persistent disk that's not the boot disk. Keeping logs persistent retains debugging information in case of a failure, but placing them on an independent, non-boot disk avoids the possibility of filling up the boot disk.
+
+- Use dedicated VMs with persistent disks for Masters: Unless [Automatic YB-Master failover](../../yugabyte-platform/manage-deployments/remove-nodes/#automatic-yb-master-failover) is enabled, it is strongly recommended that you place Master nodes on dedicated VMs that use persistent disks.
+
+  This is because:
+
+  - Master processes hold highly critical data.
+  - Manual recovery from the loss of a node with a Master is time-consuming and may require assistance from Support.
+  - There are no performance gains from having Masters use ephemeral disks.
+
+- Maintain spare capacity (Free Pool Nodes): Provision spare nodes that are ready to join the cluster in case of a failure. This reduces the time a tablet remains under-replicated. Also, have extra spare capacity in your cluster so that, in situations in which multiple nodes fail serially in sequence over time, remediation has a chance of occurring automatically (via YugabyteDB's automatic re-replication that starts after 15 minutes of the node being down) rather than manually (relying on human intervention to add nodes/add storage capacity).
+
+- Monitoring and alerts: Enable robust monitoring on the cluster so you are immediately alerted to node failures. YugabyteDB Anywhere provides extensive monitoring and altering capabilities using a built-in Prometheus instance.
+
+- Frequent backups: Increase your backup frequency when using ephemeral storage. YugabyteDB Anywhere allows for incremental backups to occur as frequently as every 15 minutes.
+
+#### Operational Best Practices and Workflows with Ephemeral Storage
+
+Working with ephemeral storage requires careful attention to standard operational workflows. The following are best practices for common scenarios.
+
+##### Rolling restart of servers
+
+The [Rolling restart](../../yugabyte-platform/manage-deployments/edit-config-flags/#batched-rolling-restart) universe action in YugabyteDB Anywhere does not reboot the machine or unmount disks, so ephemeral data remains intact. You can perform rolling restarts as usual.
+
+##### Operating System Patching and Node Reboots
+
+OS Patching procedures for self-managed clusters are customer-driven via scripts that call YBA APIs. See [Patch and upgrade the Linux operating system](../../yugabyte-platform/manage-deployments/upgrade-nodes/) for the recommended workflow.
+
+When following the above documented guidance, if you must perform an OS reboot on a node, be sure to drain or remove it from the cluster first. The recommended approach is to remove and then re-add the node.
+
+- Option 1: Blacklist the node Before Reboot (Drain): Blacklist the node, wait for draining to complete, reboot, and then remove the blacklist.
+- Option 2: (Recommended) Remove and add node: Remove the node from the cluster, patch or rebuild its OS, and then add the node back to the universe.
+When using either approach, work on one node at a time and wait for the cluster to return to full replication of tablets based on their RF before moving to the next node.
+
+##### Unplanned node outage (Failure scenario)
+
+In the event of an unplanned outage, assume the node's data is lost and proceed with a node replacement workflow (that is, using the Replace node universe action in YBA). If the node does come back on its own and starts to rejoin, monitor it closely.
+
+##### Pause universe or full-cluster shutdown
+
+This operation is not supported or safe with ephemeral disks. Stopping all nodes means every node's local disk is wiped, resulting in total data loss. Never shut down all nodes simultaneously. YBA does not perform this action for universes created using the on-premises infrastructure provider. But you must ensure your own automation scripts also avoid this.
+
+##### Software upgrades (YugabyteDB version upgrades)
+
+The [Upgrade Database Version](../../yugabyte-platform/manage-deployments/upgrade-software/) universe action in YBA does not reboot the machine or unmount disks. Therefore, this operation is safe. As per standard guidance during this operation, regardless of whether persistent or ephemeral disks are used, exercise caution in case a node fails during this operation as this may lead to a double fault scenario.
+
+##### Scaling and Adding/Removing Nodes
+
+Vertical Scaling (Instance Type Change to add memory, cpu or storage):
+For self-managed “on-prem” universes, vertical scaling (that is, resizing a VM) is a user manual operation.
+Note: while YugabyteDB Anywhere does have a “Smart Resize” feature (in which data is detached from the original VM, and reattached to a new and larger VM, per docs here), this feature is unavailable (and not shown on the GUI as an option) for on-prem universes.  The feature is only for universes created in YugabyteDB Anywhere from public cloud and Kubernetes “infrastructure providers.”
+
+For on-prem universes, since it’s your responsibility to resize the VM, take note: when resizing a VM, unlike persistent disks, ephemeral disks can't be detached and re-attached to a VM.  The “smart resize” approach that might otherwise work for persistent disks does not work for ephemeral disks. Avoid this approach. Instead, always perform a full move: add new nodes, then remove old.  To accomplish this:
+1. Add a new onprem instance type to the onprem provider for the new VM type and add new nodes in this type (equivalent to the current universe count).
+2. Initiate an Edit universe operation to move from the old instance type to the new instance type. This will result in a full data migration to the new nodes.
+Disk Scaling:
+Ephemeral disk sizes are fixed (due to current limitations in the Cloud Service Providers’ capabilities). To increase cluster capacity, add nodes rather than expanding disks.
+Removing Nodes:
+Always blacklist nodes to safely drain data before removal. Ephemeral data is permanently lost when nodes are removed.
+
 
 ## Network
 
