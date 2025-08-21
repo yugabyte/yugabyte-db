@@ -2,7 +2,7 @@
 title: Manage YugabyteDB releases available in YugabyteDB Anywhere
 headerTitle: Manage YugabyteDB releases
 linkTitle: Manage releases
-description: Use YugabyteDB Anywhere to upgrade the YugabyteDB software on universes.
+description: View and import releases of YugabyteDB into YugabyteDB Anywhere.
 headcontent: View and import YugabyteDB releases
 menu:
   v2024.2_yugabyte-platform:
