@@ -177,12 +177,12 @@ Status RocksDBOptionsParser::ParseSection(OptionSection* section,
       if (i == kOptionSectionVersion || i == kOptionSectionDBOptions ||
           i == kOptionSectionCFOptions) {
         if (title->size() == opt_section_titles[i].size()) {
-          // if true, then it indicats equal
+          // if true, then it indicates equal
           *section = static_cast<OptionSection>(i);
           return CheckSection(*section, *argument, line_num);
         }
       } else if (i == kOptionSectionTableOptions) {
-        // This type of sections has a sufffix at the end of the
+        // This type of sections has a suffix at the end of the
         // section title
         if (title->size() > opt_section_titles[i].size()) {
           *section = static_cast<OptionSection>(i);
@@ -221,42 +221,63 @@ Status RocksDBOptionsParser::ParseStatement(std::string* name,
 }
 
 namespace {
-bool ReadOneLine(std::istringstream* iss, SequentialFile* seq_file,
-                 std::string* output, bool* has_data, Status* result) {
-  const int kBufferSize = 4096;
-  uint8_t buffer[kBufferSize + 1];
-  Slice input_slice;
 
-  std::string line;
-  bool has_complete_line = false;
-  while (!has_complete_line) {
-    if (std::getline(*iss, line)) {
-      has_complete_line = !iss->eof();
-    } else {
-      has_complete_line = false;
+class LineReader {
+  static constexpr size_t kReadSize = RocksDBOptionsParser::kReadBufferSize;
+
+ public:
+  explicit LineReader(SequentialFile& file) : file_(file)
+  {}
+
+  template <bool kClearOutput = true>
+  yb::Result<bool> ReadLine(std::string& output) {
+    Slice   input_slice;
+    uint8_t scratch[kReadSize];
+
+    if constexpr (kClearOutput) {
+      output.clear();
     }
-    if (!has_complete_line) {
-      // if we're not sure whether we have a complete line,
-      // further read from the file.
-      if (*has_data) {
-        *result = seq_file->Read(kBufferSize, &input_slice, buffer);
+
+    std::string line;
+    for (;;) {
+      bool read_from_buffer = false;
+      if (std::getline(buffer_, line)) {
+        output.append(line);
+        read_from_buffer = true;
+
+        // Getting a line can succeed on buffer has ended without reaching \n symbol.
+        // Should stop reading only if buffer has more data.
+        if (!buffer_.eof()) {
+          return true;
+        }
       }
-      if (input_slice.size() == 0) {
-        // meaning we have read all the data
-        *has_data = false;
-        break;
-      } else {
-        iss->str(line + input_slice.ToString());
-        // reset the internal state of iss so that we can keep reading it.
-        iss->clear();
-        *has_data = (input_slice.size() == kBufferSize);
-        continue;
+
+      // No data in the buffer, let's read more bytes from the file if available.
+      if (!has_unread_data_) {
+        return read_from_buffer; // Let's treat the remainder as a complete line.
       }
+
+      RETURN_NOT_OK(file_.Read(kReadSize, &input_slice, scratch));
+      has_unread_data_ = (input_slice.size() == kReadSize);
+      if (input_slice.empty()) {
+        return read_from_buffer; // Meaning we have read all the data.
+      }
+
+      buffer_.str(input_slice.ToString());
+      buffer_.clear(); // Reset the internal state of the buffer so that we can keep reading it.
     }
+
+    // Should not reach this point.
+    DCHECK(false);
+    return false;
   }
-  *output = line;
-  return *has_data || has_complete_line;
-}
+
+ private:
+  SequentialFile& file_;
+  bool has_unread_data_ = true;
+  std::istringstream buffer_;
+};
+
 }  // namespace
 
 Status RocksDBOptionsParser::Parse(const std::string& file_name, Env* env) {
@@ -275,12 +296,10 @@ Status RocksDBOptionsParser::Parse(const std::string& file_name, Env* env) {
   std::istringstream iss;
   std::string line;
   bool has_data = true;
-  // we only support single-lined statement.
-  for (int line_num = 1;
-       ReadOneLine(&iss, seq_file.get(), &line, &has_data, &s); ++line_num) {
-    if (!s.ok()) {
-      return s;
-    }
+
+  // We only support single-lined statement.
+  LineReader reader(*seq_file);
+  for (int line_num = 1; VERIFY_RESULT(reader.ReadLine(line)); ++line_num) {
     line = TrimAndRemoveComment(line);
     if (line.empty()) {
       continue;
