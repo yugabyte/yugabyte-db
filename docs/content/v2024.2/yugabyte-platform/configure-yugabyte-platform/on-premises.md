@@ -20,7 +20,8 @@ With on-premises providers, VMs are _not_ auto-created by YBA; you must manually
 
 Using the YugabyteDB Anywhere node agent package, you can provision VMs, create an on-premises provider, and add the VMs to the provider.
 
-1. [Install YugabyteDB Anywhere](../../install-yugabyte-platform/).
+Before provisioning nodes, ensure YugabyteDB Anywhere is [installed](../../install-yugabyte-platform/) and running.
+
 1. Have your network administrator set up firewalls to open the ports required for YBA and the nodes to communicate. Refer to [Networking](../../prepare/networking/).
 1. Have your system administrator create VMs that will be used as nodes in universes. This is typically done using your hypervisor or cloud provider. Do the following:
 
@@ -37,15 +38,15 @@ Using the YugabyteDB Anywhere node agent package, you can provision VMs, create 
 
     These steps prepare the node for use by YugabyteDB Anywhere.
 
-    If you have already installed and are running YugabyteDB Anywhere, running the provisioning script can additionally:
+    The provisioning script will additionally perform the following tasks (YugabyteDB Anywhere must installed and running):
 
-    - Create (or updates) the on-premises provider.
+    - Create (or update) the on-premises provider.
     - Create the instance type.
     - Add the node instance to the provider.
 
     Refer to [Automatically provision on-premises nodes](../../prepare/server-nodes-software/software-on-prem/).
 
-### Creating a provider manually
+### Create a provider manually
 
 _If the on-premises provider wasn't created when provisioning the VMs_, you can manually create the provider using the YugabyteDB Anywhere UI. Refer to [Create the provider configuration](../on-premises-provider/). Note: You must enable the **Manually Provision Nodes** option (under **Advanced**).
 
