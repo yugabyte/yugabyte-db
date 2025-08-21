@@ -1,25 +1,26 @@
-## yba telemetryprovider gcpcloudmonitoring describe
+## yba telemetry-provider loki delete
 
-Describe a GCP Cloud Monitoring YugabyteDB Anywhere telemetry provider
+Delete a Loki YugabyteDB Anywhere telemetry provider
 
 ### Synopsis
 
-Describe a GCP Cloud Monitoring telemetry provider in YugabyteDB Anywhere
+Delete a Loki telemetry provider in YugabyteDB Anywhere
 
 ```
-yba telemetryprovider gcpcloudmonitoring describe [flags]
+yba telemetry-provider loki delete [flags]
 ```
 
 ### Examples
 
 ```
-yba telemetryprovider gcpcloudmonitoring describe --name <gcpcloudmonitoring-provider-name>
+yba telemetryprovider loki delete --name <telemetry-provider-name>
 ```
 
 ### Options
 
 ```
-  -h, --help   help for describe
+  -f, --force   [Optional] Bypass the prompt for non-interactive usage.
+  -h, --help    help for delete
 ```
 
 ### Options inherited from parent commands
@@ -42,5 +43,5 @@ yba telemetryprovider gcpcloudmonitoring describe --name <gcpcloudmonitoring-pro
 
 ### SEE ALSO
 
-* [yba telemetryprovider gcpcloudmonitoring](yba_telemetryprovider_gcpcloudmonitoring.md)	 - Manage a YugabyteDB Anywhere GCP Cloud Monitoring telemetry provider
+* [yba telemetry-provider loki](yba_telemetry-provider_loki.md)	 - Manage a YugabyteDB Anywhere Loki telemetry provider
 

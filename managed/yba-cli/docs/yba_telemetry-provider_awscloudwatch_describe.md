@@ -1,20 +1,25 @@
-## yba telemetryprovider datadog
+## yba telemetry-provider awscloudwatch describe
 
-Manage a YugabyteDB Anywhere DataDog telemetry provider
+Describe an AWS CloudWatch YugabyteDB Anywhere telemetry provider
 
 ### Synopsis
 
-Manage a DataDog telemetry provider in YugabyteDB Anywhere
+Describe an AWS CloudWatch telemetry provider in YugabyteDB Anywhere
 
 ```
-yba telemetryprovider datadog [flags]
+yba telemetry-provider awscloudwatch describe [flags]
+```
+
+### Examples
+
+```
+yba telemetryprovider awscloudwatch describe --name <awscloudwatch-provider-name>
 ```
 
 ### Options
 
 ```
-  -h, --help          help for datadog
-  -n, --name string   [Optional] The name of the provider for the action. Required for create, delete, describe.
+  -h, --help   help for describe
 ```
 
 ### Options inherited from parent commands
@@ -29,6 +34,7 @@ yba telemetryprovider datadog [flags]
   -H, --host string        YugabyteDB Anywhere Host (default "http://localhost:9000")
       --insecure           Allow insecure connections to YugabyteDB Anywhere. Value ignored for http endpoints. Defaults to false for https.
   -l, --logLevel string    Select the desired log level format. Allowed values: debug, info, warn, error, fatal. (default "info")
+  -n, --name string        [Optional] The name of the provider for the action. Required for create, delete, describe.
   -o, --output string      Select the desired output format. Allowed values: table, json, pretty. (default "table")
       --timeout duration   Wait command timeout, example: 5m, 1h. (default 168h0m0s)
       --wait               Wait until the task is completed, otherwise it will exit immediately. (default true)
@@ -36,8 +42,5 @@ yba telemetryprovider datadog [flags]
 
 ### SEE ALSO
 
-* [yba telemetryprovider](yba_telemetryprovider.md)	 - Manage YugabyteDB Anywhere telemetry providers
-* [yba telemetryprovider datadog delete](yba_telemetryprovider_datadog_delete.md)	 - Delete a DataDog YugabyteDB Anywhere telemetry provider
-* [yba telemetryprovider datadog describe](yba_telemetryprovider_datadog_describe.md)	 - Describe a YugabyteDB Anywhere DataDog telemetry provider
-* [yba telemetryprovider datadog list](yba_telemetryprovider_datadog_list.md)	 - List DataDog YugabyteDB Anywhere telemetry providers
+* [yba telemetry-provider awscloudwatch](yba_telemetry-provider_awscloudwatch.md)	 - Manage a YugabyteDB Anywhere AWS CloudWatch telemetry provider
 

@@ -1,25 +1,25 @@
-## yba telemetryprovider splunk describe
+## yba telemetry-provider splunk list
 
-Describe a Splunk YugabyteDB Anywhere telemetry provider
+List Splunk YugabyteDB Anywhere telemetry providers
 
 ### Synopsis
 
-Describe a Splunk telemetry provider in YugabyteDB Anywhere
+List Splunk YugabyteDB Anywhere telemetry providers
 
 ```
-yba telemetryprovider splunk describe [flags]
+yba telemetry-provider splunk list [flags]
 ```
 
 ### Examples
 
 ```
-yba telemetryprovider splunk describe --name <splunk-provider-name>
+yba telemetryprovider splunk list
 ```
 
 ### Options
 
 ```
-  -h, --help   help for describe
+  -h, --help   help for list
 ```
 
 ### Options inherited from parent commands
@@ -42,5 +42,5 @@ yba telemetryprovider splunk describe --name <splunk-provider-name>
 
 ### SEE ALSO
 
-* [yba telemetryprovider splunk](yba_telemetryprovider_splunk.md)	 - Manage a YugabyteDB Anywhere Splunk telemetry provider
+* [yba telemetry-provider splunk](yba_telemetry-provider_splunk.md)	 - Manage a YugabyteDB Anywhere Splunk telemetry provider
 

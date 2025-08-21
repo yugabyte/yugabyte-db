@@ -1,27 +1,29 @@
-## yba telemetryprovider list
+## yba telemetry-provider datadog create
 
-List YugabyteDB Anywhere telemetry providers
+Create a YugabyteDB Anywhere DataDog telemetry provider
 
 ### Synopsis
 
-List YugabyteDB Anywhere telemetry providers
+Create a DataDog telemetry provider in YugabyteDB Anywhere
 
 ```
-yba telemetryprovider list [flags]
+yba telemetry-provider datadog create [flags]
 ```
 
 ### Examples
 
 ```
-yba telemetryprovider list
+yba telemetryprovider datadog create --name <name> \
+    --api-key <api-key> --site <site>
 ```
 
 ### Options
 
 ```
-  -n, --name string   [Optional] Name of the telemetry provider.
-  -t, --type string   [Optional] Type of the telemetry provider. Allowed values: datadog, loki, splunk, awscloudwatch, gcpcloudmonitoring.
-  -h, --help          help for list
+      --api-key string        [Required] DataDog API Key.
+      --site string           [Optional] DataDog Site URL. (default "datadoghq.com")
+      --tags stringToString   [Optional] Tags to be applied to the exporter config. Provide as key-value pairs per flag. Example "--tags name=test --tags owner=development" OR "--tags name=test,owner=development". (default [])
+  -h, --help                  help for create
 ```
 
 ### Options inherited from parent commands
@@ -36,6 +38,7 @@ yba telemetryprovider list
   -H, --host string        YugabyteDB Anywhere Host (default "http://localhost:9000")
       --insecure           Allow insecure connections to YugabyteDB Anywhere. Value ignored for http endpoints. Defaults to false for https.
   -l, --logLevel string    Select the desired log level format. Allowed values: debug, info, warn, error, fatal. (default "info")
+  -n, --name string        [Optional] The name of the provider for the action. Required for create, delete, describe.
   -o, --output string      Select the desired output format. Allowed values: table, json, pretty. (default "table")
       --timeout duration   Wait command timeout, example: 5m, 1h. (default 168h0m0s)
       --wait               Wait until the task is completed, otherwise it will exit immediately. (default true)
@@ -43,5 +46,5 @@ yba telemetryprovider list
 
 ### SEE ALSO
 
-* [yba telemetryprovider](yba_telemetryprovider.md)	 - Manage YugabyteDB Anywhere telemetry providers
+* [yba telemetry-provider datadog](yba_telemetry-provider_datadog.md)	 - Manage a YugabyteDB Anywhere DataDog telemetry provider
 

@@ -1,25 +1,27 @@
-## yba telemetryprovider splunk list
+## yba telemetry-provider delete
 
-List Splunk YugabyteDB Anywhere telemetry providers
+Delete a YugabyteDB Anywhere telemetry provider
 
 ### Synopsis
 
-List Splunk YugabyteDB Anywhere telemetry providers
+Delete a telemetry provider in YugabyteDB Anywhere
 
 ```
-yba telemetryprovider splunk list [flags]
+yba telemetry-provider delete [flags]
 ```
 
 ### Examples
 
 ```
-yba telemetryprovider splunk list
+yba telemetryprovider delete --name <telemetry-provider-name>
 ```
 
 ### Options
 
 ```
-  -h, --help   help for list
+  -n, --name string   [Required] The name of the telemetry provider to be deleted.
+  -f, --force         [Optional] Bypass the prompt for non-interactive usage.
+  -h, --help          help for delete
 ```
 
 ### Options inherited from parent commands
@@ -34,7 +36,6 @@ yba telemetryprovider splunk list
   -H, --host string        YugabyteDB Anywhere Host (default "http://localhost:9000")
       --insecure           Allow insecure connections to YugabyteDB Anywhere. Value ignored for http endpoints. Defaults to false for https.
   -l, --logLevel string    Select the desired log level format. Allowed values: debug, info, warn, error, fatal. (default "info")
-  -n, --name string        [Optional] The name of the provider for the action. Required for create, delete, describe.
   -o, --output string      Select the desired output format. Allowed values: table, json, pretty. (default "table")
       --timeout duration   Wait command timeout, example: 5m, 1h. (default 168h0m0s)
       --wait               Wait until the task is completed, otherwise it will exit immediately. (default true)
@@ -42,5 +43,5 @@ yba telemetryprovider splunk list
 
 ### SEE ALSO
 
-* [yba telemetryprovider splunk](yba_telemetryprovider_splunk.md)	 - Manage a YugabyteDB Anywhere Splunk telemetry provider
+* [yba telemetry-provider](yba_telemetry-provider.md)	 - Manage YugabyteDB Anywhere telemetry providers
 

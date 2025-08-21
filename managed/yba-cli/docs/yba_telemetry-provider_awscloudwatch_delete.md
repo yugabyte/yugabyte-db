@@ -1,19 +1,19 @@
-## yba telemetryprovider loki delete
+## yba telemetry-provider awscloudwatch delete
 
-Delete a Loki YugabyteDB Anywhere telemetry provider
+Delete an AWS CloudWatch YugabyteDB Anywhere telemetry provider
 
 ### Synopsis
 
-Delete a Loki telemetry provider in YugabyteDB Anywhere
+Delete an AWS CloudWatch telemetry provider in YugabyteDB Anywhere
 
 ```
-yba telemetryprovider loki delete [flags]
+yba telemetry-provider awscloudwatch delete [flags]
 ```
 
 ### Examples
 
 ```
-yba telemetryprovider loki delete --name <telemetry-provider-name>
+yba telemetryprovider awscloudwatch delete --name <telemetry-provider-name>
 ```
 
 ### Options
@@ -43,5 +43,5 @@ yba telemetryprovider loki delete --name <telemetry-provider-name>
 
 ### SEE ALSO
 
-* [yba telemetryprovider loki](yba_telemetryprovider_loki.md)	 - Manage a YugabyteDB Anywhere Loki telemetry provider
+* [yba telemetry-provider awscloudwatch](yba_telemetry-provider_awscloudwatch.md)	 - Manage a YugabyteDB Anywhere AWS CloudWatch telemetry provider
 

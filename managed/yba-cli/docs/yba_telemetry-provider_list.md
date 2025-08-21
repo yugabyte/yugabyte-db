@@ -1,27 +1,27 @@
-## yba telemetryprovider delete
+## yba telemetry-provider list
 
-Delete a YugabyteDB Anywhere telemetry provider
+List YugabyteDB Anywhere telemetry providers
 
 ### Synopsis
 
-Delete a telemetry provider in YugabyteDB Anywhere
+List YugabyteDB Anywhere telemetry providers
 
 ```
-yba telemetryprovider delete [flags]
+yba telemetry-provider list [flags]
 ```
 
 ### Examples
 
 ```
-yba telemetryprovider delete --name <telemetry-provider-name>
+yba telemetryprovider list
 ```
 
 ### Options
 
 ```
-  -n, --name string   [Required] The name of the telemetry provider to be deleted.
-  -f, --force         [Optional] Bypass the prompt for non-interactive usage.
-  -h, --help          help for delete
+  -n, --name string   [Optional] Name of the telemetry provider.
+  -t, --type string   [Optional] Type of the telemetry provider. Allowed values: datadog, loki, splunk, awscloudwatch, gcpcloudmonitoring.
+  -h, --help          help for list
 ```
 
 ### Options inherited from parent commands
@@ -43,5 +43,5 @@ yba telemetryprovider delete --name <telemetry-provider-name>
 
 ### SEE ALSO
 
-* [yba telemetryprovider](yba_telemetryprovider.md)	 - Manage YugabyteDB Anywhere telemetry providers
+* [yba telemetry-provider](yba_telemetry-provider.md)	 - Manage YugabyteDB Anywhere telemetry providers
 

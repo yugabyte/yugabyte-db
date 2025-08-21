@@ -163,6 +163,14 @@ const (
 
 	MinCLIStableVersion  = "2024.1.0.0-b4"
 	MinCLIPreviewVersion = "2.21.0.0-b545"
+
+	// YBAAllowTelemetryProviderMinPreviewVersion specifies minimum version
+	// required to use Telemetry Provider resource via YBA CLI
+	YBAAllowTelemetryProviderMinPreviewVersion = "2.23.1.0-b27"
+
+	// YBAAllowTelemetryProviderMinStableVersion specifies minimum version
+	// required to use Telemetry Provider resource via YBA CLI
+	YBAAllowTelemetryProviderMinStableVersion = "2024.1.2.0-b78"
 )
 
 // UniverseStates
@@ -450,6 +458,14 @@ const (
 	GCPCloudMonitoringTelemetryProviderType = "GCP_CLOUD_MONITORING"
 	// LokiTelemetryProviderType type
 	LokiTelemetryProviderType = "LOKI"
+)
+
+// LokiAuthTypes for loki
+const (
+	// BasicLokiAuthType type
+	BasicLokiAuthType = "BasicAuth"
+	// NoAuthLokiAuthType type
+	NoLokiAuthType = "NoAuth"
 )
 
 // Different kms types

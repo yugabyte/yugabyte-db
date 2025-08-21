@@ -1,26 +1,25 @@
-## yba telemetryprovider gcpcloudmonitoring delete
+## yba telemetry-provider gcpcloudmonitoring list
 
-Delete a GCP Cloud Monitoring YugabyteDB Anywhere telemetry provider
+List GCP Cloud Monitoring YugabyteDB Anywhere telemetry providers
 
 ### Synopsis
 
-Delete a GCP Cloud Monitoring telemetry provider in YugabyteDB Anywhere
+List GCP Cloud Monitoring YugabyteDB Anywhere telemetry providers
 
 ```
-yba telemetryprovider gcpcloudmonitoring delete [flags]
+yba telemetry-provider gcpcloudmonitoring list [flags]
 ```
 
 ### Examples
 
 ```
-yba telemetryprovider gcpcloudmonitoring delete --name <telemetry-provider-name>
+yba telemetryprovider gcpcloudmonitoring list
 ```
 
 ### Options
 
 ```
-  -f, --force   [Optional] Bypass the prompt for non-interactive usage.
-  -h, --help    help for delete
+  -h, --help   help for list
 ```
 
 ### Options inherited from parent commands
@@ -43,5 +42,5 @@ yba telemetryprovider gcpcloudmonitoring delete --name <telemetry-provider-name>
 
 ### SEE ALSO
 
-* [yba telemetryprovider gcpcloudmonitoring](yba_telemetryprovider_gcpcloudmonitoring.md)	 - Manage a YugabyteDB Anywhere GCP Cloud Monitoring telemetry provider
+* [yba telemetry-provider gcpcloudmonitoring](yba_telemetry-provider_gcpcloudmonitoring.md)	 - Manage a YugabyteDB Anywhere GCP Cloud Monitoring telemetry provider
 

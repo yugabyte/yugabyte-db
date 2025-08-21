@@ -1,26 +1,32 @@
-## yba telemetryprovider datadog delete
+## yba telemetry-provider loki create
 
-Delete a DataDog YugabyteDB Anywhere telemetry provider
+Create a YugabyteDB Anywhere Loki telemetry provider
 
 ### Synopsis
 
-Delete a DataDog telemetry provider in YugabyteDB Anywhere
+Create a Loki telemetry provider in YugabyteDB Anywhere
 
 ```
-yba telemetryprovider datadog delete [flags]
+yba telemetry-provider loki create [flags]
 ```
 
 ### Examples
 
 ```
-yba telemetryprovider datadog delete --name <telemetry-provider-name>
+yba telemetryprovider loki create --name <name> \
+     --endpoint <loki-endpoint> --auth-type <auth-type>
 ```
 
 ### Options
 
 ```
-  -f, --force   [Optional] Bypass the prompt for non-interactive usage.
-  -h, --help    help for delete
+      --endpoint string          [Required] Loki endpoint URL. Provide the endpoint in the following format: http://<loki-url>:<loki-port>. Ensure loki is accessible through the mentioned port. YugbayteDB Anywhere will push logs to <endpoint>/loki/api/v1/push.
+      --organization-id string   [Optional] Organization/Tenant ID is required when multi-tenancy is set up in Loki. Optional for Grafana Cloud since the authentication reroutes requests according to scope.
+      --auth-type string         [Optional] Authentication type to be used for Loki telemetry provider. Allowed values: none, basic. (default "none")
+      --username string          [Optional] Username for basic authentication. Required if auth-type is set to basic.
+      --password string          [Optional] Password for basic authentication. Required if auth-type is set to basic.
+      --tags stringToString      [Optional] Tags to be applied to the exporter config. Provide as key-value pairs per flag. Example "--tags name=test --tags owner=development" OR "--tags name=test,owner=development". (default [])
+  -h, --help                     help for create
 ```
 
 ### Options inherited from parent commands
@@ -43,5 +49,5 @@ yba telemetryprovider datadog delete --name <telemetry-provider-name>
 
 ### SEE ALSO
 
-* [yba telemetryprovider datadog](yba_telemetryprovider_datadog.md)	 - Manage a YugabyteDB Anywhere DataDog telemetry provider
+* [yba telemetry-provider loki](yba_telemetry-provider_loki.md)	 - Manage a YugabyteDB Anywhere Loki telemetry provider
 

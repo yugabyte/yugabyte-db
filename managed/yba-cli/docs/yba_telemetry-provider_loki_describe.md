@@ -1,25 +1,25 @@
-## yba telemetryprovider awscloudwatch list
+## yba telemetry-provider loki describe
 
-List AWS CloudWatch YugabyteDB Anywhere telemetry providers
+Describe a Loki YugabyteDB Anywhere telemetry provider
 
 ### Synopsis
 
-List AWS CloudWatch YugabyteDB Anywhere telemetry providers
+Describe a Loki telemetry provider in YugabyteDB Anywhere
 
 ```
-yba telemetryprovider awscloudwatch list [flags]
+yba telemetry-provider loki describe [flags]
 ```
 
 ### Examples
 
 ```
-yba telemetryprovider awscloudwatch list
+yba telemetryprovider loki describe --name <loki-provider-name>
 ```
 
 ### Options
 
 ```
-  -h, --help   help for list
+  -h, --help   help for describe
 ```
 
 ### Options inherited from parent commands
@@ -42,5 +42,5 @@ yba telemetryprovider awscloudwatch list
 
 ### SEE ALSO
 
-* [yba telemetryprovider awscloudwatch](yba_telemetryprovider_awscloudwatch.md)	 - Manage a YugabyteDB Anywhere AWS CloudWatch telemetry provider
+* [yba telemetry-provider loki](yba_telemetry-provider_loki.md)	 - Manage a YugabyteDB Anywhere Loki telemetry provider
 

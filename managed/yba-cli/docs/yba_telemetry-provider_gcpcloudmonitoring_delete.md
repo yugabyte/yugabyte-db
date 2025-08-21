@@ -1,20 +1,26 @@
-## yba telemetryprovider gcpcloudmonitoring
+## yba telemetry-provider gcpcloudmonitoring delete
 
-Manage a YugabyteDB Anywhere GCP Cloud Monitoring telemetry provider
+Delete a GCP Cloud Monitoring YugabyteDB Anywhere telemetry provider
 
 ### Synopsis
 
-Manage a GCP Cloud Monitoring telemetry provider in YugabyteDB Anywhere
+Delete a GCP Cloud Monitoring telemetry provider in YugabyteDB Anywhere
 
 ```
-yba telemetryprovider gcpcloudmonitoring [flags]
+yba telemetry-provider gcpcloudmonitoring delete [flags]
+```
+
+### Examples
+
+```
+yba telemetryprovider gcpcloudmonitoring delete --name <telemetry-provider-name>
 ```
 
 ### Options
 
 ```
-  -h, --help          help for gcpcloudmonitoring
-  -n, --name string   [Optional] The name of the provider for the action. Required for create, delete, describe.
+  -f, --force   [Optional] Bypass the prompt for non-interactive usage.
+  -h, --help    help for delete
 ```
 
 ### Options inherited from parent commands
@@ -29,6 +35,7 @@ yba telemetryprovider gcpcloudmonitoring [flags]
   -H, --host string        YugabyteDB Anywhere Host (default "http://localhost:9000")
       --insecure           Allow insecure connections to YugabyteDB Anywhere. Value ignored for http endpoints. Defaults to false for https.
   -l, --logLevel string    Select the desired log level format. Allowed values: debug, info, warn, error, fatal. (default "info")
+  -n, --name string        [Optional] The name of the provider for the action. Required for create, delete, describe.
   -o, --output string      Select the desired output format. Allowed values: table, json, pretty. (default "table")
       --timeout duration   Wait command timeout, example: 5m, 1h. (default 168h0m0s)
       --wait               Wait until the task is completed, otherwise it will exit immediately. (default true)
@@ -36,8 +43,5 @@ yba telemetryprovider gcpcloudmonitoring [flags]
 
 ### SEE ALSO
 
-* [yba telemetryprovider](yba_telemetryprovider.md)	 - Manage YugabyteDB Anywhere telemetry providers
-* [yba telemetryprovider gcpcloudmonitoring delete](yba_telemetryprovider_gcpcloudmonitoring_delete.md)	 - Delete a GCP Cloud Monitoring YugabyteDB Anywhere telemetry provider
-* [yba telemetryprovider gcpcloudmonitoring describe](yba_telemetryprovider_gcpcloudmonitoring_describe.md)	 - Describe a GCP Cloud Monitoring YugabyteDB Anywhere telemetry provider
-* [yba telemetryprovider gcpcloudmonitoring list](yba_telemetryprovider_gcpcloudmonitoring_list.md)	 - List GCP Cloud Monitoring YugabyteDB Anywhere telemetry providers
+* [yba telemetry-provider gcpcloudmonitoring](yba_telemetry-provider_gcpcloudmonitoring.md)	 - Manage a YugabyteDB Anywhere GCP Cloud Monitoring telemetry provider
 

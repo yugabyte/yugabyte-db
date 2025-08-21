@@ -16,9 +16,10 @@ import (
 // TelemetryProviderCmd set of commands are used to perform operations on telemetry providers
 // in YugabyteDB Anywhere
 var TelemetryProviderCmd = &cobra.Command{
-	Use:   "telemetryprovider",
-	Short: "Manage YugabyteDB Anywhere telemetry providers",
-	Long:  "Manage YugabyteDB Anywhere telemetry providers for exporting logs and metrics via OTEL",
+	Use:     "telemetry-provider",
+	Aliases: []string{"tp"},
+	Short:   "Manage YugabyteDB Anywhere telemetry providers",
+	Long:    "Manage YugabyteDB Anywhere telemetry providers for exporting logs and metrics via OTEL",
 	Run: func(cmd *cobra.Command, args []string) {
 		cmd.Help()
 	},

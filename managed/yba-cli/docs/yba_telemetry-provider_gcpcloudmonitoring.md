@@ -1,26 +1,20 @@
-## yba telemetryprovider describe
+## yba telemetry-provider gcpcloudmonitoring
 
-Describe a YugabyteDB Anywhere telemetry provider
+Manage a YugabyteDB Anywhere GCP Cloud Monitoring telemetry provider
 
 ### Synopsis
 
-Describe a telemetry provider in YugabyteDB Anywhere
+Manage a GCP Cloud Monitoring telemetry provider in YugabyteDB Anywhere
 
 ```
-yba telemetryprovider describe [flags]
-```
-
-### Examples
-
-```
-yba telemetryprovider describe --name <telemetry-provider-name>
+yba telemetry-provider gcpcloudmonitoring [flags]
 ```
 
 ### Options
 
 ```
-  -n, --name string   [Required] The name of the telemetry provider to get details.
-  -h, --help          help for describe
+  -h, --help          help for gcpcloudmonitoring
+  -n, --name string   [Optional] The name of the provider for the action. Required for create, delete, describe.
 ```
 
 ### Options inherited from parent commands
@@ -42,5 +36,8 @@ yba telemetryprovider describe --name <telemetry-provider-name>
 
 ### SEE ALSO
 
-* [yba telemetryprovider](yba_telemetryprovider.md)	 - Manage YugabyteDB Anywhere telemetry providers
+* [yba telemetry-provider](yba_telemetry-provider.md)	 - Manage YugabyteDB Anywhere telemetry providers
+* [yba telemetry-provider gcpcloudmonitoring delete](yba_telemetry-provider_gcpcloudmonitoring_delete.md)	 - Delete a GCP Cloud Monitoring YugabyteDB Anywhere telemetry provider
+* [yba telemetry-provider gcpcloudmonitoring describe](yba_telemetry-provider_gcpcloudmonitoring_describe.md)	 - Describe a GCP Cloud Monitoring YugabyteDB Anywhere telemetry provider
+* [yba telemetry-provider gcpcloudmonitoring list](yba_telemetry-provider_gcpcloudmonitoring_list.md)	 - List GCP Cloud Monitoring YugabyteDB Anywhere telemetry providers
 

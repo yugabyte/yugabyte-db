@@ -1,25 +1,26 @@
-## yba telemetryprovider loki describe
+## yba telemetry-provider describe
 
-Describe a Loki YugabyteDB Anywhere telemetry provider
+Describe a YugabyteDB Anywhere telemetry provider
 
 ### Synopsis
 
-Describe a Loki telemetry provider in YugabyteDB Anywhere
+Describe a telemetry provider in YugabyteDB Anywhere
 
 ```
-yba telemetryprovider loki describe [flags]
+yba telemetry-provider describe [flags]
 ```
 
 ### Examples
 
 ```
-yba telemetryprovider loki describe --name <loki-provider-name>
+yba telemetryprovider describe --name <telemetry-provider-name>
 ```
 
 ### Options
 
 ```
-  -h, --help   help for describe
+  -n, --name string   [Required] The name of the telemetry provider to get details.
+  -h, --help          help for describe
 ```
 
 ### Options inherited from parent commands
@@ -34,7 +35,6 @@ yba telemetryprovider loki describe --name <loki-provider-name>
   -H, --host string        YugabyteDB Anywhere Host (default "http://localhost:9000")
       --insecure           Allow insecure connections to YugabyteDB Anywhere. Value ignored for http endpoints. Defaults to false for https.
   -l, --logLevel string    Select the desired log level format. Allowed values: debug, info, warn, error, fatal. (default "info")
-  -n, --name string        [Optional] The name of the provider for the action. Required for create, delete, describe.
   -o, --output string      Select the desired output format. Allowed values: table, json, pretty. (default "table")
       --timeout duration   Wait command timeout, example: 5m, 1h. (default 168h0m0s)
       --wait               Wait until the task is completed, otherwise it will exit immediately. (default true)
@@ -42,5 +42,5 @@ yba telemetryprovider loki describe --name <loki-provider-name>
 
 ### SEE ALSO
 
-* [yba telemetryprovider loki](yba_telemetryprovider_loki.md)	 - Manage a YugabyteDB Anywhere Loki telemetry provider
+* [yba telemetry-provider](yba_telemetry-provider.md)	 - Manage YugabyteDB Anywhere telemetry providers
 

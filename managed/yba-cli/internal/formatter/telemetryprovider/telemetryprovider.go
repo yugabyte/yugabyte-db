@@ -34,9 +34,9 @@ const (
 	sourceTypeHeader = "Source Type"
 	sourceHeader     = "Source"
 
-	awsType1 = "table {{.Endpoint}}\t{{.AccessKey}}\t{{.SecretKey}}"
+	awsType3 = "table {{.Endpoint}}\t{{.AccessKey}}\t{{.SecretKey}}"
 	awsType2 = "table {{.Region}}\t{{.RoleARN}}"
-	awsType3 = "table {{.LogGroup}}\t{{.LogStream}}"
+	awsType1 = "table {{.LogGroup}}\t{{.LogStream}}"
 
 	accessKeyHeader = "Access Key"
 	secretKeyHeader = "Secret Key"

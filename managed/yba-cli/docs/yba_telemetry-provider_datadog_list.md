@@ -1,19 +1,19 @@
-## yba telemetryprovider loki list
+## yba telemetry-provider datadog list
 
-List Loki YugabyteDB Anywhere telemetry providers
+List DataDog YugabyteDB Anywhere telemetry providers
 
 ### Synopsis
 
-List Loki YugabyteDB Anywhere telemetry providers
+List DataDog YugabyteDB Anywhere telemetry providers
 
 ```
-yba telemetryprovider loki list [flags]
+yba telemetry-provider datadog list [flags]
 ```
 
 ### Examples
 
 ```
-yba telemetryprovider loki list
+yba telemetryprovider datadog list
 ```
 
 ### Options
@@ -42,5 +42,5 @@ yba telemetryprovider loki list
 
 ### SEE ALSO
 
-* [yba telemetryprovider loki](yba_telemetryprovider_loki.md)	 - Manage a YugabyteDB Anywhere Loki telemetry provider
+* [yba telemetry-provider datadog](yba_telemetry-provider_datadog.md)	 - Manage a YugabyteDB Anywhere DataDog telemetry provider
 

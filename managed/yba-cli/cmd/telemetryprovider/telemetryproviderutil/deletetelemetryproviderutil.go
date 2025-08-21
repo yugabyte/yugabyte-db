@@ -22,6 +22,9 @@ func DeleteTelemetryProviderUtil(
 	telemetryProviderType string,
 ) {
 	authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
+
+	VersionCheck(authAPI)
+
 	callSite := "Telemetry Provider"
 	if !util.IsEmptyString(commandCall) {
 		callSite = fmt.Sprintf("%s: %s", callSite, commandCall)
@@ -91,5 +94,19 @@ func DeleteTelemetryProviderValidation(cmd *cobra.Command) {
 		viper.GetBool("force"))
 	if err != nil {
 		logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+	}
+}
+
+// VersionCheck checks if the YBA version supports the telemetry provider operations
+func VersionCheck(authAPI *ybaAuthClient.AuthAPIClient) {
+	allowed, version, err := authAPI.TelemetryProviderYBAVersionCheck()
+	if err != nil {
+		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+	}
+	if !allowed {
+		logrus.Fatalf(formatter.Colorize(
+			fmt.Sprintf("Telemetry Provider operations below version %s (or on restricted"+
+				" versions) is not supported, currently on %s\n", util.YBAAllowTelemetryProviderMinStableVersion,
+				version), formatter.RedColor))
 	}
 }

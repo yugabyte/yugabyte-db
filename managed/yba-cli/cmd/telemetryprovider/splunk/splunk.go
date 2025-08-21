@@ -25,7 +25,7 @@ var SplunkTelemetryProviderCmd = &cobra.Command{
 }
 
 func init() {
-	// SplunkTelemetryProviderCmd.AddCommand(createSplunkTelemetryProviderCmd)
+	SplunkTelemetryProviderCmd.AddCommand(createSplunkTelemetryProviderCmd)
 	SplunkTelemetryProviderCmd.AddCommand(listSplunkTelemetryProviderCmd)
 	SplunkTelemetryProviderCmd.AddCommand(describeSplunkTelemetryProviderCmd)
 	SplunkTelemetryProviderCmd.AddCommand(deleteSplunkTelemetryProviderCmd)

@@ -1,20 +1,25 @@
-## yba telemetryprovider awscloudwatch
+## yba telemetry-provider splunk describe
 
-Manage a YugabyteDB Anywhere AWS CloudWatch telemetry provider
+Describe a Splunk YugabyteDB Anywhere telemetry provider
 
 ### Synopsis
 
-Manage an AWS CloudWatch telemetry provider in YugabyteDB Anywhere
+Describe a Splunk telemetry provider in YugabyteDB Anywhere
 
 ```
-yba telemetryprovider awscloudwatch [flags]
+yba telemetry-provider splunk describe [flags]
+```
+
+### Examples
+
+```
+yba telemetryprovider splunk describe --name <splunk-provider-name>
 ```
 
 ### Options
 
 ```
-  -h, --help          help for awscloudwatch
-  -n, --name string   [Optional] The name of the provider for the action. Required for create, delete, describe.
+  -h, --help   help for describe
 ```
 
 ### Options inherited from parent commands
@@ -29,6 +34,7 @@ yba telemetryprovider awscloudwatch [flags]
   -H, --host string        YugabyteDB Anywhere Host (default "http://localhost:9000")
       --insecure           Allow insecure connections to YugabyteDB Anywhere. Value ignored for http endpoints. Defaults to false for https.
   -l, --logLevel string    Select the desired log level format. Allowed values: debug, info, warn, error, fatal. (default "info")
+  -n, --name string        [Optional] The name of the provider for the action. Required for create, delete, describe.
   -o, --output string      Select the desired output format. Allowed values: table, json, pretty. (default "table")
       --timeout duration   Wait command timeout, example: 5m, 1h. (default 168h0m0s)
       --wait               Wait until the task is completed, otherwise it will exit immediately. (default true)
@@ -36,8 +42,5 @@ yba telemetryprovider awscloudwatch [flags]
 
 ### SEE ALSO
 
-* [yba telemetryprovider](yba_telemetryprovider.md)	 - Manage YugabyteDB Anywhere telemetry providers
-* [yba telemetryprovider awscloudwatch delete](yba_telemetryprovider_awscloudwatch_delete.md)	 - Delete an AWS CloudWatch YugabyteDB Anywhere telemetry provider
-* [yba telemetryprovider awscloudwatch describe](yba_telemetryprovider_awscloudwatch_describe.md)	 - Describe an AWS CloudWatch YugabyteDB Anywhere telemetry provider
-* [yba telemetryprovider awscloudwatch list](yba_telemetryprovider_awscloudwatch_list.md)	 - List AWS CloudWatch YugabyteDB Anywhere telemetry providers
+* [yba telemetry-provider splunk](yba_telemetry-provider_splunk.md)	 - Manage a YugabyteDB Anywhere Splunk telemetry provider
 

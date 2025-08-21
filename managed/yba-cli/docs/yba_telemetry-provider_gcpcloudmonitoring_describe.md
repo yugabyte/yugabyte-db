@@ -1,19 +1,19 @@
-## yba telemetryprovider datadog describe
+## yba telemetry-provider gcpcloudmonitoring describe
 
-Describe a YugabyteDB Anywhere DataDog telemetry provider
+Describe a GCP Cloud Monitoring YugabyteDB Anywhere telemetry provider
 
 ### Synopsis
 
-Describe a DataDog telemetry provider in YugabyteDB Anywhere
+Describe a GCP Cloud Monitoring telemetry provider in YugabyteDB Anywhere
 
 ```
-yba telemetryprovider datadog describe [flags]
+yba telemetry-provider gcpcloudmonitoring describe [flags]
 ```
 
 ### Examples
 
 ```
-yba telemetryprovider datadog describe --name <datadog-provider-name>
+yba telemetryprovider gcpcloudmonitoring describe --name <gcpcloudmonitoring-provider-name>
 ```
 
 ### Options
@@ -42,5 +42,5 @@ yba telemetryprovider datadog describe --name <datadog-provider-name>
 
 ### SEE ALSO
 
-* [yba telemetryprovider datadog](yba_telemetryprovider_datadog.md)	 - Manage a YugabyteDB Anywhere DataDog telemetry provider
+* [yba telemetry-provider gcpcloudmonitoring](yba_telemetry-provider_gcpcloudmonitoring.md)	 - Manage a YugabyteDB Anywhere GCP Cloud Monitoring telemetry provider
 
