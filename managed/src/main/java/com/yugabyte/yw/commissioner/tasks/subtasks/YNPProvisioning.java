@@ -92,6 +92,9 @@ public class YNPProvisioning extends AbstractTaskBase {
           "tmp_directory",
           confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory));
       ynpNode.put("is_configure_clockbound", userIntent.isUseClockbound());
+      if (!provider.getYbHome().isEmpty()) {
+        ynpNode.put("yb_home_dir", provider.getYbHome());
+      }
       AdditionalServicesStateData data = universe.getUniverseDetails().additionalServicesStateData;
       if (data != null
           && data.getEarlyoomConfig() != null
