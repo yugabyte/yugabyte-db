@@ -122,27 +122,29 @@ To restore a backup of a cluster:
 
 Use remote backup replication to copy all your cluster backups (scheduled, incremental, and on demand) to a storage bucket in the same cloud provider.
 
-Remote backup replication counts against your data transfer allowance. This may incur additional costs for network transfer, especially for cross-region transfers, if usage exceeds your cluster allowance. Refer to [Data transfer costs](../../cloud-admin/cloud-billing-costs/#data-transfer-costs).
+Transfer of your backups run once a day. Note that disabling backup replication doesn't stop transfers instantly. Any in-progress backup transfers run to completion (assuming the bucket is still configured).
 
-To avoid cross-region data transfer costs, use a bucket in the same region as the cluster.
+Remote backup replication counts against your data transfer allowance. This may incur additional costs for network transfer, especially for cross-region transfers, if usage exceeds your cluster allowance. To avoid cross-region data transfer costs, use a bucket in the same region as the cluster.
 
-To restore from a remote backup, contact {{% support-cloud %}}.  
+To restore from a remote backup, contact {{% support-cloud %}}.
+
+Currently, only clusters deployed to GCP are supported.
 
 ### Prerequisites
 
-- Currently, only clusters deployed to GCP are supported.
-- The cluster must be deployed in a VPC.
-- The remote storage bucket must be on the same cloud provider as the cluster (for example, for clusters deployed in GCP, the bucket must be in Google Cloud Storage).
+The remote storage bucket must be on the same cloud provider as the cluster; for clusters deployed in GCP, the bucket must be in Google Cloud Storage. Transfer is performed using [Google Storage Transfer Service](https://cloud.google.com/storage-transfer/docs/overview).
 
 ### Bucket permissions
 
-The storage bucket must have the following permissions:
+For buckets in GCS, create a custom role with the following permissions and assign the role to the principal:
 
 ```sh
-roles/storage.admin
+storage.buckets.get
+storage.objects.create
+storage.objects.list
 ```
 
- See [IAM roles for Cloud Storage](https://cloud.google.com/storage/docs/access-control/iam-roles) in the GCS documentation.
+See [IAM roles for Cloud Storage](https://cloud.google.com/storage/docs/access-control/iam-roles) in the GCS documentation.
 
 ### Manage remote backup replication
 
