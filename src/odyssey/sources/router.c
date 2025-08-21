@@ -1069,18 +1069,23 @@ od_router_status_t od_router_attach(od_router_t *router,
 		created_atleast_one = true;
 	}
 
+	/*
+	 * If we created a server, then hold on to the lock so no other client can
+	 * acquire this server from the server pool
+	*/
+	if (created_atleast_one)
+		goto attach;
+
+	/* YB: Unlock the route since we don't need the lock when allocating server */
 	od_route_unlock(route);
 
-	if (!created_atleast_one)
-	{
-		server = od_server_allocate(
+	server = od_server_allocate(
 		route->rule->pool->reserve_prepared_statement);
-		if (server == NULL)
-			return OD_ROUTER_ERROR;
-		od_id_generate(&server->id, "s");
-		server->global = client_for_router->global;
-		server->route = route;
-	}
+	if (server == NULL)
+		return OD_ROUTER_ERROR;
+	od_id_generate(&server->id, "s");
+	server->global = client_for_router->global;
+	server->route = route;
 
 	od_route_lock(route);
 
