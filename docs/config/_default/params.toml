@@ -56,7 +56,7 @@ version_menu_pagelinks = true
   version = "v2025.1 (STS)"
 [[versions]]
   url = "/preview"
-  version = "v2.25 (Preview)"
+  version = "Latest"
 [[versions]]
   url = "/v2024.2"
   version = "v2024.2 (LTS)"
@@ -70,6 +70,10 @@ version_menu_pagelinks = true
   url = "https://docs-archive.yugabyte.com/v2.18"
   version = "Unsupported versions"
   newTab = true
+
+# [[versions]]
+#   url = "/preview"
+#   version = "v2.25 (Preview)"
 
 # Custom params, regardless of theme
 [yb]

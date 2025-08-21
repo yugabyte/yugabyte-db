@@ -5,8 +5,8 @@
     {{ $versionUrl := printf "%s/" .url }}
     {{ if hasPrefix $pagePermalink $versionUrl }}
       {{ $versionName = .version }}
-      {{- if in .version "(Preview)" -}}
-        {{ $versionName = replace .version "(Preview)" "<span class='tag release preview'>Preview <span class='popup-details'>Preview release - not for production</span></span>" }}
+      {{- if in .version "Latest" -}}
+        {{ $versionName = replace .version "Latest" "<span class='tag release preview'>Latest <span class='popup-details'>Latest from master - Tech Preview</span>" }}
       {{- else if in .version "(STS)" -}}
         {{ $versionName = replace .version "(STS)" "<span class='tag release sts'>STS <span class='popup-details'>Stable release with standard-term support</span></span>" }}
       {{- else if in .version "(LTS)" -}}
@@ -29,8 +29,8 @@
   {{ end }}
   {{ range .Site.Params.versions }}
     {{ $versionName := .version }}
-    {{- if in .version "(Preview)" -}}
-      {{ $versionName = replace .version "(Preview)" "<span class='tag release preview'>Preview <span class='popup-details'>Preview release - not for production</span></span>" }}
+    {{- if in .version "Latest" -}}
+      {{ $versionName = replace .version "Latest" "<span class='tag release preview'>Latest <span class='popup-details'>Latest from master - Tech Preview</span>" }}
     {{- else if in .version "(STS)" -}}
       {{ $versionName = replace .version "(STS)" "<span class='tag release sts'>STS <span class='popup-details'>Stable release with standard-term support</span></span>" }}
     {{- else if in .version "(LTS)" -}}

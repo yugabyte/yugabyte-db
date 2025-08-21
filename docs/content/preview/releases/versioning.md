@@ -91,6 +91,12 @@ There is currently no migration path from a preview release to a stable release.
 
 {{< /note >}}
 
+## Latest
+
+Latest in the documentation corresponds (give or take) to the master branch of the [yugabyte-db repository](https://github.com/yugabyte/yugabyte-db). The Latest documentation is considered to be {{<tags/feature/tp>}}, and may not reflect the very latest changes in master. Some features may be documented in Latest that are not present in the most recent Preview release.
+
+For documentation for a specific stable release, choose the stable version from the version menu.
+
 ## Feature maturity
 
 YugabyteDB features are made available as one of the following:
