@@ -2600,8 +2600,13 @@ YbRunWithPrefetcher(YbcStatus (*func) (YbRunWithPrefetcherContext *),
 					bool keep_prefetcher)
 {
 	YbcPgLastKnownCatalogVersionInfo catalog_version = {};
-	YbPrefetcherStarterWithCache trust_cache = MakeStarterWithCache(YB_YQL_PREFETCHER_TRUST_CACHE,
-																	&catalog_version);
+	uint64_t	shared_catalog_version;
+	HandleYBStatus(YBCGetSharedCatalogVersion(&shared_catalog_version));
+	const bool	use_tserver_cache_for_auth = YbUseTserverResponseCacheForAuth(shared_catalog_version);
+	YbcPgSysTablePrefetcherCacheMode trust_mode =
+		use_tserver_cache_for_auth ? YB_YQL_PREFETCHER_TRUST_CACHE_AUTH
+								   : YB_YQL_PREFETCHER_TRUST_CACHE;
+	YbPrefetcherStarterWithCache trust_cache = MakeStarterWithCache(trust_mode, &catalog_version);
 	YbPrefetcherStarterWithCache renew_soft = MakeStarterWithCache(YB_YQL_PREFETCHER_RENEW_CACHE_SOFT,
 																   &catalog_version);
 	YbPrefetcherStarterWithCache renew_hard = MakeStarterWithCache(YB_YQL_PREFETCHER_RENEW_CACHE_HARD,
@@ -2636,7 +2641,16 @@ YbRunWithPrefetcher(YbcStatus (*func) (YbRunWithPrefetcherContext *),
 		*YBCGetGFlags()->ysql_enable_read_request_caching)
 	{
 		starter_idx = 0;
-		catalog_version = YbGetCatalogCacheVersionForTablePrefetching();
+		if (use_tserver_cache_for_auth)
+			catalog_version =
+				(YbcPgLastKnownCatalogVersionInfo)
+				{
+					.version = shared_catalog_version,
+					.version_read_time = {},
+					.is_db_catalog_version_mode = YBIsDBCatalogVersionMode(),
+				};
+		else
+			catalog_version = YbGetCatalogCacheVersionForTablePrefetching();
 	}
 	for (;;)
 	{

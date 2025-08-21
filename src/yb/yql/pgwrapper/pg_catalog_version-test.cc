@@ -3297,7 +3297,7 @@ TEST_P(PgCatalogVersionConnManagerTest,
   auto master_read_count_after = ASSERT_RESULT(GetMasterReadRPCCount());
   LOG(INFO) << ", master_read_count_before: " << master_read_count_before
             << ", master_read_count_after: " << master_read_count_after;
-  auto expected_count = (enable_ysql_conn_mgr ? 2 : 3) * num_logical_connections + 1;
+  auto expected_count = (enable_ysql_conn_mgr ? 1 : 3) * num_logical_connections + 1;
   ASSERT_EQ(master_read_count_after - master_read_count_before, expected_count);
 }
 
@@ -3393,6 +3393,7 @@ TEST_P(PgCatalogVersionConnManagerTest,
       ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "test_user"));
     };
 
+    // First verify.
     verify();
     auto master_read_count_before = ASSERT_RESULT(GetMasterReadRPCCount());
     ASSERT_OK(cluster_->SetFlagOnTServers(
@@ -3407,12 +3408,21 @@ TEST_P(PgCatalogVersionConnManagerTest,
     LOG(INFO) << ", master_read_count_before: " << master_read_count_before
               << ", master_read_count_after: " << master_read_count_after;
 
-    // Rebuilding the expired tserver cache entry costs 1 master RPCs.
-    const int num_rebuild_rpcs = 1;
-    // Each pg auth backend still costs 2 master RPCs due to:
-    // (1) logical catalog version read
-    // (2) master catalog version read for prefetching.
-    ASSERT_EQ(master_read_count_before + num_rebuild_rpcs + 2 * verify_count,
+    // Rebuilding the expired tserver cache entry costs 1 master RPCs. But because
+    // we now use shared memory catalog version for both auth phase and
+    // RelationCacheInitializePhase3() prefetching, after we reset
+    // --TEST_tserver_disable_catalog_refresh_on_heartbeat=false which causes a new
+    // shared memory catalog version, we will have two expired tserver cache entries
+    // to rebuild:
+    // (1) expired entry for the auth phase
+    // (2) expired entry for the RelationCacheInitializePhase3() phase
+    // Earlier we were using master catalog version for RelationCacheInitializePhase3(),
+    // in that case we would have rebuilt (2) in the verify() that has "First verify"
+    // comment above.
+    const int num_rebuild_rpcs = 2;
+
+    // Each pg auth backend still costs 1 master RPC due to logical catalog version read.
+    ASSERT_EQ(master_read_count_before + num_rebuild_rpcs + 1 * verify_count,
               master_read_count_after);
   } else {
     // Bounded staleness only applies when connection manager is used.
@@ -3425,6 +3435,57 @@ TEST_P(PgCatalogVersionConnManagerTest,
     // Verify the new password works.
     setenv("PGPASSWORD", "new_password", /*overwrite=*/true);
     ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "test_user"));
+  }
+}
+
+TEST_P(PgCatalogVersionConnManagerTest,
+       YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestConnectionManagerBoundedStalenessPostAuth)) {
+  const bool enable_ysql_conn_mgr = GetParam();
+  // Create a test database and a test user
+  auto conn = ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "yugabyte"));
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE test_db"));
+  ASSERT_OK(conn.ExecuteFormat("CREATE USER test_user"));
+
+  const int stale_cache_bound_ms = 15000; /* 15 seconds */
+  RestartClusterWithInvalMessageEnabled(
+      { Format("--pg_cache_response_trust_auth_lifetime_limit_ms=$0", stale_cache_bound_ms) });
+
+  // Connect as test_user this will create tserver cache entry used for both auth and post auth
+  // in node at index 0.
+  pg_ts = cluster_->tablet_server(0);
+  ASSERT_RESULT(ConnectToDBAsUser("test_db", "test_user"));
+
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "TEST_tserver_disable_catalog_refresh_on_heartbeat", "true"));
+
+  // Connect as yugabyte and disallow connection to test_db from node at index 1.
+  pg_ts = cluster_->tablet_server(1);
+  conn = ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "yugabyte"));
+  ASSERT_OK(conn.ExecuteFormat("ALTER DATABASE test_db ALLOW_CONNECTIONS false"));
+
+  pg_ts = cluster_->tablet_server(0);
+  auto expected_error = "database \"test_db\" is not currently accepting connections";
+  if (enable_ysql_conn_mgr) {
+    // Verify we can still connect to test_db as test_user from node at index 0.
+    // The stale tserver cache entries continue to go undetected because we have set the
+    // gflag --TEST_tserver_disable_catalog_refresh_on_heartbeat=true.
+    ASSERT_RESULT(ConnectToDBAsUser("test_db", "test_user"));
+
+    LOG(INFO) << "successfully connected with stale post-auth cache entry";
+
+    // Wait for the stale cache in tserver expires.
+    SleepFor(1ms * stale_cache_bound_ms);
+
+    // Verify the connection to test_db no longer works after the threshold specified by
+    // --pg_cache_response_trust_auth_lifetime_limit_ms has passed.
+    ASSERT_NOK_STR_CONTAINS(ConnectToDBAsUser("test_db", "test_user"), expected_error);
+  } else {
+    // Bounded staleness only applies when connection manager is used.
+    // When connection manager is not used, we use tserver cache but with
+    // latest master catalog version to determine that the current post-auth
+    // tserver cache entry is obsolete and we build a new one, so we should
+    // see the expected error immediately.
+    ASSERT_NOK_STR_CONTAINS(ConnectToDBAsUser("test_db", "test_user"), expected_error);
   }
 }
 
