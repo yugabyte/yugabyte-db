@@ -136,15 +136,23 @@ The remote storage bucket must be on the same cloud provider as the cluster; for
 
 ### Bucket permissions
 
-For buckets in GCS, create a custom role with the following permissions and assign the role to the principal:
+For buckets in GCS, create a custom role with the following permissions and assign the role to your bucket:
 
 ```sh
-storage.buckets.get
-storage.objects.create
 storage.objects.list
+storage.objects.delete
+storage.objects.create
+storage.objects.get
+storage.buckets.get
 ```
 
-See [IAM roles for Cloud Storage](https://cloud.google.com/storage/docs/access-control/iam-roles) in the GCS documentation.
+You must also add the following YugabyteDB Managed service agent to the bucket policy:
+
+```output
+project-426074570168@storage-transfer-service.iam.gserviceaccount.com
+```
+
+See [IAM roles for Cloud Storage](https://cloud.google.com/storage/docs/access-control/iam-roles) and [Configure access to a sink](https://cloud.google.com/storage-transfer/docs/sink-cloud-storage) in the GCS documentation.
 
 ### Manage remote backup replication
 
