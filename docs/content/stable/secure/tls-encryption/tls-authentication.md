@@ -161,7 +161,7 @@ To enable SCRAM-SHA-256-PLUS for a user already using SCRAM-SHA-256, you set the
 For example, to create a database, execute the following command:
 
 ```sh
-$ ./bin/yugabyted destroy && ./bin/yugabyted start \
+$ ./bin/yugabyted stop && ./bin/yugabyted start \
     --tserver_flags="ysql_enable_auth=true,ysql_enable_scram_channel_binding=true,$ENABLE_TLS"
 ```
 
