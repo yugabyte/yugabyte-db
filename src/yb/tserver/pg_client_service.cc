@@ -234,11 +234,11 @@ class LockablePgClientSession {
     return status;
   }
 
-  void StartShutdown() {
+  void StartShutdown(bool pg_service_shutting_down) {
     if (exchange_runnable_) {
       exchange_runnable_->StartShutdown();
     }
-    session_.StartShutdown();
+    session_.StartShutdown(pg_service_shutting_down);
   }
 
   bool ReadyToShutdown() const {
@@ -586,29 +586,40 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     shared_mem_pool_.Start(messenger->scheduler());
   }
 
-  ~Impl() override {
-    cdc_state_table_.reset();
+  void Shutdown() {
     std::vector<SessionInfoPtr> sessions;
     {
       std::lock_guard lock(mutex_);
+      if (shutting_down_) {
+        return;
+      }
+      shutting_down_ = true;
       sessions.reserve(sessions_.size());
       for (const auto& session : sessions_) {
         sessions.push_back(session);
       }
     }
+    cdc_state_table_.reset();
     for (const auto& session : sessions) {
-      session->session().StartShutdown();
+      session->session().StartShutdown(/* pg_service_shutting_down */ true);
     }
     for (const auto& session : sessions) {
       session->session().CompleteShutdown();
     }
     sessions.clear();
-    check_expired_sessions_.Shutdown();
+    {
+      std::lock_guard lock(mutex_);
+      check_expired_sessions_.Shutdown();
+    }
     check_object_id_allocators_.Shutdown();
     check_ysql_lease_.Shutdown();
     if (exchange_thread_pool_) {
       exchange_thread_pool_->Shutdown();
     }
+  }
+
+  ~Impl() override {
+    Shutdown();
   }
 
   uint64_t lease_epoch() EXCLUDES(mutex_) {
@@ -667,6 +678,9 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     });
 
     std::lock_guard lock(mutex_);
+    if (shutting_down_) {
+      return STATUS(ShutdownInProgress, "PG client service shutting down");
+    }
     auto it = sessions_.insert(std::move(session_info)).first;
     session_expiration_queue_.emplace((**it).session().expiration(), session_id);
     return Status::OK();
@@ -2183,7 +2197,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     }
     std::vector<SessionInfoPtr> not_ready_sessions;
     for (const auto& session : expired_sessions) {
-      session->session().StartShutdown();
+      session->session().StartShutdown(/* pg_service_shutting_donw= */ false);
       txn_snapshot_manager_.UnregisterAll(session->id());
     }
     AtomicFlagSleepMs(&FLAGS_TEST_delay_before_complete_expired_pg_sessions_shutdown_ms);
@@ -2721,6 +2735,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
   CoarseTimePoint lease_expiry_time_ GUARDED_BY(mutex_);
   bool ysql_lease_is_live_ GUARDED_BY(mutex_) {false};
   uint64_t lease_epoch_ GUARDED_BY(mutex_) = 0;
+  bool shutting_down_ GUARDED_BY(mutex_) = false;
 };
 
 PgClientServiceImpl::PgClientServiceImpl(
@@ -2770,6 +2785,8 @@ YSQLLeaseInfo PgClientServiceImpl::GetYSQLLeaseInfo() const {
 }
 
 size_t PgClientServiceImpl::TEST_SessionsCount() { return impl_->TEST_SessionsCount(); }
+
+void PgClientServiceImpl::Shutdown() { impl_->Shutdown(); }
 
 #define YB_PG_CLIENT_METHOD_DEFINE(r, data, method) \
 void PgClientServiceImpl::method( \

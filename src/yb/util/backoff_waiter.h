@@ -110,6 +110,7 @@ typedef GenericBackoffWaiter<CoarseMonoClock> CoarseBackoffWaiter;
 constexpr int kDefaultInitialWaitMs = 1;
 constexpr double kDefaultWaitDelayMultiplier = 1.1;
 constexpr int kDefaultMaxWaitDelayMs = 2000;
+const CoarseDuration kDefaultMaxRetryWait = std::chrono::seconds(2);
 
 // Retry helper, takes a function like:
 //     Status funcName(const MonoTime& deadline, bool *retry, ...)
@@ -122,7 +123,7 @@ Status RetryFunc(
     const std::string& retry_msg,
     const std::string& timeout_msg,
     const std::function<Status(CoarseTimePoint, bool*)>& func,
-    const CoarseDuration max_wait = std::chrono::seconds(2),
+    const CoarseDuration max_wait = kDefaultMaxRetryWait,
     const uint32_t max_jitter_ms = CoarseBackoffWaiter::kDefaultMaxJitterMs,
     const uint32_t init_exponent = CoarseBackoffWaiter::kDefaultInitExponent);
 

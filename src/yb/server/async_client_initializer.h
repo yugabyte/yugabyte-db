@@ -38,7 +38,7 @@ class AsyncClientInitializer {
 
   ~AsyncClientInitializer();
 
-  void Shutdown() { stopping_ = true; }
+  void Shutdown();
 
   void Start(const server::ClockPtr& clock = nullptr);
 
@@ -67,7 +67,7 @@ class AsyncClientInitializer {
   std::vector<std::function<void(client::YBClient*)>> post_create_hooks_;
 
   scoped_refptr<Thread> init_client_thread_;
-  std::atomic<bool> stopping_ = {false};
+  std::atomic<bool> stopping_{false};
 };
 
 }  // namespace client

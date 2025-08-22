@@ -2345,6 +2345,9 @@ void TSTabletManager::StartShutdown() {
   if (superblock_flush_bg_task_) {
     superblock_flush_bg_task_->StartShutdown();
   }
+  if (metadata_cache_holder_) {
+    metadata_cache_holder_->Shutdown();
+  }
 }
 
 void TSTabletManager::CompleteShutdown() {

@@ -803,6 +803,7 @@ void TabletServer::Shutdown() {
   client()->RequestAbortAllRpcs();
 
   tablet_manager_->StartShutdown();
+  DbServerBase::Shutdown();
   RpcAndWebServerBase::Shutdown();
   tablet_manager_->CompleteShutdown();
 

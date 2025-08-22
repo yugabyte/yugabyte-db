@@ -584,8 +584,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
           return;
         }
 
-        waiters_.emplace_back(std::bind(
-            &Impl::DoCommit, this, deadline, seal_only, _1, transaction));
+        waiters_.emplace_back(
+            std::bind(&Impl::DoCommit, this, deadline, seal_only, _1, transaction));
         lock.unlock();
         RequestStatusTablet(deadline);
         return;

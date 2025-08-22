@@ -748,8 +748,7 @@ TEST_F(AdminCliTestForTableLocks, ReleaseSharedLocksThroughMaster) {
   ASSERT_OK(conn1.ExecuteFormat("LOCK TABLE $0 IN ACCESS SHARE MODE", table_name));
   ASSERT_FALSE(ASSERT_RESULT(HasLocksMaster()));
   ASSERT_TRUE(ASSERT_RESULT(HasLocksTServer(kTServerIndex)));
-  std::string txn_id;
-  std::tie(txn_id, std::ignore) = ASSERT_RESULT(ExtractTxnAndSubtxnIdFromTServer(kTServerIndex));
+  std::string txn_id = ASSERT_RESULT(ExtractTxnAndSubtxnIdFromTServer(kTServerIndex)).first;
 
   // Having this test flag allows us to release locks for unknown transactions at the master.
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_allow_unknown_txn_release_request", "true"));

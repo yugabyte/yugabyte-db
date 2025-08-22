@@ -2132,6 +2132,11 @@ std::vector<ExternalTabletServer*> ExternalMiniCluster::tserver_daemons() const 
   return result;
 }
 
+bool ExternalMiniCluster::WasUnsafeShutdown() const {
+  auto checker = [](const auto& daemon) { return daemon && daemon->WasUnsafeShutdown(); };
+  return std::ranges::any_of(masters_, checker) || std::ranges::any_of(tablet_servers_, checker);
+}
+
 // Returns either connection manager or postgres hostport.
 HostPort ExternalMiniCluster::ysql_hostport(int node_index) const {
   return HostPort(tablet_servers_[node_index]->bind_host(),

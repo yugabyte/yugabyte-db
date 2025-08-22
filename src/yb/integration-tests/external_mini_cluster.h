@@ -409,6 +409,8 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Return all tablet servers.
   std::vector<ExternalTabletServer*> tserver_daemons() const;
 
+  bool WasUnsafeShutdown() const override;
+
   // Return all YBController servers.
   std::vector<scoped_refptr<ExternalYbController>> yb_controller_daemons() const override {
     return yb_controller_servers_;

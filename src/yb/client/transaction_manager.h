@@ -65,6 +65,10 @@ class TransactionManager {
 
   void Shutdown();
 
+  bool IsClosing();
+
+  void SetClosing();
+
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;

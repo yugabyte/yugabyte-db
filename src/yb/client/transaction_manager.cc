@@ -367,6 +367,14 @@ class TransactionManager::Impl {
     return table_state_.GetStatusTabletsVersion();
   }
 
+  bool IsClosing() {
+    return closed_.load();
+  }
+
+  void SetClosing() {
+    closed_.store(true);
+  }
+
  private:
   YBClient* const client_;
   scoped_refptr<ClockBase> clock_;
@@ -430,6 +438,14 @@ uint64_t TransactionManager::GetLoadedStatusTabletsVersion() {
 
 void TransactionManager::Shutdown() {
   impl_->Shutdown();
+}
+
+bool TransactionManager::IsClosing() {
+  return impl_->IsClosing();
+}
+
+void TransactionManager::SetClosing() {
+  impl_->SetClosing();
 }
 
 TransactionManager::TransactionManager(TransactionManager&& rhs) = default;

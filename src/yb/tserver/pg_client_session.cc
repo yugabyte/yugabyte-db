@@ -2615,10 +2615,12 @@ class PgClientSession::Impl {
     }
   }
 
-  void StartShutdown() {
-    WARN_NOT_OK(CleanupObjectLocks(), "Error cleaning up object locks");
-    if (const auto& txn = Transaction(PgClientSessionKind::kPgSession); txn) {
-      txn->Abort();
+  void StartShutdown(bool pg_service_shutting_down) {
+    if (!pg_service_shutting_down) {
+      WARN_NOT_OK(CleanupObjectLocks(), "Error cleaning up object locks");
+      if (const auto& txn = Transaction(PgClientSessionKind::kPgSession); txn) {
+        txn->Abort();
+      }
     }
     big_shared_mem_expiration_task_.StartShutdown();
   }
@@ -3656,8 +3658,8 @@ std::pair<uint64_t, std::byte*> PgClientSession::ObtainBigSharedMemorySegment(si
   return impl_->ObtainBigSharedMemorySegment(size);
 }
 
-void PgClientSession::StartShutdown() {
-  return impl_->StartShutdown();
+void PgClientSession::StartShutdown(bool pg_service_shutting_down) {
+  return impl_->StartShutdown(pg_service_shutting_down);
 }
 
 bool PgClientSession::ReadyToShutdown() const {

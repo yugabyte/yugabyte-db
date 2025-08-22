@@ -191,9 +191,16 @@ void CQLServiceImpl::Shutdown() {
   {
     std::lock_guard guard(processors_mutex_);
     processors.swap(processors_);
+    processors_closed_ = true;
   }
   for (const auto& processor : processors) {
     processor->Shutdown();
+  }
+  if (metadata_cache_) {
+    metadata_cache_->Shutdown();
+  }
+  if (system_cache_) {
+    system_cache_->Shutdown();
   }
 }
 
@@ -239,6 +246,7 @@ Result<CQLProcessor*> CQLServiceImpl::GetProcessor() {
     // Retrieve the next available processor. If none is available, allocate a new slot in the list.
     // Then create the processor outside the mutex below.
     std::lock_guard guard(processors_mutex_);
+    SCHECK(!processors_closed_, ShutdownInProgress, "CQL service is shutting down");
     if (next_available_processor_ != processors_.end()) {
       return (next_available_processor_++)->get();
     }

@@ -90,14 +90,21 @@ class SingleLocalityPool {
   }
 
   ~SingleLocalityPool() {
-    std::unique_lock<std::mutex> lock(mutex_);
+    Shutdown();
+  }
+
+  void Shutdown() {
+    UniqueLock<std::mutex> lock(mutex_);
+    if (closing_) {
+      return;
+    }
     closing_ = true;
     if (scheduled_task_ != rpc::kUninitializedScheduledTaskId) {
       manager_.client()->messenger()->scheduler().Abort(scheduled_task_);
     }
     // Have to use while, since GUARDED_BY does not understand cond wait with predicate.
     while (!Idle()) {
-      cond_.wait(lock);
+      WaitOnConditionVariable(&cond_, &lock);
     }
   }
 
@@ -284,6 +291,11 @@ class TransactionPool::Impl {
 
   ~Impl() = default;
 
+  void Shutdown() {
+    global_pool_.Shutdown();
+    local_pool_.Shutdown();
+  }
+
   YBTransactionPtr Take(
       ForceGlobalTransaction force_global_transaction, CoarseTimePoint deadline,
       ForceCreateTransaction force_create_txn = ForceCreateTransaction::kFalse) EXCLUDES(mutex_) {
@@ -318,6 +330,10 @@ TransactionPool::TransactionPool(TransactionManager* manager, MetricEntity* metr
 }
 
 TransactionPool::~TransactionPool() {
+}
+
+void TransactionPool::Shutdown() {
+  impl_->Shutdown();
 }
 
 YBTransactionPtr TransactionPool::Take(
