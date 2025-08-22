@@ -122,11 +122,9 @@ To restore a backup of a cluster:
 
 Use remote backup replication to copy all your cluster backups (scheduled, incremental, and on demand) to a storage bucket in the same cloud provider.
 
-New backups are transferred once a day.
+New backups are transferred to the bucket once a day.
 
-To ensure no data is lost, the transfer job remains active for a few additional days, so that all backups created before the time of disablement are fully replicated.
-
-Disabling backup replication does not immediately stop transfers. Because Google Cloud does not provide an SLA on transfer completion time or on how many transfer operations may be needed, you should keep destination buckets available for at least 7 days after disabling backup replication or after changing remote backup regions. This ensures that all in-progress and pending transfers complete successfully.
+Disabling backup replication does not immediately stop transfers. To ensure no data is lost, the transfer job remains active for a few additional days, so that all backups created before the time of disablement are fully replicated. Because Google Cloud does not provide an SLA on transfer completion time or on how many transfer operations may be needed, you should keep destination buckets available for at least 7 days after disabling backup replication or after changing remote backup regions. This ensures that all in-progress and pending transfers complete successfully.
 
 Remote backup replication counts against your data transfer allowance. This may incur additional costs for network transfer, especially for cross-region transfers, if usage exceeds your cluster allowance. To avoid cross-region data transfer costs, use a bucket in the same region as the cluster.
 
@@ -138,7 +136,7 @@ Currently, only clusters deployed to GCP are supported.
 
 It is highly recommended to use a new, empty bucket rather than one that already contains data. Although safeguards are in place, remote replication requires delete permissions. To minimize the risk of accidental data loss, using a fresh bucket is the safest approach.
 
-The remote storage bucket must be on the same cloud provider as the cluster; for clusters deployed in GCP, the bucket must be in Google Cloud Storage. Transfer is performed using [Google Storage Transfer Service](https://cloud.google.com/storage-transfer/docs/overview).
+The remote storage bucket must be on the same cloud provider as the cluster; for clusters deployed in GCP, the bucket must be in Google Cloud Storage.Transfer is performed using [Google Storage Transfer Service](https://cloud.google.com/storage-transfer/docs/overview).
 
 #### Bucket setup
 
