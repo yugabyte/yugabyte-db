@@ -338,6 +338,7 @@ void XClusterPoller::DoPoll() {
       if (!ddl_queue_status.ok()) {
         LOG_WITH_PREFIX(WARNING) << "Failed to process existing DDL queue: "
                                  << ddl_queue_status.ToString();
+        IncrementPollFailures();
         return SchedulePoll();
       }
       // We can only send a new GetChanges request once we finish processing this batch.
@@ -500,9 +501,7 @@ void XClusterPoller::HandleGetChangesResponse(
       }
 
       // In case of errors, try polling again with backoff
-      poll_failures_ =
-          std::min(poll_failures_ + 1, GetAtomicFlag(&FLAGS_replication_failure_delay_exponent));
-      xcluster_consumer_->IncrementPollFailureCount();
+      IncrementPollFailures();
       return SchedulePoll();
     }
     // Recover slowly if we're congested.
@@ -841,6 +840,13 @@ Status XClusterPoller::InitializeWaitState(const std::string& ts_uuid) {
   wait_state_->UpdateTabletId(consumer_tablet_info_.tablet_id);
 
   return Status::OK();
+}
+
+void XClusterPoller::IncrementPollFailures() {
+  poll_failures_ =
+      std::min(poll_failures_ + 1, GetAtomicFlag(&FLAGS_replication_failure_delay_exponent));
+
+  xcluster_consumer_->IncrementPollFailureCount();
 }
 
 }  // namespace tserver
