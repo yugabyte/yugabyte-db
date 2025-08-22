@@ -1032,6 +1032,15 @@
     showSection = true
     hideLink = true
 
+[[preview_yugabyte-voyager]]
+  name = "Misc"
+  identifier = "yb-voyager-misc"
+  parent = "reference-voyager"
+  weight = 120
+  [preview_yugabyte-voyager.params]
+    showSection = true
+    hideLink = true
+
 ########## Menus for stable
 
 [[stable]]
