@@ -50,6 +50,7 @@
      "(^managed/src/main/resources/openapi_templates/)",
      "(^yb_release_manifest.json$)",
      "(^managed/client/java/.*/pom.xml)",
+     "(^src/yb/tools/.*pl$)",
      "(^yugabyted-ui/ui/package-lock.json)"
   ],
   "linters": {

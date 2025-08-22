@@ -247,3 +247,13 @@ target_link_libraries(hnsw_tool boost_program_options yb_util yb_docdb vector_in
 add_executable(clockbound_dump clockbound_dump.cc)
 target_link_libraries(clockbound_dump
   clockbound yb_common yb_util)
+
+configure_file(
+  ${CMAKE_SOURCE_DIR}/src/yb/tools/flamegraph.pl
+  ${CMAKE_BINARY_DIR}/bin/flamegraph.pl
+  COPYONLY)
+
+configure_file(
+  ${CMAKE_SOURCE_DIR}/src/yb/tools/stackcollapse-perf.pl
+  ${CMAKE_BINARY_DIR}/bin/stackcollapse-perf.pl
+  COPYONLY)
