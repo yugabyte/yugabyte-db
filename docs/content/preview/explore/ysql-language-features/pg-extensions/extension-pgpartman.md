@@ -332,7 +332,10 @@ ERROR:  Partition table public.orders is a colocated table hence registering it 
 
 Depending on the type of xCluster deployment, pg_partman may be used.
 
-Note that if you are [using pg_cron to manage tasks](#maintain-partitions-using-pg-cron), you must install it on a separate database that is not part of the xCluster configuration. <!-- TODO From 2025.1.1: Only applicable in non-automatic mode. In automatic mode you can have pg_cron on the same db -->
+Note that if you are [using pg_cron to manage tasks](#maintain-partitions-using-pg-cron):
+
+- In v2025.1.0 or earlier, or if you are using semi-automatic or manual mode, you must install pg_cron on a separate database that is not part of the xCluster configuration.
+- In v2025.1.1 or later _in automatic mode_, you can install pg_cron on the same database.
 
 For more information on xCluster limitations, refer to [Limitations](../../../../architecture/docdb-replication/async-replication/#limitations).
 
@@ -347,7 +350,7 @@ During disaster recovery switchover (or failover and repair):
 1. Disable the pg_partman cron job on the original xCluster primary before initiating switchover.
 1. After switchover or failover, enable the pg_partman cron job on the new primary.
 
-<!-- TODO From 2025.1.1 - This can be replaced with: pg_cron will only execute on the Primary universe. On switchover pg_cron will automatically switchover to the new Primary universe as well -->
+In v2025.1.1 and later, pg_cron will only execute on the Primary universe. On switchover, pg_cron will automatically switch over to the new Primary universe as well.
 
 **Semi-automatic mode**
 

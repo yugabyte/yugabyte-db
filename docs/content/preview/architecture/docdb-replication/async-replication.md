@@ -90,7 +90,7 @@ _xCluster safe time_ advances as replication proceeds but lags behind real-time 
 
 ![Transactional xCluster](/images/deploy/xcluster/xcluster-transactional.png)
 
-If the source universe fails, we can discard all incomplete information in the target universe by rewinding it to the latest _xCluster safe time_ (1:59:56 PM in the example) using [Point-in-Time Recovery (PITR)](../../../manage/backup-restore/point-in-time-recovery/) (which runs on the replica cluster only). The result will be a consistent database that includes only the transactions from the source universe that committed at or before the _xCluster safe time_. Unlike with non-transactional replication, there is no need to handle torn transactions.
+If the source universe fails, we can discard all incomplete information in the target universe by rewinding it to the latest _xCluster safe time_ (1:59:56 PM in the example) using [Point-in-Time Recovery (PITR)](../../../manage/backup-restore/point-in-time-recovery/). The result will be a consistent database that includes only the transactions from the source universe that committed at or before the _xCluster safe time_. Unlike with non-transactional replication, there is no need to handle torn transactions.
 
 Target universe read-only transactions run at serializable isolation level on a single consistent snapshot as of the _xCluster safe time_.
 
@@ -291,7 +291,7 @@ Improper use can compromise replication consistency and lead to data divergence.
 
 - CDC
 
-  For moving data out of YugabyteDB, set up CDC on the xCluster source. CDC on the xCluster target is not supported.
+  For moving data out of YugabyteDB, set up CDC on the xCluster source universe. CDC on the xCluster target universe is not supported.
 
 #### Transactional Automatic mode
 
@@ -301,7 +301,7 @@ Improper use can compromise replication consistency and lead to data divergence.
 - DDLs related to `PUBLICATION` and `SUBSCRIPTION` are not supported.
 - Replication of colocated tables is not yet supported.  See {{<issue 25926>}}.
 - Rewinding of sequences (for example, restarting a sequence so it will repeat values) is discouraged because it may not be fully rolled back during unplanned failovers.
-- The `TRUNCATE` command is only supported in v2025.1.1 and later (see {{<issue 23958>}}).
+- The `TRUNCATE` command is only supported in v2025.1.1 and later.
 - While Automatic mode is active, you can only `CREATE`, `DROP`, or `ALTER` the following extensions: file_fdw, fuzzystrmatch, pgcrypto, postgres_fdw, sslinfo, uuid-ossp, hypopg, pg_stat_monitor, and pgaudit. All other extensions must be created _before_ setting up automatic mode.
 - If using pg_partman, enable the cron job on the source cluster only. After switchover or failover, move the cron job to the new primary. Refer to pg_partman [Limitations](../../../explore/ysql-language-features/pg-extensions/extension-pgpartman/#xcluster). <!-- TODO Remove for 2025.1.1-->
 
@@ -353,7 +353,7 @@ Improper use can compromise replication consistency and lead to data divergence.
 
 - CDC
 
-  For moving data out of YugabyteDB, set up CDC on the xCluster source. CDC on the xCluster target is not supported.
+  For moving data out of YugabyteDB, set up CDC on the xCluster source universe. CDC on the xCluster target universe is not supported.
 
 #### Bi-directional
 
