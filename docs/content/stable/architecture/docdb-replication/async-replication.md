@@ -9,6 +9,8 @@ menu:
     identifier: architecture-docdb-async-replication
     parent: architecture-docdb-replication
     weight: 300
+rightNav:
+  hideH4: true
 type: docs
 ---
 
@@ -86,7 +88,7 @@ _xCluster safe time_ advances as replication proceeds but lags behind real-time 
 
 ![Transactional xCluster](/images/deploy/xcluster/xcluster-transactional.png)
 
-If the source universe fails, we can discard all incomplete information in the target universe by rewinding it to the latest _xCluster safe time_ (1:59:56 PM in the example) using [Point-in-Time Recovery (PITR)](../../../manage/backup-restore/point-in-time-recovery/) (which runs on the replica cluster only). The result will be a consistent database that includes only the transactions from the source universe that committed at or before the _xCluster safe time_. Unlike with non-transactional replication, there is no need to handle torn transactions.
+If the source universe fails, we can discard all incomplete information in the target universe by rewinding it to the latest _xCluster safe time_ (1:59:56 PM in the example) using [Point-in-Time Recovery (PITR)](../../../manage/backup-restore/point-in-time-recovery/). The result will be a consistent database that includes only the transactions from the source universe that committed at or before the _xCluster safe time_. Unlike with non-transactional replication, there is no need to handle torn transactions.
 
 Target universe read-only transactions run at serializable isolation level on a single consistent snapshot as of the _xCluster safe time_.
 
@@ -234,22 +236,7 @@ The following deployment scenarios are not yet supported:
 
 ## Limitations
 
-<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
-  <li>
-    <a href="#xcluster-ysql-limitations" class="nav-link active" id="xcluster-ysql-limitations-tab" data-bs-toggle="tab"
-    role="tab" aria-controls="xcluster-ysql-limitations" aria-selected="true">
-      YSQL
-    </a>
-  </li>
-  <li>
-    <a href="#xcluster-ycql-limitations" class="nav-link" id="xcluster-ycql-limitations-tab" data-bs-toggle="tab"
-    role="tab" aria-controls="xcluster-ycql-limitations" aria-selected="true">
-      YCQL
-    </a>
-  </li>
-</ul>
-<div class="tab-content">
-<div id="xcluster-ysql-limitations" class="tab-pane fade show active" role="tabpanel" aria-labelledby="xcluster-ysql-limitations-tab">
+### YSQL
 
 - `CREATE TABLE AS` and `SELECT INTO` DDL statements are not supported. You can work around this by breaking the DDL into a `CREATE TABLE` followed by `INSERT SELECT`.
 
@@ -278,12 +265,6 @@ The following deployment scenarios are not yet supported:
     Non-Transactional
     </a>
 </li>
-<li>
-    <a href="#ysql-kubernetes" class="nav-link" id="ysql-kubernetes-tab" data-bs-toggle="tab"
-    role="tab" aria-controls="ysql-kubernetes" aria-selected="false">
-    Kubernetes
-    </a>
-</li>
 </ul>
 <div class="tab-content">
 <div id="ysql-transactional" class="tab-pane fade show active" role="tabpanel" aria-labelledby="ysql-transactional-tab">
@@ -308,7 +289,7 @@ Improper use can compromise replication consistency and lead to data divergence.
 
 - CDC
 
-  For moving data out of YugabyteDB, set up CDC on the xCluster source. CDC on the xCluster target is not supported.
+  For moving data out of YugabyteDB, set up CDC on the xCluster source universe. CDC on the xCluster target universe is not supported.
 
 #### Transactional Automatic mode
 
@@ -318,14 +299,15 @@ Improper use can compromise replication consistency and lead to data divergence.
 - DDLs related to `PUBLICATION` and `SUBSCRIPTION` are not supported.
 - Replication of colocated tables is not yet supported.  See {{<issue 25926>}}.
 - Rewinding of sequences (for example, restarting a sequence so it will repeat values) is discouraged because it may not be fully rolled back during unplanned failovers.
-- The `TRUNCATE` command is only supported in v2025.1.1 and later (see {{<issue 23958>}}).
-- While Automatic mode is active, you can only `CREATE`, `DROP`, or `ALTER` the following extensions: `file_fdw`, `fuzzystrmatch`, `pgcrypto`, `postgres_fdw`, `sslinfo`, `uuid-ossp`, `hypopg`, `pg_stat_monitor`, and `pgaudit`. All other extensions must be created _before_ setting up automatic mode.
-- If using pgPartman, enable the cron job on the source cluster only. After switchover or failover, move the cron job to the new primary. Refer to pgPartman [Limitations](../../../explore/ysql-language-features/pg-extensions/extension-pgpartman/#xcluster).
+- The `TRUNCATE` command is only supported in v2025.1.1 and later.
+- While Automatic mode is active, you can only `CREATE`, `DROP`, or `ALTER` the following extensions: file_fdw, fuzzystrmatch, pgcrypto, postgres_fdw, sslinfo, uuid-ossp, hypopg, pg_stat_monitor, and pgaudit. All other extensions must be created _before_ setting up automatic mode.
+- If using pg_partman on v2025.1.0 or earlier, enable the cron job on the source cluster only. After switchover or failover, move the cron job to the new primary. Refer to pg_partman [Limitations](../../../explore/ysql-language-features/pg-extensions/extension-pgpartman/#xcluster).
 
 #### Transactional Semi-Automatic and Manual mode
 
 - Schema changes are not automatically replicated. All DDL changes must be manually applied to both source and target universes. For more information, refer to [DDLs in semi-automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/#making-ddl-changes) and [DDLs in manual mode](../../../deploy/multi-dc/async-replication/async-transactional-tables).
-  - Exception: DDLs related to PUBLICATION and SUBSCRIPTION should only be used on the source universe.
+
+  An exception are DDLs related to PUBLICATION and SUBSCRIPTION, which should only be used on the source universe.
 
 - `ALTER TABLE` DDLs that involve table rewrites (see [Alter table operations that involve a table rewrite](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-table-operations-that-involve-a-table-rewrite)) may not be performed while replication is running; you will need to drop replication, perform those DDL(s) on the source universe, then create replication again.
 
@@ -335,9 +317,9 @@ Improper use can compromise replication consistency and lead to data divergence.
 
 - While xCluster is active, user-defined composite, enum, and range types and arrays of those types should not be created, altered, or dropped. Create these types before xCluster is set up. If you need to modify these types, you must first drop xCluster replication, make the necessary changes, and then re-enable xCluster via [bootstrap](#replication-bootstrapping).
 
-- pgPartman requires additional setup in Semi-Automatic mode. Refer to pgPartman [Limitations](../../../explore/ysql-language-features/pg-extensions/extension-pgpartman/#xcluster).
+- pg_partman requires additional setup in Semi-Automatic mode. Refer to pg_partman [Limitations](../../../explore/ysql-language-features/pg-extensions/extension-pgpartman/#xcluster).
 
-  pgPartman is not supported in Manual mode.
+  pg_partman is not supported in Manual mode.
 
 </div>
 
@@ -357,9 +339,9 @@ Improper use can compromise replication consistency and lead to data divergence.
 
 - The `TRUNCATE` command is not supported.
 
-- pgPartman
+- pg_partman
 
-    pgPartman is supported but not recommended. Refer to pgPartman [Limitations](../../../explore/ysql-language-features/pg-extensions/extension-pgpartman/#xcluster).
+    pg_partman is supported but not recommended. Refer to pg_partman [Limitations](../../../explore/ysql-language-features/pg-extensions/extension-pgpartman/#xcluster).
 
 #### Uni-directional
 
@@ -369,7 +351,7 @@ Improper use can compromise replication consistency and lead to data divergence.
 
 - CDC
 
-  For moving data out of YugabyteDB, set up CDC on the xCluster source. CDC on the xCluster target is not supported.
+  For moving data out of YugabyteDB, set up CDC on the xCluster source universe. CDC on the xCluster target universe is not supported.
 
 #### Bi-directional
 
@@ -397,45 +379,15 @@ Improper use can compromise replication consistency and lead to data divergence.
 
 </div>
 
-<div id="ysql-kubernetes" class="tab-pane fade" role="tabpanel" aria-labelledby="ysql-kubernetes-tab">
-
-- xCluster replication can be set up with Kubernetes-deployed universes. However, the source and target must be able to communicate by directly referencing the pods in the other universe. In practice, this either means that the two universes must be part of the same Kubernetes cluster or that two Kubernetes clusters must have DNS and routing properly set up amongst themselves.
-- Having two YugabyteDB universes, each in their own standalone Kubernetes cluster, communicating with each other via a load balancer, is not currently supported. See [#2422](https://github.com/yugabyte/yugabyte-db/issues/2422) for details.
-
-</div>
 </div>
 
-</div>
-<div id="xcluster-ycql-limitations" class="tab-pane fade" role="tabpanel" aria-labelledby="xcluster-ycql-limitations-tab">
+### YCQL
 
-<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
-<li>
-    <a href="#ycql-transactional" class="nav-link active" id="ycql-transactional-tab" data-bs-toggle="tab"
-    role="tab" aria-controls="ycql-transactional" aria-selected="true">
-    Transactional
-    </a>
-</li>
-<li>
-    <a href="#ycql-non-transactional" class="nav-link" id="ycql-non-transactional-tab" data-bs-toggle="tab"
-    role="tab" aria-controls="ycql-non-transactional" aria-selected="false">
-    Non-Transactional
-    </a>
-</li>
-<li>
-    <a href="#ycql-kubernetes" class="nav-link" id="ycql-kubernetes-tab" data-bs-toggle="tab"
-    role="tab" aria-controls="ycql-kubernetes" aria-selected="false">
-    Kubernetes
-    </a>
-</li>
-</ul>
-<div class="tab-content">
-<div id="ycql-transactional" class="tab-pane fade show active" role="tabpanel" aria-labelledby="ycql-transactional-tab">
+#### Transactional
 
 YCQL is not currently supported.
 
-</div>
-
-<div id="ycql-non-transactional" class="tab-pane fade " role="tabpanel" aria-labelledby="ycql-non-transactional-tab">
+#### Non-Transactional
 
 ##### Uni-directional
 
@@ -449,15 +401,8 @@ YCQL is not currently supported.
 
   Stop your workload on one side, wait for draining to complete, and take a backup on the still-running side.
 
-</div>
+### Kubernetes
 
-<div id="ycql-kubernetes" class="tab-pane fade " role="tabpanel" aria-labelledby="ycql-kubernetes-tab">
+xCluster replication can be set up with Kubernetes-deployed universes. However, the source and target must be able to communicate by directly referencing the pods in the other universe. In practice, this either means that the two universes must be part of the same Kubernetes cluster or that two Kubernetes clusters must have DNS and routing properly set up amongst themselves.
 
-- xCluster replication can be set up with Kubernetes-deployed universes. However, the source and target must be able to communicate by directly referencing the pods in the other universe. In practice, this either means that the two universes must be part of the same Kubernetes cluster or that two Kubernetes clusters must have DNS and routing properly set up amongst themselves.
-- Having two YugabyteDB universes, each in their own standalone Kubernetes cluster, communicating with each other via a load balancer, is not currently supported. See [#2422](https://github.com/yugabyte/yugabyte-db/issues/2422) for details.
-
-</div>
-
-</div>
-
-</div>
+Having two YugabyteDB universes, each in their own standalone Kubernetes cluster, communicating with each other via a load balancer, is not currently supported. See [#2422](https://github.com/yugabyte/yugabyte-db/issues/2422) for details.

@@ -303,7 +303,7 @@ Improper use can compromise replication consistency and lead to data divergence.
 - Rewinding of sequences (for example, restarting a sequence so it will repeat values) is discouraged because it may not be fully rolled back during unplanned failovers.
 - The `TRUNCATE` command is only supported in v2025.1.1 and later.
 - While Automatic mode is active, you can only `CREATE`, `DROP`, or `ALTER` the following extensions: file_fdw, fuzzystrmatch, pgcrypto, postgres_fdw, sslinfo, uuid-ossp, hypopg, pg_stat_monitor, and pgaudit. All other extensions must be created _before_ setting up automatic mode.
-- If using pg_partman, enable the cron job on the source cluster only. After switchover or failover, move the cron job to the new primary. Refer to pg_partman [Limitations](../../../explore/ysql-language-features/pg-extensions/extension-pgpartman/#xcluster). <!-- TODO Remove for 2025.1.1-->
+- If using pg_partman on v2025.1.0 or earlier, enable the cron job on the source cluster only. After switchover or failover, move the cron job to the new primary. Refer to pg_partman [Limitations](../../../explore/ysql-language-features/pg-extensions/extension-pgpartman/#xcluster).
 
 #### Transactional Semi-Automatic and Manual mode
 
