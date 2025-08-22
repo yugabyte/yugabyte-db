@@ -122,7 +122,11 @@ To restore a backup of a cluster:
 
 Use remote backup replication to copy all your cluster backups (scheduled, incremental, and on demand) to a storage bucket in the same cloud provider.
 
-Transfer of your backups run once a day. Note that disabling backup replication doesn't stop transfers instantly. Any in-progress backup transfers run to completion (assuming the bucket is still configured).
+New backups are transferred once a day.
+
+To ensure no data is lost, the transfer job remains active for a few additional days, so that all backups created before the time of disablement are fully replicated.
+
+Disabling backup replication does not immediately stop transfers. Because Google Cloud does not provide an SLA on transfer completion time or on how many transfer operations may be needed, you should keep destination buckets available for at least 7 days after disabling backup replication or after changing remote backup regions. This ensures that all in-progress and pending transfers complete successfully.
 
 Remote backup replication counts against your data transfer allowance. This may incur additional costs for network transfer, especially for cross-region transfers, if usage exceeds your cluster allowance. To avoid cross-region data transfer costs, use a bucket in the same region as the cluster.
 
@@ -132,27 +136,39 @@ Currently, only clusters deployed to GCP are supported.
 
 ### Prerequisites
 
+It is highly recommended to use a new, empty bucket rather than one that already contains data. Although safeguards are in place, remote replication requires delete permissions. To minimize the risk of accidental data loss, using a fresh bucket is the safest approach.
+
 The remote storage bucket must be on the same cloud provider as the cluster; for clusters deployed in GCP, the bucket must be in Google Cloud Storage. Transfer is performed using [Google Storage Transfer Service](https://cloud.google.com/storage-transfer/docs/overview).
 
-### Bucket permissions
+#### Bucket setup
 
-For buckets in GCS, create a custom role with the following permissions and assign the role to your bucket:
+1. Identify and configure the Google Cloud Storage buckets that will serve as replication targets for your backup data.
+2. Set up service account permissions.
 
-```sh
-storage.objects.list
-storage.objects.delete
-storage.objects.create
-storage.objects.get
-storage.buckets.get
-```
+    Grant the required permissions to the Storage Transfer Service agent on each target bucket.
 
-You must also add the following YugabyteDB Managed service agent to the bucket policy:
+    Service Account Principal:
 
-```output
-project-426074570168@storage-transfer-service.iam.gserviceaccount.com
-```
+    ```sh
+    project-426074570168@storage-transfer-service.iam.gserviceaccount.com
+    ```
 
-See [IAM roles for Cloud Storage](https://cloud.google.com/storage/docs/access-control/iam-roles) and [Configure access to a sink](https://cloud.google.com/storage-transfer/docs/sink-cloud-storage) in the GCS documentation.
+    The service account must have the following permissions on each target bucket:
+
+    ```sh
+    storage.objects.list
+    storage.objects.delete  
+    storage.objects.create
+    storage.objects.get
+    storage.buckets.get
+    ```
+
+    You can provide these permissions using one of the following methods:
+
+    - Custom role (Recommended): Create a custom IAM role with only the required permissions.
+    - Predefined role: Use existing Google Cloud IAM roles that include the necessary permissions.
+
+For more information, see [IAM roles for Cloud Storage](https://cloud.google.com/storage/docs/access-control/iam-roles) and [Configure access to a sink](https://cloud.google.com/storage-transfer/docs/sink-cloud-storage) in the GCS documentation.
 
 ### Manage remote backup replication
 
