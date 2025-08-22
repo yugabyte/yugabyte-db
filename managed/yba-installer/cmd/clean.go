@@ -13,9 +13,9 @@ func cleanCmd() *cobra.Command {
 	var removeData bool
 	clean := &cobra.Command{
 		Use:   "clean [--all]",
-		Short: "The clean command uninstalls your YugabyteDB Anywhere instance.",
+		Short: "The clean command uninstalls your YugabyteDB Anywhere instance. (alias: uninstall)",
 		Long: `
-    	The clean command performs a complete removal of your YugabyteDB Anywhere
+    	The clean (alias: uninstall) command performs a complete removal of your YugabyteDB Anywhere
     	Instance by stopping all services and (optionally) removing data directories.`,
 		Aliases: []string{"uninstall"},
 		Args:    cobra.MaximumNArgs(1),
