@@ -155,7 +155,7 @@ Determine the status of a backup task:
 --base_dir *base-directory*
 : The base directory for the yugabyted server.
 
---cloud_storage_uri *cloud_storage_location*
+--cloud_storage_uri *cloud-storage-location*
 : Cloud location to store the backup data files.
 
 --database *database*
@@ -617,7 +617,7 @@ Usage: yugabyted finalize_upgrade [flags]
 For example, finalize the upgrade process after upgrading all the nodes of the YugabyteDB cluster to the new version as follows:
 
 ```sh
-yugabyted finalize_upgrade --upgrade_ysql_timeout <time_limit_ms>
+yugabyted finalize_upgrade --upgrade_ysql_timeout <upgrade-timeout-in-ms>
 ```
 
 Note that `finalize_upgrade` is a cluster-level operation; you don't need to run it on every node.
@@ -630,7 +630,7 @@ Note that `finalize_upgrade` is a cluster-level operation; you don't need to run
 --base_dir *base-directory*
 : The base directory for the yugabyted server.
 
---upgrade_ysql_timeout *upgrade_timeout_in_ms*
+--upgrade_ysql_timeout *upgrade-timeout-in-ms*
 : Custom timeout for the YSQL upgrade in milliseconds. Default timeout is 60 seconds.
 
 -----
@@ -685,7 +685,7 @@ Determine the status of a restore task:
 --base_dir *base-directory*
 : The base directory for the yugabyted server.
 
---cloud_storage_uri *cloud_storage_location*
+--cloud_storage_uri *cloud-storage-location*
 : Cloud location to store the backup data files.
 
 --database *database*
@@ -771,7 +771,7 @@ For more advanced examples, see [Examples](#examples).
 For on-premises deployments, consider racks as zones to treat them as fault domains.
 {{</tip>}}
 
---fault_tolerance *fault_tolerance*
+--fault_tolerance *fault-tolerance*
 : Determines the fault tolerance constraint to be applied on the data placement policy of the YugabyteDB cluster. This flag can accept the following values: none, zone, region, cloud.
 
 --ui *bool*
@@ -785,7 +785,7 @@ For on-premises deployments, consider racks as zones to treat them as fault doma
 : When authentication is enabled, the default user is `yugabyte` in YSQL, and `cassandra` in YCQL. When a cluster is started,`yugabyted` outputs a message `Credentials File is stored at <credentials_file_path.txt>` with the credentials file location.
 : For examples creating secure local multi-node, multi-zone, and multi-region clusters, refer to [Examples](#examples).
 
---read_replica *read_replica_node*
+--read_replica *read-replica-node*
 : Use this flag to start a read replica node.
 
 --backup_daemon *backup-daemon-process*
@@ -832,11 +832,11 @@ The advanced flags supported by the `start` command are as follows:
 --certs_dir *certs-directory*
 : The path to the directory which has the certificates to be used for secure deployment. Must be an absolute path. Default path is `~/<base_dir>/certs`.
 
---master_flags *master_flags*
+--master_flags *master-flags*
 : Specify extra [master flags](../../../reference/configuration/yb-master#configuration-flags) as a set of key value pairs. Format (key=value,key=value).
 : To specify any CSV value flags, enclose the values inside curly braces `{}`. Refer to [Pass additional flags to YB-Master and YB-TServer](#pass-additional-flags-to-yb-master-and-yb-tserver).
 
---tserver_flags *tserver_flags*
+--tserver_flags *tserver-flags*
 : Specify extra [tserver flags](../../../reference/configuration/yb-tserver#configuration-flags) as a set of key value pairs. Format (key=value,key=value).
 : To specify any CSV value flags, enclose the values inside curly braces `{}`. Refer to [Pass additional flags to YB-Master and YB-TServer](#pass-additional-flags-to-yb-master-and-yb-tserver).
 
@@ -978,8 +978,8 @@ For example, to create a new xCluster replication, execute the following command
 
 ```sh
 ./bin/yugabyted xcluster checkpoint \
-    --replication_id <replication_id> \
-    --databases <comma_seperated_database_names>
+    --replication_id <xcluster-replication-id> \
+    --databases <comma-seperated-database-names>
 ```
 
 The `checkpoint` command takes a snapshot of the database and determines whether any of the databases to be replicated need to be copied to the target ([bootstrapped](#bootstrap-databases-for-xcluster)). If bootstrapping is required for any database, yugabyted outputs a message `Bootstrap is required for database(s)` along with the commands required for bootstrapping.
@@ -1006,16 +1006,16 @@ For example, to set up xCluster replication between two clusters, run the follow
 
 ```sh
 ./bin/yugabyted xcluster set_up \
-    --target_address <ip_of_any_target_cluster_node> \
-    --replication_id <replication_id>
+    --target_address <ip-of-any-target-node> \
+    --replication_id <xcluster-replication-id>
 ```
 
 If bootstrap was required for any database, add the `--bootstrap_done` flag after completing the bootstrapping steps:
 
 ```sh
 ./bin/yugabyted xcluster set_up \
-    --target_address <ip_of_any_target_cluster_node> \
-    --replication_id <replication_id> \
+    --target_address <ip-of-any-target-node> \
+    --replication_id <xcluster-replication-id> \
     --bootstrap_done
 ```
 
@@ -1051,7 +1051,7 @@ To display the status of a specific xCluster replication, run the following comm
 
 ```sh
 ./bin/yugabyted xcluster status \
-    --replication_id <replication_id>
+    --replication_id <xcluster-replication-id>
 ```
 
 ##### status flags
@@ -1074,8 +1074,8 @@ For example, delete an xCluster replication using the following command:
 
 ```sh
 ./bin/yugabyted xcluster delete \
-    --replication_id <replication_id> \
-    --target_address <ip_of_any_target_cluster_node>
+    --replication_id <xcluster-replication-id> \
+    --target_address <ip-of-any-target-node>
 ```
 
 ##### delete flags
@@ -1833,17 +1833,17 @@ To set up xCluster replication between two secure clusters, do the following:
 
     ```sh
     ./bin/yugabyted xcluster checkpoint \
-        --replication_id <replication_id> \
-        --databases <list_of_databases>
+        --replication_id <xcluster-replication-id> \
+        --databases <xcluster-databases>
     ```
 
 1. [Bootstrap](#bootstrap-databases-for-xcluster) the databases that you included in the replication.
 
 1. If the root certificates for the source and target clusters are different, (for example, the node certificates for target and source nodes were not created on the same machine), copy the `ca.crt` for the source cluster to all target nodes, and vice-versa. If the root certificate for both source and target clusters is the same, you can skip this step.
 
-    Locate the `ca.crt` file for the source cluster on any node at `<base_dir>/certs/ca.crt`. Copy this file to all target nodes at `<base_dir>/certs/xcluster/<replication_id>/`. The `<replication_id>` must be the same as you configured in Step 1.
+    Locate the `ca.crt` file for the source cluster on any node at `<base_dir>/certs/ca.crt`. Copy this file to all target nodes at `<base_dir>/certs/xcluster/<xcluster-replication-id>/` (create the directory if it is not there). The `<xcluster-replication-id>` must be the same as you configured in Step 1.
 
-    Similarly, copy the `ca.crt` file for the target cluster on any node at `<base_dir>/certs/ca.crt` to source cluster nodes at `<base_dir>/certs/xcluster/<replication_id>/`.
+    Similarly, copy the `ca.crt` file for the target cluster on any node at `<base_dir>/certs/ca.crt` to source cluster nodes at `<base_dir>/certs/xcluster/<xcluster-replication-id>/` (create the directory if it is not there).
 
 1. Set up the xCluster replication between the clusters by running the `yugabyted xcluster set_up` command from any of the source cluster nodes.
 
@@ -1851,16 +1851,16 @@ To set up xCluster replication between two secure clusters, do the following:
 
     ```sh
     ./bin/yugabyted xcluster set_up \
-        --replication_id <replication_id> \
-        --target_address <IP-of-any-target-node>
+        --replication_id <xcluster-replication-id> \
+        --target_address <ip-of-any-target-node>
     ```
 
     If any of the databases to be replicated has data, complete the bootstrapping (directions are provided in the output of `yugabyted xcluster checkpoint`) and add the `--bootstrap_done` flag in the command. For example:
 
     ```sh
     ./bin/yugabyted xcluster set_up \
-        --replication_id <replication_id> \
-        --target_address <IP-of-any-target-node> \
+        --replication_id <xcluster-replication-id> \
+        --target_address <ip-of-any-target-node> \
         --bootstrap_done
     ```
 
@@ -1878,8 +1878,8 @@ To set up xCluster replication between two clusters, do the following:
 
     ```sh
     ./bin/yugabyted xcluster checkpoint \
-        --replication_id <replication_id> \
-        --databases <list_of_databases>
+        --replication_id <xcluster-replication-id> \
+        --databases <list-of-databases>
     ```
 
 1. [Bootstrap](#bootstrap-databases-for-xcluster) the databases that you included in the replication.
@@ -1890,7 +1890,7 @@ To set up xCluster replication between two clusters, do the following:
 
     ```sh
     ./bin/yugabyted xcluster set_up \
-        --replication_id <replication_id> \
+        --replication_id <xcluster-replication-id> \
         --target_address <IP-of-any-target-node>
     ```
 
@@ -1898,7 +1898,7 @@ To set up xCluster replication between two clusters, do the following:
 
     ```sh
     ./bin/yugabyted xcluster set_up \
-        --replication_id <replication_id> \
+        --replication_id <xcluster-replication-id> \
         --target_address <IP-of-any-target-node> \
         --bootstrap_done
     ```
@@ -1930,7 +1930,7 @@ To delete an xCluster replication, use the `yugabyted xcluster delete` command a
 
 ```sh
 ./bin/yugabyted xcluster delete \
-    --replication_id <replication_id> \
+    --replication_id <xcluster-replication-id> \
     --target_address <IP-of-any-target-node>
 ```
 
