@@ -120,9 +120,6 @@ YB_DEFINE_TYPED_ENUM(Class, uint8_t,
 //
 // The wait event type is not directly encoded in our wait events.
 YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
-    // Don't change the value of kUnused
-    ((kUnused, 0xFFFFFFFFU))
-
     // Wait states related to postgres
     // Don't change the position of kYSQLReserved
     ((kYSQLReserved, YB_ASH_MAKE_EVENT(TServerWait)))
@@ -515,7 +512,7 @@ class WaitStateInfo {
   void VTraceTo(Trace* trace, int level, GStringPiece data);
 
  private:
-  std::atomic<WaitStateCode> code_{WaitStateCode::kUnused};
+  std::atomic<WaitStateCode> code_{WaitStateCode::kIdle};
 
   mutable simple_spinlock mutex_;
   AshMetadata metadata_ GUARDED_BY(mutex_);
