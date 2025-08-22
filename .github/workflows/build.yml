@@ -45,23 +45,22 @@ jobs:
           - name: "GCC 11, fastdebug, AlmaLinux 8"
             os: ubuntu-24.04
             yb_build_args: --gcc11 fastdebug --no-linuxbrew
-            docker_image: yugabyteci/yb_build_infra_almalinux8_x86_64:v2025-05-27T22_07_20
+            docker_image: yugabyteci/yb_build_infra_almalinux8_x86_64:latest
 
           - name: "GCC 12, debug, AlmaLinux 9"
             os: ubuntu-24.04
             yb_build_args: --gcc12 debug --no-linuxbrew
-            docker_image: yugabyteci/yb_build_infra_almalinux9_x86_64:v2025-05-27T22_07_19
+            docker_image: yugabyteci/yb_build_infra_almalinux9_x86_64:latest
 
           - name: "Clang 19, release, AlmaLinux 8"
             os: ubuntu-24.04
             yb_build_args: --clang19 release --no-linuxbrew
-            docker_image: yugabyteci/yb_build_infra_almalinux8_x86_64:v2025-05-27T22_07_20
+            docker_image: yugabyteci/yb_build_infra_almalinux8_x86_64:latest
 
           - name: "Clang 19, debug, Ubuntu 22.04"
             os: ubuntu-24.04
             yb_build_args: --clang19 debug --no-linuxbrew
-            docker_image: yugabyteci/yb_build_infra_ubuntu2204_x86_64:v2025-05-27T22_07_25
-
+            docker_image: yugabyteci/yb_build_infra_ubuntu2204_x86_64:latest
     if: >
       (github.event_name == 'push' &&
        !contains(github.event.head_commit.message, 'skip ci') &&
