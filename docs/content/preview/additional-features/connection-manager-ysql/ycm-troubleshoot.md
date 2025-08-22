@@ -8,7 +8,7 @@ menu:
   preview:
     identifier: ycm-troubleshoot
     parent: connection-manager
-    weight: 40
+    weight: 60
 type: docs
 ---
 
