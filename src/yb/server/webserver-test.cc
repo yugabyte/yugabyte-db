@@ -60,6 +60,8 @@ DECLARE_int32(webserver_max_post_length_bytes);
 DECLARE_uint64(webserver_compression_threshold_kb);
 DECLARE_string(webserver_ca_certificate_file);
 DECLARE_bool(webserver_strict_transport_security);
+DECLARE_string(webserver_ssl_ciphers);
+DECLARE_string(webserver_ssl_min_version);
 
 namespace yb {
 
@@ -332,6 +334,43 @@ TEST_F(WebserverSecureTest, TestStrictTransportSecurity) {
   ASSERT_OK(curl_.FetchURL(url_, &buf_, EasyCurl::kDefaultTimeoutSec, {} /* headers */));
   ASSERT_STR_CONTAINS(buf_.ToString(), "X-Content-Type-Options: nosniff");
   ASSERT_STR_CONTAINS(buf_.ToString(), "Strict-Transport-Security: max-age=31536000");
+}
+
+class WebserverSSLConfigTest : public WebserverSecureTest {
+ public:
+  WebserverOptions ServerOptions() override {
+    auto opts = WebserverSecureTest::ServerOptions();
+    // Allow >= TLS 1.2
+    opts.ssl_min_version = "tlsv1.2";
+    // Allow ECDHE-RSA-AES256-GCM-SHA384 and AES256-SHA.
+    opts.ssl_ciphers = "ECDHE-RSA-AES256-GCM-SHA384:AES256-SHA";
+
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_webserver_ssl_min_version) = opts.ssl_min_version;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_webserver_ssl_ciphers) = opts.ssl_ciphers;
+    return opts;
+  }
+};
+
+// Test that TLSv1.2 works, TLSv1.1 fails.
+TEST_F(WebserverSSLConfigTest, TestTLSMinVersion) {
+  curl_.set_ssl_version(CURL_SSLVERSION_TLSv1_2 | CURL_SSLVERSION_MAX_TLSv1_2);
+  ASSERT_OK(curl_.FetchURL(url_, &buf_, EasyCurl::kDefaultTimeoutSec, {}));
+
+  curl_.set_ssl_version(CURL_SSLVERSION_TLSv1_1 | CURL_SSLVERSION_MAX_TLSv1_1);
+  ASSERT_NOK(curl_.FetchURL(url_, &buf_, EasyCurl::kDefaultTimeoutSec, {}));
+}
+
+// Test that allowed cipher succeeds, disallowed cipher fails.
+TEST_F(WebserverSSLConfigTest, TestSSLCiphers) {
+  // Disallow curl client from using TLS v1.3 or above because the ssl_cipher_list variable is not
+  // applicable for TLS v1.3 onwards.
+  curl_.set_ssl_version(CURL_SSLVERSION_MAX_TLSv1_2);
+
+  curl_.set_cipher_list("ECDHE-RSA-AES256-GCM-SHA384");
+  ASSERT_OK(curl_.FetchURL(url_, &buf_, EasyCurl::kDefaultTimeoutSec, {}));
+
+  curl_.set_cipher_list("AES128-SHA");
+  ASSERT_NOK(curl_.FetchURL(url_, &buf_, EasyCurl::kDefaultTimeoutSec, {}));
 }
 
 } // namespace yb
