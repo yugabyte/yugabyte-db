@@ -3239,6 +3239,29 @@ TEST_F(PgCatalogVersionTest, InvalMessageDeltaTableLoad) {
   }
 }
 
+TEST_F(PgCatalogVersionTest, InvalMessageDropDatabase) {
+  auto conn = CHECK_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE DATABASE test_db"));
+  conn = ASSERT_RESULT(ConnectToDBAsUser("test_db", "yugabyte"));
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table(id INT)"));
+
+  // Each alter inserts a new row into pg_yb_invalidation_messages for test_db.
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN val TEXT"));
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP COLUMN val"));
+
+  const auto test_db_oid = ASSERT_RESULT(GetDatabaseOid(&conn, "test_db"));
+  const auto query =
+      Format("SELECT COUNT(*) FROM pg_yb_invalidation_messages WHERE db_oid = $0", test_db_oid);
+  auto message_count  = ASSERT_RESULT(conn.FetchRow<PGUint64>(query));
+  ASSERT_EQ(message_count, 2);
+  conn = CHECK_RESULT(Connect());
+  // After dropping the database, its associated invalidation messages should also be
+  // deleted from pg_yb_invalidation_messages.
+  ASSERT_OK(conn.Execute("DROP DATABASE test_db"));
+  message_count = ASSERT_RESULT(conn.FetchRow<PGUint64>(query));
+  ASSERT_EQ(message_count, 0);
+}
+
 class PgCatalogVersionConnManagerTest
     : public PgCatalogVersionTest,
       public ::testing::WithParamInterface<bool> {
