@@ -78,8 +78,7 @@ Run the following command against A to delete the old replication group.
 
 {{% readfile "includes/transactional-drop.md" %}}
 
-In addition, if you are using CDC to move data out of YugabyteDB, 
-delete CDC on A (that is, de-configure CDC by deleting publications and slots), and start up CDC on B (that is, create publications and slots on B).
+In addition, if you are using CDC to move data out of YugabyteDB, delete CDC on A (that is, de-configure CDC by deleting publications and slots), and start up CDC on B (that is, create publications and slots on B).
 
 ### Switch applications to the new Primary universe (B)
 

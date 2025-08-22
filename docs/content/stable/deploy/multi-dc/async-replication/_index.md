@@ -41,6 +41,8 @@ For information on xCluster deployment architecture, replication scenarios, and 
 
 - Global objects like users, roles, tablespaces are not managed by xCluster. You must explicitly create and manage these objects on both source and target universes.
 
+- For moving data out of YugabyteDB, set up CDC on the xCluster source universe. CDC on the xCluster target universe is not supported. CDC is not supported in bi-directional xCluster setups.
+
 ## Best practices
 
 - Set the YB-TServer [cdc_wal_retention_time_secs](../../../reference/configuration/all-flags-yb-tserver/#cdc-wal-retention-time-secs) flag to 86400 on both source and target universe.
