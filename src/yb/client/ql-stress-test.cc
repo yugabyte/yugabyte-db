@@ -350,7 +350,7 @@ void QLStressTest::TestRetryWrites(bool restarts) {
   SetAtomicFlag(0.25, &FLAGS_TEST_respond_write_failed_probability);
 
   const bool transactional = table_.table()->schema().table_properties().is_transactional();
-  boost::optional<TransactionManager> txn_manager;
+  std::optional<TransactionManager> txn_manager;
   if (transactional) {
     txn_manager = CreateTxnManager();
   }
@@ -365,9 +365,8 @@ void QLStressTest::TestRetryWrites(bool restarts) {
       while (!stop_requested.load(std::memory_order_acquire)) {
         int32_t key = key_source.fetch_add(1, std::memory_order_acq_rel);
         YBTransactionPtr txn;
-        if (txn_manager &&
-            RandomActWithProbability(kTransactionalWriteProbability)) {
-          txn = std::make_shared<YBTransaction>(txn_manager.get_ptr());
+        if (txn_manager && RandomActWithProbability(kTransactionalWriteProbability)) {
+          txn = std::make_shared<YBTransaction>(&txn_manager.value());
           ASSERT_OK(txn->Init(IsolationLevel::SNAPSHOT_ISOLATION));
           session->SetTransaction(txn);
         } else {

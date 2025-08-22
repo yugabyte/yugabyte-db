@@ -1775,7 +1775,7 @@ Status TabletPeer::ChangeRole(const std::string& requestor_uuid) {
         RaftPeerPB* peer = req.mutable_server();
         peer->set_permanent_uuid(requestor_uuid);
 
-        boost::optional<TabletServerErrorPB::Code> error_code;
+        std::optional<TabletServerErrorPB::Code> error_code;
         return consensus->ChangeConfig(req, &DoNothingStatusCB, &error_code);
       }
       case PeerMemberType::UNKNOWN_MEMBER_TYPE:

@@ -35,8 +35,6 @@
 #include <mutex>
 #include <string>
 
-#include <boost/optional/optional.hpp>
-
 #include "yb/common/hybrid_time.h"
 #include "yb/common/opid.h"
 #include "yb/common/wire_protocol.h"

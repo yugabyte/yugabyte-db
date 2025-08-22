@@ -68,8 +68,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include <boost/optional.hpp>
-
 #include "yb/cdc/cdc_state_table.h"
 
 #include "yb/client/client.h"
@@ -2330,8 +2328,8 @@ Result<ReplicationInfoPB> CatalogManager::GetTableReplicationInfo(
   // associated with a tablespace and if so, return the tablespace
   // replication info.
   if (GetAtomicFlag(&FLAGS_enable_ysql_tablespaces_for_placement)) {
-    boost::optional<ReplicationInfoPB> tablespace_pb =
-      VERIFY_RESULT(GetTablespaceReplicationInfoWithRetry(tablespace_id));
+    std::optional<ReplicationInfoPB> tablespace_pb =
+        VERIFY_RESULT(GetTablespaceReplicationInfoWithRetry(tablespace_id));
     if (tablespace_pb) {
       // Return the tablespace placement.
       return tablespace_pb.value();
@@ -2358,15 +2356,14 @@ std::shared_ptr<YsqlTablespaceManager> CatalogManager::GetTablespaceManager() co
   return tablespace_manager_;
 }
 
-Result<boost::optional<TablespaceId>> CatalogManager::GetTablespaceForTable(
+Result<std::optional<TablespaceId>> CatalogManager::GetTablespaceForTable(
     const scoped_refptr<TableInfo>& table) const {
   auto tablespace_manager = GetTablespaceManager();
   return tablespace_manager->GetTablespaceForTable(table);
 }
 
-Result<boost::optional<ReplicationInfoPB>> CatalogManager::GetTablespaceReplicationInfoWithRetry(
-  const TablespaceId& tablespace_id) {
-
+Result<std::optional<ReplicationInfoPB>> CatalogManager::GetTablespaceReplicationInfoWithRetry(
+    const TablespaceId& tablespace_id) {
   auto tablespace_manager = GetTablespaceManager();
   auto replication_info_result = tablespace_manager->GetTablespaceReplicationInfo(tablespace_id);
 
@@ -5589,13 +5586,12 @@ Status CatalogManager::WaitForAlterTableToFinish(
       100ms /* initial_delay */, 1 /* delay_multiplier */);
 }
 
-std::string CatalogManager::GenerateId(boost::optional<const SysRowEntryType> entity_type) {
+std::string CatalogManager::GenerateId(std::optional<const SysRowEntryType> entity_type) {
   SharedLock lock(mutex_);
   return GenerateIdUnlocked(entity_type);
 }
 
-std::string CatalogManager::GenerateIdUnlocked(
-    boost::optional<const SysRowEntryType> entity_type) {
+std::string CatalogManager::GenerateIdUnlocked(std::optional<const SysRowEntryType> entity_type) {
   while (true) {
     // Generate id and make sure it is unique within its category.
     std::string id = GenerateObjectId();
@@ -10913,8 +10909,9 @@ void CatalogManager::DeleteTabletReplicas(
   LOG(INFO) << "Sending DeleteTablet for " << locations->size()
             << " replicas of tablet " << tablet->tablet_id();
   for (const auto& [ts_uuid, _] : *locations) {
-    SendDeleteTabletRequest(tablet->tablet_id(), TABLET_DATA_DELETED, boost::none, tablet->table(),
-                            ts_uuid, msg, epoch, hide_only, keep_data);
+    SendDeleteTabletRequest(
+        tablet->tablet_id(), TABLET_DATA_DELETED, std::nullopt, tablet->table(), ts_uuid, msg,
+        epoch, hide_only, keep_data);
   }
 }
 
@@ -11063,15 +11060,10 @@ Status CatalogManager::SendPrepareDeleteTransactionTabletRequest(
 }
 
 void CatalogManager::SendDeleteTabletRequest(
-    const TabletId& tablet_id,
-    TabletDataState delete_type,
-    const boost::optional<int64_t>& cas_config_opid_index_less_or_equal,
-    const scoped_refptr<TableInfo>& table,
-    const std::string& ts_uuid,
-    const string& reason,
-    const LeaderEpoch& epoch,
-    HideOnly hide_only,
-    KeepData keep_data) {
+    const TabletId& tablet_id, TabletDataState delete_type,
+    const std::optional<int64_t>& cas_config_opid_index_less_or_equal,
+    const scoped_refptr<TableInfo>& table, const std::string& ts_uuid, const string& reason,
+    const LeaderEpoch& epoch, HideOnly hide_only, KeepData keep_data) {
   if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_TEST_disable_tablet_deletion))) {
     return;
   }
@@ -11100,12 +11092,11 @@ void CatalogManager::SendDeleteTabletRequest(
 std::shared_ptr<AsyncDeleteReplica> CatalogManager::MakeDeleteReplicaTask(
     const TabletServerId& peer_uuid, const TableInfoPtr& table, const TabletId& tablet_id,
     tablet::TabletDataState delete_type,
-    boost::optional<int64_t> cas_config_opid_index_less_or_equal, LeaderEpoch epoch,
+    std::optional<int64_t> cas_config_opid_index_less_or_equal, LeaderEpoch epoch,
     const std::string& reason) {
   return std::make_shared<AsyncDeleteReplica>(
       master_, AsyncTaskPool(), peer_uuid, table, tablet_id, delete_type,
-      cas_config_opid_index_less_or_equal, epoch, GetDeleteReplicaTaskThrottler(peer_uuid),
-      reason);
+      cas_config_opid_index_less_or_equal, epoch, GetDeleteReplicaTaskThrottler(peer_uuid), reason);
 }
 
 void CatalogManager::SetTabletReplicaLocations(

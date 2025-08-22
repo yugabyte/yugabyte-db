@@ -224,15 +224,14 @@ YBTransactionPtr CreateTransactionHelper(
 template <class MiniClusterType>
 YBTransactionPtr TransactionTestBase<MiniClusterType>::CreateTransaction(
     SetReadTime set_read_time) {
-  return CreateTransactionHelper(
-      transaction_manager_.get_ptr(), set_read_time, GetIsolationLevel());
+  return CreateTransactionHelper(&transaction_manager_.value(), set_read_time, GetIsolationLevel());
 }
 
 template <class MiniClusterType>
 YBTransactionPtr TransactionTestBase<MiniClusterType>::CreateTransaction2(
     SetReadTime set_read_time) {
   return CreateTransactionHelper(
-      transaction_manager2_.get_ptr(), set_read_time, GetIsolationLevel());
+      &transaction_manager2_.value(), set_read_time, GetIsolationLevel());
 }
 
 template <class MiniClusterType>

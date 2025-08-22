@@ -18,7 +18,6 @@
 #include <utility>
 
 #include <boost/algorithm/string/join.hpp>
-#include <boost/optional/optional.hpp>
 
 #include "yb/common/common.pb.h"
 

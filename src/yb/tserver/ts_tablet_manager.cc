@@ -41,7 +41,6 @@
 
 #include <boost/container/static_vector.hpp>
 #include <boost/none.hpp>
-#include <boost/optional/optional.hpp>
 
 #include "yb/ash/wait_state.h"
 
@@ -1142,7 +1141,7 @@ void TSTabletManager::CreatePeerAndOpenTablet(
 
 Status TSTabletManager::ApplyTabletSplit(
     tablet::SplitOperation* operation, log::Log* raft_log,
-    boost::optional<RaftConfigPB> committed_raft_config) {
+    std::optional<RaftConfigPB> committed_raft_config) {
   if (PREDICT_FALSE(FLAGS_TEST_crash_before_apply_tablet_split_op)) {
     LOG(FATAL) << "Crashing due to FLAGS_TEST_crash_before_apply_tablet_split_op";
   }
@@ -1819,20 +1818,18 @@ Result<TabletPeerPtr> TSTabletManager::CreateAndRegisterTabletPeer(
 }
 
 Status TSTabletManager::DeleteTablet(
-    const string& tablet_id,
-    TabletDataState delete_type,
+    const string& tablet_id, TabletDataState delete_type,
     tablet::ShouldAbortActiveTransactions should_abort_active_txns,
-    const boost::optional<int64_t>& cas_config_opid_index_less_or_equal,
-    bool hide_only,
-    bool keep_data,
-    boost::optional<TabletServerErrorPB::Code>* error_code) {
+    const std::optional<int64_t>& cas_config_opid_index_less_or_equal, bool hide_only,
+    bool keep_data, std::optional<TabletServerErrorPB::Code>* error_code) {
   TEST_PAUSE_IF_FLAG(TEST_pause_delete_tablet);
 
   if (delete_type != TABLET_DATA_DELETED && delete_type != TABLET_DATA_TOMBSTONED) {
-    return STATUS(InvalidArgument, "DeleteTablet() requires an argument that is one of "
-                                   "TABLET_DATA_DELETED or TABLET_DATA_TOMBSTONED",
-                                   Substitute("Given: $0 ($1)",
-                                              TabletDataState_Name(delete_type), delete_type));
+    return STATUS(
+        InvalidArgument,
+        "DeleteTablet() requires an argument that is one of "
+        "TABLET_DATA_DELETED or TABLET_DATA_TOMBSTONED",
+        Substitute("Given: $0 ($1)", TabletDataState_Name(delete_type), delete_type));
   }
 
   TRACE("Deleting tablet $0", tablet_id);
@@ -1938,13 +1935,14 @@ Status TSTabletManager::DeleteTablet(
 }
 
 Status TSTabletManager::CheckRunningUnlocked(
-    boost::optional<TabletServerErrorPB::Code>* error_code) const {
+    std::optional<TabletServerErrorPB::Code>* error_code) const {
   if (state_ == MANAGER_RUNNING) {
     return Status::OK();
   }
   *error_code = TabletServerErrorPB::TABLET_NOT_RUNNING;
-  return STATUS(ServiceUnavailable, Substitute("Tablet Manager is not running: $0",
-                                               TSTabletManagerStatePB_Name(state_)));
+  return STATUS(
+      ServiceUnavailable,
+      Substitute("Tablet Manager is not running: $0", TSTabletManagerStatePB_Name(state_)));
 }
 
 // NO_THREAD_SAFETY_ANALYSIS because this analysis does not work with unique_lock.

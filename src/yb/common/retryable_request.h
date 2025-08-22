@@ -23,7 +23,6 @@
 
 #include <boost/functional/hash/hash.hpp>
 #include <boost/mpl/and.hpp>
-#include <boost/optional/optional.hpp>
 
 #include "yb/util/format.h"
 #include "yb/util/status_ec.h"

@@ -896,16 +896,12 @@ Result<IndexPermissions> YBClient::WaitUntilIndexPermissionsAtLeast(
       max_wait);
 }
 
-Status YBClient::CreateNamespace(const std::string& namespace_name,
-                                 const boost::optional<YQLDatabase>& database_type,
-                                 const std::string& creator_role_name,
-                                 const std::string& namespace_id,
-                                 const std::string& source_namespace_id,
-                                 const boost::optional<uint32_t>& next_pg_oid,
-                                 const TransactionMetadata* txn,
-                                 const bool colocated,
-                                 CoarseTimePoint deadline,
-                                 std::optional<YbcCloneInfo> yb_clone_info) {
+Status YBClient::CreateNamespace(
+    const std::string& namespace_name, const std::optional<YQLDatabase>& database_type,
+    const std::string& creator_role_name, const std::string& namespace_id,
+    const std::string& source_namespace_id, const std::optional<uint32_t>& next_pg_oid,
+    const TransactionMetadata* txn, const bool colocated, CoarseTimePoint deadline,
+    std::optional<YbcCloneInfo> yb_clone_info) {
   if (yb_clone_info) {
     RETURN_NOT_OK(CloneNamespace(
         namespace_name, database_type ? database_type.value() : YQL_DATABASE_PGSQL,
@@ -984,18 +980,15 @@ Status YBClient::CloneNamespace(const std::string& target_namespace_name,
   return Status::OK();
 }
 
-Status YBClient::CreateNamespaceIfNotExists(const std::string& namespace_name,
-                                            const boost::optional<YQLDatabase>& database_type,
-                                            const std::string& creator_role_name,
-                                            const std::string& namespace_id,
-                                            const std::string& source_namespace_id,
-                                            const boost::optional<uint32_t>& next_pg_oid,
-                                            const bool colocated) {
+Status YBClient::CreateNamespaceIfNotExists(
+    const std::string& namespace_name, const std::optional<YQLDatabase>& database_type,
+    const std::string& creator_role_name, const std::string& namespace_id,
+    const std::string& source_namespace_id, const std::optional<uint32_t>& next_pg_oid,
+    const bool colocated) {
   bool retried = false;
   while (true) {
     const auto namespace_exists = VERIFY_RESULT(
-        !namespace_id.empty() ? NamespaceIdExists(namespace_id)
-                              : NamespaceExists(namespace_name));
+        !namespace_id.empty() ? NamespaceIdExists(namespace_id) : NamespaceExists(namespace_name));
     if (namespace_exists) {
       // Verify that the namespace we found is running so that, once this request returns,
       // the client can send operations without receiving a "namespace not found" error.
@@ -1031,18 +1024,17 @@ Status YBClient::CreateNamespaceIfNotExists(const std::string& namespace_name,
 }
 
 Status YBClient::IsCreateNamespaceInProgress(const std::string& namespace_name,
-                                             const boost::optional<YQLDatabase>& database_type,
+                                             const std::optional<YQLDatabase>& database_type,
                                              const std::string& namespace_id,
                                              bool *create_in_progress) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-  return data_->IsCreateNamespaceInProgress(this, namespace_name, database_type, namespace_id,
-                                            deadline, create_in_progress);
+  return data_->IsCreateNamespaceInProgress(
+      this, namespace_name, database_type, namespace_id, deadline, create_in_progress);
 }
 
-Status YBClient::DeleteNamespace(const std::string& namespace_name,
-                                 const boost::optional<YQLDatabase>& database_type,
-                                 const std::string& namespace_id,
-                                 CoarseTimePoint deadline) {
+Status YBClient::DeleteNamespace(
+    const std::string& namespace_name, const std::optional<YQLDatabase>& database_type,
+    const std::string& namespace_id, CoarseTimePoint deadline) {
   DeleteNamespaceRequestPB req;
   DeleteNamespaceResponsePB resp;
   req.mutable_namespace_()->set_name(namespace_name);
@@ -1065,18 +1057,18 @@ Status YBClient::DeleteNamespace(const std::string& namespace_name,
 }
 
 Status YBClient::IsDeleteNamespaceInProgress(const std::string& namespace_name,
-                                             const boost::optional<YQLDatabase>& database_type,
+                                             const std::optional<YQLDatabase>& database_type,
                                              const std::string& namespace_id,
                                              bool *delete_in_progress) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-  return data_->IsDeleteNamespaceInProgress(this, namespace_name, database_type, namespace_id,
-                                            deadline, delete_in_progress);
+  return data_->IsDeleteNamespaceInProgress(
+      this, namespace_name, database_type, namespace_id, deadline, delete_in_progress);
 }
 
 std::unique_ptr<YBNamespaceAlterer> YBClient::NewNamespaceAlterer(
     const string& namespace_name, const std::string& namespace_id) {
-  return std::unique_ptr<YBNamespaceAlterer>(new YBNamespaceAlterer(
-      this, namespace_name, namespace_id));
+  return std::unique_ptr<YBNamespaceAlterer>(
+      new YBNamespaceAlterer(this, namespace_name, namespace_id));
 }
 
 Result<vector<NamespaceInfo>> YBClient::ListNamespaces(
@@ -1107,7 +1099,7 @@ Result<vector<NamespaceInfo>> YBClient::ListNamespaces(
 
 Status YBClient::GetNamespaceInfo(const std::string& namespace_id,
                                   const std::string& namespace_name,
-                                  const boost::optional<YQLDatabase>& database_type,
+                                  const std::optional<YQLDatabase>& database_type,
                                   master::GetNamespaceInfoResponsePB* ret) {
   GetNamespaceInfoRequestPB req;
   GetNamespaceInfoResponsePB resp;
@@ -1320,9 +1312,9 @@ Status YBClient::CreateRole(const RoleName& role_name,
 }
 
 Status YBClient::AlterRole(const RoleName& role_name,
-                           const boost::optional<std::string>& salted_hash,
-                           const boost::optional<bool> login,
-                           const boost::optional<bool> superuser,
+                           const std::optional<std::string>& salted_hash,
+                           const std::optional<bool> login,
+                           const std::optional<bool> superuser,
                            const RoleName& current_role_name) {
   // Setting up request.
   AlterRoleRequestPB req;
@@ -1414,7 +1406,7 @@ Status YBClient::GetPermissions(client::internal::PermissionsCache* permissions_
     DFATAL_OR_RETURN_NOT_OK(STATUS(InvalidArgument, "Invalid null permissions_cache"));
   }
 
-  boost::optional<uint64_t> version = permissions_cache->version();
+  std::optional<uint64_t> version = permissions_cache->version();
 
   // Setting up request.
   GetPermissionsRequestPB req;
@@ -1839,7 +1831,7 @@ Result<bool> YBClient::IsObjectPartOfXRepl(const TableId& table_id) {
 }
 
 Result<bool> YBClient::IsBootstrapRequired(
-    const std::vector<TableId>& table_ids, const boost::optional<xrepl::StreamId>& stream_id) {
+    const std::vector<TableId>& table_ids, const std::optional<xrepl::StreamId>& stream_id) {
   if (table_ids.empty()) {
     return STATUS(InvalidArgument, "At least one table ID is required.");
   }
@@ -2169,7 +2161,7 @@ Status YBClient::ModifyTablePlacementInfo(const YBTableName& table_name,
     replication_info.clear_multi_affinitized_leaders();
   } else {
     // Table replication info exists, copy it over.
-    replication_info.CopyFrom(table->replication_info().get());
+    replication_info.CopyFrom(table->replication_info().value());
   }
 
   // Put in the new live placement info.

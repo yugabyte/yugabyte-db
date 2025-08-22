@@ -542,7 +542,7 @@ Status change_config_action(const ClusterAdminCli::CLIArguments& args, ClusterAd
   const string tablet_id = args[0];
   const string change_type = args[1];
   const string peer_uuid = args[2];
-  boost::optional<string> member_type;
+  std::optional<string> member_type;
   if (args.size() > 3) {
     member_type = args[3];
   }

@@ -19,8 +19,6 @@
 #include <unordered_set>
 #include <vector>
 
-#include <boost/optional/optional.hpp>
-
 #include "yb/common/entity_ids_types.h"
 
 #include "yb/gutil/ref_counted.h"
@@ -152,9 +150,9 @@ YB_DEFINE_ENUM(
 
 using CollectFlags = EnumBitSet<CollectFlag>;
 
-using TableToTablespaceIdMap = std::unordered_map<TableId, boost::optional<TablespaceId>>;
-using TablespaceIdToReplicationInfoMap = std::unordered_map<
-    TablespaceId, boost::optional<ReplicationInfoPB>>;
+using TableToTablespaceIdMap = std::unordered_map<TableId, std::optional<TablespaceId>>;
+using TablespaceIdToReplicationInfoMap =
+    std::unordered_map<TablespaceId, std::optional<ReplicationInfoPB>>;
 
 using LeaderStepDownFailureTimes = std::unordered_map<TabletServerId, MonoTime>;
 using TabletReplicaMap = std::unordered_map<TabletServerId, TabletReplica>;

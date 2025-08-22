@@ -70,14 +70,14 @@ struct InFlightOpsGroup {
 
 struct InFlightOpsTransactionMetadata {
   TransactionMetadata transaction;
-  boost::optional<SubTransactionMetadataPB> subtransaction_pb;
+  std::optional<SubTransactionMetadataPB> subtransaction_pb;
   // This field is only relevant when dealing with session/transaction advisory lock requests.
   // It's used to prevent conflicts between session and transaction level advisory locks
   // within the same session.
-  boost::optional<TransactionMetadata> background_transaction_meta;
+  std::optional<TransactionMetadata> background_transaction_meta;
   // When acquiring a session advisory lock, we need the below to release waiting requests
   // involved in a deadlock.
-  boost::optional<PgSessionRequestVersion> pg_session_req_version;
+  std::optional<PgSessionRequestVersion> pg_session_req_version;
   // Used to detect potential deadlocks spanning fast path transactions with DDLs.
   std::optional<TransactionMetadata> object_locking_txn_meta;
 };
@@ -107,7 +107,7 @@ class TxnBatcherIf {
   // Notifies transaction that specified ops were flushed with some status.
   virtual void Flushed(
       const internal::InFlightOps& ops,
-      const boost::optional<SubTransactionMetadataPB>& subtransaction_pb,
+      const std::optional<SubTransactionMetadataPB>& subtransaction_pb,
       const ReadHybridTime& used_read_time, const Status& status) = 0;
 
   // This function is used to init metadata of Write/Read request.
@@ -294,11 +294,11 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
   void InitFromFailedBatcher(const BatcherPtr& failed_batcher, const CollectedErrors& errors);
 
   void SetSubTransactionMetadataPB(
-      const boost::optional<SubTransactionMetadataPB>& subtransaction_pb) {
+      const std::optional<SubTransactionMetadataPB>& subtransaction_pb) {
     ops_info_.metadata.subtransaction_pb = subtransaction_pb;
   }
 
-  const boost::optional<SubTransactionMetadataPB>& GetSubTransactionMetadataPB() const {
+  const std::optional<SubTransactionMetadataPB>& GetSubTransactionMetadataPB() const {
     return ops_info_.metadata.subtransaction_pb;
   }
 
@@ -427,7 +427,7 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
   //   the in-progress DocDB transaction, if any.
   // - For a transaction advisory lock request: the below points to
   //   the session-level transaction, if exists.
-  boost::optional<TransactionMetadata> background_transaction_meta_ = boost::none;
+  std::optional<TransactionMetadata> background_transaction_meta_ = std::nullopt;
 
   std::optional<TransactionMetadata> object_locking_txn_meta_;
 

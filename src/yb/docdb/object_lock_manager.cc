@@ -1140,9 +1140,9 @@ void ObjectLockManagerImpl::RegisterWaiters(ObjectLockedBatchEntry* locked_batch
         WARN_NOT_OK(
             item->waiter_registration->Register(
                 item->txn_id(), -1 /* request id */, std::move(item->blockers),
-                item->status_tablet(), boost::none /* pg_session_req_version */),
-            Format("Failed to register blockers of waiter $0",
-                   AsString(item->object_lock_owner())));
+                item->status_tablet(), std::nullopt /* pg_session_req_version */),
+            Format(
+                "Failed to register blockers of waiter $0", AsString(item->object_lock_owner())));
       }
       item->blockers = nullptr;
     });

@@ -22,8 +22,6 @@
 #include <utility>
 #include <vector>
 
-#include <boost/optional.hpp>
-
 #include "yb/util/logging.h"
 
 #include "yb/common/common_fwd.h"
@@ -159,12 +157,10 @@ class QLType {
     return udtype_info_->name();
   }
 
-  const std::string& udtype_id() const {
-    return udtype_info_->id();
-  }
+  const std::string& udtype_id() const { return udtype_info_->id(); }
 
   // returns position of "field_name" in udtype_field_names() vector if found, otherwise -1
-  boost::optional<size_t> GetUDTypeFieldIdxByName(const std::string& field_name) const;
+  std::optional<size_t> GetUDTypeFieldIdxByName(const std::string& field_name) const;
 
   // Get the type ids of all UDTs (transitively) referenced by this UDT.
   std::vector<std::string> GetUserDefinedTypeIds() const {

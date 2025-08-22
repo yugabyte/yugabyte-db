@@ -2494,7 +2494,7 @@ TEST_F(XClusterYsqlTest, DeletingDatabaseContainingReplicatedTable) {
     for (int i = 0; i < num_tables; i++) {
       auto table = ASSERT_RESULT(CreateYsqlTable(
           &cluster, namespace_name, Format("test_schema_$0", i), Format("test_table_$0", i),
-          boost::none /* tablegroup */, kNTabletsPerTable));
+          std::nullopt /* tablegroup */, kNTabletsPerTable));
       // For now, skip the first table and replicate the rest.
       if (is_replicated_producer && i > 0) {
         std::shared_ptr<client::YBTable> yb_table;
@@ -2595,7 +2595,7 @@ TEST_P(XClusterPgSchemaNameTest, SetupSameNameDifferentSchemaUniverseReplication
   for (int i = 0; i < kNumTables; i++) {
     auto t = ASSERT_RESULT(CreateYsqlTable(
         &producer_cluster_, namespace_name, schema_name(i), "test_table_1",
-        boost::none /* tablegroup */, kNTabletsPerTable));
+        std::nullopt /* tablegroup */, kNTabletsPerTable));
     // Need to set pgschema_name ourselves if it was not set due to flag.
     t.set_pgschema_name(schema_name(i));
     producer_table_names.push_back(t);
@@ -2614,7 +2614,7 @@ TEST_P(XClusterPgSchemaNameTest, SetupSameNameDifferentSchemaUniverseReplication
   for (int i = kNumTables - 1; i >= 0; i--) {
     auto t = ASSERT_RESULT(CreateYsqlTable(
         &consumer_cluster_, namespace_name, schema_name(i), "test_table_1",
-        boost::none /* tablegroup */, kNTabletsPerTable));
+        std::nullopt /* tablegroup */, kNTabletsPerTable));
     t.set_pgschema_name(schema_name(i));
     consumer_table_names.push_back(t);
 
@@ -3276,7 +3276,7 @@ TEST_F(XClusterYsqlTest, TransactionalBidirectionalWithTwoDBs) {
     for (const auto& namespace_name : namespaces) {
       auto table_name = VERIFY_RESULT(CreateYsqlTable(
           cluster, namespace_name, "" /* schema_name */, "test_table",
-          /*tablegroup_name=*/boost::none,
+          /*tablegroup_name=*/std::nullopt,
           /*num_tablets=*/3));
       std::shared_ptr<client::YBTable> table;
       RETURN_NOT_OK(cluster->client_->OpenTable(table_name, &table));

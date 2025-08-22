@@ -36,8 +36,6 @@
 #include <memory>
 #include <mutex>
 
-#include <boost/optional.hpp>
-
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.messages.h"
@@ -1533,12 +1531,13 @@ void RaftConsensus::TryRemoveFollowerTask(const string& uuid,
   req.mutable_server()->set_permanent_uuid(uuid);
   req.set_type(REMOVE_SERVER);
   req.set_cas_config_opid_index(committed_config.opid_index());
-  LOG_WITH_PREFIX(INFO)
-      << "Attempting to remove follower " << uuid << " from the Raft config at commit index "
-      << committed_config.opid_index() << ". Reason: " << reason;
-  boost::optional<TabletServerErrorPB::Code> error_code;
-  WARN_NOT_OK(ChangeConfig(req, &DoNothingStatusCB, &error_code),
-              state_->LogPrefix() + "Unable to remove follower " + uuid);
+  LOG_WITH_PREFIX(INFO) << "Attempting to remove follower " << uuid
+                        << " from the Raft config at commit index " << committed_config.opid_index()
+                        << ". Reason: " << reason;
+  std::optional<TabletServerErrorPB::Code> error_code;
+  WARN_NOT_OK(
+      ChangeConfig(req, &DoNothingStatusCB, &error_code),
+      state_->LogPrefix() + "Unable to remove follower " + uuid);
 }
 
 Status RaftConsensus::Update(
@@ -2558,12 +2557,13 @@ Status RaftConsensus::IsLeaderReadyForChangeConfigUnlocked(ChangeConfigType type
   return Status::OK();
 }
 
-Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
-                                   const StdStatusCallback& client_cb,
-                                   boost::optional<TabletServerErrorPB::Code>* error_code) {
+Status RaftConsensus::ChangeConfig(
+    const ChangeConfigRequestPB& req, const StdStatusCallback& client_cb,
+    std::optional<TabletServerErrorPB::Code>* error_code) {
   if (PREDICT_FALSE(!req.has_type())) {
-    return STATUS(InvalidArgument, "Must specify 'type' argument to ChangeConfig()",
-                                   req.ShortDebugString());
+      return STATUS(
+          InvalidArgument, "Must specify 'type' argument to ChangeConfig()",
+          req.ShortDebugString());
   }
   if (PREDICT_FALSE(!req.has_server())) {
     *error_code = TabletServerErrorPB::INVALID_CONFIG;
@@ -2762,7 +2762,7 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
 
 Status RaftConsensus::UnsafeChangeConfig(
     const UnsafeChangeConfigRequestPB& req,
-    boost::optional<tserver::TabletServerErrorPB::Code>* error_code) {
+    std::optional<tserver::TabletServerErrorPB::Code>* error_code) {
   if (PREDICT_FALSE(!req.has_new_config())) {
     *error_code = TabletServerErrorPB::INVALID_CONFIG;
     return STATUS(InvalidArgument, "Request must contain 'new_config' argument "

@@ -32,8 +32,6 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/semaphore.h"
 
-#include <boost/optional.hpp>
-
 namespace rocksdb {
 
 class RateLimiter;

@@ -13,8 +13,6 @@
 
 #pragma once
 
-#include <boost/optional.hpp>
-
 #include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/docdb/docdb_fwd.h"
 

@@ -13,8 +13,6 @@
 
 #pragma once
 
-#include <boost/optional/optional.hpp>
-
 #include "yb/common/redis_protocol.pb.h"
 
 #include "yb/docdb/deadline_info.h"
@@ -140,7 +138,7 @@ class RedisReadOperation {
   // calling Apply(). Apply() and Execute() should be more similar() in definition.
   std::unique_ptr<IntentAwareIterator> iterator_;
 
-  boost::optional<DeadlineInfo> deadline_info_;
+  std::optional<DeadlineInfo> deadline_info_;
 };
 
 }  // namespace docdb

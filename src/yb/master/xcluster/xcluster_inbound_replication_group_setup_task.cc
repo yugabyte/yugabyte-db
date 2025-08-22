@@ -1038,7 +1038,7 @@ Status XClusterTableSetupTask::ValidateBootstrapAndSetupStreams() {
 }
 
 Status XClusterTableSetupTask::ValidateBootstrapNotRequired() {
-  boost::optional<xrepl::StreamId> bootstrap_id;
+  std::optional<xrepl::StreamId> bootstrap_id;
 
   if (table_setup_info_.stream_id) {
     bootstrap_id = table_setup_info_.stream_id;

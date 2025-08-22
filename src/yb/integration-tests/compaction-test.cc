@@ -2137,7 +2137,7 @@ TEST_F(MasterFullCompactionMonitoringTest, UnknownStateAfterReplicaLocationChang
   // Cause a config change by adding a new tablet peer to the new tserver.
   ASSERT_OK(itest::AddServer(
       leader_ts, test_tablet->id(), new_ts, consensus::PeerMemberType::PRE_OBSERVER,
-      boost::none /* cas_config_opid_index */, 10s /* timeout */));
+      std::nullopt /* cas_config_opid_index */, 10s /* timeout */));
 
   // Check that the full compaction states on master are all reset to UNKNOWN except for the tserver
   // that sent the config change heartbeat.
@@ -2172,7 +2172,7 @@ TEST_F(MasterFullCompactionMonitoringTest, UnknownStateAfterReplicaLocationChang
     }
   }
   ASSERT_OK(itest::RemoveServer(
-      leader_ts, test_tablet->id(), new_ts, boost::none /* cas_config_opid_index */,
+      leader_ts, test_tablet->id(), new_ts, std::nullopt /* cas_config_opid_index */,
       10s /* timeout */));
   ASSERT_OK(WaitForCompactionStatusesToSatisfy(
       {test_tablet},
@@ -2217,11 +2217,10 @@ Status IterateTabletRows(
   std::unordered_set<int32_t> tablet_keys;
   while (VERIFY_RESULT(iter->FetchNext(&row))) {
     auto key_opt = row.GetValue(key_column_id);
-    SCHECK(key_opt.is_initialized(), InternalError, "Key is not initialized");
-    auto key = key_opt->int32_value();
+    SCHECK(key_opt.has_value(), InternalError, "Key is not initialized");
+    auto key = key_opt->get().int32_value();
     SCHECK(
-        tablet_keys.insert(key).second,
-        InternalError,
+        tablet_keys.insert(key).second, InternalError,
         Format("Duplicate key $0 in tablet $1", key, tablet->tablet_id()));
     RETURN_NOT_OK(callback(row));
   }
@@ -2268,7 +2267,7 @@ TEST_F(CompactionTest, RemoveCorruptDataBlocks) {
   ASSERT_OK(IterateTabletRows(
       shared_tablet.get(), key_column_id,
       [&original_data, key_column_id](const qlexpr::QLTableRow& row) {
-        original_data.emplace(row.GetValue(key_column_id)->int32_value(), row);
+        original_data.emplace(row.GetValue(key_column_id)->get().int32_value(), row);
         return Status::OK();
       }));
 
@@ -2337,7 +2336,7 @@ TEST_F(CompactionTest, RemoveCorruptDataBlocks) {
   ASSERT_OK(IterateTabletRows(
       shared_tablet.get(), key_column_id,
       [&original_data, &num_keys_remained, key_column_id](const qlexpr::QLTableRow& row) -> Status {
-        const auto key = row.GetValue(key_column_id)->int32_value();
+        const auto key = row.GetValue(key_column_id)->get().int32_value();
         auto it = original_data.find(key);
         SCHECK(it != original_data.end(), InternalError, "");
         SCHECK_EQ(row.ToString(), it->second.ToString(), InternalError, "");

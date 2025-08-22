@@ -1104,12 +1104,9 @@ Result<master::GetBackfillStatusResponsePB> YBClient::Data::GetBackfillStatus(
 }
 
 Status YBClient::Data::IsCreateNamespaceInProgress(
-    YBClient* client,
-    const std::string& namespace_name,
-    const boost::optional<YQLDatabase>& database_type,
-    const std::string& namespace_id,
-    CoarseTimePoint deadline,
-    bool *create_in_progress) {
+    YBClient* client, const std::string& namespace_name,
+    const std::optional<YQLDatabase>& database_type, const std::string& namespace_id,
+    CoarseTimePoint deadline, bool* create_in_progress) {
   DCHECK_ONLY_NOTNULL(create_in_progress);
   IsCreateNamespaceDoneRequestPB req;
   IsCreateNamespaceDoneResponsePB resp;
@@ -1143,25 +1140,22 @@ Status YBClient::Data::IsCreateNamespaceInProgress(
 }
 
 Status YBClient::Data::WaitForCreateNamespaceToFinish(
-    YBClient* client,
-    const std::string& namespace_name,
-    const boost::optional<YQLDatabase>& database_type,
-    const std::string& namespace_id,
+    YBClient* client, const std::string& namespace_name,
+    const std::optional<YQLDatabase>& database_type, const std::string& namespace_id,
     CoarseTimePoint deadline) {
   return RetryUntilShutdown(
       deadline,
       "Waiting on Create Namespace to be completed",
       "Timed out waiting for Namespace Creation",
-      std::bind(&YBClient::Data::IsCreateNamespaceInProgress, this, client,
-          namespace_name, database_type, namespace_id, _1, _2));
+      std::bind(
+          &YBClient::Data::IsCreateNamespaceInProgress, this, client, namespace_name, database_type,
+          namespace_id, _1, _2));
 }
 
-Status YBClient::Data::IsDeleteNamespaceInProgress(YBClient* client,
-    const std::string& namespace_name,
-    const boost::optional<YQLDatabase>& database_type,
-    const std::string& namespace_id,
-    CoarseTimePoint deadline,
-    bool* delete_in_progress) {
+Status YBClient::Data::IsDeleteNamespaceInProgress(
+    YBClient* client, const std::string& namespace_name,
+    const std::optional<YQLDatabase>& database_type, const std::string& namespace_id,
+    CoarseTimePoint deadline, bool* delete_in_progress) {
   DCHECK_ONLY_NOTNULL(delete_in_progress);
   IsDeleteNamespaceDoneRequestPB req;
   IsDeleteNamespaceDoneResponsePB resp;
@@ -1195,15 +1189,16 @@ Status YBClient::Data::IsDeleteNamespaceInProgress(YBClient* client,
 
 Status YBClient::Data::WaitForDeleteNamespaceToFinish(YBClient* client,
     const std::string& namespace_name,
-    const boost::optional<YQLDatabase>& database_type,
+    const std::optional<YQLDatabase>& database_type,
     const std::string& namespace_id,
     CoarseTimePoint deadline) {
   return RetryUntilShutdown(
       deadline,
       "Waiting on Delete Namespace to be completed",
       "Timed out waiting for Namespace Deletion",
-      std::bind(&YBClient::Data::IsDeleteNamespaceInProgress, this,
-          client, namespace_name, database_type, namespace_id, _1, _2));
+      std::bind(
+          &YBClient::Data::IsDeleteNamespaceInProgress, this, client, namespace_name, database_type,
+          namespace_id, _1, _2));
 }
 
 Status YBClient::Data::IsCloneNamespaceInProgress(

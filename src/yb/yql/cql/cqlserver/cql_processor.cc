@@ -629,12 +629,11 @@ void CQLProcessor::StatementExecuted(const Status& s, const ExecutedResult::Shar
   PrepareAndSendResponse(response);
 }
 
-unique_ptr<CQLResponse> CQLProcessor::ProcessError(const Status& s,
-                                                   boost::optional<CQLMessage::QueryId> query_id) {
+unique_ptr<CQLResponse> CQLProcessor::ProcessError(
+    const Status& s, std::optional<CQLMessage::QueryId> query_id) {
   if (s.IsQLError()) {
     ErrorCode ql_errcode = GetErrorCode(s);
-    if (ql_errcode == ErrorCode::UNPREPARED_STATEMENT ||
-        ql_errcode == ErrorCode::STALE_METADATA) {
+    if (ql_errcode == ErrorCode::UNPREPARED_STATEMENT || ql_errcode == ErrorCode::STALE_METADATA) {
       // Delete all stale prepared statements from our cache. Since CQL protocol allows only one
       // unprepared query id to be returned, we will return just the last unprepared / stale one
       // we found.

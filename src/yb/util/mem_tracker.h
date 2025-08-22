@@ -41,7 +41,6 @@
 #include <unordered_map>
 
 #include <boost/container/small_vector.hpp>
-#include <boost/optional.hpp>
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/high_water_mark.h"

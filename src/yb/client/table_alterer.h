@@ -13,8 +13,6 @@
 
 #pragma once
 
-#include <boost/optional.hpp>
-
 #include "yb/client/client_fwd.h"
 #include "yb/client/yb_table_name.h"
 
@@ -125,7 +123,7 @@ class YBTableAlterer {
 
   std::unique_ptr<TableProperties> table_properties_;
 
-  boost::optional<uint32_t> wal_retention_secs_;
+  std::optional<uint32_t> wal_retention_secs_;
 
   std::unique_ptr<ReplicationInfoPB> replication_info_;
 

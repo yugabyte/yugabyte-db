@@ -958,16 +958,16 @@ TEST_F(AdminCliTest, TestModifyTablePlacementPolicy) {
       "c.r.z0,c.r.z1,c.r.z2", 3, random_placement_uuid));
 
   ASSERT_OK(client->OpenTable(extra_table, &table));
-  ASSERT_TRUE(table->replication_info().get().live_replicas().placement_uuid().empty());
+  ASSERT_TRUE(table->replication_info()->live_replicas().placement_uuid().empty());
 
   // Fetch the placement policy for the table and verify that it matches
   // the custom info set previously.
   ASSERT_OK(client->OpenTable(extra_table, &table));
   vector<bool> found_zones;
   found_zones.assign(3, false);
-  ASSERT_EQ(table->replication_info().get().live_replicas().placement_blocks_size(), 3);
+  ASSERT_EQ(table->replication_info()->live_replicas().placement_blocks_size(), 3);
   for (int ii = 0; ii < 3; ++ii) {
-    auto pb = table->replication_info().get().live_replicas().placement_blocks(ii).cloud_info();
+    auto pb = table->replication_info()->live_replicas().placement_blocks(ii).cloud_info();
     ASSERT_EQ(pb.placement_cloud(), "c");
     ASSERT_EQ(pb.placement_region(), "r");
     if (pb.placement_zone() == "z0") {
@@ -990,17 +990,17 @@ TEST_F(AdminCliTest, TestModifyTablePlacementPolicy) {
 
   // Verify that changing the placement _uuid for a table fails if the
   // placement_uuid does not match the cluster live placement_uuid.
-  ASSERT_NOK(CallAdmin(
-      "modify_table_placement_info", table_id, "c.r.z1", 1, random_placement_uuid));
+  ASSERT_NOK(
+      CallAdmin("modify_table_placement_info", table_id, "c.r.z1", 1, random_placement_uuid));
 
   ASSERT_OK(client->OpenTable(extra_table, &table));
-  ASSERT_TRUE(table->replication_info().get().live_replicas().placement_uuid().empty());
+  ASSERT_TRUE(table->replication_info()->live_replicas().placement_uuid().empty());
 
   // Fetch the placement policy for the table and verify that it matches
   // the custom info set previously.
   ASSERT_OK(client->OpenTable(extra_table, &table));
-  ASSERT_EQ(table->replication_info().get().live_replicas().placement_blocks_size(), 1);
-  auto pb = table->replication_info().get().live_replicas().placement_blocks(0).cloud_info();
+  ASSERT_EQ(table->replication_info()->live_replicas().placement_blocks_size(), 1);
+  auto pb = table->replication_info()->live_replicas().placement_blocks(0).cloud_info();
   ASSERT_EQ(pb.placement_cloud(), "c");
   ASSERT_EQ(pb.placement_region(), "r");
   ASSERT_EQ(pb.placement_zone(), "z1");
@@ -1061,13 +1061,12 @@ TEST_F(AdminCliTest, TestCreateTransactionStatusTablesWithPlacements) {
   // Verify that the tables are all in transaction status tables in the right zone.
   std::shared_ptr<client::YBTable> table;
   for (int i = 0; i < 3; ++i) {
-    const auto table_name = YBTableName(YQLDatabase::YQL_DATABASE_CQL,
-                                        "system",
-                                        Substitute("transactions_z$0", i));
+    const auto table_name =
+        YBTableName(YQLDatabase::YQL_DATABASE_CQL, "system", Substitute("transactions_z$0", i));
     ASSERT_OK(client->OpenTable(table_name, &table));
     ASSERT_EQ(table->table_type(), YBTableType::TRANSACTION_STATUS_TABLE_TYPE);
-    ASSERT_EQ(table->replication_info().get().live_replicas().placement_blocks_size(), 1);
-    auto pb = table->replication_info().get().live_replicas().placement_blocks(0).cloud_info();
+    ASSERT_EQ(table->replication_info()->live_replicas().placement_blocks_size(), 1);
+    auto pb = table->replication_info()->live_replicas().placement_blocks(0).cloud_info();
     ASSERT_EQ(pb.placement_zone(), Substitute("z$0", i));
   }
 

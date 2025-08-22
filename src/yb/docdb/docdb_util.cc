@@ -171,7 +171,7 @@ Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
     }
   }
 
-  if (current_txn_id_.is_initialized()) {
+  if (current_txn_id_.has_value()) {
     if (!increment_write_id) {
       return STATUS(
           InternalError, "For transactional write only increment_write_id=true is supported");
@@ -398,13 +398,11 @@ std::pair<dockv::KeyBytes, KeyBuffer> DocDBRocksDBUtil::ProcessExternalIntents(
       key_.AppendRawBytes(slice);
     }
 
-    void SetValue(const Slice& slice) override {
-      value_ = slice;
-    }
+    void SetValue(const Slice& slice) override { value_ = slice; }
 
-    boost::optional<std::pair<Slice, Slice>> Next() override {
+    std::optional<std::pair<Slice, Slice>> Next() override {
       if (next_idx_ >= intents_.size()) {
-        return boost::none;
+        return std::nullopt;
       }
 
       // It is ok to have inefficient code in tests.

@@ -256,7 +256,7 @@ class MasterSnapshotCoordinator::Impl {
 
   Result<TxnSnapshotId> CreateForSchedule(
       const SnapshotScheduleId& schedule_id, int64_t leader_term, CoarseTimePoint deadline) {
-    boost::optional<SnapshotScheduleOperation> operation;
+    std::optional<SnapshotScheduleOperation> operation;
     {
       std::lock_guard lock(mutex_);
       auto it = schedules_.find(schedule_id);
@@ -308,7 +308,7 @@ class MasterSnapshotCoordinator::Impl {
     TabletSnapshotOperations operations;
     docdb::KeyValueWriteBatchPB write_batch;
     RETURN_NOT_OK(snapshot->StoreToWriteBatch(&write_batch));
-    boost::optional<tablet::CreateSnapshotData> sys_catalog_snapshot_data;
+    std::optional<tablet::CreateSnapshotData> sys_catalog_snapshot_data;
     bool snapshot_empty = false;
     {
       std::lock_guard lock(mutex_);
@@ -894,22 +894,22 @@ class MasterSnapshotCoordinator::Impl {
         restoration->MasterMetadata(), schedule_result->options().filter().tables().tables());
   }
 
-  boost::optional<yb::master::SnapshotState&> ValidateRestoreAndGetSnapshot(
-      RestorationState* restoration) REQUIRES(mutex_) {
+  std::optional<std::reference_wrapper<const yb::master::SnapshotState>>
+  ValidateRestoreAndGetSnapshot(RestorationState* restoration) REQUIRES(mutex_) {
     // Ignore if already completed.
     if (restoration->complete_time()) {
-      return boost::none;
+      return std::nullopt;
     }
     // If the restore is still undergoing the sys catalog phase.
     if (!restoration->IsSysCatalogRestorationDone()) {
-      return boost::none;
+      return std::nullopt;
     }
     // If the snapshot to restore is not ok.
     auto snapshot = FindSnapshot(restoration->snapshot_id());
     if (!snapshot.ok()) {
       LOG(DFATAL) << "Snapshot not found for pending restore with id "
                   << restoration->restoration_id();
-      return boost::none;
+      return std::nullopt;
     }
 
     return *snapshot;
@@ -1474,13 +1474,13 @@ class MasterSnapshotCoordinator::Impl {
         if (!snapshot || r->GetLeaderTerm() != leader_term) {
           continue;
         }
-        r->Throttler().RefreshLimit(
-            GetRpcLimit(FLAGS_max_concurrent_restoration_rpcs,
-                        FLAGS_max_concurrent_restoration_rpcs_per_tserver, leader_term));
-        auto tablets = (*snapshot).tablet_ids();
+        r->Throttler().RefreshLimit(GetRpcLimit(
+            FLAGS_max_concurrent_restoration_rpcs,
+            FLAGS_max_concurrent_restoration_rpcs_per_tserver, leader_term));
+        auto tablets = (*snapshot).get().tablet_ids();
         std::unordered_set<TabletId> tablets_snapshot(tablets.begin(), tablets.end());
         std::optional<int64_t> db_oid = std::nullopt;
-        if (!snapshot->schedule_id().IsNil()) {
+        if (!snapshot->get().schedule_id().IsNil()) {
           db_oid = ComputeDbOid(*r);
         }
         r->PrepareOperations(&restore_operations, tablets_snapshot, db_oid);

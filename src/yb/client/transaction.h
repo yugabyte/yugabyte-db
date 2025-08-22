@@ -178,7 +178,7 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   void SetActiveSubTransaction(SubTransactionId id);
 
-  boost::optional<SubTransactionMetadataPB> GetSubTransactionMetadataPB() const;
+  std::optional<SubTransactionMetadataPB> GetSubTransactionMetadataPB() const;
 
   Status SetPgTxnStart(int64_t pg_txn_start_us);
 

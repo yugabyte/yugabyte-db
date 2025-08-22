@@ -94,15 +94,15 @@ class TabletSplitTest : public YBTabletTest {
 
 namespace {
 
-boost::optional<docdb::DocKeyHash> PartitionKeyToHash(const std::string& partition_key) {
+std::optional<docdb::DocKeyHash> PartitionKeyToHash(const std::string& partition_key) {
   if (partition_key.empty()) {
-    return boost::none;
+    return std::nullopt;
   } else {
     return dockv::PartitionSchema::DecodeMultiColumnHashValue(partition_key);
   }
 }
 
-} // namespace
+}  // namespace
 
 TEST_F(TabletSplitTest, SplitTablet) {
   constexpr auto kNumRows = 10000;

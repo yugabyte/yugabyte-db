@@ -145,8 +145,8 @@ class ConflictResolverContext {
 
   virtual bool IsSingleShardTransaction() const = 0;
 
-  virtual boost::optional<yb::PgSessionRequestVersion> PgSessionRequestVersion() const {
-    return boost::none;
+  virtual std::optional<yb::PgSessionRequestVersion> PgSessionRequestVersion() const {
+    return std::nullopt;
   }
 
   virtual TransactionId wait_as_txn_id() const = 0;
@@ -1134,7 +1134,7 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
   Result<TabletId> GetStatusTablet(ConflictResolver* resolver) const override {
     RETURN_NOT_OK(transaction_id_);
     // If this is the first operation for this transaction at this tablet, then GetStatusTablet
-    // will return boost::none since the transaction has not been registered with the tablet's
+    // will return std::nullopt since the transaction has not been registered with the tablet's
     // transaction participant. However, the write_batch_ transaction metadata only includes the
     // status tablet on the first write to this tablet.
     if (write_batch_.transaction().has_status_tablet()) {
@@ -1314,20 +1314,16 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
     return kMinSubTransactionId;
   }
 
-  bool IsSingleShardTransaction() const override {
-    return false;
-  }
+  bool IsSingleShardTransaction() const override { return false; }
 
-  boost::optional<yb::PgSessionRequestVersion> PgSessionRequestVersion() const override {
+  std::optional<yb::PgSessionRequestVersion> PgSessionRequestVersion() const override {
     if (write_batch_.has_pg_session_req_version() && write_batch_.pg_session_req_version()) {
       return write_batch_.pg_session_req_version();
     }
-    return boost::none;
+    return std::nullopt;
   }
 
-  std::string ToString() const override {
-    return yb::ToString(transaction_id_);
-  }
+  std::string ToString() const override { return yb::ToString(transaction_id_); }
 
   const LWKeyValueWriteBatchPB& write_batch_;
 

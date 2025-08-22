@@ -13,8 +13,6 @@
 
 #pragma once
 
-#include <boost/optional/optional.hpp>
-
 #include "yb/client/client_fwd.h"
 #include "yb/client/yb_table_name.h"
 
@@ -206,8 +204,8 @@ class YBTableCreator {
   // For Postgres: table id to assign, and whether the table is a sys catalog / shared table.
   // For all tables, table_id_ will contain the table id assigned after creation.
   std::string table_id_;
-  boost::optional<bool> is_pg_catalog_table_;
-  boost::optional<bool> is_pg_shared_table_;
+  std::optional<bool> is_pg_catalog_table_;
+  std::optional<bool> is_pg_shared_table_;
 
   int32_t num_tablets_ = 0;
 
@@ -243,7 +241,7 @@ class YBTableCreator {
   // The id of the tablespace to which this table is to be associated with.
   std::string tablespace_id_;
 
-  boost::optional<bool> is_matview_;
+  std::optional<bool> is_matview_;
 
   // In case the table was rewritten, explicitly store the TableId containing the PG table OID
   // (as the table's TableId no longer matches).
@@ -253,7 +251,7 @@ class YBTableCreator {
   TableId old_rewrite_table_id_;
 
   // Set to true when the table is being re-written as part of a TRUNCATE operation.
-  boost::optional<bool> is_truncate_;
+  std::optional<bool> is_truncate_;
 
   // Set by DDL Replication to link the table to the original table in the source cluster.
   TableId xcluster_source_table_id_;

@@ -769,7 +769,7 @@ Status ClusterAdminClient::GetWalRetentionSecs(const YBTableName& table_name) {
     cout << "WAL retention time not set for table " << table_name.table_name() << endl;
   } else {
     cout << "Found WAL retention time for table " << table_name.table_name() << ": "
-         << info.wal_retention_secs.get() << " seconds" << endl;
+         << info.wal_retention_secs.value() << " seconds" << endl;
   }
   return Status::OK();
 }
@@ -917,10 +917,8 @@ Status ClusterAdminClient::ParseChangeType(
 }
 
 Status ClusterAdminClient::ChangeConfig(
-    const TabletId& tablet_id,
-    const string& change_type,
-    const PeerId& peer_uuid,
-    const boost::optional<string>& member_type) {
+    const TabletId& tablet_id, const string& change_type, const PeerId& peer_uuid,
+    const std::optional<string>& member_type) {
   CHECK(initted_);
 
   consensus::ChangeConfigType cc_type;
@@ -1493,8 +1491,8 @@ Status ClusterAdminClient::ListTables(bool include_db_type,
       str << ' ' << table.table_id();
     }
     if (include_table_type) {
-      boost::optional<master::RelationType> relation_type = table.relation_type();
-      switch (relation_type.get()) {
+      std::optional<master::RelationType> relation_type = table.relation_type();
+      switch (relation_type.value()) {
         case master::SYSTEM_TABLE_RELATION:
           str << " catalog";
           break;
@@ -1758,7 +1756,7 @@ Status ClusterAdminClient::DeleteNamespace(const TypedNamespaceName& namespace_n
 
 Status ClusterAdminClient::DeleteNamespaceById(const NamespaceId& namespace_id) {
   RETURN_NOT_OK(yb_client_->DeleteNamespace(
-      std::string() /* name */, boost::none /* database type */, namespace_id));
+      std::string() /* name */, std::nullopt /* database type */, namespace_id));
   cout << "Deleted namespace " << namespace_id << endl;
   return Status::OK();
 }
@@ -2344,7 +2342,7 @@ Status ClusterAdminClient::UpgradeYsql(bool use_single_connection) {
   // Pick some alive TServer.
   RepeatedPtrField<ListTabletServersResponsePB::Entry> servers;
   RETURN_NOT_OK(ListTabletServers(&servers));
-  boost::optional<HostPortPB> ts_rpc_addr;
+  std::optional<HostPortPB> ts_rpc_addr;
   for (const ListTabletServersResponsePB::Entry& server : servers) {
     if (!server.has_alive() || !server.alive()) {
       continue;

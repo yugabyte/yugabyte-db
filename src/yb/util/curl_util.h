@@ -33,10 +33,9 @@
 
 #include <curl/curl.h>
 
+#include <optional>
 #include <string>
 #include <vector>
-
-#include <boost/optional.hpp>
 
 #include "yb/gutil/macros.h"
 
@@ -116,11 +115,8 @@ class EasyCurl {
   // Do a request. If 'post_data' is non-NULL, does a POST.
   // Otherwise, does a GET.
   Status DoRequest(
-      const std::string& url,
-      const boost::optional<const std::string>& post_data,
-      const boost::optional<const std::string>& content_type,
-      int64_t timeout_sec,
-      faststring* dst,
+      const std::string& url, const std::optional<const std::string>& post_data,
+      const std::optional<const std::string>& content_type, int64_t timeout_sec, faststring* dst,
       const std::vector<std::string>& headers = {});
 
   CURL* curl_;

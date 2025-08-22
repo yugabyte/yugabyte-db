@@ -177,9 +177,9 @@ Result<ChildTransactionData> ChildTransactionData::FromPB(const ChildTransaction
   return result;
 }
 
-bool CanAbortTransaction(const Status& status,
-                         const TransactionMetadata& txn_metadata,
-                         const boost::optional<SubTransactionMetadataPB>& subtransaction_pb) {
+bool CanAbortTransaction(
+    const Status& status, const TransactionMetadata& txn_metadata,
+    const std::optional<SubTransactionMetadataPB>& subtransaction_pb) {
   // We don't abort the transaction in the following scenarios:
   // 1. When we face a kSkipLocking error, so as to make further progress.
   // 2. When we are inside a sub transaction, so as to only abort the subtxn, not the entire txn.
@@ -465,17 +465,16 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
   void Flushed(
       const internal::InFlightOps& ops,
-      const boost::optional<SubTransactionMetadataPB>& subtransaction_pb,
+      const std::optional<SubTransactionMetadataPB>& subtransaction_pb,
       const ReadHybridTime& used_read_time, const Status& status) EXCLUDES(mutex_) override {
     TRACE_TO(trace_, "Flushed $0 ops. with Status $1", ops.size(), status.ToString());
-    VLOG_WITH_PREFIX(5)
-        << "Flushed: " << yb::ToString(ops) << ", used_read_time: " << used_read_time
-        << ", status: " << status;
+    VLOG_WITH_PREFIX(5) << "Flushed: " << yb::ToString(ops)
+                        << ", used_read_time: " << used_read_time << ", status: " << status;
     if (FLAGS_TEST_transaction_inject_flushed_delay_ms > 0) {
       std::this_thread::sleep_for(FLAGS_TEST_transaction_inject_flushed_delay_ms * 1ms);
     }
 
-    boost::optional<Status> notify_commit_status;
+    std::optional<Status> notify_commit_status;
     bool abort = false;
     bool schedule_status_moved = false;
 
@@ -956,9 +955,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     return subtransaction_.SetActiveSubTransaction(id);
   }
 
-  boost::optional<SubTransactionMetadataPB> GetSubTransactionMetadataPB() const {
+  std::optional<SubTransactionMetadataPB> GetSubTransactionMetadataPB() const {
     if (!subtransaction_.active()) {
-      return boost::none;
+      return std::nullopt;
     }
     SubTransactionMetadataPB subtxn_metadata_pb;
     subtransaction_.get().ToPB(&subtxn_metadata_pb);
@@ -1325,7 +1324,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       TransactionStatus status, UpdateTransactionCallback callback,
       std::optional<SubtxnSet> aborted_set_for_rollback_heartbeat = std::nullopt,
       const TabletStates& tablets_with_locks = {},
-      const boost::optional<TransactionMetadata>& background_transaction = boost::none) {
+      const std::optional<TransactionMetadata>& background_transaction = std::nullopt) {
     tserver::UpdateTransactionRequestPB req;
     req.set_tablet_id(status_tablet->tablet_id());
     req.set_propagated_hybrid_time(manager_->Now().ToUint64());
@@ -1960,7 +1959,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       } else {
         status_tablet = status_tablet_;
       }
-      boost::optional<TransactionMetadata> background_transaction = boost::none;
+      std::optional<TransactionMetadata> background_transaction = std::nullopt;
       if (auto shared_bg_txn = background_transaction_.lock(); shared_bg_txn) {
         LOG_IF_WITH_PREFIX(DFATAL, !pg_session_req_version_)
             << "Expected this path to be triggered only for PgSessionTransactions "
@@ -2732,7 +2731,7 @@ void YBTransaction::SetActiveSubTransaction(SubTransactionId id) {
   return impl_->SetActiveSubTransaction(id);
 }
 
-boost::optional<SubTransactionMetadataPB> YBTransaction::GetSubTransactionMetadataPB() const {
+std::optional<SubTransactionMetadataPB> YBTransaction::GetSubTransactionMetadataPB() const {
   return impl_->GetSubTransactionMetadataPB();
 }
 

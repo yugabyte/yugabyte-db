@@ -98,31 +98,25 @@ class YBClient::Data {
                         const master::AlterNamespaceRequestPB& req,
                         CoarseTimePoint deadline);
 
-  Status IsCreateNamespaceInProgress(YBClient* client,
-                                const std::string& namespace_name,
-                                const boost::optional<YQLDatabase>& database_type,
-                                const std::string& namespace_id,
-                                CoarseTimePoint deadline,
-                                bool *create_in_progress);
+  Status IsCreateNamespaceInProgress(
+      YBClient* client, const std::string& namespace_name,
+      const std::optional<YQLDatabase>& database_type, const std::string& namespace_id,
+      CoarseTimePoint deadline, bool* create_in_progress);
 
-  Status WaitForCreateNamespaceToFinish(YBClient* client,
-                                const std::string& namespace_name,
-                                const boost::optional<YQLDatabase>& database_type,
-                                const std::string& namespace_id,
-                                CoarseTimePoint deadline);
+  Status WaitForCreateNamespaceToFinish(
+      YBClient* client, const std::string& namespace_name,
+      const std::optional<YQLDatabase>& database_type, const std::string& namespace_id,
+      CoarseTimePoint deadline);
 
-  Status IsDeleteNamespaceInProgress(YBClient* client,
-                                     const std::string& namespace_name,
-                                     const boost::optional<YQLDatabase>& database_type,
-                                     const std::string& namespace_id,
-                                     CoarseTimePoint deadline,
-                                     bool *delete_in_progress);
+  Status IsDeleteNamespaceInProgress(
+      YBClient* client, const std::string& namespace_name,
+      const std::optional<YQLDatabase>& database_type, const std::string& namespace_id,
+      CoarseTimePoint deadline, bool* delete_in_progress);
 
-  Status WaitForDeleteNamespaceToFinish(YBClient* client,
-                                        const std::string& namespace_name,
-                                        const boost::optional<YQLDatabase>& database_type,
-                                        const std::string& namespace_id,
-                                        CoarseTimePoint deadline);
+  Status WaitForDeleteNamespaceToFinish(
+      YBClient* client, const std::string& namespace_name,
+      const std::optional<YQLDatabase>& database_type, const std::string& namespace_id,
+      CoarseTimePoint deadline);
 
   Status IsCloneNamespaceInProgress(
       YBClient* client, const std::string& source_namespace_id, uint32_t clone_seq_no,

@@ -550,20 +550,17 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   // Send the "delete tablet request" to the specified TS/tablet.
   // The specified 'reason' will be logged on the TS.
-  void SendDeleteTabletRequest(const TabletId& tablet_id,
-                               tablet::TabletDataState delete_type,
-                               const boost::optional<int64_t>& cas_config_opid_index_less_or_equal,
-                               const scoped_refptr<TableInfo>& table,
-                               const std::string& ts_uuid,
-                               const std::string& reason,
-                               const LeaderEpoch& epoch,
-                               HideOnly hide_only = HideOnly::kFalse,
-                               KeepData keep_data = KeepData::kFalse);
+  void SendDeleteTabletRequest(
+      const TabletId& tablet_id, tablet::TabletDataState delete_type,
+      const std::optional<int64_t>& cas_config_opid_index_less_or_equal,
+      const scoped_refptr<TableInfo>& table, const std::string& ts_uuid, const std::string& reason,
+      const LeaderEpoch& epoch, HideOnly hide_only = HideOnly::kFalse,
+      KeepData keep_data = KeepData::kFalse);
 
   std::shared_ptr<AsyncDeleteReplica> MakeDeleteReplicaTask(
       const TabletServerId& peer_uuid, const TableInfoPtr& table, const TabletId& tablet_id,
       tablet::TabletDataState delete_type,
-      boost::optional<int64_t> cas_config_opid_index_less_or_equal, LeaderEpoch epoch,
+      std::optional<int64_t> cas_config_opid_index_less_or_equal, LeaderEpoch epoch,
       const std::string& reason);
 
   void SetTabletReplicaLocations(
@@ -1057,19 +1054,15 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
     leader_mutex_.AssertAcquiredForWriting();
   }
 
-  std::string GenerateId() override {
-    return GenerateId(boost::none);
-  }
+  std::string GenerateId() override { return GenerateId(std::nullopt); }
 
-  std::string GenerateId(boost::optional<const SysRowEntryType> entity_type);
-  std::string GenerateIdUnlocked(boost::optional<const SysRowEntryType> entity_type = boost::none)
+  std::string GenerateId(std::optional<const SysRowEntryType> entity_type);
+  std::string GenerateIdUnlocked(std::optional<const SysRowEntryType> entity_type = std::nullopt)
       REQUIRES_SHARED(mutex_);
 
   ThreadPool* AsyncTaskPool() override { return async_task_pool_.get(); }
 
-  PermissionsManager* permissions_manager() override {
-    return permissions_manager_.get();
-  }
+  PermissionsManager* permissions_manager() override { return permissions_manager_.get(); }
 
   intptr_t tablets_version() const override NO_THREAD_SAFETY_ANALYSIS {
     // This method should not hold the lock, because Version method is thread safe.
@@ -1171,7 +1164,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Result<size_t> GetTableReplicationFactor(const TableInfoPtr& table) const override;
 
-  Result<boost::optional<TablespaceId>> GetTablespaceForTable(
+  Result<std::optional<TablespaceId>> GetTablespaceForTable(
       const scoped_refptr<TableInfo>& table) const override;
 
   void CheckTableDeleted(const TableInfoPtr& table, const LeaderEpoch& epoch) override;
@@ -1567,7 +1560,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   docdb::HistoryCutoff AllowedHistoryCutoffProvider(tablet::RaftGroupMetadata* metadata);
 
-  Result<boost::optional<ReplicationInfoPB>> GetTablespaceReplicationInfoWithRetry(
+  Result<std::optional<ReplicationInfoPB>> GetTablespaceReplicationInfoWithRetry(
       const TablespaceId& tablespace_id);
 
   // Promote the table from a PREPARING state to a RUNNING state, and persist in sys_catalog.
@@ -2364,7 +2357,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   std::unique_ptr<ObjectLockInfoManager> object_lock_info_manager_;
 
-  boost::optional<InitialSysCatalogSnapshotWriter> initial_snapshot_writer_;
+  std::optional<InitialSysCatalogSnapshotWriter> initial_snapshot_writer_;
 
   std::unique_ptr<PermissionsManager> permissions_manager_;
 
@@ -2465,8 +2458,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   // Clears tablespace id for a transaction status table, reverting it back to cluster default
   // if no placement has been set explicitly.
-  void ClearTransactionStatusTableTablespace(
-      const scoped_refptr<TableInfo>& table) REQUIRES(mutex_);
+  void ClearTransactionStatusTableTablespace(const scoped_refptr<TableInfo>& table)
+      REQUIRES(mutex_);
 
   // Checks if there are any transaction tables with tablespace id set for a tablespace not in
   // the given tablespace info map.

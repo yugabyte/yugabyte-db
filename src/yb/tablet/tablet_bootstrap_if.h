@@ -36,8 +36,6 @@
 #include <string>
 #include <vector>
 
-#include <boost/optional.hpp>
-
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/opid.h"
@@ -145,11 +143,11 @@ class TabletBootstrapTestHooksIf {
 
   // This is called during TabletBootstrap initialization so that the test can pretend certain
   // OpIds have been flushed in to regular and intents RocksDBs.
-  virtual boost::optional<DocDbOpIds> GetFlushedOpIdsOverride() const = 0;
+  virtual std::optional<DocDbOpIds> GetFlushedOpIdsOverride() const = 0;
 
   // This is called during TabletBootstrap initialization so that the test can pretent certain
   // OpId has been flushed in retryable requests;
-  virtual boost::optional<OpId> GetFlushedRetryableRequestsOpIdOverride() const = 0;
+  virtual std::optional<OpId> GetFlushedRetryableRequestsOpIdOverride() const = 0;
 
   // TabletBootstrap calls this when an operation is replayed.
   // replay_decision is true for transaction update operations that have already been applied to the

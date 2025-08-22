@@ -2695,11 +2695,11 @@ void Executor::Reset(ResetAsyncCalls* reset_async_calls) {
   num_flushes_ = 0;
   result_ = nullptr;
   cb_.Reset();
-  returns_status_batch_opt_ = boost::none;
+  returns_status_batch_opt_ = std::nullopt;
   reset_async_calls->Perform();
 }
 
-QLExpressionPB* CreateQLExpression(QLWriteRequestPB *req, const ColumnDesc& col_desc) {
+QLExpressionPB* CreateQLExpression(QLWriteRequestPB* req, const ColumnDesc& col_desc) {
   if (col_desc.is_hash()) {
     return req->add_hashed_column_values();
   } else if (col_desc.is_primary()) {

@@ -300,7 +300,7 @@ Rpcs::Rpcs(std::mutex* mutex) {
     mutex_ = mutex;
   } else {
     mutex_holder_.emplace();
-    mutex_ = &mutex_holder_.get();
+    mutex_ = &mutex_holder_.value();
   }
 }
 

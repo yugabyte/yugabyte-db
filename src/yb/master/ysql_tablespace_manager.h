@@ -14,8 +14,6 @@
 
 #include <unordered_map>
 
-#include <boost/optional/optional.hpp>
-
 #include "yb/common/common_net.pb.h"
 
 #include "yb/gutil/ref_counted.h"
@@ -45,17 +43,17 @@ class YsqlTablespaceManager {
   YsqlTablespaceManager(std::shared_ptr<TablespaceIdToReplicationInfoMap> tablespace_map,
                         std::shared_ptr<TableToTablespaceIdMap> table_to_tablespace_map);
 
-  std::shared_ptr<YsqlTablespaceManager>
-  CreateCloneWithTablespaceMap(std::shared_ptr<TablespaceIdToReplicationInfoMap> tablespace_map);
+  std::shared_ptr<YsqlTablespaceManager> CreateCloneWithTablespaceMap(
+      std::shared_ptr<TablespaceIdToReplicationInfoMap> tablespace_map);
 
-  Result<boost::optional<ReplicationInfoPB>> GetTablespaceReplicationInfo(
-    const TablespaceId& tablespace_id);
+  Result<std::optional<ReplicationInfoPB>> GetTablespaceReplicationInfo(
+      const TablespaceId& tablespace_id);
 
-  Result<boost::optional<TablespaceId>> GetTablespaceForTable(
+  Result<std::optional<TablespaceId>> GetTablespaceForTable(
       const scoped_refptr<const TableInfo>& table) const;
 
-  Result<boost::optional<ReplicationInfoPB>> GetTableReplicationInfo(
-    const scoped_refptr<const TableInfo>& table) const;
+  Result<std::optional<ReplicationInfoPB>> GetTableReplicationInfo(
+      const scoped_refptr<const TableInfo>& table) const;
 
   // Indicates whether we need to wait for the next run of the tablespace background task to know
   // the tablespace information for a table.

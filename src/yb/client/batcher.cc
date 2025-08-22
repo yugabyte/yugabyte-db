@@ -41,7 +41,6 @@
 #include <utility>
 #include <vector>
 
-#include <boost/optional/optional_io.hpp>
 #include <boost/range/adaptors.hpp>
 
 #include "yb/ash/wait_state.h"

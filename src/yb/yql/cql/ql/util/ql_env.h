@@ -127,10 +127,9 @@ class QLEnv {
                                     const bool login, const bool superuser);
 
   // Alter an existing role with the given arguments.
-  virtual Status AlterRole(const std::string& role_name,
-                                   const boost::optional<std::string>& salted_hash,
-                                   const boost::optional<bool> login,
-                                   const boost::optional<bool> superuser);
+  virtual Status AlterRole(
+      const std::string& role_name, const std::optional<std::string>& salted_hash,
+      const std::optional<bool> login, const std::optional<bool> superuser);
 
   // Delete role by name.
   virtual Status DeleteRole(const std::string& role_name);

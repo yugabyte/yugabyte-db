@@ -221,7 +221,7 @@ class TsTabletManagerTest : public YBTest {
   }
 
   Result<TSTabletManager::TabletPeers> GetPeers(
-      boost::optional<size_t> expected_count = boost::none) {
+      std::optional<size_t> expected_count = std::nullopt) {
     auto peers = tablet_manager_->GetTabletPeers(nullptr);
     if (expected_count.has_value()) {
       SCHECK_EQ(*expected_count, peers.size(), IllegalState, "Unexpected number of peers");
@@ -380,14 +380,11 @@ TEST_F(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered) {
   assert_tablet_assignment_count(kTabletId1, 1);
   assert_tablet_assignment_count(kTabletId2, 1);
 
-  boost::optional<int64_t> cas_config_opid_index_less_or_equal;
-  boost::optional<TabletServerErrorPB::Code> error_code;
-  ASSERT_OK(tablet_manager_->DeleteTablet(kTabletId1,
-      tablet::TABLET_DATA_TOMBSTONED,
-      tablet::ShouldAbortActiveTransactions::kFalse,
-      cas_config_opid_index_less_or_equal,
-      false /* hide_only */,
-      false /* keep_data */,
+  std::optional<int64_t> cas_config_opid_index_less_or_equal;
+  std::optional<TabletServerErrorPB::Code> error_code;
+  ASSERT_OK(tablet_manager_->DeleteTablet(
+      kTabletId1, tablet::TABLET_DATA_TOMBSTONED, tablet::ShouldAbortActiveTransactions::kFalse,
+      cas_config_opid_index_less_or_equal, false /* hide_only */, false /* keep_data */,
       &error_code));
 
   assert_tablet_assignment_count(kTabletId1, 0);
@@ -1101,15 +1098,10 @@ TEST_F(TsTabletManagerTest, FullCompactionManagerCleanup) {
   ASSERT_TRUE(compaction_manager->TEST_TabletIdInStatsWindowMap(kTabletId3));
 
   // Delete tablet 1 using TABLET_DATA_DELETED, so peer is removed completely from TsTabletManager.
-  boost::optional<int64_t> cas_config_opid_index_less_or_equal;
-  boost::optional<TabletServerErrorPB::Code> error_code;
-  ASSERT_OK(tablet_manager_->DeleteTablet(kTabletId1,
-      tablet::TABLET_DATA_DELETED,
-      tablet::ShouldAbortActiveTransactions::kFalse,
-      boost::optional<int64_t>{},
-      false /* hide_only */,
-      false /* keep_data */,
-      &error_code));
+  std::optional<TabletServerErrorPB::Code> error_code;
+  ASSERT_OK(tablet_manager_->DeleteTablet(
+      kTabletId1, tablet::TABLET_DATA_DELETED, tablet::ShouldAbortActiveTransactions::kFalse,
+      std::optional<int64_t>{}, false /* hide_only */, false /* keep_data */, &error_code));
 
   // Run ScheduleFullCompactions again. Cleanup will not be triggered in the stats window map
   // because we only execute cleanup every hour, and the number of extra tablet_ids don't meet the

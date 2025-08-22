@@ -77,10 +77,10 @@ Status PgCreateTable::Prepare() {
   EnsureYBbasectidColumnCreated();
 
   if (!req_.split_bounds().empty()) {
-    if (hash_schema_.is_initialized()) {
+    if (hash_schema_.has_value()) {
       if (indexed_table_id_.IsValid()) {
-        return STATUS(InvalidArgument,
-                    "SPLIT AT option is not yet supported for hash partitioned indexes");
+        return STATUS(
+            InvalidArgument, "SPLIT AT option is not yet supported for hash partitioned indexes");
       } else {
         return STATUS(InvalidArgument,
                     "SPLIT AT option is not yet supported for hash partitioned tables");

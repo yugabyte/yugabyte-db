@@ -34,8 +34,6 @@
 #include <string>
 #include <vector>
 
-#include <boost/optional.hpp>
-
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/xcluster_types.h"
 
@@ -163,16 +161,12 @@ class ClusterAdminClient {
 
   // Change the configuration of the specified tablet.
   Status ChangeConfig(
-      const TabletId& tablet_id,
-      const std::string& change_type,
-      const PeerId& peer_uuid,
-      const boost::optional<std::string>& member_type);
+      const TabletId& tablet_id, const std::string& change_type, const PeerId& peer_uuid,
+      const std::optional<std::string>& member_type);
 
   // Change the configuration of the master tablet.
   Status ChangeMasterConfig(
-      const std::string& change_type,
-      const std::string& peer_host,
-      uint16_t peer_port,
+      const std::string& change_type, const std::string& peer_host, uint16_t peer_port,
       const std::string& peer_uuid = "");
 
   Status DumpMasterState(bool to_console);

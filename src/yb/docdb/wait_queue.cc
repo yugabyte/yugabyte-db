@@ -255,20 +255,17 @@ struct WaiterLockStatusInfo {
 // in blocker_status_ are presumed to no lonber be of concern to any pending waiting transactions
 // and are discarded.
 struct WaiterData : public std::enable_shared_from_this<WaiterData> {
-  WaiterData(const TransactionId id_, SubTransactionId subtxn_id_, LockBatch* const locks_,
-             uint64_t serial_no_, int64_t txn_start_us_, uint64_t request_start_us_,
-             int64_t request_id_,
-             HybridTime wq_entry_time_,
-             const TabletId& status_tablet_,
-             const std::vector<BlockerDataAndConflictInfo> blockers_,
-             IntentProviderFunc&& intent_provider_,
-             const WaitDoneCallback callback_,
-             std::unique_ptr<ScopedWaitingTxnRegistration> waiter_registration_,
-             scoped_refptr<EventStats>* finished_waiting_latency,
-             scoped_refptr<AtomicGauge<uint64_t>>& total_contentious_waiters,
-             boost::optional<PgSessionRequestVersion> pg_session_req_version,
-             bool is_advisory_lock_req,
-             CoarseTimePoint deadline)
+  WaiterData(
+      const TransactionId id_, SubTransactionId subtxn_id_, LockBatch* const locks_,
+      uint64_t serial_no_, int64_t txn_start_us_, uint64_t request_start_us_, int64_t request_id_,
+      HybridTime wq_entry_time_, const TabletId& status_tablet_,
+      const std::vector<BlockerDataAndConflictInfo> blockers_,
+      IntentProviderFunc&& intent_provider_, const WaitDoneCallback callback_,
+      std::unique_ptr<ScopedWaitingTxnRegistration> waiter_registration_,
+      scoped_refptr<EventStats>* finished_waiting_latency,
+      scoped_refptr<AtomicGauge<uint64_t>>& total_contentious_waiters,
+      std::optional<PgSessionRequestVersion> pg_session_req_version, bool is_advisory_lock_req,
+      CoarseTimePoint deadline)
       : id(id_),
         subtxn_id(subtxn_id_),
         locks(locks_),
@@ -464,13 +461,11 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
     return deadline_;
   }
 
-  boost::optional<PgSessionRequestVersion> GetPgSessionRequestVersion() const {
+  std::optional<PgSessionRequestVersion> GetPgSessionRequestVersion() const {
     return pg_session_req_version_;
   }
 
-  bool IsForAdvisoryLock() const {
-    return is_advisory_lock_req_;
-  }
+  bool IsForAdvisoryLock() const { return is_advisory_lock_req_; }
 
  private:
   int64_t MicrosSinceCreation() const {
@@ -489,7 +484,7 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
   mutable rw_spinlock mutex_;
   std::optional<UnlockedBatch> unlocked_ GUARDED_BY(mutex_) = std::nullopt;
   bool is_wait_queue_shutting_down_ GUARDED_BY(mutex_) = false;
-  boost::optional<PgSessionRequestVersion> pg_session_req_version_ = boost::none;
+  std::optional<PgSessionRequestVersion> pg_session_req_version_ = std::nullopt;
   const bool is_advisory_lock_req_;
   CoarseTimePoint deadline_;
 };
@@ -498,10 +493,13 @@ using WaiterDataPtr = std::shared_ptr<WaiterData>;
 
 struct WaitingTxn : public std::enable_shared_from_this<WaitingTxn> {
  public:
-  WaitingTxn(const TransactionId& id, const TabletId& status_tablet, rpc::Rpcs* rpcs,
-             OperationCounter* in_progress_rpc_status_req_callbacks):
-      id_(id), status_tablet_(status_tablet), rpcs_(*rpcs),
-      in_progress_rpc_status_req_callbacks_(in_progress_rpc_status_req_callbacks) {}
+  WaitingTxn(
+      const TransactionId& id, const TabletId& status_tablet, rpc::Rpcs* rpcs,
+      OperationCounter* in_progress_rpc_status_req_callbacks)
+      : id_(id),
+        status_tablet_(status_tablet),
+        rpcs_(*rpcs),
+        in_progress_rpc_status_req_callbacks_(in_progress_rpc_status_req_callbacks) {}
 
   void AddWaiter(const WaiterDataPtr& waiter) {
     UniqueLock l(mutex_);
@@ -1271,13 +1269,12 @@ class WaitQueue::Impl {
 
   Result<bool> MaybeWaitOnLocks(
       const TransactionId& waiter_txn_id, SubTransactionId subtxn_id, LockBatch* locks,
-      const TabletId& status_tablet_id, uint64_t serial_no,
-      int64_t txn_start_us, uint64_t request_start_us, int64_t request_id,
-      boost::optional<PgSessionRequestVersion> pg_session_req_version, bool is_advisory_lock_req,
+      const TabletId& status_tablet_id, uint64_t serial_no, int64_t txn_start_us,
+      uint64_t request_start_us, int64_t request_id,
+      std::optional<PgSessionRequestVersion> pg_session_req_version, bool is_advisory_lock_req,
       CoarseTimePoint deadline, IntentProviderFunc intent_provider, WaitDoneCallback callback) {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "waiter_txn_id=" << waiter_txn_id
-                                 << " request_id=" << request_id
-                                 << " txn_start_us=" << txn_start_us
+                                 << " request_id=" << request_id << " txn_start_us=" << txn_start_us
                                  << " request_start_us=" << request_start_us
                                  << " status_tablet_id=" << status_tablet_id
                                  << " pg session txn serial=" << AsString(pg_session_req_version);
@@ -1331,13 +1328,12 @@ class WaitQueue::Impl {
       const TransactionId& waiter_txn_id, SubTransactionId subtxn_id, LockBatch* locks,
       std::shared_ptr<ConflictDataManager> blockers, const TabletId& status_tablet_id,
       uint64_t serial_no, int64_t txn_start_us, uint64_t request_start_us, int64_t request_id,
-      boost::optional<PgSessionRequestVersion> pg_session_req_version, bool is_advisory_lock_req,
+      std::optional<PgSessionRequestVersion> pg_session_req_version, bool is_advisory_lock_req,
       CoarseTimePoint deadline, IntentProviderFunc intent_provider, WaitDoneCallback callback) {
     TRACE_FUNC();
     AtomicFlagSleepMs(&FLAGS_TEST_sleep_before_entering_wait_queue_ms);
     VLOG_WITH_PREFIX_AND_FUNC(4) << "waiter_txn_id=" << waiter_txn_id
-                                 << " request_id=" << request_id
-                                 << " txn_start_us=" << txn_start_us
+                                 << " request_id=" << request_id << " txn_start_us=" << txn_start_us
                                  << " request_start_us=" << request_start_us
                                  << " blockers=" << *blockers
                                  << " status_tablet_id=" << status_tablet_id
@@ -1402,12 +1398,11 @@ class WaitQueue::Impl {
 
   Status SetupWaiterUnlocked(
       const TransactionId& waiter_txn_id, SubTransactionId subtxn_id, LockBatch* locks,
-      const TabletId& status_tablet_id, uint64_t serial_no,
-      int64_t txn_start_us, uint64_t request_start_us, int64_t request_id,
-      IntentProviderFunc intent_provider, WaitDoneCallback callback,
-      std::vector<BlockerDataAndConflictInfo>&& blocker_datas,
+      const TabletId& status_tablet_id, uint64_t serial_no, int64_t txn_start_us,
+      uint64_t request_start_us, int64_t request_id, IntentProviderFunc intent_provider,
+      WaitDoneCallback callback, std::vector<BlockerDataAndConflictInfo>&& blocker_datas,
       std::shared_ptr<ConflictDataManager> blockers,
-      boost::optional<PgSessionRequestVersion> pg_session_req_version, bool is_advisory_lock_req,
+      std::optional<PgSessionRequestVersion> pg_session_req_version, bool is_advisory_lock_req,
       CoarseTimePoint deadline) REQUIRES(mutex_) {
     // TODO(wait-queues): similar to pg, we can wait 1s or so before beginning deadlock detection.
     // See https://github.com/yugabyte/yugabyte-db/issues/13576
@@ -2254,7 +2249,7 @@ Status WaitQueue::WaitOn(
     const TransactionId& waiter, SubTransactionId subtxn_id, LockBatch* locks,
     std::shared_ptr<ConflictDataManager> blockers, const TabletId& status_tablet_id,
     uint64_t serial_no, int64_t txn_start_us, uint64_t request_start_us, int64_t request_id,
-    boost::optional<PgSessionRequestVersion> pg_session_req_version, bool is_advisory_lock_req,
+    std::optional<PgSessionRequestVersion> pg_session_req_version, bool is_advisory_lock_req,
     CoarseTimePoint deadline, IntentProviderFunc intent_provider, WaitDoneCallback callback) {
   return impl_->WaitOn(
       waiter, subtxn_id, locks, std::move(blockers), status_tablet_id, serial_no, txn_start_us,
@@ -2262,12 +2257,11 @@ Status WaitQueue::WaitOn(
       intent_provider, callback);
 }
 
-
 Result<bool> WaitQueue::MaybeWaitOnLocks(
     const TransactionId& waiter, SubTransactionId subtxn_id, LockBatch* locks,
-    const TabletId& status_tablet_id, uint64_t serial_no,
-    int64_t txn_start_us, uint64_t request_start_us, int64_t request_id,
-    boost::optional<PgSessionRequestVersion> pg_session_req_version, bool is_advisory_lock_req,
+    const TabletId& status_tablet_id, uint64_t serial_no, int64_t txn_start_us,
+    uint64_t request_start_us, int64_t request_id,
+    std::optional<PgSessionRequestVersion> pg_session_req_version, bool is_advisory_lock_req,
     CoarseTimePoint deadline, IntentProviderFunc intent_provider, WaitDoneCallback callback) {
   return impl_->MaybeWaitOnLocks(
       waiter, subtxn_id, locks, status_tablet_id, serial_no, txn_start_us, request_start_us,
@@ -2275,9 +2269,7 @@ Result<bool> WaitQueue::MaybeWaitOnLocks(
       callback);
 }
 
-void WaitQueue::Poll(HybridTime now) {
-  return impl_->Poll(now);
-}
+void WaitQueue::Poll(HybridTime now) { return impl_->Poll(now); }
 
 void WaitQueue::StartShutdown() {
   impl_->StartShutdown();

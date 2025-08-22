@@ -181,7 +181,6 @@ set(UTIL_SRCS
   net/tunnel.cc
   ntp_clock.cc
   oid_generator.cc
-  once.cc
   operation_counter.cc
   os-util.cc
   path_util.cc
@@ -395,7 +394,6 @@ ADD_YB_TEST(net/net_util-test)
 ADD_YB_TEST(net/rate_limiter-test)
 ADD_YB_TEST(numbered_deque-test)
 ADD_YB_TEST(object_pool-test)
-ADD_YB_TEST(once-test)
 ADD_YB_TEST(operation_counter-test)
 ADD_YB_TEST(os-util-test)
 ADD_YB_TEST(path_util-test)
