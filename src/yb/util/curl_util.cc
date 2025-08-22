@@ -148,6 +148,13 @@ Status EasyCurl::DoRequest(
   if (follow_redirects_) {
     RETURN_NOT_OK(TranslateError(curl_easy_setopt(curl_, CURLOPT_FOLLOWLOCATION, 1)));
   }
+  if (ssl_version_ != 0) {
+    RETURN_NOT_OK(TranslateError(curl_easy_setopt(curl_, CURLOPT_SSLVERSION, ssl_version_)));
+  }
+  if (!cipher_list_.empty()) {
+    RETURN_NOT_OK(
+        TranslateError(curl_easy_setopt(curl_, CURLOPT_SSL_CIPHER_LIST, cipher_list_.c_str())));
+  }
 
   typedef std::unique_ptr<curl_slist, std::function<void(curl_slist*)>> CurlSlistPtr;
   CurlSlistPtr http_header_list;
