@@ -1524,7 +1524,12 @@ void UpdateTServer<Req, Resp>::HandleResponse(int attempt) {
   Status status;
   if (resp_.has_error()) {
     status = StatusFromPB(resp_.error().status());
-    TransitionToFailedState(server::MonitoredTaskState::kRunning, status);
+    // Upon ysql lease changes, the object lock manager fails outstanding lock requests with
+    // TryAgain. Can retry the request to prevent exclusive lock requests from failing
+    // due to ysql lease membership changes w.r.t master leader's view.
+    if (!status.IsTryAgain()) {
+      TransitionToFailedState(server::MonitoredTaskState::kRunning, status);
+    }
   } else {
     TransitionToCompleteState();
   }
