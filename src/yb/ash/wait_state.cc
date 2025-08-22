@@ -83,8 +83,6 @@ void MaybeSleepForTests(WaitStateInfo* state, WaitStateCode c) {
 
 std::string GetWaitStateDescription(WaitStateCode code) {
   switch (code) {
-    case WaitStateCode::kUnused:
-      return "This should not be present in view.";
     case WaitStateCode::kYSQLReserved:
       return "This is just a placeholder here for a wait event defined in PG.";
     case WaitStateCode::kCatalogRead:
@@ -401,7 +399,7 @@ std::vector<WaitStatesDescription> WaitStateInfo::GetWaitStatesDescription() {
   std::vector<WaitStatesDescription> desc;
   for (const auto& code : WaitStateCodeList()) {
     // These shouldn't be seen in the view
-    if (code == WaitStateCode::kUnused || code == WaitStateCode::kYSQLReserved)
+    if (code == WaitStateCode::kYSQLReserved)
       continue;
     desc.emplace_back(code, GetWaitStateDescription(code));
   }
@@ -539,7 +537,6 @@ std::vector<yb::ash::WaitStateInfoPtr> WaitStateTracker::GetWaitStates() const {
 
 WaitStateType GetWaitStateType(WaitStateCode code) {
   switch (code) {
-    case WaitStateCode::kUnused:
     case WaitStateCode::kYSQLReserved:
       return WaitStateType::kCpu;
 

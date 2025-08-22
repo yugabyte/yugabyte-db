@@ -647,7 +647,7 @@ TEST_F(PgAshSingleNode, CheckWaitEventsDescription) {
 
   std::unordered_set<std::string> yb_events;
   for (const auto& code : ash::WaitStateCodeList()) {
-    if (code == ash::WaitStateCode::kUnused || code == ash::WaitStateCode::kYSQLReserved) {
+    if (code == ash::WaitStateCode::kYSQLReserved) {
       continue;
     }
     yb_events.insert(ToString(code).erase(0, 1)); // remove 'k' prefix
