@@ -135,7 +135,10 @@ public class RedactingService {
   }
 
   public static JsonNode filterSecretFields(
-      JsonNode input, RedactionTarget target, String version, GFlagsValidation gFlagsValidation) {
+      JsonNode input,
+      RedactionTarget target,
+      String ybSoftwareVersion,
+      GFlagsValidation gFlagsValidation) {
     if (input == null) {
       return null;
     }
@@ -174,7 +177,7 @@ public class RedactingService {
     JsonNode afterJsonPath = context.json();
 
     if (target == RedactionTarget.LOGS) {
-      return applyRegexRedaction(afterJsonPath, version, gFlagsValidation);
+      return applyRegexRedaction(afterJsonPath, ybSoftwareVersion, gFlagsValidation);
     }
 
     return afterJsonPath;
@@ -185,13 +188,14 @@ public class RedactingService {
   }
 
   public static JsonNode applyRegexRedaction(
-      JsonNode input, String version, GFlagsValidation gFlagsValidation) {
+      JsonNode input, String ybSoftwareVersion, GFlagsValidation gFlagsValidation) {
     try {
       if (input == null || input.isMissingNode() || input.isNull()) {
         return input;
       }
       String jsonString = input.toString();
-      String redactedString = redactSensitiveInfoInString(jsonString, version, gFlagsValidation);
+      String redactedString =
+          redactSensitiveInfoInString(jsonString, ybSoftwareVersion, gFlagsValidation);
 
       try {
         return Json.parse(redactedString);
@@ -217,7 +221,7 @@ public class RedactingService {
   }
 
   public static String redactSensitiveInfoInString(
-      String input, String version, GFlagsValidation gFlagsValidation) {
+      String input, String ybSoftwareVersion, GFlagsValidation gFlagsValidation) {
     String output = input;
     if (input == null) {
       return output;
@@ -235,9 +239,10 @@ public class RedactingService {
     // Add sensitive gflags if GFlagsValidation is available
     if (gFlagsValidation != null) {
       try {
-        if (version == null) {
+        if (ybSoftwareVersion == null) {
         } else {
-          Set<String> sensitiveGflags = getSensitiveGflagsForRedaction(version, gFlagsValidation);
+          Set<String> sensitiveGflags =
+              getSensitiveGflagsForRedaction(ybSoftwareVersion, gFlagsValidation);
           // Filter out ysql_hba_conf_csv from regex redaction
           Set<String> filteredGflags =
               sensitiveGflags.stream()
@@ -297,6 +302,10 @@ public class RedactingService {
       output = output.replaceAll(unquotedPattern, "$1" + SECRET_REPLACEMENT);
     }
 
+    // Pattern 5: Handle conf file format (pattern=value)
+    String keyValuePattern = "^(" + pattern + "\\s*=\\s*)([^\\s\\n]+)";
+    output = output.replaceAll(keyValuePattern, "$1" + SECRET_REPLACEMENT);
+
     // Pattern 6: Handle quoted format (pattern="value")
     String quotedValuePattern = "\\b(" + pattern + "\\s*=\\s*\")([^\"]+)(\")";
     output = output.replaceAll(quotedValuePattern, "$1" + SECRET_REPLACEMENT + "$3");
@@ -306,11 +315,11 @@ public class RedactingService {
 
   // Gets all sensitive gflags using the GFlagsValidation class
   public static Set<String> getSensitiveGflagsForRedaction(
-      String version, GFlagsValidation gFlagsValidation) {
+      String ybSoftwareVersion, GFlagsValidation gFlagsValidation) {
     Set<String> allSensitiveGflags = new HashSet<>();
 
     try {
-      Set<String> jsonPaths = getSensitiveJsonPathsForVersion(version, gFlagsValidation);
+      Set<String> jsonPaths = getSensitiveJsonPathsForVersion(ybSoftwareVersion, gFlagsValidation);
       if (jsonPaths != null) {
         for (String jsonPath : jsonPaths) {
           if (jsonPath.startsWith("$..")) {
@@ -332,11 +341,11 @@ public class RedactingService {
 
   // Gets sensitive json paths from GFlagsValidation
   private static Set<String> getSensitiveJsonPathsForVersion(
-      String version, GFlagsValidation gFlagsValidation) {
+      String ybSoftwareVersion, GFlagsValidation gFlagsValidation) {
     try {
-      return gFlagsValidation.getSensitiveJsonPathsForVersion(version);
+      return gFlagsValidation.getSensitiveJsonPathsForVersion(ybSoftwareVersion);
     } catch (Exception e) {
-      log.warn("Error getting sensitive gflags for version {}: {}", version, e);
+      log.warn("Error getting sensitive gflags for version {}: {}", ybSoftwareVersion, e);
       return null;
     }
   }

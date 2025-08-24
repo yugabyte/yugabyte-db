@@ -55,34 +55,26 @@ public class UpdateAndPersistGFlags extends UniverseTaskBase {
 
   @Override
   public String getName() {
-    String universeVersion = null;
-    try {
-      Universe universe = getUniverse();
-      List<String> versions = universe.getVersions();
-      if (!versions.isEmpty()) {
-        universeVersion = versions.get(0);
-      }
-    } catch (Exception e) {
-      log.debug("Could not get universe version for redaction: {}", e.getMessage());
-    }
+    String ybSoftwareVersion =
+        getUniverse().getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
 
     JsonNode filteredMasterGFlags =
         RedactingService.filterSecretFields(
             Json.toJson(taskParams().masterGFlags),
             RedactionTarget.LOGS,
-            universeVersion,
+            ybSoftwareVersion,
             gFlagsValidation);
     JsonNode filteredTserverGFlags =
         RedactingService.filterSecretFields(
             Json.toJson(taskParams().tserverGFlags),
             RedactionTarget.LOGS,
-            universeVersion,
+            ybSoftwareVersion,
             gFlagsValidation);
     JsonNode filteredSpecificGFlags =
         RedactingService.filterSecretFields(
             Json.toJson(taskParams().specificGFlags),
             RedactionTarget.LOGS,
-            universeVersion,
+            ybSoftwareVersion,
             gFlagsValidation);
 
     return super.getName()
