@@ -16,6 +16,8 @@ type: docs
 
 Use the following metrics to monitor connections when using YSQL Connection Manager.
 
+Access metrics at the `13000/connections` endpoint.
+
 | Metric Name | Description |
 | :--- | :--- |
 | database_name (DB OID) | Specifies information regarding the database being used in each pool. |
