@@ -5,12 +5,14 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
 import static com.yugabyte.yw.models.helpers.CommonUtils.performPagedQuery;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Strings;
 import com.google.common.collect.Lists;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.CustomerTaskManager;
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -662,6 +664,10 @@ public class CustomerTaskController extends AuthenticatedController {
   public Result getTaskStatusWithDetails(UUID customerUUID, UUID taskUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     CustomerTask customerTask = CustomerTask.getOrBadRequest(customerUUID, taskUUID);
-    return PlatformResults.withData(buildSingleTaskListMap(customer, customerTask));
+    Map<UUID, List<CustomerTaskFormData>> singleTaskListMap =
+        buildSingleTaskListMap(customer, customerTask);
+    JsonNode singleTaskListMapJson = Json.toJson(singleTaskListMap);
+    singleTaskListMapJson = RedactingService.applyRegexRedaction(singleTaskListMapJson);
+    return PlatformResults.withData(singleTaskListMapJson);
   }
 }
