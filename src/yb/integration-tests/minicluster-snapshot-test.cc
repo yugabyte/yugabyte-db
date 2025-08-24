@@ -481,12 +481,6 @@ class PostgresMiniClusterTest : public pgwrapper::PgMiniTestBase {
     LOG(INFO) << "Time to restore: " << time.ToHumanReadableTime();
     return time;
   }
-
- protected:
-  void BeforePgProcessStart() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_hba_conf_csv) =
-        "local all yugabyte trust, host all all all trust";
-  }
 };
 
 class MasterExportSnapshotTest
