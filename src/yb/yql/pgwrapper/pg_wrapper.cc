@@ -132,10 +132,10 @@ DEFINE_RUNTIME_string(ysql_pg_conf_csv, "",
     "Check https://www.postgresql.org/docs/current/view-pg-settings.html for information about "
     "which parameters take effect at runtime.");
 
-DEFINE_NON_RUNTIME_string(ysql_hba_conf_csv, "",
+DEFINE_RUNTIME_string(ysql_hba_conf_csv, "",
               "CSV formatted line represented list of postgres hba rules (in order)");
 TAG_FLAG(ysql_hba_conf_csv, sensitive_info);
-DEFINE_NON_RUNTIME_string(ysql_ident_conf_csv, "",
+DEFINE_RUNTIME_string(ysql_ident_conf_csv, "",
               "CSV formatted line represented list of postgres ident map rules (in order)");
 
 DEFINE_NON_RUNTIME_string(ysql_pg_conf, "",
@@ -264,6 +264,7 @@ DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_base_scans_cost_model, false,
 
 DEFINE_RUNTIME_PG_FLAG(string, yb_enable_cbo, "legacy_mode",
     "YSQL cost-based optimizer mode. Allowed values are 'legacy_mode', 'legacy_stats_mode', "
+    "'legacy_bnl_mode', 'legacy_stats_bnl_mode', "
     "'off', and 'on'");
 
 DEFINE_RUNTIME_PG_FLAG(uint64, yb_fetch_row_limit, 1024,
@@ -538,7 +539,8 @@ DEFINE_validator(ysql_enable_documentdb, &ValidateDocumentDB);
 
 // Keep the value list in sync with `yb_cost_model_options` in `guc.c`.
 DEFINE_validator(ysql_yb_enable_cbo,
-    FLAG_IN_SET_VALIDATOR("off", "on", "legacy_mode", "legacy_stats_mode"));
+    FLAG_IN_SET_VALIDATOR("off", "on", "legacy_mode", "legacy_stats_mode",
+                          "legacy_bnl_mode", "legacy_stats_bnl_mode"));
 
 namespace {
 // Append any Pg gFlag with non default value, or non-promoted AutoFlag
@@ -944,7 +946,9 @@ Status PgWrapper::ReloadConfig() {
 }
 
 Status PgWrapper::UpdateAndReloadConfig() {
-  VERIFY_RESULT(WritePostgresConfig(conf_));
+  RETURN_NOT_OK(WritePostgresConfig(conf_));
+  RETURN_NOT_OK(WritePgHbaConfig(conf_));
+  RETURN_NOT_OK(WritePgIdentConfig(conf_));
   return ReloadConfig();
 }
 
@@ -1418,7 +1422,7 @@ Status PgSupervisor::UpdateAndReloadConfig() {
   return Status::OK();
 }
 
-Status PgSupervisor::RegisterReloadPgConfigCallback(const void* flag_ptr) {
+Status PgSupervisor::RegisterReloadConfigCallback(const void* flag_ptr) {
   // DeRegisterForPgFlagChangeNotifications is called before flag_callbacks_ is destroyed, so its
   // safe to bind to this.
   flag_callbacks_.emplace_back(VERIFY_RESULT(RegisterFlagUpdateCallback(
@@ -1436,11 +1440,13 @@ Status PgSupervisor::RegisterPgFlagChangeNotifications() {
     std::unordered_set<FlagTag> tags;
     GetFlagTags(flag.name, &tags);
     if (tags.contains(FlagTag::kPg)) {
-      RETURN_NOT_OK(RegisterReloadPgConfigCallback(flag.flag_ptr));
+      RETURN_NOT_OK(RegisterReloadConfigCallback(flag.flag_ptr));
     }
   }
 
-  RETURN_NOT_OK(RegisterReloadPgConfigCallback(&FLAGS_ysql_pg_conf_csv));
+  RETURN_NOT_OK(RegisterReloadConfigCallback(&FLAGS_ysql_pg_conf_csv));
+  RETURN_NOT_OK(RegisterReloadConfigCallback(&FLAGS_ysql_hba_conf_csv));
+  RETURN_NOT_OK(RegisterReloadConfigCallback(&FLAGS_ysql_ident_conf_csv));
 
   return Status::OK();
 }

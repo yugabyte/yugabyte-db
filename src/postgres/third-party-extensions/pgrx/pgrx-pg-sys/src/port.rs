@@ -481,9 +481,9 @@ pub unsafe fn raw_expression_tree_walker(
 
 #[inline(always)]
 pub unsafe fn MemoryContextSwitchTo(context: crate::MemoryContext) -> crate::MemoryContext {
-    let old = crate::CurrentMemoryContext;
+    let old = crate::YbCurrentMemoryContext;
 
-    crate::CurrentMemoryContext = context;
+    crate::YbCurrentMemoryContext = context;
     old
 }
 

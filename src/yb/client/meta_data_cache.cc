@@ -159,7 +159,9 @@ YBMetaDataCache::YBMetaDataCache(
   }
 }
 
-YBMetaDataCache::~YBMetaDataCache() = default;
+YBMetaDataCache::~YBMetaDataCache() {
+  Shutdown();
+}
 
 void YBMetaDataCache::GetTableAsync(
     const YBTableName& table_name, const GetTableAsyncCallback& callback) {
@@ -378,6 +380,16 @@ Status YBMetaDataCache::HasTablePermission(const NamespaceName& keyspace_name,
                            CacheCheckMode::NO_RETRY);
   }
   return s;
+}
+
+void YBMetaDataCache::Shutdown() {
+  bool expected = false;
+  if (!shutting_down_.compare_exchange_strong(expected, true)) {
+    return;
+  }
+  if (permissions_cache_) {
+    permissions_cache_->Shutdown();
+  }
 }
 
 } // namespace client

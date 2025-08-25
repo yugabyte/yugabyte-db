@@ -16,7 +16,6 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/master/master_admin.proxy.h"
-#include "yb/master/master_ddl.pb.h"
 
 #include "yb/rpc/rpc_controller.h"
 
@@ -25,7 +24,6 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
-#include "yb/util/logging.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pg_util.h"
@@ -477,7 +475,12 @@ TEST_F(PgWrapperOneNodeClusterTest, TestPgStatUserTablesPersistence) {
 
   auto last_analyze_time_before_restart = ASSERT_RESULT(get_last_analyze_time());
 
-  pg_ts->Shutdown(SafeShutdown::kFalse);
+  auto shutdown_mode = SafeShutdown::kTrue;
+#ifdef HAVE_SYS_PRCTL_H
+  shutdown_mode = SafeShutdown::kFalse;
+#endif
+
+  pg_ts->Shutdown(shutdown_mode);
   LOG(INFO) << "Starting the tablet server again";
   ASSERT_OK(pg_ts->Restart(/* start_cql_proxy= */ false));
 
@@ -509,7 +512,8 @@ TEST_F(PgWrapperSingleNodeLongTxnTest, RestartMidApply) {
         auto table_info_result = client_->GetYBTableInfo(
             client::YBTableName{YQLDatabase::YQL_DATABASE_UNKNOWN, "system", "transactions"});
         return table_info_result.ok();
-      }, MonoDelta::FromSeconds(15), "Waiting for transaction status table to be created", 100ms));
+      },
+      MonoDelta::FromSeconds(15), "Waiting for transaction status table to be created", 100ms));
 
   const std::string kDbName = "mydb";
   {
@@ -792,6 +796,42 @@ TEST_F_EX(
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_docdb_vector_type", "false"));
 
   ASSERT_NO_FATALS(CheckAutoFlagValues(false /* expect_target_value */));
+}
+
+TEST_F(PgWrapperFlagsTest, RuntimeUpdateHbaAndIdent) {
+  ASSERT_OK(SetFlagOnAllTServers(
+      "ysql_hba_conf_csv", "host all all all trust, host all all 127.99.88.77/32 trust"));
+  ASSERT_OK(SetFlagOnAllTServers("ysql_ident_conf_csv", "map_x user_foo yb_user_bar"));
+
+  auto conn = ASSERT_RESULT(ConnectToDB(std::string()));
+
+  auto hba_rules = ASSERT_RESULT(conn.FetchRow<std::string>(
+      "SELECT auth_method FROM pg_hba_file_rules WHERE address='127.99.88.77'"));
+  ASSERT_EQ(hba_rules, "trust");
+
+  // Update the flag again and verify the old rule is deleted.
+  ASSERT_OK(SetFlagOnAllTServers(
+      "ysql_hba_conf_csv", "host all all all trust, host all all 127.11.22.33/32 trust"));
+  auto row_count = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      "SELECT COUNT(*) FROM pg_hba_file_rules WHERE address='127.11.22.33'"));
+  ASSERT_EQ(row_count, 1);
+  row_count = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      "SELECT COUNT(*) FROM pg_hba_file_rules WHERE address='127.99.88.77'"));
+  ASSERT_EQ(row_count, 0);
+
+  auto ident_mappings = ASSERT_RESULT(
+      conn.FetchRow<std::string>("SELECT pg_username FROM pg_ident_file_mappings WHERE "
+                                 "map_name='map_x' AND sys_name='user_foo'"));
+  ASSERT_EQ(ident_mappings, "yb_user_bar");
+
+  // Update the flag again and verify the old rule is deleted.
+  ASSERT_OK(SetFlagOnAllTServers("ysql_ident_conf_csv", "map_a user_a yb_user_b"));
+  row_count = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      "SELECT COUNT(*) FROM pg_ident_file_mappings WHERE sys_name='user_a'"));
+  ASSERT_EQ(row_count, 1);
+  row_count = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      "SELECT COUNT(*) FROM pg_ident_file_mappings WHERE sys_name='user_foo'"));
+  ASSERT_EQ(row_count, 0);
 }
 
 class ValidateYsqlPgConfCsvTest : public YBTest {};

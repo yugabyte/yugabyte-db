@@ -41,7 +41,6 @@
 #include "utils/typcache.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
-#include "yb/yql/pggate/ybc_pggate.h"
 #include "yb_ysql_conn_mgr_helper.h"
 
 /*
@@ -726,6 +725,11 @@ extern int	yb_test_delay_after_applying_inval_message_ms;
 extern int	yb_test_delay_set_local_tserver_inval_message_ms;
 
 /*
+ * If > 0, sleep for this many ms before committing the DDL
+ */
+extern double yb_test_delay_next_ddl;
+
+/*
  * Denotes whether DDL operations touching DocDB system catalog will be rolled
  * back upon failure. These two GUC variables are used together. See comments
  * for the gflag --ysql_enable_ddl_atomicity_infra in common_flags.cc.
@@ -795,7 +799,7 @@ extern bool yb_silence_advisory_locks_not_supported_error;
  */
 extern bool yb_xcluster_automatic_mode_target_ddl;
 
-extern bool yb_force_early_ddl_serialization;
+extern bool yb_user_ddls_preempt_auto_analyze;
 
 /*
  * See also ybc_util.h which contains additional such variable declarations for

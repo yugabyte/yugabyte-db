@@ -39,6 +39,7 @@ struct XClusterOutputClientResponse {
   uint32_t processed_record_count;
   std::shared_ptr<cdc::GetChangesResponsePB> get_changes_response;
   std::set<HybridTime> ddl_queue_commit_times;
+  bool processed_change_metadata_op = false;
 };
 
 class XClusterPoller;
@@ -163,6 +164,8 @@ class XClusterOutputClient : public XClusterAsyncExecutor {
 
   uint32_t processed_record_count_ GUARDED_BY(lock_) = 0;
   uint32_t record_count_ GUARDED_BY(lock_) = 0;
+
+  bool processed_change_metadata_op_ GUARDED_BY(lock_) = false;
 
   SchemaVersion producer_schema_version_ GUARDED_BY(lock_) = 0;
   ColocationId colocation_id_ GUARDED_BY(lock_) = 0;

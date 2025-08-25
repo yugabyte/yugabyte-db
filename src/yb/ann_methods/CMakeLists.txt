@@ -37,7 +37,8 @@ ADD_YB_LIBRARY(ann_methods
         SRCS ${ANN_METHODS_SRCS}
         DEPS ${ANN_METHODS_DEPS})
 
-set(YB_TEST_LINK_LIBS ann_methods ann_methods_test_proto yrpc ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS ann_methods ann_methods_test_proto yrpc hnsw_test_util ${YB_MIN_TEST_LIBS})
 
 ADD_YB_TEST(index_merge-test)
+ADD_YB_TEST(vector_index_perf-test)
 ADD_YB_TEST(vector_lsm-test)

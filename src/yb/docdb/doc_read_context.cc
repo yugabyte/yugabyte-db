@@ -77,6 +77,21 @@ DocReadContext::DocReadContext(const DocReadContext& rhs, SchemaVersion min_sche
       << min_schema_version;
 }
 
+std::optional<DocHybridTime> DocReadContext::table_tombstone_time() const {
+  boost::atomic_ref<DocHybridTime> ref(table_tombstone_time_);
+  auto doc_ht = ref.load(boost::memory_order_relaxed);
+  if (doc_ht == DocHybridTime::kMax) {
+    return std::nullopt; // Not yet cached.
+  }
+  return doc_ht;
+}
+
+void DocReadContext::set_table_tombstone_time(DocHybridTime table_tombstone_time) const {
+  DCHECK(schema_.has_colocation_id());
+  boost::atomic_ref<DocHybridTime> ref(table_tombstone_time_);
+  ref.store(table_tombstone_time, boost::memory_order_relaxed);
+}
+
 void DocReadContext::LogAfterLoad() {
   if (schema_packing_storage.SingleSchemaVersion() == 0) {
     return;

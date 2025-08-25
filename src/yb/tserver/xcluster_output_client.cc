@@ -12,6 +12,8 @@
 
 #include "yb/tserver/xcluster_output_client.h"
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/cdc/cdc_types.h"
 #include "yb/cdc/xcluster_rpc.h"
 
@@ -197,6 +199,7 @@ void XClusterOutputClient::ApplyChanges(std::shared_ptr<cdc::GetChangesResponseP
     processed_record_count_ = 0;
     record_count_ = poller_resp->records_size();
     ddl_queue_commit_times_.clear();
+    processed_change_metadata_op_ = false;
     ResetWriteInterface(&write_strategy_);
   }
 
@@ -471,6 +474,11 @@ bool XClusterOutputClient::IsValidMetaOp(const cdc::CDCRecordPB& record) {
 Result<bool> XClusterOutputClient::ProcessChangeMetadataOp(const cdc::CDCRecordPB& record) {
   YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 300)
       << " Processing Change Metadata Op :" << record.DebugString();
+  {
+    ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN_STATUS;
+    processed_change_metadata_op_ = true;
+  }
+
   if (record.change_metadata_request().has_remove_table_id() ||
       !record.change_metadata_request().add_multiple_tables().empty()) {
     // TODO (#16557): Support remove_table_id() for colocated tables / tablegroups.
@@ -594,6 +602,14 @@ void XClusterOutputClient::SendNextCDCWriteToTablet(std::unique_ptr<WriteRequest
       },
       UseLocalTserver());
   SetHandleAndSendRpc(handle);
+
+  // If local tserver is used, we will get all the write events, so mark it idle to
+  // avoid duplicate events
+  if (UseLocalTserver()) {
+    SET_WAIT_STATUS(Idle);
+  } else {
+    SET_WAIT_STATUS(YBClient_WaitingOnDocDB);
+  }
 }
 
 void XClusterOutputClient::UpdateSchemaVersionMapping(
@@ -709,12 +725,12 @@ void XClusterOutputClient::HandleNewCompatibleSchemaVersion(
     (*schema_version_map)[resp_schema_versions.current_producer_schema_version()] =
         resp_schema_versions.current_consumer_schema_version();
 
-    // Update the old producer schema version, only if it is not the same as
-    // current producer schema version.
-    if (resp_schema_versions.old_producer_schema_version() !=
-        resp_schema_versions.current_producer_schema_version()) {
-      (*schema_version_map)[resp_schema_versions.old_producer_schema_version()] =
-          resp_schema_versions.old_consumer_schema_version();
+    DCHECK_EQ(
+        resp_schema_versions.old_producer_schema_versions_size(),
+        resp_schema_versions.old_consumer_schema_versions_size());
+    for (int i = 0; i < resp_schema_versions.old_producer_schema_versions_size(); ++i) {
+      (*schema_version_map)[resp_schema_versions.old_producer_schema_versions(i)] =
+          resp_schema_versions.old_consumer_schema_versions(i);
     }
 
     IncProcessedRecordCount();
@@ -798,6 +814,13 @@ void XClusterOutputClient::HandleNewSchemaPacking(
 
 void XClusterOutputClient::DoWriteCDCRecordDone(
     const Status& status, const WriteResponsePB& response) {
+  ash::WaitStateInfoPtr wait_state;
+  {
+    std::lock_guard l(lock_);
+    wait_state = xcluster_poller_->wait_state();
+  }
+  ADOPT_WAIT_STATE(wait_state);
+  SCOPED_WAIT_STATUS(OnCpu_Active);
   if (!status.ok()) {
     HandleError(status);
     return;
@@ -872,10 +895,12 @@ void XClusterOutputClient::HandleResponse() {
     response.last_applied_op_id = op_id_;
     response.processed_record_count = processed_record_count_;
     response.ddl_queue_commit_times = std::move(ddl_queue_commit_times_);
+    response.processed_change_metadata_op = processed_change_metadata_op_;
   }
   op_id_ = consensus::MinimumOpId();
   processed_record_count_ = 0;
   ddl_queue_commit_times_ = {};
+  processed_change_metadata_op_ = false;
 
   xcluster_poller_->ApplyChangesCallback(std::move(response));
 }

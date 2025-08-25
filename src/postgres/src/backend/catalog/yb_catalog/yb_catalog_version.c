@@ -36,8 +36,8 @@
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
-#include "yb/yql/pggate/ybc_pggate.h"
 
 YbCatalogVersionType yb_catalog_version_type = CATALOG_VERSION_UNSET;
 
@@ -46,14 +46,14 @@ static FormData_pg_attribute Desc_pg_yb_catalog_version[Natts_pg_yb_catalog_vers
 };
 
 static bool YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version,
-											   bool acquire_for_update_lock);
+											   bool acquire_lock);
 static Datum YbGetMasterCatalogVersionTableEntryYbctid(Relation catalog_version_rel,
 													   Oid db_oid);
 
 /* Retrieve Catalog Version */
 
 static uint64_t
-YbGetMasterCatalogVersionImpl(bool acquire_for_update_lock)
+YbGetMasterCatalogVersionImpl(bool acquire_lock)
 {
 	uint64_t	version = YB_CATCACHE_VERSION_UNINITIALIZED;
 
@@ -61,7 +61,7 @@ YbGetMasterCatalogVersionImpl(bool acquire_for_update_lock)
 	{
 		case CATALOG_VERSION_CATALOG_TABLE:
 			if (YbGetMasterCatalogVersionFromTable(YbMasterCatalogVersionTableDBOid(), &version,
-												   acquire_for_update_lock))
+												   acquire_lock))
 				return version;
 			/*
 			 * In spite of the fact the pg_yb_catalog_version table exists it has no actual
@@ -87,43 +87,36 @@ YbGetMasterCatalogVersionImpl(bool acquire_for_update_lock)
 uint64_t
 YbGetMasterCatalogVersion()
 {
-	return YbGetMasterCatalogVersionImpl(false /* acquire_for_update_lock */ );
+	return YbGetMasterCatalogVersionImpl(false /* acquire_lock */ );
 }
 
 void
-YbMaybeLockMasterCatalogVersion(YbDdlMode mode)
+YbMaybeLockMasterCatalogVersion()
 {
 	/*
-	 * When object locks are off (i.e., the old way), we ensure that concurrent DDLs don't stamp on
-	 * each other by incrementing the catalog version. DDLs with overlapping [read time, commit time]
-	 * windows would conflict with each other and only one of them would be able to make progress.
-	 * This catalog version increment happens at the end of a DDL transaction.
+	 * When object locks are off (i.e., the old way), we ensure that concurrent
+	 * DDLs don't stamp on each other by incrementing the catalog version. DDLs
+	 * with overlapping [read time, commit time] windows would conflict with each
+	 * other and only one of them would be able to make progress. This catalog
+	 * version increment happens at the end of a DDL transaction.
 	 *
-	 * By relying on catalog version increments for disallowing concurrent DDLs, long running DDLs
-	 * run into the risk of finding that they face conflict with other concurrently committed DDLs
-	 * only after doing all the expensive work (think of index backfill). To fail fast, we acquire
-	 * a FOR UPDATE lock at the start of the DDL.
-	 *
-	 * An online index backfill goes through multiple phases, each of which is a DDL transaction.
-	 * We acquire this lock at the start of each phase.
-	 *
-	 * NOTE:
-	 * (1) Some DDLs don't increment the catalog version (e.g., CREATE TABLE). These are harmless
-	 *		 for concurrent DDLs. We avoid acquiring the lock for them, they don't have
-	 *		 YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT in their mode.
-	 * (2) Global DDLs (i.e., those that modify shared catalog tables) will increment all catalog
+	 * When auto analyze is turned on, we don't want ANALYZE DDL triggered by auto analyze to
+	 * abort user DDLs. To achieve this, regular DDLs take a FOR KEY SHARE lock on the catalog version
+	 * row with a high priority (see pg_session.cc) while ANALYZE triggered by auto analyze takes
+	 * a low priority FOR UPDATE lock on the row.
+	 * (1) Global DDLs (i.e., those that modify shared catalog tables) will increment all catalog
 	 *		 versions. We still only lock the catalog version of the current database. So, they might
-	 *		 still face the problem described above if they are long running.
-	 * (3) We enable this feature only if the invalidation messages are used and per-database catalog
+	 *		 still face the problem described above that ANALYZE can abort global DDL run on a
+	 *       different DB.
+	 * (2) We enable this feature only if the invalidation messages are used and per-database catalog
 	 *		 version mode is enabled.
 	 */
-	if (yb_force_early_ddl_serialization &&
+	if (yb_user_ddls_preempt_auto_analyze &&
 		!*YBCGetGFlags()->enable_object_locking_for_table_locks &&
-		(mode & YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT) &&
 		YbIsInvalidationMessageEnabled() && YBIsDBCatalogVersionMode())
 	{
 		elog(DEBUG1, "Locking catalog version for db oid %d", MyDatabaseId);
-		YbGetMasterCatalogVersionImpl(true /* acquire_for_update_lock */ );
+		YbGetMasterCatalogVersionImpl(true /* acquire_lock */ );
 	}
 }
 
@@ -844,7 +837,8 @@ YbIsSystemCatalogChange(Relation rel)
 }
 
 bool
-YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version, bool acquire_for_update_lock)
+YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version,
+								   bool acquire_lock)
 {
 	*version = 0;				/* unset; */
 
@@ -879,9 +873,8 @@ YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version, bool acquire_f
 
 	YbcPgExecParameters exec_params = {0};
 
-	if (acquire_for_update_lock)
+	if (acquire_lock)
 	{
-		exec_params.rowmark = ROW_MARK_EXCLUSIVE;
 		/*
 		 * We want to stick to Fail-on-Conflict concurrency control to ensure that higher priority
 		 * user DDLs always take precedence over lower priority auto-ANALYZEs. In other words, user DDLs
@@ -890,9 +883,12 @@ YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version, bool acquire_f
 		 */
 		exec_params.pg_wait_policy = LockWaitError;
 		exec_params.docdb_wait_policy = YBGetDocDBWaitPolicy(exec_params.pg_wait_policy);
+		exec_params.rowmark = yb_use_internal_auto_analyze_service_conn ?
+			ROW_MARK_EXCLUSIVE :
+			ROW_MARK_KEYSHARE;
 	}
 
-	HandleYBStatus(YBCPgExecSelect(ybc_stmt, acquire_for_update_lock ? &exec_params : NULL));
+	HandleYBStatus(YBCPgExecSelect(ybc_stmt, acquire_lock ? &exec_params : NULL));
 
 	bool		has_data = false;
 

@@ -1349,8 +1349,8 @@ auto VectorLSM<Vector, DistanceResult>::SaveIndexToFile(VectorIndex& index, uint
 
   const auto file_size = VERIFY_RESULT(env_->GetFileSize(file_path));
   LOG_WITH_PREFIX(INFO) << Format(
-      "Saved vector index on disk, serial_no: $0, num entries: $1, file size: $2",
-      serial_no, actual_index.Size(), file_size);
+      "Saved vector index on disk, serial_no: $0, num entries: $1, file size: $2, path: $3",
+      serial_no, actual_index.Size(), file_size, file_path);
 
   return std::make_pair(CreateVectorLSMFileMetaData(actual_index, serial_no, file_size), new_index);
 }

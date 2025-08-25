@@ -75,10 +75,10 @@
 #include "catalog/yb_catalog_version.h"
 #include "commands/progress.h"
 #include "commands/yb_tablegroup.h"
-#include "pg_yb_utils.h"
 #include "pgstat.h"
 #include "utils/guc.h"
 #include "utils/yb_inheritscache.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 #include <inttypes.h>
 
 

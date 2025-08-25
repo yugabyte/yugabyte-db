@@ -437,6 +437,9 @@ int TabletServerMain(int argc, char** argv) {
   LOG(WARNING) << "Stopping Tablet server";
   server->Shutdown();
 
+  // Best effort flush of log without any mutex.
+  google::FlushLogFilesUnsafe(0);
+
   return EXIT_SUCCESS;
 }
 

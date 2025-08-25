@@ -287,6 +287,8 @@ class MiniCluster : public MiniClusterBase {
 
   std::string GetClusterId() { return options_.cluster_id; }
 
+  bool WasUnsafeShutdown() const override { return false; }
+
   HostPort YsqlHostport() const override {
     CHECK(ysql_hostport_ != HostPort());
     return ysql_hostport_;

@@ -1293,7 +1293,7 @@ Result<SetCDCCheckpointResponsePB> CDCServiceImpl::SetCDCCheckpoint(
   RETURN_NOT_OK_SET_CODE(
       UpdateCheckpointAndActiveTime(
           producer_tablet, checkpoint, checkpoint, GetCurrentTimeMicros(), cdc_sdk_safe_time,
-          CDCRequestSource::CDCSDK, true, !set_latest_entry),
+          CDCRequestSource::CDCSDK, /*force_update=*/true, !set_latest_entry),
       CDCError(CDCErrorPB::INTERNAL_ERROR));
 
   if (req.has_initial_checkpoint() || set_latest_entry) {
@@ -1583,6 +1583,8 @@ void CDCServiceImpl::GetChanges(
       resp->mutable_error(),
       CDCErrorPB::INVALID_REQUEST,
       context);
+
+  ash::WaitStateInfo::UpdateCurrentTabletId(req->tablet_id());
 
   auto stream_id = RPC_VERIFY_STRING_TO_STREAM_ID(
       req->has_db_stream_id() ? req->db_stream_id() : req->stream_id());
@@ -2031,12 +2033,12 @@ void CDCServiceImpl::GetChanges(
         commit_op_id = explicit_op_id;
       }
 
+      bool force_update = req->force_update_cdc_state_checkpoint() || snapshot_bootstrap;
       RPC_STATUS_RETURN_ERROR(
           UpdateCheckpointAndActiveTime(
               producer_tablet, OpId::FromPB(resp->checkpoint().op_id()), commit_op_id,
-              last_record_hybrid_time, cdc_sdk_safe_time, record.GetSourceType(),
-              snapshot_bootstrap, is_snapshot, snapshot_key,
-              (is_snapshot && is_colocated) ? req->table_id() : ""),
+              last_record_hybrid_time, cdc_sdk_safe_time, record.GetSourceType(), force_update,
+              is_snapshot, snapshot_key, (is_snapshot && is_colocated) ? req->table_id() : ""),
           resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
     }
 
@@ -4507,10 +4509,10 @@ Status CDCServiceImpl::InsertRowForColocatedTableInCDCStateTable(
 Status CDCServiceImpl::UpdateCheckpointAndActiveTime(
     const TabletStreamInfo& producer_tablet, const OpId& sent_op_id, const OpId& commit_op_id,
     uint64_t last_record_hybrid_time, const std::optional<HybridTime>& cdc_sdk_safe_time,
-    const CDCRequestSource& request_source, const bool snapshot_bootstrap, const bool is_snapshot,
+    const CDCRequestSource& request_source, bool force_update, bool is_snapshot,
     const std::string& snapshot_key, const TableId& colocated_table_id) {
   bool update_cdc_state = impl_->UpdateCheckpoint(producer_tablet, sent_op_id, commit_op_id);
-  if (!update_cdc_state && !snapshot_bootstrap) {
+  if (!update_cdc_state && !force_update) {
     return Status::OK();
   }
 
@@ -4572,10 +4574,10 @@ Status CDCServiceImpl::UpdateCheckpointAndActiveTime(
     auto checkpoint = VERIFY_RESULT(GetLastCheckpointFromCdcState(
         producer_tablet.stream_id, producer_tablet.tablet_id, CDCRequestSource::CDCSDK));
 
-    if (snapshot_bootstrap && checkpoint.term() == 0 && checkpoint.index() == 0) {
+    if (force_update && checkpoint.term() == 0 && checkpoint.index() == 0) {
       RETURN_NOT_OK(UpdateCheckpointAndActiveTime(
           producer_tablet, sent_op_id, commit_op_id, last_record_hybrid_time, cdc_sdk_safe_time,
-          request_source, snapshot_bootstrap, is_snapshot, "", ""));
+          request_source, force_update, is_snapshot, "", ""));
     } else {
       CDCStateTableEntry entry(producer_tablet.tablet_id, producer_tablet.stream_id);
       entry.active_time = last_active_time;
@@ -5160,9 +5162,22 @@ void CDCServiceImpl::InitVirtualWALForCDC(
     table_list.insert(table_id);
   }
 
+  bool pub_all_tables = false;
+  std::unordered_set<uint32_t> publications_list;
+  if (FLAGS_cdcsdk_enable_dynamic_table_addition_with_table_cleanup) {
+    for (const auto& publication : req->publication_oid()) {
+      publications_list.insert(publication);
+    }
+
+    if (req->has_pub_all_tables()) {
+      pub_all_tables = req->pub_all_tables();
+    }
+  }
+
   HostPort hostport(context.local_address());
   Status s = virtual_wal->InitVirtualWALInternal(
-      table_list, hostport, GetDeadline(context, client()), std::move(slot_hash_range));
+      table_list, hostport, GetDeadline(context, client()), std::move(slot_hash_range),
+      publications_list, pub_all_tables);
   if (!s.ok()) {
     {
       std::lock_guard l(mutex_);

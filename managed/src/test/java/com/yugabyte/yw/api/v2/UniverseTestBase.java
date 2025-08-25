@@ -45,12 +45,14 @@ import com.yugabyte.yba.v2.client.models.NodeProxyConfig;
 import com.yugabyte.yba.v2.client.models.PlacementAZ;
 import com.yugabyte.yba.v2.client.models.PlacementCloud;
 import com.yugabyte.yba.v2.client.models.PlacementRegion;
+import com.yugabyte.yba.v2.client.models.QueryLogConfig;
 import com.yugabyte.yba.v2.client.models.UniverseCreateSpec;
 import com.yugabyte.yba.v2.client.models.UniverseCreateSpec.ArchEnum;
 import com.yugabyte.yba.v2.client.models.UniverseEditSpec;
 import com.yugabyte.yba.v2.client.models.UniverseInfo;
 import com.yugabyte.yba.v2.client.models.UniverseLogsExporterConfig;
 import com.yugabyte.yba.v2.client.models.UniverseNetworkingSpec;
+import com.yugabyte.yba.v2.client.models.UniverseQueryLogsExporterConfig;
 import com.yugabyte.yba.v2.client.models.UniverseResourceDetails;
 import com.yugabyte.yba.v2.client.models.UniverseSpec;
 import com.yugabyte.yba.v2.client.models.User;
@@ -105,6 +107,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
@@ -248,6 +251,11 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     return auditLogConfig;
   }
 
+  protected QueryLogConfig createPrimaryQueryLogConfig() {
+    QueryLogConfig queryLogConfig = new QueryLogConfig();
+    return queryLogConfig;
+  }
+
   protected PlacementRegion getOrCreatePlacementRegion(
       PlacementCloud placementCloud, Region region) {
     PlacementRegion placementRegion = null;
@@ -374,6 +382,12 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     PlacementCloud placementCloud =
         placementFromProvider(
             primaryClusterSpec.getNumNodes(), primaryClusterSpec.getReplicationFactor());
+    AtomicInteger prio = new AtomicInteger();
+    for (PlacementRegion placementRegion : placementCloud.getRegionList()) {
+      for (PlacementAZ placementAZ : placementRegion.getAzList()) {
+        placementAZ.setLeaderPreference(prio.incrementAndGet());
+      }
+    }
     primaryClusterSpec.setPlacementSpec(
         new ClusterPlacementSpec().cloudList(List.of(placementCloud)));
     ClusterProviderSpec providerSpec = new ClusterProviderSpec();
@@ -390,6 +404,7 @@ public class UniverseTestBase extends UniverseControllerTestBase {
             .proxyConfig(proxy));
     primaryClusterSpec.setGflags(createPrimaryClusterGFlags());
     primaryClusterSpec.setAuditLogConfig(createPrimaryAuditLogConfig());
+    primaryClusterSpec.setQueryLogConfig(createPrimaryQueryLogConfig());
     universeSpec.addClustersItem(primaryClusterSpec);
     return universeCreateSpec;
   }
@@ -640,6 +655,10 @@ public class UniverseTestBase extends UniverseControllerTestBase {
         v2Cluster.getAuditLogConfig(),
         dbCluster.userIntent.auditLogConfig,
         v2PrimaryCluster.getAuditLogConfig());
+    validateQueryLogConfig(
+        v2Cluster.getQueryLogConfig(),
+        dbCluster.userIntent.queryLogConfig,
+        v2PrimaryCluster.getQueryLogConfig());
   }
 
   private void validateClusterNodeSpec(
@@ -875,9 +894,56 @@ public class UniverseTestBase extends UniverseControllerTestBase {
         v2AuditLogConfig.getYcqlAuditConfig(), dbAuditLogConfig.getYcqlAuditConfig());
   }
 
+  private void validateQueryLogConfig(
+      QueryLogConfig v2QueryLogConfig,
+      com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig dbQueryLogConfig,
+      QueryLogConfig v2PrimaryQueryLogConfig) {
+    if (v2QueryLogConfig == null) {
+      v2QueryLogConfig = v2PrimaryQueryLogConfig;
+    }
+    if (v2QueryLogConfig == null) {
+      assertThat(dbQueryLogConfig, is(nullValue()));
+      return;
+    }
+    if (v2QueryLogConfig.getExportActive() == null) {
+      assertThat(dbQueryLogConfig.isExportActive(), is(true));
+    } else {
+      assertThat(v2QueryLogConfig.getExportActive(), is(dbQueryLogConfig.isExportActive()));
+    }
+    assertThat(
+        v2QueryLogConfig.getUniverseLogsExporterConfig().size(),
+        is(dbQueryLogConfig.getUniverseLogsExporterConfig().size()));
+    for (int i = 0; i < v2QueryLogConfig.getUniverseLogsExporterConfig().size(); i++) {
+      validateUniverseLogsExportedConfig(
+          v2QueryLogConfig.getUniverseLogsExporterConfig().get(i),
+          dbQueryLogConfig.getUniverseLogsExporterConfig().get(i));
+    }
+  }
+
   private void validateUniverseLogsExportedConfig(
       UniverseLogsExporterConfig v2UniverseLogsExporterConfig,
       com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig
+          dbUniverseLogsExporterConfig) {
+    if (v2UniverseLogsExporterConfig == null) {
+      assertThat(dbUniverseLogsExporterConfig, is(nullValue()));
+      return;
+    }
+    assertThat(
+        v2UniverseLogsExporterConfig.getExporterUuid(),
+        is(dbUniverseLogsExporterConfig.getExporterUuid()));
+    v2UniverseLogsExporterConfig
+        .getAdditionalTags()
+        .entrySet()
+        .forEach(
+            e ->
+                assertThat(
+                    dbUniverseLogsExporterConfig.getAdditionalTags(),
+                    hasEntry(e.getKey(), e.getValue())));
+  }
+
+  private void validateUniverseLogsExportedConfig(
+      UniverseQueryLogsExporterConfig v2UniverseLogsExporterConfig,
+      com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig
           dbUniverseLogsExporterConfig) {
     if (v2UniverseLogsExporterConfig == null) {
       assertThat(dbUniverseLogsExporterConfig, is(nullValue()));
@@ -1143,6 +1209,8 @@ public class UniverseTestBase extends UniverseControllerTestBase {
       assertThat(v2Az.getReplicationFactor(), is(dbAz.replicationFactor));
       assertThat(v2Az.getSecondarySubnet(), is(dbAz.secondarySubnet));
       assertThat(v2Az.getSubnet(), is(dbAz.subnet));
+      assertThat(
+          Optional.ofNullable(v2Az.getLeaderPreference()).orElse(0), is(dbAz.leaderPreference));
     }
   }
 

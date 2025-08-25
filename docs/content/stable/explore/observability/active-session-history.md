@@ -16,7 +16,7 @@ Active Session History (ASH) provides a current and historical view of system ac
 
 ASH exposes session activity in the form of [SQL views](../../ysql-language-features/advanced-features/views/) so that you can run analytical queries, aggregations for analysis, and troubleshoot performance issues. To run ASH queries, you need to enable [YSQL](../../../api/ysql/).
 
-Currently, ASH is available for [YSQL](../../../api/ysql/), [YCQL](../../../api/ycql/), and [YB-TServer](../../../architecture/yb-tserver/). ASH facilitates analysis by recording wait events related to YSQL, YCQL, or YB-TServer requests while they are being executed. These wait events belong to the categories including but not limited to _CPU_, _WaitOnCondition_, _Network_, and _Disk IO_.
+Currently, ASH is available for [YSQL](../../../api/ysql/), [YCQL](../../../api/ycql/), and [YB-TServer](../../../architecture/yb-tserver/). ASH facilitates analysis by recording wait events related to YSQL, YCQL, or YB-TServer requests while they are being executed. These wait events belong to the categories including but not limited to _CPU_, _WaitOnCondition_, _RPCWait_, and _Disk IO_.
 
 Analyzing the wait events and wait event types lets you troubleshoot, answer the following questions, and subsequently tune performance:
 
@@ -65,7 +65,7 @@ This view provides a list of wait events and their metadata. The columns of the 
 | wait_event_component | text | Component of the wait event, which can be YSQL, YCQL, or TServer. |
 | wait_event_class | text | Class of the wait event, such as TabletWait, RocksDB, and so on.  |
 | wait_event | text | Name of the wait event. |
-| wait_event_type | text | Type of the wait event such as CPU, WaitOnCondition, Network, Disk IO, and so on. |
+| wait_event_type | text | Type of the wait event such as CPU, WaitOnCondition, RPCWait, Disk IO, and so on. |
 | wait_event_aux | text | Additional information for the wait event. For example, tablet ID for TServer wait events. |
 | top_level_node_id | UUID | 16-byte TServer UUID of the YSQL/YCQL node where the query is being executed. |
 | query_id | bigint | Query ID as seen on the `/statements` endpoint. This can be used to join with [pg_stat_statements](../../query-1-performance/pg-stat-statements/)/[ycql_stat_statements](../../query-1-performance/ycql-stat-statements/). See [Constant query identifiers](#constant-query-identifiers). |
@@ -81,7 +81,7 @@ This view displays the class, type, name, and description of each wait event. Th
 | Column | Type | Description |
 | :----- | :--- | :---------- |
 | wait_event_class | text | Class of the wait event, such as TabletWait, RocksDB, and so on. |
-| wait_event_type | text | Type of the wait event such as CPU, WaitOnCondition, Network, Disk IO, and so on. |
+| wait_event_type | text | Type of the wait event such as CPU, WaitOnCondition, RPCWait, Disk IO, and so on. |
 | wait_event | text | Name of the wait event. |
 | wait_event_description | text | Description of the wait event. |
 
@@ -122,14 +122,14 @@ These are the wait events introduced by YugabyteDB. Some of the following [wait 
 
 | Wait Event | Type | Aux | Description |
 | :--------- | :--- |:--- | :---------- |
-| TableRead | Network  |  | A YSQL backend is waiting for a table read from DocDB. |
-| CatalogRead | Network  |   | A YSQL backend is waiting for a catalog read from master. |
-| IndexRead | Network |   | A YSQL backend is waiting for a secondary index read from DocDB.  |
-| StorageFlush  | Network |  | A YSQL backend is waiting for a table/index read/write from DocDB. |
-| TableWrite  | Network |  | A YSQL backend is waiting for a table write from DocDB. |
-| CatalogWrite  | Network |  | A YSQL backend is waiting for a catalog write from master. |
-| IndexWrite | Network |   | A YSQL backend is waiting for a secondary index write from DocDB.  |
-| WaitingOnTServer | Network| RPC&nbsp;name | A YSQL backend is waiting for on TServer for an RPC. The RPC name is present on the wait event aux column.|
+| TableRead | RPCWait |  | A YSQL backend is waiting for a table read from DocDB. |
+| CatalogRead | RPCWait |   | A YSQL backend is waiting for a catalog read from master. |
+| IndexRead | RPCWait |   | A YSQL backend is waiting for a secondary index read from DocDB.  |
+| StorageFlush  | RPCWait |  | A YSQL backend is waiting for a table/index read/write from DocDB. |
+| TableWrite  | RPCWait |  | A YSQL backend is waiting for a table write from DocDB. |
+| CatalogWrite  | RPCWait |  | A YSQL backend is waiting for a catalog write from master. |
+| IndexWrite | RPCWait |   | A YSQL backend is waiting for a secondary index write from DocDB.  |
+| WaitingOnTServer | RPCWait | RPC&nbsp;name | A YSQL backend is waiting for on TServer for an RPC. The RPC name is present on the wait event aux column.|
 
 #### YSQLQuery class
 
@@ -168,11 +168,11 @@ These are the wait events introduced by YugabyteDB. Some of the following [wait 
 | BackfillIndex_WaitForAFreeSlot | WaitOnCondition | A backfill index RPC is waiting for a slot to open if there are too many backfill requests at the same time. |
 | CreatingNewTablet | DiskIO | The CreateTablet RPC is creating a new tablet, this may involve writing metadata files, causing I/O wait. |
 | SaveRaftGroupMetadataToDisk | DiskIO | The Raft/tablet metadata is being written to disk, generally during snapshot or restore operations. |
-| TransactionStatusCache_DoGetCommitData | Network | An RPC needs to look up the commit status of a particular transaction. |
+| TransactionStatusCache_DoGetCommitData | RPCWait | An RPC needs to look up the commit status of a particular transaction. |
 | WaitForYSQLBackendsCatalogVersion | WaitOnCondition | CREATE INDEX is waiting for YSQL backends to have up-to-date pg_catalog. |
 | WriteSysCatalogSnapshotToDisk | DiskIO | Writing initial system catalog snapshot during initdb.|
 | DumpRunningRpc_WaitOnReactor | WaitOnCondition | DumpRunningRpcs is waiting on reactor threads. |
-| ConflictResolution_ResolveConficts | Network | A read/write RPC is waiting to identify conflicting transactions. |
+| ConflictResolution_ResolveConficts | RPCWait | A read/write RPC is waiting to identify conflicting transactions. |
 | ConflictResolution_WaitOnConflictingTxns | WaitOnCondition | A read/write RPC is waiting for conflicting transactions to complete. |
 | WaitForReadTime | WaitOnCondition | A read/write RPC is waiting for the current time to catch up to [read time](../../../architecture/transactions/single-row-transactions/#safe-timestamp-assignment-for-a-read-request). |
 
@@ -182,7 +182,7 @@ These are the wait events introduced by YugabyteDB. Some of the following [wait 
 | :--------- | :--- |:--- | :---------- |
 | WAL_Append | DiskIO | Tablet&nbsp;ID | A write RPC is persisting WAL edits. |
 | WAL_Sync | DiskIO | Tablet ID | A write RPC is synchronizing WAL edits. |
-| Raft_WaitingForReplication | Network | Tablet ID | A write RPC is waiting for Raft replication. |
+| Raft_WaitingForReplication | RPCWait | Tablet ID | A write RPC is waiting for Raft replication. |
 | Raft_ApplyingEdits | WaitOnCondition/CPU | Tablet ID | A write RPC is applying Raft edits locally. |
 | ConsensusMeta_Flush | DiskIO | | ConsensusMetadata is flushed, for example, during Raft term, configuration change, remote bootstrap, and so on. |
 | ReplicaState_TakeUpdateLock | WaitOnCondition | | A write/alter RPC needs to wait for the ReplicaState lock to replicate a batch of writes through Raft. |
@@ -218,8 +218,8 @@ These are the wait events introduced by YugabyteDB. Some of the following [wait 
 
 | Wait Event | Type | Description |
 | :--------- | :--- | :---------- |
-| YBClient_WaitingOnDocDB | Network | YB Client is waiting on DocDB to return a response. |
-| YBClient_LookingUpTablet | Network | YB Client is looking up tablet information from the master. |
+| YBClient_WaitingOnDocDB | RPCWait | YB Client is waiting on DocDB to return a response. |
+| YBClient_LookingUpTablet | RPCWait | YB Client is looking up tablet information from the master. |
 
 ## Examples
 
@@ -256,13 +256,13 @@ ORDER BY
 ```output
  query_id             | wait_event_component |             wait_event             | wait_event_type | count
  ---------------------+----------------------+------------------------------------+-----------------+------------
- -4157456334073660389 | YSQL                 | CatalogRead                        | Network         |     3
+ -4157456334073660389 | YSQL                 | CatalogRead                        | RPCWait         |     3
  -1970690938654296136 | TServer              | Raft_ApplyingEdits                 | Cpu             |    54
  -1970690938654296136 | TServer              | OnCpu_Active                       | Cpu             |   107
  -1970690938654296136 | TServer              | OnCpu_Passive                      | Cpu             |   144
  -1970690938654296136 | TServer              | RocksDB_NewIterator                | DiskIO          |     6
- -1970690938654296136 | TServer              | ConflictResolution_ResolveConficts | Network         |    18
- -1970690938654296136 | TServer              | Raft_WaitingForReplication         | Network         |   194
+ -1970690938654296136 | TServer              | ConflictResolution_ResolveConficts | RPCWait         |    18
+ -1970690938654296136 | TServer              | Raft_WaitingForReplication         | RPCWait         |   194
  -1970690938654296136 | TServer              | Rpc_Done                           | WaitOnCondition |    18
  -1970690938654296136 | TServer              | MVCC_WaitForSafeTime               | WaitOnCondition |     5
  -1970690938654296136 | YSQL                 | QueryProcessing                    | Cpu             |  1023
@@ -273,8 +273,8 @@ ORDER BY
   6107501747146929242 | TServer              | MVCC_WaitForSafeTime               | WaitOnCondition |    10
   6107501747146929242 | TServer              | Rpc_Done                           | WaitOnCondition |    15
   6107501747146929242 | YSQL                 | QueryProcessing                    | Cpu             |   285
-  6107501747146929242 | YSQL                 | TableRead                        | Network         |   658
-  6107501747146929242 | YSQL                 | CatalogRead                        | Network         |     1
+  6107501747146929242 | YSQL                 | TableRead                          | RPCWait         |   658
+  6107501747146929242 | YSQL                 | CatalogRead                        | RPCWait         |     1
 ```
 
 ### Distribution of wait events for each query
@@ -314,8 +314,8 @@ ORDER BY
  UPDATE test_table set v = v + $1 where k = $2 | TServer              | Raft_ApplyingEdits                       | Cpu             |    34
  UPDATE test_table set v = v + $1 where k = $2 | TServer              | OnCpu_Active                             | Cpu             |    39
  UPDATE test_table set v = v + $1 where k = $2 | TServer              | RocksDB_NewIterator                      | DiskIO          |     3
- UPDATE test_table set v = v + $1 where k = $2 | TServer              | ConflictResolution_ResolveConficts       | Network         |    99
- UPDATE test_table set v = v + $1 where k = $2 | TServer              | Raft_WaitingForReplication               | Network         |    38
+ UPDATE test_table set v = v + $1 where k = $2 | TServer              | ConflictResolution_ResolveConficts       | RPCWait         |    99
+ UPDATE test_table set v = v + $1 where k = $2 | TServer              | Raft_WaitingForReplication               | RPCWait         |    38
  UPDATE test_table set v = v + $1 where k = $2 | TServer              | ConflictResolution_WaitOnConflictingTxns | WaitOnCondition |  1359
  UPDATE test_table set v = v + $1 where k = $2 | TServer              | Rpc_Done                                 | WaitOnCondition |     5
  UPDATE test_table set v = v + $1 where k = $2 | TServer              | LockedBatchEntry_Lock                    | WaitOnCondition |   141
@@ -442,7 +442,7 @@ You can see that only a single tablet of the table `test_table` is getting most 
 
 ### Distribution of the type of the wait events for each component
 
-Detect where most time is being spent to help understand if the issue is related to disk IO, network operations, waiting for a condition or lock, or intense CPU work.
+Detect where most time is being spent to help understand if the issue is related to disk IO, RPC calls, waiting for a condition or lock, or intense CPU work.
 
 ```sql
 SELECT
@@ -463,12 +463,12 @@ ORDER BY
  wait_event_component | wait_event_type | count
 ----------------------+-----------------+-------
  TServer              | WaitOnCondition |    47
- TServer              | Network         |   910
+ TServer              | RPCWait         |   910
  TServer              | Cpu             |  2665
  TServer              | DiskIO          |  8193
  YSQL                 | LWLock          |     1
  YSQL                 | Cpu             |  1479
- YSQL                 | Network         |  4575
+ YSQL                 | RPCWait         |  4575
 ```
 
 ### Detect which client/application is sending the most amount of queries

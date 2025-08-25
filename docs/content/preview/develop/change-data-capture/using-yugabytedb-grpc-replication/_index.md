@@ -59,6 +59,9 @@ For reference documentation, see [YugabyteDB gRPC Connector](./debezium-connecto
 * A single stream can only be used to stream data from one namespace only.
 * There should be a primary key on the table you want to stream the changes from.
 * CDC is not supported on tables that are also the target of xCluster replication (see issue {{<issue 15534>}}). However, both CDC and xCluster can work simultaneously on the same source tables.
+
+    When performing [switchover](../../../deploy/multi-dc/async-replication/async-transactional-switchover/) or [failover](../../../deploy/multi-dc/async-replication/async-transactional-failover/) on xCluster, if you are using CDC, remember to also reconfigure CDC to use the new primary universe.
+
 * Currently, CDC doesn't support schema evolution for changes that require table rewrites (for example, [ALTER TYPE](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-type-with-table-rewrite)), or DROP TABLE and TRUNCATE TABLE operations.
 * YCQL tables aren't currently supported. Issue {{<issue 11320>}}.
 * [Composite types](../../../explore/ysql-language-features/data-types#composite-types) are currently not supported. Issue {{<issue 25221>}}.

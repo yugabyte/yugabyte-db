@@ -160,7 +160,8 @@ extern char *get_publication_name(Oid pubid, bool missing_ok);
 
 /* YB */
 extern List *YBGetPublicationsByNames(List *pubnames, bool missing_ok);
-extern List *yb_pg_get_publications_tables(List *publications);
+extern Oid  *YBGetPublicationOidsByNames(List *pubnames);
+extern List *yb_pg_get_publications_tables(List *publications, bool *yb_is_pub_all_tables);
 extern bool yb_is_publishable_relation(Relation rel);
 extern void yb_log_unsupported_publication_relations();
 

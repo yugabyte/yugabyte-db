@@ -83,95 +83,10 @@ DECLARE_int32(delay_alter_sequence_sec);
 
 DECLARE_int32(client_read_write_timeout_ms);
 
-DECLARE_bool(ysql_enable_colocated_tables_with_tablespaces);
-
-DECLARE_bool(TEST_ysql_enable_db_logical_client_version_mode);
-
-DEFINE_UNKNOWN_bool(ysql_enable_reindex, false,
-            "Enable REINDEX INDEX statement.");
-TAG_FLAG(ysql_enable_reindex, advanced);
-TAG_FLAG(ysql_enable_reindex, hidden);
-
-DEFINE_UNKNOWN_bool(ysql_disable_server_file_access, false,
-            "If true, disables read, write, and execute of local server files. "
-            "File access can be re-enabled if set to false.");
-
-DEFINE_NON_RUNTIME_bool(ysql_enable_profile, false, "Enable PROFILE feature.");
-
-DEFINE_test_flag(string, ysql_conn_mgr_dowarmup_all_pools_mode, "none",
-  "Enable precreation of server connections in every pool in Ysql Connection Manager and "
-  "choose the mode of attachment of idle server connections to clients to serve their queries. "
-  "ysql_conn_mgr_dowarmup is responsible for creating server connections only in "
-  "yugabyte (user), yugabyte (database) pool during the initialization of connection "
-  "manager process. This flag will create max(ysql_conn_mgr_min_conns_per_db, "
-  "3) number of server connections in any pool whenever there is a requirement to create the "
-  "first backend process in that particular pool.");
-
-DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_superuser_sticky, true,
-  "If enabled, make superuser connections sticky in Ysql Connection Manager.");
-
-DEFINE_NON_RUNTIME_int32(ysql_conn_mgr_max_query_size, 4096,
-  "Maximum size of the query which connection manager can process in the deploy phase or while"
-  "forwarding the client query");
-
-DEFINE_NON_RUNTIME_int32(ysql_conn_mgr_wait_timeout_ms, 10000,
-  "ysql_conn_mgr_wait_timeout_ms denotes the waiting time in ms, before getting timeout while "
-  "sending/receiving the packets at the socket in ysql connection manager. It is seen"
-  " asan builds requires large wait timeout than other builds");
-
-DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_stats_interval, 1,
-  "Interval (in secs) at which the stats for Ysql Connection Manager will be updated.");
-
-// This gflag should be deprecated but kept to avoid breaking some customer
-// clusters using it. Use ysql_catalog_preload_additional_table_list if possible.
-DEFINE_NON_RUNTIME_bool(ysql_catalog_preload_additional_tables, false,
-    "If true, YB catalog preloads a default set of tables upon connection "
-    "creation and cache refresh: pg_am,pg_amproc,pg_cast,pg_cast,pg_inherits,"
-    "pg_policy,pg_proc,pg_tablespace,pg_trigger.");
-
-DEFINE_NON_RUNTIME_string(ysql_catalog_preload_additional_table_list, "",
-    "A list of catalog tables that YSQL preloads additionally upon "
-    "connection start-up and cache refreshes. Catalog table names must start with pg_."
-    "Invalid catalog names are ignored. Comma separated. Example: pg_range,pg_proc."
-    "If both ysql_catalog_preload_additional_tables and "
-    "ysql_catalog_preload_additional_table_list are set, we take a union of "
-    "both the default list and the user-specified list.");
-
-DEFINE_NON_RUNTIME_bool(ysql_disable_global_impact_ddl_statements, false,
-            "If true, disable global impact ddl statements in per database catalog "
-            "version mode.");
-
 DEPRECATE_FLAG(bool, ysql_disable_per_tuple_memory_context_in_update_relattrs, "06_2023");
 
-DEFINE_NON_RUNTIME_bool(
-    ysql_minimal_catalog_caches_preload, false,
-    "Fill postgres' caches with system items only");
-
-DEFINE_RUNTIME_PREVIEW_bool(
-  ysql_conn_mgr_version_matching, false,
-  "If true, does selection of transactional backends based on logical client version");
-
-DEFINE_RUNTIME_PREVIEW_bool(
-    ysql_conn_mgr_version_matching_connect_higher_version, true,
-    "If ysql_conn_mgr_version_matching is enabled is enabled, then connect to higher version "
-    "server if this flag is set to true");
-
-DEFINE_NON_RUNTIME_bool(ysql_block_dangerous_roles, false,
-    "Block roles that can potentially be used to escalate to superuser privileges. Intended to be "
-    "used with superuser login disabled, such as in YBM. When true, this assumes those blocked "
-    "roles are not already in use.");
-
-DEFINE_RUNTIME_PREVIEW_bool(
-    ysql_enable_pg_export_snapshot, false,
-    "Enables the support for synchronizing snapshots across transactions, using pg_export_snapshot "
-    "and SET TRANSACTION SNAPSHOT");
-
-DEFINE_NON_RUNTIME_bool(ysql_enable_neghit_full_inheritscache, true,
-    "When set to true, a (fully) preloaded inherits cache returns negative cache hits"
-    " right away without incurring a master lookup");
-
 DEFINE_RUNTIME_PG_FLAG(
-    bool, yb_force_early_ddl_serialization, false,
+    bool, yb_user_ddls_preempt_auto_analyze, true,
     "If object locking is off (i.e., enable_object_locking_for_table_locks=false), concurrent "
     "DDLs might face a conflict error on the catalog version increment at the end after doing all "
     "the work. Setting this flag enables a fail-fast strategy by locking the catalog version at "
@@ -180,39 +95,11 @@ DEFINE_RUNTIME_PG_FLAG(
     "concurrent DDLs block on each other for serialization. Also, this flag is valid only if "
     "ysql_enable_db_catalog_version_mode and yb_enable_invalidation_messages are enabled.");
 
-DEFINE_NON_RUNTIME_bool(ysql_enable_read_request_cache_for_connection_auth, false,
-            "If true, use tserver response cache for authorization processing "
-            "during connection setup. Only applicable when connection manager "
-            "is used.");
-
 DECLARE_bool(TEST_ash_debug_aux);
-DECLARE_bool(TEST_generate_ybrowid_sequentially);
-DECLARE_bool(TEST_ysql_log_perdb_allocated_new_objectid);
-
-DECLARE_bool(use_fast_backward_scan);
-DECLARE_uint32(ysql_max_invalidation_message_queue_size);
-DECLARE_uint32(max_replication_slots);
 
 /* Constants for replication slot LSN types */
 const std::string YBC_LSN_TYPE_SEQUENCE = "SEQUENCE";
 const std::string YBC_LSN_TYPE_HYBRID_TIME = "HYBRID_TIME";
-
-namespace {
-
-bool PreloadAdditionalCatalogListValidator(const char* flag_name, const std::string& flag_val) {
-  for (const char& c : flag_val) {
-    if (c != '_' && c != ',' && !islower(c)) {
-      LOG_FLAG_VALIDATION_ERROR(flag_name, flag_val) << "Found invalid character '" << c << "'";
-      return false;
-    }
-  }
-
-  return true;
-}
-
-} // namespace
-
-DEFINE_validator(ysql_catalog_preload_additional_table_list, PreloadAdditionalCatalogListValidator);
 
 YbcRecordTempRelationDDL_hook_type YBCRecordTempRelationDDL_hook =
     &YBCDdlEnableForceCatalogModification;
@@ -387,12 +274,14 @@ void YBCStartSysTablePrefetchingImpl(std::optional<PrefetcherOptions::CachingInf
 
 PrefetchingCacheMode YBCMapPrefetcherCacheMode(YbcPgSysTablePrefetcherCacheMode mode) {
   switch (mode) {
+    case YB_YQL_PREFETCHER_TRUST_CACHE_AUTH:
+      return PrefetchingCacheMode::TRUST_CACHE_AUTH;
     case YB_YQL_PREFETCHER_TRUST_CACHE:
       return PrefetchingCacheMode::TRUST_CACHE;
     case YB_YQL_PREFETCHER_RENEW_CACHE_SOFT:
       return PrefetchingCacheMode::RENEW_CACHE_SOFT;
     case YB_YQL_PREFETCHER_RENEW_CACHE_HARD:
-      LOG(DFATAL) << "Emergency fallback prefetching cache mode is used";
+      LOG(ERROR) << "Emergency fallback prefetching cache mode is used";
       return PrefetchingCacheMode::RENEW_CACHE_HARD;
   }
   LOG(DFATAL) << "Unexpected YbcPgSysTablePrefetcherCacheMode value " << mode;
@@ -2284,77 +2173,6 @@ const unsigned char* YBCGetLocalTserverUuid() {
   return pgapi->GetLocalTserverUuid();
 }
 
-const YbcPgGFlagsAccessor* YBCGetGFlags() {
-  // clang-format off
-  static YbcPgGFlagsAccessor accessor = {
-      .log_ysql_catalog_versions                = &FLAGS_log_ysql_catalog_versions,
-      .ysql_catalog_preload_additional_tables   = &FLAGS_ysql_catalog_preload_additional_tables,
-      .ysql_disable_index_backfill              = &FLAGS_ysql_disable_index_backfill,
-      .ysql_disable_server_file_access          = &FLAGS_ysql_disable_server_file_access,
-      .ysql_enable_reindex                      = &FLAGS_ysql_enable_reindex,
-      .ysql_num_databases_reserved_in_db_catalog_version_mode =
-          &FLAGS_ysql_num_databases_reserved_in_db_catalog_version_mode,
-      .ysql_output_buffer_size                  = &FLAGS_ysql_output_buffer_size,
-      .ysql_output_flush_size                   = &FLAGS_ysql_output_flush_size,
-      .ysql_sequence_cache_minval               = &FLAGS_ysql_sequence_cache_minval,
-      .ysql_session_max_batch_size              = &FLAGS_ysql_session_max_batch_size,
-      .ysql_sleep_before_retry_on_txn_conflict  = &FLAGS_ysql_sleep_before_retry_on_txn_conflict,
-      .ysql_colocate_database_by_default        = &FLAGS_ysql_colocate_database_by_default,
-      .ysql_enable_read_request_caching         = &FLAGS_ysql_enable_read_request_caching,
-      .ysql_enable_profile                      = &FLAGS_ysql_enable_profile,
-      .ysql_disable_global_impact_ddl_statements =
-          &FLAGS_ysql_disable_global_impact_ddl_statements,
-      .ysql_minimal_catalog_caches_preload      = &FLAGS_ysql_minimal_catalog_caches_preload,
-      .ysql_enable_colocated_tables_with_tablespaces =
-          &FLAGS_ysql_enable_colocated_tables_with_tablespaces,
-      .ysql_enable_create_database_oid_collision_retry =
-          &FLAGS_ysql_enable_create_database_oid_collision_retry,
-      .ysql_catalog_preload_additional_table_list =
-          FLAGS_ysql_catalog_preload_additional_table_list.c_str(),
-      .ysql_use_relcache_file                   = &FLAGS_ysql_use_relcache_file,
-      .ysql_use_optimized_relcache_update       = &FLAGS_ysql_use_optimized_relcache_update,
-      .ysql_enable_pg_per_database_oid_allocator =
-          &FLAGS_ysql_enable_pg_per_database_oid_allocator,
-      .ysql_enable_db_catalog_version_mode =
-          &FLAGS_ysql_enable_db_catalog_version_mode,
-      .TEST_hide_details_for_pg_regress =
-          &FLAGS_TEST_hide_details_for_pg_regress,
-      .TEST_generate_ybrowid_sequentially =
-          &FLAGS_TEST_generate_ybrowid_sequentially,
-      .ysql_use_fast_backward_scan = &FLAGS_use_fast_backward_scan,
-      .TEST_ysql_conn_mgr_dowarmup_all_pools_mode =
-          FLAGS_TEST_ysql_conn_mgr_dowarmup_all_pools_mode.c_str(),
-      .TEST_ysql_enable_db_logical_client_version_mode =
-          &FLAGS_TEST_ysql_enable_db_logical_client_version_mode,
-      .ysql_conn_mgr_superuser_sticky = &FLAGS_ysql_conn_mgr_superuser_sticky,
-      .TEST_ysql_log_perdb_allocated_new_objectid =
-          &FLAGS_TEST_ysql_log_perdb_allocated_new_objectid,
-      .ysql_conn_mgr_version_matching = &FLAGS_ysql_conn_mgr_version_matching,
-      .ysql_conn_mgr_version_matching_connect_higher_version =
-          &FLAGS_ysql_conn_mgr_version_matching_connect_higher_version,
-      .ysql_block_dangerous_roles = &FLAGS_ysql_block_dangerous_roles,
-      .ysql_sequence_cache_method = FLAGS_ysql_sequence_cache_method.c_str(),
-      .ysql_conn_mgr_sequence_support_mode = FLAGS_ysql_conn_mgr_sequence_support_mode.c_str(),
-      .ysql_conn_mgr_max_query_size = &FLAGS_ysql_conn_mgr_max_query_size,
-      .ysql_conn_mgr_wait_timeout_ms = &FLAGS_ysql_conn_mgr_wait_timeout_ms,
-      .ysql_enable_pg_export_snapshot = &FLAGS_ysql_enable_pg_export_snapshot,
-      .ysql_enable_neghit_full_inheritscache =
-        &FLAGS_ysql_enable_neghit_full_inheritscache,
-      .enable_object_locking_for_table_locks =
-          &FLAGS_enable_object_locking_for_table_locks,
-      .ysql_max_invalidation_message_queue_size =
-          &FLAGS_ysql_max_invalidation_message_queue_size,
-      .ysql_max_replication_slots = &FLAGS_max_replication_slots,
-      .yb_max_recursion_depth = &FLAGS_yb_max_recursion_depth,
-      .ysql_conn_mgr_stats_interval =
-          &FLAGS_ysql_conn_mgr_stats_interval,
-      .ysql_enable_read_request_cache_for_connection_auth =
-          &FLAGS_ysql_enable_read_request_cache_for_connection_auth,
-  };
-  // clang-format on
-  return &accessor;
-}
-
 bool YBCPgIsYugaByteEnabled() {
   return pgapi;
 }
@@ -2774,7 +2592,8 @@ void YBCStoreTServerAshSamples(
 
 YbcStatus YBCPgInitVirtualWalForCDC(
     const char *stream_id, const YbcPgOid database_oid, YbcPgOid *relations, YbcPgOid *relfilenodes,
-    size_t num_relations, const YbcReplicationSlotHashRange *slot_hash_range, uint64_t active_pid) {
+    size_t num_relations, const YbcReplicationSlotHashRange *slot_hash_range, uint64_t active_pid,
+    YbcPgOid *publications, size_t num_publications, bool yb_is_pub_all_tables) {
   std::vector<PgObjectId> tables;
   tables.reserve(num_relations);
 
@@ -2783,8 +2602,16 @@ YbcStatus YBCPgInitVirtualWalForCDC(
     tables.push_back(std::move(table_id));
   }
 
+  std::vector<PgOid> publications_oid_list;
+  publications_oid_list.reserve(num_publications);
+
+  for (size_t i = 0; i < num_publications; i++) {
+    publications_oid_list.push_back(std::move(publications[i]));
+  }
+
   const auto result = pgapi->InitVirtualWALForCDC(
-    std::string(stream_id), tables, slot_hash_range, active_pid);
+      std::string(stream_id), tables, slot_hash_range, active_pid, publications_oid_list,
+      yb_is_pub_all_tables);
   if (!result.ok()) {
     return ToYBCStatus(result.status());
   }

@@ -297,7 +297,7 @@ class Rpcs {
   std::mutex* mutex_;
   std::condition_variable cond_;
   Calls calls_;
-  bool shutdown_ = false;
+  bool shutdown_  GUARDED_BY(mutex_) = false;
   CoarseTimePoint shutdown_deadline_ GUARDED_BY(mutex_);
 };
 

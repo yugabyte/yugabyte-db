@@ -17,6 +17,7 @@ import com.yugabyte.yw.common.config.impl.DbAuditLoggingEnabledValidator;
 import com.yugabyte.yw.common.config.impl.EnableRollbackSupportKeyValidator;
 import com.yugabyte.yw.common.config.impl.HcvTokenRenewPercentValidator;
 import com.yugabyte.yw.common.config.impl.MetricCollectionLevelValidator;
+import com.yugabyte.yw.common.config.impl.MetricsExportEnabledValidator;
 import com.yugabyte.yw.common.config.impl.OidcEnabledKeyValidator;
 import com.yugabyte.yw.common.config.impl.QueryLoggingEnabledValidator;
 import com.yugabyte.yw.common.config.impl.SSH2EnabledKeyValidator;
@@ -54,6 +55,7 @@ public class RuntimeConfigPreChangeNotifier {
       OidcEnabledKeyValidator oidcEnabledKeyValidator,
       DbAuditLoggingEnabledValidator dbAuditLoggingEnabledValidator,
       QueryLoggingEnabledValidator queryLoggingEnabledValidator,
+      MetricsExportEnabledValidator metricsExportEnabledValidator,
       HcvTokenRenewPercentValidator hcvTokenRenewPercentValidator) {
     addListener(ssh2EnabledKeyValidator);
     addListener(metricCollectionLevelValidator);
@@ -62,6 +64,7 @@ public class RuntimeConfigPreChangeNotifier {
     addListener(oidcEnabledKeyValidator);
     addListener(dbAuditLoggingEnabledValidator);
     addListener(queryLoggingEnabledValidator);
+    addListener(metricsExportEnabledValidator);
     addListener(hcvTokenRenewPercentValidator);
   }
 

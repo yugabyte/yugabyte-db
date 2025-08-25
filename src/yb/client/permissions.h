@@ -114,6 +114,7 @@ class PermissionsCache {
 
   Result<std::string> salted_hash(const RoleName& role_name);
   Result<bool> can_login(const RoleName& role_name);
+  void Shutdown();
 
  private:
   void ScheduleGetPermissionsFromMaster(bool now);
@@ -144,7 +145,8 @@ class PermissionsCache {
   std::unique_ptr<yb::rpc::Scheduler> scheduler_;
 
   // Whether we have received the permissions from the master.
-  std::atomic<bool> ready_{false};
+  std::atomic_bool ready_{false};
+  std::atomic_bool shutting_down_{false};
 };
 
 } // namespace namespace internal

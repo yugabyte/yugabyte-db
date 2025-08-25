@@ -33,7 +33,9 @@ export const OutlierSelector: FC<OutlierSelectorData> = ({
   const inputFormat = (num: Number) => {
     return splitType === SplitType.NODE
       ? num + (isK8Universe ? ' pods' : ' nodes')
-      : num + ' tables';
+      : splitType === SplitType.TABLE
+      ? num + ' tables'
+      : num + ' databases';
   };
 
   return (

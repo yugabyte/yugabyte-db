@@ -2,9 +2,8 @@ title: UniverseExporterConfig
 type: object
 description: |
   UniverseExporterConfig
-  Universe Exporter Config. Base configuration for exporters in the Universe. Used for AuditLogConfig, QueryLogConfig
+  Universe Exporter Config. Base configuration for exporters in the Universe. Used for AuditLogConfig, QueryLogConfig, MetricsExportConfig.
 required:
-  - additional_tags
   - exporter_uuid
 properties:
   additional_tags:

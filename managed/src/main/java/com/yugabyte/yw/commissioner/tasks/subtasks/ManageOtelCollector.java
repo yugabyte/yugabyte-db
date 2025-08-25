@@ -9,6 +9,7 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.NodeAgent;
@@ -16,6 +17,8 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.Optional;
@@ -47,6 +50,8 @@ public class ManageOtelCollector extends NodeTaskBase {
   public static class Params extends NodeTaskParams {
     public boolean installOtelCollector;
     public AuditLogConfig auditLogConfig;
+    public QueryLogConfig queryLogConfig;
+    public MetricsExportConfig metricsExportConfig;
     public Map<String, String> gflags;
     public boolean useSudo = false;
   }
@@ -74,10 +79,9 @@ public class ManageOtelCollector extends NodeTaskBase {
 
     if (optional.isPresent()) {
       log.info("Configuring otel-collector using node-agent");
-      if (taskParams().otelCollectorEnabled && taskParams().auditLogConfig != null) {
-        AuditLogConfig config = taskParams().auditLogConfig;
-        if (!((config.getYsqlAuditConfig() == null || !config.getYsqlAuditConfig().isEnabled())
-            && (config.getYcqlAuditConfig() == null || !config.getYcqlAuditConfig().isEnabled()))) {
+      if (taskParams().otelCollectorEnabled) {
+        if (OtelCollectorUtil.isAuditLogEnabledInUniverse(taskParams().auditLogConfig)
+            || OtelCollectorUtil.isQueryLogEnabledInUniverse(taskParams().queryLogConfig)) {
           nodeAgentClient.runInstallOtelCollector(
               optional.get(),
               nodeAgentRpcPayload.setupInstallOtelCollectorBits(

@@ -113,7 +113,7 @@ namespace {
 class BlacklistChecker {
  public:
   BlacklistChecker(const string& yb_admin_exe, const string& master_address) :
-      args_{yb_admin_exe, "-master_addresses", master_address, "get_universe_config"} {
+      args_{yb_admin_exe, "--master_addresses", master_address, "get_universe_config"} {
   }
 
   Status operator()(const vector<HostPort>& servers) const {
@@ -427,8 +427,8 @@ TEST_F(AdminCliTest, InvalidMasterAddresses) {
   string unreachable_host = Substitute("127.0.0.1:$0", port);
   std::string error_string;
   ASSERT_NOK(Subprocess::Call(ToStringVector(
-      GetAdminToolPath(), "-master_addresses", unreachable_host,
-      "-timeout_ms", "1000", "list_tables"), /* output */ nullptr, &error_string));
+      GetAdminToolPath(), "--master_addresses", unreachable_host,
+      "--timeout_ms", "1000", "list_tables"), /* output */ nullptr, &error_string));
   ASSERT_STR_CONTAINS(error_string, "verify the addresses");
 }
 
@@ -443,7 +443,7 @@ TEST_F(AdminCliTest, CheckTableIdUsage) {
   const auto table_id = tables.front().table_id();
   const auto table_id_arg = Format("tableid.$0", table_id);
   auto args = ToStringVector(
-      exe_path, "-master_addresses", master_address, "list_tablets", table_id_arg);
+      exe_path, "--master_addresses", master_address, "list_tablets", table_id_arg);
   const auto args_size = args.size();
   ASSERT_OK(Subprocess::Call(args));
   // Check good optional integer argument.
@@ -578,8 +578,10 @@ class AdminCliTestForTableLocks : public AdminCliTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->enable_ysql = true;
     options->extra_tserver_flags.push_back(
-        "--allowed_preview_flags_csv=enable_object_locking_for_table_locks");
+        Format("--allowed_preview_flags_csv=$0,$1",
+               "enable_object_locking_for_table_locks", "ysql_yb_ddl_transaction_block_enabled"));
     options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=true");
+    options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
   }
 
  protected:
@@ -746,8 +748,7 @@ TEST_F(AdminCliTestForTableLocks, ReleaseSharedLocksThroughMaster) {
   ASSERT_OK(conn1.ExecuteFormat("LOCK TABLE $0 IN ACCESS SHARE MODE", table_name));
   ASSERT_FALSE(ASSERT_RESULT(HasLocksMaster()));
   ASSERT_TRUE(ASSERT_RESULT(HasLocksTServer(kTServerIndex)));
-  std::string txn_id;
-  std::tie(txn_id, std::ignore) = ASSERT_RESULT(ExtractTxnAndSubtxnIdFromTServer(kTServerIndex));
+  std::string txn_id = ASSERT_RESULT(ExtractTxnAndSubtxnIdFromTServer(kTServerIndex)).first;
 
   // Having this test flag allows us to release locks for unknown transactions at the master.
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_allow_unknown_txn_release_request", "true"));
@@ -1317,7 +1318,7 @@ class AdminCliListTabletsTest : public AdminCliTest {
   template <class... Args>
   Result<std::string> ListTablets(Args&&... args) {
     return CallAdminVec(ToStringVector(
-        GetAdminToolPath(), "-master_addresses", GetMasterAddresses(), "list_tablets",
+        GetAdminToolPath(), "--master_addresses", GetMasterAddresses(), "list_tablets",
         std::forward<Args>(args)...));
   }
 };
@@ -1753,7 +1754,7 @@ TEST_F(AdminCliTest, TestAdminRpcTimeout) {
 
   const auto before_ts = DateTime::TimestampNow();
   auto result = CallAdmin(
-      "-yb_client_admin_rpc_timeout_sec",
+      "--yb_client_admin_rpc_timeout_sec",
       std::to_string(kAdminRpcTimeout / MonoTime::kMillisecondsPerSecond),
       "compact_table", kTableName.namespace_name(), kTableName.table_name(),
       std::to_string(kAdminCmdTimeout / MonoTime::kMillisecondsPerSecond));

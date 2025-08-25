@@ -83,6 +83,8 @@ typedef enum
 /* possible values for yb_enable_cbo */
 typedef enum
 {
+	YB_COST_MODEL_LEGACY_BNL = -4,
+	YB_COST_MODEL_LEGACY_STATS_BNL = -3,
 	YB_COST_MODEL_LEGACY = -2,
 	YB_COST_MODEL_LEGACY_STATS = -1,
 	YB_COST_MODEL_OFF = 0,
@@ -149,6 +151,7 @@ extern PGDLLIMPORT bool yb_enable_batchednl;
 extern PGDLLIMPORT bool yb_enable_parallel_append;
 extern PGDLLIMPORT YbCostModel yb_enable_cbo;
 extern PGDLLIMPORT bool yb_ignore_stats;
+extern PGDLLIMPORT bool yb_legacy_bnl_cost;
 
 extern double index_pages_fetched(double tuples_fetched, BlockNumber pages,
 								  double index_pages, PlannerInfo *root);

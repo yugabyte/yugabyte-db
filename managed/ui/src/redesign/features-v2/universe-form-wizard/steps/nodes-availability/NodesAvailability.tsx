@@ -81,6 +81,11 @@ export const NodesAvailability = forwardRef<StepsRef>((_, forwardRef) => {
           initialBounds={undefined}
           defaultZoom={5}
           dataTestId='yb-maps-nodes-availability'
+          mapContainerProps={{
+            scrollWheelZoom: false,
+            zoom: 2,
+            center: [0, 0]
+          }}
         >
           {
             regions?.map((region: Region) => {
@@ -98,7 +103,7 @@ export const NodesAvailability = forwardRef<StepsRef>((_, forwardRef) => {
             <MapLegend
               mapLegendItems={[<MapLegendItem icon={<>{icon.normal}</>} label={'Region'} />]}
             />
-          ): <span/>}
+          ) : <span />}
         </YBMaps>
         {resilienceAndRegionsSettings?.resilienceType === ResilienceType.REGULAR &&
           resilienceAndRegionsSettings?.resilienceFormMode === ResilienceFormMode.GUIDED && (
@@ -124,7 +129,7 @@ export const NodesAvailability = forwardRef<StepsRef>((_, forwardRef) => {
               </Trans>
             }
           />
-      )}
+        )}
         <DedicatedNode />
       </Box>
     </FormProvider>

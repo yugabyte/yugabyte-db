@@ -45,11 +45,14 @@ DECLARE_bool(enable_pg_cron);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(xcluster_ddl_queue_max_retries_per_ddl);
 DECLARE_uint32(xcluster_consistent_wal_safe_time_frequency_ms);
+DECLARE_uint32(xcluster_max_old_schema_versions);
 DECLARE_string(ysql_cron_database_name);
+DECLARE_bool(ysql_enable_packed_row);
 DECLARE_uint32(ysql_oid_cache_prefetch_size);
 DECLARE_string(ysql_pg_conf_csv);
 DECLARE_int32(ysql_sequence_cache_minval);
 
+DECLARE_bool(TEST_force_get_checkpoint_from_cdc_state);
 DECLARE_bool(TEST_skip_oid_advance_on_restore);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_end);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_start);
@@ -2407,6 +2410,112 @@ TEST_F(XClusterDDLReplicationAddDropColumnTest, AddDropColumns) {
   }
 }
 
+TEST_F(XClusterDDLReplicationTest, PackedSchemaLag) {
+  // Test the case that one tablet is lagging while other tablets for the same table are processing
+  // multiple CMOPs. When the lagging tablet catches up, it should still be able to process the
+  // older packing schema versions.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  // Lower the checkpoint interval on the source.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 1000;
+  // Only store 3 old schema versions.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_max_old_schema_versions) = 3;
+
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE tbl1(key int primary key) SPLIT INTO 3 TABLETS"));
+  ASSERT_OK(producer_conn_->Execute("ALTER TABLE tbl1 ADD COLUMN a int"));
+  ASSERT_OK(
+      producer_conn_->Execute("INSERT INTO tbl1 SELECT i,i FROM generate_series(1, 100) as i"));
+
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Ensure that we create a checkpoint on the source.
+  SleepFor(MonoDelta::FromMilliseconds(FLAGS_cdc_state_checkpoint_update_interval_ms * 5));
+
+  // Pick a tablet to lag.
+  auto producer_table =
+      ASSERT_RESULT(GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name=*/"", "tbl1"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(producer_client()->GetTabletsFromTableId(producer_table.table_id(), 0, &tablets));
+  ASSERT_EQ(tablets.size(), 3);
+  auto tablet_id_to_lag = tablets[0].tablet_id();
+
+  // Bump up the checkpoint interval to prevent any further checkpoints.
+  // On restart GetChanges for the lagging tablet will restart from the checkpoint we created above.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 1000 * 60 * 60;
+
+  // Block xCluster replication for the lagging tablet.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = tablet_id_to_lag;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = -1;
+
+  // Write some more rows with the current schema.
+  ASSERT_OK(
+      producer_conn_->Execute("INSERT INTO tbl1 SELECT i,i FROM generate_series(101, 200) as i"));
+
+  // Now perform 2 schema changes.
+  ASSERT_OK(producer_conn_->Execute("ALTER TABLE tbl1 ADD COLUMN b int"));
+  ASSERT_OK(
+      producer_conn_->Execute("INSERT INTO tbl1 SELECT i,i,i FROM generate_series(201, 300) as i"));
+  ASSERT_OK(producer_conn_->Execute("ALTER TABLE tbl1 ADD COLUMN c int"));
+  ASSERT_OK(producer_conn_->Execute(
+      "INSERT INTO tbl1 SELECT i,i,i,i FROM generate_series(301, 400) as i"));
+
+  // Safe time should be stuck due to the lagging tablet.
+  auto original_propagation_timeout = propagation_timeout_;
+  propagation_timeout_ = 10s;
+  ASSERT_NOK(WaitForSafeTimeToAdvanceToNow());
+  propagation_timeout_ = original_propagation_timeout;
+
+  // Force the source to use the earlier checkpoint instead of using its in-memory checkpoints.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_force_get_checkpoint_from_cdc_state) = true;
+  // Restart TServers to wipe cached schema versions on the target.
+  ASSERT_OK(consumer_cluster_.mini_cluster_->RestartSync());
+
+  // Unblock xCluster replication.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = "";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{"tbl1"}));
+
+  // Verify the schema versions stored in the stream entry on the target.
+  auto stream_id = ASSERT_RESULT(GetCDCStreamID(producer_table.table_id()));
+
+  auto get_stream_entry = [&]() -> Result<cdc::StreamEntryPB> {
+    auto producer_map =
+        VERIFY_RESULT(GetClusterConfig(consumer_cluster_)).consumer_registry().producer_map();
+    auto stream_map = producer_map.at(kReplicationGroupId.ToString()).stream_map();
+    return stream_map.at(stream_id.ToString());
+  };
+  auto initial_stream_entry = ASSERT_RESULT(get_stream_entry());
+  LOG(INFO) << "Initial stream entry: " << initial_stream_entry.DebugString();
+  ASSERT_EQ(initial_stream_entry.schema_versions().old_producer_schema_versions_size(), 3);
+  ASSERT_EQ(initial_stream_entry.schema_versions().old_consumer_schema_versions_size(), 3);
+
+  // Run a DROP COLUMN, this will create 2 new schemas, so it should kick out the 2 oldest schema
+  // versions in the map.
+  ASSERT_OK(producer_conn_->Execute("ALTER TABLE tbl1 DROP COLUMN a"));
+  ASSERT_OK(
+      producer_conn_->Execute("INSERT INTO tbl1 SELECT i,i,i FROM generate_series(401, 500) as i"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{"tbl1"}));
+
+  auto final_stream_entry = ASSERT_RESULT(get_stream_entry());
+  LOG(INFO) << "Final stream entry: " << final_stream_entry.DebugString();
+  ASSERT_EQ(final_stream_entry.schema_versions().old_producer_schema_versions_size(), 3);
+  ASSERT_EQ(final_stream_entry.schema_versions().old_consumer_schema_versions_size(), 3);
+  // Verify that the 2 oldest schema versions are not present in the map.
+  ASSERT_EQ(
+      std::ranges::find(
+          final_stream_entry.schema_versions().old_producer_schema_versions(),
+          initial_stream_entry.schema_versions().old_producer_schema_versions(0)),
+      final_stream_entry.schema_versions().old_producer_schema_versions().end());
+  ASSERT_EQ(
+      std::ranges::find(
+          final_stream_entry.schema_versions().old_producer_schema_versions(),
+          initial_stream_entry.schema_versions().old_producer_schema_versions(1)),
+      final_stream_entry.schema_versions().old_producer_schema_versions().end());
+}
+
 TEST_F(XClusterDDLReplicationTest, DocdbNextColumnAboveLastUsedColumn) {
   // This test checks the hard case of whether or not backup and
   // restore preserves the next DocDB column ID correctly: when the
@@ -2578,7 +2687,7 @@ TEST_F(XClusterDDLReplicationTest, ColumnIdsOnFailover) {
         return !consumer_xcluster_context.IsTargetAndInAutomaticMode(namespace_id) &&
                !consumer_xcluster_context.IsReadOnlyMode(namespace_id);
       },
-      1s, "Wait for TServer to know that it is no longer a target"));
+      10s, "Wait for TServer to know that it is no longer a target"));
 
   auto conn2 = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
   ASSERT_OK(conn2.Execute("ALTER TABLE my_table ADD COLUMN q INT;"));
@@ -3136,6 +3245,30 @@ TEST_F(XClusterDDLReplicationTest, DDLsOnTarget) {
       ASSERT_OK(consumer_conn_->Execute(ddl));
     }
   }
+}
+
+// Make sure we can run ANALYZE on both clusters.
+TEST_F(XClusterDDLReplicationTest, Analyze) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE tbl1(a int)"));
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO tbl1 SELECT i FROM generate_series(1, 10) as i"));
+  ASSERT_OK(
+      producer_conn_->Execute("INSERT INTO tbl1 SELECT 100 FROM generate_series(1, 10) as i"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  auto perform_analyze = [](pgwrapper::PGConn& conn) -> Result<std::string> {
+    RETURN_NOT_OK(conn.Execute("ANALYZE tbl1"));
+    return conn.FetchAllAsString(
+        "SELECT attname, avg_width, most_common_vals::text, most_common_freqs::text, "
+        "histogram_bounds::text FROM pg_catalog.pg_stats WHERE tablename = 'tbl1'");
+  };
+
+  auto producer_data = ASSERT_RESULT(perform_analyze(*producer_conn_));
+  ASSERT_EQ(producer_data, "a, 4, {100}, {0.5}, {1,2,3,4,5,6,7,8,9,10}");
+  auto consumer_data = ASSERT_RESULT(perform_analyze(*consumer_conn_));
+
+  ASSERT_EQ(consumer_data, producer_data);
 }
 
 }  // namespace yb

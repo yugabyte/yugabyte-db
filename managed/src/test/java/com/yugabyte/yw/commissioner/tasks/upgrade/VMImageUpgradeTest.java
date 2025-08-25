@@ -84,6 +84,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
           TaskType.ReplaceRootVolume,
           TaskType.SetupYNP,
           TaskType.YNPProvisioning,
+          TaskType.InstallNodeAgent,
           TaskType.SetNodeStatus,
           TaskType.CheckLocale,
           TaskType.CheckGlibc,

@@ -944,7 +944,7 @@ void
 makeAlterConfigCommand(PGconn *conn, const char *configitem,
 					   const char *type, const char *name,
 					   const char *type2, const char *name2,
-					   PQExpBuffer buf)
+					   bool yb_dump_role_checks, PQExpBuffer yb_outbuf)
 {
 	char	   *mine;
 	char	   *pos;
@@ -959,6 +959,7 @@ makeAlterConfigCommand(PGconn *conn, const char *configitem,
 	}
 	*pos++ = '\0';
 
+	PQExpBuffer buf = createPQExpBuffer();
 	/* Build the command, with suitable quoting for everything. */
 	appendPQExpBuffer(buf, "ALTER %s %s ", type, fmtId(name));
 	if (type2 != NULL && name2 != NULL)
@@ -1002,5 +1003,17 @@ makeAlterConfigCommand(PGconn *conn, const char *configitem,
 
 	appendPQExpBufferStr(buf, ";\n");
 
+	if (yb_dump_role_checks && strcmp(type, "ROLE") == 0)
+	{
+		YBWwrapInRoleChecks(conn, buf, "alter role",
+							name,	/* role1 */
+							NULL,	/* role2 */
+							NULL,	/* role3 */
+							yb_outbuf);
+	}
+	else
+		appendPQExpBuffer(yb_outbuf, "%s", buf->data);
+
+	destroyPQExpBuffer(buf);
 	pg_free(mine);
 }

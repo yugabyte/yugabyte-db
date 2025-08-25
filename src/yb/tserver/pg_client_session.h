@@ -129,7 +129,7 @@ class PgClientSession final {
 
   std::pair<uint64_t, std::byte*> ObtainBigSharedMemorySegment(size_t size);
 
-  void StartShutdown();
+  void StartShutdown(bool pg_service_shutting_down);
   bool ReadyToShutdown() const;
   void CompleteShutdown();
 

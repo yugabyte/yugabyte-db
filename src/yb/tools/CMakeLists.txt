@@ -42,7 +42,8 @@ set(LINK_LIBS
 )
 
 add_library(yb_tools_util
-  data_gen_util.cc)
+  data_gen_util.cc
+  tools_utils.cc)
 target_link_libraries(yb_tools_util
   ${LINK_LIBS})
 
@@ -57,6 +58,7 @@ target_link_libraries(yb-admin
   yb-admin_lib
   master_error
   master_util
+  yb_tools_util
   ${LINK_LIBS})
 
 add_library(yb-admin_lib
@@ -64,11 +66,13 @@ add_library(yb-admin_lib
   yb-admin_util.cc)
 target_link_libraries(yb-admin_lib
   encryption
+  yb_tools_util
   ${LINK_LIBS})
 
 add_executable(yb-ts-cli ts-cli.cc)
 target_link_libraries(yb-ts-cli
   server_base_proto
+  yb_tools_util
   ${LINK_LIBS})
 
 add_executable(data-patcher data-patcher.cc)

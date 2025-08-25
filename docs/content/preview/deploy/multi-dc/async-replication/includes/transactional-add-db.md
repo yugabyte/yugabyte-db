@@ -77,7 +77,7 @@ The database should have at least one table in order to be added to replication.
 
     ```sh
     ./bin/yb-admin \
-    -master_addresses <primary_master_addresses> \
+    --master_addresses <primary_master_addresses> \
     add_namespace_to_xcluster_checkpoint <replication_group_id> <namespace_name>
     ```
 
@@ -96,7 +96,7 @@ The database should have at least one table in order to be added to replication.
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <standby_master_addresses> \
+        --master_addresses <standby_master_addresses> \
         create_snapshot_schedule 1 10 ysql.yugabyte
     ```
 
@@ -104,7 +104,7 @@ The database should have at least one table in order to be added to replication.
 
     ```sh
     ./bin/yb-admin \
-    -master_addresses <primary_master_addresses> \
+    --master_addresses <primary_master_addresses> \
     add_namespace_to_xcluster_replication <replication_group_id> <namespace_name> <standby_master_addresses>
     ```
 

@@ -14,7 +14,7 @@ services:
       {{ end }}
       Type=simple
 
-      ExecStart=/bin/sh -c "{{ .PABin }}/ts \
+      ExecStart=/bin/sh -c "{{ .PABin }}/perf-advisor \
       --spring.config.additional-location=file:{{ .ConfigLocation }} \
       --web.listen-address=:{{ yamlPath "perfAdvisor.port" }} &>> {{ .PALogDir }}/perf-advisor.log"
 

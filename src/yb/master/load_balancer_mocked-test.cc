@@ -23,16 +23,27 @@
 namespace yb {
 namespace master {
 
-class LoadBalancerMockedTest : public LoadBalancerMockedBase {};
+class LoadBalancerMockedTest : public LoadBalancerMockedBase {
+ protected:
+  void SetTabletReplicaSizes(const TabletInfoPtr& tablet, int tablet_size) {
+    auto replica_map = std::make_shared<TabletReplicaMap>(*tablet->GetReplicaLocations());
+    for (auto& [ts_uuid, replica] : *replica_map) {
+      // The total size is the only field we should use for cluster balancing.
+      // The SST and WAL sizes are more up-to-date but do not include snapshots.
+      replica.drive_info.total_size = tablet_size;
+    }
+    tablet->SetReplicaLocations(replica_map);
+  }
+};
 
 TEST_F(LoadBalancerMockedTest, TestStartingTablet) {
   PrepareTestStateSingleAz();
 
   // Set one tablet to starting.
-  std::shared_ptr<TabletReplicaMap> replica_map =
-      std::const_pointer_cast<TabletReplicaMap>(tablets_[0]->GetReplicaLocations());
+  auto replica_map = std::make_shared<TabletReplicaMap>(*tablets_[0]->GetReplicaLocations());
   replica_map->begin()->second.role = PeerRole::NON_PARTICIPANT;
   replica_map->begin()->second.state = tablet::RaftGroupStatePB::BOOTSTRAPPING;
+  tablets_[0]->SetReplicaLocations(replica_map);
 
   ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
 
@@ -187,8 +198,7 @@ TEST_F(LoadBalancerMockedTest, TestOverReplication) {
 
   // Remove the 2 tablet peers that are wrongly placed.
   for (const auto& tablet : tablets_) {
-    std::shared_ptr<TabletReplicaMap> replica_map =
-      std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());
+    auto replica_map = std::make_shared<TabletReplicaMap>(*tablet->GetReplicaLocations());
     replica_map->erase(ts_descs_[1]->permanent_uuid());
     replica_map->erase(ts_descs_[2]->permanent_uuid());
     tablet->SetReplicaLocations(replica_map);
@@ -800,6 +810,99 @@ TEST_F(LoadBalancerMockedTest, TestLeaderBlacklist) {
     }
   }
   LOG(INFO) << "Leader distribution: 2 1 1 -OR- 1 2 1";
+}
+
+class LoadBalancerMockedTestManyTablets : public LoadBalancerMockedTest {
+ protected:
+  int NumTablets() const override { return 40; }
+};
+
+TEST_F(LoadBalancerMockedTestManyTablets, SizeAwareBalancing) {
+  google::SetVLOGLevel("cluster_balance", 4);
+  google::SetVLOGLevel("cluster_balance_util", 4);
+  PrepareTestStateSingleAz();
+  auto new_ts = ts_descs_.emplace_back(SetupTS("3333", "a"));
+
+  // We should schedule two tablet moves because we want 100 MB of tablet movement and each tablet
+  // is 40 MB. The minimum number of remote bootstraps is set to 1 so that we are constrained by
+  // the data limit.
+  GetOptions()->kMaxInboundBytesPerTs = 100_MB;
+  GetOptions()->kMinInboundRemoteBootstrapsPerTs = 1;
+  for (auto& tablet : tablets_) {
+    SetTabletReplicaSizes(tablet, 40_MB);
+  }
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  std::string tablet_id, from_ts, to_ts;
+
+  // Should be able to schedule exactly two moves.
+  ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  ASSERT_EQ(to_ts, new_ts->permanent_uuid());
+  ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  ASSERT_EQ(to_ts, new_ts->permanent_uuid());
+  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+
+  // If we bump the data limit to 120 MB, we should be able to add one more tablet.
+  GetOptions()->kMaxInboundBytesPerTs = 120_MB;
+  ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  ASSERT_EQ(to_ts, new_ts->permanent_uuid());
+  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+}
+
+TEST_F(LoadBalancerMockedTestManyTablets, SizeAwareBalancingMinRbs) {
+  PrepareTestStateSingleAz();
+  auto new_ts = ts_descs_.emplace_back(SetupTS("3333", "a"));
+  for (auto& tablet : tablets_) {
+    SetTabletReplicaSizes(tablet, 101_MB);
+  }
+  GetOptions()->kMaxInboundBytesPerTs = 100_MB;
+  GetOptions()->kMinInboundRemoteBootstrapsPerTs = 2;
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+
+  // Even though each tablet is larger than the inbound bytes limit, we should still add replicas
+  // until we have the minimum number of remote bootstraps.
+  std::string tablet_id, from_ts, to_ts;
+  ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  ASSERT_EQ(to_ts, new_ts->permanent_uuid());
+  ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  ASSERT_EQ(to_ts, new_ts->permanent_uuid());
+  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+}
+
+TEST_F(LoadBalancerMockedTestManyTablets, SizeAwareBalancingNoSizeData) {
+  PrepareTestStateSingleAz();
+  auto new_ts = ts_descs_.emplace_back(SetupTS("3333", "a"));
+  GetOptions()->kMaxInboundBytesPerTs = 100_MB;
+  GetOptions()->kMinInboundRemoteBootstrapsPerTs = 1;
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+
+  // Should only schedule the minimum number of moves because we conservatively estimate the size of
+  // a tablet with no data to be 1 GB.
+  std::string tablet_id, from_ts, to_ts;
+  ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  ASSERT_EQ(to_ts, new_ts->permanent_uuid());
+  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+}
+
+TEST_F(LoadBalancerMockedTestManyTablets, SizeAwareBalancingManyTablets) {
+  PrepareTestStateSingleAz();
+  auto new_ts = ts_descs_.emplace_back(SetupTS("3333", "a"));
+  for (auto& tablet : tablets_) {
+    SetTabletReplicaSizes(tablet, 1_MB);
+  }
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+
+  // With default flags and small tablet sizes, we should be able to move 20 tablets in the first
+  // run. At the 21st tablet, the accounting for over-replication will prevent further moves
+  // because we account for the over-replication on all tservers since we don't know which we will
+  // remove from: 40 tablets - 20 over-replicated tablets = 20 tablets of load on the source.
+  std::string tablet_id, from_ts, to_ts;
+  for (int i = 0; i < 20; ++i) {
+    ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+    ASSERT_EQ(to_ts, new_ts->permanent_uuid());
+  }
+  // If we start tracking over-replication on just one tserver, we should remove the following line
+  // and assert that we can move all 30 tablets in one run.
+  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
 }
 
 class LoadBalancerRF5MockedTest : public LoadBalancerMockedTest {

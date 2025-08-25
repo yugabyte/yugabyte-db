@@ -8,6 +8,7 @@ import api.v2.handlers.UniverseManagementHandler;
 import api.v2.handlers.UniverseUpgradesManagementHandler;
 import api.v2.models.AttachUniverseSpec;
 import api.v2.models.ClusterAddSpec;
+import api.v2.models.ConfigureMetricsExportSpec;
 import api.v2.models.DetachUniverseSpec;
 import api.v2.models.Universe;
 import api.v2.models.UniverseCertRotateSpec;
@@ -212,5 +213,11 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
   public YBATask configureQueryLogging(
       Request request, UUID cUUID, UUID uniUUID, UniverseQueryLogsExport req) throws Exception {
     return universeUpgradeHandler.configureQueryLogging(request, cUUID, uniUUID, req);
+  }
+
+  @Override
+  public YBATask configureMetricsExport(
+      Request request, UUID cUUID, UUID uniUUID, ConfigureMetricsExportSpec req) throws Exception {
+    return universeUpgradeHandler.configureMetricsExport(request, cUUID, uniUUID, req);
   }
 }

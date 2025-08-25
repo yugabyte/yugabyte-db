@@ -536,3 +536,5 @@ func (prom Prometheus) Reconfigure() error {
 	log.Info("Prometheus reconfigured")
 	return nil
 }
+
+func (prom Prometheus) PreUpgrade() error { return nil }

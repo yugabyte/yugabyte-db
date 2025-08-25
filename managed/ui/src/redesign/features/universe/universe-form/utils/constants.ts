@@ -40,6 +40,8 @@ export const EAR_FIELD = 'instanceConfig.enableEncryptionAtRest';
 export const KMS_CONFIG_FIELD = 'instanceConfig.kmsConfig';
 export const CPU_ARCHITECTURE_FIELD = 'instanceConfig.arch';
 export const LINUX_VERSION_FIELD = 'instanceConfig.imageBundleUUID';
+export const ENABLE_EBS_CONFIG_FIELD = 'instanceConfig.deviceInfo.cloudVolumeEncryption.enableVolumeEncryption';
+export const EBS_KMS_CONFIG_FIELD = 'instanceConfig.deviceInfo.cloudVolumeEncryption.kmsConfigUUID';
 
 //Advanced config
 export const SYSTEMD_FIELD = 'advancedConfig.useSystemd';
@@ -115,7 +117,9 @@ export const PRIMARY_FIELDS = [
   MASTER_PLACEMENT_FIELD,
   CPU_ARCHITECTURE_FIELD,
   LINUX_VERSION_FIELD,
-  CONNECTION_POOLING_FIELD
+  CONNECTION_POOLING_FIELD,
+  ENABLE_EBS_CONFIG_FIELD,
+  EBS_KMS_CONFIG_FIELD
 ];
 
 export const ASYNC_FIELDS = [
@@ -174,7 +178,9 @@ export const INHERITED_FIELDS_FROM_PRIMARY = [
   LINUX_VERSION_FIELD,
   CONNECTION_POOLING_FIELD,
   CUSTOMIZE_PORT_FIELD,
-  COMMUNICATION_PORTS_FIELD
+  COMMUNICATION_PORTS_FIELD,
+  ENABLE_EBS_CONFIG_FIELD,
+  EBS_KMS_CONFIG_FIELD
 ];
 
 export const PASSWORD_REGEX = /^(?=.*[0-9])(?=.*[!@#$%^&*])(?=.*[a-z])(?=.*[A-Z])[a-zA-Z0-9!@#$%^&*]{8,256}$/;

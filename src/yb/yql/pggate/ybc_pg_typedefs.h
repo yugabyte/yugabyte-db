@@ -431,6 +431,7 @@ typedef struct {
   const uint32_t* yb_max_recursion_depth;
   const uint32_t* ysql_conn_mgr_stats_interval;
   const bool*     ysql_enable_read_request_cache_for_connection_auth;
+  const bool*     TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication;
 } YbcPgGFlagsAccessor;
 
 typedef struct {
@@ -617,6 +618,7 @@ typedef struct {
 static const int32_t kYBCMaxNumDbCatalogVersions = 10000;
 
 typedef enum {
+  YB_YQL_PREFETCHER_TRUST_CACHE_AUTH,
   YB_YQL_PREFETCHER_TRUST_CACHE,
   YB_YQL_PREFETCHER_RENEW_CACHE_SOFT,
   YB_YQL_PREFETCHER_RENEW_CACHE_HARD
@@ -829,7 +831,8 @@ typedef struct {
 
 typedef enum {
   QUERY_ID_TYPE_DEFAULT,
-  QUERY_ID_TYPE_BACKGROUND_WORKER
+  QUERY_ID_TYPE_BACKGROUND_WORKER,
+  QUERY_ID_TYPE_WALSENDER,
 } YbcAshConstQueryIdType;
 
 typedef struct {

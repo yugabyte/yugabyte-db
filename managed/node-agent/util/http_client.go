@@ -106,10 +106,8 @@ func (c *HttpClient) Do(
 		return nil, err
 	}
 
-	if headers != nil {
-		for k, v := range headers {
-			req.Header.Set(k, v)
-		}
+	for k, v := range headers {
+		req.Header.Set(k, v)
 	}
 
 	res, err := c.client.Do(req)

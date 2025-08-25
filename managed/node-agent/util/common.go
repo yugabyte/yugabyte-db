@@ -471,3 +471,32 @@ func (queue *PriorityQueue[T]) Peek() T {
 	}
 	return zero
 }
+
+// StatusError represents an error with a status code.
+type StatusError struct {
+	code int
+	err  error
+}
+
+// NewStatusError creates a new StatusError with the given code and error.
+func NewStatusError(code int, err error) *StatusError {
+	return &StatusError{
+		code: code,
+		err:  err,
+	}
+}
+
+// Error implements the error interface.
+func (e *StatusError) Error() string {
+	return e.err.Error()
+}
+
+// Cause returns cause of the error.
+func (e *StatusError) Cause() error {
+	return e.err
+}
+
+// Code returns the status code of the error.
+func (e *StatusError) Code() int {
+	return e.code
+}

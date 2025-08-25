@@ -44,13 +44,13 @@ CDCSDKUniqueRecordID::CDCSDKUniqueRecordID(
     this->docdb_txn_id_ = "";
   }
   switch (this->vwal_record_type_) {
+    case VWALRecordType::PUBLICATION_REFRESH: FALLTHROUGH_INTENDED;
     case VWALRecordType::DDL:
       this->record_time_ = 0;
       this->write_id_ = 0;
       this->table_id_ = record->row_message().table_id();
       this->primary_key_ = "";
       break;
-    case VWALRecordType::PUBLICATION_REFRESH: FALLTHROUGH_INTENDED;
     case VWALRecordType::BEGIN:
       this->record_time_ = 0;
       this->write_id_ = 0;

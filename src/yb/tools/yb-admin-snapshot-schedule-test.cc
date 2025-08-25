@@ -3530,7 +3530,7 @@ TEST_F(
   LOG(INFO) << "Save time to restore to.";
   Timestamp time = ASSERT_RESULT(GetCurrentTime());
   LOG(INFO) << "Run upgrade_ysql to create and populate pg_yb_migration table.";
-  auto result = ASSERT_RESULT(CallAdmin("-timeout_ms", 19 * 60 * 1000, "upgrade_ysql"));
+  auto result = ASSERT_RESULT(CallAdmin("--timeout_ms", 19 * 60 * 1000, "upgrade_ysql"));
   LOG(INFO) << "Assert pg_yb_migration table exists.";
   ASSERT_RESULT(conn.FetchRow<int64_t>(query));
   auto restore_status = RestoreSnapshotSchedule(schedule_id, time);

@@ -1,0 +1,11 @@
+description: |
+  ConfigureMetricsExportReq
+
+  Payload to configure metrics export. Part of
+  ConfigureMetricsExportReq
+x-yba-api-visibility: internal
+required: false
+content:
+  application/json:
+    schema:
+      $ref: "../schemas/ConfigureMetricsExportSpec.yaml"

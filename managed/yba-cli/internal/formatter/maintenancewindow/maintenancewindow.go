@@ -7,10 +7,10 @@ package maintenancewindow
 import (
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/sirupsen/logrus"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
@@ -121,17 +121,17 @@ func (c *Context) State() string {
 
 // CreateTime fetches the maintenanceWindow creation time
 func (c *Context) CreateTime() string {
-	return c.mw.GetCreateTime().Format(time.RFC1123Z)
+	return util.PrintTime(c.mw.GetCreateTime())
 }
 
 // StartTime fetches the maintenanceWindow start time
 func (c *Context) StartTime() string {
-	return c.mw.GetStartTime().Format(time.RFC1123Z)
+	return util.PrintTime(c.mw.GetStartTime())
 }
 
 // EndTime fetches the maintenanceWindow end time
 func (c *Context) EndTime() string {
-	return c.mw.GetEndTime().Format(time.RFC1123Z)
+	return util.PrintTime(c.mw.GetEndTime())
 }
 
 // Description fetches the maintenanceWindow description

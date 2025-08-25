@@ -83,8 +83,6 @@ void MaybeSleepForTests(WaitStateInfo* state, WaitStateCode c) {
 
 std::string GetWaitStateDescription(WaitStateCode code) {
   switch (code) {
-    case WaitStateCode::kUnused:
-      return "This should not be present in view.";
     case WaitStateCode::kYSQLReserved:
       return "This is just a placeholder here for a wait event defined in PG.";
     case WaitStateCode::kCatalogRead:
@@ -160,6 +158,8 @@ std::string GetWaitStateDescription(WaitStateCode code) {
       return "A snapshot operation is cleaning a snapshot directory.";
     case WaitStateCode::kSnapshot_RestoreCheckpoint:
       return "A snapshot operation is restoring a database checkpoint.";
+    case WaitStateCode::kXCluster_WaitingForGetChanges:
+      return "XCluster Poller on target universe is waiting for changes from source universe.";
     case WaitStateCode::kRaft_WaitingForReplication:
       return "A write rpc is waiting for Raft replication.";
     case WaitStateCode::kRaft_ApplyingEdits:
@@ -168,6 +168,8 @@ std::string GetWaitStateDescription(WaitStateCode code) {
       return "A write rpc is persisting WAL edits.";
     case WaitStateCode::kWAL_Sync:
       return "A write rpc is synchronizing WAL edits.";
+    case WaitStateCode::kWAL_Read:
+      return "An rpc is reading WAL.";
     case WaitStateCode::kConsensusMeta_Flush:
       return "ConsensusMetadata is flushed, say during Raft term/config change or remote "
           "bootstrap etc.";
@@ -367,6 +369,16 @@ void WaitStateInfo::UpdateAuxInfo(const AshAuxInfo &aux) {
   aux_info_.UpdateFrom(aux);
 }
 
+void WaitStateInfo::UpdateTabletId(const TabletId& tablet_id) {
+  UpdateAuxInfo({.tablet_id = tablet_id});
+}
+
+void WaitStateInfo::UpdateCurrentTabletId(const TabletId& tablet_id) {
+  if (const auto& wait_state = CurrentWaitState()) {
+    wait_state->UpdateTabletId(tablet_id);
+  }
+}
+
 void WaitStateInfo::SetCurrentWaitState(WaitStateInfoPtr wait_state) {
   threadlocal_wait_state_ = std::move(wait_state);
 }
@@ -399,7 +411,7 @@ std::vector<WaitStatesDescription> WaitStateInfo::GetWaitStatesDescription() {
   std::vector<WaitStatesDescription> desc;
   for (const auto& code : WaitStateCodeList()) {
     // These shouldn't be seen in the view
-    if (code == WaitStateCode::kUnused || code == WaitStateCode::kYSQLReserved)
+    if (code == WaitStateCode::kYSQLReserved)
       continue;
     desc.emplace_back(code, GetWaitStateDescription(code));
   }
@@ -537,7 +549,6 @@ std::vector<yb::ash::WaitStateInfoPtr> WaitStateTracker::GetWaitStates() const {
 
 WaitStateType GetWaitStateType(WaitStateCode code) {
   switch (code) {
-    case WaitStateCode::kUnused:
     case WaitStateCode::kYSQLReserved:
       return WaitStateType::kCpu;
 
@@ -596,6 +607,7 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
     case WaitStateCode::kRaft_WaitingForReplication:
     case WaitStateCode::kRemoteBootstrap_StartRemoteSession:
     case WaitStateCode::kRemoteBootstrap_FetchData:
+    case WaitStateCode::kXCluster_WaitingForGetChanges:
       return WaitStateType::kRPCWait;
 
     case WaitStateCode::kRaft_ApplyingEdits:
@@ -603,6 +615,7 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
 
     case WaitStateCode::kWAL_Append:
     case WaitStateCode::kWAL_Sync:
+    case WaitStateCode::kWAL_Read:
     case WaitStateCode::kConsensusMeta_Flush:
     case WaitStateCode::kSnapshot_WaitingForFlush:
     case WaitStateCode::kSnapshot_CleanupSnapshotDir:
@@ -654,6 +667,7 @@ WaitStateTracker flush_and_compaction_wait_states_tracker;
 WaitStateTracker raft_log_appender_wait_states_tracker;
 WaitStateTracker pg_shared_memory_perform_tracker;
 WaitStateTracker pg_shared_memory_acquire_object_lock_tracker;
+WaitStateTracker xcluster_poller_tracker;
 
 }  // namespace
 
@@ -671,6 +685,10 @@ WaitStateTracker& SharedMemoryPgPerformTracker() {
 
 WaitStateTracker& SharedMemoryPgAcquireObjectLockTracker() {
   return pg_shared_memory_acquire_object_lock_tracker;
+}
+
+WaitStateTracker& XClusterPollerTracker() {
+  return xcluster_poller_tracker;
 }
 
 }  // namespace yb::ash

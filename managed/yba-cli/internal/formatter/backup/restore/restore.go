@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"strings"
 	"text/template"
-	"time"
 
 	"github.com/sirupsen/logrus"
 	ybaclient "github.com/yugabyte/platform-go-client"
@@ -168,17 +167,12 @@ func (r *Context) State() string {
 
 // CreateTime fetches Restore Create Time
 func (r *Context) CreateTime() string {
-	return r.r.GetCreateTime().Format(time.RFC1123Z)
+	return util.PrintTime(r.r.GetCreateTime())
 }
 
 // CompletionTime fetches Restore Completion Time
 func (r *Context) CompletionTime() string {
-	completionTime := r.r.GetUpdateTime()
-	if completionTime.IsZero() {
-		return ""
-	} else {
-		return completionTime.Format(time.RFC1123Z)
-	}
+	return util.PrintTime(r.r.GetUpdateTime())
 }
 
 // MarshalJSON function

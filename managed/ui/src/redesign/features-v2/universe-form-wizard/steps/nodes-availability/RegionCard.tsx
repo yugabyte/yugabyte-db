@@ -2,7 +2,7 @@ import { FC, useContext } from 'react';
 import { useFormContext } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { styled, Typography } from '@material-ui/core';
-import { YBButton } from '@yugabyte-ui-library/core';
+import { YBButton, YBTagv2 } from '@yugabyte-ui-library/core';
 import { Zone } from './Zone';
 import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
 import { FaultToleranceType } from '../resilence-regions/dtos';
@@ -59,7 +59,7 @@ export const RegionCard: FC<RegionCardProps> = ({ region, index }) => {
         <Typography color="textSecondary" variant="body1">
           {t('region', { region_count: index + 1 })}
         </Typography>
-        <StyledRegionName>{`${getFlagFromRegion(region.code)}  ${region.name} (${region.code})`}</StyledRegionName>
+        <YBTagv2 text={`${getFlagFromRegion(region.code)}  ${region.name} (${region.code})`} variant='primary' filled noGradient />
       </div>
       <div
         style={{

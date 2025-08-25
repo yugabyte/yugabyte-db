@@ -72,15 +72,30 @@ vector_index::HNSWOptions ConvertToHnswOptions(const PgVectorIdxOptionsPB& optio
   };
 }
 
-template <template<class, class> class Factory, class LSM>
-auto VectorLSMFactory(
+template <class LSM>
+typename LSM::Options::VectorIndexFactory VectorLSMFactory(
     const hnsw::BlockCachePtr& block_cache, const PgVectorIdxOptionsPB& options,
     const MemTrackerPtr& mem_tracker) {
-  using FactoryImpl = vector_index::MakeVectorIndexFactory<Factory, LSM>;
-  return [block_cache, hnsw_options = ConvertToHnswOptions(options),
-          backend = options.hnsw().backend(), mem_tracker](vector_index::FactoryMode mode) {
-    return FactoryImpl::Create(mode, block_cache, hnsw_options, backend, mem_tracker);
-  };
+  auto hnsw_options = ConvertToHnswOptions(options);
+  switch (options.hnsw().backend()) {
+    case HnswBackend::USEARCH: [[fallthrough]];
+    case HnswBackend::YB_HNSW: {
+      using FactoryImpl = vector_index::MakeVectorIndexFactory<
+          ann_methods::UsearchIndexFactory, LSM>;
+      return [block_cache, hnsw_options,
+              backend = options.hnsw().backend(), mem_tracker](vector_index::FactoryMode mode) {
+        return FactoryImpl::Create(mode, block_cache, hnsw_options, backend, mem_tracker);
+      };
+    }
+    case HnswBackend::HNSWLIB: {
+      using FactoryImpl = vector_index::MakeVectorIndexFactory<
+          ann_methods::HnswlibIndexFactory, LSM>;
+      return [hnsw_options](vector_index::FactoryMode mode) {
+        return FactoryImpl::Create(mode, hnsw_options);
+      };
+    }
+  }
+  FATAL_INVALID_PB_ENUM_VALUE(HnswBackend, options.hnsw().backend());
 }
 
 template<vector_index::IndexableVectorType Vector,
@@ -92,8 +107,7 @@ auto GetVectorLSMFactory(
   using LSM = vector_index::VectorLSM<Vector, DistanceResult>;
   switch (options.idx_type()) {
     case PgVectorIndexType::HNSW:
-      return VectorLSMFactory<ann_methods::UsearchIndexFactory, LSM>(
-          block_cache, options, mem_tracker);
+      return VectorLSMFactory<LSM>(block_cache, options, mem_tracker);
     case PgVectorIndexType::DUMMY: [[fallthrough]];
     case PgVectorIndexType::IVFFLAT: [[fallthrough]];
     case PgVectorIndexType::UNKNOWN_IDX:
@@ -275,7 +289,8 @@ class DocVectorIndexImpl : public DocVectorIndex {
   }
 
   Result<DocVectorIndexSearchResult> Search(
-      Slice vector, const vector_index::SearchOptions& options) override {
+      Slice vector, const vector_index::SearchOptions& options,
+      bool could_have_missing_entries) override {
     auto entries = VERIFY_RESULT(lsm_.Search(
         VERIFY_RESULT(VectorFromYSQL<Vector>(vector)), options));
 
@@ -286,29 +301,36 @@ class DocVectorIndexImpl : public DocVectorIndex {
     docdb::BoundedRocksDbIterator iter(doc_db_.regular, {}, doc_db_.key_bounds);
 
     DocVectorIndexSearchResult result;
-    result.reserve(entries.size());
+    result.could_have_more_data = entries.size() >= options.max_num_results;
+    result.entries.reserve(entries.size());
     for (auto& entry : entries) {
       auto key = dockv::DocVectorKey(entry.vector_id);
       const auto& db_entry = iter.Seek(key);
       if (!db_entry.Valid() || !db_entry.key.starts_with(key)) {
+        if (could_have_missing_entries) {
+          continue;
+        }
         return STATUS_FORMAT(NotFound, "Vector not found: $0", entry.vector_id);
       }
 
       // TODO(vector_index): does it handle kTombstone in db_entry.value?
-      result.push_back(DocVectorIndexSearchResultEntry {
+      result.entries.push_back(DocVectorIndexSearchResultEntry {
         .encoded_distance = EncodeDistance(entry.distance),
         .key = KeyBuffer(db_entry.value),
       });
 #ifndef NDEBUG
-      if (result.size() > 1) {
-        CHECK_GE(result.back().encoded_distance, result[result.size() - 2].encoded_distance);
+      if (result.entries.size() > 1) {
+        CHECK_GE(result.entries.back().encoded_distance,
+                 result.entries[result.entries.size() - 2].encoded_distance);
       }
 #endif
     }
 
     LOG_IF(INFO, dump_stats)
         << "VI_STATS: Convert vector id to ybctid time: "
-        << (MonoTime::Now() - start_time).ToPrettyString() << ", entries: " << result.size();
+        << (MonoTime::Now() - start_time).ToPrettyString()
+        << ", entries: " << result.entries.size()
+        << ", could_have_more_data: " << result.could_have_more_data;
 
     return result;
   }
@@ -357,6 +379,10 @@ class DocVectorIndexImpl : public DocVectorIndex {
 
   Result<size_t> TotalEntries() const override {
     return lsm_.TotalEntries();
+  }
+
+  bool TEST_HasBackgroundInserts() const override {
+    return lsm_.TEST_HasBackgroundInserts();
   }
 
  private:

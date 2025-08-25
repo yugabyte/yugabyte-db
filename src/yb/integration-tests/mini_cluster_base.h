@@ -57,6 +57,8 @@ class MiniClusterBase {
 
   bool running() const { return running_.load(std::memory_order_acquire); }
 
+  virtual bool WasUnsafeShutdown() const = 0;
+
   virtual std::vector<scoped_refptr<ExternalYbController>> yb_controller_daemons() const = 0;
 
   virtual HostPort YsqlHostport() const = 0;

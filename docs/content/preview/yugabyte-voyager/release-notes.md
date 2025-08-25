@@ -13,13 +13,37 @@ type: docs
 
 What follows are the release notes for the YugabyteDB Voyager v1 release series. Content will be added as new notable features and changes are available in the patch releases of the YugabyteDB v1 series.
 
+{{< warning title="Technical Advisory" >}}
+
+{{<ta 2968>}} : Import schema fails on all Voyager installs done after August 14, 2025. Impacts [v1.1](#v1-1-march-7-2023) to [v2025.8.1](#v2025-8-1-august-5-2025).
+
+{{< /warning >}}
+
 ## Versioning
 
 Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, where `YYYY` is the release year, `M` is the month, and `N` is the number of the release in that month.
 
+## v2025.8.2 - August 19, 2025
+
+### New feature
+
+- Introduced the `--allow-oracle-clob-data-export` flag for the export data command, to enable exporting data from CLOB datatype columns in Oracle offline migrations.
+
+### Enhancements
+
+- Improved sizing calculations in `assess-migration` by factoring in throughput gains based on the recommended number of nodes for more accurate import time estimation.
+- Enhanced PostgreSQL permissions grant script by adding an option for live migrations to either transfer table ownership to the migration user or grant the original owner's permissions to it.
+- Improved import data retry logic to skip non-retryable errors such as data exceptions and integrity violations.
+- Removed redundant index performance optimization reports from the `assess-migration` report as `export schema` now automatically removes redundant indexes.
+- Enhanced schema optimization report in `export schema` to list all recommendations, whether they are applied or skipped, even when the `--skip-performance-optimizations` / `--skip-recommendations` flags are used.
+
+### Bug fix
+
+- Fixed an [issue](https://github.com/yugabyte/yb-voyager/issues/2968) where import schema fails while parsing some unnecessary statements on all Voyager installs done after August 14, 2025. Refer to [TA-2968](/preview/releases/techadvisories/ta-2968/).
+
 ## v2025.8.1 - August 5, 2025
 
-## New feature
+### New feature
 
 - Automatically apply performance optimizations recommended by the migration assessment (such as removing redundant indexes) during the export schema phase. Voyager also generates a schema optimization report detailing the optimizations that were applied. To turn automatic optimization off, set the new `--skip-performance-optimizations` flag in the `export schema` command to true.
 - Introduced the ability to stash errors and continue when importing snapshot data in `import data` and `import-data-file` commands by using the flags `error-policy-snapshot` or `error-policy`.

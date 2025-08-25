@@ -75,6 +75,7 @@
 #include "yb/server/monitored_task.h"
 #include "yb/util/async_task_util.h"
 #include "yb/util/debug/lock_debug.h"
+#include "yb/util/flags/flags_callback.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
@@ -283,32 +284,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                                     AddTransactionStatusTabletResponsePB* resp,
                                     rpc::RpcContext* rpc,
                                     const LeaderEpoch& epoch);
-
-  // Check if there is a transaction table whose tablespace id matches the given tablespace id.
-  bool DoesTransactionTableExistForTablespace(
-      const TablespaceId& tablespace_id) EXCLUDES(mutex_);
-
-  // Create a local transaction status table for a tablespace if needed
-  // (i.e., if it does not exist already).
-  //
-  // This is called during CreateTable if the table has transactions enabled and is part
-  // of a tablespace with a placement set.
-  Status CreateLocalTransactionStatusTableIfNeeded(
-      rpc::RpcContext* rpc, const TablespaceId& tablespace_id, const LeaderEpoch& epoch)
-      EXCLUDES(mutex_);
-
-  // Get tablet ids of the global transaction status table.
-  Status GetGlobalTransactionStatusTablets(
-      GetTransactionStatusTabletsResponsePB* resp) EXCLUDES(mutex_);
-
-  // Get ids of transaction status tables matching a given placement.
-  Result<std::vector<TableInfoPtr>> GetPlacementLocalTransactionStatusTables(
-      const CloudInfoPB& placement) EXCLUDES(mutex_);
-
-  // Get tablet ids of local transaction status tables matching a given placement.
-  Status GetPlacementLocalTransactionStatusTablets(
-      const std::vector<TableInfoPtr>& placement_local_tables,
-      GetTransactionStatusTabletsResponsePB* resp) EXCLUDES(mutex_);
 
   // Get tablet ids of the global transaction status table and local transaction status tables
   // matching a given placement.
@@ -2485,7 +2460,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status ValidateTableReplicationInfo(const ReplicationInfoPB& replication_info) const;
 
   // Return the id of the tablespace associated with a transaction status table, if any.
-  boost::optional<TablespaceId> GetTransactionStatusTableTablespace(
+  std::optional<TablespaceId> GetTransactionStatusTableTablespace(
       const scoped_refptr<TableInfo>& table) REQUIRES_SHARED(mutex_);
 
   // Clears tablespace id for a transaction status table, reverting it back to cluster default
@@ -2552,6 +2527,32 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Status MaybeCreateLocalTransactionTable(
       const CreateTableRequestPB& request, rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+
+  // Check if there is a transaction table whose tablespace id matches the given tablespace id.
+  bool DoesTransactionTableExistForTablespace(
+      const TablespaceId& tablespace_id) EXCLUDES(mutex_);
+
+  // Create a local transaction status table for a tablespace if needed
+  // (i.e., if it does not exist already).
+  //
+  // This is called during CreateTable if the table has transactions enabled and is part
+  // of a tablespace with a placement set.
+  Status CreateLocalTransactionStatusTableIfNeeded(
+      rpc::RpcContext* rpc, const TablespaceId& tablespace_id, const LeaderEpoch& epoch)
+      EXCLUDES(mutex_);
+
+  // Get tablet ids of the global transaction status table.
+  Status GetGlobalTransactionStatusTablets(
+      GetTransactionStatusTabletsResponsePB* resp) EXCLUDES(mutex_);
+
+  struct PlacementLocalTransactionStatusTables;
+
+  Result<PlacementLocalTransactionStatusTables> GetPlacementLocalTransactionStatusTables(
+      const CloudInfoPB& placement) EXCLUDES(mutex_);
+
+  Status GetPlacementLocalTransactionStatusTablets(
+      const PlacementLocalTransactionStatusTables& status_table_infos,
+      GetTransactionStatusTabletsResponsePB* resp) EXCLUDES(mutex_);
 
   Result<int> CalculateNumTabletsForTableCreation(
       const CreateTableRequestPB& request, const Schema& schema,
@@ -2974,6 +2975,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   void DoReleaseObjectLocksIfNecessary(const TransactionId& txn_id);
 
+  Status RegisterFlagCallbacks();
+
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
 
@@ -3131,6 +3134,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   std::unique_ptr<cdc::CDCStateTable> cdc_state_table_;
 
   std::atomic<bool> pg_cron_service_created_{false};
+
+  std::vector<FlagCallbackRegistration> flag_callbacks_;
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

@@ -886,15 +886,7 @@ od_router_status_t od_router_attach(od_router_t *router,
 		 "client_for_router logical client version = %d",
 		 client_for_router->logical_client_version);
 
-	bool client_timed_out = false;
 	for (;;) {
-		/* check for open socket here. Exit if closed */
-		if (yb_machine_io_is_socket_closed(external_client->io.io)) {
-			od_debug(&instance->logger, "router-attach",
-				external_client, NULL,
-				"Socket is closed. Queued client timed out. Aborting auth");
-			client_timed_out = true;
-		}
 		if (version_matching) {
 
 			server = yb_od_server_pool_idle_version_matching(
@@ -1077,18 +1069,23 @@ od_router_status_t od_router_attach(od_router_t *router,
 		created_atleast_one = true;
 	}
 
+	/*
+	 * If we created a server, then hold on to the lock so no other client can
+	 * acquire this server from the server pool
+	*/
+	if (created_atleast_one)
+		goto attach;
+
+	/* YB: Unlock the route since we don't need the lock when allocating server */
 	od_route_unlock(route);
 
-	if (!created_atleast_one)
-	{
-		server = od_server_allocate(
+	server = od_server_allocate(
 		route->rule->pool->reserve_prepared_statement);
-		if (server == NULL)
-			return OD_ROUTER_ERROR;
-		od_id_generate(&server->id, "s");
-		server->global = client_for_router->global;
-		server->route = route;
-	}
+	if (server == NULL)
+		return OD_ROUTER_ERROR;
+	od_id_generate(&server->id, "s");
+	server->global = client_for_router->global;
+	server->route = route;
 
 	od_route_lock(route);
 
@@ -1123,16 +1120,65 @@ attach:
     od_stat_t *stats = &route->stats;
     od_atomic_u64_add(&stats->wait_time, time_taken_to_attach_server_ns);
 
-	if (client_timed_out) {
-		return YB_OD_ROUTER_NO_CLIENT;
+	/*
+	 * YB: Instead of number of transactions, count number of route/attach 
+	 * attempts for conn mgr's control backends instead as these backends
+	 * do not do any transactions. This allows populating avg_wait_time_ns.
+	 */
+	if (yb_od_streq(CONTROL_CONN_USER, sizeof(CONTROL_CONN_USER),
+			client_for_router->startup.user.value,
+			client_for_router->startup.user.value_len) &&
+	    yb_od_streq(CONTROL_CONN_DB, sizeof(CONTROL_CONN_DB),
+			client_for_router->startup.database.value,
+			client_for_router->startup.database.value_len)) {
+		od_atomic_u64_inc(&stats->count_tx);
 	}
+
 	return OD_ROUTER_OK;
+}
+
+void yb_signal_all_routes(od_router_t *router, od_route_t *detached_route,
+    bool enable_multi_route_pool)
+{
+    if (!enable_multi_route_pool) {
+        if (detached_route == NULL) {
+            return;
+        }
+        od_route_lock(detached_route);
+        int signal = detached_route->client_pool.count_queue > 0;
+        if (signal) {
+            od_route_signal(detached_route);
+        }
+		od_route_unlock(detached_route);
+        return;
+    }
+
+    // TODO (#28097): It can be CPU intensive for large number of routes. As every time there is a
+    // detach all other pool will try to attach if they are waiting for an server to attach.
+    od_router_lock(router);
+
+    od_route_pool_t *pool = &router->route_pool;
+    od_list_t *i;
+    od_list_foreach(&pool->list, i)
+    {
+        od_route_t *route = od_container_of(i, od_route_t, link);
+
+        od_route_lock(route);
+        int signal = route->client_pool.count_queue > 0;
+        if (signal) {
+            od_route_signal(route);
+        }
+        od_route_unlock(route);
+    }
+
+    od_router_unlock(router);
 }
 
 void od_router_detach(od_router_t *router, od_client_t *client)
 {
 	(void)router;
 	od_route_t *route = client->route;
+	od_instance_t *instance = router->global->instance;
 	assert(route != NULL);
 
 	/* detach from current machine event loop */
@@ -1197,13 +1243,10 @@ void od_router_detach(od_router_t *router, od_client_t *client)
 	}
 	od_client_pool_set(&route->client_pool, client, OD_CLIENT_PENDING);
 
-	int signal = route->client_pool.count_queue > 0;
 	od_route_unlock(route);
 
 	/* notify waiters */
-	if (signal) {
-		od_route_signal(route);
-	}
+	yb_signal_all_routes(router, route, instance->config.yb_enable_multi_route_pool);
 }
 
 void od_router_close(od_router_t *router, od_client_t *client)

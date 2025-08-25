@@ -104,6 +104,9 @@ void ConsensusFrontier::ToPB(google::protobuf::Any* any) const {
   } else if (!backfill_key_.empty()) {
     pb.set_backfill_key(backfill_key_);
   }
+  if (has_vector_deletion_) {
+    pb.set_has_vector_deletion(has_vector_deletion_);
+  }
   VLOG(3) << "ConsensusFrontierPB: " << pb.ShortDebugString();
   any->PackFrom(pb);
 }
@@ -152,6 +155,7 @@ Status ConsensusFrontier::FromPB(const google::protobuf::Any& any) {
   }
   backfill_done_ = pb.backfill_done();
   backfill_key_ = pb.backfill_key();
+  has_vector_deletion_ = pb.has_vector_deletion();
   VLOG(3) << "ConsensusFrontier: " << ToString();
   return Status::OK();
 }
@@ -200,6 +204,9 @@ std::string ConsensusFrontier::ToString() const {
     fields += Format("backfill_done: $0 ", backfill_done_);
   } else if (!backfill_key_.empty()) {
     fields += Format("backfill_key: $0 ", Slice(backfill_key_).ToDebugHexString());
+  }
+  if (has_vector_deletion_) {
+    fields += Format("has_vector_deletion: $0 ", has_vector_deletion_);
   }
   return Format("{$0}", fields);
 }
@@ -330,6 +337,9 @@ void ConsensusFrontier::Update(
     } else if (rhs.backfill_key_ > backfill_key_) {
       SetBackfillPosition(rhs.backfill_key_);
     }
+    if (rhs.has_vector_deletion_) {
+      SetHasVectorDeletion();
+    }
   }
 }
 
@@ -415,6 +425,10 @@ void ConsensusFrontier::SetBackfillDone() {
 
 void ConsensusFrontier::SetBackfillPosition(Slice key) {
   backfill_key_ = key.ToBuffer();
+}
+
+void ConsensusFrontier::SetHasVectorDeletion() {
+  has_vector_deletion_ = true;
 }
 
 void AddTableSchemaVersion(

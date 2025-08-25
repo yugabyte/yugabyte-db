@@ -124,10 +124,15 @@ export const DEFAULT_PROMETHEUS_METRICS_PARAMS = {
   prometheusQueries: []
 };
 
+export const DEFAULT_UNIVERSE_LOGS_PARAMS = {
+  filterPgAuditLogs: true
+};
+
 export const updateOptions = (
   dateType,
   selectionOptionsValue,
   setIsDateTypeCustom,
+  universeLogsParams,
   coreFileParams,
   prometheusMetricsParams,
   startDate = new Date(),
@@ -157,6 +162,10 @@ export const updateOptions = (
     components: components
   };
   components.forEach((component) => {
+    if (component === 'UniverseLogs') {
+      payloadObj = { ...payloadObj, filterPgAuditLogs: !!universeLogsParams.filterPgAuditLogs };
+    }
+
     if (component === 'CoreFiles') {
       payloadObj = { ...payloadObj, ...coreFileParams };
     }
@@ -278,6 +287,7 @@ export const SecondStep = ({
     // prometheus export is not required by default
     prometheusMetricsOptions.map(() => true)
   );
+  const [universeLogsParams, setUniverseLogsParams] = useState(DEFAULT_UNIVERSE_LOGS_PARAMS);
   const [coreFileParams, setCoreFileParams] = useState(CoreFilesProps);
   const [prometheusMetricsParams, setPrometheusMetricsParams] = useState(
     DEFAULT_PROMETHEUS_METRICS_PARAMS
@@ -296,6 +306,7 @@ export const SecondStep = ({
   const { data: globalRuntimeConfigs, isLoading } = useQuery(['globalRuntimeConfigs'], () =>
     fetchGlobalRunTimeConfigs(true).then((res) => res.data)
   );
+  const [isExpandedUniverseLogs, setIsExpandedUniverseLogs] = useState(false);
   const [isExpandedCoreFiles, setIsExpandedCoreFiles] = useState(false);
   const [isExpandedPromMetrics, setIsExpandedPromMetrics] = useState(false);
   const [
@@ -341,6 +352,7 @@ export const SecondStep = ({
       selectedFilterType,
       selectionOptionsValue,
       setIsDateTypeCustom,
+      universeLogsParams,
       coreFileParams,
       prometheusMetricsParams
     );
@@ -366,6 +378,7 @@ export const SecondStep = ({
       selectedFilterType,
       selectionOptionsValue,
       setIsDateTypeCustom,
+      universeLogsParams,
       coreFileParams,
       prometheusMetricsParams
     );
@@ -380,6 +393,7 @@ export const SecondStep = ({
       selectedFilterType,
       selectionOptionsValue,
       setIsDateTypeCustom,
+      universeLogsParams,
       coreFileParams,
       prometheusMetricsParams
     );
@@ -394,12 +408,14 @@ export const SecondStep = ({
       selectedFilterType,
       selectionOptionsValue,
       setIsDateTypeCustom,
+      universeLogsParams,
       coreFileParams,
       prometheusMetricsParams
     );
     handleOptionsChange(changedOptions);
   }
 
+  const isUniverseLogsSelected = isSelected('UniverseLogs');
   const isCoreFileSelected = isSelected('CoreFiles');
   const isPrometheusMetricsSelected = isSelected('PrometheusMetrics');
 
@@ -437,6 +453,7 @@ export const SecondStep = ({
       selectedFilterType,
       selectionOptionsValue,
       setIsDateTypeCustom,
+      universeLogsParams,
       coreFileParams,
       updatedPrometheusMetricsParams
     );
@@ -502,6 +519,7 @@ export const SecondStep = ({
                   { value: CUSTOM_WITH_VALUE },
                   selectionOptionsValue,
                   setIsDateTypeCustom,
+                  universeLogsParams,
                   coreFileParams,
                   prometheusMetricsParams,
                   startEnd.start,
@@ -553,6 +571,7 @@ export const SecondStep = ({
                       filterType,
                       selectionOptionsValue,
                       setIsDateTypeCustom,
+                      universeLogsParams,
                       coreFileParams,
                       prometheusMetricsParams
                     );
@@ -609,6 +628,7 @@ export const SecondStep = ({
                         : selectedFilterType,
                       [...selectionOptionsValue],
                       setIsDateTypeCustom,
+                      universeLogsParams,
                       coreFileParams,
                       prometheusMetricsParams,
                       ...(selectedFilterType.value === CUSTOM ? [startDate, endDate] : [])
@@ -619,6 +639,13 @@ export const SecondStep = ({
                   input={{ ref: (ref) => (outerRefs.current[index] = ref) }}
                   label={getComponentLabel(selectionOption, perComponentEstimatedSize)}
                 />
+                {selectionOption.value === 'UniverseLogs' && isUniverseLogsSelected && (
+                  <ExpandableButton
+                    isExpanded={isExpandedUniverseLogs}
+                    onClick={() => setIsExpandedUniverseLogs(!isExpandedUniverseLogs)}
+                    text="Override properties (Optional)"
+                  />
+                )}
                 {selectionOption.value === 'CoreFiles' && isCoreFileSelected && (
                   <ExpandableButton
                     isExpanded={isExpandedCoreFiles}
@@ -634,6 +661,38 @@ export const SecondStep = ({
                   />
                 )}
               </div>
+              {selectionOption.value === 'UniverseLogs' && isUniverseLogsSelected && (
+                <Collapse in={isExpandedUniverseLogs}>
+                  <Box className="core-file-container">
+                    <div className="selection-option">
+                      <YBCheckBox
+                        onClick={() => {
+                          const newUniverseLogsParams = {
+                            filterPgAuditLogs: !universeLogsParams.filterPgAuditLogs
+                          };
+                          setUniverseLogsParams(newUniverseLogsParams);
+
+                          // Update options and notify parent component
+                          const changedOptions = updateOptions(
+                            selectedFilterType.value === CUSTOM
+                              ? { value: CUSTOM_WITH_VALUE }
+                              : selectedFilterType,
+                            [...selectionOptionsValue],
+                            setIsDateTypeCustom,
+                            newUniverseLogsParams,
+                            coreFileParams,
+                            prometheusMetricsParams,
+                            ...(selectedFilterType.value === CUSTOM ? [startDate, endDate] : [])
+                          );
+                          handleOptionsChange(changedOptions);
+                        }}
+                        checkState={universeLogsParams.filterPgAuditLogs}
+                        label="Exclude PgAudit logs"
+                      />
+                    </div>
+                  </Box>
+                </Collapse>
+              )}
               {selectionOption.value === 'CoreFiles' && isCoreFileSelected && (
                 <Collapse in={isExpandedCoreFiles}>
                   <Box className="core-file-container">
@@ -652,6 +711,7 @@ export const SecondStep = ({
                               : selectedFilterType,
                             [...selectionOptionsValue],
                             setIsDateTypeCustom,
+                            universeLogsParams,
                             { ...updatedObj },
                             prometheusMetricsParams,
                             ...(selectedFilterType.value === CUSTOM ? [startDate, endDate] : [])
@@ -681,6 +741,7 @@ export const SecondStep = ({
                               : selectedFilterType,
                             [...selectionOptionsValue],
                             setIsDateTypeCustom,
+                            universeLogsParams,
                             { ...updatedObj },
                             prometheusMetricsParams,
                             ...(selectedFilterType.value === CUSTOM ? [startDate, endDate] : [])
@@ -719,6 +780,7 @@ export const SecondStep = ({
                                   : selectedFilterType,
                                 selectionOptionsValue,
                                 setIsDateTypeCustom,
+                                universeLogsParams,
                                 coreFileParams,
                                 { ...updatedObj },
                                 ...(selectedFilterType.value === CUSTOM ? [startDate, endDate] : [])
@@ -748,6 +810,7 @@ export const SecondStep = ({
                                   : selectedFilterType,
                                 selectionOptionsValue,
                                 setIsDateTypeCustom,
+                                universeLogsParams,
                                 coreFileParams,
                                 { ...updatedObj },
                                 ...(selectedFilterType.value === CUSTOM ? [startDate, endDate] : [])
@@ -808,6 +871,7 @@ export const SecondStep = ({
                                     : selectedFilterType,
                                   selectionOptionsValue,
                                   setIsDateTypeCustom,
+                                  universeLogsParams,
                                   coreFileParams,
                                   { ...updatedObj },
                                   ...(selectedFilterType.value === CUSTOM
@@ -855,6 +919,7 @@ export const SecondStep = ({
                                 : selectedFilterType,
                               selectionOptionsValue,
                               setIsDateTypeCustom,
+                              universeLogsParams,
                               coreFileParams,
                               { ...updatedObj },
                               ...(selectedFilterType.value === CUSTOM ? [startDate, endDate] : [])

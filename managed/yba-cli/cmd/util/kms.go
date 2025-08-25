@@ -22,6 +22,7 @@ type KMSConfig struct {
 	GCP          *GcpKmsAuthConfigField  `json:"gcp,omitempty"`
 	Azure        *AzuKmsAuthConfigField  `json:"azure,omitempty"`
 	Hashicorp    *HcVaultAuthConfigField `json:"hashicorp,omitempty"`
+	CipherTrust  *CipherTrustConfigField `json:"ciphertrust,omitempty"`
 }
 
 // AwsKmsAuthConfigField is a struct to hold values retrieved by parsing the AWS KMS config map
@@ -71,6 +72,18 @@ type HcVaultAuthConfigField struct {
 
 	HcVaultTTL       int64 `json:"HC_VAULT_TTL"`
 	HcVaultTTLExpiry int64 `json:"HC_VAULT_TTL_EXPIRY"`
+}
+
+// CipherTrustConfigField holds values for CipherTrust configuration.
+type CipherTrustConfigField struct {
+	ManagerURL   string  `json:"CIPHERTRUST_MANAGER_URL"`
+	AuthType     string  `json:"AUTH_TYPE"`
+	Username     string  `json:"USERNAME"`
+	Password     string  `json:"PASSWORD"`
+	RefreshToken string  `json:"REFRESH_TOKEN"`
+	KeyName      string  `json:"KEY_NAME"`
+	KeyAlgorithm string  `json:"KEY_ALGORITHM"`
+	KeySize      float64 `json:"KEY_SIZE"`
 }
 
 // ConvertToKMSConfig converts the kms config map to KMSConfig struct
@@ -208,6 +221,34 @@ func ConvertToKMSConfig(r map[string]interface{}) (KMSConfig, error) {
 			}
 
 			kmsConfig.Hashicorp = &hashicorp
+
+		case CipherTrustEARType:
+			ct := CipherTrustConfigField{}
+			if v, ok := credentials[CipherTrustManagerURLField].(string); ok {
+				ct.ManagerURL = v
+			}
+			if v, ok := credentials[CipherTrustAuthTypeField].(string); ok {
+				ct.AuthType = v
+			}
+			if v, ok := credentials[CipherTrustUsernameField].(string); ok {
+				ct.Username = v
+			}
+			if v, ok := credentials[CipherTrustPasswordField].(string); ok {
+				ct.Password = v
+			}
+			if v, ok := credentials[CipherTrustRefreshTokenField].(string); ok {
+				ct.RefreshToken = v
+			}
+			if v, ok := credentials[CipherTrustKeyNameField].(string); ok {
+				ct.KeyName = v
+			}
+			if v, ok := credentials[CipherTrustKeyAlgorithmField].(string); ok {
+				ct.KeyAlgorithm = v
+			}
+			if v, ok := credentials[CipherTrustKeySizeField].(float64); ok {
+				ct.KeySize = v
+			}
+			kmsConfig.CipherTrust = &ct
 
 		}
 	}

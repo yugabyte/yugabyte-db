@@ -64,14 +64,18 @@ DEFINE_RUNTIME_int32(load_balancer_max_concurrent_tablet_remote_bootstraps, -1,
     "is no global limit on the number of concurrent remote bootstraps (per-table or per-tserver "
     "limits still apply).");
 
-DEFINE_RUNTIME_int32(load_balancer_max_concurrent_tablet_remote_bootstraps_per_table, 2,
+DEFINE_RUNTIME_int32(load_balancer_max_concurrent_tablet_remote_bootstraps_per_table, -1,
     "Maximum number of tablets being remote bootstrapped for any table. The maximum "
     "number of remote bootstraps across the cluster is still limited by the flag "
     "load_balancer_max_concurrent_tablet_remote_bootstraps. This flag is meant to prevent "
     "a single table use all the available remote bootstrap sessions and starving other "
     "tables.");
 
-DEFINE_RUNTIME_int32(load_balancer_max_inbound_remote_bootstraps_per_tserver, 4,
+DEFINE_RUNTIME_int32(load_balancer_max_inbound_remote_bootstraps_per_tserver, 50,
+    "Maximum number of tablets simultaneously remote bootstrapping on a tserver. Past this value, "
+    "the load balancer will not add tablets to this tserver.");
+
+DEFINE_RUNTIME_int32(load_balancer_min_inbound_remote_bootstraps_per_tserver, 4,
     "Maximum number of tablets simultaneously remote bootstrapping on a tserver. Past this value, "
     "the load balancer will not add tablets to this tserver.");
 
@@ -80,7 +84,7 @@ DEFINE_RUNTIME_int32(load_balancer_max_over_replicated_tablets, 50,
     "configured replication factor. This controls the amount of space amplification in the cluster "
     "when tablet removal is slow. A value less than 0 means no limit.");
 
-DEFINE_RUNTIME_int32(load_balancer_max_concurrent_adds, 1,
+DEFINE_RUNTIME_int32(load_balancer_max_concurrent_adds, 25,
     "Maximum number of tablet peer replicas to add in any one run of the load balancer.");
 
 DEFINE_RUNTIME_int32(load_balancer_max_concurrent_removals, 50,
@@ -1170,9 +1174,13 @@ Result<bool> ClusterLoadBalancer::GetLoadToMove(
         *moving_tablet_id = *tablet_to_move;
         VLOG(3) << "Found tablet " << *moving_tablet_id << " to move from "
                 << *from_ts << " to ts " << *to_ts;
-        RETURN_NOT_OK(AddOrMoveReplica(*moving_tablet_id, high_load_uuid, low_load_uuid,
+        auto reason = is_global_balancing_move ?
+            Format("Source tserver has more tablets (globally) than destination ($0 > $1)",
+                   global_state_->GetGlobalLoad(high_load_uuid),
+                   global_state_->GetGlobalLoad(low_load_uuid)) :
             Format("Source tserver has more tablets for this table than destination ($0 > $1)",
-                   state_->GetLoad(high_load_uuid), state_->GetLoad(low_load_uuid))));
+                   state_->GetLoad(high_load_uuid), state_->GetLoad(low_load_uuid));
+        RETURN_NOT_OK(AddOrMoveReplica(*moving_tablet_id, high_load_uuid, low_load_uuid, reason));
         // Update global state if necessary.
         if (!is_global_balancing_move) {
           can_perform_global_operations_ = false;

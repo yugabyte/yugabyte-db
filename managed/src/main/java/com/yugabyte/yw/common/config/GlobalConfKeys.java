@@ -1407,6 +1407,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " enable/disable YSQL query logging on universes.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> metricsExportEnabled =
+      new ConfKeyInfo<>(
+          "yb.universe.metrics_export_enabled",
+          ScopeType.GLOBAL,
+          "Enable Metrics Export",
+          "If this flag is enabled, user will be able to create telemetry providers and"
+              + " enable/disable metrics export on universes.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> allowConnectionPooling =
       new ConfKeyInfo<>(
           "yb.universe.allow_connection_pooling",
@@ -1637,14 +1646,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Skip YBA Minimum Version Check when adding a new YugabyteDB Release.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Boolean> disableNodeAgentOnProviderCreation =
-      new ConfKeyInfo<>(
-          "yb.internal.disable_node_agent_on_provider_creation",
-          ScopeType.GLOBAL,
-          "Disable Node Agent on Provider Creation",
-          "Disable node agent on provider creation by setting the internal flag in the provider.",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> enablePathStyleAccess =
       new ConfKeyInfo<>(
           "yb.ui.feature_flags.enable_path_style_access",
@@ -1760,12 +1761,37 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Node agent describe polling deadline.",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowCloudVolumeEncryption =
+      new ConfKeyInfo<>(
+          "yb.universe.allow_cloud_volume_encryption",
+          ScopeType.GLOBAL,
+          "Allow Cloud Volume Encryption feature",
+          "Allows enabling the volume encryption feature for new universes. Currently only"
+              + " supported for AWS universes.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> enableYbcBackgroundUpgrade =
       new ConfKeyInfo<>(
           "ybc.upgrade.enable_background_upgrade",
           ScopeType.GLOBAL,
           "Enable YBC Background Upgrade",
           "Enable background upgrade for YBC.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableSystemdDebugLogging =
+      new ConfKeyInfo<>(
+          "yb.ansible.systemd_debug",
+          ScopeType.GLOBAL,
+          "Enable Systemd Debug Logging",
+          "Enable systemd debug logging for systemctl service management commands.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> ansibleKeepRemoteFiles =
+      new ConfKeyInfo<>(
+          "yb.ansible.keep_remote_files",
+          ScopeType.GLOBAL,
+          "Keep Remote Files from an ansible run",
+          "Keep remote files after ansible run for debugging.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

@@ -179,7 +179,17 @@ message GetTransactionStatusTabletsResponsePB {
   optional MasterErrorPB error = 1;
 
   repeated bytes global_tablet_id = 2;
-  repeated bytes placement_local_tablet_id = 3;
+
+  // This is used for the old status tablet selection algorithm only (transaction tablets in the
+  // same region as and containing the requestor's placement).
+  repeated bytes region_local_tablet_id = 3;
+
+  message TablespaceInfoPB {
+    optional uint32 tablespace_oid = 1;
+    optional PlacementInfoPB placement = 2;
+    repeated bytes tablet_id = 3;
+  }
+  repeated TablespaceInfoPB placement_local_tablespace = 4;
 }
 
 // Reserve Postgres OIDs

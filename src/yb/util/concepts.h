@@ -27,9 +27,18 @@ struct InvocableAsHelper<T, R(Args...)> {
   static constexpr auto value = std::is_invocable_r_v<R, T, Args...>;
 };
 
+template <template<class...> class T, class... Args>
+void TemplateTypeHelper(const T<Args...>& t) {}
+
 } // namespace concepts::internal
 
 template <class T, class Func>
 concept InvocableAs = concepts::internal::InvocableAsHelper<T, Func>::value;
+
+template <class T, template<class...> class Tmpl>
+concept TemplateType = requires (const T& t) { concepts::internal::TemplateTypeHelper<Tmpl>(t); };
+
+template <class T, template <class...> class... Tmpls>
+concept AnyOfTemplateTypes = (... || TemplateType<T, Tmpls>);
 
 } // namespace yb

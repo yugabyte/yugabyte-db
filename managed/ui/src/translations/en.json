@@ -599,7 +599,10 @@
         "master": "Master Server Instance (Optional)",
         "keepMasterTserverSame": "Keep master server instance settings same as T-Server instance settings.",
         "cantChangeLater": "This CANNOT be changed after creation",
-        "masterNote": "<1>Note!</1> CPU Architecture, Linux version and {{cloudType}} Spot instance usage are global settings and can not be overridden. You can change these settings from the “Default Instance Configuration”."
+        "masterNote": "<1>Note!</1> CPU Architecture, Linux version and {{cloudType}} Spot instance usage are global settings and can not be overridden. You can change these settings from the “Default Instance Configuration”.",
+        "EBSVolume": {
+          "title": "EBS Volume Encryption"
+        }
       },
       "securityConfig": {
         "title": "Security Configurations",
@@ -3293,6 +3296,7 @@
           "secureWebProxyLabel": "Secure Web Proxy (HTTPS)",
           "serverLabel": "Server",
           "serverPlaceholder": "https://proxy.example.com",
+          "webServerPlacehoder": "http://proxy.example.com",
           "portLabel": "Port",
           "portPlaceholder": "8080",
           "webProxy": "Web Proxy (HTTP)",

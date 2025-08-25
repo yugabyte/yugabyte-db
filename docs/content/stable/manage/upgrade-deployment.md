@@ -158,7 +158,7 @@ New YugabyteDB features may require changes to the format of data that is sent o
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <master-addresses> \
+        --master_addresses <master-addresses> \
         promote_auto_flags
     ```
 
@@ -198,7 +198,7 @@ Use the [yb-admin](../../admin/yb-admin/) utility to upgrade the YSQL system cat
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     upgrade_ysql
 ```
 
@@ -212,8 +212,8 @@ In certain scenarios, a YSQL upgrade can take longer than 60 seconds, which is t
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
-    -timeout_ms 180000 \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    --timeout_ms 180000 \
     upgrade_ysql
 ```
 
@@ -302,7 +302,7 @@ During the Monitor phase, do the following:
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <master-addresses> \
+        --master_addresses <master-addresses> \
         promote_auto_flags kLocalVolatile
     ```
 
@@ -333,7 +333,7 @@ If you need to roll back an upgrade where volatile AutoFlags were enabled, depen
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <master-addresses> \
+        --master_addresses <master-addresses> \
         rollback_auto_flags <previous_config_version>
     ```
 
@@ -351,7 +351,7 @@ If you need to roll back an upgrade where volatile AutoFlags were enabled, depen
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+        --master_addresses ip1:7100,ip2:7100,ip3:7100 \
         rollback_auto_flags 2
     ```
 

@@ -1,6 +1,6 @@
 ---
 title: Build Python applications using Apache Spark and YugabyteDB YSQL
-headerTitle: Build a Python application using Apache Spark and YugabyteDB 
+headerTitle: Build a Python application using Apache Spark and YugabyteDB
 linkTitle: YSQL
 description: Learn how to build a Python application using Apache Spark and YugabyteDB YSQL
 menu:
@@ -48,7 +48,7 @@ The following tutorial describes how to use Python's Spark API `pyspark` with Yu
 
 This tutorial assumes that you have:
 
-- YugabyteDB running. If you are new to YugabyteDB, follow the steps in [Quick start](/preview/tutorials/quick-start/macos/).
+- YugabyteDB running. If you are new to YugabyteDB, follow the steps in [Quick start](/preview/quick-start/macos/).
 - Java Development Kit (JDK) 1.8. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/). Homebrew users on macOS can install using `brew install AdoptOpenJDK/openjdk/adoptopenjdk8`.
 - [Apache Spark 3.5.4](https://spark.apache.org/downloads.html).
 

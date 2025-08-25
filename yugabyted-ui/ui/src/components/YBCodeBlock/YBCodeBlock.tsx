@@ -4,7 +4,7 @@ import { Box, IconButton, makeStyles } from '@material-ui/core';
 import '@app/assets/fonts/Menlo-Regular.woff';
 import { YBButton } from '../YBButton/YBButton';
 import { AlertVariant } from '..';
-import { useToast } from '@app/helpers';
+import { useToast, copyToClipboard } from '@app/helpers';
 import { useTranslation } from 'react-i18next';
 import CopyIcon from '@app/assets/copy.svg';
 
@@ -117,41 +117,12 @@ export const YBCodeBlock: FC<CodeBlockProps> = ({
 
   const { addToast } = useToast();
 
-  const copy = async (value: string) => {
-    try {
-      // Try modern clipboard API first
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(value);
-        addToast(AlertVariant.Success, t('common.copyCodeSuccess'), 3000);
-      } else {
-        // Fallback for older browsers or non-secure contexts
-        const textArea = document.createElement('textarea');
-        textArea.value = value;
-        textArea.style.position = 'fixed';
-        textArea.style.left = '-999999px';
-        textArea.style.top = '-999999px';
-        document.body.appendChild(textArea);
-        textArea.focus();
-        textArea.select();
-
-        try {
-          const successful = document.execCommand('copy');
-          document.body.removeChild(textArea);
-
-          if (successful) {
-            addToast(AlertVariant.Success, t('common.copyCodeSuccess'), 3000);
-          } else {
-            addToast(AlertVariant.Error, 'Failed to copy to clipboard', 5000);
-          }
-        } catch (err) {
-          document.body.removeChild(textArea);
-          addToast(AlertVariant.Error, 'Copy operation not supported', 5000);
-        }
-      }
-    } catch (err) {
-      addToast(AlertVariant.Error, 'Failed to copy to clipboard', 5000);
-    }
-  };
+  const copy = async (value: string) =>
+    copyToClipboard(value, {
+      onSuccess: () => addToast(AlertVariant.Success, t('common.copyCodeSuccess'), 3000),
+      onError: (msg?: string) =>
+        addToast(AlertVariant.Error, msg || 'Failed to copy to clipboard', 5000)
+    });
 
   const copyBlock = () => {
     let textToCopy = ref?.current?.innerText ?? '';

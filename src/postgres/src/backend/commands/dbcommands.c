@@ -88,7 +88,7 @@
 /* YB includes */
 #include "commands/yb_cmds.h"
 #include "common/pg_yb_common.h"
-#include "pg_yb_utils.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 #include "yb_ysql_conn_mgr_helper.h"
 
 /*

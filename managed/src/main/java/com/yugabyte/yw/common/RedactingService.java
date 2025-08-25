@@ -8,7 +8,9 @@ import com.jayway.jsonpath.DocumentContext;
 import com.jayway.jsonpath.JsonPath;
 import com.jayway.jsonpath.PathNotFoundException;
 import com.yugabyte.yw.common.audit.AuditService;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import java.util.Base64;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
@@ -17,6 +19,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
+import play.libs.Json;
 
 @Singleton
 @Slf4j
@@ -110,6 +113,7 @@ public class RedactingService {
           // CipherTrust creds
           .add("$..REFRESH_TOKEN")
           .add("$..PASSWORD")
+          .add("$..ycql_ldap_bind_passwd")
           .build();
 
   // List of json paths to any secret fields we want to redact.
@@ -127,6 +131,14 @@ public class RedactingService {
   private static final Pattern KEY_SEARCH_PATTERN = Pattern.compile(KEY_REGEX);
 
   public static JsonNode filterSecretFields(JsonNode input, RedactionTarget target) {
+    return filterSecretFields(input, target, null, null);
+  }
+
+  public static JsonNode filterSecretFields(
+      JsonNode input,
+      RedactionTarget target,
+      String ybSoftwareVersion,
+      GFlagsValidation gFlagsValidation) {
     if (input == null) {
       return null;
     }
@@ -148,6 +160,10 @@ public class RedactingService {
         SECRET_JSON_PATHS_LOGS.forEach(
             path -> {
               try {
+                // Skip ysql_hba_conf_csv to prevent entire flag redaction
+                if (path.getPath().contains("ysql_hba_conf_csv")) {
+                  return;
+                }
                 context.set(path, SECRET_REPLACEMENT);
               } catch (PathNotFoundException e) {
                 log.trace("skip redacting secret path {} - not present", path.getPath());
@@ -158,7 +174,180 @@ public class RedactingService {
         throw new IllegalArgumentException("Target " + target.name() + " is not supported");
     }
 
-    return context.json();
+    JsonNode afterJsonPath = context.json();
+
+    if (target == RedactionTarget.LOGS) {
+      return applyRegexRedaction(afterJsonPath, ybSoftwareVersion, gFlagsValidation);
+    }
+
+    return afterJsonPath;
+  }
+
+  public static JsonNode applyRegexRedaction(JsonNode input) {
+    return applyRegexRedaction(input, null, null);
+  }
+
+  public static JsonNode applyRegexRedaction(
+      JsonNode input, String ybSoftwareVersion, GFlagsValidation gFlagsValidation) {
+    try {
+      if (input == null || input.isMissingNode() || input.isNull()) {
+        return input;
+      }
+      String jsonString = input.toString();
+      String redactedString =
+          redactSensitiveInfoInString(jsonString, ybSoftwareVersion, gFlagsValidation);
+
+      try {
+        return Json.parse(redactedString);
+      } catch (Exception parseException) {
+        log.warn(
+            "Failed to parse redacted JSON, returning original input. Error: {}",
+            parseException.getMessage());
+        return input;
+      }
+
+    } catch (Exception e) {
+      log.warn(
+          "Failed to apply regex redaction, returning original JsonNode. Error: {}",
+          e.getMessage());
+      return input;
+    }
+  }
+
+  // Redacts sensitive information in string content including LDAP passwords and all sensitive
+  // gflags.
+  public static String redactSensitiveInfoInString(String input) {
+    return redactSensitiveInfoInString(input, null, null);
+  }
+
+  public static String redactSensitiveInfoInString(
+      String input, String ybSoftwareVersion, GFlagsValidation gFlagsValidation) {
+    String output = input;
+    if (input == null) {
+      return output;
+    }
+
+    // Collect all patterns to redact
+    Set<String> allPatternsToRedact = new HashSet<>();
+
+    // Add LDAP password related patterns
+    allPatternsToRedact.add("ldapbindpasswd");
+    allPatternsToRedact.add("ldapBindPassword");
+    allPatternsToRedact.add("ycql_ldap_bind_passwd");
+    allPatternsToRedact.add("ldapServiceAccountPassword");
+
+    // Add sensitive gflags if GFlagsValidation is available
+    if (gFlagsValidation != null) {
+      try {
+        if (ybSoftwareVersion == null) {
+        } else {
+          Set<String> sensitiveGflags =
+              getSensitiveGflagsForRedaction(ybSoftwareVersion, gFlagsValidation);
+          // Filter out ysql_hba_conf_csv from regex redaction
+          Set<String> filteredGflags =
+              sensitiveGflags.stream()
+                  .filter(gflag -> !gflag.equals("ysql_hba_conf_csv"))
+                  .collect(Collectors.toSet());
+          allPatternsToRedact.addAll(filteredGflags);
+        }
+      } catch (Exception e) {
+        log.warn("Exception in sensitive gflags processing: {}", e);
+      }
+    }
+    // Apply redaction for all patterns
+    for (String pattern : allPatternsToRedact) {
+      output = redactStringUsingRegexMatching(pattern, output);
+    }
+
+    return output;
+  }
+
+  private static String redactStringUsingRegexMatching(String pattern, String output) {
+    // Pattern 1: Handle escaped quotes within JSON strings
+    // Matches: \"pattern=value\" within JSON strings like "ysql_hba_conf_csv"
+    String escapedQuotesPattern = "(\\\\\"" + pattern + "=)([^\\\\,\"]+)(\\\\\"?)";
+    output = output.replaceAll(escapedQuotesPattern, "$1" + SECRET_REPLACEMENT + "$3");
+
+    // Pattern 2: Handle JSON field format "pattern": "value"
+    // Handles "ycql_ldap_bind_passwd":"secret12"
+    String jsonFieldPattern = "(\"" + pattern + "\"\\s*:\\s*\")([^\"]+)(\")";
+    output = output.replaceAll(jsonFieldPattern, "$1" + SECRET_REPLACEMENT + "$3");
+
+    // Pattern 2a: Handle double-escaped JSON format within stringified JSON
+    // Matches: \"pattern\":\"value\" within JSON strings like universeDetailsJson
+    String doubleEscapedJsonPattern =
+        "(\\\\\"" + pattern + "\\\\\"\\s*:\\s*\\\\\")([^\\\\\"]+)(\\\\\")";
+    output = output.replaceAll(doubleEscapedJsonPattern, "$1" + SECRET_REPLACEMENT + "$3");
+
+    // Pattern 2b: Handle JSON field format "pattern": value (without quotes around value)
+    String jsonFieldPatternNoQuotes =
+        "(\"" + pattern + "\"\\s*:\\s*)([^,\\s\\}\\]\"]+)([,\\s\\}\\]])";
+    output = output.replaceAll(jsonFieldPatternNoQuotes, "$1" + SECRET_REPLACEMENT + "$3");
+
+    // Matches: {'key': 'pattern', 'value': 'value'}
+    String pythonDictPattern = "(\\{'key':\\s*'" + pattern + "',\\s*'value':\\s*')([^']+)(')";
+    output = output.replaceAll(pythonDictPattern, "$1" + SECRET_REPLACEMENT + "$3");
+
+    // Pattern 3: Handle regular quotes within CSV strings (fallback)
+    // Only applied if escaped quotes pattern didn't match
+    if (output.contains(pattern + "=") && !output.contains("\\\"" + pattern + "=")) {
+      String regularQuotedPattern = "(\"[^\"]*" + pattern + "=)([^,\"]+)([^\"]*\")";
+      output = output.replaceAll(regularQuotedPattern, "$1" + SECRET_REPLACEMENT + "$3");
+    }
+
+    // Pattern 4: Handle unquoted values (standalone)
+    // Simplified to avoid complex lookbehind issues
+    if (!output.contains("\"" + pattern)) { // Only if not in JSON field context
+      String unquotedPattern = "\\b(" + pattern + "=)([^\\s,\"]+)\\b";
+      output = output.replaceAll(unquotedPattern, "$1" + SECRET_REPLACEMENT);
+    }
+
+    // Pattern 5: Handle conf file format (pattern=value)
+    String keyValuePattern = "^(" + pattern + "\\s*=\\s*)([^\\s\\n]+)";
+    output = output.replaceAll(keyValuePattern, "$1" + SECRET_REPLACEMENT);
+
+    // Pattern 6: Handle quoted format (pattern="value")
+    String quotedValuePattern = "\\b(" + pattern + "\\s*=\\s*\")([^\"]+)(\")";
+    output = output.replaceAll(quotedValuePattern, "$1" + SECRET_REPLACEMENT + "$3");
+
+    return output;
+  }
+
+  // Gets all sensitive gflags using the GFlagsValidation class
+  public static Set<String> getSensitiveGflagsForRedaction(
+      String ybSoftwareVersion, GFlagsValidation gFlagsValidation) {
+    Set<String> allSensitiveGflags = new HashSet<>();
+
+    try {
+      Set<String> jsonPaths = getSensitiveJsonPathsForVersion(ybSoftwareVersion, gFlagsValidation);
+      if (jsonPaths != null) {
+        for (String jsonPath : jsonPaths) {
+          if (jsonPath.startsWith("$..")) {
+            String gflagName = jsonPath.substring(3);
+            allSensitiveGflags.add(gflagName);
+          }
+        }
+      }
+    } catch (Exception e) {
+      log.warn(
+          "Error getting sensitive gflags from GFlagsValidation, skipping regex redaction: {}", e);
+    }
+    log.debug(
+        "Found {} sensitive gflags for redaction: {}",
+        allSensitiveGflags.size(),
+        allSensitiveGflags);
+    return allSensitiveGflags;
+  }
+
+  // Gets sensitive json paths from GFlagsValidation
+  private static Set<String> getSensitiveJsonPathsForVersion(
+      String ybSoftwareVersion, GFlagsValidation gFlagsValidation) {
+    try {
+      return gFlagsValidation.getSensitiveJsonPathsForVersion(ybSoftwareVersion);
+    } catch (Exception e) {
+      log.warn("Error getting sensitive gflags for version {}: {}", ybSoftwareVersion, e);
+      return null;
+    }
   }
 
   public static String redactString(String input) {
@@ -205,6 +394,7 @@ public class RedactingService {
         default:
           break;
       }
+      output = redactSensitiveInfoInString(output);
       return output;
     } catch (Exception e) {
       log.error("Error redacting shell process output", e);

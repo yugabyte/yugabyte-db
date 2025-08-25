@@ -102,8 +102,13 @@ public class SetFlagInMemory extends ServerSubTaskBase {
         String auditLogYsqlPgConfCsv =
             GFlagsUtil.getYsqlPgConfCsv(
                 universe.getUniverseDetails().getPrimaryCluster().userIntent.getAuditLogConfig());
+        String queryLogYsqlPgConfCsv =
+            GFlagsUtil.getYsqlPgConfCsv(
+                universe.getUniverseDetails().getPrimaryCluster().userIntent.getQueryLogConfig());
+        String queryAndAuditLogYsqlPgConfCsv =
+            GFlagsUtil.mergeCSVs(auditLogYsqlPgConfCsv, queryLogYsqlPgConfCsv, true);
         String finalYsqlPgConfCsv =
-            GFlagsUtil.mergeCSVs(userProvidedYsqlPgConfCsv, auditLogYsqlPgConfCsv, true);
+            GFlagsUtil.mergeCSVs(userProvidedYsqlPgConfCsv, queryAndAuditLogYsqlPgConfCsv, true);
         if (StringUtils.isNotBlank(finalYsqlPgConfCsv)) {
           gflags.put(GFlagsUtil.YSQL_PG_CONF_CSV, finalYsqlPgConfCsv);
         }

@@ -227,8 +227,8 @@ template <class Enum>
 const char* NoPrefixName(Enum value) {
   const char* name = ToCString(value);
   if (!name) {
-    DCHECK(false);
-    return nullptr;
+    DCHECK(false) << "Prefix not found for: " << ToString(value);
+    return "";
   }
   return name + 1;
 }
@@ -490,6 +490,8 @@ uint8_t YBCGetConstQueryId(YbcAshConstQueryIdType type) {
       return static_cast<uint8_t>(ash::FixedQueryId::kQueryIdForUncomputedQueryId);
     case YbcAshConstQueryIdType::QUERY_ID_TYPE_BACKGROUND_WORKER:
       return static_cast<uint8_t>(ash::FixedQueryId::kQueryIdForYSQLBackgroundWorker);
+    case YbcAshConstQueryIdType::QUERY_ID_TYPE_WALSENDER:
+      return static_cast<uint8_t>(ash::FixedQueryId::kQueryIdForWalsender);
   }
   FATAL_INVALID_ENUM_VALUE(YbcAshConstQueryIdType, type);
 }

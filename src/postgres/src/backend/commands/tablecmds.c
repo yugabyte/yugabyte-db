@@ -138,10 +138,10 @@
 #include "commands/yb_tablegroup.h"
 #include "executor/ybModifyTable.h"
 #include "parser/analyze.h"
-#include "pg_yb_utils.h"
 #include "statistics/statistics.h"
 #include "utils/plancache.h"
 #include "utils/regproc.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 
 /*
  * ON COMMIT action list
@@ -3739,13 +3739,69 @@ SetRelationTableSpace(Relation rel,
 	/*
 	 * Record dependency on tablespace.  This is only required for relations
 	 * that have no physical storage.
+	 *
+	 * YB: Also record the dependency for YB relations.
 	 */
-	if (!RELKIND_HAS_STORAGE(rel->rd_rel->relkind))
+	if (!RELKIND_HAS_STORAGE(rel->rd_rel->relkind) ||
+		IsYBRelation(rel))
 		changeDependencyOnTablespace(RelationRelationId, reloid,
 									 rd_rel->reltablespace);
 
 	heap_freetuple(tuple);
 	table_close(pg_class, RowExclusiveLock);
+
+	/*
+	 * YB: For YB relations, the PK index is the same as the base table.
+	 * Also update the primary key index's pg_class.reltablespace and
+	 * pg_shdepend entries.
+	 */
+	if (IsYBRelation(rel) &&
+		(rel->rd_rel->relkind == RELKIND_RELATION ||
+		 rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE))
+	{
+		List	   *indexIds = RelationGetIndexList(rel);
+		ListCell   *lc;
+		Oid newPrimaryKeyTableSpaceId = (newTableSpaceId == MyDatabaseTableSpace) ?
+			InvalidOid : newTableSpaceId;
+
+		foreach(lc, indexIds)
+		{
+			Oid			idxOid = lfirst_oid(lc);
+			Relation	idxRel = RelationIdGetRelation(idxOid);
+			bool		isPrimaryIndex = (idxRel != NULL &&
+										 idxRel->rd_index &&
+										 idxRel->rd_index->indisprimary);
+			RelationClose(idxRel);
+
+			if (!isPrimaryIndex)
+				continue;
+
+			Relation	idx_pg_class = table_open(RelationRelationId,
+													RowExclusiveLock);
+			HeapTuple	idx_tuple = SearchSysCacheCopy1(RELOID,
+													ObjectIdGetDatum(idxOid));
+			if (!HeapTupleIsValid(idx_tuple))
+				elog(ERROR, "cache lookup failed for relation %u", idxOid);
+			Form_pg_class idx_rd_rel = (Form_pg_class) GETSTRUCT(idx_tuple);
+
+			/* Update PK's pg_class entry */
+			idx_rd_rel->reltablespace = newPrimaryKeyTableSpaceId;
+			CatalogTupleUpdate(idx_pg_class, &idx_tuple->t_self, idx_tuple);
+			UnlockTuple(idx_pg_class, &idx_tuple->t_self, InplaceUpdateTupleLock);
+
+			/* Update PK's pg_shdepend entry */
+			changeDependencyOnTablespace(RelationRelationId, idxOid,
+				newPrimaryKeyTableSpaceId);
+
+			heap_freetuple(idx_tuple);
+			table_close(idx_pg_class, RowExclusiveLock);
+
+			/* Only one primary key index per table */
+			break;
+		}
+
+		list_free(indexIds);
+	}
 }
 
 /*

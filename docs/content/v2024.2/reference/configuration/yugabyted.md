@@ -28,7 +28,7 @@ You can use yugabyted for production deployments (v2.18.4 and later). You can al
 
 The yugabyted executable file is packaged with YugabyteDB and located in the YugabyteDB home `bin` directory.
 
-For information on installing YugabyteDB, see [Use a local cluster](/preview/tutorials/quick-start/linux/) or [Get started](https://download.yugabyte.com).
+For information on installing YugabyteDB, see [Use a local cluster](/preview/quick-start/linux/) or [Get started](https://download.yugabyte.com).
 
 After installing YugabyteDB, if you want to use [backup](#backup) and [restore](#restore), you also need to install YB Controller. For example, if you installed v{{< yb-version version="stable" format="short">}}, do the following:
 
@@ -82,7 +82,7 @@ $ ./bin/yugabyted -h
 ```
 
 ```sh
-$ ./bin/yugabyted -help
+$ ./bin/yugabyted --help
 ```
 
 For help with specific yugabyted commands, run 'yugabyted [ command ] -h'. For example, you can print the command-line help for the `yugabyted start` command by running the following:
@@ -1654,7 +1654,7 @@ You can set the replication factor of the cluster manually using the `--rf` flag
 
 ### Create a multi-region cluster in Docker
 
-You can run yugabyted in a Docker container. For more information, see the [Quick Start](/preview/tutorials/quick-start/docker/).
+You can run yugabyted in a Docker container. For more information, see the [Quick Start](/preview/quick-start/docker/).
 
 The following example shows how to create a multi-region cluster. If the `~/yb_docker_data` directory already exists, delete and re-create it.
 
@@ -1939,160 +1939,9 @@ To disable encryption at rest in a multi-zone or multi-region cluster with this 
 ./bin/yugabyted configure encrypt_at_rest --disable
 ```
 
-### Set up xCluster replication between clusters
+### Set up xCluster replication between universes
 
-Use the following steps to set up [xCluster replication](../../../architecture/docdb-replication/async-replication/) between two YugabyteDB clusters.
-
-To set up xCluster replication, you first need to deploy two (source and target) clusters. Refer to [Create a multi-zone cluster](#create-a-multi-zone-cluster). In addition, if you need to bootstrap the databases in the target cluster, set the `--backup_daemon` flag to true and install YB Controller. See the [start](#start) command.
-
-{{< tabpane text=true >}}
-
-  {{% tab header="Secure clusters" lang="secure-2" %}}
-
-To set up xCluster replication between two secure clusters, do the following:
-
-1. Checkpoint the xCluster replication from the source cluster.
-
-    Run the `yugabyted xcluster create_checkpoint` command from any source cluster node, with the `--replication_id` and `--databases` flags. For `--replication_id`, provide a string to uniquely identify this replication. The `--databases` flag takes a comma-separated list of databases to be replicated.
-
-    ```sh
-    ./bin/yugabyted xcluster create_checkpoint \
-        --replication_id <replication_id> \
-        --databases <list_of_databases>
-    ```
-
-    The output for this command provides directions for bootstrapping the databases that you included.
-
-1. [Bootstrap](#bootstrap-databases-for-xcluster) the databases that you included in the replication using the commands provided in the output from the previous step.
-
-    - For databases that have data, this will include backing up the source database and restoring to the target cluster.
-    - For databases that don't have any data, this will include creating the database schema on the target cluster.
-
-1. If the root certificates for the source and target clusters are different, (for example, the node certificates for target and source nodes were not created on the same machine), copy the `ca.crt` for the source cluster to all target nodes, and vice-versa. If the root certificate for both source and target clusters is the same, you can skip this step.
-
-    Locate the `ca.crt` file for the source cluster on any node at `<base_dir>/certs/ca.crt`. Copy this file to all target nodes at `<base_dir>/certs/xcluster/<replication_id>/`. The `<replication_id>` must be the same as you configured in Step 1.
-
-    Similarly, copy the `ca.crt` file for the target cluster on any node at `<base_dir>/certs/ca.crt` to source cluster nodes at `<base_dir>/certs/xcluster/<replication_id>/`.
-
-1. Set up the xCluster replication between the clusters by running the `yugabyted xcluster set_up` command from any of the source cluster nodes.
-
-    Provide the `--replication_id` you created in step 1, along with the `--target_address`, which is the IP address of any node in the target cluster.
-
-    ```sh
-    ./bin/yugabyted xcluster set_up \
-        --replication_id <replication_id> \
-        --target_address <IP-of-any-target-node> \
-        --bootstrap_done
-    ```
-
-  {{% /tab %}}
-
-  {{% tab header="Insecure clusters" lang="basic-2" %}}
-
-To set up xCluster replication between two clusters, do the following:
-
-1. Checkpoint the xCluster replication from source cluster.
-
-    Run the `yugabyted xcluster create_checkpoint` command from any source cluster node, with the `--replication_id` and `--databases` flags. For `--replication_id`, provide a string to uniquely identify this replication. The `--databases` flag takes a comma-separated list of databases to be replicated.
-
-    ```sh
-    ./bin/yugabyted xcluster create_checkpoint \
-        --replication_id <replication_id> \
-        --databases <list_of_databases>
-    ```
-
-    The output for this command provides directions for bootstrapping the databases that you included.
-
-1. [Bootstrap](#bootstrap-databases-for-xcluster) the databases that you included in the replication using the commands provided in the output from the previous step.
-
-    - For databases that have data, this will include backing up the source database and restoring to the target cluster.
-    - For databases that don't have any data, this will include creating the database schema on the target cluster.
-
-1. Set up the xCluster replication between the clusters by running the `yugabyted xcluster set_up` command from any of the source cluster nodes.
-
-    Provide the `--replication_id` you created in step 1, along with the `--target_address`, which is the IP address of any node in the target cluster.
-
-    ```sh
-    ./bin/yugabyted xcluster set_up \
-        --replication_id <replication_id> \
-        --target_address <IP-of-any-target-node> \
-        --bootstrap_done
-    ```
-
-  {{% /tab %}}
-
-{{< /tabpane >}}
-
-#### Bootstrap databases for xCluster
-
-After running `yugabyted xcluster create_checkpoint`, you must bootstrap the databases before you can set up the xCluster replication. Bootstrapping is the process of preparing the databases on the target cluster for replication, and involves the following:
-
-- For databases that don't have any data, apply the same database and schema to the target cluster.
-- For databases that do have data, you need to back up the databases on the source, and restore to the target. The commands to do this are provided in the output of the `yugabyted xcluster create_checkpoint` command.
-
-If the cluster was not started using the `--backup_daemon` flag, you must manually complete the backup and restore using [distributed snapshots](../../../manage/backup-restore/snapshot-ysql/).
-
-#### Monitor and delete xCluster replication
-
-After setting up the replication between the clusters, you can display the replication status using the `yugabyted xcluster status` command:
-
-```sh
-./bin/yugabyted xcluster status
-```
-
-To delete an xCluster replication, use the `yugabyted xcluster delete_replication` command as follows:
-
-```sh
-./bin/yugabyted xcluster delete_replication \
-    --replication_id <replication_id> \
-    --target_address <IP-of-any-target-node>
-```
-
-#### Add databases to an existing xCluster replication
-
-You add databases to an existing xCluster replication using the `yugabyted xcluster add_to_checkpoint` and `yugabyted xcluster add_to_replication` commands.
-
-1. Add databases to xCluster replication checkpoint from the source cluster.
-
-    Run the `yugabyted xcluster add_to_checkpoint` command from any source cluster node, with the --replication_id and --databases flags. For --replication_id, provide the `replication_id` of the xCluster replication to which the databases are to be added. The --databases flag takes a comma-separated list of databases to be added.
-
-    ```sh
-    ./bin/yugabyted xcluster add_to_checkpoint \
-        --replication_id <replication_id> \
-        --databases <comma_separated_database_names>
-    ```
-
-    The output for this command provides directions for bootstrapping the databases that you included.
-
-1. [Bootstrap](#bootstrap-databases-for-xcluster) the databases that you included in the replication using the commands provided in the output from the previous step.
-
-    - For databases that have data, this will include backing up the source database and restoring to the target cluster.
-    - For databases that don't have any data, this will include creating the database schema on the target cluster.
-
-1. Add the databases to the xCluster replication by running the `yugabyted xcluster add_to_replication` command from any of the source cluster nodes.
-
-    Provide the `--replication_id` of the xCluster replication to which the databases are to be added, along with the `--target_address`, which is the IP address of any node in the target cluster node. Use `--databases` flag to give the list of databases to be added.
-
-    ```sh
-    ./bin/yugabyted xcluster add_to_replication \
-        --databases <comma_separated_database_names> \
-        --replication_id <replication_id> \
-        --target_address <IP-of-any-target-node> \
-        --bootstrap_done
-    ```
-
-#### Remove databases from an existing xCluster replication
-
-To remove databases from an existing xCluster replication, use the `yugabyted xcluster remove_database_from_replication` command as follows:
-
-```sh
-./bin/yugabyted xcluster remove_database_from_replication \
-    --replication_id <replication_id> \
-    --databases <comma_separated_database_names> \
-    --target_address <IP-of-any-target-node>
-```
-
-Provide the `--replication_id` of the xCluster replication from which the databases are to be removed, along with the `--target_address`, which is the IP address of any node in the target cluster node. Use `--databases` flag to give the list of databases to be removed.
+Follow the instructions in [xCluster setup](../../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/).
 
 ### Pass additional flags to YB-Master and YB-TServer
 

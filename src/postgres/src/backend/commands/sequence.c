@@ -52,6 +52,7 @@
 #include "catalog/yb_oid_assignment.h"
 #include "commands/yb_cmds.h"
 #include "pg_yb_utils.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 
 
 /*

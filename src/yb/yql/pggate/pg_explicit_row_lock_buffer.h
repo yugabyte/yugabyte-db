@@ -23,6 +23,8 @@
 
 namespace yb::pggate {
 
+class YbctidReaderProvider;
+
 class ExplicitRowLockBuffer {
  public:
   struct Info {
@@ -56,7 +58,7 @@ class ExplicitRowLockBuffer {
   Status DoFlushImpl();
 
   YbctidReaderProvider& reader_provider_;
-  TableYbctidSet intents_;
+  MemoryOptimizedTableYbctidSet intents_;
   OidSet region_local_tables_;
   std::optional<Info> info_;
 };

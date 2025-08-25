@@ -34,7 +34,7 @@ DDLs must be paused on the Primary universe during the entire set up process. {{
 
 <!-- YugabyteD Setup -->
 
-The following assumes you have set up Primary and Standby universes. Refer to [Set up yugabyted universes](../../../../reference/configuration/yugabyted/#start). The yugabyted node must be started with `--backup_daemon=true` to initialize the backup/restore agent.
+The following assumes you have set up Primary and Standby universes. Refer to [Set up universes](../async-deployment/#set-up-universes).
 
 1. Create a checkpoint on the Primary universe for all the databases that you want to be part of the replication.
 
@@ -106,7 +106,7 @@ The following assumes you have set up Primary and Standby universes. Refer to [S
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <primary_master_addresses> \
+        --master_addresses <primary_master_addresses> \
         create_xcluster_checkpoint <replication_group_id> <comma_separated_namespace_names>
     ```
 
@@ -124,7 +124,7 @@ The following assumes you have set up Primary and Standby universes. Refer to [S
 
     ```sh
     ./bin/yb-admin \
-    -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+    --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
     is_xcluster_bootstrap_required repl_group1 yugabyte
     ```
 
@@ -141,7 +141,7 @@ The following assumes you have set up Primary and Standby universes. Refer to [S
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <standby_master_addresses> \
+        --master_addresses <standby_master_addresses> \
         create_snapshot_schedule 1 10 ysql.yugabyte
     ```
 
@@ -149,7 +149,7 @@ The following assumes you have set up Primary and Standby universes. Refer to [S
 
     ```sh
     ./bin/yb-admin \
-    -master_addresses <primary_master_addresses> \
+    --master_addresses <primary_master_addresses> \
     setup_xcluster_replication <replication_group_id> <standby_master_addresses>
     ```
 

@@ -44,7 +44,7 @@ def test_cluster(opt_on):
     # Use yb-admin to flush all writes to RocksDB
     subprocess.check_call(
         YUGABYTE_DIR +
-        "/build/latest/bin/yb-admin -master_addresses 127.0.0.1 flush_table " +
+        "/build/latest/bin/yb-admin --master_addresses 127.0.0.1 flush_table " +
         "ybdemo_keyspace cassandrakeyvalue 60",
         shell=True)
 

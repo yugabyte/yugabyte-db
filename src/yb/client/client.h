@@ -168,7 +168,12 @@ using MasterAddressSource = std::function<std::vector<std::string>()>;
 
 struct TransactionStatusTablets {
   std::vector<TabletId> global_tablets;
-  std::vector<TabletId> placement_local_tablets;
+  std::vector<TabletId> region_local_tablets;
+  struct TablespaceInfo {
+    PlacementInfoPB placement_info;
+    std::vector<TabletId> tablets;
+  };
+  std::unordered_map<PgOid, TablespaceInfo> tablespaces;
 };
 
 struct TabletReplicaFullCompactionStatus {

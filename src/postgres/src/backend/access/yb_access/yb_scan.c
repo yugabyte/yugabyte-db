@@ -70,7 +70,7 @@
 #include "utils/spccache.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
-#include "yb/yql/pggate/ybc_pggate.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 
 typedef struct YbAttnumBmsState
 {

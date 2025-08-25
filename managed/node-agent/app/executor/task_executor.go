@@ -79,7 +79,7 @@ func Init(ctx context.Context) *TaskExecutor {
 // GetInstance returns the singleton executor instance.
 func GetInstance() *TaskExecutor {
 	if instance == nil {
-		util.FileLogger().Fatal(nil, "Task executor is not initialized")
+		util.FileLogger().Fatal(context.TODO(), "Task executor is not initialized")
 	}
 	return instance
 }
@@ -115,32 +115,45 @@ func (te *TaskExecutor) SubmitTask(
 	future := &Future{ch: make(chan struct{}), state: &atomic.Value{}}
 	future.state.Store(TaskScheduled)
 	go func() {
+		future.state.Store(TaskRunning)
 		defer func() {
 			te.wg.Done()
 			if err := recover(); err != nil {
 				util.FileLogger().Errorf(ctx, "Panic occurred: %v", string(debug.Stack()))
-				future.err = fmt.Errorf("Panic occurred: %v", err)
-				future.state.Store(TaskFailed)
+				if future.state.CompareAndSwap(TaskRunning, TaskFailed) {
+					future.err = fmt.Errorf("Panic occurred: %v", err)
+					close(future.ch)
+				}
 			}
-			close(future.ch)
 		}()
-		select {
-		// TaskExecutor level context.
-		case <-te.ctx.Done():
-			future.err = errors.New("TaskExecutor is shutdown")
-			future.state.Store(TaskAborted)
-		// Task level context.
-		case <-ctx.Done():
-			future.err = errors.New("Task is cancelled")
-			future.state.Store(TaskAborted)
-		default:
-			future.state.Store(TaskRunning)
-			future.data, future.err = handler(ctx)
-			if future.err == nil {
-				future.state.Store(TaskSuccess)
-			} else {
-				future.state.Store(TaskFailed)
+		go func() {
+			// Monitor for completion or cancellation.
+			select {
+			case <-future.Done():
+			// TaskExecutor level context.
+			case <-te.ctx.Done():
+				if future.state.CompareAndSwap(TaskRunning, TaskAborted) {
+					future.err = errors.New("TaskExecutor is shutdown")
+					close(future.ch)
+				}
+			// Task level context.
+			case <-ctx.Done():
+				util.FileLogger().Errorf(ctx, "Task is cancelled")
+				if future.state.CompareAndSwap(TaskRunning, TaskAborted) {
+					future.err = errors.New("Task is cancelled")
+					close(future.ch)
+				}
 			}
+		}()
+		data, err := handler(ctx)
+		state := TaskSuccess
+		if err != nil {
+			state = TaskFailed
+		}
+		if future.state.CompareAndSwap(TaskRunning, state) {
+			future.data = data
+			future.err = err
+			close(future.ch)
 		}
 	}()
 	return future, nil

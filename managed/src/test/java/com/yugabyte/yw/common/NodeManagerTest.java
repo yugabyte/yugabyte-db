@@ -590,6 +590,9 @@ public class NodeManagerTest extends FakeDBApplication {
     when(mockConfGetter.getConfForScope(
             any(Universe.class), eq(UniverseConfKeys.pitEnabledBackupsRetentionBufferTimeSecs)))
         .thenReturn(3600);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.enableSystemdDebugLogging)))
+        .thenReturn(false);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ansibleKeepRemoteFiles))).thenReturn(false);
   }
 
   private String getMountPoints(AnsibleConfigureServers.Params taskParam) {
@@ -876,10 +879,6 @@ public class NodeManagerTest extends FakeDBApplication {
         }
 
         if (cloud.equals(Common.CloudType.aws)) {
-          if (createParams.getCmkArn() != null) {
-            expectedCommand.add("--cmk_res_name");
-            expectedCommand.add(createParams.getCmkArn());
-          }
           if (createParams.ipArnString != null) {
             expectedCommand.add("--iam_profile_arn");
             expectedCommand.add(createParams.ipArnString);

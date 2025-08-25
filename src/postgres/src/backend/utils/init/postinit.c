@@ -91,8 +91,8 @@
 #include "catalog/pg_yb_tablegroup.h"
 #include "catalog/yb_catalog_version.h"
 #include "catalog/yb_logical_client_version.h"
-#include "pg_yb_utils.h"
 #include "utils/yb_inheritscache.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 
 static HeapTuple GetDatabaseTuple(const char *dbname);
 static HeapTuple GetDatabaseTupleByOid(Oid dboid);
@@ -898,7 +898,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 				};
 			YBCStartSysTablePrefetching(Template1DbOid,
 										catalog_version,
-										YB_YQL_PREFETCHER_TRUST_CACHE);
+										YB_YQL_PREFETCHER_TRUST_CACHE_AUTH);
 		}
 		else
 			YBCStartSysTablePrefetchingNoCache();

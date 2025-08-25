@@ -51,6 +51,7 @@
 /* YB includes */
 #include "pg_yb_utils.h"
 #include "utils/yb_tuplecache.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 
 static void RangeVarCallbackForPolicy(const RangeVar *rv,
 									  Oid relid, Oid oldrelid, void *arg);
