@@ -6,11 +6,13 @@ description: Use PostgreSQL 15 features in your applications
 headContent: Use PostgreSQL 15 features in your applications
 tags:
   feature: tech-preview
+aliases:
+  - /preview/develop/pg15-features/
 menu:
-  preview:
+  preview_api:
     identifier: yb-postgresql-15
-    parent: develop
-    weight: 700
+    parent: api-ysql
+    weight: 125
 type: docs
 ---
 
