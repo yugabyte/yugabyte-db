@@ -19,16 +19,13 @@ For information on YSQL Connection Manager limitations, refer to [Limitations](.
 **Symptoms**
 
 - Partially exhausted pool: Higher query execution latencies, reflected in higher `queued_logical_connections` and `avg_wait_time_ns` metrics.
-e
 - Completely exhausted server connection pool: Clients appear to hang or timeout while trying to authenticate or execute queries.
 
 **Verify**
 
-To see the number of sticky connections, use the `13000/connections` endpoint and search for `sticky_connections`.
+To offer complete correctness/range of support, Connection Manager makes connections for some features [sticky by default](../ycm-setup/#sticky-connections). You can verify this using the [sticky_connections metric](../ycm-monitor/#metrics). Use the `13000/connections` endpoint and search for `sticky_connections`.
 
 Search for "sticky" in Connection Manager logs with `log_debug` enabled. See [Logging](../ycm-monitor/#logging).
-
-To offer complete correctness/range of support, Connection Manager makes connections for some features [sticky by default](../ycm-setup/#sticky-connections). You can verify this using the [sticky_connections metric](../ycm-monitor/#metrics).
 
 Depending on your use case, you can enable flags or workarounds to avoid stickiness.
 
