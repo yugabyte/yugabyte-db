@@ -94,13 +94,18 @@ ALTER EXTENSION age
 ALTER EXTENSION age
     DROP OPERATOR ?| (agtype, text[]);
 ALTER EXTENSION age
-    DROP OPERATOR ?& (agtype, agtype[]);
+    DROP OPERATOR ?& (agtype, agtype);
 ALTER EXTENSION age
-    DROP OPERATOR ?& (agtype, text);
+    DROP OPERATOR ?& (agtype, text[]);
+ALTER EXTENSION age
+    DROP OPERATOR @> (agtype, agtype);
+ALTER EXTENSION age
+    DROP OPERATOR <@ (agtype, agtype);
 
 DROP OPERATOR ? (agtype, agtype), ? (agtype, text),
               ?| (agtype, agtype), ?| (agtype, text[]),
-              ?& (agtype, agtype[]), ?& (agtype, text);
+              ?& (agtype, agtype), ?& (agtype, text[]),
+              @> (agtype, agtype), <@ (agtype, agtype);
 
 CREATE OPERATOR ? (
   LEFTARG = agtype,
@@ -150,30 +155,23 @@ CREATE OPERATOR ?& (
   JOIN = matchingjoinsel
 );
 
-ALTER EXTENSION age
-    ADD OPERATOR ? (agtype, agtype);
-ALTER EXTENSION age
-    ADD OPERATOR ? (agtype, text);
-ALTER EXTENSION age
-    ADD OPERATOR ?| (agtype, agtype);
-ALTER EXTENSION age
-    ADD OPERATOR ?| (agtype, text[]);
-ALTER EXTENSION age
-    ADD OPERATOR ?& (agtype, agtype[]);
-ALTER EXTENSION age
-    ADD OPERATOR ?& (agtype, text);
+CREATE OPERATOR @> (
+  LEFTARG = agtype,
+  RIGHTARG = agtype,
+  FUNCTION = ag_catalog.agtype_contains,
+  COMMUTATOR = '<@',
+  RESTRICT = matchingsel,
+  JOIN = matchingjoinsel
+);
 
-ALTER OPERATOR @> (agtype, agtype)
-  SET (RESTRICT = matchingsel, JOIN = matchingjoinsel);
-
-ALTER OPERATOR @> (agtype, agtype)
-  SET (RESTRICT = matchingsel, JOIN = matchingjoinsel);
-
-ALTER OPERATOR <@ (agtype, agtype)
-  SET (RESTRICT = matchingsel, JOIN = matchingjoinsel);
-
-ALTER OPERATOR <@ (agtype, agtype)
-  SET (RESTRICT = matchingsel, JOIN = matchingjoinsel);
+CREATE OPERATOR <@ (
+  LEFTARG = agtype,
+  RIGHTARG = agtype,
+  FUNCTION = ag_catalog.agtype_contained_by,
+  COMMUTATOR = '@>',
+  RESTRICT = matchingsel,
+  JOIN = matchingjoinsel
+);
 
 /*
  * Since there is no option to add or drop operator from class,
@@ -185,6 +183,7 @@ ALTER EXTENSION age
     DROP OPERATOR CLASS ag_catalog.gin_agtype_ops USING gin;
 
 DROP OPERATOR CLASS ag_catalog.gin_agtype_ops USING gin;
+DROP OPERATOR FAMILY ag_catalog.gin_agtype_ops USING gin;
 
 CREATE OPERATOR CLASS ag_catalog.gin_agtype_ops
 DEFAULT FOR TYPE agtype USING gin AS
@@ -204,9 +203,6 @@ DEFAULT FOR TYPE agtype USING gin AS
   FUNCTION 6 ag_catalog.gin_triconsistent_agtype(internal, int2, agtype, int4,
                                                  internal, internal, internal),
 STORAGE text;
-
-ALTER EXTENSION age
-    ADD OPERATOR CLASS ag_catalog.gin_agtype_ops USING gin;
 
 -- this function went from variadic "any" to just "any" type
 CREATE OR REPLACE FUNCTION ag_catalog.age_tostring("any")
