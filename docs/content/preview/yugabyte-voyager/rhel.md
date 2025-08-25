@@ -19,7 +19,7 @@ Perform the following steps to install yb-voyager using yum for RHEL 8 and CentO
 1. Install the `yugabyte` yum repository using the following command:
 
     ```sh
-    sudo yum install https://downloads.yugabyte.com/repos/reporpms/yb-yum-repo-1.1-0.noarch.rpm
+    sudo yum install https://software.yugabyte.com/repos/reporpms/yb-yum-repo-1.1-0.noarch.rpm?os=rhel-8
     ```
 
     This repository contains the yb-voyager rpm and other dependencies required to run `yb-voyager`.
@@ -103,7 +103,7 @@ Perform the following steps to install yb-voyager using yum for RHEL 9 and CentO
 1. Install the `yugabyte` yum repository using the following command:
 
     ```sh
-    sudo dnf install https://downloads.yugabyte.com/repos/reporpms/yb-yum-repo-1.1-0.noarch.rpm -y
+    sudo dnf install https://software.yugabyte.com/repos/reporpms/yb-yum-repo-1.1-0.noarch.rpm?os=rhel-9 -y
     ```
 
 1. Install the `epel-release` repository using the following command:

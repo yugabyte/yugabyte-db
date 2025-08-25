@@ -116,7 +116,7 @@ Install yb-voyager using a Docker image in an airgapped environment using the fo
 1. Download the yb-voyager wrapper script on the same machine using the following command:
 
     ```sh
-    wget -O ./yb-voyager https://raw.githubusercontent.com/yugabyte/yb-voyager/main/docker/yb-voyager-docker
+    wget -O ./yb-voyager https://software.yugabyte.com/yugabyte/yb-voyager/main/docker/yb-voyager-docker
     ```
 
 1. Copy the `yb-voyager-image.tar.gz` and `yb-voyager` files to the airgapped machine.
@@ -152,13 +152,13 @@ You can perform an airgapped installation on RHEL 8/9 and CentOS 8/9.
     - For RHEL8:
 
         ```sh
-        wget https://downloads.yugabyte.com/repos/airgapped/yb-voyager-latest-rhel-8-x86_64.tar.gz
+        wget https://software.yugabyte.com/repos/airgapped/yb-voyager-latest-rhel-8-x86_64.tar.gz
         ```
 
     - For RHEL9:
 
         ```sh
-        wget https://downloads.yugabyte.com/repos/airgapped/yb-voyager-latest-rhel-9-x86_64.tar.gz
+        wget https://software.yugabyte.com/repos/airgapped/yb-voyager-latest-rhel-9-x86_64.tar.gz
         ```
 
 1. Extract the bundle.
@@ -269,7 +269,7 @@ You can perform an airgapped installation on Ubuntu 22 and later.
 1. Download the airgapped bundle:
 
     ```sh
-    wget https://downloads.yugabyte.com/repos/airgapped/yb-voyager-latest_debian.tar.gz
+    wget https://software.yugabyte.com/repos/airgapped/yb-voyager-latest_debian.tar.gz
     ```
 
 1. Extract the bundle.
