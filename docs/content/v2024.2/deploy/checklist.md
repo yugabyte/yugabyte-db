@@ -178,7 +178,6 @@ It is recommended to plan for about 20% headroom on each node to allow space for
 
 {{<tags/feature/ea idea="2298">}} Ephemeral or local disks are physically attached storage that exists only for the life of the virtual machine (VM). They deliver extremely fast I/O but data is not persistent. If a VM stops, hard reboots, or terminates, its local disk data is lost. Only the boot disk (with the OS) is persistent, but the database data directory on the ephemeral disk will be wiped.  On the major public clouds, such disks are variously called "Instance Stores" (on AWS), "Local SSDs" (on GCP), and "Temporary Disks" (on Azure).
 
-
 Ephemeral storage is an excellent choice for YugabyteDB if your primary goal is to optimize for low-latency read-heavy workloads. Our internal benchmarks show that using local SSDs instead of remote, network-attached cloud disks can reduce latency for read-heavy operations by up to 30%. This performance gain can be significant for applications where every millisecond of latency is critical.
 
 However, if performance is not your primary concern, network-attached storage offers more reliability and is easier to manage.
@@ -195,7 +194,7 @@ Operating a distributed database on ephemeral storage requires careful planning.
 
   - Planned operations. Any planned operations that cause VMs to start, stop, or reboot will wipe the VMs' ephemeral disks.  While Yugabyte software does not (and cannot) directly trigger such VM actions (whether YugabyteDB is deployed manually or managed using YugabyteDB Anywhere), be aware that some user operations, such as disaster recovery (DR) testing or switchover can trigger such VM actions and be problematic.
 
-- Double fault scenarios: The probability of a "double fault" (losing two nodes at once) is higher with ephemeral storage. This is because nodes with ephemeral disks take longer to recover. For example, if a node goes down and then revives within 15 minutes, if it has a persistent disk, it can recover quickly via an incremental (WAL-based) replication. But nodes with ephemeral disks require much longer (minutes to hours) to recover because they must perform a full (and not incremental) re-replication of all data destined for that node. This extended recovery window also extends the window in which a double fault scenario could happen. Losing two out of three replicas (in an RF3 configuration of a cluster or a tablespace) can result in an RF1 scenario, leading to cluster (or tablespace) downtime.
+- Double fault scenarios: The probability of a "double fault" (losing two nodes at once) is higher with ephemeral storage. This is because nodes with ephemeral disks take longer to recover. For example, if a node goes down and then revives within 15 minutes, if it has a persistent disk, it can recover quickly via an incremental (WAL-based) replication. But nodes with ephemeral disks require much longer (minutes to hours) to recover because they must perform a full (and not incremental) re-replication of all data destined for that node. This extended recovery window also extends the window in which a double fault scenario could happen. Losing two out of three replicas (in an RF3 configuration of a cluster or a tablespace) can result in a majority loss, leading to potential data loss.
 
 - Operational complexity: Certain standard operations become dangerous with ephemeral disks. For instance, shutting down all nodes in a cluster with persistent disks is safe, but doing the same with an ephemeral disk cluster will result in total data loss. Operational workflows must be carefully reviewed to avoid these situations.
 
@@ -209,14 +208,13 @@ To safely and effectively use ephemeral disks with YugabyteDB, follow these desi
 
 - Distribute across zones: Spread nodes across availability zones so that a single zone outage won't result in all replicas of a tablet being dropped, causing data loss. Likewise, if you are using tablespaces to override replication settings for particular tables, spread each tablespace across multiple zones.
 
-- Persistent boot disk for OS and binaries: Configure YugabyteDB nodes so that the YugabyteDB software, configuration files, and logs reside on a persistent disk, and only the data directory is on the ephemeral disk. This design allows for quicker provisioning of nodes back into the cluster. It's also recommended to place logs on an independent persistent disk that's not the boot disk. Keeping logs persistent retains debugging information in case of a failure, and placing them on an independent, non-boot disk avoids the possibility of filling up the boot disk.
+- Persistent boot disk for OS and binaries: Configure YugabyteDB nodes so that the YugabyteDB software, configuration files, and logs reside on a persistent disk, and only the data directory is on the ephemeral disk. This design allows for quicker provisioning of nodes back into the cluster. In addition, put logs on an independent persistent disk that's not the boot disk. Keeping logs persistent retains debugging information in case of a failure, and placing them on an independent, non-boot disk avoids the possibility of filling up the boot disk.
 
 - Use dedicated VMs with persistent disks for Masters: Unless [Automatic YB-Master failover](../../yugabyte-platform/manage-deployments/remove-nodes/#automatic-yb-master-failover) is enabled, it is strongly recommended that you place Master nodes on dedicated VMs that use persistent disks, for the following reasons:
 
-
   - Master processes hold highly critical data.
   - Manual recovery from the loss of a node with a Master is time consuming and may require assistance from Support.
-  - There are no performance gains from having Masters use ephemeral disks.
+  - There are no performance gains from having Masters use ephemeral disks, as it does not store any user data, and all its data fits in memory.
 
 - Maintain spare capacity (Free pool nodes): Provision spare nodes that are ready to join the cluster in case of a failure. This reduces the time a tablet remains under-replicated. With extra spare capacity in your cluster, in the event multiple nodes fail serially in sequence over time, the universe can recover automatically (via YugabyteDB's automatic re-replication that starts after 15 minutes of the node being down) rather than manually (relying on human intervention to add nodes and storage capacity).
 
