@@ -230,7 +230,7 @@ Working with ephemeral storage requires careful attention to standard operationa
 
 ##### Rolling restart of servers
 
-[Rolling restarts](../../yugabyte-platform/manage-deployments/edit-config-flags/#batched-rolling-restart) in YugabyteDB Anywhere do not reboot the machine or unmount disks, so ephemeral data remains intact. You can perform rolling restarts as usual.
+[Rolling restarts](../../yugabyte-platform/manage-deployments/edit-config-flags/#modify-configuration-flags) in YugabyteDB Anywhere do not reboot the machine or unmount disks, so ephemeral data remains intact. You can perform rolling restarts as usual.
 
 ##### Operating system patching and node reboots
 
@@ -288,6 +288,21 @@ In YugabyteDB Anywhere, the [Upgrade Database Version](../../yugabyte-platform/m
 - Special considerations for GCP-managed instance groups: GCP's Managed Instance Groups (MIGs) can simplify operations like autoscaling, self-healing, and rolling upgrades. However, you must be cautious when using them with ephemeral disks. If a MIG's health check fails, it may simultaneously replace multiple nodes. This could lead to a "double fault" scenario (losing two or more replicas at once), which can cause cluster or tablespace downtime.
 
   While an outage of this nature is recoverable with persistent disks, it would be unrecoverable with ephemeral disks.
+
+The following table summarizes features supported and restrictions with ephemeral disks.
+
+| Action | Support Level | Notes / recommended practices |
+| :--- | :--- | :--- |
+| Rolling operations (Restarts, upgrades, flag changes) | {{<icon/yes>}} | Follow standard rolling procedures carefully. |
+| Add/remove node (Scaling) | {{<icon/yes>}} | Primary method; ensure data is safely drained beforehand. |
+| Backups and restores | {{<icon/yes>}} (Recommended) | Critical for recovery from catastrophic data loss. |
+| Read Replicas / Asynchronous Replication | {{<icon/yes>}} | Normal operation; avoid simultaneous downtime. |
+| OS Patches / reboots | {{<icon/partial>}} (Modified procedure required) | Always drain or remove nodes before rebooting. |
+| Vertical scaling | {{<icon/partial>}} (Modified procedure required) | Only full node replacements; no smart/in-place resizing. |
+| Multiple simultaneous failures | {{<icon/partial>}} (Use caution) | Handle failures sequentially; backup restore if multiple failures occur. |
+| Pause universe / full stop | {{<icon/no>}} (Disabled by YugabyteDB Anywhere) | Disallowed—will cause total data loss. |
+| Non-rolling all-node operations | {{<icon/no>}} (Disabled by YugabyteDB Anywhere) | Must convert to rolling/per-node actions. |
+| Using RF 1 or RF 2 | {{<icon/no>}} | Always use RF of 3 or greater to ensure safe replication. |
 
 ## Network
 
