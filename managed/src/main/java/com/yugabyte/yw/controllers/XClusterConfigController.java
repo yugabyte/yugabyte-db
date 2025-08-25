@@ -1369,9 +1369,11 @@ public class XClusterConfigController extends AuthenticatedController {
     // If tables do not exist on the target universe, bootstrapping is required.
     Optional<Set<String>> sourceTableIdsWithNoTableOnTargetUniverseOptional = Optional.empty();
     Optional<BiMap<String, String>> sourceTableIdTargetTableIdBiMapOptional = Optional.empty();
+    Optional<Universe> targetUniverseOptional = Optional.empty();
     if (Objects.nonNull(needBootstrapFormData.targetUniverseUUID)) {
       Universe targetUniverse =
           Universe.getOrBadRequest(needBootstrapFormData.targetUniverseUUID, customer);
+      targetUniverseOptional = Optional.of(targetUniverse);
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTablesInfoList =
           XClusterConfigTaskBase.getTableInfoList(ybService, targetUniverse);
       Map<String, String> sourceTableIdTargetTableIdMap =
@@ -1522,6 +1524,23 @@ public class XClusterConfigController extends AuthenticatedController {
                 });
           });
 
+      boolean isAutomaticDdlMode =
+          confGetter.getConfForScope(
+                  sourceUniverse, UniverseConfKeys.dbScopedXClusterCreationEnabled)
+              && confGetter.getConfForScope(
+                  sourceUniverse, UniverseConfKeys.XClusterDbScopedAutomaticDdlCreationEnabled)
+              && XClusterUtil.supportsAutomaticDdl(sourceUniverse)
+              && (targetUniverseOptional.isEmpty()
+                  || XClusterUtil.supportsAutomaticDdl(targetUniverseOptional.get()));
+      if (needBootstrapFormData.isDrConfig && isAutomaticDdlMode) {
+        // For DR with automatic DDL replication, bootstrapping is always required.
+        allTableIds.forEach(
+            tableId ->
+                tableIdToNeedBootstrapPerTableResponseMap
+                    .get(tableId)
+                    .addReason(XClusterNeedBootstrapReason.DR_CONFIG_AUTOMATIC_DDL));
+      }
+
       if (includeDetails) {
         return PlatformResults.withData(
             tableIdToNeedBootstrapPerTableResponseMap.entrySet().stream()
@@ -1529,11 +1548,12 @@ public class XClusterConfigController extends AuthenticatedController {
                 .collect(Collectors.toMap(Entry::getKey, Entry::getValue)));
       }
 
-      // The response should include only the requested tables.
       return PlatformResults.withData(
-          isBootstrapRequiredMap.entrySet().stream()
+          tableIdToNeedBootstrapPerTableResponseMap.entrySet().stream()
               .filter(entry -> needBootstrapFormData.tables.contains(entry.getKey()))
-              .collect(Collectors.toMap(Entry::getKey, Entry::getValue)));
+              .collect(
+                  Collectors.toMap(
+                      Entry::getKey, entry -> entry.getValue().isBootstrapRequired())));
     } catch (Exception e) {
       log.error("XClusterConfigTaskBase.isBootstrapRequired hit error: ", e);
       throw new PlatformServiceException(
