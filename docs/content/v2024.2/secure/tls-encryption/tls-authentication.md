@@ -153,27 +153,23 @@ Type "help" for help.
 
 The other modes (that is, `sslmode=require` or `disable`) behave analogously.
 
-### TLS with SCRAM based password authentication (SCRAM-SHA-256-PLUS)
+### TLS with SCRAM-based password authentication
 
-This configuration, also known as SCRAM-SHA-256-PLUS, enables authentication with SCRAM using TLS channel-binding as described in [RFC 7677](https://tools.ietf.org/html/rfc7677). When SCRAM-SHA-256-PLUS is used, information about the TLS channel being used is encoded in the authentication messages exchanged, ensuring the client and server are sharing the same TLS channel (i.e. binding the channel to the authentication mechanism).
+This configuration (also known as SCRAM-SHA-256-PLUS) enables authentication with SCRAM using TLS channel-binding as described in [RFC 7677](https://tools.ietf.org/html/rfc7677). When enabled, information about the TLS channel is encoded in the authentication messages exchanged; this ensures the client and server share the same TLS channel (that is, binding the channel to the authentication mechanism).
 
-To enable SCRAM-SHA-256-PLUS for a user already using SCRAM-SHA-256, add the YB-Tserver flag `ysql_enable_scram_channel_binding` (default `false`):
-```
-ysql_enable_scram_channel_binding=true
-```
-Note that this configuration requires the client to use client-to-server encryption.
+To enable SCRAM-SHA-256-PLUS for a user already using SCRAM-SHA-256, you set the `ysql_enable_scram_channel_binding` YB-TServer flag to true.
 
-To create a database, execute the following command:
+For example, to create a database, execute the following command:
+
 ```sh
-$ ./bin/yb-ctl destroy && ./bin/yb-ctl create \
+$ ./bin/yugabyted stop && ./bin/yugabyted start \
     --tserver_flags="ysql_enable_auth=true,ysql_enable_scram_channel_binding=true,$ENABLE_TLS"
 ```
 
-{{< note title="Note" >}}
+Note that this configuration requires the client to use client-to-server encryption.
 
-For details on enabling SCRAM-SHA-256 password encryption, refer to the page on [password authentication](../../../secure/authentication/password-authentication/#scram-sha-256).
+For more information on enabling SCRAM-SHA-256 password encryption, refer to [Password authentication](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-{{< /note >}}
 
 ### TLS with authentication via certificate
 
