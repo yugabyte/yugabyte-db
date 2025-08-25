@@ -28,7 +28,7 @@ After you have created the VMs with the operating system and additional software
 1. Modify the configuration file.
 1. Run the provisioning script (as root or via sudo).
 
-These steps prepare the node for use by YugabyteDB Anywhere. If you have already installed YugabyteDB Anywhere and it is running, the last step additionally creates (or updates) an [on-premises provider](../../../configure-yugabyte-platform/on-premises/) with the node already added.
+These steps prepare the node for use by YugabyteDB Anywhere. If you have already [installed YugabyteDB Anywhere](../../../install-yugabyte-platform/) and it is running (recommended), the script additionally creates (or updates) an [on-premises provider](../../../configure-yugabyte-platform/on-premises/) with the node already added.
 
 Root or sudo privileges are only required to provision the nodes. After the node is provisioned (with [YugabyteDB Anywhere node agent](/preview/faq/yugabyte-platform/#what-is-a-node-agent) installed), sudo is no longer required.
 
@@ -105,7 +105,7 @@ Set the following options in the provisioning file to the correct values:
 | `node_ip` | The fully-qualified domain name or IP address of the node you are provisioning. Must be accessible to other nodes. |
 | `tmp_directory` | The directory on the node to use for storing temporary files during provisioning. |
 
-Optionally, if YugabyteDB Anywhere is already installed and running, you can set the following options to have node agent conveniently create (or update) the [on-premises provider configuration](../../../configure-yugabyte-platform/on-premises-provider/) where you want to add the node.
+Set the following options to have node agent create (or update) the [on-premises provider configuration](../../../configure-yugabyte-platform/on-premises-provider/) where you want to add the node. (YugabyteDB Anywhere must be installed and running.)
 
 | Option | Value |
 | :--- | :--- |

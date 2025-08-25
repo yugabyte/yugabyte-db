@@ -20,7 +20,9 @@ Navigate to **Integrations > Infrastructure > On-Premises Datacenters** to see a
 
 ## Create a provider
 
-To create an on-premises provider:
+If you are using automatic provisioning, on-premises providers are created automatically when provisioning nodes. Refer to [Automatically provision on-premises nodes](../../prepare/server-nodes-software/software-on-prem/).
+
+If you are using legacy provisioning, you can create an on-premises provider manually as follows:
 
 1. Click **Create Config** to open the **OnPrem Provider Configuration** page.
 
