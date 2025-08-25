@@ -195,7 +195,7 @@ Operating a distributed database on ephemeral storage requires careful planning.
 
   - Planned operations. Any planned operations that cause VMs to start, stop, or reboot will wipe the VMs' ephemeral disks.  While Yugabyte software does not (and cannot) directly trigger such VM actions (whether YugabyteDB is deployed manually or managed using YugabyteDB Anywhere), be aware that some user operations, such as disaster recovery (DR) testing or switchover can trigger such VM actions and be problematic.
 
-- Double fault scenarios: The probability of a "double fault" (losing two nodes at once) is higher with ephemeral storage. This is because nodes with ephemeral disks take longer to recover. For example, if a node goes down and then revives within 15 minutes, if it has a persistent disk, it can recover quickly via an incremental (WAL-based) replication. But nodes with ephemeral disks require much longer (minutes to hours) to recover because they must perform a full (and not incremental) re-replication of all data destined for that node. This extended recovery window increases the chance of a second node failure. Losing two out of three replicas (in an RF3 configuration of a cluster or a tablespace) can result in an RF1 scenario, leading to cluster (or tablespace) downtime.
+- Double fault scenarios: The probability of a "double fault" (losing two nodes at once) is higher with ephemeral storage. This is because nodes with ephemeral disks take longer to recover. For example, if a node goes down and then revives within 15 minutes, if it has a persistent disk, it can recover quickly via an incremental (WAL-based) replication. But nodes with ephemeral disks require much longer (minutes to hours) to recover because they must perform a full (and not incremental) re-replication of all data destined for that node. This extended recovery window also extends the window in which a double fault scenario could happen. Losing two out of three replicas (in an RF3 configuration of a cluster or a tablespace) can result in an RF1 scenario, leading to cluster (or tablespace) downtime.
 
 - Operational complexity: Certain standard operations become dangerous with ephemeral disks. For instance, shutting down all nodes in a cluster with persistent disks is safe, but doing the same with an ephemeral disk cluster will result in total data loss. Operational workflows must be carefully reviewed to avoid these situations.
 
@@ -205,7 +205,7 @@ Operating a distributed database on ephemeral storage requires careful planning.
 
 To safely and effectively use ephemeral disks with YugabyteDB, follow these design and configuration guidelines:
 
-- Have enough replication and redundancy: Always use a minimum replication factor (RF) of 3 for any production universe (and for all tablespaces for which you might override the RF) when using ephemeral disks. Due to the increased risk of "quorum-loss" scenarios, RF 5 or greater is recommended if your environment and performance tolerances allow. An RF 5 deployment can survive the failure of two fault domains without data loss (at the cost of more storage and write overhead).
+- Have enough replication and redundancy: Always use a minimum replication factor (RF) of 3 for any production universe (and for all tablespaces for which you might override the RF) when using ephemeral disks. Due to the increased risk of double fault scenarios, RF 5 or greater is recommended if your environment and performance tolerances allow. An RF 5 deployment can survive the failure of two fault domains without downtime (at the cost of more storage and write overhead).
 
 - Distribute across zones: Spread nodes across availability zones so that a single zone outage won't result in all replicas of a tablet being dropped, causing data loss. Likewise, if you are using tablespaces to override replication settings for particular tables, spread each tablespace across multiple zones.
 
@@ -232,21 +232,22 @@ Working with ephemeral storage requires careful attention to standard operationa
 
 ##### Rolling restart of servers
 
-[Rolling restarts](../../yugabyte-platform/manage-deployments/edit-config-flags/#batched-rolling-restart) universe action in YugabyteDB Anywhere do not reboot the machine or unmount disks, so ephemeral data remains intact. You can perform rolling restarts as usual.
+[Rolling restarts](../../yugabyte-platform/manage-deployments/edit-config-flags/#batched-rolling-restart) in YugabyteDB Anywhere do not reboot the machine or unmount disks, so ephemeral data remains intact. You can perform rolling restarts as usual.
 
 ##### Operating system patching and node reboots
 
 In YugabyteDB Anywhere, you perform OS patching for on-premises universes via scripts that call YugabyteDB Anywhere APIs. See [Patch and upgrade the Linux operating system](../../yugabyte-platform/manage-deployments/upgrade-nodes/) for the recommended workflow.
 
-When following the above documented guidance, if you must perform an OS reboot on a node, be sure to drain or remove it from the cluster first. The recommended approach is to remove and then re-add the node.
+When patching or performing maintenance, if you must reboot the OS on a node, be sure to drain or remove the node from the cluster first. The recommended approach is to remove and then re-add the node.
 
 - Option 1: Blacklist the node Before Reboot (Drain): Blacklist the node, wait for draining to complete, reboot, and then remove the blacklist.
 - Option 2: (Recommended) Remove and add node: Remove the node from the cluster, patch or rebuild its OS, and then add the node back to the universe.
+
 When using either approach, work on one node at a time and wait for the cluster to return to full replication of tablets based on their RF before moving to the next node.
 
 ##### Unplanned node outage (Failure scenario)
 
-In the event of an unplanned outage, assume the node's data is lost and proceed with replacing the node (in YugabyteDB Anywhere, us the **Replace Node** action). If the node does come back on its own and starts to rejoin, monitor it closely.
+In the event of an unplanned outage, assume the node's data is lost and proceed with replacing the node (in YugabyteDB Anywhere, use the **Replace Node** action). If the node does come back on its own and starts to rejoin, monitor it closely.
 
 ##### Pause universe or full-cluster shutdown
 
@@ -261,6 +262,7 @@ In YugabyteDB Anywhere, the [Upgrade Database Version](../../yugabyte-platform/m
 ##### Scaling and adding/removing nodes
 
 - [Vertical scaling](../../explore/linear-scalability/horizontal-vs-vertical-scaling/#vertical-scale-up) (Instance type change to add memory, CPU or storage): For YugabyteDB Anywhere on-premises universes, vertical scaling (resizing a VM) is a manual operation.
+
     You cannot detach and re-attach ephemeral disks to a new VM. Instead, perform a full move: add new nodes, and then remove the old ones.
 
   1. Add a new instance type to the on-premises provider for the new VM type.
