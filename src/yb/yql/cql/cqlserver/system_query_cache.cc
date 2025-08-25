@@ -155,11 +155,7 @@ SystemQueryCache::SystemQueryCache(cqlserver::CQLServiceImpl* service_impl)
 }
 
 SystemQueryCache::~SystemQueryCache() {
-  if (pool_) {
-    scheduler_->Shutdown();
-    pool_->Shutdown();
-    pool_->Join();
-  }
+  Shutdown();
 }
 
 void SystemQueryCache::InitializeQueries() {
@@ -207,6 +203,19 @@ boost::optional<RowsResult::SharedPtr> SystemQueryCache::Lookup(const std::strin
 MonoDelta SystemQueryCache::GetStaleness() {
   const std::lock_guard l(cache_mutex_);
   return MonoTime::Now() - last_updated_;
+}
+
+void SystemQueryCache::Shutdown() {
+  bool expected = false;
+  if (!shutting_down_.compare_exchange_strong(expected, true)) {
+    return;
+  }
+  if (pool_) {
+    scheduler_->Shutdown();
+    pool_->Shutdown();
+    pool_->Join();
+    pool_.reset();
+  }
 }
 
 void SystemQueryCache::RefreshCache() {
@@ -258,8 +267,8 @@ void SystemQueryCache::ScheduleRefreshCache(bool now) {
       }, std::chrono::milliseconds(now ? 0 : FLAGS_cql_update_system_query_cache_msecs));
 }
 
-void SystemQueryCache::ExecuteSync(const std::string& stmt, Status* status,
-    ExecutedResult::SharedPtr* result_ptr) {
+void SystemQueryCache::ExecuteSync(
+    const std::string& stmt, Status* status, ExecutedResult::SharedPtr* result_ptr) {
   const auto processor = service_impl_->GetProcessor();
   if (!processor.ok()) {
     LOG(DFATAL) << "Unable to get CQLProcessor for system query cache";

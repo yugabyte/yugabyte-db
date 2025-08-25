@@ -10,8 +10,11 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -25,6 +28,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import play.libs.Json;
 
 @Slf4j
 public class UpdateAndPersistGFlags extends UniverseTaskBase {
@@ -48,13 +52,35 @@ public class UpdateAndPersistGFlags extends UniverseTaskBase {
 
   @Override
   public String getName() {
+    String ybSoftwareVersion =
+        getUniverse().getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+
+    JsonNode filteredMasterGFlags =
+        RedactingService.filterSecretFields(
+            Json.toJson(taskParams().masterGFlags),
+            RedactionTarget.LOGS,
+            ybSoftwareVersion,
+            gFlagsValidation);
+    JsonNode filteredTserverGFlags =
+        RedactingService.filterSecretFields(
+            Json.toJson(taskParams().tserverGFlags),
+            RedactionTarget.LOGS,
+            ybSoftwareVersion,
+            gFlagsValidation);
+    JsonNode filteredSpecificGFlags =
+        RedactingService.filterSecretFields(
+            Json.toJson(taskParams().specificGFlags),
+            RedactionTarget.LOGS,
+            ybSoftwareVersion,
+            gFlagsValidation);
+
     return super.getName()
         + "(master: "
-        + taskParams().masterGFlags
+        + filteredMasterGFlags
         + ", tserver:"
-        + taskParams().tserverGFlags
+        + filteredTserverGFlags
         + ", specific:"
-        + taskParams().specificGFlags
+        + filteredSpecificGFlags
         + ")";
   }
 

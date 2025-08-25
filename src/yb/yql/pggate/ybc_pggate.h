@@ -847,8 +847,6 @@ bool YBCIsInitDbModeEnvVarSet();
 // This is called by initdb. Used to customize some behavior.
 void YBCInitFlags();
 
-const YbcPgGFlagsAccessor* YBCGetGFlags();
-
 bool YBCPgIsYugaByteEnabled();
 
 // Sets the specified timeout in the rpc service.

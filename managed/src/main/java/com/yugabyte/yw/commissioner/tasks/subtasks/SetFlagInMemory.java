@@ -11,13 +11,13 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.models.Universe;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.function.Supplier;
@@ -77,17 +77,18 @@ public class SetFlagInMemory extends ServerSubTaskBase {
     boolean isTserverTask = taskParams().serverType == ServerType.TSERVER;
     HostAndPort hp = getHostPort();
 
-    Map<String, String> gflags = taskParams().gflags;
+    Map<String, String> gflags;
     if (taskParams().updateMasterAddrs) {
       String masterAddresses = taskParams().getMasterAddrsOverride();
       if (StringUtils.isBlank(masterAddresses)) {
         masterAddresses = getMasterAddresses(true);
       }
       String flagToSet = isTserverTask ? TSERVER_MASTER_ADDR_FLAG : MASTER_MASTER_ADDR_FLAG;
-      gflags = ImmutableMap.of(flagToSet, masterAddresses);
-    }
-    if (gflags == null) {
+      gflags = new HashMap<>(Map.of(flagToSet, masterAddresses));
+    } else if (taskParams().gflags == null) {
       throw new IllegalArgumentException("Gflags cannot be null during a setFlag operation.");
+    } else {
+      gflags = new HashMap<>(taskParams().gflags);
     }
     try (YBClient client = getClient()) {
       Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
@@ -102,8 +103,13 @@ public class SetFlagInMemory extends ServerSubTaskBase {
         String auditLogYsqlPgConfCsv =
             GFlagsUtil.getYsqlPgConfCsv(
                 universe.getUniverseDetails().getPrimaryCluster().userIntent.getAuditLogConfig());
+        String queryLogYsqlPgConfCsv =
+            GFlagsUtil.getYsqlPgConfCsv(
+                universe.getUniverseDetails().getPrimaryCluster().userIntent.getQueryLogConfig());
+        String queryAndAuditLogYsqlPgConfCsv =
+            GFlagsUtil.mergeCSVs(auditLogYsqlPgConfCsv, queryLogYsqlPgConfCsv, true);
         String finalYsqlPgConfCsv =
-            GFlagsUtil.mergeCSVs(userProvidedYsqlPgConfCsv, auditLogYsqlPgConfCsv, true);
+            GFlagsUtil.mergeCSVs(userProvidedYsqlPgConfCsv, queryAndAuditLogYsqlPgConfCsv, true);
         if (StringUtils.isNotBlank(finalYsqlPgConfCsv)) {
           gflags.put(GFlagsUtil.YSQL_PG_CONF_CSV, finalYsqlPgConfCsv);
         }

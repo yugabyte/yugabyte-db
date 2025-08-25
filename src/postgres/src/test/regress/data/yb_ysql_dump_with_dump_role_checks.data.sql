@@ -3291,6 +3291,21 @@ CREATE POLICY p3 ON public.rls_private FOR UPDATE USING (((k % 2) = 1));
 
 
 --
+-- Name: rls_public p4; Type: POLICY; Schema: public; Owner: yugabyte_test
+--
+
+\if :use_roles
+SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'rls_user') AS role_exists \gset
+\if :role_exists
+    CREATE POLICY p4 ON public.rls_public FOR UPDATE TO rls_user USING ((v = CURRENT_USER));
+\else
+    \echo 'Skipping create policy due to missing role:' rls_user
+\endif
+
+\endif
+
+
+--
 -- Name: rls_private; Type: ROW SECURITY; Schema: public; Owner: yugabyte_test
 --
 

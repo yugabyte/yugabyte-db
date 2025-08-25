@@ -8,8 +8,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/ear/aws"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/ear/azu"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/ear/ciphertrust"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/ear/gcp"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/ear/hashicorp"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 )
 
 // EARCmd set of commands are used to perform operations on ears
@@ -33,6 +35,8 @@ func init() {
 	EARCmd.AddCommand(azu.AzureEARCmd)
 	EARCmd.AddCommand(gcp.GCPEARCmd)
 	EARCmd.AddCommand(hashicorp.HashicorpVaultEARCmd)
+
+	util.PreviewCommand(EARCmd, []*cobra.Command{ciphertrust.CipherTrustEARCmd})
 
 	EARCmd.AddGroup(&cobra.Group{
 		ID:    "action",

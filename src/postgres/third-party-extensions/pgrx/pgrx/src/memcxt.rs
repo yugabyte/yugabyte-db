@@ -183,8 +183,8 @@ impl Drop for OwnedMemoryContext {
         unsafe {
             // In order to prevent crashes, if we're trying to drop
             // a context that is current, switch to its predecessor, and then drop it
-            if ptr::eq(pg_sys::CurrentMemoryContext, self.owned) {
-                pg_sys::CurrentMemoryContext = self.previous;
+            if ptr::eq(pg_sys::YbCurrentMemoryContext, self.owned) {
+                pg_sys::YbCurrentMemoryContext = self.previous;
             }
             pg_sys::MemoryContextDelete(self.owned);
         }
@@ -247,7 +247,7 @@ impl PgMemoryContexts {
     /// This works for every type except the `::Transient` type.
     pub fn value(&self) -> pg_sys::MemoryContext {
         match self {
-            PgMemoryContexts::CurrentMemoryContext => unsafe { pg_sys::CurrentMemoryContext },
+            PgMemoryContexts::CurrentMemoryContext => unsafe { pg_sys::YbCurrentMemoryContext },
             PgMemoryContexts::TopMemoryContext => unsafe { pg_sys::TopMemoryContext },
             PgMemoryContexts::PortalContext => unsafe { pg_sys::PortalContext },
             PgMemoryContexts::ErrorContext => unsafe { pg_sys::ErrorContext },
@@ -267,7 +267,7 @@ impl PgMemoryContexts {
 
     /// Set this MemoryContext as the `CurrentMemoryContext, returning whatever `CurrentMemoryContext` is
     pub unsafe fn set_as_current(&mut self) -> PgMemoryContexts {
-        let old_context = pg_sys::CurrentMemoryContext;
+        let old_context = pg_sys::YbCurrentMemoryContext;
 
         if let PgMemoryContexts::Owned(mc) = self {
             // If the context is set as current while it's already current,
@@ -277,7 +277,7 @@ impl PgMemoryContexts {
             }
         }
 
-        pg_sys::CurrentMemoryContext = self.value();
+        pg_sys::YbCurrentMemoryContext = self.value();
 
         PgMemoryContexts::For(old_context)
     }
@@ -585,14 +585,14 @@ impl PgMemoryContexts {
 
         // mimic what palloc.h does for switching memory contexts
         unsafe {
-            prev_context = pg_sys::CurrentMemoryContext;
-            pg_sys::CurrentMemoryContext = context;
+            prev_context = pg_sys::YbCurrentMemoryContext;
+            pg_sys::YbCurrentMemoryContext = context;
         }
 
         let result = f(&mut PgMemoryContexts::For(context));
         // restore our understanding of the current memory context
         unsafe {
-            pg_sys::CurrentMemoryContext = prev_context;
+            pg_sys::YbCurrentMemoryContext = prev_context;
         }
 
         result

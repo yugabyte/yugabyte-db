@@ -70,7 +70,7 @@ public class YbaMetadataComponent implements SupportBundleComponent {
     Files.createDirectories(Paths.get(destDir));
 
     // Gather and save the YBA metadata.
-    supportBundleUtil.gatherAndSaveAllMetadata(customer, destDir, startDate, endDate);
+    supportBundleUtil.gatherAndSaveAllMetadata(customer, universe, destDir, startDate, endDate);
   }
 
   // Collect the metadata in a temp dir and return the size of the directory.
@@ -89,7 +89,7 @@ public class YbaMetadataComponent implements SupportBundleComponent {
     File tmpMetadataDir = Files.createDirectories(Paths.get(destDir)).toFile();
 
     // Gather and save the YBA metadata.
-    supportBundleUtil.gatherAndSaveAllMetadata(customer, destDir, startDate, endDate);
+    supportBundleUtil.gatherAndSaveAllMetadata(customer, universe, destDir, startDate, endDate);
     Map<String, Long> res = new HashMap<>();
     res.put(destDir, FileUtils.sizeOfDirectory(tmpMetadataDir));
     FileUtils.deleteDirectory(tmpMetadataDir);

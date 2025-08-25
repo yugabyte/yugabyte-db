@@ -86,14 +86,14 @@ class TransactionTableState {
     std::lock_guard lock(mutex_);
     if (!initialized_.load() || status_tablets_version_ < new_version) {
       tablets_ = std::move(tablets);
-      has_placement_local_tablets_.store(!tablets_.placement_local_tablets.empty());
+      has_region_local_tablets_.store(!tablets_.region_local_tablets.empty());
       status_tablets_version_ = new_version;
       initialized_.store(true);
     }
   }
 
-  bool HasAnyPlacementLocalStatusTablets() {
-    return has_placement_local_tablets_.load();
+  bool HasAnyRegionLocalStatusTablets() {
+    return has_region_local_tablets_.load();
   }
 
   uint64_t GetStatusTabletsVersion() EXCLUDES(mutex_) {
@@ -134,14 +134,14 @@ class TransactionTableState {
 
   const std::vector<TabletId>& PickTabletList(TransactionLocality locality)
       REQUIRES_SHARED(mutex_) {
-    if (tablets_.placement_local_tablets.empty()) {
+    if (tablets_.region_local_tablets.empty()) {
       return tablets_.global_tablets;
     }
     switch (locality) {
       case TransactionLocality::GLOBAL:
         return tablets_.global_tablets;
       case TransactionLocality::LOCAL:
-        return tablets_.placement_local_tablets;
+        return tablets_.region_local_tablets;
     }
     FATAL_INVALID_ENUM_VALUE(TransactionLocality, locality);
   }
@@ -152,8 +152,8 @@ class TransactionTableState {
   // is assumed to have at least one entry in it if this is true.
   std::atomic<bool> initialized_{false};
 
-  // Set to true if there are any placement local transaction tablets.
-  std::atomic<bool> has_placement_local_tablets_{false};
+  // Set to true if there are any region local transaction tablets.
+  std::atomic<bool> has_region_local_tablets_{false};
 
   // Locks the version/tablet lists. A read lock is acquired when picking
   // tablets, and a write lock is acquired when updating tablet lists.
@@ -359,12 +359,20 @@ class TransactionManager::Impl {
     thread_pool_.Shutdown();
   }
 
-  bool PlacementLocalTransactionsPossible() {
-    return table_state_.HasAnyPlacementLocalStatusTablets();
+  bool RegionLocalTransactionsPossible() {
+    return table_state_.HasAnyRegionLocalStatusTablets();
   }
 
   uint64_t GetLoadedStatusTabletsVersion() {
     return table_state_.GetStatusTabletsVersion();
+  }
+
+  bool IsClosing() {
+    return closed_.load();
+  }
+
+  void SetClosing() {
+    closed_.store(true);
   }
 
  private:
@@ -420,8 +428,8 @@ void TransactionManager::UpdateClock(HybridTime time) {
   impl_->UpdateClock(time);
 }
 
-bool TransactionManager::PlacementLocalTransactionsPossible() {
-  return impl_->PlacementLocalTransactionsPossible();
+bool TransactionManager::RegionLocalTransactionsPossible() {
+  return impl_->RegionLocalTransactionsPossible();
 }
 
 uint64_t TransactionManager::GetLoadedStatusTabletsVersion() {
@@ -430,6 +438,14 @@ uint64_t TransactionManager::GetLoadedStatusTabletsVersion() {
 
 void TransactionManager::Shutdown() {
   impl_->Shutdown();
+}
+
+bool TransactionManager::IsClosing() {
+  return impl_->IsClosing();
+}
+
+void TransactionManager::SetClosing() {
+  impl_->SetClosing();
 }
 
 TransactionManager::TransactionManager(TransactionManager&& rhs) = default;

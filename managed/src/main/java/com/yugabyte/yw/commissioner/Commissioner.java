@@ -23,6 +23,7 @@ import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Backup;
@@ -79,6 +80,8 @@ public class Commissioner {
 
   private final RuntimeConfGetter runtimeConfGetter;
 
+  private final GFlagsValidation gFlagsValidation;
+
   @Inject
   public Commissioner(
       ApplicationLifecycle lifecycle,
@@ -86,13 +89,15 @@ public class Commissioner {
       TaskExecutor taskExecutor,
       TaskQueue taskQueue,
       ProviderEditRestrictionManager providerEditRestrictionManager,
-      RuntimeConfGetter runtimeConfGetter) {
+      RuntimeConfGetter runtimeConfGetter,
+      GFlagsValidation gFlagsValidation) {
     ThreadFactory namedThreadFactory =
         new ThreadFactoryBuilder().setNameFormat("TaskPool-%d").build();
     this.taskExecutor = taskExecutor;
     this.taskQueue = taskQueue;
     this.providerEditRestrictionManager = providerEditRestrictionManager;
     this.runtimeConfGetter = runtimeConfGetter;
+    this.gFlagsValidation = gFlagsValidation;
     this.executor = platformExecutorFactory.createExecutor("commissioner", namedThreadFactory);
     log.info("Started Commissioner TaskPool");
   }
@@ -196,10 +201,25 @@ public class Commissioner {
       // Destroy the task initialization in case of failure.
       taskRunnable.getTask().terminate();
       taskRunnable.updateTaskDetailsOnError(State.Failure, t);
+
+      String redactedTaskParams;
+      try {
+        JsonNode taskParamsJson = Json.toJson(taskParams);
+        JsonNode redactedJson =
+            RedactingService.filterSecretFields(taskParamsJson, RedactionTarget.LOGS);
+        redactedTaskParams = redactedJson.toString();
+      } catch (Exception jsonException) {
+        String taskParamsString = taskParams.toString();
+        redactedTaskParams = RedactingService.redactSensitiveInfoInString(taskParamsString);
+        log.debug(
+            "JSON serialization failed for task params, using string redaction: {}",
+            jsonException.getMessage());
+      }
+
       String msg =
           String.format(
               "Error processing %s task for %s",
-              taskRunnable.getTaskInfo().getTaskType(), taskParams.toString());
+              taskRunnable.getTaskInfo().getTaskType(), redactedTaskParams);
       log.error(msg, t);
       if (t instanceof PlatformServiceException) {
         throw t;
@@ -347,6 +367,11 @@ public class Commissioner {
     if (taskInfo.getTaskParams().has("auditLogConfig")) {
       details.set("auditLogConfig", taskInfo.getTaskParams().get("auditLogConfig"));
     }
+    // Add queryLogConfig from the task details if it is present.
+    if (taskInfo.getTaskParams().has("queryLogConfig")) {
+      details.set("queryLogConfig", taskInfo.getTaskParams().get("queryLogConfig"));
+    }
+
     responseJson.set("details", details);
 
     // Set abortable if eligible.

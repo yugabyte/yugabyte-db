@@ -3582,6 +3582,8 @@ dumpDatabaseConfig(Archive *AH, PQExpBuffer outbuf,
 	PQExpBuffer buf = createPQExpBuffer();
 	PGresult   *res;
 
+	DumpOptions *yb_dopt = AH->dopt;
+
 	/* First collect database-specific options */
 	printfPQExpBuffer(buf, "SELECT unnest(setconfig) FROM pg_db_role_setting "
 					  "WHERE setrole = 0 AND setdatabase = '%u'::oid",
@@ -3592,7 +3594,7 @@ dumpDatabaseConfig(Archive *AH, PQExpBuffer outbuf,
 	for (int i = 0; i < PQntuples(res); i++)
 		makeAlterConfigCommand(conn, PQgetvalue(res, i, 0),
 							   "DATABASE", dbname, NULL, NULL,
-							   outbuf);
+							   yb_dopt->yb_dump_role_checks, outbuf);
 
 	PQclear(res);
 
@@ -3604,11 +3606,17 @@ dumpDatabaseConfig(Archive *AH, PQExpBuffer outbuf,
 
 	res = ExecuteSqlQuery(AH, buf->data, PGRES_TUPLES_OK);
 
+	if (yb_dopt->include_yb_metadata && PQntuples(res) > 0)
+		appendPQExpBufferStr(outbuf, "\\if :use_roles\n");
+
 	for (int i = 0; i < PQntuples(res); i++)
 		makeAlterConfigCommand(conn, PQgetvalue(res, i, 1),
 							   "ROLE", PQgetvalue(res, i, 0),
 							   "DATABASE", dbname,
-							   outbuf);
+							   yb_dopt->yb_dump_role_checks, outbuf);
+
+	if (yb_dopt->include_yb_metadata && PQntuples(res) > 0)
+		appendPQExpBufferStr(outbuf, "\\endif\n");
 
 	PQclear(res);
 
@@ -4116,6 +4124,7 @@ static void
 dumpPolicy(Archive *fout, const PolicyInfo *polinfo)
 {
 	DumpOptions *dopt = fout->dopt;
+	PGconn	   *yb_conn = GetConnection(fout);
 	TableInfo  *tbinfo = polinfo->poltable;
 	PQExpBuffer query;
 	PQExpBuffer delqry;
@@ -4195,6 +4204,27 @@ dumpPolicy(Archive *fout, const PolicyInfo *polinfo)
 		appendPQExpBuffer(query, " WITH CHECK (%s)", polinfo->polwithcheck);
 
 	appendPQExpBufferStr(query, ";\n");
+
+	if (dopt->include_yb_metadata && polinfo->polroles != NULL)
+	{
+		PQExpBuffer yb_source_sql = query;
+		query = createPQExpBuffer();
+		appendPQExpBufferStr(query, "\\if :use_roles\n");
+
+		if (dopt->yb_dump_role_checks)
+		{
+			YBWwrapInRoleChecks(yb_conn, yb_source_sql, "create policy",
+								polinfo->polroles,	/* role1 */
+								NULL,	/* role2 */
+								NULL,	/* role3 */
+								query);
+		}
+		else
+			appendPQExpBufferStr(query, yb_source_sql->data);
+
+		appendPQExpBufferStr(query, "\\endif\n");
+		destroyPQExpBuffer(yb_source_sql);
+	}
 
 	appendPQExpBuffer(delqry, "DROP POLICY %s", fmtId(polinfo->polname));
 	appendPQExpBuffer(delqry, " ON %s;\n", fmtQualifiedDumpable(tbinfo));

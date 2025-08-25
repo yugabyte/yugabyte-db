@@ -528,6 +528,8 @@ class YBClient::Data {
 
   void Shutdown();
 
+  bool Closing();
+
   void DoSetMasterServerProxy(
       CoarseTimePoint deadline, bool skip_resolution, bool wait_for_leader_election);
   Result<server::MasterAddresses> ParseMasterAddresses(const Status& reinit_status);
@@ -627,6 +629,15 @@ class YBClient::Data {
   Status FlushTablesHelper(YBClient* client,
                            const CoarseTimePoint deadline,
                            const master::FlushTablesRequestPB& req);
+
+  Status RetryUntilShutdown(
+    CoarseTimePoint deadline,
+    const std::string& retry_msg,
+    const std::string& timeout_msg,
+    const std::function<Status(CoarseTimePoint, bool*)>& func,
+    const CoarseDuration max_wait = kDefaultMaxRetryWait,
+    const uint32_t max_jitter_ms = CoarseBackoffWaiter::kDefaultMaxJitterMs,
+    const uint32_t init_exponent = CoarseBackoffWaiter::kDefaultInitExponent);
 
   DISALLOW_COPY_AND_ASSIGN(Data);
 };

@@ -249,8 +249,8 @@ func Uninstall(removeData bool) {
 	os.Remove("/usr/bin/" + GoBinaryName)
 }
 
-// Upgrade performs the upgrade procedures common to all services.
-func Upgrade(version string) error {
+// PreUpgrade performs the pre-upgrade procedures common to all services.
+func PreUpgrade(version string) error {
 
 	// Change into the dir we are in so that we can specify paths relative to ourselves
 	// TODO(minor): probably not a good idea in the long run

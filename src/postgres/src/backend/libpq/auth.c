@@ -50,7 +50,7 @@
 #include "pg_yb_utils.h"
 #include "utils/builtins.h"		/* TODO: may not be needed */
 #include "utils/syscache.h"
-#include "yb/yql/pggate/ybc_pggate.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 
 /*----------------------------------------------------------------
  * Global authentication functions

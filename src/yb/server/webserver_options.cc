@@ -35,10 +35,13 @@
 
 #include <string>
 
+#include "yb/rpc/secure_stream.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
 #include "yb/util/path_util.h"
+#include "yb/util/string_case.h"
 
 using std::string;
 
@@ -86,6 +89,15 @@ DEFINE_UNKNOWN_string(webserver_authentication_domain, "",
 DEFINE_UNKNOWN_string(webserver_password_file, "",
     "(Optional) Location of .htpasswd file containing user names and hashed passwords for"
     " debug webserver authentication");
+DEFINE_NON_RUNTIME_string(webserver_ssl_ciphers, "",
+    "The set of allowed cipher suites that clients may connect with when using a secure connection."
+    "Must be listed in the OpenSSL format."
+    "When not provided, falls back to the value of FLAGS_cipher_list.");
+DEFINE_NON_RUNTIME_string(webserver_ssl_min_version, "tlsv1.2",
+    "The minimum protocol version that the webserver will allow clients to use when using a secure "
+    "connection i.e. when SSL support is enabled. "
+    "Accepted values are 'tlsv1', 'tlsv1.1' and 'tlsv1.2'.");
+DEFINE_validator(webserver_ssl_min_version, FLAG_IN_SET_VALIDATOR("tlsv1", "tlsv1.1", "tlsv1.2"));
 
 DEFINE_UNKNOWN_int32(webserver_num_worker_threads, 50,
              "Maximum number of threads to start for handling web server requests");
@@ -112,9 +124,20 @@ WebserverOptions::WebserverOptions()
     private_key_password(FLAGS_webserver_private_key_password),
     authentication_domain(FLAGS_webserver_authentication_domain),
     password_file(FLAGS_webserver_password_file),
+    ssl_min_version(FLAGS_webserver_ssl_min_version),
     num_worker_threads(FLAGS_webserver_num_worker_threads) {
   doc_root = FLAGS_webserver_doc_root.empty() ?
       GetDefaultDocumentRoot() : FLAGS_webserver_doc_root;
+  if (FLAGS_webserver_ssl_ciphers.empty()) {
+    auto rpc_cipher_list = rpc::GetCipherList();
+    // Convert to OpenSSL format which requires everything in uppercase.
+    if (rpc_cipher_list == "default") {
+      rpc_cipher_list = ToUpperCase(rpc_cipher_list);
+    }
+    ssl_ciphers = rpc_cipher_list;
+  } else {
+    ssl_ciphers = FLAGS_webserver_ssl_ciphers;
+  }
 }
 
 } // namespace yb

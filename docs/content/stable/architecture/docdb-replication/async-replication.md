@@ -3,12 +3,14 @@ title: xCluster
 headerTitle: xCluster replication
 linkTitle: xCluster
 description: xCluster replication between multiple YugabyteDB universes.
-headContent: High throughput asynchronous physical replication
+headContent: High-throughput asynchronous physical replication
 menu:
   stable:
     identifier: architecture-docdb-async-replication
     parent: architecture-docdb-replication
     weight: 300
+rightNav:
+  hideH4: true
 type: docs
 ---
 
@@ -86,7 +88,7 @@ _xCluster safe time_ advances as replication proceeds but lags behind real-time 
 
 ![Transactional xCluster](/images/deploy/xcluster/xcluster-transactional.png)
 
-If the source universe fails, we can discard all incomplete information in the target universe by rewinding it to the latest _xCluster safe time_ (1:59:56 PM in the example) using YugabyteDB's [Point-in-Time Recovery (PITR)](../../../manage/backup-restore/point-in-time-recovery/) feature. The result will be a consistent database that includes only the transactions from the source universe that committed at or before the _xCluster safe time_. Unlike with non-transactional replication, there is no need to handle torn transactions.
+If the source universe fails, we can discard all incomplete information in the target universe by rewinding it to the latest _xCluster safe time_ (1:59:56 PM in the example) using [Point-in-Time Recovery (PITR)](../../../manage/backup-restore/point-in-time-recovery/). The result will be a consistent database that includes only the transactions from the source universe that committed at or before the _xCluster safe time_. Unlike with non-transactional replication, there is no need to handle torn transactions.
 
 Target universe read-only transactions run at serializable isolation level on a single consistent snapshot as of the _xCluster safe time_.
 
@@ -234,23 +236,13 @@ The following deployment scenarios are not yet supported:
 
 ## Limitations
 
-The following limitations apply to all xCluster modes and deployment scenarios:
+### YSQL
+
+- `CREATE TABLE AS` and `SELECT INTO` DDL statements are not supported. You can work around this by breaking the DDL into a `CREATE TABLE` followed by `INSERT SELECT`.
 
 - Materialized views
 
   [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) are not replicated by xCluster. When setting up replication for a database, materialized views need to be excluded. You can create them on the target universe after the replication is set up. When refreshing, make sure to refresh on both sides.
-
-- Truncate
-
-  The `TRUNCATE` command is not supported. See {{<issue 23958>}} for supporting it in automatic mode.
-  
-- Backups
-
-  Backups are supported on both universes. However, for backups on target clusters, if there is an active workload, the consistency of the latest data is not guaranteed. This applies even to transactional modes. Therefore, it is recommended to take backups on the source universe only.
-
-- Change Data Capture
-
-  CDC [gRPC protocol](../change-data-capture) and [PostgreSQL protocol](../cdc-logical-replication) are not supported on the target universe. It is recommended to set up CDC on the source universe only.
 
 - Modifications of Array Types
 
@@ -259,40 +251,23 @@ The following limitations apply to all xCluster modes and deployment scenarios:
 - Row types
 
   Table columns whose types involve row types are not supported.
-  
-Limitations specific to each scenario and mode are listed below:
 
-### Non-transactional
-
-- Consistency issues
-
-  Refer to [Inconsistencies affecting transactions](#inconsistencies-affecting-transactions) for details on how non-transactional mode can lead to inconsistencies.
-
-- Table rewrites
-
-  `ALTER TABLE` DDLs that involve table rewrites (see [Alter table operations that involve a table rewrite](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-table-operations-that-involve-a-table-rewrite)) may not be performed while replication is running; you will need to drop replication, perform those DDL(s) on the source universe, then create replication again.
-
-- Composite, enum, and range (array) types
-
-  While xCluster is active, user-defined composite, enum, and range types and arrays of those types should not be created, altered, or dropped. Create these types before xCluster is set up. If you need to modify these types, you must first drop xCluster replication, make the necessary changes, and then re-enable xCluster via [bootstrap](#replication-bootstrapping).
-
-#### Multi-master asynchronous replication
-
-- Triggers
-
-  Because xCluster replication operates at the DocDB layer, it bypasses the query layer. So, only the database triggers on the source universe are fired, and the ones on the target side are not fired. It is recommended to avoid using the same triggers on both universes to avoid any confusion.
-
-- Indexes and Constraints
-
-  In active-active multi-master setups, unique constraints cannot be guaranteed. When conflicting writes to the same key occur from separate universes simultaneously, they can violate unique constraints or result in inconsistent indexes. For example, two conflicting writes might result in both rows being present in the main table, but only one row in the index.
-
-  Note that if you attempt to insert the same row on both universes at the same time to a table that does not have a primary key, you will end up with two rows with the same data. This is the expected PostgreSQL behavior — tables without primary keys can have multiple rows with the same data.
-
-- Sequences and Serial columns
-
-  Sequence data is not replicated by non-transactional xCluster. Serial columns use sequences internally. Avoid serial columns in primary keys, as both universes would generate the same sequence numbers, resulting in conflicting rows. It is recommended to use UUIDs instead.
-
-### Transactional
+<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
+<li>
+    <a href="#ysql-transactional" class="nav-link active" id="ysql-transactional-tab" data-bs-toggle="tab"
+    role="tab" aria-controls="ysql-transactional" aria-selected="true">
+    Transactional
+    </a>
+</li>
+<li>
+    <a href="#ysql-non-transactional" class="nav-link" id="ysql-non-transactional-tab" data-bs-toggle="tab"
+    role="tab" aria-controls="ysql-non-transactional" aria-selected="false">
+    Non-Transactional
+    </a>
+</li>
+</ul>
+<div class="tab-content">
+<div id="ysql-transactional" class="tab-pane fade show active" role="tabpanel" aria-labelledby="ysql-transactional-tab">
 
 - By default, no writes are allowed in the target universe.
 
@@ -308,34 +283,126 @@ Limitations specific to each scenario and mode are listed below:
 Improper use can compromise replication consistency and lead to data divergence. Use this setting only when absolutely necessary and with a clear understanding of its implications.
   {{< /warning >}}
 
-- YCQL is not yet supported.
-- In Semi-automatic and Manual modes, schema changes are not automatically replicated. They must be manually applied to both source and target universes. Refer to [DDLs in semi-automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/#making-ddl-changes) and [DDLs in manual mode](../../../deploy/multi-dc/async-replication/async-transactional-tables) for more information.
+- Backups
+
+  Take backups on the source universe. Backups against the target universe are not transactionally consistent.
+
+- CDC
+
+  For moving data out of YugabyteDB, set up CDC on the xCluster source universe. CDC on the xCluster target universe is not supported.
 
 #### Transactional Automatic mode
 
-- Global objects like Users, Roles, and Tablespaces are not replicated. These objects must be manually created on the standby universe.
+- Global objects like Users, Roles, and Tablespaces are not replicated. These objects must be manually managed on the standby universe.
 - DDLs related to Materialized Views (`CREATE`, `DROP`, and `REFRESH`) are not replicated. You can manually run these on both universes by setting the YSQL configuration parameter `yb_xcluster_ddl_replication.enable_manual_ddl_replication` to `true`.
-- `CREATE TABLE AS` and `SELECT INTO` DDL statements are not supported. You can work around this by breaking the DDL into a `CREATE TABLE` followed by `INSERT SELECT`.
 - `ALTER COLUMN TYPE`, `ADD COLUMN ... SERIAL`, and `ALTER LARGE OBJECT` DDLs are not supported.
 - DDLs related to `PUBLICATION` and `SUBSCRIPTION` are not supported.
 - Replication of colocated tables is not yet supported.  See {{<issue 25926>}}.
 - Rewinding of sequences (for example, restarting a sequence so it will repeat values) is discouraged because it may not be fully rolled back during unplanned failovers.
-- While Automatic mode is active, you can only `CREATE`, `DROP`, or `ALTER` the following extensions: `file_fdw`, `fuzzystrmatch`, `pgcrypto`, `postgres_fdw`, `sslinfo`, `uuid-ossp`, `hypopg`, `pg_stat_monitor`, and `pgaudit`. All other extensions must be created _before_ setting up automatic mode.
+- The `TRUNCATE` command is only supported in v2025.1.1 and later.
+- While Automatic mode is active, you can only `CREATE`, `DROP`, or `ALTER` the following extensions: file_fdw, fuzzystrmatch, pgcrypto, postgres_fdw, sslinfo, uuid-ossp, hypopg, pg_stat_monitor, and pgaudit. All other extensions must be created _before_ setting up automatic mode.
+- If using pg_partman on v2025.1.0 or earlier, enable the cron job on the source cluster only. After switchover or failover, move the cron job to the new primary. Refer to pg_partman [Limitations](../../../explore/ysql-language-features/pg-extensions/extension-pgpartman/#xcluster).
 
 #### Transactional Semi-Automatic and Manual mode
 
-- All DDL changes must be manually applied to both source and target universes. For more information, refer to [DDLs in semi-automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/#making-ddl-changes) and [DDLs in manual mode](../../../deploy/multi-dc/async-replication/async-transactional-tables).
-  - Exception: DDLs related to PUBLICATION and SUBSCRIPTION should only be used on the source universe.
+- Schema changes are not automatically replicated. All DDL changes must be manually applied to both source and target universes. For more information, refer to [DDLs in semi-automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/#making-ddl-changes) and [DDLs in manual mode](../../../deploy/multi-dc/async-replication/async-transactional-tables).
+
+  An exception are DDLs related to PUBLICATION and SUBSCRIPTION, which should only be used on the source universe.
 
 - `ALTER TABLE` DDLs that involve table rewrites (see [Alter table operations that involve a table rewrite](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-table-operations-that-involve-a-table-rewrite)) may not be performed while replication is running; you will need to drop replication, perform those DDL(s) on the source universe, then create replication again.
 
-- `CREATE TABLE AS` and `SELECT INTO` DDL statements are not supported. You can work around this by breaking the DDL into a `CREATE TABLE` (done on both universes) followed by `INSERT SELECT` (done only on the source universe).
+- The `TRUNCATE` command is not supported.
 
 - Sequence data is not replicated by these modes. Serial columns use sequences internally. Avoid serial columns in primary keys, as both universes would generate the same sequence numbers, resulting in conflicting rows. It is recommended to use UUIDs instead.
 
 - While xCluster is active, user-defined composite, enum, and range types and arrays of those types should not be created, altered, or dropped. Create these types before xCluster is set up. If you need to modify these types, you must first drop xCluster replication, make the necessary changes, and then re-enable xCluster via [bootstrap](#replication-bootstrapping).
 
+- pg_partman requires additional setup in Semi-Automatic mode. Refer to pg_partman [Limitations](../../../explore/ysql-language-features/pg-extensions/extension-pgpartman/#xcluster).
+
+  pg_partman is not supported in Manual mode.
+
+</div>
+
+<div id="ysql-non-transactional" class="tab-pane fade" role="tabpanel" aria-labelledby="ysql-non-transactional-tab">
+
+- Consistency issues
+
+  Refer to [Inconsistencies affecting transactions](#inconsistencies-affecting-transactions) for details on how non-transactional mode can lead to inconsistencies.
+
+- Table rewrites
+
+  `ALTER TABLE` DDLs that involve table rewrites (see [Alter table operations that involve a table rewrite](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-table-operations-that-involve-a-table-rewrite)) may not be performed while replication is running; you will need to drop replication, perform those DDL(s) on the source universe, then create replication again.
+
+- Composite, enum, and range (array) types
+
+  While xCluster is active, user-defined composite, enum, and range types and arrays of those types should not be created, altered, or dropped. Create these types before xCluster is set up. If you need to modify these types, you must first drop xCluster replication, make the necessary changes, and then re-enable xCluster via [bootstrap](#replication-bootstrapping).
+
+- The `TRUNCATE` command is not supported.
+
+- pg_partman
+
+    pg_partman is supported but not recommended. Refer to pg_partman [Limitations](../../../explore/ysql-language-features/pg-extensions/extension-pgpartman/#xcluster).
+
+#### Uni-directional
+
+- Backups
+
+  Take backups on the source universe. Backups against the target universe are not transactionally consistent.
+
+- CDC
+
+  For moving data out of YugabyteDB, set up CDC on the xCluster source universe. CDC on the xCluster target universe is not supported.
+
+#### Bi-directional
+
+- Triggers
+
+  Because xCluster replication operates at the DocDB layer, it bypasses the query layer. So, only the database triggers on the source universe are fired, and the ones on the target side are not fired. It is recommended to avoid using the same triggers on both universes to avoid any confusion.
+
+- Indexes and Constraints
+
+  In active-active multi-master setups, unique constraints cannot be guaranteed. When conflicting writes to the same key occur from separate universes simultaneously, they can violate unique constraints or result in inconsistent indexes. For example, two conflicting writes might result in both rows being present in the main table, but only one row in the index.
+
+  Note that if you attempt to insert the same row on both universes at the same time to a table that does not have a primary key, you will end up with two rows with the same data. This is the expected PostgreSQL behavior — tables without primary keys can have multiple rows with the same data.
+
+- Sequences and Serial columns
+
+  Sequence data is not replicated by non-transactional xCluster. Serial columns use sequences internally. Avoid serial columns in primary keys, as both universes would generate the same sequence numbers, resulting in conflicting rows. It is recommended to use UUIDs instead.
+
+- Backups
+
+  Stop your workload on one side, wait for draining to complete, and take a backup on the still-running side.
+
+- CDC
+
+  CDC is not supported.
+
+</div>
+
+</div>
+
+### YCQL
+
+#### Transactional
+
+YCQL is not currently supported.
+
+#### Non-Transactional
+
+##### Uni-directional
+
+- Backups
+
+  Take backups on the source universe. Backups against the target universe are not transactionally consistent.
+
+##### Bi-directional
+
+- Backups
+
+  Stop your workload on one side, wait for draining to complete, and take a backup on the still-running side.
+
 ### Kubernetes
 
-- xCluster replication can be set up with Kubernetes-deployed universes. However, the source and target must be able to communicate by directly referencing the pods in the other universe. In practice, this either means that the two universes must be part of the same Kubernetes cluster or that two Kubernetes clusters must have DNS and routing properly set up amongst themselves.
-- Having two YugabyteDB universes, each in their own standalone Kubernetes cluster, communicating with each other via a load balancer, is not currently supported. See [#2422](https://github.com/yugabyte/yugabyte-db/issues/2422) for details.
+xCluster replication can be set up with Kubernetes-deployed universes. However, the source and target must be able to communicate by directly referencing the pods in the other universe. In practice, this either means that the two universes must be part of the same Kubernetes cluster or that two Kubernetes clusters must have DNS and routing properly set up amongst themselves.
+
+Having two YugabyteDB universes, each in their own standalone Kubernetes cluster, communicating with each other via a load balancer, is not currently supported. See [#2422](https://github.com/yugabyte/yugabyte-db/issues/2422) for details.

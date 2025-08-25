@@ -105,7 +105,7 @@ class BruteforceSearch : public AlgorithmInterface<dist_t, label_t> {
 
 
     std::priority_queue<std::pair<dist_t, label_t>>
-    searchKnn(const void *query_data, size_t k, BaseFilterFunctor<label_t>* isIdAllowed = nullptr) const {
+    searchKnn(const void *query_data, size_t k, BaseFilterFunctor<label_t>* isIdAllowed = nullptr, size_t ef = 0) const {
         assert(k <= cur_element_count);
         std::priority_queue<std::pair<dist_t, label_t >> topResults;
         if (cur_element_count == 0) return topResults;

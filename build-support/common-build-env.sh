@@ -287,6 +287,8 @@ declare -i -r MAX_ATTEMPTS_TO_GET_BUILD_WORKER=10
 
 readonly YB_VIRTUALENV_BASENAME=venv
 
+readonly YB_LLVM_MAJOR_VERSION_FOR_GCC=19
+
 # -------------------------------------------------------------------------------------------------
 # Maven related constants
 # -------------------------------------------------------------------------------------------------
@@ -1310,8 +1312,12 @@ download_toolchain() {
   fi
   if [[ -z ${YB_LLVM_TOOLCHAIN_URL:-} &&
         -z ${YB_LLVM_TOOLCHAIN_DIR:-} &&
-        ${YB_COMPILER_TYPE:-} =~ ^clang[0-9]+$ ]]; then
-    local llvm_major_version=${YB_COMPILER_TYPE#clang}
+        ${YB_COMPILER_TYPE:-} != "clang" ]]; then
+    if [[ ${YB_COMPILER_TYPE:-} =~ ^clang([0-9]+)$ ]]; then
+      local llvm_major_version=${YB_COMPILER_TYPE#clang}
+    else
+      local llvm_major_version=${YB_LLVM_MAJOR_VERSION_FOR_GCC}
+    fi
     if [[ ${build_type} =~ ^(asan|tsan)$ ]]; then
       # For ASAN and possibly TSAN builds, we need to use the same LLVM toolchain that was used
       # to build the third-party dependencies, so that the compiler-rt libraries match.

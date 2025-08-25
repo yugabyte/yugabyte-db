@@ -14,17 +14,18 @@ const (
 )
 
 type State struct {
-	Version         string                   `json:"version"`
-	RootInstall     string                   `json:"root_install"`
-	Username        string                   `json:"username"`
-	Initialized     bool                     `json:"initialized"`
-	Postgres        PostgresState            `json:"postgres"`
-	Ybdb            YbdbState                `json:"ybdb"`
-	CurrentStatus   status                   `json:"current_status"`
-	Replicated      ReplicatedMigrationState `json:"replicated_migration"`
-	Config          Config                   `json:"config"`
-	Services        Services                 `json:"services"`
-	_internalFields internalFields
+	Version             string                   `json:"version"`
+	RootInstall         string                   `json:"root_install"`
+	Username            string                   `json:"username"`
+	Initialized         bool                     `json:"initialized"`
+	Postgres            PostgresState            `json:"postgres"`
+	Ybdb                YbdbState                `json:"ybdb"`
+	CurrentStatus       status                   `json:"current_status"`
+	Replicated          ReplicatedMigrationState `json:"replicated_migration"`
+	Config              Config                   `json:"config"`
+	Services            Services                 `json:"services"`
+	RestoreDBOnRollback bool                     `json:"restore_db_on_rollback"`
+	_internalFields     internalFields
 }
 
 type PostgresState struct {

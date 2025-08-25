@@ -794,6 +794,8 @@ Status XClusterDDLQueueHandler::ProcessPendingBatchIfExists() {
   //   could get a different apply_safe_time and lose DDLs).
   // If we have an incomplete batch, we will load it now, but skip processing it until we get a new
   //   apply_safe_time (from a future GetChanges call).
+  RETURN_NOT_OK(CheckForFailedQuery());
+
   RETURN_NOT_OK(InitPGConnection());
   RETURN_NOT_OK(ReloadSafeTimeBatchFromTableIfRequired());
   return ExecuteCommittedDDLs();

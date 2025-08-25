@@ -350,3 +350,6 @@ ALTER TYPE underflow ADD VALUE 'F' BEFORE 'G';
 ALTER TYPE underflow ADD VALUE 'E' BEFORE 'F';
 ALTER TYPE underflow ADD VALUE 'D' BEFORE 'E';
 ALTER TYPE underflow ADD VALUE 'C' BEFORE 'D';
+
+-- Test policy for role
+CREATE POLICY p4 ON rls_public FOR UPDATE TO rls_user USING ((v = CURRENT_USER));

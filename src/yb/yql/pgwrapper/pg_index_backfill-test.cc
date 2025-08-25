@@ -91,8 +91,10 @@ class PgIndexBackfillTest : public LibPqTestBase, public ::testing::WithParamInt
       options->extra_master_flags.push_back("--enable_ysql_operation_lease=true");
 
       options->extra_tserver_flags.push_back(
-          "--allowed_preview_flags_csv=enable_object_locking_for_table_locks");
+          Format("--allowed_preview_flags_csv=$0,$1",
+                 "enable_object_locking_for_table_locks", "ysql_yb_ddl_transaction_block_enabled"));
       options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=true");
+      options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
       options->extra_tserver_flags.push_back("--enable_ysql_operation_lease=true");
       options->extra_tserver_flags.push_back("--TEST_tserver_enable_ysql_lease_refresh=true");
     }

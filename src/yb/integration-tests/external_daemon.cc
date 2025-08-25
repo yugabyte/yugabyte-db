@@ -510,7 +510,9 @@ void ExternalDaemon::Shutdown(SafeShutdown safe_shutdown, RequireExitCode0 requi
 
     if (IsProcessAlive(require_exit_code_0)) {
       LOG_WITH_PREFIX(INFO) << "Killing " << process_name_and_pid << " with SIGKILL";
-      sigkill_used_for_shutdown_ = true;
+      if (safe_shutdown) {
+        sigkill_used_for_shutdown_ = true;
+      }
       WARN_NOT_OK(process_->Kill(SIGKILL), "Killing process failed");
     }
   }

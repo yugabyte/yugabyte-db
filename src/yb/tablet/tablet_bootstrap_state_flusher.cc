@@ -174,11 +174,13 @@ Result<OpId> TabletBootstrapStateFlusher::CopyBootstrapStateTo(const std::string
               "oShould succeed to set state if old_state=kFlushIdle");
     WaitForFlushIdleOrShutdown();
   }
-  auto se = ScopeExit([this] {
-    SetIdleAndNotifyAll();
-  });
-  TEST_PAUSE_IF_FLAG(TEST_pause_before_copying_bootstrap_state);
-  RETURN_NOT_OK(bootstrap_state_manager_->CopyTo(dest_path));
+  {
+    auto se = ScopeExit([this] {
+      SetIdleAndNotifyAll();
+    });
+    TEST_PAUSE_IF_FLAG(TEST_pause_before_copying_bootstrap_state);
+    RETURN_NOT_OK(bootstrap_state_manager_->CopyTo(dest_path));
+  }
   return raft_consensus_->GetLastFlushedOpIdInRetryableRequests();
 }
 

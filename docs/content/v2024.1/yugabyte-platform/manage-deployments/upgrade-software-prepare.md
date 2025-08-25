@@ -2,7 +2,7 @@
 title: Prepare to upgrade universes with a new version of YugabyteDB
 headerTitle: Prepare to upgrade a universe
 linkTitle: Prepare to upgrade
-description: Use YugabyteDB Anywhere to upgrade the YugabyteDB software on universes.
+description: Review changes that may affect your automation when upgrading universes.
 headcontent: Review changes that may affect your automation
 menu:
   v2024.1_yugabyte-platform:

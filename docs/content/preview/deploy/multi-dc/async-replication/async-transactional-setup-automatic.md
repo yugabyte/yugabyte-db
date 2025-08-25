@@ -39,8 +39,7 @@ To use automatic-mode transactional xCluster replication, both the Primary and S
 
 {{<tags/feature/ea idea="153">}}Automatic transactional xCluster replication handles all aspects of replication for both data and schema changes.
 
-In particular, DDL changes made to the Primary universe are
-automatically replicated to the Standby universe.
+In particular, DDL changes made to the Primary universe are automatically replicated to the Standby universe.
 
 {{< warning title="Warning" >}}
 

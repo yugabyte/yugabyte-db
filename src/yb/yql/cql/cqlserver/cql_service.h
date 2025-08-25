@@ -199,6 +199,8 @@ class CQLServiceImpl : public CQLServerServiceIf,
   // Mutex that protects access to processors_.
   std::mutex processors_mutex_;
 
+  bool processors_closed_ = false;
+
   // Prepared statements cache.
   CQLStatementMap prepared_stmts_map_;
 

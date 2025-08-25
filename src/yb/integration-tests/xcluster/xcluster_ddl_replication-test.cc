@@ -3247,4 +3247,28 @@ TEST_F(XClusterDDLReplicationTest, DDLsOnTarget) {
   }
 }
 
+// Make sure we can run ANALYZE on both clusters.
+TEST_F(XClusterDDLReplicationTest, Analyze) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE tbl1(a int)"));
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO tbl1 SELECT i FROM generate_series(1, 10) as i"));
+  ASSERT_OK(
+      producer_conn_->Execute("INSERT INTO tbl1 SELECT 100 FROM generate_series(1, 10) as i"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  auto perform_analyze = [](pgwrapper::PGConn& conn) -> Result<std::string> {
+    RETURN_NOT_OK(conn.Execute("ANALYZE tbl1"));
+    return conn.FetchAllAsString(
+        "SELECT attname, avg_width, most_common_vals::text, most_common_freqs::text, "
+        "histogram_bounds::text FROM pg_catalog.pg_stats WHERE tablename = 'tbl1'");
+  };
+
+  auto producer_data = ASSERT_RESULT(perform_analyze(*producer_conn_));
+  ASSERT_EQ(producer_data, "a, 4, {100}, {0.5}, {1,2,3,4,5,6,7,8,9,10}");
+  auto consumer_data = ASSERT_RESULT(perform_analyze(*consumer_conn_));
+
+  ASSERT_EQ(consumer_data, producer_data);
+}
+
 }  // namespace yb

@@ -72,12 +72,12 @@ public class YSQLQueryLogConfig {
       accessMode = READ_WRITE)
   private boolean logDisconnections = false;
 
-  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2024.1.1.0")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2025.2.1.0")
   @ApiModelProperty(
       value =
           "YbaApi Internal. Log line prefix. This would be applied to both audit and query logs.",
       accessMode = READ_WRITE)
-  private String logLinePrefix = "%m :%r :%u @ %d :[%p] : ";
+  private String logLinePrefix;
 
   @NotNull
   @ApiModelProperty(
@@ -85,7 +85,7 @@ public class YSQLQueryLogConfig {
           "Log min duration statement, causes the duration of each completed statement to be logged"
               + " if the statement ran for at least the specified amount of time.",
       accessMode = READ_WRITE)
-  private int logMinDurationStatement = -1;
+  private Integer logMinDurationStatement = -1;
 
   public enum YSQlLogMinErrorStatement {
     ERROR

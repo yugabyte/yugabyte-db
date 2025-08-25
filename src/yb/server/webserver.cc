@@ -393,6 +393,18 @@ Status Webserver::Impl::Start() {
     // We already initialize OpenSSL, so no need for Squeasel to do it.
     options.push_back("ssl_global_init");
     options.push_back("no");
+
+    if (opts_.ssl_ciphers.c_str()) {
+      LOG(INFO) << "Webserver: Setting ssl_ciphers to " << opts_.ssl_ciphers;
+      options.push_back("ssl_ciphers");
+      options.push_back(opts_.ssl_ciphers.c_str());
+    }
+
+    if (opts_.ssl_min_version.c_str()) {
+      LOG(INFO) << "Webserver: Setting ssl_min_version to " << opts_.ssl_min_version;
+      options.push_back("ssl_min_version");
+      options.push_back(opts_.ssl_min_version.c_str());
+    }
   }
 
   if (!opts_.authentication_domain.empty()) {

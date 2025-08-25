@@ -584,8 +584,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
           return;
         }
 
-        waiters_.emplace_back(std::bind(
-            &Impl::DoCommit, this, deadline, seal_only, _1, transaction));
+        waiters_.emplace_back(
+            std::bind(&Impl::DoCommit, this, deadline, seal_only, _1, transaction));
         lock.unlock();
         RequestStatusTablet(deadline);
         return;
@@ -1643,9 +1643,12 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       }
       SendAbortToOldStatusTabletIfNeeded(TransactionRpcDeadline(), transaction, old_status_tablet);
     } else {
-      auto send_new_heartbeat = [this, status, promoting](const Status&) {
-        SendHeartbeat(status, metadata_.transaction_id, transaction_->shared_from_this(),
-                      SendHeartbeatToNewTablet(promoting));
+      std::weak_ptr<YBTransaction> weak_transaction = transaction;
+      auto send_new_heartbeat = [this, weak_transaction, status, promoting](const Status&) {
+        if (auto transaction = weak_transaction.lock()) {
+          SendHeartbeat(status, metadata_.transaction_id, transaction,
+                        SendHeartbeatToNewTablet(promoting));
+        }
       };
       if (PREDICT_FALSE(FLAGS_TEST_new_txn_status_initial_heartbeat_delay_ms > 0)) {
         manager_->client()->messenger()->scheduler().Schedule(
@@ -2019,14 +2022,20 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       if (status.IsAborted() || status.IsExpired() || status.IsShutdownInProgress()) {
         // IsAborted/IsShutdownInProgress - Service is shutting down, no reason to retry.
         // IsExpired - Transaction expired.
+        // We want to notify waiters for RUNNING if we are in kPromoting state -- this is heartbeat
+        // to old status tablet during promotion, and SetError will cause the PROMOTED heartbeat to
+        // new status tablet to be skipped if it has not started yet. It's OK even if it actually
+        // has started, since the repeated NotifyWaiters call will do nothing.
         if (transaction_status == TransactionStatus::CREATED ||
-            transaction_status == TransactionStatus::PROMOTED) {
+            transaction_status == TransactionStatus::PROMOTED ||
+            state == TransactionState::kPromoting) {
           NotifyWaiters(status, "Heartbeat", SetReady::kTrue);
         } else {
           SetError(status, "Heartbeat");
         }
         // If state is committed, then we should not cleanup.
-        if (status.IsExpired() && state == TransactionState::kRunning) {
+        if (status.IsExpired() &&
+            (state == TransactionState::kRunning || state == TransactionState::kPromoting)) {
           DoAbortCleanup(transaction, CleanupType::kImmediate);
         }
         return;

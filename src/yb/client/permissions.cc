@@ -91,11 +91,7 @@ PermissionsCache::PermissionsCache(client::YBClient* client,
 }
 
 PermissionsCache::~PermissionsCache() {
-  if (pool_) {
-    scheduler_->Shutdown();
-    pool_->Shutdown();
-    pool_->Join();
-  }
+  Shutdown();
 }
 
 bool PermissionsCache::WaitUntilReady(MonoDelta wait_for) {
@@ -200,6 +196,18 @@ Result<bool> PermissionsCache::can_login(const RoleName& role_name) {
     return STATUS(NotFound, "Role not found");
   }
   return it->second.can_login;
+}
+
+void PermissionsCache::Shutdown() {
+  bool expected = false;
+  if (!shutting_down_.compare_exchange_strong(expected, true)) {
+    return;
+  }
+  if (pool_) {
+    scheduler_->Shutdown();
+    pool_->Shutdown();
+    pool_->Join();
+  }
 }
 
 bool PermissionsCache::HasCanonicalResourcePermission(const std::string& canonical_resource,

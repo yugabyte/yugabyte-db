@@ -12,6 +12,8 @@
 
 #include "yb/tserver/xcluster_output_client.h"
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/cdc/cdc_types.h"
 #include "yb/cdc/xcluster_rpc.h"
 
@@ -600,6 +602,14 @@ void XClusterOutputClient::SendNextCDCWriteToTablet(std::unique_ptr<WriteRequest
       },
       UseLocalTserver());
   SetHandleAndSendRpc(handle);
+
+  // If local tserver is used, we will get all the write events, so mark it idle to
+  // avoid duplicate events
+  if (UseLocalTserver()) {
+    SET_WAIT_STATUS(Idle);
+  } else {
+    SET_WAIT_STATUS(YBClient_WaitingOnDocDB);
+  }
 }
 
 void XClusterOutputClient::UpdateSchemaVersionMapping(
@@ -804,6 +814,13 @@ void XClusterOutputClient::HandleNewSchemaPacking(
 
 void XClusterOutputClient::DoWriteCDCRecordDone(
     const Status& status, const WriteResponsePB& response) {
+  ash::WaitStateInfoPtr wait_state;
+  {
+    std::lock_guard l(lock_);
+    wait_state = xcluster_poller_->wait_state();
+  }
+  ADOPT_WAIT_STATE(wait_state);
+  SCOPED_WAIT_STATUS(OnCpu_Active);
   if (!status.ok()) {
     HandleError(status);
     return;

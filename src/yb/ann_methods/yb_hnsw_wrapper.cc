@@ -132,6 +132,7 @@ class YbHnswIndex :
       context = new SearchContextHolder;
     }
     auto se = ScopeExit([this, context] {
+      context->context.search_cache.Release();
       search_contexts_.Push(context);
     });
     VLOG_WITH_FUNC(4)

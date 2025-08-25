@@ -13,7 +13,7 @@ yba ear aws [flags]
 ### Options
 
 ```
-  -n, --name string   [Optional] The name of the configuration for the action. Required for create, delete, describe, update.
+  -n, --name string   [Optional] The name of the configuration for the action. Required for create, delete, describe, update and refresh.
   -h, --help          help for aws
 ```
 

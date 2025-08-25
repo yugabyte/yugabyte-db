@@ -273,11 +273,14 @@ public class Universe extends Model {
     universe.swamperConfigWritten = true;
     LOG.info(
         "Created db entry for universe {} [{}]", universe.getName(), universe.getUniverseUUID());
+    JsonNode redactedUniverseDetailsJson =
+        RedactingService.filterSecretFields(
+            Json.toJson(universe.universeDetails), RedactionTarget.LOGS);
     LOG.debug(
         "Details for universe {} [{}] : [{}].",
         universe.getName(),
         universe.getUniverseUUID(),
-        universe.universeDetailsJson);
+        redactedUniverseDetailsJson);
     // Save the object.
     universe.save();
     return universe;

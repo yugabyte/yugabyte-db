@@ -188,7 +188,7 @@ class PgSupervisor : public ProcessSupervisor {
 
  private:
   Status RegisterPgFlagChangeNotifications() REQUIRES(mtx_);
-  Status RegisterReloadPgConfigCallback(const void* flag_ptr) REQUIRES(mtx_);
+  Status RegisterReloadConfigCallback(const void* flag_ptr) REQUIRES(mtx_);
   void DeregisterPgFlagChangeNotifications() REQUIRES(mtx_);
 
   void PrepareForStop() REQUIRES(mtx_) override;

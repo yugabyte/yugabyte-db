@@ -64,7 +64,6 @@ DEFINE_RUNTIME_uint32(auto_flags_apply_delay_ms, 10000,
 TAG_FLAG(auto_flags_apply_delay_ms, stable);
 TAG_FLAG(auto_flags_apply_delay_ms, advanced);
 
-DECLARE_bool(TEST_running_test);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
 
 namespace yb {

@@ -1232,8 +1232,8 @@ All metrics are per tablet.
 
 #### Histograms
 
-1. `wait_queue_pending_time_waiting` (ms): the amount of time a still-waiting transaction has been in the wait queue
-2. `wait_queue_finished_waiting_latency` (ms): the amount of time an unblocked transaction spent in the wait queue
+1. `wait_queue_pending_time_waiting`: the amount of time in microseconds a still-waiting transaction has been in the wait queue
+2. `wait_queue_finished_waiting_latency`: the amount of time in microseconds an unblocked transaction spent in the wait queue
 3. `wait_queue_blockers_per_waiter`: the number of blockers a waiter is stuck on in the wait queue
 
 #### Counters

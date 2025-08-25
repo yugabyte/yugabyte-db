@@ -84,6 +84,7 @@ class DbServerBase : public server::RpcAndWebServerBase, public pgwrapper::PgWra
   std::mutex transaction_pool_mutex_;
   std::unique_ptr<client::TransactionManager> transaction_manager_holder_;
   std::unique_ptr<client::TransactionPool> transaction_pool_holder_;
+  std::atomic_bool shutting_down_{false};
 };
 
 }  // namespace tserver

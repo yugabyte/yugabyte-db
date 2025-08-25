@@ -22697,6 +22697,7 @@ pub struct BackgroundWorker {
     pub bgw_main_arg: Datum,
     pub bgw_extra: [::core::ffi::c_char; 128usize],
     pub bgw_notify_pid: pid_t,
+    pub bgw_oom_score_adj: [::core::ffi::c_char; 96usize],
 }
 impl Default for BackgroundWorker {
     fn default() -> Self {

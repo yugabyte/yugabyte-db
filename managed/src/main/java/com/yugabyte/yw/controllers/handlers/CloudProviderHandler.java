@@ -38,7 +38,6 @@ import com.yugabyte.yw.common.CloudProviderHelper;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.EditAccessKeyRotationScheduleParams;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
@@ -139,8 +138,8 @@ public class CloudProviderHandler {
         }
       }
     }
-    if (reqProvider.getCloudCode() != kubernetes
-        && !runtimeConfGetter.getGlobalConf(GlobalConfKeys.disableNodeAgentOnProviderCreation)) {
+    if (reqProvider.getCloudCode() != kubernetes) {
+      // TODO This will be removed later after the migrations are done.
       reqProvider.getDetails().setEnableNodeAgent(true);
     }
     Provider provider =

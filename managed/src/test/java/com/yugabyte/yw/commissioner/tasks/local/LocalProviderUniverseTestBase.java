@@ -79,6 +79,7 @@ import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.LocalCloudInfo;
 import com.yugabyte.yw.scheduler.JobScheduler;
@@ -101,6 +102,7 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -123,6 +125,7 @@ import org.junit.Rule;
 import org.junit.rules.TestWatcher;
 import org.junit.rules.Timeout;
 import org.junit.runner.Description;
+import org.yb.CommonNet;
 import org.yb.CommonNet.PlacementInfoPB;
 import org.yb.CommonNet.ReplicationInfoPB;
 import org.yb.CommonTypes.TableType;
@@ -929,6 +932,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
       UniverseDefinitionTaskParams.Cluster primaryCluster = universeDetails.getPrimaryCluster();
       ReplicationInfoPB replicationInfo = config.getReplicationInfo();
       PlacementInfoPB liveReplicas = replicationInfo.getLiveReplicas();
+      verifyAffinitized(primaryCluster, replicationInfo);
       verifyCluster(universe, primaryCluster, liveReplicas);
       verifyMasterAddresses(universe);
       if (!universeDetails.getReadOnlyClusters().isEmpty()) {
@@ -954,6 +958,53 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
       }
     } catch (Exception e) {
       throw new RuntimeException(e);
+    }
+  }
+
+  private void verifyAffinitized(Cluster cluster, ReplicationInfoPB replicationInfo) {
+    if (cluster.placementInfo.hasRankOrdering()) {
+      Map<Integer, List<PlacementInfo.PlacementAZ>> ranks = new HashMap<>();
+      cluster
+          .placementInfo
+          .azStream()
+          .forEach(
+              az -> {
+                List<PlacementInfo.PlacementAZ> lst =
+                    ranks.computeIfAbsent(az.leaderPreference, x -> new ArrayList<>());
+                lst.add(az);
+              });
+      assertEquals(ranks.size(), replicationInfo.getMultiAffinitizedLeadersCount());
+      Iterator<CommonNet.CloudInfoListPB> iterator =
+          replicationInfo.getMultiAffinitizedLeadersList().iterator();
+      ranks.keySet().stream()
+          .sorted()
+          .forEach(
+              ord -> {
+                Set<String> placementAZS =
+                    ranks.get(ord).stream()
+                        .map(az -> AvailabilityZone.getOrBadRequest(az.uuid).getCode())
+                        .collect(Collectors.toSet());
+                CommonNet.CloudInfoListPB lst = iterator.next();
+                Set<String> cloudAZs =
+                    lst.getZonesList().stream()
+                        .map(z -> z.getPlacementZone())
+                        .collect(Collectors.toSet());
+                assertEquals(placementAZS, cloudAZs);
+              });
+    } else {
+      Set<String> affinitized =
+          cluster
+              .placementInfo
+              .azStream()
+              .filter(az -> az.isAffinitized)
+              .map(az -> AvailabilityZone.getOrBadRequest(az.uuid).getCode())
+              .collect(Collectors.toSet());
+      assertEquals(affinitized.size(), replicationInfo.getAffinitizedLeadersCount());
+      Set<String> affinitizedPbs =
+          replicationInfo.getAffinitizedLeadersList().stream()
+              .map(z -> z.getPlacementZone())
+              .collect(Collectors.toSet());
+      assertEquals(affinitized, affinitizedPbs);
     }
   }
 

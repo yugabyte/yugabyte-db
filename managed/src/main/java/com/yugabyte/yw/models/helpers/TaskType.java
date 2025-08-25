@@ -1132,6 +1132,9 @@ public enum TaskType {
   UpdateAndPersistAuditLoggingConfig(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistAuditLoggingConfig.class),
 
+  UpdateAndPersistQueryLoggingConfig(
+      com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistQueryLoggingConfig.class),
+
   UpdateAndPersistMetricsExportConfig(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistMetricsExportConfig.class),
 

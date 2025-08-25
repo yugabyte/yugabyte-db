@@ -18,7 +18,8 @@ allOf:
         type: integer
         format: int32
         default: 100
-      send_batch_timeout:
+      send_batch_timeout_seconds:
         description: Send batch timeout in seconds
-        type: string
-        default: 10s
+        type: integer
+        format: int32
+        default: 10

@@ -26,6 +26,10 @@ If you already have existing data in your tables, follow the bootstrap process d
 
 ## Set up unidirectional replication
 
+{{< tip >}}
+Before setting up xCluster replication, ensure you have reviewed the [Prerequisites](../#prerequisites) and [Best practices](../#best-practices).
+{{< /tip >}}
+
 After you created the required tables, you can set up unidirectional replication as follows:
 
 - Look up the source universe UUID and the table IDs for the two tables and the index table:
@@ -69,6 +73,10 @@ The preceding command contains three table IDs: the first two are YSQL for the b
 If you need to set up bidirectional replication, see instructions provided in [Set up bidirectional replication](#set-up-bidirectional-replication). Otherwise, proceed to [Load data into the source universe](#load-data-into-the-source-universe).
 
 ## Set up bidirectional replication
+
+{{< tip >}}
+Before setting up xCluster replication, ensure you have reviewed the [Prerequisites](../#prerequisites) and [Best practices](../#best-practices).
+{{< /tip >}}
 
 To set up bidirectional replication, repeat the procedure described in [Set up unidirectional replication](#set-up-unidirectional-replication) applying the steps to the target universe. You need to set up each source to consume data from target.
 
@@ -148,46 +156,6 @@ statuses {
   }
 }
 ```
-
-## Set up replication with TLS
-
-The setup process depends on whether the source and target universes have the same certificates.
-
-If both universes use the same certificates, run `yb-admin setup_universe_replication` and include the [`-certs_dir_name`](../../../../admin/yb-admin#syntax) flag. Setting that to the target universe's certificate directory will make replication use those certificates for connecting to both universes.
-
-Consider the following example:
-
-```sh
-./bin/yb-admin --master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
-  --certs_dir_name /home/yugabyte/yugabyte-tls-config \
-  setup_universe_replication e260b8b6-e89f-4505-bb8e-b31f74aa29f3_xClusterSetup1 \
-  127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
-  000030a5000030008000000000004000,000030a5000030008000000000004005,dfef757c415c4b2cacc9315b8acb539a
-```
-
-When universes use different certificates, you need to store the certificates for the source universe on the target universe, as follows:
-
-1. Ensure that `use_node_to_node_encryption` is set to `true` on all [YB-Masters](../../../../reference/configuration/yb-master/#use-node-to-node-encryption) and [YB-TServers](../../../../reference/configuration/yb-tserver/#use-node-to-node-encryption) on both the source and target.
-
-1. For each YB-Master and YB-TServer on the target universe, set the flag `certs_for_cdc_dir` to the parent directory where you want to store all the source universe's certificates for replication.
-
-1. Find the certificate authority file used by the source universe (`ca.crt`). This should be stored in the [`--certs_dir`](../../../../reference/configuration/yb-master/#certs-dir).
-
-1. Copy this file to each node on the target. It needs to be copied to a directory named`<certs_for_cdc_dir>/<source_universe_uuid>`.
-
-    For example, if you previously set `certs_for_cdc_dir=/home/yugabyte/yugabyte_producer_certs`, and the source universe's ID is `00000000-1111-2222-3333-444444444444`, then you would need to copy the certificate file to `/home/yugabyte/yugabyte_producer_certs/00000000-1111-2222-3333-444444444444/ca.crt`.
-
-1. Set up replication using `yb-admin setup_universe_replication`, making sure to also set the `-certs_dir_name` flag to the directory with the target universe's certificates (this should be different from the directory used in the previous steps).
-
-    For example, if you have the target universe's certificates in `/home/yugabyte/yugabyte-tls-config`, then you would run the following:
-
-    ```sh
-    ./bin/yb-admin --master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
-      --certs_dir_name /home/yugabyte/yugabyte-tls-config \
-      setup_universe_replication 00000000-1111-2222-3333-444444444444_xClusterSetup1 \
-      127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
-      000030a5000030008000000000004000,000030a5000030008000000000004005,dfef757c415c4b2cacc9315b8acb539a
-    ```
 
 ## Set up replication with geo-partitioning
 

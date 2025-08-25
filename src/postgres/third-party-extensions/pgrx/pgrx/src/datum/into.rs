@@ -378,7 +378,8 @@ impl<'a> IntoDatum for &'a [u8] {
             // and the `dest` was freshly allocated, thus non-overlapping
             std::ptr::copy_nonoverlapping(
                 self.as_ptr(),
-                addr_of_mut!((*varattrib_4b).va_data).cast::<u8>(),
+                // YB: To avoid DANGEROUS_IMPLICIT_AUTOREFS lint check error with rust >= 1.89.0
+                addr_of_mut!((&mut (*varattrib_4b)).va_data).cast::<u8>(),
                 self.len(),
             );
 

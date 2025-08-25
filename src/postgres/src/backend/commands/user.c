@@ -43,6 +43,7 @@
 #include "catalog/pg_yb_role_profile.h"
 #include "commands/yb_profile.h"
 #include "pg_yb_utils.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 #include <assert.h>
 
 /* Potentially set by pg_upgrade_support functions */

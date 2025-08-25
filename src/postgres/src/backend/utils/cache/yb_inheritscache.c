@@ -42,6 +42,7 @@
 #include "utils/resowner_private.h"
 #include "utils/syscache.h"
 #include "utils/yb_inheritscache.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 
 /*
  *   Parent oid -> list<child tuples>

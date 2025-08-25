@@ -56,7 +56,7 @@
 using namespace std::literals;
 using namespace std::placeholders;
 
-DEFINE_UNKNOWN_int64(rpcs_shutdown_timeout_ms, 15000 * yb::kTimeMultiplier,
+DEFINE_UNKNOWN_int64(rpcs_shutdown_timeout_ms, 30000 * yb::kTimeMultiplier,
              "Timeout for a batch of multiple RPCs invoked in parallel to shutdown.");
 DEFINE_UNKNOWN_int64(rpcs_shutdown_extra_delay_ms, 5000 * yb::kTimeMultiplier,
              "Extra allowed time for a single RPC command to complete after its deadline.");
@@ -88,7 +88,7 @@ RpcCommand::RpcCommand() : trace_(Trace::MaybeGetNewTraceForParent(Trace::Curren
 
 RpcCommand::~RpcCommand() {}
 
-RpcRetrier::RpcRetrier(CoarseTimePoint deadline, Messenger* messenger, ProxyCache *proxy_cache)
+RpcRetrier::RpcRetrier(CoarseTimePoint deadline, Messenger* messenger, ProxyCache* proxy_cache)
     : start_(CoarseMonoClock::now()),
       deadline_(deadline),
       messenger_(messenger),
