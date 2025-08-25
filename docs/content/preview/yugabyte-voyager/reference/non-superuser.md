@@ -1,5 +1,5 @@
 ---
-title: Importing data without a superuser
+title: Import data without a superuser
 linktitle: Non-superuser data import
 description: Importing data without a superuser in YugabyteDB
 menu:
@@ -36,22 +36,22 @@ Superuser access is primarily needed to:
 
 - Any other unknown cases.
 
-{{< note title="For YugabyteDB versions 2025.1 and later" >}}
+{{< note title="YugabyteDB v2025.1 and later" >}}
 
-Starting from YugabyteDB v2025.1 (which is based on PostgreSQL 15) and later, you can grant users the ability to `set session_replication_role` without making them superusers by directly granting the permission:
+Starting from YugabyteDB v2025.1 (which is based on PostgreSQL 15), you can grant users the ability to `set session_replication_role` without making them superusers by directly granting the permission as follows:
 
 ```sql
 GRANT SET ON PARAMETER session_replication_role TO <username>;
 ```
 
-Granting the permission eliminates the need for manual disabling/dropping of foreign keys and triggers. Note that you still require to follow the [Grant required permissions](#steps-to-handle-without-a-superuser) step in addition to granting the `SET ON PARAMETER sessions_replication_role`.
-You may encounter errors during schema import when creating extensions (for example, hstore), which require a superuser because their install scripts perform superuser-only actions (such as ALTER TYPE).
+Granting the permission eliminates the need to manually disable or drop foreign keys and triggers. Note that you still need to follow the [Grant required permissions](#steps-to-handle-without-a-superuser) step in addition to granting the `SET ON PARAMETER sessions_replication_role`.
+You may still encounter errors during schema import when creating extensions (for example, hstore), which require a superuser because their install scripts perform superuser-only actions (such as ALTER TYPE).
 
-If you're using an older version (pre-PostgreSQL 15 / a YugabyteDB version prior to 2025.1), manual intervention is required (like dropping foreign keys / disable triggers and recreate them) as decribed in the following sections.
+If you're using an older version (pre-PostgreSQL 15 and YugabyteDB v2025.1), use the steps decribed in the following sections.
 
 {{< /note >}}
 
-## Steps to handle without a Superuser
+## Import without a Superuser
 
 ### Grant required permissions
 
@@ -68,29 +68,29 @@ GRANT USAGE, CREATE ON SCHEMA <schema_name> TO <username>;
 GRANT yb_extension TO <username>;
 ```
 
-### Possible guardrail errors
+### Guardrail errors
 
 If you face guardrail errors (permission-related) during import, enter "yes" to allow schema/data import to proceed despite the errors. These will be mostly related to `session_replication_role`. As foreign keys and triggers will be handled manually, you can safely ignore these errors.
 
-### Possible import schema errors
+### Import schema errors
 
 In complex cases, schema import may fail because some objects can only be created by a superuser. This can happen on both older and newer YugabyteDB versions (including v2025.1 and later). For example, installing extensions such as hstore may fail as their install scripts include _superuser-only_ operations (like ALTER TYPE) or other catalog-level actions.
 
-In such cases,
+In such cases, do the following:
 
 - Run the import schema command with the `--continue-on-error` flag.
 - All failed SQL statements will be collected in `<export-dir>/schema/failed.sql`.
 - Review and execute these failed statements manually on the target YugabyteDB using a superuser (or pre-create the required extensions as admin before running import schema).
 
-### Possible import data errors
+### Import data errors
 
 During data import, foreign keys and triggers can cause failures or significantly slow performance because they enforce referential integrity and execute additional logic when rows are being inserted.
 
-To mitigate the failures, these triggers should be temporarily disabled before running the import and restored afterward.
+To mitigate the failures, temporarily disable these triggers before running the import, and restore them afterwards.
 
 Do the following:
 
-1. Disable triggers:
+1. Disable triggers as follows:
 
     ```sql
     DO $$
@@ -108,15 +108,15 @@ Do the following:
     END $$;
     ```
 
-1. Drop foreign keys:
+1. Drop foreign keys.
 
     Manually drop all foreign keys on the target YugabyteDB database before starting the import. See [Extract, drop, and recreate foreign keys](#extract-drop-and-recreate-foreign-keys) for details.
 
-1. Run import data:
+1. Run import data.
 
-    After triggers have been disabled and foreign keys dropped, run import data to load the records without constraint checks interfering.
+    After disabling triggers and dropping foreign keys, run import data to load the records without constraint checks interfering.
 
-1. Re-enable triggers:
+1. Re-enable triggers as follows:
 
     ```sql
     DO $$
@@ -134,20 +134,19 @@ Do the following:
     END $$;
     ```
 
-1. Recreate foreign keys:
+1. Recreate foreign keys.
 
    Reapply the original foreign key constraints after import. See [Extract, drop, and recreate foreign keys](#extract-drop-and-recreate-foreign-keys) on how to reapply them.
 
 ## Extract, drop, and recreate foreign keys
 
-This section provides detailed instructions to extract foreign key constraints from a pg_dump file, generate drop statements, and recreate them post-import.
+This section describes how to extract foreign key constraints from a pg_dump file, generate drop statements, and recreate them post-import.
 
 1. Extract foreign key statements.
 
-   The statements are extracted from the schema dump created after export schema.
+   You extract the statements from the schema dump created after export schema.
 
     ```sh
-
     awk '
     /^ALTER TABLE/ && /ADD CONSTRAINT/ && /FOREIGN KEY/ && /;/ {
         print
@@ -168,7 +167,7 @@ This section provides detailed instructions to extract foreign key constraints f
     ' filtered_schema.sql > drop_fks.sql
     ```
 
-    Run `drop_fks.sql` on the target YugabyteDB database to drop all foreign keys.
+1. Run `drop_fks.sql` on the target YugabyteDB database to drop all foreign keys.
 
 1. Recreate foreign key constraints.
 

@@ -2,7 +2,7 @@
 title: PostgreSQL migration permissions grant script
 linktitle: pg-grant-permissions.sql
 description: Usage, actions, and key considerations for the `pg_grant_permissions.sql` script.
-headcontent: Usage, actions, and key considerations for the `pg_grant_permissions.sql` script.
+headcontent: How to use the `pg_grant_permissions.sql` script
 menu:
   preview_yugabyte-voyager:
     identifier: pg-grant-perm
@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-The `pg_grant_permissions.sql` script is used to configure a PostgreSQL database user (typically ybvoyager) with the appropriate permissions required for migrations, both offline and live. The script ensures that the user has the necessary access to schemas, tables, sequences, and replication settings.
+Use the `pg_grant_permissions.sql` script to configure a PostgreSQL database user (typically ybvoyager) with the appropriate permissions required for migrations, both offline and live. The script ensures that the user has the necessary access to schemas, tables, sequences, and replication settings.
 
 ## How to use
 
@@ -41,7 +41,7 @@ psql -h <host> -d <database> -U <username> \
 | `<replication_group>` | Replication group name. Required only for live migration. |
 | `<path_to_script>` | Path to the script file. |
 
-### Example
+### Examples
 
 ```sql
 psql -h localhost -d mydb -U admin \
@@ -75,7 +75,7 @@ psql -h myhost -d mydb -U admin \
   -f pg_grant_permissions.sql
 ```
 
-**Live Migration with fall-back and replication group**
+**Live migration with fall-back and replication group**
 
 ```sql
 psql -h myhost -d mydb -U admin \
@@ -103,7 +103,9 @@ The different actions that the script can perform are described as follows.
 - Grants SELECT on all tables and sequences across schemas.
 - Grants `pg_read_all_stats` role to access `pg_stat_statements`.
 
-### Live migration specific actions (if enabled)
+### Live migration actions
+
+If live migration is enabled, the script performs the following actions.
 
 **Replica identity changes**
 
@@ -132,7 +134,9 @@ When prompted, you choose one of two strategies:
 
 Grants CREATE privilege on the database to `voyager_user`.
 
-### Live migration with fall-back actions (if enabled)
+### Live migration with fall-back actions
+
+If live migration with fall-back is enabled, the script performs the following actions:
 
 - Grants additional INSERT, UPDATE, DELETE on tables.
 - Grants USAGE, UPDATE on sequences.
@@ -152,6 +156,6 @@ Grants CREATE privilege on the database to `voyager_user`.
 
   - Direct grants may be simpler for smaller migrations.
 
-- Live migrations with fall-back option require additional privileges, which the script applies.
+- Live migration with fall-back requires additional privileges, which the script applies.
 
-- On PostgreSQL version 15 or later, `session_replication_role` privileges are explicitly granted in the case of Live migrations with fall-back option.
+- On PostgreSQL 15 or later, `session_replication_role` privileges are explicitly granted in the case of live migration with fall-back.
