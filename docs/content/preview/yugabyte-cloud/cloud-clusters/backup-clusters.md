@@ -45,7 +45,7 @@ To review previous backups, click **Backup**. To review previous restores, click
 
 Backups are located in cloud storage of the provider where the cluster is deployed. The storage is located is the same region as the cluster. For example, for a cluster deployed in AWS and located in us-east-2, backups are stored in an S3 bucket in us-east-2.
 
-For [Replicate across region](../../cloud-basics/create-clusters-topology/#replicate-across-regions) clusters, all backups are stored in one of the cluster regions, as determined automatically by Aeon when the cluster is created.
+For [Replicate across region](../../cloud-basics/create-clusters-topology/#replicate-across-regions) clusters, all backups are stored in one of the cluster regions, as determined automatically by Aeon when the cluster is created or infrastructure is updated.
 
 For [Partition by region](../../cloud-basics/create-clusters-topology/#partition-by-region) clusters, the database schema and tablet details are stored in the primary region, and the regional tablespace data is stored in its respective region to preserve data residency.
 
@@ -122,9 +122,7 @@ To restore a backup of a cluster:
 
 Use remote backup replication to copy all your cluster backups (scheduled, incremental, and on demand) to a storage bucket in the same cloud provider.
 
-New backups are transferred to the bucket once a day.
-
-Disabling backup replication does not immediately stop transfers. To ensure no data is lost, the transfer job remains active for a few additional days, so that all backups created before the time of disablement are fully replicated. Because Google Cloud does not provide an SLA on transfer completion time or on how many transfer operations may be needed, you should keep destination buckets available for at least 7 days after disabling backup replication or after changing remote backup regions. This ensures that all in-progress and pending transfers complete successfully.
+Only new backups (that is, backups created after backup replication has been enabled on the cluster) are transferred. Backups are transferred to the bucket once a day.
 
 Remote backup replication counts against your data transfer allowance. This may incur additional costs for network transfer, especially for cross-region transfers, if usage exceeds your cluster allowance. To avoid cross-region data transfer costs, use a bucket in the same region as the cluster.
 
@@ -134,13 +132,14 @@ Currently, only clusters deployed to GCP are supported.
 
 ### Prerequisites
 
-It is highly recommended to use a new, empty bucket rather than one that already contains data. Although safeguards are in place, remote replication requires delete permissions. To minimize the risk of accidental data loss, using a fresh bucket is the safest approach.
+The remote storage bucket must be on the same cloud provider as the cluster; for clusters deployed in GCP, the bucket must be in Google Cloud Storage. Transfer is performed using [Google Storage Transfer Service](https://cloud.google.com/storage-transfer/docs/overview).
 
-The remote storage bucket must be on the same cloud provider as the cluster; for clusters deployed in GCP, the bucket must be in Google Cloud Storage.Transfer is performed using [Google Storage Transfer Service](https://cloud.google.com/storage-transfer/docs/overview).
-
-#### Bucket setup
+#### Set up target buckets
 
 1. Identify and configure the Google Cloud Storage buckets that will serve as replication targets for your backup data.
+
+    It is highly recommended to use a new, empty bucket rather than one that already contains data. Although safeguards are in place, remote replication requires delete permissions. To minimize the risk of accidental data loss, using a fresh bucket is the safest approach.
+
 2. Set up service account permissions.
 
     Grant the required permissions to the Storage Transfer Service agent on each target bucket.
@@ -172,11 +171,15 @@ For more information, see [IAM roles for Cloud Storage](https://cloud.google.com
 
 To enable or modify remote backup repliction, do the following:
 
-1. On the **Backups** tab, click **Remote Backup Replication**.
+1. On the **Backups** tab, click **Remote Backup Replication**. If backup replication is enabled, click **Edit Settings**.
 1. Enter the address of the bucket.
 
-    For Replicate by regions clusters, provide the bucket address. To reduce transfer costs, use a bucket in the same region as the current backup region (the region selected by Aeon to store cluster backups). See [Location of backups](#location-of-backups) for more information.
+    For Replicate across regions clusters, provide the bucket address. To reduce transfer costs, use a bucket in the same region as the current backup region (the region selected by Aeon to store cluster backups). See [Location of backups](#location-of-backups) for more information.
 
     For Partition by region clusters, provide a bucket address for each region. To reduce transfer costs and for compliance, use buckets located in the same regions.
 
 1. Click **Apply Changes**.
+
+To disable remote backup replication, on the **Backups** tab, click **Disable Remote Backup Replication**.
+
+Disabling backup replication does not immediately stop transfers. To ensure no data is lost, the transfer job remains active for a few additional days so that any backups created before disabling replication are fully replicated. Because Google Cloud does not provide a SLA on transfer completion time or on how many transfer operations may be needed, you should keep destination buckets available for at least 7 days after disabling backup replication or after changing remote backup regions. This ensures that all in-progress and pending transfers complete successfully.
