@@ -630,7 +630,7 @@ if [[ $output_file == libyb_pgbackend* || $output_file == postgres ]]; then
   echo "${compiler_args[*]}" >"link_cmd_${output_file}.txt"
 fi
 
-if [[ ${build_type:-} == "asan" &&
+if [[ ${build_type:-} =~ ^asan &&
       $PWD == */postgres_build/src/backend/utils/adt &&
       # Turn off UBSAN instrumentation in a number of PostgreSQL source files determined by the
       # $NO_UBSAN_RE regular expression. See the definition of NO_UBSAN_RE for details.

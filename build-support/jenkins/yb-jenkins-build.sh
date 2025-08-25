@@ -305,7 +305,7 @@ log "ALL OF YUGABYTE C++ BUILD FINISHED"
 
 export YB_SKIP_INITIAL_SYS_CATALOG_SNAPSHOT=0
 
-if [[ ${BUILD_TYPE} != "tsan" ]]; then
+if ! is_tsan ; then
   declare -i initdb_attempt_index=1
   declare -i -r MAX_INITDB_ATTEMPTS=3
 
@@ -427,8 +427,7 @@ fi
 # Skip this in ASAN/TSAN, as there are still unresolved issues with dynamic libraries there
 # (conflicting versions of the same library coming from thirdparty vs. Linuxbrew) as of 12/04/2017.
 
-if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
-      ! ${build_type} =~ ^(asan|tsan)$ ]]; then
+if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" ]] && ! is_sanitizer ; then
   heading "Creating a distribution package"
 
   package_path_file="${BUILD_ROOT}/package_path.txt"

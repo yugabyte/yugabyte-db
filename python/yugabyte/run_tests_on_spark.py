@@ -284,7 +284,7 @@ def init_spark_context(details: List[str] = []) -> None:
         if is_macos():
             logging.info("This is macOS, using the macOS Spark cluster")
             spark_master_url = SPARK_URLS['macos']
-        elif build_type in ['asan', 'tsan']:
+        elif build_type in ['asan', 'asan_release', 'tsan', 'tsan_release', 'tsan_slow']:
             logging.info("Using a separate Spark cluster for ASAN and TSAN tests")
             spark_master_url = SPARK_URLS['linux_asan_tsan']
         else:

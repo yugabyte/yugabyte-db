@@ -225,7 +225,7 @@ macro(yb_find_third_party_dependencies)
 
   # Do not use tcmalloc for ASAN/TSAN.
   if ("${YB_TCMALLOC_ENABLED}" STREQUAL "")
-    if ("${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
+    if (IS_SANITIZER)
       set(YB_TCMALLOC_ENABLED "0")
       message("Not using tcmalloc due to build type ${YB_BUILD_TYPE}")
     else()

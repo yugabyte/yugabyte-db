@@ -1131,7 +1131,7 @@ set_sanitizer_runtime_options() {
     fi
   fi
 
-  if [[ $build_root_basename =~ ^asan- ]]; then
+  if [[ $build_root_basename =~ ^asan ]]; then
     # Enable leak detection even under LLVM 3.4, where it was disabled by default.
     # This flag only takes effect when running an ASAN build.
     export ASAN_OPTIONS="detect_leaks=1 disable_coredump=0"
@@ -1308,7 +1308,7 @@ find_spark_submit_cmd() {
     return
   fi
 
-  if [[ $build_type == "tsan" || $build_type == "asan" ]]; then
+  if is_sanitizer ; then
     spark_submit_cmd_path=${YB_ASAN_TSAN_PY3_SPARK_SUBMIT_CMD:-"NoSpark"}
     return
   fi

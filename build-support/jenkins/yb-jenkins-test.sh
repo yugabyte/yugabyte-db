@@ -127,7 +127,7 @@ fi
 cd "$BUILD_ROOT"
 
 # Only enable test core dumps for certain build types.
-if [[ ${BUILD_TYPE} != "asan" ]]; then
+if ! is_asan ; then
   # TODO: actually make this take effect. The issue is that we might not be able to set ulimit
   # unless the OS configuration enables us to.
   export YB_TEST_ULIMIT_CORE=unlimited
