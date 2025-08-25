@@ -8,7 +8,7 @@ menu:
   preview:
     identifier: monitor-and-alert
     parent: launch-and-manage
-    weight: 30
+    weight: 60
 type: indexpage
 ---
 

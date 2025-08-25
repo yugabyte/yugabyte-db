@@ -46,5 +46,5 @@ YugabyteDB includes a built-in connection pooler, YSQL Connection Manager {{<tag
 
 For more information, refer to the following:
 
-- [YSQL Connection Manager](../../../explore/going-beyond-sql/connection-mgr-ysql/)
+- [YSQL Connection Manager](../../../additional-features/connection-manager-ysql/)
 - [Built-in Connection Manager Turns Key PostgreSQL Weakness into a Strength](https://www.yugabyte.com/blog/connection-pooling-management/)

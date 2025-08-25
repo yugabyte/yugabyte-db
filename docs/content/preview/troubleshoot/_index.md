@@ -7,6 +7,7 @@ menu:
   preview:
     identifier: troubleshoot
     parent: launch-and-manage
+    weight: 100
 type: indexpage
 cascade:
   unversioned: true

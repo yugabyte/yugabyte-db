@@ -269,7 +269,7 @@ Currently, multi-cluster connections are available only in the Java (JDBC) smart
 
 ## Connection pooling
 
-Smart drivers work seamlessly with [YSQL Connection Manager](../../explore/going-beyond-sql/connection-mgr-ysql/).
+Smart drivers work seamlessly with [YSQL Connection Manager](../../additional-features/connection-manager-ysql/).
 
 Smart drivers can also be configured with popular third-party pooling solutions such as Hikari and Tomcat. Different pools can be configured with different load balancing policies if required. For example, an application can configure one pool with topology awareness for one region and its availability zones, and configure another pool to communicate with a completely different region.
 

@@ -141,7 +141,7 @@ Enhanced Postgres Compatibility
 : If database version is v2024.2 or later, you can enable early access features for PostgreSQL compatibility. For more information, refer to [Enhanced PostgreSQL Compatibility Mode](../../../develop/postgresql-compatibility/).
 
 Enable Connection Pooling
-: {{<tags/feature/ea idea="1368">}}If database version is v2024.2 or later, you can enable [Built-in connection pooling](../../../explore/going-beyond-sql/connection-mgr-ysql/).
+: {{<tags/feature/ea idea="1368">}}If database version is v2024.2 or later, you can enable [Built-in connection pooling](../../../additional-features/connection-manager-ysql/).
 : While in Early Access, connection pooling is not available by default. To make the feature available, set the *Allow users to enable or disable connection pooling* Global Runtime Configuration option (config key `yb.universe.allow_connection_pooling`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
 
 Enable Systemd Services
