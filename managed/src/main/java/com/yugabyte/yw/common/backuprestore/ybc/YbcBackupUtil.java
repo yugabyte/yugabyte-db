@@ -1223,10 +1223,10 @@ public class YbcBackupUtil {
       // Set the rest of the extended args directly from api params.
       extendedArgsBuilder.setRevertToPreRolesBehaviour(
           backupStorageInfo.getRevertToPreRolesBehaviour());
-      /* Removing backup of roles temporarily. There are some issues we need to work out before
-      fully implementing this.
       extendedArgsBuilder.setErrorIfTablespacesExists(
           backupStorageInfo.getErrorIfTablespacesExists());
+      /* Removing backup of roles temporarily. There are some issues we need to work out before
+      fully implementing this.
       extendedArgsBuilder.setErrorIfRolesExists(backupStorageInfo.getErrorIfRolesExists());
       */
     }

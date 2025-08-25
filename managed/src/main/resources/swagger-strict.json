@@ -3911,6 +3911,10 @@
           ],
           "type" : "string"
         },
+        "errorIfTablespacesExists" : {
+          "description" : "WARNING: This is a preview API that could change. Fail if tablespaces exist with same names. Only applicable with new roles behavior.",
+          "type" : "boolean"
+        },
         "ignoreErrors" : {
           "description" : "WARNING: This is a preview API that could change. Ignore all restore errors",
           "type" : "boolean"
@@ -27973,6 +27977,10 @@
     },
     "XClusterConfigNeedBootstrapFormData" : {
       "properties" : {
+        "isDrConfig" : {
+          "description" : "WARNING: This is a preview API that could change. Whether this check is being done as part of a DR configuration setup",
+          "type" : "boolean"
+        },
         "tables" : {
           "description" : "Source universe table IDs to check whether they need bootstrap",
           "example" : "[\"000033df00003000800000000000400b\"]",

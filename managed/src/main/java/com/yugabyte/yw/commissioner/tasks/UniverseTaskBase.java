@@ -3894,6 +3894,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     if (taskInfo.getTaskType().equals(TaskType.RestoreBackup)
         && pCluster.userIntent.providerType != CloudType.local) {
       getAndSaveRestoreBackupCategory(restoreBackupParams, taskInfo, forXCluster);
+      backupHelper.maybeSetRestoreRevertToPreRolesBehaviour(restoreBackupParams, getUniverse());
       createPreflightValidateRestoreTask(restoreBackupParams)
           .setSubTaskGroupType(SubTaskGroupType.PreflightChecks)
           .setShouldRunPredicate(predicate);
@@ -4268,7 +4269,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     SubTaskGroup subTaskGroup = createSubTaskGroup("RestoreBackupYbc");
     RestoreBackupYbc task = createTask(RestoreBackupYbc.class);
     RestoreBackupYbc.Params restoreParams = new RestoreBackupYbc.Params(taskParams);
-    backupHelper.maybeSetRestoreRevertToPreRolesBehaviour(restoreParams, getUniverse());
     restoreParams.index = index;
     task.initialize(restoreParams);
     task.setUserTaskUUID(getUserTaskUUID());
