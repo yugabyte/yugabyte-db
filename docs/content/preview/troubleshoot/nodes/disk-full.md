@@ -68,7 +68,7 @@ Scale the cluster to increase capacity. You can do this in two ways:
 Unnecessary files can accumulate on the nodes, including large log files or older core dumps.
 
 {{<warning>}}
-Do not modify or remove the YugabyteDB data, bin, or config directories and files. Damage or loss of these files can result in unavailability and data loss.
+Do not modify or remove the YugabyteDB data, bin, WAL, snapshot, or config directories and files. Damage or loss of these files can result in unavailability and data loss.
 {{</warning>}}
 
 ### Drop unnecessary tables and databases/namespaces
