@@ -21,6 +21,17 @@ rightNav:
 
 ### 2025
 
+#### August 25, 2025
+
+##### New features
+
+- {{<tags/feature/ea>}}Support for [remote backup replication](../cloud-clusters/backup-clusters/#remote-backup-replication). Automatically copy all cluster backups (scheduled, incremental, and on demand) to a storage bucket in the same cloud provider. If you want to try this feature, contact {{% support-cloud %}}. Currently, only clusters deployed on GCP are supported.
+- New GCP region: Dammam.
+
+##### Database
+
+- Early Access track updated to 2025.1.0.1 (based on PostgreSQL 15).
+
 #### July 28, 2025
 
 ##### New features
