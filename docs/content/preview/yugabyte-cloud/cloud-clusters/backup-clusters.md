@@ -120,7 +120,11 @@ To restore a backup of a cluster:
 
 ## Remote backup replication
 
-Use remote backup replication to copy all your cluster backups (scheduled, incremental, and on demand) to a storage bucket in the same cloud provider.
+{{<tags/feature/ea>}}Use remote backup replication to copy all your cluster backups (scheduled, incremental, and on demand) to a storage bucket in the same cloud provider.
+
+{{<tip title="Early Access">}}
+This feature is Early Access; to try it, contact {{% support-cloud %}}.
+{{</tip>}}
 
 Only new backups (that is, backups created after backup replication has been enabled on the cluster) are transferred. Backups are transferred to the bucket once a day.
 
