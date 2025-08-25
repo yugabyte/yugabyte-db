@@ -69,6 +69,18 @@ tls:
 
 When configured, YugabyteDB Anywhere sets the common name to the name of the service created for the pod, and adds common name to the certificate request sent to cert-manager.
 
+### Configurable common names
+
+You can configure a custom common name suffix for cert-manager certificates using the following helm override:
+
+```yml
+tls:
+  certManager:
+    certificates:
+      commonNameRequired: true
+      commonNameSuffix: "yugabyte.com"
+```
+
 ## Troubleshoot
 
 If you encounter problems, you should verify the name of Issuer or ClusterIssuer in the Kubernetes cluster, as well as ensure that the Kubernetes cluster is in Ready state. You can use the following commands:
