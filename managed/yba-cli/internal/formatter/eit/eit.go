@@ -7,10 +7,10 @@ package eit
 import (
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/sirupsen/logrus"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
@@ -107,21 +107,12 @@ func (c *Context) Name() string {
 
 // CreationDate fetches EIT Creation Date
 func (c *Context) CreationDate() string {
-	creationTime := c.eit.GetStartDateIso()
-	if creationTime.IsZero() {
-		return ""
-	}
-	return creationTime.Format(time.RFC1123Z)
+	return util.PrintTime(c.eit.GetStartDateIso())
 }
 
 // ExpirationDate fetches EIT Expiration Date
 func (c *Context) ExpirationDate() string {
-	expirationTime := c.eit.GetExpiryDateIso()
-	if expirationTime.IsZero() {
-		return ""
-	}
-	return expirationTime.Format(time.RFC1123Z)
-
+	return util.PrintTime(c.eit.GetExpiryDateIso())
 }
 
 // CertType fetches EIT Certificate Type

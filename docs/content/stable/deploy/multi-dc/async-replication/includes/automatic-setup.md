@@ -36,7 +36,7 @@ DDLs must be paused on the Primary universe during the entire setup process. {{<
 
 <!-- YugabyteD Setup -->
 
-The following assumes you have set up Primary and Standby universes. Refer to [Set up yugabyted universes](../../../../reference/configuration/yugabyted/#start). The yugabyted node must be started with `--backup_daemon=true` to initialize the backup/restore agent.
+The following assumes you have set up Primary and Standby universes. Refer to [Set up universes](../async-deployment/#set-up-universes).
 
 1. Create a checkpoint on the Primary universe for all the databases that you want to be part of the replication.
 

@@ -438,7 +438,7 @@
         NC='\033[0m' # No Color
 
         if [[ $- == *i* ]]
-            then export PS1="[\u@\h ~]\$ "
+            then export PS1="[\u@\h \W]\$ "
             if [ "$EUID" -eq 0 ]
                 then echo -e "Use ${ORANGE}'sudo systemctl'${NC} to manage YB software"
             fi

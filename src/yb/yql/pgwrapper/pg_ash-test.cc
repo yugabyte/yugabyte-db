@@ -72,12 +72,11 @@ class PgAshTest : public LibPqTestBase {
 class PgAshMasterMetadataSerializerTest : public PgAshTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=true");
     options->extra_tserver_flags.push_back(
-        "--allowed_preview_flags_csv=enable_object_locking_for_table_locks");
-    options->extra_master_flags.push_back("--enable_object_locking_for_table_locks=true");
-    options->extra_master_flags.push_back(
-        "--allowed_preview_flags_csv=enable_object_locking_for_table_locks");
+        Format("--allowed_preview_flags_csv=$0,$1",
+               "enable_object_locking_for_table_locks", "ysql_yb_ddl_transaction_block_enabled"));
+    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=true");
+    options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
     PgAshTest::UpdateMiniClusterOptions(options);
   }
 };
@@ -648,7 +647,7 @@ TEST_F(PgAshSingleNode, CheckWaitEventsDescription) {
 
   std::unordered_set<std::string> yb_events;
   for (const auto& code : ash::WaitStateCodeList()) {
-    if (code == ash::WaitStateCode::kUnused || code == ash::WaitStateCode::kYSQLReserved) {
+    if (code == ash::WaitStateCode::kYSQLReserved) {
       continue;
     }
     yb_events.insert(ToString(code).erase(0, 1)); // remove 'k' prefix

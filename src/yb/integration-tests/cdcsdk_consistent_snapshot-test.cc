@@ -14,6 +14,8 @@
 
 #include "yb/cdc/cdc_state_table.h"
 
+DECLARE_int32(ysql_ddl_rpc_timeout_sec);
+
 namespace yb {
 namespace cdc {
 
@@ -301,13 +303,14 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestCreateStreamWithSlowAlterTable) {
 
 TEST_F(CDCSDKConsistentSnapshotTest, TestCleanupAfterLateAlterTable) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_rpc_timeout_sec) = 30 * kTimeMultiplier;
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
 
   yb::SyncPoint::GetInstance()->SetCallBack("AsyncAlterTable::CDCSDKCreateStream", [&](void* arg) {
     LOG(INFO) << "In the SyncPoint callback, about to go to sleep";
     // This sleep duration must be >= timeout of the CreateCDCStream RPC in yb-master. This is
     // specified in the DdlDeadline() function in pg_ddl.cc.
-    SleepFor(MonoDelta::FromSeconds(60 * kTimeMultiplier));
+    SleepFor(MonoDelta::FromSeconds(FLAGS_ysql_ddl_rpc_timeout_sec + 10));
   });
   SyncPoint::GetInstance()->EnableProcessing();
 

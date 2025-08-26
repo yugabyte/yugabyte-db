@@ -104,6 +104,7 @@ public class OtelCollectorConfigFormat {
   @EqualsAndHashCode(callSuper = true)
   public static class FilterProcessor extends Processor {
     private FilterProcessorLogsConfig logs;
+    private String error_mode;
   }
 
   @Data
@@ -122,6 +123,14 @@ public class OtelCollectorConfigFormat {
   @EqualsAndHashCode(callSuper = true)
   public static class AttributesProcessor extends Processor {
     private List<AttributeAction> actions;
+  }
+
+  @Data
+  @EqualsAndHashCode(callSuper = true)
+  public static class BatchProcessor extends Processor {
+    private int send_batch_max_size;
+    private int send_batch_size;
+    private String timeout;
   }
 
   @Data

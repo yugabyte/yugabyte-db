@@ -323,7 +323,7 @@ pub unsafe trait RetAbi: Sized {
     /// # Safety
     /// Requires a valid FunctionCallInfo.
     unsafe fn check_fcinfo_and_prepare(_fcinfo: pg_sys::FunctionCallInfo) -> CallCx {
-        CallCx::WrappedFn(unsafe { pg_sys::CurrentMemoryContext })
+        CallCx::WrappedFn(unsafe { pg_sys::YbCurrentMemoryContext })
     }
 
     fn check_and_prepare(fcinfo: &mut FcInfo<'_>) -> CallCx {
@@ -404,7 +404,7 @@ where
     }
 
     unsafe fn check_fcinfo_and_prepare(_fcinfo: pg_sys::FunctionCallInfo) -> CallCx {
-        CallCx::WrappedFn(unsafe { pg_sys::CurrentMemoryContext })
+        CallCx::WrappedFn(unsafe { pg_sys::YbCurrentMemoryContext })
     }
 
     unsafe fn fill_fcinfo_fcx(&self, _fcinfo: pg_sys::FunctionCallInfo) {}

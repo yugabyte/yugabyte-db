@@ -86,6 +86,8 @@ void XClusterAsyncExecutor::ScheduleFunc(
     return;
   }
   last_task_schedule_time_ = MonoTime::Now();
+
+  SET_WAIT_STATUS(Idle);
 }
 
 void XClusterAsyncExecutor::WeakPtrCallback(
@@ -163,6 +165,8 @@ void XClusterAsyncExecutor::ScheduleFuncWithDelay(
   reactor_task_name_ = std::move(func_name);
   VLOG_WITH_PREFIX(5) << "Scheduled task '" << reactor_task_name_ << "' (" << reactor_task_id_
                       << ") on reactor with delay " << delay_ms << "ms";
+
+  SET_WAIT_STATUS(Idle);
 }
 
 void XClusterAsyncExecutor::ReactorCallback(

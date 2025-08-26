@@ -1325,6 +1325,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.metricsExportConfig =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.metricsExportConfig;
 
+    // Add query log config from primary cluster
+    params.queryLogConfig =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.queryLogConfig;
+
     // The software package to install for this cluster.
     params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
 

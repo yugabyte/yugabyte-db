@@ -2,7 +2,7 @@
 title: Upgrade universes with a new version of YugabyteDB
 headerTitle: Upgrade the YugabyteDB software
 linkTitle: Upgrade database
-description: Use YugabyteDB Anywhere to upgrade the YugabyteDB software on universes.
+description: Upgrade universes managed by YugabyteDB Anywhere.
 headcontent: Perform rolling upgrades on live universe deployments
 menu:
   stable_yugabyte-platform:

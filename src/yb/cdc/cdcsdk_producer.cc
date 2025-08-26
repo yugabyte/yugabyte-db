@@ -1322,7 +1322,9 @@ Status PopulateCDCSDKWriteRecord(
   SchemaPackingStorage* schema_packing_storage = &schema_packing_storages->at(table_id);
   // TODO: This function and PopulateCDCSDKIntentRecord have a lot of code in common. They should
   // be refactored to use some common row-column iterator.
-  for (auto it = batch.write_pairs().cbegin(); it != batch.write_pairs().cend(); ++it) {
+  int record_batch_idx = 0;
+  for (auto it = batch.write_pairs().cbegin(); it != batch.write_pairs().cend();
+       ++it, ++record_batch_idx) {
     const yb::docdb::LWKeyValuePairPB& write_pair = *it;
     Slice key = write_pair.key();
     const auto key_size =
@@ -1419,7 +1421,7 @@ Status PopulateCDCSDKWriteRecord(
       row_message->set_table_id(table_id);
       row_message->set_primary_key(primary_key.ToBuffer());
       CDCSDKOpIdPB* cdc_sdk_op_id_pb = proto_record->mutable_cdc_sdk_op_id();
-      SetCDCSDKOpId(msg->id().term(), msg->id().index(), 0, "", cdc_sdk_op_id_pb);
+      SetCDCSDKOpId(msg->id().term(), msg->id().index(), record_batch_idx, "", cdc_sdk_op_id_pb);
       is_packed_row_record = false;
 
       // Check whether operation is WRITE or DELETE.

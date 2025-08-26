@@ -227,8 +227,8 @@ template <class Enum>
 const char* NoPrefixName(Enum value) {
   const char* name = ToCString(value);
   if (!name) {
-    DCHECK(false);
-    return nullptr;
+    DCHECK(false) << "Prefix not found for: " << ToString(value);
+    return "";
   }
   return name + 1;
 }

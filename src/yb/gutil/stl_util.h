@@ -52,8 +52,11 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <vector>
+
+#include <boost/container/small_vector.hpp>
 
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/macros.h"
@@ -908,38 +911,27 @@ concept ContainerOf = requires {
 // A unified way to insert values into supported containers
 
 // Overload for std::set
-template <typename Element, typename Compare, typename Allocator>
-void InsertIntoContainer(
-    std::set<Element, Compare, Allocator>& container,
-    const Element& value) {
-  container.insert(value);
-}
-
-template <typename Element, typename Compare, typename Allocator>
-void InsertIntoContainer(
-    std::set<Element, Compare, Allocator>& container,
-    Element&& value) {
-  container.insert(std::move(value));
+template <class T, class... Args>
+void InsertIntoContainer(std::set<std::decay_t<T>, Args...>& container, T&& value) {
+  container.insert(std::forward<T>(value));
 }
 
 // Overload for std::vector
-template <typename Element, typename Allocator>
-void InsertIntoContainer(
-    std::vector<Element, Allocator>& container,
-    const Element& value) {
-  container.push_back(value);
+template <class T, class... Args>
+void InsertIntoContainer(std::vector<std::decay_t<T>, Args...>& container, T&& value) {
+  container.push_back(std::forward<T>(value));
 }
 
-template <typename Element, typename Allocator>
+// Overload for boost::container::small_vector_base
+template <class T, class... Args>
 void InsertIntoContainer(
-    std::vector<Element, Allocator>& container,
-    Element&& value) {
-  container.push_back(std::move(value));
+    boost::container::small_vector_base<std::decay_t<T>, Args...>& container, T&& value) {
+  container.push_back(std::forward<T>(value));
 }
 
 // Fallback to generate a compile-time error for unsupported containers
-template <typename Container, typename Element>
-void InsertIntoContainer(Container&, const Element&) {
+template <class T, class Container>
+void InsertIntoContainer(Container&, T&&) {
   static_assert(sizeof(Container) == 0,
                 "InsertIntoContainer is not supported for this container type.");
 }

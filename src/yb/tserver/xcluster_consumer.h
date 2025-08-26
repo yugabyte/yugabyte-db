@@ -276,6 +276,8 @@ class XClusterConsumer : public XClusterConsumerIf {
 
   std::mutex safe_time_callback_mutex_;
   std::vector<std::function<void()>> safe_time_callbacks_ GUARDED_BY(safe_time_callback_mutex_);
+
+  const std::string& ts_uuid_;
 };
 
 } // namespace tserver

@@ -60,10 +60,10 @@
 #include "catalog/pg_yb_tablegroup.h"
 #include "commands/defrem.h"
 #include "executor/spi.h"
-#include "pg_yb_utils.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/syscache.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 
 /*
  * Parameters to determine when to emit a log message in

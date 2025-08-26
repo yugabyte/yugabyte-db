@@ -9,7 +9,7 @@ Before installing yb-voyager, ensure that you have the [Docker](https://docs.doc
 1. Pull the docker image from YugabyteDB's docker hub (Pull the version from docker.io) as follows:
 
     ```sh
-    docker pull yugabytedb/yb-voyager
+    docker pull software.yugabyte.com/yugabytedb/yb-voyager
     ```
 
 1. Download the script to run yb-voyager using the docker image from yb-voyager's GitHub repository, and move it to your machine's bin directory using the following commands:

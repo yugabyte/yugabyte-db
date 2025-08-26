@@ -26,4 +26,7 @@ class MetadataSerializerFactory;
 class WaitStateInfo;
 using WaitStateInfoPtr = std::shared_ptr<WaitStateInfo>;
 
+struct AshMetadata;
+struct AshAuxInfo;
+
 }  // namespace yb::ash

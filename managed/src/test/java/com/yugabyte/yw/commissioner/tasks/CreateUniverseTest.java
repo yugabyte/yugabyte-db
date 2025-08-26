@@ -59,6 +59,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.RunHooks, // PreNodeProvision
           TaskType.SetupYNP,
           TaskType.YNPProvisioning,
+          TaskType.InstallNodeAgent,
           TaskType.SetNodeStatus,
           TaskType.RunHooks, // PostNodeProvision
           TaskType.CheckLocale,

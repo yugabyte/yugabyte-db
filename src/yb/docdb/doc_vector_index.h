@@ -90,6 +90,8 @@ class DocVectorIndex {
   virtual Status Destroy() = 0;
   virtual Result<size_t> TotalEntries() const = 0;
 
+  virtual bool TEST_HasBackgroundInserts() const = 0;
+
   bool BackfillDone();
 
   static void ApplyReverseEntry(

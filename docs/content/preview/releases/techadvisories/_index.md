@@ -19,6 +19,12 @@ It is strongly recommended that you take appropriate measures as outlined in the
 {{%table%}}
 | Advisory&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Synopsis | Product | Affected Versions | Date |
 | :------------------------------- | :------- | :-----: | :---------------: | :--- |
+| {{<ta 28222>}}
+| Regression for queries with BNL plans
+| {{<product "ysql">}}
+| {{<release "2024.1, 2024.2, 2025.1">}}
+| {{<nobreak "18 August 2025">}}
+|
 | {{<ta 2968>}}
 | Import schema fails on all Voyager installs done after August 14, 2025
 | {{<product "voyager">}}

@@ -35,6 +35,7 @@
 #include "utils/memutils.h"
 #include "utils/varlena.h"
 #include "utils/wait_event.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 
 static MemoryContext virtual_wal_context = NULL;
 static MemoryContext cached_records_context = NULL;

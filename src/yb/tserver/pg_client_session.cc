@@ -22,6 +22,7 @@
 #include <optional>
 #include <queue>
 #include <set>
+#include <span>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -870,24 +871,27 @@ using QueryDataPtr = std::shared_ptr<QueryData<Traits>>;
 using ObjectLockQueryDataPtr = QueryDataPtr<ObjectLockQueryTraits>;
 using PerformQueryDataPtr = QueryDataPtr<PerformQueryTraits>;
 
-class SharedMemoryPerformListener : public PgTablesQueryListener {
+class AsyncPgTablesQueryResultProvider : public PgTablesQueryListener {
  public:
-  SharedMemoryPerformListener() = default;
-
-  Status Wait(CoarseTimePoint deadline) {
-    if (latch_.WaitUntil(deadline)) {
-      return Status::OK();
-    }
-    return STATUS_FORMAT(TimedOut, "Timeout waiting for tables");
+  [[nodiscard]] std::future<PgTablesQueryResult> GetTables() {
+    return promise_.get_future();
   }
 
  private:
-  void Ready() override {
-    latch_.CountDown();
+  void Ready(const PgTablesQueryResult& result) override {
+    promise_.set_value(result);
   }
 
-  CountDownLatch latch_{1};
+  std::promise<PgTablesQueryResult> promise_;
 };
+
+[[nodiscard]] std::future<PgTablesQueryResult> GetTablesAsync(
+  PgTableCache& table_cache, std::span<const TableId> table_ids,
+  const PgTableCacheGetOptions& options = {}) {
+  auto provider = std::make_shared<AsyncPgTablesQueryResultProvider>();
+  table_cache.GetTables(table_ids, provider);
+  return provider->GetTables();
+}
 
 template <QueryTraitsType T>
 class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQuery<T>> {
@@ -2360,13 +2364,9 @@ class PgClientSession::Impl {
   Status DoHandleSharedExchangeQuery(PerformQueryDataPtr&& data, CoarseTimePoint deadline) {
     boost::container::small_vector<TableId, 4> table_ids;
     PreparePgTablesQuery(data->req, table_ids);
-    auto listener_and_result = std::make_shared<
-        std::pair<SharedMemoryPerformListener, PgTablesQueryResult>>();
-    auto listener = SharedField(listener_and_result, &listener_and_result->first);
-    auto result = SharedField(listener_and_result, &listener_and_result->second);
-    table_cache().GetTables(table_ids, {}, result, listener);
-    RETURN_NOT_OK(listener->Wait(deadline));
-    return DoPerform(*result, data, deadline);
+    auto tables_future = GetTablesAsync(table_cache(), table_ids);
+    RETURN_NOT_OK(Wait(tables_future, ToSteady(deadline)));
+    return DoPerform(tables_future.get(), data, deadline);
   }
 
   Status DoHandleSharedExchangeQuery(ObjectLockQueryDataPtr&& data, CoarseTimePoint deadline) {
@@ -2615,10 +2615,12 @@ class PgClientSession::Impl {
     }
   }
 
-  void StartShutdown() {
-    WARN_NOT_OK(CleanupObjectLocks(), "Error cleaning up object locks");
-    if (const auto& txn = Transaction(PgClientSessionKind::kPgSession); txn) {
-      txn->Abort();
+  void StartShutdown(bool pg_service_shutting_down) {
+    if (!pg_service_shutting_down) {
+      WARN_NOT_OK(CleanupObjectLocks(), "Error cleaning up object locks");
+      if (const auto& txn = Transaction(PgClientSessionKind::kPgSession); txn) {
+        txn->Abort();
+      }
     }
     big_shared_mem_expiration_task_.StartShutdown();
   }
@@ -3656,8 +3658,8 @@ std::pair<uint64_t, std::byte*> PgClientSession::ObtainBigSharedMemorySegment(si
   return impl_->ObtainBigSharedMemorySegment(size);
 }
 
-void PgClientSession::StartShutdown() {
-  return impl_->StartShutdown();
+void PgClientSession::StartShutdown(bool pg_service_shutting_down) {
+  return impl_->StartShutdown(pg_service_shutting_down);
 }
 
 bool PgClientSession::ReadyToShutdown() const {
@@ -3698,8 +3700,7 @@ BOOST_PP_SEQ_FOR_EACH(
 void PreparePgTablesQuery(
     const PgPerformRequestPB& req, boost::container::small_vector_base<TableId>& table_ids) {
   for (const auto& op : req.ops()) {
-    const auto& table_id = op.has_read() ? op.read().table_id() : op.write().table_id();
-    AddTableIdIfMissing(table_id, table_ids);
+    AddIfMissing(table_ids, op.has_read() ? op.read().table_id() : op.write().table_id());
   }
 }
 

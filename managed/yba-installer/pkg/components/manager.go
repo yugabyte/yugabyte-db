@@ -128,6 +128,7 @@ type Service interface {
 	Initialize() error
 	Install() error
 	Uninstall(cleaData bool) error
+	PreUpgrade() error
 	Upgrade() error
 	Status() (common.Status, error)
 	Start() error

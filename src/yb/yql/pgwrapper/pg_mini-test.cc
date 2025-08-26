@@ -1566,6 +1566,76 @@ TEST_F(PgMiniTest, TestNoStaleDataOnColocationIdReuse) {
   ASSERT_TRUE(scan_result.empty());
 }
 
+TEST_F_EX(PgMiniTest, VerifyTombstoneTimeCache, PgMiniTestSingleNode) {
+  const std::string kDbName = "testdb";
+  const std::string kTableName = "tombstone_test";
+  const int kColocationId = 20001;
+  const std::vector<int> kInitialData = {110, 111, 112};
+  const std::vector<int> kNewData = {123};
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated=true", kDbName));
+  conn = ASSERT_RESULT(ConnectToDB(kDbName));
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (v int PRIMARY KEY) WITH (colocation_id=$1)",
+      kTableName, kColocationId));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ($1), ($2), ($3)",
+      kTableName, kInitialData[0], kInitialData[1], kInitialData[2]));
+
+  auto result = ASSERT_RESULT(conn.FetchRows<int>(
+      Format("SELECT v FROM $0 ORDER BY v", kTableName)));
+  ASSERT_VECTORS_EQ(result, kInitialData);
+
+  auto VerifyTombstoneTimeCache = [&](bool tombstone_time_should_exist) {
+    auto table_id = ASSERT_RESULT(GetTableIDFromTableName(kTableName));
+    auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+
+    for (const auto& peer : peers) {
+      auto table_info = ASSERT_RESULT(peer->tablet_metadata()->GetTableInfo(kColocationId));
+      ASSERT_TRUE(table_info && table_info->doc_read_context);
+      auto tombstone_time = table_info->doc_read_context->table_tombstone_time();
+      ASSERT_TRUE(tombstone_time.has_value());
+      ASSERT_EQ(tombstone_time->is_valid(), tombstone_time_should_exist);
+    }
+  };
+
+  // Verify no cached tombstone time before table drop.
+  VerifyTombstoneTimeCache(/*tombstone_time_should_exist = */false);
+
+  // Drop colocated table should write tombstone mark.
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", kTableName));
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (v int PRIMARY KEY) WITH (colocation_id=$1)",
+      kTableName, kColocationId));
+
+  result = ASSERT_RESULT(conn.FetchRows<int>(Format("SELECT v FROM $0 ORDER BY v", kTableName)));
+  ASSERT_TRUE(result.empty());
+  // Verify tombstone mark hybrid time is cached
+  VerifyTombstoneTimeCache(/*tombstone_time_should_exist = */true);
+
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ($1)", kTableName, kNewData[0]));
+  result = ASSERT_RESULT(conn.FetchRows<int>(Format("SELECT v FROM $0 ORDER BY v", kTableName)));
+  ASSERT_VECTORS_EQ(result, kNewData);
+
+  // Confirm tombstone cache is reloaded after restart.
+  ASSERT_OK(RestartCluster());
+  conn = ASSERT_RESULT(ConnectToDB(kDbName));
+  result = ASSERT_RESULT(conn.FetchRows<int>(Format("SELECT v FROM $0 ORDER BY v", kTableName)));
+  ASSERT_VECTORS_EQ(result, kNewData);
+  VerifyTombstoneTimeCache(/*tombstone_time_should_exist = */true);
+
+  // Verify that no tombstone time has been cached for pg_class.
+  ASSERT_OK(conn.FetchRows<int64_t>("SELECT count(*) from pg_class"));
+  auto pg_class_table_id = ASSERT_RESULT(GetTableIDFromTableName("pg_class"));
+  const auto& sys_catalog = cluster_->mini_master(0)->master()->sys_catalog();
+  auto table_info = ASSERT_RESULT(
+      sys_catalog.tablet_peer()->tablet_metadata()->GetTableInfo(pg_class_table_id));
+  ASSERT_TRUE(table_info && table_info->doc_read_context);
+  auto tombstone_time = table_info->doc_read_context->table_tombstone_time();
+  ASSERT_FALSE(tombstone_time.has_value());
+}
+
+
 TEST_F(PgMiniTest, SkipTableTombstoneCheckMetadata) {
   // Setup test data.
   const auto kNonColocatedTableName = "test";

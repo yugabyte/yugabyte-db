@@ -58,6 +58,8 @@ Status PersistRocksDBOptions(const DBOptions& db_opt,
 
 class RocksDBOptionsParser {
  public:
+  static constexpr size_t kReadBufferSize = 4096;
+
   RocksDBOptionsParser();
   ~RocksDBOptionsParser() {}
   void Reset();

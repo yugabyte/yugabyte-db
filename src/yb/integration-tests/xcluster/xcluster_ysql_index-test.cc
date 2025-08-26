@@ -393,8 +393,6 @@ TEST_F(XClusterYsqlIndexTest, FailedCreateIndex) {
 }
 
 TEST_F(XClusterYsqlIndexTest, MasterFailoverRetryAddTableToXcluster) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_user_ddl_operation_timeout_sec) = NonTsanVsTsan(60, 90);
-
   ASSERT_OK(CreateIndex(*producer_conn_));
 
   SyncPoint::GetInstance()->LoadDependency(

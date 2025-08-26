@@ -58,7 +58,6 @@ properties:
   log_line_prefix:
     description: Log line prefix. This would be applied to both audit and query logs.
     type: string
-    default: '%m :%r :%u @ %d :[%p] : '
     x-yba-api-visibility: internal
   log_min_duration_statement:
     description: 'Log min duration statement, causes the duration of each completed statement to be logged if the statement ran for at least the specified amount of time.'

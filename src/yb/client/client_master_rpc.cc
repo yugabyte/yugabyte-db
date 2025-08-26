@@ -94,6 +94,12 @@ void ClientMasterRpcBase::Finished(const Status& status) {
     return;
   }
 
+  if (client_data_->Closing()) {
+    auto retained_self = client_data_->rpcs_.Unregister(&retained_self_);
+    ProcessResponse(new_status);
+    return;
+  }
+
   if (new_status.ok() && !resp_status.ok()) {
     master::MasterError master_error(resp_status);
     if (master_error == master::MasterErrorPB::NOT_THE_LEADER ||

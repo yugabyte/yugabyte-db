@@ -297,7 +297,7 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Enable Node Agent Client",
           "Enable node agent client for communication to DB nodes.",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 
   public static final ConfKeyInfo<Integer> vmMaxMemCount =
       new ConfKeyInfo<>(

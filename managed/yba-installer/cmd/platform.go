@@ -5,6 +5,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -25,26 +26,32 @@ import (
 )
 
 type platformDirectories struct {
-	SystemdFileLocation string
-	ConfFileLocation    string
-	templateFileName    string
-	DataDir             string
-	PgBin               string
-	YsqlDump            string
-	YsqlBin             string
-	PlatformPackages    string
+	SystemdFileLocation           string
+	ConfFileLocation              string
+	templateFileName              string
+	DataDir                       string
+	PgBin                         string
+	YsqlDump                      string
+	YsqlBin                       string
+	PlatformPackages              string
+	UpgradePrecheckScriptPath     string
+	UpgradePrecheckDir            string
+	UpgradePrecheckJsonOutputPath string
 }
 
 func newPlatDirectories(version string) platformDirectories {
 	return platformDirectories{
-		SystemdFileLocation: common.SystemdDir + "/yb-platform.service",
-		ConfFileLocation:    common.GetSoftwareRoot() + "/yb-platform/conf/yb-platform.conf",
-		templateFileName:    "yba-installer-platform.yml",
-		DataDir:             common.GetBaseInstall() + "/data/yb-platform",
-		PgBin:               common.GetSoftwareRoot() + "/pgsql/bin",
-		YsqlDump:            common.GetActiveSymlink() + "/ybdb/postgres/bin/ysql_dump",
-		YsqlBin:             common.GetSoftwareRoot() + "/ybdb/bin/ysqlsh",
-		PlatformPackages:    common.GetInstallerSoftwareDir() + "/packages/yugabyte-" + version,
+		SystemdFileLocation:           common.SystemdDir + "/yb-platform.service",
+		ConfFileLocation:              common.GetSoftwareRoot() + "/yb-platform/conf/yb-platform.conf",
+		templateFileName:              "yba-installer-platform.yml",
+		DataDir:                       common.GetBaseInstall() + "/data/yb-platform",
+		PgBin:                         common.GetSoftwareRoot() + "/pgsql/bin",
+		YsqlDump:                      common.GetActiveSymlink() + "/ybdb/postgres/bin/ysql_dump",
+		YsqlBin:                       common.GetSoftwareRoot() + "/ybdb/bin/ysqlsh",
+		PlatformPackages:              common.GetInstallerSoftwareDir() + "/packages/yugabyte-" + version,
+		UpgradePrecheckDir:            common.GetBaseInstall() + "/data/upgrade_precheck",
+		UpgradePrecheckScriptPath:     common.GetBaseInstall() + "/data/upgrade_precheck/upgrade_precheck.sh",
+		UpgradePrecheckJsonOutputPath: common.GetBaseInstall() + "/data/upgrade_precheck/precheck_output.json",
 	}
 }
 
@@ -448,15 +455,6 @@ func (plat Platform) Upgrade() error {
 	if err := template.GenerateTemplate(plat); err != nil {
 		return err
 	} // systemctl reload is not needed, start handles it for us.
-	if err := plat.createSoftwareDirectories(); err != nil {
-		return err
-	}
-	if err := plat.createDataDirectiories(); err != nil {
-		return err
-	}
-	if err := plat.untarDevopsAndYugawarePackages(); err != nil {
-		return err
-	}
 	if err := plat.copyYbcPackages(); err != nil {
 		return err
 	}
@@ -464,9 +462,6 @@ func (plat Platform) Upgrade() error {
 		return err
 	}
 	if err := plat.copyNodeAgentPackages(); err != nil {
-		return err
-	}
-	if err := plat.renameAndCreateSymlinks(); err != nil {
 		return err
 	}
 	if err := createPemFormatKeyAndCert(); err != nil {
@@ -495,6 +490,9 @@ func (plat Platform) Upgrade() error {
 // Helper function to update the data/software directories ownership to yugabyte user
 func changeAllPermissions(user string) error {
 	if err := common.Chown(common.GetBaseInstall()+"/software", user, user, true); err != nil {
+		return err
+	}
+	if err := common.Chown(common.GetBaseInstall()+"/data", user, user, true); err != nil {
 		return err
 	}
 	return nil
@@ -700,5 +698,71 @@ func (plat Platform) Reconfigure() error {
 		return fmt.Errorf("failed to generate template: %w", err)
 	}
 	log.Info("Platform reconfigured")
+	return nil
+}
+
+func (plat Platform) PreUpgrade() error {
+	if err := plat.createSoftwareDirectories(); err != nil {
+		return err
+	}
+	if err := plat.createDataDirectiories(); err != nil {
+		return err
+	}
+	if err := plat.untarDevopsAndYugawarePackages(); err != nil {
+		return err
+	}
+	if err := plat.renameAndCreateSymlinks(); err != nil {
+		return err
+	}
+	return plat.checkYbaMetadata()
+}
+
+func (plat Platform) checkYbaMetadata() error {
+	log.Info("Checking YBA metadata")
+	if err := os.RemoveAll(plat.platformDirectories.UpgradePrecheckDir); err != nil {
+		return fmt.Errorf("failed to remove old upgrade precheck directory: %w", err)
+	}
+	if err := os.MkdirAll(plat.platformDirectories.UpgradePrecheckDir, 0755); err != nil {
+		return fmt.Errorf("failed to create upgrade precheck directory: %w", err)
+	}
+	if err := template.GenerateTemplateWithPredicate(plat, func(svcName string) bool {
+		return svcName != "platformService"
+	}); err != nil {
+		return fmt.Errorf("failed to generate template: %w", err)
+	}
+	log.Info("Generated YBA metadata checker script")
+	var out *shell.Output
+	if common.HasSudoAccess() {
+		user := viper.GetString("service_username")
+		if err := changeAllPermissions(user); err != nil {
+			log.Error("Failed to set ownership of " + common.GetBaseInstall() + ": " + err.Error())
+			return err
+		}
+		log.Info("Running upgrade precheck script as user " + user)
+		out = shell.RunAsUser(user, plat.platformDirectories.UpgradePrecheckScriptPath)
+	} else {
+		log.Info("Running upgrade precheck script")
+		out = shell.Run(plat.platformDirectories.UpgradePrecheckScriptPath)
+	}
+	if !out.Succeeded() {
+		errMsg := fmt.Sprintf("%s: %s", out.StderrString(), out.Error.Error())
+		log.Error("Error in running upgrade precheck script: " + errMsg)
+		return fmt.Errorf("failed to run upgrade precheck script: %s", errMsg)
+	}
+	log.Info("Completed running upgrade precheck script")
+	jsonOutput, err := os.ReadFile(plat.platformDirectories.UpgradePrecheckJsonOutputPath)
+	if err != nil {
+		return fmt.Errorf("failed to read upgrade precheck output: %w", err)
+	}
+	type ybaMetataCheckOutput struct {
+		Passed bool `json:"passed"`
+	}
+	var checkOutput ybaMetataCheckOutput
+	if err := json.Unmarshal(jsonOutput, &checkOutput); err != nil {
+		return fmt.Errorf("failed to unmarshal upgrade precheck output: %w", err)
+	}
+	if !checkOutput.Passed {
+		return fmt.Errorf("upgrade precheck failed\n%s\n", string(jsonOutput))
+	}
 	return nil
 }

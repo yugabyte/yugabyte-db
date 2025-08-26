@@ -59,11 +59,15 @@ class TransactionManager {
 
   void UpdateClock(HybridTime time);
 
-  bool PlacementLocalTransactionsPossible();
+  bool RegionLocalTransactionsPossible();
 
   uint64_t GetLoadedStatusTabletsVersion();
 
   void Shutdown();
+
+  bool IsClosing();
+
+  void SetClosing();
 
  private:
   class Impl;

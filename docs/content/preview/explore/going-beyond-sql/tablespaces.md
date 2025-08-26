@@ -223,6 +223,36 @@ yugabyte=# SELECT * FROM multi_region_table;
 Time: 337.154 ms
 ```
 
+### Use wildcards for zones
+
+Sometimes, you may want to use the wildcard `*` in the placement block list. This is handy when the number of zones is greater than the replication factor (RF) of your cluster. In these cases, you can use the wildcard to randomly choose any of the zones in a given region, or any of the regions in a given cloud.
+
+For example, assume a cluster is spread out over regions `us-east-1` (AZs `us-east-1a`, `us-east-1b`), `us-central-1` (AZs `us-central-1a`, `us-central-1b`) and `us-west-1` (AZs `us-west-1a`, `us-west-1b`) and you want to create an RF3 tablespace.
+
+The tablespace in the following example allows copies to be placed in each of the three regions without specifying the exact AZs in those regions. This can increase the resilience of the cluster compared to explicitly specifying exactly one AZ per region. However, note that when using wildcard placement mode, each AZ in the region must be over-provisioned appropriately to handle the tablets that it may receive from the other AZ's failover.
+
+```sql
+CREATE TABLESPACE multi_region_wildcard_tablespace
+  WITH (replica_placement='{"num_replicas": 3, "placement_blocks": [
+    {"cloud":"aws","region":"us-east-1","zone":"*","min_num_replicas":1},
+    {"cloud":"aws","region":"us-west-1","zone":"*","min_num_replicas":1},
+    {"cloud":"aws","region":"us-central-1","zone":"*","min_num_replicas":1}]}');
+
+CREATE TABLE multi_region_table (id INTEGER, field text)
+  TABLESPACE multi_region_wildcard_tablespace;
+```
+
+Similarly, the following tablespace allows copies to be placed in any zone and region in the `aws` cloud.
+
+```sql
+CREATE TABLESPACE aws_wildcard_tablespace
+  WITH (replica_placement='{"num_replicas": 3, "placement_blocks": [
+    {"cloud":"aws","region":"*","zone":"*","min_num_replicas":3}]}');
+
+CREATE TABLE aws_wildcard_table (id INTEGER, field text)
+  TABLESPACE aws_wildcard_tablespace;
+```
+
 ## Leader preference
 
 {{< note title=" " >}}
@@ -250,7 +280,6 @@ The example below expects the following servers to be added to the cluster:
 ```
 
 {{< /note >}}
-
 
 Leader preference helps optimize workloads that require distribution of data over multiple zones for zone-level fault tolerance, but which have clients only in a subset of those zones. It overrides the default behavior of spreading the tablet leaders across all placement zones of the tablespace, and instead places them closer to the clients.
 
@@ -362,7 +391,7 @@ EXPLAIN output for querying the table from `eu-west-2`:
 
 ## Change to a different tablespace
 
-The tablespace of a table, index, or materialized view can be altered after the object has been created. Let’s say we have a single-zone table in `us-east-1a`:
+The tablespace of a table, index, or materialized view can be altered after the object has been created. Suppose you have a single-zone table in `us-east-1a`:
 
 ```sql
 yugabyte=# CREATE TABLE critical_table (id INTEGER, field text)
@@ -396,7 +425,7 @@ You can see the replication info for our table has changed:
 
 The RaftConfig has also changed to match the new tablespace:
 
-![YB-Master UI: critical_table raft config](/images/explore/tablespaces/5_critical_table_raft_config_final.png)
+![YB-Master UI: critical_table raft configuration](/images/explore/tablespaces/5_critical_table_raft_config_final.png)
 
 ## What's next?
 

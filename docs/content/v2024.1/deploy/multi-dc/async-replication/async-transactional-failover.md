@@ -288,7 +288,7 @@ Do the following:
     - List the snapshot schedules to obtain the schedule ID:
 
         ```sh
-        ./bin/yb-admin --master_addresses <A_master_addresses> \
+        ./bin/yb-admin --master_addresses <A-master-addresses> \
         list_snapshot_schedules
         ```
 
@@ -296,7 +296,7 @@ Do the following:
 
         ```sh
         ./bin/yb-admin \
-            --master_addresses <A_master_addresses> \
+            --master_addresses <A-master-addresses> \
             delete_snapshot_schedule <schedule_id>
         ```
 

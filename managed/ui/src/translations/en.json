@@ -3353,6 +3353,24 @@
         "universe": "Universe",
         "universeTotal": "Universe Total"
       }
+    },
+    "geoPartition": {
+      "addGeoPartition": {
+        "title": "Add Geo Partition"
+      },
+      "GeoPartitionInfoModal": {
+        "title": "Before You Start...",
+        "description": "The <b>existing regions</b> in your cluster,  will be designated as your  \"<b>primary</b>\"  Geo-partition.",
+        "desc_ques": "What is a primary Geo-partition?",
+        "desc_ans": "A primary Geo-partition stores the tables that aren't assigned to a specific region or tablespace. <a>Learn more</a>"
+      },
+      "geoPartitionGeneralSettings": {
+        "title": "General Settings",
+        "displayName": "Display Name",
+        "addGeoPartition": "Add Geo Partition",
+        "tablespaceName": "Tablespace Name",
+        "tablespaceNameHelpText": "Tablespace name <b>CANNOT</b> be modified after geo partition creation."
+      }
     }
   }
 }

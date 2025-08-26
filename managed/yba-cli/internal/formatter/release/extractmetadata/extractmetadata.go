@@ -7,7 +7,6 @@ package extractmetadata
 import (
 	"encoding/json"
 	"strings"
-	"time"
 
 	"github.com/sirupsen/logrus"
 	ybaclient "github.com/yugabyte/platform-go-client"
@@ -159,10 +158,7 @@ func (c *Context) YbType() string {
 
 // ReleaseDate of YugabyteDB release
 func (c *Context) ReleaseDate() string {
-	if c.r.GetReleaseDateMsecs() == 0 {
-		return ""
-	}
-	return util.FromEpochMilli(c.r.GetReleaseDateMsecs()).Format(time.RFC1123Z)
+	return util.PrintTime(util.FromEpochMilli(c.r.GetReleaseDateMsecs()))
 }
 
 // ReleaseNotes of YugabyteDB release

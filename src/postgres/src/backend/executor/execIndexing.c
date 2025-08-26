@@ -121,6 +121,7 @@
 #include "executor/ybModifyTable.h"
 #include "funcapi.h"
 #include "utils/relcache.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 
 /* waitMode argument to check_exclusion_or_unique_constraint() */
 typedef enum

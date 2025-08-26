@@ -40,7 +40,8 @@ parquet = {version = "55", default-features = false, features = [
     "object_store",
     "arrow_canonical_extension_types",
 ]}
-pgrx = "=0.14.1"
+# YB: Using local clone of pgrx.
+pgrx = {path = "../pgrx/pgrx"}
 rust-ini = "0.21"
 serde = "1"
 serde_json = "1"
@@ -48,7 +49,8 @@ tokio = {version = "1", default-features = false, features = ["rt", "time", "mac
 url = "2"
 
 [dev-dependencies]
-pgrx-tests = "=0.14.1"
+# YB: Using local clone of pgrx.
+pgrx-tests = {path = "../pgrx/pgrx-tests"}
 
 [profile.dev]
 panic = "unwind"

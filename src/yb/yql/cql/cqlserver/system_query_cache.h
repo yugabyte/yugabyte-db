@@ -48,35 +48,37 @@ using ql::ExecutedResult;
 
 class SystemQueryCache {
  public:
-    explicit SystemQueryCache(cqlserver::CQLServiceImpl* service_impl);
-    ~SystemQueryCache();
+  explicit SystemQueryCache(cqlserver::CQLServiceImpl* service_impl);
+  ~SystemQueryCache();
 
-    boost::optional<RowsResult::SharedPtr> Lookup(const std::string& query);
+  boost::optional<RowsResult::SharedPtr> Lookup(const std::string& query);
 
-    MonoDelta GetStaleness();
+  MonoDelta GetStaleness();
+
+  void Shutdown();
 
  private:
-    void InitializeQueries();
-    void RefreshCache();
-    void ScheduleRefreshCache(bool now);
-    void ExecuteSync(const std::string& stmt, Status* status,
-        ExecutedResult::SharedPtr* result_ptr);
+  void InitializeQueries();
+  void RefreshCache();
+  void ScheduleRefreshCache(bool now);
+  void ExecuteSync(const std::string& stmt, Status* status, ExecutedResult::SharedPtr* result_ptr);
 
-    cqlserver::CQLServiceImpl* const service_impl_;
-    std::vector<std::string> queries_;
+  cqlserver::CQLServiceImpl* const service_impl_;
+  std::vector<std::string> queries_;
 
-    std::unique_ptr<std::unordered_map<std::string, RowsResult::SharedPtr>> cache_
+  std::unique_ptr<std::unordered_map<std::string, RowsResult::SharedPtr>> cache_
       GUARDED_BY(cache_mutex_);
-    MonoTime last_updated_ GUARDED_BY(cache_mutex_);
-    std::mutex cache_mutex_;
+  MonoTime last_updated_ GUARDED_BY(cache_mutex_);
+  std::mutex cache_mutex_;
 
-    // Required for executing statements
-    ql::StatementParameters stmt_params_;
+  // Required for executing statements
+  ql::StatementParameters stmt_params_;
 
-    // Thread pool used by the scheduler.
-    std::unique_ptr<yb::rpc::IoThreadPool> pool_;
-    // The scheduler used to refresh the system queries.
-    std::unique_ptr<yb::rpc::Scheduler> scheduler_;
+  // Thread pool used by the scheduler.
+  std::unique_ptr<yb::rpc::IoThreadPool> pool_;
+  // The scheduler used to refresh the system queries.
+  std::unique_ptr<yb::rpc::Scheduler> scheduler_;
+  std::atomic_bool shutting_down_{false};
 };
 
 } // namespace cqlserver

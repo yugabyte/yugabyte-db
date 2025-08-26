@@ -166,7 +166,7 @@ unsafe fn pg_guard_ffi_boundary_impl<T, F: FnOnce() -> T>(f: F) -> T {
     // SAFETY: This should really, really not be done in a multithreaded context as it
     // accesses multiple `static mut`. The ultimate caller asserts this is the main thread.
     unsafe {
-        let caller_memxct = pg_sys::CurrentMemoryContext;
+        let caller_memxct = pg_sys::YbCurrentMemoryContext;
         let prev_exception_stack = pg_sys::PG_exception_stack;
         let prev_error_context_stack = pg_sys::error_context_stack;
         let mut result: std::mem::MaybeUninit<T> = MaybeUninit::uninit();
@@ -198,7 +198,7 @@ unsafe fn pg_guard_ffi_boundary_impl<T, F: FnOnce() -> T>(f: F) -> T {
 
             // At this point, we're running within `pg_sys::ErrorContext`, but should be in the
             // memory context the caller was in before we call [CopyErrorData()] and start using it
-            pg_sys::CurrentMemoryContext = caller_memxct;
+            pg_sys::YbCurrentMemoryContext = caller_memxct;
 
             // SAFETY: `pg_sys::CopyErrorData()` will always give us a valid pointer, so just assume so
             let errdata_ptr = pg_sys::CopyErrorData();

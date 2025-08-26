@@ -349,6 +349,7 @@ public class MiniYBDaemon {
     try {
       process.getInputStream().close();
     } catch (IOException ex) {
+      LOG.warn("Exception when trying to close process stdin for process " + this, ex);
     }
 
     // Manually cleanup left behind YB Controller subprocesses if any.

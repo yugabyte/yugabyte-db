@@ -58,6 +58,8 @@ Wait for any pending updates to propagate to B:
 The lag and skew values might be non-zero as they are estimates based on the last time the tablets were polled. Because no new writes can occur during this period, you can be certain that no data is lost within this timeframe.
 {{< /note >}}
 
+If you are using CDC to move data out of YugabyteDB, while no new writes are occurring, you must also wait for the CDC target to catch up. Check that the lag is zero (or close to zero), and verify the event count metrics of the connector being streamed are 0.
+
 ### Fix up sequences and serial columns
 
 {{< note >}}
@@ -76,6 +78,10 @@ Run the following command against A to delete the old replication group.
 
 {{% readfile "includes/transactional-drop.md" %}}
 
+In addition, if you are using CDC to move data out of YugabyteDB, delete CDC on A (that is, de-configure CDC by deleting publications and slots), and start up CDC on B (that is, create publications and slots on B).
+
 ### Switch applications to the new Primary universe (B)
 
 The old Standby (B) is now the new Primary universe, and the old Primary (A) is the new Standby universe. Update the application connection strings to point to the new Primary universe (B).
+
+If you are using CDC to move data out of YugabyteDB, point your CDC sink to pull from B (the newly promoted database) by starting the connector in `snapshot.mode=never`.

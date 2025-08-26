@@ -7,10 +7,10 @@ package rolebinding
 import (
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/sirupsen/logrus"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
@@ -100,12 +100,12 @@ func NewRoleBindingContext() *Context {
 
 // CreateTime function to fetch CreateTime
 func (c *Context) CreateTime() string {
-	return c.r.GetCreateTime().Format(time.RFC1123Z)
+	return util.PrintTime(c.r.GetCreateTime())
 }
 
 // UpdateTime function to fetch UpdateTime
 func (c *Context) UpdateTime() string {
-	return c.r.GetUpdateTime().Format(time.RFC1123Z)
+	return util.PrintTime(c.r.GetUpdateTime())
 }
 
 // GroupInfo function to fetch GroupInfo

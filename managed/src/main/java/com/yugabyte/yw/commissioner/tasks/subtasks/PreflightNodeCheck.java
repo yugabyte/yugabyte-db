@@ -10,7 +10,9 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeConfigValidator;
+import java.util.Optional;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -39,21 +41,21 @@ public class PreflightNodeCheck extends NodeTaskBase {
     log.info("Running preflight checks for node {}.", taskParams().nodeName);
     Provider provider = taskParams().getProvider();
     if (provider.getCloudCode() == CloudType.onprem && provider.getDetails().skipProvisioning) {
-      if (getInstanceOf(NodeAgentEnabler.class).isNodeAgentMandatory(provider)) {
+      Universe universe = getUniverse();
+      if (getInstanceOf(NodeAgentEnabler.class).isNodeAgentServerEnabled(provider, universe)) {
         log.info("Checking for presence of node agent in YBA for node {}", taskParams().nodeName);
         // Ensure that node agent is already installed for a new manual onprem-provider when node
         // agent client is enabled.
         NodeInstance instance = NodeInstance.getOrBadRequest(taskParams().nodeUuid);
-        NodeAgent.maybeGetByIp(instance.getDetails().ip)
-            .orElseThrow(
-                () -> {
-                  String errMsg =
-                      String.format(
-                          "Node agent is expected for %s but it is not installed",
-                          instance.getDetails().ip);
-                  log.error(errMsg);
-                  throw new IllegalStateException(errMsg);
-                });
+        Optional<NodeAgent> nodeAgentOpt = NodeAgent.maybeGetByIp(instance.getDetails().ip);
+        if (nodeAgentOpt.isEmpty() || !nodeAgentOpt.get().isActive()) {
+          String errMsg =
+              String.format(
+                  "Node agent is expected for %s but it is not installed or inactive",
+                  instance.getDetails().ip);
+          log.error(errMsg);
+          throw new IllegalStateException(errMsg);
+        }
       }
     }
     ShellResponse response =

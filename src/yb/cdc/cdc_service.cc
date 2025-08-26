@@ -1584,6 +1584,8 @@ void CDCServiceImpl::GetChanges(
       CDCErrorPB::INVALID_REQUEST,
       context);
 
+  ash::WaitStateInfo::UpdateCurrentTabletId(req->tablet_id());
+
   auto stream_id = RPC_VERIFY_STRING_TO_STREAM_ID(
       req->has_db_stream_id() ? req->db_stream_id() : req->stream_id());
 

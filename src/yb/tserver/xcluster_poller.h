@@ -13,6 +13,7 @@
 
 #include <string>
 
+#include "yb/ash/ash_fwd.h"
 #include "yb/cdc/cdc_types.h"
 #include "yb/tserver/xcluster_async_executor.h"
 #include "yb/tserver/xcluster_ddl_queue_handler.h"
@@ -62,7 +63,7 @@ class XClusterPoller : public XClusterAsyncExecutor {
       const std::shared_ptr<client::XClusterRemoteClientHolder>& source_client,
       XClusterConsumer* xcluster_consumer, int64_t leader_term,
       std::function<int64_t(const TabletId&)> get_leader_term, bool is_automatic_mode,
-      bool is_stream_paused);
+      bool is_stream_paused, const std::string& ts_uuid);
   ~XClusterPoller();
 
   void Init(
@@ -118,6 +119,8 @@ class XClusterPoller : public XClusterAsyncExecutor {
 
   void SetPaused(bool is_paused);
 
+  const ash::WaitStateInfoPtr& wait_state() { return wait_state_; }
+
  private:
   const xcluster::ReplicationGroupId& GetReplicationGroupId() const {
     return producer_tablet_info_.replication_group_id;
@@ -142,6 +145,10 @@ class XClusterPoller : public XClusterAsyncExecutor {
   Status ProcessGetChangesResponseError(const cdc::GetChangesResponsePB& resp);
 
   void MarkReplicationPaused();
+
+  Status InitializeWaitState(const std::string& ts_uuid);
+
+  void IncrementPollFailures();
 
   const xcluster::ProducerTabletInfo producer_tablet_info_;
   const xcluster::ConsumerTabletInfo consumer_tablet_info_;
@@ -188,6 +195,8 @@ class XClusterPoller : public XClusterAsyncExecutor {
       ReplicationErrorPb::REPLICATION_ERROR_UNINITIALIZED;
 
   PollStatsHistory poll_stats_history_;
+
+  ash::WaitStateInfoPtr wait_state_;
 };
 
 } // namespace tserver

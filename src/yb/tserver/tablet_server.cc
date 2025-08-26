@@ -371,7 +371,9 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
       master_config_index_(0),
       xcluster_context_(new TserverXClusterContext()),
-      object_lock_shared_state_manager_(new docdb::ObjectLockSharedStateManager()) {
+      object_lock_tracker_(std::make_shared<ObjectLockTracker>()),
+      object_lock_shared_state_manager_(
+          new docdb::ObjectLockSharedStateManager(object_lock_tracker_)) {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
       FLAGS_inbound_rpc_memory_limit, mem_tracker()));
   if (FLAGS_ysql_enable_db_catalog_version_mode) {
@@ -801,6 +803,7 @@ void TabletServer::Shutdown() {
   client()->RequestAbortAllRpcs();
 
   tablet_manager_->StartShutdown();
+  DbServerBase::Shutdown();
   RpcAndWebServerBase::Shutdown();
   tablet_manager_->CompleteShutdown();
 
@@ -809,23 +812,24 @@ void TabletServer::Shutdown() {
 
 tserver::TSLocalLockManagerPtr TabletServer::ResetAndGetTSLocalLockManager() {
   ts_local_lock_manager()->Shutdown();
-  {
-    std::lock_guard l(lock_);
-    ts_local_lock_manager_.reset();
-  }
-  StartTSLocalLockManager();
-  return ts_local_lock_manager();
+  std::lock_guard l(lock_);
+  StartTSLocalLockManagerUnlocked();
+  return ts_local_lock_manager_;
 }
 
 void TabletServer::StartTSLocalLockManager() {
+  std::lock_guard l(lock_);
+  StartTSLocalLockManagerUnlocked();
+}
+
+void TabletServer::StartTSLocalLockManagerUnlocked() {
   if (opts_.server_type == TabletServerOptions::kServerType &&
       PREDICT_FALSE(FLAGS_enable_object_locking_for_table_locks) &&
       PREDICT_TRUE(FLAGS_enable_ysql)) {
-    std::lock_guard l(lock_);
     ts_local_lock_manager_ = std::make_shared<tserver::TSLocalLockManager>(
         clock_, this /* TabletServerIf* */, *this /* RpcServerBase& */,
         tablet_manager_->waiting_txn_pool(), metric_entity(),
-        object_lock_shared_state_manager_.get());
+        object_lock_tracker_, object_lock_shared_state_manager_.get());
     ts_local_lock_manager_->Start(tablet_manager_->waiting_txn_registry());
   }
 }
@@ -1367,26 +1371,27 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
             shm_index < static_cast<int>(TServerSharedData::kMaxNumDbCatalogVersions))
             << "Invalid shm_index: " << shm_index;
       } else if (new_version < existing_entry.current_version) {
-        ++existing_entry.new_version_ignored_count;
-        // If the new version is continuously older than what we have seen, it implies that master's
-        // current version has somehow gone backwards which isn't expected. Crash this tserver to
-        // sync up with master again. Do so with RandomUniformInt to reduce the chance that all
-        // tservers are crashed at the same time.
-        auto new_version_ignored_count =
-          RandomUniformInt<uint32_t>(FLAGS_ysql_min_new_version_ignored_count,
-                                     FLAGS_ysql_min_new_version_ignored_count + 180);
-        // Because the session that executes the DDL sets its incremented new version in the
-        // local tserver, for this local tserver it is possible the heartbeat response has
-        // not read the latest version from master yet. It is legitimate to see the following
-        // as a WARNING. However we should not see this continuously for new_version_ignored_count
-        // times.
-        (existing_entry.new_version_ignored_count >= new_version_ignored_count ?
-         LOG(FATAL) : LOG(WARNING))
-            << "Ignoring ysql db " << db_oid
-            << " catalog version update: new version too old. "
-            << "New: " << new_version << ", Old: " << existing_entry.current_version
-            << ", ignored count: " << existing_entry.new_version_ignored_count
-            << ", debug_id: " << debug_id;
+        if (!db_catalog_version_data.ignore_catalog_version_staleness_check()) {
+          ++existing_entry.new_version_ignored_count;
+          // If the new version is continuously older than what we have seen, it implies that
+          // master's current version has somehow gone backwards which isn't expected. Crash this
+          // tserver to sync up with master again. Do so with RandomUniformInt to reduce the chance
+          // that all tservers are crashed at the same time.
+          auto new_version_ignored_count = RandomUniformInt<uint32_t>(
+              FLAGS_ysql_min_new_version_ignored_count,
+              FLAGS_ysql_min_new_version_ignored_count + 180);
+          // Because the session that executes the DDL sets its incremented new version in the
+          // local tserver, for this local tserver it is possible the heartbeat response has
+          // not read the latest version from master yet. It is legitimate to see the following
+          // as a WARNING. However we should not see this continuously for new_version_ignored_count
+          // times.
+          (existing_entry.new_version_ignored_count >= new_version_ignored_count ? LOG(FATAL)
+                                                                                 : LOG(WARNING))
+              << "Ignoring ysql db " << db_oid << " catalog version update: new version too old. "
+              << "New: " << new_version << ", Old: " << existing_entry.current_version
+              << ", ignored count: " << existing_entry.new_version_ignored_count
+              << ", debug_id: " << debug_id;
+        }
       } else {
         // It is possible to have same current_version but a newer last_breaking_version.
         // Following is a scenario that this can happen.

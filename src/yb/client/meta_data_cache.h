@@ -132,6 +132,8 @@ class YBMetaDataCache {
       const PermissionType permission,
       const CacheCheckMode check_mode =  CacheCheckMode::RETRY);
 
+  void Shutdown();
+
  private:
   friend struct YBMetaDataCacheEntry;
 
@@ -173,6 +175,7 @@ class YBMetaDataCache {
   YBTypeMap cached_types_ GUARDED_BY(cached_types_mutex_);
 
   MemTrackerPtr mem_tracker_;
+  std::atomic_bool shutting_down_{false};
 };
 
 } // namespace client

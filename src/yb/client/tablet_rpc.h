@@ -198,7 +198,7 @@ class TabletInvoker {
     if (ErrorCode(error_code) == tserver::TabletServerErrorPB::NOT_THE_LEADER &&
         current_ts_ != nullptr) {
       return status.IsNotFound() || status.IsIllegalState();
-}
+    }
     return false;
   }
 

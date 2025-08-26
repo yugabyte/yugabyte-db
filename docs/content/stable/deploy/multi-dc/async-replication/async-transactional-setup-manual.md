@@ -46,6 +46,8 @@ Note that when making DDL changes on universes in manually-configured transactio
 Before setting up xCluster replication, ensure you have reviewed the [Prerequisites](../#prerequisites) and [Best practices](../#best-practices).
 {{< /tip >}}
 
+For moving data out of YugabyteDB, set up CDC on the xCluster source universe. CDC on the xCluster target universe is not supported.
+
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li>
     <a href="#local" class="nav-link active" id="local-tab" data-bs-toggle="tab"

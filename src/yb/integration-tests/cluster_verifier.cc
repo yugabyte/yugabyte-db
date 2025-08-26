@@ -100,6 +100,7 @@ void ClusterVerifier::CheckCluster() {
     SleepFor(MonoDelta::FromSeconds(sleep_time));
   }
   ASSERT_OK(s);
+  ASSERT_FALSE(cluster_->WasUnsafeShutdown()) << "Not all daemons shut down gracefully";
 }
 
 Status ClusterVerifier::DoYsck() {

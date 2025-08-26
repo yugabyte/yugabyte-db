@@ -55,6 +55,13 @@
 
 #define USEARCH_USE_SIMSIMD 1
 
+#if defined(__x86_64__) || defined(_M_X64)
+#pragma GCC diagnostic ignored "-Wshorten-64-to-32"
+
+#define SIMSIMD_TARGET_HASWELL 1
+#define SIMSIMD_TARGET_SKYLAKE 1
+#endif
+
 // Getting these errors with both Clang and GCC on Linux, as well as with in an x86_64 build with
 // AppleClang 15.0.0.15000100 on macOS on Jenkins, but not with arm64 15.0.0 (clang-1500.1.0.2.5)
 // build done locally. For now, disabling native BF16 and F16 in all cases.

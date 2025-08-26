@@ -54,6 +54,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
+import java.util.SortedSet;
+import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
@@ -105,6 +107,27 @@ public class PlacementInfoUtil {
 
     // No affinitized leader info has changed, return false.
     return false;
+  }
+
+  /**
+   * Validates that leader priorities form positive contiguous sequence.
+   *
+   * @param placementInfo
+   */
+  public static void validatePriority(PlacementInfo placementInfo) {
+    SortedSet<Integer> set = new TreeSet<>();
+    placementInfo.azStream().forEach(az -> set.add(az.leaderPreference));
+    if (set.first() < 1) {
+      throw new PlatformServiceException(BAD_REQUEST, "Expect priorities start from 1");
+    }
+    Integer prev = null;
+    for (Integer val : set) {
+      if (prev != null && val - prev > 1) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Found a gap between priorities: between" + prev + " and " + val);
+      }
+      prev = val;
+    }
   }
 
   /**
@@ -398,8 +421,10 @@ public class PlacementInfoUtil {
       removeUnusedRegions(cluster.placementInfo, cluster.userIntent.regionList);
       UUID nodeProvider = getProviderUUID(taskParams.nodeDetailsSet, cluster.uuid);
       UUID placementProvider = cluster.placementInfo.cloudList.get(0).uuid;
+      boolean providerChanged =
+          nodeProvider != null && !Objects.equals(placementProvider, nodeProvider);
       if ((!keepPlacement && !checkFaultToleranceCorrect(cluster, allowGeoPartitioning))
-          || !Objects.equals(placementProvider, nodeProvider)) {
+          || providerChanged) {
         recalculatePlacement = true;
       }
     }

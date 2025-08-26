@@ -298,7 +298,7 @@
         NC='\033[0m' # No Color
 
         if [[ $- == *i* ]]
-            then export PS1="[\u@\h ~]\$ "
+            then export PS1="[\u@\h \W]\$ "
             echo -e "Use ${ORANGE}'systemctl --user'${NC} to manage YB software"
         fi
       create: yes

@@ -72,15 +72,30 @@ vector_index::HNSWOptions ConvertToHnswOptions(const PgVectorIdxOptionsPB& optio
   };
 }
 
-template <template<class, class> class Factory, class LSM>
-auto VectorLSMFactory(
+template <class LSM>
+typename LSM::Options::VectorIndexFactory VectorLSMFactory(
     const hnsw::BlockCachePtr& block_cache, const PgVectorIdxOptionsPB& options,
     const MemTrackerPtr& mem_tracker) {
-  using FactoryImpl = vector_index::MakeVectorIndexFactory<Factory, LSM>;
-  return [block_cache, hnsw_options = ConvertToHnswOptions(options),
-          backend = options.hnsw().backend(), mem_tracker](vector_index::FactoryMode mode) {
-    return FactoryImpl::Create(mode, block_cache, hnsw_options, backend, mem_tracker);
-  };
+  auto hnsw_options = ConvertToHnswOptions(options);
+  switch (options.hnsw().backend()) {
+    case HnswBackend::USEARCH: [[fallthrough]];
+    case HnswBackend::YB_HNSW: {
+      using FactoryImpl = vector_index::MakeVectorIndexFactory<
+          ann_methods::UsearchIndexFactory, LSM>;
+      return [block_cache, hnsw_options,
+              backend = options.hnsw().backend(), mem_tracker](vector_index::FactoryMode mode) {
+        return FactoryImpl::Create(mode, block_cache, hnsw_options, backend, mem_tracker);
+      };
+    }
+    case HnswBackend::HNSWLIB: {
+      using FactoryImpl = vector_index::MakeVectorIndexFactory<
+          ann_methods::HnswlibIndexFactory, LSM>;
+      return [hnsw_options](vector_index::FactoryMode mode) {
+        return FactoryImpl::Create(mode, hnsw_options);
+      };
+    }
+  }
+  FATAL_INVALID_PB_ENUM_VALUE(HnswBackend, options.hnsw().backend());
 }
 
 template<vector_index::IndexableVectorType Vector,
@@ -92,8 +107,7 @@ auto GetVectorLSMFactory(
   using LSM = vector_index::VectorLSM<Vector, DistanceResult>;
   switch (options.idx_type()) {
     case PgVectorIndexType::HNSW:
-      return VectorLSMFactory<ann_methods::UsearchIndexFactory, LSM>(
-          block_cache, options, mem_tracker);
+      return VectorLSMFactory<LSM>(block_cache, options, mem_tracker);
     case PgVectorIndexType::DUMMY: [[fallthrough]];
     case PgVectorIndexType::IVFFLAT: [[fallthrough]];
     case PgVectorIndexType::UNKNOWN_IDX:
@@ -365,6 +379,10 @@ class DocVectorIndexImpl : public DocVectorIndex {
 
   Result<size_t> TotalEntries() const override {
     return lsm_.TotalEntries();
+  }
+
+  bool TEST_HasBackgroundInserts() const override {
+    return lsm_.TEST_HasBackgroundInserts();
   }
 
  private:
