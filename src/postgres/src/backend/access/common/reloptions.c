@@ -191,7 +191,7 @@ static relopt_bool boolRelOpts[] =
 		{
 			"colocation",
 			"opt-out of colocation if set to false",
-			RELOPT_KIND_HEAP,
+			RELOPT_KIND_HEAP | RELOPT_KIND_PARTITIONED,
 			AccessExclusiveLock
 		},
 
@@ -2201,6 +2201,8 @@ partitioned_table_reloptions(Datum reloptions, bool validate)
 		static const relopt_parse_elt tab[] = {
 			{"colocation_id", RELOPT_TYPE_OID,
 			offsetof(YbParitionedTableOptions, colocation_id)},
+			{"colocation", RELOPT_TYPE_BOOL,
+			offsetof(YbParitionedTableOptions, colocation)},
 		};
 
 		return (bytea *) build_reloptions(reloptions, validate,
