@@ -12711,6 +12711,58 @@ ATExecSetTableSpaceNoStorage(Relation rel, Oid newTableSpace)
 
 	heap_close(pg_class, RowExclusiveLock);
 
+	/*
+	 * YB: For YB relations, the PK index is the same as the base table.
+	 * Also update the primary key index's pg_class.reltablespace and
+	 * pg_shdepend entries.
+	 */
+	if (IsYBRelation(rel) &&
+		(rel->rd_rel->relkind == RELKIND_RELATION ||
+		 rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE))
+	{
+		List	   *indexIds = RelationGetIndexList(rel);
+		ListCell   *lc;
+		Oid newPrimaryKeyTableSpaceId = (newTableSpace == MyDatabaseTableSpace) ?
+			InvalidOid : newTableSpace;
+
+		foreach(lc, indexIds)
+		{
+			Oid			idxOid = lfirst_oid(lc);
+			Relation	idxRel = RelationIdGetRelation(idxOid);
+			bool		isPrimaryIndex = (idxRel != NULL &&
+										 idxRel->rd_index &&
+										 idxRel->rd_index->indisprimary);
+			RelationClose(idxRel);
+
+			if (!isPrimaryIndex)
+				continue;
+
+			Relation	idx_pg_class = heap_open(RelationRelationId,
+													RowExclusiveLock);
+			HeapTuple	idx_tuple = SearchSysCacheCopy1(RELOID,
+													ObjectIdGetDatum(idxOid));
+			if (!HeapTupleIsValid(idx_tuple))
+				elog(ERROR, "cache lookup failed for relation %u", idxOid);
+			Form_pg_class idx_rd_rel = (Form_pg_class) GETSTRUCT(idx_tuple);
+
+			/* Update PK's pg_class entry */
+			idx_rd_rel->reltablespace = newPrimaryKeyTableSpaceId;
+			CatalogTupleUpdate(idx_pg_class, &idx_tuple->t_self, idx_tuple);
+
+			/* Update PK's pg_shdepend entry */
+			changeDependencyOnTablespace(RelationRelationId, idxOid,
+				newPrimaryKeyTableSpaceId);
+
+			heap_freetuple(idx_tuple);
+			heap_close(idx_pg_class, RowExclusiveLock);
+
+			/* Only one primary key index per table */
+			break;
+		}
+
+		list_free(indexIds);
+	}
+
 	/* Make sure the reltablespace change is visible */
 	CommandCounterIncrement();
 

@@ -659,3 +659,81 @@ EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
 DROP TABLE foo;
 DROP TABLESPACE close_far_pref;
 DROP TABLESPACE medium_pref;
+
+/* Disallow setting tablespace for ALTER TABLE ADD CONSTRAINT PRIMARY KEY. */
+CREATE TABLESPACE ts1 LOCATION '';
+CREATE TABLE t1 (a int, b int);
+ALTER TABLE t1
+  ADD CONSTRAINT t1_pkey
+  PRIMARY KEY (a)
+  USING INDEX TABLESPACE ts1;
+DROP TABLE t1;
+DROP TABLESPACE ts1;
+
+/*
+ * Check that pg_shdepend is updated correctly when various tablespace
+ * operations are performed.
+ */
+CREATE TABLESPACE ts_dep1 LOCATION '/data';
+CREATE TABLESPACE ts_dep2 LOCATION '/data';
+CREATE TABLE dep_t (a int PRIMARY KEY) TABLESPACE ts_dep1;
+
+-- Query to get the dependencies for the table/index.
+PREPARE dep_shdeps AS
+SELECT CASE c.relkind WHEN 'r' THEN 'table' WHEN 'i' THEN 'index' ELSE c.relkind::text END AS objtype,
+       c.relname, ts.spcname
+FROM pg_shdepend d
+JOIN pg_class c ON d.classid = 'pg_class'::regclass AND d.objid = c.oid
+JOIN pg_tablespace ts ON d.refclassid = 'pg_tablespace'::regclass AND d.refobjid = ts.oid
+WHERE d.dbid = (SELECT oid FROM pg_database WHERE datname = current_database())
+  AND c.relnamespace = 'public'::regnamespace
+  AND c.relname LIKE 'dep\_%' ESCAPE '\'
+ORDER BY c.relname;
+
+-- Query to check reltablespace in pg_class for the table/index.
+PREPARE dep_relts AS
+SELECT CASE c.relkind WHEN 'r' THEN 'table' WHEN 'i' THEN 'index' ELSE c.relkind::text END AS objtype,
+       c.relname, ts.spcname
+FROM pg_class c
+LEFT JOIN pg_tablespace ts ON c.reltablespace = ts.oid
+WHERE c.relnamespace = 'public'::regnamespace
+  AND c.relname LIKE 'dep\_%' ESCAPE '\'
+ORDER BY c.relname;
+
+-- Verify dependencies for table after creation.
+EXECUTE dep_shdeps;
+EXECUTE dep_relts;
+
+-- Move the table to ts_dep2, which should also move the PK index
+ALTER TABLE dep_t SET TABLESPACE ts_dep2;
+EXECUTE dep_shdeps;
+EXECUTE dep_relts;
+
+-- Move all relations in ts_dep2 back to ts_dep1
+ALTER TABLE ALL IN TABLESPACE ts_dep2 SET TABLESPACE ts_dep1;
+EXECUTE dep_shdeps;
+EXECUTE dep_relts;
+
+-- Drop the table and verify dependencies are removed
+DROP TABLE dep_t;
+EXECUTE dep_shdeps;
+EXECUTE dep_relts;
+
+-- Table rewrites: dropping and re-adding a primary key
+CREATE TABLE dep_rw (a int PRIMARY KEY) TABLESPACE ts_dep1;
+EXECUTE dep_shdeps;
+EXECUTE dep_relts;
+
+-- Drop the primary key (rewrite) and verify the index dependency disappears
+ALTER TABLE dep_rw DROP CONSTRAINT dep_rw_pkey;
+EXECUTE dep_shdeps;
+EXECUTE dep_relts;
+
+-- Re-add the primary key (rewrite) and verify the index dependency reappears
+ALTER TABLE dep_rw ADD PRIMARY KEY(a);
+EXECUTE dep_shdeps;
+EXECUTE dep_relts;
+
+DROP TABLE dep_rw;
+DROP TABLESPACE ts_dep2;
+DROP TABLESPACE ts_dep1;
