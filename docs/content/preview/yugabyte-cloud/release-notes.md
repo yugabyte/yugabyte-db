@@ -26,7 +26,7 @@ rightNav:
 ##### New features
 
 - {{<tags/feature/ea>}}Support for [remote backup replication](../cloud-clusters/backup-clusters/#remote-backup-replication). Automatically copy all cluster backups (scheduled, incremental, and on demand) to a storage bucket in the same cloud provider. If you want to try this feature, contact {{% support-cloud %}}. Currently, only clusters deployed on GCP are supported.
-- New GCP region: Dammam.
+- New GCP regions: Doha and Dammam.
 
 ##### Database
 
