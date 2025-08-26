@@ -35,7 +35,7 @@
 #include <memory>
 #include <utility>
 
-namespace yb {  
+namespace yb {
 
 // An abstract base class defining the interface for a polymorphic iterator.
 template <typename ValueType>
@@ -55,6 +55,10 @@ class PolymorphicIterator {
  public:
   explicit PolymorphicIterator(std::unique_ptr<AbstractIterator<ValueType>> impl)
       : impl_(std::move(impl)) {}
+
+  bool Valid() const {
+    return impl_ != nullptr;
+  }
 
   PolymorphicIterator& operator++() {
     impl_->Next();
