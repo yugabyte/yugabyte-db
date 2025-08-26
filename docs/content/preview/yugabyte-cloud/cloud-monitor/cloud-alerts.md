@@ -224,7 +224,7 @@ YugabyteDB Aeon clusters support [15 simultaneous connections](../../cloud-basic
 YugabyteDB Aeon sends a notification when the number of YSQL connections on any node in the cluster exceeds the threshold, as follows:
 
 - YSQL connections exceeds 60% of the limit (Warning).
-- YSQL connections exceeds 95% of the limit (Severe).
+- YSQL connections exceeds 85% of the limit (Severe).
 
 If Connection Pooling is enabled, the thresholds are as follows:
 
