@@ -71,10 +71,10 @@ yb_init_bitmap_index_scandesc(YbBitmapIndexScanState *node)
 	 */
 	if (is_colocated && is_primary)
 		scandesc->yb_rel_pushdown =
-			YbInstantiatePushdownParams(&plan->yb_idx_pushdown, estate);
+			YbInstantiatePushdownExprs(&plan->yb_idx_pushdown, estate);
 	else
 		scandesc->yb_idx_pushdown =
-			YbInstantiatePushdownParams(&plan->yb_idx_pushdown, estate);
+			YbInstantiatePushdownExprs(&plan->yb_idx_pushdown, estate);
 }
 
 /* ----------------------------------------------------------------

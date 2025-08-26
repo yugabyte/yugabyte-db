@@ -1045,11 +1045,18 @@ extern const uint32 yb_funcs_unsafe_for_pushdown[];
 extern const uint32 yb_funcs_safe_for_mixed_mode_pushdown[];
 
 /*
+ * List of functions that are safe to push down, but need to be evaluated
+ * to a constant value before being sent to DocDB.
+ */
+extern const uint32 yb_pushdown_funcs_to_constify[];
+
+/*
  * Number of functions in the lists above.
  */
 extern const int yb_funcs_safe_for_pushdown_count;
 extern const int yb_funcs_unsafe_for_pushdown_count;
 extern const int yb_funcs_safe_for_mixed_mode_pushdown_count;
+extern const int yb_pushdown_funcs_to_constify_count;
 
 /**
  * Use the YB_PG_PDEATHSIG environment variable to set the signal to be sent to
