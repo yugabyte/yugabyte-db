@@ -10,6 +10,8 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
@@ -17,8 +19,11 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeActionType;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -65,11 +70,24 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
 
   @Override
   protected void createPrecheckTasks(Universe universe) {
+    super.createPrecheckTasks(universe);
     // Check again after locking.
     runBasicChecks(universe);
     NodeDetails currentNode = universe.getNode(taskParams().nodeName);
-    Collection<NodeDetails> currentNodeDetails = Collections.singleton(currentNode);
-    createCheckNodeSafeToDeleteTasks(universe, currentNodeDetails);
+    Cluster cluster = universe.getCluster(currentNode.placementUuid);
+    if (cluster.userIntent.providerType == CloudType.onprem) {
+      NodeInstance.maybeGetByName(currentNode.nodeName, currentNode.nodeUuid)
+          .orElseThrow(
+              () -> {
+                String errMsg =
+                    String.format(
+                        "Node instance %s with UUID %s does not exist",
+                        currentNode.nodeName, currentNode.nodeUuid);
+                log.error(errMsg);
+                return new PlatformServiceException(BAD_REQUEST, errMsg);
+              });
+    }
+    createCheckNodeSafeToDeleteTasks(universe, Collections.singleton(currentNode));
   }
 
   @Override

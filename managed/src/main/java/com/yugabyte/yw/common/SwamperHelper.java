@@ -217,13 +217,15 @@ public class SwamperHelper {
         labels.put(LabelType.NODE_REGION.toString().toLowerCase(), nodeDetails.cloudInfo.region);
       }
       if (CloudType.onprem.name().equals(nodeDetails.cloudInfo.cloud)) {
-        NodeInstance nodeInstance = NodeInstance.get(nodeDetails.nodeUuid);
-        if (nodeInstance != null
-            && StringUtils.isNotEmpty(nodeInstance.getDetails().instanceName)) {
-          labels.put(
-              LabelType.NODE_IDENTIFIER.toString().toLowerCase(),
-              nodeInstance.getDetails().instanceName);
-        }
+        NodeInstance.maybeGet(nodeDetails.nodeUuid)
+            .ifPresent(
+                nodeInstance -> {
+                  if (StringUtils.isNotEmpty(nodeInstance.getDetails().instanceName)) {
+                    labels.put(
+                        LabelType.NODE_IDENTIFIER.toString().toLowerCase(),
+                        nodeInstance.getDetails().instanceName);
+                  }
+                });
       }
     }
     if (nodeDetails.placementUuid != null) {

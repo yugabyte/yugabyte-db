@@ -74,7 +74,7 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       createValidateDiskSizeOnNodeRemovalTasks(
           universe, cluster, taskParams().getNodesInCluster(cluster.uuid));
     }
-    createPreflightNodeCheckTasks(taskParams().clusters);
+    createPreflightNodeCheckTasks(universe, taskParams().clusters);
 
     createCheckCertificateConfigTask(universe, taskParams().clusters);
   }

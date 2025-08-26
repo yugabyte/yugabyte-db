@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks;
 import static com.yugabyte.yw.commissioner.UpgradeTaskBase.SPLIT_FALLBACK;
 import static com.yugabyte.yw.commissioner.UpgradeTaskBase.isBatchRollEnabled;
 import static com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType.RotatingCert;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
@@ -56,6 +57,7 @@ import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.ShellProcessContext;
@@ -2140,9 +2142,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * Create preflight node check tasks for on-prem nodes in the clusters if the nodes are in
    * ToBeAdded state.
    *
+   * @param universe the universe
    * @param clusters the clusters
    */
-  public void createPreflightNodeCheckTasks(Collection<Cluster> clusters) {
+  public void createPreflightNodeCheckTasks(Universe universe, Collection<Cluster> clusters) {
     Set<Cluster> onPremClusters =
         clusters.stream()
             .filter(cluster -> cluster.userIntent.providerType == CloudType.onprem)
@@ -2156,6 +2159,26 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     if (CollectionUtils.isNotEmpty(nodesToProvision)) {
       createPreflightNodeCheckTasks(
           clusters, nodesToProvision, null /*rootCA*/, null /*clientRootCA*/);
+    }
+    Set<NodeDetails> nodesToBeRemoved =
+        PlacementInfoUtil.getNodesToBeRemoved(taskParams().nodeDetailsSet);
+    if (CollectionUtils.isNotEmpty(nodesToBeRemoved)) {
+      for (NodeDetails node : nodesToBeRemoved) {
+        NodeDetails universeNode = universe.getNode(node.nodeName);
+        if (universeNode == null) {
+          log.warn(
+              "Node {} is not found in the universe {}", node.nodeName, universe.getUniverseUUID());
+          continue;
+        }
+        NodeInstance.maybeGetByName(universeNode.nodeName, universeNode.nodeUuid)
+            .orElseThrow(
+                () ->
+                    new PlatformServiceException(
+                        BAD_REQUEST,
+                        String.format(
+                            "Node instance %s with UUID %s does not exist",
+                            node.nodeName, node.nodeUuid)));
+      }
     }
   }
 
