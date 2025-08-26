@@ -9,7 +9,7 @@ tags:
 menu:
   v2.20:
     identifier: explore-change-data-capture
-    parent: explore
+    parent: additional-features
     weight: 280
 type: indexpage
 ---
