@@ -3221,6 +3221,19 @@ bool YBCPgYsqlMajorVersionUpgradeInProgress() {
   return yb_major_version_upgrade_compatibility > 0 || !yb_upgrade_to_pg15_completed;
 }
 
+namespace {
+// YugabyteDB-specific binary upgrade flag
+static bool yb_is_binary_upgrade = false;
+}  // namespace
+
+bool YBCIsBinaryUpgrade() {
+  return yb_is_binary_upgrade;
+}
+
+void YBCSetBinaryUpgrade(bool value) {
+  yb_is_binary_upgrade = value;
+}
+
 } // extern "C"
 
 } // namespace yb::pggate

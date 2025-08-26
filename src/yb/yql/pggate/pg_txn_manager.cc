@@ -200,6 +200,15 @@ Status PgTxnManager::SerialNo::RestoreReadTime(uint64_t read_time_serial_no) {
   return Status::OK();
 }
 
+namespace {
+
+bool ShouldEnableTableLocks() {
+  return FLAGS_enable_object_locking_for_table_locks && !YBCIsInitDbModeEnvVarSet() &&
+         !YBCIsBinaryUpgrade();
+}
+
+}  // namespace
+
 PgTxnManager::PgTxnManager(
     PgClient* client,
     scoped_refptr<ClockBase> clock,
@@ -207,7 +216,7 @@ PgTxnManager::PgTxnManager(
     : client_(client),
       clock_(std::move(clock)),
       pg_callbacks_(pg_callbacks),
-      enable_table_locking_(FLAGS_enable_object_locking_for_table_locks) {
+      enable_table_locking_(ShouldEnableTableLocks()) {
 }
 
 PgTxnManager::~PgTxnManager() {
@@ -893,11 +902,13 @@ Status PgTxnManager::RollbackToSubTransaction(SubTransactionId id) {
 }
 
 Status PgTxnManager::AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode) {
-  if (!PREDICT_FALSE(enable_table_locking_) || YBCIsInitDbModeEnvVarSet()) {
+  if (!PREDICT_FALSE(enable_table_locking_)) {
     // Object locking feature is not enabled. YB makes best efforts to achieve necessary semantics
     // using mechanisms like catalog version update by DDLs, DDLs aborting on progress DMLs etc.
     // Also skip object locking during initdb bootstrap mode, since it's a single-process,
     // non-concurrent setup with no running tservers and transaction status tablets.
+    // During a ysql-major-upgrade initdb/pg_upgrade may run when the cluster is still serving
+    // traffic. However, YB gurantees that there will be no DDLs running at that time.
     return Status::OK();
   }
 

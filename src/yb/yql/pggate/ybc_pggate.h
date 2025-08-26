@@ -1032,6 +1032,9 @@ YbcStatus YBCAcquireObjectLock(YbcObjectLockId lock_id, YbcObjectLockMode mode);
 // and YsqlUpgrade. This will return false after the AutoFlag Finalize step.
 bool YBCPgYsqlMajorVersionUpgradeInProgress();
 
+bool YBCIsBinaryUpgrade();
+void YBCSetBinaryUpgrade(bool value);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif
