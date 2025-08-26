@@ -325,6 +325,7 @@ The following **GCP regions** are available:
 - Frankfurt (europe-west3)
 - Netherlands (europe-west4)
 - Zurich (europe-west6)
+- Dammam (me-central2)
 - Montreal (northamerica-northeast1)
 - Toronto (northamerica-northeast2)
 - Sao Paulo (southamerica-east1)
