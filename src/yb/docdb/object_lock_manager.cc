@@ -80,8 +80,21 @@ struct ObjectLockedBatchEntry;
 
 namespace {
 
+// Below are the two different scenarios where we fail requests with TryAgain in case
+// of the lock manager shutting down.
+// 1. upon ysql lease changes
+// 2. on shutdown of the tserver node
+//
+// Using error code TryAgain here since we want the master leader to retry lock requests
+// in case of 1 as opposed to failing them. This leadds to uneccessary retries for 2, but
+// that should be ok since the tserver would eventually loose the lease and the master
+// leader would stop retrying the request.
+//
+// For local lock being resumed with this error, the ref count of the lock manager would
+// eventually drop to 0 in both cases, and the request would end up failing, which is the
+// desired behavior.
 const Status kShuttingDownError = STATUS(
-    ShutdownInProgress, "Object Lock Manager shutting down");
+    TryAgain, "Object Lock Manager shutting down");
 
 const Status kTryAgain = STATUS(
     TryAgain, "Failed to acquire object locks within deadline");

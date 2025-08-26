@@ -732,6 +732,36 @@ TEST_F(PgObjectLocksTest, ReleaseExpiredLocksInvalidatesCatalogCache) {
   ASSERT_OK(ts1->Restart());
 }
 
+TEST_F(PgObjectLocksTest, RetryExclusiveLockOnTserverLeaseRefresh) {
+  const auto ts1_idx = 1;
+  const auto ts2_idx = 2;
+  auto* ts1 = cluster_->tablet_server(ts1_idx);
+  auto* ts2 = cluster_->tablet_server(ts2_idx);
+
+  auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(conn2.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn2.Execute("INSERT INTO test SELECT generate_series(1,11), 0"));
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn2.Execute("LOCK TABLE test IN ACCESS SHARE MODE"));
+
+  auto conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(cluster_->SetFlag(ts2, "vmodule", "object_lock_manager=1"));
+  LogWaiter log_waiter(ts2, "added to wait-queue");
+  auto status_future = std::async(std::launch::async, [&]() -> Status {
+    return conn1.Execute("LOCK TABLE test IN ACCESS EXCLUSIVE MODE");
+  });
+  ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 10)));
+
+  // The exclusive lock request should still go through and not error due to membership changes.
+  ts2->Shutdown(SafeShutdown::kTrue);
+  ASSERT_EQ(
+      status_future.wait_for(2s * kTimeMultiplier * kDefaultMasterYSQLLeaseTTLMilli),
+      std::future_status::ready);
+  ASSERT_OK(status_future.get());
+  ASSERT_OK(conn1.CommitTransaction());
+}
+
 YB_STRONGLY_TYPED_BOOL(DoMasterFailover);
 YB_STRONGLY_TYPED_BOOL(UseExplicitLocksInsteadOfDdl);
 YB_STRONGLY_TYPED_BOOL(EnableYsqlDdlTxnBlock);
