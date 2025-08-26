@@ -98,6 +98,7 @@
 #include "utils/relcache.h"
 #include "utils/syscache.h"
 #include "yb/yql/pggate/ybc_gflags.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 #include "yb_tcmalloc_utils.h"
 #include "yb_ysql_conn_mgr_helper.h"
 #include <arpa/inet.h>
@@ -4196,7 +4197,10 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 			case 'b':
 				/* Undocumented flag used for binary upgrades */
 				if (secure)
+				{
 					IsBinaryUpgrade = true;
+					YBCSetBinaryUpgrade(true);
+				}
 				break;
 
 			case 'C':

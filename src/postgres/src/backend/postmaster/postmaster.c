@@ -151,6 +151,7 @@
 #include "storage/sinvaladt.h"
 #include "yb/util/debug/leak_annotations.h"
 #include "yb/yql/pggate/ybc_pg_shared_mem.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 #include "yb_ash.h"
 #include "yb_query_diagnostics.h"
 #include "yb_terminated_queries.h"
@@ -753,6 +754,7 @@ PostmasterMain(int argc, char *argv[])
 			case 'b':
 				/* Undocumented flag used for binary upgrades */
 				IsBinaryUpgrade = true;
+				YBCSetBinaryUpgrade(true);
 				break;
 
 			case 'C':
