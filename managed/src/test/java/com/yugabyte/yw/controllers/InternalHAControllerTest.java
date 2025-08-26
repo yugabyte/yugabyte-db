@@ -175,7 +175,7 @@ public class InternalHAControllerTest extends FakeDBApplication {
     String uri = SYNC_ENDPOINT + new Date().getTime();
     Result syncResult =
         assertPlatformException(
-            () -> doRequestWithHATokenAndBody("PUT", uri, clusterKey, Json.newObject()));
+            () -> doRequestWithHATokenAndBody("PUT", uri, clusterKey, Json.newArray()));
     assertBadRequest(syncResult, "No local instance configured");
   }
 
@@ -190,7 +190,7 @@ public class InternalHAControllerTest extends FakeDBApplication {
     String uri = SYNC_ENDPOINT + config.getLastFailover().getTime();
     Result syncResult =
         assertPlatformException(
-            () -> doRequestWithHATokenAndBody("PUT", uri, clusterKey, Json.newObject()));
+            () -> doRequestWithHATokenAndBody("PUT", uri, clusterKey, Json.newArray()));
     assertBadRequest(syncResult, "Cannot import instances for a leader");
   }
 
