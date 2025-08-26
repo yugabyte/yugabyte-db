@@ -27,15 +27,6 @@ import com.google.common.collect.ImmutableMap;
 @RunWith(value=YBTestRunner.class)
 public class TestPgRegressAnalyze extends BasePgRegressTest {
 
-  private Map<String, String> commonTserverFlags = ImmutableMap.of(
-      "ysql_beta_features", "1");
-
-  @Override
-  protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
-    super.customizeMiniClusterBuilder(builder);
-    builder.addCommonTServerFlags(commonTserverFlags);
-  }
-
   @Test
   public void testPgRegressAnalyze() throws Exception {
     runPgRegressTest("yb_analyze_schedule");
