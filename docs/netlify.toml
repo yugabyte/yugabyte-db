@@ -1070,6 +1070,10 @@
   from = "/stable/explore/change-data-capture/using-yugabytedb-grpc-replication/*"
   to = "/stable/additional-features/change-data-capture/using-yugabytedb-grpc-replication/:splat"
   force = true
+[[redirects]]
+  from = "/v2.20/explore/change-data-capture/*"
+  to = "/v2.20/additional-features/change-data-capture/:splat"
+  force = true
 
 [[redirects]]
   from = "/:version/develop/change-data-capture/*"
