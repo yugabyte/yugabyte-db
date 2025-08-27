@@ -3,6 +3,7 @@ package com.yugabyte.yw.common.operator.utils;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
@@ -19,7 +20,9 @@ import io.yugabyte.operator.v1alpha1.ybuniversespec.YbcThrottleParameters;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.gflags.PerAZ;
 import java.util.HashMap;
 import java.util.Map;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 public class UniverseImporter {
 
   private final YbcManager ybcManager;
@@ -141,9 +144,19 @@ public class UniverseImporter {
   }
 
   public void setKubernetesOverridesSpecFromUniverse(YBUniverseSpec spec, Universe universe) {
+    if (universe.getUniverseDetails().getPrimaryCluster().userIntent.universeOverrides == null
+        || universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .universeOverrides
+            .isEmpty()) {
+      log.trace("No KubernetesOverrides found for universe {}", universe.getUniverseUUID());
+      return;
+    }
     SimpleModule module = new SimpleModule();
     module.addDeserializer(KubernetesOverrides.class, new KubernetesOverridesDeserializer());
-    ObjectMapper mapper = new ObjectMapper();
+    ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
     mapper.registerModule(module);
     try {
       spec.setKubernetesOverrides(
@@ -151,7 +164,7 @@ public class UniverseImporter {
               universe.getUniverseDetails().getPrimaryCluster().userIntent.universeOverrides,
               KubernetesOverrides.class));
     } catch (JsonProcessingException e) {
-      throw new RuntimeException(e);
+      throw new RuntimeException("Error in setting KubernetesOverridesSpecFromUniverse", e);
     }
   }
 }

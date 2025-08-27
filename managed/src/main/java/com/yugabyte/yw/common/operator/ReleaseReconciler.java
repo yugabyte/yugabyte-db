@@ -72,9 +72,9 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
       com.yugabyte.yw.models.Release ybRelease =
           com.yugabyte.yw.models.Release.getByVersion(version);
       if (ybRelease != null) {
-        log.error("release version already exists, cannot create: " + version);
+        log.info("release version already exists, cannot create: " + version);
         // If it already exists, we should just use it.
-        updateStatus(release, "Release version " + version + "already exists", true);
+        updateStatus(release, "Available", true);
         return;
       }
       try (Transaction transaction = DB.beginTransaction()) {
@@ -126,6 +126,22 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
         log.warn("no release found for version " + version + ". creating it");
         ybRelease = com.yugabyte.yw.models.Release.create(version, "LTS");
       }
+      boolean changes = false;
+      for (ReleaseArtifact artifact : ybRelease.getArtifacts()) {
+        if (artifact.getPackageFileID() != null) {
+          log.debug("skip reconcile for local file release artifact {}", artifact);
+          continue;
+        }
+        if (artifactHasChanges(artifact, newRelease)) {
+          changes = true;
+          break;
+        }
+      }
+      if (!changes) {
+        log.info("no changes found for release {}", version);
+        return;
+      }
+
       try (Transaction transaction = DB.beginTransaction()) {
         // Delete existing artifacts
         for (ReleaseArtifact artifact : ybRelease.getArtifacts()) {
@@ -330,5 +346,95 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
       throw new Exception("Error in adding release, no remote found");
     }
     return Arrays.asList(dbArtifact, helmArtifact);
+  }
+
+  // Validate if the artifact remotes have changed.
+  private boolean artifactHasChanges(ReleaseArtifact artifact, Release release) {
+    if (artifact.getPlatform() == Platform.LINUX) {
+      if (artifact.getPackageURL() != null
+          && !artifact
+              .getPackageURL()
+              .equals(
+                  release
+                      .getSpec()
+                      .getConfig()
+                      .getDownloadConfig()
+                      .getHttp()
+                      .getPaths()
+                      .getX86_64())) {
+        return true;
+      }
+      if (artifact.getS3File() != null
+          && !artifact
+              .getS3File()
+              .path
+              .equals(
+                  release
+                      .getSpec()
+                      .getConfig()
+                      .getDownloadConfig()
+                      .getS3()
+                      .getPaths()
+                      .getX86_64())) {
+        return true;
+      }
+      if (artifact.getGcsFile() != null
+          && !artifact
+              .getGcsFile()
+              .path
+              .equals(
+                  release
+                      .getSpec()
+                      .getConfig()
+                      .getDownloadConfig()
+                      .getGcs()
+                      .getPaths()
+                      .getX86_64())) {
+        return true;
+      }
+    } else {
+      if (artifact.getPackageURL() != null
+          && !artifact
+              .getPackageURL()
+              .equals(
+                  release
+                      .getSpec()
+                      .getConfig()
+                      .getDownloadConfig()
+                      .getHttp()
+                      .getPaths()
+                      .getHelmChart())) {
+        return true;
+      }
+      if (artifact.getS3File() != null
+          && !artifact
+              .getS3File()
+              .path
+              .equals(
+                  release
+                      .getSpec()
+                      .getConfig()
+                      .getDownloadConfig()
+                      .getS3()
+                      .getPaths()
+                      .getHelmChart())) {
+        return true;
+      }
+      if (artifact.getGcsFile() != null
+          && !artifact
+              .getGcsFile()
+              .path
+              .equals(
+                  release
+                      .getSpec()
+                      .getConfig()
+                      .getDownloadConfig()
+                      .getGcs()
+                      .getPaths()
+                      .getHelmChart())) {
+        return true;
+      }
+    }
+    return false;
   }
 }

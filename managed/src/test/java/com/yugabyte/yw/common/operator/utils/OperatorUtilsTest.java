@@ -24,6 +24,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ValidatingFormFactory;
@@ -131,7 +132,8 @@ public class OperatorUtilsTest extends FakeDBApplication {
                 mockValidatingFormFactory,
                 mockYbClientService,
                 kubernetesClientFactory,
-                mockUniverseImporter));
+                mockUniverseImporter,
+                Mockito.mock(KubernetesManagerFactory.class)));
 
     testCustomer = ModelFactory.testCustomer();
     testUniverse = ModelFactory.createUniverse("operator-universe", testCustomer.getId());

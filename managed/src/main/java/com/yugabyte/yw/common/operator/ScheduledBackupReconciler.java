@@ -73,11 +73,12 @@ public class ScheduledBackupReconciler extends AbstractReconciler<BackupSchedule
     String mapKey = OperatorWorkQueue.getWorkQueueKey(backupSchedule.getMetadata());
     UUID universeUUID =
         UUID.fromString(backupSchedule.getMetadata().getAnnotations().get("universeUUID"));
+    String scheduleName = operatorUtils.getYbaResourceName(backupSchedule.getMetadata());
+    if (backupSchedule.getSpec().getName() != null) {
+      scheduleName = OperatorUtils.kubernetesCompatName(backupSchedule.getSpec().getName());
+    }
     Optional<Schedule> optSchedule =
-        Schedule.maybeGetScheduleByUniverseWithName(
-            operatorUtils.getYbaResourceName(backupSchedule.getMetadata()),
-            universeUUID,
-            cust.getUuid());
+        Schedule.maybeGetScheduleByUniverseWithName(scheduleName, universeUUID, cust.getUuid());
     boolean requeueNoOp = (action == ResourceAction.NO_OP);
     boolean scheduleRemoved = false;
     if (optSchedule.isPresent()) {

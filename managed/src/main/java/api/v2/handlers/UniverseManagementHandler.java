@@ -29,6 +29,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.OperatorImportUniverse;
 import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
@@ -771,14 +772,24 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot migrate universes with AZ level overrides.");
     }
+    log.info("Universe {} precheck for operator import success", universe.getName());
   }
 
   public YBATask operatorImportUniverse(
       Request request, UUID cUUID, UUID uniUUID, UniverseOperatorImportReq req) {
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
-    // TODO: Implement the migration logic
-    UUID taskUuid = UUID.randomUUID();
+    OperatorImportUniverse.Params params = new OperatorImportUniverse.Params();
+    params.setUniverseUUID(uniUUID);
+    params.namespace = req.getNamespace();
+    UUID taskUuid = commissioner.submit(TaskType.OperatorImportUniverse, params);
+    CustomerTask.create(
+        customer,
+        uniUUID,
+        taskUuid,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.ImportUniverse,
+        universe.getName());
     YBATask ybaTask = new YBATask().taskUuid(taskUuid).resourceUuid(universe.getUniverseUUID());
     return ybaTask;
   }
