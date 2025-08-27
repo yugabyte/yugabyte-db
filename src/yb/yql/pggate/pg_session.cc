@@ -910,6 +910,12 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
 
   DCHECK(!options.has_read_time() || options.isolation() != IsolationLevel::SERIALIZABLE_ISOLATION);
 
+#ifndef NDEBUG
+  if (enable_table_locking_ && !options.ddl_mode() && !options.use_catalog_session()) {
+    LOG_IF(DFATAL, !pg_txn_manager_->CheckPlainTxnRequestedObjectLocks().ok());
+  }
+#endif
+
   PgsqlOps operations;
   PgObjectIds relations;
   std::move(ops).MoveTo(operations, relations);

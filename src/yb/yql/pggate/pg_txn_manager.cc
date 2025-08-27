@@ -901,8 +901,12 @@ bool PgTxnManager::TryAcquireObjectLock(
   if (IsDdlMode() && !IsDdlModeWithRegularTransactionBlock()) {
     return false;
   }
-  return client_->TryAcquireObjectLockInSharedMemory(
+  const bool locks_acquired = client_->TryAcquireObjectLockInSharedMemory(
       active_sub_transaction_id_, lock_id, lock_type);
+  if (locks_acquired) {
+    UpdateLastObjectLockingPlainTxnInfo();
+  }
+  return locks_acquired;
 }
 
 Status PgTxnManager::AcquireObjectLock(
@@ -914,7 +918,11 @@ Status PgTxnManager::AcquireObjectLock(
       IsLocalObjectLockOp(mode <= YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK)));
   tserver::PgPerformOptionsPB options;
   RETURN_NOT_OK(SetupPerformOptions(tag, &options));
-  return client_->AcquireObjectLock(&options, lock_id, mode);
+  const auto status = client_->AcquireObjectLock(&options, lock_id, mode);
+  if (status.ok()) {
+    UpdateLastObjectLockingPlainTxnInfo();
+  }
+  return status;
 }
 
 void PgTxnManager::SetTransactionHasWrites() {
@@ -956,6 +964,29 @@ YbcTxnPriorityRequirement PgTxnManager::GetTxnPriorityRequirement(RowMarkType ro
     return kHighestPriority;
   }
   return RowMarkNeedsHigherPriority(row_mark_type) ? kHigherPriorityRange : kLowerPriorityRange;
+}
+
+void PgTxnManager::UpdateLastObjectLockingPlainTxnInfo() {
+#ifndef NDEBUG
+  last_object_locking_plain_txn_info_ = TxnSerialAndSubtxnIdInfo {
+    .txn_serial_no = serial_no_.txn(),
+    .subtxn_id = active_sub_transaction_id_
+  };
+#endif
+}
+
+Status PgTxnManager::CheckPlainTxnRequestedObjectLocks() const {
+#ifndef NDEBUG
+  const auto active_perform_txn_info = TxnSerialAndSubtxnIdInfo {
+    .txn_serial_no = serial_no_.txn(),
+    .subtxn_id = active_sub_transaction_id_
+  };
+  SCHECK(
+      active_perform_txn_info == last_object_locking_plain_txn_info_, IllegalState,
+      Format("active_perform_txn_info: $0, last_object_locking_plain_txn_info_: $1",
+             AsString(active_perform_txn_info), AsString(last_object_locking_plain_txn_info_)));
+#endif
+  return Status::OK();
 }
 
 }  // namespace yb::pggate

@@ -4809,10 +4809,7 @@ yb_is_dml_command(const char *query_string)
 static bool
 yb_check_retry_allowed(const char *query_string)
 {
-	/*
-	 * TODO: Allow retries when object locking is on once #24877 is addressed.
-	 */
-	return yb_is_dml_command(query_string) && !*YBCGetGFlags()->enable_object_locking_for_table_locks;
+	return yb_is_dml_command(query_string);
 }
 
 static void
@@ -5146,12 +5143,6 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 		return false;
 	}
 
-	if (*YBCGetGFlags()->enable_object_locking_for_table_locks)
-	{
-		elog(LOG, "query layer retries disabled as object locking is on, refer #24877 for details.");
-		return false;
-	}
-
 	return true;
 }
 
@@ -5337,7 +5328,10 @@ yb_restart_portal_after_clear(Portal portal)
 	/*
 	 * No need for GetCachedPlan + PortalDefineQuery routine, everything is in
 	 * place already.
+	 *
+	 * But we would still need to acquire all necessary object locks again.
 	 */
+	YBAcquireExecutorLocksForRetry(portal->stmts);
 	portal->status = PORTAL_DEFINED;
 	PortalStart(portal, portal->portalParams, 0 /* eflags */ , InvalidSnapshot);
 

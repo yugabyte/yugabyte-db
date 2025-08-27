@@ -145,6 +145,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   YbcTxnPriorityRequirement GetTxnPriorityRequirement(RowMarkType row_mark_type) const;
 
+  Status CheckPlainTxnRequestedObjectLocks() const;
+
  private:
   class SerialNo {
    public:
@@ -190,6 +192,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   Status ExitSeparateDdlTxnMode(const std::optional<PgDdlCommitInfo>& commit_info);
 
   Status CheckSnapshotTimeConflict() const;
+
+  void UpdateLastObjectLockingPlainTxnInfo();
   // ----------------------------------------------------------------------------------------------
 
   PgClient* client_;
@@ -245,6 +249,21 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   const bool enable_table_locking_;
 
   std::unordered_map<YbcReadPointHandle, uint64_t> explicit_snapshot_read_time_;
+
+#ifndef NDEBUG
+  struct TxnSerialAndSubtxnIdInfo {
+    uint64_t txn_serial_no;
+    uint64_t subtxn_id;
+
+    auto operator<=>(const TxnSerialAndSubtxnIdInfo&) const = default;
+
+    std::string ToString() const {
+      return YB_STRUCT_TO_STRING(txn_serial_no, subtxn_id);
+    }
+  };
+
+  TxnSerialAndSubtxnIdInfo last_object_locking_plain_txn_info_;
+#endif
 
   DISALLOW_COPY_AND_ASSIGN(PgTxnManager);
 };
