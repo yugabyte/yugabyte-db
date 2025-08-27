@@ -137,7 +137,7 @@ export YBA_NAMESPACE="yb-platform"
 
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-namespaced.yaml \
   | sed "s/namespace: <SA_NAMESPACE>/namespace: ${YBA_NAMESPACE}"/g \
-  | kubectl apply -n ${YBA_NAMESPACE} -f -
+  | kubectl apply -n ${<target_namespace>} -f -
 ```
 
 ### Create a kubeconfig file
