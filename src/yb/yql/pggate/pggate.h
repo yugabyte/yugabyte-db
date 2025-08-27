@@ -778,7 +778,8 @@ class PgApiImpl {
   Result<client::TabletServersInfo> ListTabletServers();
 
   Status GetIndexBackfillProgress(std::vector<PgObjectId> oids,
-                                  uint64_t** backfill_statuses);
+                                  uint64_t* num_rows_read_from_table,
+                                  double* num_rows_backfilled);
 
   void StartSysTablePrefetching(const PrefetcherOptions& options);
   void StopSysTablePrefetching();

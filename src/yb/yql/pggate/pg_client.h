@@ -217,7 +217,8 @@ class PgClient {
   Status BackfillIndex(tserver::PgBackfillIndexRequestPB* req, CoarseTimePoint deadline);
 
   Status GetIndexBackfillProgress(const std::vector<PgObjectId>& index_ids,
-                                  uint64_t** backfill_statuses);
+                                  uint64_t* num_rows_read_from_table,
+                                  double* num_rows_backfilled);
 
   Result<yb::tserver::PgGetLockStatusResponsePB> GetLockStatusData(
       const std::string& table_id, const std::string& transaction_id);

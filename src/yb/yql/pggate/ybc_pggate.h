@@ -898,9 +898,9 @@ YbcStatus YBCNewGetLockStatusDataSRF(YbcPgFunction *handle);
 
 YbcStatus YBCGetTabletServerHosts(YbcServerDescriptor **tablet_servers, size_t* numservers);
 
-YbcStatus YBCGetIndexBackfillProgress(YbcPgOid* index_relfilenode_oids, YbcPgOid* database_oids,
-                                      uint64_t** backfill_statuses,
-                                      int num_indexes);
+YbcStatus YBCGetIndexBackfillProgress(YbcPgOid* index_oids, YbcPgOid* database_oids,
+                                      uint64_t* num_rows_read_from_table,
+                                      double* num_rows_backfilled, int num_indexes);
 
 void YBCStartSysTablePrefetchingNoCache();
 

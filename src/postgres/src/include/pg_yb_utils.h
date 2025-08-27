@@ -559,6 +559,12 @@ extern bool yb_disable_wait_for_backends_catalog_version;
 extern bool yb_enable_base_scans_cost_model;
 
 /*
+ * Enables update of reltuples in pg_class for the base table and index after
+ * creating the index.
+ */
+extern bool yb_enable_update_reltuples_after_create_index;
+
+/*
  * Total timeout for waiting for backends to have up-to-date catalog version.
  */
 extern int	yb_wait_for_backends_catalog_version_timeout;

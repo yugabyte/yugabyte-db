@@ -185,6 +185,7 @@ class Tablet : public AbstractTablet,
       const uint64_t postgres_auth_key,
       bool is_xcluster_target,
       uint64_t* number_of_rows_processed,
+      std::unordered_map<TableId, double>& num_rows_backfilled_in_index,
       std::string* backfilled_until);
 
   Status VerifyIndexTableConsistencyForCQL(

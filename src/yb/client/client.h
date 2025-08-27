@@ -351,7 +351,8 @@ class YBClient {
   Status GetIndexBackfillProgress(
       const TableIds& index_ids,
       google::protobuf::RepeatedField<google::protobuf::uint64>*
-          num_rows_read_from_table_for_backfill);
+          num_rows_read_from_table_for_backfill,
+      google::protobuf::RepeatedField<double>* num_rows_backfilled_in_index);
 
   Result<google::protobuf::RepeatedPtrField<tablet::TabletStatusPB>> GetTabletsMetadata();
 

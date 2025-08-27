@@ -118,6 +118,7 @@
 /* YB includes */
 #include "access/heaptoast.h"
 #include "access/yb_scan.h"
+#include "catalog/index.h"
 #include "commands/copy.h"
 #include "common/pg_yb_param_status_flags.h"
 #include "executor/ybModifyTable.h"
@@ -3084,6 +3085,21 @@ static struct config_bool ConfigureNamesBool[] =
 		&yb_enable_base_scans_cost_model,
 		false,
 		NULL, assign_yb_enable_base_scans_cost_model, NULL
+	},
+
+	{
+		{"yb_enable_update_reltuples_after_create_index", PGC_USERSET,
+			QUERY_TUNING_OTHER,
+			gettext_noop("Enables update of reltuples in pg_class for the base "
+						 "table and index after creating the index. When "
+						 "disabled, reltuples are not updated during "
+						 "concurrent index creation and only index reltuples "
+						 "are updated during non-concurrent index creation."),
+			NULL
+		},
+		&yb_enable_update_reltuples_after_create_index,
+		false,
+		NULL, NULL, NULL
 	},
 
 	{

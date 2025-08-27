@@ -153,7 +153,9 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
 
   scoped_refptr<TableInfo> table() { return indexed_table_; }
 
-  Status UpdateRowsProcessedForIndexTable(const uint64_t num_rows_read_from_table_for_backfill);
+  Status UpdateRowsProcessedForIndexTable(
+      const uint64_t num_rows_read_from_table_for_backfill,
+      const std::unordered_map<TableId, double>& num_rows_backfilled_in_index);
 
   const LeaderEpoch& epoch() const { return epoch_; }
 
@@ -259,8 +261,10 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
 
   Status LaunchNextChunkOrDone();
   Status Done(
-      const Status& status, const std::optional<std::string>& backfilled_until,
+      const Status& status,
+      const std::optional<std::string>& backfilled_until,
       const uint64_t num_rows_read_from_table_for_backfill,
+      const std::unordered_map<TableId, double>& num_rows_backfilled_in_index,
       const std::unordered_set<TableId>& failed_indexes);
 
   Master* master() { return backfill_table_->master(); }
@@ -293,7 +297,8 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
 
  private:
   Status UpdateBackfilledUntil(
-      const std::string& backfilled_until, const uint64_t num_rows_read_from_table_for_backfill);
+      const std::string& backfilled_until, const uint64_t num_rows_read_from_table_for_backfill,
+      const std::unordered_map<TableId, double>& num_rows_backfilled_in_index);
 
   std::shared_ptr<BackfillTable> backfill_table_;
   const TabletInfoPtr tablet_;
@@ -391,6 +396,7 @@ class BackfillChunk : public RetryingTSRpcTaskWithTable {
   }
 
   const std::unordered_set<TableId> indexes_being_backfilled_;
+  std::unordered_map<TableId, double> num_rows_backfilled_in_index_;
   tserver::BackfillIndexResponsePB resp_;
   std::shared_ptr<BackfillTablet> backfill_tablet_;
   std::string start_key_;

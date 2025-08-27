@@ -799,7 +799,8 @@ const std::string BackfillTable::GetNamespaceName() const {
 }
 
 Status BackfillTable::UpdateRowsProcessedForIndexTable(
-    const uint64_t num_rows_read_from_table_for_backfill) {
+    const uint64_t num_rows_read_from_table_for_backfill,
+    const std::unordered_map<TableId, double>& num_rows_backfilled_in_index) {
   auto l = indexed_table_->LockForWrite();
 
   if (l.data().pb.backfill_jobs_size() == 0) {
@@ -815,6 +816,15 @@ Status BackfillTable::UpdateRowsProcessedForIndexTable(
       num_rows_read_from_table_for_backfill;
   backfill_job_pb->set_num_rows_read_from_table_for_backfill(
       total_num_rows_read_from_table_for_backfill);
+  for (const auto& [index_id, num_rows_backfilled] : num_rows_backfilled_in_index) {
+    auto* backfill_job_num_rows_backfilled_pb =
+        backfill_job_pb->mutable_num_rows_backfilled_in_index();
+    if (backfill_job_num_rows_backfilled_pb->find(index_id) ==
+        backfill_job_num_rows_backfilled_pb->end()) {
+      (*backfill_job_num_rows_backfilled_pb)[index_id] = 0.0;
+    }
+    (*backfill_job_num_rows_backfilled_pb)[index_id] += num_rows_backfilled;
+  }
   VLOG(2) << "Updated backfill task to having processed " << num_rows_read_from_table_for_backfill
           << " more rows. Total rows processed is: " <<
           backfill_job_pb->num_rows_read_from_table_for_backfill();
@@ -1011,6 +1021,7 @@ Status BackfillTable::MarkIndexesAsDesired(
       backfill_state_pb->at(idx_id) = state;
       VLOG(2) << "Marking index " << idx_id << " as " << BackfillJobPB_State_Name(state);
     }
+
     for (int i = 0; i < indexed_table_pb.indexes_size(); i++) {
       IndexInfoPB* idx_pb = indexed_table_pb.mutable_indexes(i);
       if (index_ids_set.find(idx_pb->table_id()) != index_ids_set.end()) {
@@ -1021,10 +1032,23 @@ Status BackfillTable::MarkIndexesAsDesired(
           idx_pb->clear_backfill_error_message();
         }
         idx_pb->clear_is_backfill_deferred();
+
         // We clear the backfill job upon completion - however, we want to persist the number
         // of indexed table rows completed, so we record the information in the index info PB.
         // For partial indexes, the number of rows processed includes non-matching rows of
         // the indexed table.
+        auto& num_rows_backfilled_map_pb =
+            indexed_table_pb.backfill_jobs(0).num_rows_backfilled_in_index();
+        auto num_rows_backfilled_iter = num_rows_backfilled_map_pb.find(idx_pb->table_id());
+        if (num_rows_backfilled_iter != num_rows_backfilled_map_pb.end()) {
+          idx_pb->set_num_rows_backfilled_in_index(num_rows_backfilled_iter->second);
+        } else {
+          // If all other tservers are older than the master, they may not include
+          // num_rows_backfilled_in_index in the BackfillIndexResponsePB. In this case, the
+          // backfill_job's num_rows_backfilled_in_index map would not contain this index. We set
+          // the value to 0 in this case.
+          idx_pb->set_num_rows_backfilled_in_index(0);
+        }
         idx_pb->set_num_rows_read_from_table_for_backfill(
             indexed_table_pb.backfill_jobs(0).num_rows_read_from_table_for_backfill());
       }
@@ -1295,6 +1319,7 @@ Status BackfillTablet::LaunchNextChunkOrDone() {
 Status BackfillTablet::Done(
     const Status& status, const std::optional<string>& backfilled_until,
     const uint64_t num_rows_read_from_table_for_backfill,
+    const std::unordered_map<TableId, double>& num_rows_backfilled_in_index,
     const std::unordered_set<TableId>& failed_indexes) {
   if (!status.ok()) {
     LOG(INFO) << "Failed to backfill the tablet " << yb::ToString(tablet_) << ": " << status
@@ -1304,7 +1329,8 @@ Status BackfillTablet::Done(
 
   if (backfilled_until) {
     RETURN_NOT_OK_PREPEND(
-        UpdateBackfilledUntil(*backfilled_until, num_rows_read_from_table_for_backfill),
+        UpdateBackfilledUntil(*backfilled_until, num_rows_read_from_table_for_backfill,
+                              num_rows_backfilled_in_index),
         "Could not persist how far the tablet is done backfilling.");
   }
 
@@ -1312,7 +1338,8 @@ Status BackfillTablet::Done(
 }
 
 Status BackfillTablet::UpdateBackfilledUntil(
-    const string& backfilled_until, const uint64_t num_rows_read_from_table_for_backfill) {
+    const string& backfilled_until, const uint64_t num_rows_read_from_table_for_backfill,
+    const std::unordered_map<TableId, double>& num_rows_backfilled_in_index) {
   backfilled_until_ = backfilled_until;
   VLOG_WITH_PREFIX(2) << "Done backfilling the tablet " << yb::ToString(tablet_) << " until "
                       << b2a_hex(backfilled_until_);
@@ -1332,7 +1359,8 @@ Status BackfillTablet::UpdateBackfilledUntil(
     LOG(INFO) << "Done backfilling the tablet " << yb::ToString(tablet_);
     done_.store(true, std::memory_order_release);
   }
-  return backfill_table_->UpdateRowsProcessedForIndexTable(num_rows_read_from_table_for_backfill);
+  return backfill_table_->UpdateRowsProcessedForIndexTable(num_rows_read_from_table_for_backfill,
+                                                           num_rows_backfilled_in_index);
 }
 
 // -----------------------------------------------------------------------------------------------
@@ -1598,15 +1626,30 @@ void BackfillChunk::UnregisterAsyncTaskCallback() {
     status = STATUS_FORMAT(InternalError, "$0 in state $1", description(), state());
   }
 
+  // The BackfillIndexResponsePB from the tserver may not contain num_rows_backfilled_in_index
+  // during a rolling upgrade where the tserver is older than the master. Protobuf does not
+  // allow marking map fields as optional. Instead, if the sender does not include this field,
+  // we receive an empty map. In this case, we will forward an empty map. Number of rows inserted
+  // will not be updated for this chunk and no other special handling is needed.
+  for (const auto& [index_id, num_rows_backfilled] : resp_.num_rows_backfilled_in_index()) {
+    if (num_rows_backfilled_in_index_.find(index_id) ==
+        num_rows_backfilled_in_index_.end()) {
+      num_rows_backfilled_in_index_.emplace(index_id, 0);
+    }
+    num_rows_backfilled_in_index_[index_id] += num_rows_backfilled;
+  }
+
   if (resp_.has_backfilled_until()) {
     WARN_NOT_OK(
         backfill_tablet_->Done(
             status, resp_.backfilled_until(), resp_.num_rows_read_from_table_for_backfill(),
+            num_rows_backfilled_in_index_,
             failed_indexes),
         "Failed marking BackfillTablet as done.");
   } else {
     WARN_NOT_OK(
         backfill_tablet_->Done(status, std::nullopt, resp_.num_rows_read_from_table_for_backfill(),
+                               num_rows_backfilled_in_index_,
         failed_indexes),
         "Failed marking BackfillTablet as done.");
   }

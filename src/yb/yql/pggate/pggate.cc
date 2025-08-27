@@ -2295,8 +2295,11 @@ Result<client::TabletServersInfo> PgApiImpl::ListTabletServers() {
 }
 
 Status PgApiImpl::GetIndexBackfillProgress(std::vector<PgObjectId> oids,
-                                           uint64_t** backfill_statuses) {
-  return pg_session_->GetIndexBackfillProgress(oids, backfill_statuses);
+                                           uint64_t* num_rows_read_from_table,
+                                           double* num_rows_backfilled) {
+  return pg_session_->GetIndexBackfillProgress(oids,
+                                               num_rows_read_from_table,
+                                               num_rows_backfilled);
 }
 
 Status PgApiImpl::ValidatePlacement(const char *placement_info, bool check_satisfiable) {
