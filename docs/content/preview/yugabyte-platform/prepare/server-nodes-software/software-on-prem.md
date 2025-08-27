@@ -10,6 +10,8 @@ menu:
     parent: server-nodes-software
     weight: 20
 type: docs
+rightNav:
+  hideH4: true
 ---
 
 When deploying database clusters using an on-premises provider, YugabyteDB Anywhere relies on you to manually create the VMs and provide these pre-created VMs to YugabyteDB Anywhere.
