@@ -219,18 +219,29 @@ If your cluster generates this alert but isn't under a very large workload, cont
 
 #### Fix YSQL connection alerts
 
-YugabyteDB Aeon clusters support [15 simultaneous connections](../../cloud-basics/create-clusters-overview/#sizing) per vCPU. YugabyteDB Aeon sends a notification when the number of YSQL connections on any node in the cluster exceeds the threshold, as follows:
+YugabyteDB Aeon clusters support [15 simultaneous connections](../../cloud-basics/create-clusters-overview/#sizing) per vCPU. If built-in Connection Pooling is enabled, then clusters support 10 client connections per server connection.
+
+YugabyteDB Aeon sends a notification when the number of YSQL connections on any node in the cluster exceeds the threshold, as follows:
 
 - YSQL connections exceeds 60% of the limit (Warning).
-- YSQL connections exceeds 95% of the limit (Severe).
+- YSQL connections exceeds 85% of the limit (Severe).
+
+If Connection Pooling is enabled, the thresholds are as follows:
+
+- YSQL client connections exceeds 60% of the limit (Warning).
+- YSQL client connections exceeds 85% of the limit (Severe).
+- YSQL server connections exceeds 60% of the limit (Warning).
+- YSQL server connections exceeds 85% of the limit (Severe).
 
 If your cluster experiences frequent spikes in connections, consider optimizing your application's connection code.
 
 If connections are opened but never closed, your application will eventually exceed the connection limit.
 
-You may need to implement some form of connection pooling, such as enabling built-in [Connection Pooling](../../../explore/going-beyond-sql/connection-mgr-ysql/).
+You may need to implement some form of connection pooling, such as enabling built-in [Connection Pooling](../../../additional-features/connection-manager-ysql/).
 
 If the number of connections is continuously higher than 60%, your workload may also exceed the capacity of your cluster. Be sure to size your cluster with enough spare capacity to remain fault tolerant during maintenance events and outages. For example, during an outage or a rolling restart for maintenance, a 3 node cluster loses a third of its capacity. The remaining nodes need to be able to handle the traffic from the absent node.
+
+If the number of client connections consistently exceeds the limit, you may benefit from an increase to the limit, depending on your application usage pattern; contact {{% support-cloud %}}.
 
 To add connection capacity, scale your cluster by adding vCPUs or nodes. Refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
 

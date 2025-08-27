@@ -303,7 +303,7 @@ class ApiService {
 
   fetchRuntimeConfigs = (
     configScope: string = DEFAULT_RUNTIME_GLOBAL_SCOPE,
-    includeInherited = false
+    includeInherited = true
   ) => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/runtime_config/${configScope}?includeInherited=${includeInherited}`;
     return axios.get(requestUrl).then((response) => response.data);
