@@ -53,6 +53,8 @@ hostssl mydb myuser myhost cert,hostssl all all all reject
 
 ## Examples
 
+To secure clusters when deploying using yugabyted, you use the [--secure flag](../../../reference/configuration/yugabyted/#start), which enables encryption in transit and authentication. For the purposes of illustration, the following examples enable these features manually.
+
 To begin, generate and configure certificates using the following steps:
 
 1. Generate the certificates and keys for the local IP address (`127.0.0.1` in this example) using the `cert generate_server_certs` command. See [create certificates for a secure local cluster](../../../reference/configuration/yugabyted/#create-certificates-for-a-secure-local-multi-node-cluster) for more information.
