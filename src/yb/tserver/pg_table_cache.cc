@@ -44,15 +44,23 @@ class TablesResultBuilder : public std::enable_shared_from_this<TablesResultBuil
     tables_.reserve(expected_tables_count);
   }
 
-  [[nodiscard]] TablesResultPtr CompleteResult(const Result<TableInfo>& table) {
+  [[nodiscard]] TablesResultPtr CompleteResultOnce(const Result<TableInfo>& table) {
     std::lock_guard lock(mutex_);
-    DCHECK(!completed_result_holder_);
+    // Current method is called multiple times (once for each requested table).
+    // In case result for at least one table is not OK same status is placed into
+    // completed_result_holder_ immediately (non null pointer is returned in this case,
+    // because the build process is completed).
+    // As a result it is possible that current method will be called when completed_result_holder_
+    // has value. It is required to return nullptr in this case.
+    if (completed_result_holder_) {
+      return nullptr;
+    }
     if (!table.ok()) {
       completed_result_holder_.emplace(table.status());
     } else {
       tables_.push_back(*table);
       if (tables_.size() < expected_tables_count_) {
-        return {};
+        return nullptr;
       }
       completed_result_holder_.emplace(std::span{tables_});
     }
@@ -82,12 +90,10 @@ class Waiter {
   }
 
   void TableReady(const Result<TableInfo>& table_info) {
-    VLOG_WITH_PREFIX_AND_FUNC(4)
-        << "info: " << AsString(table_info) << " has listener: " << (listener_ != nullptr);
-    if (auto tables_result_ptr = listener_ ? builder_->CompleteResult(table_info) : nullptr) {
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "info: " << AsString(table_info);
+    if (auto tables_result_ptr = builder_->CompleteResultOnce(table_info)) {
       VLOG_WITH_PREFIX(4) << "notify listener";
       listener_->Ready(PgTablesQueryResult{std::move(tables_result_ptr)});
-      listener_.reset();
     }
   }
 
@@ -96,8 +102,8 @@ class Waiter {
     return builder_.get();
   }
 
-  std::shared_ptr<TablesResultBuilder> builder_;
-  PgTablesQueryListenerPtr listener_;
+  const std::shared_ptr<TablesResultBuilder> builder_;
+  const PgTablesQueryListenerPtr listener_;
 };
 
 class CacheEntry : public std::enable_shared_from_this<CacheEntry> {
