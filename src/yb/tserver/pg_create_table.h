@@ -36,7 +36,7 @@ class PgCreateTable {
   Status Prepare();
   Status Exec(
       client::YBClient* client, const TransactionMetadata* transaction_metadata,
-      CoarseTimePoint deadline);
+      uint32_t sub_transaction_id, CoarseTimePoint deadline);
 
   const PgObjectId& indexed_table_id() const {
     return indexed_table_id_;

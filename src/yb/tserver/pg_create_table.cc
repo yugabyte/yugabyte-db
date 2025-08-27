@@ -93,7 +93,7 @@ Status PgCreateTable::Prepare() {
 
 Status PgCreateTable::Exec(
     client::YBClient* client, const TransactionMetadata* transaction_metadata,
-    CoarseTimePoint deadline) {
+    uint32_t sub_transaction_id, CoarseTimePoint deadline) {
   // Construct schema.
   client::YBSchema schema;
 
@@ -229,6 +229,7 @@ Status PgCreateTable::Exec(
   if (transaction_metadata) {
     table_creator->part_of_transaction(transaction_metadata);
   }
+  table_creator->part_of_sub_transaction(sub_transaction_id);
 
   table_creator->timeout(deadline - CoarseMonoClock::now());
 

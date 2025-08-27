@@ -161,7 +161,8 @@ class YBClient::Data {
                              CoarseTimePoint deadline,
                              YBTableName* indexed_table_name,
                              bool wait = true,
-                             const TransactionMetadata *txn = nullptr);
+                             const TransactionMetadata *txn = nullptr,
+                             SubTransactionId sub_transaction_id = kMinSubTransactionId);
 
   Status IsDeleteTableInProgress(YBClient* client,
                                  const std::string& table_id,
@@ -192,12 +193,14 @@ class YBClient::Data {
                           const std::string& namespace_id,
                           const std::string& tablegroup_id,
                           const std::string& tablespace_id,
-                          const TransactionMetadata* txn);
+                          const TransactionMetadata* txn,
+                          const SubTransactionId sub_transaction_id);
 
   Status DeleteTablegroup(YBClient* client,
                           CoarseTimePoint deadline,
                           const std::string& tablegroup_id,
-                          const TransactionMetadata* txn);
+                          const TransactionMetadata* txn,
+                          const SubTransactionId sub_transaction_id);
 
   Status BackfillIndex(YBClient* client,
                        const YBTableName& table_name,

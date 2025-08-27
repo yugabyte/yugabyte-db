@@ -375,7 +375,7 @@ Status CatalogManager::YsqlDdlTxnCompleteCallbackInternal(
                       << ": Success: "
                       << (success.has_value() ? (*success ? "true" : "false") : "nullopt")
                       << " ysql_ddl_txn_verifier_state: "
-                      << l->ysql_ddl_txn_verifier_state().DebugString();
+                      << AsString(l->ysql_ddl_txn_verifier_state());
 
   auto& metadata = l.mutable_data()->pb;
 
@@ -447,34 +447,47 @@ Status CatalogManager::HandleSuccessfulYsqlDdlTxn(
 }
 
 Status CatalogManager::HandleAbortedYsqlDdlTxn(const YsqlTableDdlTxnState txn_data) {
-  auto& mutable_pb = txn_data.write_lock.mutable_data()->pb;
-  const auto& ddl_state = mutable_pb.ysql_ddl_txn_verifier_state(0);
-  if (ddl_state.contains_create_table_op()) {
+  auto& l = txn_data.write_lock;
+  auto& mutable_pb = l.mutable_data()->pb;
+  // A table can undergo DDL operations in the following order:
+  // a. 0 or 1 CREATE TABLE
+  // b. 0 or more ALTER TABLE
+  // c. 0 or 1 DROP TABLE
+  const bool table_created_in_txn = l->is_being_created_by_ysql_ddl_txn();
+  const YsqlDdlTxnVerifierStatePB& first_ddl_state = l->ysql_ddl_txn_verifier_state_first();
+  if (table_created_in_txn) {
     // This table was created in this aborted transaction. Drop the xCluster streams and the table.
     RETURN_NOT_OK(YsqlDdlTxnDropTableHelper(txn_data, /*success=*/false));
 
     return DropXClusterStreamsOfTables({txn_data.table->id()});
   }
-  if (ddl_state.contains_alter_table_op()) {
-    std::vector<DdlLogEntry> ddl_log_entries;
-    ddl_log_entries.emplace_back(
-        master_->clock()->Now(),
-        txn_data.table->id(),
-        mutable_pb,
-        "Rollback of DDL Transaction");
-    mutable_pb.mutable_schema()->CopyFrom(ddl_state.previous_schema());
-    const string new_table_name = ddl_state.previous_table_name();
-    mutable_pb.set_name(new_table_name);
-    if (ddl_state.has_previous_next_column_id()) {
-      mutable_pb.set_next_column_id(ddl_state.previous_next_column_id());
-    }
-    return YsqlDdlTxnAlterTableHelper(
-        txn_data, ddl_log_entries, new_table_name, /*success=*/false);
+
+  if (!first_ddl_state.contains_alter_table_op()) {
+    // The first_ddl_state is neither a CREATE nor an ALTER. So it must be DELETE and a single such
+    // state should be present.
+    DCHECK(first_ddl_state.contains_drop_table_op());
+    DCHECK_EQ(mutable_pb.ysql_ddl_txn_verifier_state_size(), 1);
+    return ClearYsqlDdlTxnState(txn_data);
   }
 
-  // This must be a failed Delete transaction.
-  DCHECK(ddl_state.contains_drop_table_op());
-  return ClearYsqlDdlTxnState(txn_data);
+  // There might be more than one YsqlDdlTxnVerifierStatePB with alter table op but since we are
+  // rolling back the transaction, we need the schema of the table at the start of the transaction
+  // which is stored in the previous_schema field of the first ddl state.
+  DCHECK(first_ddl_state.contains_alter_table_op());
+  std::vector<DdlLogEntry> ddl_log_entries;
+  ddl_log_entries.emplace_back(
+      master_->clock()->Now(),
+      txn_data.table->id(),
+      mutable_pb,
+      "Rollback of DDL Transaction");
+  mutable_pb.mutable_schema()->CopyFrom(first_ddl_state.previous_schema());
+  const string new_table_name = first_ddl_state.previous_table_name();
+  mutable_pb.set_name(new_table_name);
+  if (first_ddl_state.has_previous_next_column_id()) {
+    mutable_pb.set_next_column_id(first_ddl_state.previous_next_column_id());
+  }
+  return YsqlDdlTxnAlterTableHelper(
+      txn_data, ddl_log_entries, new_table_name, /*success=*/false);
 }
 
 Status CatalogManager::ClearYsqlDdlTxnState(const YsqlTableDdlTxnState txn_data) {

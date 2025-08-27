@@ -4196,13 +4196,15 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 			else
 			{
 				/*
-				 * Disallow DDL if there is an active savepoint except the
-				 * implicit ones created for READ COMMITTED isolation.
+				 * Disallow DDL if savepoint for DDL support is disabled and
+				 * there is an active savepoint except the implicit ones created
+				 * for READ COMMITTED isolation.
 				 *
-				 * TODO(#26734): Remove once savepoint for DDL is
-				 * supported.
+				 * TODO(#26734): Change the error message to suggest enabling
+				 * the savepoint feature once it is no longer a test flag.
 				 */
-				if (YBTransactionContainsNonReadCommittedSavepoint())
+				if (!*YBCGetGFlags()->TEST_ysql_yb_enable_ddl_savepoint_support &&
+					YBTransactionContainsNonReadCommittedSavepoint())
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							 errmsg("interleaving SAVEPOINT & DDL in transaction"

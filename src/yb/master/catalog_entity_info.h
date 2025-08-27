@@ -529,25 +529,45 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
     return pb.ysql_ddl_txn_verifier_state_size() > 0;
   }
 
-  auto ysql_ddl_txn_verifier_state() const {
-    // Currently DDL with savepoints is disabled, so this repeated field can have only 1 element.
-    DCHECK_EQ(pb.ysql_ddl_txn_verifier_state_size(), 1);
+  google::protobuf::RepeatedPtrField<YsqlDdlTxnVerifierStatePB> ysql_ddl_txn_verifier_state()
+      const {
+    DCHECK_GE(pb.ysql_ddl_txn_verifier_state_size(), 1);
+    return pb.ysql_ddl_txn_verifier_state();
+  }
+
+  YsqlDdlTxnVerifierStatePB ysql_ddl_txn_verifier_state_first() const {
+    DCHECK_GE(pb.ysql_ddl_txn_verifier_state_size(), 1);
     return pb.ysql_ddl_txn_verifier_state(0);
   }
 
+  YsqlDdlTxnVerifierStatePB ysql_ddl_txn_verifier_state_last() const {
+    DCHECK_GE(pb.ysql_ddl_txn_verifier_state_size(), 1);
+    return pb.ysql_ddl_txn_verifier_state(pb.ysql_ddl_txn_verifier_state_size() - 1);
+  }
+
   bool is_being_deleted_by_ysql_ddl_txn() const {
+    // If we consider all DDL statements that involve a particular DocDB table (unique DocDB id) in
+    // a transaction block, the deletion of the table can only happen in the last statement. So just
+    // check the last ysql_ddl_txn_verifier_state for drop table operation.
     return has_ysql_ddl_txn_verifier_state() &&
-      ysql_ddl_txn_verifier_state().contains_drop_table_op();
+      ysql_ddl_txn_verifier_state_last().contains_drop_table_op();
   }
 
   bool is_being_created_by_ysql_ddl_txn() const {
+    // If we consider all DDL statements that involve a particular DocDB table (unique DocDB id) in
+    // a transaction block, the creation of the table can only happen in the first statement.
+    // So just check the first ysql_ddl_txn_verifier_state for create table operation.
     return has_ysql_ddl_txn_verifier_state() &&
-      ysql_ddl_txn_verifier_state().contains_create_table_op();
+      ysql_ddl_txn_verifier_state_first().contains_create_table_op();
   }
 
   bool is_being_altered_by_ysql_ddl_txn() const {
-    return has_ysql_ddl_txn_verifier_state() &&
-      ysql_ddl_txn_verifier_state().contains_alter_table_op();
+    // A table can be altered by a transaction if it is being altered in at
+    // least one of the sub-transactions.
+    for (const auto& state : ysql_ddl_txn_verifier_state()) {
+      if (state.contains_alter_table_op()) return true;
+    }
+    return false;
   }
 
   std::vector<std::string> cols_marked_for_deletion() const {

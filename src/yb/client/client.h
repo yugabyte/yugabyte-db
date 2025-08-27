@@ -48,6 +48,7 @@
 #include "yb/common/retryable_request.h"
 #include "yb/common/snapshot.h"
 
+#include "yb/common/transaction.h"
 #include "yb/encryption/encryption.fwd.h"
 
 #include "yb/dockv/dockv_fwd.h"
@@ -367,6 +368,7 @@ class YBClient {
   Status DeleteTable(const std::string& table_id,
                      bool wait = true,
                      const TransactionMetadata *txn = nullptr,
+                     SubTransactionId sub_transaction_id = kMinSubTransactionId,
                      CoarseTimePoint deadline = CoarseTimePoint());
 
   // Delete the specified index table.
@@ -374,12 +376,14 @@ class YBClient {
   Status DeleteIndexTable(const YBTableName& table_name,
                           YBTableName* indexed_table_name = nullptr,
                           bool wait = true,
-                          const TransactionMetadata *txn = nullptr);
+                          const TransactionMetadata *txn = nullptr,
+                          SubTransactionId sub_transaction_id = kMinSubTransactionId);
 
   Status DeleteIndexTable(const std::string& table_id,
                           YBTableName* indexed_table_name = nullptr,
                           bool wait = true,
                           const TransactionMetadata *txn = nullptr,
+                          SubTransactionId sub_transaction_id = kMinSubTransactionId,
                           CoarseTimePoint deadline = CoarseTimePoint());
 
   // Flush or compact the specified tables.
@@ -541,9 +545,12 @@ class YBClient {
                           const std::string& namespace_id,
                           const std::string& tablegroup_id,
                           const std::string& tablespace_id,
-                          const TransactionMetadata* txn);
+                          const TransactionMetadata* txn,
+                          const SubTransactionId sub_transaction_id = kMinSubTransactionId);
 
-  Status DeleteTablegroup(const std::string& tablegroup_id, const TransactionMetadata* txn);
+  Status DeleteTablegroup(const std::string& tablegroup_id,
+                          const TransactionMetadata* txn,
+                          const SubTransactionId sub_transaction_id = kMinSubTransactionId);
 
   // Check if the tablegroup given by 'tablegroup_id' exists.
   // Result value is set only on success.

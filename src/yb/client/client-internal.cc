@@ -120,6 +120,8 @@ DECLARE_int64(reset_master_leader_timeout_ms);
 
 DECLARE_string(flagfile);
 
+DECLARE_bool(TEST_ysql_yb_enable_ddl_savepoint_support);
+
 namespace yb {
 
 using std::set;
@@ -655,7 +657,8 @@ Status YBClient::Data::DeleteTable(YBClient* client,
                                    CoarseTimePoint deadline,
                                    YBTableName* indexed_table_name,
                                    bool wait,
-                                   const TransactionMetadata *txn) {
+                                   const TransactionMetadata *txn,
+                                   SubTransactionId sub_transaction_id) {
   DeleteTableRequestPB req;
   DeleteTableResponsePB resp;
   int attempts = 0;
@@ -674,6 +677,9 @@ Status YBClient::Data::DeleteTable(YBClient* client,
     DCHECK(!wait);
     txn->ToPB(req.mutable_transaction());
     req.set_ysql_yb_ddl_rollback_enabled(true);
+    if (FLAGS_TEST_ysql_yb_enable_ddl_savepoint_support) {
+      req.set_sub_transaction_id(sub_transaction_id);
+    }
   }
   req.set_is_index_table(is_index_table);
   const Status status = SyncLeaderMasterRpc(
@@ -837,7 +843,8 @@ Status YBClient::Data::CreateTablegroup(YBClient* client,
                                         const std::string& namespace_id,
                                         const std::string& tablegroup_id,
                                         const std::string& tablespace_id,
-                                        const TransactionMetadata* txn) {
+                                        const TransactionMetadata* txn,
+                                        const SubTransactionId sub_transaction_id) {
   CreateTablegroupRequestPB req;
   CreateTablegroupResponsePB resp;
   req.set_id(tablegroup_id);
@@ -851,6 +858,9 @@ Status YBClient::Data::CreateTablegroup(YBClient* client,
   if (txn) {
     txn->ToPB(req.mutable_transaction());
     req.set_ysql_yb_ddl_rollback_enabled(YsqlDdlRollbackEnabled());
+    if (FLAGS_TEST_ysql_yb_enable_ddl_savepoint_support) {
+      req.set_sub_transaction_id(sub_transaction_id);
+    }
   }
 
   int attempts = 0;
@@ -919,7 +929,8 @@ Status YBClient::Data::CreateTablegroup(YBClient* client,
 Status YBClient::Data::DeleteTablegroup(YBClient* client,
                                         CoarseTimePoint deadline,
                                         const std::string& tablegroup_id,
-                                        const TransactionMetadata* txn) {
+                                        const TransactionMetadata* txn,
+                                        const SubTransactionId sub_transaction_id) {
   DeleteTablegroupRequestPB req;
   DeleteTablegroupResponsePB resp;
   req.set_id(tablegroup_id);
@@ -932,6 +943,9 @@ Status YBClient::Data::DeleteTablegroup(YBClient* client,
     txn->ToPB(req.mutable_transaction());
     req.set_ysql_yb_ddl_rollback_enabled(true);
     wait = false;
+    if (FLAGS_TEST_ysql_yb_enable_ddl_savepoint_support) {
+      req.set_sub_transaction_id(sub_transaction_id);
+    }
   }
 
   int attempts = 0;

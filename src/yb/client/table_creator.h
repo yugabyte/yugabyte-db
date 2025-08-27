@@ -21,6 +21,7 @@
 #include "yb/common/constants.h"
 #include "yb/common/common_fwd.h"
 
+#include "yb/common/transaction.h"
 #include "yb/dockv/dockv_fwd.h"
 
 #include "yb/gutil/macros.h"
@@ -92,6 +93,10 @@ class YBTableCreator {
 
   // The creation of this table is dependent upon the success of this higher-level transaction.
   YBTableCreator& part_of_transaction(const TransactionMetadata* txn);
+
+  // The creation of this table is happening within this sub-transaction. If the sub-transaction is
+  // rolled back, this creation will be rolled back too.
+  YBTableCreator& part_of_sub_transaction(uint32_t sub_txn_id);
 
   // Adds a partitions to the table.
   YBTableCreator& add_partition(const dockv::Partition& partition);
@@ -257,6 +262,7 @@ class YBTableCreator {
   uint64_t xcluster_backfill_hybrid_time_ = 0;
 
   const TransactionMetadata* txn_ = nullptr;
+  uint32_t sub_txn_id_ = kMinSubTransactionId;
 
   DISALLOW_COPY_AND_ASSIGN(YBTableCreator);
 };

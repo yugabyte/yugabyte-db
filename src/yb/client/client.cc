@@ -671,6 +671,7 @@ Status YBClient::DeleteTable(const YBTableName& table_name, bool wait) {
 Status YBClient::DeleteTable(const string& table_id,
                              bool wait,
                              const TransactionMetadata *txn,
+                             SubTransactionId sub_transaction_id,
                              CoarseTimePoint deadline) {
   return data_->DeleteTable(this,
                             YBTableName(),
@@ -679,13 +680,15 @@ Status YBClient::DeleteTable(const string& table_id,
                             PatchAdminDeadline(deadline),
                             nullptr /* indexed_table_name */,
                             wait,
-                            txn);
+                            txn,
+                            sub_transaction_id);
 }
 
 Status YBClient::DeleteIndexTable(const YBTableName& table_name,
                                   YBTableName* indexed_table_name,
                                   bool wait,
-                                  const TransactionMetadata *txn) {
+                                  const TransactionMetadata *txn,
+                                  SubTransactionId sub_transaction_id) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   return data_->DeleteTable(this,
                             table_name,
@@ -694,13 +697,15 @@ Status YBClient::DeleteIndexTable(const YBTableName& table_name,
                             deadline,
                             indexed_table_name,
                             wait,
-                            txn);
+                            txn,
+                            sub_transaction_id);
 }
 
 Status YBClient::DeleteIndexTable(const string& table_id,
                                   YBTableName* indexed_table_name,
                                   bool wait,
                                   const TransactionMetadata *txn,
+                                  SubTransactionId sub_transaction_id,
                                   CoarseTimePoint deadline) {
   return data_->DeleteTable(this,
                             YBTableName(),
@@ -709,7 +714,8 @@ Status YBClient::DeleteIndexTable(const string& table_id,
                             PatchAdminDeadline(deadline),
                             indexed_table_name,
                             wait,
-                            txn);
+                            txn,
+                            sub_transaction_id);
 }
 
 Status YBClient::FlushTables(const std::vector<TableId>& table_ids,
@@ -1206,7 +1212,8 @@ Status YBClient::CreateTablegroup(const std::string& namespace_name,
                                   const std::string& namespace_id,
                                   const std::string& tablegroup_id,
                                   const std::string& tablespace_id,
-                                  const TransactionMetadata* txn) {
+                                  const TransactionMetadata* txn,
+                                  const SubTransactionId sub_transaction_id) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   return data_->CreateTablegroup(this,
                                  deadline,
@@ -1214,16 +1221,19 @@ Status YBClient::CreateTablegroup(const std::string& namespace_name,
                                  namespace_id,
                                  tablegroup_id,
                                  tablespace_id,
-                                 txn);
+                                 txn,
+                                 sub_transaction_id);
 }
 
 Status YBClient::DeleteTablegroup(const std::string& tablegroup_id,
-                                  const TransactionMetadata* txn) {
+                                  const TransactionMetadata* txn,
+                                  const SubTransactionId sub_transaction_id) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   return data_->DeleteTablegroup(this,
                                  deadline,
                                  tablegroup_id,
-                                 txn);
+                                 txn,
+                                 sub_transaction_id);
 }
 
 Result<vector<master::TablegroupIdentifierPB>>

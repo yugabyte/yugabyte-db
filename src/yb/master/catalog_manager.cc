@@ -4400,8 +4400,15 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
     // Set the YsqlTxnVerifierState.
     if (req.ysql_yb_ddl_rollback_enabled()) {
-      table->mutable_metadata()->mutable_dirty()->pb.add_ysql_ddl_txn_verifier_state()->
-        set_contains_create_table_op(true);
+      auto* verifier_state =
+          table->mutable_metadata()->mutable_dirty()->pb.add_ysql_ddl_txn_verifier_state();
+      verifier_state->set_contains_create_table_op(true);
+      if (req.has_sub_transaction_id()) {
+        RSTATUS_DCHECK_GE(
+            req.sub_transaction_id(), kMinSubTransactionId, InvalidArgument,
+            "Given invalid sub_transaction_id");
+        verifier_state->set_sub_transaction_id(req.sub_transaction_id());
+      }
       schedule_ysql_txn_verifier = true;
     }
   }
@@ -4445,6 +4452,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         table.get(), tablets, s.CloneAndPrepend("An error occurred while inserting to sys-tablets"),
         resp);
   }
+  VLOG(3) << "SysTablesEntryPB after CreateTable: " << table->metadata().dirty().pb.DebugString();
   TRACE("Wrote table and tablets to system table");
 
   // For index table, insert index info in the indexed table.
@@ -6656,18 +6664,37 @@ Status CatalogManager::DeleteTable(
     // perform the actual deletion until commit.
     TransactionMetadata txn;
     auto& pb = l.mutable_data()->pb;
-    if (!ysql_txn_verifier_state_present) {
+    uint32_t active_sub_transaction_id = req->sub_transaction_id();
+    // Add a new ysql_ddl_txn_verifier_state if:
+    // 1. None exists
+    // 2. The sub_transaction_id of the last state is different from the one given in the
+    // request.
+    if (!l->has_ysql_ddl_txn_verifier_state() ||
+        (req->has_sub_transaction_id() &&
+         l->ysql_ddl_txn_verifier_state_last().sub_transaction_id() != active_sub_transaction_id)) {
       pb.mutable_transaction()->CopyFrom(req->transaction());
       txn = VERIFY_RESULT(TransactionMetadata::FromPB(req->transaction()));
       RSTATUS_DCHECK(!txn.status_tablet.empty(), Corruption, "Given incomplete Transaction");
       pb.add_ysql_ddl_txn_verifier_state();
     }
-    DCHECK_EQ(pb.ysql_ddl_txn_verifier_state_size(), 1);
-    pb.mutable_ysql_ddl_txn_verifier_state(0)->set_contains_drop_table_op(true);
+
+    const int ysql_ddl_txn_verifier_state_size = pb.ysql_ddl_txn_verifier_state_size();
+    RSTATUS_DCHECK_GE(
+        ysql_ddl_txn_verifier_state_size, 1, Corruption,
+        "ysql_ddl_txn_verifier_state_size is unexpectedly empty");
+    pb.mutable_ysql_ddl_txn_verifier_state(ysql_ddl_txn_verifier_state_size - 1)
+        ->set_contains_drop_table_op(true);
+    if (req->has_sub_transaction_id()) {
+      pb.mutable_ysql_ddl_txn_verifier_state(ysql_ddl_txn_verifier_state_size - 1)
+          ->set_sub_transaction_id(active_sub_transaction_id);
+    }
     // Upsert to sys_catalog.
     RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
     // Update the in-memory state.
     TRACE("Committing in-memory state as part of DeleteTable operation");
+    VLOG_WITH_FUNC(3) << "SysCatalogPB for Table id: " << table->id()
+                      << ", name: " << table->name()
+                      << " after the DeleteTable operation is: " << pb.DebugString();
     l.Commit();
     if (!ysql_txn_verifier_state_present) {
       RETURN_NOT_OK(ScheduleYsqlTxnVerification(table, txn, epoch));
@@ -7711,8 +7738,17 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
         need_remove_ddl_state = true;
       }
     } else if (req->has_transaction() && table->GetTableType() == PGSQL_TABLE_TYPE) {
-      if (!l->has_ysql_ddl_txn_verifier_state()) {
+      uint32_t active_sub_txn_id = req->sub_transaction_id();
+      // Add a new ysql_ddl_txn_verifier_state if:
+      // 1. None exists
+      // 2. The sub_transaction_id of the last state is different from the one given in the
+      // request.
+      if (!l->has_ysql_ddl_txn_verifier_state() ||
+          (req->has_sub_transaction_id() &&
+           l->ysql_ddl_txn_verifier_state_last().sub_transaction_id() != active_sub_txn_id)) {
         LOG_WITH_FUNC(INFO) << "Add ysql_ddl_txn_verifier_state to " << table->id();
+        // Only schedule the verifier for the first time.
+        schedule_ysql_txn_verifier = !l->has_ysql_ddl_txn_verifier_state();
         table_pb.mutable_transaction()->CopyFrom(req->transaction());
         auto *ddl_state = table_pb.add_ysql_ddl_txn_verifier_state();
         SchemaToPB(previous_schema, ddl_state->mutable_previous_schema());
@@ -7720,18 +7756,24 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
         if (is_automatic_mode) {
           ddl_state->set_previous_next_column_id(initial_next_col_id);
         }
-        schedule_ysql_txn_verifier = true;
+        if (req->has_sub_transaction_id()) {
+          ddl_state->set_sub_transaction_id(active_sub_txn_id);
+        }
       }
       txn = VERIFY_RESULT(TransactionMetadata::FromPB(req->transaction()));
       RSTATUS_DCHECK(!txn.status_tablet.empty(), Corruption, "Given incomplete Transaction");
-      DCHECK_EQ(table_pb.ysql_ddl_txn_verifier_state_size(), 1);
-      table_pb.mutable_ysql_ddl_txn_verifier_state(0)->set_contains_alter_table_op(true);
+      RSTATUS_DCHECK_GE(
+          table_pb.ysql_ddl_txn_verifier_state_size(), 1, Corruption,
+          "ysql_ddl_txn_verifier_state_size is unexpectedly empty");
+      table_pb.mutable_ysql_ddl_txn_verifier_state(table_pb.ysql_ddl_txn_verifier_state_size() - 1)
+          ->set_contains_alter_table_op(true);
     }
   }
   // Update the in-memory state.
   TRACE("Committing in-memory state");
   l.Commit();
   lock.unlock();
+  VLOG_WITH_FUNC(3) << "SysTablesEntryPB for " << table->id() << " is: " << table_pb.DebugString();
 
   if (need_remove_ddl_state) {
     RemoveDdlTransactionState(table->id(), {txn_id});
@@ -7989,7 +8031,10 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
       resp->set_wal_retention_secs(l->pb.wal_retention_secs());
     }
     if (l->has_ysql_ddl_txn_verifier_state()) {
-      resp->add_ysql_ddl_txn_verifier_state()->CopyFrom(l->ysql_ddl_txn_verifier_state());
+      for (const auto& state : l->pb.ysql_ddl_txn_verifier_state()) {
+        auto* new_state = resp->add_ysql_ddl_txn_verifier_state();
+        new_state->CopyFrom(state);
+      }
     }
   }
 
@@ -8518,6 +8563,10 @@ Status CatalogManager::CreateTablegroup(
   if (req->has_transaction()) {
     ctreq.mutable_transaction()->CopyFrom(req->transaction());
     ctreq.set_ysql_yb_ddl_rollback_enabled(req->ysql_yb_ddl_rollback_enabled());
+
+    if (req->has_sub_transaction_id()) {
+      ctreq.set_sub_transaction_id(req->sub_transaction_id());
+    }
   }
   ctreq.set_name(parent_table_name);
   ctreq.set_table_id(parent_table_id);
@@ -8637,6 +8686,9 @@ Status CatalogManager::DeleteTablegroup(const DeleteTablegroupRequestPB* req,
   dtreq.set_is_index_table(false);
   dtreq.mutable_transaction()->CopyFrom(req->transaction());
   dtreq.set_ysql_yb_ddl_rollback_enabled(req->ysql_yb_ddl_rollback_enabled());
+  if (req->has_sub_transaction_id()) {
+    dtreq.set_sub_transaction_id(req->sub_transaction_id());
+  }
 
   // Delete the parent table.
   // This will also delete the tablegroup tablet, as well as the tablegroup entity.

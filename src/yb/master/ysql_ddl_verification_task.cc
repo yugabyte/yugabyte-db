@@ -363,7 +363,8 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
   // Table was being altered. Check whether its current DocDB schema matches
   // that of PG catalog.
   VLOG(3) << "Comparing with the PG schema for alter table";
-  CHECK(l->ysql_ddl_txn_verifier_state().contains_alter_table_op());
+  // Since the table is not being dropped or created, it must being altered.
+  CHECK(l->is_being_altered_by_ysql_ddl_txn());
   const auto& relname_col = row.GetValue(relname_col_id);
   const string& table_name = relname_col->string_value();
 
@@ -372,7 +373,7 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
     // Table name does not match.
     LOG(INFO) << fail_msg << " Expected table name: " << table->name() << " Table name in PG: "
               << table_name;
-    CHECK_EQ(table_name, l->ysql_ddl_txn_verifier_state().previous_table_name());
+    CHECK_EQ(table_name, l->ysql_ddl_txn_verifier_state_first().previous_table_name());
     *result = false;
     return Status::OK();
   }
@@ -385,7 +386,8 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
 
   auto schema = VERIFY_RESULT(table->GetSchema());
   Schema previous_schema;
-  RETURN_NOT_OK(SchemaFromPB(l->ysql_ddl_txn_verifier_state().previous_schema(), &previous_schema));
+  RETURN_NOT_OK(
+      SchemaFromPB(l->ysql_ddl_txn_verifier_state_first().previous_schema(), &previous_schema));
   // CompareDdlAtomicity takes marked_for_deletion() into comparison. If a column is marked for
   // deletion in the current schema and not in the previous schema, then CompareByDefault would
   // return true which isn't right for correct handling.
@@ -416,7 +418,7 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
                << schema.ToString() << " and previous schema " << previous_schema.ToString()
                << " and PG catalog schema " << PrintPgCols(pg_cols)
                << ". The transaction verification state is "
-               << l->ysql_ddl_txn_verifier_state().ShortDebugString();
+               << AsString(l->ysql_ddl_txn_verifier_state());
   return STATUS_FORMAT(Corruption, "Failed to verify DDL transaction for table $0",
                        table->ToString());
 }

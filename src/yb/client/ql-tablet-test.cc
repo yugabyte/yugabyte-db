@@ -1953,7 +1953,7 @@ TEST_F_EX(QLTabletTest, DeleteTableDuringLongRead, QLTabletRf1Test) {
   TestLongReadAbort([&]{
     return client_->DeleteTable(
         table1_.table()->id(), /* wait = */ true, /* txn = */ nullptr,
-        CoarseMonoClock::now() + 1s * kTimeMultiplier);
+        kMinSubTransactionId, CoarseMonoClock::now() + 1s * kTimeMultiplier);
   });
 }
 
