@@ -478,6 +478,7 @@ class VectorIndexQuery {
     size_t partition_idx = 0;
     for (const auto& key : *partitions) {
       const auto& partition_state = partitions_[partition_idx];
+      VLOG_WITH_FUNC(4) << partition_idx << ": " << partition_state.ToString();
       if (!partition_state.whether_all_vectors_was_fetched &&
           partition_state.number_of_vectors_returned_to_postgres + prefetch_size_
               > partition_state.number_of_vectors_fetched_from_tablet) {
@@ -592,6 +593,7 @@ class VectorIndexQuery {
       if (!op_resp.vector_index_could_have_more_data()) {
         partitions_[op.partition_idx].whether_all_vectors_was_fetched = true;
       }
+      VLOG_WITH_FUNC(4) << op.partition_idx << ": " << partitions_[op.partition_idx].ToString();
     }
   }
 

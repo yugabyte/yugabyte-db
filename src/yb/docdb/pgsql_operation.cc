@@ -603,15 +603,19 @@ class FilteringIterator {
   }
 
   bool has_filter() const {
+    DCHECK(iterator_holder_ != nullptr);
     return filter_.has_value();
+  }
+
+  static bool NeedFilter(const PgsqlReadRequestPB& request) {
+    return !request.where_clauses().empty();
   }
 
  private:
   Status InitCommon(
       const PgsqlReadRequestPB& request, const Schema& schema,
       const dockv::ReaderProjection& projection) {
-    const auto& where_clauses = request.where_clauses();
-    if (where_clauses.empty()) {
+    if (!NeedFilter(request)) {
       return Status::OK();
     }
 
@@ -620,7 +624,7 @@ class FilteringIterator {
       : std::nullopt;
 
     DocPgExprExecutorBuilder builder(schema, projection);
-    for (const auto& exp : where_clauses) {
+    for (const auto& exp : request.where_clauses()) {
       RETURN_NOT_OK(builder.AddWhere(exp, version));
     }
     filter_.emplace(VERIFY_RESULT(builder.Build(request.col_refs())));
@@ -848,6 +852,9 @@ class VectorIndexKeyProvider {
 
   Slice FetchKey() {
     if (index_ >= result_entries_.size()) {
+      VLOG_WITH_FUNC(4) << vector_index_.ToString()
+                        << ", returned: " << response_.vector_index_distances().size()
+                        << " out of " << result_entries_.size();
       return Slice();
     }
     // TODO(vector_index) When row came from intents, we already have all necessary data,
@@ -899,6 +906,11 @@ class VectorIndexKeyProvider {
       result_entries_.erase(range.begin(), range.end());
     }
 
+    VLOG_WITH_FUNC(4) << vector_index_.ToString()
+                      << ", could_have_more_data_: " << could_have_more_data_
+                      << ", result_entries_.size(): " << result_entries_.size()
+                      << ", max_results_: " << max_results_
+                      << ", num_top_vectors_to_remove_: " << num_top_vectors_to_remove_;
     could_have_more_data_ = could_have_more_data_ || result_entries_.size() >= max_results_;
     if (result_entries_.size() > max_results_ || num_top_vectors_to_remove_ != 0) {
       std::ranges::sort(result_entries_, [](const auto& lhs, const auto& rhs) {
@@ -966,7 +978,7 @@ class PgsqlVectorFilter {
     if (FLAGS_vector_index_skip_filter_check) {
       return false;
     }
-    if (!data.table_has_vector_deletion && !iter_.has_filter() &&
+    if (!data.table_has_vector_deletion && !FilteringIterator::NeedFilter(data.request) &&
         FLAGS_vector_index_no_deletions_skip_filter_check) {
       LOG_IF(INFO, FLAGS_vector_index_dump_stats)
           << "VI_STATS: PgsqlVectorFilter, "
