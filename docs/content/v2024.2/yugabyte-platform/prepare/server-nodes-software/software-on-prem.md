@@ -146,7 +146,7 @@ Run the script either as a root user, or via sudo as follows:
 sudo ./node-agent-provision.sh
 ```
 
-The script provisions the node and installs node agent.
+The script provisions the node and installs node agent, and then runs preflight checks to ensure the node is ready for use.
 
 If specified, node agent creates the on-premises provider configuration; or, if the provider already exists, adds the instance to the provider.
 
