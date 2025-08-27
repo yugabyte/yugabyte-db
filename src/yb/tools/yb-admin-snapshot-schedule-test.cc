@@ -77,6 +77,7 @@ using yb::common::GetMember;
 using yb::common::GetMemberAsStr;
 using yb::common::GetMemberAsArray;
 using yb::common::PrettyWriteRapidJsonToString;
+using yb::master::IncludeInactive;
 
 namespace yb::tools {
 
@@ -101,9 +102,10 @@ Result<double> MinuteStringToSeconds(const std::string_view& min_str) {
   return MonoDelta::FromMinutes(VERIFY_RESULT(CheckedStold(args[0]))).ToSeconds();
 }
 
-Result<size_t> GetTabletCount(TestAdminClient* client) {
+Result<size_t> GetTabletCount(
+    TestAdminClient* client, IncludeInactive include_inactive = IncludeInactive::kFalse) {
   auto tablets = VERIFY_RESULT(client->GetTabletLocations(
-      client::kTableName.namespace_name(), client::kTableName.table_name()));
+      client::kTableName.namespace_name(), client::kTableName.table_name(), include_inactive));
   LOG(INFO) << "Number of tablets: " << tablets.size();
   return tablets.size();
 }
@@ -3341,19 +3343,24 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationParam, TablegroupGCAfterRest
     return tablegroup_deleted_cascade;
   }, deadline, "Wait for tablegroup and its child table marking as DELETED."));
 
-  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
-    auto proxy = cluster_->GetTServerProxy<tserver::TabletServerServiceProxy>(i);
-    tserver::ListTabletsRequestPB req;
-    tserver::ListTabletsResponsePB resp;
-    rpc::RpcController controller;
-    controller.set_timeout(30s);
-    ASSERT_OK(proxy.ListTablets(req, &resp, &controller));
-    for (const auto& tablet : resp.status_and_schema()) {
-      // We only remove tablet::TABLET_DATA_DELETED tablets from the tablet map, so no tablet in the
-      // namespace means the GC has been done.
-      ASSERT_FALSE(tablet.tablet_status().namespace_name() == client::kTableName.namespace_name());
+  // The tablets will be deleted once the tservers heartbeat and the master responds that the tablet
+  // is deleted.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
+      auto proxy = cluster_->GetTServerProxy<tserver::TabletServerServiceProxy>(i);
+      tserver::ListTabletsRequestPB req;
+      tserver::ListTabletsResponsePB resp;
+      rpc::RpcController controller;
+      controller.set_timeout(30s);
+      RETURN_NOT_OK(proxy.ListTablets(req, &resp, &controller));
+      for (const auto& tablet : resp.status_and_schema()) {
+        if (tablet.tablet_status().namespace_name() == client::kTableName.namespace_name()) {
+          return false;
+        }
+      }
     }
-  }
+    return true;
+  }, 10s * kTimeMultiplier, "Wait for tablets to be deleted on tservers"));
 }
 
 class YbAdminSnapshotScheduleTestWithYsqlRetention : public YbAdminSnapshotScheduleTestWithYsql {
@@ -4487,8 +4494,9 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, RestoreAfterSplit, YbAdminRestoreAfterSpl
   rows = ASSERT_RESULT(GetRowCount(&conn));
   ASSERT_EQ(rows, kNumRows);
 
-  // There should be 1 tablet.
+  // There should be 1 tablet. The split children should have been deleted.
   ASSERT_EQ(ASSERT_RESULT(GetTabletCount(test_admin_client_.get())), 1);
+  ASSERT_EQ(ASSERT_RESULT(GetTabletCount(test_admin_client_.get(), IncludeInactive::kTrue)), 1);
 
   // Further inserts to the table should succeed.
   ASSERT_OK(InsertBatch(&conn, kNumRows, kNumRows + 4));
