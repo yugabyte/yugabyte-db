@@ -45,6 +45,8 @@ Depending on the flag, the universe may need to be restarted to apply the change
 
 During a rolling restart, YugabyteDB Anywhere can process multiple YB-TServer nodes in each availability zone simultaneously. YB-Master nodes are always updated one at a time.
 
+This feature is supported for both VM-based and Kubernetes-based universes.
+
 Batched rolling restart requires a replication factor of 3 or more, and at least two nodes in an availability zone. If your universe supports a batched rolling restart, you can specify the maximum number of nodes to process as a batch.
 
 ![Rolling restart in batches](/images/ee/rolling-restart-batch.png)
