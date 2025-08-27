@@ -3,7 +3,7 @@ import { toast } from 'react-toastify';
 import { useMutation } from 'react-query';
 import { useTranslation, Trans } from 'react-i18next';
 import { YBModal } from '../../../components';
-import { api } from '../../../utils/api';
+import { api } from '@app/redesign/helpers/api';
 import { createErrorMessage } from '../../universe/universe-form/utils/helpers';
 //RBAC
 import { hasNecessaryPerm } from '../../rbac/common/RbacApiPermValidator';

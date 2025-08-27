@@ -1,5 +1,5 @@
-import { Universe, Cluster } from '../../universe/universe-form/utils/dto';
 import { GCPServiceAccount } from '../../../../components/configRedesign/providerRedesign/types';
+import { UniverseItem } from '@app/components/configRedesign/providerRedesign/providerView/providerDetails/UniverseTable';
 
 export enum TelemetryProviderType {
   DATA_DOG = 'DATA_DOG',
@@ -52,15 +52,6 @@ export interface ExportLogPayload extends ExportLogFormFields {
   };
 }
 
-export interface ExportLogResponse extends ExportLogPayload {
-  uuid: string;
-  customerUUID: string;
-}
-
-export interface UniverseItem extends Universe {
-  linkedClusters: Cluster[];
-}
-
-export interface TPItem extends ExportLogPayload {
+export interface TelemetryProviderItem extends ExportLogPayload {
   linkedUniverses: UniverseItem[];
 }

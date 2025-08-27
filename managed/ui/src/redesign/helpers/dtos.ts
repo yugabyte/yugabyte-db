@@ -147,6 +147,19 @@ export interface UserIntent {
   tserverGFlags: FlagsObject | FlagsArray;
   instanceTags: FlagsObject | FlagsArray;
   imageBundleUUID: string;
+  metricsExportConfig: {
+    scrapeIntervalSeconds: number;
+    scrapeTimeoutSeconds: number;
+    collectionLevel: string;
+    universeMetricsExporterConfig: {
+      exporterUuid: string;
+      additionalTags: Record<string, string>;
+      sendBatchMaxSize: number;
+      sendBatchSize: number;
+      sendBatchTimeoutSeconds: number;
+      metricsPrefix: string;
+    }[];
+  };
 }
 
 export const ClusterType = {

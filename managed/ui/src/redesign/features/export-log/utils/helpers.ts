@@ -1,5 +1,5 @@
-import { UniverseItem } from './types';
-import { Universe } from '../../universe/universe-form/utils/dto';
+import { UniverseItem } from '@app/components/configRedesign/providerRedesign/providerView/providerDetails/UniverseTable';
+import { Universe } from '@app/redesign/helpers/dtos';
 import _ from 'lodash';
 
 export const getLinkedUniverses = (logUUID: string, universes: Universe[]) =>

@@ -1892,6 +1892,17 @@
         "multiRegionSupport": "Multi-region support"
       }
     },
+    "telemetryProviderConfigSelect": {
+      "noMatchingMetricsTelemetryConfiguration": "No matches found",
+      "noMetricsTelemetryConfigurations": "You do not have any export configurations for metrics",
+      "createTelemetryConfiguration": "Create export configuration",
+      "redirectModal": {
+        "title": "You are about to leave this page",
+        "message": "To create an export configuration, you will be redirected to <bold>Integrations / Logs & Metrics Export</bold>. Are you sure you want to continue?",
+        "submitButton": "Continue",
+        "cancelButton": "Stay on this page"
+      }
+    },
     "customCACerts": {
       "listing": {
         "header": "Trusted CA Certificates",
@@ -2808,6 +2819,29 @@
       "deleteModalSubmitLabel": "Delete Export Configuration",
       "deleteConfirmMsg": "{{name}} export configuration got deleted succesfully",
       "deleteConfig": "Delete Configuration"
+    },
+    "exportMetric": {
+      "universeExportMetricModal": {
+        "title": "Export Metrics",
+        "exportMetricsToggle": {
+          "label": "Export Metrics from this Universe",
+          "infoText": "Export metrics to your preferred 3rd party monitoring tool."
+        },
+        "exportConfigSelect": {
+          "label": "Export Configuration"
+        },
+        "toast": {
+          "enableSuccess": "Metrics export successfully enabled.",
+          "disableSuccess": "Metrics export successfully disabled.",
+          "updateSuccess": "Metrics export successfully updated.",
+          "enableFailed": "Failed to enable metrics export.",
+          "disableFailed": "Failed to disable metrics export.",
+          "updateFailed": "Failed to update metrics export.",
+          "enableRequestFailed": "Metrics export enable request failed:",
+          "disableRequestFailed": "Metrics export disable request failed:",
+          "updateRequestFailed": "Metrics export update request failed:"
+        }
+      }
     },
     "userAuth": {
       "disableModal": {

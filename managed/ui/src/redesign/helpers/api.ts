@@ -40,6 +40,9 @@ import {
 } from '../../components/xcluster/disasterRecovery/dtos';
 import { XClusterConfigType } from '../../components/xcluster/constants';
 import { CustomerConfig } from '../../components/backupv2';
+import { ExportLogPayload } from '../features/export-log/utils/types';
+import { AuditLogPayload } from '../features/universe/universe-tabs/db-audit-logs/utils/types';
+import { TelemetryProvider } from '../features/telemetry/dtos';
 
 /**
  * @deprecated Use query key factories for more flexable key organization
@@ -197,6 +200,12 @@ export const alertTemplateQueryKey = {
 };
 
 export const CUSTOMER_CONFIG_QUERY_KEY = 'customerConfig';
+
+export const telemetryProviderQueryKey = {
+  ALL: ['telemetryProvider'],
+  list: () => [...telemetryProviderQueryKey.ALL, 'list'],
+  detail: (telemetryProviderId: string) => [...telemetryProviderQueryKey.ALL, telemetryProviderId]
+};
 
 // --------------------------------------------------------------------------------------
 // API Constants
@@ -790,6 +799,31 @@ class ApiService {
   rollbackTask = (taskUuid: string) => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/tasks/${taskUuid}/rollback`;
     return axios.post(requestUrl).then((response: any) => response.data);
+  };
+
+  fetchTelemetryProviderList = (): Promise<TelemetryProvider[]> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/telemetry_provider`;
+    return axios.get<TelemetryProvider[]>(requestUrl).then((response) => response.data);
+  };
+
+  fetchTelemetryProvider = (telementryProviderUuid: string): Promise<TelemetryProvider> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/telemetry_provider/${telementryProviderUuid}`;
+    return axios.get<TelemetryProvider>(requestUrl).then((response) => response.data);
+  };
+
+  createTelemetryProvider = (data: ExportLogPayload): Promise<YBPTask> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/telemetry_provider`;
+    return axios.post<YBPTask>(requestUrl, data).then((response) => response.data);
+  };
+
+  createAuditLogConfig = (universeId: string, data: AuditLogPayload) => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeId}/audit_log_config`;
+    return axios.post(requestUrl, data).then((response) => response.data);
+  };
+
+  deleteTelemetryProvider = (telemetryProviderUuid: string) => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/telemetry_provider/${telemetryProviderUuid}`;
+    return axios.delete(requestUrl).then((response) => response.data);
   };
 }
 

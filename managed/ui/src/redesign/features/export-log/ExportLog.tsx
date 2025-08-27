@@ -12,9 +12,8 @@ import { YBLoading } from '../../../components/common/indicators';
 import { YBLabelWithIcon } from '../../../components/common/descriptors';
 import { ExportLogModalForm } from './components/ExportLogModalForm';
 import { DeleteTelProviderModal } from './components/DeleteTelProviderModal';
-import { api, QUERY_KEY } from '../../utils/api';
-import { universeQueryKey } from '../../helpers/api';
-import { ExportLogResponse, TPItem } from './utils/types';
+import { api, telemetryProviderQueryKey, universeQueryKey } from '../../helpers/api';
+import { TelemetryProviderItem } from './utils/types';
 import { TelemetryProviderMin } from './components/DeleteTelProviderModal';
 import { getLinkedUniverses } from './utils/helpers';
 import { TP_FRIENDLY_NAMES } from './utils/constants';
@@ -39,13 +38,13 @@ export const ExportLog: FC<ExportLogProps> = () => {
   const pillClasses = usePillStyles();
   const { t } = useTranslation();
   const [openExportModal, setOpenExportModal] = useState(false);
-  const [exportModalProps, setExportModalProps] = useState<TPItem | null>(null);
+  const [exportModalProps, setExportModalProps] = useState<TelemetryProviderItem | null>(null);
   const [openDeleteModal, setDeleteModal] = useState(false);
   const [deleteModalProps, setDeleteModalProps] = useState<TelemetryProviderMin | null>(null);
 
-  const { data, isLoading: logslistLoading, refetch } = useQuery<ExportLogResponse[]>(
-    [QUERY_KEY.getAllTelemetryProviders],
-    () => api.getAllTelemetryProviders()
+  const { data, isLoading: logslistLoading, refetch } = useQuery(
+    telemetryProviderQueryKey.list(),
+    () => api.fetchTelemetryProviderList()
   );
 
   const {
@@ -61,7 +60,7 @@ export const ExportLog: FC<ExportLogProps> = () => {
     return { ...logData, type: logData?.config?.type || '', linkedUniverses };
   });
 
-  const handleRowClick = (row: TPItem) => {
+  const handleRowClick = (row: TelemetryProviderItem) => {
     setExportModalProps(row);
     setOpenExportModal(true);
   };

@@ -16,7 +16,7 @@ import {
   YBSelectField,
   YBModal
 } from '../../../../../components';
-import { api, QUERY_KEY } from '../../../../../utils/api';
+import { api, telemetryProviderQueryKey } from '@app/redesign/helpers/api';
 import { constructFormPayload } from '../utils/helper';
 import { createErrorMessage } from '../../../universe-form/utils/helpers';
 import { fetchUniverseInfo, fetchUniverseInfoResponse } from '../../../../../../actions/universe';
@@ -31,7 +31,6 @@ import {
   YSQLAuditLogLevel,
   AuditLogConfig
 } from '../utils/types';
-import { ExportLogResponse } from '../../../../export-log/utils/types';
 import { TP_FRIENDLY_NAMES } from '../../../../export-log/utils/constants';
 import { YSQL_AUDIT_CLASSES, YSQL_LOG_LEVEL_OPTIONS } from '../utils/constants';
 //RBAC
@@ -85,9 +84,8 @@ export const AuditLogSettings: FC<AuditLogSettingProps> = ({
 
   const defaultValues = constructFormPayload(auditLogInfo);
 
-  const { data: telemetryProviders, isLoading } = useQuery<ExportLogResponse[]>(
-    [QUERY_KEY.getAllTelemetryProviders],
-    () => api.getAllTelemetryProviders()
+  const { data: telemetryProviders, isLoading } = useQuery(telemetryProviderQueryKey.list(), () =>
+    api.fetchTelemetryProviderList()
   );
 
   const formMethods = useForm<AuditLogFormFields>({
