@@ -225,7 +225,6 @@ make_regex_from_list VALID_CMAKE_BUILD_TYPES "${VALID_CMAKE_BUILD_TYPES[@]}"
 
 readonly -a VALID_COMPILER_TYPES=(
   gcc
-  gcc11
   gcc12
   gcc13
   clang
