@@ -1,8 +1,8 @@
 ---
 title: PostgreSQL migration permissions grant script
-linktitle: pg-grant-permissions.sql
-description: Usage, actions, and key considerations for the `pg_grant_permissions.sql` script.
-headcontent: How to use the `pg_grant_permissions.sql` script
+linktitle: yb-voyager-pg-grant-migration-permissions.sql
+description: Usage, actions, and key considerations for the `yb-voyager-pg-grant-migration-permissions.sql` script.
+headcontent: How to use the `yb-voyager-pg-grant-migration-permissions.sql` script
 menu:
   preview_yugabyte-voyager:
     identifier: pg-grant-perm
@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-Use the `pg_grant_permissions.sql` script to configure a PostgreSQL database user (typically ybvoyager) with the appropriate permissions required for migrations, both offline and live. The script ensures that the user has the necessary access to schemas, tables, sequences, and replication settings.
+Use the `yb-voyager-pg-grant-migration-permissions.sql` script to configure a PostgreSQL database user (typically ybvoyager) with the appropriate permissions required for migrations, both offline and live. The script ensures that the user has the necessary access to schemas, tables, sequences, and replication settings.
 
 ## How to use
 
@@ -50,7 +50,7 @@ psql -h localhost -d mydb -U admin \
   -v is_live_migration=1 \
   -v is_live_migration_fall_back=0 \
   -v replication_group='replication_group' \
-  -f pg_grant_permissions.sql
+  -f yb-voyager-pg-grant-migration-permissions.sql
 ```
 
 **Offline migration**
@@ -60,7 +60,7 @@ psql -h myhost -d mydb -U admin \
   -v voyager_user='ybvoyager' \
   -v schema_list='public' \
   -v is_live_migration=0 \
-  -f pg_grant_permissions.sql
+  -f yb-voyager-pg-grant-migration-permissions.sql
 ```
 
 **Live migration with replication group**
@@ -72,7 +72,7 @@ psql -h myhost -d mydb -U admin \
   -v is_live_migration=1 \
   -v is_live_migration_fall_back=0 \
   -v replication_group='voyager_repl' \
-  -f pg_grant_permissions.sql
+  -f yb-voyager-pg-grant-migration-permissions.sql
 ```
 
 **Live migration with fall-back and replication group**
@@ -84,12 +84,12 @@ psql -h myhost -d mydb -U admin \
   -v is_live_migration=1 \
   -v is_live_migration_fall_back=1 \
   -v replication_group='voyager_repl' \
-  -f pg_grant_permissions.sql
+  -f yb-voyager-pg-grant-migration-permissions.sql
 ```
 
 ## Script actions
 
-The different actions that the script can perform are described as follows.
+The script performs the following actions when run.
 
 ### Parameter validation
 

@@ -10,7 +10,7 @@ menu:
 type: docs
 ---
 
-This document provides a step-by-step guide to import data into a PostgreSQL (or YugabyteDB) database without using a superuser account. It outlines why superuser access is required in some cases, how to work around it, and the precise steps to follow to import data cleanly.
+This document provides a step-by-step guide to importing data into YugabyteDB without using a superuser account. It outlines why superuser access is required in some cases, how to work around it, and the precise steps to follow to import data cleanly.
 
 ## Why do you need a Superuser?
 
@@ -36,7 +36,7 @@ Superuser access is primarily needed to:
 
 - Any other unknown cases.
 
-{{< note title="YugabyteDB v2025.1 and later" >}}
+## Import without a Superuser
 
 Starting from YugabyteDB v2025.1 (which is based on PostgreSQL 15), you can grant users the ability to `set session_replication_role` without making them superusers by directly granting the permission as follows:
 
@@ -48,10 +48,6 @@ Granting the permission eliminates the need to manually disable or drop foreign 
 You may still encounter errors during schema import when creating extensions (for example, hstore), which require a superuser because their install scripts perform superuser-only actions (such as ALTER TYPE).
 
 If you're using an older version (pre-PostgreSQL 15 and YugabyteDB v2025.1), use the steps decribed in the following sections.
-
-{{< /note >}}
-
-## Import without a Superuser
 
 ### Grant required permissions
 
