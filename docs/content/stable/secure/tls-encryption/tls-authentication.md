@@ -86,7 +86,8 @@ This configuration requires the client to use client-to-server encryption to con
 Create the database:
 
 ```sh
-$ ./bin/yb-ctl destroy && ./bin/yb-ctl create --tserver_flags="$ENABLE_TLS"
+$ ./bin/yugabyted start \
+    --tserver_flags="$ENABLE_TLS"
 ```
 
 Without SSL enabled in the client, the connection fails.
@@ -134,7 +135,8 @@ This configuration requires the client to use client-to-server encryption and au
 To create the database, execute the following command:
 
 ```sh
-$ ./bin/yb-ctl destroy && ./bin/yb-ctl create --tserver_flags="$ENABLE_TLS,ysql_enable_auth=true"
+$ ./bin/yugabyted stop && ./bin/yugabyted start \
+    --tserver_flags="$ENABLE_TLS,ysql_enable_auth=true"
 ```
 
 To connect to the database, the password is required (see second line below):
@@ -177,9 +179,8 @@ This configuration requires the client to use client-to-server encryption and au
 To create the database, execute the following command:
 
 ```sh
-$ ./bin/yb-ctl destroy && ./bin/yb-ctl create \
-    --tserver_flags="$ENABLE_TLS" \
-    --ysql_hba_conf_csv="hostssl all all all cert"
+$ ./bin/yugabyted stop && ./bin/yugabyted start \
+    --tserver_flags="$ENABLE_TLS,ysql_hba_conf_csv={hostssl all all all cert}"
 ```
 
 Without a certificate, the connection fails.
@@ -212,9 +213,8 @@ This configuration requires the client to use client-to-server encryption and au
 To create the database, execute the following command:
 
 ```sh
-$ ./bin/yb-ctl destroy && ./bin/yb-ctl create \
-    --tserver_flags="$ENABLE_TLS,ysql_enable_auth=true" \
-    --ysql_hba_conf_csv="hostssl all all all md5 clientcert=verify-full"
+$ ./bin/yugabyted stop && ./bin/yugabyted start \
+    --tserver_flags="$ENABLE_TLS,ysql_hba_conf_csv={hostssl all all all md5 clientcert=verify-full}"
 ```
 
 The `ysql_enable_auth=true` flag is redundant in this case, but included to demonstrate the ability to override the auto-generated configuration using `ysql_hba_conf_csv`.
