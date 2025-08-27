@@ -1181,7 +1181,7 @@ The following table describes properties for configuring transaction ordering.
 | transforms.Reroute.key.field.replacement | Specifies a regular expression for determining the value of the inserted key field in terms of those captured groups. |
 | provide.transaction.metadata | Whether to generate events with transaction boundaries. |
 
-For usage example, refer to YugabyteDB CDC Consistent Streaming Pipeline in the [example repository](https://github.com/yugabyte/cdc-examples/tree/main/consistent-streaming).
+For usage example, refer to YugabyteDB CDC Consistent Streaming Pipeline in the [example repository](https://github.com/yugabyte/cdc-examples/tree/main/grpc_connector/consistent-streaming).
 
 ### Transaction boundaries
 

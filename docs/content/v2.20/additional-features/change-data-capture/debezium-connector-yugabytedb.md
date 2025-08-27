@@ -690,7 +690,7 @@ When a row is deleted, the _delete_ event value still works with log compaction,
 
 {{< tip title="TRUNCATE tables when CDC is enabled" >}}
 
-By default, the YugabyteDB CDC implementation does not allow you to TRUNCATE a table while an active CDC stream is present on the namespace. To allow truncating tables while CDC is active, set the [enable_truncate_cdcsdk_table](../../../reference/configuration/yb-tserver/#enable-truncate-cdcsdk-table) flag to true.
+By default, the YugabyteDB CDC implementation does not allow you to TRUNCATE a table while an active CDC stream is present on the namespace. To allow truncating tables while CDC is active, set the [enable_truncate_cdcsdk_table](../../../reference/configuration/yb-master/#enable-truncate-cdcsdk-table) flag to true.
 
 {{< /tip >}}
 
@@ -1146,7 +1146,7 @@ The following table describes properties for configuring transaction ordering.
 | transforms.Reroute.key.field.replacement | Specifies a regular expression for determining the value of the inserted key field in terms of those captured groups. |
 | provide.transaction.metadata | Whether to generate events with transaction boundaries. |
 
-For usage example, refer to YugabyteDB CDC Consistent Streaming Pipeline in the [example repository](https://github.com/yugabyte/cdc-examples/tree/main/consistent-streaming).
+For usage example, refer to YugabyteDB CDC Consistent Streaming Pipeline in the [example repository](https://github.com/yugabyte/cdc-examples/tree/main/grpc_connector/consistent-streaming).
 
 ### Transaction boundaries
 
