@@ -385,7 +385,12 @@ GetTransactionSnapshot(void)
 	 */
 	if (YbIsReadCommittedTxn())
 	{
-		HandleYBStatus(YBCPgFlushBufferedOperations());
+		YbOptionalReadPointHandle yb_read_point = CurrentSnapshotData.yb_read_point_handle;
+		YbcFlushDebugContext debug_context = {
+			.reason = YB_GET_TRANSACTION_SNAPSHOT,
+			.uintarg = yb_read_point.has_value ? yb_read_point.value : 0,
+		};
+		HandleYBStatus(YBCPgFlushBufferedOperations(debug_context));
 
 		/*
 		 * If this is a retry for a kReadRestart error, avoid resetting the

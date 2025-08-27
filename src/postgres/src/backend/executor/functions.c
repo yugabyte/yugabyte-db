@@ -1239,7 +1239,12 @@ fmgr_sql(PG_FUNCTION_ARGS)
 				case CMD_DELETE:
 					break;
 				default:
-					YBFlushBufferedOperations();
+					YBFlushBufferedOperations((YbcFlushDebugContext)
+						{
+							.reason = YB_UNBATCHABLE_SQL_STMT_IN_SQL_FUNCTION,
+							.uintarg = es->stmt->commandType,
+							.strarg1 = fcache->fname,
+						});
 					break;
 			}
 

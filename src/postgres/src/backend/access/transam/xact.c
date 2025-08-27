@@ -4947,7 +4947,12 @@ BeginInternalSubTransaction(const char *name)
 	 * An error thrown while/after switching over to a new subtransaction
 	 * would lead to a fatal error or unpredictable behavior.
 	 */
-	YBFlushBufferedOperations();
+	YBFlushBufferedOperations((YbcFlushDebugContext)
+		{
+			.reason = YB_BEGIN_SUBTRANSACTION,
+			.uintarg = CurrentTransactionState->subTransactionId,
+			.strarg1 = name,
+		});
 	TransactionState s = CurrentTransactionState;
 
 	/*
@@ -5025,7 +5030,12 @@ void
 YbBeginInternalSubTransactionForReadCommittedStatement()
 {
 
-	YBFlushBufferedOperations();
+	YBFlushBufferedOperations((YbcFlushDebugContext)
+		{
+			.reason = YB_BEGIN_SUBTRANSACTION,
+			.uintarg = CurrentTransactionState->subTransactionId,
+			.strarg1 = "read committed transaction",
+		});
 	TransactionState s = CurrentTransactionState;
 
 	Assert(s->blockState == TBLOCK_SUBINPROGRESS ||
@@ -5087,7 +5097,11 @@ ReleaseCurrentSubTransaction(void)
 	 * An error thrown while/after commiting/releasing it would lead to a
 	 * fatal error or unpredictable behavior.
 	 */
-	YBFlushBufferedOperations();
+	YBFlushBufferedOperations((YbcFlushDebugContext)
+		{
+			.reason = YB_END_SUBTRANSACTION,
+			.uintarg = CurrentTransactionState->subTransactionId,
+		});
 	TransactionState s = CurrentTransactionState;
 
 	/*

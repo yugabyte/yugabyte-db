@@ -124,4 +124,14 @@ Slice YbctidAsSlice(const PgTypeInfo& pg_types, uint64_t ybctid) {
   return Slice(value, bytes);
 }
 
+const std::string ToString(const YbcObjectLockId& lock_id) {
+  return Format("object { db_oid: $0, table_oid: $1, object_id: $2, object_sub_oid: $3 }",
+                lock_id.db_oid, lock_id.relation_oid, lock_id.object_oid, lock_id.object_sub_oid);
+}
+
+const std::string ToString(const YbcAdvisoryLockId& lock_id) {
+  return Format("advisory lock { db_oid: $0, classid: $1, object_oid: $2, object_sub_oid: $3 } ",
+                lock_id.database_id, lock_id.classid, lock_id.objid, lock_id.objsubid);
+}
+
 } // namespace yb::pggate

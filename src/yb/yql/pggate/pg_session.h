@@ -158,7 +158,9 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   Status AdjustOperationsBuffering(int multiple = 1);
 
   // Flush all pending buffered operations. Buffering mode remain unchanged.
-  Result<SetupPerformOptionsAccessorTag> FlushBufferedOperations();
+  Result<SetupPerformOptionsAccessorTag> FlushBufferedOperations(
+      const YbcFlushDebugContext& debug_context);
+  Result<SetupPerformOptionsAccessorTag> FlushBufferedOperations(YbcFlushReason reason);
   // Drop all pending buffered operations. Buffering mode remain unchanged.
   SetupPerformOptionsAccessorTag DropBufferedOperations();
 
@@ -297,7 +299,9 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   Result<PgTableDescPtr> DoLoadTable(
       const PgObjectId& table_id, bool fail_on_cache_hit,
       master::IncludeHidden include_hidden = master::IncludeHidden::kFalse);
-  Result<FlushFuture> FlushOperations(BufferableOperations&& ops, bool transactional);
+  Result<FlushFuture> FlushOperations(
+      BufferableOperations&& ops, bool transactional, const YbcFlushDebugContext& context);
+  std::string FlushReasonToString(const YbcFlushDebugContext& context) const;
 
   const std::string LogPrefix() const;
 
