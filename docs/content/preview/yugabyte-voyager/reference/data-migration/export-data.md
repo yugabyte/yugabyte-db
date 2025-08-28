@@ -558,11 +558,11 @@ target:
 
 The available SSL modes are as follows:
 
-- [YugabyteDB gRPC Connector](../../../../develop/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/)
+- [YugabyteDB gRPC Connector](../../../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/)
   - disable: Only try a non-SSL connection.
   - require: Only try an SSL connection; fail if that can't be established.
   - verify-ca: Only try an SSL connection; verify the server TLS certificate against the configured CA certificates, and fail if no valid matching CA certificate is found.
-- [YugabyteDB Connector](../../../../develop/change-data-capture/using-logical-replication/yugabytedb-connector/):
+- [YugabyteDB Connector](../../../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/):
   - disable: Uses an unencrypted connection.
   - allow: Tries an unencrypted connection first and, if it fails, attempts a secure (encrypted) connection.
   - prefer: Tries a secure (encrypted) connection first and, if it fails, falls back to an unencrypted connection.

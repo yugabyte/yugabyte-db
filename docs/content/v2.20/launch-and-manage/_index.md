@@ -16,6 +16,12 @@ type: indexpage
     icon="/images/section_icons/index/deploy.png">}}
 
   {{<index/item
+    title="Advanced capabilities"
+    body="Deploy advanced capabilities for your YugabyteDB universe."
+    href="../additional-features/"
+    icon="fa-thin fa-raygun">}}
+
+  {{<index/item
     title="Manage"
     body="Manage YugabyteDB clusters."
     href="../manage/"

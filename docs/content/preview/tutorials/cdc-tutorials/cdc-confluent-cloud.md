@@ -159,4 +159,4 @@ For more details on the usage of schema registry, refer to the [Confluent docume
     docker compose up
     ```
 
-1. Deploy the connector. For more information, refer to [Deployment](../../../develop/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/#deployment).
+1. Deploy the connector. For more information, refer to [Deployment](../../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/#deployment).

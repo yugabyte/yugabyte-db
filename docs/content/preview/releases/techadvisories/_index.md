@@ -57,13 +57,13 @@ It is strongly recommended that you take appropriate measures as outlined in the
 |
 | {{<ta 25193>}}
 | Logical Replication CDC may fail to stream UPDATE or DELETE changes correctly when using FULL_ROW_NEW_IMAGE, MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES, or DEFAULT Replica Identity with CDC lag
-| [CDC](/preview/develop/change-data-capture/)
+| [CDC](/preview/additional-features/change-data-capture/)
 | {{<release "2.20, 2024.1, 2024.2">}}
 | {{<nobreak "10 January 2025">}}
 |
 | {{<ta 24992>}}
 |Partial Streaming Stall After Tablet Split
-| [YugabyteDB gRPC (Debezium) Connector](/preview/develop/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/)
+| [YugabyteDB gRPC (Debezium) Connector](/preview/additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/)
 | [dz.1.9.5.yb.grpc.2024.1](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/tag/vdz.1.9.5.yb.grpc.2024.1)
 | {{<nobreak "3 December 2024">}}
 |
