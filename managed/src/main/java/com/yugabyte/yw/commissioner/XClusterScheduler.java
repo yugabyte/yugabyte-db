@@ -272,20 +272,32 @@ public class XClusterScheduler {
 
   public void syncXClusterConfig(XClusterConfig config) {
     try {
-      XCLUSTER_CONFIG_LOCK.acquireLock(config.getUuid());
-      if (!isXClusterEligibleForScheduledSync(config)) {
-        log.debug("Skipping xCluster config {} for scheduled sync", config.getName());
+      Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
+      Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
+      if (sourceUniverse.getUniverseDetails().updateInProgress
+          || targetUniverse.getUniverseDetails().updateInProgress) {
         return;
       }
-      compareTablesAndSyncXClusterConfig(config);
+      if (sourceUniverse.getUniverseDetails().universePaused
+          || targetUniverse.getUniverseDetails().universePaused) {
+        return;
+      }
+
+      // Try to acquire the lock without blocking
+      if (!XCLUSTER_CONFIG_LOCK.tryLock(xClusterConfig.getUuid())) {
+        log.info(
+            "Could not acquire lock for xCluster config {}, skipping sync, reporting stale data.",
+            xClusterConfig.getUuid());
+        return;
+      }
+
+      try {
+        compareTablesAndSyncXClusterConfig(xClusterConfig);
+      } finally {
+        XCLUSTER_CONFIG_LOCK.releaseLock(xClusterConfig.getUuid());
+      }
     } catch (Exception e) {
       log.error("Error syncing xCluster config:", e);
-    } finally {
-      try {
-        XCLUSTER_CONFIG_LOCK.releaseLock(config.getUuid());
-      } catch (Exception e) {
-        log.error("Error releasing lock for xCluster config:", e);
-      }
     }
   }
 
