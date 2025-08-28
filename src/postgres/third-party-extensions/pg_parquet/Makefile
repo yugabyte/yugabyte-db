@@ -98,4 +98,3 @@ check: cargo-pgrx-exists
 uninstall:
 	   rm -f $(shell $(PG_CONFIG) --pkglibdir)/pg_parquet.so
 	   rm -f $(shell $(PG_CONFIG) --sharedir)/extension/pg_parquet*
-
