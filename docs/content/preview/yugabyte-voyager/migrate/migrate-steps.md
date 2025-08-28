@@ -285,7 +285,7 @@ For the most accurate migration assessment, the source database must be actively
 
 1. Resize your target YugabyteDB cluster in [Enhanced PostgreSQL Compatibility Mode](../../../develop/postgresql-compatibility/), based on the sizing recommendations in the assessment report.
 
-   For a universe in YugabyteDB Anywhere, [enable compatibility mode](../../../develop/postgresql-compatibility/#yugabytedb-anywhere) by setting flags on the universe.
+   If you are using YugabyteDB Anywhere, [enable compatibility mode](../../../develop/postgresql-compatibility/#yugabytedb-anywhere) by setting the **More > Edit Postgres Compatibility** option.
 
 1. If the assessment recommended creating some tables as colocated, check that your target YugabyteDB database is colocated in [ysqlsh](/preview/api/ysqlsh/) using the following command:
 
