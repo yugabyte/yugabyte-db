@@ -65,7 +65,7 @@ To begin, generate and configure certificates using the following steps:
 
     Certificates are generated in the `<HOME>/var/generated_certs/<hostname>` directory.
 
-    ```sh
+    ```output
     127.0.0.1
     ├── ca.crt
     ├── node.127.0.0.1.crt
