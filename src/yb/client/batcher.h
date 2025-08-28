@@ -32,7 +32,6 @@
 #pragma once
 
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 #include "yb/ash/ash_fwd.h"
@@ -42,7 +41,6 @@
 #include "yb/client/transaction.h"
 
 #include "yb/common/consistent_read_point.h"
-#include "yb/common/opid.h"
 #include "yb/common/retryable_request.h"
 #include "yb/common/transaction.h"
 
@@ -50,8 +48,6 @@
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/util/async_util.h"
-#include "yb/util/atomic.h"
-#include "yb/util/locks.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/threadpool.h"
 
@@ -318,9 +314,15 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
   friend class RefCountedThreadSafe<Batcher>;
   friend class AsyncRpc;
   friend class WriteRpc;
+  friend class WaitForAsyncWriteRpc;
   friend class ReadRpc;
 
   void Flushed(const InFlightOps& ops, const Status& status, FlushExtraResult flush_extra_result);
+
+  void RecordAsyncWriteCompletion(
+      const TabletId& tablet_id, const OpId& op_id, const Status& status);
+
+  void WaitForAsyncWrites(const TabletId& tablet_id, StdStatusCallback&& callback);
 
   // Combines new error to existing ones. I.e. updates combined error with new status.
   void CombineError(const InFlightOp& in_flight_op);

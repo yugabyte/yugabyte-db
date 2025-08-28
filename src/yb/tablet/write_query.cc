@@ -273,6 +273,24 @@ void WriteQuery::DoStartSynchronization(const Status& status) {
     return;
   }
 
+  if (client_request_ && client_request_->use_async_write()) {
+    VLOG(2) << "Performing Async write: " << client_request_->ShortDebugString();
+    operation_->SetAsyncWrite(
+        [query = this](OpId opid) -> void {
+          // TODO: Add metrics for async writes.
+          // Query is still pending, but we are ready to invoke the callback.
+
+          query->context_->RegisterAsyncWrite(opid);
+          opid.ToPB(query->response_->mutable_async_write_op_id());
+
+          TEST_SYNC_POINT("WriteQuery::BeforeCallbackInvoke");
+          Status status;
+          TEST_SYNC_POINT_CALLBACK("WriteQuery::SetCallbackStatus", &status);
+          query->InvokeCallback(status);
+          TEST_SYNC_POINT("WriteQuery::AfterCallbackInvoke");
+        });
+  }
+
   TRACE_FUNC();
   ASH_ENABLE_CONCURRENT_UPDATES();
   SET_WAIT_STATUS(OnCpu_Passive);
@@ -379,9 +397,13 @@ void WriteQuery::Cancel(const Status& status) {
 
 void WriteQuery::Complete(const Status& status) {
   Release();
+  InvokeCallback(status);
+}
 
+void WriteQuery::InvokeCallback(const Status& status) {
   if (callback_) {
     callback_(status);
+    callback_ = nullptr;
   }
 }
 

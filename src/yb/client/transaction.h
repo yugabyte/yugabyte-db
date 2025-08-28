@@ -29,6 +29,7 @@
 #include "yb/client/client_fwd.h"
 #include "yb/client/in_flight_op.h"
 
+#include "yb/util/status_callback.h"
 #include "yb/util/status_fwd.h"
 
 namespace yb {
@@ -209,6 +210,14 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   void SetBackgroundTransaction(const YBTransactionPtr& background_transaction);
 
   const ash::WaitStateInfoPtr wait_state();
+
+  // Records the Async Write OpId. Returns true if the query was recorded, false if it already
+  // existed.
+  bool RecordAsyncWrite(const TabletId& tablet_id, const OpId& op_id);
+  void RecordAsyncWriteCompletion(
+      const TabletId& tablet_id, const OpId& op_id, const Status& status);
+  bool HasPendingAsyncWrites(const TabletId& tablet_id) const;
+  void WaitForAsyncWrites(const TabletId& tablet_id, StdStatusCallback&& callback);
 
  private:
   class Impl;
