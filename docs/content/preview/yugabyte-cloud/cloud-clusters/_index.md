@@ -69,7 +69,7 @@ Keep in mind the following:
 
 ### Enhanced Postgres Compatibility
 
-If your cluster database version is v2024.1.0 or later, you can enable early access features for PostgreSQL compatibility on the cluster **Settings>Infrastructure** tab. For more information, refer to [Enhanced PostgreSQL Compatibility Mode](../../develop/postgresql-compatibility/).
+If your cluster database version is v2024.1.0 or later, you can enable early access features for PostgreSQL compatibility on the cluster **Settings>Infrastructure** tab. For more information, refer to [Enhanced PostgreSQL Compatibility Mode](../../reference/configuration/postgresql-compatibility/).
 
 ### Connection Pooling
 

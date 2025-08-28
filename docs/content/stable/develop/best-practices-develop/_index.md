@@ -8,7 +8,7 @@ menu:
   stable:
     identifier: best-practices-develop
     parent: develop
-    weight: 570
+    weight: 80
 type: indexpage
 ---
 

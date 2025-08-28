@@ -2,7 +2,7 @@
 title: Name resolution in top-level SQL [YSQL]
 headerTitle: Name resolution within top-level SQL statements
 linkTitle: Name resolution in top-level SQL
-description: Explains how unqualified identifiers, used within top-level SQL statements, are resolved [YSQL].
+description: Explains how unqualified identifiers, used in top-level SQL statements, are resolved [YSQL].
 menu:
   stable_api:
     identifier: name-resolution-in-top-level-sql
@@ -12,7 +12,7 @@ type: docs
 ---
 
 {{< tip title="Regard the PostgreSQL documentation as the canonical definitional reference for SQL syntax." >}}
-In particular, see the section [SQL Syntax](https://www.postgresql.org/docs/15/sql-syntax.html) within the enclosing section [The SQL Language](https://www.postgresql.org/docs/15/sql.html). The discussion of name resolution in top-level SQL statements rests on the notions that the [SQL Syntax](https://www.postgresql.org/docs/15/sql-syntax.html) section explains.
+In particular, see the section [SQL Syntax](https://www.postgresql.org/docs/15/sql-syntax.html) in the enclosing section [The SQL Language](https://www.postgresql.org/docs/15/sql.html). The discussion of name resolution in top-level SQL statements rests on the notions that the [SQL Syntax](https://www.postgresql.org/docs/15/sql-syntax.html) section explains.
 {{< /tip >}}
 
 This section deals mainly with name resolution for the schema-objects that a SQL statement references and how this depends critically on the _search_path_. Name resolution for secondary objects, like columns in relations, is sketched briefly, at the end.
