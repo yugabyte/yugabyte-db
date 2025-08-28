@@ -75,7 +75,8 @@ To begin, generate and configure certificates using the following steps:
 1. Enable TLS encryption by setting the `ENABLE_TLS` variable to point to the directory where the certificates are stored, and set the `use_client_to_server_encryption` flag to true as follows:
 
     ```sh
-    $ CERTS=`pwd`
+    $ cd ~/var/generated_certs/127.0.0.1
+    $ CERTS=$(pwd)
     $ ENABLE_TLS="use_client_to_server_encryption=true,certs_for_client_dir=$CERTS"
     ```
 
@@ -137,7 +138,9 @@ This configuration requires the client to use client-to-server encryption and au
 To create the database, execute the following command:
 
 ```sh
-$ ./bin/yugabyted stop && ./bin/yugabyted start \
+$ ./bin/yugabyted destroy && \
+    ./bin/yugabyted cert generate_server_certs --hostnames=127.0.0.1 && \
+    ./bin/yugabyted start \
     --tserver_flags="$ENABLE_TLS,ysql_enable_auth=true"
 ```
 
@@ -165,14 +168,15 @@ To enable SCRAM-SHA-256-PLUS for a user already using SCRAM-SHA-256, you set the
 For example, to create a database, execute the following command:
 
 ```sh
-$ ./bin/yugabyted stop && ./bin/yugabyted start \
+$ ./bin/yugabyted destroy && \
+    ./bin/yugabyted cert generate_server_certs --hostnames=127.0.0.1 && \
+    ./bin/yugabyted start \
     --tserver_flags="ysql_enable_auth=true,ysql_enable_scram_channel_binding=true,$ENABLE_TLS"
 ```
 
 Note that this configuration requires the client to use client-to-server encryption.
 
 For more information on enabling SCRAM-SHA-256 password encryption, refer to [Password authentication](../../../secure/authentication/password-authentication/#scram-sha-256).
-
 
 ### TLS with authentication via certificate
 
@@ -181,7 +185,9 @@ This configuration requires the client to use client-to-server encryption and au
 To create the database, execute the following command:
 
 ```sh
-$ ./bin/yugabyted stop && ./bin/yugabyted start \
+$ ./bin/yugabyted destroy && \
+    ./bin/yugabyted cert generate_server_certs --hostnames=127.0.0.1 && \
+    ./bin/yugabyted start \
     --tserver_flags="$ENABLE_TLS,ysql_hba_conf_csv={hostssl all all all cert}"
 ```
 
@@ -215,7 +221,9 @@ This configuration requires the client to use client-to-server encryption and au
 To create the database, execute the following command:
 
 ```sh
-$ ./bin/yugabyted stop && ./bin/yugabyted start \
+$ ./bin/yugabyted destroy && \
+    ./bin/yugabyted cert generate_server_certs --hostnames=127.0.0.1 && \
+    ./bin/yugabyted start \
     --tserver_flags="$ENABLE_TLS,ysql_hba_conf_csv={hostssl all all all md5 clientcert=verify-full}"
 ```
 
