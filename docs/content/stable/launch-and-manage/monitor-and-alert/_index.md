@@ -32,4 +32,10 @@ type: indexpage
     href="xcluster-monitor/"
     icon="fa-thin fa-clone">}}
 
+  {{<index/item
+    title="Active Session History"
+    body="Get real-time and historical information about active sessions in the database."
+    href="active-session-history-monitor/"
+    icon="fa-thin fa-clone">}}
+
 {{</index/block>}}
