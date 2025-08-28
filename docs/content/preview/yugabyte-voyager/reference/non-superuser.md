@@ -38,18 +38,23 @@ Superuser access is primarily needed to:
 
 ## Import without a Superuser
 
-Starting from YugabyteDB v2025.1 (which is based on PostgreSQL 15), you can grant users the ability to `set session_replication_role` without making them superusers by directly granting the permission as follows:
+### Grant required permissions
+
+{{< note title="Note" >}}
+
+Starting from YugabyteDB v2025.1 (which is based on PostgreSQL 15), you can grant users the ability to set `session_replication_role` without making them superusers by directly granting the permission as follows:
 
 ```sql
 GRANT SET ON PARAMETER session_replication_role TO <username>;
 ```
 
-Granting the permission eliminates the need to manually disable or drop foreign keys and triggers. Note that you still need to follow the [Grant required permissions](#grant-required-permissions) step in addition to granting the `SET ON PARAMETER sessions_replication_role`.
+Granting the permission eliminates the need to manually disable or drop foreign keys and triggers. Note that you still need to grant the following permissions in addition to granting the `SET ON PARAMETER sessions_replication_role`.
+
 You may still encounter errors during schema import when creating extensions (for example, hstore), which require a superuser because their install scripts perform superuser-only actions (such as ALTER TYPE).
 
 If you're using an older version (pre-PostgreSQL 15 and YugabyteDB v2025.1), use the steps decribed in the following sections.
 
-### Grant required permissions
+{{< /note >}}
 
 Grant the following permissions on the target YugabyteDB universe to allow the import process to proceed:
 
@@ -84,7 +89,15 @@ During data import, foreign keys and triggers can cause failures or significantl
 
 To mitigate the failures, temporarily disable these triggers before running the import, and restore them afterwards.
 
-Do the following:
+Note that starting from YugabyteDB v2025.1 (which is based on PostgreSQL 15), you can grant users the ability to set `session_replication_role` without making them superusers by directly granting the permission as follows:
+
+```sql
+GRANT SET ON PARAMETER session_replication_role TO <username>;
+```
+
+Granting the permission eliminates the need to manually disable or drop foreign keys and triggers.
+
+If you're using an older version (pre-PostgreSQL 15 and YugabyteDB v2025.1), do the following instead:
 
 1. Disable triggers as follows:
 
