@@ -4,12 +4,29 @@ PG_CONFIG ?= pg_config
 CARGO_BIN ?= $(shell command -v cargo || echo $(HOME)/.cargo/bin/cargo)
 CARGO_DIR := $(dir $(CARGO_BIN))
 
+# OS detection
+UNAME_S := $(shell uname -s)
+
+# macOS SDK (only defined on Darwin)
+ifeq ($(UNAME_S),Darwin)
+  SDKROOT := $(shell xcrun --show-sdk-path)
+endif
+
 ifneq (,$(filter clang%,$(YB_COMPILER_TYPE)))
 	ifneq ($(origin YB_LLVM_TOOLCHAIN_DIR),undefined)
 		CC := $(YB_LLVM_TOOLCHAIN_DIR)/bin/clang
 		CXX := $(YB_LLVM_TOOLCHAIN_DIR)/bin/clang++
 		RUSTFLAGS := -C link-arg=-fuse-ld=lld -C linker=$(YB_LLVM_TOOLCHAIN_DIR)/bin/clang
 		LIBCLANG_PATH := $(YB_LLVM_TOOLCHAIN_DIR)/lib
+		CFLAGS := -Wno-error -Wno-implicit-fallthrough -Wno-unused-but-set-variable -Wno-missing-include-dirs
+
+    	ifeq ($(UNAME_S),Darwin)
+      		RUSTFLAGS += -C link-arg=-isysroot -C link-arg=$(SDKROOT)
+      		RUSTFLAGS += -C link-arg=-Wl,-undefined,dynamic_lookup
+      		CFLAGS += -isysroot $(SDKROOT)
+    	else
+			RUSTFLAGS += -L$(YB_THIRDPARTY_DIR)/installed/common/lib
+		endif
 		ifeq ($(YB_BUILD_TYPE),tsan)
 			RUSTFLAGS += -C link-arg=-fsanitize=thread
 			RUSTFLAGS += -C link-arg=$(shell $(YB_LLVM_TOOLCHAIN_DIR)/bin/clang++ -print-file-name=libclang_rt.tsan.so)
@@ -22,7 +39,7 @@ ifneq (,$(filter clang%,$(YB_COMPILER_TYPE)))
 else
 	CC := gcc
 	CXX := g++
-	RUSTFLAGS :=
+	RUSTFLAGS := -L$(YB_THIRDPARTY_DIR)/installed/common/lib
 	LIBCLANG_PATH := $(if $(YB_LLVM_TOOLCHAIN_DIR),$(YB_LLVM_TOOLCHAIN_DIR)/lib)
 endif
 
@@ -36,18 +53,17 @@ cargo-pgrx-exists: cargo-exists
 	   # YB: Creating empty data directory `data-15` to skip running 'initdb'
 	   export PATH="$(CARGO_DIR):$$PATH" && \
 	   cd ../pgrx && \
-	   cargo clean && \
 	   env \
 		   $(if $(CC),CC=$(CC),) \
 		   $(if $(CXX),CXX=$(CXX),) \
 		   $(if $(RUSTFLAGS),RUSTFLAGS="$(RUSTFLAGS)",) \
 		   $(if $(LIBCLANG_PATH),LIBCLANG_PATH=$(LIBCLANG_PATH),) \
-		   CFLAGS="-Wno-error -Wno-implicit-fallthrough -Wno-unused-but-set-variable -Wno-missing-include-dirs" \
-		   cargo build --package cargo-pgrx && \
+		   $(if $(CFLAGS),CFLAGS="$(CFLAGS)",) \
+		   cargo build --package cargo-pgrx --release && \
 	   mkdir -p $$YB_BUILD_ROOT/.pgrx/data-15 && \
 	   LD_LIBRARY_PATH="$(YB_THIRDPARTY_DIR)/installed/common/lib:$$LD_LIBRARY_PATH" \
 	   PGRX_HOME=$(YB_BUILD_ROOT)/.pgrx \
-	   target/debug/cargo-pgrx pgrx init --pg15 $(PG_CONFIG) && \
+	   target/release/cargo-pgrx pgrx init --pg15 $(PG_CONFIG) && \
 	   cd ../pg_parquet
 
 pg_parquet: cargo-pgrx-exists
@@ -56,16 +72,16 @@ pg_parquet: cargo-pgrx-exists
 install: cargo-pgrx-exists
 	   # YB: Using local cargo-pgrx binary to install pg_parquet extension.
 	   export PATH="$(CARGO_DIR):$$PATH" && \
-	   cargo clean && \
 	   env \
 		   $(if $(CC),CC=$(CC),) \
 		   $(if $(CXX),CXX=$(CXX),) \
 		   $(if $(RUSTFLAGS),RUSTFLAGS="$(RUSTFLAGS)",) \
 		   $(if $(LIBCLANG_PATH),LIBCLANG_PATH=$(LIBCLANG_PATH),) \
+		   $(if $(CFLAGS),CFLAGS="$(CFLAGS)",) \
 		   LD_LIBRARY_PATH="$(YB_THIRDPARTY_DIR)/installed/common/lib:$$LD_LIBRARY_PATH" \
-		   CFLAGS="-Wno-error -Wno-implicit-fallthrough -Wno-unused-but-set-variable -Wno-missing-include-dirs" \
 		   PGRX_HOME=$(YB_BUILD_ROOT)/.pgrx \
-		   ../pgrx/target/debug/cargo-pgrx pgrx install -F pg15 -c $(PG_CONFIG)
+		   ../pgrx/target/release/cargo-pgrx pgrx install -F pg15 -c $(PG_CONFIG) && \
+	   rm -rf target/debug
 
 clean: cargo-exists
 	   # YB: cleaning pgrx and pg_parquet.
@@ -77,8 +93,9 @@ clean: cargo-exists
 check: cargo-pgrx-exists
 	   # YB: Using local cargo-pgrx binary to run pg_parquet tests.
 	   export PATH="$(CARGO_DIR):$$PATH" && \
-	   RUST_TEST_THREADS=1 ../pgrx/target/debug/cargo-pgrx pgrx test pg15
+	   RUST_TEST_THREADS=1 ../pgrx/target/release/cargo-pgrx pgrx test pg15
 
 uninstall:
 	   rm -f $(shell $(PG_CONFIG) --pkglibdir)/pg_parquet.so
 	   rm -f $(shell $(PG_CONFIG) --sharedir)/extension/pg_parquet*
+
