@@ -54,10 +54,10 @@ The section [The SQL language](./the-sql-language/) describes of all of the Yuga
 
 This section lists the main elements that support the YugabyteDB SQL language subsystem.
 
+- [Built-in SQL functions](exprs/).
+- [Data types](datatypes/). Most PostgreSQL-compatible data types are supported.
 - [Keywords](keywords/).
 - Names and Qualifiers. Some names are reserved for the system. List of [reserved names](reserved_names/).
-- [Data types](datatypes/). Most PostgreSQL-compatible data types are supported.
-- [Built-in SQL functions](exprs/).
 
 ## Quick Start
 

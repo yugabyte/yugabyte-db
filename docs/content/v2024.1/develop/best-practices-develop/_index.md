@@ -8,7 +8,7 @@ menu:
   v2024.1:
     identifier: best-practices-develop
     parent: develop
-    weight: 570
+    weight: 80
 type: indexpage
 ---
 

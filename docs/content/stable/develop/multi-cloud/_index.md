@@ -8,7 +8,7 @@ menu:
   stable:
     identifier: build-multicloud-apps
     parent: develop
-    weight: 300
+    weight: 60
 type: indexpage
 showRightNav: true
 ---

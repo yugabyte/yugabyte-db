@@ -134,7 +134,7 @@ The access key is the SSH key that is created in the provider. Usually, each pro
 
 For AWS providers, you can assign an ARN to the nodes in the universe; this allow them to be seamlessly backed up without explicit credentials.
 
-If database version is v2024.2 or later, you can enable early access features for PostgreSQL compatibility. For more information, refer to [Enhanced PostgreSQL Compatibility Mode](../../../develop/postgresql-compatibility/).
+If database version is v2024.2 or later, you can enable early access features for PostgreSQL compatibility. For more information, refer to [Enhanced PostgreSQL Compatibility Mode](../../../reference/configuration/postgresql-compatibility/).
 
 To use cron instead of systemd for managing nodes, you can disable systemd services. This not recommended.
 

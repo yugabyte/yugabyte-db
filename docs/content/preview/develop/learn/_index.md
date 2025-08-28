@@ -9,7 +9,7 @@ menu:
   preview:
     identifier: learn
     parent: develop
-    weight: 560
+    weight: 10
 type: indexpage
 ---
 

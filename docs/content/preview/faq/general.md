@@ -125,7 +125,7 @@ Ensuring [ACID](../../architecture/key-concepts/#acid) transactions and full com
 
 - **Robustness vs PostgreSQL compatibility**: Every new PostgreSQL feature must be optimized and rigorously tested for distributed environments before being considered to be supported by YugabyteDB, which is not a simple task. Be sure to verify that the PostgreSQL features your application relies on are supported in the current version of YugabyteDB.
 
-    {{<lead link="/preview/develop/postgresql-compatibility/#unsupported-postgresql-features">}}
+    {{<lead link="/preview/reference/configuration/postgresql-compatibility/#unsupported-postgresql-features">}}
 PostgreSQL compatibility
     {{</lead>}}
 
@@ -180,7 +180,7 @@ Compare YugabyteDB to other databases
 
 YugabyteDB is [wire-protocol, syntax, feature, and runtime](https://www.yugabyte.com/postgresql/postgresql-compatibility/) compatible with PostgreSQL. But that said, supporting all PostgreSQL features in a distributed system is not always feasible.
 
-{{<lead link="/preview/develop/postgresql-compatibility/#unsupported-postgresql-features">}}
+{{<lead link="/preview/reference/configuration/postgresql-compatibility/#unsupported-postgresql-features">}}
 PostgreSQL compatibility
 {{</lead>}}
 

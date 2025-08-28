@@ -129,7 +129,7 @@ conn = yb_pool.getconn()
 
 ## Try it out
 
-This tutorial shows how to use the Yugabyte Psycopg2 driver with YugabyteDB. It starts by creating a 3 node cluster with a replication factor of 3. This tutorial uses the [yb-ctl](../../../admin/yb-ctl/) utility.
+This tutorial shows how to use the Yugabyte Psycopg2 driver with YugabyteDB. It starts by creating a 3 node cluster with a replication factor of 3.
 
 Next, you use a Python shell terminal to demonstrate the driver's load balancing features by running a few python scripts.
 

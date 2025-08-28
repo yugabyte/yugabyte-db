@@ -6,7 +6,7 @@ menu:
   stable:
     identifier: data-modeling
     parent: develop
-    weight: 100
+    weight: 40
 type: indexpage
 ---
 
