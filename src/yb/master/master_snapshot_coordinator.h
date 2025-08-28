@@ -192,6 +192,10 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
       CoarseTimePoint deadline);
   Result<bool> IsTableCoveredBySomeSnapshotSchedule(const TableInfo& table_info) const;
 
+  // Returns true if the namespace is currently retained due to ongoing snapshot operations.
+  // This prevents hard deletion of tables and tablets belonging to the namespace.
+  bool IsNamespaceRetained(const NamespaceId& namespace_id) const;
+
   // Returns true if there are one or more non-deleted
   // snapshot schedules present.
   bool IsPitrActive();
