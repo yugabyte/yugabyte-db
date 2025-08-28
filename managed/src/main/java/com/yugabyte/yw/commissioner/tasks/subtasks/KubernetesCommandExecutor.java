@@ -257,6 +257,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     public int newPlacementAzMasterCount = 0;
     public Map<ServerType, String> previousGflagsChecksumMap = new HashMap<>();
     public boolean usePreviousGflagsChecksum = false;
+    public String previousCertChecksum = null;
+    public boolean usePreviousCertChecksum = false;
     public boolean createNamespacedService = false;
     public Set<String> deleteServiceNames;
     // Opentelemetry collector related params
@@ -766,6 +768,16 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
   }
 
+  private void populatePreviousCertChecksum() {
+    if (taskParams().usePreviousCertChecksum && taskParams().previousCertChecksum == null) {
+      taskParams().previousCertChecksum =
+          kubernetesManagerFactory
+              .getManager()
+              .getCertChecksum(
+                  taskParams().namespace, taskParams().helmReleaseName, taskParams().config);
+    }
+  }
+
   private String generateHelmOverride() {
     Map<String, Object> overrides = new HashMap<String, Object>();
     Yaml yaml = new Yaml(new SkipNullRepresenter());
@@ -1116,6 +1128,17 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       tlsInfo.put("nodeToNode", primaryClusterIntent.enableNodeToNodeEncrypt);
       tlsInfo.put("clientToServer", primaryClusterIntent.enableClientToNodeEncrypt);
       tlsInfo.put("insecure", taskUniverseDetails.allowInsecure);
+      // Certificate checksum override
+      if (taskParams().usePreviousCertChecksum) {
+        if (taskParams().previousCertChecksum == null) {
+          populatePreviousCertChecksum();
+        }
+        String certChecksum =
+            taskParams().previousCertChecksum != null ? taskParams().previousCertChecksum : "";
+        if (StringUtils.isNotEmpty(certChecksum)) {
+          tlsInfo.put("rootCAChecksum", certChecksum);
+        }
+      }
       String rootCert;
       String rootKey;
 

@@ -7,24 +7,30 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
+import com.yugabyte.yw.commissioner.UpgradeTaskBase.MastersAndTservers;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstallThirdPartySoftwareK8s;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.controllers.handlers.GFlagsAuditHandler;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import java.util.ArrayList;
+import java.util.List;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -93,6 +99,19 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
       taskParams().checkXClusterAutoFlags(universe, gFlagsValidation, xClusterUniverseService);
     }
     taskParams().verifyPreviewGFlagsSettings(universe);
+
+    // Validate GFlags through RPC
+    boolean skipRuntimeGflagValidation =
+        confGetter.getGlobalConf(GlobalConfKeys.skipRuntimeGflagValidation);
+    if (!skipRuntimeGflagValidation) {
+      if (Util.compareYBVersions(
+              softwareVersion, "2024.2.0.0-b1", "2.27.0.0-b1", true /* suppressFormatError */)
+          >= 0) {
+        List<UniverseDefinitionTaskParams.Cluster> newClustersList =
+            new ArrayList<>(taskParams().clusters);
+        createValidateGFlagsTask(newClustersList);
+      }
+    }
     addBasicPrecheckTasks();
   }
 
@@ -162,5 +181,50 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
             universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion)) {
       throw new RuntimeException("Universe does not support Non-restart gflags upgrade");
     }
+  }
+
+  private void createNonRestartGflagsUpgradeTask(Universe universe) {
+    createNonRestartUpgradeTask(
+        universe,
+        null /* upgradeContext */,
+        (isPrimary) -> {
+          List<Cluster> newClusters = taskParams().clusters;
+          MastersAndTservers mastersAndTservers = fetchNodes(UpgradeOption.NON_RESTART_UPGRADE);
+          Cluster cluster;
+
+          if (isPrimary) {
+            cluster = taskParams().getPrimaryCluster();
+            MastersAndTservers primaryClusterMastersAndTservers =
+                mastersAndTservers.getForCluster(
+                    universe.getUniverseDetails().getPrimaryCluster().uuid);
+
+            createSetFlagInMemoryTasks(
+                primaryClusterMastersAndTservers.mastersList,
+                ServerType.MASTER,
+                (node, params) -> {
+                  params.force = true;
+                  params.gflags =
+                      GFlagsUtil.getGFlagsForNode(node, ServerType.MASTER, cluster, newClusters);
+                });
+            createSetFlagInMemoryTasks(
+                primaryClusterMastersAndTservers.tserversList,
+                ServerType.TSERVER,
+                (node, params) -> {
+                  params.force = true;
+                  params.gflags =
+                      GFlagsUtil.getGFlagsForNode(node, ServerType.TSERVER, cluster, newClusters);
+                });
+          } else {
+            cluster = taskParams().getReadOnlyClusters().get(0);
+            createSetFlagInMemoryTasks(
+                mastersAndTservers.getForCluster(cluster.uuid).tserversList,
+                ServerType.TSERVER,
+                (node, params) -> {
+                  params.force = true;
+                  params.gflags =
+                      GFlagsUtil.getGFlagsForNode(node, ServerType.TSERVER, cluster, newClusters);
+                });
+          }
+        });
   }
 }

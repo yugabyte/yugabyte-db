@@ -494,22 +494,22 @@ ybcIterateForeignScan(ForeignScanState *node)
 
 	/*
 	 * Unlike YbSeqScan, IndexScan, and IndexOnlyScan, YB ForeignScan does not
-	 * call YbInstantiatePushdownParams before doing scan:
+	 * call YbInstantiatePushdownExprs before doing scan:
 	 *
 	 * - YbSeqNext
-	 *   - YbInstantiatePushdownParams
+	 *   - YbInstantiatePushdownExprs
 	 *     - YbApplyPrimaryPushdown/YbApplySecondaryIndexPushdown
 	 * - IndexScan/IndexNextWithReorder/ExecReScanIndexScan
-	 *   - YbInstantiatePushdownParams
+	 *   - YbInstantiatePushdownExprs
 	 *   - index_rescan
 	 *     - YbApplyPrimaryPushdown/YbApplySecondaryIndexPushdown
 	 * - IndexOnlyScan/ExecReScanIndexOnlyScan
-	 *   - YbInstantiatePushdownParams
+	 *   - YbInstantiatePushdownExprs
 	 *   - index_rescan
 	 *     - YbApplyPrimaryPushdown/YbApplySecondaryIndexPushdown
 	 * - ForeignNext
 	 *   - ybcIterateForeignScan (impl of IterateForeignScan)
-	 *     - YbInstantiatePushdownParams
+	 *     - YbInstantiatePushdownExprs
 	 *     - YbApplyPrimaryPushdown/YbApplySecondaryIndexPushdown
 	 *
 	 * Reasoning:
@@ -522,7 +522,7 @@ ybcIterateForeignScan(ForeignScanState *node)
 	 *   them.  An alternative solution (though still not meeting the previous
 	 *   criteria) is to rework YbPushdownExprs to be a list of structs rather
 	 *   than a struct of lists, but this removes the ability to pass in the
-	 *   entire quals list to YbExprInstantiateParams.  It can still be
+	 *   entire quals list to YbExprInstantiateExprs.  It can still be
 	 *   iterated through and called on each qual, but that is more
 	 *   inconvenient.
 	 * - quals are already stored in fdw_recheck_quals, so putting them in
@@ -546,7 +546,7 @@ ybcIterateForeignScan(ForeignScanState *node)
 	 *   If it were desired to solely rely on fdw_private holding
 	 *   YbPushdownExprs, whatever modifications that happened to
 	 *   fdw_recheck_quals would have to be updated onto fdw_private's copy of
-	 *   quals before calling YbInstantiatePushdownParams.
+	 *   quals before calling YbInstantiatePushdownExprs.
 	 * - Plan is to remove YB FDW code in favor of YbSeqScan, so it is not
 	 *   worth the effort of making a good long-term solution here.
 	 */
@@ -554,7 +554,7 @@ ybcIterateForeignScan(ForeignScanState *node)
 		.quals = foreignScan->fdw_recheck_quals,
 		.colrefs = foreignScan->fdw_private,
 	};
-	YbPushdownExprs *pushdown = YbInstantiatePushdownParams(&orig_pushdown,
+	YbPushdownExprs *pushdown = YbInstantiatePushdownExprs(&orig_pushdown,
 															estate);
 
 	/*

@@ -1052,23 +1052,32 @@
   to = "/preview/tutorials/cdc-tutorials/:splat"
   force = true
 
-# CDC was in explore, now in Develop
+# CDC was in explore, develop, now in Additional features
 [[redirects]]
   from = "/preview/explore/change-data-capture/using-logical-replication/*"
-  to = "/preview/develop/change-data-capture/using-logical-replication/:splat"
+  to = "/preview/additional-features/change-data-capture/using-logical-replication/:splat"
   force = true
 [[redirects]]
   from = "/stable/explore/change-data-capture/using-logical-replication/*"
-  to = "/stable/develop/change-data-capture/using-logical-replication/:splat"
+  to = "/stable/additional-features/change-data-capture/using-logical-replication/:splat"
   force = true
 
 [[redirects]]
   from = "/preview/explore/change-data-capture/using-yugabytedb-grpc-replication/*"
-  to = "/preview/develop/change-data-capture/using-yugabytedb-grpc-replication/:splat"
+  to = "/preview/additional-features/change-data-capture/using-yugabytedb-grpc-replication/:splat"
   force = true
 [[redirects]]
   from = "/stable/explore/change-data-capture/using-yugabytedb-grpc-replication/*"
-  to = "/stable/develop/change-data-capture/using-yugabytedb-grpc-replication/:splat"
+  to = "/stable/additional-features/change-data-capture/using-yugabytedb-grpc-replication/:splat"
+  force = true
+[[redirects]]
+  from = "/v2.20/explore/change-data-capture/*"
+  to = "/v2.20/additional-features/change-data-capture/:splat"
+  force = true
+
+[[redirects]]
+  from = "/:version/develop/change-data-capture/*"
+  to = "/:version/additional-features/change-data-capture/:splat"
   force = true
 
 # Redirect older versions of specific sections

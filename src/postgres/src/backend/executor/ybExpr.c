@@ -46,9 +46,10 @@
 #include "utils/relcache.h"
 #include "utils/syscache.h"
 
-static Node *yb_expr_instantiate_params_mutator(Node *node, EState *estate);
+static Node *yb_expr_instantiate_exprs_mutator(Node *node, EState *estate);
 static bool yb_pushdown_walker(Node *node, List **colrefs);
 static bool yb_can_pushdown_func(Oid funcid);
+static bool yb_can_constify_and_pushdown_func(Oid funcid);
 
 YbcPgExpr
 YBCNewColumnRef(YbcPgStatement ybc_stmt, int16_t attr_num,
@@ -106,12 +107,12 @@ YBCNewTupleExpr(YbcPgStatement ybc_stmt,
 }
 
 /*
- * yb_expr_instantiate_params_mutator
+ * yb_expr_instantiate_exprs_mutator
  *
- *	  Expression mutator used internally by YbExprInstantiateParams
+ *	  Expression mutator used internally by YbExprInstantiateExprs
  */
 Node *
-yb_expr_instantiate_params_mutator(Node *node, EState *estate)
+yb_expr_instantiate_exprs_mutator(Node *node, EState *estate)
 {
 	if (node == NULL)
 		return NULL;
@@ -170,25 +171,47 @@ yb_expr_instantiate_params_mutator(Node *node, EState *estate)
 								  pnull,
 								  typByVal);
 	}
+	else if (IsA(node, FuncExpr))
+	{
+		FuncExpr *func = (FuncExpr *) node;
+
+		if (yb_can_constify_and_pushdown_func(func->funcid))
+		{
+			Expr *expr = (Expr *) func;
+			ExprState *exprstate = ExecInitExpr(expr, NULL);
+
+			Datum result;
+			bool isnull;
+
+			result = ExecEvalExpr(exprstate, GetPerTupleExprContext(estate),
+								  &isnull);
+
+			return (Node *) makeConst(func->funcresulttype,
+										-1 /* typmod */ ,
+										func->funccollid,
+										get_typlen(func->funcresulttype),
+										result,
+										isnull,
+										get_typbyval(func->funcresulttype));
+		}
+	}
 	return expression_tree_mutator(node,
-								   yb_expr_instantiate_params_mutator,
+								   yb_expr_instantiate_exprs_mutator,
 								   (void *) estate);
 }
 
 /*
- * YbExprInstantiateParams
+ * YbExprInstantiateExprs
  *
- *	  Replace the Param nodes of the expression tree with Const nodes carrying
- *	  current parameter values before pushing the expression down to DocDB
+ *	  1. Replace the Param nodes of the expression tree with Const nodes
+ *	  carrying current parameter values before pushing the expression down to
+ *	  DocDB
+ *	  2. Replace pushable stable function calls with their evaluated result
+ *	  (eg: now()).
  */
 Expr *
-YbExprInstantiateParams(Expr *expr, EState *estate)
+YbExprInstantiateExprs(Expr *expr, EState *estate)
 {
-	/* Fast-path if there are no params. */
-	if (estate->es_param_list_info == NULL &&
-		estate->es_param_exec_vals == NULL)
-		return expr;
-
 	/*
 	 * This does not follow common pattern of mutator invocation due to the
 	 * corner case when expr is a bare T_Param node. The expression_tree_mutator
@@ -197,16 +220,19 @@ YbExprInstantiateParams(Expr *expr, EState *estate)
 	 * getting replaced, and if the expr is anything else, it will be properly
 	 * forwarded to the expression_tree_mutator.
 	 */
-	return (Expr *) yb_expr_instantiate_params_mutator((Node *) expr, estate);
+	return (Expr *) yb_expr_instantiate_exprs_mutator((Node *) expr, estate);
 }
 
 /*
- * YbInstantiatePushdownParams
- *	  Replace the Param nodes of the expression trees with Const nodes carrying
- *	  current parameter values before pushing the expression down to DocDB.
+ * YbInstantiatePushdownExprs
+ *	  1. Replace the Param nodes of the expression trees with Const nodes
+ *	  carrying current parameter values before pushing the expression down
+ *	  to DocDB.
+ *	  2. Replace pushable stable function calls with their evaluated result
+ *	  (eg: now()).
  */
 YbPushdownExprs *
-YbInstantiatePushdownParams(YbPushdownExprs *pushdown, EState *estate)
+YbInstantiatePushdownExprs(YbPushdownExprs *pushdown, EState *estate)
 {
 	YbPushdownExprs *result;
 
@@ -216,7 +242,7 @@ YbInstantiatePushdownParams(YbPushdownExprs *pushdown, EState *estate)
 	result = (YbPushdownExprs *) palloc(sizeof(YbPushdownExprs));
 	/* Store mutated list of expressions. */
 	result->quals = (List *)
-		YbExprInstantiateParams((Expr *) pushdown->quals, estate);
+		YbExprInstantiateExprs((Expr *) pushdown->quals, estate);
 	/*
 	 * Column references are not modified by the executor, so it is OK to copy
 	 * the reference.
@@ -224,7 +250,6 @@ YbInstantiatePushdownParams(YbPushdownExprs *pushdown, EState *estate)
 	result->colrefs = pushdown->colrefs;
 	return result;
 }
-
 
 /*
  * yb_can_pushdown_func
@@ -271,6 +296,16 @@ yb_can_pushdown_func(Oid funcid)
 	{
 		if (funcid == yb_funcs_unsafe_for_pushdown[i])
 			return false;
+	}
+
+	/*
+	 * Check whether this function is on a list of hand-picked functions
+	 * that can be evaluated to a constant and pushed down to DocDB.
+	 */
+	for (int i = 0; i < yb_pushdown_funcs_to_constify_count; ++i)
+	{
+		if (funcid == yb_pushdown_funcs_to_constify[i])
+			return true;
 	}
 
 	/* Examine misc function attributes that may affect pushability */
@@ -324,6 +359,23 @@ yb_can_pushdown_func(Oid funcid)
 	}
 
 	return result;
+}
+
+/*
+ * yb_can_constify_and_pushdown_func
+ *
+ *	  Determine if the function can be evaluated to a constant value
+ *	  and pushed down to DocDB.
+ */
+bool
+yb_can_constify_and_pushdown_func(Oid funcid)
+{
+	for (int i = 0; i < yb_pushdown_funcs_to_constify_count; ++i)
+	{
+		if (funcid == yb_pushdown_funcs_to_constify[i])
+			return true;
+	}
+	return false;
 }
 
 /*
@@ -546,7 +598,7 @@ yb_pushdown_walker(Node *node, List **colrefs)
  *	  all its nodes, in other words, it should be handeled by the evalExpr()
  *	  function defined in the ybgate_api.c. In addition, external paremeter
  *	  references of supported data types are also pushable, since these
- *	  references are replaced with constants by YbExprInstantiateParams before
+ *	  references are replaced with constants by YbExprInstantiateExprs before
  *	  the DocDB request is sent.
  *
  *	  If the colrefs parameter is provided, function also collects column

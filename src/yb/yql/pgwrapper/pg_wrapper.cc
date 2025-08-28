@@ -293,6 +293,11 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(
     bool, yb_allow_separate_requests_for_sampling_stages, kLocalVolatile, false, true,
     "Allow using separate requests for block-based sampling stages");
 
+DEFINE_RUNTIME_AUTO_PG_FLAG(
+    bool, yb_allow_dockey_bounds, kLocalVolatile, false, true,
+    "If true, allow lower_bound/upper_bound fields of PgsqlReadRequestPB to be DocKeys. Only "
+    "applicable for hash-sharded tables.");
+
 DEFINE_RUNTIME_PG_FLAG(
     string, yb_default_replica_identity, "CHANGE",
     "The default replica identity to be assigned to user defined tables at the time of creation. "

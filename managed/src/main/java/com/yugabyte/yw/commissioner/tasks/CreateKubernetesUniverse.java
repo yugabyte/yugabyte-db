@@ -271,8 +271,8 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       Runnable nonRestartMasterGflagUpgrade = null;
       if (KubernetesUtil.isNonRestartGflagsUpgradeSupported(
           primaryCluster.userIntent.ybSoftwareVersion)) {
-        KubernetesGflagsUpgradeCommonParams gflagsParams =
-            new KubernetesGflagsUpgradeCommonParams(universe, primaryCluster, confGetter);
+        KubernetesUpgradeCommonParams gflagsParams =
+            new KubernetesUpgradeCommonParams(universe, primaryCluster, confGetter);
         nonRestartMasterGflagUpgrade =
             () ->
                 upgradePodsNonRestart(

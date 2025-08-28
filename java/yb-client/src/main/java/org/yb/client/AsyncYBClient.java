@@ -1272,6 +1272,20 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
+   * Initiates validation of a gflag's value.
+   *
+   * @return a Deferred object that will contain the response of the gflag validation request.
+   */
+  public Deferred<ValidateFlagValueResponse> validateFlagValue(
+      String flagName, String flagValue) {
+    checkIsClosed();
+    ValidateFlagValueRequest rpc =
+        new ValidateFlagValueRequest(this.masterTable, flagName, flagValue);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
    * Get the master tablet id.
    *
    * @return the constant master tablet uuid.

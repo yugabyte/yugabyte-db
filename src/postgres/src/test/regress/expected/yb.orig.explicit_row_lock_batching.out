@@ -1360,8 +1360,7 @@ SELECT * FROM yb_events WHERE event_time > NOW();
                    QUERY PLAN                   
 ------------------------------------------------
  Seq Scan on yb_events (actual rows=10 loops=1)
-   Filter: (event_time > now())
-   Rows Removed by Filter: 10
+   Storage Filter: (event_time > now())
    Storage Table Read Requests: 1
    Storage Table Read Ops: 3
    Storage Table Rows Scanned: 20
@@ -1370,15 +1369,14 @@ SELECT * FROM yb_events WHERE event_time > NOW();
  Storage Rows Scanned: 20
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(11 rows)
+(10 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
 SELECT * FROM yb_events WHERE event_time < NOW();
                    QUERY PLAN                   
 ------------------------------------------------
  Seq Scan on yb_events (actual rows=10 loops=1)
-   Filter: (event_time < now())
-   Rows Removed by Filter: 10
+   Storage Filter: (event_time < now())
    Storage Table Read Requests: 1
    Storage Table Read Ops: 3
    Storage Table Rows Scanned: 20
@@ -1387,7 +1385,7 @@ SELECT * FROM yb_events WHERE event_time < NOW();
  Storage Rows Scanned: 20
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(11 rows)
+(10 rows)
 
 -- Reset
 SET yb_lock_pk_single_rpc TO DEFAULT;

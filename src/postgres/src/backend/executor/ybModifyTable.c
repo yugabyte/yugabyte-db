@@ -1106,7 +1106,7 @@ YBCExecuteUpdate(ResultRelInfo *resultRelInfo,
 			((TargetEntry *) lfirst(pushdown_lc))->resno == attnum)
 		{
 			TargetEntry *tle = (TargetEntry *) lfirst(pushdown_lc);
-			Expr	   *expr = YbExprInstantiateParams(tle->expr, estate);
+			Expr	   *expr = YbExprInstantiateExprs(tle->expr, estate);
 			MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 			YbcPgExpr	ybc_expr = YBCNewEvalExprCall(update_stmt, expr);
 

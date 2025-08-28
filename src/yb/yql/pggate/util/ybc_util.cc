@@ -479,9 +479,16 @@ const char* YBCGetWaitEventComponent(uint32_t wait_event_info) {
 const char* YBCGetWaitEventType(uint32_t wait_event_info) {
   // This is only called for ASH wait events, so we remove the component bits as
   // ash::WaitStateCode doesn't contain them.
-  constexpr uint32_t kWaitEventMask = (1 << YB_ASH_COMPONENT_POSITION) - 1;
+  static constexpr uint32_t kWaitEventMask = (1 << YB_ASH_COMPONENT_POSITION) - 1;
   uint32_t wait_event = wait_event_info & kWaitEventMask;
   return NoPrefixName(GetWaitStateType(static_cast<ash::WaitStateCode>(wait_event)));
+}
+
+const char* YBCGetWaitEventAuxDescription(uint32_t wait_event_info) {
+  static constexpr uint32_t kWaitEventMask = (1 << YB_ASH_COMPONENT_POSITION) - 1;
+  uint32_t wait_event = wait_event_info & kWaitEventMask;
+  const char* result = ash::GetWaitStateAuxDescription(static_cast<ash::WaitStateCode>(wait_event));
+  return result;
 }
 
 uint8_t YBCGetConstQueryId(YbcAshConstQueryIdType type) {

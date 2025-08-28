@@ -14,7 +14,7 @@ menu:
     name: Built-in connection pooling
     identifier: explore-conn-mgr-ysql
     parent: going-beyond-sql
-    weight: 600
+    weight: 10
 type: docs
 ---
 

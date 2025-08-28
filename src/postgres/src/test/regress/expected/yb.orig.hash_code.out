@@ -233,8 +233,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT x, yb_hash_code(x) 
    Sort Method: quicksort
    ->  Index Scan using test_table_one_primary_pkey on test_table_one_primary (actual rows=3 loops=1)
          Index Cond: ((x = ANY ('{1,2,3,4}'::integer[])) AND (yb_hash_code(x) < 50000))
-         Rows Removed by Index Recheck: 1
-(6 rows)
+(5 rows)
 
 SELECT x, yb_hash_code(x) FROM test_table_one_primary WHERE x IN (1, 2, 3, 4) AND yb_hash_code(x) < 50000 ORDER BY x;
  x | yb_hash_code 
@@ -945,9 +944,8 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT v1, yb_hash_code(v4
 ----------------------------------------------------------------------------------------------------------------------
  Index Only Scan using test_index_only_scan_recheck_v4_v1_idx on test_index_only_scan_recheck (actual rows=2 loops=1)
    Index Cond: ((v4 = ANY ('{1,2,3}'::integer[])) AND (yb_hash_code(v4) < 50000))
-   Rows Removed by Index Recheck: 1
    Heap Fetches: 0
-(4 rows)
+(3 rows)
 
 SELECT v1, yb_hash_code(v4) FROM test_index_only_scan_recheck WHERE v4 IN (1, 2, 3) AND yb_hash_code(v4) < 50000;
  v1 | yb_hash_code 

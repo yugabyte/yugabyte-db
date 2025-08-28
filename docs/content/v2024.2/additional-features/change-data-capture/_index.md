@@ -7,9 +7,9 @@ headcontent: Capture changes made to data in the database
 tags:
   feature: early-access
 menu:
-  v2024.1:
+  v2024.2:
     identifier: explore-change-data-capture
-    parent: develop
+    parent: additional-features
     weight: 575
 type: indexpage
 ---

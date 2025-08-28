@@ -301,7 +301,11 @@ class DocVectorIndexImpl : public DocVectorIndex {
     docdb::BoundedRocksDbIterator iter(doc_db_.regular, {}, doc_db_.key_bounds);
 
     DocVectorIndexSearchResult result;
-    result.could_have_more_data = entries.size() >= options.max_num_results;
+    VLOG_WITH_FUNC(4) << "could_have_missing_entries: " << could_have_missing_entries
+                      << ", entries.size(): " << entries.size()
+                      << ", options.max_num_results: " << options.max_num_results;
+    result.could_have_more_data =
+        could_have_missing_entries && entries.size() >= options.max_num_results;
     result.entries.reserve(entries.size());
     for (auto& entry : entries) {
       auto key = dockv::DocVectorKey(entry.vector_id);

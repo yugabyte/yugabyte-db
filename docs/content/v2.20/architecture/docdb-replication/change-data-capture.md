@@ -24,9 +24,9 @@ Every YB-TServer has a `CDC service` that is stateless. The main APIs provided b
 
 ![Stateless CDC Service](/images/architecture/stateless_cdc_service.png)
 
-{{<lead link="../../../explore/change-data-capture/">}}
+{{<lead link="../../../additional-features/change-data-capture/">}}
 
-See [Change data capture](../../../explore/change-data-capture/) for more details and limitations.
+See [Change data capture](../../../additional-features/change-data-capture/) for more details and limitations.
 
 {{</lead>}}
 

@@ -20,4 +20,10 @@ type: indexpage
     href="connection-manager-ysql/"
     icon="fa-thin fa-phone">}}
 
+  {{<index/item
+    title="Change Data Capture"
+    body="Capture changes made to data in the database."
+    href="change-data-capture/"
+    icon="fa-thin fa-arrows-rotate">}}
+
 {{</index/block>}}

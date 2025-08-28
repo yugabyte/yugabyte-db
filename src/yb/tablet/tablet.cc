@@ -2165,13 +2165,14 @@ const std::string* Tablet::NextReadPartitionKey(
   }
   if (pgsql_read_request.is_forward_scan()) {
     // Scan bound by hash code (always inclusive)
-    if (schema()->num_hash_key_columns() > 0 && pgsql_read_request.has_max_hash_code()) {
-      auto hash_code = dockv::PartitionSchema::DecodeMultiColumnHashValue(partition_key);
-      if (pgsql_read_request.max_hash_code() < hash_code) {
-        return nullptr;
+    if (schema()->num_hash_key_columns() > 0) {
+      if (pgsql_read_request.has_max_hash_code()) {
+        auto hash_code = dockv::PartitionSchema::DecodeMultiColumnHashValue(partition_key);
+        if (pgsql_read_request.max_hash_code() < hash_code) {
+          return nullptr;
+        }
       }
-    }
-    if (pgsql_read_request.has_upper_bound()) {
+    } else if (pgsql_read_request.has_upper_bound()) {
       if (pgsql_read_request.upper_bound().is_inclusive()) {
         if (pgsql_read_request.upper_bound().key() < partition_key) {
           return nullptr;
@@ -2183,14 +2184,15 @@ const std::string* Tablet::NextReadPartitionKey(
       }
     }
   } else { // backward
-    if (schema()->num_hash_key_columns() > 0 && pgsql_read_request.has_hash_code()) {
-      auto hash_code = dockv::PartitionSchema::DecodeMultiColumnHashValue(partition_key);
-      if (pgsql_read_request.hash_code() >= hash_code) {
-        return nullptr;
+    if (schema()->num_hash_key_columns() > 0) {
+      if (pgsql_read_request.has_hash_code()) {
+        auto hash_code = dockv::PartitionSchema::DecodeMultiColumnHashValue(partition_key);
+        if (pgsql_read_request.hash_code() >= hash_code) {
+          return nullptr;
+        }
       }
-    }
-    if (pgsql_read_request.has_lower_bound() &&
-        pgsql_read_request.lower_bound().key() >= partition_key) {
+    } else if (pgsql_read_request.has_lower_bound() &&
+               pgsql_read_request.lower_bound().key() >= partition_key) {
       return nullptr;
     }
   }

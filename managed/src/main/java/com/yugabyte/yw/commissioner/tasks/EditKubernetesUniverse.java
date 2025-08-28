@@ -58,6 +58,7 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
+import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 
 @Slf4j
@@ -884,6 +885,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     // need to have the checksum value available.
     if (usePreviousGflagsChecksum) {
       persistGflagsChecksumInTaskParams(universeName);
+      // persist cert checksum in task params for non-restart pods upgrade.
+      persistCertChecksumInTaskParams(universeName);
     }
     if (masterDiskSizeChanged && !isReadOnlyCluster) {
       createResizeDiskTask(
@@ -937,6 +940,12 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     Map<UUID, Map<ServerType, String>> perAZGflagsChecksumMap = new HashMap<>();
     if (MapUtils.isNotEmpty(newCluster.getPerAZServerTypeGflagsChecksumMap())) {
       perAZGflagsChecksumMap = newCluster.getPerAZServerTypeGflagsChecksumMap();
+    }
+    boolean usePreviousCertChecksum = usePreviousGflagsChecksum;
+    String certChecksum = null;
+    // If cert checksum is not available in universe details, retrieve it from Kubernetes
+    if (usePreviousCertChecksum && StringUtils.isNotEmpty(newCluster.getCertChecksum())) {
+      certChecksum = newCluster.getCertChecksum();
     }
     // The method to expand disk size is:
     // 1. Delete statefulset without deleting the pods
@@ -1049,6 +1058,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
                 ybcSoftwareVersion,
                 false /* usePreviousGflagsChecksum */,
                 null /* previousGflagsChecksumMap */,
+                false /* usePreviousCertChecksum */,
+                null /* previousCertChecksum */,
                 false /* useNewMasterDiskSize */,
                 false /* useNewTserverDiskSize */,
                 null /* ysqlMajorVersionUpgradeState */,
@@ -1075,6 +1086,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
                 ybcSoftwareVersion,
                 false /* usePreviousGflagsChecksum */,
                 null /* previousGflagsChecksumMap */,
+                false /* usePreviousCertChecksum */,
+                null /* previousCertChecksum */,
                 false /* useNewMasterDiskSize */,
                 false /* useNewTserverDiskSize */,
                 null /* ysqlMajorVersionUpgradeState */,
@@ -1119,6 +1132,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               ybcSoftwareVersion,
               usePreviousGflagsChecksum,
               previousGflagsChecksumMap,
+              usePreviousCertChecksum,
+              certChecksum,
               true /* useNewMasterDiskSize */,
               serverType == ServerType.TSERVER ? true : false /* useNewTserverDiskSize */,
               null /* ysqlMajorVersionUpgradeState */,
@@ -1232,6 +1247,21 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         newCluster.setPerAZServerTypeGflagsChecksumMap(perAZGflagsChecksumMap);
         log.debug("Persisting gflags checksum");
       }
+    }
+    TaskInfo.updateInTxn(getUserTaskUUID(), tf -> tf.setTaskParams(Json.toJson(taskParams())));
+  }
+
+  protected void persistCertChecksumInTaskParams(String universeName) {
+    if (StringUtils.isNotEmpty(taskParams().getPrimaryCluster().getCertChecksum())) {
+      return;
+    }
+    UUID universeUUID = taskParams().getUniverseUUID();
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    String certChecksum = getCertChecksum(universe);
+    taskParams().getPrimaryCluster().setCertChecksum(certChecksum);
+    log.debug("Persisting cert checksum: {}", certChecksum);
+    for (Cluster newCluster : taskParams().clusters) {
+      newCluster.setCertChecksum(certChecksum);
     }
     TaskInfo.updateInTxn(getUserTaskUUID(), tf -> tf.setTaskParams(Json.toJson(taskParams())));
   }

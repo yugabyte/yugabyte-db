@@ -55,6 +55,7 @@ public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
     Download,
     Install,
     CopyCerts,
+    ValidateGFlags,
     Round1GFlagsUpdate,
     Round2GFlagsUpdate,
     PackageReInstall,

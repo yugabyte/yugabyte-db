@@ -89,16 +89,6 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
   // Seek the tablet partition where the row whose "ybctid" value was given can be found.
   Result<size_t> FindPartitionIndex(const Slice& ybctid) const;
 
-  // Check if boundaries set on request define valid (not empty) range
-  static Result<bool> CheckScanBoundary(LWPgsqlReadRequestPB* req);
-  // These values are set by  PgGate to optimize query to narrow the scanning range of a query.
-  // Returns false if new boundary makes request range empty.
-  static Result<bool> SetScanBoundary(LWPgsqlReadRequestPB* req,
-                                      const std::string& partition_lower_bound,
-                                      bool lower_bound_is_inclusive,
-                                      const std::string& partition_upper_bound,
-                                      bool upper_bound_is_inclusive);
-
   const Schema& schema() const;
 
   const dockv::SchemaPacking& schema_packing() const {

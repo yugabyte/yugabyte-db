@@ -3524,6 +3524,18 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_allow_dockey_bounds", PGC_SUSET, CUSTOM_OPTIONS,
+			gettext_noop("If true, allow lower_bound/upper_bound fields of PgsqlReadRequestPB "
+						 "to be DocKeys. Only applicable for hash-sharded tables."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_allow_dockey_bounds,
+		true,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL

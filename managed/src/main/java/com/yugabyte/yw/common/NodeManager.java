@@ -269,15 +269,20 @@ public class NodeManager extends DevopsBase {
     }
 
     if (userIntent.providerType.equals(Common.CloudType.onprem)) {
+      ObjectNode detailsJson = Json.newObject();
+      // NodeInstance may not yet be assigned to a universe in these prechecks.
+      boolean maybeNodeInstanceUnassigned =
+          (type == NodeCommandType.Precheck || type == NodeCommandType.Verify_Certs);
+      Optional<NodeInstance> optional =
+          maybeNodeInstanceUnassigned
+              ? NodeInstance.maybeGet(nodeTaskParam.nodeUuid)
+              : NodeInstance.maybeGetByName(nodeTaskParam.nodeName, nodeTaskParam.nodeUuid);
       // Instance may not be present if it is deleted from NodeInstance table after a release
       // action.
-      ObjectNode detailsJson = Json.newObject();
-      Optional<NodeInstance> optional = NodeInstance.maybeGet(nodeTaskParam.nodeUuid);
       if (optional.isPresent()) {
         NodeInstanceData instanceData = optional.get().getDetails();
         detailsJson = (ObjectNode) Json.toJson(instanceData);
-        if ((type == NodeCommandType.Precheck || type == NodeCommandType.Verify_Certs)
-            && StringUtils.isEmpty(instanceData.nodeName)) {
+        if (maybeNodeInstanceUnassigned && StringUtils.isEmpty(instanceData.nodeName)) {
           detailsJson.put("nodeName", nodeTaskParam.nodeName);
         }
       }
@@ -1769,7 +1774,7 @@ public class NodeManager extends DevopsBase {
     if (userIntent.providerType.equals(Common.CloudType.onprem)) {
       Optional<NodeInstance> nodeInstanceOp =
           nodeTaskParam.nodeUuid == null
-              ? NodeInstance.maybeGetByName(nodeTaskParam.getNodeName())
+              ? NodeInstance.maybeGetByName(nodeTaskParam.getNodeName(), nodeTaskParam.nodeUuid)
               : NodeInstance.maybeGet(nodeTaskParam.nodeUuid);
       if (nodeInstanceOp.isPresent()) {
         nodeIp = nodeInstanceOp.get().getDetails().ip;

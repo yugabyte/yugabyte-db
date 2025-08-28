@@ -109,6 +109,11 @@ DEFINE_RUNTIME_bool(ysql_ddl_transaction_wait_for_ddl_verification, true,
 DEFINE_RUNTIME_uint64(big_shared_memory_segment_session_expiration_time_ms, 5000,
     "Time to release unused allocated big memory segment from session to pool.");
 
+DEFINE_test_flag(
+    bool, request_unknown_tables_during_perform, false,
+    "Add several unknown tables while processing perfrom request. "
+    "It is expected that opening of such tables will fail");
+
 DECLARE_bool(vector_index_dump_stats);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_bool(ysql_enable_db_catalog_version_mode);
@@ -478,6 +483,7 @@ class VectorIndexQuery {
     size_t partition_idx = 0;
     for (const auto& key : *partitions) {
       const auto& partition_state = partitions_[partition_idx];
+      VLOG_WITH_FUNC(4) << partition_idx << ": " << partition_state.ToString();
       if (!partition_state.whether_all_vectors_was_fetched &&
           partition_state.number_of_vectors_returned_to_postgres + prefetch_size_
               > partition_state.number_of_vectors_fetched_from_tablet) {
@@ -592,6 +598,7 @@ class VectorIndexQuery {
       if (!op_resp.vector_index_could_have_more_data()) {
         partitions_[op.partition_idx].whether_all_vectors_was_fetched = true;
       }
+      VLOG_WITH_FUNC(4) << op.partition_idx << ": " << partitions_[op.partition_idx].ToString();
     }
   }
 
@@ -2364,6 +2371,10 @@ class PgClientSession::Impl {
   Status DoHandleSharedExchangeQuery(PerformQueryDataPtr&& data, CoarseTimePoint deadline) {
     boost::container::small_vector<TableId, 4> table_ids;
     PreparePgTablesQuery(data->req, table_ids);
+    if (PREDICT_FALSE(FLAGS_TEST_request_unknown_tables_during_perform)) {
+      table_ids.insert(
+          table_ids.end(), { GetPgsqlTableId(0, 0), GetPgsqlTableId(0, 1), GetPgsqlTableId(0, 2) });
+    }
     auto tables_future = GetTablesAsync(table_cache(), table_ids);
     RETURN_NOT_OK(Wait(tables_future, ToSteady(deadline)));
     return DoPerform(tables_future.get(), data, deadline);

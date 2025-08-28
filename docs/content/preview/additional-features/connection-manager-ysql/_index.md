@@ -10,7 +10,7 @@ menu:
   preview:
     identifier: connection-manager
     parent: additional-features
-    weight: 40
+    weight: 10
 type: indexpage
 ---
 

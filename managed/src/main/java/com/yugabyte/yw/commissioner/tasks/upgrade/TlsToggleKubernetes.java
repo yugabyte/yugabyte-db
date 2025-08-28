@@ -50,8 +50,8 @@ public class TlsToggleKubernetes extends KubernetesUpgradeTaskBase {
   @Override
   protected void createPrecheckTasks(Universe universe) {
     super.createPrecheckTasks(universe);
-    // Skip running prechecks if Node2Node certs has expired
-    if (!CertificateHelper.checkNode2NodeCertsExpiry(universe)) {
+    if (!(universe.getUniverseDetails().getPrimaryCluster().userIntent.enableNodeToNodeEncrypt
+        && CertificateHelper.checkNode2NodeCertsExpiry(universe))) {
       addBasicPrecheckTasks();
     }
     if (taskParams().upgradeOption != UpgradeOption.NON_ROLLING_UPGRADE) {
@@ -67,7 +67,10 @@ public class TlsToggleKubernetes extends KubernetesUpgradeTaskBase {
           Universe universe = getUniverse();
           syncUniverseDetailToTaskParams();
 
-          // update details in DB.
+          // TODO(vbansal): Make this task retryable
+
+          // Update the database with details earlier so that wait-for-server tasks
+          // can utilize the node-to-node certificate for yb-client connections.
           createUniverseSetTlsParamsTask(
               taskParams().getUniverseUUID(),
               taskParams().enableNodeToNodeEncrypt,

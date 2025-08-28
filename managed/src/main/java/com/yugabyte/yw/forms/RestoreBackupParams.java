@@ -149,6 +149,16 @@ public class RestoreBackupParams extends UniverseTaskParams {
 
     /* Error handling flags */
 
+    // Only applicable with new roles behavior.
+    @ApiModelProperty(
+        value =
+            "WARNING: This is a preview API that could change. Fail if tablespaces exist with same"
+                + " names. Only applicable with new roles behavior.")
+    @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2025.2.0.0")
+    @Getter
+    @Setter
+    private Boolean errorIfTablespacesExists = false;
+
     // This will be be harcoded to true if success marker does not have dump_role_checks set to
     // true.
     // Default true until testing is complete.

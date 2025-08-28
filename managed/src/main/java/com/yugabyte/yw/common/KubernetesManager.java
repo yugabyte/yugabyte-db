@@ -1008,6 +1008,9 @@ public abstract class KubernetesManager {
   public abstract Map<ServerType, String> getServerTypeGflagsChecksumMap(
       String namespace, String helmReleaseName, Map<String, String> config, boolean newNamingStyle);
 
+  public abstract String getCertChecksum(
+      String namespace, String helmReleaseName, Map<String, String> config);
+
   public abstract void deleteNamespacedService(
       Map<String, String> config, String namespace, String universeName);
 

@@ -36,6 +36,9 @@
 namespace yb {
 namespace pggate {
 
+// Check if bound is derived from hash code using HashCodeToDocKeyBound().
+Result<bool> BoundDerivedFromHashCode(const Slice bound, bool is_lower);
+
 Result<bool> PrepareNextRequest(const PgTableDesc& table, PgsqlReadOp* read_op) {
   // Set up paging state for next request.
   auto& res = *read_op->response();
@@ -144,6 +147,69 @@ std::string PgsqlReadOp::RequestToString() const {
   return read_request_.ShortDebugString();
 }
 
+Status PgsqlReadOp::ConvertBoundsToHashCode() {
+  DCHECK(!yb_allow_dockey_bounds);
+
+  // If the bounds are empty, there is nothing to do.
+  if (!read_request_.has_lower_bound() && !read_request_.has_upper_bound()) {
+    return Status::OK();
+  }
+
+  // If the bounds are hash code already, there is nothing to do.
+  if (client::AreBoundsHashCode(read_request_)) {
+    return Status::OK();
+  }
+
+  // We can only convert dockey bounds to hash codes if the bounds were derived from hash codes
+  // using HashCodeToDocKeyBound(). If that's not the case, throw a feature not supported error.
+  if (!VERIFY_RESULT(BoundsDerivedFromHashCode())) {
+    return STATUS(
+        RuntimeError,
+        "This feature is not supported because the AutoFlag 'yb_allow_dockey_bounds' is false. "
+        "This typically happends during an upgrade to the version that introduced this flag. "
+        "Please re-try after the upgrade is complete and the AutoFlag is set to true.");
+  }
+
+  if (read_request_.has_lower_bound()) {
+    const auto hash_code =
+        VERIFY_RESULT(dockv::DocKey::DecodeHash(read_request_.lower_bound().key()));
+    OverrideBoundWithHashCode(hash_code, /* is_lower = */ true);
+  }
+
+  if (read_request_.has_upper_bound()) {
+    const auto hash_code =
+        VERIFY_RESULT(dockv::DocKey::DecodeHash(read_request_.upper_bound().key()));
+    OverrideBoundWithHashCode(hash_code, /* is_lower = */ false);
+  }
+  return Status::OK();
+}
+
+Result<bool> PgsqlReadOp::BoundsDerivedFromHashCode() {
+  if (read_request_.has_lower_bound() &&
+      !VERIFY_RESULT(
+          BoundDerivedFromHashCode(read_request_.lower_bound().key(), /* is_lower  = */ true))) {
+    return false;
+  }
+
+  if (read_request_.has_upper_bound() &&
+      !VERIFY_RESULT(
+          BoundDerivedFromHashCode(read_request_.upper_bound().key(), /* is_lower = */ false))) {
+    return false;
+  }
+  return true;
+}
+
+void PgsqlReadOp::OverrideBoundWithHashCode(uint16_t hash_code, bool is_lower) {
+  const auto& bound = dockv::PartitionSchema::EncodeMultiColumnHashValue(hash_code);
+  if (is_lower) {
+    read_request_.mutable_lower_bound()->dup_key(bound);
+    read_request_.mutable_lower_bound()->set_is_inclusive(true);
+  } else {
+    read_request_.mutable_upper_bound()->dup_key(bound);
+    read_request_.mutable_upper_bound()->set_is_inclusive(true);
+  }
+}
+
 PgsqlWriteOp::PgsqlWriteOp(ThreadSafeArena* arena, bool need_transaction, bool is_region_local)
     : PgsqlOp(arena, is_region_local), write_request_(arena),
       need_transaction_(need_transaction) {
@@ -163,6 +229,20 @@ PgsqlOpPtr PgsqlWriteOp::DeepCopy(const std::shared_ptr<void>& shared_ptr) const
       is_region_local());
   result->write_request() = write_request();
   return result;
+}
+
+Result<bool> BoundDerivedFromHashCode(const Slice bound, bool is_lower) {
+  dockv::DocKey dockey;
+  RETURN_NOT_OK(
+      dockey.DecodeFrom(bound, dockv::DocKeyPart::kWholeDocKey, dockv::AllowSpecial::kTrue));
+  const auto& hashed_components = dockey.hashed_group();
+  const auto& range_components = dockey.range_group();
+
+  const auto expected_type =
+      is_lower ? dockv::KeyEntryType::kLowest : dockv::KeyEntryType::kHighest;
+
+  return hashed_components.size() == 1 && hashed_components[0].type() == expected_type &&
+         range_components.size() == 1 && range_components[0].type() == expected_type;
 }
 
 }  // namespace pggate

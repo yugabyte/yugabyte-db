@@ -1,39 +1,26 @@
 ---
-title: Debezium connector for YugabyteDB
-headerTitle: Debezium connector for YugabyteDB
-linkTitle: Debezium connector
-description: Debezium is an open source distributed platform used to capture the changes in a database.
+title: YugabyteDB gRPC Connector (Debezium)
+headerTitle: YugabyteDB gRPC Connector
+linkTitle: YugabyteDB gRPC Connector
+description: YugabyteDB gRPC Connector is an open source distributed platform used to capture the changes in a database.
+aliases:
+  - /preview/explore/change-data-capture/debezium-connector-yugabytedb-ysql
+  - /preview/explore/change-data-capture/debezium-connector
+  - /preview/explore/change-data-capture/debezium
+  - /preview/explore/change-data-capture/debezium-connector-postgresql
+  - /preview/explore/change-data-capture/debezium-connector-yugabytedb
+  - /preview/explore/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/
 menu:
-  v2.20:
-    parent: explore-change-data-capture
+  preview:
+    parent: explore-change-data-capture-grpc-replication
     identifier: debezium-connector-yugabytedb
-    weight: 20
+    weight: 50
 type: docs
 rightNav:
   hideH4: true
 ---
 
-The Debezium connector for YugabyteDB captures row-level changes in the schemas of a YugabyteDB database.
-
-The first time it connects to a YugabyteDB cluster or universe, the connector takes a consistent snapshot of the tables it is configured for. After that snapshot is complete, the connector continuously captures row-level changes that insert, update, and delete database content that are committed to a YugabyteDB database. The connector generates data change event records and streams them to Kafka topics. For each table, the default behavior is that the connector streams all generated events to a separate Kafka topic for that table. Applications and services consume data change event records from that topic.
-
-## Overview
-
-The Debezium connector for YugabyteDB reads the changes produced by YugabyteDB. It uses the CDC service APIs implemented on the server side to get the changes.
-
-The connector produces a change event for every row-level insert, update, and delete operation that was captured, and sends change event records for each table in separate Kafka topics. Client applications read the Kafka topics corresponding to database tables of interest, and can react to every row-level event they receive from those topics.
-
-![What is CDC](/images/explore/cdc-overview-what.png)
-
-YugabyteDB normally purges write-ahead log (WAL) segments after some period of time. This means that the connector does not have the complete history of all changes that have been made to the database. Therefore, when the YugabyteDB connector first connects to a particular YugabyteDB database, it starts by taking a snapshot of each of the database schemas. After the connector completes the snapshot, it continues streaming changes from the exact point at which the snapshot was made. This way, the connector starts with a consistent view of all of the data, and does not omit any changes that were made while the snapshot was being taken.
-
-The connector is tolerant of failures. As the connector reads changes and produces events, it records the WAL position for each event. If the connector stops for any reason (including communication failures, network problems, or crashes), upon restart the connector continues reading the WAL where it last left off using the WAL position called checkpoints managed on the Kafka side as well as on the YugabyteDB cluster.
-
-{{< tip title="Use UTF-8 encoding" >}}
-
-Debezium supports databases with UTF-8 character encoding only. With a single-byte character encoding, it's not possible to correctly process strings that contain extended ASCII code characters.
-
-{{< /tip >}}
+The YugabyteDB gRPC Connector is based on the Debezium Connector, and captures row-level changes in a YugabyteDB database's schemas using the YugabyteDB gRPC replication protocol.
 
 ## Connector compatibility
 
@@ -41,21 +28,69 @@ The connector is compatible with the following versions of YugabyteDB.
 
 | YugabyteDB | Connector |
 | :--- | :--- |
-| 2.14 (EA) | 1.9.5.y.3 |
+| 2.14 | 1.9.5.y.3 |
 | 2.16 | 1.9.5.y.24 |
 | 2.18.2 | 1.9.5.y.33.2 |
 | 2.20 | 1.9.5.y.220.4 |
+| 2024.1 | dz.1.9.5.yb.grpc.2024.1 |
+| 2024.2 | dz.1.9.5.yb.grpc.2024.2.2 |
 
-Starting with YugabyteDB v2.20, the naming convention for releases of the connector uses the scheme _major.y.minor_, as follows:
+Starting with YugabyteDB v2024.1, the connector uses the following naming convention:
 
-* major - Debezium release the connector is based on
-* minor - version of YugabyteDB the connector works with
+```output
+dz.<Debezium Release>.yb.grpc.<YugabyteDB Version>.<Patch>
+```
 
-The connector is backward compatible with previous releases of YugabyteDB unless stated otherwise.
+* Debezium Release - Debezium release the connector is based on
+* YugabyteDB Version - version of YugabyteDB the connector works with
+* Patch - patch release version, if applicable
+
+The connector is backward compatible with previous releases of YugabyteDB unless stated otherwise. For the latest YugabyteDB preview version, use the latest available connector.
+
+In addition, the connector supports Kafka Connect v2.x and later.
+
+{{< note title="Connector Class Name" >}}
+
+Starting with YugabyteDB v2024.1, the name of the connector class changed from
+
+`io.debezium.connector.yugabytedb.YugabyteDBConnector`
+
+to
+
+`io.debezium.connector.yugabytedb.YugabyteDBgRPCConnector`
+
+New deployments using connector version dz.1.9.5.yb.grpc.2024.1 and later need to use the new connector class.
+
+{{< /note >}}
+
+## Initial Snapshot and Continuous Streaming
+
+* Initial Snapshot: Upon its first connection to a YugabyteDB cluster, the connector takes a consistent snapshot of the configured tables.
+* Continuous Streaming: After the snapshot, it continuously captures row-level changes (insertions, updates, and deletions) from the database. It then generates data change event records and streams them to Kafka topics.
+
+![What is CDC](/images/explore/cdc-overview-work.png)
+
+## Kafka integration
+
+For each table, the connector streams all generated events to a separate Kafka topic. Client applications and services can consume these data change event records from their respective topics.
+
+* CDC (Change Data Capture) Service: The Debezium connector leverages the CDC service APIs to read the changes from YugabyteDB.
+* Event Production: For every row-level insert, update, and delete operation captured, the connector produces a corresponding change event, and sends it to separate Kafka topics dedicated to each table.
+* Client Consumption: Applications read the Kafka topics corresponding to the database tables they are interested in and react to the row-level events received.
+
+## Failure tolerance
+
+The connector records the WAL position for each event as it reads changes and produces events. If the connector stops (due to communication failures, network problems, or crashes), it resumes reading the WAL from the last recorded position upon restart. This uses checkpoints managed on both the Kafka side and the YugabyteDB cluster.
+
+{{< tip title="Use UTF-8 encoding" >}}
+
+Debezium supports databases with UTF-8 character encoding only. With a single-byte character encoding, it's not possible to correctly process strings that contain extended ASCII code characters.
+
+{{< /tip >}}
 
 ## How the connector works
 
-To optimally configure and run a Debezium YugabyteDB connector, it is helpful to understand how the connector performs snapshots, streams change events, determines Kafka topic names, and uses metadata.
+To optimally configure and run a Debezium connector, it is helpful to understand how the connector performs snapshots, streams change events, determines Kafka topic names, and uses metadata.
 
 ### Security
 
@@ -71,7 +106,7 @@ Per-user CDC privileges are planned for a future release.
 
 Most YugabyteDB servers are configured to not retain the complete history of the database in the WAL segments. This means that the YugabyteDB connector would be unable to see the entire history of the database by reading only the WAL. Consequently, the first time that the connector starts, it performs an initial consistent snapshot of the database. You can change this behavior by setting the `snapshot.mode` connector configuration property to a value other than initial.
 
-After the connector completes its initial snapshot, the YugabyteDB connector continues streaming the changes. This ensures that the connector does not miss any updates. If the connector stops again for any reason, upon restart, the connector continues streaming changes from where it previously left off.
+After the connector completes its initial snapshot, it continues streaming the changes. This ensures that the connector does not miss any updates. If the connector stops again for any reason, upon restart, the connector continues streaming changes from where it previously left off.
 
 Options for the `snapshot.mode` connector configuration property are as follows:
 
@@ -83,11 +118,11 @@ Options for the `snapshot.mode` connector configuration property are as follows:
 
 ### Streaming changes
 
-The YugabyteDB connector typically spends the vast majority of its time streaming changes from the YugabyteDB server to which it is connected.
+The YugabyteDB gRPC Connector typically spends the vast majority of its time streaming changes from the YugabyteDB server to which it is connected.
 
 The connector keeps polling for changes and whenever there is a change, the connector processes them, converts them to a specific format (Protobuf or JSON in the case of the Debezium plugin) and writes them on an output stream, which can then be consumed by clients.
 
-The Debezium YugabyteDB connector acts as a YugabyteDB client. When the connector receives changes it transforms the events into Debezium create, update, or delete events that include the LSN of the event. The YugabyteDB connector forwards these change events in records to the Kafka Connect framework, which is running in the same process. The Kafka Connect process asynchronously writes the change event records in the same order in which they were generated to the appropriate Kafka topic.
+The connector acts as a YugabyteDB client. When the connector receives changes it transforms the events into Debezium create, update, or delete events that include the Log Sequence Number ([LSN](../../using-logical-replication/key-concepts/#lsn-type)) of the event. The connector forwards these change events in records to the Kafka Connect framework, which is running in the same process. The Kafka Connect process asynchronously writes the change event records in the same order in which they were generated to the appropriate Kafka topic.
 
 Periodically, Kafka Connect records the most recent offset in another Kafka topic. The offset indicates source-specific position information that Debezium includes with each event.
 
@@ -95,13 +130,13 @@ When Kafka Connect gracefully shuts down, it stops the connectors, and flushes a
 
 {{< note title="Schema changes" >}}
 
-The YugabyteDB connector retrieves schema information as part of the change events which consist of the schema metadata for the table. When there is any schema change on the configured table, the connector will automatically receive an event pertaining to the change and it will update its internal schema.
+The connector retrieves schema information as part of the change events which consist of the schema metadata for the table. When there is any schema change on the configured table, the connector will automatically receive an event pertaining to the change and it will update its internal schema.
 
 {{< /note >}}
 
 ### Topic names
 
-By default, the YugabyteDB connector writes change events for all `INSERT`, `UPDATE`, and `DELETE` operations that occur in a table to a single Apache Kafka topic that is specific to that table. The connector names change event topics as _serverName.schemaName.tableName_.
+By default, the YugabyteDB gRPC connector writes change events for all INSERT, UPDATE, and DELETE operations that occur in a table to a single Apache Kafka topic that is specific to that table. The connector names change event topics as _serverName.schemaName.tableName_.
 
 The components of a topic name are as follows:
 
@@ -129,7 +164,7 @@ If the default topic names don't meet your requirements, you can configure custo
 
 ### Meta information
 
-In addition to the data change event, each record produced by the YugabyteDB connector contains some metadata. Metadata includes information about which tablet caused the change event to occur, the commit time, table, database, offset of the event, for example:
+In addition to the data change event, each record produced by the connector contains some metadata. Metadata includes information about which tablet caused the change event to occur, the commit time, table, database, offset of the event, for example:
 
 ```output.json
 "source": {
@@ -164,12 +199,12 @@ Debezium registers and receives metadata only for transactions that occur _after
 
 {{< /note >}}
 
-For every transaction `BEGIN` and `END`, Debezium generates an event containing the following fields:
+For every transaction BEGIN and END, Debezium generates an event containing the following fields:
 
-* `status` - `BEGIN` or `END`
+* `status` - BEGIN or END
 * `id` - string representation of unique transaction identifier
-* `event_count` (for `END` events) - total number of events emitted by the transaction
-* `data_collections` (for `END` events) - an array of pairs of `data_collection` and `event_count` that provides the number of events emitted by changes originating from given data collection
+* `event_count` (for END events) - total number of events emitted by the transaction
+* `data_collections` (for END events) - an array of pairs of `data_collection` and `event_count` that provides the number of events emitted by changes originating from given data collection
 
 For example:
 
@@ -202,7 +237,7 @@ Unless overridden via the `transaction.topic` option, transaction events are wri
 
 #### Change data event enrichment
 
-When transaction metadata is enabled the data message Envelope is enriched with a new transaction field. This field provides information about every event in the form of a composite of fields:
+When transaction metadata is enabled, the data message envelope is enriched with a new transaction field. This field provides information about every event in the form of a composite of fields:
 
 * `id` - string representation of unique transaction identifier
 * `total_order` - absolute position of the event among all events generated by the transaction
@@ -232,7 +267,7 @@ For example:
 
 ## Data change events
 
-The Debezium YugabyteDB connector generates a data change event for each row-level `INSERT`, `UPDATE`, and `DELETE` operation. Each event contains a key and a value. The structure of the key and the value depends on the table that was changed.
+The connector generates a data change event for each row-level INSERT, UPDATE, and DELETE operation. Each event contains a key and a value. The structure of the key and the value depends on the table that was changed.
 
 Debezium and Kafka Connect are designed around continuous streams of event messages. However, the structure of these events may change over time, which can be difficult for consumers to handle. To address this, each event contains the schema for its content. This makes each event self-contained.
 
@@ -266,7 +301,7 @@ If you use the JSON converter and you configure it to produce all four basic cha
 
 {{< warning title="Naming conflicts due to invalid characters" >}}
 
-The YugabyteDB connector ensures that all Kafka Connect schema names adhere to the [Avro schema name format](http://avro.apache.org/docs/current/spec.html#names). This means that the logical server name must start with a Latin letter or an underscore (a-z, A-Z, or \_). Each remaining character in the logical server name and each character in the schema and table names must be a Latin letter, a digit, or an underscore (a-z, A-Z, 0-9, or \_). Invalid characters are replaced with an underscore character.
+The YugabyteDB gRPC connector ensures that all Kafka Connect schema names adhere to the [Avro schema name format](http://avro.apache.org/docs/current/spec.html#names). This means that the logical server name must start with a Latin letter or an underscore (a-z, A-Z, or \_). Each remaining character in the logical server name and each character in the schema and table names must be a Latin letter, a digit, or an underscore (a-z, A-Z, 0-9, or \_). Invalid characters are replaced with an underscore character.
 
 This can lead to unexpected conflicts if the logical server name, a schema name, or a table name contains invalid characters, in the event that the only characters that distinguish names from one another are invalid, and thus replaced with underscores.
 
@@ -686,15 +721,19 @@ A `delete` change event record provides a consumer with the information it needs
 
 #### Tombstone events
 
-When a row is deleted, the _delete_ event value still works with log compaction, because Kafka can remove all earlier messages that have that same key. However, for Kafka to remove all messages that have that same key, the message value must be `null`. To make this possible, the YugabyteDB connector follows a delete event with a special _tombstone_ event that has the same key but a null value.
+When a row is deleted, the _delete_ event value still works with log compaction, because Kafka can remove all earlier messages that have that same key. However, for Kafka to remove all messages that have that same key, the message value must be `null`. To make this possible, the connector follows a delete event with a special _tombstone_ event that has the same key but a null value.
 
-{{< tip title="TRUNCATE tables when CDC is enabled" >}}
+If the downstream consumer from the topic relies on tombstone events to process deletions and uses the [YBExtractNewRecordState transformer](../yugabytedb-grpc-transformers/#ybextractnewrecordstate) (SMT), it is recommended to set the `delete.to.tombstone` SMT configuration property to `true`. This ensures that the connector converts the delete records to tombstone events and drops the tombstone events.
 
-By default, the YugabyteDB CDC implementation does not allow you to TRUNCATE a table while an active CDC stream is present on the namespace. To allow truncating tables while CDC is active, set the [enable_truncate_cdcsdk_table](../../../reference/configuration/yb-tserver/#enable-truncate-cdcsdk-table) flag to true.
+To set the property, follow the SMT configuration conventions. For example:
 
-{{< /tip >}}
+```json
+"transforms": "flatten",
+"transforms.flatten.type": "io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState",
+"transforms.flatten.delete.to.tombstone": "true"
+```
 
-{{< tip title="Suppressing tombstone events" >}}
+##### Suppress tombstone events
 
 You can configure whether a connector emits tombstone events using its `tombstones.on.delete` property.
 
@@ -704,18 +743,16 @@ By default, a connector's `tombstones.on.delete` property is set to `true` so th
 
 If you set the property to `false` to prevent the connector from saving tombstone records to Kafka topics, the **absence of tombstone records might lead to unintended consequences if your sink is not designed to handle it properly**. For example, Kafka relies on tombstones during log compaction to remove records related to deleted keys.
 
-{{< /tip >}}
-
 ## Datatype mappings
 
-The YugabyteDB connector represents changes to rows with events that are structured like the table in which the row exists. The event contains a field for each column value. How that value is represented in the event depends on the YugabyteDB data type of the column. The following sections describe how the connector maps YugabyteDB data types to a literal type and a semantic type in event fields.
+The connector represents changes to rows with events that are structured like the table in which the row exists. The event contains a field for each column value. How that value is represented in the event depends on the YugabyteDB data type of the column. The following sections describe how the connector maps YugabyteDB data types to a literal type and a semantic type in event fields.
 
 * The literal type describes how the value is literally represented using Kafka Connect schema types: INT8, INT16, INT32, INT64, FLOAT32, FLOAT64, BOOLEAN, STRING, BYTES, ARRAY, MAP, and STRUCT.
 * The semantic type describes how the Kafka Connect schema captures the meaning of the field using the name of the Kafka Connect schema for the field.
 
 ### Default values
 
-If there is a default value for any column in a the YugabyteDB database schema, the YugabyteDB Debezium connector propagates the same value to the Kafka schema.
+If there is a default value for any column in the YugabyteDB database schema, the connector propagates the same value to the Kafka schema.
 
 ### Basic types
 
@@ -756,7 +793,7 @@ The following table describes mappings for YugabyteDB basic data types.
 
 ### Temporal types
 
-Other than YugabyteDB's `TIMESTAMPTZ` and `TIMETZ` data types, which contain time zone information, how temporal types are mapped depends on the value of the `time.precision.mode` connector configuration property. The following sections describe these mappings:
+Other than the YugabyteDB TIMESTAMPTZ and TIMETZ data types, which contain time zone information, how temporal types are mapped depends on the value of the `time.precision.mode` connector configuration property. The following sections describe these mappings:
 
 * [`time.precision.mode=adaptive`](#adaptive-mode)
 * [`time.precision.mode=adaptive_time_microseconds`](#adaptive-microseconds-mode)
@@ -804,11 +841,11 @@ The TIMESTAMP type represents a timestamp without time zone information. Such co
 
 The timezone of the JVM running Kafka Connect and Debezium does not affect this conversion.
 
-YugabyteDB supports using `+/-infinity` values in `TIMESTAMP` columns. These special values are converted to timestamps with value `9223372036825200000` in case of positive infinity or `-9223372036832400000` in case of negative infinity.
+YugabyteDB supports using `+/-infinity` values in TIMESTAMP columns. These special values are converted to timestamps with value `9223372036825200000` in case of positive infinity or `-9223372036832400000` in case of negative infinity.
 
 ### Decimal types
 
-The setting of the YugabyteDB connector configuration property `decimal.handling.mode` determines how the connector maps decimal types.
+The setting of the connector configuration property `decimal.handling.mode` determines how the connector maps decimal types.
 
 {{< note title="Note" >}}
 
@@ -816,7 +853,7 @@ YugabyteDB doesn't currently support the `decimal.handling.mode` property value 
 
 {{< /note >}}
 
-When the `decimal.handling.mode` property is set to `double`, the connector represents all `DECIMAL`, `NUMERIC`, and `MONEY` values as Java double values and encodes them as shown in the following table.
+When the `decimal.handling.mode` property is set to `double`, the connector represents all DECIMAL, NUMERIC, and MONEY values as Java double values, and encodes them as shown in the following table.
 
 The following table describes mappings when `decimal.handling.mode` is `double`.
 
@@ -826,7 +863,7 @@ The following table describes mappings when `decimal.handling.mode` is `double`.
 | DECIMAL [(M[,D])] | FLOAT64 | |
 | MONEY [(M[,D])] | FLOAT64 | |
 
-The other possible value for `decimal.handling.mode` is `string`. In this case, the connector represents `DECIMAL`, `NUMERIC`, and `MONEY` values as their formatted string representation, and encodes them as shown in the following table.
+The other possible value for `decimal.handling.mode` is `string`. In this case, the connector represents DECIMAL, NUMERIC, and MONEY values as their formatted string representation, and encodes them as shown in the following table.
 
 The following table describes mappings when `decimal.handling.mode` is `string`.
 
@@ -908,10 +945,10 @@ Support for the following YugabyteDB data types will be enabled in future releas
 
 ## Setting up YugabyteDB
 
-Before using the YugabyteDB connector to monitor the changes on a YugabyteDB server, you need to ensure the following:
+Before using the connector to monitor the changes on a YugabyteDB server, you need to ensure the following:
 
-* You have a stream ID created on the database you want to monitor the changes for. The stream can be created using the [yb-admin create_change_data_stream](../../../admin/yb-admin/#create-change-data-stream) command.
-* The table which is supposed to be monitored should have a primary key. Only tables which have a primary key can be streamed. See [limitations](../../change-data-capture/cdc-overview/#known-limitations).
+* You have a stream ID created on the database you want to monitor the changes for. The stream can be created using the [yb-admin create_change_data_stream](../../../../admin/yb-admin/#create-change-data-stream) command.
+* The table to be monitored should have a primary key. Only tables which have a primary key can be streamed.
 
 ### WAL disk space consumption
 
@@ -921,11 +958,11 @@ For example, the connector is lagging behind in streaming the changes. In this c
 
 ## Deployment
 
-To deploy a Debezium YugabyteDB connector, you install the Debezium YugabyteDB connector archive, configure the connector, and start the connector by adding its configuration to Kafka Connect. For complete steps, follow the guide to [running the Debezium connector for YugabyteDB](/preview/integrations/cdc/debezium/).
+To deploy a Debezium connector, you install the YugabyteDB gRPC Connector archive, configure the connector, and start the connector by adding its configuration to Kafka Connect. For complete steps, follow the guide to [running the Debezium connector in YugabyteDB](/preview/integrations/cdc/debezium/).
 
 ### Connector configuration example
 
-Following is an example of the configuration for a YugabyteDB connector that connects to a YugabyteDB server on port 5433 at 127.0.0.1, whose logical name is `dbserver1`. Typically, you configure the Debezium YugabyteDB connector in a JSON file by setting the configuration properties available for the connector.
+Following is an example of the configuration for a connector that connects to a YugabyteDB server on port 5433 at 127.0.0.1, whose logical name is `dbserver1`. Typically, you configure the connector in a JSON file by setting the configuration properties available for the connector.
 
 You can choose to produce events for a subset of the schemas and tables in a database. Optionally, you can ignore, mask, or truncate columns that contain sensitive data, are larger than a specified size, or that you do not need.
 
@@ -948,18 +985,18 @@ You can choose to produce events for a subset of the schemas and tables in a dat
 ```
 
 1. The name of the connector when registered with a Kafka Connect service.
-1. The name of this YugabyteDB connector class.
+1. The name of this YugabyteDB gRPC Connector class.
 1. The address of this YugabyteDB server.
 1. The port number of the YugabyteDB YSQL process.
 1. List of comma separated values of master nodes of the YugabyteDB server. Usually in the form `host`:`port`.
-1. The DB stream ID created using [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands).
+1. The DB stream ID created using [yb-admin](../../../../admin/yb-admin/#change-data-capture-cdc-commands).
 1. The name of the YugabyteDB user having the privileges to connect to the database.
 1. The password for the above specified YugabyteDB user.
 1. The name of the YugabyteDB database to connect to.
 1. The logical name of the YugabyteDB server/cluster, which forms a namespace and is used in all the names of the Kafka topics to which the connector writes and the Kafka Connect schema names.
 1. A list of all tables hosted by this server that this connector will monitor. This is optional, and there are other properties for listing the schemas and tables to include or exclude from monitoring.
 
-You can send this configuration with a `POST` command to a running Kafka Connect service. The service records the configuration and starts one connector task that performs the following actions:
+You can send this configuration with a POST command to a running Kafka Connect service. The service records the configuration and starts one connector task that performs the following actions:
 
 * Connects to the YugabyteDB database.
 * Reads the transaction log.
@@ -978,16 +1015,16 @@ See [Transformers](#transformers).
 
 ### Adding connector configuration
 
-To run a YugabyteDB connector, create a connector configuration and add the configuration to your Kafka Connect cluster.
+To run a connector, create a connector configuration and add the configuration to your Kafka Connect cluster.
 
 #### Prerequisites
 
 * [YugabyteDB is configured](#setting-up-yugabytedb) for change data capture.
-* The YugabyteDB connector is installed.
+* The YugabyteDB gRPC connector is installed.
 
 #### Procedure
 
-1. Create a configuration for the YugabyteDB connector.
+1. Create a configuration for the connector.
 2. Use the [Kafka Connect REST API](https://kafka.apache.org/documentation/#connect_rest) to add that connector configuration to your Kafka Connect cluster.
 
 #### Results
@@ -996,7 +1033,7 @@ After the connector starts, it will perform a snapshot of the tables depending o
 
 ### Connector configuration properties
 
-The Debezium YugabyteDB connector has many configuration properties that you can use to achieve the right connector behavior for your application. Many properties have default values.
+The connector has many configuration properties that you can use to achieve the right connector behavior for your application. Many properties have default values.
 
 The following properties are _required_ unless a default value is available:
 
@@ -1010,7 +1047,7 @@ The following properties are _required_ unless a default value is available:
 | database.password | N/A | Password for the given user. |
 | database.dbname | N/A | The database from which to stream. |
 | database.server.name | N/A | Logical name that identifies and provides a namespace for the particular YugabyteDB database server or cluster for which Debezium is capturing changes. This name must be unique, as it's also used to form the Kafka topic. |
-| database.streamid | N/A | Stream ID created using [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands) for Change data capture. |
+| database.streamid | N/A | Stream ID created using [yb-admin](../../../../admin/yb-admin/#change-data-capture-cdc-commands) for Change data capture. |
 | table.include.list | N/A | Comma-separated list of table names and schema names, such as `public.test` or `test_schema.test_table_name`. |
 | table.max.num.tablets | 300 | Maximum number of tablets the connector can poll for. This should be greater than or equal to the number of tablets the table is split into. |
 | database.sslmode | disable | Whether to use an encrypted connection to the YugabyteDB cluster. Supported options are:<ul><li>`disable` uses an unencrypted connection</li><li>`require` uses an encrypted connection and fails if it can't be established</li><li>`verify-ca` uses an encrypted connection, verifies the server TLS certificate against the configured Certificate Authority (CA) certificates, and fails if no valid matching CA certificates are found.</li></ul> |
@@ -1037,8 +1074,8 @@ The APIs used to fetch the changes are set up to work only with TLS v1.2. Make s
 
 If you have a YugabyteDB cluster with SSL enabled, you need to obtain the root certificate and provide the path of the file in the `database.sslrootcert` configuration property. You can follow these links to get the certificates for your universe:
 
-* [Local deployments](../../../secure/tls-encryption/)
-* [YugabyteDB Anywhere](../../../yugabyte-platform/security/enable-encryption-in-transit/#connect-to-a-ysql-endpoint-with-tls)
+* [Local deployments](../../../../secure/tls-encryption/)
+* [YugabyteDB Anywhere](../../../../yugabyte-platform/security/enable-encryption-in-transit/#enable-encryption-in-transit)
 * [YugabyteDB Aeon](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate)
 
 {{< /note >}}
@@ -1056,7 +1093,7 @@ Advanced connector configuration properties:
 | time.precision.mode | adaptive | Time, date, and timestamps can be represented with different kinds of precision: <br/><br/> `adaptive` captures the time and timestamp values exactly as in the database using millisecond precision values based on the database column's type. <br/><br/> `adaptive_time_microseconds` captures the date, datetime and timestamp values exactly as in the database using millisecond precision values based on the database column's type. An exception is `TIME` type fields, which are always captured as microseconds. <br/><br/> `connect` always represents time and timestamp values by using Kafka Connect's built-in representations for Time, Date, and Timestamp, which use millisecond precision regardless of the database columns' precision. See temporal values. |
 | decimal.handling.mode | double | The `precise` mode is not currently supported. <br/><br/>  `double` maps all the numeric, double, and money types as Java double values (FLOAT64). <br/><br/>  `string` represents the numeric, double, and money types as their string-formatted form. <br/><br/> |
 | binary.handling.mode | hex | `hex` is the only supported mode. All binary strings are converted to their respective hex format and emitted as their string representation . |
-| interval.handling.mode | numeric | Specifies how the connector should handle values for interval columns:<br/><br/> `numeric` represents intervals using approximate number of microseconds. <br/><br/> `string` represents intervals exactly by using the string pattern representation<br/> `P<years>Y<months>M<days>DT<hours>H<minutes>M<seconds>S`.<br/> For example: P1Y2M3DT4H5M6.78S. See [YugabyteDB data types](../../../api/ysql/datatypes/). |
+| interval.handling.mode | numeric | Specifies how the connector should handle values for interval columns:<br/><br/> `numeric` represents intervals using approximate number of microseconds. <br/><br/> `string` represents intervals exactly by using the string pattern representation<br/> `P<years>Y<months>M<days>DT<hours>H<minutes>M<seconds>S`.<br/> For example: P1Y2M3DT4H5M6.78S. See [YugabyteDB data types](../../../../api/ysql/datatypes/). |
 | transaction.topic | `${database.server.name}`<br/>`.transaction` | Controls the name of the topic to which the connector sends transaction metadata messages. The placeholder `${database.server.name}` can be used for referring to the connector's logical name; defaults to `${database.server.name}.transaction`, for example `dbserver1.transaction`. |
 | provide.transaction.metadata | `false` | Determines whether the connector generates events with transaction boundaries and enriches change event envelopes with transaction metadata. Specify `true` if you want the connector to do this. See [Transaction metadata](#transaction-metadata) for details. |
 | skipped.operations | N/A | A comma-separated list of operation types to be skipped during streaming. The types are `c` for insert/create operations, `u` for update operations, and `d` for delete operations. By default, no operations are skipped. |
@@ -1069,7 +1106,7 @@ Advanced connector configuration properties:
 | tombstones.on.delete | `true` | Controls whether a delete event is followed by a tombstone event.<br/><br/> `true` - a delete operation is represented by a delete event and a subsequent tombstone event.<br/><br/> `false` - only a delete event is emitted.<br/><br/> After a source record is deleted, emitting a tombstone event (the default behavior) allows Kafka to completely delete all events that pertain to the key of the deleted row in case log compaction is enabled for the topic. |
 | auto.add.new.tables | `true` | Controls whether the connector should keep polling the server to check if any new table has been added to the configured change data stream ID. If a new table has been found in the stream ID and if it has been included in the `table.include.list`, the connector will be restarted automatically. |
 | new.table.poll.interval.ms | 300000 | The interval at which the poller thread will poll the server to check if there are any new tables in the configured change data stream ID. |
-| transaction.ordering | `false` | Whether to order transactions by their commit time. |
+| transaction.ordering | `false` | Whether to order transactions by their commit time.<br/>{{< warning title="Deprecation Notice" >}} This configuration property has been deprecated. For more details, see [transaction ordering](#transaction-ordering). {{< /warning >}} |
 
 ### Transformers
 
@@ -1079,11 +1116,11 @@ The following three transformers are available: YBExtractNewRecordState, Extract
 
 Transformer type: `io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState`
 
-Unlike the Debezium Connector for PostgreSQL, the YugabyteDB connector only sends the `after` image of the "set of columns" that are modified. PostgreSQL sends the complete `after` image of the row which has changed. So by default if the column was not changed, it is not a part of the payload that is sent and the default value is set to `null`.
+Unlike the Debezium connector for PostgreSQL, the YugabyteDB gRPC Connector only sends the `after` image of the "set of columns" that are modified. PostgreSQL sends the complete `after` image of the row which has changed. So by default if the column was not changed, it is not a part of the payload that is sent and the default value is set to `null`.
 
-To differentiate between the case where a column is set to `null` and the case in which it's not modified, the YugabyteDB connector changes the value type to a struct. In this structure, an unchanged column is `{'value': null}`, whereas the column changed to a null value is `{'value': null, 'set': true}`.
+To differentiate between the case where a column is set to `null` and the case in which it's not modified, the YugabyteDB gRPC Connector changes the value type to a struct. In this structure, an unchanged column is `{'value': null}`, whereas the column changed to a null value is `{'value': null, 'set': true}`.
 
-A schema registry requires that, once a schema is registered, records must contain only payloads with that schema version. If you're using a schema registry, the YugabyteDB Debezium connector's approach can be problematic, as the schema may change with every message. For example, if we keep changing the record to only include the value of modified columns, the schema of each record will be different (the total number unique schemas will be a result of making all possible combinations of columns) and thus would require sending a schema with every record.
+A schema registry requires that, once a schema is registered, records must contain only payloads with that schema version. If you're using a schema registry, the YugabyteDB gRPC Connector's approach can be problematic, as the schema may change with every message. For example, if we keep changing the record to only include the value of modified columns, the schema of each record will be different (the total number unique schemas will be a result of making all possible combinations of columns) and thus would require sending a schema with every record.
 
 To avoid this problem when you're using a schema registry, use the `YBExtractNewRecordState` SMT (Single Message Transformer for Kafka), which interprets these values and sends the record in the correct format (by removing the unmodified columns from the JSON message). Records transformed by `YBExtractNewRecordState` are compatible with all sink implementations. This approach ensures that the schema doesn't change with each new record and it can work with a schema registry.
 
@@ -1105,7 +1142,7 @@ The transformation defines the following configurations:
 * `field.name` - The name of the field which should be used as the topic name. If `null` or empty, the entire key or value is used (and assumed to be a string). By default is `null`.
 * `skip.missing.or.null` - In case the source of the new topic name is `null` or missing, should a record be silently passed without transformation. By default, is `false`.
 
-Here is an example of this transformation configuration:
+The following is an example of this transformation configuration:
 
 ```properties
 ...
@@ -1127,6 +1164,23 @@ PGCompatible differs from `YBExtractNewRecordState` by recursively modifying all
 
 ## Transaction ordering
 
+{{< warning title="Deprecation Notice" >}}
+
+Starting with YugabyteDB v2024.2, and YugabyteDB gRPC Connector `dz.1.9.5.yb.grpc.2024.2`, the configuration `transaction.ordering` is deprecated. This configuration will be removed in future releases. As the PostgreSQL Logical Replication-based [YugabyteDB connector](../../using-logical-replication/yugabytedb-connector) offers the same transactional ordering properties by default, you are advised to use the same for your use cases.
+
+Currently, for cases where you absolutely need to use transactional ordering with the YugabyteDB gRPC Connector, add the following configurations to use the deprecated configuration:
+
+```output.json
+{
+  ...
+  "transaction.ordering":"true",
+  "TEST.override.transaction.ordering.deprecation":"true"
+  ...
+}
+```
+
+{{< /warning >}}
+
 In a CDC Stream, events from different transactions in different tablets across tables may appear at different times. This works well in use cases such as archiving, or with applications where only eventual consistency is required. There is another class of applications, where the end destination is another OLTP / operational database. These databases can have constraints (such as foreign keys) and strict transactional consistency requirements. In these cases, the stream of events cannot be applied as is, as events of the same transaction may appear out of order because transactions in YugabyteDB can span two tablets.
 
 The YugabyteDB source connector supports transaction ordering, which guarantees consistent streaming of records in the sorted order based on time. With transaction ordering enabled, the connector can be used to stream change events while honoring the constraints.
@@ -1146,15 +1200,15 @@ The following table describes properties for configuring transaction ordering.
 | transforms.Reroute.key.field.replacement | Specifies a regular expression for determining the value of the inserted key field in terms of those captured groups. |
 | provide.transaction.metadata | Whether to generate events with transaction boundaries. |
 
-For usage example, refer to YugabyteDB CDC Consistent Streaming Pipeline in the [example repository](https://github.com/yugabyte/cdc-examples/tree/main/consistent-streaming).
+For usage example, refer to YugabyteDB CDC Consistent Streaming Pipeline in the [example repository](https://github.com/yugabyte/cdc-examples/tree/main/grpc_connector/consistent-streaming).
 
 ### Transaction boundaries
 
-The connector publishes metadata that can be used to distinguish transaction boundaries for a downstream application to implement atomicity. Once the configuration property `provide.transaction.metadata` is enabled, the connector will also publish events indicating the beginning and end of the transaction. For more information, see [Transaction metadata](#transaction-metadata).
+The connector publishes metadata that can be used to distinguish transaction boundaries for a downstream application to implement atomicity. After the configuration property `provide.transaction.metadata` is enabled, the connector will also publish events indicating the beginning and end of the transaction. For more information, see [Transaction metadata](#transaction-metadata).
 
 ### Prerequisites
 
-* Create the Stream ID should in the `EXPLICIT` checkpointing mode. For more information, see [yb-admin create\_change\_data_stream](../../../admin/yb-admin#create-change-data-stream).
+* Create the Stream ID should in the EXPLICIT checkpointing mode. For more information, see [yb-admin create\_change\_data_stream](../../../../admin/yb-admin#create-change-data-stream).
 * You should always run the connector with a single task, that is, `tasks.max` should always be set to 1.
 
 ### Known limitations
@@ -1185,15 +1239,15 @@ In these cases, the error message has details about the problem and possibly a s
 
 ### YB-TServer becomes unavailable
 
-In case one of the tablet servers crashes, the replicas on other YB-TServer nodes will become the leader for the tablets that were hosted on the crashed server. The YugabyteDB connector will figure out the new tablet leaders and start streaming from the checkpoint the Debezium maintains.
+In case one of the tablet servers crashes, the replicas on other YB-TServer nodes will become the leader for the tablets that were hosted on the crashed server. The YugabyteDB gRPC Connector will figure out the new tablet leaders and start streaming from the checkpoint the Debezium maintains.
 
 ### YugabyteDB server failures
 
-In case of YugabyteDB server failures, the Debezium YugabyteDB connector will try for a configurable (using a [flag](../../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags)) amount of time for the availability of the YB-TServer and will stop if the cluster cannot start. When the cluster is restarted, the connector can be run again and it will start processing the changes with the committed checkpoint.
+In case of YugabyteDB server failures, the YugabyteDB gRPC Connector will try for a configurable amount of time for the availability of the YB-TServer and will stop if the cluster cannot start. When the cluster is restarted, the connector can be run again and it will start processing the changes with the committed checkpoint.
 
 ### Connector unable to find table association with stream ID
 
-In this case, the Connector throws an exception with an error message that the table is not a part of the stream ID.
+In this case, the connector throws an exception with an error message that the table is not a part of the stream ID.
 
 This can happen in the following 2 scenarios:
 
@@ -1204,7 +1258,17 @@ This can happen in the following 2 scenarios:
 
 When the connector is running, the YugabyteDB server that it is connected to could become unavailable for any number of reasons. If this happens, the connector fails with an error and stops. When the server is available again, restart the connector.
 
-The YugabyteDB connector externally stores the last processed offset in the form of a checkpoint. After a connector restarts and connects to a server instance, the connector communicates with the server to continue streaming from that particular offset. This offset is available as long as the Debezium replication slot remains intact. Never drop a replication slot on the primary server or you will lose data.
+The connector externally stores the last processed offset in the form of a checkpoint. After a connector restarts and connects to a server instance, the connector communicates with the server to continue streaming from that particular offset. This offset is available as long as the stream ID remains intact. Never delete a stream ID without deleting all the associated connectors with it, otherwise you will lose data.
+
+## Dropping a table part of the replication
+
+While the connector is running with a set of tables configured to capture the changes, if one of the tables in the set is dropped, the connector will fail with an error message indicating that the object is not found.
+
+To avoid or resolve a failure due to a dropped table, follow these steps:
+
+1. Delete the connector that contains the table that was dropped, or that you want to drop.
+2. Edit the configuration and remove the given table from `table.include.list`.
+3. Deploy a new connector with the updated configuration.
 
 ### Kafka Connect process stops gracefully
 

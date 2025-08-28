@@ -147,7 +147,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
         u -> {
           NodeDetails node = u.getNode(nodeName);
           node.state = NodeState.Decommissioned;
-          NodeInstance.maybeGetByName(nodeName)
+          NodeInstance.maybeGetByName(nodeName, node.nodeUuid)
               .ifPresent(
                   nodeInstance -> {
                     nodeInstance.setState(NodeInstance.State.FREE);

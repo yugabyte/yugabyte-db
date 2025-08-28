@@ -1219,6 +1219,35 @@ public class ShellKubernetesManager extends KubernetesManager {
   }
 
   @Override
+  public String getCertChecksum(
+      String namespace, String helmReleaseName, Map<String, String> config) {
+    List<String> commandList =
+        ImmutableList.of(
+            "kubectl",
+            "get",
+            "sts",
+            "--namespace",
+            namespace,
+            "-o",
+            "json",
+            "-l",
+            "release=" + helmReleaseName);
+    ShellResponse response =
+        execCommand(config, commandList, false /* logCmdOutput */).processErrors();
+    List<StatefulSet> stsList = deserialize(response.message, StatefulSetList.class).getItems();
+    if (CollectionUtils.isNotEmpty(stsList)) {
+      // For certificate checksum, we can use any of the statefulsets since they should have the
+      // same cert
+      StatefulSet sts = stsList.get(0);
+      Map<String, String> annotations = sts.getSpec().getTemplate().getMetadata().getAnnotations();
+      if (annotations != null) {
+        return annotations.getOrDefault("checksum/rootCA", "");
+      }
+    }
+    return "";
+  }
+
+  @Override
   public List<Service> getNamespacedServices(
       Map<String, String> config, String namespace, String universeName) {
     String appLabel = "app.kubernetes.io/part-of";

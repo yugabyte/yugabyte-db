@@ -36,6 +36,7 @@
 
 #define YB_WAIT_EVENT_DESC_COLS_V1 4
 #define YB_WAIT_EVENT_DESC_COLS_V2 5
+#define YB_WAIT_EVENT_DESC_COLS_V3 6
 
 static const char *pgstat_get_wait_activity(WaitEventActivity w);
 static const char *pgstat_get_wait_client(WaitEventClient w);
@@ -51,6 +52,7 @@ static const char *yb_get_wait_timeout_desc(WaitEventTimeout w);
 static const char *yb_get_wait_io_desc(WaitEventIO w);
 static const char *yb_get_wait_lock_desc(LockTagType lock_tag);
 static const char *yb_get_wait_lwlock_desc(BuiltinTrancheIds tranche_id);
+static const char *yb_get_wait_event_aux_desc(uint32 wait_event_info);
 
 static uint32 local_my_wait_event_info;
 uint32	   *my_wait_event_info = &local_my_wait_event_info;
@@ -274,6 +276,30 @@ pgstat_get_wait_event(uint32 wait_event_info)
 	}
 
 	return event_name;
+}
+
+static const char *
+yb_get_wait_event_aux_desc(uint32 wait_event_info)
+{
+	uint32		classId;
+
+	classId = wait_event_info & 0xFF000000;
+
+	switch (classId)
+	{
+		case PG_WAIT_LWLOCK:
+		case PG_WAIT_LOCK:
+		case PG_WAIT_BUFFER_PIN:
+		case PG_WAIT_ACTIVITY:
+		case PG_WAIT_CLIENT:
+		case PG_WAIT_EXTENSION:
+		case PG_WAIT_IPC:
+		case PG_WAIT_TIMEOUT:
+		case PG_WAIT_IO:
+			return "";
+		default:
+			return YBCGetWaitEventAuxDescription(wait_event_info);
+	}
 }
 
 /* ----------
@@ -1261,7 +1287,8 @@ yb_insert_events_helper(uint32 code, const char *desc, TupleDesc tupdesc,
 	values[3] = CStringGetTextDatum(desc);
 	if (ncols >= YB_WAIT_EVENT_DESC_COLS_V2)
 		values[4] = UInt32GetDatum(code);
-
+	if (ncols >= YB_WAIT_EVENT_DESC_COLS_V3)
+		values[5] = CStringGetTextDatum(yb_get_wait_event_aux_desc(code));
 	tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 }
 

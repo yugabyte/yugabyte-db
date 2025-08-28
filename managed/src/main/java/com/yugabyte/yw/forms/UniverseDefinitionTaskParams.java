@@ -351,6 +351,14 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.23.0.0")
     private Map<UUID, Map<ServerType, String>> perAZServerTypeGflagsChecksumMap = new HashMap<>();
 
+    @Setter
+    @Getter
+    @ApiModelProperty(
+        hidden = true,
+        value = "YbaApi Internal. Kubernetes statefulset cert checksum map")
+    @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.27.0.0")
+    private String certChecksum = null;
+
     /** Default to PRIMARY. */
     private Cluster() {
       this(ClusterType.PRIMARY, new UserIntent());

@@ -9,7 +9,6 @@ import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
-import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
@@ -484,6 +483,24 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
       boolean isTServerChanged,
       boolean enableYbc,
       String ybcSoftwareVersion) {
+    createNonRollingUpgradeTask(
+        universe,
+        softwareVersion,
+        isMasterChanged,
+        isTServerChanged,
+        enableYbc,
+        ybcSoftwareVersion,
+        null /* upgradeContext */);
+  }
+
+  public void createNonRollingUpgradeTask(
+      Universe universe,
+      String softwareVersion,
+      boolean isMasterChanged,
+      boolean isTServerChanged,
+      boolean enableYbc,
+      String ybcSoftwareVersion,
+      @Nullable UpgradeContext upgradeContext) {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     Cluster primaryCluster = universeDetails.getPrimaryCluster();
     PlacementInfo placementInfo = primaryCluster.placementInfo;
@@ -501,6 +518,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
     if (azOverrides == null) {
       azOverrides = new HashMap<String, String>();
     }
+    UUID rootCAUUID = upgradeContext != null ? upgradeContext.getRootCAUUID() : null;
 
     String masterAddresses =
         KubernetesUtil.computeMasterAddresses(
@@ -530,7 +548,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           /*isReadOnlyCluster*/ false,
           enableYbc,
           null /* ybcSoftwareVersion */,
-          null /* ysqlMajorVersionUpgradeState */);
+          null /* ysqlMajorVersionUpgradeState */,
+          rootCAUUID);
     }
 
     if (isTServerChanged) {
@@ -571,7 +590,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
             /*isReadOnlyCluster*/ true,
             enableYbc,
             ybcSoftwareVersion,
-            null /* ysqlMajorVersionUpgradeState */);
+            null /* ysqlMajorVersionUpgradeState */,
+            rootCAUUID);
 
         if (enableYbc) {
           Set<NodeDetails> replicaTservers =
@@ -590,16 +610,32 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
     }
   }
 
-  protected void createNonRestartGflagsUpgradeTask(Universe universe) {
+  protected void createNonRestartUpgradeTask(
+      Universe universe, @Nullable UpgradeContext upgradeContext) {
+    createNonRestartUpgradeTask(universe, upgradeContext, null /* postClusterUpgradeTask */);
+  }
+
+  @FunctionalInterface
+  protected interface PostClusterUpgradeTask {
+    void executePostClusterUpgradeTask(boolean isPrimary);
+  }
+
+  protected void createNonRestartUpgradeTask(
+      Universe universe,
+      @Nullable UpgradeContext upgradeContext,
+      @Nullable PostClusterUpgradeTask postClusterUpgradeTask) {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     Cluster primaryCluster = universeDetails.getPrimaryCluster();
-    KubernetesGflagsUpgradeCommonParams upgradeParamsPrimary =
-        new KubernetesGflagsUpgradeCommonParams(universe, primaryCluster, confGetter);
+    KubernetesUpgradeCommonParams upgradeParamsPrimary =
+        new KubernetesUpgradeCommonParams(universe, primaryCluster, confGetter);
     createSingleKubernetesExecutorTask(
         universe.getName(),
         CommandType.POD_INFO,
         primaryCluster.placementInfo,
         false /*isReadOnlyCluster*/);
+
+    UUID rootCAUUID = upgradeContext != null ? upgradeContext.getRootCAUUID() : null;
+
     upgradePodsNonRestart(
         universe.getName(),
         upgradeParamsPrimary.getPlacement(),
@@ -611,35 +647,19 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
         upgradeParamsPrimary.isNewNamingStyle(),
         false /* isReadOnlyCluster */,
         upgradeParamsPrimary.isEnableYbc(),
-        upgradeParamsPrimary.getYbcSoftwareVersion());
+        upgradeParamsPrimary.getYbcSoftwareVersion(),
+        null /* ysqlMajorVersionUpgradeState */,
+        rootCAUUID);
 
-    MastersAndTservers mastersAndTservers = fetchNodes(UpgradeOption.NON_RESTART_UPGRADE);
-    MastersAndTservers primaryClusterMastersAndTservers =
-        mastersAndTservers.getForCluster(universe.getUniverseDetails().getPrimaryCluster().uuid);
-    List<Cluster> newClusters = taskParams().clusters;
-    Cluster newPrimaryCluster = taskParams().getPrimaryCluster();
-
-    createSetFlagInMemoryTasks(
-        primaryClusterMastersAndTservers.mastersList,
-        ServerType.MASTER,
-        (node, params) -> {
-          params.force = true;
-          params.gflags =
-              GFlagsUtil.getGFlagsForNode(node, ServerType.MASTER, newPrimaryCluster, newClusters);
-        });
-    createSetFlagInMemoryTasks(
-        primaryClusterMastersAndTservers.tserversList,
-        ServerType.TSERVER,
-        (node, params) -> {
-          params.force = true;
-          params.gflags =
-              GFlagsUtil.getGFlagsForNode(node, ServerType.TSERVER, newPrimaryCluster, newClusters);
-        });
+    // Execute post upgrade task for primary cluster if provided
+    if (postClusterUpgradeTask != null) {
+      postClusterUpgradeTask.executePostClusterUpgradeTask(true /* isPrimary */);
+    }
 
     if (universeDetails.getReadOnlyClusters().size() != 0) {
       Cluster readOnlyCluster = universeDetails.getReadOnlyClusters().get(0);
-      KubernetesGflagsUpgradeCommonParams upgradeParamsReadOnly =
-          new KubernetesGflagsUpgradeCommonParams(universe, readOnlyCluster, confGetter);
+      KubernetesUpgradeCommonParams upgradeParamsReadOnly =
+          new KubernetesUpgradeCommonParams(universe, readOnlyCluster, confGetter);
       PlacementInfo readClusterPlacementInfo = readOnlyCluster.placementInfo;
       createSingleKubernetesExecutorTask(
           universe.getName(),
@@ -658,18 +678,14 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           upgradeParamsReadOnly.isNewNamingStyle(),
           true /* isReadOnlyCluster */,
           upgradeParamsReadOnly.isEnableYbc(),
-          upgradeParamsReadOnly.getYbcSoftwareVersion());
+          upgradeParamsReadOnly.getYbcSoftwareVersion(),
+          null /* ysqlMajorVersionUpgradeState */,
+          rootCAUUID);
 
-      Cluster newReadOnlyCluster = taskParams().getReadOnlyClusters().get(0);
-      createSetFlagInMemoryTasks(
-          mastersAndTservers.getForCluster(newReadOnlyCluster.uuid).tserversList,
-          ServerType.TSERVER,
-          (node, params) -> {
-            params.force = true;
-            params.gflags =
-                GFlagsUtil.getGFlagsForNode(
-                    node, ServerType.TSERVER, newReadOnlyCluster, newClusters);
-          });
+      // Execute post upgrade task for read-only cluster if provided
+      if (postClusterUpgradeTask != null) {
+        postClusterUpgradeTask.executePostClusterUpgradeTask(false /* isPrimary */);
+      }
     }
   }
 
@@ -710,8 +726,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
       String softwareVersion,
       YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState) {
     for (Cluster cluster : universe.getUniverseDetails().clusters) {
-      KubernetesGflagsUpgradeCommonParams upgradeParams =
-          new KubernetesGflagsUpgradeCommonParams(universe, cluster, confGetter);
+      KubernetesUpgradeCommonParams upgradeParams =
+          new KubernetesUpgradeCommonParams(universe, cluster, confGetter);
       // override the software version to the new version
       upgradeParams.setYbSoftwareVersion(softwareVersion);
       createSingleKubernetesExecutorTask(

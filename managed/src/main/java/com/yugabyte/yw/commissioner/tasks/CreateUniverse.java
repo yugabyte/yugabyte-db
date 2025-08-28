@@ -132,7 +132,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
           .upsertCluster(cluster.userIntent, cluster.placementInfo, cluster.uuid);
     }
     // Create preflight node check tasks for on-prem nodes.
-    createPreflightNodeCheckTasks(taskParams().clusters);
+    createPreflightNodeCheckTasks(universe, taskParams().clusters);
     // Create certificate config check tasks for on-prem nodes.
     createCheckCertificateConfigTask(universe, taskParams().clusters);
   }
