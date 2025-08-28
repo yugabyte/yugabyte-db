@@ -41,6 +41,7 @@ else
 	CXX := g++
 	RUSTFLAGS := -L$(YB_THIRDPARTY_DIR)/installed/common/lib
 	LIBCLANG_PATH := $(if $(YB_LLVM_TOOLCHAIN_DIR),$(YB_LLVM_TOOLCHAIN_DIR)/lib)
+	CFLAGS := -Wno-error -Wno-implicit-fallthrough -Wno-unused-but-set-variable -Wno-missing-include-dirs
 endif
 
 all:
