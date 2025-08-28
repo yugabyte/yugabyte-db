@@ -75,7 +75,7 @@ PostgreSQL 15 support is in Tech Preview and included with the YugabyteDB 2.25 p
 | Enable a client to send multiple queries to the server without waiting for each query's response before sending the next one. This reduces the round-trip time between client and server and significantly boosts the performance when running many queries in quick succession.
 |
 
-| [Replace triggers](../the-ysql-language/statements/ddl_create_trigger#or-replace)
+| [Replace triggers](../the-sql-language/statements/ddl_create_trigger#or-replace)
 | Replace an existing trigger with a new one without first having to drop the old trigger and create a new one.
 |
 

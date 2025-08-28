@@ -63,7 +63,7 @@ Configuration parameter: `yb_enable_cbo=on`
 
 [Cost based optimizer (CBO)](../../../architecture/query-layer/planner-optimizer/) creates optimal execution plans for queries, providing significant performance improvements both in single-primary and distributed PostgreSQL workloads. This feature reduces or eliminates the need to use hints or modify queries to optimize query execution. CBO provides improved performance parity.
 
-For information on configuring CBO, refer to [Enable cost-based optimizer](../../../deploy/best-practices-operations/ysql-yb-enable-cbo/).
+For information on configuring CBO, refer to [Enable cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/).
 
 When enabling this parameter, you must run ANALYZE on user tables to maintain up-to-date statistics.
 
