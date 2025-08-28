@@ -1,8 +1,8 @@
 ---
 title: PostgreSQL migration permissions grant script
-linktitle: yb-voyager-pg-grant-migration-permissions.sql
+linktitle: Permissions SQL script
 description: Usage, actions, and key considerations for the `yb-voyager-pg-grant-migration-permissions.sql` script.
-headcontent: How to use the `yb-voyager-pg-grant-migration-permissions.sql` script
+headcontent: Run the permissions SQL script to grant user permissions for migration
 menu:
   preview_yugabyte-voyager:
     identifier: pg-grant-perm
@@ -11,7 +11,9 @@ menu:
 type: docs
 ---
 
-Use the `yb-voyager-pg-grant-migration-permissions.sql` script to configure a PostgreSQL database user (typically ybvoyager) with the appropriate permissions required for migrations, both offline and live. The script ensures that the user has the necessary access to schemas, tables, sequences, and replication settings.
+Use the `yb-voyager-pg-grant-migration-permissions.sql` script to configure a user (typically ybvoyager) on the source PostgreSQL database with the appropriate permissions required for running a migration, whether offline or live. The script ensures that the user has the necessary access to schemas, tables, sequences, and replication settings.
+
+The script is located in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`.
 
 ## How to use
 

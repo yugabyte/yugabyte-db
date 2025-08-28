@@ -51,7 +51,7 @@ If you're using an older version (pre-PostgreSQL 15 and YugabyteDB v2025.1), use
 
 ### Grant required permissions
 
-Grant the following permissions to allow the import process to proceed:
+Grant the following permissions on the target YugabyteDB universe to allow the import process to proceed:
 
 ```sql
 -- Grant CREATE ON DATABASE
