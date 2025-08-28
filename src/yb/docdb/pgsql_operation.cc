@@ -150,6 +150,7 @@ DECLARE_bool(vector_index_dump_stats);
 namespace yb::docdb {
 
 bool TEST_vector_index_filter_allowed = true;
+size_t TEST_vector_index_max_checked_entries = std::numeric_limits<size_t>::max();
 
 using dockv::DocKey;
 using dockv::DocPath;
@@ -958,6 +959,7 @@ class PgsqlVectorFilter {
         << "VI_STATS: PgsqlVectorFilter, checked: " << num_checked_entries_ << ", accepted: "
         << num_accepted_entries_ << ", num removed: " << num_removed_
         << (iter_.has_filter() ? Format(", found: $0", num_found_entries_) : "");
+    DCHECK_LE(num_checked_entries_, TEST_vector_index_max_checked_entries);
   }
 
   Result<bool> Init(const PgsqlReadOperationData& data) {

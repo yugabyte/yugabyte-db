@@ -44,6 +44,9 @@
 
 DECLARE_bool(TEST_skip_process_apply);
 DECLARE_bool(TEST_use_custom_varz);
+DECLARE_bool(TEST_usearch_exact);
+DECLARE_bool(vector_index_disable_compactions);
+DECLARE_bool(vector_index_use_yb_hnsw);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_uint32(vector_index_concurrent_reads);
@@ -56,6 +59,7 @@ METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 namespace yb::docdb {
 
 extern bool TEST_vector_index_filter_allowed;
+extern size_t TEST_vector_index_max_checked_entries;
 
 }
 
@@ -151,6 +155,9 @@ class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterf
   void VerifyRows(
       PGConn& conn, const std::string& filter, const std::vector<std::string>& expected,
       int64_t limit = -1);
+  [[nodiscard]] bool RowsMatch(
+      PGConn& conn, const std::string& filter, const std::vector<std::string>& expected,
+      int64_t limit = -1);
 
   void TestSimple(bool table_exists = false);
   void TestManyRows(AddFilter add_filter, Backfill backfill = Backfill::kFalse);
@@ -232,6 +239,8 @@ class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterf
     return Format(" ORDER BY $0 LIMIT $1", DistanceToQuery(vector), limit);
   }
 
+  Status WaitNoBackgroundInserts();
+
   std::vector<FloatVector> vectors_;
   std::uniform_real_distribution<> distribution_;
   std::mt19937_64 rng_{42};
@@ -310,6 +319,26 @@ void PgVectorIndexTest::TestSimple(bool table_exists) {
   ASSERT_EQ(result, "1, [1, 0.5, 0.25]; 2, [0.125, 0.375, 0.25]");
 }
 
+Status PgVectorIndexTest::WaitNoBackgroundInserts() {
+  auto cond = [this]() -> Result<bool> {
+    auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+    for (const auto& peer : peers) {
+      auto list = peer->shared_tablet()->vector_indexes().List();
+      if (!list) {
+        continue;
+      }
+      for (const auto& index : *list) {
+        if (index->TEST_HasBackgroundInserts()) {
+          LOG(INFO) << "Index " << index->ToString() << " has background inserts";
+          return false;
+        }
+      }
+    }
+    return true;
+  };
+  return WaitFor(cond, 30s * kTimeMultiplier, "Wait no background inserts");
+}
+
 TEST_P(PgVectorIndexTest, Simple) {
   TestSimple();
 }
@@ -348,6 +377,14 @@ std::string BuildRow(int64_t id, const std::string& value) {
 
 std::string ExpectedRow(int64_t id) {
   return BuildRow(id, VectorAsString(id));
+}
+
+std::vector<std::string> ExpectedRows(size_t limit) {
+  std::vector<std::string> expected;
+  for (size_t i = 1; i <= limit; ++i) {
+    expected.push_back(ExpectedRow(i));
+  }
+  return expected;
 }
 
 Status PgVectorIndexTest::InsertRows(PGConn& conn, size_t start_row, size_t end_row) {
@@ -405,38 +442,50 @@ Result<PGConn> PgVectorIndexTest::MakeIndexAndFillRandom(size_t num_rows) {
   return conn;
 }
 
-void PgVectorIndexTest::VerifyRows(
-    PGConn& conn, AddFilter add_filter, const std::vector<std::string>& expected, int64_t limit) {
-  VerifyRows(conn, add_filter ? "WHERE id + 3 <= 5" : "", expected, limit);
-}
-
-void PgVectorIndexTest::VerifyRows(
+bool PgVectorIndexTest::RowsMatch(
     PGConn& conn, const std::string& filter, const std::vector<std::string>& expected,
     int64_t limit) {
   if (limit >= 0 && make_unsigned(limit) < expected.size()) {
     std::vector<std::string> new_expected(expected.begin(), expected.begin() + limit);
-    return VerifyRows(conn, filter, new_expected, limit);
+    return RowsMatch(conn, filter, new_expected, limit);
   }
   auto query = Format(
       "SELECT * FROM test AS t $0$1", filter,
       IndexQuerySuffix("[0.0, 0.0, 0.0]", limit < 0 ? expected.size() : make_unsigned(limit)));
   LOG_WITH_FUNC(INFO) << "   Query: " << AsString(query);
-  auto result = ASSERT_RESULT((conn.FetchRows<RowAsString>(query)));
+  auto result = CHECK_RESULT((conn.FetchRows<RowAsString>(query)));
   LOG_WITH_FUNC(INFO) << "  Result: " << AsString(result);
   LOG_WITH_FUNC(INFO) << "Expected: " << AsString(expected);
-  ASSERT_EQ(result.size(), expected.size());
-  for (size_t i = 0; i != std::min(result.size(), expected.size()); ++i) {
-    SCOPED_TRACE(Format("Row $0", i));
-    ASSERT_EQ(result[i], expected[i]);
+  bool ok = true;
+  if (result.size() != expected.size()) {
+    LOG_WITH_FUNC(INFO)
+        << "Wrong number of results: " << result.size() << ", while " << expected.size()
+        << " expected";
+    ok = false;
   }
+  for (size_t i = 0; i != std::min(result.size(), expected.size()); ++i) {
+    if (result[i] != expected[i]) {
+      LOG_WITH_FUNC(INFO)
+          << "Wrong row " << i << ": " << result[i] << " instead of " << expected[i];
+      ok = false;
+    }
+  }
+  return ok;
+}
+
+void PgVectorIndexTest::VerifyRows(
+    PGConn& conn, const std::string& filter, const std::vector<std::string>& expected,
+    int64_t limit) {
+  ASSERT_TRUE(RowsMatch(conn, filter, expected, limit));
+}
+
+void PgVectorIndexTest::VerifyRows(
+    PGConn& conn, AddFilter add_filter, const std::vector<std::string>& expected, int64_t limit) {
+  VerifyRows(conn, add_filter ? "WHERE id + 3 <= 5" : "", expected, limit);
 }
 
 void PgVectorIndexTest::VerifyRead(PGConn& conn, size_t limit, AddFilter add_filter) {
-  std::vector<std::string> expected;
-  for (size_t i = 1; i <= limit; ++i) {
-    expected.push_back(ExpectedRow(i));
-  }
-  VerifyRows(conn, add_filter, expected);
+  VerifyRows(conn, add_filter, ExpectedRows(limit));
 }
 
 void PgVectorIndexTest::TestManyRows(AddFilter add_filter, Backfill backfill) {
@@ -780,25 +829,16 @@ TEST_P(PgVectorIndexTest, EfSearch) {
   num_tablets_ = 1;
   auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
   ASSERT_NO_FATALS(VerifyRead(conn, 1, AddFilter::kFalse));
+  ASSERT_OK(WaitNoBackgroundInserts());
 
-  std::unordered_map<int, std::vector<MonoDelta>> times;
   for (int i = 0; i != kIterations; ++i) {
     for (int ef : {kSmallEf, kBigEf}) {
       ASSERT_OK(conn.ExecuteFormat("SET ybhnsw.ef_search = $0", ef));
-      auto start = MonoTime::Now();
-      ASSERT_NO_FATALS(VerifyRead(conn, 1, AddFilter::kFalse));
-      auto passed = MonoTime::Now() - start;
-      times[ef].push_back(passed);
+      ANNOTATE_UNPROTECTED_WRITE(docdb::TEST_vector_index_max_checked_entries) = ef * 100;
+      auto valid = RowsMatch(conn, "", ExpectedRows(1));
+      ASSERT_TRUE(valid || ef == kSmallEf);
     }
   }
-  std::ranges::sort(times[kSmallEf]);
-  std::ranges::sort(times[kBigEf]);
-
-  auto small_median = times[kSmallEf][kIterations / 2];
-  auto big_median = times[kBigEf][kIterations / 2];
-  LOG(INFO) << "ef=" << kSmallEf << ": " << small_median.ToPrettyString()
-            << ", ef=" << kBigEf << ": " << big_median.ToPrettyString();
-  ASSERT_LT(small_median, big_median);
 }
 
 TEST_P(PgVectorIndexTest, Paging) {

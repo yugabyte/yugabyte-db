@@ -86,6 +86,8 @@ class DocVectorIndex {
   virtual Result<bool> HasVectorId(const vector_index::VectorId& vector_id) const = 0;
   virtual Status Destroy() = 0;
 
+  virtual bool TEST_HasBackgroundInserts() const = 0;
+
   bool BackfillDone();
 
   static void ApplyReverseEntry(
