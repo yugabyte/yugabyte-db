@@ -157,20 +157,10 @@ var createBackupCmd = &cobra.Command{
 
 		}
 
-		backup.KMSConfigs = make([]util.KMSConfig, 0)
-		kmsConfigs, response, err := authAPI.ListKMSConfigs().Execute()
+		backup.KMSConfigs, err = authAPI.GetListOfKMSConfigs(
+			"Backup", "Create - Get KMS Configurations")
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err,
-				"Backup", "Create - Get KMS Configurations")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
-		}
-
-		for _, k := range kmsConfigs {
-			kmsConfig, err := util.ConvertToKMSConfig(k)
-			if err != nil {
-				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-			}
-			backup.KMSConfigs = append(backup.KMSConfigs, kmsConfig)
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
 		tableTypeFlag, err := cmd.Flags().GetString("table-type")
