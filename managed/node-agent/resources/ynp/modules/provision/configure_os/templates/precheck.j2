@@ -82,10 +82,11 @@ if [[ "$is_cloud" == "False" ]]; then
 fi
 
 # Verify kernel core pattern
+DUMP_DIR="{{ yb_home_dir }}/cores"
 kernel_core_pattern_value=$(sysctl -n kernel.core_pattern)
 kernel_core_pattern={{ kernel_core_pattern }}
 if [[ "$is_cloud" == "True" ]]; then
-    kernel_core_pattern="|/usr/local/bin/compress_core.sh /home/yugabyte/cores/core_yb.%t.%e.%p"
+    kernel_core_pattern="|/usr/local/bin/compress_core.sh $DUMP_DIR/core_yb.%t.%e.%p"
 fi
 if [ "$kernel_core_pattern_value" == "$kernel_core_pattern" ]; then
     echo "[PASS] kernel.core_pattern is set to $kernel_core_pattern_value"
