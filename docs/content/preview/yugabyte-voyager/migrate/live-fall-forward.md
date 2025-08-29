@@ -400,7 +400,7 @@ You can use only one of the following arguments in the `source` parameter (confi
     CREATE USER ybvoyager PASSWORD 'password';
     ```
 
-1. Grant permissions for migration. Use the `yb-voyager-pg-grant-migration-permissions.sql` script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows:
+1. Grant permissions for migration. Use the [yb-voyager-pg-grant-migration-permissions.sql](../../reference/yb-voyager-pg-grant-migration-permissions/) script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows:
 
     _Warning_: This script transfers ownership of all tables in the specified schemas to the specified replication group. The migration user and the original owner of the tables will be added to the replication group.
 
@@ -438,7 +438,7 @@ You can use only one of the following arguments in the `source` parameter (confi
     CREATE USER ybvoyager PASSWORD 'password';
     ```
 
-1. Grant permissions for migration. Use the `yb-voyager-pg-grant-migration-permissions.sql` script (which can be found at `/opt/yb-voyager/guardrails-scripts`. For brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows:
+1. Grant permissions for migration. Use the [yb-voyager-pg-grant-migration-permissions.sql](../../reference/yb-voyager-pg-grant-migration-permissions/) script (which can be found at `/opt/yb-voyager/guardrails-scripts`. For brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows:
 
     _Warning_: This script transfers ownership of all tables in the specified schemas to the specified replication group. The migration user and the original owner of the tables will be added to the replication group.
 
@@ -520,6 +520,8 @@ Create a user with [`SUPERUSER`](../../../api/ysql/the-sql-language/statements/d
      GRANT CREATE on DATABASE <target_database_name> to ybvoyager;
 
 If you want yb-voyager to connect to the target YugabyteDB database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
+
+Alternatively, if you want to proceed with migration without a superuser, refer to [Import data without a superuser](../../reference/superuser/).
 
 ## Create an export directory
 

@@ -118,6 +118,8 @@ Create a user with [`SUPERUSER`](../../../api/ysql/the-sql-language/statements/d
 
 If you want yb-voyager to connect to the target YugabyteDB database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
 
+Alternatively, if you want to proceed with migration without a superuser, refer to [Import data without a superuser](../../reference/superuser/).
+
 ## Create an export directory
 
 yb-voyager keeps all of its migration state, including exported schema and data, in a local directory called the _export directory_.
