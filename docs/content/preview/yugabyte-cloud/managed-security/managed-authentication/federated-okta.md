@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Using federated authentication, you can use an enterprise IdP to manage access to your YugabyteDB Aeon account. After federated authentication is enabled, only Admin users can sign in using email-based login.
+Using federated authentication, you can use an enterprise IdP to manage access to your YugabyteDB Aeon account. After federated authentication is enabled, only Admin users can sign in using password authentication.
 
 Currently, YugabyteDB Aeon supports IdPs exclusively using the OIDC (OpenID Connect) protocol.
 
