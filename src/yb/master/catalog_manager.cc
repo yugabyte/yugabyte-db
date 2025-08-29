@@ -62,6 +62,8 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
+#include <ranges>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -100,8 +102,11 @@
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
 
+#include "yb/docdb/doc_ql_scanspec.h"
+
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/partition.h"
+#include "yb/dockv/reader_projection.h"
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/casts.h"
@@ -132,6 +137,7 @@
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_dcl.pb.h"
 #include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_defaults.h"
 #include "yb/master/master_encryption.pb.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_fwd.h"
@@ -144,6 +150,7 @@
 #include "yb/master/post_tablet_create_task_base.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
+#include "yb/master/sys_catalog_writer.h"
 #include "yb/master/system_tablet.h"
 #include "yb/master/tablet_creation_limits.h"
 #include "yb/master/tablet_split_manager.h"

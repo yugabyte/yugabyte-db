@@ -36,6 +36,7 @@
 #include "yb/util/test_util.h"
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
 #include "yb/yql/redis/redisserver/redis_parser.h"
+#include "yb/integration-tests/mini_cluster.h"
 
 using namespace std::chrono_literals;
 
@@ -114,6 +115,8 @@ Status RestoreBackup(
 // Explicit instantiation.
 template Status YBBackupTestBase::RunBackupCommand(
     const vector<string>& args, ExternalMiniCluster* cluster);
+template Status YBBackupTestBase::RunBackupCommand(
+    const vector<string>& args, MiniCluster* cluster);
 
 void YBBackupTest::SetUp() {
   pgwrapper::PgCommandTestBase::SetUp();
