@@ -55,8 +55,6 @@ The universe **Backups** page allows you to create new backups that start immedi
 
 If the universe has [encryption at rest enabled](../../security/enable-encryption-at-rest), data files are backed up as-is (encrypted) to reduce the computation cost of a backup and to keep the files encrypted. A universe key metadata file containing key references is also backed up.
 
-For YSQL, you can allow YugabyteDB Anywhere to back up your data with the user authentication enabled by following the instructions in [Edit configuration flags](../../manage-deployments/edit-config-flags) to add the `ysql_enable_auth=true` and `ysql_hba_conf_csv="local all all trust"` YB-TServer flags.
-
 ### View backup details
 
 To view detailed backup information, click on the backup (row) in the **Backups** list to open **Backup Details**.
