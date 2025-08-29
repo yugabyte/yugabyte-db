@@ -17,7 +17,7 @@ The script is located in `/opt/yb-voyager/guardrails-scripts/` or, for brew, che
 
 ## How to use
 
-Run the script with the `psql` command line tool, passing the required parameters in the following format:
+Run the script using [psql](https://www.postgresql.org/docs/current/app-psql.html), passing the required parameters in the following format:
 
 ```sql
 psql -h <host> -d <database> -U <username> \
