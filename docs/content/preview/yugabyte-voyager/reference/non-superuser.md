@@ -50,9 +50,11 @@ To grant the necessary permissions on the target YugabyteDB universe, do the fol
     GRANT SET ON PARAMETER session_replication_role TO <username>;
     ```
 
-    Granting the permission eliminates the need to manually disable or drop foreign keys and triggers. Note that you still need to grant the following permissions in addition to granting the `SET ON PARAMETER sessions_replication_role`. You may still encounter errors during schema import when creating extensions (for example, hstore), which require a superuser because their install scripts perform superuser-only actions (such as ALTER TYPE).
+    Granting this permission eliminates the need to manually disable or drop foreign keys and triggers. You may still encounter errors during schema import when creating extensions (for example, hstore), which require a superuser because their install scripts perform superuser-only actions (such as ALTER TYPE).
 
-- In addition, grant the following permissions:
+    Note that you still need to grant the following permissions in addition to granting the `SET ON PARAMETER sessions_replication_role`.
+
+- For all versions, grant the following permissions:
 
     ```sql
     -- Grant CREATE ON DATABASE
@@ -67,7 +69,7 @@ To grant the necessary permissions on the target YugabyteDB universe, do the fol
 
 ### Guardrail errors
 
-If you face guardrail errors (permission-related) during import, enter "yes" to allow schema/data import to proceed despite the errors. These will be mostly related to `session_replication_role`. As foreign keys and triggers will be handled manually, you can safely ignore these errors.
+If you face guardrail errors (permission-related) during import, enter "yes" to allow schema/data import to proceed despite the errors.
 
 These will be mostly related to `session_replication_role` when running versions earlier than v2025.1 (that is, `SET ON PARAMETER sessions_replication_role` has not been granted). In these cases, as foreign keys and triggers will be [handled manually](#import-data-errors), you can safely ignore these errors.
 
@@ -78,6 +80,7 @@ In complex cases, schema import may fail because some objects can only be create
 In such cases, do the following:
 
 1. Run the import schema command with the `--continue-on-error` flag.
+
     All failed SQL statements will be collected in `<export-dir>/schema/failed.sql`.
 
 1. Review and execute these failed statements manually on the target YugabyteDB using a superuser (or pre-create the required extensions as admin before running import schema).
@@ -87,9 +90,10 @@ In such cases, do the following:
 During data import, foreign keys and triggers can cause failures or significantly slow performance because they enforce referential integrity and execute additional logic when rows are being inserted.
 
 To mitigate the failures, temporarily disable these triggers before running the import, and restore them afterwards.
+
 (This is not necessary if you are using v2025.1 and later and granted `SET ON PARAMETER sessions_replication_role`.)
 
-If you're using an older version (pre-PostgreSQL 15 and YugabyteDB v2025.1), do the following instead:
+If you're using an older version (pre-PostgreSQL 15 and YugabyteDB v2025.1), do the following:
 
 1. Disable triggers as follows:
 
