@@ -178,6 +178,8 @@ It is recommended to plan for about 20% headroom on each node to allow space for
 
 {{<tags/feature/ea idea="2298">}} Ephemeral or local disks are physically attached storage that exists only for the life of the virtual machine (VM). They deliver extremely fast I/O but data is not persistent. If a VM stops, hard reboots, or terminates, its local disk data is lost. Only the boot disk (with the OS) is persistent, but the database data directory on the ephemeral disk will be wiped.  On the major public clouds, such disks are variously called "Instance Stores" (on AWS), "Local SSDs" (on GCP), and "Temporary Disks" (on Azure).
 
+Ephemeral disk support is limited to [manual YugabyteDB deployments](../manual-deployment/) and [YugabyteDB Anywhere with an on-premises provider](../../yugabyte-platform/configure-yugabyte-platform/on-premises/). It is not supported for public cloud providers (AWS, GCP, or Azure) in YugabyteDB Anywhere. Refer to [Additional tips](#additional-tips).
+
 Ephemeral storage is an excellent choice for YugabyteDB if your primary goal is to optimize for low-latency read-heavy workloads. Our internal benchmarks show that using local SSDs instead of remote, network-attached cloud disks can reduce latency for read-heavy operations by up to 30%. This performance gain can be significant for applications where every millisecond of latency is critical.
 
 However, if performance is not your primary concern, network-attached storage offers more reliability and is easier to manage.
