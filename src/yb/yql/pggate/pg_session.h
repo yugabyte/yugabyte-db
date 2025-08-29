@@ -85,7 +85,8 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   //------------------------------------------------------------------------------------------------
 
   // API for database operations.
-  Status DropDatabase(const std::string& database_name, PgOid database_oid);
+  Status DropDatabase(
+      const std::string& database_name, PgOid database_oid, CoarseTimePoint deadline);
 
   Status GetCatalogMasterVersion(uint64_t *version);
 
@@ -137,11 +138,11 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   Status DropSchema(const std::string& schema_name, bool if_exist);
 
   // API for table operations.
-  Status DropTable(const PgObjectId& table_id, bool use_regular_transaction_block);
+  Status DropTable(
+      const PgObjectId& table_id, bool use_regular_transaction_block, CoarseTimePoint deadline);
   Status DropIndex(
-      const PgObjectId& index_id,
-      bool use_regular_transaction_block,
-      client::YBTableName* indexed_table_name = nullptr);
+      const PgObjectId& index_id, bool use_regular_transaction_block,
+      client::YBTableName* indexed_table_name, CoarseTimePoint deadline);
   Result<PgTableDescPtr> LoadTable(const PgObjectId& table_id);
   void InvalidateTableCache(
       const PgObjectId& table_id, InvalidateOnPgClient invalidate_on_pg_client);

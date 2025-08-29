@@ -96,7 +96,7 @@ PgDropDatabase::PgDropDatabase(
 }
 
 Status PgDropDatabase::Exec() {
-  return pg_session_->DropDatabase(database_name_, database_oid_);
+  return pg_session_->DropDatabase(database_name_, database_oid_, DdlDeadline());
 }
 
 PgAlterDatabase::PgAlterDatabase(
@@ -351,7 +351,7 @@ PgDropTable::PgDropTable(
 }
 
 Status PgDropTable::Exec() {
-  Status s = pg_session_->DropTable(table_id_, use_regular_transaction_block_);
+  Status s = pg_session_->DropTable(table_id_, use_regular_transaction_block_, DdlDeadline());
   pg_session_->InvalidateTableCache(table_id_, InvalidateOnPgClient::kFalse);
   if (s.ok() || (s.IsNotFound() && if_exist_)) {
     return Status::OK();
@@ -387,7 +387,8 @@ PgDropIndex::PgDropIndex(
 
 Status PgDropIndex::Exec() {
   client::YBTableName indexed_table_name;
-  auto s = pg_session_->DropIndex(index_id_, use_regular_transaction_block_, &indexed_table_name);
+  auto s = pg_session_->DropIndex(
+      index_id_, use_regular_transaction_block_, &indexed_table_name, DdlDeadline());
   if (s.ok() || (s.IsNotFound() && if_exist_)) {
     RSTATUS_DCHECK(!indexed_table_name.empty(), Uninitialized, "indexed_table_name uninitialized");
     PgObjectId indexed_table_id(indexed_table_name.table_id());
