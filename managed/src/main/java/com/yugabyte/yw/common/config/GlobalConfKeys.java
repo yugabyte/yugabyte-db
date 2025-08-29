@@ -1819,4 +1819,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "List of operations that use capacity reservation in azure",
           ConfDataType.StringListType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> ybcSuccessMarkerDownloadTimeoutSecs =
+      new ConfKeyInfo<>(
+          "ybc.success_marker_download_timeout_secs",
+          ScopeType.GLOBAL,
+          "Timeout for backup success marker download",
+          "Timeout for backup success marker download from backup lcoation",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
