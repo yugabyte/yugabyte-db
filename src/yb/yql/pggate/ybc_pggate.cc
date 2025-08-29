@@ -168,6 +168,12 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_neghit_full_inheritscache, true,
     "When set to true, a (fully) preloaded inherits cache returns negative cache hits"
     " right away without incurring a master lookup");
 
+DEFINE_NON_RUNTIME_bool(ysql_enable_scram_channel_binding, false,
+    "Offer the option of SCRAM-SHA-256-PLUS (i.e. SCRAM with channel binding) as an SASL method if "
+    "the server supports it in the SASL-Authentication message. This flag is disabled by default "
+    "as connection manager does not support SCRAM with channel binding and enabling it would "
+    "cause different behaviour vis-a-vis direct connections to postgres.");
+
 DECLARE_bool(TEST_ash_debug_aux);
 DECLARE_bool(TEST_generate_ybrowid_sequentially);
 
@@ -2234,6 +2240,7 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_enable_pg_export_snapshot = &FLAGS_ysql_enable_pg_export_snapshot,
       .ysql_enable_neghit_full_inheritscache =
         &FLAGS_ysql_enable_neghit_full_inheritscache,
+      .ysql_enable_scram_channel_binding = &FLAGS_ysql_enable_scram_channel_binding,
   };
   // clang-format on
   return &accessor;
