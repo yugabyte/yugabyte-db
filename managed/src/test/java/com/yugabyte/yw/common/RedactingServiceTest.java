@@ -156,6 +156,21 @@ public class RedactingServiceTest {
     assertFalse(redacted6.contains("quotedpass123"));
     assertFalse(redacted6.contains("quotedpass456"));
     assertTrue(redacted6.contains("REDACTED"));
+
+    // Pattern 7: CLI flag format (--pattern, value) and ('--pattern', 'value')
+    String cliFlagFormat = "--ycql_ldap_bind_passwd, secret456 --some_other_flag, 123";
+    String cliFlagFormat_1 = "'--ycql_ldap_bind_passwd', 'secret456', '--some_other_flag', '123'";
+    String redacted7 = RedactingService.redactSensitiveInfoInString(cliFlagFormat);
+    String redacted7_1 = RedactingService.redactSensitiveInfoInString(cliFlagFormat_1);
+    assertFalse(redacted7.contains("secret456"));
+    assertFalse(redacted7_1.contains("secret456"));
+    assertTrue(redacted7.contains("REDACTED"));
+    assertTrue(redacted7_1.contains("REDACTED"));
+    // Verify the flag names and commas are preserved
+    assertTrue(redacted7.contains("--ycql_ldap_bind_passwd, REDACTED"));
+    assertTrue(redacted7.contains("--some_other_flag, 123"));
+    assertTrue(redacted7_1.contains("'--ycql_ldap_bind_passwd', REDACTED"));
+    assertTrue(redacted7_1.contains("'--some_other_flag', '123'"));
   }
 
   @Test

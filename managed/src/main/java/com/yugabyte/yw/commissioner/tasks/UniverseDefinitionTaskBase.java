@@ -2609,6 +2609,18 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                   .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
             });
 
+    String softwareVersion = taskParams().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    // Validate GFlags through RPC
+    boolean skipRuntimeGflagValidation =
+        confGetter.getGlobalConf(GlobalConfKeys.skipRuntimeGflagValidation);
+    if (!skipRuntimeGflagValidation) {
+      if (Util.compareYBVersions(
+              softwareVersion, "2024.2.0.0-b1", "2.27.0.0-b1", true /* suppressFormatError */)
+          >= 0) {
+        createValidateGFlagsTask(null /* newClusters */, true /* useCLIBinary */, softwareVersion);
+      }
+    }
+
     // GFlags Task for masters.
     // State remains as SoftwareInstalled, so it is fine to call this one by one for master,
     // TServer.

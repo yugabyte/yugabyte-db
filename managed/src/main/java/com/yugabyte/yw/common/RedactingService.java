@@ -314,6 +314,12 @@ public class RedactingService {
     String quotedValuePattern = "\\b(" + pattern + "\\s*=\\s*\")([^\"]+)(\")";
     output = output.replaceAll(quotedValuePattern, "$1" + SECRET_REPLACEMENT + "$3");
 
+    // Pattern 7: Handle CLI flag format (--pattern, value) and Python list format ('--pattern',
+    // 'value')
+    String cliFlagPattern =
+        "((?:,\\s*)?['\"]?--" + pattern + "['\"]?(?:,\\s*|\\s+))['\"]?([^\\s,\\n'\"\\]\\}]+)['\"]?";
+    output = output.replaceAll(cliFlagPattern, "$1" + SECRET_REPLACEMENT);
+
     return output;
   }
 
