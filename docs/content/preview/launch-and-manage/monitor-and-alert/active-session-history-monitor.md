@@ -4,8 +4,10 @@ headerTitle: Monitor with Active Session History
 linkTitle: Active Session History
 description: Use Active Session History to monitor and troubleshoot performance issues in YugabyteDB.
 headContent: Use Active Session History to monitor and troubleshoot performance issues in YugabyteDB
+tags:
+  feature: early-access
 menu:
-  stable:
+  preview:
     parent: monitor-and-alert
     identifier: ash-monitor
     weight: 120
@@ -40,7 +42,7 @@ This view provides a list of wait events and their metadata. The columns of the 
 | wait_event_component | text | Component of the wait event, which can be YSQL, YCQL, or TServer. |
 | wait_event_class | text | Class of the wait event, such as TabletWait, RocksDB, and so on.  |
 | wait_event | text | Name of the wait event. |
-| wait_event_type | text | Type of the wait event such as CPU, WaitOnCondition, RPCWait, Disk IO, and so on. |
+| wait_event_type | text | Type of the wait event such as CPU, WaitOnCondition, Network, Disk IO, and so on. |
 | wait_event_aux | text | Additional information for the wait event. For example, tablet ID for TServer wait events. |
 | top_level_node_id | UUID | 16-byte TServer UUID of the YSQL/YCQL node where the query is being executed. |
 | query_id | bigint | Query ID as seen on the `/statements` endpoint. This can be used to join with [pg_stat_statements](../../query-1-performance/pg-stat-statements/)/[ycql_stat_statements](../../query-1-performance/ycql-stat-statements/). See [Constant query identifiers](#constant-query-identifiers). |
@@ -56,7 +58,7 @@ This view displays the class, type, name, and description of each wait event. Th
 | Column | Type | Description |
 | :----- | :--- | :---------- |
 | wait_event_class | text | Class of the wait event, such as TabletWait, RocksDB, and so on. |
-| wait_event_type | text | Type of the wait event such as CPU, WaitOnCondition, RPCWait, Disk IO, and so on. |
+| wait_event_type | text | Type of the wait event such as CPU, WaitOnCondition, Network, Disk IO, and so on. |
 | wait_event | text | Name of the wait event. |
 | wait_event_description | text | Description of the wait event. |
 
@@ -97,14 +99,14 @@ These are the wait events introduced by YugabyteDB. Some of the following [wait 
 
 | Wait Event | Type | Aux | Description |
 | :--------- | :--- |:--- | :---------- |
-| TableRead | RPCWait |  | A YSQL backend is waiting for a table read from DocDB. |
-| CatalogRead | RPCWait |   | A YSQL backend is waiting for a catalog read from master. |
-| IndexRead | RPCWait |   | A YSQL backend is waiting for a secondary index read from DocDB.  |
-| StorageFlush  | RPCWait |  | A YSQL backend is waiting for a table/index read/write from DocDB. |
-| TableWrite  | RPCWait |  | A YSQL backend is waiting for a table write from DocDB. |
-| CatalogWrite  | RPCWait |  | A YSQL backend is waiting for a catalog write from master. |
-| IndexWrite | RPCWait |   | A YSQL backend is waiting for a secondary index write from DocDB.  |
-| WaitingOnTServer | RPCWait | RPC&nbsp;name | A YSQL backend is waiting for on TServer for an RPC. The RPC name is present on the wait event aux column.|
+| TableRead | Network  |  | A YSQL backend is waiting for a table read from DocDB. |
+| CatalogRead | Network  |   | A YSQL backend is waiting for a catalog read from master. |
+| IndexRead | Network |   | A YSQL backend is waiting for a secondary index read from DocDB.  |
+| StorageFlush  | Network |  | A YSQL backend is waiting for a table/index read/write from DocDB. |
+| TableWrite  | Network |  | A YSQL backend is waiting for a table write from DocDB. |
+| CatalogWrite  | Network |  | A YSQL backend is waiting for a catalog write from master. |
+| IndexWrite | Network |   | A YSQL backend is waiting for a secondary index write from DocDB.  |
+| WaitingOnTServer | Network| RPC&nbsp;name | A YSQL backend is waiting for on TServer for an RPC. The RPC name is present on the wait event aux column.|
 
 #### YSQLQuery class
 
@@ -143,11 +145,11 @@ These are the wait events introduced by YugabyteDB. Some of the following [wait 
 | BackfillIndex_WaitForAFreeSlot | WaitOnCondition | A backfill index RPC is waiting for a slot to open if there are too many backfill requests at the same time. |
 | CreatingNewTablet | DiskIO | The CreateTablet RPC is creating a new tablet, this may involve writing metadata files, causing I/O wait. |
 | SaveRaftGroupMetadataToDisk | DiskIO | The Raft/tablet metadata is being written to disk, generally during snapshot or restore operations. |
-| TransactionStatusCache_DoGetCommitData | RPCWait | An RPC needs to look up the commit status of a particular transaction. |
+| TransactionStatusCache_DoGetCommitData | Network | An RPC needs to look up the commit status of a particular transaction. |
 | WaitForYSQLBackendsCatalogVersion | WaitOnCondition | CREATE INDEX is waiting for YSQL backends to have up-to-date pg_catalog. |
 | WriteSysCatalogSnapshotToDisk | DiskIO | Writing initial system catalog snapshot during initdb.|
 | DumpRunningRpc_WaitOnReactor | WaitOnCondition | DumpRunningRpcs is waiting on reactor threads. |
-| ConflictResolution_ResolveConficts | RPCWait | A read/write RPC is waiting to identify conflicting transactions. |
+| ConflictResolution_ResolveConficts | Network | A read/write RPC is waiting to identify conflicting transactions. |
 | ConflictResolution_WaitOnConflictingTxns | WaitOnCondition | A read/write RPC is waiting for conflicting transactions to complete. |
 | WaitForReadTime | WaitOnCondition | A read/write RPC is waiting for the current time to catch up to [read time](../../../architecture/transactions/single-row-transactions/#safe-timestamp-assignment-for-a-read-request). |
 
@@ -157,7 +159,7 @@ These are the wait events introduced by YugabyteDB. Some of the following [wait 
 | :--------- | :--- |:--- | :---------- |
 | WAL_Append | DiskIO | Tablet&nbsp;ID | A write RPC is persisting WAL edits. |
 | WAL_Sync | DiskIO | Tablet ID | A write RPC is synchronizing WAL edits. |
-| Raft_WaitingForReplication | RPCWait | Tablet ID | A write RPC is waiting for Raft replication. |
+| Raft_WaitingForReplication | Network | Tablet ID | A write RPC is waiting for Raft replication. |
 | Raft_ApplyingEdits | WaitOnCondition/CPU | Tablet ID | A write RPC is applying Raft edits locally. |
 | ConsensusMeta_Flush | DiskIO | | ConsensusMetadata is flushed, for example, during Raft term, configuration change, remote bootstrap, and so on. |
 | ReplicaState_TakeUpdateLock | WaitOnCondition | | A write/alter RPC needs to wait for the ReplicaState lock to replicate a batch of writes through Raft. |
@@ -193,8 +195,8 @@ These are the wait events introduced by YugabyteDB. Some of the following [wait 
 
 | Wait Event | Type | Description |
 | :--------- | :--- | :---------- |
-| YBClient_WaitingOnDocDB | RPCWait | YB Client is waiting on DocDB to return a response. |
-| YBClient_LookingUpTablet | RPCWait | YB Client is looking up tablet information from the master. |
+| YBClient_WaitingOnDocDB | Network | YB Client is waiting on DocDB to return a response. |
+| YBClient_LookingUpTablet | Network | YB Client is looking up tablet information from the master. |
 
 ## Learn more
 
