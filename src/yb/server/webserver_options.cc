@@ -93,11 +93,13 @@ DEFINE_NON_RUNTIME_string(webserver_ssl_ciphers, "",
     "The set of allowed cipher suites that clients may connect with when using a secure connection."
     "Must be listed in the OpenSSL format."
     "When not provided, falls back to the value of FLAGS_cipher_list.");
+// webserver_ssl_min_version only accepts one value but is kept here in case squeasel supports more
+// options in the future.
 DEFINE_NON_RUNTIME_string(webserver_ssl_min_version, "tlsv1.2",
     "The minimum protocol version that the webserver will allow clients to use when using a secure "
     "connection i.e. when SSL support is enabled. "
-    "Accepted values are 'tlsv1', 'tlsv1.1' and 'tlsv1.2'.");
-DEFINE_validator(webserver_ssl_min_version, FLAG_IN_SET_VALIDATOR("tlsv1", "tlsv1.1", "tlsv1.2"));
+    "The only accepted value is 'tlsv1.2'.");
+DEFINE_validator(webserver_ssl_min_version, FLAG_IN_SET_VALIDATOR("tlsv1.2"));
 
 DEFINE_UNKNOWN_int32(webserver_num_worker_threads, 50,
              "Maximum number of threads to start for handling web server requests");
