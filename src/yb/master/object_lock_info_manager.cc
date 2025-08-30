@@ -1499,9 +1499,9 @@ void UpdateTServer<Req, Resp>::HandleResponse(int attempt) {
   if (resp_.has_error()) {
     status = StatusFromPB(resp_.error().status());
     // Upon ysql lease changes, the object lock manager fails outstanding lock requests with
-    // TryAgain. Can retry the request to prevent exclusive lock requests from failing
+    // ShutdownInProgress. Can retry the request to prevent exclusive lock requests from failing
     // due to ysql lease membership changes w.r.t master leader's view.
-    if (!status.IsTryAgain()) {
+    if (!status.IsShutdownInProgress()) {
       TransitionToFailedState(server::MonitoredTaskState::kRunning, status);
     }
   } else {
