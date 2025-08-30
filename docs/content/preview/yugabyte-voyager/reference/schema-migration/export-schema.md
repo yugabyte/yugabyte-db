@@ -46,11 +46,11 @@ export-schema:
 ```
 
 | Path to the generated assessment report file (JSON format) to be used for applying recommendation to exported schema. |
-| --skip-recommendations |
+| --skip-colocation-recommendations |
 
 ```yaml{.nocopy}
 export-schema:
-  skip-recommendations:
+  skip-colocation-recommendations:
 ```
 
 | Disable applying recommendations in the exported schema suggested by the migration assessment report. <br> Default: false <br> Accepted parameters: true, false, yes, no, 0, 1 |
@@ -80,11 +80,11 @@ export-schema:
 
 | Use the Orafce extension. Oracle migrations only. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
 
-| --skip-performance-optimizations |
+| --skip-performance-recommendations |
 
 ```yaml{.nocopy}
 export-schema:
-  skip-performance-optimizations:
+  skip-performance-recommendations:
 ```
 
 | Disable automatic [performance optimizations](../../../known-issues/postgresql/#performance-optimizations) in the exported schema. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |

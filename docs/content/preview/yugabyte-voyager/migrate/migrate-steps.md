@@ -191,7 +191,7 @@ target:
   db-password: <target-db-password> # Enclose the password in single quotes if it contains special characters.
 ```
 
-Refer to the [offline-migration.yaml](<https://github.com/yugabyte/yb-voyager/blob/{{>< yb-voyager-release >}}/yb-voyager/config-templates/offline-migration.yaml) template for more information on the available global, source, and target configuration parameters supported by Voyager.
+Refer to the [offline-migration.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/offline-migration.yaml) template for more information on the available global, source, and target configuration parameters supported by Voyager.
 
 ## Configure yugabyted UI
 
