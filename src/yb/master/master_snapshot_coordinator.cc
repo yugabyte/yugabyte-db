@@ -328,31 +328,14 @@ class MasterSnapshotCoordinator::Impl {
     });
   }
 
-  Status LoadSnapshotEntry(tablet::Tablet* tablet) REQUIRES(mutex_) {
-    return EnumerateSysCatalog(tablet, context_.schema(), SysRowEntryType::SNAPSHOT,
-        [this](const Slice& id, const Slice& data) REQUIRES(mutex_) -> Status {
-          RETURN_NOT_OK(LoadEntry<SysSnapshotEntryPB>(id, data, &snapshots_));
-          auto snapshot_id = TryFullyDecodeTxnSnapshotId(id);
-          UpdateCoveringMap(snapshot_id);
-          return Status::OK();
-        });
-  }
-
   Status Load(tablet::Tablet* tablet) {
     std::lock_guard lock(mutex_);
-    RETURN_NOT_OK(LoadSnapshotEntry(tablet));
+    RETURN_NOT_OK(LoadEntryOfType<SysSnapshotEntryPB>(
+        tablet, SysRowEntryType::SNAPSHOT, &snapshots_));
     RETURN_NOT_OK(LoadEntryOfType<SnapshotScheduleOptionsPB>(
         tablet, SysRowEntryType::SNAPSHOT_SCHEDULE, &schedules_));
     return LoadEntryOfType<SysRestorationEntryPB>(
         tablet, SysRowEntryType::SNAPSHOT_RESTORATION, &restorations_);
-  }
-
-  Status DoApplySnapshotWrite(const std::string& id_str, const Slice& value) {
-    RETURN_NOT_OK(DoApplyWrite<SysSnapshotEntryPB>(id_str, value, &snapshots_));
-    auto snapshot_id = TryFullyDecodeTxnSnapshotId(id_str);
-    std::lock_guard<std::mutex> l(mutex_);
-    UpdateCoveringMap(snapshot_id);
-    return Status::OK();
   }
 
   Status ApplyWritePair(Slice key, const Slice& value) {
@@ -379,8 +362,8 @@ class MasterSnapshotCoordinator::Impl {
 
     switch (first_key.GetInt32()) {
       case SysRowEntryType::SNAPSHOT:
-        return DoApplySnapshotWrite(
-            sub_doc_key.doc_key().range_group()[1].GetString(), value);
+        return DoApplyWrite<SysSnapshotEntryPB>(
+            sub_doc_key.doc_key().range_group()[1].GetString(), value, &snapshots_);
 
       case SysRowEntryType::SNAPSHOT_SCHEDULE:
         return DoApplyWrite<SnapshotScheduleOptionsPB>(
@@ -1256,7 +1239,7 @@ class MasterSnapshotCoordinator::Impl {
 
     auto it = map->find(id);
     if (it == map->end()) {
-      map->emplace(std::move(new_entry));
+      it = map->emplace(std::move(new_entry)).first;
     } else if ((**it).ShouldUpdate(*new_entry)) {
       map->replace(it, std::move(new_entry));
     } else {
@@ -1264,7 +1247,15 @@ class MasterSnapshotCoordinator::Impl {
                         << ", loaded: " << new_entry->ToString();
     }
 
+    PostLoadEntry(**it);
     return Status::OK();
+  }
+
+  void PostLoadEntry(const RestorationState&) {}
+  void PostLoadEntry(const SnapshotScheduleState&) {}
+
+  void PostLoadEntry(const SnapshotState& snapshot) REQUIRES(mutex_) {
+    UpdateCoveringMap(snapshot);
   }
 
   Result<SnapshotState&> FindSnapshot(const TxnSnapshotId& snapshot_id) REQUIRES(mutex_) {
@@ -1763,9 +1754,13 @@ class MasterSnapshotCoordinator::Impl {
 
   void RemoveCoveringSnapshot(const SnapshotState& state) REQUIRES(mutex_) {
     for (const auto& tablet_id : state.tablet_ids()) {
-      tablet_to_covering_snapshots_[tablet_id].erase(state.id());
-      if (tablet_to_covering_snapshots_[tablet_id].empty()) {
-        tablet_to_covering_snapshots_.erase(tablet_id);
+      auto it = tablet_to_covering_snapshots_.find(tablet_id);
+      if (it == tablet_to_covering_snapshots_.end()) {
+        continue;
+      }
+      it->second.erase(state.id());
+      if (it->second.empty()) {
+        tablet_to_covering_snapshots_.erase(it);
       }
     }
   }
@@ -1790,6 +1785,8 @@ class MasterSnapshotCoordinator::Impl {
       }
       return;
     }
+
+    UpdateCoveringMap(*snapshot);
 
     if (snapshot->schedule_id()) {
       UpdateSchedule(*snapshot);
@@ -2092,21 +2089,14 @@ class MasterSnapshotCoordinator::Impl {
     return num_tservers * per_tserver_limit;
   }
 
-  void UpdateCoveringMap(const TxnSnapshotId& snapshot_id) REQUIRES(mutex_) {
-    Result<SnapshotState&> snapshot = FindSnapshot(snapshot_id);
-    // If snapshot is not found then this write was for tombstoning
-    // the entry in which case it must have already been removed from the
-    // covering map when its state was persisted as DELETED, so we do nothing here.
-    if (!snapshot.ok()) {
-      return;
+  void UpdateCoveringMap(const SnapshotState& snapshot) REQUIRES(mutex_) {
+    if (snapshot.ShouldRemoveFromCoveringMap()) {
+      RemoveCoveringSnapshot(snapshot);
+    } else if (snapshot.ShouldAddToCoveringMap()) {
+      AddCoveringSnapshot(snapshot);
     }
-    if (snapshot->ShouldRemoveFromCoveringMap()) {
-      RemoveCoveringSnapshot(*snapshot);
-    } else if (snapshot->ShouldAddToCoveringMap()) {
-      AddCoveringSnapshot(*snapshot);
-    }
-    VLOG(2) << "Snapshot to covering tablets dependency map "
-            << AsString(tablet_to_covering_snapshots_);
+    VLOG_WITH_FUNC(2)
+        << "Tablet to covering snapshots: " << AsString(tablet_to_covering_snapshots_);
   }
 
   bool ShouldRetain(
