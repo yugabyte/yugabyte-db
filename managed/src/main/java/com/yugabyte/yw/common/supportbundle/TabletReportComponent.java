@@ -8,6 +8,8 @@ import com.google.inject.Inject;
 import com.google.protobuf.util.JsonFormat;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.NodeUIApiHelper;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.SupportBundleFormData;
@@ -62,7 +64,8 @@ public class TabletReportComponent implements SupportBundleComponent {
     supportBundleUtil.saveMetadata(
         customer,
         path.toString(),
-        Json.parse(universe.getUniverseDetailsJson()),
+        RedactingService.filterSecretFields(
+            Json.parse(universe.getUniverseDetailsJson()), RedactionTarget.LOGS),
         "universe-details.json");
 
     // Save master leader's view of all tablets in the report.

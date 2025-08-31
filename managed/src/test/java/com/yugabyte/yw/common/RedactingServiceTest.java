@@ -159,6 +159,27 @@ public class RedactingServiceTest {
   }
 
   @Test
+  public void testSupportBundleUniverseDetailsJsonRedaction() {
+    // Test the exact format from support bundle logs
+    String universeDetailsJson =
+        "{\"platformVersion\":\"2.27.0.0-PRE_RELEASE\",\"tserverGFlags\":{\"ycql_ldap_bind_passwd\":\"password1\",\"ysql_hba_conf_csv\":\"\\\"ldapbinddn=admint\\\",\\\"ldapbindpasswd=REDACTED\\\",\\\"ldapBindPassword=REDACTED\\\"\"}}";
+
+    // Test as a JSON field value
+    String jsonWithUniverseDetails =
+        "\"universeDetailsJson\":\"" + universeDetailsJson.replace("\"", "\\\"") + "\"";
+    String redacted = RedactingService.redactSensitiveInfoInString(jsonWithUniverseDetails);
+
+    assertFalse(redacted.contains("password1"));
+    assertTrue(redacted.contains("REDACTED"));
+    assertTrue(redacted.contains("ycql_ldap_bind_passwd"));
+
+    // Test the universeDetailsJson directly
+    String redactedDirect = RedactingService.redactSensitiveInfoInString(universeDetailsJson);
+    assertFalse(redactedDirect.contains("password1"));
+    assertTrue(redactedDirect.contains("REDACTED"));
+  }
+
+  @Test
   public void testMixedContentRedaction() {
     // Test mixed content with various LDAP password formats
     String mixedContent =
