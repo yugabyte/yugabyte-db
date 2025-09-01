@@ -40,27 +40,31 @@
 #include "yb/util/sync_point.h"
 #include "yb/util/tsan_util.h"
 
-DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
-DECLARE_bool(enable_pg_cron);
-DECLARE_int32(timestamp_history_retention_interval_sec);
-DECLARE_int32(xcluster_ddl_queue_max_retries_per_ddl);
-DECLARE_uint32(xcluster_consistent_wal_safe_time_frequency_ms);
-DECLARE_uint32(xcluster_max_old_schema_versions);
-DECLARE_string(ysql_cron_database_name);
-DECLARE_bool(ysql_enable_packed_row);
-DECLARE_uint32(ysql_oid_cache_prefetch_size);
-DECLARE_string(ysql_pg_conf_csv);
-DECLARE_int32(ysql_sequence_cache_minval);
-
 DECLARE_bool(TEST_force_get_checkpoint_from_cdc_state);
 DECLARE_bool(TEST_skip_oid_advance_on_restore);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_end);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_start);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_before_incremental_safe_time_bump);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_ddl);
+DECLARE_bool(enable_pg_cron);
+DECLARE_bool(ysql_enable_packed_row);
+
+DECLARE_uint32(xcluster_ddl_tables_retention_secs);
+DECLARE_uint32(xcluster_consistent_wal_safe_time_frequency_ms);
+DECLARE_uint32(xcluster_max_old_schema_versions);
+DECLARE_uint32(ysql_oid_cache_prefetch_size);
+
 DECLARE_int32(TEST_xcluster_producer_modify_sent_apply_safe_time_ms);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
+DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
+DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_int32(xcluster_cleanup_tables_frequency_secs);
+DECLARE_int32(xcluster_ddl_queue_max_retries_per_ddl);
+DECLARE_int32(ysql_sequence_cache_minval);
+
 DECLARE_string(TEST_xcluster_simulated_lag_tablet_filter);
+DECLARE_string(ysql_cron_database_name);
+DECLARE_string(ysql_pg_conf_csv);
 
 using namespace std::chrono_literals;
 
@@ -3245,6 +3249,105 @@ TEST_F(XClusterDDLReplicationTest, DDLsOnTarget) {
       ASSERT_OK(consumer_conn_->Execute(ddl));
     }
   }
+}
+
+TEST_F(XClusterDDLReplicationTest, BasicDdlTableCleanup) {
+  google::SetVLOGLevel("xcluster*", 2);  // Enable VLOGs we are going to wait for.
+  auto wait_for_new_cleanup_to_start = [](bool is_source) -> Status {
+    return RegexWaiterLogSink(Format(
+                                  ".*Attempting to clean up DDL replication tables for namespace "
+                                  ".*; is_source: $0 is_target: $1.*",
+                                  is_source, !is_source))
+        .WaitFor(kTimeout);
+  };
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_cleanup_tables_frequency_secs) = 5 * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_ddl_tables_retention_secs) = 10000;
+
+  ASSERT_OK(SetUpClustersAndReplication());
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE test_table_1 (key int PRIMARY KEY);"));
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE test_table_2 (key int PRIMARY KEY);"));
+  const int kNumOfDdls = 2;
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  // At this point, ddl_queue should have kNumOfDdls rows, one for each of the DDLs above.
+  // replicated_ddls should likewise have kNumOfDdls on the producer and kNumOfDdls + 1 on the
+  // consumer (there is an extra special row created on the consumer).
+
+  ASSERT_OK(consumer_conn_->Execute("SET yb_xcluster_consistency_level = tablet"));
+  auto measure_ddl_queue_size = [&](pgwrapper::PGConn& conn) -> Result<int64_t> {
+    return conn.FetchRow<int64_t>("SELECT count(*) FROM yb_xcluster_ddl_replication.ddl_queue");
+  };
+  auto measure_replicated_ddls_size = [&](pgwrapper::PGConn& conn) -> Result<int64_t> {
+    return conn.FetchRow<int64_t>(
+        "SELECT count(*) FROM yb_xcluster_ddl_replication.replicated_ddls");
+  };
+
+  // Have the cleanup task run on both sides then see if it has incorrectly removed recent records.
+  // We wait for two runs to start to make sure (assuming no overlap) a run started after this point
+  // finishes.
+  ASSERT_OK(wait_for_new_cleanup_to_start(false));
+  ASSERT_OK(wait_for_new_cleanup_to_start(false));
+  ASSERT_OK(wait_for_new_cleanup_to_start(true));
+  ASSERT_OK(wait_for_new_cleanup_to_start(true));
+  EXPECT_EQ(ASSERT_RESULT(measure_ddl_queue_size(*producer_conn_)), kNumOfDdls);
+  EXPECT_EQ(ASSERT_RESULT(measure_ddl_queue_size(*consumer_conn_)), kNumOfDdls);
+  EXPECT_EQ(ASSERT_RESULT(measure_replicated_ddls_size(*producer_conn_)), kNumOfDdls);
+  EXPECT_EQ(ASSERT_RESULT(measure_replicated_ddls_size(*consumer_conn_)), kNumOfDdls + 1);
+
+  // Repeat but with very low "old" definition so it should remove our recent records.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_ddl_tables_retention_secs) = 1;
+  ASSERT_OK(wait_for_new_cleanup_to_start(false));
+  ASSERT_OK(wait_for_new_cleanup_to_start(false));
+  ASSERT_OK(wait_for_new_cleanup_to_start(true));
+  ASSERT_OK(wait_for_new_cleanup_to_start(true));
+  EXPECT_EQ(ASSERT_RESULT(measure_ddl_queue_size(*producer_conn_)), 0);
+  EXPECT_EQ(ASSERT_RESULT(measure_ddl_queue_size(*consumer_conn_)), 0);
+  EXPECT_EQ(ASSERT_RESULT(measure_replicated_ddls_size(*producer_conn_)), 0);
+  EXPECT_EQ(ASSERT_RESULT(measure_replicated_ddls_size(*consumer_conn_)), 1);
+}
+
+TEST_F(XClusterDDLReplicationTest, DdlTableCleaningDuringPause) {
+  google::SetVLOGLevel("xcluster*", 2);  // Enable VLOGs we are going to wait for.
+  auto wait_for_new_cleanup_to_start = [](bool is_source) -> Status {
+    return RegexWaiterLogSink(Format(
+                                  ".*Attempting to clean up DDL replication tables for namespace "
+                                  ".*; is_source: $0 is_target: $1.*",
+                                  is_source, !is_source))
+        .WaitFor(kTimeout);
+  };
+
+  ASSERT_OK(SetUpClustersAndReplication());
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Pause replication.
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, false /* is_enabled */));
+
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE test_table_1 (key int PRIMARY KEY);"));
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE test_table_2 (key int PRIMARY KEY);"));
+
+  // Let the cleaner remove the DDLs we just created from the ddl_queue table.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_cleanup_tables_frequency_secs) = 5 * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_ddl_tables_retention_secs) = 0;
+  ASSERT_OK(wait_for_new_cleanup_to_start(true));
+  ASSERT_OK(wait_for_new_cleanup_to_start(true));
+  // Stop the cleaner from cleaning more.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_ddl_tables_retention_secs) = 10000;
+  ASSERT_OK(wait_for_new_cleanup_to_start(true));
+  ASSERT_OK(wait_for_new_cleanup_to_start(true));
+  ASSERT_OK(wait_for_new_cleanup_to_start(false));
+  ASSERT_OK(wait_for_new_cleanup_to_start(false));
+
+  // Resume replication.
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, true /* is_enabled */));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Verify the DDLs were replicated on the consumer in spite of the cleaning.
+  ASSERT_OK(consumer_conn_->FetchRow<int64_t>("SELECT count(*) FROM test_table_1;"));
+  ASSERT_OK(consumer_conn_->FetchRow<int64_t>("SELECT count(*) FROM test_table_2;"));
 }
 
 }  // namespace yb

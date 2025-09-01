@@ -47,8 +47,8 @@
 #include "yb/ash/wait_state.h"
 
 #include "yb/common/opid.h"
-#include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
+#include "yb/common/schema_pbutil.h"
 
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/log.messages.h"

@@ -11,7 +11,8 @@
 // under the License.
 //
 
-// This file contains the gFlags that are common across yb-master and yb-tserver processes.
+// This file contains gflags used by the yb-master and yb-tserver processes.  In general, they are
+// flags we do not expect to be needed by tools.
 
 #include "yb/server/server_common_flags.h"
 
