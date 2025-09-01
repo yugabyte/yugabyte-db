@@ -106,7 +106,7 @@ DEFINE_test_flag(bool, assert_local_tablet_server_selected, false, "Verify that 
     "to CLOSEST_REPLICA");
 
 DEFINE_test_flag(string, assert_tablet_server_select_is_in_zone, "",
-    "Verify that SelectTServer selected a talet server in the AZ specified by this flag.");
+    "Verify that SelectTServer selected a tablet server in the AZ specified by this flag.");
 
 DEFINE_RUNTIME_uint32(change_metadata_backoff_max_jitter_ms, 0,
     "Max jitter (in ms) in the exponential backoff loop that checks if a change metadata operation "
@@ -129,7 +129,6 @@ using std::shared_ptr;
 using std::string;
 using std::vector;
 using std::pair;
-using strings::Substitute;
 
 using namespace std::placeholders;
 
@@ -478,10 +477,9 @@ RemoteTabletServer* YBClient::Data::SelectTServer(RemoteTablet* rt,
   }
   if (PREDICT_FALSE(!FLAGS_TEST_assert_tablet_server_select_is_in_zone.empty())) {
     if (ret->TEST_PlacementZone() != FLAGS_TEST_assert_tablet_server_select_is_in_zone) {
-      string msg = Substitute("\nZone placement:\nNumber of candidates: $0\n", candidates->size());
+      string msg = Format("\nZone placement:\nNumber of candidates: $0\n", candidates->size());
       for (RemoteTabletServer* rts : *candidates) {
-        msg += Substitute("Replica: $0 in zone $1\n",
-                          rts->ToString(), rts->TEST_PlacementZone());
+        msg += Format("Replica: $0 in zone $1\n", rts->ToString(), rts->TEST_PlacementZone());
       }
       LOG(FATAL) << "Selected replica " << ret->ToString()
                  << " is in zone " << ret->TEST_PlacementZone()
@@ -508,13 +506,14 @@ Status YBClient::Data::GetTabletServer(YBClient* client,
     // Construct a blacklist string if applicable.
     string blacklist_string = "";
     if (!blacklist.empty()) {
-      blacklist_string = Substitute("(blacklist replicas $0)", JoinStrings(blacklist, ", "));
+      blacklist_string = Format("(blacklist replicas $0)", JoinStrings(blacklist, ", "));
     }
-    return STATUS(ServiceUnavailable,
-        Substitute("No $0 for tablet $1 $2",
-                   selection == LEADER_ONLY ? "LEADER" : "replicas",
-                   rt->tablet_id(),
-                   blacklist_string));
+    return STATUS_FORMAT(
+        ServiceUnavailable,
+        "No $0 for tablet $1 $2",
+        selection == LEADER_ONLY ? "LEADER" : "replicas",
+        rt->tablet_id(),
+        blacklist_string);
   }
   RETURN_NOT_OK(ret->InitProxy(client));
 
@@ -567,11 +566,11 @@ Status YBClient::Data::CreateTable(YBClient* client,
       // before we compare the schema.
       RETURN_NOT_OK_PREPEND(
           WaitForCreateTableToFinish(client, table_name, resp.table_id(), deadline),
-          Substitute("Failed waiting for table $0 to finish being created", table_name.ToString()));
+          Format("Failed waiting for table $0 to finish being created", table_name.ToString()));
 
       RETURN_NOT_OK_PREPEND(
           GetTableSchema(client, table_name, deadline, &info),
-          Substitute("Unable to check the schema of table $0", table_name.ToString()));
+          Format("Unable to check the schema of table $0", table_name.ToString()));
       if (!schema.Equals(info.schema)) {
         string msg = Format("Table $0 already exists with a different "
                             "schema. Requested schema was: $1, actual schema is: $2",
@@ -591,7 +590,8 @@ Status YBClient::Data::CreateTable(YBClient* client,
         RETURN_NOT_OK(dockv::PartitionSchema::FromPB(
             req.partition_schema(), internal::GetSchema(info.schema), &partition_schema));
         if (!partition_schema.Equals(info.partition_schema)) {
-          string msg = Substitute("Table $0 already exists with a different partition schema. "
+          string msg = Format(
+              "Table $0 already exists with a different partition schema. "
               "Requested partition schema was: $1, actual partition schema is: $2",
               table_name.ToString(),
               partition_schema.DebugString(internal::GetSchema(schema)),
@@ -611,11 +611,12 @@ Status YBClient::Data::CreateTable(YBClient* client,
   return s;
 }
 
-Status YBClient::Data::IsCreateTableInProgress(YBClient* client,
-                                               const YBTableName& table_name,
-                                               const string& table_id,
-                                               CoarseTimePoint deadline,
-                                               bool* create_in_progress) {
+Status YBClient::Data::IsCreateTableInProgress(
+    YBClient* client,
+    const YBTableName& table_name,
+    const TableId& table_id,
+    CoarseTimePoint deadline,
+    bool* create_in_progress) {
   DCHECK_ONLY_NOTNULL(create_in_progress);
   IsCreateTableDoneRequestPB req;
   IsCreateTableDoneResponsePB resp;
@@ -637,12 +638,13 @@ Status YBClient::Data::IsCreateTableInProgress(YBClient* client,
   return status;
 }
 
-Status YBClient::Data::WaitForCreateTableToFinish(YBClient* client,
-                                                  const YBTableName& table_name,
-                                                  const string& table_id,
-                                                  CoarseTimePoint deadline,
-                                                  const uint32_t max_jitter_ms,
-                                                  const uint32_t init_exponent) {
+Status YBClient::Data::WaitForCreateTableToFinish(
+    YBClient* client,
+    const YBTableName& table_name,
+    const TableId& table_id,
+    CoarseTimePoint deadline,
+    const uint32_t max_jitter_ms,
+    const uint32_t init_exponent) {
   return RetryUntilShutdown(
       deadline, "Waiting on Create Table to be completed", "Timed out waiting for Table Creation",
       std::bind(
@@ -650,15 +652,16 @@ Status YBClient::Data::WaitForCreateTableToFinish(YBClient* client,
       2s, max_jitter_ms, init_exponent);
 }
 
-Status YBClient::Data::DeleteTable(YBClient* client,
-                                   const YBTableName& table_name,
-                                   const string& table_id,
-                                   const bool is_index_table,
-                                   CoarseTimePoint deadline,
-                                   YBTableName* indexed_table_name,
-                                   bool wait,
-                                   const TransactionMetadata *txn,
-                                   SubTransactionId sub_transaction_id) {
+Status YBClient::Data::DeleteTable(
+    YBClient* client,
+    const YBTableName& table_name,
+    const TableId& table_id,
+    const bool is_index_table,
+    CoarseTimePoint deadline,
+    YBTableName* indexed_table_name,
+    bool wait,
+    const TransactionMetadata *txn,
+    SubTransactionId sub_transaction_id) {
   DeleteTableRequestPB req;
   DeleteTableResponsePB resp;
   int attempts = 0;
@@ -750,10 +753,11 @@ Status YBClient::Data::DeleteTable(YBClient* client,
   return Status::OK();
 }
 
-Status YBClient::Data::IsDeleteTableInProgress(YBClient* client,
-                                               const std::string& table_id,
-                                               CoarseTimePoint deadline,
-                                               bool* delete_in_progress) {
+Status YBClient::Data::IsDeleteTableInProgress(
+    YBClient* client,
+    const TableId& table_id,
+    CoarseTimePoint deadline,
+    bool* delete_in_progress) {
   DCHECK_ONLY_NOTNULL(delete_in_progress);
   IsDeleteTableDoneRequestPB req;
   IsDeleteTableDoneResponsePB resp;
@@ -772,18 +776,20 @@ Status YBClient::Data::IsDeleteTableInProgress(YBClient* client,
   return Status::OK();
 }
 
-Status YBClient::Data::WaitForDeleteTableToFinish(YBClient* client,
-                                                  const std::string& table_id,
-                                                  CoarseTimePoint deadline) {
+Status YBClient::Data::WaitForDeleteTableToFinish(
+    YBClient* client,
+    const TableId& table_id,
+    CoarseTimePoint deadline) {
   return RetryUntilShutdown(
       deadline, "Waiting on Delete Table to be completed", "Timed out waiting for Table Deletion",
       std::bind(&YBClient::Data::IsDeleteTableInProgress, this, client, table_id, _1, _2));
 }
 
-Status YBClient::Data::TruncateTables(YBClient* client,
-                                     const vector<string>& table_ids,
-                                     CoarseTimePoint deadline,
-                                     bool wait) {
+Status YBClient::Data::TruncateTables(
+    YBClient* client,
+    const TableIds& table_ids,
+    CoarseTimePoint deadline,
+    bool wait) {
   TruncateTableRequestPB req;
   TruncateTableResponsePB resp;
 
@@ -804,10 +810,11 @@ Status YBClient::Data::TruncateTables(YBClient* client,
   return Status::OK();
 }
 
-Status YBClient::Data::IsTruncateTableInProgress(YBClient* client,
-                                                 const std::string& table_id,
-                                                 CoarseTimePoint deadline,
-                                                 bool* truncate_in_progress) {
+Status YBClient::Data::IsTruncateTableInProgress(
+    YBClient* client,
+    const TableId& table_id,
+    CoarseTimePoint deadline,
+    bool* truncate_in_progress) {
   DCHECK_ONLY_NOTNULL(truncate_in_progress);
   IsTruncateTableDoneRequestPB req;
   IsTruncateTableDoneResponsePB resp;
@@ -820,9 +827,10 @@ Status YBClient::Data::IsTruncateTableInProgress(YBClient* client,
   return Status::OK();
 }
 
-Status YBClient::Data::WaitForTruncateTableToFinish(YBClient* client,
-                                                    const std::string& table_id,
-                                                    CoarseTimePoint deadline) {
+Status YBClient::Data::WaitForTruncateTableToFinish(
+    YBClient* client,
+    const TableId& table_id,
+    CoarseTimePoint deadline) {
   return RetryUntilShutdown(
       deadline, "Waiting on Truncate Table to be completed",
       "Timed out waiting for Table Truncation",
@@ -837,14 +845,15 @@ Status YBClient::Data::AlterNamespace(YBClient* client,
       deadline, req, &resp, "AlterNamespace", &master::MasterDdlProxy::AlterNamespaceAsync);
 }
 
-Status YBClient::Data::CreateTablegroup(YBClient* client,
-                                        CoarseTimePoint deadline,
-                                        const std::string& namespace_name,
-                                        const std::string& namespace_id,
-                                        const std::string& tablegroup_id,
-                                        const std::string& tablespace_id,
-                                        const TransactionMetadata* txn,
-                                        const SubTransactionId sub_transaction_id) {
+Status YBClient::Data::CreateTablegroup(
+    YBClient* client,
+    CoarseTimePoint deadline,
+    const NamespaceName& namespace_name,
+    const NamespaceId& namespace_id,
+    const TablegroupId& tablegroup_id,
+    const TablespaceId& tablespace_id,
+    const TransactionMetadata* txn,
+    const SubTransactionId sub_transaction_id) {
   CreateTablegroupRequestPB req;
   CreateTablegroupResponsePB resp;
   req.set_id(tablegroup_id);
@@ -892,13 +901,13 @@ Status YBClient::Data::CreateTablegroup(YBClient* client,
       // before we compare the schema.
       RETURN_NOT_OK_PREPEND(
           WaitForCreateTableToFinish(client, table_name, resp.parent_table_id(), deadline),
-          strings::Substitute("Failed waiting for a parent table $0 to finish being created",
-                              table_name.ToString()));
+          Format(
+              "Failed waiting for a parent table $0 to finish being created",
+              table_name.ToString()));
 
       RETURN_NOT_OK_PREPEND(
           GetTableSchema(client, table_name, deadline, &info),
-          strings::Substitute("Unable to check the schema of parent table $0",
-                              table_name.ToString()));
+          Format("Unable to check the schema of parent table $0", table_name.ToString()));
 
       YBSchemaBuilder schema_builder;
       schema_builder.AddColumn("parent_column")->Type(DataType::BINARY)->PrimaryKey();
@@ -926,11 +935,12 @@ Status YBClient::Data::CreateTablegroup(YBClient* client,
   return Status::OK();
 }
 
-Status YBClient::Data::DeleteTablegroup(YBClient* client,
-                                        CoarseTimePoint deadline,
-                                        const std::string& tablegroup_id,
-                                        const TransactionMetadata* txn,
-                                        const SubTransactionId sub_transaction_id) {
+Status YBClient::Data::DeleteTablegroup(
+    YBClient* client,
+    CoarseTimePoint deadline,
+    const TablegroupId& tablegroup_id,
+    const TransactionMetadata* txn,
+    const SubTransactionId sub_transaction_id) {
   DeleteTablegroupRequestPB req;
   DeleteTablegroupResponsePB resp;
   req.set_id(tablegroup_id);
@@ -1104,8 +1114,8 @@ Result<master::GetBackfillStatusResponsePB> YBClient::Data::GetBackfillStatus(
 }
 
 Status YBClient::Data::IsCreateNamespaceInProgress(
-    YBClient* client, const std::string& namespace_name,
-    const std::optional<YQLDatabase>& database_type, const std::string& namespace_id,
+    YBClient* client, const NamespaceName& namespace_name,
+    const std::optional<YQLDatabase>& database_type, const NamespaceId& namespace_id,
     CoarseTimePoint deadline, bool* create_in_progress) {
   DCHECK_ONLY_NOTNULL(create_in_progress);
   IsCreateNamespaceDoneRequestPB req;
@@ -1140,8 +1150,8 @@ Status YBClient::Data::IsCreateNamespaceInProgress(
 }
 
 Status YBClient::Data::WaitForCreateNamespaceToFinish(
-    YBClient* client, const std::string& namespace_name,
-    const std::optional<YQLDatabase>& database_type, const std::string& namespace_id,
+    YBClient* client, const NamespaceName& namespace_name,
+    const std::optional<YQLDatabase>& database_type, const NamespaceId& namespace_id,
     CoarseTimePoint deadline) {
   return RetryUntilShutdown(
       deadline,
@@ -1153,8 +1163,8 @@ Status YBClient::Data::WaitForCreateNamespaceToFinish(
 }
 
 Status YBClient::Data::IsDeleteNamespaceInProgress(
-    YBClient* client, const std::string& namespace_name,
-    const std::optional<YQLDatabase>& database_type, const std::string& namespace_id,
+    YBClient* client, const NamespaceName& namespace_name,
+    const std::optional<YQLDatabase>& database_type, const NamespaceId& namespace_id,
     CoarseTimePoint deadline, bool* delete_in_progress) {
   DCHECK_ONLY_NOTNULL(delete_in_progress);
   IsDeleteNamespaceDoneRequestPB req;
@@ -1188,9 +1198,9 @@ Status YBClient::Data::IsDeleteNamespaceInProgress(
 }
 
 Status YBClient::Data::WaitForDeleteNamespaceToFinish(YBClient* client,
-    const std::string& namespace_name,
+    const NamespaceName& namespace_name,
     const std::optional<YQLDatabase>& database_type,
-    const std::string& namespace_id,
+    const NamespaceId& namespace_id,
     CoarseTimePoint deadline) {
   return RetryUntilShutdown(
       deadline,
@@ -1257,11 +1267,12 @@ Status YBClient::Data::AlterTable(YBClient* client,
       deadline, req, &resp, "AlterTable", &master::MasterDdlProxy::AlterTableAsync);
 }
 
-Status YBClient::Data::IsAlterTableInProgress(YBClient* client,
-                                              const YBTableName& table_name,
-                                              string table_id,
-                                              CoarseTimePoint deadline,
-                                              bool *alter_in_progress) {
+Status YBClient::Data::IsAlterTableInProgress(
+    YBClient* client,
+    const YBTableName& table_name,
+    const TableId& table_id,
+    CoarseTimePoint deadline,
+    bool *alter_in_progress) {
   IsAlterTableDoneRequestPB req;
   IsAlterTableDoneResponsePB resp;
 
@@ -1281,14 +1292,15 @@ Status YBClient::Data::IsAlterTableInProgress(YBClient* client,
   return Status::OK();
 }
 
-Status YBClient::Data::WaitForAlterTableToFinish(YBClient* client,
-                                                 const YBTableName& alter_name,
-                                                 const string table_id,
-                                                 CoarseTimePoint deadline) {
+Status YBClient::Data::WaitForAlterTableToFinish(
+    YBClient* client,
+    const YBTableName& alter_name,
+    const TableId& table_id,
+    CoarseTimePoint deadline) {
   return RetryUntilShutdown(
       deadline, "Waiting on Alter Table to be completed", "Timed out waiting for AlterTable",
-      std::bind(&YBClient::Data::IsAlterTableInProgress, this, client,
-              alter_name, table_id, _1, _2));
+      std::bind(
+          &YBClient::Data::IsAlterTableInProgress, this, client, alter_name, table_id, _1, _2));
 }
 
 Status YBClient::Data::FlushTablesHelper(YBClient* client,
@@ -1311,11 +1323,12 @@ Status YBClient::Data::FlushTablesHelper(YBClient* client,
   return Status::OK();
 }
 
-Status YBClient::Data::FlushTables(YBClient* client,
-                                   const vector<YBTableName>& table_names,
-                                   bool add_indexes,
-                                   const CoarseTimePoint deadline,
-                                   const bool is_compaction) {
+Status YBClient::Data::FlushOrCompactTables(
+    YBClient* client,
+    const vector<YBTableName>& table_names,
+    bool add_indexes,
+    bool is_compaction,
+    CoarseTimePoint deadline) {
   FlushTablesRequestPB req;
   req.set_add_indexes(add_indexes);
   req.set_is_compaction(is_compaction);
@@ -1326,11 +1339,12 @@ Status YBClient::Data::FlushTables(YBClient* client,
   return FlushTablesHelper(client, deadline, req);
 }
 
-Status YBClient::Data::FlushTables(YBClient* client,
-                                   const vector<TableId>& table_ids,
-                                   bool add_indexes,
-                                   const CoarseTimePoint deadline,
-                                   const bool is_compaction) {
+Status YBClient::Data::FlushOrCompactTables(
+    YBClient* client,
+    const TableIds& table_ids,
+    bool add_indexes,
+    bool is_compaction,
+    CoarseTimePoint deadline) {
   FlushTablesRequestPB req;
   req.set_add_indexes(add_indexes);
   req.set_is_compaction(is_compaction);
@@ -1606,8 +1620,8 @@ void GetTableSchemaRpc::CallRemoteMethod() {
 }
 
 string GetTableSchemaRpc::ToString() const {
-  return Substitute("GetTableSchemaRpc(table_identifier: $0, num_attempts: $1, check_only: $2)",
-                    table_identifier_.ShortDebugString(), num_attempts(), info_ == nullptr);
+  return Format("GetTableSchemaRpc(table_identifier: $0, num_attempts: $1, check_only: $2)",
+                table_identifier_.ShortDebugString(), num_attempts(), info_ == nullptr);
 }
 
 void GetTableSchemaRpc::ProcessResponse(const Status& status) {
@@ -1662,8 +1676,8 @@ void GetTablegroupSchemaRpc::CallRemoteMethod() {
 }
 
 string GetTablegroupSchemaRpc::ToString() const {
-  return Substitute("GetTablegroupSchemaRpc(table_identifier: $0, num_attempts: $1",
-                    tablegroup_identifier_.ShortDebugString(), num_attempts());
+  return Format("GetTablegroupSchemaRpc(table_identifier: $0, num_attempts: $1",
+                tablegroup_identifier_.ShortDebugString(), num_attempts());
 }
 
 void GetTablegroupSchemaRpc::ProcessResponse(const Status& status) {
@@ -1726,8 +1740,7 @@ void CreateXClusterStreamRpc::CallRemoteMethod() {
 }
 
 string CreateXClusterStreamRpc::ToString() const {
-  return Substitute(
-      "CreateXClusterStream(table_id: $0, num_attempts: $1)", table_id_, num_attempts());
+  return Format("CreateXClusterStream(table_id: $0, num_attempts: $1)", table_id_, num_attempts());
 }
 
 void CreateXClusterStreamRpc::ProcessResponse(const Status& status) {
@@ -1953,11 +1966,12 @@ class BootstrapProducerRpc
 class GetCDCDBStreamInfoRpc : public ClientMasterRpc<GetCDCDBStreamInfoRequestPB,
                                                      GetCDCDBStreamInfoResponsePB> {
  public:
-  GetCDCDBStreamInfoRpc(YBClient* client,
-                  StdStatusCallback user_cb,
-                  const std::string& db_stream_id,
-                  std::vector<pair<std::string, std::string>>* db_stream_info,
-                  CoarseTimePoint deadline);
+  GetCDCDBStreamInfoRpc(
+      YBClient* client,
+      StdStatusCallback user_cb,
+      const std::string& db_stream_id,
+      std::vector<pair<std::string, std::string>>* db_stream_info,
+      CoarseTimePoint deadline);
 
   std::string ToString() const override;
 
@@ -1991,8 +2005,8 @@ void GetCDCDBStreamInfoRpc::CallRemoteMethod() {
 }
 
 string GetCDCDBStreamInfoRpc::ToString() const {
-  return Substitute("GetCDCDBStreamInfo(db_stream_id: $0, num_attempts: $1)",
-                    db_stream_id_, num_attempts());
+  return Format("GetCDCDBStreamInfo(db_stream_id: $0, num_attempts: $1)",
+                db_stream_id_, num_attempts());
 }
 
 void GetCDCDBStreamInfoRpc::ProcessResponse(const Status& status) {

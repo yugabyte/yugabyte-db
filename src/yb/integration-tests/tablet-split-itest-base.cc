@@ -259,8 +259,7 @@ Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>>
 
 template <class MiniClusterType>
 Status TabletSplitITestBase<MiniClusterType>::FlushTable(const TableId& table_id) {
-  return this->client_->FlushTables(
-      {table_id}, /* add_indexes = */ false, /* timeout_secs = */ 30, /* is_compaction = */ false);
+  return this->client_->FlushTables({table_id});
 }
 
 template <class MiniClusterType>

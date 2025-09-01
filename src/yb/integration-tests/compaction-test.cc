@@ -370,10 +370,8 @@ class CompactionTest : public YBTest {
   }
 
   Status ExecuteManualCompaction() {
-    constexpr int kCompactionTimeoutSec = 60;
     const auto table_info = VERIFY_RESULT(FindTable(cluster_.get(), workload_->table_name()));
-    return workload_->client().FlushTables(
-      {table_info->id()}, false, kCompactionTimeoutSec, /* compaction */ true);
+    return workload_->client().CompactTables({table_info->id()}, MonoDelta::FromMinutes(1));
   }
 
   bool CheckEachDbHasExactlyNumFiles(size_t num_files);
@@ -456,10 +454,7 @@ void CompactionTest::TestCompactionWithoutFrontiers(
 
   // Trigger manual compaction if requested.
   if (trigger_manual_compaction) {
-    constexpr int kCompactionTimeoutSec = 60;
-    const auto table_info = ASSERT_RESULT(FindTable(cluster_.get(), workload_->table_name()));
-    ASSERT_OK(workload_->client().FlushTables(
-      {table_info->id()}, false, kCompactionTimeoutSec, /* compaction */ true));
+    ASSERT_OK(ExecuteManualCompaction());
   }
   // Wait for the compaction.
   auto dbs = GetAllRocksDbs(cluster_.get());
@@ -1331,10 +1326,8 @@ TEST_F(CompactionTestWithTTL, YB_DISABLE_TEST_ON_MACOS(CompactionAfterExpiry)) {
 
   SleepFor(MonoDelta::FromSeconds(2 * kTTLSec));
 
-  constexpr int kCompactionTimeoutSec = 60;
-  const auto table_info = ASSERT_RESULT(FindTable(cluster_.get(), workload_->table_name()));
-  ASSERT_OK(workload_->client().FlushTables(
-    {table_info->id()}, false, kCompactionTimeoutSec, /* compaction */ true));
+  ASSERT_OK(ExecuteManualCompaction());
+
   // Assert that the data size is all wiped up now.
   size_t size_after_manual_compaction = 0;
   uint64_t num_sst_files_filtered = 0;
@@ -1963,9 +1956,7 @@ TEST_F(CompactionTest, BackgroundCompactionDuringPostSplitCompaction) {
 
   // Flush mem tables to have the predictable number of SST files.
   const auto table_info = ASSERT_RESULT(FindTable(cluster_.get(), workload_->table_name()));
-  ASSERT_OK(workload_->client().FlushTables(
-      {table_info->id()}, /* add_indexes = */ false,
-      /* timeout_secs = */ 60, /* is_compaction = */ false));
+  ASSERT_OK(workload_->client().FlushTables({table_info->id()}, MonoDelta::FromMinutes(1)));
 
   // Remember parent files before split.
   auto dbs = GetAllRocksDbs(cluster_.get(), /* include_intents = */ false);
