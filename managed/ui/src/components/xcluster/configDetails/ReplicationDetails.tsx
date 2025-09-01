@@ -109,7 +109,8 @@ export function ReplicationDetails({
       targetUniverseUuid: xClusterConfigQuery.data?.targetUniverseUUID,
       tableUuids: inConfigTableUuids,
       configType: xClusterConfigQuery.data?.type,
-      includeDetails: true
+      includeDetails: true,
+      isUsedForDr: xClusterConfigQuery.data?.usedForDr
     }),
     () =>
       isBootstrapRequired(
@@ -117,7 +118,8 @@ export function ReplicationDetails({
         xClusterConfigQuery.data?.targetUniverseUUID ?? '',
         inConfigTableUuids,
         xClusterConfigQuery.data?.type ?? XClusterConfigType.BASIC,
-        true
+        true /* includeDetails */,
+        !!xClusterConfigQuery.data?.usedForDr
       ),
     { enabled: !!xClusterConfigQuery.data }
   );

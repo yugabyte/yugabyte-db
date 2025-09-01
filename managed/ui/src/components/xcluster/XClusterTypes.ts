@@ -130,6 +130,7 @@ export interface CategorizedNeedBootstrapPerTableResponse {
   targetTableMissingBidirectional: CategoryNeedBootstrapResponse;
   tableHasData: CategoryNeedBootstrapResponse;
   targetTableMissing: CategoryNeedBootstrapResponse;
+  drWithAutomaticDdlMode: CategoryNeedBootstrapResponse;
 }
 
 //------------------------------------------------------------------------------------
