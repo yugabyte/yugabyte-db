@@ -1,0 +1,11 @@
+title: YBAInfo
+type: object
+description: Describes YBA instance info
+required:
+  - fips_enabled
+properties:
+  fips_enabled:
+    description: Whether YBA instance is FIPS compliant
+    type: boolean
+    readOnly: true
+x-yba-api-visibility: internal

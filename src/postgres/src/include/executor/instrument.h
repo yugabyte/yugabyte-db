@@ -82,6 +82,9 @@ typedef struct YbInstrumentation
 	YbPgRpcStats index_reads;
 	YbPgRpcStats catalog_reads;
 	YbPgRpcStats write_flushes;
+	double		tbl_read_ops;
+	double		index_read_ops;
+	double		catalog_read_ops;
 	double		tbl_writes;
 	double		index_writes;
 	double		catalog_writes;

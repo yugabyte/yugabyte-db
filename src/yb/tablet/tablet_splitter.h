@@ -46,7 +46,7 @@ class TabletSplitter {
   // accessible from tablet peer's Raft consensus instance and initialized.
   virtual Status ApplyTabletSplit(
       SplitOperation* operation, log::Log* raft_log,
-      boost::optional<consensus::RaftConfigPB> raft_config) = 0;
+      std::optional<consensus::RaftConfigPB> raft_config) = 0;
 
   // See the comment for ApplyTabletSplit.
   virtual Status ApplyCloneTablet(

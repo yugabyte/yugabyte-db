@@ -33,7 +33,9 @@ YB_DEFINE_ENUM(
 // Information representing the activity in one iteration of the cluster load balancer.
 class ClusterBalancerActivityInfo {
  public:
-  bool IsIdle() const { return warnings_.size() == 0 && tasks_.empty(); }
+  bool IsIdle() const {
+    return warnings_.size() == 0 && tasks_.empty() && !has_ongoing_remote_bootstraps_;
+  }
 
   // Aggregate the tasks by {type, state}, and store the count and an example message for each.
   using TaskTypeAndState = std::pair<server::MonitoredTaskType, server::MonitoredTaskState>;
@@ -77,6 +79,8 @@ class ClusterBalancerActivityInfo {
   }
 
   MonoTime run_end_time_ = MonoTime::Min();
+
+  bool has_ongoing_remote_bootstraps_ = false;
 
  private:
   // List of warnings that might prevent the load balancer from making progress.

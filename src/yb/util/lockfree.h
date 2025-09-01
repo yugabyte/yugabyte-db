@@ -41,7 +41,7 @@ class MPSCQueueIterator : public std::iterator<std::input_iterator_tag, T> {
   MPSCQueueIterator& operator++() {
     LOG(INFO) << "incr from " << next_;
     if (!is_end()) {
-      next_ = GetNext(next_);
+      next_ = GetNext(*next_);
     }
     return *this;
   }
@@ -89,7 +89,7 @@ class MPSCQueue {
   void Push(T* value) {
     T* old_head = push_head_.load(std::memory_order_acquire);
     for (;;) {
-      SetNext(value, old_head);
+      SetNext(*value, old_head);
       if (push_head_.compare_exchange_weak(old_head, value, std::memory_order_acq_rel)) {
         break;
       }
@@ -105,7 +105,7 @@ class MPSCQueue {
     if (!result) {
       return nullptr;
     }
-    pop_head_ = GetNext(result);
+    pop_head_ = GetNext(*result);
     return result;
   }
 
@@ -130,8 +130,8 @@ class MPSCQueue {
     // Reverse original list.
     T* prev = nullptr;
     while (current) {
-      auto next = GetNext(current);
-      SetNext(current, prev);
+      auto next = GetNext(*current);
+      SetNext(*current, prev);
       prev = current;
       current = next;
     }
@@ -162,13 +162,13 @@ class MPSCQueueEntry {
 };
 
 template <class T>
-void SetNext(MPSCQueueEntry<T>* entry, T* next) {
-  entry->SetNext(next);
+void SetNext(MPSCQueueEntry<T>& entry, T* next) {
+  entry.SetNext(next);
 }
 
 template <class T>
-T* GetNext(const MPSCQueueEntry<T>* entry) {
-  return entry->GetNext();
+T* GetNext(const MPSCQueueEntry<T>& entry) {
+  return entry.GetNext();
 }
 
 // Intrusive stack implementation based on linked list.
@@ -187,7 +187,7 @@ class LockFreeStack {
     Head old_head = head_.load(boost::memory_order_acquire);
     for (;;) {
       ANNOTATE_IGNORE_WRITES_BEGIN();
-      SetNext(value, old_head.pointer);
+      SetNext(*value, old_head.pointer);
       ANNOTATE_IGNORE_WRITES_END();
       Head new_head{value, old_head.version + 1};
       if (head_.compare_exchange_weak(old_head, new_head, boost::memory_order_acq_rel)) {
@@ -203,7 +203,7 @@ class LockFreeStack {
         break;
       }
       ANNOTATE_IGNORE_READS_BEGIN();
-      Head new_head{GetNext(old_head.pointer), old_head.version + 1};
+      Head new_head{GetNext(*old_head.pointer), old_head.version + 1};
       ANNOTATE_IGNORE_READS_END();
       if (head_.compare_exchange_weak(old_head, new_head, boost::memory_order_acq_rel)) {
         break;

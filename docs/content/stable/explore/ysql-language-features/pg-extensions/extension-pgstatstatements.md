@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-The [pg_stat_statements](https://www.postgresql.org/docs/11/pgstatstatements.html) module provides a means for tracking execution statistics of all SQL statements executed by a server.
+The [pg_stat_statements](https://www.postgresql.org/docs/15/pgstatstatements.html) module provides a means for tracking execution statistics of all SQL statements executed by a server.
 
 ```sql
 CREATE EXTENSION pg_stat_statements;

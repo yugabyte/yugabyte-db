@@ -40,7 +40,6 @@ DEFINE_UNKNOWN_double(master_slow_get_registration_probability, 0,
 DECLARE_bool(enable_ysql_tablespaces_for_placement);
 
 DECLARE_bool(emergency_repair_mode);
-DECLARE_bool(enable_object_locking_for_table_locks);
 
 using namespace std::literals;
 
@@ -91,8 +90,7 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
           return;
         }
         auto tablespace_replication_pb = std::move(*result);
-        if (!tablespace_replication_pb ||
-            !tablespace_replication_pb.is_initialized()) {
+        if (!tablespace_replication_pb.has_value()) {
           LOG(INFO) << "Could not retrieve placement info from tablespace ID "
                     << req->tablespace_id() << ". "
                     << "Default to returning all tablet servers";

@@ -155,7 +155,7 @@ chmod 0755 {{ yb_home_dir }}/$release_folder
 cp "$temp_binary_path/$package_name" {{ yb_home_dir }}/$release_folder
 chown -R {{ yb_user }}:{{ yb_user }} {{ yb_home_dir }}/$release_folder
 
-# Extract yugabyte binary to /home/yugabyte/yb-software/
+# Extract yugabyte binary to {{ yb_home_dir }}/yb-software/
 tar --strip-components=1 -xzf "$temp_binary_path/$package_name" -C "$yb_package_folder"
 chmod 0755 "$yb_package_folder"
 
@@ -189,3 +189,16 @@ for folder in "${symlink_folders[@]}"; do
     fi
   done
 done
+
+# Ensure the {{ yb_home_dir }}/.ssh/authorized_keys file is removed from prebuilt
+# AMIs to avoid retaining default or cloud-injected SSH keys
+# (e.g., Google-injected keys).
+
+AUTHORIZED_KEYS_PATH="{{ yb_home_dir }}/.ssh/authorized_keys"
+
+if [ -f "$AUTHORIZED_KEYS_PATH" ]; then
+  rm -f "$AUTHORIZED_KEYS_PATH"
+  echo "Removed: $AUTHORIZED_KEYS_PATH"
+else
+  echo "No authorized_keys file found"
+fi

@@ -20,7 +20,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include "yb/ash/wait_state_fwd.h"
+#include "yb/ash/ash_fwd.h"
 
 #include "yb/common/consistent_read_point.h"
 #include "yb/common/read_hybrid_time.h"
@@ -29,6 +29,7 @@
 #include "yb/client/client_fwd.h"
 #include "yb/client/in_flight_op.h"
 
+#include "yb/util/status_callback.h"
 #include "yb/util/status_fwd.h"
 
 namespace yb {
@@ -177,7 +178,7 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   void SetActiveSubTransaction(SubTransactionId id);
 
-  boost::optional<SubTransactionMetadataPB> GetSubTransactionMetadataPB() const;
+  std::optional<SubTransactionMetadataPB> GetSubTransactionMetadataPB() const;
 
   Status SetPgTxnStart(int64_t pg_txn_start_us);
 
@@ -209,6 +210,14 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   void SetBackgroundTransaction(const YBTransactionPtr& background_transaction);
 
   const ash::WaitStateInfoPtr wait_state();
+
+  // Records the Async Write OpId. Returns true if the query was recorded, false if it already
+  // existed.
+  bool RecordAsyncWrite(const TabletId& tablet_id, const OpId& op_id);
+  void RecordAsyncWriteCompletion(
+      const TabletId& tablet_id, const OpId& op_id, const Status& status);
+  bool HasPendingAsyncWrites(const TabletId& tablet_id) const;
+  void WaitForAsyncWrites(const TabletId& tablet_id, StdStatusCallback&& callback);
 
  private:
   class Impl;

@@ -23,7 +23,9 @@ import {
   XClusterSchemaChangeMode,
   DB_SCOPED_XCLUSTER_VERSION_THRESHOLD_STABLE,
   DB_SCOPED_XCLUSTER_VERSION_THRESHOLD_PREVIEW,
-  POTENTIAL_IN_CONFIG_SET_UP_BOOTSTRAP_REQUIRED_TABLES_STATUSES
+  POTENTIAL_IN_CONFIG_SET_UP_BOOTSTRAP_REQUIRED_TABLES_STATUSES,
+  AUTOMATIC_DDL_REPLICATION_VERSION_THRESHOLD_PREVIEW,
+  AUTOMATIC_DDL_REPLICATION_VERSION_THRESHOLD_STABLE
 } from './constants';
 import {
   alertConfigQueryKey,
@@ -873,7 +875,9 @@ export const getSchemaChangeMode = (xClusterConfig: XClusterConfig) => {
     case XClusterConfigType.TXN:
       return XClusterSchemaChangeMode.TABLE_LEVEL;
     case XClusterConfigType.DB_SCOPED:
-      return XClusterSchemaChangeMode.DB_SCOPED;
+      return xClusterConfig.automaticDdlMode
+        ? XClusterSchemaChangeMode.AUTOMATIC_DDL_REPLICATION
+        : XClusterSchemaChangeMode.DB_SCOPED;
   }
 };
 
@@ -885,10 +889,24 @@ export const checkIsDbScopedXClusterSupported = (ybSoftwareVersion: string) =>
     options: { suppressFormatError: true }
   }) > 0;
 
+export const checkIsAutomaticDdlReplicationSupported = (ybSoftwareVersion: string) =>
+  compareYBSoftwareVersionsWithReleaseTrack({
+    version: ybSoftwareVersion,
+    stableVersion: AUTOMATIC_DDL_REPLICATION_VERSION_THRESHOLD_STABLE,
+    previewVersion: AUTOMATIC_DDL_REPLICATION_VERSION_THRESHOLD_PREVIEW,
+    options: { suppressFormatError: true }
+  }) > 0;
+
 export const getLatestSchemaChangeModeSupported = (
   sourceUniverseVersion: string,
   targetUniverseVersion: string
 ): XClusterSchemaChangeMode => {
+  if (
+    checkIsAutomaticDdlReplicationSupported(sourceUniverseVersion) &&
+    checkIsAutomaticDdlReplicationSupported(targetUniverseVersion)
+  ) {
+    return XClusterSchemaChangeMode.AUTOMATIC_DDL_REPLICATION;
+  }
   if (
     checkIsDbScopedXClusterSupported(sourceUniverseVersion) &&
     checkIsDbScopedXClusterSupported(targetUniverseVersion)

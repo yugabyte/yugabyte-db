@@ -12,6 +12,9 @@
 //
 
 #include "yb/tserver/xcluster_poller.h"
+
+#include "yb/ash/wait_state.h"
+
 #include "yb/client/client_fwd.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/common/wire_protocol.h"
@@ -117,7 +120,7 @@ XClusterPoller::XClusterPoller(
     const std::shared_ptr<client::XClusterRemoteClientHolder>& source_client,
     XClusterConsumer* xcluster_consumer, int64_t leader_term,
     std::function<int64_t(const TabletId&)> get_leader_term, bool is_automatic_mode,
-    bool is_stream_paused)
+    bool is_stream_paused, const std::string& ts_uuid)
     : XClusterAsyncExecutor(thread_pool, local_client.messenger(), rpcs),
       producer_tablet_info_(producer_tablet_info),
       consumer_tablet_info_(consumer_tablet_info),
@@ -133,13 +136,28 @@ XClusterPoller::XClusterPoller(
       source_client_(source_client),
       xcluster_consumer_(xcluster_consumer),
       producer_safe_time_(HybridTime::kInvalid),
-      is_stream_paused_(is_stream_paused) {
+      is_stream_paused_(is_stream_paused),
+      wait_state_(ash::WaitStateInfo::CreateIfAshIsEnabled<ash::WaitStateInfo>()) {
   DCHECK_NE(GetLeaderTerm(), yb::OpId::kUnknownTerm);
+  if (wait_state_) {
+    auto status = InitializeWaitState(ts_uuid);
+    if (!status.ok()) {
+      LOG(DFATAL) << "Failed to initialize ASH metadata for XCluster poller: " << status;
+      wait_state_ = nullptr;
+      return;
+    }
+    ASH_ENABLE_CONCURRENT_UPDATES_FOR(wait_state_);
+    SET_WAIT_STATUS_TO(wait_state_, Idle);
+    ash::XClusterPollerTracker().Track(wait_state_);
+  }
 }
 
 XClusterPoller::~XClusterPoller() {
   VLOG_WITH_PREFIX(1) << "Destroying XClusterPoller";
   DCHECK(shutdown_);
+  if (wait_state_) {
+    ash::XClusterPollerTracker().Untrack(wait_state_);
+  }
 }
 
 void XClusterPoller::Init(
@@ -299,6 +317,8 @@ void XClusterPoller::SchedulePoll() {
 }
 
 void XClusterPoller::DoPoll() {
+  ADOPT_WAIT_STATE(wait_state_);
+  SCOPED_WAIT_STATUS(OnCpu_Active);
   if (is_stream_paused_) {
     auto status = DoPausePoller();
     if (!status.ok()) {
@@ -318,6 +338,7 @@ void XClusterPoller::DoPoll() {
       if (!ddl_queue_status.ok()) {
         LOG_WITH_PREFIX(WARNING) << "Failed to process existing DDL queue: "
                                  << ddl_queue_status.ToString();
+        IncrementPollFailures();
         return SchedulePoll();
       }
       // We can only send a new GetChanges request once we finish processing this batch.
@@ -369,6 +390,12 @@ void XClusterPoller::DoPoll() {
   req.set_stream_id(producer_tablet_info_.stream_id.ToString());
   req.set_tablet_id(producer_tablet_info_.tablet_id);
   req.set_serve_as_proxy(GetAtomicFlag(&FLAGS_cdc_consumer_use_proxy_forwarding));
+  // If we finished processing a ChangeMetadataOp, then we need to force update the cdc_state
+  // checkpoint. This ensures that if the poller restarts, it will only go back at most 1 schema
+  // version.
+  // If this poller ever restarts while processed_change_metadata_op_in_last_poll_ is still true,
+  // then the next poller will start at the previous checkpoint (before the ChangeMetadataOp).
+  req.set_force_update_cdc_state_checkpoint(processed_change_metadata_op_in_last_poll_);
 
   if (FLAGS_enable_xcluster_auto_flag_validation && auto_flags_version_) {
     req.set_auto_flags_config_version(auto_flags_version_->GetCompatibleVersion());
@@ -410,6 +437,8 @@ void XClusterPoller::DoPoll() {
       });
 
   SetHandleAndSendRpc(handle);
+
+  SET_WAIT_STATUS(XCluster_WaitingForGetChanges);
 }
 
 Status XClusterPoller::DoPausePoller() {
@@ -445,6 +474,8 @@ void XClusterPoller::UpdateSchemaVersionsForApply() {
 
 void XClusterPoller::HandleGetChangesResponse(
     Status status, std::shared_ptr<cdc::GetChangesResponsePB> resp) {
+  ADOPT_WAIT_STATE(wait_state_);
+  SCOPED_WAIT_STATUS(OnCpu_Active);
   if (FLAGS_enable_xcluster_stat_collection) {
     poll_stats_history_.RecordEndGetChanges();
   }
@@ -470,9 +501,7 @@ void XClusterPoller::HandleGetChangesResponse(
       }
 
       // In case of errors, try polling again with backoff
-      poll_failures_ =
-          std::min(poll_failures_ + 1, GetAtomicFlag(&FLAGS_replication_failure_delay_exponent));
-      xcluster_consumer_->IncrementPollFailureCount();
+      IncrementPollFailures();
       return SchedulePoll();
     }
     // Recover slowly if we're congested.
@@ -535,6 +564,9 @@ void XClusterPoller::ApplyChangesCallback(XClusterOutputClientResponse&& respons
 }
 
 void XClusterPoller::VerifyApplyChangesResponse(XClusterOutputClientResponse response) {
+  ADOPT_WAIT_STATE(wait_state_);
+  SCOPED_WAIT_STATUS(OnCpu_Active);
+
   // Verify if the ApplyChanges failed, in which case we need to reschedule it.
   if (!response.status.ok() ||
       RandomActWithProbability(FLAGS_TEST_xcluster_simulate_random_failure_after_apply)) {
@@ -553,6 +585,10 @@ void XClusterPoller::VerifyApplyChangesResponse(XClusterOutputClientResponse res
       poll_stats_history_.SetError(std::move(response.status));
     }
 
+    // We've ack-ed the previous batch to the source, so it will have updated the cdc_state
+    // checkpoint already - can reset the flag now.
+    processed_change_metadata_op_in_last_poll_ = false;
+
     // Repeat the ApplyChanges step, with exponential backoff.
     apply_failures_ =
         std::min(apply_failures_ + 1, GetAtomicFlag(&FLAGS_replication_failure_delay_exponent));
@@ -565,6 +601,8 @@ void XClusterPoller::VerifyApplyChangesResponse(XClusterOutputClientResponse res
 }
 
 void XClusterPoller::HandleApplyChangesResponse(XClusterOutputClientResponse response) {
+  ADOPT_WAIT_STATE(wait_state_);
+  SCOPED_WAIT_STATUS(OnCpu_Active);
   DCHECK(response.get_changes_response);
 
   if (ddl_queue_handler_) {
@@ -593,7 +631,7 @@ void XClusterPoller::HandleApplyChangesResponse(XClusterOutputClientResponse res
 
       // If processing ddl_queue table fails, then retry just this part (don't repeat ApplyChanges).
       ScheduleFuncWithDelay(
-          GetAtomicFlag(&FLAGS_xcluster_safe_time_update_interval_secs),
+          FLAGS_xcluster_safe_time_update_interval_secs * MonoTime::kMillisecondsPerSecond,
           BIND_FUNCTION_AND_ARGS(XClusterPoller::HandleApplyChangesResponse, std::move(response)));
       return;
     }
@@ -626,6 +664,8 @@ void XClusterPoller::HandleApplyChangesResponse(XClusterOutputClientResponse res
       // Once all changes have been successfully applied we can update the safe time.
       UpdateSafeTime(HybridTime(response.get_changes_response->safe_hybrid_time()));
     }
+
+    processed_change_metadata_op_in_last_poll_ = response.processed_change_metadata_op;
   }
 
   SchedulePoll();
@@ -648,6 +688,8 @@ void XClusterPoller::ScheduleApplyChanges(
 }
 
 void XClusterPoller::ApplyChanges(std::shared_ptr<cdc::GetChangesResponsePB> get_changes_response) {
+  ADOPT_WAIT_STATE(wait_state_);
+  SCOPED_WAIT_STATUS(OnCpu_Active);
   DCHECK(get_changes_response);
 
   if (FLAGS_enable_xcluster_stat_collection) {
@@ -783,6 +825,28 @@ void XClusterPoller::SetPaused(bool is_paused) {
     // we simply mark ourself as failed and let the consumer recreate a fresh poller.
     MarkFailed("the stream was unpaused. The poller should be recreated.");
   }
+}
+
+Status XClusterPoller::InitializeWaitState(const std::string& ts_uuid) {
+  wait_state_->UpdateMetadata({
+      .root_request_id = producer_tablet_info_.stream_id.GetUuid(),
+      .top_level_node_id = VERIFY_RESULT(Uuid::FromHexString(ts_uuid)),
+      .query_id = std::to_underlying(ash::FixedQueryId::kQueryIdForXCluster),
+      .database_id = IsPgsqlId(consumer_namespace_id_)
+          ? VERIFY_RESULT(GetPgsqlDatabaseOid(consumer_namespace_id_))
+          : 0
+  });
+
+  wait_state_->UpdateTabletId(consumer_tablet_info_.tablet_id);
+
+  return Status::OK();
+}
+
+void XClusterPoller::IncrementPollFailures() {
+  poll_failures_ =
+      std::min(poll_failures_ + 1, GetAtomicFlag(&FLAGS_replication_failure_delay_exponent));
+
+  xcluster_consumer_->IncrementPollFailureCount();
 }
 
 }  // namespace tserver

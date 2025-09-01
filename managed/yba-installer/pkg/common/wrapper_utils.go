@@ -112,19 +112,25 @@ func MkdirAllOrFail(dir string, perm os.FileMode) {
 // CopyFile copies src file to dst.
 // Assumes both src/dst are valid absolute paths and dst file parent directory is already created.
 func CopyFile(src string, dst string) {
+	if err := CopyFileError(src, dst); err != nil {
+		log.Fatal("Error: " + err.Error())
+	}
+}
+
+func CopyFileError(src string, dst string) error {
 
 	log.Debug("Copying from " + src + " -> " + dst)
 
 	bytesRead, errSrc := os.ReadFile(src)
 
 	if errSrc != nil {
-		log.Fatal("Error: " + errSrc.Error() + ".")
+		return errSrc
 	}
 	errDst := os.WriteFile(dst, bytesRead, 0644)
 	if errDst != nil {
-		log.Fatal("Error: " + errDst.Error() + ".")
+		return errDst
 	}
-
+	return nil
 }
 
 func RemoveAll(path string) error {

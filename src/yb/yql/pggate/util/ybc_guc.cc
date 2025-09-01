@@ -123,6 +123,8 @@ bool yb_mixed_mode_expression_pushdown = true;
 
 bool yb_debug_log_catcache_events = false;
 
+bool yb_debug_log_snapshot_mgmt = false;
+
 bool yb_mixed_mode_saop_pushdown = false;
 
 // Internal GUC to help a backend identify that the connection is from the Auto-Analyze service.
@@ -131,3 +133,9 @@ bool yb_use_internal_auto_analyze_service_conn = false;
 bool yb_ddl_transaction_block_enabled = false;
 
 bool yb_disable_ddl_transaction_block_for_read_committed = false;
+
+int yb_fk_references_cache_limit = 65535;
+
+bool yb_allow_dockey_bounds = true;
+
+bool yb_xcluster_target_ddl_bypass = false;

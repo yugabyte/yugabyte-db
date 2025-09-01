@@ -48,6 +48,7 @@ METRIC_DECLARE_counter(pg_response_cache_queries);
 
 namespace yb::pgwrapper {
 namespace {
+
 struct MetricCounters {
   struct ResponseCache {
     size_t queries;
@@ -73,6 +74,20 @@ struct MetricCountersDescriber : public MetricWatcherDeltaDescriberTraits<Metric
   Descriptors descriptors;
 };
 
+using MetricDelta = MetricCountersDescriber::DeltaType;
+
+struct Dumper {
+  explicit Dumper(const MetricDelta& source_) : source(source_) {}
+
+  const MetricDelta& source;
+};
+
+std::ostream& operator<<(std::ostream& str, const Dumper& d) {
+  return str << "master read rpc = " << d.source.master_read_rpc
+             << ", resp cache queries = " << d.source.cache.queries
+             << ", resp cache hits = " << d.source.cache.hits;
+}
+
 class PgSnapshotTooOldTest : public PgMiniTestBase {
  protected:
   virtual void BeforePgProcessStart() override {
@@ -88,12 +103,18 @@ class PgSnapshotTooOldTest : public PgMiniTestBase {
 
   std::optional<MetricWatcher<MetricCountersDescriber>> metrics_;
 
-  void TestDefaultTablespaceGUC() {
-    auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
-    auto sys_catalog_tablet = catalog_manager.sys_catalog()->tablet_peer()->tablet();
+  struct MetricDeltaInfo {
+    MetricCountersDescriber::DeltaType yb_db;
+    MetricCountersDescriber::DeltaType test_db;
+  };
 
-    PGConn conn = ASSERT_RESULT(Connect());
-    ASSERT_OK(conn.ExecuteFormat(R"_tblsp_(
+  Result<MetricDeltaInfo> MetricDeltaForDefaultTablespaceGUC() {
+    auto& catalog_manager = VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+    auto sys_catalog_tablet =
+        VERIFY_RESULT(catalog_manager.sys_catalog()->tablet_peer()->shared_tablet());
+
+    auto conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(conn.ExecuteFormat(R"_tblsp_(
     create tablespace rf3 with
     (replica_placement='{"num_replicas":3, "placement_blocks":
     [{"cloud": "cloud1", "region":"datacenter1",
@@ -104,53 +125,45 @@ class PgSnapshotTooOldTest : public PgMiniTestBase {
     // SET client_encoding = 'LATIN1';
     // SET temp_tablespaces (though this GUC is not useful in YBDB, it is allowed to be set)
     // SET default_text_search_config (created via CREATE TEXT SEARCH CONFIGURATION)
-    ASSERT_OK(conn.ExecuteFormat("ALTER DATABASE yugabyte SET  default_tablespace = 'rf3';"));
+    RETURN_NOT_OK(conn.ExecuteFormat("ALTER DATABASE yugabyte SET  default_tablespace = 'rf3';"));
 
     LOG(INFO) << "Performing some writes on the catalog";
-    PGConn conn3 = ASSERT_RESULT(Connect());
+    auto conn3 = VERIFY_RESULT(Connect());
     const std::string kDatabaseName = "testdb";
-    ASSERT_OK(conn3.ExecuteFormat("CREATE DATABASE $0", kDatabaseName));
+    RETURN_NOT_OK(conn3.ExecuteFormat("CREATE DATABASE $0", kDatabaseName));
 
     // Compacting the sys catalog tablet updates the history cutoff time
     // on the tablet to reflect the h/istory_retention_interval_sec flags
     LOG(INFO) << "Trigger a flush and compaction of the sys catalog tablet";
-    ASSERT_OK(sys_catalog_tablet->Flush(tablet::FlushMode::kSync));
-    ASSERT_OK(sys_catalog_tablet->ForceManualRocksDBCompact());
+    RETURN_NOT_OK(sys_catalog_tablet->Flush(tablet::FlushMode::kSync));
+    RETURN_NOT_OK(sys_catalog_tablet->ForceManualRocksDBCompact());
 
     SleepFor(1s);
 
     LOG(INFO) << "Starting a new conn which should query pg_tablespace";
-    (void)ASSERT_RESULT(Connect());
-    (void)ASSERT_RESULT(ConnectToDB(kDatabaseName));
+    VERIFY_RESULT(Connect());
+    VERIFY_RESULT(ConnectToDB(kDatabaseName));
 
     // PGConn *conn4, *conn5;
-    const auto deltaForYBDB =
-        ASSERT_RESULT(metrics_->Delta([&] { return ResultToStatus(Connect()); }));
+    const auto yb_db_delta =
+        VERIFY_RESULT(metrics_->Delta([this] { return ResultToStatus(Connect()); }));
 
-    LOG(INFO) << "Metric deltas for yugabyte db, master read rpc = " << deltaForYBDB.master_read_rpc
-              << " resp cache queries " << deltaForYBDB.cache.queries << " resp cache hits "
-              << deltaForYBDB.cache.hits;
+    LOG(INFO) << "Metric deltas for yugabyte db: " << Dumper(yb_db_delta);
 
-    const auto deltaForTestDB =
-        ASSERT_RESULT(metrics_->Delta([&] { return ResultToStatus(ConnectToDB(kDatabaseName)); }));
+    const auto test_db_delta = VERIFY_RESULT(metrics_->Delta(
+        [this, kDatabaseName] { return ResultToStatus(ConnectToDB(kDatabaseName)); }));
 
-    LOG(INFO) << "Metric deltas for test db, master read rpc = " << deltaForTestDB.master_read_rpc
-              << " resp cache queries " << deltaForTestDB.cache.queries << " resp cache hits "
-              << deltaForTestDB.cache.hits;
+    LOG(INFO) << "Metric deltas for test db: " << Dumper(test_db_delta);
 
-    // We expect one extra master read for pg_tablespace for yugabyte db with the default_tablespace
-    // GUC.
-    ASSERT_GT(deltaForYBDB.master_read_rpc, deltaForTestDB.master_read_rpc);
-    ASSERT_EQ(deltaForYBDB.cache.hits, deltaForTestDB.cache.hits);
-    ASSERT_EQ(deltaForYBDB.cache.queries, deltaForTestDB.cache.queries);
+    return MetricDeltaInfo{.yb_db = yb_db_delta, .test_db = test_db_delta};
   }
 };
 
 class PgSnapshotTooOldWithPreloadTest : public PgSnapshotTooOldTest {
  protected:
   virtual void BeforePgProcessStart() override {
-    PgSnapshotTooOldTest::BeforePgProcessStart();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_catalog_preload_additional_table_list) = "pg_tablespace";
+    PgSnapshotTooOldTest::BeforePgProcessStart();
   }
 };
 
@@ -159,13 +172,19 @@ class PgSnapshotTooOldWithPreloadTest : public PgSnapshotTooOldTest {
 // This test verifies that we do not see a snapshot too old error
 // when certain GUCs set via ALTER DATABASE are loaded on conn startup.
 TEST_F(PgSnapshotTooOldTest, DefaultTablespaceGuc) {
-  TestDefaultTablespaceGUC();
+  auto [yb_db, test_db] = ASSERT_RESULT(MetricDeltaForDefaultTablespaceGUC());
+  ASSERT_GT(yb_db.master_read_rpc, test_db.master_read_rpc);
+  ASSERT_EQ(yb_db.cache.hits, test_db.cache.hits);
+  ASSERT_EQ(yb_db.cache.queries, test_db.cache.queries);
 }
 
 // Repeat the same test with catalog preloading set to preload pg_tablespace
-// The validation of the default_tablespace GUC will still trigger a separate master RPC
+// The validation of the default_tablespace GUC will not trigger a separate master RPC
 TEST_F_EX(PgSnapshotTooOldTest, DefaultTablespaceGucWithPreload, PgSnapshotTooOldWithPreloadTest) {
-  TestDefaultTablespaceGUC();
+  auto [yb_db, test_db] = ASSERT_RESULT(MetricDeltaForDefaultTablespaceGUC());
+  ASSERT_EQ(yb_db.master_read_rpc, test_db.master_read_rpc);
+  ASSERT_EQ(yb_db.cache.hits, test_db.cache.hits);
+  ASSERT_EQ(yb_db.cache.queries, test_db.cache.queries);
 }
 
 }  // namespace yb::pgwrapper

@@ -276,14 +276,9 @@ Result<NamespaceId> XClusterYsqlTestBase::GetNamespaceId(YBClient* client) {
 }
 
 Result<YBTableName> XClusterYsqlTestBase::CreateYsqlTable(
-    Cluster* cluster,
-    const std::string& namespace_name,
-    const std::string& schema_name,
-    const std::string& table_name,
-    const boost::optional<std::string>& tablegroup_name,
-    uint32_t num_tablets,
-    bool colocated,
-    const ColocationId colocation_id,
+    Cluster* cluster, const std::string& namespace_name, const std::string& schema_name,
+    const std::string& table_name, const std::optional<std::string>& tablegroup_name,
+    uint32_t num_tablets, bool colocated, const ColocationId colocation_id,
     const bool ranged_partitioned) {
   auto conn = EXPECT_RESULT(cluster->ConnectToDB(namespace_name));
   std::string colocation_id_string = "";
@@ -339,7 +334,7 @@ Result<YBTableName> XClusterYsqlTestBase::CreateYsqlTable(
 
 Result<YBTableName> XClusterYsqlTestBase::CreateYsqlTable(
     uint32_t idx, uint32_t num_tablets, Cluster* cluster,
-    const boost::optional<std::string>& tablegroup_name, bool colocated,
+    const std::optional<std::string>& tablegroup_name, bool colocated,
     const bool ranged_partitioned) {
   // Generate colocation_id based on index so that we have the same colocation_id for
   // producer/consumer.
@@ -376,7 +371,7 @@ Result<std::pair<NamespaceId, NamespaceId>> XClusterYsqlTestBase::CreateDatabase
     RETURN_NOT_OK(CreateDatabase(cluster, db_name));
     auto table_name = VERIFY_RESULT(CreateYsqlTable(
         cluster, db_name, "" /* schema_name */, "initial_table",
-        /*tablegroup_name=*/boost::none, /*num_tablets=*/1));
+        /*tablegroup_name=*/std::nullopt, /*num_tablets=*/1));
     std::shared_ptr<client::YBTable> table;
     RETURN_NOT_OK(cluster->client_->OpenTable(table_name, &table));
     cluster->tables_.emplace_back(std::move(table));
@@ -630,6 +625,39 @@ Status XClusterYsqlTestBase::VerifyWrittenRecords(
   LOG(INFO) << "Row counts, Producer: " << prod_row_count << ", Consumer: " << cons_row_count
             << ". Column counts, Producer: " << prod_col_count << ", Consumer: " << cons_col_count;
   return s;
+}
+
+Status XClusterYsqlTestBase::VerifyWrittenRecords(
+    const std::vector<TableName>& table_names, const NamespaceName& database_name,
+    const std::string& schema_name) {
+  auto db_name = database_name.empty() ? namespace_name : database_name;
+  for (const auto& table_name : table_names) {
+    auto producer_table = VERIFY_RESULT(GetProducerTable(
+        VERIFY_RESULT(GetYsqlTable(&producer_cluster_, db_name, schema_name, table_name))));
+    auto consumer_table = VERIFY_RESULT(GetConsumerTable(
+        VERIFY_RESULT(GetYsqlTable(&consumer_cluster_, db_name, schema_name, table_name))));
+    RETURN_NOT_OK_PREPEND(
+        VerifyWrittenRecords(producer_table, consumer_table),
+        Format("Failed to verify written records for table $0", table_name));
+  }
+  return Status::OK();
+}
+
+Result<std::shared_ptr<client::YBTable>> XClusterYsqlTestBase::GetProducerTable(
+    const client::YBTableName& producer_table_name) {
+  std::shared_ptr<client::YBTable> producer_table;
+  RETURN_NOT_OK(producer_client()->OpenTable(producer_table_name, &producer_table));
+  return producer_table;
+}
+
+Result<std::shared_ptr<client::YBTable>> XClusterYsqlTestBase::GetConsumerTable(
+    const client::YBTableName& producer_table_name) {
+  auto consumer_table_name = VERIFY_RESULT(GetYsqlTable(
+      &consumer_cluster_, producer_table_name.namespace_name(), producer_table_name.pgschema_name(),
+      producer_table_name.table_name()));
+  std::shared_ptr<client::YBTable> consumer_table;
+  RETURN_NOT_OK(consumer_client()->OpenTable(consumer_table_name, &consumer_table));
+  return consumer_table;
 }
 
 Result<std::vector<xrepl::StreamId>> XClusterYsqlTestBase::BootstrapCluster(
@@ -967,7 +995,7 @@ Status XClusterYsqlTestBase::SetUpClusters(const SetupParams& params) {
 
     for (uint32_t i = 0; i < num_tablets->size(); i++) {
       auto table_name = VERIFY_RESULT(CreateYsqlTable(
-          i, num_tablets->at(i), cluster, boost::none /* tablegroup */, false /* colocated */,
+          i, num_tablets->at(i), cluster, std::nullopt /* tablegroup */, false /* colocated */,
           params.ranged_partitioned));
       std::shared_ptr<client::YBTable> table;
       RETURN_NOT_OK(cluster->client_->OpenTable(table_name, &table));

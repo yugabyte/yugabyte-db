@@ -271,7 +271,7 @@ CREATE AGGREGATE DemoSum (
 
 use crate::error;
 use crate::memcxt::PgMemoryContexts;
-use crate::pg_sys::{AggCheckCallContext, CurrentMemoryContext, FunctionCallInfo, MemoryContext};
+use crate::pg_sys::{AggCheckCallContext, YbCurrentMemoryContext, FunctionCallInfo, MemoryContext};
 use crate::pgbox::PgBox;
 
 pub use pgrx_sql_entity_graph::{FinalizeModify, ParallelOption};
@@ -420,7 +420,7 @@ where
     #[inline(always)]
     unsafe fn memory_context(fcinfo: FunctionCallInfo) -> Option<MemoryContext> {
         if fcinfo.is_null() {
-            return Some(CurrentMemoryContext);
+            return Some(YbCurrentMemoryContext);
         }
         let mut memory_context = std::ptr::null_mut();
         let is_aggregate = AggCheckCallContext(fcinfo, &mut memory_context);

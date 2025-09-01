@@ -42,7 +42,6 @@
 #include <vector>
 
 #include <boost/container/small_vector.hpp>
-#include <boost/optional/optional_fwd.hpp>
 #include <boost/version.hpp>
 #include "yb/util/flags.h"
 
@@ -106,6 +105,8 @@ class GetLeaderMasterRpc : public rpc::Rpc {
   void SendRpc() override EXCLUDES(lock_);
 
   std::string ToString() const override;
+
+  std::string LogPrefix() const;
 
  private:
   void Finished(const Status& status) override EXCLUDES(lock_);

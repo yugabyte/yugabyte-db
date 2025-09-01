@@ -1,5 +1,6 @@
 const { ESBuildMinifyPlugin } = require('esbuild-loader');
 const { getLoaders, loaderByName, removeLoaders, addAfterLoader } = require('@craco/craco');
+const path = require('path');
 
 const throwError = (message) =>
   throwUnexpectedConfigError({
@@ -11,7 +12,7 @@ const throwError = (message) =>
 
 module.exports = {
   typescript: {
-    enableTypeChecking: true /* (default value) */
+    enableTypeChecking: true
   },
   webpack: {
     configure: (webpackConfig, { paths }) => {
@@ -56,13 +57,16 @@ module.exports = {
       console.log('added non-application JS babel-loader back');
 
       console.log('replacing TerserPlugin with ESBuildMinifyPlugin');
-      webpackConfig.optimization.minimizer = [
-        new ESBuildMinifyPlugin({
-          target: 'es2016'
-        })
-      ];
 
-      webpackConfig.optimization.nodeEnv = 'production';
+      // Apply optomization only if the environment is production
+      if (process.env.NODE_ENV === 'production') {
+        webpackConfig.optimization.minimizer = [
+          new ESBuildMinifyPlugin({
+            target: 'es2016'
+          })
+        ];
+        webpackConfig.optimization.nodeEnv = 'production';
+      }
 
       webpackConfig.module.rules.unshift({
         test: /\.svg$/,
@@ -83,6 +87,9 @@ module.exports = {
       });
 
       return webpackConfig;
+    },
+    alias: {
+      '@app': path.resolve(__dirname, 'src')
     }
   }
 };

@@ -25,6 +25,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
@@ -106,8 +107,8 @@ public class PauseUniverseTest extends CommissionerBaseTest {
           TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.AnsibleClusterServerCtl,
-          TaskType.SetNodeState,
           TaskType.AnsibleClusterServerCtl,
+          TaskType.SetNodeState,
           TaskType.PauseServer,
           TaskType.SwamperTargetsFileUpdate,
           TaskType.ManageAlertDefinitions,
@@ -121,8 +122,8 @@ public class PauseUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "stop")),
-          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "master", "command", "stop")),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -198,5 +199,20 @@ public class PauseUniverseTest extends CommissionerBaseTest {
     assertTaskSequence(subTasksByPosition);
     assertEquals(Success, taskInfo.getTaskState());
     assertTrue(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.getUniverseUUID()));
+  }
+
+  @Test
+  public void testPauseUniverseRetries() {
+    setupUniverse(false);
+    PauseUniverse.Params taskParams = new PauseUniverse.Params();
+    taskParams.customerUUID = defaultCustomer.getUuid();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    verifyTaskRetries(
+        defaultCustomer,
+        CustomerTask.TaskType.Pause,
+        CustomerTask.TargetType.Universe,
+        taskParams.getUniverseUUID(),
+        TaskType.PauseUniverse,
+        taskParams);
   }
 }

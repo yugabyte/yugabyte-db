@@ -705,24 +705,6 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 
 					case TRANS_STMT_SAVEPOINT:
 						RequireTransactionBlock(isTopLevel, "SAVEPOINT");
-
-						/*
-						 * Disallow savepoint if the user has executed a DDL
-						 * within the transaction block.
-						 *
-						 * TODO(#26734): Remove once savepoint for DDL is
-						 * supported.
-						 */
-						if (IsYugaByteEnabled() &&
-							YBGetDdlUseRegularTransactionBlock())
-							ereport(ERROR,
-									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-									 errmsg("interleaving SAVEPOINT & DDL in "
-											"transaction block not supported by"
-											" YugaByte yet"),
-									 errhint("See https://github.com/yugabyte/yugabyte-db/issues/26734."
-											 " React with thumbs up to raise its priority.")));
-
 						DefineSavepoint(stmt->savepoint_name);
 						break;
 
@@ -792,7 +774,13 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			break;
 
 		case T_TruncateStmt:
-			ExecuteTruncate((TruncateStmt *) parsetree, isTopLevel);
+			/* In Yugabyte TRUNCATE supports DDL event triggers */
+			if (IsYugaByteEnabled())
+				ProcessUtilitySlow(pstate, pstmt, queryString, context, params,
+								   queryEnv, dest, qc);
+			else
+				ExecuteTruncate((TruncateStmt *) parsetree, isTopLevel,
+								NULL /* yb_relids */ );
 			break;
 
 		case T_CopyStmt:
@@ -2043,6 +2031,27 @@ ProcessUtilitySlow(ParseState *pstate,
 
 			case T_AlterCollationStmt:
 				address = AlterCollation((AlterCollationStmt *) parsetree);
+				break;
+
+			case T_TruncateStmt:
+				{
+					Assert(IsYugaByteEnabled());
+					List	   *relids = NIL;
+					ListCell   *cell;
+
+					ExecuteTruncate((TruncateStmt *) parsetree, isTopLevel,
+									&relids);
+
+					foreach(cell, relids)
+					{
+						Oid			relid = lfirst_oid(cell);
+
+						ObjectAddressSet(address, RelationRelationId, relid);
+						EventTriggerCollectSimpleCommand(address, secondaryObject,
+														 parsetree);
+					}
+					commandCollected = true;
+				}
 				break;
 
 			default:

@@ -44,20 +44,29 @@ class YsqlDumpRunner : public YsqlBinaryRunner {
   }
 
   Result<std::string> DumpSchemaAsOfTime(
-      const std::string& db_name, const HybridTime& restore_time);
+      const std::string& db_name, const std::optional<HybridTime>& read_time = std::nullopt);
 
   Result<std::string> RunAndModifyForClone(
-    const std::string& source_db_name, const std::string& target_db_name,
-    const std::string& source_owner, const std::string& target_owner,
-    const HybridTime& restore_time);
+      const std::string& source_db_name, const std::string& target_db_name,
+      const std::string& source_owner, const std::string& target_owner,
+      const std::optional<HybridTime>& read_time = std::nullopt);
+
+  std::string ModifyDbOwnerInScript(
+      const std::string& dump_output, const std::string& source_owner,
+      const std::string& target_owner);
+
+  std::string ModifyDbNameInScript(
+      const std::string& dump_output, const std::string& new_db,
+      bool disallow_db_connections = false);
 
  private:
   YsqlDumpRunner(std::string tool_path, HostPort pg_host_port)
       : YsqlBinaryRunner(tool_path, pg_host_port) {}
 
-  std::string ModifyLine(
-      const std::string& line, const std::string& new_db, const boost::regex& source_owner_re,
-      const std::string& alter_owner);
+  std::string ModifyDbNameInLine(
+      std::string line, const std::string& new_db, bool disallow_db_connections = false);
+  std::string ModifyDbOwnerInLine(
+      std::string line, const std::string& source_owner, const std::string& target_owner);
 };
 
 class YsqlshRunner : public YsqlBinaryRunner {
@@ -68,7 +77,7 @@ class YsqlshRunner : public YsqlBinaryRunner {
   }
 
   Result<std::string> ExecuteSqlScript(
-      const std::string& sql_script, const std::string& file_prefix);
+      const std::string& sql_script, const std::string& tmp_file_prefix);
 
  private:
   YsqlshRunner(std::string tool_path, HostPort pg_host_port)

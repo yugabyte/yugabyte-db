@@ -35,6 +35,7 @@
 #include "catalog/pg_auth_members_d.h"
 #include "catalog/pg_authid_d.h"
 #include "catalog/pg_database.h"
+#include "catalog/pg_db_role_setting_d.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_shseclabel_d.h"
 #include "catalog/pg_tablespace_d.h"
@@ -64,7 +65,7 @@
 #include "utils/rel.h"
 #include "utils/relcache.h"
 #include "utils/syscache.h"
-#include "yb/yql/pggate/ybc_pggate.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 
 bool		yb_disable_transactional_writes = false;
 bool		yb_enable_upsert_mode = false;
@@ -257,14 +258,15 @@ YBCExecWriteStmt(YbcPgStatement ybc_stmt,
 
 		if (RelationGetForm(rel)->relisshared &&
 			(RelationSupportsSysCache(relid) ||
-			 YbRelationIdIsInInitFileAndNotCached(relid)) &&
+			 YbRelationIdIsInInitFileAndNotCached(relid) ||
+			 YbSharedRelationIdNeedsGlobalImpact(relid)) &&
 			!(*YBCGetGFlags()->ysql_disable_global_impact_ddl_statements))
 		{
 			/* NOTE: relisshared implies that rel is a system relation. */
 			Assert(IsSystemRelation(rel));
 			/*
-			 * There are two sections in the next Assert. Relation ids
-			 * in each section are grouped together and two sections
+			 * There are 3 sections in the next Assert. Relation ids
+			 * in each section are grouped together and these sections
 			 * are separated with an empty line.
 			 *
 			 * Section 1 contains relations in relcache init file that
@@ -274,6 +276,10 @@ YBCExecWriteStmt(YbcPgStatement ybc_stmt,
 			 * Section 2 contains relations in relcache init file but
 			 * do not support sys cache. Should be kept in sync with
 			 * YbRelationIdIsInInitFileAndNotCached.
+			 *
+			 * Section 3 contains relations that can be prefetched
+			 * but do not have a PG catalog cache. Should be kept in
+			 * sync with YbSharedRelationIdNeedsGlobalImpact.
 			 */
 			Assert(relid == AuthIdRelationId ||
 				   relid == AuthIdRolnameIndexId ||
@@ -282,9 +288,13 @@ YBCExecWriteStmt(YbcPgStatement ybc_stmt,
 				   relid == AuthMemMemRoleIndexId ||
 				   relid == DatabaseRelationId ||
 				   relid == TableSpaceRelationId ||
+
 				   relid == DatabaseNameIndexId ||
 				   relid == SharedSecLabelRelationId ||
-				   relid == SharedSecLabelObjectIndexId);
+				   relid == SharedSecLabelObjectIndexId ||
+
+				   relid == DbRoleSettingRelationId ||
+				   relid == DbRoleSettingDatidRolidIndexId);
 
 			YbSetIsGlobalDDL();
 		}
@@ -1096,7 +1106,7 @@ YBCExecuteUpdate(ResultRelInfo *resultRelInfo,
 			((TargetEntry *) lfirst(pushdown_lc))->resno == attnum)
 		{
 			TargetEntry *tle = (TargetEntry *) lfirst(pushdown_lc);
-			Expr	   *expr = YbExprInstantiateParams(tle->expr, estate);
+			Expr	   *expr = YbExprInstantiateExprs(tle->expr, estate);
 			MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 			YbcPgExpr	ybc_expr = YBCNewEvalExprCall(update_stmt, expr);
 

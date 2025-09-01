@@ -271,6 +271,8 @@ extern bool yb_upgrade_to_pg15_completed;
 
 extern bool yb_debug_log_catcache_events;
 
+extern bool yb_debug_log_snapshot_mgmt;
+
 extern bool yb_extension_upgrade;
 
 extern bool yb_mixed_mode_expression_pushdown;
@@ -283,6 +285,8 @@ extern bool yb_ddl_transaction_block_enabled;
 
 extern bool yb_disable_ddl_transaction_block_for_read_committed;
 
+extern bool yb_allow_dockey_bounds;
+
 // Should be in sync with YsqlSamplingAlgorithm protobuf.
 typedef enum {
   YB_SAMPLING_ALGORITHM_FULL_TABLE_SCAN = 0,
@@ -290,6 +294,10 @@ typedef enum {
 } YbcSamplingAlgorithmEnum;
 
 extern int32_t yb_sampling_algorithm;
+
+extern int yb_fk_references_cache_limit;
+
+extern bool yb_xcluster_target_ddl_bypass;
 
 #ifdef __cplusplus
 } // extern "C"

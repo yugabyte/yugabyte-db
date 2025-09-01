@@ -15,9 +15,11 @@
 
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/lock_util.h"
+#include "yb/docdb/object_lock_shared_fwd.h"
 
 #include "yb/server/server_fwd.h"
 
+#include "yb/util/metrics.h"
 #include "yb/util/status_callback.h"
 
 namespace yb {
@@ -63,7 +65,9 @@ class ObjectLockManagerImpl;
 // server maintains an instance of the ObjectLockManager.
 class ObjectLockManager {
  public:
-  ObjectLockManager(ThreadPool* thread_pool, server::RpcServerBase& server);
+  ObjectLockManager(
+      ThreadPool* thread_pool, server::RpcServerBase& server, const MetricEntityPtr& metric_entity,
+      ObjectLockSharedStateManager* shared_manager = nullptr);
   ~ObjectLockManager();
 
   // Attempt to lock a batch of keys and track the lock against data.object_lock_owner key. The
@@ -81,8 +85,10 @@ class ObjectLockManager {
 
   void DumpStatusHtml(std::ostream& out);
 
-  size_t TEST_GrantedLocksSize() const;
-  size_t TEST_WaitingLocksSize() const;
+  void ConsumePendingSharedLockRequests();
+
+  size_t TEST_GrantedLocksSize();
+  size_t TEST_WaitingLocksSize();
   std::unordered_map<ObjectLockPrefix, LockState>
       TEST_GetLockStateMapForTxn(const TransactionId& txn) const;
 

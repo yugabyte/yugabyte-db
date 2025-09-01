@@ -98,31 +98,25 @@ class YBClient::Data {
                         const master::AlterNamespaceRequestPB& req,
                         CoarseTimePoint deadline);
 
-  Status IsCreateNamespaceInProgress(YBClient* client,
-                                const std::string& namespace_name,
-                                const boost::optional<YQLDatabase>& database_type,
-                                const std::string& namespace_id,
-                                CoarseTimePoint deadline,
-                                bool *create_in_progress);
+  Status IsCreateNamespaceInProgress(
+      YBClient* client, const std::string& namespace_name,
+      const std::optional<YQLDatabase>& database_type, const std::string& namespace_id,
+      CoarseTimePoint deadline, bool* create_in_progress);
 
-  Status WaitForCreateNamespaceToFinish(YBClient* client,
-                                const std::string& namespace_name,
-                                const boost::optional<YQLDatabase>& database_type,
-                                const std::string& namespace_id,
-                                CoarseTimePoint deadline);
+  Status WaitForCreateNamespaceToFinish(
+      YBClient* client, const std::string& namespace_name,
+      const std::optional<YQLDatabase>& database_type, const std::string& namespace_id,
+      CoarseTimePoint deadline);
 
-  Status IsDeleteNamespaceInProgress(YBClient* client,
-                                     const std::string& namespace_name,
-                                     const boost::optional<YQLDatabase>& database_type,
-                                     const std::string& namespace_id,
-                                     CoarseTimePoint deadline,
-                                     bool *delete_in_progress);
+  Status IsDeleteNamespaceInProgress(
+      YBClient* client, const std::string& namespace_name,
+      const std::optional<YQLDatabase>& database_type, const std::string& namespace_id,
+      CoarseTimePoint deadline, bool* delete_in_progress);
 
-  Status WaitForDeleteNamespaceToFinish(YBClient* client,
-                                        const std::string& namespace_name,
-                                        const boost::optional<YQLDatabase>& database_type,
-                                        const std::string& namespace_id,
-                                        CoarseTimePoint deadline);
+  Status WaitForDeleteNamespaceToFinish(
+      YBClient* client, const std::string& namespace_name,
+      const std::optional<YQLDatabase>& database_type, const std::string& namespace_id,
+      CoarseTimePoint deadline);
 
   Status IsCloneNamespaceInProgress(
       YBClient* client, const std::string& source_namespace_id, uint32_t clone_seq_no,
@@ -161,7 +155,8 @@ class YBClient::Data {
                              CoarseTimePoint deadline,
                              YBTableName* indexed_table_name,
                              bool wait = true,
-                             const TransactionMetadata *txn = nullptr);
+                             const TransactionMetadata *txn = nullptr,
+                             SubTransactionId sub_transaction_id = kMinSubTransactionId);
 
   Status IsDeleteTableInProgress(YBClient* client,
                                  const std::string& table_id,
@@ -192,12 +187,14 @@ class YBClient::Data {
                           const std::string& namespace_id,
                           const std::string& tablegroup_id,
                           const std::string& tablespace_id,
-                          const TransactionMetadata* txn);
+                          const TransactionMetadata* txn,
+                          const SubTransactionId sub_transaction_id);
 
   Status DeleteTablegroup(YBClient* client,
                           CoarseTimePoint deadline,
                           const std::string& tablegroup_id,
-                          const TransactionMetadata* txn);
+                          const TransactionMetadata* txn,
+                          const SubTransactionId sub_transaction_id);
 
   Status BackfillIndex(YBClient* client,
                        const YBTableName& table_name,
@@ -528,6 +525,8 @@ class YBClient::Data {
 
   void Shutdown();
 
+  bool Closing();
+
   void DoSetMasterServerProxy(
       CoarseTimePoint deadline, bool skip_resolution, bool wait_for_leader_election);
   Result<server::MasterAddresses> ParseMasterAddresses(const Status& reinit_status);
@@ -627,6 +626,15 @@ class YBClient::Data {
   Status FlushTablesHelper(YBClient* client,
                            const CoarseTimePoint deadline,
                            const master::FlushTablesRequestPB& req);
+
+  Status RetryUntilShutdown(
+    CoarseTimePoint deadline,
+    const std::string& retry_msg,
+    const std::string& timeout_msg,
+    const std::function<Status(CoarseTimePoint, bool*)>& func,
+    const CoarseDuration max_wait = kDefaultMaxRetryWait,
+    const uint32_t max_jitter_ms = CoarseBackoffWaiter::kDefaultMaxJitterMs,
+    const uint32_t init_exponent = CoarseBackoffWaiter::kDefaultInitExponent);
 
   DISALLOW_COPY_AND_ASSIGN(Data);
 };

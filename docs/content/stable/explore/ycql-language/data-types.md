@@ -15,7 +15,7 @@ The following describes the data types supported in YCQL, from the basic data ty
 
 The [JSONB document data type](../jsonb-ycql/) is described in a separate section.
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 ## Strings
 

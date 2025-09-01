@@ -406,120 +406,135 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
   } // Do nothing if config not ready.
 
 
-  // If CatalogManager is not initialized don't even know whether or not we will
-  // be a leader (so we can't tell whether or not we can accept tablet reports).
-  SCOPED_LEADER_SHARED_LOCK(l, catalog_manager_);
+  int64_t leader_term;
+  {
+    // If CatalogManager is not initialized don't even know whether or not we will
+    // be a leader (so we can't tell whether or not we can accept tablet reports).
+    SCOPED_LEADER_SHARED_LOCK(l, catalog_manager_);
 
-  if (req->common().ts_instance().permanent_uuid().empty()) {
-    // In FSManager, we have already added empty UUID protection so that TServer will
-    // crash before even sending heartbeat to Master. Here is only for the case that
-    // new updated Master might received empty UUID from old version of TServer that
-    // doesn't have the crash code in FSManager.
-    rpc.RespondFailure(STATUS(InvalidArgument, "Recevied Empty UUID from instance: ",
-                              req->common().ts_instance().ShortDebugString()));
-    return;
-  }
+    if (req->common().ts_instance().permanent_uuid().empty()) {
+      // In FSManager, we have already added empty UUID protection so that TServer will
+      // crash before even sending heartbeat to Master. Here is only for the case that
+      // new updated Master might received empty UUID from old version of TServer that
+      // doesn't have the crash code in FSManager.
+      rpc.RespondFailure(STATUS(InvalidArgument, "Recevied Empty UUID from instance: ",
+                                req->common().ts_instance().ShortDebugString()));
+      return;
+    }
 
-  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
     resp->set_leader_master(false);
-    return;
-  }
+    if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
+      return;
+    }
 
-  resp->mutable_master_instance()->CopyFrom(server_->instance_pb());
-  resp->set_leader_master(true);
+    leader_term = l.GetLeaderReadyTerm();
+    resp->mutable_master_instance()->CopyFrom(server_->instance_pb());
+    resp->set_leader_master(true);
 
-  if (!ValidateTServerUniverseOrRespond(*req, resp, &rpc).ok()) {
-    return;
-  }
+    if (!ValidateTServerUniverseOrRespond(*req, resp, &rpc).ok()) {
+      return;
+    }
 
-  if (!FillHeartbeatResponseOrRespond(*req, resp, &rpc).ok()) {
-    return;
-  }
-  auto desc_result = UpdateAndReturnTSDescriptorOrRespond(l.epoch(), *req, resp, &rpc);
-  if (!desc_result.ok()) {
-    return;
-  }
-  TSDescriptorPtr& ts_desc = *desc_result;
+    if (!FillHeartbeatResponseOrRespond(*req, resp, &rpc).ok()) {
+      return;
+    }
+    auto desc_result = UpdateAndReturnTSDescriptorOrRespond(l.epoch(), *req, resp, &rpc);
+    if (!desc_result.ok()) {
+      return;
+    }
+    TSDescriptorPtr& ts_desc = *desc_result;
 
-  resp->set_tablet_report_limit(FLAGS_tablet_report_limit);
+    resp->set_tablet_report_limit(FLAGS_tablet_report_limit);
 
-  // Set the TServer metrics in TS Descriptor.
-  if (req->has_metrics()) {
-    ts_desc->UpdateMetrics(req->metrics());
-  }
+    // Set the TServer metrics in TS Descriptor.
+    if (req->has_metrics()) {
+      ts_desc->UpdateMetrics(req->metrics());
+    }
 
-  auto process_tablet_report_result = ProcessTabletReport(
-      ts_desc, req->common().ts_instance(),
-      req->has_tablet_report() ? &req->tablet_report() : nullptr,
-      l.epoch(),
-      resp->mutable_tablet_report(), &rpc);
-  if (!process_tablet_report_result.ok()) {
-    rpc.RespondFailure(
-        process_tablet_report_result.status().CloneAndPrepend("Failed to process tablet report"));
-    return;
-  }
-  if (!*process_tablet_report_result) {
-    resp->set_needs_full_tablet_report(true);
-  }
+    auto process_tablet_report_result = ProcessTabletReport(
+        ts_desc, req->common().ts_instance(),
+        req->has_tablet_report() ? &req->tablet_report() : nullptr,
+        l.epoch(),
+        resp->mutable_tablet_report(), &rpc);
+    if (!process_tablet_report_result.ok()) {
+      rpc.RespondFailure(
+          process_tablet_report_result.status().CloneAndPrepend("Failed to process tablet report"));
+      return;
+    }
+    if (!*process_tablet_report_result) {
+      resp->set_needs_full_tablet_report(true);
+    }
 
-  if (!req->has_tablet_report() || req->tablet_report().is_incremental()) {
-    // Only process metadata if we have plenty of time to process the work (> 50% of
-    // timeout).
-    auto safe_time_left = CoarseMonoClock::Now() + (FLAGS_heartbeat_rpc_timeout_ms * 1ms / 2);
-    if (rpc.GetClientDeadline() > safe_time_left &&
-        PREDICT_TRUE(!ANNOTATE_UNPROTECTED_READ(FLAGS_TEST_skip_processing_tablet_metadata))) {
-      std::unordered_map<TabletId, TabletLeaderMetricsPB> id_to_leader_metrics;
-      for (auto& info : req->leader_info()) {
-        id_to_leader_metrics[info.tablet_id()] = info;
-      }
-      for (const auto& metadata : req->storage_metadata()) {
-        std::optional<TabletLeaderMetricsPB> leader_metrics;
-        auto iter = id_to_leader_metrics.find(metadata.tablet_id());
-        if (iter != id_to_leader_metrics.end()) {
-          leader_metrics = iter->second;
+    if (!req->has_tablet_report() || req->tablet_report().is_incremental()) {
+      // Only process metadata if we have plenty of time to process the work (> 50% of
+      // timeout).
+      auto safe_time_left = CoarseMonoClock::Now() + (FLAGS_heartbeat_rpc_timeout_ms * 1ms / 2);
+      if (rpc.GetClientDeadline() > safe_time_left &&
+          PREDICT_TRUE(!ANNOTATE_UNPROTECTED_READ(FLAGS_TEST_skip_processing_tablet_metadata))) {
+        std::unordered_map<TabletId, TabletLeaderMetricsPB> id_to_leader_metrics;
+        for (auto& info : req->leader_info()) {
+          id_to_leader_metrics[info.tablet_id()] = info;
         }
-        ProcessTabletMetadata(ts_desc->id(), metadata, leader_metrics);
+        for (const auto& metadata : req->storage_metadata()) {
+          std::optional<TabletLeaderMetricsPB> leader_metrics;
+          auto iter = id_to_leader_metrics.find(metadata.tablet_id());
+          if (iter != id_to_leader_metrics.end()) {
+            leader_metrics = iter->second;
+          }
+          ProcessTabletMetadata(ts_desc->id(), metadata, leader_metrics);
+        }
+      }
+
+      for (const auto& consumer_replication_state : req->xcluster_consumer_replication_status()) {
+        catalog_manager_->GetXClusterManager()->StoreConsumerReplicationStatus(
+            consumer_replication_state);
+      }
+
+      // Only process the full compaction statuses if we have plenty of time to process the work (>
+      // 50% of timeout).
+      safe_time_left = CoarseMonoClock::Now() + (FLAGS_heartbeat_rpc_timeout_ms * 1ms / 2);
+      if (rpc.GetClientDeadline() > safe_time_left) {
+        for (const auto& full_compaction_status : req->full_compaction_statuses()) {
+          ProcessTabletReplicaFullCompactionStatus(
+              ts_desc->permanent_uuid(), full_compaction_status);
+        }
       }
     }
 
-    for (const auto& consumer_replication_state : req->xcluster_consumer_replication_status()) {
-      catalog_manager_->GetXClusterManager()->StoreConsumerReplicationStatus(
-          consumer_replication_state);
+    // Retrieve all the nodes known by the master.
+    std::vector<std::shared_ptr<TSDescriptor>> descs;
+    server_->ts_manager()->GetAllLiveDescriptors(&descs);
+    for (const auto& desc : descs) {
+      *resp->add_tservers() = desc->GetTSInformationPB();
     }
 
-    // Only process the full compaction statuses if we have plenty of time to process the work (>
-    // 50% of timeout).
-    safe_time_left = CoarseMonoClock::Now() + (FLAGS_heartbeat_rpc_timeout_ms * 1ms / 2);
-    if (rpc.GetClientDeadline() > safe_time_left) {
-      for (const auto& full_compaction_status : req->full_compaction_statuses()) {
-        ProcessTabletReplicaFullCompactionStatus(ts_desc->permanent_uuid(), full_compaction_status);
-      }
+    auto cluster_config = server_->catalog_manager()->GetClusterConfig();
+    if (cluster_config) {
+      resp->set_oid_cache_invalidations_count(cluster_config->oid_cache_invalidations_count());
+    } else {
+      LOG(WARNING) << "Could not get oid_cache_invalidations_count for heartbeat response: "
+                   << cluster_config.status().ToUserMessage();
     }
-  }
 
-  // Retrieve all the nodes known by the master.
-  std::vector<std::shared_ptr<TSDescriptor>> descs;
-  server_->ts_manager()->GetAllLiveDescriptors(&descs);
-  for (const auto& desc : descs) {
-    *resp->add_tservers() = desc->GetTSInformationPB();
+    uint64_t transaction_tables_version = catalog_manager_->GetTransactionTablesVersion();
+    resp->set_transaction_tables_version(transaction_tables_version);
+
+    if (req->has_auto_flags_config_version() &&
+        req->auto_flags_config_version() < server_->GetAutoFlagConfigVersion()) {
+      *resp->mutable_auto_flags_config() = server_->GetAutoFlagsConfig();
+    }
   }
 
   PopulatePgCatalogVersionInfo(*req, *resp);
 
-  auto cluster_config = server_->catalog_manager()->GetClusterConfig();
-  if (cluster_config) {
-    resp->set_oid_cache_invalidations_count(cluster_config->oid_cache_invalidations_count());
-  } else {
-    LOG(WARNING) << "Could not get oid_cache_invalidations_count for heartbeat response: "
-                 << cluster_config.status().ToUserMessage();
-  }
+  {
+    SCOPED_LEADER_SHARED_LOCK(lock, catalog_manager_, leader_term);
 
-  uint64_t transaction_tables_version = catalog_manager_->GetTransactionTablesVersion();
-  resp->set_transaction_tables_version(transaction_tables_version);
-
-  if (req->has_auto_flags_config_version() &&
-      req->auto_flags_config_version() < server_->GetAutoFlagConfigVersion()) {
-    *resp->mutable_auto_flags_config() = server_->GetAutoFlagsConfig();
+    resp->set_leader_master(false);
+    if (!lock.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
+      return;
+    }
+    resp->set_leader_master(true);
   }
 
   rpc.RespondSuccess();
@@ -597,13 +612,9 @@ void MasterHeartbeatServiceImpl::DeleteOrphanedTabletReplica(
   LOG(INFO) << "Null tablet reported, possibly the TS was not around when the "
                "table was being deleted. Sending DeleteTablet RPC to this TS.";
   catalog_manager_->SendDeleteTabletRequest(
-    tablet_id,
-    tablet::TABLET_DATA_DELETED /* delete_type */,
-    boost::none /* cas_config_opid_index_less_or_equal */,
-    nullptr /* table */,
-    ts_desc->id(),
-    "Report from an orphaned tablet" /* reason */,
-    epoch);
+      tablet_id, tablet::TABLET_DATA_DELETED /* delete_type */,
+      std::nullopt /* cas_config_opid_index_less_or_equal */, nullptr /* table */, ts_desc->id(),
+      "Report from an orphaned tablet" /* reason */, epoch);
 }
 
 Result<bool> MasterHeartbeatServiceImpl::ProcessTabletReport(
@@ -828,7 +839,7 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReportBatch(
       // where that might be possible (tablet creation timeout & replacement).
       rpcs->push_back(catalog_manager_->MakeDeleteReplicaTask(
           ts_desc->permanent_uuid(), table, tablet_id, TABLET_DATA_DELETED,
-          boost::none /* cas_config_opid_index_less_or_equal */, epoch, msg));
+          std::nullopt /* cas_config_opid_index_less_or_equal */, epoch, msg));
       continue;
     }
 
@@ -885,7 +896,7 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReportBatch(
                 << " (" << msg << "): Sending hide request for this tablet";
       auto task = catalog_manager_->MakeDeleteReplicaTask(
           ts_desc->permanent_uuid(), table, tablet_id, TABLET_DATA_DELETED,
-          boost::none /* cas_config_opid_index_less_or_equal */, epoch, msg);
+          std::nullopt /* cas_config_opid_index_less_or_equal */, epoch, msg);
       task->set_hide_only(true);
       rpcs->push_back(task);
     }
@@ -1423,6 +1434,7 @@ void MasterHeartbeatServiceImpl::ProcessTabletMetadata(
     .wal_files_size = storage_metadata.wal_file_size(),
     .uncompressed_sst_file_size = storage_metadata.uncompressed_sst_file_size(),
     .may_have_orphaned_post_split_data = storage_metadata.may_have_orphaned_post_split_data(),
+    .total_size = storage_metadata.total_size(),
   };
   tablet->UpdateReplicaInfo(ts_uuid, drive_info, leader_lease_info);
 }

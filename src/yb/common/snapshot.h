@@ -16,7 +16,6 @@
 #include <unordered_map>
 
 #include <boost/functional/hash/hash.hpp>
-#include <boost/optional/optional.hpp>
 
 #include "yb/common/hybrid_time.h"
 

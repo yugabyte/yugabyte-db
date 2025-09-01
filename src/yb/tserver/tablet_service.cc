@@ -44,6 +44,7 @@
 #include "yb/client/transaction_pool.h"
 
 #include "yb/common/pg_types.h"
+#include "yb/common/pgsql_error.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/row_mark.h"
@@ -135,11 +136,13 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/status_log.h"
+#include "yb/util/std_util.h"
 #include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
 #include "yb/util/uuid.h"
 #include "yb/util/write_buffer.h"
+#include "yb/util/yb_pg_errcodes.h"
 #include "yb/util/ysql_binary_runner.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -195,6 +198,9 @@ TAG_FLAG(index_backfill_wait_for_old_txns_ms, evolving);
 DEFINE_test_flag(double, respond_write_failed_probability, 0.0,
     "Probability to respond that write request is failed");
 
+DEFINE_test_flag(double, respond_write_with_abort_probability, 0.0,
+    "Probability to respond that write request is aborted");
+
 DEFINE_test_flag(bool, rpc_delete_tablet_fail, false, "Should delete tablet RPC fail.");
 
 DECLARE_bool(disable_alter_vs_write_mutual_exclusion);
@@ -232,7 +238,7 @@ DEFINE_UNKNOWN_bool(enable_ysql, true,
     "specified or can be auto-detected). Also each tablet server will start a PostgreSQL "
     "server as a child process.");
 
-DEFINE_RUNTIME_bool(ysql_allow_duplicating_repeatable_read_queries, yb::kIsDebug,
+DEFINE_RUNTIME_bool(ysql_allow_duplicating_repeatable_read_queries, true,
     "Response with success when duplicate write request is detected, "
     "if case this request contains read time.");
 
@@ -468,14 +474,6 @@ Status PrintYSQLWriteRequest(
   }
   LOG(INFO) << ss.str();
   return Status::OK();
-}
-
-template <class Req>
-void UpdateAshMetadataFrom(const Req* req) {
-  const auto& wait_state = ash::WaitStateInfo::CurrentWaitState();
-  if (wait_state && req->has_ash_metadata()) {
-    wait_state->UpdateMetadataFromPB(req->ash_metadata());
-  }
 }
 
 } // namespace
@@ -1309,10 +1307,6 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
                                           rpc::RpcContext context) {
   TRACE("UpdateTransaction");
 
-  if (req->has_ash_metadata()) {
-    ash::WaitStateInfo::UpdateMetadataFromPB(req->ash_metadata());
-  }
-
   if (req->state().status() == TransactionStatus::CREATED &&
       RandomActWithProbability(TEST_delay_create_transaction_probability)) {
     std::this_thread::sleep_for(
@@ -1446,10 +1440,6 @@ void TabletServiceImpl::AbortTransaction(const AbortTransactionRequestPB* req,
                                          AbortTransactionResponsePB* resp,
                                          rpc::RpcContext context) {
   TRACE("AbortTransaction");
-
-  if (req->has_ash_metadata()) {
-    ash::WaitStateInfo::UpdateMetadataFromPB(req->ash_metadata());
-  }
 
   UpdateClock(*req, server_->Clock());
 
@@ -1832,23 +1822,19 @@ void TabletServiceAdminImpl::DeleteTablet(const DeleteTabletRequestPB* req,
             << ": Processing DeleteTablet with delete_type " << TabletDataState_Name(delete_type)
             << (req->has_reason() ? (" (" + req->reason() + ")") : "")
             << (req->hide_only() ? " (Hide only)" : "")
-            << (req->keep_data() ? " (Not deleting data)" : "")
-            << " from " << context.requestor_string();
+            << (req->keep_data() ? " (Not deleting data)" : "") << " from "
+            << context.requestor_string();
   VLOG(1) << "Full request: " << req->DebugString();
 
-  boost::optional<int64_t> cas_config_opid_index_less_or_equal;
+  std::optional<int64_t> cas_config_opid_index_less_or_equal;
   if (req->has_cas_config_opid_index_less_or_equal()) {
     cas_config_opid_index_less_or_equal = req->cas_config_opid_index_less_or_equal();
   }
-  boost::optional<TabletServerErrorPB::Code> error_code;
+  std::optional<TabletServerErrorPB::Code> error_code;
   Status s = server_->tablet_manager()->DeleteTablet(
-      req->tablet_id(),
-      delete_type,
+      req->tablet_id(), delete_type,
       tablet::ShouldAbortActiveTransactions(req->should_abort_active_txns()),
-      cas_config_opid_index_less_or_equal,
-      req->hide_only(),
-      req->keep_data(),
-      &error_code);
+      cas_config_opid_index_less_or_equal, req->hide_only(), req->keep_data(), &error_code);
   if (PREDICT_FALSE(!s.ok())) {
     HandleErrorResponse(resp, &context, s, error_code);
     return;
@@ -2298,6 +2284,12 @@ void TabletServiceAdminImpl::UpgradeYsql(
     const UpgradeYsqlRequestPB* req,
     UpgradeYsqlResponsePB* resp,
     rpc::RpcContext context) {
+  if (!FLAGS_enable_ysql) {
+    LOG(INFO) << "YSQL is not enabled. Skipping YSQL upgrade.";
+    context.RespondSuccess();
+    return;
+  }
+
   LOG(INFO) << "Starting YSQL upgrade";
 
   pgwrapper::YsqlUpgradeHelper upgrade_helper(server_->pgsql_proxy_bind_address(),
@@ -2516,6 +2508,7 @@ Status TabletServiceImpl::PerformWrite(
   VLOG(2) << "Received Write RPC: " << req->DebugString();
 
   UpdateClock(*req, server_->Clock());
+  TEST_SYNC_POINT_CALLBACK("TabletServiceImpl::PerformWrite", const_cast<WriteRequestPB*>(req));
 
   auto tablet =
       VERIFY_RESULT(LookupLeaderTablet(server_->tablet_peer_lookup(), req->tablet_id(), resp));
@@ -2588,6 +2581,14 @@ Status TabletServiceImpl::PerformWrite(
     return Status::OK();
   }
 
+  if (RandomActWithProbability(GetAtomicFlag(&FLAGS_TEST_respond_write_with_abort_probability))) {
+    LOG(INFO) << "Responding with transaction aborted failure to " << req->DebugString();
+    SetupErrorAndRespond(resp->mutable_error(), STATUS_EC_FORMAT(
+        Expired, PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED),
+        "Transaction expired or aborted by a conflict"), context_ptr.get());
+    return Status::OK();
+  }
+
   FillTabletConsensusInfoIfRequestOpIdStale(tablet.peer, req, resp);
   query->set_callback(WriteQueryCompletionCallback(
       tablet.peer, context_ptr, resp, query.get(), server_->Clock(), req->include_trace(),
@@ -2611,11 +2612,34 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     return;
   }
 
-  UpdateAshMetadataFrom(req);
   auto status = PerformWrite(req, resp, &context);
   if (!status.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), std::move(status), &context);
   }
+}
+
+void TabletServiceImpl::WaitForAsyncWrite(
+    const WaitForAsyncWriteRequestPB* req, WaitForAsyncWriteResponsePB* resp,
+    rpc::RpcContext context) {
+  auto callback = [resp, context_ptr = std::make_shared<rpc::RpcContext>(std::move(context))](
+                      const Status& status) {
+    if (!status.ok()) {
+      SetupErrorAndRespond(resp->mutable_error(), status, context_ptr.get());
+      return;
+    }
+    context_ptr->RespondSuccess();
+  };
+
+  // We dont need the leader check here because if the peer gracefully transitioned to a follower
+  // we still want to succeed previously committed async writes received by this peer.
+  auto tablet_result = LookupTabletPeer(server_->tablet_peer_lookup(), req->tablet_id());
+  if (!tablet_result) {
+    callback(tablet_result.status());
+    return;
+  }
+
+  tablet_result->tablet_peer->RegisterAsyncWriteCompletion(
+      OpId::FromPB(req->op_id()), std::move(callback));
 }
 
 void TabletServiceImpl::Read(const ReadRequestPB* req,
@@ -2643,7 +2667,6 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     return;
   }
 
-  UpdateAshMetadataFrom(req);
   PerformRead(server_, this, req, resp, std::move(context));
 }
 
@@ -2659,7 +2682,7 @@ ConsensusServiceImpl::~ConsensusServiceImpl() {
 void ConsensusServiceImpl::CompleteUpdateConsensusResponse(
     std::shared_ptr<tablet::TabletPeer> tablet_peer,
     consensus::LWConsensusResponsePB* resp) {
-  auto tablet = tablet_peer->shared_tablet();
+  auto tablet = tablet_peer->shared_tablet_maybe_null();
   if (tablet) {
     resp->set_num_sst_files(tablet->GetCurrentVersionNumSSTFiles());
   }
@@ -2742,7 +2765,7 @@ void ConsensusServiceImpl::UpdateConsensus(const consensus::LWConsensusRequestPB
   // gives us a const request, but we need to be able to move messages out of the request for
   // efficiency.
   Status s = consensus->Update(
-      rpc::SharedField(context.shared_params(), const_cast<consensus::LWConsensusRequestPB*>(req)),
+      SharedField(context.shared_params(), const_cast<consensus::LWConsensusRequestPB*>(req)),
       resp, context.GetClientDeadline());
   if (PREDICT_FALSE(!s.ok())) {
     // Clear the response first, since a partially-filled response could
@@ -2800,7 +2823,7 @@ void ConsensusServiceImpl::ChangeConfig(const ChangeConfigRequestPB* req,
 
   shared_ptr<Consensus> consensus;
   if (!GetConsensusOrRespond(tablet_peer, resp, &context, &consensus)) return;
-  boost::optional<TabletServerErrorPB::Code> error_code;
+  std::optional<TabletServerErrorPB::Code> error_code;
   std::shared_ptr<RpcContext> context_ptr = std::make_shared<RpcContext>(std::move(context));
   Status s = consensus->ChangeConfig(*req, BindHandleResponse(resp, context_ptr), &error_code);
   VLOG(1) << "Sent ChangeConfig req " << req->ShortDebugString() << " to consensus layer.";
@@ -2826,7 +2849,7 @@ void ConsensusServiceImpl::UnsafeChangeConfig(const UnsafeChangeConfigRequestPB*
   if (!GetConsensusOrRespond(tablet_peer, resp, &context, &consensus)) {
     return;
   }
-  boost::optional<TabletServerErrorPB::Code> error_code;
+  std::optional<TabletServerErrorPB::Code> error_code;
   const Status s = consensus->UnsafeChangeConfig(*req, &error_code);
   if (PREDICT_FALSE(!s.ok())) {
     SetupErrorAndRespond(resp->mutable_error(), s, &context);
@@ -3036,7 +3059,7 @@ void ConsensusServiceImpl::StartRemoteBootstrap(const StartRemoteBootstrapReques
     // tablet has yet to be deleted across the cluster.
     auto tablet_peer = tablet_manager_->GetServingTablet(req->split_parent_tablet_id());
     if (tablet_peer.ok()) {
-      auto tablet = (**tablet_peer).shared_tablet();
+      auto tablet = (**tablet_peer).shared_tablet_maybe_null();
       // If local parent tablet replica has been already split or remote bootstrapped from remote
       // replica that has been already split - allow RBS of child tablets.
       // In this case we can't rely on local parent tablet replica split to create child tablet
@@ -3067,7 +3090,7 @@ void ConsensusServiceImpl::StartRemoteBootstrap(const StartRemoteBootstrapReques
   if (req->has_clone_source_seq_no() && req->has_clone_source_tablet_id()) {
     auto tablet_peer = tablet_manager_->GetServingTablet(req->clone_source_tablet_id());
     if (tablet_peer.ok()) {
-      auto tablet = (**tablet_peer).shared_tablet();
+      auto tablet = (**tablet_peer).shared_tablet_maybe_null();
       if (tablet && !tablet->metadata()->HasAttemptedClone(req->clone_source_seq_no())) {
         SetupErrorAndRespond(
             resp->mutable_error(),
@@ -3173,7 +3196,7 @@ void TabletServiceImpl::ListTabletsForTabletServer(const ListTabletsForTabletSer
         consensus_result.get()->GetLeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY);
     data_entry->set_state(status.state());
 
-    auto tablet = peer->shared_tablet();
+    auto tablet = peer->shared_tablet_maybe_null();
     uint64_t num_sst_files = tablet ? tablet->GetCurrentVersionNumSSTFiles() : 0;
     data_entry->set_num_sst_files(num_sst_files);
 
@@ -3458,6 +3481,13 @@ void TabletServiceImpl::GetLockStatus(const GetLockStatusRequestPB* req,
       auto* tablet_lock_info = resp->add_tablet_lock_infos();
       tablet_lock_info->set_is_advisory_lock_tablet(
           tablet_peer->tablet_metadata()->table_type() != PGSQL_TABLE_TYPE);
+      auto tablet_ptr_res = tablet_peer->shared_tablet();
+      if (!tablet_ptr_res.ok()) {
+        resp->Clear();
+        SetupErrorAndRespond(resp->mutable_error(), tablet_ptr_res.status(), &context);
+        return;
+      }
+      auto tablet_ptr = *tablet_ptr_res;
       Status s = Status::OK();
       if (req->transactions_by_tablet().count(tablet_id) > 0) {
         std::map<TransactionId, SubtxnSet> transactions;
@@ -3478,12 +3508,12 @@ void TabletServiceImpl::GetLockStatus(const GetLockStatusRequestPB* req,
           }
           transactions.emplace(std::make_pair(*id_or_status, *aborted_subtxns_or_status));
         }
-        s = tablet_peer->shared_tablet()->GetLockStatus(
+        s = tablet_ptr->GetLockStatus(
             transactions, tablet_lock_info, req->max_single_shard_waiter_start_time_us(),
             req->max_txn_locks_per_tablet());
       } else {
         DCHECK(!limit_resp_to_txns.empty());
-        s = tablet_peer->shared_tablet()->GetLockStatus(
+        s = tablet_ptr->GetLockStatus(
             limit_resp_to_txns, tablet_lock_info, req->max_single_shard_waiter_start_time_us(),
             req->max_txn_locks_per_tablet());
       }
@@ -3520,7 +3550,7 @@ void TabletServiceImpl::CancelTransaction(
     }
     // Ensure that the given tablet is a status tablet and that the tablet peer is initialized.
     auto peer = peer_or_status->tablet_peer;
-    const auto& tablet_ptr = peer->shared_tablet();
+    const auto& tablet_ptr = peer->shared_tablet_maybe_null();
     if (!tablet_ptr || !tablet_ptr->transaction_coordinator()) {
       return SetupErrorAndRespond(resp->mutable_error(),
                                   STATUS_FORMAT(IllegalState,
@@ -3550,7 +3580,11 @@ void TabletServiceImpl::CancelTransaction(
 
     auto leader_term = *res;
     auto txn_found = false;
-    auto tablet_ptr = tablet_peer->shared_tablet();
+    auto tablet_ptr_res = tablet_peer->shared_tablet();
+    if (!tablet_ptr_res) {
+      return SetupErrorAndRespond(resp->mutable_error(), tablet_ptr_res.status(), &context);
+    }
+    auto tablet_ptr = *tablet_ptr_res;
     auto future = MakeFuture<Result<TransactionStatusResult>>(
         [txn_id, tablet_peer, leader_term, tablet_ptr, &txn_found](auto callback) {
       txn_found = tablet_ptr->transaction_coordinator()->CancelTransactionIfFound(
@@ -3672,7 +3706,6 @@ void TabletServiceImpl::AcquireObjectLocks(
         STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"), &context);
   }
   TRACE("Start AcquireObjectLocks");
-  UpdateAshMetadataFrom(req);
   VLOG(2) << "Received AcquireObjectLocks RPC: " << req->DebugString();
 
   auto ts_local_lock_manager = server_->ts_local_lock_manager();
@@ -3695,7 +3728,6 @@ void TabletServiceImpl::ReleaseObjectLocks(
         STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"), &context);
   }
   TRACE("Start ReleaseObjectLocks");
-  UpdateAshMetadataFrom(req);
   VLOG(2) << "Received ReleaseObjectLocks RPC: " << req->DebugString();
 
   auto ts_local_lock_manager = server_->ts_local_lock_manager();
@@ -3804,7 +3836,7 @@ Result<VerifyVectorIndexesResponsePB> TabletServiceImpl::VerifyVectorIndexes(
     const VerifyVectorIndexesRequestPB& req, CoarseTimePoint deadline) {
   auto tablet_peers = server_->tablet_manager()->GetTabletPeers();
   for (auto& peer : tablet_peers) {
-    auto tablet = peer->shared_tablet();
+    auto tablet = peer->shared_tablet_maybe_null();
     if (!tablet) {
       continue;
     }

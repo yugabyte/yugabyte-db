@@ -1,16 +1,15 @@
 import React, { FC } from "react";
 import { Box, LinearProgress, Link, makeStyles, Typography, useTheme } from "@material-ui/core";
 import type { Migration } from "../../MigrationOverview";
-import { GenericFailure, YBButton, YBCodeBlock } from "@app/components";
+import { GenericFailure, YBCodeBlock } from "@app/components";
 import { useTranslation } from "react-i18next";
-import RefreshIcon from "@app/assets/refresh.svg";
 import BookIcon from "@app/assets/book.svg";
 import { Prereqs } from "./Prereqs";
 import { StepCard } from "./StepCard";
 import { SchemaAnalysis } from "./SchemaAnalysis";
 import { MigrateSchemaTaskInfo, useGetVoyagerMigrateSchemaTasksQuery } from "@app/api/src";
 import { Trans } from "react-i18next";
-import VoyagerVersionBox from "../../VoyagerVersionBox";
+import { HeadingWithVersion } from "../../components/HeadingWithVersion";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -144,23 +143,15 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({
 
   return (
     <Box>
-      <Box display="flex" justifyContent="space-between" alignItems="start">
-        <Box display="flex" sx={{ position: "relative" }}>
-          <Typography variant="h4" className={classes.heading}>
-            {heading}
-          </Typography>
-          {
-            !(isFetching && !isNewMigration) && !!voyagerVersion && (
-              <Box sx={{ position: "absolute", top: -5, width: "120%", left: 150 }}>
-                <VoyagerVersionBox voyagerVersion={voyagerVersion} />
-              </Box>
-            )
-          }
-        </Box>
-        <YBButton variant="ghost" startIcon={<RefreshIcon />} onClick={onRefetch}>
-          {t("clusterDetail.performance.actions.refresh")}
-        </YBButton>
-      </Box>
+      <HeadingWithVersion
+        heading={heading}
+        voyagerVersion={voyagerVersion}
+        showVoyagerText={true}
+        buttonVariant="secondary"
+        onRefetch={onRefetch}
+        isFetching={isFetching}
+        isNewMigration={isNewMigration}
+      />
 
       {isErrorMigrationSchemaTasks && !isNewMigration && <GenericFailure />}
 

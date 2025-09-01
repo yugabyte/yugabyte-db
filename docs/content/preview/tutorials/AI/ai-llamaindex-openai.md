@@ -17,7 +17,7 @@ This tutorial demonstrates how use LlamaIndex to build Retrieval-Augmented Gener
 
 ## Prerequisites
 
-* Python 3
+* Python 3.9
 * Docker
 
 ## Set up the application
@@ -28,6 +28,7 @@ Download the application and provide settings specific to your deployment:
 
     ```sh
     git clone https://github.com/YugabyteDB-Samples/yugabytedb-llamaindex-sp500-search.git
+    cd yugabytedb-llamaindex-sp500-search
     ```
 
 1. Install the application dependencies.
@@ -40,8 +41,6 @@ Download the application and provide settings specific to your deployment:
         python3 -m venv yb-llamaindex-env
         source yb-llamaindex-env/bin/activate
         pip install -r requirements.txt
-        # NOTE: Users with M1 Mac machines should use requirements-m1.txt instead:
-        # pip install -r requirements-m1.txt
         python -m pip install --upgrade yfinance
         ```
 
@@ -49,9 +48,7 @@ Download the application and provide settings specific to your deployment:
 
         ```sh
         pip install llama-index
-        pip install psycopg2
-        # NOTE: Users with M1 Mac machines should install the psycopg2 binary instead:
-        # pip install psycopg2-binary
+        pip install psycopg2-binary
         pip install python-dotenv
         ```
 
@@ -61,33 +58,30 @@ Download the application and provide settings specific to your deployment:
 
 ## Set up YugabyteDB
 
-Start a 3-node YugabyteDB cluster in Docker (or feel free to use another deployment option):
+Start a 3-node YugabyteDB cluster in Docker (or feel free to use another deployment option). (If the `~/yb_docker_data` directory already exists on your machine, delete and re-create it.)
 
 ```sh
-# NOTE: if the ~/yb_docker_data already exists on your machine, delete and re-create it
 mkdir ~/yb_docker_data
 
-docker network create custom-network
+docker network create yb-network
 
-docker run -d --name yugabytedb-node1 --net custom-network \
+docker run -d --name ybnode1 --hostname ybnode1 --net yb-network \
     -p 15433:15433 -p 7001:7000 -p 9001:9000 -p 5433:5433 \
     -v ~/yb_docker_data/node1:/home/yugabyte/yb_data --restart unless-stopped \
     yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
     bin/yugabyted start \
     --base_dir=/home/yugabyte/yb_data --background=false
 
-docker run -d --name yugabytedb-node2 --net custom-network \
-    -p 15434:15433 -p 7002:7000 -p 9002:9000 -p 5434:5433 \
+docker run -d --name ybnode2 --hostname ybnode2 --net yb-network \
     -v ~/yb_docker_data/node2:/home/yugabyte/yb_data --restart unless-stopped \
     yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
-    bin/yugabyted start --join=yugabytedb-node1 \
+    bin/yugabyted start --join=ybnode1 \
     --base_dir=/home/yugabyte/yb_data --background=false
 
-docker run -d --name yugabytedb-node3 --net custom-network \
-    -p 15435:15433 -p 7003:7000 -p 9003:9000 -p 5435:5433 \
+docker run -d --name ybnode3 --hostname ybnode3 --net yb-network \
     -v ~/yb_docker_data/node3:/home/yugabyte/yb_data --restart unless-stopped \
     yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
-    bin/yugabyted start --join=yugabytedb-node1 \
+    bin/yugabyted start --join=ybnode1 \
     --base_dir=/home/yugabyte/yb_data --background=false
 ```
 
@@ -102,20 +96,24 @@ This application requires a database table with financial information for compan
 1. Copy the schema to the first node's Docker container.
 
     ```sh
-    docker cp {project_dir}/sql/schema_extended.sql yugabytedb-node1:/home
+    docker cp {project_dir}/sql/schema_extended.sql ybnode1:/home
+    docker cp {project_dir}/sql/schema.sql ybnode1:/home
     ```
 
 1. Copy the seed data file to the Docker container.
 
     ```sh
-    docker cp {project_dir}/sql/data_extended.sql yugabytedb-node1:/home
+    docker cp {project_dir}/sql/data_extended.sql ybnode1:/home
+    docker cp {project_dir}/sql/data.sql ybnode1:/home
     ```
 
 1. Execute the SQL files against the database.
 
     ```sh
-    docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 -f /home/schema_extended.sql
-    docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 -f /home/data_extended.sql
+    docker exec -it ybnode1 bin/ysqlsh -h ybnode1 -f /home/schema_extended.sql
+    docker exec -it ybnode1 bin/ysqlsh -h ybnode1 -f /home/schema.sql
+    docker exec -it ybnode1 bin/ysqlsh -h ybnode1 -f /home/data_extended.sql
+    docker exec -it ybnode1 bin/ysqlsh -h ybnode1 -f /home/data.sql
     ```
 
 ## Start the application
@@ -166,10 +164,18 @@ The Python application relies on both structured and unstructured data to provid
 
 ```python
 ...
+# Configure LLM - global settings
+
+Settings.llm = OpenAI(temperature=0.1, model="gpt-4", streaming=True)
+Settings.embed_model = OpenAIEmbedding(model="text-embedding-3-small")
+Settings.node_parser = SentenceSplitter(chunk_size=512, chunk_overlap=20)
+Settings.num_output = 512
+Settings.context_window = 3900
+
+# Configure SQL Engine for connecting to YugabyteDB Universe
+
 sql_engine = create_engine(f"postgresql+psycopg2://{DB_USERNAME}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}")
-chunk_size = 1024
-llm = OpenAI(temperature=0.1, model="gpt-4", streaming=True)
-service_context = ServiceContext.from_defaults(chunk_size=chunk_size, llm=llm)
+
 sql_database = SQLDatabase(sql_engine, include_tables=["companies"])
 
 from llama_index.indices.struct_store.sql_query import NLSQLTableQueryEngine
@@ -195,7 +201,7 @@ Additionally, a QueryEngineTool is created for Wikipedia search. This query engi
 ...
 from wiki_search import wiki_query_engine
 
-wiki_tool = QueryEngineTool.from_defaults(
+wiki_yugabytedb_pgvector_tool = QueryEngineTool.from_defaults(
     query_engine=wiki_query_engine,
     description=(
         f"Useful for answering qualitative questions about different S&P 500 companies."
@@ -203,6 +209,10 @@ wiki_tool = QueryEngineTool.from_defaults(
 )
 ...
 ```
+
+### Use the YugabyteDB Vector index
+
+The `PGVectorStore` object is created to store and retrieve vector indicies from the YugabyteDB universe.
 
 ```python
 # wiki_search.py
@@ -222,27 +232,40 @@ if not os.path.exists(PERSIST_DIR):
             search_results = wikipedia.search(ticker.info["longName"])[0]
             wiki_pages.append(search_results)
 
-    loader = WikipediaReader()
     # auto_suggest allows wikipedia to change page search string
-    documents = loader.load_data(pages=wiki_pages, auto_suggest=False)
-    print(len(documents))
+    documents = WikipediaReader().load_data(pages=wiki_pages, auto_suggest=False)
+    logging.info(f"Wiki pages loaded: ", len(documents))
 
-    index = VectorStoreIndex.from_documents(documents)
-    index.storage_context.persist("wiki_index")
-    wiki_query_engine = index.as_query_engine()
-    print("Created wiki_query_engine for first time")
+    # Configure PGVectorStore with YugabyteDB credentials
+    vector_store = PGVectorStore.from_params(
+        database=DB_NAME,
+        host=DB_HOST,
+        password=DB_PASSWORD,
+        port=DB_PORT,
+        user=DB_USERNAME,
+        table_name="snp_wiki_embeddings",
+        embed_dim=1536
+    )
+
+    storage_context_yugabytedb_vs = StorageContext.from_defaults(vector_store=vector_store)
+    wiki_vector_index = VectorStoreIndex.from_documents(
+        documents, storage_context=storage_context_yugabytedb_vs, show_progress=True
+    )
+    wiki_query_engine = wiki_vector_index.as_query_engine()
+    
+    logging.info("Created wiki_query_engine for the first time")
 else:
     storage_context = StorageContext.from_defaults(persist_dir="wiki_index")
     index = load_index_from_storage(storage_context=storage_context)
     wiki_query_engine = index.as_query_engine()
-    print("Loaded wiki_query_engine index from storage")
+    logging.info("Loaded wiki_query_engine index from storage")
 ```
 
 Putting it all together, the tools are combined, allowing LlamaIndex and OpenAI to effectively choose how user questions can be answered most efficiently and accurately.
 
 ```python
 query_engine = SQLJoinQueryEngine(
-    sql_tool, wiki_tool, service_context=service_context
+    sql_tool, wiki_yugabytedb_pgvector_tool
 )
 
 query_str = input("What is your question? \n\n")

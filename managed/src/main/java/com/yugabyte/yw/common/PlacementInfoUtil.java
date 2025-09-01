@@ -54,6 +54,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
+import java.util.SortedSet;
+import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
@@ -63,7 +65,6 @@ import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
-import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -106,6 +107,27 @@ public class PlacementInfoUtil {
 
     // No affinitized leader info has changed, return false.
     return false;
+  }
+
+  /**
+   * Validates that leader priorities form positive contiguous sequence.
+   *
+   * @param placementInfo
+   */
+  public static void validatePriority(PlacementInfo placementInfo) {
+    SortedSet<Integer> set = new TreeSet<>();
+    placementInfo.azStream().forEach(az -> set.add(az.leaderPreference));
+    if (set.first() < 1) {
+      throw new PlatformServiceException(BAD_REQUEST, "Expect priorities start from 1");
+    }
+    Integer prev = null;
+    for (Integer val : set) {
+      if (prev != null && val - prev > 1) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Found a gap between priorities: between" + prev + " and " + val);
+      }
+      prev = val;
+    }
   }
 
   /**
@@ -399,8 +421,10 @@ public class PlacementInfoUtil {
       removeUnusedRegions(cluster.placementInfo, cluster.userIntent.regionList);
       UUID nodeProvider = getProviderUUID(taskParams.nodeDetailsSet, cluster.uuid);
       UUID placementProvider = cluster.placementInfo.cloudList.get(0).uuid;
+      boolean providerChanged =
+          nodeProvider != null && !Objects.equals(placementProvider, nodeProvider);
       if ((!keepPlacement && !checkFaultToleranceCorrect(cluster, allowGeoPartitioning))
-          || !Objects.equals(placementProvider, nodeProvider)) {
+          || providerChanged) {
         recalculatePlacement = true;
       }
     }
@@ -1713,18 +1737,10 @@ public class PlacementInfoUtil {
     // Set the region.
     PlacementRegion placementRegion = placementCloud.regionList.get(index.regionIdx);
     nodeDetails.cloudInfo.region = placementRegion.code;
-    // Set machineImage if it exists for region
+    // Set ybPrebuiltAmi for region
     for (NodeDetails existingNode : nodeDetailsSet) {
-      if (existingNode.getRegion().equals(placementRegion.code)
-          && existingNode.machineImage != null) {
-        nodeDetails.machineImage = existingNode.machineImage;
+      if (existingNode.getRegion().equals(placementRegion.code)) {
         nodeDetails.ybPrebuiltAmi = existingNode.ybPrebuiltAmi;
-        if (existingNode.sshPortOverride != null) {
-          nodeDetails.sshPortOverride = existingNode.sshPortOverride;
-        }
-        if (StringUtils.isNotBlank(existingNode.sshUserOverride)) {
-          nodeDetails.sshUserOverride = existingNode.sshUserOverride;
-        }
         break;
       }
     }
@@ -1777,13 +1793,6 @@ public class PlacementInfoUtil {
   public static NodeDetails createToBeAddedNode(NodeDetails templateNode) {
     NodeDetails newNode = new NodeDetails();
     newNode.cloudInfo = new CloudSpecificInfo();
-    newNode.machineImage = templateNode.machineImage;
-    if (templateNode.sshPortOverride != null) {
-      newNode.sshPortOverride = templateNode.sshPortOverride;
-    }
-    if (StringUtils.isNotBlank(templateNode.sshUserOverride)) {
-      newNode.sshUserOverride = templateNode.sshUserOverride;
-    }
     newNode.ybPrebuiltAmi = templateNode.ybPrebuiltAmi;
     newNode.placementUuid = templateNode.placementUuid;
     newNode.azUuid = templateNode.azUuid;

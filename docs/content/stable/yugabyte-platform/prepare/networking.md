@@ -12,6 +12,11 @@ menu:
 type: docs
 ---
 
+{{< page-finder/head text="Port Requirements" subtle="across different products">}}
+  {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" url="../../../reference/configuration/default-ports/" >}}
+  {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" current="" >}}
+{{< /page-finder/head >}}
+
 YugabyteDB Anywhere (YBA) needs to be able to access nodes that will be used to create universes, and the nodes that make up universes need to be accessible to each other and to applications.
 
 ## Global port requirements

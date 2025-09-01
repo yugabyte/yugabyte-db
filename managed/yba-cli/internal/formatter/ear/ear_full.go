@@ -14,6 +14,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/aws"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/azu"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/ciphertrust"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/gcp"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/hashicorp"
 )
@@ -51,6 +52,7 @@ type fullEARContext struct {
 	AWSEAR       *aws.EARContext
 	GCPEAR       *gcp.EARContext
 	AzureEAR     *azu.EARContext
+	CipherTrust  *ciphertrust.EARContext
 }
 
 // Write populates the output table to be displayed in the command line
@@ -82,6 +84,12 @@ func (fear *FullEARContext) Write() error {
 	if fear.ear.GCP != nil {
 		fearc.GCPEAR = &gcp.EARContext{
 			Gcp: *fear.ear.GCP,
+		}
+	}
+
+	if fear.ear.CipherTrust != nil {
+		fearc.CipherTrust = &ciphertrust.EARContext{
+			CT: *fear.ear.CipherTrust,
 		}
 	}
 
@@ -260,6 +268,48 @@ func (fear *FullEARContext) Write() error {
 		}
 		fear.PostFormat(tmpl, hashicorp.NewEARContext())
 
+	case util.CipherTrustEARType:
+		tmpl, err = fear.startSubsection(ciphertrust.EAR1)
+		if err != nil {
+			logrus.Errorf("%s", err.Error())
+			return err
+		}
+		fear.subSection("CipherTrust KMS Details")
+		if err := fear.ContextFormat(tmpl, fearc.CipherTrust); err != nil {
+			logrus.Errorf("%s", err.Error())
+			return err
+		}
+		fear.PostFormat(tmpl, ciphertrust.NewEARContext())
+		fear.Output.Write([]byte("\n"))
+
+		var tmplFormat string
+		if fearc.CipherTrust.CT.AuthType == util.CipherTrustRefreshTokenField {
+			tmplFormat = ciphertrust.EAR2
+		} else {
+			tmplFormat = ciphertrust.EAR3
+		}
+		tmpl, err = fear.startSubsection(tmplFormat)
+		if err != nil {
+			logrus.Errorf("%s", err.Error())
+			return err
+		}
+		if err := fear.ContextFormat(tmpl, fearc.CipherTrust); err != nil {
+			logrus.Errorf("%s", err.Error())
+			return err
+		}
+		fear.PostFormat(tmpl, ciphertrust.NewEARContext())
+		fear.Output.Write([]byte("\n"))
+
+		tmpl, err = fear.startSubsection(ciphertrust.EAR4)
+		if err != nil {
+			logrus.Errorf("%s", err.Error())
+			return err
+		}
+		if err := fear.ContextFormat(tmpl, fearc.CipherTrust); err != nil {
+			logrus.Errorf("%s", err.Error())
+			return err
+		}
+		fear.PostFormat(tmpl, ciphertrust.NewEARContext())
 	}
 
 	return nil

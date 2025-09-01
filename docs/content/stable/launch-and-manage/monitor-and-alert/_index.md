@@ -8,9 +8,15 @@ menu:
   stable:
     identifier: monitor-and-alert
     parent: launch-and-manage
-    weight: 30
+    weight: 60
 type: indexpage
 ---
+
+{{< page-finder/head text="Monitor YugabyteDB" subtle="across different products">}}
+  {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" current="" >}}
+  {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" url="../../yugabyte-platform/alerts-monitoring/" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/preview/yugabyte-cloud/cloud-monitor/" >}}
+{{< /page-finder/head >}}
 
 {{<index/block>}}
 

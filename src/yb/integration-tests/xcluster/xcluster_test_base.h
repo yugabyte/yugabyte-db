@@ -15,8 +15,6 @@
 
 #include <string>
 
-#include <boost/optional.hpp>
-
 #include "yb/cdc/cdc_consumer.pb.h"
 #include "yb/cdc/cdc_types.h"
 
@@ -73,13 +71,11 @@ class XClusterTestBase : public YBTest {
     std::unique_ptr<client::YBClient> client_;
     std::unique_ptr<yb::pgwrapper::PgSupervisor> pg_supervisor_;
     HostPort pg_host_port_;
-    boost::optional<client::TransactionManager> txn_mgr_;
+    std::optional<client::TransactionManager> txn_mgr_;
     size_t pg_ts_idx_;
     YBTables tables_;
 
-    Result<pgwrapper::PGConn> Connect() {
-      return ConnectToDB(std::string() /* dbname */);
-    }
+    Result<pgwrapper::PGConn> Connect() { return ConnectToDB(std::string() /* dbname */); }
 
     Result<pgwrapper::PGConn> ConnectToDB(
         const std::string& dbname, bool simple_query_protocol = false) {
@@ -261,21 +257,21 @@ class XClusterTestBase : public YBTest {
 
   Status WaitForValidSafeTimeOnAllTServers(
       const NamespaceId& namespace_id, Cluster* cluster = nullptr,
-      boost::optional<CoarseTimePoint> deadline = boost::none);
+      std::optional<CoarseTimePoint> deadline = std::nullopt);
   Status WaitForValidSafeTimeOnAllTServers(
       const NamespaceId& namespace_id, MiniCluster& cluster,
-      boost::optional<CoarseTimePoint> deadline = boost::none);
+      std::optional<CoarseTimePoint> deadline = std::nullopt);
 
   Status WaitForInValidSafeTimeOnAllTServers(
       const NamespaceId& namespace_id, Cluster* cluster = nullptr,
-      boost::optional<CoarseTimePoint> deadline = boost::none);
+      std::optional<CoarseTimePoint> deadline = std::nullopt);
   Status WaitForInValidSafeTimeOnAllTServers(
       const NamespaceId& namespace_id, MiniCluster& cluster,
-      boost::optional<CoarseTimePoint> deadline = boost::none);
+      std::optional<CoarseTimePoint> deadline = std::nullopt);
 
   Status WaitForReadOnlyModeOnAllTServers(
       const NamespaceId& namespace_id, bool is_read_only = true, Cluster* cluster = nullptr,
-      boost::optional<CoarseTimePoint> deadline = boost::none);
+      std::optional<CoarseTimePoint> deadline = std::nullopt);
 
   Result<std::vector<xrepl::StreamId>> BootstrapProducer(
       MiniCluster* producer_cluster, YBClient* producer_client,
@@ -307,13 +303,9 @@ class XClusterTestBase : public YBTest {
     return consumer_cluster_.mini_cluster_.get();
   }
 
-  client::TransactionManager* producer_txn_mgr() {
-    return producer_cluster_.txn_mgr_.get_ptr();
-  }
+  client::TransactionManager* producer_txn_mgr() { return &producer_cluster_.txn_mgr_.value(); }
 
-  client::TransactionManager* consumer_txn_mgr() {
-    return consumer_cluster_.txn_mgr_.get_ptr();
-  }
+  client::TransactionManager* consumer_txn_mgr() { return &consumer_cluster_.txn_mgr_.value(); }
 
   std::string GetAdminToolPath() {
     const std::string kAdminToolName = "yb-admin";
@@ -323,7 +315,7 @@ class XClusterTestBase : public YBTest {
   template <class... Args>
   Result<std::string> CallAdmin(MiniCluster* cluster, Args&&... args) {
     return CallAdminVec(ToStringVector(
-        GetAdminToolPath(), "-master_addresses", cluster->GetMasterAddresses(),
+        GetAdminToolPath(), "--master_addresses", cluster->GetMasterAddresses(),
         std::forward<Args>(args)...));
   }
 

@@ -371,6 +371,10 @@ message PgsqlPagingStatePB {
   // Value of the next geometric index row that can be used as a key into the
   // main RocksDB store.
   optional bytes main_key = 8;
+
+  // To hint PgGate about upcoming tablet switch
+  // may be expected in cross tablet scan, or may indicate tablet split
+  optional bytes next_tablet_bound = 9;
 }
 
 // Given: master --chunk--> tserver --batch--> postgres --page--> tserver
@@ -671,6 +675,8 @@ message PgsqlResponsePB {
   repeated uint64 vector_index_distances = 19;
   // The offset of end of encoded row for particular vector.
   repeated uint64 vector_index_ends = 20;
+  // Whether this replica could have more vectors, used for paging.
+  optional bool vector_index_could_have_more_data = 21;
 
   // Number of rows affected by the operation. Currently only used for update and delete.
   optional int32 rows_affected_count = 7;

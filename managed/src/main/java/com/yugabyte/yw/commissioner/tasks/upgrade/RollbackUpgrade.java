@@ -135,11 +135,15 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
           }
 
           if (nodes.mastersList.size() > 0) {
-            // Perform rollback ysql major version catalog upgrade only when
-            // none of the masters are upgraded.
+            // Perform rollback ysql major version catalog upgrade only when all masters were
+            // upgraded to the target ysql major version.
             if (ysqlMajorVersionUpgrade
-                && nodes.mastersList.size() == universe.getMasters().size()) {
+                && prevYBSoftwareConfig != null
+                && prevYBSoftwareConfig.isCanRollbackCatalogUpgrade()) {
               createRollbackYsqlMajorVersionCatalogUpgradeTask();
+              createUpdateSoftwareUpdatePrevConfigTask(
+                  false /* canRollbackCatalogUpgrade */,
+                  false /* allTserversUpgradedToYsqlMajorVersion */);
             }
 
             createMasterUpgradeFlowTasks(
@@ -171,6 +175,10 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
             if (requireAdditionalSuperUserForCatalogUpgrade) {
               createManageCatalogUpgradeSuperUserTask(Action.DELETE_USER);
             }
+
+            // Update PITR configs to set intermittentMinRecoverTimeInMillis to current time
+            // as PITR configs are only valid from the completion of software rollback
+            createUpdatePitrConfigIntermittentMinRecoverTimeTask();
           }
 
           // Check software version on each node.

@@ -86,6 +86,9 @@ public class PlacementInfo {
     @ApiModelProperty public boolean isAffinitized;
     // The Load Balancer id.
     @ApiModelProperty public String lbName;
+    // Priority of zone (for leaders placement). Values have to be contiguous non-zero integers.
+    // Multiple zones can have the same value. A lower value indicates higher zone priority.
+    @ApiModelProperty public int leaderPreference;
 
     @Override
     public String toString() {
@@ -121,5 +124,10 @@ public class PlacementInfo {
       ret += cloud;
     }
     return ret;
+  }
+
+  @JsonIgnore
+  public boolean hasRankOrdering() {
+    return azStream().anyMatch(az -> az.leaderPreference > 0);
   }
 }

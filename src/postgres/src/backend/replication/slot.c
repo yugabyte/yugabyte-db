@@ -55,6 +55,7 @@
 #include "commands/yb_cmds.h"
 #include "pg_yb_utils.h"
 #include "replication/walsender.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 
 /*
  * Replication slot on-disk data structure.
@@ -628,11 +629,13 @@ retry:
 		CreateSlotOnDisk(s);
 
 		ReplicationSlot *slot_for_array = SearchNamedReplicationSlot(name, false);
+
 		if (!slot_for_array)
 		{
 			for (int i = 0; i < *YBCGetGFlags()->ysql_max_replication_slots; i++)
 			{
 				ReplicationSlot *temp_s = &ReplicationSlotCtl->replication_slots[i];
+
 				if (!temp_s->in_use)
 				{
 					slot_for_array = temp_s;
@@ -866,6 +869,7 @@ ReplicationSlotDrop(const char *name, bool nowait)
 		YBCDropReplicationSlot(name);
 
 		ReplicationSlot *slot_for_array = SearchNamedReplicationSlot(name, false);
+
 		if (slot_for_array)
 		{
 			slot_for_array->in_use = false;

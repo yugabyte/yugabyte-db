@@ -29,8 +29,12 @@ import com.google.common.collect.Iterables;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DoCapacityReservation;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -38,6 +42,7 @@ import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -84,6 +89,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.RunHooks,
           TaskType.SetupYNP,
           TaskType.YNPProvisioning,
+          TaskType.InstallNodeAgent,
           TaskType.SetNodeStatus,
           TaskType.RunHooks,
           TaskType.CheckLocale,
@@ -138,6 +144,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.RunHooks,
           TaskType.SetupYNP,
           TaskType.YNPProvisioning,
+          TaskType.InstallNodeAgent,
           TaskType.SetNodeStatus,
           TaskType.RunHooks,
           TaskType.CheckLocale,
@@ -329,6 +336,35 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     assertTaskSequence(UNIVERSE_EXPAND_TASK_SEQUENCE, subTasksByPosition);
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     assertEquals(5, universe.getUniverseDetails().nodeDetailsSet.size());
+  }
+
+  @Test
+  public void testExpandWithCapacityReservationAzureSuccess() {
+    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.enableCapacityReservationAzure.getKey(), "true");
+    Region region = Region.create(azuProvider, "region-1", "region-1", "yb-image");
+    Universe universe = createUniverseForProvider("universe-test", azuProvider);
+    UniverseDefinitionTaskParams taskParams = performExpand(universe);
+    RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
+    TaskInfo taskInfo = submitTask(taskParams);
+
+    assertEquals(Success, taskInfo.getTaskState());
+    universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
+
+    verifyCapacityReservationAZU(
+        universe.getUniverseUUID(),
+        region,
+        Map.of(
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
+            Map.of("1", Arrays.asList("host-n4", "host-n5"))));
+
+    verifyNodeInteractionsCapacityReservationAZU(
+        37,
+        NodeManager.NodeCommandType.Create,
+        params -> ((AnsibleCreateServer.Params) params).capacityReservation,
+        Map.of(
+            DoCapacityReservation.getCapacityReservationGroupName(
+                universe.getUniverseUUID(), region.getCode()),
+            Arrays.asList("host-n4", "host-n5")));
   }
 
   @Test

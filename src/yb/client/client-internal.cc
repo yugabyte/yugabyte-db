@@ -120,6 +120,8 @@ DECLARE_int64(reset_master_leader_timeout_ms);
 
 DECLARE_string(flagfile);
 
+DECLARE_bool(TEST_ysql_yb_enable_ddl_savepoint_support);
+
 namespace yb {
 
 using std::set;
@@ -641,7 +643,7 @@ Status YBClient::Data::WaitForCreateTableToFinish(YBClient* client,
                                                   CoarseTimePoint deadline,
                                                   const uint32_t max_jitter_ms,
                                                   const uint32_t init_exponent) {
-  return RetryFunc(
+  return RetryUntilShutdown(
       deadline, "Waiting on Create Table to be completed", "Timed out waiting for Table Creation",
       std::bind(
           &YBClient::Data::IsCreateTableInProgress, this, client, table_name, table_id, _1, _2),
@@ -655,7 +657,8 @@ Status YBClient::Data::DeleteTable(YBClient* client,
                                    CoarseTimePoint deadline,
                                    YBTableName* indexed_table_name,
                                    bool wait,
-                                   const TransactionMetadata *txn) {
+                                   const TransactionMetadata *txn,
+                                   SubTransactionId sub_transaction_id) {
   DeleteTableRequestPB req;
   DeleteTableResponsePB resp;
   int attempts = 0;
@@ -674,6 +677,9 @@ Status YBClient::Data::DeleteTable(YBClient* client,
     DCHECK(!wait);
     txn->ToPB(req.mutable_transaction());
     req.set_ysql_yb_ddl_rollback_enabled(true);
+    if (FLAGS_TEST_ysql_yb_enable_ddl_savepoint_support) {
+      req.set_sub_transaction_id(sub_transaction_id);
+    }
   }
   req.set_is_index_table(is_index_table);
   const Status status = SyncLeaderMasterRpc(
@@ -769,7 +775,7 @@ Status YBClient::Data::IsDeleteTableInProgress(YBClient* client,
 Status YBClient::Data::WaitForDeleteTableToFinish(YBClient* client,
                                                   const std::string& table_id,
                                                   CoarseTimePoint deadline) {
-  return RetryFunc(
+  return RetryUntilShutdown(
       deadline, "Waiting on Delete Table to be completed", "Timed out waiting for Table Deletion",
       std::bind(&YBClient::Data::IsDeleteTableInProgress, this, client, table_id, _1, _2));
 }
@@ -805,7 +811,6 @@ Status YBClient::Data::IsTruncateTableInProgress(YBClient* client,
   DCHECK_ONLY_NOTNULL(truncate_in_progress);
   IsTruncateTableDoneRequestPB req;
   IsTruncateTableDoneResponsePB resp;
-
   req.set_table_id(table_id);
   RETURN_NOT_OK(SyncLeaderMasterRpc(
       deadline, req, &resp, "IsTruncateTableDone",
@@ -818,7 +823,7 @@ Status YBClient::Data::IsTruncateTableInProgress(YBClient* client,
 Status YBClient::Data::WaitForTruncateTableToFinish(YBClient* client,
                                                     const std::string& table_id,
                                                     CoarseTimePoint deadline) {
-  return RetryFunc(
+  return RetryUntilShutdown(
       deadline, "Waiting on Truncate Table to be completed",
       "Timed out waiting for Table Truncation",
       std::bind(&YBClient::Data::IsTruncateTableInProgress, this, client, table_id, _1, _2));
@@ -838,7 +843,8 @@ Status YBClient::Data::CreateTablegroup(YBClient* client,
                                         const std::string& namespace_id,
                                         const std::string& tablegroup_id,
                                         const std::string& tablespace_id,
-                                        const TransactionMetadata* txn) {
+                                        const TransactionMetadata* txn,
+                                        const SubTransactionId sub_transaction_id) {
   CreateTablegroupRequestPB req;
   CreateTablegroupResponsePB resp;
   req.set_id(tablegroup_id);
@@ -852,6 +858,9 @@ Status YBClient::Data::CreateTablegroup(YBClient* client,
   if (txn) {
     txn->ToPB(req.mutable_transaction());
     req.set_ysql_yb_ddl_rollback_enabled(YsqlDdlRollbackEnabled());
+    if (FLAGS_TEST_ysql_yb_enable_ddl_savepoint_support) {
+      req.set_sub_transaction_id(sub_transaction_id);
+    }
   }
 
   int attempts = 0;
@@ -920,7 +929,8 @@ Status YBClient::Data::CreateTablegroup(YBClient* client,
 Status YBClient::Data::DeleteTablegroup(YBClient* client,
                                         CoarseTimePoint deadline,
                                         const std::string& tablegroup_id,
-                                        const TransactionMetadata* txn) {
+                                        const TransactionMetadata* txn,
+                                        const SubTransactionId sub_transaction_id) {
   DeleteTablegroupRequestPB req;
   DeleteTablegroupResponsePB resp;
   req.set_id(tablegroup_id);
@@ -933,6 +943,9 @@ Status YBClient::Data::DeleteTablegroup(YBClient* client,
     txn->ToPB(req.mutable_transaction());
     req.set_ysql_yb_ddl_rollback_enabled(true);
     wait = false;
+    if (FLAGS_TEST_ysql_yb_enable_ddl_savepoint_support) {
+      req.set_sub_transaction_id(sub_transaction_id);
+    }
   }
 
   int attempts = 0;
@@ -1003,7 +1016,6 @@ Status YBClient::Data::IsBackfillIndexInProgress(YBClient* client,
                                                  CoarseTimePoint deadline,
                                                  bool* backfill_in_progress) {
   DCHECK_ONLY_NOTNULL(backfill_in_progress);
-
   YBTableInfo yb_table_info;
   RETURN_NOT_OK(GetTableSchema(client,
                                table_id,
@@ -1027,7 +1039,7 @@ Status YBClient::Data::WaitForBackfillIndexToFinish(
     const TableId& table_id,
     const TableId& index_id,
     CoarseTimePoint deadline) {
-  return RetryFunc(
+  return RetryUntilShutdown(
       deadline,
       "Waiting on Backfill Index to be completed",
       "Timed out waiting for Backfill Index",
@@ -1092,12 +1104,9 @@ Result<master::GetBackfillStatusResponsePB> YBClient::Data::GetBackfillStatus(
 }
 
 Status YBClient::Data::IsCreateNamespaceInProgress(
-    YBClient* client,
-    const std::string& namespace_name,
-    const boost::optional<YQLDatabase>& database_type,
-    const std::string& namespace_id,
-    CoarseTimePoint deadline,
-    bool *create_in_progress) {
+    YBClient* client, const std::string& namespace_name,
+    const std::optional<YQLDatabase>& database_type, const std::string& namespace_id,
+    CoarseTimePoint deadline, bool* create_in_progress) {
   DCHECK_ONLY_NOTNULL(create_in_progress);
   IsCreateNamespaceDoneRequestPB req;
   IsCreateNamespaceDoneResponsePB resp;
@@ -1131,25 +1140,22 @@ Status YBClient::Data::IsCreateNamespaceInProgress(
 }
 
 Status YBClient::Data::WaitForCreateNamespaceToFinish(
-    YBClient* client,
-    const std::string& namespace_name,
-    const boost::optional<YQLDatabase>& database_type,
-    const std::string& namespace_id,
+    YBClient* client, const std::string& namespace_name,
+    const std::optional<YQLDatabase>& database_type, const std::string& namespace_id,
     CoarseTimePoint deadline) {
-  return RetryFunc(
+  return RetryUntilShutdown(
       deadline,
       "Waiting on Create Namespace to be completed",
       "Timed out waiting for Namespace Creation",
-      std::bind(&YBClient::Data::IsCreateNamespaceInProgress, this, client,
-          namespace_name, database_type, namespace_id, _1, _2));
+      std::bind(
+          &YBClient::Data::IsCreateNamespaceInProgress, this, client, namespace_name, database_type,
+          namespace_id, _1, _2));
 }
 
-Status YBClient::Data::IsDeleteNamespaceInProgress(YBClient* client,
-    const std::string& namespace_name,
-    const boost::optional<YQLDatabase>& database_type,
-    const std::string& namespace_id,
-    CoarseTimePoint deadline,
-    bool* delete_in_progress) {
+Status YBClient::Data::IsDeleteNamespaceInProgress(
+    YBClient* client, const std::string& namespace_name,
+    const std::optional<YQLDatabase>& database_type, const std::string& namespace_id,
+    CoarseTimePoint deadline, bool* delete_in_progress) {
   DCHECK_ONLY_NOTNULL(delete_in_progress);
   IsDeleteNamespaceDoneRequestPB req;
   IsDeleteNamespaceDoneResponsePB resp;
@@ -1183,15 +1189,16 @@ Status YBClient::Data::IsDeleteNamespaceInProgress(YBClient* client,
 
 Status YBClient::Data::WaitForDeleteNamespaceToFinish(YBClient* client,
     const std::string& namespace_name,
-    const boost::optional<YQLDatabase>& database_type,
+    const std::optional<YQLDatabase>& database_type,
     const std::string& namespace_id,
     CoarseTimePoint deadline) {
-  return RetryFunc(
+  return RetryUntilShutdown(
       deadline,
       "Waiting on Delete Namespace to be completed",
       "Timed out waiting for Namespace Deletion",
-      std::bind(&YBClient::Data::IsDeleteNamespaceInProgress, this,
-          client, namespace_name, database_type, namespace_id, _1, _2));
+      std::bind(
+          &YBClient::Data::IsDeleteNamespaceInProgress, this, client, namespace_name, database_type,
+          namespace_id, _1, _2));
 }
 
 Status YBClient::Data::IsCloneNamespaceInProgress(
@@ -1234,7 +1241,7 @@ Status YBClient::Data::IsCloneNamespaceInProgress(
 Status YBClient::Data::WaitForCloneNamespaceToFinish(
     YBClient* client, const std::string& source_namespace_id, uint32_t clone_seq_no,
     CoarseTimePoint deadline) {
-  return RetryFunc(
+  return RetryUntilShutdown(
       deadline, "Waiting on Clone Namespace to be completed",
       "Timed out waiting for Namespace Cloning",
       std::bind(
@@ -1278,7 +1285,7 @@ Status YBClient::Data::WaitForAlterTableToFinish(YBClient* client,
                                                  const YBTableName& alter_name,
                                                  const string table_id,
                                                  CoarseTimePoint deadline) {
-  return RetryFunc(
+  return RetryUntilShutdown(
       deadline, "Waiting on Alter Table to be completed", "Timed out waiting for AlterTable",
       std::bind(&YBClient::Data::IsAlterTableInProgress, this, client,
               alter_name, table_id, _1, _2));
@@ -1357,7 +1364,7 @@ Status YBClient::Data::IsFlushTableInProgress(YBClient* client,
 Status YBClient::Data::WaitForFlushTableToFinish(YBClient* client,
                                                  const FlushRequestId& flush_id,
                                                  const CoarseTimePoint deadline) {
-  return RetryFunc(
+  return RetryUntilShutdown(
       deadline, "Waiting for FlushTables to be completed", "Timed out waiting for FlushTables",
       std::bind(&YBClient::Data::IsFlushTableInProgress, this, client, flush_id, _1, _2));
 }
@@ -2535,7 +2542,7 @@ Result<IndexPermissions> YBClient::Data::WaitUntilIndexPermissionsAtLeast(
     const CoarseDuration max_wait) {
   const bool retry_on_not_found = (target_index_permissions != INDEX_PERM_NOT_USED);
   IndexPermissions actual_index_permissions = INDEX_PERM_NOT_USED;
-  RETURN_NOT_OK(RetryFunc(
+  RETURN_NOT_OK(RetryUntilShutdown(
       deadline,
       "Waiting for index to have desired permissions",
       "Timed out waiting for proper index permissions",
@@ -2564,7 +2571,7 @@ Result<IndexPermissions> YBClient::Data::WaitUntilIndexPermissionsAtLeast(
   const bool retry_on_not_found = (target_index_permissions != INDEX_PERM_NOT_USED);
   IndexPermissions actual_index_permissions = INDEX_PERM_NOT_USED;
   YBTableInfo yb_index_info;
-  RETURN_NOT_OK(RetryFunc(
+  RETURN_NOT_OK(RetryUntilShutdown(
       deadline,
       "Waiting for index table schema",
       "Timed out waiting for index table schema",
@@ -2581,9 +2588,8 @@ Result<IndexPermissions> YBClient::Data::WaitUntilIndexPermissionsAtLeast(
         return Status::OK();
       },
       max_wait));
-  RETURN_NOT_OK(RetryFunc(
-      deadline,
-      "Waiting for index to have desired permissions",
+  RETURN_NOT_OK(RetryUntilShutdown(
+      deadline, "Waiting for index to have desired permissions",
       "Timed out waiting for proper index permissions",
       [&](CoarseTimePoint deadline, bool* retry) -> Status {
         Result<IndexPermissions> result = GetIndexPermissions(
@@ -2958,12 +2964,11 @@ Status YBClient::Data::SetReplicationInfo(
     bool* retry) {
   // If retry was not set, we'll wrap around in a retryable function.
   if (!retry) {
-    return RetryFunc(
+    return RetryUntilShutdown(
         deadline, "Other clients changed the config. Retrying.",
         "Timed out retrying the config change. Probably too many concurrent attempts.",
         std::bind(&YBClient::Data::SetReplicationInfo, this, client, replication_info, _1, _2));
   }
-
   // Get the current config.
   GetMasterClusterConfigRequestPB get_req;
   GetMasterClusterConfigResponsePB get_resp;
@@ -3074,7 +3079,7 @@ Status YBClient::Data::IsYsqlDdlVerificationInProgress(
 Status YBClient::Data::WaitForDdlVerificationToFinish(
     const TransactionMetadata& txn,
     CoarseTimePoint deadline) {
-  return RetryFunc(
+  return RetryUntilShutdown(
       deadline,
       Format("Waiting on YSQL DDL Verification for $0 to be completed", txn.transaction_id),
       Format("Timed out on YSQL DDL Verification for $0 to be completed", txn.transaction_id),
@@ -3225,6 +3230,10 @@ void YBClient::Data::Shutdown() {
   }
 }
 
+bool YBClient::Data::Closing() {
+  return closing_.load();
+}
+
 bool YBClient::Data::IsMultiMaster() {
   std::lock_guard l(master_server_addrs_lock_);
   if (full_master_server_addrs_.size() > 1) {
@@ -3252,5 +3261,21 @@ bool YBClient::Data::IsMultiMaster() {
   return status.ok() && (addrs.size() > 1);
 }
 
-} // namespace client
-} // namespace yb
+Status YBClient::Data::RetryUntilShutdown(
+    CoarseTimePoint deadline, const std::string& retry_msg, const std::string& timeout_msg,
+    const std::function<Status(CoarseTimePoint, bool*)>& func, const CoarseDuration max_wait,
+    const uint32_t max_jitter_ms, const uint32_t init_exponent) {
+  return RetryFunc(
+      deadline, retry_msg, timeout_msg,
+      [func, this](CoarseTimePoint deadline, bool* retry) {
+        if (retry != nullptr && Closing()) {
+          *retry = false;
+          return STATUS(ShutdownInProgress, "Client is shutting down");
+        }
+        return func(deadline, retry);
+      },
+      max_wait, max_jitter_ms, init_exponent);
+}
+
+}  // namespace client
+}  // namespace yb

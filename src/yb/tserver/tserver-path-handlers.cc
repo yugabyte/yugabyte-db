@@ -302,7 +302,7 @@ void HandleTransactionsPage(
     const std::string& tablet_id, const tablet::TabletPeerPtr& peer,
     const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-  auto tablet = peer->shared_tablet();
+  auto tablet = peer->shared_tablet_maybe_null();
   if (!tablet) {
     *output << "Tablet " << EscapeForHtmlToString(tablet_id) << " not running";
     return;
@@ -388,7 +388,7 @@ void HandleRocksDBPage(
   std::stringstream *output = &resp->output;
   *output << "<h1>RocksDB for Tablet " << EscapeForHtmlToString(tablet_id) << "</h1>" << std::endl;
 
-  auto tablet_result = peer->shared_tablet_safe();
+  auto tablet_result = peer->shared_tablet();
   if (!tablet_result.ok()) {
     *output << EscapeForHtmlToString(tablet_result.status().ToString());
     return;
@@ -403,7 +403,7 @@ void HandleWaitQueuePage(
   std::stringstream *out = &resp->output;
   *out << "<h1>Waiters for Tablet " << EscapeForHtmlToString(tablet_id) << "</h1>" << std::endl;
 
-  auto tablet_result = peer->shared_tablet_safe();
+  auto tablet_result = peer->shared_tablet();
   if (!tablet_result.ok()) {
     *out << EscapeForHtmlToString(tablet_result.status().ToString());
     return;
@@ -427,7 +427,7 @@ void HandleInMemoryLocksPage(
   *out << "<h1>In-Memory Locks for Tablet "
        << EscapeForHtmlToString(tablet_id) << "</h1>" << std::endl;
 
-  auto tablet_result = peer->shared_tablet_safe();
+  auto tablet_result = peer->shared_tablet();
   if (!tablet_result.ok()) {
     *out << EscapeForHtmlToString(tablet_result.status().ToString());
     return;
@@ -585,7 +585,7 @@ void TabletServerPathHandlers::HandleOperationsPage(const Webserver::WebRequest&
   for (const std::shared_ptr<TabletPeer>& peer : peers) {
     vector<OperationStatusPB> inflight;
 
-    auto tablet = peer->shared_tablet();
+    auto tablet = peer->shared_tablet_maybe_null();
     if (tablet == nullptr) {
       continue;
     }
@@ -663,16 +663,17 @@ bool CompareByTabletId(const std::shared_ptr<TabletPeer>& a,
 string GetOnDiskSizeInHtml(const yb::tablet::TabletOnDiskSizeInfo& info) {
   std::ostringstream disk_size_html;
   disk_size_html << "<ul>"
-                 << "<li>" << "Total: "
-                 << HumanReadableNumBytes::ToString(info.sum_on_disk_size)
-                 << "<li>" << "Consensus Metadata: "
-                 << HumanReadableNumBytes::ToString(info.consensus_metadata_disk_size)
-                 << "<li>" << "WAL Files: "
-                 << HumanReadableNumBytes::ToString(info.wal_files_disk_size)
+                 << "<li>" << "Total (may be stale): "
+                 << (info.total_on_disk_size > 0 ?
+                        HumanReadableNumBytes::ToString(info.total_on_disk_size) : "N/A")
+                 << "<ul>"
                  << "<li>" << "SST Files: "
                  << HumanReadableNumBytes::ToString(info.sst_files_disk_size)
-                 << "<li>" << "SST Files Uncompressed: "
-                 << HumanReadableNumBytes::ToString(info.uncompressed_sst_files_disk_size)
+                 << "<li>" << "WAL Files: "
+                 << HumanReadableNumBytes::ToString(info.wal_files_disk_size)
+                 << "<li>" << "Consensus Metadata: "
+                 << HumanReadableNumBytes::ToString(info.consensus_metadata_disk_size)
+                 << "</ul>"
                  << "</ul>";
   return disk_size_html.str();
 }
@@ -706,7 +707,7 @@ std::map<TableIdentifier, TableInfo> GetTablesInfo(
       .state = peer->HumanReadableState()
     };
 
-    auto tablet = peer->shared_tablet();
+    auto tablet = peer->shared_tablet_maybe_null();
     uint64_t num_sst_files = (tablet) ? tablet->GetCurrentVersionNumSSTFiles() : 0;
     bool is_hidden = status.is_hidden();
 
@@ -716,7 +717,7 @@ std::map<TableIdentifier, TableInfo> GetTablesInfo(
         .is_hidden = is_hidden,
         .num_sst_files = num_sst_files,
         .disk_size_info = yb::tablet::TabletOnDiskSizeInfo::FromPB(status),
-        .has_on_disk_size = status.has_estimated_on_disk_size(),
+        .has_on_disk_size = status.has_active_on_disk_size(),
         .raft_role = raft_role
     };
 
@@ -799,7 +800,7 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
     string table_name = status.table_name();
     string table_id = status.table_id();
     string tablet_id_or_link;
-    auto tablet = peer->shared_tablet();
+    auto tablet = peer->shared_tablet_maybe_null();
     if (tablet != nullptr) {
       tablet_id_or_link = TabletLink(id);
     } else {
@@ -1254,7 +1255,6 @@ void TabletServerPathHandlers::HandleTabletsJSON(const Webserver::WebRequest& re
     TabletStatusPB status;
     peer->GetTabletStatusPB(&status);
     string id = status.tablet_id();
-    const auto& tablet = peer->shared_tablet();
     string tablets_disk_size_html = GetOnDiskSizeInHtml(
         yb::tablet::TabletOnDiskSizeInfo::FromPB(status)
     );
@@ -1264,6 +1264,7 @@ void TabletServerPathHandlers::HandleTabletsJSON(const Webserver::WebRequest& re
                             ->PartitionDebugString(*peer->status_listener()->partition(),
                                                    *tablet_metadata->schema());
 
+    const auto& tablet = peer->shared_tablet_maybe_null();
     uint64_t num_sst_files = (tablet) ? tablet->GetCurrentVersionNumSSTFiles() : 0;
 
     // TODO: Would be nice to include some other stuff like memory usage.
@@ -1290,9 +1291,13 @@ void TabletServerPathHandlers::HandleTabletsJSON(const Webserver::WebRequest& re
     jw.StartObject();
     const yb::tablet::TabletOnDiskSizeInfo& info = yb::tablet::TabletOnDiskSizeInfo::FromPB(status);
     jw.String("total_size");
-    jw.String(HumanReadableNumBytes::ToString(info.sum_on_disk_size));
+    jw.String(HumanReadableNumBytes::ToString(info.active_on_disk_size));
     jw.String("total_size_bytes");
-    jw.Uint64(info.sum_on_disk_size);
+    jw.Uint64(info.active_on_disk_size);
+    jw.String("total_size_including_snapshots");
+    jw.String(HumanReadableNumBytes::ToString(info.total_on_disk_size));
+    jw.String("total_size_including_snapshots_bytes");
+    jw.Uint64(info.total_on_disk_size);
     jw.String("consensus_metadata_size");
     jw.String(HumanReadableNumBytes::ToString(info.consensus_metadata_disk_size));
     jw.String("consensus_metadata_size_bytes");

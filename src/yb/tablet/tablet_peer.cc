@@ -45,8 +45,6 @@
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_anchor_registry.h"
-#include "yb/consensus/log_util.h"
-#include "yb/consensus/opid_util.h"
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/retryable_requests.h"
 #include "yb/consensus/state_change_context.h"
@@ -55,7 +53,6 @@
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/sysinfo.h"
 
 #include "yb/master/master_ddl.pb.h"
 
@@ -63,8 +60,6 @@
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/periodic.h"
-#include "yb/rpc/strand.h"
-#include "yb/rpc/thread_pool.h"
 
 #include "yb/tablet/operations/change_auto_flags_config_operation.h"
 #include "yb/tablet/operations/change_metadata_operation.h"
@@ -87,14 +82,11 @@
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/write_query.h"
 
-#include "yb/util/debug-util.h"
-#include "yb/util/env_util.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/fault_injection.h"
-#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
@@ -136,8 +128,7 @@ DECLARE_uint64(cdc_intent_retention_ms);
 
 DECLARE_bool(enable_flush_retryable_requests);
 
-namespace yb {
-namespace tablet {
+namespace yb::tablet {
 
 METRIC_DEFINE_event_stats(table, op_prepare_queue_length, "Operation Prepare Queue Length",
                         MetricUnit::kTasks,
@@ -364,7 +355,11 @@ Status TabletPeer::InitTabletPeer(
 
 Result<FixedHybridTimeLease> TabletPeer::HybridTimeLease(
     HybridTime min_allowed, CoarseTimePoint deadline) {
-  auto time = VERIFY_RESULT(WaitUntil(clock_.get(), min_allowed, deadline));
+  HybridTime time;
+  {
+    SCOPED_WAIT_STATUS(WaitForReadTime);
+    time = VERIFY_RESULT(WaitUntil(clock_.get(), min_allowed, deadline));
+  }
   // min_allowed could contain non zero logical part, so we add one microsecond to be sure that
   // the resulting ht_lease is at least min_allowed.
   auto min_allowed_micros = min_allowed.CeilPhysicalValueMicros();
@@ -417,12 +412,19 @@ Result<HybridTime> TabletPeer::PreparePeerRequest() {
   return tablet_->mvcc_manager()->SafeTime(ht_lease);
 }
 
-Status TabletPeer::MajorityReplicated() {
+Status TabletPeer::MajorityReplicated(const OpId& committed_op_id) {
   auto ht_lease = VERIFY_RESULT(HybridTimeLease(
       /* min_allowed= */ HybridTime::kMin, /* deadline */ CoarseTimePoint::max()));
 
   tablet_->mvcc_manager()->UpdatePropagatedSafeTimeOnLeader(ht_lease);
+
+  NotifyCommitedAsyncWrites(committed_op_id);
   return Status::OK();
+}
+
+void TabletPeer::BecomeReplica() {
+  FailAllAsyncWrites(
+      STATUS_FORMAT(Aborted, "Tablet $0 leader changed during async write", tablet_id()));
 }
 
 void TabletPeer::ChangeConfigReplicated(const RaftConfigPB& config) {
@@ -545,6 +547,8 @@ void TabletPeer::CompleteShutdown(
   }
 
   VLOG_WITH_PREFIX(1) << "Shut down!";
+
+  FailAllAsyncWrites(STATUS(IllegalState, "Tablet peer is shutting down"));
 
   if (tablet_) {
     tablet_->CompleteShutdown(disable_flush_on_shutdown, abort_ops);
@@ -733,7 +737,7 @@ void TabletPeer::Submit(std::unique_ptr<Operation> operation, int64_t term) {
 Status TabletPeer::SubmitUpdateTransaction(
     std::unique_ptr<UpdateTxnOperation>& operation, int64_t term) {
   if (!operation->tablet_is_set()) {
-    auto tablet = VERIFY_RESULT(shared_tablet_safe());
+    auto tablet = VERIFY_RESULT(shared_tablet());
     operation->SetTablet(tablet);
   }
   auto scoped_read_operation = VERIFY_RESULT(operation->tablet_safe())
@@ -783,7 +787,7 @@ void TabletPeer::UpdateClock(HybridTime hybrid_time) {
 std::unique_ptr<UpdateTxnOperation> TabletPeer::CreateUpdateTransaction(
     std::shared_ptr<LWTransactionStatePB> request) {
   // TODO: safe handling for the case when tablet is not set.
-  auto result = std::make_unique<UpdateTxnOperation>(CHECK_RESULT(shared_tablet_safe()));
+  auto result = std::make_unique<UpdateTxnOperation>(CHECK_RESULT(shared_tablet()));
   result->TakeRequest(std::move(request));
   return result;
 }
@@ -794,7 +798,7 @@ void TabletPeer::GetTabletStatusPB(TabletStatusPB* status_pb_out) {
     std::lock_guard lock(lock_);
     DCHECK(status_pb_out != nullptr);
     DCHECK(status_listener_.get() != nullptr);
-    const auto disk_size_info = GetOnDiskSizeInfo();
+    const auto disk_size_info = GetOnDiskSizeInfoUnlocked();
     status_pb_out->set_tablet_id(status_listener_->tablet_id());
     status_pb_out->set_namespace_name(status_listener_->namespace_name());
     status_pb_out->set_table_name(status_listener_->table_name());
@@ -849,7 +853,7 @@ Status TabletPeer::RunLogGC(bool rollover) {
   return log_->GC(min_log_index, &num_gced);
 }
 
-Result<TabletPtr> TabletPeer::shared_tablet_safe() const {
+Result<TabletPtr> TabletPeer::shared_tablet() const {
   // Note that there is still a possible race condition between the time we check the tablet state
   // and the time we access the tablet shared pointer through the weak pointer.
   auto tablet_obj_state = tablet_obj_state_.load(std::memory_order_acquire);
@@ -964,7 +968,7 @@ void TabletPeer::GetInFlightOperations(Operation::TraceType trace_type,
 }
 
 Result<OpId> TabletPeer::MaxPersistentOpId() const {
-  auto tablet = shared_tablet();
+  auto tablet = shared_tablet_maybe_null();
   if (!tablet) {
     // Tablet peer not yet initialized -- we could be doing tablet bootstrap still.
     return OpId::Min();
@@ -1035,7 +1039,7 @@ Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) cons
     *details += Format("Min retryable request op id: $0\n", min_retryable_request_op_id);
   }
 
-  auto tablet = VERIFY_RESULT(shared_tablet_safe());
+  auto tablet = VERIFY_RESULT(shared_tablet());
   auto* transaction_coordinator = tablet->transaction_coordinator();
   if (transaction_coordinator) {
     auto transaction_coordinator_min_op_index = transaction_coordinator->PrepareGC(details);
@@ -1108,7 +1112,7 @@ Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) cons
 }
 
 Result<std::pair<OpId, HybridTime>> TabletPeer::GetOpIdAndSafeTimeForXReplBootstrap() const {
-  auto tablet = VERIFY_RESULT(shared_tablet_safe());
+  auto tablet = VERIFY_RESULT(shared_tablet());
 
   SCHECK_NE(
       tablet->table_type(), TableType::TRANSACTION_STATUS_TABLE_TYPE, IllegalState,
@@ -1206,7 +1210,7 @@ OpId TabletPeer::cdc_sdk_min_checkpoint_op_id() {
 }
 
 CoarseTimePoint TabletPeer::cdc_sdk_min_checkpoint_op_id_expiration() {
-  auto tablet = shared_tablet();
+  auto tablet = shared_tablet_maybe_null();
   if (tablet) {
     auto txn_participant = tablet->transaction_participant();
     if (txn_participant) {
@@ -1222,7 +1226,7 @@ bool TabletPeer::is_under_cdc_sdk_replication() {
 }
 
 OpId TabletPeer::GetLatestCheckPoint() {
-  auto tablet = shared_tablet();
+  auto tablet = shared_tablet_maybe_null();
   if (tablet) {
     auto txn_participant = tablet->transaction_participant();
     if (txn_participant) {
@@ -1233,41 +1237,13 @@ OpId TabletPeer::GetLatestCheckPoint() {
 }
 
 Result<NamespaceId> TabletPeer::GetNamespaceId() {
-  auto namespace_id = tablet()->metadata()->namespace_id();
-  if (!namespace_id.empty()) {
-    return namespace_id;
-  }
-  // This is empty the first time we try to fetch the namespace id from the tablet metadata, so
-  // fetch it from the client and populate the tablet metadata.
-  auto* client = client_future().get();
-  master::GetNamespaceInfoResponsePB resp;
-  auto tablet = VERIFY_RESULT(shared_tablet_safe());
-  auto* metadata = tablet->metadata();
-  auto namespace_name = metadata->namespace_name();
-  auto db_type = YQL_DATABASE_CQL;
-  switch (metadata->table_type()) {
-    case PGSQL_TABLE_TYPE:
-      db_type = YQL_DATABASE_PGSQL;
-      break;
-    case REDIS_TABLE_TYPE:
-      db_type = YQL_DATABASE_REDIS;
-      break;
-    default:
-      db_type = YQL_DATABASE_CQL;
-  }
-
-  RETURN_NOT_OK(client->GetNamespaceInfo({} /* namesapce_id */, namespace_name, db_type, &resp));
-  namespace_id = resp.namespace_().id();
-  if (namespace_id.empty()) {
-    return STATUS(IllegalState, Format("Could not get namespace id for $0",
-                                       namespace_name));
-  }
-  RETURN_NOT_OK(metadata->set_namespace_id(namespace_id));
-  return namespace_id;
+  auto tablet = VERIFY_RESULT(shared_tablet());
+  RETURN_NOT_OK(BackfillNamespaceIdIfNeeded(*tablet->metadata(), *client_future().get()));
+  return tablet->metadata()->namespace_id();
 }
 
 HybridTime TabletPeer::GetMinStartHTRunningTxnsOrLeaderSafeTime() {
-  auto tablet_result = shared_tablet_safe();
+  auto tablet_result = shared_tablet();
   if (!tablet_result.ok()) {
     LOG_WITH_PREFIX(WARNING)
         << "Tablet not found, so setting minimum start hybrid time for running txns to kInitial.";
@@ -1314,7 +1290,7 @@ Result<MonoDelta> TabletPeer::GetCDCSDKIntentRetainTime(const int64_t& cdc_sdk_l
     return cdc_sdk_intent_retention;
   }
 
-  auto txn_participant = VERIFY_RESULT(shared_tablet_safe())->transaction_participant();
+  auto txn_participant = VERIFY_RESULT(shared_tablet())->transaction_participant();
   if (txn_participant) {
     // Get the current tablet LEADER's intent retention expiration time.
     // Check how many milliseconds time remaining w.r.t current time, update
@@ -1334,8 +1310,7 @@ Result<bool> TabletPeer::SetAllCDCRetentionBarriers(
     int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, MonoDelta cdc_sdk_op_id_expiration,
     HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff,
     bool initial_retention_barrier) {
-
-  auto tablet = VERIFY_RESULT(shared_tablet_safe());
+  auto tablet = VERIFY_RESULT(shared_tablet());
   Log* log = log_atomic_.load(std::memory_order_acquire);
 
   {
@@ -1390,7 +1365,7 @@ Result<bool> TabletPeer::MoveForwardAllCDCRetentionBarriers(
 
 std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::LWReplicateMsg* replicate_msg) {
   // TODO: handle cases where tablet is unset safely.
-  auto tablet = CHECK_RESULT(shared_tablet_safe());
+  auto tablet = CHECK_RESULT(shared_tablet());
   switch (replicate_msg->op_type()) {
     case consensus::WRITE_OP:
       DCHECK(replicate_msg->has_write()) << "WRITE_OP replica"
@@ -1561,7 +1536,7 @@ void TabletPeer::RegisterMaintenanceOps(MaintenanceManager* maint_mgr) {
 
   DCHECK(maintenance_ops_.empty());
 
-  auto tablet_result = shared_tablet_safe();
+  auto tablet_result = shared_tablet();
   if (!tablet_result.ok()) {
     LOG_WITH_PREFIX(WARNING) << "Not registering maintenance operations: "
                              << tablet_result.status();
@@ -1582,6 +1557,11 @@ void TabletPeer::UnregisterMaintenanceOps() {
 }
 
 TabletOnDiskSizeInfo TabletPeer::GetOnDiskSizeInfo() const {
+  std::lock_guard lock(lock_);
+  return GetOnDiskSizeInfoUnlocked();
+}
+
+TabletOnDiskSizeInfo TabletPeer::GetOnDiskSizeInfoUnlocked() const {
   TabletOnDiskSizeInfo info;
 
   if (consensus_) {
@@ -1599,8 +1579,13 @@ TabletOnDiskSizeInfo TabletPeer::GetOnDiskSizeInfo() const {
     info.wal_files_disk_size = log->OnDiskSize();
   }
 
+  info.total_on_disk_size = total_on_disk_size_;
   info.RecomputeTotalSize();
   return info;
+}
+
+void TabletPeer::SetTabletOnDiskSize(size_t total_on_disk_size) {
+  total_on_disk_size_ = total_on_disk_size;
 }
 
 size_t TabletPeer::GetNumLogSegments() const {
@@ -1666,7 +1651,7 @@ Result<HybridTime> TabletPeer::HtLeaseExpiration() const {
 }
 
 TableType TabletPeer::TEST_table_type() {
-  auto tablet_result = shared_tablet_safe();
+  auto tablet_result = shared_tablet();
   if (!tablet_result.ok()) {
     LOG(WARNING) << "Cannot determine table type: " << tablet_result.status();
     return static_cast<TableType>(-1);
@@ -1728,7 +1713,7 @@ bool TabletPeer::CanBeDeleted() {
     return false;
   }
 
-  const auto tablet = shared_tablet();
+  const auto tablet = shared_tablet_maybe_null();
   if (!tablet) {
     return false;
   }
@@ -1790,7 +1775,7 @@ Status TabletPeer::ChangeRole(const std::string& requestor_uuid) {
         RaftPeerPB* peer = req.mutable_server();
         peer->set_permanent_uuid(requestor_uuid);
 
-        boost::optional<TabletServerErrorPB::Code> error_code;
+        std::optional<TabletServerErrorPB::Code> error_code;
         return consensus->ChangeConfig(req, &DoNothingStatusCB, &error_code);
       }
       case PeerMemberType::UNKNOWN_MEMBER_TYPE:
@@ -1893,5 +1878,139 @@ bool TabletPeer::HasSufficientDiskSpaceForWrite() {
   return true;
 }
 
-}  // namespace tablet
-}  // namespace yb
+void TabletPeer::NotifyCommitedAsyncWrites(const OpId& committed_op_id) {
+  if (!committed_op_id) {
+    return;
+  }
+  LOG_IF(DFATAL, committed_op_id < last_known_committed_op_id_.load(std::memory_order_acquire))
+      << "Tablet " << tablet_id() << " committed op id: " << committed_op_id
+      << ", last known committed op id: " << last_known_committed_op_id_;
+  last_known_committed_op_id_.store(committed_op_id, std::memory_order_release);
+
+  std::vector<std::pair<StdStatusCallback, Status>> callbacks;
+  {
+    std::lock_guard lock(async_write_queries_mutex_);
+    auto it = in_flight_async_write_queries_.begin();
+    while (it != in_flight_async_write_queries_.end()) {
+      Status status;
+      if (it->first.term != committed_op_id.term) {
+        // Stale callback from previous term.
+        status = STATUS_FORMAT(
+            IllegalState, "Unexpected tablet $0 term change. New term: $1, expected term: $2",
+            tablet_id(), committed_op_id.term, it->first.term);
+      } else if (it->first.index > committed_op_id.index) {
+        break;
+      }
+
+      for (auto& callback : it->second) {
+        callbacks.emplace_back(std::move(callback), std::move(status));
+      }
+      it = in_flight_async_write_queries_.erase(it);
+    }
+  }
+
+  for (auto& [callback, status] : callbacks) {
+    callback(status);
+  }
+}
+
+void TabletPeer::FailAllAsyncWrites(const Status& status) {
+  std::vector<StdStatusCallback> callbacks;
+  {
+    std::lock_guard lock(async_write_queries_mutex_);
+    for (auto& [_, in_flight_callbacks] : in_flight_async_write_queries_) {
+      MoveCollection(&in_flight_callbacks, &callbacks);
+    }
+    in_flight_async_write_queries_.clear();
+  }
+
+  for (auto& callback : callbacks) {
+    callback(status);
+  }
+}
+
+void TabletPeer::RegisterAsyncWrite(const OpId& op_id) {
+  std::lock_guard lock(async_write_queries_mutex_);
+  DCHECK(
+      in_flight_async_write_queries_.empty() ||
+      in_flight_async_write_queries_.back().first < op_id);
+  in_flight_async_write_queries_.emplace_back(op_id, std::vector<StdStatusCallback>());
+}
+
+void TabletPeer::RegisterAsyncWriteCompletion(const OpId& op_id, StdStatusCallback&& callback) {
+  // If the write is still in flight, add the callback to the list.
+  {
+    std::lock_guard lock(async_write_queries_mutex_);
+    auto it = std::lower_bound(
+        in_flight_async_write_queries_.begin(), in_flight_async_write_queries_.end(), op_id,
+        [](const auto& pair, const OpId& op_id) { return pair.first < op_id; });
+    if (it != in_flight_async_write_queries_.end() && it->first == op_id) {
+      it->second.emplace_back(std::move(callback));
+      return;
+    }
+  }
+
+  // Write is not in progress. Check the term to make sure the write was received by the current
+  // peer.
+  // TODO(#28383): Handle graceful leader moves without failing user queries.
+  auto is_same_term = [this, &op_id]() -> Status {
+    auto committed_op_id = last_known_committed_op_id_.load(std::memory_order_acquire);
+    if (op_id.term == committed_op_id.term && op_id.index <= committed_op_id.index) {
+      return Status::OK();
+    }
+
+    auto consensus = VERIFY_RESULT(GetRaftConsensus());
+    const auto leader_term = consensus->LeaderTerm();
+    SCHECK_FORMAT(
+        leader_term != OpId::kUnknownTerm, Aborted,
+        "Tablet $0 leader changed during async write", tablet_id());
+
+    SCHECK_FORMAT(
+        leader_term == op_id.term, Aborted,
+        "Tablet $0 leader changed during async write. New term: $1, expected term: $2", tablet_id(),
+        leader_term, op_id.term);
+
+    return Status::OK();
+  }();
+
+  Status status;
+
+  if (!is_same_term.ok()) {
+    status = std::move(is_same_term);
+  }
+
+  callback(status);
+}
+
+Status BackfillNamespaceIdIfNeeded(
+    tablet::RaftGroupMetadata& metadata, client::YBClient& client) {
+  auto namespace_id = metadata.namespace_id();
+  if (!namespace_id.empty()) {
+    return Status::OK();
+  }
+
+  // If the namespace ID hasn't been backfilled yet, fetch it from master and populate the tablet
+  // metadata.
+  master::GetNamespaceInfoResponsePB resp;
+  auto namespace_name = metadata.namespace_name();
+  auto db_type = YQL_DATABASE_CQL;
+  switch (metadata.table_type()) {
+    case PGSQL_TABLE_TYPE:
+      db_type = YQL_DATABASE_PGSQL;
+      break;
+    case REDIS_TABLE_TYPE:
+      db_type = YQL_DATABASE_REDIS;
+      break;
+    default:
+      db_type = YQL_DATABASE_CQL;
+  }
+
+  RETURN_NOT_OK(client.GetNamespaceInfo(
+      /*namespace_id=*/{}, namespace_name, db_type, &resp));
+  namespace_id = resp.namespace_().id();
+  SCHECK_FORMAT(
+      !namespace_id.empty(), IllegalState, "Could not get namespace ID for $0", namespace_name);
+  return metadata.set_namespace_id(namespace_id);
+}
+
+}  // namespace yb::tablet

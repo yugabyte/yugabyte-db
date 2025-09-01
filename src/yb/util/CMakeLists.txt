@@ -181,7 +181,6 @@ set(UTIL_SRCS
   net/tunnel.cc
   ntp_clock.cc
   oid_generator.cc
-  once.cc
   operation_counter.cc
   os-util.cc
   path_util.cc
@@ -213,6 +212,7 @@ set(UTIL_SRCS
   status.cc
   status_callback.cc
   stol_utils.cc
+  strand.cc
   string_case.cc
   string_trim.cc
   string_util.cc
@@ -227,6 +227,7 @@ set(UTIL_SRCS
   thread.cc
   thread_restrictions.cc
   threadlocal.cc
+  thread_pool.cc
   threadpool.cc
   timestamp.cc
   tostring.cc
@@ -393,7 +394,6 @@ ADD_YB_TEST(net/net_util-test)
 ADD_YB_TEST(net/rate_limiter-test)
 ADD_YB_TEST(numbered_deque-test)
 ADD_YB_TEST(object_pool-test)
-ADD_YB_TEST(once-test)
 ADD_YB_TEST(operation_counter-test)
 ADD_YB_TEST(os-util-test)
 ADD_YB_TEST(path_util-test)
@@ -438,6 +438,7 @@ ADD_YB_TEST(sync_point-test)
 ADD_YB_TEST(taskstream-test)
 ADD_YB_TEST(tcmalloc_profile-test)
 ADD_YB_TEST(thread-test)
+ADD_YB_TEST(thread_pool-test)
 ADD_YB_TEST(threadpool-test)
 ADD_YB_TEST(tostring-test)
 ADD_YB_TEST(trace-test)

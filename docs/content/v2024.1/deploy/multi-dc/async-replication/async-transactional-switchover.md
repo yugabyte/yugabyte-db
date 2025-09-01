@@ -32,8 +32,8 @@ Proceed as follows:
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <A_master_addresses> \
-        -certs_dir_name <dir_name>  \
+        --master_addresses <A-master-addresses> \
+        --certs_dir_name <dir_name>  \
         list_cdc_streams
     ```
 
@@ -86,8 +86,8 @@ Proceed as follows:
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <A_master_addresses> \
-        -certs_dir_name <dir_name> \
+        --master_addresses <A-master-addresses> \
+        --certs_dir_name <dir_name> \
         wait_for_replication_drain 56bf794172da49c6804cbab59b978c7e,..,..<comma_separated_list_of_stream_ids> 1665548814177072
     ```
 
@@ -114,8 +114,8 @@ Proceed as follows:
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <B_master_addresses> \
-        -certs_dir_name <dir_name> \
+        --master_addresses <B-master-addresses> \
+        --certs_dir_name <dir_name> \
         change_xcluster_role ACTIVE
     ```
 
@@ -123,7 +123,7 @@ Proceed as follows:
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <B_master_addresses> \
+        --master_addresses <B-master-addresses> \
         delete_universe_replication <A_universe_uuid>_<replication_name>
     ```
 
@@ -135,8 +135,8 @@ In the second stage, set up replication from the new Primary (B) universe as fol
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <B_master_addresses>
-        -certs_dir_name <cert_dir> \
+        --master_addresses <B-master-addresses>
+        --certs_dir_name <cert_dir> \
         bootstrap_cdc_producer <comma_separated_B_table_ids>
     ```
 
@@ -162,11 +162,11 @@ In the second stage, set up replication from the new Primary (B) universe as fol
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <A_master_addresses> \
-        -certs_dir_name <cert_dir> \
+        --master_addresses <A-master-addresses> \
+        --certs_dir_name <cert_dir> \
         setup_universe_replication \
         <B_universe_uuid>_<replication_name> \
-        <B_master_addresses> \
+        <B-master-addresses> \
         <comma_separated_B_table_ids>  \
         <comma_separated_B_bootstrap_ids> transactional
     ```
@@ -175,8 +175,8 @@ In the second stage, set up replication from the new Primary (B) universe as fol
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <A_master-addresses> \
-        -certs_dir_name <dir_name> \
+        --master_addresses <A_master-addresses> \
+        --certs_dir_name <dir_name> \
         change_xcluster_role STANDBY
     ```
 

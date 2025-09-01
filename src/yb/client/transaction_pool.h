@@ -34,6 +34,8 @@ class TransactionPool {
   TransactionPool(TransactionManager* manager, MetricEntity* metric_entity);
   ~TransactionPool();
 
+  void Shutdown();
+
   // When force_create_txn == ForceCreateTransaction::kTrue, a new txn is created and returned.
   // Else, tries to take a new ready transaction from the pool. If pool is empty a newly created
   // transaction is returned.

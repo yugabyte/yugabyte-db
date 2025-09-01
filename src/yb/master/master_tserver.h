@@ -79,6 +79,10 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   ConcurrentPointerReference<tserver::TServerSharedData> SharedObject() override;
 
+  docdb::ObjectLockSharedStateManager* ObjectLockSharedStateManager() const override {
+    return nullptr;
+  }
+
   const std::shared_future<client::YBClient*>& client_future() const override;
 
   Status GetLiveTServers(
@@ -104,10 +108,14 @@ class MasterTabletServer : public tserver::TabletServerIf,
   rpc::Messenger* GetMessenger(ash::Component component) const override;
 
   std::shared_ptr<cdc::CDCServiceImpl> GetCDCService() const override {
-    // We don't have a CDC service on master, so return null from here.
-    // The caller is expected to do a null check.
-    return nullptr;
+    return cdc_service_;
   }
+
+  rpc::ServiceIfPtr CreateCDCService(
+      const scoped_refptr<MetricEntity>& metric_entity,
+      const std::shared_future<client::YBClient*>& client_future, MetricRegistry* metric_registry);
+
+  void EnableCDCService();
 
   void ClearAllMetaCachesOnServer() override;
 
@@ -124,6 +132,12 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   void SetYsqlDBCatalogVersions(
       const tserver::DBCatalogVersionDataPB& db_catalog_version_data) override {}
+
+  void SetYsqlDBCatalogVersionsWithInvalMessages(
+      const tserver::DBCatalogVersionDataPB& db_catalog_version_data,
+      const tserver::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data) override {}
+
+  void ResetCatalogVersionsFingerprint() override {}
 
   Result<tserver::YSQLLeaseInfo> GetYSQLLeaseInfo() const override;
   Status RestartPG() const override {
@@ -145,6 +159,9 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   Master* master_ = nullptr;
   scoped_refptr<MetricEntity> metric_entity_;
+
+  // CDC service.
+  std::shared_ptr<cdc::CDCServiceImpl> cdc_service_;
 };
 
 } // namespace yb::master

@@ -95,19 +95,24 @@ public class YNPProvisioning extends AbstractTaskBase {
           "tmp_directory",
           confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory));
       ynpNode.put("is_configure_clockbound", userIntent.isUseClockbound());
+      if (!provider.getYbHome().isEmpty()) {
+        ynpNode.put("yb_home_dir", provider.getYbHome());
+      }
       Customer customer = Customer.getOrBadRequest(provider.getCustomerUUID());
       boolean enableEarlyoomFeature =
           confGetter.getConfForScope(customer, CustomerConfKeys.enableEarlyoomFeature);
       if (enableEarlyoomFeature) {
-        ObjectNode earlyoomNode = mapper.createObjectNode();
         AdditionalServicesStateData data =
             universe.getUniverseDetails().additionalServicesStateData;
-        if (data != null && data.isEarlyoomEnabled()) {
-          earlyoomNode.put("earlyoom_enable", true);
-          earlyoomNode.put(
-              "earlyoom_args", AdditionalServicesStateData.toArgs(data.getEarlyoomConfig()));
+        if (data != null) {
+          ObjectNode earlyoomNode = mapper.createObjectNode();
+          if (data.isEarlyoomEnabled()) {
+            earlyoomNode.put("earlyoom_enable", true);
+            earlyoomNode.put(
+                "earlyoom_args", AdditionalServicesStateData.toArgs(data.getEarlyoomConfig()));
+          }
+          ynpNode.set("earlyoom", earlyoomNode);
         }
-        ynpNode.put("earlyoom", earlyoomNode);
       }
       if (provider.getDetails().getNtpServers() != null
           && !provider.getDetails().getNtpServers().isEmpty()) {
@@ -250,6 +255,7 @@ public class YNPProvisioning extends AbstractTaskBase {
     if (provider.getDetails().airGapInstall) {
       sb.append(" --is_airgap");
     }
+    sb.append(" && chown -R $(id -u):$(id -g) ").append(nodeAgentHomePath);
     List<String> command = getCommand("/bin/bash", "-c", sb.toString());
     log.debug("Running YNP installation command: {}", command);
     nodeUniverseManager

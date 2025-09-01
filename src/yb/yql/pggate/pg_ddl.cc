@@ -19,20 +19,16 @@
 
 #include "yb/common/common.pb.h"
 #include "yb/common/constants.h"
-#include "yb/common/entity_ids.h"
 #include "yb/common/pg_system_attr.h"
 
-#include "yb/util/flags.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
-#include "yb/util/tsan_util.h"
 
 #include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
-DEFINE_test_flag(int32, user_ddl_operation_timeout_sec, 0,
-                 "Adjusts the timeout for a DDL operation from the YBClient default, if non-zero.");
+DEFINE_RUNTIME_int32(ysql_ddl_rpc_timeout_sec, 180, "Timeout for YSQL DDL operations.");
 
 DECLARE_int32(max_num_tablets_for_table);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
@@ -42,32 +38,17 @@ namespace yb::pggate {
 
 using namespace std::literals;  // NOLINT
 
-// TODO(neil) This should be derived from a GFLAGS.
-static MonoDelta kDdlTimeout = 60s * kTimeMultiplier;
-
 namespace {
 
 CoarseTimePoint DdlDeadline() {
-  auto timeout = MonoDelta::FromSeconds(FLAGS_TEST_user_ddl_operation_timeout_sec);
-  if (timeout == MonoDelta::kZero) {
-    timeout = kDdlTimeout;
-  }
-  return CoarseMonoClock::now() + timeout;
+  return CoarseMonoClock::now() + (FLAGS_ysql_ddl_rpc_timeout_sec * 1s);
 }
 
-// Make a special case for create database because it is a well-known slow operation in YB.
 CoarseTimePoint CreateDatabaseDeadline(bool is_clone = false) {
-  int32 timeout = FLAGS_TEST_user_ddl_operation_timeout_sec;
   // Creating the database through clone workflow has a different deadline compared to non-clone
-  // worflow to account for extra time to clone the schema objects.
-  if (is_clone) {
-    timeout = FLAGS_ysql_clone_pg_schema_rpc_timeout_ms / 1000;
-  }
-  if (timeout == 0) {
-    timeout = FLAGS_yb_client_admin_operation_timeout_sec *
-              RegularBuildVsDebugVsSanitizers(1, 2, 2);
-  }
-  return CoarseMonoClock::now() + MonoDelta::FromSeconds(timeout);
+  // workflow to account for extra time to clone the schema objects.
+  return CoarseMonoClock::now() + (is_clone ? FLAGS_ysql_clone_pg_schema_rpc_timeout_ms * 1ms
+                                            : FLAGS_ysql_ddl_rpc_timeout_sec * 1s);
 }
 
 } // namespace
@@ -102,7 +83,8 @@ PgCreateDatabase::PgCreateDatabase(const PgSession::ScopedRefPtr& pg_session,
 }
 
 Status PgCreateDatabase::Exec() {
-  bool is_clone = !req_.source_database_name().empty();
+  RETURN_NOT_OK(SetupPerformOptionsForDdlIfNeeded(*pg_session_, req_));
+  const auto is_clone = !req_.source_database_name().empty();
   return pg_session_->pg_client().CreateDatabase(&req_, CreateDatabaseDeadline(is_clone));
 }
 
@@ -147,6 +129,7 @@ PgCreateTablegroup::PgCreateTablegroup(
 }
 
 Status PgCreateTablegroup::Exec() {
+  RETURN_NOT_OK(SetupPerformOptionsForDdlIfNeeded(*pg_session_, req_));
   return pg_session_->pg_client().CreateTablegroup(&req_, DdlDeadline());
 }
 
@@ -159,6 +142,7 @@ PgDropTablegroup::PgDropTablegroup(
 }
 
 Status PgDropTablegroup::Exec() {
+  RETURN_NOT_OK(SetupPerformOptionsForDdlIfNeeded(*pg_session_, req_));
   return pg_session_->pg_client().DropTablegroup(&req_, DdlDeadline());
 }
 
@@ -286,6 +270,7 @@ Status PgCreateTableBase::AddSplitBoundary(PgExpr** exprs, int expr_count) {
 }
 
 Status PgCreateTableBase::Exec() {
+  RETURN_NOT_OK(SetupPerformOptionsForDdlIfNeeded(*pg_session_, req_));
   RETURN_NOT_OK(pg_session_->pg_client().CreateTable(&req_, DdlDeadline()));
 
   const auto base_table_id = PgObjectId::FromPB(req_.base_table_id());
@@ -497,6 +482,7 @@ Status PgAlterTable::SetSchema(const char *schema_name) {
 }
 
 Status PgAlterTable::Exec() {
+  RETURN_NOT_OK(SetupPerformOptionsForDdlIfNeeded(*pg_session_, req_));
   RETURN_NOT_OK(pg_session_->pg_client().AlterTable(&req_, DdlDeadline()));
   pg_session_->InvalidateTableCache(
       PgObjectId::FromPB(req_.table_id()), InvalidateOnPgClient::kFalse);

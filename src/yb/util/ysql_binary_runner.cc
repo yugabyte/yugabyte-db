@@ -45,31 +45,28 @@ Result<std::string> YsqlBinaryRunner::Run(const std::optional<std::vector<std::s
 // ============================================================================
 
 Result<std::string> YsqlDumpRunner::DumpSchemaAsOfTime(
-    const std::string& db_name, const HybridTime& restore_time) {
-  std::string timestamp_flag =
-      "--read-time=" + std::to_string(restore_time.GetPhysicalValueMicros());
-  std::vector<std::string> args = {"--schema-only", "--serializable-deferrable", "--create",
-                                   timestamp_flag,  "--include-yb-metadata",     db_name};
+    const std::string& db_name, const std::optional<HybridTime>& read_time) {
+  std::vector<std::string> args = {
+      "--schema-only", "--serializable-deferrable", "--create", "--include-yb-metadata", db_name};
+  if (read_time.has_value()) {
+    std::string read_time_flag =
+        "--read-time=" + std::to_string(read_time->GetPhysicalValueMicros());
+    args.push_back(read_time_flag);
+  }
   return Run(args);
 }
 
 Result<std::string> YsqlDumpRunner::RunAndModifyForClone(
     const std::string& source_db_name, const std::string& target_db_name,
     const std::string& source_owner, const std::string& target_owner,
-    const HybridTime& restore_time) {
-  const auto dump_output = VERIFY_RESULT(DumpSchemaAsOfTime(source_db_name, restore_time));
-
-  // Used to set the owner of the created database.
-  const boost::regex source_owner_re = boost::regex("OWNER TO " + source_owner);
-  const std::string alter_owner = "OWNER TO " + target_owner;
-
-  std::istringstream input_script_stream(dump_output);
-  std::string line;
-  std::stringstream modified_dump;
-  while (std::getline(input_script_stream, line)) {
-    modified_dump << ModifyLine(line, target_db_name, source_owner_re, alter_owner) << std::endl;
-  }
-  return modified_dump.str();
+    const std::optional<HybridTime>& read_time) {
+  const auto dump_output = VERIFY_RESULT(DumpSchemaAsOfTime(source_db_name, read_time));
+  // Pass 1, modify the owner of the DB.
+  std::string modified_dump = ModifyDbOwnerInScript(dump_output, source_owner, target_owner);
+  // Pass 2, modify the DB name in the script and disallow connection to the DB.
+  std::string final_dump =
+      ModifyDbNameInScript(modified_dump, target_db_name, /* disallow_db_connections */ true);
+  return final_dump;
 }
 
 namespace {
@@ -86,31 +83,65 @@ std::string MakeDisallowConnectionsString(const std::string& new_db) {
 }
 }  // namespace
 
-std::string YsqlDumpRunner::ModifyLine(
-    const std::string& line, const std::string& new_db, const boost::regex& owner_regex,
-    const std::string& alter_owner) {
-  std::string modified_line = boost::regex_replace(line, owner_regex, alter_owner);
-  std::vector<std::string> values;
-  if (boost::regex_split(std::back_inserter(values), modified_line, QUOTED_DATABASE_RE)) {
-    return values[0] + " DATABASE \"" + new_db + "\" " + values[2];
+std::string YsqlDumpRunner::ModifyDbOwnerInScript(
+    const std::string& dump_output, const std::string& source_owner,
+    const std::string& target_owner) {
+  std::istringstream input_script_stream(dump_output);
+  std::string line;
+  std::stringstream modified_dump;
+  while (std::getline(input_script_stream, line)) {
+    modified_dump << ModifyDbOwnerInLine(line, source_owner, target_owner) << std::endl;
   }
-  values.clear();
-  if (boost::regex_split(std::back_inserter(values), modified_line, UNQUOTED_DATABASE_RE)) {
-    return values[0] + " DATABASE \"" + new_db + "\" " + values[2];
-  }
-  values.clear();
-  if (boost::regex_split(std::back_inserter(values), modified_line, QUOTED_CONNECT_RE)) {
-    std::string s = boost::replace_all_copy(new_db, "'", "\\'");
-    return "\\connect -reuse-previous=on \"dbname='" + s + "'\"" + "\n" +
-           MakeDisallowConnectionsString(new_db);
-  }
-  values.clear();
-  if (boost::regex_split(std::back_inserter(values), modified_line, UNQUOTED_CONNECT_RE)) {
-    std::string s = boost::replace_all_copy(new_db, "'", "\\'");
-    return "\\connect -reuse-previous=on \"dbname='" + s + "'\"" + "\n" +
-           MakeDisallowConnectionsString(new_db);
-  }
+  return modified_dump.str();
+}
+
+std::string YsqlDumpRunner::ModifyDbOwnerInLine(
+    std::string line, const std::string& source_owner, const std::string& target_owner) {
+  // Used to set the owner of the created database.
+  const boost::regex source_owner_re = boost::regex("OWNER TO " + source_owner);
+  const std::string alter_owner = "OWNER TO " + target_owner;
+  std::string modified_line = boost::regex_replace(line, source_owner_re, alter_owner);
   return modified_line;
+}
+
+std::string YsqlDumpRunner::ModifyDbNameInScript(
+    const std::string& dump_output, const std::string& new_db, bool disallow_db_connections) {
+  std::istringstream input_script_stream(dump_output);
+  std::string line;
+  std::stringstream modified_dump;
+  while (std::getline(input_script_stream, line)) {
+    modified_dump << ModifyDbNameInLine(line, new_db, disallow_db_connections) << std::endl;
+  }
+  return modified_dump.str();
+}
+
+std::string YsqlDumpRunner::ModifyDbNameInLine(
+    std::string line, const std::string& new_db, bool disallow_db_connections) {
+  std::string disallow_db_connections_stmt = "";
+  if (disallow_db_connections) {
+    disallow_db_connections_stmt = MakeDisallowConnectionsString(new_db);
+  }
+  std::vector<std::string> values;
+  if (boost::regex_split(std::back_inserter(values), line, QUOTED_DATABASE_RE)) {
+    return values[0] + " DATABASE \"" + new_db + "\" " + values[2];
+  }
+  values.clear();
+  if (boost::regex_split(std::back_inserter(values), line, UNQUOTED_DATABASE_RE)) {
+    return values[0] + " DATABASE \"" + new_db + "\" " + values[2];
+  }
+  values.clear();
+  if (boost::regex_split(std::back_inserter(values), line, QUOTED_CONNECT_RE)) {
+    std::string s = boost::replace_all_copy(new_db, "'", "\\'");
+    return "\\connect -reuse-previous=on \"dbname='" + s + "'\"" + "\n" +
+           disallow_db_connections_stmt;
+  }
+  values.clear();
+  if (boost::regex_split(std::back_inserter(values), line, UNQUOTED_CONNECT_RE)) {
+    std::string s = boost::replace_all_copy(new_db, "'", "\\'");
+    return "\\connect -reuse-previous=on \"dbname='" + s + "'\"" + "\n" +
+           disallow_db_connections_stmt;
+  }
+  return line;
 }
 
 // ============================================================================

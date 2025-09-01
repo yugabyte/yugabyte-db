@@ -83,8 +83,6 @@ void MaybeSleepForTests(WaitStateInfo* state, WaitStateCode c) {
 
 std::string GetWaitStateDescription(WaitStateCode code) {
   switch (code) {
-    case WaitStateCode::kUnused:
-      return "This should not be present in view.";
     case WaitStateCode::kYSQLReserved:
       return "This is just a placeholder here for a wait event defined in PG.";
     case WaitStateCode::kCatalogRead:
@@ -119,6 +117,8 @@ std::string GetWaitStateDescription(WaitStateCode code) {
           "This generally happens in the background during a WAL log roll, or remote bootstrap.";
     case WaitStateCode::kMVCC_WaitForSafeTime:
       return "A read/write rpc is waiting for the safe time to be at least the desired read-time.";
+    case WaitStateCode::kWaitForReadTime:
+      return "A read/write rpc is waiting for the current time to catch up to read time.";
     case WaitStateCode::kLockedBatchEntry_Lock:
       return "A read/write rpc is waiting for a DocDB row level lock.";
     case WaitStateCode::kBackfillIndex_WaitForAFreeSlot:
@@ -152,6 +152,14 @@ std::string GetWaitStateDescription(WaitStateCode code) {
     case WaitStateCode::kRemoteBootstrap_RateLimiter:
       return "A remote bootstrap client is slowing down due to rate limiter throttling "
           "network access to remote bootstrap server.";
+    case WaitStateCode::kSnapshot_WaitingForFlush:
+      return "A snapshot operation is waiting for flush.";
+    case WaitStateCode::kSnapshot_CleanupSnapshotDir:
+      return "A snapshot operation is cleaning a snapshot directory.";
+    case WaitStateCode::kSnapshot_RestoreCheckpoint:
+      return "A snapshot operation is restoring a database checkpoint.";
+    case WaitStateCode::kXCluster_WaitingForGetChanges:
+      return "XCluster Poller on target universe is waiting for changes from source universe.";
     case WaitStateCode::kRaft_WaitingForReplication:
       return "A write rpc is waiting for Raft replication.";
     case WaitStateCode::kRaft_ApplyingEdits:
@@ -160,6 +168,8 @@ std::string GetWaitStateDescription(WaitStateCode code) {
       return "A write rpc is persisting WAL edits.";
     case WaitStateCode::kWAL_Sync:
       return "A write rpc is synchronizing WAL edits.";
+    case WaitStateCode::kWAL_Read:
+      return "An rpc is reading WAL.";
     case WaitStateCode::kConsensusMeta_Flush:
       return "ConsensusMetadata is flushed, say during Raft term/config change or remote "
           "bootstrap etc.";
@@ -188,6 +198,8 @@ std::string GetWaitStateDescription(WaitStateCode code) {
       return "RocksDB is waiting for a compaction to complete.";
     case WaitStateCode::kRocksDB_NewIterator:
       return "RocksDB is waiting for a new iterator to be created.";
+    case WaitStateCode::kRocksDB_CreateCheckpoint:
+      return "RocksDB is creating a database checkpoint.";
     case WaitStateCode::kYCQL_Parse:
       return "YCQL is parsing a query.";
     case WaitStateCode::kYCQL_Read:
@@ -264,7 +276,7 @@ void AshMetadata::clear_rpc_request_id() {
 std::string AshMetadata::ToString() const {
   return YB_STRUCT_TO_STRING(
       top_level_node_id, root_request_id, query_id, database_id,
-      rpc_request_id, client_host_port);
+      rpc_request_id, client_host_port, addr_family, pid);
 }
 
 std::string AshAuxInfo::ToString() const {
@@ -283,8 +295,9 @@ void AshAuxInfo::UpdateFrom(const AshAuxInfo &other) {
   }
 }
 
-WaitStateInfo::WaitStateInfo()
-    : metadata_(AshMetadata{}) {}
+WaitStateInfo::WaitStateInfo(int64_t rpc_request_id)
+    : metadata_({ .rpc_request_id = rpc_request_id }) {
+}
 
 void WaitStateInfo::set_code(WaitStateCode code, const char* location) {
   auto prev_code = code_.exchange(code, std::memory_order_release);
@@ -356,6 +369,16 @@ void WaitStateInfo::UpdateAuxInfo(const AshAuxInfo &aux) {
   aux_info_.UpdateFrom(aux);
 }
 
+void WaitStateInfo::UpdateTabletId(const TabletId& tablet_id) {
+  UpdateAuxInfo({.tablet_id = tablet_id});
+}
+
+void WaitStateInfo::UpdateCurrentTabletId(const TabletId& tablet_id) {
+  if (const auto& wait_state = CurrentWaitState()) {
+    wait_state->UpdateTabletId(tablet_id);
+  }
+}
+
 void WaitStateInfo::SetCurrentWaitState(WaitStateInfoPtr wait_state) {
   threadlocal_wait_state_ = std::move(wait_state);
 }
@@ -388,7 +411,7 @@ std::vector<WaitStatesDescription> WaitStateInfo::GetWaitStatesDescription() {
   std::vector<WaitStatesDescription> desc;
   for (const auto& code : WaitStateCodeList()) {
     // These shouldn't be seen in the view
-    if (code == WaitStateCode::kUnused || code == WaitStateCode::kYSQLReserved)
+    if (code == WaitStateCode::kYSQLReserved)
       continue;
     desc.emplace_back(code, GetWaitStateDescription(code));
   }
@@ -526,7 +549,6 @@ std::vector<yb::ash::WaitStateInfoPtr> WaitStateTracker::GetWaitStates() const {
 
 WaitStateType GetWaitStateType(WaitStateCode code) {
   switch (code) {
-    case WaitStateCode::kUnused:
     case WaitStateCode::kYSQLReserved:
       return WaitStateType::kCpu;
 
@@ -554,6 +576,7 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
 
     case WaitStateCode::kMVCC_WaitForSafeTime:
     case WaitStateCode::kBackfillIndex_WaitForAFreeSlot:
+    case WaitStateCode::kWaitForReadTime:
       return WaitStateType::kWaitOnCondition;
 
     case WaitStateCode::kCreatingNewTablet:
@@ -584,6 +607,7 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
     case WaitStateCode::kRaft_WaitingForReplication:
     case WaitStateCode::kRemoteBootstrap_StartRemoteSession:
     case WaitStateCode::kRemoteBootstrap_FetchData:
+    case WaitStateCode::kXCluster_WaitingForGetChanges:
       return WaitStateType::kRPCWait;
 
     case WaitStateCode::kRaft_ApplyingEdits:
@@ -591,7 +615,11 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
 
     case WaitStateCode::kWAL_Append:
     case WaitStateCode::kWAL_Sync:
+    case WaitStateCode::kWAL_Read:
     case WaitStateCode::kConsensusMeta_Flush:
+    case WaitStateCode::kSnapshot_WaitingForFlush:
+    case WaitStateCode::kSnapshot_CleanupSnapshotDir:
+    case WaitStateCode::kSnapshot_RestoreCheckpoint:
       return WaitStateType::kDiskIO;
 
     case WaitStateCode::kReplicaState_TakeUpdateLock:
@@ -601,6 +629,7 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
     case WaitStateCode::kRocksDB_OpenFile:
     case WaitStateCode::kRocksDB_WriteToFile:
     case WaitStateCode::kRocksDB_CloseFile:
+    case WaitStateCode::kRocksDB_CreateCheckpoint:
       return WaitStateType::kDiskIO;
 
     case WaitStateCode::kRocksDB_Flush:
@@ -632,11 +661,87 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
   FATAL_INVALID_ENUM_VALUE(WaitStateCode, code);
 }
 
+const char* GetWaitStateAuxDescription(WaitStateCode code) {
+  switch (code) {
+    case WaitStateCode::kOnCpu_Active:
+    case WaitStateCode::kOnCpu_Passive:
+    case WaitStateCode::kIdle:
+    case WaitStateCode::kRpc_Done:
+    case WaitStateCode::kDeprecated_Rpcs_WaitOnMutexInShutdown:
+    case WaitStateCode::kYBClient_WaitingOnDocDB:
+    case WaitStateCode::kYBClient_LookingUpTablet:
+    case WaitStateCode::kYBClient_WaitingOnMaster:
+    case WaitStateCode::kRetryableRequests_SaveToDisk:
+    case WaitStateCode::kMVCC_WaitForSafeTime:
+    case WaitStateCode::kLockedBatchEntry_Lock:
+    case WaitStateCode::kBackfillIndex_WaitForAFreeSlot:
+    case WaitStateCode::kCreatingNewTablet:
+    case WaitStateCode::kSaveRaftGroupMetadataToDisk:
+    case WaitStateCode::kTransactionStatusCache_DoGetCommitData:
+    case WaitStateCode::kWaitForYSQLBackendsCatalogVersion:
+    case WaitStateCode::kWriteSysCatalogSnapshotToDisk:
+    case WaitStateCode::kDumpRunningRpc_WaitOnReactor:
+    case WaitStateCode::kConflictResolution_ResolveConficts:
+    case WaitStateCode::kConflictResolution_WaitOnConflictingTxns:
+    case WaitStateCode::kRemoteBootstrap_FetchData:
+    case WaitStateCode::kRemoteBootstrap_StartRemoteSession:
+    case WaitStateCode::kRemoteBootstrap_ReadDataFromFile:
+    case WaitStateCode::kRemoteBootstrap_RateLimiter:
+    case WaitStateCode::kWaitForReadTime:
+    case WaitStateCode::kSnapshot_WaitingForFlush:
+    case WaitStateCode::kSnapshot_CleanupSnapshotDir:
+    case WaitStateCode::kSnapshot_RestoreCheckpoint:
+    case WaitStateCode::kRaft_WaitingForReplication:
+    case WaitStateCode::kRaft_ApplyingEdits:
+    case WaitStateCode::kWAL_Append:
+    case WaitStateCode::kWAL_Sync:
+    case WaitStateCode::kWAL_Read:
+    case WaitStateCode::kConsensusMeta_Flush:
+    case WaitStateCode::kReplicaState_TakeUpdateLock:
+    case WaitStateCode::kRocksDB_ReadBlockFromFile:
+    case WaitStateCode::kRocksDB_OpenFile:
+    case WaitStateCode::kRocksDB_WriteToFile:
+    case WaitStateCode::kRocksDB_Flush:
+    case WaitStateCode::kRocksDB_Compaction:
+    case WaitStateCode::kRocksDB_PriorityThreadPoolTaskPaused:
+    case WaitStateCode::kRocksDB_CloseFile:
+    case WaitStateCode::kRocksDB_RateLimiter:
+    case WaitStateCode::kRocksDB_WaitForSubcompaction:
+    case WaitStateCode::kRocksDB_NewIterator:
+    case WaitStateCode::kRocksDB_CreateCheckpoint:
+    case WaitStateCode::kXCluster_WaitingForGetChanges:
+      return "This contains tablet ID.";
+
+    case WaitStateCode::kYCQL_Parse:
+    case WaitStateCode::kYCQL_Read:
+    case WaitStateCode::kYCQL_Write:
+    case WaitStateCode::kYCQL_Analyze:
+    case WaitStateCode::kYCQL_Execute:
+      return "This contains table ID.";
+
+    case WaitStateCode::kWaitingOnTServer:
+      return "Name of the PgClient - TServer RPC.";
+
+    case WaitStateCode::kYSQLReserved:
+    case WaitStateCode::kCatalogRead:
+    case WaitStateCode::kIndexRead:
+    case WaitStateCode::kTableRead:
+    case WaitStateCode::kStorageFlush:
+    case WaitStateCode::kCatalogWrite:
+    case WaitStateCode::kIndexWrite:
+    case WaitStateCode::kTableWrite:
+      return "";
+  }
+  FATAL_INVALID_ENUM_VALUE(WaitStateCode, code);
+}
+
 namespace {
 
 WaitStateTracker flush_and_compaction_wait_states_tracker;
 WaitStateTracker raft_log_appender_wait_states_tracker;
 WaitStateTracker pg_shared_memory_perform_tracker;
+WaitStateTracker pg_shared_memory_acquire_object_lock_tracker;
+WaitStateTracker xcluster_poller_tracker;
 
 }  // namespace
 
@@ -650,6 +755,14 @@ WaitStateTracker& RaftLogWaitStatesTracker() {
 
 WaitStateTracker& SharedMemoryPgPerformTracker() {
   return pg_shared_memory_perform_tracker;
+}
+
+WaitStateTracker& SharedMemoryPgAcquireObjectLockTracker() {
+  return pg_shared_memory_acquire_object_lock_tracker;
+}
+
+WaitStateTracker& XClusterPollerTracker() {
+  return xcluster_poller_tracker;
 }
 
 }  // namespace yb::ash

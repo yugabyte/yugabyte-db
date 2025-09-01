@@ -18,6 +18,12 @@ This reference provides detailed information about various flags available for c
 
 Use the yb-tserver binary and its flags to configure the YB-TServer server. The yb-tserver executable file is located in the `bin` directory of YugabyteDB home.
 
+{{< note title="Setting flags in YugabyteDB Anywhere" >}}
+
+If you are using YugabyteDB Anywhere, set flags using the [Edit Flags](../../../yugabyte-platform/manage-deployments/edit-config-flags/#modify-configuration-flags) feature.
+
+{{< /note >}}
+
 Flags are organized in the following categories.
 
 | Category                     | Description |
@@ -390,7 +396,7 @@ Bitmap scans are only supported for LSM indexes.
 ##### yb_enable_bitmapscan
 
 {{% tags/wrap %}}
-{{<tags/feature/tp>}}
+{{<tags/feature/ea idea="1092">}}
 Default: `false`
 {{% /tags/wrap %}}
 
@@ -399,7 +405,7 @@ Enables or disables the query planner's use of bitmap scans for YugabyteDB relat
 | enable_bitmapscan | yb_enable_bitmapscan | Result |
 | :--- | :---  | :--- |
 | true | false | Default. Bitmap scans allowed only on temporary tables, if the planner believes the bitmap scan is most optimal. |
-| true | true  | Default for [Enhanced PostgreSQL Compatibility](../../../develop/postgresql-compatibility/). Bitmap scans are allowed on temporary tables and YugabyteDB relations, if the planner believes the bitmap scan is most optimal. |
+| true | true  | Default for [Enhanced PostgreSQL Compatibility](../postgresql-compatibility/). Bitmap scans are allowed on temporary tables and YugabyteDB relations, if the planner believes the bitmap scan is most optimal. |
 | false | false | Bitmap scans allowed only on temporary tables, but only if every other scan type is also disabled / not possible. |
 | false | true  | Bitmap scans allowed on temporary tables and YugabyteDB relations, but only if every other scan type is also disabled / not possible. |
 
@@ -425,16 +431,33 @@ Default: `true`
 
 Enable or disable the query planner's use of batched nested loop join.
 
+##### yb_enable_cbo
+
+{{% tags/wrap %}}
+
+Default: `legacy_mode`
+{{% /tags/wrap %}}
+
+Enables the YugabyteDB [cost-based optimizer](../../../architecture/query-layer/planner-optimizer/) (CBO). Options are `on`, `off`, `legacy_mode`, and `legacy_stats_mode`.
+
+This parameter replaces the [yb_enable_base_scans_cost_model](#yb-enable-base-scans-cost-model) and [yb_enable_optimizer_statistics](#yb-enable-optimizer-statistics) parameters.
+
+When enabling CBO, you must run ANALYZE on user tables to maintain up-to-date statistics.
+
+For information on using this parameter to configure CBO, refer to [Enable cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/).
+
+See also the [--ysql_yb_enable_cbo](#ysql-yb-enable-cbo) flag. If the flag is set, this parameter takes precedence.
+
 ##### yb_enable_base_scans_cost_model
 
 {{% tags/wrap %}}
-{{<tags/feature/ea idea="483">}}
+
 Default: `false`
 {{% /tags/wrap %}}
 
 Enables the YugabyteDB cost model for Sequential and Index scans. When enabling this parameter, you must run ANALYZE on user tables to maintain up-to-date statistics.
 
-When enabling the cost based optimizer, ensure that [packed row](../../../architecture/docdb/packed-rows) for colocated tables is enabled by setting `ysql_enable_packed_row_for_colocated_table = true`.
+Note: this parameter has been replaced by [yb_enable_cbo](#yb-enable-cbo).
 
 ##### yb_enable_optimizer_statistics
 
@@ -444,6 +467,8 @@ Default: `false`
 {{% /tags/wrap %}}
 
 Enables use of the PostgreSQL selectivity estimation, which uses table statistics collected with ANALYZE.
+
+Note: this parameter has been replaced by [yb_enable_cbo](#yb-enable-cbo).
 
 ##### yb_fetch_size_limit
 
@@ -482,7 +507,7 @@ When set to true, tables and indexes are hash-partitioned based on the first col
 ##### yb_insert_on_conflict_read_batch_size
 
 {{% tags/wrap %}}
-{{<tags/feature/ea idea="1455">}}
+
 {{<tags/feature/restart-needed>}}
 Default: `0` (disabled)
 {{% /tags/wrap %}}
@@ -565,6 +590,18 @@ Enables [time travel queries](../../../manage/backup-restore/time-travel-query/)
 To reset the session to normal behavior (current time), set `yb_read_time` to 0.
 
 Write DML queries (INSERT, UPDATE, DELETE) and DDL queries are not allowed in a session that has a read time in the past.
+
+##### yb_sampling_algorithm
+
+{{% tags/wrap %}}
+
+Default: block_based_sampling
+{{% /tags/wrap %}}
+
+Determines the sampling algorithm to use to select random rows from a table when performing sampling operations in YSQL. You can choose from the following algorithms:
+
+- `full_table_scan`: Scans the whole table and picks random rows
+- `block_based_sampling`: Samples the table for a set of blocks, and then scans only those selected blocks to form a final rows sample.
 
 ## Networking
 
@@ -1034,7 +1071,7 @@ When the flag `ysql_ddl_transaction_wait_for_ddl_verification` is enabled, YSQL 
 
 ### Change data capture (CDC) flags
 
-To learn about CDC, see [Change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture/).
+To learn about CDC, see [Change data capture (CDC)](../../../additional-features/change-data-capture/).
 
 ##### --yb_enable_cdc_consistent_snapshot_streams
 
@@ -1180,7 +1217,9 @@ The following set of flags are only relevant for CDC using the PostgreSQL replic
 Default: `CHANGE`
 {{% /tags/wrap %}}
 
-The default replica identity to be assigned to user defined tables at the time of creation. The flag is case sensitive and can take only one of the four possible values, `FULL`, `DEFAULT`,`'NOTHING` and `CHANGE`.
+The default replica identity to be assigned to user-defined tables at the time of creation. The flag is case sensitive and can take only one of the four possible values, `FULL`, `DEFAULT`, `NOTHING`, and `CHANGE`.
+
+For more information, refer to [Replica identity](../../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/#replica-identity).
 
 ##### --cdcsdk_enable_dynamic_table_support
 
@@ -1478,6 +1517,16 @@ Default: `-1` (disabled). Minimum: 128 bytes.
 Specifies the threshold (in bytes) beyond which catalog tuples will get compressed when they are stored in the PostgreSQL catalog cache. Setting this flag reduces memory usage for certain large objects, including functions and views, in exchange for slower catalog refreshes.
 
 To minimize performance impact when enabling this flag, set it to 2KB or higher.
+
+##### --ysql_yb_enable_invalidation_messages
+
+{{% tags/wrap %}}
+
+
+Default: `true`
+{{% /tags/wrap %}}
+
+Enables YSQL backends to generate and consume invalidation messages incrementally for schema changes. When enabled (true), invalidation messages are propagated via the `pg_yb_invalidation_messages` per-database catalog table. Details of the invalidation messages generated by a DDL are also logged when [ysql_log_min_messages](#ysql-log-min-messages) is set to `DEBUG1` or when `yb_debug_log_catcache_events` is set to true. When disabled, schema changes cause a full catalog cache refresh on existing backends, which can result in a latency and memory spike on existing YSQL backends.
 
 ## Performance Tuning
 
@@ -2036,6 +2085,128 @@ expensive when the number of YB-TServers, or the number of databases goes up.
 
 {{< /note >}}
 
+### Cost-based optimizer flag
+
+Configure the YugabyteDB [cost-based optimizer](../../../architecture/query-layer/planner-optimizer/) (CBO).
+
+See also the [yb_enable_cbo](#yb-enable-cbo) configuration parameter. If this flag is set, the parameter takes precedence.
+
+##### ysql_yb_enable_cbo
+
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+Default: `legacy_mode`
+{{% /tags/wrap %}}
+
+Enables the YugabyteDB [cost-based optimizer](../../../architecture/query-layer/planner-optimizer/) (CBO). Options are `on`, `off`, `legacy_mode`, and `legacy_stats_mode`.
+
+When enabling CBO, you must run ANALYZE on user tables to maintain up-to-date statistics.
+
+For information on using this parameter to configure CBO, refer to [Enable cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/).
+
+### Auto Analyze service flags
+
+Auto analyze is {{<tags/feature/ea idea="590">}}.
+
+{{< note title="Note" >}}
+
+To fully enable the Auto Analyze service, you need to enable `ysql_enable_auto_analyze_service` on all YB-Masters and YB-TServers, and `ysql_enable_table_mutation_counter` on all YB-TServers.
+
+{{< /note >}}
+
+See also [Auto Analyze Service Master flags](../yb-master#auto-analyze-service-flags).
+
+##### ysql_enable_auto_analyze_service
+
+{{% tags/wrap %}}
+{{<tags/feature/ea idea="590">}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Enable the Auto Analyze service, which automatically runs ANALYZE to update table statistics for tables that have changed more than a configurable threshold.
+
+##### ysql_enable_table_mutation_counter
+
+{{% tags/wrap %}}
+
+
+Default: `false`
+{{% /tags/wrap %}}
+
+Enable per table mutation (INSERT, UPDATE, DELETE) counting. The Auto Analyze service runs ANALYZE when the number of mutations of a table exceeds the threshold determined by the [ysql_auto_analyze_threshold](#ysql-auto-analyze-threshold) and [ysql_auto_analyze_scale_factor](#ysql-auto-analyze-scale-factor) settings.
+
+##### ysql_auto_analyze_threshold
+
+{{% tags/wrap %}}
+
+
+Default: `50`
+{{% /tags/wrap %}}
+
+The minimum number of mutations needed to run ANALYZE on a table.
+
+##### ysql_auto_analyze_scale_factor
+
+{{% tags/wrap %}}
+
+
+Default: `0.1`
+{{% /tags/wrap %}}
+
+The fraction defining when sufficient mutations have been accumulated to run ANALYZE for a table.
+
+ANALYZE runs when the mutation count exceeds `ysql_auto_analyze_scale_factor * <table_size> + ysql_auto_analyze_threshold`, where table_size is the value of the `reltuples` column in the `pg_class` catalog.
+
+##### ysql_auto_analyze_batch_size
+
+{{% tags/wrap %}}
+
+
+Default: `10`
+{{% /tags/wrap %}}
+
+The maximum number of tables the Auto Analyze service tries to analyze in a single ANALYZE statement.
+
+##### ysql_cluster_level_mutation_persist_interval_ms
+
+{{% tags/wrap %}}
+
+
+Default: `10000`
+{{% /tags/wrap %}}
+
+Interval at which the reported node level table mutation counts are persisted to the underlying auto-analyze mutations table.
+
+##### ysql_cluster_level_mutation_persist_rpc_timeout_ms
+
+{{% tags/wrap %}}
+
+
+Default: `10000`
+{{% /tags/wrap %}}
+
+Timeout for the RPCs used to persist mutation counts in the auto-analyze mutations table.
+
+##### ysql_node_level_mutation_reporting_interval_ms
+
+{{% tags/wrap %}}
+
+
+Default: `5000`
+{{% /tags/wrap %}}
+
+Interval, in milliseconds, at which the node-level table mutation counts are sent to the Auto Analyze service, which tracks table mutation counts at the cluster level.
+
+##### ysql_node_level_mutation_reporting_timeout_ms
+
+{{% tags/wrap %}}
+
+
+Default: `5000`
+{{% /tags/wrap %}}
+
+Timeout, in milliseconds, for the node-level mutation reporting RPC to the Auto Analyze service.
+
 ### Advisory lock flags
 
 Support for advisory locks is {{<tags/feature/tp idea="812">}}.
@@ -2064,19 +2235,44 @@ Default: `1`
 
 Number of tablets used for the advisory locks table. It must be set before ysql_yb_enable_advisory_locks is set to true on the cluster.
 
-### Other performance tuning options
+### Index backfill flags
 
-##### --allowed_preview_flags_csv
+##### --ysql_disable_index_backfill
 
-{{% tags/wrap %}}{{<tags/feature/restart-needed>}}{{% /tags/wrap %}}
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+Default: `false`
+{{% /tags/wrap %}}
 
-Comma-separated values (CSV) formatted catalogue of [preview feature](/preview/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
+Set this flag to `false` to enable online index backfill. When set to `false`, online index builds run while online, without failing other concurrent writes and traffic.
 
-By adding a flag to this list, you explicitly acknowledge and accept any potential risks or instability that may arise from modifying these preview features. This process serves as a safeguard, ensuring that you are fully aware of the experimental nature of the flags you are working with.
+For details on how online index backfill works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
 
-{{<warning>}}
-Adding flags to this list doesn't automatically change any settings. It only grants permission for the flag to be modified. You still need to configure the flag separately after adding it to this list.
-{{</warning>}}
+##### --ycql_disable_index_backfill
+
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+Default: `true`
+{{% /tags/wrap %}}
+
+Set this flag to `false` to enable online index backfill. When set to `false`, online index builds run while online, without failing other concurrent writes and traffic.
+
+For details on how online index backfill works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
+
+#### --num_concurrent_backfills_allowed
+
+{{% tags/wrap %}}
+
+
+Default: `-1` (automatic setting)
+{{% /tags/wrap %}}
+
+[Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) uses a number of distributed workers to backfill older data from the main table into the index table. This flag sets the number of concurrent index backfill jobs that are allowed to execute on each yb-tserver process. By default, the number of jobs is set automatically as follows:
+
+- When the node has >= 16 cores, it is set to 8 jobs.
+- When the node has < 16 cores, it is set to (number of cores) / 2 jobs.
+
+Increasing the number of backfill jobs can allow the index creation to complete faster, however setting it to a higher number can impact foreground workload operations and also increase the chance of failures and retries of backfill jobs if CPU usage becomes too high.
 
 ##### backfill_index_client_rpc_timeout_ms
 
@@ -2104,7 +2300,29 @@ The time to exclude from the YB-Master flag [ysql_index_backfill_rpc_timeout_ms]
 Default: `128`
 {{% /tags/wrap %}}
 
-The number of table rows to backfill at a time. In case of [GIN indexes](../../../explore/ysql-language-features/indexes-constraints/gin/), the number can include more index rows.
+The number of table rows to backfill in a single backfill job. In case of [GIN indexes](../../../explore/ysql-language-features/indexes-constraints/gin/), the number can include more index rows. When index creation is slower than expected on large tables, increasing this parameter to 1024 or 2048 may speed up the operation. However, care must be taken to also tune the associated timeouts for larger batch sizes.
+
+### Other performance tuning options
+
+##### --allowed_preview_flags_csv
+
+{{% tags/wrap %}}{{<tags/feature/restart-needed>}}{{% /tags/wrap %}}
+
+Comma-separated values (CSV) formatted catalogue of [preview feature](/preview/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
+
+By adding a flag to this list, you explicitly acknowledge and accept any potential risks or instability that may arise from modifying these preview features. This process serves as a safeguard, ensuring that you are fully aware of the experimental nature of the flags you are working with.
+
+{{<warning title="You still need to set the flag">}}
+Adding flags to this list doesn't automatically change any settings. It only _grants permission_ for the flag to be modified.
+
+You still need to configure the flag separately after adding it to this list.
+{{</warning>}}
+
+{{<note title="Using YugabyteDB Anywhere">}}
+If you are using YugabyteDB Anywhere, as with other flags, set `allowed_preview_flags_csv` using the [Edit Flags](../../../yugabyte-platform/manage-deployments/edit-config-flags/#modify-configuration-flags) feature.
+
+After adding a preview flag to the `allowed_preview_flags_csv` list, you still need to set the flag using **Edit Flags** as well.
+{{</note>}}
 
 ## Security
 
@@ -2419,17 +2637,6 @@ Default: `true`
 
 Enables the use of shared memory between PostgreSQL and the YB-TServer. Using shared memory can potentially improve the performance of your database operations.
 
-##### --ysql_disable_index_backfill
-
-{{% tags/wrap %}}
-{{<tags/feature/restart-needed>}}
-Default: `false`
-{{% /tags/wrap %}}
-
-Set this flag to `false` to enable online index backfill. When set to `false`, online index builds run while online, without failing other concurrent writes and traffic.
-
-For details on how online index backfill works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
-
 ##### --ysql_sequence_cache_method
 
 {{% tags/wrap %}}
@@ -2615,17 +2822,6 @@ Default: `false`
 {{% /tags/wrap %}}
 
 Specifies if YCQL tables are created with transactions enabled by default.
-
-##### --ycql_disable_index_backfill
-
-{{% tags/wrap %}}
-{{<tags/feature/restart-needed>}}
-Default: `true`
-{{% /tags/wrap %}}
-
-Set this flag to `false` to enable online index backfill. When set to `false`, online index builds run while online, without failing other concurrent writes and traffic.
-
-For details on how online index backfill works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
 
 ##### --ycql_require_drop_privs_for_truncate
 

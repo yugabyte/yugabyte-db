@@ -33,7 +33,7 @@ The [sample application](https://github.com/YugabyteDB-Samples/yugabytedb-azure-
 - Access to the [Azure OpenAI Service](https://azure.microsoft.com/en-us/products/ai-services/openai-service) resource
 - The latest [Node.js version](https://github.com/nodejs/release#release-schedule)
 - The latest version of [Docker](https://docs.docker.com/desktop/)
-- A YugabyteDB cluster running [v2.19.2 or later](https://download.yugabyte.com/)
+- A YugabyteDB cluster running [v2.25.1](https://download.yugabyte.com/) or later
 - [ysqlsh](../../../api/ysqlsh/) or [psql](https://www.postgresql.org/docs/15/app-psql.html)
 
 ## Deploy Azure OpenAI models
@@ -85,29 +85,30 @@ YugabyteDB introduced support for the PostgreSQL pgvector extension in v2.19.2. 
 Start a 3-node YugabyteDB cluster in Docker (or feel free to use another deployment option):
 
 ```sh
+rm -rf ~/yb_docker_data
 mkdir ~/yb_docker_data
 
-docker network create custom-network
+docker network create yb-network
 
-docker run -d --name yugabytedb-node1 --net custom-network \
+docker run -d --name ybnode1 --hostname ybnode1 --net yb-network \
     -p 15433:15433 -p 7001:7000 -p 9001:9000 -p 5433:5433 \
     -v ~/yb_docker_data/node1:/home/yugabyte/yb_data --restart unless-stopped \
     yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
     bin/yugabyted start \
     --base_dir=/home/yugabyte/yb_data --background=false
 
-docker run -d --name yugabytedb-node2 --net custom-network \
+docker run -d --name ybnode2 --hostname ybnode2  --net yb-network \
     -p 15434:15433 -p 7002:7000 -p 9002:9000 -p 5434:5433 \
     -v ~/yb_docker_data/node2:/home/yugabyte/yb_data --restart unless-stopped \
     yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
-    bin/yugabyted start --join=yugabytedb-node1 \
+    bin/yugabyted start --join=ybnode1 \
     --base_dir=/home/yugabyte/yb_data --background=false
-
-docker run -d --name yugabytedb-node3 --net custom-network \
+    
+docker run -d --name ybnode3 --hostname ybnode3 --net yb-network \
     -p 15435:15433 -p 7003:7000 -p 9003:9000 -p 5435:5433 \
     -v ~/yb_docker_data/node3:/home/yugabyte/yb_data --restart unless-stopped \
     yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
-    bin/yugabyted start --join=yugabytedb-node1 \
+    bin/yugabyted start --join=ybnode1 \
     --base_dir=/home/yugabyte/yb_data --background=false
 ```
 
@@ -129,23 +130,22 @@ Navigate to the YugabyteDB UI to confirm that the database is up and running, at
 
 As long as the application provides a lodging recommendation service for San Francisco, you can leverage a publicly available Airbnb data set with over 7500 relevant listings:
 
-1. Create the `airbnb_listing` table (you can use [ysqlsh](../../../api/ysqlsh/) or another comparable SQL tool instead of psql):
+1. Create the `airbnb_listing` table using [ysqlsh](../../../api/ysqlsh/):
 
     ```sh
-    psql -h 127.0.0.1 -p 5433 -U yugabyte -d yugabyte {project_dir}/sql/0_airbnb_listings.sql
+    ./bin/ysqlsh -h 127.0.0.1 -p 5433 -U yugabyte -d yugabyte -f {project_dir}/sql/0_airbnb_listings.sql
     ```
 
 1. Load the data set:
 
     ```sh
-    psql -h 127.0.0.1 -p 5433 -U yugabyte
-    \copy airbnb_listing from '{project_dir}/sql/sf_airbnb_listings.csv' DELIMITER ',' CSV HEADER; \
+    ./bin/ysqlsh -h 127.0.0.1 -p 5433 -U yugabyte -c "\copy airbnb_listing from '{project_dir}/sql/sf_airbnb_listings.csv' DELIMITER ',' CSV HEADER;"
     ```
 
-1. Execute the following script to enable the `pgvector` extension and add the `description_embedding` column of the vector type to the `airbnb_listing` table:
+1. Execute the following script to enable the `pgvector` extension, add the `description_embedding` column of the vector type to the `airbnb_listing` table, and create an index:
 
     ```sh
-    \i {project_dir}/sql/1_airbnb_embeddings.sql
+    ./bin/ysqlsh -h 127.0.0.1 -p 5433 -U yugabyte -c "\i {project_dir}/sql/1_airbnb_embeddings.sql"
     ```
 
 ## Generate embeddings for Airbnb listings
@@ -194,7 +194,7 @@ With the Azure OpenAI models deployed and Airbnb data with embeddings loaded in 
 
     ```sh
     cd {project_dir}/frontend
-    npm start
+    DANGEROUSLY_DISABLE_HOST_CHECK=true npm start
     ```
 
 The application UI should display, and is available at the address <http://localhost:3000/>.
@@ -297,6 +297,23 @@ The application performs the following steps to generate the recommendations (se
     }
     return places;
     ```
+
+This application uses cosine distance for indexing, as the backend query is using cosine similarity search. Using [vector indexing](../../../explore/ysql-language-features/pg-extensions/extension-pgvector/#vector-indexing) improves the search speed. YugabyteDB currently supports the Hierarchical Navigable Small World (HNSW) index type in pgvector.
+
+```sql
+# sql/1_airbnb_embeddings.sql
+
+CREATE EXTENSION IF NOT EXISTS vector;
+
+ALTER TABLE airbnb_listing
+    ADD COLUMN description_embedding vector(1536);
+
+CREATE INDEX NONCONCURRENTLY ON airbnb_listing USING ybhnsw (description_embedding vector_cosine_ops);
+```
+
+{{<note>}}
+For smaller datasets, like the one used in this tutorial, you may observe that vector indexing does not appear in the query execution plan. As your dataset grows, vector index is automatically used by the planner.
+{{</note>}}
 
 ## Wrap-up
 

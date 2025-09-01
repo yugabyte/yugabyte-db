@@ -68,6 +68,12 @@ Download the application and provide settings specific to your deployment:
     export OPENAI_API_KEY='your openAI key'
     ```
 
+    {{< tip title="Installing psycopg2" >}}
+
+If you have issues with `pip install psycopg2`, check the [installation instructions](../../../drivers-orms/python/postgres-psycopg2-reference/#fundamentals).
+
+    {{< /tip >}}
+
 1. Clone the repository.
 
     ```sh

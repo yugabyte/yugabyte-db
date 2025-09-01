@@ -13,8 +13,6 @@
 
 #pragma once
 
-#include <boost/optional/optional.hpp>
-
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/read_hybrid_time.h"
 

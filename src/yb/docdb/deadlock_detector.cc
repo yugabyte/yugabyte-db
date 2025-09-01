@@ -75,7 +75,12 @@ DEFINE_test_flag(int32, sleep_amidst_iterating_blockers_ms, 0,
     "Time for which the thread sleeps in each iteration while looping over the computed wait-for "
     "probes and sending information to the waiters.");
 
+DEFINE_test_flag(int32, delay_forwarding_waiting_probes_ms, 0,
+    "Time for which the thread sleeps before initiating/fowarding wait-for probes.");
+
 DECLARE_uint64(transaction_heartbeat_usec);
+
+DECLARE_bool(TEST_hide_details_for_pg_regress);
 
 namespace yb {
 namespace tablet {
@@ -84,11 +89,11 @@ namespace {
 
 YB_STRONGLY_TYPED_UUID(DetectorId);
 
-using LocalProbeProcessorCallback = std::function<void(
-    const Status&, const tserver::ProbeTransactionDeadlockResponsePB&)>;
+using LocalProbeProcessorCallback =
+    std::function<void(const Status&, const tserver::ProbeTransactionDeadlockResponsePB&)>;
 using WaiterTxnTuple = std::tuple<
     const TransactionId, const std::string, std::shared_ptr<const BlockingData>,
-    const boost::optional<uint64_t>>;
+    const std::optional<uint64_t>>;
 
 // Container class which supports efficiently fetching items uniquely indexed by probe_num as well
 // as efficiently removing items which were added before a threshold time or which are associated
@@ -307,6 +312,7 @@ class LocalProbeProcessor : public std::enable_shared_from_this<LocalProbeProces
     if (probe_latency_) {
       sent_at_ = CoarseMonoClock::Now();
     }
+    AtomicFlagSleepMs(&FLAGS_TEST_delay_forwarding_waiting_probes_ms);
     VLOG(4) << "Sending probes for txn: " << probe_origin_txn_id_
             << " from detector: " << origin_detector_id_
             << " with probe_num:" << probe_num_
@@ -747,9 +753,9 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
         // TODO(wait-queues): Tracking tserver uuid here is unnecessary as it isn't required in
         // GetProbesToSend. We adhere to this format so that GetProbesToSend function can be re-used
         // for both 'waiters_'  as well as 'waiters_to_probe'.
-        waiters_to_probe.push_back({
-            waiter_it->txn_id(), "" /* tserver uuid */, waiter_it->blocking_data(),
-            boost::none /* pg_session_req_version */});
+        waiters_to_probe.push_back(
+            {waiter_it->txn_id(), "" /* tserver uuid */, waiter_it->blocking_data(),
+             std::nullopt /* pg_session_req_version */});
         // Restore the old blocker(s) data for the waiter entry, if any.
         if (old_blocking_data) {
           CHECK(waiter_it != waiters_.end());
@@ -893,7 +899,9 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
           resp,
           Format("Increment version for txns in deadlock cycle $0", deadlock_debug_msg.str()));
     }
-    auto deadlock_msg = Format(
+    const auto deadlock_msg = FLAGS_TEST_hide_details_for_pg_regress
+        ? "Transaction aborted due to a deadlock"
+        : Format(
         "Transaction $0 aborted due to a deadlock: $1",
         newest_txn_id.ToString(), deadlock_debug_msg.str());
     VLOG_WITH_PREFIX(1) << deadlock_msg;
@@ -914,9 +922,9 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
           auto waiter_entries = boost::make_iterator_range(
               detector->waiters_.get<TransactionIdTag>().equal_range(origin_txn_id));
           for (auto entry : waiter_entries) {
-            waiters_to_probe.push_back({
-                origin_txn_id, "" /* tserver uuid */, entry.blocking_data(),
-                boost::none /* pg_session_req_version */});
+            waiters_to_probe.push_back(
+                {origin_txn_id, "" /* tserver uuid */, entry.blocking_data(),
+                 std::nullopt /* pg_session_req_version */});
           }
         }
         for (const auto& probe : detector->GetProbesToSend(waiters_to_probe)) {

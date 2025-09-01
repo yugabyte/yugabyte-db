@@ -66,6 +66,7 @@ Status StatusFromPB(const LWAppStatusPB& pb);
 
 // Convert the specified HostPort to protobuf.
 void HostPortToPB(const HostPort& host_port, HostPortPB* host_port_pb);
+void HostPortToPB(const HostPort& host_port, LWHostPortPB* host_port_pb);
 HostPortPB HostPortToPB(const HostPort& host_port);
 
 // Returns the HostPort created from the specified protobuf.

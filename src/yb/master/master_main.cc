@@ -169,6 +169,9 @@ static int MasterMain(int argc, char** argv) {
 
   server.Shutdown();
 
+  // Best effort flush of log without any mutex.
+  google::FlushLogFilesUnsafe(0);
+
   return EXIT_SUCCESS;
 }
 

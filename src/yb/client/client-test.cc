@@ -143,6 +143,8 @@ METRIC_DECLARE_counter(rpcs_queue_overflow);
 
 DECLARE_bool(enable_metacache_partial_refresh);
 
+DECLARE_bool(ysql_enable_auto_analyze_infra);
+
 using namespace std::literals; // NOLINT
 using namespace std::placeholders;
 
@@ -197,6 +199,9 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
 
     // Reduce the TS<->Master heartbeat interval
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = 10;
+
+    // Skip creating the auto analyze service.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze_infra) = false;
 
     // Start minicluster and wait for tablet servers to connect to master.
     auto opts = MiniClusterOptions();
@@ -418,7 +423,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     ASSERT_OK(client_->CreateNamespace(
         kPgsqlNamespaceName, YQL_DATABASE_PGSQL, "" /* creator */, "" /* ns_id */,
-        "" /* src_ns_id */, boost::none /* next_pg_oid */, nullptr /* txn */, false));
+        "" /* src_ns_id */, std::nullopt /* next_pg_oid */, nullptr /* txn */, false));
     std::string kNamespaceId;
     {
       auto namespaces = ASSERT_RESULT(client_->ListNamespaces());
@@ -1585,6 +1590,7 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
       break;
     }
   }
+  auto tablet = ASSERT_RESULT(tablet_peer->shared_tablet());
 
   {
     std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
@@ -1592,7 +1598,7 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
       ->AddColumn("new_col")->Type(DataType::INT32);
     ASSERT_OK(table_alterer->Alter());
     // TODO(nspiegelberg): The below assert is flakey because of KUDU-1539.
-    ASSERT_EQ(1, tablet_peer->tablet()->metadata()->primary_table_schema_version());
+    ASSERT_EQ(1, tablet->metadata()->primary_table_schema_version());
   }
 
   {
@@ -1602,8 +1608,8 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
               ->RenameTo(kRenamedTableName)
               ->Alter());
     // TODO(nspiegelberg): The below assert is flakey because of KUDU-1539.
-    ASSERT_EQ(2, tablet_peer->tablet()->metadata()->primary_table_schema_version());
-    ASSERT_EQ(kRenamedTableName.table_name(), tablet_peer->tablet()->metadata()->table_name());
+    ASSERT_EQ(2, tablet->metadata()->primary_table_schema_version());
+    ASSERT_EQ(kRenamedTableName.table_name(), tablet->metadata()->table_name());
 
     const auto tables = ASSERT_RESULT(client_->ListTables());
     ASSERT_TRUE(::util::gtl::contains(tables.begin(), tables.end(), kRenamedTableName));
@@ -1925,11 +1931,12 @@ TEST_F(ClientTest, TestReplicatedTabletWritesAndAltersWithLeaderElection) {
   {
     auto tablet_peer = ASSERT_RESULT(
         new_leader->server()->tablet_manager()->GetTablet(remote_tablet->tablet_id()));
-    auto old_version = tablet_peer->tablet()->metadata()->primary_table_schema_version();
+    auto tablet = ASSERT_RESULT(tablet_peer->shared_tablet());
+    auto old_version = tablet->metadata()->primary_table_schema_version();
     std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kReplicatedTable));
     table_alterer->AddColumn("new_col")->Type(DataType::INT32);
     ASSERT_OK(table_alterer->Alter());
-    ASSERT_EQ(old_version + 1, tablet_peer->tablet()->metadata()->primary_table_schema_version());
+    ASSERT_EQ(old_version + 1, tablet->metadata()->primary_table_schema_version());
   }
 }
 
@@ -2492,7 +2499,7 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
 }
 
 TEST_F(ClientTest, FlushTable) {
-  const tablet::Tablet* tablet;
+  tablet::TabletPtr tablet;
   constexpr int kTimeoutSecs = 30;
   int current_row = 0;
 
@@ -2505,7 +2512,7 @@ TEST_F(ClientTest, FlushTable) {
         break;
       }
     }
-    tablet = tablet_peer->tablet();
+    tablet = ASSERT_RESULT(tablet_peer->shared_tablet());
   }
 
   auto test_good_flush_and_compact = ([&]<class T>(T table_id_or_name) {
@@ -2664,12 +2671,12 @@ TEST_F(ClientTest, GetNamespaceInfo) {
   // Setup.
   ASSERT_OK(client_->CreateNamespace(
       kPgsqlKeyspaceName, YQLDatabase::YQL_DATABASE_PGSQL, "" /* creator_role_name */,
-      "" /* namespace_id */, "" /* source_namespace_id */, boost::none /* next_pg_oid */,
+      "" /* namespace_id */, "" /* source_namespace_id */, std::nullopt /* next_pg_oid */,
       nullptr /* txn */, true /* colocated */));
 
   // CQL non-colocated.
-  ASSERT_OK(client_->GetNamespaceInfo(
-        "" /* namespace_id */, kKeyspaceName, YQL_DATABASE_CQL, &resp));
+  ASSERT_OK(
+      client_->GetNamespaceInfo("" /* namespace_id */, kKeyspaceName, YQL_DATABASE_CQL, &resp));
   ASSERT_EQ(resp.namespace_().name(), kKeyspaceName);
   ASSERT_EQ(resp.namespace_().database_type(), YQL_DATABASE_CQL);
   ASSERT_FALSE(resp.colocated());
@@ -3029,7 +3036,7 @@ TEST_F(ClientTest, LegacyColocatedDBColocatedTablesLookupTablet) {
       /* creator_role_name =*/"",
       /* namespace_id =*/"",
       /* source_namespace_id =*/"",
-      /* next_pg_oid =*/boost::none,
+      /* next_pg_oid =*/std::nullopt,
       /* txn =*/nullptr,
       /* colocated =*/true));
 

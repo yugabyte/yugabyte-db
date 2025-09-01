@@ -485,6 +485,23 @@ Result<HybridTime> CheckSafeTime(HybridTime time, HybridTime min_allowed) {
   return STATUS_FORMAT(TimedOut, "Timed out waiting for safe time $0", min_allowed);
 }
 
+class ActiveCompactionToken {
+ public:
+  explicit ActiveCompactionToken(std::atomic<size_t>& counter) : counter_(counter) {
+    ++counter;
+  }
+
+  ~ActiveCompactionToken() {
+    --counter_;
+  }
+
+  ActiveCompactionToken(const ActiveCompactionToken&) = delete;
+  void operator=(const ActiveCompactionToken&) = delete;
+
+ private:
+  std::atomic<size_t>& counter_;
+};
+
 } // namespace
 
 class Tablet::RocksDbListener : public rocksdb::EventListener {
@@ -593,16 +610,16 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
       return;
     }
 
-    // TODO(jhe) - Also handle historical packing schemas (#25926).
+    // We only need to handle colocated tables that have been created. Upcoming colocated tables are
+    // not included in this list, but that is fine since they are skipped by compaction.
     auto colocated_tables = tablet_.metadata()->GetAllColocatedTablesWithColocationId();
     for(auto& [table_id, schema_version] : min_schema_versions) {
       ColocationId colocation_id = colocated_tables[table_id.ToHexString()];
       auto xcluster_min_schema_version = tablet_.get_min_xcluster_schema_version_(primary_table_id,
           colocation_id);
-      VLOG_WITH_PREFIX_AND_FUNC(4) <<
-          Format("MinNonXClusterSchemaVersion, MinXClusterSchemaVersion for $0,$1:$2,$3",
-              primary_table_id, colocation_id, min_schema_versions[table_id],
-              xcluster_min_schema_version);
+      VLOG_WITH_PREFIX_AND_FUNC(4) << Format(
+          "MinNonXClusterSchemaVersion, MinXClusterSchemaVersion for $0,$1:$2,$3", primary_table_id,
+          colocation_id, min_schema_versions[table_id], xcluster_min_schema_version);
       if (xcluster_min_schema_version < min_schema_versions[table_id]) {
         min_schema_versions[table_id] = xcluster_min_schema_version;
       }
@@ -1018,13 +1035,13 @@ Status Tablet::OpenKeyValueTablet() {
 
   // Don't allow reads at timestamps lower than the highest history cutoff of a past compaction.
   auto regular_flushed_frontier = regular_db_->GetFlushedFrontier();
+  const docdb::ConsensusFrontier* consensus_frontier = nullptr;
   if (regular_flushed_frontier) {
-    retention_policy_->UpdateCommittedHistoryCutoff(
-        static_cast<const docdb::ConsensusFrontier&>(*regular_flushed_frontier).
-            history_cutoff());
+    consensus_frontier = down_cast<const docdb::ConsensusFrontier*>(regular_flushed_frontier.get());
+    retention_policy_->UpdateCommittedHistoryCutoff(consensus_frontier->history_cutoff());
   }
 
-  RETURN_NOT_OK(vector_indexes_->Open());
+  RETURN_NOT_OK(vector_indexes_->Open(consensus_frontier));
 
   LOG_WITH_PREFIX(INFO)
       << "Successfully opened a RocksDB database at " << metadata()->rocksdb_dir();
@@ -1219,6 +1236,13 @@ HybridTime Tablet::GetMinStartHTRunningTxnsForCDCProducer() const {
     LOG_WITH_FUNC(INFO) << "Returning " << min_start_ht_running_txns
                         << " as TEST_simulate_load_txn is true";
     return min_start_ht_running_txns;
+  }
+
+  // If there does not exist a transaction participant and the table is non-transactional, there
+  // will be no running txns, so we return kMax. This is the case when distributed transactions are
+  // not enabled on YCQL tables.
+  if (!transaction_participant() && !IsTransactionalRequest(false /* is_ysql_request */)) {
+    return HybridTime::kMax;
   }
 
   if (transaction_participant()) {
@@ -1624,13 +1648,13 @@ Result<std::unique_ptr<docdb::DocRowwiseIterator>> Tablet::NewUninitializedDocRo
   const auto table_info = VERIFY_RESULT(metadata_->GetTableInfo(table_id));
 
   auto txn_op_ctx = VERIFY_RESULT(CreateTransactionOperationContext(
-      /* transaction_id */ boost::none,
+      /* transaction_id */ std::nullopt,
       table_info->schema().table_properties().is_ysql_catalog_table()));
   docdb::ReadOperationData read_operation_data = {
-    .deadline = deadline,
-    .read_time = read_hybrid_time
-        ? read_hybrid_time
-        : ReadHybridTime::SingleTime(VERIFY_RESULT(SafeTime(RequireLease::kFalse))),
+      .deadline = deadline,
+      .read_time = read_hybrid_time
+                       ? read_hybrid_time
+                       : ReadHybridTime::SingleTime(VERIFY_RESULT(SafeTime(RequireLease::kFalse))),
   };
   return std::make_unique<DocRowwiseIterator>(
       projection, table_info->doc_read_context, txn_op_ctx, doc_db(), read_operation_data,
@@ -1704,7 +1728,7 @@ Status Tablet::WriteTransactionalBatch(
     const docdb::LWKeyValueWriteBatchPB& put_batch,
     HybridTime hybrid_time,
     const rocksdb::UserFrontiers& frontiers) {
-  auto transaction_id = CHECK_RESULT(
+  auto transaction_id = VERIFY_RESULT(
       FullyDecodeTransactionId(put_batch.transaction().transaction_id()));
 
   bool store_metadata = false;
@@ -2065,6 +2089,7 @@ Status Tablet::DoHandlePgsqlReadRequest(
       .ql_storage = storage,
       .pending_op = *scoped_read_operation,
       .vector_index = vector_index,
+      .table_has_vector_deletion = vector_indexes().has_vector_deletion(),
     };
 
     status = ProcessPgsqlReadRequest(data, result);
@@ -2086,90 +2111,93 @@ Status Tablet::DoHandlePgsqlReadRequest(
   return status;
 }
 
-// Returns true if the query can be satisfied by rows present in current tablet.
-// Returns false if query requires other tablets to also be scanned. Examples of this include:
-//   (1) full table scan queries
-//   (2) queries that whose key conditions are such that the query will require a multi tablet
-//       scan.
-//
-// Requests that are of the form batched index lookups of ybctids are sent only to a single tablet.
-// However there can arise situations where tablets splitting occurs after such requests are being
-// prepared by the pggate layer (specifically pg_doc_op.cc). Under such circumstances, if tablets
-// are split into two sub-tablets, then such batched index lookups of ybctid requests should be sent
-// to multiple tablets (the two sub-tablets). Hence, the request ends up not being a single tablet
-// request.
-Result<bool> Tablet::IsQueryOnlyForTablet(
+// Find out if the request's scope is limited to only one tablet "permanently".
+// That means, the request has already been fulfilled, or request is conditioned to
+// a "non-splittable" area of the tablet.
+bool Tablet::MayTargetMultipleTablets(
     const PgsqlReadRequestPB& pgsql_read_request, size_t row_count) const {
-  // For cases when neither partition_column_values nor range_column_values are set,
-  // https://github.com/yugabyte/yugabyte-db/commit/57bee5a77d0df959c7fe0f000b65be97de9f90a0 removed
-  // routing to exact tablet containing requested key and ybctid is simply set to lower/upper bound
-  // key in order to have unified approach on setting partition_key.
-
-  // If ybctid is specified without batch_arguments we don't treat it as a single tablet request
-  // automatically, it can be continued until we hit upper bound (scan tablet with upper bound
-  // matching request upper bound).
-  if ((!pgsql_read_request.ybctid_column_value().value().binary_value().empty() &&
-       std::cmp_equal(std::max(pgsql_read_request.batch_arguments_size(), 1), row_count)) ||
-      !pgsql_read_request.partition_column_values().empty()) {
-    return true;
+  // Request is for ybctids and all they are processed
+  size_t ybctid_count = pgsql_read_request.batch_arguments_size();
+  // TODO The ybctid_column_value may be removed as well as this block
+  // See https://github.com/yugabyte/yugabyte-db/issues/28017 for details
+  if (ybctid_count == 0 &&
+      !pgsql_read_request.ybctid_column_value().value().binary_value().empty()) {
+    ybctid_count = 1;
   }
-
-  std::shared_ptr<const Schema> schema = metadata_->schema();
-  if (schema->has_cotable_id() || schema->has_colocation_id())  {
-    // This is a colocated table.
-    return true;
+  if (ybctid_count > 0 && ybctid_count == row_count) {
+    return false;
   }
-
-  if (schema->num_hash_key_columns() == 0 &&
-      schema->num_range_key_columns() ==
+  // Request was for specific number of rows, now completed.
+  // TODO may not be needed, see https://github.com/yugabyte/yugabyte-db/issues/28018
+  if (!pgsql_read_request.return_paging_state() &&
+      pgsql_read_request.has_limit() && row_count == pgsql_read_request.limit()) {
+    return false;
+  }
+  // Cases when request can't span onto multiple tablets:
+  // - colocated;
+  // - has partition_column_values (we currently don't allow partial partition_column_values, so it
+  // actually means "full partition_column_values", or specific hash code, in other words);
+  // - range partitioned and has full range_column_values, or specific PK value.
+  if (schema()->is_colocated()) {
+    return false;
+  }
+  if (!pgsql_read_request.partition_column_values().empty()) {
+    return false;
+  }
+  if (schema()->num_hash_key_columns() == 0 &&
+      schema()->num_range_key_columns() ==
           implicit_cast<size_t>(pgsql_read_request.range_column_values_size())) {
-    // PK is contained within this tablet.
-    return true;
+    return false;
   }
-  return false;
+  return true;
 }
 
-Result<bool> Tablet::HasScanReachedMaxPartitionKey(
-    const PgsqlReadRequestPB& pgsql_read_request,
-    const string& partition_key,
-    size_t row_count) const {
-  auto schema = metadata_->schema();
-
-  if (schema->num_hash_key_columns() > 0) {
-    uint16_t next_hash_code = dockv::PartitionSchema::DecodeMultiColumnHashValue(partition_key);
-    // For batched index lookup of ybctids, check if the current partition hash is lesser than
-    // upper bound. If it is, we can then avoid paging. Paging of batched index lookup of ybctids
-    // occur when tablets split after request is prepared.
-    if (implicit_cast<size_t>(pgsql_read_request.batch_arguments_size()) > row_count) {
-      if (!pgsql_read_request.upper_bound().has_key()) {
-          return false;
-      }
-      uint16_t upper_bound_hash = dockv::PartitionSchema::DecodeMultiColumnHashValue(
-          pgsql_read_request.upper_bound().key());
-      uint16_t partition_hash =
-          dockv::PartitionSchema::DecodeMultiColumnHashValue(partition_key);
-      return pgsql_read_request.upper_bound().is_inclusive() ?
-          partition_hash > upper_bound_hash :
-          partition_hash >= upper_bound_hash;
-    }
-    if (pgsql_read_request.has_max_hash_code() &&
-        next_hash_code > pgsql_read_request.max_hash_code()) {
-      return true;
-    }
-  } else if (pgsql_read_request.has_upper_bound()) {
-    dockv::DocKey partition_doc_key(*schema);
-    VERIFY_RESULT(partition_doc_key.DecodeFrom(
-        partition_key, dockv::DocKeyPart::kWholeDocKey, dockv::AllowSpecial::kTrue));
-    dockv::DocKey max_partition_doc_key(*schema);
-    VERIFY_RESULT(max_partition_doc_key.DecodeFrom(
-        pgsql_read_request.upper_bound().key(), dockv::DocKeyPart::kWholeDocKey,
-        dockv::AllowSpecial::kTrue));
-
-    auto cmp = partition_doc_key.CompareTo(max_partition_doc_key);
-    return pgsql_read_request.upper_bound().is_inclusive() ? cmp > 0 : cmp >= 0;
+// Find if the next partition is in the read scope, so the scan should (eventually) switch
+// partitions. Return pointer to the partition key if it is, nullptr otherwise.
+const std::string* Tablet::NextReadPartitionKey(
+    const PgsqlReadRequestPB& pgsql_read_request) const {
+  const auto& partition_key =
+      pgsql_read_request.is_forward_scan()
+          ? metadata_->partition()->partition_key_end()
+          : metadata_->partition()->partition_key_start();
+  if (partition_key.empty()) {
+    return nullptr;
   }
-
-  return false;
+  if (pgsql_read_request.is_forward_scan()) {
+    // Scan bound by hash code (always inclusive)
+    if (schema()->num_hash_key_columns() > 0) {
+      if (pgsql_read_request.has_max_hash_code()) {
+        auto hash_code = dockv::PartitionSchema::DecodeMultiColumnHashValue(partition_key);
+        if (pgsql_read_request.max_hash_code() < hash_code) {
+          return nullptr;
+        }
+      }
+    } else if (pgsql_read_request.has_upper_bound()) {
+      if (pgsql_read_request.upper_bound().is_inclusive()) {
+        if (pgsql_read_request.upper_bound().key() < partition_key) {
+          return nullptr;
+        }
+      } else { // exclusive
+        if (pgsql_read_request.upper_bound().key() <= partition_key) {
+          return nullptr;
+        }
+      }
+    }
+  } else { // backward
+    if (schema()->num_hash_key_columns() > 0) {
+      if (pgsql_read_request.has_hash_code()) {
+        auto hash_code = dockv::PartitionSchema::DecodeMultiColumnHashValue(partition_key);
+        if (pgsql_read_request.hash_code() >= hash_code) {
+          return nullptr;
+        }
+      }
+    } else if (pgsql_read_request.has_lower_bound() &&
+               pgsql_read_request.lower_bound().key() >= partition_key) {
+      return nullptr;
+    }
+  }
+  // No applicable bound, the partition key is in the read range
+  return &partition_key;
 }
 
 namespace {
@@ -2208,32 +2236,18 @@ void SetBackfillSpecForYsqlBackfill(
 Status Tablet::CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_read_request,
                                         const size_t row_count,
                                         PgsqlResponsePB* response) const {
-  // If there is no hash column in the read request, this is a full-table query. And if there is no
-  // paging state in the response, we are done reading from the current tablet. In this case, we
-  // should return the exclusive end partition key of this tablet if not empty which is the start
-  // key of the next tablet. Do so only if the request has no row count limit, or there is and we
-  // haven't hit it, or we are asked to return paging state even when we have hit the limit.
-  // Otherwise, leave the paging state empty which means we are completely done reading for the
-  // whole SELECT statement.
-  const bool single_tablet_query =
-      VERIFY_RESULT(IsQueryOnlyForTablet(pgsql_read_request, row_count));
-  if (!single_tablet_query &&
-      !response->has_paging_state() &&
-      (!pgsql_read_request.has_limit() || row_count < pgsql_read_request.limit() ||
-       pgsql_read_request.return_paging_state())) {
-    // For backward scans partition_key_start must be used as next_partition_key.
-    // Client level logic will check it and route next request to the preceding tablet.
-    const auto& next_partition_key =
-        pgsql_read_request.has_hash_code() ||
-        pgsql_read_request.is_forward_scan()
-            ? metadata_->partition()->partition_key_end()
-            : metadata_->partition()->partition_key_start();
-    // Check we did not reach the last tablet.
-    const bool end_scan = next_partition_key.empty() ||
-        VERIFY_RESULT(HasScanReachedMaxPartitionKey(
-            pgsql_read_request, next_partition_key, row_count));
-    if (!end_scan) {
-      response->mutable_paging_state()->set_next_partition_key(next_partition_key);
+  // Paging state may already be set by DocDB to resume scan of the local partition.
+  // Here we check if the request needs to switch to other partition. If DocDB haven't set the
+  // paging state the switch should happen now, so facilitate it.
+  // Hint PgGate about possible future partition switch by setting current_partition_end.
+  if (MayTargetMultipleTablets(pgsql_read_request, row_count)) {
+    const auto* next_partition_key = NextReadPartitionKey(pgsql_read_request);
+    if (next_partition_key) {
+      if (!response->has_paging_state()) {
+        // DocDB has done with the current tablet, time to switch to the next one
+        response->mutable_paging_state()->set_next_partition_key(*next_partition_key);
+      }
+      response->mutable_paging_state()->set_next_tablet_bound(*next_partition_key);
     }
   }
 
@@ -2347,10 +2361,18 @@ docdb::ApplyTransactionState Tablet::ApplyIntents(const TransactionApplyData& da
   docdb::ConsensusFrontiers frontiers;
   InitFrontiers(data, frontiers);
   auto vector_indexes = vector_indexes_->List();
+  docdb::ApplyIntentsContextCompleteListener complete_listener;
+  if (!vector_indexes_->has_vector_deletion()) {
+    complete_listener = [this](const docdb::ConsensusFrontiers& frontiers) {
+      if (frontiers.Largest().has_vector_deletion()) {
+        vector_indexes_->SetHasVectorDeletion();
+      }
+    };
+  }
   docdb::ApplyIntentsContext context(
       tablet_id(), data.transaction_id, data.apply_state, data.aborted, data.commit_ht, data.log_ht,
       min_running_ht, data.op_id, &key_bounds_, *metadata_, frontiers, intents_db_.get(),
-      vector_indexes, data.apply_to_storages);
+      vector_indexes, data.apply_to_storages, std::move(complete_listener));
   docdb::IntentsWriter intents_writer(
       data.apply_state ? data.apply_state->key : Slice(), min_running_ht,
       intents_db_.get(), &context);
@@ -2374,12 +2396,11 @@ Status Tablet::RemoveIntentsImpl(
   rocksdb::WriteBatch intents_write_batch;
   HybridTime min_running_ht = CHECK_NOTNULL(transaction_participant_)->MinRunningHybridTime();
   for (const auto& id : ids) {
-    boost::optional<docdb::ApplyTransactionState> apply_state;
+    std::optional<docdb::ApplyTransactionState> apply_state;
     for (;;) {
       docdb::RemoveIntentsContext context(id, static_cast<uint8_t>(reason));
       docdb::IntentsWriter writer(
-          apply_state ? apply_state->key : Slice(), min_running_ht,
-          intents_db_.get(), &context);
+          apply_state ? apply_state->key : Slice(), min_running_ht, intents_db_.get(), &context);
       intents_write_batch.SetDirectWriter(&writer);
       docdb::ConsensusFrontiers frontiers;
       InitFrontiers(data, frontiers);
@@ -2415,15 +2436,14 @@ Status Tablet::RemoveAdvisoryLock(
   auto scoped_read_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(scoped_read_operation);
 
-  RSTATUS_DCHECK(transaction_participant_, IllegalState,
-                 "Transaction participant is not initialized");
+  RSTATUS_DCHECK(
+      transaction_participant_, IllegalState, "Transaction participant is not initialized");
   HybridTime min_running_ht = transaction_participant_->MinRunningHybridTime();
-  boost::optional<docdb::ApplyTransactionState> apply_state;
+  std::optional<docdb::ApplyTransactionState> apply_state;
   dockv::KeyBytes advisory_lock_key(key);
   advisory_lock_key.AppendKeyEntryType(dockv::KeyEntryType::kIntentTypeSet);
   advisory_lock_key.AppendIntentTypeSet(intent_types);
-  docdb::RemoveIntentsContext context(
-      transaction_id, static_cast<uint8_t>(RemoveReason::kUnlock));
+  docdb::RemoveIntentsContext context(transaction_id, static_cast<uint8_t>(RemoveReason::kUnlock));
   docdb::IntentsWriter writer(
       Slice(), min_running_ht,
       intents_db_.get(), &context, /* ignore_metadata= */ true, advisory_lock_key);
@@ -2443,12 +2463,12 @@ Status Tablet::RemoveAdvisoryLocks(const TransactionId& id, rocksdb::DirectWrite
   RSTATUS_DCHECK(transaction_participant_, IllegalState,
                  "Transaction participant is not initialized");
   HybridTime min_running_ht = transaction_participant_->MinRunningHybridTime();
-  boost::optional<docdb::ApplyTransactionState> apply_state;
+  std::optional<docdb::ApplyTransactionState> apply_state;
   for (;;) {
     docdb::RemoveIntentsContext context(id, static_cast<uint8_t>(RemoveReason::kUnlock));
     docdb::IntentsWriter writer(
-        apply_state ? apply_state->key : Slice(), min_running_ht,
-        intents_db_.get(), &context, /* ignore_metadata */ true);
+        apply_state ? apply_state->key : Slice(), min_running_ht, intents_db_.get(), &context,
+        /* ignore_metadata */ true);
     RETURN_NOT_OK(writer.Apply(handler));
 
     if (!context.apply_state().active()) {
@@ -2506,7 +2526,7 @@ Status Tablet::WritePostApplyMetadata(std::span<const PostApplyTransactionMetada
 }
 
 // We batch this as some tx could be very large and may not fit in one batch
-Status Tablet::GetIntents(
+Status Tablet::GetIntentsForCDC(
     const TransactionId& id, std::vector<docdb::IntentKeyValueForCDC>* key_value_intents,
     docdb::ApplyTransactionState* stream_state) {
   auto scoped_read_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
@@ -2514,8 +2534,8 @@ Status Tablet::GetIntents(
 
   docdb::ApplyTransactionState new_stream_state;
 
-  new_stream_state = VERIFY_RESULT(
-      docdb::GetIntentsBatch(id, &key_bounds_, stream_state, intents_db_.get(), key_value_intents));
+  new_stream_state = VERIFY_RESULT(docdb::GetIntentsBatchForCDC(
+      id, &key_bounds_, stream_state, intents_db_.get(), key_value_intents));
   stream_state->key = new_stream_state.key;
   stream_state->write_id = new_stream_state.write_id;
 
@@ -4010,6 +4030,7 @@ Result<HybridTime> Tablet::DoGetSafeTime(
           min_allowed, ht_lease);
     }
   } else if (min_allowed) {
+    SCOPED_WAIT_STATUS(WaitForReadTime);
     RETURN_NOT_OK(WaitUntil(clock_.get(), min_allowed, deadline));
   }
   if (min_allowed > ht_lease.lease) {
@@ -4275,16 +4296,15 @@ Result<TransactionOperationContext> Tablet::CreateTransactionOperationContext(
     auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(
         transaction_metadata.transaction_id()));
     return CreateTransactionOperationContext(
-        boost::make_optional(txn_id), is_ysql_catalog_table, subtransaction_metadata);
+        std::make_optional(txn_id), is_ysql_catalog_table, subtransaction_metadata);
   } else {
     return CreateTransactionOperationContext(
-        /* transaction_id */ boost::none, is_ysql_catalog_table, subtransaction_metadata);
+        /* transaction_id */ std::nullopt, is_ysql_catalog_table, subtransaction_metadata);
   }
 }
 
 Result<TransactionOperationContext> Tablet::CreateTransactionOperationContext(
-    const boost::optional<TransactionId>& transaction_id,
-    bool is_ysql_catalog_table,
+    const std::optional<TransactionId>& transaction_id, bool is_ysql_catalog_table,
     const SubTransactionMetadataPB* subtransaction_metadata) const {
   if (!txns_enabled_) {
     return TransactionOperationContext();
@@ -4292,8 +4312,8 @@ Result<TransactionOperationContext> Tablet::CreateTransactionOperationContext(
 
   const TransactionId* txn_id = nullptr;
 
-  if (transaction_id.is_initialized()) {
-    txn_id = transaction_id.get_ptr();
+  if (transaction_id.has_value()) {
+    txn_id = &transaction_id.value();
   } else if (metadata_->schema()->table_properties().is_transactional() || is_ysql_catalog_table) {
     // deadbeef-dead-beef-dead-beef00000075
     static const TransactionId kArbitraryTxnIdForNonTxnReads(
@@ -4583,6 +4603,10 @@ bool Tablet::HasActiveFullCompaction() {
   return HasActiveFullCompactionUnlocked();
 }
 
+bool Tablet::HasActiveFullCompactionUnlocked() const REQUIRES(full_compaction_token_mutex_) {
+  return num_active_full_compactions_ != 0;
+}
+
 void Tablet::TriggerPostSplitCompactionIfNeeded() {
   if (PREDICT_FALSE(FLAGS_TEST_skip_post_split_compaction)) {
     LOG(INFO) << "Skipping post split compaction due to FLAGS_TEST_skip_post_split_compaction";
@@ -4616,8 +4640,10 @@ Status Tablet::TriggerManualCompactionIfNeeded(rocksdb::CompactionReason compact
         full_compaction_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL);
   }
 
-  return full_compaction_task_pool_token_->SubmitFunc(
-      std::bind(&Tablet::TriggerManualCompactionSync, this, compaction_reason));
+  auto token = std::make_shared<ActiveCompactionToken>(num_active_full_compactions_);
+  return full_compaction_task_pool_token_->SubmitFunc([this, token, compaction_reason] {
+    WARN_NOT_OK(TriggerManualCompactionSync(compaction_reason), "Trigger manual compaction failed");
+  });
 }
 
 Status Tablet::TriggerAdminFullCompactionIfNeeded(const AdminCompactionOptions& options) {
@@ -4631,7 +4657,8 @@ Status Tablet::TriggerAdminFullCompactionIfNeeded(const AdminCompactionOptions& 
         admin_triggered_compaction_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL);
   }
 
-  return admin_full_compaction_task_pool_token_->SubmitFunc([this, options]() {
+  auto token = std::make_shared<ActiveCompactionToken>(num_active_full_compactions_);
+  return admin_full_compaction_task_pool_token_->SubmitFunc([this, token, options]() {
     // TODO(vector_index): since full vector index compaction is not optimized and may take a
     // significant amount of time, let's trigger it separately from regular manual compaction.
     // This logic should be revised later.
@@ -4989,6 +5016,7 @@ Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transacti
 
   TransactionLockInfoManager lock_info_manager(tablet_lock_info);
   rocksdb::ReadOptions read_options;
+  read_options.fill_cache = false;
   auto intent_iter = std::unique_ptr<rocksdb::Iterator>(intents_db_->NewIterator(read_options));
   intent_iter->SeekToFirst();
   // It could happen that the tablet gets a lock status request with the transactions field unset,
@@ -5039,12 +5067,15 @@ Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transacti
       }
 
       // Scan the transaction's corresponding reverse index section.
-      while (intent_iter->Valid() && intent_iter->key().compare_prefix(reverse_key) == 0) {
+      uint32_t txn_intents_count = 0;
+      while (intent_iter->Valid() && intent_iter->key().compare_prefix(reverse_key) == 0 &&
+             (!max_txn_locks_per_tablet || txn_intents_count <= max_txn_locks_per_tablet)) {
         DCHECK_EQ(intent_iter->key()[0], KeyEntryTypeAsChar::kTransactionId);
         // We should only consider intents whose value is within the tablet's key bounds.
         // Else, we would observe duplicate results in case of tablet split.
         if (key_bounds_.IsWithinBounds(intent_iter->value())) {
           txn_intent_keys.emplace_back(intent_iter->value());
+          ++txn_intents_count;
         }
         intent_iter->Next();
       }

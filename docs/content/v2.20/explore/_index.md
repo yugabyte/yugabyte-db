@@ -31,7 +31,6 @@ The following table describes the YugabyteDB features you can explore, along wit
 | [Multi-region deployments](multi-region-deployments/) | Learn about the different multi-region topologies that you can deploy using YugabyteDB. | Multi-node<br/>local |
 | [Query tuning](query-1-performance/) | Learn about the tools available to identify and optimize queries in YSQL. | Single-node<br/>local/cloud |
 | [Cluster management](cluster-management/) | Learn how to roll back database changes to a specific point in time using point in time recovery. | Single-node<br/>local |
-| [Change data capture](change-data-capture/) | Learn about YugabyteDB support for streaming data to Kafka. | N/A |
 | [Security](security/security/) | Learn how to secure data in YugabyteDB, using authentication, authorization (RBAC), encryption, and more. | Single-node<br/>local/cloud |
 | [Observability](observability/) | Export metrics into Prometheus and create dashboards using Grafana. | Multi-node<br/>local |
 
@@ -39,7 +38,7 @@ The following table describes the YugabyteDB features you can explore, along wit
 
 You can run examples using a universe set up on your local machine or in a cloud, assuming you have performed one of the following:
 
-- [Installed](/preview/tutorials/quick-start/linux/) YugabyteDB.
+- [Installed](/preview/quick-start/linux/) YugabyteDB.
 - [Created an account](https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=Cloud_signup) in YugabyteDB Aeon.
 - [Installed](../yugabyte-platform/install-yugabyte-platform/) YugabyteDB Anywhere and [configured](../yugabyte-platform/configure-yugabyte-platform/) it to run in AWS.
 
@@ -100,7 +99,7 @@ To check the status of a running single-node universe, run the following command
 ./bin/yugabyted status
 ```
 
-For more information, refer to [Quick Start](/preview/tutorials/quick-start/linux/#create-a-local-cluster).
+For more information, refer to [Quick Start](/preview/quick-start/linux/#create-a-local-cluster).
 
   {{% /tab %}}
 

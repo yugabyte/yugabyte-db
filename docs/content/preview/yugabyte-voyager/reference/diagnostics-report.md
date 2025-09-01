@@ -38,6 +38,7 @@ When enabled, the following data is collected while running yb-voyager:
 - Time taken in the migration phase up to the point when the payload is collected
 - Status of the phase while the payload is sent (for example, In progress, Complete, Exit, and so on)
 - IP address of the client machine on which voyager is running
+- Anonymized DDL statements for schema objects (DDL definitions with all identifiers anonymized)
 
 The payload for each migration phase is described in the following table. Note that no sensitive parameters, such as password-related arguments, are stored.
 

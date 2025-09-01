@@ -98,7 +98,7 @@ DECLARE_bool(master_register_ts_check_desired_host_port);
 DECLARE_string(use_private_ip);
 DECLARE_bool(master_join_existing_universe);
 DECLARE_bool(master_enable_universe_uuid_heartbeat_check);
-DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(enable_ysql);
 
 METRIC_DECLARE_counter(block_cache_misses);
 METRIC_DECLARE_counter(block_cache_hits);
@@ -109,6 +109,12 @@ namespace master {
 using strings::Substitute;
 
 class MasterTest : public MasterTestBase {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = false;
+    MasterTestBase::SetUp();
+  }
+
  public:
   string GetWebserverDir() { return GetTestPath("webserver-docroot"); }
 
@@ -2598,11 +2604,8 @@ TEST_P(NamespaceTest, RenameNamespace) {
   const NamespaceName other_ns_new_name = "testns_newname";
   {
     AlterNamespaceResponsePB resp;
-    ASSERT_OK(AlterNamespace(other_ns_name,
-                             other_ns_id,
-                             boost::none /* database_type */,
-                             other_ns_new_name,
-                             &resp));
+    ASSERT_OK(AlterNamespace(
+        other_ns_name, other_ns_id, std::nullopt /* database_type */, other_ns_new_name, &resp));
   }
   {
     ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));

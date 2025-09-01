@@ -7,9 +7,11 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.payload.NodeAgentRpcPayload;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.common.KubernetesUtil;
+import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformScheduler;
@@ -24,6 +26,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -41,6 +44,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.YbcClient;
 import org.yb.ybc.ControllerStatus;
@@ -48,6 +52,8 @@ import org.yb.ybc.ShutdownRequest;
 import org.yb.ybc.ShutdownResponse;
 import org.yb.ybc.UpgradeResultRequest;
 import org.yb.ybc.UpgradeResultResponse;
+import org.yb.ybc.VersionRequest;
+import org.yb.ybc.VersionResponse;
 
 @Singleton
 @Slf4j
@@ -60,6 +66,8 @@ public class YbcUpgrade {
   private final NodeUniverseManager nodeUniverseManager;
   private final Config config;
   private final NodeManager nodeManager;
+  private final NodeAgentRpcPayload nodeAgentRpcPayload;
+  private final NodeAgentClient nodeAgentClient;
 
   public static final String YBC_UPGRADE_INTERVAL = "ybc.upgrade.scheduler_interval";
   public static final String YBC_UNIVERSE_UPGRADE_BATCH_SIZE_PATH =
@@ -99,7 +107,9 @@ public class YbcUpgrade {
       YbcClientService ybcClientService,
       YbcManager ybcManager,
       NodeUniverseManager nodeUniverseManager,
-      NodeManager nodeManager) {
+      NodeManager nodeManager,
+      NodeAgentRpcPayload nodeAgentRpcPayload,
+      NodeAgentClient nodeAgentClient) {
     this.config = config;
     this.platformScheduler = platformScheduler;
     this.confGetter = confGetter;
@@ -111,10 +121,12 @@ public class YbcUpgrade {
     this.MAX_YBC_UPGRADE_POLL_RESULT_TRIES = getMaxYBCUpgradePollResultTries();
     this.YBC_UPGRADE_POLL_RESULT_SLEEP_MS = getYBCUpgradePollResultSleepMs();
     this.nodeManager = nodeManager;
+    this.nodeAgentRpcPayload = nodeAgentRpcPayload;
+    this.nodeAgentClient = nodeAgentClient;
   }
 
   public void start() {
-    if (config.getBoolean("yb.cloud.enabled")) {
+    if (!confGetter.getGlobalConf(GlobalConfKeys.enableYbcBackgroundUpgrade)) {
       return;
     }
     Duration duration = this.upgradeInterval();
@@ -233,13 +245,14 @@ public class YbcUpgrade {
             }
           });
 
-      while (ybcUpgradeUniverseSet.size() > 0) {
+      if (ybcUpgradeUniverseSet.size() > 0) {
         Iterator<UUID> iter = targetUniverseList.iterator();
         while (iter.hasNext()) {
           UUID universeUUID = iter.next();
           Optional<Universe> optional = Universe.maybeGet(universeUUID);
           if (!optional.isPresent()) {
             iter.remove();
+            removeYBCUpgradeProcess(universeUUID);
             continue;
           } else if (checkYBCUpgradeProcessExists(universeUUID)
               && !failedYBCUpgradeUniverseSet.contains(universeUUID)) {
@@ -259,6 +272,7 @@ public class YbcUpgrade {
           Optional<Universe> optional = Universe.maybeGet(universeUUID);
           if (!optional.isPresent()) {
             iter.remove();
+            removeYBCUpgradeProcessOnK8s(universeUUID);
             continue;
           } else if (checkYBCUpgradeProcessExistsOnK8s(universeUUID)
               && !failedYBCUpgradeUniverseSetOnK8s.contains(universeUUID)) {
@@ -433,17 +447,43 @@ public class YbcUpgrade {
             universe.getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent.ybcFlags,
             UpgradeTaskType.YbcGFlags,
             UpgradeTaskSubType.YbcGflagsUpdate);
-    nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params).processErrors();
-    nodeManager
-        .nodeCommand(
-            NodeManager.NodeCommandType.Control,
-            ybcServerControlParams("stop" /* command */, universe, node, ybcVersion))
-        .processErrors();
-    nodeManager
-        .nodeCommand(
-            NodeManager.NodeCommandType.Control,
-            ybcServerControlParams("start" /* command */, universe, node, ybcVersion))
-        .processErrors();
+    Optional<NodeAgent> optional =
+        confGetter.getGlobalConf(GlobalConfKeys.nodeAgentDisableConfigureServer)
+            ? Optional.empty()
+            : nodeUniverseManager.maybeGetNodeAgent(universe, node, true /*check feature flag*/);
+    if (optional.isPresent()) {
+      nodeAgentClient.runInstallYbcSoftware(
+          optional.get(),
+          nodeAgentRpcPayload.setupInstallYbcSoftwareBits(universe, node, params, optional.get()),
+          NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
+      nodeAgentRpcPayload.runServerGFlagsWithNodeAgent(optional.get(), universe, node, params);
+      nodeAgentClient.runServerControl(
+          optional.get(),
+          nodeAgentRpcPayload.setupServerControlBits(
+              universe,
+              node,
+              ybcServerControlParams("stop" /* command */, universe, node, ybcVersion)),
+          NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
+      nodeAgentClient.runServerControl(
+          optional.get(),
+          nodeAgentRpcPayload.setupServerControlBits(
+              universe,
+              node,
+              ybcServerControlParams("start" /* command */, universe, node, ybcVersion)),
+          NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
+    } else {
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params).processErrors();
+      nodeManager
+          .nodeCommand(
+              NodeManager.NodeCommandType.Control,
+              ybcServerControlParams("stop" /* command */, universe, node, ybcVersion))
+          .processErrors();
+      nodeManager
+          .nodeCommand(
+              NodeManager.NodeCommandType.Control,
+              ybcServerControlParams("start" /* command */, universe, node, ybcVersion))
+          .processErrors();
+    }
   }
 
   private AnsibleClusterServerCtl.Params ybcServerControlParams(
@@ -560,6 +600,44 @@ public class YbcUpgrade {
 
   public String getUniverseYbcVersion(UUID universeUUID) {
     return Universe.getOrBadRequest(universeUUID).getUniverseDetails().getYbcSoftwareVersion();
+  }
+
+  public List<String> getUniverseNodeYbcVersions(Universe universe, boolean onlyLive) {
+    List<String> ybcVersions =
+        universe.getNodes().stream()
+            .map(
+                node -> {
+                  YbcClient client = null;
+                  try {
+                    client =
+                        ybcClientService.getNewClient(
+                            node.cloudInfo.private_ip,
+                            universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort,
+                            universe.getCertificateNodetoNode());
+                    if (client != null) {
+                      VersionRequest req = VersionRequest.newBuilder().build();
+                      VersionResponse resp = client.version(req);
+                      return resp.getServerVersion();
+                    }
+                  } catch (Exception e) {
+                    log.error(
+                        "Failed to get YBC version for node {}: {}",
+                        node.cloudInfo.private_ip,
+                        e.getMessage());
+                    return "";
+                  } finally {
+                    ybcClientService.closeClient(client);
+                  }
+                  if (onlyLive) {
+                    log.warn("Skipping node {} as it is not reachable", node.cloudInfo.private_ip);
+                    return null;
+                  } else {
+                    return "UNKNOWN";
+                  }
+                })
+            .filter(version -> version != null && !version.isEmpty())
+            .collect(Collectors.toList());
+    return ybcVersions;
   }
 
   private void placeYbcPackageOnDBNode(Universe universe, NodeDetails node, String ybcVersion) {

@@ -260,3 +260,23 @@ services:
 
       [Install]
       WantedBy=multi-user.target
+
+  - name: upgradePrecheck
+    fileName: "{{ .UpgradePrecheckScriptPath }}"
+    fileMode: "755"
+    contents: |
+      export JAVA_HOME="{{ installVersionDir }}/jdk-17.0.7+7-jre/"
+      export YB_OIDC_SECRET="{{ yamlPath "platform.ybOidcSecret" }}"
+      export PLATFORM_APP_SECRET="{{ yamlPath "platform.appSecret" }}"
+
+      {{if eq (yamlPath "postgres.useExisting.enabled") "true"}}
+      export DB_PASSWORD="{{ yamlPath "postgres.useExisting.password" }}"
+      export DB_USERNAME="{{ yamlPath "postgres.useExisting.username" }}"
+      {{end}}
+
+      {{ installRoot }}/yb-platform/yugaware/bin/yugaware \
+        -Dconfig.file={{ .ConfFileLocation }} \
+        -Dhttp.port=disabled \
+        -Dhttps.port={{ yamlPath "platform.port" }} \
+        -Dyba_upgrade_precheck=true \
+        -Dyba_upgrade_precheck_output_dir={{ .UpgradePrecheckDir }}

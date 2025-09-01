@@ -936,7 +936,6 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
   // Create the read request.
   YBqlReadOpPtr select_op(table->NewQLSelect());
   QLReadRequestPB *req = select_op->mutable_request();
-  ash::WaitStateInfo::CurrentMetadataToPB(req->mutable_ash_metadata());
 
   // Where clause - Hash, range, and regular columns.
   req->set_is_aggregate(tnode->is_aggregate());
@@ -1284,7 +1283,6 @@ Status Executor::ExecPTNode(const PTInsertStmt *tnode, TnodeContext* tnode_conte
 
   if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
     wait_state->UpdateAuxInfo({.table_id{table->id()}});
-    wait_state->MetadataToPB(req->mutable_ash_metadata());
   } else {
     LOG_IF(DFATAL, GetAtomicFlag(&FLAGS_ysql_yb_enable_ash)) << "No wait state here.";
   }
@@ -1359,7 +1357,6 @@ Status Executor::ExecPTNode(const PTDeleteStmt *tnode, TnodeContext* tnode_conte
 
   if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
     wait_state->UpdateAuxInfo({.table_id{table->id()}});
-    wait_state->MetadataToPB(req->mutable_ash_metadata());
   } else {
     LOG_IF(DFATAL, GetAtomicFlag(&FLAGS_ysql_yb_enable_ash)) << "No wait state here.";
   }
@@ -2698,11 +2695,11 @@ void Executor::Reset(ResetAsyncCalls* reset_async_calls) {
   num_flushes_ = 0;
   result_ = nullptr;
   cb_.Reset();
-  returns_status_batch_opt_ = boost::none;
+  returns_status_batch_opt_ = std::nullopt;
   reset_async_calls->Perform();
 }
 
-QLExpressionPB* CreateQLExpression(QLWriteRequestPB *req, const ColumnDesc& col_desc) {
+QLExpressionPB* CreateQLExpression(QLWriteRequestPB* req, const ColumnDesc& col_desc) {
   if (col_desc.is_hash()) {
     return req->add_hashed_column_values();
   } else if (col_desc.is_primary()) {

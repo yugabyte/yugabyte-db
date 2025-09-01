@@ -82,7 +82,7 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
         create_snapshot_schedule 1 10 ycql.pitr
     ```
 
@@ -96,7 +96,7 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
         list_snapshot_schedules
     ```
 
@@ -156,7 +156,7 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
         restore_snapshot_schedule 0e4ceb83-fe3d-43da-83c3-013a8ef592ca 1620418817729963
     ```
 
@@ -171,7 +171,7 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
         list_snapshots
     ```
 

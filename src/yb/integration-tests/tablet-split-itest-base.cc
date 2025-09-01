@@ -460,7 +460,7 @@ Status TabletSplitITest::WaitForTabletSplitCompletion(
     size_t num_peers_split = 0;
     size_t num_peers_leader_ready = 0;
     for (const auto& peer : peers) {
-      const auto tablet = peer->shared_tablet();
+      const auto tablet = peer->shared_tablet_maybe_null();
       const auto consensus_result = peer->GetConsensus();
       if (!tablet || !consensus_result) {
         break;
@@ -491,7 +491,7 @@ Status TabletSplitITest::WaitForTabletSplitCompletion(
   }, split_completion_timeout_sec_, "Wait for tablet split to be completed");
   if (!s.ok()) {
     for (const auto& peer : peers) {
-      const auto tablet = peer->shared_tablet();
+      const auto tablet = peer->shared_tablet_maybe_null();
       const auto consensus_result = peer->GetConsensus();
       if (!tablet || !consensus_result) {
         LOG(INFO) << consensus::MakeTabletLogPrefix(peer->tablet_id(), peer->permanent_uuid())
@@ -681,8 +681,8 @@ Status TabletSplitITest::WaitForTestTableTabletPeersPostSplitCompacted(MonoDelta
 Result<int> TabletSplitITest::NumTestTableTabletPeersPostSplitCompacted() {
   int count = 0;
   for (auto peer : VERIFY_RESULT(ListTestTableActiveTabletPeers())) {
-    const auto* tablet = peer->tablet();
-    if (tablet->metadata()->parent_data_compacted()) {
+    const auto tablet = peer->shared_tablet_maybe_null();
+    if (tablet && tablet->metadata()->parent_data_compacted()) {
       ++count;
     }
   }
@@ -699,7 +699,7 @@ Result<uint64_t> TabletSplitITest::GetMinSstFileSizeAmongAllReplicas(const std::
   }
   uint64_t min_file_size = std::numeric_limits<uint64_t>::max();
   for (const auto& peer : peers) {
-    auto tablet = peer->shared_tablet();
+    auto tablet = peer->shared_tablet_maybe_null();
     if (tablet) {
       min_file_size = std::min(min_file_size, tablet->GetCurrentVersionSstFilesSize());
     }
@@ -744,7 +744,7 @@ Status TabletSplitITest::CheckPostSplitTabletReplicasData(
       LOG(INFO) << "Last applied op id for " << peer->LogPrefix() << ": "
                 << AsString(VERIFY_RESULT(peer->GetConsensus())->GetLastAppliedOpId());
 
-      const auto tablet = VERIFY_RESULT(peer->shared_tablet_safe());
+      const auto tablet = VERIFY_RESULT(peer->shared_tablet());
       const SchemaPtr schema = tablet->metadata()->schema();
       dockv::ReaderProjection projection(*schema);
       auto iter = VERIFY_RESULT(tablet->NewRowIterator(projection));
@@ -752,12 +752,11 @@ Status TabletSplitITest::CheckPostSplitTabletReplicasData(
       std::unordered_set<size_t> tablet_keys;
       while (VERIFY_RESULT(iter->FetchNext(&row))) {
       auto key_opt = row.GetValue(key_column_id);
-      SCHECK(key_opt.is_initialized(), InternalError, "Key is not initialized");
+      SCHECK(key_opt.has_value(), InternalError, "Key is not initialized");
       SCHECK_EQ(key_opt, row.GetValue(value_column_id), InternalError, "Wrong value for key");
-      auto key = key_opt->int32_value();
+      auto key = key_opt->get().int32_value();
       SCHECK(
-          tablet_keys.insert(key).second,
-          InternalError,
+          tablet_keys.insert(key).second, InternalError,
           Format("Duplicate key $0 in tablet $1", key, tablet->tablet_id()));
       SCHECK_GT(
           keys[key - 1]--,

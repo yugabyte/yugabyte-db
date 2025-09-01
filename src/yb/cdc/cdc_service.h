@@ -32,8 +32,6 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/semaphore.h"
 
-#include <boost/optional.hpp>
-
 namespace rocksdb {
 
 class RateLimiter;
@@ -121,7 +119,14 @@ class CDCServiceImpl : public CDCServiceIf {
   CDCServiceImpl(
       std::unique_ptr<CDCServiceContext> context,
       const scoped_refptr<MetricEntity>& metric_entity_server, MetricRegistry* metric_registry,
-      const std::shared_future<client::YBClient*>& client_future);
+      const std::shared_future<client::YBClient*>& client_future,
+      const std::function<int32()>& get_update_peers_interval);
+
+  CDCServiceImpl(
+      std::unique_ptr<CDCServiceContext> context,
+      const scoped_refptr<MetricEntity>& metric_entity_server, MetricRegistry* metric_registry,
+      int get_changes_concurrency, const std::shared_future<client::YBClient*>& client_future,
+      const std::function<int32()>& get_update_peers_interval);
 
   CDCServiceImpl(const CDCServiceImpl&) = delete;
   void operator=(const CDCServiceImpl&) = delete;
@@ -355,7 +360,7 @@ class CDCServiceImpl : public CDCServiceIf {
       const TabletStreamInfo& producer_tablet, const OpId& sent_op_id, const OpId& commit_op_id,
       uint64_t last_record_hybrid_time, const std::optional<HybridTime>& cdc_sdk_safe_time,
       const CDCRequestSource& request_source = CDCRequestSource::CDCSDK, bool force_update = false,
-      const bool is_snapshot = false, const std::string& snapshot_key = "",
+      bool is_snapshot = false, const std::string& snapshot_key = "",
       const TableId& colocated_table_id = "");
 
   Status UpdateSnapshotDone(
@@ -588,6 +593,9 @@ class CDCServiceImpl : public CDCServiceIf {
   std::unique_ptr<Impl> impl_;
 
   const std::shared_future<client::YBClient*>& client_future_;
+
+  // Lambda to get the update peers and metrics frequency interval.
+  std::function<int32()> get_update_peers_interval_;
 
   std::unique_ptr<CDCStateTable> cdc_state_table_;
 

@@ -51,6 +51,10 @@ class ProxyContext {
   // Number of connections to create per destination address.
   virtual int num_connections_to_server() const = 0;
 
+  virtual MetadataSerializerFactory* metadata_serializer_factory() = 0;
+
+  virtual CallStateListenerFactory* call_state_listener_factory() = 0;
+
   virtual ~ProxyContext() {}
 };
 

@@ -778,6 +778,9 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 				splan->scan.plan.qual =
 					fix_scan_list(root, splan->scan.plan.qual,
 								  rtoffset, NUM_EXEC_QUAL(plan));
+				splan->yb_rel_pushdown.quals =
+					fix_scan_list(root, splan->yb_rel_pushdown.quals,
+								  rtoffset, NUM_EXEC_QUAL(plan));
 				splan->tidquals =
 					fix_scan_list(root, splan->tidquals,
 								  rtoffset, 1);

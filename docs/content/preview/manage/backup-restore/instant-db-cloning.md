@@ -49,18 +49,6 @@ You can also set the runtime flags while the yb-master process is running using 
 
     For example, creating a snapshot schedule with retention period of 7 days allows you to create a clone of the original database to any time in the past 7 days.
 
-- You have to trust local YSQL connections (that use UNIX domain sockets) in the [host-based authentication](../../../secure/authentication/host-based-authentication/). You have to do this for all YB-TServers in the cluster. You can do this when starting the YB-TServer process by adding the authentication line `local all all trust` to the [ysql_hba_conf_csv](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv) flag.
-
-    For example, if you are using yugabyted you can use the `--tserver_flags` option of the `start` command as follows:
-
-    ```sh
-    --tserver_flags "ysql_hba_conf_csv={host all all 0.0.0.0/0 trust,local all all trust}"
-    ```
-
-{{<note title="Note">}}
-Do not override your default host-based authentication rules when trusting the local connection. You may need to add additional authentication lines to `ysql_hba_conf_csv` based on your specific configuration. For more information, see [host-based authentication](../../../secure/authentication/host-based-authentication/).
-{{</note>}}
-
 ### Clone a YSQL database
 
 Because YugabyteDB is PostgreSQL compatible, you can create a database as a clone of another using the `TEMPLATE` SQL option of `CREATE DATABASE` command as follows:
@@ -150,8 +138,7 @@ The following example demonstrates how to use a database clone to recover from a
 
     ```sh
     ./bin/yugabyted start --advertise_address=127.0.0.1 \
-        --master_flags "allowed_preview_flags_csv={enable_db_clone},enable_db_clone=true" \
-        --tserver_flags "ysql_hba_conf_csv={host all all 0.0.0.0/0 trust,local all all trust}"
+        --master_flags "enable_db_clone=true"
     ```
 
 1. Start [ysqlsh](../../../api/ysqlsh/) and create the database:
@@ -286,6 +273,8 @@ Although creating a clone database is quick and initially doesn't take up much a
 - Increased memory consumption from the extra tablets
 - Increased disk use after compaction of either the clone or the original database. This is because both original and post-compaction data files must be kept on disk for access by whichever database did not do the compaction. For example, if compaction is performed on the original database, new compacted files are generated which serve reads for the original database. The old data files are retained on disk to serve reads for the clone database. Whenever the clone or original database is deleted, the cluster only cleans the unused data files.
 
+If you have [tablet limits](../../../architecture/docdb-sharding/tablet-splitting/#tablet-limits) set, and you are at or have exceeded the limit, you cannot create clones. If you hit or exceed the limit due to tablets that a clone is creating, then operations on the clone will fail. See issue {{<issue 22338>}}.
+
 ## Limitations
 
-- Cloning to a time before dropping Materialized views is not currently supported. See GitHub issue [23740](https://github.com/yugabyte/yugabyte-db/issues/23740) for tracking.
+- Cloning to a time before dropping Materialized views is not currently supported. See issue {{<issue 23740>}}.

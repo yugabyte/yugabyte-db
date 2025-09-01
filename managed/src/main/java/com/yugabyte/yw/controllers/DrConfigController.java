@@ -10,7 +10,6 @@ import com.yugabyte.yw.commissioner.XClusterScheduler;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.SoftwareUpgradeHelper;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.XClusterUtil;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
@@ -272,25 +271,11 @@ public class DrConfigController extends AuthenticatedController {
 
       // Automatic DDL mode is enabled if the corresponding universe conf is set to true and the
       // participating universes have the minimum required version.
-      String sourceUniverseYbSoftwareVersion =
-          sourceUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
-      String targetUniverseYbSoftwareVersion =
-          targetUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
       boolean isAutomaticDdlMode =
           confGetter.getConfForScope(
                   sourceUniverse, UniverseConfKeys.XClusterDbScopedAutomaticDdlCreationEnabled)
-              && Util.compareYbVersions(
-                      sourceUniverseYbSoftwareVersion,
-                      confGetter.getGlobalConf(
-                          GlobalConfKeys.xClusterDbScopedAutomaticDdlYbdbMinCompatibleVersion),
-                      true /* suppressFormatError */)
-                  > 0
-              && Util.compareYbVersions(
-                      targetUniverseYbSoftwareVersion,
-                      confGetter.getGlobalConf(
-                          GlobalConfKeys.xClusterDbScopedAutomaticDdlYbdbMinCompatibleVersion),
-                      true /* suppressFormatError */)
-                  > 0;
+              && XClusterUtil.supportsAutomaticDdl(sourceUniverse)
+              && XClusterUtil.supportsAutomaticDdl(targetUniverse);
 
       drConfig =
           DrConfig.create(
@@ -1034,6 +1019,19 @@ public class DrConfigController extends AuthenticatedController {
     } else {
       GetUniverseReplicationInfoResponse inboundReplicationResp;
       GetXClusterOutboundReplicationGroupInfoResponse outboundReplicationResp;
+
+      if (xClusterConfig.isAutomaticDdlMode()) {
+        // Hide the `replicated_ddls` table from the xCluster config. This table is metadata and
+        // the user does not need to see it.
+        sourceTableInfoList =
+            sourceTableInfoList.stream()
+                .filter(tableInfo -> !TableInfoUtil.isReplicatedDdlsTable(tableInfo))
+                .collect(Collectors.toList());
+        targetTableInfoList =
+            targetTableInfoList.stream()
+                .filter(tableInfo -> !TableInfoUtil.isReplicatedDdlsTable(tableInfo))
+                .collect(Collectors.toList());
+      }
 
       try {
         inboundReplicationResp =

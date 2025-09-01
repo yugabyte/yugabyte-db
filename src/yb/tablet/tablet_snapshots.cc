@@ -15,6 +15,8 @@
 
 #include <boost/algorithm/string/predicate.hpp>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/qlexpr/index.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
@@ -96,19 +98,19 @@ void CleanupLastSnapshotHybridTime(
   }
 }
 
-} // namespace
+}  // namespace
 
 struct TabletSnapshots::RestoreMetadata {
-  boost::optional<Schema> schema;
-  boost::optional<qlexpr::IndexMap> index_map;
+  std::optional<Schema> schema;
+  std::optional<qlexpr::IndexMap> index_map;
   uint32_t schema_version;
   bool hide;
   google::protobuf::RepeatedPtrField<ColocatedTableMetadata> colocated_tables_metadata;
 };
 
 struct TabletSnapshots::ColocatedTableMetadata {
-  boost::optional<Schema> schema;
-  boost::optional<qlexpr::IndexMap> index_map;
+  std::optional<Schema> schema;
+  std::optional<qlexpr::IndexMap> index_map;
   uint32_t schema_version;
   TableId table_id;
 };
@@ -194,7 +196,12 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
   ScopedRWOperation scoped_read_operation(&pending_op_counter_blocking_rocksdb_shutdown_start());
   RETURN_NOT_OK(scoped_read_operation);
 
-  Status s = regular_db().Flush(rocksdb::FlushOptions());
+  Status s;
+  {
+    SCOPED_WAIT_STATUS(Snapshot_WaitingForFlush);
+    s = regular_db().Flush(rocksdb::FlushOptions());
+  }
+
   if (PREDICT_FALSE(!s.ok())) {
     LOG_WITH_PREFIX(WARNING) << "RocksDB flush status: " << s;
     return s.CloneAndPrepend("Unable to flush RocksDB");
@@ -320,6 +327,7 @@ FsManager* TabletSnapshots::fs_manager() {
 }
 
 Status TabletSnapshots::CleanupSnapshotDir(const std::string& dir) {
+  SCOPED_WAIT_STATUS(Snapshot_CleanupSnapshotDir);
   auto& env = this->env();
   if (!env.FileExists(dir)) {
     return Status::OK();
@@ -368,8 +376,8 @@ Status TabletSnapshots::Restore(SnapshotOperation* operation) {
   RestoreMetadata restore_metadata;
   if (request.has_schema()) {
     restore_metadata.schema.emplace();
-    RETURN_NOT_OK(SchemaFromPB(
-        request.schema().ToGoogleProtobuf(), restore_metadata.schema.get_ptr()));
+    RETURN_NOT_OK(
+        SchemaFromPB(request.schema().ToGoogleProtobuf(), &restore_metadata.schema.value()));
     restore_metadata.index_map.emplace(ToRepeatedPtrField(request.indexes()));
     restore_metadata.schema_version = request.schema_version();
     restore_metadata.hide = request.hide();
@@ -379,14 +387,13 @@ Status TabletSnapshots::Restore(SnapshotOperation* operation) {
     auto* table_metadata = restore_metadata.colocated_tables_metadata.Add();
     table_metadata->schema_version = entry.schema_version();
     table_metadata->schema.emplace();
-    RETURN_NOT_OK(SchemaFromPB(
-        entry.schema().ToGoogleProtobuf(), table_metadata->schema.get_ptr()));
+    RETURN_NOT_OK(SchemaFromPB(entry.schema().ToGoogleProtobuf(), &table_metadata->schema.value()));
     table_metadata->index_map.emplace(ToRepeatedPtrField(entry.indexes()));
     table_metadata->table_id = entry.table_id().ToBuffer();
   }
   Status s = RestoreCheckpoint(
-      snapshot_dir, restore_at, restore_metadata, frontier,
-      !request.schedule_id().empty(), operation->op_id());
+      snapshot_dir, restore_at, restore_metadata, frontier, !request.schedule_id().empty(),
+      operation->op_id());
   VLOG_WITH_PREFIX(1) << "Complete checkpoint restoring with result " << s << " in folder: "
                       << metadata().rocksdb_dir();
   int32 delay_time_secs = GetAtomicFlag(&FLAGS_TEST_delay_tablet_split_metadata_restore_secs);
@@ -494,6 +501,7 @@ Result<docdb::CotableIdsMap> TabletSnapshots::GetCotableIdsMap(const std::string
 Status TabletSnapshots::RestoreCheckpoint(
     const std::string& snapshot_dir, HybridTime restore_at, const RestoreMetadata& restore_metadata,
     const docdb::ConsensusFrontier& frontier, bool is_pitr_restore, const OpId& op_id) {
+  SCOPED_WAIT_STATUS(Snapshot_RestoreCheckpoint);
   LongOperationTracker long_operation_tracker("Restore checkpoint", 5s);
 
   // The following two lines can't just be changed to RETURN_NOT_OK(PauseReadWriteOperations()):

@@ -88,14 +88,13 @@ class PgIndexBackfillTest : public LibPqTestBase, public ::testing::WithParamInt
         Format("--ysql_num_shards_per_tserver=$0", kTabletsPerServer));
 
     if (EnableTableLocks()) {
-      options->extra_master_flags.push_back(
-          "--allowed_preview_flags_csv=enable_object_locking_for_table_locks");
-      options->extra_master_flags.push_back("--enable_object_locking_for_table_locks=true");
       options->extra_master_flags.push_back("--enable_ysql_operation_lease=true");
 
       options->extra_tserver_flags.push_back(
-          "--allowed_preview_flags_csv=enable_object_locking_for_table_locks");
+          Format("--allowed_preview_flags_csv=$0,$1",
+                 "enable_object_locking_for_table_locks", "ysql_yb_ddl_transaction_block_enabled"));
       options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=true");
+      options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
       options->extra_tserver_flags.push_back("--enable_ysql_operation_lease=true");
       options->extra_tserver_flags.push_back("--TEST_tserver_enable_ysql_lease_refresh=true");
     }
@@ -913,7 +912,7 @@ TEST_P(PgIndexBackfillTestSimultaneously, CreateIndexSimultaneously) {
       // TODO (#19975): Enable read committed isolation
       PGConn create_conn = ASSERT_RESULT(SetDefaultTransactionIsolation(
           ConnectToDB(kDatabaseName), IsolationLevel::SNAPSHOT_ISOLATION));
-      ASSERT_OK(create_conn.Execute("SET yb_force_early_ddl_serialization=false"));
+      ASSERT_OK(create_conn.Execute("SET yb_user_ddls_preempt_auto_analyze=false"));
       statuses[i] = MoveStatus(create_conn.ExecuteFormat(
           "CREATE INDEX $0 ON $1 (i)",
           kIndexName, kTableName));
@@ -1766,6 +1765,21 @@ TEST_P(PgIndexBackfillBlockDoBackfill, IndexScanVisibility) {
             << " for other sessions to notice that the index became public";
 }
 
+TEST_P(PgIndexBackfillTest, SimulateEmptyIndexesForStackOverflow) {
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_simulate_empty_indexes_during_backfill", "true"));
+
+  LOG(INFO) << "Create connection to run CREATE INDEX";
+  PGConn create_index_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  LOG(INFO) << "Create index...";
+  // The failed BackfillChunk/BackfillTable will not update the
+  // backfill_error_message in IndexInfoPB for kIndexName. Thus the following
+  // CREATE INDEX won't bubble up an error from the backfill job failing.
+  ASSERT_OK(create_index_conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i)", kIndexName, kTableName));
+
+  cluster_->AssertNoCrashes();
+}
+
 // Override to have smaller backfill deadline.
 class PgIndexBackfillClientDeadline : public PgIndexBackfillBlockDoBackfill {
  public:
@@ -1862,7 +1876,7 @@ TEST_P(PgIndexBackfillFastClientTimeout, DropWhileBackfilling) {
     PGConn create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
     // We don't want the DROP INDEX to face a serialization error when acquiring the FOR UPDATE lock
     // on the catalog version row.
-    ASSERT_OK(create_conn.Execute("SET yb_force_early_ddl_serialization=false"));
+    ASSERT_OK(create_conn.Execute("SET yb_user_ddls_preempt_auto_analyze=false"));
     Status status = create_conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i)", kIndexName, kTableName);
     // Expect timeout because
     // DROP INDEX is currently not online and removes the index info from the indexed table
@@ -2458,7 +2472,7 @@ TEST_P(PgIndexBackfillReadCommittedBlockIndisliveBlockDoBackfill, CatVerBumps) {
     auto create_idx_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
     // We don't want the catalog version increments to conflict with the FOR UPDATE lock on the
     // catalog version row.
-    ASSERT_OK(create_idx_conn.Execute("SET yb_force_early_ddl_serialization=false"));
+    ASSERT_OK(create_idx_conn.Execute("SET yb_user_ddls_preempt_auto_analyze=false"));
     ASSERT_OK(create_idx_conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i)", kIndexName, kTableName));
     LOG(INFO) << "End create index thread";
   });

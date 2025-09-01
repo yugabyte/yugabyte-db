@@ -404,25 +404,27 @@ public abstract class AbstractTaskBase implements ITask {
   }
 
   /** This updates the runtime info of the current task via the updater (consumer). */
-  protected <T> void updateRuntimeInfo(Class<T> clazz, Consumer<T> updater) {
-    TaskInfo.updateInTxn(
-        getUserTaskUUID(),
-        tf -> {
-          T runtimeInfo;
-          JsonNode node = tf.getRuntimeInfo();
-          if (node == null || node.isNull()) {
-            try {
-              runtimeInfo = Json.mapper().treeToValue(Json.newObject(), clazz);
-            } catch (Exception e) {
-              log.error("Error in creating instance of {}", clazz.getName(), e);
-              throw new RuntimeException(e);
-            }
-          } else {
-            runtimeInfo = Json.fromJson(node, clazz);
-          }
-          updater.accept(runtimeInfo);
-          tf.setRuntimeInfo(Json.toJson(runtimeInfo));
-        });
+  protected <T> T updateRuntimeInfo(Class<T> clazz, Consumer<T> updater) {
+    TaskInfo taskInfo =
+        TaskInfo.updateInTxn(
+            getUserTaskUUID(),
+            tf -> {
+              T runtimeInfo;
+              JsonNode node = tf.getRuntimeInfo();
+              if (node == null || node.isNull()) {
+                try {
+                  runtimeInfo = Json.mapper().treeToValue(Json.newObject(), clazz);
+                } catch (Exception e) {
+                  log.error("Error in creating instance of {}", clazz.getName(), e);
+                  throw new RuntimeException(e);
+                }
+              } else {
+                runtimeInfo = Json.fromJson(node, clazz);
+              }
+              updater.accept(runtimeInfo);
+              tf.setRuntimeInfo(Json.toJson(runtimeInfo));
+            });
+    return Json.fromJson(taskInfo.getRuntimeInfo(), clazz);
   }
 
   protected <T> T getInstanceOf(Class<T> clazz) {

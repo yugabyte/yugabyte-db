@@ -50,6 +50,7 @@
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_client.fwd.h"
 #include "yb/master/master_fwd.h"
+#include "yb/master/sys_catalog_types.h"
 #include "yb/master/tasks_tracker.h"
 
 #include "yb/qlexpr/index.h"
@@ -98,6 +99,10 @@ struct ExternalNamespaceSnapshotData {
   NamespaceId new_namespace_id;
   YQLDatabase db_type;
   bool just_created;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(new_namespace_id, db_type, just_created);
+  }
 };
 // Map: old_namespace_id (key) -> new_namespace_id + db_type + created-flag.
 using NamespaceMap = std::unordered_map<NamespaceId, ExternalNamespaceSnapshotData>;
@@ -141,11 +146,12 @@ struct TabletReplicaDriveInfo {
   uint64 wal_files_size = 0;
   uint64 uncompressed_sst_file_size = 0;
   bool may_have_orphaned_post_split_data = true;
+  uint64 total_size = 0;
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(
         sst_files_size, wal_files_size, uncompressed_sst_file_size,
-        may_have_orphaned_post_split_data);
+        may_have_orphaned_post_split_data, total_size);
   }
 };
 
@@ -523,25 +529,45 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
     return pb.ysql_ddl_txn_verifier_state_size() > 0;
   }
 
-  auto ysql_ddl_txn_verifier_state() const {
-    // Currently DDL with savepoints is disabled, so this repeated field can have only 1 element.
-    DCHECK_EQ(pb.ysql_ddl_txn_verifier_state_size(), 1);
+  google::protobuf::RepeatedPtrField<YsqlDdlTxnVerifierStatePB> ysql_ddl_txn_verifier_state()
+      const {
+    DCHECK_GE(pb.ysql_ddl_txn_verifier_state_size(), 1);
+    return pb.ysql_ddl_txn_verifier_state();
+  }
+
+  YsqlDdlTxnVerifierStatePB ysql_ddl_txn_verifier_state_first() const {
+    DCHECK_GE(pb.ysql_ddl_txn_verifier_state_size(), 1);
     return pb.ysql_ddl_txn_verifier_state(0);
   }
 
+  YsqlDdlTxnVerifierStatePB ysql_ddl_txn_verifier_state_last() const {
+    DCHECK_GE(pb.ysql_ddl_txn_verifier_state_size(), 1);
+    return pb.ysql_ddl_txn_verifier_state(pb.ysql_ddl_txn_verifier_state_size() - 1);
+  }
+
   bool is_being_deleted_by_ysql_ddl_txn() const {
+    // If we consider all DDL statements that involve a particular DocDB table (unique DocDB id) in
+    // a transaction block, the deletion of the table can only happen in the last statement. So just
+    // check the last ysql_ddl_txn_verifier_state for drop table operation.
     return has_ysql_ddl_txn_verifier_state() &&
-      ysql_ddl_txn_verifier_state().contains_drop_table_op();
+      ysql_ddl_txn_verifier_state_last().contains_drop_table_op();
   }
 
   bool is_being_created_by_ysql_ddl_txn() const {
+    // If we consider all DDL statements that involve a particular DocDB table (unique DocDB id) in
+    // a transaction block, the creation of the table can only happen in the first statement.
+    // So just check the first ysql_ddl_txn_verifier_state for create table operation.
     return has_ysql_ddl_txn_verifier_state() &&
-      ysql_ddl_txn_verifier_state().contains_create_table_op();
+      ysql_ddl_txn_verifier_state_first().contains_create_table_op();
   }
 
   bool is_being_altered_by_ysql_ddl_txn() const {
-    return has_ysql_ddl_txn_verifier_state() &&
-      ysql_ddl_txn_verifier_state().contains_alter_table_op();
+    // A table can be altered by a transaction if it is being altered in at
+    // least one of the sub-transactions.
+    for (const auto& state : ysql_ddl_txn_verifier_state()) {
+      if (state.contains_alter_table_op()) return true;
+    }
+    return false;
   }
 
   std::vector<std::string> cols_marked_for_deletion() const {
@@ -579,7 +605,7 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
   Result<Schema> GetSchema() const;
 
   TableType GetTableType() const {
-    return pb.table_type();
+    return table_type();
   }
 };
 
@@ -697,6 +723,9 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // stored pg_table_id field.
   Result<uint32_t> GetPgTableOid() const;
 
+  // Helper for returning all OIDs for the PG Table.
+  Result<PgTableAllOids> GetPgTableAllOids() const;
+
   // Return the table type of the table.
   TableType GetTableType() const;
 
@@ -783,9 +812,14 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // tablet split) might not be running.
   Status CheckAllActiveTabletsRunning() const;
 
-  // Clears partitons_ and tablets_.
-  // If deactivate_only is set to true then clear only the partitions_.
-  void ClearTabletMaps(DeactivateOnly deactivate_only = DeactivateOnly::kFalse);
+  // Clears partitions_ and tablets_.
+  // N.B.: The deletion flow removes tablets from the Catalog Manager's tablet map by removing all
+  // tablets returned by TableInfo::TakeTablets of a DELETED table. So it is possible to leak
+  // tablets in the tablet map by calling this function on a primary table.
+  void ClearTabletMaps();
+
+  // Returns the value of the tablets_ map and clears partitions_ and tablets_.
+  std::map<TabletId, std::weak_ptr<TabletInfo>> TakeTablets();
 
   // Returns true if the table creation is in-progress.
   bool IsCreateInProgress() const;
@@ -1061,25 +1095,26 @@ struct PersistentObjectLockInfo : public Persistent<SysObjectLockEntryPB> {};
 
 class ObjectLockInfo : public MetadataCowWrapper<PersistentObjectLockInfo> {
  public:
-  explicit ObjectLockInfo(const std::string& ts_uuid) : ts_uuid_(ts_uuid) {}
+  explicit ObjectLockInfo(const std::string& ts_uuid)
+      : ts_uuid_(ts_uuid), ysql_lease_deadline_(MonoTime::Min()) {}
   ~ObjectLockInfo() = default;
 
   // Return the user defined type's ID. Does not require synchronization.
   virtual const std::string& id() const override { return ts_uuid_; }
 
   std::variant<ObjectLockInfo::WriteLock, SysObjectLockEntryPB::LeaseInfoPB>
-  RefreshYsqlOperationLease(const NodeInstancePB& instance) EXCLUDES(mutex_);
+  RefreshYsqlOperationLease(const NodeInstancePB& instance, MonoDelta lease_ttl) EXCLUDES(mutex_);
 
   virtual void Load(const SysObjectLockEntryPB& metadata) override;
 
-  MonoTime last_ysql_lease_refresh() const EXCLUDES(mutex_);
+  MonoTime ysql_lease_deadline() const EXCLUDES(mutex_);
 
  private:
   // The ID field is used in the sys_catalog table.
   const std::string ts_uuid_;
 
   mutable simple_spinlock mutex_;
-  MonoTime last_ysql_lease_refresh_ GUARDED_BY(mutex_);
+  MonoTime ysql_lease_deadline_ GUARDED_BY(mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(ObjectLockInfo);
 };

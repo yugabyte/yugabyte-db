@@ -64,8 +64,19 @@ AsyncClientInitializer::AsyncClientInitializer(
 
 AsyncClientInitializer::~AsyncClientInitializer() {
   Shutdown();
+}
+
+void AsyncClientInitializer::Shutdown() {
+  bool expected = false;
+  if (!stopping_.compare_exchange_strong(expected, true)) {
+    return;
+  }
   if (init_client_thread_) {
     init_client_thread_->Join();
+    init_client_thread_.reset();
+  }
+  if (client_holder_.get() != nullptr) {
+    client_holder_.get()->Shutdown();
   }
 }
 

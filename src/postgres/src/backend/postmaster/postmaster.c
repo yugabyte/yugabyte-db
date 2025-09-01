@@ -149,6 +149,7 @@
 #include "storage/procarray.h"
 #include "storage/procsignal.h"
 #include "storage/sinvaladt.h"
+#include "yb/util/debug/leak_annotations.h"
 #include "yb/yql/pggate/ybc_pg_shared_mem.h"
 #include "yb_ash.h"
 #include "yb_query_diagnostics.h"
@@ -598,7 +599,10 @@ HANDLE		PostmasterHandle;
 char *
 postmaster_strdup(const char *in)
 {
-	return strdup(in);
+	char	   *result = strdup(in);
+
+	__lsan_ignore_object(result);
+	return result;
 }
 
 /*
@@ -2003,7 +2007,7 @@ ServerLoop(void)
 		 * backends if they're not responding after a certain time.
 		 */
 		if ((Shutdown >= ImmediateShutdown || (FatalError && !SendStop) ||
-			(YBIsEnabledInPostgresEnvVar() && Shutdown >= FastShutdown)) &&
+			 (YBIsEnabledInPostgresEnvVar() && Shutdown >= FastShutdown)) &&
 			AbortStartTime != 0 &&
 			(now - AbortStartTime) >= SIGKILL_CHILDREN_AFTER_SECS)
 		{

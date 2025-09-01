@@ -12,6 +12,8 @@
 
 #include "yb/tserver/backup_service.h"
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/common/wire_protocol.h"
 
 #include "yb/tablet/tablet.h"
@@ -69,6 +71,8 @@ void TabletServiceBackupImpl::TabletSnapshotOp(const TabletSnapshotOpRequestPB* 
     SetupErrorAndRespond(resp->mutable_error(), status, &context);
     return;
   }
+
+  ash::WaitStateInfo::UpdateCurrentTabletId(req->tablet_id(0));
 
   server::UpdateClock(*req, tablet_manager_->server()->Clock());
 

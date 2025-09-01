@@ -523,7 +523,7 @@ You can use only one of the following arguments in the `source` parameter (confi
     CREATE USER ybvoyager PASSWORD 'password';
     ```
 
-1. Grant permissions for migration. Use the `yb-voyager-pg-grant-migration-permissions.sql` script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows:
+1. Grant permissions for migration. Use the [yb-voyager-pg-grant-migration-permissions.sql](../../reference/yb-voyager-pg-grant-migration-permissions/) script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows:
 
     _Warning_: This script transfers ownership of all tables in the specified schemas to the specified replication group. The migration user and the original owner of the tables will be added to the replication group.
 
@@ -561,7 +561,7 @@ You can use only one of the following arguments in the `source` parameter (confi
     CREATE USER ybvoyager PASSWORD 'password';
     ```
 
-1. Grant permissions for migration. Use the `yb-voyager-pg-grant-migration-permissions.sql` script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows:
+1. Grant permissions for migration. Use the [yb-voyager-pg-grant-migration-permissions.sql](../../reference/yb-voyager-pg-grant-migration-permissions/) script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows:
 
     _Warning_: This script transfers ownership of all tables in the specified schemas to the specified replication group. The migration user and the original owner of the tables will be added to the replication group.
 
@@ -589,7 +589,7 @@ If you want yb-voyager to connect to the source database over SSL, refer to [SSL
 
 ## Prepare the target database
 
-Make sure the TServer (9100) and Master (7100) ports are open on the target YugabyteDB cluster. The ports are used during the `export data from target` phase (after the `cutover to target` step) when using the [YugabyteDB gRPC Connector](../../../develop/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/) to initiate Change Data Capture (CDC) from the target and begin streaming ongoing changes.
+Make sure the TServer (9100) and Master (7100) ports are open on the target YugabyteDB cluster. The ports are used during the `export data from target` phase (after the `cutover to target` step) when using the [YugabyteDB gRPC Connector](../../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/) to initiate Change Data Capture (CDC) from the target and begin streaming ongoing changes.
 
 Prepare your target YugabyteDB database cluster by creating a database, and a user for your cluster.
 
@@ -645,11 +645,13 @@ Create a user with [`SUPERUSER`](../../../api/ysql/the-sql-language/statements/d
 
 If you want yb-voyager to connect to the target YugabyteDB database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
 
+Alternatively, if you want to proceed with migration without a superuser, refer to [Import data without a superuser](../../reference/superuser/).
+
 ## Create an export directory
 
 yb-voyager keeps all of its migration state, including exported schema and data, in a local directory called the _export directory_.
 
-Before starting migration, you should create the export directory on a file system that has enough space to keep the entire source database. Ideally, this export directory should be placed inside a parent folder named after your migration for better organization. Next, you should provide the path to the export directory using the mandatory parameter `export-dir` (configuration file) or `--export-dir` flag (CLI) with each invocation of the yb-voyager command.
+Before starting migration, you should create the export directory on a file system that has enough space to keep the entire source database. Ideally, create this export directory inside a parent folder named after your migration for better organization. You need to provide the full path to the export directory in the `export-dir` parameter of your [configuration file](#set-up-a-configuration-file), or in the `--export-dir` flag when running `yb-voyager` commands.
 
 ```sh
 mkdir -p $HOME/<migration-name>/export-dir
@@ -731,11 +733,24 @@ To begin, export the schema from the source database. Once exported, analyze the
 
 #### Export schema
 
+{{< warning title="Technical Advisory" >}}
+
+{{<ta 2968>}} : Import schema fails on all Voyager installs done after August 14, 2025. Impacts [v1.1](../../release-notes/#v1-1-march-7-2023) to [v2025.8.1](../../release-notes/#v2025-8-1-august-5-2025).
+
+{{< /warning >}}
+
 The `yb-voyager export schema` command extracts the schema from the source database, converts it into PostgreSQL format (if the source database is Oracle or MySQL), and dumps the SQL DDL files in the `EXPORT_DIR/schema/*` directories.
 
-The `db-schema` key inside the `source` section parameters (configuration file), or the `--source-db-schema` flag (CLI), is used to specify the schema(s) to migrate from the source database.
+**For PostgreSQL migrations**:
 
-For Oracle, `source-db-schema` (CLI) or `db-schema` (configuration file) can take only one schema name and you can migrate _only one_ schema at a time.
+- Recommended schema optimizations from the [assess migration](#assess-migration) report are applied to ensure YugabyteDB compatibility and optimal performance.
+- A **Schema Optimization Report**, with details and an explanation of every change, is generated for your review.
+
+**For Oracle migrations**:
+
+- `source-db-schema` (CLI) or `db-schema` (configuration file) can take only one schema name and you can migrate _only one_ schema at a time.
+
+The `db-schema` key inside the `source` section parameters (configuration file), or the `--source-db-schema` flag (CLI), is used to specify the schema(s) to migrate from the source database.
 
 Run the command as follows:
 
@@ -771,6 +786,12 @@ Note that if the source database is PostgreSQL and you haven't already run `asse
 Refer to [export schema](../../reference/schema-migration/export-schema/) for more information.
 
 #### Analyze schema
+
+{{< warning title="Technical Advisory" >}}
+
+{{<ta 2968>}} : Import schema fails on all Voyager installs done after August 14, 2025. Impacts [v1.1](../../release-notes/#v1-1-march-7-2023) to [v2025.8.1](../../release-notes/#v2025-8-1-august-5-2025).
+
+{{< /warning >}}
 
 The schema exported in the previous step may not yet be suitable for importing into YugabyteDB. Even though YugabyteDB is PostgreSQL compatible, given its distributed nature, you may need to make minor manual changes to the schema.
 
@@ -831,6 +852,12 @@ To learn more about modelling strategies using YugabyteDB, refer to [Data modeli
 {{< /note >}}
 
 ### Import schema
+
+{{< warning title="Technical Advisory" >}}
+
+{{<ta 2968>}} :  Import schema fails on all Voyager installs done after August 14, 2025. Impacts [v1.1](../../release-notes/#v1-1-march-7-2023) to [v2025.8.1](../../release-notes/#v2025-8-1-august-5-2025).
+
+{{< /warning >}}
 
 Import the schema using the `yb-voyager import schema` command.
 
@@ -1133,7 +1160,7 @@ During cutover, you switch your application over from the source database to the
 
 Keep monitoring the metrics displayed for export data from source and import data to target processes. After you notice that the import of events is catching up to the exported events, you are ready to perform a cutover. You can use the "Remaining events" metric displayed in the import data to target process to help you determine the cutover.
 
-<!--When initiating cutover, you can choose the change data capture replication protocol to use using the [--use-yb-grpc-connector](../../reference/cutover-archive/cutover/) flag. By default the flag is true, and migration will use the gRPC replication protocol to export data from target. For YugabyteDB v2024.1.1 or later, you can set the flag to false to choose the PostgreSQL replication protocol. Before importing the schema you need to ensure that there aren't any ALTER TABLE commands that rewrite the table. You can merge the ALTER TABLE commands into their respective CREATE TABLE commands. For more information on CDC in YugabyteDB, refer to [Change data capture](../../../develop/change-data-capture/).-->
+<!--When initiating cutover, you can choose the change data capture replication protocol to use using the [--use-yb-grpc-connector](../../reference/cutover-archive/cutover/) flag. By default the flag is true, and migration will use the gRPC replication protocol to export data from target. For YugabyteDB v2024.1.1 or later, you can set the flag to false to choose the PostgreSQL replication protocol. Before importing the schema you need to ensure that there aren't any ALTER TABLE commands that rewrite the table. You can merge the ALTER TABLE commands into their respective CREATE TABLE commands. For more information on CDC in YugabyteDB, refer to [Change data capture](../../../additional-features/change-data-capture/).-->
 
 Perform the following steps as part of the cutover process:
 
@@ -1175,7 +1202,7 @@ yb-voyager initiate cutover to target --export-dir <EXPORT_DIR> --prepare-for-fa
 
     {{< /tabpane >}}
 
-    If the target database is on [YugabyteDB Aeon](/preview/yugabyte-cloud), use `--use-yb-grpc-connector false` to allow the workflow to use the [YugabyteDB connector](../../../develop/change-data-capture/using-logical-replication/yugabytedb-connector/).
+    If the target database is on [YugabyteDB Aeon](/preview/yugabyte-cloud), use `--use-yb-grpc-connector false` to allow the workflow to use the [YugabyteDB connector](../../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/).
 
     Refer to [initiate cutover to target](../../reference/cutover-archive/cutover/#cutover-to-target) for more information.
 
@@ -1543,8 +1570,8 @@ DROP USER ybvoyager;
 
 In addition to the Live migration [limitations](../live-migrate/#limitations), the following additional limitations apply to the fall-back feature:
 
-- For [YugabyteDB gRPC Connector](../../../develop/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/), fall-back is unsupported with a YugabyteDB cluster running on YugabyteDB Aeon.
+- For [YugabyteDB gRPC Connector](../../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/), fall-back is unsupported with a YugabyteDB cluster running on YugabyteDB Aeon.
 - For YugabyteDB gRPC Connector, [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity) is partially supported for export or streaming events from YugabyteDB during `export data from target`. Basic SSL and server authentication via root certificate is supported. Client authentication is not supported.
-- Currently, the [YugabyteDB Connector](../../../develop/change-data-capture/using-logical-replication/yugabytedb-connector/) has a known limitation. Refer to GitHub issue [27248](https://github.com/yugabyte/yugabyte-db/issues/27248) for more details.
+- Currently, the [YugabyteDB Connector](../../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/) has a known limitation. Refer to GitHub issue [27248](https://github.com/yugabyte/yugabyte-db/issues/27248) for more details.
 - In the fall-back phase, you need to manually disable (and subsequently re-enable if required) constraints/indexes/triggers on the source database.
 - [Export data from target](../../reference/data-migration/export-data/#export-data-from-target) supports DECIMAL/NUMERIC datatypes for YugabyteDB versions 2.20.1.1 and later.

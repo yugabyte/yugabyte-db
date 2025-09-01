@@ -305,7 +305,7 @@ void AdminCliTest::DoTestImportSnapshot(const string& format) {
   } else {
     ASSERT_OK(RunAdminToolCommand(
         "export_snapshot", snapshot_id, snapshot_file,
-        "-TEST_metadata_file_format_version=" + format));
+        "--TEST_metadata_file_format_version=" + format));
   }
 
   // Import snapshot into the existing table.

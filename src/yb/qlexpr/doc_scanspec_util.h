@@ -34,14 +34,11 @@ dockv::KeyEntryValues GetRangeKeyScanSpec(
     bool* trivial = nullptr);
 
 // Gets the lower/upper bound value of the given range
-dockv::KeyEntryValue GetQLRangeBoundAsPVal(const QLScanRange::QLRange& ql_range,
-                                           SortingType sorting_type,
-                                           bool lower_bound);
+dockv::KeyEntryValue GetQLRangeBoundAsPVal(
+    const QLScanRange::QLRange& ql_range, SortingType sorting_type, bool lower_bound);
 
-const boost::optional<QLScanRange::QLBound> &GetQLRangeBound(
-    const QLScanRange::QLRange& ql_range,
-    SortingType sorting_type,
-    bool lower_bound);
+const std::optional<QLScanRange::QLBound>& GetQLRangeBound(
+    const QLScanRange::QLRange& ql_range, SortingType sorting_type, bool lower_bound);
 
 // Gets whether the lower/upper bound of the given range is inclusive
 bool GetQLRangeBoundIsInclusive(

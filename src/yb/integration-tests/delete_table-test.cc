@@ -34,7 +34,6 @@
 #include <string>
 #include <thread>
 
-#include <boost/optional.hpp>
 #include <gtest/gtest.h>
 
 #include "yb/client/client-test-util.h"
@@ -43,19 +42,28 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/dockv/partition.h"
-#include "yb/common/wire_protocol.h"
+
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol-test-util.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/integration-tests/test_workload.h"
+#include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
-#include "yb/master/master_defaults.h"
+#include "yb/master/catalog_manager.h"
+#include "yb/master/master.h"
+#include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_client.proxy.h"
+#include "yb/master/master_ddl.proxy.h"
+#include "yb/master/master_ddl_client.h"
+#include "yb/master/master_defaults.h"
 
 #include "yb/rpc/rpc_controller.h"
 
@@ -91,6 +99,8 @@ using std::vector;
 using strings::Substitute;
 
 using namespace std::literals;
+
+DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 
 namespace yb {
 
@@ -270,7 +280,7 @@ void DeleteTableTest::DeleteTabletWithRetries(const TServerDetails* ts,
   deadline.AddDelta(timeout);
   Status s;
   while (true) {
-    s = itest::DeleteTablet(ts, tablet_id, delete_type, boost::none, timeout);
+    s = itest::DeleteTablet(ts, tablet_id, delete_type, std::nullopt, timeout);
     if (s.ok()) return;
     if (deadline.ComesBefore(MonoTime::Now())) {
       break;
@@ -482,7 +492,7 @@ TEST_F(DeleteTableTest, TestAtomicDeleteTablet) {
   TServerDetails* ts = ts_map_[cluster_->tablet_server(kTsIndex)->uuid()].get();
 
   // The committed config starts off with an opid_index of -1, so choose something lower.
-  boost::optional<int64_t> opid_index(-2);
+  std::optional<int64_t> opid_index(-2);
   tserver::TabletServerErrorPB::Code error_code;
   ASSERT_OK(itest::WaitUntilTabletRunning(ts, tablet_id, timeout));
 
@@ -634,8 +644,8 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterCrashDuringRemoteBootstrap) {
   string leader_uuid = GetLeaderUUID(cluster_->tablet_server(1)->uuid(), tablet_id);
   TServerDetails* leader = DCHECK_NOTNULL(ts_map_[leader_uuid].get());
   TServerDetails* ts = ts_map_[cluster_->tablet_server(kTsIndex)->uuid()].get();
-  ASSERT_OK(itest::AddServer(
-      leader, tablet_id, ts, PeerMemberType::PRE_VOTER, boost::none, timeout));
+  ASSERT_OK(
+      itest::AddServer(leader, tablet_id, ts, PeerMemberType::PRE_VOTER, std::nullopt, timeout));
   ASSERT_OK(cluster_->WaitForTSToCrash(kTsIndex));
 
   // The superblock should be in TABLET_DATA_COPYING state on disk.
@@ -750,8 +760,8 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterRemoteBootstrapRemoteFails) {
   ASSERT_OK(cluster_->tablet_server(kTsIndex)->Restart());
   TServerDetails* leader = ts_map_[leader_uuid].get();
   TServerDetails* ts = ts_map_[cluster_->tablet_server(0)->uuid()].get();
-  ASSERT_OK(itest::AddServer(
-      leader, tablet_id, ts, PeerMemberType::PRE_VOTER, boost::none, timeout));
+  ASSERT_OK(
+      itest::AddServer(leader, tablet_id, ts, PeerMemberType::PRE_VOTER, std::nullopt, timeout));
   ASSERT_OK(cluster_->WaitForTSToCrash(leader_index));
 
   // The tablet server will detect that the leader failed, and automatically
@@ -882,7 +892,7 @@ TEST_F(DeleteTableTest, TestMergeConsensusMetadata) {
   ASSERT_EQ(ts->uuid(), cmeta_pb.voted_for());
 
   // Tombstone our special little guy, then shut him down.
-  ASSERT_OK(itest::DeleteTablet(ts, tablet_id, TABLET_DATA_TOMBSTONED, boost::none, timeout));
+  ASSERT_OK(itest::DeleteTablet(ts, tablet_id, TABLET_DATA_TOMBSTONED, std::nullopt, timeout));
   ASSERT_NO_FATALS(WaitForTabletTombstonedOnTS(kTsIndex, tablet_id, CMETA_EXPECTED));
   cluster_->tablet_server(kTsIndex)->Shutdown();
 
@@ -999,7 +1009,7 @@ TEST_F(DeleteTableTest, TestDeleteFollowerWithReplicatingOperation) {
   // Now tombstone the follower tablet. This should succeed even though there
   // are uncommitted operations on the replica.
   LOG(INFO) << "Tombstoning tablet " << tablet_id << " on TS " << ts->uuid();
-  ASSERT_OK(itest::DeleteTablet(ts, tablet_id, TABLET_DATA_TOMBSTONED, boost::none, timeout));
+  ASSERT_OK(itest::DeleteTablet(ts, tablet_id, TABLET_DATA_TOMBSTONED, std::nullopt, timeout));
 }
 
 // Verify that memtable is not flushed when tablet is deleted.
@@ -1042,11 +1052,11 @@ TEST_F(DeleteTableTest, TestMemtableNoFlushOnTabletDelete) {
   ASSERT_OK(WriteSimpleTestRow(leader, tablet_id, 1, 1, "hola, world", MonoDelta::FromSeconds(5)));
 
   // Set test flag to detect that memtable should not be flushed on table delete.
-  ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(kLeaderIndex),
-        "TEST_rocksdb_crash_on_flush", "true"));
+  ASSERT_OK(cluster_->SetFlag(
+      cluster_->tablet_server(kLeaderIndex), "TEST_rocksdb_crash_on_flush", "true"));
 
   // Now delete the tablet.
-  ASSERT_OK(itest::DeleteTablet(ts, tablet_id, TABLET_DATA_DELETED, boost::none, timeout));
+  ASSERT_OK(itest::DeleteTablet(ts, tablet_id, TABLET_DATA_DELETED, std::nullopt, timeout));
 
   // Sleep to allow background memtable flush to be scheduled (in case).
   SleepFor(MonoDelta::FromMilliseconds(5 * 1000));
@@ -1103,8 +1113,8 @@ TEST_F(DeleteTableTest, TestOrphanedBlocksClearedOnDelete) {
   cluster_->tablet_server(kLeaderIndex)->Shutdown();
 
   // Tombstone the follower and check that follower superblock is still accessible.
-  ASSERT_OK(itest::DeleteTablet(follower_ts, tablet_id, TABLET_DATA_TOMBSTONED,
-                                boost::none, timeout));
+  ASSERT_OK(
+      itest::DeleteTablet(follower_ts, tablet_id, TABLET_DATA_TOMBSTONED, std::nullopt, timeout));
   ASSERT_NO_FATALS(WaitForTabletTombstonedOnTS(kFollowerIndex, tablet_id, CMETA_EXPECTED));
   RaftGroupReplicaSuperBlockPB superblock_pb;
   ASSERT_OK(inspect_->ReadTabletSuperBlockOnTS(kFollowerIndex, tablet_id, &superblock_pb));
@@ -1164,8 +1174,8 @@ TEST_F(DeleteTableTest, TestFDsNotLeakedOnTabletTombstone) {
   // Tombstone the tablet and then ensure that lsof does not list any
   // tablet-related paths.
   ExternalTabletServer* ets = cluster_->tablet_server(0);
-  ASSERT_OK(itest::DeleteTablet(ts_map_[ets->uuid()].get(),
-                                tablet_id, TABLET_DATA_TOMBSTONED, boost::none, timeout));
+  ASSERT_OK(itest::DeleteTablet(
+      ts_map_[ets->uuid()].get(), tablet_id, TABLET_DATA_TOMBSTONED, std::nullopt, timeout));
   ASSERT_EQ(0, PrintOpenTabletFiles(ets->pid(), tablet_id));
 
   // Restart the TS after deletion and then do the same lsof check again.
@@ -1438,7 +1448,7 @@ TEST_P(DeleteTableTombstonedParamTest, TestTabletTombstone) {
   string tablet_id = tablets[0].tablet_status().tablet_id();
   LOG(INFO) << "Tombstoning first tablet " << tablet_id << "...";
   ASSERT_TRUE(inspect_->DoesConsensusMetaExistForTabletOnTS(kTsIndex, tablet_id)) << tablet_id;
-  ASSERT_OK(itest::DeleteTablet(ts, tablet_id, TABLET_DATA_TOMBSTONED, boost::none, timeout));
+  ASSERT_OK(itest::DeleteTablet(ts, tablet_id, TABLET_DATA_TOMBSTONED, std::nullopt, timeout));
   LOG(INFO) << "Waiting for first tablet to be tombstoned...";
   ASSERT_NO_FATALS(WaitForTabletTombstonedOnTS(kTsIndex, tablet_id, CMETA_EXPECTED));
 
@@ -1455,8 +1465,9 @@ TEST_P(DeleteTableTombstonedParamTest, TestTabletTombstone) {
   ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(kTsIndex), fault_flag, "1.0"));
   tablet_id = tablets[1].tablet_status().tablet_id();
   LOG(INFO) << "Tombstoning second tablet " << tablet_id << "...";
-  WARN_NOT_OK(itest::DeleteTablet(ts, tablet_id, TABLET_DATA_TOMBSTONED, boost::none, timeout),
-              "Delete tablet failed");
+  WARN_NOT_OK(
+      itest::DeleteTablet(ts, tablet_id, TABLET_DATA_TOMBSTONED, std::nullopt, timeout),
+      "Delete tablet failed");
   ASSERT_OK(cluster_->WaitForTSToCrash(kTsIndex));
 
   // Restart the tablet server and wait for the WALs to be deleted and for the
@@ -1511,5 +1522,126 @@ const char* tombstoned_faults[] = {"TEST_fault_crash_after_blocks_deleted",
 
 INSTANTIATE_TEST_CASE_P(FaultFlags, DeleteTableTombstonedParamTest,
                         ::testing::ValuesIn(tombstoned_faults));
+
+class RemoveTablesFromMapsTest : public MiniClusterTestWithClient<MiniCluster> {
+ public:
+  void SetUp() override;
+  virtual MiniClusterOptions MakeMiniClusterOptions();
+  Result<TableId> CreateTable(
+      master::MasterDDLClient& client, const NamespaceName& namespace_name,
+      const TableName& table_name, const Schema& schema);
+  Status WaitForTableAndTabletsToBeRemoved(
+      const std::string& table_id, std::vector<std::string> tablet_ids, MonoDelta timeout);
+};
+
+TEST_F(RemoveTablesFromMapsTest, RemoveDeletedTableFromMap) {
+  const NamespaceName kNamespaceName{"yugabyte"};
+  const TableName kTableName{"test_table"};
+  const MonoDelta kTimeout{60s};
+  auto ddl_client = master::MasterDDLClient(
+      ASSERT_RESULT(cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>()));
+  auto ns_id = ASSERT_RESULT(
+      ddl_client.CreateNamespaceAndWait(kNamespaceName, YQLDatabase::YQL_DATABASE_CQL, kTimeout));
+  auto table_id =
+      ASSERT_RESULT(itest::CreateSimpleTable(ddl_client, kNamespaceName, kTableName, kTimeout));
+  std::vector<std::string> tablet_ids;
+  auto cm = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager_impl();
+  {
+    auto table_info = ASSERT_RESULT(cm->FindTableById(table_id));
+    for (const auto& tablet : ASSERT_RESULT(table_info->GetTabletsIncludeInactive())) {
+      tablet_ids.push_back(tablet->id());
+    }
+  }
+  ASSERT_OK(ddl_client.DeleteTable(table_id, kTimeout));
+  std::string msg = "Wait for tables to be removed from catalog manager map";
+  ASSERT_OK(WaitForTableAndTabletsToBeRemoved(table_id, tablet_ids, MonoDelta::FromSeconds(15)));
+}
+
+TEST_F(RemoveTablesFromMapsTest, RemoveHiddenTableFromMap) {
+  const NamespaceName kNamespaceName{"yugabyte"};
+  const TableName kTableName{"test_table"};
+  const MonoDelta kTimeout{60s};
+
+  auto ddl_client = master::MasterDDLClient(
+      ASSERT_RESULT(cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>()));
+  auto ns_id = ASSERT_RESULT(
+      ddl_client.CreateNamespaceAndWait(kNamespaceName, YQLDatabase::YQL_DATABASE_CQL, kTimeout));
+
+  {
+    auto proxy = ASSERT_RESULT(cluster_->GetLeaderMasterProxy<master::MasterBackupProxy>());
+    master::CreateSnapshotScheduleRequestPB req;
+    auto table_identifier = req.mutable_options()->mutable_filter()->mutable_tables()->add_tables();
+    table_identifier->mutable_namespace_()->set_name("yugabyte");
+    table_identifier->mutable_namespace_()->set_database_type(YQLDatabase::YQL_DATABASE_CQL);
+    req.mutable_options()->set_interval_sec(2);
+    req.mutable_options()->set_retention_duration_sec(5);
+    rpc::RpcController rpc;
+    master::CreateSnapshotScheduleResponsePB resp;
+    ASSERT_OK(proxy.CreateSnapshotSchedule(req, &resp, &rpc));
+    ASSERT_OK(ResponseStatus(resp));
+  }
+
+  std::string table_id =
+      ASSERT_RESULT(itest::CreateSimpleTable(ddl_client, kNamespaceName, kTableName, kTimeout));
+  std::vector<std::string> tablet_ids;
+  auto cm = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager_impl();
+  {
+    auto table_info = ASSERT_RESULT(cm->FindTableById(table_id));
+    for (const auto& tablet : ASSERT_RESULT(table_info->GetTabletsIncludeInactive())) {
+      tablet_ids.push_back(tablet->id());
+    }
+  }
+  ASSERT_OK(ddl_client.DeleteTable(table_id, kTimeout));
+  std::string msg = "Wait for tables to be removed from catalog manager map";
+  ASSERT_OK(WaitForTableAndTabletsToBeRemoved(table_id, tablet_ids, MonoDelta::FromSeconds(15)));
+}
+
+void RemoveTablesFromMapsTest::SetUp() {
+  YBMiniClusterTestBase::SetUp();
+  cluster_ = std::make_unique<MiniCluster>(MakeMiniClusterOptions());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_poll_interval_ms) = 500;
+  ASSERT_OK(cluster_->Start());
+}
+
+MiniClusterOptions RemoveTablesFromMapsTest::MakeMiniClusterOptions() {
+  MiniClusterOptions opts;
+  opts.num_tablet_servers = 1;
+  opts.num_masters = 1;
+  return opts;
+}
+
+Result<TableId> RemoveTablesFromMapsTest::CreateTable(
+    master::MasterDDLClient& client, const NamespaceName& namespace_name,
+    const TableName& table_name, const Schema& schema) {
+  master::CreateTableRequestPB request;
+  request.set_name(table_name);
+  SchemaToPB(schema, request.mutable_schema());
+  if (!namespace_name.empty()) {
+    request.mutable_namespace_()->set_name(namespace_name);
+  }
+  request.mutable_partition_schema()->set_hash_schema(PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA);
+  request.mutable_schema()->mutable_table_properties()->set_num_tablets(1);
+  return client.CreateTable(request);
+}
+
+Status RemoveTablesFromMapsTest::WaitForTableAndTabletsToBeRemoved(
+    const std::string& table_id, std::vector<std::string> tablet_ids, MonoDelta timeout) {
+  auto cm = VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager_impl();
+  return WaitFor(
+      [&cm, &table_id, &tablet_ids]() -> Result<bool> {
+        auto result = cm->FindTableById(table_id);
+        if (result.ok()) {
+          return false;
+        }
+        for (const auto& tablet_id : tablet_ids) {
+          auto result = cm->GetTabletInfo(tablet_id);
+          if (result.ok()) {
+            return false;
+          }
+        }
+        return true;
+      },
+      timeout, "Wait for tables to be removed from catalog manager memory");
+}
 
 }  // namespace yb

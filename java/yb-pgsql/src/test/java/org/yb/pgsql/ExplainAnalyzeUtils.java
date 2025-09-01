@@ -46,7 +46,9 @@ public class ExplainAnalyzeUtils {
   public static final String NODE_VALUES_SCAN = "Values Scan";
   public static final String NODE_YB_BITMAP_TABLE_SCAN = "YB Bitmap Table Scan";
   public static final String NODE_YB_BATCHED_NESTED_LOOP = "YB Batched Nested Loop";
+  public static final String INDEX_SCAN_DIRECTION_FORWARD = "Forward";
   public static final String INDEX_SCAN_DIRECTION_BACKWARD = "Backward";
+  public static final String INDEX_SCAN_DIRECTION_ARBITRARY = "NoMovement";
 
   public static final String PLAN = "Plan";
 
@@ -57,6 +59,8 @@ public class ExplainAnalyzeUtils {
   public static final String RELATIONSHIP_INNER_TABLE = "Inner";
 
   public static final String TOTAL_COST = "Total Cost";
+
+  public static final String QUERY_ID = "Query Identifier";
 
   public interface TopLevelCheckerBuilder extends ObjectCheckerBuilder {
     TopLevelCheckerBuilder plan(ObjectChecker checker);
@@ -271,7 +275,7 @@ public class ExplainAnalyzeUtils {
     return JsonUtil.makeCheckerBuilder(TopLevelCheckerBuilder.class, false);
   }
 
-  private static PlanCheckerBuilder makePlanBuilder() {
+  public static PlanCheckerBuilder makePlanBuilder() {
     return JsonUtil.makeCheckerBuilder(PlanCheckerBuilder.class, false);
   }
 
@@ -332,6 +336,22 @@ public class ExplainAnalyzeUtils {
     if (!rootArray.isEmpty()) {
       JsonObject plan = rootArray.get(0).getAsJsonObject().getAsJsonObject(PLAN);
       return new Cost(plan.get(TOTAL_COST).getAsString());
+    }
+    throw new IllegalArgumentException("Explain plan for this query returned empty.");
+  }
+
+  public static long getExplainQueryId(Statement stmt, String query)
+  throws Exception {
+    stmt.execute("set compute_query_id to on");
+    ResultSet rs = stmt.executeQuery(String.format(
+      "EXPLAIN (FORMAT json, VERBOSE on) %s", query));
+    rs.next();
+    JsonElement json = JsonParser.parseString(rs.getString(1));
+    JsonArray rootArray = json.getAsJsonArray();
+    if (!rootArray.isEmpty()) {
+      long queryId = rootArray.get(0).getAsJsonObject().get(QUERY_ID).getAsLong();
+
+      return queryId;
     }
     throw new IllegalArgumentException("Explain plan for this query returned empty.");
   }

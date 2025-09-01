@@ -36,6 +36,7 @@
 #include "yb/util/env.h"
 #include "yb/util/path_util.h"
 #include "yb/util/status_format.h"
+#include "yb/util/std_util.h"
 #include "yb/util/string_trim.h"
 #include "yb/docdb/docdb_pgapi.h"
 
@@ -170,7 +171,7 @@ Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
     }
   }
 
-  if (current_txn_id_.is_initialized()) {
+  if (current_txn_id_.has_value()) {
     if (!increment_write_id) {
       return STATUS(
           InternalError, "For transactional write only increment_write_id=true is supported");
@@ -397,13 +398,11 @@ std::pair<dockv::KeyBytes, KeyBuffer> DocDBRocksDBUtil::ProcessExternalIntents(
       key_.AppendRawBytes(slice);
     }
 
-    void SetValue(const Slice& slice) override {
-      value_ = slice;
-    }
+    void SetValue(const Slice& slice) override { value_ = slice; }
 
-    boost::optional<std::pair<Slice, Slice>> Next() override {
+    std::optional<std::pair<Slice, Slice>> Next() override {
       if (next_idx_ >= intents_.size()) {
-        return boost::none;
+        return std::nullopt;
       }
 
       // It is ok to have inefficient code in tests.
@@ -573,7 +572,7 @@ Result<CompactionSchemaInfo> DocDBRocksDBUtil::CotablePacking(
   return CompactionSchemaInfo {
     .table_type = TableType::YQL_TABLE_TYPE,
     .schema_version = schema_version,
-    .schema_packing = rpc::SharedField(doc_read_context_, &packing),
+    .schema_packing = SharedField(doc_read_context_, &packing),
     .cotable_id = table_id,
     .deleted_cols = {},
     .packed_row_version = PackedRowVersion(TableType::YQL_TABLE_TYPE, false),

@@ -402,14 +402,29 @@ func (server *RPCServer) SubmitTask(
 	}
 	setupCGroupInput := req.GetSetupCGroupInput()
 	if setupCGroupInput != nil {
-		SetupCgroupHandler := task.NewSetupCgroupHandler(
+		setupCgroupHandler := task.NewSetupCgroupHandler(
 			setupCGroupInput,
 			username,
 		)
-		err := task.GetTaskManager().Submit(ctx, taskID, SetupCgroupHandler)
+		err := task.GetTaskManager().Submit(ctx, taskID, setupCgroupHandler)
 		if err != nil {
 			util.FileLogger().
 				Errorf(ctx, "Error in running setup cGroup - %s", err.Error())
+			return res, status.Error(codes.Internal, err.Error())
+		}
+		res.TaskId = taskID
+		return res, nil
+	}
+	destroyServerInput := req.GetDestroyServerInput()
+	if destroyServerInput != nil {
+		destroyServerHandler := task.NewDestroyServerHandler(
+			destroyServerInput,
+			username,
+		)
+		err := task.GetTaskManager().Submit(ctx, taskID, destroyServerHandler)
+		if err != nil {
+			util.FileLogger().
+				Errorf(ctx, "Error in running destroy server - %s", err.Error())
 			return res, status.Error(codes.Internal, err.Error())
 		}
 		res.TaskId = taskID
@@ -596,13 +611,13 @@ func (server *RPCServer) DownloadFile(
 		}
 		if err != nil {
 			util.FileLogger().Errorf(ctx, "Error in reading file %s - %s", filename, err.Error())
-			return status.Errorf(codes.Internal, err.Error())
+			return status.Error(codes.Internal, err.Error())
 		}
 		res.ChunkData = res.ChunkData[:n]
 		err = stream.Send(res)
 		if err != nil {
 			util.FileLogger().Errorf(ctx, "Error in sending file %s - %s", filename, err.Error())
-			return status.Errorf(codes.Internal, err.Error())
+			return status.Error(codes.Internal, err.Error())
 		}
 	}
 	return nil

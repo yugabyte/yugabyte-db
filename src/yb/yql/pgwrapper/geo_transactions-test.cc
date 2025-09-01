@@ -27,6 +27,7 @@ using std::string;
 DECLARE_int32(master_ts_rpc_timeout_ms);
 DECLARE_bool(auto_create_local_transaction_tables);
 DECLARE_bool(auto_promote_nonlocal_transactions_to_global);
+DECLARE_bool(TEST_enable_tablespace_based_transaction_placement);
 DECLARE_bool(force_global_transactions);
 DECLARE_bool(transaction_tables_use_preferred_zones);
 
@@ -819,6 +820,114 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestAlterTableSetTablespaceM
   // Check that the error message contains the expected text.
   std::string msg = commitStatus.ToString();
   ASSERT_NE(msg.find("Catalog Version Mismatch"), std::string::npos);
+}
+
+class GeoTransactionsTablespaceBasedSelectionCandidatesTest : public GeoTransactionsTest {
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_tablespace_based_transaction_placement) = false;
+    GeoTransactionsTest::SetUp();
+  }
+};
+
+TEST_F(GeoTransactionsTablespaceBasedSelectionCandidatesTest, TestCandidates) {
+  constexpr int tables_per_region = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_promote_nonlocal_transactions_to_global) = false;
+  SetupTablesAndTablespaces(tables_per_region);
+
+  auto conn = ASSERT_RESULT(Connect());
+  auto get_ts_oid = [&](int region) -> Result<int32_t> {
+    auto result = VERIFY_RESULT(conn.FetchFormat(
+        "SELECT oid FROM pg_tablespace WHERE spcname = 'tablespace$0'", region));
+    return pgwrapper::GetValue<pgwrapper::PGOid>(result.get(), 0, 0);
+  };
+  auto local_ts_oid = ASSERT_RESULT(get_ts_oid(kLocalRegion));
+  auto other_ts_oid = ASSERT_RESULT(get_ts_oid(kOtherRegion));
+
+  CloudInfoPB local_cloud_info;
+  local_cloud_info.set_placement_cloud("cloud0");
+  local_cloud_info.set_placement_region(Format("rack$0", kLocalRegion));
+  local_cloud_info.set_placement_zone("zone");
+
+  {
+    auto tablets = ASSERT_RESULT(client_->GetTransactionStatusTablets(local_cloud_info));
+    ASSERT_TRUE(tablets.tablespaces.empty());
+    ASSERT_EQ(tablets.global_tablets.size(), 3);
+    ASSERT_EQ(tablets.region_local_tablets.size(), 3);
+  }
+
+  auto version = GetCurrentVersion();
+  ASSERT_OK(SET_FLAG(TEST_enable_tablespace_based_transaction_placement, true));
+  WaitForStatusTabletsVersion(version + 1);
+
+  {
+    auto tablets = ASSERT_RESULT(client_->GetTransactionStatusTablets(local_cloud_info));
+    ASSERT_EQ(tablets.global_tablets.size(), 3);
+    ASSERT_EQ(tablets.region_local_tablets.size(), 3);
+    ASSERT_TRUE(tablets.tablespaces.contains(local_ts_oid));
+    ASSERT_FALSE(tablets.tablespaces.contains(other_ts_oid));
+
+    auto& local_ts = tablets.tablespaces[local_ts_oid];
+    ASSERT_EQ(local_ts.tablets, tablets.region_local_tablets);
+    auto cloud_info = local_ts.placement_info.placement_blocks().begin()->cloud_info();
+    ASSERT_EQ(cloud_info.placement_region(), local_cloud_info.placement_region());
+  }
+}
+
+class GeoTransactionsWildcardTest : public GeoTransactionsTest {
+ protected:
+  void SetupTablespaces() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = true;
+    auto conn = ASSERT_RESULT(Connect());
+    for (size_t i = 1; i <= NumRegions(); ++i) {
+      ASSERT_OK(conn.ExecuteFormat(R"#(
+          CREATE TABLESPACE tablespace$0 WITH (replica_placement='{
+            "num_replicas": 1,
+            "placement_blocks":[{
+              "cloud": "cloud0",
+              "region": "rack$0",
+              "zone": "*",
+              "min_num_replicas": 1
+            }]
+          }')
+      )#", i));
+    }
+  }
+};
+
+TEST_F_EX(
+    GeoTransactionsTest, TestTransactionTabletSelectionWildcard, GeoTransactionsWildcardTest) {
+  constexpr int tables_per_region = 1;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_promote_nonlocal_transactions_to_global) = false;
+  SetupTablesAndTablespaces(tables_per_region);
+
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kLocal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kFalse, ExpectedLocality::kGlobal);
+  CheckAbort(
+      kOtherRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, 1 /* num_aborts */);
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
 }
 
 } // namespace client

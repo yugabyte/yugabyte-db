@@ -125,14 +125,16 @@ class Proxy {
                     const google::protobuf::Message& req,
                     google::protobuf::Message* resp,
                     RpcController* controller,
-                    ResponseCallback callback);
+                    ResponseCallback callback,
+                    bool send_metadata = false);
 
   void AsyncRequest(const RemoteMethod* method,
                     std::shared_ptr<const OutboundMethodMetrics> method_metrics,
                     const LightweightMessage& req,
                     LightweightMessage* resp,
                     RpcController* controller,
-                    ResponseCallback callback);
+                    ResponseCallback callback,
+                    bool send_metadata = false);
 
   // The same as AsyncRequest(), except that the call blocks until the call
   // finishes. If the call fails, returns a non-OK result.
@@ -140,13 +142,15 @@ class Proxy {
                      std::shared_ptr<const OutboundMethodMetrics> method_metrics,
                      const google::protobuf::Message& req,
                      google::protobuf::Message* resp,
-                     RpcController* controller);
+                     RpcController* controller,
+                     bool send_metadata = false);
 
   Status SyncRequest(const RemoteMethod* method,
                      std::shared_ptr<const OutboundMethodMetrics> method_metrics,
                      const LightweightMessage& request,
                      LightweightMessage* resp,
-                     RpcController* controller);
+                     RpcController* controller,
+                     bool send_metadata = false);
 
   // Is the service local?
   bool IsServiceLocal() const { return call_local_service_; }
@@ -170,24 +174,27 @@ class Proxy {
                       AnyMessagePtr resp,
                       RpcController* controller,
                       ResponseCallback callback,
-                      bool force_run_callback_on_reactor);
+                      bool force_run_callback_on_reactor,
+                      bool send_metadata);
 
   Status DoSyncRequest(const RemoteMethod* method,
                        std::shared_ptr<const OutboundMethodMetrics> method_metrics,
                        AnyMessageConstPtr req,
                        AnyMessagePtr resp,
-                       RpcController* controller);
+                       RpcController* controller,
+                       bool send_metadata);
 
   static void NotifyFailed(RpcController* controller, const Status& status);
 
   void AsyncLocalCall(
       const RemoteMethod* method, AnyMessageConstPtr req, AnyMessagePtr resp,
-      RpcController* controller, ResponseCallback callback, bool force_run_callback_on_reactor);
+      RpcController* controller, ResponseCallback callback, bool force_run_callback_on_reactor,
+      bool send_metadata);
 
   void AsyncRemoteCall(
       const RemoteMethod* method, std::shared_ptr<const OutboundMethodMetrics> method_metrics,
       AnyMessageConstPtr req, AnyMessagePtr resp, RpcController* controller,
-      ResponseCallback callback, bool force_run_callback_on_reactor);
+      ResponseCallback callback, bool force_run_callback_on_reactor, bool send_metadata);
 
   bool PrepareCall(AnyMessageConstPtr req, RpcController* controller);
 

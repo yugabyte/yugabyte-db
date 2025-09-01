@@ -217,7 +217,7 @@ This is the result:
  timestamp with time zone    | text, timestamp without time zone
 ```
 
-(The output also lists overloads for the _timetz_ data type. This has been elided because, following the [PostgreSQL documentation](https://www.postgresql.org/docs/11/datatype-datetime.html#DATATYPE-DATETIME-TABLE), Yugabyte recommends that you don't use this data type.)
+(The output also lists overloads for the _timetz_ data type. This has been elided because, following the [PostgreSQL documentation](https://www.postgresql.org/docs/15/datatype-datetime.html#DATATYPE-DATETIME-TABLE), Yugabyte recommends that you don't use this data type.)
 
 Create wrapper functions for the four listed built-in functions:
 

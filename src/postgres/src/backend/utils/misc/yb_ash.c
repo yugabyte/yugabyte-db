@@ -61,6 +61,7 @@
 #define ACTIVE_SESSION_HISTORY_COLS_V2 13
 #define ACTIVE_SESSION_HISTORY_COLS_V3 14
 #define ACTIVE_SESSION_HISTORY_COLS_V4 15
+#define ACTIVE_SESSION_HISTORY_COLS_V5 16
 
 #define MAX_NESTED_QUERY_LEVEL 64
 
@@ -101,6 +102,8 @@ typedef struct YbAshNestedQueryIdStack
 static YbAsh *yb_ash = NULL;
 static YbAshNestedQueryIdStack query_id_stack;
 static int	nested_level = 0;
+static bool pop_query_id_before_push = false;
+static uint64 query_id_to_be_popped_before_push = 0;
 
 static void YbAshInstallHooks(void);
 static int	yb_ash_cb_max_entries(void);
@@ -189,6 +192,8 @@ YbAshInit(void)
 		? YBCGetConstQueryId(QUERY_ID_TYPE_BACKGROUND_WORKER)
 		: YBCGetConstQueryId(QUERY_ID_TYPE_DEFAULT);
 	query_id_stack.num_query_ids_not_pushed = 0;
+
+	EnableQueryId();
 }
 
 void
@@ -260,6 +265,10 @@ YbAshNestedQueryIdStackPop(uint64 query_id)
 		--query_id_stack.num_query_ids_not_pushed;
 		return 0;
 	}
+
+	if (pop_query_id_before_push && query_id == query_id_to_be_popped_before_push)
+		Assert(query_id_stack.top_index > 0 &&
+			   query_id_stack.query_ids[query_id_stack.top_index] == query_id);
 
 	/*
 	 * When an extra ExecutorEnd is called during PortalCleanup,
@@ -487,11 +496,27 @@ yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 	PG_END_TRY();
 }
 
+static uint64
+GetDefaultQueryId()
+{
+	YbcAshConstQueryIdType type =
+		IsBackgroundWorker ? QUERY_ID_TYPE_BACKGROUND_WORKER
+		: QUERY_ID_TYPE_DEFAULT;
+
+	return YBCGetConstQueryId(type);
+}
+
 static void
 YbAshSetQueryId(uint64 query_id)
 {
 	if (set_query_id())
 	{
+		if (pop_query_id_before_push)
+		{
+			YbAshNestedQueryIdStackPop(query_id_to_be_popped_before_push);
+			pop_query_id_before_push = false;
+			query_id_to_be_popped_before_push = 0;
+		}
 		if (YbAshNestedQueryIdStackPush(query_id))
 		{
 			LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
@@ -510,9 +535,18 @@ YbAshResetQueryId(uint64 query_id)
 
 		if (prev_query_id != 0)
 		{
-			LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
-			MyProc->yb_ash_metadata.query_id = prev_query_id;
-			LWLockRelease(&MyProc->yb_ash_metadata_lock);
+			if (prev_query_id == GetDefaultQueryId())
+			{
+				query_id_to_be_popped_before_push = query_id;
+				pop_query_id_before_push = true;
+				YbAshNestedQueryIdStackPush(query_id);
+			}
+			else
+			{
+				LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
+				MyProc->yb_ash_metadata.query_id = prev_query_id;
+				LWLockRelease(&MyProc->yb_ash_metadata_lock);
+			}
 		}
 	}
 }
@@ -539,6 +573,21 @@ YbAshUnsetMetadata(void)
 	 * returns an error. Reset the stack here. We can remove this if we
 	 * make query_id atomic
 	 */
+	if (pop_query_id_before_push)
+	{
+		uint64		prev_query_id = YbAshNestedQueryIdStackPop(query_id_to_be_popped_before_push);
+
+		pop_query_id_before_push = false;
+		query_id_to_be_popped_before_push = 0;
+
+		if (prev_query_id != 0)
+		{
+			LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
+			MyProc->yb_ash_metadata.query_id = prev_query_id;
+			LWLockRelease(&MyProc->yb_ash_metadata_lock);
+		}
+	}
+
 	query_id_stack.top_index = 0;
 	query_id_stack.num_query_ids_not_pushed = 0;
 
@@ -864,6 +913,8 @@ static void
 copy_non_pgproc_sample_fields(TimestampTz sample_time, int index)
 {
 	YbcAshSample *cb_sample = &yb_ash->circular_buffer[index];
+	int64_t rss_mem_bytes = 0;
+	int64_t pss_mem_bytes = 0;
 
 	/* top_level_node_id is constant for all PG samples */
 	if (get_top_level_node_id())
@@ -874,6 +925,9 @@ copy_non_pgproc_sample_fields(TimestampTz sample_time, int index)
 	/* rpc_request_id is 0 for PG samples */
 	cb_sample->rpc_request_id = 0;
 	cb_sample->sample_time = sample_time;
+
+	YbPgGetCurRssPssMemUsage(cb_sample->metadata.pid, &rss_mem_bytes, &pss_mem_bytes);
+	cb_sample->metadata.pss_mem_bytes = (pss_mem_bytes != -1) ? pss_mem_bytes : rss_mem_bytes;
 }
 
 /*
@@ -925,7 +979,7 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 	int			i;
 	static int	ncols = 0;
 
-	if (ncols < ACTIVE_SESSION_HISTORY_COLS_V4)
+	if (ncols < ACTIVE_SESSION_HISTORY_COLS_V5)
 		ncols = YbGetNumberOfFunctionOutputColumns(F_YB_ACTIVE_SESSION_HISTORY);
 
 	/* ASH must be loaded first */
@@ -1051,6 +1105,9 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 		if (ncols >= ACTIVE_SESSION_HISTORY_COLS_V4)
 			values[j++] =
 				UInt32GetDatum(YBCAshNormalizeComponentForTServerEvents(sample->encoded_wait_event_code, true));
+
+		if (ncols >= ACTIVE_SESSION_HISTORY_COLS_V5)
+			values[j++] = Int64GetDatum(metadata->pss_mem_bytes);
 
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 	}

@@ -41,7 +41,6 @@
 #include "utils/typcache.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
-#include "yb/yql/pggate/ybc_pggate.h"
 #include "yb_ysql_conn_mgr_helper.h"
 
 /*
@@ -99,6 +98,10 @@ extern uint64_t YBGetActiveCatalogCacheVersion();
 
 extern uint64_t YbGetCatalogCacheVersion();
 extern uint64_t YbGetNewCatalogVersion();
+extern void YbSetNeedInvalidateAllTableCache();
+extern void YbResetNeedInvalidateAllTableCache();
+extern bool YbGetNeedInvalidateAllTableCache();
+extern bool YbCanTryInvalidateTableCacheEntry();
 
 extern void YbUpdateCatalogCacheVersion(uint64_t catalog_cache_version);
 extern void YbResetNewCatalogVersion();
@@ -685,6 +688,12 @@ extern char *yb_default_replica_identity;
  */
 extern bool yb_test_fail_table_rewrite_after_creation;
 
+/*
+ * If set to true, force a full catalog cache refresh before
+ * executing the next top level statement.
+ */
+extern bool yb_test_preload_catalog_tables;
+
 /* GUC variable yb_test_stay_in_global_catalog_version_mode. */
 extern bool yb_test_stay_in_global_catalog_version_mode;
 
@@ -714,6 +723,11 @@ extern int	yb_test_delay_after_applying_inval_message_ms;
  * If > 0, add a delay before calling YBCPgSetTserverCatalogMessageList.
  */
 extern int	yb_test_delay_set_local_tserver_inval_message_ms;
+
+/*
+ * If > 0, sleep for this many ms before committing the DDL
+ */
+extern double yb_test_delay_next_ddl;
 
 /*
  * Denotes whether DDL operations touching DocDB system catalog will be rolled
@@ -753,6 +767,7 @@ extern bool yb_enable_advisory_locks;
  * Enable invalidation messages.
  */
 extern bool yb_enable_invalidation_messages;
+extern bool yb_enable_invalidate_table_cache_entry;
 extern int	yb_invalidation_message_expiration_secs;
 extern int	yb_max_num_invalidation_messages;
 
@@ -779,9 +794,12 @@ extern bool yb_enable_docdb_vector_type;
  */
 extern bool yb_silence_advisory_locks_not_supported_error;
 
-extern bool yb_skip_data_insert_for_xcluster_target;
+/*
+ * GUC to indicate DDL executed in a Automatic xCluster mode target universe.
+ */
+extern bool yb_xcluster_automatic_mode_target_ddl;
 
-extern bool yb_force_early_ddl_serialization;
+extern bool yb_user_ddls_preempt_auto_analyze;
 
 /*
  * See also ybc_util.h which contains additional such variable declarations for
@@ -894,7 +912,7 @@ void		YBAddModificationAspects(YbDdlMode mode);
 extern void YBBeginOperationsBuffering();
 extern void YBEndOperationsBuffering();
 extern void YBResetOperationsBuffering();
-extern void YBFlushBufferedOperations();
+extern void YBFlushBufferedOperations(YbcFlushDebugContext debug_context);
 extern void YBAdjustOperationsBuffering(int multiple);
 
 bool		YBEnableTracing();
@@ -1027,11 +1045,18 @@ extern const uint32 yb_funcs_unsafe_for_pushdown[];
 extern const uint32 yb_funcs_safe_for_mixed_mode_pushdown[];
 
 /*
+ * List of functions that are safe to push down, but need to be evaluated
+ * to a constant value before being sent to DocDB.
+ */
+extern const uint32 yb_pushdown_funcs_to_constify[];
+
+/*
  * Number of functions in the lists above.
  */
 extern const int yb_funcs_safe_for_pushdown_count;
 extern const int yb_funcs_unsafe_for_pushdown_count;
 extern const int yb_funcs_safe_for_mixed_mode_pushdown_count;
+extern const int yb_pushdown_funcs_to_constify_count;
 
 /**
  * Use the YB_PG_PDEATHSIG environment variable to set the signal to be sent to
@@ -1345,17 +1370,20 @@ YbIsNormalDbOidReserved(Oid db_oid)
 extern Oid	YbGetSQLIncrementCatalogVersionsFunctionOid();
 
 extern bool YbIsReadCommittedTxn();
+extern bool YbSkipPgSnapshotManagement();
 
 extern YbOptionalReadPointHandle YbBuildCurrentReadPointHandle();
 extern void YbUseSnapshotReadTime(uint64_t read_time);
 extern YbOptionalReadPointHandle YbRegisterSnapshotReadTime(uint64_t read_time);
-
+extern YbOptionalReadPointHandle YbResetTransactionReadPoint();
 
 extern bool YbUseFastBackwardScan();
 
 extern bool YbIsYsqlConnMgrWarmupModeEnabled();
 
 extern bool YbIsAuthBackend();
+
+extern bool YbIsYsqlConnMgrEnabled();
 
 bool		YbIsAttrPrimaryKeyColumn(Relation rel, AttrNumber attnum);
 
@@ -1396,4 +1424,9 @@ extern void YbForceSendInvalMessages();
 
 extern long YbGetPeakRssKb();
 
+extern bool YbIsAnyDependentGeneratedColPK(Relation rel, AttrNumber attnum);
+
+extern bool YbCheckTserverResponseCacheForAuthGflags();
+
+extern bool YbUseTserverResponseCacheForAuth(uint64_t shared_catalog_version);
 #endif							/* PG_YB_UTILS_H */

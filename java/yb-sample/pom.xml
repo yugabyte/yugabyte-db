@@ -8,7 +8,7 @@
   <parent>
     <groupId>org.yb</groupId>
     <artifactId>yb-parent</artifactId>
-    <version>0.8.105-SNAPSHOT</version>
+    <version>0.8.107-SNAPSHOT</version>
   </parent>
   <artifactId>yb-sample</artifactId>
   <name>YB Manual Support</name>

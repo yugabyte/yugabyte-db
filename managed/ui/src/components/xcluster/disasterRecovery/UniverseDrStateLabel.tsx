@@ -40,7 +40,7 @@ export const UniverseDrStateLabel = ({
       <Typography
         variant={variant}
         component="span"
-        className={clsx(classes.pill, classes.inactive)}
+        className={clsx(classes.pill, classes.metadataGrey)}
       >
         {t('undefined')}
       </Typography>
@@ -56,7 +56,7 @@ export const UniverseDrStateLabel = ({
         <Typography
           variant={variant}
           component="span"
-          className={clsx(classes.pill, classes.inactive)}
+          className={clsx(classes.pill, classes.metadataGrey)}
         >
           {t(universeDrState)}
         </Typography>

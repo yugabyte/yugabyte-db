@@ -250,7 +250,7 @@ bool RegisterFlagNewInstallValue(const std::string& flag_name, const std::string
   DEFINE_##type(name, default_value, description)
 
 #define DEFINE_test_flag(type, name, default_value, description) \
-  BOOST_PP_CAT(DEFINE_, type)(TEST_##name, default_value, description " (For testing only!)"); \
+  _DEFINE_flag(type, BOOST_PP_CAT(TEST_, name), default_value, description " (For testing only!)");\
   TAG_FLAG(BOOST_PP_CAT(TEST_, name), unsafe); \
   TAG_FLAG(BOOST_PP_CAT(TEST_, name), hidden)
 

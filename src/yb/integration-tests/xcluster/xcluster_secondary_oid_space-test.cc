@@ -24,7 +24,7 @@ namespace yb {
 
 class OidAllocationTest : public pgwrapper::PgMiniTestBase {
  public:
-  void SetUp() {
+  void SetUp() override {
     pgwrapper::PgMiniTestBase::SetUp();
 
     master::GetNamespaceInfoResponsePB resp;
@@ -44,7 +44,7 @@ TEST_F(OidAllocationTest, SimpleOidAllocation) {
 
   auto ReservePgsqlOids = [&](uint32_t next_oid, uint32_t count, bool use_secondary_space) {
     return client_->ReservePgsqlOids(
-        namespace_id_, next_oid, count, &begin_oid, &end_oid, use_secondary_space);
+        namespace_id_, next_oid, count, use_secondary_space, &begin_oid, &end_oid);
   };
 
   const uint32_t num_of_oids_to_request = 100;
@@ -83,7 +83,7 @@ TEST_F(OidAllocationTest, OidAllocationLimits) {
 
   auto ReservePgsqlOids = [&](uint32_t next_oid, uint32_t count, bool use_secondary_space) {
     return client_->ReservePgsqlOids(
-        namespace_id_, next_oid, count, &begin_oid, &end_oid, use_secondary_space);
+        namespace_id_, next_oid, count, use_secondary_space, &begin_oid, &end_oid);
   };
 
   const uint32_t num_of_oids_to_request = 100;
@@ -112,7 +112,7 @@ TEST_F(OidAllocationTest, OidAllocationOverlappingLimits) {
 
   auto ReservePgsqlOids = [&](uint32_t next_oid, uint32_t count, bool use_secondary_space) {
     return client_->ReservePgsqlOids(
-        namespace_id_, next_oid, count, &begin_oid, &end_oid, use_secondary_space);
+        namespace_id_, next_oid, count, use_secondary_space, &begin_oid, &end_oid);
   };
 
   // Close enough to limit that we get fewer than the OIDs we asked for.
@@ -147,7 +147,7 @@ TEST_F(OidAllocationTest, CacheInvalidation) {
   uint32_t oid_cache_invalidations_count;
   auto ReservePgsqlOids = [&](uint32_t next_oid, uint32_t count) {
     return client_->ReservePgsqlOids(
-        namespace_id_, next_oid, count, &begin_oid, &end_oid, /*use_secondary_space=*/false,
+        namespace_id_, next_oid, count, /*use_secondary_space=*/false, &begin_oid, &end_oid,
         &oid_cache_invalidations_count);
   };
 

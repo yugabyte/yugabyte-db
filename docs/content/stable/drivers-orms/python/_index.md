@@ -2,7 +2,7 @@
 title: Python drivers and ORMs
 headerTitle: Python
 linkTitle: Python
-description: Python Drivers and ORMs support for YugabyteDB.
+description: Python drivers and ORMs support for YugabyteDB.
 menu:
   stable:
     identifier: python-drivers
@@ -19,6 +19,7 @@ The following projects can be used to implement Python applications using the Yu
 | ------- | ------------------------ | ------------------------ | ---------------------|
 | Yugabyte Psycopg2 Smart Driver [Recommended] | [Documentation](yugabyte-psycopg2/) <br /> [Reference](yugabyte-psycopg2-reference/)| 2.9.3 | 2.8 and above |
 | PostgreSQL Psycopg2 Driver | [Documentation](postgres-psycopg2/) <br /> [Reference](postgres-psycopg2-reference/) | 2.9.3 | 2.8 and above |
+| PostgreSQL Psycopg3 Driver | [Documentation](postgres-psycopg3/) <br /> [Reference](postgres-psycopg3-reference/) | 3.2.9 | 2.20 and above |
 | aiopg | [Documentation](aiopg/) | 1.4 | 2.8 and above |
 | YugabyteDB Python Driver for YCQL | [Documentation](ycql/) | [3.25.0](https://github.com/yugabyte/cassandra-python-driver/tree/master) | |
 
@@ -45,8 +46,8 @@ To develop Python applications for YugabyteDB, you need the following:
 
 - **YugabyteDB cluster**
 
-  - Create a free cluster on YugabyteDB Aeon. Refer to [Use a cloud cluster](/preview/tutorials/quick-start-yugabytedb-managed/). Note that YugabyteDB Aeon requires SSL.
-  - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/preview/tutorials/quick-start/macos/).
+  - Create a free cluster on YugabyteDB Aeon. Refer to [Use a cloud cluster](/preview/quick-start-yugabytedb-managed/). Note that YugabyteDB Aeon requires SSL.
+  - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/preview/quick-start/macos/).
 
 ## Next step
 

@@ -170,7 +170,7 @@ class MetricsSnapshotter::Thread {
   // The actual running thread (NULL before it is started)
   scoped_refptr<yb::Thread> thread_;
 
-  boost::optional<yb::client::AsyncClientInitializer> async_client_init_;
+  std::optional<yb::client::AsyncClientInitializer> async_client_init_;
 
   // True once at least one attempt to record a snapshot has been made.
   bool has_metricssnapshotted_ = false;

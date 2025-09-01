@@ -12,6 +12,12 @@ menu:
 type: docs
 ---
 
+{{< page-finder/head text="Upgrade YugabyteDB" subtle="across different products">}}
+  {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" current="" >}}
+  {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" url="../../yugabyte-platform/manage-deployments/upgrade-software/" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/preview/yugabyte-cloud/cloud-clusters/cloud-maintenance/" >}}
+{{< /page-finder/head >}}
+
 {{< tip title="Tip" >}}
 Ensure that you are using the most up-to-date version of the software to optimize performance, access new features, and safeguard against software bugs.
 {{< /tip >}}
@@ -24,6 +30,9 @@ The `data`, `log`, and `conf` directories are typically stored in a fixed locati
 
 {{< warning >}}
 Review the following information before starting an upgrade.
+{{< /warning >}}
+{{< warning title="YSQL major version upgrades" >}}
+To upgrade YugabyteDB to a version based on a different version of PostgreSQL (for example, from v2024.2 based on PG 11 to v2.25 or later based on PG 15), you need to perform additional steps. Refer to [YSQL major upgrade](../ysql-major-upgrade-yugabyted/).
 {{< /warning >}}
 
 - Make sure your operating system is up to date. If your universe is running on a [deprecated OS](../../reference/configuration/operating-systems/), you need to update your OS before you can upgrade to the next major YugabyteDB release.
@@ -40,7 +49,9 @@ Review the following information before starting an upgrade.
 
 - Roll back is supported in v2.20.2 and later only. If you are upgrading from v2.20.1.x or earlier, follow the instructions for [v2.18](https://docs-archive.yugabyte.com/v2.18/manage/upgrade-deployment/).
 
-- You can upgrade from any version of 2.14.x to any stable version in one go.
+- You can upgrade from one stable version to another in one go, even across major versions, as long as they are in the same major YSQL version. For information on performing major YSQL version upgrades, refer to [YSQL major upgrade](../ysql-major-upgrade-yugabyted/).
+
+- After finalizing an upgrade, snapshots from the previous version can no longer be used for PITR. Backups taken on a newer version cannot be restored to universes running a previous version. Backups taken before the upgrade can be used for restore.
 
 ## Upgrade YugabyteDB cluster
 
@@ -59,7 +70,7 @@ During the upgrade phase, you deploy the binaries of the new version to the Yuga
 Before starting the upgrade process, ensure that the cluster is healthy.
 
 1. Make sure that all YB-Master processes are running at `http://<any-yb-master>:7000/`.
-1. Make sure there are no leaderless or under replicated tablets at `http://<any-yb-master>:7000/tablet-replication`.
+1. Make sure there are no leaderless or under-replicated tablets at `http://<any-yb-master>:7000/tablet-replication`.
 1. Make sure that all YB-TServer processes are running and the cluster load is balanced at `http://<any-yb-master>:7000/tablet-servers`.
 
 ![Tablet Servers](/images/manage/upgrade-deployment/tablet-servers.png)
@@ -121,7 +132,7 @@ Upgrade the YB-TServers one node at a time:
     cd /home/yugabyte/softwareyb-$NEW_VER/
     ```
 
-1. Start the new version of the YB-TServer process. Follow the instructions in [Start YB-TServers](../../deploy/manual-deployment/start-tservers/).
+1. Start the new version of the YB-TServer process. Follow the instructions in [Start YB-TServers](../../deploy/manual-deployment/start-masters/#yb-tserver-servers).
 
 1. Make sure that all YB-TServer processes are running at `http://<any-yb-master>:7000/tablet-servers`, and wait for the cluster load to balance. If anything looks unhealthy, you can jump ahead to [Rollback Phase](#b-rollback-phase).
 
@@ -131,7 +142,9 @@ Upgrade the YB-TServers one node at a time:
 
 Once all the YB-Master and YB-TServer processes have been upgraded, monitor the cluster to ensure it is healthy. Make sure workloads are running as expected and there are no errors in the logs.
 
-You can remain in this phase for as long as you need, but it is recommended to finalize the upgrade sooner in order to avoid operator errors that can arise from having to maintain two versions. New features that require format changes will not be available until the upgrade is finalized. Also, you cannot perform another upgrade until you have completed the current one.
+You can remain in this phase for as long as you need, up to a _maximum recommended limit of two days_ to avoid operator errors that can arise from having to maintain two versions.
+
+New features that require format changes will not be available until the upgrade is finalized. Also, you cannot perform another upgrade until you have completed the current one.
 
 If you are satisfied with the new version, proceed to the [Finalize Phase](#a-finalize-phase). If you encounter any issues, you can proceed to [Rollback Phase](#b-rollback-phase).
 
@@ -145,7 +158,7 @@ New YugabyteDB features may require changes to the format of data that is sent o
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <master-addresses> \
+        --master_addresses <master-addresses> \
         promote_auto_flags
     ```
 
@@ -185,7 +198,7 @@ Use the [yb-admin](../../admin/yb-admin/) utility to upgrade the YSQL system cat
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     upgrade_ysql
 ```
 
@@ -199,8 +212,8 @@ In certain scenarios, a YSQL upgrade can take longer than 60 seconds, which is t
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
-    -timeout_ms 180000 \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    --timeout_ms 180000 \
     upgrade_ysql
 ```
 
@@ -214,7 +227,7 @@ In certain scenarios, a YSQL upgrade can take longer than 60 seconds, which is t
 
 {{< warning title="Important" >}}
 
-- Roll back is {{<tags/feature/ea idea="240">}} in v2.20.3.0 and {{<tags/feature/ga>}} in v2024.1.0 and higher.
+- Roll back is {{<tags/feature/ea>}} in v2.20.3.0 and {{<tags/feature/ga>}} in v2024.1.0 and higher.
 - Roll back is only supported when you are upgrading a cluster that is already on version v2.20.2.0 to higher versions (for example, v2.20.3.0, v2024.1.0, and so on). If you are upgrading from v2.20.1.x or earlier, follow the instructions for [v2.18](https://docs-archive.yugabyte.com/v2.18/manage/upgrade-deployment/).
 - You cannot roll back after finalizing the upgrade. If you still want to go back to the old version, you have to migrate your data to another cluster running the old version. You can either restore a backup taken while on the old version or [Export and import](../backup-restore/export-import-data/) the current data from the new version. The import script may have to be manually changed in order to conform to the query format of the old version.
 {{< /warning >}}
@@ -237,7 +250,7 @@ Roll back the YB-TServers one node at a time:
     cd /home/yugabyte/softwareyb-$OLD_VER/
     ```
 
-1. Start the old version of the YB-TServer process. Follow the instructions in [Start YB-TServers](../../deploy/manual-deployment/start-tservers/).
+1. Start the old version of the YB-TServer process. Follow the instructions in [Start YB-TServers](../../deploy/manual-deployment/start-masters/#yb-tserver-servers).
 
 1. Make sure that all YB-TServer processes are running and the cluster load is balanced at `http://<any-yb-master>:7000/tablet-servers`.
 
@@ -289,7 +302,7 @@ During the Monitor phase, do the following:
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <master-addresses> \
+        --master_addresses <master-addresses> \
         promote_auto_flags kLocalVolatile
     ```
 
@@ -320,7 +333,7 @@ If you need to roll back an upgrade where volatile AutoFlags were enabled, depen
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <master-addresses> \
+        --master_addresses <master-addresses> \
         rollback_auto_flags <previous_config_version>
     ```
 
@@ -338,7 +351,7 @@ If you need to roll back an upgrade where volatile AutoFlags were enabled, depen
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+        --master_addresses ip1:7100,ip2:7100,ip3:7100 \
         rollback_auto_flags 2
     ```
 

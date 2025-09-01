@@ -4,7 +4,7 @@ import { Box, IconButton, makeStyles } from '@material-ui/core';
 import '@app/assets/fonts/Menlo-Regular.woff';
 import { YBButton } from '../YBButton/YBButton';
 import { AlertVariant } from '..';
-import { useToast } from '@app/helpers';
+import { useToast, copyToClipboard } from '@app/helpers';
 import { useTranslation } from 'react-i18next';
 import CopyIcon from '@app/assets/copy.svg';
 
@@ -89,13 +89,13 @@ const useStyles = makeStyles((theme) => ({
     fontFamily: 'Menlo-Regular, Courier, monospace',
     whiteSpace: 'pre-wrap',
     margin: 0,
-    lineHeight: 2.7,
+    lineHeight: 1.7,
   },
   hashLine: {
-    color: 'green',
+    color: '#13A868',
   },
   tagWord: {
-    color: 'blue'
+    color: '#2B59C3'
   }
 }));
 
@@ -117,12 +117,27 @@ export const YBCodeBlock: FC<CodeBlockProps> = ({
 
   const { addToast } = useToast();
 
-  const copy = async (value: string) => {
-    await navigator.clipboard.writeText(value);
-    addToast(AlertVariant.Success, t('common.copyCodeSuccess'));
-  };
+  const copy = async (value: string) =>
+    copyToClipboard(value, {
+      onSuccess: () => addToast(AlertVariant.Success, t('common.copyCodeSuccess'), 3000),
+      onError: (msg?: string) =>
+        addToast(AlertVariant.Error, msg || 'Failed to copy to clipboard', 5000)
+    });
 
-  const copyBlock = () => {copy(ref?.current?.innerText ?? '')};
+  const copyBlock = () => {
+    let textToCopy = ref?.current?.innerText ?? '';
+
+    // Fallback to original text prop if ref doesn't contain text
+    if (textToCopy.trim() === '' && typeof text === 'string') {
+      textToCopy = text;
+    }
+
+    if (textToCopy.trim() === '') {
+      addToast(AlertVariant.Error, 'No text found to copy', 5000);
+      return;
+    }
+    copy(textToCopy);
+  };
   const copyLineBlock = (ev: React.MouseEvent) => copy((ev?.currentTarget?.previousSibling as HTMLElement).innerText);
   const specialChars: string[] = [' ','\t',',',';','.',':','!','?','(',')','[',']','{','}','"',"'"];
   const parseText = (text: string) => {

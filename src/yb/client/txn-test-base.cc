@@ -224,15 +224,14 @@ YBTransactionPtr CreateTransactionHelper(
 template <class MiniClusterType>
 YBTransactionPtr TransactionTestBase<MiniClusterType>::CreateTransaction(
     SetReadTime set_read_time) {
-  return CreateTransactionHelper(
-      transaction_manager_.get_ptr(), set_read_time, GetIsolationLevel());
+  return CreateTransactionHelper(&transaction_manager_.value(), set_read_time, GetIsolationLevel());
 }
 
 template <class MiniClusterType>
 YBTransactionPtr TransactionTestBase<MiniClusterType>::CreateTransaction2(
     SetReadTime set_read_time) {
   return CreateTransactionHelper(
-      transaction_manager2_.get_ptr(), set_read_time, GetIsolationLevel());
+      &transaction_manager2_.value(), set_read_time, GetIsolationLevel());
 }
 
 template <class MiniClusterType>
@@ -288,11 +287,15 @@ bool TransactionTestBase<MiniCluster>::HasTransactions() {
       if (!consensus_result) {
         return true;  // Report true, since we could have transactions on this non ready peer.
       }
-        if (consensus_result.get()->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER &&
-            peer->tablet()->transaction_coordinator() &&
-            peer->tablet()->transaction_coordinator()->test_count_transactions()) {
+      auto tablet = peer->shared_tablet_maybe_null();
+      if (!tablet) {
+        continue;
+      }
+      if (consensus_result.get()->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER &&
+          tablet->transaction_coordinator() &&
+          tablet->transaction_coordinator()->test_count_transactions()) {
         return true;
-        }
+      }
     }
   }
   return false;

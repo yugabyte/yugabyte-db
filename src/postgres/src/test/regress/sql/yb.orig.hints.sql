@@ -246,6 +246,9 @@ explain (hints on, costs off) select f2 from t1, t2, t3, func2(1, 2) funky where
 explain (hints on, costs off) select 1 from t2, t3, t1 where a1=a2 and a1=a3 and unn1=1;
 
 -- Check hint generation for partitioned tables.
+/*
+ * Unexpected error until https://github.com/yugabyte/yugabyte-db/issues/28070 is fixed.
+ */
 explain (hints on, costs off) select count(*) from prt1 p1 join prt2 p2 on p1.a=p2.a;
 
 -- Partitioned table where all partition-wise joins are forced to be merge joins. Should give no warnings/errors.
@@ -321,6 +324,45 @@ EXPLAIN (costs off, hints on) SELECT 1 FROM tbl, (SELECT dummy() as x) AS ss, (S
 -- Should work since we are forcing a cross join t2-t3 (planner would not normally try this join).
 /*+ noNestLoop(t1 t2) noNestLoop(t1 t3) Leading(t2 t3) */ explain (costs off, uids on) select max(a1) from t1 join t2 on a1<a2 join t3 on a1>a3;
 
+-- Test hints affecting NestLoop and YBBatchedNL join methods.
+
+-- Turn on BNL preference.
+set yb_prefer_bnl to on;
+
+-- Should get NestLoop or YBBatchedNL based on cost.
+/*+ NestLoop(t1 t2) */ explain select a1 from t1 join t2 on a1=a2 order by a1;
+
+-- Should get HashJoin or MergeJoin since hint prevents both NestLoop and
+-- YBBatchedNL.
+/*+ NoNestLoop(t1 t2) */ explain select a1 from t1 join t2 on a1=a2 order by a1;
+
+-- Should get YBBatchedNL.
+/*+ YBBatchedNL(t1 t2) */ explain select a1 from t1 join t2 on a1=a2 order by a1;
+
+-- Should get NestLoop, HashJoin, or MergeJoin.
+/*+ NoYBBatchedNL(t1 t2) */ explain select a1 from t1 join t2 on a1=a2 order by a1;
+
+-- Turn off BNL preference.
+set yb_prefer_bnl to off;
+
+-- Should get NestLoop.
+/*+ NestLoop(t1 t2) */ explain select a1 from t1 join t2 on a1=a2 order by a1;
+
+-- Should get HashJoin, MergeJoin, or YBBatchedNL.
+/*+ NoNestLoop(t1 t2) */ explain select a1 from t1 join t2 on a1=a2 order by a1;
+
+-- Should get YBBatchedNL.
+/*+ YBBatchedNL(t1 t2) */ explain select a1 from t1 join t2 on a1=a2 order by a1;
+
+-- Should get NestLoop, HashJoin, or MergeJoin.
+/*+ NoYBBatchedNL(t1 t2) */ explain select a1 from t1 join t2 on a1=a2 order by a1;
+
+-- Should get HashJoin.
+/*+ NoYBBatchedNL(t1 t2) set(enable_nestloop off) set(enable_mergejoin off) */ explain select a1 from t1 join t2 on a1=a2
+ order by a1;
+
+reset yb_prefer_bnl;
+
 -- NEGATIVE TESTS
 
 -- Try to use a bad index. Should get warnings.
@@ -354,6 +396,9 @@ set pg_hint_plan.yb_bad_hint_mode to warn;
 /*+ set(enable_seqscan off) */ explain (hints on, costs off) select count(*) from t2 tab where b2<10;
 
 -- This hint makes sense but currently there cannot be > 1 join method hint for the same set of tables so will give warnings/errors.
+-- Since pg_hint_plan.yb_bad_hint_mode==WARN, the noNestLoop hint is marked as a duplicate (and is not used) but the
+-- NoYbBatchedNL hint remains valid and is used. (This is an artifact of how the hint processing works.)
+-- Therefore, for this query and hints, NestLoop is a valid choice but BNL is not.
 /*+ noNestLoop(t1 t2) NoYbBatchedNL(t1 t2) */ explain (hints on, costs off) select max(a1) from t1 join t2 on a1=a2;
 
 -- Try to force t0-t1 join. Should see errors/warnings since this is not a legal join order.

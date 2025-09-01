@@ -7,6 +7,22 @@ headcontent: Get started building applications based on YugabyteDB
 type: indexpage
 ---
 
+## Application development
+
+Although building scalable applications on top of YugabyteDB is straightforward, you need to understand certain fundamental concepts like transactions, search, and more to make the best use of them.
+
+{{<lead link="./learn/">}}
+To learn how to build applications on top of YugabyteDB, see [Learn app development](./learn/).
+{{</lead>}}
+
+## Drivers and ORMs
+
+To communicate with YugabyteDB, applications need to use drivers. Applications can also be built using Object-Relational mappings, a technique used to communicate with the database using object-oriented techniques. We've tested various drivers and ORMs in multiple languages with the optimal configurations to get your applications up and running.
+
+{{<lead link="../drivers-orms/">}}
+For the list of drivers and ORMs with sample code, see [Drivers and ORMs](../drivers-orms/).
+{{</lead>}}
+
 ## Data modeling
 
 Although YugabyteDB is fully SQL compatible, modeling data for a distributed database is quite different from modeling for a monolithic database like MySQL or PostgreSQL. This is because the table data is distributed across different nodes. You must understand how to model your data for efficient storage and retrieval from a distributed system.
@@ -31,28 +47,12 @@ A multi-cloud strategy provides the flexibility to use the optimal computing env
 To understand how to build a multi-cloud setup with YugabyteDB, see [Build multi-cloud applications](./multi-cloud/).
 {{</lead>}}
 
-## Application development
-
-Although building scalable applications on top of YugabyteDB is straightforward, you need to understand certain fundamental concepts like transactions, search, and more to make the best use of them.
-
-{{<lead link="./learn/">}}
-To learn how to build applications on top of YugabyteDB, see [Learn app development](./learn/).
-{{</lead>}}
-
 ## Best practices
 
 Use these best practices to build distributed applications on top of YugabyteDB; this includes a list of techniques that you can adopt to make your application perform its best.
 
 {{<lead link="./best-practices-develop">}}
 For more details, see [Best practices](./best-practices-develop).
-{{</lead>}}
-
-## Drivers and ORMs
-
-To communicate with YugabyteDB, applications need to use drivers. Applications can also be built using Object-Relational mappings, a technique used to communicate with the database using object-oriented techniques. We've tested various drivers and ORMs in multiple languages with the optimal configurations to get your applications up and running.
-
-{{<lead link="../drivers-orms/">}}
-For the list of drivers and ORMs with sample code, see [Drivers and ORMs](../drivers-orms/).
 {{</lead>}}
 
 ## Quality of service
@@ -77,12 +77,4 @@ Yugabyte provides multiple step-by-step guides for building scalable and fault-t
 
 {{<lead link="/preview/tutorials/">}}
 For step-by-step guides for various frameworks, see [Tutorials](/preview/tutorials/).
-{{</lead>}}
-
-## PostgreSQL compatibility
-
-YugabyteDB aims to be a fully PostgreSQL-compatible distributed database that supports the majority of PostgreSQL syntax. This means that existing applications built on PostgreSQL can often be migrated to YugabyteDB without changing application code. YugabyteDB also includes many optimizations to enable PostgreSQL applications to run with predictable performance.
-
-{{<lead link="postgresql-compatibility/">}}
-To learn more, see [PostgreSQL compatibility](postgresql-compatibility/).
 {{</lead>}}

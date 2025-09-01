@@ -30,15 +30,22 @@ type: docs
 
   <li >
     <a href="../yugabyte-psycopg2" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YugabyteDB Psycopg2 Smart Driver
+      <img src="/icons/yugabyte.svg"></i>
+      Yugabyte Psycopg2
     </a>
   </li>
 
   <li >
     <a href="../postgres-psycopg2" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      PostgreSQL Psycopg2 Driver
+      PG Psycopg2
+    </a>
+  </li>
+
+  <li >
+    <a href="../postgres-psycopg3" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      PG Psycopg3
     </a>
   </li>
 
@@ -57,7 +64,7 @@ The following tutorial creates a basic Python application that connects to a Yug
 
 Before you start using Aiopg, ensure you have the following:
 
-- YugabyteDB up and running. If you are new to YugabyteDB, follow the steps in [Quick start](/preview/tutorials/quick-start/linux/) to have YugabyteDB up and running in minutes.
+- YugabyteDB up and running. If you are new to YugabyteDB, follow the steps in [Quick start](/preview/quick-start/linux/) to have YugabyteDB up and running in minutes.
 - [Python 3](https://www.python.org/downloads/), or later, is installed.
 - [aiopg](https://aiopg.readthedocs.io/en/stable/) package is installed. Install the package using the following command:
 

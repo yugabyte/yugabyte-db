@@ -219,8 +219,8 @@ typedef struct TransactionStateData
 	bool		ybDataSentForCurrQuery; /* Whether any data has been sent to
 										 * frontend as part of current query's
 										 * execution */
-	bool		ybTxnUsesTempRel; /* True if the transaction operates on a
-								   * temporary table */
+	bool		ybTxnUsesTempRel;	/* True if the transaction operates on a
+									 * temporary table */
 	List	   *YBPostponedDdlOps;	/* We postpone execution of non-revertable
 									 * DocDB operations (e.g. drop
 									 * table/index) until the rest of the txn
@@ -2317,7 +2317,20 @@ YBCRestartWriteTransaction()
 	 */
 	PopAllActiveSnapshots();
 
+	if (TopTransactionResourceOwner != NULL)
+	{
+		ResourceOwnerRelease(TopTransactionResourceOwner,
+							 RESOURCE_RELEASE_BEFORE_LOCKS,
+							 false, true);
+		ResourceOwnerRelease(TopTransactionResourceOwner,
+							 RESOURCE_RELEASE_LOCKS,
+							 false, true);
+		ResourceOwnerRelease(TopTransactionResourceOwner,
+							 RESOURCE_RELEASE_AFTER_LOCKS,
+							 false, true);
+	}
 	AtEOXact_SPI(false /* isCommit */ );
+	AtEOXact_Snapshot(false, true); /* and release the transaction's snapshots */
 
 	/*
 	 * Recreate the global state present for triggers that would have changed
@@ -2440,7 +2453,8 @@ CommitTransaction(void)
 
 	if (IsYugaByteEnabled())
 	{
-		bool increment_pg_txns = YbTrackPgTxnInvalMessagesForAnalyze();
+		bool		increment_pg_txns = YbTrackPgTxnInvalMessagesForAnalyze();
+
 		/*
 		 * Firing the triggers may abort current transaction.
 		 * At this point all the them has been fired already.
@@ -3270,10 +3284,10 @@ YBStartTransactionCommandInternal(bool yb_skip_read_committed_internal_savepoint
 void
 YbCommitTransactionCommandIntermediate(void)
 {
-	NodeTag yb_node_tag;
-	CommandTag yb_command_tag;
-	bool is_ddl_mode = YBCPgIsDdlMode();
-	YbDdlMode ddl_mode;
+	NodeTag		yb_node_tag;
+	CommandTag	yb_command_tag;
+	bool		is_ddl_mode = YBCPgIsDdlMode();
+	YbDdlMode	ddl_mode;
 
 	elog(DEBUG2, "YbCommitTransactionCommandIntermediate");
 
@@ -4946,7 +4960,12 @@ BeginInternalSubTransaction(const char *name)
 	 * An error thrown while/after switching over to a new subtransaction
 	 * would lead to a fatal error or unpredictable behavior.
 	 */
-	YBFlushBufferedOperations();
+	YBFlushBufferedOperations((YbcFlushDebugContext)
+		{
+			.reason = YB_BEGIN_SUBTRANSACTION,
+			.uintarg = CurrentTransactionState->subTransactionId,
+			.strarg1 = name,
+		});
 	TransactionState s = CurrentTransactionState;
 
 	/*
@@ -5024,7 +5043,12 @@ void
 YbBeginInternalSubTransactionForReadCommittedStatement()
 {
 
-	YBFlushBufferedOperations();
+	YBFlushBufferedOperations((YbcFlushDebugContext)
+		{
+			.reason = YB_BEGIN_SUBTRANSACTION,
+			.uintarg = CurrentTransactionState->subTransactionId,
+			.strarg1 = "read committed transaction",
+		});
 	TransactionState s = CurrentTransactionState;
 
 	Assert(s->blockState == TBLOCK_SUBINPROGRESS ||
@@ -5086,7 +5110,11 @@ ReleaseCurrentSubTransaction(void)
 	 * An error thrown while/after commiting/releasing it would lead to a
 	 * fatal error or unpredictable behavior.
 	 */
-	YBFlushBufferedOperations();
+	YBFlushBufferedOperations((YbcFlushDebugContext)
+		{
+			.reason = YB_END_SUBTRANSACTION,
+			.uintarg = CurrentTransactionState->subTransactionId,
+		});
 	TransactionState s = CurrentTransactionState;
 
 	/*

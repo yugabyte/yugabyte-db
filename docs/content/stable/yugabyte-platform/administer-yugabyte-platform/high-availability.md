@@ -203,7 +203,7 @@ When possible, only promote a standby when both standby and active are on the sa
 
 1. Click **Continue**. The restore takes a few seconds, after which expect to be signed out.
 
-1. Sign in using the credentials that you had configured on the previously active instance.
+1. Sign in using the credentials that you had configured on the previously active instance. If you are performing failover, you must sign in using your Super Admin account.
 
 In cases of failover, the previous active instance may be unavailable or unreachable during promotion. In this case, you must perform a force promotion that will promote the standby without demoting the active as per the following illustration:
 
@@ -300,6 +300,7 @@ The following HA-related [alerts](../../alerts-monitoring/alert/) are automatica
 ## Limitations
 
 - No automatic failover. If the active instance fails, follow the steps in [Promote a standby instance to active](#promote-a-standby-instance-to-active).
+- When performing failover, the first time you sign in after failover, you must use your Super Admin account.
 - Promotion will fail when HA is configured with an active instance at YBA version earlier than 2024.1, and a standby instance at version 2024.1 or later. It is not recommended to run in this configuration for an extended period. Reach out to {{% support-platform %}} if this is required.
 - If you are making API calls to YBA through custom automation, note that the [API token](../../anywhere-automation/#authentication) is different on the YBA active and standby until the standby has been promoted at least once to be an active instance. If you are using YBA with an API token, either generate a new token before every request, or perform a switchover after generating the API token (this process will have to be repeated when the API token is regenerated).
 - If you have an older Replicated installation that uses HTTP, the default port is 80. Use `http` when specifying addresses.

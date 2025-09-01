@@ -9,6 +9,7 @@ import { useQueryClient } from 'react-query';
 import { FirstStep } from './FirstStep/FirstStep';
 import {
   DEFAULT_PROMETHEUS_METRICS_PARAMS,
+  DEFAULT_UNIVERSE_LOGS_PARAMS,
   SecondStep,
   updateOptions
 } from './SecondStep/SecondStep';
@@ -48,6 +49,7 @@ export const UniverseSupportBundleModal = (props) => {
     filterTypes[0],
     [true, true, true, true, true, true, true, true, true, true, true],
     () => {},
+    DEFAULT_UNIVERSE_LOGS_PARAMS,
     {},
     DEFAULT_PROMETHEUS_METRICS_PARAMS
   );

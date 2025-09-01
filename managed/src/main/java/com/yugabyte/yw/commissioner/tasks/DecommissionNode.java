@@ -150,7 +150,6 @@ public class DecommissionNode extends EditUniverseTaskBase {
           taskParamsCluster,
           getNodesInCluster(taskParamsCluster.uuid, addedMasters),
           getNodesInCluster(taskParamsCluster.uuid, removedMasters),
-          !addedMasters.isEmpty() || !removedMasters.isEmpty() /*updateMasters*/,
           true /* force */);
 
       createUpdateUniverseIntentTask(taskParamsCluster, true /*updatePlacementInfo*/);

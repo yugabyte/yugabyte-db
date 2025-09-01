@@ -51,6 +51,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.TransferXClusterCerts;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateMountedDisks;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckCertificateConfig;
 import com.yugabyte.yw.common.audit.otel.OtelCollectorConfigGenerator;
+import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
@@ -61,6 +62,7 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.CertificateParams;
@@ -78,6 +80,7 @@ import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
@@ -85,12 +88,17 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.CloudVolumeEncryption;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
-import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
-import com.yugabyte.yw.models.helpers.audit.UniverseLogsExporterConfig;
-import com.yugabyte.yw.models.helpers.audit.YCQLAuditConfig;
+import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig;
+import com.yugabyte.yw.models.helpers.exporters.audit.YCQLAuditConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig;
@@ -106,6 +114,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -261,20 +270,32 @@ public class NodeManager extends DevopsBase {
     }
 
     if (userIntent.providerType.equals(Common.CloudType.onprem)) {
+      ObjectNode detailsJson = Json.newObject();
+      // NodeInstance may not yet be assigned to a universe in these prechecks.
+      boolean maybeNodeInstanceUnassigned =
+          (type == NodeCommandType.Precheck || type == NodeCommandType.Verify_Certs);
+      Optional<NodeInstance> optional =
+          maybeNodeInstanceUnassigned
+              ? NodeInstance.maybeGet(nodeTaskParam.nodeUuid)
+              : NodeInstance.maybeGetByName(nodeTaskParam.nodeName, nodeTaskParam.nodeUuid);
       // Instance may not be present if it is deleted from NodeInstance table after a release
       // action.
-      ObjectNode detailsJson = Json.newObject();
-      Optional<NodeInstance> optional = NodeInstance.maybeGet(nodeTaskParam.nodeUuid);
       if (optional.isPresent()) {
         NodeInstanceData instanceData = optional.get().getDetails();
         detailsJson = (ObjectNode) Json.toJson(instanceData);
-        if ((type == NodeCommandType.Precheck || type == NodeCommandType.Verify_Certs)
-            && StringUtils.isEmpty(instanceData.nodeName)) {
+        if (maybeNodeInstanceUnassigned && StringUtils.isEmpty(instanceData.nodeName)) {
           detailsJson.put("nodeName", nodeTaskParam.nodeName);
         }
       }
       command.add("--node_metadata");
       command.add(detailsJson.toString());
+    }
+    // Add systemd debugging for any systemctl service management commands.
+    if (confGetter.getGlobalConf(GlobalConfKeys.enableSystemdDebugLogging)) {
+      command.add("--systemd_debug");
+    }
+    if (confGetter.getGlobalConf(GlobalConfKeys.ansibleKeepRemoteFiles)) {
+      command.add("--ansible_keep_remote_files");
     }
     return command;
   }
@@ -587,6 +608,18 @@ public class NodeManager extends DevopsBase {
     if (params.deviceInfo.volumeSize != null) {
       args.add("--volume_size");
       args.add(Integer.toString(params.deviceInfo.volumeSize));
+    }
+    if (params.deviceInfo.cloudVolumeEncryption != null) {
+      CloudVolumeEncryption paramsCloudVolumeEncryption = params.deviceInfo.cloudVolumeEncryption;
+      if (paramsCloudVolumeEncryption.enableVolumeEncryption) {
+        UUID kmsConfigUUID = params.deviceInfo.cloudVolumeEncryption.kmsConfigUUID;
+        String cmkId = AwsEARServiceUtil.getCMKId(kmsConfigUUID);
+        if (cmkId != null) {
+          String cmkArn = AwsEARServiceUtil.getCMK(kmsConfigUUID, cmkId).getKeyArn();
+          args.add("--cmk_res_name");
+          args.add(cmkArn);
+        }
+      }
     }
     if (includeIopsAndThroughput && params.deviceInfo.storageType != null) {
       if (params.deviceInfo.diskIops != null
@@ -1742,7 +1775,7 @@ public class NodeManager extends DevopsBase {
     if (userIntent.providerType.equals(Common.CloudType.onprem)) {
       Optional<NodeInstance> nodeInstanceOp =
           nodeTaskParam.nodeUuid == null
-              ? NodeInstance.maybeGetByName(nodeTaskParam.getNodeName())
+              ? NodeInstance.maybeGetByName(nodeTaskParam.getNodeName(), nodeTaskParam.nodeUuid)
               : NodeInstance.maybeGet(nodeTaskParam.nodeUuid);
       if (nodeInstanceOp.isPresent()) {
         nodeIp = nodeInstanceOp.get().getDetails().ip;
@@ -1882,6 +1915,11 @@ public class NodeManager extends DevopsBase {
           Common.CloudType cloudType = userIntent.providerType;
           if (!cloudType.equals(Common.CloudType.onprem)) {
             addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, false);
+            if (taskParam.capacityReservation != null) {
+              commandArgs.add("--capacity_reservation");
+              commandArgs.add(taskParam.capacityReservation);
+            }
+
             commandArgs.add("--cloud_subnet");
             commandArgs.add(taskParam.subnetId);
 
@@ -2013,11 +2051,6 @@ public class NodeManager extends DevopsBase {
           }
           addInstanceTags(universe, userIntent, nodeTaskParam, commandArgs);
           if (cloudType.equals(Common.CloudType.aws)) {
-            if (taskParam.getCmkArn() != null) {
-              commandArgs.add("--cmk_res_name");
-              commandArgs.add(taskParam.getCmkArn());
-            }
-
             if (taskParam.ipArnString != null) {
               commandArgs.add("--iam_profile_arn");
               commandArgs.add(taskParam.ipArnString);
@@ -2121,12 +2154,14 @@ public class NodeManager extends DevopsBase {
                   ServerType.TSERVER,
                   cluster,
                   universe.getUniverseDetails().clusters);
-          // Add audit log config
+          // Add audit and query log config
           addOtelColArgs(
               commandArgs,
               taskParam,
               taskParam.otelCollectorEnabled,
               taskParam.auditLogConfig,
+              taskParam.queryLogConfig,
+              taskParam.metricsExportConfig,
               GFlagsUtil.getLogLinePrefix(gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
               provider,
               userIntent);
@@ -2190,12 +2225,14 @@ public class NodeManager extends DevopsBase {
                   ServerType.TSERVER,
                   cluster,
                   universe.getUniverseDetails().clusters);
-          // Add audit log config
+          // Add audit and query log config
           addOtelColArgs(
               commandArgs,
               taskParam,
               taskParam.otelCollectorEnabled,
               taskParam.auditLogConfig,
+              taskParam.queryLogConfig,
+              taskParam.metricsExportConfig,
               GFlagsUtil.getLogLinePrefix(gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
               provider,
               userIntent);
@@ -2284,6 +2321,10 @@ public class NodeManager extends DevopsBase {
           }
           ResumeServer.Params taskParam = (ResumeServer.Params) nodeTaskParam;
           addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, true);
+          if (taskParam.capacityReservation != null) {
+            commandArgs.add("--capacity_reservation");
+            commandArgs.add(taskParam.capacityReservation);
+          }
           if (!Strings.isNullOrEmpty(taskParam.nodeIP)) {
             commandArgs.add("--node_ip");
             commandArgs.add(taskParam.nodeIP);
@@ -2422,9 +2463,16 @@ public class NodeManager extends DevopsBase {
           }
           ChangeInstanceType.Params taskParam = (ChangeInstanceType.Params) nodeTaskParam;
           addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, false);
-          commandArgs.add("--pg_max_mem_mb");
-          commandArgs.add(Integer.toString(taskParam.cgroupSize));
 
+          if (!taskParam.skipAnsiblePlaybookForCGroup) {
+            commandArgs.add("--pg_max_mem_mb");
+            commandArgs.add(Integer.toString(taskParam.cgroupSize));
+          }
+
+          if (taskParam.capacityReservation != null) {
+            commandArgs.add("--capacity_reservation");
+            commandArgs.add(taskParam.capacityReservation);
+          }
           if (taskParam.force) {
             commandArgs.add("--force");
           }
@@ -2607,6 +2655,8 @@ public class NodeManager extends DevopsBase {
               params,
               params.installOtelCollector,
               params.auditLogConfig,
+              params.queryLogConfig,
+              params.metricsExportConfig,
               GFlagsUtil.getLogLinePrefix(params.gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
               provider,
               userIntent);
@@ -2964,32 +3014,41 @@ public class NodeManager extends DevopsBase {
       List<String> commandArgs,
       NodeTaskParams taskParams,
       boolean installOtelCollector,
-      AuditLogConfig config,
+      AuditLogConfig auditLogConfig,
+      QueryLogConfig queryLogConfig,
+      MetricsExportConfig metricsExportConfig,
       String logLinePrefix,
       Provider provider,
       UserIntent userIntent) {
     if (installOtelCollector) {
       commandArgs.add("--install_otel_collector");
     }
-    if (config == null) {
+    if (auditLogConfig == null && queryLogConfig == null && metricsExportConfig == null) {
       return;
     }
-    if ((config.getYsqlAuditConfig() == null || !config.getYsqlAuditConfig().isEnabled())
-        && (config.getYcqlAuditConfig() == null || !config.getYcqlAuditConfig().isEnabled())) {
+    if ((auditLogConfig != null && !OtelCollectorUtil.isAuditLogEnabledInUniverse(auditLogConfig))
+        && (queryLogConfig != null
+            && !OtelCollectorUtil.isQueryLogEnabledInUniverse(queryLogConfig))) {
       return;
     }
-    commandArgs.add("--ycql_audit_log_level");
-    if (config.getYcqlAuditConfig() != null) {
+    if (auditLogConfig != null && auditLogConfig.getYcqlAuditConfig() != null) {
       YCQLAuditConfig.YCQLAuditLogLevel logLevel =
-          config.getYcqlAuditConfig().getLogLevel() != null
-              ? config.getYcqlAuditConfig().getLogLevel()
+          auditLogConfig.getYcqlAuditConfig().getLogLevel() != null
+              ? auditLogConfig.getYcqlAuditConfig().getLogLevel()
               : YCQLAuditConfig.YCQLAuditLogLevel.ERROR;
+      commandArgs.add("--ycql_audit_log_level");
       commandArgs.add(logLevel.name());
-    } else {
-      commandArgs.add("NONE");
     }
-    if (config.isExportActive()
-        && CollectionUtils.isNotEmpty(config.getUniverseLogsExporterConfig())) {
+    if (OtelCollectorUtil.isAuditLogExportEnabledInUniverse(auditLogConfig)
+        || OtelCollectorUtil.isQueryLogExportEnabledInUniverse(queryLogConfig)
+        || OtelCollectorUtil.isMetricsExportEnabledInUniverse(metricsExportConfig)) {
+      // Get the node agent for the node if its present.
+      Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
+      NodeDetails nodeDetails = universe.getNode(taskParams.nodeName);
+      NodeAgent nodeAgent =
+          getNodeAgentClient()
+              .maybeGetNodeAgent(nodeDetails.cloudInfo.private_ip, provider, universe)
+              .orElse(null);
 
       commandArgs.add("--otel_col_config_file");
       commandArgs.add(
@@ -2998,45 +3057,69 @@ public class NodeManager extends DevopsBase {
                   taskParams,
                   provider,
                   userIntent,
-                  config,
+                  auditLogConfig,
+                  queryLogConfig,
+                  metricsExportConfig,
                   logLinePrefix,
-                  getOtelColMetricsPort(taskParams))
+                  getOtelColMetricsPort(taskParams),
+                  nodeAgent)
               .toAbsolutePath()
               .toString());
 
-      for (UniverseLogsExporterConfig logsExporterConfig : config.getUniverseLogsExporterConfig()) {
-        TelemetryProvider telemetryProvider =
-            telemetryProviderService.get(logsExporterConfig.getExporterUuid());
-        switch (telemetryProvider.getConfig().getType()) {
-          case AWS_CLOUDWATCH -> {
-            AWSCloudWatchConfig awsCloudWatchConfig =
-                (AWSCloudWatchConfig) telemetryProvider.getConfig();
-            if (StringUtils.isNotEmpty(awsCloudWatchConfig.getAccessKey())) {
-              commandArgs.add("--otel_col_aws_access_key");
-              commandArgs.add(awsCloudWatchConfig.getAccessKey());
-            }
-            if (StringUtils.isNotEmpty(awsCloudWatchConfig.getSecretKey())) {
-              commandArgs.add("--otel_col_aws_secret_key");
-              commandArgs.add(awsCloudWatchConfig.getSecretKey());
-            }
-          }
-          case GCP_CLOUD_MONITORING -> {
-            GCPCloudMonitoringConfig gcpCloudMonitoringConfig =
-                (GCPCloudMonitoringConfig) telemetryProvider.getConfig();
-            if (gcpCloudMonitoringConfig.getCredentials() != null) {
-              Path path =
-                  fileHelperService.createTempFile(
-                      "otel_collector_gcp_creds_"
-                          + taskParams.getUniverseUUID()
-                          + "_"
-                          + taskParams.nodeUuid,
-                      ".json");
-              String filePath = path.toAbsolutePath().toString();
-              FileUtils.writeJsonFile(filePath, gcpCloudMonitoringConfig.getCredentials());
-              commandArgs.add("--otel_col_gcp_creds_file");
-              commandArgs.add(filePath);
-            }
-          }
+      Set<UUID> exporterUUIDs = new HashSet<>();
+      if (OtelCollectorUtil.isAuditLogExportEnabledInUniverse(auditLogConfig)) {
+        for (UniverseLogsExporterConfig logsExporterConfig :
+            auditLogConfig.getUniverseLogsExporterConfig()) {
+          exporterUUIDs.add(logsExporterConfig.getExporterUuid());
+        }
+      }
+      if (OtelCollectorUtil.isQueryLogExportEnabledInUniverse(queryLogConfig)) {
+        for (UniverseQueryLogsExporterConfig logsExporterConfig :
+            queryLogConfig.getUniverseLogsExporterConfig()) {
+          exporterUUIDs.add(logsExporterConfig.getExporterUuid());
+        }
+      }
+      if (OtelCollectorUtil.isMetricsExportEnabledInUniverse(metricsExportConfig)) {
+        for (UniverseMetricsExporterConfig exporterConfig :
+            metricsExportConfig.getUniverseMetricsExporterConfig()) {
+          exporterUUIDs.add(exporterConfig.getExporterUuid());
+        }
+      }
+
+      for (UUID exporterUUID : exporterUUIDs) {
+        addOtelColArgsForExporters(
+            commandArgs, exporterUUID, taskParams.getUniverseUUID(), taskParams.nodeUuid);
+      }
+    }
+  }
+
+  private void addOtelColArgsForExporters(
+      List<String> commandArgs, UUID exporterUUID, UUID universeUUID, UUID nodeUUID) {
+    TelemetryProvider telemetryProvider = telemetryProviderService.get(exporterUUID);
+    switch (telemetryProvider.getConfig().getType()) {
+      case AWS_CLOUDWATCH -> {
+        AWSCloudWatchConfig awsCloudWatchConfig =
+            (AWSCloudWatchConfig) telemetryProvider.getConfig();
+        if (StringUtils.isNotEmpty(awsCloudWatchConfig.getAccessKey())) {
+          commandArgs.add("--otel_col_aws_access_key");
+          commandArgs.add(awsCloudWatchConfig.getAccessKey());
+        }
+        if (StringUtils.isNotEmpty(awsCloudWatchConfig.getSecretKey())) {
+          commandArgs.add("--otel_col_aws_secret_key");
+          commandArgs.add(awsCloudWatchConfig.getSecretKey());
+        }
+      }
+      case GCP_CLOUD_MONITORING -> {
+        GCPCloudMonitoringConfig gcpCloudMonitoringConfig =
+            (GCPCloudMonitoringConfig) telemetryProvider.getConfig();
+        if (gcpCloudMonitoringConfig.getCredentials() != null) {
+          Path path =
+              fileHelperService.createTempFile(
+                  "otel_collector_gcp_creds_" + universeUUID + "_" + nodeUUID, ".json");
+          String filePath = path.toAbsolutePath().toString();
+          FileUtils.writeJsonFile(filePath, gcpCloudMonitoringConfig.getCredentials());
+          commandArgs.add("--otel_col_gcp_creds_file");
+          commandArgs.add(filePath);
         }
       }
     }

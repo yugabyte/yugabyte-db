@@ -117,7 +117,7 @@ TEST_F(YBTsCliITest, MoveTablet) {
 
   string exe_path = GetTsCliToolPath();
   vector<string> argv = {exe_path, "--server_address", AsString(ts->bound_rpc_addr()),
-                         "delete_tablet", "-force", tablet_id, "Deleting for yb-ts-cli-itest"};
+                         "delete_tablet", "--force", tablet_id, "Deleting for yb-ts-cli-itest"};
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     Status s = Subprocess::Call(argv);
     return s.ok();

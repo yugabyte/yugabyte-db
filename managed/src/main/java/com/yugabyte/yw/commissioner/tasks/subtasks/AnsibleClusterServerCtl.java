@@ -11,19 +11,15 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.payload.NodeAgentRpcPayload;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
-import com.yugabyte.yw.nodeagent.ServerControlInput;
-import com.yugabyte.yw.nodeagent.ServerControlType;
-import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.Optional;
 import javax.inject.Inject;
@@ -32,10 +28,13 @@ import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 public class AnsibleClusterServerCtl extends NodeTaskBase {
+  private final NodeAgentRpcPayload nodeAgentRpcPayload;
 
   @Inject
-  protected AnsibleClusterServerCtl(BaseTaskDependencies baseTaskDependencies) {
+  protected AnsibleClusterServerCtl(
+      BaseTaskDependencies baseTaskDependencies, NodeAgentRpcPayload nodeAgentRpcPayload) {
     super(baseTaskDependencies);
+    this.nodeAgentRpcPayload = nodeAgentRpcPayload;
   }
 
   public static class Params extends NodeTaskParams {
@@ -53,34 +52,6 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
   @Override
   protected Params taskParams() {
     return (Params) taskParams;
-  }
-
-  private ServerControlInput getServerControlInput(Universe universe, NodeDetails nodeDetails) {
-    String serverName = "yb-" + taskParams().process;
-    String serverHome =
-        Paths.get(nodeUniverseManager.getYbHomeDir(nodeDetails, universe), taskParams().process)
-            .toString();
-    ServerControlType controlType =
-        taskParams().command.equals("start") ? ServerControlType.START : ServerControlType.STOP;
-    ServerControlInput.Builder serverControlInputBuilder =
-        ServerControlInput.newBuilder()
-            .setControlType(controlType)
-            .setServerName(serverName)
-            .setServerHome(serverHome)
-            .setDeconfigure(taskParams().deconfigure);
-    if (taskParams().checkVolumesAttached) {
-      UniverseDefinitionTaskParams.Cluster cluster =
-          universe.getCluster(taskParams().placementUuid);
-      NodeDetails node = universe.getNode(taskParams().nodeName);
-      if (node != null
-          && cluster != null
-          && cluster.userIntent.getDeviceInfoForNode(node) != null
-          && cluster.userIntent.providerType != CloudType.onprem) {
-        serverControlInputBuilder.setNumVolumes(
-            cluster.userIntent.getDeviceInfoForNode(node).numVolumes);
-      }
-    }
-    return serverControlInputBuilder.build();
   }
 
   @Override
@@ -166,7 +137,9 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
     // These conditional checks are in python layer for legacy path.
     if (!taskParams().skipStopForPausedVM || isInstanceRunning(taskParams())) {
       nodeAgentClient.runServerControl(
-          nodeAgent, getServerControlInput(universe, nodeDetails), "yugabyte");
+          nodeAgent,
+          nodeAgentRpcPayload.setupServerControlBits(universe, nodeDetails, taskParams()),
+          NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
     }
   }
 

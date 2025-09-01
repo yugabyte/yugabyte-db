@@ -91,8 +91,8 @@
 #include "catalog/pg_yb_tablegroup.h"
 #include "catalog/yb_catalog_version.h"
 #include "catalog/yb_logical_client_version.h"
-#include "pg_yb_utils.h"
 #include "utils/yb_inheritscache.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 
 static HeapTuple GetDatabaseTuple(const char *dbname);
 static HeapTuple GetDatabaseTupleByOid(Oid dboid);
@@ -119,7 +119,6 @@ static void InitPostgresImpl(const char *in_dbname, Oid dboid,
 							 bool *yb_sys_table_prefetching_started);
 static void YbEnsureSysTablePrefetchingStopped();
 static void YbPresetDatabaseCollation(HeapTuple tuple);
-
 
 /*** InitPostgres support ***/
 
@@ -880,7 +879,28 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		 * catalog version mode is impossible in case prefething is started.
 		 */
 		YBIsDBCatalogVersionMode();
-		YBCStartSysTablePrefetchingNoCache();
+		uint64_t	shared_catalog_version;
+		HandleYBStatus(YBCGetSharedCatalogVersion(&shared_catalog_version));
+		if (YbUseTserverResponseCacheForAuth(shared_catalog_version))
+		{
+			/*
+			 * If YB connection manager is enabled, for scalability reason we use
+			 * shared catalog version instead of YbGetMasterCatalogVersion() to
+			 * avoid one master RPC.
+			 */
+			YbcPgLastKnownCatalogVersionInfo catalog_version =
+				(YbcPgLastKnownCatalogVersionInfo)
+				{
+					.version = shared_catalog_version,
+					.version_read_time = {},
+					.is_db_catalog_version_mode = YBIsDBCatalogVersionMode(),
+				};
+			YBCStartSysTablePrefetching(Template1DbOid,
+										catalog_version,
+										YB_YQL_PREFETCHER_TRUST_CACHE_AUTH);
+		}
+		else
+			YBCStartSysTablePrefetchingNoCache();
 		YbRegisterSysTableForPrefetching(AuthIdRelationId); /* pg_authid */
 		YbRegisterSysTableForPrefetching(DatabaseRelationId);	/* pg_database */
 

@@ -8,6 +8,7 @@ menu:
   preview:
     identifier: best-practices-operations
     parent: launch-and-manage
+    weight: 80
 type: indexpage
 ---
 
@@ -24,5 +25,11 @@ type: indexpage
     body="Trading off memory vs performance in YSQL catalog caches."
     href="ysql-catalog-cache-tuning-guide/"
     icon="fa-thin fa-user-tie-hair">}}
+
+  {{<index/item
+    title="Use the YSQL cost-based-optimizer"
+    body="Create optimal execution plans for queries."
+    href="ysql-yb-enable-cbo/"
+    icon="fa-thin fa-dollar">}}
 
 {{</index/block>}}

@@ -6,6 +6,8 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include <stdatomic.h>
+
 #include <limits.h>
 #include <unistd.h>
 

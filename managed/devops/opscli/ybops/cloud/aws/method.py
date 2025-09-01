@@ -74,7 +74,6 @@ class AwsCreateInstancesMethod(CreateInstancesMethod):
                                  help="Volume type for volumes on EBS-backed instances.")
         self.parser.add_argument("--spot_price", default=None,
                                  help="Spot price for each instance (if desired)")
-        self.parser.add_argument("--cmk_res_name", help="CMK arn to enable encrypted EBS volumes.")
         self.parser.add_argument("--iam_profile_arn", help="ARN string for IAM instance profile")
         self.parser.add_argument("--disk_iops", type=int, default=1000,
                                  help="desired iops for aws v4 instance volumes")

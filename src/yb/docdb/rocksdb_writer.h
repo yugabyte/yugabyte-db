@@ -137,7 +137,7 @@ class IntentsWriterContext {
   virtual ~IntentsWriterContext() = default;
 
   // Called at the start of iteration. Passed key of the first found entry, if present.
-  virtual void Start(const boost::optional<Slice>& first_key) {}
+  virtual void Start(const std::optional<Slice>& first_key) {}
 
   // Called on every reverse index entry.
   // key - entry key.
@@ -238,25 +238,20 @@ class FrontierSchemaVersionUpdater {
   SchemaVersion max_schema_version_ = std::numeric_limits<SchemaVersion>::min();
 };
 
+using ApplyIntentsContextCompleteListener = boost::function<void(const ConsensusFrontiers&)>;
+
 class ApplyIntentsContext : public IntentsWriterContext, public FrontierSchemaVersionUpdater {
  public:
   ApplyIntentsContext(
-      const TabletId& tablet_id,
-      const TransactionId& transaction_id,
-      const ApplyTransactionState* apply_state,
-      const SubtxnSet& aborted,
-      HybridTime commit_ht,
-      HybridTime log_ht,
-      HybridTime file_filter_ht,
-      const OpId& apply_op_id,
-      const KeyBounds* key_bounds,
-      SchemaPackingProvider& schema_packing_provider,
-      ConsensusFrontiers& frontiers,
-      rocksdb::DB* intents_db,
-      const DocVectorIndexesPtr& vector_indexes,
-      const StorageSet& apply_to_storages);
+      const TabletId& tablet_id, const TransactionId& transaction_id,
+      const ApplyTransactionState* apply_state, const SubtxnSet& aborted, HybridTime commit_ht,
+      HybridTime log_ht, HybridTime file_filter_ht, const OpId& apply_op_id,
+      const KeyBounds* key_bounds, SchemaPackingProvider& schema_packing_provider,
+      ConsensusFrontiers& frontiers, rocksdb::DB* intents_db,
+      const DocVectorIndexesPtr& vector_indexes, const StorageSet& apply_to_storages,
+      ApplyIntentsContextCompleteListener complete_listener);
 
-  void Start(const boost::optional<Slice>& first_key) override;
+  void Start(const std::optional<Slice>& first_key) override;
 
   Result<bool> Entry(
       const Slice& key, const Slice& value, bool metadata,
@@ -298,6 +293,7 @@ class ApplyIntentsContext : public IntentsWriterContext, public FrontierSchemaVe
   std::shared_ptr<const dockv::SchemaPacking> schema_packing_;
   SchemaVersion schema_packing_version_ = std::numeric_limits<SchemaVersion>::max();
   KeyBuffer schema_packing_table_prefix_;
+  ApplyIntentsContextCompleteListener complete_listener_;
 };
 
 class RemoveIntentsContext : public IntentsWriterContext {

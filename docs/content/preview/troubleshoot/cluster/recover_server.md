@@ -48,8 +48,8 @@ If a new YB-Master needs to be started to replace a failed one, the master quoru
 Suppose, the original YB-Masters were n1, n2, n3. And n3 needs to be replaced with a new YB-Master n4. Then you need to use the yb-admin subcommand `change_master_config`, as follows:
 
 ```sh
-./bin/yb-admin -master_addresses n1:7100,n2:7100 change_master_config REMOVE_SERVER n3 7100
-./bin/yb-admin -master_addresses n1:7100,n2:7100 change_master_config ADD_SERVER n4 7100
+./bin/yb-admin --master_addresses n1:7100,n2:7100 change_master_config REMOVE_SERVER n3 7100
+./bin/yb-admin --master_addresses n1:7100,n2:7100 change_master_config ADD_SERVER n4 7100
 ```
 
 The YB-TServer's in-memory state automatically learns of the new master after the `ADD_SERVER` step and does not need a restart.

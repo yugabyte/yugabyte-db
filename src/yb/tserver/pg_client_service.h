@@ -142,6 +142,8 @@ class PgClientServiceImpl : public PgClientServiceIf {
 
   size_t TEST_SessionsCount();
 
+  void Shutdown() override;
+
 #define YB_PG_CLIENT_METHOD_DECLARE(r, data, method) \
   void method( \
       const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)* req, \

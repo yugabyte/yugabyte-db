@@ -94,6 +94,8 @@ class TabletServerIf : public LocalTabletServer {
 
   virtual ConcurrentPointerReference<TServerSharedData> SharedObject() = 0;
 
+  virtual docdb::ObjectLockSharedStateManager* ObjectLockSharedStateManager() const = 0;
+
   virtual Status GetLiveTServers(
       std::vector<master::TSInformationPB> *live_tservers) const = 0;
 
@@ -147,6 +149,12 @@ class TabletServerIf : public LocalTabletServer {
 
   virtual void SetYsqlDBCatalogVersions(
       const tserver::DBCatalogVersionDataPB& db_catalog_version_data) = 0;
+
+  virtual void SetYsqlDBCatalogVersionsWithInvalMessages(
+      const tserver::DBCatalogVersionDataPB& db_catalog_version_data,
+      const tserver::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data) = 0;
+
+  virtual void ResetCatalogVersionsFingerprint() = 0;
 
   virtual Result<YSQLLeaseInfo> GetYSQLLeaseInfo() const = 0;
 

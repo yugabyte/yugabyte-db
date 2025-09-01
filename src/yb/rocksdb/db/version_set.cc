@@ -2583,7 +2583,7 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
 
     manifest_file_number_ = pending_manifest_file_number_;
     manifest_file_size_ = new_manifest_file_size;
-    prev_log_number_ = edit->prev_log_number_.get_value_or(0);
+    prev_log_number_ = edit->prev_log_number_.value_or(0);
     if (flushed_frontier_override) {
       flushed_frontier_ = flushed_frontier_override;
     } else if (edit->flushed_frontier_) {
@@ -2757,7 +2757,7 @@ class ManifestReader {
   uint64_t manifest_file_number_ = 0;
   uint64_t current_manifest_file_size_ = 0;
   LogReporter reporter_;
-  boost::optional<log::Reader> reader_;
+  std::optional<log::Reader> reader_;
   std::string scratch_;
   Status status_;
   VersionEdit edit_;
@@ -3935,9 +3935,8 @@ ColumnFamilyData* VersionSet::CreateColumnFamily(
   AppendVersion(new_cfd, v);
   // GetLatestMutableCFOptions() is safe here without mutex since the
   // cfd is not available to client
-  new_cfd->CreateNewMemtable(*new_cfd->GetLatestMutableCFOptions(),
-                             LastSequence());
-  new_cfd->SetLogNumber(edit->log_number_.get_value_or(0));
+  new_cfd->CreateNewMemtable(*new_cfd->GetLatestMutableCFOptions(), LastSequence());
+  new_cfd->SetLogNumber(edit->log_number_.value_or(0));
   return new_cfd;
 }
 

@@ -8,7 +8,7 @@ menu:
   stable:
     identifier: public-clouds
     parent: deploy
-    weight: 630
+    weight: 40
 type: indexpage
 ---
 <div class="row">

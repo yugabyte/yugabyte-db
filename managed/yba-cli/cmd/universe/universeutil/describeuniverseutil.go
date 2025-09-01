@@ -63,18 +63,24 @@ func PopulateDescribeUniverseCLIOutput(
 		}
 	}
 
-	var kmsConfig string
+	var earKMSConfig string
 	kms := details.GetEncryptionAtRestConfig()
 	for _, k := range universe.KMSConfigs {
 		if len(strings.TrimSpace(k.ConfigUUID)) != 0 &&
 			strings.Compare(k.ConfigUUID, kms.GetKmsConfigUUID()) == 0 {
-			kmsConfig = k.Name
+			earKMSConfig = k.Name
 			break
 		}
 	}
-	enableVolumeEncryption := false
-	if len(kmsConfig) != 0 {
-		enableVolumeEncryption = true
+
+	var cveKMSConfig string
+	cveKMSConfigBlock := primaryDeviceInfo.GetCloudVolumeEncryption()
+	for _, k := range universe.KMSConfigs {
+		if len(strings.TrimSpace(k.ConfigUUID)) != 0 &&
+			strings.Compare(k.ConfigUUID, cveKMSConfigBlock.GetKmsConfigUUID()) == 0 {
+			cveKMSConfig = k.Name
+			break
+		}
 	}
 
 	var provider ybaclient.Provider
@@ -182,8 +188,8 @@ func PopulateDescribeUniverseCLIOutput(
 	)
 	_ = flags["root-ca"].Set(rootCA)
 	_ = flags["client-root-ca"].Set(clientRootCA)
-	_ = flags["enable-volume-encryption"].Set(fmt.Sprintf("%t", enableVolumeEncryption))
-	_ = flags["kms-config"].Set(kmsConfig)
+	_ = flags["encryption-at-rest-kms-config"].Set(earKMSConfig)
+	_ = flags["cloud-volume-encryption-kms-config"].Set(cveKMSConfig)
 	_ = flags["provider-code"].Set(primaryUserIntent.GetProviderType())
 	_ = flags["provider-name"].Set(provider.GetName())
 	_ = flags["dedicated-nodes"].Set(fmt.Sprintf("%t", primaryUserIntent.GetDedicatedNodes()))

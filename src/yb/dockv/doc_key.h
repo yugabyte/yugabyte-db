@@ -17,7 +17,6 @@
 #include <vector>
 
 #include <boost/container/small_vector.hpp>
-#include <boost/optional/optional.hpp>
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/constants.h"
@@ -458,12 +457,11 @@ Result<bool> ConsumePrimitiveValueFromKey(Slice* slice);
 // Consume a group of document key components, ending with ValueType::kGroupEnd.
 // @param slice - the current point at which we are decoding a key
 // @param result - vector to append decoded values to.
-Status ConsumePrimitiveValuesFromKey(Slice* slice,
-                                     KeyEntryValues* result);
+Status ConsumePrimitiveValuesFromKey(Slice* slice, KeyEntryValues* result);
 
-Result<boost::optional<DocKeyHash>> DecodeDocKeyHash(const Slice& encoded_key);
+Result<std::optional<DocKeyHash>> DecodeDocKeyHash(const Slice& encoded_key);
 
-inline std::ostream& operator <<(std::ostream& out, const DocKey& doc_key) {
+inline std::ostream& operator<<(std::ostream& out, const DocKey& doc_key) {
   out << doc_key.ToString();
   return out;
 }

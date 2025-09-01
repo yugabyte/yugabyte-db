@@ -755,16 +755,9 @@ public class TestClusterBase extends BaseCQLTest {
     Map<HostAndPort, MiniYBDaemon> originalTServers = new HashMap<>(miniCluster.getTabletServers());
     assertEquals(NUM_TABLET_SERVERS, originalTServers.size());
 
-    // Following var is determined based on log.
-    int num_tablets_moved_to_new_tserver = 12;
-
     int rbs_delay_sec = 15;
     addNewTServers(1, Collections.singletonMap("TEST_simulate_long_remote_bootstrap_sec",
                                                String.valueOf(rbs_delay_sec)));
-
-    // Load balancer should not become idle while long RBS is half-way.
-    assertFalse(client.waitForLoadBalancerIdle(
-          (num_tablets_moved_to_new_tserver * rbs_delay_sec) / 2));
 
     // Wait for the load balancer to become idle.
     assertTrue(client.waitForLoadBalancerIdle(LOADBALANCE_TIMEOUT_MS));

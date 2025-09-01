@@ -171,7 +171,8 @@ Status ThrottleRpcStatus(const MemTrackerPtr& throttle_tracker, const YBInboundC
 
 Status YBInboundConnectionContext::HandleCall(
     const ConnectionPtr& connection, CallData* call_data) {
-  auto call = InboundCall::Create<YBInboundCall>(connection, this);
+  auto call = InboundCall::Create<YBInboundCall>(
+      connection, this, connection->call_state_listener_factory());
 
   Status s = call->ParseFrom(call_tracker(), call_data);
   if (!s.ok()) {
@@ -255,12 +256,26 @@ void YBInboundConnectionContext::HandleTimeout(ev::timer& watcher, int revents) 
   }
 }
 
-YBInboundCall::YBInboundCall(ConnectionPtr conn, CallProcessedListener* call_processed_listener)
-    : InboundCall(std::move(conn), nullptr /* rpc_metrics */, call_processed_listener),
+YBInboundCall::YBInboundCall(
+    ConnectionPtr conn,
+    CallProcessedListener* call_processed_listener,
+    CallStateListenerFactory* call_state_listener_factory)
+    : InboundCall(
+          std::move(conn),
+          nullptr /* rpc_metrics */,
+          call_processed_listener,
+          call_state_listener_factory),
       sidecars_(&consumption_) {}
 
-YBInboundCall::YBInboundCall(RpcMetrics* rpc_metrics, const RemoteMethod& remote_method)
-    : InboundCall(nullptr /* conn */, rpc_metrics, nullptr /* call_processed_listener */),
+YBInboundCall::YBInboundCall(
+    RpcMetrics* rpc_metrics,
+    const RemoteMethod& remote_method,
+    CallStateListenerFactory* call_state_listener_factory)
+    : InboundCall(
+          nullptr /* conn */,
+          rpc_metrics,
+          nullptr /* call_processed_listener */,
+          call_state_listener_factory),
       sidecars_(&consumption_) {
   header_.remote_method = remote_method.serialized_body();
 }
@@ -275,13 +290,13 @@ CoarseTimePoint YBInboundCall::GetClientDeadline() const {
 }
 
 void YBInboundCall::UpdateWaitStateInfo() {
-  if (wait_state_) {
-    wait_state_->UpdateMetadata({.rpc_request_id = instance_id()});
-    wait_state_->UpdateAuxInfo({
-        .method = method_name().ToBuffer(),
-    });
-  } else {
-    LOG_IF(DFATAL, FLAGS_ysql_yb_enable_ash) << "Wait state is nullptr for " << ToString();
+  if (auto* listener = call_state_listener()) {
+    const auto s = rpc::ParseMetadata(header_.metadata, listener->mutable_message());
+    if (!s.ok()) {
+      LOG(DFATAL) << "Failed to parse metadata for call " << header_.call_id << ": " << s;
+      return;
+    }
+    listener->UpdateInfo(IsLocalCall(), method_name().ToBuffer());
   }
 }
 

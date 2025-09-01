@@ -74,12 +74,8 @@ public class ModifyBlackList extends UniverseTaskBase {
   @Override
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    String masterHostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodetoNode();
     try {
-      log.info("Running {}: masterHostPorts={}.", getName(), masterHostPorts);
       List<HostPortPB> addHosts = getHostPortPBs(universe, taskParams().addNodes);
-
       // Skip removing nodes from blacklist if they failed to be cleaned up properly.
       // i.e. if node instance is in decommissioned state.
       UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
@@ -88,7 +84,8 @@ public class ModifyBlackList extends UniverseTaskBase {
           && !CollectionUtils.isEmpty(taskParams().removeNodes)) {
         List<NodeDetails> modifiedRemoveNodes = new ArrayList<>(taskParams().removeNodes);
         for (NodeDetails node : taskParams().removeNodes) {
-          Optional<NodeInstance> nodeInstanceOp = NodeInstance.maybeGet(node.getNodeUuid());
+          Optional<NodeInstance> nodeInstanceOp =
+              NodeInstance.maybeGetByName(node.getNodeName(), node.getNodeUuid());
           if (nodeInstanceOp.isPresent()) {
             NodeInstance nodeInstance = nodeInstanceOp.get();
             if (nodeInstance.getState().equals(NodeInstance.State.DECOMMISSIONED)) {

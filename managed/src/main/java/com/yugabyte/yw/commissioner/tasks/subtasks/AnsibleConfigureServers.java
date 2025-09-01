@@ -16,11 +16,11 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.payload.NodeAgentRpcPayload;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer.Params;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeManager.CertRotateAction;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
@@ -35,7 +35,9 @@ import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
-import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -49,7 +51,6 @@ import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 public class AnsibleConfigureServers extends NodeTaskBase {
-  public static final String DEFAULT_CONFIGURE_USER = "yugabyte";
   private final NodeAgentRpcPayload nodeAgentRpcPayload;
 
   @Inject
@@ -110,6 +111,8 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     public boolean masterJoinExistingCluster = true;
 
     public AuditLogConfig auditLogConfig = null;
+    public QueryLogConfig queryLogConfig = null;
+    public MetricsExportConfig metricsExportConfig = null;
     public Map<String, String> ybcGflags = new HashMap<>();
     public boolean overrideNodePorts = false;
     // Amount of memory to limit the postgres process to via the ysql cgroup (in megabytes)
@@ -194,7 +197,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
           optional.get(),
           nodeAgentRpcPayload.setUpConfigureServerBits(
               universe, nodeDetails, taskParams(), optional.get()),
-          DEFAULT_CONFIGURE_USER);
+          NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
       if (taskParams().type == UpgradeTaskType.Software) {
         if (taskSubType == null) {
           throw new RuntimeException("Invalid taskSubType property: " + taskSubType);
@@ -203,25 +206,25 @@ public class AnsibleConfigureServers extends NodeTaskBase {
               optional.get(),
               nodeAgentRpcPayload.setupDownloadSoftwareBits(
                   universe, nodeDetails, taskParams(), optional.get()),
-              DEFAULT_CONFIGURE_USER);
+              NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
         } else if (taskSubType.equals(UpgradeTaskParams.UpgradeTaskSubType.Install.toString())) {
           nodeAgentClient.runInstallSoftware(
               optional.get(),
               nodeAgentRpcPayload.setupInstallSoftwareBits(
                   universe, nodeDetails, taskParams(), optional.get()),
-              DEFAULT_CONFIGURE_USER);
+              NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
         }
       } else {
         nodeAgentClient.runDownloadSoftware(
             optional.get(),
             nodeAgentRpcPayload.setupDownloadSoftwareBits(
                 universe, nodeDetails, taskParams(), optional.get()),
-            DEFAULT_CONFIGURE_USER);
+            NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
         nodeAgentClient.runInstallSoftware(
             optional.get(),
             nodeAgentRpcPayload.setupInstallSoftwareBits(
                 universe, nodeDetails, taskParams(), optional.get()),
-            DEFAULT_CONFIGURE_USER);
+            NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
       }
 
       if (taskParams().isEnableYbc()) {
@@ -230,19 +233,18 @@ public class AnsibleConfigureServers extends NodeTaskBase {
             optional.get(),
             nodeAgentRpcPayload.setupInstallYbcSoftwareBits(
                 universe, nodeDetails, taskParams(), optional.get()),
-            DEFAULT_CONFIGURE_USER);
+            NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
         nodeAgentRpcPayload.runServerGFlagsWithNodeAgent(
             optional.get(), universe, nodeDetails, ServerType.CONTROLLER.toString(), taskParams());
       }
-      if (taskParams().otelCollectorEnabled && taskParams().auditLogConfig != null) {
-        AuditLogConfig config = taskParams().auditLogConfig;
-        if (!((config.getYsqlAuditConfig() == null || !config.getYsqlAuditConfig().isEnabled())
-            && (config.getYcqlAuditConfig() == null || !config.getYcqlAuditConfig().isEnabled()))) {
+      if (taskParams().otelCollectorEnabled) {
+        if (OtelCollectorUtil.isAuditLogEnabledInUniverse(taskParams().auditLogConfig)
+            || OtelCollectorUtil.isQueryLogEnabledInUniverse(taskParams().queryLogConfig)) {
           nodeAgentClient.runInstallOtelCollector(
               optional.get(),
               nodeAgentRpcPayload.setupInstallOtelCollectorBits(
                   universe, nodeDetails, taskParams(), optional.get()),
-              DEFAULT_CONFIGURE_USER);
+              NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
         }
       }
       if (taskParams().cgroupSize > 0) {
@@ -250,7 +252,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
             optional.get(),
             nodeAgentRpcPayload.setupSetupCGroupBits(
                 universe, nodeDetails, taskParams(), optional.get()),
-            DEFAULT_CONFIGURE_USER);
+            NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
       }
     }
     if (optional.isPresent() && taskParams().type == UpgradeTaskType.ToggleTls) {

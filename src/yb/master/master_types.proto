@@ -159,6 +159,8 @@ message MasterErrorPB {
     REPLICATION_SLOT_LIMIT_REACHED = 41;
 
     TABLET_SERVER_NOT_FOUND = 42;
+
+    DOCDB_TABLE_NOT_COMMITTED = 43;
   }
 
   // The error code.

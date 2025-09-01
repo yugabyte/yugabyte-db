@@ -74,8 +74,8 @@
 #include "utils/rel.h"
 #include "utils/relcache.h"
 #include "utils/syscache.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
-#include "yb/yql/pggate/ybc_pggate.h"
 
 /* Utility function to calculate column sorting options */
 static void
@@ -907,6 +907,12 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 
 	CreateTableAddColumns(handle, desc, primary_key, is_colocated_via_database,
 						  is_tablegroup);
+
+	if (stmt->partspec != NULL)
+	{
+		/* Parent partitions do not hold data, so 1 tablet is sufficient */
+		HandleYBStatus(YBCPgCreateTableSetNumTablets(handle, 1));
+	}
 
 	/* Handle SPLIT statement, if present */
 	if (split_options)
@@ -1856,7 +1862,8 @@ YBCPrepareAlterTable(List **subcmds,
 	{
 		foreach(lcmd, subcmds[cmd_idx])
 		{
-			bool subcmd_needs_yb_alter = false;
+			bool		subcmd_needs_yb_alter = false;
+
 			handles = YBCPrepareAlterTableCmd((AlterTableCmd *) lfirst(lcmd),
 											  rel, handles, &col,
 											  &subcmd_needs_yb_alter, rollbackHandle,
@@ -2317,7 +2324,9 @@ void
 YBCInitVirtualWalForCDC(const char *stream_id, Oid *relations,
 						size_t numrelations,
 						const YbcReplicationSlotHashRange *slot_hash_range,
-						uint64_t active_pid)
+						uint64_t active_pid,
+						Oid *publications, size_t numpublications,
+						bool yb_is_pub_all_tables)
 {
 	Assert(MyDatabaseId);
 
@@ -2328,7 +2337,8 @@ YBCInitVirtualWalForCDC(const char *stream_id, Oid *relations,
 
 	HandleYBStatus(YBCPgInitVirtualWalForCDC(stream_id, MyDatabaseId, relations,
 											 relfilenodes, numrelations,
-											 slot_hash_range, active_pid));
+											 slot_hash_range, active_pid, publications,
+											 numpublications, yb_is_pub_all_tables));
 
 	pfree(relfilenodes);
 }

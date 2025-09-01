@@ -18,6 +18,7 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.tasks.subtasks.BackupTableYbc;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -355,6 +356,8 @@ public class YbcBackupUtilTest extends FakeDBApplication {
     when(encryptionAtRestManager.backupUniverseKeyHistory(tableParams.getUniverseUUID()))
         .thenReturn(keysNode);
     when(mockGFlagsValidation.getYsqlMajorVersion(any())).thenReturn(Optional.of(15));
+    when(mockGFlagsValidation.getYsqlMigrationFilesList(anyString()))
+        .thenReturn(Set.of("001_init.sql", "002_add_table.sql"));
     YbcSuccessBackupConfig backupConfig = new YbcSuccessBackupConfig();
     String universeVersion =
         defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
@@ -364,6 +367,7 @@ public class YbcBackupUtilTest extends FakeDBApplication {
     backupConfig.backupUUID = tableParams.backupUuid.toString();
     backupConfig.customerUUID = tableParams.customerUuid.toString();
     backupConfig.ysqlMajorVersion = "15";
+    backupConfig.ysqlMigrationFiles = Set.of("001_init.sql", "002_add_table.sql");
     BackupTableYbc.Params params = new BackupTableYbc.Params(tableParams, null, defaultUniverse);
     BackupServiceTaskExtendedArgs extArgs = ybcBackupUtil.getExtendedArgsForBackup(params);
     assertEquals(true, extArgs.getUseTablespaces());
@@ -1047,5 +1051,30 @@ public class YbcBackupUtilTest extends FakeDBApplication {
     } else {
       ybcBackupUtil.validateYsqlMajorVersion(defaultUniverse, backupYsqlMajorVersion);
     }
+  }
+
+  @Test
+  public void testValidateYsqlMigrationFiles() throws IOException {
+    // Mock migration files in backup and in target universe
+    Set<String> backupMigrations =
+        ImmutableSet.of("001_init.sql", "002_add_table.sql", "003_update.sql");
+    Set<String> universeMigrations =
+        ImmutableSet.of("001_init.sql", "002_add_table.sql", "003_update.sql", "004_extra.sql");
+    // Mock gFlagsValidation to return universeMigrations for the universe version
+    when(mockGFlagsValidation.getYsqlMigrationFilesList(anyString()))
+        .thenReturn(universeMigrations);
+    // Success: all backup migrations present in universe
+    ybcBackupUtil.validateYsqlMigrationFiles(defaultUniverse, backupMigrations);
+    // Failure: missing migration file in universe
+    Set<String> incompleteUniverseMigrations = ImmutableSet.of("001_init.sql", "002_add_table.sql");
+    when(mockGFlagsValidation.getYsqlMigrationFilesList(anyString()))
+        .thenReturn(incompleteUniverseMigrations);
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> ybcBackupUtil.validateYsqlMigrationFiles(defaultUniverse, backupMigrations));
+    assertTrue(
+        ex.getMessage() != null
+            && ex.getMessage().contains("missing in the target universe version"));
   }
 }

@@ -51,8 +51,9 @@ You can refer to the following configurtion file templates:
 * [live-migration.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/live-migration.yaml)
 * [live-migration-with-fall-back.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/live-migration-with-fall-back.yaml)
 * [live-migration-with-fall-forward.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/live-migration-with-fall-forward.yaml)
+* [bulk-data-load.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/bulk-data-load.yaml)
 
-All supported configuration keys are described in the following sections.
+All supported configuration parameters are described in the following sections.
 
 ### Global parameters
 

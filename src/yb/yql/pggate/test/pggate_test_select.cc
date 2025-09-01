@@ -453,6 +453,58 @@ Result<size_t> TestGetTableKeyRanges(
   return std::min(num_boundaries_by_direction[true], num_boundaries_by_direction[false]);
 }
 
+Result<std::unordered_set<int>> DockeyBoundsForHashPartitionedTablesHelper(
+    YbcPgOid db_oid, YbcPgOid table_oid, std::string bound, bool is_inclusive, bool is_lower) {
+  std::unordered_set<int> result;
+  YbcPgStatement pg_stmt = nullptr;
+
+  CHECK_YBC_STATUS(YBCPgNewSelect(
+      db_oid, table_oid, NULL /* prepare_params */, false /* is_region_local */, &pg_stmt));
+  YbcPgExpr colref;
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT32, &colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 2, DataType::INT32, &colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+
+  std::string lower_bound = is_lower ? bound : "";
+  size_t lower_bound_len = is_lower ? bound.size() : 0;
+  bool lower_bound_is_inclusive = is_lower ? is_inclusive : false;
+  std::string upper_bound = !is_lower ? bound : "";
+  size_t upper_bound_len = !is_lower ? bound.size() : 0;
+  bool upper_bound_is_inclusive = !is_lower ? is_inclusive : false;
+  CHECK_YBC_STATUS(YBCPgDmlBindBounds(
+      pg_stmt, lower_bound.c_str(), lower_bound_len, lower_bound_is_inclusive, upper_bound.c_str(),
+      upper_bound_len, upper_bound_is_inclusive));
+
+  int col_count = 2;
+  uint64_t* values = static_cast<uint64_t*>(YBCPAlloc(col_count * sizeof(uint64_t)));
+  bool* isnulls = static_cast<bool*>(YBCPAlloc(col_count * sizeof(bool)));
+
+  // Execute select statement.
+  YBCPgBeginTransaction(0);
+
+  auto status = Status(YBCPgExecSelect(pg_stmt, nullptr /* exec_params */), AddRef::kFalse);
+
+  // This can fail (expected) if the AutoFlag yb_allow_dockey_bounds is false.
+  if (!status.ok()) {
+    YBCPgAbortPlainTransaction();
+    return status;
+  }
+
+  while (true) {
+    bool has_data = false;
+    CHECK_YBC_STATUS(YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, nullptr, &has_data));
+    if (!has_data) {
+      break;
+    }
+    SCHECK(!isnulls[0], InternalError, "Scan result unexpectedly null");
+    result.insert(static_cast<int>(values[0]));
+  }
+  YBCPgCommitPlainTransaction();
+
+  return result;
+}
+
 } // namespace
 
 // TODO(get_table_key_ranges): Enable this test as part of
@@ -558,6 +610,79 @@ TEST_F_EX(PggateTestSelect, GetColocatedTableKeyRanges, PggateTestSelectWithYsql
     }
     min_max_keys.push_back({min_key, max_key});
   }
+}
+
+TEST_F_EX(PggateTestSelect, DockeyBoundsForHashPartitionedTables, PggateTestSelectWithYsql) {
+  constexpr auto kDatabaseName = "yugabyte";
+
+  CHECK_OK(Init(
+      "DockeyBoundsForHashPartitionedTables", kNumOfTablets, /* replication_factor = */ 0,
+      /* should_create_db = */ false));
+  auto conn = ASSERT_RESULT(PgConnect(kDatabaseName));
+
+  const auto db_oid = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
+      Format("SELECT oid FROM pg_database WHERE datname = '$0'", kDatabaseName)));
+  ASSERT_OK(
+      conn.Execute("CREATE TABLE ab(a INT, b INT, PRIMARY KEY(a HASH)) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO ab VALUES (63, 63), (1632, 1632), (1723, 1723)"));
+  ASSERT_TRUE(
+      ASSERT_RESULT(conn.FetchRow<bool>("SELECT COUNT(distinct yb_hash_code(a)) = 1 from ab")));
+
+  const auto table_oid = ASSERT_RESULT(
+      conn.FetchRow<pgwrapper::PGOid>("SELECT oid FROM pg_class WHERE relname = 'ab'"));
+
+  // non-inclusive lower_bound = 47B6A4488000003F2121 (ybctid of row with a = 63)
+  std::string lower_bound;
+  ASSERT_TRUE(strings::ByteStringFromAscii("47B6A4488000003F2121", &lower_bound));
+  std::unordered_set<int> expected_result{1632, 1723};
+  auto actual_result = ASSERT_RESULT(DockeyBoundsForHashPartitionedTablesHelper(
+      db_oid, table_oid, lower_bound, false /* is_inclusive */, true /* is_lower */));
+  ASSERT_EQ(expected_result, actual_result);
+
+  // inclusive lower_bound = 47B6A448800006602121 (ybctid of row with a = 1632)
+  ASSERT_TRUE(strings::ByteStringFromAscii("47B6A448800006602121", &lower_bound));
+  actual_result = ASSERT_RESULT(DockeyBoundsForHashPartitionedTablesHelper(
+      db_oid, table_oid, lower_bound, true /* is_inclusive */, true /* is_lower */));
+  ASSERT_EQ(expected_result, actual_result);
+
+  // inclusive upper_bound = 47B6A448800006602121 (ybctid of row with a = 1632)
+  std::string upper_bound;
+  ASSERT_TRUE(strings::ByteStringFromAscii("47B6A448800006602121", &upper_bound));
+  expected_result = {63, 1632};
+  actual_result = ASSERT_RESULT(DockeyBoundsForHashPartitionedTablesHelper(
+      db_oid, table_oid, upper_bound, true /* is_inclusive */, false /* is_lower */));
+  ASSERT_EQ(expected_result, actual_result);
+
+  // non-inclusive upper_bound = 47B6A448800006BB2121 (ybctid of row with a = 1723)
+  ASSERT_TRUE(strings::ByteStringFromAscii("47B6A448800006BB2121", &upper_bound));
+  actual_result = ASSERT_RESULT(DockeyBoundsForHashPartitionedTablesHelper(
+      db_oid, table_oid, upper_bound, false /* is_inclusive */, false /* is_lower */));
+  ASSERT_EQ(expected_result, actual_result);
+
+  // Test the case when PG AutoFalg yb_allow_dockey_bounds is false.
+  yb_allow_dockey_bounds = false;
+  auto result = DockeyBoundsForHashPartitionedTablesHelper(
+      db_oid, table_oid, upper_bound, false /* is_inclusive */, false /* is_lower */);
+  ASSERT_NOK(result);
+  ASSERT_TRUE(HasSubstring(
+      result.status().ToString(),
+      "This feature is not supported because the AutoFlag 'yb_allow_dockey_bounds' is false"));
+
+  // non-inclusive upper bound = {46756, {KeyEntryValue(kHighest)}, {KeyEntryValue(kHighest)}
+  // Note that yb_hash_code(63) == 46756
+  ASSERT_TRUE(strings::ByteStringFromAscii("47B6A47E217E21", &upper_bound));
+  actual_result = ASSERT_RESULT(DockeyBoundsForHashPartitionedTablesHelper(
+      db_oid, table_oid, upper_bound, false /* is_inclusive */, false /* is_lower */));
+  expected_result = {63, 1632, 1723};
+  ASSERT_EQ(expected_result, actual_result);
+
+  // non-inclusive lower bound = {46756, {KeyEntryValue(kLowest)}, {KeyEntryValue(kLowest)}
+  // Note that yb_hash_code(63) == 46756
+  ASSERT_TRUE(strings::ByteStringFromAscii("47B6A400210021", &lower_bound));
+  actual_result = ASSERT_RESULT(DockeyBoundsForHashPartitionedTablesHelper(
+      db_oid, table_oid, lower_bound, false /* is_inclusive */, true /* is_lower */));
+  expected_result = {63, 1632, 1723};
+  ASSERT_EQ(expected_result, actual_result);
 }
 
 } // namespace pggate

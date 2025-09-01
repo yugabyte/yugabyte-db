@@ -17,7 +17,6 @@
 
 #pragma once
 
-#include <boost/optional.hpp>
 #include <rapidjson/document.h>
 
 #include "yb/util/status.h"
@@ -93,10 +92,10 @@ class PTInsertJsonClause: public PTCollection {
   const PTExprPtr              json_expr_;
 
   // Raw JSON string, only available after being set via PreExecInit.
-  std::string                          json_string_;
+  std::string json_string_;
 
   // Parsed JSON object, only available after being set via PreExecInit. Guaranteed to be an Object.
-  boost::optional<rapidjson::Document> json_document_;
+  std::optional<rapidjson::Document> json_document_;
 };
 
 }  // namespace ql

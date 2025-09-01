@@ -32,7 +32,9 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
-import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -300,10 +302,9 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       // disabled, so we enable it again in case of errors.
       if (!isLoadBalancerOn) {
         setTaskQueueAndRun(
-            () -> {
-              createLoadBalancerStateChangeTask(true)
-                  .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-            });
+            () ->
+                createLoadBalancerStateChangeTask(true)
+                    .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse));
       }
       if (onFailureTask != null) {
         log.info("Running on failure upgrade task");
@@ -1030,6 +1031,8 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       List<NodeDetails> nodes,
       boolean installOtelCollector,
       AuditLogConfig auditLogConfig,
+      QueryLogConfig queryLogConfig,
+      MetricsExportConfig metricsExportConfig,
       Function<NodeDetails, Map<String, String>> nodeToGflags) {
     // If the node list is empty, we don't need to do anything.
     if (nodes.isEmpty()) {
@@ -1049,6 +1052,8 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       params.otelCollectorEnabled =
           installOtelCollector || getUniverse().getUniverseDetails().otelCollectorEnabled;
       params.auditLogConfig = auditLogConfig;
+      params.queryLogConfig = queryLogConfig;
+      params.metricsExportConfig = metricsExportConfig;
       params.deviceInfo = userIntent.getDeviceInfoForNode(node);
       params.gflags = nodeToGflags.apply(node);
 

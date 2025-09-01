@@ -117,7 +117,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
 
   @Getter
   @Setter
-  public static class KubernetesGflagsUpgradeCommonParams {
+  public static class KubernetesUpgradeCommonParams {
     private String universeName;
     private String masterAddresses;
     private KubernetesPlacement placement;
@@ -128,7 +128,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     private boolean enableYbc;
     private String ybcSoftwareVersion;
 
-    public KubernetesGflagsUpgradeCommonParams(
+    public KubernetesUpgradeCommonParams(
         Universe universe, Cluster cluster, RuntimeConfGetter confGetter) {
       UniverseDefinitionTaskParams universeParams = universe.getUniverseDetails();
       Cluster primaryCluster = universeParams.getPrimaryCluster();
@@ -605,7 +605,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       boolean isReadOnlyCluster,
       boolean enableYbc,
       String ybcSoftwareVersion,
-      YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState) {
+      YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState,
+      UUID rootCAUUID) {
     Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster == null) {
       primaryCluster =
@@ -666,7 +667,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                       azOverrides,
                       isReadOnlyCluster,
                       enableYbc,
-                      ysqlMajorVersionUpgradeState));
+                      ysqlMajorVersionUpgradeState,
+                      rootCAUUID));
               allPodsDelete.addSubTask(
                   getSingleKubernetesExecutorTaskForServerTypeTask(
                       universeName,
@@ -688,6 +690,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                       null,
                       false /* usePreviousGflagsChecksum */,
                       null /* previousGflagsChecksumMap */,
+                      false /* usePreviousCertChecksum */,
+                      null /* previousCertChecksum */,
                       false, /* useNewMasterDiskSize */
                       false /* useNewTserverDiskSize */,
                       ysqlMajorVersionUpgradeState,
@@ -766,6 +770,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                       null,
                       false /* usePreviousGflagsChecksum */,
                       null /* previousGflagsChecksumMap */,
+                      false /* usePreviousCertChecksum */,
+                      null /* previousCertChecksum */,
                       false, /* useNewMasterDiskSize */
                       false /* useNewTserverDiskSize */,
                       ysqlMajorVersionUpgradeState,
@@ -839,6 +845,36 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       boolean enableYbc,
       String ybcSoftwareVersion,
       YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState) {
+    upgradePodsNonRestart(
+        universeName,
+        placement,
+        masterAddresses,
+        serverType,
+        softwareVersion,
+        universeOverridesStr,
+        azsOverrides,
+        newNamingStyle,
+        isReadOnlyCluster,
+        enableYbc,
+        ybcSoftwareVersion,
+        ysqlMajorVersionUpgradeState,
+        null /* rootCAUUID */);
+  }
+
+  public void upgradePodsNonRestart(
+      String universeName,
+      KubernetesPlacement placement,
+      String masterAddresses,
+      ServerType serverType,
+      String softwareVersion,
+      String universeOverridesStr,
+      Map<String, String> azsOverrides,
+      boolean newNamingStyle,
+      boolean isReadOnlyCluster,
+      boolean enableYbc,
+      String ybcSoftwareVersion,
+      YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState,
+      UUID rootCAUUID) {
     Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster == null) {
       primaryCluster =
@@ -888,7 +924,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                       azOverrides,
                       isReadOnlyCluster,
                       enableYbc,
-                      ysqlMajorVersionUpgradeState));
+                      ysqlMajorVersionUpgradeState,
+                      rootCAUUID));
             });
     getRunnableTask().addSubTaskGroup(helmUpgrade);
     // Wait for gflags change to be reflected on mounted locations
@@ -1116,8 +1153,10 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                       null,
                       enableYbc,
                       ybcSoftwareVersion,
-                      false,
-                      null,
+                      false /* usePreviousGflagsChecksum */,
+                      null /* previousGflagsChecksumMap */,
+                      false /* usePreviousCertChecksum */,
+                      null /* previousCertChecksum */,
                       false /* useNewMasterDiskSize */,
                       false /* useNewTserverDiskSize */,
                       ysqlMajorVersionUpgradeState,
@@ -1545,20 +1584,38 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       boolean isReadOnlyCluster,
       String ybcSoftwareVersion,
       Map<String, String> ybcGflags) {
+    installYbcOnThePods(
+        servers, isReadOnlyCluster, ybcSoftwareVersion, ybcGflags, null /* placement */);
+  }
+
+  public void installYbcOnThePods(
+      Set<NodeDetails> servers,
+      boolean isReadOnlyCluster,
+      String ybcSoftwareVersion,
+      Map<String, String> ybcGflags,
+      @Nullable KubernetesPlacement placement) {
     SubTaskGroup ybcUpload =
         createSubTaskGroup(KubernetesCommandExecutor.CommandType.COPY_PACKAGE.getSubTaskGroupName())
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     createKubernetesYbcCopyPackageTask(
-        ybcUpload, servers, isReadOnlyCluster, ybcSoftwareVersion, ybcGflags);
+        ybcUpload, servers, isReadOnlyCluster, ybcSoftwareVersion, ybcGflags, placement);
     getRunnableTask().addSubTaskGroup(ybcUpload);
   }
 
   public void performYbcAction(
       Set<NodeDetails> servers, boolean isReadOnlyCluster, String command) {
+    performYbcAction(servers, isReadOnlyCluster, command, null /* placement */);
+  }
+
+  public void performYbcAction(
+      Set<NodeDetails> servers,
+      boolean isReadOnlyCluster,
+      String command,
+      @Nullable KubernetesPlacement placement) {
     SubTaskGroup ybcAction =
         createSubTaskGroup(KubernetesCommandExecutor.CommandType.YBC_ACTION.getSubTaskGroupName())
             .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
-    createKubernetesYbcActionTask(ybcAction, servers, isReadOnlyCluster, command);
+    createKubernetesYbcActionTask(ybcAction, servers, isReadOnlyCluster, command, placement);
     getRunnableTask().addSubTaskGroup(ybcAction);
   }
 
@@ -1568,7 +1625,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       Set<NodeDetails> servers,
       boolean isReadOnlyCluster,
       String ybcSoftwareVersion,
-      Map<String, String> ybcGflags) {
+      Map<String, String> ybcGflags,
+      @Nullable KubernetesPlacement placement) {
     for (NodeDetails node : servers) {
       Cluster primaryCluster = taskParams().getPrimaryCluster();
       Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
@@ -1584,7 +1642,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
               ? UUID.fromString(readOnlyClusters.get(0).userIntent.provider)
               : UUID.fromString(primaryCluster.userIntent.provider);
       createKubernetesYbcCopyPackageSubTask(
-          subTaskGroup, node, providerUUID, ybcSoftwareVersion, ybcGflags);
+          subTaskGroup, node, providerUUID, ybcSoftwareVersion, ybcGflags, placement);
     }
   }
 
@@ -1698,7 +1756,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       SubTaskGroup subTaskGroup,
       Set<NodeDetails> servers,
       boolean isReadOnlyCluster,
-      String command) {
+      String command,
+      @Nullable KubernetesPlacement placement) {
     for (NodeDetails node : servers) {
       Cluster primaryCluster = taskParams().getPrimaryCluster();
       List<Cluster> readOnlyClusters = taskParams().getReadOnlyClusters();
@@ -1714,7 +1773,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
               ? UUID.fromString(readOnlyClusters.get(0).userIntent.provider)
               : UUID.fromString(primaryCluster.userIntent.provider);
       createKubernetesYbcActionSubTask(
-          subTaskGroup, node, providerUUID, isReadOnlyCluster, command);
+          subTaskGroup, node, providerUUID, isReadOnlyCluster, command, placement);
     }
   }
 
@@ -2082,6 +2141,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             ybcSoftwareVersion,
             usePreviousGflagsChecksum,
             previousGflagsChecksumMap,
+            false /* usePreviousCertChecksum */,
+            null /* previousCertChecksum */,
             false /* useNewMasterDiskSize */,
             false /* useNewTserverDiskSize */,
             ysqlMajorVersionUpgradeState,
@@ -2128,6 +2189,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         ybcSoftwareVersion,
         false /* usePreviousGflagsChecksum */,
         null /* previousGflagsChecksumMap */,
+        false /* usePreviousCertChecksum */,
+        null /* previousCertChecksum */,
         false, /* useNewMasterDiskSize */
         false /* useNewTserverDiskSize */,
         null /* ysqlMajorVersionUpgradeState */,
@@ -2154,6 +2217,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       String ybcSoftwareVersion,
       boolean usePreviousGflagsChecksum,
       Map<ServerType, String> previousGflagsChecksumMap,
+      boolean usePreviousCertChecksum,
+      String previousCertChecksum,
       boolean useNewMasterDiskSize,
       boolean useNewTserverDiskSize,
       YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState,
@@ -2242,6 +2307,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.setYbcSoftwareVersion(ybcSoftwareVersion);
     params.usePreviousGflagsChecksum = usePreviousGflagsChecksum;
     params.previousGflagsChecksumMap = previousGflagsChecksumMap;
+    params.usePreviousCertChecksum = usePreviousCertChecksum;
+    params.previousCertChecksum = previousCertChecksum;
     params.useNewMasterDiskSize = useNewMasterDiskSize;
     params.useNewTserverDiskSize = useNewTserverDiskSize;
     params.rootCA = rootCAUUID;
@@ -2263,7 +2330,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       Map<String, Object> azOverrides,
       boolean isReadOnlyCluster,
       boolean enableYbc,
-      YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState) {
+      YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState,
+      UUID rootCAUUID) {
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     Cluster primaryCluster = taskParams().getPrimaryCluster();
@@ -2287,6 +2355,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.universeOverrides = universeOverrides;
     params.azOverrides = azOverrides;
     params.universeName = universeName;
+    params.rootCA = rootCAUUID;
 
     // sending in the entire taskParams only for selected commandTypes that need it
     if (commandType == CommandType.HELM_INSTALL || commandType == CommandType.HELM_UPGRADE) {
@@ -2338,7 +2407,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       Map<String, Object> azOverrides,
       boolean isReadOnlyCluster,
       boolean enableYbc,
-      YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState) {
+      YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState,
+      UUID rootCAUUID) {
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     Cluster primaryCluster = taskParams().getPrimaryCluster();
@@ -2392,6 +2462,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.isReadOnlyCluster = isReadOnlyCluster;
     params.setEnableYbc(enableYbc);
     params.usePreviousGflagsChecksum = true; /* using true always */
+    params.usePreviousCertChecksum = true /* use true always */;
+    params.rootCA = rootCAUUID;
     KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
     task.initialize(params);
     return task;
@@ -2672,9 +2744,57 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       Map<ServerType, String> previousGflagsChecksum =
           kubernetesManagerFactory
               .getManager()
-              .getServerTypeGflagsChecksumMap(namespace, helmReleaseName, azConfig);
+              .getServerTypeGflagsChecksumMap(namespace, helmReleaseName, azConfig, newNamingStyle);
       perAZServerTypeGflagsChecksumMap.put(azUUID, previousGflagsChecksum);
     }
     return perAZServerTypeGflagsChecksumMap;
+  }
+
+  protected String getCertChecksum(Universe universe) {
+    String certChecksum = null;
+    if (universe.getUniverseDetails().getPrimaryCluster().getCertChecksum() != null) {
+      return universe.getUniverseDetails().getPrimaryCluster().getCertChecksum();
+    }
+    // If cert checksum is not available in universe details, retrieve it from Kubernetes
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    PlacementInfo pI = universe.getUniverseDetails().getPrimaryCluster().placementInfo;
+    boolean isReadOnlyCluster =
+        universe.getUniverseDetails().getPrimaryCluster().clusterType == ClusterType.ASYNC;
+    KubernetesPlacement placement = new KubernetesPlacement(pI, isReadOnlyCluster);
+    Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+    boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
+    boolean newNamingStyle = universe.getUniverseDetails().useNewHelmNamingStyle;
+
+    // Get the first AZ config to retrieve cert checksum
+    Entry<UUID, Map<String, String>> firstEntry = placement.configs.entrySet().iterator().next();
+    if (firstEntry != null) {
+      UUID azUUID = firstEntry.getKey();
+      String azName = isMultiAZ ? AvailabilityZone.getOrBadRequest(azUUID).getCode() : null;
+      Map<String, String> azConfig = firstEntry.getValue();
+
+      String namespace =
+          KubernetesUtil.getKubernetesNamespace(
+              isMultiAZ,
+              universe.getUniverseDetails().nodePrefix,
+              azName,
+              azConfig,
+              newNamingStyle,
+              isReadOnlyCluster);
+
+      String helmReleaseName =
+          KubernetesUtil.getHelmReleaseName(
+              isMultiAZ,
+              universe.getUniverseDetails().nodePrefix,
+              universe.getName(),
+              azName,
+              isReadOnlyCluster,
+              newNamingStyle);
+
+      certChecksum =
+          kubernetesManagerFactory
+              .getManager()
+              .getCertChecksum(namespace, helmReleaseName, azConfig);
+    }
+    return certChecksum;
   }
 }

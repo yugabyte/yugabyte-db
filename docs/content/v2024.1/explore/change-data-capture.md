@@ -33,7 +33,7 @@ CDC via logical replication is supported in YugabyteDB starting from v2024.1.1.
 YugabyteDB logical replication can be used in conjunction with Apache Kafka to create a scalable, fault-tolerant, and highly available data pipeline as follows:
 
 1. Logical replication: YugabyteDB publishes changes to a logical replication slot, which captures the changes in a format that can be consumed by Kafka.
-1. [YugabyteDB Connector](../../develop/change-data-capture/using-logical-replication/yugabytedb-connector/): The logical replication slot is connected to the YugabyteDB Connector, a Kafka Connect worker based on Debezium, which converts the PostgreSQL change stream into Kafka messages.
+1. [YugabyteDB Connector](../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/): The logical replication slot is connected to the YugabyteDB Connector, a Kafka Connect worker based on Debezium, which converts the PostgreSQL change stream into Kafka messages.
 1. Kafka topics: YugabyteDB Connector publishes the messages to one or more Kafka topics.
 1. Kafka consumers: Kafka consumers subscribe to the topics and process the messages, which can be used for further processing, storage, or analysis.
 
@@ -170,5 +170,5 @@ COMMIT 3
 
 ## Learn more
 
-- [Change data capture](../../develop/change-data-capture/)
-- [Get started with YugabyteDB Connector](../../develop/change-data-capture/using-logical-replication/get-started/)
+- [Change data capture](../../additional-features/change-data-capture/)
+- [Get started with YugabyteDB Connector](../../additional-features/change-data-capture/using-logical-replication/get-started/)

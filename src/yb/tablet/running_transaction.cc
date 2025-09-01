@@ -229,7 +229,7 @@ void RunningTransaction::ScheduleRemoveIntents(
   }
 }
 
-boost::optional<TransactionStatus> RunningTransaction::GetStatusAt(
+std::optional<TransactionStatus> RunningTransaction::GetStatusAt(
     HybridTime time, HybridTime last_known_status_hybrid_time,
     TransactionStatus last_known_status) {
   switch (last_known_status) {
@@ -244,13 +244,13 @@ boost::optional<TransactionStatus> RunningTransaction::GetStatusAt(
       if (last_known_status_hybrid_time >= time) {
         return TransactionStatus::PENDING;
       }
-      return boost::none;
+      return std::nullopt;
     case TransactionStatus::CREATED: {
       // This can happen in case of transaction promotion. The first status request to the old
       // status tablet could have arrived and the transaction could have undergone promoted in
       // the interim. In that case, we just return the past known status (which could be CREATED
       // if this was the first ever txn status request).
-      return boost::none;
+      return std::nullopt;
     }
     default:
       FATAL_INVALID_ENUM_VALUE(TransactionStatus, last_known_status);
@@ -476,7 +476,7 @@ std::vector<StatusRequest> RunningTransaction::ExtractFinishedStatusWaitersUnloc
   for (auto it = status_waiters_.begin(); it != status_waiters_.end(); ++it) {
     if (it->serial_no <= serial_no ||
         GetStatusAt(it->global_limit_ht, time_of_status, transaction_status) ||
-        time_of_status < it->read_ht) {
+        it->read_ht <= time_of_status) {
       result.push_back(std::move(*it));
     } else {
       if (w != it) {
@@ -512,9 +512,6 @@ void RunningTransaction::NotifyWaiters(int64_t serial_no, HybridTime time_of_sta
       // It means that between read_ht and global_limit_ht transaction was pending.
       // It implies that transaction was not committed before request was sent.
       // We could safely respond PENDING to caller.
-      LOG_IF_WITH_PREFIX(DFATAL, waiter.serial_no > serial_no)
-          << "Notify waiter with request id greater than id of status request: "
-          << waiter.serial_no << " vs " << serial_no;
       waiter.callback(TransactionStatusResult{
           TransactionStatus::PENDING, time_of_status, aborted_subtxn_set,
           expected_deadlock_status, pg_session_req_version});

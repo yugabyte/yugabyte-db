@@ -14,8 +14,10 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.audit.AuditService;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
@@ -27,6 +29,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -298,6 +301,21 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
       }
     }
 
+    // Validate GFlags through RPC
+    boolean skipRuntimeGflagValidation =
+        confGetter.getGlobalConf(GlobalConfKeys.skipRuntimeGflagValidation);
+    if (!skipRuntimeGflagValidation) {
+      if (Util.compareYBVersions(
+              softwareVersion, "2024.2.0.0-b1", "2.27.0.0-b1", true /* suppressFormatError */)
+          >= 0) {
+        Map<UUID, UniverseDefinitionTaskParams.Cluster> newClustersMap =
+            taskParams().getNewVersionsOfClusters(universe);
+        List<UniverseDefinitionTaskParams.Cluster> newClustersList =
+            new ArrayList<>(newClustersMap.values());
+        createValidateGFlagsTask(newClustersList);
+      }
+    }
+
     taskParams().verifyPreviewGFlagsSettings(universe);
     addBasicPrecheckTasks();
   }
@@ -472,17 +490,22 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
     createServerConfFileUpdateTasks(
         userIntent, nodes, processTypes, curCluster, curClusters, newCluster, newClusters);
 
-    // In case audit logs export is set up - need to re-configure otel collector.
-    if (universe.getUniverseDetails().otelCollectorEnabled
-        && curCluster.userIntent.auditLogConfig != null) {
-      createManageOtelCollectorTasks(
-          userIntent,
-          nodes,
-          false,
-          curCluster.userIntent.auditLogConfig,
-          nodeDetails ->
-              GFlagsUtil.getGFlagsForNode(
-                  nodeDetails, ServerType.TSERVER, newCluster, newClusters));
+    // In case audit or query log or metrics export is set up - need to re-configure otel collector.
+    if (universe.getUniverseDetails().otelCollectorEnabled) {
+      if (curCluster.userIntent.auditLogConfig != null
+          || curCluster.userIntent.queryLogConfig != null
+          || curCluster.userIntent.metricsExportConfig != null) {
+        createManageOtelCollectorTasks(
+            userIntent,
+            nodes,
+            false,
+            curCluster.userIntent.auditLogConfig,
+            curCluster.userIntent.queryLogConfig,
+            curCluster.userIntent.metricsExportConfig,
+            nodeDetails ->
+                GFlagsUtil.getGFlagsForNode(
+                    nodeDetails, ServerType.TSERVER, newCluster, newClusters));
+      }
     }
   }
 }

@@ -152,6 +152,8 @@ class MiniCluster : public MiniClusterBase {
       tablet::FlushMode mode = tablet::FlushMode::kSync,
       tablet::FlushFlags flags = tablet::FlushFlags::kAllDbs);
   Status CompactTablets(docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
+  Status CompactTablet(
+      const TabletId& tablet_id, docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
   Status SwitchMemtables();
   Status CleanTabletLogs();
 
@@ -284,6 +286,8 @@ class MiniCluster : public MiniClusterBase {
   }
 
   std::string GetClusterId() { return options_.cluster_id; }
+
+  bool WasUnsafeShutdown() const override { return false; }
 
   HostPort YsqlHostport() const override {
     CHECK(ysql_hostport_ != HostPort());
@@ -437,7 +441,9 @@ Status StepDown(
 // Waits until all tablet peers of the specified cluster are in the Running state.
 // And total number of those peers equals to the number of tablet servers for each known tablet.
 // Additionally checks peers for the specified table if table_id is specified.
-Status WaitAllReplicasReady(MiniCluster* cluster, MonoDelta timeout);
+Status WaitAllReplicasReady(
+    MiniCluster* cluster, MonoDelta timeout,
+    UserTabletsOnly user_tablets_only = UserTabletsOnly::kTrue);
 
 Status WaitAllReplicasReady(MiniCluster* cluster, const TableId& table_id, MonoDelta timeout);
 
@@ -474,6 +480,11 @@ YB_DEFINE_ENUM(Connectivity, (kOn)(kOff));
 Status BreakConnectivity(MiniCluster* cluster, size_t idx1, size_t idx2);
 Status SetupConnectivity(
     MiniCluster* cluster, size_t idx1, size_t idx2, Connectivity connectivity);
+
+Status BreakConnectivityWithAll(MiniCluster* cluster, size_t idx);
+Status SetupConnectivityWithAll(
+    MiniCluster* cluster, size_t idx, Connectivity connectivity = Connectivity::kOn);
+
 Result<size_t> ServerWithLeaders(MiniCluster* cluster);
 
 // Sets FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec and also adjusts rate limiter

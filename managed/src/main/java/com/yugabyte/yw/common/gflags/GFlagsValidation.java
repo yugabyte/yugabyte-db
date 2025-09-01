@@ -62,6 +62,8 @@ import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.client.ValidateFlagValueResponse;
+import org.yb.client.YBClient;
 import play.Environment;
 
 @Singleton
@@ -121,7 +123,11 @@ public class GFlagsValidation {
       try {
         for (GFlagDetails gflag : extractGFlags(version, server.name(), false)) {
           if (gflag.tags.contains("sensitive_info")) {
-            sensitiveGflags.add("$.." + gflag.name);
+            // Skip ysql_hba_conf_csv from being entirely redacted. Sensitive fields in this csv
+            // flag will be redacted through regex matching.
+            if (!gflag.name.equals("ysql_hba_conf_csv")) {
+              sensitiveGflags.add("$.." + gflag.name);
+            }
           }
         }
       } catch (Exception e) {
@@ -669,6 +675,31 @@ public class GFlagsValidation {
     }
   }
 
+  public Map<String, String> validateGFlags(
+      YBClient client, Map<String, String> mergedGFlags, ServerType serverType) {
+    Map<String, String> serverGFlagsValidationErrors = new HashMap<String, String>();
+    for (Map.Entry<String, String> entry : mergedGFlags.entrySet()) {
+      String flagName = entry.getKey();
+      String flagValue = entry.getValue();
+      try {
+        ValidateFlagValueResponse resp = client.validateFlagValue(flagName, flagValue);
+        // Success: no exception means valid flag.
+      } catch (Exception e) {
+        serverGFlagsValidationErrors.put(
+            flagName,
+            "On server type: "
+                + serverType.toString()
+                + ", Error validating flag "
+                + flagName
+                + " with value: "
+                + flagValue
+                + " "
+                + e);
+      }
+    }
+    return serverGFlagsValidationErrors;
+  }
+
   /** Structure to capture GFlags metadata from xml file. */
   private static class AllGFlags {
     @JsonProperty(value = "program")
@@ -720,5 +751,55 @@ public class GFlagsValidation {
   public static class YsqlMigrationFilesList {
     @JsonAlias(value = "ysqlMigrationsFilesList")
     public Set<String> ysqlMigrationsFilesList = new HashSet<>();
+  }
+
+  public static class GFlagsValidationErrorsPerAZ {
+    public UUID azUuid;
+    public UUID clusterUuid;
+    public Map<String, String> masterGFlagsErrors = new HashMap<>();
+    public Map<String, String> tserverGFlagsErrors = new HashMap<>();
+
+    @Override
+    public String toString() {
+      StringBuilder sb = new StringBuilder();
+      sb.append("GFlagsValidationErrorsPerAZ{");
+      sb.append("azUuid=").append(azUuid);
+      sb.append(", clusterUuid=").append(clusterUuid);
+
+      if (masterGFlagsErrors != null && !masterGFlagsErrors.isEmpty()) {
+        sb.append(", masterGFlagsErrors=").append(masterGFlagsErrors);
+      }
+
+      if (tserverGFlagsErrors != null && !tserverGFlagsErrors.isEmpty()) {
+        sb.append(", tserverGFlagsErrors=").append(tserverGFlagsErrors);
+      }
+
+      sb.append("}");
+      return sb.toString();
+    }
+  }
+
+  public static class GFlagsValidationErrors {
+    public List<GFlagsValidationErrorsPerAZ> gFlagsValidationErrorsPerAZs = new ArrayList<>();
+
+    @Override
+    public String toString() {
+      StringBuilder sb = new StringBuilder();
+      sb.append("GFlagsValidationErrors{");
+
+      if (gFlagsValidationErrorsPerAZs != null && !gFlagsValidationErrorsPerAZs.isEmpty()) {
+        sb.append("gFlagsValidationErrorsPerAZs=[");
+        for (int i = 0; i < gFlagsValidationErrorsPerAZs.size(); i++) {
+          if (i > 0) sb.append(", ");
+          sb.append(gFlagsValidationErrorsPerAZs.get(i));
+        }
+        sb.append("]");
+      } else {
+        sb.append("gFlagsValidationErrorsPerAZs=[]");
+      }
+
+      sb.append("}");
+      return sb.toString();
+    }
   }
 }

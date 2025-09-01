@@ -42,7 +42,6 @@
 #include <utility>
 #include <vector>
 
-#include <boost/optional.hpp>
 #include <glog/stl_logging.h>
 #include <gtest/gtest.h>
 
@@ -50,6 +49,7 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/entity_ids_types.h"
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol.pb.h"
@@ -1038,14 +1038,10 @@ Status StartElection(const TServerDetails* replica,
   return Status::OK();
 }
 
-Status RequestVote(const TServerDetails* replica,
-                   const std::string& tablet_id,
-                   const std::string& candidate_uuid,
-                   int64_t candidate_term,
-                   const OpIdPB& last_logged_opid,
-                   boost::optional<bool> ignore_live_leader,
-                   boost::optional<bool> is_pre_election,
-                   const MonoDelta& timeout) {
+Status RequestVote(
+    const TServerDetails* replica, const std::string& tablet_id, const std::string& candidate_uuid,
+    int64_t candidate_term, const OpIdPB& last_logged_opid, std::optional<bool> ignore_live_leader,
+    std::optional<bool> is_pre_election, const MonoDelta& timeout) {
   RSTATUS_DCHECK(
       last_logged_opid.IsInitialized(), Uninitialized, "Last logged op id is uninitialized");
   consensus::VoteRequestPB req;
@@ -1130,43 +1126,40 @@ Status WriteSimpleTestRow(const TServerDetails* replica,
 }
 
 namespace {
-  Status SendAddRemoveServerRequest(const TServerDetails* leader,
-                                    const ChangeConfigRequestPB& req,
-                                    ChangeConfigResponsePB* resp,
-                                    RpcController* rpc,
-                                    const MonoDelta& timeout,
-                                    TabletServerErrorPB::Code* error_code,
-                                    bool retry) {
-    Status status = Status::OK();
-    MonoTime start = MonoTime::Now();
-    do {
-      RETURN_NOT_OK(leader->consensus_proxy->ChangeConfig(req, resp, rpc));
-      if (!resp->has_error()) {
-        status = Status::OK();
-        break;
-      }
-      if (error_code) *error_code = resp->error().code();
-      status = StatusFromPB(resp->error().status());
-      if (!retry) {
-        break;
-      }
-      if (resp->error().code() != TabletServerErrorPB::LEADER_NOT_READY_CHANGE_CONFIG) {
-        break;
-      }
-      rpc->Reset();
-    } while (MonoTime::Now().GetDeltaSince(start).LessThan(timeout));
-    return status;
-  }
-} // namespace
+Status SendAddRemoveServerRequest(const TServerDetails* leader,
+                                  const ChangeConfigRequestPB& req,
+                                  ChangeConfigResponsePB* resp,
+                                  RpcController* rpc,
+                                  const MonoDelta& timeout,
+                                  TabletServerErrorPB::Code* error_code,
+                                  bool retry) {
+  Status status = Status::OK();
+  MonoTime start = MonoTime::Now();
+  do {
+    RETURN_NOT_OK(leader->consensus_proxy->ChangeConfig(req, resp, rpc));
+    if (!resp->has_error()) {
+      status = Status::OK();
+      break;
+    }
+    if (error_code) *error_code = resp->error().code();
+    status = StatusFromPB(resp->error().status());
+    if (!retry) {
+      break;
+    }
+    if (resp->error().code() != TabletServerErrorPB::LEADER_NOT_READY_CHANGE_CONFIG) {
+      break;
+    }
+    rpc->Reset();
+  } while (MonoTime::Now().GetDeltaSince(start).LessThan(timeout));
+  return status;
+}
+}  // namespace
 
-Status AddServer(const TServerDetails* leader,
-                 const std::string& tablet_id,
-                 const TServerDetails* replica_to_add,
-                 consensus::PeerMemberType member_type,
-                 const boost::optional<int64_t>& cas_config_opid_index,
-                 const MonoDelta& timeout,
-                 TabletServerErrorPB::Code* error_code,
-                 bool retry) {
+Status AddServer(
+    const TServerDetails* leader, const std::string& tablet_id,
+    const TServerDetails* replica_to_add, consensus::PeerMemberType member_type,
+    const std::optional<int64_t>& cas_config_opid_index, const MonoDelta& timeout,
+    TabletServerErrorPB::Code* error_code, bool retry) {
   ChangeConfigRequestPB req;
   ChangeConfigResponsePB resp;
   RpcController rpc;
@@ -1189,7 +1182,7 @@ Status AddServer(const TServerDetails* leader,
 Status RemoveServer(const TServerDetails* leader,
                     const std::string& tablet_id,
                     const TServerDetails* replica_to_remove,
-                    const boost::optional<int64_t>& cas_config_opid_index,
+                    const std::optional<int64_t>& cas_config_opid_index,
                     const MonoDelta& timeout,
                     TabletServerErrorPB::Code* error_code,
                     bool retry) {
@@ -1512,7 +1505,7 @@ Status WaitUntilAllTabletReplicasRunning(const std::vector<TServerDetails*>& tse
 Status DeleteTablet(const TServerDetails* ts,
                     const std::string& tablet_id,
                     const tablet::TabletDataState delete_type,
-                    const boost::optional<int64_t>& cas_config_opid_index_less_or_equal,
+                    const std::optional<int64_t>& cas_config_opid_index_less_or_equal,
                     const MonoDelta& timeout,
                     tserver::TabletServerErrorPB::Code* error_code) {
   DeleteTabletRequestPB req;
@@ -1625,6 +1618,23 @@ void SetupQuickSplit(int64_t forced_split_threshold) {
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_force_split_threshold_bytes) = forced_split_threshold;
+}
+
+Result<TableId> CreateSimpleTable(
+    master::MasterDDLClient& client, const NamespaceName& namespace_name,
+    const TableName& table_name, MonoDelta timeout) {
+  Schema schema{{ColumnSchema("key", DataType::INT32, ColumnKind::HASH)}};
+  master::CreateTableRequestPB request;
+  request.set_name(table_name);
+  SchemaToPB(schema, request.mutable_schema());
+  if (!namespace_name.empty()) {
+    request.mutable_namespace_()->set_name(namespace_name);
+  }
+  request.mutable_partition_schema()->set_hash_schema(PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA);
+  request.mutable_schema()->mutable_table_properties()->set_num_tablets(1);
+  auto table_id = VERIFY_RESULT(client.CreateTable(request));
+  RETURN_NOT_OK(client.WaitForCreateTableDone(table_id, timeout));
+  return table_id;
 }
 
 } // namespace itest

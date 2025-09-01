@@ -2163,11 +2163,7 @@ yb_agg_pushdown_supported(AggState *aggstate)
 		return;
 
 	/* Supported outer plan. */
-	if (!(IsA(outerPlanState(aggstate), ForeignScanState) ||
-		  IsA(outerPlanState(aggstate), IndexOnlyScanState) ||
-		  IsA(outerPlanState(aggstate), IndexScanState) ||
-		  IsA(outerPlanState(aggstate), YbBitmapTableScanState) ||
-		  IsA(outerPlanState(aggstate), YbSeqScanState)))
+	if (!YbPlanStateTryGetAggrefs(outerPlanState(aggstate)))
 		return;
 	ss = (ScanState *) outerPlanState(aggstate);
 

@@ -84,10 +84,12 @@
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
+#include "yb/rpc/secure.h"
 #include "yb/rpc/secure_stream.h"
 
-#include "yb/rpc/secure.h"
+#include "yb/tools/tools_utils.h"
 #include "yb/tools/yb-admin_util.h"
+
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
@@ -109,11 +111,6 @@ DEFINE_NON_RUNTIME_bool(wait_if_no_leader_master, false,
             "When yb-admin connects to the cluster and no leader master is present, "
             "this flag determines if yb-admin should wait for the entire duration of timeout or"
             "in case a leader master appears in that duration or return error immediately.");
-
-DEFINE_NON_RUNTIME_string(certs_dir_name, "",
-              "Directory with certificates to use for secure server connection.");
-
-DEFINE_NON_RUNTIME_string(client_node_name, "", "Client node name.");
 
 DEFINE_NON_RUNTIME_bool(disable_graceful_transition, false,
     "During a leader stepdown, disable graceful leadership transfer "
@@ -613,14 +610,7 @@ Status ClusterAdminClient::Init() {
 
   // Check if caller will initialize the client and related parts.
   rpc::MessengerBuilder messenger_builder("yb-admin");
-  if (!FLAGS_certs_dir_name.empty()) {
-    LOG(INFO) << "Built secure client using certs dir " << FLAGS_certs_dir_name;
-    const auto& cert_name = FLAGS_client_node_name;
-    secure_context_ = VERIFY_RESULT(rpc::CreateSecureContext(
-        FLAGS_certs_dir_name, rpc::UseClientCerts(!cert_name.empty()), cert_name));
-    rpc::ApplySecureContext(secure_context_.get(), &messenger_builder);
-  }
-
+  secure_context_ = VERIFY_RESULT(CreateSecureContextIfNeeded(messenger_builder));
   messenger_ = VERIFY_RESULT(messenger_builder.Build());
   proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
 
@@ -779,7 +769,7 @@ Status ClusterAdminClient::GetWalRetentionSecs(const YBTableName& table_name) {
     cout << "WAL retention time not set for table " << table_name.table_name() << endl;
   } else {
     cout << "Found WAL retention time for table " << table_name.table_name() << ": "
-         << info.wal_retention_secs.get() << " seconds" << endl;
+         << info.wal_retention_secs.value() << " seconds" << endl;
   }
   return Status::OK();
 }
@@ -927,10 +917,8 @@ Status ClusterAdminClient::ParseChangeType(
 }
 
 Status ClusterAdminClient::ChangeConfig(
-    const TabletId& tablet_id,
-    const string& change_type,
-    const PeerId& peer_uuid,
-    const boost::optional<string>& member_type) {
+    const TabletId& tablet_id, const string& change_type, const PeerId& peer_uuid,
+    const std::optional<string>& member_type) {
   CHECK(initted_);
 
   consensus::ChangeConfigType cc_type;
@@ -1392,7 +1380,7 @@ Status ClusterAdminClient::RemoveTabletServer(const std::string& uuid) {
   return Status::OK();
 }
 
-Status ClusterAdminClient::ListAllMasters() {
+Result<ListMastersResponsePB> ClusterAdminClient::GetAllMasters() {
   const auto lresp = VERIFY_RESULT(InvokeRpc(
       &master::MasterClusterProxy::ListMasters, *master_cluster_proxy_,
       ListMastersRequestPB()));
@@ -1402,6 +1390,30 @@ Status ClusterAdminClient::ListAllMasters() {
                << lresp.error().DebugString() << endl;
     return STATUS(RemoteError, lresp.error().DebugString());
   }
+  return lresp;
+}
+
+Result<std::unordered_set<std::string>> ClusterAdminClient::ListAllKnownMasterUuids() {
+  const auto lresp = VERIFY_RESULT(GetAllMasters());
+  std::unordered_set<std::string> master_uuids;
+  for (const auto& master : lresp.masters()) {
+    master_uuids.insert(master.instance_id().permanent_uuid());
+  }
+  return master_uuids;
+}
+
+Result<std::unordered_set<std::string>> ClusterAdminClient::ListAllKnownTabletServersUuids() {
+  RepeatedPtrField<ListTabletServersResponsePB::Entry> servers;
+  RETURN_NOT_OK(ListTabletServers(&servers));
+  std::unordered_set<std::string> tserver_uuids;
+  for (const auto& server : servers) {
+    tserver_uuids.insert(server.instance_id().permanent_uuid());
+  }
+  return tserver_uuids;
+}
+
+Status ClusterAdminClient::ListAllMasters() {
+  const auto lresp = VERIFY_RESULT(GetAllMasters());
 
   cout << RightPadToUuidWidth("Master UUID") << kColumnSep
         << RightPadToWidth(kRpcHostPortHeading, kHostPortColWidth) << kColumnSep
@@ -1479,8 +1491,8 @@ Status ClusterAdminClient::ListTables(bool include_db_type,
       str << ' ' << table.table_id();
     }
     if (include_table_type) {
-      boost::optional<master::RelationType> relation_type = table.relation_type();
-      switch (relation_type.get()) {
+      std::optional<master::RelationType> relation_type = table.relation_type();
+      switch (relation_type.value()) {
         case master::SYSTEM_TABLE_RELATION:
           str << " catalog";
           break;
@@ -1744,7 +1756,7 @@ Status ClusterAdminClient::DeleteNamespace(const TypedNamespaceName& namespace_n
 
 Status ClusterAdminClient::DeleteNamespaceById(const NamespaceId& namespace_id) {
   RETURN_NOT_OK(yb_client_->DeleteNamespace(
-      std::string() /* name */, boost::none /* database type */, namespace_id));
+      std::string() /* name */, std::nullopt /* database type */, namespace_id));
   cout << "Deleted namespace " << namespace_id << endl;
   return Status::OK();
 }
@@ -2330,7 +2342,7 @@ Status ClusterAdminClient::UpgradeYsql(bool use_single_connection) {
   // Pick some alive TServer.
   RepeatedPtrField<ListTabletServersResponsePB::Entry> servers;
   RETURN_NOT_OK(ListTabletServers(&servers));
-  boost::optional<HostPortPB> ts_rpc_addr;
+  std::optional<HostPortPB> ts_rpc_addr;
   for (const ListTabletServersResponsePB::Entry& server : servers) {
     if (!server.has_alive() || !server.alive()) {
       continue;
@@ -4734,6 +4746,12 @@ Status ClusterAdminClient::WriteSysCatalogEntryAction(
 
   std::cout << std::endl << "Successfully updated the YugabyteDB system catalog." << std::endl;
   return Status::OK();
+}
+
+Status ClusterAdminClient::AreNodesSafeToTakeDown(
+    const std::vector<std::string>& tserver_uuids, const std::vector<std::string>& master_uuids,
+    int follower_lag_bound_ms) {
+  return yb_client_->AreNodesSafeToTakeDown(tserver_uuids, master_uuids, follower_lag_bound_ms);
 }
 
 client::XClusterClient ClusterAdminClient::XClusterClient() {

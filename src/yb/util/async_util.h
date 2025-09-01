@@ -44,6 +44,8 @@
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
 
+#include "yb/util/concepts.h"
+
 namespace yb {
 
 typedef boost::function<void(const Status&)> StatusFunctor;
@@ -73,6 +75,7 @@ class Synchronizer {
   // This version of AsStatusCallback is for cases when the callback can outlive the synchronizer.
   // The callback holds a weak pointer to the synchronizer.
   static StatusCallback AsStatusCallback(const std::shared_ptr<Synchronizer>& synchronizer);
+  static StdStatusCallback AsStdStatusCallback(const std::shared_ptr<Synchronizer>& synchronizer);
 
   StatusFunctor AsStatusFunctor() {
     return std::bind(&Synchronizer::StatusCB, this, std::placeholders::_1);
@@ -121,13 +124,17 @@ std::future<Result> MakeFuture(const Functor& functor) {
 }
 
 template <class T>
-bool IsReady(const std::shared_future<T>& f) {
+concept FutureType = AnyOfTemplateTypes<T, std::future, std::shared_future>;
+
+template <FutureType F>
+bool IsReady(const F& f) {
   return f.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
 }
 
-template <class T>
-bool IsReady(const std::future<T>& f) {
-  return f.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
+template <FutureType F, class Clock, class Duration>
+Status Wait(const F& f, const std::chrono::time_point<Clock, Duration>& deadline) {
+  return f.wait_until(deadline) == std::future_status::ready
+      ? Status::OK() : STATUS(TimedOut, "Timeout waiting on future");
 }
 
 } // namespace yb

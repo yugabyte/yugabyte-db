@@ -12,9 +12,9 @@ type: docs
 
 ## Synopsis
 
-Use the `CREATE INDEX` statement to create an index on the specified columns of the specified table. Indexes are primarily used to improve query performance.
+Use the CREATE INDEX statement to create an index on the specified columns of the specified table. Indexes are primarily used to improve query performance.
 
-In YugabyteDB, indexes are global and are implemented just like tables. They are split into tablets and distributed across the different nodes in the cluster. The sharding of indexes is based on the primary key of the index and is independent of how the main table is sharded and distributed.
+In YugabyteDB, indexes are sharded - they are split into tablets and distributed across the different nodes in the cluster, just like regular tables. Index sharding is based on the primary key of the index and is independent of how the main table is sharded and distributed, except for primary key indexes, which are implemented in the main table itself.
 
 ## Syntax
 
@@ -25,35 +25,35 @@ In YugabyteDB, indexes are global and are implemented just like tables. They are
 
 ## Semantics
 
-When an index is created on a populated table, YugabyteDB automatically backfills the existing data into the index. In most cases, this uses an online schema migration. The following table explains some differences between creating an index online and not online.
+### Concurrent index creation
 
-| Condition | Online | Not online |
-| :-------- | :----- | :--------- |
-| Safe to do other DMLs during `CREATE INDEX`? | yes | no |
-| Keeps other transactions alive during `CREATE INDEX`? | mostly | no |
+Index creation in YugabyteDB can happen CONCURRENTLY or NONCONCURRENTLY. The default mode is CONCURRENTLY, wherever possible (see [CONCURRENTLY](#concurrently) for restrictions).
+
+Concurrent index creation allows data to be modified in the main table while the index is being built. It is implemented by an online index backfill process, which is a combination of a distributed index backfill process that works on existing data using parallel workers, and an online component that mirrors newer changes to main table rows into the index. Nonconcurrent index builds are not safe to perform while there are ongoing changes to the main table, however, this restriction is currently not enforced. The following table summarizes the differences in these two modes.
+
+| Condition | Concurrent | Nonconcurrent |
+| :-------- | :--------- | :------------ |
+| Safe to do other DMLs during CREATE INDEX? | yes | no |
+| Keeps other transactions alive during CREATE INDEX? | mostly | no |
 | Parallelizes index loading? | yes | no |
-
-`CREATE INDEX CONCURRENTLY` is supported, though online index backfill is enabled by default. Some restrictions apply (see [CONCURRENTLY](#concurrently)).
-
-To disable online schema migration for YSQL `CREATE INDEX`, set the flag `ysql_disable_index_backfill=true` on **all** nodes and **both** YB-Master and YB-TServer.
-
-To disable online schema migration for one `CREATE INDEX`, use `CREATE INDEX NONCONCURRENTLY`.
 
 {{< note title="Note" >}}
 
-For details on how online index backfill works, refer to [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md).
+For more details on how online index backfill works, refer to [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md). Flags controlling the speed of online index backfill are described in [Index backfill flags](../../../../../reference/configuration/yb-tserver/#index-backfill-flags).
 
 {{< /note >}}
 
+### Colocation
+
 If the table is colocated, its index is also colocated; if the table is not colocated, its index is also not colocated.
 
-### Partitioned Indexes
+### Partitioned indexes
 
 Creating an index on a partitioned table automatically creates a corresponding index for every partition in the default tablespace. It's also possible to create an index on each partition individually, which you should do in the following cases:
 
 - Parallel writes are expected while creating the index, because concurrent builds for indexes on partitioned tables aren't supported. In this case, it's better to use concurrent builds to create indexes on each partition individually.
 - [Row-level geo-partitioning](../../../../../explore/multi-region-deployments/row-level-geo-partitioning/) is being used. In this case, create the index separately on each partition to customize the tablespace in which each index is created.
-- `CREATE INDEX CONCURRENTLY` is not supported for partitioned tables (see [CONCURRENTLY](#concurrently)).
+- `CREATE INDEX CONCURRENTLY` is not supported for partitioned tables (see [CONCURRENTLY](#concurrently)). As a workaround, you can use the [ONLY](#only) keyword to create indexes on child partitions separately, as described in that section.
 
 ### UNIQUE
 
@@ -61,19 +61,64 @@ Enforce that duplicate values in a table are not allowed.
 
 ### CONCURRENTLY
 
-Enable online schema migration (see [Semantics](#semantics) for details), with some restrictions:
+Enable the use of online index backfill (see [Semantics](#semantics) for details), with some restrictions:
 
 - When creating an index on a temporary table, online schema migration is disabled.
-- `CREATE INDEX CONCURRENTLY` is not supported for partitioned tables.
-- `CREATE INDEX CONCURRENTLY` is not supported inside a transaction block.
+- CREATE INDEX CONCURRENTLY is not supported for partitioned tables.
+- CREATE INDEX CONCURRENTLY is not supported inside a transaction block.
 
 ### NONCONCURRENTLY
 
-Disable online schema migration (see [Semantics](#semantics) for details).
+Disable online index backfill (see [Semantics](#semantics) for details).
 
 ### ONLY
 
 Indicates not to recurse creating indexes on partitions, if the table is partitioned. The default is to recurse.
+
+When recursion is disabled using ONLY, the index is created in an INVALID state on only the (parent) partitioned table. To make the index valid, corresponding indexes have to be created on each of the existing partitions and attached to the parent index using `ALTER INDEX parent_index ... ATTACH PARTITION child_index`. For example:
+
+```sql
+CREATE TABLE parent_partition(c1 int, c2 int) PARTITION BY RANGE (c1);
+CREATE TABLE child_part_1 PARTITION OF parent_partition FOR VALUES FROM (0) to (100);
+CREATE TABLE child_part_2 PARTITION OF parent_partition FOR VALUES FROM (101) to (200);
+
+CREATE INDEX parent_index ON ONLY parent_partition (c1, c2);
+
+\d parent_partition
+```
+
+```output
+          Table "public.parent_partition"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ c1     | integer |           |          |
+ c2     | integer |           |          |
+Partition key: RANGE (c1)
+Indexes:
+    "parent_index" lsm (c1 HASH, c2 ASC) INVALID
+Number of partitions: 2 (Use \d+ to list them.)
+```
+
+```sql
+CREATE INDEX child_part_1_index ON child_part_1 (c1, c2);
+CREATE INDEX child_part_2_index ON child_part_2 (c1, c2);
+ALTER INDEX parent_index ATTACH PARTITION child_part_1_index;
+ALTER INDEX parent_index ATTACH PARTITION child_part_2_index;
+
+\d parent_partition
+```
+
+```output
+          Table "public.parent_partition"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ c1     | integer |           |          |
+ c2     | integer |           |          |
+Partition key: RANGE (c1)
+Indexes:
+    "parent_index" lsm (c1 HASH, c2 ASC)
+Number of partitions: 2 (Use \d+ to list them.)
+```
 
 ### *access_method_name*
 
@@ -91,7 +136,7 @@ Specify the name of the [tablespace](../../../../../explore/going-beyond-sql/tab
 
 ### WHERE clause
 
-A [partial index](#partial-indexes) is an index that is built on a subset of a table and includes only rows that satisfy the condition specified in the `WHERE` clause.
+A [partial index](#partial-indexes) is an index that is built on a subset of a table and includes only rows that satisfy the condition specified in the WHERE clause.
 
 It can be used to exclude NULL or common values from the index, or include just the rows of interest.
 
@@ -123,21 +168,25 @@ Specify one or more columns of the table and must be surrounded by parentheses.
 - `NULLS FIRST` - Specifies that nulls sort before non-nulls. This is the default when DESC is specified.
 - `NULLS LAST` - Specifies that nulls sort after non-nulls. This is the default when DESC is not specified.
 
+### NULLS NOT DISTINCT
+
+When creating an unique index, by default, NULL values are treated as distinct entries (and not equal), allowing multiple nulls in the column. The NULLS NOT DISTINCT option modifies this and causes the index to treat nulls equivalently. With this option, you can enforce that only one NULL value is permitted, aligning with use cases where NULL should represent an absence of value rather than a unique entity.
+
 ### SPLIT INTO
 
-For hash-sharded indexes, you can use the `SPLIT INTO` clause to specify the number of tablets to be created for the index. The hash range is then evenly split across those tablets.
+For hash-sharded indexes, you can use the SPLIT INTO clause to specify the number of tablets to be created for the index. The hash range is then evenly split across those tablets.
 
-Presplitting indexes, using `SPLIT INTO`, distributes index workloads on a production cluster. For example, if you have 3 servers, splitting the index into 30 tablets can provide higher write throughput on the index. For an example, see [Create an index specifying the number of tablets](#create-an-index-specifying-the-number-of-tablets).
+Presplitting indexes, using SPLIT INTO, distributes index workloads on a production cluster. For example, if you have 3 servers, splitting the index into 30 tablets can provide higher write throughput on the index. For an example, see [Create an index specifying the number of tablets](#create-an-index-specifying-the-number-of-tablets).
 
 {{< note title="Note" >}}
 
-By default, YugabyteDB presplits an index into `ysql_num_shards_per_tserver * num_of_tserver` tablets. The `SPLIT INTO` clause can be used to override that setting on a per-index basis.
+By default, YugabyteDB presplits an index into `ysql_num_shards_per_tserver * num_of_tserver` tablets. The SPLIT INTO clause can be used to override that setting on a per-index basis.
 
 {{< /note >}}
 
 ### SPLIT AT VALUES
 
-For range-sharded indexes, you can use the `SPLIT AT VALUES` clause to set split points to presplit range-sharded indexes.
+For range-sharded indexes, you can use the SPLIT AT VALUES clause to set split points to presplit range-sharded indexes.
 
 **Example**
 
@@ -160,7 +209,7 @@ In the example above, there are three split points, so four tablets will be crea
 
 {{< note title="Note" >}}
 
-By default, YugabyteDB creates a range sharded index as a single tablet. The `SPLIT AT` clause can be used to override that setting on a per-index basis.
+By default, YugabyteDB creates a range sharded index as a single tablet. The SPLIT AT clause can be used to override that setting on a per-index basis.
 
 {{< /note >}}
 
@@ -171,11 +220,14 @@ By default, YugabyteDB creates a range sharded index as a single tablet. The `SP
 Create a unique index with hash ordered columns.
 
 ```plpgsql
-yugabyte=# CREATE TABLE products(id int PRIMARY KEY,
+CREATE TABLE products(id int PRIMARY KEY,
                                  name text,
                                  code text);
-yugabyte=# CREATE UNIQUE INDEX ON products(code);
-yugabyte=# \d products
+CREATE UNIQUE INDEX ON products(code);
+\d products
+```
+
+```output
               Table "public.products"
  Column |  Type   | Collation | Nullable | Default
 --------+---------+-----------+----------+---------
@@ -192,8 +244,11 @@ Indexes:
 Create an index with ascending ordered key.
 
 ```plpgsql
-yugabyte=# CREATE INDEX products_name ON products(name ASC);
-yugabyte=# \d products_name
+CREATE INDEX products_name ON products(name ASC);
+\d products_name
+```
+
+```output
    Index "public.products_name"
  Column | Type | Key? | Definition
 --------+------+------+------------
@@ -206,8 +261,11 @@ lsm, for table "public.products
 Create an index with ascending ordered key and include other columns as non-key columns
 
 ```plpgsql
-yugabyte=# CREATE INDEX products_name_code ON products(name) INCLUDE (code);
-yugabyte=# \d products_name_code;
+CREATE INDEX products_name_code ON products(name) INCLUDE (code);
+\d products_name_code;
+```
+
+```output
  Index "public.products_name_code"
  Column | Type | Key? | Definition
 --------+------+------+------------
@@ -218,7 +276,7 @@ lsm, for table "public.products"
 
 ### Create an index specifying the number of tablets
 
-To specify the number of tablets for an index, you can use the `CREATE INDEX` statement with the [SPLIT INTO](#split-into) clause.
+To specify the number of tablets for an index, you can use the CREATE INDEX statement with the [SPLIT INTO](#split-into) clause.
 
 ```plpgsql
 CREATE TABLE employees (id int PRIMARY KEY, first_name TEXT, last_name TEXT) SPLIT INTO 10 TABLETS;
@@ -230,13 +288,13 @@ CREATE INDEX ON employees(first_name, last_name) SPLIT INTO 10 TABLETS;
 Consider an application maintaining shipments information. It has a `shipments` table with a column for `delivery_status`. If the application needs to access in-flight shipments frequently, then it can use a partial index to exclude rows whose shipment status is `delivered`.
 
 ```plpgsql
-yugabyte=# create table shipments(id int, delivery_status text, address text, delivery_date date);
-yugabyte=# create index shipment_delivery on shipments(delivery_status, address, delivery_date) where delivery_status != 'delivered';
+CREATE TABLE shipments (id int, delivery_status text, address text, delivery_date date);
+CREATE INDEX shipment_delivery ON shipments(delivery_status, address, delivery_date) WHERE delivery_status != 'delivered';
 ```
 
 ### Expression indexes
 
-An index column need not be just a column of the underlying table, but can be a function, or scalar expression computed from one or more columns of the table. You can also obtain fast access to tables based on the results of computations.
+An index column need not be just a column of the underlying table; it can also be a function, or scalar expression computed from one or more columns of the table. You can also obtain fast access to tables based on the results of computations.
 
 A basic example is indexing unique emails in a users table similar to the following:
 
@@ -263,12 +321,12 @@ If the following troubleshooting tips don't resolve your issue, ask for help in 
 
 ### Invalid index
 
-If online `CREATE INDEX` fails, an invalid index may be left behind. These indexes are not usable in queries and cause internal operations, so they should be dropped.
+If online CREATE INDEX fails, an invalid index may be left behind. These indexes are not usable in queries and cause internal operations, so they should be dropped.
 
 For example, the following commands can create an invalid index:
 
 ```plpgsql
-yugabyte=# CREATE TABLE uniqueerror (i int);
+CREATE TABLE uniqueerror (i int);
 ```
 
 ```output
@@ -276,7 +334,7 @@ CREATE TABLE
 ```
 
 ```plpgsql
-yugabyte=# INSERT INTO uniqueerror VALUES (1), (1);
+INSERT INTO uniqueerror VALUES (1), (1);
 ```
 
 ```output
@@ -284,7 +342,7 @@ INSERT 0 2
 ```
 
 ```plpgsql
-yugabyte=# CREATE UNIQUE INDEX ON uniqueerror (i);
+CREATE UNIQUE INDEX ON uniqueerror (i);
 ```
 
 ```output
@@ -292,7 +350,10 @@ ERROR:  ERROR:  duplicate key value violates unique constraint "uniqueerror_i_id
 ```
 
 ```plpgsql
-yugabyte=# \d uniqueerror
+\d uniqueerror
+```
+
+```output
             Table "public.uniqueerror"
  Column |  Type   | Collation | Nullable | Default
 --------+---------+-----------+----------+---------
@@ -304,7 +365,7 @@ Indexes:
 Drop the invalid index as follows:
 
 ```plpgsql
-yugabyte=# DROP INDEX uniqueerror_i_idx;
+DROP INDEX uniqueerror_i_idx;
 ```
 
 ```output

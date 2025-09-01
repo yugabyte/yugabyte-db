@@ -7,7 +7,7 @@ menu:
   stable:
     identifier: checklist
     parent: deploy
-    weight: 605
+    weight: 10
 type: docs
 ---
 
@@ -116,7 +116,7 @@ These values are approximate because different kernels use different amounts of 
 
 Also shown is an estimate of how many PostgreSQL connections that node can handle assuming default PostgreSQL flags and usage.  Unusually memory expensive queries or preloading PostgreSQL catalog information will reduce the number of connections that can be supported.
 
-Thus a 8 GiB node would be expected to be able support 530 tablet replicas and 65 (physical) typical PostgreSQL connections.  A cluster of six of these nodes would be able to support 530 \* 2 = 1,060 [RF3](../../architecture/key-concepts/#replication-factor-rf) tablets and 65 \* 6 = 570 typical physical PostgreSQL connections assuming the connections are evenly distributed among the nodes.
+Thus a 8 GiB node would be expected to be able support 530 tablet replicas and 65 (physical) typical PostgreSQL connections.  A cluster of six of these nodes would be able to support 530 \* 2 = 1,060 [RF3](../../architecture/key-concepts/#replication-factor-rf) tablets and 65 \* 6 = 390 typical physical PostgreSQL connections assuming the connections are evenly distributed among the nodes.
 
 #### YCQL
 
@@ -145,6 +145,11 @@ cat /proc/cpuinfo | grep sse4.2
 ### Disks
 
 - SSDs (solid state disks) are required.
+
+  - YugabyteDB Anywhere additionally supports the use of GCP Hyperdisks when deploying universes on GCP (specifically, the Balanced and Extreme options).
+
+    Note: These disk types are only available in some GCP regions.
+
 - Both local or remote attached storage work with YugabyteDB. Because YugabyteDB internally replicates data for fault tolerance, remote attached storage which does its own additional replication is not a requirement. Local disks often offer better performance at a lower cost.
 - Multi-disk nodes:
 

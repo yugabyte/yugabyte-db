@@ -38,7 +38,7 @@ Are you using YugabyteDB Aeon? Install the [prerequisites](/preview/tutorials/bu
 
 ## Prerequisites
 
-This tutorial assumes that you have installed YugabyteDB and created a cluster. Refer to [Quick Start](/preview/tutorials/quick-start/macos/).
+This tutorial assumes that you have installed YugabyteDB and created a cluster. Refer to [Quick Start](/preview/quick-start/macos/).
 
 ## Clone the orm-examples repository
 

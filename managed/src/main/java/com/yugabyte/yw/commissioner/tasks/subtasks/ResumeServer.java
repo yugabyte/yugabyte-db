@@ -13,6 +13,8 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.utils.CapacityReservationUtil;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import javax.inject.Inject;
@@ -29,6 +31,7 @@ public class ResumeServer extends NodeTaskBase {
   public static class Params extends NodeTaskParams {
     // IP of node to be resumed.
     public String nodeIP = null;
+    public String capacityReservation;
   }
 
   @Override
@@ -47,6 +50,11 @@ public class ResumeServer extends NodeTaskBase {
 
   @Override
   public void run() {
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+    UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(taskParams().placementUuid);
+    taskParams().capacityReservation =
+        CapacityReservationUtil.getReservationIfPresent(
+            getTaskCache(), cluster.userIntent.providerType, taskParams().nodeName);
     getNodeManager().nodeCommand(NodeManager.NodeCommandType.Resume, taskParams()).processErrors();
     resumeUniverse(taskParams().nodeName);
   }

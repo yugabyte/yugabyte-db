@@ -926,6 +926,52 @@ TEST_F(OptionsParserTest, ExtraSpace) {
   ASSERT_OK(parser.Parse(kTestFileName, env_.get()));
 }
 
+TEST_F(OptionsParserTest, NewLineAbsenceAtTheEnd) {
+  DBOptions db_opt;
+  db_opt.max_open_files = 12345;
+  db_opt.max_background_flushes = 301;
+  db_opt.max_total_wal_size = 1024;
+  ColumnFamilyOptions cf_opt;
+
+  // The following conditions must be met to hit the issue:
+  // 1) Last read from the file must be less than read buffer size.
+  // 2) Last read from the file must contain the remaining fields of the section,
+  //    the last section must not be a default section.
+  // 3) There must be no new line char at the end of the file.
+  // 4) No new line char must be in the last chunk.
+  std::stringstream options_content;
+  options_content <<
+      "# This is a testing option string.\n"
+      "# Currently we only support \"#\" styled comment.\n"
+      "\n"
+      "[Version]\n"
+      "  rocksdb_version=3.14.0\n"
+      "  options_file_version=1\n"
+      "[DBOptions]\n"
+      "  max_open_files=12345\n"
+      "  max_background_flushes=301\n"
+      "  max_total_wal_size=1024\n"
+      "  # ";
+
+  std::string options_content_trailing_comment = "this is a comment ";
+  size_t num_repeats = yb::ceil_div<size_t>(
+      (RocksDBOptionsParser::kReadBufferSize - options_content.tellp()),
+      options_content_trailing_comment.size());
+
+  // Fill content till the size of the read chunk.
+  while (num_repeats-- > 0) {
+    options_content << options_content_trailing_comment;
+  }
+  // Add more data to make parser read with two chunks.
+  options_content << options_content_trailing_comment;
+
+  const std::string kTestFileName = "test-rocksdb-options.ini";
+  ASSERT_OK(env_->WriteToNewFile(kTestFileName, options_content.str()));
+
+  RocksDBOptionsParser parser;
+  ASSERT_NOK(parser.Parse(kTestFileName, env_.get()));
+}
+
 TEST_F(OptionsParserTest, MissingDBOptions) {
   std::string options_file_content =
       "# This is a testing option string.\n"

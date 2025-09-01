@@ -143,6 +143,8 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
     PrevYBSoftwareConfig prevYBSoftwareConfig = new PrevYBSoftwareConfig();
     prevYBSoftwareConfig.setSoftwareVersion(initialVersion);
     prevYBSoftwareConfig.setTargetUpgradeSoftwareVersion(targetVersion);
+    prevYBSoftwareConfig.setCanRollbackCatalogUpgrade(true);
+    prevYBSoftwareConfig.setAllTserversUpgradedToYsqlMajorVersion(true);
     details.prevYBSoftwareConfig = prevYBSoftwareConfig;
     details.isSoftwareRollbackAllowed = true;
     defaultUniverse.setUniverseDetails(details);
@@ -524,6 +526,7 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
         .task(TaskType.AnsibleConfigureServers)
         .applyToTservers()
         .addTasks(TaskType.RollbackYsqlMajorVersionCatalogUpgrade)
+        .addTasks(TaskType.UpdateSoftwareUpdatePrevConfig)
         .upgradeRound(UpgradeOption.NON_ROLLING_UPGRADE)
         .withContext(
             UpgradeTaskBase.UpgradeContext.builder()
@@ -541,6 +544,7 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
         .addSimultaneousTasks(
             TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
         .addTasks(TaskType.CleanUpPGUpgradeDataDir)
+        .addTasks(TaskType.UpdatePitrConfigIntermittentMinRecoverTime)
         .addSimultaneousTasks(TaskType.CheckSoftwareVersion, defaultUniverse.getTServers().size())
         .addTasks(TaskType.UpdateSoftwareVersion)
         .addTasks(TaskType.UpdateUniverseState)

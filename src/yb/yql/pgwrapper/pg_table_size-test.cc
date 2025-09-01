@@ -133,7 +133,7 @@ Status VerifyTableSize(MiniCluster* cluster,
   uint64_t size_from_ts = 0;
   auto peers = ListTabletPeers(cluster, ListPeersFilter::kLeaders);
   for (auto& peer : peers) {
-    auto tablet = peer->shared_tablet();
+    auto tablet = peer->shared_tablet_maybe_null();
     if (tablet && tablet->metadata()->table_name() == table_name) {
       // Get SST files size from tablet server.
       size_from_ts += tablet->GetCurrentVersionSstFilesAllSizes().first;

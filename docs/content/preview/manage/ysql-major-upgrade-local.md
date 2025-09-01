@@ -47,6 +47,12 @@ v2.25 is a preview release that is only meant for evaluation purposes and should
 
     If you have a pre-existing cluster, first upgrade it to the latest version in the v2024.2 series using the [upgrade instructions](../upgrade-deployment/).
 
+- If your cluster has dedicated YB-Master nodes (that is, nodes with YB-Master service only and no YB-TServer), you must create a superuser named `yugabyte_upgrade` and add its credentials to the `.pgpass` file on each YB-Master node. You can safely remove this user after the upgrade process is complete.
+
+    ```sql
+    CREATE USER yugabyte_upgrade WITH SUPERUSER PASSWORD '<strong_password>';
+    ```
+
 ### Precheck
 
 New PostgreSQL major versions add many new features and performance improvements, but also remove some older unsupported features and data types. You can only upgrade after you remove all deprecated features and data types from your databases.
@@ -163,7 +169,7 @@ Now that all the YB-Master and YB-TServer processes are on the same version, you
 
 After all the YB-Master and YB-TServer processes are upgraded, monitor the cluster to ensure it is healthy. Make sure workloads are running as expected and there are no errors in the logs.
 
-You can remain in this phase for as long as you need, but you should finalize the upgrade sooner rather than later to avoid operator errors that can arise from having to maintain two versions.
+You can remain in this phase for as long as you need, up to a _maximum recommended limit of two days_ to avoid operator errors that can arise from having to maintain two versions.
 
 DDLs are not allowed even in this phase. New features that require format changes will not be available until the upgrade is finalized. Also, you cannot perform another upgrade until you have completed the current one.
 

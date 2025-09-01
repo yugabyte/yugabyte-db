@@ -1,0 +1,12 @@
+Parsed test spec with 2 sessions
+
+starting permutation: s1as s2as s1ae s2ae s2c s1c
+step s1as: LOCK TABLE a1 IN ACCESS SHARE MODE;
+step s2as: LOCK TABLE a1 IN ACCESS SHARE MODE;
+step s1ae: LOCK TABLE a1 IN ACCESS EXCLUSIVE MODE; <waiting ...>
+step s2ae: LOCK TABLE a1 IN ACCESS EXCLUSIVE MODE; <waiting ...>
+step s2ae: <... completed>
+ERROR:  Failed to acquire object locks within deadline: Heartbeat: Transaction aborted due to a deadlock: kDeadlock
+step s2c: COMMIT;
+step s1ae: <... completed>
+step s1c: COMMIT;

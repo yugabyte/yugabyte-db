@@ -5,6 +5,7 @@ package module
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"node-agent/util"
 	"os"
 	"os/exec"
@@ -116,10 +117,11 @@ func RunSteps(
 			}
 			err := cmd.Run()
 			if err != nil {
+				errMsg := fmt.Sprintf("%s - %s", err.Error(), cmdInfo.StdErr.String())
 				util.FileLogger().
-					Errorf(ctx, "Failed to run step %s: %s", cmdInfo.Desc, err.Error())
+					Errorf(ctx, "Failed to run step %s: %s", cmdInfo.Desc, errMsg)
 				if logOut != nil {
-					logOut.WriteLine("Failed to run step %s: %s", cmdInfo.Desc, err.Error())
+					logOut.WriteLine("Failed to run step %s: %s", cmdInfo.Desc, errMsg)
 				}
 			}
 			return err
@@ -145,10 +147,11 @@ func RunShellCmd(
 	}
 	err := cmdInfo.RunCmd(ctx)
 	if err != nil {
+		errMsg := fmt.Sprintf("%s - %s", err.Error(), cmdInfo.StdErr.String())
 		util.FileLogger().
-			Errorf(ctx, "Failed to run shell command for %s: %s", desc, err.Error())
+			Errorf(ctx, "Failed to run shell command for %s: %s", desc, errMsg)
 		if logOut != nil {
-			logOut.WriteLine("Failed to run shell command for %s: %s", desc, err.Error())
+			logOut.WriteLine("Failed to run shell command for %s: %s", desc, errMsg)
 		}
 	}
 	return cmdInfo, err

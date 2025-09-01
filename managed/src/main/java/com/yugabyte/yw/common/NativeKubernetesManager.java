@@ -569,9 +569,19 @@ public class NativeKubernetesManager extends KubernetesManager {
 
   @Override
   public Map<ServerType, String> getServerTypeGflagsChecksumMap(
-      String namespace, String helmReleaseName, Map<String, String> config) {
+      String namespace,
+      String helmReleaseName,
+      Map<String, String> config,
+      boolean newNamingStyle) {
     // TODO Auto-generated method stub
     throw new UnsupportedOperationException("Unimplemented method 'getServerTypeGflagsChecksum'");
+  }
+
+  @Override
+  public String getCertChecksum(
+      String namespace, String helmReleaseName, Map<String, String> config) {
+    // TODO Auto-generated method stub
+    throw new UnsupportedOperationException("Unimplemented method 'getCertChecksum'");
   }
 
   @Override

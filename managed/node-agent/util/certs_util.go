@@ -15,14 +15,14 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/golang-jwt/jwt/v4"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 // Claims for the JWT.
 type Claims struct {
 	JwtClientIdClaim string `json:"clientId"`
 	JwtUserIdClaim   string `json:"userId"`
-	jwt.StandardClaims
+	jwt.RegisteredClaims
 }
 
 // Saves the cert and key to the certs directory.
@@ -169,9 +169,9 @@ func GenerateJWT(ctx context.Context, config *Config) (string, error) {
 	claims := &Claims{
 		JwtClientIdClaim: config.String(NodeAgentIdKey),
 		JwtUserIdClaim:   config.String(UserIdKey),
-		StandardClaims: jwt.StandardClaims{
-			IssuedAt:  time.Now().Unix(),
-			ExpiresAt: time.Now().Unix() + JwtExpirationTime,
+		RegisteredClaims: jwt.RegisteredClaims{
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(JwtExpirationSecs * time.Second)),
 			Issuer:    JwtIssuer,
 			Subject:   JwtSubject,
 		},

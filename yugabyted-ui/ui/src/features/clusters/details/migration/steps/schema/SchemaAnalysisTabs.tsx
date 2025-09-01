@@ -1,5 +1,5 @@
-import React, { ComponentType, FC } from "react";
-import { Box, makeStyles, Tab, Tabs } from "@material-ui/core";
+import React, { FC } from "react";
+import { Box, makeStyles, Typography } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
 import { SummaryTab } from "./SummaryTab";
 import clsx from "clsx";
@@ -12,26 +12,15 @@ const useStyles = makeStyles((theme) => ({
   nmt: {
     marginTop: theme.spacing(-1),
   },
-}));
-
-export interface ITabListItem {
-  name: string;
-  component: ComponentType<{ analysis: SchemaAnalysisData }>;
-  testId: string;
-}
-
-const tabList: ITabListItem[] = [
-  {
-    name: "tabSuggestedRefactoring",
-    component: SummaryTab,
-    testId: "MigrationSchemaTabList-Summary",
+  heading: {
+    paddingTop: '24px',
+    paddingBottom: '24px',
+    paddingLeft: '16px',
+    paddingRight: '16px',
+    margin: '0 -15px',
+    width: 'calc(100% + 30px)',
   },
-  // {
-  //   name: "tabSuggestedRefactoring",
-  //   component: ReviewRecommendedTab,
-  //   testId: "MigrationSchemaTabList-SuggestedRefactoring",
-  // },
-];
+}));
 
 type SchemaAnalysisTabsProps = {
   analysis: SchemaAnalysisData;
@@ -41,33 +30,19 @@ export const SchemaAnalysisTabs: FC<SchemaAnalysisTabsProps> = ({ analysis }) =>
   const classes = useStyles();
   const { t } = useTranslation();
 
-  const [currentTab, setCurrentTab] = React.useState<string>(tabList[0].name);
-  const TabComponent = tabList.find((tab) => tab.name === currentTab)?.component;
-
-  const handleChange = (_: React.ChangeEvent<{}>, newValue: string) => {
-    setCurrentTab(newValue);
-  };
-
   return (
-    <Box className={clsx(classes.fullWidth, classes.nmt)}>
-      <Tabs
-        indicatorColor="primary"
-        textColor="primary"
-        data-testid="MigrationSchemaTabList"
-        value={currentTab}
-        onChange={handleChange}
+    <Box className={clsx(classes.fullWidth, classes.nmt)} style={{ padding: 0, margin: 0 }}>
+      <Typography
+        variant="h5"
+        component="h5"
+        className={classes.heading}
       >
-        {tabList.map((tab) => (
-          <Tab
-            key={tab.name}
-            value={tab.name}
-            label={t(`clusterDetail.voyager.migrateSchema.${tab.name}`)}
-            data-testid={tab.testId}
-          />
-        ))}
-      </Tabs>
+        {t("clusterDetail.voyager.migrateSchema.tabSuggestedRefactoring")}
+      </Typography>
 
-      <Box mt={3}>{TabComponent && <TabComponent analysis={analysis} />}</Box>
+      <Box mt={3}>
+        <SummaryTab analysis={analysis} />
+      </Box>
     </Box>
   );
 };

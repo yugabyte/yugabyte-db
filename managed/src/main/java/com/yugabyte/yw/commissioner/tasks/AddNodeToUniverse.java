@@ -12,6 +12,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import static com.google.api.client.util.Preconditions.checkState;
 import static com.yugabyte.yw.common.Util.areMastersUnderReplicated;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
@@ -22,6 +23,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeActionType;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -81,15 +83,24 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
     Cluster cluster = universe.getUniverseDetails().getClusterByUuid(currentNode.placementUuid);
     UserIntent userIntent = cluster.userIntent;
 
-    if (currentNode.state == NodeState.Decommissioned
-        && userIntent.providerType.equals(CloudType.onprem)) {
-      Optional<NodeInstance> nodeInstance = NodeInstance.maybeGetByName(currentNode.nodeName);
-      if (nodeInstance.isPresent()) {
-        // Illegal state if it is unused because both node name and in-use fields are updated
-        // together.
-        checkState(
-            nodeInstance.get().getState().equals(NodeInstance.State.USED),
-            "Node name is set but the node is not in use");
+    if (userIntent.providerType.equals(CloudType.onprem)) {
+      if (currentNode.state == NodeState.Decommissioned) {
+        // Node UUID does not make any sense if it is decommissioned.
+        NodeInstance.maybeGetByName(currentNode.nodeName)
+            .ifPresent(
+                n ->
+                    checkState(
+                        n.getState().equals(NodeInstance.State.USED),
+                        "Node name is set but the node is not in use"));
+      } else {
+        NodeInstance.maybeGetByName(currentNode.nodeName, currentNode.nodeUuid)
+            .orElseThrow(
+                () ->
+                    new PlatformServiceException(
+                        BAD_REQUEST,
+                        String.format(
+                            "Node instance %s with UUID %s does not exist",
+                            currentNode.nodeName, currentNode.nodeUuid)));
       }
     }
   }

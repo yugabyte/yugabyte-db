@@ -34,8 +34,6 @@
 #include <string>
 #include <vector>
 
-#include <boost/optional.hpp>
-
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/xcluster_types.h"
 
@@ -163,16 +161,12 @@ class ClusterAdminClient {
 
   // Change the configuration of the specified tablet.
   Status ChangeConfig(
-      const TabletId& tablet_id,
-      const std::string& change_type,
-      const PeerId& peer_uuid,
-      const boost::optional<std::string>& member_type);
+      const TabletId& tablet_id, const std::string& change_type, const PeerId& peer_uuid,
+      const std::optional<std::string>& member_type);
 
   // Change the configuration of the master tablet.
   Status ChangeMasterConfig(
-      const std::string& change_type,
-      const std::string& peer_host,
-      uint16_t peer_port,
+      const std::string& change_type, const std::string& peer_host, uint16_t peer_port,
       const std::string& peer_uuid = "");
 
   Status DumpMasterState(bool to_console);
@@ -416,6 +410,10 @@ class ClusterAdminClient {
 
   Status WriteUniverseKeyToFile(const std::string& key_id, const std::string& file_name);
 
+  Status AreNodesSafeToTakeDown(
+      const std::vector<std::string>& tserver_uuids, const std::vector<std::string>& master_uuids,
+      int follower_lag_bound_ms);
+
   Status CreateCDCSDKDBStream(
       const TypedNamespaceName& ns, const std::string& CheckPointType,
       const cdc::CDCRecordType RecordType,
@@ -521,6 +519,10 @@ class ClusterAdminClient {
       master::WriteSysCatalogEntryRequestPB::WriteOp operation, master::SysRowEntryType entry_type,
       const std::string& entry_id, const std::string& file_path, bool force);
 
+  // List the uuids of all masters/tservers known to the master leader.
+  Result<std::unordered_set<std::string>> ListAllKnownMasterUuids();
+  Result<std::unordered_set<std::string>> ListAllKnownTabletServersUuids();
+
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.
   Status GetTabletLocations(const TabletId& tablet_id,
@@ -615,6 +617,7 @@ class ClusterAdminClient {
   bool initted_ = false;
 
  private:
+  Result<master::ListMastersResponsePB> GetAllMasters();
 
   Status DiscoverAllMasters(
     const HostPort& init_master_addr, std::string* all_master_addrs);

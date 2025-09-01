@@ -295,7 +295,7 @@ class TabletPeerTest : public YBTabletTest {
     WriteResponsePB resp;
     auto query = std::make_unique<WriteQuery>(
         /* leader_term */ 1, CoarseTimePoint::max(), tablet_peer,
-        ASSERT_RESULT(tablet_peer->shared_tablet_safe()), nullptr, &resp);
+        ASSERT_RESULT(tablet_peer->shared_tablet()), nullptr, &resp);
     query->set_client_request(req);
 
     CountDownLatch rpc_latch(1);
@@ -314,7 +314,7 @@ class TabletPeerTest : public YBTabletTest {
                                           const Callback& cb) {
     auto query = std::make_unique<WriteQuery>(
         /* leader_term */ 1, CoarseTimePoint::max(), tablet_peer,
-        CHECK_RESULT(tablet_peer->shared_tablet_safe()), nullptr, resp);
+        CHECK_RESULT(tablet_peer->shared_tablet()), nullptr, resp);
     query->set_client_request(req);
     query->set_callback(cb);
     return query;
@@ -403,13 +403,14 @@ TEST_F(TabletPeerTest, TestLogAnchorsAndGC) {
   ASSERT_NO_FATALS(AssertLogAnchorEarlierThanLogLatest());
 
   // Ensure nothing gets deleted.
-  ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
+  auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet());
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
   int64_t min_log_index = ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex());
   ASSERT_OK(log->GC(min_log_index, &num_gced));
   ASSERT_EQ(2, num_gced) << "Earliest needed: " << min_log_index;
 
   // Flush RocksDB to ensure that we don't have OpId in anchors.
-  ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
 
   // The first two segments should be deleted.
   // The last is anchored due to the commit in the last segment being the last
@@ -441,7 +442,8 @@ TEST_F(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
   ASSERT_EQ(3, segments.size());
 
   // Flush RocksDB so the next mutation goes into a DMS.
-  ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
+  auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet());
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
 
   int32_t earliest_needed = 1;
   auto total_segments = log->GetLogReader()->num_segments();
@@ -480,7 +482,7 @@ TEST_F(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
 
   // Ensure the delta and last insert remain in the logs, anchored by the delta.
   // Note that this will allow GC of the 2nd insert done above.
-  ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
   earliest_needed = 4;
   std::string details;
   min_log_index = ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex(&details));
@@ -528,7 +530,7 @@ TEST_F(TabletPeerTest, TestGCEmptyLog) {
 }
 
 TEST_F(TabletPeerTest, TestAddTableUpdatesLastChangeMetadataOpId) {
-  auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet_safe());
+  auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet());
   TableInfoPB table_info;
   table_info.set_table_id("00004000000030008000000000004020");
   table_info.set_table_name("test");

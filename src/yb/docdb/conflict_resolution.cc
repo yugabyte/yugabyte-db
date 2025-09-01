@@ -145,8 +145,8 @@ class ConflictResolverContext {
 
   virtual bool IsSingleShardTransaction() const = 0;
 
-  virtual boost::optional<yb::PgSessionRequestVersion> PgSessionRequestVersion() const {
-    return boost::none;
+  virtual std::optional<yb::PgSessionRequestVersion> PgSessionRequestVersion() const {
+    return std::nullopt;
   }
 
   virtual TransactionId wait_as_txn_id() const = 0;
@@ -171,10 +171,13 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
   ConflictResolver(const DocDB& doc_db,
                    TransactionStatusManager* status_manager,
                    PartialRangeKeyIntents partial_range_key_intents,
+                   RequestScope& request_scope,
                    std::unique_ptr<ConflictResolverContext> context,
                    ResolutionCallback callback)
       : doc_db_(doc_db), status_manager_(*status_manager),
-        partial_range_key_intents_(partial_range_key_intents), context_(std::move(context)),
+        partial_range_key_intents_(partial_range_key_intents),
+        request_scope_(request_scope),
+        context_(std::move(context)),
         wait_state_(ash::WaitStateInfo::CurrentWaitState()),
         callback_(std::move(callback)) {}
 
@@ -516,8 +519,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
         &transaction.id,
         context_->GetResolutionHt(),
         context_->GetResolutionHt(),
-        0, // serial no. Could use 0 here, because read_ht == global_limit_ht.
-           // So we cannot accept status with time >= read_ht and < global_limit_ht.
+        request_scope_.request_id(),
         &kRequestReason,
         TransactionLoadFlags{TransactionLoadFlag::kCleanup},
         [self, &transaction, trace, wait_state = ash::WaitStateInfo::CurrentWaitState()](
@@ -552,8 +554,8 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
 
   DocDB doc_db_;
   TransactionStatusManager& status_manager_;
-  RequestScope request_scope_;
   PartialRangeKeyIntents partial_range_key_intents_;
+  RequestScope& request_scope_;
   std::unique_ptr<ConflictResolverContext> context_;
   const ash::WaitStateInfoPtr wait_state_;
   ResolutionCallback callback_;
@@ -573,10 +575,11 @@ class FailOnConflictResolver : public ConflictResolver {
       const DocDB& doc_db,
       TransactionStatusManager* status_manager,
       PartialRangeKeyIntents partial_range_key_intents,
+      RequestScope& request_scope,
       std::unique_ptr<ConflictResolverContext> context,
       ResolutionCallback callback)
       : ConflictResolver(
-          doc_db, status_manager, partial_range_key_intents, std::move(context),
+          doc_db, status_manager, partial_range_key_intents, request_scope, std::move(context),
           std::move(callback))
     {}
 
@@ -639,6 +642,7 @@ class WaitOnConflictResolver : public ConflictResolver {
       const DocDB& doc_db,
       TransactionStatusManager* status_manager,
       PartialRangeKeyIntents partial_range_key_intents,
+      RequestScope& request_scope,
       std::unique_ptr<ConflictResolverContext> context,
       ResolutionCallback callback,
       WaitQueue* wait_queue,
@@ -648,8 +652,9 @@ class WaitOnConflictResolver : public ConflictResolver {
       bool is_advisory_lock_request,
       CoarseTimePoint deadline)
         : ConflictResolver(
-        doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback)),
-        wait_queue_(wait_queue), lock_batch_(lock_batch), serial_no_(wait_queue_->GetSerialNo()),
+            doc_db, status_manager, partial_range_key_intents, request_scope, std::move(context),
+            std::move(callback)), wait_queue_(wait_queue), lock_batch_(lock_batch),
+            serial_no_(wait_queue_->GetSerialNo()),
         trace_(Trace::CurrentTrace()), request_start_us_(request_start_us),
         request_id_(request_id), is_advisory_lock_request_(is_advisory_lock_request),
         deadline_(deadline) {}
@@ -1129,7 +1134,7 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
   Result<TabletId> GetStatusTablet(ConflictResolver* resolver) const override {
     RETURN_NOT_OK(transaction_id_);
     // If this is the first operation for this transaction at this tablet, then GetStatusTablet
-    // will return boost::none since the transaction has not been registered with the tablet's
+    // will return std::nullopt since the transaction has not been registered with the tablet's
     // transaction participant. However, the write_batch_ transaction metadata only includes the
     // status tablet on the first write to this tablet.
     if (write_batch_.transaction().has_status_tablet()) {
@@ -1309,20 +1314,16 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
     return kMinSubTransactionId;
   }
 
-  bool IsSingleShardTransaction() const override {
-    return false;
-  }
+  bool IsSingleShardTransaction() const override { return false; }
 
-  boost::optional<yb::PgSessionRequestVersion> PgSessionRequestVersion() const override {
+  std::optional<yb::PgSessionRequestVersion> PgSessionRequestVersion() const override {
     if (write_batch_.has_pg_session_req_version() && write_batch_.pg_session_req_version()) {
       return write_batch_.pg_session_req_version();
     }
-    return boost::none;
+    return std::nullopt;
   }
 
-  std::string ToString() const override {
-    return yb::ToString(transaction_id_);
-  }
+  std::string ToString() const override { return yb::ToString(transaction_id_); }
 
   const LWKeyValueWriteBatchPB& write_batch_;
 
@@ -1473,6 +1474,7 @@ Status ResolveTransactionConflicts(
     const DocOperations& doc_ops,
     const ConflictManagementPolicy conflict_management_policy,
     const LWKeyValueWriteBatchPB& write_batch,
+    RequestScope& request_scope,
     HybridTime resolution_ht,
     HybridTime read_time,
     int64_t txn_start_us,
@@ -1505,14 +1507,16 @@ Status ResolveTransactionConflicts(
         "Cannot use Wait-on-Conflict behavior - wait queue is not initialized");
     DCHECK(lock_batch);
     auto resolver = std::make_shared<WaitOnConflictResolver>(
-        doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback),
-        wait_queue, lock_batch, request_start_us, request_id, is_advisory_lock_request, deadline);
+        doc_db, status_manager, partial_range_key_intents, request_scope, std::move(context),
+        std::move(callback), wait_queue, lock_batch, request_start_us, request_id,
+        is_advisory_lock_request, deadline);
     resolver->Run();
   } else {
     // SKIP_ON_CONFLICT is piggybacked on FailOnConflictResolver since it is almost the same
     // with just a few lines of extra handling.
     auto resolver = std::make_shared<FailOnConflictResolver>(
-        doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback));
+        doc_db, status_manager, partial_range_key_intents, request_scope, std::move(context),
+        std::move(callback));
     resolver->Resolve();
   }
   TRACE("resolver->Resolve done");
@@ -1523,6 +1527,7 @@ Status ResolveOperationConflicts(
     const DocOperations& doc_ops,
     const ConflictManagementPolicy conflict_management_policy,
     const LWKeyValueWriteBatchPB& write_batch,
+    RequestScope& request_scope,
     HybridTime intial_resolution_ht,
     uint64_t request_start_us,
     int64_t request_id,
@@ -1551,15 +1556,16 @@ Status ResolveOperationConflicts(
         wait_queue, InternalError,
         "Cannot use Wait-on-Conflict behavior - wait queue is not initialized");
     auto resolver = std::make_shared<WaitOnConflictResolver>(
-        doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback),
-        wait_queue, lock_batch, request_start_us, request_id, false /* is_advisory_lock_request */,
-        deadline);
+        doc_db, status_manager, partial_range_key_intents, request_scope, std::move(context),
+        std::move(callback), wait_queue, lock_batch, request_start_us, request_id,
+        false /* is_advisory_lock_request */, deadline);
     resolver->Run();
   } else {
     // SKIP_ON_CONFLICT is piggybacked on FailOnConflictResolver since it is almost the same
     // with just a few lines of extra handling.
     auto resolver = std::make_shared<FailOnConflictResolver>(
-        doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback));
+        doc_db, status_manager, partial_range_key_intents, request_scope, std::move(context),
+        std::move(callback));
     resolver->Resolve();
   }
   TRACE("resolver->Resolve done");

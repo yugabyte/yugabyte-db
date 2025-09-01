@@ -105,7 +105,7 @@ To use the driver, do the following:
 
 ## Try it out
 
-This tutorial shows how to use the YugabyteDB node-postgres smart driver with YugabyteDB. It starts by creating a three-node cluster with a [replication factor](../../../architecture/docdb-replication/replication/#replication-factor) of 3. This tutorial uses the [yb-ctl](../../../admin/yb-ctl/#root) utility.
+This tutorial shows how to use the YugabyteDB node-postgres smart driver with YugabyteDB. It starts by creating a three-node cluster with a [replication factor](../../../architecture/docdb-replication/replication/#replication-factor) of 3.
 
 Next, you use a Node.js application to demonstrate the driver's load balancing features.
 
@@ -127,7 +127,7 @@ To create a multi-zone cluster, do the following:
 
     ```sh
     ./bin/yugabyted start --advertise_address=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1 \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node1 \
         --cloud_location=aws.us-east-1.us-east-1a \
         --fault_tolerance=zone
     ```
@@ -137,7 +137,7 @@ To create a multi-zone cluster, do the following:
     ```sh
     ./bin/yugabyted start --advertise_address=127.0.0.2 \
         --join=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node2 \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node2 \
         --cloud_location=aws.us-east-1.us-east-1a \
         --fault_tolerance=zone
     ```
@@ -145,7 +145,7 @@ To create a multi-zone cluster, do the following:
     ```sh
     ./bin/yugabyted start --advertise_address=127.0.0.3 \
         --join=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node3 \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node3 \
         --cloud_location=aws.us-east-1.us-east-1b \
         --fault_tolerance=zone
     ```
@@ -267,7 +267,7 @@ To verify the behavior, wait for the app to create connections and then navigate
 When you're done experimenting, run the following command to destroy the local cluster:
 
 ```sh
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node2
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node3
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node1
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node2
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node3
 ```

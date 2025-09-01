@@ -48,7 +48,7 @@ YRPC_GENERATE(
   PROTO_FILES rpc_header.proto)
 ADD_YB_LIBRARY(rpc_header_proto
   SRCS ${RPC_HEADER_PROTO_SRCS}
-  DEPS protobuf yrpc_base
+  DEPS protobuf yrpc_base yb_common_proto
   NONLINK_DEPS ${RPC_HEADER_PROTO_TGTS})
 
 PROTOBUF_GENERATE_CPP(
@@ -106,9 +106,7 @@ set(YRPC_SRCS
     service_pool.cc
     sidecars.cc
     stream.cc
-    strand.cc
     tcp_stream.cc
-    thread_pool.cc
     yb_rpc.cc)
 
 set(YRPC_LIBS
@@ -184,4 +182,3 @@ ADD_YB_TEST(rpc-bench RUN_SERIAL true)
 ADD_YB_TEST(rpc-test)
 ADD_YB_TEST(rpc_stub-test RUN_SERIAL true)
 ADD_YB_TEST(scheduler-test)
-ADD_YB_TEST(thread_pool-test)

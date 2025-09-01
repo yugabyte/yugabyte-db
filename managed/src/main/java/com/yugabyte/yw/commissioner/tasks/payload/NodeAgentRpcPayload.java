@@ -2,23 +2,31 @@
 
 package com.yugabyte.yw.commissioner.tasks.payload;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.gcp.GCPCloudImpl;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageOtelCollector;
 import com.yugabyte.yw.common.FileHelperService;
 import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeUniverseManager;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.audit.otel.OtelCollectorConfigGenerator;
+import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -26,6 +34,7 @@ import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
@@ -37,9 +46,12 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
-import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
-import com.yugabyte.yw.models.helpers.audit.UniverseLogsExporterConfig;
-import com.yugabyte.yw.models.helpers.audit.YCQLAuditConfig;
+import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig;
+import com.yugabyte.yw.models.helpers.exporters.audit.YCQLAuditConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig;
 import com.yugabyte.yw.models.helpers.telemetry.GCPCloudMonitoringConfig;
 import com.yugabyte.yw.nodeagent.ConfigureServerInput;
@@ -47,23 +59,31 @@ import com.yugabyte.yw.nodeagent.DownloadSoftwareInput;
 import com.yugabyte.yw.nodeagent.InstallOtelCollectorInput;
 import com.yugabyte.yw.nodeagent.InstallSoftwareInput;
 import com.yugabyte.yw.nodeagent.InstallYbcInput;
+import com.yugabyte.yw.nodeagent.ServerControlInput;
+import com.yugabyte.yw.nodeagent.ServerControlType;
 import com.yugabyte.yw.nodeagent.ServerGFlagsInput;
 import com.yugabyte.yw.nodeagent.SetupCGroupInput;
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import play.libs.Json;
 
 @Slf4j
 public class NodeAgentRpcPayload {
@@ -309,8 +329,15 @@ public class NodeAgentRpcPayload {
       // For RR we don't setup master
       installSoftwareInputBuilder.addSymLinkFolders("tserver");
     } else {
-      installSoftwareInputBuilder.addSymLinkFolders("tserver");
-      installSoftwareInputBuilder.addSymLinkFolders("master");
+      String processType = taskParams.getProperty("processType");
+      if (processType == null || processType.isEmpty()) {
+        installSoftwareInputBuilder.addSymLinkFolders("tserver");
+        installSoftwareInputBuilder.addSymLinkFolders("master");
+      } else {
+        // This is needed for software upgrades flow, where-in we update
+        // the symlinks one after the other for master & t-servers.
+        installSoftwareInputBuilder.addSymLinkFolders(processType.toLowerCase());
+      }
     }
     installSoftwareInputBuilder.setRemoteTmp(customTmpDirectory);
     installSoftwareInputBuilder.setYbHomeDir(provider.getYbHome());
@@ -428,12 +455,18 @@ public class NodeAgentRpcPayload {
     String customTmpDirectory =
         confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
     AuditLogConfig config = null;
+    QueryLogConfig queryLogConfig = null;
+    MetricsExportConfig metricsExportConfig = null;
     if (taskParams instanceof ManageOtelCollector.Params) {
       ManageOtelCollector.Params params = (ManageOtelCollector.Params) taskParams;
       config = params.auditLogConfig;
+      queryLogConfig = params.queryLogConfig;
+      metricsExportConfig = params.metricsExportConfig;
     } else if (taskParams instanceof AnsibleConfigureServers.Params) {
       AnsibleConfigureServers.Params params = (AnsibleConfigureServers.Params) taskParams;
       config = params.auditLogConfig;
+      queryLogConfig = params.queryLogConfig;
+      metricsExportConfig = params.metricsExportConfig;
     }
     Map<String, String> gflags =
         GFlagsUtil.getGFlagsForAZ(
@@ -458,7 +491,7 @@ public class NodeAgentRpcPayload {
     installOtelCollectorInputBuilder.setOtelColPackagePath(
         getOtelCollectorPackagePath(universe.getUniverseDetails().arch));
     String ycqlAuditLogLevel = "NONE";
-    if (config.getYcqlAuditConfig() != null) {
+    if (config != null && config.getYcqlAuditConfig() != null) {
       YCQLAuditConfig.YCQLAuditLogLevel logLevel =
           config.getYcqlAuditConfig().getLogLevel() != null
               ? config.getYcqlAuditConfig().getLogLevel()
@@ -468,8 +501,13 @@ public class NodeAgentRpcPayload {
     installOtelCollectorInputBuilder.setYcqlAuditLogLevel(ycqlAuditLogLevel);
     installOtelCollectorInputBuilder.addAllMountPoints(getMountPoints(taskParams));
 
-    if (config.isExportActive()
-        && CollectionUtils.isNotEmpty(config.getUniverseLogsExporterConfig())) {
+    boolean auditLogsExportActive = OtelCollectorUtil.isAuditLogExportEnabledInUniverse(config);
+    boolean queryLogsExportActive =
+        OtelCollectorUtil.isQueryLogExportEnabledInUniverse(queryLogConfig);
+    boolean metricsExportActive =
+        OtelCollectorUtil.isMetricsExportEnabledInUniverse(metricsExportConfig);
+
+    if (auditLogsExportActive || queryLogsExportActive || metricsExportActive) {
       String otelCollectorConfigFile =
           otelCollectorConfigGenerator
               .generateConfigFile(
@@ -477,8 +515,11 @@ public class NodeAgentRpcPayload {
                   provider,
                   universe.getUniverseDetails().getPrimaryCluster().userIntent,
                   config,
+                  queryLogConfig,
+                  metricsExportConfig,
                   GFlagsUtil.getLogLinePrefix(gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
-                  NodeManager.getOtelColMetricsPort(taskParams))
+                  NodeManager.getOtelColMetricsPort(taskParams),
+                  nodeAgent)
               .toAbsolutePath()
               .toString();
       nodeAgentClient.uploadFile(
@@ -491,51 +532,112 @@ public class NodeAgentRpcPayload {
       installOtelCollectorInputBuilder.setOtelColConfigFile(
           customTmpDirectory + "/" + Paths.get(otelCollectorConfigFile).getFileName().toString());
 
-      for (UniverseLogsExporterConfig logsExporterConfig : config.getUniverseLogsExporterConfig()) {
-        TelemetryProvider telemetryProvider =
-            telemetryProviderService.get(logsExporterConfig.getExporterUuid());
-        switch (telemetryProvider.getConfig().getType()) {
-          case AWS_CLOUDWATCH -> {
-            AWSCloudWatchConfig awsCloudWatchConfig =
-                (AWSCloudWatchConfig) telemetryProvider.getConfig();
-            if (StringUtils.isNotEmpty(awsCloudWatchConfig.getAccessKey())) {
-              installOtelCollectorInputBuilder.setOtelColAwsAccessKey(
-                  awsCloudWatchConfig.getAccessKey());
-            }
-            if (StringUtils.isNotEmpty(awsCloudWatchConfig.getSecretKey())) {
-              installOtelCollectorInputBuilder.setOtelColAwsSecretKey(
-                  awsCloudWatchConfig.getSecretKey());
-            }
-          }
-          case GCP_CLOUD_MONITORING -> {
-            GCPCloudMonitoringConfig gcpCloudMonitoringConfig =
-                (GCPCloudMonitoringConfig) telemetryProvider.getConfig();
-            if (gcpCloudMonitoringConfig.getCredentials() != null) {
-              Path path =
-                  fileHelperService.createTempFile(
-                      "otel_collector_gcp_creds_"
-                          + taskParams.getUniverseUUID()
-                          + "_"
-                          + taskParams.nodeUuid,
-                      ".json");
-              String filePath = path.toAbsolutePath().toString();
-              FileUtils.writeJsonFile(filePath, gcpCloudMonitoringConfig.getCredentials());
-              nodeAgentClient.uploadFile(
-                  nodeAgent,
-                  filePath,
-                  customTmpDirectory + "/" + Paths.get(filePath).getFileName().toString(),
-                  DEFAULT_CONFIGURE_USER,
-                  0,
-                  null);
-              installOtelCollectorInputBuilder.setOtelColGcpCredsFile(
-                  customTmpDirectory + "/" + Paths.get(filePath).getFileName().toString());
-            }
-          }
+      Set<UUID> exporterUUIDs = new HashSet<>();
+      if (config != null && CollectionUtils.isNotEmpty(config.getUniverseLogsExporterConfig())) {
+        for (UniverseLogsExporterConfig logsExporterConfig :
+            config.getUniverseLogsExporterConfig()) {
+          exporterUUIDs.add(logsExporterConfig.getExporterUuid());
         }
+      }
+      if (queryLogConfig != null
+          && CollectionUtils.isNotEmpty(queryLogConfig.getUniverseLogsExporterConfig())) {
+        for (UniverseQueryLogsExporterConfig logsExporterConfig :
+            queryLogConfig.getUniverseLogsExporterConfig()) {
+          exporterUUIDs.add(logsExporterConfig.getExporterUuid());
+        }
+      }
+
+      for (UUID exporterUUID : exporterUUIDs) {
+        installOtelCollectorInputBuilder =
+            setupInstallOtelCollectorBitsEnv(
+                installOtelCollectorInputBuilder,
+                nodeAgent,
+                customTmpDirectory,
+                exporterUUID,
+                taskParams.getUniverseUUID(),
+                taskParams.nodeUuid);
       }
     }
 
     return installOtelCollectorInputBuilder.build();
+  }
+
+  public InstallOtelCollectorInput.Builder setupInstallOtelCollectorBitsEnv(
+      InstallOtelCollectorInput.Builder installOtelCollectorInputBuilder,
+      NodeAgent nodeAgent,
+      String customTmpDirectory,
+      UUID exporterUUID,
+      UUID universeUUID,
+      UUID nodeUUID) {
+    TelemetryProvider telemetryProvider = telemetryProviderService.get(exporterUUID);
+    switch (telemetryProvider.getConfig().getType()) {
+      case AWS_CLOUDWATCH -> {
+        AWSCloudWatchConfig awsCloudWatchConfig =
+            (AWSCloudWatchConfig) telemetryProvider.getConfig();
+        if (StringUtils.isNotEmpty(awsCloudWatchConfig.getAccessKey())) {
+          installOtelCollectorInputBuilder.setOtelColAwsAccessKey(
+              awsCloudWatchConfig.getAccessKey());
+        }
+        if (StringUtils.isNotEmpty(awsCloudWatchConfig.getSecretKey())) {
+          installOtelCollectorInputBuilder.setOtelColAwsSecretKey(
+              awsCloudWatchConfig.getSecretKey());
+        }
+      }
+      case GCP_CLOUD_MONITORING -> {
+        GCPCloudMonitoringConfig gcpCloudMonitoringConfig =
+            (GCPCloudMonitoringConfig) telemetryProvider.getConfig();
+        if (gcpCloudMonitoringConfig.getCredentials() != null) {
+          Path path =
+              fileHelperService.createTempFile(
+                  "otel_collector_gcp_creds_" + universeUUID + "_" + nodeUUID, ".json");
+          String filePath = path.toAbsolutePath().toString();
+          FileUtils.writeJsonFile(filePath, gcpCloudMonitoringConfig.getCredentials());
+          nodeAgentClient.uploadFile(
+              nodeAgent,
+              filePath,
+              customTmpDirectory + "/" + Paths.get(filePath).getFileName().toString(),
+              DEFAULT_CONFIGURE_USER,
+              0,
+              null);
+          installOtelCollectorInputBuilder.setOtelColGcpCredsFile(
+              customTmpDirectory + "/" + Paths.get(filePath).getFileName().toString());
+        }
+      }
+    }
+
+    return installOtelCollectorInputBuilder;
+  }
+
+  public ServerControlInput setupServerControlBits(
+      Universe universe, NodeDetails nodeDetails, NodeTaskParams nodeTaskParams) {
+    AnsibleClusterServerCtl.Params taskParams = null;
+    if (nodeTaskParams instanceof AnsibleClusterServerCtl.Params) {
+      taskParams = (AnsibleClusterServerCtl.Params) nodeTaskParams;
+    }
+    String serverName = "yb-" + taskParams.process;
+    String serverHome =
+        Paths.get(nodeUniverseManager.getYbHomeDir(nodeDetails, universe), taskParams.process)
+            .toString();
+    ServerControlType controlType =
+        taskParams.command.equals("start") ? ServerControlType.START : ServerControlType.STOP;
+    ServerControlInput.Builder serverControlInputBuilder =
+        ServerControlInput.newBuilder()
+            .setControlType(controlType)
+            .setServerName(serverName)
+            .setServerHome(serverHome)
+            .setDeconfigure(taskParams.deconfigure);
+    if (taskParams.checkVolumesAttached) {
+      UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(taskParams.placementUuid);
+      NodeDetails node = universe.getNode(taskParams.nodeName);
+      if (node != null
+          && cluster != null
+          && cluster.userIntent.getDeviceInfoForNode(node) != null
+          && cluster.userIntent.providerType != CloudType.onprem) {
+        serverControlInputBuilder.setNumVolumes(
+            cluster.userIntent.getDeviceInfoForNode(node).numVolumes);
+      }
+    }
+    return serverControlInputBuilder.build();
   }
 
   public void runServerGFlagsWithNodeAgent(
@@ -568,10 +670,7 @@ public class NodeAgentRpcPayload {
     String taskSubType = taskParams.getProperty("taskSubType");
     UserIntent userIntent = nodeManager.getUserIntentFromParams(universe, taskParams);
     ServerGFlagsInput.Builder builder =
-        ServerGFlagsInput.newBuilder()
-            .setServerHome(serverHome)
-            .setServerName(serverHome)
-            .setServerName(serverName);
+        ServerGFlagsInput.newBuilder().setServerHome(serverHome).setServerName(serverName);
     Map<String, String> gflags =
         new HashMap<>(
             GFlagsUtil.getAllDefaultGFlags(
@@ -594,12 +693,64 @@ public class NodeAgentRpcPayload {
             Path tmpDirectoryPath =
                 FileUtils.getOrCreateTmpDirectory(
                     confGetter.getGlobalConf(GlobalConfKeys.ybTmpDirectoryPath));
-            Path localGflagFilePath =
-                tmpDirectoryPath.resolve(nodeDetails.getNodeUuid().toString());
-            String providerUUID = userIntent.provider;
-            String ybHomeDir = GFlagsUtil.getYbHomeDir(providerUUID);
-            String remoteGFlagPath = ybHomeDir + GFlagsUtil.GFLAG_REMOTE_FILES_PATH;
-            nodeAgentClient.uploadFile(nodeAgent, localGflagFilePath.toString(), remoteGFlagPath);
+            Path localGflagDirPath = tmpDirectoryPath.resolve(nodeDetails.getNodeUuid().toString());
+            // Validate directory exists
+            if (Files.isDirectory(localGflagDirPath)) {
+              String providerUUID = userIntent.provider;
+              String ybHomeDir = GFlagsUtil.getYbHomeDir(providerUUID);
+              String remoteGFlagPath = ybHomeDir + GFlagsUtil.GFLAG_REMOTE_FILES_PATH;
+
+              // Ensure remote directory exists
+              try {
+                // Delete the directory in case it exists.
+                nodeAgentClient.executeCommand(
+                    nodeAgent,
+                    Arrays.asList("rm", "-rf", remoteGFlagPath),
+                    ShellProcessContext.DEFAULT,
+                    true);
+                // Create the gflags_dir.
+                StringBuilder sb = new StringBuilder();
+                nodeAgentClient.executeCommand(
+                    nodeAgent,
+                    Arrays.asList(
+                        "umask", "022", "&&", "mkdir", "-m", "755", "-p", remoteGFlagPath),
+                    ShellProcessContext.DEFAULT,
+                    true);
+                log.info("Ensured remote directory exists: {}", remoteGFlagPath);
+              } catch (Exception e) {
+                throw new RuntimeException(
+                    "Failed to create remote directory: " + remoteGFlagPath, e);
+              }
+
+              // Upload all regular files
+              try (Stream<Path> paths = Files.list(localGflagDirPath)) {
+                paths
+                    .filter(Files::isRegularFile)
+                    .forEach(
+                        filePath -> {
+                          String remoteFilePath = remoteGFlagPath + filePath.getFileName();
+                          try {
+                            nodeAgentClient.uploadFile(
+                                nodeAgent,
+                                filePath.toString(),
+                                remoteFilePath,
+                                DEFAULT_CONFIGURE_USER,
+                                0,
+                                null);
+                            log.info(
+                                "Uploaded file {} to {}", filePath.getFileName(), remoteFilePath);
+                          } catch (Exception e) {
+                            throw new RuntimeException("Failed to upload file: " + filePath, e);
+                          }
+                        });
+              } catch (IOException e) {
+                throw new RuntimeException(
+                    "Failed to list local GFlag directory: " + localGflagDirPath, e);
+              }
+            } else {
+              log.warn(
+                  "GFlag directory {} does not exist or is not a directory", localGflagDirPath);
+            }
           }
         }
       }
@@ -609,7 +760,10 @@ public class NodeAgentRpcPayload {
     }
     gflags = populateTLSRotateFlags(universe, taskParams, taskSubType, gflags);
     ServerGFlagsInput input = builder.putAllGflags(gflags).build();
-    log.debug("Setting gflags using node agent: {}", input.getGflagsMap());
+    JsonNode redactedParams =
+        RedactingService.filterSecretFields(
+            Json.toJson(input.getGflagsMap()), RedactionTarget.LOGS);
+    log.debug("Setting gflags using node agent: {}", redactedParams);
     nodeAgentClient.runServerGFlags(nodeAgent, input, DEFAULT_CONFIGURE_USER);
   }
 
@@ -622,6 +776,9 @@ public class NodeAgentRpcPayload {
     setupSetupCGroupBuilder.setYbHomeDir(provider.getYbHome());
     if (taskParams instanceof AnsibleConfigureServers.Params) {
       AnsibleConfigureServers.Params params = (AnsibleConfigureServers.Params) taskParams;
+      setupSetupCGroupBuilder.setPgMaxMemMb(params.cgroupSize);
+    } else if (taskParams instanceof ChangeInstanceType.Params) {
+      ChangeInstanceType.Params params = (ChangeInstanceType.Params) taskParams;
       setupSetupCGroupBuilder.setPgMaxMemMb(params.cgroupSize);
     }
 

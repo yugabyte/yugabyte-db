@@ -52,7 +52,10 @@ message TabletStatusPB {
   optional bytes start_key = 5;
   // DEPRECATED.
   optional bytes end_key = 6;
-  optional int64 estimated_on_disk_size = 7;
+  // Estimated size of the tablet on disk. Includes consensus metadata, WALs, and SSTs, but does
+  // not include snapshots, retryable requests, MANIFEST, and other structures.
+  // Unlike total_on_disk_size, this is always up-to-date.
+  optional int64 active_on_disk_size = 7;
   optional int64 consensus_metadata_disk_size = 11;
   optional int64 wal_files_disk_size = 12;
   optional int64 sst_files_disk_size = 13;
@@ -67,6 +70,9 @@ message TabletStatusPB {
   optional string pgschema_name = 20;
   repeated bytes vector_index_finished_backfills = 21;
   optional OpIdPB last_op_id = 22;
+  // Estimated size of the tablet on disk, including snapshots, retryable requests, MANIFEST,
+  // and other files in those directories. This is updated periodically, so may be stale or 0.
+  optional int64 total_on_disk_size = 23;
 }
 
 // Used to present the maintenance manager's internal state.

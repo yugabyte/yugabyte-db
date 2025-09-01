@@ -386,7 +386,7 @@ You can use only one of the following arguments in the `source` parameter (confi
     CREATE USER ybvoyager PASSWORD 'password';
     ```
 
-1. Grant permissions for migration. Use the `yb-voyager-pg-grant-migration-permissions.sql` script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows:
+1. Grant permissions for migration. Use the [yb-voyager-pg-grant-migration-permissions.sql](../../reference/yb-voyager-pg-grant-migration-permissions/) script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows:
 
     _Warning_: This script transfers ownership of all tables in the specified schemas to the specified replication group. The migration user and the original owner of the tables will be added to the replication group.
 
@@ -424,7 +424,7 @@ You can use only one of the following arguments in the `source` parameter (confi
     CREATE USER ybvoyager PASSWORD 'password';
     ```
 
-1. Grant permissions for migration. Use the `yb-voyager-pg-grant-migration-permissions.sql` script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows:
+1. Grant permissions for migration. Use the [yb-voyager-pg-grant-migration-permissions.sql](../../reference/yb-voyager-pg-grant-migration-permissions/) script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows:
 
     _Warning_: This script transfers ownership of all tables in the specified schemas to the specified replication group. The migration user and the original owner of the tables will be added to the replication group.
 
@@ -504,11 +504,13 @@ Create a user with [`SUPERUSER`](../../../api/ysql/the-sql-language/statements/d
 
 If you want yb-voyager to connect to the target YugabyteDB database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
 
+Alternatively, if you want to proceed with migration without a superuser, refer to [Import data without a superuser](../../reference/superuser/).
+
 ## Create an export directory
 
 yb-voyager keeps all of its migration state, including exported schema and data, in a local directory called the _export directory_.
 
-Before starting migration, you should create the export directory on a file system that has enough space to keep the entire source database. Ideally, this export directory should be placed inside a parent folder named after your migration for better organization. Next, you should provide the path to the export directory using the mandatory parameter `export-dir` (configuration file) or `--export-dir` flag (CLI) with each invocation of the yb-voyager command.
+Before starting migration, you should create the export directory on a file system that has enough space to keep the entire source database. Ideally, create this export directory inside a parent folder named after your migration for better organization. You need to provide the full path to the export directory in the `export-dir` parameter of your [configuration file](#set-up-a-configuration-file), or in the `--export-dir` flag when running `yb-voyager` commands.
 
 ```sh
 mkdir -p $HOME/<migration-name>/export-dir
@@ -593,11 +595,24 @@ To begin, export the schema from the source database. Once exported, analyze the
 
 #### Export schema
 
+{{< warning title="Technical Advisory" >}}
+
+{{<ta 2968>}} : Import schema fails on all Voyager installs done after August 14, 2025. Impacts [v1.1](../../release-notes/#v1-1-march-7-2023) to [v2025.8.1](../../release-notes/#v2025-8-1-august-5-2025).
+
+{{< /warning >}}
+
 The `yb-voyager export schema` command extracts the schema from the source database, converts it into PostgreSQL format (if the source database is Oracle or MySQL), and dumps the SQL DDL files in the `EXPORT_DIR/schema/*` directories.
 
-The `db-schema` key inside the `source` section parameters (configuration file), or the `--source-db-schema` flag (CLI), is used to specify the schema(s) to migrate from the source database.
+**For PostgreSQL migrations**:
 
-For Oracle, `source-db-schema` (CLI) or `db-schema` (configuration file) can take only one schema name and you can migrate _only one_ schema at a time.
+- Recommended schema optimizations from the [assess migration](#assess-migration) report are applied to ensure YugabyteDB compatibility and optimal performance.
+- A **Schema Optimization Report**, with details and an explanation of every change, is generated for your review.
+
+**For Oracle migrations**:
+
+- `source-db-schema` (CLI) or `db-schema` (configuration file) can take only one schema name and you can migrate _only one_ schema at a time.
+
+The `db-schema` key inside the `source` section parameters (configuration file), or the `--source-db-schema` flag (CLI), is used to specify the schema(s) to migrate from the source database.
 
 Run the command as follows:
 
@@ -635,6 +650,12 @@ Refer to [export schema](../../reference/schema-migration/export-schema/) for mo
 Note that if the source database is PostgreSQL and you haven't already run `assess-migration`, the schema is also assessed and a migration assessment report is generated.
 
 #### Analyze schema
+
+{{< warning title="Technical Advisory" >}}
+
+{{<ta 2968>}} : Import schema fails on all Voyager installs done after August 14, 2025. Impacts [v1.1](../../release-notes/#v1-1-march-7-2023) to [v2025.8.1](../../release-notes/#v2025-8-1-august-5-2025).
+
+{{< /warning >}}
 
 The schema exported in the previous step may not yet be suitable for importing into YugabyteDB. Even though YugabyteDB is PostgreSQL compatible, given its distributed nature, you may need to make minor manual changes to the schema.
 
@@ -697,6 +718,12 @@ Include the primary key definition in the `CREATE TABLE` statement. Primary Key 
 Refer to the [Manual review guideline](../../known-issues/) for a detailed list of limitations and suggested workarounds associated with the source databases when migrating to YugabyteDB Voyager.
 
 ### Import schema
+
+{{< warning title="Technical Advisory" >}}
+
+{{<ta 2968>}} : Import schema fails on all Voyager installs done after August 14, 2025. Impacts [v1.1](../../release-notes/#v1-1-march-7-2023) to [v2025.8.1](../../release-notes/#v2025-8-1-august-5-2025).
+
+{{< /warning >}}
 
 Import the schema using the `yb-voyager import schema` command.
 

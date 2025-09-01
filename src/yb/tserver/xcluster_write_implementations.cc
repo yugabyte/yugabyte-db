@@ -129,13 +129,11 @@ Status CombineExternalIntents(
       return involved_tablet_;
     }
 
-    const Status& GetOutcome() {
-      return status;
-    }
+    const Status& GetOutcome() { return status; }
 
-    boost::optional<std::pair<Slice, Slice>> Next() override {
+    std::optional<std::pair<Slice, Slice>> Next() override {
       if (next_idx_ >= pairs_.size()) {
-        return boost::none;
+        return std::nullopt;
       }
 
       const auto& input = pairs_[next_idx_];
@@ -146,7 +144,7 @@ Status CombineExternalIntents(
       status = UpdatePackedRow(key, value, schema_versions_map, &updated_value);
       if (!status.ok()) {
         LOG(WARNING) << "Could not update packed row with consumer schema version";
-        return boost::none;
+        return std::nullopt;
       }
 
       return std::pair(key, updated_value.AsSlice());

@@ -107,6 +107,9 @@
 #include "utils/builtins.h"
 #include "utils/timestamp.h"
 
+/* YB includes */
+#include "yb/yql/pggate/ybc_gflags.h"
+
 static void scram_get_mechanisms(Port *port, StringInfo buf);
 static void *scram_init(Port *port, const char *selected_mech,
 						const char *shadow_pass);
@@ -201,7 +204,12 @@ scram_get_mechanisms(Port *port, StringInfo buf)
 	 * has a function to get the certificate's hash.
 	 */
 #ifdef HAVE_BE_TLS_GET_CERTIFICATE_HASH
-	if (port->ssl_in_use)
+	/*
+	 * YB: Do not offer SCRAM-SHA-256-PLUS as an SASL mechanism if scram
+	 * channel binding is disabled. This is to allow uniform behaviour
+	 * regardless of whether connection manager is enabled or disabled.
+	 */
+	if (*(YBCGetGFlags()->ysql_enable_scram_channel_binding) && port->ssl_in_use)
 	{
 		appendStringInfoString(buf, SCRAM_SHA_256_PLUS_NAME);
 		appendStringInfoChar(buf, '\0');
@@ -981,7 +989,11 @@ read_client_first_message(scram_state *state, const char *input)
 						 errdetail("The client selected SCRAM-SHA-256-PLUS, but the SCRAM message does not include channel binding data.")));
 
 #ifdef HAVE_BE_TLS_GET_CERTIFICATE_HASH
-			if (state->port->ssl_in_use)
+			/*
+			 * YB: Do not run this check if SCRAM-SHA-256-PLUS
+			 * (i.e. SCRAM with channel binding) is disabled.
+			 */
+			if (*(YBCGetGFlags()->ysql_enable_scram_channel_binding) && state->port->ssl_in_use)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
 						 errmsg("SCRAM channel binding negotiation error"),

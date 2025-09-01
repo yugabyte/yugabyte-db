@@ -74,7 +74,6 @@ void TerminationMonitor::InstallSigtermHandler() {
   if (!FLAGS_TEST_running_test) {
     return;
   }
-
   std::lock_guard lock(mutex_);
   if (thread_) {
     return;

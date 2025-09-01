@@ -164,6 +164,7 @@ class AbstractInstancesMethod(AbstractMethod):
         self.parser.add_argument("--private_key_file", default=default_key_pair)
         self.parser.add_argument("--volume_size", type=int, default=250,
                                  help="desired size (gb) of each volume mounted on instance")
+        self.parser.add_argument("--cmk_res_name", help="CMK arn to enable encrypted EBS volumes")
         self.parser.add_argument("--instance_type",
                                  required=False,
                                  help="The instance type to act on")
@@ -364,7 +365,7 @@ class AbstractInstancesMethod(AbstractMethod):
                 "node_agent_ip": host_info["private_ip"],
                 "node_agent_port": self.extra_vars["node_agent_port"]
             }
-        raise YBOpsRuntimeError("Unknown connction type: {}".format(connection_type))
+        raise YBOpsRuntimeError("Unknown connection type: {}".format(connection_type))
 
     def get_server_ports_to_check(self, args):
         server_ports = []
@@ -621,10 +622,18 @@ class ReplaceRootVolumeMethod(AbstractInstancesMethod):
             return self._is_disk_unmounted(host_info, current_root_volume, args)
 
         def __is_disk_mounting():
-            return self._is_disk_mounting(host_info, current_root_volume, args)
+            # Azure does not require unmounting because replacement is done in one API call.
+            if self.cloud.name != "azu":
+                return self._is_disk_mounting(host_info, current_root_volume, args)
+            else:
+                return False
 
         def __is_disk_mounted():
-            return self._is_disk_mounted(host_info, current_root_volume, args)
+            # Azure does not require unmounting because replacement is done in one API call.
+            if self.cloud.name != "azu":
+                return self._is_disk_mounted(host_info, current_root_volume, args)
+            else:
+                return True
 
         try:
             id = args.search_pattern
@@ -701,8 +710,7 @@ class DestroyInstancesMethod(AbstractInstancesMethod):
             help="Delete the static public ip.")
 
     def callback(self, args):
-        self.update_ansible_vars_with_args(args)
-        self.cloud.setup_ansible(args).run("destroy-instance.yml", self.extra_vars)
+        pass
 
 
 class CreateInstancesMethod(AbstractInstancesMethod):
@@ -920,8 +928,9 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
             self.extra_vars.update({"otel_col_aws_secret_key": args.otel_col_aws_secret_key})
         if args.otel_col_gcp_creds_file:
             self.extra_vars.update({"otel_col_gcp_creds_local": args.otel_col_gcp_creds_file})
-        if args.ycql_audit_log_level:
-            self.extra_vars.update({"ycql_audit_log_level": args.ycql_audit_log_level})
+        self.extra_vars.update({
+            "ycql_audit_log_level": getattr(args, 'ycql_audit_log_level', 'NONE')
+        })
         if args.reboot_node_allowed:
             self.extra_vars.update({"reboot_node_allowed": args.reboot_node_allowed})
 
@@ -1210,7 +1219,8 @@ class ChangeInstanceTypeMethod(AbstractInstancesMethod):
             self.cloud.start_instance(host_info, server_ports)
             logging.info('Instance {} is started'.format(args.search_pattern))
         # Make sure we are using the updated cgroup value if instance type is changing.
-        self.cloud.setup_ansible(args).run("setup-cgroup.yml", self.extra_vars, host_info)
+        if args.pg_max_mem_mb > 0:
+            self.cloud.setup_ansible(args).run("setup-cgroup.yml", self.extra_vars, host_info)
 
 
 class CronCheckMethod(AbstractInstancesMethod):
@@ -1569,7 +1579,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         if args.local_package_path:
             self.extra_vars.update({"local_package_path": args.local_package_path})
         else:
-            logging.warn("Local Directory Tarball Path not specified skipping")
+            logging.warning("Local Directory Tarball Path not specified; skipping")
             return
 
         if args.install_third_party_packages:
@@ -1679,8 +1689,9 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
             self.extra_vars.update({"otel_col_aws_secret_key": args.otel_col_aws_secret_key})
         if args.otel_col_gcp_creds_file:
             self.extra_vars.update({"otel_col_gcp_creds_local": args.otel_col_gcp_creds_file})
-        if args.ycql_audit_log_level:
-            self.extra_vars.update({"ycql_audit_log_level": args.ycql_audit_log_level})
+        self.extra_vars.update({
+            "ycql_audit_log_level": getattr(args, 'ycql_audit_log_level', 'NONE')
+        })
 
         if args.reset_master_state and args.extra_gflags is not None:
             delete_paths = []
@@ -2173,7 +2184,7 @@ class RunHooks(AbstractInstancesMethod):
         remove_command = "rm " + os.path.join(args.remote_tmp_dir, os.path.basename(args.hook_path))
         rc, _, stderr = remote_exec_command(self.extra_vars, remove_command)
         if rc:
-            logging.warn("Failed deleting custom hook:\n" + ''.join(stderr))
+            logging.warning("Failed deleting custom hook:\n" + ''.join(stderr))
 
 
 class WaitForConnection(AbstractInstancesMethod):
@@ -2262,8 +2273,9 @@ class ManageOtelCollector(AbstractInstancesMethod):
             self.extra_vars.update({"otel_col_aws_secret_key": args.otel_col_aws_secret_key})
         if args.otel_col_gcp_creds_file:
             self.extra_vars.update({"otel_col_gcp_creds_local": args.otel_col_gcp_creds_file})
-        if args.ycql_audit_log_level:
-            self.extra_vars.update({"ycql_audit_log_level": args.ycql_audit_log_level})
+        self.extra_vars.update({
+            "ycql_audit_log_level": getattr(args, 'ycql_audit_log_level', 'NONE')
+        })
         if args.use_sudo:
             self.extra_vars.update({"use_sudo": args.use_sudo})
 

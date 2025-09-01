@@ -19,6 +19,7 @@
 
 #include "yb/common/init.h"
 
+#include "yb/common/wire_protocol.h"
 #include "yb/server/async_client_initializer.h"
 #include "yb/server/clock.h"
 
@@ -53,7 +54,16 @@ Status DbServerBase::Init() {
       mem_tracker(), messenger());
   SetupAsyncClientInit(async_client_init_.get());
 
-  return shared_mem_manager_->InitializeTServer(permanent_uuid());
+  RETURN_NOT_OK(shared_mem_manager_->InitializeTServer(permanent_uuid()));
+
+  const auto bound_addresses = rpc_server()->GetBoundAddresses();
+  if (!bound_addresses.empty()) {
+    ServerRegistrationPB reg;
+    RETURN_NOT_OK(GetRegistration(&reg, server::RpcOnly::kTrue));
+    shared_object()->SetHostEndpoint(bound_addresses.front(), PublicHostPort(reg).host());
+  }
+
+  return Status::OK();
 }
 
 Status DbServerBase::Start() {
@@ -75,8 +85,21 @@ Status DbServerBase::Start() {
 }
 
 void DbServerBase::Shutdown() {
-  client::TransactionManager* txn_manager;
-  txn_manager = transaction_manager_.load();
+  bool expected = false;
+  if (!shutting_down_.compare_exchange_strong(expected, true)) {
+    return;
+  }
+  auto* txn_manager = transaction_manager_.load();
+  if (txn_manager) {
+    txn_manager->SetClosing();
+  }
+  // Shut down the transaction pool before the txn manager because the txn manager holds the Rpcs
+  // object used to schedule transaction rpcs. We shut down RPC objects after we shut down their
+  // clients.
+  auto* transaction_pool = transaction_pool_.load();
+  if (transaction_pool) {
+    transaction_pool->Shutdown();
+  }
   if (txn_manager) {
     txn_manager->Shutdown();
   }
@@ -132,6 +155,10 @@ Status DbServerBase::SkipSharedMemoryNegotiation() {
 
 int DbServerBase::SharedMemoryNegotiationFd() {
   return shared_mem_manager_->NegotiationFd();
+}
+
+SharedMemoryManager* DbServerBase::shared_mem_manager() {
+  return shared_mem_manager_.get();
 }
 
 ConcurrentPointerReference<TServerSharedData> DbServerBase::shared_object() const {

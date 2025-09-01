@@ -22,7 +22,10 @@ import static org.yb.AssertionWrappers.fail;
 import static org.yb.util.BuildTypeUtil.isASAN;
 import static org.yb.util.BuildTypeUtil.isTSAN;
 
+import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLConnection;
@@ -2373,5 +2376,31 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   public static void waitForStatsToGetUpdated() throws InterruptedException {
     Thread.sleep(CONNECTIONS_STATS_UPDATE_INTERVAL_SECS * 1000 * 2);
+  }
+
+  protected String getAbsFilePath(String fileName) {
+    return TestUtils.getBaseTmpDir() + "/" + fileName;
+  }
+
+  protected void createCopyFileInTmpDir(String absFilePath, int totalLines) throws IOException {
+    createCopyFileInTmpDir(absFilePath, totalLines, Arrays.asList("a", "b", "c", "d"));
+  }
+
+  protected void createCopyFileInTmpDir(
+      String absFilePath, int totalLines, List<String> columnNames) throws IOException {
+    File myObj = new File(absFilePath);
+    myObj.createNewFile();
+
+    BufferedWriter writer = new BufferedWriter(new FileWriter(myObj));
+    writer.write(String.join(",", columnNames) + "\n");
+
+    int totalValues = totalLines * columnNames.size();
+    for (int i = 0; i < totalValues; i++) {
+      if (i != 0 && (i + 1) % columnNames.size() == 0)
+        writer.write("\n");
+      else
+        writer.write(i+",");
+    }
+    writer.close();
   }
 }

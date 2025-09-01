@@ -338,6 +338,12 @@ public class CustomerTask extends Model {
     @EnumValue("ModifyAuditLoggingConfig")
     ModifyAuditLoggingConfig,
 
+    @EnumValue("ModifyQueryLoggingConfig")
+    ModifyQueryLoggingConfig,
+
+    @EnumValue("ModifyMetricsExportConfig")
+    ModifyMetricsExportConfig,
+
     @EnumValue("RotateAccessKey")
     RotateAccessKey,
 
@@ -552,6 +558,14 @@ public class CustomerTask extends Model {
           return completed
               ? "Modified audit logging config for"
               : "Modifying audit logging config for";
+        case ModifyQueryLoggingConfig:
+          return completed
+              ? "Modified query logging config for"
+              : "Modifying query logging config for";
+        case ModifyMetricsExportConfig:
+          return completed
+              ? "Modified metrics export config for"
+              : "Modifying metrics export config for";
         case CreateTableSpaces:
           return completed ? "Created tablespaces in" : "Creating tablespaces in";
         case RotateAccessKey:

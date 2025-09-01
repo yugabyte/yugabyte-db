@@ -80,7 +80,6 @@ public class ReplaceNodeInUniverse extends EditUniverseTaskBase {
           universe.getUniverseUUID());
       Set<NodeDetails> addedMasters = getAddedMasters();
       Set<NodeDetails> removedMasters = getRemovedMasters();
-      boolean updateMasters = !addedMasters.isEmpty() || !removedMasters.isEmpty();
 
       // Update the cluster in memory.
       universe
@@ -97,7 +96,6 @@ public class ReplaceNodeInUniverse extends EditUniverseTaskBase {
           taskParamsCluster,
           getNodesInCluster(taskParamsCluster.uuid, addedMasters),
           getNodesInCluster(taskParamsCluster.uuid, removedMasters),
-          updateMasters,
           true /* force */);
 
       createUpdateUniverseIntentTask(taskParamsCluster);

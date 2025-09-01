@@ -6,7 +6,7 @@ menu:
   v2024.1:
     identifier: learn
     parent: develop
-    weight: 560
+    weight: 10
 type: indexpage
 ---
 

@@ -17,9 +17,9 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/config"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/systemd"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/template"
 )
 
 type prometheusDirectories struct {
@@ -33,10 +33,7 @@ type prometheusDirectories struct {
 }
 
 func newPrometheusDirectories() prometheusDirectories {
-	logDir := "/var/log"
-	if !common.HasSudoAccess() {
-		logDir = common.GetBaseInstall() + "/data/logs"
-	}
+
 	return prometheusDirectories{
 		SystemdFileLocation: common.SystemdDir + "/prometheus.service",
 		ConfFileLocation:    common.GetSoftwareRoot() + "/prometheus/conf/prometheus.yml",
@@ -44,7 +41,7 @@ func newPrometheusDirectories() prometheusDirectories {
 		templateFileName:    "yba-installer-prometheus.yml",
 		DataDir:             common.GetBaseInstall() + "/data/prometheus",
 		PromDir:             common.GetSoftwareRoot() + "/prometheus",
-		LogDir:              logDir,
+		LogDir:              common.GetBaseInstall() + "/data/logs",
 	}
 }
 
@@ -97,7 +94,7 @@ func (prom Prometheus) Version() string {
 // Install the prometheus service.
 func (prom Prometheus) Install() error {
 	log.Info("Starting Prometheus install")
-	config.GenerateTemplate(prom)
+	template.GenerateTemplate(prom)
 	if err := prom.FixBasicAuth(); err != nil {
 		return err
 	}
@@ -129,10 +126,6 @@ func (prom Prometheus) Install() error {
 func (prom Prometheus) Initialize() error {
 	log.Info("Starting Prometheus initialize")
 	if err := prom.createDataDirs(); err != nil {
-		return err
-	}
-
-	if err := prom.createDataSymlinks(); err != nil {
 		return err
 	}
 
@@ -225,7 +218,7 @@ func (prom Prometheus) Uninstall(removeData bool) error {
 // Upgrade will NOT restart the service, the old version is expected to still be runnins
 func (prom Prometheus) Upgrade() error {
 	prom.prometheusDirectories = newPrometheusDirectories()
-	if err := config.GenerateTemplate(prom); err != nil {
+	if err := template.GenerateTemplate(prom); err != nil {
 		return err
 	}
 	if err := prom.FixBasicAuth(); err != nil {
@@ -236,6 +229,9 @@ func (prom Prometheus) Upgrade() error {
 	}
 	if err := prom.createPrometheusSymlinks(); err != nil {
 		return err
+	}
+	if err := prom.validateLogFile(); err != nil {
+		log.Warn("validate prometheus log file manually, failed with error: " + err.Error())
 	}
 	//chown is not needed when we are operating under non-root, the user will already
 	//have the necessary access.
@@ -252,16 +248,12 @@ func (prom Prometheus) Upgrade() error {
 // Prometheus service specifically.
 func (prom Prometheus) Status() (common.Status, error) {
 
-	logFileLoc := common.GetBaseInstall() + "/data/logs/prometheus.log"
-	if common.SystemdLogMethod() == "" {
-		logFileLoc = "journalctl -u prometheus"
-	}
 	status := common.Status{
 		Service:    prom.Name(),
 		Port:       viper.GetInt("prometheus.port"),
 		Version:    prom.version,
 		ConfigLoc:  prom.ConfFileLocation,
-		LogFileLoc: logFileLoc,
+		LogFileLoc: common.GetBaseInstall() + "/data/logs/prometheus.log",
 	}
 
 	// Set the systemd service file location if one exists
@@ -292,7 +284,7 @@ func (prom Prometheus) Status() (common.Status, error) {
 // MigrateFromReplicated will install prometheus using data from replicated
 func (prom Prometheus) MigrateFromReplicated() error {
 	log.Info("Starting Prometheus migration")
-	config.GenerateTemplate(prom)
+	template.GenerateTemplate(prom)
 	if err := prom.FixBasicAuth(); err != nil {
 		return err
 	}
@@ -426,13 +418,6 @@ func (prom Prometheus) createDataDirs() error {
 	common.MkdirAll(prom.DataDir+"/swamper_rules", common.DirMode)
 	log.Debug(prom.DataDir + "/storage /swamper_targets /swamper_rules" + " directories created.")
 
-	// Create the log file
-	if _, err := common.Create(prom.DataDir + "/prometheus.log"); err != nil &&
-		!errors.Is(err, os.ErrExist) {
-		log.Error("Failed to create prometheus log file: " + err.Error())
-		return err
-	}
-
 	if common.HasSudoAccess() {
 		// Need to give the yugabyte user ownership of the entire postgres directory.
 		userName := viper.GetString("service_username")
@@ -478,12 +463,18 @@ func (prom Prometheus) createPrometheusSymlinks() error {
 	return nil
 }
 
-func (prom Prometheus) createDataSymlinks() error {
-	if common.HasSudoAccess() {
-		// for root the log file is in /var/log in case of SELinux
-		if err := common.Symlink(fmt.Sprintf("%s/prometheus.log", prom.LogDir),
-			fmt.Sprintf("%s/prometheus.log", filepath.Join(common.GetBaseInstall(), "data/logs"))); err != nil {
-			return err
+func (prom Prometheus) validateLogFile() error {
+	logFile := prom.LogDir + "/prometheus.log"
+	// check if log file is symlink to /var/log/prometheus.log
+	varLogFile := "/var/log/prometheus.log"
+	if isSameFile, _ := common.IsSameFile(logFile, varLogFile); isSameFile {
+		// remove symlink
+		if err := os.Remove(logFile); err != nil {
+			return fmt.Errorf("failed to remove symlink %s: %w", logFile, err)
+		}
+		// rename /var/log/prometheus.log to logFile
+		if err := os.Rename(varLogFile, logFile); err != nil {
+			return fmt.Errorf("failed to rename /var/log/prometheus.log to %s", logFile)
 		}
 	}
 	return nil
@@ -536,7 +527,7 @@ func (prom Prometheus) migrateReplicatedDirs() error {
 
 func (prom Prometheus) Reconfigure() error {
 	log.Info("Reconfiguring Prometheus")
-	if err := config.GenerateTemplate(prom); err != nil {
+	if err := template.GenerateTemplate(prom); err != nil {
 		return fmt.Errorf("failed to generate prometheus config template: %w", err)
 	}
 	if err := prom.FixBasicAuth(); err != nil {
@@ -545,3 +536,5 @@ func (prom Prometheus) Reconfigure() error {
 	log.Info("Prometheus reconfigured")
 	return nil
 }
+
+func (prom Prometheus) PreUpgrade() error { return nil }

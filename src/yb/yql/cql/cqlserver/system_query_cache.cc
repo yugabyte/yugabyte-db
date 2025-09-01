@@ -24,8 +24,6 @@
 #include <mutex>
 #include <unordered_map>
 
-#include <boost/optional.hpp>
-
 #include "yb/qlexpr/ql_rowblock.h"
 
 #include "yb/gutil/bind.h"
@@ -155,11 +153,7 @@ SystemQueryCache::SystemQueryCache(cqlserver::CQLServiceImpl* service_impl)
 }
 
 SystemQueryCache::~SystemQueryCache() {
-  if (pool_) {
-    scheduler_->Shutdown();
-    pool_->Shutdown();
-    pool_->Join();
-  }
+  Shutdown();
 }
 
 void SystemQueryCache::InitializeQueries() {
@@ -186,19 +180,18 @@ void SystemQueryCache::InitializeQueries() {
       queries_.push_back(yb::Format(format, pair.keyspace, pair.table));
     }
   }
-
 }
 
-boost::optional<RowsResult::SharedPtr> SystemQueryCache::Lookup(const std::string& query) {
+std::optional<RowsResult::SharedPtr> SystemQueryCache::Lookup(const std::string& query) {
   if (FLAGS_cql_system_query_cache_stale_msecs > 0 &&
       GetStaleness() > MonoDelta::FromMilliseconds(FLAGS_cql_system_query_cache_stale_msecs)) {
-    return boost::none;
+    return std::nullopt;
   }
   const std::lock_guard l(cache_mutex_);
 
   const auto it = cache_->find(query);
   if (it == cache_->end()) {
-    return boost::none;
+    return std::nullopt;
   } else {
     return it->second;
   }
@@ -207,6 +200,19 @@ boost::optional<RowsResult::SharedPtr> SystemQueryCache::Lookup(const std::strin
 MonoDelta SystemQueryCache::GetStaleness() {
   const std::lock_guard l(cache_mutex_);
   return MonoTime::Now() - last_updated_;
+}
+
+void SystemQueryCache::Shutdown() {
+  bool expected = false;
+  if (!shutting_down_.compare_exchange_strong(expected, true)) {
+    return;
+  }
+  if (pool_) {
+    scheduler_->Shutdown();
+    pool_->Shutdown();
+    pool_->Join();
+    pool_.reset();
+  }
 }
 
 void SystemQueryCache::RefreshCache() {
@@ -258,8 +264,8 @@ void SystemQueryCache::ScheduleRefreshCache(bool now) {
       }, std::chrono::milliseconds(now ? 0 : FLAGS_cql_update_system_query_cache_msecs));
 }
 
-void SystemQueryCache::ExecuteSync(const std::string& stmt, Status* status,
-    ExecutedResult::SharedPtr* result_ptr) {
+void SystemQueryCache::ExecuteSync(
+    const std::string& stmt, Status* status, ExecutedResult::SharedPtr* result_ptr) {
   const auto processor = service_impl_->GetProcessor();
   if (!processor.ok()) {
     LOG(DFATAL) << "Unable to get CQLProcessor for system query cache";

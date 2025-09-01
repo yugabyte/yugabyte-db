@@ -158,7 +158,7 @@ class OnPremDestroyInstancesMethod(DestroyInstancesMethod):
         host_info = self.cloud.get_host_info(args)
         if not host_info:
             logging.error("Host {} does not exists.".format(args.search_pattern))
-            return
+            raise YBOpsRuntimeError("Unable to find host {}".format(args.search_pattern))
         self.extra_vars.update(self.get_server_host_port(host_info, args.custom_ssh_port))
 
         # Force db-related commands to use the "yugabyte" user.
@@ -186,6 +186,8 @@ class OnPremDestroyInstancesMethod(DestroyInstancesMethod):
                 "platform-services", "remove-services", args, self.extra_vars, host_info)
 
         # Run non-db related tasks.
+        # The flag clean_node_exporter is always set for onprem destroy.
+        # So, provisioning_cleanup is the only effective flag.
         if args.clean_node_exporter and args.provisioning_cleanup:
             logging.info(("[app] Running control script remove-services " +
                           "against thirdparty services at {}").format(host_info['name']))
@@ -300,29 +302,26 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
             scp_result = copy_to_tmp(self.extra_vars, get_datafile_path('preflight_checks.sh'),
                                      remote_tmp_dir=args.remote_tmp_dir)
             results["SSH Connection"] = scp_result == 0
-
-        sudo_pass_file = '{}/.yb_sudo_pass.sh'.format(args.remote_tmp_dir)
-        self.extra_vars['sudo_pass_file'] = sudo_pass_file
-        ansible_status = self.cloud.setup_ansible(args).run("send_sudo_pass.yml",
-                                                            self.extra_vars, host_info,
-                                                            print_output=False)
-        results["Try Ansible Command"] = ansible_status == 0
-
-        ports_to_check = ",".join([str(p) for p in [args.master_http_port,
-                                                    args.master_rpc_port,
-                                                    args.tserver_http_port,
-                                                    args.tserver_rpc_port,
-                                                    args.yb_controller_http_port,
-                                                    args.yb_controller_rpc_port,
-                                                    args.cql_proxy_http_port,
-                                                    args.cql_proxy_rpc_port,
-                                                    args.ysql_proxy_http_port,
-                                                    args.ysql_proxy_rpc_port,
-                                                    args.redis_proxy_http_port,
-                                                    args.redis_proxy_rpc_port,
-                                                    args.node_exporter_http_port] if p is not None])
-
-        if self.get_connection_type() == "ssh":
+            sudo_pass_file = '{}/.yb_sudo_pass.sh'.format(args.remote_tmp_dir)
+            self.extra_vars['sudo_pass_file'] = sudo_pass_file
+            ansible_status = self.cloud.setup_ansible(args).run("send_sudo_pass.yml",
+                                                                self.extra_vars, host_info,
+                                                                print_output=False)
+            results["Try Ansible Command"] = ansible_status == 0
+            ports_to_check = ",".join([str(p) for p in [args.master_http_port,
+                                                        args.master_rpc_port,
+                                                        args.tserver_http_port,
+                                                        args.tserver_rpc_port,
+                                                        args.yb_controller_http_port,
+                                                        args.yb_controller_rpc_port,
+                                                        args.cql_proxy_http_port,
+                                                        args.cql_proxy_rpc_port,
+                                                        args.ysql_proxy_http_port,
+                                                        args.ysql_proxy_rpc_port,
+                                                        args.redis_proxy_http_port,
+                                                        args.redis_proxy_rpc_port,
+                                                        args.node_exporter_http_port]
+                                      if p is not None])
             cmd = "{}/preflight_checks.sh --type {} --yb_home_dir {} --mount_points {} " \
                 "--ports_to_check {} --sudo_pass_file {} --tmp_dir {} --cleanup".format(
                     args.remote_tmp_dir, args.precheck_type, YB_HOME_DIR,

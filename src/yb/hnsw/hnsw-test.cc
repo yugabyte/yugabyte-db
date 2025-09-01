@@ -13,6 +13,7 @@
 
 #include "yb/hnsw/hnsw.h"
 #include "yb/hnsw/hnsw_block_cache.h"
+#include "yb/hnsw/vector_index_test_base.h"
 
 #include "yb/rocksdb/cache.h"
 
@@ -36,7 +37,6 @@ METRIC_DEFINE_entity(table);
 namespace yb::hnsw {
 
 using IndexImpl = unum::usearch::index_dense_gt<vector_index::VectorId>;
-using Vector = std::vector<float>;
 
 unum::usearch::index_dense_config_t CreateIndexDenseConfig() {
   unum::usearch::index_dense_config_t config;
@@ -53,24 +53,9 @@ struct AcceptAllVectors {
   }
 };
 
-class YbHnswTest : public YBTest {
+class YbHnswTest : public VectorIndexTestBase {
  protected:
   YbHnswTest() {}
-
-  void RandomVector(Vector& out) {
-    out.clear();
-    out.reserve(dimensions_);
-    std::uniform_real_distribution<float> dist(0.0, 1.0);
-    while (out.size() < dimensions_) {
-      out.push_back(dist(rng_));
-    }
-  }
-
-  Vector RandomVector() {
-    Vector result;
-    RandomVector(result);
-    return result;
-  }
 
   void InsertRandomVector(Vector& holder) {
     RandomVector(holder);
@@ -119,23 +104,11 @@ class YbHnswTest : public YBTest {
   std::vector<Vector> PrepareRandom(bool load, size_t num_vectors, size_t num_searches);
   Status InitYbHnsw(bool load);
 
-  void TestPerf();
   void TestSimple(bool load);
   void TestRandom(bool load, size_t background_threads);
 
-  size_t dimensions_ = 8;
-  size_t max_vectors_ = 65536;
-  std::mt19937_64 rng_{42};
   unum::usearch::metric_punned_t metric_;
   IndexImpl index_;
-  std::unique_ptr<MetricRegistry> metric_registry_ = std::make_unique<MetricRegistry>();
-  MetricEntityPtr metric_entity_ = METRIC_ENTITY_server.Instantiate(metric_registry_.get(), "test");
-  BlockCachePtr block_cache_ = std::make_shared<BlockCache>(
-      *Env::Default(),
-      MemTracker::GetRootTracker()->FindOrCreateTracker(1_GB, "block_cache"),
-      metric_entity_,
-      8_MB,
-      4);
   std::optional<YbHnsw> yb_hnsw_;
   YbHnswSearchContext context_;
 };
@@ -233,48 +206,6 @@ TEST_F(YbHnswTest, Cache) {
 
 TEST_F(YbHnswTest, ConcurrentCache) {
   TestRandom(true, 4);
-}
-
-void YbHnswTest::TestPerf() {
-  auto div = static_cast<size_t>(std::sqrt(dimensions_ / 8));
-  size_t num_vectors = RegularBuildVsSanitizers(65536, 4096) / div;
-  size_t num_searches = RegularBuildVsSanitizers(65536, 4096) / div;
-  constexpr size_t kMaxResults = 20;
-
-  max_vectors_ = num_vectors;
-
-  auto query_vectors = PrepareRandom(false, num_vectors, num_searches);
-  YbHnswSearchContext context;
-  auto options = MakeSearchOptions(kMaxResults);
-  MonoTime start = MonoTime::Now();
-  for (const auto& query_vector : query_vectors) {
-    index_.filtered_search(query_vector.data(), kMaxResults, options.filter);
-  }
-  MonoTime mid = MonoTime::Now();
-  for (const auto& query_vector : query_vectors) {
-    yb_hnsw_->Search(query_vector.data(), options, context);
-  }
-  MonoTime finish = MonoTime::Now();
-  auto usearch_time = mid - start;
-  auto yb_hnsw_time = finish - mid;
-  LOG(INFO) << "Num vectors: " << num_vectors << ", num searches: " << num_searches;
-
-  LOG(INFO) << "Usearch time: " << usearch_time << ", YbHnsw time: " << yb_hnsw_time
-            << ", rate: " << yb_hnsw_time.ToSeconds() / usearch_time.ToSeconds();
-}
-
-TEST_F(YbHnswTest, Perf8Dims) {
-  TestPerf();
-}
-
-TEST_F(YbHnswTest, Perf128Dims) {
-  dimensions_ = 128;
-  TestPerf();
-}
-
-TEST_F(YbHnswTest, Perf2048Dims) {
-  dimensions_ = 2048;
-  TestPerf();
 }
 
 }  // namespace yb::hnsw

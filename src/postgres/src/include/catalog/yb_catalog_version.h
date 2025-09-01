@@ -35,7 +35,7 @@ extern YbCatalogVersionType yb_catalog_version_type;
 
 /* Get the latest catalog version from the master leader. */
 extern uint64_t YbGetMasterCatalogVersion();
-extern void YbMaybeLockMasterCatalogVersion(YbDdlMode mode);
+extern void YbMaybeLockMasterCatalogVersion();
 
 /* Send a request to increment the master catalog version. */
 extern bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change,
@@ -49,6 +49,8 @@ extern void YbCreateMasterDBCatalogVersionTableEntry(Oid db_oid);
 
 /* Send a request to delete the master catalog version for the given database. */
 extern void YbDeleteMasterDBCatalogVersionTableEntry(Oid db_oid);
+
+extern void YbDeleteMasterDBInvalidationMessagesTableEntries(Oid db_oid);
 
 /* Annotate an DML request if it changes the catalog data (if needed). */
 extern bool YbMarkStatementIfCatalogVersionIncrement(YbcPgStatement ybc_stmt,

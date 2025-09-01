@@ -2287,21 +2287,30 @@ has_stored_generated_columns(PlannerInfo *root, Index rti)
  * YB note: The out param yb_generated_cols_source contains a set of columns
  * that the returned generated columns depend on. These independent columns may
  * not be a part of target_cols.
+ * YB note: either of root/rti OR yb_relation must be passed.
  */
 Bitmapset *
 get_dependent_generated_columns(PlannerInfo *root, Index rti,
 								Bitmapset *target_cols,
-								Bitmapset **yb_generated_cols_source)
+								Bitmapset **yb_generated_cols_source,
+								Relation yb_relation)
 {
 	Bitmapset  *dependentCols = NULL;
-	RangeTblEntry *rte = planner_rt_fetch(rti, root);
 	Relation	relation;
 	TupleDesc	tupdesc;
 	TupleConstr *constr;
 	AttrNumber	min_attr;
 
-	/* Assume we already have adequate lock */
-	relation = table_open(rte->relid, NoLock);
+	if (!yb_relation)
+	{
+		RangeTblEntry *rte = planner_rt_fetch(rti, root);
+
+		/* Assume we already have adequate lock */
+		relation = table_open(rte->relid, NoLock);
+	}
+	else
+		relation = yb_relation;
+
 	min_attr = YBGetFirstLowInvalidAttributeNumber(relation);
 
 	tupdesc = RelationGetDescr(relation);
@@ -2335,7 +2344,8 @@ get_dependent_generated_columns(PlannerInfo *root, Index rti,
 		}
 	}
 
-	table_close(relation, NoLock);
+	if (!yb_relation)
+		table_close(relation, NoLock);
 
 	return dependentCols;
 }

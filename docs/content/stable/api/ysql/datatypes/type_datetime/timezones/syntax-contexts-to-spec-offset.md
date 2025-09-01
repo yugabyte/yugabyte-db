@@ -21,7 +21,7 @@ You can specify the _UTC_ offset, either _directly_ as an _interval_ value or _i
 
 The session environment parameter _TimeZone_ is defined by a precedence scheme,
 
-- It can be set in the file _postgresql.conf_, or in any of the other standard ways described in [Chapter 19. Server Configuration](https://www.postgresql.org/docs/11/runtime-config.html) of the PostgreSQL documentation. This shows up in a newly-started session as the value of the _'TimeZone'_ session parameter when the _PGTZ_ environment variable is not set.
+- It can be set in the file _postgresql.conf_, or in any of the other standard ways described in [Chapter 19. Server Configuration](https://www.postgresql.org/docs/15/runtime-config.html) of the PostgreSQL documentation. This shows up in a newly-started session as the value of the _'TimeZone'_ session parameter when the _PGTZ_ environment variable is not set.
 
 - It can be set using the _PGTZ_ environment variable. This is used by _libpq_ clients to send a _set time zone_ command to the server upon connection. This will override the value from _postgresql.conf_ so that this, too, then shows up in a newly-started session as the value of the _'TimeZone'_ session parameter.
 
@@ -37,7 +37,7 @@ set time zone 'Asia/Tehran';
 set time zone interval '1 hour';
 ```
 
-**Note:** If the supplied text literal isn't found in _pg_timezone_names_ (see [Rules for resolving a string that's intended to identify a _UTC offset_](../ways-to-spec-offset/name-res-rules/), then an attempt is made to parse it as [POSIX syntax](https://www.postgresql.org/docs/11/datetime-posix-timezone-specs.html) (see [Directly using POSIX syntax](../ways-to-spec-offset/#directly-using-posix-syntax)). The result might surprise you. Try this:
+**Note:** If the supplied text literal isn't found in _pg_timezone_names_ (see [Rules for resolving a string that's intended to identify a _UTC offset_](../ways-to-spec-offset/name-res-rules/), then an attempt is made to parse it as [POSIX syntax](https://www.postgresql.org/docs/15/datetime-posix-timezone-specs.html) (see [Directly using POSIX syntax](../ways-to-spec-offset/#directly-using-posix-syntax)). The result might surprise you. Try this:
 
 ```plpgsql
 deallocate all;
@@ -64,7 +64,7 @@ These are the results:
  2008-07-02 03:00:00+07
 ```
 
-This brings a potential risk: an unnoticed typo that introduces a digit into an otherwise legal timezone name will silently produce a dramatically different effect than was intended. Yugabyte recommends that you avoid this risk. Notice the contrast between this outcome and the one that uses _"-07:00"_ as in the section [Specify the _UTC offset_ explicitly within the text of a _timestamptz_ literal or for _make_timestamptz()_'s _timezone_ parameter](#specify-the-utc-offset-explicitly-within-the-text-of-a-timestamptz-literal-or-for-make-interval-s-timezone-parameter) below. Here, both _"-07:00'"_ and _"Foo-7"_ are interpreted as [POSIX syntax](https://www.postgresql.org/docs/11/datetime-posix-timezone-specs.html). But below, only _"Foo-7"_ is interpreted as POSIX syntax while _"-07:00'"_ is interpreted as [ISO 8601](https://en.wikipedia.org/wiki/ISO_8601) syntax. See [Recommended practice for specifying the _UTC offset_](../recommendation/).
+This brings a potential risk: an unnoticed typo that introduces a digit into an otherwise legal timezone name will silently produce a dramatically different effect than was intended. Yugabyte recommends that you avoid this risk. Notice the contrast between this outcome and the one that uses _"-07:00"_ as in the section [Specify the _UTC offset_ explicitly within the text of a _timestamptz_ literal or for _make_timestamptz()_'s _timezone_ parameter](#specify-the-utc-offset-explicitly-within-the-text-of-a-timestamptz-literal-or-for-make-interval-s-timezone-parameter) below. Here, both _"-07:00'"_ and _"Foo-7"_ are interpreted as [POSIX syntax](https://www.postgresql.org/docs/15/datetime-posix-timezone-specs.html). But below, only _"Foo-7"_ is interpreted as POSIX syntax while _"-07:00'"_ is interpreted as [ISO 8601](https://en.wikipedia.org/wiki/ISO_8601) syntax. See [Recommended practice for specifying the _UTC offset_](../recommendation/).
 
 ## Specify the UTC offset using the 'at time zone' operator
 
@@ -128,7 +128,7 @@ Attempting to specify the PDT offset | 2008-07-01 13:00:00-07
 Specifying 'Foo99'                   | 2008-07-05 09:00:00-07
 ```
 
-Notice the contrast between this outcome and the one that uses "-07:00" as in the section [Specify the _UTC offset_ using the session environment parameter _TimeZone_](#specify-the-utc-offset-using-the-session-environment-parameter-timezone) above. Here, only "Foo-7" is interpreted as [POSIX syntax](https://www.postgresql.org/docs/11/datetime-posix-timezone-specs.html) while "-07:00'" is interpreted as [ISO 8601](https://en.wikipedia.org/wiki/ISO_8601) syntax. But above, both "-07:00'" and "Foo-7" are interpreted as POSIX syntax. So there's all the more reason to embrace what the section [Recommended practice for specifying the _UTC offset_](../recommendation/) describes.
+Notice the contrast between this outcome and the one that uses "-07:00" as in the section [Specify the _UTC offset_ using the session environment parameter _TimeZone_](#specify-the-utc-offset-using-the-session-environment-parameter-timezone) above. Here, only "Foo-7" is interpreted as [POSIX syntax](https://www.postgresql.org/docs/15/datetime-posix-timezone-specs.html) while "-07:00'" is interpreted as [ISO 8601](https://en.wikipedia.org/wiki/ISO_8601) syntax. But above, both "-07:00'" and "Foo-7" are interpreted as POSIX syntax. So there's all the more reason to embrace what the section [Recommended practice for specifying the _UTC offset_](../recommendation/) describes.
 
 The same rules apply if you use the _make_timestamptz()_ built-in function.
 

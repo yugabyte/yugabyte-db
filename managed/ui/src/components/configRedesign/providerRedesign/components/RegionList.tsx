@@ -81,6 +81,7 @@ export const RegionList = (props: RegionListProps) => {
       className={clsx(isError && styles.emptyListError)}
       dataTestIdPrefix="RegionEmptyList"
       isDisabled={isDisabled}
+      isCustomPrimaryAction={false}
     />
   ) : (
     <>

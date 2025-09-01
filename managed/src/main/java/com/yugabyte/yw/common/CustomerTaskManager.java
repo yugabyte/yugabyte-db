@@ -18,9 +18,11 @@ import com.yugabyte.yw.commissioner.tasks.CloudProviderDelete;
 import com.yugabyte.yw.commissioner.tasks.CloudProviderEdit;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
+import com.yugabyte.yw.commissioner.tasks.PauseUniverse;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyKubernetesClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
+import com.yugabyte.yw.commissioner.tasks.ResumeUniverse;
 import com.yugabyte.yw.commissioner.tasks.SendUserNotification;
 import com.yugabyte.yw.commissioner.tasks.params.IProviderTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
@@ -40,6 +42,8 @@ import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
+import com.yugabyte.yw.forms.MetricsExportConfigParams;
+import com.yugabyte.yw.forms.QueryLogConfigParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
@@ -555,13 +559,13 @@ public class CustomerTaskManager {
     Set<UUID> targetUuids = new HashSet<>();
     TaskInfo.getRecentParentTasksInStates(Collections.singleton(TaskInfo.State.Aborted), timeWindow)
         .stream()
-        .filter(t -> StringUtils.isNotEmpty(t.getVersion()))
+        .filter(t -> StringUtils.isNotEmpty(t.getYbaVersion()))
         .filter(t -> YBAError.Code.PLATFORM_SHUTDOWN == t.getTaskError().getCode())
         .filter(t -> Commissioner.isTaskTypeRetryable(t.getTaskType()))
         .filter(
             t ->
                 Util.areYbVersionsEqual(
-                    Util.getYbaVersion(), t.getVersion(), true /* suppressFormatError */))
+                    Util.getYbaVersion(), t.getYbaVersion(), true /* suppressFormatError */))
         .forEach(
             t -> {
               CustomerTask.maybeGet(t.getUuid())
@@ -863,6 +867,7 @@ public class CustomerTaskManager {
         taskParams = Json.fromJson(oldTaskParams, ThirdpartySoftwareUpgradeParams.class);
         break;
       case CertsRotate:
+      case CertsRotateKubernetesUpgrade:
         taskParams = Json.fromJson(oldTaskParams, CertsRotateParams.class);
         break;
       case TlsToggle:
@@ -882,6 +887,20 @@ public class CustomerTaskManager {
                 "Cannot retry modifying audit logging task as YSQL major upgrade is in progress.");
           }
         }
+        break;
+      case ModifyQueryLoggingConfig:
+        taskParams = Json.fromJson(oldTaskParams, QueryLogConfigParams.class);
+        QueryLogConfigParams queryLogConfigParams = (QueryLogConfigParams) taskParams;
+        if (queryLogConfigParams != null && queryLogConfigParams.getUniverseUUID() != null) {
+          Universe universe = Universe.getOrBadRequest(queryLogConfigParams.getUniverseUUID());
+          if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(universe)) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                "Cannot retry modifying query logging task as YSQL major upgrade is in progress.");
+          }
+        }
+      case ModifyMetricsExportConfig:
+        taskParams = Json.fromJson(oldTaskParams, MetricsExportConfigParams.class);
         break;
       case AddNodeToUniverse:
       case RemoveNodeFromUniverse:
@@ -1060,6 +1079,12 @@ public class CustomerTaskManager {
         taskParams = Json.fromJson(oldTaskParams, XClusterConfigTaskParams.class);
         XClusterConfigTaskParams xClusterConfigTaskParams = (XClusterConfigTaskParams) taskParams;
         xClusterConfigTaskParams.refreshIfExists();
+        break;
+      case PauseUniverse:
+        taskParams = Json.fromJson(oldTaskParams, PauseUniverse.Params.class);
+        break;
+      case ResumeUniverse:
+        taskParams = Json.fromJson(oldTaskParams, ResumeUniverse.Params.class);
         break;
       default:
         String errMsg =

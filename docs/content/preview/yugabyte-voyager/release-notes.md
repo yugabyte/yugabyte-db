@@ -13,9 +13,94 @@ type: docs
 
 What follows are the release notes for the YugabyteDB Voyager v1 release series. Content will be added as new notable features and changes are available in the patch releases of the YugabyteDB v1 series.
 
+{{< warning title="Technical Advisory" >}}
+
+{{<ta 2968>}} : Import schema fails on all Voyager installs done after August 14, 2025. Impacts [v1.1](#v1-1-march-7-2023) to [v2025.8.1](#v2025-8-1-august-5-2025).
+
+{{< /warning >}}
+
 ## Versioning
 
 Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, where `YYYY` is the release year, `M` is the month, and `N` is the number of the release in that month.
+
+## v2025.8.2 - August 19, 2025
+
+### New feature
+
+- Introduced the `--allow-oracle-clob-data-export` flag for the export data command, to enable exporting data from CLOB datatype columns in Oracle offline migrations.
+
+### Enhancements
+
+- Improved sizing calculations in `assess-migration` by factoring in throughput gains based on the recommended number of nodes for more accurate import time estimation.
+- Enhanced PostgreSQL permissions grant script by adding an option for live migrations to either transfer table ownership to the migration user or grant the original owner's permissions to it.
+- Improved import data retry logic to skip non-retryable errors such as data exceptions and integrity violations.
+- Removed redundant index performance optimization reports from the `assess-migration` report as `export schema` now automatically removes redundant indexes.
+- Enhanced schema optimization report in `export schema` to list all recommendations, whether they are applied or skipped, even when the `--skip-performance-optimizations` / `--skip-recommendations` flags are used.
+
+### Bug fix
+
+- Fixed an [issue](https://github.com/yugabyte/yb-voyager/issues/2968) where import schema fails while parsing some unnecessary statements on all Voyager installs done after August 14, 2025. Refer to [TA-2968](/preview/releases/techadvisories/ta-2968/).
+
+## v2025.8.1 - August 5, 2025
+
+### New feature
+
+- Automatically apply performance optimizations recommended by the migration assessment (such as removing redundant indexes) during the export schema phase. Voyager also generates a schema optimization report detailing the optimizations that were applied. To turn automatic optimization off, set the new `--skip-performance-optimizations` flag in the `export schema` command to true.
+- Introduced the ability to stash errors and continue when importing snapshot data in `import data` and `import-data-file` commands by using the flags `error-policy-snapshot` or `error-policy`.
+
+### Enhancements
+
+- Migration assessment now detects missing indexes on foreign‑key columns. This provides more comprehensive performance optimization recommendations in the migration assessment report.
+- Updated the latest stable YugabyteDB version to v2025.1.0.0, ensuring compatibility with the newest features and fixes. Advisory locks are now supported in YugabyteDB and will no longer be reported from this target version onwards.
+- Improved the performance of `import data` by increasing the max CPU threshold for adaptive parallelism to 80.
+- Improved ANALYZE checks in the `assess-migration` command to honor auto‑analyze settings and gracefully handle user prompts.
+- Improved error handling by throwing clear errors when connection to the source database fails, making troubleshooting easier.
+
+### Bug fixes
+
+- Addressed nil pointer exceptions in `end migration` when the database configuration is not set, preventing unexpected errors during migration processes.
+- Fixed an issue where `import data` with `--on-primary-key-conflict ignore` failed if import to source replica started earlier.
+
+## v2025.7.2 - July 15, 2025
+
+### New feature
+
+- Introduced the `--on-primary-key-conflict` flag for the import data to target and import data file command, supporting two modes:
+
+  - ERROR: Fails the import if a primary key conflict is encountered.
+  - IGNORE: Ignores rows that have a primary key conflict.
+
+### Enhancements
+
+- Foreign keys with mismatched datatypes are now detected and reported in the Migration Assessment Report under **Performance Optimizations**.
+- Automatically clean up leftover metadata when `assess-migration` is aborted via a prompt, eliminating the need to rerun with `--start-clean`.
+- Added a warning in import data when existing rows are detected in the target table to help prevent primary key conflicts during import.
+- Improved error messages when multiple Debezium processes or active replication slots are detected, so that you can identify and kill orphaned processes and retry the command.
+- Upgraded the [YugabyteDB gRPC Connector](/preview/additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/) for live migration with fall-back and fall-forward workflows to support new YugabyteDB releases.
+
+### Bug fixes
+
+- Fixed incorrect error message shown during schema export failures; now correctly reports "schema export unsuccessful".
+- Fixed import report output for import data file when the same file is mapped to multiple tables; all target tables are now correctly listed in the report.
+- Fixed broken status reporting in import data status when multiple files are imported to the same table; all imported files are now listed in the status report.
+- Fixed misclassification of performance optimization issues inside PL/pgSQL blocks; these are now correctly reported under **Performance Optimizations** in the Migration Assessment Report.
+
+## v2025.7.1 - July 1, 2025
+
+### New feature
+
+- You can now use [configuration files](../reference/configuration-file/) with the [import-data-file](../reference/bulk-data-load/import-data-file/) command for [bulk data load](../migrate/bulk-data-load/) from files.
+
+### Enhancements
+
+- Added a check to prompt users to run ANALYZE on schemas if it hasn't been executed, ensuring more accurate performance optimization assessment.
+- The assessment no longer reports partial indexes as redundant in performance optimizations.
+- The assessment no longer reports any partial indexes filtering NULL values in the "Indexes with high percentage of NULL values" case, and filtering a particular value in the "Indexes with high percentage of a particular value" case.
+
+### Bug fixes
+
+- Fixed the `export data from source` and `export data from target` commands to prevent multiple internal processes from running concurrently in cases where a previous run may have left an orphaned process.
+- Fixed a bug where DDLs containing `DEFAULT CURRENT_TIMESTAMP AT TIME ZONE` clauses were generated with a syntax error during export schema.
 
 ## v2025.6.2 - June 17, 2025
 
@@ -40,7 +125,7 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 
 ### New feature
 
-- Added support for the [YugabyteDB Connector](../../develop/change-data-capture/using-logical-replication/yugabytedb-connector/) in live migration with fall-forward and fall-back workflows. The `cutover to target` command now includes a mandatory flag to specify whether to use [YugabyteDB gRPC Connector](../../develop/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/) or [YugabyteDB Connector](../../develop/change-data-capture/using-logical-replication/yugabytedb-connector/) for these workflows.
+- Added support for the [YugabyteDB Connector](../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/) in live migration with fall-forward and fall-back workflows. The `cutover to target` command now includes a mandatory flag to specify whether to use [YugabyteDB gRPC Connector](../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/) or [YugabyteDB Connector](../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/) for these workflows.
 
   This is required for [YugabyteDB Aeon](/preview/yugabyte-cloud/) or restricted environments where only the YugabyteDB Connector is supported.
 

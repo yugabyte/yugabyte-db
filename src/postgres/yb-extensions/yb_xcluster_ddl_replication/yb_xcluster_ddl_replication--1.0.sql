@@ -36,6 +36,11 @@ CREATE EVENT TRIGGER yb_xcluster_ddl_replication_handle_ddl_start_trigger
   ON ddl_command_start
   EXECUTE FUNCTION yb_xcluster_ddl_replication.handle_ddl_start();
 
+CREATE EVENT TRIGGER yb_xcluster_ddl_replication_handle_truncate_start_trigger
+  ON ddl_command_start
+  WHEN TAG in ('TRUNCATE TABLE')
+  EXECUTE FUNCTION yb_xcluster_ddl_replication.handle_ddl_start();
+
 CREATE FUNCTION yb_xcluster_ddl_replication.handle_ddl_end()
   RETURNS event_trigger
   LANGUAGE C
@@ -43,6 +48,11 @@ CREATE FUNCTION yb_xcluster_ddl_replication.handle_ddl_end()
 
 CREATE EVENT TRIGGER yb_xcluster_ddl_replication_handle_ddl_end_trigger
   ON ddl_command_end
+  EXECUTE FUNCTION yb_xcluster_ddl_replication.handle_ddl_end();
+
+CREATE EVENT TRIGGER yb_xcluster_ddl_replication_handle_truncate_end_trigger
+  ON ddl_command_end
+  WHEN TAG in ('TRUNCATE TABLE')
   EXECUTE FUNCTION yb_xcluster_ddl_replication.handle_ddl_end();
 
 CREATE FUNCTION yb_xcluster_ddl_replication.handle_sql_drop()

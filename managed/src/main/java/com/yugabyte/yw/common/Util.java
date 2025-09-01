@@ -102,14 +102,12 @@ import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.validator.routines.InetAddressValidator;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import play.libs.Json;
 
 @Slf4j
 public class Util {
-  public static final Logger LOG = LoggerFactory.getLogger(Util.class);
+  private static final int INITIAL_DELAY_MS = 500;
   private static final Map<UUID, Process> processMap = new ConcurrentHashMap<>();
 
   public static final UUID NULL_UUID = UUID.fromString("00000000-0000-0000-0000-000000000000");
@@ -1110,14 +1108,13 @@ public class Util {
   }
 
   public static boolean isKubernetesBasedUniverse(Universe universe) {
+    return isKubernetesBasedUniverse(universe.getUniverseDetails());
+  }
+
+  public static boolean isKubernetesBasedUniverse(UniverseDefinitionTaskParams params) {
     boolean isKubernetesUniverse =
-        universe
-            .getUniverseDetails()
-            .getPrimaryCluster()
-            .userIntent
-            .providerType
-            .equals(CloudType.kubernetes);
-    for (Cluster cluster : universe.getUniverseDetails().getReadOnlyClusters()) {
+        params.getPrimaryCluster().userIntent.providerType.equals(CloudType.kubernetes);
+    for (Cluster cluster : params.getReadOnlyClusters()) {
       isKubernetesUniverse =
           isKubernetesUniverse || cluster.userIntent.providerType.equals(CloudType.kubernetes);
     }

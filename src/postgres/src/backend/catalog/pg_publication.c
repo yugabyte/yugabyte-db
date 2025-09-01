@@ -1030,6 +1030,36 @@ YBGetPublicationsByNames(List *pubnames, bool missing_ok)
 }
 
 /*
+ * Gets list of publications oids by name. It is the responsibility of the
+ * caller to free the memory allocated to the result.
+ */
+Oid *
+YBGetPublicationOidsByNames(List *pubnames)
+{
+	List	   *yb_publications = NIL;
+	Oid		   *result = palloc(sizeof(Oid) * list_length(pubnames));
+	ListCell   *lc;
+
+	if (pubnames == NIL)
+	{
+		return result;
+	}
+
+	yb_publications = YBGetPublicationsByNames(pubnames, false /* missing_ok */ );
+
+	size_t table_idx = 0;
+
+	foreach (lc, yb_publications)
+	{
+		Publication *pub = (Publication *) lfirst(lc);
+		result[table_idx++] = pub->oid;
+	}
+
+	list_free(yb_publications);
+	return result;
+}
+
+/*
  * Get publication using oid
  *
  * The Publication struct and its data are palloc'ed here.
@@ -1265,7 +1295,7 @@ pg_get_publication_tables(PG_FUNCTION_ARGS)
 }
 
 List *
-yb_pg_get_publications_tables(List *publications)
+yb_pg_get_publications_tables(List *publications, bool *yb_is_pub_all_tables)
 {
 	/* hash table for O(1) rel_oid lookup */
 	HTAB	   *seen_tables;
@@ -1316,7 +1346,10 @@ yb_pg_get_publications_tables(List *publications)
 		 * publications.
 		 */
 		if (has_alltables)
+		{
+			*yb_is_pub_all_tables = true;
 			break;
+		}
 	}
 
 	hash_destroy(seen_tables);

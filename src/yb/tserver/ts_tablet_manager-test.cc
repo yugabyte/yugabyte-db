@@ -221,7 +221,7 @@ class TsTabletManagerTest : public YBTest {
   }
 
   Result<TSTabletManager::TabletPeers> GetPeers(
-      boost::optional<size_t> expected_count = boost::none) {
+      std::optional<size_t> expected_count = std::nullopt) {
     auto peers = tablet_manager_->GetTabletPeers(nullptr);
     if (expected_count.has_value()) {
       SCHECK_EQ(*expected_count, peers.size(), IllegalState, "Unexpected number of peers");
@@ -301,7 +301,8 @@ TEST_F(TsTabletManagerTest, TestCreateTablet) {
   // Create a new tablet.
   std::shared_ptr<TabletPeer> peer;
   ASSERT_OK(CreateNewTablet(kTableId, kTabletId, schema_, &peer));
-  ASSERT_EQ(kTabletId, peer->tablet()->tablet_id());
+  auto tablet = ASSERT_RESULT(peer->shared_tablet());
+  ASSERT_EQ(kTabletId, tablet->tablet_id());
   peer.reset();
 
   // Re-load the tablet manager from the filesystem.
@@ -314,7 +315,7 @@ TEST_F(TsTabletManagerTest, TestCreateTablet) {
 
   // Ensure that the tablet got re-loaded and re-opened off disk.
   peer = ASSERT_RESULT(tablet_manager_->GetTablet(kTabletId));
-  ASSERT_EQ(kTabletId, peer->tablet()->tablet_id());
+  ASSERT_EQ(kTabletId, tablet->tablet_id());
 }
 
 TEST_F(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered) {
@@ -364,10 +365,12 @@ TEST_F(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered) {
   // Create a new tablet.
   std::shared_ptr<TabletPeer> peer;
   ASSERT_OK(CreateNewTablet(kTableId, kTabletId1, schema_, &peer));
-  ASSERT_EQ(kTabletId1, peer->tablet()->tablet_id());
+  auto tablet = ASSERT_RESULT(peer->shared_tablet());
+  ASSERT_EQ(kTabletId1, tablet->tablet_id());
   peer.reset();
   ASSERT_OK(CreateNewTablet(kTableId, kTabletId2, schema_, &peer));
-  ASSERT_EQ(kTabletId2, peer->tablet()->tablet_id());
+  tablet = ASSERT_RESULT(peer->shared_tablet());
+  ASSERT_EQ(kTabletId2, tablet->tablet_id());
 
   assert_tablet_assignment_count(kTabletId1, 1);
   assert_tablet_assignment_count(kTabletId2, 1);
@@ -377,14 +380,11 @@ TEST_F(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered) {
   assert_tablet_assignment_count(kTabletId1, 1);
   assert_tablet_assignment_count(kTabletId2, 1);
 
-  boost::optional<int64_t> cas_config_opid_index_less_or_equal;
-  boost::optional<TabletServerErrorPB::Code> error_code;
-  ASSERT_OK(tablet_manager_->DeleteTablet(kTabletId1,
-      tablet::TABLET_DATA_TOMBSTONED,
-      tablet::ShouldAbortActiveTransactions::kFalse,
-      cas_config_opid_index_less_or_equal,
-      false /* hide_only */,
-      false /* keep_data */,
+  std::optional<int64_t> cas_config_opid_index_less_or_equal;
+  std::optional<TabletServerErrorPB::Code> error_code;
+  ASSERT_OK(tablet_manager_->DeleteTablet(
+      kTabletId1, tablet::TABLET_DATA_TOMBSTONED, tablet::ShouldAbortActiveTransactions::kFalse,
+      cas_config_opid_index_less_or_equal, false /* hide_only */, false /* keep_data */,
       &error_code));
 
   assert_tablet_assignment_count(kTabletId1, 0);
@@ -427,7 +427,8 @@ TEST_F(TsTabletManagerTest, TestProperBackgroundFlushOnStartup) {
     const auto tablet_id = Format("my-tablet-$0", i + 1);
     tablet_ids.emplace_back(tablet_id);
     ASSERT_OK(CreateNewTablet(kTableId, tablet_id, schema_, &peer));
-    ASSERT_EQ(tablet_id, peer->tablet()->tablet_id());
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    ASSERT_EQ(tablet_id, tablet->tablet_id());
 
     auto replicate_ptr = rpc::MakeSharedMessage<consensus::LWReplicateMsg>();
     replicate_ptr->set_op_type(consensus::NO_OP);
@@ -452,7 +453,8 @@ TEST_F(TsTabletManagerTest, TestProperBackgroundFlushOnStartup) {
     ASSERT_OK(mini_server_->WaitStarted());
     for (auto& tablet_id : tablet_ids) {
       auto peer = ASSERT_RESULT(tablet_manager->GetTablet(tablet_id));
-      ASSERT_EQ(tablet_id, peer->tablet()->tablet_id());
+      auto tablet = ASSERT_RESULT(peer->shared_tablet());
+      ASSERT_EQ(tablet_id, tablet->tablet_id());
     }
   }
 }
@@ -655,7 +657,7 @@ std::unordered_map<const rocksdb::RateLimiter*, int64_t> GetUniqueRateLimiterWit
     const TSTabletManager::TabletPeers& peers) {
   std::unordered_map<const rocksdb::RateLimiter*, int64_t> result;
   for (const auto& peer : peers) {
-    auto tablet_result = peer->shared_tablet_safe();
+    auto tablet_result = peer->shared_tablet();
     if (!tablet_result.ok()) {
       LOG(INFO) << "Unable to get tablet: " << tablet_result.status();
       continue;
@@ -1096,15 +1098,10 @@ TEST_F(TsTabletManagerTest, FullCompactionManagerCleanup) {
   ASSERT_TRUE(compaction_manager->TEST_TabletIdInStatsWindowMap(kTabletId3));
 
   // Delete tablet 1 using TABLET_DATA_DELETED, so peer is removed completely from TsTabletManager.
-  boost::optional<int64_t> cas_config_opid_index_less_or_equal;
-  boost::optional<TabletServerErrorPB::Code> error_code;
-  ASSERT_OK(tablet_manager_->DeleteTablet(kTabletId1,
-      tablet::TABLET_DATA_DELETED,
-      tablet::ShouldAbortActiveTransactions::kFalse,
-      boost::optional<int64_t>{},
-      false /* hide_only */,
-      false /* keep_data */,
-      &error_code));
+  std::optional<TabletServerErrorPB::Code> error_code;
+  ASSERT_OK(tablet_manager_->DeleteTablet(
+      kTabletId1, tablet::TABLET_DATA_DELETED, tablet::ShouldAbortActiveTransactions::kFalse,
+      std::optional<int64_t>{}, false /* hide_only */, false /* keep_data */, &error_code));
 
   // Run ScheduleFullCompactions again. Cleanup will not be triggered in the stats window map
   // because we only execute cleanup every hour, and the number of extra tablet_ids don't meet the

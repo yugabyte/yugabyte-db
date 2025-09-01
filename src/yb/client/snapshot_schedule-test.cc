@@ -114,7 +114,7 @@ TEST_F(SnapshotScheduleTest, Snapshot) {
     SCOPED_TRACE(Format(
         "T $0 P $1 Table $2", peer->tablet_id(), peer->permanent_uuid(),
         peer->tablet_metadata()->table_name()));
-    auto tablet = peer->tablet();
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
     auto history_cutoff =
         tablet->RetentionPolicy()->GetRetentionDirective().history_cutoff;
     ASSERT_LE(history_cutoff.primary_cutoff_ht, first_snapshot_hybrid_time);
@@ -130,7 +130,7 @@ TEST_F(SnapshotScheduleTest, Snapshot) {
 
   ASSERT_OK(WaitFor([first_snapshot_hybrid_time, peers]() -> Result<bool> {
     for (const auto& peer : peers) {
-      auto tablet = peer->tablet();
+      auto tablet = VERIFY_RESULT(peer->shared_tablet());
       auto history_cutoff =
           tablet->RetentionPolicy()->GetRetentionDirective().history_cutoff;
       if (history_cutoff.primary_cutoff_ht <= first_snapshot_hybrid_time) {
@@ -187,9 +187,9 @@ TEST_F(SnapshotScheduleTest, TablegroupGC) {
   TablespaceId tablespace_id = "";
   auto client = ASSERT_RESULT(cluster_->CreateClient());
 
-  ASSERT_OK(client->CreateNamespace(namespace_name, YQL_DATABASE_PGSQL, "" /* creator */,
-                                     "" /* ns_id */, "" /* src_ns_id */,
-                                     boost::none /* next_pg_oid */, nullptr /* txn */, false));
+  ASSERT_OK(client->CreateNamespace(
+      namespace_name, YQL_DATABASE_PGSQL, "" /* creator */, "" /* ns_id */, "" /* src_ns_id */,
+      std::nullopt /* next_pg_oid */, nullptr /* txn */, false));
   {
     auto namespaces = ASSERT_RESULT(client->ListNamespaces());
     for (const auto& ns : namespaces) {
@@ -276,7 +276,7 @@ TEST_F(SnapshotScheduleTest, Index) {
       SCOPED_TRACE(Format(
           "T $0 P $1 Table $2", peer->tablet_id(), peer->permanent_uuid(),
           peer->tablet_metadata()->table_name()));
-      auto tablet = peer->tablet();
+      auto tablet = VERIFY_RESULT(peer->shared_tablet());
       auto history_cutoff =
           tablet->RetentionPolicy()->GetRetentionDirective().history_cutoff;
       SCHECK_LE(history_cutoff.primary_cutoff_ht,
@@ -373,20 +373,19 @@ TEST_F(SnapshotScheduleTest, DeletedNamespace) {
   const std::string db_name = "demo";
   // Create namespace.
   int32_t db_oid = 16900;
-  ASSERT_OK(client_->CreateNamespace(db_name, YQL_DATABASE_PGSQL, "" /* creator */,
-                                     GetPgsqlNamespaceId(db_oid), "" /* src_ns_id */,
-                                     boost::none /* next_pg_oid */, nullptr /* txn */, false));
+  ASSERT_OK(client_->CreateNamespace(
+      db_name, YQL_DATABASE_PGSQL, "" /* creator */, GetPgsqlNamespaceId(db_oid),
+      "" /* src_ns_id */, std::nullopt /* next_pg_oid */, nullptr /* txn */, false));
   // Drop the namespace.
   ASSERT_OK(client_->DeleteNamespace(db_name, YQL_DATABASE_PGSQL));
   // Create namespace again.
   db_oid++;
-  ASSERT_OK(client_->CreateNamespace(db_name, YQL_DATABASE_PGSQL, "" /* creator */,
-                                     GetPgsqlNamespaceId(db_oid), "" /* src_ns_id */,
-                                     boost::none /* next_pg_oid */, nullptr /* txn */, false));
+  ASSERT_OK(client_->CreateNamespace(
+      db_name, YQL_DATABASE_PGSQL, "" /* creator */, GetPgsqlNamespaceId(db_oid),
+      "" /* src_ns_id */, std::nullopt /* next_pg_oid */, nullptr /* txn */, false));
   // Create schedule and PITR.
   auto schedule_id = ASSERT_RESULT(snapshot_util_->CreateSchedule(
-      nullptr, YQL_DATABASE_PGSQL, db_name,
-      WaitSnapshot::kTrue, kInterval, kRetention));
+      nullptr, YQL_DATABASE_PGSQL, db_name, WaitSnapshot::kTrue, kInterval, kRetention));
   // Validate the filter has namespace id set.
   auto schedule = ASSERT_RESULT(snapshot_util_->ListSchedules(schedule_id));
   ASSERT_EQ(schedule.size(), 1);
@@ -416,7 +415,7 @@ TEST_F(SnapshotScheduleTest, MasterHistoryRetentionNoSchedule) {
   // history retention should be t-120 where t is the current time obtained by
   // GetRetentionDirective() call.
   auto& sys_catalog = cluster_->mini_master(0)->sys_catalog();
-  auto tablet = ASSERT_RESULT(sys_catalog.tablet_peer()->shared_tablet_safe());
+  auto tablet = ASSERT_RESULT(sys_catalog.tablet_peer()->shared_tablet());
   auto directive = tablet->RetentionPolicy()->GetRetentionDirective().history_cutoff;
   // current_time-120 should be >= t-120 since current_time >= t.
   // We bound this error by 1s * kTimeMultiplier.
@@ -471,7 +470,7 @@ TEST_F(SnapshotScheduleTest, MasterHistoryRetentionWithSchedule) {
   // for which it should be t-kRetention where t is the current time
   // obtained by AllowedHistoryCutoffProvider().
   auto& sys_catalog = cluster_->mini_master(0)->sys_catalog();
-  auto tablet = ASSERT_RESULT(sys_catalog.tablet_peer()->shared_tablet_safe());
+  auto tablet = ASSERT_RESULT(sys_catalog.tablet_peer()->shared_tablet());
   // Because the snapshot interval is quite high (10s), at some point
   // the returned history retention should become equal to last snapshot time.
   // This takes care of races between GetRetentionDirective() calls and

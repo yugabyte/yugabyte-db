@@ -30,7 +30,7 @@ You can use yugabyted for production deployments. You can also administer [YB-TS
 
 The yugabyted executable file is packaged with YugabyteDB and located in the YugabyteDB home `bin` directory.
 
-For information on installing YugabyteDB, see [Use a local cluster](/preview/tutorials/quick-start/linux/) or [Get started](https://download.yugabyte.com).
+For information on installing YugabyteDB, see [Use a local cluster](/preview/quick-start/linux/) or [Get started](https://download.yugabyte.com).
 
 After installing YugabyteDB, if you want to use [backup](#backup) and [restore](#restore), you also need to install the YB Controller service, which manages backup and restore operations. YB Controller is included in the `share` directory of your YugabyteDB installation.
 
@@ -78,7 +78,7 @@ $ ./bin/yugabyted -h
 ```
 
 ```sh
-$ ./bin/yugabyted -help
+$ ./bin/yugabyted --help
 ```
 
 For help with specific yugabyted commands, run 'yugabyted [ command ] -h'. For example, you can print the command-line help for the `yugabyted start` command by running the following:
@@ -753,6 +753,12 @@ Create a local single-node universe with encryption in transit and authenticatio
 ./bin/yugabyted start --secure
 ```
 
+Create a local single-node universe with IPv6 address:
+
+```sh
+./bin/yugabyted start --advertise_address ::1
+```
+
 Create a single-node locally and join other nodes that are part of the same universe:
 
 ```sh
@@ -773,10 +779,10 @@ For more advanced examples, see [Examples](#examples).
 : Print the command-line help and exit.
 
 --advertise_address *bind-ip*
-: IP address or local hostname on which yugabyted will listen.
+: IP (v4 or v6) address or local hostname on which yugabyted will listen.
 
 --join *master-ip*
-: The IP or DNS address of the existing yugabyted server that the new yugabyted server will join, or if the server was restarted, rejoin. The join flag accepts IP addresses, DNS names, or labels with correct [DNS syntax](https://en.wikipedia.org/wiki/Domain_Name_System#Domain_name_syntax,_internationalization) (that is, letters, numbers, and hyphens).
+: The IP (v4 or v6) or DNS address of the existing yugabyted server that the new yugabyted server will join, or if the server was restarted, rejoin. The join flag accepts IP addresses, DNS names, or labels with correct [DNS syntax](https://en.wikipedia.org/wiki/Domain_Name_System#Domain_name_syntax,_internationalization) (that is, letters, numbers, and hyphens).
 
 --config *path-to-config-file*
 : yugabyted advanced configuration file path. Refer to [Use a configuration file](#use-a-configuration-file).
@@ -1442,21 +1448,29 @@ If the universe has more than three nodes, execute a `destroy --base_dir=<path t
 
 ### Create a single-node universe
 
-Create a single-node universe with a given [base directory](#base-directory). Note the need to provide a fully-qualified directory path for the `base_dir` parameter.
+Create a single-node universe with a given [base directory](#base-directory). You need to provide a fully-qualified directory path for the `base_dir` parameter.
 
 ```sh
 ./bin/yugabyted start --advertise_address=127.0.0.1 \
     --base_dir=/Users/username/yugabyte-{{< yb-version version="preview" >}}/data1
 ```
 
-To create secure single-node universe with [encryption in transit](../../../secure/tls-encryption/) and [authentication](../../../secure/enable-authentication/authentication-ysql/) enabled, add the `--secure` flag as follows:
+Alternatively, you can provide an IPv6 address. For example:
 
 ```sh
+./bin/yugabyted start --advertise_address=::1 \
+    --base_dir=/Users/username/yugabyte-{{< yb-version version="preview" >}}/data1
+```
+
+To create secure single-node cluster with [encryption in transit](../../../secure/tls-encryption/) and [authentication](../../../secure/enable-authentication/authentication-ysql/) enabled, add the `--secure` flag as follows:
+
+```sh
+# Using IPv4
 ./bin/yugabyted start --secure --advertise_address=127.0.0.1 \
     --base_dir=/Users/username/yugabyte-{{< yb-version version="preview" >}}/data1
 ```
 
-When authentication is enabled, the default user and password is `yugabyte` and `yugabyte` in YSQL, and `cassandra` and `cassandra` in YCQL.
+When authentication is enabled, the default user is `yugabyte` in YSQL, and `cassandra` in YCQL. When a cluster is started, yugabyted outputs a message `Credentials File is stored at <credentials_file_path.txt>` with the credentials file location.
 
 ### Create certificates for a secure local multi-node universe
 
@@ -1748,7 +1762,7 @@ You can set the replication factor of the universe manually using the `--rf` fla
 
 Docker-based deployments are in {{<tags/feature/ea>}}.
 
-You can run yugabyted in a Docker container. For more information, see the [Quick Start](/preview/tutorials/quick-start/docker/).
+You can run yugabyted in a Docker container. For more information, see the [Quick Start](/preview/quick-start/docker/).
 
 The following example shows how to create a multi-region universe. If the `~/yb_docker_data` directory already exists, delete and re-create it.
 
@@ -1760,21 +1774,21 @@ mkdir ~/yb_docker_data
 
 docker network create yb-network
 
-docker run -d --name yugabytedb-node1 --net yb-network \
+docker run -d --name yugabytedb-node1 --hostname yugabytedb-node1 --net yb-network \
     -p 15433:15433 -p 7001:7000 -p 9001:9000 -p 5433:5433 \
     -v ~/yb_docker_data/node1:/home/yugabyte/yb_data --restart unless-stopped \
     yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
     bin/yugabyted start \
     --base_dir=/home/yugabyte/yb_data --background=false
 
-docker run -d --name yugabytedb-node2 --net yb-network \
+docker run -d --name yugabytedb-node2 --hostname yugabytedb-node2 --net yb-network \
     -p 15434:15433 -p 7002:7000 -p 9002:9000 -p 5434:5433 \
     -v ~/yb_docker_data/node2:/home/yugabyte/yb_data --restart unless-stopped \
     yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
     bin/yugabyted start --join=yugabytedb-node1 \
     --base_dir=/home/yugabyte/yb_data --background=false
 
-docker run -d --name yugabytedb-node3 --net yb-network \
+docker run -d --name yugabytedb-node3 --hostname yugabytedb-node3 --net yb-network \
     -p 15435:15433 -p 7003:7000 -p 9003:9000 -p 5435:5433 \
     -v ~/yb_docker_data/node3:/home/yugabyte/yb_data --restart unless-stopped \
     yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \

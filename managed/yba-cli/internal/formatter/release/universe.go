@@ -9,10 +9,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"text/template"
-	"time"
 
 	"github.com/sirupsen/logrus"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
@@ -111,7 +111,7 @@ func (u *UniverseContext) UUID() string {
 
 // CreationDate function
 func (u *UniverseContext) CreationDate() string {
-	return u.u.GetCreationDate().Format(time.RFC1123Z)
+	return util.PrintTime(u.u.GetCreationDate())
 }
 
 // MarshalJSON function

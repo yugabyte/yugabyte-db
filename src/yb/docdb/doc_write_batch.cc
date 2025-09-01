@@ -96,7 +96,7 @@ Status DocWriteBatch::SeekToKeyPrefix(LazyIterator* iter, HasAncestor has_ancest
   current_entry_.value_type = ValueEntryType::kInvalid;
 
   // Check the cache first.
-  boost::optional<DocWriteBatchCache::Entry> cached_entry = cache_.Get(key_prefix_);
+  std::optional<DocWriteBatchCache::Entry> cached_entry = cache_.Get(key_prefix_);
   if (cached_entry) {
     current_entry_ = *cached_entry;
     subdoc_exists_ = current_entry_.value_type != ValueEntryType::kTombstone;

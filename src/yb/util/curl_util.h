@@ -31,10 +31,11 @@
 //
 #pragma once
 
+#include <curl/curl.h>
+
+#include <optional>
 #include <string>
 #include <vector>
-
-#include <boost/optional.hpp>
 
 #include "yb/gutil/macros.h"
 
@@ -102,15 +103,20 @@ class EasyCurl {
     ca_cert_ = v;
   }
 
+  void set_ssl_version(int64 ssl_version) {
+    ssl_version_ = ssl_version;
+  }
+
+  void set_cipher_list(const std::string& cipher_list) {
+    cipher_list_ = cipher_list;
+  }
+
  private:
   // Do a request. If 'post_data' is non-NULL, does a POST.
   // Otherwise, does a GET.
   Status DoRequest(
-      const std::string& url,
-      const boost::optional<const std::string>& post_data,
-      const boost::optional<const std::string>& content_type,
-      int64_t timeout_sec,
-      faststring* dst,
+      const std::string& url, const std::optional<const std::string>& post_data,
+      const std::optional<const std::string>& content_type, int64_t timeout_sec, faststring* dst,
       const std::vector<std::string>& headers = {});
 
   CURL* curl_;
@@ -120,6 +126,10 @@ class EasyCurl {
   bool follow_redirects_ = false;
   // Path to CA certificates. Defaults to system-wide registered CAs if not set.
   std::string ca_cert_;
+  // The SSL version to use. Defaults to let CURL choose the appropriate SSL version.
+  int64 ssl_version_ = 0;
+  // The allowed SSL ciphers to use. Defaults to system default.
+  std::string cipher_list_;
   DISALLOW_COPY_AND_ASSIGN(EasyCurl);
 };
 

@@ -149,8 +149,9 @@ TEST_F(CDCServiceTxnTest, TestGetChanges) {
 
   std::string tablet_id = tablets.Get(0).tablet_id();
   const auto& tserver = cluster_->mini_tablet_server(0)->server();
-  auto schema =
-      ASSERT_RESULT(tserver->tablet_manager()->GetTablet(tablet_id))->shared_tablet()->schema();
+  auto schema = ASSERT_RESULT(tserver->tablet_manager()->GetTablet(tablet_id))
+                    ->shared_tablet_maybe_null()
+                    ->schema();
 
   auto stream_id = CreateXClusterStream(*client_, table_.table()->id());
 
@@ -225,8 +226,9 @@ TEST_F(CDCServiceTxnTest, TestGetChangesForPendingTransaction) {
 
   std::string tablet_id = tablets.Get(0).tablet_id();
   const auto& tserver = cluster_->mini_tablet_server(0)->server();
-  auto schema =
-      ASSERT_RESULT(tserver->tablet_manager()->GetTablet(tablet_id))->shared_tablet()->schema();
+  auto schema = ASSERT_RESULT(tserver->tablet_manager()->GetTablet(tablet_id))
+                    ->shared_tablet_maybe_null()
+                    ->schema();
 
   auto stream_id = ASSERT_RESULT(CreateXClusterStream(*client_, table_.table()->id()));
 

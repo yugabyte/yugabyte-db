@@ -74,7 +74,6 @@
 #include <utility>
 #include <vector>
 
-#include <boost/optional.hpp>
 #include <boost/container/small_vector.hpp>
 #include <boost/functional/hash.hpp>
 #include <boost/variant.hpp>

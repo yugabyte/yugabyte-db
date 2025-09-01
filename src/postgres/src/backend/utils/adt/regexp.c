@@ -109,7 +109,7 @@ typedef struct cached_re_str
 	regex_t		cre_re;			/* the compiled regular expression */
 } cached_re_str;
 
-static YB_THREAD_LOCAL int	num_res = 0;		/* # of cached re's */
+static YB_THREAD_LOCAL int num_res = 0; /* # of cached re's */
 
 /*
  * YB: A single static cache works in Postgres, but is not safe in a
@@ -164,7 +164,7 @@ YbGetReCacheInfo()
 
 	return (YbReCacheInfo)
 	{
-			.array = re_array,
+		.array = re_array,
 	};
 }
 

@@ -288,8 +288,7 @@ class DocWriteBatch {
 
   std::reference_wrapper<const ScopedRWOperation> pending_op() { return pending_op_; }
 
-  boost::optional<DocWriteBatchCache::Entry> LookupCache(
-      const dockv::KeyBytes& encoded_key_prefix) {
+  std::optional<DocWriteBatchCache::Entry> LookupCache(const dockv::KeyBytes& encoded_key_prefix) {
     return cache_.Get(encoded_key_prefix);
   }
 

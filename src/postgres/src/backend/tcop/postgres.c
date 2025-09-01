@@ -86,9 +86,9 @@
 /* YB includes */
 #include "catalog/yb_catalog_version.h"
 #include "commands/portalcmds.h"
+#include "commands/variable.h"
 #include "libpq/auth.h"
 #include "libpq/yb_pqcomm_extensions.h"
-#include "pg_yb_utils.h"
 #include "replication/walsender_private.h"
 #include "utils/builtins.h"
 #include "utils/catcache.h"
@@ -97,6 +97,7 @@
 #include "utils/rel.h"
 #include "utils/relcache.h"
 #include "utils/syscache.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 #include "yb_tcmalloc_utils.h"
 #include "yb_ysql_conn_mgr_helper.h"
 #include <arpa/inet.h>
@@ -4347,8 +4348,12 @@ YBRefreshCache()
 	finish_xact_command();
 }
 
-static void
-YBRefreshCacheWrapper(uint64_t catalog_master_version, bool is_retry)
+/*
+ * Return value true indicates that an incremental refresh was performed
+ */
+static bool
+YBRefreshCacheWrapperImpl(uint64_t catalog_master_version, bool is_retry,
+						  bool full_refresh_allowed)
 {
 	uint64_t	shared_catalog_version = YbGetSharedCatalogVersion();
 	uint64_t	local_catalog_version = YbGetCatalogCacheVersion();
@@ -4356,8 +4361,10 @@ YBRefreshCacheWrapper(uint64_t catalog_master_version, bool is_retry)
 		shared_catalog_version - local_catalog_version;
 	YbcCatalogMessageLists message_lists = {0};
 	const bool	enable_inval_messages = YbIsInvalidationMessageEnabled();
+
 	/* The reason that we need a full catalog cache refresh. */
-	int reason = 0;
+	int			reason = 0;
+
 	if (enable_inval_messages)
 	{
 		if (is_retry &&
@@ -4417,10 +4424,12 @@ YBRefreshCacheWrapper(uint64_t catalog_master_version, bool is_retry)
 	}
 	if (message_lists.num_lists > 0)
 	{
+		YbResetNeedInvalidateAllTableCache();
 		if (YbApplyInvalidationMessages(&message_lists))
 		{
 			YbNumCatalogCacheDeltaRefreshes++;
-			elog(DEBUG1, "YBRefreshCache skipped after applying %d message lists, "
+			elog(yb_debug_log_catcache_events ? LOG : DEBUG1,
+				"full cache refresh skipped after applying %d message lists, "
 				 "updating local catalog version from %" PRIu64 " to %" PRIu64
 				 " for database %u",
 				 message_lists.num_lists,
@@ -4428,10 +4437,15 @@ YBRefreshCacheWrapper(uint64_t catalog_master_version, bool is_retry)
 			YbUpdateCatalogCacheVersion(shared_catalog_version);
 			if (yb_test_delay_after_applying_inval_message_ms > 0)
 				pg_usleep(yb_test_delay_after_applying_inval_message_ms * 1000L);
-			/* TODO(myang): only invalidate affected entries in the pggate cache? */
-			HandleYBStatus(YBCPgInvalidateCache(YbGetCatalogCacheVersion()));
+			if (!yb_enable_invalidate_table_cache_entry || YbGetNeedInvalidateAllTableCache())
+			{
+				elog(LOG, "calling YBCPgInvalidateCache");
+				HandleYBStatus(YBCPgInvalidateCache(YbGetCatalogCacheVersion()));
+			}
+			else
+				HandleYBStatus(YBCPgUpdateTableCacheMinVersion(YbGetCatalogCacheVersion()));
 			yb_need_cache_refresh = false;
-			return;
+			return true;
 		}
 		/* apply failed */
 		reason = 5;
@@ -4440,14 +4454,32 @@ YBRefreshCacheWrapper(uint64_t catalog_master_version, bool is_retry)
 	if (enable_inval_messages)
 		/* must have a reason for doing full catalog cache refresh. */
 		Assert(reason > 0);
-	ereport(enable_inval_messages ? LOG : DEBUG1,
-			(errmsg("calling YBRefreshCache: %d %" PRIu64 " %" PRIu64 " %" PRIu64 " %u %d %d"
-					" for database %u",
-					message_lists.num_lists, local_catalog_version,
-					shared_catalog_version, catalog_master_version,
-					num_catalog_versions, is_retry, reason, MyDatabaseId)));
-	YbUpdateLastKnownCatalogCacheVersion(shared_catalog_version);
-	YBRefreshCache();
+	if (full_refresh_allowed)
+	{
+		ereport(enable_inval_messages ? LOG : DEBUG1,
+				(errmsg("full cache refresh: %d %" PRIu64 " %" PRIu64 " %" PRIu64 " %u %d %d"
+						" for database %u",
+						message_lists.num_lists, local_catalog_version,
+						shared_catalog_version, catalog_master_version,
+						num_catalog_versions, is_retry, reason, MyDatabaseId)));
+		YbUpdateLastKnownCatalogCacheVersion(shared_catalog_version);
+		YBRefreshCache();
+	}
+	return false;
+}
+
+bool
+YBRefreshCacheUsingInvalMsgs()
+{
+	return YBRefreshCacheWrapperImpl(YB_CATCACHE_VERSION_UNINITIALIZED,
+									 false /* is_retry */ ,
+									 false /* full_refresh_allowed */ );
+}
+
+static void
+YBRefreshCacheWrapper(uint64_t catalog_master_version, bool is_retry)
+{
+	(void) YBRefreshCacheWrapperImpl(catalog_master_version, is_retry, true);
 }
 
 static bool
@@ -4777,10 +4809,7 @@ yb_is_dml_command(const char *query_string)
 static bool
 yb_check_retry_allowed(const char *query_string)
 {
-	/*
-	 * TODO: Allow retries when object locking is on once #24877 is addressed.
-	 */
-	return yb_is_dml_command(query_string) && !*YBCGetGFlags()->enable_object_locking_for_table_locks;
+	return yb_is_dml_command(query_string);
 }
 
 static void
@@ -4816,6 +4845,8 @@ YBCheckSharedCatalogCacheVersion()
 	if (need_global_cache_refresh)
 		YBRefreshCacheWrapper(YB_CATCACHE_VERSION_UNINITIALIZED,
 							  false /* is_retry */ );
+	else if (yb_test_preload_catalog_tables)
+		YBRefreshCache();
 }
 
 /*
@@ -4885,6 +4916,9 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 				 "kConflict/kReadRestart/kDeadlock/kAborted");
 		return false;
 	}
+
+	edata->detail = psprintf("%s [%s]", edata->detail,
+							 yb_fetch_effective_transaction_isolation_level());
 
 	if (yb_is_multi_statement_query)
 	{
@@ -5069,6 +5103,17 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 	bool		is_read = command_tag == CMDTAG_SELECT;
 	bool		is_dml = YBIsDmlCommandTag(command_tag);
 
+	if (command_tag == CMDTAG_COPY || command_tag == CMDTAG_COPY_FROM)
+	{
+		const char *retry_err = ("query layer retries not possible for COPY commands");
+
+		edata->message = psprintf("%s (%s)", edata->message, retry_err);
+		if (yb_debug_log_internal_restarts)
+			elog(LOG, "%s", retry_err);
+
+		return false;
+	}
+
 	if (IsYBReadCommitted())
 	{
 		if (YBGetDdlNestingLevel() != 0)
@@ -5095,12 +5140,6 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 			elog(LOG,
 				 "query layer retries not possible because statement isn't one of "
 				 "SELECT/UPDATE/INSERT/DELETE");
-		return false;
-	}
-
-	if (*YBCGetGFlags()->enable_object_locking_for_table_locks)
-	{
-		elog(LOG, "query layer retries disabled as object locking is on, refer #24877 for details.");
 		return false;
 	}
 
@@ -5289,7 +5328,10 @@ yb_restart_portal_after_clear(Portal portal)
 	/*
 	 * No need for GetCachedPlan + PortalDefineQuery routine, everything is in
 	 * place already.
+	 *
+	 * But we would still need to acquire all necessary object locks again.
 	 */
+	YBAcquireExecutorLocksForRetry(portal->stmts);
 	portal->status = PORTAL_DEFINED;
 	PortalStart(portal, portal->portalParams, 0 /* eflags */ , InvalidSnapshot);
 
@@ -5384,6 +5426,8 @@ yb_restart_transaction(int attempt, bool is_read_restart)
 	 * The txn might or might not have performed writes. Reset the state in
 	 * either case to avoid checking/tracking if a write could have been
 	 * performed.
+	 *
+	 * TODO (#28196): Explore if we can do a full reset of the PG-side transaction state.
 	 */
 	YBCRestartWriteTransaction();
 
@@ -5629,7 +5673,7 @@ static void
 yb_exec_simple_query(const char *query_string, MemoryContext exec_context)
 {
 	YBQueryRetryData retry_data = {
-		.portal_name = NULL,
+		.portal_name = "", /* unnamed portal is used in simple query protocol */
 		.query_string = query_string,
 		.command_tag = YbParseCommandTag(query_string),
 	};
@@ -6149,6 +6193,12 @@ PostgresMain(const char *dbname, const char *username)
 
 	if (!ignore_till_sync)
 		send_ready_for_query = true;	/* initially, or after error */
+
+	/*
+	 * YB: Refresh the session stats accumulated during catalog cache
+	 * prefetching.
+	 */
+	YbRefreshSessionStatsDuringExecution();
 
 	/*
 	 * Non-error queries loop here.
@@ -6955,6 +7005,7 @@ PostgresMain(const char *dbname, const char *username)
 					char	   *db_name = MyProcPort->database_name;
 					char	   *user_name = MyProcPort->user_name;
 					char	   *host = MyProcPort->remote_host;
+					const char *authn_id = MyProcPort->authn_id;
 					sa_family_t conn_type = MyProcPort->raddr.addr.ss_family;
 
 					/* Update the Port details with the new context. */
@@ -6964,6 +7015,12 @@ PostgresMain(const char *dbname, const char *username)
 						(char *) pq_getmsgstring(&input_message);
 					MyProcPort->remote_host =
 						(char *) pq_getmsgstring(&input_message);
+
+					/*
+					 * This will be set when authenticating and needs to be
+					 * NULL before that
+					 */
+					MyProcPort->authn_id = NULL;
 
 					/*
 					 * HARD Code connection type between client and
@@ -6997,6 +7054,13 @@ PostgresMain(const char *dbname, const char *username)
 					MyProcPort->raddr.addr.ss_family = conn_type;
 					inet_pton(AF_INET, MyProcPort->remote_host,
 							  &(ip_address_1->sin_addr));
+
+					/*
+					 * NOTE: We don't need to free previous
+					 * MyProcPort->authn_id since it was allocated in the
+					 * transaction MemoryContext which has been free'd now
+					 */
+					MyProcPort->authn_id = authn_id;
 
 					send_ready_for_query = true;
 				}

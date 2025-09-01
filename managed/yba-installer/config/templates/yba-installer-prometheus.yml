@@ -59,6 +59,14 @@
           - files:
             - '{{ .DataDir }}/swamper_targets/node-agent.*.json'
 
+      - job_name: 'otel-collector'
+        scrape_timeout:  {{ yamlPath "prometheus.scrapeTimeout" }}
+        scheme: {{ yamlPath "prometheus.scrapeConfig.otel-collector.scheme" }}
+        metrics_path: "/metrics"
+        file_sd_configs:
+          - files:
+              - '{{ .DataDir }}/swamper_targets/otel.*.json'
+
       - job_name: "node"
         scheme: {{ yamlPath "prometheus.scrapeConfig.node.scheme" }}
         file_sd_configs:
@@ -192,7 +200,7 @@
       Group={{ yamlPath "service_username" }}
       {{ end }}
       Type=simple
-      ExecStart= {{ .PromDir }}/prometheus \
+      ExecStart= /bin/sh -c "{{ .PromDir }}/prometheus \
       --config.file {{ .ConfFileLocation }} \
       --storage.tsdb.path {{ .DataDir }}/storage \
       --storage.tsdb.retention.time={{ yamlPath "prometheus.retentionTime" }} \
@@ -204,16 +212,11 @@
       --web.listen-address=:{{ yamlPath "prometheus.port" }} \
       --query.max-concurrency={{ yamlPath "prometheus.maxConcurrency" }} \
       --query.max-samples={{ yamlPath "prometheus.maxSamples" }} \
-      --query.timeout={{ yamlPath "prometheus.timeout" }}
+      --query.timeout={{ yamlPath "prometheus.timeout" }} &>> {{ .LogDir }}/prometheus.log"
 
       Restart=always
       RestartSec={{ yamlPath "prometheus.restartSeconds"}}
       OOMScoreAdjust={{ yamlPath "prometheus.oomScoreAdjust"}}
-      {{ $systemdLog := systemdLogMethod }}
-      {{ if ne $systemdLog "" }}
-      StandardOutput={{ $systemdLog }}:{{ .LogDir }}/prometheus.log
-      StandardError={{ $systemdLog }}:{{ .LogDir }}/prometheus.log
-      {{ end }}
 
       [Install]
       WantedBy=multi-user.target
@@ -233,3 +236,16 @@
           {{ end }}
         {{ end }}
       {{ end }}
+  - name: prometheusLogrotate
+    fileName: '{{ logrotateD }}/prometheus'
+    contents: |
+      {{ .LogDir }}/prometheus.log {
+          daily
+          rotate 7
+          compress
+          missingok
+          notifempty
+          copytruncate
+          delaycompress
+          create 0640 {{ yamlPath "service_username" }} {{ yamlPath "service_username" }}
+      }

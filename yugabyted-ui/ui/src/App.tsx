@@ -7,6 +7,7 @@ import { CssBaseline, ThemeProvider } from '@material-ui/core';
 import en from '@app/translations/en.json';
 import { mainTheme } from '@app/theme/mainTheme';
 import { MainLayout } from '@app/features';
+import { ToastProvider } from '@app/helpers';
 
 const CACHE_TIMEOUT = 15 * 60 * 1000; // keep data in react-query cache for 15 mins
 const IS_DEV_MODE = import.meta.env.NODE_ENV === 'development';
@@ -37,7 +38,7 @@ export const App: FC = () => {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider theme={mainTheme}>
-        {/* <ToastProvider> */}
+        <ToastProvider>
           <BrowserRouter>
             <CssBaseline />
             <Switch>              
@@ -45,7 +46,7 @@ export const App: FC = () => {
               <Route component={MainLayout} />
             </Switch>
           </BrowserRouter>
-        {/* </ToastProvider> */}
+        </ToastProvider>
       </ThemeProvider>
     </QueryClientProvider>
   );

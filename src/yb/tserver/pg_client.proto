@@ -30,7 +30,11 @@ import "yb/rpc/service.proto";
 import "yb/tablet/tablet.proto";
 
 service PgClientService {
-  rpc Heartbeat(PgHeartbeatRequestPB) returns (PgHeartbeatResponsePB);
+  option (yb.rpc.service_send_metadata) = true;
+
+  rpc Heartbeat(PgHeartbeatRequestPB) returns (PgHeartbeatResponsePB) {
+    option (yb.rpc.exclude_metadata) = true;
+  }
 
   rpc AlterDatabase(PgAlterDatabaseRequestPB) returns (PgAlterDatabaseResponsePB);
   rpc AlterTable(PgAlterTableRequestPB) returns (PgAlterTableResponsePB);
@@ -53,7 +57,9 @@ service PgClientService {
   rpc GetDatabaseInfo(PgGetDatabaseInfoRequestPB) returns (PgGetDatabaseInfoResponsePB);
   rpc GetLockStatus(PgGetLockStatusRequestPB) returns (PgGetLockStatusResponsePB);
   rpc GetReplicationSlot(PgGetReplicationSlotRequestPB) returns (PgGetReplicationSlotResponsePB);
-  rpc IsInitDbDone(PgIsInitDbDoneRequestPB) returns (PgIsInitDbDoneResponsePB);
+  rpc IsInitDbDone(PgIsInitDbDoneRequestPB) returns (PgIsInitDbDoneResponsePB) {
+    option (yb.rpc.exclude_metadata) = true;
+  }
   rpc ListLiveTabletServers(PgListLiveTabletServersRequestPB)
       returns (PgListLiveTabletServersResponsePB);
   rpc ListReplicationSlots(PgListReplicationSlotsRequestPB)
@@ -96,7 +102,9 @@ service PgClientService {
       returns (PgGetTserverCatalogVersionInfoResponsePB);
   rpc CancelTransaction(PgCancelTransactionRequestPB) returns (PgCancelTransactionResponsePB);
   rpc ActiveSessionHistory(PgActiveSessionHistoryRequestPB)
-      returns (PgActiveSessionHistoryResponsePB);
+      returns (PgActiveSessionHistoryResponsePB) {
+    option (yb.rpc.exclude_metadata) = true;
+  }
   rpc GetActiveTransactionList(PgGetActiveTransactionListRequestPB)
       returns (PgGetActiveTransactionListResponsePB);
 
@@ -113,6 +121,7 @@ service PgClientService {
 
   rpc FetchData(PgFetchDataRequestPB) returns (PgFetchDataResponsePB) {
     option (yb.rpc.lightweight_method).sides = PROXY;
+    option (yb.rpc.exclude_metadata) = true; // TODO: remove after #27903
   };
 
   rpc YCQLStatementStats(PgYCQLStatementStatsRequestPB)
@@ -130,7 +139,9 @@ service PgClientService {
       returns (PgReleaseAdvisoryLockResponsePB);
 
   rpc AcquireObjectLock(PgAcquireObjectLockRequestPB)
-      returns (PgAcquireObjectLockResponsePB);
+      returns (PgAcquireObjectLockResponsePB) {
+    option (yb.rpc.lightweight_method).sides = PROXY;
+  }
 
   rpc ExportTxnSnapshot(PgExportTxnSnapshotRequestPB)
       returns (PgExportTxnSnapshotResponsePB);
@@ -183,7 +194,7 @@ message PgAlterDatabaseRequestPB {
   string database_name = 2;
   uint32 database_oid = 3;
   string new_name = 4;
-  AshMetadataPB ash_metadata = 5;
+  reserved 5; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgAlterDatabaseResponsePB {
@@ -193,7 +204,7 @@ message PgAlterDatabaseResponsePB {
 message PgBackfillIndexRequestPB {
   uint64 session_id = 1;
   PgObjectIdPB table_id = 2;
-  AshMetadataPB ash_metadata = 3;
+  reserved 3; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgBackfillIndexResponsePB {
@@ -209,6 +220,11 @@ message PgRenameTablePB {
   reserved 1; // Deprecated database_name
   string table_name = 2;
   string schema_name = 3;
+}
+
+enum PgSharedExchangeReqType {
+  PERFORM = 0;
+  ACQUIRE_OBJECT_LOCK = 1;
 }
 
 // Available replica identity modes for use in CDC
@@ -244,8 +260,11 @@ message PgAlterTableRequestPB {
   PgRenameTablePB rename_table = 7;
   bool increment_schema_version = 8;
   PgReplicaIdentityPB replica_identity = 9;
-  AshMetadataPB ash_metadata = 10;
+  reserved 10; // ASH metadata is now passed in RequestHeader PB
   bool use_regular_transaction_block = 11;
+  // Used to setup the session in case the table is being altered in a
+  // transaction block with transactional ddl enabled i.e. use_regular_transaction_block is true.
+  PgPerformOptionsPB options = 12;
 }
 
 message PgAlterTableResponsePB {
@@ -264,8 +283,11 @@ message PgCreateDatabaseRequestPB {
   string source_database_name = 9;
   string source_owner = 10;
   string target_owner = 11;
-  AshMetadataPB ash_metadata = 12;
+  reserved 12; // ASH metadata is now passed in RequestHeader PB
   bool use_regular_transaction_block = 13;
+  // Used to setup the session in case the database is being created in a
+  // transaction block with transactional ddl enabled i.e. use_regular_transaction_block is true.
+  PgPerformOptionsPB options = 14;
 }
 
 message PgCreateDatabaseResponsePB {
@@ -308,7 +330,7 @@ message PgCreateReplicationSlotRequestPB {
   string replication_slot_name = 3;
   PgReplicationSlotSnapshotActionPB snapshot_action = 4;
   string output_plugin_name = 5;
-  AshMetadataPB ash_metadata = 6;
+  reserved 6; // ASH metadata is now passed in RequestHeader PB
   PGReplicationSlotLsnType lsn_type = 7;
   PGReplicationSlotOrderingMode ordering_mode = 8;
 }
@@ -342,7 +364,6 @@ message PgCreateTableRequestPB {
   uint64 session_id = 1;
 
   bool use_transaction = 2;
-  bool use_regular_transaction_block = 26;
   PgObjectIdPB table_id = 3;
   string database_name = 4;
   string table_name = 5;
@@ -381,7 +402,13 @@ message PgCreateTableRequestPB {
 
   PgVectorIdxOptionsPB vector_idx_options = 24;
 
-  AshMetadataPB ash_metadata = 25;
+  reserved 25; // ASH metadata is now passed in RequestHeader PB
+
+  bool use_regular_transaction_block = 26;
+
+  // Used to setup the session in case the table is being created in a
+  // transaction block with transactional ddl enabled i.e. use_regular_transaction_block is true.
+  PgPerformOptionsPB options = 27;
 }
 
 message PgCreateTableResponsePB {
@@ -396,8 +423,12 @@ message PgCreateTablegroupRequestPB {
   PgObjectIdPB tablegroup_id = 3;
   PgObjectIdPB tablespace_id = 4;
 
-  AshMetadataPB ash_metadata = 5;
+  reserved 5; // ASH metadata is now passed in RequestHeader PB
   bool use_regular_transaction_block = 6;
+
+  // Used to setup the session in case the tablegroup is being created in a
+  // transaction block with transactional ddl enabled i.e. use_regular_transaction_block is true.
+  PgPerformOptionsPB options = 7;
 }
 
 message PgCreateTablegroupResponsePB {
@@ -408,7 +439,7 @@ message PgDropDatabaseRequestPB {
   uint64 session_id = 1;
   string database_name = 3;
   uint32 database_oid = 4;
-  AshMetadataPB ash_metadata = 5;
+  reserved 5; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgDropDatabaseResponsePB {
@@ -418,7 +449,7 @@ message PgDropDatabaseResponsePB {
 message PgDropReplicationSlotRequestPB {
   uint64 session_id = 1;
   string replication_slot_name = 2;
-  AshMetadataPB ash_metadata = 3;
+  reserved 3; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgDropReplicationSlotResponsePB {
@@ -429,8 +460,12 @@ message PgDropTableRequestPB {
   uint64 session_id = 1;
   PgObjectIdPB table_id = 2;
   bool index = 3;
-  AshMetadataPB ash_metadata = 4;
+  reserved 4; // ASH metadata is now passed in RequestHeader PB
   bool use_regular_transaction_block = 5;
+
+  // Used to setup the session in case the table is being dropped in a
+  // transaction block with transactional ddl enabled i.e. use_regular_transaction_block is true.
+  PgPerformOptionsPB options = 6;
 }
 
 message PgDropTableResponsePB {
@@ -441,8 +476,11 @@ message PgDropTableResponsePB {
 message PgDropTablegroupRequestPB {
   uint64 session_id = 1;
   PgObjectIdPB tablegroup_id = 2;
-  AshMetadataPB ash_metadata = 3;
+  reserved 3; // ASH metadata is now passed in RequestHeader PB
   bool use_regular_transaction_block = 4;
+  // Used to setup the session in case the tablegroup is being dropped in a
+  // transaction block with transactional ddl enabled i.e. use_regular_transaction_block is true.
+  PgPerformOptionsPB options = 5;
 }
 
 message PgDropTablegroupResponsePB {
@@ -454,7 +492,7 @@ message PgGetCatalogMasterVersionRequestPB {
 
 message PgGetXClusterRoleRequestPB {
   uint32 db_oid = 1;
-  AshMetadataPB ash_metadata = 2;
+  reserved 2; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgFinishTransactionRequestPB {
@@ -473,7 +511,7 @@ message PgFinishTransactionRequestPB {
   bool commit = 2;
   DdlModePB ddl_mode = 3;
 
-  AshMetadataPB ash_metadata = 4;
+  reserved 4; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgFinishTransactionResponsePB {
@@ -525,7 +563,7 @@ message PgGetLockStatusRequestPB {
   // Limit number of locks returned per transaction at each tablet
   uint32 max_txn_locks_per_tablet = 5;
 
-  AshMetadataPB ash_metadata = 6;
+  reserved 6; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgGetLockStatusResponsePB {
@@ -554,7 +592,7 @@ message PgGetReplicationSlotRequestPB {
 
   /* TODO(#20368): Introduce ability to acquire the slot. */
 
-  AshMetadataPB ash_metadata = 2;
+  reserved 2; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgGetReplicationSlotResponsePB {
@@ -569,7 +607,7 @@ enum ReplicationSlotStatus {
 
 message PgListLiveTabletServersRequestPB {
   bool primary_only = 1;
-  AshMetadataPB ash_metadata = 2;
+  reserved 2; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgLiveTabletServerPB {
@@ -586,7 +624,7 @@ message PgLiveTabletServerPB {
 
 message PgGetIndexBackfillProgressRequestPB {
   repeated PgObjectIdPB index_ids = 1;
-  AshMetadataPB ash_metadata = 2;
+  reserved 2; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgGetIndexBackfillProgressResponsePB {
@@ -603,7 +641,7 @@ message PgListLiveTabletServersResponsePB {
 }
 
 message PgListReplicationSlotsRequestPB {
-  AshMetadataPB ash_metadata = 1;
+  reserved 1; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgReplicationSlotInfoPB {
@@ -641,7 +679,7 @@ message PgOpenTableRequestPB {
   // Allows a hidden table to be opened.
   // Hidden table is a dropped table retained in DocDB for PITR, CLONE, AS-OF.
   bool include_hidden = 4;
-  AshMetadataPB ash_metadata = 5;
+  reserved 5; // ASH metadata is now passed in RequestHeader PB
   uint64 ysql_catalog_version = 6;
 }
 
@@ -659,7 +697,7 @@ message PgOpenTableResponsePB {
 
 message PgGetTablePartitionListRequestPB {
   string table_id = 1;
-  AshMetadataPB ash_metadata = 2;
+  reserved 2; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgGetTablePartitionListResponsePB {
@@ -669,7 +707,7 @@ message PgGetTablePartitionListResponsePB {
 
 message PgPollVectorIndexReadyRequestPB {
   string table_id = 1;
-  AshMetadataPB ash_metadata = 2;
+  reserved 2; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgPollVectorIndexReadyResponsePB {
@@ -725,13 +763,15 @@ message PgPerformOptionsPB {
   bool yb_non_ddl_txn_for_sys_tables_allowed = 21;
   int64 pg_txn_start_us = 22;
 
-  AshMetadataPB ash_metadata = 23;
+  reserved 23; // ASH metadata is now passed in RequestHeader PB
 
   // When set,
   // - Sets the read time locally.
   // - Clamps the read uncertainty window.
   // See the commit desc for more info.
   bool clamp_uncertainty_window = 24;
+
+  bool xcluster_target_ddl_bypass = 26;
 }
 
 message PgPerformRequestPB {
@@ -752,7 +792,7 @@ message PgReserveOidsRequestPB {
   uint32 database_oid = 1;
   uint32 next_oid = 2;
   uint32 count = 3;
-  AshMetadataPB ash_metadata = 4;
+  reserved 4; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgReserveOidsResponsePB {
@@ -766,7 +806,7 @@ message PgRollbackToSubTransactionRequestPB {
   uint64 session_id = 1;
   uint32 sub_transaction_id = 2;
   PgPerformOptionsPB options = 3;
-  AshMetadataPB ash_metadata = 4;
+  reserved 4; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgRollbackToSubTransactionResponsePB {
@@ -775,7 +815,7 @@ message PgRollbackToSubTransactionResponsePB {
 
 message PgTabletServerCountRequestPB {
   bool primary_only = 1;
-  AshMetadataPB ash_metadata = 2;
+  reserved 2; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgTabletServerCountResponsePB {
@@ -786,7 +826,7 @@ message PgTabletServerCountResponsePB {
 message PgTruncateTableRequestPB {
   uint64 session_id = 1;
   PgObjectIdPB table_id = 2;
-  AshMetadataPB ash_metadata = 3;
+  reserved 3; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgTruncateTableResponsePB {
@@ -806,7 +846,7 @@ message PgValidatePlacementRequestPB {
   uint64 session_id = 1;
   int32 num_replicas = 2; /* deprecated, use replication_info */
   repeated PgPlacementInfoPB placement_infos = 3; /* deprecated, use replication_info */
-  AshMetadataPB ash_metadata = 4;
+  reserved 4; // ASH metadata is now passed in RequestHeader PB
   ReplicationInfoPB replication_info = 5;
 }
 
@@ -822,7 +862,7 @@ message PgInsertSequenceTupleRequestPB {
   uint64 ysql_db_catalog_version = 7;
   int64 last_val = 5;
   bool is_called = 6;
-  AshMetadataPB ash_metadata = 8;
+  reserved 8; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgInsertSequenceTupleResponsePB {
@@ -840,7 +880,7 @@ message PgUpdateSequenceTupleRequestPB {
   bool has_expected = 7;
   int64 expected_last_val = 8;
   bool expected_is_called = 9;
-  AshMetadataPB ash_metadata = 11;
+  reserved 11; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgUpdateSequenceTupleResponsePB {
@@ -863,7 +903,7 @@ message PgFetchSequenceTupleRequestPB {
   int64 min_value = 7;
   int64 max_value = 8;
   bool cycle = 9;
-  AshMetadataPB ash_metadata = 11;
+  reserved 11; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgFetchSequenceTupleResponsePB {
@@ -879,7 +919,7 @@ message PgReadSequenceTupleRequestPB {
   uint64 ysql_catalog_version = 4;
   uint64 ysql_db_catalog_version = 5;
   uint64 read_time = 6;
-  AshMetadataPB ash_metadata = 7;
+  reserved 7; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgReadSequenceTupleResponsePB {
@@ -892,7 +932,7 @@ message PgDeleteSequenceTupleRequestPB {
   uint64 session_id = 1;
   int64 db_oid = 2;
   int64 seq_oid = 3;
-  AshMetadataPB ash_metadata = 4;
+  reserved 4; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgDeleteSequenceTupleResponsePB {
@@ -902,7 +942,7 @@ message PgDeleteSequenceTupleResponsePB {
 message PgDeleteDBSequencesRequestPB {
   uint64 session_id = 1;
   int64 db_oid = 2;
-  AshMetadataPB ash_metadata = 3;
+  reserved 3; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgDeleteDBSequencesResponsePB {
@@ -911,7 +951,7 @@ message PgDeleteDBSequencesResponsePB {
 
 message PgGetTableDiskSizeRequestPB {
   PgObjectIdPB table_id = 1;
-  AshMetadataPB ash_metadata = 2;
+  reserved 2; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgGetTableDiskSizeResponsePB {
@@ -923,7 +963,7 @@ message PgGetTableDiskSizeResponsePB {
 }
 
 message PgCheckIfPitrActiveRequestPB {
-  AshMetadataPB ash_metadata = 1;
+  reserved 1; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgCheckIfPitrActiveResponsePB {
@@ -933,7 +973,7 @@ message PgCheckIfPitrActiveResponsePB {
 
 message PgIsObjectPartOfXReplRequestPB {
   PgObjectIdPB table_id = 2;
-  AshMetadataPB ash_metadata = 3;
+  reserved 3; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgIsObjectPartOfXReplResponsePB {
@@ -947,7 +987,7 @@ message PgGetTserverCatalogVersionInfoRequestPB {
   // If > 0, we ask for the catalog version of the given database from the tserver.
   // If == 0, we ask for the catalog version map of all databases from the tserver.
   uint32 db_oid = 2;
-  AshMetadataPB ash_metadata = 3;
+  reserved 3; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgGetTserverCatalogVersionInfoResponsePB {
@@ -966,7 +1006,7 @@ message PgGetTserverCatalogMessageListsRequestPB {
   // message queue will be skipped for this request.
   uint64 ysql_catalog_version = 2;
   uint32 num_catalog_versions = 3;
-  AshMetadataPB ash_metadata = 4;
+  reserved 4; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgGetTserverCatalogMessageListsResponsePB {
@@ -982,7 +1022,7 @@ message PgSetTserverCatalogMessageListRequestPB {
   bool is_breaking_change = 2;
   uint64 new_catalog_version = 3;
   TServerDBCatalogMessageListInfo message_list = 4;
-  AshMetadataPB ash_metadata = 5;
+  reserved 5; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgSetTserverCatalogMessageListResponsePB {
@@ -994,7 +1034,7 @@ message PgWaitForBackendsCatalogVersionRequestPB {
   uint32 database_oid = 2;
   uint64 catalog_version = 3;
   int32 requestor_pg_backend_pid = 5;
-  AshMetadataPB ash_metadata = 4;
+  reserved 4; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgWaitForBackendsCatalogVersionResponsePB {
@@ -1011,7 +1051,7 @@ message PgCancelTransactionRequestPB {
   // status tablet alone. If not, the request is forwarded to all tablet servers and is thereafter
   // broadcast to all status tablets hosted by the tablet server.
   bytes status_tablet_id = 2;
-  AshMetadataPB ash_metadata = 3;
+  reserved 3; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgCancelTransactionResponsePB {
@@ -1046,7 +1086,7 @@ message PgActiveSessionHistoryResponsePB {
 
 message PgGetActiveTransactionListRequestPB {
   OptionalUint64PB session_id = 1;
-  AshMetadataPB ash_metadata = 2;
+  reserved 2; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgGetActiveTransactionListResponsePB {
@@ -1067,7 +1107,7 @@ message PgGetTableKeyRangesRequestPB {
   uint64 range_size_bytes = 6;
   bool is_forward = 7;
   uint32 max_key_length = 8;
-  AshMetadataPB ash_metadata = 9;
+  reserved 9; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgGetTableKeyRangesResponsePB {
@@ -1077,7 +1117,7 @@ message PgGetTableKeyRangesResponsePB {
 
 message PgGetNewObjectIdRequestPB {
   uint32 db_oid = 1;
-  AshMetadataPB ash_metadata = 2;
+  reserved 2; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgGetNewObjectIdResponsePB {
@@ -1096,7 +1136,7 @@ message PgFetchDataResponsePB {
 }
 
 message PgYCQLStatementStatsRequestPB {
-  AshMetadataPB ash_metadata = 1;
+  reserved 1; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgYCQLStatementStatsResponsePB {
@@ -1119,7 +1159,7 @@ message YCQLStatementStatsPB {
 }
 
 message PgTabletsMetadataRequestPB {
-  AshMetadataPB ash_metadata = 1;
+  reserved 1; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgTabletsMetadataResponsePB {
@@ -1128,7 +1168,7 @@ message PgTabletsMetadataResponsePB {
 }
 
 message PgServersMetricsRequestPB {
-  AshMetadataPB ash_metadata = 1;
+  reserved 1; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgServerMetricsInfoPB {
@@ -1150,7 +1190,7 @@ message PgServersMetricsResponsePB {
 
 message PgCronSetLastMinuteRequestPB {
   int64 last_minute = 1;
-  AshMetadataPB ash_metadata = 2;
+  reserved 2; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgCronSetLastMinuteResponsePB {
@@ -1158,7 +1198,7 @@ message PgCronSetLastMinuteResponsePB {
 }
 
 message PgCronGetLastMinuteRequestPB {
-  AshMetadataPB ash_metadata = 1;
+  reserved 1; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgCronGetLastMinuteResponsePB {
@@ -1166,7 +1206,7 @@ message PgCronGetLastMinuteResponsePB {
   AppStatusPB status = 2;
 }
 message PgListClonesRequestPB{
-  AshMetadataPB ash_metadata = 1;
+  reserved 1; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgListClonesResponsePB {
@@ -1211,7 +1251,7 @@ message PgAcquireAdvisoryLockRequestPB {
   bool wait = 4;
   bool session = 5; // Acquire lock in session level or transaction level.
   PgPerformOptionsPB options = 6; // Only set on txn level locks.
-  AshMetadataPB ash_metadata = 7;
+  reserved 7; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgAcquireAdvisoryLockResponsePB {
@@ -1224,7 +1264,7 @@ message PgReleaseAdvisoryLockRequestPB {
   uint64 session_id = 1;
   uint32 db_oid = 2;
   repeated AdvisoryLockPB locks = 3;
-  AshMetadataPB ash_metadata = 4;
+  reserved 4; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgReleaseAdvisoryLockResponsePB {
@@ -1257,7 +1297,8 @@ message PgAcquireObjectLockRequestPB {
 
   // Cannot use TableLockType enum due to proto2/3 compatibility issues.
   ObjectLockMode lock_type = 4;
-  AshMetadataPB ash_metadata = 5;
+
+  reserved 5; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgAcquireObjectLockResponsePB {
@@ -1268,7 +1309,7 @@ message PgExportTxnSnapshotRequestPB {
   uint64 session_id = 1;
   PgTxnSnapshotPB snapshot = 2;
   PgPerformOptionsPB options = 3;
-  AshMetadataPB ash_metadata = 4;
+  reserved 4; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgExportTxnSnapshotResponsePB {
@@ -1280,7 +1321,7 @@ message PgImportTxnSnapshotRequestPB {
   uint64 session_id = 1;
   string snapshot_id = 2;
   PgPerformOptionsPB options = 3;
-  AshMetadataPB ash_metadata = 4;
+  reserved 4; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgImportTxnSnapshotResponsePB {
@@ -1290,7 +1331,7 @@ message PgImportTxnSnapshotResponsePB {
 
 message PgClearExportedTxnSnapshotsRequestPB {
   uint64 session_id = 1;
-  AshMetadataPB ash_metadata = 2;
+  reserved 2; // ASH metadata is now passed in RequestHeader PB
 }
 
 message PgClearExportedTxnSnapshotsResponsePB { AppStatusPB status = 1; }

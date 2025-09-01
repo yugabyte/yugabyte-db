@@ -16,6 +16,7 @@
 #include "yb/common/common_fwd.h"
 
 #include "yb/docdb/docdb.fwd.h"
+#include "yb/docdb/object_lock_shared_fwd.h"
 #include "yb/dockv/dockv_fwd.h"
 
 #include "yb/qlexpr/qlexpr_fwd.h"
@@ -64,6 +65,7 @@ struct ApplyTransactionState;
 struct DocDB;
 struct DocReadContext;
 struct DocVectorIndexInsertEntry;
+struct DocVectorIndexSearchResult;
 struct DocVectorIndexSearchResultEntry;
 struct FetchedEntry;
 struct HistoryRetentionDirective;
@@ -94,7 +96,6 @@ using DocVectorIndexPtr = std::shared_ptr<DocVectorIndex>;
 using DocVectorIndexes = std::vector<DocVectorIndexPtr>;
 using DocVectorIndexesPtr = std::shared_ptr<DocVectorIndexes>;
 using DocVectorIndexInsertEntries = std::vector<DocVectorIndexInsertEntry>;
-using DocVectorIndexSearchResult = std::vector<DocVectorIndexSearchResultEntry>;
 
 YB_STRONGLY_TYPED_BOOL(FastBackwardScan);
 YB_STRONGLY_TYPED_BOOL(IncludeIntents);

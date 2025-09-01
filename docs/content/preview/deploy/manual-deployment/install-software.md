@@ -1,6 +1,6 @@
 ---
 title: Manual software installation
-headerTitle: Install software
+headerTitle: 2. Install software
 linkTitle: 2. Install software
 description: How to manually install YugabyteDB database on each node.
 menu:
@@ -15,7 +15,7 @@ Installing YugabyteDB involves completing prerequisites and downloading the Yuga
 
 ## Prerequisites
 
-{{% readfile "/preview/tutorials/quick-start/include-prerequisites-linux.md" %}}
+{{% readfile "/preview/quick-start/include-prerequisites-linux.md" %}}
 
 ### Using disk encryption software with YugabyteDB
 
@@ -58,11 +58,3 @@ tar xvfz yugabyte-{{< yb-version version="stable" format="build">}}-el8-aarch64.
   {{% /tab %}}
 
 {{< /tabpane >}}
-
-## Configure YugabyteDB
-
-To configure YugabyteDB, run the following shell script:
-
-```sh
-./bin/post_install.sh
-```

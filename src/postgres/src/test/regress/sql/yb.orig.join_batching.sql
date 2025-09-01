@@ -29,6 +29,7 @@ SET enable_mergejoin = off;
 SET enable_seqscan = off;
 SET enable_material = off;
 SET yb_prefer_bnl = on;
+SET enable_nestloop = off;
 
 SET yb_bnl_batch_size = 3;
 
@@ -1058,3 +1059,34 @@ select * from (select k, v from ot1 union all select k, v from ot2) s join it0 o
 drop table ot1;
 drop table ot2;
 drop table it0;
+
+
+-- #25251: Ensure no Memoize under BNL
+create table r (pk int primary key, a int);
+create index on r (a);
+insert into r select i, i from generate_series(1, 1000) i;
+
+create table s (pk int, x int, y int, primary key (pk asc));
+insert into s select i, i % 3, 2 from generate_series(1, 10) i;
+
+analyze r, s;
+
+explain (costs off)
+/*+ Leading((s r)) */
+select * from s join r on a = x;
+
+explain (costs off)
+/*+ Leading((s r)) */
+select * from s join r on a = y;
+
+-- Memoize under NL
+explain (costs off)
+/*+ Leading((s r)) NoYbBatchedNL(s r) */
+select * from s join r on a = x;
+
+explain (costs off)
+/*+ Leading((s r)) NoYbBatchedNL(s r) */
+select * from s join r on a = y;
+
+
+drop table r, s;

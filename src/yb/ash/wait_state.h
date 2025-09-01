@@ -17,10 +17,14 @@
 #include <atomic>
 #include <string>
 
-#include "yb/ash/wait_state_fwd.h"
+#include "yb/ash/ash_fwd.h"
 
+#include "yb/common/common.messages.h"
+#include "yb/common/common.pb.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/wire_protocol.h"
+
+#include "yb/rpc/rpc_fwd.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/locks.h"
@@ -120,9 +124,6 @@ YB_DEFINE_TYPED_ENUM(Class, uint8_t,
 //
 // The wait event type is not directly encoded in our wait events.
 YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
-    // Don't change the value of kUnused
-    ((kUnused, 0xFFFFFFFFU))
-
     // Wait states related to postgres
     // Don't change the position of kYSQLReserved
     ((kYSQLReserved, YB_ASH_MAKE_EVENT(TServerWait)))
@@ -159,12 +160,18 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kRemoteBootstrap_StartRemoteSession)
     (kRemoteBootstrap_ReadDataFromFile)
     (kRemoteBootstrap_RateLimiter)
+    (kWaitForReadTime)
+    (kSnapshot_WaitingForFlush)
+    (kSnapshot_CleanupSnapshotDir)
+    (kSnapshot_RestoreCheckpoint)
+    (kXCluster_WaitingForGetChanges)
 
     // Wait states related to consensus
     ((kRaft_WaitingForReplication, YB_ASH_MAKE_EVENT(Consensus)))
     (kRaft_ApplyingEdits)
     (kWAL_Append)
     (kWAL_Sync)
+    (kWAL_Read)
     (kConsensusMeta_Flush)
     (kReplicaState_TakeUpdateLock)
 
@@ -179,6 +186,7 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kRocksDB_RateLimiter)
     (kRocksDB_WaitForSubcompaction)
     (kRocksDB_NewIterator)
+    (kRocksDB_CreateCheckpoint)
 
     // Wait states related to YCQL
     ((kYCQL_Parse, YB_ASH_MAKE_EVENT(YCQLQuery)))
@@ -206,6 +214,10 @@ YB_DEFINE_TYPED_ENUM(FixedQueryId, uint8_t,
   ((kQueryIdForLogBackgroundSync, 6))
   ((kQueryIdForYSQLBackgroundWorker, 7))
   ((kQueryIdForRemoteBootstrap, 8))
+  ((kQueryIdForSnapshot, 9))
+  ((kQueryIdForYcqlAuthResponseRequest, 10))
+  ((kQueryIdForWalsender, 11))
+  ((kQueryIdForXCluster, 12))
 );
 
 YB_DEFINE_TYPED_ENUM(WaitStateType, uint8_t,
@@ -220,6 +232,7 @@ YB_DEFINE_TYPED_ENUM(WaitStateType, uint8_t,
 // Make sure that kAsyncRPC is always 0
 YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   ((kNoRPC, 0))
+  // PgClientService RPCs
   (kAlterDatabase)
   (kAlterTable)
   (kBackfillIndex)
@@ -275,6 +288,14 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kClearExportedTxnSnapshots)
   (kPollVectorIndexReady)
   (kGetXClusterRole)
+
+  // CDCService RPCs
+  (kInitVirtualWALForCDC)
+  (kGetLagMetrics)
+  (kUpdatePublicationTableList)
+  (kDestroyVirtualWALForCDC)
+  (kGetConsistentChanges)
+  (kUpdateAndPersistLSN)
 );
 
 struct WaitStatesDescription {
@@ -286,6 +307,8 @@ struct WaitStatesDescription {
 };
 
 WaitStateType GetWaitStateType(WaitStateCode code);
+
+const char* GetWaitStateAuxDescription(WaitStateCode code);
 
 struct AshMetadata {
   Uuid root_request_id = Uuid::Nil();
@@ -329,15 +352,31 @@ struct AshMetadata {
     }
   }
 
+  void RootRequestIdToPB(AshMetadataPB* pb) const {
+    pb->set_root_request_id(root_request_id.data(), root_request_id.size());
+  }
+
+  void RootRequestIdToPB(LWAshMetadataPB* pb) const {
+    pb->dup_root_request_id(root_request_id.AsSlice());
+  }
+
+  void TopLevelNodeIdToPB(AshMetadataPB* pb) const {
+    pb->set_top_level_node_id(top_level_node_id.data(), top_level_node_id.size());
+  }
+
+  void TopLevelNodeIdToPB(LWAshMetadataPB* pb) const {
+    pb->dup_top_level_node_id(top_level_node_id.AsSlice());
+  }
+
   template <class PB>
   void ToPB(PB* pb) const {
     if (!root_request_id.IsNil()) {
-      root_request_id.ToBytes(pb->mutable_root_request_id());
+      RootRequestIdToPB(pb);
     } else {
       pb->clear_root_request_id();
     }
     if (!top_level_node_id.IsNil()) {
-      top_level_node_id.ToBytes(pb->mutable_top_level_node_id());
+      TopLevelNodeIdToPB(pb);
     } else {
       pb->clear_top_level_node_id();
     }
@@ -428,7 +467,8 @@ struct AshAuxInfo {
 
 class WaitStateInfo {
  public:
-  WaitStateInfo();
+  WaitStateInfo() = default;
+  explicit WaitStateInfo(int64_t rpc_request_id);
   virtual ~WaitStateInfo() = default;
 
   void set_code(WaitStateCode c, const char* location);
@@ -448,29 +488,28 @@ class WaitStateInfo {
 
   void UpdateMetadata(const AshMetadata& meta) EXCLUDES(mutex_);
   void UpdateAuxInfo(const AshAuxInfo& aux) EXCLUDES(mutex_);
+  void UpdateTabletId(const TabletId& tablet_id);
+  static void UpdateCurrentTabletId(const TabletId& tablet_id);
 
   template <class PB>
-  static void UpdateMetadataFromPB(const PB& pb) {
-    const auto& wait_state = CurrentWaitState();
-    if (wait_state) {
-      // rpc_request_id is generated for each RPC, we don't populate it from PB
-      auto metadata = AshMetadata::FromPB(pb);
-      metadata.clear_rpc_request_id();
-      wait_state->UpdateMetadata(metadata);
+  static void UpdateCurrentMetadataFromPB(const PB& pb) {
+    if (const auto& wait_state = CurrentWaitState()) {
+      wait_state->UpdateMetadataFromPB(pb);
     }
+  }
+
+  template <class PB>
+  void UpdateMetadataFromPB(const PB& pb) {
+    // rpc_request_id is generated for each RPC, we don't populate it from PB
+    auto metadata = AshMetadata::FromPB(pb);
+    metadata.clear_rpc_request_id();
+    UpdateMetadata(metadata);
   }
 
   template <class PB>
   void MetadataToPB(PB* pb) EXCLUDES(mutex_) {
     std::lock_guard lock(mutex_);
     metadata_.ToPB(pb);
-  }
-
-  template <class PB>
-  static void CurrentMetadataToPB(PB* pb) {
-    if (const auto& wait_state = CurrentWaitState()) {
-      wait_state->MetadataToPB(pb);
-    }
   }
 
   template <class PB>
@@ -485,15 +524,20 @@ class WaitStateInfo {
     aux_info_.ToPB(pb->mutable_aux_info());
   }
 
+  virtual AshMetadata metadata() EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    return metadata_;
+  }
+
   std::string ToString() const EXCLUDES(mutex_);
 
   void TEST_SleepForTests(uint32_t sleep_time_ms);
   static bool TEST_EnteredSleep();
 
-  template <class T>
-  static std::shared_ptr<T> CreateIfAshIsEnabled() {
+  template <class T, class ...Args>
+  static std::shared_ptr<T> CreateIfAshIsEnabled(Args&&... args) {
     return FLAGS_ysql_yb_enable_ash
-              ? std::make_shared<T>()
+              ? std::make_shared<T>(std::forward<Args>(args)...)
               : nullptr;
   }
 
@@ -519,7 +563,7 @@ class WaitStateInfo {
   void VTraceTo(Trace* trace, int level, GStringPiece data);
 
  private:
-  std::atomic<WaitStateCode> code_{WaitStateCode::kUnused};
+  std::atomic<WaitStateCode> code_{WaitStateCode::kIdle};
 
   mutable simple_spinlock mutex_;
   AshMetadata metadata_ GUARDED_BY(mutex_);
@@ -587,5 +631,7 @@ class WaitStateTracker {
 WaitStateTracker& FlushAndCompactionWaitStatesTracker();
 WaitStateTracker& RaftLogWaitStatesTracker();
 WaitStateTracker& SharedMemoryPgPerformTracker();
+WaitStateTracker& SharedMemoryPgAcquireObjectLockTracker();
+WaitStateTracker& XClusterPollerTracker();
 
 }  // namespace yb::ash

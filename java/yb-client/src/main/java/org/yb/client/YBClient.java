@@ -2721,6 +2721,38 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  public SetPreferredZonesResponse setPreferredZones(
+      Map<Integer, List<CommonNet.CloudInfoPB>> prioritiesMap)
+      throws Exception {
+    Deferred<SetPreferredZonesResponse> d =
+        asyncClient.setPreferredZones(prioritiesMap);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * Initiates validation of a gflag's value.
+   *
+   * @return An {@link ValidateFlagValueResponse} object containing the response.
+   */
+  public ValidateFlagValueResponse validateFlagValue(
+      String flagName, String flagValue) throws Exception {
+    Deferred<ValidateFlagValueResponse> d =
+      asyncClient.validateFlagValue(flagName, flagValue);
+    d.addErrback(
+        new Callback<Exception, Exception>() {
+          @Override
+          public Exception call(Exception o) throws Exception {
+            LOG.error("Error: ", o);
+            throw o;
+          }
+        });
+    d.addCallback(
+      ValidateFlagValueResponse -> {
+          return ValidateFlagValueResponse;
+        });
+    return d.join(2 * getDefaultAdminOperationTimeoutMs());
+  }
+
   /**
    * Analogous to {@link #shutdown()}.
    *

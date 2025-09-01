@@ -273,6 +273,24 @@ void WriteQuery::DoStartSynchronization(const Status& status) {
     return;
   }
 
+  if (client_request_ && client_request_->use_async_write()) {
+    VLOG(2) << "Performing Async write: " << client_request_->ShortDebugString();
+    operation_->SetAsyncWrite(
+        [query = this](OpId opid) -> void {
+          // TODO: Add metrics for async writes.
+          // Query is still pending, but we are ready to invoke the callback.
+
+          query->context_->RegisterAsyncWrite(opid);
+          opid.ToPB(query->response_->mutable_async_write_op_id());
+
+          TEST_SYNC_POINT("WriteQuery::BeforeCallbackInvoke");
+          Status status;
+          TEST_SYNC_POINT_CALLBACK("WriteQuery::SetCallbackStatus", &status);
+          query->InvokeCallback(status);
+          TEST_SYNC_POINT("WriteQuery::AfterCallbackInvoke");
+        });
+  }
+
   TRACE_FUNC();
   ASH_ENABLE_CONCURRENT_UPDATES();
   SET_WAIT_STATUS(OnCpu_Passive);
@@ -379,15 +397,21 @@ void WriteQuery::Cancel(const Status& status) {
 
 void WriteQuery::Complete(const Status& status) {
   Release();
+  InvokeCallback(status);
+}
 
+void WriteQuery::InvokeCallback(const Status& status) {
   if (callback_) {
     callback_(status);
+    callback_ = nullptr;
   }
 }
 
 void WriteQuery::ExecuteDone(const Status& status) {
   docdb_locks_ = std::move(prepare_result_.lock_batch);
   scoped_read_operation_.Reset();
+  // Reset request_scope_ using RAII here to prevent it from blocking transaction cleanup.
+  auto request_scope = std::move(request_scope_);
   switch (execute_mode_) {
     case ExecuteMode::kSimple:
       SimpleExecuteDone(status);
@@ -795,8 +819,8 @@ Status WriteQuery::DoExecute() {
       //     "Read time was picked before conflict resolution for a single shard operation.");
     }
     return docdb::ResolveOperationConflicts(
-        doc_ops_, conflict_management_policy, write_batch, now, request_start_us(), request_id,
-        tablet->doc_db(), partial_range_key_intents, transaction_participant, metrics_,
+        doc_ops_, conflict_management_policy, write_batch, request_scope_, now, request_start_us(),
+        request_id, tablet->doc_db(), partial_range_key_intents, transaction_participant, metrics_,
         &prepare_result_.lock_batch, wait_queue, deadline(),
         [this, now](const Result<HybridTime>& result) {
           if (!result.ok()) {
@@ -829,7 +853,7 @@ Status WriteQuery::DoExecute() {
 
   // TODO(wait-queues): Ensure that wait_queue respects deadline() during conflict resolution.
   return docdb::ResolveTransactionConflicts(
-      doc_ops_, conflict_management_policy, write_batch, tablet->clock()->Now(),
+      doc_ops_, conflict_management_policy, write_batch, request_scope_, tablet->clock()->Now(),
       read_time_ ? read_time_.read : HybridTime::kMax, write_batch.transaction().pg_txn_start_us(),
       request_start_us(), request_id, tablet->doc_db(), partial_range_key_intents,
       transaction_participant, metrics_,
@@ -935,6 +959,7 @@ Status WriteQuery::DoCompleteExecute(HybridTime safe_time) {
         : ReadHybridTime::SingleTime(tablet->clock()->Now()),
     .statistics = &scoped_statistics_,
   };
+  read_operation_data.read_time.serial_no = request_scope_.request_id();
 
   // We expect all read operations for this transaction to be done in AssembleDocWriteBatch. Once
   // read_txn goes out of scope, the read point is deregistered.

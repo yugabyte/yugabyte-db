@@ -130,6 +130,8 @@ if [[ ! $# -gt 0 ]]; then
   exit 1
 fi
 
+ENABLE_EARLYOOM="false"
+
 while [[ $# -gt 0 ]]; do
   case $1 in
     --enable)

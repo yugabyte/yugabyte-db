@@ -11,17 +11,25 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.utils.CapacityReservationUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
+@Abortable
+@Retryable
 public class ResumeUniverse extends UniverseDefinitionTaskBase {
+  private volatile RuntimeInfo runtimeInfo;
 
   @Inject
   protected ResumeUniverse(BaseTaskDependencies baseTaskDependencies) {
@@ -37,18 +45,44 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
         extends UniverseDefinitionTaskParams.BaseConverter<ResumeUniverse.Params> {}
   }
 
+  /** Task runtime progress info. */
+  public static class RuntimeInfo {
+    @JsonProperty("certsUpdated")
+    boolean certsUpdated;
+  }
+
   public Params params() {
     return (Params) taskParams;
   }
 
   @Override
+  protected void createPrecheckTasks(Universe universe) {
+    super.createPrecheckTasks(universe);
+    runtimeInfo = getRuntimeInfo(RuntimeInfo.class);
+  }
+
+  @Override
   public void run() {
+    boolean deleteCapacityReservation = false;
     try {
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
       Universe universe = lockAndFreezeUniverseForUpdate(-1, null /* Txn callback */);
+      deleteCapacityReservation =
+          createCapacityReservationsIfNeeded(
+              universe.getUniverseDetails().nodeDetailsSet,
+              CapacityReservationUtil.OperationType.RESUME,
+              node -> node.state == NodeDetails.NodeState.Stopped);
 
-      createResumeUniverseTasks(universe, params().customerUUID);
+      createResumeUniverseTasks(
+          universe,
+          params().customerUUID,
+          !runtimeInfo.certsUpdated,
+          u -> updateRuntimeInfo(RuntimeInfo.class, info -> info.certsUpdated = true));
+
+      if (deleteCapacityReservation) {
+        createDeleteReservationTask();
+      }
 
       createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
 

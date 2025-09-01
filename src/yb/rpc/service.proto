@@ -19,8 +19,14 @@ package yb.rpc;
 
 extend google.protobuf.ServiceOptions {
   string custom_service_name = 50011;
+  // To be set when ASH metadata is to be sent with all the RPCs of that service
+  bool service_send_metadata = 50012;
 }
 
 extend google.protobuf.MethodOptions {
   bool trivial = 50001;
+  // To be set when only a handful of RPCs should have ASH metadata in a service
+  bool send_metadata = 50002;
+  // To be set when ASH metadata is not to be sent with certain RPCs in a service
+  bool exclude_metadata = 50003;
 }

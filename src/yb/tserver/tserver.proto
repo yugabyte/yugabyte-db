@@ -37,6 +37,7 @@ option java_package = "org.yb.tserver";
 
 import "yb/common/common.proto";
 import "yb/common/common_types.proto";
+import "yb/common/opid.proto";
 import "yb/common/redis_protocol.proto";
 import "yb/common/ql_protocol.proto";
 import "yb/common/pgsql_protocol.proto";
@@ -99,9 +100,11 @@ message WriteRequestPB {
 
   optional uint64 start_time_micros = 22;
 
-  optional AshMetadataPB ash_metadata = 23;
+  reserved 23; // ASH metadata is now passed in RequestHeader PB
 
   optional int64 raft_config_opid_index = 24;
+
+  optional bool use_async_write = 26;
 }
 
 message WriteResponsePB {
@@ -150,7 +153,19 @@ message WriteResponsePB {
 
   // key causing read restart. Present when restart_read_time is.
   optional string restart_read_key = 16;
+
+  // Only set if use_async_write is true.
+  // If this is set, then the client needs to wait for the async write to
+  // complete using WaitForAsyncWrite before committing the transaction.
+  optional OpIdPB async_write_op_id = 17;
 }
+
+message WaitForAsyncWriteRequestPB {
+  required bytes tablet_id = 1;
+  optional OpIdPB op_id = 2;
+}
+
+message WaitForAsyncWriteResponsePB { optional TabletServerErrorPB error = 1; }
 
 // A list tablets request
 message ListTabletsRequestPB {
@@ -246,7 +261,7 @@ message ReadRequestPB {
 
   optional uint64 start_time_micros = 16;
 
-  optional AshMetadataPB ash_metadata = 17;
+  reserved 17; // ASH metadata is now passed in RequestHeader PB
 
   optional int64 raft_config_opid_index = 18;
 }
@@ -428,7 +443,7 @@ message AcquireObjectLockRequestPB {
   optional uint64 lease_epoch = 5;
   optional fixed64 ignore_after_hybrid_time = 6;
   optional fixed64 propagated_hybrid_time = 7;
-  optional AshMetadataPB ash_metadata = 8;
+  reserved 8; // ASH metadata is now passed in RequestHeader PB
   optional bytes status_tablet = 9;
 }
 
@@ -445,6 +460,23 @@ message YsqlCatalogVersionPB {
 
 message DBCatalogVersionDataPB {
   repeated YsqlCatalogVersionPB db_catalog_versions = 1;
+  optional bool ignore_catalog_version_staleness_check = 2 [ default = false ];
+}
+
+// This matches a row in pg_yb_invalidation_messages table, which has a composite primary
+// key of (db_oid, current_version). For each pair of (db_oid, current_version), there is
+// a list of invalidation messages. The table pg_yb_invalidation_messages also has a message
+// time column that is used to delete old messages from pg_yb_invalidation_messages, but it is
+// not needed by tserver so it is skipped here.
+message YsqlCatalogInvalMessagesPB {
+  optional uint32 db_oid = 1;
+  optional uint64 current_version = 2;
+  // Serialized/encoded message list related to PG catalog cache invalidation.
+  optional bytes message_list = 3;
+}
+
+message DBCatalogInvalMessagesDataPB {
+  repeated YsqlCatalogInvalMessagesPB db_catalog_inval_messages = 1;
 }
 
 message ReleaseObjectLockRequestPB {
@@ -464,10 +496,21 @@ message ReleaseObjectLockRequestPB {
   optional fixed64 apply_after_hybrid_time = 5;
   optional fixed64 propagated_hybrid_time = 6;
 
+  // Note: These fields represent the db_catalog_* information as of when the
+  // ReleaseObjectLockRequestPB is created. Thus, may not stale/out-of-date and
+  // *not* represent the latest db_catalog_* information at the master. This
+  // information is added here to optimize the case where a DDL release causes
+  // the catalog-version to increase -- where the release request can update the
+  // TServers instead of waiting for the next heartbeat. However, for a lot of
+  // other cases (including retries of this request), the information presented
+  // here may even be stale than what is present at the TServer. This is not a
+  // problem as as the TServer would just not update it's db_catalog_*
+  // information.
   optional DBCatalogVersionDataPB db_catalog_version_data = 7;
   // Used for tracking in-progress DDL unlock requests at the master.
   optional uint64 request_id = 8;
-  optional AshMetadataPB ash_metadata = 9;
+  reserved 9; // ASH metadata is now passed in RequestHeader PB
+  optional DBCatalogInvalMessagesDataPB db_catalog_inval_messages_data = 10;
 }
 
 message ReleaseObjectLockResponsePB {

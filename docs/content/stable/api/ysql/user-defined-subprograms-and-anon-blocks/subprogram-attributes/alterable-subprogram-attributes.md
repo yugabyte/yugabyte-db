@@ -13,7 +13,7 @@ type: docs
 
 ## Configuration parameter
 
-This term denotes parameters like _timezone_ that you can set, within the scope of a single session, and for no longer than the session's duration, with the _[set](../../../the-sql-language/statements/cmd_set/)_ statement. You observe the current value with the _[show](../../../the-sql-language/statements/cmd_show/)_ statement or the _[current_setting()](https://www.postgresql.org/docs/11/functions-admin.html#FUNCTIONS-ADMIN-SET)_ built-in function.
+This term denotes parameters like _timezone_ that you can set, within the scope of a single session, and for no longer than the session's duration, with the _[set](../../../the-sql-language/statements/cmd_set/)_ statement. You observe the current value with the _[show](../../../the-sql-language/statements/cmd_show/)_ statement or the _[current_setting()](https://www.postgresql.org/docs/15/functions-admin.html#FUNCTIONS-ADMIN-SET)_ built-in function.
 
 You can execute a _set_ statement in the source text of a subprogram's _[subprogram_implementation](../../../syntax_resources/grammar_diagrams/#subprogram-implementation)_. But you might prefer to make such a setting a property of the subprogram like this:
 
@@ -64,10 +64,10 @@ show lock_timeout;
 
 ## Security
 
-The _security_ attribute determines the identity of the effective _role_ (as is observed with the _[current_role](https://www.postgresql.org/docs/11/functions-info.html#FUNCTIONS-INFO-SESSION-TABLE)_ built-in function) with which SQL issued by a subprogram executes. The allowed values are _definer_ and _invoker_. The default is _invoker_.
+The _security_ attribute determines the identity of the effective _role_ (as is observed with the _[current_role](https://www.postgresql.org/docs/15/functions-info.html#FUNCTIONS-INFO-SESSION-TABLE)_ built-in function) with which SQL issued by a subprogram executes. The allowed values are _definer_ and _invoker_. The default is _invoker_.
 
 - A _security definer_ subprogram executes with the privileges of the subprogram's owner. The general use-case is to allow a low-privileged invoking role to execute specific intended actions that require privileges (or role attributes) that the invoker does not possess.
-- A _security invoker_ subprogram executes with the privileges of the _[session_user](https://www.postgresql.org/docs/11/functions-info.html#FUNCTIONS-INFO-SESSION-TABLE)_.
+- A _security invoker_ subprogram executes with the privileges of the _[session_user](https://www.postgresql.org/docs/15/functions-info.html#FUNCTIONS-INFO-SESSION-TABLE)_.
 
 It's important to understand how unqualified names in SQL statements in a subprogram's implementation are resolved. This is explained in the section [Name resolution within anonymous blocks and user-defined subprograms](../../name-resolution-in-subprograms/).
 

@@ -10,13 +10,6 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 )
 
-var serviceOrder = []string{
-	"postgres",
-	"prometheus",
-	"yb-platform",
-	"performance-advisor",
-}
-
 type Manager struct {
 	services map[string]Service
 }
@@ -114,6 +107,9 @@ func (m *Manager) serviceOrder() []string {
 	} else {
 		order = append(order, "yb-platform")
 	}
+
+	// Logrotate should be last
+	order = append(order, "yb-logrotate")
 	return order
 }
 
@@ -132,12 +128,14 @@ type Service interface {
 	Initialize() error
 	Install() error
 	Uninstall(cleaData bool) error
+	PreUpgrade() error
 	Upgrade() error
 	Status() (common.Status, error)
 	Start() error
 	Stop() error
 	Restart() error
 	Reconfigure() error
+	TemplateFile() string
 }
 
 // Services that support replicated migration

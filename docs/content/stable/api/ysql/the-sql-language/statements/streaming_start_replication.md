@@ -44,7 +44,7 @@ The name of an option passed to the slot's logical decoding plugin.
 
 The applicable options accepted by the command depends on the output plugin of the replication slot. They can be viewed in the respective documentation of the output plugin itself.
 
-For `pgoutput` and `yboutput`, check the section [53.5.1. Logical Streaming Replication Parameters](https://www.postgresql.org/docs/11/protocol-logical-replication.html) in the PG documentation.
+For `pgoutput` and `yboutput`, check the section [53.5.1. Logical Streaming Replication Parameters](https://www.postgresql.org/docs/15/protocol-logical-replication.html) in the PG documentation.
 
 For `wal2json`, refer to the [plugin documentation](https://github.com/eulerto/wal2json/tree/master?tab=readme-ov-file#parameters).
 

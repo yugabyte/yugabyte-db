@@ -295,6 +295,9 @@ class TransactionParticipant::Impl
       mem_tracker_->UnregisterFromParent();
     }
 
+    // Cannot move it to StartShutdown due to weird logic with aborting transactions
+    // on tablet delete.
+    rpcs_.StartShutdown();
     decltype(status_resolvers_) status_resolvers;
     {
       std::lock_guard lock(status_resolvers_mutex_);
@@ -304,7 +307,7 @@ class TransactionParticipant::Impl
     for (auto& resolver : status_resolvers) {
       resolver.Shutdown();
     }
-    rpcs_.Shutdown();
+    rpcs_.CompleteShutdown();
     shutdown_done_.store(true, std::memory_order_release);
   }
 
@@ -368,15 +371,15 @@ class TransactionParticipant::Impl
     return (**it).local_commit_time();
   }
 
-  boost::optional<TransactionLocalState> LocalTxnData(const TransactionId& id) {
+  std::optional<TransactionLocalState> LocalTxnData(const TransactionId& id) {
     std::lock_guard lock(mutex_);
     auto it = transactions_.find(id);
     if (it == transactions_.end()) {
-      return boost::none;
+      return std::nullopt;
     }
-    return boost::make_optional<TransactionLocalState>({
-      .commit_ht = (**it).local_commit_time(),
-      .aborted_subtxn_set = (**it).last_known_aborted_subtxn_set(),
+    return std::make_optional<TransactionLocalState>({
+        .commit_ht = (**it).local_commit_time(),
+        .aborted_subtxn_set = (**it).last_known_aborted_subtxn_set(),
     });
   }
 
@@ -460,7 +463,7 @@ class TransactionParticipant::Impl
     return lock_and_iterator.transaction().metadata();
   }
 
-  Result<boost::optional<std::pair<IsolationLevel, TransactionalBatchData>>> PrepareBatchData(
+  Result<std::optional<std::pair<IsolationLevel, TransactionalBatchData>>> PrepareBatchData(
       const TransactionId& id, size_t batch_idx,
       boost::container::small_vector_base<uint8_t>* encoded_replicated_batches,
       bool has_write_pairs) {
@@ -472,7 +475,7 @@ class TransactionParticipant::Impl
       if (lock_and_iterator.did_txn_deadlock()) {
         return lock_and_iterator.deadlock_status;
       }
-      return boost::none;
+      return std::nullopt;
     }
     auto& transaction = lock_and_iterator.transaction();
     transaction.AddReplicatedBatch(batch_idx, encoded_replicated_batches);
@@ -746,11 +749,11 @@ class TransactionParticipant::Impl
     return Status::OK();
   }
 
-  Result<boost::optional<TabletId>> GetStatusTablet(const TransactionId& id) {
+  Result<std::optional<TabletId>> GetStatusTablet(const TransactionId& id) {
     auto lock_and_iterator =
         VERIFY_RESULT(LockAndFind(id, "get status tablet"s, TransactionLoadFlags{}));
     if (!lock_and_iterator.found() || lock_and_iterator.transaction().WasAborted()) {
-      return boost::none;
+      return std::nullopt;
     }
     return lock_and_iterator.transaction().status_tablet();
   }
@@ -2592,8 +2595,8 @@ Result<TransactionMetadata> TransactionParticipant::PrepareMetadata(
   return impl_->PrepareMetadata(pb);
 }
 
-Result<boost::optional<std::pair<IsolationLevel, TransactionalBatchData>>>
-    TransactionParticipant::PrepareBatchData(
+Result<std::optional<std::pair<IsolationLevel, TransactionalBatchData>>>
+TransactionParticipant::PrepareBatchData(
     const TransactionId& id, size_t batch_idx,
     boost::container::small_vector_base<uint8_t>* encoded_replicated_batches,
     bool has_write_pairs) {
@@ -2609,8 +2612,7 @@ HybridTime TransactionParticipant::LocalCommitTime(const TransactionId& id) {
   return impl_->LocalCommitTime(id);
 }
 
-boost::optional<TransactionLocalState> TransactionParticipant::LocalTxnData(
-    const TransactionId& id) {
+std::optional<TransactionLocalState> TransactionParticipant::LocalTxnData(const TransactionId& id) {
   return impl_->LocalTxnData(id);
 }
 
@@ -2658,8 +2660,7 @@ Status TransactionParticipant::FillPriorities(
   return impl_->FillPriorities(inout);
 }
 
-Result<boost::optional<TabletId>> TransactionParticipant::FindStatusTablet(
-    const TransactionId& id) {
+Result<std::optional<TabletId>> TransactionParticipant::FindStatusTablet(const TransactionId& id) {
   return impl_->GetStatusTablet(id);
 }
 

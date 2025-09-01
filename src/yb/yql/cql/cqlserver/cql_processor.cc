@@ -519,6 +519,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const BatchRequest& req) {
   // query if it is not prepared. Then execute the parse trees with the parameters.
   for (const BatchRequest::Query& query : req.queries()) {
     if (query.is_prepared) {
+      UpdateAshQueryId(b2a_hex(query.query_id));
       VLOG(1) << "BATCH EXECUTE " << b2a_hex(query.query_id);
       auto stmt_res = GetPreparedStatement(query.query_id, query.params.schema_version());
       if (!stmt_res.ok()) {
@@ -534,6 +535,8 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const BatchRequest& req) {
       }
       batch.emplace_back(*parse_tree, query.params);
     } else {
+      UpdateAshQueryId(ToString(std::to_underlying(
+          ash::FixedQueryId::kQueryIdForUncomputedQueryId)));
       VLOG(1) << "BATCH QUERY " << query.query;
       ParseTree::UniPtr parse_tree;
       s = Prepare(query.query, &parse_tree);
@@ -581,6 +584,8 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const AuthResponseRequest& 
                 << salted_hash_result;
     }
   }
+  UpdateAshQueryId(ToString(std::to_underlying(
+      ash::FixedQueryId::kQueryIdForYcqlAuthResponseRequest)));
   shared_ptr<Statement> stmt = service_impl_->GetAuthPreparedStatement();
   if (!stmt->Prepare(this, nullptr /* memtracker */, true /* internal */).ok()) {
     return make_unique<ErrorResponse>(
@@ -624,12 +629,11 @@ void CQLProcessor::StatementExecuted(const Status& s, const ExecutedResult::Shar
   PrepareAndSendResponse(response);
 }
 
-unique_ptr<CQLResponse> CQLProcessor::ProcessError(const Status& s,
-                                                   boost::optional<CQLMessage::QueryId> query_id) {
+unique_ptr<CQLResponse> CQLProcessor::ProcessError(
+    const Status& s, std::optional<CQLMessage::QueryId> query_id) {
   if (s.IsQLError()) {
     ErrorCode ql_errcode = GetErrorCode(s);
-    if (ql_errcode == ErrorCode::UNPREPARED_STATEMENT ||
-        ql_errcode == ErrorCode::STALE_METADATA) {
+    if (ql_errcode == ErrorCode::UNPREPARED_STATEMENT || ql_errcode == ErrorCode::STALE_METADATA) {
       // Delete all stale prepared statements from our cache. Since CQL protocol allows only one
       // unprepared query id to be returned, we will return just the last unprepared / stale one
       // we found.

@@ -35,8 +35,6 @@
 #include <chrono>
 #include <iostream>
 
-#include <boost/optional/optional.hpp>
-
 #include "yb/common/llvm_profile_dumper.h"
 #include "yb/common/termination_monitor.h"
 #include "yb/common/ysql_operation_lease.h"
@@ -436,6 +434,9 @@ int TabletServerMain(int argc, char** argv) {
 
   LOG(WARNING) << "Stopping Tablet server";
   server->Shutdown();
+
+  // Best effort flush of log without any mutex.
+  google::FlushLogFilesUnsafe(0);
 
   return EXIT_SUCCESS;
 }

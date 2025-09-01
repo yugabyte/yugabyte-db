@@ -88,7 +88,7 @@
 /* YB includes */
 #include "commands/yb_cmds.h"
 #include "common/pg_yb_common.h"
-#include "pg_yb_utils.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 #include "yb_ysql_conn_mgr_helper.h"
 
 /*
@@ -1083,7 +1083,32 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 					 parser_errposition(pstate, dencoding->location)));
 	}
 
-	if (!get_db_info(dbtemplate, ShareLock,
+	/*
+	 * In clone codepath, the locks will be taken by ysql_dump.  Additionally
+	 * taking locks here would cause a deadlock.
+	 *
+	 * Specifically, anytime we open a connection to a database, we take a
+	 * RowExclusiveLock lock on it.  Taking a ShareLock on the source database here
+	 * -- and holding onto it until the end of this command, which includes the
+	 * time when ysql_dump will be launched -- means that the ysql_dump will be
+	 * unable to connect to the source database.
+	 *
+	 * As part creating the new-cloned-database, the ALTER DATABASE ... OWNER TO
+	 * ... command tries to take an Exclusive lock on the relevant tuple. Due to
+	 * our current implementation of LockTuple, this translates into taking an
+	 * Exclusive lock on the DatabaseRelationId relation -- which may get
+	 * blocked if we take and hold onto the RowExclusiveLock here.
+	 *
+	 * Ideally, we should be fine taking no locks here as that would be
+	 * equivalent to launching the clone through yb-admin. We are a bit
+	 * conservative here and take AccessShareLock to prevent the source db from
+	 * getting dropped while this operation is in progress.
+	 */
+	bool		is_clone = strcmp(dbtemplate, "template0") != 0 && strcmp(dbtemplate, "template1") != 0;
+	LOCKMODE    lockmode_srcdb = (is_clone ? AccessShareLock : ShareLock);
+	LOCKMODE    lockmode_rel_db = (is_clone ? AccessShareLock : RowExclusiveLock);
+
+	if (!get_db_info(dbtemplate, lockmode_srcdb,
 					 &src_dboid, &src_owner, &src_encoding,
 					 &src_istemplate, &src_allowconn,
 					 &src_frozenxid, &src_minmxid, &src_deftablespace,
@@ -1396,13 +1421,12 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	 * filename conflict with anything already existing in the tablespace
 	 * directories.
 	 */
-	pg_database_rel = table_open(DatabaseRelationId, RowExclusiveLock);
+	pg_database_rel = table_open(DatabaseRelationId, lockmode_rel_db);
 
 	/*
 	 * YB: CREATE DATABASE using templates other than template0 and template1
 	 * will always go through the DB clone workflow.
 	 */
-	bool		is_clone = strcmp(dbtemplate, "template0") != 0 && strcmp(dbtemplate, "template1") != 0;
 	YbcCloneInfo yb_clone_info = {
 		.clone_time = dbclonetime,
 		.src_db_name = dbtemplate,
@@ -1516,7 +1540,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	 */
 	if (is_clone)
 	{
-		table_close(pg_database_rel, RowExclusiveLock);
+		table_close(pg_database_rel, lockmode_rel_db);
 
 		/*
 		 * TODO(yamen): return the correct target dboid from the clone
@@ -1901,7 +1925,7 @@ yb_removing_database_from_system:
 		 */
 		if (YbIsClientYsqlConnMgr())
 		{
-			uint32_t sleep = *(YBCGetGFlags()->ysql_conn_mgr_stats_interval) * 1000 * 1000;
+			uint32_t	sleep = *(YBCGetGFlags()->ysql_conn_mgr_stats_interval) * 1000 * 1000;
 
 			elog(LOG_SERVER_ONLY,
 				 "connection manager: adding sleep of %d microseconds "

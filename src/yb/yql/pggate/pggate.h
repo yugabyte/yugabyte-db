@@ -51,10 +51,12 @@
 #include "yb/yql/pggate/pg_fk_reference_cache.h"
 #include "yb/yql/pggate/pg_function.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
+#include "yb/yql/pggate/pg_setup_perform_options_accessor_tag.h"
 #include "yb/yql/pggate/pg_statement.h"
 #include "yb/yql/pggate/pg_sys_table_prefetcher.h"
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pg_type.h"
+#include "yb/yql/pggate/pg_ybctid_reader_provider.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
@@ -113,7 +115,7 @@ class PgApiImpl {
 
   PgApiImpl(
       YbcPgTypeEntities type_entities, const YbcPgCallbacks& pg_callbacks,
-      std::optional<uint64_t> session_id, const YbcPgAshConfig& ash_config);
+      std::optional<uint64_t> session_id, YbcPgAshConfig& ash_config);
 
   ~PgApiImpl();
 
@@ -123,7 +125,9 @@ class PgApiImpl {
 
   // Interrupt aborts all pending RPCs immediately to unblock main thread.
   void Interrupt();
+
   void ResetCatalogReadTime();
+  [[nodiscard]] ReadHybridTime GetCatalogReadTime() const;
 
   // Initialize a session to process statements that come from the same client connection.
   void InitSession(YbcPgExecStatsState& session_stats, bool is_binary_upgrade);
@@ -149,6 +153,9 @@ class PgApiImpl {
 
   // Invalidate the sessions table cache.
   Status InvalidateCache(uint64_t min_ysql_catalog_version);
+
+  // Update the table cache's min_ysql_catalog_version.
+  Status UpdateTableCacheMinVersion(uint64_t min_ysql_catalog_version);
 
   // Get the gflag TEST_ysql_disable_transparent_cache_refresh_retry.
   bool GetDisableTransparentCacheRefreshRetry();
@@ -272,6 +279,7 @@ class PgApiImpl {
 
   // Invalidate the cache entry corresponding to table_id from the PgSession table cache.
   void InvalidateTableCache(const PgObjectId& table_id);
+  void RemoveTableCacheEntry(const PgObjectId& table_id);
 
   //------------------------------------------------------------------------------------------------
   // Create and drop tablegroup.
@@ -480,6 +488,12 @@ class PgApiImpl {
                       Slice upper_bound,
                       bool upper_bound_inclusive);
 
+  Status DmlBindBounds(PgStatement* handle,
+                       const Slice lower_bound,
+                       bool lower_bound_inclusive,
+                       const Slice upper_bound,
+                       bool upper_bound_inclusive);
+
   Status DmlAddRowUpperBound(YbcPgStatement handle,
                              int n_col_values,
                              YbcPgExpr *col_values,
@@ -527,7 +541,7 @@ class PgApiImpl {
   Status StartOperationsBuffering();
   Status StopOperationsBuffering();
   void ResetOperationsBuffering();
-  Status FlushBufferedOperations();
+  Status FlushBufferedOperations(const YbcFlushDebugContext& context);
   Status AdjustOperationsBuffering(int multiple = 1);
 
   //------------------------------------------------------------------------------------------------
@@ -593,8 +607,6 @@ class PgApiImpl {
 
   Status SetDistinctPrefixLength(PgStatement *handle, int distinct_prefix_length);
 
-  Status SetHashBounds(PgStatement *handle, uint16_t low_bound, uint16_t high_bound);
-
   Status ExecSelect(PgStatement *handle, const YbcPgExecParameters *exec_params);
   Result<bool> RetrieveYbctids(
       PgStatement *handle, const YbcPgExecParameters *exec_params, int natts,
@@ -603,6 +615,8 @@ class PgApiImpl {
                                YbcConstSliceVector ybctids);
 
   Status BindYbctids(PgStatement* handle, int n, uintptr_t* ybctids);
+
+  bool IsValidYbctid(uint64_t ybctid);
 
   Status DmlANNBindVector(PgStatement *handle, PgExpr *vector);
 
@@ -673,6 +687,7 @@ class PgApiImpl {
   Result<Uuid> GetActiveTransaction() const;
   Status GetActiveTransactions(YbcPgSessionTxnInfo* infos, size_t num_infos);
   bool IsDdlMode() const;
+  Result<bool> CurrentTransactionUsesFastPath() const;
 
   //------------------------------------------------------------------------------------------------
   // Expressions.
@@ -807,7 +822,8 @@ class PgApiImpl {
 
   Result<cdc::InitVirtualWALForCDCResponsePB> InitVirtualWALForCDC(
       const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
-      const YbcReplicationSlotHashRange* slot_hash_range, uint64_t active_pid);
+      const YbcReplicationSlotHashRange* slot_hash_range, uint64_t active_pid,
+      const std::vector<PgOid>& publication_oids, bool pub_all_tables);
 
   Result<cdc::UpdatePublicationTableListResponsePB> UpdatePublicationTableList(
       const std::string& stream_id, const std::vector<PgObjectId>& table_ids);
@@ -867,7 +883,7 @@ class PgApiImpl {
   Status AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode);
 
  private:
-  void ClearSessionState();
+  SetupPerformOptionsAccessorTag ClearSessionState();
 
   class Interrupter;
 
@@ -909,11 +925,10 @@ class PgApiImpl {
   // Local tablet-server shared memory data.
   tserver::TServerSharedData* tserver_shared_object_;
 
+  const bool enable_table_locking_;
   scoped_refptr<PgTxnManager> pg_txn_manager_;
-
   scoped_refptr<PgSession> pg_session_;
   std::optional<PgSysTablePrefetcher> pg_sys_table_prefetcher_;
-  ReadHybridTime paused_catalog_read_time_;
   std::unordered_set<std::unique_ptr<PgMemctx>, PgMemctxHasher, PgMemctxComparator> mem_contexts_;
   std::optional<std::pair<PgOid, int32_t>> catalog_version_db_index_;
   // Used as a snapshot of the tserver catalog version map prior to MyDatabaseId is resolved.
@@ -923,6 +938,8 @@ class PgApiImpl {
   YbctidReaderProvider ybctid_reader_provider_;
   PgFKReferenceCache fk_reference_cache_;
   ExplicitRowLockBuffer explicit_row_lock_buffer_;
+
+  ash::WaitStateInfoPtr wait_state_;
 };
 
 }  // namespace yb::pggate

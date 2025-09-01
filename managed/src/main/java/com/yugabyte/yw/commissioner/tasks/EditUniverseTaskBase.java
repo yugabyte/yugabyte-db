@@ -28,11 +28,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -77,7 +74,7 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       createValidateDiskSizeOnNodeRemovalTasks(
           universe, cluster, taskParams().getNodesInCluster(cluster.uuid));
     }
-    createPreflightNodeCheckTasks(taskParams().clusters);
+    createPreflightNodeCheckTasks(universe, taskParams().clusters);
 
     createCheckCertificateConfigTask(universe, taskParams().clusters);
   }
@@ -117,7 +114,6 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       Cluster cluster,
       Set<NodeDetails> newMasters,
       Set<NodeDetails> mastersToStop,
-      boolean updateMasters,
       boolean forceDestroyServers) {
     UserIntent userIntent = cluster.userIntent;
     Set<NodeDetails> nodes = taskParams().getNodesInCluster(cluster.uuid);
@@ -187,37 +183,6 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
         !taskParams().nodeDetailsSet.stream().allMatch(n -> n.ybPrebuiltAmi);
 
     if (!nodesToProvision.isEmpty()) {
-      Map<UUID, List<NodeDetails>> nodesPerAZ =
-          nodes.stream()
-              .filter(
-                  n ->
-                      n.state != NodeDetails.NodeState.ToBeAdded
-                          && n.state != NodeDetails.NodeState.ToBeRemoved)
-              .collect(Collectors.groupingBy(n -> n.azUuid));
-
-      nodesToProvision.forEach(
-          node -> {
-            Set<String> machineImages =
-                nodesPerAZ.getOrDefault(node.azUuid, Collections.emptyList()).stream()
-                    .map(n -> n.machineImage)
-                    .collect(Collectors.toSet());
-            Iterator<String> iterator = machineImages.iterator();
-
-            if (iterator.hasNext()) {
-              String imageToUse = iterator.next();
-
-              if (iterator.hasNext()) {
-                log.warn(
-                    "Nodes in AZ {} are based on different machine images: {},"
-                        + " falling back to default",
-                    node.cloudInfo.az,
-                    String.join(", ", machineImages));
-              } else {
-                node.machineImage = imageToUse;
-              }
-            }
-          });
-
       // Provision the nodes.
       // State checking is enabled because the subtasks are not idempotent.
       createProvisionNodeTasks(

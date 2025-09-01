@@ -113,7 +113,7 @@ namespace {
 class BlacklistChecker {
  public:
   BlacklistChecker(const string& yb_admin_exe, const string& master_address) :
-      args_{yb_admin_exe, "-master_addresses", master_address, "get_universe_config"} {
+      args_{yb_admin_exe, "--master_addresses", master_address, "get_universe_config"} {
   }
 
   Status operator()(const vector<HostPort>& servers) const {
@@ -427,8 +427,8 @@ TEST_F(AdminCliTest, InvalidMasterAddresses) {
   string unreachable_host = Substitute("127.0.0.1:$0", port);
   std::string error_string;
   ASSERT_NOK(Subprocess::Call(ToStringVector(
-      GetAdminToolPath(), "-master_addresses", unreachable_host,
-      "-timeout_ms", "1000", "list_tables"), /* output */ nullptr, &error_string));
+      GetAdminToolPath(), "--master_addresses", unreachable_host,
+      "--timeout_ms", "1000", "list_tables"), /* output */ nullptr, &error_string));
   ASSERT_STR_CONTAINS(error_string, "verify the addresses");
 }
 
@@ -443,7 +443,7 @@ TEST_F(AdminCliTest, CheckTableIdUsage) {
   const auto table_id = tables.front().table_id();
   const auto table_id_arg = Format("tableid.$0", table_id);
   auto args = ToStringVector(
-      exe_path, "-master_addresses", master_address, "list_tablets", table_id_arg);
+      exe_path, "--master_addresses", master_address, "list_tablets", table_id_arg);
   const auto args_size = args.size();
   ASSERT_OK(Subprocess::Call(args));
   // Check good optional integer argument.
@@ -577,12 +577,11 @@ class AdminCliTestForTableLocks : public AdminCliTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->enable_ysql = true;
-    options->extra_master_flags.push_back(
-        "--allowed_preview_flags_csv=enable_object_locking_for_table_locks");
-    options->extra_master_flags.push_back("--enable_object_locking_for_table_locks=true");
     options->extra_tserver_flags.push_back(
-        "--allowed_preview_flags_csv=enable_object_locking_for_table_locks");
+        Format("--allowed_preview_flags_csv=$0,$1",
+               "enable_object_locking_for_table_locks", "ysql_yb_ddl_transaction_block_enabled"));
     options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=true");
+    options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
   }
 
  protected:
@@ -679,6 +678,12 @@ TEST_F(AdminCliTestForTableLocks, ReleaseExclusiveLocksUsingTxnId) {
   const std::string table_name = "test_table";
   ASSERT_OK(conn1.ExecuteFormat("CREATE TABLE $0 (id INT PRIMARY KEY, value TEXT)", table_name));
 
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return !VERIFY_RESULT(HasLocksMaster());
+      },
+      10s * kTimeMultiplier, "Wait for master to be release locks asynchronously"));
+
   ASSERT_OK(conn1.Execute("BEGIN"));
   ASSERT_FALSE(ASSERT_RESULT(HasLocksMaster()));
   ASSERT_FALSE(ASSERT_RESULT(HasLocksTServer(kTServerIndex)));
@@ -743,8 +748,7 @@ TEST_F(AdminCliTestForTableLocks, ReleaseSharedLocksThroughMaster) {
   ASSERT_OK(conn1.ExecuteFormat("LOCK TABLE $0 IN ACCESS SHARE MODE", table_name));
   ASSERT_FALSE(ASSERT_RESULT(HasLocksMaster()));
   ASSERT_TRUE(ASSERT_RESULT(HasLocksTServer(kTServerIndex)));
-  std::string txn_id;
-  std::tie(txn_id, std::ignore) = ASSERT_RESULT(ExtractTxnAndSubtxnIdFromTServer(kTServerIndex));
+  std::string txn_id = ASSERT_RESULT(ExtractTxnAndSubtxnIdFromTServer(kTServerIndex)).first;
 
   // Having this test flag allows us to release locks for unknown transactions at the master.
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_allow_unknown_txn_release_request", "true"));
@@ -954,16 +958,16 @@ TEST_F(AdminCliTest, TestModifyTablePlacementPolicy) {
       "c.r.z0,c.r.z1,c.r.z2", 3, random_placement_uuid));
 
   ASSERT_OK(client->OpenTable(extra_table, &table));
-  ASSERT_TRUE(table->replication_info().get().live_replicas().placement_uuid().empty());
+  ASSERT_TRUE(table->replication_info()->live_replicas().placement_uuid().empty());
 
   // Fetch the placement policy for the table and verify that it matches
   // the custom info set previously.
   ASSERT_OK(client->OpenTable(extra_table, &table));
   vector<bool> found_zones;
   found_zones.assign(3, false);
-  ASSERT_EQ(table->replication_info().get().live_replicas().placement_blocks_size(), 3);
+  ASSERT_EQ(table->replication_info()->live_replicas().placement_blocks_size(), 3);
   for (int ii = 0; ii < 3; ++ii) {
-    auto pb = table->replication_info().get().live_replicas().placement_blocks(ii).cloud_info();
+    auto pb = table->replication_info()->live_replicas().placement_blocks(ii).cloud_info();
     ASSERT_EQ(pb.placement_cloud(), "c");
     ASSERT_EQ(pb.placement_region(), "r");
     if (pb.placement_zone() == "z0") {
@@ -986,17 +990,17 @@ TEST_F(AdminCliTest, TestModifyTablePlacementPolicy) {
 
   // Verify that changing the placement _uuid for a table fails if the
   // placement_uuid does not match the cluster live placement_uuid.
-  ASSERT_NOK(CallAdmin(
-      "modify_table_placement_info", table_id, "c.r.z1", 1, random_placement_uuid));
+  ASSERT_NOK(
+      CallAdmin("modify_table_placement_info", table_id, "c.r.z1", 1, random_placement_uuid));
 
   ASSERT_OK(client->OpenTable(extra_table, &table));
-  ASSERT_TRUE(table->replication_info().get().live_replicas().placement_uuid().empty());
+  ASSERT_TRUE(table->replication_info()->live_replicas().placement_uuid().empty());
 
   // Fetch the placement policy for the table and verify that it matches
   // the custom info set previously.
   ASSERT_OK(client->OpenTable(extra_table, &table));
-  ASSERT_EQ(table->replication_info().get().live_replicas().placement_blocks_size(), 1);
-  auto pb = table->replication_info().get().live_replicas().placement_blocks(0).cloud_info();
+  ASSERT_EQ(table->replication_info()->live_replicas().placement_blocks_size(), 1);
+  auto pb = table->replication_info()->live_replicas().placement_blocks(0).cloud_info();
   ASSERT_EQ(pb.placement_cloud(), "c");
   ASSERT_EQ(pb.placement_region(), "r");
   ASSERT_EQ(pb.placement_zone(), "z1");
@@ -1057,13 +1061,12 @@ TEST_F(AdminCliTest, TestCreateTransactionStatusTablesWithPlacements) {
   // Verify that the tables are all in transaction status tables in the right zone.
   std::shared_ptr<client::YBTable> table;
   for (int i = 0; i < 3; ++i) {
-    const auto table_name = YBTableName(YQLDatabase::YQL_DATABASE_CQL,
-                                        "system",
-                                        Substitute("transactions_z$0", i));
+    const auto table_name =
+        YBTableName(YQLDatabase::YQL_DATABASE_CQL, "system", Substitute("transactions_z$0", i));
     ASSERT_OK(client->OpenTable(table_name, &table));
     ASSERT_EQ(table->table_type(), YBTableType::TRANSACTION_STATUS_TABLE_TYPE);
-    ASSERT_EQ(table->replication_info().get().live_replicas().placement_blocks_size(), 1);
-    auto pb = table->replication_info().get().live_replicas().placement_blocks(0).cloud_info();
+    ASSERT_EQ(table->replication_info()->live_replicas().placement_blocks_size(), 1);
+    auto pb = table->replication_info()->live_replicas().placement_blocks(0).cloud_info();
     ASSERT_EQ(pb.placement_zone(), Substitute("z$0", i));
   }
 
@@ -1314,7 +1317,7 @@ class AdminCliListTabletsTest : public AdminCliTest {
   template <class... Args>
   Result<std::string> ListTablets(Args&&... args) {
     return CallAdminVec(ToStringVector(
-        GetAdminToolPath(), "-master_addresses", GetMasterAddresses(), "list_tablets",
+        GetAdminToolPath(), "--master_addresses", GetMasterAddresses(), "list_tablets",
         std::forward<Args>(args)...));
   }
 };
@@ -1750,7 +1753,7 @@ TEST_F(AdminCliTest, TestAdminRpcTimeout) {
 
   const auto before_ts = DateTime::TimestampNow();
   auto result = CallAdmin(
-      "-yb_client_admin_rpc_timeout_sec",
+      "--yb_client_admin_rpc_timeout_sec",
       std::to_string(kAdminRpcTimeout / MonoTime::kMillisecondsPerSecond),
       "compact_table", kTableName.namespace_name(), kTableName.table_name(),
       std::to_string(kAdminCmdTimeout / MonoTime::kMillisecondsPerSecond));

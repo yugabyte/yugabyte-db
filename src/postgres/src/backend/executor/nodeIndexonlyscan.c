@@ -835,7 +835,7 @@ yb_init_indexonly_scandesc(IndexOnlyScanState *node)
 		scandesc->yb_exec_params = &estate->yb_exec_params;
 		scandesc->yb_scan_plan = (Scan *) plan;
 		scandesc->yb_rel_pushdown =
-			YbInstantiatePushdownParams(&plan->yb_pushdown, estate);
+			YbInstantiatePushdownExprs(&plan->yb_pushdown, estate);
 		scandesc->yb_aggrefs = node->yb_ioss_aggrefs;
 		scandesc->yb_distinct_prefixlen = plan->yb_distinct_prefixlen;
 		scandesc->fetch_ybctids_only = false;

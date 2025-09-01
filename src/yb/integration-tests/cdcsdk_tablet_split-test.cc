@@ -486,7 +486,8 @@ void CDCSDKTabletSplitTest::TestGetChangesReportsTabletSplitErrorOnRetries(
   tablet::RemoveIntentsData data;
   for (const auto& peer : test_cluster()->GetTabletPeers(0)) {
     if (peer->tablet_id() == tablets[0].tablet_id()) {
-      ASSERT_OK(peer->tablet()->transaction_participant()->context()->GetLastReplicatedData(&data));
+      auto tablet = ASSERT_RESULT(peer->shared_tablet());
+      ASSERT_OK(tablet->transaction_participant()->context()->GetLastReplicatedData(&data));
     }
   }
 

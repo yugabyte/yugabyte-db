@@ -13,15 +13,20 @@
 
 #pragma once
 
+#include <future>
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/version.hpp>
+
+#include "yb/ash/pg_wait_state.h"
 
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/client/client_fwd.h"
@@ -30,12 +35,16 @@
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
 
+#include "yb/docdb/object_lock_shared_fwd.h"
+
 #include "yb/master/master_fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/tserver/tserver_util_fwd.h"
 #include "yb/tserver/pg_client.fwd.h"
+
+#include "yb/util/async_util.h"
 
 #include "yb/util/lw_function.h"
 #include "yb/util/monotime.h"
@@ -61,7 +70,7 @@ struct DdlMode {
     (AlterDatabase)(AlterTable) \
     (CreateDatabase)(CreateTable)(CreateTablegroup) \
     (DropDatabase)(DropReplicationSlot)(DropTablegroup)(TruncateTable) \
-    (AcquireAdvisoryLock)(ReleaseAdvisoryLock)(AcquireObjectLock)
+    (AcquireAdvisoryLock)(ReleaseAdvisoryLock)
 
 struct PerformResult {
   Status status;
@@ -74,52 +83,88 @@ struct PerformResult {
   }
 };
 
-using TableKeyRanges = boost::container::small_vector<RefCntSlice, 2>;
+namespace pg_client::internal {
+
+template <class Data>
+struct ResultTypeResolver {
+  using ResultType = Data::ResultType;
+};
 
 struct PerformData;
 
-class PerformExchangeFuture {
- public:
-  PerformExchangeFuture() = default;
-  explicit PerformExchangeFuture(std::shared_ptr<PerformData> data)
-      : data_(std::move(data)) {}
-
-  PerformExchangeFuture(PerformExchangeFuture&& rhs) noexcept : data_(std::move(rhs.data_)) {
-  }
-
-  PerformExchangeFuture& operator=(PerformExchangeFuture&& rhs) noexcept {
-    data_ = std::move(rhs.data_);
-    return *this;
-  }
-
-  bool valid() const {
-    return data_ != nullptr;
-  }
-
-  void wait() const;
-  bool ready() const;
-
-  PerformResult get();
-
- private:
-  std::shared_ptr<PerformData> data_;
-  mutable std::optional<PerformResult> value_;
+template <>
+struct ResultTypeResolver<PerformData> {
+  using ResultType = PerformResult;
 };
 
-using PerformResultFuture = std::variant<std::future<PerformResult>, PerformExchangeFuture>;
-using WaitEventWatcher = std::function<PgWaitEventWatcher(ash::WaitStateCode, ash::PggateRPC)>;
+template <class Data>
+class ExchangeFuture {
+ public:
+  using Result = typename ResultTypeResolver<Data>::ResultType;
 
-void Wait(const PerformResultFuture& future);
-bool Ready(const std::future<PerformResult>& future);
-bool Ready(const PerformExchangeFuture& future);
-bool Ready(const PerformResultFuture& future);
-bool Valid(const PerformResultFuture& future);
-PerformResult Get(PerformResultFuture* future);
+  ExchangeFuture();
+  explicit ExchangeFuture(std::shared_ptr<Data> data);
+  ExchangeFuture(ExchangeFuture&& rhs) noexcept;
+  ExchangeFuture& operator=(ExchangeFuture&& rhs) noexcept;
+
+  bool valid() const;
+  void wait() const;
+  bool ready() const;
+  Result get();
+
+ private:
+  std::shared_ptr<Data> data_;
+  mutable std::optional<Result> value_;
+};
+
+template <class Data>
+class ResultFuture {
+ public:
+  using Result = typename ResultTypeResolver<Data>::ResultType;
+
+  template <class... Args>
+  ResultFuture(Args&&... args) : variant_(std::forward<Args>(args)...) {} // NOLINT
+
+  void Wait() const {
+    std::visit([](const auto& future) { future.wait(); }, variant_);
+  }
+
+  bool Ready() const {
+    return std::visit(
+        [](const auto& future) {
+          if constexpr (std::is_same_v<std::decay_t<decltype(future)>, SimpleFuture>) {
+            return IsReady(future);
+          } else {
+            return future.ready();
+          }
+        },
+        variant_);
+  }
+
+  bool Valid() const {
+    return std::visit([](const auto& future) { return future.valid(); }, variant_);
+  }
+
+  Result Get() {
+    return std::visit([](auto& future) { return future.get(); }, variant_);
+  }
+
+ private:
+  using SimpleFuture = std::future<Result>;
+  std::variant<SimpleFuture, ExchangeFuture<Data>> variant_;
+};
+
+} // namespace pg_client::internal
+
+using TableKeyRanges = boost::container::small_vector<RefCntSlice, 2>;
+
+using PerformResultFuture = pg_client::internal::ResultFuture<pg_client::internal::PerformData>;
+
+using WaitEventWatcher = std::function<PgWaitEventWatcher(ash::WaitStateCode, ash::PggateRPC)>;
 
 class PgClient {
  public:
-  PgClient(const YbcPgAshConfig& ash_config,
-           std::reference_wrapper<const WaitEventWatcher> wait_event_watcher);
+  explicit PgClient(std::reference_wrapper<const WaitEventWatcher> wait_event_watcher);
   ~PgClient();
 
   Status Start(rpc::ProxyCache* proxy_cache,
@@ -221,6 +266,13 @@ class PgClient {
   PerformResultFuture PerformAsync(
       tserver::PgPerformOptionsPB* options, PgsqlOps&& operations, PgDocMetrics& metrics);
 
+  bool TryAcquireObjectLockInSharedMemory(
+      SubTransactionId subtxn_id, const YbcObjectLockId& lock_id,
+      docdb::ObjectLockFastpathLockType lock_type);
+
+  Status AcquireObjectLock(
+      tserver::PgPerformOptionsPB* options, const YbcObjectLockId& lock_id, YbcObjectLockMode mode);
+
   Result<bool> CheckIfPitrActive();
 
   Result<bool> IsObjectPartOfXRepl(const PgObjectId& table_id);
@@ -251,7 +303,8 @@ class PgClient {
 
   Result<cdc::InitVirtualWALForCDCResponsePB> InitVirtualWALForCDC(
       const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
-      const YbcReplicationSlotHashRange* slot_hash_range, uint64_t active_pid);
+      const YbcReplicationSlotHashRange* slot_hash_range, uint64_t active_pid,
+      const std::vector<PgOid>& publication_oids, bool pub_all_tables);
 
   Result<cdc::GetLagMetricsResponsePB> GetLagMetrics(
       const std::string& stream_id, int64_t* lag_metric);

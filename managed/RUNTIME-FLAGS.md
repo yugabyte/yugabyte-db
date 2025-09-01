@@ -43,7 +43,6 @@
 | "Default Kubernetes Memory Size" | "yb.kubernetes.default_memory_size_gb" | "PROVIDER" | "Default Kubernetes Memory Size" | "Integer" |
 | "Minimum Kubernetes Memory Size" | "yb.kubernetes.min_memory_size_gb" | "PROVIDER" | "Minimum Kubernetes Memory Size" | "Integer" |
 | "Maximum Kubernetes Memory Size" | "yb.kubernetes.max_memory_size_gb" | "PROVIDER" | "Maximum Kubernetes Memory Size" | "Integer" |
-| "Enable Node Agent Client" | "yb.node_agent.client.enabled" | "PROVIDER" | "Enable node agent client for communication to DB nodes." | "Boolean" |
 | "Enable Ansible Offloading" | "yb.node_agent.ansible_offloading.enabled" | "PROVIDER" | "Offload ansible tasks to the DB nodes." | "Boolean" |
 | "Remote tmp directory" | "yb.filepaths.remoteTmpDirectory" | "PROVIDER" | "A remote temporary directory should be used for performing operations on nodes within the provider scope." | "String" |
 | "Polling interval for GCP Opertion status" | "yb.gcp.operations.status_polling_interval" | "PROVIDER" | "Interval to poll the status of an ongoing GCP resource creation operation." | "Duration" |
@@ -83,7 +82,6 @@
 | "YBC admin operation timeout" | "ybc.timeout.admin_operation_timeout_ms" | "GLOBAL" | "YBC client timeout in milliseconds for admin operations" | "Integer" |
 | "XCluster config DB sync timeout" | "yb.xcluster.db_sync_timeout_ms" | "GLOBAL" | "XCluster config background DB sync timeout in milliseconds" | "Integer" |
 | "XCluster/DR config GET API timeout" | "yb.xcluster.get_api_timeout_ms" | "GLOBAL" | "XCluster/DR config GET API timeout in milliseconds" | "Integer" |
-| "XCluster DB Scoped Automatic DDL YBDB Min Compatible Version" | "yb.xcluster.db_scoped.automatic_ddl.ybdbMinCompatibleVersion" | "GLOBAL" | "Minimum YBDB version for which XCluster DB Scoped Automatic DDL is supported" | "String" |
 | "YBC socket read timeout" | "ybc.timeout.socket_read_timeout_ms" | "GLOBAL" | "YBC client socket read timeout in milliseconds" | "Integer" |
 | "YBC operation timeout" | "ybc.timeout.operation_timeout_ms" | "GLOBAL" | "YBC client timeout in milliseconds for operations" | "Integer" |
 | "Server certificate verification for S3 backup/restore" | "yb.certVerifyBackupRestore.is_enforced" | "GLOBAL" | "Enforce server certificate verification during S3 backup/restore" | "Boolean" |
@@ -170,7 +168,19 @@
 | "Node Agent Server Cert Expiry Notice" | "yb.node_agent.server_cert_expiry_notice" | "GLOBAL" | "Duration to start notifying about expiry before node agent server cert actually expires" | "Duration" |
 | "Disable Node Agent Configure Server" | "yb.node_agent.disable_configure_server" | "GLOBAL" | "Disable server configuration RPCs in node agent. Defaults to ansible if it is enabled." | "Boolean" |
 | "Enable Node Agent Message Compression" | "yb.node_agent.enable_message_compression" | "GLOBAL" | "Enable compression for message sent over node agent channel." | "Boolean" |
-| "Enable Task Runtime Info on Retry" | "yb.task.enable_task_runtime_info_on_retry" | "GLOBAL" | "Use the runtime info from the previously failed task on retry" | "Boolean" |
+| "Disable Node Agent Background Installation After Migration" | "yb.node_agent.disable_bg_install_post_migration" | "GLOBAL" | "Install node agent synchronously during a task instead after migration if it is true." | "Boolean" |
+| "GCP Blob Delete Retry Count" | "yb.gcp.blob_delete_retry_count" | "GLOBAL" | "Number of times to retry deleting blobs in GCP. This is used to handle the case where the blob deletion fails due to some transient error." | "Integer" |
+| "Node Agent Client Connection Cache Size" | "yb.node_agent.connection_cache_size" | "GLOBAL" | "Cache size for node agent client connections" | "Integer" |
+| "Node Agent Client Connection Time-out" | "yb.node_agent.connect_timeout" | "GLOBAL" | "Client connection time-out for node agent." | "Duration" |
+| "Node Agent Client Idle Connection Time-out" | "yb.node_agent.idle_connection_timeout" | "GLOBAL" | "Client idle connection timeout for node agent." | "Duration" |
+| "Node Agent Client Keep Alive Time" | "yb.node_agent.connection_keep_alive_time" | "GLOBAL" | "Client connection keep-alive time for node agent." | "Duration" |
+| "Node Agent Client Keep Alive Time-out" | "yb.node_agent.connection_keep_alive_timeout" | "GLOBAL" | "Client connection keep-alive timeout for node agent." | "Duration" |
+| "Node Agent Describe Poll Deadline" | "yb.node_agent.describe_poll_deadline" | "GLOBAL" | "Node agent describe polling deadline." | "Duration" |
+| "Enable YBC Background Upgrade" | "ybc.upgrade.enable_background_upgrade" | "GLOBAL" | "Enable background upgrade for YBC." | "Boolean" |
+| "Enable Systemd Debug Logging" | "yb.ansible.systemd_debug" | "GLOBAL" | "Enable systemd debug logging for systemctl service management commands." | "Boolean" |
+| "Keep Remote Files from an ansible run" | "yb.ansible.keep_remote_files" | "GLOBAL" | "Keep remote files after ansible run for debugging." | "Boolean" |
+| "Skip Runtime GFlag validation before cluster operations." | "yb.skip_runtime_gflag_validation" | "GLOBAL" | "Skip Runtime GFlag validation before cluster operations." | "Boolean" |
+| "Timeout for backup success marker download" | "ybc.success_marker_download_timeout_secs" | "GLOBAL" | "Timeout for backup success marker download from backup lcoation" | "Integer" |
 | "Clock Skew" | "yb.alert.max_clock_skew_ms" | "UNIVERSE" | "Default threshold for Clock Skew alert" | "Duration" |
 | "Health Log Output" | "yb.health.logOutput" | "UNIVERSE" | "It determines whether to log the output of the node health check script to the console" | "Boolean" |
 | "Node Checkout Time" | "yb.health.nodeCheckTimeoutSec" | "UNIVERSE" | "The timeout (in seconds) for node check operation as part of universe health check" | "Integer" |
@@ -335,3 +345,8 @@
 | "Enable backups during DDL" | "yb.backup.enable_backups_during_ddl" | "UNIVERSE" | "Have YBC ysql-dump use read-time as of snapshot time to support backups during DDL" | "Boolean" |
 | "Whether to check if correct THP settings are applied" | "yb.health_checks.check_thp" | "UNIVERSE" | "Whether to check if correct Transparent Huge Pages settings are applied" | "Boolean" |
 | "Timeout for catalog upgrade admin operations" | "yb.upgrade.catalog_upgrade_admin_ops_timeout_ms" | "UNIVERSE" | "Timeout for catalog upgrade admin operations in milliseconds" | "Long" |
+| "Skip auto flags and YSQL migration files validation" | "yb.upgrade.skip_autoflags_and_ysql_migration_files_validation" | "UNIVERSE" | "Skip auto flags and YSQL migration files validation" | "Boolean" |
+| "Per disk IO request size" | "ybc.disk_io_request_size_bytes" | "UNIVERSE" | "Per disk IO request size during backup/restore in Yb-Controller" | "Long" |
+| "Default disk IO read bytes per second" | "ybc.default_disk_io_read_bytes_per_sec" | "UNIVERSE" | "Default disk IO read bytes per second during backup in Yb-Controller" | "Long" |
+| "Default disk IO write bytes per second" | "ybc.default_disk_io_write_bytes_per_sec" | "UNIVERSE" | "Default disk IO write bytes per second during restore in Yb-Controller" | "Long" |
+| "Auto Recover from Pending Upgrade" | "yb.helm.auto_recover_from_pending_upgrade" | "UNIVERSE" | "If true, YBA will automatically recover from stuck Helm upgrades before performing Helm upgrade operations" | "Boolean" |

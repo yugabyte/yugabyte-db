@@ -29,6 +29,7 @@ import java.util.Map;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
 
 @RunWith(value = YBTestRunnerYsqlConnMgr.class)
@@ -44,6 +45,12 @@ public class TestDefaultConfig extends BaseYsqlConnMgr {
       put("pool_reserve_prepared_statement", "yes");
     }
   };
+
+  @Override
+  protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
+    super.customizeMiniClusterBuilder(builder);
+    builder.addCommonTServerFlag("ysql_conn_mgr_max_phy_conn_percent", "100");
+  }
 
   private Path configFile;
 

@@ -83,11 +83,10 @@ EasyCurl::~EasyCurl() {
   curl_easy_cleanup(curl_);
 }
 
-Status EasyCurl::FetchURL(const string& url,
-                          faststring* buf,
-                          int64_t timeout_sec,
-                          const std::vector<std::string>& headers) {
-  return DoRequest(url, boost::none, boost::none, timeout_sec, buf, headers);
+Status EasyCurl::FetchURL(
+    const string& url, faststring* buf, int64_t timeout_sec,
+    const std::vector<std::string>& headers) {
+  return DoRequest(url, std::nullopt, std::nullopt, timeout_sec, buf, headers);
 }
 
 Status EasyCurl::PostToURL(
@@ -116,11 +115,8 @@ string EasyCurl::EscapeString(const string& data) {
 }
 
 Status EasyCurl::DoRequest(
-    const string& url,
-    const boost::optional<const string>& post_data,
-    const boost::optional<const string>& content_type,
-    int64_t timeout_sec,
-    faststring* dst,
+    const string& url, const std::optional<const string>& post_data,
+    const std::optional<const string>& content_type, int64_t timeout_sec, faststring* dst,
     const std::vector<std::string>& headers) {
   CHECK_NOTNULL(dst)->clear();
 
@@ -147,6 +143,13 @@ Status EasyCurl::DoRequest(
   }
   if (follow_redirects_) {
     RETURN_NOT_OK(TranslateError(curl_easy_setopt(curl_, CURLOPT_FOLLOWLOCATION, 1)));
+  }
+  if (ssl_version_ != 0) {
+    RETURN_NOT_OK(TranslateError(curl_easy_setopt(curl_, CURLOPT_SSLVERSION, ssl_version_)));
+  }
+  if (!cipher_list_.empty()) {
+    RETURN_NOT_OK(
+        TranslateError(curl_easy_setopt(curl_, CURLOPT_SSL_CIPHER_LIST, cipher_list_.c_str())));
   }
 
   typedef std::unique_ptr<curl_slist, std::function<void(curl_slist*)>> CurlSlistPtr;

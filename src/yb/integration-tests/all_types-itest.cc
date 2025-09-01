@@ -35,7 +35,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include <boost/optional/optional_fwd.hpp>
 #include <gtest/gtest.h>
 
 #include "yb/client/client_fwd.h"
