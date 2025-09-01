@@ -2258,6 +2258,8 @@ bool		yb_enable_extended_sql_codes = false;
 
 bool		yb_user_ddls_preempt_auto_analyze = true;
 
+bool		yb_enable_pg_stat_statements_rpc_stats = false;
+
 const char *
 YBDatumToString(Datum datum, Oid typid)
 {
@@ -4229,6 +4231,13 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 			standard_ProcessUtility(pstmt, queryString, readOnlyTree,
 									context, params, queryEnv,
 									dest, qc);
+
+		/*
+		 * YB: Account for stats collected during the execution of utility command
+		 * Only refresh stats at the last level of nesting
+		 */
+		if (YBGetDdlNestingLevel() == 1)
+			YbRefreshSessionStatsDuringExecution();
 
 		if (is_ddl)
 		{
