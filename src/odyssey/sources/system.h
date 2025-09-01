@@ -21,7 +21,7 @@ struct od_system_server {
 	od_list_t link;
 	od_id_t sid;
 
-	volatile bool closed;
+	atomic_bool closed;
 	volatile bool pre_exited;
 };
 
