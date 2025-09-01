@@ -94,3 +94,5 @@ bool yb_mixed_mode_expression_pushdown = true;
 bool yb_debug_log_catcache_events = false;
 
 bool yb_mixed_mode_saop_pushdown = false;
+
+int yb_fk_references_cache_limit = 65535;
