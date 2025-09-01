@@ -2317,6 +2317,20 @@ Status VectorLSM<Vector, DistanceResult>::Compact(bool wait) {
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+Status VectorLSM<Vector, DistanceResult>::WaitForCompaction() {
+  // Wait for manual compaction task is completed. Returns immediately if there's no ongoing
+  // manual compaction task.
+  UniqueLock lock(compaction_tasks_mutex_);
+  compaction_tasks_cv_.wait(
+      lock,
+      [this]() NO_THREAD_SAFETY_ANALYSIS {
+        return !ContainsTask(compaction_tasks_, CompactionType::kManual);
+      });
+
+  return Status::OK();
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 void VectorLSM<Vector, DistanceResult>::RegisterUnlocked(CompactionTask& task) {
   // Sanity check.
   DCHECK(!compaction_tasks_.contains(&task));
@@ -2358,6 +2372,7 @@ Status VectorLSM<Vector, DistanceResult>::SubmitTask(CompactionTaskPtr task) {
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 template<typename Lock>
 void VectorLSM<Vector, DistanceResult>::WaitForCompactionTasksDone(Lock& lock) {
+  DCHECK_EQ(lock.mutex(), &compaction_tasks_mutex_);
   compaction_tasks_cv_.wait(
       lock, [this]() NO_THREAD_SAFETY_ANALYSIS { return compaction_tasks_.empty(); });
 }

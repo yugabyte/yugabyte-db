@@ -124,6 +124,7 @@ class VectorLSM {
 
   // Force chunks compaction. Flush does not happen.
   Status Compact(bool wait = false);
+  Status WaitForCompaction();
 
   void StartShutdown();
   void CompleteShutdown();
@@ -293,7 +294,7 @@ class VectorLSM {
   std::atomic<bool> auto_compactions_enabled_ = false;
 
   // Used to inform background compactions that there's a manual compaction task which is
-  // waiting for background
+  // waiting for background compactions completion and prevents new background compactions.
   bool has_pending_manual_compaction_ GUARDED_BY(compaction_tasks_mutex_) = false;
 
   // Currently this mutex is used only in DeleteObsoleteChunks, which are not allowed to run in

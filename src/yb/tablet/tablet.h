@@ -124,6 +124,7 @@ YB_STRONGLY_TYPED_BOOL(ResetSplit);
 struct AdminCompactionOptions {
   StdStatusCallback compaction_completion_callback;
   TableIdsPtr vector_index_ids;
+  VectorIndexOnly vector_index_only = VectorIndexOnly::kTrue;
   rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe =
       rocksdb::SkipCorruptDataBlocksUnsafe::kFalse;
 };
@@ -1049,7 +1050,7 @@ class Tablet : public AbstractTablet,
     return TriggerManualCompactionSyncUnsafe(reason, rocksdb::SkipCorruptDataBlocksUnsafe::kFalse);
   }
 
-  void TriggerVectorIndexCompactionSync(const TableIds& vector_index_ids);
+  Status TriggerVectorIndexCompactionSync(const TableIds& vector_index_ids);
 
   Status ForceRocksDBCompact(
       const rocksdb::CompactRangeOptions& regular_options,

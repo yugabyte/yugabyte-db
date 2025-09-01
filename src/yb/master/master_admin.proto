@@ -35,7 +35,10 @@ message FlushTablesRequestPB {
   optional bool add_indexes = 3;
 
   // Whether the operation only applies to regular RocksDB but not intents RocksDB.
-  optional bool regular_only = 4;
+  optional bool DEPRECATED_regular_only = 4;
+
+  // Which DBs are the subject for the operation and other options.
+  optional tablet.FlushCompactFlags flags = 5;
 }
 
 message FlushTablesResponsePB {

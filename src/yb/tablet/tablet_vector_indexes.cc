@@ -44,7 +44,7 @@
 using namespace std::literals;
 
 DEFINE_test_flag(int32, sleep_before_vector_index_backfill_seconds, 0,
-                 "Sleep specified amount of seconds before doing vector index backfill.");
+    "Sleep specified amount of seconds before doing vector index backfill.");
 
 DECLARE_uint64(vector_index_initial_chunk_size);
 
@@ -625,6 +625,19 @@ void VectorIndexList::Compact() {
     WARN_NOT_OK(index->Compact(), "Compact vector index");
   }
 }
+
+Status VectorIndexList::WaitForCompaction() {
+  if (!list_) {
+    return Status::OK();
+  }
+
+  for (const auto& index : *list_) {
+    RETURN_NOT_OK(index->WaitForCompaction());
+  }
+
+  return Status::OK();
+}
+
 
 std::string VectorIndexList::ToString() const {
   return list_ ? AsString(*list_) : AsString(list_);
