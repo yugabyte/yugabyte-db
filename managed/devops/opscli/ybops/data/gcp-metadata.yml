@@ -244,6 +244,14 @@ regions:
     - a
     - b
     - c
+  northamerica-south1:
+    cidr_prefix: '10.224'
+    image: almalinux-9-v20250212
+    project: almalinux-cloud
+    zones:
+    - a
+    - b
+    - c
   southamerica-east1:
     cidr_prefix: '10.211'
     image: almalinux-9-v20250212
