@@ -1827,4 +1827,22 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Timeout for backup success marker download from backup lcoation",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Boolean> enableCapacityReservationAws =
+      new ConfKeyInfo<>(
+          "yb.task.enable_capacity_reservation_aws",
+          ScopeType.GLOBAL,
+          "Enable capacity reservations for AWS",
+          "Enable capacity reservations for AWS for tasks that need new nodes",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  public static final ConfKeyInfo<List> capacityReservationOperationsAws =
+      new ConfKeyInfo<>(
+          "yb.task.capacity_reservation_supported_operations_aws",
+          ScopeType.GLOBAL,
+          "Capacity reservations operations for aws",
+          "List of operations that use capacity reservation in aws",
+          ConfDataType.StringListType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

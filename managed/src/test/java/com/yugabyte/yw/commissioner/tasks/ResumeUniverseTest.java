@@ -267,13 +267,42 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
             defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
             Map.of("1", Arrays.asList("host-n1", "host-n2", "host-n3"))));
 
-    verifyNodeInteractionsCapacityReservationAZU(
+    verifyNodeInteractionsCapacityReservation(
         12,
         NodeManager.NodeCommandType.Resume,
         params -> ((ResumeServer.Params) params).capacityReservation,
         Map.of(
             DoCapacityReservation.getCapacityReservationGroupName(
                 defaultUniverse.getUniverseUUID(), region.getCode()),
+            Arrays.asList("host-n1", "host-n2", "host-n3")));
+  }
+
+  @Test
+  public void testResumeUniverseWithCRAwsSuccess() {
+    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.enableCapacityReservationAws.getKey(), "true");
+    setupUniverse(defaultProvider, false, 3);
+    ResumeUniverse.Params taskParams = new ResumeUniverse.Params();
+    taskParams.customerUUID = defaultCustomer.getUuid();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    Region region = Region.getByCode(defaultProvider, "region-1");
+    verifyCapacityReservationAws(
+        defaultUniverse.getUniverseUUID(),
+        Map.of(
+            defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
+            Map.of("1", new ZoneData("region-1", Arrays.asList("host-n1", "host-n2", "host-n3")))));
+
+    verifyNodeInteractionsCapacityReservation(
+        9,
+        NodeManager.NodeCommandType.Resume,
+        params -> ((ResumeServer.Params) params).capacityReservation,
+        Map.of(
+            DoCapacityReservation.getZoneInstanceCapacityReservationName(
+                defaultUniverse.getUniverseUUID(),
+                "az-1",
+                defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.instanceType),
             Arrays.asList("host-n1", "host-n2", "host-n3")));
   }
 

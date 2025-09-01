@@ -357,13 +357,43 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
             universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
             Map.of("1", Arrays.asList("host-n4", "host-n5"))));
 
-    verifyNodeInteractionsCapacityReservationAZU(
+    verifyNodeInteractionsCapacityReservation(
         37,
         NodeManager.NodeCommandType.Create,
         params -> ((AnsibleCreateServer.Params) params).capacityReservation,
         Map.of(
             DoCapacityReservation.getCapacityReservationGroupName(
                 universe.getUniverseUUID(), region.getCode()),
+            Arrays.asList("host-n4", "host-n5")));
+  }
+
+  @Test
+  public void testExpandWithCapacityReservationAwsSuccess() {
+    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.enableCapacityReservationAws.getKey(), "true");
+    Region region = Region.create(defaultProvider, "region-2", "region-2", "yb-image");
+    Universe universe = createUniverseForProvider("universe-test", defaultProvider);
+    UniverseDefinitionTaskParams taskParams = performExpand(universe);
+    RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
+    TaskInfo taskInfo = submitTask(taskParams);
+
+    assertEquals(Success, taskInfo.getTaskState());
+    universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
+
+    verifyCapacityReservationAws(
+        universe.getUniverseUUID(),
+        Map.of(
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
+            Map.of("1", new ZoneData("region-1", Arrays.asList("host-n4", "host-n5")))));
+
+    verifyNodeInteractionsCapacityReservation(
+        37,
+        NodeManager.NodeCommandType.Create,
+        params -> ((AnsibleCreateServer.Params) params).capacityReservation,
+        Map.of(
+            DoCapacityReservation.getZoneInstanceCapacityReservationName(
+                universe.getUniverseUUID(),
+                "1",
+                universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType),
             Arrays.asList("host-n4", "host-n5")));
   }
 
