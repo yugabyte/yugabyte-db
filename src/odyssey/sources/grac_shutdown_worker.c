@@ -46,7 +46,7 @@ void od_grac_shutdown_worker(void *arg)
 	{
 		od_system_server_t *server;
 		server = od_container_of(i, od_system_server_t, link);
-		server->closed = true;
+		atomic_store(&server->closed, true);
 	}
 
 	od_dbg_printf_on_dvl_lvl(1, "servers closed, errors: %d\n", 0);

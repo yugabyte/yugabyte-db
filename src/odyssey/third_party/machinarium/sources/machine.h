@@ -10,7 +10,7 @@
 typedef struct mm_machine mm_machine_t;
 
 struct mm_machine {
-	volatile int online;
+	atomic_int online;
 	uint64_t id;
 	char *name;
 	machine_coroutine_t main;
