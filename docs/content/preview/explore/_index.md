@@ -113,13 +113,6 @@ Whether you're setting up your first YugabyteDB cluster, evaluating YugabyteDB f
   >}}
 
   {{< sections/3-box-card
-    title="Colocation"
-    description="Keep closely related data together via colocation."
-    buttonText="Colocation"
-    buttonUrl="colocation/"
-  >}}
-
-  {{< sections/3-box-card
     title="Query tuning"
     description="Identify and optimize queries in YSQL."
     buttonText="Query tuning"
