@@ -357,6 +357,11 @@ export const getCategorizedNeedBootstrapPerTableResponse = (
       bootstrapCategory: BootstrapCategory.TARGET_TABLE_MISSING,
       tableCount: 0,
       tables: {}
+    },
+    drWithAutomaticDdlMode: {
+      bootstrapCategory: BootstrapCategory.DR_WITH_AUTOMATIC_DDL_MODE,
+      tableCount: 0,
+      tables: {}
     }
   };
   Object.entries(xClusterConfigNeedBootstrapPerTableResponse).forEach(
@@ -369,6 +374,9 @@ export const getCategorizedNeedBootstrapPerTableResponse = (
       const targetTableMissing = reasons.includes(
         XClusterNeedBootstrapReason.TABLE_MISSING_ON_TARGET
       );
+      const drWithAutomaticDdlMode = reasons.includes(
+        XClusterNeedBootstrapReason.DR_CONFIG_AUTOMATIC_DDL
+      );
 
       if (bootstrapRequired) {
         categorizedNeedBootstrapPerTableResponse.bootstrapTableUuids.push(tableUuid);
@@ -376,7 +384,12 @@ export const getCategorizedNeedBootstrapPerTableResponse = (
 
       // In the following assignments, we won't be writing over an existing entries because YBA
       // backend returns an entry per tableUuid. i.e. `.tables[tableUuid]` is always undefined.
-      if (isBidirectionalReplicationParticipant && tableHasData) {
+      if (drWithAutomaticDdlMode) {
+        categorizedNeedBootstrapPerTableResponse.drWithAutomaticDdlMode.tables[
+          tableUuid
+        ] = needBootstrapDetails;
+        categorizedNeedBootstrapPerTableResponse.drWithAutomaticDdlMode.tableCount += 1;
+      } else if (isBidirectionalReplicationParticipant && tableHasData) {
         categorizedNeedBootstrapPerTableResponse.tableHasDataBidirectional.tables[
           tableUuid
         ] = needBootstrapDetails;

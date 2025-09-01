@@ -70,7 +70,8 @@ export type XClusterReplicationStatusError = typeof XClusterReplicationStatusErr
 export const XClusterNeedBootstrapReason = {
   TABLE_MISSING_ON_TARGET: 'TABLE_MISSING_ON_TARGET',
   TABLE_HAS_DATA: 'TABLE_HAS_DATA',
-  BIDIRECTIONAL_REPLICATION: 'BIDIRECTIONAL_REPLICATION'
+  BIDIRECTIONAL_REPLICATION: 'BIDIRECTIONAL_REPLICATION',
+  DR_CONFIG_AUTOMATIC_DDL: 'DR_CONFIG_AUTOMATIC_DDL'
 } as const;
 export type XClusterNeedBootstrapReason = typeof XClusterNeedBootstrapReason[keyof typeof XClusterNeedBootstrapReason];
 

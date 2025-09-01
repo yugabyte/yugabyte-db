@@ -130,7 +130,8 @@ export const BootstrapSummary = (props: ConfigureBootstrapStepProps) => {
     tableHasDataBidirectional,
     targetTableMissingBidirectional,
     tableHasData,
-    targetTableMissing
+    targetTableMissing,
+    drWithAutomaticDdlMode
   } = categorizedNeedBootstrapPerTableResponse;
   const skipBootstrap = watch('skipBootstrap');
   const runtimeConfigEntries = runtimeConfigQuery.data?.configEntries ?? [];
@@ -140,7 +141,11 @@ export const BootstrapSummary = (props: ConfigureBootstrapStepProps) => {
       config.key === RuntimeConfigKey.ENABLE_XCLUSTER_SKIP_BOOTSTRAPPING && config.value === 'true'
   );
 
-  const singleDirectionBootstrapRequiredCategories = [tableHasData, targetTableMissing];
+  const singleDirectionBootstrapRequiredCategories = [
+    tableHasData,
+    targetTableMissing,
+    drWithAutomaticDdlMode
+  ];
 
   const noBootstrapPlannedCategories = [
     noBootstrapRequired,

@@ -332,7 +332,8 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
                 targetUniverseUuid,
                 tableUuidsToVerifyBootstrapRequirement,
                 xClusterConfig.type,
-                true /* includeDetails */
+                true /* includeDetails */,
+                xClusterConfig.usedForDr
               );
               const categorizedNeedBootstrapPerTableResponse = getCategorizedNeedBootstrapPerTableResponse(
                 xClusterConfigNeedBootstrapPerTableResponse
