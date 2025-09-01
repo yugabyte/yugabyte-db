@@ -257,7 +257,7 @@ Indexes are not typically colocated with the base table. The sharding of indexes
 {{<lead link="/preview/explore/ysql-language-features/indexes-constraints/">}}
 Explore indexes
 {{</lead>}}
-{{<lead link="/preview/explore/colocation/">}}
+{{<lead link="/preview/additional-features/colocation/">}}
 Colocating tables
 {{</lead>}}
 
