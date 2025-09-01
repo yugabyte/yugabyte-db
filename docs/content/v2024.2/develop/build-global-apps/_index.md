@@ -8,7 +8,7 @@ menu:
   v2024.2:
     identifier: build-global-apps
     parent: develop
-    weight: 201
+    weight: 50
 type: indexpage
 showRightNav: true
 ---

@@ -787,6 +787,14 @@
     showSection = true
 
 [[preview_api]]
+  name = "Supporting language elements"
+  weight = 50
+  identifier = "ysql-language-elements"
+  parent = "api-ysql"
+  [preview_api.params]
+    showSection = true
+
+[[preview_api]]
   name = "YCQL"
   weight = 11
   identifier = "api-cassandra"
@@ -1173,6 +1181,14 @@
   weight = 10
   identifier = "api-ysql"
   url = "/stable/api/ysql/"
+  [stable_api.params]
+    showSection = true
+
+[[stable_api]]
+  name = "Supporting language elements"
+  weight = 50
+  identifier = "ysql-language-elements"
+  parent = "api-ysql"
   [stable_api.params]
     showSection = true
 

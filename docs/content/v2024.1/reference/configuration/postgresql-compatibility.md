@@ -5,8 +5,8 @@ description: Enhance your application performance for PostgreSQL parity
 menu:
   v2024.1:
     identifier: ysql-postgresql-compatibility
-    parent: develop
-    weight: 600
+    parent: configuration
+    weight: 3500
 type: docs
 rightNav:
   hideH3: true
@@ -18,13 +18,13 @@ To test and take advantage of features developed for enhanced PostgreSQL compati
 
 | Feature | Flag/Configuration Parameter | EA | GA |
 | :--- | :--- | :--- | :--- |
-| [Read committed](#read-committed) | [yb_enable_read_committed_isolation](../../reference/configuration/yb-tserver/#ysql-default-transaction-isolation) | {{<release "2.20, 2024.1">}} | |
-| [Wait-on-conflict](#wait-on-conflict-concurrency) | [enable_wait_queues](../../reference/configuration/yb-tserver/#enable-wait-queues) | {{<release "2.20">}} | {{<release "2024.1">}} |
-| [Cost based optimizer](#cost-based-optimizer) | [yb_enable_base_scans_cost_model](../../reference/configuration/yb-tserver/#yb-enable-base-scans-cost-model) | {{<release "2024.1">}} | |
-| [Batch nested loop join](#batched-nested-loop-join) | [yb_enable_batchednl](../../reference/configuration/yb-tserver/#yb-enable-batchednl) | {{<release "2.20">}} | {{<release "2024.1">}} |
-| [Ascending indexing by default](#default-ascending-indexing) | [yb_use_hash_splitting_by_default](../../reference/configuration/yb-tserver/#yb-use-hash-splitting-by-default) | {{<release "2024.1">}} | |
-| [YugabyteDB bitmap scan](#yugabytedb-bitmap-scan) | [yb_enable_bitmapscan](../../reference/configuration/yb-tserver/#yb-enable-bitmapscan) | {{<release "2024.1.3">}} | {{<release "2025.1">}} |
-| [Efficient communication<br>between PostgreSQL and DocDB](#efficient-communication-between-postgresql-and-docdb) | [pg_client_use_shared_memory](../../reference/configuration/yb-tserver/#pg-client-use-shared-memory) | {{<release "2024.1">}} | {{<release "2024.2">}} |
+| [Read committed](#read-committed) | [yb_enable_read_committed_isolation](../yb-tserver/#ysql-default-transaction-isolation) | {{<release "2.20, 2024.1">}} | |
+| [Wait-on-conflict](#wait-on-conflict-concurrency) | [enable_wait_queues](../yb-tserver/#enable-wait-queues) | {{<release "2.20">}} | {{<release "2024.1">}} |
+| [Cost based optimizer](#cost-based-optimizer) | [yb_enable_base_scans_cost_model](../yb-tserver/#yb-enable-base-scans-cost-model) | {{<release "2024.1">}} | |
+| [Batch nested loop join](#batched-nested-loop-join) | [yb_enable_batchednl](../yb-tserver/#yb-enable-batchednl) | {{<release "2.20">}} | {{<release "2024.1">}} |
+| [Ascending indexing by default](#default-ascending-indexing) | [yb_use_hash_splitting_by_default](../yb-tserver/#yb-use-hash-splitting-by-default) | {{<release "2024.1">}} | |
+| [YugabyteDB bitmap scan](#yugabytedb-bitmap-scan) | [yb_enable_bitmapscan](../yb-tserver/#yb-enable-bitmapscan) | {{<release "2024.1.3">}} | {{<release "2025.1">}} |
+| [Efficient communication<br>between PostgreSQL and DocDB](#efficient-communication-between-postgresql-and-docdb) | [pg_client_use_shared_memory](../yb-tserver/#pg-client-use-shared-memory) | {{<release "2024.1">}} | {{<release "2024.2">}} |
 
 | Planned Feature | Flag/Configuration Parameter | EA |
 | :--- | :--- | :--- |
@@ -52,15 +52,15 @@ Flag: `yb_enable_read_committed_isolation=true`
 
 Read Committed isolation level handles serialization errors and avoids the need to retry errors in the application logic. Read Committed provides feature compatibility, and is the default isolation level in PostgreSQL. When migrating applications from PostgreSQL to YugabyteDB, read committed is the preferred isolation level.
 
-{{<lead link="../../architecture/transactions/read-committed/">}}
-To learn about read committed isolation, see [Read Committed](../../architecture/transactions/read-committed/).
+{{<lead link="../../../architecture/transactions/read-committed/">}}
+To learn about read committed isolation, see [Read Committed](../../../architecture/transactions/read-committed/).
 {{</lead>}}
 
 ### Cost based optimizer
 
 Configuration parameter: `yb_enable_base_scans_cost_model=true`
 
-[Cost based optimizer (CBO)](../../architecture/query-layer/planner-optimizer/) creates optimal execution plans for queries, providing significant performance improvements both in single-primary and distributed PostgreSQL workloads. This feature reduces or eliminates the need to use hints or modify queries to optimize query execution. CBO provides improved performance parity.
+[Cost based optimizer (CBO)](../../../architecture/query-layer/planner-optimizer/) creates optimal execution plans for queries, providing significant performance improvements both in single-primary and distributed PostgreSQL workloads. This feature reduces or eliminates the need to use hints or modify queries to optimize query execution. CBO provides improved performance parity.
 
 {{<note>}}
 When enabling this parameter, you must run ANALYZE on user tables to maintain up-to-date statistics.
@@ -69,8 +69,8 @@ When enabling the cost models, ensure that packed row for colocated tables is en
 
 {{</note>}}
 
-{{<lead link="../../architecture/query-layer/planner-optimizer/">}}
-To learn how CBO works, see [Query Planner / CBO](../../architecture/query-layer/planner-optimizer/)
+{{<lead link="../../../architecture/query-layer/planner-optimizer/">}}
+To learn how CBO works, see [Query Planner / CBO](../../../architecture/query-layer/planner-optimizer/)
 {{</lead>}}
 
 ### Wait-on-conflict concurrency
@@ -79,8 +79,8 @@ Flag: `enable_wait_queues=true`
 
 Enables use of wait queues so that conflicting transactions can wait for the completion of other dependent transactions, helping to improve P99 latencies. Wait-on-conflict concurrency control provides feature compatibility, and uses the same semantics as PostgreSQL.
 
-{{<lead link="../../architecture/transactions/concurrency-control/">}}
-To learn about concurrency control in YugabyteDB, see [Concurrency control](../../architecture/transactions/concurrency-control/).
+{{<lead link="../../../architecture/transactions/concurrency-control/">}}
+To learn about concurrency control in YugabyteDB, see [Concurrency control](../../../architecture/transactions/concurrency-control/).
 {{</lead>}}
 
 ### Batched nested loop join
@@ -89,8 +89,8 @@ Configuration parameter: `yb_enable_batchednl=true`
 
 Batched nested loop join (BNLJ) is a join execution strategy that improves on nested loop joins by batching the tuples from the outer table into a single request to the inner table. By using batched execution, BNLJ helps reduce the latency for query plans that previously used nested loop joins. BNLJ provides improved performance parity.
 
-{{<lead link="../../architecture/query-layer/join-strategies/">}}
-To learn about join strategies in YugabyteDB, see [Join strategies](../../architecture/query-layer/join-strategies/).
+{{<lead link="../../../architecture/query-layer/join-strategies/">}}
+To learn about join strategies in YugabyteDB, see [Join strategies](../../../architecture/query-layer/join-strategies/).
 {{</lead>}}
 
 ### Default ascending indexing
@@ -129,7 +129,7 @@ Enables the use of PostgreSQL [parallel queries](https://www.postgresql.org/docs
 
 To enable EPCM in YugabyteDB:
 
-- Pass the `enable_pg_parity_early_access` flag to [yugabyted](../../reference/configuration/yugabyted/) when starting your cluster.
+- Pass the `enable_pg_parity_early_access` flag to [yugabyted](../yugabyted/) when starting your cluster.
 
 For example, from your YugabyteDB home directory, run the following command:
 
@@ -150,7 +150,7 @@ To enable EPCM in YugabyteDB Anywhere v2024.2 or later:
   You can also change the setting on deployed universes using the **More > Edit Postgres Compatibility** option.
 
 {{<warning title="Flag settings">}}
-Setting Enhanced Postgres Compatibility overrides any [flags you set](../../yugabyte-platform/manage-deployments/edit-config-flags/) individually for the universe. The **G-Flags** tab will however continue to display the setting that you customized.
+Setting Enhanced Postgres Compatibility overrides any [flags you set](../../../yugabyte-platform/manage-deployments/edit-config-flags/) individually for the universe. The **G-Flags** tab will however continue to display the setting that you customized.
 {{</warning>}}
 
 ### YugabyteDB Aeon
@@ -189,7 +189,7 @@ The following PostgreSQL features are not supported in YugabyteDB:
 | CREATE SCHEMA with elements | {{<issue 10865>}}|
 | Index on citext column | {{<issue 9698>}}|
 | ABSTIME type | {{<issue 15637>}}|
-| transaction ids (xid) <br/> YugabyteDB uses [Hybrid logical clocks](../../architecture/transactions/transactions-overview/#hybrid-logical-clocks) instead of transaction ids. | {{<issue 15638>}}|
+| transaction ids (xid) <br/> YugabyteDB uses [Hybrid logical clocks](../../../architecture/transactions/transactions-overview/#hybrid-logical-clocks) instead of transaction ids. | {{<issue 15638>}}|
 | DDL operations within transaction| {{<issue 1404>}}|
 | Some ALTER TABLE variants| {{<issue 1124>}}|
 | UNLOGGED table | {{<issue 1129>}} |
