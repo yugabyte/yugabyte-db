@@ -119,6 +119,7 @@
 #include "access/heaptoast.h"
 #include "access/yb_scan.h"
 #include "commands/copy.h"
+#include "common/pg_yb_param_status_flags.h"
 #include "executor/ybModifyTable.h"
 #include "pg_yb_utils.h"
 #include "tcop/pquery.h"
@@ -8486,6 +8487,13 @@ SelectConfigFiles(const char *userDoption, const char *progname)
 	return true;
 }
 
+static bool
+yb_should_report_guc(struct config_generic *record)
+{
+	/* TODO(arpit.saxena): Use narrower sending criteria for correctness */
+	return ((record->flags & GUC_REPORT) && !YbIsClientYsqlConnMgr()) ||
+		(YbIsClientYsqlConnMgr() && record->context > PGC_BACKEND);
+}
 
 /*
  * Reset all options to their saved default values (implements RESET ALL)
@@ -8593,8 +8601,7 @@ ResetAllOptions(void)
 		gconf->scontext = gconf->reset_scontext;
 		gconf->srole = gconf->reset_srole;
 
-		if ((gconf->flags & GUC_REPORT && !YbIsClientYsqlConnMgr()) ||
-			(YbIsClientYsqlConnMgr() && gconf->context > PGC_BACKEND))
+		if (yb_should_report_guc(gconf))
 		{
 			gconf->status |= GUC_NEEDS_REPORT;
 			report_needed = true;
@@ -9016,9 +9023,7 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 			pfree(stack);
 
 			/* Report new value if we changed it */
-			if (changed &&
-				((gconf->flags & GUC_REPORT && !YbIsClientYsqlConnMgr()) ||
-				 (YbIsClientYsqlConnMgr() && gconf->context > PGC_BACKEND)))
+			if (changed && yb_should_report_guc(gconf))
 			{
 				gconf->status |= GUC_NEEDS_REPORT;
 				report_needed = true;
@@ -9146,27 +9151,28 @@ ReportGUCOption(struct config_generic *record)
 	{
 		StringInfoData msgbuf;
 
-		/*
-		 * YB: Do not bombard the client with ParameterStatus packets.
-		 * Send a specialized ParameterStatus packet to instruct Connection
-		 * Manager to not forward the packet to the client.
-		 *
-		 * 1. If GUC_REPORT is not enabled for the variable.
-		 * 2. If GUC_REPORT is enabled, but the previous value is the
-		 * same as the current value.
-		 */
-		bool		guc_report_not_enabled = !(record->flags & GUC_REPORT);
-		bool		guc_report_enabled_same_value = (record->flags & GUC_REPORT) &&
-			record->last_reported &&
-			strcmp(val, record->last_reported) == 0;
+		if (YbIsClientYsqlConnMgr())
+		{
+			uint8		flags = 0;
 
-		if (YbIsClientYsqlConnMgr() && (guc_report_not_enabled || guc_report_enabled_same_value))
+			if (record->flags & GUC_REPORT)
+				flags |= YB_PARAM_STATUS_REPORT_ENABLED;
+
+			/* TODO(arpit.saxena): Populate other bits in flags */
+
 			pq_beginmessage(&msgbuf, 'r');
+			pq_sendstring(&msgbuf, record->name);
+			pq_sendstring(&msgbuf, val);
+			pq_sendbyte(&msgbuf, flags);
+			pq_endmessage(&msgbuf);
+		}
 		else
+		{
 			pq_beginmessage(&msgbuf, 'S');
-		pq_sendstring(&msgbuf, record->name);
-		pq_sendstring(&msgbuf, val);
-		pq_endmessage(&msgbuf);
+			pq_sendstring(&msgbuf, record->name);
+			pq_sendstring(&msgbuf, val);
+			pq_endmessage(&msgbuf);
+		}
 
 		/*
 		 * We need a long-lifespan copy.  If strdup() fails due to OOM, we'll
@@ -10926,11 +10932,8 @@ set_config_option_ext(const char *name, const char *value,
 			}
 	}
 
-	if (changeVal &&
-		((record->flags & GUC_REPORT && !YbIsClientYsqlConnMgr()) ||
-		 (YbIsClientYsqlConnMgr() &&
-		  record->context > PGC_BACKEND &&
-		  !(action & GUC_ACTION_LOCAL))))
+	if (changeVal && yb_should_report_guc(record) &&
+		!(YbIsClientYsqlConnMgr() && (action & GUC_ACTION_LOCAL)))
 	{
 		record->status |= GUC_NEEDS_REPORT;
 		report_needed = true;
