@@ -15,20 +15,20 @@ Although building scalable applications on top of YugabyteDB is straightforward,
 To learn how to build applications on top of YugabyteDB, see [Learn app development](./learn/).
 {{</lead>}}
 
-## Data modeling
-
-Although YugabyteDB is fully SQL compatible, modeling data for a distributed database is quite different from modeling for a monolithic database like MySQL or PostgreSQL. This is because the table data is distributed across different nodes. You must understand how to model your data for efficient storage and retrieval from a distributed system.
-
-{{<lead link="./data-modeling/">}}
-To understand how to model your data for YugabyteDB, see [Distributed data modeling](./data-modeling/).
-{{</lead>}}
-
 ## Drivers and ORMs
 
 To communicate with YugabyteDB, applications need to use drivers. Applications can also be built using Object-Relational mappings, a technique used to communicate with the database using object-oriented techniques. We've tested various drivers and ORMs in multiple languages with the optimal configurations to get your applications up and running.
 
 {{<lead link="../drivers-orms/">}}
 For the list of drivers and ORMs with sample code, see [Drivers and ORMs](../drivers-orms/).
+{{</lead>}}
+
+## Data modeling
+
+Although YugabyteDB is fully SQL compatible, modeling data for a distributed database is quite different from modeling for a monolithic database like MySQL or PostgreSQL. This is because the table data is distributed across different nodes. You must understand how to model your data for efficient storage and retrieval from a distributed system.
+
+{{<lead link="./data-modeling/">}}
+To understand how to model your data for YugabyteDB, see [Distributed data modeling](./data-modeling/).
 {{</lead>}}
 
 ## Global applications
