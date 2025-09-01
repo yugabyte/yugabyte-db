@@ -44,7 +44,7 @@ void DocWriteBatchCache::Put(
   prefix_to_gen_ht_[key_bytes.data()] = entry;
 }
 
-boost::optional<DocWriteBatchCache::Entry> DocWriteBatchCache::Get(
+std::optional<DocWriteBatchCache::Entry> DocWriteBatchCache::Get(
     const dockv::KeyBytes& encoded_key_prefix) {
   auto iter = prefix_to_gen_ht_.find(encoded_key_prefix.data());
 #ifdef DOCDB_DEBUG
@@ -52,11 +52,12 @@ boost::optional<DocWriteBatchCache::Entry> DocWriteBatchCache::Get(
     DOCDB_DEBUG_LOG("DocWriteBatchCache contained no entry for $0",
                     dockv::BestEffortDocDBKeyToStr(encoded_key_prefix));
   } else {
-    DOCDB_DEBUG_LOG("DocWriteBatchCache entry found for key $0: $1",
-                    dockv::BestEffortDocDBKeyToStr(encoded_key_prefix), EntryToStr(iter->second));
+    DOCDB_DEBUG_LOG(
+        "DocWriteBatchCache entry found for key $0: $1",
+        dockv::BestEffortDocDBKeyToStr(encoded_key_prefix), EntryToStr(iter->second));
   }
 #endif
-  return iter == prefix_to_gen_ht_.end() ? boost::optional<Entry>() : iter->second;
+  return iter == prefix_to_gen_ht_.end() ? std::optional<Entry>() : iter->second;
 }
 
 string DocWriteBatchCache::ToDebugString() {

@@ -22,8 +22,6 @@
 #include <condition_variable>
 #include <unordered_map>
 
-#include <boost/optional.hpp>
-
 #include "yb/gutil/thread_annotations.h"
 
 #include "yb/rpc/io_thread_pool.h"
@@ -51,7 +49,7 @@ class SystemQueryCache {
   explicit SystemQueryCache(cqlserver::CQLServiceImpl* service_impl);
   ~SystemQueryCache();
 
-  boost::optional<RowsResult::SharedPtr> Lookup(const std::string& query);
+  std::optional<RowsResult::SharedPtr> Lookup(const std::string& query);
 
   MonoDelta GetStaleness();
 

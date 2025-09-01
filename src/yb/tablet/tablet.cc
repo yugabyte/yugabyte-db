@@ -1648,13 +1648,13 @@ Result<std::unique_ptr<docdb::DocRowwiseIterator>> Tablet::NewUninitializedDocRo
   const auto table_info = VERIFY_RESULT(metadata_->GetTableInfo(table_id));
 
   auto txn_op_ctx = VERIFY_RESULT(CreateTransactionOperationContext(
-      /* transaction_id */ boost::none,
+      /* transaction_id */ std::nullopt,
       table_info->schema().table_properties().is_ysql_catalog_table()));
   docdb::ReadOperationData read_operation_data = {
-    .deadline = deadline,
-    .read_time = read_hybrid_time
-        ? read_hybrid_time
-        : ReadHybridTime::SingleTime(VERIFY_RESULT(SafeTime(RequireLease::kFalse))),
+      .deadline = deadline,
+      .read_time = read_hybrid_time
+                       ? read_hybrid_time
+                       : ReadHybridTime::SingleTime(VERIFY_RESULT(SafeTime(RequireLease::kFalse))),
   };
   return std::make_unique<DocRowwiseIterator>(
       projection, table_info->doc_read_context, txn_op_ctx, doc_db(), read_operation_data,
@@ -2396,12 +2396,11 @@ Status Tablet::RemoveIntentsImpl(
   rocksdb::WriteBatch intents_write_batch;
   HybridTime min_running_ht = CHECK_NOTNULL(transaction_participant_)->MinRunningHybridTime();
   for (const auto& id : ids) {
-    boost::optional<docdb::ApplyTransactionState> apply_state;
+    std::optional<docdb::ApplyTransactionState> apply_state;
     for (;;) {
       docdb::RemoveIntentsContext context(id, static_cast<uint8_t>(reason));
       docdb::IntentsWriter writer(
-          apply_state ? apply_state->key : Slice(), min_running_ht,
-          intents_db_.get(), &context);
+          apply_state ? apply_state->key : Slice(), min_running_ht, intents_db_.get(), &context);
       intents_write_batch.SetDirectWriter(&writer);
       docdb::ConsensusFrontiers frontiers;
       InitFrontiers(data, frontiers);
@@ -2437,15 +2436,14 @@ Status Tablet::RemoveAdvisoryLock(
   auto scoped_read_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(scoped_read_operation);
 
-  RSTATUS_DCHECK(transaction_participant_, IllegalState,
-                 "Transaction participant is not initialized");
+  RSTATUS_DCHECK(
+      transaction_participant_, IllegalState, "Transaction participant is not initialized");
   HybridTime min_running_ht = transaction_participant_->MinRunningHybridTime();
-  boost::optional<docdb::ApplyTransactionState> apply_state;
+  std::optional<docdb::ApplyTransactionState> apply_state;
   dockv::KeyBytes advisory_lock_key(key);
   advisory_lock_key.AppendKeyEntryType(dockv::KeyEntryType::kIntentTypeSet);
   advisory_lock_key.AppendIntentTypeSet(intent_types);
-  docdb::RemoveIntentsContext context(
-      transaction_id, static_cast<uint8_t>(RemoveReason::kUnlock));
+  docdb::RemoveIntentsContext context(transaction_id, static_cast<uint8_t>(RemoveReason::kUnlock));
   docdb::IntentsWriter writer(
       Slice(), min_running_ht,
       intents_db_.get(), &context, /* ignore_metadata= */ true, advisory_lock_key);
@@ -2465,12 +2463,12 @@ Status Tablet::RemoveAdvisoryLocks(const TransactionId& id, rocksdb::DirectWrite
   RSTATUS_DCHECK(transaction_participant_, IllegalState,
                  "Transaction participant is not initialized");
   HybridTime min_running_ht = transaction_participant_->MinRunningHybridTime();
-  boost::optional<docdb::ApplyTransactionState> apply_state;
+  std::optional<docdb::ApplyTransactionState> apply_state;
   for (;;) {
     docdb::RemoveIntentsContext context(id, static_cast<uint8_t>(RemoveReason::kUnlock));
     docdb::IntentsWriter writer(
-        apply_state ? apply_state->key : Slice(), min_running_ht,
-        intents_db_.get(), &context, /* ignore_metadata */ true);
+        apply_state ? apply_state->key : Slice(), min_running_ht, intents_db_.get(), &context,
+        /* ignore_metadata */ true);
     RETURN_NOT_OK(writer.Apply(handler));
 
     if (!context.apply_state().active()) {
@@ -4298,16 +4296,15 @@ Result<TransactionOperationContext> Tablet::CreateTransactionOperationContext(
     auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(
         transaction_metadata.transaction_id()));
     return CreateTransactionOperationContext(
-        boost::make_optional(txn_id), is_ysql_catalog_table, subtransaction_metadata);
+        std::make_optional(txn_id), is_ysql_catalog_table, subtransaction_metadata);
   } else {
     return CreateTransactionOperationContext(
-        /* transaction_id */ boost::none, is_ysql_catalog_table, subtransaction_metadata);
+        /* transaction_id */ std::nullopt, is_ysql_catalog_table, subtransaction_metadata);
   }
 }
 
 Result<TransactionOperationContext> Tablet::CreateTransactionOperationContext(
-    const boost::optional<TransactionId>& transaction_id,
-    bool is_ysql_catalog_table,
+    const std::optional<TransactionId>& transaction_id, bool is_ysql_catalog_table,
     const SubTransactionMetadataPB* subtransaction_metadata) const {
   if (!txns_enabled_) {
     return TransactionOperationContext();
@@ -4315,8 +4312,8 @@ Result<TransactionOperationContext> Tablet::CreateTransactionOperationContext(
 
   const TransactionId* txn_id = nullptr;
 
-  if (transaction_id.is_initialized()) {
-    txn_id = transaction_id.get_ptr();
+  if (transaction_id.has_value()) {
+    txn_id = &transaction_id.value();
   } else if (metadata_->schema()->table_properties().is_transactional() || is_ysql_catalog_table) {
     // deadbeef-dead-beef-dead-beef00000075
     static const TransactionId kArbitraryTxnIdForNonTxnReads(

@@ -38,8 +38,6 @@
 #include <utility>
 #include <vector>
 
-#include <boost/optional/optional.hpp>
-#include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
@@ -60,6 +58,7 @@
 #include "yb/master/master.h"
 #include "yb/master/mini_master.h"
 
+#include "yb/util/logging.h"
 #include "yb/util/memory/arena_fwd.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"

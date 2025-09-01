@@ -1247,7 +1247,7 @@ class TabletBootstrap {
 
     if (test_hooks_) {
       const auto docdb_flushed_op_ids_override = test_hooks_->GetFlushedOpIdsOverride();
-      if (docdb_flushed_op_ids_override.is_initialized()) {
+      if (docdb_flushed_op_ids_override.has_value()) {
         LOG_WITH_PREFIX(INFO) << "Using test values of flushed DocDB OpIds: "
                               << docdb_flushed_op_ids_override->ToString();
         return *docdb_flushed_op_ids_override;
@@ -1320,12 +1320,11 @@ class TabletBootstrap {
 
     // Time point of the first entry of the last WAL segment, and how far back in time from it we
     // should retain other entries.
-    boost::optional<RestartSafeCoarseTimePoint> retryable_requests_replay_from_this_or_earlier_time;
+    std::optional<RestartSafeCoarseTimePoint> retryable_requests_replay_from_this_or_earlier_time;
 
     RestartSafeCoarseDuration retryable_requests_retain_interval =
         data_.bootstrap_retryable_requests && data_.retryable_requests
-            ? std::chrono::seconds(
-                  data_.retryable_requests->request_timeout_secs())
+            ? std::chrono::seconds(data_.retryable_requests->request_timeout_secs())
             : 0s;
     // If retryable_requests_retain_interval is 0s, set last_op_id_in_retryable_requests to
     // OpId::Max() to avoid replaying logs from last_op_id_in_retryable_requests if
@@ -1388,7 +1387,7 @@ class TabletBootstrap {
       }
       const RestartSafeCoarseTimePoint first_op_time = first_op_metadata.entry_time;
       const auto retryable_requests_replay_from_this_or_earlier_time_was_initialized =
-          retryable_requests_replay_from_this_or_earlier_time.is_initialized();
+          retryable_requests_replay_from_this_or_earlier_time.has_value();
 
       if (!retryable_requests_replay_from_this_or_earlier_time_was_initialized) {
         retryable_requests_replay_from_this_or_earlier_time =
@@ -2025,7 +2024,7 @@ class TabletBootstrap {
   log::SkipWalWrite skip_wal_rewrite_;
 
   // A way to inject flushed OpIds for regular and intents RocksDBs.
-  boost::optional<DocDbOpIds> TEST_docdb_flushed_op_ids_;
+  std::optional<DocDbOpIds> TEST_docdb_flushed_op_ids_;
 
   // This is populated if TEST_collect_replayed_op_ids is true.
   std::vector<OpId> TEST_replayed_op_ids_;

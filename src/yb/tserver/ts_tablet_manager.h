@@ -38,7 +38,6 @@
 #include <unordered_set>
 #include <vector>
 
-#include <boost/optional/optional_fwd.hpp>
 #include <gtest/gtest_prod.h>
 
 #include "yb/client/client_fwd.h"
@@ -222,7 +221,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   Status ApplyTabletSplit(
       tablet::SplitOperation* operation, log::Log* raft_log,
-      boost::optional<consensus::RaftConfigPB> committed_raft_config) override;
+      std::optional<consensus::RaftConfigPB> committed_raft_config) override;
 
   Status ApplyCloneTablet(
       tablet::CloneOperation* operation, log::Log* raft_log,
@@ -239,13 +238,10 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // If `hide_only` is true, then just hide tablet instead of deleting it.
   // If `keep_data` is true, then on disk data is not deleted.
   Status DeleteTablet(
-      const TabletId& tablet_id,
-      tablet::TabletDataState delete_type,
+      const TabletId& tablet_id, tablet::TabletDataState delete_type,
       tablet::ShouldAbortActiveTransactions should_abort_active_txns,
-      const boost::optional<int64_t>& cas_config_opid_index_less_or_equal,
-      bool hide_only,
-      bool keep_data,
-      boost::optional<TabletServerErrorPB::Code>* error_code);
+      const std::optional<int64_t>& cas_config_opid_index_less_or_equal, bool hide_only,
+      bool keep_data, std::optional<TabletServerErrorPB::Code>* error_code);
 
   // Lookup the given tablet peer by its ID. Returns nullptr if the tablet is not found.
   tablet::TabletPeerPtr LookupTablet(const TabletId& tablet_id) const;
@@ -458,7 +454,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   typedef std::unordered_map<std::string, TabletReportState> DirtyMap;
 
   // Returns Status::OK() iff state_ == MANAGER_RUNNING.
-  Status CheckRunningUnlocked(boost::optional<TabletServerErrorPB::Code>* error_code) const
+  Status CheckRunningUnlocked(std::optional<TabletServerErrorPB::Code>* error_code) const
       REQUIRES_SHARED(mutex_);
 
   // Registers the start of a tablet state transition by inserting the tablet

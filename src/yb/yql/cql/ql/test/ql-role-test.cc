@@ -80,7 +80,7 @@ class QLTestAuthentication : public QLTestBase {
 
   uint64_t GetPermissionsVersion() {
     CHECK_OK(client_->GetPermissions(&permissions_cache_));
-    boost::optional<uint64_t> version = permissions_cache_.version();
+    std::optional<uint64_t> version = permissions_cache_.version();
     CHECK(version);
     return *version;
   }

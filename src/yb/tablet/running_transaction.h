@@ -159,9 +159,8 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   bool HasRetryableRequestsReplicated() const;
 
  private:
-  static boost::optional<TransactionStatus> GetStatusAt(
-      HybridTime time,
-      HybridTime last_known_status_hybrid_time,
+  static std::optional<TransactionStatus> GetStatusAt(
+      HybridTime time, HybridTime last_known_status_hybrid_time,
       TransactionStatus last_known_status);
 
   void SendStatusRequest(

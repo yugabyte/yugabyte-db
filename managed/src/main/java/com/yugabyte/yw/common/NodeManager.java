@@ -80,6 +80,7 @@ import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
@@ -1914,6 +1915,11 @@ public class NodeManager extends DevopsBase {
           Common.CloudType cloudType = userIntent.providerType;
           if (!cloudType.equals(Common.CloudType.onprem)) {
             addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, false);
+            if (taskParam.capacityReservation != null) {
+              commandArgs.add("--capacity_reservation");
+              commandArgs.add(taskParam.capacityReservation);
+            }
+
             commandArgs.add("--cloud_subnet");
             commandArgs.add(taskParam.subnetId);
 
@@ -2315,6 +2321,10 @@ public class NodeManager extends DevopsBase {
           }
           ResumeServer.Params taskParam = (ResumeServer.Params) nodeTaskParam;
           addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, true);
+          if (taskParam.capacityReservation != null) {
+            commandArgs.add("--capacity_reservation");
+            commandArgs.add(taskParam.capacityReservation);
+          }
           if (!Strings.isNullOrEmpty(taskParam.nodeIP)) {
             commandArgs.add("--node_ip");
             commandArgs.add(taskParam.nodeIP);
@@ -2459,6 +2469,10 @@ public class NodeManager extends DevopsBase {
             commandArgs.add(Integer.toString(taskParam.cgroupSize));
           }
 
+          if (taskParam.capacityReservation != null) {
+            commandArgs.add("--capacity_reservation");
+            commandArgs.add(taskParam.capacityReservation);
+          }
           if (taskParam.force) {
             commandArgs.add("--force");
           }
@@ -3028,6 +3042,14 @@ public class NodeManager extends DevopsBase {
     if (OtelCollectorUtil.isAuditLogExportEnabledInUniverse(auditLogConfig)
         || OtelCollectorUtil.isQueryLogExportEnabledInUniverse(queryLogConfig)
         || OtelCollectorUtil.isMetricsExportEnabledInUniverse(metricsExportConfig)) {
+      // Get the node agent for the node if its present.
+      Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
+      NodeDetails nodeDetails = universe.getNode(taskParams.nodeName);
+      NodeAgent nodeAgent =
+          getNodeAgentClient()
+              .maybeGetNodeAgent(nodeDetails.cloudInfo.private_ip, provider, universe)
+              .orElse(null);
+
       commandArgs.add("--otel_col_config_file");
       commandArgs.add(
           otelCollectorConfigGenerator
@@ -3039,7 +3061,8 @@ public class NodeManager extends DevopsBase {
                   queryLogConfig,
                   metricsExportConfig,
                   logLinePrefix,
-                  getOtelColMetricsPort(taskParams))
+                  getOtelColMetricsPort(taskParams),
+                  nodeAgent)
               .toAbsolutePath()
               .toString());
 

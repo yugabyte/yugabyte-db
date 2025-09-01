@@ -494,7 +494,7 @@ class Executor : public qlexpr::QLExprExecutor {
   const QLMetrics* ql_metrics_;
 
   // Whether this is a batch with statements that returns status.
-  boost::optional<bool> returns_status_batch_opt_;
+  std::optional<bool> returns_status_batch_opt_;
 
   class ExecutorTask : public rpc::ThreadPoolTask {
    public:

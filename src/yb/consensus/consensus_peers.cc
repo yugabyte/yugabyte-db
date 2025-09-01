@@ -38,8 +38,6 @@
 #include <utility>
 #include <vector>
 
-#include <boost/optional.hpp>
-
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.h"
@@ -333,10 +331,10 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
 
       req.set_tablet_id(tablet_id_);
       req.set_type(consensus::CHANGE_ROLE);
-      RaftPeerPB *peer = req.mutable_server();
+      RaftPeerPB* peer = req.mutable_server();
       peer->set_permanent_uuid(peer_pb_.permanent_uuid());
 
-      boost::optional<tserver::TabletServerErrorPB::Code> error_code;
+      std::optional<tserver::TabletServerErrorPB::Code> error_code;
 
       // If another ChangeConfig is being processed, our request will be rejected.
       YB_LOG_EVERY_N(INFO, FLAGS_TEST_log_change_config_every_n)

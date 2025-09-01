@@ -205,20 +205,15 @@ class LoadBalancerTablegroupsTest : public LoadBalancerColocatedTablesTest {
 
     for (const auto& tn : table_names_) {
       ASSERT_OK(client_->CreateNamespaceIfNotExists(
-          tn.namespace_name(),
-          tn.namespace_type(),
-          "",                /* creator_role_name */
-          tn.namespace_id(), /* namespace_id */
-          "",                /* source_namespace_id */
-          boost::none,       /* next_pg_oid */
+          tn.namespace_name(), tn.namespace_type(), "", /* creator_role_name */
+          tn.namespace_id(),                            /* namespace_id */
+          "",                                           /* source_namespace_id */
+          std::nullopt,                                 /* next_pg_oid */
           false /* colocated */));
 
       ASSERT_OK(client_->CreateTablegroup(
-          tn.namespace_name(),
-          tn.namespace_id(),
-          ns_id_to_tg_id[tn.namespace_id()],
-          "" /* tablespace_id */,
-          nullptr /* txn */));
+          tn.namespace_name(), tn.namespace_id(), ns_id_to_tg_id[tn.namespace_id()],
+          "" /* tablespace_id */, nullptr /* txn */));
       client::YBSchemaBuilder b;
       b.AddColumn("k")->Type(DataType::BINARY)->NotNull()->PrimaryKey();
       b.AddColumn("v")->Type(DataType::BINARY)->NotNull();
@@ -271,7 +266,7 @@ class LoadBalancerLegacyColocatedDBColocatedTablesTest : public LoadBalancerColo
                                                     "",                 /* creator_role_name */
                                                     tn.namespace_id(),  /* namespace_id */
                                                     "",                 /* source_namespace_id */
-                                                    boost::none,        /* next_pg_oid */
+                                                    std::nullopt,        /* next_pg_oid */
                                                     true                /* colocated */));
 
       client::YBSchemaBuilder b;
@@ -279,11 +274,12 @@ class LoadBalancerLegacyColocatedDBColocatedTablesTest : public LoadBalancerColo
       b.AddColumn("v")->Type(DataType::BINARY)->NotNull();
       ASSERT_OK(b.Build(&schema_));
 
-      ASSERT_OK(NewTableCreator()->table_name(tn)
-                                  .table_id(tn.table_id())
-                                  .schema(&schema_)
-                                  .is_colocated_via_database(true)
-                                  .Create());
+      ASSERT_OK(NewTableCreator()
+                    ->table_name(tn)
+                    .table_id(tn.table_id())
+                    .schema(&schema_)
+                    .is_colocated_via_database(true)
+                    .Create());
     }
   }
 

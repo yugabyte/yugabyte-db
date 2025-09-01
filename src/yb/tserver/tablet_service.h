@@ -77,6 +77,10 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
 
   void Write(const WriteRequestPB* req, WriteResponsePB* resp, rpc::RpcContext context) override;
 
+  void WaitForAsyncWrite(
+      const WaitForAsyncWriteRequestPB* req, WaitForAsyncWriteResponsePB* resp,
+      rpc::RpcContext context) override;
+
   void Read(const ReadRequestPB* req, ReadResponsePB* resp, rpc::RpcContext context) override;
 
   void VerifyTableRowRange(

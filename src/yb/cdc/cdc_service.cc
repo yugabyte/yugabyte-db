@@ -450,13 +450,13 @@ class CDCServiceImpl::Impl {
     return it->schema_details_map;
   }
 
-  boost::optional<OpId> GetLastStreamedOpId(const TabletStreamInfo& producer_tablet) {
+  std::optional<OpId> GetLastStreamedOpId(const TabletStreamInfo& producer_tablet) {
     SharedLock<rw_spinlock> lock(mutex_);
     auto it = cdc_state_metadata_.find(producer_tablet);
     if (it != cdc_state_metadata_.end()) {
       return it->last_streamed_op_id;
     }
-    return boost::none;
+    return std::nullopt;
   }
 
   void AddTabletCheckpoint(
@@ -488,7 +488,7 @@ class CDCServiceImpl::Impl {
     }
   }
 
-  boost::optional<int64_t> GetLastActiveTime(const TabletStreamInfo& producer_tablet) {
+  std::optional<int64_t> GetLastActiveTime(const TabletStreamInfo& producer_tablet) {
     SharedLock<rw_spinlock> lock(mutex_);
     auto it = tablet_checkpoints_.find(producer_tablet);
     if (it != tablet_checkpoints_.end()) {
@@ -514,7 +514,7 @@ class CDCServiceImpl::Impl {
               << producer_tablet.tablet_id << ", stream: " << producer_tablet.stream_id;
     }
 
-    return boost::none;
+    return std::nullopt;
   }
 
   Status EraseTabletAndStreamEntry(const TabletStreamInfo& info) {
@@ -528,7 +528,7 @@ class CDCServiceImpl::Impl {
     return Status::OK();
   }
 
-  boost::optional<OpId> GetLastCheckpoint(const TabletStreamInfo& producer_tablet) {
+  std::optional<OpId> GetLastCheckpoint(const TabletStreamInfo& producer_tablet) {
     SharedLock<rw_spinlock> lock(mutex_);
     auto it = tablet_checkpoints_.find(producer_tablet);
     if (it != tablet_checkpoints_.end()) {
@@ -539,7 +539,7 @@ class CDCServiceImpl::Impl {
         return it->cdc_state_checkpoint.op_id;
       }
     }
-    return boost::none;
+    return std::nullopt;
   }
 
   bool UpdateCheckpoint(
@@ -723,8 +723,8 @@ class CDCServiceImpl::Impl {
                        info.stream_id);
   }
 
-  boost::optional<OpId> MinOpId(const TabletId& tablet_id) {
-    boost::optional<OpId> result;
+  std::optional<OpId> MinOpId(const TabletId& tablet_id) {
+    std::optional<OpId> result;
     SharedLock<rw_spinlock> l(mutex_);
     // right => multimap where keys are tablet_ids and values are stream_ids.
     // left => multimap where keys are stream_ids and values are tablet_ids.
@@ -1825,7 +1825,7 @@ void CDCServiceImpl::GetChanges(
     auto namespace_name = tablet_ptr->metadata()->namespace_name();
     auto last_sent_checkpoint = impl_->GetLastStreamedOpId(producer_tablet);
     // If from_op_id is more than the last sent op_id, it indicates a potential stale schema entry.
-    if (last_sent_checkpoint == boost::none ||
+    if (last_sent_checkpoint == std::nullopt ||
         OpId::FromPB(cdc_sdk_from_op_id) != *last_sent_checkpoint) {
       VLOG(1) << "Stale entry in the cache, because last sent checkpoint: " << *last_sent_checkpoint
               << " less than from_op_id: " << OpId::FromPB(cdc_sdk_from_op_id)

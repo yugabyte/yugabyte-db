@@ -32,6 +32,7 @@
 
 #pragma once
 
+#include <functional>
 #include <list>
 #include <map>
 #include <set>
@@ -183,6 +184,41 @@ YB_DEFINE_ENUM(
 );
 
 struct YsqlTableDdlTxnState;
+using google::protobuf::RepeatedPtrField;
+using TabletIdWithEntry = std::pair<TabletId, SysTabletsEntryPB>;
+using SysTabletsEntriesWithIds = std::vector<TabletIdWithEntry>;
+struct TableWithTabletsEntries {
+  TableWithTabletsEntries(
+      const SysTablesEntryPB& table_entry, const SysTabletsEntriesWithIds& tablets_entries) {
+    this->table_entry = table_entry;
+    this->tablets_entries = tablets_entries;
+  }
+  TableWithTabletsEntries() {}
+
+  // Construct a TableDescription out of this entry using the provided factory for TableInfo.
+  // - table_id: id of the table corresponding to this entry (key in the map)
+  // - namespace_info: namespace to attach to the TableDescription
+  Result<TableDescription> DescribeTable(
+      const TableId& table_id, const NamespaceInfoPtr& namespace_info) const;
+
+  // Add the table with table_id and its tablets entries to a list of backup entries.
+  void AddToBackupEntries(
+      const TableId& table_id, RepeatedPtrField<BackupRowEntryPB>& backup_entries) const;
+
+  void OrderTabletsByPartitions();
+
+  static SysRowEntry ToSysRowEntry(
+      const std::string& id, SysRowEntryType type, const std::string& data) {
+    SysRowEntry entry;
+    entry.set_id(id);
+    entry.set_type(type);
+    entry.set_data(data);
+    return entry;
+  }
+
+  SysTablesEntryPB table_entry;
+  SysTabletsEntriesWithIds tablets_entries;
+};
 
 // The component of the master which tracks the state and location
 // of tables/tablets in the cluster.
@@ -550,20 +586,17 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   // Send the "delete tablet request" to the specified TS/tablet.
   // The specified 'reason' will be logged on the TS.
-  void SendDeleteTabletRequest(const TabletId& tablet_id,
-                               tablet::TabletDataState delete_type,
-                               const boost::optional<int64_t>& cas_config_opid_index_less_or_equal,
-                               const scoped_refptr<TableInfo>& table,
-                               const std::string& ts_uuid,
-                               const std::string& reason,
-                               const LeaderEpoch& epoch,
-                               HideOnly hide_only = HideOnly::kFalse,
-                               KeepData keep_data = KeepData::kFalse);
+  void SendDeleteTabletRequest(
+      const TabletId& tablet_id, tablet::TabletDataState delete_type,
+      const std::optional<int64_t>& cas_config_opid_index_less_or_equal,
+      const scoped_refptr<TableInfo>& table, const std::string& ts_uuid, const std::string& reason,
+      const LeaderEpoch& epoch, HideOnly hide_only = HideOnly::kFalse,
+      KeepData keep_data = KeepData::kFalse);
 
   std::shared_ptr<AsyncDeleteReplica> MakeDeleteReplicaTask(
       const TabletServerId& peer_uuid, const TableInfoPtr& table, const TabletId& tablet_id,
       tablet::TabletDataState delete_type,
-      boost::optional<int64_t> cas_config_opid_index_less_or_equal, LeaderEpoch epoch,
+      std::optional<int64_t> cas_config_opid_index_less_or_equal, LeaderEpoch epoch,
       const std::string& reason);
 
   void SetTabletReplicaLocations(
@@ -1057,19 +1090,15 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
     leader_mutex_.AssertAcquiredForWriting();
   }
 
-  std::string GenerateId() override {
-    return GenerateId(boost::none);
-  }
+  std::string GenerateId() override { return GenerateId(std::nullopt); }
 
-  std::string GenerateId(boost::optional<const SysRowEntryType> entity_type);
-  std::string GenerateIdUnlocked(boost::optional<const SysRowEntryType> entity_type = boost::none)
+  std::string GenerateId(std::optional<const SysRowEntryType> entity_type);
+  std::string GenerateIdUnlocked(std::optional<const SysRowEntryType> entity_type = std::nullopt)
       REQUIRES_SHARED(mutex_);
 
   ThreadPool* AsyncTaskPool() override { return async_task_pool_.get(); }
 
-  PermissionsManager* permissions_manager() override {
-    return permissions_manager_.get();
-  }
+  PermissionsManager* permissions_manager() override { return permissions_manager_.get(); }
 
   intptr_t tablets_version() const override NO_THREAD_SAFETY_ANALYSIS {
     // This method should not hold the lock, because Version method is thread safe.
@@ -1161,6 +1190,12 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       CollectFlags flags,
       std::unordered_set<NamespaceId>* namespaces = nullptr);
 
+  // Collect all tables belonging to a specific namespace by reading the sys_catalog from disk as of
+  // a provided hybrid_time.
+  Result<std::vector<TableDescription>> CollectTablesAsOfTime(
+      const NamespaceId& namespace_id, CollectFlags flags, HybridTime read_time,
+      CoarseTimePoint deadline);
+
   // Returns 'table_replication_info' itself if set. Else looks up placement info for its
   // 'tablespace_id'. If neither is set, returns the cluster level replication info.
   Result<ReplicationInfoPB> GetTableReplicationInfo(
@@ -1171,7 +1206,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Result<size_t> GetTableReplicationFactor(const TableInfoPtr& table) const override;
 
-  Result<boost::optional<TablespaceId>> GetTablespaceForTable(
+  Result<std::optional<TablespaceId>> GetTablespaceForTable(
       const scoped_refptr<TableInfo>& table) const override;
 
   void CheckTableDeleted(const TableInfoPtr& table, const LeaderEpoch& epoch) override;
@@ -1567,7 +1602,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   docdb::HistoryCutoff AllowedHistoryCutoffProvider(tablet::RaftGroupMetadata* metadata);
 
-  Result<boost::optional<ReplicationInfoPB>> GetTablespaceReplicationInfoWithRetry(
+  Result<std::optional<ReplicationInfoPB>> GetTablespaceReplicationInfoWithRetry(
       const TablespaceId& tablespace_id);
 
   // Promote the table from a PREPARING state to a RUNNING state, and persist in sys_catalog.
@@ -1594,6 +1629,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Result<TabletInfoPtr> GetTabletInfo(const TabletId& tablet_id) override
       EXCLUDES(mutex_);
+
+  // Gets the set of table IDs that belong to the sys.catalog tablet.
+  std::unordered_set<TableId> GetSysCatalogTableIds() EXCLUDES(mutex_);
 
   // Gets the tablet info for each tablet id, or nullptr if the tablet was not found.
   TabletInfos GetTabletInfos(const std::vector<TabletId>& ids) override;
@@ -2364,7 +2402,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   std::unique_ptr<ObjectLockInfoManager> object_lock_info_manager_;
 
-  boost::optional<InitialSysCatalogSnapshotWriter> initial_snapshot_writer_;
+  std::optional<InitialSysCatalogSnapshotWriter> initial_snapshot_writer_;
 
   std::unique_ptr<PermissionsManager> permissions_manager_;
 
@@ -2465,8 +2503,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   // Clears tablespace id for a transaction status table, reverting it back to cluster default
   // if no placement has been set explicitly.
-  void ClearTransactionStatusTableTablespace(
-      const scoped_refptr<TableInfo>& table) REQUIRES(mutex_);
+  void ClearTransactionStatusTableTablespace(const scoped_refptr<TableInfo>& table)
+      REQUIRES(mutex_);
 
   // Checks if there are any transaction tables with tablespace id set for a tablespace not in
   // the given tablespace info map.
@@ -2669,8 +2707,15 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status ImportTabletEntry(
       const SysRowEntry& entry, bool use_relfilenode, ExternalTableSnapshotDataMap* table_map);
 
-  Result<SysRowEntries> CollectEntries(
+  Result<SysRowEntries> CollectEntriesFromActiveSysCatalog(
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables, CollectFlags flags);
+  Result<SysRowEntries> CollectEntriesAsOfTime(
+      const NamespaceId& namespace_id, CollectFlags flags, HybridTime read_time,
+      CoarseTimePoint deadline) override;
+
+  Result<SysRowEntries> CollectEntriesInternal(
+      CollectFlags flags, const std::vector<TableDescription>& tables,
+      std::unordered_set<NamespaceId>* namespaces);
 
   Result<SysRowEntries> CollectEntriesForSnapshot(
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables,
@@ -2716,6 +2761,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   void CleanupHiddenObjects(
       const ScheduleMinRestoreTime& schedule_min_restore_time, const LeaderEpoch& epoch) override;
+
+  Status WaitForSafeTime(HybridTime target_time, CoarseTimePoint deadline);
+
   void CleanupHiddenTablets(
       const ScheduleMinRestoreTime& schedule_min_restore_time, const LeaderEpoch& epoch)
       EXCLUDES(mutex_);

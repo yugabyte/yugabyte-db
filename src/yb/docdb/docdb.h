@@ -253,7 +253,7 @@ class ExternalIntentsProvider {
   virtual void SetValue(const Slice& slice) = 0;
 
   // Get next external intent, returns false when there are no more intents.
-  virtual boost::optional<std::pair<Slice, Slice>> Next() = 0;
+  virtual std::optional<std::pair<Slice, Slice>> Next() = 0;
 
   virtual const Uuid& InvolvedTablet() = 0;
 

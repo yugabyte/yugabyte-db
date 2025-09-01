@@ -80,28 +80,19 @@ class XClusterYsqlTestBase : public XClusterTestBase {
       const NamespaceName& db_name);
 
   Result<client::YBTableName> CreateYsqlTable(
-      Cluster* cluster,
-      const std::string& namespace_name,
-      const std::string& schema_name,
-      const std::string& table_name,
-      const boost::optional<std::string>& tablegroup_name,
-      uint32_t num_tablets,
-      bool colocated = false,
-      const ColocationId colocation_id = 0,
+      Cluster* cluster, const std::string& namespace_name, const std::string& schema_name,
+      const std::string& table_name, const std::optional<std::string>& tablegroup_name,
+      uint32_t num_tablets, bool colocated = false, const ColocationId colocation_id = 0,
       const bool ranged_partitioned = false);
 
   Result<client::YBTableName> CreateYsqlTable(
       uint32_t idx, uint32_t num_tablets, Cluster* cluster,
-      const boost::optional<std::string>& tablegroup_name = {}, bool colocated = false,
+      const std::optional<std::string>& tablegroup_name = {}, bool colocated = false,
       const bool ranged_partitioned = false);
 
   Result<client::YBTableName> GetYsqlTable(
-      Cluster* cluster,
-      const std::string& namespace_name,
-      const std::string& schema_name,
-      const std::string& table_name,
-      bool verify_table_name = true,
-      bool verify_schema_name = false,
+      Cluster* cluster, const std::string& namespace_name, const std::string& schema_name,
+      const std::string& table_name, bool verify_table_name = true, bool verify_schema_name = false,
       bool exclude_system_tables = true);
 
   Result<bool> IsTableDeleted(Cluster& cluster, const client::YBTableName& table_name);

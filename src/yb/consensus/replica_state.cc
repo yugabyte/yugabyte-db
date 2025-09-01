@@ -531,6 +531,10 @@ const string& ReplicaState::GetLeaderUuidUnlocked() const {
   return cmeta_->leader_uuid();
 }
 
+void ReplicaState::BecomeReplicaUnlocked() {
+  ClearLeaderUnlocked();
+}
+
 const bool ReplicaState::HasVotedCurrentTermUnlocked() const {
   DCHECK(IsLocked());
   return cmeta_->has_voted_for();

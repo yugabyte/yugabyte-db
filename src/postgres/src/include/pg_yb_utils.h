@@ -912,7 +912,7 @@ void		YBAddModificationAspects(YbDdlMode mode);
 extern void YBBeginOperationsBuffering();
 extern void YBEndOperationsBuffering();
 extern void YBResetOperationsBuffering();
-extern void YBFlushBufferedOperations();
+extern void YBFlushBufferedOperations(YbcFlushDebugContext debug_context);
 extern void YBAdjustOperationsBuffering(int multiple);
 
 bool		YBEnableTracing();
@@ -1370,11 +1370,12 @@ YbIsNormalDbOidReserved(Oid db_oid)
 extern Oid	YbGetSQLIncrementCatalogVersionsFunctionOid();
 
 extern bool YbIsReadCommittedTxn();
+extern bool YbSkipPgSnapshotManagement();
 
 extern YbOptionalReadPointHandle YbBuildCurrentReadPointHandle();
 extern void YbUseSnapshotReadTime(uint64_t read_time);
 extern YbOptionalReadPointHandle YbRegisterSnapshotReadTime(uint64_t read_time);
-
+extern YbOptionalReadPointHandle YbResetTransactionReadPoint();
 
 extern bool YbUseFastBackwardScan();
 

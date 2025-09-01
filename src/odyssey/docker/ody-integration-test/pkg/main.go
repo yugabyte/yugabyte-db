@@ -16,6 +16,7 @@ func main() {
 		odyPkgSyncTestSet,
 		odyShowErrsTestSet,
 		odySignalsTestSet,
+		odyCoresTestSet,
 	} {
 		err := f(ctx)
 		if err != nil {

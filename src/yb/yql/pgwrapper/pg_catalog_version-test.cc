@@ -28,6 +28,8 @@ using std::string;
 using namespace std::literals;
 
 DECLARE_string(vmodule);
+DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 METRIC_DECLARE_counter(handler_latency_yb_tserver_PgClientService_OpenTable);
 METRIC_DECLARE_counter(handler_latency_yb_master_MasterDdl_GetTableSchema);
 
@@ -57,6 +59,14 @@ class PgCatalogVersionTest : public LibPqTestBase {
 
   using MasterCatalogVersionMap = std::unordered_map<Oid, CatalogVersion>;
   using ShmCatalogVersionMap = std::unordered_map<Oid, Version>;
+
+  bool IsObjectLockingEnabled() const {
+    return ANNOTATE_UNPROTECTED_READ(FLAGS_enable_object_locking_for_table_locks);
+  }
+
+  bool IsTransactionalDdlEnabled() const {
+    return ANNOTATE_UNPROTECTED_READ(FLAGS_ysql_yb_ddl_transaction_block_enabled);
+  }
 
   Result<int64_t> GetCatalogVersion(PGConn* conn) {
     const auto db_oid = VERIFY_RESULT(conn->FetchRow<PGOid>(Format(
@@ -93,6 +103,12 @@ class PgCatalogVersionTest : public LibPqTestBase {
       Format("--ysql_enable_db_catalog_version_mode=$0", enabled ? "true" : "false");
     for (size_t i = 0; i != cluster_->num_masters(); ++i) {
       cluster_->master(i)->mutable_flags()->push_back(db_catalog_version_gflag);
+      if (!enabled) {
+        cluster_->master(i)->mutable_flags()->push_back(
+            "--allowed_preview_flags_csv=enable_object_locking_for_table_locks");
+        cluster_->master(i)->mutable_flags()->push_back(
+            "--enable_object_locking_for_table_locks=false");
+      }
     }
     for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
       cluster_->tablet_server(i)->mutable_flags()->push_back(db_catalog_version_gflag);
@@ -1658,11 +1674,17 @@ TEST_F(PgCatalogVersionTest, NonBreakingDDLMode) {
   ASSERT_OK(conn2.Execute("REVOKE ALL ON t2 FROM public"));
   // Wait for the new catalog version to propagate to TServers.
   std::this_thread::sleep_for(2s);
-  // REVOKE is a breaking catalog change, the running transaction on conn1 is aborted.
   auto status = ResultToStatus(conn1.Fetch("SELECT * FROM t1"));
-  ASSERT_TRUE(status.IsNetworkError()) << status;
   const string msg = "catalog snapshot used for this transaction has been invalidated";
-  ASSERT_STR_CONTAINS(status.ToString(), msg);
+  if (IsObjectLockingEnabled()) {
+    // When object locking is enabled, the connect accepts invalidation messages and refreshes
+    // its catalog cache in function 'AcceptInvalidationMessages'.
+    ASSERT_OK(status);
+  } else {
+    // REVOKE is a breaking catalog change, the running transaction on conn1 is aborted.
+    ASSERT_TRUE(status.IsNetworkError()) << status;
+    ASSERT_STR_CONTAINS(status.ToString(), msg);
+  }
   ASSERT_OK(conn1.Execute("ABORT"));
 
   // Let's start over, but this time use yb_make_next_ddl_statement_nonbreaking to suppress the
@@ -1687,8 +1709,12 @@ TEST_F(PgCatalogVersionTest, NonBreakingDDLMode) {
   // Wait for the new catalog version to propagate to TServers.
   std::this_thread::sleep_for(2s);
   status = ResultToStatus(conn1.Fetch("SELECT * FROM t1"));
-  ASSERT_TRUE(status.IsNetworkError()) << status;
-  ASSERT_STR_CONTAINS(status.ToString(), msg);
+  if (IsObjectLockingEnabled()) {
+    ASSERT_OK(status);
+  } else {
+    ASSERT_TRUE(status.IsNetworkError()) << status;
+    ASSERT_STR_CONTAINS(status.ToString(), msg);
+  }
   ASSERT_OK(conn1.Execute("ABORT"));
 }
 
@@ -1739,6 +1765,7 @@ TEST_F(PgCatalogVersionTest, NonIncrementingDDLMode) {
   ASSERT_EQ(new_version, version);
 
   ASSERT_OK(conn.Execute("SET yb_make_next_ddl_statement_nonincrementing TO TRUE"));
+  // TODO(#28412): The below hits a TRAP on ysql, seems related to transactional DDL.
   ASSERT_OK(conn.Execute("CREATE INDEX idx3 ON t1(a)"));
   new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
   // By default CREATE INDEX runs concurrently and its algorithm requires to bump up catalog
@@ -2177,7 +2204,10 @@ TEST_F(PgCatalogVersionTest, InvalMessageMultiDDLTest) {
       Format("SELECT current_version, length(messages) FROM pg_yb_invalidation_messages "
              "WHERE db_oid = $0", yugabyte_db_oid)));
   LOG(INFO) << "result: " << result;
-  ASSERT_EQ(result, "2, 120; 3, 144; 4, 144; 5, 144; 6, 144");
+  const string expected = IsTransactionalDdlEnabled()
+      ? "2, 600"
+      : "2, 120; 3, 144; 4, 144; 5, 144; 6, 144";
+  ASSERT_EQ(result, expected);
 }
 
 TEST_F(PgCatalogVersionTest, InvalMessageCatCacheRefreshTest) {
@@ -2303,7 +2333,9 @@ TEST_F(PgCatalogVersionTest, AnalyzeTwoTables) {
   auto result = ASSERT_RESULT(conn_yugabyte.FetchAllAsString(
       "SELECT db_oid, current_version, length(messages) FROM pg_yb_invalidation_messages"));
   LOG(INFO) << "result:\n" << result;
-  const string expected = Format("$0, 2, 1416", yugabyte_db_oid);
+  const string expected = IsTransactionalDdlEnabled()
+      ? Format("$0, 2, 792; $0, 3, 624", yugabyte_db_oid)
+      : Format("$0, 2, 1416", yugabyte_db_oid);
   ASSERT_EQ(result, expected);
 }
 
@@ -2315,7 +2347,20 @@ TEST_F(PgCatalogVersionTest, AnalyzeAllTables) {
   auto result = ASSERT_RESULT(conn_yugabyte.FetchAllAsString(
       "SELECT db_oid, current_version, length(messages) FROM pg_yb_invalidation_messages"));
   LOG(INFO) << "result:\n" << result;
-  const string expected = Format("$0, 2, 10776", yugabyte_db_oid);
+  string expected = IsTransactionalDdlEnabled()
+      ? "13515, 2, 120; 13515, 3, 768; 13515, 4, 624; 13515, 5, 720; "
+        "13515, 6, 792; 13515, 7, 504; 13515, 8, 96; 13515, 9, 600; 13515, 10, 216; "
+        "13515, 11, 528; 13515, 12, 96; 13515, 13, 216; 13515, 14, 144; 13515, 15, 144; "
+        "13515, 16, 624; 13515, 17, 192; 13515, 18, 168; 13515, 19, 96; 13515, 20, 504; "
+        "13515, 21, 216; 13515, 22, 96; 13515, 23, 216; 13515, 24, 360; 13515, 25, 192; "
+        "13515, 26, 120; 13515, 27, 192; 13515, 28, 120; 13515, 29, 264; 13515, 30, 168; "
+        "13515, 31, 144; 13515, 32, 192; 13515, 33, 120; 13515, 34, 96; 13515, 35, 120; "
+        "13515, 36, 216; 13515, 37, 96; 13515, 38, 192; 13515, 39, 240; 13515, 40, 168; "
+        "13515, 41, 120; 13515, 42, 120; 13515, 43, 96"
+      : "13515, 2, 10776";
+  const string yugabyte_db_oid_str = Format("$0, ", yugabyte_db_oid);
+  // Replace 13515 with the real yugabyte_db_oid.
+  GlobalReplaceSubstring("13515, ", yugabyte_db_oid_str, &expected);
   ASSERT_EQ(result, expected);
 }
 
@@ -2349,8 +2394,9 @@ ALTER TABLE testtable ADD COLUMN value INT;
   ASSERT_OK(conn_yugabyte.Execute(query));
   auto result = ASSERT_RESULT(conn_yugabyte.FetchAllAsString(
       "SELECT db_oid, current_version, length(messages) FROM pg_yb_invalidation_messages"));
-  const string expected = Format("$0, 2, 72; $0, 3, 96; $0, 4, 2520; $0, 5, 1776",
-                                 yugabyte_db_oid);
+  const string expected = IsTransactionalDdlEnabled()
+      ? Format("$0, 2, 4392", yugabyte_db_oid)
+      : Format("$0, 2, 72; $0, 3, 96; $0, 4, 2520; $0, 5, 1776", yugabyte_db_oid);
   LOG(INFO) << "result:\n" << result;
   ASSERT_EQ(result, expected);
 }
@@ -2637,7 +2683,8 @@ EXECUTE PROCEDURE log_ddl();
   ASSERT_OK(conn_yugabyte.Execute(
       "GRANT SELECT (rolname, rolsuper) ON pg_authid TO CURRENT_USER"));
   auto v = ASSERT_RESULT(GetCatalogVersion(&conn_yugabyte));
-  ASSERT_EQ(v, 4);
+  const uint64_t expected_catalog_version = IsTransactionalDdlEnabled() ? 3 : 4;
+  ASSERT_EQ(v, expected_catalog_version);
   // The next GRANT statement is a no-op because it is identical to the first GRANT.
   // However we used to increment the catalog version because of the INSERT inside
   // function log_ddl() which is executed as part of the GRANT statement so the GRANT
@@ -2648,7 +2695,7 @@ EXECUTE PROCEDURE log_ddl();
   ASSERT_OK(conn_yugabyte.Execute(
       "GRANT SELECT (rolname, rolsuper) ON pg_authid TO CURRENT_USER"));
   v = ASSERT_RESULT(GetCatalogVersion(&conn_yugabyte));
-  ASSERT_EQ(v, 4);
+  ASSERT_EQ(v, expected_catalog_version);
 }
 
 // We have made a special case to allow expression pushdown for table pg_yb_catalog_version
@@ -2795,7 +2842,7 @@ COMMIT;
       "SELECT COUNT(*) FROM pg_yb_invalidation_messages"));
   ASSERT_EQ(count, 4);
   auto query = "SELECT encode(messages, 'hex') FROM pg_yb_invalidation_messages "
-               "WHERE current_version=$0"s;
+              "WHERE current_version=$0"s;
 
   // version 2 messages.
   auto result2 = ASSERT_RESULT(conn_yugabyte.FetchAllAsString(Format(query, 2)));
@@ -3076,8 +3123,7 @@ TEST_F(PgCatalogVersionTest, InvalMessageWaitOnVersionGap) {
   // conn1 connects to node 1
   auto conn1 = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
   auto v = ASSERT_RESULT(GetCatalogVersion(&conn1));
-  ASSERT_EQ(v, 3);
-  // At this time, conn1's local catalog version should be 3.
+  ASSERT_EQ(v, IsTransactionalDdlEnabled() ? 87 : 3);
   auto result = ASSERT_RESULT(conn1.FetchAllAsString("SELECT id FROM test_table"));
   ASSERT_EQ(result, "1");
 

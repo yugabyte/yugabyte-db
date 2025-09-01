@@ -423,7 +423,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     ASSERT_OK(client_->CreateNamespace(
         kPgsqlNamespaceName, YQL_DATABASE_PGSQL, "" /* creator */, "" /* ns_id */,
-        "" /* src_ns_id */, boost::none /* next_pg_oid */, nullptr /* txn */, false));
+        "" /* src_ns_id */, std::nullopt /* next_pg_oid */, nullptr /* txn */, false));
     std::string kNamespaceId;
     {
       auto namespaces = ASSERT_RESULT(client_->ListNamespaces());
@@ -2671,12 +2671,12 @@ TEST_F(ClientTest, GetNamespaceInfo) {
   // Setup.
   ASSERT_OK(client_->CreateNamespace(
       kPgsqlKeyspaceName, YQLDatabase::YQL_DATABASE_PGSQL, "" /* creator_role_name */,
-      "" /* namespace_id */, "" /* source_namespace_id */, boost::none /* next_pg_oid */,
+      "" /* namespace_id */, "" /* source_namespace_id */, std::nullopt /* next_pg_oid */,
       nullptr /* txn */, true /* colocated */));
 
   // CQL non-colocated.
-  ASSERT_OK(client_->GetNamespaceInfo(
-        "" /* namespace_id */, kKeyspaceName, YQL_DATABASE_CQL, &resp));
+  ASSERT_OK(
+      client_->GetNamespaceInfo("" /* namespace_id */, kKeyspaceName, YQL_DATABASE_CQL, &resp));
   ASSERT_EQ(resp.namespace_().name(), kKeyspaceName);
   ASSERT_EQ(resp.namespace_().database_type(), YQL_DATABASE_CQL);
   ASSERT_FALSE(resp.colocated());
@@ -3036,7 +3036,7 @@ TEST_F(ClientTest, LegacyColocatedDBColocatedTablesLookupTablet) {
       /* creator_role_name =*/"",
       /* namespace_id =*/"",
       /* source_namespace_id =*/"",
-      /* next_pg_oid =*/boost::none,
+      /* next_pg_oid =*/std::nullopt,
       /* txn =*/nullptr,
       /* colocated =*/true));
 

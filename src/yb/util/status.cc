@@ -37,10 +37,10 @@ namespace {
 
 #ifndef NDEBUG
 // This allows to dump stack traces whenever an error status matching a certain regex is generated.
-boost::optional<std::regex> StatusStackTraceRegEx() {
+std::optional<std::regex> StatusStackTraceRegEx() {
   const char* regex_str = getenv("YB_STACK_TRACE_ON_ERROR_STATUS_RE");
   if (!regex_str) {
-    return boost::none;
+    return std::nullopt;
   }
   return std::regex(regex_str);
 }
@@ -362,23 +362,17 @@ Status::StatePtr Status::State::Create(
   return result;
 }
 
-Status::Status(Code code,
-               const char* file_name,
-               int line_number,
-               const Slice& msg,
-               const Slice& msg2,
-               const StatusErrorCode* error,
-               size_t file_name_len)
+Status::Status(
+    Code code, const char* file_name, int line_number, const Slice& msg, const Slice& msg2,
+    const StatusErrorCode* error, size_t file_name_len)
     : state_(State::Create(code, file_name, line_number, msg, msg2, error, file_name_len)) {
 #ifndef NDEBUG
   static const bool print_stack_trace = getenv("YB_STACK_TRACE_ON_ERROR_STATUS") != nullptr;
-  static const boost::optional<std::regex> status_stack_trace_re =
-      StatusStackTraceRegEx();
+  static const std::optional<std::regex> status_stack_trace_re = StatusStackTraceRegEx();
 
   std::string string_rep;  // To avoid calling ToString() twice.
-  if (print_stack_trace ||
-      (status_stack_trace_re &&
-       std::regex_search(string_rep = ToString(), *status_stack_trace_re))) {
+  if (print_stack_trace || (status_stack_trace_re &&
+                            std::regex_search(string_rep = ToString(), *status_stack_trace_re))) {
     if (string_rep.empty()) {
       string_rep = ToString();
     }

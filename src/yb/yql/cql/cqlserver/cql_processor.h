@@ -107,8 +107,7 @@ class CQLProcessor : public ql::QLProcessor {
   std::unique_ptr<ql::CQLResponse> ProcessResult(const ql::ExecutedResult::SharedPtr& result);
   std::unique_ptr<ql::CQLResponse> ProcessAuthResult(const std::string& saved_hash, bool can_login);
   std::unique_ptr<ql::CQLResponse> ProcessError(
-      const Status& s,
-      boost::optional<ql::CQLMessage::QueryId> query_id = boost::none);
+      const Status& s, std::optional<ql::CQLMessage::QueryId> query_id = std::nullopt);
 
   // Send response back to client.
   void PrepareAndSendResponse(const std::unique_ptr<ql::CQLResponse>& response);

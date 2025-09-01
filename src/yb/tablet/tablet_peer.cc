@@ -82,6 +82,7 @@
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/write_query.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -411,12 +412,19 @@ Result<HybridTime> TabletPeer::PreparePeerRequest() {
   return tablet_->mvcc_manager()->SafeTime(ht_lease);
 }
 
-Status TabletPeer::MajorityReplicated() {
+Status TabletPeer::MajorityReplicated(const OpId& committed_op_id) {
   auto ht_lease = VERIFY_RESULT(HybridTimeLease(
       /* min_allowed= */ HybridTime::kMin, /* deadline */ CoarseTimePoint::max()));
 
   tablet_->mvcc_manager()->UpdatePropagatedSafeTimeOnLeader(ht_lease);
+
+  NotifyCommitedAsyncWrites(committed_op_id);
   return Status::OK();
+}
+
+void TabletPeer::BecomeReplica() {
+  FailAllAsyncWrites(
+      STATUS_FORMAT(Aborted, "Tablet $0 leader changed during async write", tablet_id()));
 }
 
 void TabletPeer::ChangeConfigReplicated(const RaftConfigPB& config) {
@@ -539,6 +547,8 @@ void TabletPeer::CompleteShutdown(
   }
 
   VLOG_WITH_PREFIX(1) << "Shut down!";
+
+  FailAllAsyncWrites(STATUS(IllegalState, "Tablet peer is shutting down"));
 
   if (tablet_) {
     tablet_->CompleteShutdown(disable_flush_on_shutdown, abort_ops);
@@ -1765,7 +1775,7 @@ Status TabletPeer::ChangeRole(const std::string& requestor_uuid) {
         RaftPeerPB* peer = req.mutable_server();
         peer->set_permanent_uuid(requestor_uuid);
 
-        boost::optional<TabletServerErrorPB::Code> error_code;
+        std::optional<TabletServerErrorPB::Code> error_code;
         return consensus->ChangeConfig(req, &DoNothingStatusCB, &error_code);
       }
       case PeerMemberType::UNKNOWN_MEMBER_TYPE:
@@ -1866,6 +1876,110 @@ bool TabletPeer::HasSufficientDiskSpaceForWrite() {
     return log_->HasSufficientDiskSpaceForWrite();
   }
   return true;
+}
+
+void TabletPeer::NotifyCommitedAsyncWrites(const OpId& committed_op_id) {
+  if (!committed_op_id) {
+    return;
+  }
+  LOG_IF(DFATAL, committed_op_id < last_known_committed_op_id_.load(std::memory_order_acquire))
+      << "Tablet " << tablet_id() << " committed op id: " << committed_op_id
+      << ", last known committed op id: " << last_known_committed_op_id_;
+  last_known_committed_op_id_.store(committed_op_id, std::memory_order_release);
+
+  std::vector<std::pair<StdStatusCallback, Status>> callbacks;
+  {
+    std::lock_guard lock(async_write_queries_mutex_);
+    auto it = in_flight_async_write_queries_.begin();
+    while (it != in_flight_async_write_queries_.end()) {
+      Status status;
+      if (it->first.term != committed_op_id.term) {
+        // Stale callback from previous term.
+        status = STATUS_FORMAT(
+            IllegalState, "Unexpected tablet $0 term change. New term: $1, expected term: $2",
+            tablet_id(), committed_op_id.term, it->first.term);
+      } else if (it->first.index > committed_op_id.index) {
+        break;
+      }
+
+      for (auto& callback : it->second) {
+        callbacks.emplace_back(std::move(callback), std::move(status));
+      }
+      it = in_flight_async_write_queries_.erase(it);
+    }
+  }
+
+  for (auto& [callback, status] : callbacks) {
+    callback(status);
+  }
+}
+
+void TabletPeer::FailAllAsyncWrites(const Status& status) {
+  std::vector<StdStatusCallback> callbacks;
+  {
+    std::lock_guard lock(async_write_queries_mutex_);
+    for (auto& [_, in_flight_callbacks] : in_flight_async_write_queries_) {
+      MoveCollection(&in_flight_callbacks, &callbacks);
+    }
+    in_flight_async_write_queries_.clear();
+  }
+
+  for (auto& callback : callbacks) {
+    callback(status);
+  }
+}
+
+void TabletPeer::RegisterAsyncWrite(const OpId& op_id) {
+  std::lock_guard lock(async_write_queries_mutex_);
+  DCHECK(
+      in_flight_async_write_queries_.empty() ||
+      in_flight_async_write_queries_.back().first < op_id);
+  in_flight_async_write_queries_.emplace_back(op_id, std::vector<StdStatusCallback>());
+}
+
+void TabletPeer::RegisterAsyncWriteCompletion(const OpId& op_id, StdStatusCallback&& callback) {
+  // If the write is still in flight, add the callback to the list.
+  {
+    std::lock_guard lock(async_write_queries_mutex_);
+    auto it = std::lower_bound(
+        in_flight_async_write_queries_.begin(), in_flight_async_write_queries_.end(), op_id,
+        [](const auto& pair, const OpId& op_id) { return pair.first < op_id; });
+    if (it != in_flight_async_write_queries_.end() && it->first == op_id) {
+      it->second.emplace_back(std::move(callback));
+      return;
+    }
+  }
+
+  // Write is not in progress. Check the term to make sure the write was received by the current
+  // peer.
+  // TODO(#28383): Handle graceful leader moves without failing user queries.
+  auto is_same_term = [this, &op_id]() -> Status {
+    auto committed_op_id = last_known_committed_op_id_.load(std::memory_order_acquire);
+    if (op_id.term == committed_op_id.term && op_id.index <= committed_op_id.index) {
+      return Status::OK();
+    }
+
+    auto consensus = VERIFY_RESULT(GetRaftConsensus());
+    const auto leader_term = consensus->LeaderTerm();
+    SCHECK_FORMAT(
+        leader_term != OpId::kUnknownTerm, Aborted,
+        "Tablet $0 leader changed during async write", tablet_id());
+
+    SCHECK_FORMAT(
+        leader_term == op_id.term, Aborted,
+        "Tablet $0 leader changed during async write. New term: $1, expected term: $2", tablet_id(),
+        leader_term, op_id.term);
+
+    return Status::OK();
+  }();
+
+  Status status;
+
+  if (!is_same_term.ok()) {
+    status = std::move(is_same_term);
+  }
+
+  callback(status);
 }
 
 Status BackfillNamespaceIdIfNeeded(

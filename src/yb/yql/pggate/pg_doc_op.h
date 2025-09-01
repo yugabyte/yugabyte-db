@@ -801,7 +801,7 @@ class PgDocReadOp : public PgDocOp {
   //----------------------------------- Data Members -----------------------------------------------
 
   // Whether or not we are using hash permutation batching for this op.
-  boost::optional<bool> is_hash_batched_;
+  std::optional<bool> is_hash_batched_;
 
   // Pointer to the per tablet hash component condition expression. For each hash key
   // combination, once we identify the partition at which it should be executed, we enqueue

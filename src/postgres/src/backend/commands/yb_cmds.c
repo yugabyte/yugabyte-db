@@ -908,6 +908,12 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 	CreateTableAddColumns(handle, desc, primary_key, is_colocated_via_database,
 						  is_tablegroup);
 
+	if (stmt->partspec != NULL)
+	{
+		/* Parent partitions do not hold data, so 1 tablet is sufficient */
+		HandleYBStatus(YBCPgCreateTableSetNumTablets(handle, 1));
+	}
+
 	/* Handle SPLIT statement, if present */
 	if (split_options)
 	{

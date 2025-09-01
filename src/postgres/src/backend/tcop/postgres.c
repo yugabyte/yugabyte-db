@@ -5426,6 +5426,8 @@ yb_restart_transaction(int attempt, bool is_read_restart)
 	 * The txn might or might not have performed writes. Reset the state in
 	 * either case to avoid checking/tracking if a write could have been
 	 * performed.
+	 *
+	 * TODO (#28196): Explore if we can do a full reset of the PG-side transaction state.
 	 */
 	YBCRestartWriteTransaction();
 
@@ -5671,7 +5673,7 @@ static void
 yb_exec_simple_query(const char *query_string, MemoryContext exec_context)
 {
 	YBQueryRetryData retry_data = {
-		.portal_name = NULL,
+		.portal_name = "", /* unnamed portal is used in simple query protocol */
 		.query_string = query_string,
 		.command_tag = YbParseCommandTag(query_string),
 	};

@@ -26,7 +26,6 @@
 
 #include <boost/container/small_vector.hpp>
 #include <boost/functional/hash/hash.hpp>
-#include <boost/optional/optional.hpp>
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/transaction.pb.h"
@@ -221,8 +220,8 @@ class TransactionStatusManager {
   virtual HybridTime LocalCommitTime(const TransactionId& id) = 0;
 
   // If this tablet is aware that this transaction has committed, returns the TransactionLocalState
-  // for the transaction. Otherwise, returns boost::none.
-  virtual boost::optional<TransactionLocalState> LocalTxnData(const TransactionId& id) = 0;
+  // for the transaction. Otherwise, returns std::nullopt.
+  virtual std::optional<TransactionLocalState> LocalTxnData(const TransactionId& id) = 0;
 
   // Fetches status of specified transaction at specified time from transaction coordinator.
   // Callback would be invoked in any case.
@@ -248,7 +247,7 @@ class TransactionStatusManager {
   virtual Status FillPriorities(
       boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) = 0;
 
-  virtual Result<boost::optional<TabletId>> FindStatusTablet(const TransactionId& id) = 0;
+  virtual Result<std::optional<TabletId>> FindStatusTablet(const TransactionId& id) = 0;
 
   // Returns minimal running hybrid time of all running transactions.
   virtual HybridTime MinRunningHybridTime() const = 0;

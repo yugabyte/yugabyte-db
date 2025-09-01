@@ -843,7 +843,7 @@ TEST_F(RpcStubTest, ExpireInQueue) {
 
   struct Entry {
     EchoRequestPB req;
-    boost::optional<EchoResponsePB> resp;
+    std::optional<EchoResponsePB> resp;
     RpcController controller;
   };
 
@@ -856,8 +856,8 @@ TEST_F(RpcStubTest, ExpireInQueue) {
     entry.req.set_data(std::string(100_KB, 'X'));
     entry.resp.emplace();
     entry.controller.set_timeout(1ms);
-    proxy.EchoAsync(entry.req, entry.resp.get_ptr(), &entry.controller, [&entry, &latch] {
-      auto ptr = entry.resp.get_ptr();
+    proxy.EchoAsync(entry.req, &entry.resp.value(), &entry.controller, [&entry, &latch] {
+      auto ptr = &entry.resp.value();
       entry.resp.reset();
       memset(static_cast<void*>(ptr), 'X', sizeof(*ptr));
       latch.CountDown();

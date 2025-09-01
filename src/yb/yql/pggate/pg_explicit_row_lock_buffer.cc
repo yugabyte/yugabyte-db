@@ -61,9 +61,9 @@ Status ExplicitRowLockBuffer::DoFlush(std::optional<ErrorStatusAdditionalInfo>& 
   auto status = DoFlushImpl();
   if (!status.ok()) {
     error_info.emplace(
-        info_->pg_wait_policy,
-        TransactionError(status).value() == TransactionErrorCode::kNone
-            ? kInvalidOid : RelationOid::ValueFromStatus(status).get_value_or(kInvalidOid));
+        info_->pg_wait_policy, TransactionError(status).value() == TransactionErrorCode::kNone
+                                   ? kInvalidOid
+                                   : RelationOid::ValueFromStatus(status).value_or(kInvalidOid));
   }
   return status;
 }

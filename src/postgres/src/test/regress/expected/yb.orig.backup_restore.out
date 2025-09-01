@@ -999,7 +999,7 @@ CREATE TABLE public.part_uniq_const (
     CONSTRAINT part_uniq_const_pkey PRIMARY KEY((v1) HASH, v3 ASC)
 )
 PARTITION BY RANGE (v1)
-SPLIT INTO 2 TABLETS;
+SPLIT INTO 1 TABLETS;
 
 
 \if :use_roles

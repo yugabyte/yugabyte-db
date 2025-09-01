@@ -35,6 +35,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_heartbeat.pb.h"
+#include "yb/master/master_types.pb.h"
 #include "yb/master/master_util.h"
 #include "yb/master/restoration_state.h"
 #include "yb/master/scoped_leader_shared_lock.h"
@@ -56,11 +57,13 @@
 #include "yb/tablet/write_query.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/unique_lock.h"
 
 using std::vector;
@@ -245,9 +248,39 @@ class MasterSnapshotCoordinator::Impl {
       int32_t retention_duration_hours) {
     auto synchronizer = std::make_shared<Synchronizer>();
     auto snapshot_id = TxnSnapshotId::GenerateRandom();
+
+    // Select hybrid time for the snapshot
+    auto snapshot_hybrid_time = GetCurrentHybridTime();
+
     RETURN_NOT_OK(SubmitCreate(
-        entries, imported, SnapshotScheduleId::Nil(), HybridTime::kInvalid, snapshot_id,
-        leader_term, retention_duration_hours,
+        entries, snapshot_hybrid_time, imported, SnapshotScheduleId::Nil(), HybridTime::kInvalid,
+        snapshot_id, leader_term, retention_duration_hours,
+        tablet::MakeWeakSynchronizerOperationCompletionCallback(synchronizer)));
+    RETURN_NOT_OK(synchronizer->WaitUntil(ToSteady(deadline)));
+
+    return snapshot_id;
+  }
+
+  Result<TxnSnapshotId> Create(
+      const NamespaceId& namespace_id, bool imported, CollectFlags flags, int64_t leader_term,
+      CoarseTimePoint deadline, int32_t retention_duration_hours) {
+    auto synchronizer = std::make_shared<Synchronizer>();
+    auto snapshot_id = TxnSnapshotId::GenerateRandom();
+
+    TEST_SYNC_POINT("YBBackupTestWithColocationParam::ContinueSnapshotCreation");
+    // Select hybrid time for the snapshot
+    auto snapshot_hybrid_time = GetCurrentHybridTime();
+
+    // Collect entries (namespaces, tables, tablets) as of snapshot_ht
+    auto entries_as_snapshot_ht =
+        VERIFY_RESULT(CollectEntriesAsOfTime(namespace_id, flags, snapshot_hybrid_time, deadline));
+
+    LOG(INFO) << "Successfully collected entries as of time " << snapshot_hybrid_time
+              << ", num entries: " << entries_as_snapshot_ht.entries_size();
+
+    RETURN_NOT_OK(SubmitCreate(
+        entries_as_snapshot_ht, snapshot_hybrid_time, imported, SnapshotScheduleId::Nil(),
+        HybridTime::kInvalid, snapshot_id, leader_term, retention_duration_hours,
         tablet::MakeWeakSynchronizerOperationCompletionCallback(synchronizer)));
     RETURN_NOT_OK(synchronizer->WaitUntil(ToSteady(deadline)));
 
@@ -256,7 +289,7 @@ class MasterSnapshotCoordinator::Impl {
 
   Result<TxnSnapshotId> CreateForSchedule(
       const SnapshotScheduleId& schedule_id, int64_t leader_term, CoarseTimePoint deadline) {
-    boost::optional<SnapshotScheduleOperation> operation;
+    std::optional<SnapshotScheduleOperation> operation;
     {
       std::lock_guard lock(mutex_);
       auto it = schedules_.find(schedule_id);
@@ -294,6 +327,12 @@ class MasterSnapshotCoordinator::Impl {
     return operation->snapshot_id;
   }
 
+  Result<SysRowEntries> CollectEntriesAsOfTime(
+      const NamespaceId& namespace_id, CollectFlags flags, HybridTime read_time,
+      CoarseTimePoint deadline) {
+    return context_.CollectEntriesAsOfTime(namespace_id, flags, read_time, deadline);
+  }
+
   Status CreateReplicated(int64_t leader_term, const tablet::SnapshotOperation& operation) {
     // TODO(txn_backup) retain logs with this operation while doing snapshot
     auto id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(operation.request()->snapshot_id()));
@@ -308,7 +347,7 @@ class MasterSnapshotCoordinator::Impl {
     TabletSnapshotOperations operations;
     docdb::KeyValueWriteBatchPB write_batch;
     RETURN_NOT_OK(snapshot->StoreToWriteBatch(&write_batch));
-    boost::optional<tablet::CreateSnapshotData> sys_catalog_snapshot_data;
+    std::optional<tablet::CreateSnapshotData> sys_catalog_snapshot_data;
     bool snapshot_empty = false;
     {
       std::lock_guard lock(mutex_);
@@ -894,22 +933,22 @@ class MasterSnapshotCoordinator::Impl {
         restoration->MasterMetadata(), schedule_result->options().filter().tables().tables());
   }
 
-  boost::optional<yb::master::SnapshotState&> ValidateRestoreAndGetSnapshot(
-      RestorationState* restoration) REQUIRES(mutex_) {
+  std::optional<std::reference_wrapper<const yb::master::SnapshotState>>
+  ValidateRestoreAndGetSnapshot(RestorationState* restoration) REQUIRES(mutex_) {
     // Ignore if already completed.
     if (restoration->complete_time()) {
-      return boost::none;
+      return std::nullopt;
     }
     // If the restore is still undergoing the sys catalog phase.
     if (!restoration->IsSysCatalogRestorationDone()) {
-      return boost::none;
+      return std::nullopt;
     }
     // If the snapshot to restore is not ok.
     auto snapshot = FindSnapshot(restoration->snapshot_id());
     if (!snapshot.ok()) {
       LOG(DFATAL) << "Snapshot not found for pending restore with id "
                   << restoration->restoration_id();
-      return boost::none;
+      return std::nullopt;
     }
 
     return *snapshot;
@@ -1474,13 +1513,13 @@ class MasterSnapshotCoordinator::Impl {
         if (!snapshot || r->GetLeaderTerm() != leader_term) {
           continue;
         }
-        r->Throttler().RefreshLimit(
-            GetRpcLimit(FLAGS_max_concurrent_restoration_rpcs,
-                        FLAGS_max_concurrent_restoration_rpcs_per_tserver, leader_term));
-        auto tablets = (*snapshot).tablet_ids();
+        r->Throttler().RefreshLimit(GetRpcLimit(
+            FLAGS_max_concurrent_restoration_rpcs,
+            FLAGS_max_concurrent_restoration_rpcs_per_tserver, leader_term));
+        auto tablets = (*snapshot).get().tablet_ids();
         std::unordered_set<TabletId> tablets_snapshot(tablets.begin(), tablets.end());
         std::optional<int64_t> db_oid = std::nullopt;
-        if (!snapshot->schedule_id().IsNil()) {
+        if (!snapshot->get().schedule_id().IsNil()) {
           db_oid = ComputeDbOid(*r);
         }
         r->PrepareOperations(&restore_operations, tablets_snapshot, db_oid);
@@ -1651,8 +1690,9 @@ class MasterSnapshotCoordinator::Impl {
       CreateSnapshotAborted(entries.status(), operation.schedule_id, operation.snapshot_id);
       return entries.status();
     }
+    auto snapshot_hybrid_time = GetCurrentHybridTime();
     return SubmitCreate(
-        *entries, /* imported= */ false, operation.schedule_id,
+        *entries, snapshot_hybrid_time, /* imported= */ false, operation.schedule_id,
         operation.previous_snapshot_hybrid_time, operation.snapshot_id, leader_term,
         // For snapshots created as part of a schedule, the retention is dictated by
         // the schedule params so set it null here.
@@ -1688,15 +1728,17 @@ class MasterSnapshotCoordinator::Impl {
   }
 
   Status SubmitCreate(
-      const SysRowEntries& entries, bool imported, const SnapshotScheduleId& schedule_id,
-      HybridTime previous_snapshot_hybrid_time, TxnSnapshotId snapshot_id, int64_t leader_term,
+      const SysRowEntries& entries, HybridTime snapshot_hybrid_time, bool imported,
+      const SnapshotScheduleId& schedule_id, HybridTime previous_snapshot_hybrid_time,
+      TxnSnapshotId snapshot_id, int64_t leader_term,
       std::optional<int32_t> retention_duration_hours,
       tablet::OperationCompletionCallback completion_clbk) {
     auto operation = std::make_unique<tablet::SnapshotOperation>(/* tablet= */ nullptr);
     auto request = operation->AllocateRequest();
 
-    VLOG(1) << __func__ << "(" << AsString(entries) << ", " << imported << ", " << schedule_id
-            << ", " << snapshot_id << ")";
+    VLOG_WITH_FUNC(1) << "(" << AsString(entries) << ", " << snapshot_hybrid_time << ", "
+                      << imported << ", " << schedule_id << ", " << snapshot_id << ")";
+
     // There could be more than one entry of the same tablet,
     // for instance in the case of colocated tables.
     std::unordered_set<TabletId> unique_tablet_ids;
@@ -1710,7 +1752,7 @@ class MasterSnapshotCoordinator::Impl {
       }
     }
 
-    request->set_snapshot_hybrid_time(GetCurrentHybridTime().ToUint64());
+    request->set_snapshot_hybrid_time(snapshot_hybrid_time.ToUint64());
     request->set_operation(tserver::TabletSnapshotOpRequestPB::CREATE_ON_MASTER);
     request->dup_snapshot_id(snapshot_id.AsSlice());
     request->set_imported(imported);
@@ -2360,6 +2402,13 @@ Result<TxnSnapshotId> MasterSnapshotCoordinator::Create(
   return impl_->Create(entries, imported, leader_term, deadline, retention_duration_hours);
 }
 
+Result<TxnSnapshotId> MasterSnapshotCoordinator::Create(
+    const NamespaceId& namespace_id, bool imported, CollectFlags flags, int64_t leader_term,
+    CoarseTimePoint deadline, int32_t retention_duration_hours) {
+  return impl_->Create(
+      namespace_id, imported, flags, leader_term, deadline, retention_duration_hours);
+}
+
 Status MasterSnapshotCoordinator::CreateReplicated(
     int64_t leader_term, const tablet::SnapshotOperation& operation) {
   return impl_->CreateReplicated(leader_term, operation);
@@ -2530,6 +2579,12 @@ bool MasterSnapshotCoordinator::ShouldRetainHiddenColocatedTable(
     const ScheduleMinRestoreTime& schedule_to_min_restore_time) const {
   return impl_->ShouldRetainHiddenColocatedTable(
       table_info, tablet_info, schedule_to_min_restore_time);
+}
+
+Result<SysRowEntries> MasterSnapshotCoordinator::CollectEntriesAsOfTime(
+    const NamespaceId& namespace_id, CollectFlags flags, HybridTime read_time,
+    CoarseTimePoint deadline) {
+  return impl_->CollectEntriesAsOfTime(namespace_id, flags, read_time, deadline);
 }
 
 } // namespace master

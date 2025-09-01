@@ -16,8 +16,6 @@
 #include <condition_variable>
 #include <shared_mutex>
 
-#include <boost/optional.hpp>
-
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/roles_permissions.h"
 
@@ -102,7 +100,7 @@ class PermissionsCache {
   // false if the cache is not ready after waiting for the specified time. Returns true otherwise.
   bool WaitUntilReady(MonoDelta wait_for);
 
-  boost::optional<uint64_t> version() {
+  std::optional<uint64_t> version() {
     std::unique_lock<simple_spinlock> l(permissions_cache_lock_);
     return version_;
   }
@@ -123,7 +121,7 @@ class PermissionsCache {
 
   // Passed to the master whenever we want to update our cache. The master will only send a new
   // cache if its version number is greater than this version number.
-  boost::optional<uint64_t> version_;
+  std::optional<uint64_t> version_;
 
   // Client used to send the request to the master.
   client::YBClient* const client_;

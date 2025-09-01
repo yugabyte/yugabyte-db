@@ -5557,13 +5557,60 @@ make_join_rel_wrapper(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 	if (memoize_hint && memoize_hint->inner_nrels != 0)
 		memoize_hint = NULL;
 
+	bool yb_prefer_bnl_save = yb_prefer_bnl;
 	if (join_hint || memoize_hint)
 	{
 		save_nestlevel = NewGUCNestLevel();
 
 		if (join_hint)
+		{
+			if (IsYugaByteEnabled())
+			{
+				/*
+				 * Enforce semantics for hints affecting NL and BNL:
+				 *
+				 *   yb_prefer_bnl = on
+				 *     - NestLoop --> NestLoop OR BNL (if possible, they compete on cost)
+				 *     - NoNestLoop --> only Merge, Hash allowed
+				 *     - YBBatchedNL --> YBBatchedNL
+				 *     - NoYBBatchedNL --> NestLoop, Merge, Hash all allowed
+				 *
+				 *   yb_prefer_bnl = off
+				 *     - NestLoop --> NestLoop (if possible)
+				 *     - NoNestLoop --> BNL, Merge, Hash all allowed
+				 *     - YBBatchedNL --> YBBatchedNL (if possible)
+				 *     - NoYBBatchedNL --> NestLoop, Merge, Hash all allowed
+				 */
+				if (yb_prefer_bnl)
+				{
+					if (join_hint->base.hint_keyword == HINT_KEYWORD_NONESTLOOP)
+					{
+						/*
+						* Nested loop is disabled via a hint so disable BNL also
+						* since it is a subtype of NL.
+						*/
+						join_hint->enforce_mask &= ~ENABLE_BATCHEDNL;
+					}
+					else if (join_hint->base.hint_keyword == HINT_KEYWORD_NOBATCHEDNL)
+					{
+						yb_prefer_bnl = false;
+					}
+				}
+				else
+				{
+					if (join_hint->base.hint_keyword == HINT_KEYWORD_NESTLOOP)
+					{
+						/*
+						 * Do not want BNL in this case.
+						 */
+						join_hint->enforce_mask &= ~ENABLE_BATCHEDNL;
+					}
+				}
+			}
+
 			set_join_config_options(join_hint->enforce_mask, false,
 									current_hint_state->context);
+		}
 
 		if (memoize_hint)
 		{
@@ -5606,6 +5653,8 @@ make_join_rel_wrapper(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 			memoize_hint->base.state = HINT_STATE_USED;
 
 		AtEOXact_GUC(true, save_nestlevel);
+
+		yb_prefer_bnl = yb_prefer_bnl_save;
 	}
 
 	if (IsYugaByteEnabled() && yb_enable_planner_trace)

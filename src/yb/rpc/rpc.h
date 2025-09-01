@@ -37,7 +37,6 @@
 #include <string>
 
 #include <boost/container/stable_vector.hpp>
-#include <boost/optional/optional.hpp>
 
 #include "yb/rpc/rpc_controller.h"
 
@@ -293,7 +292,7 @@ class Rpcs {
   // If shutdown is true - switches Rpcs to shutting down state.
   CoarseTimePoint DoRequestAbortAll(RequestShutdown shutdown);
 
-  boost::optional<std::mutex> mutex_holder_;
+  std::optional<std::mutex> mutex_holder_;
   std::mutex* mutex_;
   std::condition_variable cond_;
   Calls calls_;

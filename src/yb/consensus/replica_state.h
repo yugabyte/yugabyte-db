@@ -246,6 +246,7 @@ class ReplicaState {
   const std::string& GetLeaderUuidUnlocked() const;
   bool HasLeaderUnlocked() const { return !GetLeaderUuidUnlocked().empty(); }
   void ClearLeaderUnlocked() { SetLeaderUuidUnlocked(""); }
+  void BecomeReplicaUnlocked();
 
   // Return whether this peer has voted in the current term.
   const bool HasVotedCurrentTermUnlocked() const;

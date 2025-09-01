@@ -1525,6 +1525,129 @@ EXPLAIN (costs off, hints on) SELECT 1 FROM tbl, (SELECT dummy() as x) AS ss, (S
                      Index Cond: (a1 > t3.a3)
 (12 rows)
 
+-- Test hints affecting NestLoop and YBBatchedNL join methods.
+-- Turn on BNL preference.
+set yb_prefer_bnl to on;
+-- Should get NestLoop or YBBatchedNL based on cost.
+/*+ NestLoop(t1 t2) */ explain select a1 from t1 join t2 on a1=a2 order by a1;
+                                        QUERY PLAN                                         
+-------------------------------------------------------------------------------------------
+ Nested Loop  (cost=0.01..8.59 rows=144 width=4)
+   ->  Index Only Scan using t1_a1_asc_b1_asc_idx on t1  (cost=0.00..6.20 rows=20 width=4)
+   ->  Memoize  (cost=0.01..0.30 rows=1 width=4)
+         Cache Key: t1.a1
+         Cache Mode: logical
+         ->  Index Only Scan using t2_a2_idx on t2  (cost=0.00..0.29 rows=1 width=4)
+               Index Cond: (a2 = t1.a1)
+(7 rows)
+
+-- Should get HashJoin or MergeJoin since hint prevents both NestLoop and
+-- YBBatchedNL.
+/*+ NoNestLoop(t1 t2) */ explain select a1 from t1 join t2 on a1=a2 order by a1;
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Merge Join  (cost=12.96..15.06 rows=144 width=4)
+   Merge Cond: (t1.a1 = t2.a2)
+   ->  Sort  (cost=2.43..2.48 rows=20 width=4)
+         Sort Key: t1.a1
+         ->  Seq Scan on t1  (cost=0.00..2.00 rows=20 width=4)
+   ->  Sort  (cost=10.53..10.73 rows=80 width=4)
+         Sort Key: t2.a2
+         ->  Seq Scan on t2  (cost=0.00..8.00 rows=80 width=4)
+(8 rows)
+
+-- Should get YBBatchedNL.
+/*+ YBBatchedNL(t1 t2) */ explain select a1 from t1 join t2 on a1=a2 order by a1;
+                                        QUERY PLAN                                         
+-------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join  (cost=0.00..12.16 rows=144 width=4)
+   Join Filter: (t1.a1 = t2.a2)
+   Sort Keys: t1.a1
+   ->  Index Only Scan using t1_a1_asc_b1_asc_idx on t1  (cost=0.00..6.20 rows=20 width=4)
+   ->  Index Only Scan using t2_a2_idx on t2  (cost=0.00..0.29 rows=1 width=4)
+         Index Cond: (a2 = ANY (ARRAY[t1.a1, $1, $2, ..., $1023]))
+(6 rows)
+
+-- Should get NestLoop, HashJoin, or MergeJoin.
+/*+ NoYBBatchedNL(t1 t2) */ explain select a1 from t1 join t2 on a1=a2 order by a1;
+                                        QUERY PLAN                                         
+-------------------------------------------------------------------------------------------
+ Nested Loop  (cost=0.01..8.59 rows=144 width=4)
+   ->  Index Only Scan using t1_a1_asc_b1_asc_idx on t1  (cost=0.00..6.20 rows=20 width=4)
+   ->  Memoize  (cost=0.01..0.30 rows=1 width=4)
+         Cache Key: t1.a1
+         Cache Mode: logical
+         ->  Index Only Scan using t2_a2_idx on t2  (cost=0.00..0.29 rows=1 width=4)
+               Index Cond: (a2 = t1.a1)
+(7 rows)
+
+-- Turn off BNL preference.
+set yb_prefer_bnl to off;
+-- Should get NestLoop.
+/*+ NestLoop(t1 t2) */ explain select a1 from t1 join t2 on a1=a2 order by a1;
+                                        QUERY PLAN                                         
+-------------------------------------------------------------------------------------------
+ Nested Loop  (cost=0.01..8.59 rows=144 width=4)
+   ->  Index Only Scan using t1_a1_asc_b1_asc_idx on t1  (cost=0.00..6.20 rows=20 width=4)
+   ->  Memoize  (cost=0.01..0.30 rows=1 width=4)
+         Cache Key: t1.a1
+         Cache Mode: logical
+         ->  Index Only Scan using t2_a2_idx on t2  (cost=0.00..0.29 rows=1 width=4)
+               Index Cond: (a2 = t1.a1)
+(7 rows)
+
+-- Should get HashJoin, MergeJoin, or YBBatchedNL.
+/*+ NoNestLoop(t1 t2) */ explain select a1 from t1 join t2 on a1=a2 order by a1;
+                                        QUERY PLAN                                         
+-------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join  (cost=0.00..12.16 rows=144 width=4)
+   Join Filter: (t1.a1 = t2.a2)
+   Sort Keys: t1.a1
+   ->  Index Only Scan using t1_a1_asc_b1_asc_idx on t1  (cost=0.00..6.20 rows=20 width=4)
+   ->  Index Only Scan using t2_a2_idx on t2  (cost=0.00..0.29 rows=1 width=4)
+         Index Cond: (a2 = ANY (ARRAY[t1.a1, $1, $2, ..., $1023]))
+(6 rows)
+
+-- Should get YBBatchedNL.
+/*+ YBBatchedNL(t1 t2) */ explain select a1 from t1 join t2 on a1=a2 order by a1;
+                                        QUERY PLAN                                         
+-------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join  (cost=0.00..12.16 rows=144 width=4)
+   Join Filter: (t1.a1 = t2.a2)
+   Sort Keys: t1.a1
+   ->  Index Only Scan using t1_a1_asc_b1_asc_idx on t1  (cost=0.00..6.20 rows=20 width=4)
+   ->  Index Only Scan using t2_a2_idx on t2  (cost=0.00..0.29 rows=1 width=4)
+         Index Cond: (a2 = ANY (ARRAY[t1.a1, $1, $2, ..., $1023]))
+(6 rows)
+
+-- Should get NestLoop, HashJoin, or MergeJoin.
+/*+ NoYBBatchedNL(t1 t2) */ explain select a1 from t1 join t2 on a1=a2 order by a1;
+                                        QUERY PLAN                                         
+-------------------------------------------------------------------------------------------
+ Nested Loop  (cost=0.01..8.59 rows=144 width=4)
+   ->  Index Only Scan using t1_a1_asc_b1_asc_idx on t1  (cost=0.00..6.20 rows=20 width=4)
+   ->  Memoize  (cost=0.01..0.30 rows=1 width=4)
+         Cache Key: t1.a1
+         Cache Mode: logical
+         ->  Index Only Scan using t2_a2_idx on t2  (cost=0.00..0.29 rows=1 width=4)
+               Index Cond: (a2 = t1.a1)
+(7 rows)
+
+-- Should get HashJoin.
+/*+ NoYBBatchedNL(t1 t2) set(enable_nestloop off) set(enable_mergejoin off) */ explain select a1 from t1 join t2 on a1=a2
+ order by a1;
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ Sort  (cost=17.55..17.91 rows=144 width=4)
+   Sort Key: t1.a1
+   ->  Hash Join  (cost=2.25..12.39 rows=144 width=4)
+         Hash Cond: (t2.a2 = t1.a1)
+         ->  Seq Scan on t2  (cost=0.00..8.00 rows=80 width=4)
+         ->  Hash  (cost=2.00..2.00 rows=20 width=4)
+               ->  Seq Scan on t1  (cost=0.00..2.00 rows=20 width=4)
+(7 rows)
+
+reset yb_prefer_bnl;
 -- NEGATIVE TESTS
 -- Try to use a bad index. Should get warnings.
 /*+ Leading((t2 t1)) SeqScan(t2) IndexScan(t1 badIndex) YbBatchedNL(t2 t1) */ explain (hints off, costs off) select * from t1, t2 where a1=1 and b1=b2;
@@ -1648,6 +1771,9 @@ WARNING:  unused hints, and/or hints causing errors, exist
 (5 rows)
 
 -- This hint makes sense but currently there cannot be > 1 join method hint for the same set of tables so will give warnings/errors.
+-- Since pg_hint_plan.yb_bad_hint_mode==WARN, the noNestLoop hint is marked as a duplicate (and is not used) but the
+-- NoYbBatchedNL hint remains valid and is used. (This is an artifact of how the hint processing works.)
+-- Therefore, for this query and hints, NestLoop is a valid choice but BNL is not.
 /*+ noNestLoop(t1 t2) NoYbBatchedNL(t1 t2) */ explain (hints on, costs off) select max(a1) from t1 join t2 on a1=a2;
 INFO:  pg_hint_plan: hint syntax error at or near "noNestLoop(t1 t2) NoYbBatchedNL(t1 t2) "
 DETAIL:  Conflict join method hint.

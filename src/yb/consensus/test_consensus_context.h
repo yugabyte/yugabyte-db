@@ -30,7 +30,9 @@ class TestConsensusContext : public ConsensusContext {
 
   Result<HybridTime> PreparePeerRequest() override { return HybridTime(); }
 
-  Status MajorityReplicated() override { return Status::OK(); }
+  Status MajorityReplicated(const OpId& committed_op_id) override { return Status::OK(); }
+
+  void BecomeReplica() override {}
 
   void ChangeConfigReplicated(const RaftConfigPB&) override {}
 

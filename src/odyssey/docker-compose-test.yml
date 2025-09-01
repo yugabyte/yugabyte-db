@@ -2,6 +2,11 @@ version: '3'
 
 services:
   odyssey:
+    ulimits:
+      core:
+        soft: -1
+        hard: -1
+    privileged: true
     build:
       dockerfile: ./docker/Dockerfile
       context: .

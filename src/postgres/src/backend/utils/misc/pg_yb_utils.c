@@ -771,7 +771,11 @@ YBIsDBCatalogVersionMode()
 		 * Mixing global and per-database catalog versions in a single RPC
 		 * triggers a tserver SCHECK failure.
 		 */
-		YBFlushBufferedOperations();
+		YBFlushBufferedOperations((YbcFlushDebugContext)
+			{
+				.reason = YB_SWITCH_TO_DB_CATALOG_VERSION_MODE,
+				.oidarg = MyDatabaseId
+			});
 		return true;
 	}
 
@@ -4192,13 +4196,15 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 			else
 			{
 				/*
-				 * Disallow DDL if there is an active savepoint except the
-				 * implicit ones created for READ COMMITTED isolation.
+				 * Disallow DDL if savepoint for DDL support is disabled and
+				 * there is an active savepoint except the implicit ones created
+				 * for READ COMMITTED isolation.
 				 *
-				 * TODO(#26734): Remove once savepoint for DDL is
-				 * supported.
+				 * TODO(#26734): Change the error message to suggest enabling
+				 * the savepoint feature once it is no longer a test flag.
 				 */
-				if (YBTransactionContainsNonReadCommittedSavepoint())
+				if (!*YBCGetGFlags()->TEST_ysql_yb_enable_ddl_savepoint_support &&
+					YBTransactionContainsNonReadCommittedSavepoint())
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							 errmsg("interleaving SAVEPOINT & DDL in transaction"
@@ -4341,9 +4347,9 @@ YBResetOperationsBuffering()
 }
 
 void
-YBFlushBufferedOperations()
+YBFlushBufferedOperations(YbcFlushDebugContext debug_context)
 {
-	HandleYBStatus(YBCPgFlushBufferedOperations());
+	HandleYBStatus(YBCPgFlushBufferedOperations(debug_context));
 }
 
 bool
@@ -7578,12 +7584,29 @@ YbCalculateTimeDifferenceInMicros(TimestampTz yb_start_time)
 	return secs * USECS_PER_SEC + microsecs;
 }
 
+static bool
+YbIsDDLOrInitDBMode()
+{
+	return YBCPgIsDdlMode() || YBCIsInitDbModeEnvVarSet();
+}
+
 bool
 YbIsReadCommittedTxn()
 {
-	return IsYBReadCommitted() &&
-		!((YBCPgIsDdlMode() && !YBIsDdlTransactionBlockEnabled()) ||
-		  YBCIsInitDbModeEnvVarSet());
+	return IsYBReadCommitted() && !YbIsDDLOrInitDBMode();
+}
+
+bool
+YbSkipPgSnapshotManagement()
+{
+	/*
+	 * YSQL doesn't use Pg's snapshot management in DDL or initdb mode. Also, for SERIALIZABLE
+	 * isolation level, YSQL doesn't use SSI. Instead it uses 2 phase locking and reads the latest
+	 * data on DocDB always.
+	 *
+	 * TODO: Integrate with Pg's snapshot management for DDLs.
+	 */
+	return YbIsDDLOrInitDBMode() || IsolationIsSerializable();
 }
 
 static YbOptionalReadPointHandle
@@ -7598,7 +7621,7 @@ YbMakeReadPointHandle(YbcReadPointHandle read_point)
 YbOptionalReadPointHandle
 YbBuildCurrentReadPointHandle()
 {
-	return YbIsReadCommittedTxn()
+	return !YbSkipPgSnapshotManagement()
 		? YbMakeReadPointHandle(YBCPgGetCurrentReadPoint())
 		: (YbOptionalReadPointHandle)
 	{
@@ -7622,6 +7645,32 @@ YbRegisterSnapshotReadTime(uint64_t read_time)
 												 false /* use_read_time */ ,
 												 &handle));
 	return YbMakeReadPointHandle(handle);
+}
+
+YbOptionalReadPointHandle
+YbResetTransactionReadPoint()
+{
+	if (YbSkipPgSnapshotManagement())
+		return (YbOptionalReadPointHandle) {};
+
+	/*
+	 * If this is a query layer retry for a kReadRestart error, avoid resetting the read point.
+	 */
+	if (!YBCIsRestartReadPointRequested())
+	{
+		YbcFlushDebugContext debug_context = {
+			.reason = YB_GET_TRANSACTION_SNAPSHOT,
+			.uintarg = YBCPgGetCurrentReadPoint(),
+		};
+
+		/*
+		 * Flush all earlier operations so that they complete on the previous snapshot.
+		 */
+		HandleYBStatus(YBCPgFlushBufferedOperations(debug_context));
+		HandleYBStatus(YBCPgResetTransactionReadPoint());
+	}
+
+  return YbMakeReadPointHandle(YBCPgGetCurrentReadPoint());
 }
 
 /*

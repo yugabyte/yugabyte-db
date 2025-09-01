@@ -19,6 +19,7 @@ import com.yugabyte.yw.common.NFSUtil;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.RetryTaskUntilCondition;
 import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -65,6 +66,8 @@ import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Predicate;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
@@ -704,21 +707,22 @@ public class YbcManager {
       BackupServiceTaskResultRequest downloadSuccessMarkerResultRequest =
           BackupServiceTaskResultRequest.newBuilder().setTaskId(taskID).build();
       BackupServiceTaskResultResponse downloadSuccessMarkerResultResponse = null;
-      int numRetries = 0;
-      while (numRetries < MAX_SHORT_RETRIES) {
-        downloadSuccessMarkerResultResponse =
-            ybcClient.backupServiceTaskResult(downloadSuccessMarkerResultRequest);
-        if (!(downloadSuccessMarkerResultResponse
-                .getTaskStatus()
-                .equals(ControllerStatus.IN_PROGRESS)
-            || downloadSuccessMarkerResultResponse
-                .getTaskStatus()
-                .equals(ControllerStatus.NOT_STARTED))) {
-          break;
-        }
-        Thread.sleep(WAIT_EACH_SHORT_ATTEMPT_MS);
-        numRetries++;
-      }
+      Integer timeoutSecs =
+          confGetter.getGlobalConf(GlobalConfKeys.ybcSuccessMarkerDownloadTimeoutSecs);
+      // RetryTaskUntilCondition
+      Supplier<BackupServiceTaskResultResponse> dsmResponseSupplier =
+          () -> ybcClient.backupServiceTaskResult(downloadSuccessMarkerResultRequest);
+      Predicate<BackupServiceTaskResultResponse> stopRetries =
+          (dsmResponse) ->
+              !(dsmResponse.getTaskStatus().equals(ControllerStatus.IN_PROGRESS)
+                  || dsmResponse.getTaskStatus().equals(ControllerStatus.NOT_STARTED));
+      RetryTaskUntilCondition<BackupServiceTaskResultResponse> pollSuccessMarkerDownloadProgress =
+          new RetryTaskUntilCondition<>(dsmResponseSupplier, stopRetries);
+      pollSuccessMarkerDownloadProgress.retryUntilCond(
+          WAIT_EACH_SHORT_ATTEMPT_MS / 1000, timeoutSecs);
+
+      downloadSuccessMarkerResultResponse =
+          ybcClient.backupServiceTaskResult(downloadSuccessMarkerResultRequest);
       if (!downloadSuccessMarkerResultResponse.getTaskStatus().equals(ControllerStatus.OK)) {
         throw new RuntimeException(
             String.format(

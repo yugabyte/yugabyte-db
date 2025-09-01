@@ -114,7 +114,6 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       Cluster cluster,
       Set<NodeDetails> newMasters,
       Set<NodeDetails> mastersToStop,
-      boolean updateMasters,
       boolean forceDestroyServers) {
     UserIntent userIntent = cluster.userIntent;
     Set<NodeDetails> nodes = taskParams().getNodesInCluster(cluster.uuid);

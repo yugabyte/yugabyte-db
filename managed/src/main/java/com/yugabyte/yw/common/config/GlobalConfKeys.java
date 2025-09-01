@@ -1802,4 +1802,29 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Skip Runtime GFlag validation before cluster operations.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableCapacityReservationAzure =
+      new ConfKeyInfo<>(
+          "yb.task.enable_capacity_reservation_azure",
+          ScopeType.GLOBAL,
+          "Enable capacity reservations for azure",
+          "Enable capacity reservations for azure for tasks that need new nodes",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  public static final ConfKeyInfo<List> capacityReservationOperationsAzure =
+      new ConfKeyInfo<>(
+          "yb.task.capacity_reservation_supported_operations_azure",
+          ScopeType.GLOBAL,
+          "Capacity reservations operations for azure",
+          "List of operations that use capacity reservation in azure",
+          ConfDataType.StringListType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> ybcSuccessMarkerDownloadTimeoutSecs =
+      new ConfKeyInfo<>(
+          "ybc.success_marker_download_timeout_secs",
+          ScopeType.GLOBAL,
+          "Timeout for backup success marker download",
+          "Timeout for backup success marker download from backup lcoation",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

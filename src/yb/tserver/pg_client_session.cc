@@ -1512,6 +1512,8 @@ class PgClientSession::Impl {
 
   Status CreateTable(
       const PgCreateTableRequestPB& req, PgCreateTableResponsePB* resp, rpc::RpcContext* context) {
+    VLOG_WITH_FUNC(2) << "req: " << req.DebugString();
+
     PgCreateTable helper(req);
     RETURN_NOT_OK(helper.Prepare());
 
@@ -1523,7 +1525,9 @@ class PgClientSession::Impl {
         req.use_regular_transaction_block(), req.options(), context->GetClientDeadline()));
     const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
         req.use_transaction(), req.use_regular_transaction_block(), context->GetClientDeadline()));
-    RETURN_NOT_OK(helper.Exec(&client_, metadata, context->GetClientDeadline()));
+    RETURN_NOT_OK(helper.Exec(
+        &client_, metadata, req.options().active_sub_transaction_id(),
+        context->GetClientDeadline()));
     VLOG_WITH_PREFIX(1) << __func__ << ": " << req.table_name();
     const auto& indexed_table_id = helper.indexed_table_id();
     if (indexed_table_id.IsValid()) {
@@ -1535,6 +1539,7 @@ class PgClientSession::Impl {
   Status CreateDatabase(
       const PgCreateDatabaseRequestPB& req, PgCreateDatabaseResponsePB* resp,
       rpc::RpcContext* context) {
+    VLOG_WITH_FUNC(2) << "req: " << req.DebugString();
     bool is_clone =
         req.source_database_name() != "" &&
         req.source_database_name() != "template0" &&
@@ -1565,6 +1570,7 @@ class PgClientSession::Impl {
   Status DropDatabase(
       const PgDropDatabaseRequestPB& req, PgDropDatabaseResponsePB* resp,
       rpc::RpcContext* context) {
+    VLOG_WITH_FUNC(2) << "req: " << req.DebugString();
     return client_.DeleteNamespace(
         req.database_name(), YQL_DATABASE_PGSQL, GetPgsqlNamespaceId(req.database_oid()),
         context->GetClientDeadline());
@@ -1572,6 +1578,7 @@ class PgClientSession::Impl {
 
   Status DropTable(
       const PgDropTableRequestPB& req, PgDropTableResponsePB* resp, rpc::RpcContext* context) {
+    VLOG_WITH_FUNC(2) << "req: " << req.DebugString();
     const auto yb_table_id = PgObjectId::GetYbTableIdFromPB(req.table_id());
     RETURN_NOT_OK(SetupSessionForDdl(
       req.use_regular_transaction_block(), req.options(), context->GetClientDeadline()));
@@ -1585,7 +1592,7 @@ class PgClientSession::Impl {
       client::YBTableName indexed_table;
       RETURN_NOT_OK(client_.DeleteIndexTable(
           yb_table_id, &indexed_table, !YsqlDdlRollbackEnabled() /* wait */,
-          metadata, context->GetClientDeadline()));
+          metadata, req.options().active_sub_transaction_id(), context->GetClientDeadline()));
       indexed_table.SetIntoTableIdentifierPB(resp->mutable_indexed_table());
       table_cache().Invalidate(indexed_table.table_id());
       table_cache().Invalidate(yb_table_id);
@@ -1593,7 +1600,7 @@ class PgClientSession::Impl {
     }
 
     RETURN_NOT_OK(client_.DeleteTable(yb_table_id, !YsqlDdlRollbackEnabled(), metadata,
-          context->GetClientDeadline()));
+      req.options().active_sub_transaction_id(), context->GetClientDeadline()));
     table_cache().Invalidate(yb_table_id);
     return Status::OK();
   }
@@ -1601,6 +1608,7 @@ class PgClientSession::Impl {
   Status AlterDatabase(
       const PgAlterDatabaseRequestPB& req, PgAlterDatabaseResponsePB* resp,
       rpc::RpcContext* context) {
+    VLOG_WITH_FUNC(2) << "req: " << req.DebugString();
     const auto alterer = client_.NewNamespaceAlterer(
         req.database_name(), GetPgsqlNamespaceId(req.database_oid()));
     alterer->SetDatabaseType(YQL_DATABASE_PGSQL);
@@ -1610,6 +1618,7 @@ class PgClientSession::Impl {
 
   Status AlterTable(
       const PgAlterTableRequestPB& req, PgAlterTableResponsePB* resp, rpc::RpcContext* context) {
+    VLOG_WITH_FUNC(2) << "req: " << req.DebugString();
     const auto table_id = PgObjectId::GetYbTableIdFromPB(req.table_id());
     const auto alterer = client_.NewTableAlterer(table_id);
     RETURN_NOT_OK(SetupSessionForDdl(
@@ -1619,6 +1628,7 @@ class PgClientSession::Impl {
     if (txn) {
       alterer->part_of_transaction(txn);
     }
+    alterer->part_of_sub_transaction(req.options().active_sub_transaction_id());
     if (req.increment_schema_version()) {
       alterer->set_increment_schema_version();
     }
@@ -1794,6 +1804,7 @@ class PgClientSession::Impl {
   Status CreateTablegroup(
       const PgCreateTablegroupRequestPB& req, PgCreateTablegroupResponsePB* resp,
       rpc::RpcContext* context) {
+    VLOG_WITH_FUNC(2) << "req: " << req.DebugString();
     const auto id = PgObjectId::FromPB(req.tablegroup_id());
     const auto tablespace_id = PgObjectId::FromPB(req.tablespace_id());
     RETURN_NOT_OK(SetupSessionForDdl(
@@ -1803,7 +1814,8 @@ class PgClientSession::Impl {
         context->GetClientDeadline()));
     const auto s = client_.CreateTablegroup(
         req.database_name(), GetPgsqlNamespaceId(id.database_oid), id.GetYbTablegroupId(),
-        tablespace_id.IsValid() ? tablespace_id.GetYbTablespaceId() : "", metadata);
+        tablespace_id.IsValid() ? tablespace_id.GetYbTablespaceId() : "", metadata,
+        req.options().active_sub_transaction_id());
     if (s.ok()) {
       return Status::OK();
     }
@@ -1818,6 +1830,7 @@ class PgClientSession::Impl {
   Status DropTablegroup(
       const PgDropTablegroupRequestPB& req, PgDropTablegroupResponsePB* resp,
       rpc::RpcContext* context) {
+    VLOG_WITH_FUNC(2) << "req: " << req.DebugString();
     const auto id = PgObjectId::FromPB(req.tablegroup_id());
     RETURN_NOT_OK(SetupSessionForDdl(
       req.use_regular_transaction_block(), req.options(), context->GetClientDeadline()));
@@ -1825,7 +1838,8 @@ class PgClientSession::Impl {
         true /* use_transaction */, req.use_regular_transaction_block(),
         context->GetClientDeadline()));
     const auto status =
-        client_.DeleteTablegroup(GetPgsqlTablegroupId(id.database_oid, id.object_oid), metadata);
+        client_.DeleteTablegroup(GetPgsqlTablegroupId(id.database_oid, id.object_oid), metadata,
+        req.options().active_sub_transaction_id());
     if (status.IsNotFound()) {
       return Status::OK();
     }

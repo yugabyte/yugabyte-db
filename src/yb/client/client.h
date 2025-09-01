@@ -48,6 +48,7 @@
 #include "yb/common/retryable_request.h"
 #include "yb/common/snapshot.h"
 
+#include "yb/common/transaction.h"
 #include "yb/encryption/encryption.fwd.h"
 
 #include "yb/dockv/dockv_fwd.h"
@@ -367,6 +368,7 @@ class YBClient {
   Status DeleteTable(const std::string& table_id,
                      bool wait = true,
                      const TransactionMetadata *txn = nullptr,
+                     SubTransactionId sub_transaction_id = kMinSubTransactionId,
                      CoarseTimePoint deadline = CoarseTimePoint());
 
   // Delete the specified index table.
@@ -374,12 +376,14 @@ class YBClient {
   Status DeleteIndexTable(const YBTableName& table_name,
                           YBTableName* indexed_table_name = nullptr,
                           bool wait = true,
-                          const TransactionMetadata *txn = nullptr);
+                          const TransactionMetadata *txn = nullptr,
+                          SubTransactionId sub_transaction_id = kMinSubTransactionId);
 
   Status DeleteIndexTable(const std::string& table_id,
                           YBTableName* indexed_table_name = nullptr,
                           bool wait = true,
                           const TransactionMetadata *txn = nullptr,
+                          SubTransactionId sub_transaction_id = kMinSubTransactionId,
                           CoarseTimePoint deadline = CoarseTimePoint());
 
   // Flush or compact the specified tables.
@@ -452,16 +456,15 @@ class YBClient {
   // Create a new namespace with the given name.
   // TODO(neil) When database_type is undefined, backend will not check error on database type.
   // Except for testing we should use proper database_types for all creations.
-  Status CreateNamespace(const std::string& namespace_name,
-                         const boost::optional<YQLDatabase>& database_type = boost::none,
-                         const std::string& creator_role_name = "",
-                         const std::string& namespace_id = "",
-                         const std::string& source_namespace_id = "",
-                         const boost::optional<uint32_t>& next_pg_oid = boost::none,
-                         const TransactionMetadata* txn = nullptr,
-                         const bool colocated = false,
-                         CoarseTimePoint deadline = CoarseTimePoint(),
-                         std::optional<YbcCloneInfo> yb_clone_info = std::nullopt);
+  Status CreateNamespace(
+      const std::string& namespace_name,
+      const std::optional<YQLDatabase>& database_type = std::nullopt,
+      const std::string& creator_role_name = "", const std::string& namespace_id = "",
+      const std::string& source_namespace_id = "",
+      const std::optional<uint32_t>& next_pg_oid = std::nullopt,
+      const TransactionMetadata* txn = nullptr, const bool colocated = false,
+      CoarseTimePoint deadline = CoarseTimePoint(),
+      std::optional<YbcCloneInfo> yb_clone_info = std::nullopt);
 
   Status CloneNamespace(const std::string& target_namespace_name,
                         const YQLDatabase& database_type,
@@ -471,31 +474,28 @@ class YBClient {
   // created. So, it prevents error 'namespace already exists'.
   // TODO(neil) When database_type is undefined, backend will not check error on database type.
   // Except for testing we should use proper database_types for all creations.
-  Status CreateNamespaceIfNotExists(const std::string& namespace_name,
-                                    const boost::optional<YQLDatabase>& database_type = boost::none,
-                                    const std::string& creator_role_name = "",
-                                    const std::string& namespace_id = "",
-                                    const std::string& source_namespace_id = "",
-                                    const boost::optional<uint32_t>& next_pg_oid = boost::none,
-                                    const bool colocated = false);
+  Status CreateNamespaceIfNotExists(
+      const std::string& namespace_name,
+      const std::optional<YQLDatabase>& database_type = std::nullopt,
+      const std::string& creator_role_name = "", const std::string& namespace_id = "",
+      const std::string& source_namespace_id = "",
+      const std::optional<uint32_t>& next_pg_oid = std::nullopt, const bool colocated = false);
 
   // Set 'create_in_progress' to true if a CreateNamespace operation is in-progress.
-  Status IsCreateNamespaceInProgress(const std::string& namespace_name,
-                                     const boost::optional<YQLDatabase>& database_type,
-                                     const std::string& namespace_id,
-                                     bool *create_in_progress);
+  Status IsCreateNamespaceInProgress(
+      const std::string& namespace_name, const std::optional<YQLDatabase>& database_type,
+      const std::string& namespace_id, bool* create_in_progress);
 
   // Delete namespace with the given name.
-  Status DeleteNamespace(const std::string& namespace_name,
-                         const boost::optional<YQLDatabase>& database_type = boost::none,
-                         const std::string& namespace_id = "",
-                         CoarseTimePoint deadline = CoarseTimePoint());
+  Status DeleteNamespace(
+      const std::string& namespace_name,
+      const std::optional<YQLDatabase>& database_type = std::nullopt,
+      const std::string& namespace_id = "", CoarseTimePoint deadline = CoarseTimePoint());
 
   // Set 'delete_in_progress' to true if a DeleteNamespace operation is in-progress.
-  Status IsDeleteNamespaceInProgress(const std::string& namespace_name,
-                                     const boost::optional<YQLDatabase>& database_type,
-                                     const std::string& namespace_id,
-                                     bool *delete_in_progress);
+  Status IsDeleteNamespaceInProgress(
+      const std::string& namespace_name, const std::optional<YQLDatabase>& database_type,
+      const std::string& namespace_id, bool* delete_in_progress);
 
   [[nodiscard]] std::unique_ptr<YBNamespaceAlterer> NewNamespaceAlterer(
       const std::string& namespace_name, const std::string& namespace_id);
@@ -523,17 +523,18 @@ class YBClient {
       std::optional<YQLDatabase> database_type = std::nullopt);
 
   // Get namespace information.
-  Status GetNamespaceInfo(const std::string& namespace_id,
-                          const std::string& namespace_name,
-                          const boost::optional<YQLDatabase>& database_type,
-                          master::GetNamespaceInfoResponsePB* ret);
+  Status GetNamespaceInfo(
+      const std::string& namespace_id, const std::string& namespace_name,
+      const std::optional<YQLDatabase>& database_type, master::GetNamespaceInfoResponsePB* ret);
 
   // Check if the namespace given by 'namespace_name' or 'namespace_id' exists.
   // Result value is set only on success.
-  Result<bool> NamespaceExists(const std::string& namespace_name,
-                               const std::optional<YQLDatabase>& database_type = std::nullopt);
-  Result<bool> NamespaceIdExists(const std::string& namespace_id,
-                                 const std::optional<YQLDatabase>& database_type = std::nullopt);
+  Result<bool> NamespaceExists(
+      const std::string& namespace_name,
+      const std::optional<YQLDatabase>& database_type = std::nullopt);
+  Result<bool> NamespaceIdExists(
+      const std::string& namespace_id,
+      const std::optional<YQLDatabase>& database_type = std::nullopt);
 
   Status ListClones(master::ListClonesResponsePB* resp);
 
@@ -541,9 +542,12 @@ class YBClient {
                           const std::string& namespace_id,
                           const std::string& tablegroup_id,
                           const std::string& tablespace_id,
-                          const TransactionMetadata* txn);
+                          const TransactionMetadata* txn,
+                          const SubTransactionId sub_transaction_id = kMinSubTransactionId);
 
-  Status DeleteTablegroup(const std::string& tablegroup_id, const TransactionMetadata* txn);
+  Status DeleteTablegroup(const std::string& tablegroup_id,
+                          const TransactionMetadata* txn,
+                          const SubTransactionId sub_transaction_id = kMinSubTransactionId);
 
   // Check if the tablegroup given by 'tablegroup_id' exists.
   // Result value is set only on success.
@@ -560,11 +564,10 @@ class YBClient {
                     const RoleName& creator_role_name);
 
   // Alter an existing role.
-  Status AlterRole(const RoleName& role_name,
-                   const boost::optional<std::string>& salted_hash,
-                   const boost::optional<bool> login,
-                   const boost::optional<bool> superuser,
-                   const RoleName& current_role_name);
+  Status AlterRole(
+      const RoleName& role_name, const std::optional<std::string>& salted_hash,
+      const std::optional<bool> login, const std::optional<bool> superuser,
+      const RoleName& current_role_name);
 
   // Delete a role.
   Status DeleteRole(const std::string& role_name, const std::string& current_role_name);
@@ -695,15 +698,12 @@ class YBClient {
 
   Result<bool> IsBootstrapRequired(
       const std::vector<TableId>& table_ids,
-      const boost::optional<xrepl::StreamId>& stream_id = boost::none);
+      const std::optional<xrepl::StreamId>& stream_id = std::nullopt);
 
   Status BootstrapProducer(
-      const YQLDatabase& db_type,
-      const NamespaceName& namespace_name,
-      const std::vector<PgSchemaName>& pg_schema_names,
-      const std::vector<TableName>& table_names,
+      const YQLDatabase& db_type, const NamespaceName& namespace_name,
+      const std::vector<PgSchemaName>& pg_schema_names, const std::vector<TableName>& table_names,
       BootstrapProducerCallback callback);
-
 
   // Update consumer pollers after a producer side tablet split.
   Status UpdateConsumerOnProducerSplit(

@@ -24,8 +24,6 @@
 #include <mutex>
 #include <unordered_map>
 
-#include <boost/optional.hpp>
-
 #include "yb/qlexpr/ql_rowblock.h"
 
 #include "yb/gutil/bind.h"
@@ -182,19 +180,18 @@ void SystemQueryCache::InitializeQueries() {
       queries_.push_back(yb::Format(format, pair.keyspace, pair.table));
     }
   }
-
 }
 
-boost::optional<RowsResult::SharedPtr> SystemQueryCache::Lookup(const std::string& query) {
+std::optional<RowsResult::SharedPtr> SystemQueryCache::Lookup(const std::string& query) {
   if (FLAGS_cql_system_query_cache_stale_msecs > 0 &&
       GetStaleness() > MonoDelta::FromMilliseconds(FLAGS_cql_system_query_cache_stale_msecs)) {
-    return boost::none;
+    return std::nullopt;
   }
   const std::lock_guard l(cache_mutex_);
 
   const auto it = cache_->find(query);
   if (it == cache_->end()) {
-    return boost::none;
+    return std::nullopt;
   } else {
     return it->second;
   }

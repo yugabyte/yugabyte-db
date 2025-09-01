@@ -327,11 +327,9 @@ TEST_F(CreateTableITest, LegacyColocatedDBTableColocationRemoteBootstrapTest) {
   ts_flags.push_back("--follower_unavailable_considered_failed_sec=3");
   master_flags.push_back("--ysql_legacy_colocated_database_creation=true");
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, kNumReplicas));
-  ASSERT_OK(
-      client_->CreateNamespace("colocation_test", boost::none /* db */, "" /* creator */,
-                               "" /* ns_id */, "" /* src_ns_id */,
-                               boost::none /* next_pg_oid */, nullptr /* txn */,
-                               true /* colocated */));
+  ASSERT_OK(client_->CreateNamespace(
+      "colocation_test", std::nullopt /* db */, "" /* creator */, "" /* ns_id */,
+      "" /* src_ns_id */, std::nullopt /* next_pg_oid */, nullptr /* txn */, true /* colocated */));
 
   {
     string ns_id;
@@ -467,9 +465,9 @@ TEST_F(CreateTableITest, TablegroupRemoteBootstrapTest) {
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, kNumReplicas, 1 /* masters */,
                                 true /* enable_ysql (allows load balancing) */));
 
-  ASSERT_OK(client_->CreateNamespace(namespace_name, YQL_DATABASE_PGSQL, "" /* creator */,
-                                     "" /* ns_id */, "" /* src_ns_id */,
-                                     boost::none /* next_pg_oid */, nullptr /* txn */, false));
+  ASSERT_OK(client_->CreateNamespace(
+      namespace_name, YQL_DATABASE_PGSQL, "" /* creator */, "" /* ns_id */, "" /* src_ns_id */,
+      std::nullopt /* next_pg_oid */, nullptr /* txn */, false));
 
   {
     auto namespaces = ASSERT_RESULT(client_->ListNamespaces());

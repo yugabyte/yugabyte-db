@@ -190,12 +190,13 @@ libraryDependencies ++= Seq(
   // Be careful when changing azure library versions.
   // Make sure all itests and existing functionality works as expected.
   // Used below azure versions from azure-sdk-bom:1.2.6
-  "com.azure" % "azure-core" % "1.32.0",
+  "com.azure" % "azure-core-http-netty" % "1.15.12",
+  "com.azure" % "azure-core" % "1.55.4",
   "com.azure" % "azure-identity" % "1.6.0",
   "com.azure" % "azure-security-keyvault-keys" % "4.5.0",
   "com.azure" % "azure-storage-blob" % "12.19.1",
   "com.azure" % "azure-storage-blob-batch" % "12.19.1",
-  "com.azure.resourcemanager" % "azure-resourcemanager" % "2.43.0",
+  "com.azure.resourcemanager" % "azure-resourcemanager" % "2.46.0",
   "com.azure.resourcemanager" % "azure-resourcemanager-marketplaceordering" % "1.0.0",
   "jakarta.mail" % "jakarta.mail-api" % "2.1.2",
   "org.eclipse.angus" % "jakarta.mail" % "1.0.0",

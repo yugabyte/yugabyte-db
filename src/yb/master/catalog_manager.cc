@@ -62,13 +62,12 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <ranges>
 #include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
-
-#include <boost/optional.hpp>
 
 #include "yb/cdc/cdc_state_table.h"
 
@@ -101,8 +100,11 @@
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
 
+#include "yb/docdb/doc_ql_scanspec.h"
+
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/partition.h"
+#include "yb/dockv/reader_projection.h"
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/casts.h"
@@ -133,6 +135,7 @@
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_dcl.pb.h"
 #include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_defaults.h"
 #include "yb/master/master_encryption.pb.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_fwd.h"
@@ -145,6 +148,7 @@
 #include "yb/master/post_tablet_create_task_base.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
+#include "yb/master/sys_catalog_writer.h"
 #include "yb/master/system_tablet.h"
 #include "yb/master/tablet_creation_limits.h"
 #include "yb/master/tablet_split_manager.h"
@@ -2330,8 +2334,8 @@ Result<ReplicationInfoPB> CatalogManager::GetTableReplicationInfo(
   // associated with a tablespace and if so, return the tablespace
   // replication info.
   if (GetAtomicFlag(&FLAGS_enable_ysql_tablespaces_for_placement)) {
-    boost::optional<ReplicationInfoPB> tablespace_pb =
-      VERIFY_RESULT(GetTablespaceReplicationInfoWithRetry(tablespace_id));
+    std::optional<ReplicationInfoPB> tablespace_pb =
+        VERIFY_RESULT(GetTablespaceReplicationInfoWithRetry(tablespace_id));
     if (tablespace_pb) {
       // Return the tablespace placement.
       return tablespace_pb.value();
@@ -2358,15 +2362,14 @@ std::shared_ptr<YsqlTablespaceManager> CatalogManager::GetTablespaceManager() co
   return tablespace_manager_;
 }
 
-Result<boost::optional<TablespaceId>> CatalogManager::GetTablespaceForTable(
+Result<std::optional<TablespaceId>> CatalogManager::GetTablespaceForTable(
     const scoped_refptr<TableInfo>& table) const {
   auto tablespace_manager = GetTablespaceManager();
   return tablespace_manager->GetTablespaceForTable(table);
 }
 
-Result<boost::optional<ReplicationInfoPB>> CatalogManager::GetTablespaceReplicationInfoWithRetry(
-  const TablespaceId& tablespace_id) {
-
+Result<std::optional<ReplicationInfoPB>> CatalogManager::GetTablespaceReplicationInfoWithRetry(
+    const TablespaceId& tablespace_id) {
   auto tablespace_manager = GetTablespaceManager();
   auto replication_info_result = tablespace_manager->GetTablespaceReplicationInfo(tablespace_id);
 
@@ -4400,8 +4403,15 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
     // Set the YsqlTxnVerifierState.
     if (req.ysql_yb_ddl_rollback_enabled()) {
-      table->mutable_metadata()->mutable_dirty()->pb.add_ysql_ddl_txn_verifier_state()->
-        set_contains_create_table_op(true);
+      auto* verifier_state =
+          table->mutable_metadata()->mutable_dirty()->pb.add_ysql_ddl_txn_verifier_state();
+      verifier_state->set_contains_create_table_op(true);
+      if (req.has_sub_transaction_id()) {
+        RSTATUS_DCHECK_GE(
+            req.sub_transaction_id(), kMinSubTransactionId, InvalidArgument,
+            "Given invalid sub_transaction_id");
+        verifier_state->set_sub_transaction_id(req.sub_transaction_id());
+      }
       schedule_ysql_txn_verifier = true;
     }
   }
@@ -4445,6 +4455,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         table.get(), tablets, s.CloneAndPrepend("An error occurred while inserting to sys-tablets"),
         resp);
   }
+  VLOG(3) << "SysTablesEntryPB after CreateTable: " << table->metadata().dirty().pb.DebugString();
   TRACE("Wrote table and tablets to system table");
 
   // For index table, insert index info in the indexed table.
@@ -5581,13 +5592,12 @@ Status CatalogManager::WaitForAlterTableToFinish(
       100ms /* initial_delay */, 1 /* delay_multiplier */);
 }
 
-std::string CatalogManager::GenerateId(boost::optional<const SysRowEntryType> entity_type) {
+std::string CatalogManager::GenerateId(std::optional<const SysRowEntryType> entity_type) {
   SharedLock lock(mutex_);
   return GenerateIdUnlocked(entity_type);
 }
 
-std::string CatalogManager::GenerateIdUnlocked(
-    boost::optional<const SysRowEntryType> entity_type) {
+std::string CatalogManager::GenerateIdUnlocked(std::optional<const SysRowEntryType> entity_type) {
   while (true) {
     // Generate id and make sure it is unique within its category.
     std::string id = GenerateObjectId();
@@ -6656,18 +6666,37 @@ Status CatalogManager::DeleteTable(
     // perform the actual deletion until commit.
     TransactionMetadata txn;
     auto& pb = l.mutable_data()->pb;
-    if (!ysql_txn_verifier_state_present) {
+    uint32_t active_sub_transaction_id = req->sub_transaction_id();
+    // Add a new ysql_ddl_txn_verifier_state if:
+    // 1. None exists
+    // 2. The sub_transaction_id of the last state is different from the one given in the
+    // request.
+    if (!l->has_ysql_ddl_txn_verifier_state() ||
+        (req->has_sub_transaction_id() &&
+         l->ysql_ddl_txn_verifier_state_last().sub_transaction_id() != active_sub_transaction_id)) {
       pb.mutable_transaction()->CopyFrom(req->transaction());
       txn = VERIFY_RESULT(TransactionMetadata::FromPB(req->transaction()));
       RSTATUS_DCHECK(!txn.status_tablet.empty(), Corruption, "Given incomplete Transaction");
       pb.add_ysql_ddl_txn_verifier_state();
     }
-    DCHECK_EQ(pb.ysql_ddl_txn_verifier_state_size(), 1);
-    pb.mutable_ysql_ddl_txn_verifier_state(0)->set_contains_drop_table_op(true);
+
+    const int ysql_ddl_txn_verifier_state_size = pb.ysql_ddl_txn_verifier_state_size();
+    RSTATUS_DCHECK_GE(
+        ysql_ddl_txn_verifier_state_size, 1, Corruption,
+        "ysql_ddl_txn_verifier_state_size is unexpectedly empty");
+    pb.mutable_ysql_ddl_txn_verifier_state(ysql_ddl_txn_verifier_state_size - 1)
+        ->set_contains_drop_table_op(true);
+    if (req->has_sub_transaction_id()) {
+      pb.mutable_ysql_ddl_txn_verifier_state(ysql_ddl_txn_verifier_state_size - 1)
+          ->set_sub_transaction_id(active_sub_transaction_id);
+    }
     // Upsert to sys_catalog.
     RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
     // Update the in-memory state.
     TRACE("Committing in-memory state as part of DeleteTable operation");
+    VLOG_WITH_FUNC(3) << "SysCatalogPB for Table id: " << table->id()
+                      << ", name: " << table->name()
+                      << " after the DeleteTable operation is: " << pb.DebugString();
     l.Commit();
     if (!ysql_txn_verifier_state_present) {
       RETURN_NOT_OK(ScheduleYsqlTxnVerification(table, txn, epoch));
@@ -7711,8 +7740,17 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
         need_remove_ddl_state = true;
       }
     } else if (req->has_transaction() && table->GetTableType() == PGSQL_TABLE_TYPE) {
-      if (!l->has_ysql_ddl_txn_verifier_state()) {
+      uint32_t active_sub_txn_id = req->sub_transaction_id();
+      // Add a new ysql_ddl_txn_verifier_state if:
+      // 1. None exists
+      // 2. The sub_transaction_id of the last state is different from the one given in the
+      // request.
+      if (!l->has_ysql_ddl_txn_verifier_state() ||
+          (req->has_sub_transaction_id() &&
+           l->ysql_ddl_txn_verifier_state_last().sub_transaction_id() != active_sub_txn_id)) {
         LOG_WITH_FUNC(INFO) << "Add ysql_ddl_txn_verifier_state to " << table->id();
+        // Only schedule the verifier for the first time.
+        schedule_ysql_txn_verifier = !l->has_ysql_ddl_txn_verifier_state();
         table_pb.mutable_transaction()->CopyFrom(req->transaction());
         auto *ddl_state = table_pb.add_ysql_ddl_txn_verifier_state();
         SchemaToPB(previous_schema, ddl_state->mutable_previous_schema());
@@ -7720,18 +7758,24 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
         if (is_automatic_mode) {
           ddl_state->set_previous_next_column_id(initial_next_col_id);
         }
-        schedule_ysql_txn_verifier = true;
+        if (req->has_sub_transaction_id()) {
+          ddl_state->set_sub_transaction_id(active_sub_txn_id);
+        }
       }
       txn = VERIFY_RESULT(TransactionMetadata::FromPB(req->transaction()));
       RSTATUS_DCHECK(!txn.status_tablet.empty(), Corruption, "Given incomplete Transaction");
-      DCHECK_EQ(table_pb.ysql_ddl_txn_verifier_state_size(), 1);
-      table_pb.mutable_ysql_ddl_txn_verifier_state(0)->set_contains_alter_table_op(true);
+      RSTATUS_DCHECK_GE(
+          table_pb.ysql_ddl_txn_verifier_state_size(), 1, Corruption,
+          "ysql_ddl_txn_verifier_state_size is unexpectedly empty");
+      table_pb.mutable_ysql_ddl_txn_verifier_state(table_pb.ysql_ddl_txn_verifier_state_size() - 1)
+          ->set_contains_alter_table_op(true);
     }
   }
   // Update the in-memory state.
   TRACE("Committing in-memory state");
   l.Commit();
   lock.unlock();
+  VLOG_WITH_FUNC(3) << "SysTablesEntryPB for " << table->id() << " is: " << table_pb.DebugString();
 
   if (need_remove_ddl_state) {
     RemoveDdlTransactionState(table->id(), {txn_id});
@@ -7989,7 +8033,10 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
       resp->set_wal_retention_secs(l->pb.wal_retention_secs());
     }
     if (l->has_ysql_ddl_txn_verifier_state()) {
-      resp->add_ysql_ddl_txn_verifier_state()->CopyFrom(l->ysql_ddl_txn_verifier_state());
+      for (const auto& state : l->pb.ysql_ddl_txn_verifier_state()) {
+        auto* new_state = resp->add_ysql_ddl_txn_verifier_state();
+        new_state->CopyFrom(state);
+      }
     }
   }
 
@@ -8518,6 +8565,10 @@ Status CatalogManager::CreateTablegroup(
   if (req->has_transaction()) {
     ctreq.mutable_transaction()->CopyFrom(req->transaction());
     ctreq.set_ysql_yb_ddl_rollback_enabled(req->ysql_yb_ddl_rollback_enabled());
+
+    if (req->has_sub_transaction_id()) {
+      ctreq.set_sub_transaction_id(req->sub_transaction_id());
+    }
   }
   ctreq.set_name(parent_table_name);
   ctreq.set_table_id(parent_table_id);
@@ -8637,6 +8688,9 @@ Status CatalogManager::DeleteTablegroup(const DeleteTablegroupRequestPB* req,
   dtreq.set_is_index_table(false);
   dtreq.mutable_transaction()->CopyFrom(req->transaction());
   dtreq.set_ysql_yb_ddl_rollback_enabled(req->ysql_yb_ddl_rollback_enabled());
+  if (req->has_sub_transaction_id()) {
+    dtreq.set_sub_transaction_id(req->sub_transaction_id());
+  }
 
   // Delete the parent table.
   // This will also delete the tablegroup tablet, as well as the tablegroup entity.
@@ -10861,8 +10915,9 @@ void CatalogManager::DeleteTabletReplicas(
   LOG(INFO) << "Sending DeleteTablet for " << locations->size()
             << " replicas of tablet " << tablet->tablet_id();
   for (const auto& [ts_uuid, _] : *locations) {
-    SendDeleteTabletRequest(tablet->tablet_id(), TABLET_DATA_DELETED, boost::none, tablet->table(),
-                            ts_uuid, msg, epoch, hide_only, keep_data);
+    SendDeleteTabletRequest(
+        tablet->tablet_id(), TABLET_DATA_DELETED, std::nullopt, tablet->table(), ts_uuid, msg,
+        epoch, hide_only, keep_data);
   }
 }
 
@@ -11011,15 +11066,10 @@ Status CatalogManager::SendPrepareDeleteTransactionTabletRequest(
 }
 
 void CatalogManager::SendDeleteTabletRequest(
-    const TabletId& tablet_id,
-    TabletDataState delete_type,
-    const boost::optional<int64_t>& cas_config_opid_index_less_or_equal,
-    const scoped_refptr<TableInfo>& table,
-    const std::string& ts_uuid,
-    const string& reason,
-    const LeaderEpoch& epoch,
-    HideOnly hide_only,
-    KeepData keep_data) {
+    const TabletId& tablet_id, TabletDataState delete_type,
+    const std::optional<int64_t>& cas_config_opid_index_less_or_equal,
+    const scoped_refptr<TableInfo>& table, const std::string& ts_uuid, const string& reason,
+    const LeaderEpoch& epoch, HideOnly hide_only, KeepData keep_data) {
   if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_TEST_disable_tablet_deletion))) {
     return;
   }
@@ -11048,12 +11098,11 @@ void CatalogManager::SendDeleteTabletRequest(
 std::shared_ptr<AsyncDeleteReplica> CatalogManager::MakeDeleteReplicaTask(
     const TabletServerId& peer_uuid, const TableInfoPtr& table, const TabletId& tablet_id,
     tablet::TabletDataState delete_type,
-    boost::optional<int64_t> cas_config_opid_index_less_or_equal, LeaderEpoch epoch,
+    std::optional<int64_t> cas_config_opid_index_less_or_equal, LeaderEpoch epoch,
     const std::string& reason) {
   return std::make_shared<AsyncDeleteReplica>(
       master_, AsyncTaskPool(), peer_uuid, table, tablet_id, delete_type,
-      cas_config_opid_index_less_or_equal, epoch, GetDeleteReplicaTaskThrottler(peer_uuid),
-      reason);
+      cas_config_opid_index_less_or_equal, epoch, GetDeleteReplicaTaskThrottler(peer_uuid), reason);
 }
 
 void CatalogManager::SetTabletReplicaLocations(

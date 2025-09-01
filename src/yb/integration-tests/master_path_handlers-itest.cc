@@ -902,7 +902,7 @@ TEST_F(MasterPathHandlersLeaderlessITest, TestRF1ChangedToRF3) {
       continue;
     }
     ASSERT_OK(itest::RemoveServer(
-        ts_map[leader_uuid].get(), tablet->id(), ts_map[uuid].get(), boost::none, 10s));
+        ts_map[leader_uuid].get(), tablet->id(), ts_map[uuid].get(), std::nullopt, 10s));
   }
   SleepFor(kLeaderlessTabletAlertDelaySecs * yb::kTimeMultiplier * 1s);
   string result = ASSERT_RESULT(GetLeaderlessTabletsString());
@@ -914,7 +914,7 @@ TEST_F(MasterPathHandlersLeaderlessITest, TestRF1ChangedToRF3) {
     }
     ASSERT_OK(itest::AddServer(
         ts_map[leader_uuid].get(), tablet->id(), ts_map[uuid].get(),
-        consensus::PeerMemberType::PRE_VOTER, boost::none, 10s));
+        consensus::PeerMemberType::PRE_VOTER, std::nullopt, 10s));
   }
   SleepFor(kLeaderlessTabletAlertDelaySecs * yb::kTimeMultiplier * 1s);
   result = ASSERT_RESULT(GetLeaderlessTabletsString());

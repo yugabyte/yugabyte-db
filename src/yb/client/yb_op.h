@@ -35,8 +35,6 @@
 #include <optional>
 #include <string>
 
-#include <boost/optional.hpp>
-
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/common_fwd.h"
@@ -161,13 +159,11 @@ class YBOperation {
     partition_list_version_ = partition_list_version;
   }
 
-  boost::optional<PartitionListVersion> partition_list_version() const {
+  std::optional<PartitionListVersion> partition_list_version() const {
     return partition_list_version_;
   }
 
-  int64_t GetQueryId() const {
-    return reinterpret_cast<int64_t>(this);
-  }
+  int64_t GetQueryId() const { return reinterpret_cast<int64_t>(this); }
 
  protected:
   explicit YBOperation(const std::shared_ptr<YBTable>& table);
@@ -177,7 +173,7 @@ class YBOperation {
  private:
   scoped_refptr<internal::RemoteTablet> tablet_;
 
-  boost::optional<PartitionListVersion> partition_list_version_;
+  std::optional<PartitionListVersion> partition_list_version_;
 
   // Persist retryable request ID across internal retries within the same YBSession
   // to prevent duplicate writes due to internal retries.

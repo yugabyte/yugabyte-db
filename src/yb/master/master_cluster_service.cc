@@ -90,8 +90,7 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
           return;
         }
         auto tablespace_replication_pb = std::move(*result);
-        if (!tablespace_replication_pb ||
-            !tablespace_replication_pb.is_initialized()) {
+        if (!tablespace_replication_pb.has_value()) {
           LOG(INFO) << "Could not retrieve placement info from tablespace ID "
                     << req->tablespace_id() << ". "
                     << "Default to returning all tablet servers";

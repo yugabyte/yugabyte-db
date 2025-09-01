@@ -2317,7 +2317,20 @@ YBCRestartWriteTransaction()
 	 */
 	PopAllActiveSnapshots();
 
+	if (TopTransactionResourceOwner != NULL)
+	{
+		ResourceOwnerRelease(TopTransactionResourceOwner,
+							 RESOURCE_RELEASE_BEFORE_LOCKS,
+							 false, true);
+		ResourceOwnerRelease(TopTransactionResourceOwner,
+							 RESOURCE_RELEASE_LOCKS,
+							 false, true);
+		ResourceOwnerRelease(TopTransactionResourceOwner,
+							 RESOURCE_RELEASE_AFTER_LOCKS,
+							 false, true);
+	}
 	AtEOXact_SPI(false /* isCommit */ );
+	AtEOXact_Snapshot(false, true); /* and release the transaction's snapshots */
 
 	/*
 	 * Recreate the global state present for triggers that would have changed
@@ -4947,7 +4960,12 @@ BeginInternalSubTransaction(const char *name)
 	 * An error thrown while/after switching over to a new subtransaction
 	 * would lead to a fatal error or unpredictable behavior.
 	 */
-	YBFlushBufferedOperations();
+	YBFlushBufferedOperations((YbcFlushDebugContext)
+		{
+			.reason = YB_BEGIN_SUBTRANSACTION,
+			.uintarg = CurrentTransactionState->subTransactionId,
+			.strarg1 = name,
+		});
 	TransactionState s = CurrentTransactionState;
 
 	/*
@@ -5025,7 +5043,12 @@ void
 YbBeginInternalSubTransactionForReadCommittedStatement()
 {
 
-	YBFlushBufferedOperations();
+	YBFlushBufferedOperations((YbcFlushDebugContext)
+		{
+			.reason = YB_BEGIN_SUBTRANSACTION,
+			.uintarg = CurrentTransactionState->subTransactionId,
+			.strarg1 = "read committed transaction",
+		});
 	TransactionState s = CurrentTransactionState;
 
 	Assert(s->blockState == TBLOCK_SUBINPROGRESS ||
@@ -5087,7 +5110,11 @@ ReleaseCurrentSubTransaction(void)
 	 * An error thrown while/after commiting/releasing it would lead to a
 	 * fatal error or unpredictable behavior.
 	 */
-	YBFlushBufferedOperations();
+	YBFlushBufferedOperations((YbcFlushDebugContext)
+		{
+			.reason = YB_END_SUBTRANSACTION,
+			.uintarg = CurrentTransactionState->subTransactionId,
+		});
 	TransactionState s = CurrentTransactionState;
 
 	/*

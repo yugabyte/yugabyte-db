@@ -923,6 +923,7 @@ public class UniverseCRUDHandler {
         }
       }
       if (!Util.isOnPremManualProvisioning(taskParams)
+          && !Util.isKubernetesBasedUniverse(taskParams)
           && taskParams.additionalServicesStateData == null) {
         boolean enableEarlyoomFeature =
             confGetter.getConfForScope(customer, CustomerConfKeys.enableEarlyoomFeature);

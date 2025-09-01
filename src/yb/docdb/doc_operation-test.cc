@@ -853,7 +853,7 @@ class DocOperationScanTest : public DocOperationTest {
         rows_.push_back(row);
 
         std::unique_ptr<TransactionOperationContext> txn_op_context;
-        boost::optional<TransactionId> txn_id;
+        std::optional<TransactionId> txn_id;
         if (txn_status_manager) {
           if (RandomActWithProbability(0.5, &rng_)) {
             txn_id = TransactionId::GenerateRandom();

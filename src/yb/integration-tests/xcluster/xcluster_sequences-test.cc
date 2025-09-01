@@ -59,7 +59,7 @@ class XClusterAutomaticModeTest : public XClusterDDLReplicationTestBase {
         RETURN_NOT_OK(CreateDatabase(cluster, *second_namespace, params.is_colocated));
         auto table_name = VERIFY_RESULT(CreateYsqlTable(
             cluster, *second_namespace, "" /* schema_name */, "gratuitous_table",
-            /*tablegroup_name=*/boost::none, /*num_tablets=*/1));
+            /*tablegroup_name=*/std::nullopt, /*num_tablets=*/1));
 
         std::shared_ptr<client::YBTable> table;
         RETURN_NOT_OK(cluster->client_->OpenTable(table_name, &table));

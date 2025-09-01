@@ -289,7 +289,7 @@ Result<bool> ShouldPopulateNewInsertRecord(
         VERIFY_RESULT(dockv::DocKey::EncodedSize(next_key, dockv::DocKeyPart::kWholeDocKey));
 
     dockv::KeyEntryValue next_column_id;
-    boost::optional<dockv::KeyEntryValue> next_column_id_opt;
+    std::optional<dockv::KeyEntryValue> next_column_id_opt;
     Slice next_key_column = next_key.WithoutPrefix(next_key_size);
     if (!next_key_column.empty()) {
       RETURN_NOT_OK(dockv::KeyEntryValue::DecodeKey(&next_key_column, &next_column_id));
@@ -954,7 +954,7 @@ Status PopulateCDCSDKIntentRecord(
         VERIFY_RESULT(dockv::DocKey::EncodedSize(key, dockv::DocKeyPart::kWholeDocKey));
 
     dockv::KeyEntryValue column_id;
-    boost::optional<dockv::KeyEntryValue> column_id_opt;
+    std::optional<dockv::KeyEntryValue> column_id_opt;
     Slice key_column = key.WithoutPrefix(key_size);
     if (!key_column.empty()) {
       RETURN_NOT_OK(dockv::KeyEntryValue::DecodeKey(&key_column, &column_id));

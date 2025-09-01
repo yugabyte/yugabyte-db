@@ -314,6 +314,54 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2025.1.0.0")
   public AdditionalServicesStateData additionalServicesStateData;
 
+  @Setter
+  @Getter
+  @ApiModelProperty(
+      hidden = true,
+      value = "YbaApi Internal. Information about capacity reservation.")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.27.0.0")
+  private CapacityReservationState capacityReservationState;
+
+  @Data
+  public static class PerInstanceTypeReservation {
+    private String instanceType;
+    private Map<String, ZonedReservation> zonedReservation = new HashMap<>();
+  }
+
+  @Data
+  public static class ZonedReservation {
+    private String zone;
+    private Set<String> vmNames = new HashSet<>();
+    private String reservationName;
+  }
+
+  @Data
+  public static class AzureRegionReservation {
+    private String groupName;
+    private String region;
+    private Set<String> zones = new HashSet<>();
+    private Map<String, PerInstanceTypeReservation> reservationsByType = new HashMap<>();
+  }
+
+  public interface ReservationInfo {}
+
+  @Data
+  public static class AzureReservationInfo implements ReservationInfo {
+    private Map<String, AzureRegionReservation> reservationsByRegionMap = new HashMap<>();
+  }
+
+  @Data
+  public static class CapacityReservationState {
+    private AzureReservationInfo azureReservationInfo;
+
+    // other reservation types
+
+    @JsonIgnore
+    public boolean isEmpty() {
+      return azureReservationInfo == null;
+    }
+  }
+
   /** A wrapper for all the clusters that will make up the universe. */
   @JsonInclude(value = JsonInclude.Include.NON_NULL)
   @Slf4j
@@ -358,6 +406,14 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         value = "YbaApi Internal. Kubernetes statefulset cert checksum map")
     @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.27.0.0")
     private String certChecksum = null;
+
+    @Setter
+    @Getter
+    @ApiModelProperty(
+        hidden = true,
+        value = "YbaApi Internal. Information about capacity reservation.")
+    @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.27.0.0")
+    private CapacityReservationState capacityReservationState;
 
     /** Default to PRIMARY. */
     private Cluster() {
