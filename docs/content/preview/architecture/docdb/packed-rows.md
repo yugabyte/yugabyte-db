@@ -64,8 +64,8 @@ Testing the packed row feature with different configurations showed significant 
 
 ## Limitations
 
-The packed row feature for the YSQL API works across all features, including backup and restore, schema changes, and so on, subject to the following limitation:
+Packed row for the YSQL API works across all features, including backup and restore, schema changes, and so on, subject to the following limitation:
 
 * If you upgrade a universe that does not have packed row enabled to a version earlier than v2025.1, packed row for YSQL is not automatically enabled. This is due to a known limitation with xCluster universes, where the target universe might not be able to interpret the packed row unless it is upgraded first. {{<issue 21131>}}
 
-The packed row feature for the YCQL API is {{<tags/feature/tp>}}. There are no known limitations.
+Packed row for the YCQL API is {{<tags/feature/tp>}}. There are no known limitations.
