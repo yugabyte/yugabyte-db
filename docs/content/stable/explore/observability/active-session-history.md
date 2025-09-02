@@ -4,6 +4,10 @@ headerTitle: Active Session History
 linkTitle: Active Session History
 description: Use Active Session History to get current and past views of the database system activity.
 headcontent: Get real-time and historical information about active sessions to analyze and troubleshoot performance issues
+unversioned: true
+aliases:
+  - /preview/explore/observability/active-session-history/
+  - /v2024.2/explore/observability/active-session-history/
 menu:
   stable:
     identifier: ash

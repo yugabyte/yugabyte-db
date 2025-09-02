@@ -83,10 +83,6 @@ The following table describes views in YSQL you can use to monitor and tune quer
 
 To get more details about the various steps of a query execution, use the [Explain Analyze](../query-1-performance/explain-analyze) command.
 
-## Active Session History
-
-[Active Session History](active-session-history/) (ASH) offers insight into current and past system activity by periodically sampling session behavior in the database. ASH functionality extends to [YSQL](../../api/ysql/), [YCQL](../../api/ycql/), and [YB-TServer](../../architecture/yb-tserver/) processes, and helps you to conduct analytical queries, perform aggregations, and troubleshoot performance issues.
-
 ## Learn more
 
 {{<index/block>}}

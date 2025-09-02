@@ -7,7 +7,7 @@ headContent: Use Active Session History to monitor and troubleshoot performance 
 tags:
   feature: early-access
 menu:
-  preview:
+  v2024.2:
     parent: monitor-and-alert
     identifier: ash-monitor
     weight: 120
@@ -75,25 +75,13 @@ These fixed constants are used to identify various YugabyteDB background activit
 | 5 | YSQL/TServer | Default query ID, assigned in the interim before pg_stat_statements calculates a proper ID for the query. |
 | 6 | TServer | Query ID for write ahead log (WAL) background sync. |
 
-To obtain the IP address and location of a node where a query is being executed, use the `top_level_node_id` from the active session history view in the following command:
-
-```sql
-SELECT * FROM pg_catalog.yb_servers() WHERE uuid = <top_level_node_id>;
-```
-
-``` output
-     host     | port | num_connections | node_type | cloud |  region   |    zone    | public_ip |               uuid
---------------+------+-----------------+-----------+-------+-----------+------------+-----------+----------------------------------
- 10.9.111.111 | 5433 |               0 | primary   | aws   | us-west-2 | us-west-2a |           | 5cac7c86ba4e4f0e838bf180d75bcad5
-```
-
 ## Wait events
 
 The following describes the wait events available in the [active session history](#yb-active-session-history), along with their type and, where applicable, the auxiliary information (`wait_event_aux`) provided with that type. The events are categorized by wait event class.
 
 ### YSQL
 
-These are the wait events introduced by YugabyteDB. Some of the following [wait events](https://www.postgresql.org/docs/15/monitoring-stats.html) inherited from PostgreSQL might also show up in the [yb_active_session_history](#yb-active-session-history) view.
+These are the wait events introduced by YugabyteDB, however some of the following [wait events](https://www.postgresql.org/docs/11/monitoring-stats.html) inherited from PostgreSQL might also show up in the [yb_active_session_history](#yb-active-session-history) view.
 
 #### TServerWait class
 
@@ -151,7 +139,6 @@ These are the wait events introduced by YugabyteDB. Some of the following [wait 
 | DumpRunningRpc_WaitOnReactor | WaitOnCondition | DumpRunningRpcs is waiting on reactor threads. |
 | ConflictResolution_ResolveConficts | Network | A read/write RPC is waiting to identify conflicting transactions. |
 | ConflictResolution_WaitOnConflictingTxns | WaitOnCondition | A read/write RPC is waiting for conflicting transactions to complete. |
-| WaitForReadTime | WaitOnCondition | A read/write RPC is waiting for the current time to catch up to [read time](../../../architecture/transactions/single-row-transactions/#safe-timestamp-assignment-for-a-read-request). |
 
 #### Consensus class
 
