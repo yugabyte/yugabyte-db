@@ -37,11 +37,11 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 
 - End migration now backs up the schema optimization report produced by export schema.
 
-- Modified flag names in export schema from "skip-performance-optimizations" to "skip-performance-optimizations" and from "skip-recommendations" to "skip-colocation-recommendations" for consistency and clarity.
+- Modified flag names in export schema from "skip-performance-optimizations" to "skip-performance-recommendations" and from "skip-recommendations" to "skip-colocation-recommendations" for consistency and clarity.
 
 ### Bug fix
 
-- Fixed an issue where source password wasn't being propagated to assess-migration when run internally in export schema if not set via the CLI flag.
+- Fixed a bug where the source database password was not correctly configured when passed to assess-migration when it was run automatically during a schema export.
 
 ## v2025.8.2 - August 19, 2025
 

@@ -645,7 +645,7 @@ Create a user with [`SUPERUSER`](../../../api/ysql/the-sql-language/statements/d
 
 If you want yb-voyager to connect to the target YugabyteDB database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
 
-Alternatively, if you want to proceed with migration without a superuser, refer to [Import data without a superuser](../../reference/superuser/).
+Alternatively, if you want to proceed with migration without a superuser, refer to [Import data without a superuser](../../reference/non-superuser/).
 
 ## Create an export directory
 
@@ -723,7 +723,7 @@ You can use [yugabyted UI](/preview/reference/configuration/yugabyted/) to view 
 
 Configure the yugabyted UI as follows:
 
-  1. Start a local YugabyteDB cluster. Refer to the steps described in [Use a local cluster](/preview/tutorials/quick-start/macos/). Skip this step if you already have a local YugabyteDB cluster as your [target database](#prepare-the-target-database).
+  1. Start a local YugabyteDB cluster. Refer to the steps described in [Use a local cluster](/preview/quick-start/macos/). Skip this step if you already have a local YugabyteDB cluster as your [target database](#prepare-the-target-database).
 
   1. To see the Voyager migration workflow details in the UI, set the following configuration parameters before starting the migration:
 
@@ -786,7 +786,7 @@ You can perform the following steps with these scripts:
     /path/to/yb-voyager-pg-gather-assessment-metadata.sh 'postgresql://ybvoyager@host:port/dbname' 'schema1|schema2' '/path/to/assessment_metadata_dir' '60'
     ```
 
-1. Copy the metadata directory to the client machine on which voyager is installed, and run the `assess-migration` command by specifying the path to the metadata directory as follows:
+1. Copy the metadata directory to the client machine on which Voyager is installed, and run the `assess-migration` command by specifying the path to the metadata directory as follows:
 
     ```sh
     yb-voyager assess-migration --source-db-type postgresql \
