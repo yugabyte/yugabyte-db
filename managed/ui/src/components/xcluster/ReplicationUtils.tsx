@@ -42,6 +42,7 @@ import {
   compareYBSoftwareVersionsWithReleaseTrack,
   getPrimaryCluster
 } from '../../utils/universeUtilsTyped';
+import { getTableUuid } from '../../utils/tableUtils';
 
 import {
   Metrics,
@@ -849,9 +850,12 @@ export const getNoSetupBootstrapRequiredTableUuids = (tableDetails: XClusterTabl
   tableDetails.reduce((inConfigTableUuids: string[], tableDetails) => {
     if (
       !UNCONFIGURED_XCLUSTER_TABLE_STATUSES.includes(tableDetails.status) &&
-      !POTENTIAL_IN_CONFIG_SET_UP_BOOTSTRAP_REQUIRED_TABLES_STATUSES.includes(tableDetails.status)
+      !POTENTIAL_IN_CONFIG_SET_UP_BOOTSTRAP_REQUIRED_TABLES_STATUSES.includes(
+        tableDetails.status
+      ) &&
+      tableDetails.sourceTableInfo
     ) {
-      inConfigTableUuids.push(tableDetails.tableId);
+      inConfigTableUuids.push(getTableUuid(tableDetails.sourceTableInfo));
     }
     return inConfigTableUuids;
   }, []);
@@ -862,8 +866,11 @@ export const getNoSetupBootstrapRequiredTableUuids = (tableDetails: XClusterTabl
  */
 export const getInConfigTableUuid = (tableDetails: XClusterTableDetails[]) =>
   tableDetails.reduce((inConfigTableUuids: string[], tableDetails) => {
-    if (!UNCONFIGURED_XCLUSTER_TABLE_STATUSES.includes(tableDetails.status)) {
-      inConfigTableUuids.push(tableDetails.tableId);
+    if (
+      !UNCONFIGURED_XCLUSTER_TABLE_STATUSES.includes(tableDetails.status) &&
+      tableDetails.sourceTableInfo
+    ) {
+      inConfigTableUuids.push(getTableUuid(tableDetails.sourceTableInfo));
     }
     return inConfigTableUuids;
   }, []);
