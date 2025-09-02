@@ -46,6 +46,12 @@ void PgWrapperTestBase::SetUp() {
   opts.enable_ysql = true;
   opts.wait_for_tservers_to_accept_ysql_connections = false;
 
+  // Make sure y*ql_num_tablets are not specified to rely on other shard-related flags.
+  opts.extra_master_flags.emplace_back("--ycql_num_tablets=-1");
+  opts.extra_master_flags.emplace_back("--ysql_num_tablets=-1");
+  opts.extra_tserver_flags.emplace_back("--ycql_num_tablets=-1");
+  opts.extra_tserver_flags.emplace_back("--ysql_num_tablets=-1");
+
   // With ysql_num_shards_per_tserver=1 and 3 tservers we'll be creating 3 tablets per table, which
   // is enough for most tests.
   opts.extra_tserver_flags.emplace_back("--ysql_num_shards_per_tserver=1");
