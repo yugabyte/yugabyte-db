@@ -93,7 +93,7 @@ Create the target YugabyteDB database in your YugabyteDB cluster. The database n
 CREATE DATABASE target_db_name;
 ```
 
-If you want to [assess your migration](#assess-migration), create the database with colocation using the following command:
+If you intend to perform a migration assessment, note that the assessment provides recommendations on which tables in the source database to colocate. To ensure that you will be able to colocate tables, create your target database with colocation set to TRUE using the following command:
 
 ```sql
 CREATE DATABASE target_db_name WITH COLOCATION = true;
@@ -118,7 +118,7 @@ Create a user with [`SUPERUSER`](../../../api/ysql/the-sql-language/statements/d
 
 If you want yb-voyager to connect to the target YugabyteDB database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
 
-Alternatively, if you want to proceed with migration without a superuser, refer to [Import data without a superuser](../../reference/superuser/).
+Alternatively, if you want to proceed with migration without a superuser, refer to [Import data without a superuser](../../reference/non-superuser/).
 
 ## Create an export directory
 
@@ -191,7 +191,7 @@ target:
   db-password: <target-db-password> # Enclose the password in single quotes if it contains special characters.
 ```
 
-Refer to the [offline-migration.yaml](<https://github.com/yugabyte/yb-voyager/blob/{{>< yb-voyager-release >}}/yb-voyager/config-templates/offline-migration.yaml) template for more information on the available global, source, and target configuration parameters supported by Voyager.
+Refer to the [offline-migration.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/offline-migration.yaml) template for more information on the available global, source, and target configuration parameters supported by Voyager.
 
 ## Configure yugabyted UI
 
@@ -199,7 +199,7 @@ You can use [yugabyted UI](/preview/reference/configuration/yugabyted/) to view 
 
 Configure the yugabyted UI as follows:
 
-  1. Start a local YugabyteDB cluster. Refer to the steps described in [Use a local cluster](/preview/tutorials/quick-start/macos/). Skip this step if you already have a local YugabyteDB cluster as your [target database](#prepare-the-target-database).
+  1. Start a local YugabyteDB cluster. Refer to the steps described in [Use a local cluster](/preview/quick-start/macos/). Skip this step if you already have a local YugabyteDB cluster as your [target database](#prepare-the-target-database).
 
   1. To see the Voyager migration workflow details in the UI, set the following configuration parameters before starting the migration:
 

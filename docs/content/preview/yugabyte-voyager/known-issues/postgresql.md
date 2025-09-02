@@ -1937,3 +1937,48 @@ CREATE TABLE child (
 -- Add index on foreign key column
 CREATE INDEX idx_child_parent_id ON child (parent_id);
 ```
+
+### Missing primary key for table when unique and not null columns exist
+
+**Description**: YugabyteDB uses an index-organized table structure, which means that the primary key _is_ the table. When you don't explicitly define one, the system automatically assigns an internal `ybrowid` column as the primary key and uses [hash sharding](/preview/explore/going-beyond-sql/data-sharding/#hash-sharding) on it. However, if your table already contains columns that are both unique and not null, it's better to designate those as the primary key instead. This approach eliminates the need for an extra unique-constraint index structure, in addition to the primary key index (main table structure).
+
+**Workaround**: Define a primary key using the columns that are already unique and not null.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE users (
+  user_id integer NOT NULL,
+  email text NOT NULL,
+  username text NOT NULL,
+  CONSTRAINT users_email_unique UNIQUE (email),
+  CONSTRAINT users_username_unique UNIQUE (username)
+);
+```
+
+Suggested change to the schema is as follows:
+
+```sql
+ALTER TABLE users ADD PRIMARY KEY (user_id);
+```
+
+Alternatively, if email should be the primary key:
+
+```sql
+ALTER TABLE users ADD PRIMARY KEY (email);
+```
+
+Or, if you want to recreate the table, run the following CREATE TABLE command instead:
+
+```sql
+CREATE TABLE users (
+  user_id integer NOT NULL,
+  email text NOT NULL,
+  username text NOT NULL,
+  PRIMARY KEY (user_id),
+  CONSTRAINT users_email_unique UNIQUE (email),
+  CONSTRAINT users_username_unique UNIQUE (username)
+);
+```
