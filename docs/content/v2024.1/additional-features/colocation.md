@@ -6,7 +6,7 @@ description: Learn how colocated tables aggregate data into a single tablet.
 menu:
   v2024.1:
     identifier: colocation
-    parent: explore
+    parent: additional-features
     weight: 250
 rightNav:
   hideH4: true

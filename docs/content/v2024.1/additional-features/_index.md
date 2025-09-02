@@ -20,4 +20,10 @@ type: indexpage
     href="change-data-capture/"
     icon="fa-thin fa-arrows-rotate">}}
 
+  {{<index/item
+    title="Colocation"
+    body="Keep closely related data together via colocation."
+    href="colocation/"
+    icon="fa-thin fa-people-roof">}}
+
 {{</index/block>}}
