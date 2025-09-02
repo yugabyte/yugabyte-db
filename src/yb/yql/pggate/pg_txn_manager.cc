@@ -194,6 +194,7 @@ void PgTxnManager::SerialNo::IncTxn(bool preserve_read_time_history) {
 
 void PgTxnManager::SerialNo::IncReadTime() {
   read_time_ = ++max_read_time_;
+  VLOG(4) << "IncReadTime to " << max_read_time_;
 }
 
 Status PgTxnManager::SerialNo::RestoreReadTime(uint64_t read_time_serial_no) {
@@ -201,6 +202,8 @@ Status PgTxnManager::SerialNo::RestoreReadTime(uint64_t read_time_serial_no) {
       read_time_serial_no <= max_read_time_ && read_time_serial_no >= min_read_time_,
       IllegalState, "Bad read time serial no $0 while [$1, $2] is expected",
       read_time_serial_no, min_read_time_, max_read_time_);
+  VLOG(4) << "RestoreReadTime to read_time_serial_no: " << read_time_serial_no
+          << ", current read time serial number: " << read_time_;
   read_time_ = read_time_serial_no;
   return Status::OK();
 }
@@ -454,19 +457,24 @@ Status PgTxnManager::RestartTransaction() {
   return Status::OK();
 }
 
-// This is called at the start of each statement in READ COMMITTED isolation level. Note that this
-// might also be called at the start of a new retry of the statement done via
-// yb_attempt_to_restart_on_error() (e.g., in case of a retry on kConflict error).
+// Reset to a new read point. This corresponds to a new latest snapshot.
+//
+// TODO (#28181): Possibly avoid changing to the new read point after creating it. In PG, snapshot
+// creation is separate from using it. Usually a snapshot is used after calling PushActiveSnapshot()
+// on the newly created snapshot. Even though most places call PushActiveSnapshot() after creating a
+// new snapshot, there might be place that don't do so.
 Status PgTxnManager::ResetTransactionReadPoint() {
+  VLOG_WITH_FUNC(4);
   RSTATUS_DCHECK(
-      !IsDdlMode() || yb_ddl_transaction_block_enabled, IllegalState,
-      "READ COMMITTED semantics don't apply to DDL transactions except if "
-      "yb_ddl_transaction_block_enabled is true.");
+      !IsDdlMode() || IsDdlModeWithRegularTransactionBlock(), IllegalState,
+      "DDL statements aren't expected to request a new read point.");
   serial_no_.IncReadTime();
-  const auto& pick_read_time_alias = FLAGS_ysql_rc_force_pick_read_time_on_pg_client;
-  read_time_manipulation_ =
-      PREDICT_FALSE(pick_read_time_alias) ? tserver::ReadTimeManipulation::ENSURE_READ_TIME_IS_SET
-                                          : tserver::ReadTimeManipulation::NONE;
+  if (pg_isolation_level_ != PgIsolationLevel::READ_COMMITTED) {
+    return Status::OK();
+  }
+  read_time_manipulation_ = PREDICT_FALSE(FLAGS_ysql_rc_force_pick_read_time_on_pg_client)
+      ? tserver::ReadTimeManipulation::ENSURE_READ_TIME_IS_SET
+      : tserver::ReadTimeManipulation::NONE;
   read_time_for_follower_reads_ = HybridTime();
   RETURN_NOT_OK(UpdateReadTimeForFollowerReadsIfRequired());
   return Status::OK();
