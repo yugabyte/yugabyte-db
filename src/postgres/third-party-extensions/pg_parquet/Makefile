@@ -4,10 +4,10 @@ PG_CONFIG ?= pg_config
 CARGO_BIN ?= $(shell command -v cargo || echo $(HOME)/.cargo/bin/cargo)
 CARGO_DIR := $(dir $(CARGO_BIN))
 
-# OS detection
+# YB: OS detection
 UNAME_S := $(shell uname -s)
 
-# macOS SDK (only defined on Darwin)
+# YB: macOS SDK (only defined on Darwin)
 ifeq ($(UNAME_S),Darwin)
   SDKROOT := $(shell xcrun --show-sdk-path)
 endif
@@ -60,6 +60,7 @@ cargo-pgrx-exists: cargo-exists
 		   $(if $(RUSTFLAGS),RUSTFLAGS="$(RUSTFLAGS)",) \
 		   $(if $(LIBCLANG_PATH),LIBCLANG_PATH=$(LIBCLANG_PATH),) \
 		   $(if $(CFLAGS),CFLAGS="$(CFLAGS)",) \
+		   CARGO_INCREMENTAL=1 \
 		   cargo build --package cargo-pgrx --release && \
 	   mkdir -p $$YB_BUILD_ROOT/.pgrx/data-15 && \
 	   LD_LIBRARY_PATH="$(YB_THIRDPARTY_DIR)/installed/common/lib:$$LD_LIBRARY_PATH" \
@@ -81,8 +82,9 @@ install: cargo-pgrx-exists
 		   $(if $(CFLAGS),CFLAGS="$(CFLAGS)",) \
 		   LD_LIBRARY_PATH="$(YB_THIRDPARTY_DIR)/installed/common/lib:$$LD_LIBRARY_PATH" \
 		   PGRX_HOME=$(YB_BUILD_ROOT)/.pgrx \
-		   ../pgrx/target/release/cargo-pgrx pgrx install -F pg15 -c $(PG_CONFIG) && \
-	   rm -rf target/debug
+		   CARGO_INCREMENTAL=1 \
+		   ../pgrx/target/release/cargo-pgrx pgrx install --release -F pg15 -c $(PG_CONFIG) && \
+	   [ -z "$$YB_PG_PARQUET_SKIP_DEBUG_CLEAN" ] && rm -rf target/debug || true
 
 clean: cargo-exists
 	   # YB: cleaning pgrx and pg_parquet.
