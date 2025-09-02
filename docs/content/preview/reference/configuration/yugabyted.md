@@ -1395,6 +1395,153 @@ The following are combinations of environment variables and their uses:
 
 -----
 
+## Secure universes
+
+To deploy secure universes, use the `start` command with the `--secure` flag. This enables [encryption in transit](#create-certificates-for-a-secure-local-multi-node-universe) and [authentication](../../../secure/enable-authentication/authentication-ysql/) for the node.
+
+When you start a universe using the `--secure` flag, the credentials for the universe, including password, are output to a credentials file, and the location of the credentials file is displayed on the console.
+
+The default user is `yugabyte` in YSQL, and `cassandra` in YCQL.
+
+To deploy any type of secure universe or use encryption at rest, OpenSSL must be installed on your machine.
+
+### Create certificates for a secure local multi-node universe
+
+Secure universes use [encryption in transit](../../../secure/tls-encryption/), which requires SSL/TLS certificates for each node in the universe.
+
+When starting a secure local single-node universe, a certificate is automatically generated for the universe.
+
+However, to deploy a secure multi-node universe, you must generate the certificates using the `--cert generate_server_certs` command and then copy them to the respective node base directories *before* you create the multi-node universe.
+
+For example, to create the certificates for a local universe, do the following:
+
+```sh
+./bin/yugabyted cert generate_server_certs --hostnames=127.0.0.1,127.0.0.2,127.0.0.3
+```
+
+Certificates are generated in the `<HOME>/var/generated_certs/<hostname>` directory.
+
+Copy the certificates to the respective node's `<base_dir>/certs` directory:
+
+```sh
+cp $HOME/var/generated_certs/127.0.0.1/* $HOME/yugabyte-{{< yb-version version="preview" >}}/node1/certs
+cp $HOME/var/generated_certs/127.0.0.2/* $HOME/yugabyte-{{< yb-version version="preview" >}}/node2/certs
+cp $HOME/var/generated_certs/127.0.0.3/* $HOME/yugabyte-{{< yb-version version="preview" >}}/node3/certs
+```
+
+### Pass additional flags to YB-Master and YB-TServer
+
+You can set additional configuration options for the YB-Master and YB-TServer processes using the `--master_flags` and `--tserver_flags` flags.
+
+For example, to create a single-node universe and set additional flags for the YB-TServer process, run the following:
+
+```sh
+./bin/yugabyted start --tserver_flags="pg_yb_session_timeout_ms=1200000,ysql_max_connections=400"
+```
+
+When setting CSV value flags, such as [--ysql_hba_conf_csv](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv), you need to enclose the values inside curly braces `{}`; if a setting includes double quotes (`"`), precede the double quotes with a backslash (`\`) to make it an escape sequence. For example:
+
+```sh
+./bin/yugabyted start --tserver_flags="ysql_hba_conf_csv={host all all 127.0.0.1/0 password,\"host all all 0.0.0.0/0 ldap ldapserver=***** ldapsearchattribute=cn ldapport=3268 ldapbinddn=***** ldapbindpasswd=\"\"*****\"\"\"}"
+```
+
+For more information on additional server configuration options, see [YB-Master](../yb-master/) and [YB-TServer](../yb-tserver/).
+
+## Set up xCluster replication between universes
+
+Follow the instructions in [xCluster setup](../../../deploy/multi-dc/async-replication/async-transactional-setup-automatic/).
+
+## Upgrade a YugabyteDB universe
+
+{{< warning title="Upgrading to v2.25" >}}
+For information on upgrading YugabyteDB from a version based on PostgreSQL 11 (all versions prior to v2.25) to a version based on PostgreSQL 15 (v2.25.1 or later), refer to [Major YSQL upgrade](../../../manage/ysql-major-upgrade-yugabyted/).
+
+Upgrading to v2.25.1 is only supported from v2024.2.2 release.
+{{< /warning >}}
+
+To use the latest features of the database and apply the latest security fixes, upgrade your YugabyteDB universe to the [latest release](https://download.yugabyte.com/#/).
+
+Upgrading an existing YugabyteDB universe that was deployed using yugabyted includes the following steps:
+
+1. Verify the version compatibility before upgrading the universe.
+
+    ```sh
+    ./bin/yugabyted upgrade check_version_compatibility
+    ```
+
+1. Stop one of the running nodes using the `yugabyted stop` command with the `--upgrade` flag.
+
+    ```sh
+    ./bin/yugabyted stop --upgrade true --base_dir <path_to_base_dir>
+    ```
+
+1. Wait for 60 seconds.
+
+1. Start the new yugabyted process (from the new downloaded release) by executing the `yugabyted start` command. Use the previously configured `--base_dir` when restarting the instance.
+
+    ```sh
+    ./bin/yugabyted start --base_dir <path_to_base_dir>
+    ```
+
+1. Repeat steps 2-4 for all the nodes. Wait 60 seconds before repeating the steps on each node.
+
+1. After restarting all the nodes, upgrade the YSQL catalog of the universe. This command can be run from any node.
+
+    ```sh
+    ./bin/yugabyted upgrade ysql_catalog --base_dir <path_to_base_dir>
+    ```
+
+1. After successful YSQL catalog upgrade, restart all the nodes for a second time.
+
+    Repeat steps 2-3 for all the nodes. Wait 60 seconds before repeating the steps on each node.
+
+1. After restarting all the nodes, finalize the upgrade by running the `yugabyted finalize_new_version` command. This command can be run from any node.
+
+    ```sh
+    ./bin/yugabyted upgrade finalize_new_version --base_dir <path_to_base_dir>
+    ```
+
+    Use the `timeout` flag to specify a custom timeout for the operation. Default value is 60000 ms.
+
+    ```sh
+    ./bin/yugabyted upgrade finalize_new_version --base_dir <path_to_base_dir> --timeout 80000
+    ```
+
+## Scale a universe from single to multi zone
+
+The following steps assume that you have a running YugabyteDB universe deployed using yugabyted, and have downloaded the update:
+
+1. Stop the first node by using `yugabyted stop` command:
+
+    ```sh
+    ./bin/yugabyted stop
+    ```
+
+1. Start the YugabyteDB node by using `yugabyted start` command by providing the necessary cloud information as follows:
+
+    ```sh
+    ./bin/yugabyted start --advertise_address=<host-ip> \
+      --cloud_location=aws.us-east-1.us-east-1a \
+      --fault_tolerance=zone
+    ```
+
+1. Repeat the previous step on all the nodes of the universe, one node at a time. If you are deploying the universe on your local computer, specify the [base directory](#base-directory) for each node using the `--base-dir` flag.
+
+1. After starting all nodes, specify the data placement constraint on the universe using the following command:
+
+    ```sh
+    ./bin/yugabyted configure data_placement --fault_tolerance=zone
+    ```
+
+    To manually specify the data placement constraint, use the following command:
+
+    ```sh
+    ./bin/yugabyted configure data_placement \
+      --fault_tolerance=zone \
+      --constraint_value=aws.us-east-1.us-east-1a,aws.us-east-1.us-east-1b,aws.us-east-1.us-east-1c \
+      --rf=3
+    ```
+
 ## Examples
 
 To deploy any type of secure universe (that is, using the `--secure` flag) or use encryption at rest, OpenSSL must be installed on your machine.
@@ -1470,27 +1617,7 @@ To create secure single-node cluster with [encryption in transit](../../../secur
     --base_dir=/Users/username/yugabyte-{{< yb-version version="preview" >}}/data1
 ```
 
-When authentication is enabled, the default user is `yugabyte` in YSQL, and `cassandra` in YCQL. When a cluster is started, yugabyted outputs a message `Credentials File is stored at <credentials_file_path.txt>` with the credentials file location.
-
-### Create certificates for a secure local multi-node universe
-
-Secure universes use [encryption in transit](../../../secure/tls-encryption/), which requires SSL/TLS certificates for each node in the universe. Generate the certificates using the `--cert generate_server_certs` command and then copy them to the respective node base directories *before* you create a secure local multi-node universe.
-
-Create the certificates for SSL and TLS connection:
-
-```sh
-./bin/yugabyted cert generate_server_certs --hostnames=127.0.0.1,127.0.0.2,127.0.0.3
-```
-
-Certificates are generated in the `<HOME>/var/generated_certs/<hostname>` directory.
-
-Copy the certificates to the respective node's `<base_dir>/certs` directory:
-
-```sh
-cp $HOME/var/generated_certs/127.0.0.1/* $HOME/yugabyte-{{< yb-version version="preview" >}}/node1/certs
-cp $HOME/var/generated_certs/127.0.0.2/* $HOME/yugabyte-{{< yb-version version="preview" >}}/node2/certs
-cp $HOME/var/generated_certs/127.0.0.3/* $HOME/yugabyte-{{< yb-version version="preview" >}}/node3/certs
-```
+When authentication is enabled, the default user is `yugabyte` in YSQL, and `cassandra` in YCQL. When a cluster is started using the `--secure` flag, yugabyted outputs a message `Credentials File is stored at <credentials_file_path.txt>` with the location of the credentials for the default users.
 
 ### Create a local multi-node universe
 
@@ -1529,6 +1656,8 @@ To create the universe, do the following:
         --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node3 \
         --cloud_location=aws.us-east-1.us-east-1c
     ```
+
+When you use the `--secure` flag, yugabyted outputs a message `Credentials File is stored at <credentials_file_path.txt>` with the location of the credentials for the default users.
 
 ### Create a multi-zone universe
 
@@ -1577,6 +1706,8 @@ To create a secure multi-zone universe:
         --cloud_location=aws.us-east-1.us-east-1c \
         --fault_tolerance=zone
     ```
+
+yugabyted outputs a message `Credentials File is stored at <credentials_file_path.txt>` with the location of the credentials for the default users.
 
   {{% /tab %}}
 
@@ -1691,6 +1822,8 @@ To create a secure multi-region universe:
         --fault_tolerance=region
     ```
 
+yugabyted outputs a message `Credentials File is stored at <credentials_file_path.txt>` with the location of the credentials for the default users.
+
   {{% /tab %}}
 
   {{% tab header="Insecure" lang="basic-2" %}}
@@ -1802,7 +1935,7 @@ To create a read replica cluster, you first need an existing YugabyteDB universe
 
 Initially universes have only one cluster, called its primary or live cluster.  This cluster consists of all its non-read replica nodes.
 
-In order to add read replica nodes to the universe, you need to first create a read replica cluster for them to belong to.  Once you have done that, you add read replica nodes to the universe using the `--join` and `--read_replica` flags.
+To add read replica nodes to the universe, you need to first create a read replica cluster for them to belong to. After you have done that, you add read replica nodes to the universe using the `--join` and `--read_replica` flags.
 
 #### Create a read replica cluster
 
@@ -2048,116 +2181,3 @@ To disable encryption at rest in a multi-zone or multi-region universe with this
 ```sh
 ./bin/yugabyted configure encrypt_at_rest --disable
 ```
-
-### Set up xCluster replication between universes
-
-Follow the instructions in [xCluster setup](../../../deploy/multi-dc/async-replication/async-transactional-setup-automatic/).
-
-### Pass additional flags to YB-Master and YB-TServer
-
-You can set additional configuration options for the YB-Master and YB-TServer processes using the `--master_flags` and `--tserver_flags` flags.
-
-For example, to create a single-node universe and set additional flags for the YB-TServer process, run the following:
-
-```sh
-./bin/yugabyted start --tserver_flags="pg_yb_session_timeout_ms=1200000,ysql_max_connections=400"
-```
-
-When setting CSV value flags, such as [--ysql_hba_conf_csv](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv), you need to enclose the values inside curly braces `{}`; if a setting includes double quotes (`"`), precede the double quotes with a backslash (`\`) to make it an escape sequence. For example:
-
-```sh
-./bin/yugabyted start --tserver_flags="ysql_hba_conf_csv={host all all 127.0.0.1/0 password,\"host all all 0.0.0.0/0 ldap ldapserver=***** ldapsearchattribute=cn ldapport=3268 ldapbinddn=***** ldapbindpasswd=\"\"*****\"\"\"}"
-```
-
-For more information on additional server configuration options, see [YB-Master](../yb-master/) and [YB-TServer](../yb-tserver/).
-
-## Upgrade a YugabyteDB universe
-
-{{< warning title="Upgrading to v2.25" >}}
-For information on upgrading YugabyteDB from a version based on PostgreSQL 11 (all versions prior to v2.25) to a version based on PostgreSQL 15 (v2.25.1 or later), refer to [Major YSQL upgrade](../../../manage/ysql-major-upgrade-yugabyted/).
-
-Upgrading to v2.25.1 is only supported from v2024.2.2 release.
-{{< /warning >}}
-
-To use the latest features of the database and apply the latest security fixes, upgrade your YugabyteDB universe to the [latest release](https://download.yugabyte.com/#/).
-
-Upgrading an existing YugabyteDB universe that was deployed using yugabyted includes the following steps:
-
-1. Verify the version compatibility before upgrading the universe.
-
-    ```sh
-    ./bin/yugabyted upgrade check_version_compatibility
-    ```
-
-1. Stop one of the running nodes using the `yugabyted stop` command with the `--upgrade` flag.
-
-    ```sh
-    ./bin/yugabyted stop --upgrade true --base_dir <path_to_base_dir>
-    ```
-
-1. Wait for 60 seconds.
-
-1. Start the new yugabyted process (from the new downloaded release) by executing the `yugabyted start` command. Use the previously configured `--base_dir` when restarting the instance.
-
-    ```sh
-    ./bin/yugabyted start --base_dir <path_to_base_dir>
-    ```
-
-1. Repeat steps 2-4 for all the nodes. Wait 60 seconds before repeating the steps on each node.
-
-1. After restarting all the nodes, upgrade the YSQL catalog of the universe. This command can be run from any node.
-
-    ```sh
-    ./bin/yugabyted upgrade ysql_catalog --base_dir <path_to_base_dir>
-    ```
-
-1. After successful YSQL catalog upgrade, restart all the nodes for a second time.
-
-    Repeat steps 2-3 for all the nodes. Wait 60 seconds before repeating the steps on each node.
-
-1. After restarting all the nodes, finalize the upgrade by running the `yugabyted finalize_new_version` command. This command can be run from any node.
-
-    ```sh
-    ./bin/yugabyted upgrade finalize_new_version --base_dir <path_to_base_dir>
-    ```
-
-    Use the `timeout` flag to specify a custom timeout for the operation. Default value is 60000 ms.
-
-    ```sh
-    ./bin/yugabyted upgrade finalize_new_version --base_dir <path_to_base_dir> --timeout 80000
-    ```
-
-## Scale a universe from single to multi zone
-
-The following steps assume that you have a running YugabyteDB universe deployed using yugabyted, and have downloaded the update:
-
-1. Stop the first node by using `yugabyted stop` command:
-
-    ```sh
-    ./bin/yugabyted stop
-    ```
-
-1. Start the YugabyteDB node by using `yugabyted start` command by providing the necessary cloud information as follows:
-
-    ```sh
-    ./bin/yugabyted start --advertise_address=<host-ip> \
-      --cloud_location=aws.us-east-1.us-east-1a \
-      --fault_tolerance=zone
-    ```
-
-1. Repeat the previous step on all the nodes of the universe, one node at a time. If you are deploying the universe on your local computer, specify the [base directory](#base-directory) for each node using the `--base-dir` flag.
-
-1. After starting all nodes, specify the data placement constraint on the universe using the following command:
-
-    ```sh
-    ./bin/yugabyted configure data_placement --fault_tolerance=zone
-    ```
-
-    To manually specify the data placement constraint, use the following command:
-
-    ```sh
-    ./bin/yugabyted configure data_placement \
-      --fault_tolerance=zone \
-      --constraint_value=aws.us-east-1.us-east-1a,aws.us-east-1.us-east-1b,aws.us-east-1.us-east-1c \
-      --rf=3
-    ```
