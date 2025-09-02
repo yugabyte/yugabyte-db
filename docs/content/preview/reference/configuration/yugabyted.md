@@ -1397,7 +1397,7 @@ The following are combinations of environment variables and their uses:
 
 ## Secure universes
 
-To deploy secure universes, use the `start` command with the `--secure` flag. This enables [encryption in transit](#create-certificates-for-a-secure-local-multi-node-universe) and [authentication](../../../secure/enable-authentication/authentication-ysql/) for the node.
+To deploy secure universes using yugabyted, use the `start` command with the `--secure` flag. This enables [encryption in transit](#create-certificates-for-a-secure-local-multi-node-universe) and [authentication](../../../secure/enable-authentication/authentication-ysql/) for the node.
 
 When you start a universe using the `--secure` flag, the credentials for the universe, including password, are output to a credentials file, and the location of the credentials file is displayed on the console.
 
@@ -1429,7 +1429,37 @@ cp $HOME/var/generated_certs/127.0.0.2/* $HOME/yugabyte-{{< yb-version version="
 cp $HOME/var/generated_certs/127.0.0.3/* $HOME/yugabyte-{{< yb-version version="preview" >}}/node3/certs
 ```
 
-### Pass additional flags to YB-Master and YB-TServer
+### Enable and disable encryption at rest
+
+To enable [encryption at rest](../../../secure/encryption-at-rest/) in a deployed local universe, run the following command:
+
+```sh
+./bin/yugabyted configure encrypt_at_rest \
+    --enable \
+    --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1
+```
+
+To enable encryption at rest in a deployed multi-zone or multi-region universe, run the following command from any VM:
+
+```sh
+./bin/yugabyted configure encrypt_at_rest --enable
+```
+
+To disable encryption at rest in a local universe with encryption at rest enabled, run the following command:
+
+```sh
+./bin/yugabyted configure encrypt_at_rest \
+    --disable \
+    --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1
+```
+
+To disable encryption at rest in a multi-zone or multi-region universe with this type of encryption enabled, run the following command from any VM:
+
+```sh
+./bin/yugabyted configure encrypt_at_rest --disable
+```
+
+## Pass additional flags to YB-Master and YB-TServer
 
 You can set additional configuration options for the YB-Master and YB-TServer processes using the `--master_flags` and `--tserver_flags` flags.
 
@@ -1509,7 +1539,7 @@ Upgrading an existing YugabyteDB universe that was deployed using yugabyted incl
 
 ## Scale a universe from single to multi zone
 
-The following steps assume that you have a running YugabyteDB universe deployed using yugabyted, and have downloaded the update:
+The following steps assume that you have a running YugabyteDB universe deployed using yugabyted:
 
 1. Stop the first node by using `yugabyted stop` command:
 
@@ -1542,6 +1572,28 @@ The following steps assume that you have a running YugabyteDB universe deployed 
       --rf=3
     ```
 
+## Destroy a local universe
+
+If you are running YugabyteDB on your local computer, you can't run more than one universe at a time. To set up a new local YugabyteDB universe using yugabyted, first destroy the currently running universe.
+
+To destroy a local single-node universe, use the [destroy](#destroy-1) command as follows:
+
+```sh
+./bin/yugabyted destroy
+```
+
+To destroy a local multi-node universe, use the `destroy` command with the `--base_dir` flag set to the [base directory](#base-directory) path of each of the nodes. For example, for a three node universe, you would execute commands similar to the following:
+
+{{%cluster/cmd op="destroy" nodes="1,2,3"%}}
+
+```sh
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node2
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node3
+```
+
+If the universe has more than three nodes, execute a `destroy --base_dir=<path to directory>` command for each additional node until all nodes are destroyed.
+
 ## Examples
 
 To deploy any type of secure universe (that is, using the `--secure` flag) or use encryption at rest, OpenSSL must be installed on your machine.
@@ -1570,28 +1622,6 @@ sudo ifconfig lo0 alias 127.0.0.3
 ```
 
 The loopback addresses do not persist upon rebooting your computer.
-
-### Destroy a local universe
-
-If you are running YugabyteDB on your local computer, you can't run more than one universe at a time. To set up a new local YugabyteDB universe using yugabyted, first destroy the currently running universe.
-
-To destroy a local single-node universe, use the [destroy](#destroy-1) command as follows:
-
-```sh
-./bin/yugabyted destroy
-```
-
-To destroy a local multi-node universe, use the `destroy` command with the `--base_dir` flag set to the [base directory](#base-directory) path of each of the nodes. For example, for a three node universe, you would execute commands similar to the following:
-
-{{%cluster/cmd op="destroy" nodes="1,2,3"%}}
-
-```sh
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node2
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node3
-```
-
-If the universe has more than three nodes, execute a `destroy --base_dir=<path to directory>` command for each additional node until all nodes are destroyed.
 
 ### Create a single-node universe
 
@@ -2150,34 +2180,4 @@ After destroying the nodes, run the `configure_read_replica delete` command to d
 
 ```sh
 ./bin/yugabyted configure_read_replica delete --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1
-```
-
-### Enable and disable encryption at rest
-
-To enable [encryption at rest](../../../secure/encryption-at-rest/) in a deployed local universe, run the following command:
-
-```sh
-./bin/yugabyted configure encrypt_at_rest \
-    --enable \
-    --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1
-```
-
-To enable encryption at rest in a deployed multi-zone or multi-region universe, run the following command from any VM:
-
-```sh
-./bin/yugabyted configure encrypt_at_rest --enable
-```
-
-To disable encryption at rest in a local universe with encryption at rest enabled, run the following command:
-
-```sh
-./bin/yugabyted configure encrypt_at_rest \
-    --disable \
-    --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1
-```
-
-To disable encryption at rest in a multi-zone or multi-region universe with this type of encryption enabled, run the following command from any VM:
-
-```sh
-./bin/yugabyted configure encrypt_at_rest --disable
 ```
