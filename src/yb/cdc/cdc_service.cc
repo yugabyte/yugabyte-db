@@ -5310,43 +5310,28 @@ void CDCServiceImpl::DestroyVirtualWALForCDC(
   context.RespondSuccess();
 }
 
-std::vector<uint64_t> CDCServiceImpl::FilterVirtualWalSessions(
-    const std::vector<uint64_t>& session_ids) {
-  std::vector<uint64_t> vwal_sessions;
-
-  {
-    SharedLock l(mutex_);
-    for (const auto& session_id : session_ids) {
-      if (session_virtual_wal_.contains(session_id)) {
-        vwal_sessions.push_back(session_id);
-      }
-    }
-  }
-
-  return vwal_sessions;
-}
-
-void CDCServiceImpl::DestroyVirtualWALBatchForCDC(const std::vector<uint64_t>& session_ids) {
+void CDCServiceImpl::DestroyVirtualWALBatchForCDC(
+    const std::vector<uint64_t>& expired_session_ids) {
   // Return early without acquiring the mutex_ in case the walsender consumption feature is disabled
   // or there are no sessions to be cleaned up.
-  if (!FLAGS_ysql_yb_enable_replication_slot_consumption || session_ids.empty()) {
+  if (!FLAGS_ysql_yb_enable_replication_slot_consumption || expired_session_ids.empty()) {
     return;
   }
 
-  // The call to FilterVirtualWalSessions from pg_client_service will ensure that we are only
-  // receiving session_ids here which belong to a virtual WAL session and thus we will also
-  // ensure that we do not end up spewing the following log for every expired session.
-  LOG_WITH_FUNC(INFO) << "Received DestroyVirtualWALBatchForCDC request: " << AsString(session_ids);
+  VLOG_WITH_FUNC(2) << "Received expired session ids: " << AsString(expired_session_ids)
+                    << " for virtual WAL batch cleanup";
 
-  // Ideally, we should not depend on this mutex_ as this function gets called from the session
-  // cleanup bg thread from pg_client_service which is time sensitive.
-  // This seems fine for now only because there isn't a lot of contention on the mutex_ due to low
-  // number of walsenders (10 by default) and here we are just deleting from an in-memory map.
   {
     std::lock_guard l(mutex_);
-
-    for (auto it = session_ids.begin(); it != session_ids.end(); ++it) {
+    for (auto it = expired_session_ids.begin(); it != expired_session_ids.end(); ++it) {
+      if (!session_virtual_wal_.contains(*it)) {
+        VLOG_WITH_FUNC(2) << "Session id: " << *it
+                          << " does not have a virtual WAL associated with it";
+        continue;
+      }
       const auto& stream_id = session_virtual_wal_[*it]->GetStreamId();
+      LOG_WITH_FUNC(INFO) << "Received DestroyVirtualWALBatchForCDC request for session_id: " << *it
+                          << " and stream_id: " << stream_id;
       const auto& curr_status = PersistActivePidInSlotEntry(stream_id, 0ULL);
       stream_to_session_.erase(stream_id);
       if (!curr_status.ok()) {
