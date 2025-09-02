@@ -485,6 +485,12 @@ If you don't provide the target YugabyteDB database name during import, yb-voyag
 CREATE DATABASE target_db_name;
 ```
 
+If you intend to perform a migration assessment, note that the assessment provides recommendations on which tables in the source database to colocate. To ensure that you will be able to colocate tables, create your target database with colocation set to TRUE using the following command:
+
+```sql
+CREATE DATABASE target_db_name WITH COLOCATION = true;
+```
+
 ### Create a user
 
 Create a user with [`SUPERUSER`](../../../api/ysql/the-sql-language/statements/dcl_create_role/#syntax) role.

@@ -93,7 +93,7 @@ Create the target YugabyteDB database in your YugabyteDB cluster. The database n
 CREATE DATABASE target_db_name;
 ```
 
-If you want to [assess your migration](#assess-migration), create the database with colocation using the following command:
+If you intend to perform a migration assessment, note that the assessment provides recommendations on which tables in the source database to colocate. To ensure that you will be able to colocate tables, create your target database with colocation set to TRUE using the following command:
 
 ```sql
 CREATE DATABASE target_db_name WITH COLOCATION = true;
