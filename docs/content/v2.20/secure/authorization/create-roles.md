@@ -56,7 +56,7 @@ Roles that have `LOGIN` privileges are users. For example, create a user `john` 
 yugabyte=# CREATE ROLE john LOGIN PASSWORD 'PasswdForJohn';
 ```
 
-Read about [how to create users in YugabyteDB](../../enable-authentication/authentication-ysql/) in the Authentication section.
+Read about [how to create users in YugabyteDB](../../enable-authentication/ysql/#create-users) in the Authentication section.
 
 ## Grant roles
 
@@ -115,7 +115,7 @@ In the table, note the following:
 * The role `john` can log in, and hence is a user. Note that `john` is not a superuser.
 * The roles `engineering` and `developer` cannot log in.
 
-You can also list roles using the [du meta-command](../../../api/ysqlsh-meta-commands/#du-s-pattern):
+You can also list roles using the [du meta-command](../../../admin/ysqlsh-meta-commands/#du-s-pattern):
 
 ```sql
 yugabyte=# \du
