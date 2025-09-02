@@ -44,6 +44,7 @@
 #include "commands/vacuum.h"
 #include "commands/variable.h"
 #include "commands/trigger.h"
+#include "common/pg_yb_param_status_flags.h"
 #include "executor/ybcModifyTable.h"
 #include "funcapi.h"
 #include "jit/jit.h"
@@ -6991,6 +6992,13 @@ SelectConfigFiles(const char *userDoption, const char *progname)
 	return true;
 }
 
+static bool
+yb_should_report_guc(struct config_generic *record)
+{
+	/* TODO(arpit.saxena): Use narrower sending criteria for correctness */
+	return ((record->flags & GUC_REPORT) && !YbIsClientYsqlConnMgr()) ||
+		(YbIsClientYsqlConnMgr() && record->context > PGC_BACKEND);
+}
 
 /*
  * Reset all options to their saved default values (implements RESET ALL)
@@ -7097,8 +7105,7 @@ ResetAllOptions(void)
 		gconf->source = gconf->reset_source;
 		gconf->scontext = gconf->reset_scontext;
 
-		if ((gconf->flags & GUC_REPORT && !YbIsClientYsqlConnMgr()) ||
-			(YbIsClientYsqlConnMgr() && gconf->context > PGC_BACKEND))
+		if (yb_should_report_guc(gconf))
 			ReportGUCOption(gconf);
 	}
 }
@@ -7509,9 +7516,7 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 			pfree(stack);
 
 			/* Report new value if we changed it */
-			if (changed &&
-				((gconf->flags & GUC_REPORT && !YbIsClientYsqlConnMgr()) ||
-				(YbIsClientYsqlConnMgr()  && gconf->context > PGC_BACKEND)))
+			if (changed && yb_should_report_guc(gconf))
 				ReportGUCOption(gconf);
 		}						/* end of stack-popping loop */
 
@@ -7570,21 +7575,28 @@ ReportGUCOption(struct config_generic *record)
 		char	   *val = _ShowOption(record, false);
 		StringInfoData msgbuf;
 
-		/*
-		 * YB: Do not bombard the client with ParameterStatus packets.
-		 * Send a specialized ParameterStatus packet to instruct Connection
-		 * Manager to not forward the packet to the client if GUC_REPORT is
-		 * not enabled for the variable.
-		 */
-		bool guc_report_not_enabled = !(record->flags & GUC_REPORT);
+		if (YbIsClientYsqlConnMgr())
+		{
+			uint8		flags = 0;
 
-		if (YbIsClientYsqlConnMgr() && guc_report_not_enabled)
+			if (record->flags & GUC_REPORT)
+				flags |= YB_PARAM_STATUS_REPORT_ENABLED;
+
+			/* TODO(arpit.saxena): Populate other bits in flags */
+
 			pq_beginmessage(&msgbuf, 'r');
+			pq_sendstring(&msgbuf, record->name);
+			pq_sendstring(&msgbuf, val);
+			pq_sendbyte(&msgbuf, flags);
+			pq_endmessage(&msgbuf);
+		}
 		else
+		{
 			pq_beginmessage(&msgbuf, 'S');
-		pq_sendstring(&msgbuf, record->name);
-		pq_sendstring(&msgbuf, val);
-		pq_endmessage(&msgbuf);
+			pq_sendstring(&msgbuf, record->name);
+			pq_sendstring(&msgbuf, val);
+			pq_endmessage(&msgbuf);
+		}
 
 		pfree(val);
 	}
@@ -9044,11 +9056,8 @@ set_config_option(const char *name, const char *value,
 			}
 	}
 
-	if (changeVal &&
-		((record->flags & GUC_REPORT && !YbIsClientYsqlConnMgr()) ||
-		(YbIsClientYsqlConnMgr() &&
-		record->context > PGC_BACKEND &&
-		!(action & GUC_ACTION_LOCAL))))
+	if (changeVal && yb_should_report_guc(record) &&
+		!(YbIsClientYsqlConnMgr() && (action & GUC_ACTION_LOCAL)))
 		ReportGUCOption(record);
 
 	/*
