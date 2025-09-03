@@ -44,6 +44,7 @@
 #include "yb/rpc/call_data.h"
 #include "yb/rpc/rpc_header.pb.h"
 
+#include "yb/util/crc.h"
 #include "yb/util/faststring.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/result.h"
@@ -206,6 +207,14 @@ Status ParseHeader(
           in->Skip(length);
         }
         break;
+      case RequestHeader::kCrcFieldNumber: {
+          uint32_t crc;
+          if (!in->ReadLittleEndian32(&crc)) {
+            return STATUS(Corruption, "Unable to decode CRC field");
+          }
+          parsed_header->crc = crc;
+        }
+        break;
       case RequestHeader::kMetadataFieldNumber:
         parsed_header->metadata = VERIFY_RESULT(ParseString(buf, "metadata", in));
         break;
@@ -231,6 +240,17 @@ Status ParseHeader(Slice buf, CodedInputStream* in, MessageLite* parsed_header) 
 
 namespace {
 
+std::optional<uint32_t> GetCrc(const ParsedRequestHeader& header) {
+  return header.crc;
+}
+
+std::optional<uint32_t> GetCrc(const ResponseHeader& header) {
+  if (header.has_crc()) {
+    return header.crc();
+  }
+  return std::nullopt;
+}
+
 template <class Header>
 Result<Slice> ParseYBHeader(Slice buf, Header* parsed_header) {
   CodedInputStream in(buf.data(), narrow_cast<int>(buf.size()));
@@ -245,6 +265,17 @@ Result<Slice> ParseYBHeader(Slice buf, Header* parsed_header) {
   auto l = in.PushLimit(header_len);
   RETURN_NOT_OK(ParseHeader(buf, &in, parsed_header));
   in.PopLimit(l);
+
+  if (auto crc = GetCrc(*parsed_header)) {
+    auto offset = in.CurrentPosition();
+    auto msg_crc = crc::Crc32c(buf.data() + offset, buf.size() - offset);
+    if (msg_crc != *crc) {
+      auto status = STATUS_FORMAT(
+          Corruption, "Invalid CRC $0 for request $1", msg_crc, *parsed_header);
+      LOG(DFATAL) << status;
+      return status;
+    }
+  }
 
   uint32_t main_msg_len;
   if (PREDICT_FALSE(!in.ReadVarint32(&main_msg_len))) {
@@ -351,6 +382,14 @@ void ParsedRequestHeader::ToPB(RequestHeader* out) const {
     out->mutable_remote_method()->set_service_name(parsed_remote_method->service.ToBuffer());
     out->mutable_remote_method()->set_method_name(parsed_remote_method->method.ToBuffer());
   }
+  if (crc) {
+    out->set_crc(*crc);
+  }
+}
+
+std::string ParsedRequestHeader::ToString() const {
+  return YB_STRUCT_TO_STRING(
+      (remote_method, RemoteMethodAsString()), call_id, timeout_ms, sidecar_offsets, crc);
 }
 
 Status ParseMetadata(Slice buf, AnyMessagePtr out) {

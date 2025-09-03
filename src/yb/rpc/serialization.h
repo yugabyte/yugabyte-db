@@ -76,8 +76,10 @@ struct ParsedRequestHeader {
   uint32_t timeout_ms = 0;
   boost::iterator_range<const uint32_t*> sidecar_offsets;
   Slice metadata;
+  std::optional<uint32_t> crc;
 
   std::string RemoteMethodAsString() const;
+  std::string ToString() const;
   void ToPB(RequestHeader* out) const;
 };
 

@@ -46,6 +46,8 @@ extend google.protobuf.MessageOptions {
 
 message LightweightMessageOptions {
   bool force_arena = 1;
+  bool verify = 2;
+  bool dump_parse = 3;
 }
 
 extend google.protobuf.EnumOptions {

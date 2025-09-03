@@ -1055,7 +1055,7 @@ Status QLWriteOperation::ApplyUpsert(
 
   auto se = ScopeExit([&packed_row_write_id, doc_write_batch = data.doc_write_batch]() {
     if (packed_row_write_id) {
-      doc_write_batch->RollbackReservedWriteId();
+      doc_write_batch->RollbackReservedWriteId(*packed_row_write_id);
     }
   });
 
