@@ -921,6 +921,7 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
         .when(mockAZUtil)
         .validateOnBlobContainerClient(
             blobContainerClient,
+            "",
             ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST));
 
     when(blobClient.openInputStream()).thenReturn(blobIs);
@@ -991,11 +992,11 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
     BlobContainerClient bcc = mock(BlobContainerClient.class);
     doCallRealMethod()
         .when(mockAZUtil)
-        .validateOnBlobContainerClient(bcc, ImmutableList.of(ExtraPermissionToValidate.NULL));
+        .validateOnBlobContainerClient(bcc, "", ImmutableList.of(ExtraPermissionToValidate.NULL));
     assertThat(
         () ->
             mockAZUtil.validateOnBlobContainerClient(
-                bcc, ImmutableList.of(ExtraPermissionToValidate.NULL)),
+                bcc, "", ImmutableList.of(ExtraPermissionToValidate.NULL)),
         thrown(
             PlatformServiceException.class,
             "Unsupported permission "
