@@ -255,22 +255,23 @@ TAG_FLAG(backfill_index_client_rpc_timeout_ms, advanced);
 DEFINE_RUNTIME_int32(ycql_num_tablets, -1,
     "The number of tablets per YCQL table. Default value is -1. "
     "Colocated tables are not affected. "
-    "If its value is not set then (1) the value of yb_num_shards_per_tserver is used "
-    "in conjunction with the number of tservers to determine the tablet count, (2) in case of "
-    "low number of CPU cores (<4) and enable_automatic_tablet_splitting is set to true, "
+    "If its value is not set (equals to -1) then (1) the value of yb_num_shards_per_tserver is "
+    "used in conjunction with the number of tservers to determine the tablet count, (2) in case "
+    "of low number of CPU cores (<4) and enable_automatic_tablet_splitting is set to true, "
     "neither the number of tservers nor yb_num_shards_per_tserver are taken into account "
-    "to determine the tablet count, the value is determined on base the number of CPU cores only."
+    "to determine the tablet count, the value is determined based on the number of CPU cores only."
     "If the user explicitly specifies a value of the tablet count in the Create Table "
     "DDL statement (with tablets = x syntax) then it takes precedence over the value "
     "of this flag. Needs to be set at tserver.");
 
-DEFINE_RUNTIME_int32(ysql_num_tablets, -1,
-    "The number of tablets per YSQL table. Default value is -1. "
-    "If its value is not set then (1) the value of ysql_num_shards_per_tserver is used "
-    "in conjunction with the number of tservers to determine the tablet count, (2) in case of "
-    "low number of CPU cores (<4) and enable_automatic_tablet_splitting is set to true, "
+DEFINE_RUNTIME_int32(ysql_num_tablets, 1,
+    "The number of tablets per YSQL table. Default value is 1 and is recommended only if "
+    "enable_automatic_tablet_splitting is true, otherwise the value might need to be set to -1. "
+    "If its value is not set (equals to -1) then (1) the value of ysql_num_shards_per_tserver is "
+    "used in conjunction with the number of tservers to determine the tablet count, (2) in case "
+    "of low number of CPU cores (<4) and enable_automatic_tablet_splitting is set to true, "
     "neither the number of tservers nor ysql_num_shards_per_tserver are taken into account "
-    "to determine the tablet count, the value is determined on base the number of CPU cores only."
+    "to determine the tablet count, the value is determined based on the number of CPU cores only."
     "If the user explicitly specifies a value of the tablet count in the Create Table "
     "DDL statement (split into x tablets syntax) then it takes precedence over the "
     "value of this flag. Needs to be set at tserver.");
