@@ -12,6 +12,8 @@ menu:
     identifier: ash-monitor
     weight: 120
 type: docs
+rightNav:
+  hideH4: true
 ---
 
 [Active Session History](../../../explore/observability/active-session-history/) (ASH) provides a powerful way to troubleshoot performance by giving you a real-time and historical view of your database's activity. ASH captures samples of active sessions and exposes them through a set of SQL views. By querying these views, you can analyze wait events, identify performance bottlenecks, and understand where your database is spending its time.
@@ -24,7 +26,16 @@ By analyzing this data, you can troubleshoot performance by answering questions 
 
 - Which queries are causing the most database load?
 
-To use ASH, you first [set up a YugabyteDB universe](../../../explore/cluster-setup-local/), and [configure ASH](../../../explore/observability/active-session-history/#configure-ash) on the YB-TServer.
+## Configure ASH
+
+To configure ASH, you can set the following YB-TServer flags for each node of your cluster.
+
+| Flag | Description |
+| :--- | :---------- |
+| ysql_yb_enable_ash | Enables ASH. Changing this flag requires a TServer restart. Default: true |
+| ysql_yb_ash_circular_buffer_size | Size (in KiB) of circular buffer where the samples are stored. <br> Defaults:<ul><li>32 MiB for 1-2 cores</li><li>64 MiB for 3-4 cores</li><li>128 MiB for 5-8 cores</li><li>256 MiB for 9-16 cores</li><li>512 MiB for 17-32 cores</li><li>1024 MiB for more than 32 cores</li></ul> Changing this flag requires a TServer restart. |
+| ysql_yb_ash_sampling_interval_ms | Sampling interval (in milliseconds). Changing this flag doesn't require a TServer restart. Default: 1000 |
+| ysql_yb_ash_sample_size | Maximum number of events captured per sampling interval. Changing this flag doesn't require a TServer restart. Default:  500 |
 
 ## YSQL views
 
@@ -184,6 +195,20 @@ These are the wait events introduced by YugabyteDB, however some of the followin
 | :--------- | :--- | :---------- |
 | YBClient_WaitingOnDocDB | Network | YB Client is waiting on DocDB to return a response. |
 | YBClient_LookingUpTablet | Network | YB Client is looking up tablet information from the master. |
+
+## Limitations
+
+Note that the following limitations are subject to change.
+
+- ASH is available per node and is not aggregated across the cluster.
+- ASH is not available for [YB-Master](../../../architecture/yb-master/) processes.
+- ASH is available for queries and a few background activities like compaction and flushes. ASH support for other background activities will be added in future releases.
+
+<!-- While ASH is not available for most background activities such as backups, restore, remote bootstrap, CDC, tablet splitting. ASH is available for flushes and compactions.
+Work done in the TServer process is tracked, even for remote-bootstrap etc. However, we do not collect them under a specific query-id of sorts.
+
+copy/export done using scripts outside of the TServer process is not tracked.
+-->
 
 ## Learn more
 

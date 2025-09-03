@@ -28,31 +28,6 @@ Analyzing the wait events and wait event types lets you troubleshoot, answer the
 - Why is a particular application slow?
 - What are the queries that are contributing significantly to database load and performance?
 
-## Configure ASH
-
-To configure ASH, you can set the following YB-TServer flags for each node of your cluster.
-
-| Flag | Description |
-| :--- | :---------- |
-| ysql_yb_enable_ash | Enables ASH. Changing this flag requires a TServer restart. Default: true |
-| ysql_yb_ash_circular_buffer_size | Size (in KiB) of circular buffer where the samples are stored. <br> Defaults:<ul><li>32 MiB for 1-2 cores</li><li>64 MiB for 3-4 cores</li><li>128 MiB for 5-8 cores</li><li>256 MiB for 9-16 cores</li><li>512 MiB for 17-32 cores</li><li>1024 MiB for more than 32 cores</li></ul> Changing this flag requires a TServer restart. |
-| ysql_yb_ash_sampling_interval_ms | Sampling interval (in milliseconds). Changing this flag doesn't require a TServer restart. Default: 1000 |
-| ysql_yb_ash_sample_size | Maximum number of events captured per sampling interval. Changing this flag doesn't require a TServer restart. Default:  500 |
-
-## Limitations
-
-Note that the following limitations are subject to change.
-
-- ASH is available per node and is not aggregated across the cluster.
-- ASH is not available for [YB-Master](../../../architecture/yb-master/) processes.
-- ASH is available for queries and a few background activities like compaction and flushes. ASH support for other background activities will be added in future releases.
-
-<!-- While ASH is not available for most background activities such as backups, restore, remote bootstrap, CDC, tablet splitting. ASH is available for flushes and compactions.
-Work done in the TServer process is tracked, even for remote-bootstrap etc. However, we do not collect them under a specific query-id of sorts.
-
-copy/export done using scripts outside of the TServer process is not tracked.
--->
-
 ## Examples
 
 {{% explore-setup-single-new %}}
@@ -331,4 +306,8 @@ GROUP BY
  127.0.0.3:56479 | 10997
 ```
 
-For information on YSQL views, query identifiers, and wait events that are exposed via active sessions captured by ASH, see [Monitor with Active Session History](../../../launch-and-manage/monitor-and-alert/active-session-history-monitor/).
+## Learn more
+
+- How to [Configure ASH](../../../launch-and-manage/monitor-and-alert/active-session-history-monitor/#configure-ash)
+- ASH [limitations](../../../launch-and-manage/monitor-and-alert/active-session-history-monitor/#limitations)
+- See [Monitor with Active Session History](../../../launch-and-manage/monitor-and-alert/active-session-history-monitor/) for information on YSQL views, query identifiers, and wait events that are exposed via active sessions captured by ASH.
