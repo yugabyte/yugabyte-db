@@ -251,7 +251,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
             gFlagsParams.masterJoinExistingCluster = false;
           });
       if (deleteCapacityReservation) {
-        createDeleteReservationTask();
+        createDeleteCapacityReservationTask();
       }
 
       Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);

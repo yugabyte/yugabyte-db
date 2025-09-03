@@ -13,6 +13,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -83,7 +84,7 @@ public class DeleteCapacityReservation extends ServerSubTaskBase {
                             .getZonedReservation()
                             .forEach(
                                 (zoneId, reservation) -> {
-                                  if (reservations.contains(reservation.getReservationName())) {
+                                  if (reservations.remove(reservation.getReservationName())) {
                                     apiClient.deleteCapacityReservation(
                                         regionReservation.getGroupName(),
                                         reservation.getReservationName(),
@@ -95,6 +96,10 @@ public class DeleteCapacityReservation extends ServerSubTaskBase {
                                   }
                                 });
                       });
+              reservations.forEach(
+                  r ->
+                      apiClient.deleteCapacityReservation(
+                          regionReservation.getGroupName(), r, Collections.emptySet()));
               log.debug("Deleting region reservation {}", regionReservation.getGroupName());
               apiClient.deleteCapacityReservationGroup(regionReservation.getGroupName());
             } else {

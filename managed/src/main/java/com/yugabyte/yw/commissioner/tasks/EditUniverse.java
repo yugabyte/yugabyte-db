@@ -136,7 +136,7 @@ public class EditUniverse extends EditUniverseTaskBase {
         createUpdateUniverseIntentTask(cluster);
       }
       if (deleteCapacityReservation) {
-        createDeleteReservationTask();
+        createDeleteCapacityReservationTask();
       }
       if (taskParams().communicationPorts != null
           && !Objects.equals(

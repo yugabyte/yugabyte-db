@@ -82,7 +82,7 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
           u -> updateRuntimeInfo(RuntimeInfo.class, info -> info.certsUpdated = true));
 
       if (deleteCapacityReservation) {
-        createDeleteReservationTask();
+        createDeleteCapacityReservationTask();
       }
 
       createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);

@@ -130,7 +130,7 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
             gFlagsParams.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
           });
       if (deleteCapacityReservation) {
-        createDeleteReservationTask();
+        createDeleteCapacityReservationTask();
       }
 
       // Set of processes to be started, note that in this case it is same as nodes provisioned.
