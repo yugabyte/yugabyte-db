@@ -7,8 +7,6 @@ menu:
   preview_api:
     identifier: ddl_drop_view
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/ddl_drop_view/
 type: docs
 ---
 
