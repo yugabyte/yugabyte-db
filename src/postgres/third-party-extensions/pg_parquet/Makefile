@@ -84,7 +84,7 @@ install: cargo-pgrx-exists
 		   PGRX_HOME=$(YB_BUILD_ROOT)/.pgrx \
 		   CARGO_INCREMENTAL=1 \
 		   ../pgrx/target/release/cargo-pgrx pgrx install --release -F pg15 -c $(PG_CONFIG) && \
-	   [ -z "$$YB_PG_PARQUET_SKIP_DEBUG_CLEAN" ] && rm -rf target/debug || true
+	   [ "$$YB_PG_PARQUET_DEBUG_CLEAN" = "1" ] && rm -rf target/debug || true
 
 clean: cargo-exists
 	   # YB: cleaning pgrx and pg_parquet.
