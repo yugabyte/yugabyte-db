@@ -3537,7 +3537,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     List<String> command =
         ImmutableList.<String>builder()
             .add("pgrep")
-            .add("-flu")
+            .add("-xlu")
             .add("yugabyte")
             .add(processName)
             .add("2>/dev/null")
