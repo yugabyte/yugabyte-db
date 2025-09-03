@@ -82,7 +82,6 @@
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/write_query.h"
 
-#include "yb/util/backoff_waiter.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -96,6 +95,7 @@
 
 using namespace std::literals;
 using namespace std::placeholders;
+
 using std::shared_ptr;
 using std::string;
 using std::vector;
@@ -136,15 +136,15 @@ METRIC_DEFINE_event_stats(table, op_prepare_queue_length, "Operation Prepare Que
                         "High queue lengths indicate that the server is unable to process "
                         "operations as fast as they are being written to the WAL.");
 
-METRIC_DEFINE_event_stats(table, op_prepare_queue_time, "Operation Prepare Queue Time",
-                        MetricUnit::kMicroseconds,
-                        "Time that operations spent waiting in the prepare queue before being "
-                        "processed. High queue times indicate that the server is unable to "
-                        "process operations as fast as they are being written to the WAL.");
+METRIC_DEFINE_event_stats(table, op_prepare_queue_time,
+    "Operation Prepare Queue Time", MetricUnit::kMicroseconds,
+    "Time (microseconds) that operations spent waiting in the prepare queue before being "
+    "processed. High queue times indicate that the server is unable to "
+    "process operations as fast as they are being written to the WAL.");
 
 METRIC_DEFINE_event_stats(table, op_prepare_run_time, "Operation Prepare Run Time",
                         MetricUnit::kMicroseconds,
-                        "Time that operations spent being prepared in the tablet. "
+                        "Time (microseconds) that operations spent being prepared in the tablet. "
                         "High values may indicate that the server is under-provisioned or "
                         "that operations are experiencing high contention with one another for "
                         "locks.");
@@ -1340,7 +1340,7 @@ Result<bool> TabletPeer::SetAllInitialCDCRetentionBarriers(
       MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms));
   return SetAllCDCRetentionBarriers(
       cdc_wal_index, cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration, cdc_sdk_history_cutoff,
-      require_history_cutoff, true /* initial_retention_barrier */);
+      require_history_cutoff, /*initial_retention_barrier=*/true);
 }
 
 // Applies only to CDCSDK streams
@@ -1360,7 +1360,7 @@ Result<bool> TabletPeer::MoveForwardAllCDCRetentionBarriers(
 
   return SetAllCDCRetentionBarriers(
       cdc_wal_index, cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration, cdc_sdk_history_cutoff,
-      require_history_cutoff, false /* initial_retention_barrier */);
+      require_history_cutoff, /*initial_retention_barrier=*/false);
 }
 
 std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::LWReplicateMsg* replicate_msg) {

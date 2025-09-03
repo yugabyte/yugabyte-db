@@ -20,11 +20,11 @@
 #include <list>
 #include <memory>
 #include <queue>
-#include <sstream>
 
 #include <boost/algorithm/string/join.hpp>
 
 #include "yb/ash/wait_state.h"
+
 #include "yb/client/client.h"
 #include "yb/client/transaction_rpc.h"
 #include "yb/common/hybrid_time.h"
@@ -32,24 +32,25 @@
 #include "yb/common/transaction.pb.h"
 #include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/lock_util.h"
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/intent.h"
+
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/thread_annotations.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_fwd.h"
+
 #include "yb/server/clock.h"
-#include "yb/tablet/tablet_fwd.h"
+
 #include "yb/tablet/transaction_participant.h"
-#include "yb/tablet/transaction_participant_context.h"
 #include "yb/tserver/tserver_service.pb.h"
+
 #include "yb/util/atomic.h"
-#include "yb/util/backoff_waiter.h"
-#include "yb/util/debug-util.h"
-#include "yb/util/flags.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/memory/memory.h"
@@ -57,7 +58,6 @@
 #include "yb/util/monotime.h"
 #include "yb/util/operation_counter.h"
 #include "yb/util/shared_lock.h"
-#include "yb/util/source_location.h"
 #include "yb/util/status_format.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/thread_restrictions.h"
@@ -102,11 +102,11 @@ DEFINE_test_flag(bool, skip_waiter_resumption_on_blocking_subtxn_rollback, false
 METRIC_DEFINE_event_stats(
     tablet, wait_queue_pending_time_waiting, "Wait Queue - Still Waiting Time",
     yb::MetricUnit::kMicroseconds,
-    "The amount of time a still-waiting transaction has been in the wait queue");
+    "The amount of time (microseconds) a still-waiting transaction has been in the wait queue");
 METRIC_DEFINE_event_stats(
     tablet, wait_queue_finished_waiting_latency, "Wait Queue - Total Waiting Time",
     yb::MetricUnit::kMicroseconds,
-    "The amount of time an unblocked transaction spent in the wait queue");
+    "The amount of time (microseconds) an unblocked transaction spent in the wait queue");
 METRIC_DEFINE_event_stats(
     tablet, wait_queue_blockers_per_waiter, "Wait Queue - Blockers per Waiter",
     yb::MetricUnit::kTransactions, "The number of blockers a waiter is stuck on in the wait queue");
@@ -130,8 +130,7 @@ METRIC_DEFINE_gauge_uint64(
 using namespace std::chrono_literals;
 using namespace std::placeholders;
 
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
 
 using dockv::DecodedIntentValue;
 using dockv::DocKey;
@@ -609,7 +608,7 @@ struct WaitingTxn : public std::enable_shared_from_this<WaitingTxn> {
     rpcs_.RegisterAndStart(
         client::GetTransactionStatus(
             TransactionRpcDeadline(),
-            nullptr /* tablet */,
+            /*tablet=*/nullptr,
             client,
             &req,
             [instance = shared_from(this), cb](const auto& status, const auto& resp) {
@@ -890,7 +889,7 @@ class BlockerData {
         }
         did_find_conflicts = true;
         conflict_info->subtransactions[subtxn_id].locks.emplace_back(
-            LockInfo {doc_path, intent_type_set});
+            LockInfo{.doc_path = doc_path, .intent_types = intent_type_set});
       }
     }
     return did_find_conflicts;
@@ -942,7 +941,7 @@ class ContentiousWaiterTask : public std::enable_shared_from_this<ContentiousWai
     serial_waiter_.waiter->IncrementContentiousWaiters();
   }
 
-  virtual ~ContentiousWaiterTask() = default;
+  ~ContentiousWaiterTask() override = default;
 
   void Schedule(rpc::Messenger* messenger) {
     retained_self_ = shared_from_this();
@@ -1663,9 +1662,9 @@ class WaitQueue::Impl {
     // query layer from further processing the transaction, as processing the signal involves
     // acquiring a mutex that guards waiter transactions as well as blockers.
     WARN_NOT_OK(
-      thread_pool_token_->SubmitFunc(
-        std::bind(&WaitQueue::Impl::UpdateWaitersOnBlockerPromotion, this, id, res)),
-      Format("Failed to submit UpdateWaitersOnBlockerPromotion task for txn $0", id));
+        thread_pool_token_->SubmitFunc(
+            [this, id, res] { UpdateWaitersOnBlockerPromotion(id, res); }),
+        Format("Failed to submit UpdateWaitersOnBlockerPromotion task for txn $0", id));
   }
 
   // TODO (advisory-locks): This is a workaround for now where we signal all waiters blocked on a
@@ -2293,5 +2292,4 @@ void WaitQueue::ForceRefreshWaitersForBlocker(const TransactionId& id) {
   return impl_->ForceRefreshWaitersForBlocker(id);
 }
 
-}  // namespace docdb
-}  // namespace yb
+} // namespace yb::docdb
