@@ -57,3 +57,4 @@ yugabyte=# DROP VIEW m1 CASCADE; -- succeeds
 ## See also
 
 - [`CREATE VIEW`](../ddl_create_view)
+-[`DROP MATERIALIZED VIEW`](../ddl_drop_matview/)
