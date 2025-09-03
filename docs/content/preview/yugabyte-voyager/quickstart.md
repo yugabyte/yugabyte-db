@@ -85,7 +85,7 @@ yb-voyager version
 
 ## Set up source database
 
-For this quick start, we'll use a sample PostgreSQL database. If you don't have PostgreSQL installed:
+For this quick start, you can use a sample PostgreSQL database. If you don't have PostgreSQL installed:
 
 ```bash
 # Install PostgreSQL (Ubuntu/Debian)
@@ -127,12 +127,12 @@ CREATE TABLE orders (
 );
 
 -- Insert sample data
-INSERT INTO users (name, email) VALUES 
+INSERT INTO users (name, email) VALUES
     ('John Doe', 'john@example.com'),
     ('Jane Smith', 'jane@example.com'),
     ('Bob Johnson', 'bob@example.com');
 
-INSERT INTO orders (user_id, product_name, amount) VALUES 
+INSERT INTO orders (user_id, product_name, amount) VALUES
     (1, 'Laptop', 999.99),
     (1, 'Mouse', 29.99),
     (2, 'Keyboard', 79.99),
@@ -236,7 +236,7 @@ EOF
 
 ## Run the migration
 
-Now execute the complete migration process:
+Execute the complete migration process as folows:
 
 ### 1. Export schema
 
@@ -290,8 +290,8 @@ SELECT COUNT(*) FROM users;
 SELECT COUNT(*) FROM orders;
 
 # Check sample data
-SELECT u.name, o.product_name, o.amount 
-FROM users u 
+SELECT u.name, o.product_name, o.amount
+FROM users u
 JOIN orders o ON u.id = o.user_id;
 
 \q
@@ -310,27 +310,17 @@ yb-voyager end migration --config-file migration-config.yaml \
 
 ## What's next?
 
-Congratulations! You've successfully completed your first migration with YugabyteDB Voyager. Here are some next steps:
-
-### Explore advanced features
-
-- **[Migration Assessment](../migrate/assess-migration/)**: Get detailed recommendations for production migrations
-- **[Live Migration](../migrate/live-migrate/)**: Migrate without downtime
-- **[Performance Tuning](../reference/performance/)**: Optimize migration speed
-- **[Bulk Data Loading](../migrate/bulk-data-load/)**: Import from CSV files
+- [Migration Assessment](../migrate/assess-migration/): Get detailed recommendations for production migrations
+- [Live Migration](../migrate/live-migrate/): Migrate without downtime
+- [Performance Tuning](../reference/performance/): Optimize migration speed
+- [Bulk Data Loading](../migrate/bulk-data-load/): Import from CSV files
 
 ### Production considerations
 
-- **Security**: Use SSL connections and strong passwords
-- **Performance**: Tune parallel jobs based on your hardware
-- **Monitoring**: Use the yugabyted UI to monitor migration progress
-- **Backup**: Always backup your source database before migration
-
-### Common source databases
-
-- **[MySQL Migration](../migrate/mysql/)**: Migrate from MySQL/MariaDB
-- **[Oracle Migration](../migrate/oracle/)**: Migrate from Oracle Database
-- **[PostgreSQL Migration](../migrate/postgresql/)**: Advanced PostgreSQL migration options
+- Security: Use SSL connections and strong passwords
+- Performance: Tune parallel jobs based on your hardware
+- Monitoring: Use the yugabyted UI to monitor migration progress
+- Backup: Always backup your source database before migration
 
 ## Troubleshooting
 
@@ -362,5 +352,3 @@ Before running a production migration:
 - [ ] Backup of source database completed
 - [ ] Migration tested in non-production environment
 - [ ] Rollback plan prepared
-
----
