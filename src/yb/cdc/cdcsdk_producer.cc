@@ -35,6 +35,7 @@
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/packed_value.h"
+#include "yb/dockv/reader_projection.h"
 
 #include "yb/master/master_client.pb.h"
 

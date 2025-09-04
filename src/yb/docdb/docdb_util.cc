@@ -22,6 +22,7 @@
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/intent_format.h"
 #include "yb/docdb/rocksdb_writer.h"
 
 #include "yb/dockv/doc_key.h"

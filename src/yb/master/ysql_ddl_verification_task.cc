@@ -16,6 +16,8 @@
 
 #include "yb/client/transaction_rpc.h"
 
+#include "yb/dockv/reader_projection.h"
+
 #include "yb/qlexpr/ql_expr.h"
 
 #include "yb/common/colocated_util.h"

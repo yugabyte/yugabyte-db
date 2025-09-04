@@ -19,6 +19,8 @@
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 
+#include "yb/dockv/reader_projection.h"
+
 #include "yb/gutil/casts.h"
 
 #include "yb/master/master_types.pb.h"
