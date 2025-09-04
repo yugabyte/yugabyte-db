@@ -2609,6 +2609,9 @@
         "learnMore": "Learn more about automated platform backups",
         "backupUniverseTip": "To back up universes, navigate to your universe and choose Backups."
       },
+      "actionBar": {
+        "oneTimeBackup": "One-Time Platform Export"
+      },
       "continuousBackupCard": {
         "title": "Automated Platform Backups",
         "metadata": {
@@ -2669,6 +2672,24 @@
         "toast": {
           "deleteSuccess": "Automated platform backup configuration deleted. Automated backup disabled.",
           "deleteFailedLabel:": "Automated platform backup configuration deletion failed."
+        }
+      },
+      "createYbaBackupModal": {
+        "title": "Export Platform",
+        "instructions": "Select the platform data that you want to export and restore to a new YBA instance.",
+        "component": {
+          "platformMetadata": "Platform Metadata",
+          "yugabyteDbReleases": "YugabyteDB Releases",
+          "universeMetrics": "Universe Metrics (Prometheus Data)"
+        },
+        "exportDestination": "Export Destination",
+        "exportDestinationPlaceholder": "Path to local directory. ex. /opt/yba_backups",
+        "submitButton": "Export",
+        "toast": {
+          "createBackupRequestSuccess": "Exporting platform...",
+          "createBackupRequestFailedLabel": "One-time platform export request failed",
+          "createBackupTaskSuccess": "One-time platform export created.",
+          "createBackupTaskFailed": "One-time platform export failed."
         }
       }
     },

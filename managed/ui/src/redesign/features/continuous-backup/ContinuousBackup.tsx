@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from 'react-query';
 import { AxiosError } from 'axios';
+import { Box, useTheme } from '@material-ui/core';
 
 import { YBLoading } from '../../../components/common/indicators';
 import YBErrorIndicator from '../../../components/common/indicators/YBErrorIndicator';
@@ -13,6 +14,7 @@ import {
 } from './ConfigureContinuousBackupModal';
 import { ContinuousBackupCard } from './ContinuousBackupCard';
 import { EnableContinuousBackupPrompt } from './EnableContinuousBackupPrompt';
+import { ContinuousBackupActionBar } from './ContinuousBackupActionBar';
 
 const TRANSLATION_KEY_PREFIX = 'clusterDetail.continuousBackup.enableContinuousBackupPrompt';
 
@@ -20,6 +22,8 @@ export const ContinuousBackup = () => {
   const [isConfigureContinuousBackupModalOpen, setIsConfigureContinuousBackupModalOpen] = useState(
     false
   );
+  const theme = useTheme();
+
   const continuousBackupConfigQuery = useQuery(CONTINUOUS_BACKUP_QUERY_KEY, () =>
     getContinuousBackup()
   );
@@ -46,28 +50,30 @@ export const ContinuousBackup = () => {
     );
   }
 
-  if (isContinuousBackupNotConfigured) {
-    return (
-      <>
-        <EnableContinuousBackupPrompt
-          isDisabled={continuousBackupConfigQuery.isLoading}
-          onEnableContinuousBackupClick={openConfigureContinuousBackupModal}
-        />
-        <ConfigureContinuousBackupModal
-          operation={ConfigureContinuousBackupOperation.CREATE}
-          modalProps={{
-            open: isConfigureContinuousBackupModalOpen,
-            onClose: closeConfigureContinuousBackupModal
-          }}
-        />
-      </>
-    );
-  }
   return (
-    <div>
-      {continuousBackupConfigQuery.data && (
-        <ContinuousBackupCard continuousBackupConfig={continuousBackupConfigQuery.data} />
+    <Box display="flex" flexDirection="column" gridGap={theme.spacing(1)}>
+      <Box marginLeft="auto">
+        <ContinuousBackupActionBar />
+      </Box>
+      {isContinuousBackupNotConfigured ? (
+        <>
+          <EnableContinuousBackupPrompt
+            isDisabled={continuousBackupConfigQuery.isLoading}
+            onEnableContinuousBackupClick={openConfigureContinuousBackupModal}
+          />
+          <ConfigureContinuousBackupModal
+            operation={ConfigureContinuousBackupOperation.CREATE}
+            modalProps={{
+              open: isConfigureContinuousBackupModalOpen,
+              onClose: closeConfigureContinuousBackupModal
+            }}
+          />
+        </>
+      ) : (
+        continuousBackupConfigQuery.data && (
+          <ContinuousBackupCard continuousBackupConfig={continuousBackupConfigQuery.data} />
+        )
       )}
-    </div>
+    </Box>
   );
 };
