@@ -185,7 +185,7 @@ func ResolveSymlink(source, target string) error {
 	if errors.Is(tErr, fs.ErrNotExist) && errors.Is(sErr, fs.ErrNotExist) {
 		msg := fmt.Sprintf("Neither source %s nor target %s exist", source, target)
 		log.Error(msg)
-		return fmt.Errorf(msg)
+		return errors.New(msg)
 		// Handle only target existing (already resolved)
 	} else if tErr == nil && errors.Is(sErr, fs.ErrNotExist) {
 		log.Debug(fmt.Sprintf("Symlink %s -> %s already resolved", source, target))
@@ -722,13 +722,13 @@ func logNode(node *yaml.Node) {
 func SetYamlValue(filePath string, yamlPath string, value interface{}) error {
 	origYamlBytes, err := os.ReadFile(filePath)
 	if err != nil {
-		return fmt.Errorf("unable to read config file %s: %s", filePath, err.Error())
+		return fmt.Errorf("unable to read config file %s: %w", filePath, err)
 	}
 
 	var root yaml.Node
 	err = yaml.Unmarshal(origYamlBytes, &root)
 	if err != nil {
-		return fmt.Errorf("unable to parse config file %s: %s", filePath, err.Error())
+		return fmt.Errorf("unable to parse config file %s: %w", filePath, err)
 	}
 
 	// handle case where we read empty file, initialize to blank document
@@ -744,16 +744,16 @@ func SetYamlValue(filePath string, yamlPath string, value interface{}) error {
 	before, after, _ := strings.Cut(yamlPath, ".")
 	err = setYamlValue(&root, before, after, value)
 	if err != nil {
-		return fmt.Errorf("error seting yaml value: %s", err.Error())
+		return fmt.Errorf("error setting yaml value: %w", err)
 	}
 
 	finalYaml, err := yaml.Marshal(&root)
 	if err != nil {
-		return fmt.Errorf("error serializing yaml: %s", err.Error())
+		return fmt.Errorf("error serializing yaml: %w", err)
 	}
 	err = os.WriteFile(filePath, finalYaml, 0600)
 	if err != nil {
-		return fmt.Errorf("error writing to file %s: %s", filePath, err.Error())
+		return fmt.Errorf("error writing to file %s: %w", filePath, err)
 	}
 	return nil
 }
@@ -972,7 +972,7 @@ func FindRecentBackup(dir string) string {
 func KeepMostRecentFiles(folderPath string, regexPattern string, toKeep int) error {
 	files, err := os.ReadDir(folderPath)
 	if err != nil {
-		return fmt.Errorf("failed to read directory: %v", err)
+		return fmt.Errorf("failed to read directory: %w", err)
 	}
 
 	var matchingFiles []os.DirEntry
@@ -995,7 +995,7 @@ func KeepMostRecentFiles(folderPath string, regexPattern string, toKeep int) err
 	for _, file := range matchingFiles[toKeep:] {
 		filePath := filepath.Join(folderPath, file.Name())
 		if err := os.Remove(filePath); err != nil {
-			return fmt.Errorf("failed to delete file: %v", err)
+			return fmt.Errorf("failed to delete file: %w", err)
 		}
 	}
 

@@ -48,11 +48,11 @@ func Install(version string) error {
 	// Set ownership of yba-ctl.yml and yba-ctl.log
 	user := viper.GetString("service_username")
 	if err := Chown(InputFile(), user, user, false); err != nil {
-		return fmt.Errorf("could not set ownership of %s: %v", InputFile(), err)
+		return fmt.Errorf("could not set ownership of %s: %w", InputFile(), err)
 	}
 
 	if err := Chown(YbactlLogFile(), user, user, false); err != nil {
-		return fmt.Errorf("could not set ownership of %s: %v", YbactlLogFile(), err)
+		return fmt.Errorf("could not set ownership of %s: %w", YbactlLogFile(), err)
 	}
 
 	if err := createSoftwareInstallDirs(); err != nil {
@@ -152,7 +152,7 @@ func CreateDirs(createDirs []string) error {
 		_, err := os.Stat(dir)
 		if os.IsNotExist(err) {
 			if err := MkdirAll(dir, DirMode); err != nil {
-				return fmt.Errorf(fmt.Sprintf("failed creating directory %s: %s", dir, err.Error()))
+				return fmt.Errorf("failed creating directory %s: %w", dir, err)
 			}
 		}
 		// Only change ownership for root installs.
@@ -160,8 +160,7 @@ func CreateDirs(createDirs []string) error {
 			serviceuser := viper.GetString("service_username")
 			err := Chown(dir, serviceuser, serviceuser, false)
 			if err != nil {
-				return fmt.Errorf("failed to change ownership of " + dir + " to " +
-					serviceuser + ": " + err.Error())
+				return fmt.Errorf("failed to change ownership of %s to %s: %w", dir, serviceuser, err)
 			}
 		}
 	}
@@ -205,14 +204,14 @@ func copyBits(vers string) error {
 	for _, file := range neededFiles {
 		fp := AbsoluteBundlePath(file)
 		if err := Copy(fp, GetInstallerSoftwareDir(), false, true); err != nil {
-			return fmt.Errorf("failed to copy " + fp + ": " + err.Error())
+			return fmt.Errorf("failed to copy %s: %w", fp, err)
 		}
 	}
 
 	configDest := path.Join(GetInstallerSoftwareDir(), ConfigDir)
 	if _, err := os.Stat(configDest); errors.Is(err, os.ErrNotExist) {
 		if err := Copy(GetTemplatesDir(), configDest, true, false); err != nil {
-			return fmt.Errorf("failed to copy config files: " + err.Error())
+			return fmt.Errorf("failed to copy config files: %w", err)
 		}
 	} else {
 		log.Debug("skipping template file copy, already exists")
@@ -259,10 +258,10 @@ func Upgrade(version string) error {
 	// Change ownership as part of upgrade to allow non-root commands
 	user := viper.GetString("service_username")
 	if err := Chown(InputFile(), user, user, false); err != nil {
-		return fmt.Errorf("could not set ownership of %s: %v", InputFile(), err)
+		return fmt.Errorf("could not set ownership of %s: %w", InputFile(), err)
 	}
 	if err := Chown(YbactlLogFile(), user, user, false); err != nil {
-		return fmt.Errorf("could not set ownership of %s: %v", YbactlLogFile(), err)
+		return fmt.Errorf("could not set ownership of %s: %w", YbactlLogFile(), err)
 	}
 	if err := createUpgradeDirs(); err != nil {
 		return err
@@ -301,11 +300,11 @@ func SetActiveInstallSymlink() error {
 	// Remove the symlink if one exists
 	if _, err := os.Stat(GetActiveSymlink()); err == nil {
 		if err := os.Remove(GetActiveSymlink()); err != nil {
-			return fmt.Errorf("failed removing previous symlink: %s", err.Error())
+			return fmt.Errorf("failed removing previous symlink: %w", err)
 		}
 	}
 	if err := os.Symlink(GetSoftwareRoot(), GetActiveSymlink()); err != nil {
-		return fmt.Errorf("could not create active symlink: %s", err.Error())
+		return fmt.Errorf("could not create active symlink: %w", err)
 	}
 	return nil
 }
@@ -313,13 +312,13 @@ func SetActiveInstallSymlink() error {
 func setupJDK() error {
 	dirName, err := javaDirectoryName()
 	if err != nil {
-		return fmt.Errorf("failed to untar jdk: " + err.Error())
+		return fmt.Errorf("failed to untar jdk: %w", err)
 	}
 	_, err = os.Stat(filepath.Join(GetInstallerSoftwareDir(), dirName))
 	if errors.Is(err, os.ErrNotExist) {
 		out := shell.Run("tar", "-zxf", GetJavaPackagePath(), "-C", GetInstallerSoftwareDir())
 		if !out.SucceededOrLog() {
-			return fmt.Errorf("failed to setup JDK: " + out.Error.Error())
+			return fmt.Errorf("failed to setup JDK: %w", out.Error)
 		}
 	} else {
 		log.Debug("jdk already extracted")
@@ -340,16 +339,16 @@ func setJDKEnvironmentVariable() error {
 	out := shell.RunShell("tar", tarArgs...)
 	out.LogDebug()
 	if !out.SucceededOrLog() {
-		return fmt.Errorf("failed to setup JDK environment: " + out.Error.Error())
+		return fmt.Errorf("failed to setup JDK environment: %w", out.Error)
 	}
 
 	javaExtractedFolderName, err := javaDirectoryName()
 	if err != nil {
-		return fmt.Errorf("failed to setup JDK Environment: " + err.Error())
+		return fmt.Errorf("failed to setup JDK Environment: %w", err)
 	}
 	javaHome := GetInstallerSoftwareDir() + javaExtractedFolderName
 	if err := os.Setenv("JAVA_HOME", javaHome); err != nil {
-		return fmt.Errorf("failed setting JAVA_HOME environment variable: %s", err.Error())
+		return fmt.Errorf("failed setting JAVA_HOME environment variable: %w", err)
 	}
 	return nil
 }
@@ -387,7 +386,7 @@ func createYugabyteUser() error {
 
 	if HasSudoAccess() {
 		if out := shell.Run("useradd", "-m", userName, "-U"); !out.Succeeded() {
-			return fmt.Errorf("failed to create user " + userName + ": " + out.Error.Error())
+			return fmt.Errorf("failed to create user %s: %w", userName, out.Error)
 		}
 	} else {
 		return fmt.Errorf("need sudo access to create yugabyte user")
@@ -400,21 +399,21 @@ func extractPlatformSupportPackageAndYugabundle(vers string) error {
 	log.Info("Extracting yugabundle package.")
 
 	if err := RemoveAll(filepath.Join(GetInstallerSoftwareDir(), "packages")); err != nil {
-		return fmt.Errorf("failed to remove old packages: " + err.Error())
+		return fmt.Errorf("failed to remove old packages: %w", err)
 	}
 
 	yugabundleBinary := GetInstallerSoftwareDir() + "/yugabundle-" + vers + "-centos-x86_64.tar.gz"
 
 	rExtract1, errExtract1 := os.Open(yugabundleBinary)
 	if errExtract1 != nil {
-		return fmt.Errorf("Error in starting the File Extraction process. " + errExtract1.Error())
+		return fmt.Errorf("Error in starting the File Extraction process: %w", errExtract1)
 	}
 	defer rExtract1.Close()
 
 	log.Debug(fmt.Sprintf("Extracting %s", yugabundleBinary))
 	err := tar.Untar(rExtract1, GetInstallerSoftwareDir(), tar.WithMaxUntarSize(-1))
 	if err != nil {
-		return fmt.Errorf(fmt.Sprintf("failed to extract file %s, error: %s", yugabundleBinary, err.Error()))
+		return fmt.Errorf("failed to extract file %s: %w", yugabundleBinary, err)
 	}
 	log.Debug(fmt.Sprintf("Completed extracting %s", yugabundleBinary))
 
@@ -424,14 +423,14 @@ func extractPlatformSupportPackageAndYugabundle(vers string) error {
 	rExtract2, errExtract2 := os.Open(path1)
 	if errExtract2 != nil {
 		fmt.Println(errExtract2.Error())
-		return fmt.Errorf("error in starting the file extraction process: " + errExtract2.Error())
+		return fmt.Errorf("error in starting the file extraction process: %w", errExtract2)
 	}
 	defer rExtract2.Close()
 
 	log.Debug(fmt.Sprintf("Extracting %s", path1))
 	err = tar.Untar(rExtract2, GetInstallerSoftwareDir(), tar.WithMaxUntarSize(-1))
 	if err != nil {
-		return fmt.Errorf(fmt.Sprintf("failed to extract file %s, error: %s", path1, err.Error()))
+		return fmt.Errorf("failed to extract file %s: %w", path1, err)
 	}
 	log.Debug(fmt.Sprintf("Completed extracting %s", path1))
 
@@ -455,18 +454,17 @@ func renameThirdPartyDependencies() error {
 	//Remove any thirdparty directories if they already exist, so
 	//that the install action is idempotent.
 	if err := RemoveAll(GetInstallerSoftwareDir() + "/thirdparty"); err != nil {
-		return fmt.Errorf("failed to clean thirdparty directory: " + err.Error())
+		return fmt.Errorf("failed to clean thirdparty directory: %w", err)
 	}
 	if err := RemoveAll(GetInstallerSoftwareDir() + "/third-party"); err != nil {
-		return fmt.Errorf("failed to clean thirdparty directory: " + err.Error())
+		return fmt.Errorf("failed to clean thirdparty directory: %w", err)
 	}
 
 	path := GetInstallerSoftwareDir() + "/packages/thirdparty-deps.tar.gz"
 	rExtract, _ := os.Open(path)
 	log.Debug("Extracting archive " + path)
 	if err := tar.Untar(rExtract, GetInstallerSoftwareDir(), tar.WithMaxUntarSize(-1)); err != nil {
-		return fmt.Errorf(fmt.Sprintf("failed to extract file %s, error: %s",
-			path, err.Error()))
+		return fmt.Errorf("failed to extract file %s, error: %w", path, err)
 	}
 
 	log.Debug(fmt.Sprintf("Completed extracting archive at %s to %s", path, GetInstallerSoftwareDir()))
@@ -588,11 +586,11 @@ func RegenerateSelfSignedCerts() error {
 	}
 	caCert, err := parseCertFromPem(caCertPath)
 	if err != nil {
-		return fmt.Errorf("failed to parse certificate: %s", err.Error())
+		return fmt.Errorf("failed to parse certificate: %w", err)
 	}
 	caKey, err := parsePrivateKey(caKeyPath)
 	if err != nil {
-		return fmt.Errorf("failed to parse private key: %s", err.Error())
+		return fmt.Errorf("failed to parse private key: %w", err)
 	}
 	serverCertPath := filepath.Join(certsDir, ServerCertPath)
 	serverKeyPath := filepath.Join(certsDir, ServerKeyPath)
@@ -650,7 +648,7 @@ func WaitForYBAReady(version string) error {
 						result["version"], version))
 				}
 			} else {
-				return fmt.Errorf("error waiting for YBA ready: %s", err.Error())
+				return fmt.Errorf("error waiting for YBA ready: %w", err)
 			}
 		}
 

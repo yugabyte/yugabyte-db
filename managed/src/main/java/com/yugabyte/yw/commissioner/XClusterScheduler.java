@@ -270,7 +270,7 @@ public class XClusterScheduler {
     }
   }
 
-  public void syncXClusterConfig(XClusterConfig config) {
+  public void syncXClusterConfig(XClusterConfig xClusterConfig) {
     try {
       Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
       Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
