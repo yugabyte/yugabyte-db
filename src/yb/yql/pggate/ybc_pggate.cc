@@ -1999,11 +1999,11 @@ YbcStatus YBCAddForeignKeyReferenceIntent(
     bool is_deferred_trigger) {
   return ProcessYbctid(
       *source,
-      [is_region_local_relation, is_deferred_trigger](auto table_id, const auto& ybctid) {
-        pgapi->AddForeignKeyReferenceIntent(
+      [source, is_region_local_relation, is_deferred_trigger](auto table_id, const auto& ybctid) {
+        return pgapi->AddForeignKeyReferenceIntent(
             table_id, ybctid,
-            {.is_region_local = is_region_local_relation, .is_deferred = is_deferred_trigger});
-        return Status::OK();
+            {.is_region_local = is_region_local_relation, .is_deferred = is_deferred_trigger},
+            source->database_oid);
       });
 }
 

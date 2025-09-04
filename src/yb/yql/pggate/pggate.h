@@ -732,8 +732,9 @@ class PgApiImpl {
   void DeleteForeignKeyReference(PgOid table_id, const Slice& ybctid);
   void AddForeignKeyReference(PgOid table_id, const Slice& ybctid);
   Result<bool> ForeignKeyReferenceExists(PgOid table_id, const Slice& ybctid, PgOid database_id);
-  void AddForeignKeyReferenceIntent(
-        PgOid table_id, const Slice& ybctid, const PgFKReferenceCache::IntentOptions& options);
+  Status AddForeignKeyReferenceIntent(
+    PgOid table_id, const Slice& ybctid, const PgFKReferenceCache::IntentOptions& options,
+    PgOid database_id);
   void NotifyDeferredTriggersProcessingStarted();
 
   Status AddExplicitRowLockIntent(

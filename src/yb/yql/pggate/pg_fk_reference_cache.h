@@ -41,7 +41,8 @@ class PgFKReferenceCache {
   void DeleteReference(const LightweightTableYbctid& key);
   void AddReference(const LightweightTableYbctid& key);
   Result<bool> IsReferenceExists(PgOid database_id, const LightweightTableYbctid& key);
-  void AddIntent(const LightweightTableYbctid& key, const IntentOptions& options);
+  Status AddIntent(
+      PgOid database_id, const LightweightTableYbctid& key, const IntentOptions& options);
   void OnDeferredTriggersProcessingStarted();
 
  private:

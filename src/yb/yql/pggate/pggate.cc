@@ -2111,9 +2111,11 @@ Result<bool> PgApiImpl::ForeignKeyReferenceExists(
       database_id, LightweightTableYbctid{table_id, ybctid});
 }
 
-void PgApiImpl::AddForeignKeyReferenceIntent(
-    PgOid table_id, const Slice& ybctid, const PgFKReferenceCache::IntentOptions& options) {
-  fk_reference_cache_.AddIntent(LightweightTableYbctid{table_id, ybctid}, options);
+Status PgApiImpl::AddForeignKeyReferenceIntent(
+    PgOid table_id, const Slice& ybctid, const PgFKReferenceCache::IntentOptions& options,
+    PgOid database_id) {
+  return fk_reference_cache_.AddIntent(
+      database_id, LightweightTableYbctid{table_id, ybctid}, options);
 }
 
 void PgApiImpl::DeleteForeignKeyReference(PgOid table_id, const Slice& ybctid) {

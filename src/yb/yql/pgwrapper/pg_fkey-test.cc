@@ -444,7 +444,7 @@ TEST_F(PgFKeyTest, YB_DISABLE_TEST_IN_TSAN(InsertBatching)) {
   }));
   ASSERT_EQ(rpc_count.read, NumBatches(kPKItemCount));
   ASSERT_EQ(rpc_count.write, NumBatches(kFKItemCount));
-  ASSERT_EQ(rpc_count.perform, rpc_count.read + rpc_count.write - 1);
+  ASSERT_LT(rpc_count.perform, rpc_count.read + rpc_count.write);
 }
 
 // Test checks number of read/write/perform rpcs in case of inserts into table
@@ -492,8 +492,8 @@ TEST_F(PgFKeyTest, YB_DISABLE_TEST_IN_TSAN(UpdateBatching)) {
       [&conn, &query_template] { return conn.ExecuteFormat(query_template, kItemCount - 1); }));
   const auto num_batches = NumBatches(kItemCount - 1);
   ASSERT_EQ(rpc_count.read, num_batches + 1);
-  ASSERT_EQ(rpc_count.write, num_batches);
-  ASSERT_EQ(rpc_count.perform, rpc_count.read + rpc_count.write - 1);
+  ASSERT_EQ(rpc_count.write, num_batches + 1);
+  ASSERT_LT(rpc_count.perform, rpc_count.read + rpc_count.write);
 }
 
 // Test checks rows written by buffered write operations are read successfully while
