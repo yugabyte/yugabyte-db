@@ -107,6 +107,10 @@ DEFINE_test_flag(string, ysql_conn_mgr_dowarmup_all_pools_mode, "none",
   "3) number of server connections in any pool whenever there is a requirement to create the "
   "first backend process in that particular pool.");
 
+DEFINE_test_flag(uint32, ysql_conn_mgr_auth_delay_ms, 0,
+    "Add a delay in od_auth_backend to simulate stalls during authentication with connection "
+    " manager .");
+
 DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_superuser_sticky, true,
   "If enabled, make superuser connections sticky in Ysql Connection Manager.");
 
@@ -2307,6 +2311,7 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_enable_read_request_cache_for_connection_auth =
           &FLAGS_ysql_enable_read_request_cache_for_connection_auth,
       .ysql_enable_scram_channel_binding = &FLAGS_ysql_enable_scram_channel_binding,
+      .TEST_ysql_conn_mgr_auth_delay_ms = &FLAGS_TEST_ysql_conn_mgr_auth_delay_ms,
   };
   // clang-format on
   return &accessor;

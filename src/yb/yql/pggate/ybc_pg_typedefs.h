@@ -431,6 +431,7 @@ typedef struct {
   const bool*     TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication;
   const bool*     ysql_enable_read_request_cache_for_connection_auth;
   const bool*     ysql_enable_scram_channel_binding;
+  const uint32_t* TEST_ysql_conn_mgr_auth_delay_ms;
 } YbcPgGFlagsAccessor;
 
 typedef struct {
