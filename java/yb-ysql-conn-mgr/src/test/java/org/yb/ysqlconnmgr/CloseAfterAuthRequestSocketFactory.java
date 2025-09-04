@@ -97,8 +97,8 @@ public class CloseAfterAuthRequestSocketFactory extends SocketFactory {
       super(host, port);
     }
 
-    public InterceptingSocket(InetAddress address, int port, InetAddress localAddress,
-        int localPort) throws IOException {
+    public InterceptingSocket(
+        InetAddress address, int port, InetAddress localAddress, int localPort) throws IOException {
       super(address, port, localAddress, localPort);
     }
 
@@ -131,19 +131,25 @@ public class CloseAfterAuthRequestSocketFactory extends SocketFactory {
 
     @Override
     public int read() throws IOException {
-      if (closed) {
-        return -1;
-      }
-
-      int b = delegate.read();
-      if (b != -1) {
-        buffer.put(bufferPosition++, (byte) b);
-        checkForPasswordRequest();
+      try {
         if (closed) {
           return -1;
         }
+
+        int b = delegate.read();
+        if (b != -1) {
+          buffer.put(bufferPosition++, (byte) b);
+          checkForPasswordRequest();
+          if (closed) {
+            return -1;
+          }
+        }
+        return b;
+      } catch (java.net.SocketTimeoutException ex) {
+        delegate.close();
+        closed = true;
+        throw ex;
       }
-      return b;
     }
 
     @Override
@@ -209,7 +215,7 @@ public class CloseAfterAuthRequestSocketFactory extends SocketFactory {
       // Look for authentication request messages in the buffer
       for (int i = 0; i < bufferPosition; i++) {
         if (buffer.get(i) == AUTHENTICATION_REQUEST) {
-          LOG.info("Found authentication request at position " + i + ", closing socket");
+          LOG.info("Found authentication request at position " + i + ", closing socket.");
           try {
             delegate.close();
           } catch (IOException e) {

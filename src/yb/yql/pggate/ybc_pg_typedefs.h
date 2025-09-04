@@ -421,6 +421,7 @@ typedef struct PgGFlagsAccessor {
   const bool*     ysql_enable_neghit_full_inheritscache;
   const bool*     ysql_enable_scram_channel_binding;
   const bool*     ysql_enable_read_request_cache_for_connection_auth;
+  const uint32_t* TEST_ysql_conn_mgr_auth_delay_ms;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {
