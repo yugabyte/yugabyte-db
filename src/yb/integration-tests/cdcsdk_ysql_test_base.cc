@@ -1559,14 +1559,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
 
           if (status.ok() && change_resp.has_error()) {
             status = StatusFromPB(change_resp.error().status());
-            if (status.IsNotFound() || status.IsInvalidArgument()) {
-              RETURN_NOT_OK(status);
-            } else if (status.IsInternalError()) {
-              auto err_msg = status.message().ToBuffer();
-              if ((err_msg.find("expired for Tablet") ||
-                   err_msg.find("CDCSDK Trying to fetch already GCed intents")))
-                RETURN_NOT_OK(status);
-            }
+            RETURN_NOT_OK(status);
           }
 
           return false;

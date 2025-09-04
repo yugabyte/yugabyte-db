@@ -784,6 +784,30 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
   return Status::OK();
 }
 
+bool IsRetryableError(const Status& status) {
+  // The following error cases are considered retryable:
+  // - when the tablet peer is not started yet, or
+  // - the tablet is not in available state.
+  // If any additional errors need to be made retryable in VWAL, add them to the list above.
+
+  DCHECK(!status.ok()) << "Status is not expected to be OK when calling IsRetryableError, "
+                       << "status: " << status.ToString();
+
+  // Tablet peer is not started yet
+  if (status.IsIllegalState() &&
+      status.message().ToBuffer().find("is not started yet") != std::string::npos) {
+    return true;
+  }
+
+  // Tablet is not in kAvailable state
+  if (status.IsIllegalState() &&
+      status.message().ToBuffer().find("Tablet not running") != std::string::npos) {
+    return true;
+  }
+
+  return false;
+}
+
 Status CDCSDKVirtualWAL::GetChangesInternal(
     const std::unordered_set<TabletId> tablet_to_poll_list, HostPort hostport,
     CoarseTimePoint deadline) {
@@ -829,6 +853,11 @@ Status CDCSDKVirtualWAL::GetChangesInternal(
           }
           continue;
         } else {
+          // Replace the status code with 'kTryAgain' for the errors which are retryable so they
+          // don't get propagated to walsender.
+          if (IsRetryableError(s)) {
+            s = s.CloneAndReplaceCode(Status::Code::kTryAgain);
+          }
           LOG_WITH_PREFIX(WARNING) << "GetChanges failed for tablet_id: " << tablet_id
                                    << " with error: " << s.CloneAndPrepend(error_msg).ToString();
           RETURN_NOT_OK(s);
