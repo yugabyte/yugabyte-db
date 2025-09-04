@@ -6,9 +6,8 @@ ynp:
   yb_home_dir: /home/yugabyte
 
   # NTP (Network Time Protocol) servers for time synchronization.
-  chrony_servers:
-    - "0.pool.ntp.org"
-    - "1.pool.ntp.org"
+  # Example: ["0.pool.ntp.org", "1.pool.ntp.org"]
+  chrony_servers: []
 
   # User ID for the 'yugabyte' user.
   # Specifies the UID to ensure consistency across nodes.

@@ -3,6 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
@@ -101,6 +102,15 @@ public class YNPProvisioning extends AbstractTaskBase {
           && data.getEarlyoomConfig().isEnabled()) {
         ynpNode.put("earlyoom_enable", true);
         ynpNode.put("earlyoom_args", AdditionalServicesStateData.toArgs(data.getEarlyoomConfig()));
+      }
+      if (provider.getDetails().getNtpServers() != null
+          && !provider.getDetails().getNtpServers().isEmpty()) {
+        ArrayNode arrayNode = mapper.createArrayNode();
+        List<String> ntpServers = provider.getDetails().getNtpServers();
+        for (int i = 0; i < ntpServers.size(); i++) {
+          arrayNode.add(ntpServers.get(i));
+        }
+        ynpNode.set("chrony_servers", arrayNode);
       }
       rootNode.set("ynp", ynpNode);
 
