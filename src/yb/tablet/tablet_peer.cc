@@ -791,7 +791,7 @@ void TabletPeer::GetTabletStatusPB(TabletStatusPB* status_pb_out) {
   std::lock_guard lock(lock_);
   DCHECK(status_pb_out != nullptr);
   DCHECK(status_listener_.get() != nullptr);
-  const auto disk_size_info = GetOnDiskSizeInfo();
+  const auto disk_size_info = GetOnDiskSizeInfoUnlocked();
   status_pb_out->set_tablet_id(status_listener_->tablet_id());
   status_pb_out->set_namespace_name(status_listener_->namespace_name());
   status_pb_out->set_table_name(status_listener_->table_name());
@@ -1562,6 +1562,11 @@ void TabletPeer::UnregisterMaintenanceOps() {
 }
 
 TabletOnDiskSizeInfo TabletPeer::GetOnDiskSizeInfo() const {
+  std::lock_guard lock(lock_);
+  return GetOnDiskSizeInfoUnlocked();
+}
+
+TabletOnDiskSizeInfo TabletPeer::GetOnDiskSizeInfoUnlocked() const {
   TabletOnDiskSizeInfo info;
 
   if (consensus_) {
@@ -1579,8 +1584,13 @@ TabletOnDiskSizeInfo TabletPeer::GetOnDiskSizeInfo() const {
     info.wal_files_disk_size = log->OnDiskSize();
   }
 
+  info.total_on_disk_size = total_on_disk_size_;
   info.RecomputeTotalSize();
   return info;
+}
+
+void TabletPeer::SetTabletOnDiskSize(size_t total_on_disk_size) {
+  total_on_disk_size_ = total_on_disk_size;
 }
 
 size_t TabletPeer::GetNumLogSegments() const {
