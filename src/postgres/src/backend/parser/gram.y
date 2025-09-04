@@ -2716,7 +2716,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> ALTER CONSTRAINT ... */
 			| ALTER CONSTRAINT name ConstraintAttributeSpec
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER action ALTER CONSTRAINT", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					Constraint *c = makeNode(Constraint);
 
