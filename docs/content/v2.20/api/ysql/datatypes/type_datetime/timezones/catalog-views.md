@@ -4,7 +4,7 @@ headerTitle: The pg_timezone_names and pg_timezone_abbrevs catalog views
 linkTitle: Catalog views
 description: Explains the information content of the pg_timezone_names and pg_timezone_abbrevs catalog views. [YSQL]
 menu:
-  v2.20:
+  v2.20_api:
     identifier: catalog-views
     parent: timezones
     weight: 10

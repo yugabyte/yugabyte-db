@@ -4,7 +4,7 @@ headerTitle: Built-in function call
 linkTitle: Function call
 description: Use a function call expression to apply the specified function to given arguments between parentheses and return the result of the computation.
 menu:
-  v2.20:
+  v2.20_api:
     parent: api-cassandra
     weight: 1350
 type: docs

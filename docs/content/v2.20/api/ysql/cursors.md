@@ -4,7 +4,7 @@ headerTitle: Cursors
 linkTitle: Cursors
 description: Explains what a cursor is and how you create and use a cursor with either SQL or PL/pgSQL. [YSQL].
 menu:
-  v2.20:
+  v2.20_api:
     identifier: cursors
     parent: api-ysql
     weight: 50

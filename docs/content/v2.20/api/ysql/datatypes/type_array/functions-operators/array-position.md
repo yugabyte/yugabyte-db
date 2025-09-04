@@ -4,7 +4,7 @@ linkTitle: array_position(), array_positions()
 headerTitle: array_position() and array_positions()
 description: array_position() and array_positions()
 menu:
-  v2.20:
+  v2.20_api:
     identifier: array-position
     parent: array-functions-operators
 type: docs

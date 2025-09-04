@@ -4,7 +4,7 @@ headerTitle: The date data type
 linkTitle: Date data type
 description: The semantics of the date data type. [YSQL]
 menu:
-  v2.20:
+  v2.20_api:
     identifier: type-date
     parent: date-time-data-types-semantics
     weight: 10

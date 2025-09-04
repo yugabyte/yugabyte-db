@@ -4,7 +4,7 @@ headerTitle: The justify() and extract(epoch ...) functions for interval values
 linkTitle: Justify() and extract(epoch...)
 description: Describes the functions justify_hours(interval), justify_days(interval), justify_interval(interval), and extract(epoch from interval_value). [YSQL]
 menu:
-  v2.20:
+  v2.20_api:
     identifier: justfy-and-extract-epoch
     parent: type-interval
     weight: 35

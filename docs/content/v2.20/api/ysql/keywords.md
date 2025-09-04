@@ -5,7 +5,7 @@ linkTitle: Keywords
 description: YSQL API keywords.
 summary: Reference for YSQL API
 menu:
-  v2.20:
+  v2.20_api:
     identifier: api-ysql-keywords
     parent: api-ysql
     weight: 90

@@ -5,7 +5,7 @@ linkTitle: SET TRANSACTION
 description: Use the `SET TRANSACTION` statement to set the current transaction isolation level.
 summary: SET TRANSACTION
 menu:
-  v2.20:
+  v2.20_api:
     identifier: txn_set
     parent: statements
 type: docs

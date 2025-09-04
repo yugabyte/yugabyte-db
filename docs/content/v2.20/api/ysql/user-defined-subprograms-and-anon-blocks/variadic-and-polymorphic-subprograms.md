@@ -4,7 +4,7 @@ headerTitle: Variadic and polymorphic subprograms
 linkTitle: Variadic and polymorphic subprograms
 description: Defines Variadic and polymorphic subprograms and explains their purpose [YSQL].
 menu:
-  v2.20:
+  v2.20_api:
     identifier: variadic-and-polymorphic-subprograms
     parent: user-defined-subprograms-and-anon-blocks
     weight: 50

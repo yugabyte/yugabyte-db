@@ -4,7 +4,7 @@ headerTitle: DROP RULE
 linkTitle: DROP RULE
 description: Use the DROP RULE statement to remove a rule.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: ddl_drop_rule
     parent: statements
 type: docs

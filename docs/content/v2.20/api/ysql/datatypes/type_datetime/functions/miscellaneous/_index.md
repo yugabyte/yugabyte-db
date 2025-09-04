@@ -5,7 +5,7 @@ linkTitle: Miscellaneous
 description: The semantics of the miscellaneous date-time functions. [YSQL]
 image: /images/section_icons/api/subsection.png
 menu:
-  v2.20:
+  v2.20_api:
     identifier: miscellaneous
     parent: date-time-functions
     weight: 60

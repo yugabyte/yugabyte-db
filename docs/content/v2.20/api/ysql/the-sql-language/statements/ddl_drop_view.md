@@ -4,7 +4,7 @@ headerTitle: DROP VIEW
 linkTitle: DROP VIEW
 description: Use the DROP VIEW statement to drop a view.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: ddl_drop_view
     parent: statements
 type: docs
