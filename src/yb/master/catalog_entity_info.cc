@@ -84,10 +84,11 @@ string TabletReplica::ToString() const {
       "member_type: $3, "
       "should_disable_lb_move: $4, "
       "fs_data_dir: $5, "
-      "total_space_used: $6, "
-      "full_compaction_state: $7, "
-      "last_full_compaction_time: $8, "
-      "time since update: $9ms }",
+      "total_space_used (excluding snapshots): $6, "
+      "total_space_used (including snapshots): $7, "
+      "full_compaction_state: $8, "
+      "last_full_compaction_time: $9, "
+      "time since update: $10ms }",
       ts_desc->id(),
       tablet::RaftGroupStatePB_Name(state),
       PeerRole_Name(role),
@@ -95,6 +96,7 @@ string TabletReplica::ToString() const {
       should_disable_lb_move,
       fs_data_dir,
       drive_info.sst_files_size + drive_info.wal_files_size,
+      drive_info.total_size,
       tablet::FullCompactionState_Name(full_compaction_status.full_compaction_state),
       full_compaction_status.last_full_compaction_time,
       MonoTime::Now().GetDeltaSince(time_updated).ToMilliseconds());
