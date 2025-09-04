@@ -81,7 +81,7 @@ SELECT * FROM product_example;
 
 ### Inspect Parquet schema
 
-Use the `SELECT * FROM parquet.schema(<uri>)` query to discover the schema of the Parquet file at a given URI as follows:
+Use the following SELECT query to discover the schema of the Parquet file at a given URI:
 
 ```sql
 SELECT * FROM parquet.schema('/tmp/product_example.parquet') LIMIT 10;
@@ -105,7 +105,7 @@ SELECT * FROM parquet.schema('/tmp/product_example.parquet') LIMIT 10;
 
 ### Inspect Parquet metadata
 
-Use the `SELECT * FROM parquet.metadata(<uri>)` query to discover the detailed metadata of the Parquet file, such as column statistics, at a given URI as follows:
+Use the following SELECT query to discover the detailed metadata of the Parquet file, such as column statistics, at a given URI:
 
 ```sql
 SELECT uri, row_group_id, row_group_num_rows, row_group_num_columns, row_group_bytes, column_id, file_offset, num_values, path_in_schema, type_name FROM parquet.metadata('/tmp/product_example.parquet') LIMIT 1;
@@ -129,7 +129,7 @@ SELECT stats_null_count, stats_distinct_count, stats_min, stats_max, compression
 (1 row)
 ```
 
-Use the `SELECT * FROM parquet.file_metadata(<uri>)` query to discover file level metadata of the Parquet file, such as format version, at a given URI.
+Use the following SELECT query to discover file level metadata of the Parquet file, such as format version, at a given URI:
 
 ```sql
 SELECT * FROM parquet.file_metadata('/tmp/product_example.parquet')
@@ -142,7 +142,7 @@ SELECT * FROM parquet.file_metadata('/tmp/product_example.parquet')
 (1 row)
 ```
 
-You can call `SELECT * FROM parquet.kv_metadata(<uri>)` to query custom key-value metadata of the Parquet file at given uri.
+Use the following SELECT query to get custom key-value metadata of the Parquet file at a given uri:
 
 ```sql
 SELECT uri, encode(key, 'escape') as key, encode(value, 'escape') as value FROM parquet.kv_metadata('/tmp/product_example.parquet');
@@ -157,7 +157,7 @@ SELECT uri, encode(key, 'escape') as key, encode(value, 'escape') as value FROM 
 
 ### Inspect Parquet column statistics
 
-You can call `SELECT * FROM parquet.column_stats(<uri>)` to discover the column statistics of the Parquet file, such as min and max value for the column, at given uri.
+Use the following SELECT query to discover the column statistics of the Parquet file, such as min and max value for the column, at a given URI:
 
 ```sql
 SELECT * FROM parquet.column_stats('/tmp/product_example.parquet')
@@ -182,13 +182,13 @@ SELECT * FROM parquet.column_stats('/tmp/product_example.parquet')
 (13 rows)
 ```
 
-## Object Store Support
+## Object Store support
 
 pg_parquet supports reading and writing Parquet files from/to S3, Azure Blob Storage, http(s) and Google Cloud Storage object stores.
 
 {{< note title="Required roles" >}}
 
-To be able to write into an object store location, you need to grant `parquet_object_store_write` role to your current postgres user. Similarly, to read from an object store location, you need to grant `parquet_object_store_read` role to your current postgres user.
+To write into an object store location, you need to grant `parquet_object_store_write` role to your current postgres user. Similarly, to read from an object store location, you need to grant `parquet_object_store_read` role to your current postgres user.
 
 {{< /note >}}
 
@@ -207,33 +207,25 @@ $ cat ~/.aws/config
 region = eu-central-1
 ```
 
-Alternatively, you can use the following environment variables when starting postgres to configure the S3 client:
+Alternatively, you can use environment variables when starting postgres to configure the S3 client as described in the following table:
 
-- `AWS_ACCESS_KEY_ID`: the access key ID of the AWS account
-- `AWS_SECRET_ACCESS_KEY`: the secret access key of the AWS account
-- `AWS_SESSION_TOKEN`: the session token for the AWS account
-- `AWS_REGION`: the default region of the AWS account
-- `AWS_ENDPOINT_URL`: the endpoint
-- `AWS_SHARED_CREDENTIALS_FILE`: an alternative location for the credentials file (only via environment variables)
-- `AWS_CONFIG_FILE`: an alternative location for the config file (only via environment variables)
-- `AWS_PROFILE`: the name of the profile from the credentials and config file (default profile name is default) (only via environment variables)
-- `AWS_ALLOW_HTTP`: allows http endpoints (only via environment variables)
+| Variable | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| `AWS_ACCESS_KEY_ID` | Access key ID of the AWS account. |
+| `AWS_SECRET_ACCESS_KEY` | Secret access key of the AWS account. |
+| `AWS_SESSION_TOKEN` | Session token for the AWS account. |
+| `AWS_REGION` | Default region of the AWS account. |
+| `AWS_ENDPOINT_URL` | The endpoint. |
+| `AWS_SHARED_CREDENTIALS_FILE` | An alternative location for the credentials file (only via environment variables). |
+| `AWS_CONFIG_FILE` | An alternative location for the configuration file (only via environment variables). |
+| `AWS_PROFILE` | Name of the profile from the credentials and configuration file (default profile name is default) (only via environment variables). |
+| `AWS_ALLOW_HTTP` | Allows HTTP endpoints (only via environment variables). |
 
-Config source priority order is shown below:
+The following table summarizes key S3 client configuration details and priorities.
 
-1. Environment variables,
-2. Config file.
-
-Supported S3 uri formats are shown below:
-
-- `s3://<bucket>/<path>`
-- `https://<bucket>.s3.amazonaws.com/<path>`
-- `https://s3.amazonaws.com/<bucket>/<path>`
-
-Supported authorization methods' priority order is shown below:
-
-1. Temporary session tokens by assuming roles,
-2. Long term credentials.
+| Configuration source priority order | Supported S3 URI formats | Supported authorization methods' priority order |
+| :--- | :--- | :--- |
+| <ol><li>Environment variables</li><li>Configuration file</li></ol> | <ul><li>`s3://<bucket>/<path>`</li><li>`https://<bucket>.s3.amazonaws.com/<path>`</li><li>`https://s3.amazonaws.com/<bucket>/<path>`</li></ul> | <ol><li>Temporary session tokens by assuming roles</li><li>Long term credentials</li></ol> |
 
 ### Azure Blob Storage
 
@@ -246,44 +238,34 @@ account = devstoreaccount1
 key = Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==
 ```
 
-Alternatively, you can use the following environment variables when starting postgres to configure the Azure Blob Storage client:
+Alternatively, you can use environment variables when starting postgres to configure the Azure Blob Storage client as described in the following table:
 
-- `AZURE_STORAGE_ACCOUNT`: the storage account name of the Azure Blob
-- `AZURE_STORAGE_KEY`: the storage key of the Azure Blob
-- `AZURE_STORAGE_CONNECTION_STRING`: the connection string for the Azure Blob (overrides any other config)
-- `AZURE_STORAGE_SAS_TOKEN`: the storage SAS token for the Azure Blob
-- `AZURE_TENANT_ID`: the tenant id for client secret auth (only via environment variables)
-- `AZURE_CLIENT_ID`: the client id for client secret auth (only via environment variables)
-- `AZURE_CLIENT_SECRET`: the client secret for client secret auth (only via environment variables)
-- `AZURE_STORAGE_ENDPOINT`: the endpoint (only via environment variables)
-- `AZURE_CONFIG_FILE`: an alternative location for the config file (only via environment variables)
-- `AZURE_ALLOW_HTTP`: allows http endpoints (only via environment variables)
+| Variable | Description |
+| :--- | :--- |
+| `AZURE_STORAGE_ACCOUNT` | Storage account name of the Azure Blob. |
+| `AZURE_STORAGE_KEY` | Storage key of the Azure Blob. |
+| `AZURE_STORAGE_CONNECTION_STRING` | Connection string for the Azure Blob (overrides any other configuration). |
+| `AZURE_STORAGE_SAS_TOKEN` | Storage SAS token for the Azure Blob. |
+| `AZURE_TENANT_ID` | Tenant ID for client secret authentication (only via environment variables). |
+| `AZURE_CLIENT_ID` | Client ID for client secret authentication (only via environment variables). |
+| `AZURE_CLIENT_SECRET` | Client secret for client secret authentication (only via environment variables). |
+| `AZURE_STORAGE_ENDPOINT` | The endpoint (only via environment variables). |
+| `AZURE_CONFIG_FILE` | An alternative location for the configuration file (only via environment variables). |
+| `AZURE_ALLOW_HTTP` | Allows HTTP endpoints (only via environment variables). |
 
-Config source priority order is shown below:
+The following table summarizes key Azure Blob client configuration details and priorities.
 
-1. Connection string (read from environment variable or config file),
-2. Environment variables,
-3. Config file.
+| Configuration source priority order | Supported Azure Blob Storage URI formats | Supported authorization methods' priority order |
+| :--- | :--- | :--- |
+| <ol><li>Connection string (read from environment variable or configuration file)</li><li>Environment variables</li><li>Configuration file</li></ol> | <ul><li>`az://<container>/<path>`</li><li>`azure://<container>/<path>`</li><li>`https://<account>.blob.core.windows.net/<container>`</li></ul> | <ol><li>Bearer token via client secret</li><li>Sas token</li><li>Storage key</li></ol> |
 
-Supported Azure Blob Storage uri formats are shown below:
+### HTTP(s) Storage
 
-- `az://<container>/<path>`
-- `azure://<container>/<path>`
-- `https://<account>.blob.core.windows.net/<container>`
-
-Supported authorization methods' priority order is shown below:
-
-1. Bearer token via client secret,
-2. Sas token,
-3. Storage key.
-
-### Http(s) Storage
-
-Https uris are supported by default. You can set `ALLOW_HTTP` environment variables to allow http uris.
+HTTPS URIs are supported by default. You can set `ALLOW_HTTP` environment variables to allow HTTP URIs.
 
 ### Google Cloud Storage
 
-The simplest way to configure object storage is by creating a json config file like `~/.config/gcloud/application_default_credentials.json` (can be generated by `gcloud auth application-default login`):
+The simplest way to configure object storage is by creating a JSON configuration file like `~/.config/gcloud/application_default_credentials.json` (can be generated by `gcloud auth application-default login`):
 
 ```sh
 $ cat ~/.config/gcloud/application_default_credentials.json
@@ -296,29 +278,33 @@ $ cat ~/.config/gcloud/application_default_credentials.json
 }
 ```
 
-Alternatively, you can use the following environment variables when starting postgres to configure the Google Cloud Storage client:
+Alternatively, you can use following environment variables when starting postgres to configure the Google Cloud Storage as described in the following table:
 
-- `GOOGLE_SERVICE_ACCOUNT_KEY`: json serialized service account key (only via environment variables)
-- `GOOGLE_SERVICE_ACCOUNT_PATH`: an alternative location for the config file (only via environment variables)
+| Variable | Description |
+| :--- | :--- |
+| `GOOGLE_SERVICE_ACCOUNT_KEY` | JSON serialized service account key (only via environment variables) |
+| `GOOGLE_SERVICE_ACCOUNT_PATH` | an alternative location for the config file (only via environment variables) |
 
-Supported Google Cloud Storage uri formats are shown below:
+Supported Google Cloud Storage URI format is `gs://<bucket>/<path>`.
 
-- `gs://<bucket>/<path>`
+## Copy options
 
-## Copy Options
+The COPY TO command options pg_parquet supports is described in the following table:
 
-pg_parquet supports the following options in the COPY TO command:
+| Option | Description |
+| :--- | :--- |
+| `format parquet` | Specify this option to read or write Parquet files that do not end with the `.parquet[.<compression>]` extension. |
+| `file_size_bytes <string>` | Total file size per Parquet file. When set, Parquet files with the target size are created under a parent directory (named the same as the file name). By default, when not specified, a single file is generated without a parent folder. You can specify total bytes without a unit (for example, `file_size_bytes 2000000`), or with a unit (KB, MB, or GB, for example, `file_size_bytes '1MB'`). |
+| `field_ids <string>` | Field IDs that are assigned to the fields in the Parquet file schema. By default, no field IDs are assigned. Pass `auto` to let pg_parquet generate field IDs. You can pass a JSON string to explicitly provide the field IDs. |
+| `row_group_size <int64>` | Number of rows in each row group while writing Parquet files. Default is `122880`. |
+| `row_group_size_bytes <int64>` | Total byte size of rows in each row group while writing Parquet files. Default is `row_group_size * 1024`. |
+| `compression <string>` | The compression format to use while writing Parquet files. Supported formats are `uncompressed`, `snappy` (default), `gzip`, `brotli`, `lz4`, `lz4raw`, and `zstd`. If not specified, the format is determined by the file extension. |
+| `compression_level <int>` | The compression level to use while writing Parquet files. This is only supported for `gzip`, `zstd`, and `brotli`. The default is `6` for gzip (0-10), `1` for zstd (1-22), and `1` for brotli (0-11). |
+| `parquet_version <string>` | The writer version of the Parquet file. By default, it is set to `v1` for better interoperability. You can set it to `v2` to unlock new encodings. |
 
-- `format parquet`: you need to specify this option to read or write Parquet files which does not end with `.parquet[.<compression>]` extension,
-- `file_size_bytes <string>`: the total file size per Parquet file. When set, the parquet files, with target size, are created under parent directory (named the same as file name). By default, when not specified, a single file is generated without creating a parent folder. You can specify total bytes without unit like `file_size_bytes 2000000` or with unit (KB, MB, or GB) like `file_size_bytes '1MB'`,
-- `field_ids <string>`: fields ids that are assigned to the fields in Parquet file schema. By default, no field ids are assigned. Pass `auto` to let pg_parquet generate field ids. You can pass a json string to explicitly pass the field ids,
-- `row_group_size <int64>`: the number of rows in each row group while writing Parquet files. The default row group size is 122880,
-- `row_group_size_bytes <int64>`: the total byte size of rows in each row group while writing Parquet files. The default row group size bytes is `row_group_size * 1024`,
-- `compression <string>`: the compression format to use while writing Parquet files. The supported compression formats are `uncompressed`, `snappy`, `gzip`, `brotli`, `lz4`, `lz4raw` and `zstd`. The default compression format is `snappy`. If not specified, the compression format is determined by the file extension,
-- `compression_level <int>`: the compression level to use while writing Parquet files. The supported compression levels are only supported for `gzip`, `zstd` and `brotli` compression formats. The default compression level is 6 for gzip (0-10), 1 for zstd (1-22) and 1 for brotli (0-11),
-- `parquet_version <string>`: writer version of the Parquet file. By default, it is set to `v1` to be more interoperable with common query engines. (some are not able to read v2 files) You can set it to `v2` to unlock some of the new encodings.
+The COPY FROM command options pg_parquet supports is described in the following table:
 
-pg_parquet supports the following options in the COPY FROM command:
-
-- `format parquet`: you need to specify this option to read or write Parquet files which does not end with `.parquet[.<compression>]` extension,
-- `match_by <string>`: method to match Parquet file fields to PostgreSQL table columns. The available methods are `position` and `name`. The default method is `position`. You can set it to `name` to match the columns by their name rather than by their position in the schema (default). Match by name is useful when field order differs between the Parquet file and the table, but their names match.
+| Option | Description |
+| :--- | :--- |
+| `format parquet`| Specify this option to read or write Parquet files which does not end with `.parquet[.<compression>]` extension|
+|`match_by <string>`| Method to match Parquet file fields to PostgreSQL table columns. Available methods are `position` (default) and `name`. You can set it to `name` to match the columns by their name rather than by their position in the schema (default). Match by name is useful when field order differs between the Parquet file and the table, but their names match. |
