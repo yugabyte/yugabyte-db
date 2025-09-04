@@ -1,8 +1,6 @@
 module github.com/yugabyte/yugabyte-db/managed/yba-installer
 
-go 1.23.0
-
-toolchain go1.24.1
+go 1.24.6
 
 require (
 	github.com/dustin/go-humanize v1.0.1

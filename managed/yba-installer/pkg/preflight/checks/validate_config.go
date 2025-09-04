@@ -57,12 +57,12 @@ func validateJSONSchema() error {
 
 	jsonString, jsonStringErr := yaml.YAMLToJSON(createdBytes)
 	if jsonStringErr != nil {
-		return fmt.Errorf("Error: %v.\n", jsonStringErr)
+		return fmt.Errorf("Error: %w", jsonStringErr)
 	}
 
 	var jsonData map[string]interface{}
 	if jsonDataError := json.Unmarshal([]byte(jsonString), &jsonData); jsonDataError != nil {
-		return fmt.Errorf("Error: %v.\n", jsonDataError)
+		return fmt.Errorf("Error: %w", jsonDataError)
 	}
 
 	jsonBytesInput, _ := json.Marshal(jsonData)
@@ -90,7 +90,7 @@ func validateJSONSchema() error {
 			errMsg += fmt.Sprintf("- %s\n", desc)
 		}
 		log.Info(errMsg)
-		return fmt.Errorf(errMsg)
+		return errors.New(errMsg)
 	}
 
 	log.Info("Config at " + common.InputFile() + " was found to be valid.")
