@@ -11,7 +11,7 @@ menu:
   preview:
     identifier: colocation
     parent: additional-features
-    weight: 250
+    weight: 50
 rightNav:
   hideH4: true
 type: docs
