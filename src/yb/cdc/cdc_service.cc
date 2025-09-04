@@ -206,6 +206,10 @@ DEFINE_RUNTIME_bool(cdc_enable_implicit_checkpointing, false,
 DEFINE_RUNTIME_uint32(cdc_max_virtual_wal_per_tserver, 5,
                       "Maximum VirtualWAL instances that can be present on a tserver at any time.");
 
+DEFINE_test_flag(bool, mimic_tablet_not_in_available_state, false,
+    "If true, this is used to mimic the behavior of the tablet as if it is not in an available "
+    "state.");
+
 DECLARE_int32(log_min_seconds_to_retain);
 
 static bool ValidateMaxRefreshInterval(const char* flag_name, uint32 value) {
@@ -1597,6 +1601,13 @@ void CDCServiceImpl::GetChanges(
     RPC_STATUS_RETURN_ERROR(
         CheckTabletValidForStream(producer_tablet), resp->mutable_error(),
         status.IsTabletSplit() ? CDCErrorPB::TABLET_SPLIT : CDCErrorPB::INVALID_REQUEST, context);
+  }
+
+  // Mocking that the tablet peer is not in TabletObjectState::kAvailable state.
+  if (PREDICT_FALSE(FLAGS_TEST_mimic_tablet_not_in_available_state)) {
+    RPC_STATUS_RETURN_ERROR(
+        STATUS(IllegalState, "Tablet not running: tablet object has invalid state"),
+        resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
   }
 
   auto tablet_peer = context_->LookupTablet(req->tablet_id());
@@ -4996,25 +5007,6 @@ Result<tablet::TabletPeerPtr> CDCServiceImpl::GetServingTablet(const TabletId& t
   return context_->GetServingTablet(tablet_id);
 }
 
-bool IsStreamInactiveError(Status status) {
-  if (!status.ok() && status.IsInternalError() &&
-      status.message().ToBuffer().find("expired for Tablet") != std::string::npos) {
-    return true;
-  }
-
-  return false;
-}
-
-bool IsIntentGCError(Status status) {
-  if (!status.ok() && status.IsInternalError() &&
-      status.message().ToBuffer().find("CDCSDK Trying to fetch already GCed intents") !=
-          std::string::npos) {
-    return true;
-  }
-
-  return false;
-}
-
 Status CDCServiceImpl::PersistActivePidInSlotEntry(
     const xrepl::StreamId& stream_id, uint64_t active_pid) {
   cdc::CDCStateTableEntry entry(kCDCSDKSlotEntryTabletId, stream_id);
@@ -5246,11 +5238,7 @@ void CDCServiceImpl::GetConsistentChanges(
         Format("GetConsistentChanges failed for stream_id: $0 with error: $1", stream_id, s);
     if (!s.IsTryAgain()) {
       LOG(WARNING) << msg;
-      // Propogate the error to the client only when the stream has expired or the intents have been
-      // garbage collected.
-      if (IsStreamInactiveError(s) || IsIntentGCError(s)) {
-        RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
-      }
+      RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
     } else {
       YB_LOG_EVERY_N_SECS(WARNING, 300) << msg;
     }
