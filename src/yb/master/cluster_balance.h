@@ -354,6 +354,7 @@ class ClusterLoadBalancer {
   PerTableLoadState* state_ = nullptr;
 
   std::unique_ptr<GlobalLoadState> global_state_;
+  std::unique_ptr<PerRunState> per_run_state_;
 
   // The catalog manager of the Master that actually has the Tablet and TS state. The object is not
   // managed by this class, but by the Master's unique_ptr.
@@ -436,6 +437,8 @@ class ClusterLoadBalancer {
   // skipped_tables_ is set at the end of each LB run using
   // skipped_tables_per_run_.
   std::vector<scoped_refptr<TableInfo>> skipped_tables_per_run_;
+
+  void UpdatePerRunMetrics();
 
   LeaderEpoch epoch_;
 
