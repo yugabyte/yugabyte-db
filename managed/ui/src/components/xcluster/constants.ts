@@ -178,7 +178,8 @@ export const BootstrapCategory = {
   TABLE_HAS_DATA_BIDIRECTIONAL: 'tableHasDataBidirectional',
   TARGET_TABLE_MISSING_BIDIRECTIONAL: 'targetTableMissingBidirectional',
   TABLE_HAS_DATA: 'tableHasData',
-  TARGET_TABLE_MISSING: 'targetTableMissing'
+  TARGET_TABLE_MISSING: 'targetTableMissing',
+  DR_WITH_AUTOMATIC_DDL_MODE: 'drWithAutomaticDdlMode'
 } as const;
 export type BootstrapCategory = typeof BootstrapCategory[keyof typeof BootstrapCategory];
 

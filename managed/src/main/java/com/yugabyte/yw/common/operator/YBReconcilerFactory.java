@@ -61,4 +61,10 @@ public class YBReconcilerFactory {
         informerFactory,
         scheduleTaskHelper);
   }
+
+  public YBProviderReconciler getYBProviderReconciler(KubernetesClient client) {
+    String namespace = confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace);
+    return new YBProviderReconciler(
+        client, informerFactory, namespace, operatorUtils, cloudProviderHandler);
+  }
 }

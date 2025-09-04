@@ -46,7 +46,7 @@ Status TestAdminClient::SplitTablet(const TabletId& tablet_id) {
 
 Status TestAdminClient::SplitTablet(
     const client::YBTableName& table, const std::optional<TabletId>& tablet_id) {
-  RETURN_NOT_OK(ybclient_->FlushTables({table}, false, 30, false));
+  RETURN_NOT_OK(ybclient_->FlushTables({table}));
   TabletId to_split;
   if (tablet_id) {
     to_split = *tablet_id;
@@ -136,7 +136,7 @@ Status TestAdminClient::WaitForTabletPostSplitCompacted(
 
 Status TestAdminClient::FlushTable(const std::string& ns, const std::string& table) {
   auto tname = VERIFY_RESULT(GetTableName(ns, table));
-  return ybclient_->FlushTables({tname}, false, 30, false);
+  return ybclient_->FlushTables({tname});
 }
 
 Status TestAdminClient::DeleteSnapshotAndWait(const TxnSnapshotId& snapshot_id) {

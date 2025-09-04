@@ -580,7 +580,6 @@ class AwsCloud(AbstractCloud):
             logging.warning(f"Error fetching AWS disk attachment: {e}")
             return None
 
-
     def clone_disk(self, args, volume_id, num_disks,
                    snapshot_creation_delay=15, snapshot_creation_max_attempts=80):
         output = []
@@ -639,8 +638,8 @@ class AwsCloud(AbstractCloud):
             raise YBOpsRuntimeError("Could not find instance {}".format(args.search_pattern))
         update_disk(args, instance["id"])
 
-    def change_instance_type(self, args, instance_type):
-        change_instance_type(args["region"], args["id"], instance_type)
+    def change_instance_type(self, args, instance_type, capacity_reservation):
+        change_instance_type(args["region"], args["id"], instance_type, capacity_reservation)
 
     def stop_instance(self, host_info):
         ec2 = boto3.resource('ec2', host_info["region"])
@@ -654,9 +653,23 @@ class AwsCloud(AbstractCloud):
             logging.error(e)
             raise YBOpsRuntimeError("Failed to stop instance {}: {}".format(host_info["id"], e))
 
-    def start_instance(self, host_info, server_ports):
+    def start_instance(self, host_info, server_ports, capacity_reservation=None):
         ec2 = boto3.resource('ec2', host_info["region"])
         try:
+            # Add capacity reservation logic here
+            if capacity_reservation:
+                # Use the EC2 client to modify instance attributes
+                ec2_client = boto3.client('ec2', region_name=host_info["region"])
+                ec2_client.modify_instance_capacity_reservation_attributes(
+                    InstanceId=host_info["id"],
+                    CapacityReservationSpecification={
+                        'CapacityReservationPreference': 'capacity-reservations-only',
+                        'CapacityReservationTarget': {
+                            'CapacityReservationId': capacity_reservation
+                        }
+                    }
+                )
+
             instance = ec2.Instance(id=host_info["id"])
             if instance.state['Name'] != 'running':
                 if instance.state['Name'] != 'pending':

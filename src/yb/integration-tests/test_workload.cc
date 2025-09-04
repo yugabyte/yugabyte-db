@@ -286,8 +286,8 @@ void TestWorkload::State::WriteThread(const TestWorkloadOptions& options) {
           auto req = update->mutable_request();
           QLAddInt32HashValue(req, 0);
           table.AddInt32ColumnValue(req, table.schema().columns()[1].name(), next_random());
-          if (options.ttl >= 0) {
-            req->set_ttl(options.ttl * MonoTime::kMillisecondsPerSecond);
+          if (options.ttl_sec >= 0) {
+            req->set_ttl(options.ttl_sec * MonoTime::kMillisecondsPerSecond);
           }
           ops.push_back(update);
           session->Apply(update);
@@ -311,8 +311,8 @@ void TestWorkload::State::WriteThread(const TestWorkloadOptions& options) {
       QLAddInt32HashValue(req, key);
       table.AddInt32ColumnValue(req, table.schema().columns()[1].name(), next_random());
       table.AddStringColumnValue(req, table.schema().columns()[2].name(), test_payload);
-      if (options.ttl >= 0) {
-        req->set_ttl(options.ttl);
+      if (options.ttl_sec >= 0) {
+        req->set_ttl(options.ttl_sec * MonoTime::kMillisecondsPerSecond);
       }
       ops.push_back(insert);
     }
@@ -478,8 +478,7 @@ void TestWorkload::State::Setup(YBTableType table_type, const TestWorkloadOption
     auto schema = GetSimpleTestSchema();
     schema.SetTransactional(options.is_transactional());
     if (options.has_table_ttl()) {
-      schema.SetDefaultTimeToLive(
-          options.table_ttl * MonoTime::kMillisecondsPerSecond);
+      schema.SetDefaultTimeToLive(options.table_ttl_sec * MonoTime::kMillisecondsPerSecond);
     }
     YBSchema client_schema(YBSchemaFromSchema(schema));
 

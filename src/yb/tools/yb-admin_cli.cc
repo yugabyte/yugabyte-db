@@ -815,7 +815,7 @@ Status flush_table_action(const ClusterAdminCli::CLIArguments& args, ClusterAdmi
       }));
   RETURN_NOT_OK_PREPEND(
       client->FlushTables(
-          {table_name}, add_indexes, timeout_secs.value_or(20), false /* is_compaction */),
+          {table_name}, MonoDelta::FromSeconds(timeout_secs.value_or(20)), add_indexes),
       Format("Unable to flush table $0", table_name.ToString()));
   return Status::OK();
 }
@@ -833,7 +833,7 @@ Status flush_table_by_id_action(
       VERIFY_RESULT(GetTimeoutAndAddIndexesFlag(args.begin() + 1, args.end()));
   RETURN_NOT_OK_PREPEND(
       client->FlushTablesById(
-          {args[0]}, add_indexes, timeout_secs.value_or(20), false /* is_compaction */),
+          {args[0]}, MonoDelta::FromSeconds(timeout_secs.value_or(20)), add_indexes),
       Format("Unable to flush table $0", args[0]));
   return Status::OK();
 }
@@ -865,8 +865,8 @@ Status compact_table_action(const ClusterAdminCli::CLIArguments& args, ClusterAd
       }));
   // We use the same FlushTables RPC to trigger compaction.
   RETURN_NOT_OK_PREPEND(
-      client->FlushTables(
-          {table_name}, add_indexes, timeout_secs.value_or(20), true /* is_compaction */),
+      client->CompactTables(
+          {table_name}, MonoDelta::FromSeconds(timeout_secs.value_or(20)), add_indexes),
       Format("Unable to compact table $0", table_name.ToString()));
   return Status::OK();
 }
@@ -882,8 +882,8 @@ Status compact_table_by_id_action(
       VERIFY_RESULT(GetTimeoutAndAddIndexesFlag(args.begin() + 1, args.end()));
   // We use the same FlushTables RPC to trigger compaction.
   RETURN_NOT_OK_PREPEND(
-      client->FlushTablesById(
-          {args[0]}, add_indexes, timeout_secs.value_or(20), true /* is_compaction */),
+      client->CompactTablesById(
+          {args[0]}, MonoDelta::FromSeconds(timeout_secs.value_or(20)), add_indexes),
       Format("Unable to compact table $0", args[0]));
   return Status::OK();
 }
@@ -1276,7 +1276,7 @@ Status finalize_upgrade_action(
 // The expected input argument for the <table> is:
 // <db type>.<namespace> <table name>
 // (with a space in between).
-// So the expected arguement size is 3 (= 2 for the table name + 1 for the retention
+// So the expected argument size is 3 (= 2 for the table name + 1 for the retention
 // time).
 const auto set_wal_retention_secs_args = "<table> <seconds>";
 Status set_wal_retention_secs_action(
@@ -1487,8 +1487,7 @@ Status create_snapshot_action(
   }
 
   RETURN_NOT_OK_PREPEND(
-      client->CreateSnapshot(tables, retention_duration_hours,
-                             !skip_indexes, timeout_secs),
+      client->CreateSnapshot(tables, retention_duration_hours, !skip_indexes, timeout_secs),
       Format("Unable to create snapshot of tables: $0", yb::ToString(tables)));
   return Status::OK();
 }

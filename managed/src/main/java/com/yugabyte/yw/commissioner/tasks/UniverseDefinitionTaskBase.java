@@ -1114,6 +1114,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           GFlagsUtil.getGFlagsForNode(
               node, serverType, cluster, universe.getUniverseDetails().clusters);
       params.useSystemd = userIntent.useSystemd;
+      params.cgroupSize = getCGroupSize(node);
       if (paramsCustomizer != null) {
         paramsCustomizer.accept(params);
       }
@@ -3174,6 +3175,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Add testing flag.
     params.itestS3PackagePath = taskParams().itestS3PackagePath;
     params.gflags = gflags;
+    params.cgroupSize = getCGroupSize(node);
     return params;
   }
 

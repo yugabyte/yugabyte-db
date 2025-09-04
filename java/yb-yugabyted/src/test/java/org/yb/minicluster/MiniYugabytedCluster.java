@@ -495,6 +495,8 @@ public class MiniYugabytedCluster implements AutoCloseable {
     //         commonFlags.add("--metric_node_name=" + testInvocationId);
     //     }
 
+    //     commonFlags.add("--ycql_num_tablets=" + clusterParameters.ycqlNumTablets);
+    //     commonFlags.add("--ysql_num_tablets=" + clusterParameters.ysqlNumTablets);
     //     commonFlags.add("--yb_num_shards_per_tserver=" + clusterParameters.numShardsPerTServer);
     //     commonFlags.add(
     //                  "--ysql_num_shards_per_tserver=" + clusterParameters.numShardsPerTServer);

@@ -2127,7 +2127,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       auto state = state_.load(std::memory_order_acquire);
       LOG_WITH_PREFIX(WARNING) << "Send heartbeat failed: " << status << ", txn state: " << state;
 
-      if (status.IsAborted() || status.IsExpired() || status.IsShutdownInProgress()) {
+      if (status.IsAborted() || status.IsExpired() || status.IsShutdownInProgress() ||
+          manager_->IsClosing()) {
         // IsAborted/IsShutdownInProgress - Service is shutting down, no reason to retry.
         // IsExpired - Transaction expired.
         // We want to notify waiters for RUNNING if we are in kPromoting state -- this is heartbeat

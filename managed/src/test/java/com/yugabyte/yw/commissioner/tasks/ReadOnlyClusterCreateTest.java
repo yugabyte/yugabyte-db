@@ -246,13 +246,68 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
         Map.of(
             rrInstanceType, Map.of("1", Arrays.asList("host-readonly1-n1", "host-readonly1-n2"))));
 
-    verifyNodeInteractionsCapacityReservationAZU(
+    verifyNodeInteractionsCapacityReservation(
         16,
         NodeManager.NodeCommandType.Create,
         params -> ((AnsibleCreateServer.Params) params).capacityReservation,
         Map.of(
             DoCapacityReservation.getCapacityReservationGroupName(
                 universe.getUniverseUUID(), region.getCode()),
+            Arrays.asList("host-readonly1-n1", "host-readonly1-n2")));
+  }
+
+  @Test
+  public void testCreateRRWithCapacityReservationAwsSuccess() {
+    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.enableCapacityReservationAws.getKey(), "true");
+    String rrInstanceType = "m5.superlarge";
+    Region region = Region.getByCode(defaultProvider, "region-1");
+    Universe universe = createUniverseForProvider("universe-test", defaultProvider);
+    UniverseConfigureTaskParams taskParams = new UniverseConfigureTaskParams();
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
+    taskParams.currentClusterType = ClusterType.ASYNC;
+    UserIntent userIntent = new UserIntent();
+    userIntent.numNodes = 2;
+    userIntent.replicationFactor = 2;
+    userIntent.ybSoftwareVersion = "yb-version";
+    userIntent.accessKeyCode = "demo-access";
+    userIntent.regionList = ImmutableList.of(region.getUuid());
+    userIntent.instanceType = rrInstanceType;
+    userIntent.universeName = universe.getName();
+    userIntent.provider = defaultProvider.getUuid().toString();
+    taskParams.clusters.add(universe.getUniverseDetails().getPrimaryCluster());
+    Cluster asyncCluster = new Cluster(ClusterType.ASYNC, userIntent);
+    taskParams.clusters.add(asyncCluster);
+    taskParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.CREATE;
+    PlacementInfoUtil.updateUniverseDefinition(
+        taskParams, defaultCustomer.getId(), asyncCluster.uuid);
+    int iter = 1;
+    for (NodeDetails node : taskParams.nodeDetailsSet) {
+      node.cloudInfo.private_ip = "10.9.22." + iter;
+      node.tserverRpcPort = 3333;
+      iter++;
+    }
+
+    TaskInfo taskInfo = submitTask(taskParams);
+
+    assertEquals(Success, taskInfo.getTaskState());
+    universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
+
+    verifyCapacityReservationAws(
+        universe.getUniverseUUID(),
+        Map.of(
+            rrInstanceType,
+            Map.of(
+                "1",
+                new ZoneData(
+                    "region-1", Arrays.asList("host-readonly1-n1", "host-readonly1-n2")))));
+
+    verifyNodeInteractionsCapacityReservation(
+        16,
+        NodeManager.NodeCommandType.Create,
+        params -> ((AnsibleCreateServer.Params) params).capacityReservation,
+        Map.of(
+            DoCapacityReservation.getZoneInstanceCapacityReservationName(
+                universe.getUniverseUUID(), "az-1", rrInstanceType),
             Arrays.asList("host-readonly1-n1", "host-readonly1-n2")));
   }
 

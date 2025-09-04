@@ -899,9 +899,12 @@ static od_frontend_status_t od_frontend_remote_server(od_relay_t *relay,
 	case KIWI_BE_ERROR_RESPONSE:
 		od_backend_error(server, "main", data, size);
 		break;
-	/* fallthrough */
-	case YB_CONN_MGR_PARAMETER_STATUS:
 	case KIWI_BE_PARAMETER_STATUS:
+		od_error(
+			&instance->logger, "main", client, server,
+			"Refusing to parse unexpected 'S' ParameterStatus message from Postgres");
+		break;
+	case YB_CONN_MGR_PARAMETER_STATUS:
 		rc = od_backend_update_parameter(server, "main", data, size, 0);
 		if (rc == -1)
 			return relay->error_read;
@@ -2947,7 +2950,6 @@ int yb_execute_on_control_connection(od_client_t *client,
 	 * skip requisitioning a physical backend to save time
 	 * (and avoid a "cascading timeout" situation).
 	 */
-	bool client_timed_out = false;
 	if (yb_machine_io_is_socket_closed(client->io.io)) {
 		od_debug(
 			&instance->logger, "control connection", client, NULL,

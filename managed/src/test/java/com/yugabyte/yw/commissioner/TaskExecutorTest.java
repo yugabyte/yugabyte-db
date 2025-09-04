@@ -130,6 +130,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.CertsRotate,
           TaskType.CertsRotateKubernetesUpgrade,
           TaskType.TlsToggle,
+          TaskType.TlsToggleKubernetes,
           TaskType.SystemdUpgrade,
           TaskType.ModifyAuditLoggingConfig,
           TaskType.ModifyQueryLoggingConfig,

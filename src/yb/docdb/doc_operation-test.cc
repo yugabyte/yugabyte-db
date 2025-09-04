@@ -131,16 +131,15 @@ class DiscardUntilFileFilterFactory : public rocksdb::CompactionFileFilterFactor
 // MakeMaxFileSizeFunction will create a function that returns the
 // rocksdb_max_file_size_for_compaction flag if it is set to a positive number, and returns
 // the max uint64 otherwise. It does NOT take the schema's table TTL into consideration.
-auto MakeMaxFileSizeFunction() {
-  // Trick to get type of max_file_size_for_compaction field.
-  typedef typename decltype(
-      static_cast<rocksdb::Options*>(nullptr)->max_file_size_for_compaction)::element_type
-      MaxFileSizeFunction;
-  return std::make_shared<MaxFileSizeFunction>([]{
+auto MakeExcludeFromCompactionFunction() {
+  using ExcludeFromCompaction = decltype(std::declval<rocksdb::Options>().exclude_from_compaction);
+  using ExcludeFromCompactionFunction = typename ExcludeFromCompaction::element_type;
+
+  return std::make_shared<ExcludeFromCompactionFunction>([](const rocksdb::FileMetaData& file) {
     if (FLAGS_rocksdb_max_file_size_for_compaction > 0) {
-      return FLAGS_rocksdb_max_file_size_for_compaction;
+      return file.fd.GetTotalFileSize() > FLAGS_rocksdb_max_file_size_for_compaction;
     }
-    return std::numeric_limits<uint64_t>::max();
+    return false;
   });
 }
 
@@ -156,7 +155,7 @@ class DocOperationTest : public DocDBTestBase {
     SetMaxFileSizeForCompaction(0);
     // Make a function that will always use rocksdb_max_file_size_for_compaction.
     // Normally, max_file_size_for_compaction is only used for tables with TTL.
-    ANNOTATE_UNPROTECTED_WRITE(max_file_size_for_compaction_) = MakeMaxFileSizeFunction();
+    ANNOTATE_UNPROTECTED_WRITE(exclude_from_compaction_) = MakeExcludeFromCompactionFunction();
     DocDBTestBase::SetUp();
   }
 

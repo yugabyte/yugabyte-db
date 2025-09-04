@@ -55,6 +55,7 @@ JOB_NAME=${JOB_NAME:-}
 
 export YB_BUILD_JAVA=${YB_BUILD_JAVA:-1}
 export YB_BUILD_CPP=${YB_BUILD_CPP:-1}
+export YB_PG_PARQUET_DEBUG_CLEAN=1
 
 readonly COMMON_YB_BUILD_ARGS_FOR_CPP_BUILD=(
   --no-rebuild-thirdparty

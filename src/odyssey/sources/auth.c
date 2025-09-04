@@ -1199,6 +1199,14 @@ int od_auth_backend(od_server_t *server, machine_msg_t *msg,
 			return 0;
 		}
 
+		if (od_unlikely(instance->config.TEST_yb_auth_delay_ms > 0)) {
+			od_log(&instance->logger, "auth",
+				external_client, server,
+				"initiating delay of %d ms in od_auth_backend",
+				instance->config.TEST_yb_auth_delay_ms);
+			machine_sleep(instance->config.TEST_yb_auth_delay_ms);
+		}
+
 		rc = yb_od_relay_client_to_auth_server(server, external_client,
 			instance, yb_authtype_to_string(auth_type));
 		if(rc == -1) {

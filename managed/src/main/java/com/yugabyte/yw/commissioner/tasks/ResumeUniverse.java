@@ -72,8 +72,9 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
           createCapacityReservationsIfNeeded(
               universe.getUniverseDetails().nodeDetailsSet,
               CapacityReservationUtil.OperationType.RESUME,
-              node -> node.state == NodeDetails.NodeState.Stopped);
-
+              node ->
+                  node.state == NodeDetails.NodeState.Stopped
+                      || node.state == NodeDetails.NodeState.InstanceStopped);
       createResumeUniverseTasks(
           universe,
           params().customerUUID,

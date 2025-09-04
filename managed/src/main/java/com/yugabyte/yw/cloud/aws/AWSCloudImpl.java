@@ -17,9 +17,15 @@ import com.amazonaws.services.cloudtrail.AWSCloudTrailClientBuilder;
 import com.amazonaws.services.ec2.AmazonEC2;
 import com.amazonaws.services.ec2.AmazonEC2ClientBuilder;
 import com.amazonaws.services.ec2.model.AuthorizeSecurityGroupIngressRequest;
+import com.amazonaws.services.ec2.model.CancelCapacityReservationRequest;
+import com.amazonaws.services.ec2.model.CancelCapacityReservationResult;
+import com.amazonaws.services.ec2.model.CreateCapacityReservationRequest;
+import com.amazonaws.services.ec2.model.CreateCapacityReservationResult;
 import com.amazonaws.services.ec2.model.CreateKeyPairRequest;
 import com.amazonaws.services.ec2.model.CreateSecurityGroupRequest;
 import com.amazonaws.services.ec2.model.DeleteKeyPairRequest;
+import com.amazonaws.services.ec2.model.DescribeCapacityReservationsRequest;
+import com.amazonaws.services.ec2.model.DescribeCapacityReservationsResult;
 import com.amazonaws.services.ec2.model.DescribeImagesRequest;
 import com.amazonaws.services.ec2.model.DescribeImagesResult;
 import com.amazonaws.services.ec2.model.DescribeInstanceTypeOfferingsRequest;
@@ -42,6 +48,7 @@ import com.amazonaws.services.ec2.model.LocationType;
 import com.amazonaws.services.ec2.model.Reservation;
 import com.amazonaws.services.ec2.model.SecurityGroup;
 import com.amazonaws.services.ec2.model.Subnet;
+import com.amazonaws.services.ec2.model.TagSpecification;
 import com.amazonaws.services.ec2.model.Vpc;
 import com.amazonaws.services.elasticloadbalancingv2.AmazonElasticLoadBalancing;
 import com.amazonaws.services.elasticloadbalancingv2.AmazonElasticLoadBalancingClientBuilder;
@@ -1085,6 +1092,163 @@ public class AWSCloudImpl implements CloudAPI {
       LOG.error("Access Key deletion failed: ", e);
       throw new PlatformServiceException(
           BAD_REQUEST, "Access Key deletion failed: " + e.getMessage());
+    }
+  }
+
+  /**
+   * Creates a capacity reservation in AWS (idempotent) Returns existing reservation ID if one with
+   * the same name already exists and is active.
+   *
+   * @param provider the cloud provider bean for the AWS provider
+   * @param reservationName Name of the reservation
+   * @param regionCode AWS region code (e.g., "us-east-1")
+   * @param availabilityZone AWS availability zone (e.g., "us-east-1a")
+   * @param instanceType Instance type (e.g., "m5.large")
+   * @param count Number of instances to reserve
+   * @return The capacity reservation ID
+   */
+  public String createCapacityReservation(
+      Provider provider,
+      String reservationName,
+      String regionCode,
+      String availabilityZone,
+      String instanceType,
+      int count) {
+    try {
+      AmazonEC2 ec2Client = getEC2Client(provider, regionCode);
+
+      // Check if a capacity reservation with the same name already exists
+      String existingReservationId = findExistingCapacityReservation(ec2Client, reservationName);
+
+      if (existingReservationId != null) {
+        LOG.info(
+            "Capacity reservation already exists: {} (ID: {})",
+            reservationName,
+            existingReservationId);
+        return existingReservationId;
+      }
+
+      // Create new reservation
+      CreateCapacityReservationRequest request =
+          new CreateCapacityReservationRequest()
+              .withInstanceType(instanceType)
+              .withInstancePlatform("Linux/UNIX")
+              .withAvailabilityZone(availabilityZone)
+              .withInstanceCount(count)
+              .withEndDateType("unlimited")
+              .withInstanceMatchCriteria("targeted")
+              .withTagSpecifications(
+                  new TagSpecification()
+                      .withResourceType("capacity-reservation")
+                      .withTags(
+                          new com.amazonaws.services.ec2.model.Tag()
+                              .withKey("Name")
+                              .withValue(reservationName),
+                          new com.amazonaws.services.ec2.model.Tag()
+                              .withKey("CreatedBy")
+                              .withValue("YugabyteDB-Anywhere")));
+
+      LOG.debug(
+          "Creating capacity reservation: {} in availability zone: {} for {} {} instances",
+          reservationName,
+          availabilityZone,
+          count,
+          instanceType);
+
+      CreateCapacityReservationResult result = ec2Client.createCapacityReservation(request);
+      String capacityReservationId = result.getCapacityReservation().getCapacityReservationId();
+
+      LOG.info(
+          "Successfully created capacity reservation: {} (ID: {}) in availability zone: {} with {}"
+              + " {} instances",
+          reservationName,
+          capacityReservationId,
+          availabilityZone,
+          count,
+          instanceType);
+
+      return capacityReservationId;
+
+    } catch (AmazonServiceException e) {
+      LOG.error("Capacity reservation creation failed: ", e);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Capacity reservation creation failed: " + e.getMessage());
+    }
+  }
+
+  /**
+   * Finds an existing active capacity reservation by name
+   *
+   * @param ec2Client EC2 client
+   * @param reservationName Name of the reservation to search for
+   * @return Capacity reservation ID if found, null otherwise
+   */
+  private String findExistingCapacityReservation(AmazonEC2 ec2Client, String reservationName) {
+    try {
+      DescribeCapacityReservationsRequest describeRequest =
+          new DescribeCapacityReservationsRequest()
+              .withFilters(
+                  new Filter().withName("tag:Name").withValues(reservationName),
+                  new Filter().withName("state").withValues("active"));
+
+      DescribeCapacityReservationsResult describeResult =
+          ec2Client.describeCapacityReservations(describeRequest);
+
+      if (!describeResult.getCapacityReservations().isEmpty()) {
+        String reservationId =
+            describeResult.getCapacityReservations().get(0).getCapacityReservationId();
+        LOG.debug(
+            "Found existing capacity reservation: {} (ID: {})", reservationName, reservationId);
+        return reservationId;
+      }
+
+      return null; // No matching reservation found
+
+    } catch (AmazonServiceException e) {
+      LOG.warn("Failed to check for existing capacity reservations: {}", e.getMessage());
+      // Return null to proceed with creation attempt
+      return null;
+    }
+  }
+
+  /**
+   * Deletes a capacity reservation from AWS
+   *
+   * @param provider the cloud provider bean for the AWS provider
+   * @param regionCode AWS region code where the reservation exists
+   * @param capacityReservationId The capacity reservation ID to delete
+   */
+  public void deleteCapacityReservation(
+      Provider provider, String regionCode, String capacityReservationId) {
+    try {
+      AmazonEC2 ec2Client = getEC2Client(provider, regionCode);
+
+      CancelCapacityReservationRequest request =
+          new CancelCapacityReservationRequest().withCapacityReservationId(capacityReservationId);
+
+      LOG.debug(
+          "Deleting capacity reservation with ID: {} in region: {}",
+          capacityReservationId,
+          regionCode);
+
+      CancelCapacityReservationResult result = ec2Client.cancelCapacityReservation(request);
+
+      if (result.getReturn()) {
+        LOG.info(
+            "Successfully deleted capacity reservation with ID: {} in region: {}",
+            capacityReservationId,
+            regionCode);
+      } else {
+        LOG.warn(
+            "Capacity reservation deletion may have failed for ID: {} in region: {}",
+            capacityReservationId,
+            regionCode);
+      }
+
+    } catch (AmazonServiceException e) {
+      LOG.error("Capacity reservation deletion failed: ", e);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Capacity reservation deletion failed: " + e.getMessage());
     }
   }
 }

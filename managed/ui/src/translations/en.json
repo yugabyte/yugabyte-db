@@ -1432,6 +1432,10 @@
               "targetTableMissing": {
                 "label_one": "<bold>{{count}}</bold> table missing on {{targetUniverseTerm}}",
                 "label_other": "<bold>{{count}}</bold> tables missing on {{targetUniverseTerm}}"
+              },
+              "drWithAutomaticDdlMode": {
+                "label_one": "<bold>{{count}}</bold> table under DR automatic DDL replication",
+                "label_other": "<bold>{{count}}</bold> tables under DR automatic DDL replication"
               }
             },
             "skipBootstrap": "Skip Creating Full Copy",

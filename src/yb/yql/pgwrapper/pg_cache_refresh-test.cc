@@ -27,6 +27,14 @@ const auto kTableName = "test"s;
 }
 
 class PgCacheRefreshTest : public LibPqTestBase {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    LibPqTestBase::UpdateMiniClusterOptions(opts);
+    // Tests here run DDLs concurrently with DMLs. Such behavior will not be possible
+    // with table locks enabled.
+    opts->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
+  }
+
  protected:
   void TestSetup(PGConn* conn) {
     ASSERT_OK(conn->ExecuteFormat("CREATE TABLE $0(id int)", kTableName));

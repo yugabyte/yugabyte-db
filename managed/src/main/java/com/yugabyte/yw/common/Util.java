@@ -217,12 +217,19 @@ public class Util {
 
   public static volatile String YBA_VERSION;
 
+  static volatile boolean YBA_SHUTDOWN_STARTED = false;
+
   public static String getYbaVersion() {
     return YBA_VERSION;
   }
 
   public static void setYbaVersion(String version) {
     YBA_VERSION = version;
+  }
+
+  @VisibleForTesting
+  public static void resetYbaShutdownStarted() {
+    YBA_SHUTDOWN_STARTED = false;
   }
 
   /**
@@ -715,8 +722,13 @@ public class Util {
                 log.warn("Interrupted during wait for exit.");
               }
             });
+    YBA_SHUTDOWN_STARTED = true;
     shutdownThread.start();
     haltThread.start();
+  }
+
+  public static boolean hasYBAShutdownStarted() {
+    return YBA_SHUTDOWN_STARTED;
   }
 
   @VisibleForTesting
@@ -1490,6 +1502,16 @@ public class Util {
       Json.mapper().writeValue(restoreCustomerTaskPath.toFile(), customerTask);
     } catch (IOException e) {
       log.warn("Could not write restore task info, will not show up in task info.");
+    }
+  }
+
+  // Helper method to throw unchecked exception.
+  public static URL toURL(String addr) {
+    try {
+      return new URL(addr);
+    } catch (MalformedURLException e) {
+      log.error("URL is malformed: {}", e.getMessage());
+      throw new IllegalArgumentException(e);
     }
   }
 }

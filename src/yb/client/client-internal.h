@@ -99,23 +99,23 @@ class YBClient::Data {
                         CoarseTimePoint deadline);
 
   Status IsCreateNamespaceInProgress(
-      YBClient* client, const std::string& namespace_name,
-      const std::optional<YQLDatabase>& database_type, const std::string& namespace_id,
+      YBClient* client, const NamespaceName& namespace_name,
+      const std::optional<YQLDatabase>& database_type, const NamespaceId& namespace_id,
       CoarseTimePoint deadline, bool* create_in_progress);
 
   Status WaitForCreateNamespaceToFinish(
-      YBClient* client, const std::string& namespace_name,
-      const std::optional<YQLDatabase>& database_type, const std::string& namespace_id,
+      YBClient* client, const NamespaceName& namespace_name,
+      const std::optional<YQLDatabase>& database_type, const NamespaceId& namespace_id,
       CoarseTimePoint deadline);
 
   Status IsDeleteNamespaceInProgress(
-      YBClient* client, const std::string& namespace_name,
-      const std::optional<YQLDatabase>& database_type, const std::string& namespace_id,
+      YBClient* client, const NamespaceName& namespace_name,
+      const std::optional<YQLDatabase>& database_type, const NamespaceId& namespace_id,
       CoarseTimePoint deadline, bool* delete_in_progress);
 
   Status WaitForDeleteNamespaceToFinish(
-      YBClient* client, const std::string& namespace_name,
-      const std::optional<YQLDatabase>& database_type, const std::string& namespace_id,
+      YBClient* client, const NamespaceName& namespace_name,
+      const std::optional<YQLDatabase>& database_type, const NamespaceId& namespace_id,
       CoarseTimePoint deadline);
 
   Status IsCloneNamespaceInProgress(
@@ -132,69 +132,78 @@ class YBClient::Data {
                      std::string* table_id);
 
   // Take one of table id or name.
-  Status IsCreateTableInProgress(YBClient* client,
-                                 const YBTableName& table_name,
-                                 const std::string& table_id,
-                                 CoarseTimePoint deadline,
-                                 bool *create_in_progress);
+  Status IsCreateTableInProgress(
+      YBClient* client,
+      const YBTableName& table_name,
+      const TableId& table_id,
+      CoarseTimePoint deadline,
+      bool *create_in_progress);
 
   // Take one of table id or name.
   Status WaitForCreateTableToFinish(
       YBClient* client,
       const YBTableName& table_name,
-      const std::string& table_id,
+      const TableId& table_id,
       CoarseTimePoint deadline,
       const uint32_t max_jitter_ms = CoarseBackoffWaiter::kDefaultMaxJitterMs,
       const uint32_t init_exponent = CoarseBackoffWaiter::kDefaultInitExponent);
 
   // Take one of table id or name.
-  Status DeleteTable(YBClient* client,
-                             const YBTableName& table_name,
-                             const std::string& table_id,
-                             bool is_index_table,
-                             CoarseTimePoint deadline,
-                             YBTableName* indexed_table_name,
-                             bool wait = true,
-                             const TransactionMetadata *txn = nullptr,
-                             SubTransactionId sub_transaction_id = kMinSubTransactionId);
+  Status DeleteTable(
+      YBClient* client,
+      const YBTableName& table_name,
+      const TableId& table_id,
+      bool is_index_table,
+      CoarseTimePoint deadline,
+      YBTableName* indexed_table_name,
+      bool wait = true,
+      const TransactionMetadata *txn = nullptr,
+      SubTransactionId sub_transaction_id = kMinSubTransactionId);
 
-  Status IsDeleteTableInProgress(YBClient* client,
-                                 const std::string& table_id,
-                                 CoarseTimePoint deadline,
-                                 bool *delete_in_progress);
+  Status IsDeleteTableInProgress(
+      YBClient* client,
+      const TableId& table_id,
+      CoarseTimePoint deadline,
+      bool *delete_in_progress);
 
-  Status WaitForDeleteTableToFinish(YBClient* client,
-                                    const std::string& table_id,
-                                    CoarseTimePoint deadline);
+  Status WaitForDeleteTableToFinish(
+      YBClient* client,
+      const TableId& table_id,
+      CoarseTimePoint deadline);
 
-  Status TruncateTables(YBClient* client,
-                        const std::vector<std::string>& table_ids,
-                        CoarseTimePoint deadline,
-                        bool wait = true);
+  Status TruncateTables(
+      YBClient* client,
+      const TableIds& table_ids,
+      CoarseTimePoint deadline,
+      bool wait = true);
 
-  Status IsTruncateTableInProgress(YBClient* client,
-                                   const std::string& table_id,
-                                   CoarseTimePoint deadline,
-                                   bool *truncate_in_progress);
+  Status IsTruncateTableInProgress(
+      YBClient* client,
+      const TableId& table_id,
+      CoarseTimePoint deadline,
+      bool *truncate_in_progress);
 
-  Status WaitForTruncateTableToFinish(YBClient* client,
-                                      const std::string& table_id,
-                                      CoarseTimePoint deadline);
+  Status WaitForTruncateTableToFinish(
+      YBClient* client,
+      const TableId& table_id,
+      CoarseTimePoint deadline);
 
-  Status CreateTablegroup(YBClient* client,
-                          CoarseTimePoint deadline,
-                          const std::string& namespace_name,
-                          const std::string& namespace_id,
-                          const std::string& tablegroup_id,
-                          const std::string& tablespace_id,
-                          const TransactionMetadata* txn,
-                          const SubTransactionId sub_transaction_id);
+  Status CreateTablegroup(
+      YBClient* client,
+      CoarseTimePoint deadline,
+      const NamespaceName& namespace_name,
+      const NamespaceId& namespace_id,
+      const TablegroupId& tablegroup_id,
+      const TablespaceId& tablespace_id,
+      const TransactionMetadata* txn,
+      const SubTransactionId sub_transaction_id);
 
-  Status DeleteTablegroup(YBClient* client,
-                          CoarseTimePoint deadline,
-                          const std::string& tablegroup_id,
-                          const TransactionMetadata* txn,
-                          const SubTransactionId sub_transaction_id);
+  Status DeleteTablegroup(
+      YBClient* client,
+      CoarseTimePoint deadline,
+      const TablegroupId& tablegroup_id,
+      const TransactionMetadata* txn,
+      const SubTransactionId sub_transaction_id);
 
   Status BackfillIndex(YBClient* client,
                        const YBTableName& table_name,
@@ -221,36 +230,40 @@ class YBClient::Data {
       CoarseTimePoint deadline);
 
   Result<master::GetBackfillStatusResponsePB> GetBackfillStatus(
-    const std::vector<std::string_view>& table_ids,
-    const CoarseTimePoint deadline);
+      const std::vector<std::string_view>& table_ids,
+      const CoarseTimePoint deadline);
 
   Status AlterTable(YBClient* client,
                     const master::AlterTableRequestPB& req,
                     CoarseTimePoint deadline);
 
   // Take one of table id or name.
-  Status IsAlterTableInProgress(YBClient* client,
-                                const YBTableName& table_name,
-                                std::string table_id,
-                                CoarseTimePoint deadline,
-                                bool *alter_in_progress);
+  Status IsAlterTableInProgress(
+      YBClient* client,
+      const YBTableName& table_name,
+      const TableId& table_id,
+      CoarseTimePoint deadline,
+      bool *alter_in_progress);
 
-  Status WaitForAlterTableToFinish(YBClient* client,
-                                   const YBTableName& alter_name,
-                                   std::string table_id,
-                                   CoarseTimePoint deadline);
+  Status WaitForAlterTableToFinish(
+      YBClient* client,
+      const YBTableName& alter_name,
+      const TableId& table_id,
+      CoarseTimePoint deadline);
 
-  Status FlushTables(YBClient* client,
-                     const std::vector<YBTableName>& table_names,
-                     bool add_indexes,
-                     const CoarseTimePoint deadline,
-                     const bool is_compaction);
+  Status FlushOrCompactTables(
+      YBClient* client,
+      const std::vector<YBTableName>& table_names,
+      bool add_indexes,
+      bool is_compaction,
+      CoarseTimePoint deadline);
 
-  Status FlushTables(YBClient* client,
-                     const std::vector<TableId>& table_ids,
-                     bool add_indexes,
-                     const CoarseTimePoint deadline,
-                     const bool is_compaction);
+  Status FlushOrCompactTables(
+      YBClient* client,
+      const TableIds& table_ids,
+      bool add_indexes,
+      bool is_compaction,
+      CoarseTimePoint deadline);
 
   Status IsFlushTableInProgress(YBClient* client,
                                 const FlushRequestId& flush_id,

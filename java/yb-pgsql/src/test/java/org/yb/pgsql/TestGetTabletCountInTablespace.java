@@ -134,9 +134,9 @@ public class TestGetTabletCountInTablespace extends BasePgSQLTest {
     Consumer<MiniYBClusterBuilder> builder = x -> {
       x.perTServerFlags(placementInfo);
       x.numShardsPerTServer(-1);
+      x.ysqlNumTablets(-1);
+      x.ycqlNumTablets(5);
       x.addCommonTServerFlag("num_cpus", "4");
-      x.addCommonTServerFlag("ysql_num_tablets", "-1");
-      x.addCommonTServerFlag("ycql_num_tablets", "5");
     };
     restartClusterWithClusterBuilder(builder);
 
@@ -180,8 +180,8 @@ public class TestGetTabletCountInTablespace extends BasePgSQLTest {
     Consumer<MiniYBClusterBuilder> builder = x -> {
       x.perTServerFlags(placementInfo);
       x.numShardsPerTServer(-1);
-      x.addCommonTServerFlag("ysql_num_tablets", "5");
-      x.addCommonTServerFlag("ycql_num_tablets", "1");
+      x.ysqlNumTablets(5);
+      x.ycqlNumTablets(1);
     };
     restartClusterWithClusterBuilder(builder);
 

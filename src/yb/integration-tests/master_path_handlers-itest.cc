@@ -781,8 +781,7 @@ TEST_F_EX(MasterPathHandlersItest, ShowDeletedTablets, TabletSplitMasterPathHand
         return !match.empty();
   };
 
-  ASSERT_OK(yb_admin_client_->FlushTables(
-      {table_name}, false /* add_indexes */, 30 /* timeout_secs */, false /* is_compaction */));
+  ASSERT_OK(yb_admin_client_->FlushTables({table_name}));
   ASSERT_OK(catalog_manager.TEST_SplitTablet(tablet, 1 /* split_hash_code */));
 
   ASSERT_OK(WaitFor(
@@ -822,8 +821,7 @@ TEST_F_EX(
   auto schedules = ASSERT_RESULT(snapshot_util->ListSchedules(schedule_id));
   ASSERT_EQ(schedules.size(), 1);
 
-  ASSERT_OK(yb_admin_client_->FlushTables(
-      {table_name}, false /* add_indexes */, 30 /* timeout_secs */, false /* is_compaction */));
+  ASSERT_OK(yb_admin_client_->FlushTables({table_name}));
   ASSERT_OK(catalog_manager.TEST_SplitTablet(tablet, 1 /* split_hash_code */));
 
   // The parent tablet should be retained because of the snapshot schedule.
@@ -854,8 +852,7 @@ TEST_F_EX(
   auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
   auto tablet = ASSERT_RESULT(catalog_manager.GetTableInfo(table->id())->GetTablets())[0];
 
-  ASSERT_OK(yb_admin_client_->FlushTables(
-      {table_name}, false /* add_indexes */, 30 /* timeout_secs */, false /* is_compaction */));
+  ASSERT_OK(yb_admin_client_->FlushTables({table_name}));
   ASSERT_OK(catalog_manager.TEST_SplitTablet(tablet, 1 /* split_hash_code */));
 
   SleepFor(kLeaderlessTabletAlertDelaySecs * yb::kTimeMultiplier * 1s);
@@ -1721,8 +1718,7 @@ TEST_F_EX(
   InsertRows(table, /* num_rows_to_insert = */ 500);
   auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
   auto tablet = ASSERT_RESULT(catalog_manager.GetTableInfo(table->id())->GetTablets())[0];
-  ASSERT_OK(yb_admin_client_->FlushTables(
-      {table_name}, false /* add_indexes */, 30 /* timeout_secs */, false /* is_compaction */));
+  ASSERT_OK(yb_admin_client_->FlushTables({table_name}));
   ASSERT_OK(catalog_manager.TEST_SplitTablet(tablet, 1 /* split_hash_code */));
   ASSERT_OK(WaitFor(
       [&]() { return tablet->LockForRead()->is_deleted(); }, 30s /* timeout */,
@@ -1757,8 +1753,7 @@ TEST_F_EX(
 
   // Split the first tablet, resulting in it becoming a split parent; 2 new children tablets are
   // created as part of this.
-  ASSERT_OK(yb_admin_client_->FlushTables(
-      {table_name}, false /* add_indexes */, 30 /* timeout_secs */, false /* is_compaction */));
+  ASSERT_OK(yb_admin_client_->FlushTables({table_name}));
   ASSERT_OK(catalog_manager.TEST_SplitTablet(tablet, 1 /* split_hash_code */));
   // The parent tablet should be retained because of the snapshot schedule.
   ASSERT_OK(WaitFor(

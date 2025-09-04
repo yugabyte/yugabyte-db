@@ -1073,8 +1073,7 @@ void CreateTableITest::TestLazySuperblockFlushPersistence(int num_tables, int it
     auto client = ASSERT_RESULT(cluster_->CreateClient());
     auto table_id =
         ASSERT_RESULT(GetTableIdByTableName(client.get(), database, table_prefix + "0"));
-    ASSERT_OK(client->FlushTables(
-        {table_id}, /* add_indexes = */ false, 30, /* is_compaction = */ false));
+    ASSERT_OK(client->FlushTables({table_id}));
 
     // Restart tservers.
     cluster_->Shutdown(ExternalMiniCluster::NodeSelectionMode::TS_ONLY);

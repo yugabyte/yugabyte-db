@@ -246,14 +246,17 @@ SendLogicalClientCacheVersionToFrontend()
 	/* Initialize buffer to store the outgoing message */
 	initStringInfo(&buf);
 
-	/* Use 'S' for a PARAMETER_STATUS message */
-	pq_beginmessage(&buf, 'S');
+	/* Use 'r' for a YB_PARAMETER_STATUS message */
+	pq_beginmessage(&buf, 'r');
 	pq_sendstring(&buf, "yb_logical_client_version");	/* Key */
 	char		yb_logical_client_cache_version_str[16];
 
 	snprintf(yb_logical_client_cache_version_str, 16, "%" PRIu64,
 			 yb_logical_client_cache_version);
 	pq_sendstring(&buf, yb_logical_client_cache_version_str);	/* Value */
+	/* No flags are needed for this variable */
+	pq_sendbyte(&buf, 0); /* flags */
+
 	pq_endmessage(&buf);
 
 	/* Ensure the message is sent to the frontend */
@@ -6751,6 +6754,7 @@ aggregateStats(YbInstrumentation *instr, const YbcPgExecStats *exec_stats)
 	aggregateRpcMetrics(&instr->write_metrics, &exec_stats->write_metrics);
 
 	instr->rows_removed_by_recheck += exec_stats->rows_removed_by_recheck;
+	instr->commit_wait += exec_stats->commit_wait;
 }
 
 static YbcPgExecReadWriteStats
@@ -6813,6 +6817,7 @@ calculateExecStatsDiff(const YbSessionStats *stats, YbcPgExecStats *result)
 	calculateStorageMetricsDiff(&result->write_metrics, &current->write_metrics, &old->write_metrics);
 
 	result->rows_removed_by_recheck = current->rows_removed_by_recheck - old->rows_removed_by_recheck;
+	result->commit_wait = current->commit_wait - old->commit_wait;
 }
 
 static void
@@ -6837,6 +6842,7 @@ refreshExecStats(YbSessionStats *stats, bool include_catalog_stats)
 	}
 
 	old->rows_removed_by_recheck = current->rows_removed_by_recheck;
+	old->commit_wait = current->commit_wait;
 }
 
 void
@@ -6895,6 +6901,30 @@ void
 YbToggleSessionStatsTimer(bool timing_on)
 {
 	yb_session_stats.current_state.is_timing_required = timing_on;
+}
+
+bool
+YbIsSessionStatsTimerEnabled()
+{
+	return yb_session_stats.current_state.is_timing_required;
+}
+
+void
+YbToggleCommitStatsCollection(bool enable)
+{
+	yb_session_stats.current_state.is_commit_stats_required = enable;
+}
+
+bool
+YbIsCommitStatsCollectionEnabled()
+{
+	return yb_session_stats.current_state.is_commit_stats_required;
+}
+
+void
+YbRecordCommitLatency(uint64_t latency_us)
+{
+	yb_session_stats.current_state.stats.commit_wait += latency_us;
 }
 
 void

@@ -44,6 +44,23 @@ public class CapacityReservationUtil {
               }
             }
           }
+        } else if (reservationInfo instanceof UniverseDefinitionTaskParams.AwsReservationInfo) {
+          for (UniverseDefinitionTaskParams.AwsZoneReservation zoneReservation :
+              ((UniverseDefinitionTaskParams.AwsReservationInfo) reservationInfo)
+                  .getReservationsByZoneMap()
+                  .values()) {
+            for (UniverseDefinitionTaskParams.PerInstanceTypeReservation perInstanceType :
+                zoneReservation.getReservationsByType().values()) {
+              for (UniverseDefinitionTaskParams.ZonedReservation zonedReservation :
+                  perInstanceType.getZonedReservation().values()) {
+                if (zonedReservation.getVmNames().contains(nodeName)) {
+                  log.debug(
+                      "Using aws capacity reservation {}", zonedReservation.getReservationName());
+                  return zonedReservation.getReservationName();
+                }
+              }
+            }
+          }
         }
       } catch (Exception e) {
         log.error("Failed to deserialize reservation", e);
@@ -64,6 +81,8 @@ public class CapacityReservationUtil {
     switch (cloudType) {
       case azu:
         return (T) state.getAzureReservationInfo();
+      case aws:
+        return (T) state.getAwsReservationInfo();
     }
     return null;
   }
@@ -73,6 +92,8 @@ public class CapacityReservationUtil {
     switch (cloudType) {
       case azu:
         state.setAzureReservationInfo(new UniverseDefinitionTaskParams.AzureReservationInfo());
+      case aws:
+        state.setAwsReservationInfo(new UniverseDefinitionTaskParams.AwsReservationInfo());
     }
   }
 
@@ -84,6 +105,10 @@ public class CapacityReservationUtil {
       case azu:
         enabledFlag = GlobalConfKeys.enableCapacityReservationAzure;
         operationsList = GlobalConfKeys.capacityReservationOperationsAzure;
+        break;
+      case aws:
+        enabledFlag = GlobalConfKeys.enableCapacityReservationAws;
+        operationsList = GlobalConfKeys.capacityReservationOperationsAws;
         break;
     }
     if (enabledFlag == null) {

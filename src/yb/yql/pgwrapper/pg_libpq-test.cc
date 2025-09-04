@@ -1761,11 +1761,7 @@ void PgLibPqTest::FlushTablesAndCreateData(
 
   // Flush tablets; requests from here on will be replayed from the WAL during bootstrap.
   auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), database_name, "foo"));
-  ASSERT_OK(client->FlushTables(
-      {table_id},
-      false /* add_indexes */,
-      timeout_secs,
-      false /* is_compaction */));
+  ASSERT_OK(client->FlushTables({table_id}, MonoDelta::FromSeconds(timeout_secs)));
 
   // ALTER requires foo's table id to be in the TS raft metadata
   ASSERT_OK(conn_new.Execute("ALTER TABLE foo ADD c char"));

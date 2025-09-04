@@ -521,12 +521,13 @@ Status PgSession::IsDatabaseColocated(const PgOid database_oid, bool *colocated,
 
 //--------------------------------------------------------------------------------------------------
 
-Status PgSession::DropDatabase(const std::string& database_name, PgOid database_oid) {
+Status PgSession::DropDatabase(
+    const std::string& database_name, PgOid database_oid, CoarseTimePoint deadline) {
   tserver::PgDropDatabaseRequestPB req;
   req.set_database_name(database_name);
   req.set_database_oid(database_oid);
 
-  RETURN_NOT_OK(pg_client_.DropDatabase(&req, CoarseTimePoint()));
+  RETURN_NOT_OK(pg_client_.DropDatabase(&req, deadline));
   return Status::OK();
 }
 
@@ -605,24 +606,24 @@ Result<std::pair<int64_t, bool>> PgSession::ReadSequenceTuple(int64_t db_oid,
 
 //--------------------------------------------------------------------------------------------------
 
-Status PgSession::DropTable(const PgObjectId& table_id, bool use_regular_transaction_block) {
+Status PgSession::DropTable(
+    const PgObjectId& table_id, bool use_regular_transaction_block, CoarseTimePoint deadline) {
   tserver::PgDropTableRequestPB req;
   table_id.ToPB(req.mutable_table_id());
   req.set_use_regular_transaction_block(use_regular_transaction_block);
   RETURN_NOT_OK(SetupPerformOptionsForDdlIfNeeded(*this, req));
-  return ResultToStatus(pg_client_.DropTable(&req, CoarseTimePoint()));
+  return ResultToStatus(pg_client_.DropTable(&req, deadline));
 }
 
 Status PgSession::DropIndex(
-    const PgObjectId& index_id,
-    bool use_regular_transaction_block,
-    client::YBTableName* indexed_table_name) {
+    const PgObjectId& index_id, bool use_regular_transaction_block,
+    client::YBTableName* indexed_table_name, CoarseTimePoint deadline) {
   tserver::PgDropTableRequestPB req;
   index_id.ToPB(req.mutable_table_id());
   req.set_index(true);
   req.set_use_regular_transaction_block(use_regular_transaction_block);
   RETURN_NOT_OK(SetupPerformOptionsForDdlIfNeeded(*this, req));
-  auto result = VERIFY_RESULT(pg_client_.DropTable(&req, CoarseTimePoint()));
+  auto result = VERIFY_RESULT(pg_client_.DropTable(&req, deadline));
   if (indexed_table_name) {
     *indexed_table_name = std::move(result);
   }

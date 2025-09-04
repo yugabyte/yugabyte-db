@@ -2500,7 +2500,6 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
 
 TEST_F(ClientTest, FlushTable) {
   tablet::TabletPtr tablet;
-  constexpr int kTimeoutSecs = 30;
   int current_row = 0;
 
   {
@@ -2521,22 +2520,18 @@ TEST_F(ClientTest, FlushTable) {
     // Test flush table.
     InsertTestRows(client_table2_, 1, current_row++);
     ASSERT_EQ(tablet->GetCurrentVersionNumSSTFiles(), initial_num_sst_files);
-    ASSERT_OK(client_->FlushTables(
-        {table_id_or_name}, /* add_indexes */ false, kTimeoutSecs, false /* is_compaction */));
+    ASSERT_OK(client_->FlushTables({table_id_or_name}));
     ASSERT_EQ(tablet->GetCurrentVersionNumSSTFiles(), initial_num_sst_files + 1);
 
     // Insert and flush more rows.
     InsertTestRows(client_table2_, 1, current_row++);
-    ASSERT_OK(client_->FlushTables(
-        {table_id_or_name}, /* add_indexes */ false, kTimeoutSecs, false /* is_compaction */));
+    ASSERT_OK(client_->FlushTables({table_id_or_name}));
     InsertTestRows(client_table2_, 1, current_row++);
-    ASSERT_OK(client_->FlushTables(
-        {table_id_or_name}, /* add_indexes */ false, kTimeoutSecs, false /* is_compaction */));
+    ASSERT_OK(client_->FlushTables({table_id_or_name}));
 
     // Test compact table.
     ASSERT_EQ(tablet->GetCurrentVersionNumSSTFiles(), initial_num_sst_files + 3);
-    ASSERT_OK(client_->FlushTables(
-        {table_id_or_name}, /* add_indexes */ false, kTimeoutSecs, true /* is_compaction */));
+    ASSERT_OK(client_->CompactTables({table_id_or_name}));
     ASSERT_EQ(tablet->GetCurrentVersionNumSSTFiles(), 1);
   });
 
@@ -2545,11 +2540,9 @@ TEST_F(ClientTest, FlushTable) {
 
   auto test_bad_flush_and_compact = ([&]<class T>(T table_id_or_name) {
     // Test flush table.
-    ASSERT_NOK(client_->FlushTables(
-        {table_id_or_name}, /* add_indexes */ false, kTimeoutSecs, false /* is_compaction */));
+    ASSERT_NOK(client_->FlushTables({table_id_or_name}));
     // Test compact table.
-    ASSERT_NOK(client_->FlushTables(
-        {table_id_or_name}, /* add_indexes */ false, kTimeoutSecs, true /* is_compaction */));
+    ASSERT_NOK(client_->CompactTables({table_id_or_name}));
   });
 
   test_bad_flush_and_compact("bad table id");
@@ -2595,8 +2588,7 @@ TEST_F_EX(ClientTest, CompactionStatusWaitingForHeartbeats, CompactionClientTest
     tserver->FailHeartbeats();
   }
 
-  ASSERT_OK(client_->FlushTables(
-      {client_table2_->id()}, false /* add_indexes */, 30 /* timeout */, true /* is_compaction */));
+  ASSERT_OK(client_->CompactTables({client_table2_->id()}));
 
   ASSERT_OK(WaitForCompactionStatusSatisfying([&](const TableCompactionStatus& compaction_status) {
     // Expect request to have been made but no tablet to be compacting yet.
@@ -2621,8 +2613,7 @@ TEST_F_EX(ClientTest, CompactionStatusWaitingForHeartbeats, CompactionClientTest
 TEST_F_EX(ClientTest, CompactionStatus, CompactionClientTest) {
   InsertTestRows(client_table2_, 1 /* num_rows */);
 
-  ASSERT_OK(client_->FlushTables(
-      {client_table2_->id()}, false /* add_indexes */, 30 /* timeout */, true /* is_compaction */));
+  ASSERT_OK(client_->CompactTables({client_table2_->id()}));
 
   ASSERT_OK(
       WaitForCompactionStatusSatisfying([&](const TableCompactionStatus& table_compaction_status) {
@@ -2645,8 +2636,7 @@ TEST_F_EX(ClientTest, CompactionStatus, CompactionClientTest) {
   const auto prev_compaction_status =
       ASSERT_RESULT(client_->GetCompactionStatus(client_table2_.name(), true /* show_tablets*/));
   SleepFor(1s);
-  ASSERT_OK(client_->FlushTables(
-      {client_table2_->id()}, false /* add_indexes */, 30 /* timeout */, true /* is_compaction */));
+  ASSERT_OK(client_->CompactTables({client_table2_->id()}));
   ASSERT_OK(WaitForCompactionStatusSatisfying([&](const TableCompactionStatus& compaction_status) {
     // Expect compaction times to be later than the previous.
     if (prev_compaction_status.last_full_compaction_time >

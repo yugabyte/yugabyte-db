@@ -596,9 +596,14 @@ XClusterDDLQueueHandler::GetRowsToProcess(const HybridTime& commit_time) {
       "SET ROLE NONE; SET yb_disable_catalog_version_check = 1; SET yb_read_time = $0",
       commit_time.GetPhysicalValueMicros()));
   auto rows = VERIFY_RESULT((pg_conn_->FetchRows<int64_t, int64_t, std::string>(Format(
-      "SELECT $0, $1, $2 FROM $3 "
-      "WHERE ($0, $1) NOT IN (SELECT $0, $1 FROM $4) "
-      "ORDER BY $0 ASC",
+      "/*+ MergeJoin(q r) */ "
+      "SELECT q.$0, q.$1, q.$2 FROM $3 AS q "
+      "WHERE NOT EXISTS ("
+      "  SELECT 1 "
+      "  FROM $4 AS r "
+      "  WHERE r.$0 = q.$0 AND r.$1 = q.$1 "
+      ") "
+      "ORDER BY q.$0 ASC;",
       xcluster::kDDLQueueDDLEndTimeColumn, xcluster::kDDLQueueQueryIdColumn,
       xcluster::kDDLQueueYbDataColumn, kDDLQueueFullTableName, kReplicatedDDLsFullTableName))));
   // DDLs are blocked when yb_read_time is non-zero, so reset.

@@ -77,11 +77,7 @@ TEST_P(PgAddColumnDefaultTest, AddColumnDefaultCompactionAfterUpdate) {
   const auto table_id = ASSERT_RESULT(GetTableIdByTableName(
       client.get(), kDatabaseName, kTableName));
   // Compact the table.
-  ASSERT_OK(client->FlushTables(
-      {table_id},
-      false /* add_indexes */,
-      3 /* deadline (seconds) */,
-      true /* is_compaction */));
+  ASSERT_OK(client->CompactTables({table_id}, MonoDelta::FromSeconds(3)));
   // Verify the data after compaction.
   auto rows = ASSERT_RESULT((conn_->FetchRows<int32_t, std::string, std::optional<int32_t>>(
       Format("SELECT * FROM $0 ORDER BY t", kTableName))));
@@ -141,11 +137,7 @@ TEST_P(PgAddColumnDefaultTest, AddColumnDefaultCopy) {
   const auto table_id = ASSERT_RESULT(GetTableIdByTableName(
       client.get(), kDatabaseName, kTableName));
   // Compact the table.
-  ASSERT_OK(client->FlushTables(
-      {table_id},
-      false /* add_indexes */,
-      3 /* deadline (seconds) */,
-      true /* is_compaction */));
+  ASSERT_OK(client->CompactTables({table_id}, MonoDelta::FromSeconds(3)));
   // Verify the data after compaction.
   ASSERT_OK(table_content_checker());
 }
@@ -208,11 +200,7 @@ TEST_P(PgAddColumnDefaultConcurrencyTest, AddColumnDefaultConcurrency) {
   const auto table_id = ASSERT_RESULT(GetTableIdByTableName(
       client.get(), kDatabaseName, kTableName));
   // Compact the table.
-  ASSERT_OK(client->FlushTables(
-      {table_id},
-      false /* add_indexes */,
-      3 /* deadline (seconds) */,
-      true /* is_compaction */));
+  ASSERT_OK(client->CompactTables({table_id}, MonoDelta::FromSeconds(3)));
   // Verify that we can read the correct values for the new column after compaction.
   res = ASSERT_RESULT(conn_->FetchRow<PGUint64>(
       Format("SELECT count(*) FROM $0 WHERE c1 = 'default'", kTableName)));

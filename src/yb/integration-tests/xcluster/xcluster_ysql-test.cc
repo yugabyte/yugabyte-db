@@ -215,9 +215,7 @@ class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
         commit_transaction = !commit_transaction;
         LOG(INFO) << "Wrote records: " << i + transaction_size;
         if (flush_tables_after_commit) {
-          EXPECT_OK(producer_cluster_.client_->FlushTables(
-              {producer_table->id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-              /* is_compaction = */ false));
+          EXPECT_OK(producer_cluster_.client_->FlushTables({producer_table->id()}));
         }
       }
     });
@@ -240,9 +238,7 @@ class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
         // Consumer side flush is in read-thread because flushes may fail if nothing
         // was replicated, so we have additional check to make sure we have records in the consumer.
         if (flush_tables_after_commit && num_read_records) {
-          EXPECT_OK(consumer_cluster_.client_->FlushTables(
-              {consumer_table->id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-              /* is_compaction = */ false));
+          EXPECT_OK(consumer_cluster_.client_->FlushTables({consumer_table->id()}));
         }
       }
       ASSERT_EQ(num_read_records, total_committed_records);
