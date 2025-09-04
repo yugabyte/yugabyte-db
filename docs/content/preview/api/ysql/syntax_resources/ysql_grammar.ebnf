@@ -763,6 +763,7 @@ drop_tablespace = 'DROP' 'TABLESPACE' [ 'IF' 'EXISTS' ] tablespace_name;
 create_table = 'CREATE' [ 'TEMPORARY' | 'TEMP' | 'UNLOGGED' ] 'TABLE'
                  [ 'IF' 'NOT' 'EXISTS' ] table_name
                  '(' [ table_elem { ',' table_elem } ] ')' \
+                 [ 'PARTITION' 'BY' { 'RANGE' | 'LIST' | 'HASH' } '(' { column_name | ( expression ) } [ operator_class_name ] [, ...] ')' ] \
                  [ 'WITH' '(' ( 'COLOCATION' '=' ('true' | 'false') | 'COLOCATION_ID' '=' int_literal | storage_parameters ) ')'
                       | 'WITHOUT' 'OIDS' ] \
                  [ 'TABLESPACE' tablespace_name ]
