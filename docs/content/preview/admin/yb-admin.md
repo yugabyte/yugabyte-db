@@ -764,6 +764,7 @@ The following backup and snapshot commands are available:
 * [**list_snapshot_schedules**](#list-snapshot-schedules) returns a list of all snapshot schedules
 * [**restore_snapshot_schedule**](#restore-snapshot-schedule) restores all objects in a scheduled snapshot
 * [**delete_snapshot_schedule**](#delete-snapshot-schedule) deletes the specified snapshot schedule
+* [**clone_namespace**](#clone-namespace) clone the specified namespace
 
 {{< note title="YugabyteDB Anywhere" >}}
 
@@ -1373,6 +1374,43 @@ The output should show the schedule ID we just deleted.
 ```output.json
 {
     "schedule_id": "6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256"
+}
+```
+
+#### clone_namespace
+
+Create a clone of the original database at a specific point in time (within the history retention period specified when creating the snapshot schedule). 
+
+Returns a JSON object with the `source_namespace_id` and `seq_no` of the database that was just created.
+
+**Syntax**
+
+```sh
+yb-admin \
+    --master_addresses <master-addresses> \
+    clone_namespace <source-namespace> <target-namespace-name> [<timestamp> | minus <interval>]
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
+* *source-namespace*: The source namespace to clone.
+* *target-namespace-name*: The new database name to clone to.
+* *timestamp*: Unix timestamp in microseconds.
+* *minus <interval>*: Relative time such as: `minus 5m`, `minus 1h`, `minus 3d 5m`. The same syntax as in [#restore-snapshot-schedule](#restore-snapshot-schedule) command. 
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    clone_namespace ycql.originaldb1 clonedb2 1715275616599020
+```
+
+The output should show the `source_namespace_id` and `seq_no`.
+
+```output.json
+{
+    "source_namespace_id": "00004001000030008000000000000000",
+    "seq_no": "1"
 }
 ```
 
