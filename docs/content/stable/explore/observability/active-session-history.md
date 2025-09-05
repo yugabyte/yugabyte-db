@@ -28,6 +28,12 @@ Analyzing the wait events and wait event types lets you troubleshoot, answer the
 - Why is a particular application slow?
 - What are the queries that are contributing significantly to database load and performance?
 
+## Configuration and usage
+
+- How to [Configure ASH](../../../launch-and-manage/monitor-and-alert/active-session-history-monitor/#configure-ash)
+- See [Monitor with Active Session History](../../../launch-and-manage/monitor-and-alert/active-session-history-monitor/) for information on YSQL views, query identifiers, and wait events that are exposed via active sessions captured by ASH.
+- ASH [limitations](../../../launch-and-manage/monitor-and-alert/active-session-history-monitor/#limitations)
+
 ## Examples
 
 {{% explore-setup-single-new %}}
@@ -306,8 +312,3 @@ GROUP BY
  127.0.0.3:56479 | 10997
 ```
 
-## Learn more
-
-- How to [Configure ASH](../../../launch-and-manage/monitor-and-alert/active-session-history-monitor/#configure-ash)
-- ASH [limitations](../../../launch-and-manage/monitor-and-alert/active-session-history-monitor/#limitations)
-- See [Monitor with Active Session History](../../../launch-and-manage/monitor-and-alert/active-session-history-monitor/) for information on YSQL views, query identifiers, and wait events that are exposed via active sessions captured by ASH.
