@@ -3389,10 +3389,11 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
   auto sleep_while_not_stopped = [this]() {
     int min_sleep_ms = std::min(100, GetAtomicFlag(&FLAGS_update_metrics_interval_ms));
     auto sleep_period = MonoDelta::FromMilliseconds(min_sleep_ms);
+    if (shutting_down_) {
+      return false;
+    }
     SleepFor(sleep_period);
-
-    SharedLock<decltype(mutex_)> l(mutex_);
-    return !cdc_service_stopped_;
+    return !shutting_down_;
   };
 
   do {
@@ -4133,15 +4134,13 @@ void CDCServiceImpl::BootstrapProducer(
 }
 
 void CDCServiceImpl::Shutdown() {
-  rpcs_.Shutdown();
-  {
-    std::lock_guard l(mutex_);
-    cdc_service_stopped_ = true;
+  if (!shutting_down_.Set()) {
+    return;
   }
   if (update_peers_and_metrics_thread_) {
     update_peers_and_metrics_thread_->Join();
   }
-
+  rpcs_.Shutdown();
   cdc_state_table_.reset();
   impl_->ClearCaches();
 }

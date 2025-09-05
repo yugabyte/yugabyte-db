@@ -101,39 +101,7 @@ using yb::rpc::RpcController;
 using std::shared_ptr;
 using std::vector;
 
-namespace yb {
-namespace tserver {
-
-class Heartbeater::Impl {
- public:
-  Impl(
-      const TabletServerOptions& opts, TabletServer& server,
-      std::vector<std::unique_ptr<HeartbeatDataProvider>>&& data_providers);
-  Impl(const Impl& other) = delete;
-  void operator=(const Impl& other) = delete;
-
-  Status Start();
-  Status Stop();
-  void TriggerASAP();
-
-  void set_master_addresses(server::MasterAddressesPtr master_addresses) {
-    VLOG_WITH_PREFIX(1) << "Setting master addresses to " << yb::ToString(master_addresses);
-    finder_.set_master_addresses(std::move(master_addresses));
-  }
-
-  HostPort get_master_leader_hostport() {
-    return finder_.get_master_leader_hostport();
-  }
-
- private:
-  const std::string& LogPrefix() const {
-    return server_.LogPrefix();
-  }
-
-  TabletServer& server_;
-  MasterLeaderFinder finder_;
-  MasterLeaderPollScheduler poll_scheduler_;
-};
+namespace yb::tserver {
 
 class HeartbeatPoller : public MasterLeaderPollerInterface {
  public:
@@ -170,6 +138,34 @@ class HeartbeatPoller : public MasterLeaderPollerInterface {
   std::optional<int32> full_report_seq_no_;
 
   std::vector<std::unique_ptr<HeartbeatDataProvider>> data_providers_;
+};
+
+class Heartbeater::Impl {
+ public:
+  Impl(
+      const TabletServerOptions& opts, TabletServer& server,
+      std::vector<std::unique_ptr<HeartbeatDataProvider>>&& data_providers);
+  Impl(const Impl& other) = delete;
+  void operator=(const Impl& other) = delete;
+
+  Status Start();
+  Status Stop();
+  void TriggerASAP();
+
+  void set_master_addresses(server::MasterAddressesPtr master_addresses) {
+    VLOG_WITH_PREFIX(1) << "Setting master addresses to " << yb::ToString(master_addresses);
+    finder_.set_master_addresses(std::move(master_addresses));
+  }
+
+  HostPort get_master_leader_hostport() { return finder_.get_master_leader_hostport(); }
+
+ private:
+  const std::string& LogPrefix() const { return server_.LogPrefix(); }
+
+  TabletServer& server_;
+  MasterLeaderFinder finder_;
+  std::unique_ptr<HeartbeatPoller> poller_;
+  MasterLeaderPollScheduler poll_scheduler_;
 };
 
 ////////////////////////////////////////////////////////////
@@ -217,9 +213,7 @@ Heartbeater::Impl::Impl(
                       << AsString(master_addresses);
 }
 
-Status Heartbeater::Impl::Start() {
-  return poll_scheduler_.Start();
-}
+Status Heartbeater::Impl::Start() { return poll_scheduler_.Start(); }
 
 Status Heartbeater::Impl::Stop() {
   return poll_scheduler_.Stop();
@@ -631,5 +625,4 @@ MonoDelta HeartbeatPoller::GetMinimumHeartbeatMillis(int32_t consecutive_failure
              : MonoDelta::kZero;
 }
 
-} // namespace tserver
-} // namespace yb
+}  // namespace yb::tserver

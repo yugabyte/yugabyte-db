@@ -26,8 +26,11 @@
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
+
 #include "yb/gutil/thread_annotations.h"
+
 #include "yb/util/mem_tracker.h"
+#include "yb/util/one_time_bool.h"
 
 #include "yb/yql/cql/ql/ptree/pt_option.h"
 
@@ -175,7 +178,7 @@ class YBMetaDataCache {
   YBTypeMap cached_types_ GUARDED_BY(cached_types_mutex_);
 
   MemTrackerPtr mem_tracker_;
-  std::atomic_bool shutting_down_{false};
+  OneTimeBool shutting_down_;
 };
 
 } // namespace client

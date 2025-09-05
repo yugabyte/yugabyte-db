@@ -190,14 +190,15 @@ public class TestYBClient extends BaseYBClientTest {
       // Discard original master/tserver flags
       cb.masterFlags(
           Collections.singletonMap("TEST_simulate_slow_system_tablet_bootstrap_secs", "20"));
-      cb.commonTServerFlags(
-          Collections.emptyMap());
+      cb.commonTServerFlags(Collections.emptyMap());
     });
     miniCluster.restart(false /* waitForMasterLeader */);
-
     for (HostAndPort mhp : miniCluster.getMasters().keySet()) {
       testServerReady(mhp, false, true);
     }
+    // The flag simulate_slow_system_tablet_bootstrap_secs interferes with graceful shutdown.
+    // Kill the daemons ungracefully to avoid hanging on the graceful shutdown path.
+    miniCluster.killDaemons();
   }
 
   /**
