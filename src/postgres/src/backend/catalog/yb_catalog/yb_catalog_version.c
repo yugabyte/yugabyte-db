@@ -852,7 +852,7 @@ YbDeleteMasterDBCatalogVersionTableEntry(Oid db_oid)
 	 * invalidation messages stored in pg_yb_invalidation_messages table
 	 * for db_oid.
 	 */
-	if (YbIsInvalidationMessageEnabled())
+	if (YbIsInvalidationMessageEnabled() && YbInvalidationMessagesTableExists())
 		YbDeleteMasterDBInvalidationMessagesTableEntries(db_oid);
 }
 
