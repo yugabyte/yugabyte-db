@@ -6720,6 +6720,9 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 		/*
 		 * Scan through the rows, generating a new row if needed and then
 		 * checking all the constraints.
+		 *
+		 * TODO(#29269): Integrate this new snapshot logic with the pggate read
+		 * time logic.
 		 */
 		snapshot = RegisterSnapshot(GetLatestSnapshot());
 		/*

@@ -1011,6 +1011,7 @@ YbcStatus YBCServersMetrics(YbcPgServerMetricsInfo** serverMetricsInfo, size_t* 
 YbcStatus YBCDatabaseClones(YbcPgDatabaseCloneInfo** databaseClones, size_t* count);
 
 YbcReadPointHandle YBCPgGetCurrentReadPoint();
+YbcReadPointHandle YBCPgGetMaxReadPoint();
 YbcStatus YBCPgRestoreReadPoint(YbcReadPointHandle read_point);
 YbcStatus YBCPgRegisterSnapshotReadTime(
     uint64_t read_time, bool use_read_time, YbcReadPointHandle* handle);

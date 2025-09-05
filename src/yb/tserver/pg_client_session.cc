@@ -3123,6 +3123,9 @@ class PgClientSession::Impl {
     if (setup_session_result.is_plain) {
       const auto& read_point = *session->read_point();
       if (read_point.GetReadTime()) {
+        VLOG_WITH_PREFIX(3) << "Read time is already picked, saving it "
+            << AsString(read_point.GetReadTime()) << " to read time serial no: "
+            << read_time_serial_no_;
         read_point_history_.Save(read_point, read_time_serial_no_);
       }
     }
@@ -3236,8 +3239,7 @@ class PgClientSession::Impl {
     auto kind = PgClientSessionKind::kPlain;
     if (options.use_catalog_session()) {
       SCHECK(!options.read_from_followers(),
-            InvalidArgument,
-            "Reading catalog from followers is not allowed");
+          InvalidArgument, "Reading catalog from followers is not allowed");
       kind = PgClientSessionKind::kCatalog;
       EnsureSession(kind, deadline);
     } else if (options.ddl_mode() && !options.ddl_use_regular_transaction_block()) {
@@ -3653,7 +3655,8 @@ class PgClientSession::Impl {
     // Both cases are valid and in both cases the plain_session_used_read_time_.pending_update
     // must be set to false because no further update is expected.
     if (read_time_data.value) {
-      VLOG_WITH_PREFIX(3) << "Applying non empty used read time: " << read_time_data.value;
+      VLOG_WITH_PREFIX(3) << "Applying non empty used read time: " << read_time_data.value
+          << " to read time serial no: " << read_time_serial_no_;
       session.SetReadPoint(read_time_data.value, read_time_data.tablet_id);
       read_point_history_.Save(read_point, read_time_serial_no_);
     }

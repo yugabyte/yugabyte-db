@@ -4709,7 +4709,7 @@ YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 
 	if (!yb_non_ddl_txn_for_sys_tables_allowed)
 	{
-		YBCPgResetCatalogReadTime();
+		YbInvalidateCatalogSnapshot();
 		catalog_master_version = YbGetMasterCatalogVersion();
 
 		if (YbGetCatalogCacheVersion() != catalog_master_version)
@@ -6622,7 +6622,11 @@ PostgresMain(const char *dbname, const char *username)
 		if (IsYugaByteEnabled())
 		{
 			yb_pgstat_set_has_catalog_version(true);
-			YBCPgResetCatalogReadTime();
+			/*
+			 * TODO: Pg doesn't reset the catalog snapshot at the start of each new query. Remove this
+			 * call in YSQL too when we have object locking enabled.
+			 */
+			YbInvalidateCatalogSnapshot();
 			YBCheckSharedCatalogCacheVersion();
 			yb_run_with_explain_analyze = false;
 			if (IsYsqlUpgrade &&

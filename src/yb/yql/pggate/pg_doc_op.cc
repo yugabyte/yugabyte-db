@@ -791,6 +791,23 @@ Status PgDocOp::SendRequestImpl(ForceNonBufferable force_non_bufferable) {
   }
 
   VLOG(1) << "Number of " << table_type << " operations to send: " << send_count;
+  YbcReadPointHandle current_read_time_serial_no = YbcInvalidReadPointHandle;
+  YbcReadPointHandle catalog_read_time_serial_no = YbcInvalidReadPointHandle;
+  if (!YBCIsLegacyModeForCatalogOps() &&
+      table_->schema().table_properties().is_ysql_catalog_table()) {
+    // TODO(#29284): Are catalog writes buffered in the legacy mode? Allow buffering of catalog
+    // writes.
+    force_non_bufferable = ForceNonBufferable::kTrue;
+    current_read_time_serial_no = pg_session_->GetCurrentReadPoint();
+    // Switch to catalog snapshot's read time serial no.
+    catalog_read_time_serial_no = pg_session_->GetCatalogSnapshotReadPoint(
+        table_->pg_table_id().object_oid, true /* create_if_not_exists */);
+    VLOG(2) << "Using catalog snapshot read time serial number: " << catalog_read_time_serial_no
+            << " and saving current read time serial number: " << current_read_time_serial_no;
+    RSTATUS_DCHECK(
+        catalog_read_time_serial_no != 0, IllegalState, "Catalog snapshot read time is 0");
+    RETURN_NOT_OK(pg_session_->RestoreReadPoint(catalog_read_time_serial_no));
+  }
   response_ = VERIFY_RESULT(sender_(
       pg_session_.get(), pgsql_ops_.data(), send_count, *table_,
       HybridTime::FromPB(GetInTxnLimitHt()), force_non_bufferable, is_write));
@@ -801,6 +818,14 @@ Status PgDocOp::SendRequestImpl(ForceNonBufferable force_non_bufferable) {
     if (targets_) {
       result_stream_->SetFetchedTargets(targets_);
     }
+  }
+
+  if (!YBCIsLegacyModeForCatalogOps() &&
+      table_->schema().table_properties().is_ysql_catalog_table() &&
+      current_read_time_serial_no != catalog_read_time_serial_no) {
+    // Switch back to earlier read time serial no.
+    VLOG(2) << "Restoring current read time serial number: " << current_read_time_serial_no;
+    RETURN_NOT_OK(pg_session_->RestoreReadPoint(current_read_time_serial_no));
   }
   return Status::OK();
 }

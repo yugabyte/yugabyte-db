@@ -2771,6 +2771,7 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     return;
   }
 
+  VLOG(5) << "Read req: " << req->ShortDebugString();
   PerformRead(server_, this, req, resp, std::move(context));
 }
 

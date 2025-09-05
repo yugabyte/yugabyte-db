@@ -210,6 +210,7 @@ static const int64_t kYBCMaxPostgresTextSizeBytes = 1024ll * 1024 * 1024 - 4;
 typedef unsigned int YbcPgOid;
 
 typedef uint64_t YbcReadPointHandle;
+#define YbcInvalidReadPointHandle 0
 
 const YbcPgTypeEntity *YBCPgFindTypeEntity(YbcPgOid type_oid);
 
@@ -383,6 +384,7 @@ typedef struct {
   int (*CheckUserMap)(const char *, const char *, const char *, bool case_insensitive);
   /* pgstat.h */
   YbcWaitEventInfo (*PgstatReportWaitStart)(YbcWaitEventInfo);
+  YbcReadPointHandle (*GetCatalogSnapshotReadPoint)(YbcPgOid table_oid, bool create_if_not_exists);
   /* replication origin */
   uint16_t (*GetSessionReplicationOriginId)();
   /* CHECK_FOR_INTERRUPTS */

@@ -76,6 +76,7 @@
 #include "yb/yql/pggate/util/ybc_guc.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_gflags.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include <inttypes.h>
 
@@ -326,7 +327,7 @@ YBCOnActiveSnapshotChange()
 }
 
 void
-YbLogSnapshotData(const char *msg, SnapshotData *snap, bool log_stack_trace)
+YbLogSnapshotData(const char *msg, const SnapshotData *snap, bool log_stack_trace)
 {
 	elog(YbSnapshotMgmtLogLevel(),
 		 "%s read point: %" PRIu64 ", effective isolation level: %d. %s",
@@ -504,6 +505,7 @@ GetCatalogSnapshot(Oid relid)
 	 * This is the primary reason for needing to reset the system caches after
 	 * finishing decoding.
 	 */
+	elog(YbSnapshotMgmtLogLevel(), "GetCatalogSnapshot: relid: %d", relid);
 	if (HistoricSnapshotActive())
 		return HistoricSnapshot;
 
@@ -567,6 +569,8 @@ GetNonHistoricCatalogSnapshot(Oid relid)
 void
 InvalidateCatalogSnapshot(void)
 {
+	elog(YbSnapshotMgmtLogLevel(), "InvalidateCatalogSnapshot %s",
+		yb_debug_log_snapshot_mgmt_stack_trace ? YBCGetStackTrace() : "");
 	if (CatalogSnapshot)
 	{
 		pairingheap_remove(&RegisteredSnapshots, &CatalogSnapshot->ph_node);
@@ -841,7 +845,7 @@ PushActiveSnapshotWithLevel(Snapshot snap, int snap_level)
 		OldestActiveSnapshot = ActiveSnapshot;
 
 	YbLogActiveSnapshot("Pushed new active snapshot: ",
-						ActiveSnapshot, yb_debug_log_snapshot_mgmt /* log_stack_trace */ );
+						ActiveSnapshot, yb_debug_log_snapshot_mgmt_stack_trace);
 	YBCOnActiveSnapshotChange();
 }
 
@@ -906,7 +910,7 @@ PopActiveSnapshot(void)
 	Assert(ActiveSnapshot->as_snap->active_count > 0);
 
 	YbLogActiveSnapshot("Pop active snapshot: ",
-						ActiveSnapshot, yb_debug_log_snapshot_mgmt /* log_stack_trace */ );
+						ActiveSnapshot, yb_debug_log_snapshot_mgmt_stack_trace);
 
 	ActiveSnapshot->as_snap->active_count--;
 
@@ -1138,7 +1142,7 @@ AtSubAbort_Snapshot(int level)
 		ActiveSnapshot->as_snap->active_count -= 1;
 
 		YbLogActiveSnapshot("Pop active snapshot for subtransaction abort",
-							ActiveSnapshot, yb_debug_log_snapshot_mgmt /* log_stack_trace */ );
+							ActiveSnapshot, yb_debug_log_snapshot_mgmt_stack_trace);
 
 		if (ActiveSnapshot->as_snap->active_count == 0 &&
 			ActiveSnapshot->as_snap->regd_count == 0)
@@ -2591,4 +2595,25 @@ XidInMVCCSnapshot(TransactionId xid, Snapshot snapshot)
 	}
 
 	return false;
+}
+
+YbcReadPointHandle
+YbGetCatalogSnapshotReadPoint(YbcPgOid table_oid, bool create_if_not_exists)
+{
+	if (create_if_not_exists)
+		GetCatalogSnapshot(table_oid);
+	return CatalogSnapshotData.yb_read_point_handle.has_value ?
+		CatalogSnapshotData.yb_read_point_handle.value : YbcInvalidReadPointHandle;
+}
+
+void
+YbInvalidateCatalogSnapshot(void)
+{
+	if (YBCIsLegacyModeForCatalogOps())
+	{
+		YBCPgResetCatalogReadTime();
+		return;
+	}
+
+	InvalidateCatalogSnapshot();
 }

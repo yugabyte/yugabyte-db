@@ -182,6 +182,12 @@ extern bool yb_enable_consistent_replication_from_hash_range;
 extern bool yb_cdcsdk_stream_tables_without_primary_key;
 
 extern bool enable_object_locking_infra;
+
+/*
+ * Refer YBCIsLegacyModeForCatalogOps() for details.
+ */
+extern bool yb_fallback_to_legacy_catalog_read_time;
+
 /*
  * xcluster consistency level
  */
@@ -290,6 +296,8 @@ extern bool yb_upgrade_to_pg15_completed;
 extern bool yb_debug_log_catcache_events;
 
 extern bool yb_debug_log_snapshot_mgmt;
+
+extern bool yb_debug_log_snapshot_mgmt_stack_trace;
 
 extern bool yb_extension_upgrade;
 

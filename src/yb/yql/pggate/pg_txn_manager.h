@@ -118,6 +118,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   void RestoreSessionState(const YbcPgSessionState& session_data);
 
   [[nodiscard]] YbcReadPointHandle GetCurrentReadPoint() const;
+  [[nodiscard]] YbcReadPointHandle GetMaxReadPoint() const;
   Status RestoreReadPoint(YbcReadPointHandle read_point);
   Result<YbcReadPointHandle> RegisterSnapshotReadTime(uint64_t read_time, bool use_read_time);
 
@@ -162,12 +163,14 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
    public:
     SerialNo();
     SerialNo(uint64_t txn_serial_no, uint64_t read_time_serial_no);
-    void IncTxn(bool preserve_read_time_history);
+    void IncTxn(bool preserve_read_time_history, YbcReadPointHandle catalog_read_time_serial_no);
     void IncReadTime();
+    void IncMaxReadTime();
     Status RestoreReadTime(uint64_t read_time_serial_no);
     [[nodiscard]] uint64_t txn() const { return txn_; }
     [[nodiscard]] uint64_t read_time() const { return read_time_; }
     [[nodiscard]] uint64_t min_read_time() const { return min_read_time_; }
+    [[nodiscard]] uint64_t max_read_time() const { return max_read_time_; }
     std::string ToString() const {
       return YB_CLASS_TO_STRING(txn, read_time, min_read_time, max_read_time);
     }

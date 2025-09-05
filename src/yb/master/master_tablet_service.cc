@@ -165,6 +165,7 @@ void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
     }
   }
 
+  VLOG(5) << "Master write req: " << req->ShortDebugString();
   tserver::TabletServiceImpl::Write(req, resp, std::move(context));
 
   if (log_versions) {
