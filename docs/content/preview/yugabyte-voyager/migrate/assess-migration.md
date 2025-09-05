@@ -245,8 +245,9 @@ Depending on the recommendations in the assessment report, do the following when
 1. Create your target YugabyteDB cluster in [Enhanced PostgreSQL Compatibility Mode](../../../reference/configuration/postgresql-compatibility/).
 
     If you are using YugabyteDB Anywhere, [enable compatibility mode](../../../reference/configuration/postgresql-compatibility/#yugabytedb-anywhere) by setting the **More > Edit Postgres Compatibility** option.
-1. The assessment provides recommendations on which tables in the source database to colocate, so when you prepare your target database, create the database with [colocation](../../../explore/colocation/#databases) set to TRUE.
-      {{</tip>}}
+
+1. The assessment provides recommendations on which tables in the source database to colocate, so when you prepare your target database, create the database with [colocation](../../../additional-features/colocation/#databases) set to TRUE.
+        {{</tip>}}
 
 1. Proceed with migration with one of the migration workflows:
 

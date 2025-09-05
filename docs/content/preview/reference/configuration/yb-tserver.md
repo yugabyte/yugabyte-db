@@ -997,7 +997,7 @@ Default: `false`
 
 When enabled, all databases created in the cluster are colocated by default. If you enable the flag after creating a cluster, you need to restart the YB-Master and YB-TServer services.
 
-For more details, see [clusters in colocated tables](../../../explore/colocation/).
+For more details, see [clusters in colocated tables](../../../additional-features/colocation/).
 
 ##### tablet_replicas_per_core_limit
 

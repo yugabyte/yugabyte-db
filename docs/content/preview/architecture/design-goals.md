@@ -77,7 +77,7 @@ YugabyteDB monitors and automatically re-balances the number of tablet leaders a
 
 YugabyteDB supports colocated tables and databases which enables related data to be kept together on the same node for performance reasons.
 
-{{<lead link="../../explore/colocation/">}}
+{{<lead link="../../additional-features/colocation/">}}
 Colocating tables
 {{</lead>}}
 
