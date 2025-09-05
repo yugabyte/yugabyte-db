@@ -385,6 +385,7 @@ You can install systemd-specific database service unit files, as follows:
 
     [Service]
     # Start
+    ExecStartPre=/home/yugabyte/bin/clock-sync.sh
     ExecStart=/home/yugabyte/master/bin/yb-master --flagfile /home/yugabyte/master/conf/server.conf
     Restart=on-failure
     RestartSec=5
@@ -422,6 +423,7 @@ You can install systemd-specific database service unit files, as follows:
 
     [Service]
     # Start
+    ExecStartPre=/home/yugabyte/bin/clock-sync.sh
     ExecStart=/home/yugabyte/tserver/bin/yb-tserver --flagfile /home/yugabyte/tserver/conf/server.conf
     Restart=on-failure
     RestartSec=5
