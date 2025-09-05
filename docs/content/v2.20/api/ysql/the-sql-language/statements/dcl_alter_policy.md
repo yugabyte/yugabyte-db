@@ -4,7 +4,7 @@ headerTitle: ALTER POLICY
 linkTitle: ALTER POLICY
 description: Use the ALTER POLICY statement to change the definition of a row level security policy.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: dcl_alter_policy
     parent: statements
 type: docs

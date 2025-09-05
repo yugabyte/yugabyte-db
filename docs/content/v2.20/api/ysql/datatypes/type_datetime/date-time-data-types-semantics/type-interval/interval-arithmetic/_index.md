@@ -5,7 +5,7 @@ linkTitle: Interval arithmetic
 description: Explains the semantics of timestamp-interval arithmetic and interval-only arithmetic. [YSQL]
 image: /images/section_icons/api/subsection.png
 menu:
-  v2.20:
+  v2.20_api:
     identifier: interval-arithmetic
     parent: type-interval
     weight: 40

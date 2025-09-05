@@ -4,7 +4,7 @@ headerTitle: CREATE TYPE
 linkTitle: CREATE TYPE
 description: Use the CREATE TYPE statement to create a new user-defined data type in a keyspace.
 menu:
-  v2.20:
+  v2.20_api:
     parent: api-cassandra
     weight: 1250
 type: docs

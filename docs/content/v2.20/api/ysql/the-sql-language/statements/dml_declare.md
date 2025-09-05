@@ -4,7 +4,7 @@ headerTitle: DECLARE
 linkTitle: DECLARE
 description: Use the DECLARE statement to create a cursor. (There's no notion of "opening" a cursor in top-level SQL.)
 menu:
-  v2.20:
+  v2.20_api:
     identifier: dml_declare
     parent: statements
 type: docs

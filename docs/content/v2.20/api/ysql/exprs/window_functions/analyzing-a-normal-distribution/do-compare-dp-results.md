@@ -4,7 +4,7 @@ linkTitle: do_compare_dp_results.sql
 headerTitle: do_compare_dp_results.sql
 description: do_compare_dp_results.sql - Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: do-compare-dp-results
     parent: analyzing-a-normal-distribution
     weight: 160

@@ -4,7 +4,7 @@ linkTitle: Histogram report
 headerTitle: Output from running histogram() on t4.dp_score
 description: Output from running histogram() on t4.dp_score.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: histogram-report
     parent: normal-distribution-analysis-reports
     weight: 10

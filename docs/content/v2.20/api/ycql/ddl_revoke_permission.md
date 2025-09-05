@@ -4,7 +4,7 @@ headerTitle: REVOKE PERMISSION
 linkTitle: REVOKE PERMISSION
 description: Use the REVOKE PERMISSION statement to revoke a permission (or all the granted permissions) from a role.
 menu:
-  v2.20:
+  v2.20_api:
     parent: api-cassandra
     weight: 1283
 type: docs

@@ -5,7 +5,7 @@ linkTitle: The SQL language
 description: The YugabyteDB SQL language—DDL; DML; DCL; TCL; session and system control; performance control
 image: /images/section_icons/api/subsection.png
 menu:
-  v2.20:
+  v2.20_api:
     identifier: the-sql-language
     parent: api-ysql
     weight: 10
