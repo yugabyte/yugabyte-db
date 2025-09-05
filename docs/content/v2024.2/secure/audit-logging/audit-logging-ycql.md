@@ -26,7 +26,7 @@ type: docs
   </li>
 </ul>
 
-Audit logging can be used to record information about YCQL statements or events (such as login events) and log the records on a per-node basis into the YB-Tserver logs. Audit logging can be enabled on YugabyteDB cluster by setting the `ycql_enable_audit_log` TServer flag to `true`. By default, each TServer records all login events and YCQL commands issued to the server.
+Audit logging can be used to record information about YCQL statements or events (such as login events) and log the records on a per-node basis into the YB-TServer logs. Audit logging can be enabled on YugabyteDB cluster by setting the `ycql_enable_audit_log` TServer flag to `true`. By default, each TServer records all login events and YCQL commands issued to the server.
 
 Audit record is logged before an operation attempts to be executed, and failures are audited as well. If an operation fails to execute, both operation execution and failure are logged. However, an error that happens during parsing or analysis of YCQL statement results only in an error audit record to be logged.
 
