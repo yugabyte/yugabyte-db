@@ -1038,29 +1038,13 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("EXPLAIN option WAL requires ANALYZE")));
 
-	/*
-	 * YB: if hiding of non-deterministic fields is requested, turn off debug
-	 * and verbose modes
-	 */
-	if (yb_explain_hide_non_deterministic_fields)
+	if (yb_explain_hide_non_deterministic_fields && es->yb_debug)
 	{
-		if (es->yb_debug)
-		{
-			ereport(WARNING,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("GUC yb_explain_hide_non_deterministic_fields "
-							"disables EXPLAIN option DEBUG")));
-			es->yb_debug = false;
-		}
-
-		if (es->verbose)
-		{
-			ereport(WARNING,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("GUC yb_explain_hide_non_deterministic_fields "
-							"disables EXPLAIN option VERBOSE")));
-			es->verbose = false;
-		}
+		ereport(WARNING,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("GUC yb_explain_hide_non_deterministic_fields "
+						"disables EXPLAIN option DEBUG")));
+		es->yb_debug = false;
 	}
 
 	/* YB: check if timing is required */
