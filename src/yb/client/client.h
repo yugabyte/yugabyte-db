@@ -402,12 +402,14 @@ class YBClient {
   Status CompactTables(
       const TableIds& table_ids,
       MonoDelta timeout = MonoDelta::FromSeconds(30),
-      bool add_indexes = false);
+      bool add_indexes = false,
+      bool add_vector_indexes = false);
 
   Status CompactTables(
       const std::vector<YBTableName>& table_names,
       MonoDelta timeout = MonoDelta::FromSeconds(30),
-      bool add_indexes = false);
+      bool add_indexes = false,
+      bool add_vector_indexes = false);
 
   Result<TableCompactionStatus> GetCompactionStatus(
       const YBTableName& table_name, bool show_tablets);

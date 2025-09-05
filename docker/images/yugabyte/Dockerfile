@@ -24,11 +24,15 @@ for a in $(find . -exec file {} \; | grep -i elf | cut -f1 -d:); do
 done
 EOF
 
+RUN tar -xvf share/ybc-*.tar.gz \
+    && rm -rf ybc-*/conf/
+
 FROM $BASE_IMAGE
 ARG BASE_IMAGE
 ARG VERSION=Development
 ARG RELEASE=Unknown
 ARG USER=root
+ARG YBC_VERSION=Unknown
 
 LABEL name="YugabyteDB" \
     maintainer="YugaByte" \
@@ -141,7 +145,8 @@ RUN for a in ysqlsh ycqlsh yugabyted yb-admin yb-tsi-cli; do \
 # In the normal EE flows, we expect /home/yugabyte/{master,tserver} to exist and have both links
 # to all the components in the unpacked tar.gz, as well as an extra link to the log path for the
 # respective server.
-RUN export dirs=$(ls /home/yugabyte) && mkdir $YB_HOME/{master,tserver} && \
+RUN export dirs=$(ls /home/yugabyte | grep -v "^ybc-") && \
+    mkdir $YB_HOME/{master,tserver} && \
     # Link all YB pieces.
     for dir in $dirs; do ln -s $YB_HOME/$dir $YB_HOME/master/$dir; done && \
     for dir in $dirs; do ln -s $YB_HOME/$dir $YB_HOME/tserver/$dir; done && \
@@ -150,6 +155,14 @@ RUN export dirs=$(ls /home/yugabyte) && mkdir $YB_HOME/{master,tserver} && \
     ln -s /mnt/disk0/yb-data/tserver/logs $YB_HOME/tserver/logs && \
     # Create and link the cores.
     mkdir -p /mnt/disk0/cores && ln -s /mnt/disk0/cores $YB_HOME/cores
+
+RUN mkdir $YB_HOME/controller && \
+    # Find ybc-* directory
+    YBC_DIR=$(find "$YB_HOME" -maxdepth 1 -type d -name 'ybc-*'); \
+    # Link bin directory
+    ln -s ${YBC_DIR}/bin $YB_HOME/controller/bin && \
+    # Link the logs
+    ln -s /mnt/disk0/ybc-data/controller/logs $YB_HOME/controller/logs
 
 # Copy licenses
 ARG ghr_url=https://raw.githubusercontent.com/yugabyte/yugabyte-db/master
@@ -204,7 +217,7 @@ RUN set -x; \
     && egrep $(sha256sum /sbin/tini) /tmp/tini.sha256sum
 
 # Expose the required ports.
-EXPOSE 7000 7100 7200 9000 9100 12000 11000 6379 9042 5433 10100
+EXPOSE 7000 7100 7200 9000 9100 12000 11000 6379 9042 5433 10100 18018
 
 # Required for Red Hat certification
 USER ${USER}

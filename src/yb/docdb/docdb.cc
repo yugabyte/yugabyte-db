@@ -34,6 +34,7 @@
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/intent_aware_iterator.h"
+#include "yb/docdb/intent_format.h"
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/rocksdb_writer.h"
 
@@ -280,32 +281,6 @@ Status AssembleDocWriteBatch(const vector<unique_ptr<DocOperation>>& doc_write_o
   return Status::OK();
 }
 
-Status EnumerateIntents(
-    const ArenaList<LWKeyValuePairPB>& kv_pairs,
-    const dockv::EnumerateIntentsCallback& functor,
-    dockv::PartialRangeKeyIntents partial_range_key_intents) {
-  if (kv_pairs.empty()) {
-    return Status::OK();
-  }
-  KeyBytes encoded_key;
-
-  auto it = kv_pairs.begin();
-  for (;;) {
-    const auto& kv_pair = *it;
-    dockv::LastKey last_key(++it == kv_pairs.end());
-    CHECK(!kv_pair.key().empty());
-    CHECK(!kv_pair.value().empty());
-    RETURN_NOT_OK(dockv::EnumerateIntents(
-        kv_pair.key(), kv_pair.value(), functor, &encoded_key, partial_range_key_intents,
-        last_key));
-    if (last_key) {
-      break;
-    }
-  }
-
-  return Status::OK();
-}
-
 // ------------------------------------------------------------------------------------------------
 // Standalone functions
 // ------------------------------------------------------------------------------------------------
@@ -452,39 +427,6 @@ Result<ApplyTransactionState> GetIntentsBatchForCDC(
 std::string ApplyTransactionState::ToString() const {
   return Format(
       "{ key: $0 write_id: $1 aborted: $2 }", Slice(key).ToDebugString(), write_id, aborted);
-}
-
-void CombineExternalIntents(
-    const TransactionId& txn_id,
-    SubTransactionId subtransaction_id,
-    ExternalIntentsProvider* provider) {
-  // External intents are stored in the following format:
-  //   key:   kExternalTransactionId, txn_id
-  //   value: kUuid involved_tablet [kSubTransactionId subtransaction_ID]
-  //          kExternalIntents size(intent1_key), intent1_key, size(intent1_value), intent1_value,
-  //          size(intent2_key)...  0
-  // where size is encoded as varint.
-
-  dockv::KeyBytes buffer;
-  buffer.AppendKeyEntryType(KeyEntryType::kExternalTransactionId);
-  buffer.AppendRawBytes(txn_id.AsSlice());
-  provider->SetKey(buffer.AsSlice());
-  buffer.Clear();
-  buffer.AppendKeyEntryType(KeyEntryType::kUuid);
-  buffer.AppendRawBytes(provider->InvolvedTablet().AsSlice());
-  if (subtransaction_id != kMinSubTransactionId) {
-    buffer.AppendKeyEntryType(KeyEntryType::kSubTransactionId);
-    buffer.AppendUInt32(subtransaction_id);
-  }
-  buffer.AppendKeyEntryType(KeyEntryType::kExternalIntents);
-  while (auto key_value = provider->Next()) {
-    buffer.AppendUInt64AsVarInt(key_value->first.size());
-    buffer.AppendRawBytes(key_value->first);
-    buffer.AppendUInt64AsVarInt(key_value->second.size());
-    buffer.AppendRawBytes(key_value->second);
-  }
-  buffer.AppendUInt64AsVarInt(0);
-  provider->SetValue(buffer.AsSlice());
 }
 
 }  // namespace docdb

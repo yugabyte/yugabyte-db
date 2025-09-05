@@ -139,6 +139,19 @@ class WriteBuffer {
 
   void Swap(WriteBuffer& rhs);
 
+  template <class F>
+  void IterateBlocks(const F& f) const {
+    size_t last_block = blocks_.size();
+    if (last_block == 0) {
+      return;
+    }
+    --last_block;
+    for (size_t i = 0; i != last_block; ++i) {
+      f(blocks_[i].AsSlice());
+    }
+    f(Slice(blocks_[last_block].data(), last_block_free_begin_));
+  }
+
  private:
   void ShrinkLastBlock();
 

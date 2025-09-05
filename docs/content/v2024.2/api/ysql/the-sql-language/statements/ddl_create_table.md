@@ -178,12 +178,16 @@ CREATE TABLE <name> (columns) WITH (COLOCATION = false);
 This ensures that the table is not stored on the same tablet as the rest of the tables for this database, but instead has its own set of tablets. Use this option for large tables that need to be scaled out.
 
 {{<note>}}
-Setting `COLOCATION = true` has no effect if the database that the table is part of is not colocated, as currently colocation is supported only at the database level. See [Colocated tables](../../../../../explore/colocation/) for more details.
+Setting `COLOCATION = true` has no effect if the database that the table is part of is not colocated, as currently colocation is supported only at the database level. See [Colocated tables](../../../../../additional-features/colocation/) for more details.
 {{</note>}}
 
 ### Storage parameters
 
 Storage parameters, [as defined by PostgreSQL](https://www.postgresql.org/docs/11/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS), are ignored and only present for compatibility with PostgreSQL.
+
+### PARTITION BY
+
+Partitioning is another term for physically dividing large tables in YugabyteDB into smaller, more manageable tables to improve performance. See [Table partitioning](../../../../../explore/ysql-language-features/advanced-features/partitions/) for more details.
 
 ## Examples
 

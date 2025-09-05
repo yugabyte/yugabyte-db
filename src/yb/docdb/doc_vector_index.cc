@@ -350,11 +350,15 @@ class DocVectorIndexImpl : public DocVectorIndex {
   }
 
   Status Compact() override {
-    return lsm_.Compact(/* wait = */ true);
+    return lsm_.Compact(/* wait = */ false);
+  }
+
+  Status WaitForCompaction() override {
+    return lsm_.WaitForCompaction();
   }
 
   Status Flush() override {
-    return lsm_.Flush(false);
+    return lsm_.Flush(/* wait = */ false);
   }
 
   Status WaitForFlush() override {

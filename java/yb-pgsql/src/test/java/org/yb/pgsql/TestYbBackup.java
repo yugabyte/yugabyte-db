@@ -114,12 +114,6 @@ public class TestYbBackup extends BasePgSQLTest {
   }
 
   @Override
-  protected Map<String, String> getTServerFlags() {
-    Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("ysql_num_tablets", "2");
-    return flagMap;
-  }
-  @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
 
@@ -134,6 +128,7 @@ public class TestYbBackup extends BasePgSQLTest {
                         "placement_region", "region3",
                         "placement_zone", "zone3"));
     builder.perTServerFlags(perTserverZonePlacementFlags);
+    builder.ysqlNumTablets(2);
   }
 
   @Override

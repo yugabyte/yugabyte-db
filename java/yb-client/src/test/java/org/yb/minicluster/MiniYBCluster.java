@@ -259,6 +259,8 @@ public class MiniYBCluster implements AutoCloseable {
       commonFlags.add("--metric_node_name=" + testInvocationId);
     }
 
+    commonFlags.add("--ycql_num_tablets=" + clusterParameters.ycqlNumTablets);
+    commonFlags.add("--ysql_num_tablets=" + clusterParameters.ysqlNumTablets);
     commonFlags.add("--yb_num_shards_per_tserver=" + clusterParameters.numShardsPerTServer);
     commonFlags.add("--ysql_num_shards_per_tserver=" + clusterParameters.numShardsPerTServer);
     commonFlags.add("--enable_ysql=" + clusterParameters.startYsqlProxy);
@@ -1329,6 +1331,22 @@ public class MiniYBCluster implements AutoCloseable {
    */
   public int getNumTServers() {
     return tserverProcesses.size();
+  }
+
+  /**
+   * Returns the initial YCQL number of tablets.
+   * @return initial YCQL number of tablets.
+   */
+  public int getYcqlNumTablets() {
+    return clusterParameters.ycqlNumTablets;
+  }
+
+  /**
+   * Returns the initial YSQL number of tablets.
+   * @return initial YSQL number of tablets.
+   */
+  public int getYsqlNumTablets() {
+    return clusterParameters.ysqlNumTablets;
   }
 
   /**

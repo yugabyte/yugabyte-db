@@ -1845,4 +1845,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "List of operations that use capacity reservation in aws",
           ConfDataType.StringListType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> verifyGFlagsOnNodeDuringUpgrade =
+      new ConfKeyInfo<>(
+          "yb.task.verify_gflags_on_node",
+          ScopeType.GLOBAL,
+          "Verify actual gflags state on node before upgrade",
+          "Verify actual gflags state on node before upgrade",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

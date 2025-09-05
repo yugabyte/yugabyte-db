@@ -1363,11 +1363,13 @@ Status PgSession::ReleaseAllAdvisoryLocks(uint32_t db_oid) {
 }
 
 Status PgSession::AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode) {
-  if (!PREDICT_FALSE(enable_table_locking_) || YBCIsInitDbModeEnvVarSet()) {
+  if (!PREDICT_FALSE(enable_table_locking_)) {
     // Object locking feature is not enabled. YB makes best efforts to achieve necessary semantics
     // using mechanisms like catalog version update by DDLs, DDLs aborting on progress DMLs etc.
     // Also skip object locking during initdb bootstrap mode, since it's a single-process,
     // non-concurrent setup with no running tservers and transaction status tablets.
+    // During a ysql-major-upgrade initdb/pg_upgrade may run when the cluster is still serving
+    // traffic. However, YB gurantees that there will be no DDLs running at that time.
     return Status::OK();
   }
 

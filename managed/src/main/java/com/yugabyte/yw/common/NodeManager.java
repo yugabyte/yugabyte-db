@@ -906,16 +906,10 @@ public class NodeManager extends DevopsBase {
     allowOverrideAll |= config.getBoolean("yb.cloud.enabled");
 
     GFlagsUtil.processUserGFlags(
-        universe,
         node,
         gflags,
         GFlagsUtil.getAllDefaultGFlags(
-            taskParam,
-            universe,
-            getUserIntentFromParams(taskParam),
-            useHostname,
-            appConfig,
-            confGetter),
+            taskParam, universe, getUserIntentFromParams(taskParam), useHostname, confGetter),
         allowOverrideAll,
         confGetter,
         taskParam);
@@ -1471,7 +1465,6 @@ public class NodeManager extends DevopsBase {
                     universe,
                     getUserIntentFromParams(taskParam),
                     useHostname,
-                    config,
                     confGetter))));
     return subcommand;
   }

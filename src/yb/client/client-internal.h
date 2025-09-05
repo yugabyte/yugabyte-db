@@ -251,19 +251,14 @@ class YBClient::Data {
       const TableId& table_id,
       CoarseTimePoint deadline);
 
+  // Argument add_vector_indexes has no effect on FLUSH operation (is_compaction == false).
   Status FlushOrCompactTables(
-      YBClient* client,
-      const std::vector<YBTableName>& table_names,
-      bool add_indexes,
-      bool is_compaction,
-      CoarseTimePoint deadline);
+      YBClient* client, const std::vector<YBTableName>& table_names, bool add_indexes,
+      bool add_vector_indexes, bool is_compaction, CoarseTimePoint deadline);
 
   Status FlushOrCompactTables(
-      YBClient* client,
-      const TableIds& table_ids,
-      bool add_indexes,
-      bool is_compaction,
-      CoarseTimePoint deadline);
+      YBClient* client, const TableIds& table_ids, bool add_indexes,
+      bool add_vector_indexes, bool is_compaction, CoarseTimePoint deadline);
 
   Status IsFlushTableInProgress(YBClient* client,
                                 const FlushRequestId& flush_id,

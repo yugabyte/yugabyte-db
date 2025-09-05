@@ -14,10 +14,7 @@
 #include <thread>
 
 #include "yb/common/common.pb.h"
-#include "yb/qlexpr/index.h"
 #include "yb/common/ql_protocol_util.h"
-#include "yb/qlexpr/ql_resultset.h"
-#include "yb/qlexpr/ql_rowblock.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/transaction-test-util.h"
 
@@ -31,7 +28,13 @@
 #include "yb/docdb/ql_rocksdb_storage.h"
 #include "yb/docdb/redis_operation.h"
 
+#include "yb/dockv/reader_projection.h"
+
 #include "yb/gutil/casts.h"
+
+#include "yb/qlexpr/index.h"
+#include "yb/qlexpr/ql_resultset.h"
+#include "yb/qlexpr/ql_rowblock.h"
 
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/internal_stats.h"

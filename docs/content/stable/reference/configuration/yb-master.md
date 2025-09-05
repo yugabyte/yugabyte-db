@@ -218,7 +218,7 @@ Default: `true`
 
 ##### --master_ysql_operation_lease_ttl_ms
 
-Default: `30000` (30 seconds)
+Default: `5 * 60 * 1000` (5 minutes)
 
 Specifies base YSQL lease Time-To-Live (TTL). The YB-Master leader uses this value to determine the validity of a YB-TServer's YSQL lease.
 
@@ -614,7 +614,7 @@ Clusters created using yugabyted always use a default value of `1`.
 
 When enabled, all databases created in the cluster are colocated by default. If you enable the flag after creating a cluster, you need to restart the YB-Master and YB-TServer services.
 
-For more details, see [clusters in colocated tables](../../../explore/colocation/).
+For more details, see [clusters in colocated tables](../../../additional-features/colocation/).
 
 Default: `false`
 

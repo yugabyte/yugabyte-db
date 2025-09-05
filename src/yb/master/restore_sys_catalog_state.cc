@@ -24,6 +24,8 @@
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_write_batch.h"
 
+#include "yb/dockv/reader_projection.h"
+
 #include "yb/master/catalog_loaders.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_defaults.h"

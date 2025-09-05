@@ -1892,19 +1892,15 @@ Status TabletsFlusherBase::Run() {
   return Status::OK();
 }
 
-inline tablet::FlushFlags CreateFlushFlags(const FlushTabletsRequestPB& req) {
-  return req.regular_only() ? tablet::FlushFlags::kRegular : tablet::FlushFlags::kAllDbs;
-}
-
 class TabletsFlusher final : public TabletsFlusherBase {
  public:
   explicit TabletsFlusher(
     const TabletServiceAdminImpl& service,
       const TSTabletManager::TabletPtrs& tablets,
-      const FlushTabletsRequestPB& req,
+      const tablet::FlushFlags flush_flags,
       FlushTabletsResponsePB& resp)
       : TabletsFlusherBase(service, tablets, resp),
-        flush_flags_(CreateFlushFlags(req)) {
+        flush_flags_(flush_flags) {
     VLOG_WITH_PREFIX(1) << "TabletsFlusher: flush_flags: " << std::to_underlying(flush_flags_);
   }
 
@@ -1920,20 +1916,15 @@ class TabletsFlusher final : public TabletsFlusherBase {
   const tablet::FlushFlags flush_flags_;
 };
 
-inline auto CopyVectorIndexIds(const FlushTabletsRequestPB& req) {
-  return req.all_vector_indexes() ?
-      TableIds{} : TableIds{ req.vector_index_ids().begin(), req.vector_index_ids().end() };
-}
-
 class VectorIndexFlusher : public TabletsFlusherBase {
  public:
   explicit VectorIndexFlusher(
       const TabletServiceAdminImpl& service,
       const TSTabletManager::TabletPtrs& tablets,
-      const FlushTabletsRequestPB& req,
+      TableIds&& vector_index_ids,
       FlushTabletsResponsePB& resp)
       : TabletsFlusherBase(service, tablets, resp),
-        vector_index_ids_(CopyVectorIndexIds(req)) {
+        vector_index_ids_(std::move(vector_index_ids)) {
     VLOG_WITH_PREFIX(1) << "VectorIndexFlusher: vector index ids: "
                         << (vector_index_ids_.size() ? AsString(vector_index_ids_) : "all");
   }
@@ -1965,12 +1956,21 @@ class VectorIndexFlusher : public TabletsFlusherBase {
     return it->second.WaitForFlush();
   }
 
-  std::vector<TableId> vector_index_ids_;
+  TableIds vector_index_ids_;
   std::unordered_map<TabletId, tablet::VectorIndexList> tablet_vector_indexes_;
 };
 
-bool HasVectorIndex(const FlushTabletsRequestPB& req) {
-  return req.all_vector_indexes() || req.vector_index_ids_size();
+bool IsRegularOnly(const FlushTabletsRequestPB& req) {
+  return req.flags() == tablet::FLUSH_COMPACT_REGULAR_FOR_TEST_ONLY;
+}
+
+bool IsVectorIndexOnly(const FlushTabletsRequestPB& req) {
+  return (req.flags() == tablet::FLUSH_COMPACT_VECTOR_INDEX) ||
+         (req.flags() == tablet::FLUSH_COMPACT_DEFAULT && req.vector_index_ids_size());
+}
+
+auto CopyVectorIndexIds(const FlushTabletsRequestPB& req) {
+  return TableIds{ req.vector_index_ids().begin(), req.vector_index_ids().end() };
 }
 
 Status TriggerFlush(
@@ -1978,8 +1978,71 @@ Status TriggerFlush(
     const TSTabletManager::TabletPtrs& tablets,
     const FlushTabletsRequestPB& req,
     FlushTabletsResponsePB& resp) {
-  return HasVectorIndex(req) ? VectorIndexFlusher{ service, tablets, req, resp }.Run()
-                             : TabletsFlusher{ service, tablets, req, resp }.Run();
+  // FlushCompactFlags for FLUSH operation:
+  // 1. FLUSH_COMPACT_DEFAULT
+  //    Flush regular + intents + vector indexes. If vector_index_ids field is not empty,
+  //    the value is treated as FLUSH_COMPACT_VECTOR_INDEX.
+  //
+  // 2. FLUSH_COMPACT_REGULAR_FOR_TEST_ONLY
+  //    Flush only regular db, used in tests only.
+  //
+  // 3. FLUSH_COMPACT_VECTOR_INDEX
+  //    Flush only vector indexes. Empty vector_index_ids means all vector indexes.
+  //
+  // 4. FLUSH_COMPACT_ALL
+  //    Flush regular + intents + vector indexes. Empty vector_index_ids means all vector indexes.
+  DCHECK_EQ(req.operation(), FlushTabletsRequestPB::FLUSH);
+
+  if (IsVectorIndexOnly(req)) {
+    return VectorIndexFlusher{ service, tablets, CopyVectorIndexIds(req), resp }.Run();
+  }
+
+  const tablet::FlushFlags flush_flags =
+      IsRegularOnly(req) ? tablet::FlushFlags::kRegular : tablet::FlushFlags::kAllDbs;
+  return TabletsFlusher{ service, tablets, flush_flags, resp }.Run();
+}
+
+TableIdsPtr VectorIndexesForCompaction(const FlushTabletsRequestPB& req) {
+  // If vector indexes are specfied in the request, return them unconditionally.
+  // May return empty collection to indicate "all vectors".
+  if (req.vector_index_ids_size() ||
+      req.flags() & tablet::FLUSH_COMPACT_VECTOR_INDEX) {
+    return std::make_shared<TableIds>(CopyVectorIndexIds(req));
+  }
+
+  return nullptr;
+}
+
+Status TriggerCompact(
+    TSTabletManager& tablet_manager,
+    const TSTabletManager::TabletPtrs& tablets,
+    const FlushTabletsRequestPB& req) {
+  // FlushCompactFlags for COMPACT operation:
+  // 1. FLUSH_COMPACT_DEFAULT
+  //    Compact ONLY regular and intents DB. Please mention, vector index is NOT compacted!
+  //    If vector_index_ids field is not empty, the value is treated as FLUSH_COMPACT_VECTOR_INDEX.
+  //
+  // 2. FLUSH_COMPACT_REGULAR_FOR_TEST_ONLY
+  //    Not applicable for COMPACT operation.
+  //
+  // 3. FLUSH_COMPACT_VECTOR_INDEX
+  //    Compact only vector indexes. Empty vector_index_ids means all vector indexes.
+  //
+  // 4. FLUSH_COMPACT_ALL
+  //    Compact regular + intents + vector indexes. Empty vector_index_ids means all vector indexes.
+  DCHECK_EQ(req.operation(), FlushTabletsRequestPB::COMPACT);
+  SCHECK_FORMAT(
+      req.flags() != tablet::FLUSH_COMPACT_REGULAR_FOR_TEST_ONLY, InvalidArgument,
+      "Flag [$0] is not supported for COMPACT operation", req.flags());
+
+  AdminCompactionOptions options {
+    ShouldWait::kTrue,
+    rocksdb::SkipCorruptDataBlocksUnsafe(req.remove_corrupt_data_blocks_unsafe()),
+    VectorIndexesForCompaction(req),
+    tablet::VectorIndexOnly(IsVectorIndexOnly(req))
+  };
+
+  return tablet_manager.TriggerAdminCompaction(tablets, options);
 }
 
 } // namespace
@@ -2030,20 +2093,13 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
   switch (req->operation()) {
     case FlushTabletsRequestPB::FLUSH: {
       RETURN_UNKNOWN_ERROR_IF_NOT_OK(
-        TriggerFlush(*this, tablet_ptrs, *req, *resp),
-        resp, &context);
+          TriggerFlush(*this, tablet_ptrs, *req, *resp),
+          resp, &context);
       break;
     }
     case FlushTabletsRequestPB::COMPACT: {
-      AdminCompactionOptions options(
-          ShouldWait::kTrue,
-          rocksdb::SkipCorruptDataBlocksUnsafe(req->remove_corrupt_data_blocks_unsafe()));
-      if (HasVectorIndex(*req)) {
-        options.vector_index_ids = std::make_shared<TableIds>(
-            req->all_vector_indexes() ? TableIds{} : CopyVectorIndexIds(*req));
-      }
       RETURN_UNKNOWN_ERROR_IF_NOT_OK(
-          server_->tablet_manager()->TriggerAdminCompaction(tablet_ptrs, options),
+          TriggerCompact(*server_->tablet_manager(), tablet_ptrs, *req),
           resp, &context);
       break;
     }

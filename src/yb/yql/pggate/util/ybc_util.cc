@@ -552,6 +552,7 @@ bool YBIsMajorUpgradeInitDb() {
   return cached_value;
 }
 
+
 const char *YBCGetOutFuncName(YbcPgOid typid) {
   switch (typid) {
     case BOOLOID:
