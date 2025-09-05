@@ -124,6 +124,7 @@
 #include "utils/lsyscache.h"
 #include "utils/pg_locale.h"
 #include "utils/rel.h"
+#include "utils/snapmgr.h"
 #include "utils/snapshot.h"
 #include "utils/spccache.h"
 #include "utils/syscache.h"
@@ -216,7 +217,7 @@ YbGetCatalogCacheVersionForTablePrefetching()
 
 	if (*YBCGetGFlags()->ysql_enable_read_request_caching)
 	{
-		YBCPgResetCatalogReadTime();
+		YbInvalidateCatalogSnapshot();
 		version = YbGetMasterCatalogVersion();
 		read_time = YBCGetPgCatalogReadTime();
 	}
@@ -1180,7 +1181,8 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 			.UnixEpochToPostgresEpoch = &YbUnixEpochToPostgresEpoch,
 			.ConstructArrayDatum = &YbConstructArrayDatum,
 			.CheckUserMap = &check_usermap,
-			.PgstatReportWaitStart = &yb_pgstat_report_wait_start
+			.PgstatReportWaitStart = &yb_pgstat_report_wait_start,
+			.GetCatalogSnapshotReadPoint = &YbGetCatalogSnapshotReadPoint
 		};
 
 		ash_config.metadata = &MyProc->yb_ash_metadata;
@@ -7821,7 +7823,7 @@ YbCalculateTimeDifferenceInMicros(TimestampTz yb_start_time)
 }
 
 static bool
-YbIsDDLOrInitDBMode()
+YbIsSeparateDDLOrInitDBMode()
 {
 	return (YBCPgIsDdlMode() && !YBCPgIsDdlModeWithRegularTransactionBlock()) || YBCIsInitDbModeEnvVarSet();
 }
@@ -7829,20 +7831,37 @@ YbIsDDLOrInitDBMode()
 bool
 YbIsReadCommittedTxn()
 {
-	return IsYBReadCommitted() && !YbIsDDLOrInitDBMode();
+	return IsYBReadCommitted() && !YbIsSeparateDDLOrInitDBMode();
 }
 
 bool
 YbSkipPgSnapshotManagement()
 {
+	if (!YBCIsLegacyModeForCatalogOps())
+		return false;
+
 	/*
-	 * YSQL doesn't use Pg's snapshot management in DDL or initdb mode. Also, for SERIALIZABLE
-	 * isolation level, YSQL doesn't use SSI. Instead it uses 2 phase locking and reads the latest
-	 * data on DocDB always.
+	 * In legacy pre-object locking mode, YSQL was skipping Pg's snapshot management for:
 	 *
-	 * TODO: Integrate with Pg's snapshot management for DDLs.
+	 * (1) Separate DDL transactions (i.e., DDLs that are not part of a regular transaction block):
+	 *     This is because changing snapshots would affect the ongoing active DML transaction.
+	 * (2) Initdb mode. Actually, even if we didn't skip for initdb mode, it would be okay because the
+	 *     snapshot's read time serial number wouldn't be used anyway. This is because initdb uses
+	 *     the kRegular session type in PgSession.
+	 * (3) Serializable isolation level: since YSQL doesn't use SSI (and instead uses
+	 *     2 phase locking), it reads the latest data on DocDB always for this isolation level. So,
+	 *     we just skipped the snapshot management. However, allowing snapshot management wouldn't
+	 *     result in any issues because for serializable isolation, we anyway don't set a read time
+	 *     for a read time serial number in PgClientSession.
+	 *
+	 * For the new object locking mode, we can ignore (1) because separate DDL transactions can't
+	 * run in parallel with active DML transactions. This is because transactional DDL is enabled if
+	 * object locking is enabled. We can ignore (2) because that check isn't required anyway. For
+	 * (3), we need to enable snapshot management for catalog snapshots in serializable isolation.
+	 * So, the handling of still using the latest read time instead of using snapshots for DMLs is
+	 * done elsewhere.
 	 */
-	return YbIsDDLOrInitDBMode() || IsolationIsSerializable();
+	return YbIsSeparateDDLOrInitDBMode() || IsolationIsSerializable();
 }
 
 static YbOptionalReadPointHandle
@@ -7893,6 +7912,9 @@ YbResetTransactionReadPoint()
 
 	/*
 	 * If this is a query layer retry for a kReadRestart error, avoid resetting the read point.
+	 *
+	 * TODO(#29272): Ensure that this logic of not resetting the read point works fine even when there
+	 * are multiple snapshots being used by Pg.
 	 */
 	if (!YBCIsRestartReadPointRequested())
 	{
@@ -7908,7 +7930,10 @@ YbResetTransactionReadPoint()
 		HandleYBStatus(YBCPgResetTransactionReadPoint());
 	}
 
-	return YbMakeReadPointHandle(YBCPgGetCurrentReadPoint());
+	if (YBCIsLegacyModeForCatalogOps())
+		return YbMakeReadPointHandle(YBCPgGetCurrentReadPoint());
+
+	return YbMakeReadPointHandle(YBCPgGetMaxReadPoint());
 }
 
 /*

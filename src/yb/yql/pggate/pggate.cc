@@ -2464,6 +2464,10 @@ YbcReadPointHandle PgApiImpl::GetCurrentReadPoint() const {
   return pg_txn_manager_->GetCurrentReadPoint();
 }
 
+YbcReadPointHandle PgApiImpl::GetMaxReadPoint() const {
+  return pg_txn_manager_->GetMaxReadPoint();
+}
+
 Status PgApiImpl::RestoreReadPoint(YbcReadPointHandle read_point) {
   YbcFlushDebugContext debug_context;
   debug_context.reason = YbcFlushReason::YB_CHANGE_TRANSACTION_SNAPSHOT;

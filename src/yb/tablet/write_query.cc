@@ -953,6 +953,8 @@ Status WriteQuery::DoExecute() {
       IllegalState, "background_transaction_id should only be set for advisory lock requests.");
 
   // TODO(wait-queues): Ensure that wait_queue respects deadline() during conflict resolution.
+  VLOG(5) << "Going to call ResolveTransactionConflicts with read_time: "
+          << (read_time_ ? read_time_.read : HybridTime::kMax);
   return docdb::ResolveTransactionConflicts(
       doc_ops_, conflict_management_policy, write_batch, request_scope_, tablet->clock()->Now(),
       read_time_ ? read_time_.read : HybridTime::kMax, write_batch.transaction().pg_txn_start_us(),

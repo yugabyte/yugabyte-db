@@ -33,6 +33,7 @@
 #include "nodes/makefuncs.h"
 #include "optimizer/cost.h"
 #include "pg_yb_utils.h"
+#include "storage/lmgr.h"
 #include "utils/catcache.h"
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
@@ -114,10 +115,9 @@ YbMaybeLockMasterCatalogVersion()
 	 * (2) We enable this feature only if the invalidation messages are used and per-database catalog
 	 *		 version mode is enabled.
 	 *
-	 * TODO(#27037): Re-enable table locks check when concurrent DDL is ready.
 	 */
 	if (yb_user_ddls_preempt_auto_analyze &&
-	/* !(*YBCGetGFlags()->enable_object_locking_for_table_locks && enable_object_locking_infra) */
+		YBCIsLegacyModeForCatalogOps() &&
 		YbIsInvalidationMessageEnabled() && YBIsDBCatalogVersionMode())
 	{
 		elog(DEBUG3, "Locking catalog version for db oid %d", MyDatabaseId);
@@ -431,6 +431,9 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(Oid db_oid,
 {
 	Assert(YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE);
 
+	if (!YBCIsLegacyModeForCatalogOps())
+		LockRelationOid(YBCatalogVersionRelationId, ExclusiveLock);
+
 	if (YbIsInvalidationMessageEnabled())
 	{
 		Oid			func_oid = is_global_ddl ? YbGetNewIncrementAllCatalogVersionsFunctionOid()
@@ -438,6 +441,9 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(Oid db_oid,
 
 		if (OidIsValid(func_oid) && YbInvalidationMessagesTableExists())
 		{
+			if (!YBCIsLegacyModeForCatalogOps())
+				LockRelationOid(YbInvalidationMessagesRelationId, ExclusiveLock);
+
 			bool		is_null = false;
 			Datum		messages = GetInvalidationMessages(invalMessages, nmsgs, &is_null);
 			int			expiration_secs = yb_invalidation_message_expiration_secs;
@@ -638,6 +644,7 @@ YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change,
 										  const SharedInvalidationMessage *invalMessages,
 										  int nmsgs)
 {
+	elog(DEBUG2, "YbIncrementMasterCatalogVersionTableEntry");
 	YbResetNewCatalogVersion();
 	if (YbGetCatalogVersionType() != CATALOG_VERSION_CATALOG_TABLE)
 		return false;

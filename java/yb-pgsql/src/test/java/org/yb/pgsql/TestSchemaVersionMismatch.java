@@ -298,7 +298,7 @@ public class TestSchemaVersionMismatch extends BasePgSQLTest {
         e.getMessage().contains("marked for deletion")) {
       numExpectedErrors.incrementAndGet();
     } else {
-      LOG.error("Unexpected error code: " + e.getSQLState());
+      LOG.error("Unexpected error code: " + e.getSQLState() + ", message: " + e.getMessage());
       testFailed.set(true);
     }
   }

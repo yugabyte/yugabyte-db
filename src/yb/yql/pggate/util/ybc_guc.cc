@@ -129,6 +129,8 @@ bool yb_debug_log_catcache_events = false;
 
 bool yb_debug_log_snapshot_mgmt = false;
 
+bool yb_debug_log_snapshot_mgmt_stack_trace = false;
+
 bool yb_mixed_mode_saop_pushdown = false;
 
 // Internal GUC to help a backend identify that the connection is from the Auto-Analyze service.
@@ -147,3 +149,5 @@ bool yb_xcluster_target_ddl_bypass = false;
 bool yb_ignore_read_time_in_walsender = false;
 
 bool enable_object_locking_infra = true;
+
+bool yb_fallback_to_legacy_catalog_read_time = true;

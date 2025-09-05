@@ -67,6 +67,7 @@ TAG_FLAG(ysql_yb_follower_reads_behavior_before_fixing_20482, advanced);
                      << "; query: { " << ::yb::pggate::GetDebugQueryString(pg_callbacks_) << " }; "
 
 DECLARE_uint64(max_clock_skew_usec);
+DECLARE_bool(enable_object_locking_for_table_locks);
 
 namespace {
 
@@ -179,7 +180,8 @@ PgTxnManager::SerialNo::SerialNo(uint64_t txn_serial_no, uint64_t read_time_seri
       max_read_time_(read_time_) {
 }
 
-void PgTxnManager::SerialNo::IncTxn(bool preserve_read_time_history) {
+void PgTxnManager::SerialNo::IncTxn(
+    bool preserve_read_time_history, YbcReadPointHandle catalog_read_time_serial_no) {
   VLOG_WITH_FUNC(4)
       << "Inc txn from old txn_: " << txn_
       << ", min_read_time=" << min_read_time_
@@ -188,12 +190,20 @@ void PgTxnManager::SerialNo::IncTxn(bool preserve_read_time_history) {
   IncReadTime();
   if (!preserve_read_time_history) {
     min_read_time_ = read_time_;
+    if (catalog_read_time_serial_no && catalog_read_time_serial_no < min_read_time_) {
+      min_read_time_ = catalog_read_time_serial_no;
+    }
   }
 }
 
 void PgTxnManager::SerialNo::IncReadTime() {
   read_time_ = ++max_read_time_;
   VLOG(4) << "IncReadTime to " << max_read_time_;
+}
+
+void PgTxnManager::SerialNo::IncMaxReadTime() {
+  ++max_read_time_;
+  VLOG(4) << "IncMaxReadTime to " << max_read_time_;
 }
 
 Status PgTxnManager::SerialNo::RestoreReadTime(uint64_t read_time_serial_no) {
@@ -236,7 +246,8 @@ void PgTxnManager::DEBUG_CheckOptionsForPerform(
   // transaction block seem to issue custom selects on pg_yb_catalog_version table using
   // YBCPgNewSelect, skipping object locks. Skip the assertion for such cases for now.
   if (!enable_table_locking_ || options.ddl_mode() || options.use_catalog_session() ||
-      options.yb_non_ddl_txn_for_sys_tables_allowed() || YBCIsInitDbModeEnvVarSet()) {
+      options.yb_non_ddl_txn_for_sys_tables_allowed() || YBCIsInitDbModeEnvVarSet() ||
+      !YBCIsLegacyModeForCatalogOps()) {
     return;
   }
 
@@ -259,7 +270,7 @@ PgTxnManager::PgTxnManager(
       pg_callbacks_(pg_callbacks),
       enable_table_locking_(enable_table_locking) {}
 
-bool PgTxnManager::EnableTableLocking() const {
+bool PgTxnManager::IsTableLockingOnAndParallelLeader() const {
   return enable_table_locking_ && enable_object_locking_infra;
 }
 
@@ -275,9 +286,12 @@ Status PgTxnManager::BeginTransaction(int64_t start_time) {
   if (YBCIsInitDbModeEnvVarSet()) {
     return Status::OK();
   }
+  VLOG(2) << "BeginTransaction";
   if (IsTxnInProgress()) {
-    return STATUS(IllegalState, "Transaction is already in progress");
+    VLOG(3) << "Transaction is already in progress, skipping creation of a new transaction";
+    return Status::OK();
   }
+
   pg_txn_start_us_ = start_time;
   // NOTE: Do not reset in_txn_blk_ when restarting txns internally
   // (i.e., via PgTxnManager::RecreateTransaction).
@@ -291,6 +305,7 @@ Status PgTxnManager::RecreateTransaction() {
 }
 
 Status PgTxnManager::RecreateTransaction(SavePriority save_priority) {
+  VLOG(2) << "RecreateTransaction";
   use_saved_priority_ = save_priority;
   ResetTxnAndSession();
   txn_in_progress_ = true;
@@ -409,7 +424,8 @@ Status PgTxnManager::CalculateIsolation(
   //
   // TODO(table-locks): Need to explicitly handle READ_COMMITTED case since YSQL internally bumps up
   // subtxn id for every statement. Else, every RC read-only txn would burn a docdb txn.
-  if (PREDICT_FALSE(EnableTableLocking()) && active_sub_transaction_id_ > kMinSubTransactionId &&
+  if (PREDICT_FALSE(IsTableLockingOnAndParallelLeader()) &&
+      active_sub_transaction_id_ > kMinSubTransactionId &&
       pg_isolation_level_ != PgIsolationLevel::READ_COMMITTED) {
     read_only_op = false;
   }
@@ -494,17 +510,26 @@ Status PgTxnManager::RestartTransaction() {
 }
 
 // Reset to a new read point. This corresponds to a new latest snapshot.
-//
-// TODO (#28181): Possibly avoid changing to the new read point after creating it. In PG, snapshot
-// creation is separate from using it. Usually a snapshot is used after calling PushActiveSnapshot()
-// on the newly created snapshot. Even though most places call PushActiveSnapshot() after creating a
-// new snapshot, there might be place that don't do so.
 Status PgTxnManager::ResetTransactionReadPoint() {
   VLOG_WITH_FUNC(4);
-  RSTATUS_DCHECK(
-      !IsDdlMode() || IsDdlModeWithRegularTransactionBlock(), IllegalState,
-      "DDL statements aren't expected to request a new read point.");
-  serial_no_.IncReadTime();
+  if (!YBCIsLegacyModeForCatalogOps()) {
+    // Create a new read time serial no. But it is upto the caller to switch to this new read time
+    // serial no by calling RestoreReadPoint().
+    //
+    // TODO: For autnomous DDLs such as CREATE INDEX which don't use read time serial numbers, reset
+    // the transaction read point. Or, merge the kDDL and kPlain session on PgClientSession since
+    // with object locking enabled, only one session is going to be active at any point in time.
+    serial_no_.IncMaxReadTime();
+  } else {
+    // In the legacy pre-object locking mode, create and switch to the new read time serial number.
+    // Leaving it upto the caller would have worked too, but this is how it has been, so not
+    // changing it now.
+    RSTATUS_DCHECK(
+        !IsDdlMode() || IsDdlModeWithRegularTransactionBlock(), IllegalState,
+        "DDL statements aren't expected to request a new read point.");
+    serial_no_.IncReadTime();
+  }
+
   if (pg_isolation_level_ != PgIsolationLevel::READ_COMMITTED) {
     return Status::OK();
   }
@@ -573,7 +598,7 @@ Status PgTxnManager::FinishPlainTransaction(
   }
 
   const auto is_read_only = isolation_level_ == IsolationLevel::NON_TRANSACTIONAL;
-  if (is_read_only && !PREDICT_FALSE(EnableTableLocking())) {
+  if (is_read_only && !PREDICT_FALSE(IsTableLockingOnAndParallelLeader())) {
     VLOG_TXN_STATE(2) << "This was a read-only transaction, nothing to commit.";
     ResetTxnAndSession();
     return Status::OK();
@@ -768,6 +793,7 @@ Status PgTxnManager::SetupPerformOptions(
     read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
     read_time_action.reset();
   }
+
   if (!IsDdlModeWithSeparateTransaction()) {
     // The state in read_time_manipulation_ is only for kPlain transactions. And if YSQL switches to
     // kDdl mode for sometime, we should keep read_time_manipulation_ as is so that once YSQL
@@ -830,7 +856,10 @@ YbcTxnPriorityRequirement PgTxnManager::GetTransactionPriorityType() const {
 }
 
 void PgTxnManager::IncTxnSerialNo() {
-  serial_no_.IncTxn(is_read_time_history_cutoff_disabled_);
+  serial_no_.IncTxn(
+      is_read_time_history_cutoff_disabled_,
+      pg_callbacks_.GetCatalogSnapshotReadPoint(
+          0 /* table_oid*/, false /* create_if_not_exists */));
   active_sub_transaction_id_ = kMinSubTransactionId;
   explicit_snapshot_read_time_.clear();
 }
@@ -851,6 +880,10 @@ void PgTxnManager::RestoreSessionState(const YbcPgSessionState& session_data) {
 
 YbcReadPointHandle PgTxnManager::GetCurrentReadPoint() const {
   return serial_no_.read_time();
+}
+
+YbcReadPointHandle PgTxnManager::GetMaxReadPoint() const {
+  return serial_no_.max_read_time();
 }
 
 Status PgTxnManager::RestoreReadPoint(YbcReadPointHandle read_point) {
@@ -949,7 +982,7 @@ Status PgTxnManager::RollbackToSubTransaction(
     return Status::OK();
   }
   if (isolation_level_ == IsolationLevel::NON_TRANSACTIONAL &&
-      !PREDICT_FALSE(EnableTableLocking())) {
+      !PREDICT_FALSE(IsTableLockingOnAndParallelLeader())) {
     VLOG(4) << "This isn't a distributed transaction, so nothing to rollback.";
     return Status::OK();
   }

@@ -3077,6 +3077,10 @@ YbcReadPointHandle YBCPgGetCurrentReadPoint() {
   return pgapi->GetCurrentReadPoint();
 }
 
+YbcReadPointHandle YBCPgGetMaxReadPoint() {
+  return pgapi->GetMaxReadPoint();
+}
+
 YbcStatus YBCPgRestoreReadPoint(YbcReadPointHandle read_point) {
   return ToYBCStatus(pgapi->RestoreReadPoint(read_point));
 }

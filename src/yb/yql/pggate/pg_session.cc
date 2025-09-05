@@ -126,10 +126,16 @@ Result<bool> ShouldHandleTransactionally(const PgTxnManager& txn_manager,
     return false;
   }
   const auto has_non_ddl_txn = txn_manager.IsTxnInProgress();
+
+  if (!YBCIsLegacyModeForCatalogOps()) {
+    return true;
+  }
+
   if (!table.schema().table_properties().is_ysql_catalog_table()) {
     SCHECK(has_non_ddl_txn, IllegalState, "Transactional operation requires transaction");
     return true;
   }
+
   if (txn_manager.IsDdlMode() || (non_ddl_txn_for_sys_tables_allowed && has_non_ddl_txn)) {
     return true;
   }
@@ -286,6 +292,7 @@ bool IsTableAffectedByOperations(
 }
 
 std::optional<ReadTimeAction> MakeReadTimeActionForFlush(const PgTxnManager& txn_manager) {
+  // TODO(#29283): Change this to IsDdlModeWithSeparateTransaction()
   if (txn_manager.IsDdlMode()) {
     return std::nullopt;
   }
@@ -928,6 +935,8 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
   tserver::PgPerformOptionsPB options;
   const auto ops_read_time = VERIFY_RESULT(GetReadTime(ops.operations()));
   if (ops_options.use_catalog_session) {
+    VLOG(2) << "Perform - catalog_read_time: " << catalog_read_time_
+            << " ops_read_time: " << ops_read_time.ToString();
     if (const auto read_time = ops_read_time ? ops_read_time : catalog_read_time_; read_time) {
       read_time.ToPB(options.mutable_read_time());
     }
@@ -1031,6 +1040,7 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
 
   DEBUG_ONLY(pg_txn_manager_->DEBUG_CheckOptionsForPerform(options));
 
+  VLOG(2) << "Perform options: " << options.ShortDebugString();
   PgsqlOps operations;
   PgObjectIds relations;
   std::move(ops).MoveTo(operations, relations);
@@ -1377,7 +1387,7 @@ Status PgSession::ReleaseAllAdvisoryLocks(uint32_t db_oid) {
 }
 
 Status PgSession::AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode) {
-  if (!PREDICT_FALSE(pg_txn_manager_->EnableTableLocking())) {
+  if (!PREDICT_FALSE(pg_txn_manager_->IsTableLockingOnAndParallelLeader())) {
     // Object locking feature is not enabled. YB makes best efforts to achieve necessary semantics
     // using mechanisms like catalog version update by DDLs, DDLs aborting on progress DMLs etc.
     // Also skip object locking during initdb bootstrap mode, since it's a single-process,
@@ -1402,6 +1412,11 @@ Status PgSession::AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLoc
   return pg_txn_manager_->AcquireObjectLock(
       VERIFY_RESULT(FlushBufferedOperations(debug_context)),
       lock_id, mode, tablespace_cache_.Get({lock_id.db_oid, lock_id.relation_oid}));
+}
+
+YbcReadPointHandle PgSession::GetCatalogSnapshotReadPoint(
+    YbcPgOid table_oid, bool create_if_not_exists) {
+  return pg_callbacks_.GetCatalogSnapshotReadPoint(table_oid, create_if_not_exists);
 }
 
 }  // namespace yb::pggate

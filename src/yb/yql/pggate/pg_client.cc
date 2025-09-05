@@ -427,6 +427,7 @@ Status DoProcessResponse(
   RETURN_NOT_OK(ResponseStatus(data.resp));
   RETURN_NOT_OK(data.Process());
   if (data.resp.has_catalog_read_time()) {
+    VLOG(2) << "Got catalog_read_time: " << data.resp.catalog_read_time().ShortDebugString();
     result.catalog_read_time = ReadHybridTime::FromPB(data.resp.catalog_read_time());
   }
   result.used_in_txn_limit = HybridTime::FromPB(data.resp.used_in_txn_limit_ht());
@@ -1698,7 +1699,7 @@ class PgClient::Impl : public BigDataFetcher {
         std::ranges::any_of(kDebugLogRPCs, [rpc_enum](auto value) { return value == rpc_enum; });
 
     if (log_detail) {
-      LOG(INFO) << "DoSyncRPC " << GetTypeName<Req>() << ":\n " << req.DebugString();
+      LOG(INFO) << "DoSyncRPC " << GetTypeName<Req>() << ":\n " << req.ShortDebugString();
     }
 
     auto watcher = wait_event_watcher_(wait_event, rpc_enum);
@@ -1706,7 +1707,7 @@ class PgClient::Impl : public BigDataFetcher {
 
     if (log_detail) {
       LOG(INFO) << "DoSyncRPC " << GetTypeName<Resp>() << " response:\n"
-                << "status " << s << "\n" << resp.DebugString();
+                << "status " << s << "\n" << resp.ShortDebugString();
     }
 
     return s;

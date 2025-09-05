@@ -299,6 +299,16 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
 
   Status AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode);
 
+  YbcReadPointHandle GetCurrentReadPoint() const {
+    return pg_txn_manager_->GetCurrentReadPoint();
+  }
+
+  Status RestoreReadPoint(YbcReadPointHandle read_point) {
+    return pg_txn_manager_->RestoreReadPoint(read_point);
+  }
+
+  YbcReadPointHandle GetCatalogSnapshotReadPoint(YbcPgOid table_oid, bool create_if_not_exists);
+
  private:
   Result<PgTableDescPtr> DoLoadTable(
       const PgObjectId& table_id, bool fail_on_cache_hit,
