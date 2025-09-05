@@ -678,11 +678,20 @@ const getReplicationItemsFromTables = (
         );
 
         // Add associated index tables if the current source table is a main table.
+        // The indexTableIDs array may contain ids for colocated child tables.
+        // These tables are not returned by the list tables API when we specify for xCluster
+        // usage. The UI ignores these ids as we only work with parent tables when interacting with the
+        // API.
         const indexTables = [] as IndexTableReplicationCandidate[];
+        const indexTableIds = [] as string[];
         const unreplicatedIndexTablesInReplicatedNamespace: IndexTableReplicationCandidate[] = [];
         let indexTablesTotalSize = 0;
         sourceTable.indexTableIDs?.forEach((indexTableUuid) => {
           const indexTable = tableUuidToTable[indexTableUuid];
+          if (!indexTable) {
+            return;
+          }
+
           const indexTableReplicationEligibility = getXClusterTableEligibilityDetails(
             indexTable,
             sharedXClusterConfigs,
@@ -704,6 +713,7 @@ const getReplicationItemsFromTables = (
             unreplicatedIndexTablesInReplicatedNamespace.push(indexTableReplicationCandidate);
           }
 
+          indexTableIds.push(indexTableUuid);
           indexTables.push(indexTableReplicationCandidate);
           indexTablesTotalSize += indexTable.sizeBytes;
         });
@@ -715,6 +725,7 @@ const getReplicationItemsFromTables = (
         const isDroppedOnTarget = !!tableUuidsDroppedOnTarget?.has(mainTableUuid);
         const mainTableReplicationCandidate: MainTableReplicationCandidate = {
           ...sourceTable,
+          indexTableIDs: indexTableIds,
           eligibilityDetails: mainTableReplicationEligibility,
           tableUUID: mainTableUuid,
           indexTables: indexTables,
