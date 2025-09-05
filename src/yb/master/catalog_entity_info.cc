@@ -677,16 +677,6 @@ Status TableInfo::AddTabletUnlocked(const TabletInfoPtr& tablet) {
           tablet->id(), id());
       return Status::OK();
     }
-
-    // If a table is hidden, don't process any tablets that were hidden before the table was hidden
-    // as these are inactive tablets left behind from a split operation.
-    // Only tablets that were active at the time of the table being dropped should be included
-    // in partitions_ structure to support SELECT AS-OF, CLONE, PITR operations.
-    if (dirty.hide_hybrid_time() < hide_hybrid_time()) {
-      VLOG(1) << Format("Tablet $0 hide time is < table $1 hide time, skip add to partitions_",
-          tablet->id(), id());
-      return Status::OK();
-    }
   }
 
   // Include hidden tablets in partitions_ only for hidden tables to support features
