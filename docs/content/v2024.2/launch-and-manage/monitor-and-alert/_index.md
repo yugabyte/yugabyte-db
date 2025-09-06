@@ -26,4 +26,10 @@ type: indexpage
     href="xcluster-monitor/"
     icon="fa-thin fa-clone">}}
 
+  {{<index/item
+    title="Active Session History"
+    body="Leran about YSQL views, query identifiers, and wait events that are exposed via active sessions captured by ASH."
+    href="active-session-history-monitor/"
+    icon="fa-thin fa-monitor-waveform">}}
+
 {{</index/block>}}
