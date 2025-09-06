@@ -72,8 +72,17 @@ Video: [Disaster Recovery With xCluster DR and Two Cloud Regions](https://www.yo
 
 xCluster DR can be set up to perform schema changes in the following ways:
 
+- [Automatic mode](#automatic-mode) {{<tags/feature/ea idea="2089">}}: Handles all aspects of replication for both data and schema changes.
 - [Semi-automatic mode](#semi-automatic-mode), providing simpler steps for performing DDL changes.
-- [Manual mode](#manual-mode).
+- [Manual mode](#manual-mode). Deprecated.
+
+### Automatic mode
+
+{{<tags/feature/ea idea="2089">}}In automatic mode, all table and index-level schema changes made to the DR primary universe are automatically replicated to the DR replica.
+
+You don't need to make any changes to the DR configuration.
+
+To enable the feature in YugabyteDB Anywhere, set the **Automatic mode for xCluster** Global Runtime Configuration option (config key `yb.xcluster.db_scoped.automatic_ddl.creationEnabled`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
 
 ### Semi-automatic mode
 
@@ -91,6 +100,10 @@ To learn more, watch [Simplified schema management with xCluster DB Scoped](http
 Semi-automatic mode is recommended for all new DR configurations. When possible, existing Manual mode DR configurations should be deleted and re-created using semi-automatic mode to reduce the operational burden of DDL changes.
 
 ### Manual mode
+
+{{< warning title="Warning" >}}
+Fully Manual xCluster replication is deprecated and not recommended due to the operational complexity involved.
+{{< /warning >}}
 
 In manual mode, table and index-level schema changes must be performed on the DR primary universe and the DR replica universe, and, in some cases, they must also be updated on the DR configuration.
 
