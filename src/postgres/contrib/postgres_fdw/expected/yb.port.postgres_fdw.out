@@ -7978,8 +7978,8 @@ where bar.f1 = ss.f1;
    Foreign Update on public.bar2 bar_2
      Remote SQL: UPDATE public.loct2 SET f2 = $2 WHERE ybctid = $1
    ->  Merge Join
-         Output: (bar.f2 + 100), (ROW(foo.f1)), bar.tableoid, bar.*, bar.ybctid
-         Merge Cond: (bar.f1 = foo.f1)
+         Output: (bar.f2 + 100), (ROW(foo_1.f1)), bar.tableoid, bar.*, bar.ybctid
+         Merge Cond: (bar.f1 = foo_1.f1)
          ->  Sort
                Output: bar.f2, bar.f1, bar.tableoid, bar.*, bar.ybctid
                Sort Key: bar.f1
@@ -7990,18 +7990,18 @@ where bar.f1 = ss.f1;
                            Output: bar_2.f2, bar_2.f1, bar_2.tableoid, bar_2.*, bar_2.ybctid
                            Remote SQL: SELECT f1, f2, f3, ybctid FROM public.loct2 FOR UPDATE
          ->  Sort
-               Output: (ROW(foo.f1)), foo.f1
-               Sort Key: foo.f1
+               Output: (ROW(foo_1.f1)), foo_1.f1
+               Sort Key: foo_1.f1
                ->  Append
-                     ->  Seq Scan on public.foo
-                           Output: ROW(foo.f1), foo.f1
-                     ->  Foreign Scan on public.foo2 foo_1
+                     ->  Seq Scan on public.foo foo_1
                            Output: ROW(foo_1.f1), foo_1.f1
+                     ->  Foreign Scan on public.foo2 foo_2
+                           Output: ROW(foo_2.f1), foo_2.f1
                            Remote SQL: SELECT f1 FROM public.loct1
-                     ->  Seq Scan on public.foo foo_1_1
-                           Output: ROW((foo_1_1.f1 + 3)), (foo_1_1.f1 + 3)
-                     ->  Foreign Scan on public.foo2 foo_1_2
-                           Output: ROW((foo_1_2.f1 + 3)), (foo_1_2.f1 + 3)
+                     ->  Seq Scan on public.foo foo_4
+                           Output: ROW((foo_4.f1 + 3)), (foo_4.f1 + 3)
+                     ->  Foreign Scan on public.foo2 foo_5
+                           Output: ROW((foo_5.f1 + 3)), (foo_5.f1 + 3)
                            Remote SQL: SELECT f1 FROM public.loct1
 (30 rows)
 
@@ -9573,8 +9573,8 @@ SELECT t1.a,t2.b,t2.c FROM fprt1 t1 LEFT JOIN (SELECT * FROM fprt2 WHERE a < 10)
                                                                                                                      QUERY PLAN                                                                                                                     
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Foreign Scan
-   Output: t1.a, fprt2.b, fprt2.c
-   Relations: (public.ftprt1_p1 t1) LEFT JOIN (public.ftprt2_p1 fprt2)
+   Output: t1_1.a, fprt2_1.b, fprt2_1.c
+   Relations: (public.ftprt1_p1 t1_1) LEFT JOIN (public.ftprt2_p1 fprt2_1)
    Remote SQL: SELECT r5.a, r6.b, r6.c FROM (public.fprt1_p1 r5 LEFT JOIN public.fprt2_p1 r6 ON (((r5.a = r6.b)) AND ((r5.b = r6.a)) AND ((r6.a < 10)))) WHERE ((r5.a < 10)) ORDER BY r5.a ASC NULLS LAST, r6.b ASC NULLS LAST, r6.c ASC NULLS LAST
 (4 rows)
 
@@ -9769,14 +9769,14 @@ SELECT a, sum(b), min(b), count(*) FROM pagg_tab GROUP BY a HAVING avg(b) < 22 O
                            QUERY PLAN                            
 -----------------------------------------------------------------
  Sort
-   Sort Key: pagg_tab.a
+   Sort Key: pagg_tab_1.a
    ->  Append
          ->  Foreign Scan
-               Relations: Aggregate on (fpagg_tab_p1 pagg_tab)
+               Relations: Aggregate on (fpagg_tab_p1 pagg_tab_1)
          ->  Foreign Scan
-               Relations: Aggregate on (fpagg_tab_p2 pagg_tab_1)
+               Relations: Aggregate on (fpagg_tab_p2 pagg_tab_2)
          ->  Foreign Scan
-               Relations: Aggregate on (fpagg_tab_p3 pagg_tab_2)
+               Relations: Aggregate on (fpagg_tab_p3 pagg_tab_3)
 (9 rows)
 
 SELECT a, sum(b), min(b), count(*) FROM pagg_tab GROUP BY a HAVING avg(b) < 22 ORDER BY 1;
@@ -9797,29 +9797,29 @@ SELECT a, count(t1) FROM pagg_tab t1 GROUP BY a HAVING avg(b) < 22 ORDER BY 1;
                                QUERY PLAN                               
 ------------------------------------------------------------------------
  Sort
-   Output: t1.a, (count(((t1.*)::pagg_tab)))
-   Sort Key: t1.a
+   Output: t1_1.a, (count(((t1_1.*)::pagg_tab)))
+   Sort Key: t1_1.a
    ->  Append
-         ->  HashAggregate
-               Output: t1.a, count(((t1.*)::pagg_tab))
-               Group Key: t1.a
-               Filter: (avg(t1.b) < '22'::numeric)
-               ->  Foreign Scan on public.fpagg_tab_p1 t1
-                     Output: t1.a, t1.*, t1.b
-                     Remote SQL: SELECT a, b, c FROM public.pagg_tab_p1
          ->  HashAggregate
                Output: t1_1.a, count(((t1_1.*)::pagg_tab))
                Group Key: t1_1.a
                Filter: (avg(t1_1.b) < '22'::numeric)
-               ->  Foreign Scan on public.fpagg_tab_p2 t1_1
+               ->  Foreign Scan on public.fpagg_tab_p1 t1_1
                      Output: t1_1.a, t1_1.*, t1_1.b
-                     Remote SQL: SELECT a, b, c FROM public.pagg_tab_p2
+                     Remote SQL: SELECT a, b, c FROM public.pagg_tab_p1
          ->  HashAggregate
                Output: t1_2.a, count(((t1_2.*)::pagg_tab))
                Group Key: t1_2.a
                Filter: (avg(t1_2.b) < '22'::numeric)
-               ->  Foreign Scan on public.fpagg_tab_p3 t1_2
+               ->  Foreign Scan on public.fpagg_tab_p2 t1_2
                      Output: t1_2.a, t1_2.*, t1_2.b
+                     Remote SQL: SELECT a, b, c FROM public.pagg_tab_p2
+         ->  HashAggregate
+               Output: t1_3.a, count(((t1_3.*)::pagg_tab))
+               Group Key: t1_3.a
+               Filter: (avg(t1_3.b) < '22'::numeric)
+               ->  Foreign Scan on public.fpagg_tab_p3 t1_3
+                     Output: t1_3.a, t1_3.*, t1_3.b
                      Remote SQL: SELECT a, b, c FROM public.pagg_tab_p3
 (25 rows)
 
@@ -9840,20 +9840,20 @@ SELECT b, avg(a), max(a), count(*) FROM pagg_tab GROUP BY b HAVING sum(a) < 700 
                            QUERY PLAN                            
 -----------------------------------------------------------------
  Sort
-   Sort Key: pagg_tab.b
+   Sort Key: pagg_tab_1.b
    ->  Finalize HashAggregate
-         Group Key: pagg_tab.b
-         Filter: (sum(pagg_tab.a) < 700)
+         Group Key: pagg_tab_1.b
+         Filter: (sum(pagg_tab_1.a) < 700)
          ->  Append
                ->  Partial HashAggregate
-                     Group Key: pagg_tab.b
-                     ->  Foreign Scan on fpagg_tab_p1 pagg_tab
-               ->  Partial HashAggregate
                      Group Key: pagg_tab_1.b
-                     ->  Foreign Scan on fpagg_tab_p2 pagg_tab_1
+                     ->  Foreign Scan on fpagg_tab_p1 pagg_tab_1
                ->  Partial HashAggregate
                      Group Key: pagg_tab_2.b
-                     ->  Foreign Scan on fpagg_tab_p3 pagg_tab_2
+                     ->  Foreign Scan on fpagg_tab_p2 pagg_tab_2
+               ->  Partial HashAggregate
+                     Group Key: pagg_tab_3.b
+                     ->  Foreign Scan on fpagg_tab_p3 pagg_tab_3
 (15 rows)
 
 -- ===================================================================
@@ -11041,9 +11041,9 @@ EXPLAIN (VERBOSE, COSTS OFF)
 SELECT * FROM async_pt WHERE a < 2000;
                               QUERY PLAN                               
 -----------------------------------------------------------------------
- Foreign Scan on public.async_p1 async_pt
-   Output: async_pt.a, async_pt.b, async_pt.c
-   Remote Filter: (async_pt.a < 2000)
+ Foreign Scan on public.async_p1 async_pt_1
+   Output: async_pt_1.a, async_pt_1.b, async_pt_1.c
+   Remote Filter: (async_pt_1.a < 2000)
    Remote SQL: SELECT a, b, c FROM public.base_tbl1 WHERE ((a < 2000))
 (4 rows)
 
@@ -11363,16 +11363,16 @@ SELECT * FROM local_tbl t1 LEFT JOIN (SELECT *, (SELECT count(*) FROM async_pt W
                                           QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
  Nested Loop Left Join
-   Output: t1.a, t1.b, t1.c, async_pt_1.a, async_pt_1.b, async_pt_1.c, ($0)
-   Join Filter: (t1.a = async_pt_1.a)
+   Output: t1.a, t1.b, t1.c, async_pt_3.a, async_pt_3.b, async_pt_3.c, ($0)
+   Join Filter: (t1.a = async_pt_3.a)
    InitPlan 1 (returns $0)
      ->  Finalize Aggregate
            Output: count(*)
            ->  Append
                  ->  Partial Aggregate
                        Output: PARTIAL count(*)
-                       ->  Foreign Scan on public.async_p1 async_pt
-                             Remote Filter: (async_pt.a < 3000)
+                       ->  Foreign Scan on public.async_p1 async_pt_1
+                             Remote Filter: (async_pt_1.a < 3000)
                              Remote SQL: SELECT NULL FROM public.base_tbl1 WHERE ((a < 3000))
                  ->  Partial Aggregate
                        Output: PARTIAL count(*)
@@ -11382,13 +11382,13 @@ SELECT * FROM local_tbl t1 LEFT JOIN (SELECT *, (SELECT count(*) FROM async_pt W
    ->  Seq Scan on public.local_tbl t1
          Output: t1.a, t1.b, t1.c
    ->  Append
-         ->  Async Foreign Scan on public.async_p1 async_pt_1_1
-               Output: async_pt_1_1.a, async_pt_1_1.b, async_pt_1_1.c, $0
-               Remote Filter: (async_pt_1_1.a < 3000)
+         ->  Async Foreign Scan on public.async_p1 async_pt_4
+               Output: async_pt_4.a, async_pt_4.b, async_pt_4.c, $0
+               Remote Filter: (async_pt_4.a < 3000)
                Remote SQL: SELECT a, b, c FROM public.base_tbl1 WHERE ((a < 3000))
-         ->  Async Foreign Scan on public.async_p2 async_pt_1_2
-               Output: async_pt_1_2.a, async_pt_1_2.b, async_pt_1_2.c, $0
-               Remote Filter: (async_pt_1_2.a < 3000)
+         ->  Async Foreign Scan on public.async_p2 async_pt_5
+               Output: async_pt_5.a, async_pt_5.b, async_pt_5.c, $0
+               Remote Filter: (async_pt_5.a < 3000)
                Remote SQL: SELECT a, b, c FROM public.base_tbl2 WHERE ((a < 3000))
 (28 rows)
 
@@ -11397,22 +11397,22 @@ SELECT * FROM local_tbl t1 LEFT JOIN (SELECT *, (SELECT count(*) FROM async_pt W
                                        QUERY PLAN                                        
 -----------------------------------------------------------------------------------------
  Nested Loop Left Join (actual rows=1 loops=1)
-   Join Filter: (t1.a = async_pt_1.a)
+   Join Filter: (t1.a = async_pt_3.a)
    Rows Removed by Join Filter: 399
    InitPlan 1 (returns $0)
      ->  Finalize Aggregate (actual rows=1 loops=1)
            ->  Append (actual rows=2 loops=1)
                  ->  Partial Aggregate (actual rows=1 loops=1)
-                       ->  Foreign Scan on async_p1 async_pt (actual rows=200 loops=1)
+                       ->  Foreign Scan on async_p1 async_pt_1 (actual rows=200 loops=1)
                              Remote Filter: (a < 3000)
                  ->  Partial Aggregate (actual rows=1 loops=1)
                        ->  Foreign Scan on async_p2 async_pt_2 (actual rows=200 loops=1)
                              Remote Filter: (a < 3000)
    ->  Seq Scan on local_tbl t1 (actual rows=1 loops=1)
    ->  Append (actual rows=400 loops=1)
-         ->  Async Foreign Scan on async_p1 async_pt_1_1 (actual rows=200 loops=1)
+         ->  Async Foreign Scan on async_p1 async_pt_4 (actual rows=200 loops=1)
                Remote Filter: (a < 3000)
-         ->  Async Foreign Scan on async_p2 async_pt_1_2 (actual rows=200 loops=1)
+         ->  Async Foreign Scan on async_p2 async_pt_5 (actual rows=200 loops=1)
                Remote Filter: (a < 3000)
 (18 rows)
 

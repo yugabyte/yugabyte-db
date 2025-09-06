@@ -561,7 +561,7 @@ explain (costs off) select * from nv_parent where d between '2009-08-01'::date a
          Storage Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
    ->  Seq Scan on nv_child_2010 nv_parent_2
          Storage Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
-   ->  Seq Scan on nv_child_2009 nv_parent_3
+   ->  Seq Scan on nv_child_2009 nv_parent_4
          Storage Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
 (7 rows)
 
