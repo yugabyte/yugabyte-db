@@ -17,6 +17,7 @@ A wrapper script around PostgreSQL build that allows building debug and release 
 directories.
 """
 
+import concurrent.futures
 import logging
 import multiprocessing
 import os
@@ -780,21 +781,53 @@ class PostgresBuilder(YbBuildToolBase):
 
         run_program(['chmod', 'u+x', make_script_path])
 
-    def run_make_install(self, make_cmd: List[str], make_cmd_suffix: List[str]) -> None:
-        work_dir = os.getcwd()
+    def run_make_install(self, make_cmd: List[str], make_cmd_suffix: List[str], cwd: str) -> None:
         complete_make_install_cmd = make_cmd + ['install'] + make_cmd_suffix
         start_time_sec = time.time()
-        with TimestampSaver(self.pg_prefix, file_suffix='.h') as _:
-            run_program(
-                shlex_join(complete_make_install_cmd),
-                stdout_stderr_prefix='make_install',
-                cwd=work_dir,
-                error_ok=True,
-                # TODO: get rid of shell=True.
-                shell=True,
-            ).print_output_and_raise_error_if_failed()
-            logging.info("Successfully ran 'make install' in the %s directory in %.2f sec",
-                         work_dir, time.time() - start_time_sec)
+        run_program(
+            shlex_join(complete_make_install_cmd),
+            stdout_stderr_prefix='make_install',
+            cwd=cwd,
+            error_ok=True,
+            # TODO: get rid of shell=True.
+            shell=True,
+        ).print_output_and_raise_error_if_failed()
+        logging.info("Successfully ran 'make install' in the %s directory in %.2f sec",
+                     cwd, time.time() - start_time_sec)
+
+    def _build_directory_with_make(
+        self,
+        work_dir: str,
+        make_cmd: List[str],
+        make_cmd_suffix: List[str]
+    ) -> Optional[str]:
+        if is_verbose_mode():
+            logging.info("Running make in the %s directory", work_dir)
+
+        complete_make_cmd = make_cmd + make_cmd_suffix
+        complete_make_cmd_str = shlex_join(complete_make_cmd)
+        self.run_make_with_retries(work_dir, complete_make_cmd_str)
+
+        if self.build_type != 'compilecmds' or work_dir == self.pg_build_root:
+            self.run_make_install(make_cmd, make_cmd_suffix, work_dir)
+        else:
+            logging.info(
+                "Not running 'make install' in the %s directory since we are only "
+                "generating the compilation database", work_dir)
+
+        if self.export_compile_commands and not self.skip_pg_compile_commands:
+            logging.info("Generating the compilation database in directory '%s'", work_dir)
+
+            compile_commands_path = os.path.join(work_dir, 'compile_commands.json')
+            if not os.path.exists(compile_commands_path):
+                run_program(
+                    ['compiledb', 'make', '-n'] + make_cmd_suffix, cwd=work_dir, capture_output=False)
+
+            if not os.path.exists(compile_commands_path):
+                raise RuntimeError("Failed to generate compilation database at: %s" %
+                                   compile_commands_path)
+            return compile_commands_path
+        return None
 
     def make_postgres(self) -> None:
         self.set_env_vars('make')
@@ -814,54 +847,64 @@ class PostgresBuilder(YbBuildToolBase):
 
         external_extension_dirs = [os.path.join(self.pg_build_root, d) for d
                                    in ('third-party-extensions', 'yb-extensions')]
+
         work_dirs = [
-            self.pg_build_root,
             os.path.join(self.pg_build_root, 'contrib'),
             os.path.join(self.pg_build_root, 'src/test/modules/dummy_seclabel'),
             os.path.join(self.pg_build_root, 'src/tools/pg_bsd_indent'),
         ] + external_extension_dirs
 
-        # TODO(#27196): parallelize this for loop.
-        for work_dir in work_dirs:
+        def build_directory_worker(work_dir: str) -> Optional[str]:
+            if work_dir in external_extension_dirs:
+                make_cmd_suffix = ['PG_CONFIG=' + self.pg_config_path]
+            else:
+                make_cmd_suffix = []
+
+            return self._build_directory_with_make(
+                work_dir, make_cmd, make_cmd_suffix)
+
+        with TimestampSaver(self.pg_prefix, file_suffix='.h') as _:
             # Postgresql requires MAKELEVEL to be 0 or non-set when calling its make.
             # But in the case where the YB project is built with make,
             # MAKELEVEL is not 0 at this point. We temporarily unset MAKELEVEL to
-            # deal with this.
-            with WorkDirContext(work_dir), SavedEnviron('MAKELEVEL'):
-                self.write_debug_scripts(env_script_content)
+            # deal with this
+            with SavedEnviron('MAKELEVEL', YB_PG_SKIP_CONFIG_STATUS='1'):
+                # Build main postgres directory first as it's a dependency for other directories.
+                main_compile_commands_path = self._build_directory_with_make(
+                    self.pg_build_root, make_cmd, [])
+                if main_compile_commands_path:
+                    pg_compile_commands_paths.append(main_compile_commands_path)
 
-                make_cmd_suffix = []
-                if work_dir in external_extension_dirs:
-                    make_cmd_suffix = ['PG_CONFIG=' + self.pg_config_path]
+            self.write_debug_scripts(env_script_content)
 
-                # Actually run Make.
-                if is_verbose_mode():
-                    logging.info("Running make in the %s directory", work_dir)
+            pg_config_dir = os.path.dirname(self.pg_config_path)
 
-                complete_make_cmd = make_cmd + make_cmd_suffix
-                complete_make_cmd_str = shlex_join(complete_make_cmd)
-                self.run_make_with_retries(work_dir, complete_make_cmd_str)
+            # Temporarily add the directory with pg_config to PATH so that
+            # contrib/ and other makefiles can find it.
+            # necessary for MacOs arm64 since pg_config is in /opt/homebrew/bin
+            with SavedEnviron("MAKELEVEL", PATH=f"{pg_config_dir}:{os.environ.get('PATH', '')}", YB_PG_SKIP_CONFIG_STATUS='1'):
+                with concurrent.futures.ThreadPoolExecutor(max_workers=min(make_parallelism, len(work_dirs))) as executor:
+                    future_to_dir = {
+                        executor.submit(build_directory_worker, work_dir): work_dir
+                        for work_dir in work_dirs
+                    }
+                    errors = []
 
-                if self.build_type != 'compilecmds' or work_dir == self.pg_build_root:
-                    self.run_make_install(make_cmd, make_cmd_suffix)
-                else:
-                    logging.info(
-                            "Not running 'make install' in the %s directory since we are only "
-                            "generating the compilation database", work_dir)
-
-                if self.export_compile_commands and not self.skip_pg_compile_commands:
-                    logging.info("Generating the compilation database in directory '%s'", work_dir)
-
-                    compile_commands_path = os.path.join(work_dir, 'compile_commands.json')
-                    with SavedEnviron(YB_PG_SKIP_CONFIG_STATUS='1'):
-                        if not os.path.exists(compile_commands_path):
-                            run_program(
-                                ['compiledb', 'make', '-n'] + make_cmd_suffix, capture_output=False)
-
-                    if not os.path.exists(compile_commands_path):
-                        raise RuntimeError("Failed to generate compilation database at: %s" %
-                                           compile_commands_path)
-                    pg_compile_commands_paths.append(compile_commands_path)
+                    for future in concurrent.futures.as_completed(future_to_dir):
+                        work_dir = future_to_dir[future]
+                        try:
+                            compile_commands_path = future.result()
+                            if compile_commands_path:
+                                pg_compile_commands_paths.append(compile_commands_path)
+                            logging.info("Successfully completed build for %s", work_dir)
+                        except Exception as exc:
+                            logging.exception("Build failed for directory %s", work_dir)
+                            errors.append((work_dir, exc))
+                    if errors:
+                        error_msgs = "\n".join(
+                            f"Directory {work_dir} failed with error: {exc}"
+                            for work_dir, exc in errors)
+                        raise RuntimeError(f"Some directories failed to build:\n{error_msgs}")
 
         if self.export_compile_commands:
             self.write_compile_commands_files(pg_compile_commands_paths)
