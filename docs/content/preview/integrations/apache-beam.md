@@ -12,7 +12,7 @@ alises:
 type: docs
 ---
 
-[Apache Beam](https://beam.apache.org/) is an open source, unified model for defining both batch and streaming data-parallel processing pipelines. Using one of the open source Beam SDKs, you build a program that defines the pipeline. The pipeline is then executed by one of Beam’s supported distributed processing back-ends, which include [Apache Flink](https://flink.apache.org/), [Apache Spark](https://spark.apache.org/), and [Google Cloud Dataflow](https://cloud.google.com/dataflow).
+[Apache Beam](https://beam.apache.org/) is an open source, unified model for defining both batch and streaming data-parallel processing pipelines. Using one of the open source Beam SDKs, you build a program that defines the pipeline. The pipeline is then executed by one of Beam's supported distributed processing back-ends, which include [Apache Flink](https://flink.apache.org/), [Apache Spark](https://spark.apache.org/), and [Google Cloud Dataflow](https://cloud.google.com/dataflow).
 
 ## Prerequisite
 
@@ -58,7 +58,7 @@ To run Apache Beam with YugabyteDB, do the following:
         drivername='postgresql',  #postgresql+pg8000
         host='127.0.0.1',
         port=5433,
-        username=’yugabyte’,
+        username='yugabyte',
         password='yugabyte',
         database='yugabyte',
         create_if_missing=True  # create the database if not there
