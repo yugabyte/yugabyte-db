@@ -159,7 +159,7 @@ METRIC_DEFINE_gauge_uint32(cluster,
                            "The minimum number of replicas that need to be added / moved for the "
                            "cluster to be balanced.");
 
-METRIC_DEFINE_gauge_uint32(cluster,
+METRIC_DEFINE_gauge_uint64(cluster,
                            estimated_data_to_balance_bytes,
                            "Estimated Data to Balance",
                            yb::MetricUnit::kBytes,
