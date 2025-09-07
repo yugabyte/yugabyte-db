@@ -28,14 +28,17 @@ import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig;
 import com.yugabyte.yw.models.helpers.telemetry.DataDogConfig;
+import com.yugabyte.yw.models.helpers.telemetry.DynatraceConfig;
 import com.yugabyte.yw.models.helpers.telemetry.ExportType;
 import com.yugabyte.yw.models.helpers.telemetry.GCPCloudMonitoringConfig;
 import com.yugabyte.yw.models.helpers.telemetry.LokiConfig;
+import com.yugabyte.yw.models.helpers.telemetry.ProviderType;
 import com.yugabyte.yw.models.helpers.telemetry.SplunkConfig;
 import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -95,12 +98,20 @@ public class OtelCollectorConfigGenerator {
   private static final String PIPELINE_PREFIX_LOGS = "logs/";
   private static final String PIPELINE_PREFIX_METRICS = "metrics/";
 
+  // API endpoints
+  private static final String DYNATRACE_OTLP_ENDPOINT = "/api/v2/otlp";
+
+  // Processor prefixes
+  private static final String PROCESSOR_PREFIX_CUMULATIVE_TO_DELTA = "cumulativetodelta/";
+  private static final String PROCESSOR_PREFIX_METRIC_TRANSFORM = "metricstransform/";
+
   // Exporter prefixes
   private static final String EXPORTER_PREFIX_DATADOG = "datadog/";
   private static final String EXPORTER_PREFIX_SPLUNK = "splunk_hec/";
   private static final String EXPORTER_PREFIX_AWS_CLOUDWATCH = "awscloudwatchlogs/";
   private static final String EXPORTER_PREFIX_GCP_CLOUD_MONITORING = "googlecloud/";
   private static final String EXPORTER_PREFIX_LOKI = "loki/";
+  private static final String EXPORTER_PREFIX_DYNATRACE = "otlphttp/";
 
   // Export type prefixes
   private static final String EXPORT_TYPE_PREFIX_QUERY_LOGS = "query_logs_";
@@ -379,8 +390,46 @@ public class OtelCollectorConfigGenerator {
         batchProcessor.setTimeout(exporterConfig.getSendBatchTimeoutSeconds().toString() + "s");
         collectorConfigFormat.getProcessors().put(batchProcessorName, batchProcessor);
 
-        // Add both processors to the pipeline
-        pipeline.setProcessors(ImmutableList.of(attributesProcessorName, batchProcessorName));
+        List<String> processorNames = new ArrayList<>();
+        processorNames.add(attributesProcessorName);
+        processorNames.add(batchProcessorName);
+
+        if (!StringUtils.isBlank(exporterConfig.getMetricsPrefix())) {
+          String metricTransformProcessorName =
+              PROCESSOR_PREFIX_METRIC_TRANSFORM + exportTypeAndUUIDString;
+          OtelCollectorConfigFormat.MetricTransformProcessor metricTransformProcessor =
+              new OtelCollectorConfigFormat.MetricTransformProcessor();
+
+          // Create the transform rule to add custom prefix to all metrics
+          OtelCollectorConfigFormat.MetricTransformRule transformRule =
+              new OtelCollectorConfigFormat.MetricTransformRule();
+          transformRule.setInclude("^(.*)$");
+          transformRule.setMatch_type("regexp");
+          transformRule.setAction("update");
+          transformRule.setExperimental_match_labels(ImmutableMap.of("export_type", ".+"));
+          transformRule.setNew_name(exporterConfig.getMetricsPrefix() + "$${1}");
+
+          metricTransformProcessor.setTransforms(ImmutableList.of(transformRule));
+          collectorConfigFormat
+              .getProcessors()
+              .put(metricTransformProcessorName, metricTransformProcessor);
+          processorNames.add(metricTransformProcessorName);
+        }
+
+        // Add CumulativeToDeltaProcessor for Dynatrace metrics only
+        if (telemetryProvider.getConfig().getType() == ProviderType.DYNATRACE) {
+          String cumulativetodeltaProcessorName =
+              PROCESSOR_PREFIX_CUMULATIVE_TO_DELTA + exportTypeAndUUIDString;
+          OtelCollectorConfigFormat.CumulativeToDeltaProcessor cumulativetodeltaProcessor =
+              new OtelCollectorConfigFormat.CumulativeToDeltaProcessor();
+          collectorConfigFormat
+              .getProcessors()
+              .put(cumulativetodeltaProcessorName, cumulativetodeltaProcessor);
+          processorNames.add(cumulativetodeltaProcessorName);
+        }
+
+        // Add processors to the pipeline
+        pipeline.setProcessors(processorNames);
 
         // Add metrics exporter for each active exporter config
         String exporterName = addMetricsExporter(collectorConfigFormat, exporterConfig);
@@ -1442,6 +1491,23 @@ public class OtelCollectorConfigGenerator {
         attributeActions.add(
             new OtelCollectorConfigFormat.AttributeAction(
                 "service", SERVICE_OTEL_COLLECTOR_FULL, "upsert", null));
+        break;
+      case DYNATRACE:
+        DynatraceConfig dynatraceConfig = (DynatraceConfig) telemetryProvider.getConfig();
+        OtelCollectorConfigFormat.DynatraceExporter dynatraceExporter =
+            new OtelCollectorConfigFormat.DynatraceExporter();
+        // Construct the full endpoint with the OTLP path
+        String fullEndpoint = dynatraceConfig.getCleanEndpoint() + DYNATRACE_OTLP_ENDPOINT;
+        dynatraceExporter.setEndpoint(fullEndpoint);
+
+        // Set the Authorization header with the API token
+        Map<String, String> dynatraceHeaders = new HashMap<>();
+        dynatraceHeaders.put("Authorization", "Api-Token " + dynatraceConfig.getApiToken());
+        dynatraceExporter.setHeaders(dynatraceHeaders);
+
+        exporterName = EXPORTER_PREFIX_DYNATRACE + exportTypeAndUUIDString;
+        exporters.put(
+            exporterName, setExporterCommonConfig(dynatraceExporter, true, true, exportType));
         break;
       case SPLUNK:
         SplunkConfig splunkConfig = (SplunkConfig) telemetryProvider.getConfig();

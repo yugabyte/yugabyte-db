@@ -26,4 +26,4 @@ allOf:
         description: Custom prefix to be added to all the metrics. Can be customised to each exporter differently.
         type: string
         example: ybdb.
-        default: ybdb.
+        default: ''

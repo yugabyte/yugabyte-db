@@ -7710,6 +7710,27 @@
       },
       "type" : "object"
     },
+    "DynatraceConfig" : {
+      "allOf" : [
+        {
+          "$ref" : "#/definitions/TelemetryProviderConfig"
+        },
+        {
+          "description" : "Dynatrace Config",
+          "properties" : {
+            "apiToken" : {
+              "description" : "API Token",
+              "type" : "string"
+            },
+            "endpoint" : {
+              "description" : "Endpoint",
+              "type" : "string"
+            }
+          },
+          "type" : "object"
+        }
+      ]
+    },
     "EarlyoomConfig" : {
       "description" : "State for earlyoom service",
       "properties" : {
@@ -21955,7 +21976,8 @@
             "SPLUNK",
             "AWS_CLOUDWATCH",
             "GCP_CLOUD_MONITORING",
-            "LOKI"
+            "LOKI",
+            "DYNATRACE"
           ],
           "type" : "string"
         }
