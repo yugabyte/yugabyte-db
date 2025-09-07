@@ -317,8 +317,8 @@ extern void HandleYBTableDescStatus(YbcStatus status, YbcPgTableDesc table);
  * YB initialization that needs to happen when a PostgreSQL backend process
  * is started. Reports errors using ereport.
  */
-extern void YBInitPostgresBackend(const char *program_name,
-								  uint64_t *session_id);
+
+extern void YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *init_info);
 
 /*
  * This should be called on all exit paths from the PostgreSQL backend process.
@@ -1447,4 +1447,5 @@ extern bool YbIsAnyDependentGeneratedColPK(Relation rel, AttrNumber attnum);
 extern bool YbCheckTserverResponseCacheForAuthGflags();
 
 extern bool YbUseTserverResponseCacheForAuth(uint64_t shared_catalog_version);
+
 #endif							/* PG_YB_UTILS_H */

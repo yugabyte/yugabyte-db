@@ -171,7 +171,7 @@ inline std::optional<Bound> MakeBound(YbcPgBoundType type, uint16_t value) {
 
 void InitPgGateImpl(
     YbcPgTypeEntities type_entities, const YbcPgCallbacks& pg_callbacks,
-    YbcPgAshConfig& ash_config, std::optional<uint64_t> session_id) {
+    YbcPgAshConfig& ash_config, const YbcPgInitPostgresInfo& init_postgres_info) {
   // TODO: We should get rid of hybrid clock usage in YSQL backend processes (see #16034).
   // However, this is added to allow simulating and testing of some known bugs until we remove
   // HybridClock usage.
@@ -189,7 +189,7 @@ void InitPgGateImpl(
 #endif
 
   pgapi_shutdown_done.exchange(false);
-  pgapi = new PgApiImpl(type_entities, pg_callbacks, session_id, ash_config);
+  pgapi = new PgApiImpl(type_entities, pg_callbacks, init_postgres_info, ash_config);
 
   VLOG(1) << "PgGate open";
 }
@@ -461,13 +461,12 @@ ReadHybridTime MakeReadHybridTime(const YbcReadHybridTime& read_time) {
 extern "C" {
 
 void YBCInitPgGate(
-    YbcPgTypeEntities type_entities, const YbcPgCallbacks *pg_callbacks, uint64_t *session_id,
-    YbcPgAshConfig *ash_config) {
-  CHECK_OK(WithMaskedYsqlSignals([&type_entities, pg_callbacks,  session_id, ash_config] {
-    InitPgGateImpl(
-        type_entities, *pg_callbacks, *ash_config,
-        session_id ? std::optional(*session_id) : std::nullopt);
-    return static_cast<Status>(Status::OK());
+    YbcPgTypeEntities type_entities, const YbcPgCallbacks *pg_callbacks,
+    const YbcPgInitPostgresInfo *init_postgres_info, YbcPgAshConfig *ash_config) {
+  CHECK_OK(WithMaskedYsqlSignals(
+      [&type_entities, pg_callbacks, init_postgres_info, ash_config]() -> Status {
+        InitPgGateImpl(type_entities, *pg_callbacks, *ash_config, *init_postgres_info);
+        return Status::OK();
   }));
 }
 

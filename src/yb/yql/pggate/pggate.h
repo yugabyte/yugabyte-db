@@ -115,7 +115,7 @@ class PgApiImpl {
 
   PgApiImpl(
       YbcPgTypeEntities type_entities, const YbcPgCallbacks& pg_callbacks,
-      std::optional<uint64_t> session_id, YbcPgAshConfig& ash_config);
+      const YbcPgInitPostgresInfo& init_postgres_info, YbcPgAshConfig& ash_config);
 
   ~PgApiImpl();
 
@@ -883,6 +883,9 @@ class PgApiImpl {
   //----------------------------------------------------------------------------------------------
   Status AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode);
 
+  struct PgSharedData;
+  struct SignedPgSharedData;
+
  private:
   SetupPerformOptionsAccessorTag ClearSessionState();
 
@@ -898,6 +901,18 @@ class PgApiImpl {
     ThreadSafeArena arena_;
     dockv::DocKey doc_key_;
     size_t counter_ = 0;
+  };
+
+  class PgSharedDataHolder {
+   public:
+    PgSharedDataHolder(YbcPgSharedDataPlaceholder& raw_data, bool is_owner);
+    ~PgSharedDataHolder();
+
+    [[nodiscard]] PgSharedData* operator->();
+
+   private:
+    SignedPgSharedData* signed_data_;
+    const bool is_owner_;
   };
 
   PgTypeInfo pg_types_;
@@ -917,6 +932,8 @@ class PgApiImpl {
   YbcPgCallbacks pg_callbacks_;
 
   const WaitEventWatcher wait_event_watcher_;
+
+  PgSharedDataHolder pg_shared_data_;
 
   // TODO Rename to client_ when YBClient is removed.
   PgClient pg_client_;

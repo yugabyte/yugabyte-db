@@ -490,9 +490,12 @@ static PggateRPC kDebugLogRPCs[] = {
 
 class PgClient::Impl : public BigDataFetcher {
  public:
-  explicit Impl(std::reference_wrapper<const WaitEventWatcher> wait_event_watcher)
+  Impl(
+      std::reference_wrapper<const WaitEventWatcher> wait_event_watcher,
+      std::atomic<uint64_t>& next_perform_op_serial_no)
     : heartbeat_poller_(std::bind(&Impl::Heartbeat, this, false)),
-      wait_event_watcher_(wait_event_watcher) {
+      wait_event_watcher_(wait_event_watcher),
+      next_perform_op_serial_no_(next_perform_op_serial_no) {
     tablet_server_count_cache_.fill(0);
   }
 
@@ -908,6 +911,7 @@ class PgClient::Impl : public BigDataFetcher {
     tserver::LWPgPerformRequestPB req(&arena);
     req.set_session_id(session_id_);
     *req.mutable_options() = std::move(*options);
+    req.set_serial_no(next_perform_op_serial_no_.fetch_add(1, std::memory_order_acq_rel));
     PrepareOperations(&req, operations);
     return PrepareAndSend<PerformData>(
         &tserver::PgClientServiceProxy::PerformAsync, req, &arena, std::move(operations), metrics);
@@ -1719,6 +1723,7 @@ class PgClient::Impl : public BigDataFetcher {
   InterprocessSharedMemoryObject big_shared_memory_object_;
   InterprocessMappedRegion big_mapped_region_;
   ThreadSafeArena object_locks_arena_;
+  std::atomic<uint64_t>& next_perform_op_serial_no_;
 };
 
 std::string DdlMode::ToString() const {
@@ -1734,8 +1739,10 @@ void DdlMode::ToPB(tserver::PgFinishTransactionRequestPB_DdlModePB* dest) const 
   dest->set_use_regular_transaction_block(use_regular_transaction_block);
 }
 
-PgClient::PgClient(std::reference_wrapper<const WaitEventWatcher> wait_event_watcher)
-    : impl_(new Impl(wait_event_watcher)) {}
+PgClient::PgClient(
+    std::reference_wrapper<const WaitEventWatcher> wait_event_watcher,
+    std::atomic<uint64_t>& seq_number)
+    : impl_(new Impl(wait_event_watcher, seq_number)) {}
 
 PgClient::~PgClient() = default;
 
