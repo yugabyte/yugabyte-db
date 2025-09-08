@@ -3582,12 +3582,10 @@ class PgClientSession::Impl {
       plain_session_has_exclusive_object_locks_.store(false);
       DEBUG_ONLY_TEST_SYNC_POINT("PlainTxnStateReset");
     }
-    auto txn_meta_res = txn
-        ? txn->GetMetadata(deadline).get()
-        : NextObjectLockingTxnMeta(deadline, is_final_release);
-    RETURN_NOT_OK(txn_meta_res);
-    return DoReleaseObjectLocks(
-        txn_meta_res->transaction_id, subtxn_id, deadline, has_exclusive_locks);
+    auto txn_id = txn
+        ? txn->id()
+        : VERIFY_RESULT(NextObjectLockingTxnMeta(deadline, is_final_release)).transaction_id;
+    return DoReleaseObjectLocks(txn_id, subtxn_id, deadline, has_exclusive_locks);
   }
 
   Status DoReleaseObjectLocks(
