@@ -114,6 +114,20 @@ public class SetFlagInMemory extends ServerSubTaskBase {
           gflags.put(GFlagsUtil.YSQL_PG_CONF_CSV, finalYsqlPgConfCsv);
         }
       }
+      if (universe.getUniverseDetails().getPrimaryCluster().userIntent.enableConnectionPooling
+          && gflags.containsKey(GFlagsUtil.PSQL_PROXY_BIND_ADDRESS)) {
+        String psqlProxyBindAddress = gflags.get(GFlagsUtil.PSQL_PROXY_BIND_ADDRESS);
+        // Remove the port from the psql proxy bind address after the colon and add the internal PG
+        // process port.
+        String psqlProxyBindAddressWithoutPort =
+            psqlProxyBindAddress.substring(0, psqlProxyBindAddress.lastIndexOf(":"));
+        String ysqlConnMgrPort =
+            String.valueOf(
+                universe.getUniverseDetails().communicationPorts.internalYsqlServerRpcPort);
+        gflags.put(
+            GFlagsUtil.PSQL_PROXY_BIND_ADDRESS,
+            psqlProxyBindAddressWithoutPort + ":" + ysqlConnMgrPort);
+      }
       // allowed_preview_flags_csv should be set first in order to set the preview flags.
       if (gflags.containsKey(GFlagsUtil.ALLOWED_PREVIEW_FLAGS_CSV)) {
         log.info(
