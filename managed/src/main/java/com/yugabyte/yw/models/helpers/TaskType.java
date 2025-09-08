@@ -1229,7 +1229,11 @@ public enum TaskType {
   DoCapacityReservation(com.yugabyte.yw.commissioner.tasks.subtasks.DoCapacityReservation.class),
 
   DeleteCapacityReservation(
-      com.yugabyte.yw.commissioner.tasks.subtasks.DeleteCapacityReservation.class);
+      com.yugabyte.yw.commissioner.tasks.subtasks.DeleteCapacityReservation.class),
+
+  DisablePitrConfig(com.yugabyte.yw.commissioner.tasks.subtasks.DisablePitrConfig.class),
+
+  EnablePitrConfig(com.yugabyte.yw.commissioner.tasks.subtasks.EnablePitrConfig.class);
 
   private final Class<? extends ITask> taskClass;
 

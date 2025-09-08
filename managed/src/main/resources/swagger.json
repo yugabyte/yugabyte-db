@@ -2815,7 +2815,9 @@
             "CheckSshConnection",
             "FetchServerConf",
             "DoCapacityReservation",
-            "DeleteCapacityReservation"
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -5508,7 +5510,9 @@
             "CheckSshConnection",
             "FetchServerConf",
             "DoCapacityReservation",
-            "DeleteCapacityReservation"
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -8537,7 +8541,9 @@
             "CheckSshConnection",
             "FetchServerConf",
             "DoCapacityReservation",
-            "DeleteCapacityReservation"
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -9329,7 +9335,9 @@
             "CheckSshConnection",
             "FetchServerConf",
             "DoCapacityReservation",
-            "DeleteCapacityReservation"
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -10739,7 +10747,9 @@
             "CheckSshConnection",
             "FetchServerConf",
             "DoCapacityReservation",
-            "DeleteCapacityReservation"
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -13907,6 +13917,11 @@
           "description" : "DB Name",
           "type" : "string"
         },
+        "disabled" : {
+          "description" : "Whether the PITR config is disabled",
+          "readOnly" : true,
+          "type" : "boolean"
+        },
         "intermittentMinRecoverTimeInMillis" : {
           "description" : "Intermittent min recovery time in millis if retention period is increased",
           "format" : "int64",
@@ -15039,7 +15054,9 @@
             "CheckSshConnection",
             "FetchServerConf",
             "DoCapacityReservation",
-            "DeleteCapacityReservation"
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -16071,7 +16088,9 @@
             "CheckSshConnection",
             "FetchServerConf",
             "DoCapacityReservation",
-            "DeleteCapacityReservation"
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -16890,7 +16909,9 @@
             "CheckSshConnection",
             "FetchServerConf",
             "DoCapacityReservation",
-            "DeleteCapacityReservation"
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -18398,7 +18419,9 @@
             "CheckSshConnection",
             "FetchServerConf",
             "DoCapacityReservation",
-            "DeleteCapacityReservation"
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -18946,7 +18969,9 @@
             "CheckSshConnection",
             "FetchServerConf",
             "DoCapacityReservation",
-            "DeleteCapacityReservation"
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -19336,7 +19361,9 @@
               "CheckSshConnection",
               "FetchServerConf",
               "DoCapacityReservation",
-              "DeleteCapacityReservation"
+              "DeleteCapacityReservation",
+              "DisablePitrConfig",
+              "EnablePitrConfig"
             ],
             "type" : "string"
           },
@@ -20150,7 +20177,9 @@
             "CheckSshConnection",
             "FetchServerConf",
             "DoCapacityReservation",
-            "DeleteCapacityReservation"
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -21234,7 +21263,9 @@
             "CheckSshConnection",
             "FetchServerConf",
             "DoCapacityReservation",
-            "DeleteCapacityReservation"
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -22524,7 +22555,9 @@
             "CheckSshConnection",
             "FetchServerConf",
             "DoCapacityReservation",
-            "DeleteCapacityReservation"
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -23186,7 +23219,9 @@
             "CheckSshConnection",
             "FetchServerConf",
             "DoCapacityReservation",
-            "DeleteCapacityReservation"
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -24103,7 +24138,9 @@
             "CheckSshConnection",
             "FetchServerConf",
             "DoCapacityReservation",
-            "DeleteCapacityReservation"
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -24729,7 +24766,9 @@
             "CheckSshConnection",
             "FetchServerConf",
             "DoCapacityReservation",
-            "DeleteCapacityReservation"
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -25355,7 +25394,9 @@
             "CheckSshConnection",
             "FetchServerConf",
             "DoCapacityReservation",
-            "DeleteCapacityReservation"
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -26467,7 +26508,9 @@
             "CheckSshConnection",
             "FetchServerConf",
             "DoCapacityReservation",
-            "DeleteCapacityReservation"
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -27651,7 +27694,9 @@
             "CheckSshConnection",
             "FetchServerConf",
             "DoCapacityReservation",
-            "DeleteCapacityReservation"
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },

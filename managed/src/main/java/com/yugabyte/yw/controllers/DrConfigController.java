@@ -40,6 +40,7 @@ import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.TableInfoForm.TableInfoResp;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams.BootstrapBackupParams;
 import com.yugabyte.yw.forms.XClusterConfigEditFormData;
@@ -397,8 +398,7 @@ public class DrConfigController extends AuthenticatedController {
     Universe targetUniverse =
         Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
 
-    XClusterUtil.ensureYsqlMajorUpgradeIsComplete(
-        softwareUpgradeHelper, sourceUniverse, targetUniverse);
+    XClusterUtil.ensureUpgradeIsComplete(sourceUniverse, targetUniverse);
 
     DrConfigEditForm editForm = parseEditForm(request);
     validateEditForm(editForm, customer.getUuid(), drConfig);
@@ -716,8 +716,7 @@ public class DrConfigController extends AuthenticatedController {
     Universe targetUniverse =
         Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
 
-    XClusterUtil.ensureYsqlMajorUpgradeIsComplete(
-        softwareUpgradeHelper, sourceUniverse, targetUniverse);
+    XClusterUtil.ensureUpgradeIsComplete(sourceUniverse, targetUniverse);
 
     DrConfigReplaceReplicaForm replaceReplicaForm =
         parseReplaceReplicaForm(customerUUID, sourceUniverse, targetUniverse, request);
@@ -911,8 +910,7 @@ public class DrConfigController extends AuthenticatedController {
     Universe targetUniverse =
         Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
 
-    XClusterUtil.ensureYsqlMajorUpgradeIsComplete(
-        softwareUpgradeHelper, sourceUniverse, targetUniverse);
+    XClusterUtil.ensureUpgradeIsComplete(sourceUniverse, targetUniverse);
 
     if (confGetter.getGlobalConf(GlobalConfKeys.xclusterEnableAutoFlagValidation)) {
       autoFlagUtil.checkSourcePromotedAutoFlagsPromotedOnTarget(targetUniverse, sourceUniverse);
@@ -1170,8 +1168,14 @@ public class DrConfigController extends AuthenticatedController {
     Universe targetUniverse =
         Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
 
-    XClusterUtil.ensureYsqlMajorUpgradeIsComplete(
-        softwareUpgradeHelper, sourceUniverse, targetUniverse);
+    if (!targetUniverse
+        .getUniverseDetails()
+        .softwareUpgradeState
+        .equals(SoftwareUpgradeState.Ready)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Cannot configure XCluster/DR config because target universe is not in ready state");
+    }
 
     DrConfigTaskParams taskParams;
     Set<String> namespaceIdsWithSafetime =
@@ -1893,8 +1897,7 @@ public class DrConfigController extends AuthenticatedController {
     Universe targetUniverse =
         Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
 
-    XClusterUtil.ensureYsqlMajorUpgradeIsComplete(
-        softwareUpgradeHelper, sourceUniverse, targetUniverse);
+    XClusterUtil.ensureUpgradeIsComplete(sourceUniverse, targetUniverse);
 
     if (confGetter.getGlobalConf(GlobalConfKeys.xclusterEnableAutoFlagValidation)) {
       autoFlagUtil.checkSourcePromotedAutoFlagsPromotedOnTarget(sourceUniverse, targetUniverse);
