@@ -94,6 +94,9 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
 
           createStoreAutoFlagConfigVersionTask(taskParams().getUniverseUUID(), newVersion);
 
+          // Disable PITR configs at the start of software upgrade
+          createDisablePitrConfigTask();
+
           String password = null;
           boolean catalogUpgradeCompleted = false;
 

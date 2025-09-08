@@ -112,6 +112,10 @@ public class PitrConfig extends Model {
   @Column
   private Date updateTime;
 
+  @ApiModelProperty(value = "Whether the PITR config is disabled", accessMode = READ_ONLY)
+  @Column(nullable = false)
+  private boolean disabled = false;
+
   public static PitrConfig create(UUID scheduleUUID, CreatePitrConfigParams params) {
     PitrConfig pitrConfig = new PitrConfig();
     pitrConfig.setUuid(scheduleUUID);
@@ -123,6 +127,7 @@ public class PitrConfig extends Model {
     pitrConfig.setScheduleInterval(params.intervalInSeconds);
     pitrConfig.setRetentionPeriod(params.retentionPeriodInSeconds);
     pitrConfig.setCreatedForDr(params.createdForDr);
+    pitrConfig.setDisabled(false);
     Date currentDate = new Date();
     pitrConfig.setCreateTime(currentDate);
     pitrConfig.setUpdateTime(currentDate);
@@ -136,6 +141,31 @@ public class PitrConfig extends Model {
 
   public static List<PitrConfig> getByUniverseUUID(UUID universeUUID) {
     return find.query().where().eq("universe_uuid", universeUUID).findList();
+  }
+
+  public static List<PitrConfig> getDisabledByUniverseUUID(UUID universeUUID) {
+    return find.query().where().eq("universe_uuid", universeUUID).eq("disabled", true).findList();
+  }
+
+  public void updateDisabledStatus(boolean disabled) {
+    this.disabled = disabled;
+    this.updateTime = new Date();
+    this.save();
+  }
+
+  public static boolean updateDisabledStatus(UUID configUUID, boolean disabled) {
+    PitrConfig pitrConfig = get(configUUID);
+    if (pitrConfig != null) {
+      pitrConfig.updateDisabledStatus(disabled);
+      return true;
+    }
+    return false;
+  }
+
+  public void updateIntermittentMinRecoverTimeInMillis(long intermittentMinRecoverTimeInMillis) {
+    this.intermittentMinRecoverTimeInMillis = intermittentMinRecoverTimeInMillis;
+    this.updateTime = new Date();
+    this.save();
   }
 
   public static PitrConfig get(UUID configUUID) {
@@ -178,5 +208,19 @@ public class PitrConfig extends Model {
     return sqlRow.stream()
         .map(row -> XClusterConfig.getOrBadRequest(UUID.fromString(row.getString("xcluster_uuid"))))
         .collect(Collectors.toList());
+  }
+
+  @JsonIgnore
+  public CreatePitrConfigParams toCreatePitrConfigParams() {
+    CreatePitrConfigParams params = new CreatePitrConfigParams();
+    params.setUniverseUUID(this.universe.getUniverseUUID());
+    params.customerUUID = this.customerUUID;
+    params.name = this.name;
+    params.keyspaceName = this.dbName;
+    params.tableType = this.tableType;
+    params.retentionPeriodInSeconds = this.retentionPeriod;
+    params.intervalInSeconds = this.scheduleInterval;
+    params.createdForDr = this.createdForDr;
+    return params;
   }
 }

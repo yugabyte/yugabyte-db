@@ -92,6 +92,9 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
               UniverseDefinitionTaskParams.SoftwareUpgradeState.Upgrading,
               true /* isSoftwareRollbackAllowed */);
 
+          // Disable PITR configs at the start of software upgrade
+          createDisablePitrConfigTask();
+
           if (!universe
               .getUniverseDetails()
               .xClusterInfo

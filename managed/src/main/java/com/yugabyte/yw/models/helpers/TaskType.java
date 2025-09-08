@@ -1222,7 +1222,11 @@ public enum TaskType {
 
   CheckSshConnection(com.yugabyte.yw.commissioner.tasks.subtasks.CheckSshConnection.class),
 
-  FetchServerConf(com.yugabyte.yw.commissioner.tasks.subtasks.FetchServerConf.class);
+  FetchServerConf(com.yugabyte.yw.commissioner.tasks.subtasks.FetchServerConf.class),
+
+  DisablePitrConfig(com.yugabyte.yw.commissioner.tasks.subtasks.DisablePitrConfig.class),
+
+  EnablePitrConfig(com.yugabyte.yw.commissioner.tasks.subtasks.EnablePitrConfig.class);
 
   private final Class<? extends ITask> taskClass;
 

@@ -609,8 +609,7 @@ public class XClusterConfigController extends AuthenticatedController {
       if (tableType.equals(CommonTypes.TableType.PGSQL_TABLE_TYPE)
           && !tableIdsToAdd.isEmpty()
           && Objects.nonNull(bootstrapParams)) {
-        XClusterUtil.ensureYsqlMajorUpgradeIsComplete(
-            softwareUpgradeHelper, sourceUniverse, targetUniverse);
+        XClusterUtil.ensureUpgradeIsComplete(sourceUniverse, targetUniverse);
       }
 
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList =
@@ -932,8 +931,7 @@ public class XClusterConfigController extends AuthenticatedController {
     CommonTypes.TableType tableType = XClusterConfigTaskBase.getTableType(requestedTableInfoList);
 
     if (tableType.equals(CommonTypes.TableType.PGSQL_TABLE_TYPE)) {
-      XClusterUtil.ensureYsqlMajorUpgradeIsComplete(
-          softwareUpgradeHelper, sourceUniverse, targetUniverse);
+      XClusterUtil.ensureUpgradeIsComplete(sourceUniverse, targetUniverse);
     }
 
     xClusterBootstrappingPreChecks(
@@ -967,8 +965,7 @@ public class XClusterConfigController extends AuthenticatedController {
       boolean isForceBootstrap,
       SoftwareUpgradeHelper softwareUpgradeHelper) {
 
-    XClusterUtil.ensureYsqlMajorUpgradeIsComplete(
-        softwareUpgradeHelper, sourceUniverse, targetUniverse);
+    XClusterUtil.ensureUpgradeIsComplete(sourceUniverse, targetUniverse);
 
     XClusterConfigCreateFormData.BootstrapParams bootstrapParams = null;
     if (restartBootstrapParams != null) {
@@ -1860,8 +1857,7 @@ public class XClusterConfigController extends AuthenticatedController {
     CommonTypes.TableType tableType = XClusterConfigTaskBase.getTableType(requestedTableInfoList);
 
     if (tableType.equals(CommonTypes.TableType.PGSQL_TABLE_TYPE)) {
-      XClusterUtil.ensureYsqlMajorUpgradeIsComplete(
-          softwareUpgradeHelper, sourceUniverse, targetUniverse);
+      XClusterUtil.ensureUpgradeIsComplete(sourceUniverse, targetUniverse);
     }
 
     XClusterConfigTaskBase.verifyTablesNotInReplication(

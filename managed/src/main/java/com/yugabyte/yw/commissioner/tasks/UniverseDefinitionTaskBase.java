@@ -34,6 +34,8 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.CheckLeaderlessTablets;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodesAreSafeToTakeDown;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteClusterFromUniverse;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DisablePitrConfig;
+import com.yugabyte.yw.commissioner.tasks.subtasks.EnablePitrConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceExistCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser.Action;
@@ -3860,13 +3862,37 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       log.info("Skipping upgrade finalization for universe : " + universe.getUniverseUUID());
     }
 
-    // Update PITR configs to set intermittentMinRecoverTimeInMillis to current time
-    // as PITR configs are only valid from the completion of software upgrade finalization
-    createUpdatePitrConfigIntermittentMinRecoverTimeTask();
+    // Re-enable PITR configs after successful upgrade finalization
+    // This also updates intermittentMinRecoverTimeInMillis for all PITR configs
+    createEnablePitrConfigTask();
 
     createUpdateUniverseSoftwareUpgradeStateTask(
         UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
         false /* isSoftwareRollbackAllowed */);
+  }
+
+  protected void createEnablePitrConfigTask() {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("EnablePitrConfig", SubTaskGroupType.ConfigureUniverse);
+    EnablePitrConfig.Params params = new EnablePitrConfig.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+
+    EnablePitrConfig task = createTask(EnablePitrConfig.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  public void createDisablePitrConfigTask() {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("DisablePitrConfig", SubTaskGroupType.ConfigureUniverse);
+    DisablePitrConfig.Params params = new DisablePitrConfig.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.ignoreErrors = true; // Ignore errors to not block upgrade if PITR configs don't exist
+    DisablePitrConfig task = createTask(DisablePitrConfig.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
   protected void createSetYBMajorVersionUpgradeCompatibility(
