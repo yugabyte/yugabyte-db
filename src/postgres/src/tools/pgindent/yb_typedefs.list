@@ -250,6 +250,7 @@ YbcPgExplicitRowLockStatus
 YbcPgExpr
 YbcPgFunction
 YbcPgGFlagsAccessor
+YbcPgInitPostgresInfo
 YbcPgInsertOnConflictKeyInfo
 YbcPgInsertOnConflictKeyState
 YbcPgJwtAuthOptions
@@ -266,6 +267,7 @@ YbcPgServerMetricsInfo
 YbcPgSession
 YbcPgSessionState
 YbcPgSessionTxnInfo
+YbcPgSharedDataPlaceholder
 YbcPgSplitDatum
 YbcPgStatement
 YbcPgSysColumns

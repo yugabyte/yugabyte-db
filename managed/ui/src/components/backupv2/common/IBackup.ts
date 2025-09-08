@@ -164,6 +164,8 @@ export interface ThrottleParameters {
     max_concurrent_downloads: ThrottleParamsVal;
     max_concurrent_uploads: ThrottleParamsVal;
     per_upload_num_objects: ThrottleParamsVal;
+    disk_read_bytes_per_sec: ThrottleParamsVal;
+    disk_write_bytes_per_sec: ThrottleParamsVal;
   };
 }
 

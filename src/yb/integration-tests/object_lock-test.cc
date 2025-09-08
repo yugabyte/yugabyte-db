@@ -58,7 +58,6 @@ DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(TEST_tserver_disable_heartbeat);
 DECLARE_bool(TEST_skip_launch_release_request);
-DECLARE_bool(persist_tserver_registry);
 DECLARE_int32(heartbeat_max_failures_before_backoff);
 DECLARE_int32(retrying_ts_rpc_max_delay_ms);
 DECLARE_int32(retrying_rpc_max_jitter_ms);
@@ -1139,12 +1138,9 @@ TEST_F(ExternalObjectLockTest, RefreshYsqlLease) {
 
 class MultiMasterObjectLockTest : public ObjectLockTest {
  protected:
-  int num_masters() override {
-    return 3;
-  }
+  int num_masters() override { return 3; }
 
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_persist_tserver_registry) = true;
     ObjectLockTest::SetUp();
   }
 };

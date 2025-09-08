@@ -47,7 +47,7 @@ typedef struct {
 // functions in this API are called.
 void YBCInitPgGate(
     YbcPgTypeEntities type_entities, const YbcPgCallbacks* pg_callbacks,
-    uint64_t *session_id, YbcPgAshConfig* ash_config);
+    const YbcPgInitPostgresInfo *init_postgres_info, YbcPgAshConfig* ash_config);
 
 void YBCDestroyPgGate();
 void YBCInterruptPgGate();
@@ -1033,6 +1033,9 @@ YbcStatus YBCAcquireObjectLock(YbcObjectLockId lock_id, YbcObjectLockMode mode);
 // DevNote: Finalize is a multi-step process involving YsqlMajorCatalog Finalize, AutoFlag Finalize,
 // and YsqlUpgrade. This will return false after the AutoFlag Finalize step.
 bool YBCPgYsqlMajorVersionUpgradeInProgress();
+
+bool YBCIsBinaryUpgrade();
+void YBCSetBinaryUpgrade(bool value);
 
 #ifdef __cplusplus
 }  // extern "C"

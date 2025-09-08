@@ -934,7 +934,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           }
           // TODO When checkSuccess = false, lock and unlock are not reverse of each other, but this
           // existing behaviour is retained to not cause regression.
-          if (universeDetails.updateSucceeded && updaterConfig.isCheckSuccess()) {
+          boolean clearUpdatingTask =
+              (universeDetails.updateSucceeded && updaterConfig.isCheckSuccess())
+                  || updaterConfig.isRollbackPerformed();
+          if (clearUpdatingTask) {
             if (PLACEMENT_MODIFICATION_TASKS.contains(universeDetails.updatingTask)) {
               universeDetails.placementModificationTaskUuid = null;
               // Do not save the transient state in the universe.
@@ -944,6 +947,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             universeDetails.updatingTaskUUID = null;
           }
           universeDetails.updatingTask = null;
+          universeDetails.autoRollbackPerformed = updaterConfig.isRollbackPerformed();
         }
         universe.setUniverseDetails(universeDetails);
       }
@@ -993,6 +997,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     // This locks the universe.
     universeDetails.updateInProgress = true;
+    universeDetails.autoRollbackPerformed = false;
     if (updaterConfig.isFreezeUniverse()) {
       universeDetails.updatingTask = owner;
       universeDetails.updatingTaskUUID = getUserTaskUUID();
@@ -1249,16 +1254,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return unlockUniverseForUpdate(universeUuid, null);
   }
 
-  // TODO Remove this if it is not needed.
-  public Universe unlockUniverseForUpdate(String error) {
-    return unlockUniverseForUpdate(taskParams().getUniverseUUID(), error);
-  }
-
   public Universe unlockUniverseForUpdate() {
     return unlockUniverseForUpdate(taskParams().getUniverseUUID(), null);
   }
 
-  private Universe unlockUniverseForUpdate(UUID universeUUID, String error) {
+  protected Universe unlockUniverseForUpdate(UUID universeUUID, String error) {
+    return unlockUniverseForUpdate(universeUUID, error, false);
+  }
+
+  protected Universe unlockUniverseForUpdate(
+      UUID universeUUID, String error, boolean rollbackPerformed) {
     ExecutionContext executionContext = getOrCreateExecutionContext();
     if (!executionContext.isUniverseLocked(universeUUID)) {
       log.warn("Unlock universe({}) called when it was not locked.", universeUUID);
@@ -1271,6 +1276,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                     u -> {
                       u.getUniverseDetails().setErrorString(error);
                     })
+                .rollbackPerformed(rollbackPerformed)
                 .build());
     // Update the progress flag to false irrespective of the version increment failure.
     // Universe version in master does not need to be updated as this does not change

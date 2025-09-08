@@ -5,7 +5,7 @@ headerTitle: SQL scripts for ingesting the COVIDcast data
 description: SQL scripts for ingesting COVIDcast data
 image: /images/section_icons/api/subsection.png
 menu:
-  v2.20:
+  v2.20_api:
     identifier: ingest-scripts
     parent: ingest-the-covidcast-data
     weight: 100

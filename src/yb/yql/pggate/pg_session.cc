@@ -521,12 +521,13 @@ Status PgSession::IsDatabaseColocated(const PgOid database_oid, bool *colocated,
 
 //--------------------------------------------------------------------------------------------------
 
-Status PgSession::DropDatabase(const std::string& database_name, PgOid database_oid) {
+Status PgSession::DropDatabase(
+    const std::string& database_name, PgOid database_oid, CoarseTimePoint deadline) {
   tserver::PgDropDatabaseRequestPB req;
   req.set_database_name(database_name);
   req.set_database_oid(database_oid);
 
-  RETURN_NOT_OK(pg_client_.DropDatabase(&req, CoarseTimePoint()));
+  RETURN_NOT_OK(pg_client_.DropDatabase(&req, deadline));
   return Status::OK();
 }
 
@@ -605,24 +606,24 @@ Result<std::pair<int64_t, bool>> PgSession::ReadSequenceTuple(int64_t db_oid,
 
 //--------------------------------------------------------------------------------------------------
 
-Status PgSession::DropTable(const PgObjectId& table_id, bool use_regular_transaction_block) {
+Status PgSession::DropTable(
+    const PgObjectId& table_id, bool use_regular_transaction_block, CoarseTimePoint deadline) {
   tserver::PgDropTableRequestPB req;
   table_id.ToPB(req.mutable_table_id());
   req.set_use_regular_transaction_block(use_regular_transaction_block);
   RETURN_NOT_OK(SetupPerformOptionsForDdlIfNeeded(*this, req));
-  return ResultToStatus(pg_client_.DropTable(&req, CoarseTimePoint()));
+  return ResultToStatus(pg_client_.DropTable(&req, deadline));
 }
 
 Status PgSession::DropIndex(
-    const PgObjectId& index_id,
-    bool use_regular_transaction_block,
-    client::YBTableName* indexed_table_name) {
+    const PgObjectId& index_id, bool use_regular_transaction_block,
+    client::YBTableName* indexed_table_name, CoarseTimePoint deadline) {
   tserver::PgDropTableRequestPB req;
   index_id.ToPB(req.mutable_table_id());
   req.set_index(true);
   req.set_use_regular_transaction_block(use_regular_transaction_block);
   RETURN_NOT_OK(SetupPerformOptionsForDdlIfNeeded(*this, req));
-  auto result = VERIFY_RESULT(pg_client_.DropTable(&req, CoarseTimePoint()));
+  auto result = VERIFY_RESULT(pg_client_.DropTable(&req, deadline));
   if (indexed_table_name) {
     *indexed_table_name = std::move(result);
   }
@@ -1362,11 +1363,13 @@ Status PgSession::ReleaseAllAdvisoryLocks(uint32_t db_oid) {
 }
 
 Status PgSession::AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode) {
-  if (!PREDICT_FALSE(enable_table_locking_) || YBCIsInitDbModeEnvVarSet()) {
+  if (!PREDICT_FALSE(enable_table_locking_)) {
     // Object locking feature is not enabled. YB makes best efforts to achieve necessary semantics
     // using mechanisms like catalog version update by DDLs, DDLs aborting on progress DMLs etc.
     // Also skip object locking during initdb bootstrap mode, since it's a single-process,
     // non-concurrent setup with no running tservers and transaction status tablets.
+    // During a ysql-major-upgrade initdb/pg_upgrade may run when the cluster is still serving
+    // traffic. However, YB gurantees that there will be no DDLs running at that time.
     return Status::OK();
   }
 

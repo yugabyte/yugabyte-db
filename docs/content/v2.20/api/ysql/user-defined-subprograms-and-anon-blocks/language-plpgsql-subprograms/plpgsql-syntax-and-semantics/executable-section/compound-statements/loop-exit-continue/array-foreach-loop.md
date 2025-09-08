@@ -4,7 +4,7 @@ headerTitle: The "array foreach loop"
 linkTitle: Array foreach loop
 description: Describes the syntax and semantics of the PL/pgSQL's array foreach loop statements. [YSQL]
 menu:
-  v2.20:
+  v2.20_api:
     identifier: array-foreach-loop
     parent: loop-exit-continue
     weight: 30

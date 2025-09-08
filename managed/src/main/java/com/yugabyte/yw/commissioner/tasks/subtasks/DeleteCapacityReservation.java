@@ -3,6 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.google.inject.Inject;
+import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.cloud.azu.AZUClientFactory;
 import com.yugabyte.yw.cloud.azu.AZUResourceGroupApiClient;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -21,12 +22,16 @@ import play.libs.Json;
 @Slf4j
 public class DeleteCapacityReservation extends ServerSubTaskBase {
   private AZUClientFactory azuClientFactory;
+  private CloudAPI.Factory cloudAPIFactory;
 
   @Inject
   protected DeleteCapacityReservation(
-      BaseTaskDependencies baseTaskDependencies, AZUClientFactory azuClientFactory) {
+      BaseTaskDependencies baseTaskDependencies,
+      AZUClientFactory azuClientFactory,
+      CloudAPI.Factory cloudAPIFactory) {
     super(baseTaskDependencies);
     this.azuClientFactory = azuClientFactory;
+    this.cloudAPIFactory = cloudAPIFactory;
   }
 
   public static class Params extends ServerSubTaskParams {}
@@ -98,6 +103,30 @@ public class DeleteCapacityReservation extends ServerSubTaskBase {
             azureReservationInfo.getReservationsByRegionMap().remove(regionReservation.getRegion());
           }
           capacityReservationState.setAzureReservationInfo(null);
+        } else if (reservationForProviderType
+            instanceof UniverseDefinitionTaskParams.AwsReservationInfo awsReservationInfo) {
+          CloudAPI cloudAPI = cloudAPIFactory.get(provider.getCloudCode().name());
+          for (UniverseDefinitionTaskParams.AwsZoneReservation zoneReservation :
+              new ArrayList<>(awsReservationInfo.getReservationsByZoneMap().values())) {
+            zoneReservation
+                .getReservationsByType()
+                .forEach(
+                    (instanceType, perInstanceType) -> {
+                      perInstanceType
+                          .getZonedReservation()
+                          .forEach(
+                              (zoneId, reservation) -> {
+                                if (zoneReservation.getReservationName() != null) {
+                                  cloudAPI.deleteCapacityReservation(
+                                      provider,
+                                      zoneReservation.getRegion(),
+                                      reservation.getReservationName());
+                                }
+                              });
+                    });
+            awsReservationInfo.getReservationsByZoneMap().remove(zoneReservation.getZone());
+          }
+          capacityReservationState.setAwsReservationInfo(null);
         }
       }
       succeeded = true;

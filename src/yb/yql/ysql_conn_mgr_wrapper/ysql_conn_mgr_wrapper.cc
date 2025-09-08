@@ -34,6 +34,7 @@ DECLARE_bool(ysql_conn_mgr_version_matching_connect_higher_version);
 DECLARE_int32(ysql_conn_mgr_max_query_size);
 DECLARE_int32(ysql_conn_mgr_wait_timeout_ms);
 DECLARE_int32(ysql_conn_mgr_max_pools);
+DECLARE_uint32(TEST_ysql_conn_mgr_auth_delay_ms);
 
 // TODO(janand) : GH #17837  Find the optimum value for `ysql_conn_mgr_idle_time`.
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_idle_time, 180,

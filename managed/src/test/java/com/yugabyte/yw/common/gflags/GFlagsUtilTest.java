@@ -459,4 +459,16 @@ public class GFlagsUtilTest extends FakeDBApplication {
     // combining the objects in the future when we add new child fields to this class.
     assertEquals(finalSpecificGFlags.getClass().getDeclaredFields().length, 4);
   }
+
+  @Test
+  public void testConfigParsing() {
+    StringBuilder sb = new StringBuilder();
+    sb.append("#some comment\n")
+        .append("--key=true\n")
+        .append("--key2\n")
+        .append("some=rrr\n") // will be ignored
+        .append("--key3 = val3 #TODO");
+    Map<String, String> gflags = GFlagsUtil.parseConfigContents(sb.toString());
+    assertEquals(Map.of("key", "true", "key2", "", "key3", "val3"), gflags);
+  }
 }

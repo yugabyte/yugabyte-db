@@ -104,6 +104,16 @@ public class BaseMiniClusterTest extends BaseYBTest {
     return -1;
   }
 
+  /** Subclasses can override this to set the initial YCQL number of tablets. */
+  protected int getYcqlNumTablets() {
+    return MiniYBClusterParameters.DEFAULT_NUM_TABLETS;
+  }
+
+  /** Subclasses can override this to set the initial YSQL number of tablets. */
+  protected int getYsqlNumTablets() {
+    return MiniYBClusterParameters.DEFAULT_NUM_TABLETS;
+  }
+
   /** Subclasses can override this to set the number of shards per tablet server. */
   protected int getNumShardsPerTServer() {
     return MiniYBClusterParameters.DEFAULT_NUM_SHARDS_PER_TSERVER;
@@ -293,6 +303,8 @@ public class BaseMiniClusterTest extends BaseYBTest {
                       .addMasterFlags(additionalMasterFlags)
                       .commonTServerFlags(getTServerFlags())
                       .addCommonTServerFlags(additionalTserverFlags)
+                      .ycqlNumTablets(getYcqlNumTablets())
+                      .ysqlNumTablets(getYsqlNumTablets())
                       .numShardsPerTServer(getNumShardsPerTServer())
                       .useIpWithCertificate(useIpWithCertificate)
                       .replicationFactor(replicationFactor)

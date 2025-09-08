@@ -11,12 +11,14 @@ import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.audit.AuditService;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
@@ -24,6 +26,8 @@ import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.controllers.handlers.GFlagsAuditHandler;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -31,6 +35,9 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -174,6 +181,12 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
     List<NodeDetails> masterNodes = fetchMasterNodes(taskParams().upgradeOption);
     List<NodeDetails> tServerNodes = fetchTServerNodes(taskParams().upgradeOption);
 
+    boolean checkActualState =
+        confGetter.getGlobalConf(GlobalConfKeys.verifyGFlagsOnNodeDuringUpgrade);
+    boolean cloudEnabled =
+        confGetter.getConfForScope(
+            Customer.get(universe.getCustomerId()), CustomerConfKeys.cloudEnabled);
+
     for (UniverseDefinitionTaskParams.Cluster curCluster : curClusters) {
       UniverseDefinitionTaskParams.UserIntent userIntent = curCluster.userIntent;
       UniverseDefinitionTaskParams.UserIntent prevIntent = userIntent.clone();
@@ -182,38 +195,16 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
           GFlagsUtil.getBaseGFlags(ServerType.MASTER, newCluster, newClusters.values());
       Map<String, String> tserverGflags =
           GFlagsUtil.getBaseGFlags(ServerType.TSERVER, newCluster, newClusters.values());
-      ObjectMapper mapper = new ObjectMapper();
-      String redactedMasterNewFlags =
-          RedactingService.filterSecretFields(
-                  mapper.valueToTree(masterGflags), RedactionTarget.LOGS)
-              .toString();
-      String redactedMasterOldFlags =
-          RedactingService.filterSecretFields(
-                  mapper.valueToTree(
-                      GFlagsUtil.getBaseGFlags(ServerType.MASTER, curCluster, curClusters)),
-                  RedactionTarget.LOGS)
-              .toString();
       log.debug(
           "Cluster {} master: new flags {} old flags {}",
           curCluster.clusterType,
-          redactedMasterNewFlags,
-          redactedMasterOldFlags);
-      String redactedTsNewFlags =
-          RedactingService.filterSecretFields(
-                  mapper.valueToTree(tserverGflags), RedactionTarget.LOGS)
-              .toString();
-      String redactedTsOldFlags =
-          RedactingService.filterSecretFields(
-                  mapper.valueToTree(
-                      GFlagsUtil.getBaseGFlags(ServerType.TSERVER, curCluster, curClusters)),
-                  RedactionTarget.LOGS)
-              .toString();
+          redactGFlags(masterGflags),
+          redactGFlags(GFlagsUtil.getBaseGFlags(ServerType.MASTER, curCluster, curClusters)));
       log.debug(
           "Cluster {} tserver: new flags {} old flags {}",
           curCluster.clusterType,
-          redactedTsNewFlags,
-          redactedTsOldFlags);
-
+          redactGFlags(tserverGflags),
+          redactGFlags(GFlagsUtil.getBaseGFlags(ServerType.TSERVER, curCluster, curClusters)));
       boolean changedByMasterFlags =
           curCluster.clusterType == UniverseDefinitionTaskParams.ClusterType.PRIMARY
               && GFlagsUtil.syncGflagsToIntent(masterGflags, userIntent);
@@ -228,27 +219,37 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
               && verifyIntentReallyChanged(curCluster.uuid, universe, prevIntent, userIntent);
 
       masterNodes.removeIf(
-          n ->
-              n.placementUuid.equals(curCluster.uuid)
-                  && !applyToAllNodes
-                  && !GFlagsUpgradeParams.nodeHasGflagsChanges(
+          n -> {
+            if (n.placementUuid.equals(curCluster.uuid) && !applyToAllNodes) {
+              return (!GFlagsUpgradeParams.nodeHasGflagsChanges(
                       n,
                       ServerType.MASTER,
                       curCluster,
                       curClusters,
                       newCluster,
-                      newClusters.values()));
+                      newClusters.values())
+                  || checkActualState
+                      && !hasChangesOnNode(
+                          universe, n, userIntent, ServerType.MASTER, cloudEnabled));
+            }
+            return false;
+          });
       tServerNodes.removeIf(
-          n ->
-              n.placementUuid.equals(curCluster.uuid)
-                  && !applyToAllNodes
-                  && !GFlagsUpgradeParams.nodeHasGflagsChanges(
+          n -> {
+            if (n.placementUuid.equals(curCluster.uuid) && !applyToAllNodes) {
+              return (!GFlagsUpgradeParams.nodeHasGflagsChanges(
                       n,
                       ServerType.TSERVER,
                       curCluster,
                       curClusters,
                       newCluster,
-                      newClusters.values()));
+                      newClusters.values())
+                  || checkActualState
+                      && !hasChangesOnNode(
+                          universe, n, userIntent, ServerType.TSERVER, cloudEnabled));
+            }
+            return false;
+          });
     }
     return new MastersAndTservers(masterNodes, tServerNodes);
   }
@@ -507,5 +508,100 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
                     nodeDetails, ServerType.TSERVER, newCluster, newClusters));
       }
     }
+  }
+
+  private Map<String, String> getFinalTargetGFlags(
+      Universe universe,
+      NodeDetails node,
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      ServerType serverType) {
+    Map<UUID, UniverseDefinitionTaskParams.Cluster> newClusters =
+        taskParams().getNewVersionsOfClusters(universe);
+
+    Map<String, String> newGflags =
+        GFlagsUtil.getGFlagsForNode(
+            node, serverType, newClusters.get(node.placementUuid), newClusters.values());
+
+    AnsibleConfigureServers.Params params =
+        getAnsibleConfigureServerParams(
+            userIntent,
+            node,
+            serverType,
+            UpgradeTaskParams.UpgradeTaskType.GFlags,
+            UpgradeTaskParams.UpgradeTaskSubType.None);
+
+    return GFlagsUtil.calculateFinalGFlags(
+        node, params, userIntent, universe, newGflags, config, confGetter);
+  }
+
+  private boolean hasChangesOnNode(
+      Universe universe,
+      NodeDetails node,
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      ServerType serverType,
+      boolean cloudEnabled) {
+    Map<String, String> targetGFlags = getFinalTargetGFlags(universe, node, userIntent, serverType);
+    Map<String, String> diskGFlags =
+        GFlagsUtil.getActualGFlags(
+            node, serverType, universe, false, nodeUniverseManager, nodeUIApiHelper, cloudEnabled);
+    if (!targetGFlags.equals(diskGFlags)) {
+      Set<String> allKeys = new HashSet<>(targetGFlags.keySet());
+      if (diskGFlags == null) {
+        diskGFlags = new HashMap<>();
+      }
+      allKeys.addAll(diskGFlags.keySet());
+      Map<String, String> diff1 = new HashMap<>();
+      Map<String, String> diff2 = new HashMap<>();
+      for (String key : allKeys) {
+        if (!Objects.equals(targetGFlags.get(key), diskGFlags.get(key))) {
+          diff1.put(key, targetGFlags.getOrDefault(key, ""));
+          diff2.put(key, diskGFlags.getOrDefault(key, ""));
+        }
+      }
+      log.debug(
+          "Node {} has {} gflags changes : target {} vs {}",
+          node.getNodeName(),
+          serverType,
+          redactGFlags(diff1),
+          redactGFlags(diff2));
+
+      Map<String, String> tmpDiskGflags = new HashMap<>(diskGFlags);
+      tmpDiskGflags.remove("transaction_table_num_tablets");
+      tmpDiskGflags.remove("default_memory_limit_to_ram_ratio");
+      if (!tmpDiskGflags.equals(targetGFlags)) {
+        return true;
+      } else {
+        log.debug("The difference is only by gflags automatically appended, skipping");
+      }
+    }
+    Map<String, String> inMemoryGFlags =
+        GFlagsUtil.getActualGFlags(
+            node, serverType, universe, true, nodeUniverseManager, nodeUIApiHelper, cloudEnabled);
+    if (inMemoryGFlags == null) {
+      log.debug("No in memory gflags for node {}, assuming needs upgrade", node.nodeName);
+      inMemoryGFlags = new HashMap<>();
+    }
+    for (Map.Entry<String, String> flagEntry : targetGFlags.entrySet()) {
+      String key = flagEntry.getKey();
+      String value = flagEntry.getValue();
+      if (!Objects.equals(value, inMemoryGFlags.get(key))) {
+        log.debug(
+            "In memory gflag {} differs for node {} {}: desired {} vs current {}",
+            key,
+            node.nodeName,
+            serverType,
+            redactGFlags(Collections.singletonMap(key, value)),
+            redactGFlags(Collections.singletonMap(key, inMemoryGFlags.getOrDefault(key, ""))));
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private Object redactGFlags(Map<String, String> gflags) {
+    ObjectMapper mapper = new ObjectMapper();
+    return RedactingService.filterSecretFields(mapper.valueToTree(gflags), RedactionTarget.LOGS)
+        .toString();
   }
 }

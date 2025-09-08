@@ -63,8 +63,10 @@
 
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb_pgapi.h"
+
 #include "yb/dockv/partial_row.h"
 #include "yb/dockv/partition.h"
+#include "yb/dockv/reader_projection.h"
 
 #include "yb/fs/fs_manager.h"
 

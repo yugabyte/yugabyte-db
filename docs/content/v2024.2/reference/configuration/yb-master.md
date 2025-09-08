@@ -616,7 +616,7 @@ Clusters created using yugabyted always use a default value of `1`.
 
 When enabled, all databases created in the cluster are colocated by default. If you enable the flag after creating a cluster, you need to restart the YB-Master and YB-TServer services.
 
-For more details, see [clusters in colocated tables](../../../explore/colocation/).
+For more details, see [clusters in colocated tables](../../../additional-features/colocation/).
 
 Default: `false`
 
@@ -624,7 +624,7 @@ Default: `false`
 
 When enabled, placement policy can be specified for each colocated table via tablespaces.
 
-For more details, see [Colocated tables with tablespaces](../../../explore/colocation/#colocated-tables-with-tablespaces).
+For more details, see [Colocated tables with tablespaces](../../../additional-features/colocation/#colocated-tables-with-tablespaces).
 
 Default: `false`
 

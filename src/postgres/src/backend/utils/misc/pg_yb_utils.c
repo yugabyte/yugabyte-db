@@ -1098,7 +1098,7 @@ IpAddressToBytes(YbcPgAshConfig *ash_config)
 }
 
 void
-YBInitPostgresBackend(const char *program_name, uint64_t *session_id)
+YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *init_info)
 {
 	HandleYBStatus(YBCInit(program_name, palloc, cstring_to_text_with_len));
 
@@ -1124,7 +1124,12 @@ YBInitPostgresBackend(const char *program_name, uint64_t *session_id)
 		ash_config.metadata = &MyProc->yb_ash_metadata;
 
 		IpAddressToBytes(&ash_config);
-		YBCInitPgGate(YbGetTypeTable(), &callbacks, session_id, &ash_config);
+		const YbcPgInitPostgresInfo default_init_info = {
+			.parallel_leader_session_id = NULL,
+			.shared_data = &MyProc->yb_shared_data
+		};
+		YBCInitPgGate(YbGetTypeTable(), &callbacks,
+					init_info ? init_info : &default_init_info, &ash_config);
 		YBCInstallTxnDdlHook();
 
 		/*
@@ -6754,6 +6759,7 @@ aggregateStats(YbInstrumentation *instr, const YbcPgExecStats *exec_stats)
 	aggregateRpcMetrics(&instr->write_metrics, &exec_stats->write_metrics);
 
 	instr->rows_removed_by_recheck += exec_stats->rows_removed_by_recheck;
+	instr->commit_wait += exec_stats->commit_wait;
 }
 
 static YbcPgExecReadWriteStats
@@ -6816,6 +6822,7 @@ calculateExecStatsDiff(const YbSessionStats *stats, YbcPgExecStats *result)
 	calculateStorageMetricsDiff(&result->write_metrics, &current->write_metrics, &old->write_metrics);
 
 	result->rows_removed_by_recheck = current->rows_removed_by_recheck - old->rows_removed_by_recheck;
+	result->commit_wait = current->commit_wait - old->commit_wait;
 }
 
 static void
@@ -6840,6 +6847,7 @@ refreshExecStats(YbSessionStats *stats, bool include_catalog_stats)
 	}
 
 	old->rows_removed_by_recheck = current->rows_removed_by_recheck;
+	old->commit_wait = current->commit_wait;
 }
 
 void
@@ -6898,6 +6906,30 @@ void
 YbToggleSessionStatsTimer(bool timing_on)
 {
 	yb_session_stats.current_state.is_timing_required = timing_on;
+}
+
+bool
+YbIsSessionStatsTimerEnabled()
+{
+	return yb_session_stats.current_state.is_timing_required;
+}
+
+void
+YbToggleCommitStatsCollection(bool enable)
+{
+	yb_session_stats.current_state.is_commit_stats_required = enable;
+}
+
+bool
+YbIsCommitStatsCollectionEnabled()
+{
+	return yb_session_stats.current_state.is_commit_stats_required;
+}
+
+void
+YbRecordCommitLatency(uint64_t latency_us)
+{
+	yb_session_stats.current_state.stats.commit_wait += latency_us;
 }
 
 void

@@ -24,6 +24,8 @@
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_write_batch.h"
 
+#include "yb/dockv/reader_projection.h"
+
 #include "yb/master/catalog_loaders.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_defaults.h"
@@ -264,67 +266,57 @@ Status RestoreSysCatalogState::PatchAndAddRestoringTablets() {
   faststring buffer;
   for (auto& split_tablet : restoration_.non_system_tablets_to_restore) {
     auto& split_info = split_tablet.second;
-    // CASE: 1
-    // If master has fewer than 2 children registered then writes (if any) are still
-    // going to the parent and it is safe to restore the parent and hide the children (if any).
-    // Some examples:
-    //
-    // Example#1: Non-colocated split tablet that has finished split completely as of restore time
-    /*                                 t1
-                                     /   \
-                                    t11   t12       <-- Restoring time
-                                    / \    /  \
-                                t111 t112 t121 t122 <-- Present time
-    */
-    // If we are restoring to a state when t1 was completely split into t11 and t12 then
-    // in the restoring state, the split map will contain two entries
-    // one each for t11 and t12. Both the entries will only have the parent
-    // but no children. It is safe to restore just the parent.
-    //
-    // Example#2: Colocated or not split tablet
-    //                                 t1 (colocated or not split) <-- Present and Restoring time
-    // If we are restoring a colocated tablet then the split map will only contain one entry
-    // for t1 that will only have the parent but no children.
-    //
-    // Example#3: Non-colocated split tablet in the middle of a split as of restore time
-    // If both the children are not registered on the master as of the time to restore
-    // then all the writes are still going to the parent and it is safe to restore
-    // the parent. We also HIDE the children if any.
     if (VLOG_IS_ON(3)) {
       VLOG(3) << "Parent tablet id " << split_info.parent.first
               << ", pb " << split_info.parent.second->ShortDebugString();
       for (const auto& child : split_info.children) {
-        VLOG(3) << "Child tablet id " << child.first
-                << ", pb " << child.second->ShortDebugString();
+        LOG(INFO) << "Child tablet id " << child.first
+                  << ", pb " << child.second->ShortDebugString();
       }
     }
+    // After D31428 / 5a4bbd4, we register both split children atomically, so there should always be
+    // either 0 or 2 children.
     if (split_info.children.size() < 2) {
-      // Clear the children info from the protobuf.
-      split_info.parent.second->clear_split_tablet_ids();
+      // CASE 1: If there are no children registered then we simply restore the parent.
+      // Example#1: Non-colocated split tablet that has finished split completely as of restore time
+      /*                                 t1
+                                        /   \
+                                      t11   t12       <-- Restoring time
+                                      / \    /  \
+                                  t111 t112 t121 t122 <-- Present time
+      */
+      // If we are restoring to a state when t1 was completely split into t11 and t12 then
+      // in the restoring state, the split map will contain two entries
+      // one each for t11 and t12. Both the entries will only have the parent
+      // but no children. It is safe to restore just the parent.
+      //
+      // Example#2: Colocated or not split tablet
+      //                                 t1 (colocated or not split) <-- Present and Restoring time
+      // If we are restoring a colocated tablet then the split map will only contain one entry
+      // for t1 that will only have the parent but no children.
+      //
+      // Example#3: Non-colocated split tablet in the middle of a split as of restore time
+      // If both the children are not registered on the master as of the time to restore
+      // then all the writes are still going to the parent and it is safe to restore
+      // the parent.
+      RSTATUS_DCHECK_EQ(split_info.children.size(), 0, IllegalState,
+                        "Less than two children tablets exist for the parent tablet");
+      RSTATUS_DCHECK_EQ(split_info.parent.second->split_tablet_ids_size(), 0, IllegalState,
+                        "Split children exist for the parent tablet");
       // If it is a colocated tablet, then set the schedules that prevent
       // its colocated tables from getting deleted. Also, add to-be hidden table ids
       // in its colocated list as they won't be present previously.
       RETURN_NOT_OK(PatchColocatedTablet(split_info.parent.first, split_info.parent.second));
       RETURN_NOT_OK(AddRestoringEntry(split_info.parent.first, split_info.parent.second,
                                       &buffer, SysRowEntryType::TABLET));
-      // Hide the child tablets.
-      for (auto& child : split_info.children) {
-        FillHideInformation(child.second->table_id(), child.second);
-        RETURN_NOT_OK(AddRestoringEntry(child.first, child.second, &buffer,
-                                        SysRowEntryType::TABLET, DoTsRestore::kFalse));
-      }
     } else {
-      // CASE: 2
-      // If master has both the children registered then we restore as if this split
-      // is complete i.e. we restore both the children and hide the parent.
-      // This works because at the time when restore was initiated, we waited
+      // CASE 2: If there are two children, we restore the children and hide the parent.
+      // This works because, at the time when restore was initiated, we waited
       // for splits to complete, so at current time split children are ready and parent is hidden.
       // Thus it's safe to restore the children and use hybrid time filter to
       // ensure only restored rows are visible. This takes care of all the race conditions
       // associated with selectively restoring either only the parent or children depending on
       // the stage at which splitting is at.
-
-      // There should be exactly 2 children.
       RSTATUS_DCHECK_EQ(split_info.children.size(), 2, IllegalState,
                         "More than two children tablets exist for the parent tablet");
 
@@ -854,12 +846,12 @@ Status RestoreSysCatalogState::PrepareWriteBatch(
   }
 
   for (const auto& [tablet_id, pb] : restoration_.non_system_obsolete_tablets) {
-    VLOG_WITH_FUNC(4) << "Cleanup tablet: " << tablet_id << ", " << pb.ShortDebugString();
+    VLOG_WITH_FUNC(4) << "Clean up tablet: " << tablet_id << ", " << pb.ShortDebugString();
     RETURN_NOT_OK(PrepareTabletCleanup(
         tablet_id, pb, doc_read_context, schema_packing_provider, write_batch));
   }
   for (const auto& [table_id, pb] : restoration_.non_system_obsolete_tables) {
-    VLOG_WITH_FUNC(4) << "Cleanup table: " << table_id << ", " << pb.ShortDebugString();
+    VLOG_WITH_FUNC(4) << "Clean up table: " << table_id << ", " << pb.ShortDebugString();
     RETURN_NOT_OK(PrepareTableCleanup(
         table_id, pb, doc_read_context, schema_packing_provider, write_batch, now_ht));
   }
@@ -872,7 +864,12 @@ Status RestoreSysCatalogState::PrepareTabletCleanup(
     docdb::SchemaPackingProvider* schema_packing_provider, docdb::DocWriteBatch* write_batch) {
   VLOG_WITH_FUNC(4) << id;
 
-  FillHideInformation(pb.table_id(), &pb);
+  // These tablets are all split children that were created after the restore time. This is safe
+  // because we do not allow forward restores (after commit D19137 / ea4b650), and makes the code
+  // for loading tablets simpler because we don't have to disambiguate multiple tablets with the
+  // same partitions and split depth (see D40314 / ac19aa6).
+  pb.set_state(SysTabletsEntryPB::DELETED);
+  pb.set_state_msg("Tablet deleted by PITR to time before the tablet was created");
 
   return WriteEntry(
       SysRowEntryType::TABLET, id, pb.SerializeAsString(), QLWriteRequestPB::QL_STMT_UPDATE,

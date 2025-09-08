@@ -4,7 +4,7 @@ headerTitle: REFRESH MATERIALIZED VIEW
 linkTitle: REFRESH MATERIALIZED VIEW
 description: Use the REFRESH MATERIALIZED VIEW statement to refresh the contents of a materialized view.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: ddl_refresh_matview
     parent: statements
 type: docs

@@ -30,7 +30,10 @@ AggregatedClusterInfo ComputeAggregatedClusterInfo(
     const std::string& placement_uuid);
 
 Status CanCreateTabletReplicas(
-    int num_tablets, const ReplicationInfoPB& replication_info, const TSDescriptorVector& ts_descs,
-    const BlacklistSet& blacklist);
+    int num_tablets, const ReplicationInfoPB& replication_info,
+    const TSDescriptorVector& ts_descs, const BlacklistSet& blacklist);
+Status CanCreateTabletReplicas(
+    std::vector<std::pair<ReplicationInfoPB, int>> replication_info_to_num_tablets,
+    const TSDescriptorVector& ts_descs, const BlacklistSet& blacklist);
 
 }  // namespace yb::master

@@ -18,10 +18,14 @@
 #include "yb/common/schema.h"
 
 #include "yb/docdb/doc_pgsql_scanspec.h"
+#include "yb/docdb/hybrid_scan_choices.h"
 #include "yb/docdb/scan_choices.h"
 
+#include "yb/dockv/doc_key.h"
 #include "yb/dockv/value_type.h"
+
 #include "yb/gutil/casts.h"
+
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 

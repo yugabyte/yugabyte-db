@@ -1146,9 +1146,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           taskParams().rootCA == null ? taskUniverseDetails.rootCA : taskParams().rootCA;
 
       UUID clientRootCAUUID =
-          taskUniverseDetails.rootAndClientRootCASame
-              ? rootCAUUID
-              : taskUniverseDetails.getClientRootCA();
+          (taskUniverseDetails.rootAndClientRootCASame
+              ? (rootCAUUID != null ? rootCAUUID : taskUniverseDetails.getClientRootCA())
+              : taskUniverseDetails.getClientRootCA());
       if (rootCAUUID != null) {
         rootCert = CertificateHelper.getCertPEM(rootCAUUID);
         rootKey = CertificateHelper.getKeyPEM(rootCAUUID);

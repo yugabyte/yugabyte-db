@@ -4,7 +4,7 @@ headerTitle: The transaction model for top-level SQL statements
 linkTitle: Transaction model for top-level SQL statements
 description: Explains how top-level SQL statements are executed each in its own transaction unless explicitly started with "begin;" or "start transaction;" [YSQL].
 menu:
-  v2.20:
+  v2.20_api:
     identifier: txn-model-for-top-level-sql
     parent: api-ysql
     weight: 20
@@ -19,7 +19,7 @@ Various client-side libraries are available to allow you to send and receive req
 - [libpq — C Library](https://www.postgresql.org/docs/current/libpq.html) (documented as part of the overall PostgreSQL documentation set);
 - [pgJDBC — the PostgreSQL JDBC Driver](https://jdbc.postgresql.org/) from _postgresql.org_;
 - [psycopg — for Python](https://www.psycopg.org/);
-- and, of course, [_psql_](https://www.postgresql.org/docs/11/app-psql.html), the so-called PostgreSQL interactive terminal, together with the YugabyteDB equivalent, [_ysqlsh_](../../../admin/ysqlsh/).
+- and, of course, [_psql_](https://www.postgresql.org/docs/11/app-psql.html), the so-called PostgreSQL interactive terminal, together with the YugabyteDB equivalent, [_ysqlsh_](../../../api/ysqlsh/).
 
 There are many others.
 

@@ -26,11 +26,14 @@
 #include <vector>
 
 #include <boost/preprocessor/cat.hpp>
+
 #include "yb/tserver/tserver_admin.proxy.h"
 
 #include "yb/common/wire_protocol.h"
 
 #include "yb/docdb/doc_rowwise_iterator.h"
+
+#include "yb/dockv/reader_projection.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/ref_counted.h"

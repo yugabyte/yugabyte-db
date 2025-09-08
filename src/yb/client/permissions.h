@@ -25,6 +25,7 @@
 
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
+#include "yb/util/one_time_bool.h"
 
 #include "yb/yql/cql/ql/ptree/pt_option.h"
 
@@ -144,7 +145,7 @@ class PermissionsCache {
 
   // Whether we have received the permissions from the master.
   std::atomic_bool ready_{false};
-  std::atomic_bool shutting_down_{false};
+  OneTimeBool shutting_down_;
 };
 
 } // namespace namespace internal

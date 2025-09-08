@@ -317,8 +317,8 @@ extern void HandleYBTableDescStatus(YbcStatus status, YbcPgTableDesc table);
  * YB initialization that needs to happen when a PostgreSQL backend process
  * is started. Reports errors using ereport.
  */
-extern void YBInitPostgresBackend(const char *program_name,
-								  uint64_t *session_id);
+
+extern void YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *init_info);
 
 /*
  * This should be called on all exit paths from the PostgreSQL backend process.
@@ -1138,19 +1138,37 @@ extern void yb_assign_max_replication_slots(int newval, void *extra);
  * Refreshes the session stats snapshot with the collected stats. This function
  * is to be invoked before the query has started its execution.
  */
-void		YbRefreshSessionStatsBeforeExecution();
+extern void		YbRefreshSessionStatsBeforeExecution();
 
 /*
  * Refreshes the session stats snapshot with the collected stats. This function
  * is to be invoked when during/after query execution.
  */
-void		YbRefreshSessionStatsDuringExecution();
+extern void		YbRefreshSessionStatsDuringExecution();
 
 /*
  * Updates the global flag indicating whether RPC requests to the underlying
  * storage layer need to be timed.
  */
-void		YbToggleSessionStatsTimer(bool timing_on);
+extern void		YbToggleSessionStatsTimer(bool timing_on);
+
+/* Indicates whether timing of RPC requests is enabled. */
+extern bool		YbIsSessionStatsTimerEnabled();
+
+/*
+ * Updates the global flag indicating whether stats need to be collected at the
+ * time of transaction commit for EXPLAIN.
+ */
+extern void		YbToggleCommitStatsCollection(bool enable);
+
+/* Indicates whether commit stats collection is enabled. */
+extern bool		YbIsCommitStatsCollectionEnabled();
+
+/*
+ * Records the latency of the last transaction commit operation in a global
+ * variable.
+ */
+extern void		YbRecordCommitLatency(uint64_t latency_us);
 
 /**
  * Update the global flag indicating what metric changes to capture and return
@@ -1429,4 +1447,5 @@ extern bool YbIsAnyDependentGeneratedColPK(Relation rel, AttrNumber attnum);
 extern bool YbCheckTserverResponseCacheForAuthGflags();
 
 extern bool YbUseTserverResponseCacheForAuth(uint64_t shared_catalog_version);
+
 #endif							/* PG_YB_UTILS_H */

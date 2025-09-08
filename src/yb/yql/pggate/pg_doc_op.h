@@ -494,6 +494,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   // - This op will not send request to tablet server.
   // - This op will return empty result-set when being requested for data.
   void AbandonExecution() {
+    DCHECK_EQ(active_op_count_, 0);
     end_of_data_ = true;
   }
 

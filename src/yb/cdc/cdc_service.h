@@ -30,6 +30,7 @@
 #include "yb/rpc/rpc_context.h"
 
 #include "yb/util/net/net_util.h"
+#include "yb/util/one_time_bool.h"
 #include "yb/util/semaphore.h"
 
 namespace rocksdb {
@@ -168,12 +169,10 @@ class CDCServiceImpl : public CDCServiceIf {
       const DestroyVirtualWALForCDCRequestPB* req, DestroyVirtualWALForCDCResponsePB* resp,
       rpc::RpcContext context) override;
 
-  // Get a filtered list of all the sessions that belong to virtual WAL
-  std::vector<uint64_t> FilterVirtualWalSessions(const std::vector<uint64_t>& session_ids);
-
   // Destroy a batch of Virtual WAL instances managed by this CDC service.
   // Intended to be called from background jobs and hence only logs warnings in case of errors.
-  void DestroyVirtualWALBatchForCDC(const std::vector<uint64_t>& session_ids);
+  void DestroyVirtualWALBatchForCDC(const std::vector<uint64_t>& expired_session_ids)
+      EXCLUDES(mutex_);
 
   void UpdateAndPersistLSN(
       const UpdateAndPersistLSNRequestPB* req, UpdateAndPersistLSNResponsePB* resp,
@@ -624,10 +623,6 @@ class CDCServiceImpl : public CDCServiceIf {
   // Periodically update lag metrics (FLAGS_update_metrics_interval_ms).
   scoped_refptr<Thread> update_peers_and_metrics_thread_;
 
-  // True when this service is stopped. Used to inform
-  // get_minimum_checkpoints_and_update_peers_thread_ that it should exit.
-  bool cdc_service_stopped_ GUARDED_BY(mutex_){false};
-
   // True when the server is a producer of a valid replication stream.
   std::atomic<bool> cdc_enabled_{false};
 
@@ -648,8 +643,10 @@ class CDCServiceImpl : public CDCServiceIf {
   std::unordered_map<TabletId, OpId> xcluster_tablet_min_opid_map_
       GUARDED_BY(xcluster_replication_maps_mutex_);
 
-  MonoTime xcluster_map_last_refresh_time_ GUARDED_BY(xcluster_replication_maps_mutex_)
-      = MonoTime::Min();
+  MonoTime xcluster_map_last_refresh_time_ GUARDED_BY(xcluster_replication_maps_mutex_) =
+      MonoTime::Min();
+
+  OneTimeBool shutting_down_;
 };
 
 }  // namespace cdc

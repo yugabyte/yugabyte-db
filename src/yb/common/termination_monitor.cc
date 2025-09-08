@@ -19,7 +19,8 @@
 #include "yb/util/signal_util.h"
 #include "yb/util/thread.h"
 
-DECLARE_bool(TEST_running_test);
+DEFINE_NON_RUNTIME_bool(
+    graceful_shutdown, true, "Whether to shutdown gracefully when receiving SIGTERM.");
 
 namespace yb {
 
@@ -69,9 +70,7 @@ void TerminationMonitor::WaitForTermination() {
 }
 
 void TerminationMonitor::InstallSigtermHandler() {
-  // TODO(Hari) #15061 Limiting this to tests to catch TSAN and ASAN issues before we enable it in
-  // production.
-  if (!FLAGS_TEST_running_test) {
+  if (!FLAGS_graceful_shutdown) {
     return;
   }
   std::lock_guard lock(mutex_);

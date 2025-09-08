@@ -491,6 +491,7 @@ typedef struct {
   YbcPgExecStorageMetrics write_metrics;
 
   uint64_t rows_removed_by_recheck;
+  uint64_t commit_wait;
 } YbcPgExecStats;
 
 // Make sure this is in sync with PgsqlMetricsCaptureType in pgsql_protocol.proto.
@@ -502,6 +503,7 @@ typedef enum {
 typedef struct {
   YbcPgExecStats stats;
   bool is_timing_required;
+  bool is_commit_stats_required;
   YbcPgMetricsCaptureType metrics_capture;
 } YbcPgExecStatsState;
 
@@ -1016,6 +1018,15 @@ typedef struct {
   const char* strarg1;
   const char* strarg2;
 } YbcFlushDebugContext;
+
+typedef struct {
+  char data[32];
+} YbcPgSharedDataPlaceholder;
+
+typedef struct {
+  const uint64_t *parallel_leader_session_id;
+  YbcPgSharedDataPlaceholder *shared_data;
+} YbcPgInitPostgresInfo;
 
 #ifdef __cplusplus
 }  // extern "C"

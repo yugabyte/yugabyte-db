@@ -143,6 +143,7 @@ export const xClusterQueryKey = {
     tableUuids?: string[];
     configType?: XClusterConfigType;
     includeDetails?: boolean;
+    isUsedForDr?: boolean;
   }) => [...xClusterQueryKey.ALL, requestParams]
 };
 

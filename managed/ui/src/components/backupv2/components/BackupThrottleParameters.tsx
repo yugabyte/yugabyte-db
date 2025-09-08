@@ -154,6 +154,26 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
           getPresetValues('per_download_num_objects', 'max'),
           `Max limit is ${getPresetValues('per_download_num_objects', 'max')}`
         )
+    }),
+    disk_read_bytes_per_sec: Yup.object().shape({
+      currentValue: Yup.number()
+        .required('Required')
+        .typeError('Required')
+        .test(
+          'is-greater-than-zero',
+          `Must be 0 or greater than ${getPresetValues('disk_read_bytes_per_sec', 'min')} (1 MB)`,
+          (value) => value !== null && value !== undefined && (value === 0 || value >= getPresetValues('disk_read_bytes_per_sec', 'min'))
+        )
+    }),
+    disk_write_bytes_per_sec: Yup.object().shape({
+      currentValue: Yup.number()
+        .required('Required')
+        .typeError('Required')
+        .test(
+          'is-greater-than-zero',
+          `Must be 0 or greater than ${getPresetValues('disk_write_bytes_per_sec', 'min')} (1 MB)`,
+          (value) => value !== null && value !== undefined && (value === 0 || value >= getPresetValues('disk_write_bytes_per_sec', 'min'))
+        )
     })
   });
 
@@ -211,6 +231,12 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
                       Min {getPresetValues('per_download_num_objects', 'min')}
                     </YBTag>
                   </div>
+                  <div>
+                    Use appropriate <b>disk throttling</b> values to throttle disk usage. 0 means use maximum available.
+                    <YBTag type={YBTag_Types.YB_GRAY}>
+                      Min 1 MB/s
+                    </YBTag>
+                  </div>
                 </Col>
                 <Col lg={12} className="fields">
                   <div className="section">Backups</div>
@@ -256,6 +282,29 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
                       {errors.per_upload_num_objects?.currentValue && (
                         <span className="err-msg">
                           {errors.per_upload_num_objects.currentValue}
+                        </span>
+                      )}
+                    </Col>
+                  </Row>
+                  <Row>
+                    <Col lg={12} className="no-padding">
+                      Disk read bytes per second to throttle disk usage during backups
+                        <span className="text-secondary">
+                          - Default {initialValues.disk_read_bytes_per_sec.presetValues.defaultValue}
+                        </span>
+                    </Col>
+                    <Col lg={5} className="no-padding">
+                      <Field
+                        name="disk_read_bytes_per_sec.currentValue"
+                        component={YBControlledNumericInput}
+                        val={values.disk_read_bytes_per_sec.currentValue}
+                        onInputChanged={(val: number) =>
+                          setFieldValue('disk_read_bytes_per_sec.currentValue', val)
+                        }
+                      />
+                      {errors.disk_read_bytes_per_sec?.currentValue && (
+                        <span className="err-msg">
+                          {errors.disk_read_bytes_per_sec.currentValue}
                         </span>
                       )}
                     </Col>
@@ -311,6 +360,29 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
                       )}
                     </Col>
                   </Row>
+                  <Row>
+                    <Col lg={12} className="no-padding">
+                      Disk write bytes per second to throttle disk usage during restore
+                      <span className="text-secondary">
+                        - Default {initialValues.disk_write_bytes_per_sec.presetValues.defaultValue}
+                      </span>
+                    </Col>
+                    <Col lg={5} className="no-padding">
+                      <Field
+                        name="disk_write_bytes_per_sec.currentValue"
+                        component={YBControlledNumericInput}
+                        val={values.disk_write_bytes_per_sec.currentValue}
+                        onInputChanged={(val: number) => {
+                          setFieldValue('disk_write_bytes_per_sec.currentValue', val);
+                        }}
+                      />
+                      {errors.disk_write_bytes_per_sec?.currentValue && (
+                        <span className="err-msg">
+                          {errors.disk_write_bytes_per_sec.currentValue}
+                        </span>
+                      )}
+                    </Col>
+                  </Row>
                 </Col>
               </Row>
             </>
@@ -336,6 +408,10 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
           Number of buffers per upload (per node) ={' '}
           <b>{initialValues.per_upload_num_objects.presetValues.defaultValue}</b>
         </div>
+        <div>
+          Disk read bytes per second to throttle disk usage during backups ={' '}
+          <b>{initialValues.disk_read_bytes_per_sec.presetValues.defaultValue}</b>
+        </div>
         <br />
         <h5>Restore</h5>
         <div>
@@ -345,6 +421,10 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
         <div>
           Number of buffers per download (per node) ={' '}
           <b>{initialValues.per_download_num_objects.presetValues.defaultValue}</b>
+        </div>
+        <div>
+          Disk write bytes per second to throttle disk usage during restores ={' '}
+          <b>{initialValues.disk_write_bytes_per_sec.presetValues.defaultValue}</b>
         </div>
       </YBConfirmModal>
     </>

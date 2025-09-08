@@ -4,11 +4,6 @@ headerTitle: ycqlsh
 linkTitle: ycqlsh
 description: Shell for interacting with the YugabyteDB YCQL API.
 headcontent: Shell for interacting with the YugabyteDB YCQL API
-menu:
-  v2.20:
-    identifier: ycqlsh
-    parent: admin
-    weight: 20
 rightNav:
   hideH4: true
 type: docs

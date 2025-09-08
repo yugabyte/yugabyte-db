@@ -853,12 +853,9 @@ auto MakeMemTableFlushFilterFactory(const F& f) {
 }
 
 template <class F>
-auto MakeMaxFileSizeWithTableTTLFunction(const F& f) {
-  // Trick to get type of max_file_size_for_compaction field.
-  using MaxFileSizeWithTableTTLFunction =
-      typename decltype(static_cast<rocksdb::Options*>(nullptr)
-                            ->max_file_size_for_compaction)::element_type;
-  return std::make_shared<MaxFileSizeWithTableTTLFunction>(f);
+auto MakeExcludeFromCompactionFunction(const F& f) {
+  using ExcludeFromCompaction = decltype(std::declval<rocksdb::Options>().exclude_from_compaction);
+  return std::make_shared<typename ExcludeFromCompaction::element_type>(f);
 }
 
 struct Tablet::IntentsDbFlushFilterState {
@@ -1089,12 +1086,30 @@ Result<rocksdb::Options> Tablet::CommonRocksDBOptions() {
 
   // Use a function that checks the table TTL before returning a value for max file size
   // for compactions.
-  rocksdb_options.max_file_size_for_compaction = MakeMaxFileSizeWithTableTTLFunction([this] {
-    if (HasActiveTTLFileExpiration()) {
-      return FLAGS_rocksdb_max_file_size_for_compaction;
+  rocksdb_options.exclude_from_compaction = MakeExcludeFromCompactionFunction(
+    [this](const rocksdb::FileMetaData& file) {
+      if (!HasActiveTTLFileExpiration()) {
+        return false;
+      }
+
+      auto status = docdb::CheckTtlFileExpirationConsistency(
+          file, retention_policy_->GetRetentionDirective().table_ttl);
+      if (!status.ok()) {
+        LOG_WITH_PREFIX(INFO)
+            << "File TTL expiry cannot be applied for the file "
+            << file.ToString() << ", status: " << status;
+        return false;
+      }
+
+      // Exclude based on file size.
+      const auto max_file_size = FLAGS_rocksdb_max_file_size_for_compaction;
+      const bool need_exclude = max_file_size && (file.fd.GetTotalFileSize() > max_file_size);
+      LOG_IF_WITH_PREFIX(INFO, need_exclude)
+          << "File " << file.ToString() << " excluded from the compaction based on "
+          << "File TTL expiration and max file size of " << max_file_size << " bytes";
+      return need_exclude;
     }
-    return std::numeric_limits<uint64_t>::max();
-  });
+  );
 
   rocksdb_options.disable_auto_compactions = true;
   rocksdb_options.level0_slowdown_writes_trigger = std::numeric_limits<int>::max();
@@ -2322,6 +2337,7 @@ Status Tablet::WaitForFlush() {
   TRACE_EVENT0("tablet", "Tablet::WaitForFlush");
 
   RETURN_NOT_OK(VectorIndexList(vector_indexes_->List()).WaitForFlush());
+
   if (regular_db_) {
     RETURN_NOT_OK(regular_db_->WaitForFlush());
   }
@@ -4659,25 +4675,35 @@ Status Tablet::TriggerAdminFullCompactionIfNeeded(const AdminCompactionOptions& 
 
   auto token = std::make_shared<ActiveCompactionToken>(num_active_full_compactions_);
   return admin_full_compaction_task_pool_token_->SubmitFunc([this, token, options]() {
-    // TODO(vector_index): since full vector index compaction is not optimized and may take a
-    // significant amount of time, let's trigger it separately from regular manual compaction.
-    // This logic should be revised later.
     Status status;
-    if (options.vector_index_ids) {
-      TriggerVectorIndexCompactionSync(*options.vector_index_ids);
-    } else {
+
+    // Since full vector index compaction is not optimized and may take a significant amount of
+    // time, it could be trigger separately from RocksDB manual compaction (default behavior now).
+    const bool compact_vector_index_only = options.vector_index_ids && options.vector_index_only;
+    if (!compact_vector_index_only) {
       status = TriggerManualCompactionSyncUnsafe(
           rocksdb::CompactionReason::kAdminCompaction, options.skip_corrupt_data_blocks_unsafe);
     }
+
+    if (options.vector_index_ids) {
+      auto s = TriggerVectorIndexCompactionSync(*options.vector_index_ids);
+      status = status.ok() ? s : status.CloneAndAppend(s.ToString());
+    }
+
     if (options.compaction_completion_callback) {
       options.compaction_completion_callback(status);
     }
   });
 }
 
-void Tablet::TriggerVectorIndexCompactionSync(const TableIds& vector_index_ids) {
+Status Tablet::TriggerVectorIndexCompactionSync(const TableIds& vector_index_ids) {
   LOG_WITH_PREFIX_AND_FUNC(INFO) << "vectors index ids: " << AsString(vector_index_ids);
-  tablet::VectorIndexList{ vector_indexes().Collect(vector_index_ids) }.Compact();
+  tablet::VectorIndexList vector_index_list { vector_indexes().Collect(vector_index_ids) };
+  vector_index_list.Compact();
+  auto status = vector_index_list.WaitForCompaction();
+  WARN_WITH_PREFIX_NOT_OK(
+      status, Format("$0: Failed vector index compaction", log_prefix_suffix_));
+  return status;
 }
 
 Status Tablet::TriggerManualCompactionSyncUnsafe(

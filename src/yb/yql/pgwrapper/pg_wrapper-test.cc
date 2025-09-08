@@ -73,11 +73,15 @@ class PgWrapperTestHelper: public PgCommandTestBase {
 } // namespace
 
 
-YB_DEFINE_ENUM(FlushOrCompaction, (kFlush)(kCompaction));
+YB_DEFINE_ENUM(FlushOrCompaction, (kFlush)(kFlushRegularOnly)(kCompaction));
+
+auto GetFlushCompactFlags(FlushOrCompaction flush_or_compaction) {
+  return flush_or_compaction == FlushOrCompaction::kFlushRegularOnly ?
+      tablet::FLUSH_COMPACT_REGULAR_FOR_TEST_ONLY : tablet::FLUSH_COMPACT_DEFAULT;
+}
 
 class PgWrapperTest : public PgWrapperTestHelper<ConnectionStrategy<false, false>> {
  protected:
-
   Result<PGConn> ConnectToDB(const std::string& dbname) const {
     return PGConnBuilder({
       .host = pg_ts->bound_rpc_addr().host(),
@@ -86,25 +90,22 @@ class PgWrapperTest : public PgWrapperTestHelper<ConnectionStrategy<false, false
     }).Connect();
   }
 
-  void FlushTableById(string table_id) {
+  void FlushTableById(const TableId&  table_id) {
     DoFlushOrCompact(table_id, /* namespace_name= */ "", FlushOrCompaction::kFlush);
   }
 
-  void CompactTableById(string table_id) {
+  void CompactTableById(const TableId& table_id) {
     DoFlushOrCompact(table_id, /* namespace_name= */ "", FlushOrCompaction::kCompaction);
   }
 
   void FlushRegularRocksDbInNamespace(string namespace_name) {
-    DoFlushOrCompact(/* table_id= */ "",
-                     namespace_name,
-                     FlushOrCompaction::kFlush,
-                     /* regular_only= */ true);
+    DoFlushOrCompact(/* table_id= */ "", namespace_name, FlushOrCompaction::kFlushRegularOnly);
   }
 
-  void DoFlushOrCompact(string table_id,
-                        string namespace_name,
-                        FlushOrCompaction flush_or_compaction,
-                        bool regular_only = false) {
+  void DoFlushOrCompact(
+      const TableId& table_id,
+      const std::string& namespace_name,
+      FlushOrCompaction flush_or_compaction) {
     if (!table_id.empty() && !namespace_name.empty()) {
       FAIL() << "Only one of table_id and namespace_name should be specified: "
              << YB_EXPR_TO_STREAM_COMMA_SEPARATED(table_id, namespace_name);
@@ -123,7 +124,7 @@ class PgWrapperTest : public PgWrapperTestHelper<ConnectionStrategy<false, false
       ns.set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
     }
     compaction_req.set_is_compaction(flush_or_compaction == FlushOrCompaction::kCompaction);
-    compaction_req.set_regular_only(regular_only);
+    compaction_req.set_flags(GetFlushCompactFlags(flush_or_compaction));
     LOG(INFO) << "Sending a " << flush_or_compaction << " request: "
               << compaction_req.DebugString();
     ASSERT_OK(master_proxy.FlushTables(compaction_req, &flush_tables_resp, &rpc));
@@ -225,8 +226,6 @@ TEST_F(PgWrapperTest, TestStartStop) {
 }
 
 TEST_F(PgWrapperTest, TestCompactHistoryWithTxn) {
-  RpcController rpc;
-  rpc.set_timeout(MonoDelta::FromSeconds(60));
   ASSERT_NO_FATALS(CreateTable("CREATE TABLE mytbl (k INT PRIMARY KEY, v TEXT)"));
 
   ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (100, 'value1')"));

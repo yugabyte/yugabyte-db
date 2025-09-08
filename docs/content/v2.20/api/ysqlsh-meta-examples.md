@@ -5,7 +5,7 @@ linkTitle: Examples
 description: YSQL shell meta-command examples.
 headcontent: Examples of ysqlsh meta-commands
 menu:
-  v2.20:
+  v2.20_api:
     identifier: ysqlsh-meta-examples
     parent: ysqlsh-meta-commands
     weight: 20

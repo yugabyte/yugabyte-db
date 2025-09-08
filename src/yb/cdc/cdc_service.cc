@@ -206,6 +206,10 @@ DEFINE_RUNTIME_bool(cdc_enable_implicit_checkpointing, false,
 DEFINE_RUNTIME_uint32(cdc_max_virtual_wal_per_tserver, 5,
                       "Maximum VirtualWAL instances that can be present on a tserver at any time.");
 
+DEFINE_test_flag(bool, mimic_tablet_not_in_available_state, false,
+    "If true, this is used to mimic the behavior of the tablet as if it is not in an available "
+    "state.");
+
 DECLARE_int32(log_min_seconds_to_retain);
 
 static bool ValidateMaxRefreshInterval(const char* flag_name, uint32 value) {
@@ -1599,6 +1603,13 @@ void CDCServiceImpl::GetChanges(
     RPC_STATUS_RETURN_ERROR(
         CheckTabletValidForStream(producer_tablet), resp->mutable_error(),
         status.IsTabletSplit() ? CDCErrorPB::TABLET_SPLIT : CDCErrorPB::INVALID_REQUEST, context);
+  }
+
+  // Mocking that the tablet peer is not in TabletObjectState::kAvailable state.
+  if (PREDICT_FALSE(FLAGS_TEST_mimic_tablet_not_in_available_state)) {
+    RPC_STATUS_RETURN_ERROR(
+        STATUS(IllegalState, "Tablet not running: tablet object has invalid state"),
+        resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
   }
 
   auto tablet_peer = context_->LookupTablet(req->tablet_id());
@@ -3378,10 +3389,11 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
   auto sleep_while_not_stopped = [this]() {
     int min_sleep_ms = std::min(100, GetAtomicFlag(&FLAGS_update_metrics_interval_ms));
     auto sleep_period = MonoDelta::FromMilliseconds(min_sleep_ms);
+    if (shutting_down_) {
+      return false;
+    }
     SleepFor(sleep_period);
-
-    SharedLock<decltype(mutex_)> l(mutex_);
-    return !cdc_service_stopped_;
+    return !shutting_down_;
   };
 
   do {
@@ -4122,15 +4134,13 @@ void CDCServiceImpl::BootstrapProducer(
 }
 
 void CDCServiceImpl::Shutdown() {
-  rpcs_.Shutdown();
-  {
-    std::lock_guard l(mutex_);
-    cdc_service_stopped_ = true;
+  if (!shutting_down_.Set()) {
+    return;
   }
   if (update_peers_and_metrics_thread_) {
     update_peers_and_metrics_thread_->Join();
   }
-
+  rpcs_.Shutdown();
   cdc_state_table_.reset();
   impl_->ClearCaches();
 }
@@ -4989,25 +4999,6 @@ Result<tablet::TabletPeerPtr> CDCServiceImpl::GetServingTablet(const TabletId& t
   return context_->GetServingTablet(tablet_id);
 }
 
-bool IsStreamInactiveError(Status status) {
-  if (!status.ok() && status.IsInternalError() &&
-      status.message().ToBuffer().find("expired for Tablet") != std::string::npos) {
-    return true;
-  }
-
-  return false;
-}
-
-bool IsIntentGCError(Status status) {
-  if (!status.ok() && status.IsInternalError() &&
-      status.message().ToBuffer().find("CDCSDK Trying to fetch already GCed intents") !=
-          std::string::npos) {
-    return true;
-  }
-
-  return false;
-}
-
 Status CDCServiceImpl::PersistActivePidInSlotEntry(
     const xrepl::StreamId& stream_id, uint64_t active_pid) {
   cdc::CDCStateTableEntry entry(kCDCSDKSlotEntryTabletId, stream_id);
@@ -5239,11 +5230,7 @@ void CDCServiceImpl::GetConsistentChanges(
         Format("GetConsistentChanges failed for stream_id: $0 with error: $1", stream_id, s);
     if (!s.IsTryAgain()) {
       LOG(WARNING) << msg;
-      // Propogate the error to the client only when the stream has expired or the intents have been
-      // garbage collected.
-      if (IsStreamInactiveError(s) || IsIntentGCError(s)) {
-        RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
-      }
+      RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
     } else {
       YB_LOG_EVERY_N_SECS(WARNING, 300) << msg;
     }
@@ -5303,43 +5290,28 @@ void CDCServiceImpl::DestroyVirtualWALForCDC(
   context.RespondSuccess();
 }
 
-std::vector<uint64_t> CDCServiceImpl::FilterVirtualWalSessions(
-    const std::vector<uint64_t>& session_ids) {
-  std::vector<uint64_t> vwal_sessions;
-
-  {
-    SharedLock l(mutex_);
-    for (const auto& session_id : session_ids) {
-      if (session_virtual_wal_.contains(session_id)) {
-        vwal_sessions.push_back(session_id);
-      }
-    }
-  }
-
-  return vwal_sessions;
-}
-
-void CDCServiceImpl::DestroyVirtualWALBatchForCDC(const std::vector<uint64_t>& session_ids) {
+void CDCServiceImpl::DestroyVirtualWALBatchForCDC(
+    const std::vector<uint64_t>& expired_session_ids) {
   // Return early without acquiring the mutex_ in case the walsender consumption feature is disabled
   // or there are no sessions to be cleaned up.
-  if (!FLAGS_ysql_yb_enable_replication_slot_consumption || session_ids.empty()) {
+  if (!FLAGS_ysql_yb_enable_replication_slot_consumption || expired_session_ids.empty()) {
     return;
   }
 
-  // The call to FilterVirtualWalSessions from pg_client_service will ensure that we are only
-  // receiving session_ids here which belong to a virtual WAL session and thus we will also
-  // ensure that we do not end up spewing the following log for every expired session.
-  LOG_WITH_FUNC(INFO) << "Received DestroyVirtualWALBatchForCDC request: " << AsString(session_ids);
+  VLOG_WITH_FUNC(2) << "Received expired session ids: " << AsString(expired_session_ids)
+                    << " for virtual WAL batch cleanup";
 
-  // Ideally, we should not depend on this mutex_ as this function gets called from the session
-  // cleanup bg thread from pg_client_service which is time sensitive.
-  // This seems fine for now only because there isn't a lot of contention on the mutex_ due to low
-  // number of walsenders (10 by default) and here we are just deleting from an in-memory map.
   {
     std::lock_guard l(mutex_);
-
-    for (auto it = session_ids.begin(); it != session_ids.end(); ++it) {
+    for (auto it = expired_session_ids.begin(); it != expired_session_ids.end(); ++it) {
+      if (!session_virtual_wal_.contains(*it)) {
+        VLOG_WITH_FUNC(2) << "Session id: " << *it
+                          << " does not have a virtual WAL associated with it";
+        continue;
+      }
       const auto& stream_id = session_virtual_wal_[*it]->GetStreamId();
+      LOG_WITH_FUNC(INFO) << "Received DestroyVirtualWALBatchForCDC request for session_id: " << *it
+                          << " and stream_id: " << stream_id;
       const auto& curr_status = PersistActivePidInSlotEntry(stream_id, 0ULL);
       stream_to_session_.erase(stream_id);
       if (!curr_status.ok()) {

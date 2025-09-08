@@ -5,7 +5,7 @@ linkTitle: Extended_timezone_names
 description: The extended_timezone_names extends the pg_timezone_names view with extra columns from the tz database. [YSQL]
 image: /images/section_icons/api/subsection.png
 menu:
-  v2.20:
+  v2.20_api:
     identifier: extended-timezone-names
     parent: timezones
     weight: 20

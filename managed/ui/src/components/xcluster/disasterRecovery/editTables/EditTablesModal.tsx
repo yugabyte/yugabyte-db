@@ -8,6 +8,7 @@ import { toast } from 'react-toastify';
 
 import {
   editXClusterConfigTables,
+  fetchTablesInUniverse,
   fetchTaskUntilItCompletes,
   fetchXClusterConfig,
   isBootstrapRequired
@@ -21,7 +22,12 @@ import {
 } from '../../../../redesign/helpers/api';
 import { assertUnreachableCase, handleServerError } from '../../../../utils/errorHandlingUtils';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
-import { XClusterConfigAction, XClusterConfigType, XClusterTableStatus } from '../../constants';
+import {
+  XClusterConfigAction,
+  XClusterConfigType,
+  XClusterTableStatus,
+  XCLUSTER_UNIVERSE_TABLE_FILTERS
+} from '../../constants';
 import {
   formatUuidForXCluster,
   getCategorizedNeedBootstrapPerTableResponse,
@@ -33,7 +39,7 @@ import { StorageConfigOption } from '../../sharedComponents/ReactSelectStorageCo
 import { CurrentFormStep } from './CurrentFormStep';
 import { getTableUuid } from '../../../../utils/tableUtils';
 
-import { TableType, Universe, UniverseNamespace } from '../../../../redesign/helpers/dtos';
+import { TableType, Universe, UniverseNamespace, YBTable } from '../../../../redesign/helpers/dtos';
 import { XClusterConfig, XClusterConfigNeedBootstrapPerTableResponse } from '../../dtos';
 import { CategorizedNeedBootstrapPerTableResponse } from '../../XClusterTypes';
 
@@ -109,10 +115,20 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
     () => api.fetchUniverse(xClusterConfigFullQuery.data?.sourceUniverseUUID),
     { enabled: !!xClusterConfigFullQuery.data }
   );
-
   const sourceUniverseNamespacesQuery = useQuery<UniverseNamespace[]>(
     universeQueryKey.namespaces(xClusterConfigFullQuery.data?.sourceUniverseUUID),
     () => api.fetchUniverseNamespaces(xClusterConfigFullQuery.data?.sourceUniverseUUID)
+  );
+  const sourceUniverseTablesQuery = useQuery<YBTable[]>(
+    universeQueryKey.tables(
+      xClusterConfigFullQuery.data?.sourceUniverseUUID,
+      XCLUSTER_UNIVERSE_TABLE_FILTERS
+    ),
+    () =>
+      fetchTablesInUniverse(
+        xClusterConfigFullQuery.data?.sourceUniverseUUID,
+        XCLUSTER_UNIVERSE_TABLE_FILTERS
+      ).then((response) => response.data)
   );
 
   const editTableMutation = useMutation(
@@ -193,7 +209,9 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
     sourceUniverseQuery.isLoading ||
     sourceUniverseQuery.isIdle ||
     sourceUniverseNamespacesQuery.isLoading ||
-    sourceUniverseNamespacesQuery.isIdle
+    sourceUniverseNamespacesQuery.isIdle ||
+    sourceUniverseTablesQuery.isLoading ||
+    sourceUniverseTablesQuery.isIdle
   ) {
     return (
       <YBModal title={modalTitle} submitTestId={`${MODAL_NAME}-SubmitButton`} {...modalProps}>
@@ -224,6 +242,7 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
     !targetUniverseUuid ||
     sourceUniverseQuery.isError ||
     sourceUniverseNamespacesQuery.isError ||
+    sourceUniverseTablesQuery.isError ||
     !xClusterConfigTableType
   ) {
     const errorMessage = !xClusterConfig.sourceUniverseUUID
@@ -240,14 +259,17 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
     );
   }
 
-  const sourceUniverseNamespaces = sourceUniverseNamespacesQuery.data;
   const {
     defaultSelectedTableUuids,
     defaultSelectedNamespaceUuids,
     unreplicatedTableInReplicatedNamespace,
     tableUuidsDroppedOnSource,
     tableUuidsDroppedOnTarget
-  } = classifyTablesAndNamespaces(xClusterConfig, sourceUniverseNamespaces);
+  } = classifyTablesAndNamespaces(
+    xClusterConfig,
+    sourceUniverseNamespacesQuery.data,
+    sourceUniverseTablesQuery.data
+  );
 
   if (
     formMethods.formState.defaultValues &&
@@ -332,7 +354,8 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
                 targetUniverseUuid,
                 tableUuidsToVerifyBootstrapRequirement,
                 xClusterConfig.type,
-                true /* includeDetails */
+                true /* includeDetails */,
+                xClusterConfig.usedForDr
               );
               const categorizedNeedBootstrapPerTableResponse = getCategorizedNeedBootstrapPerTableResponse(
                 xClusterConfigNeedBootstrapPerTableResponse
@@ -510,7 +533,8 @@ const getDefaultFormValues = (
 
 export const classifyTablesAndNamespaces = (
   xClusterConfig: XClusterConfig,
-  sourceUniverseNamespaces: UniverseNamespace[]
+  sourceUniverseNamespaces: UniverseNamespace[],
+  sourceUniverseTables: YBTable[]
 ) => {
   const selectedTableUuids = new Set<string>();
   const selectedNamespaceUuid = new Set<string>();
@@ -522,6 +546,22 @@ export const classifyTablesAndNamespaces = (
     sourceUniverseNamespaces.map((namespace) => [namespace.name, namespace.namespaceUUID])
   );
 
+  const sourceTableUuids = new Set(sourceUniverseTables.map((table) => getTableUuid(table)));
+  const preselectTable = (sourceTableInfo: YBTable) => {
+    selectedTableUuids.add(getTableUuid(sourceTableInfo));
+    selectedNamespaceUuid.add(namespaceToNamespaceUuid[sourceTableInfo.keySpace]);
+
+    // If the main table is preselected, then we will preselect the index tables as well.
+    sourceTableInfo.indexTableIDs?.forEach((indexTableId) => {
+      // The indexTableIDs array may contain ids for colocated child tables.
+      // These tables are not returned by the list tables API when we specify for xCluster
+      // usage. The UI ignores these ids as we only work with parent tables when interacting with the
+      // API.
+      if (sourceTableUuids.has(indexTableId)) {
+        selectedTableUuids.add(indexTableId);
+      }
+    });
+  };
   xClusterConfig.tableDetails.forEach((tableDetail) => {
     const sourceTableInfo = tableDetail.sourceTableInfo;
     const tableUuid = tableDetail.tableId;
@@ -536,13 +576,7 @@ export const classifyTablesAndNamespaces = (
         // This means there is no action needed from the user. We will be checking the bootstrapping requirement
         // and just adding the table to the config (unless the user deselects the table of course).
         if (sourceTableInfo) {
-          selectedTableUuids.add(getTableUuid(sourceTableInfo));
-          selectedNamespaceUuid.add(namespaceToNamespaceUuid[sourceTableInfo.keySpace]);
-
-          // If the main table is preselected, then we will preselect the index tables as well.
-          sourceTableInfo.indexTableIDs?.forEach((indexTableId) =>
-            selectedTableUuids.add(indexTableId)
-          );
+          preselectTable(sourceTableInfo);
         }
         tableUuidsDroppedOnTarget.add(tableUuid);
         return;
@@ -560,13 +594,7 @@ export const classifyTablesAndNamespaces = (
         return;
       default:
         if (sourceTableInfo) {
-          selectedTableUuids.add(getTableUuid(sourceTableInfo));
-          selectedNamespaceUuid.add(namespaceToNamespaceUuid[sourceTableInfo.keySpace]);
-
-          // If the main table is preselected, then we will preselect the index tables as well.
-          sourceTableInfo.indexTableIDs?.forEach((indexTableId) =>
-            selectedTableUuids.add(indexTableId)
-          );
+          preselectTable(sourceTableInfo);
         }
     }
   });

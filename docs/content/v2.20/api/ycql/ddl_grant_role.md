@@ -4,7 +4,7 @@ headerTitle: GRANT ROLE
 linkTitle: GRANT ROLE
 description: Use the GRANT ROLE statement to grant a role's permissions and SUPERUSER status to another role.
 menu:
-  v2.20:
+  v2.20_api:
     parent: api-cassandra
     weight: 1282
 type: docs

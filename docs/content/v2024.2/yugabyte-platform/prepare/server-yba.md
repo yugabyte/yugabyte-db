@@ -1,5 +1,5 @@
 ---
-title: YugabyteDB Anywhere networking requirements
+title: YugabyteDB Anywhere software requirements
 headerTitle: Prerequisites to deploy YBA on a VM
 linkTitle: Server for YBA
 description: Prerequisites for installing YugabyteDB Anywhere.
@@ -28,9 +28,9 @@ rightNav:
 
 </ul>
 
-When installing YugabyteDB Anywhere (YBA) on-premises or on a public cloud (AWS, GCP, and Azure), you install YBA onto a virtual machine server with a Linux operating system (OS).
+When installing YugabyteDB Anywhere on-premises or on a public cloud (AWS, GCP, and Azure), you install YugabyteDB Anywhere onto a virtual machine server with a Linux operating system (OS).
 
-To meet the hardware and software prerequisites for YBA, create a VM that satisfies the following requirements.
+To meet the hardware and software prerequisites for YugabyteDB Anywhere, create a VM that satisfies the following requirements.
 
 ## Hardware requirements
 
@@ -60,7 +60,7 @@ YugabyteDB Anywhere may also work on other Linux distributions; contact your Yug
 
 Installation requires a license file. To obtain your license, contact your sales representative. If you are not yet a customer and want to try YugabyteDB Anywhere, [book a demo](https://www.yugabyte.com/demo/).
 
-### Python
+### Python for YugabyteDB Anywhere
 
 Python v3.8 to v3.11 must be pre-installed.
 

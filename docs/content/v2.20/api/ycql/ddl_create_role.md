@@ -4,7 +4,7 @@ headerTitle: CREATE ROLE
 linkTitle: CREATE ROLE
 description: Use the `CREATE ROLE` statement to create a new role that is used to authenticate into YCQL and as a group of permissions used to restrict operations on the database objects.
 menu:
-  v2.20:
+  v2.20_api:
     parent: api-cassandra
     weight: 1235
 type: docs

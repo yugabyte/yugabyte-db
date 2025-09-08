@@ -8,7 +8,7 @@ linkTitle: >
 description: >
   Case study: using YSQL to implement a stopwatch
 menu:
-  v2.20:
+  v2.20_api:
     identifier: stopwatch
     parent: api-ysql-datatypes-datetime
     weight: 130
@@ -508,7 +508,7 @@ and:
 You can define these shortcuts in the _psqlrc_ file (on the _postgres/etc_ directory under the directory where you've installed the YugabyteDB client code).
 
 {{< tip title="'ysqlsh' meta-command syntax" >}}
-The section [ysqlsh](../../../../../admin/ysqlsh-meta-commands/) describes the \\_gset_ and the \\_set_ meta-commands.
+The section [ysqlsh](../../../../../api/ysqlsh-meta-commands/) describes the \\_gset_ and the \\_set_ meta-commands.
 
 (\\_gset_ is allowed on the same line as the SQL statement that it terminates, just as a new SQL statement is allowed on the same line as a previous SQL statement that's terminated with a semicolon.)
 

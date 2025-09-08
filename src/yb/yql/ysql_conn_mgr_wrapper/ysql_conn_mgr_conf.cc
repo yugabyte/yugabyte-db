@@ -59,6 +59,7 @@ DECLARE_bool(ysql_conn_mgr_optimized_session_parameters);
 DECLARE_int32(ysql_conn_mgr_max_pools);
 DECLARE_uint32(ysql_conn_mgr_jitter_time);
 DECLARE_uint32(ysql_conn_mgr_max_phy_conn_percent);
+DECLARE_uint32(TEST_ysql_conn_mgr_auth_delay_ms);
 
 namespace yb {
 namespace ysql_conn_mgr_wrapper {
@@ -229,6 +230,7 @@ std::string YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
       BoolToString(FLAGS_ysql_conn_mgr_optimized_session_parameters)},
     {"{%yb_max_pools%}", std::to_string(FLAGS_ysql_conn_mgr_max_pools)},
     {"{%yb_jitter_time%}", std::to_string(FLAGS_ysql_conn_mgr_jitter_time)},
+    {"{%TEST_yb_auth_delay_ms%}", std::to_string(FLAGS_TEST_ysql_conn_mgr_auth_delay_ms)},
     {"{%unix_socket_dir%}",
       PgDeriveSocketDir(postgres_address_)}}; // Return unix socket
             //  file path = "/tmp/.yb.host_ip:port"

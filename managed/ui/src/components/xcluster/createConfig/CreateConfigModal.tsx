@@ -352,7 +352,8 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
                 formValues.isTransactionalConfig
                   ? XClusterConfigType.TXN
                   : XClusterConfigType.BASIC,
-                true /* includeDetails */
+                true /* includeDetails */,
+                false /* isUsedForDr */
               );
               const categorizedNeedBootstrapPerTableResponse = getCategorizedNeedBootstrapPerTableResponse(
                 xClusterConfigNeedBootstrapPerTableResponse

@@ -69,6 +69,7 @@ export interface RestoreTargetModel {
 
   // whether to use parallel threads or not. only for YB_BACKUP_SCRIPT
   parallelThreads?: number;
+
 }
 
 export interface RestoreFormModel {
