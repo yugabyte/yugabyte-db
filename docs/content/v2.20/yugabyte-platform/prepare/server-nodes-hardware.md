@@ -1,8 +1,8 @@
 ---
-title: YugabyteDB Anywhere hardware requirements
-headerTitle: Hardware requirements for nodes
+title: Hardware requirements for servers running database nodes
+headerTitle: Hardware requirements for database nodes
 linkTitle: Hardware requirements
-description: Hardware prerequisites for cluster nodes.
+description: Hardware prerequisites for database nodes.
 headContent: CPU, memory, disk, and instance types required for YugabyteDB
 menu:
   v2.20_yugabyte-platform:

@@ -1,8 +1,8 @@
 ---
-title: YugabyteDB Anywhere node software requirements
-headerTitle: Software requirements for nodes
+title: Software requirements for database nodes
+headerTitle: Software requirements for database nodes
 linkTitle: Software requirements
-description: Software prerequisites for nodes running YugabyteDB.
+description: Software prerequisites for database nodes running YugabyteDB.
 headContent: Operating system and additional software required for YugabyteDB
 menu:
   preview_yugabyte-platform:
@@ -143,9 +143,9 @@ YugabyteDB Anywhere requires the following additional software to be pre-install
 - unzip
 - policycoreutils-python-utils
 
-#### Python
+#### Python for database nodes
 
-Install Python 3.6-3.11 on the nodes. (If you are using [Legacy on-premises provisioning](software-on-prem-legacy/), Python 3.5-3.9 is supported, and 3.6 is recommended.)
+Install Python 3.6-3.11 on the database nodes. (If you are using [Legacy on-premises provisioning](software-on-prem-legacy/), Python 3.5-3.9 is supported, and 3.6 is recommended.)
 
 Install the Python SELinux package corresponding to your version of Python. You can use pip to do this. Ensure the version of pip matches the version of Python.
 
