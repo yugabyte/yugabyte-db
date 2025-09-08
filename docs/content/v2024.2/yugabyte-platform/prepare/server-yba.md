@@ -60,7 +60,7 @@ YugabyteDB Anywhere may also work on other Linux distributions; contact your Yug
 
 Installation requires a license file. To obtain your license, contact your sales representative. If you are not yet a customer and want to try YugabyteDB Anywhere, [book a demo](https://www.yugabyte.com/demo/).
 
-### Python
+### Python for YugabyteDB Anywhere
 
 Python v3.8 to v3.11 must be pre-installed.
 

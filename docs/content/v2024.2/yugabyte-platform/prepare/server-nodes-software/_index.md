@@ -140,7 +140,7 @@ YugabyteDB Anywhere requires the following additional software to be pre-install
 - unzip
 - policycoreutils-python-utils
 
-#### Python
+#### Python for database nodes
 
 Install Python 3.6-3.11 on the nodes. (If you are using [Legacy on-premises provisioning](software-on-prem-legacy/), Python 3.5-3.9 is supported, and 3.6 is recommended.)
 
