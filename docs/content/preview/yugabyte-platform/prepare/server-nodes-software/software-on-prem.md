@@ -14,7 +14,7 @@ rightNav:
   hideH4: true
 ---
 
-When deploying database clusters using an on-premises provider, YugabyteDB Anywhere relies on you to manually create the VMs and provide these pre-created VMs to YugabyteDB Anywhere.
+When deploying universes using an on-premises provider, YugabyteDB Anywhere relies on you to manually create the VMs for the database nodes and provide these pre-created VMs to YugabyteDB Anywhere.
 
 With the on-premises provider, you must provide one, three, five, or more VM(s) with the following installed:
 

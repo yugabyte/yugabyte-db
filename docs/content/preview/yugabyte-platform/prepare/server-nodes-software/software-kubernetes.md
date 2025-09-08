@@ -2,7 +2,7 @@
 title: Prepare a Kubernetes cluster for YugabyteDB
 headerTitle: Software requirements for Kubernetes
 linkTitle: Kubernetes provider
-description: Software requirements for Kubernetes provider pods.
+description: Software requirements for Kubernetes provider cluster.
 headContent: Prepare a Kubernetes cluster for YugabyteDB deployments
 menu:
   preview_yugabyte-platform:
