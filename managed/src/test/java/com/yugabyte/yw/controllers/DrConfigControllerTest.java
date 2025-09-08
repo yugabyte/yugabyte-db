@@ -48,6 +48,7 @@ import com.yugabyte.yw.forms.DrConfigRestartForm;
 import com.yugabyte.yw.forms.DrConfigSetDatabasesForm;
 import com.yugabyte.yw.forms.DrConfigSwitchoverForm;
 import com.yugabyte.yw.forms.DrConfigTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams.BootstrapBackupParams;
 import com.yugabyte.yw.forms.XClusterConfigRestartFormData.RestartBootstrapParams;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
@@ -297,8 +298,13 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
   }
 
   @Test
-  public void testCreateDRConfigWhenYsqlMajorUpgradeIsInProgress() {
-    when(mockSoftwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(any())).thenReturn(true);
+  public void testCreateDRConfigWhenUpgradeIsInProgress() {
+    targetUniverse =
+        Universe.saveDetails(
+            targetUniverse.getUniverseUUID(),
+            universe -> {
+              universe.getUniverseDetails().softwareUpgradeState = SoftwareUpgradeState.PreFinalize;
+            });
     settableRuntimeConfigFactory
         .forUniverse(sourceUniverse)
         .setValue("yb.xcluster.db_scoped.creationEnabled", "true");
@@ -317,8 +323,8 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
 
     assertBadRequest(
         result,
-        "Cannot configure XCluster/DR config because YSQL major version upgrade on source"
-            + " universe is in progress.");
+        "Cannot configure XCluster/DR config because target universe is not in ready software"
+            + " upgrade state.");
   }
 
   @Test
@@ -437,7 +443,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
 
   @Test
   // Runtime config `yb.xcluster.db_scoped.creationEnabled` = true.
-  public void testSetDatabasesDbScopedSuccessWhenYsqlMajorUpgradeIsInProgress() {
+  public void testSetDatabasesDbScopedSuccessWhenUpgradeIsInProgress() {
 
     settableRuntimeConfigFactory
         .globalRuntimeConf()
@@ -467,7 +473,12 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
     drConfig.setState(State.Replicating);
     drConfig.update();
 
-    when(mockSoftwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(any())).thenReturn(true);
+    targetUniverse =
+        Universe.saveDetails(
+            targetUniverse.getUniverseUUID(),
+            universe -> {
+              universe.getUniverseDetails().softwareUpgradeState = SoftwareUpgradeState.PreFinalize;
+            });
     result =
         assertPlatformException(
             () ->
@@ -483,8 +494,8 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
 
     assertBadRequest(
         result,
-        "Cannot configure XCluster/DR config because YSQL major version upgrade on source"
-            + " universe is in progress.");
+        "Cannot configure XCluster/DR config because target universe is not in ready software"
+            + " upgrade state.");
   }
 
   @Test
@@ -693,8 +704,13 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
   }
 
   @Test
-  public void testSwitchoverWhenYsqlMajorUpgradeIsInProgress() throws Exception {
-    when(mockSoftwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(any())).thenReturn(true);
+  public void testSwitchoverWhenUpgradeIsInProgress() throws Exception {
+    targetUniverse =
+        Universe.saveDetails(
+            targetUniverse.getUniverseUUID(),
+            universe -> {
+              universe.getUniverseDetails().softwareUpgradeState = SoftwareUpgradeState.PreFinalize;
+            });
     String sourceNamespace = "sourceNamespace";
     DrConfig drConfig =
         DrConfig.create(
@@ -733,8 +749,8 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
 
     assertBadRequest(
         result,
-        "Cannot configure XCluster/DR config because YSQL major version upgrade on source"
-            + " universe is in progress.");
+        "Cannot configure XCluster/DR config because target universe is not in ready software"
+            + " upgrade state.");
   }
 
   @Test
@@ -806,8 +822,15 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
   }
 
   @Test
-  public void testDbScopedFailoverWhenYsqlMajorUpgradeIsInProgress() throws Exception {
-    when(mockSoftwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(any())).thenReturn(true);
+  public void testDbScopedFailoverWhenUpgradeIsInProgress() throws Exception {
+
+    targetUniverse =
+        Universe.saveDetails(
+            targetUniverse.getUniverseUUID(),
+            universe -> {
+              universe.getUniverseDetails().softwareUpgradeState = SoftwareUpgradeState.PreFinalize;
+            });
+
     String sourceNamespace = "sourceNamespace";
     DrConfig drConfig =
         DrConfig.create(
@@ -843,8 +866,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
 
     assertBadRequest(
         result,
-        "Cannot configure XCluster/DR config because YSQL major version upgrade on source"
-            + " universe is in progress.");
+        "Cannot configure XCluster/DR config because target universe is not in ready state");
   }
 
   @Test
@@ -888,8 +910,13 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
   }
 
   @Test
-  public void testDbScopedRepairWhenYsqlMajorUpgradeIsInProgress() {
-    when(mockSoftwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(any())).thenReturn(true);
+  public void testDbScopedRepairWhenUpgradeIsInProgress() {
+    targetUniverse =
+        Universe.saveDetails(
+            targetUniverse.getUniverseUUID(),
+            universe -> {
+              universe.getUniverseDetails().softwareUpgradeState = SoftwareUpgradeState.PreFinalize;
+            });
     String sourceNamespace = "sourceNamespace";
     DrConfig drConfig =
         DrConfig.create(
@@ -920,8 +947,8 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
 
     assertBadRequest(
         result,
-        "Cannot configure XCluster/DR config because YSQL major version upgrade on source"
-            + " universe is in progress.");
+        "Cannot configure XCluster/DR config because target universe is not in ready software"
+            + " upgrade state.");
   }
 
   @Test
@@ -971,8 +998,14 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
   }
 
   @Test
-  public void testDbScopedReplicaReplacementWhenYsqlMajorUpgradeIsInProgress() {
-    when(mockSoftwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(any())).thenReturn(true);
+  public void testDbScopedReplicaReplacementWhenUpgradeIsInProgress() {
+    targetUniverse =
+        Universe.saveDetails(
+            targetUniverse.getUniverseUUID(),
+            universe -> {
+              universe.getUniverseDetails().softwareUpgradeState = SoftwareUpgradeState.PreFinalize;
+            });
+
     Universe newReplica = createUniverse("new replication target");
     DrConfig drConfig =
         spy(
@@ -1004,8 +1037,8 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
 
     assertBadRequest(
         result,
-        "Cannot configure XCluster/DR config because YSQL major version upgrade on source"
-            + " universe is in progress.");
+        "Cannot configure XCluster/DR config because target universe is not in ready software"
+            + " upgrade state.");
   }
 
   private void testToggleState(String operation) {

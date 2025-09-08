@@ -1184,7 +1184,11 @@ public enum TaskType {
   ConfigureOOMServiceOnNode(
       com.yugabyte.yw.commissioner.tasks.subtasks.ConfigureOOMServiceOnNode.class),
 
-  CheckSshConnection(com.yugabyte.yw.commissioner.tasks.subtasks.CheckSshConnection.class);
+  CheckSshConnection(com.yugabyte.yw.commissioner.tasks.subtasks.CheckSshConnection.class),
+
+  DisablePitrConfig(com.yugabyte.yw.commissioner.tasks.subtasks.DisablePitrConfig.class),
+
+  EnablePitrConfig(com.yugabyte.yw.commissioner.tasks.subtasks.EnablePitrConfig.class);
 
   private final Class<? extends ITask> taskClass;
 

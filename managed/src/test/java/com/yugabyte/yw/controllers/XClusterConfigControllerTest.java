@@ -42,6 +42,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.rbac.Permission;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.forms.XClusterConfigEditFormData;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
@@ -1408,8 +1409,13 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateYSQLXClusterConfigWhenYSQLMajorUpgradeIsInComplete() {
-    when(mockSoftwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(any())).thenReturn(true);
+  public void testCreateYSQLXClusterConfigWhenUpgradeIsInComplete() {
+    targetUniverse =
+        Universe.saveDetails(
+            targetUniverse.getUniverseUUID(),
+            universe -> {
+              universe.getUniverseDetails().softwareUpgradeState = SoftwareUpgradeState.PreFinalize;
+            });
     mockTableSchemaResponse(CommonTypes.TableType.PGSQL_TABLE_TYPE);
     initClientGetTablesList(CommonTypes.TableType.PGSQL_TABLE_TYPE);
     createFormData.tables = ImmutableSet.of(exampleTableID1);
@@ -1420,8 +1426,8 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
                     "POST", apiEndpoint, user.createAuthToken(), createRequest));
     assertBadRequest(
         result,
-        "Cannot configure XCluster/DR config because YSQL major version upgrade on source universe"
-            + " is in progress.");
+        "Cannot configure XCluster/DR config because target universe is not in ready software"
+            + " upgrade state.");
   }
 
   @Test

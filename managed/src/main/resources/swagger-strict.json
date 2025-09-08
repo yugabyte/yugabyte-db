@@ -2782,7 +2782,9 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -5416,7 +5418,9 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -8433,7 +8437,9 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -9206,7 +9212,9 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -10597,7 +10605,9 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -13651,6 +13661,11 @@
           "description" : "DB Name",
           "type" : "string"
         },
+        "disabled" : {
+          "description" : "Whether the PITR config is disabled",
+          "readOnly" : true,
+          "type" : "boolean"
+        },
         "intermittentMinRecoverTimeInMillis" : {
           "description" : "Intermittent min recovery time in millis if retention period is increased",
           "format" : "int64",
@@ -14719,7 +14734,9 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -15699,7 +15716,9 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -16503,7 +16522,9 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -17988,7 +18009,9 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -18524,7 +18547,9 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -18902,7 +18927,9 @@
               "SetupYNP",
               "YNPProvisioning",
               "ConfigureOOMServiceOnNode",
-              "CheckSshConnection"
+              "CheckSshConnection",
+              "DisablePitrConfig",
+              "EnablePitrConfig"
             ],
             "type" : "string"
           },
@@ -19701,7 +19728,9 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -20770,7 +20799,9 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -22038,7 +22069,9 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -22685,7 +22718,9 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -23587,7 +23622,9 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -24198,7 +24235,9 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -24809,7 +24848,9 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -25822,7 +25863,9 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -26916,7 +26959,9 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
