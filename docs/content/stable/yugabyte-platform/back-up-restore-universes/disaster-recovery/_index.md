@@ -82,7 +82,13 @@ xCluster DR can be set up to perform schema changes in the following ways:
 
 You don't need to make any changes to the DR configuration.
 
-To enable the feature in YugabyteDB Anywhere, set the **Automatic mode for xCluster** Global Runtime Configuration option (config key `yb.xcluster.db_scoped.automatic_ddl.creationEnabled`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
+Automatic mode is recommended for all new DR configurations. When possible, existing DR configurations should be deleted and re-created using automatic mode to reduce the operational burden of DDL changes.
+
+Automatic mode is used for any xCluster DR configuration when the following pre-requisites are met at setup time:
+
+- Both DR primary and replica are running YugabyteDB v2024.1.3 or later.
+- Automatic mode is enabled. While in {{<tags/feature/ea idea="2089">}}, the feature is not enabled by default. To enable it, set the **Automatic mode for xCluster** Global runtime configuration option (config key `yb.xcluster.db_scoped.automatic_ddl.creationEnabled`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global runtime configuration settings.
+- Semi-automatic mode is enabled. Semi-automatic mode is enabled by default, and set using the **DB scoped xCluster replication creation** Global Runtime Configuration option (config key `yb.xcluster.db_scoped.creationEnabled`).
 
 ### Semi-automatic mode
 
@@ -96,8 +102,6 @@ You don't need to make any changes to the DR configuration.
 {{<lead link="https://www.youtube.com/watch?v=vYyn2OUSZFE">}}
 To learn more, watch [Simplified schema management with xCluster DB Scoped](https://www.youtube.com/watch?v=vYyn2OUSZFE)
 {{</lead>}}
-
-Semi-automatic mode is recommended for all new DR configurations. When possible, existing Manual mode DR configurations should be deleted and re-created using semi-automatic mode to reduce the operational burden of DDL changes.
 
 ### Manual mode
 
