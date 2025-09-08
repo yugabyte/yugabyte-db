@@ -1421,7 +1421,7 @@ For example, to create the certificates for a local universe, do the following:
 
 Certificates are generated in the `<HOME>/var/generated_certs/<hostname>` directory.
 
-Copy the certificates to the respective node's `<base_dir>/certs` directory:
+Copy the certificates to the respective node's [base directory](#base-directory). For example:
 
 ```sh
 cp $HOME/var/generated_certs/127.0.0.1/* $HOME/yugabyte-{{< yb-version version="preview" >}}/node1/certs
@@ -1484,7 +1484,7 @@ Follow the instructions in [xCluster setup](../../../deploy/multi-dc/async-repli
 ## Upgrade a YugabyteDB universe
 
 {{< warning title="Upgrading to v2.25" >}}
-For information on upgrading YugabyteDB from a version based on PostgreSQL 11 (all versions prior to v2.25) to a version based on PostgreSQL 15 (v2.25.1 or later), refer to [Major YSQL upgrade](../../../manage/ysql-major-upgrade-yugabyted/).
+For information on upgrading YugabyteDB from a version based on PostgreSQL 11 (all versions prior to v2.25) to a version based on PostgreSQL 15 (v2.25.1 or later), refer to [YSQL major upgrade](../../../manage/ysql-major-upgrade-yugabyted/).
 
 Upgrading to v2.25.1 is only supported from v2024.2.2 release.
 {{< /warning >}}
@@ -1515,7 +1515,7 @@ Upgrading an existing YugabyteDB universe that was deployed using yugabyted incl
 
 1. Repeat steps 2-4 for all the nodes. Wait 60 seconds before repeating the steps on each node.
 
-1. After restarting all the nodes, upgrade the YSQL catalog of the universe. This command can be run from any node.
+1. After restarting all the nodes, upgrade the [YSQL catalog](../../../architecture/system-catalog/) of the universe. This command can be run from any node.
 
     ```sh
     ./bin/yugabyted upgrade ysql_catalog --base_dir <path_to_base_dir>

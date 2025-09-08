@@ -23,7 +23,7 @@ When you start a YugabyteDB cluster, the YB-Master and YB-TServer services are l
 
 When YCQL authentication is enabled, all users (including `cassandra`) require a password to log in to a YugabyteDB database.
 
-If you start a [secure universe](../../reference/configuration/yugabyted/#secure-universes) using yugabyted, the credentials for the universe, including password, are output to a credentials file. The location of the credentials file is output to the console.
+If you start a [secure universe](../../../reference/configuration/yugabyted/#secure-universes) using yugabyted, the credentials for the universe, including password, are output to a credentials file. The location of the credentials file is output to the console.
 
 Otherwise, the default `cassandra` user has a default password of `cassandra`.
 
@@ -49,7 +49,7 @@ Otherwise, the default `cassandra` user has a default password of `cassandra`.
 <div class="tab-content">
   <div id="yugabyted" class="tab-pane fade show active" role="tabpanel" aria-labelledby="yugabyted-tab">
 
-To deploy a secure universe using yugabyted, use the --secure flag with the yugabyted [start](../../../reference/configuration/yugabyted/#start) command. This creates a universe with encryption in transit and authentication enabled. For example:
+To deploy a secure universe using yugabyted, use the `--secure` flag with the yugabyted [start](../../../reference/configuration/yugabyted/#start) command. This creates a universe with encryption in transit and authentication enabled. For example:
 
 ```sh
 $ ./bin/yugabyted start --secure
@@ -85,7 +85,7 @@ For more information on deploying universes, refer to [Deploy](../../../deploy/)
 
 ## Open the YCQL shell (ycqlsh)
 
-A new YugabyteDB cluster with authentication enabled starts with the default admin user of `cassandra`. Note that this default user has `SUPERUSER` privilege. You can connect to this cluster using ycqlsh as follows:
+A new YugabyteDB cluster with authentication enabled starts with the default admin user of `cassandra`. Note that this default user has `SUPERUSER` privilege. You can connect to the cluster and use the [YCQL shell](../../../api/ycqlsh/) by running the following ycqlsh command from the YugabyteDB home directory:
 
 ```sh
 $ ./bin/ycqlsh -u cassandra -p <password>

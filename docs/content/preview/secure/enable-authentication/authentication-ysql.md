@@ -57,7 +57,7 @@ Otherwise, the default `yugabyte` user has a default password of `yugabyte`.
 <div class="tab-content">
   <div id="yugabyted" class="tab-pane fade show active" role="tabpanel" aria-labelledby="yugabyted-tab">
 
-To deploy a secure universe using yugabyted, use the --secure flag with the yugabyted [start](../../../reference/configuration/yugabyted/#start) command. This creates a universe with encryption in transit and authentication enabled. For example:
+To deploy a secure universe using yugabyted, use the `--secure` flag with the yugabyted [start](../../../reference/configuration/yugabyted/#start) command. This creates a universe with encryption in transit and authentication enabled. For example:
 
 ```sh
 $ ./bin/yugabyted start --secure
