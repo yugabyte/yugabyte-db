@@ -1,6 +1,6 @@
 ---
-title: YugabyteDB Anywhere node software requirements
-headerTitle: Software requirements for cloud provider nodes
+title: Requirements for servers for database nodes using cloud providers
+headerTitle: Software requirements for database nodes on cloud providers
 linkTitle: Cloud provider
 description: Software requirements for cloud provider nodes.
 headContent: Prepare a VM for deploying universes on cloud providers

@@ -1,6 +1,6 @@
 ---
-title: YugabyteDB Anywhere node software requirements
-headerTitle: Automatically provision on-premises nodes
+title: Requirements for servers for database nodes using on-premises providers
+headerTitle: Automatically provision database nodes for on-premises providers
 linkTitle: On-premises provider
 description: Prepare a VM for deploying universes on-premises.
 headContent: Prepare a VM for deploying universes on-premises
