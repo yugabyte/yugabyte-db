@@ -1,15 +1,15 @@
-// Copyright (c) YugaByte, Inc.
+package com.yugabyte.yw.filters; // Copyright (c) YugaByte, Inc.
 
 import com.google.inject.Inject;
 import play.filters.cors.CORSFilter;
 import play.filters.csrf.CSRFFilter;
 import play.http.DefaultHttpFilters;
 
-// TODO(sbapat): Get rid of this class and switch to config mechanism to enable filters
 public class Filters extends DefaultHttpFilters {
 
   @Inject
   public Filters(
+      AccessLogFilter accessLogFilter,
       CSRFFilter csrfFilter,
       CORSFilter corsFilter,
       RequestLoggingFilter requestLoggingFilter,
@@ -19,6 +19,7 @@ public class Filters extends DefaultHttpFilters {
       CustomHTTPHeader customHTTPHeader,
       BlockAllRequestsFilter blockAllRequestsFilter) {
     super(
+        accessLogFilter,
         corsFilter,
         csrfFilter,
         requestLoggingFilter,

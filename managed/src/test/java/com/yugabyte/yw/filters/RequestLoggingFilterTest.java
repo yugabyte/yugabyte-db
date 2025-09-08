@@ -1,12 +1,12 @@
-// Copyright (c) YugaByte, Inc.
+package com.yugabyte.yw.filters;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
+import static org.junit.Assert.*;
 import static play.mvc.Results.ok;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.ConfigValueFactory;
+import com.yugabyte.yw.common.logging.LogUtil;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Function;
@@ -22,7 +22,9 @@ import play.mvc.Filter;
 import play.mvc.Http;
 import play.mvc.Result;
 
-public class RequestHeaderFilterTest {
+public class RequestLoggingFilterTest {
+  private static final String header = "X-REQUEST-ID";
+
   private ActorSystem actorSystem;
   private Materializer materializer;
 
@@ -39,60 +41,39 @@ public class RequestHeaderFilterTest {
   }
 
   @Test
-  public void testEnabled() {
-    String header = "subtask-abort-position";
+  public void testForCloud() {
     Config config =
         ConfigFactory.empty()
-            .withValue(
-                "yb.internal.headers." + header + ".enabled", ConfigValueFactory.fromAnyRef(true));
-    Filter f = new RequestHeaderFilter(materializer, config);
-    String value = "v1";
+            .withValue("yb.cloud.enabled", ConfigValueFactory.fromAnyRef(true))
+            .withValue("yb.cloud.requestIdHeader", ConfigValueFactory.fromAnyRef(header));
+    Filter f = new RequestLoggingFilter(materializer, config);
+    String reqId = "reqId";
 
     Function<Http.RequestHeader, CompletionStage<Result>> next =
         (rh) -> {
-          assertEquals(value, MDC.get(header));
+          assertEquals(reqId, MDC.get("request-id"));
           return CompletableFuture.completedFuture(ok("ok"));
         };
 
     Http.RequestHeader rh = new Http.RequestBuilder().build();
-    rh.getHeaders().addHeader("subtask-abort-position", value);
+    rh.getHeaders().addHeader(header, reqId);
     f.apply(next, rh);
   }
 
   @Test
-  public void testDisabled() {
-    String header = "subtask-abort-position";
+  public void testWithCloudDisabled() {
     Config config =
         ConfigFactory.empty()
-            .withValue(
-                "yb.internal.headers." + header + ".enabled", ConfigValueFactory.fromAnyRef(false));
-    Filter f = new RequestHeaderFilter(materializer, config);
-
+            .withValue("yb.cloud.enabled", ConfigValueFactory.fromAnyRef(false))
+            .withValue("yb.cloud.requestIdHeader", ConfigValueFactory.fromAnyRef(header));
+    Filter f = new RequestLoggingFilter(materializer, config);
     Function<Http.RequestHeader, CompletionStage<Result>> next =
         (rh) -> {
-          assertNull(MDC.get(header));
+          assertNotNull(MDC.get(LogUtil.CORRELATION_ID));
           return CompletableFuture.completedFuture(ok("ok"));
         };
 
     Http.RequestHeader rh = new Http.RequestBuilder().build();
-    rh.getHeaders().addHeader(header, "v1");
-    f.apply(next, rh);
-  }
-
-  @Test
-  public void testNotPresent() {
-    String header = "subtask-abort-position";
-    Config config = ConfigFactory.empty();
-    Filter f = new RequestHeaderFilter(materializer, config);
-
-    Function<Http.RequestHeader, CompletionStage<Result>> next =
-        (rh) -> {
-          assertNull(MDC.get(header));
-          return CompletableFuture.completedFuture(ok("ok"));
-        };
-
-    Http.RequestHeader rh = new Http.RequestBuilder().build();
-    rh.getHeaders().addHeader(header, "v1");
     f.apply(next, rh);
   }
 }
