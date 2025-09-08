@@ -23,7 +23,10 @@ public class XClusterConfigNeedBootstrapFormData {
           "If specified and tables do not exist on the target universe, bootstrapping is required.")
   public UUID targetUniverseUUID;
 
-  @ApiModelProperty(value = "Whether this check is being done as part of a DR configuration setup")
+  @ApiModelProperty(
+      value =
+          "WARNING: This is a preview API that could change. Whether this check is being done as"
+              + " part of a DR configuration setup")
   @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.27.0.0")
   public boolean isDrConfig = false;
 }
