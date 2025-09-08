@@ -5,7 +5,7 @@ linkTitle: Executable section
 description: Describes the syntax and semantics of the PL/pgSQL executable section. [YSQL].
 image: /images/section_icons/api/subsection.png
 menu:
-  v2.20:
+  v2.20_api:
     identifier: executable-section
     parent: plpgsql-syntax-and-semantics
     weight: 20

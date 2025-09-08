@@ -640,9 +640,16 @@ public class CloudProviderHelper {
   // Extra metadata and returns the secret object.
   // Returns null if the secret is not present.
   public Secret getKubernetesPullSecret(String secretName) {
+    return getKubernetesPullSecret(secretName, null);
+  }
+
+  // Fetches the secret secretName from the given namespace, removes
+  // Extra metadata and returns the secret object.
+  // Returns null if the secret is not present.
+  public Secret getKubernetesPullSecret(String secretName, String namespace) {
     Secret pullSecret;
     try {
-      pullSecret = kubernetesManagerFactory.getManager().getSecret(null, secretName, null);
+      pullSecret = kubernetesManagerFactory.getManager().getSecret(null, secretName, namespace);
     } catch (RuntimeException e) {
       if (e.getMessage().contains("Error from server (NotFound): secrets")) {
         log.debug(

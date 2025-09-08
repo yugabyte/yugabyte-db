@@ -723,19 +723,21 @@ Status YBClient::DeleteIndexTable(
 Status YBClient::CompactTables(
     const TableIds& table_ids,
     MonoDelta timeout,
-    bool add_indexes) {
+    bool add_indexes,
+    bool add_vector_indexes) {
   auto deadline = CoarseMonoClock::Now() + timeout;
   return data_->FlushOrCompactTables(
-      this, table_ids, add_indexes, /* is_compaction = */ true, deadline);
+      this, table_ids, add_indexes, add_vector_indexes, /* is_compaction = */ true, deadline);
 }
 
 Status YBClient::CompactTables(
     const std::vector<YBTableName>& table_names,
     MonoDelta timeout,
-    bool add_indexes) {
+    bool add_indexes,
+    bool add_vector_indexes) {
   auto deadline = CoarseMonoClock::Now() + timeout;
   return data_->FlushOrCompactTables(
-      this, table_names, add_indexes, /* is_compaction = */ true, deadline);
+      this, table_names, add_indexes, add_vector_indexes, /* is_compaction = */ true, deadline);
 }
 
 Status YBClient::FlushTables(
@@ -743,8 +745,12 @@ Status YBClient::FlushTables(
     MonoDelta timeout,
     bool add_indexes) {
   auto deadline = CoarseMonoClock::Now() + timeout;
+
+  // No matter what is set for add_vector_indexes for flush operation as vector indexes
+  // are always flushed when indexable table is flushed.
   return data_->FlushOrCompactTables(
-      this, table_ids, add_indexes, /* is_compaction = */ false, deadline);
+      this, table_ids, add_indexes, /* add_vector_indexes = */ false,
+      /* is_compaction = */ false, deadline);
 }
 
 Status YBClient::FlushTables(
@@ -752,8 +758,12 @@ Status YBClient::FlushTables(
     MonoDelta timeout,
     bool add_indexes) {
   auto deadline = CoarseMonoClock::Now() + timeout;
+
+  // No matter what is set for add_vector_indexes for flush operation as vector indexes
+  // are always flushed when indexable table is flushed.
   return data_->FlushOrCompactTables(
-      this, table_names, add_indexes, /* is_compaction = */ false, deadline);
+      this, table_names, add_indexes, /* add_vector_indexes = */ false,
+      /* is_compaction = */ false, deadline);
 }
 
 Result<TableCompactionStatus> YBClient::GetCompactionStatus(

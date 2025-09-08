@@ -14,6 +14,7 @@ import threading
 import re
 import random
 import string
+from enum import Enum
 # Stop event to signal the background thread to stop.:
 bg_thread_stop_event = threading.Event()
 child_process = None
@@ -55,10 +56,16 @@ PG_UNIX_SOCKET_LOCK_FILE_PATH_GLOB = os.environ.get(
     "PG_UNIX_SOCKET_LOCK_FILE_PATH_GLOB",
     "/tmp/.yb.*/.s.PGSQL.*.lock")   # Default pattern
 MASTER_BINARY = "/home/yugabyte/bin/yb-master"
-GFLAGS_MASTER_TEMPLATE_FILE = "/opt/master/conf/server.conf.template"
-GFLAGS_MASTER_GENERATED_FILE = "/tmp/yugabyte/master/conf/server.conf"
-GFLAGS_TSERVER_TEMPLATE_FILE = "/opt/tserver/conf/server.conf.template"
-GFLAGS_TSERVER_GENERATED_FILE = "/tmp/yugabyte/tserver/conf/server.conf"
+TSERVER_BINARY = "/home/yugabyte/bin/yb-tserver"
+CONTROLLER_BINARY = "/home/yugabyte/controller/bin/yb-controller-server"
+GFLAGS_TEMPLATE_FILE = "/opt/{}/conf/server.conf.template"
+GFLAGS_GENERATED_FILE = "/tmp/yugabyte/{}/conf/server.conf"
+
+
+class ProcessType(Enum):
+    Master = "master"
+    Tserver = "tserver"
+    Controller = "controller"
 
 
 def signal_handler(signum, frame):
@@ -136,8 +143,8 @@ def random_string(length):
 
 def background_sub_env_gflags(sleep_time_seconds, command):
     logging.info("Starting gflags file template substitution")
-    infile = GFLAGS_MASTER_TEMPLATE_FILE if is_master(command) else GFLAGS_TSERVER_TEMPLATE_FILE
-    outfile = GFLAGS_MASTER_GENERATED_FILE if is_master(command) else GFLAGS_TSERVER_GENERATED_FILE
+    infile = GFLAGS_TEMPLATE_FILE.format(process_type(command).value)
+    outfile = GFLAGS_GENERATED_FILE.format(process_type(command).value)
     tmp_outfile = outfile + '.' + random_string(8)
     if not os.path.exists(infile):
         logging.info("Template gflags file does not exist, ignoring substitution")
@@ -264,8 +271,17 @@ def is_master(command):
     return False
 
 
+def process_type(command):
+    if MASTER_BINARY in command:
+        return ProcessType.Master
+    elif TSERVER_BINARY in command:
+        return ProcessType.Tserver
+    elif CONTROLLER_BINARY in command:
+        return ProcessType.Controller
+
+
 def parse_zone_from_flags():
-    infile = GFLAGS_MASTER_TEMPLATE_FILE if is_master(command) else GFLAGS_TSERVER_TEMPLATE_FILE
+    infile = GFLAGS_TEMPLATE_FILE.format(process_type(command).value)
     with open(infile, 'r') as instream:
         content = instream.readlines()
         for line in content:
@@ -275,8 +291,11 @@ def parse_zone_from_flags():
 
 
 def set_exported_instance_env(command):
+    # Not used for controller process
+    if process_type(command) is ProcessType.Controller:
+        return
     try:
-        if is_master(command):
+        if process_type(command) is ProcessType.Master:
             pod_type = "yb-master"
         else:
             pod_type = "yb-tserver"
@@ -305,11 +324,12 @@ if __name__ == "__main__":
     core_collection_interval = 30  # Seconds
     subs_env_gflags_interval = 20  # Seconds
     command = sys.argv[1:]
-    set_exported_instance_env(command)
 
     if len(command) < 1:
         logging.critical("No command to run")
         sys.exit(1)
+
+    set_exported_instance_env(command)
 
     cores_dir = os.getenv("YBDEVOPS_CORECOPY_DIR")
     if cores_dir is None:
@@ -332,7 +352,7 @@ if __name__ == "__main__":
     subs_env_gflags_thread.start()
     # Delete PG Unix Socket Lock files that can be left after a previous
     # ungraceful exit of the container.
-    if not is_master(command):
+    if process_type(command) is ProcessType.Tserver:
         _delete_pg_lock_file = os.environ.get(
             "YB_DEL_PG_LOCK_FILE", "true").lower() in ('true', '1', 't')
         logging.info("Deleting PG socket lock files: %s" % _delete_pg_lock_file)

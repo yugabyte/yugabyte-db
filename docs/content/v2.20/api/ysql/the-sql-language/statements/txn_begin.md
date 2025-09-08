@@ -4,7 +4,7 @@ headerTitle: BEGIN
 linkTitle: BEGIN
 description: Use the `BEGIN` statement to start a transaction with the default (or specified) isolation level.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: txn_begin
     parent: statements
 type: docs

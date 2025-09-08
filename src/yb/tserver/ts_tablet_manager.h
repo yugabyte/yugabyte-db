@@ -134,18 +134,22 @@ YB_STRONGLY_TYPED_BOOL(ShouldWait);
 
 struct AdminCompactionOptions {
   ShouldWait should_wait;
-  rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe =
-      rocksdb::SkipCorruptDataBlocksUnsafe::kFalse;
+  rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe;
   TableIdsPtr vector_index_ids;
+  tablet::VectorIndexOnly vector_index_only;
 
   AdminCompactionOptions() = delete;
 
   AdminCompactionOptions(
       ShouldWait should_wait_,
       rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe_ =
-          rocksdb::SkipCorruptDataBlocksUnsafe::kFalse)
+          rocksdb::SkipCorruptDataBlocksUnsafe::kFalse,
+      TableIdsPtr vector_index_ids_ = {},
+      tablet::VectorIndexOnly vector_index_only_ = tablet::VectorIndexOnly::kTrue)
       : should_wait(should_wait_),
-        skip_corrupt_data_blocks_unsafe(skip_corrupt_data_blocks_unsafe_) {}
+        skip_corrupt_data_blocks_unsafe(skip_corrupt_data_blocks_unsafe_),
+        vector_index_ids(std::move(vector_index_ids_)),
+        vector_index_only(vector_index_only_) {}
 };
 
 // Keeps track of the tablets hosted on the tablet server side.

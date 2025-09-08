@@ -137,12 +137,6 @@ Status AssembleDocWriteBatch(
     ReadRestartData* read_restart_data,
     const std::string& table_name);
 
-Status EnumerateIntents(
-    const ArenaList<LWKeyValuePairPB>& kv_pairs,
-    const dockv::EnumerateIntentsCallback& functor,
-    dockv::PartialRangeKeyIntents partial_range_key_intents);
-
-
 // replicated_batches_state format does not matter at this point, because it is just
 // appended to appropriate value.
 void PrepareTransactionWriteBatch(
@@ -242,29 +236,6 @@ Result<ApplyTransactionState> GetIntentsBatchForCDC(
     std::vector<IntentKeyValueForCDC>* keyValueIntents);
 
 void AppendTransactionKeyPrefix(const TransactionId& transaction_id, dockv::KeyBytes* out);
-
-// Class that is used while combining external intents into single key value pair.
-class ExternalIntentsProvider {
- public:
-  // Set output key.
-  virtual void SetKey(const Slice& slice) = 0;
-
-  // Set output value.
-  virtual void SetValue(const Slice& slice) = 0;
-
-  // Get next external intent, returns false when there are no more intents.
-  virtual std::optional<std::pair<Slice, Slice>> Next() = 0;
-
-  virtual const Uuid& InvolvedTablet() = 0;
-
-  virtual ~ExternalIntentsProvider() = default;
-};
-
-// Combine external intents into single key value pair.
-void CombineExternalIntents(
-    const TransactionId& txn_id,
-    SubTransactionId subtransaction_id,
-    ExternalIntentsProvider* provider);
 
 } // namespace docdb
 } // namespace yb

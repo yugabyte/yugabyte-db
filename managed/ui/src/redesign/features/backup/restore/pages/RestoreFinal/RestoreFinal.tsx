@@ -19,7 +19,7 @@ import { YBLoadingCircleIcon } from '../../../../../../components/common/indicat
 
 import { restoreBackup, RestoreV2BackupProps } from '../../api/api';
 import { createErrorMessage } from '../../../../../../utils/ObjectUtils';
-import { isPITREnabledInBackup } from '../../RestoreUtils';
+import { getUnSupportedTableSpaceConfig, isPITREnabledInBackup } from '../../RestoreUtils';
 
 import { RESTORE_ACTION_TYPE } from '../../../../../../components/backupv2';
 import { TableType } from '../../../../../helpers/dtos';
@@ -78,7 +78,7 @@ const RestoreFinal = forwardRef<PageRef>((_, forwardRef) => {
     onPrev: () => {
       moveToPage(Page.TARGET);
     },
-    onNext: () => {}
+    onNext: () => { }
   }));
 
   return (
@@ -93,7 +93,7 @@ const preparePayload = (
   restoreContext: RestoreContext,
   formValues: RestoreFormModel
 ): RestoreV2BackupProps | null => {
-  const { backupDetails } = restoreContext;
+  const { backupDetails, preflightResponse } = restoreContext;
 
   const {
     target,
@@ -125,6 +125,9 @@ const preparePayload = (
         }
       }
 
+      const unSupportedTablespaces = getUnSupportedTableSpaceConfig(preflightResponse!, 'unsupportedTablespaces');
+      const conflictingTablespaces = getUnSupportedTableSpaceConfig(preflightResponse!, 'conflictingTablespaces');
+
       const infoList = {
         backupType: backupDetails!.backupType,
         keyspace: keyspacename,
@@ -132,6 +135,10 @@ const preparePayload = (
         storageLocation: keyspaceinfo?.storageLocation ?? keyspaceinfo?.defaultLocation,
         useTablespaces: target.useTablespaces
       } as any;
+
+      if (target?.useTablespaces && conflictingTablespaces && !unSupportedTablespaces) {
+        infoList['errorIfTablespacesExists'] = false;
+      }
 
       if (backupDetails?.backupType === TableType.YQL_TABLE_TYPE) {
         infoList['tableNameList'] = keyspace.tableNames;

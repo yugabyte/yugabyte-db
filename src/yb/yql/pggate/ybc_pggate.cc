@@ -1999,11 +1999,11 @@ YbcStatus YBCAddForeignKeyReferenceIntent(
     bool is_deferred_trigger) {
   return ProcessYbctid(
       *source,
-      [is_region_local_relation, is_deferred_trigger](auto table_id, const auto& ybctid) {
-        pgapi->AddForeignKeyReferenceIntent(
+      [source, is_region_local_relation, is_deferred_trigger](auto table_id, const auto& ybctid) {
+        return pgapi->AddForeignKeyReferenceIntent(
             table_id, ybctid,
-            {.is_region_local = is_region_local_relation, .is_deferred = is_deferred_trigger});
-        return Status::OK();
+            {.is_region_local = is_region_local_relation, .is_deferred = is_deferred_trigger},
+            source->database_oid);
       });
 }
 
@@ -3063,6 +3063,19 @@ bool YBCPgYsqlMajorVersionUpgradeInProgress() {
    * DevNote: Keep this in sync with IsYsqlMajorVersionUpgradeInProgress.
    */
   return yb_major_version_upgrade_compatibility > 0 || !yb_upgrade_to_pg15_completed;
+}
+
+namespace {
+// YugabyteDB-specific binary upgrade flag
+static bool yb_is_binary_upgrade = false;
+}  // namespace
+
+bool YBCIsBinaryUpgrade() {
+  return yb_is_binary_upgrade;
+}
+
+void YBCSetBinaryUpgrade(bool value) {
+  yb_is_binary_upgrade = value;
 }
 
 } // extern "C"

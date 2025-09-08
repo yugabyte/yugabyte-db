@@ -4,7 +4,7 @@ headerTitle: Name resolution within top-level SQL statements
 linkTitle: Name resolution in top-level SQL
 description: Explains how unqualified identifiers, used within top-level SQL statements, are resolved [YSQL].
 menu:
-  v2.20:
+  v2.20_api:
     identifier: name-resolution-in-top-level-sql
     parent: api-ysql
     weight: 40

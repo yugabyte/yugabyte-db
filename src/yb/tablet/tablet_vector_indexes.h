@@ -38,6 +38,7 @@ class VectorIndexList {
   void EnableAutoCompactions();
   void Compact();
   void Flush();
+  Status WaitForCompaction();
   Status WaitForFlush();
 
   std::string ToString() const;

@@ -1324,32 +1324,32 @@ Status YBClient::Data::FlushTablesHelper(YBClient* client,
 }
 
 Status YBClient::Data::FlushOrCompactTables(
-    YBClient* client,
-    const vector<YBTableName>& table_names,
-    bool add_indexes,
-    bool is_compaction,
-    CoarseTimePoint deadline) {
+    YBClient* client, const vector<YBTableName>& table_names, bool add_indexes,
+    bool add_vector_indexes, bool is_compaction, CoarseTimePoint deadline) {
   FlushTablesRequestPB req;
   req.set_add_indexes(add_indexes);
   req.set_is_compaction(is_compaction);
   for (const auto& table : table_names) {
     table.SetIntoTableIdentifierPB(req.add_tables());
   }
+  if (add_vector_indexes) {
+    req.set_flags(tablet::FLUSH_COMPACT_ALL);
+  }
 
   return FlushTablesHelper(client, deadline, req);
 }
 
 Status YBClient::Data::FlushOrCompactTables(
-    YBClient* client,
-    const TableIds& table_ids,
-    bool add_indexes,
-    bool is_compaction,
-    CoarseTimePoint deadline) {
+    YBClient* client, const TableIds& table_ids, bool add_indexes,
+    bool add_vector_indexes, bool is_compaction, CoarseTimePoint deadline) {
   FlushTablesRequestPB req;
   req.set_add_indexes(add_indexes);
   req.set_is_compaction(is_compaction);
   for (const auto& table : table_ids) {
     req.add_tables()->set_table_id(table);
+  }
+  if (add_vector_indexes) {
+    req.set_flags(tablet::FLUSH_COMPACT_ALL);
   }
 
   return FlushTablesHelper(client, deadline, req);

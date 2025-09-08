@@ -588,6 +588,14 @@ Result<dockv::KeyBytes> PgApiImpl::TupleIdBuilder::Build(
 }
 
 //--------------------------------------------------------------------------------------------------
+namespace {
+
+bool ShouldEnableTableLocks() {
+  return FLAGS_enable_object_locking_for_table_locks && !YBCIsInitDbModeEnvVarSet() &&
+         !YBCIsBinaryUpgrade();
+}
+
+}  // namespace
 
 PgApiImpl::PgApiImpl(
     YbcPgTypeEntities type_entities, const YbcPgCallbacks& callbacks,
@@ -608,7 +616,7 @@ PgApiImpl::PgApiImpl(
       }),
       pg_client_(wait_event_watcher_),
       clock_(new server::HybridClock()),
-      enable_table_locking_(FLAGS_enable_object_locking_for_table_locks),
+      enable_table_locking_(ShouldEnableTableLocks()),
       pg_txn_manager_(new PgTxnManager(&pg_client_, clock_, pg_callbacks_, enable_table_locking_)),
       ybctid_reader_provider_(pg_session_),
       fk_reference_cache_(ybctid_reader_provider_, buffering_settings_),
@@ -2103,9 +2111,11 @@ Result<bool> PgApiImpl::ForeignKeyReferenceExists(
       database_id, LightweightTableYbctid{table_id, ybctid});
 }
 
-void PgApiImpl::AddForeignKeyReferenceIntent(
-    PgOid table_id, const Slice& ybctid, const PgFKReferenceCache::IntentOptions& options) {
-  fk_reference_cache_.AddIntent(LightweightTableYbctid{table_id, ybctid}, options);
+Status PgApiImpl::AddForeignKeyReferenceIntent(
+    PgOid table_id, const Slice& ybctid, const PgFKReferenceCache::IntentOptions& options,
+    PgOid database_id) {
+  return fk_reference_cache_.AddIntent(
+      database_id, LightweightTableYbctid{table_id, ybctid}, options);
 }
 
 void PgApiImpl::DeleteForeignKeyReference(PgOid table_id, const Slice& ybctid) {

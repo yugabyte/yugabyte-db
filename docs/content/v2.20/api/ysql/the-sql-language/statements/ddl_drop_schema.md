@@ -4,7 +4,7 @@ headerTitle: DROP SCHEMA
 linkTitle: DROP SCHEMA
 description: Use the DROP SCHEMA statement to remove a schema and all of its associated objects from the system.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: ddl_drop_schema
     parent: statements
 type: docs

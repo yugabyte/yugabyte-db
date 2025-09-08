@@ -255,12 +255,14 @@ class ClusterAdminClient {
   Status CompactTables(
       const std::vector<client::YBTableName>& table_names,
       MonoDelta timeout = MonoDelta::FromSeconds(30),
-      bool add_indexes = false);
+      bool add_indexes = false,
+      bool add_vector_indexes = false);
 
   Status CompactTablesById(
       const TableIds& table_id,
       MonoDelta timeout = MonoDelta::FromSeconds(30),
-      bool add_indexes = false);
+      bool add_indexes = false,
+      bool add_vector_indexes = false);
 
   Status CompactionStatus(const client::YBTableName& table_name, bool show_tablets);
 

@@ -3,11 +3,15 @@ title: Colocating tables and databases
 headerTitle: Colocating tables
 linkTitle: Colocation
 description: Learn how colocated tables aggregate data into a single tablet.
+aliases:
+  - /preview/architecture/docdb/colocated_tables/
+  - /preview/architecture/docdb-sharding/colocated-tables/
+  - /preview/explore/colocation/
 menu:
-  stable:
+  preview:
     identifier: colocation
-    parent: explore
-    weight: 250
+    parent: additional-features
+    weight: 50
 rightNav:
   hideH4: true
 type: docs
@@ -247,7 +251,7 @@ For information on how to set up xCluster for non-colocated tables, refer to [xC
 
 ## Colocated tables with tablespaces
 
-Colocated tables can be placed in [tablespaces](../going-beyond-sql/tablespaces/) {{<tags/feature/ea>}}. When a colocated table is created in a tablespace, the colocation tablet is placed and replicated exclusively in the tablespace.
+{{<tags/feature/ea idea="1104">}}Colocated tables can be placed in [tablespaces](../../explore/going-beyond-sql/tablespaces/). When a colocated table is created in a tablespace, the colocation tablet is placed and replicated exclusively in the tablespace.
 
 During Early Access, by default colocation support for tablespaces is not enabled. To enable the feature, set the flag `ysql_enable_colocated_tables_with_tablespaces=true`.
 
@@ -313,7 +317,7 @@ The `grpname` column represent the tablegroup's name and the `grptablespace` col
 
 ### Geo-partitioned colocated tables with tablespaces
 
-YugabyteDB supports [row-level geo-partitioning](../multi-region-deployments/row-level-geo-partitioning/), which distributes each row across child tables based on the region specified by respective tablespaces. This capability enhances data access speed and helps meet compliance policies that require specific data locality.
+YugabyteDB supports [row-level geo-partitioning](../../explore/multi-region-deployments/row-level-geo-partitioning/), which distributes each row across child tables based on the region specified by respective tablespaces. This capability enhances data access speed and helps meet compliance policies that require specific data locality.
 
 In a colocated database, you can create colocated geo-partitioned tables to benefit from both colocation and geo-partitioning as follows:
 

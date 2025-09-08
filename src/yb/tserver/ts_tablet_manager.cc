@@ -265,7 +265,7 @@ DEPRECATE_FLAG(int32, post_split_trigger_compaction_pool_max_queue_size, "02_202
 
 DEFINE_NON_RUNTIME_int32(full_compaction_pool_max_threads, 1,
              "The maximum number of threads allowed for full_compaction_pool_. This "
-             "pool is used to run full compactions on tablets, either on a shceduled basis "
+             "pool is used to run full compactions on tablets, either on a scheduled basis "
               "or after they have been split and still contain irrelevant data from the tablet "
               "they were sourced from.");
 
@@ -2223,7 +2223,7 @@ Status TSTabletManager::TriggerAdminCompaction(
   auto start_time = CoarseMonoClock::Now();
   uint64_t total_size = 0U;
 
-  tablet::AdminCompactionOptions tablet_compaction_options{
+  tablet::AdminCompactionOptions tablet_compaction_options {
       .compaction_completion_callback =
           options.should_wait ? [&latch, &first_compaction_error,
                                  &first_compaction_error_mutex](const Status& status) {
@@ -2236,7 +2236,9 @@ Status TSTabletManager::TriggerAdminCompaction(
             latch.CountDown();
           } : StdStatusCallback{},
       .vector_index_ids = options.vector_index_ids,
-      .skip_corrupt_data_blocks_unsafe = options.skip_corrupt_data_blocks_unsafe};
+      .vector_index_only = options.vector_index_only,
+      .skip_corrupt_data_blocks_unsafe = options.skip_corrupt_data_blocks_unsafe
+  };
 
   for (auto tablet : tablets) {
     RETURN_NOT_OK(tablet->TriggerAdminFullCompactionIfNeeded(tablet_compaction_options));
@@ -2244,7 +2246,7 @@ Status TSTabletManager::TriggerAdminCompaction(
     total_size += tablet->GetCurrentVersionSstFilesSize();
   }
 
-  VLOG(1) << yb::Format(
+  VLOG(1) << Format(
       "Beginning batch admin compaction for tablets $0, $1 bytes", tablet_ids, total_size);
 
   if (options.should_wait) {
@@ -2255,9 +2257,9 @@ Status TSTabletManager::TriggerAdminCompaction(
         first_compaction_error.ok() ? "finished" : "failed", tablet_ids, total_size,
         ToSeconds(CoarseMonoClock::Now() - start_time));
     if (first_compaction_error.ok()) {
-      LOG(INFO) << log_message;
+      LOG_WITH_PREFIX(INFO) << log_message;
     } else {
-      LOG(WARNING) << log_message << ": " << first_compaction_error;
+      LOG_WITH_PREFIX(WARNING) << log_message << ": " << first_compaction_error;
       return first_compaction_error;
     }
   }

@@ -214,7 +214,7 @@ public class RegionControllerTest extends FakeDBApplication {
     UUID randomUUID = UUID.randomUUID();
     Result result = assertPlatformException(() -> createRegion(randomUUID, regionJson));
     assertEquals(BAD_REQUEST, result.status());
-    assertErrorResponse(result, "Invalid Provider UUID: " + randomUUID);
+    assertErrorResponse(result, "Cannot find provider " + randomUUID);
     assertAuditEntry(0, customer.getUuid());
   }
 

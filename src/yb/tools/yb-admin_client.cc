@@ -1875,10 +1875,14 @@ Status ClusterAdminClient::GetLoadBalancerState() {
 namespace {
 
 void ReportFlushedOrCompacted(
-    const std::string& tables_info, bool add_indexes, bool is_compaction) {
+    const std::string& tables_info, bool add_indexes, bool add_vector_indexes, bool is_compaction) {
+  bool has_associated_indexes = add_indexes || add_vector_indexes;
   std::cout << (is_compaction ? "Compacted" : "Flushed")
             << " " << tables_info << " tables "
-            << (add_indexes ? "and associated indexes" : "")
+            << (has_associated_indexes ? "and associated " : "")
+            << (add_indexes ? "indexes" : "")
+            << (add_indexes && add_vector_indexes? " and " : "")
+            << (add_vector_indexes ? "vector indexes" : "")
             << "." << std::endl;
 }
 
@@ -1887,28 +1891,36 @@ void ReportFlushedOrCompacted(
 Status ClusterAdminClient::FlushTables(
     const std::vector<YBTableName>& table_names, MonoDelta timeout, bool add_indexes) {
   RETURN_NOT_OK(yb_client_->FlushTables(table_names, timeout, add_indexes));
-  ReportFlushedOrCompacted(yb::ToString(table_names), add_indexes, /* is_compaction = */ false);
+  ReportFlushedOrCompacted(
+      yb::ToString(table_names), add_indexes,
+      /* add_vector_indexes = */ false, /* is_compaction = */ false);
   return Status::OK();
 }
 
 Status ClusterAdminClient::FlushTablesById(
     const TableIds& table_ids, MonoDelta timeout, bool add_indexes) {
   RETURN_NOT_OK(yb_client_->FlushTables(table_ids, timeout, add_indexes));
-  ReportFlushedOrCompacted(yb::ToString(table_ids), add_indexes, /* is_compaction = */ false);
+  ReportFlushedOrCompacted(
+      yb::ToString(table_ids), add_indexes,
+      /* add_vector_indexes = */ false, /* is_compaction = */ false);
   return Status::OK();
 }
 
 Status ClusterAdminClient::CompactTables(
-    const std::vector<YBTableName>& table_names, MonoDelta timeout, bool add_indexes) {
-  RETURN_NOT_OK(yb_client_->CompactTables(table_names, timeout, add_indexes));
-  ReportFlushedOrCompacted(yb::ToString(table_names), add_indexes, /* is_compaction = */ true);
+    const std::vector<YBTableName>& table_names, MonoDelta timeout,
+    bool add_indexes, bool add_vector_indexes) {
+  RETURN_NOT_OK(yb_client_->CompactTables(table_names, timeout, add_indexes, add_vector_indexes));
+  ReportFlushedOrCompacted(
+      yb::ToString(table_names), add_indexes, add_vector_indexes, /* is_compaction = */ true);
   return Status::OK();
 }
 
 Status ClusterAdminClient::CompactTablesById(
-    const TableIds& table_ids, MonoDelta timeout, bool add_indexes) {
-  RETURN_NOT_OK(yb_client_->CompactTables(table_ids, timeout, add_indexes));
-  ReportFlushedOrCompacted(yb::ToString(table_ids), add_indexes, /* is_compaction = */ true);
+    const TableIds& table_ids, MonoDelta timeout,
+    bool add_indexes, bool add_vector_indexes) {
+  RETURN_NOT_OK(yb_client_->CompactTables(table_ids, timeout, add_indexes, add_vector_indexes));
+  ReportFlushedOrCompacted(
+      yb::ToString(table_ids), add_indexes, add_vector_indexes, /* is_compaction = */ true);
   return Status::OK();
 }
 
@@ -2725,13 +2737,13 @@ Status ClusterAdminClient::CreateSnapshot(
     const std::vector<YBTableName>& tables, std::optional<int32_t> retention_duration_hours,
     const bool add_indexes, const int flush_timeout_secs) {
   if (flush_timeout_secs > 0) {
-        const auto status = FlushTables(
-            tables, MonoDelta::FromSeconds(flush_timeout_secs), add_indexes);
-        if (status.IsTimedOut()) {
+    const auto status = FlushTables(
+        tables, MonoDelta::FromSeconds(flush_timeout_secs), add_indexes);
+    if (status.IsTimedOut()) {
       cout << status.ToString(false) << " (ignored)" << endl;
-        } else if (!status.ok() && !status.IsNotFound()) {
+    } else if (!status.ok() && !status.IsNotFound()) {
       return status;
-        }
+    }
   }
 
   CreateSnapshotResponsePB resp;

@@ -109,6 +109,7 @@ class SnapshotTestUtil {
   // By specifying only the namespace_type and namespace_id in table_name, the snapshot includes all
   // the user tables that belongs to the database.
   Result<TxnSnapshotId> CreateSnapshot(const YBTableName& table_name);
+
   Status DeleteSnapshot(const TxnSnapshotId& snapshot_id);
   Status WaitAllSnapshotsDeleted();
 

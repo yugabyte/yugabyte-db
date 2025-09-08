@@ -4,7 +4,7 @@ linkTitle: percent_rank(), cume_dist() and ntile()
 headerTitle: percent_rank(), cume_dist() and ntile()
 description: Describes the functionality of the YSQL window functions percent_rank(), cume_dist() and ntile().
 menu:
-  v2.20:
+  v2.20_api:
     identifier: percent-rank-cume-dist-ntile
     parent: window-function-syntax-semantics
     weight: 20

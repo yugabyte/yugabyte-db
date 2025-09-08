@@ -937,6 +937,13 @@ public class NodeUniverseManager extends DevopsBase {
     return nodeFilePathSizeMap;
   }
 
+  public void postProcessInMemoryGFlags(
+      Map<String, String> gflags, Universe universe, NodeDetails nodeDetails) {
+    if (universe.getCluster(nodeDetails.placementUuid).userIntent.providerType == CloudType.local) {
+      localNodeUniverseManager.postProcessGFlagsMap(gflags, universe, nodeDetails);
+    }
+  }
+
   public enum UniverseNodeAction {
     RUN_COMMAND,
     RUN_SCRIPT,

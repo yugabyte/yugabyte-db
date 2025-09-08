@@ -59,6 +59,16 @@ public class MiniYBClusterBuilder {
     return this;
   }
 
+  public MiniYBClusterBuilder ycqlNumTablets(int numTablets) {
+    this.clusterParameters.ycqlNumTablets = numTablets;
+    return this;
+  }
+
+  public MiniYBClusterBuilder ysqlNumTablets(int numTablets) {
+    this.clusterParameters.ysqlNumTablets = numTablets;
+    return this;
+  }
+
   public MiniYBClusterBuilder numShardsPerTServer(int numShardsPerTServer) {
     this.clusterParameters.numShardsPerTServer = numShardsPerTServer;
     return this;

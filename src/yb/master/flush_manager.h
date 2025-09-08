@@ -33,8 +33,7 @@
 #include "yb/util/enums.h"
 #include "yb/util/locks.h"
 
-namespace yb {
-namespace master {
+namespace yb::master {
 
 class Master;
 class CatalogManager;
@@ -65,16 +64,6 @@ class FlushManager {
                                    const Status& status) EXCLUDES(lock_);
 
  private:
-  // Start the background task to send the FlushTablets RPC to the Tablet Server.
-  void SendFlushTabletsRequest(const TabletServerId& ts_uuid,
-                               const scoped_refptr<TableInfo>& table,
-                               const std::vector<TabletId>& tablet_ids,
-                               const FlushRequestId& flush_id,
-                               bool is_compaction,
-                               bool regular_only,
-                               const LeaderEpoch& epoch,
-                               MonoTime deadline);
-
   void UpdateFlushRequestsUnlocked(const FlushRequestId& flush_id,
                                    const TabletServerId& ts_uuid,
                                    const Status& status) REQUIRES(lock_);
@@ -109,5 +98,4 @@ class FlushManager {
   DISALLOW_COPY_AND_ASSIGN(FlushManager);
 };
 
-} // namespace master
-} // namespace yb
+} // namespace yb::master

@@ -4,7 +4,7 @@ headerTitle: Names and identifiers
 linkTitle: Names and identifiers
 description: Explains the difference between the terms of art 'name' and 'identifier' [YSQL].
 menu:
-  v2.20:
+  v2.20_api:
     identifier: names-and-identifiers
     parent: api-ysql
     weight: 30

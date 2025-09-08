@@ -97,7 +97,7 @@ DROP TABLE t_multiple_binds;
 --- - ---
 CREATE TABLE t_incomplete_binds (h1 int, h2 int, r1 int, r2 int, s serial PRIMARY KEY);
 INSERT INTO t_incomplete_binds SELECT i, j, i, j FROM generate_series(1, 10) i, generate_series(1, 10) j;
-CREATE INDEX t_hash_hash ON t_incomplete_binds(h1, h2);
+CREATE INDEX t_hash_hash ON t_incomplete_binds((h1, h2) HASH);
 CREATE INDEX t_hash_range ON t_incomplete_binds(h1, r2 ASC);
 CREATE INDEX t_range_range ON t_incomplete_binds(r1 ASC, r2 ASC);
 -- full bindings (no recheck required)

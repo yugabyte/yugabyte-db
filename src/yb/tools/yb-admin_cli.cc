@@ -192,14 +192,6 @@ Result<std::pair<std::optional<int>, EnumBitSet<Enum>>> GetValueAndFlags(
   return result;
 }
 
-YB_DEFINE_ENUM(AddIndexes, (ADD_INDEXES));
-
-Result<pair<std::optional<int>, bool>> GetTimeoutAndAddIndexesFlag(
-    CLIArgumentsIterator begin, const CLIArgumentsIterator& end) {
-  auto temp_pair = VERIFY_RESULT(GetValueAndFlags(begin, end, AddIndexesList()));
-  return std::make_pair(temp_pair.first, temp_pair.second.Test(AddIndexes::ADD_INDEXES));
-}
-
 YB_DEFINE_ENUM(ListTabletsFlags, (JSON)(INCLUDE_FOLLOWERS));
 
 Status PrioritizedError(Status hi_pri_status, Status low_pri_status) {
@@ -802,15 +794,24 @@ Status delete_index_by_id_action(
   return Status::OK();
 }
 
+YB_DEFINE_ENUM(FlushTableFlag, (ADD_INDEXES));
+
+Result<pair<std::optional<int>, bool>> ParseFlushTableArgs(
+    CLIArgumentsIterator begin, const CLIArgumentsIterator& end) {
+  auto temp_pair = VERIFY_RESULT(GetValueAndFlags(begin, end, FlushTableFlagList()));
+  return std::make_pair(temp_pair.first, temp_pair.second.Test(FlushTableFlag::ADD_INDEXES));
+}
+
+
 const auto flush_table_args =
-    "<table> [<timeout_in_seconds>] (default 20) [ADD_INDEXES] (default false)";
+    "<table> [<timeout_in_seconds>] (default 20) [ADD_INDEXES] (default false, YCQL only)";
 Status flush_table_action(const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   bool add_indexes = false;
   std::optional<int> timeout_secs;
   const auto table_name = VERIFY_RESULT(ResolveSingleTableName(
       client, args.begin(), args.end(),
       [&add_indexes, &timeout_secs](auto i, const auto& end) -> Status {
-        std::tie(timeout_secs, add_indexes) = VERIFY_RESULT(GetTimeoutAndAddIndexesFlag(i, end));
+        std::tie(timeout_secs, add_indexes) = VERIFY_RESULT(ParseFlushTableArgs(i, end));
         return Status::OK();
       }));
   RETURN_NOT_OK_PREPEND(
@@ -821,7 +822,7 @@ Status flush_table_action(const ClusterAdminCli::CLIArguments& args, ClusterAdmi
 }
 
 const auto flush_table_by_id_args =
-    "<table_id> [<timeout_in_seconds>] (default 20) [ADD_INDEXES] (default false)";
+    "<table_id> [<timeout_in_seconds>] (default 20) [ADD_INDEXES] (default false, YCQL only)";
 Status flush_table_by_id_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   if (args.size() < 1) {
@@ -830,7 +831,7 @@ Status flush_table_by_id_action(
   std::optional<int> timeout_secs;
   bool add_indexes = false;
   std::tie(timeout_secs, add_indexes) =
-      VERIFY_RESULT(GetTimeoutAndAddIndexesFlag(args.begin() + 1, args.end()));
+      VERIFY_RESULT(ParseFlushTableArgs(args.begin() + 1, args.end()));
   RETURN_NOT_OK_PREPEND(
       client->FlushTablesById(
           {args[0]}, MonoDelta::FromSeconds(timeout_secs.value_or(20)), add_indexes),
@@ -852,39 +853,57 @@ Status compact_sys_catalog_action(
   return Status::OK();
 }
 
+YB_DEFINE_ENUM(CompactTableFlag, (ADD_INDEXES)(ADD_VECTOR_INDEXES));
+using CompactTableFlags = EnumBitSet<CompactTableFlag>;
+
 const auto compact_table_args =
-    "<table> [<timeout_in_seconds>] (default 20) [ADD_INDEXES] (default false)";
+    "<table> [<timeout_in_seconds>] (default 20) "
+    "[ADD_INDEXES] (default false, YCQL only)"
+    "[ADD_VECTOR_INDEXES] (default false)";
+
 Status compact_table_action(const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  bool add_indexes = false;
   std::optional<int> timeout_secs;
+  CompactTableFlags flags;
   const auto table_name = VERIFY_RESULT(ResolveSingleTableName(
       client, args.begin(), args.end(),
-      [&add_indexes, &timeout_secs](auto i, const auto& end) -> Status {
-        std::tie(timeout_secs, add_indexes) = VERIFY_RESULT(GetTimeoutAndAddIndexesFlag(i, end));
+    [&timeout_secs, &flags](auto i, const auto& end) -> Status {
+      std::tie(timeout_secs, flags) =
+          VERIFY_RESULT(GetValueAndFlags(i, end, CompactTableFlagList()));
         return Status::OK();
       }));
-  // We use the same FlushTables RPC to trigger compaction.
+
   RETURN_NOT_OK_PREPEND(
       client->CompactTables(
-          {table_name}, MonoDelta::FromSeconds(timeout_secs.value_or(20)), add_indexes),
+          {table_name},
+          MonoDelta::FromSeconds(timeout_secs.value_or(20)),
+          flags.Test(CompactTableFlag::ADD_INDEXES),
+          flags.Test(CompactTableFlag::ADD_VECTOR_INDEXES)),
       Format("Unable to compact table $0", table_name.ToString()));
   return Status::OK();
 }
 
 const auto compact_table_by_id_args =
-    "<table_id> [<timeout_in_seconds>] (default 20) [ADD_INDEXES] (default false)";
+    "<table_id> [<timeout_in_seconds>] (default 20) "
+    "[ADD_INDEXES] (default false, YCQL only)"
+    "[ADD_VECTOR_INDEXES] (default false)";
+
 Status compact_table_by_id_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   if (args.size() < 1) {
     return ClusterAdminCli::kInvalidArguments;
   }
-  const auto& [timeout_secs, add_indexes] =
-      VERIFY_RESULT(GetTimeoutAndAddIndexesFlag(args.begin() + 1, args.end()));
-  // We use the same FlushTables RPC to trigger compaction.
+
+  const auto& [timeout_secs, flags] =
+      VERIFY_RESULT(GetValueAndFlags(args.begin() + 1, args.end(), CompactTableFlagList()));
+
   RETURN_NOT_OK_PREPEND(
       client->CompactTablesById(
-          {args[0]}, MonoDelta::FromSeconds(timeout_secs.value_or(20)), add_indexes),
+          {args[0]},
+          MonoDelta::FromSeconds(timeout_secs.value_or(20)),
+          flags.Test(CompactTableFlag::ADD_INDEXES),
+          flags.Test(CompactTableFlag::ADD_VECTOR_INDEXES)),
       Format("Unable to compact table $0", args[0]));
+
   return Status::OK();
 }
 

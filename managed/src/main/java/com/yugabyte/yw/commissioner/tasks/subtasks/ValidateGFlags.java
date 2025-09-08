@@ -239,7 +239,6 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
                 universe,
                 userIntent,
                 useHostname,
-                config,
                 confGetter));
 
     // GFlags set by user previously

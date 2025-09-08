@@ -22,16 +22,10 @@
 
 #include "yb/bfpg/tserver_opcodes.h"
 
-#include "yb/qlexpr/index.h"
-#include "yb/qlexpr/index_column.h"
 #include "yb/common/jsonb.h"
-#include "yb/dockv/partition.h"
 #include "yb/common/ql_protocol_util.h"
-#include "yb/qlexpr/ql_resultset.h"
-#include "yb/qlexpr/ql_rowblock.h"
 #include "yb/common/ql_value.h"
 
-#include "yb/dockv/doc_path.h"
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
@@ -39,9 +33,18 @@
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
-#include "yb/dockv/packed_row.h"
-#include "yb/dockv/primitive_value_util.h"
 #include "yb/docdb/ql_storage_interface.h"
+
+#include "yb/dockv/doc_path.h"
+#include "yb/dockv/packed_row.h"
+#include "yb/dockv/partition.h"
+#include "yb/dockv/primitive_value_util.h"
+#include "yb/dockv/reader_projection.h"
+
+#include "yb/qlexpr/index.h"
+#include "yb/qlexpr/index_column.h"
+#include "yb/qlexpr/ql_resultset.h"
+#include "yb/qlexpr/ql_rowblock.h"
 
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
@@ -1055,7 +1058,7 @@ Status QLWriteOperation::ApplyUpsert(
 
   auto se = ScopeExit([&packed_row_write_id, doc_write_batch = data.doc_write_batch]() {
     if (packed_row_write_id) {
-      doc_write_batch->RollbackReservedWriteId();
+      doc_write_batch->RollbackReservedWriteId(*packed_row_write_id);
     }
   });
 

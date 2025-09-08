@@ -2950,7 +2950,6 @@ int yb_execute_on_control_connection(od_client_t *client,
 	 * skip requisitioning a physical backend to save time
 	 * (and avoid a "cascading timeout" situation).
 	 */
-	bool client_timed_out = false;
 	if (yb_machine_io_is_socket_closed(client->io.io)) {
 		od_debug(
 			&instance->logger, "control connection", client, NULL,

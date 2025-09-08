@@ -166,7 +166,7 @@ METRIC_DEFINE_gauge_uint32(cluster,
                            "The minimum number of replicas that need to be added / moved for the "
                            "cluster to be balanced.");
 
-METRIC_DEFINE_gauge_uint32(cluster,
+METRIC_DEFINE_gauge_uint64(cluster,
                            estimated_data_to_balance_bytes,
                            "Estimated Data to Balance",
                            yb::MetricUnit::kBytes,
@@ -490,11 +490,6 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
   // At the start of the run, report LB state that might prevent it from running smoothly.
   ReportUnusualLoadBalancerState();
 
-  uint32_t total_tablets_in_wrong_placement = 0;
-  uint32_t total_blacklisted_leaders = 0;
-  uint32_t total_table_load_difference = 0;
-  uint32_t total_estimated_data_to_balance_bytes = 0;
-
   // Loop over all tables to analyze the global and per-table load.
   for (const auto& table : GetTables()) {
     if (SkipLoadBalancing(*table)) {
@@ -539,21 +534,15 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
       auto num_adds = CalculateTableLoadDifference(current_loads, *goal_loads);
       VLOG(2) << "Table " << table->id() << " current_loads: " << AsString(current_loads);
       VLOG(2) << "Table " << table->id() << " goal_loads:    " << AsString(*goal_loads);
-      total_table_load_difference += num_adds;
-      total_estimated_data_to_balance_bytes += num_adds * state_->average_tablet_size_;
+      per_run_state_->total_table_load_difference_ += num_adds;
+      per_run_state_->estimated_data_to_balance_bytes_ += num_adds * state_->average_tablet_size_;
     } else {
       YB_LOG_EVERY_N_SECS_OR_VLOG(WARNING, 10, 1) << "No valid load distribution found for table "
           << table->id() << ": " << StatusToString(goal_loads);
     }
-    total_tablets_in_wrong_placement += get_total_wrong_placement();
-    total_blacklisted_leaders += get_badly_placed_leaders();
+    per_run_state_->tablets_in_wrong_placement_ += get_total_wrong_placement();
+    per_run_state_->blacklisted_leaders_ += get_badly_placed_leaders();
   }
-
-  // Update metrics.
-  tablets_in_wrong_placement_metric_->set_value(total_tablets_in_wrong_placement);
-  blacklisted_leaders_metric_->set_value(total_blacklisted_leaders);
-  total_table_load_difference_metric_->set_value(total_table_load_difference);
-  estimated_data_to_balance_bytes_metric_->set_value(total_estimated_data_to_balance_bytes);
 
   VLOG(1) << "Global state after analyzing all tablets: " << global_state_->ToString();
 
@@ -771,6 +760,7 @@ void ClusterLoadBalancer::RunLoadBalancer(const LeaderEpoch& epoch) {
     options_ent->placement_uuid = "";
     options_ent->live_placement_uuid = "";
   }
+  per_run_state_ = std::make_unique<PerRunState>();
   RunLoadBalancerWithOptions(options_ent);
 
   // Then, we balance all read-only clusters.
@@ -780,6 +770,8 @@ void ClusterLoadBalancer::RunLoadBalancer(const LeaderEpoch& epoch) {
     options_ent->placement_uuid = read_only_cluster.placement_uuid();
     RunLoadBalancerWithOptions(options_ent);
   }
+
+  UpdatePerRunMetrics();
 }
 
 MonoTime ClusterLoadBalancer::LastRunTime() const {
@@ -794,6 +786,14 @@ Status ClusterLoadBalancer::IsIdle() const {
         MasterError(MasterErrorPB::LOAD_BALANCER_RECENTLY_ACTIVE));
   }
   return Status::OK();
+}
+
+void ClusterLoadBalancer::UpdatePerRunMetrics() {
+  tablets_in_wrong_placement_metric_->set_value(per_run_state_->tablets_in_wrong_placement_);
+  blacklisted_leaders_metric_->set_value(per_run_state_->blacklisted_leaders_);
+  total_table_load_difference_metric_->set_value(per_run_state_->total_table_load_difference_);
+  estimated_data_to_balance_bytes_metric_->set_value(
+      per_run_state_->estimated_data_to_balance_bytes_);
 }
 
 ClusterBalancerActivityInfo ClusterLoadBalancer::GetLatestActivityInfo() const {

@@ -2682,6 +2682,49 @@ TEST_F(
   ASSERT_EQ(tablet_peer_2->get_cdc_sdk_safe_time(), slot_row->record_id_commit_time);
 }
 
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestBeforeImageNotExistErrorPropagation) {
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+  uint32_t num_cols = 3;
+  auto table = ASSERT_RESULT(CreateTable(
+    &test_cluster_, kNamespaceName, kTableName, 1, true, false, 0, false, "", "public", num_cols));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  // Set the replica identity to FULL. This is needed to get before image in update operation.
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 REPLICA IDENTITY FULL", kTableName));
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}));
+
+  // Setting the flag to mimic tablet not in available state. The expectation is that
+  // CDCServiceImpl::GetConsistentChanges() should not return an error since such error is expected
+  // to be retryable.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_mimic_tablet_not_in_available_state) = true;
+  ASSERT_OK(GetConsistentChangesFromCDC(stream_id));
+
+  // Resetting the test flag.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_mimic_tablet_not_in_available_state) = false;
+
+  map<std::string, uint32_t> col_val_map1, col_val_map2;
+  col_val_map1.insert({"col2", 9});
+  col_val_map1.insert({"col3", 10});
+  col_val_map2.insert({"col2", 10});
+  col_val_map2.insert({"col3", 11});
+  ASSERT_OK(UpdateRowsHelper(1, 2, &test_cluster_, true, 1, col_val_map1, col_val_map2, num_cols));
+
+  // Getting the consistent changes from stream and expecting a non-ok status due to "Failed to get
+  // the beforeimage" error. This error occurs when an UPDATE follows an INSERT for the same row in
+  // the same transaction, and the before image is unavailable.
+  // However, when packed rows are enabled, all the UPDATE operation/s of the same row gets absorbed
+  // into the INSERT operation and hence the before image is not required. In that case, we expect
+  // GetConsistentChanges to return the records without any error.
+  if (FLAGS_ysql_enable_packed_row) {
+    ASSERT_OK(GetConsistentChangesFromCDC(stream_id));
+  } else {
+    ASSERT_NOK_STR_CONTAINS(
+        GetConsistentChangesFromCDC(stream_id), "Failed to get the beforeimage");
+  }
+}
+
 // This test verifies the behaviour of VWAL when the publication refresh interval is changed when
 // consumption is in progress.
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestChangingPublicationRefreshInterval) {

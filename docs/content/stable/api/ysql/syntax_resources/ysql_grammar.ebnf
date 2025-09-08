@@ -606,6 +606,7 @@ create_index = 'CREATE' [ 'UNIQUE' ] 'INDEX' [ 'CONCURRENTLY' | 'NONCONCURRENTLY
                '(' index_elem { ',' index_elem } ')' \
                [ 'INCLUDE' '(' column_name { ',' column_name } ')' ] \
                [ 'NULLS' [ 'NOT' ] 'DISTINCT' ] \
+               [ 'WITH' '(' ( 'COLOCATION_ID' '=' int_literal ) ')' ] \
                [ 'TABLESPACE' tablespace_name ] \
                [ 'SPLIT' ( 'INTO' int_literal 'TABLETS'
                       | 'AT' 'VALUES' '(' split_row { ',' split_row } ')' ) ]
@@ -763,7 +764,8 @@ drop_tablespace = 'DROP' 'TABLESPACE' [ 'IF' 'EXISTS' ] tablespace_name;
 create_table = 'CREATE' [ 'TEMPORARY' | 'TEMP' | 'UNLOGGED' ] 'TABLE'
                  [ 'IF' 'NOT' 'EXISTS' ] table_name
                  '(' [ table_elem { ',' table_elem } ] ')' \
-                 [ 'WITH' '(' ( 'COLOCATION' '=' ('true' | 'false') | storage_parameters ) ')'
+                 [ 'PARTITION' 'BY' { 'RANGE' | 'LIST' | 'HASH' } '(' { column_name | ( expression ) } [ operator_class_name ] [, ...] ')' ] \
+                 [ 'WITH' '(' ( 'COLOCATION' '=' ('true' | 'false') | 'COLOCATION_ID' '=' int_literal | storage_parameters ) ')'
                       | 'WITHOUT' 'OIDS' ] \
                  [ 'TABLESPACE' tablespace_name ]
                  [ 'SPLIT' ( 'INTO' positive_int_literal 'TABLETS'

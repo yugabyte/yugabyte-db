@@ -4,7 +4,7 @@ headerTitle: "- and #- (remove operators)"
 linkTitle: "- and #- (remove)"
 description: Remove key-value pairs from an object or remove a single value from an array.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: remove-operators
     parent: json-functions-operators
     weight: 13

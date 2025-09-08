@@ -172,7 +172,7 @@ replicas.master=1,replicas.tserver=1,enableLoadBalancer=False --namespace yb-dem
 
 ### Check cluster status with kubectl
 
-Run the following command to verify that you have two services with one running pod in each: one YB-Master pod (`yb-master-0`) and one YB-Tserver pod (`yb-tserver-0`). For details on the roles of these pods in a YugabyteDB cluster (also known as universe), see [Architecture](/preview/architecture/).
+Run the following command to verify that you have two services with one running pod in each: one YB-Master pod (`yb-master-0`) and one YB-TServer pod (`yb-tserver-0`). For details on the roles of these pods in a YugabyteDB cluster (also known as universe), see [Architecture](/preview/architecture/).
 
 ```sh
 kubectl --namespace yb-demo get pods

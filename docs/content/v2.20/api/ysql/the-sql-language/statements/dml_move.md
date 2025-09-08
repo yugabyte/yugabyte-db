@@ -4,7 +4,7 @@ headerTitle: MOVE
 linkTitle: MOVE
 description: Use the MOVE statement to change the position of the current row in a cursor.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: dml_move
     parent: statements
 type: docs
