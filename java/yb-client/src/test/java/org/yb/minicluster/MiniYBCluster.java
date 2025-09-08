@@ -1034,7 +1034,7 @@ public class MiniYBCluster implements AutoCloseable {
     List<MiniYBDaemon> ybControllers = new ArrayList<>(ybControllerProcesses.values());
 
     LOG.info("Shutting down mini cluster");
-    shutdownDaemons();
+    shutdownAllDaemons();
 
     LOG.info("Restarting mini cluster");
     for (MiniYBDaemon master : masters) {
@@ -1055,6 +1055,16 @@ public class MiniYBCluster implements AutoCloseable {
     }
 
     LOG.info("Restarted mini cluster");
+  }
+
+  // Forcibly kills all daemons in the cluster.
+  public void killDaemons() throws Exception {
+    List<MiniYBDaemon> daemons = new ArrayList<>(masterProcesses.values());
+    daemons.addAll(tserverProcesses.values());
+    daemons.addAll(ybControllerProcesses.values());
+    for (MiniYBDaemon daemon : daemons) {
+      daemon.kill(TimeUnit.MILLISECONDS.toNanos(PROCESS_TERMINATE_TIMEOUT_MS));
+    }
   }
 
   private void processCoreFile(MiniYBDaemon daemon) throws Exception {
@@ -1137,21 +1147,6 @@ public class MiniYBCluster implements AutoCloseable {
   }
 
   /**
-   * Destroys the given list of YB daemons. Returns a list of processes in case the caller wants
-   * to wait for all of them to shut down.
-   */
-  private List<Process> destroyDaemons(Collection<MiniYBDaemon> daemons) throws Exception {
-    List<Process> processes = new ArrayList<>();
-    for (Iterator<MiniYBDaemon> iter = daemons.iterator(); iter.hasNext(); ) {
-      final MiniYBDaemon daemon = iter.next();
-      destroyDaemon(daemon);
-      processes.add(daemon.getProcess());
-      iter.remove();
-    }
-    return processes;
-  }
-
-  /**
    * Stops all the processes and deletes the paths used to store data and the flagfile.
    */
   public void shutdown() throws Exception {
@@ -1176,7 +1171,7 @@ public class MiniYBCluster implements AutoCloseable {
       }
     }
 
-    shutdownDaemons();
+    shutdownAllDaemons();
 
     String processInfoDir = getProcessInfoDir();
     processCoreFiles(processInfoDir, coreFileDirs);
@@ -1234,57 +1229,45 @@ public class MiniYBCluster implements AutoCloseable {
     return path.toAbsolutePath().toString();
   }
 
-  private void shutdownDaemons() throws Exception {
-    List<Process> processes = new ArrayList<>();
-    List<MiniYBDaemon> allDaemons = new ArrayList<>();
-    allDaemons.addAll(masterProcesses.values());
-    allDaemons.addAll(tserverProcesses.values());
-    allDaemons.addAll(ybControllerProcesses.values());
-    processes.addAll(destroyDaemons(masterProcesses.values()));
-    processes.addAll(destroyDaemons(tserverProcesses.values()));
-    processes.addAll(destroyDaemons(ybControllerProcesses.values()));
-    LOG.info(
-        "Waiting for " + processes.size() + " processes to terminate...");
-    final long deadlineMs = System.currentTimeMillis() + PROCESS_TERMINATE_TIMEOUT_MS;
-    for (Process process : processes) {
-      final long timeLeftMs = deadlineMs - System.currentTimeMillis();
-      if (timeLeftMs > 0) {
-        LOG.info(
-            "Waiting for PID " + ProcessUtil.pidStrOfProcess(process) + " for " + timeLeftMs +
-            " ms");
-        process.waitFor(timeLeftMs, TimeUnit.MILLISECONDS);
-        LOG.info("IsAlive: " + process.isAlive());
-      } else {
-        break;
-      }
+  private boolean shutdownDaemons(Collection<MiniYBDaemon> daemons,
+                                  long gracefulShutdownDeadlineNs,
+                                  long processWaitTimeNs) throws Exception {
+    for (MiniYBDaemon daemon : daemons) {
+      daemon.startShutdown();
     }
-    boolean isTerminatedGracefully = true;
-    for (Process process : processes) {
-      if (process.isAlive()) {
-        isTerminatedGracefully = false;
-        final int pid = ProcessUtil.pidOfProcess(process);
-        LOG.info("Trying to kill stuck process " + pid);
-        process.destroyForcibly();
-        LOG.info(("Waiting for process " + pid + " to terminate ..."));
-        if (!process.waitFor(PROCESS_TERMINATE_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
-          LOG.warn(
-              "Failed to kill process " + pid + " within " + PROCESS_TERMINATE_TIMEOUT_MS + " ms");
-        }
-      }
+    boolean allShutdownsGraceful = true;
+    for (MiniYBDaemon daemon : daemons) {
+      boolean gracefulShutdown = daemon.completeShutdown(gracefulShutdownDeadlineNs,
+                                                         processWaitTimeNs);
+      allShutdownsGraceful = allShutdownsGraceful && gracefulShutdown;
     }
-    LOG.info("Stopping log printers...");
+    return allShutdownsGraceful;
+  }
+
+  private void shutdownAllDaemons() throws Exception {
+    List<MiniYBDaemon> workerDaemons = new ArrayList<>();
+    workerDaemons.addAll(tserverProcesses.values());
+    workerDaemons.addAll(ybControllerProcesses.values());
+    LOG.info("Waiting for {} processes to terminate...", workerDaemons.size());
+
+    long processWaitTimeNs = TimeUnit.MILLISECONDS.toNanos(PROCESS_TERMINATE_TIMEOUT_MS);
+    long gracefulShutdownDeadlineNs = System.nanoTime() + processWaitTimeNs;
+    // Shut down the tservers first. TServer client RPC logic has long retry loops looking for the
+    // master leader. It is easy for the shutdown to hang if no master leader can be found.
+    boolean workersGraceful = shutdownDaemons(workerDaemons,
+                                              gracefulShutdownDeadlineNs,
+                                              processWaitTimeNs);
+    boolean mastersGraceful = shutdownDaemons(masterProcesses.values(),
+                                              gracefulShutdownDeadlineNs,
+                                              processWaitTimeNs);
     for (LogPrinter logPrinter : logPrinters) {
       logPrinter.stop();
-    }
-    logPrinters.clear();
-    for (MiniYBDaemon daemon : allDaemons) {
-      daemon.waitForShutdown();
     }
     if (syncClient != null) {
       syncClient.shutdown();
       syncClient = null;
     }
-    if (!isTerminatedGracefully) {
+    if (!(workersGraceful && mastersGraceful)) {
       final String errorMessage =
           "Cluster failed to gracefully terminate within " + PROCESS_TERMINATE_TIMEOUT_MS +
           " ms, had to forcibly kill some processes (see logs above).";

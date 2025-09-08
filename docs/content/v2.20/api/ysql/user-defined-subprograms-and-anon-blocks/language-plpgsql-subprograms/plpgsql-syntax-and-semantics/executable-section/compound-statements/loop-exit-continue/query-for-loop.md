@@ -4,7 +4,7 @@ headerTitle: The "query for loop"
 linkTitle: Query for loop
 description: Describes the syntax and semantics of the "query for loop" [YSQL]
 menu:
-  v2.20:
+  v2.20_api:
     identifier: query-for-loop
     parent: loop-exit-continue
     weight: 40

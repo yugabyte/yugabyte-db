@@ -17,9 +17,10 @@ import { RestoreContextMethods, RestoreFormContext } from '../RestoreContext';
 import { restoreBackup, restoreBackupProps } from '../api';
 import { Keyspace_Table, RESTORE_ACTION_TYPE } from '../../../common/IBackup';
 import { createErrorMessage } from '../../../../../redesign/features/universe/universe-form/utils/helpers';
+import { getUnSupportedTableSpaceConfig } from '@app/redesign/features/backup/restore/RestoreUtils';
 import { useInterceptBackupTaskLinks } from '../../../../../redesign/features/tasks/TaskUtils';
-import { YBLoadingCircleIcon } from '../../../../common/indicators';
 import { TableType } from '../../../../../redesign/helpers/dtos';
+import { YBLoadingCircleIcon } from '../../../../common/indicators';
 
 // this is the final page of the restore modal;
 // prepares the payload and triggers the api request
@@ -69,7 +70,7 @@ const preparePayload = (restoreContext: RestoreContextMethods): restoreBackupPro
   const [
     {
       backupDetails,
-      formData: { generalSettings, renamedKeyspaces, selectedTables }
+      formData: { generalSettings, renamedKeyspaces, selectedTables, preflightResponse },
     }
   ] = restoreContext;
 
@@ -88,15 +89,22 @@ const preparePayload = (restoreContext: RestoreContextMethods): restoreBackupPro
         }
       }
 
-      const infoList = {
+      const unSupportedTablespaces = getUnSupportedTableSpaceConfig(preflightResponse!, 'unsupportedTablespaces');
+      const conflictingTablespaces = getUnSupportedTableSpaceConfig(preflightResponse!, 'conflictingTablespaces');
+
+      const infoList: any = {
         backupType: backupDetails!.backupType,
         keyspace: keyspacename,
         sse: backupDetails!.commonBackupInfo.sse,
         storageLocation:
           backupDetails?.commonBackupInfo.responseList[index].storageLocation ??
           backupDetails?.commonBackupInfo.responseList[index].defaultLocation,
-        useTablespaces: generalSettings?.useTablespaces
+        useTablespaces: generalSettings?.useTablespaces,
       };
+
+      if (generalSettings?.useTablespaces && conflictingTablespaces && !unSupportedTablespaces) {
+        infoList['errorIfTablespacesExists'] = false;
+      }
 
       if (backupDetails?.backupType === TableType.YQL_TABLE_TYPE) {
         infoList['tableNameList'] = backupDetails?.commonBackupInfo.responseList[index].tablesList;

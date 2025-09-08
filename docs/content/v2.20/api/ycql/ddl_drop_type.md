@@ -4,7 +4,7 @@ headerTitle: DROP TYPE
 linkTitle: DROP TYPE
 description: Use the DROP TYPE statement to remove an existing user-defined data type.
 menu:
-  v2.20:
+  v2.20_api:
     parent: api-cassandra
     weight: 1280
 type: docs

@@ -4,7 +4,7 @@ headerTitle: DROP TYPE
 linkTitle: DROP TYPE
 description: Use the DROP TYPE statement to remove a user-defined type from the database.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: ddl_drop_type
     parent: statements
 type: docs

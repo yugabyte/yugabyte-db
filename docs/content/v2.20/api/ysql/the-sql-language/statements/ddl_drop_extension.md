@@ -5,7 +5,7 @@ linkTitle: DROP EXTENSION
 summary: Remove an extension
 description: Use the DROP EXTENSION statement to remove an extension from the database
 menu:
-  v2.20:
+  v2.20_api:
     identifier: ddl_drop_extension
     parent: statements
 type: docs

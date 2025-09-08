@@ -4,7 +4,7 @@ headerTitle: COMMENT
 linkTitle: COMMENT
 description: Use the COMMENT statement to set, update, or remove a comment on a database object.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: ddl_comment
     parent: statements
 type: docs

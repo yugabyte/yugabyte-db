@@ -267,6 +267,14 @@ class MasterSnapshotCoordinator::Impl {
     auto synchronizer = std::make_shared<Synchronizer>();
     auto snapshot_id = TxnSnapshotId::GenerateRandom();
 
+    // Add namespace to retained set to prevent hard deleting tables during snapshot creation
+    {
+      std::lock_guard lock(mutex_);
+      retained_namespaces_.insert(namespace_id);
+      VLOG(1) << "Added namespace " << namespace_id << " to retained_namespaces_ for snapshot "
+              << snapshot_id;
+    }
+
     TEST_SYNC_POINT("YBBackupTestWithColocationParam::ContinueSnapshotCreation");
     // Select hybrid time for the snapshot
     auto snapshot_hybrid_time = GetCurrentHybridTime();
@@ -278,6 +286,8 @@ class MasterSnapshotCoordinator::Impl {
     LOG(INFO) << "Successfully collected entries as of time " << snapshot_hybrid_time
               << ", num entries: " << entries_as_snapshot_ht.entries_size();
 
+    TEST_SYNC_POINT("YBBackupTestWithColocationParam::CreateSnapshotEntriesCollected");
+    TEST_SYNC_POINT("YBBackupTestWithColocationParam::StartSnapshotSubmitCreate");
     RETURN_NOT_OK(SubmitCreate(
         entries_as_snapshot_ht, snapshot_hybrid_time, imported, SnapshotScheduleId::Nil(),
         HybridTime::kInvalid, snapshot_id, leader_term, retention_duration_hours,
@@ -1123,6 +1133,11 @@ class MasterSnapshotCoordinator::Impl {
     return false;
   }
 
+  bool IsNamespaceRetained(const NamespaceId& namespace_id) const {
+    std::lock_guard l(mutex_);
+    return retained_namespaces_.contains(namespace_id);
+  }
+
   Result<bool> IsTableUndergoingPitrRestore(const TableInfo& table_info) {
     {
       std::lock_guard l(mutex_);
@@ -1263,23 +1278,46 @@ class MasterSnapshotCoordinator::Impl {
     return restore_kv;
   }
 
+  // Checks if a tablet should be retained due to:
+  // 1. A complete snapshot covering the tablet, OR
+  // 2. An ongoing snapshot creation operation which retains all tablets belonging to the namespace.
   bool IsTabletCoveredBySnapshot(
       const TabletId& tablet_id, const TxnSnapshotId& snapshot_id = TxnSnapshotId::Nil()) const {
-    // Potential optimization opportunity:
-    // For colocated tables, the following scenario could happen.
-    // 1. Snapshot has colocated tables t1, t2 and t3.
-    // 2. User created t4 after snapshot is complete.
-    // 3. User dropped t4, ideally we can delete this table (instead of hiding)
-    // but the below logic will hide it instead. This is ok from a correctness
-    // standpoint but can be a potential optimization worth considering especially
-    // if the table occupies a lot of space on disk and/or snapshot is long lived.
+    {
+      std::lock_guard l(mutex_);
+      // Potential optimization opportunity:
+      // For colocated tables, the following scenario could happen.
+      // 1. Snapshot has colocated tables t1, t2 and t3.
+      // 2. User created t4 after snapshot is complete.
+      // 3. User dropped t4, ideally we can delete this table (instead of hiding)
+      // but the below logic will hide it instead. This is ok from a correctness
+      // standpoint but can be a potential optimization worth considering especially
+      // if the table occupies a lot of space on disk and/or snapshot is long lived.
 
-    std::lock_guard l(mutex_);
-    auto* snapshots = FindOrNull(tablet_to_covering_snapshots_, tablet_id);
-    // If snapshot_id is nil then return true if any snapshot covers the particular tablet
-    // whereas if snapshot_id is not nil then return true if that particular snapshot
-    // covers the tablet.
-    return snapshots && (!snapshot_id || snapshots->contains(snapshot_id));
+      // Check if tablet is directly covered by snapshots
+      auto* snapshots = FindOrNull(tablet_to_covering_snapshots_, tablet_id);
+      // If snapshot_id is nil then return true if any snapshot covers the particular tablet
+      // whereas if snapshot_id is not nil then return true if that particular snapshot
+      // covers the tablet.
+      if (snapshots && (!snapshot_id || snapshots->contains(snapshot_id))) {
+        return true;
+      }
+    }
+
+    // Check if tablet's namespace is anchored due to ongoing snapshot operations
+    // This prevents hard deletion while snapshots are being created
+    auto tablet_info_result = cm_->GetTabletInfo(tablet_id);
+    if (tablet_info_result.ok() && *tablet_info_result) {
+      const auto& tablet_info = *tablet_info_result;
+      if (tablet_info->table()) {
+        const auto& namespace_id = tablet_info->table()->namespace_id();
+        if (IsNamespaceRetained(namespace_id)) {
+          return true;
+        }
+      }
+    }
+
+    return false;
   }
 
   void Start() {
@@ -1863,6 +1901,10 @@ class MasterSnapshotCoordinator::Impl {
     if (!is_empty) {
       batch_done = snapshot->Throttler().RemoveOutstandingTask();
     }
+    // Remove namespace from retained set if snapshot is in final failure state.
+    if (snapshot->ShouldRemoveNamespaceAnchor()) {
+      RemoveNamespaceFromRetainedSet(*snapshot);
+    }
     if (!snapshot->AllTabletsDone()) {
       if (FLAGS_schedule_snapshot_rpcs_out_of_band && batch_done && !is_empty) {
         // Send another batch. This prevents having to wait for the regular cycle
@@ -2201,9 +2243,31 @@ class MasterSnapshotCoordinator::Impl {
       RemoveCoveringSnapshot(snapshot);
     } else if (snapshot.ShouldAddToCoveringMap()) {
       AddCoveringSnapshot(snapshot);
+      // Remove namespace from retained set when snapshot successfully completes (COMPLETE state).
+      RemoveNamespaceFromRetainedSet(snapshot);
     }
-    VLOG_WITH_FUNC(2)
-        << "Tablet to covering snapshots: " << AsString(tablet_to_covering_snapshots_);
+    VLOG_WITH_FUNC(2) << "Tablet to covering snapshots: " << AsString(tablet_to_covering_snapshots_)
+                      << ", retained namespaces: " << AsString(retained_namespaces_);
+  }
+
+  void RemoveNamespaceFromRetainedSet(const SnapshotState& snapshot) REQUIRES(mutex_) {
+    auto namespace_id_result = snapshot.GetNamespaceId();
+    if (!namespace_id_result.ok()) {
+      LOG(WARNING) << "Could not get namespace ID for snapshot " << snapshot.id() << ": "
+                   << namespace_id_result.status();
+      return;
+    }
+
+    const auto& namespace_id = *namespace_id_result;
+    auto it = retained_namespaces_.find(namespace_id);
+    if (it == retained_namespaces_.end()) {
+      return;
+    }
+    retained_namespaces_.erase(it);
+    VLOG(1) << "Removed anchor for namespace " << namespace_id << " for snapshot " << snapshot.id()
+            << ". Final state: "
+            << SysSnapshotEntryPB::State_Name(
+                   ResultToValue(snapshot.AggregatedState(), SysSnapshotEntryPB::UNKNOWN));
   }
 
   bool ShouldRetain(
@@ -2300,6 +2364,13 @@ class MasterSnapshotCoordinator::Impl {
   // 3. Snapshot is in COMPLETE state
   std::unordered_map<TabletId, std::unordered_set<TxnSnapshotId>>
       tablet_to_covering_snapshots_ GUARDED_BY(mutex_);
+
+  // Stores namespaces that are currently retained due to ongoing create snapshot operation.
+  // This prevents hard deletion of tables and tablets belonging to these namespaces while snapshots
+  // are being created. A namespace is retained from the moment CreateSnapshot RPC is received until
+  // the snapshot reaches a terminal state.
+  std::unordered_set<NamespaceId> retained_namespaces_ GUARDED_BY(mutex_);
+
   rpc::Poller poller_;
 };
 
@@ -2585,6 +2656,10 @@ Result<SysRowEntries> MasterSnapshotCoordinator::CollectEntriesAsOfTime(
     const NamespaceId& namespace_id, CollectFlags flags, HybridTime read_time,
     CoarseTimePoint deadline) {
   return impl_->CollectEntriesAsOfTime(namespace_id, flags, read_time, deadline);
+}
+
+bool MasterSnapshotCoordinator::IsNamespaceRetained(const NamespaceId& namespace_id) const {
+  return impl_->IsNamespaceRetained(namespace_id);
 }
 
 } // namespace master

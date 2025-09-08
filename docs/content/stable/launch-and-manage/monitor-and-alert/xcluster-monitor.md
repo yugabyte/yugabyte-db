@@ -183,9 +183,9 @@ Inbound xCluster Replications:
   </div>
   </div>
 
-## YB-Master and YB-Tserver UI
+## YB-Master and YB-TServer UI
 
-You can access the YB-Master and YB-Tserver UIs to monitor the health of xCluster replication at `/xcluster`.
+You can access the YB-Master and YB-TServer UIs to monitor the health of xCluster replication at `/xcluster`.
 
 **YB-Master source**
 
@@ -197,12 +197,12 @@ You can access the YB-Master and YB-Tserver UIs to monitor the health of xCluste
 <http://127.0.0.1:7000/xcluster>:
 ![Target YB-Master inbound](/images/deploy/xcluster/automatic-inbound.jpg)
 
-**YB-Tserver source**
+**YB-TServer source**
 
 <http://127.0.0.1:9000/xcluster>:
-![Source YB-Tserver inbound](/images/deploy/xcluster/tserver-outbound.jpg)
+![Source YB-TServer inbound](/images/deploy/xcluster/tserver-outbound.jpg)
 
-**YB-Tserver target**
+**YB-TServer target**
 
 <http://127.0.0.1:9000/xcluster>
 

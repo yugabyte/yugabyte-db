@@ -11,18 +11,26 @@
 // under the License.
 //
 
+#include <future>
+#include <memory>
 #include <string>
 
 #include "yb/common/colocated_util.h"
+#include "yb/common/transaction.h"
 
 #include "yb/gutil/strings/join.h"
 
+#include "yb/master/master.h"
+#include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_snapshot_coordinator.h"
 
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/tools/yb-backup/yb-backup-test_base.h"
 
+#include "yb/util/backoff_waiter.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
@@ -35,6 +43,7 @@ using yb::client::SnapshotTestUtil;
 using yb::client::YBTableName;
 
 DECLARE_bool(TEST_enable_sync_points);
+DECLARE_bool(TEST_mark_snapshot_as_failed);
 DECLARE_bool(TEST_use_custom_varz);
 
 namespace yb {
@@ -123,6 +132,57 @@ class YBBackupTestWithColocationParam : public pgwrapper::PgMiniTestBase,
           Format("Tablet with id: $0 is not included in the snapshot", tablet_id));
     }
     return Status::OK();
+  }
+
+  Result<std::unordered_set<std::string>> CollectTabletIdsFromTables(
+      const master::ListTablesResponsePB& tables) {
+    std::unordered_set<std::string> tablet_ids;
+    // Check tablets for each DocDB table
+    for (const auto& table : tables.tables()) {
+      google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+      RETURN_NOT_OK(client_->GetTabletsFromTableId(
+          table.id(),
+          0,  // max_tablets = 0 means get all tablets
+          &tablets));
+
+      for (const auto& tablet : tablets) {
+        tablet_ids.insert(tablet.tablet_id());
+      }
+    }
+    return tablet_ids;
+  }
+
+  std::future<Result<TxnSnapshotId>> CreateSnapshotAsync(
+      const master::CreateSnapshotRequestPB& req) {
+    auto promise = std::make_shared<std::promise<Result<TxnSnapshotId>>>();
+    auto future = promise->get_future();
+
+    auto leader_addr_result = cluster_->GetLeaderMasterBoundRpcAddr();
+    if (!leader_addr_result.ok()) {
+      promise->set_value(STATUS(InternalError, leader_addr_result.status().ToString()));
+      return future;
+    }
+    auto backup_proxy = master::MasterBackupProxy(&client_->proxy_cache(), *leader_addr_result);
+    auto resp = std::make_shared<master::CreateSnapshotResponsePB>();
+    auto controller = std::make_shared<rpc::RpcController>();
+    controller->set_timeout(60s);
+
+    backup_proxy.CreateSnapshotAsync(
+        req, resp.get(), controller.get(), [promise, resp, controller]() {
+          if (!controller->status().ok()) {
+            promise->set_value(STATUS(InternalError, controller->status().ToString()));
+          } else if (resp->has_error()) {
+            promise->set_value(STATUS(InternalError, resp->error().ShortDebugString()));
+          } else {
+            auto snapshot_id_result = FullyDecodeTxnSnapshotId(resp->snapshot_id());
+            if (snapshot_id_result.ok()) {
+              promise->set_value(*snapshot_id_result);
+            } else {
+              promise->set_value(std::move(snapshot_id_result));
+            }
+          }
+        });
+    return future;
   }
 
   std::unique_ptr<SnapshotTestUtil> snapshot_util_;
@@ -297,22 +357,183 @@ TEST_P(YBBackupTestWithColocationParam, CreateConsistentMasterSnapshot) {
         parent_colocation_table_id, parent_entry.id());
   }
   ASSERT_OK(AreTablesIncludedInSnapshot(base_docdb_tables, snapshot_infos[0]));
-  std::unordered_set<std::string> tablet_ids;
-  // Check tablets for each DocDB table
-  for (const auto& table : base_docdb_tables.tables()) {
-    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-    ASSERT_OK(client_->GetTabletsFromTableId(
-        table.id(),
-        0, // max_tablets = 0 means get all tablets
-        &tablets));
-
-    for (const auto& tablet : tablets) {
-      tablet_ids.insert(tablet.tablet_id());
-    }
-  }
+  std::unordered_set<std::string> tablet_ids =
+      ASSERT_RESULT(CollectTabletIdsFromTables(base_docdb_tables));
   // Check if all tablets of all base tables are included in the snapshot
   ASSERT_OK(AreTabletsIncludedInSnapshot(tablet_ids, snapshot_infos[0]));
 
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+// Test that we retain the deleted tables of a namespace if CreateSnapshot RPC is being executed.
+// Timeline of the test:
+// Main Thread                    Master Leader
+//   |                                 |
+//   |1.Create test_table1,2           |
+//   |2.Setup sync points              |
+//   |3.CreateSnapshotAsync            |
+//   |                                 |4.Receive CreateSnapshot RPC
+//   |                                 |5.Select snapshot_hybrid_time
+//   |                                 |6.Collect tables (including test_table2)
+//   |7.Verify namespace retained      |
+//   |8.Delete (hide) test_table       |
+//   |                                 |9.Send CREATE_ON_TABLET operations
+//   |                                 |10.Complete snapshot creation
+//   |11.Wait for snapshot completion  |
+//   |12.Verify test_table2 and its    |
+//   |   tablets are included in       |
+//   |   snapshot                      |
+//   |13.Assert namespace is no longer |
+//   |   retained                      |
+TEST_P(YBBackupTestWithColocationParam, RetainTableDeletedDuringCreateSnapshot) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+  auto conn = ASSERT_RESULT(ConnectToDB(kBackupSourceDbName));
+  const std::string table_name = "test_table", table2_name = "test_table2";
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v TEXT)", table_name));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v TEXT)", table2_name));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 (k, v) VALUES (1, '10')", table_name));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 (k, v) VALUES (2, '2')", table_name));
+  std::vector<SyncPoint::Dependency> dependencies;
+  dependencies.push_back(
+      {"YBBackupTestWithColocationParam::CreateSnapshotEntriesCollected",
+       "YBBackupTestWithColocationParam::StartDropSecondTable"});
+  dependencies.push_back(
+      {"YBBackupTestWithColocationParam::DropSecondTableFinished",
+       "YBBackupTestWithColocationParam::StartSnapshotSubmitCreate"});
+  yb::SyncPoint::GetInstance()->LoadDependency(dependencies);
+  yb::SyncPoint::GetInstance()->EnableProcessing();
+  master::ListTablesResponsePB list_tables_resp =
+      ASSERT_RESULT(client_->ListTables(table_name, /* ysql_db_filter */ kBackupSourceDbName));
+  ASSERT_EQ(list_tables_resp.tables_size(), 2);
+
+  auto master_leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  auto* snapshot_coordinator = &master_leader->master()->snapshot_coordinator();
+
+  // Get the namespace ID for the database using the client API.
+  master::GetNamespaceInfoResponsePB namespace_resp;
+  ASSERT_OK(client_->GetNamespaceInfo(
+      "" /* namespace_id */, kBackupSourceDbName, YQL_DATABASE_PGSQL, &namespace_resp));
+  auto& namespace_id = namespace_resp.namespace_().id();
+  // We will delete table test_table2 after starting the async create snapshot. Table deletion
+  // happens after the master leader selects the snapshot_hybrid_time and collects the entries
+  // included in the snapshot but before sending CREATE_ON_TABLET snapshot operation to all the
+  // tablets. CreateSnapshot should retain the deleted table as it should be part of the snapshot.
+
+  // Specifying only namespace identifier (ns id, name and type) means the created snapshot includes
+  // all the user tables that belongs to the specified namespace.
+  master::CreateSnapshotRequestPB req;
+  auto table = req.add_tables();
+  table->mutable_namespace_()->set_name(kBackupSourceDbName);
+  table->mutable_namespace_()->set_database_type(YQL_DATABASE_PGSQL);
+  table->mutable_namespace_()->set_id(namespace_id);
+
+  auto snapshot_future = CreateSnapshotAsync(req);
+
+  TEST_SYNC_POINT("YBBackupTestWithColocationParam::StartDropSecondTable");
+
+  // Verify that namespace is retained during snapshot creation.
+  ASSERT_TRUE(snapshot_coordinator->IsNamespaceRetained(namespace_id))
+      << "Namespace should be retained during snapshot creation";
+
+  LOG(INFO) << Format("Started dropping table: $0", table2_name);
+
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", table2_name));
+  TEST_SYNC_POINT("YBBackupTestWithColocationParam::DropSecondTableFinished");
+
+  // Wait for the async create snapshot to complete.
+  TxnSnapshotId snapshot_id = ASSERT_RESULT(snapshot_future.get());
+  ASSERT_OK(snapshot_util_->WaitSnapshotDone(snapshot_id));
+  Snapshots snapshot_infos = ASSERT_RESULT(snapshot_util_->ListSnapshots(
+      snapshot_id, client::ListDeleted::kTrue, client::PrepareForBackup::kTrue,
+      client::IncludeDdlInProgressTables::kTrue));
+  ASSERT_EQ(snapshot_infos.size(), 1);
+  LOG(INFO) << "SnapshotInfoPB is: " << snapshot_infos[0].ShortDebugString();
+  // TODO(mhaddad): For colocated databases, adds checks that parent colocated tablets (1 per
+  // tablespace) are included in the SnapshotInfoPB.
+  ASSERT_OK(AreTablesIncludedInSnapshot(list_tables_resp, snapshot_infos[0]));
+  std::unordered_set<std::string> tablet_ids =
+      ASSERT_RESULT(CollectTabletIdsFromTables(list_tables_resp));
+  // Check if all tablets of all base tables are included in the snapshot
+  ASSERT_OK(AreTabletsIncludedInSnapshot(tablet_ids, snapshot_infos[0]));
+
+  // Verify that namespace is no longer retained after snapshot creation completion
+  ASSERT_FALSE(snapshot_coordinator->IsNamespaceRetained(namespace_id))
+      << "Namespace should no longer be retained after snapshot creation completion";
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_P(YBBackupTestWithColocationParam, CleanNamespaceAnchoringAfterFailedSnapshot) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_mark_snapshot_as_failed) = true;
+  auto conn = ASSERT_RESULT(ConnectToDB(kBackupSourceDbName));
+  const std::string table_name = "test_table", table2_name = "test_table2";
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v TEXT)", table_name));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v TEXT)", table2_name));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 (k, v) VALUES (1, '10')", table_name));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 (k, v) VALUES (2, '2')", table_name));
+  std::vector<SyncPoint::Dependency> dependencies;
+  dependencies.push_back(
+      {"YBBackupTestWithColocationParam::CreateSnapshotEntriesCollected",
+       "YBBackupTestWithColocationParam::StartDropSecondTable"});
+  dependencies.push_back(
+      {"YBBackupTestWithColocationParam::DropSecondTableFinished",
+       "YBBackupTestWithColocationParam::StartSnapshotSubmitCreate"});
+  yb::SyncPoint::GetInstance()->LoadDependency(dependencies);
+  yb::SyncPoint::GetInstance()->EnableProcessing();
+  master::ListTablesResponsePB list_tables_resp =
+      ASSERT_RESULT(client_->ListTables(table_name, /* ysql_db_fiter */ kBackupSourceDbName));
+  ASSERT_EQ(list_tables_resp.tables_size(), 2);
+
+  auto master_leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  auto* snapshot_coordinator = &master_leader->master()->snapshot_coordinator();
+
+  // Get the namespace ID for the database using the client API
+  master::GetNamespaceInfoResponsePB namespace_resp;
+  ASSERT_OK(client_->GetNamespaceInfo(
+      "" /* namespace_id */, kBackupSourceDbName, YQL_DATABASE_PGSQL, &namespace_resp));
+  auto namespace_id = namespace_resp.namespace_().id();
+
+  // Specifying only namespace identifier (ns id, name and type) means the created snapshot includes
+  // all the user tables that belongs to the specified namespace.
+  master::CreateSnapshotRequestPB req;
+  auto table = req.add_tables();
+  table->mutable_namespace_()->set_name(kBackupSourceDbName);
+  table->mutable_namespace_()->set_database_type(YQL_DATABASE_PGSQL);
+  table->mutable_namespace_()->set_id(namespace_id);
+
+  auto snapshot_future = CreateSnapshotAsync(req);
+
+  TEST_SYNC_POINT("YBBackupTestWithColocationParam::StartDropSecondTable");
+
+  // Verify that namespace is retained during snapshot creation
+  ASSERT_TRUE(snapshot_coordinator->IsNamespaceRetained(namespace_id))
+      << "Namespace should be retained during snapshot creation";
+
+  LOG(INFO) << Format("Started dropping table: $0", table2_name);
+
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", table2_name));
+  TEST_SYNC_POINT("YBBackupTestWithColocationParam::DropSecondTableFinished");
+
+  // Wait for the async create snapshot to complete.
+  TxnSnapshotId snapshot_id = ASSERT_RESULT(snapshot_future.get());
+  ASSERT_FALSE(snapshot_id.IsNil()) << "Snapshot ID should not be nil";
+
+  // Wait for the snapshot to fail as expected.
+  ASSERT_OK(snapshot_util_->WaitSnapshotInState(snapshot_id, master::SysSnapshotEntryPB::FAILED));
+
+  // Verify that namespace is no longer retained after snapshot creation completion.
+  ASSERT_FALSE(snapshot_coordinator->IsNamespaceRetained(namespace_id))
+      << "Namespace should no longer be retained after snapshot creation completion";
+
+  // Wait for the dropped table to be hard deleted, ListTables should return only 1 table.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        master::ListTablesResponsePB list_tables_resp =
+            VERIFY_RESULT(client_->ListTables(table_name, /* ysql_db_fiter */ kBackupSourceDbName));
+        return list_tables_resp.tables_size() == 1;
+      },
+      30s, "Wait for dropped table to be hard deleted"));
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 

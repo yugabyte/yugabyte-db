@@ -588,16 +588,17 @@ Status PopulateBeforeImage(
       tablet_peer, commit_time.Decremented(), row_message, cdc_sdk_safe_time,
       std::forward<Args>(args)...);
   if (!status.ok()) {
-    LOG(DFATAL) << "Failed to get the BeforeImage for tablet: " << tablet_peer->tablet_id()
-                << " with read time: " << commit_time
-                << " for change record type: " << row_message->op()
-                << " row_message: " << row_message->DebugString()
-                << " with error status: " << status;
+    LOG(WARNING) << "Failed to get the BeforeImage for tablet: " << tablet_peer->tablet_id()
+                 << " with read time: " << commit_time
+                 << " for change record type: " << row_message->op()
+                 << " row_message: " << row_message->DebugString()
+                 << " with error status: " << status;
+  } else {
+    VLOG(2) << "Successfully got the BeforeImage for tablet: " << tablet_peer->tablet_id()
+            << " with read time: " << commit_time
+            << " for change record type: " << row_message->op()
+            << " row_message: " << row_message->DebugString();
   }
-  VLOG(2) << "Successfully got the BeforeImage for tablet: " << tablet_peer->tablet_id()
-          << " with read time: " << commit_time
-          << " for change record type: " << row_message->op()
-          << " row_message: " << row_message->DebugString();
   return status;
 }
 

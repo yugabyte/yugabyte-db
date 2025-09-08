@@ -19,6 +19,12 @@ It is strongly recommended that you take appropriate measures as outlined in the
 {{%table%}}
 | Advisory&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Synopsis | Product | Affected Versions | Date |
 | :------------------------------- | :------- | :-----: | :---------------: | :--- |
+| {{<ta 26666>}}
+| Memory leak in workloads with foreign keys or serializable reads
+| {{<product "ysql, ycql">}}
+| {{<release "2024.2">}}
+| {{<nobreak "02 September 2025">}}
+|
 | {{<ta 28222>}}
 | Regression for queries with BNL plans
 | {{<product "ysql">}}

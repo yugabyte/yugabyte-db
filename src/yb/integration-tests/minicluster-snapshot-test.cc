@@ -1373,20 +1373,17 @@ TEST_F(PgCloneMultiMaster, YB_DISABLE_TEST_IN_SANITIZERS(CloneAfterMasterChange)
   const std::tuple<int32_t, int32_t> kRow = {1, 10};
   ASSERT_OK(source_conn_->ExecuteFormat(
       "INSERT INTO t1 VALUES ($0, $1)", std::get<0>(kRow), std::get<1>(kRow)));
+  auto clone_to_time = ASSERT_RESULT(GetCurrentTime()).ToInt64();
+  ASSERT_OK(source_conn_->ExecuteFormat("INSERT INTO t1 VALUES (2, 2)"));
+  ASSERT_OK(source_conn_->ExecuteFormat("DROP TABLE t1"));
 
-  ASSERT_OK(source_conn_->ExecuteFormat(
-      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName));
   ASSERT_OK(cluster_->StepDownMasterLeader());
-  // TODO(#22925) Remove this sleep once TsDescriptors are persisted.
-  SleepFor(3s);
   ASSERT_OK(source_conn_->ExecuteFormat(
-      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName2, kSourceNamespaceName));
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName1, kSourceNamespaceName,
+      clone_to_time));
 
   auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
   auto row = ASSERT_RESULT((target_conn.FetchRow<int32_t, int32_t>("SELECT * FROM t1")));
-  ASSERT_EQ(row, kRow);
-  target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName2));
-  row = ASSERT_RESULT((target_conn.FetchRow<int32_t, int32_t>("SELECT * FROM t1")));
   ASSERT_EQ(row, kRow);
 }
 

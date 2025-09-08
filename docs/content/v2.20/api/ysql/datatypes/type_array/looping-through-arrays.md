@@ -4,7 +4,7 @@ linkTitle: FOREACH loop (PL/pgSQL)
 headerTitle: Looping through arrays in PL/pgSQL
 description: Looping through arrays in PL/pgSQL
 menu:
-  v2.20:
+  v2.20_api:
     identifier: looping-through-arrays
     parent: api-ysql-datatypes-array
     weight: 30

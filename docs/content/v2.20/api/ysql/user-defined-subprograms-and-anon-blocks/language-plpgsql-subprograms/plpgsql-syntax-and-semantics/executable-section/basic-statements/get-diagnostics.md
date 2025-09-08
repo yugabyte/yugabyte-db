@@ -5,7 +5,7 @@ linkTitle: >
   "get diagnostics" statement
 description: Describes the syntax and semantics of the PL/pgSQL "get diagnostics" statement. [YSQL].
 menu:
-  v2.20:
+  v2.20_api:
     identifier: get-diagnostics
     parent: basic-statements
     weight: 20

@@ -4,7 +4,7 @@ headerTitle: CREATE ROLE
 linkTitle: CREATE ROLE
 description: Use the CREATE ROLE statement to add a role to a YugabyteDB database cluster.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: dcl_create_role
     parent: statements
 type: docs

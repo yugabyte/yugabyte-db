@@ -203,8 +203,7 @@ MonoDelta SystemQueryCache::GetStaleness() {
 }
 
 void SystemQueryCache::Shutdown() {
-  bool expected = false;
-  if (!shutting_down_.compare_exchange_strong(expected, true)) {
+  if (!shutting_down_.Set()) {
     return;
   }
   if (pool_) {
