@@ -1,15 +1,13 @@
 module node-agent
 
-go 1.23.0
-
-toolchain go1.24.1
+go 1.24.6
 
 replace golang.org/x/crypto => golang.org/x/crypto v0.18.0
 
 require (
 	github.com/apex/log v1.9.0
 	github.com/creack/pty v1.1.18
-	github.com/golang-jwt/jwt/v5 v5.2.3
+	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/mux v1.8.0
 	github.com/nikolalohinski/gonja v1.5.3
@@ -20,7 +18,7 @@ require (
 	github.com/thoas/go-funk v0.9.2
 	golang.org/x/net v0.38.0
 	google.golang.org/grpc v1.57.1
-	google.golang.org/protobuf v1.30.0
+	google.golang.org/protobuf v1.36.8
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0
 )
 

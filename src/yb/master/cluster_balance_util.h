@@ -278,9 +278,18 @@ struct Options {
   // TODO(bogdan): add state for leaders starting remote bootstraps, to limit on that end too.
 };
 
-// Cluster-wide state and metrics.
-// For now it's used to determine how many tablets are being remote bootstrapped across the cluster,
-// as well as keeping track of global load counts in order to do global load balancing moves.
+// State for the cluster balancer that is not cleared between processing each placement (between
+// the live and read-only placements).
+class PerRunState {
+ public:
+  uint32_t tablets_in_wrong_placement_ = 0;
+  uint32_t blacklisted_leaders_ = 0;
+  uint32_t total_table_load_difference_ = 0;
+  uint64_t estimated_data_to_balance_bytes_ = 0;
+};
+
+// Placement-wide state and metrics. This is cleared between processing each placement (between the
+// live and read-only placements).
 class GlobalLoadState {
  public:
   // Get the global load for a certain TS.
@@ -298,8 +307,6 @@ class GlobalLoadState {
       }
     }
     out += "]}, total_starting_tablets: " + std::to_string(total_starting_tablets_) + " }";
-    // Intentionally not printing out errors_ as it can be very long and cause us to hit the glog
-    // line length limit.
     return out;
   }
 
@@ -477,6 +484,8 @@ class PerTableLoadState {
       out << "], ";
     }
     out << " ] }";
+    out << ", num_running_tablets: " << num_running_tablets_;
+    out << ", average_tablet_size: " << average_tablet_size_;
     return out.str();
   }
 

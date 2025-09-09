@@ -34,7 +34,6 @@
 #include <string>
 #include <thread>
 
-#include <boost/optional.hpp>
 #include <gtest/gtest.h>
 
 #include "yb/client/client-test-util.h"
@@ -281,7 +280,7 @@ void DeleteTableTest::DeleteTabletWithRetries(const TServerDetails* ts,
   deadline.AddDelta(timeout);
   Status s;
   while (true) {
-    s = itest::DeleteTablet(ts, tablet_id, delete_type, boost::none, timeout);
+    s = itest::DeleteTablet(ts, tablet_id, delete_type, std::nullopt, timeout);
     if (s.ok()) return;
     if (deadline.ComesBefore(MonoTime::Now())) {
       break;
@@ -493,7 +492,7 @@ TEST_F(DeleteTableTest, TestAtomicDeleteTablet) {
   TServerDetails* ts = ts_map_[cluster_->tablet_server(kTsIndex)->uuid()].get();
 
   // The committed config starts off with an opid_index of -1, so choose something lower.
-  boost::optional<int64_t> opid_index(-2);
+  std::optional<int64_t> opid_index(-2);
   tserver::TabletServerErrorPB::Code error_code;
   ASSERT_OK(itest::WaitUntilTabletRunning(ts, tablet_id, timeout));
 
@@ -645,8 +644,8 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterCrashDuringRemoteBootstrap) {
   string leader_uuid = GetLeaderUUID(cluster_->tablet_server(1)->uuid(), tablet_id);
   TServerDetails* leader = DCHECK_NOTNULL(ts_map_[leader_uuid].get());
   TServerDetails* ts = ts_map_[cluster_->tablet_server(kTsIndex)->uuid()].get();
-  ASSERT_OK(itest::AddServer(
-      leader, tablet_id, ts, PeerMemberType::PRE_VOTER, boost::none, timeout));
+  ASSERT_OK(
+      itest::AddServer(leader, tablet_id, ts, PeerMemberType::PRE_VOTER, std::nullopt, timeout));
   ASSERT_OK(cluster_->WaitForTSToCrash(kTsIndex));
 
   // The superblock should be in TABLET_DATA_COPYING state on disk.
@@ -761,8 +760,8 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterRemoteBootstrapRemoteFails) {
   ASSERT_OK(cluster_->tablet_server(kTsIndex)->Restart());
   TServerDetails* leader = ts_map_[leader_uuid].get();
   TServerDetails* ts = ts_map_[cluster_->tablet_server(0)->uuid()].get();
-  ASSERT_OK(itest::AddServer(
-      leader, tablet_id, ts, PeerMemberType::PRE_VOTER, boost::none, timeout));
+  ASSERT_OK(
+      itest::AddServer(leader, tablet_id, ts, PeerMemberType::PRE_VOTER, std::nullopt, timeout));
   ASSERT_OK(cluster_->WaitForTSToCrash(leader_index));
 
   // The tablet server will detect that the leader failed, and automatically
@@ -893,7 +892,7 @@ TEST_F(DeleteTableTest, TestMergeConsensusMetadata) {
   ASSERT_EQ(ts->uuid(), cmeta_pb.voted_for());
 
   // Tombstone our special little guy, then shut him down.
-  ASSERT_OK(itest::DeleteTablet(ts, tablet_id, TABLET_DATA_TOMBSTONED, boost::none, timeout));
+  ASSERT_OK(itest::DeleteTablet(ts, tablet_id, TABLET_DATA_TOMBSTONED, std::nullopt, timeout));
   ASSERT_NO_FATALS(WaitForTabletTombstonedOnTS(kTsIndex, tablet_id, CMETA_EXPECTED));
   cluster_->tablet_server(kTsIndex)->Shutdown();
 
@@ -1010,7 +1009,7 @@ TEST_F(DeleteTableTest, TestDeleteFollowerWithReplicatingOperation) {
   // Now tombstone the follower tablet. This should succeed even though there
   // are uncommitted operations on the replica.
   LOG(INFO) << "Tombstoning tablet " << tablet_id << " on TS " << ts->uuid();
-  ASSERT_OK(itest::DeleteTablet(ts, tablet_id, TABLET_DATA_TOMBSTONED, boost::none, timeout));
+  ASSERT_OK(itest::DeleteTablet(ts, tablet_id, TABLET_DATA_TOMBSTONED, std::nullopt, timeout));
 }
 
 // Verify that memtable is not flushed when tablet is deleted.
@@ -1053,11 +1052,11 @@ TEST_F(DeleteTableTest, TestMemtableNoFlushOnTabletDelete) {
   ASSERT_OK(WriteSimpleTestRow(leader, tablet_id, 1, 1, "hola, world", MonoDelta::FromSeconds(5)));
 
   // Set test flag to detect that memtable should not be flushed on table delete.
-  ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(kLeaderIndex),
-        "TEST_rocksdb_crash_on_flush", "true"));
+  ASSERT_OK(cluster_->SetFlag(
+      cluster_->tablet_server(kLeaderIndex), "TEST_rocksdb_crash_on_flush", "true"));
 
   // Now delete the tablet.
-  ASSERT_OK(itest::DeleteTablet(ts, tablet_id, TABLET_DATA_DELETED, boost::none, timeout));
+  ASSERT_OK(itest::DeleteTablet(ts, tablet_id, TABLET_DATA_DELETED, std::nullopt, timeout));
 
   // Sleep to allow background memtable flush to be scheduled (in case).
   SleepFor(MonoDelta::FromMilliseconds(5 * 1000));
@@ -1114,8 +1113,8 @@ TEST_F(DeleteTableTest, TestOrphanedBlocksClearedOnDelete) {
   cluster_->tablet_server(kLeaderIndex)->Shutdown();
 
   // Tombstone the follower and check that follower superblock is still accessible.
-  ASSERT_OK(itest::DeleteTablet(follower_ts, tablet_id, TABLET_DATA_TOMBSTONED,
-                                boost::none, timeout));
+  ASSERT_OK(
+      itest::DeleteTablet(follower_ts, tablet_id, TABLET_DATA_TOMBSTONED, std::nullopt, timeout));
   ASSERT_NO_FATALS(WaitForTabletTombstonedOnTS(kFollowerIndex, tablet_id, CMETA_EXPECTED));
   RaftGroupReplicaSuperBlockPB superblock_pb;
   ASSERT_OK(inspect_->ReadTabletSuperBlockOnTS(kFollowerIndex, tablet_id, &superblock_pb));
@@ -1175,8 +1174,8 @@ TEST_F(DeleteTableTest, TestFDsNotLeakedOnTabletTombstone) {
   // Tombstone the tablet and then ensure that lsof does not list any
   // tablet-related paths.
   ExternalTabletServer* ets = cluster_->tablet_server(0);
-  ASSERT_OK(itest::DeleteTablet(ts_map_[ets->uuid()].get(),
-                                tablet_id, TABLET_DATA_TOMBSTONED, boost::none, timeout));
+  ASSERT_OK(itest::DeleteTablet(
+      ts_map_[ets->uuid()].get(), tablet_id, TABLET_DATA_TOMBSTONED, std::nullopt, timeout));
   ASSERT_EQ(0, PrintOpenTabletFiles(ets->pid(), tablet_id));
 
   // Restart the TS after deletion and then do the same lsof check again.
@@ -1449,7 +1448,7 @@ TEST_P(DeleteTableTombstonedParamTest, TestTabletTombstone) {
   string tablet_id = tablets[0].tablet_status().tablet_id();
   LOG(INFO) << "Tombstoning first tablet " << tablet_id << "...";
   ASSERT_TRUE(inspect_->DoesConsensusMetaExistForTabletOnTS(kTsIndex, tablet_id)) << tablet_id;
-  ASSERT_OK(itest::DeleteTablet(ts, tablet_id, TABLET_DATA_TOMBSTONED, boost::none, timeout));
+  ASSERT_OK(itest::DeleteTablet(ts, tablet_id, TABLET_DATA_TOMBSTONED, std::nullopt, timeout));
   LOG(INFO) << "Waiting for first tablet to be tombstoned...";
   ASSERT_NO_FATALS(WaitForTabletTombstonedOnTS(kTsIndex, tablet_id, CMETA_EXPECTED));
 
@@ -1466,8 +1465,9 @@ TEST_P(DeleteTableTombstonedParamTest, TestTabletTombstone) {
   ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(kTsIndex), fault_flag, "1.0"));
   tablet_id = tablets[1].tablet_status().tablet_id();
   LOG(INFO) << "Tombstoning second tablet " << tablet_id << "...";
-  WARN_NOT_OK(itest::DeleteTablet(ts, tablet_id, TABLET_DATA_TOMBSTONED, boost::none, timeout),
-              "Delete tablet failed");
+  WARN_NOT_OK(
+      itest::DeleteTablet(ts, tablet_id, TABLET_DATA_TOMBSTONED, std::nullopt, timeout),
+      "Delete tablet failed");
   ASSERT_OK(cluster_->WaitForTSToCrash(kTsIndex));
 
   // Restart the tablet server and wait for the WALs to be deleted and for the

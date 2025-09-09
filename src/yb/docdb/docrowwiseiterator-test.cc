@@ -16,21 +16,24 @@
 
 #include "yb/common/common.pb.h"
 #include "yb/common/pgsql_protocol.pb.h"
-#include "yb/qlexpr/ql_expr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction-test-util.h"
 
-#include "yb/dockv/doc_key.h"
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_test_base.h"
 #include "yb/docdb/docdb_test_util.h"
+
+#include "yb/dockv/doc_key.h"
 #include "yb/dockv/packed_row.h"
 #include "yb/dockv/pg_row.h"
+#include "yb/dockv/reader_projection.h"
 #include "yb/dockv/schema_packing.h"
+
+#include "yb/qlexpr/ql_expr.h"
 
 #include "yb/server/hybrid_clock.h"
 

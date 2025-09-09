@@ -14,6 +14,7 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
+import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;
@@ -53,6 +54,7 @@ public class KubernetesOperator {
 
   @Inject private RuntimeConfGetter confGetter;
   @Inject private OperatorUtils operatorUtils;
+  @Inject private CloudProviderHandler cloudProviderHandler;
 
   public MixedOperation<Release, KubernetesResourceList<Release>, Resource<Release>> releasesClient;
   public MixedOperation<Backup, KubernetesResourceList<Backup>, Resource<Backup>> backupClient;
@@ -214,6 +216,9 @@ public class KubernetesOperator {
                   ScheduledBackupReconciler scheduledBackupReconciler =
                       reconcilerFactory.getScheduledBackupReconciler(client);
 
+                  YBProviderReconciler ybProviderReconciler =
+                      reconcilerFactory.getYBProviderReconciler(client);
+
                   ReleaseReconciler releaseReconciler =
                       new ReleaseReconciler(
                           ybSoftwareReleaseIndexInformer,
@@ -271,17 +276,21 @@ public class KubernetesOperator {
                   Thread ybUniverseReconcilerThread = new Thread(() -> ybUniverseController.run());
                   Thread scheduledBackupReconcilerThread =
                       new Thread(() -> scheduledBackupReconciler.run());
+                  Thread ybProviderReconcilerThread = new Thread(() -> ybProviderReconciler.run());
                   if (confGetter.getGlobalConf(
                       GlobalConfKeys.KubernetesOperatorCrashYbaOnOperatorFail)) {
                     Thread.UncaughtExceptionHandler exceptionHandler = getExceptionHandler();
                     ybUniverseReconcilerThread.setUncaughtExceptionHandler(exceptionHandler);
                     scheduledBackupReconcilerThread.setUncaughtExceptionHandler(exceptionHandler);
+                    ybProviderReconcilerThread.setUncaughtExceptionHandler(exceptionHandler);
                   }
                   ybUniverseReconcilerThread.start();
                   scheduledBackupReconcilerThread.start();
+                  ybProviderReconcilerThread.start();
 
                   ybUniverseReconcilerThread.join();
                   scheduledBackupReconcilerThread.join();
+                  ybProviderReconcilerThread.join();
 
                   LOG.info("Finished running ybUniverseController");
                 } catch (KubernetesClientException | ExecutionException exception) {

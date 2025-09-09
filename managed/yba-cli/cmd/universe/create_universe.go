@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/ear/earutil"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
@@ -24,6 +25,8 @@ import (
 )
 
 var tserverGflagsString string
+var cveKMSConfigUUID string
+var providerType string
 var v1 = viper.New()
 
 // createUniverseCmd represents the universe command
@@ -85,19 +88,14 @@ var createUniverseCmd = &cobra.Command{
 				)
 			}
 		}
-
 		enableVolumeEncryption := v1.GetBool("enable-volume-encryption")
 		if enableVolumeEncryption {
-			kmsConfigName := v1.GetString("kms-config")
-			if len(strings.TrimSpace(kmsConfigName)) == 0 {
-				cmd.Help()
-				logrus.Fatalln(
-					formatter.Colorize(
-						"No kms config name found while enabling volume encryption\n",
-						formatter.RedColor,
-					),
-				)
-			}
+			logrus.Warn(
+				formatter.Colorize(
+					"Use --cloud-volume-encryption-kms-config or --encryption-at-rest-kms-config instead",
+					formatter.YellowColor,
+				),
+			)
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
@@ -181,38 +179,108 @@ var createUniverseCmd = &cobra.Command{
 
 		kmsConfigUUID := ""
 		var opType string
-		enableVolumeEncryption := v1.GetBool("enable-volume-encryption")
 
-		if enableVolumeEncryption {
-			opType = util.EnableOpType
-			kmsConfigName := v1.GetString("kms-config")
-			// find kmsConfigUUID from the name
-			kmsConfigs, response, err := authAPI.ListKMSConfigs().Execute()
-			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(response, err,
-					"Universe", "Create - Fetch KMS Configs")
-				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
-			}
-			for _, k := range kmsConfigs {
-				metadataInterface := k["metadata"]
-				if metadataInterface != nil {
-					metadata := metadataInterface.(map[string]interface{})
-					kmsName := metadata["name"]
-					if kmsName != nil && strings.Compare(kmsName.(string), kmsConfigName) == 0 {
-						configUUID := metadata["configUUID"]
-						if configUUID != nil {
-							kmsConfigUUID = configUUID.(string)
-							logrus.Info("Using kms config: ",
-								fmt.Sprintf("%s %s",
-									kmsConfigName,
-									formatter.Colorize(kmsConfigUUID, formatter.GreenColor)), "\n")
-						}
-					}
+		oldKMSUsed := true
+
+		kmsConfigs, err := authAPI.GetListOfKMSConfigs(
+			"Universe",
+			"Create - Get KMS Configurations",
+		)
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		cveKMSConfigName := v1.GetString("cloud-volume-encryption-kms-config")
+		if !util.IsEmptyString(cveKMSConfigName) {
+			if !strings.EqualFold(providerType, util.AWSProviderType) {
+				logrus.Debug(
+					"cloud-volume-encryption-kms-config can only be set for AWS universes, ignoring value\n",
+				)
+				cveKMSConfigUUID = ""
+			} else {
+				oldKMSUsed = false
+				cveKMSConfigs := earutil.KMSConfigNameAndCodeFilter(cveKMSConfigName, "", kmsConfigs)
+				if len(cveKMSConfigs) == 1 {
+					cveKMSConfigUUID = cveKMSConfigs[0].ConfigUUID
+					logrus.Info("Using kms config: ", fmt.Sprintf("%s %s",
+						cveKMSConfigName,
+						formatter.Colorize(cveKMSConfigUUID, formatter.GreenColor)), "for cloud volume encryption\n")
+				} else if len(cveKMSConfigs) > 1 {
+					logrus.Fatalf(
+						formatter.Colorize(
+							fmt.Sprintf("Multiple kms configurations with same name %s found", cveKMSConfigName),
+							formatter.RedColor))
+				} else {
+					logrus.Fatalf(formatter.Colorize(
+						fmt.Sprintf("No kms configurations with name: %s found\n", cveKMSConfigName),
+						formatter.RedColor,
+					))
 				}
 			}
-			if len(kmsConfigUUID) == 0 {
+		}
+
+		earKMSConfigName := v1.GetString("encryption-at-rest-kms-config")
+		if !util.IsEmptyString(earKMSConfigName) {
+			oldKMSUsed = false
+			earKMSConfigs := earutil.KMSConfigNameAndCodeFilter(earKMSConfigName, "", kmsConfigs)
+			if len(earKMSConfigs) == 1 {
+				kmsConfigUUID = earKMSConfigs[0].ConfigUUID
+				logrus.Info("Using kms config: ", fmt.Sprintf(
+					"%s %s",
+					earKMSConfigName,
+					formatter.Colorize(
+						kmsConfigUUID,
+						formatter.GreenColor,
+					),
+				), "for encryption at rest\n")
+			} else if len(earKMSConfigs) > 1 {
+				logrus.Fatalf(
+					formatter.Colorize(
+						fmt.Sprintf("Multiple kms configurations with same name %s found", earKMSConfigName),
+						formatter.RedColor))
+			} else {
 				logrus.Fatalf(formatter.Colorize(
-					fmt.Sprintf("KMS config %s not found\n", kmsConfigName), formatter.RedColor))
+					fmt.Sprintf("No kms configurations with name: %s found\n", earKMSConfigName),
+					formatter.RedColor,
+				))
+			}
+		}
+
+		if oldKMSUsed {
+			enableVolumeEncryption := v1.GetBool("enable-volume-encryption")
+			if enableVolumeEncryption {
+				opType = util.EnableOpType
+				kmsConfigName := v1.GetString("kms-config")
+				// find kmsConfigUUID from the name
+				if len(strings.TrimSpace(kmsConfigName)) == 0 {
+					logrus.Fatalf(formatter.Colorize(
+						"No kms config name found to create universe, "+
+							"use --cloud-volume-encryption-kms-config or --encryption-at-rest-kms-config\n",
+						formatter.RedColor,
+					))
+				}
+				kmsConfigsName := earutil.KMSConfigNameAndCodeFilter(kmsConfigName, "", kmsConfigs)
+				if len(kmsConfigsName) == 1 {
+					kmsConfigUUID = kmsConfigsName[0].ConfigUUID
+					logrus.Info(
+						"Using kms config: ",
+						fmt.Sprintf(
+							"%s %s",
+							kmsConfigName,
+							formatter.Colorize(kmsConfigUUID, formatter.GreenColor),
+						),
+						"\n",
+					)
+				} else if len(kmsConfigsName) > 1 {
+					logrus.Fatalf(
+						formatter.Colorize(
+							fmt.Sprintf("Multiple kms configurations with same name %s found", kmsConfigName),
+							formatter.RedColor))
+				} else {
+					logrus.Fatalf(formatter.Colorize(
+						fmt.Sprintf("KMS config %s not found\n", kmsConfigName), formatter.RedColor,
+					))
+				}
 			}
 		}
 
@@ -238,7 +306,7 @@ var createUniverseCmd = &cobra.Command{
 			Arch:               util.GetStringPointer(strings.ToLower(cpuArch)),
 		}
 
-		if enableVolumeEncryption {
+		if !util.IsEmptyString(kmsConfigUUID) {
 			requestBody.SetEncryptionAtRestConfig(ybaclient.EncryptionAtRestConfig{
 				OpType:        util.GetStringPointer(opType),
 				KmsConfigUUID: util.GetStringPointer(kmsConfigUUID),
@@ -506,10 +574,12 @@ func init() {
 			"and the Universe YSQL -or- YCQL endpoint.")
 	createUniverseCmd.Flags().String("root-ca", "",
 		"[Optional] Root Certificate name for Encryption in Transit, defaults to creating new"+
-			" certificate for the universe if encryption in transit in enabled.")
+			" certificate for the universe if encryption in transit in enabled. Run \"yba eit list\" "+
+			"to check the list of available certificates.")
 	createUniverseCmd.Flags().String("client-root-ca", "",
 		"[Optional] Client Root Certificate name for Encryption in Transit, defaults to creating new"+
-			" certificate for the universe if encryption in transit in enabled.")
+			" certificate for the universe if encryption in transit in enabled. Run \"yba eit list\" "+
+			"to check the list of available certificates.")
 
 	createUniverseCmd.Flags().Bool("enable-volume-encryption", false,
 		"[Optional] Enable encryption for data stored on the tablet servers. (default false)")
@@ -517,6 +587,12 @@ func init() {
 		"[Optional] Key management service config name. "+
 			formatter.Colorize("Required when enable-volume-encryption is set to true.",
 				formatter.GreenColor))
+
+	createUniverseCmd.Flags().
+		MarkDeprecated("kms-config", "Use --cloud-volume-encryption-kms-config or --encryption-at-rest-kms-config instead.")
+	createUniverseCmd.Flags().
+		MarkDeprecated("enable-volume-encryption",
+			"Use --cloud-volume-encryption-kms-config or --encryption-at-rest-kms-config instead.")
 
 	createUniverseCmd.Flags().Bool("enable-ipv6", false,
 		"[Optional] Enable IPV6 networking for connections between the DB Servers, supported "+
@@ -584,8 +660,28 @@ func init() {
 			" to allow enabling connection pooling in universes. Allowed values: enable, disable.")
 	previewFlags.Int("internal-ysql-server-rpc-port", 6433,
 		"[Optional] Internal YSQL Server RPC Port used when connection pooling is enabled.")
-	util.PreviewFlag(createUniverseCmd, &previewFlags,
-		[]string{"connection-pooling", "internal-ysql-server-rpc-port"})
+	previewFlags.
+		String("cloud-volume-encryption-kms-config", "",
+			"[Optional] Key management service config name to enable cloud volume encryption, "+
+				"supported only for AWS. Run \"yba ear list\" to check the list of available kms configurations.")
+
+	previewFlags.
+		String(
+			"encryption-at-rest-kms-config",
+			"",
+			"[Optional] Key management service config name to enable YugabyteDB Anywhere's own encryption at rest."+
+				" Run \"yba ear list\" to check the list of available kms configurations.",
+		)
+	util.PreviewFlag(
+		createUniverseCmd,
+		&previewFlags,
+		[]string{
+			"connection-pooling",
+			"internal-ysql-server-rpc-port",
+			"cloud-volume-encryption-kms-config",
+			"encryption-at-rest-kms-config",
+		},
+	)
 
 	v1.BindPFlag("name", createUniverseCmd.Flags().Lookup("name"))
 	v1.BindPFlag("cpu-architecture", createUniverseCmd.Flags().Lookup("cpu-architecture"))
@@ -666,11 +762,13 @@ func init() {
 	)
 	v1.BindPFlag("root-ca", createUniverseCmd.Flags().Lookup("root-ca"))
 	v1.BindPFlag("client-root-ca", createUniverseCmd.Flags().Lookup("client-root-ca"))
+
 	v1.BindPFlag(
 		"enable-volume-encryption",
 		createUniverseCmd.Flags().Lookup("enable-volume-encryption"),
 	)
 	v1.BindPFlag("kms-config", createUniverseCmd.Flags().Lookup("kms-config"))
+
 	v1.BindPFlag("enable-ipv6", createUniverseCmd.Flags().Lookup("enable-ipv6"))
 	v1.BindPFlag("yb-db-version", createUniverseCmd.Flags().Lookup("yb-db-version"))
 	v1.BindPFlag("use-systemd", createUniverseCmd.Flags().Lookup("use-systemd"))
@@ -703,8 +801,16 @@ func init() {
 	v1.BindPFlag("spot-price", createUniverseCmd.Flags().Lookup("spot-price"))
 	v1.BindPFlag("exposing-service", createUniverseCmd.Flags().Lookup("exposing-service"))
 
-	util.PreviewFlagViperValue(v1, createUniverseCmd,
-		[]string{"connection-pooling", "internal-ysql-server-rpc-port"})
+	util.PreviewFlagViperValue(
+		v1,
+		createUniverseCmd,
+		[]string{
+			"connection-pooling",
+			"internal-ysql-server-rpc-port",
+			"encryption-at-rest-kms-config",
+			"cloud-volume-encryption-kms-config",
+		},
+	)
 
 }
 

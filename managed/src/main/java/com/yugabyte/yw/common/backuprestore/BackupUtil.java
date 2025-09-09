@@ -21,6 +21,7 @@ import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.BackupRequestParams;
@@ -837,10 +838,34 @@ public class BackupUtil {
                         unsupportedTablespaces);
                   }
                   if (CollectionUtils.isNotEmpty(conflictingTablespaces)) {
-                    LOG.warn(
-                        "Attempting tablespaces restore which already exist on target Universe: {}."
-                            + "Note that these will not be overwritten.",
-                        unsupportedTablespaces);
+                    // Pre roles behavior will always ignore existing in checks
+                    // If not pre-roles behavior: errorIfTablespacesExists decides
+                    // if existing tablespaces will be ignored.
+                    boolean revertToPreRoles = bSI.getRevertToPreRolesBehaviour();
+                    if (MapUtils.isNotEmpty(preflightResponse.getSuccessMarkerMap())
+                        && preflightResponse
+                            .getSuccessMarkerMap()
+                            .containsKey(bSI.storageLocation)) {
+                      YbcBackupResponse response =
+                          preflightResponse.getSuccessMarkerMap().get(bSI.storageLocation);
+                      revertToPreRoles =
+                          (response.revertToPreRolesBehaviour == null
+                              || response.revertToPreRolesBehaviour);
+                    }
+                    if (revertToPreRoles || (!bSI.getErrorIfTablespacesExists())) {
+                      LOG.warn(
+                          "Attempting tablespaces restore which already exist on target Universe:"
+                              + " {}. Note that these will not be overwritten.",
+                          unsupportedTablespaces);
+                    } else {
+                      throw new PlatformServiceException(
+                          BAD_REQUEST,
+                          String.format(
+                              "Tablespaces with the same names: %s exist in the universe, please"
+                                  + " set 'errorIfTablespacesExist' to false or delete conflicting"
+                                  + " tablespaces.",
+                              conflictingTablespaces));
+                    }
                   }
                 }
               }

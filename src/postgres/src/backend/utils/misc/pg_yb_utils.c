@@ -246,14 +246,17 @@ SendLogicalClientCacheVersionToFrontend()
 	/* Initialize buffer to store the outgoing message */
 	initStringInfo(&buf);
 
-	/* Use 'S' for a PARAMETER_STATUS message */
-	pq_beginmessage(&buf, 'S');
+	/* Use 'r' for a YB_PARAMETER_STATUS message */
+	pq_beginmessage(&buf, 'r');
 	pq_sendstring(&buf, "yb_logical_client_version");	/* Key */
 	char		yb_logical_client_cache_version_str[16];
 
 	snprintf(yb_logical_client_cache_version_str, 16, "%" PRIu64,
 			 yb_logical_client_cache_version);
 	pq_sendstring(&buf, yb_logical_client_cache_version_str);	/* Value */
+	/* No flags are needed for this variable */
+	pq_sendbyte(&buf, 0); /* flags */
+
 	pq_endmessage(&buf);
 
 	/* Ensure the message is sent to the frontend */
@@ -771,7 +774,11 @@ YBIsDBCatalogVersionMode()
 		 * Mixing global and per-database catalog versions in a single RPC
 		 * triggers a tserver SCHECK failure.
 		 */
-		YBFlushBufferedOperations();
+		YBFlushBufferedOperations((YbcFlushDebugContext)
+			{
+				.reason = YB_SWITCH_TO_DB_CATALOG_VERSION_MODE,
+				.oidarg = MyDatabaseId
+			});
 		return true;
 	}
 
@@ -1091,7 +1098,7 @@ IpAddressToBytes(YbcPgAshConfig *ash_config)
 }
 
 void
-YBInitPostgresBackend(const char *program_name, uint64_t *session_id)
+YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *init_info)
 {
 	HandleYBStatus(YBCInit(program_name, palloc, cstring_to_text_with_len));
 
@@ -1117,7 +1124,12 @@ YBInitPostgresBackend(const char *program_name, uint64_t *session_id)
 		ash_config.metadata = &MyProc->yb_ash_metadata;
 
 		IpAddressToBytes(&ash_config);
-		YBCInitPgGate(YbGetTypeTable(), &callbacks, session_id, &ash_config);
+		const YbcPgInitPostgresInfo default_init_info = {
+			.parallel_leader_session_id = NULL,
+			.shared_data = &MyProc->yb_shared_data
+		};
+		YBCInitPgGate(YbGetTypeTable(), &callbacks,
+					init_info ? init_info : &default_init_info, &ash_config);
 		YBCInstallTxnDdlHook();
 
 		/*
@@ -4192,13 +4204,15 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 			else
 			{
 				/*
-				 * Disallow DDL if there is an active savepoint except the
-				 * implicit ones created for READ COMMITTED isolation.
+				 * Disallow DDL if savepoint for DDL support is disabled and
+				 * there is an active savepoint except the implicit ones created
+				 * for READ COMMITTED isolation.
 				 *
-				 * TODO(#26734): Remove once savepoint for DDL is
-				 * supported.
+				 * TODO(#26734): Change the error message to suggest enabling
+				 * the savepoint feature once it is no longer a test flag.
 				 */
-				if (YBTransactionContainsNonReadCommittedSavepoint())
+				if (!*YBCGetGFlags()->TEST_ysql_yb_enable_ddl_savepoint_support &&
+					YBTransactionContainsNonReadCommittedSavepoint())
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							 errmsg("interleaving SAVEPOINT & DDL in transaction"
@@ -4341,9 +4355,9 @@ YBResetOperationsBuffering()
 }
 
 void
-YBFlushBufferedOperations()
+YBFlushBufferedOperations(YbcFlushDebugContext debug_context)
 {
-	HandleYBStatus(YBCPgFlushBufferedOperations());
+	HandleYBStatus(YBCPgFlushBufferedOperations(debug_context));
 }
 
 bool
@@ -6745,6 +6759,7 @@ aggregateStats(YbInstrumentation *instr, const YbcPgExecStats *exec_stats)
 	aggregateRpcMetrics(&instr->write_metrics, &exec_stats->write_metrics);
 
 	instr->rows_removed_by_recheck += exec_stats->rows_removed_by_recheck;
+	instr->commit_wait += exec_stats->commit_wait;
 }
 
 static YbcPgExecReadWriteStats
@@ -6807,6 +6822,7 @@ calculateExecStatsDiff(const YbSessionStats *stats, YbcPgExecStats *result)
 	calculateStorageMetricsDiff(&result->write_metrics, &current->write_metrics, &old->write_metrics);
 
 	result->rows_removed_by_recheck = current->rows_removed_by_recheck - old->rows_removed_by_recheck;
+	result->commit_wait = current->commit_wait - old->commit_wait;
 }
 
 static void
@@ -6831,6 +6847,7 @@ refreshExecStats(YbSessionStats *stats, bool include_catalog_stats)
 	}
 
 	old->rows_removed_by_recheck = current->rows_removed_by_recheck;
+	old->commit_wait = current->commit_wait;
 }
 
 void
@@ -6889,6 +6906,30 @@ void
 YbToggleSessionStatsTimer(bool timing_on)
 {
 	yb_session_stats.current_state.is_timing_required = timing_on;
+}
+
+bool
+YbIsSessionStatsTimerEnabled()
+{
+	return yb_session_stats.current_state.is_timing_required;
+}
+
+void
+YbToggleCommitStatsCollection(bool enable)
+{
+	yb_session_stats.current_state.is_commit_stats_required = enable;
+}
+
+bool
+YbIsCommitStatsCollectionEnabled()
+{
+	return yb_session_stats.current_state.is_commit_stats_required;
+}
+
+void
+YbRecordCommitLatency(uint64_t latency_us)
+{
+	yb_session_stats.current_state.stats.commit_wait += latency_us;
 }
 
 void
@@ -7578,12 +7619,29 @@ YbCalculateTimeDifferenceInMicros(TimestampTz yb_start_time)
 	return secs * USECS_PER_SEC + microsecs;
 }
 
+static bool
+YbIsDDLOrInitDBMode()
+{
+	return YBCPgIsDdlMode() || YBCIsInitDbModeEnvVarSet();
+}
+
 bool
 YbIsReadCommittedTxn()
 {
-	return IsYBReadCommitted() &&
-		!((YBCPgIsDdlMode() && !YBIsDdlTransactionBlockEnabled()) ||
-		  YBCIsInitDbModeEnvVarSet());
+	return IsYBReadCommitted() && !YbIsDDLOrInitDBMode();
+}
+
+bool
+YbSkipPgSnapshotManagement()
+{
+	/*
+	 * YSQL doesn't use Pg's snapshot management in DDL or initdb mode. Also, for SERIALIZABLE
+	 * isolation level, YSQL doesn't use SSI. Instead it uses 2 phase locking and reads the latest
+	 * data on DocDB always.
+	 *
+	 * TODO: Integrate with Pg's snapshot management for DDLs.
+	 */
+	return YbIsDDLOrInitDBMode() || IsolationIsSerializable();
 }
 
 static YbOptionalReadPointHandle
@@ -7598,7 +7656,7 @@ YbMakeReadPointHandle(YbcReadPointHandle read_point)
 YbOptionalReadPointHandle
 YbBuildCurrentReadPointHandle()
 {
-	return YbIsReadCommittedTxn()
+	return !YbSkipPgSnapshotManagement()
 		? YbMakeReadPointHandle(YBCPgGetCurrentReadPoint())
 		: (YbOptionalReadPointHandle)
 	{
@@ -7622,6 +7680,32 @@ YbRegisterSnapshotReadTime(uint64_t read_time)
 												 false /* use_read_time */ ,
 												 &handle));
 	return YbMakeReadPointHandle(handle);
+}
+
+YbOptionalReadPointHandle
+YbResetTransactionReadPoint()
+{
+	if (YbSkipPgSnapshotManagement())
+		return (YbOptionalReadPointHandle) {};
+
+	/*
+	 * If this is a query layer retry for a kReadRestart error, avoid resetting the read point.
+	 */
+	if (!YBCIsRestartReadPointRequested())
+	{
+		YbcFlushDebugContext debug_context = {
+			.reason = YB_GET_TRANSACTION_SNAPSHOT,
+			.uintarg = YBCPgGetCurrentReadPoint(),
+		};
+
+		/*
+		 * Flush all earlier operations so that they complete on the previous snapshot.
+		 */
+		HandleYBStatus(YBCPgFlushBufferedOperations(debug_context));
+		HandleYBStatus(YBCPgResetTransactionReadPoint());
+	}
+
+  return YbMakeReadPointHandle(YBCPgGetCurrentReadPoint());
 }
 
 /*

@@ -79,3 +79,4 @@ yugabyte=# SELECT * FROM sample_view;
 ## See also
 
 - [`SELECT`](../dml_select/)
+- [`DROP VIEW`](../ddl_drop_view/)

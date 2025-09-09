@@ -181,7 +181,7 @@ set(UTIL_SRCS
   net/tunnel.cc
   ntp_clock.cc
   oid_generator.cc
-  once.cc
+  one_time_bool.cc
   operation_counter.cc
   os-util.cc
   path_util.cc
@@ -353,6 +353,7 @@ ADD_YB_TEST(callback_bind-test)
 ADD_YB_TEST(countdown_latch-test)
 ADD_YB_TEST(crash_point-test)
 ADD_YB_TEST(crc-test RUN_SERIAL true) # has a benchmark
+YB_TEST_TARGET_LINK_LIBRARIES(crc-test.cc rocksdb yb_ash)
 ADD_YB_TEST(crypt-test)
 ADD_YB_TEST(date_time-test)
 ADD_YB_TEST(debug-util-test)
@@ -395,7 +396,6 @@ ADD_YB_TEST(net/net_util-test)
 ADD_YB_TEST(net/rate_limiter-test)
 ADD_YB_TEST(numbered_deque-test)
 ADD_YB_TEST(object_pool-test)
-ADD_YB_TEST(once-test)
 ADD_YB_TEST(operation_counter-test)
 ADD_YB_TEST(os-util-test)
 ADD_YB_TEST(path_util-test)

@@ -4,7 +4,7 @@ headerTitle: COPY
 linkTitle: COPY
 description: Transfer data between tables and files with the COPY, COPY TO, and COPY FROM statements.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: cmd_copy
     parent: statements
 type: docs
@@ -42,15 +42,15 @@ Specify the path of the file to be copied. An input file name can be an absolute
 
 To work with files that reside on the client, nominate `stdin` as the argument for `FROM` or `stdout` as the argument for `TO`.
 
-Alternatively, you can use the `\copy` meta-command in [`ysqlsh`](../../../../../admin/ysqlsh#copy-table-column-list-query-from-to-filename-program-command-stdin-stdout-pstdin-pstdout-with-option).
+Alternatively, you can use the `\copy` [meta-command](../../../../ysqlsh-meta-commands/#copy-table-column-list-query-from-to-filename-program-command-stdin-stdout-pstdin-pstdout-with-option).
 
 ### *stdin* and *stdout*
 
-Critically, these input and output channels are defined _client-side_ in the environment of the client where you run  [`ysqlsh`](../../../../../admin/ysqlsh#copy-table-column-list-query-from-to-filename-program-command-stdin-stdout-pstdin-pstdout-with-option) or your preferred programming language. These options request that the data transmission goes via the connection between the client and the server.
+Critically, these input and output channels are defined _client-side_ in the environment of the client where you run  ysqlsh or your preferred programming language. These options request that the data transmission goes via the connection between the client and the server.
 
 If you execute the `COPY TO` or `COPY FROM` statements  from a client program written in a language like Python, then you cannot use ysqlsh features. Rather, you must rely on your chosen language's features to connect `stdin` and `stdout` to the file that you nominate.
 
-However, if  you execute `COPY FROM` using  [`ysqlsh`](../../../../../admin/ysqlsh#copy-table-column-list-query-from-to-filename-program-command-stdin-stdout-pstdin-pstdout-with-option), you have the further option of including the `COPY` invocation at the start of the file that you start as a `.sql` script. Create a test table thus:
+However, if  you execute `COPY FROM` using ysqlsh, you have the further option of including the `COPY` invocation at the start of the file that you start as a `.sql` script. Create a test table thus:
 
 ```plpgsql
 drop table if exists t cascade;
@@ -59,14 +59,14 @@ create table t(c1 text primary key, c2 text, c3 text);
 
 And prepare `t.sql` thus:
 
-```
+```sh
 copy t(c1, c2, c3) from stdin with (format 'csv', header true);
 c1,c2,c3
 dog,cat,frog
 \.
 ```
 
-Notice the `\.` terminator. You can simply execute `\i t.sql` at the  [`ysqlsh`](../../../../../admin/ysqlsh#copy-table-column-list-query-from-to-filename-program-command-stdin-stdout-pstdin-pstdout-with-option) prompt to copy in the data.
+Notice the `\.` terminator. You can simply execute `\i t.sql` at the ysqlsh prompt to copy in the data.
 
 {{< note title="Some client-side languages have a dedicated exposure of COPY" >}}
 

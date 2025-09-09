@@ -32,8 +32,6 @@
 
 #include "yb/tserver/remote_bootstrap_session.h"
 
-#include <boost/optional.hpp>
-
 #include "yb/ash/wait_state.h"
 
 #include "yb/consensus/consensus.h"

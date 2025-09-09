@@ -2,7 +2,9 @@ package com.yugabyte.yw.common.audit.otel;
 
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.ScrapeConfigTargetType;
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
+import java.util.Set;
 import org.apache.commons.collections4.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,5 +46,13 @@ public class OtelCollectorUtil {
     return (config != null
         && config.isExportActive()
         && CollectionUtils.isNotEmpty(config.getUniverseMetricsExporterConfig()));
+  }
+
+  public static boolean yugabyteJobScrapeConfigEnabled(
+      Set<ScrapeConfigTargetType> scrapeConfigTargets) {
+    return scrapeConfigTargets.contains(ScrapeConfigTargetType.MASTER_EXPORT)
+        || scrapeConfigTargets.contains(ScrapeConfigTargetType.TSERVER_EXPORT)
+        || scrapeConfigTargets.contains(ScrapeConfigTargetType.YSQL_EXPORT)
+        || scrapeConfigTargets.contains(ScrapeConfigTargetType.CQL_EXPORT);
   }
 }

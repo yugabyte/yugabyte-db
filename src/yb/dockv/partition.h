@@ -36,8 +36,6 @@
 #include <string_view>
 #include <vector>
 
-#include <boost/optional/optional.hpp>
-
 #include <google/protobuf/repeated_field.h>
 
 #include "yb/common/common_fwd.h"
@@ -390,7 +388,7 @@ class PartitionSchema {
   // std::nullopt if the passed in partition covers only one value.
   // This does not attempt to split partition evenly based on tablet data, and is only suitable
   // for tablets of the transaction status table, which have no data.
-  static boost::optional<std::pair<Partition, Partition>> SplitHashPartitionForStatusTablet(
+  static std::optional<std::pair<Partition, Partition>> SplitHashPartitionForStatusTablet(
       const Partition& partition);
 
   size_t DynamicMemoryUsage() const {
@@ -505,7 +503,7 @@ class PartitionSchema {
 
   std::vector<HashBucketSchema> hash_bucket_schemas_;
   RangeSchema range_schema_;
-  boost::optional<YBHashSchema> hash_schema_; // Defined only for table that is hash-partitioned.
+  std::optional<YBHashSchema> hash_schema_;  // Defined only for table that is hash-partitioned.
 };
 
 }  // namespace yb::dockv

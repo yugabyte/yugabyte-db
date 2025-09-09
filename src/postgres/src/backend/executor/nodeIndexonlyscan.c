@@ -389,8 +389,10 @@ StoreIndexTuple(IndexOnlyScanState *node, TupleTableSlot *slot,
 
 	ExecStoreVirtualTuple(slot);
 
-	TABLETUPLE_YBCTID(slot) = INDEXTUPLE_YBCTID(itup);	/* ybidxbasectid */
-	slot->ts_ybuniqueidxkeysuffix = itup->t_ybuniqueidxkeysuffix;	/* ybuniqueidxkeysuffix */
+	/* Fields used by yb_index_check() */
+	slot->tts_ybidxbasectid = INDEXTUPLE_BASECTID(itup);	/* ybidxbasectid */
+	slot->tts_ybuniqueidxkeysuffix = itup->t_ybuniqueidxkeysuffix;	/* ybuniqueidxkeysuffix */
+	slot->tts_ybctid = itup->t_ybindexrowybctid;	/* index row's ybctid */
 }
 
 /*

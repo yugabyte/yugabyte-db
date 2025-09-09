@@ -9,6 +9,7 @@ import static com.yugabyte.yw.common.Util.isIpAddress;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -20,8 +21,11 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.common.CallHomeManager;
-import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.NodeUIApiHelper;
+import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ShellProcessContext;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
@@ -65,6 +69,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.csv.CSVFormat;
@@ -75,6 +80,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+@Slf4j
 public class GFlagsUtil {
   private static final Logger LOG = LoggerFactory.getLogger(GFlagsUtil.class);
 
@@ -278,7 +284,6 @@ public class GFlagsUtil {
       Universe universe,
       UniverseDefinitionTaskParams.UserIntent userIntent,
       boolean useHostname,
-      Config config,
       RuntimeConfGetter confGetter) {
     Map<String, String> extra_gflags = new TreeMap<>();
     extra_gflags.put(PLACEMENT_CLOUD, taskParam.getProvider().getCode());
@@ -330,21 +335,6 @@ public class GFlagsUtil {
     if (processType == null) {
       extra_gflags.put(MASTER_ADDRESSES, "");
     } else if (processType.equals(UniverseTaskBase.ServerType.TSERVER.name())) {
-      Integer cgroupSize = userIntent.getCGroupSize(node);
-      boolean configCgroup =
-          (cgroupSize != null && cgroupSize > 0)
-              || config.getInt(NodeManager.POSTGRES_MAX_MEM_MB) > 0;
-
-      // If the cluster is a read replica, use the read replica max mem value if its >= 0. -1 means
-      // to use the primary cluster value instead.
-      if (universe.getUniverseDetails().getClusterByUuid(taskParam.placementUuid).clusterType
-              == UniverseDefinitionTaskParams.ClusterType.ASYNC
-          && ((cgroupSize != null && cgroupSize >= 0)
-              || confGetter.getStaticConf().getInt(NodeManager.POSTGRES_RR_MAX_MEM_MB) >= 0)) {
-        configCgroup =
-            userIntent.getCGroupSize(node) > 0
-                || config.getInt(NodeManager.POSTGRES_RR_MAX_MEM_MB) > 0;
-      }
       long historyRetentionBufferSecs =
           confGetter.getConfForScope(
               universe, UniverseConfKeys.pitEnabledBackupsRetentionBufferTimeSecs);
@@ -356,7 +346,6 @@ public class GFlagsUtil {
               useHostname,
               useSecondaryIp,
               isDualNet,
-              configCgroup,
               historyRetentionBufferSecs));
     } else {
       Map<String, String> masterGFlags =
@@ -649,7 +638,6 @@ public class GFlagsUtil {
       boolean useHostname,
       boolean useSecondaryIp,
       boolean isDualNet,
-      boolean configureCGroup,
       long historyRetentionBufferSecs) {
     Map<String, String> gflags = new TreeMap<>();
     NodeDetails node = universe.getNode(taskParam.nodeName);
@@ -706,7 +694,7 @@ public class GFlagsUtil {
     } else {
       gflags.put(START_REDIS_PROXY, "false");
     }
-    if (configureCGroup) {
+    if (taskParam.cgroupSize > 0) {
       gflags.put(POSTMASTER_CGROUP, YSQL_CGROUP_PATH);
     }
     // Add timestamp_history_retention_sec gflag if required.
@@ -911,12 +899,6 @@ public class GFlagsUtil {
         ysqlPgConfCsvEntries.add(
             "log_error_verbosity=" + ysqlQueryLogConfig.getLogErrorVerbosity().name());
         ysqlPgConfCsvEntries.add("log_statement=" + ysqlQueryLogConfig.getLogStatement().name());
-        // Question for reviewers:
-        // Should this override all existing log line prefix values, or be appended?
-        if (ysqlQueryLogConfig.getLogLinePrefix() != null
-            && !ysqlQueryLogConfig.getLogLinePrefix().isEmpty()) {
-          ysqlPgConfCsvEntries.add("log_line_prefix=" + ysqlQueryLogConfig.getLogLinePrefix());
-        }
         if (ysqlQueryLogConfig.getLogMinDurationStatement() != null) {
           ysqlPgConfCsvEntries.add(
               "log_min_duration_statement=" + ysqlQueryLogConfig.getLogMinDurationStatement());
@@ -1188,7 +1170,6 @@ public class GFlagsUtil {
    * @param allowOverrideAll - indicates whether we allow user flags to override platform flags
    */
   public static void processUserGFlags(
-      Universe universe,
       NodeDetails node,
       Map<String, String> userGFlags,
       Map<String, String> platformGFlags,
@@ -1764,14 +1745,13 @@ public class GFlagsUtil {
       UniverseDefinitionTaskParams.UserIntent userIntent,
       Universe universe,
       Map<String, String> userGFlags,
-      Config config,
       RuntimeConfGetter confGetter) {
     boolean useHostname =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.useHostname
             || !isIpAddress(node.cloudInfo.private_ip);
 
     Map<String, String> platformGFlags =
-        getAllDefaultGFlags(taskParams, universe, userIntent, useHostname, config, confGetter);
+        getAllDefaultGFlags(taskParams, universe, userIntent, useHostname, confGetter);
     for (String gflag : GFLAGS_FORBIDDEN_TO_OVERRIDE) {
       if (userGFlags.containsKey(gflag)
           && platformGFlags.containsKey(gflag)
@@ -1980,5 +1960,106 @@ public class GFlagsUtil {
     return universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQLAuth
         || (gflags.containsKey(YSQL_ENABLE_AUTH)
             && gflags.get(YSQL_ENABLE_AUTH).equalsIgnoreCase("true"));
+  }
+
+  public static Map<String, String> getActualGFlags(
+      NodeDetails nodeDetails,
+      ServerType serverType,
+      Universe universe,
+      boolean inMemory,
+      NodeUniverseManager nodeUniverseManager,
+      NodeUIApiHelper nodeUIApiHelper,
+      boolean cloudEnabled) {
+    String ip =
+        isUseSecondaryIP(universe, nodeDetails, cloudEnabled)
+            ? nodeDetails.cloudInfo.secondary_private_ip
+            : nodeDetails.cloudInfo.private_ip;
+    if (inMemory) {
+      try {
+        int port =
+            serverType == UniverseTaskBase.ServerType.MASTER
+                ? nodeDetails.masterHttpPort
+                : nodeDetails.tserverHttpPort;
+        JsonNode varz = nodeUIApiHelper.getRequest("http://" + ip + ":" + port + "/api/v1/varz");
+        Map<String, String> result = new HashMap<>();
+        for (JsonNode flag : varz.get("flags")) {
+          result.put(flag.get("name").asText(), flag.get("value").asText());
+        }
+        if (nodeUniverseManager != null) {
+          nodeUniverseManager.postProcessInMemoryGFlags(result, universe, nodeDetails);
+        }
+        return result;
+      } catch (Exception ignored) {
+        log.error("Failed to fetch in memory gflags", ignored);
+      }
+    } else {
+      Cluster cluster = universe.getCluster(nodeDetails.placementUuid);
+      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+      try {
+        ShellResponse response =
+            nodeUniverseManager.runCommand(
+                nodeDetails,
+                universe,
+                Arrays.asList(
+                    "cat",
+                    provider.getYbHome()
+                        + "/"
+                        + serverType.name().toLowerCase()
+                        + "/conf/server.conf"),
+                ShellProcessContext.builder().build());
+        String contents = response.extractRunCommandOutput();
+        return parseConfigContents(contents);
+      } catch (Exception ignored) {
+        log.error("Failed to fetch on disk gflags", ignored);
+      }
+    }
+    return null;
+  }
+
+  public static Map<String, String> parseConfigContents(String contents) {
+    Map<String, String> result = new HashMap<>();
+    contents
+        .lines()
+        .forEach(
+            line -> {
+              String[] split = line.split("#"); // to ignore comments.
+              String[] split2 = split[0].split("=");
+              if (!split2[0].trim().startsWith("--")) {
+                return;
+              }
+              String key = split2[0].trim().substring(2);
+              String val = split2.length == 1 ? "" : split2[1].trim();
+              result.put(key, val);
+            });
+    return result;
+  }
+
+  public static Map<String, String> calculateFinalGFlags(
+      NodeDetails node,
+      AnsibleConfigureServers.Params taskParams,
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      Universe universe,
+      Map<String, String> userGFlags,
+      Config config,
+      RuntimeConfGetter confGetter) {
+    boolean useHostname = userIntent.useHostname || !isIpAddress(node.cloudInfo.private_ip);
+
+    Map<String, String> platformGFlags =
+        getAllDefaultGFlags(taskParams, universe, userIntent, useHostname, confGetter);
+
+    boolean allowOverrideAll =
+        confGetter.getConfForScope(universe, UniverseConfKeys.gflagsAllowUserOverride);
+    allowOverrideAll |= config.getBoolean("yb.cloud.enabled");
+
+    Map<String, String> result = new HashMap<>(userGFlags);
+    processUserGFlags(node, result, platformGFlags, allowOverrideAll, confGetter, taskParams);
+    platformGFlags.forEach(
+        (k, v) -> {
+          if (!result.containsKey(k)) {
+            result.put(k, v);
+          }
+        });
+
+    return result;
   }
 }

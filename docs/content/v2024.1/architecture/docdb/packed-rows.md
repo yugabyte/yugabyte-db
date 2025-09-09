@@ -29,7 +29,15 @@ While user-defined types (UDTs) can be used to achieve the packed row format at 
 * Faster multi-column reads, as the reads need to fetch fewer key value pairs.
 * UDTs require application rewrite, and therefore not necessarily an option for all use cases, like latency sensitive update workloads.
 
-In v2.20.0 and later, packed row for YSQL is enabled by default for new universes; if you upgrade a universe to v2.20 from an earlier version, packed row for YSQL is not automatically enabled. You can configure packed row format using the [Packed row flags](../../../reference/configuration/yb-tserver/#packed-row-flags).
+## Enable packed row
+
+Packed row for YSQL is enabled by default for new universes in v2.20.0 and later.
+
+If you upgrade a universe that does not have packed row enabled to a version earlier than v2025.1, packed row for YSQL _is not_ automatically enabled.
+
+If you upgrade a universe that does not have packed row enabled to v2025.1 or later, packed row for YSQL is automatically enabled.
+
+You can configure packed row format using the [Packed row flags](../../../reference/configuration/yb-tserver/#packed-row-flags).
 
 ## Design
 
@@ -56,8 +64,8 @@ Testing the packed row feature with different configurations showed significant 
 
 ## Limitations
 
-The packed row feature for the YSQL API works across all features, including backup and restore, schema changes, and so on, subject to the following known limitations which are currently under development:
+Packed row for the YSQL API works across all features, including backup and restore, schema changes, and so on, subject to the following limitation:
 
-* {{<issue 21131>}} Packed row is enabled by default for YSQL in universes created in v2.20.0 and later. However, if you upgrade a universe to v2.20 from an earlier version, packed row for YSQL is not automatically enabled. This is due to a known limitation with xCluster universes, where the target universe might not be able to interpret the packed row unless it is upgraded first.
+* If you upgrade a universe that does not have packed row enabled to a version earlier than v2025.1, packed row for YSQL is not automatically enabled. This is due to a known limitation with xCluster universes, where the target universe might not be able to interpret the packed row unless it is upgraded first. {{<issue 21131>}}
 
-The packed row feature for the YCQL API is {{<tags/feature/tp>}}. There are no known limitations.
+Packed row for the YCQL API is {{<tags/feature/tp>}}. There are no known limitations.

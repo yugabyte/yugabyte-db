@@ -39,6 +39,10 @@ DEFINE_test_flag(string, ysql_conn_mgr_dowarmup_all_pools_mode, "none",
     "3) number of server connections in any pool whenever there is a requirement to create the "
     "first backend process in that particular pool.");
 
+DEFINE_test_flag(uint32, ysql_conn_mgr_auth_delay_ms, 0,
+    "Add a delay in od_auth_backend to simulate stalls during authentication with connection "
+    " manager .");
+
 DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_superuser_sticky, true,
     "If enabled, make superuser connections sticky in Ysql Connection Manager.");
 
@@ -105,8 +109,16 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_read_request_cache_for_connection_auth, fals
     "during connection setup. Only applicable when connection manager "
     "is used.");
 
+DEFINE_NON_RUNTIME_bool(
+    ysql_enable_scram_channel_binding, false,
+    "Offer the option of SCRAM-SHA-256-PLUS (i.e. SCRAM with channel binding) as an SASL method if "
+    "the server supports it in the SASL-Authentication message. This flag is disabled by default "
+    "as connection manager does not support SCRAM with channel binding and enabling it would "
+    "cause different behaviour vis-a-vis direct connections to postgres.");
+
 DECLARE_bool(ysql_enable_colocated_tables_with_tablespaces);
 DECLARE_bool(TEST_ysql_enable_db_logical_client_version_mode);
+DECLARE_bool(TEST_ysql_yb_enable_ddl_savepoint_support);
 
 DECLARE_bool(TEST_generate_ybrowid_sequentially);
 DECLARE_bool(TEST_ysql_log_perdb_allocated_new_objectid);
@@ -115,6 +127,7 @@ DECLARE_bool(TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 DECLARE_bool(use_fast_backward_scan);
 DECLARE_uint32(ysql_max_invalidation_message_queue_size);
 DECLARE_uint32(max_replication_slots);
+DECLARE_int32(timestamp_history_retention_interval_sec);
 
 namespace {
 
@@ -195,6 +208,8 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
         &FLAGS_ysql_enable_neghit_full_inheritscache,
       .enable_object_locking_for_table_locks =
           &FLAGS_enable_object_locking_for_table_locks,
+      .TEST_ysql_yb_enable_ddl_savepoint_support =
+          &FLAGS_TEST_ysql_yb_enable_ddl_savepoint_support,
       .ysql_max_invalidation_message_queue_size =
           &FLAGS_ysql_max_invalidation_message_queue_size,
       .ysql_max_replication_slots = &FLAGS_max_replication_slots,
@@ -205,6 +220,10 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
           &FLAGS_ysql_enable_read_request_cache_for_connection_auth,
       .TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication =
           &FLAGS_TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication,
+      .timestamp_history_retention_interval_sec =
+          &FLAGS_timestamp_history_retention_interval_sec,
+      .ysql_enable_scram_channel_binding = &FLAGS_ysql_enable_scram_channel_binding,
+      .TEST_ysql_conn_mgr_auth_delay_ms = &FLAGS_TEST_ysql_conn_mgr_auth_delay_ms,
   };
   // clang-format on
   return &accessor;

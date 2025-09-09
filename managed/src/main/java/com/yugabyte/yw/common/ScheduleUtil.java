@@ -2,8 +2,6 @@
 
 package com.yugabyte.yw.common;
 
-import static com.yugabyte.yw.common.Util.LOG;
-
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
@@ -97,7 +95,7 @@ public class ScheduleUtil {
 
     Date nextScheduleTaskTime = schedule.getNextScheduleTaskTime();
     if (Objects.isNull(nextScheduleTaskTime)) {
-      LOG.debug(
+      log.debug(
           "No next schedule increment task time found for schedule {}. Starting in {} from now",
           schedule.getScheduleUUID(),
           incrementFrequency);
@@ -212,7 +210,7 @@ public class ScheduleUtil {
                 + " API. Use the corresponding new API instead.");
       }
     } catch (JsonProcessingException e) {
-      LOG.debug("Skipping Schedule param validation");
+      log.debug("Skipping Schedule param validation");
     }
   }
 

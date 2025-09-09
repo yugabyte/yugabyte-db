@@ -1,0 +1,170 @@
+!!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat
+exporters:
+  datadog/metrics_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$DataDogExporter
+    api: {key: test, site: test}
+    retry_on_failure: {enabled: true, initial_interval: 30s, max_elapsed_time: 60m,
+      max_interval: 10m}
+extensions:
+  file_storage/queue: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$StorageExtension
+    compaction: {directory: /mnt/d0/otel-collector/queue, on_rebound: true, on_start: true,
+      rebound_needed_threshold_mib: 100, rebound_trigger_threshold_mib: 10}
+    directory: /mnt/d0/otel-collector/queue
+processors:
+  attributes/metrics_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AttributesProcessor
+    actions: []
+  batch/metrics_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$BatchProcessor {
+    send_batch_max_size: 1000, send_batch_size: 100, timeout: 10s}
+receivers:
+  prometheus/yugabyte: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$PrometheusReceiver
+    config:
+      global: {scrape_interval: 30s, scrape_timeout: 20s}
+      scrape_configs:
+      - job_name: yugabyte
+        metric_relabel_configs:
+        - regex: (.*)
+          replacement: $1
+          source_labels: [__name__]
+          target_label: saved_name
+        - regex: handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(.*)
+          replacement: $1
+          source_labels: [__name__]
+          target_label: server_type
+        - regex: handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(.*)
+          replacement: $2
+          source_labels: [__name__]
+          target_label: service_type
+        - regex: handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(_sum|_count)?
+          replacement: $3
+          source_labels: [__name__]
+          target_label: service_method
+        - regex: handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(_sum|_count)?
+          replacement: rpc_latency$4
+          source_labels: [__name__]
+          target_label: __name__
+        metrics_path: /prometheus-metrics
+        scheme: http
+        static_configs:
+        - labels: {export_type: master_export, __param_metrics: 'async_replication_sent_lag_micros,async_replication_committed_lag_micros,block_cache_,cpu_utime,cpu_stime,generic_current_allocated_bytes,generic_heap_size,glog,follower_lag_ms,handler_latency_yb_consensus_ConsensusService,handler_latency_yb_cqlserver_SQLProcessor,handler_latency_yb_cqlserver_CQLServerService,handler_latency_yb_master,handler_latency_yb_tserver_TabletServerService,handler_latency_yb_redisserver_RedisServerService_,handler_latency_yb_client,handler_latency_yb_ysqlserver_SQLProcessor,handler_latency_outbound_transfer,handler_latency_outbound_call_queue_time,threads_running,threads_started,involuntary_context_switches,voluntary_context_switches,spinlock_contention_time,majority_sst_files_rejections,leader_memory_pressure_rejections,follower_memory_pressure_rejections,operation_memory_pressure_rejections,rocksdb_current_version_sst_files_size,rpc_connections_alive,rpc_inbound_calls_created,rpc_incoming_queue_time,rpcs_in_queue,rpcs_queue_overflow,rpcs_timed_out_in_queue,transaction_pool_cache,yb_ysqlserver_connection_total,yb_ysqlserver_active_connection_total,yb_ysqlserver_new_connection_total,yb_ysqlserver_connection_over_limit_total,hybrid_clock_skew,log_wal_size',
+            __param_show_help: 'false', service: yb-master, __param_priority_regex: 'async_replication_[^_]+_lag_micros|majority_sst_files_rejections|follower_lag_ms|[^_]+_memory_pressure_rejections|rocksdb_current_version_sst_files_size|log_wal_size'}
+          targets: ['127.0.0.1:7000']
+        - labels: {export_type: tserver_export, __param_metrics: 'async_replication_sent_lag_micros,async_replication_committed_lag_micros,block_cache_,cpu_utime,cpu_stime,generic_current_allocated_bytes,generic_heap_size,glog,follower_lag_ms,handler_latency_yb_consensus_ConsensusService,handler_latency_yb_cqlserver_SQLProcessor,handler_latency_yb_cqlserver_CQLServerService,handler_latency_yb_master,handler_latency_yb_tserver_TabletServerService,handler_latency_yb_redisserver_RedisServerService_,handler_latency_yb_client,handler_latency_yb_ysqlserver_SQLProcessor,handler_latency_outbound_transfer,handler_latency_outbound_call_queue_time,threads_running,threads_started,involuntary_context_switches,voluntary_context_switches,spinlock_contention_time,majority_sst_files_rejections,leader_memory_pressure_rejections,follower_memory_pressure_rejections,operation_memory_pressure_rejections,rocksdb_current_version_sst_files_size,rpc_connections_alive,rpc_inbound_calls_created,rpc_incoming_queue_time,rpcs_in_queue,rpcs_queue_overflow,rpcs_timed_out_in_queue,transaction_pool_cache,yb_ysqlserver_connection_total,yb_ysqlserver_active_connection_total,yb_ysqlserver_new_connection_total,yb_ysqlserver_connection_over_limit_total,hybrid_clock_skew,log_wal_size',
+            __param_show_help: 'false', service: yb-tserver, __param_priority_regex: 'async_replication_[^_]+_lag_micros|majority_sst_files_rejections|follower_lag_ms|[^_]+_memory_pressure_rejections|rocksdb_current_version_sst_files_size|log_wal_size'}
+          targets: ['127.0.0.1:9000']
+        - labels: {export_type: ysql_export, __param_show_help: 'false', service: yb-tserver}
+          targets: ['127.0.0.1:13000']
+        - labels: {export_type: cql_export, __param_show_help: 'false', service: yb-tserver}
+          targets: ['127.0.0.1:12000']
+        tls_config: {insecure_skip_verify: true}
+      - job_name: node
+        metric_relabel_configs:
+        - regex: node_cpu
+          replacement: node_cpu_seconds_total
+          source_labels: [__name__]
+          target_label: __name__
+        - regex: node_filesystem_free
+          replacement: node_filesystem_free_bytes
+          source_labels: [__name__]
+          target_label: __name__
+        - regex: node_filesystem_size
+          replacement: node_filesystem_size_bytes
+          source_labels: [__name__]
+          target_label: __name__
+        - regex: node_disk_reads_completed
+          replacement: node_disk_reads_completed_total
+          source_labels: [__name__]
+          target_label: __name__
+        - regex: node_disk_writes_completed
+          replacement: node_disk_writes_completed_total
+          source_labels: [__name__]
+          target_label: __name__
+        - regex: node_memory_MemTotal
+          replacement: node_memory_MemTotal_bytes
+          source_labels: [__name__]
+          target_label: __name__
+        - regex: node_memory_Slab
+          replacement: node_memory_Slab_bytes
+          source_labels: [__name__]
+          target_label: __name__
+        - regex: node_memory_Cached
+          replacement: node_memory_Cached_bytes
+          source_labels: [__name__]
+          target_label: __name__
+        - regex: node_memory_Buffers
+          replacement: node_memory_Buffers_bytes
+          source_labels: [__name__]
+          target_label: __name__
+        - regex: node_memory_MemFree
+          replacement: node_memory_MemFree_bytes
+          source_labels: [__name__]
+          target_label: __name__
+        - regex: node_network_receive_bytes
+          replacement: node_network_receive_bytes_total
+          source_labels: [__name__]
+          target_label: __name__
+        - regex: node_network_transmit_bytes
+          replacement: node_network_transmit_bytes_total
+          source_labels: [__name__]
+          target_label: __name__
+        - regex: node_network_receive_packets
+          replacement: node_network_receive_packets_total
+          source_labels: [__name__]
+          target_label: __name__
+        - regex: node_network_transmit_packets
+          replacement: node_network_transmit_packets_total
+          source_labels: [__name__]
+          target_label: __name__
+        - regex: node_network_receive_errs
+          replacement: node_network_receive_errs_total
+          source_labels: [__name__]
+          target_label: __name__
+        - regex: node_network_transmit_errs
+          replacement: node_network_transmit_errs_total
+          source_labels: [__name__]
+          target_label: __name__
+        - regex: node_disk_bytes_read
+          replacement: node_disk_read_bytes_total
+          source_labels: [__name__]
+          target_label: __name__
+        - regex: node_disk_bytes_written
+          replacement: node_disk_written_bytes_total
+          source_labels: [__name__]
+          target_label: __name__
+        - regex: node_boot_time
+          replacement: node_boot_time_seconds
+          source_labels: [__name__]
+          target_label: __name__
+        - regex: (.*)
+          replacement: $1
+          source_labels: [__name__]
+          target_label: saved_name
+        metrics_path: /metrics
+        scheme: http
+        static_configs:
+        - labels: {export_type: node_export, service: node-exporter}
+          targets: ['127.0.0.1:9300']
+        tls_config: {insecure_skip_verify: true}
+      - job_name: node-agent
+        metrics_path: /metrics
+        scheme: http
+        static_configs:
+        - labels: {export_type: node_agent, service: node-agent}
+          targets: ['127.0.0.1:9070']
+        tls_config: {insecure_skip_verify: true}
+      - job_name: otel-collector
+        metrics_path: /metrics
+        scheme: http
+        static_configs:
+        - labels: {export_type: otel_export, service: otel-collector}
+          targets: ['127.0.0.1:8889']
+        tls_config: {insecure_skip_verify: true}
+service:
+  extensions: [file_storage/queue]
+  pipelines:
+    metrics/metrics_00000000-0000-0000-0000-000000000000:
+      exporters: [datadog/metrics_00000000-0000-0000-0000-000000000000]
+      processors: [attributes/metrics_00000000-0000-0000-0000-000000000000, batch/metrics_00000000-0000-0000-0000-000000000000]
+      receivers: [prometheus/yugabyte]
+  telemetry:
+    logs:
+      output_paths: [/home/yugabyte/otel-collector/logs/otel-collector.logs]
+    metrics: {address: '0.0.0.0:8889'}

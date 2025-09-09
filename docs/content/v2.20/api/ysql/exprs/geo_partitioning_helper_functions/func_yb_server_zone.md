@@ -4,7 +4,7 @@ headerTitle: yb_server_zone()
 linkTitle: yb_server_zone()
 description: Returns the zone of the currently connected node
 menu:
-  v2.20:
+  v2.20_api:
     identifier: api-ysql-exprs-yb_server_zone
     parent: geo-partitioning-helper-functions
 type: docs

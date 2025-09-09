@@ -59,6 +59,11 @@ for database_name in db scram_db ldap_db auth_query_db db1 hba_db tsa_db; do
     }
 done
 
+# pgbench initialization
+mkdir /var/cores
+sudo sysctl -w kernel.core_pattern=/var/cores/core.%p.%e
+pgbench -i -h localhost -p 5432 -U postgres postgres
+
 # Create users
 psql -h localhost -p 5432 -U postgres -c "set password_encryption = 'scram-sha-256'; create user scram_user password 'scram_user_password';" -d scram_db >> $SETUP_LOG 2>&1 || {
     echo "ERROR: users creation failed, examine the log"

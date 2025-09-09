@@ -20,7 +20,6 @@ import static org.yb.AssertionWrappers.fail;
 import java.nio.ByteBuffer;
 import java.sql.Connection;
 import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -35,10 +34,8 @@ import java.util.Map;
 import java.util.Set;
 
 import org.apache.commons.lang3.StringUtils;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized.Parameters;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
@@ -3797,7 +3794,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     }
 
     //Creating new stream with same slot
-    PGReplicationStream newStream = replConnection.replicationStream()
+    replConnection.replicationStream()
       .logical()
       .withSlotName(slotName)
       .withStartPosition(lastLsn)
@@ -3916,7 +3913,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
           .withSlotName(slotName)
           .withOutputPlugin(YB_OUTPUT_PLUGIN_NAME)
           .make();
-    PGReplicationStream stream = replConnection.replicationStream()
+    replConnection.replicationStream()
       .logical()
       .withSlotName(slotName)
       .withStartPosition(LogSequenceNumber.valueOf(0L))
@@ -3959,7 +3956,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
           .withSlotName(slotName)
           .withOutputPlugin(YB_OUTPUT_PLUGIN_NAME)
           .make();
-    PGReplicationStream stream = replConnection.replicationStream()
+    replConnection.replicationStream()
       .logical()
       .withSlotName(slotName)
       .withStartPosition(LogSequenceNumber.valueOf(0L))
@@ -4070,36 +4067,37 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
     createSlot(replConnection1, slotName1, YB_OUTPUT_PLUGIN_NAME);
 
-    PGReplicationStream stream1 = replConnection1.replicationStream()
+    List<PGReplicationStream> streams = new ArrayList<>();
+    streams.add(replConnection1.replicationStream()
         .logical()
         .withSlotName(slotName1)
         .withStartPosition(LogSequenceNumber.valueOf(0L))
         .withSlotOption("proto_version", 1)
         .withSlotOption("publication_names", "pub")
-        .start();
+        .start());
     try (Statement stmt = conn.createStatement()) {
       stmt.execute("INSERT INTO xyz (id) SELECT generate_series(1,40000)");
     }
     Thread.sleep(kPublicationRefreshIntervalSec * 2 * 1000);
     List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
-    result.addAll(receiveMessage(stream1, 40002));
+    result.addAll(receiveMessage(streams.get(0), 40002));
 
     PGReplicationConnection replConnection2 = conn2.unwrap(PGConnection.class).getReplicationAPI();
     createSlot(replConnection2, slotName2, YB_OUTPUT_PLUGIN_NAME);
 
-    PGReplicationStream stream2 = replConnection2.replicationStream()
+    streams.add(replConnection2.replicationStream()
         .logical()
         .withSlotName(slotName2)
         .withStartPosition(LogSequenceNumber.valueOf(0L))
         .withSlotOption("proto_version", 1)
         .withSlotOption("publication_names", "pub")
-        .start();
+        .start());
     try (Statement stmt = conn.createStatement()) {
       stmt.execute("INSERT INTO xyz (id) SELECT generate_series(40001,80000)");
     }
     Thread.sleep(kPublicationRefreshIntervalSec * 2 * 1000);
-    result.addAll(receiveMessage(stream1, 40002));
-    result.addAll(receiveMessage(stream2, 40002));
+    result.addAll(receiveMessage(streams.get(0), 40002));
+    result.addAll(receiveMessage(streams.get(1), 40002));
 
     try (Statement stmt = conn.createStatement()) {
       ResultSet r1 = stmt.executeQuery(
@@ -4133,6 +4131,9 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       assertEquals(5920000, spill_bytes);
       assertEquals(1, total_txns);
       assertEquals(5920000, total_bytes);
+    }
+    for (PGReplicationStream stream : streams) {
+      stream.close();
     }
     conn.close();
   }

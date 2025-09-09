@@ -23,6 +23,26 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, where `YYYY` is the release year, `M` is the month, and `N` is the number of the release in that month.
 
+## v2025.9.1 - September 2, 2025
+
+### New feature
+
+- Export schema automatically exports all secondary indexes as range-sharded by default to avoid potential hash hotspots. Use the [skip-performance-recommendations](../reference/schema-migration/export-schema/#arguments) flag to skip this automatic change.
+
+### Enhancements
+
+- The assessment report now includes primary key recommendations for tables having no primary key but with UNIQUE NOT NULL columns, improving schema optimization guidance.
+
+- Improved the estimated time for import calculations in the assessment report by additionally estimating the time without considering redundant indexes, which are now automatically excluded in the export schema step.
+
+- End migration now backs up the schema optimization report produced by export schema.
+
+- Modified flag names in export schema from "skip-performance-optimizations" to "skip-performance-recommendations" and from "skip-recommendations" to "skip-colocation-recommendations" for consistency and clarity.
+
+### Bug fix
+
+- Fixed a bug where the source database password was not correctly configured when passed to assess-migration when it was run automatically during a schema export.
+
 ## v2025.8.2 - August 19, 2025
 
 ### New feature
@@ -35,7 +55,7 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 - Enhanced PostgreSQL permissions grant script by adding an option for live migrations to either transfer table ownership to the migration user or grant the original owner's permissions to it.
 - Improved import data retry logic to skip non-retryable errors such as data exceptions and integrity violations.
 - Removed redundant index performance optimization reports from the `assess-migration` report as `export schema` now automatically removes redundant indexes.
-- Enhanced schema optimization report in `export schema` to list all recommendations, whether they are applied or skipped, even when the `--skip-performance-optimizations` / `--skip-recommendations` flags are used.
+- Enhanced schema optimization report in `export schema` to list all recommendations, whether they are applied or skipped, even when the `--skip-performance-recommendations` / `--skip-colocation-recommendations` flags are used.
 
 ### Bug fix
 
@@ -45,7 +65,7 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 
 ### New feature
 
-- Automatically apply performance optimizations recommended by the migration assessment (such as removing redundant indexes) during the export schema phase. Voyager also generates a schema optimization report detailing the optimizations that were applied. To turn automatic optimization off, set the new `--skip-performance-optimizations` flag in the `export schema` command to true.
+- Automatically apply performance optimizations recommended by the migration assessment (such as removing redundant indexes) during the export schema phase. Voyager also generates a schema optimization report detailing the optimizations that were applied. To turn automatic optimization off, set the new `--skip-performance-recommendations` flag in the `export schema` command to true.
 - Introduced the ability to stash errors and continue when importing snapshot data in `import data` and `import-data-file` commands by using the flags `error-policy-snapshot` or `error-policy`.
 
 ### Enhancements
@@ -76,7 +96,7 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 - Automatically clean up leftover metadata when `assess-migration` is aborted via a prompt, eliminating the need to rerun with `--start-clean`.
 - Added a warning in import data when existing rows are detected in the target table to help prevent primary key conflicts during import.
 - Improved error messages when multiple Debezium processes or active replication slots are detected, so that you can identify and kill orphaned processes and retry the command.
-- Upgraded the [YugabyteDB gRPC Connector](/preview/develop/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/) for live migration with fall-back and fall-forward workflows to support new YugabyteDB releases.
+- Upgraded the [YugabyteDB gRPC Connector](/preview/additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/) for live migration with fall-back and fall-forward workflows to support new YugabyteDB releases.
 
 ### Bug fixes
 
@@ -125,7 +145,7 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 
 ### New feature
 
-- Added support for the [YugabyteDB Connector](../../develop/change-data-capture/using-logical-replication/yugabytedb-connector/) in live migration with fall-forward and fall-back workflows. The `cutover to target` command now includes a mandatory flag to specify whether to use [YugabyteDB gRPC Connector](../../develop/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/) or [YugabyteDB Connector](../../develop/change-data-capture/using-logical-replication/yugabytedb-connector/) for these workflows.
+- Added support for the [YugabyteDB Connector](../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/) in live migration with fall-forward and fall-back workflows. The `cutover to target` command now includes a mandatory flag to specify whether to use [YugabyteDB gRPC Connector](../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/) or [YugabyteDB Connector](../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/) for these workflows.
 
   This is required for [YugabyteDB Aeon](/preview/yugabyte-cloud/) or restricted environments where only the YugabyteDB Connector is supported.
 

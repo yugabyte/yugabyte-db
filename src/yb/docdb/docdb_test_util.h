@@ -38,7 +38,7 @@ YB_STRONGLY_TYPED_BOOL(ResolveIntentsDuringRead);
 // shouldn't because there are no transactions).
 // TODO(dtxn) everywhere(?) in tests code where we use kNonTransactionalOperationContext we need
 // to check both code paths - for transactional tables (passing kNonTransactionalOperationContext)
-// and non-transactional tables (passing boost::none as transaction context).
+// and non-transactional tables (passing std::nullopt as transaction context).
 // https://yugabyte.atlassian.net/browse/ENG-2177.
 extern const TransactionOperationContext kNonTransactionalOperationContext;
 

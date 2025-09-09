@@ -14,6 +14,7 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
@@ -353,6 +354,9 @@ func UserInfo(username string) (*UserDetail, error) {
 // InheritTracingIDs inherits the tracing related info from a context.
 func InheritTracingIDs(fromCtx context.Context, toCtx context.Context) context.Context {
 	resultCtx := toCtx
+	if md, ok := metadata.FromIncomingContext(fromCtx); ok {
+		resultCtx = metadata.NewOutgoingContext(resultCtx, md)
+	}
 	for _, val := range TracingIDs {
 		if v := fromCtx.Value(val); v != nil {
 			resultCtx = context.WithValue(resultCtx, val, v.(string))

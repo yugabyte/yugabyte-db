@@ -23,6 +23,7 @@
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_compaction_context.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/intent_format.h"
 #include "yb/docdb/kv_debug.h"
 #include "yb/docdb/transaction_dump.h"
 
@@ -517,7 +518,7 @@ Status IntentsWriter::Apply(rocksdb::DirectWriteHandler& handler) {
   reverse_index_iter_.Seek(start_key_.empty() ? key_prefix : start_key_);
 
   context_.Start(
-      reverse_index_iter_.Valid() ? boost::make_optional(reverse_index_iter_.key()) : boost::none);
+      reverse_index_iter_.Valid() ? std::make_optional(reverse_index_iter_.key()) : std::nullopt);
 
   for (; reverse_index_iter_.Valid(); reverse_index_iter_.Next()) {
     const Slice key_slice(reverse_index_iter_.key());
@@ -631,7 +632,7 @@ Result<bool> ApplyIntentsContext::StoreApplyState(
   return true;
 }
 
-void ApplyIntentsContext::Start(const boost::optional<Slice>& first_key) {
+void ApplyIntentsContext::Start(const std::optional<Slice>& first_key) {
   if (!apply_state_) {
     return;
   }

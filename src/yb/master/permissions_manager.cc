@@ -805,7 +805,7 @@ Status PermissionsManager::GetPermissions(
     permissions_cache = permissions_cache_;
   }
 
-  boost::optional<uint64_t> request_version;
+  std::optional<uint64_t> request_version;
   if (req->has_if_version_greater_than()) {
     request_version = req->if_version_greater_than();
   }

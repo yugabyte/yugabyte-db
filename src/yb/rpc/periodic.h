@@ -21,7 +21,6 @@
 #include <functional>
 #include <memory>
 
-#include <boost/optional/optional.hpp>
 #include <gtest/gtest_prod.h>
 
 #include "yb/gutil/macros.h"

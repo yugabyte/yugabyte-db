@@ -4,7 +4,7 @@ headerTitle: TRUNCATE
 linkTitle: TRUNCATE
 description:  Use the TRUNCATE statement to remove all rows from one or several tables.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: ddl_truncate
     parent: statements
 type: docs

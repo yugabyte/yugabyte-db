@@ -4,7 +4,7 @@ linkTitle: analysis-queries.sql
 headerTitle: SQL script to perform linear regression analysis on the COVIDcast data
 description: SQL script to perform linear regression analysis using regr_r2(), regr_slope(), regr_intercept() on the COVIDcast data
 menu:
-  v2.20:
+  v2.20_api:
     identifier: analysis-queries-sql
     parent: analysis-scripts
     weight: 10

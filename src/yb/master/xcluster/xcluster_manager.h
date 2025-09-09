@@ -47,7 +47,7 @@ class XClusterManager : public XClusterManagerIf,
   explicit XClusterManager(
       Master& master, CatalogManager& catalog_manager, SysCatalogTable& sys_catalog);
 
-  ~XClusterManager();
+  ~XClusterManager() override;
 
   Status Init();
 
@@ -305,12 +305,18 @@ class XClusterManager : public XClusterManagerIf,
   Status ValidateCreateTableRequest(const CreateTableRequestPB& req);
 
  private:
+  void ProcessCleanupTablesPeriodically();
+
   CatalogManager& catalog_manager_;
   SysCatalogTable& sys_catalog_;
+
+  std::atomic<bool> shutdown_started_{false};
 
   bool in_memory_state_cleared_ = true;
 
   std::unique_ptr<XClusterConfig> xcluster_config_;
+
+  CoarseTimePoint time_of_last_clean_tables_task_run_;
 
   std::mutex monitored_tasks_mutex_;
   std::unordered_set<server::MonitoredTaskPtr> monitored_tasks_ GUARDED_BY(monitored_tasks_mutex_);

@@ -2219,6 +2219,9 @@
         "auditLogConfig" : {
           "$ref" : "#/definitions/AuditLogConfig"
         },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
+        },
         "capability" : {
           "enum" : [
             "READ_ONLY",
@@ -2795,7 +2798,9 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation"
           ],
           "type" : "string"
         },
@@ -3911,6 +3916,10 @@
           ],
           "type" : "string"
         },
+        "errorIfTablespacesExists" : {
+          "description" : "WARNING: This is a preview API that could change. Fail if tablespaces exist with same names. Only applicable with new roles behavior.",
+          "type" : "boolean"
+        },
         "ignoreErrors" : {
           "description" : "WARNING: This is a preview API that could change. Ignore all restore errors",
           "type" : "boolean"
@@ -4877,6 +4886,9 @@
           ],
           "type" : "string"
         },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
+        },
         "capability" : {
           "enum" : [
             "READ_ONLY",
@@ -5456,7 +5468,9 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation"
           ],
           "type" : "string"
         },
@@ -7907,6 +7921,9 @@
           ],
           "type" : "string"
         },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
+        },
         "capability" : {
           "enum" : [
             "READ_ONLY",
@@ -8480,7 +8497,9 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation"
           ],
           "type" : "string"
         },
@@ -8677,6 +8696,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -9263,7 +9285,9 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation"
           ],
           "type" : "string"
         },
@@ -10082,6 +10106,9 @@
           ],
           "type" : "string"
         },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
+        },
         "azOverrides" : {
           "additionalProperties" : {
             "type" : "string"
@@ -10664,7 +10691,9 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation"
           ],
           "type" : "string"
         },
@@ -11367,6 +11396,24 @@
           ],
           "example" : "NORMAL",
           "type" : "string"
+        },
+        "scrapeConfigTargets" : {
+          "description" : "Set of target types to include in scrape configuration. If not specified, all supported target types will be included.",
+          "example" : "[\"MASTER_EXPORT\", \"TSERVER_EXPORT\", \"YSQL_EXPORT\", \"CQL_EXPORT\", \"NODE_EXPORT\", \"NODE_AGENT_EXPORT\", \"OTEL_EXPORT\"]",
+          "items" : {
+            "enum" : [
+              "MASTER_EXPORT",
+              "TSERVER_EXPORT",
+              "YSQL_EXPORT",
+              "CQL_EXPORT",
+              "NODE_EXPORT",
+              "NODE_AGENT_EXPORT",
+              "OTEL_EXPORT"
+            ],
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
         },
         "scrapeIntervalSeconds" : {
           "description" : "Scrape interval in seconds. Applied on all scrape jobs commonly.",
@@ -14307,6 +14354,9 @@
           ],
           "type" : "string"
         },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
+        },
         "capability" : {
           "enum" : [
             "READ_ONLY",
@@ -14880,7 +14930,9 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation"
           ],
           "type" : "string"
         },
@@ -15305,6 +15357,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -15894,7 +15949,9 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation"
           ],
           "type" : "string"
         },
@@ -16134,6 +16191,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -16708,7 +16768,9 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation"
           ],
           "type" : "string"
         },
@@ -17630,6 +17692,9 @@
           ],
           "type" : "string"
         },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
+        },
         "capability" : {
           "enum" : [
             "READ_ONLY",
@@ -18203,7 +18268,9 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation"
           ],
           "type" : "string"
         },
@@ -18749,7 +18816,9 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation"
           ],
           "type" : "string"
         },
@@ -19137,7 +19206,9 @@
               "YNPProvisioning",
               "ConfigureOOMServiceOnNode",
               "CheckSshConnection",
-              "FetchServerConf"
+              "FetchServerConf",
+              "DoCapacityReservation",
+              "DeleteCapacityReservation"
             ],
             "type" : "string"
           },
@@ -19372,6 +19443,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -19946,7 +20020,9 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation"
           ],
           "type" : "string"
         },
@@ -20452,6 +20528,9 @@
           ],
           "type" : "string"
         },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
+        },
         "capability" : {
           "enum" : [
             "READ_ONLY",
@@ -21025,7 +21104,9 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation"
           ],
           "type" : "string"
         },
@@ -21734,6 +21815,9 @@
           ],
           "type" : "string"
         },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
+        },
         "capability" : {
           "enum" : [
             "READ_ONLY",
@@ -22310,7 +22394,9 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation"
           ],
           "type" : "string"
         },
@@ -22387,6 +22473,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -22967,7 +23056,9 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation"
           ],
           "type" : "string"
         },
@@ -23297,6 +23388,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -23879,7 +23973,9 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation"
           ],
           "type" : "string"
         },
@@ -23929,6 +24025,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -24500,7 +24599,9 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation"
           ],
           "type" : "string"
         },
@@ -24550,6 +24651,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -25121,7 +25225,9 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation"
           ],
           "type" : "string"
         },
@@ -25654,6 +25760,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -26228,7 +26337,9 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation"
           ],
           "type" : "string"
         },
@@ -26748,6 +26859,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -27332,7 +27446,9 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation"
           ],
           "type" : "string"
         },
@@ -27973,6 +28089,10 @@
     },
     "XClusterConfigNeedBootstrapFormData" : {
       "properties" : {
+        "isDrConfig" : {
+          "description" : "WARNING: This is a preview API that could change. Whether this check is being done as part of a DR configuration setup",
+          "type" : "boolean"
+        },
         "tables" : {
           "description" : "Source universe table IDs to check whether they need bootstrap",
           "example" : "[\"000033df00003000800000000000400b\"]",

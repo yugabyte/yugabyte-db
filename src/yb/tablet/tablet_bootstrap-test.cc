@@ -114,15 +114,11 @@ struct BootstrapReport {
 struct BootstrapTestHooksImpl : public TabletBootstrapTestHooksIf {
   virtual ~BootstrapTestHooksImpl() {}
 
-  void Clear() {
-    *this = BootstrapTestHooksImpl();
-  }
+  void Clear() { *this = BootstrapTestHooksImpl(); }
 
-  boost::optional<DocDbOpIds> GetFlushedOpIdsOverride() const override {
-    return flushed_op_ids;
-  }
+  std::optional<DocDbOpIds> GetFlushedOpIdsOverride() const override { return flushed_op_ids; }
 
-  boost::optional<OpId> GetFlushedRetryableRequestsOpIdOverride() const override {
+  std::optional<OpId> GetFlushedRetryableRequestsOpIdOverride() const override {
     return flushed_retryable_requests_id;
   }
 
@@ -168,9 +164,9 @@ struct BootstrapTestHooksImpl : public TabletBootstrapTestHooksIf {
   // ----------------------------------------------------------------------------------------------
 
   // This is queried by TabletBootstrap during its initialization.
-  boost::optional<DocDbOpIds> flushed_op_ids;
+  std::optional<DocDbOpIds> flushed_op_ids;
 
-  boost::optional<OpId> flushed_retryable_requests_id;
+  std::optional<OpId> flushed_retryable_requests_id;
 
   BootstrapReport actual_report;
 

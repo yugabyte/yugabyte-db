@@ -47,7 +47,7 @@ For information on xCluster deployment architecture, replication scenarios, and 
 
     This flag determines the duration for which WAL is retained on the source universe in case of a network partition or a complete outage of the target universe. The value depends on how long a network partition of the source cluster or an outage of the target cluster can be tolerated.
 
-- Make sure all YB-Master and YB-Tserver flags are set to the same value on both the source and target universes.
+- Make sure all YB-Master and YB-TServer flags are set to the same value on both the source and target universes.
 
 - Monitor CPU usage and ensure it remains below 65%. Note that xCluster replication typically incurs a 20% CPU overhead.
 

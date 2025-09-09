@@ -7,7 +7,7 @@ image: /images/section_icons/api/subsection.png
 menu:
   stable_api:
     identifier: api-ysql-exprs
-    parent: api-ysql
+    parent: ysql-language-elements
     weight: 60
 type: indexpage
 ---

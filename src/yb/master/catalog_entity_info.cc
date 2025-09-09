@@ -104,10 +104,11 @@ string TabletReplica::ToString() const {
       "member_type: $3, "
       "should_disable_lb_move: $4, "
       "fs_data_dir: $5, "
-      "total_space_used: $6, "
-      "full_compaction_state: $7, "
-      "last_full_compaction_time: $8, "
-      "time since update: $9ms }",
+      "total_space_used (excluding snapshots): $6, "
+      "total_space_used (including snapshots): $7, "
+      "full_compaction_state: $8, "
+      "last_full_compaction_time: $9, "
+      "time since update: $10ms }",
       ts_uuid,
       tablet::RaftGroupStatePB_Name(state),
       PeerRole_Name(role),
@@ -115,6 +116,7 @@ string TabletReplica::ToString() const {
       should_disable_lb_move,
       fs_data_dir,
       drive_info.sst_files_size + drive_info.wal_files_size,
+      drive_info.total_size,
       tablet::FullCompactionState_Name(full_compaction_status.full_compaction_state),
       full_compaction_status.last_full_compaction_time,
       MonoTime::Now().GetDeltaSince(time_updated).ToMilliseconds());
@@ -684,16 +686,6 @@ Status TableInfo::AddTabletUnlocked(const TabletInfoPtr& tablet) {
     // Including them will result in overlapping partition ranges
     if (!is_hidden()) {
       VLOG(1) << Format("Tablet $0 is hidden but table $1 is not, skip add to partitions_",
-          tablet->id(), id());
-      return Status::OK();
-    }
-
-    // If a table is hidden, don't process any tablets that were hidden before the table was hidden
-    // as these are inactive tablets left behind from a split operation.
-    // Only tablets that were active at the time of the table being dropped should be included
-    // in partitions_ structure to support SELECT AS-OF, CLONE, PITR operations.
-    if (dirty.hide_hybrid_time() < hide_hybrid_time()) {
-      VLOG(1) << Format("Tablet $0 hide time is < table $1 hide time, skip add to partitions_",
           tablet->id(), id());
       return Status::OK();
     }

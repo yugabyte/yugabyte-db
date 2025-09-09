@@ -35,7 +35,7 @@ Consider the following factors when using follower reads in YCQL.
 
 You need to set the consistency level to `ONE` in your application to work with follower reads or observer reads. Changing the consistency level to `ONE` has no effect on write operations, only read operations. This is because writes in YCQL are always strongly consistent. Note that the default consistency level is `QUORUM`.
 
-Using [ycqlsh](../../../../admin/ycqlsh), you can check the consistency level using the `CONSISTENCY` command with no arguments, and set the consistency level to one using `CONSISTENCY ONE`. To learn about the consistency levels in YCQL, refer to [CONSISTENCY](../../../../admin/ycqlsh/#consistency).
+Using [ycqlsh](../../../../api/ycqlsh), you can check the consistency level using the `CONSISTENCY` command with no arguments, and set the consistency level to one using `CONSISTENCY ONE`. To learn about the consistency levels in YCQL, refer to [CONSISTENCY](../../../../api/ycqlsh/#consistency).
 
 ### Maximum staleness
 
@@ -71,7 +71,7 @@ Download the [YugabyteDB workload generator](https://github.com/yugabyte/yb-samp
 
 {{% yb-sample-apps-path %}}
 
-By default, the YugabyteDB workload generator runs with strong read consistency, where all data is read from the tablet leader. Note that the `yb-sample-apps.jar` sets the [consistency](../../../../admin/ycqlsh/#consistency) level to ONE by default. You can populate exactly one key with a `10KB` value into the system. Because the replication factor is `3`, this key is replicated to only three of the four nodes in the cluster.
+By default, the YugabyteDB workload generator runs with strong read consistency, where all data is read from the tablet leader. Note that the `yb-sample-apps.jar` sets the [consistency](../../../../api/ycqlsh/#consistency) level to ONE by default. You can populate exactly one key with a `10KB` value into the system. Because the replication factor is `3`, this key is replicated to only three of the four nodes in the cluster.
 
 Run the `CassandraKeyValue` workload application to constantly update this key-value, as well as perform reads with strong consistency against the local cluster, as follows:
 

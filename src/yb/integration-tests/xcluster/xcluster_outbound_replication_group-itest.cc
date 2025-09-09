@@ -70,7 +70,7 @@ class XClusterOutboundReplicationGroupTest : public XClusterYsqlTestBase {
       const PgSchemaName& schema_name = kPgSchemaName) {
     RETURN_NOT_OK(XClusterYsqlTestBase::CreateYsqlTable(
         &producer_cluster_, namespace_name, schema_name, table_name,
-        boost::none /* tablegroup_name */, 1 /* num_tablets */));
+        std::nullopt /* tablegroup_name */, 1 /* num_tablets */));
     auto table_info = catalog_manager_->GetTableInfoFromNamespaceNameAndTableName(
         YQLDatabase::YQL_DATABASE_PGSQL, namespace_name, table_name, schema_name);
     SCHECK(table_info, NotFound, "Table create failed", table_name);

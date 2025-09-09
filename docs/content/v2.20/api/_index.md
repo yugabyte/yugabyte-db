@@ -4,13 +4,11 @@ headerTitle: APIs
 linkTitle: APIs
 description: YugabyteDB API reference for PostgreSQL-compatible YSQL and Cassandra-compatible YCQL
 headcontent: YugabyteDB API reference
-menu:
-  v2.20:
-    identifier: api
-    parent: reference
-    weight: 1100
 type: indexpage
+showRightNav: true
 ---
+
+## SQL APIs
 
 YugabyteDB supports two flavors of distributed SQL:
 
@@ -19,30 +17,59 @@ YugabyteDB supports two flavors of distributed SQL:
 
 Note that the APIs are isolated and independent from one another, and you need to select an API first before undertaking detailed database schema and query design and implementation.
 
-<div class="row">
+{{<index/block>}}
 
- <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="./ysql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/api/ysql.png" aria-hidden="true" />
-        <div class="title">YSQL reference</div>
-      </div>
-      <div class="body">
-        API reference for Yugabyte Structured Query Language (YSQL).
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="YSQL reference"
+    body="API reference for Yugabyte Structured Query Language (YSQL)."
+    href="ysql/"
+    icon="/images/section_icons/api/ysql.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="./ycql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/api/ycql.png" aria-hidden="true" />
-        <div class="title">YCQL reference</div>
-      </div>
-      <div class="body">
-        API reference for Yugabyte Cloud Query Language (YCQL).
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="YCQL reference"
+    body="API reference for Yugabyte Cloud Query Language (YCQL)."
+    href="ycql/"
+    icon="/images/section_icons/api/ycql.png">}}
 
-</div>
+{{</index/block>}}
+
+## Client shells
+
+YugabyteDB ships with command line interface (CLI) shells for interacting with each SQL API.
+
+{{<index/block>}}
+
+  {{<index/item
+    title="ysqlsh reference"
+    body="CLI for interacting with YugabyteDB using YSQL."
+    href="ysqlsh/"
+    icon="fa-light fa-terminal">}}
+
+  {{<index/item
+    title="ycqlsh reference"
+    body="CLI for interacting with YugabyteDB using YCQL."
+    href="ycqlsh/"
+    icon="fa-light fa-terminal">}}
+
+{{</index/block>}}
+
+## Management APIs
+
+YugabyteDB Anywhere and Aeon both provide APIs that can be used to deploy and manage universes, query system status, manage accounts, and more.
+
+{{< sections/2-boxes >}}
+  {{< sections/bottom-image-box
+    title="YugabyteDB Anywhere API"
+    description="Manage YugabyteDB Anywhere using the API."
+    buttonText="API Documentation"
+    buttonUrl="https://api-docs.yugabyte.com/docs/yugabyte-platform/f10502c9c9623-yugabyte-db-anywhere-api-overview"
+  >}}
+
+  {{< sections/bottom-image-box
+    title="YugabyteDB Aeon API"
+    description="Manage YugabyteDB Aeon using the API."
+    buttonText="API Documentation"
+    buttonUrl="https://api-docs.yugabyte.com/docs/managed-apis/9u5yqnccbe8lk-yugabyte-db-aeon-rest-api"
+  >}}
+
+{{< /sections/2-boxes >}}

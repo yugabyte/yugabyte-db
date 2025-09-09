@@ -72,6 +72,36 @@ public interface CloudAPI {
       List<Integer> ports,
       NLBHealthCheckConfiguration healthCheckConfig);
 
+  // AWS-specific methods with default unsupported implementations
+  /**
+   * Creates a capacity reservation (AWS-specific feature)
+   *
+   * @throws UnsupportedOperationException if the cloud provider doesn't support capacity
+   *     reservations
+   */
+  default String createCapacityReservation(
+      Provider provider,
+      String reservationName,
+      String regionCode,
+      String availabilityZone,
+      String instanceType,
+      int count) {
+    throw new UnsupportedOperationException(
+        "Capacity reservations are not supported by this cloud provider");
+  }
+
+  /**
+   * Deletes a capacity reservation (AWS-specific feature)
+   *
+   * @throws UnsupportedOperationException if the cloud provider doesn't support capacity
+   *     reservations
+   */
+  default void deleteCapacityReservation(
+      Provider provider, String regionCode, String capacityReservationId) {
+    throw new UnsupportedOperationException(
+        "Capacity reservations are not supported by this cloud provider");
+  }
+
   // Helper function to extract Resource name from resource URL
   // It only works for URls that end with the resource Name.
   static String getResourceNameFromResourceUrl(String resourceUrl) {

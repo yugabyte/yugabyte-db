@@ -61,7 +61,7 @@ The configuration specific to simple bind mode.
 
 ## Search + Bind Mode
 
-In `Search + Bind` mode, YB-Tserver will bind to the LDAP directory with a fixed username and password, specified with `ycql_ldap_bind_dn` and `ycql_ldap_bind_passwd`, and performs a search for the user trying to log in to the database. This mode is commonly used by LDAP authentication schemes in other software.
+In `Search + Bind` mode, YB-TServer will bind to the LDAP directory with a fixed username and password, specified with `ycql_ldap_bind_dn` and `ycql_ldap_bind_passwd`, and performs a search for the user trying to log in to the database. This mode is commonly used by LDAP authentication schemes in other software.
 
 For Searching the LDAP directory if no fixed username and password is configured at YB-TServer, an anonymous bind will be attempted to the directory. The search will be performed over the subtree at `ycql_ldap_base_dn`, and will try to do an exact match of the attribute specified in `ycql_ldap_search_attribute`. After the user has been found in this search, the server disconnects and re-binds to the directory as this user, using the password specified by the client, to verify that the login is correct.
 

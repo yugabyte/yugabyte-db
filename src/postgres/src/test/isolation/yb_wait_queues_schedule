@@ -1,5 +1,6 @@
 test: yb.orig.wait-queues-single-shard-waiter-unlocks
 test: yb.orig.single-shard-waiters-same-tablet
+test: yb.port.fk-snapshot
 test: lock-update-traversal
 test: yb.orig.wait-queues-weak-read-unlocks
 test: yb.orig.wait-queues-serializable-reads
@@ -13,3 +14,4 @@ test: yb.orig.check-constraint-locking
 test: yb.port.insert-conflict-do-nothing-2
 test: yb.orig.deadlock
 test: yb.orig.modify-transaction-characteristics
+test: yb.orig.fk_triggers_use_latest_snapshot

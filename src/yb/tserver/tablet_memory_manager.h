@@ -15,8 +15,6 @@
 
 #include <memory>
 
-#include <boost/optional.hpp>
-
 #include "yb/tablet/tablet_options.h"
 
 #include "yb/util/background_task.h"

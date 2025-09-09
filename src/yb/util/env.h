@@ -31,7 +31,6 @@
 #include <functional>
 #include <string>
 #include <vector>
-#include <boost/optional.hpp>
 
 #include "yb/gutil/callback_forward.h"
 
@@ -485,12 +484,10 @@ struct WritableFileOptions {
   Env::CreateMode mode;
 
   // Set this variable to customize the default starting offset.
-  boost::optional<uint64_t> initial_offset;
+  std::optional<uint64_t> initial_offset;
 
   WritableFileOptions()
-    : sync_on_close(false),
-      o_direct(false),
-      mode(Env::CREATE_IF_NON_EXISTING_TRUNCATE) { }
+      : sync_on_close(false), o_direct(false), mode(Env::CREATE_IF_NON_EXISTING_TRUNCATE) {}
 };
 
 // A file abstraction for sequential writing.  The implementation

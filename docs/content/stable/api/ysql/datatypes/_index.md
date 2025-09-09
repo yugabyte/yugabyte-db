@@ -8,7 +8,7 @@ image: /images/section_icons/api/subsection.png
 menu:
   stable_api:
     identifier: api-ysql-datatypes
-    parent: api-ysql
+    parent: ysql-language-elements
     weight: 80
 type: indexpage
 ---

@@ -13,7 +13,6 @@ package com.yugabyte.yw.common;
 import static com.yugabyte.yw.common.utils.FileUtils.writeFile;
 import static com.yugabyte.yw.common.utils.FileUtils.writeJsonFile;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
@@ -36,7 +35,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
-import java.util.Map.Entry;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -545,33 +543,9 @@ public class SwamperHelper {
   }
 
   private void appendCollectionLevelLabels(MetricCollectionLevel level, ObjectNode labels) {
-    String paramsFile = level.getParamsFilePath();
-    if (StringUtils.isEmpty(paramsFile)) {
-      return;
-    }
-
-    try (InputStream templateStream = environment.resourceAsStream(paramsFile)) {
-      String paramsFileContent = IOUtils.toString(templateStream, StandardCharsets.UTF_8);
-      ObjectNode params = (ObjectNode) Json.parse(paramsFileContent);
-      Iterator<Entry<String, JsonNode>> fields = params.fields();
-      while (fields.hasNext()) {
-        Entry<String, JsonNode> field = fields.next();
-        String paramName = field.getKey();
-        JsonNode paramValue = field.getValue();
-        String paramStringValue;
-        if (paramValue.isArray()) {
-          List<String> parts = new ArrayList<>();
-          for (JsonNode part : paramValue) {
-            parts.add(part.textValue());
-          }
-          paramStringValue = String.join("", parts);
-        } else {
-          paramStringValue = paramValue.textValue();
-        }
-        labels.put(PARAMETER_LABEL_PREFIX + paramName, paramStringValue);
-      }
-    } catch (Exception e) {
-      throw new RuntimeException("Failed to read or process params file " + paramsFile, e);
+    Map<String, String> params = level.parseParamsFile(environment);
+    for (Map.Entry<String, String> entry : params.entrySet()) {
+      labels.put(PARAMETER_LABEL_PREFIX + entry.getKey(), entry.getValue());
     }
   }
 

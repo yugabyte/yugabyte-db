@@ -4,17 +4,39 @@
 /* ------------------------------------------------------------------------- */
 /* Create extension tables. */
 
+/*
+ * This table contains DDLs done on the source database.
+ *
+ * It has one row per DDL; older rows are cleaned up after a while.
+ * It is replicated from the source to target universe.
+ */
 CREATE TABLE yb_xcluster_ddl_replication.ddl_queue(
   ddl_end_time bigint NOT NULL,
   query_id bigint NOT NULL,
   yb_data jsonb NOT NULL,
-  PRIMARY KEY (ddl_end_time, query_id)) WITH (COLOCATION = false);
+  PRIMARY KEY (ddl_end_time ASC, query_id ASC)) WITH (COLOCATION = false);
 
+/*
+ * This table contains DDLs that have been performed on this database.
+ * There are separate instances of this table in the source and target
+ * universes, with no replication performed between them.
+ *
+ * It has one row per DDL plus one special row; older rows are cleaned
+ * up after a while.
+ *
+ * The DDLs that still need to be performed on the target database are
+ * those contained in rows in the ddl_queue table that do not have
+ * matching rows in this table.
+ *
+ * The special row has key (1, 1); its yb_data field contains
+ * information about DDL commit times (i.e., encodes a
+ * xcluster::SafeTimeBatch).
+ */
 CREATE TABLE yb_xcluster_ddl_replication.replicated_ddls(
   ddl_end_time bigint NOT NULL,
   query_id bigint NOT NULL,
   yb_data jsonb NOT NULL,
-  PRIMARY KEY (ddl_end_time, query_id)) WITH (COLOCATION = false);
+  PRIMARY KEY (ddl_end_time ASC, query_id ASC)) WITH (COLOCATION = false);
 
 /* ------------------------------------------------------------------------- */
 /* Create routines for user of extension. */

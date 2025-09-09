@@ -62,7 +62,7 @@ func buildClusters(
 	var res []ybaclient.Cluster
 
 	providerListRequest := authAPI.GetListOfProviders()
-	providerType := v1.GetString("provider-code")
+	providerType = v1.GetString("provider-code")
 	if len(strings.TrimSpace(providerType)) == 0 {
 		logrus.Fatalln(formatter.Colorize("No provider code found\n", formatter.RedColor))
 	}
@@ -817,6 +817,12 @@ func buildDeviceInfo(
 			NumVolumes:   util.GetInt32Pointer(int32(numVolumes[i])),
 			VolumeSize:   util.GetInt32Pointer(int32(volumeSize[i])),
 			StorageType:  util.GetStringPointer(storageType[i]),
+		}
+		if !util.IsEmptyString(cveKMSConfigUUID) {
+			deviceInfo.SetCloudVolumeEncryption(ybaclient.CloudVolumeEncryption{
+				KmsConfigUUID:          util.GetStringPointer(cveKMSConfigUUID),
+				EnableVolumeEncryption: util.GetBoolPointer(true),
+			})
 		}
 		deviceInfos = append(deviceInfos, deviceInfo)
 	}

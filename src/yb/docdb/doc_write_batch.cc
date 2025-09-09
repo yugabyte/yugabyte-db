@@ -96,7 +96,7 @@ Status DocWriteBatch::SeekToKeyPrefix(LazyIterator* iter, HasAncestor has_ancest
   current_entry_.value_type = ValueEntryType::kInvalid;
 
   // Check the cache first.
-  boost::optional<DocWriteBatchCache::Entry> cached_entry = cache_.Get(key_prefix_);
+  std::optional<DocWriteBatchCache::Entry> cached_entry = cache_.Get(key_prefix_);
   if (cached_entry) {
     current_entry_ = *cached_entry;
     subdoc_exists_ = current_entry_.value_type != ValueEntryType::kTombstone;
@@ -901,6 +901,17 @@ void DocWriteBatch::MoveToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb) const {
   if (has_ttl()) {
     kv_pb->set_ttl(ttl_ns());
   }
+}
+
+IntraTxnWriteId DocWriteBatch::ReserveWriteId() {
+  put_batch_.emplace_back();
+  return narrow_cast<IntraTxnWriteId>(put_batch_.size()) - 1;
+}
+
+void DocWriteBatch::RollbackReservedWriteId(IntraTxnWriteId write_id) {
+  LOG_IF(DFATAL, write_id != narrow_cast<IntraTxnWriteId>(put_batch_.size()) - 1)
+      << "Rollback unexpected write ID: " << write_id << ", expected: " << put_batch_.size() - 1;
+  put_batch_.pop_back();
 }
 
 // ------------------------------------------------------------------------------------------------

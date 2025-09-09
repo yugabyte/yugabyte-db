@@ -178,6 +178,13 @@ DEFINE_NON_RUNTIME_PG_FLAG(bool, yb_disable_ddl_transaction_block_for_read_commi
     "ysql_yb_ddl_transaction_block_enabled is true. In other words, for Read Committed, fall back "
     "to the mode when ysql_yb_ddl_transaction_block_enabled is false.");
 
+DEFINE_test_flag(bool, ysql_yb_enable_ddl_savepoint_support, false,
+    "If true, support for savepoints for DDL statements within a transaction block will be "
+    "enabled. This flag only takes effect if ysql_yb_ddl_transaction_block_enabled is set to "
+    "true.");
+DEFINE_validator(TEST_ysql_yb_enable_ddl_savepoint_support,
+    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_yb_ddl_transaction_block_enabled));
+
 DEFINE_RUNTIME_PREVIEW_bool(enable_object_locking_for_table_locks, false,
     "This test flag enables the object lock APIs provided by tservers and masters - "
     "AcquireObject(Global)Lock, ReleaseObject(Global)Lock. These APIs are used to "
@@ -279,6 +286,12 @@ DEFINE_RUNTIME_bool(cdc_disable_sending_composite_values,
                     true,
                     "When this flag is set to true, cdc service will send null values for columns "
                     "of composite types");
+
+DEFINE_UNKNOWN_int32(timestamp_history_retention_interval_sec, 900,
+                     "The time interval in seconds to retain DocDB history for. Point-in-time "
+                     "reads at a hybrid time further than this in the past might not be allowed "
+                     "after a compaction. Set this to be higher than the expected maximum duration "
+                     "of any single transaction in your application.");
 
 namespace yb {
 

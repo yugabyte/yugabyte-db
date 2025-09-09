@@ -42,7 +42,6 @@
 #include <vector>
 
 #include <boost/container/small_vector.hpp>
-#include <boost/optional/optional_fwd.hpp>
 #include <boost/version.hpp>
 #include "yb/util/flags.h"
 

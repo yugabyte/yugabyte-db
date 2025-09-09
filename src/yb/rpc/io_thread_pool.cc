@@ -18,9 +18,8 @@
 #include <thread>
 
 #include <boost/asio/io_service.hpp>
-#include <boost/optional.hpp>
-#include "yb/util/logging.h"
 
+#include "yb/util/logging.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 
@@ -80,7 +79,7 @@ class IoThreadPool::Impl {
   std::string name_;
   std::vector<ThreadPtr> threads_;
   IoService io_service_;
-  boost::optional<IoService::work> work_{io_service_};
+  std::optional<IoService::work> work_{io_service_};
 };
 
 IoThreadPool::IoThreadPool(const std::string& name, size_t num_threads)

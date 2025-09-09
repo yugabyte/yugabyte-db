@@ -159,7 +159,7 @@ func isMoveToCustomCert(state *ybactlstate.State) bool {
 
 var configGenCmd = &cobra.Command{
 	Use:     "generate-config",
-	Short:   "Create the default config file.",
+	Short:   "Create the default config file. (alias: gen-config, create-config)",
 	Aliases: []string{"gen-config", "create-config"},
 	Run: func(cmd *cobra.Command, args []string) {
 		if _, err := os.Stat(common.InputFile()); err == nil {

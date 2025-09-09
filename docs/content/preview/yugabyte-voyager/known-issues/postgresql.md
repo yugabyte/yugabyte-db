@@ -1516,7 +1516,7 @@ CREATE OR REPLACE VIEW public.v1 AS
 **GitHub**: [Issue #49](https://github.com/yugabyte/yb-voyager/issues/49)
 **Description**: Indexes on timestamp or date columns are commonly used in range-based queries. However, indexes in YugabyteDB are hash-sharded by default, which is not optimal for range predicates, and can impact query performance.
 
-Note that range sharding is currently enabled by default only in [PostgreSQL compatibility mode](../../../develop/postgresql-compatibility/) in YugabyteDB.
+Note that range sharding is currently enabled by default only in [PostgreSQL compatibility mode](../../../reference/configuration/postgresql-compatibility/) in YugabyteDB.
 
 **Workaround**: Explicitly configure the index to use range sharding. This ensures efficient data access with range-based queries.
 
@@ -1671,7 +1671,7 @@ CREATE INDEX idx_orders_order_id on orders(order_id);
 
 **Description**:
 
-In YugabyteDB, you can specify three kinds of columns when using [CREATE INDEX](../../../api/ysql/the-sql-language/statements/ddl_create_index): sharding, clustering, and covering. (For more details, refer to [Secondary indexes](../../../explore/ysql-language-features/indexes-constraints/secondary-indexes-ysql/).) The default sharding strategy is HASH unless [Enhanced PostgreSQL Compatibility mode](../../../develop/postgresql-compatibility/) is enabled, in which case, RANGE is the default sharding strategy.
+In YugabyteDB, you can specify three kinds of columns when using [CREATE INDEX](../../../api/ysql/the-sql-language/statements/ddl_create_index): sharding, clustering, and covering. (For more details, refer to [Secondary indexes](../../../explore/ysql-language-features/indexes-constraints/secondary-indexes-ysql/).) The default sharding strategy is HASH unless [Enhanced PostgreSQL Compatibility mode](../../../reference/configuration/postgresql-compatibility/) is enabled, in which case, RANGE is the default sharding strategy.
 
 Design the index to evenly distribute data across all nodes and optimize performance based on query patterns. Avoid using low-cardinality columns, such as boolean values, ENUMs, or days of the week, as sharding keys, as they result in data being distributed across only a few tablets.
 
@@ -1742,7 +1742,7 @@ CREATE INDEX idx_order_status_order_id on orders (order_id, status); --reorderin
 
 **Description**:
 
-In YugabyteDB, you can specify three kinds of columns when using [CREATE INDEX](../../../api/ysql/the-sql-language/statements/ddl_create_index): sharding, clustering, and covering. (For more details, refer to [Secondary indexes](../../../explore/ysql-language-features/indexes-constraints/secondary-indexes-ysql/).) The default sharding strategy is HASH unless [Enhanced PostgreSQL Compatibility mode](../../../develop/postgresql-compatibility/) is enabled, in which case, RANGE is the default sharding strategy.
+In YugabyteDB, you can specify three kinds of columns when using [CREATE INDEX](../../../api/ysql/the-sql-language/statements/ddl_create_index): sharding, clustering, and covering. (For more details, refer to [Secondary indexes](../../../explore/ysql-language-features/indexes-constraints/secondary-indexes-ysql/).) The default sharding strategy is HASH unless [Enhanced PostgreSQL Compatibility mode](../../../reference/configuration/postgresql-compatibility/) is enabled, in which case, RANGE is the default sharding strategy.
 
 Design the index to evenly distribute data across all nodes and optimize performance based on query patterns.
 
@@ -1797,7 +1797,7 @@ CREATE INDEX idx_users_middle_name_user_id on users (middle_name ASC, user_id);
 
 **Description**:
 
-In YugabyteDB, you can specify three kinds of columns when using [CREATE INDEX](../../../api/ysql/the-sql-language/statements/ddl_create_index): sharding, clustering, and covering. (For more details, refer to [Secondary indexes](../../../explore/ysql-language-features/indexes-constraints/secondary-indexes-ysql/).) The default sharding strategy is HASH unless [Enhanced PostgreSQL Compatibility mode](../../../develop/postgresql-compatibility/) is enabled, in which case, RANGE is the default sharding strategy.
+In YugabyteDB, you can specify three kinds of columns when using [CREATE INDEX](../../../api/ysql/the-sql-language/statements/ddl_create_index): sharding, clustering, and covering. (For more details, refer to [Secondary indexes](../../../explore/ysql-language-features/indexes-constraints/secondary-indexes-ysql/).) The default sharding strategy is HASH unless [Enhanced PostgreSQL Compatibility mode](../../../reference/configuration/postgresql-compatibility/) is enabled, in which case, RANGE is the default sharding strategy.
 
 Design the index to evenly distribute data across all nodes and optimize performance based on query patterns.
 
@@ -1936,4 +1936,49 @@ CREATE TABLE child (
 
 -- Add index on foreign key column
 CREATE INDEX idx_child_parent_id ON child (parent_id);
+```
+
+### Missing primary key for table when unique and not null columns exist
+
+**Description**: YugabyteDB uses an index-organized table structure, which means that the primary key _is_ the table. When you don't explicitly define one, the system automatically assigns an internal `ybrowid` column as the primary key and uses [hash sharding](/preview/explore/going-beyond-sql/data-sharding/#hash-sharding) on it. However, if your table already contains columns that are both unique and not null, it's better to designate those as the primary key instead. This approach eliminates the need for an extra unique-constraint index structure, in addition to the primary key index (main table structure).
+
+**Workaround**: Define a primary key using the columns that are already unique and not null.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE users (
+  user_id integer NOT NULL,
+  email text NOT NULL,
+  username text NOT NULL,
+  CONSTRAINT users_email_unique UNIQUE (email),
+  CONSTRAINT users_username_unique UNIQUE (username)
+);
+```
+
+Suggested change to the schema is as follows:
+
+```sql
+ALTER TABLE users ADD PRIMARY KEY (user_id);
+```
+
+Alternatively, if email should be the primary key:
+
+```sql
+ALTER TABLE users ADD PRIMARY KEY (email);
+```
+
+Or, if you want to recreate the table, run the following CREATE TABLE command instead:
+
+```sql
+CREATE TABLE users (
+  user_id integer NOT NULL,
+  email text NOT NULL,
+  username text NOT NULL,
+  PRIMARY KEY (user_id),
+  CONSTRAINT users_email_unique UNIQUE (email),
+  CONSTRAINT users_username_unique UNIQUE (username)
+);
 ```

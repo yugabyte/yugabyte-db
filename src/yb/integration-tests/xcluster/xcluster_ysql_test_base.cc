@@ -276,14 +276,9 @@ Result<NamespaceId> XClusterYsqlTestBase::GetNamespaceId(YBClient* client) {
 }
 
 Result<YBTableName> XClusterYsqlTestBase::CreateYsqlTable(
-    Cluster* cluster,
-    const std::string& namespace_name,
-    const std::string& schema_name,
-    const std::string& table_name,
-    const boost::optional<std::string>& tablegroup_name,
-    uint32_t num_tablets,
-    bool colocated,
-    const ColocationId colocation_id,
+    Cluster* cluster, const std::string& namespace_name, const std::string& schema_name,
+    const std::string& table_name, const std::optional<std::string>& tablegroup_name,
+    uint32_t num_tablets, bool colocated, const ColocationId colocation_id,
     const bool ranged_partitioned) {
   auto conn = EXPECT_RESULT(cluster->ConnectToDB(namespace_name));
   std::string colocation_id_string = "";
@@ -339,7 +334,7 @@ Result<YBTableName> XClusterYsqlTestBase::CreateYsqlTable(
 
 Result<YBTableName> XClusterYsqlTestBase::CreateYsqlTable(
     uint32_t idx, uint32_t num_tablets, Cluster* cluster,
-    const boost::optional<std::string>& tablegroup_name, bool colocated,
+    const std::optional<std::string>& tablegroup_name, bool colocated,
     const bool ranged_partitioned) {
   // Generate colocation_id based on index so that we have the same colocation_id for
   // producer/consumer.
@@ -376,7 +371,7 @@ Result<std::pair<NamespaceId, NamespaceId>> XClusterYsqlTestBase::CreateDatabase
     RETURN_NOT_OK(CreateDatabase(cluster, db_name));
     auto table_name = VERIFY_RESULT(CreateYsqlTable(
         cluster, db_name, "" /* schema_name */, "initial_table",
-        /*tablegroup_name=*/boost::none, /*num_tablets=*/1));
+        /*tablegroup_name=*/std::nullopt, /*num_tablets=*/1));
     std::shared_ptr<client::YBTable> table;
     RETURN_NOT_OK(cluster->client_->OpenTable(table_name, &table));
     cluster->tables_.emplace_back(std::move(table));
@@ -1000,7 +995,7 @@ Status XClusterYsqlTestBase::SetUpClusters(const SetupParams& params) {
 
     for (uint32_t i = 0; i < num_tablets->size(); i++) {
       auto table_name = VERIFY_RESULT(CreateYsqlTable(
-          i, num_tablets->at(i), cluster, boost::none /* tablegroup */, false /* colocated */,
+          i, num_tablets->at(i), cluster, std::nullopt /* tablegroup */, false /* colocated */,
           params.ranged_partitioned));
       std::shared_ptr<client::YBTable> table;
       RETURN_NOT_OK(cluster->client_->OpenTable(table_name, &table));

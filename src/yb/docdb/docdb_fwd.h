@@ -29,6 +29,7 @@
 
 namespace yb::docdb {
 
+class BloomFilterOptions;
 class BoundedRocksDbIterator;
 class ConsensusFrontier;
 class DeadlineInfo;
@@ -42,7 +43,6 @@ class DocVectorIndex;
 class DocWriteBatch;
 class HistoryRetentionPolicy;
 class IntentAwareIterator;
-class IntentAwareIteratorIf;
 class IntentIterator;
 class LocalWaitingTxnRegistry;
 class LockBatch;

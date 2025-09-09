@@ -589,14 +589,14 @@ bool QLType::IsSimilar(DataType left, DataType right) {
   return GetConversionMode(left, right) <= ConversionMode::kSimilar;
 }
 
-boost::optional<size_t> QLType::GetUDTypeFieldIdxByName(const std::string& field_name) const {
+std::optional<size_t> QLType::GetUDTypeFieldIdxByName(const std::string& field_name) const {
   const auto& field_names = udtype_field_names();
   for (size_t i = 0; i != field_names.size(); ++i) {
     if (field_names[i] == field_name) {
       return i;
     }
   }
-  return boost::none;
+  return std::nullopt;
 }
 
 }  // namespace yb

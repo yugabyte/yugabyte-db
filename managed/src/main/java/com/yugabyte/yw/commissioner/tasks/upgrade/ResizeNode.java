@@ -10,6 +10,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.utils.CapacityReservationUtil;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -204,7 +205,9 @@ public class ResizeNode extends UpgradeTaskBase {
   public void run() {
     runUpgrade(
         () -> {
+          boolean deleteCapacityReservation = false;
           NodesToApply nodesToApply = calclulateNodesToApply();
+
           Universe universe = getUniverse();
 
           UserIntent userIntentForFlags = getUserIntent();
@@ -213,6 +216,19 @@ public class ResizeNode extends UpgradeTaskBase {
 
           Map<UUID, UniverseDefinitionTaskParams.Cluster> newVersionsOfClusters =
               taskParams().getNewVersionsOfClusters(universe);
+
+          deleteCapacityReservation =
+              createCapacityReservationsIfNeeded(
+                  nodesToApply.instanceChangingNodes,
+                  CapacityReservationUtil.OperationType.RESIZE,
+                  node -> {
+                    UniverseDefinitionTaskParams.Cluster targetCluster =
+                        taskParams().getClusterByUuid(node.placementUuid);
+                    String targetInstanceType =
+                        targetCluster.userIntent.getInstanceTypeForNode(node);
+                    return !node.cloudInfo.instance_type.equals(targetInstanceType);
+                  });
+
           AtomicBoolean applyGFlagsToAllNodes = new AtomicBoolean();
           // Create task sequence to resize allNodes.
           for (UniverseDefinitionTaskParams.Cluster cluster : taskParams().clusters) {
@@ -277,6 +293,9 @@ public class ResizeNode extends UpgradeTaskBase {
             // Persist changes in the universe.
             createPersistResizeNodeTask(userIntent, cluster.uuid)
                 .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ChangeInstanceType);
+          }
+          if (deleteCapacityReservation) {
+            createDeleteReservationTask();
           }
           // Need to run gflag upgrades for the nodes that weren't updated.
           if (flagsProvided) {

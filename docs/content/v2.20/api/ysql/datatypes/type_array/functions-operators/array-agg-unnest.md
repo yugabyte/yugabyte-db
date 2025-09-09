@@ -4,7 +4,7 @@ linkTitle: array_agg(), unnest(), generate_subscripts()
 headerTitle: array_agg(), unnest(), and generate_subscripts()
 description: array_agg(), unnest(), and generate_subscripts()
 menu:
-  v2.20:
+  v2.20_api:
     identifier: array-agg-unnest
     parent: array-functions-operators
 type: docs
@@ -112,7 +112,7 @@ Each of the three _"select... as arr"_ queries above produces the same result, a
 
 To prepare for the demonstration of `unnest()`, save the single-valued result from the most recent of the three queries (but any one of them would do) into a `ysqlsh` variable by using the `\gset` meta-command. This takes a single argument, conventionally spelled with a trailing underscore (for example, _"result&#95;"_) and re-runs the `SELECT` statement that, as the last submitted `ysqlsh` command, is still in the command buffer. (If the `SELECT` doesn't return a single row, then you get a clear error.) In general, when the `SELECT` list has _N_ members, called _"c1"_ through _"cN"_, each of these values is stored in automatically-created variables called _"result&#95;c1"_ through _"result&#95;cN"_.
 
-if you aren't already familiar with the `\gset` meta-command, you can read a brief account of how it works in [Meta-commands](../../../../../../admin/ysqlsh-meta-commands/) within the major section on `ysqlsh`.
+if you aren't already familiar with the `\gset` meta-command, you can read a brief account of how it works in [Meta-commands](../../../../../../api/ysqlsh-meta-commands/) within the major section on `ysqlsh`.
 
 Immediately after running the _"with... select array_agg(...) as arr..."_ query above, do this:
 

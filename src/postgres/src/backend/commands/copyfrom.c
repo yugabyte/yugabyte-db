@@ -1384,7 +1384,12 @@ yb_process_more_batches:
 		 * We need to flush buffered operations so that error callback is
 		 * executed
 		 */
-		YBFlushBufferedOperations();
+		YBFlushBufferedOperations((YbcFlushDebugContext)
+			{
+				.reason = YB_COPY_BATCH,
+				.uintarg = processed,
+				.strarg1 = RelationGetRelationName(cstate->rel),
+			});
 
 		/* Update progress of the COPY command as well */
 		pgstat_progress_update_param(PROGRESS_COPY_TUPLES_PROCESSED, processed);

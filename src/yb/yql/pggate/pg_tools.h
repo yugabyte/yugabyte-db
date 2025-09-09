@@ -179,4 +179,7 @@ struct YbctidGenerator {
   DISALLOW_COPY_AND_ASSIGN(YbctidGenerator);
 };
 
+const std::string ToString(const YbcAdvisoryLockId& lock_id);
+const std::string ToString(const YbcObjectLockId& lock_id);
+
 } // namespace yb::pggate

@@ -31,8 +31,8 @@ While YugabyteDB is a distributed database, it leverages PostgreSQL's query laye
 
 Implementing all PostgreSQL features in a distributed system can be challenging, and some features are still under development. To ensure that the features your applications depend on are supported in the version of YugabyteDB you are using, double-check that the feature is included in the list of supported features.
 
-{{<lead link="../../../develop/postgresql-compatibility/#unsupported-postgresql-features">}}
-Review the [list of unsupported features](../../../develop/postgresql-compatibility/#unsupported-postgresql-features) to make sure that the PostgreSQL features used by your application are supported by YugabyteDB.
+{{<lead link="../../../reference/configuration/postgresql-compatibility/#unsupported-postgresql-features">}}
+Review the [list of unsupported features](../../../reference/configuration/postgresql-compatibility/#unsupported-postgresql-features) to make sure that the PostgreSQL features used by your application are supported by YugabyteDB.
 {{</lead>}}
 
 ### Extension support
@@ -109,8 +109,8 @@ By default, all the rows of the table are distributed across multiple tablets an
 
 Choose colocation for tables with small tables that don't grow much; for example, less than 1 million rows, or smaller than 1 GB.
 
-{{<lead link="../../../explore/colocation/">}}
-For more information on when and how to create colocated tables, see [Colocated tables](../../../explore/colocation/).
+{{<lead link="../../../additional-features/colocation/">}}
+For more information on when and how to create colocated tables, see [Colocated tables](../../../additional-features/colocation/).
 {{</lead>}}
 
 ## Schema Migration

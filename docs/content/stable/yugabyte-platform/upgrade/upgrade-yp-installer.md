@@ -43,7 +43,7 @@ If you are running YugabyteDB Anywhere on a [deprecated OS](../../../reference/c
 {{< /note >}}
 {{< note title="Upgrading YugabyteDB Anywhere on systems that have older versions of Python" >}}
 
-YugabyteDB Anywhere v25.1 and later requires Python v3.10-3.12. If you are running YugabyteDB Anywhere on a system with Python earlier than 3.10, you will need to update Python on your system before you can upgrade YugabyteDB Anywhere to v25.1 or later.
+YugabyteDB Anywhere v25.1 and later requires Python v3.10-3.11. If you are running YugabyteDB Anywhere on a system with Python earlier than 3.10, you will need to update Python on your system before you can upgrade YugabyteDB Anywhere to v25.1 or later.
 
 {{< /note >}}
 

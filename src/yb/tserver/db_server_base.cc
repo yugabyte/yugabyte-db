@@ -85,8 +85,7 @@ Status DbServerBase::Start() {
 }
 
 void DbServerBase::Shutdown() {
-  bool expected = false;
-  if (!shutting_down_.compare_exchange_strong(expected, true)) {
+  if (!shutting_down_.Set()) {
     return;
   }
   auto* txn_manager = transaction_manager_.load();

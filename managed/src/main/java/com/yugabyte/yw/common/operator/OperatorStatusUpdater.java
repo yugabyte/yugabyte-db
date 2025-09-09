@@ -3,6 +3,7 @@
  */
 package com.yugabyte.yw.common.operator;
 
+import com.yugabyte.yw.models.Provider.UsabilityState;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import java.nio.file.Path;
@@ -105,6 +106,14 @@ public interface OperatorStatusUpdater {
 
   default void updateBackupScheduleStatus(
       KubernetesResourceDetails scheduleDetails, Schedule schedule) {
+    // no-op implementation
+  }
+
+  default void updateProviderStatus(
+      KubernetesResourceDetails providerDetails,
+      UUID providerUUID,
+      UsabilityState state,
+      String message) {
     // no-op implementation
   }
 }

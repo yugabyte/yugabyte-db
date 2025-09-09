@@ -528,6 +528,9 @@ Result<RequestSent> PgDocOp::Execute(ForceNonBufferable force_non_bufferable) {
   // This refers to the sequence of operations between this layer and the underlying tablet
   // server / DocDB layer, not to the sequence of operations between the PostgreSQL layer and this
   // layer.
+  if (end_of_data_) {
+    return RequestSent(false);
+  }
   RETURN_NOT_OK(SendRequest(force_non_bufferable));
   return RequestSent(response_.Valid());
 }
@@ -537,6 +540,7 @@ Status PgDocOp::FetchMoreResults() {
   RETURN_NOT_OK(exec_status_);
 
   if (end_of_data_) {
+    DCHECK_EQ(active_op_count_, 0);
     return Status::OK();
   }
 
@@ -817,6 +821,7 @@ Status PgDocReadOp::ExecuteInit(const YbcPgExecParameters* exec_params) {
       IllegalState, "Exec params can't be changed for already created operations");
   RETURN_NOT_OK(PgDocOp::ExecuteInit(exec_params));
   if (!VERIFY_RESULT(SetScanBounds())) {
+    DCHECK_EQ(active_op_count_, 0);
     end_of_data_ = true;
     return Status::OK();
   }
@@ -927,8 +932,8 @@ Status PgDocReadOp::DoPopulateByYbctidOps(const YbctidGenerator& generator, Keep
   // 5- Send requests to tablet servers to read data from <tab> associated with ybctid values.
   //
   // 6- Repeat step 2 thru 5 for the next batch of 1024 ybctids till done.
-  InitializeYbctidOperators();
   end_of_data_ = false;
+  InitializeYbctidOperators();
   VLOG(1) << "Row order " << (keep_order ? "is" : "is not") << " important";
   if (keep_order) {
     if (!result_stream_) {
@@ -1734,6 +1739,7 @@ Result<bool> PgDocReadOp::SetLowerUpperBound(LWPgsqlReadRequestPB* request, size
 void PgDocReadOp::ClonePgsqlOps(size_t op_count) {
   // Allocate batch operator, one per partition.
   DCHECK_GT(op_count, 0);
+  DCHECK(!end_of_data_);
   pgsql_ops_.reserve(op_count);
   const auto& arena = pgsql_op_arena_ ? pgsql_op_arena_ : GetSharedArena(read_op_);
   while (pgsql_ops_.size() < op_count) {

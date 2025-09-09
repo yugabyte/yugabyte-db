@@ -98,9 +98,19 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
       TabletSplitManager& tablet_split_manager);
   ~MasterSnapshotCoordinator();
 
+  // Creates a snapshot starting from a predefined set of entries. Used in the old workflow of
+  // creating backups without concurrent DDLs.
   Result<TxnSnapshotId> Create(
       const SysRowEntries& entries, bool imported, int64_t leader_term, CoarseTimePoint deadline,
       int32_t retention_duration_hours);
+
+
+  // Creates a snapshot for the entire YSQL namespace_id. Used in the new workflow that supports
+  // backups during DDLs. The master leader collects the set of entries belonging to namespace_id
+  // as of a consistent snapshot_hybrid_time.
+  Result<TxnSnapshotId> Create(
+      const NamespaceId& namespace_id, bool imported, CollectFlags flags, int64_t leader_term,
+      CoarseTimePoint deadline, int32_t retention_duration_hours);
 
   Result<TxnSnapshotId> CreateForSchedule(
       const SnapshotScheduleId& schedule_id, int64_t leader_term, CoarseTimePoint deadline);
@@ -182,6 +192,10 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
       CoarseTimePoint deadline);
   Result<bool> IsTableCoveredBySomeSnapshotSchedule(const TableInfo& table_info) const;
 
+  // Returns true if the namespace is currently retained due to ongoing snapshot operations.
+  // This prevents hard deletion of tables and tablets belonging to the namespace.
+  bool IsNamespaceRetained(const NamespaceId& namespace_id) const;
+
   // Returns true if there are one or more non-deleted
   // snapshot schedules present.
   bool IsPitrActive();
@@ -198,6 +212,12 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   bool TEST_IsTabletCoveredBySnapshot(
       const TabletId& tablet_id,
       const TxnSnapshotId& snapshot_id = TxnSnapshotId(Uuid::Nil())) const;
+
+  // Collect SysRowEntries by reading from sys.catalog as of read_time instead of using in-memory
+  // maps.
+  Result<SysRowEntries> CollectEntriesAsOfTime(
+      const NamespaceId& namespace_id, CollectFlags flags, HybridTime read_time,
+      CoarseTimePoint deadline);
 
   Status PopulateDeleteRetainerInfoForTableDrop(
       const TableInfo& table_info, const TabletInfos& tablets_to_check,

@@ -25,7 +25,7 @@ import { YBSelect } from '../../redesign/components';
 import { RbacValidator } from '../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../redesign/features/rbac/ApiAndUserPermMapping';
 import dbSettingsIcon from './images/db-settings.svg';
-import documentationIcon from './images/documentation.svg';
+import documentationIcon from '../../redesign/assets/documentation.svg';
 import EmptyTrayIcon from './images/empty-tray.svg';
 import WarningIcon from './images/warning.svg';
 

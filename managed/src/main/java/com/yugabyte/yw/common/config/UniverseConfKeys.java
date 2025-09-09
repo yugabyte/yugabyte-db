@@ -1192,8 +1192,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           new ConfKeyInfo<>(
               "yb.xcluster.db_scoped.failover.delete_replication_on_source_timeout",
               ScopeType.UNIVERSE,
-              "Maximum timeout for yb client RPC call to delete the outbound replication on the"
-                  + " source universe during failover task execution",
+              "Maximum timeout for delete replication RPC on source during failover",
               "If the source universe is down, this RPC call will time out during failover"
                   + " operation, increasing the failover task execution time; The lower the value,"
                   + " the less time the failover task will take to complete. If it is set to zero,"
@@ -1205,17 +1204,17 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
       new ConfKeyInfo<>(
           "yb.xcluster.db_scoped.creationEnabled",
           ScopeType.UNIVERSE,
-          "Flag to enable db scoped xCluster replication creation",
-          "If flag is enabled, allows DR creation with db scoped xCluster replication",
+          "Enable xCluster DR Semi-automatic Mode",
+          "When enabled, new xCluster DR configurations use Semi-automatic mode.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> XClusterDbScopedAutomaticDdlCreationEnabled =
       new ConfKeyInfo<>(
           "yb.xcluster.db_scoped.automatic_ddl.creationEnabled",
           ScopeType.UNIVERSE,
-          "Flag indicating if db scoped xCluster replication should have automatic DDL replication",
-          "If flag and yb.xcluster.db_scoped.creationEnabled are enabled, newly created DR configs"
-              + " will have automatic DDL replication",
+          "Enable xCluster DR Automatic Mode",
+          "When this and yb.xcluster.db_scoped.creationEnabled are both enabled, new xCluster DR"
+              + " configurations use Automatic mode.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> leaderlessTabletsCheckEnabled =

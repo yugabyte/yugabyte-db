@@ -787,6 +787,14 @@
     showSection = true
 
 [[preview_api]]
+  name = "Supporting language elements"
+  weight = 50
+  identifier = "ysql-language-elements"
+  parent = "api-ysql"
+  [preview_api.params]
+    showSection = true
+
+[[preview_api]]
   name = "YCQL"
   weight = 11
   identifier = "api-cassandra"
@@ -1032,6 +1040,15 @@
     showSection = true
     hideLink = true
 
+[[preview_yugabyte-voyager]]
+  name = "Misc"
+  identifier = "yb-voyager-misc"
+  parent = "reference-voyager"
+  weight = 120
+  [preview_yugabyte-voyager.params]
+    showSection = true
+    hideLink = true
+
 ########## Menus for stable
 
 [[stable]]
@@ -1164,6 +1181,14 @@
   weight = 10
   identifier = "api-ysql"
   url = "/stable/api/ysql/"
+  [stable_api.params]
+    showSection = true
+
+[[stable_api]]
+  name = "Supporting language elements"
+  weight = 50
+  identifier = "ysql-language-elements"
+  parent = "api-ysql"
   [stable_api.params]
     showSection = true
 
@@ -1609,7 +1634,7 @@
     showSection = true
     hideLink = true
 
-########## Menus (in v2024.1) for APIs
+########## Menus (in v2025.1) for APIs
 
 [["v2025.1_api"]]
   name = "API"
@@ -1781,3 +1806,64 @@
   ["v2.20_yugabyte-platform".params]
     showSection = true
     newTab = true
+
+########## Menus (in v2.20) for APIs
+
+[["v2.20_api"]]
+  name = "API"
+  weight = 2
+  identifier = "api"
+  url = "/v2.20/api/"
+  ["v2.20_api".params]
+    classes = "separator"
+    showSection = true
+
+[["v2.20_api"]]
+  name = "YSQL"
+  weight = 10
+  identifier = "api-ysql"
+  url = "/v2.20/api/ysql/"
+  ["v2.20_api".params]
+    showSection = true
+
+[["v2.20_api"]]
+  name = "YCQL"
+  weight = 11
+  identifier = "api-cassandra"
+  url = "/v2.20/api/ycql/"
+  ["v2.20_api".params]
+    classes = "separator"
+    showSection = true
+
+[["v2.20_api"]]
+  name = "ysqlsh"
+  weight = 20
+  identifier = "ysqlsh"
+  url = "/v2.20/api/ysqlsh/"
+  ["v2.20_api".params]
+    showSection = true
+
+[["v2.20_api"]]
+  name = "ycqlsh"
+  weight = 21
+  identifier = "ycqlsh"
+  url = "/v2.20/api/ycqlsh/"
+  ["v2.20_api".params]
+    classes = "separator"
+    showSection = true
+
+[["v2.20_api"]]
+  name = "YugabyteDB Anywhere API"
+  weight = 30
+  identifier = "yugabytedb-anywhere-api"
+  url = "/v2.20/yugabyte-platform/anywhere-automation/anywhere-api/"
+  ["v2.20_api".params]
+    showSection = true
+
+[["v2.20_api"]]
+  name = "YugabyteDB Aeon API"
+  weight = 31
+  identifier = "yugabytedb-managed-api"
+  url = "/preview/yugabyte-cloud/managed-automation/managed-api/"
+  ["v2.20_api".params]
+    showSection = true

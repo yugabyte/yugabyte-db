@@ -20,6 +20,20 @@
 #endif
 #endif
 
+#ifdef __clang__
+#define PRAGMA_POP_OPTIONS _Pragma("clang attribute pop")
+#define PRAGMA_PUSH_AVX_OPTIONS _Pragma("clang attribute push(__attribute__((target(\"avx\"))), apply_to = function)")
+#define PRAGMA_PUSH_AVX512_OPTIONS _Pragma("clang attribute push(__attribute__((target(\"avx2,avx512f,avx512vl,bmi2\"))), apply_to = function)")
+#else
+#define PRAGMA_POP_OPTIONS _Pragma("GCC pop_options")
+#define PRAGMA_PUSH_AVX_OPTIONS \
+            _Pragma("GCC push_options") \
+            _Pragma("GCC target(\"avx\")")
+#define PRAGMA_PUSH_AVX512_OPTIONS \
+            _Pragma("GCC push_options") \
+            _Pragma("GCC target(\"avx2\", \"avx512f\", \"avx512vl\", \"bmi2\")")
+#endif
+
 #if defined(USE_AVX) || defined(USE_SSE)
 #ifdef _MSC_VER
 #include <intrin.h>

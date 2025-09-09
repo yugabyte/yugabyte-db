@@ -179,12 +179,6 @@ SAVEPOINT test12_sp;
 CREATE TABLE test13 (a int primary key, b int);
 ROLLBACK;
 
--- Savepoint after DDL disallowed.
-BEGIN;
-CREATE TABLE test13 (a int primary key, b int);
-SAVEPOINT test13_sp;
-ROLLBACK;
-
 BEGIN;
 CREATE TEMPORARY TABLE temp_table (
     a INT PRIMARY KEY

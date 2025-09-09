@@ -29,10 +29,16 @@
 #pragma GCC diagnostic ignored "-Wshorten-64-to-32"
 #endif
 
+#if defined(__x86_64__) || defined(_M_X64)
+#define USE_AVX512
+#define USE_AVX
+#endif
+
 #include "hnswlib/hnswlib.h"
 #include "hnswlib/hnswalg.h"
-#include "hnswlib/space_ip.h"
-#include "hnswlib/space_l2.h"
+
+#undef USE_AVX
+#undef USE_AVX512
 
 #pragma GCC diagnostic pop
 

@@ -44,7 +44,7 @@ To create a Sandbox cluster:
     - **Provider**: Choose a cloud provider - AWS or GCP.
     - **Region**: Choose the region in which to deploy the cluster.
     - **Database Version**: Choose the release track.
-    - **Enhanced Postgres Compatibility**: Select this option to enable [Enhanced PostgreSQL Compatibility Mode](../../../../develop/postgresql-compatibility/).
+    - **Enhanced Postgres Compatibility**: Select this option to enable [Enhanced PostgreSQL Compatibility Mode](../../../../reference/configuration/postgresql-compatibility/).
 
     Connection Pooling is always enabled for Sandbox clusters.
 

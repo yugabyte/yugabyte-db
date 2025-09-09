@@ -4,7 +4,7 @@ headerTitle: END
 linkTitle: END
 description: Use the `END` statement to commit the current transaction.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: txn_end
     parent: statements
 type: docs

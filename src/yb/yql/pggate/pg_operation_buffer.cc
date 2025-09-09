@@ -43,6 +43,7 @@
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 
 DECLARE_uint64(rpc_max_message_size);
 DECLARE_double(max_buffer_size_to_rpc_limit_ratio);
@@ -235,11 +236,13 @@ class PgOperationBuffer::Impl {
     return ClearOnError(DoAdd(table, std::move(op), transactional));
   }
 
-  Status Flush() {
+  Status Flush(const YbcFlushDebugContext& context) {
+    debug_context_ = &context;
     return ClearOnError(DoFlush());
   }
 
-  Result<BufferableOperations> Take(bool transactional) {
+  Result<BufferableOperations> Take(bool transactional, const YbcFlushDebugContext& context) {
+    debug_context_ = &context;
     return ClearOnError(DoTake(transactional));
   }
 
@@ -275,6 +278,7 @@ class PgOperationBuffer::Impl {
     if (!res.ok()) {
       Clear();
     }
+    debug_context_ = nullptr;
     return res;
   }
 
@@ -325,6 +329,8 @@ class PgOperationBuffer::Impl {
     const size_t payload = write_request.SerializedSize();
     const size_t max_size = GetAtomicFlag(&FLAGS_rpc_max_message_size) *
                             FLAGS_max_buffer_size_to_rpc_limit_ratio;
+    const bool need_flush_context = yb_debug_log_docdb_requests;
+
     if (keys_.size() % buffering_settings_.multiple == 0 &&
         total_bytes_in_buffer_ + payload >= max_size) {
       // The data size in buffer exceeds the limit, need to flush buffer.
@@ -332,6 +338,9 @@ class PgOperationBuffer::Impl {
       // when the op comes from a row rather than an index. This makes the check very simple,
       // but it should be sufficient to catch common cases where the average row size is large,
       // causing the buffer size to exceed the RPC limit with the default batch size.
+      internal_debug_context_.reason = YB_BUFFER_FULL;
+      internal_debug_context_.uintarg = total_bytes_in_buffer_ + payload;
+      debug_context_ = &internal_debug_context_;
       RETURN_NOT_OK(SendBuffer());
     }
 
@@ -351,7 +360,12 @@ class PgOperationBuffer::Impl {
         }
       }
       if (has_conflict) {
-        RETURN_NOT_OK(Flush());
+        YbcFlushDebugContext debug_context {};
+        debug_context.reason = YB_CONFLICTING_KEY_WRITE;
+        debug_context.oidarg = table.pg_table_id().object_oid;
+        debug_context.strarg1 =
+            need_flush_context ? table.table_name().table_name().c_str() : nullptr;
+        RETURN_NOT_OK(Flush(debug_context));
         for (auto it = packed_rows.begin(); it != packed_rows.end(); it += 2) {
           SCHECK(keys_.insert(RowIdentifier(table_relfilenode_id, *it)).second, IllegalState,
                  "Unable to insert key: $0", packed_rows);
@@ -361,7 +375,15 @@ class PgOperationBuffer::Impl {
       RowIdentifier row_id(table_relfilenode_id, table.schema(), write_request);
       if (PREDICT_FALSE(!keys_.insert(row_id).second)) {
         RETURN_NOT_OK(CheckDuplicateInsertForFastPathCopy(table, stmt_type, need_transaction));
-        RETURN_NOT_OK(Flush());
+
+        YbcFlushDebugContext debug_context {};
+        debug_context.reason = YB_CONFLICTING_KEY_WRITE;
+        debug_context.oidarg = table.pg_table_id().object_oid;
+        if (need_flush_context) {
+          debug_context.strarg1 = table.table_name().table_name().c_str();
+          debug_context.strarg2 = row_id.ybctid().ToDebugHexString().c_str();
+        }
+        RETURN_NOT_OK(Flush(debug_context));
         keys_.insert(row_id);
       } else {
         // Prevent conflicts on in-flight operations which use current row_id.
@@ -375,7 +397,15 @@ class PgOperationBuffer::Impl {
     }
     target.Add(std::move(op), table);
     total_bytes_in_buffer_ += write_request.SerializedSize();
-    return keys_.size() >= buffering_settings_.max_batch_size ? SendBuffer() : Status::OK();
+
+    if (keys_.size() >= buffering_settings_.max_batch_size) {
+      internal_debug_context_.reason = YB_BUFFER_FULL;
+      internal_debug_context_.uintarg = total_bytes_in_buffer_;
+      debug_context_ = &internal_debug_context_;
+      return SendBuffer();
+    }
+
+    return Status::OK();
   }
 
   Status DoFlush() {
@@ -406,6 +436,7 @@ class PgOperationBuffer::Impl {
   }
 
   Status EnsureAllCompleted() {
+    debug_context_ = nullptr;
     return EnsureCompleted(in_flight_ops_.size());
   }
 
@@ -470,7 +501,8 @@ class PgOperationBuffer::Impl {
         RETURN_NOT_OK(EnsureCompleted(1));
       }
       in_flight_ops_.push_back(
-          InFlightOperation(VERIFY_RESULT(flusher_(std::move(ops), transactional))));
+          InFlightOperation(VERIFY_RESULT(flusher_(
+              std::move(ops), transactional, *debug_context_))));
       return true;
     }
     return false;
@@ -483,6 +515,11 @@ class PgOperationBuffer::Impl {
   RowKeys keys_;
   uint32_t total_bytes_in_buffer_ = 0;
   InFlightOps in_flight_ops_;
+
+  // Holds debug context about what is the cause of the flush
+  const YbcFlushDebugContext* debug_context_ = nullptr;
+  // Populates the debug context when the flush is caused by internal buffer control policy
+  YbcFlushDebugContext internal_debug_context_ = YbcFlushDebugContext();
 };
 
 PgOperationBuffer::PgOperationBuffer(
@@ -495,12 +532,13 @@ Status PgOperationBuffer::Add(const PgTableDesc& table, PgsqlWriteOpPtr op, bool
     return impl_->Add(table, std::move(op), transactional);
 }
 
-Status PgOperationBuffer::Flush() {
-    return impl_->Flush();
+Status PgOperationBuffer::Flush(const YbcFlushDebugContext& context) {
+    return impl_->Flush(context);
 }
 
-Result<BufferableOperations> PgOperationBuffer::Take(bool transactional) {
-  return impl_->Take(transactional);
+Result<BufferableOperations> PgOperationBuffer::Take(
+    bool transactional, const YbcFlushDebugContext& context) {
+  return impl_->Take(transactional, context);
 }
 
 size_t PgOperationBuffer::Size() const {

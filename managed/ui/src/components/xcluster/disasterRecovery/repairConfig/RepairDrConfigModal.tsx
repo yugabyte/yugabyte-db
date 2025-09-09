@@ -30,7 +30,7 @@ import {
   hasNecessaryPerm,
   RbacValidator
 } from '../../../../redesign/features/rbac/common/RbacApiPermValidator';
-import { IStorageConfig as BackupStorageConfig } from '../../../backupv2';
+import { CustomerConfig as BackupStorageConfig } from '../../../backupv2';
 
 import { Universe } from '../../../../redesign/helpers/dtos';
 import { DrConfig } from '../dtos';

@@ -7830,7 +7830,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAtomicDDLDropColumn)) {
   // Sleep to ensure that second CHANGE_METADATA_OP is written to the WAL
   SleepFor(MonoDelta::FromSeconds(10));
 
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, false));
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}, MonoDelta::FromSeconds(1000)));
 
   // Call getChanges to consume the records
   auto get_changes_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
@@ -8676,7 +8676,7 @@ TEST_F(CDCSDKYsqlTest, TestPackedRowsWithLargeColumnValue) {
       "UPDATE $0 SET $1 = '$2' WHERE $3 = 1", kTableName, kValue2ColumnName, text + text,
       kKeyColumnName));
   ASSERT_OK(conn.Execute("COMMIT"));
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 30, false));
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}));
 
   std::unordered_set<std::string> record_primary_key;
   std::unordered_set<std::string> record_table_id;
@@ -8727,7 +8727,7 @@ TEST_F(CDCSDKYsqlTest, TestPackedRowsWithLargeColumnValue) {
       "UPDATE $0 SET $1 = '$2', $4 = 22, $5 = '$6' WHERE $3 = 2", kTableName, kValue2ColumnName,
       text + text, kKeyColumnName, kValueColumnName, kValue3ColumnName, text));
   ASSERT_OK(conn.Execute("COMMIT"));
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 30, false));
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}));
 
   get_changes_resp =
       ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &get_changes_resp.cdc_sdk_checkpoint()));
@@ -8780,7 +8780,7 @@ TEST_F(CDCSDKYsqlTest, TestPackedRowsWithLargeColumnValue) {
       "INSERT INTO $0($1, $2, $3, $4) VALUES (3, 4, NULL, '$5')", kTableName, kKeyColumnName,
       kValueColumnName, kValue2ColumnName, kValue3ColumnName, text));
   ASSERT_OK(conn.Execute("COMMIT"));
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 30, false));
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}));
 
   get_changes_resp =
       ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &get_changes_resp.cdc_sdk_checkpoint()));
@@ -8852,7 +8852,7 @@ TEST_F(CDCSDKYsqlTest, TestPackedRowsWithLargeColumnValueSingleShardTransaction)
   ASSERT_OK(conn.ExecuteFormat(
       "UPDATE $0 SET $1 = '$2' WHERE $3 = 1", kTableName, kValue2ColumnName, text + text,
       kKeyColumnName));
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 30, false));
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}));
 
   std::unordered_set<std::string> record_primary_key;
   std::unordered_set<std::string> record_table_id;
@@ -8897,7 +8897,7 @@ TEST_F(CDCSDKYsqlTest, TestPackedRowsWithLargeColumnValueSingleShardTransaction)
   ASSERT_OK(conn.ExecuteFormat(
       "INSERT INTO $0($1, $2, $3, $4) VALUES (3, 4, NULL, '$5')", kTableName, kKeyColumnName,
       kValueColumnName, kValue2ColumnName, kValue3ColumnName, text));
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 30, false));
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}));
   get_changes_resp =
       ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &get_changes_resp.cdc_sdk_checkpoint()));
 

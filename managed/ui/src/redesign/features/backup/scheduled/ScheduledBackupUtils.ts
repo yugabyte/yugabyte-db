@@ -12,8 +12,9 @@ import { groupBy, isArray } from 'lodash';
 import {
   BACKUP_API_TYPES,
   Backup_Options_Type,
-  IStorageConfig,
-  ITable
+  CustomerConfig,
+  ITable,
+  StorageConfig
 } from '../../../../components/backupv2';
 import {
   ExtendedBackupScheduleProps,
@@ -27,13 +28,15 @@ export const DEFAULT_MIN_INCREMENTAL_BACKUP_INTERVAL = 1800; //in secs
 
 // group storage configs by provider type
 
-export const groupStorageConfigs = (storageConfigs: IStorageConfig[]) => {
+export const groupStorageConfigs = (storageConfigs: CustomerConfig[]) => {
   if (!isArray(storageConfigs)) {
     return [];
   }
-  const filteredConfigs = storageConfigs.filter((c: IStorageConfig) => c.type === 'STORAGE');
+  const filteredConfigs = storageConfigs.filter(
+    (config: CustomerConfig) => config.type === 'STORAGE'
+  ) as StorageConfig[];
 
-  const configs = filteredConfigs.map((c: IStorageConfig) => {
+  const configs = filteredConfigs.map((c) => {
     return {
       value: c.configUUID,
       label: c.configName,
@@ -42,7 +45,7 @@ export const groupStorageConfigs = (storageConfigs: IStorageConfig[]) => {
     };
   });
 
-  return Object.entries(groupBy(configs, (c: IStorageConfig) => c.name)).map(([label, options]) => {
+  return Object.entries(groupBy(configs, (config) => config.name)).map(([label, options]) => {
     return { label, options };
   });
 };

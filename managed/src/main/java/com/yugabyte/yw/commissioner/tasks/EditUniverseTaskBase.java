@@ -25,6 +25,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashSet;
@@ -38,6 +39,8 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
+
+  protected Collection<NodeDetails> prevNodes = new ArrayList<>();
 
   @Inject
   public EditUniverseTaskBase(BaseTaskDependencies baseTaskDependencies) {
@@ -114,7 +117,6 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       Cluster cluster,
       Set<NodeDetails> newMasters,
       Set<NodeDetails> mastersToStop,
-      boolean updateMasters,
       boolean forceDestroyServers) {
     UserIntent userIntent = cluster.userIntent;
     Set<NodeDetails> nodes = taskParams().getNodesInCluster(cluster.uuid);

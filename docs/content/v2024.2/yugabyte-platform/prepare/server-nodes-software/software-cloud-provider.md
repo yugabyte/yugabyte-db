@@ -1,9 +1,9 @@
 ---
-title: YugabyteDB Anywhere node software requirements
-headerTitle: Software requirements for cloud provider nodes
+title: Provision servers for cloud provider configuration database nodes
+headerTitle: Software requirements for cloud provider configuration database nodes 
 linkTitle: Cloud provider
-description: Software requirements for cloud provider nodes.
-headContent: Prepare a VM for deploying universes on cloud providers
+description: Prepare a VM for deploying universes using cloud provider configurations.
+headContent: Prepare a VM for deploying universes using a cloud provider configuration
 menu:
   v2024.2_yugabyte-platform:
     identifier: software-cloud-provider
@@ -12,20 +12,20 @@ menu:
 type: docs
 ---
 
-When deploying database clusters using a public cloud provider configuration (AWS, GCP, or Azure), YugabyteDB Anywhere (YBA) creates cloud VMs directly.
+When deploying universes using a public [cloud provider configuration](../../../yba-overview/#provider-configurations) (AWS, GCP, or Azure), YugabyteDB Anywhere (YBA) creates cloud VMs for database nodes directly.
 
-You have two options for provisioning the operating system:
+You have two options for provisioning the operating system for database nodes:
 
 - Use a default (YBA-managed) Linux version (and disk image).
 - Specify a custom Linux version (and disk image).
 
-Using a YBA-managed Linux version requires connectivity from the database cluster nodes to the public Internet. If you lack such connectivity, you will need to use a custom Linux version.
+Using a YBA-managed Linux version requires connectivity from the database nodes to the public Internet. If you lack such connectivity, you will need to use a custom Linux version.
 
 ## YBA-managed Linux version
 
 For YBA-managed Linux version, YBA manages the creation and provisioning of database cluster nodes, including installing the disk image, configuring the Linux OS, and installing the additional software.
 
-You can proceed directly to installing YBA, creating your provider, and creating universes.
+You can proceed directly to installing YBA, creating your cloud provider configuration, and creating universes.
 
 ## Custom Linux version with Internet connectivity
 

@@ -5,6 +5,7 @@ import { AxiosError } from 'axios';
 import { toast } from 'react-toastify';
 import { Typography } from '@material-ui/core';
 import { useMutation, useQueryClient } from 'react-query';
+import { useTranslation } from 'react-i18next';
 
 import { YBButton } from '../../common/forms/fields';
 import { HaConfig, HaReplicationSchedule } from '../dtos';
@@ -15,18 +16,12 @@ import { FREQUENCY_MULTIPLIER } from './HAReplicationForm';
 import { BadgeInstanceType } from '../compounds/BadgeInstanceType';
 import { YBCopyButton } from '../../common/descriptors';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
-import {
-  ManagePeerCertsModal,
-  PEER_CERT_PREFIX,
-  PEER_CERT_SUFFIX
-} from '../modals/ManagePeerCertsModal';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { api, QUERY_KEY } from '../../../redesign/helpers/api';
 import { handleServerError } from '../../../utils/errorHandlingUtils';
 import { YBMenuItemLabel } from '../../../redesign/components/YBDropdownMenu/YBMenuItemLabel';
 
 import './HAReplicationView.scss';
-import { useTranslation } from 'react-i18next';
 
 interface DispatchProps {
   fetchRuntimeConfigs: () => void;
@@ -50,30 +45,6 @@ export interface PeerCert {
   type: string;
 }
 
-export interface YbHAWebService {
-  ssl: {
-    trustManager: {
-      stores: PeerCert[];
-    };
-  };
-}
-
-export const YB_HA_WS_RUNTIME_CONFIG_KEY = 'yb.ha.ws';
-
-const PEER_CERT_IDENTIFIER_LENGTH = 64;
-
-export const EMPTY_YB_HA_WEBSERVICE = {
-  ssl: {
-    trustManager: {
-      stores: []
-    }
-  }
-};
-
-export const getPeerCerts = (ybHAWebService: YbHAWebService) => {
-  return ybHAWebService?.ssl?.trustManager?.stores;
-};
-
 const TRANSLATION_KEY_PREFIX = 'ha.config';
 const COMPONENT_NAME = 'HaReplicationView';
 export const HAReplicationView: FC<HAReplicationViewProps> = ({
@@ -81,8 +52,7 @@ export const HAReplicationView: FC<HAReplicationViewProps> = ({
   schedule,
   runtimeConfigs,
   editConfig: enterEditMode,
-  fetchRuntimeConfigs,
-  setRuntimeConfig
+  fetchRuntimeConfigs
 }) => {
   const [isDeleteModalVisible, setDeleteModalVisible] = useState(false);
   const [isPromoteModalVisible, setPromoteModalVisible] = useState(false);
@@ -94,19 +64,6 @@ export const HAReplicationView: FC<HAReplicationViewProps> = ({
   const hideDeleteModal = () => setDeleteModalVisible(false);
   const showPromoteModal = () => setPromoteModalVisible(true);
   const hidePromoteModal = () => setPromoteModalVisible(false);
-  // fetch only specific key
-  const showAddPeerCertModal = () => {
-    fetchRuntimeConfigs();
-    setAddPeerCertsModalVisible(true);
-  };
-  const hideAddPeerCertModal = () => {
-    fetchRuntimeConfigs();
-    setAddPeerCertsModalVisible(false);
-  };
-
-  const setYBHAWebserviceRuntimeConfig = (value: string) => {
-    setRuntimeConfig(YB_HA_WS_RUNTIME_CONFIG_KEY, value);
-  };
 
   useEffect(() => {
     fetchRuntimeConfigs();
@@ -134,12 +91,6 @@ export const HAReplicationView: FC<HAReplicationViewProps> = ({
     }
   );
   const isRuntimeConfigLoaded = runtimeConfigs?.data && getPromiseState(runtimeConfigs).isSuccess();
-  const ybHAWebService: YbHAWebService = isRuntimeConfigLoaded
-    ? JSON.parse(
-        runtimeConfigs.data.configEntries.find((c: any) => c.key === YB_HA_WS_RUNTIME_CONFIG_KEY)
-          .value
-      )
-    : EMPTY_YB_HA_WEBSERVICE;
 
   // sort by is_leader to show active instance on the very top, then sort other items by address
   const sortedInstances = _.sortBy(haConfig.instances, [(item) => !item.is_leader, 'address']);
@@ -159,20 +110,10 @@ export const HAReplicationView: FC<HAReplicationViewProps> = ({
           visible={isPromoteModalVisible}
           onClose={hidePromoteModal}
         />
-        {currentInstance.is_leader && (
-          <ManagePeerCertsModal
-            visible={isAddPeerCertsModalVisible}
-            peerCerts={getPeerCerts(ybHAWebService)}
-            setYBHAWebserviceRuntimeConfig={setYBHAWebserviceRuntimeConfig}
-            onClose={hideAddPeerCertModal}
-          />
-        )}
 
-        <Row>
-          <Col xs={6}>
-            <h4>Overview</h4>
-          </Col>
-          <Col xs={6} className="ha-replication-view__header-buttons">
+        <Row className="ha-replication-view__header">
+          <Typography variant="h4">Overview</Typography>
+          <div className="ha-replication-view__header-buttons">
             {currentInstance.is_leader ? (
               <>
                 <DropdownButton
@@ -189,12 +130,12 @@ export const HAReplicationView: FC<HAReplicationViewProps> = ({
                     onSelect={() => toggleCertificateValidationMutation.mutate()}
                     name={`${
                       haConfig.accept_any_certificate ? 'Enable' : 'Disable'
-                    } Certficate Validation`}
+                    } Certificate Validation`}
                   >
                     <YBMenuItemLabel
                       label={`${
                         haConfig.accept_any_certificate ? 'Enable' : 'Disable'
-                      } Certficate Validation`}
+                      } Certificate Validation`}
                     />
                   </MenuItem>
                   <MenuItem onSelect={showDeleteModal} name="Delete Configuration">
@@ -218,7 +159,7 @@ export const HAReplicationView: FC<HAReplicationViewProps> = ({
                 <YBButton btnText="Delete Configuration" onClick={showDeleteModal} />
               </>
             )}
-          </Col>
+          </div>
         </Row>
         <Row className="ha-replication-view__row">
           <Col xs={2} className="ha-replication-view__label">

@@ -23,16 +23,17 @@ namespace master {
 // Keeps retrying until we get an "ok" response.
 class AsyncFlushTablets final : public RetrySpecificTSRpcTaskWithTable {
  public:
-  AsyncFlushTablets(Master* master,
-                    ThreadPool* callback_pool,
-                    const TabletServerId& ts_uuid,
-                    const scoped_refptr<TableInfo>& table,
-                    const std::vector<TabletId>& tablet_ids,
-                    const FlushRequestId& flush_id,
-                    bool is_compaction,
-                    bool regular_only,
-                    LeaderEpoch epoch,
-                    MonoTime deadline);
+  AsyncFlushTablets(
+      Master* master,
+      ThreadPool* callback_pool,
+      const TabletServerId& ts_uuid,
+      const scoped_refptr<TableInfo>& table,
+      const std::vector<TabletId>& tablet_ids,
+      const FlushRequestId& flush_id,
+      bool is_compaction,
+      tablet::FlushCompactFlags flags,
+      LeaderEpoch epoch,
+      MonoTime deadline);
 
   server::MonitoredTaskType type() const override {
     return server::MonitoredTaskType::kFlushTablets;
@@ -51,14 +52,14 @@ class AsyncFlushTablets final : public RetrySpecificTSRpcTaskWithTable {
   void Finished(const Status& status) override;
 
   MonoTime ComputeDeadline() const override {
-    return deadline_; // The deadline is explicitely set in constructor, no need to compute.
+    return deadline_; // The deadline is explicitly set in constructor, no need to compute.
   }
 
   const std::vector<TabletId> tablet_ids_;
   const FlushRequestId flush_id_;
   tserver::FlushTabletsResponsePB resp_;
-  bool is_compaction_ = false;
-  bool regular_only_ = false;
+  const bool is_compaction_ = false;
+  const tablet::FlushCompactFlags flags_ = tablet::FLUSH_COMPACT_DEFAULT;
   bool response_handling_ = false;
 };
 

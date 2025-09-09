@@ -518,7 +518,8 @@ public class NodeAgentRpcPayload {
                   queryLogConfig,
                   metricsExportConfig,
                   GFlagsUtil.getLogLinePrefix(gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
-                  NodeManager.getOtelColMetricsPort(taskParams))
+                  NodeManager.getOtelColMetricsPort(taskParams),
+                  nodeAgent)
               .toAbsolutePath()
               .toString();
       nodeAgentClient.uploadFile(
@@ -670,10 +671,11 @@ public class NodeAgentRpcPayload {
     UserIntent userIntent = nodeManager.getUserIntentFromParams(universe, taskParams);
     ServerGFlagsInput.Builder builder =
         ServerGFlagsInput.newBuilder().setServerHome(serverHome).setServerName(serverName);
+
     Map<String, String> gflags =
         new HashMap<>(
             GFlagsUtil.getAllDefaultGFlags(
-                taskParams, universe, userIntent, useHostname, appConfig, confGetter));
+                taskParams, universe, userIntent, useHostname, confGetter));
     if (processType.equals(ServerType.CONTROLLER.toString())) {
       // TODO Is the check taskParam.isEnableYbc() required here?
       Map<String, String> ybcFlags =

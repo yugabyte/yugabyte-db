@@ -124,6 +124,7 @@ YB_STRONGLY_TYPED_BOOL(ResetSplit);
 struct AdminCompactionOptions {
   StdStatusCallback compaction_completion_callback;
   TableIdsPtr vector_index_ids;
+  VectorIndexOnly vector_index_only = VectorIndexOnly::kTrue;
   rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe =
       rocksdb::SkipCorruptDataBlocksUnsafe::kFalse;
 };
@@ -1011,14 +1012,12 @@ class Tablet : public AbstractTablet,
   void DocDBDebugDump(std::vector<std::string> *lines);
 
   Status WriteTransactionalBatch(
-      int64_t batch_idx, // index of this batch in its transaction
-      const docdb::LWKeyValueWriteBatchPB& put_batch,
-      HybridTime hybrid_time,
+      int64_t batch_idx,  // index of this batch in its transaction
+      const docdb::LWKeyValueWriteBatchPB& put_batch, HybridTime hybrid_time,
       const rocksdb::UserFrontiers& frontiers);
 
   Result<TransactionOperationContext> CreateTransactionOperationContext(
-      const boost::optional<TransactionId>& transaction_id,
-      bool is_ysql_catalog_table,
+      const std::optional<TransactionId>& transaction_id, bool is_ysql_catalog_table,
       const SubTransactionMetadataPB* subtransaction_metadata = nullptr) const;
 
   // Pause new read/write operations that are blocking/not blocking start of RocksDB shutdown and
@@ -1051,7 +1050,7 @@ class Tablet : public AbstractTablet,
     return TriggerManualCompactionSyncUnsafe(reason, rocksdb::SkipCorruptDataBlocksUnsafe::kFalse);
   }
 
-  void TriggerVectorIndexCompactionSync(const TableIds& vector_index_ids);
+  Status TriggerVectorIndexCompactionSync(const TableIds& vector_index_ids);
 
   Status ForceRocksDBCompact(
       const rocksdb::CompactRangeOptions& regular_options,

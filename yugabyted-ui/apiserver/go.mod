@@ -1,8 +1,6 @@
 module apiserver
 
-go 1.23.1
-
-toolchain go1.23.6
+go 1.24.6
 
 require (
 	github.com/jackc/pgtype v1.14.3
@@ -21,7 +19,7 @@ require (
 	github.com/gocql/gocql v1.1.0 // indirect
 	github.com/golang/snappy v0.0.3 // indirect
 	github.com/hailocab/go-hostpool v0.0.0-20160125115350-e80d13ce29ed // indirect
-	github.com/hashicorp/go-version v1.7.0
+	github.com/hashicorp/go-version v1.7.0 // indirect
 	github.com/jackc/chunkreader/v2 v2.0.1 // indirect
 	github.com/jackc/pgconn v1.14.3 // indirect
 	github.com/jackc/pgio v1.0.0 // indirect

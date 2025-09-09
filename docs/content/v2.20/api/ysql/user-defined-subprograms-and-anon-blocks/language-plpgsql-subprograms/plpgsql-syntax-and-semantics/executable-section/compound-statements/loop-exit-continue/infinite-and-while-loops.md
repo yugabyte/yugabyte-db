@@ -4,7 +4,7 @@ headerTitle: The "infinite loop" and the "while loop"
 linkTitle: Infinite and while loops
 description: Describes the syntax and semantics of the "infinite loop" and the "while loop" [YSQL]
 menu:
-  v2.20:
+  v2.20_api:
     identifier: infinite-and-while-loops
     parent: loop-exit-continue
     weight: 10

@@ -480,7 +480,6 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 				rc = od_write(&client->io, msg);
 				if (rc < 0)
 					rc_auth = -1;
-				machine_msg_free(msg);
 				continue;
 			}
 			machine_msg_free(msg);

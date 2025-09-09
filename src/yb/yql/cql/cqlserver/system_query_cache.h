@@ -22,13 +22,12 @@
 #include <condition_variable>
 #include <unordered_map>
 
-#include <boost/optional.hpp>
-
 #include "yb/gutil/thread_annotations.h"
 
 #include "yb/rpc/io_thread_pool.h"
 
 #include "yb/util/monotime.h"
+#include "yb/util/one_time_bool.h"
 
 #include "yb/yql/cql/ql/util/statement_params.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
@@ -51,7 +50,7 @@ class SystemQueryCache {
   explicit SystemQueryCache(cqlserver::CQLServiceImpl* service_impl);
   ~SystemQueryCache();
 
-  boost::optional<RowsResult::SharedPtr> Lookup(const std::string& query);
+  std::optional<RowsResult::SharedPtr> Lookup(const std::string& query);
 
   MonoDelta GetStaleness();
 
@@ -78,7 +77,7 @@ class SystemQueryCache {
   std::unique_ptr<yb::rpc::IoThreadPool> pool_;
   // The scheduler used to refresh the system queries.
   std::unique_ptr<yb::rpc::Scheduler> scheduler_;
-  std::atomic_bool shutting_down_{false};
+  OneTimeBool shutting_down_;
 };
 
 } // namespace cqlserver

@@ -29,6 +29,36 @@ properties:
       - NORMAL
       - MINIMAL
       - 'OFF'
+  scrape_config_targets:
+    description: |
+      Set of target types to include in scrape configuration. If not specified, all supported target types will be included.
+      Allowed values are:
+        - MASTER_EXPORT: Master server metrics
+        - TSERVER_EXPORT: Tserver metrics  
+        - YSQL_EXPORT: YSQL server metrics
+        - CQL_EXPORT: YCQL server metrics
+        - NODE_EXPORT: Node exporter metrics
+        - NODE_AGENT_EXPORT: Node agent metrics
+        - OTEL_EXPORT: OpenTelemetry collector internal metrics
+    type: array
+    items:
+      $ref: "./ScrapeConfigTargetType.yaml"
+    example:
+      - MASTER_EXPORT
+      - TSERVER_EXPORT
+      - YSQL_EXPORT
+      - CQL_EXPORT
+      - NODE_EXPORT
+      - NODE_AGENT_EXPORT
+      - OTEL_EXPORT
+    default:
+      - MASTER_EXPORT
+      - TSERVER_EXPORT
+      - YSQL_EXPORT
+      - CQL_EXPORT
+      - NODE_EXPORT
+      - NODE_AGENT_EXPORT
+      - OTEL_EXPORT
   universe_metrics_exporter_config:
     description: 'List of universe metrics exporter configurations. If empty, no metrics will be sent anywhere.'
     type: array

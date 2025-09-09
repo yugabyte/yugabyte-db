@@ -301,7 +301,7 @@ static inline void od_system_server(void *arg)
 
 	for (;;) {
 		/* do not accept new client */
-		if (server->closed) {
+		if (atomic_load(&server->closed)) {
 			od_dbg_printf_on_dvl_lvl(1, "%s shutting receptions\n",
 						 server->sid.id);
 			od_system_server_pre_stop(server);
@@ -416,7 +416,7 @@ od_system_server_t *od_system_server_init(void)
 	server->io = NULL;
 	server->tls = NULL;
 	od_id_generate(&server->sid, "sid");
-	server->closed = false;
+	atomic_init(&server->closed, false);
 	server->pre_exited = false;
 
 	return server;

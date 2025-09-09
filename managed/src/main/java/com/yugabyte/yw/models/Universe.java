@@ -72,6 +72,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.Getter;
 import lombok.Setter;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -84,6 +85,7 @@ import play.libs.Json;
 @Entity
 @Getter
 @Setter
+@Slf4j
 public class Universe extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(Universe.class);
   public static final String DISABLE_ALERTS_UNTIL = "disableAlertsUntilSecs";
@@ -473,6 +475,7 @@ public class Universe extends Model {
     @Builder.Default private boolean freezeUniverse = true;
     private boolean ignoreAbsence;
     private Consumer<Universe> callback;
+    @Builder.Default private boolean rollbackPerformed = false;
   }
 
   /**

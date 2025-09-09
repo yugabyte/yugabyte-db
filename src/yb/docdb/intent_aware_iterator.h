@@ -13,13 +13,10 @@
 
 #pragma once
 
-#include <boost/optional/optional.hpp>
-
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/read_hybrid_time.h"
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
-#include "yb/docdb/intent_aware_iterator_interface.h"
 #include "yb/docdb/transaction_status_cache.h"
 
 #include "yb/dockv/key_bytes.h"
@@ -33,6 +30,48 @@
 namespace yb::docdb {
 
 YB_DEFINE_ENUM(ResolvedIntentState, (kNoIntent)(kInvalidPrefix)(kValid));
+YB_DEFINE_ENUM(Direction, (kForward)(kBackward));
+YB_DEFINE_ENUM(SeekFilter, (kAll)(kIntentsOnly));
+YB_STRONGLY_TYPED_BOOL(Full);
+
+struct FetchedEntry {
+  Slice key;
+  Slice value;
+  EncodedDocHybridTime write_time;
+  bool same_transaction;
+  bool valid = false;
+
+  explicit operator bool() const {
+    return valid;
+  }
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(
+        (key, key.ToDebugString()), (value, value.ToDebugString()), write_time, same_transaction,
+        valid);
+  }
+
+  friend std::ostream& operator<<(std::ostream& out, const FetchedEntry& entry) {
+    return out << entry.ToString();
+  }
+};
+
+struct EncodedReadHybridTime {
+  EncodedDocHybridTime read;
+  EncodedDocHybridTime local_limit;
+  EncodedDocHybridTime global_limit;
+  EncodedDocHybridTime in_txn_limit;
+  bool local_limit_gt_read;
+
+  explicit EncodedReadHybridTime(const ReadHybridTime& read_time);
+
+  // The encoded hybrid time to use to filter records in regular RocksDB. This is the maximum of
+  // read_time and local_limit (in terms of hybrid time comparison), and this slice points to
+  // one of the strings above.
+  Slice regular_limit() const {
+    return local_limit_gt_read ? local_limit.AsSlice() : read.AsSlice();
+  }
+};
 
 // Provides a way to iterate over DocDB (sub)keys with respect to committed intents transparently
 // for caller. Implementation relies on intents order in RocksDB, which is determined by intent key
@@ -50,7 +89,7 @@ YB_DEFINE_ENUM(ResolvedIntentState, (kNoIntent)(kInvalidPrefix)(kValid));
 //
 // KeyBytes/Slice passed to Seek* methods should not contain hybrid time.
 // HybridTime of subdoc_key in Seek* methods would be ignored.
-class IntentAwareIterator final : public IntentAwareIteratorIf {
+class IntentAwareIterator final {
  public:
   IntentAwareIterator(
       const DocDB& doc_db,
@@ -67,11 +106,11 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
   // Seek to the smallest key which is greater or equal than doc_key.
   void Seek(const dockv::DocKey& doc_key);
 
-  void Seek(Slice key, SeekFilter seek_filter, Full full = Full::kTrue) override;
+  void Seek(Slice key, SeekFilter seek_filter, Full full = Full::kTrue);
 
   // Seek forward to specified encoded key (it is responsibility of caller to make sure it
   // doesn't have hybrid time).
-  void SeekForward(Slice key) override;
+  void SeekForward(Slice key);
 
   void Next();
 
@@ -85,7 +124,7 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
   // For efficiency, this overload takes a non-const KeyBytes pointer avoids memory allocation by
   // using the KeyBytes buffer to prepare the key to seek to by appending an extra byte. The
   // appended byte is removed when the method returns.
-  void SeekOutOfSubDoc(SeekFilter seek_filter, dockv::KeyBytes* key_bytes) override;
+  void SeekOutOfSubDoc(SeekFilter seek_filter, dockv::KeyBytes* key_bytes);
 
   // Seek to last doc key.
   void SeekToLastDocKey();
@@ -93,10 +132,10 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
   // Seek to previous SubDocKey as opposed to previous DocKey. Used for Redis only.
   void PrevSubDocKey(const dockv::KeyBytes& key_bytes);
 
-  // Refer to the IntentAwareIteratorIf definition for the methods description.
+  // Refer to the IntentAwareIterator definition for the methods description.
   void PrevDocKey(const dockv::DocKey& doc_key);
-  void PrevDocKey(Slice encoded_doc_key) override;
-  void SeekPrevDocKey(Slice encoded_doc_key) override;
+  void PrevDocKey(Slice encoded_doc_key);
+  void SeekPrevDocKey(Slice encoded_doc_key);
 
   // Positions the iterator to the previous suitable record relative to the current position.
   void Prev();
@@ -107,16 +146,19 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
 
   // Fetches currently pointed key and also updates max_seen_ht to ht of this key. The key does not
   // contain the DocHybridTime but is returned separately and optionally.
-  Result<const FetchedEntry&> Fetch() override;
+  Result<const FetchedEntry&> Fetch();
 
   // Utility function to execute Next and retrieve result via Fetch in one call.
   Result<const FetchedEntry&> FetchNext();
 
-  const ReadHybridTime& read_time() const override { return read_time_; }
-  Result<ReadRestartData> GetReadRestartData() const override;
+  const ReadHybridTime& read_time() const {
+    return read_time_;
+  }
 
-  MaxSeenHtData ObtainMaxSeenHtCheckpoint() override;
-  void RollbackMaxSeenHt(MaxSeenHtData checkpoint) override;
+  Result<ReadRestartData> GetReadRestartData() const;
+
+  MaxSeenHtData ObtainMaxSeenHtCheckpoint();
+  void RollbackMaxSeenHt(MaxSeenHtData checkpoint);
 
   HybridTime TEST_MaxSeenHt() const;
 
@@ -149,7 +191,7 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
 
   void DebugDump();
 
-  std::string DebugPosToString() override;
+  std::string DebugPosToString();
 
  private:
   template <bool kLowerBound> friend class IntentAwareIteratorBoundScope;

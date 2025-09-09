@@ -586,7 +586,7 @@ Default: `50`
 
 When enabled, all databases created in the cluster are colocated by default. If you enable the flag after creating a cluster, you need to restart the YB-Master and YB-TServer services.
 
-For more details, see [clusters in colocated tables](../../../explore/colocation/#clusters).
+For more details, see [clusters in colocated tables](../../../additional-features/colocation/#clusters).
 
 Default: `false`
 
@@ -1223,7 +1223,7 @@ Default: `0`
 
 ## Change data capture (CDC) flags
 
-To learn about CDC, see [Change data capture (CDC)](../../../develop/change-data-capture/).
+To learn about CDC, see [Change data capture (CDC)](../../../additional-features/change-data-capture/).
 
 ##### --yb_enable_cdc_consistent_snapshot_streams
 
@@ -1317,7 +1317,7 @@ The following set of flags are only relevant for CDC using the PostgreSQL replic
 
 The default replica identity to be assigned to user-defined tables at the time of creation. The flag is case sensitive and can take only one of the four possible values, `FULL`, `DEFAULT`, `NOTHING`, and `CHANGE`.
 
-For more information, refer to [Replica identity](../../../develop/change-data-capture/using-logical-replication/yugabytedb-connector/#replica-identity).
+For more information, refer to [Replica identity](../../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/#replica-identity).
 
 Default: `CHANGE`
 
@@ -1775,7 +1775,7 @@ Default: true
 | enable_bitmapscan | yb_enable_bitmapscan | Result |
 | :--- | :---  | :--- |
 | true | false | Default. Bitmap scans allowed only on temporary tables, if the planner believes the bitmap scan is most optimal. |
-| true | true  | Default for [Enhanced PostgreSQL Compatibility](../../../develop/postgresql-compatibility/). Bitmap scans are allowed on temporary tables and YugabyteDB relations, if the planner believes the bitmap scan is most optimal. |
+| true | true  | Default for [Enhanced PostgreSQL Compatibility](../postgresql-compatibility/). Bitmap scans are allowed on temporary tables and YugabyteDB relations, if the planner believes the bitmap scan is most optimal. |
 | false | false | Bitmap scans allowed only on temporary tables, but only if every other scan type is also disabled / not possible. |
 | false | true  | Bitmap scans allowed on temporary tables and YugabyteDB relations, but only if every other scan type is also disabled / not possible. |
 
