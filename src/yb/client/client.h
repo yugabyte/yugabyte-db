@@ -58,6 +58,7 @@
 #include "yb/master/master_client.fwd.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_types.pb.h"
+#include "yb/tablet/tablet.pb.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -350,6 +351,8 @@ class YBClient {
   Status GetIndexBackfillProgress(
       const TableIds& index_ids,
       google::protobuf::RepeatedField<google::protobuf::uint64>* rows_processed_entries);
+
+  Result<google::protobuf::RepeatedPtrField<tablet::TabletStatusPB>> GetTabletsMetadata();
 
   Result<master::GetBackfillStatusResponsePB> GetBackfillStatus(
       const std::vector<std::string_view>& table_ids);

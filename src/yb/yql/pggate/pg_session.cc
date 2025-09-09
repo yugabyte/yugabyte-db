@@ -1306,8 +1306,8 @@ const std::string PgSession::LogPrefix() const {
   return Format("Session id $0: ", pg_client_.SessionID());
 }
 
-Result<yb::tserver::PgTabletsMetadataResponsePB> PgSession::TabletsMetadata() {
-  return pg_client_.TabletsMetadata();
+Result<tserver::PgTabletsMetadataResponsePB> PgSession::TabletsMetadata(bool local_only) {
+  return pg_client_.TabletsMetadata(local_only);
 }
 
 Result<yb::tserver::PgServersMetricsResponsePB> PgSession::ServersMetrics() {

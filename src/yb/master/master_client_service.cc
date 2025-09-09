@@ -135,6 +135,7 @@ class MasterClientServiceImpl : public MasterServiceBase, public MasterClientIf 
     (ReservePgsqlOids)
     (GetIndexBackfillProgress)
     (GetStatefulServiceLocation)
+    (GetTabletsMetadata)
   )
 
   MASTER_SERVICE_IMPL_ON_LEADER_WITHOUT_LOCK(

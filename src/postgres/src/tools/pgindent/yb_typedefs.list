@@ -250,12 +250,14 @@ YbcPgExplicitRowLockStatus
 YbcPgExpr
 YbcPgFunction
 YbcPgGFlagsAccessor
+YbcPgGlobalTabletsDescriptor
 YbcPgInitPostgresInfo
 YbcPgInitTransactionData
 YbcPgInsertOnConflictKeyInfo
 YbcPgInsertOnConflictKeyState
 YbcPgJwtAuthOptions
 YbcPgLastKnownCatalogVersionInfo
+YbcPgLocalTabletsDescriptor
 YbcPgMemctx
 YbcPgMetricsCaptureType
 YbcPgOid

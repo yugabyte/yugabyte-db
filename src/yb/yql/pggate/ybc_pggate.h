@@ -992,7 +992,9 @@ void YBCStoreTServerAshSamples(
     YbcAshAcquireBufferLock acquire_cb_lock_fn, YbcAshGetNextCircularBufferSlot get_cb_slot_fn,
     uint64_t sample_time);
 
-YbcStatus YBCLocalTablets(YbcPgTabletsDescriptor** tablets, size_t* count);
+YbcStatus YBCLocalTablets(YbcPgLocalTabletsDescriptor** tablets, size_t* count);
+
+YbcStatus YBCTabletsMetadata(YbcPgGlobalTabletsDescriptor** tablets, size_t* count);
 
 YbcStatus YBCServersMetrics(YbcPgServerMetricsInfo** serverMetricsInfo, size_t* count);
 

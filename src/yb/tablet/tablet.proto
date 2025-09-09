@@ -73,6 +73,9 @@ message TabletStatusPB {
   // Estimated size of the tablet on disk, including snapshots, retryable requests, MANIFEST,
   // and other files in those directories. This is updated periodically, so may be stale or 0.
   optional int64 total_on_disk_size = 23;
+  // Leader is the last replica in the list.
+  repeated string replicas = 24;
+  optional bool is_hash_partitioned = 25;
 }
 
 // Used to present the maintenance manager's internal state.

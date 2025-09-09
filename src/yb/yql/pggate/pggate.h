@@ -862,7 +862,7 @@ class PgApiImpl {
   Result<tserver::PgYCQLStatementStatsResponsePB> YCQLStatementStats();
   Result<tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory();
 
-  Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata();
+  Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata(bool local_only);
 
   Result<tserver::PgServersMetricsResponsePB> ServersMetrics();
 

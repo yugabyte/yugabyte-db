@@ -12,7 +12,7 @@
 [
 
 # For better version control conflict detection, list latest migration filename
-# here: V89__28474__alter_pg_stat_statements_add_rpc_stats.sql
-{ major => '89', minor => '0', name => '<baseline>', time_applied => '_null_' }
+# here: V90__28107__yb_tablet_metadata.sql
+{ major => '90', minor => '0', name => '<baseline>', time_applied => '_null_' }
 
 ]

@@ -157,6 +157,10 @@ typedef void (*YbcUpdateInitPostgresMetricsFn)(void);
 void YBCSetUpdateInitPostgresMetricsFn(YbcUpdateInitPostgresMetricsFn foo);
 void YBCUpdateInitPostgresMetrics();
 
+// Partition key hash decoding helpers
+uint16_t YBCDecodeMultiColumnHashLeftBound(const char* partition_key, size_t key_len);
+uint16_t YBCDecodeMultiColumnHashRightBound(const char* partition_key, size_t key_len);
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

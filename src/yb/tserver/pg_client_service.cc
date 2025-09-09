@@ -2397,8 +2397,13 @@ class PgClientServiceImpl::Impl : public SessionProvider {
   Status TabletsMetadata(
       const PgTabletsMetadataRequestPB& req, PgTabletsMetadataResponsePB* resp,
       rpc::RpcContext* context) {
-    const auto& result = VERIFY_RESULT(tablet_server_.GetLocalTabletsMetadata());
-    *resp->mutable_tablets() = {result.begin(), result.end()};
+    if (req.local_only()) {
+      const auto& result = VERIFY_RESULT(tablet_server_.GetLocalTabletsMetadata());
+      *resp->mutable_tablets() = {result.begin(), result.end()};
+    } else {
+      auto tablet_metadatas = VERIFY_RESULT(client().GetTabletsMetadata());
+      *resp->mutable_tablets() = {tablet_metadatas.begin(), tablet_metadatas.end()};
+    }
     return Status::OK();
   }
 

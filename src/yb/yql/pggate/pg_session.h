@@ -283,7 +283,7 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   Result<yb::tserver::PgYCQLStatementStatsResponsePB> YCQLStatementStats();
   Result<yb::tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory();
 
-  Result<yb::tserver::PgTabletsMetadataResponsePB> TabletsMetadata();
+  Result<yb::tserver::PgTabletsMetadataResponsePB> TabletsMetadata(bool local_only);
 
   Result<yb::tserver::PgServersMetricsResponsePB> ServersMetrics();
 

@@ -2430,8 +2430,8 @@ Result<tserver::PgActiveSessionHistoryResponsePB> PgApiImpl::ActiveSessionHistor
   return pg_session_->ActiveSessionHistory();
 }
 
-Result<tserver::PgTabletsMetadataResponsePB> PgApiImpl::TabletsMetadata() {
-  return pg_session_->TabletsMetadata();
+Result<tserver::PgTabletsMetadataResponsePB> PgApiImpl::TabletsMetadata(bool local_only) {
+  return pg_session_->TabletsMetadata(local_only);
 }
 
 Result<tserver::PgServersMetricsResponsePB> PgApiImpl::ServersMetrics() {

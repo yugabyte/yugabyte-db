@@ -5709,14 +5709,15 @@ yb_local_tablets(PG_FUNCTION_ARGS)
 	rsinfo->setResult = tupstore;
 	rsinfo->setDesc = tupdesc;
 
-	YbcPgTabletsDescriptor *tablets = NULL;
+	YbcPgLocalTabletsDescriptor *tablets = NULL;
 	size_t		num_tablets = 0;
 
 	HandleYBStatus(YBCLocalTablets(&tablets, &num_tablets));
 
 	for (i = 0; i < num_tablets; ++i)
 	{
-		YbcPgTabletsDescriptor *tablet = (YbcPgTabletsDescriptor *) tablets + i;
+		YbcPgLocalTabletsDescriptor *tablet = (YbcPgLocalTabletsDescriptor *) tablets + i;
+		YbcPgTabletsDescriptor *tablet_descriptor = &tablet->tablet_descriptor;
 		Datum		values[ncols];
 		bool		nulls[ncols];
 		bytea	   *partition_key_start;
@@ -5725,26 +5726,26 @@ yb_local_tablets(PG_FUNCTION_ARGS)
 		memset(values, 0, sizeof(values));
 		memset(nulls, 0, sizeof(nulls));
 
-		values[0] = CStringGetTextDatum(tablet->tablet_id);
-		values[1] = CStringGetTextDatum(tablet->table_id);
-		values[2] = CStringGetTextDatum(tablet->table_type);
-		values[3] = CStringGetTextDatum(tablet->namespace_name);
+		values[0] = CStringGetTextDatum(tablet_descriptor->tablet_id);
+		values[1] = CStringGetTextDatum(tablet_descriptor->table_id);
+		values[2] = CStringGetTextDatum(tablet_descriptor->table_type);
+		values[3] = CStringGetTextDatum(tablet_descriptor->namespace_name);
 		values[4] = CStringGetTextDatum(tablet->pgschema_name);
-		values[5] = CStringGetTextDatum(tablet->table_name);
+		values[5] = CStringGetTextDatum(tablet_descriptor->table_name);
 
-		if (tablet->partition_key_start_len)
+		if (tablet_descriptor->partition_key_start_len)
 		{
-			partition_key_start = bytesToBytea(tablet->partition_key_start,
-											   tablet->partition_key_start_len);
+			partition_key_start = bytesToBytea(tablet_descriptor->partition_key_start,
+											   tablet_descriptor->partition_key_start_len);
 			values[6] = PointerGetDatum(partition_key_start);
 		}
 		else
 			nulls[6] = true;
 
-		if (tablet->partition_key_end_len)
+		if (tablet_descriptor->partition_key_end_len)
 		{
-			partition_key_end = bytesToBytea(tablet->partition_key_end,
-											 tablet->partition_key_end_len);
+			partition_key_end = bytesToBytea(tablet_descriptor->partition_key_end,
+											 tablet_descriptor->partition_key_end_len);
 			values[7] = PointerGetDatum(partition_key_end);
 		}
 		else
@@ -8109,4 +8110,140 @@ YbUseTserverResponseCacheForAuth(uint64_t shared_catalog_version)
 	if (shared_catalog_version == YB_CATCACHE_VERSION_UNINITIALIZED)
 		return false;
 	return true;
+}
+
+/* Comparison function for sorting strings in a List */
+static int
+string_list_compare(const ListCell *a, const ListCell *b)
+{
+	return strcmp((char *) lfirst(a), (char *) lfirst(b));
+}
+
+/*
+ * Returns the metadata for all tablets in the cluster.
+ * The returned data structure is a row type with the following columns:
+ * - tablet_id: text
+ * - object_uuid: text
+ * - namespace: text
+ * - object_name: text
+ * - type: text
+ * - start_hash_code: int32
+ * - end_hash_code: int32
+ * - leader: text
+ * - replicas: text[]
+ *
+ * The start_hash_code and end_hash_code are the hash codes of the start and end
+ * keys of the tablet for hash sharded tables. Leader is provided as a separate
+ * column for simpler querying and self-explanatory access.
+ */
+Datum
+yb_get_tablet_metadata(PG_FUNCTION_ARGS)
+{
+	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	TupleDesc	tupdesc;
+	Tuplestorestate *tupstore;
+	MemoryContext per_query_ctx;
+	MemoryContext oldcontext;
+	static int	ncols = 9;
+
+	/* check to see if caller supports us returning a tuplestore */
+	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("set-valued function called in context that "
+						"cannot accept a set")));
+
+	if (!(rsinfo->allowedModes & SFRM_Materialize))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("materialize mode required, but it is not "
+						"allowed in this context")));
+
+	/*
+	 * Switch context to construct returned data structures and store
+	 * returned values from tserver.
+	 */
+	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
+	oldcontext = MemoryContextSwitchTo(per_query_ctx);
+
+	/* Build a tuple descriptor */
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		ereport(ERROR,
+				(errmsg("return type must be a row type")));
+
+	tupstore = tuplestore_begin_heap(true, false, work_mem);
+	rsinfo->returnMode = SFRM_Materialize;
+	rsinfo->setResult = tupstore;
+	rsinfo->setDesc = tupdesc;
+
+	YbcPgGlobalTabletsDescriptor *tablets = NULL;
+	size_t		num_tablets = 0;
+
+	HandleYBStatus(YBCTabletsMetadata(&tablets, &num_tablets));
+
+	for (int i = 0; i < num_tablets; ++i)
+	{
+		YbcPgGlobalTabletsDescriptor *tablet = (YbcPgGlobalTabletsDescriptor *) tablets + i;
+		YbcPgTabletsDescriptor *tablet_descriptor = &tablet->tablet_descriptor;
+		Datum		values[ncols];
+		bool		nulls[ncols];
+		memset(values, 0, sizeof(values));
+		memset(nulls, 0, sizeof(nulls));
+
+		values[0] = CStringGetTextDatum(tablet_descriptor->tablet_id);
+		values[1] = CStringGetTextDatum(tablet_descriptor->table_id);
+		values[2] = CStringGetTextDatum(tablet_descriptor->namespace_name);
+		values[3] = CStringGetTextDatum(tablet_descriptor->table_name);
+		values[4] = CStringGetTextDatum(tablet_descriptor->table_type);
+
+		if (tablet->is_hash_partitioned)
+		{
+			values[5] =
+				UInt16GetDatum(YBCDecodeMultiColumnHashLeftBound(tablet_descriptor->partition_key_start,
+					tablet_descriptor->partition_key_start_len)); /* start_hash is inclusive */
+			values[6] =
+				UInt16GetDatum(YBCDecodeMultiColumnHashRightBound(tablet_descriptor->partition_key_end,
+					tablet_descriptor->partition_key_end_len) + 1); /* end_hash is exclusive */
+		}
+		else
+		{
+			nulls[5] = true;
+			nulls[6] = true;
+		}
+
+		/* Convert replicas array to PostgreSQL text array */
+		if (tablet->replicas_count > 0)
+		{
+			Assert(tablet->replicas != NULL);
+
+			/* The last replica is the leader. */
+			values[7] = CStringGetTextDatum(tablet->replicas[tablet->replicas_count - 1]);
+
+			/* Convert char ** to List * */
+			List	   *replicas_list = NIL;
+
+			for (size_t idx = 0; idx < tablet->replicas_count; idx++)
+				replicas_list = lappend(replicas_list, (char *)tablet->replicas[idx]);
+
+			/*
+			 * Sort the list lexicographically for consistency, so that all rows
+			 * with same replicas have same entries.
+			 */
+			list_sort(replicas_list, string_list_compare);
+			values[8] = PointerGetDatum(strlist_to_textarray(replicas_list));
+		}
+		else
+		{
+			nulls[7] = true;
+			nulls[8] = true;
+		}
+
+		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+	}
+
+	/* clean up and return the tuplestore */
+	tuplestore_donestoring(tupstore);
+
+	MemoryContextSwitchTo(oldcontext);
+	return (Datum) 0;
 }

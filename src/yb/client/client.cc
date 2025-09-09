@@ -167,6 +167,8 @@ using yb::master::GetTableLocationsResponsePB;
 using yb::master::GetTableSchemaFromSysCatalogRequestPB;
 using yb::master::GetTabletLocationsRequestPB;
 using yb::master::GetTabletLocationsResponsePB;
+using yb::master::GetTabletsMetadataRequestPB;
+using yb::master::GetTabletsMetadataResponsePB;
 using yb::master::GetTransactionStatusTabletsRequestPB;
 using yb::master::GetTransactionStatusTabletsResponsePB;
 using yb::master::GetUDTypeInfoRequestPB;
@@ -644,6 +646,17 @@ Status YBClient::GetIndexBackfillProgress(
   }
   *rows_processed_entries = std::move(resp.rows_processed_entries());
   return Status::OK();
+}
+
+Result<google::protobuf::RepeatedPtrField<tablet::TabletStatusPB>> YBClient::GetTabletsMetadata() {
+  master::GetTabletsMetadataRequestPB req;
+  master::GetTabletsMetadataResponsePB resp;
+
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Client, req, resp, GetTabletsMetadata);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return resp.tablet_metadatas();
 }
 
 Result<master::GetBackfillStatusResponsePB> YBClient::GetBackfillStatus(

@@ -2617,7 +2617,7 @@ DROP TABLE tempTable2;
   LOG(INFO) << "result.size(): " << result.size();
   LOG(INFO) << "fingerprint: " << fingerprint;
   ASSERT_EQ(result.size(), 54564U);
-  ASSERT_EQ(fingerprint, 13716420936941683649UL);
+  ASSERT_EQ(fingerprint, 11276843017411745442UL);
 }
 
 TEST_F(PgCatalogVersionTest, InvalMessageAlterTableRefreshTest) {

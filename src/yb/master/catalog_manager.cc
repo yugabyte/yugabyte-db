@@ -13973,4 +13973,91 @@ Status CatalogManager::RegisterFlagCallbacks() {
   return Status::OK();
 }
 
+Status CatalogManager::GetTabletsMetadata(const GetTabletsMetadataRequestPB* req,
+    GetTabletsMetadataResponsePB* resp) {
+  auto tables = GetTables(GetTablesMode::kAll);
+
+  for (const auto& table : tables) {
+    auto tablets = table->GetTablets();
+
+    if (!tablets.ok()) {
+      continue;
+    }
+
+    for (const auto& tablet : tablets.get()) {
+      std::vector<std::string> replica_addresses;
+      std::string leader_address;
+      auto tablet_metadata = resp->add_tablet_metadatas();
+
+      tablet_metadata->set_namespace_name(GetNamespaceName(table->namespace_id()));
+      tablet_metadata->set_table_name(table->name());
+      tablet_metadata->set_tablet_id(tablet->tablet_id());
+      tablet_metadata->set_table_id(table->id());
+
+      {
+        auto table_lock = table->LockForRead();
+        tablet_metadata->set_table_type(table_lock->pb.table_type());
+
+        // Set table distribution info (hash vs range partitioning)
+        tablet_metadata->set_is_hash_partitioned(dockv::PartitionSchema::IsHashPartitioning(
+            table_lock->pb.partition_schema()));
+      }
+
+      auto replica_locations = tablet->GetReplicaLocations();
+      for (const auto& [ts_uuid, replica] : *replica_locations) {
+        // Get tablet server info to extract IP address and PostgreSQL port
+        auto ts_desc_result = master_->ts_manager()->LookupTSByUUID(ts_uuid);
+
+        if (!ts_desc_result.ok()) {
+          continue;
+        }
+
+        auto ts_desc = *ts_desc_result;
+        // Get IP from registration info and PostgreSQL port
+        const auto& registration = ts_desc->GetRegistration();
+        std::string host;
+
+        // Use private RPC address if available, otherwise use broadcast address
+        // Keeping the same logic as yb_servers()
+        if (registration.private_rpc_addresses_size() > 0) {
+          host = registration.private_rpc_addresses(0).host();
+        } else if (registration.broadcast_addresses_size() > 0) {
+          host = registration.broadcast_addresses(0).host();
+        }
+
+        if (!host.empty()) {
+          const auto server_address = Format("$0:$1", host, registration.pg_port());
+
+          if (replica.role == PeerRole::LEADER) {
+            leader_address = server_address;
+          } else {
+            tablet_metadata->add_replicas(server_address);
+          }
+        }
+      }
+
+      // Add leader as the last replica
+      if (!leader_address.empty()) {
+        tablet_metadata->add_replicas(leader_address);
+      }
+
+      // last_status is a required field in the PB
+      tablet_metadata->set_last_status("");
+
+      auto tablet_lock = tablet->LockForRead();
+      if (!tablet_lock->pb.has_partition()) {
+        continue;
+      }
+
+      const auto& partition = tablet_lock->pb.partition();
+      tablet_metadata->mutable_partition()->set_partition_key_start(
+          partition.partition_key_start());
+      tablet_metadata->mutable_partition()->set_partition_key_end(
+          partition.partition_key_end());
+    }
+  }
+
+  return Status::OK();
+}
+
 } // namespace yb::master

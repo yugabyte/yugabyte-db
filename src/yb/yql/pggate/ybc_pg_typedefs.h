@@ -820,13 +820,24 @@ typedef struct {
   const char* table_id;
   const char* namespace_name;
   const char* table_type;
-  const char* pgschema_name;
   const char* partition_key_start;
   size_t partition_key_start_len;
   const char* partition_key_end;
   size_t partition_key_end_len;
-  const char* tablet_data_state;
 } YbcPgTabletsDescriptor;
+
+typedef struct {
+  YbcPgTabletsDescriptor tablet_descriptor;
+  const char* tablet_data_state;
+  const char* pgschema_name;
+} YbcPgLocalTabletsDescriptor;
+
+typedef struct {
+  YbcPgTabletsDescriptor tablet_descriptor;
+  const char** replicas;
+  size_t replicas_count;
+  bool is_hash_partitioned;
+} YbcPgGlobalTabletsDescriptor;
 
 typedef struct {
   const char* name;

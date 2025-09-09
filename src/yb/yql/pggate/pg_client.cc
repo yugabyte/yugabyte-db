@@ -1578,8 +1578,9 @@ class PgClient::Impl : public BigDataFetcher {
     return resp;
   }
 
-  Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata() {
+  Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata(bool local_only) {
     tserver::PgTabletsMetadataRequestPB req;
+    req.set_local_only(local_only);
     tserver::PgTabletsMetadataResponsePB resp;
 
     RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::TabletsMetadata,
@@ -2051,8 +2052,8 @@ Result<cdc::UpdateAndPersistLSNResponsePB> PgClient::UpdateAndPersistLSN(
   return impl_->UpdateAndPersistLSN(stream_id, restart_lsn, confirmed_flush);
 }
 
-Result<tserver::PgTabletsMetadataResponsePB> PgClient::TabletsMetadata() {
-  return impl_->TabletsMetadata();
+Result<tserver::PgTabletsMetadataResponsePB> PgClient::TabletsMetadata(bool local_only) {
+  return impl_->TabletsMetadata(local_only);
 }
 
 Result<tserver::PgServersMetricsResponsePB> PgClient::ServersMetrics() {

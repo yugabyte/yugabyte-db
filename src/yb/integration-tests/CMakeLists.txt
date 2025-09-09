@@ -334,4 +334,7 @@ ADD_YB_PG_TEST(sequence_utility-itest)
 ADD_YB_PG_TEST(upgrade-tests/ysql_ddl_whitelist-test)
 ADD_YB_PG_TEST(upgrade-tests/ysql_major_upgrade_role_profiles-test)
 
+ADD_YB_TEST(yql-test)
+YB_TEST_TARGET_LINK_LIBRARIES(yql-test yb-cql pg_wrapper_test_base)
+
 set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS_SAVED})
