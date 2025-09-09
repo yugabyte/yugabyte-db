@@ -1238,7 +1238,7 @@ To create secure single-node cluster with [encryption in transit](../../../secur
     --base_dir=/Users/username/yugabyte-{{< yb-version version="v2024.1" >}}/data1
 ```
 
-When authentication is enabled, the default user and password is `yugabyte` and `yugabyte` in YSQL, and `cassandra` and `cassandra` in YCQL.
+When authentication is enabled, the default user is `yugabyte` in YSQL, and `cassandra` in YCQL. When a cluster is started, yugabyted outputs a message `Credentials File is stored at <credentials_file_path.txt>` with the credentials file location.
 
 ### Create certificates for a secure local multi-node cluster
 
@@ -1298,6 +1298,8 @@ To create the cluster, do the following:
         --cloud_location=aws.us-east-1.us-east-1c
     ```
 
+When you use the `--secure` flag, yugabyted outputs a message `Credentials File is stored at <credentials_file_path.txt>` with the location of the credentials for the default users.
+
 ### Create a multi-zone cluster
 
 {{< tabpane text=true >}}
@@ -1345,6 +1347,8 @@ To create a secure multi-zone cluster:
         --cloud_location=aws.us-east-1.us-east-1c \
         --fault_tolerance=zone
     ```
+
+yugabyted outputs a message `Credentials File is stored at <credentials_file_path.txt>` with the location of the credentials for the default users.
 
   {{% /tab %}}
 
@@ -1458,6 +1462,8 @@ To create a secure multi-region cluster:
         --cloud_location=aws.us-central-1.us-central-1a \
         --fault_tolerance=region
     ```
+
+yugabyted outputs a message `Credentials File is stored at <credentials_file_path.txt>` with the location of the credentials for the default users.
 
   {{% /tab %}}
 

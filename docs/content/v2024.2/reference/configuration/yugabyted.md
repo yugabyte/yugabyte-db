@@ -811,7 +811,7 @@ For on-premises deployments, consider racks as zones to treat them as fault doma
 : - When starting a local single-node cluster, a certificate is automatically generated for the cluster.
 : - When deploying a node in a multi-node cluster, you need to generate the certificate for the node using the `--cert generate_server_certs` command and copy it to the node *before* you start the node using the `--secure` flag, or the node creation will fail.
 : When authentication is enabled, the default user is `yugabyte` in YSQL, and `cassandra` in YCQL. When a cluster is started, yugabyted outputs a message `Credentials File is stored at <credentials_file_path.txt>` with the credentials file location.
-: For examples creating secure local multi-node, multi-zone, and multi-region clusters, refer to [Examples](#examples).
+: For more information on creating secure clusters, refer to [Secure universes](#secure-universes).
 
 --read_replica *read_replica_node*
 : Use this flag to start a read replica node.
@@ -1380,7 +1380,7 @@ Follow the instructions in [xCluster setup](../../../deploy/multi-dc/async-repli
 {{< warning title="Upgrading to PostgreSQL 15" >}}
 For information on upgrading YugabyteDB from a version based on PostgreSQL 11 (all versions prior to v2.25) to a version based on PostgreSQL 15 (v2025.1 or later), refer to [YSQL major upgrade](../../../manage/ysql-major-upgrade-yugabyted/).
 
-Upgrading to PG 15 versions is only supported from v2024.2.2 release.
+Upgrading to PostgreSQL 15 versions is only supported from v2024.2.2 or later.
 {{< /warning >}}
 
 To use the latest features of the database and apply the latest security fixes, upgrade your YugabyteDB universe to the [latest release](https://download.yugabyte.com/#/).
