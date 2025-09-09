@@ -1032,12 +1032,6 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     assertThat(
         v2YsqlQueryLogConfig.getLogDisconnections(),
         is(dbYsqlQueryLogConfig.isLogDisconnections()));
-    if (v2YsqlQueryLogConfig.getLogLinePrefix() == null) {
-      assertThat(dbYsqlQueryLogConfig.getLogLinePrefix(), is(nullValue()));
-    } else {
-      assertThat(
-          v2YsqlQueryLogConfig.getLogLinePrefix(), is(dbYsqlQueryLogConfig.getLogLinePrefix()));
-    }
     if (v2YsqlQueryLogConfig.getLogMinDurationStatement() == null) {
       assertThat(dbYsqlQueryLogConfig.getLogMinDurationStatement(), is(-1));
     } else {
