@@ -3083,6 +3083,11 @@ class PgClientSession::Impl {
       } else if (IsReadPointResetRequested(options) ||
                 options.use_catalog_session() ||
                 (is_plain_session && (read_time_serial_no_ != read_time_serial_no))) {
+                  VLOG_WITH_PREFIX(3) << "Resetting read point for session kind " << kind
+                  << " read point reset requested: " << IsReadPointResetRequested(options)
+                  << " use catalog session: " << options.use_catalog_session()
+                  << " change in read time serial number "
+                  << read_time_serial_no_ << ", " << read_time_serial_no;
         ResetReadPoint(kind);
       } else {
         VLOG_WITH_PREFIX(3) << "Keep read time: " << session.read_point()->GetReadTime();
