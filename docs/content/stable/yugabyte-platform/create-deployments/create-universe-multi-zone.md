@@ -50,7 +50,7 @@ To create a universe:
 
 1. Click **Create** when you are done and wait for the configuration to complete.
 
-![Create Universe on GCP](/images/yp/create-uni-multi-zone-1-gcp.png)
+![Create Universe on GCP](/images/yp/create-uni-multi-zone.png)
 
 ## Universe settings
 
@@ -78,6 +78,7 @@ Specify the provider and geolocations for the nodes in the universe:
 
 Specify the instance to use for the universe nodes:
 
+- Choose the **CPU Architecture**, either x86 (Intel) or AArch6 (ARM).
 - Choose the **Linux version** to be provisioned on the nodes of the universe.
 
   This option only applies if you have selected an AWS, GCP, or Azure provider configuration. The available Linux versions are specified in the provider.
@@ -90,8 +91,20 @@ Specify the instance to use for the universe nodes:
   Refer to [Create cloud provider configuration](../../configure-yugabyte-platform/aws/).
 
 - Select the **Instance Type** to use for the nodes in the universe.
-
 - Specify the number and size of the storage volumes, and the storage type.
+
+#### Additional AWS fields
+
+- Specify the **Provisioned IOPS** and **Provisioned Throughput** (AWS only) for your disk in advance to ensure a consistent performance level.
+- {{<tags/feature/ea idea="2329">}} Enable **EBS Volume Encryption** (AWS only) to create a universe with AWS EBS volume level encryption with a custom AWS Key Management Service (KMS) configuration.
+
+  {{< note title="Note" >}}
+  The AWS EBS volume level encryption feature is different from YugabyteDB Anywhere's native [Encryption at rest](../../security/enable-encryption-at-rest/) (EAR) as this is a cloud provider level option. Both cloud volume encryption and YugabyteDB Anywhere's EAR can be enabled simultaneously with different KMS configs.
+  {{< /note >}}
+
+- Select the **Key Management Service Config** you created. See [Create a KMS configuration](../../security/create-kms-config/aws-kms/#create-a-kms-configuration).
+
+![AWS Instance Configuration](instance-config-aws.png)
 
 ### Security Configurations
 
