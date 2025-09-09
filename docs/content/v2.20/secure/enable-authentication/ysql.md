@@ -48,20 +48,6 @@ When you start a YugabyteDB cluster, the YB-Master and YB-TServer services are l
 
 Once YSQL authentication is enabled, all users (including `yugabyte`) require a password to log in to a YugabyteDB database. The default `yugabyte` user has a default password of `yugabyte` that lets this user sign into YugabyteDB when YSQL authentication is enabled.
 
-{{< note title="Note" >}}
-Versions of YugabyteDB prior to 2.0.1 do not have a default password. In this case, before you start YugabyteDB with YSQL authentication enabled, you need to make sure that the `yugabyte` user has a password.
-
-If you are using YugabyteDB 2.0 (and **not** 2.0.1 or later) and have not yet assigned a password to the `yugabyte` user, do the following:
-
-1. With your YugabyteDB cluster up and running, [open ysqlsh](#open-the-ysql-shell-ysqlsh).
-1. Run the following `ALTER ROLE` statement, specifying a password (`yugabyte` or a password of your choice):
-
-    ```sql
-    yugabyte=# ALTER ROLE yugabyte with password 'yugabyte';
-    ```
-
-{{< /note >}}
-
 ## Enable YSQL authentication
 
 ### Start local clusters
