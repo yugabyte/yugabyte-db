@@ -95,7 +95,8 @@ Specify the instance to use for the universe nodes:
 
 #### Additional AWS fields
 
-- Specify the **Provisioned IOPS** and **Provisioned Throughput** (AWS only) for your disk in advance to ensure a consistent performance level.
+- Choose the AWS **EBS Type** between IO1, GP2, and GP3.
+- Specify the **Provisioned IOPS** (IO1 and GP3 only) and **Provisioned Throughput** (GP3 only) for your disk in advance to ensure a consistent performance level.
 - {{<tags/feature/ea idea="2329">}} Enable **EBS Volume Encryption** (AWS only) to create a universe with AWS EBS volume level encryption with a custom AWS Key Management Service (KMS) configuration.
 
   {{< note title="Note" >}}
