@@ -19,9 +19,9 @@ Users, roles, and groups allow administrators to verify whether a particular use
 
 Authentication verifies the identity of a user while authorization determines the verified user's database access privileges.
 
-[Authorization](../../authorization/) is the process of managing access control based on roles. For YSQL, enabling authentication automatically enables authorization and the [role-based access control (RBAC) model](../../authorization/rbac-model/), to determine the access privileges. Privileges are managed using [`GRANT`](../../../api/ysql/the-sql-language/statements/dcl_grant/), [`REVOKE`](../../../api/ysql/the-sql-language/statements/dcl_revoke/), [`CREATE ROLE`](../../../api/ysql/the-sql-language/statements/dcl_create_role/), [`ALTER ROLE`](../../../api/ysql/the-sql-language/statements/dcl_alter_role/), and [`DROP ROLE`](../../../api/ysql/the-sql-language/statements/dcl_drop_role/).
+[Authorization](../../authorization/) is the process of managing access control based on roles. For YSQL, enabling authentication automatically enables authorization and the [role-based access control (RBAC) model](../../authorization/rbac-model/), to determine the access privileges. Privileges are managed using [GRANT](../../../api/ysql/the-sql-language/statements/dcl_grant/), [REVOKE](../../../api/ysql/the-sql-language/statements/dcl_revoke/), [CREATE ROLE](../../../api/ysql/the-sql-language/statements/dcl_create_role/), [ALTER ROLE](../../../api/ysql/the-sql-language/statements/dcl_alter_role/), and [DROP ROLE](../../../api/ysql/the-sql-language/statements/dcl_drop_role/).
 
-Users and roles can be created with superuser, non-superuser, and login privileges, and the roles that users have are used to determine what access privileges are available. Administrators can create users and roles using the [`CREATE ROLE`](../../../api/ysql/the-sql-language/statements/dcl_create_role/) statement (or its alias, [`CREATE USER`](../../../api/ysql/the-sql-language/statements/dcl_create_user/)). After users and roles have been created, [`ALTER ROLE`](../../../api/ysql/the-sql-language/statements/dcl_alter_role/) and [`DROP ROLE`](../../../api/ysql/the-sql-language/statements/dcl_drop_role/) statements are used to change or remove users and roles.
+Users and roles can be created with superuser, non-superuser, and login privileges, and the roles that users have are used to determine what access privileges are available. Administrators can create users and roles using the [CREATE ROLE](../../../api/ysql/the-sql-language/statements/dcl_create_role/) statement (or its alias, [CREATE USER](../../../api/ysql/the-sql-language/statements/dcl_create_user/)). After users and roles have been created, [ALTER ROLE](../../../api/ysql/the-sql-language/statements/dcl_alter_role/) and [DROP ROLE](../../../api/ysql/the-sql-language/statements/dcl_drop_role/) statements are used to change or remove users and roles.
 
 ## Default user and password
 
@@ -116,7 +116,7 @@ For information on configuring authentication, refer to [Authentication](../../a
 
 ### Create users
 
-To add a new user, run the [`CREATE ROLE` statement](../../../api/ysql/the-sql-language/statements/dcl_create_role/) or its alias, the `CREATE USER` statement. Users are roles that have the `LOGIN` privilege granted to them. Roles created with the `SUPERUSER` option in addition to the `LOGIN` option have full access to the database. Superusers can run all of the YSQL statements on any of the database resources.
+To add a new user, run the [CREATE ROLE statement](../../../api/ysql/the-sql-language/statements/dcl_create_role/) or its alias, the `CREATE USER` statement. Users are roles that have the `LOGIN` privilege granted to them. Roles created with the `SUPERUSER` option in addition to the `LOGIN` option have full access to the database. Superusers can run all of the YSQL statements on any of the database resources.
 
 By default, creating a role does not grant the `LOGIN` or the `SUPERUSER` privileges — these need to be explicitly granted.
 
