@@ -1359,7 +1359,7 @@ run_tests_on_spark() {
     time "$spark_submit_cmd_path" \
       --driver-cores "$INITIAL_SPARK_DRIVER_CORES" \
       "$YB_SCRIPT_PATH_RUN_TESTS_ON_SPARK" \
-      "${run_tests_args[@]}" "$@" 2>&1 | \
+      "${run_tests_args[@]}" 2>&1 | \
       grep -Ev "TaskSetManager: (Starting task|Finished task .* \([0-9]+[1-9]/[0-9]+\))" \
            --line-buffered
     exit "${PIPESTATUS[0]}"
