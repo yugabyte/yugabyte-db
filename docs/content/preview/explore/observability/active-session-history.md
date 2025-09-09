@@ -6,10 +6,10 @@ description: Use Active Session History to get current and past views of the dat
 headcontent: Get real-time and historical information about active sessions to analyze and troubleshoot performance issues
 unversioned: true
 aliases:
-  - /preview/explore/observability/active-session-history/
+  - /stable/explore/observability/active-session-history/
   - /v2024.2/explore/observability/active-session-history/
 menu:
-  stable:
+  preview:
     identifier: ash
     parent: explore-observability
     weight: 860
@@ -311,4 +311,3 @@ GROUP BY
  127.0.0.3:56485 |    18
  127.0.0.3:56479 | 10997
 ```
-

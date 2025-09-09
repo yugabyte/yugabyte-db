@@ -113,14 +113,6 @@ By querying pg_locks, you can identify which processes are holding locks, waitin
 To understand how to view and use lock information, see [pg_locks](./pg-locks)
 {{</lead>}}
 
-## Active Session History
-
-Active Session History (ASH) offers insight into current and past system activity by periodically sampling session behavior in the database. ASH functionality extends to [YSQL](../../api/ysql/), [YCQL](../../api/ycql/), and [YB-TServer](../../architecture/yb-tserver/) processes, and helps you to conduct analytical queries, perform aggregations, and troubleshoot performance issues.
-
-{{<lead link="./active-session-history">}}
-To learn more, see [Active Session History](./active-session-history)
-{{</lead>}}
-
 ## Logging
 
 Logs provide a crucial record of events across numerous interconnected components and are indispensable for debugging and troubleshooting, allowing engineers to trace errors and understand the complex interactions between services. By aggregating and analyzing logs, teams can monitor system health, identify performance bottlenecks, and gain valuable insights into system behavior. Logs provide the essential observability required to manage the complexity of distributed environments, enabling efficient problem-solving and ensuring system reliability.
