@@ -115,7 +115,7 @@ In the table, note the following:
 * The role `john` can log in, and hence is a user. Note that `john` is not a superuser.
 * The roles `engineering` and `developer` cannot log in.
 
-You can also list roles using the [du meta-command](../../../admin/ysqlsh-meta-commands/#du-s-pattern):
+You can also list roles using the [du meta-command](../../../api/ysqlsh-meta-commands/#du-s-pattern):
 
 ```sql
 yugabyte=# \du

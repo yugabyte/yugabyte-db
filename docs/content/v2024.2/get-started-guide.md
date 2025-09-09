@@ -133,10 +133,10 @@ Find resources for getting started, migrating existing databases, using your dat
 **Documentation**: [Build and learn the essential capabilities of YugabyteDB](/preview/tutorials/build-and-learn/)
 : Build a scalable and fault-tolerant movie recommendation service.
 
-**Documentation**: [Best practices](../drivers-orms/)
+**Documentation**: [Best practices](../develop/best-practices-develop/)
 : Tips and tricks to build applications for high performance and availability.
 
-**Documentation**: [Drivers and ORMs](../drivers-orms/)
+**Documentation**: [Drivers and ORMs](/preview/drivers-orms/)
 : Connect applications with your database.
 
 ### Connections
