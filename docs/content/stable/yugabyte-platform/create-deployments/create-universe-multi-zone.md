@@ -105,7 +105,7 @@ Specify the instance to use for the universe nodes:
 
 - Select the **Key Management Service Config** you created. See [Create a KMS configuration](../../security/create-kms-config/aws-kms/#create-a-kms-configuration).
 
-![AWS Instance Configuration](instance-config-aws.png)
+![AWS Instance Configuration](/images/yp/instance-config-aws.png)
 
 ### Security Configurations
 
