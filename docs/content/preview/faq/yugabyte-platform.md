@@ -241,3 +241,61 @@ For YugabyteDB Anywhere versions 2.18.6 or 2.20.2, a bind address that defaults 
 ### How does YugabyteDB Anywhere clean up node agents?
 
 For providers where node agents are installed automatically (that is, all providers except on-premises with manual provisioning), YugabyteDB Anywhere removes the node agent entry when it releases the node back to the node instances pool of the provider. You can choose to leave the node agent service running, but when the node is again re-used, the node agent is re-installed.
+
+## Upgrade and rollback
+
+### What does the rollback feature do?
+
+The rollback feature upgrades the binaries and enables new features that do not change the data format on disk. This allows the system to run with multiple YSQL catalogs during the monitoring phase before finalization.
+
+{{<lead link="../../yugabyte-platform/manage-deployments/upgrade-software-install/">}}
+For detailed information about upgrading universes, see [Upgrade universes with a new version of YugabyteDB](../../yugabyte-platform/manage-deployments/upgrade-software-install/).
+{{</lead>}}
+
+### How long can a universe run after the upgrade but before the finalize step?
+
+The universe can run as long as needed while the application is being validated. However, it is recommended to finalize within 3 days. Operations like flag changes are disabled during the monitoring phase.
+
+### Are new YugabyteDB features disabled until the upgrade is finalized?
+
+New features that change the data format are disabled until finalization. These are usually rare, and they are not used by customers anyway as they are new features. 90% of code changes are validated from the new binary itself. The aim of rollback capabilities is to catch regressions to existing features and performance and handle them quickly.
+
+### Is it possible to run DDL operations during the upgrade (before finalize)?
+
+DDL operations are allowed for 2.20 to 2024.2 upgrades. DDL operations are only blocked when the PostgreSQL version is upgraded, such as from 2024.2 (PostgreSQL 11) to 2025.1 (PostgreSQL 15).
+
+### What happens if issues are observed in the application after finalization?
+
+YugabyteDB performs extensive testing to ensure there are no issues. For customers that are extremely risk averse, the recommendation is to upgrade and finalize a development environment first. Once the data format on disk has changed, you cannot go back to old binaries—this is a technical limitation of any software that stores data to disk. The only way to rollback after finalization is to restore from a backup that was taken before the finalization (with loss of data).
+
+### How does the rollback feature interact with bidirectional xCluster setups?
+
+xCluster can only replicate from the old version to the new version. The target cluster should be finalized before the source cluster. If the source is finalized before the target, then xCluster automatically pauses itself. This only happens in certain builds that have an external data format change, which 2024.2 has. For bidirectional setups, if writes are only happening on one side, then it's acceptable to upgrade and finalize the other side first and then upgrade the writable side. If both sides are taking writes, then both should be finalized at once; otherwise, replication in the new-to-old direction will not happen.
+
+{{<lead link="../../yugabyte-platform/manage-deployments/xcluster-replication/bidirectional-replication/">}}
+For more information about bidirectional xCluster replication, see [Bidirectional replication using xCluster](../../yugabyte-platform/manage-deployments/xcluster-replication/bidirectional-replication/).
+{{</lead>}}
+
+### Are the xCluster bidirectional upgrade steps the same for both YSQL and YCQL?
+
+Yes, the xCluster bidirectional upgrade steps are the same for both YSQL and YCQL.
+
+### What is the behavior of auto-gflags during the upgrade process?
+
+YugabyteDB Anywhere enables Volatile AutoFlags once all nodes are running the new binary version (before finalize). Only Persisted and External AutoFlags are enabled after finalization.
+
+{{<lead link="https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/auto_flags.md">}}
+For detailed information about AutoFlags, see [AutoFlags](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/auto_flags.md).
+{{</lead>}}
+
+### If not all new features are required immediately, is there a way to selectively enable them post-finalize?
+
+No, there is no way to selectively enable new features post-finalize. All features are enabled together after finalization.
+
+### What happens to custom gflags set at the universe level?
+
+Custom gflags set at the universe level persist across the upgrade and finalize steps. User overrides always take precedence over AutoFlags. However, customers are never recommended to modify AutoFlags directly.
+
+{{<lead link="../../yugabyte-platform/manage-deployments/edit-config-flags/">}}
+For information about editing configuration flags, see [Edit configuration flags](../../yugabyte-platform/manage-deployments/edit-config-flags/).
+{{</lead>}}
