@@ -27,35 +27,53 @@ Users and roles can be created with superuser, non-superuser, and login privileg
 
 When you start a YugabyteDB cluster, the YB-Master and YB-TServer services are launched using the default user, named `yugabyte`, and then this user is connected to the default database, also named `yugabyte`.
 
-Once YSQL authentication is enabled, all users (including `yugabyte`) require a password to log in to a YugabyteDB database. The default `yugabyte` user has a default password of `yugabyte` that lets this user sign into YugabyteDB when YSQL authentication is enabled.
+When YSQL authentication is enabled, all users (including `yugabyte`) require a password to log in to a YugabyteDB database.
 
-{{< note title="Note" >}}
-Versions of YugabyteDB prior to 2.0.1 do not have a default password. In this case, before you start YugabyteDB with YSQL authentication enabled, you need to make sure that the `yugabyte` user has a password.
+If you start a secure universe using yugabyted, the credentials for the universe, including password, are output to a credentials file. The location of the credentials file is output to the console.
 
-If you are using YugabyteDB 2.0 (and **not** 2.0.1 or later) and have not yet assigned a password to the `yugabyte` user, do the following:
-
-1. With your YugabyteDB cluster up and running, [open `ysqlsh`](#open-the-ysql-shell-ysqlsh).
-1. Run the following `ALTER ROLE` statement, specifying a password (`yugabyte` or a password of your choice):
-
-    ```sql
-    yugabyte=# ALTER ROLE yugabyte with password 'yugabyte';
-    ```
-
-{{< /note >}}
+Otherwise, the default `yugabyte` user has a default password of `yugabyte`.
 
 ## Enable YSQL authentication
 
-### Start local clusters
+<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
+  <li>
+    <a href="#yugabyted" class="nav-link active" id="yugabyted-tab" data-bs-toggle="tab"
+      role="tab" aria-controls="yugabyted" aria-selected="true">
+      <img src="/icons/database.svg" alt="Server Icon">
+      yugabyted
+    </a>
+  </li>
+  <li>
+    <a href="#manual" class="nav-link" id="manual-tab" data-bs-toggle="tab"
+      role="tab" aria-controls="manual" aria-selected="false">
+      <i class="icon-shell"></i>
+      Manual
+    </a>
+  </li>
+</ul>
 
-To enable YSQL authentication in your local YugabyteDB clusters, add the [--ysql_enable_auth](../../../reference/configuration/yugabyted/#start) flag with the `yugabyted start` command, as follows:
+<div class="tab-content">
+  <div id="yugabyted" class="tab-pane fade show active" role="tabpanel" aria-labelledby="yugabyted-tab">
+
+To deploy a secure universe using yugabyted, use the `--secure` flag with the yugabyted [start](../../../reference/configuration/yugabyted/#start) command. This creates a universe with encryption in transit and authentication enabled. For example:
+
+```sh
+$ ./bin/yugabyted start --secure
+```
+
+YSQL authentication is automatically enabled, and the credentials for the universe, including password, are output to a credentials file. The location of the credentials file is output to the console when you start the universe.
+
+To enable or disable YSQL authentication, you can also use the `--ysql_enable_auth` flag with the `start` command, as follows:
 
 ```sh
 $ ./bin/yugabyted start --ysql_enable_auth=true
 ```
 
-### Start YB-TServer services
+  </div>
 
-To enable YSQL authentication in deployable YugabyteDB clusters, you need to start your `yb-tserver` services using the [--ysql_enable_auth](../../../reference/configuration/yb-tserver/#ysql-enable-auth) flag. Your command should look similar to the following:
+  <div id="manual" class="tab-pane fade" role="tabpanel" aria-labelledby="manual-tab">
+
+To enable YSQL authentication in manually deployed universes, start the yb-tserver processes with the [--ysql_enable_auth](../../../reference/configuration/yb-tserver/#ysql-enable-auth) flag. Your command should look similar to the following:
 
 ```sh
 ./bin/yb-tserver \
@@ -65,11 +83,17 @@ To enable YSQL authentication in deployable YugabyteDB clusters, you need to sta
   >& /home/centos/disk1/yb-tserver.out &
 ```
 
-You can also enable YSQL authentication by adding the `--ysql_enable_auth=true` to the YB-TServer configuration file (`tserver.conf`). For more information, refer to [Start YB-TServers](../../../deploy/manual-deployment/start-tservers/).
+You can also enable YSQL authentication by adding the `--ysql_enable_auth=true` to the YB-TServer configuration file (`tserver.conf`). For more information, refer to [Start YB-TServers](../../../deploy/manual-deployment/start-masters/#yb-tserver-servers).
+
+  </div>
+
+</div>
+
+For more information on deploying universes, refer to [Deploy](../../../deploy/).
 
 ## Open the YSQL shell (ysqlsh)
 
-A YugabyteDB cluster with authentication enabled starts with the default admin user of `yugabyte` and the default database of `yugabyte`. You can connect to the cluster and use the [YSQL shell](../../../api/ysqlsh/) by running the following `ysqlsh` command from the YugabyteDB home directory:
+A new YugabyteDB cluster with authentication enabled starts with the default admin user of `yugabyte` and the default database of `yugabyte`. You can connect to the cluster and use the [YSQL shell](../../../api/ysqlsh/) by running the following ysqlsh command from the YugabyteDB home directory:
 
 ```sh
 $ ./bin/ysqlsh -U yugabyte
@@ -299,7 +323,7 @@ yugabyte=# SELECT rolname, rolcanlogin FROM pg_roles WHERE rolname='john';
 (1 row)
 ```
 
-Trying to log in as `john` using `ysqlsh` now fails:
+Trying to log in as `john` using ysqlsh now fails:
 
 ```sh
 $ ./bin/ysqlsh -U john
