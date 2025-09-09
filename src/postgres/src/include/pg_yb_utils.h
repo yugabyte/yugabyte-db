@@ -197,6 +197,11 @@ extern bool IsYBBackedRelation(Relation relation);
 extern bool YbIsTempRelation(Relation relation);
 
 /*
+ * Returns true if the relation has temp persistence.
+ * Returns false for all other relations, or if they are not found.
+ */
+extern bool YbIsRangeVarTempRelation(const RangeVar *relation);
+/*
  * Returns whether a relation's attribute is a real column in the backing
  * YugaByte table. (It implies we can both read from and write to it).
  */

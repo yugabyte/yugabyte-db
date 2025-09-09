@@ -395,11 +395,7 @@ YbIsTempRelation(Relation relation)
 	return relation->rd_rel->relpersistence == RELPERSISTENCE_TEMP;
 }
 
-/*
- * Returns true if the relation has temp persistence.
- * Returns false for all other relations, or if they are not found.
- */
-static bool
+bool
 YbIsRangeVarTempRelation(const RangeVar *relation)
 {
 	Oid			relid = RangeVarGetRelidExtended(relation, NoLock,
@@ -3781,8 +3777,6 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 		case T_AlterUserMappingStmt:
 		case T_AlternativeSubPlan:
 		case T_ReassignOwnedStmt:
-			/* ALTER .. RENAME TO syntax gets parsed into a T_RenameStmt node. */
-		case T_RenameStmt:
 		case T_AlterTypeStmt:
 			break;
 
@@ -3851,6 +3845,26 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 							break;
 						}
 					}
+				}
+				break;
+			}
+
+		/* ALTER .. RENAME TO syntax gets parsed into a T_RenameStmt node. */
+		case T_RenameStmt:
+			{
+				const RenameStmt *const stmt = castNode(RenameStmt, parsetree);
+
+				/*
+				 * We don't have to increment the catalog version for renames
+				 * on temp objects as they are only visible to the current
+				 * session.
+				 */
+				if (stmt->relation && YbIsRangeVarTempRelation(stmt->relation))
+				{
+					is_breaking_change = false;
+					is_version_increment = false;
+					is_altering_existing_data = true;
+					YBMarkTxnUsesTempRelAndSetTxnId();
 				}
 				break;
 			}
