@@ -141,6 +141,7 @@ yb_index_check(PG_FUNCTION_ARGS)
 {
 	Oid			indexoid = PG_GETARG_OID(0);
 	bool		multi_snapshot_mode = !PG_GETARG_BOOL(1);
+	int			savedGUCLevel = -1;
 
 	if (yb_test_index_check_num_batches_per_snapshot == 0)
 		multi_snapshot_mode = false;
@@ -148,7 +149,27 @@ yb_index_check(PG_FUNCTION_ARGS)
 	uint64		original_read_point PG_USED_FOR_ASSERTS_ONLY =
 		YBCPgGetCurrentReadPoint();
 
+	bool		is_txn_block = IsTransactionBlock();
+
+	if (is_txn_block)
+		ereport(NOTICE,
+				(errmsg("yb_index_check() is prone to 'Restart read required' "
+						"erorrs when executed from within a transaction "
+						"block.")));
+
+	if (!is_txn_block)
+	{
+		savedGUCLevel = NewGUCNestLevel();
+
+		(void) set_config_option("yb_read_after_commit_visibility", "relaxed",
+								 PGC_USERSET, PGC_S_SESSION, GUC_ACTION_SAVE,
+								 true, 0, false);
+	}
+
 	do_index_check(indexoid, multi_snapshot_mode);
+
+	if (!is_txn_block)
+		AtEOXact_GUC(false, savedGUCLevel);
 
 	/*
 	 * yb_index_check() uses multiple snapshots in multi_snapshot_mode. Verify
