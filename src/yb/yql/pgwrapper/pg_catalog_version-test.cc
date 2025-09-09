@@ -1797,8 +1797,10 @@ TEST_F(PgCatalogVersionTest, NonIncrementingDDLMode) {
   ASSERT_OK(conn.Execute("CREATE TEMP TABLE temp_demo (a INT, b INT)"));
   ASSERT_OK(conn.Execute("ALTER TABLE temp_demo ADD COLUMN c INT"));
   ASSERT_OK(conn.Execute("CREATE INDEX temp_idx ON temp_demo(c)"));
-  ASSERT_OK(conn.Execute("DROP INDEX temp_idx"));
-  ASSERT_OK(conn.Execute("DROP TABLE temp_demo"));
+  ASSERT_OK(conn.Execute("ALTER TABLE temp_demo RENAME TO temp_demo_new"));
+  ASSERT_OK(conn.Execute("ALTER INDEX temp_idx RENAME TO temp_idx_new"));
+  ASSERT_OK(conn.Execute("DROP INDEX temp_idx_new"));
+  ASSERT_OK(conn.Execute("DROP TABLE temp_demo_new"));
   new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
   ASSERT_EQ(new_version, version);
 }
