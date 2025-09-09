@@ -99,7 +99,7 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
       const KeyBytes &doc_key, HybridTime ht,
       std::initializer_list<std::pair<ColumnId, const QLValuePB>> columns);
 
-  std::unique_ptr<DocRowwiseIterator> MakeIterator(
+  docdb::DocRowwiseIteratorPtr MakeIterator(
       const Schema& projection,
       std::reference_wrapper<const DocReadContext> doc_read_context,
       const TransactionOperationContext &txn_op_context,

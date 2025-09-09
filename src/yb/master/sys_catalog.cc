@@ -2300,7 +2300,7 @@ Result<ColumnId> PgTableReadData::ColumnByName(const std::string& name) const {
   return schema().ColumnIdByName(name);
 }
 
-Result<std::unique_ptr<docdb::DocRowwiseIterator>> PgTableReadData::NewUninitializedIterator(
+Result<docdb::DocRowwiseIteratorPtr> PgTableReadData::NewUninitializedIterator(
     const dockv::ReaderProjection& projection) const {
   return tablet->NewUninitializedDocRowIterator(projection, read_hybrid_time, table_id);
 }

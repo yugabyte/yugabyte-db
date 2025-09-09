@@ -88,7 +88,7 @@ struct PgTableReadData {
   const Schema& schema() const;
   Result<ColumnId> ColumnByName(const std::string& name) const;
 
-  Result<std::unique_ptr<docdb::DocRowwiseIterator>> NewUninitializedIterator(
+  Result<docdb::DocRowwiseIteratorPtr> NewUninitializedIterator(
       const dockv::ReaderProjection& projection) const;
 
   Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> NewIterator(

@@ -1565,6 +1565,10 @@ TabletScopedRWOperationPauses Tablet::StartShutdownStorages(
     return op_pause;
   };
 
+  // Triggering vector indexes shutting down before RocksDB to let vector indexes release
+  // ScopedRWOperation instances if any.
+  vector_indexes_->StartShutdown();
+
   op_pauses.blocking_rocksdb_shutdown_start = pause(BlockingRocksDbShutdownStart::kTrue);
 
   bool expected = false;
@@ -1641,7 +1645,7 @@ Status Tablet::DeleteStorages(const std::vector<std::string>& db_paths) {
   return status;
 }
 
-Result<std::unique_ptr<docdb::DocRowwiseIterator>> Tablet::NewUninitializedDocRowIterator(
+Result<docdb::DocRowwiseIteratorPtr> Tablet::NewUninitializedDocRowIterator(
     const dockv::ReaderProjection& projection,
     const ReadHybridTime& read_hybrid_time,
     const TableId& table_id,

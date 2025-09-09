@@ -80,6 +80,8 @@ struct ReadOperationData;
 
 using DocKeyHash = uint16_t;
 using DocReadContextPtr = std::shared_ptr<const DocReadContext>;
+using DocRowwiseIteratorPtr = std::unique_ptr<DocRowwiseIterator>;
+
 template <typename LockManager>
 using LockBatchEntries = std::vector<LockBatchEntry<LockManager>>;
 // Lock state stores the number of locks acquired for each intent type.
