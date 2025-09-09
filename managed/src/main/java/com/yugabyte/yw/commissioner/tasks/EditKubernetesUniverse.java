@@ -1019,7 +1019,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
 
       PlacementInfo azPI = new PlacementInfo();
       int rf = placement.masters.getOrDefault(azUUID, 0);
+      int numMasters = rf;
       int numNodesInAZ = placement.tservers.getOrDefault(azUUID, 0);
+      int numTservers = numNodesInAZ;
       PlacementInfoUtil.addPlacementZone(azUUID, azPI, rf, numNodesInAZ, true);
       // Validate that the StorageClass has allowVolumeExpansion=true
       if (needsExpandPVCInZone) {
@@ -1115,6 +1117,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         azOverridesPerAZ = new HashMap<String, Object>();
       }
       // Add subtask to helmUpgrade subtask group
+      // Master and Tserver partition are equal to num_pods for PVC recreate helm upgrade.
+      // They will be reset on next rolling upgrade for both server types.
+      // This is to prevent unexpected restarts due to diverged values.
       helmUpgrade.addSubTask(
           getSingleKubernetesExecutorTaskForServerTypeTask(
               universeName,
@@ -1125,8 +1130,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               softwareVersion,
               serverType,
               azConfig,
-              0 /* masterPartition */,
-              0 /* tserverPartition */,
+              numMasters /* masterPartition */,
+              numTservers /* tserverPartition */,
               universeOverrides,
               azOverridesPerAZ,
               isReadOnlyCluster,

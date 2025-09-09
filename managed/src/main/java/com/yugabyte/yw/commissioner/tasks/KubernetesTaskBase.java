@@ -931,6 +931,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
               String azOverridesStr =
                   azsOverrides.get(PlacementInfoUtil.getAZNameFromUUID(provider, azUUID));
               Map<String, Object> azOverrides = HelmUtils.convertYamlToMap(azOverridesStr);
+              // Master and Tserver partition are equal to num_pods for non-restart helm upgrade.
+              // They will be reset on next rolling upgrade for both server types.
+              // This is to prevent unexpected restarts due to diverged values.
               helmUpgrade.addSubTask(
                   getSingleNonRestartKubernetesExecutorTaskForServerTypeTask(
                       universeName,
@@ -939,6 +942,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                       masterAddresses,
                       softwareVersion,
                       sType,
+                      numMasters /* masterPartition */,
+                      numTservers /* tserverPartition */,
                       config,
                       universeOverrides,
                       azOverrides,
@@ -2424,6 +2429,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       String masterAddresses,
       String ybSoftwareVersion,
       ServerType serverType,
+      int masterPartition,
+      int tserverPartition,
       Map<String, String> config,
       Map<String, Object> universeOverrides,
       Map<String, Object> azOverrides,
@@ -2481,6 +2488,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       params.ysqlMajorVersionUpgradeState = ysqlMajorVersionUpgradeState;
     }
     params.serverType = serverType;
+    params.masterPartition = masterPartition;
+    params.tserverPartition = tserverPartition;
     params.isReadOnlyCluster = isReadOnlyCluster;
     params.setEnableYbc(enableYbc);
     params.usePreviousGflagsChecksum = true; /* using true always */
