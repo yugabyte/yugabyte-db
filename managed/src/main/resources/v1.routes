@@ -39,7 +39,7 @@ POST    /audit_logging_config                                                  c
 
 GET     /customers/:cUUID/host_info                                            com.yugabyte.yw.controllers.CustomerController.getHostInfo(cUUID: java.util.UUID)
 
-GET     /prometheus_metrics                                                    com.yugabyte.yw.controllers.MetricsController.index()
+GET     /prometheus_metrics                                                    com.yugabyte.yw.controllers.MetricsController.index(request: Request)
 
 GET     /grafana_dashboard                                                     com.yugabyte.yw.controllers.MetricGrafanaController.getGrafanaDashboard()
 
