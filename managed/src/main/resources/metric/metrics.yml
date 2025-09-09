@@ -3486,6 +3486,23 @@ table_block_cache_hit_miss:
         "rocksdb_block_cache_hit": "Hit"
         "rocksdb_block_cache_miss": "Miss"
 
+table_rocksdb_blooms_checked_and_useful:
+  metric: ""
+  function: "rate|sum by (saved_name, namespace_name, table_id, table_name)|avg"
+  range: true
+  filters:
+    export_type: "tserver_export"
+    saved_name: "rocksdb_bloom_filter_checked|rocksdb_bloom_filter_useful"
+  group_by: "saved_name"
+  layout:
+    title: "LSM-DB Blooms usefulness"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_bloom_filter_checked": "Blooms Checked"
+        "rocksdb_bloom_filter_useful": "Blooms Useful"
+
 tablet_splitting_stats:
   metric: ""
   function: "rate|sum"
