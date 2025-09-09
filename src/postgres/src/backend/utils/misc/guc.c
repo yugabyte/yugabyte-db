@@ -3537,6 +3537,18 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_test_slowdown_index_check", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Slows down yb_index_check() by sleeping for 1s after processing "
+						 "every row. Used in tests to simulate long running yb_index_check()."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_slowdown_index_check,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_allow_dockey_bounds", PGC_SUSET, CUSTOM_OPTIONS,
 			gettext_noop("If true, allow lower_bound/upper_bound fields of PgsqlReadRequestPB "
 						 "to be DocKeys. Only applicable for hash-sharded tables."),
@@ -5488,6 +5500,20 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_test_index_check_num_batches_per_snapshot", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Used to test yb_index_check()"),
+			gettext_noop("If set to > 0, number of index rows processed per snapshot "
+						 "is equal to  yb_test_index_check_num_batches_per_snapshot*yb_bnl_batch_size "
+						 "If set to 0, yb_index_check() will execute in single snapshot mode."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_index_check_num_batches_per_snapshot,
+		-1,
+		-1,
+		INT_MAX,
+		NULL, NULL, NULL
+	},
 	{
 		{"yb_fk_references_cache_limit", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Sets the maximum size for the FK reference cache filled by the INSERT, SELECT ... FOR KEY SHARE or similar statmements"),

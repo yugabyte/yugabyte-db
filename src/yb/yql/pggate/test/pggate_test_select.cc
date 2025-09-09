@@ -24,6 +24,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
+#include "yb/yql/pggate/pg_dml_read.h"
 #include "yb/yql/pggate/test/pggate_test.h"
 #include "yb/yql/pggate/util/ybc-internal.h"
 #include "yb/yql/pggate/ybc_pggate.h"
@@ -466,15 +467,8 @@ Result<std::unordered_set<int>> DockeyBoundsForHashPartitionedTablesHelper(
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 2, DataType::INT32, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
 
-  std::string lower_bound = is_lower ? bound : "";
-  size_t lower_bound_len = is_lower ? bound.size() : 0;
-  bool lower_bound_is_inclusive = is_lower ? is_inclusive : false;
-  std::string upper_bound = !is_lower ? bound : "";
-  size_t upper_bound_len = !is_lower ? bound.size() : 0;
-  bool upper_bound_is_inclusive = !is_lower ? is_inclusive : false;
-  CHECK_YBC_STATUS(YBCPgDmlBindBounds(
-      pg_stmt, lower_bound.c_str(), lower_bound_len, lower_bound_is_inclusive, upper_bound.c_str(),
-      upper_bound_len, upper_bound_is_inclusive));
+  down_cast<PgDmlRead*>(pg_stmt)->BindBounds(
+      is_lower ? bound : Slice(), is_inclusive, !is_lower ? bound : Slice(), is_inclusive);
 
   int col_count = 2;
   uint64_t* values = static_cast<uint64_t*>(YBCPAlloc(col_count * sizeof(uint64_t)));
