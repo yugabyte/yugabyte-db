@@ -302,6 +302,9 @@ YB_TEST_TARGET_LINK_LIBRARIES(sequence_utility-itest pg_wrapper_test_base)
 ADD_YB_TEST(upgrade-tests/ysql_ddl_whitelist-test)
 YB_TEST_TARGET_LINK_LIBRARIES(upgrade-tests/ysql_ddl_whitelist-test pg_wrapper_test_base)
 
+ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_role_profiles-test)
+YB_TEST_TARGET_LINK_LIBRARIES(upgrade-tests/ysql_major_upgrade_role_profiles-test pg_wrapper_test_base)
+
 ADD_YB_CQL_TEST(cql-index-test)
 ADD_YB_CQL_TEST(cql-packed-row-test)
 ADD_YB_CQL_TEST(cql-tablet-split-test)
