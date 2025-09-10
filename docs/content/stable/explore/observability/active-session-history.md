@@ -6,7 +6,7 @@ description: Use Active Session History to get current and past views of the dat
 headcontent: Get real-time and historical information about active sessions to analyze and troubleshoot performance issues
 unversioned: true
 menu:
-  preview:
+  stable:
     identifier: ash
     parent: explore-observability
     weight: 860
