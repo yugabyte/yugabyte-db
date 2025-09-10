@@ -844,8 +844,6 @@ void YBCPgClearInsertOnConflictCache(void* state);
 uint64_t YBCPgGetInsertOnConflictKeyCount(void* state);
 //--------------------------------------------------------------------------------------------------
 
-bool YBCIsInitDbModeEnvVarSet();
-
 // This is called by initdb. Used to customize some behavior.
 void YBCInitFlags();
 

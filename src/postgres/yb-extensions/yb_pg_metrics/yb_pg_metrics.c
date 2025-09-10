@@ -46,8 +46,10 @@
 #include "utils/builtins.h"
 #include "utils/catcache.h"
 #include "utils/datetime.h"
+#include "utils/relcache.h"
 #include "utils/syscache.h"
 #include "yb/yql/pggate/webserver/ybc_pg_webserver_wrapper.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 #define YSQL_METRIC_PREFIX "yb_ysqlserver_"
 #define YSQL_LATENCY_METRIC_PREFIX "handler_latency_yb_ysqlserver_SQLProcessor_"
@@ -216,6 +218,8 @@ typedef enum YbStatementType
 	HintCacheRefresh,
 	HintCacheHits,
 	HintCacheMisses,
+	AuthorizedConnection,
+	RelCachePreload,
 	kMaxStatementType
 } YbStatementType;
 int			num_entries = kMaxStatementType;
@@ -266,6 +270,9 @@ static long last_cache_table_misses_val[YbNumCatalogCacheTables] = {0};
 static long last_hint_cache_refreshes_val = 0;
 static long last_hint_cache_hits_val = 0;
 static long last_hint_cache_misses_val = 0;
+
+static long last_authorized_connection_val = 0;
+static long last_relcache_preload_val = 0;
 
 static volatile sig_atomic_t got_SIGHUP = false;
 static volatile sig_atomic_t got_SIGTERM = false;
@@ -406,6 +413,11 @@ set_metric_names(void)
 	strcpy(ybpgm_table[HintCacheMisses].name,
 		   YSQL_METRIC_PREFIX "HintCacheMisses");
 
+	strcpy(ybpgm_table[AuthorizedConnection].name,
+		   YSQL_METRIC_PREFIX "AuthorizedConnection");
+	strcpy(ybpgm_table[RelCachePreload].name,
+		   YSQL_METRIC_PREFIX "RelCachePreload");
+
 	strcpy(ybpgm_table[Select].count_help,
 		   "Number of SELECT statements that have been executed");
 	strcpy(ybpgm_table[Select].sum_help,
@@ -506,6 +518,14 @@ set_metric_names(void)
 	strcpy(ybpgm_table[HintCacheMisses].count_help,
 		   "Number of hint cache misses");
 	strcpy(ybpgm_table[HintCacheMisses].sum_help, "Not applicable");
+
+	strcpy(ybpgm_table[AuthorizedConnection].count_help,
+		   "Number of authorized connections");
+	strcpy(ybpgm_table[AuthorizedConnection].sum_help, "Not applicable");
+
+	strcpy(ybpgm_table[RelCachePreload].count_help,
+		   "Number of relcache preloads");
+	strcpy(ybpgm_table[RelCachePreload].sum_help, "Not applicable");
 }
 
 /*
@@ -923,6 +943,22 @@ ybpgm_shmem_request(void)
 	RequestNamedLWLockTranche("yb_pg_metrics", 1);
 }
 
+static void
+ybpgm_InitPostgres()
+{
+	/* Authorized connections metric */
+	long		current_authorized_connections = YbGetAuthorizedConnections();
+	long		total_delta = current_authorized_connections - last_authorized_connection_val;
+	last_authorized_connection_val = current_authorized_connections;
+	ybpgm_StoreCount(AuthorizedConnection, 0, total_delta);
+
+	/* Relcache preloads metric */
+	long		current_relcache_preloads = YbGetRelCachePreloads();
+	total_delta = current_relcache_preloads - last_relcache_preload_val;
+	last_relcache_preload_val = current_relcache_preloads;
+	ybpgm_StoreCount(RelCachePreload, 0, total_delta);
+}
+
 /*
  * Allocate or attach to shared memory.
  */
@@ -938,6 +974,7 @@ ybpgm_startup_hook(void)
 								  num_entries * sizeof(struct YbcPgmEntry),
 								  &found);
 	set_metric_names();
+	YBCSetUpdateInitPostgresMetricsFn(&ybpgm_InitPostgres);
 }
 
 static void

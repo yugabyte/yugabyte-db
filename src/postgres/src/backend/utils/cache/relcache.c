@@ -110,6 +110,7 @@
 #include "commands/dbcommands.h"
 #include "commands/yb_cmds.h"
 #include "partitioning/partdesc.h"
+#include "postmaster/postmaster.h"
 #include "utils/catcache.h"
 #include "utils/partcache.h"
 #include "utils/relcache.h"
@@ -182,6 +183,8 @@ bool		criticalSharedRelcachesBuilt = false;
  * might already be obsolete.
  */
 static long relcacheInvalsReceived = 0L;
+
+static long YbNumRelCachePreloads = 0L;
 
 /*
  * in_progress_list is a stack of ongoing RelationBuildDesc() calls.  CREATE
@@ -2906,9 +2909,19 @@ YbRegisterAdditionalCatalogs(YbTablePrefetcherState *prefetcher)
 		pfree(additional_tables);
 }
 
+long
+YbGetRelCachePreloads()
+{
+	return YbNumRelCachePreloads;
+}
+
 static YbcStatus
 YbPreloadRelCacheImpl(YbRunWithPrefetcherContext *ctx)
 {
+	YbNumRelCachePreloads++;
+	if (Log_connections)
+		elog(LOG, "Preloading relcache");
+
 	/*
 	 * During relcache loading postgres reads the data from multiple sys tables.
 	 * It is reasonable to prefetch all these tables in one shot.

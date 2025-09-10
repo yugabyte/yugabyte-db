@@ -147,9 +147,15 @@ uint32_t YBCAshNormalizeComponentForTServerEvents(uint32_t code, bool component_
 
 int YBCGetCallStackFrames(void** result, int max_depth, int skip_count);
 
+bool YBCIsInitDbModeEnvVarSet();
+
 bool YBIsMajorUpgradeInitDb();
 
 const char *YBCGetOutFuncName(YbcPgOid typid);
+
+typedef void (*YbcUpdateInitPostgresMetricsFn)(void);
+void YBCSetUpdateInitPostgresMetricsFn(YbcUpdateInitPostgresMetricsFn foo);
+void YBCUpdateInitPostgresMetrics();
 
 #ifdef __cplusplus
 } // extern "C"
