@@ -3,14 +3,15 @@
 PG_CONFIG ?= pg_config
 CARGO_BIN ?= $(shell command -v cargo || echo $(HOME)/.cargo/bin/cargo)
 CARGO_DIR := $(dir $(CARGO_BIN))
-PG_PARQUET_CFLAGS := -Wno-error -Wno-implicit-fallthrough -Wno-unused-but-set-variable -Wno-missing-include-dirs
+
+YB_PG_PARQUET_CFLAGS := -Wno-error -Wno-implicit-fallthrough -Wno-unused-but-set-variable -Wno-missing-include-dirs
 
 # YB: OS detection
-UNAME_S := $(shell uname -s)
+YB_UNAME_S := $(shell uname -s)
 
 # YB: macOS SDK (only defined on Darwin)
-ifeq ($(UNAME_S),Darwin)
-	SDKROOT := $(shell xcrun --show-sdk-path)
+ifeq ($(YB_UNAME_S),Darwin)
+	YB_SDKROOT := $(shell xcrun --show-sdk-path)
 endif
 
 ifneq (,$(filter clang%,$(YB_COMPILER_TYPE)))
@@ -20,10 +21,10 @@ ifneq (,$(filter clang%,$(YB_COMPILER_TYPE)))
 		RUSTFLAGS := -C link-arg=-fuse-ld=lld -C linker=$(YB_LLVM_TOOLCHAIN_DIR)/bin/clang
 		LIBCLANG_PATH := $(YB_LLVM_TOOLCHAIN_DIR)/lib
 
-		ifeq ($(UNAME_S),Darwin)
-			RUSTFLAGS += -C link-arg=-isysroot -C link-arg=$(SDKROOT)
+		ifeq ($(YB_UNAME_S),Darwin)
+			RUSTFLAGS += -C link-arg=-isysroot -C link-arg=$(YB_SDKROOT)
 			RUSTFLAGS += -C link-arg=-Wl,-undefined,dynamic_lookup
-			PG_PARQUET_CFLAGS += -isysroot $(SDKROOT)
+			YB_PG_PARQUET_CFLAGS += -isysroot $(YB_SDKROOT)
 		else
 			RUSTFLAGS += -L$(YB_THIRDPARTY_DIR)/installed/common/lib
 		endif
@@ -58,7 +59,7 @@ cargo-pgrx-exists: cargo-exists
 		   $(if $(CXX),CXX=$(CXX),) \
 		   $(if $(RUSTFLAGS),RUSTFLAGS="$(RUSTFLAGS)",) \
 		   $(if $(LIBCLANG_PATH),LIBCLANG_PATH=$(LIBCLANG_PATH),) \
-		   CFLAGS="$(PG_PARQUET_CFLAGS)" \
+		   CFLAGS="$(YB_PG_PARQUET_CFLAGS)" \
 		   CARGO_INCREMENTAL=1 \
 		   cargo build --package cargo-pgrx --release && \
 	   mkdir -p $$YB_BUILD_ROOT/.pgrx/data-15 && \
@@ -78,7 +79,7 @@ install: cargo-pgrx-exists
 		   $(if $(CXX),CXX=$(CXX),) \
 		   $(if $(RUSTFLAGS),RUSTFLAGS="$(RUSTFLAGS)",) \
 		   $(if $(LIBCLANG_PATH),LIBCLANG_PATH=$(LIBCLANG_PATH),) \
-		   CFLAGS="$(PG_PARQUET_CFLAGS)" \
+		   CFLAGS="$(YB_PG_PARQUET_CFLAGS)" \
 		   LD_LIBRARY_PATH="$(YB_THIRDPARTY_DIR)/installed/common/lib:$$LD_LIBRARY_PATH" \
 		   PGRX_HOME=$(YB_BUILD_ROOT)/.pgrx \
 		   CARGO_INCREMENTAL=1 \
