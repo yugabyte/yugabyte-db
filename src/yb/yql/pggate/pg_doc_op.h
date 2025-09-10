@@ -147,8 +147,9 @@ class PgsqlResultStream {
   // Returns nullptr if nothing is available. May invalidate previously returned data.
   Result<PgDocResult*> GetNextDocResult();
 
-  // Append another batch of the fetched data to the queue
-  void EmplaceDocResult(rpc::SidecarHolder&& data, const LWPgsqlResponsePB& response);
+  // Append another batch of the fetched data to the queue and return the number of
+  // rows received
+  uint64_t EmplaceDocResult(rpc::SidecarHolder&& data, const LWPgsqlResponsePB& response);
 
   friend class PgDocResultStream;
 
@@ -204,7 +205,8 @@ class PgDocResultStream {
 
   // To be used by the PgDocOp's fetcher.
   // Find PgsqlResultStream for the op and put the fetched data into the queue.
-  Status EmplaceOpDocResult(
+  // Returns the number of rows received.
+  Result<uint64_t> EmplaceOpDocResult(
       const PgsqlOpPtr& op, rpc::SidecarHolder&& data, const LWPgsqlResponsePB& response);
 
  protected:
