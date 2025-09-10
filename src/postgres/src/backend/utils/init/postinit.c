@@ -120,6 +120,8 @@ static void InitPostgresImpl(const char *in_dbname, Oid dboid,
 static void YbEnsureSysTablePrefetchingStopped();
 static void YbPresetDatabaseCollation(HeapTuple tuple);
 
+static long YbNumAuthorizedConnections = 0L;
+
 /*** InitPostgres support ***/
 
 
@@ -333,6 +335,9 @@ PerformAuthentication(Port *port)
 		ereport(LOG, errmsg_internal("%s", logmsg.data));
 		pfree(logmsg.data);
 	}
+
+	if (IsYugaByteEnabled())
+		YbNumAuthorizedConnections++;
 
 	set_ps_display("startup");
 
@@ -737,10 +742,12 @@ InitPostgres(const char *in_dbname, Oid dboid,
 	PG_CATCH();
 	{
 		YbEnsureSysTablePrefetchingStopped();
+		YBCUpdateInitPostgresMetrics();
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
 	YbEnsureSysTablePrefetchingStopped();
+	YBCUpdateInitPostgresMetrics();
 }
 
 static void
@@ -1476,6 +1483,12 @@ YbPresetDatabaseCollation(HeapTuple tuple)
 	default_locale.provider = dbform->datlocprovider;
 	default_locale.deterministic = true;
 	yb_default_collation_resolved = true;
+}
+
+long
+YbGetAuthorizedConnections()
+{
+	return YbNumAuthorizedConnections;
 }
 
 /*

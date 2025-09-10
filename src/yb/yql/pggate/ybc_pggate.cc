@@ -2156,19 +2156,6 @@ uint64_t YBCPgGetInsertOnConflictKeyCount(void* state) {
 
 //--------------------------------------------------------------------------------------------------
 
-bool YBCIsInitDbModeEnvVarSet() {
-  static bool cached_value = false;
-  static bool cached = false;
-
-  if (!cached) {
-    const char* initdb_mode_env_var_value = getenv("YB_PG_INITDB_MODE");
-    cached_value = initdb_mode_env_var_value && strcmp(initdb_mode_env_var_value, "1") == 0;
-    cached = true;
-  }
-
-  return cached_value;
-}
-
 void YBCInitFlags() {
   SetAtomicFlag(GetAtomicFlag(&FLAGS_pggate_num_connections_to_server),
                 &FLAGS_num_connections_to_server);

@@ -597,6 +597,27 @@ class PgCatalogVersionTest : public LibPqTestBase {
     ASSERT_EQ(count, 2);
   }
 
+  int64_t GetInt64MetricsHelper(const string& metric_name) {
+    auto json_metrics = GetJsonMetrics();
+
+    for (const auto& metric : json_metrics) {
+      if (metric.name.find(metric_name) != std::string::npos) {
+        LOG(INFO) << metric_name << ":" << metric.value;
+        return metric.value;
+      }
+    }
+    LOG(INFO) << metric_name << " not found";
+    return -1;
+  }
+
+  int64_t GetNumRelCachePreloads() {
+    return GetInt64MetricsHelper("RelCachePreload");
+  }
+
+  int64_t GetNumAuthorizedConnections() {
+    return GetInt64MetricsHelper("AuthorizedConnection");
+  }
+
   // This function is extracted and adapted from ysql_upgrade.cc.
   std::string ReadMigrationFile(const string& migration_file) {
     const char* kStaticDataParentDir = "share";
@@ -3427,6 +3448,58 @@ TEST_P(PgCatalogVersionConnManagerTest,
     // see the expected error immediately.
     ASSERT_NOK_STR_CONTAINS(ConnectToDBAsUser("test_db", "test_user"), expected_error);
   }
+}
+
+TEST_F(PgCatalogVersionTest, NewConnectionRelCachePreloadTest) {
+  // Wait a bit for the webserver background process to get ready to serve curl request.
+  SleepFor(2s);
+  auto conn_yugabyte = ASSERT_RESULT(Connect());
+  auto initialCount = GetNumRelCachePreloads();
+  LOG(INFO) << "initialCount: " << initialCount;
+  ASSERT_GT(initialCount, 0);
+  ASSERT_OK(conn_yugabyte.Execute("CREATE TABLE foo(id int)"));
+  // We should see the same number of relcache preloads.
+  ASSERT_EQ(GetNumRelCachePreloads(), initialCount);
+  const int loop_count = 10;
+  auto version = ASSERT_RESULT(GetCatalogVersion(&conn_yugabyte));
+  for (int i = 1; i <= loop_count; i++) {
+    ASSERT_OK(BumpCatalogVersion(1, &conn_yugabyte, i % 2 ? "NOSUPERUSER" : "SUPERUSER"));
+    auto new_version = ASSERT_RESULT(GetCatalogVersion(&conn_yugabyte));
+    ASSERT_EQ(new_version, version + i);
+    // Next connection is a new connection after a DDL, it needs to rebuild relcache.
+    auto conn = ASSERT_RESULT(Connect());
+    // Therefore the relcache rebuild counter should increment.
+    ASSERT_EQ(GetNumRelCachePreloads(), initialCount + i) << i;
+    // Next connection is a subsequent connection after a DDL, it does not rebuild relcache.
+    conn = ASSERT_RESULT(Connect());
+    // Therefore the relcache rebuild counter does not change.
+    ASSERT_EQ(GetNumRelCachePreloads(), initialCount + i);
+  }
+
+  // At this point, we have seen initialCount + loop_count relcache preloads.
+  ASSERT_EQ(GetNumRelCachePreloads(), initialCount + loop_count);
+  // Execute another DDL that increments the catalog version.
+  ASSERT_OK(BumpCatalogVersion(1, &conn_yugabyte, "NOSUPERUSER"));
+
+  // Concurrently creates a number of connections.
+  TestThreadHolder thread_holder;
+  for (int i = 0; i < loop_count; i++) {
+    thread_holder.AddThreadFunctor([this] {
+      auto conn = ASSERT_RESULT(Connect());
+    });
+  }
+  thread_holder.Stop();
+
+  // Some of them (we assert more than half) will all trying to do relcache preloads. Others will
+  // find relcache init file already rebuilt by other concurrent connections and is now valid so
+  // they will not do relcache preloads.
+  auto relcache_preloads = GetNumRelCachePreloads();
+  ASSERT_GE(relcache_preloads, initialCount + loop_count + loop_count / 2);
+  auto authorized_connections = GetNumAuthorizedConnections();
+  LOG(INFO) << "authorized_connections: " << authorized_connections;
+  // Total authorized connections should also include those "subsequent" connections that did
+  // not trigger relcache preload, so the number should be more than relcache_preloads.
+  ASSERT_GT(authorized_connections, relcache_preloads);
 }
 
 } // namespace pgwrapper

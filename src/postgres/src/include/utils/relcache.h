@@ -168,4 +168,6 @@ extern void YbRelationCacheInvalidate(void);
 extern bool YbRelationIdIsInInitFileAndNotCached(Oid relationId);
 extern bool YbSharedRelationIdNeedsGlobalImpact(Oid relationId);
 
+extern long YbGetRelCachePreloads(void);
+
 #endif							/* RELCACHE_H */

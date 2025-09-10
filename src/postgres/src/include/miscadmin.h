@@ -493,6 +493,8 @@ extern void InitPostgres(const char *in_dbname, Oid dboid,
 						 bool override_allow_connections,
 						 char *out_dbname,
 						 uint64_t *yb_session_id);
+extern long YbGetAuthorizedConnections();
+
 extern void BaseInit(void);
 
 /* in utils/init/miscinit.c */
