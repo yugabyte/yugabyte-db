@@ -186,11 +186,11 @@ libraryDependencies ++= Seq(
   // Be careful when changing azure library versions.
   // Make sure all itests and existing functionality works as expected.
   // Used below azure versions from azure-sdk-bom:1.2.6
-  "com.azure" % "azure-core" % "1.32.0",
-  "com.azure" % "azure-identity" % "1.6.0",
-  "com.azure" % "azure-security-keyvault-keys" % "4.5.0",
-  "com.azure" % "azure-storage-blob" % "12.19.1",
-  "com.azure.resourcemanager" % "azure-resourcemanager" % "2.43.0",
+  "com.azure" % "azure-core" % "1.56.0",
+  "com.azure" % "azure-identity" % "1.17.0",
+  "com.azure" % "azure-security-keyvault-keys" % "4.10.2",
+  "com.azure" % "azure-storage-blob" % "12.31.2",
+  "com.azure.resourcemanager" % "azure-resourcemanager" % "2.54.0",
   "com.azure.resourcemanager" % "azure-resourcemanager-marketplaceordering" % "1.0.0-beta.2",
   "jakarta.mail" % "jakarta.mail-api" % "2.1.2",
   "org.eclipse.angus" % "jakarta.mail" % "1.0.0",
@@ -206,7 +206,7 @@ libraryDependencies ++= Seq(
   "com.nimbusds" % "nimbus-jose-jwt" % "9.37.2",
   "com.nimbusds" % "oauth2-oidc-sdk" % "10.1",
   "org.playframework" %% "play-json" % "3.0.4",
-  "commons-validator" % "commons-validator" % "1.8.0",
+  "commons-validator" % "commons-validator" % "1.10.0",
   "org.apache.velocity" % "velocity-engine-core" % "2.4.1",
   "com.fasterxml.woodstox" % "woodstox-core" % "6.4.0",
   "com.jayway.jsonpath" % "json-path" % "2.9.0",
@@ -948,7 +948,7 @@ dependencyOverrides += "org.reflections" % "reflections" % "0.10.2"
 // datadog-api-client library also needs them, but the newer versions
 // pulled by datadog-api-client are not compatible with the openapi java client. So
 // fixing these to older versions.
-val jerseyVersion = "2.30.1"
+val jerseyVersion = "2.41"
 dependencyOverrides += "org.glassfish.jersey.connectors" % "jersey-apache-connector" % jerseyVersion % Test
 dependencyOverrides += "org.glassfish.jersey.core" % "jersey-client" % jerseyVersion % Test
 dependencyOverrides += "org.glassfish.jersey.core" % "jersey-common" % jerseyVersion % Test
