@@ -128,7 +128,7 @@ class ChangeMetadataOperation
 
   Status DoAborted(const Status& status) override;
 
-  Status ProcessCDCSDKCreateStreamContext();
+  Status ProcessCDCSDKCreateStreamContext(Status* complete_status);
 
   log::Log* const log_;
 
