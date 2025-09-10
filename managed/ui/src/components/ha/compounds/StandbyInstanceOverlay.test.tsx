@@ -50,6 +50,12 @@ describe('HA overlay', () => {
     expect(component.container).toBeEmptyDOMElement();
 
     component = setup({ error: true });
+    expect(component.container).toBeInTheDocument();
+
+    component = setup({ error: { response: { status: 401 } } });
+    expect(component.container).toBeInTheDocument();
+
+    component = setup({ error: { response: { status: 500 } } });
     expect(component.container).toBeEmptyDOMElement();
   });
 });
