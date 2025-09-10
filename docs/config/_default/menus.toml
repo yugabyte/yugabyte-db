@@ -499,7 +499,6 @@
   identifier = "quick-start"
   url = "/preview/quick-start/macos/"
   [preview.params]
-    classes = "separator"
     showSection = true
     hideChildren = true
 
@@ -517,6 +516,7 @@
   identifier = "develop"
   url = "/preview/develop/"
   [preview.params]
+    classes = "separator"
     showSection = true
 
 [[preview]]
@@ -1070,7 +1070,6 @@
   identifier = "quick-start"
   url = "/preview/quick-start/macos/"
   [stable.params]
-    classes = "separator"
     showSection = true
     hideChildren = true
 
@@ -1086,8 +1085,9 @@
   name = "Develop"
   weight = 6
   identifier = "develop"
-  url = "/stable/develop/"
+  url = "/preview/develop/"
   [stable.params]
+    classes = "separator"
     showSection = true
 
 #[[stable]]
@@ -1255,7 +1255,6 @@
   identifier = "quick-start"
   url = "/preview/quick-start/macos/"
   ["v2024.2".params]
-    classes = "separator"
     showSection = true
     hideChildren = true
 
@@ -1271,8 +1270,9 @@
   name = "Develop"
   weight = 6
   identifier = "develop"
-  url = "/v2024.2/develop/"
+  url = "/preview/develop/"
   ["v2024.2".params]
+    classes = "separator"
     showSection = true
 
 [["v2024.2"]]
@@ -1408,7 +1408,6 @@
   identifier = "quick-start"
   url = "/preview/quick-start/macos/"
   ["v2024.1".params]
-    classes = "separator"
     showSection = true
     hideChildren = true
 
@@ -1424,8 +1423,9 @@
   name = "Develop"
   weight = 6
   identifier = "develop"
-  url = "/v2024.1/develop/"
+  url = "/preview/develop/"
   ["v2024.1".params]
+    classes = "separator"
     showSection = true
 
 [["v2024.1"]]
@@ -1563,7 +1563,6 @@
   identifier = "quick-start"
   url = "/preview/quick-start-yugabytedb-managed/"
   ["v2025.1".params]
-    classes = "separator"
     showSection = true
     hideChildren = true
 
@@ -1579,8 +1578,9 @@
   name = "Develop"
   weight = 6
   identifier = "develop"
-  url = "/v2025.1/develop/"
+  url = "/preview/develop/"
   ["v2025.1".params]
+    classes = "separator"
     showSection = true
 
 [["v2025.1"]]
@@ -1716,7 +1716,6 @@
   identifier = "quick-start"
   url = "/preview/quick-start/macos/"
   ["v2.20".params]
-    classes = "separator"
     showSection = true
     hideChildren = true
 
@@ -1732,8 +1731,9 @@
   name = "Develop"
   weight = 6
   identifier = "develop"
-  url = "/v2.20/develop/"
+  url = "/preview/develop/"
   ["v2.20".params]
+    classes = "separator"
     showSection = true
 
 [["v2.20"]]
