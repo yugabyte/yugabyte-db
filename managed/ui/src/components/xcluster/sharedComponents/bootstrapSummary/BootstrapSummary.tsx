@@ -5,11 +5,14 @@ import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
 
 import InfoIcon from '../../../../redesign/assets/info-message.svg';
-import { IStorageConfig as BackupStorageConfig } from '../../../backupv2';
+import { CustomerConfig as BackupStorageConfig } from '../../../backupv2';
 import { I18N_KEY_PREFIX_XCLUSTER_TERMS, INPUT_FIELD_WIDTH_PX } from '../../constants';
 import { BootstrapCategoryCard } from './BootstrapCategoryCard';
 import { ReactSelectStorageConfigField } from '../ReactSelectStorageConfig';
-import { RuntimeConfigKey } from '../../../../redesign/helpers/constants';
+import {
+  I18N_ACCESSABILITY_ALT_TEXT_KEY_PREFIX,
+  RuntimeConfigKey
+} from '../../../../redesign/helpers/constants';
 import { YBCheckboxField, YBTooltip } from '../../../../redesign/components';
 import { api, runtimeConfigQueryKey } from '../../../../redesign/helpers/api';
 import { YBBanner, YBBannerVariant } from '../../../common/descriptors';
@@ -209,7 +212,10 @@ export const BootstrapSummary = (props: ConfigureBootstrapStepProps) => {
                 </Typography>
               }
             >
-              <img src={InfoIcon} alt={t('infoIcon', { keyPrefix: 'imgAltText' })} />
+              <img
+                src={InfoIcon}
+                alt={t('infoIcon', { keyPrefix: I18N_ACCESSABILITY_ALT_TEXT_KEY_PREFIX })}
+              />
             </YBTooltip>
           </div>
           {/* Backup storage config should already be saved for existing DR configs. */}

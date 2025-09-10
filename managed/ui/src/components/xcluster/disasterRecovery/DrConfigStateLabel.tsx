@@ -7,6 +7,7 @@ import InfoIcon from '../../../redesign/assets/info-message.svg';
 import { YBTooltip } from '../../../redesign/components';
 import { assertUnreachableCase } from '../../../utils/errorHandlingUtils';
 import { getTableCountsOfConcern } from '../ReplicationUtils';
+import { I18N_ACCESSABILITY_ALT_TEXT_KEY_PREFIX } from '../../../redesign/helpers/constants';
 
 import { DrConfig, DrConfigState } from './dtos';
 import { usePillStyles } from '../../../redesign/styles/styles';
@@ -91,7 +92,10 @@ export const DrConfigStateLabel = ({ drConfig, variant = 'body2' }: DrConfigStat
           <YBTooltip
             title={<Typography variant="body2">{t(`${drConfig.state}.tooltip`)}</Typography>}
           >
-            <img src={InfoIcon} alt={t('infoIcon', { keyPrefix: 'imgAltText' })} />
+            <img
+              src={InfoIcon}
+              alt={t('infoIcon', { keyPrefix: I18N_ACCESSABILITY_ALT_TEXT_KEY_PREFIX })}
+            />
           </YBTooltip>
         </Typography>
       );

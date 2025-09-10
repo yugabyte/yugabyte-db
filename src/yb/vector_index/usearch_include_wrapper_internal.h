@@ -56,7 +56,9 @@
 #define USEARCH_USE_SIMSIMD 1
 
 #if defined(__x86_64__) || defined(_M_X64)
+#if defined(__clang__)
 #pragma GCC diagnostic ignored "-Wshorten-64-to-32"
+#endif
 
 #define SIMSIMD_TARGET_HASWELL 1
 #define SIMSIMD_TARGET_SKYLAKE 1

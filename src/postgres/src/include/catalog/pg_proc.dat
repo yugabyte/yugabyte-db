@@ -12179,10 +12179,11 @@
   proargnames => '{pid}',
   prosrc => 'yb_log_catcache_stats'},
 
-{ oid => '8090', descr => 'returns whether the index is logically consistent with its base relation',
-  proname => 'yb_index_check', provolatile => 's',
-  prorettype => 'void', proargtypes => 'oid',
-  prosrc => 'yb_index_check' },
+{ oid => '8090', descr => 'checks whether the index is consistent with its base relation',
+  proname => 'yb_index_check', provolatile => 'v', proisstrict => 'f',
+  prorettype => 'void', proargtypes => 'oid bool',
+  proargnames => '{indexrelid,single_snapshot_mode}',
+  prosrc => 'yb_index_check'},
 
 # Statistics Import
 { oid => '8091',
@@ -12218,4 +12219,9 @@
   proargnames => '{schemaname,relname,attname,inherited}',
   prosrc => 'pg_clear_attribute_stats' },
 
+{ oid => '8098', descr => 'returns the ybctid given a relation and its key attributes',
+  proname => 'yb_compute_row_ybctid', provolatile => 's',
+  prorettype => 'bytea', proargtypes => 'oid record bytea',
+  proargnames => '{relid,key_atts,ybidxbasectid}',
+  prosrc => 'yb_compute_row_ybctid', proisstrict => 'f'},
 ]

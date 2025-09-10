@@ -1,8 +1,8 @@
 ---
-title: YSQL major upgrade
+title: YSQL major upgrade - manual
 headerTitle: YSQL major upgrade
 linkTitle: YSQL major upgrade
-description: Upgrade YugabyteDB to PostgreSQL 15
+description: Upgrade YugabyteDB to PostgreSQL 15 using manual installation
 headcontent: Upgrade YugabyteDB to a version that supports PG 15
 menu:
   stable:
@@ -34,10 +34,6 @@ The upgrade is fully online. While the upgrade is in progress, you have full and
 </ul>
 
 ## Before you begin
-
-{{< warning >}}
-v2.25 is a preview release that is only meant for evaluation purposes and should not be used in production.
-{{< /warning >}}
 
 - All DDL statements, except ones related to Temporary table and Refresh Materialized View, are blocked for the duration of the upgrade. Consider executing all DDLs before the upgrade, and pause any jobs that might run DDLs. DMLs are allowed.
 - Upgrade client drivers.

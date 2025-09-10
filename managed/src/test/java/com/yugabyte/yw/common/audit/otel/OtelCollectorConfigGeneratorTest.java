@@ -32,7 +32,11 @@ import com.yugabyte.yw.models.helpers.exporters.audit.YSQLAuditConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.ScrapeConfigTargetType;
 import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig;
 import com.yugabyte.yw.models.helpers.telemetry.*;
+import com.yugabyte.yw.models.helpers.telemetry.TelemetryProviderConfig;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
@@ -101,106 +105,261 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     FileUtils.deleteDirectory(file);
   }
 
+  // Helper method to create and save a TelemetryProvider
+  private TelemetryProvider createTelemetryProvider(
+      UUID uuid, String name, Map<String, String> tags, TelemetryProviderConfig config) {
+    TelemetryProvider telemetryProvider = new TelemetryProvider();
+    telemetryProvider.setUuid(uuid);
+    telemetryProvider.setCustomerUUID(customer.getUuid());
+    telemetryProvider.setName(name);
+    telemetryProvider.setTags(tags);
+    telemetryProvider.setConfig(config);
+    mockTelemetryProviderService.save(telemetryProvider);
+    return telemetryProvider;
+  }
+
+  // Helper method to create AuditLogConfig with YSQL configuration
+  private AuditLogConfig createAuditLogConfigWithYSQL(
+      UUID exporterUuid, Map<String, String> additionalTags) {
+    AuditLogConfig auditLogConfig = new AuditLogConfig();
+    YSQLAuditConfig ysqlAuditConfig = new YSQLAuditConfig();
+    ysqlAuditConfig.setEnabled(true);
+    auditLogConfig.setYsqlAuditConfig(ysqlAuditConfig);
+
+    UniverseLogsExporterConfig logsExporterConfig = new UniverseLogsExporterConfig();
+    logsExporterConfig.setExporterUuid(exporterUuid);
+    logsExporterConfig.setAdditionalTags(additionalTags);
+    auditLogConfig.setUniverseLogsExporterConfig(ImmutableList.of(logsExporterConfig));
+
+    return auditLogConfig;
+  }
+
+  // Helper method to create AuditLogConfig with YCQL configuration
+  private AuditLogConfig createAuditLogConfigWithYCQL(
+      UUID exporterUuid,
+      Map<String, String> additionalTags,
+      YCQLAuditConfig.YCQLAuditLogLevel logLevel) {
+    AuditLogConfig auditLogConfig = new AuditLogConfig();
+    YCQLAuditConfig ycqlAuditConfig = new YCQLAuditConfig();
+    ycqlAuditConfig.setEnabled(true);
+    ycqlAuditConfig.setLogLevel(logLevel);
+    auditLogConfig.setYcqlAuditConfig(ycqlAuditConfig);
+
+    UniverseLogsExporterConfig logsExporterConfig = new UniverseLogsExporterConfig();
+    logsExporterConfig.setExporterUuid(exporterUuid);
+    logsExporterConfig.setAdditionalTags(additionalTags);
+    auditLogConfig.setUniverseLogsExporterConfig(ImmutableList.of(logsExporterConfig));
+
+    return auditLogConfig;
+  }
+
+  // Helper method to create QueryLogConfig with YSQL configuration
+  private QueryLogConfig createQueryLogConfig(
+      UUID exporterUuid,
+      Map<String, String> additionalTags,
+      YSQLQueryLogConfig.YSQLLogStatement logStatement,
+      YSQLQueryLogConfig.YSQlLogMinErrorStatement logMinErrorStatement,
+      YSQLQueryLogConfig.YSQLLogErrorVerbosity logErrorVerbosity,
+      boolean logDuration,
+      boolean debugPrintPlan,
+      boolean logConnections,
+      boolean logDisconnections,
+      int logMinDurationStatement) {
+    QueryLogConfig queryLogConfig = new QueryLogConfig();
+    YSQLQueryLogConfig ysqlQueryLogConfig = new YSQLQueryLogConfig();
+    ysqlQueryLogConfig.setEnabled(true);
+    ysqlQueryLogConfig.setLogStatement(logStatement);
+    ysqlQueryLogConfig.setLogMinErrorStatement(logMinErrorStatement);
+    ysqlQueryLogConfig.setLogErrorVerbosity(logErrorVerbosity);
+    ysqlQueryLogConfig.setLogDuration(logDuration);
+    ysqlQueryLogConfig.setDebugPrintPlan(debugPrintPlan);
+    ysqlQueryLogConfig.setLogConnections(logConnections);
+    ysqlQueryLogConfig.setLogDisconnections(logDisconnections);
+    ysqlQueryLogConfig.setLogMinDurationStatement(logMinDurationStatement);
+    queryLogConfig.setYsqlQueryLogConfig(ysqlQueryLogConfig);
+
+    UniverseQueryLogsExporterConfig logsExporterConfig = new UniverseQueryLogsExporterConfig();
+    logsExporterConfig.setExporterUuid(exporterUuid);
+    logsExporterConfig.setAdditionalTags(additionalTags);
+    queryLogConfig.setUniverseLogsExporterConfig(ImmutableList.of(logsExporterConfig));
+
+    return queryLogConfig;
+  }
+
+  // Helper method to create MetricsExportConfig
+  private MetricsExportConfig createMetricsExportConfig(
+      UUID exporterUuid,
+      Map<String, String> additionalTags,
+      int scrapeIntervalSeconds,
+      int scrapeTimeoutSeconds,
+      MetricCollectionLevel collectionLevel) {
+    MetricsExportConfig metricsExportConfig = new MetricsExportConfig();
+    metricsExportConfig.setScrapeIntervalSeconds(scrapeIntervalSeconds);
+    metricsExportConfig.setScrapeTimeoutSeconds(scrapeTimeoutSeconds);
+    metricsExportConfig.setCollectionLevel(collectionLevel);
+
+    UniverseMetricsExporterConfig metricsExporterConfig = new UniverseMetricsExporterConfig();
+    metricsExporterConfig.setExporterUuid(exporterUuid);
+    metricsExporterConfig.setAdditionalTags(additionalTags);
+    metricsExportConfig.setUniverseMetricsExporterConfig(ImmutableList.of(metricsExporterConfig));
+
+    return metricsExportConfig;
+  }
+
+  // Helper method to generate config file and assert result
+  private void generateAndAssertConfig(
+      AuditLogConfig auditLogConfig,
+      QueryLogConfig queryLogConfig,
+      MetricsExportConfig metricsExportConfig,
+      String expectedResource) {
+    try {
+      File file = new File(OTEL_COL_TMP_PATH + "config.yml");
+      file.createNewFile();
+      generator.generateConfigFile(
+          nodeTaskParams,
+          provider,
+          null,
+          auditLogConfig,
+          queryLogConfig,
+          metricsExportConfig,
+          "%t | %u%d : ",
+          file.toPath(),
+          NodeManager.getOtelColMetricsPort(nodeTaskParams),
+          null);
+
+      String result = FileUtils.readFileToString(file, Charset.defaultCharset());
+      String expected = TestUtils.readResource(expectedResource);
+      assertThat(result, equalTo(expected));
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
   @Test
   public void generateOtelColConfigYsqlPlusLoki() {
-    TelemetryProvider telemetryProvider = new TelemetryProvider();
-    telemetryProvider.setUuid(new UUID(0, 0));
-    telemetryProvider.setCustomerUUID(customer.getUuid());
-    telemetryProvider.setName("Loki");
-    telemetryProvider.setTags(ImmutableMap.of("tag", "value"));
     LokiConfig config = new LokiConfig();
     config.setType(ProviderType.LOKI);
     config.setEndpoint("http://loki:3100");
     config.setAuthType(LokiConfig.LokiAuthType.NoAuth);
-    telemetryProvider.setConfig(config);
-    mockTelemetryProviderService.save(telemetryProvider);
 
-    AuditLogConfig auditLogConfig = new AuditLogConfig();
-    YSQLAuditConfig ysqlAuditConfig = new YSQLAuditConfig();
-    ysqlAuditConfig.setEnabled(true);
-    auditLogConfig.setYsqlAuditConfig(ysqlAuditConfig);
-    UniverseLogsExporterConfig logsExporterConfig = new UniverseLogsExporterConfig();
-    logsExporterConfig.setExporterUuid(telemetryProvider.getUuid());
-    logsExporterConfig.setAdditionalTags(ImmutableMap.of("additionalTag", "otherValue"));
-    auditLogConfig.setUniverseLogsExporterConfig(ImmutableList.of(logsExporterConfig));
-    try {
-      File file = new File(OTEL_COL_TMP_PATH + "config.yml");
-      file.createNewFile();
-      generator.generateConfigFile(
-          nodeTaskParams,
-          provider,
-          null,
-          auditLogConfig,
-          null,
-          null,
-          "%t | %u%d : ",
-          file.toPath(),
-          NodeManager.getOtelColMetricsPort(nodeTaskParams),
-          null);
+    TelemetryProvider telemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "Loki", ImmutableMap.of("tag", "value"), config);
 
-      String result = FileUtils.readFileToString(file, Charset.defaultCharset());
+    AuditLogConfig auditLogConfig =
+        createAuditLogConfigWithYSQL(
+            telemetryProvider.getUuid(), ImmutableMap.of("additionalTag", "otherValue"));
 
-      String expected = TestUtils.readResource("audit/loki_config.yml");
-      assertThat(result, equalTo(expected));
-    } catch (IOException e) {
-      throw new RuntimeException(e);
-    }
+    generateAndAssertConfig(auditLogConfig, null, null, "audit/loki_config.yml");
+  }
+
+  @Test
+  public void generateOtelColConfigYsqlQueryLogPlusLoki() {
+    LokiConfig config = new LokiConfig();
+    config.setType(ProviderType.LOKI);
+    config.setEndpoint("http://loki:3100");
+    config.setAuthType(LokiConfig.LokiAuthType.NoAuth);
+
+    TelemetryProvider telemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "Loki", ImmutableMap.of("tag", "value"), config);
+
+    QueryLogConfig queryLogConfig =
+        createQueryLogConfig(
+            telemetryProvider.getUuid(),
+            ImmutableMap.of("additionalTag", "otherValue"),
+            YSQLQueryLogConfig.YSQLLogStatement.ALL,
+            YSQLQueryLogConfig.YSQlLogMinErrorStatement.ERROR,
+            YSQLQueryLogConfig.YSQLLogErrorVerbosity.VERBOSE,
+            true,
+            true,
+            true,
+            true,
+            1000);
+
+    generateAndAssertConfig(null, queryLogConfig, null, "audit/loki_query_log_config.yml");
   }
 
   @Test
   public void generateOtelColConfigYsqlPlusDatadog() {
-    TelemetryProvider telemetryProvider = new TelemetryProvider();
-    telemetryProvider.setUuid(new UUID(0, 0));
-    telemetryProvider.setCustomerUUID(customer.getUuid());
-    telemetryProvider.setName("DD");
-    telemetryProvider.setTags(ImmutableMap.of("tag", "value"));
     DataDogConfig config = new DataDogConfig();
     config.setType(ProviderType.DATA_DOG);
     config.setSite("ddsite");
     config.setApiKey("apikey");
-    telemetryProvider.setConfig(config);
-    mockTelemetryProviderService.save(telemetryProvider);
 
-    AuditLogConfig auditLogConfig = new AuditLogConfig();
-    YSQLAuditConfig ysqlAuditConfig = new YSQLAuditConfig();
-    ysqlAuditConfig.setEnabled(true);
-    auditLogConfig.setYsqlAuditConfig(ysqlAuditConfig);
-    UniverseLogsExporterConfig logsExporterConfig = new UniverseLogsExporterConfig();
-    logsExporterConfig.setExporterUuid(telemetryProvider.getUuid());
-    logsExporterConfig.setAdditionalTags(ImmutableMap.of("additionalTag", "otherValue"));
-    auditLogConfig.setUniverseLogsExporterConfig(ImmutableList.of(logsExporterConfig));
+    TelemetryProvider telemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "DD", ImmutableMap.of("tag", "value"), config);
 
-    try {
-      File file = new File(OTEL_COL_TMP_PATH + "config.yml");
-      file.createNewFile();
-      generator.generateConfigFile(
-          nodeTaskParams,
-          provider,
-          null,
-          auditLogConfig,
-          null,
-          null,
-          "%t | %u%d : ",
-          file.toPath(),
-          NodeManager.getOtelColMetricsPort(nodeTaskParams),
-          null);
+    AuditLogConfig auditLogConfig =
+        createAuditLogConfigWithYSQL(
+            telemetryProvider.getUuid(), ImmutableMap.of("additionalTag", "otherValue"));
 
-      String result = FileUtils.readFileToString(file, Charset.defaultCharset());
+    generateAndAssertConfig(auditLogConfig, null, null, "audit/dd_config.yml");
+  }
 
-      String expected = TestUtils.readResource("audit/dd_config.yml");
-      assertThat(result, equalTo(expected));
-    } catch (IOException e) {
-      throw new RuntimeException(e);
-    }
+  @Test
+  public void generateOtelColConfigAuditAndQueryLogPlusAWS() {
+    AWSCloudWatchConfig awsConfig = new AWSCloudWatchConfig();
+    awsConfig.setType(ProviderType.AWS_CLOUDWATCH);
+    awsConfig.setEndpoint("endpoint");
+    awsConfig.setAccessKey("access_key");
+    awsConfig.setSecretKey("secret_key");
+    awsConfig.setLogGroup("logGroup");
+    awsConfig.setLogStream("logStream");
+    awsConfig.setRegion("us-west2");
+
+    TelemetryProvider awsTelemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "AWS", ImmutableMap.of("tag", "value"), awsConfig);
+
+    // Create audit log config
+    AuditLogConfig auditLogConfig =
+        createAuditLogConfigWithYSQL(
+            awsTelemetryProvider.getUuid(), ImmutableMap.of("additionalTag", "auditValue"));
+
+    // Create query log config
+    QueryLogConfig queryLogConfig =
+        createQueryLogConfig(
+            awsTelemetryProvider.getUuid(),
+            ImmutableMap.of("additionalTag", "queryValue"),
+            YSQLQueryLogConfig.YSQLLogStatement.MOD,
+            YSQLQueryLogConfig.YSQlLogMinErrorStatement.ERROR,
+            YSQLQueryLogConfig.YSQLLogErrorVerbosity.TERSE,
+            true,
+            false,
+            true,
+            false,
+            500);
+
+    generateAndAssertConfig(
+        auditLogConfig, queryLogConfig, null, "audit/aws_audit_and_query_log_config.yml");
+  }
+
+  @Test
+  public void generateOtelColConfigYsqlQueryLogPlusDatadog() {
+    DataDogConfig config = new DataDogConfig();
+    config.setType(ProviderType.DATA_DOG);
+    config.setSite("ddsite");
+    config.setApiKey("apikey");
+
+    TelemetryProvider telemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "DD", ImmutableMap.of("tag", "value"), config);
+
+    QueryLogConfig queryLogConfig =
+        createQueryLogConfig(
+            telemetryProvider.getUuid(),
+            ImmutableMap.of("additionalTag", "otherValue"),
+            YSQLQueryLogConfig.YSQLLogStatement.DDL,
+            YSQLQueryLogConfig.YSQlLogMinErrorStatement.ERROR,
+            YSQLQueryLogConfig.YSQLLogErrorVerbosity.DEFAULT,
+            false,
+            false,
+            false,
+            false,
+            -1);
+
+    generateAndAssertConfig(null, queryLogConfig, null, "audit/dd_query_log_config.yml");
   }
 
   @Test
   public void generateOtelColConfigYcqlPlusSplunk() {
-    TelemetryProvider telemetryProvider = new TelemetryProvider();
-    telemetryProvider.setUuid(new UUID(0, 0));
-    telemetryProvider.setCustomerUUID(customer.getUuid());
-    telemetryProvider.setName("Splunk");
-    telemetryProvider.setTags(ImmutableMap.of("tag", "value"));
     SplunkConfig config = new SplunkConfig();
     config.setType(ProviderType.SPLUNK);
     config.setEndpoint("endpoint");
@@ -208,50 +367,50 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     config.setSource("source");
     config.setToken("apitoken");
     config.setSourceType("some_type");
-    telemetryProvider.setConfig(config);
-    mockTelemetryProviderService.save(telemetryProvider);
 
-    AuditLogConfig auditLogConfig = new AuditLogConfig();
-    YCQLAuditConfig ycqlAuditConfig = new YCQLAuditConfig();
-    ycqlAuditConfig.setEnabled(true);
-    ycqlAuditConfig.setLogLevel(YCQLAuditConfig.YCQLAuditLogLevel.WARNING);
-    auditLogConfig.setYcqlAuditConfig(ycqlAuditConfig);
-    UniverseLogsExporterConfig logsExporterConfig = new UniverseLogsExporterConfig();
-    logsExporterConfig.setExporterUuid(telemetryProvider.getUuid());
-    logsExporterConfig.setAdditionalTags(ImmutableMap.of("additionalTag", "otherValue"));
-    auditLogConfig.setUniverseLogsExporterConfig(ImmutableList.of(logsExporterConfig));
+    TelemetryProvider telemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "Splunk", ImmutableMap.of("tag", "value"), config);
 
-    try {
-      File file = new File(OTEL_COL_TMP_PATH + "config.yml");
-      file.createNewFile();
-      generator.generateConfigFile(
-          nodeTaskParams,
-          provider,
-          null,
-          auditLogConfig,
-          null,
-          null,
-          "%t | %u%d : ",
-          file.toPath(),
-          NodeManager.getOtelColMetricsPort(nodeTaskParams),
-          null);
+    AuditLogConfig auditLogConfig =
+        createAuditLogConfigWithYCQL(
+            telemetryProvider.getUuid(),
+            ImmutableMap.of("additionalTag", "otherValue"),
+            YCQLAuditConfig.YCQLAuditLogLevel.WARNING);
 
-      String result = FileUtils.readFileToString(file, Charset.defaultCharset());
+    generateAndAssertConfig(auditLogConfig, null, null, "audit/splunk_config.yml");
+  }
 
-      String expected = TestUtils.readResource("audit/splunk_config.yml");
-      assertThat(result, equalTo(expected));
-    } catch (IOException e) {
-      throw new RuntimeException(e);
-    }
+  @Test
+  public void generateOtelColConfigYsqlQueryLogPlusSplunk() {
+    SplunkConfig config = new SplunkConfig();
+    config.setType(ProviderType.SPLUNK);
+    config.setEndpoint("endpoint");
+    config.setIndex("index");
+    config.setSource("source");
+    config.setToken("apitoken");
+    config.setSourceType("some_type");
+
+    TelemetryProvider telemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "Splunk", ImmutableMap.of("tag", "value"), config);
+
+    QueryLogConfig queryLogConfig =
+        createQueryLogConfig(
+            telemetryProvider.getUuid(),
+            ImmutableMap.of("additionalTag", "otherValue"),
+            YSQLQueryLogConfig.YSQLLogStatement.MOD,
+            YSQLQueryLogConfig.YSQlLogMinErrorStatement.ERROR,
+            YSQLQueryLogConfig.YSQLLogErrorVerbosity.TERSE,
+            true,
+            false,
+            true,
+            false,
+            500);
+
+    generateAndAssertConfig(null, queryLogConfig, null, "audit/splunk_query_log_config.yml");
   }
 
   @Test
   public void generateMultiConfig() {
-    TelemetryProvider awsTelemetryProvider = new TelemetryProvider();
-    awsTelemetryProvider.setUuid(new UUID(0, 0));
-    awsTelemetryProvider.setCustomerUUID(customer.getUuid());
-    awsTelemetryProvider.setName("AWS");
-    awsTelemetryProvider.setTags(ImmutableMap.of("tag", "value"));
     AWSCloudWatchConfig awsConfig = new AWSCloudWatchConfig();
     awsConfig.setType(ProviderType.AWS_CLOUDWATCH);
     awsConfig.setEndpoint("endpoint");
@@ -260,69 +419,49 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     awsConfig.setLogGroup("logGroup");
     awsConfig.setLogStream("logStream");
     awsConfig.setRegion("us-west2");
-    awsTelemetryProvider.setConfig(awsConfig);
-    mockTelemetryProviderService.save(awsTelemetryProvider);
 
-    TelemetryProvider gcpTelemetryProvider = new TelemetryProvider();
-    gcpTelemetryProvider.setUuid(UUID.fromString("11111111-1111-1111-1111-111111111111"));
-    gcpTelemetryProvider.setCustomerUUID(customer.getUuid());
-    gcpTelemetryProvider.setName("GCP");
-    gcpTelemetryProvider.setTags(ImmutableMap.of("tag", "value1"));
+    TelemetryProvider awsTelemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "AWS", ImmutableMap.of("tag", "value"), awsConfig);
+
     GCPCloudMonitoringConfig gcpConfig = new GCPCloudMonitoringConfig();
     gcpConfig.setType(ProviderType.GCP_CLOUD_MONITORING);
     gcpConfig.setProject("project");
     gcpConfig.setCredentials(Json.parse("{\"creds\": \"some_creds\"}"));
-    gcpTelemetryProvider.setConfig(gcpConfig);
-    mockTelemetryProviderService.save(gcpTelemetryProvider);
 
+    TelemetryProvider gcpTelemetryProvider =
+        createTelemetryProvider(
+            UUID.fromString("11111111-1111-1111-1111-111111111111"),
+            "GCP",
+            ImmutableMap.of("tag", "value1"),
+            gcpConfig);
+
+    // Create audit log config with both YCQL and YSQL, and multiple exporters
     AuditLogConfig auditLogConfig = new AuditLogConfig();
     YCQLAuditConfig ycqlAuditConfig = new YCQLAuditConfig();
     ycqlAuditConfig.setEnabled(true);
     ycqlAuditConfig.setLogLevel(YCQLAuditConfig.YCQLAuditLogLevel.WARNING);
     auditLogConfig.setYcqlAuditConfig(ycqlAuditConfig);
+
     YSQLAuditConfig ysqlAuditConfig = new YSQLAuditConfig();
     ysqlAuditConfig.setEnabled(true);
     auditLogConfig.setYsqlAuditConfig(ysqlAuditConfig);
+
     UniverseLogsExporterConfig logsExporterConfigAws = new UniverseLogsExporterConfig();
     logsExporterConfigAws.setExporterUuid(awsTelemetryProvider.getUuid());
     logsExporterConfigAws.setAdditionalTags(ImmutableMap.of("additionalTag", "otherValue"));
+
     UniverseLogsExporterConfig logsExporterConfigGcp = new UniverseLogsExporterConfig();
     logsExporterConfigGcp.setExporterUuid(gcpTelemetryProvider.getUuid());
     logsExporterConfigGcp.setAdditionalTags(ImmutableMap.of("additionalTag", "yetAnotherValue"));
+
     auditLogConfig.setUniverseLogsExporterConfig(
         ImmutableList.of(logsExporterConfigAws, logsExporterConfigGcp));
 
-    try {
-      File file = new File(OTEL_COL_TMP_PATH + "config.yml");
-      file.createNewFile();
-      generator.generateConfigFile(
-          nodeTaskParams,
-          provider,
-          null,
-          auditLogConfig,
-          null,
-          null,
-          "%t | %u%d : ",
-          file.toPath(),
-          NodeManager.getOtelColMetricsPort(nodeTaskParams),
-          null);
-
-      String result = FileUtils.readFileToString(file, Charset.defaultCharset());
-
-      String expected = TestUtils.readResource("audit/multi_config.yml");
-      assertThat(result, equalTo(expected));
-    } catch (IOException e) {
-      throw new RuntimeException(e);
-    }
+    generateAndAssertConfig(auditLogConfig, null, null, "audit/multi_config.yml");
   }
 
   @Test
-  public void generateOtelHelmValuesYsqlPlusAWS() {
-    TelemetryProvider awsTelemetryProvider = new TelemetryProvider();
-    awsTelemetryProvider.setUuid(new UUID(0, 0));
-    awsTelemetryProvider.setCustomerUUID(customer.getUuid());
-    awsTelemetryProvider.setName("AWS");
-    awsTelemetryProvider.setTags(ImmutableMap.of("tag", "value"));
+  public void generateOtelColConfigYsqlQueryLogPlusAWS() {
     AWSCloudWatchConfig awsConfig = new AWSCloudWatchConfig();
     awsConfig.setType(ProviderType.AWS_CLOUDWATCH);
     awsConfig.setEndpoint("endpoint");
@@ -331,16 +470,42 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     awsConfig.setLogGroup("logGroup");
     awsConfig.setLogStream("logStream");
     awsConfig.setRegion("us-west2");
-    awsTelemetryProvider.setConfig(awsConfig);
-    mockTelemetryProviderService.save(awsTelemetryProvider);
 
-    AuditLogConfig auditLogConfig = new AuditLogConfig();
-    YSQLAuditConfig ysqlAuditConfig = new YSQLAuditConfig();
-    ysqlAuditConfig.setEnabled(true);
-    auditLogConfig.setYsqlAuditConfig(ysqlAuditConfig);
-    UniverseLogsExporterConfig logsExporterConfigAws = new UniverseLogsExporterConfig();
-    logsExporterConfigAws.setExporterUuid(awsTelemetryProvider.getUuid());
-    auditLogConfig.setUniverseLogsExporterConfig(ImmutableList.of(logsExporterConfigAws));
+    TelemetryProvider awsTelemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "AWS", ImmutableMap.of("tag", "value"), awsConfig);
+
+    QueryLogConfig queryLogConfig =
+        createQueryLogConfig(
+            awsTelemetryProvider.getUuid(),
+            ImmutableMap.of("additionalTag", "queryValue"),
+            YSQLQueryLogConfig.YSQLLogStatement.ALL,
+            YSQLQueryLogConfig.YSQlLogMinErrorStatement.ERROR,
+            YSQLQueryLogConfig.YSQLLogErrorVerbosity.VERBOSE,
+            true,
+            true,
+            true,
+            true,
+            100);
+
+    generateAndAssertConfig(null, queryLogConfig, null, "audit/aws_query_log_config.yml");
+  }
+
+  @Test
+  public void generateOtelHelmValuesYsqlPlusAWS() {
+    AWSCloudWatchConfig awsConfig = new AWSCloudWatchConfig();
+    awsConfig.setType(ProviderType.AWS_CLOUDWATCH);
+    awsConfig.setEndpoint("endpoint");
+    awsConfig.setAccessKey("access_key");
+    awsConfig.setSecretKey("secret_key");
+    awsConfig.setLogGroup("logGroup");
+    awsConfig.setLogStream("logStream");
+    awsConfig.setRegion("us-west2");
+
+    TelemetryProvider awsTelemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "AWS", ImmutableMap.of("tag", "value"), awsConfig);
+
+    AuditLogConfig auditLogConfig =
+        createAuditLogConfigWithYSQL(awsTelemetryProvider.getUuid(), ImmutableMap.of());
 
     String logLinePrefix = "%m [%p] ";
 
@@ -362,85 +527,143 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
   }
 
   @Test
+  public void generateOtelColConfigYsqlQueryLogPlusGCP() {
+    GCPCloudMonitoringConfig gcpConfig = new GCPCloudMonitoringConfig();
+    gcpConfig.setType(ProviderType.GCP_CLOUD_MONITORING);
+    gcpConfig.setProject("project");
+    gcpConfig.setCredentials(Json.parse("{\"creds\": \"some_creds\"}"));
+
+    TelemetryProvider gcpTelemetryProvider =
+        createTelemetryProvider(
+            UUID.fromString("11111111-1111-1111-1111-111111111111"),
+            "GCP",
+            ImmutableMap.of("tag", "value1"),
+            gcpConfig);
+
+    QueryLogConfig queryLogConfig =
+        createQueryLogConfig(
+            gcpTelemetryProvider.getUuid(),
+            ImmutableMap.of("additionalTag", "gcpValue"),
+            YSQLQueryLogConfig.YSQLLogStatement.NONE,
+            YSQLQueryLogConfig.YSQlLogMinErrorStatement.ERROR,
+            YSQLQueryLogConfig.YSQLLogErrorVerbosity.DEFAULT,
+            false,
+            false,
+            false,
+            false,
+            -1);
+
+    generateAndAssertConfig(null, queryLogConfig, null, "audit/gcp_query_log_config.yml");
+  }
+
+  @Test
   public void generateOtelColConfigMetricsPlusDataDog() {
-    TelemetryProvider telemetryProvider = new TelemetryProvider();
-    telemetryProvider.setUuid(new UUID(0, 0));
-    telemetryProvider.setCustomerUUID(customer.getUuid());
-    telemetryProvider.setName("DataDog");
-    telemetryProvider.setTags(ImmutableMap.of("tag", "value"));
     DataDogConfig config = new DataDogConfig();
     config.setType(ProviderType.DATA_DOG);
     config.setSite("ddsite");
     config.setApiKey("apikey");
-    telemetryProvider.setConfig(config);
-    mockTelemetryProviderService.save(telemetryProvider);
+
+    TelemetryProvider telemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "DataDog", ImmutableMap.of("tag", "value"), config);
 
     // Mock the getOrBadRequest method to return our telemetry provider
     when(mockTelemetryProviderService.getOrBadRequest(telemetryProvider.getUuid()))
         .thenReturn(telemetryProvider);
 
-    MetricsExportConfig metricsExportConfig = new MetricsExportConfig();
-    metricsExportConfig.setScrapeIntervalSeconds(15);
-    metricsExportConfig.setScrapeTimeoutSeconds(10);
-    metricsExportConfig.setCollectionLevel(MetricCollectionLevel.NORMAL);
+    MetricsExportConfig metricsExportConfig =
+        createMetricsExportConfig(
+            telemetryProvider.getUuid(),
+            ImmutableMap.of("env", "prod", "region", "us-west"),
+            15,
+            10,
+            MetricCollectionLevel.NORMAL);
 
-    UniverseMetricsExporterConfig metricsExporterConfig = new UniverseMetricsExporterConfig();
-    metricsExporterConfig.setExporterUuid(telemetryProvider.getUuid());
-    metricsExporterConfig.setAdditionalTags(ImmutableMap.of("env", "prod", "region", "us-west"));
+    // Set additional metrics-specific properties
+    UniverseMetricsExporterConfig metricsExporterConfig =
+        (UniverseMetricsExporterConfig)
+            metricsExportConfig.getUniverseMetricsExporterConfig().get(0);
     metricsExporterConfig.setSendBatchSize(500);
     metricsExporterConfig.setSendBatchMaxSize(1000);
     metricsExporterConfig.setSendBatchTimeoutSeconds(5);
     metricsExporterConfig.setMetricsPrefix("ybdb.");
 
-    metricsExportConfig.setUniverseMetricsExporterConfig(ImmutableList.of(metricsExporterConfig));
+    generateAndAssertConfig(null, null, metricsExportConfig, "audit/metrics_datadog_config.yml");
+  }
 
-    try {
-      File file = new File(OTEL_COL_TMP_PATH + "config.yml");
-      file.createNewFile();
-      generator.generateConfigFile(
-          nodeTaskParams,
-          provider,
-          null,
-          null,
-          null,
-          metricsExportConfig,
-          "%t | %u%d : ",
-          file.toPath(),
-          NodeManager.getOtelColMetricsPort(nodeTaskParams),
-          null);
+  @Test
+  public void generateOtelColConfigAuditAndQueryLogPlusMultiProvider() {
+    AWSCloudWatchConfig awsConfig = new AWSCloudWatchConfig();
+    awsConfig.setType(ProviderType.AWS_CLOUDWATCH);
+    awsConfig.setEndpoint("endpoint");
+    awsConfig.setAccessKey("access_key");
+    awsConfig.setSecretKey("secret_key");
+    awsConfig.setLogGroup("logGroup");
+    awsConfig.setLogStream("logStream");
+    awsConfig.setRegion("us-west2");
 
-      String result = FileUtils.readFileToString(file, Charset.defaultCharset());
+    TelemetryProvider awsTelemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "AWS", ImmutableMap.of("tag", "value"), awsConfig);
 
-      String expected = TestUtils.readResource("audit/metrics_datadog_config.yml");
-      assertThat(result, equalTo(expected));
-    } catch (IOException e) {
-      throw new RuntimeException(e);
-    }
+    GCPCloudMonitoringConfig gcpConfig = new GCPCloudMonitoringConfig();
+    gcpConfig.setType(ProviderType.GCP_CLOUD_MONITORING);
+    gcpConfig.setProject("project");
+    gcpConfig.setCredentials(Json.parse("{\"creds\": \"some_creds\"}"));
+
+    TelemetryProvider gcpTelemetryProvider =
+        createTelemetryProvider(
+            UUID.fromString("11111111-1111-1111-1111-111111111111"),
+            "GCP",
+            ImmutableMap.of("tag", "value1"),
+            gcpConfig);
+
+    // Create audit log config with AWS
+    AuditLogConfig auditLogConfig =
+        createAuditLogConfigWithYSQL(
+            awsTelemetryProvider.getUuid(), ImmutableMap.of("additionalTag", "auditValue"));
+
+    // Create query log config with GCP
+    QueryLogConfig queryLogConfig =
+        createQueryLogConfig(
+            gcpTelemetryProvider.getUuid(),
+            ImmutableMap.of("additionalTag", "queryValue"),
+            YSQLQueryLogConfig.YSQLLogStatement.MOD,
+            YSQLQueryLogConfig.YSQlLogMinErrorStatement.ERROR,
+            YSQLQueryLogConfig.YSQLLogErrorVerbosity.TERSE,
+            true,
+            false,
+            true,
+            false,
+            500);
+
+    generateAndAssertConfig(
+        auditLogConfig,
+        queryLogConfig,
+        null,
+        "audit/multi_provider_audit_and_query_log_config.yml");
   }
 
   @Test
   public void generateOtelColConfigMetricsWithSpecificScrapeTargets() {
-    TelemetryProvider telemetryProvider = new TelemetryProvider();
-    telemetryProvider.setUuid(new UUID(0, 0));
-    telemetryProvider.setCustomerUUID(customer.getUuid());
-    telemetryProvider.setName("Prometheus");
-    telemetryProvider.setTags(ImmutableMap.of("tag", "value"));
-    // Use a simple config for testing
     DataDogConfig config = new DataDogConfig();
     config.setType(ProviderType.DATA_DOG);
     config.setSite("test");
     config.setApiKey("test");
-    telemetryProvider.setConfig(config);
-    mockTelemetryProviderService.save(telemetryProvider);
+
+    TelemetryProvider telemetryProvider =
+        createTelemetryProvider(
+            new UUID(0, 0), "Prometheus", ImmutableMap.of("tag", "value"), config);
 
     // Mock the getOrBadRequest method to return our telemetry provider
     when(mockTelemetryProviderService.getOrBadRequest(telemetryProvider.getUuid()))
         .thenReturn(telemetryProvider);
 
-    MetricsExportConfig metricsExportConfig = new MetricsExportConfig();
-    metricsExportConfig.setScrapeIntervalSeconds(45);
-    metricsExportConfig.setScrapeTimeoutSeconds(25);
-    metricsExportConfig.setCollectionLevel(MetricCollectionLevel.ALL);
+    MetricsExportConfig metricsExportConfig =
+        createMetricsExportConfig(
+            telemetryProvider.getUuid(),
+            ImmutableMap.of("test", "specific_targets"),
+            45,
+            25,
+            MetricCollectionLevel.ALL);
 
     // Only enable specific scrape targets
     metricsExportConfig.setScrapeConfigTargets(
@@ -449,49 +672,20 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
             ScrapeConfigTargetType.TSERVER_EXPORT,
             ScrapeConfigTargetType.OTEL_EXPORT));
 
-    UniverseMetricsExporterConfig metricsExporterConfig = new UniverseMetricsExporterConfig();
-    metricsExporterConfig.setExporterUuid(telemetryProvider.getUuid());
-    metricsExporterConfig.setAdditionalTags(ImmutableMap.of("test", "specific_targets"));
-
-    metricsExportConfig.setUniverseMetricsExporterConfig(ImmutableList.of(metricsExporterConfig));
-
-    try {
-      File file = new File(OTEL_COL_TMP_PATH + "config.yml");
-      file.createNewFile();
-      generator.generateConfigFile(
-          nodeTaskParams,
-          provider,
-          null,
-          null,
-          null,
-          metricsExportConfig,
-          "%t | %u%d : ",
-          file.toPath(),
-          NodeManager.getOtelColMetricsPort(nodeTaskParams),
-          null);
-
-      String result = FileUtils.readFileToString(file, Charset.defaultCharset());
-
-      String expected = TestUtils.readResource("audit/metrics_specific_targets_config.yml");
-      assertThat(result, equalTo(expected));
-    } catch (IOException e) {
-      throw new RuntimeException(e);
-    }
+    generateAndAssertConfig(
+        null, null, metricsExportConfig, "audit/metrics_specific_targets_config.yml");
   }
 
   @Test
   public void generateOtelColConfigMetricsWithMinimalCollectionLevel() {
-    TelemetryProvider telemetryProvider = new TelemetryProvider();
-    telemetryProvider.setUuid(new UUID(0, 0));
-    telemetryProvider.setCustomerUUID(customer.getUuid());
-    telemetryProvider.setName("Minimal Metrics");
-    telemetryProvider.setTags(ImmutableMap.of("tag", "value"));
     DataDogConfig config = new DataDogConfig();
     config.setType(ProviderType.DATA_DOG);
     config.setSite("test");
     config.setApiKey("test");
-    telemetryProvider.setConfig(config);
-    mockTelemetryProviderService.save(telemetryProvider);
+
+    TelemetryProvider telemetryProvider =
+        createTelemetryProvider(
+            new UUID(0, 0), "Minimal Metrics", ImmutableMap.of("tag", "value"), config);
 
     // Mock the getOrBadRequest method to return our telemetry provider
     when(mockTelemetryProviderService.getOrBadRequest(telemetryProvider.getUuid()))
@@ -502,30 +696,9 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
 
     UniverseMetricsExporterConfig metricsExporterConfig = new UniverseMetricsExporterConfig();
     metricsExporterConfig.setExporterUuid(telemetryProvider.getUuid());
-
     metricsExportConfig.setUniverseMetricsExporterConfig(ImmutableList.of(metricsExporterConfig));
 
-    try {
-      File file = new File(OTEL_COL_TMP_PATH + "config.yml");
-      file.createNewFile();
-      generator.generateConfigFile(
-          nodeTaskParams,
-          provider,
-          null,
-          null,
-          null,
-          metricsExportConfig,
-          "%t | %u%d : ",
-          file.toPath(),
-          NodeManager.getOtelColMetricsPort(nodeTaskParams),
-          null);
-
-      String result = FileUtils.readFileToString(file, Charset.defaultCharset());
-
-      String expected = TestUtils.readResource("audit/metrics_minimal_level_config.yml");
-      assertThat(result, equalTo(expected));
-    } catch (IOException e) {
-      throw new RuntimeException(e);
-    }
+    generateAndAssertConfig(
+        null, null, metricsExportConfig, "audit/metrics_minimal_level_config.yml");
   }
 }

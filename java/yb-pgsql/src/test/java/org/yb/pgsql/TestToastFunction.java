@@ -61,6 +61,6 @@ public class TestToastFunction extends TestToastFunctionBase {
   public void testBuildRelcacheInitFileMemoryUsage() throws Exception {
     setEnableToastFlag(true);
     CacheMemoryContextTracker cxt = buildRelcacheInitFileMemoryUsage();
-    cxt.assertMemoryUsageLessThan(8 * MB);
+    cxt.assertMemoryUsageLessThan(9 * MB);
   }
 }

@@ -211,6 +211,7 @@ export const ApiPermissionMap = {
         endpoint: '/cloud/$cloud<[^/]+>/buckets'
     },
     CREATE_CUSTOMER_CONFIG: { requestType: ApiRequestType.POST, endpoint: '/configs' },
+    ADD_CUSTOMER_CONFIG: { requestType: ApiRequestType.POST, endpoint: '/configs' },
     GET_CUSTOMER_CONFIGS: { requestType: ApiRequestType.GET, endpoint: '/configs' },
     EDIT_CUSTOMER_CONFIG: {
         requestType: ApiRequestType.PUT,
@@ -1083,6 +1084,18 @@ export const ApiPermissionMap = {
     UPLOAD_HA_INTERNAL: {
         requestType: ApiRequestType.POST,
         endpoint: '/settings/ha/internal/upload'
+    },
+    CREATE_CONTINUOUS_BACKUP: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/auto-yba-backups'
+    },
+    DELETE_CONTINUOUS_BACKUP: {
+        requestType: ApiRequestType.DELETE,
+        endpoint: '/auto-yba-backups/$bUUID<[^/]+>'
+    },
+    EDIT_CONTINUOUS_BACKUP: {
+        requestType: ApiRequestType.DELETE,
+        endpoint: '/auto-yba-backups/$bUUID<[^/]+>'
     },
     GET_UNIVERSE_PROXY: {
         requestType: ApiRequestType.GET,

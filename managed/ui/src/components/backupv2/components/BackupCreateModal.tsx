@@ -25,8 +25,9 @@ import {
   BACKUP_API_TYPES,
   Backup_Options_Type,
   IBackupEditParams,
-  IStorageConfig,
-  ITable
+  CustomerConfig,
+  ITable,
+  StorageConfig
 } from '../common/IBackup';
 import { useDispatch, useSelector } from 'react-redux';
 import { find, flatten, groupBy, isArray, omit, uniq, uniqBy } from 'lodash';
@@ -356,7 +357,9 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
     if (!isArray(storageConfigs?.data)) {
       return [];
     }
-    const filteredConfigs = storageConfigs.data.filter((c: IStorageConfig) => c.type === 'STORAGE');
+    const filteredConfigs = (storageConfigs.data as CustomerConfig[]).filter(
+      (c) => c.type === 'STORAGE'
+    ) as StorageConfig[];
 
     // if user has only one storage config, select it by default
     if (filteredConfigs.length === 1) {
@@ -364,7 +367,7 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
       initialValues['storage_config'] = { value: configUUID, label: configName, name: name };
     }
 
-    const configs = filteredConfigs.map((c: IStorageConfig) => {
+    const configs = filteredConfigs.map((c) => {
       return {
         value: c.configUUID,
         label: c.configName,
@@ -373,11 +376,9 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
       };
     });
 
-    return Object.entries(groupBy(configs, (c: IStorageConfig) => c.name)).map(
-      ([label, options]) => {
-        return { label, options };
-      }
-    );
+    return Object.entries(groupBy(configs, (c) => c.name)).map(([label, options]) => {
+      return { label, options };
+    });
   }, [storageConfigs]);
 
   if (!visible) return null;
@@ -614,7 +615,7 @@ function BackupConfigurationForm({
     label: string;
     value: {
       label: string;
-      value: Partial<IStorageConfig>;
+      value: Partial<CustomerConfig>;
     };
   };
   errors: Record<string, string>;

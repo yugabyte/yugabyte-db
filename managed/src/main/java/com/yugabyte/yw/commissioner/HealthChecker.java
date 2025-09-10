@@ -1030,7 +1030,8 @@ public class HealthChecker {
     String nodeToRunDdlAtomicityCheck = null;
     String masterLeaderUrl = null;
 
-    if (ddlAtomicityCheckEnabled) {
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    if (ddlAtomicityCheckEnabled && userIntent.enableYSQL) {
       int ddlAtomicityIntervalSec =
           confGetter.getConfForScope(universe, UniverseConfKeys.ddlAtomicityIntervalSec);
       nodeCheckTimeoutSec =
@@ -1038,8 +1039,7 @@ public class HealthChecker {
 
       Instant lastDdlAtomicitySuccessfulCheckTimestamp =
           ddlAtomicitySuccessfulCheckTimestamp.get(universe.getUniverseUUID());
-      String ybDbRelease =
-          universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+      String ybDbRelease = userIntent.ybSoftwareVersion;
       boolean ddlAtomicityCheckSupported =
           CommonUtils.isReleaseBetween(DDL_ATOMICITY_CHECK_RELEASE, "2.19.0.0-b0", ybDbRelease)
               || CommonUtils.isReleaseEqualOrAfter(

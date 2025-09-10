@@ -1,10 +1,24 @@
 @use '../../../_style/colors';
 
 .ha-replication-view {
+  border: 1px solid colors.$YB_FORM_GROUP_BORDER;
+  border-radius: 8px;
+
+  &__header {
+    display: flex;
+    align-items: center;
+
+    padding: 8px 24px;
+
+    border-bottom: 1px solid colors.$YB_FORM_GROUP_BORDER;
+  }
+
   &__header-buttons {
     display: flex;
     justify-content: flex-end;
     align-items: center;
+
+    margin-left: auto;
 
     > .btn {
       margin-right: 8px;
@@ -73,7 +87,6 @@
     }
     cursor: pointer;
   }
-  
 
   &__cert-container {
     display: flex;

@@ -899,12 +899,6 @@ public class GFlagsUtil {
         ysqlPgConfCsvEntries.add(
             "log_error_verbosity=" + ysqlQueryLogConfig.getLogErrorVerbosity().name());
         ysqlPgConfCsvEntries.add("log_statement=" + ysqlQueryLogConfig.getLogStatement().name());
-        // Question for reviewers:
-        // Should this override all existing log line prefix values, or be appended?
-        if (ysqlQueryLogConfig.getLogLinePrefix() != null
-            && !ysqlQueryLogConfig.getLogLinePrefix().isEmpty()) {
-          ysqlPgConfCsvEntries.add("log_line_prefix=" + ysqlQueryLogConfig.getLogLinePrefix());
-        }
         if (ysqlQueryLogConfig.getLogMinDurationStatement() != null) {
           ysqlPgConfCsvEntries.add(
               "log_min_duration_statement=" + ysqlQueryLogConfig.getLogMinDurationStatement());

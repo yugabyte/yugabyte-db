@@ -11,7 +11,7 @@ import { capitalize, lowerCase } from 'lodash';
 import moment from 'moment';
 import pluralize from 'pluralize';
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
-import { Backup_Options_Type, IStorageConfig } from '../common/IBackup';
+import { Backup_Options_Type, CustomerConfig } from '../common/IBackup';
 import { TableType } from '../../../redesign/helpers/dtos';
 import { IBackupSchedule } from '../common/IBackupSchedule';
 
@@ -57,7 +57,7 @@ export const convertMsecToTimeFrame = (msec: number, dType: string, prefix = '')
 
 export const convertScheduleToFormValues = (
   schedule: IBackupSchedule,
-  storage_configs: IStorageConfig[]
+  storage_configs: CustomerConfig[]
 ) => {
   const formValues = {
     scheduleName: schedule.scheduleName,
