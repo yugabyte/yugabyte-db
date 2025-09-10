@@ -79,8 +79,8 @@ Data modeling for distributed SQL databases differs from monolithic PostgreSQL d
 
 You must choose the primary key of the table wisely as the [distribution of table data](#data-distribution-schemes) across the various nodes in the system depends on the primary key.
 
-{{<lead link="../../../develop/data-modeling/primary-keys-ysql/">}}
-Refer to [Designing optimal primary keys](../../../develop/data-modeling/primary-keys-ysql/) for details on how to design primary keys for your tables.
+{{<lead link="/preview/develop/data-modeling/primary-keys-ysql/">}}
+Refer to [Designing optimal primary keys](/preview/develop/data-modeling/primary-keys-ysql/) for details on how to design primary keys for your tables.
 {{</lead>}}
 
 ### Secondary indexes
@@ -89,8 +89,8 @@ For improved performance of alternate query patterns that don't involve the prim
 
 In YugabyteDB, indexes are global and are implemented just like tables. They are split into tablets and distributed across the different nodes in the cluster. Unless the index is colocated or copartitioned, the sharding of indexes is based on the primary key of the index and is independent of how the main table is sharded and distributed.
 
-{{<lead link="../../../develop/data-modeling/secondary-indexes-ysql/">}}
-Refer to [Designing secondary indexes](../../../develop/data-modeling/secondary-indexes-ysql/) for details on how to design secondary indexes to speed up alternate query patterns.
+{{<lead link="/preview/develop/data-modeling/secondary-indexes-ysql/">}}
+Refer to [Designing secondary indexes](/preview/develop/data-modeling/secondary-indexes-ysql/) for details on how to design secondary indexes to speed up alternate query patterns.
 {{</lead>}}
 
 ### Hot shards
@@ -99,8 +99,8 @@ The "hot shard" problem in distributed databases refers to a situation where a p
 
 The hot shard problem arises when there is a skewed data distribution or when an specific value or data pattern becomes popular. You can solve this by choosing a different ordering of the primary key columns or distributing your data based on more columns.
 
-{{<lead link="../../../develop/data-modeling/hot-shards-ysql/">}}
-To understand different ways to address the hot shards, see [Avoiding hotspots](../../../develop/data-modeling/hot-shards-ysql/).
+{{<lead link="/preview/develop/data-modeling/hot-shards-ysql/">}}
+To understand different ways to address the hot shards, see [Avoiding hotspots](/preview/develop/data-modeling/hot-shards-ysql/).
 {{</lead>}}
 
 ### Colocated tables
@@ -173,8 +173,8 @@ You can set the cache size either during [CREATE SEQUENCE](../../../api/ysql/the
 
 UUIDs are globally unique identifiers that can be generated on any node without requiring any global inter-node coordination. While server-side caching improves the performance of sequences, there are scenarios like multi-region deployment where using UUIDs would be a better choice for performance.
 
-{{<lead link="../../../develop/data-modeling/primary-keys-ysql/#automatically-generating-the-primary-key">}}
-To understand the differences between UUID, serial, and sequences, see [Automatically generating the primary key](../../../develop/data-modeling/primary-keys-ysql/#automatically-generating-the-primary-key).
+{{<lead link="/preview/develop/data-modeling/primary-keys-ysql/#automatically-generating-the-primary-key">}}
+To understand the differences between UUID, serial, and sequences, see [Automatically generating the primary key](/preview/develop/data-modeling/primary-keys-ysql/#automatically-generating-the-primary-key).
 {{</lead>}}
 
 ### Importing schema
@@ -247,16 +247,16 @@ For more details, see [Live migration with fall-back](/preview/yugabyte-voyager/
 
 When porting an existing PostgreSQL application to YugabyteDB you can follow a set of best practices to get the best out of your new deployment.
 
-{{<lead link="../../../develop/best-practices-develop/">}}
-For a full list of tips and tricks for high performance and availability, see [Best practices](../../../develop/best-practices-develop/).
+{{<lead link="/preview/develop/best-practices-develop/">}}
+For a full list of tips and tricks for high performance and availability, see [Best practices](/preview/develop/best-practices-develop/).
 {{</lead>}}
 
 ### Retry transactions on conflicts
 
-YugabyteDB returns different [error codes](../../../develop/learn/transactions/transactions-errorcodes-ysql/) for the various scenarios that go wrong during transaction processing. The error code [40001 (serialization_failure)](../../../develop/learn/transactions/transactions-errorcodes-ysql/#40001-serialization-failure) for retryable transaction conflict errors. You should retry the transactions from the application when encountering these errors.
+YugabyteDB returns different [error codes](/preview/develop/learn/transactions/transactions-errorcodes-ysql/) for the various scenarios that go wrong during transaction processing. The error code [40001 (serialization_failure)](/preview/develop/learn/transactions/transactions-errorcodes-ysql/#40001-serialization-failure) for retryable transaction conflict errors. You should retry the transactions from the application when encountering these errors.
 
-{{<lead link="../../../develop/learn/transactions/transactions-retries-ysql/#client-side-retry">}}
-For application-side retry logic, see [Client-side retry](../../../develop/learn/transactions/transactions-retries-ysql/#client-side-retry).
+{{<lead link="/preview/develop/learn/transactions/transactions-retries-ysql/#client-side-retry">}}
+For application-side retry logic, see [Client-side retry](/preview/develop/learn/transactions/transactions-retries-ysql/#client-side-retry).
 {{</lead>}}
 
 ### Distribute load evenly across the cluster
@@ -304,16 +304,16 @@ To learn more about the various useful metrics that can be monitored, see [Metri
 
 Because of the distributed nature of YugabyteDB, queries are executed quite differently from Postgres. This is because the latency across the nodes are taken into account by the query planner. Adopting the following practices will help improve the performance of your applications.
 
-- **Single-row transactions**: YugabyteDB has optimizations to improve the performance of transactions in certain scenarios where transactions operate on a single row. Consider converting multi-statement transactions to single-statement ones to improve performace. {{<link dest="../../../develop/learn/transactions/transactions-performance-ysql/#fast-single-row-transactions">}}
+- **Single-row transactions**: YugabyteDB has optimizations to improve the performance of transactions in certain scenarios where transactions operate on a single row. Consider converting multi-statement transactions to single-statement ones to improve performace. {{<link dest="/preview/develop/learn/transactions/transactions-performance-ysql/#fast-single-row-transactions">}}
 
-- **Use On Conflict clause**: Use the optional ON CONFLICT clause in the INSERT statement to circumvent certain errors and avoid multiple round trips. {{<link dest="../../../develop/learn/transactions/transactions-performance-ysql/#minimize-conflict-errors">}}
+- **Use On Conflict clause**: Use the optional ON CONFLICT clause in the INSERT statement to circumvent certain errors and avoid multiple round trips. {{<link dest="/preview/develop/learn/transactions/transactions-performance-ysql/#minimize-conflict-errors">}}
 
-- **Set statement timeouts**: Avoid getting stuck in a wait loop because of starvation by using a reasonable timeout for the statements.  {{<link dest="../../../develop/learn/transactions/transactions-performance-ysql/#avoid-long-waits">}}
+- **Set statement timeouts**: Avoid getting stuck in a wait loop because of starvation by using a reasonable timeout for the statements.  {{<link dest="/preview/develop/learn/transactions/transactions-performance-ysql/#avoid-long-waits">}}
 
-- **Stored procedures**: Use stored procedures to bundle a set of statements with error handling to be executed on the server and avoid multiple round trips. {{<link dest="../../../develop/learn/transactions/transactions-performance-ysql/#stored-procedures-minimize-round-trips">}}
+- **Stored procedures**: Use stored procedures to bundle a set of statements with error handling to be executed on the server and avoid multiple round trips. {{<link dest="/preview/develop/learn/transactions/transactions-performance-ysql/#stored-procedures-minimize-round-trips">}}
 
-{{<lead link="../../../develop/learn/transactions/transactions-performance-ysql/">}}
-For a full list of best practices to improve performance, see [Performance tuning in YSQL](../../../develop/learn/transactions/transactions-performance-ysql/)
+{{<lead link="/preview/develop/learn/transactions/transactions-performance-ysql/">}}
+For a full list of best practices to improve performance, see [Performance tuning in YSQL](/preview/develop/learn/transactions/transactions-performance-ysql/)
 {{</lead>}}
 
 ### Backup and disaster recovery

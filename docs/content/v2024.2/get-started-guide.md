@@ -56,7 +56,7 @@ Find resources for getting started, migrating existing databases, using your dat
 : Real-world use cases for moving to a distributed database.
 
 **Video**: [Global Applications with YugabyteDB](https://www.youtube.com/watch?v=jqZxUydBaMQ)<br>
-**Documentation**: [Build Global Apps](../develop/build-global-apps/)
+**Documentation**: [Build Global Apps](/preview/develop/build-global-apps/)
 : Explore how to design and build global applications with YugabyteDB.
 
 **Blog**: [Unlocking the Power of Event Streaming with YugabyteDB](https://www.yugabyte.com/blog/companies-use-yugabytedb-event-streaming/)
