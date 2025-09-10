@@ -1957,7 +1957,7 @@ docker run -d --name yugabytedb-node3 --hostname yugabytedb-node3 --net yb-netwo
     --base_dir=/home/yugabyte/yb_data --background=false
 ```
 
-### Create and manage read replica clusters
+## Create and manage read replica clusters
 
 To create a read replica cluster, you first need an existing YugabyteDB universe; this example assumes a 3-node universe is deployed. Refer to [Create a local multi-node universe](#create-a-local-multi-node-universe).
 
@@ -1965,7 +1965,7 @@ Initially universes have only one cluster, called its primary or live cluster.  
 
 To add read replica nodes to the universe, you need to first create a read replica cluster for them to belong to. After you have done that, you add read replica nodes to the universe using the `--join` and `--read_replica` flags.
 
-#### Create a read replica cluster
+### Create a read replica cluster
 
 {{< tabpane text=true >}}
 
@@ -2102,7 +2102,7 @@ To create the read replica cluster, do the following:
 
 {{< /tabpane >}}
 
-#### Configure a new read replica cluster
+### Configure a new read replica cluster
 
 After starting all read replica nodes, configure the read replica cluster using `configure_read_replica new` command as follows:
 
@@ -2146,7 +2146,7 @@ When specifying the `--rf` flag:
   - Replication factor should be less than or equal to total read replica nodes deployed.
   - Replication factor should be greater than or equal to number of cloud locations that have a read replica node; that is, there should be at least one replica in each cloud location.
 
-#### Modifying a configured read replica cluster
+### Modify a configured read replica cluster
 
 You can modify an existing read replica cluster configuration using the `configure_read_replica modify` command and specifying new values for the `--data_placement_constraint` and `--rf` flags.
 
@@ -2162,7 +2162,7 @@ This changes the data placement configuration of the read replica cluster to hav
 
 When specifying new `--data_placement_constraint` or `--rf` values, the same rules apply.
 
-#### Delete a read replica cluster
+### Delete a read replica cluster
 
 To delete a read replica cluster, destroy all read replica nodes using the `destroy` command:
 

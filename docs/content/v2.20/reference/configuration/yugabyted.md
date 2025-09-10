@@ -1095,13 +1095,13 @@ docker run -d --name yugabytedb-node3 --net yb-network \
     --base_dir=/home/yugabyte/yb_data --background=false
 ```
 
-### Create and manage read replica clusters
+## Create and manage read replica clusters
 
 To create a read replica cluster, you first create a YugabyteDB cluster; this example assumes a 3-node cluster is deployed. Refer to [Create a local multi-node cluster](#create-a-local-multi-node-cluster).
 
 You add read replica nodes to the primary cluster using the `--join` and `--read_replica` flags.
 
-#### Create a read replica cluster
+### Create a read replica cluster
 
 {{< tabpane text=true >}}
 
@@ -1238,7 +1238,7 @@ To create the read replica cluster, do the following:
 
 {{< /tabpane >}}
 
-#### Configure a new read replica cluster
+### Configure a new read replica cluster
 
 After starting all read replica nodes, configure the read replica cluster using `configure_read_replica new` command as follows:
 
@@ -1282,7 +1282,7 @@ When specifying the `--rf` flag:
   - Replication factor should be less than or equal to total read replica nodes deployed.
   - Replication factor should be greater than or equal to number of cloud locations that have a read replica node; that is, there should be at least one replica in each cloud location.
 
-#### Modifying a configured read replica cluster
+### Modify a configured read replica cluster
 
 You can modify an existing read replica cluster configuration using the `configure_read_replica modify` command and specifying new values for the `--data_placement_constraint` and `--rf` flags.
 
@@ -1298,7 +1298,7 @@ This changes the data placement configuration of the read replica cluster to hav
 
 When specifying new `--data_placement_constraint` or `--rf` values, the same rules apply.
 
-#### Delete a read replica cluster
+### Delete a read replica cluster
 
 To delete a read replica cluster, destroy all read replica nodes using the `destroy` command:
 
@@ -1316,7 +1316,7 @@ After destroying the nodes, run the `configure_read_replica delete` command to d
 ./bin/yugabyted configure_read_replica delete --base_dir=$HOME/yugabyte-{{< yb-version version="v2.20" >}}/node1
 ```
 
-### Enable and disable encryption at rest
+## Enable and disable encryption at rest
 
 To enable [encryption at rest](../../../secure/encryption-at-rest/) in a deployed local cluster, run the following command:
 
@@ -1346,7 +1346,7 @@ To disable encryption at rest in a multi-zone or multi-region cluster with this 
 ./bin/yugabyted configure encrypt_at_rest --disable
 ```
 
-### Pass additional flags to YB-TServer
+## Pass additional flags to YB-TServer
 
 Create a single-node cluster and set additional flags for the YB-TServer process:
 
