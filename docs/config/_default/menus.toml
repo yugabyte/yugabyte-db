@@ -548,6 +548,7 @@
   identifier = "benchmark"
   url = "/preview/benchmark/"
   [preview.params]
+    classes = "separator"
     showSection = true
 
 [[preview]]
@@ -1139,7 +1140,17 @@
   identifier = "benchmark"
   url = "/stable/benchmark/"
   [stable.params]
+    classes = "separator"
     showSection = true
+
+[[stable]]
+  name = "Contribute"
+  weight = 13
+  identifier = "contribute"
+  url = "/preview/contribute/"
+  [stable.params]
+    showSection = true
+
 
 ########## Menus (in stable) for YB Anywhere section
 
@@ -1309,6 +1320,15 @@
   identifier = "benchmark"
   url = "/v2024.2/benchmark/"
   ["v2024.2".params]
+    classes = "separator"
+    showSection = true
+
+[["v2024.2"]]
+  name = "Contribute"
+  weight = 13
+  identifier = "contribute"
+  url = "/preview/contribute/"
+  ["v2024.2".params]
     showSection = true
 
 ########## Menus (in "v2024.2") for YB Anywhere section
@@ -1462,8 +1482,16 @@
   identifier = "benchmark"
   url = "/v2024.1/benchmark/"
   ["v2024.1".params]
+    classes = "separator"
     showSection = true
 
+[["v2024.1"]]
+  name = "Contribute"
+  weight = 13
+  identifier = "contribute"
+  url = "/preview/contribute/"
+  ["v2024.1".params]
+    showSection = true
 
 ######### Menus (in "v2024.1") for YB Anywhere section
 
@@ -1617,6 +1645,15 @@
   identifier = "benchmark"
   url = "/v2025.1/benchmark/"
   ["v2025.1".params]
+    classes = "separator"
+    showSection = true
+
+[["v2025.1"]]
+  name = "Contribute"
+  weight = 13
+  identifier = "contribute"
+  url = "/preview/contribute/"
+  ["v2025.1".params]
     showSection = true
 
 ######### Menus (in "v2025.1") for YB Anywhere section
@@ -1769,6 +1806,15 @@
   weight = 11
   identifier = "benchmark"
   url = "/v2.20/benchmark/"
+  ["v2.20".params]
+    classes = "separator"
+    showSection = true
+
+[["v2.20"]]
+  name = "Contribute"
+  weight = 13
+  identifier = "contribute"
+  url = "/preview/contribute/"
   ["v2.20".params]
     showSection = true
 
