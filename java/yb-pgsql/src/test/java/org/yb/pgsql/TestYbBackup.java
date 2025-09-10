@@ -2724,6 +2724,18 @@ public class TestYbBackup extends BasePgSQLTest {
     );
   }
 
+  @Test
+  public void testBackupRoleParameter() throws Exception {
+    testPgRegressStyleUtil(
+      "yb.orig.backup_role_parameter",
+      "sql/yb.orig.backup_role_parameter.sql",
+      "db2",
+      "expected/yb.orig.backup_role_parameter.out",
+      "sql/yb.orig.backup_role_parameter_describe.sql",
+      "expected/yb.orig.backup_role_parameter_describe.out"
+    );
+  }
+
   /**
    * Disabling geo partitioning tests when backups are run using YB Controller.
    * This is because yb-controller-cli currently doesn't support such backups
