@@ -19,43 +19,61 @@ Users, roles, and groups allow administrators to verify whether a particular use
 
 Authentication verifies the identity of a user while authorization determines the verified user's database access privileges.
 
-[Authorization](../../authorization/) is the process of managing access control based on roles. For YSQL, enabling authentication automatically enables authorization and the [role-based access control (RBAC) model](../../authorization/rbac-model/), to determine the access privileges. Privileges are managed using [`GRANT`](../../../api/ysql/the-sql-language/statements/dcl_grant/), [`REVOKE`](../../../api/ysql/the-sql-language/statements/dcl_revoke/), [`CREATE ROLE`](../../../api/ysql/the-sql-language/statements/dcl_create_role/), [`ALTER ROLE`](../../../api/ysql/the-sql-language/statements/dcl_alter_role/), and [`DROP ROLE`](../../../api/ysql/the-sql-language/statements/dcl_drop_role/).
+[Authorization](../../authorization/) is the process of managing access control based on roles. For YSQL, enabling authentication automatically enables authorization and the [role-based access control (RBAC) model](../../authorization/rbac-model/), to determine the access privileges. Privileges are managed using [GRANT](../../../api/ysql/the-sql-language/statements/dcl_grant/), [REVOKE](../../../api/ysql/the-sql-language/statements/dcl_revoke/), [CREATE ROLE](../../../api/ysql/the-sql-language/statements/dcl_create_role/), [ALTER ROLE](../../../api/ysql/the-sql-language/statements/dcl_alter_role/), and [DROP ROLE](../../../api/ysql/the-sql-language/statements/dcl_drop_role/).
 
-Users and roles can be created with superuser, non-superuser, and login privileges, and the roles that users have are used to determine what access privileges are available. Administrators can create users and roles using the [`CREATE ROLE`](../../../api/ysql/the-sql-language/statements/dcl_create_role/) statement (or its alias, [`CREATE USER`](../../../api/ysql/the-sql-language/statements/dcl_create_user/)). After users and roles have been created, [`ALTER ROLE`](../../../api/ysql/the-sql-language/statements/dcl_alter_role/) and [`DROP ROLE`](../../../api/ysql/the-sql-language/statements/dcl_drop_role/) statements are used to change or remove users and roles.
+Users and roles can be created with superuser, non-superuser, and login privileges, and the roles that users have are used to determine what access privileges are available. Administrators can create users and roles using the [CREATE ROLE](../../../api/ysql/the-sql-language/statements/dcl_create_role/) statement (or its alias, [CREATE USER](../../../api/ysql/the-sql-language/statements/dcl_create_user/)). After users and roles have been created, [ALTER ROLE](../../../api/ysql/the-sql-language/statements/dcl_alter_role/) and [DROP ROLE](../../../api/ysql/the-sql-language/statements/dcl_drop_role/) statements are used to change or remove users and roles.
 
 ## Default user and password
 
 When you start a YugabyteDB cluster, the YB-Master and YB-TServer services are launched using the default user, named `yugabyte`, and then this user is connected to the default database, also named `yugabyte`.
 
-Once YSQL authentication is enabled, all users (including `yugabyte`) require a password to log in to a YugabyteDB database. The default `yugabyte` user has a default password of `yugabyte` that lets this user sign into YugabyteDB when YSQL authentication is enabled.
+When YSQL authentication is enabled, all users (including `yugabyte`) require a password to log in to a YugabyteDB database.
 
-{{< note title="Note" >}}
-Versions of YugabyteDB prior to 2.0.1 do not have a default password. In this case, before you start YugabyteDB with YSQL authentication enabled, you need to make sure that the `yugabyte` user has a password.
+If you start a [secure universe](../../../reference/configuration/yugabyted/#secure-universes) using yugabyted, the credentials for the universe, including password, are output to a credentials file. The location of the credentials file is output to the console.
 
-If you are using YugabyteDB 2.0 (and **not** 2.0.1 or later) and have not yet assigned a password to the `yugabyte` user, do the following:
-
-1. With your YugabyteDB cluster up and running, [open ysqlsh](#open-the-ysql-shell-ysqlsh).
-1. Run the following `ALTER ROLE` statement, specifying a password (`yugabyte` or a password of your choice):
-
-    ```sql
-    yugabyte=# ALTER ROLE yugabyte with password 'yugabyte';
-    ```
-
-{{< /note >}}
+Otherwise, the default `yugabyte` user has a default password of `yugabyte`.
 
 ## Enable YSQL authentication
 
-### Start local clusters
+<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
+  <li>
+    <a href="#yugabyted" class="nav-link active" id="yugabyted-tab" data-bs-toggle="tab"
+      role="tab" aria-controls="yugabyted" aria-selected="true">
+      <img src="/icons/database.svg" alt="Server Icon">
+      yugabyted
+    </a>
+  </li>
+  <li>
+    <a href="#manual" class="nav-link" id="manual-tab" data-bs-toggle="tab"
+      role="tab" aria-controls="manual" aria-selected="false">
+      <i class="icon-shell"></i>
+      Manual
+    </a>
+  </li>
+</ul>
 
-To enable YSQL authentication in your local YugabyteDB clusters, add the [--ysql_enable_auth](../../../reference/configuration/yugabyted/#start) flag with the `yugabyted start` command, as follows:
+<div class="tab-content">
+  <div id="yugabyted" class="tab-pane fade show active" role="tabpanel" aria-labelledby="yugabyted-tab">
+
+To deploy a secure universe using yugabyted, use the `--secure` flag with the yugabyted [start](../../../reference/configuration/yugabyted/#start) command. This creates a universe with encryption in transit and authentication enabled. For example:
+
+```sh
+$ ./bin/yugabyted start --secure
+```
+
+YSQL authentication is automatically enabled, and the credentials for the universe, including password, are output to a credentials file. The location of the credentials file is output to the console when you start the universe.
+
+To enable or disable YSQL authentication, you can also use the `--ysql_enable_auth` flag with the `start` command, as follows:
 
 ```sh
 $ ./bin/yugabyted start --ysql_enable_auth=true
 ```
 
-### Start YB-TServer services
+  </div>
 
-To enable YSQL authentication in deployable YugabyteDB clusters, you need to start your yb-tserver services using the [--ysql_enable_auth](../../../reference/configuration/yb-tserver/#ysql-enable-auth) flag. Your command should look similar to the following:
+  <div id="manual" class="tab-pane fade" role="tabpanel" aria-labelledby="manual-tab">
+
+To enable YSQL authentication in manually deployed universes, start the yb-tserver processes with the [--ysql_enable_auth](../../../reference/configuration/yb-tserver/#ysql-enable-auth) flag. Your command should look similar to the following:
 
 ```sh
 ./bin/yb-tserver \
@@ -67,9 +85,15 @@ To enable YSQL authentication in deployable YugabyteDB clusters, you need to sta
 
 You can also enable YSQL authentication by adding the `--ysql_enable_auth=true` to the YB-TServer configuration file (`tserver.conf`). For more information, refer to [Start YB-TServers](../../../deploy/manual-deployment/start-masters/#yb-tserver-servers).
 
+  </div>
+
+</div>
+
+For more information on deploying universes, refer to [Deploy](../../../deploy/).
+
 ## Open the YSQL shell (ysqlsh)
 
-A YugabyteDB cluster with authentication enabled starts with the default admin user of `yugabyte` and the default database of `yugabyte`. You can connect to the cluster and use the [YSQL shell](../../../api/ysqlsh/) by running the following ysqlsh command from the YugabyteDB home directory:
+A new YugabyteDB cluster with authentication enabled starts with the default admin user of `yugabyte` and the default database of `yugabyte`. You can connect to the cluster and use the [YSQL shell](../../../api/ysqlsh/) by running the following ysqlsh command from the YugabyteDB home directory:
 
 ```sh
 $ ./bin/ysqlsh -U yugabyte
@@ -92,7 +116,7 @@ For information on configuring authentication, refer to [Authentication](../../a
 
 ### Create users
 
-To add a new user, run the [`CREATE ROLE` statement](../../../api/ysql/the-sql-language/statements/dcl_create_role/) or its alias, the `CREATE USER` statement. Users are roles that have the `LOGIN` privilege granted to them. Roles created with the `SUPERUSER` option in addition to the `LOGIN` option have full access to the database. Superusers can run all of the YSQL statements on any of the database resources.
+To add a new user, run the [CREATE ROLE statement](../../../api/ysql/the-sql-language/statements/dcl_create_role/) or its alias, the `CREATE USER` statement. Users are roles that have the `LOGIN` privilege granted to them. Roles created with the `SUPERUSER` option in addition to the `LOGIN` option have full access to the database. Superusers can run all of the YSQL statements on any of the database resources.
 
 By default, creating a role does not grant the `LOGIN` or the `SUPERUSER` privileges — these need to be explicitly granted.
 
