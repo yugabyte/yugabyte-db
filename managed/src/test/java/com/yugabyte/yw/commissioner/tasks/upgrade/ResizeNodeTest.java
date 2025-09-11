@@ -33,7 +33,7 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.TestUtils;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.ResizeNodeParams;
@@ -1496,7 +1496,8 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
   @Test
   public void testChangingInstanceRRWithCRAzu() {
-    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.enableCapacityReservationAzure.getKey(), "true");
+    RuntimeConfigEntry.upsertGlobal(
+        ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
     createInstanceType(azuProvider.getUuid(), DEFAULT_INSTANCE_TYPE);
     createInstanceType(azuProvider.getUuid(), NEW_INSTANCE_TYPE);
     Region region1 = Region.create(azuProvider, "region-1", "region-1", "img");
@@ -1646,7 +1647,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
   @Test
   public void testChangingInstanceRRWithCRAws() {
-    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.enableCapacityReservationAws.getKey(), "true");
+    RuntimeConfigEntry.upsertGlobal(ProviderConfKeys.enableCapacityReservationAws.getKey(), "true");
     createInstanceType(defaultProvider.getUuid(), DEFAULT_INSTANCE_TYPE);
     createInstanceType(defaultProvider.getUuid(), NEW_INSTANCE_TYPE);
     Region region1 = Region.getByCode(defaultProvider, "region-1");

@@ -24,7 +24,7 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -242,7 +242,8 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
 
   @Test
   public void testCreateUniverseWithCapacityReservationAzureSuccess() {
-    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.enableCapacityReservationAzure.getKey(), "true");
+    RuntimeConfigEntry.upsertGlobal(
+        ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
 
     Region region1 = Region.create(azuProvider, "region-1", "region-1", "yb-image");
     AvailabilityZone zone1 = AvailabilityZone.getOrCreate(region1, "zone-1", "zone-1", "subnet");
@@ -311,7 +312,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
 
   @Test
   public void testCreateUniverseWithCapacityReservationAwsSuccess() {
-    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.enableCapacityReservationAws.getKey(), "true");
+    RuntimeConfigEntry.upsertGlobal(ProviderConfKeys.enableCapacityReservationAws.getKey(), "true");
     Region region1 = Region.getByCode(defaultProvider, "region-1");
     AvailabilityZone zone1 = AvailabilityZone.getOrCreate(region1, "az-1", "az 1", "subnet");
     Region region2 = Region.create(defaultProvider, "region-2", "region-2", "yb-image");
@@ -387,7 +388,8 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
 
   @Test
   public void testCreateUniverseRRWithCRAzureSuccess() {
-    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.enableCapacityReservationAzure.getKey(), "true");
+    RuntimeConfigEntry.upsertGlobal(
+        ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
 
     Region region1 = Region.create(azuProvider, "region-1", "region-1", "yb-image");
     AvailabilityZone zone1 = AvailabilityZone.getOrCreate(region1, "zone-1", "zone-1", "subnet");
@@ -461,7 +463,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
 
   @Test
   public void testCreateUniverseRRWithCRAwsSuccess() {
-    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.enableCapacityReservationAws.getKey(), "true");
+    RuntimeConfigEntry.upsertGlobal(ProviderConfKeys.enableCapacityReservationAws.getKey(), "true");
 
     Region region1 = Region.getByCode(defaultProvider, "region-1");
     AvailabilityZone zone1 = AvailabilityZone.getOrCreate(region1, "az-1", "az 1", "subnet");

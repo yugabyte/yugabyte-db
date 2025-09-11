@@ -4051,8 +4051,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     nodesByProvider.forEach(
         (providerUUID, nodes) -> {
           Provider provider = Provider.getOrBadRequest(providerUUID);
-          if (CapacityReservationUtil.isReservationSupported(
-              confGetter, provider.getCloudCode(), operationType)) {
+          if (CapacityReservationUtil.isReservationSupported(confGetter, provider, operationType)) {
             Set<NodeDetails> currentlyAffectedNodes =
                 findNodesInUniverse(universe, new HashSet<>(nodes))
                     .filter(nodeFilter)

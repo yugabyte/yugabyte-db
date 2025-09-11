@@ -6,8 +6,10 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.common.config.ConfKeyInfo;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.Provider;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
@@ -98,23 +100,23 @@ public class CapacityReservationUtil {
   }
 
   public static boolean isReservationSupported(
-      RuntimeConfGetter confGetter, Common.CloudType cloudType, OperationType operationType) {
+      RuntimeConfGetter confGetter, Provider provider, OperationType operationType) {
     ConfKeyInfo<Boolean> enabledFlag = null;
     ConfKeyInfo<List> operationsList = null;
-    switch (cloudType) {
+    switch (provider.getCloudCode()) {
       case azu:
-        enabledFlag = GlobalConfKeys.enableCapacityReservationAzure;
+        enabledFlag = ProviderConfKeys.enableCapacityReservationAzure;
         operationsList = GlobalConfKeys.capacityReservationOperationsAzure;
         break;
       case aws:
-        enabledFlag = GlobalConfKeys.enableCapacityReservationAws;
+        enabledFlag = ProviderConfKeys.enableCapacityReservationAws;
         operationsList = GlobalConfKeys.capacityReservationOperationsAws;
         break;
     }
     if (enabledFlag == null) {
       return false;
     }
-    if (!confGetter.getGlobalConf(enabledFlag)) {
+    if (!confGetter.getConfForScope(provider, enabledFlag)) {
       return false;
     }
     if (operationsList != null) {

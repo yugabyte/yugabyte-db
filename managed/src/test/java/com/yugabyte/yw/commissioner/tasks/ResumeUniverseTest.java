@@ -29,7 +29,7 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -251,7 +251,8 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testResumeUniverseWithCRAzureSuccess() {
-    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.enableCapacityReservationAzure.getKey(), "true");
+    RuntimeConfigEntry.upsertGlobal(
+        ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
     setupUniverse(azuProvider, false, 3);
     ResumeUniverse.Params taskParams = new ResumeUniverse.Params();
     taskParams.customerUUID = defaultCustomer.getUuid();
@@ -279,7 +280,7 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testResumeUniverseWithCRAwsSuccess() {
-    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.enableCapacityReservationAws.getKey(), "true");
+    RuntimeConfigEntry.upsertGlobal(ProviderConfKeys.enableCapacityReservationAws.getKey(), "true");
     setupUniverse(defaultProvider, false, 3);
     ResumeUniverse.Params taskParams = new ResumeUniverse.Params();
     taskParams.customerUUID = defaultCustomer.getUuid();

@@ -39,7 +39,7 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -345,7 +345,8 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
 
   @Test
   public void testExpandWithCapacityReservationAzureSuccess() {
-    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.enableCapacityReservationAzure.getKey(), "true");
+    RuntimeConfigEntry.upsertGlobal(
+        ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
     Region region = Region.create(azuProvider, "region-1", "region-1", "yb-image");
     Universe universe = createUniverseForProvider("universe-test", azuProvider);
     UniverseDefinitionTaskParams taskParams = performExpand(universe);
@@ -374,7 +375,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
 
   @Test
   public void testExpandWithCapacityReservationAwsSuccess() {
-    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.enableCapacityReservationAws.getKey(), "true");
+    RuntimeConfigEntry.upsertGlobal(ProviderConfKeys.enableCapacityReservationAws.getKey(), "true");
     Region region = Region.create(defaultProvider, "region-2", "region-2", "yb-image");
     Universe universe = createUniverseForProvider("universe-test", defaultProvider);
     UniverseDefinitionTaskParams taskParams = performExpand(universe);
