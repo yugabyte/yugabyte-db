@@ -16,14 +16,20 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.utils.CapacityReservationUtil;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.Arrays;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -57,6 +63,7 @@ public class EditUniverse extends EditUniverseTaskBase {
   @Override
   protected void createPrecheckTasks(Universe universe) {
     addBasicPrecheckTasks();
+    prevNodes = Universe.getOrBadRequest(universe.getUniverseUUID()).getNodes();
     if (isFirstTry()) {
       configureTaskParams(universe);
     }
@@ -157,11 +164,16 @@ public class EditUniverse extends EditUniverseTaskBase {
       throw t;
     } finally {
       releaseReservedNodes();
+      boolean rollbackPerformed = false;
       if (universe != null) {
         // Universe is locked by this task.
         try {
           // Fetch the latest universe.
           universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+          if (!universe.getUniverseDetails().updateSucceeded) {
+            // Operation ended up with error, so trying to do an automatic rollback.
+            rollbackPerformed = rollbackState(universe, dedicatedNodesChanged.get());
+          }
           if (universe
               .getConfig()
               .getOrDefault(Universe.USE_CUSTOM_IMAGE, "false")
@@ -175,10 +187,89 @@ public class EditUniverse extends EditUniverseTaskBase {
             universe.save();
           }
         } finally {
-          unlockUniverseForUpdate(errorString);
+          unlockUniverseForUpdate(taskParams().getUniverseUUID(), errorString, rollbackPerformed);
         }
       }
     }
     log.info("Finished {} task.", getName());
+  }
+
+  private boolean rollbackState(Universe universe, boolean dedicatedNodesChanged) {
+    if (!confGetter.getGlobalConf(GlobalConfKeys.enableEditAutoRollback)) {
+      return false;
+    }
+    UniverseDefinitionTaskParams taskParams = taskParams();
+    if (dedicatedNodesChanged || taskParams.isRunOnlyPrechecks() || !isFirstTry()) {
+      return false;
+    }
+    try {
+      Map<String, NodeDetails> prevNodesMap =
+          prevNodes.stream().collect(Collectors.toMap(n -> n.nodeName, n -> n));
+      List<NodeDetails.NodeState> acceptableStates =
+          Arrays.asList(
+              NodeDetails.NodeState.ToBeAdded,
+              NodeDetails.NodeState.Adding,
+              NodeDetails.NodeState.ToBeRemoved,
+              NodeDetails.NodeState.Live);
+      boolean hasAddingNodes = false;
+      for (NodeDetails newNode : universe.getNodes()) {
+        if (!acceptableStates.contains(newNode.state)) {
+          log.debug("Node {} is in state {}, skipping", newNode.nodeName, newNode.state);
+          return false;
+        }
+        NodeDetails prevNode = prevNodesMap.get(newNode.nodeName);
+        if (newNode.state == NodeDetails.NodeState.ToBeAdded
+            || newNode.state == NodeDetails.NodeState.Adding) {
+          hasAddingNodes = true;
+          if (prevNode != null) {
+            log.error(
+                "Incompatible state: new node {} is in state {}, but there is old node with state"
+                    + " {}",
+                newNode.nodeName,
+                newNode.state,
+                prevNode.state);
+            return false;
+          }
+          NodeTaskParams nodeTaskParams = new NodeTaskParams();
+          nodeTaskParams.setUniverseUUID(universe.getUniverseUUID());
+          nodeTaskParams.nodeName = newNode.nodeName;
+          nodeTaskParams.placementUuid = newNode.placementUuid;
+          nodeTaskParams.azUuid = newNode.azUuid;
+          if (instanceExists(nodeTaskParams)) {
+            log.warn("Instance {} already exists", newNode.nodeName);
+            return false;
+          }
+        } else {
+          if (prevNode == null) {
+            log.error("Incompatible state: old node {} is not found", newNode.nodeName);
+            return false;
+          }
+          if (prevNode.isMaster != newNode.isMaster || prevNode.isTserver != newNode.isTserver) {
+            log.debug(
+                "Node {} isMaster changed {} isTserver changed {}",
+                newNode.nodeName,
+                newNode.isMaster != prevNode.isMaster,
+                newNode.isTserver != prevNode.isTserver);
+            return false;
+          }
+        }
+      }
+      if (!hasAddingNodes) {
+        log.warn("No added nodes, skip rolling back");
+        return false;
+      }
+      // We can just rollback nodes state because we updated userIntent only in memory at this
+      // moment.
+      Universe.saveDetails(
+          universe.getUniverseUUID(),
+          u -> {
+            u.getUniverseDetails().nodeDetailsSet = new LinkedHashSet<>(prevNodes);
+          },
+          false);
+      return true;
+    } catch (Exception e) {
+      log.error("Failed to do rollback", e);
+      return false;
+    }
   }
 }

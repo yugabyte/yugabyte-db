@@ -12,7 +12,7 @@ jobs:
     release_artifact: false
 
   - os: alma8
-    compiler: gcc11
+    compiler: gcc12
     build_type: fastdebug
     test_opts: YB_TEST_YB_CONTROLLER=0
     release_artifact: false

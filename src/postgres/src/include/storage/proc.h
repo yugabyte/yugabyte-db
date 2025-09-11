@@ -352,6 +352,8 @@ struct PGPROC
 	 * list is in wait_state.h (PggateRPC)
 	 */
 	uint16		yb_rpc_code;
+
+	YbcPgSharedDataPlaceholder yb_shared_data;
 };
 
 /* NOTE: "typedef struct PGPROC PGPROC" appears in storage/lock.h. */

@@ -1853,4 +1853,21 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Verify actual gflags state on node before upgrade",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableEditAutoRollback =
+      new ConfKeyInfo<>(
+          "yb.task.enable_edit_auto_rollback",
+          ScopeType.GLOBAL,
+          "Enable Performing Automatic Rollback of Edit Operation",
+          "Enable performing automatic rollback of edit operation (if possible)",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableContinuousPlatformBackups =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.continuous_platform_backups",
+          ScopeType.GLOBAL,
+          "Enable new YBA platform backup and restore UI",
+          "Exposes a new subtab on the platform administration page where users can enable"
+              + " automated platform backups.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

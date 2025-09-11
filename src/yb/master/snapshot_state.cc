@@ -299,6 +299,15 @@ size_t SnapshotState::ResetRunning() {
   return result;
 }
 
+bool SnapshotState::ShouldRemoveNamespaceAnchor() const {
+  auto state_result = AggregatedState();
+  if (!state_result.ok()) {
+    return false;
+  }
+  auto state = state_result.get();
+  return state == SysSnapshotEntryPB::FAILED || state == SysSnapshotEntryPB::CANCELLED;
+}
+
 ListSnapshotsDetailOptionsPB ListSnapshotsDetailOptionsFactory::CreateWithNoDetails() {
   auto result = ListSnapshotsDetailOptionsPB();
   result.set_show_namespace_details(false);

@@ -4,7 +4,7 @@ linkTitle: cr_show_t4.sql
 headerTitle: cr_show_t4.sql
 description: cr_show_t4.sql - Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: cr-show-t4
     parent: analyzing-a-normal-distribution
     weight: 30

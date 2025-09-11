@@ -56,7 +56,7 @@ function(test_parse_build_root_basename)
   check_parse_build_root_basename(
     "debug-clang-dynamic"                "debug"     "clang"       "dynamic"  OFF)
   check_parse_build_root_basename(
-    "asan-gcc11-dynamic-ninja"           "asan"      "gcc11"       "dynamic"  OFF)
+    "asan-gcc12-dynamic-ninja"           "asan"      "gcc12"       "dynamic"  OFF)
   check_parse_build_root_basename(
     "debug-clang-dynamic"                "debug"     "clang"       "dynamic"  OFF)
   check_parse_build_root_basename(

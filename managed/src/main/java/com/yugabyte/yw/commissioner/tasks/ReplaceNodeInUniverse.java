@@ -119,7 +119,7 @@ public class ReplaceNodeInUniverse extends EditUniverseTaskBase {
       releaseReservedNodes();
       // Mark the update of the universe as done. This will allow future edits/updates to the
       // universe to happen.
-      unlockUniverseForUpdate(errorString);
+      unlockUniverseForUpdate(taskParams().getUniverseUUID(), errorString);
       log.info("Finished {} task.", getName());
     }
   }

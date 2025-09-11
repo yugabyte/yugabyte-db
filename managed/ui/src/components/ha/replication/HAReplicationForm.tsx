@@ -1,4 +1,4 @@
-import { FC, useEffect, useRef, useState } from 'react';
+import { FC, useEffect, useRef } from 'react';
 import _ from 'lodash';
 import { useMutation, useQueryClient } from 'react-query';
 import { Alert, Col, Grid, Row } from 'react-bootstrap';
@@ -11,16 +11,8 @@ import { YBCopyButton, YBPasteButton } from '../../common/descriptors';
 import { api, CreateHaConfigRequest, QUERY_KEY } from '../../../redesign/helpers/api';
 import { HaConfig, HaReplicationSchedule } from '../dtos';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
-import {
-  getPeerCerts,
-  YbHAWebService,
-  YB_HA_WS_RUNTIME_CONFIG_KEY,
-  EMPTY_YB_HA_WEBSERVICE
-} from './HAReplicationView';
-import { getPromiseState } from '../../../utils/PromiseUtils';
 
 import './HAReplicationForm.scss';
-import { ManagePeerCertsModal } from '../modals/ManagePeerCertsModal';
 
 export enum HAInstanceTypes {
   Active = 'Active',
@@ -78,11 +70,8 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
   runtimeConfigs,
   schedule,
   backToViewMode,
-  fetchRuntimeConfigs,
-  setRuntimeConfig
+  fetchRuntimeConfigs
 }) => {
-  const [isAddPeerCertsModalVisible, setAddPeerCertsModalVisible] = useState(false);
-
   const formik = useRef({} as FormikProps<FormValues>);
   const queryClient = useQueryClient();
   const generateKey = useMutation(api.generateHAKey, {
@@ -114,16 +103,6 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
   useEffect(() => {
     fetchRuntimeConfigs();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // fetch only specific key
-  const hideAddPeerCertModal = () => {
-    fetchRuntimeConfigs();
-    setAddPeerCertsModalVisible(false);
-  };
-
-  const setYBHAWebserviceRuntimeConfig = (value: string) => {
-    setRuntimeConfig(YB_HA_WS_RUNTIME_CONFIG_KEY, value);
-  };
 
   let initialValues = INITIAL_VALUES;
   const isEditMode = !!config && !!schedule;
@@ -177,23 +156,9 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
       formik.current.setSubmitting(false);
     }
   };
-  const isRuntimeConfigLoaded = runtimeConfigs?.data && getPromiseState(runtimeConfigs).isSuccess();
-  const ybHAWebService: YbHAWebService = isRuntimeConfigLoaded
-    ? JSON.parse(
-        runtimeConfigs.data.configEntries.find((c: any) => c.key === YB_HA_WS_RUNTIME_CONFIG_KEY)
-          .value
-      )
-    : EMPTY_YB_HA_WEBSERVICE;
 
-  const peerCerts = getPeerCerts(ybHAWebService);
   return (
     <div className="ha-replication-form" data-testid="ha-replication-config-form">
-      <ManagePeerCertsModal
-        visible={isAddPeerCertsModalVisible}
-        peerCerts={peerCerts}
-        setYBHAWebserviceRuntimeConfig={setYBHAWebserviceRuntimeConfig}
-        onClose={hideAddPeerCertModal}
-      />
       <Formik<FormValues>
         initialValues={initialValues}
         validationSchema={validationSchema}
@@ -203,7 +168,6 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
           // workaround for outdated version of Formik to access form methods outside of <Formik>
           formik.current = formikProps;
 
-          const isHTTPS = formikProps.values?.instanceAddress?.startsWith('https:');
           const { instanceType, clusterKey } = formikProps.values;
           return (
             <>

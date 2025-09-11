@@ -47,7 +47,7 @@ typedef struct {
 // functions in this API are called.
 void YBCInitPgGate(
     YbcPgTypeEntities type_entities, const YbcPgCallbacks* pg_callbacks,
-    uint64_t *session_id, YbcPgAshConfig* ash_config);
+    const YbcPgInitPostgresInfo *init_postgres_info, YbcPgAshConfig* ash_config);
 
 void YBCDestroyPgGate();
 void YBCInterruptPgGate();
@@ -558,9 +558,8 @@ YbcStatus YBCPgDmlBindHashCodes(
     YbcPgBoundType end_type, uint16_t end_value);
 
 YbcStatus YBCPgDmlBindBounds(
-    YbcPgStatement handle, const char* lower_bound, size_t lower_bound_len,
-    bool lower_bound_inclusive, const char* upper_bound, size_t upper_bound_len,
-    bool upper_bound_inclusive);
+    YbcPgStatement handle, uint64_t lower_bound_ybctid, bool lower_bound_inclusive,
+    uint64_t upper_bound_ybctid, bool upper_bound_inclusive);
 
 // For parallel scan only, limit fetch to specified range of ybctids
 YbcStatus YBCPgDmlBindRange(YbcPgStatement handle,

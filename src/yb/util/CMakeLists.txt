@@ -181,6 +181,7 @@ set(UTIL_SRCS
   net/tunnel.cc
   ntp_clock.cc
   oid_generator.cc
+  one_time_bool.cc
   operation_counter.cc
   os-util.cc
   path_util.cc

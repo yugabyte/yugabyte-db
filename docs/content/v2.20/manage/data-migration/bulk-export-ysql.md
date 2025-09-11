@@ -203,7 +203,7 @@ All nodes (YB-TServers) in the cluster are identical and are capable of handling
 
 There are many applications where handling a large number of client connections is critical. There are two strategies to deal with this:
 
-- **Evenly distribute queries across nodes:** Every node (YB-Tserver process) of a YugabyteDB cluster has a limit on the number of connections it can handle, by default this number is 300 connections. While this number can be increased a bit depending on the use case, it is recommended to distribute the queries across the different nodes in the cluster. As an example, a 10 node cluster consisting of 16 vCPU per node can handle 3000 connections.
+- **Evenly distribute queries across nodes:** Every node (YB-TServer process) of a YugabyteDB cluster has a limit on the number of connections it can handle, by default this number is 300 connections. While this number can be increased a bit depending on the use case, it is recommended to distribute the queries across the different nodes in the cluster. As an example, a 10 node cluster consisting of 16 vCPU per node can handle 3000 connections.
 
 - **Use a connection pool:** Use a connection pool in your application such as the Hikari pool. Using a connection pool drastically reduces the number of connections by multiplexing a large number of logical client connections onto a smaller number of physical connections across the nodes of the YugabyteDB cluster.
 

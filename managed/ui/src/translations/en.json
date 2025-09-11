@@ -48,6 +48,7 @@
       "expand": "Expand",
       "collapse": "Collapse",
       "formFieldRequired": "Required.",
+      "every": "Every",
       "duration": {
         "seconds": "Seconds",
         "minutes": "Minutes",
@@ -61,11 +62,34 @@
         "megabytesPerSecond": "MBps"
       }
     },
-    "imgAltText": {
-      "infoIcon": "Information Icon"
+    "iconAltText": {
+      "infoIcon": "Information icon",
+      "checkIcon": "Check mark icon",
+      "unavailableIcon": "Unavailable icon"
     },
     "task": {
       "viewDetails": "View Details"
+    },
+    "component": {
+      "backupStorageConfigSelect": {
+        "configurePrompt": {
+          "emptyMessage": "Current, you don't have a backup storage configured",
+          "initialCreateAction": "Configure Backup Storage"
+        },
+        "selectComponent": {
+          "noMatchingOptions": "No matches found",
+          "additionalCreateAction": "Create New Storage Configuration"
+        },
+        "redirectModal": {
+          "title": "You are about to leave this page",
+          "message": "To create a backup storage configuration, you will be redirected to <bold>Integrations / Backup</bold>. Are you sure you want to continue?",
+          "cancelButton": "Stay on this page",
+          "submitButton": "Continue"
+        },
+        "error": {
+          "failedToFetchStorageConfigs": "Failed to fetch customer storage configurations."
+        }
+      }
     },
     "queryError": {
       "failedToFetchUniverseList": "Error fetching universe list.",
@@ -85,6 +109,7 @@
       "failedToFetchDrPrimaryTables": "Unable to fetch tables for DR primary universe UUID: {{universeUuid}}",
       "failedToFetchXClusterConfig": "Unable to fetch xCluster config UUID: {{xClusterConfigUuid}}",
       "failedToFetchMetrics": "Failed to fetch metrics.",
+      "failedToFetchContinuousBackupConfig": "Failed to fetch automated platform backup details.",
       "failedToFetchAlertTemplates": "Failed to fetch alert templates.",
       "failedToFetchAlertConfigs": "Failed to fetch alert configurations.",
       "failedToFetchHostInfo": "Failed to fetch YBA host details."
@@ -1979,7 +2004,7 @@
       },
       "tablespaces": {
         "checkboxTitle": "Restore tablespaces and data to their respective regions",
-        "checkboxHelpText": "<b>Note!</b> If you don't select this option, or the target universe doesn't have a matching topology, all data will be restored to the primary region.",
+        "checkboxHelpText": "<b>Note!</b> If not selected all the data will be restored to the primary region.",
         "unSupportedModal": {
           "title": "Unable to Restore Tablespaces",
           "warningText": "<b>Note!</b> You can proceed without restoring tablespaces, however none of the tablespaces are preserved and all their data is written to the primary region [location]. After the restore, you will have to re-add all the tablespaces. <a>Learn more</a>",
@@ -2548,6 +2573,11 @@
       }
     },
     "ha": {
+      "tab": {
+        "replicationConfiguration": "Replication Configuration",
+        "instanceConfiguration": "Instance Configuration",
+        "metrics": "Metrics"
+      },
       "config": {
         "globalState": {
           "Unknown": "Unknown",
@@ -2569,6 +2599,76 @@
         "graphTitle": {
           "haBackupLag": "HA Backup Lag",
           "haLastBackupSize": "HA Last Backup Size"
+        }
+      }
+    },
+    "continuousBackup": {
+      "enableContinuousBackupPrompt": {
+        "featureDescription": "Back up your YugabyteDB Anywhere configuration and universe metadata.\nYou can use these backups to restore your YugabyteDB Anywhere instance in case of an outage.",
+        "actionButton": "Enable Automated Platform Backups",
+        "learnMore": "Learn more about automated platform backups",
+        "backupUniverseTip": "To back up universes, navigate to your universe and choose Backups."
+      },
+      "continuousBackupCard": {
+        "title": "Automated Platform Backups",
+        "metadata": {
+          "lastBackup": "Last Backup",
+          "backupInterval": "Backup Interval",
+          "storageLocation": "Storage Location"
+        },
+        "button": {
+          "remove": "Remove"
+        },
+        "backupIntervalValue": "Every {{backupFrequencyMinutes}} minutes",
+        "noRecentBackupError": "No backups have been created in the past 24 hours."
+      },
+      "configureContinuousBackupModal": {
+        "title": {
+          "create": "Enable Automated Platform Backups",
+          "edit": "Edit Automated Platform Backups"
+        },
+        "instruction": {
+          "selectStorageConfig": "Select the storage configuration for your automated platform backups",
+          "createSubfolder": "Create a subfolder (in the storage config) for the platform backups",
+          "setBackupFrequency": "Set backup frequency"
+        },
+        "label": {
+          "storageConfig": "Storage Config",
+          "folderName": "Folder Name"
+        },
+        "tip": {
+          "performanceImpact": "Platform backups don't significantly impact performance.",
+          "copiesRetained": "Only the 3 most recent copies are retained, as older backups are more likely to be inconsistent with the current state of your universes."
+        },
+        "whatWillBeBackedUpInfo": {
+          "header": "What will be backed up",
+          "platformMetadata": "Platform Metadata",
+          "yugabyteDbReleases": "YugabyteDB Releases",
+          "universeMetrics": "Universe Metrics",
+          "howToBackupThis": {
+            "label": "How to back up metrics?",
+            "tooltip": "Perform a one-time platform export from Platform HA and Backups to back up the Universe Metrics."
+          }
+        },
+        "submitButton": {
+          "create": "Enable Automated Platform Backups",
+          "edit": "Apply Changes"
+        },
+        "toast": {
+          "createSuccess": "Automated platform backup enabled. Next backup will begin shortly.",
+          "createFailedLabel": "Failed to enable automated platform backup",
+          "editSuccess": "Automated platform backup changes applied.",
+          "editFailedLabel": "Failed to apply changes to automated platform backup"
+        }
+      },
+      "deleteContinuousBackupModal": {
+        "title": "Disable Automated Platform Backups",
+        "deleteConfirmation": "Are you sure you want to disable automated platform backups? This will delete the automated platform backup configuration. To re-enable, you will need to to set up the confirguration again.",
+        "confirmationInstructions": "Enter \"DELETE\" to confirm.",
+        "submitButton": "Delete Configuration",
+        "toast": {
+          "deleteSuccess": "Automated platform backup configuration deleted. Automated backup disabled.",
+          "deleteFailedLabel:": "Automated platform backup configuration deletion failed."
         }
       }
     },
@@ -3022,13 +3122,17 @@
           "optional": "(Optional)",
           "forceRenameHelpText": "<b>Note!</b> Renaming is required since the selected target universe contains keyspaces with identical names. You will be able to rename in step 3.",
           "restoreTablespaces": "Restore tablespaces and data to their respective regions",
-          "restoreTablespacesHelpText": "<b>Note!</b> If you don't select this option, or the target universe doesn't have a matching topology, all data will be restored to the primary region.",
+          "restoreTablespacesHelpText": "<b>Note!</b> If not selected all the data will be restored to the primary region.",
           "selectKMS": "Select KMS Configuration",
           "kmsConfig": "KMS Configurations",
           "kmsConfigHelpText": "<b>Note!</b> For a successful restore, the KMS configuration used for restore should be the same KMS configuration used during backup creation.",
           "activeKMS": "Active",
           "usedDuringBackup": "Used during backup",
-          "parallelThreads": "Parallel threads (Optional)"
+          "parallelThreads": "Parallel threads (Optional)",
+          "tablespaceConflictResolution": "The target universe has tablespaces with the same name as tablespaces in the backup. In cases where the placement policy differs between the target and backup tablespaces, <b>the target policy will be used.</b> <a>View logs for details.</a>",
+          "tablespaceUnsupportedText1": "<b>Tablespace restore is unavailable.</b> This is because the topology of the target universe is not the same as the topology of the backup. <a>View logs for details.</a>",
+          "tablespaceUnsupportedText2": "If you proceed to restore without tablespaces, all data will be restored to the primary region, and after the restore you will need to recreate your tablespaces.",
+          "tablespaceUnsupportedText3": "Learn about tablespace restore <a>requirements.</a>"
         },
         "validationErrMsg": {
           "keyspacesAlreadyExists": "Keyspace already exists in the target Universe",

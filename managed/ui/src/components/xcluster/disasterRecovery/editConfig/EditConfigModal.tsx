@@ -11,15 +11,18 @@ import { toast } from 'react-toastify';
 import InfoIcon from '../../../../redesign/assets/info-message.svg';
 import { YBInputField, YBModal, YBModalProps, YBTooltip } from '../../../../redesign/components';
 import { api, drConfigQueryKey, EditDrConfigRequest } from '../../../../redesign/helpers/api';
-import { IStorageConfig as BackupStorageConfig } from '../../../backupv2';
+import { CustomerConfig as BackupStorageConfig } from '../../../backupv2';
 import {
   ReactSelectStorageConfigField,
   StorageConfigOption
 } from '../../sharedComponents/ReactSelectStorageConfig';
 import { handleServerError } from '../../../../utils/errorHandlingUtils';
 import { isActionFrozen } from '../../../../redesign/helpers/utils';
-import { UNIVERSE_TASKS } from '../../../../redesign/helpers/constants';
 import { I18N_KEY_PREFIX_XCLUSTER_TERMS, INPUT_FIELD_WIDTH_PX } from '../../constants';
+import {
+  I18N_ACCESSABILITY_ALT_TEXT_KEY_PREFIX,
+  UNIVERSE_TASKS
+} from '@app/redesign/helpers/constants';
 import {
   DurationUnit,
   DURATION_UNIT_TO_SECONDS,
@@ -215,7 +218,10 @@ export const EditConfigModal = ({
                 </Typography>
               }
             >
-              <img src={InfoIcon} alt={t('infoIcon', { keyPrefix: 'imgAltText' })} />
+              <img
+                src={InfoIcon}
+                alt={t('infoIcon', { keyPrefix: I18N_ACCESSABILITY_ALT_TEXT_KEY_PREFIX })}
+              />
             </YBTooltip>
           </div>
           <ReactSelectStorageConfigField

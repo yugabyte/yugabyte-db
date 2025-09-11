@@ -4,7 +4,7 @@ headerTitle: DROP FOREIGN DATA WRAPPER
 linkTitle: DROP FOREIGN DATA WRAPPER
 description: Use the DROP FOREIGN DATA WRAPPER statement to drop a foreign-data wrapper.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: ddl_drop_foreign_data_wrapper
     parent: statements
 type: docs

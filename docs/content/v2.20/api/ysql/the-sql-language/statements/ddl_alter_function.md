@@ -4,7 +4,7 @@ headerTitle: ALTER FUNCTION
 linkTitle: ALTER FUNCTION
 description: Change properties of an existing function.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: ddl_alter_function
     parent: statements
 type: docs

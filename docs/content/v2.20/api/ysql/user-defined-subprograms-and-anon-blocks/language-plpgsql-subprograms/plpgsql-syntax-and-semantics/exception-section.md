@@ -4,7 +4,7 @@ headerTitle: The PL/pgSQL exception section
 linkTitle: Exception section
 description: Describes the syntax and semantics of the PL/pgSQL exception section. [YSQL].
 menu:
-  v2.20:
+  v2.20_api:
     identifier: exception-section
     parent: plpgsql-syntax-and-semantics
     weight: 30

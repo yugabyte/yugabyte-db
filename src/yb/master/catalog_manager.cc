@@ -7708,9 +7708,16 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     table_pb.set_updates_only_index_permissions(false);
   }
   table_pb.set_next_column_id(next_col_id);
-  l.mutable_data()->set_state(
-      SysTablesEntryPB::ALTERING,
-      Substitute("Alter table version=$0 ts=$1", table_pb.version(), LocalTimeAsString()));
+
+  // Do not set the state to ALTERING when setting retention barriers on sys catalog tablet in
+  // create CDC stream context.
+  auto tablets = VERIFY_RESULT(table->GetTablets());
+  if (!req->has_cdc_sdk_stream_id() || tablets.size() != 1 ||
+      tablets[0]->tablet_id() != master::kSysCatalogTabletId) {
+    l.mutable_data()->set_state(
+        SysTablesEntryPB::ALTERING,
+        Substitute("Alter table version=$0 ts=$1", table_pb.version(), LocalTimeAsString()));
+  }
 
   RETURN_NOT_OK(UpdateSysCatalogWithNewSchema(
       table, ddl_log_entries, namespace_id, new_table_name, epoch, resp));
@@ -10850,32 +10857,12 @@ Status CatalogManager::SendAlterTableRequestInternal(
     if (req && req->has_cdc_sdk_stream_id()) {
       LOG(INFO) << " CDC stream id context : " << req->cdc_sdk_stream_id();
       xrepl::StreamId stream_id =
-          VERIFY_RESULT(xrepl::StreamId::FromString(req->cdc_sdk_stream_id()));
-      // TODO(#26423): The AsyncAlterTable fails for master tablet with peer not found error as this
-      // RPC goes to tservers. As a workaround we simply set the retention barriers on master tablet
-      // and return. This is a temporary workaround and sets the retention barriers only on the
-      // leader master.
+        VERIFY_RESULT(xrepl::StreamId::FromString(req->cdc_sdk_stream_id()));
       auto tablets = VERIFY_RESULT(table->GetTablets());
-      if (tablets.size() > 0 && tablets[0]->tablet_id() == master::kSysCatalogTabletId &&
+      if (tablets.size() == 1 && tablets[0]->tablet_id() == master::kSysCatalogTabletId &&
           FLAGS_TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
-        auto tablet_peer = sys_catalog_->tablet_peer();
-        tablet::RemoveIntentsData data;
-        RETURN_NOT_OK(tablet_peer->GetLastReplicatedData(&data));
-        OpIdPB safe_op_id;
-        safe_op_id.set_term(data.op_id.term);
-        safe_op_id.set_index(data.op_id.index);
-
-        RETURN_NOT_OK(ResultToStatus(tablet_peer->SetAllInitialCDCSDKRetentionBarriers(
-            data.op_id, master_->clock()->Now(), false /* require_history_cutoff */)));
-
-        // Here instead of kInitial we could've sent last replicated time. But it will
-        // anyway get overridden.
-        RETURN_NOT_OK(PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails(
-            table, sys_catalog_->tablet_id(), stream_id, safe_op_id,
-            HybridTime::kInitial /* proposed_snapshot_time */,
-            req->cdc_sdk_require_history_cutoff()));
-
-        continue;
+        RETURN_NOT_OK(SetAllInitialCDCSDKRetentionBarriersOnCatalogTable(table, stream_id));
+        return Status::OK();
       }
       call = std::make_shared<AsyncAlterTable>(
           master_, AsyncTaskPool(), tablet, table, txn_id, epoch, stream_id,
@@ -11006,7 +10993,8 @@ Status CatalogManager::DeleteOrHideTabletsAndSendRequests(
     if (hide_only) {
       // Don't call table()->RemoveTablet for hidden tablets as they are needed to support
       // CLONE, PITR, SELECT AS-OF.
-      LOG(INFO) << "Hiding tablet" << tablet->tablet_id() << " with hide time:" << hide_hybrid_time;
+      LOG(INFO) << Format("Hiding tablet $0 with hide time: $1",
+          tablet->tablet_id(), hide_hybrid_time);
       if (!tablet_lock->ListedAsHidden()) {
         marked_as_hidden.push_back(tablet);
       }

@@ -59,6 +59,9 @@ DECLARE_bool(use_fast_backward_scan);
 
 DEPRECATE_FLAG(bool, use_offset_based_key_decoding, "02_2024");
 
+DEFINE_RUNTIME_bool(enable_colocated_table_tombstone_cache, true,
+    "When set, colocated reads will cache table tombstones to avoid repeated tombstone checks.");
+
 using namespace std::chrono_literals;
 
 namespace yb::docdb {
@@ -484,7 +487,8 @@ const dockv::SchemaPackingStorage& DocRowwiseIterator::schema_packing_storage() 
 }
 
 Result<DocHybridTime> DocRowwiseIterator::GetTableTombstoneTime(Slice root_doc_key) const {
-  if (!doc_read_context_.schema().has_colocation_id()) {
+  if (!doc_read_context_.schema().has_colocation_id() ||
+      !GetAtomicFlag(&FLAGS_enable_colocated_table_tombstone_cache)) {
     return docdb::GetTableTombstoneTime(
         root_doc_key, doc_db_, txn_op_context_, read_operation_data_);
   }

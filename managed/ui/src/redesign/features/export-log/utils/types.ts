@@ -6,7 +6,8 @@ export enum TelemetryProviderType {
   SPLUNK = 'SPLUNK',
   AWS_CLOUDWATCH = 'AWS_CLOUDWATCH',
   GCP_CLOUD_MONITORING = 'GCP_CLOUD_MONITORING',
-  LOKI = 'LOKI'
+  LOKI = 'LOKI',
+  DYNATRACE = 'DYNATRACE'
 }
 
 export interface ExportLogFormFields {

@@ -4,7 +4,7 @@ headerTitle: Computing Bacon Numbers for real IMDb data
 linkTitle: Bacon numbers for IMDb data
 description: This section shows how to compute Bacon Numbers for real IMDb data.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: imdb-data
     parent: bacon-numbers
     weight: 20

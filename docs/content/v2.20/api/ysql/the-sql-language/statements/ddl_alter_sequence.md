@@ -4,7 +4,7 @@ headerTitle: ALTER SEQUENCE
 linkTitle: ALTER SEQUENCE
 description: Use the ALTER SEQUENCE statement to change the definition of a sequence in the current schema.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: ddl_alter_sequence
     parent: statements
 type: docs

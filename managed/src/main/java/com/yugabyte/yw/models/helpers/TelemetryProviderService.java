@@ -13,8 +13,10 @@ import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.WSClientRefresher;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -42,18 +44,25 @@ import org.apache.commons.collections4.CollectionUtils;
 public class TelemetryProviderService {
 
   public static final String LOKI_PUSH_ENDPOINT = "/loki/api/v1/push";
+  public static final String WS_CLIENT_KEY = "yb.ws";
   private final BeanValidator beanValidator;
   private final RuntimeConfGetter confGetter;
+  private WSClientRefresher wsClientRefresher;
+  private ApiHelper apiHelper;
 
   @Inject
-  public TelemetryProviderService(BeanValidator beanValidator, RuntimeConfGetter confGetter) {
+  public TelemetryProviderService(
+      BeanValidator beanValidator,
+      RuntimeConfGetter confGetter,
+      WSClientRefresher wsClientRefresher) {
     this.beanValidator = beanValidator;
     this.confGetter = confGetter;
+    this.wsClientRefresher = wsClientRefresher;
   }
 
   @VisibleForTesting
   public TelemetryProviderService() {
-    this(new BeanValidator(null), null);
+    this(new BeanValidator(null), null, null);
   }
 
   @Transactional
@@ -269,7 +278,12 @@ public class TelemetryProviderService {
     return false;
   }
 
+  public ApiHelper getApiHelper() {
+    return new ApiHelper(this.wsClientRefresher.getClient(WS_CLIENT_KEY));
+  }
+
   public void validateTelemetryProvider(TelemetryProvider provider) {
-    provider.getConfig().validate();
+    this.apiHelper = getApiHelper();
+    provider.getConfig().validate(this.apiHelper);
   }
 }

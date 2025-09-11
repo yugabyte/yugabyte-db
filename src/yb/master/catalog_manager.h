@@ -2812,6 +2812,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const std::vector<TableId>& table_ids, const xrepl::StreamId& stream_id,
       const bool has_consistent_snapshot_option, bool require_history_cutoff);
 
+  Status SetAllInitialCDCSDKRetentionBarriersOnCatalogTable(
+      const TableInfoPtr& table, const xrepl::StreamId& stream_id);
+
   Status ReplicationSlotValidateName(const std::string& replication_slot_name);
 
   Status TEST_CDCSDKFailCreateStreamRequestIfNeeded(const std::string& sync_point);

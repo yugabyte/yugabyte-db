@@ -28,6 +28,7 @@
 
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/lw_function.h"
 #include "yb/util/result.h"
 

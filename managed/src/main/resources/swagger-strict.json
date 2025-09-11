@@ -2219,6 +2219,9 @@
         "auditLogConfig" : {
           "$ref" : "#/definitions/AuditLogConfig"
         },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
+        },
         "capability" : {
           "enum" : [
             "READ_ONLY",
@@ -2797,7 +2800,9 @@
             "CheckSshConnection",
             "FetchServerConf",
             "DoCapacityReservation",
-            "DeleteCapacityReservation"
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -4883,6 +4888,9 @@
           ],
           "type" : "string"
         },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
+        },
         "capability" : {
           "enum" : [
             "READ_ONLY",
@@ -5464,7 +5472,9 @@
             "CheckSshConnection",
             "FetchServerConf",
             "DoCapacityReservation",
-            "DeleteCapacityReservation"
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -7662,6 +7672,27 @@
       },
       "type" : "object"
     },
+    "DynatraceConfig" : {
+      "allOf" : [
+        {
+          "$ref" : "#/definitions/TelemetryProviderConfig"
+        },
+        {
+          "description" : "Dynatrace Config",
+          "properties" : {
+            "apiToken" : {
+              "description" : "API Token",
+              "type" : "string"
+            },
+            "endpoint" : {
+              "description" : "Endpoint",
+              "type" : "string"
+            }
+          },
+          "type" : "object"
+        }
+      ]
+    },
     "EarlyoomConfig" : {
       "description" : "State for earlyoom service",
       "properties" : {
@@ -7914,6 +7945,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -8490,7 +8524,9 @@
             "CheckSshConnection",
             "FetchServerConf",
             "DoCapacityReservation",
-            "DeleteCapacityReservation"
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -8687,6 +8723,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -9275,7 +9314,9 @@
             "CheckSshConnection",
             "FetchServerConf",
             "DoCapacityReservation",
-            "DeleteCapacityReservation"
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -10094,6 +10135,9 @@
           ],
           "type" : "string"
         },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
+        },
         "azOverrides" : {
           "additionalProperties" : {
             "type" : "string"
@@ -10678,7 +10722,9 @@
             "CheckSshConnection",
             "FetchServerConf",
             "DoCapacityReservation",
-            "DeleteCapacityReservation"
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -13830,6 +13876,11 @@
           "description" : "DB Name",
           "type" : "string"
         },
+        "disabled" : {
+          "description" : "Whether the PITR config is disabled",
+          "readOnly" : true,
+          "type" : "boolean"
+        },
         "intermittentMinRecoverTimeInMillis" : {
           "description" : "Intermittent min recovery time in millis if retention period is increased",
           "format" : "int64",
@@ -14338,6 +14389,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -14914,7 +14968,9 @@
             "CheckSshConnection",
             "FetchServerConf",
             "DoCapacityReservation",
-            "DeleteCapacityReservation"
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -15339,6 +15395,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -15930,7 +15989,9 @@
             "CheckSshConnection",
             "FetchServerConf",
             "DoCapacityReservation",
-            "DeleteCapacityReservation"
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -16170,6 +16231,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -16746,7 +16810,9 @@
             "CheckSshConnection",
             "FetchServerConf",
             "DoCapacityReservation",
-            "DeleteCapacityReservation"
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -17668,6 +17734,9 @@
           ],
           "type" : "string"
         },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
+        },
         "capability" : {
           "enum" : [
             "READ_ONLY",
@@ -18243,7 +18312,9 @@
             "CheckSshConnection",
             "FetchServerConf",
             "DoCapacityReservation",
-            "DeleteCapacityReservation"
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -18791,7 +18862,9 @@
             "CheckSshConnection",
             "FetchServerConf",
             "DoCapacityReservation",
-            "DeleteCapacityReservation"
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -19181,7 +19254,9 @@
               "CheckSshConnection",
               "FetchServerConf",
               "DoCapacityReservation",
-              "DeleteCapacityReservation"
+              "DeleteCapacityReservation",
+              "DisablePitrConfig",
+              "EnablePitrConfig"
             ],
             "type" : "string"
           },
@@ -19416,6 +19491,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -19992,7 +20070,9 @@
             "CheckSshConnection",
             "FetchServerConf",
             "DoCapacityReservation",
-            "DeleteCapacityReservation"
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -20498,6 +20578,9 @@
           ],
           "type" : "string"
         },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
+        },
         "capability" : {
           "enum" : [
             "READ_ONLY",
@@ -21073,7 +21156,9 @@
             "CheckSshConnection",
             "FetchServerConf",
             "DoCapacityReservation",
-            "DeleteCapacityReservation"
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -21763,7 +21848,8 @@
             "SPLUNK",
             "AWS_CLOUDWATCH",
             "GCP_CLOUD_MONITORING",
-            "LOKI"
+            "LOKI",
+            "DYNATRACE"
           ],
           "type" : "string"
         }
@@ -21781,6 +21867,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -22360,7 +22449,9 @@
             "CheckSshConnection",
             "FetchServerConf",
             "DoCapacityReservation",
-            "DeleteCapacityReservation"
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -22437,6 +22528,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -23019,7 +23113,9 @@
             "CheckSshConnection",
             "FetchServerConf",
             "DoCapacityReservation",
-            "DeleteCapacityReservation"
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -23349,6 +23445,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -23933,7 +24032,9 @@
             "CheckSshConnection",
             "FetchServerConf",
             "DoCapacityReservation",
-            "DeleteCapacityReservation"
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -23983,6 +24084,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -24556,7 +24660,9 @@
             "CheckSshConnection",
             "FetchServerConf",
             "DoCapacityReservation",
-            "DeleteCapacityReservation"
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -24606,6 +24712,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -25179,7 +25288,9 @@
             "CheckSshConnection",
             "FetchServerConf",
             "DoCapacityReservation",
-            "DeleteCapacityReservation"
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -25712,6 +25823,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -26288,7 +26402,9 @@
             "CheckSshConnection",
             "FetchServerConf",
             "DoCapacityReservation",
-            "DeleteCapacityReservation"
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -26808,6 +26924,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -27394,7 +27513,9 @@
             "CheckSshConnection",
             "FetchServerConf",
             "DoCapacityReservation",
-            "DeleteCapacityReservation"
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig"
           ],
           "type" : "string"
         },
@@ -44944,7 +45065,13 @@
       "get" : {
         "description" : "Available since YBA version 2.8.0.0.",
         "operationId" : "MetricsDetail",
-        "parameters" : [ ],
+        "parameters" : [
+          {
+            "in" : "query",
+            "name" : "request",
+            "required" : false
+          }
+        ],
         "responses" : {
           "200" : {
             "description" : "successful operation",

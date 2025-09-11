@@ -426,6 +426,11 @@ if(IS_GCC)
     # https://gist.githubusercontent.com/mbautin/de18543ea85d46db49dfa4b4b7df082a/raw
     ADD_CXX_FLAGS("-Wno-use-after-free")
   endif()
+  if ("${COMPILER_VERSION}" MATCHES "^12[.][012].*$")
+    # GCC 12 before 12.3 raises a warning due to __m256d __Y = __Y; from avxintrin.h
+    # (https://gcc.gnu.org/bugzilla/show_bug.cgi?id=105593).
+    ADD_CXX_FLAGS("-Wno-init-self")
+  endif()
 
   # This normally gets disabled automatically (with a warning) for some files due to size of code.
   # Disable it explicitly to avoid the warning about it getting disabled automatically.

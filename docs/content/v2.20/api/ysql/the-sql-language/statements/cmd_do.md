@@ -4,7 +4,7 @@ headerTitle: DO
 linkTitle: DO
 description: Describes how to use the DO statement to execute an anonymous PL/pgSQL block statement—in other words, a transient anonymous PL/pgSQL procedure.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: cmd_do
     parent: statements
 type: docs

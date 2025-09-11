@@ -5,7 +5,7 @@ headerTitle: SQL scripts for performing linear regression analysis on the COVIDc
 description: SQL scripts for performing linear regression analysis on COVIDcast data
 image: /images/section_icons/api/subsection.png
 menu:
-  v2.20:
+  v2.20_api:
     identifier: analysis-scripts
     parent: analyze-the-covidcast-data
     weight: 100

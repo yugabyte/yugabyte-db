@@ -110,14 +110,6 @@ static void process_startup_options(Port *port, bool am_superuser);
 static void process_settings(Oid databaseid, Oid roleid);
 
 /* YB functions */
-static void InitPostgresImpl(const char *in_dbname, Oid dboid,
-							 const char *username, Oid useroid,
-							 bool load_session_libraries,
-							 bool override_allow_connections,
-							 char *out_dbname,
-							 uint64_t *yb_session_id,
-							 bool *yb_sys_table_prefetching_started);
-static void YbEnsureSysTablePrefetchingStopped();
 static void YbPresetDatabaseCollation(HeapTuple tuple);
 
 /*** InitPostgres support ***/
@@ -725,25 +717,10 @@ InitPostgres(const char *in_dbname, Oid dboid,
 			 const char *username, Oid useroid,
 			 bool load_session_libraries,
 			 bool override_allow_connections,
-			 char *out_dbname,
-			 uint64_t *yb_session_id)
+			 char *out_dbname)
 {
-	bool		sys_table_prefetching_started = false;
-
-	PG_TRY();
-	{
-		InitPostgresImpl(in_dbname, dboid, username, useroid,
-						 load_session_libraries, override_allow_connections,
-						 out_dbname, yb_session_id,
-						 &sys_table_prefetching_started);
-	}
-	PG_CATCH();
-	{
-		YbEnsureSysTablePrefetchingStopped();
-		PG_RE_THROW();
-	}
-	PG_END_TRY();
-	YbEnsureSysTablePrefetchingStopped();
+	YbInitPostgres(in_dbname, dboid, username, useroid, load_session_libraries,
+				   override_allow_connections, out_dbname, NULL);
 }
 
 static void
@@ -752,7 +729,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 				 bool load_session_libraries,
 				 bool override_allow_connections,
 				 char *out_dbname,
-				 uint64_t *yb_session_id,
+				 const YbcPgInitPostgresInfo *yb_init_info,
 				 bool *yb_sys_table_prefetching_started)
 {
 	bool		bootstrap = IsBootstrapProcessingMode();
@@ -861,10 +838,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		YbAshSetOneTimeMetadata();
 
 	/* Connect to YugaByte cluster. */
-	if (bootstrap)
-		YBInitPostgresBackend("postgres", yb_session_id);
-	else
-		YBInitPostgresBackend("postgres", yb_session_id);
+	YBInitPostgresBackend("postgres", yb_init_info);
 
 	if (IsYugaByteEnabled() && !bootstrap)
 	{
@@ -1437,6 +1411,30 @@ YbEnsureSysTablePrefetchingStopped()
 {
 	if (IsYugaByteEnabled() && YBCIsSysTablePrefetchingStarted())
 		YBCStopSysTablePrefetching();
+}
+
+void
+YbInitPostgres(const char *in_dbname, Oid dboid,
+			 const char *username, Oid useroid,
+			 bool load_session_libraries,
+			 bool override_allow_connections,
+			 char *out_dbname, const YbcPgInitPostgresInfo *yb_init_info)
+{
+	bool sys_table_prefetching_started = false;
+
+	PG_TRY();
+	{
+		InitPostgresImpl(in_dbname, dboid, username, useroid,
+						 load_session_libraries, override_allow_connections,
+						 out_dbname, yb_init_info, &sys_table_prefetching_started);
+	}
+	PG_CATCH();
+	{
+		YbEnsureSysTablePrefetchingStopped();
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+	YbEnsureSysTablePrefetchingStopped();
 }
 
 /*

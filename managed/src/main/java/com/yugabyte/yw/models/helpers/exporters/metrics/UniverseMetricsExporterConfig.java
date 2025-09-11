@@ -40,5 +40,5 @@ public class UniverseMetricsExporterConfig extends UniverseExporterConfig {
               + " differently.",
       accessMode = READ_WRITE,
       example = "ybdb.")
-  private String metricsPrefix = "ybdb.";
+  private String metricsPrefix = "";
 }

@@ -287,6 +287,12 @@ DEFINE_RUNTIME_bool(cdc_disable_sending_composite_values,
                     "When this flag is set to true, cdc service will send null values for columns "
                     "of composite types");
 
+DEFINE_UNKNOWN_int32(timestamp_history_retention_interval_sec, 900,
+                     "The time interval in seconds to retain DocDB history for. Point-in-time "
+                     "reads at a hybrid time further than this in the past might not be allowed "
+                     "after a compaction. Set this to be higher than the expected maximum duration "
+                     "of any single transaction in your application.");
+
 namespace yb {
 
 void InitCommonFlags() {

@@ -63,6 +63,8 @@ const useStyles = makeStyles((theme) => ({
     alignItems: 'center',
     gap: theme.spacing(0.5),
 
+    color: theme.palette.grey[600],
+
     '&:hover': {
       cursor: 'pointer'
     }

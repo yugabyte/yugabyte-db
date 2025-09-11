@@ -67,8 +67,7 @@ AsyncClientInitializer::~AsyncClientInitializer() {
 }
 
 void AsyncClientInitializer::Shutdown() {
-  bool expected = false;
-  if (!stopping_.compare_exchange_strong(expected, true)) {
+  if (!stopping_.Set()) {
     return;
   }
   if (init_client_thread_) {
