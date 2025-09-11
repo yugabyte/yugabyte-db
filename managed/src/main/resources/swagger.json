@@ -22712,7 +22712,8 @@
             "AWS_CLOUDWATCH",
             "GCP_CLOUD_MONITORING",
             "LOKI",
-            "DYNATRACE"
+            "DYNATRACE",
+            "S3"
           ],
           "type" : "string"
         }

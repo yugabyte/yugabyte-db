@@ -486,6 +486,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Allow the usage of Loki Exporter in Telemetry Provider.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> telemetryAllowS3 =
+      new ConfKeyInfo<>(
+          "yb.telemetry.allow_s3",
+          ScopeType.GLOBAL,
+          "Allow S3 Exporter in Telemetry Provider",
+          "Allow the usage of S3 Exporter in Telemetry Provider.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Integer> hcvTokenRenewPercent =
       new ConfKeyInfo<>(
           "yb.kms.hcv_token_renew_percent",

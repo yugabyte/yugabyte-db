@@ -6,7 +6,8 @@ public enum ProviderType {
   AWS_CLOUDWATCH(true, false),
   GCP_CLOUD_MONITORING(true, false),
   LOKI(true, false),
-  DYNATRACE(false, true);
+  DYNATRACE(false, true),
+  S3(true, false);
 
   public final boolean isAllowedForLogs;
   public final boolean isAllowedForMetrics;

@@ -219,6 +219,11 @@ public class TelemetryProviderService {
     return confGetter.getGlobalConf(GlobalConfKeys.metricsExportEnabled);
   }
 
+  public void throwRuntimeFlagDisabledForExporterTypeException(ProviderType providerType) {
+    throwExceptionIfLokiExporterRuntimeFlagDisabled(providerType);
+    throwExceptionIfS3ExporterRuntimeFlagDisabled(providerType);
+  }
+
   public void throwExceptionIfLokiExporterRuntimeFlagDisabled(ProviderType providerType) {
     boolean isLokiTelemetryEnabled = confGetter.getGlobalConf(GlobalConfKeys.telemetryAllowLoki);
     if (!isLokiTelemetryEnabled && providerType == ProviderType.LOKI) {
@@ -226,6 +231,16 @@ public class TelemetryProviderService {
           BAD_REQUEST,
           "Loki Exporter for Telemetry Provider is not enabled. Please set runtime flag"
               + " 'yb.telemetry.allow_loki' to true.");
+    }
+  }
+
+  public void throwExceptionIfS3ExporterRuntimeFlagDisabled(ProviderType providerType) {
+    boolean isS3TelemetryEnabled = confGetter.getGlobalConf(GlobalConfKeys.telemetryAllowS3);
+    if (!isS3TelemetryEnabled && providerType == ProviderType.S3) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "S3 Exporter for Telemetry Provider is not enabled. Please set runtime flag"
+              + " 'yb.telemetry.allow_s3' to true.");
     }
   }
 
