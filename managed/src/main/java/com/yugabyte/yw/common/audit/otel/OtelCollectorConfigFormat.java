@@ -182,6 +182,18 @@ public class OtelCollectorConfigFormat {
   }
 
   @Data
+  @EqualsAndHashCode(callSuper = true)
+  public static class TransformProcessor extends Processor {
+    private List<LogStatement> log_statements;
+  }
+
+  @Data
+  public static class LogStatement {
+    private String context;
+    private List<String> statements;
+  }
+
+  @Data
   @AllArgsConstructor
   @NoArgsConstructor
   public static class AttributeAction {
