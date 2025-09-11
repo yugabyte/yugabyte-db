@@ -1376,6 +1376,21 @@ ReleaseCachedPlan(CachedPlan *plan, ResourceOwner owner)
 }
 
 /*
+ * YBAcquireExecutorLocksForRetry: Acquire necessary object locks for the
+ * statments about to be executed.
+ *
+ * This custom wrapper is only invoked on query layer retries either when
+ * the transaction or the statement is restarted and the portal is preserved
+ * along with the cached query plan. Since the object locks tied to the old
+ * transaction/statement would be released, we need to reacquire them.
+ */
+void
+YBAcquireExecutorLocksForRetry(List *stmt_list)
+{
+	AcquireExecutorLocks(stmt_list, true /* acquire */ );
+}
+
+/*
  * CachedPlanAllowsSimpleValidityCheck: can we use CachedPlanIsSimplyValid?
  *
  * This function, together with CachedPlanIsSimplyValid, provides a fast path
