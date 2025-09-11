@@ -1703,4 +1703,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Keep remote files after ansible run for debugging.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableSigningRegion =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_signing_region",
+          ScopeType.GLOBAL,
+          "Enable Signing Region",
+          "Enable AWS signing region for S3 access",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }
