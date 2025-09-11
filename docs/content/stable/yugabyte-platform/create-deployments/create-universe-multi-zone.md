@@ -100,7 +100,8 @@ Specify the instance to use for the universe nodes:
 - {{<tags/feature/ea idea="2329">}} Enable **EBS Volume Encryption** (AWS only) to create a universe with AWS EBS volume level encryption with a custom AWS Key Management Service (KMS) configuration.
 
   {{< note title="Note" >}}
-  The AWS EBS volume level encryption feature is different from YugabyteDB Anywhere's native [Encryption at rest](../../security/enable-encryption-at-rest/) (EAR) as this is a cloud provider level option. Both cloud volume encryption and YugabyteDB Anywhere's EAR can be enabled simultaneously with different KMS configs.
+  - The AWS EBS volume level encryption feature is different from YugabyteDB Anywhere's native [Encryption at rest](../../security/enable-encryption-at-rest/) (EAR) as this is a cloud provider level option. Both cloud volume encryption and YugabyteDB Anywhere's EAR can be enabled simultaneously with different KMS configs.
+  - Currently, EBS volume level encryption for multi-region universe deployments is _unsupported_ as an instance in one region cannot access the KMS key in another.
   {{< /note >}}
 
 - Select the **Key Management Service Config** you created. See [Create a KMS configuration](../../security/create-kms-config/aws-kms/#create-a-kms-configuration).
