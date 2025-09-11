@@ -2672,8 +2672,6 @@ YbCatalogModificationAspectsToDdlMode(uint64_t catalog_modification_aspects)
 		case YB_DDL_MODE_VERSION_INCREMENT:
 			yb_switch_fallthrough();
 		case YB_DDL_MODE_BREAKING_CHANGE:
-			yb_switch_fallthrough();
-		case YB_DDL_MODE_AUTONOMOUS_TRANSACTION_CHANGE_VERSION_INCREMENT:
 			return mode;
 	}
 	Assert(false);
@@ -3360,7 +3358,8 @@ YbIsTopLevelOrAtomicStatement(ProcessUtilityContext context)
 }
 
 YbDdlModeOptional
-YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
+YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
+			 bool *requires_autonomous_transaction)
 {
 	bool		is_ddl = true;
 	bool		is_version_increment = true;
@@ -3368,6 +3367,9 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 	bool		is_altering_existing_data = false;
 	bool		should_run_in_autonomous_transaction = false;
 	bool		is_top_level = (context == PROCESS_UTILITY_TOPLEVEL);
+
+	Assert(requires_autonomous_transaction);
+	*requires_autonomous_transaction = false;
 
 	Node	   *parsetree = GetActualStmtNode(pstmt);
 	NodeTag		node_tag = nodeTag(parsetree);
@@ -4067,15 +4069,8 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 	if (is_breaking_change)
 		aspects |= YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE;
 
-	/*
-	 * TODO(#3109): SysCatalogModificationAspect doesn't seem to be the
-	 * appropriate place to return whether a statement should run as autonomous
-	 * transaction.
-	 * Find a better place to return this.
-	 */
-	if (YBIsDdlTransactionBlockEnabled() &&
-		should_run_in_autonomous_transaction)
-		aspects |= YB_SYS_CAT_MOD_ASPECT_AUTONOMOUS_TRANSACTION_CHANGE;
+	*requires_autonomous_transaction = YBIsDdlTransactionBlockEnabled() &&
+									   should_run_in_autonomous_transaction;
 
 	return (YbDdlModeOptional)
 	{
@@ -4160,7 +4155,9 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 					   QueryCompletion *qc)
 {
 
-	const YbDdlModeOptional ddl_mode = YbGetDdlMode(pstmt, context);
+	bool should_run_in_autonomous_transaction = false;
+	const YbDdlModeOptional ddl_mode =
+		YbGetDdlMode(pstmt, context, &should_run_in_autonomous_transaction);
 
 	const bool	is_ddl = ddl_mode.has_value;
 
@@ -4170,10 +4167,9 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 	 * - If we were asked to by YbGetDdlMode. Currently, only done for
 	 * CREATE INDEX outside of explicit transaction block.
 	 */
-	const bool	use_separate_ddl_transaction =
-		is_ddl &&
-		(ddl_mode.value == YB_DDL_MODE_AUTONOMOUS_TRANSACTION_CHANGE_VERSION_INCREMENT ||
-		 !YBIsDdlTransactionBlockEnabled());
+	const bool use_separate_ddl_transaction =
+		is_ddl && (should_run_in_autonomous_transaction ||
+				   !YBIsDdlTransactionBlockEnabled());
 
 	elog(DEBUG3, "is_ddl %d", is_ddl);
 	PG_TRY();

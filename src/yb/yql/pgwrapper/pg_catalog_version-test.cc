@@ -1786,7 +1786,6 @@ TEST_F(PgCatalogVersionTest, NonIncrementingDDLMode) {
   ASSERT_EQ(new_version, version);
 
   ASSERT_OK(conn.Execute("SET yb_make_next_ddl_statement_nonincrementing TO TRUE"));
-  // TODO(#28412): The below hits a TRAP on ysql, seems related to transactional DDL.
   ASSERT_OK(conn.Execute("CREATE INDEX idx3 ON t1(a)"));
   new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
   // By default CREATE INDEX runs concurrently and its algorithm requires to bump up catalog
