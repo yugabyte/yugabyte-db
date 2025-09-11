@@ -202,6 +202,46 @@ Status PgTxnManager::SerialNo::RestoreReadTime(uint64_t read_time_serial_no) {
   return Status::OK();
 }
 
+#ifndef NDEBUG
+struct PgTxnManager::DEBUG_TxnInfo {
+  uint64_t txn_serial_no;
+  uint64_t subtxn_id;
+
+  explicit DEBUG_TxnInfo(const PgTxnManager& manager)
+      : txn_serial_no(manager.serial_no_.txn()), subtxn_id(manager.active_sub_transaction_id_) {}
+
+  bool operator==(const DEBUG_TxnInfo&) const = default;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(txn_serial_no, subtxn_id);
+  }
+};
+
+void PgTxnManager::DEBUG_UpdateLastObjectLockingInfo() {
+  if (!debug_last_object_locking_txn_info_) {
+    debug_last_object_locking_txn_info_ = std::make_unique<DEBUG_TxnInfo>(*this);
+  } else {
+    *debug_last_object_locking_txn_info_ = DEBUG_TxnInfo(*this);
+  }
+}
+
+void PgTxnManager::DEBUG_CheckOptionsForPerform(
+    const tserver::PgPerformOptionsPB& options) const {
+  if (!enable_table_locking_ || options.ddl_mode() || options.use_catalog_session()) {
+    return;
+  }
+
+  const DEBUG_TxnInfo active_txn_info{*this};
+
+  if (!debug_last_object_locking_txn_info_ ||
+      *debug_last_object_locking_txn_info_ != active_txn_info) {
+    LOG(FATAL)
+        << "active txn info: " << AsString(active_txn_info)
+        << " , last object locking txn info: " << AsString(debug_last_object_locking_txn_info_);
+  }
+}
+#endif
+
 PgTxnManager::PgTxnManager(
     PgClient* client, scoped_refptr<ClockBase> clock, YbcPgCallbacks pg_callbacks,
     bool enable_table_locking)
@@ -909,12 +949,13 @@ bool PgTxnManager::TryAcquireObjectLock(
   if (IsDdlMode() && !IsDdlModeWithRegularTransactionBlock()) {
     return false;
   }
-  const bool locks_acquired = client_->TryAcquireObjectLockInSharedMemory(
-      active_sub_transaction_id_, lock_id, lock_type);
-  if (locks_acquired) {
-    UpdateLastObjectLockingPlainTxnInfo();
+
+  if (!client_->TryAcquireObjectLockInSharedMemory(
+        active_sub_transaction_id_, lock_id, lock_type)) {
+    return false;
   }
-  return locks_acquired;
+  DEBUG_ONLY(DEBUG_UpdateLastObjectLockingInfo());
+  return true;
 }
 
 Status PgTxnManager::AcquireObjectLock(
@@ -926,11 +967,9 @@ Status PgTxnManager::AcquireObjectLock(
       IsLocalObjectLockOp(mode <= YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK)));
   tserver::PgPerformOptionsPB options;
   RETURN_NOT_OK(SetupPerformOptions(tag, &options));
-  const auto status = client_->AcquireObjectLock(&options, lock_id, mode);
-  if (status.ok()) {
-    UpdateLastObjectLockingPlainTxnInfo();
-  }
-  return status;
+  RETURN_NOT_OK(client_->AcquireObjectLock(&options, lock_id, mode));
+  DEBUG_ONLY(DEBUG_UpdateLastObjectLockingInfo());
+  return Status::OK();
 }
 
 void PgTxnManager::SetTransactionHasWrites() {
@@ -972,29 +1011,6 @@ YbcTxnPriorityRequirement PgTxnManager::GetTxnPriorityRequirement(RowMarkType ro
     return kHighestPriority;
   }
   return RowMarkNeedsHigherPriority(row_mark_type) ? kHigherPriorityRange : kLowerPriorityRange;
-}
-
-void PgTxnManager::UpdateLastObjectLockingPlainTxnInfo() {
-#ifndef NDEBUG
-  last_object_locking_plain_txn_info_ = TxnSerialAndSubtxnIdInfo {
-    .txn_serial_no = serial_no_.txn(),
-    .subtxn_id = active_sub_transaction_id_
-  };
-#endif
-}
-
-Status PgTxnManager::CheckPlainTxnRequestedObjectLocks() const {
-#ifndef NDEBUG
-  const auto active_perform_txn_info = TxnSerialAndSubtxnIdInfo {
-    .txn_serial_no = serial_no_.txn(),
-    .subtxn_id = active_sub_transaction_id_
-  };
-  SCHECK(
-      active_perform_txn_info == last_object_locking_plain_txn_info_, IllegalState,
-      Format("active_perform_txn_info: $0, last_object_locking_plain_txn_info_: $1",
-             AsString(active_perform_txn_info), AsString(last_object_locking_plain_txn_info_)));
-#endif
-  return Status::OK();
 }
 
 }  // namespace yb::pggate

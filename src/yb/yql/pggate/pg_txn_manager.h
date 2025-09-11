@@ -16,6 +16,7 @@
 #pragma once
 
 #include <mutex>
+#include <memory>
 #include <optional>
 #include <utility>
 
@@ -145,8 +146,6 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   YbcTxnPriorityRequirement GetTxnPriorityRequirement(RowMarkType row_mark_type) const;
 
-  Status CheckPlainTxnRequestedObjectLocks() const;
-
  private:
   class SerialNo {
    public:
@@ -193,7 +192,6 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   Status CheckSnapshotTimeConflict() const;
 
-  void UpdateLastObjectLockingPlainTxnInfo();
   // ----------------------------------------------------------------------------------------------
 
   PgClient* client_;
@@ -251,18 +249,13 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   std::unordered_map<YbcReadPointHandle, uint64_t> explicit_snapshot_read_time_;
 
 #ifndef NDEBUG
-  struct TxnSerialAndSubtxnIdInfo {
-    uint64_t txn_serial_no;
-    uint64_t subtxn_id;
-
-    auto operator<=>(const TxnSerialAndSubtxnIdInfo&) const = default;
-
-    std::string ToString() const {
-      return YB_STRUCT_TO_STRING(txn_serial_no, subtxn_id);
-    }
-  };
-
-  TxnSerialAndSubtxnIdInfo last_object_locking_plain_txn_info_;
+ public:
+  void DEBUG_CheckOptionsForPerform(const tserver::PgPerformOptionsPB& options) const;
+ private:
+  struct DEBUG_TxnInfo;
+  friend DEBUG_TxnInfo;
+  void DEBUG_UpdateLastObjectLockingInfo();
+  std::unique_ptr<DEBUG_TxnInfo> debug_last_object_locking_txn_info_;
 #endif
 
   DISALLOW_COPY_AND_ASSIGN(PgTxnManager);

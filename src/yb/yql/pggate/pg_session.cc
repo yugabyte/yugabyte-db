@@ -31,6 +31,7 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -1019,11 +1020,7 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
 
   DCHECK(!options.has_read_time() || options.isolation() != IsolationLevel::SERIALIZABLE_ISOLATION);
 
-#ifndef NDEBUG
-  if (enable_table_locking_ && !options.ddl_mode() && !options.use_catalog_session()) {
-    LOG_IF(DFATAL, !pg_txn_manager_->CheckPlainTxnRequestedObjectLocks().ok());
-  }
-#endif
+  DEBUG_ONLY(pg_txn_manager_->DEBUG_CheckOptionsForPerform(options));
 
   PgsqlOps operations;
   PgObjectIds relations;
