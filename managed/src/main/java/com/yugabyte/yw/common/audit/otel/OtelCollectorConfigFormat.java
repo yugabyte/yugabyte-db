@@ -155,6 +155,13 @@ public class OtelCollectorConfigFormat {
 
   @Data
   @EqualsAndHashCode(callSuper = true)
+  public static class MemoryLimiterProcessor extends Processor {
+    private String check_interval;
+    private int limit_mib;
+  }
+
+  @Data
+  @EqualsAndHashCode(callSuper = true)
   public static class CumulativeToDeltaProcessor extends Processor {
     // No additional configuration needed for basic cumulative to delta conversion
   }

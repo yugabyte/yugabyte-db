@@ -26296,6 +26296,18 @@
           "readOnly" : true,
           "type" : "string"
         },
+        "memoryLimitCheckIntervalSeconds" : {
+          "description" : "Check interval in seconds for the MemoryLimiterProcessor.",
+          "example" : 10,
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "memoryLimitMib" : {
+          "description" : "Memory limit in MiB for the OpenTelemetry Collector process in the config file.",
+          "example" : 2048,
+          "format" : "int32",
+          "type" : "integer"
+        },
         "metricsPrefix" : {
           "description" : "Custom prefix to add to all exported metric names. Can be customised to each exporter differently.",
           "example" : "ybdb.",

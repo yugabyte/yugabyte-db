@@ -93,6 +93,7 @@ public class OtelCollectorConfigGenerator {
   // Processor prefixes
   private static final String PROCESSOR_PREFIX_ATTRIBUTES = "attributes/";
   private static final String PROCESSOR_PREFIX_BATCH = "batch/";
+  private static final String PROCESSOR_PREFIX_MEMORY_LIMITER = "memory_limiter/";
 
   // Pipeline prefixes
   private static final String PIPELINE_PREFIX_LOGS = "logs/";
@@ -375,13 +376,13 @@ public class OtelCollectorConfigGenerator {
         String exportTypeAndUUIDString =
             exportTypeAndUUID(telemetryProvider.getUuid(), ExportType.METRICS);
 
-        // Add AttributesProcessor for metrics
+        // Add AttributesProcessor for metrics.
         String attributesProcessorName = PROCESSOR_PREFIX_ATTRIBUTES + exportTypeAndUUIDString;
         collectorConfigFormat
             .getProcessors()
             .put(attributesProcessorName, createAttributesProcessor(exporterConfig));
 
-        // Add BatchProcessor for metrics
+        // Add BatchProcessor for metrics.
         String batchProcessorName = PROCESSOR_PREFIX_BATCH + exportTypeAndUUIDString;
         OtelCollectorConfigFormat.BatchProcessor batchProcessor =
             new OtelCollectorConfigFormat.BatchProcessor();
@@ -390,9 +391,23 @@ public class OtelCollectorConfigGenerator {
         batchProcessor.setTimeout(exporterConfig.getSendBatchTimeoutSeconds().toString() + "s");
         collectorConfigFormat.getProcessors().put(batchProcessorName, batchProcessor);
 
+        // Add MemoryLimiterProcessor for metrics.
+        String memoryLimiterProcessorName =
+            PROCESSOR_PREFIX_MEMORY_LIMITER + exportTypeAndUUIDString;
+        OtelCollectorConfigFormat.MemoryLimiterProcessor memoryLimiterProcessor =
+            new OtelCollectorConfigFormat.MemoryLimiterProcessor();
+        memoryLimiterProcessor.setCheck_interval(
+            exporterConfig.getMemoryLimitCheckIntervalSeconds().toString() + "s");
+        memoryLimiterProcessor.setLimit_mib(exporterConfig.getMemoryLimitMib());
+        collectorConfigFormat
+            .getProcessors()
+            .put(memoryLimiterProcessorName, memoryLimiterProcessor);
+
+        // Add all the processor names to the pipeline
         List<String> processorNames = new ArrayList<>();
         processorNames.add(attributesProcessorName);
         processorNames.add(batchProcessorName);
+        processorNames.add(memoryLimiterProcessorName);
 
         if (!StringUtils.isBlank(exporterConfig.getMetricsPrefix())) {
           String metricTransformProcessorName =

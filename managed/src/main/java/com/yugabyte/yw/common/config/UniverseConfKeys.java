@@ -1538,6 +1538,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "If true, YBA will skip checking for Opentelemetry operator installation on the cluster.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> otelCollectorMaxMemory =
+      new ConfKeyInfo<>(
+          "yb.universe.otel_collector_max_memory",
+          ScopeType.UNIVERSE,
+          "Max memory for OpenTelemetry Collector process.",
+          "Hard memory limit for the OpenTelemetry Collector process in the systemd unit file.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> waitAttemptsForMajorCatalogUpgrade =
       new ConfKeyInfo<>(
           "yb.upgrade.wait_attempts_for_major_catalog_upgrade",

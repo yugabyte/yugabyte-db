@@ -3043,6 +3043,12 @@ public class NodeManager extends DevopsBase {
               .maybeGetNodeAgent(nodeDetails.cloudInfo.private_ip, provider, universe)
               .orElse(null);
 
+      int otelColMaxMemory =
+          confGetter.getConfForScope(universe, UniverseConfKeys.otelCollectorMaxMemory);
+      if (otelColMaxMemory > 0) {
+        commandArgs.add("--otel_col_max_memory");
+        commandArgs.add(Integer.toString(otelColMaxMemory));
+      }
       commandArgs.add("--otel_col_config_file");
       commandArgs.add(
           otelCollectorConfigGenerator
