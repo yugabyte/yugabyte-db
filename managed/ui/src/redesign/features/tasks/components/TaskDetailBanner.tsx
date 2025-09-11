@@ -18,7 +18,7 @@ import { TaskFailedBanner } from './bannerComp/TaskFailedBanner';
 import { TaskFailedSoftwareUpgradeBanner } from './bannerComp/TaskFailedSoftwareUpgradeBanner';
 import { isSoftwareUpgradeFailed, useIsTaskNewUIEnabled } from '../TaskUtils';
 import { hideTaskInDrawer, showTaskInDrawer } from '../../../../actions/tasks';
-import { Task, TaskStates } from '../dtos';
+import { Task, TaskState } from '../dtos';
 
 type TaskDetailBannerProps = {
   universeUUID: string;
@@ -65,7 +65,7 @@ export const TaskDetailBanner: FC<TaskDetailBannerProps> = ({ universeUUID }) =>
   const bannerComp = useCallback(
     (task: Task) => {
       switch (task.status) {
-        case TaskStates.RUNNING:
+        case TaskState.RUNNING:
           return (
             <TaskInProgressBanner
               currentTask={task}
@@ -75,7 +75,7 @@ export const TaskDetailBanner: FC<TaskDetailBannerProps> = ({ universeUUID }) =>
               onClose={noop}
             />
           );
-        case TaskStates.SUCCESS:
+        case TaskState.SUCCESS:
           return (
             <TaskSuccessBanner
               currentTask={task}
@@ -85,7 +85,7 @@ export const TaskDetailBanner: FC<TaskDetailBannerProps> = ({ universeUUID }) =>
               onClose={() => hideBanner()}
             />
           );
-        case TaskStates.FAILURE:
+        case TaskState.FAILURE:
           if (isSoftwareUpgradeFailed(task, universeData)) {
             return (
               <TaskFailedSoftwareUpgradeBanner

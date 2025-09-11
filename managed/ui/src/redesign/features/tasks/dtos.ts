@@ -11,13 +11,13 @@
 export interface TaskDetails {
   title: string;
   description: string;
-  state: TaskStates;
+  state: TaskState;
   extraDetails: any[];
 }
 
 // CustomerTaskFormData.java
 
-export enum TaskStates {
+export enum TaskState {
   CREATED = 'Created',
   INITIALIZING = 'Initializing',
   RUNNING = 'Running',
@@ -33,6 +33,7 @@ export const TaskType = {
   EDIT: 'Update',
   SOFTWARE_UPGRADE: 'SoftwareUpgrade',
   RESIZE_NODE: 'ResizeNode',
+  RESTORE_YBA_BACKUP: 'RestoreYbaBackup'
 };
 export const TargetType = {
   UNIVERSE: 'Universe',
@@ -49,7 +50,7 @@ export interface Task {
   targetUUID: string;
   type: typeof TaskType & string;
   typeName: string;
-  status: TaskStates;
+  status: TaskState;
   details: {
     taskDetails: TaskDetails[];
     versionNumbers?: {
@@ -66,25 +67,25 @@ export interface Task {
   taskInfo: {
     taskParams: {
       previousTaskUUID?: string;
-    }
-  }
+    };
+  };
 }
 
 export interface FailedTask {
   failedSubTasks: {
     errorString: string;
     subTaskGroupType: string;
-    subTaskState: TaskStates;
+    subTaskState: TaskState;
     subTaskType: string;
     subTaskUUID: string;
   }[];
-};
+}
 
 export interface SubTaskInfo {
   uuid: string;
   parentUuid: Task['id'];
   taskType: string;
-  taskState: TaskStates;
+  taskState: TaskState;
   subTaskGroupType: Task['type'];
   createTime: number;
   updateTime: number;
@@ -95,15 +96,15 @@ export interface SubTaskInfo {
       code: string;
       message: string;
       originMessage: string;
-    }
-  }
-  taskParams? : {
+    };
+  };
+  taskParams?: {
     nodeName?: string;
-    nodeDetailsSet? : {
+    nodeDetailsSet?: {
       nodeName?: string;
-    }[]
-  }
-};
+    }[];
+  };
+}
 
 export type SubTaskDetailsResp = {
   [key: string]: Task[];

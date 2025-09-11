@@ -6,6 +6,7 @@ import 'bootstrap/dist/css/bootstrap.css';
 import 'react-toastify/dist/ReactToastify.css';
 import './stylesheets/App.scss';
 import './../_style/fonts.css';
+import { GlobalRestoreModal } from '@app/components/restore/GlobalRestoreModal';
 
 export const App = (props) => (
   <>
@@ -15,5 +16,6 @@ export const App = (props) => (
       position="top-center"
       autoClose={ToastNotificationDuration.DEFAULT}
     />
+    <GlobalRestoreModal />
   </>
 );

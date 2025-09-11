@@ -139,6 +139,18 @@
       "useSystemdReminderBanner": {
         "primaryText": "Some of your universes use cron to manage nodes.",
         "additionalDetailText": "<paragraph>Cron-based universes will no longer be supported in YugabyteDB Anywhere v2025.2 and later. Before you can upgrade to v2025.2, you must upgrade cron-based universes to systemd.</paragraph><paragraph>To do this, navigate to the universe and choose <bold>Actions>Upgrade to Systemd</bold></paragraph>"
+      },
+      "onboardingPanel": {
+        "welcomeTo": "Weclome to",
+        "yugabyteDbAnywhere": "YugabyteDB Anywhere",
+        "newUserCard": {
+          "title": "I'm new to YugabyteDB Anywhere",
+          "buttonText": "Configure Cloud Provider"
+        },
+        "restoreBackupCard": {
+          "title": "I want to restore a previous backup of YugabyteDB Anywhere",
+          "buttonText": "Restore a Platform Backup"
+        }
       }
     },
     "universeActions": {
@@ -2266,6 +2278,11 @@
         "copyBackupLocation": "Copy backup location",
         "copied": "Copied",
         "restoreFailed": "Restore Failed"
+      },
+      "globalModal": {
+        "title": "Restoring Platform...",
+        "restoringPlatform": "Restoring Platform...",
+        "ybaWillBeAvailable": "YBA will become available after the restoration completes."
       }
     },
     "linuxVersion": {
@@ -2621,7 +2638,8 @@
         "backupUniverseTip": "To back up universes, navigate to your universe and choose Backups."
       },
       "actionBar": {
-        "oneTimeBackup": "One-Time Platform Export"
+        "oneTimeBackup": "One-Time Platform Export",
+        "advancedRestore": "Advanced Restore"
       },
       "continuousBackupCard": {
         "title": "Automated Platform Backups",
@@ -2701,6 +2719,40 @@
           "createBackupRequestFailedLabel": "One-time platform export request failed",
           "createBackupTaskSuccess": "One-time platform export created.",
           "createBackupTaskFailed": "One-time platform export failed."
+        }
+      },
+      "restoreYbaBackupModal": {
+        "title": "Restore Platform Backup",
+        "instructions": "Choose how you want to restore your platform backup",
+        "option": {
+          "localBackup": "Local Backup",
+          "cloudBackup": "Cloud Backup"
+        },
+        "localBackup": {
+          "provideBackupFilePath": "Provide the backup file path",
+          "filePath": "File Path",
+          "filePathPlaceholder": "/opt/yugabyte/oneTimeBackup"
+        },
+        "cloudBackup": {
+          "configureBackupStorageConfigPrompt": {
+            "beforeYouStart": "Before you start...",
+            "configureBackupStorage": "To restore from a cloud backup, you need to first configure the backup storage.",
+            "configureBackupStorageButton": "Configure Backup Storage"
+          },
+          "selectStorageConfig": "Select the storage config that contains the backup",
+          "storageConfig": "Storage config",
+          "selectBackupFolder": "Specify the backup folder",
+          "folder": "Folder",
+          "backupFolderHelperText": "The most recent backup from this folder will be used for the restore."
+        },
+        "submitButton": "Restore",
+        "error": {
+          "backupTypeRequired": "Please select a backup type"
+        },
+        "toast": {
+          "restoreBackupTaskSuccess": "Restore platform backup completed",
+          "restoreBackupTaskFailed": "Restore platform backup failed",
+          "restoreBackupRequestFailedLabel": "Restore platform backup request failed"
         }
       }
     },
