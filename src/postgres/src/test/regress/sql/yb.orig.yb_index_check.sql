@@ -1,4 +1,3 @@
-SET yb_explain_hide_non_deterministic_fields = true;
 SET yb_bnl_batch_size = 3;
 
 -- Basic test

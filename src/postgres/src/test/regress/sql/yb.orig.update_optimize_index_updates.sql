@@ -1,5 +1,4 @@
 SET yb_fetch_row_limit TO 1024;
-SET yb_explain_hide_non_deterministic_fields TO true;
 
 --
 -- Tests to validate index updates in a table with no primary key.

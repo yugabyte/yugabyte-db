@@ -18,7 +18,7 @@ import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
 
 @RunWith(value=YBTestRunner.class)
-public class TestPgRegressForeignKey extends BasePgRegressTest {
+public class TestPgRegressPgForeignKey extends BasePgRegressTestPorted {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
@@ -35,6 +35,6 @@ public class TestPgRegressForeignKey extends BasePgRegressTest {
 
   @Test
   public void testPgRegress() throws Exception {
-    runPgRegressTest("yb_foreign_key_schedule");
+    runPgRegressTest("yb_pg_foreign_key_schedule");
   }
 }

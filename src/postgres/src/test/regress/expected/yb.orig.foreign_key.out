@@ -8,7 +8,6 @@
 --
 -- First test, check and cascade
 --
-SET yb_explain_hide_non_deterministic_fields = true;
 CREATE TABLE ITABLE ( ptest1 int, ptest2 text );
 CREATE UNIQUE INDEX ITABLE_IDX ON ITABLE(ptest1);
 CREATE TABLE FKTABLE ( ftest1 int REFERENCES ITABLE(ptest1) MATCH FULL ON DELETE CASCADE ON UPDATE CASCADE, ftest2 int );
@@ -727,7 +726,7 @@ DETAIL:  Key (id)=(110) is not present in table "pk".
 INSERT INTO fk VALUES (200); -- should fail
 ERROR:  insert or update on table "fk" violates foreign key constraint "fk_id_fkey"
 DETAIL:  Key (id)=(200) is not present in table "pk".
-SELECT * FROM fk;
+SELECT * FROM fk ORDER BY id;
  id  
 -----
    1
@@ -749,7 +748,7 @@ DETAIL:  Key (b)=(110) is not present in table "pk".
 INSERT INTO fk VALUES (200); -- should fail
 ERROR:  insert or update on table "fk" violates foreign key constraint "fk_b_fkey"
 DETAIL:  Key (b)=(200) is not present in table "pk".
-SELECT * FROM fk;
+SELECT * FROM fk ORDER BY b;
   b  
 -----
    1
@@ -778,7 +777,7 @@ SELECT * FROM fk;
 
 CREATE TABLE fk2(a INT, c INT, FOREIGN KEY (a, c) REFERENCES pk(a, c) DEFERRABLE INITIALLY DEFERRED);
 INSERT INTO fk2 VALUES (1, 20), (1, 21);
-SELECT * FROM fk2;
+SELECT * FROM fk2 ORDER BY a, c;
  a | c  
 ---+----
  1 | 20

@@ -36,6 +36,7 @@ public class BasePgRegressTest extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     appendToYsqlPgConf(flagMap, "compute_query_id=regress");
+    appendToYsqlPgConf(flagMap, "yb_explain_hide_non_deterministic_fields=on");
     flagMap.put("TEST_hide_details_for_pg_regress", "true");
     return flagMap;
   }
