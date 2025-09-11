@@ -363,6 +363,11 @@ set yb_prefer_bnl to off;
 
 reset yb_prefer_bnl;
 
+-- GH28072 - Make sure the internal hint test passes.
+set yb_enable_parallel_append = on;
+explain (hints on, costs off) SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.b = 0 ORDER BY t1.a, t2.b;
+reset yb_enable_parallel_append;
+
 -- NEGATIVE TESTS
 
 -- Try to use a bad index. Should get warnings.
