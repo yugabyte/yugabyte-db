@@ -83,6 +83,9 @@ find_package(Threads REQUIRED)
 add_custom_target(build_libs)
 set(od_libraries "rt")
 
+# YB: Add YugabyteDB utility libraries for tcmalloc profiling and other utilities
+list(APPEND od_libraries "yb_util")
+
 # debian build
 option(BUILD_DEBIAN "Enable Debian Build" OFF)
 if (BUILD_DEBIAN)

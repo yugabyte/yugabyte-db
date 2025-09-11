@@ -336,6 +336,19 @@ static void od_cron(void *arg)
 {
 	od_cron_t *cron = arg;
 	od_instance_t *instance = cron->global->instance;
+#ifdef YB_GOOGLE_TCMALLOC
+	int tcmalloc_stats_tick = 0;
+	char *value = getenv("YB_YSQL_CONN_MGR_DUMP_HEAP_SNAPSHOT_INTERVAL");
+	int tcmalloc_stats_interval = 0;
+	if (value != NULL) {
+		tcmalloc_stats_interval = atoi(value);
+		value = getenv("YB_YSQL_CONN_MGR_TCMALLOC_SAMPLE_PERIOD");
+		if (value != NULL) {
+			uint64_t sample_period_bytes = atoi(value);
+			setTCMallocSamplePeriod(sample_period_bytes);
+		}
+	}
+#endif // YB_GOOGLE_TCMALLOC
 
 	cron->stat_time_us = machine_time_us();
 	atomic_store(&cron->online, 1);
@@ -356,6 +369,21 @@ static void od_cron(void *arg)
 		}
 
 		od_cron_err_stat(cron);
+
+#ifdef YB_GOOGLE_TCMALLOC
+		// No need to acquire the lock as it dumps the heap snaphot of complete conneciton
+		// manager process and doesn't care about the internal objects of process like routes, etc.
+		if (tcmalloc_stats_interval > 0 &&
+			++tcmalloc_stats_tick >= tcmalloc_stats_interval) {
+			char *tcmalloc_stats = getTCMallocStats();
+			od_logger_write_plain(&instance->logger, OD_LOG,
+				"TCMALLOC", NULL, NULL, 
+				tcmalloc_stats);
+			
+			free(tcmalloc_stats);
+			tcmalloc_stats_tick = 0;
+		}
+#endif // YB_GOOGLE_TCMALLOC
 
 		/* 1 second soft interval */
 		machine_sleep(1000);
