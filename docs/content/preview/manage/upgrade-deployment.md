@@ -59,8 +59,8 @@ To upgrade YugabyteDB to a version based on a different version of PostgreSQL (f
 
 - Point-in-time-restore (PITR)
 
-  - After finalizing an upgrade, snapshots from the previous version can no longer be used for PITR.
-  - After the upgrade, PITR cannot be done to a time before the upgrade. 
+  - If you have PITR enabled, you must disable it before performing an upgrade. Re-enable it only after the upgrade is either finalized or rolled back.
+  - After the upgrade, PITR cannot be done to a time before the upgrade.
 
 ## Upgrade YugabyteDB cluster
 
