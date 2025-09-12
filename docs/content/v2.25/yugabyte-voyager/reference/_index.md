@@ -7,7 +7,7 @@ description: Learn about the CLI Reference, data modeling strategies, and data t
 type: indexpage
 showRightNav: true
 menu:
-  preview_yugabyte-voyager:
+  v225_yugabyte-voyager:
     identifier: reference-voyager
     parent: yugabytedb-voyager
     weight: 105

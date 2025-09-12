@@ -5,7 +5,7 @@ linkTitle: On-premises provider
 description: Prepare a VM for deploying universes on-premises.
 headContent: Prepare a VM for deploying universes on-premises
 menu:
-  preview_yugabyte-platform:
+  v225_yugabyte-platform:
     identifier: software-on-prem
     parent: server-nodes-software
     weight: 20

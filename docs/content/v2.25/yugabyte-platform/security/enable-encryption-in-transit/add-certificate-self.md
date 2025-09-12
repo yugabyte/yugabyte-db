@@ -5,7 +5,7 @@ linkTitle: Add certificates
 description: Add self-signed certificates to YugabyteDB Anywhere.
 headcontent: Use your own certificates for encryption in transit
 menu:
-  preview_yugabyte-platform:
+  v225_yugabyte-platform:
     parent: enable-encryption-in-transit
     identifier: add-certificate-1-self
     weight: 20

@@ -4,7 +4,7 @@ headerTitle: Budibase
 linkTitle: Budibase
 description: Use Budibase to build applications on top of YugabyteDB.
 menu:
-  preview_integrations:
+  v225_integrations:
     identifier: budibase
     parent: development-platforms
     weight: 100

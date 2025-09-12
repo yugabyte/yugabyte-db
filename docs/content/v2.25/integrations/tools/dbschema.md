@@ -4,7 +4,7 @@ headerTitle: DbSchema
 linkTitle: DbSchema
 description: Use DbSchema to work with distributed SQL databases in YugabyteDB.
 menu:
-  preview_integrations:
+  v225_integrations:
     identifier: dbschema
     parent: tools
     weight: 60

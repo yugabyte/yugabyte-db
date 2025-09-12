@@ -7,7 +7,7 @@ headContent: Fail over to a replica universe in case of unplanned outages
 tags:
   feature: early-access
 menu:
-  preview_yugabyte-platform:
+  v225_yugabyte-platform:
     parent: back-up-restore-universes
     identifier: disaster-recovery
     weight: 90

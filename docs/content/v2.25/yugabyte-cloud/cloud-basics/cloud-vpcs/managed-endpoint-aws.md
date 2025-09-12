@@ -5,7 +5,7 @@ linkTitle: Set up private link
 description: Connect to a VPC in AWS using PrivateLink.
 headcontent: Connect your endpoints using PrivateLink
 menu:
-  preview_yugabyte-cloud:
+  v225_yugabyte-cloud:
     identifier: managed-endpoint-1-aws
     parent: cloud-add-endpoint
     weight: 50

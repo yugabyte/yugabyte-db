@@ -4,7 +4,7 @@ headerTitle: Manage universes
 linkTitle: Manage universes
 description: Manage YugabyteDB universe deployments
 menu:
-  preview_yugabyte-platform:
+  v225_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: manage-deployments
     weight: 640

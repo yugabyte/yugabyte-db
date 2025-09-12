@@ -10,7 +10,7 @@ aliases:
   - /preview/yugabyte-platform/back-up-restore-universes/schedule-data-backups/ysql/
   - /preview/yugabyte-platform/back-up-restore-universes/schedule-data-backups/ycql/
 menu:
-  preview_yugabyte-platform:
+  v225_yugabyte-platform:
     identifier: schedule-data-backups
     parent: back-up-restore-universes
     weight: 15

@@ -5,7 +5,7 @@ linkTitle: Auto-generated certificates
 description: YugabyteDB Anywhere-generated self-signed certificates.
 headcontent: Let YugabyteDB Anywhere manage certificates for your universe
 menu:
-  preview_yugabyte-platform:
+  v225_yugabyte-platform:
     parent: enable-encryption-in-transit
     identifier: auto-certificate
     weight: 10

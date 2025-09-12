@@ -3,7 +3,7 @@ title: Delphix
 linkTitle: Delphix
 description: Use Delphix to virtualize your YugabyteDB database.
 menu:
-  preview_integrations:
+  v225_integrations:
     identifier: Delphix
     parent: integrations-platforms
     weight: 571

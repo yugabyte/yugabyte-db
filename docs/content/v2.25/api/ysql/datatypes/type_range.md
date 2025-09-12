@@ -4,7 +4,7 @@ headerTitle: Range data types
 linkTitle: Range
 description: Range and multirange datatypes
 menu:
-  preview_api:
+  v225_api:
     identifier: api-ysql-datatypes-range
     parent: api-ysql-datatypes
 type: docs

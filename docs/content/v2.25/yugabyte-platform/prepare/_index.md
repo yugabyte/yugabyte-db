@@ -5,7 +5,7 @@ linkTitle: Prepare
 description: Prepare cloud permissions, networking, and servers for YugabyteDB Anywhere.
 headcontent: Prepare cloud permissions, networking, and servers for YugabyteDB Anywhere
 menu:
-  preview_yugabyte-platform:
+  v225_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: prepare
 weight: 605

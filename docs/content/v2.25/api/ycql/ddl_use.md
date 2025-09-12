@@ -4,7 +4,7 @@ headerTitle: USE
 linkTitle: USE
 description: Use the USE statement to specify a default keyspace for the current client session.
 menu:
-  preview_api:
+  v225_api:
     parent: api-cassandra
     weight: 1290
 aliases:

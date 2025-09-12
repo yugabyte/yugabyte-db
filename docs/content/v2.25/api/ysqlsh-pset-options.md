@@ -7,7 +7,7 @@ headcontent: Options for the \pset meta-command
 aliases:
   - /preview/admin/ysqlsh-pset-options/
 menu:
-  preview_api:
+  v225_api:
     identifier: ysqlsh-pset-options
     parent: ysqlsh-meta-commands
     weight: 10

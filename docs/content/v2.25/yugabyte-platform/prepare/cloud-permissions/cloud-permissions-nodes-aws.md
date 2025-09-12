@@ -5,7 +5,7 @@ linkTitle: To deploy nodes
 description: Prepare your cloud for deploying YugabyteDB universe nodes.
 headContent: Prepare your cloud for deploying YugabyteDB universe nodes
 menu:
-  preview_yugabyte-platform:
+  v225_yugabyte-platform:
     identifier: cloud-permissions-nodes-2-aws
     parent: cloud-permissions
     weight: 20

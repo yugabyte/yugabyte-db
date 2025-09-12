@@ -3,7 +3,7 @@ title: Keycloak
 linkTitle: Keycloak
 description: Use Keycloak with YSQL API
 menu:
-  preview_integrations:
+  v225_integrations:
     identifier: keycloak
     parent: integrations-security
     weight: 571

@@ -7,7 +7,7 @@ headContent: How to meet the software prerequisites for database nodes
 aliases:
     - /preview/yugabyteplatform/prepare/server-nodes-software/software-on-premmanual/
 menu:
-  preview_yugabyte-platform:
+  v225_yugabyte-platform:
     identifier: software-on-prem-4-manual
     parent: software-on-prem
     weight: 10

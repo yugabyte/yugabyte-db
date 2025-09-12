@@ -4,7 +4,7 @@ linkTitle: Backup and restore
 description: Back up and restore clusters in YugabyteDB Aeon.
 headcontent: Configure your backup schedule and restore databases
 menu:
-  preview_yugabyte-cloud:
+  v225_yugabyte-cloud:
     identifier: backup-clusters
     parent: cloud-clusters
     weight: 200

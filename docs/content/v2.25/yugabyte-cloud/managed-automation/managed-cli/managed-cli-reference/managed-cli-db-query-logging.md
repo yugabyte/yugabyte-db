@@ -5,7 +5,7 @@ linkTitle: cluster db-query-logging
 description: YugabyteDB Aeon CLI reference Cluster Database Query Logging Resource.
 headcontent: Manage cluster database query logging
 menu:
-  preview_yugabyte-cloud:
+  v225_yugabyte-cloud:
     identifier: managed-cli-db-query-logging
     parent: managed-cli-reference
     weight: 20

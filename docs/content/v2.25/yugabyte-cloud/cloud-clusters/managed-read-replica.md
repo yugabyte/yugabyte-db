@@ -5,7 +5,7 @@ linkTitle: Read replicas
 description: Add read replicas to YugabyteDB Aeon clusters.
 headcontent: Reduce read latencies in geographically distributed regions
 menu:
-  preview_yugabyte-cloud:
+  v225_yugabyte-cloud:
     identifier: managed-readreplica
     parent: cloud-clusters
     weight: 150

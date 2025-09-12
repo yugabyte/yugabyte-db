@@ -5,7 +5,7 @@ description: Use LDAP for authentication in YugabyteDB Anywhere.
 headcontent: Manage YugabyteDB Anywhere users using LDAP
 linkTitle: Configure authentication
 menu:
-  preview_yugabyte-platform:
+  v225_yugabyte-platform:
     identifier: ldap-authentication
     parent: administer-yugabyte-platform
     weight: 20

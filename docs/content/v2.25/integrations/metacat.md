@@ -4,7 +4,7 @@ linkTitle: Metacat
 description: Use Metacat with YSQL
 aliases:
 menu:
-  preview_integrations:
+  v225_integrations:
     parent: data-discovery
     identifier: metacat
     weight: 571

@@ -5,7 +5,7 @@ linkTitle: To deploy YBA
 description: Prepare your cloud for deploying YugabyteDB Anywhere.
 headContent: Prepare your cloud for deploying YugabyteDB Anywhere
 menu:
-  preview_yugabyte-platform:
+  v225_yugabyte-platform:
     identifier: cloud-permissions-yba
     parent: cloud-permissions
     weight: 10

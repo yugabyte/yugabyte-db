@@ -7,7 +7,7 @@ tags:
 aliases:
   - /preview/integrations/cdc/
 menu:
-  preview_integrations:
+  v225_integrations:
     identifier: cdc-debezium
     parent: data-integration
     weight: 571

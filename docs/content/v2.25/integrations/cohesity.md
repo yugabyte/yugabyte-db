@@ -3,7 +3,7 @@ title: Cohesity
 linkTitle: Cohesity
 description: Use Cohesity to back up and restore your YugabyteDB database.
 menu:
-  preview_integrations:
+  v225_integrations:
     identifier: cohesity
     parent: integrations-platforms
     weight: 571

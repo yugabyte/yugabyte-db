@@ -11,7 +11,7 @@ aliases:
   - /preview/voyager/
   - /preview/tools/voyager/
 menu:
-  preview_yugabyte-voyager:
+  v225_yugabyte-voyager:
     name: "Overview"
     identifier: yugabyte-voyager
     parent: yugabytedb-voyager

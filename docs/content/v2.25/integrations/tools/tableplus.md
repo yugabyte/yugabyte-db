@@ -8,7 +8,7 @@ aliases:
   - /preview/develop/tools/tableplus/
   - /preview/tools/tableplus/
 menu:
-  preview_integrations:
+  v225_integrations:
     identifier: tableplus
     parent: tools
     weight: 95

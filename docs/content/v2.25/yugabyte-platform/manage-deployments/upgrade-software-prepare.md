@@ -5,7 +5,7 @@ linkTitle: Prepare to upgrade
 description: Review changes that may affect your automation when upgrading universes.
 headcontent: Review changes that may affect your automation
 menu:
-  preview_yugabyte-platform:
+  v225_yugabyte-platform:
     identifier: upgrade-software-prepare
     parent: upgrade-software
     weight: 10

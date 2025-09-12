@@ -5,7 +5,7 @@ linkTitle: backup policy
 description: YugabyteDB Aeon CLI reference backup policy resource.
 headcontent: Manage cluster backup policies
 menu:
-  preview_yugabyte-cloud:
+  v225_yugabyte-cloud:
     identifier: managed-cli-backup-policy
     parent: managed-cli-reference
     weight: 20

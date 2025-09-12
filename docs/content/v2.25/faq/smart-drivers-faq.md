@@ -5,7 +5,7 @@ description: YugabyteDB smart drivers frequently asked questions
 aliases:
   - /preview/drivers-orms/smart-drivers-faq/
 menu:
-  preview_faq:
+  v225_faq:
     identifier: smart-drivers-faq
     parent: faq
     weight: 40

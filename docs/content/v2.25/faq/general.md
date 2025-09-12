@@ -8,7 +8,7 @@ aliases:
   - /preview/introduction/overview/
   - /preview/introduction/benefits/
 menu:
-  preview_faq:
+  v225_faq:
     identifier: faq-general
     parent: faq
     weight: 10

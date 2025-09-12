@@ -5,7 +5,7 @@ linkTitle: backup
 description: YugabyteDB Aeon CLI reference backup resource.
 headcontent: Manage cluster backups
 menu:
-  preview_yugabyte-cloud:
+  v225_yugabyte-cloud:
     identifier: managed-cli-backup
     parent: managed-cli-reference
     weight: 20

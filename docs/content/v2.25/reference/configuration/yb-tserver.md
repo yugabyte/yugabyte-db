@@ -2304,7 +2304,7 @@ The number of table rows to backfill in a single backfill job. In case of [GIN i
 
 ### Other performance tuning options
 
-##### --allowed_preview_flags_csv
+##### --allowed_v225_flags_csv
 
 {{% tags/wrap %}}{{<tags/feature/restart-needed>}}{{% /tags/wrap %}}
 
@@ -2319,9 +2319,9 @@ You still need to configure the flag separately after adding it to this list.
 {{</warning>}}
 
 {{<note title="Using YugabyteDB Anywhere">}}
-If you are using YugabyteDB Anywhere, as with other flags, set `allowed_preview_flags_csv` using the [Edit Flags](../../../yugabyte-platform/manage-deployments/edit-config-flags/#modify-configuration-flags) feature.
+If you are using YugabyteDB Anywhere, as with other flags, set `allowed_v225_flags_csv` using the [Edit Flags](../../../yugabyte-platform/manage-deployments/edit-config-flags/#modify-configuration-flags) feature.
 
-After adding a preview flag to the `allowed_preview_flags_csv` list, you still need to set the flag using **Edit Flags** as well.
+After adding a preview flag to the `allowed_v225_flags_csv` list, you still need to set the flag using **Edit Flags** as well.
 {{</note>}}
 
 ## Security

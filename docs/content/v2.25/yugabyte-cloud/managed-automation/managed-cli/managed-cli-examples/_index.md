@@ -5,7 +5,7 @@ linkTitle: Example workflows
 description: YugabyteDB Aeon ybm CLI examples.
 headcontent: Working examples for ybm CLI
 menu:
-  preview_yugabyte-cloud:
+  v225_yugabyte-cloud:
     identifier: managed-cli-examples
     parent: managed-cli
     weight: 100

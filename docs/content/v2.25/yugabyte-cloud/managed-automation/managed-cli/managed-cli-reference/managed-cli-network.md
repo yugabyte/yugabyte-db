@@ -5,7 +5,7 @@ linkTitle: cluster network
 description: YugabyteDB Aeon CLI reference Cluster network resource.
 headcontent: Manage cluster network resources
 menu:
-  preview_yugabyte-cloud:
+  v225_yugabyte-cloud:
     identifier: managed-cli-network
     parent: managed-cli-reference
     weight: 20

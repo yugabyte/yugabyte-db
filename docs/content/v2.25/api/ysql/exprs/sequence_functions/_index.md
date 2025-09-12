@@ -4,7 +4,7 @@ headerTitle: Sequence functions
 linkTitle: Sequence functions
 description: Functions operationg on sequences
 menu:
-  preview_api:
+  v225_api:
     identifier: sequence-functions
     parent: api-ysql-exprs
     weight: 50

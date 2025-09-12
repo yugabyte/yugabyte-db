@@ -4,7 +4,7 @@ linkTitle: GORM
 description: Using GORM with YugabyteDB
 aliases:
 menu:
-  preview_integrations:
+  v225_integrations:
     identifier: gorm
     parent: integrations
     weight: 571

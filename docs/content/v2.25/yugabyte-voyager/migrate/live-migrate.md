@@ -5,7 +5,7 @@ linkTitle: Live migration
 headcontent: Steps for a live migration using YugabyteDB Voyager
 description: Run the steps to ensure a successful live migration using YugabyteDB Voyager.
 menu:
-  preview_yugabyte-voyager:
+  v225_yugabyte-voyager:
     identifier: migrate-live
     parent: migration-types
     weight: 103

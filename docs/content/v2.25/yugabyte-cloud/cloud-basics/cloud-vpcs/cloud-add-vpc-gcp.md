@@ -5,7 +5,7 @@ linkTitle: Peer VPCs
 description: Peer a VPC in GCP.
 headcontent: Peer your cluster VPC with a VPC in GCP
 menu:
-  preview_yugabyte-cloud:
+  v225_yugabyte-cloud:
     identifier: cloud-add-vpc-1-gcp
     parent: cloud-add-peering
     weight: 50

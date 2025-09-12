@@ -3,7 +3,7 @@ title: Apache Atlas
 linkTitle: Apache Atlas
 description: Use Apache Atlas with YCQL API
 menu:
-  preview_integrations:
+  v225_integrations:
     identifier: ycql-atlas
     parent: integrations-other
     weight: 571

@@ -4,7 +4,7 @@ headerTitle: ALTER PROCEDURE
 linkTitle: ALTER PROCEDURE
 description: Change properties of an existing procedure.
 menu:
-  preview_api:
+  v225_api:
     identifier: ddl_alter_procedure
     parent: statements
 type: docs
@@ -78,7 +78,7 @@ alter procedure s1.p(int)
   set statement_timeout = 1;
 ```
 
-The attempt draws a warning in the current _preview_ version of YugabyteDB, thus:
+The attempt draws a warning in the current _v225_ version of YugabyteDB, thus:
 
 ```output
 0A000: ALTER PROCEDURE not supported yet

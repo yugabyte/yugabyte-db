@@ -62,9 +62,9 @@ YugabyteDB Anywhere will end support for Replicated installation at the end of 2
 
 You can't use YugabyteDB Anywhere to deploy versions of YugabyteDB that are newer than your YugabyteDB Anywhere instance. To upgrade a universe to a more recent version of YugabyteDB, you may first have to upgrade YugabyteDB Anywhere.
 
-- For YugabyteDB upgrades in YugabyteDB Anywhere, you can only upgrade from a _stable_ version to another _stable_ version, or from a _preview_ version to another _preview_ version. Optionally, you can [skip tests](#skip-tests) during upgrades.
+- For YugabyteDB upgrades in YugabyteDB Anywhere, you can only upgrade from a _stable_ version to another _stable_ version, or from a _v225_ version to another _v225_ version. Optionally, you can [skip tests](#skip-tests) during upgrades.
 
-- For YugabyteDB Anywhere upgrades, you can only upgrade from a _stable_ version to another _stable_ version, or from a _preview_ version to another _preview_ version. Optionally, you can [skip tests](#skip-tests) during upgrades.
+- For YugabyteDB Anywhere upgrades, you can only upgrade from a _stable_ version to another _stable_ version, or from a _v225_ version to another _v225_ version. Optionally, you can [skip tests](#skip-tests) during upgrades.
 
 For instructions on upgrading YugabyteDB Anywhere, refer to [Upgrade YugabyteDB Anywhere](../../yugabyte-platform/upgrade/).
 

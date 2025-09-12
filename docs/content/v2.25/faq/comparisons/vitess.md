@@ -6,7 +6,7 @@ description: Compare Vitess with the YugabyteDB database.
 aliases:
   - /comparisons/vitess/
 menu:
-  preview_faq:
+  v225_faq:
     parent: comparisons
     identifier: comparisons-vitess
     weight: 1077

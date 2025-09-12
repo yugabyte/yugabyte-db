@@ -4,7 +4,7 @@ headerTitle: Database authorization
 linkTitle: Database authorization
 description: Use the role-based access control (RBAC) to manage universe users and roles.
 menu:
-  preview_yugabyte-platform:
+  v225_yugabyte-platform:
     parent: security
     identifier: authorization-platform
     weight: 30

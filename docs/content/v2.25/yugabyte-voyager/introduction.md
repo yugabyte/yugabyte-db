@@ -9,7 +9,7 @@ description: Migrate your database to YugabyteDB using YugabyteDB Voyager.
 type: docs
 showRightNav: true
 menu:
-  preview_yugabyte-voyager:
+  v225_yugabyte-voyager:
     identifier: overview-vgr
     parent: yugabytedb-voyager
     weight: 100

@@ -3,7 +3,7 @@ title: Akka Persistence R2DBC
 linkTitle: Akka Persistence
 description: Use Akka Persistence R2DBC with YSQL API
 menu:
-  preview_integrations:
+  v225_integrations:
     identifier: ysql-akka
     parent: data-integration
     weight: 571

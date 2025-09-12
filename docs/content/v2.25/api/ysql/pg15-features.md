@@ -9,7 +9,7 @@ tags:
 aliases:
   - /preview/develop/pg15-features/
 menu:
-  preview_api:
+  v225_api:
     identifier: yb-postgresql-15
     parent: api-ysql
     weight: 125

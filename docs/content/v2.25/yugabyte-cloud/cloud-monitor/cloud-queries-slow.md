@@ -5,7 +5,7 @@ linkTitle: Slow queries
 description: View slow running YSQL queries that have run on your YugabyteDB Aeon cluster.
 headcontent: Identify candidates for YSQL query optimization
 menu:
-  preview_yugabyte-cloud:
+  v225_yugabyte-cloud:
     identifier: cloud-queries-slow
     parent: cloud-monitor
     weight: 300

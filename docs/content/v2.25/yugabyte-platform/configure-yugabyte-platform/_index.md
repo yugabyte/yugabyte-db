@@ -4,7 +4,7 @@ headerTitle: Create provider configurations
 linkTitle: Create providers
 description: Create provider configurations for deploying YugabyteDB universes.
 menu:
-  preview_yugabyte-platform:
+  v225_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: configure-yugabyte-platform
     weight: 620

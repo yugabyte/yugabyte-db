@@ -5,7 +5,7 @@ linkTitle: Introduction
 description: YugabyteDB Anywhere architecture and introduction.
 headcontent: YugabyteDB Anywhere from 50,000 ft
 menu:
-  preview_yugabyte-platform:
+  v225_yugabyte-platform:
     identifier: yba-overview
     parent: yugabytedb-anywhere
     weight: 600

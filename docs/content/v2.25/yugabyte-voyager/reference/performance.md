@@ -3,7 +3,7 @@ title: Tune performance
 linkTitle: Tune performance
 description: Performance
 menu:
-  preview_yugabyte-voyager:
+  v225_yugabyte-voyager:
     identifier: performance
     parent: reference-voyager
     weight: 104

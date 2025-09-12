@@ -5,7 +5,7 @@ linkTitle: Security architecture
 description: Review and overview of the YugabyteDB Aeon database security architecture and shared responsibility model.
 headcontent: YugabyteDB Aeon security architecture and shared responsibility model
 menu:
-  preview_yugabyte-cloud:
+  v225_yugabyte-cloud:
     parent: yugabytedb-managed
     identifier: cloud-security
 weight: 800

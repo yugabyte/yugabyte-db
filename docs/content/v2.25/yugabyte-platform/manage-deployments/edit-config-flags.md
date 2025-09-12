@@ -8,7 +8,7 @@ aliases:
   - /preview/manage/enterprise-edition/edit-flags/
   - /preview/manage/enterprise-edition/edit-config-flags/
 menu:
-  preview_yugabyte-platform:
+  v225_yugabyte-platform:
     identifier: edit-config-flags
     parent: edit-universe
     weight: 10

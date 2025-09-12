@@ -7,7 +7,7 @@ headContent: Store your backups in the cloud or on NFS
 aliases:
   - /preview/yugabyte-platform/configure-yugabyte-platform/backup-target/
 menu:
-  preview_yugabyte-platform:
+  v225_yugabyte-platform:
     parent: back-up-restore-universes
     identifier: configure-backup-storage
     weight: 10

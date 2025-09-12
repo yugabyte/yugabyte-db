@@ -4,7 +4,7 @@ headcontent: yb-voyager assess-migration
 linkTitle: Assess migration
 description: YugabyteDB Voyager assess migration reference
 menu:
-  preview_yugabyte-voyager:
+  v225_yugabyte-voyager:
     identifier: assess-migration-voyager
     parent: yb-voyager-cli
     weight: 1

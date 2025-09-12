@@ -7,7 +7,7 @@ headcontent: Invite team members to your YugabyteDB Aeon account
 aliases:
   - /preview/yugabyte-cloud/cloud-admin/manage-access/
 menu:
-  preview_yugabyte-cloud:
+  v225_yugabyte-cloud:
     identifier: manage-cloud-access
     parent: managed-security
     weight: 100

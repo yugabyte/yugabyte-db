@@ -5,7 +5,7 @@ linkTitle: Upgrade a universe
 description: Use YugabyteDB Anywhere to upgrade the YugabyteDB software on universes.
 headcontent: Upgrade the YugabyteDB software on your universe
 menu:
-  preview_yugabyte-platform:
+  v225_yugabyte-platform:
     identifier: upgrade-software-install
     parent: upgrade-software
     weight: 20

@@ -4,7 +4,7 @@ linkTitle: SQLAlchemy
 description: Using SQLAlchemy with YugabyteDB
 aliases:
 menu:
-  preview_integrations:
+  v225_integrations:
     identifier: sqlalchemy
     parent: integrations
     weight: 571

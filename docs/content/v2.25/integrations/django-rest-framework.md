@@ -3,7 +3,7 @@ title: Django REST framework
 linkTitle: Django REST framework
 description: Django REST framework
 menu:
-  preview_integrations:
+  v225_integrations:
     identifier: django-rest-framework
     parent: application-frameworks
     weight: 571

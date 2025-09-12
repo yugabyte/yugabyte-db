@@ -4,7 +4,7 @@ headcontent: yb-voyager import schema
 linkTitle: import schema
 description: YugabyteDB Voyager import schema reference
 menu:
-  preview_yugabyte-voyager:
+  v225_yugabyte-voyager:
     identifier: voyager-import-schema
     parent: schema-migration
     weight: 50

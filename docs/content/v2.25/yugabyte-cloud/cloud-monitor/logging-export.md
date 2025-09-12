@@ -5,7 +5,7 @@ linkTitle: Export logs
 description: Export cluster metrics to third-party tools.
 headcontent: Export PostgreSQL logs from YugabyteDB Aeon clusters
 menu:
-  preview_yugabyte-cloud:
+  v225_yugabyte-cloud:
     identifier: export-logs
     parent: managed-integrations
     weight: 610

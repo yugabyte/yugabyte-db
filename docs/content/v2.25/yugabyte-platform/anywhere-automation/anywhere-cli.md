@@ -7,7 +7,7 @@ headcontent: Install the CLI, configure default settings, and set up autocomplet
 tags:
   feature: early-access
 menu:
-  preview_yugabyte-platform:
+  v225_yugabyte-platform:
     parent: anywhere-automation
     identifier: anywhere-cli
     weight: 50

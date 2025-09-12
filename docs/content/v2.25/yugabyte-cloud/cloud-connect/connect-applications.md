@@ -7,7 +7,7 @@ aliases:
   - /preview/yugabyte-cloud/cloud-examples/
   - /preview/yugabyte-cloud/cloud-examples/connect-application/
 menu:
-  preview_yugabyte-cloud:
+  v225_yugabyte-cloud:
     identifier: connect-applications
     parent: cloud-connect
     weight: 30

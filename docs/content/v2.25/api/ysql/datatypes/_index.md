@@ -6,7 +6,7 @@ description: Data types
 summary: YSQL data type overview and specification.
 image: /images/section_icons/api/subsection.png
 menu:
-  preview_api:
+  v225_api:
     identifier: api-ysql-datatypes
     parent: ysql-language-elements
     weight: 80

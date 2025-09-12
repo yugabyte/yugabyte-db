@@ -1068,7 +1068,7 @@ Default: false
 
 ## Advanced flags
 
-##### --allowed_preview_flags_csv
+##### --allowed_v225_flags_csv
 
 Comma-separated values (CSV) formatted catalogue of [preview feature](/preview/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
 
@@ -1081,9 +1081,9 @@ You still need to configure the flag separately after adding it to this list.
 {{</warning>}}
 
 {{<note title="Using YugabyteDB Anywhere">}}
-If you are using YugabyteDB Anywhere, as with other flags, set `allowed_preview_flags_csv` using the [Edit Flags](../../../yugabyte-platform/manage-deployments/edit-config-flags/#modify-configuration-flags) feature.
+If you are using YugabyteDB Anywhere, as with other flags, set `allowed_v225_flags_csv` using the [Edit Flags](../../../yugabyte-platform/manage-deployments/edit-config-flags/#modify-configuration-flags) feature.
 
-After adding a preview flag to the `allowed_preview_flags_csv` list, you still need to set the flag using **Edit Flags** as well.
+After adding a preview flag to the `allowed_v225_flags_csv` list, you still need to set the flag using **Edit Flags** as well.
 {{</note>}}
 
 ##### --ysql_index_backfill_rpc_timeout_ms

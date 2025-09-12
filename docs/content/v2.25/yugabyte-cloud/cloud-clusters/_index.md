@@ -5,7 +5,7 @@ linkTitle: Manage clusters
 description: Get an overview of how to scale your database clusters, configure backups and maintenance windows, and pause or delete clusters in YugabyteDB Aeon.
 headcontent: Scale clusters, configure read replicas, backups, and maintenance, and pause clusters
 menu:
-  preview_yugabyte-cloud:
+  v225_yugabyte-cloud:
     parent: yugabytedb-managed
     identifier: cloud-clusters
     weight: 100

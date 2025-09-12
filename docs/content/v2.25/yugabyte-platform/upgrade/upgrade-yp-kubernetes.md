@@ -6,7 +6,7 @@ description: Upgrade YugabyteDB Anywhere installation on Kubernetes
 aliases:
   - /preview/yugabyte-platform/manage-deployments/migrate-to-helm3/
 menu:
-  preview_yugabyte-platform:
+  v225_yugabyte-platform:
     identifier: upgrade-yp-3-kubernetes
     parent: upgrade
     weight: 80

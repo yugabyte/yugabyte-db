@@ -6,7 +6,7 @@ description: Learn how to build a Scala application using Apache Spark and Yugab
 aliases:
   - /preview/integrations/apache-spark/scala/
 menu:
-  preview_integrations:
+  v225_integrations:
     identifier: apache-spark-1-scala-ycql
     parent: apache-spark
     weight: 578

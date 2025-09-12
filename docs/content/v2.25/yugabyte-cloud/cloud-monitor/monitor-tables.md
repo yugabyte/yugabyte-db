@@ -5,7 +5,7 @@ linkTitle: Monitor tables
 description: Monitor the size and replication status of your tables.
 headcontent: Monitor the size and replication status of your tables
 menu:
-  preview_yugabyte-cloud:
+  v225_yugabyte-cloud:
     identifier: monitor-tables
     parent: cloud-monitor
     weight: 610

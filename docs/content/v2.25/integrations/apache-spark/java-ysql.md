@@ -4,7 +4,7 @@ headerTitle: Build a Java application using Apache Spark and YugabyteDB
 linkTitle: YSQL
 description: Learn how to build a Java application using Apache Spark and YugabyteDB YSQL.
 menu:
-  preview_integrations:
+  v225_integrations:
     identifier: apache-spark-2-java-ysql
     parent: apache-spark
     weight: 573

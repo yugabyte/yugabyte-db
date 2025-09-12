@@ -4,7 +4,7 @@ linkTitle: MySQL
 headcontent: What to watch out for when migrating data from MySQL
 description: Review limitations and suggested workarounds for migrating data from MySQL.
 menu:
-  preview_yugabyte-voyager:
+  v225_yugabyte-voyager:
     identifier: mysql-issues
     parent: known-issues
     weight: 103

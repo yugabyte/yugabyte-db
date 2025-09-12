@@ -9,7 +9,7 @@ aliases:
   - /preview/yugabyte-platform/install-yugabyte-platform/install-software/default/
 
 menu:
-  preview_yugabyte-platform:
+  v225_yugabyte-platform:
     parent: install-yugabyte-platform
     identifier: install-software-1-installer
     weight: 10

@@ -5,7 +5,7 @@ linkTitle: Tables and indexes
 description: Manage tables and indexes in clusters with disaster recovery in Aeon
 headContent: Add and remove tables and indexes in clusters with disaster recovery
 menu:
-  preview_yugabyte-cloud:
+  v225_yugabyte-cloud:
     parent: disaster-recovery-aeon
     identifier: disaster-recovery-tables-aeon
     weight: 50

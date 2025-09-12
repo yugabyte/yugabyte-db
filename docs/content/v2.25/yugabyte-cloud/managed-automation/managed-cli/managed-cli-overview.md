@@ -5,7 +5,7 @@ linkTitle: Install and configure
 description: Install and configure ybm CLI.
 headcontent: Install ybm, configure default settings, and set up autocompletion
 menu:
-  preview_yugabyte-cloud:
+  v225_yugabyte-cloud:
     identifier: managed-cli-overview
     parent: managed-cli
     weight: 50

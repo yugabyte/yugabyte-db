@@ -4,7 +4,7 @@ linkTitle: Create extensions
 description: Add extensions to a YugabyteDB Aeon cluster.
 headcontent: Extend the functionality of your cluster using PostgreSQL extensions
 menu:
-  preview_yugabyte-cloud:
+  v225_yugabyte-cloud:
     identifier: add-extensions
     parent: cloud-clusters
     weight: 400

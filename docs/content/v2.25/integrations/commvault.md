@@ -3,7 +3,7 @@ title: Commvault
 linkTitle: Commvault
 description: Use Commvault to back up and restore your YugabyteDB database.
 menu:
-  preview_integrations:
+  v225_integrations:
     identifier: commvault
     parent: integrations-platforms
     weight: 571

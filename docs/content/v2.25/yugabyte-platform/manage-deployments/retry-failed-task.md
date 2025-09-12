@@ -4,7 +4,7 @@ headerTitle: Retry a universe task
 linkTitle: Retry a universe task
 description: Use YugabyteDB Anywhere to retry failed tasks.
 menu:
-  preview_yugabyte-platform:
+  v225_yugabyte-platform:
     identifier: retry-task
     parent: manage-deployments
     weight: 75

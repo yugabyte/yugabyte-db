@@ -9,7 +9,7 @@ aliases:
   - /preview/yugabyte-platform/add-nodes
   - /preview/yugabyte-platform/start-stop-processes
 menu:
-  preview_yugabyte-platform:
+  v225_yugabyte-platform:
     identifier: remove-nodes
     parent: manage-deployments
     weight: 72

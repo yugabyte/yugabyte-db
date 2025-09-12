@@ -5,7 +5,7 @@ linkTitle: Trust store
 description: Add certificates to the YugabyteDB Anywhere trust store.
 headcontent: Add certificates for third-party services
 menu:
-  preview_yugabyte-platform:
+  v225_yugabyte-platform:
     parent: enable-encryption-in-transit
     identifier: trust-store
     weight: 40

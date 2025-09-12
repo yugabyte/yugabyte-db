@@ -8,7 +8,7 @@ aliases:
   - /preview/deploy/enterprise-edition/configure-cloud-providers/aws
   - /preview/yugabyte-platform/deploy/configure-cloud-providers/aws
 menu:
-  preview_yugabyte-platform:
+  v225_yugabyte-platform:
     identifier: set-up-cloud-provider-1-aws
     parent: configure-yugabyte-platform
     weight: 20
