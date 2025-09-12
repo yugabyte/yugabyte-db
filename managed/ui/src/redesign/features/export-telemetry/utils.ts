@@ -31,6 +31,8 @@ export const getIsMetricsExportSupported = (telemetryProvider: TelemetryProvider
     case TelemetryProviderType.GCP_CLOUD_MONITORING:
     case TelemetryProviderType.LOKI:
     case TelemetryProviderType.SPLUNK:
+    case TelemetryProviderType.S3:
+    case TelemetryProviderType.OTLP:
       return false;
     default:
       return assertUnreachableCase(telemetryProvider.config.type);
@@ -44,6 +46,8 @@ export const getIsLogsExportSupported = (telemetryProvider: TelemetryProvider) =
     case TelemetryProviderType.GCP_CLOUD_MONITORING:
     case TelemetryProviderType.LOKI:
     case TelemetryProviderType.SPLUNK:
+    case TelemetryProviderType.S3:
+    case TelemetryProviderType.OTLP:
       return true;
     case TelemetryProviderType.DYNATRACE:
       return false;

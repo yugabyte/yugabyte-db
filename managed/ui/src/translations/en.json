@@ -2860,7 +2860,9 @@
           "splunk": "Splunk",
           "awsCloudWatch": "AWS CloudWatch",
           "gcpCloudMonitoring": "GCP Cloud Logging",
-          "dynatrace": "Dynatrace"
+          "dynatrace": "Dynatrace",
+          "s3": "S3",
+          "otlp": "OTLP"
         },
         "exportSupport": {
           "metrics": "Metrics",

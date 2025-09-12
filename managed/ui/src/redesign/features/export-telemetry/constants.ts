@@ -7,7 +7,9 @@ export const TP_FRIENDLY_NAMES = {
   [TelemetryProviderType.AWS_CLOUDWATCH]: 'AWS CloudWatch',
   [TelemetryProviderType.GCP_CLOUD_MONITORING]: 'GCP Cloud Logging',
   [TelemetryProviderType.LOKI]: 'Loki',
-  [TelemetryProviderType.DYNATRACE]: 'Dynatrace'
+  [TelemetryProviderType.DYNATRACE]: 'Dynatrace',
+  [TelemetryProviderType.S3]: 'S3',
+  [TelemetryProviderType.OTLP]: 'OTLP'
 };
 
 export const DATADOG_SITES = [
