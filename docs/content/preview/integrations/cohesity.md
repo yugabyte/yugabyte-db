@@ -33,7 +33,9 @@ Because YugabyteDB Anywhere supports S3-compatible storage, integrating Cohesity
 1. Create an S3-compatible backup configuration in YugabyteDB Anywhere.
 
     {{< note title="S3-compatible storage requires S3 path style access" >}}
-  By default, the option to use S3 path style access is not available. To ensure that you can use this feature, navigate to `https://<my-yugabytedb-anywhere-ip>/features` and enable the **enablePathStyleAccess** option.
+  By default, the option to use S3 path style access is not available.
+
+  To enable the feature in YugabyteDB Anywhere, set the **Enable Path Access Style for Amazon S3** Global Runtime Configuration option (config key `yb.ui.feature_flags.enable_path_style_access`) to true. Refer to [Manage runtime configuration settings](../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
     {{< /note >}}
 
     YugabyteDB Anywhere supports any S3-compatible storage. To create a backup configuration that uses your Cohesity S3 View, navigate to **Integrations** > **Backup** > **Amazon S3**, click **Create S3 Backup**, and enter the following details:
