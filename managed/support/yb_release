@@ -83,6 +83,11 @@ cd $thirdparty_path
 # This downloads all thirdparty dependencies into packages/thirdparty/
 wget -qi $yb_support_home/thirdparty-dependencies.txt
 
+# Recompress setuptools
+unzip -q setuptools-44.1.1.zip && rm setuptools-44.1.1.zip
+tar -czf setuptools-44.1.1.tar.gz setuptools-44.1.1
+rm -rf setuptools-44.1.1
+
 # Generate thirdparty tar.gz with downloaded dependencies
 cd $package_path
 tar -czvf $THIRDPARTY_TARGZ $THIRDPARTY
