@@ -1361,14 +1361,13 @@ yb_process_more_batches:
 		 * When CopyFrom method is called, we are already inside a transaction block
 		 * and relevant transaction state properties have been previously set.
 		 */
-		YBCCommitTransaction();
+		YBCommitTransactionIntermediate();
 
 		/*
 		 * Update progress of the COPY command as well.
 		 */
 		pgstat_progress_update_param(PROGRESS_COPY_TUPLES_PROCESSED, processed);
 		pgstat_progress_update_param(PROGRESS_COPY_BYTES_PROCESSED, cstate->bytes_processed);
-		YBInitializeTransaction();
 
 		/* Start a new AFTER trigger */
 		AfterTriggerBeginQuery();

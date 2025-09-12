@@ -1079,8 +1079,8 @@ class ReadPointHistory {
 
   [[nodiscard]] bool Restore(ConsistentReadPoint* read_point, uint64_t read_time_serial_no) {
     auto result = false;
-    auto i = read_points_.find(read_time_serial_no);
-    if (i != read_points_.end()) {
+    if (const auto i = read_points_.find(read_time_serial_no);
+        i != read_points_.end() && read_time_serial_no >= min_) {
       read_point->SetMomento(i->second);
       result = true;
     }
@@ -1096,6 +1096,13 @@ class ReadPointHistory {
     DCHECK(read_time);
     VLOG_WITH_PREFIX(4) << "ReadPointHistory::Save read_time_serial_no=" << read_time_serial_no
                         << " read time is " << AsString(read_time);
+    if (read_points_.empty()) {
+      max_ = read_time_serial_no;
+      min_ = read_time_serial_no;
+    } else {
+      min_ = std::min(min_, read_time_serial_no);
+      max_ = std::max(max_, read_time_serial_no);
+    }
     auto ipair = read_points_.try_emplace(read_time_serial_no, std::move(momento));
     if (!ipair.second) {
       // Potentially read time could be set to same read_time_serial_no multiple times.
@@ -1106,15 +1113,25 @@ class ReadPointHistory {
     }
   }
 
-  void Clear() {
-    VLOG_WITH_PREFIX(4) << "ReadTimeHistory::Clear";
-    read_points_.clear();
+  void Cleanup(uint64_t min) {
+    VLOG_WITH_PREFIX(4) << "ReadTimeHistory::Cleanup " << min;
+    if (read_points_.empty()) {
+      return;
+    }
+    if (max_ < min) {
+      VLOG_WITH_PREFIX(4) << "Clearing history [" << min_ << ", " << max_ << "]";
+      read_points_.clear();
+      return;
+    }
+    min_ = std::max(min_, min);
   }
 
  private:
   const PrefixLogger& LogPrefix() const { return prefix_logger_; }
 
   const PrefixLogger prefix_logger_;
+  uint64_t min_ = 0;
+  uint64_t max_ = 0;
   std::unordered_map<uint64_t, ConsistentReadPoint::Momento> read_points_;
 };
 
@@ -2991,9 +3008,8 @@ class PgClientSession::Impl {
       DCHECK(kind == PgClientSessionKind::kPlain);
       auto& session = EnsureSession(kind, deadline);
       RETURN_NOT_OK(CheckPlainSessionPendingUsedReadTime(options));
-      if (txn_serial_no != txn_serial_no_) {
-        read_point_history_.Clear();
-      } else if (read_time_serial_no != read_time_serial_no_) {
+      read_point_history_.Cleanup(options.read_time_serial_no_history_min());
+      if (read_time_serial_no != read_time_serial_no_) {
         auto& read_point = *session->read_point();
         if (read_point_history_.Restore(&read_point, read_time_serial_no)) {
           read_time_serial_no_ = read_time_serial_no;

@@ -536,6 +536,7 @@ extern bool IsInParallelMode(void);
 extern const char *GetCurrentTransactionName(void);
 extern int	YBGetEffectivePggateIsolationLevel();
 extern void YBInitializeTransaction(void);
+extern void YBCommitTransactionIntermediate(void);
 extern void YBResetTransactionReadPoint(void);
 extern void YBRestartReadPoint(void);
 extern void YBCRestartWriteTransaction(void);

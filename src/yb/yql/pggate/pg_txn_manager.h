@@ -28,6 +28,7 @@
 #include "yb/tserver/tserver_fwd.h"
 
 #include "yb/util/enums.h"
+#include "yb/util/scope_exit.h"
 
 #include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
@@ -135,16 +136,24 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   Status CheckPlainTxnRequestedObjectLocks() const;
 
+  auto TemporaryDisableReadTimeHistoryCutoff() {
+    const auto original_value = is_read_time_history_cutoff_disabled_;
+    is_read_time_history_cutoff_disabled_ = true;
+    return ScopeExit(
+        [this, original_value] { is_read_time_history_cutoff_disabled_ = original_value; });
+  }
+
  private:
   class SerialNo {
    public:
     SerialNo();
     SerialNo(uint64_t txn_serial_no, uint64_t read_time_serial_no);
-    void IncTxn();
+    void IncTxn(bool preserve_read_time_history);
     void IncReadTime();
     Status RestoreReadTime(uint64_t read_time_serial_no);
     [[nodiscard]] uint64_t txn() const { return txn_; }
     [[nodiscard]] uint64_t read_time() const { return read_time_; }
+    [[nodiscard]] uint64_t min_read_time() const { return min_read_time_; }
 
    private:
     uint64_t txn_;
@@ -237,6 +246,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   const bool enable_table_locking_;
 
   std::unordered_map<YbcReadPointHandle, uint64_t> explicit_snapshot_read_time_;
+  bool is_read_time_history_cutoff_disabled_{false};
 
 #ifndef NDEBUG
   struct TxnSerialAndSubtxnIdInfo {

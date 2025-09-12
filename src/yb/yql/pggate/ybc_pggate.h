@@ -1040,6 +1040,9 @@ void YBCSetBinaryUpgrade(bool value);
 void YBCRecordTablespaceOid(YbcPgOid db_oid, YbcPgOid table_oid, YbcPgOid tablespace_oid);
 void YBCClearTablespaceOid(YbcPgOid db_oid, YbcPgOid table_oid);
 
+YbcStatus YBCInitTransaction(const YbcPgInitTransactionData *data);
+YbcStatus YBCCommitTransactionIntermediate(const YbcPgInitTransactionData *data);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

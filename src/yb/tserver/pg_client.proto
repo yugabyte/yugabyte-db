@@ -734,6 +734,8 @@ message PgPerformOptionsPB {
   bool ddl_use_regular_transaction_block = 25;
   uint64 txn_serial_no = 4;
   uint64 read_time_serial_no = 20;
+  uint64 read_time_serial_no_history_min = 27;
+
 
   // See ReadHybridTimePB for information about in_txn_limit_ht.
   OptionalFixed64PB in_txn_limit_ht = 5;

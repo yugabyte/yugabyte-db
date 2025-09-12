@@ -248,6 +248,7 @@ YbcPgExplicitRowLockStatus
 YbcPgExpr
 YbcPgFunction
 YbcPgGFlagsAccessor
+YbcPgInitTransactionData
 YbcPgInsertOnConflictKeyInfo
 YbcPgInsertOnConflictKeyState
 YbcPgJwtAuthOptions
