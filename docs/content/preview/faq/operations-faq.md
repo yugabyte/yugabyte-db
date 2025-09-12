@@ -10,10 +10,11 @@ menu:
     weight: 50
 type: docs
 unversioned: true
-showRightNav: false
 ---
 
-## Do YugabyteDB clusters need an external load balancer?
+## General
+
+### Do YugabyteDB clusters need an external load balancer?
 
 For YSQL, you should use a YugabyteDB smart driver. YugabyteDB smart drivers automatically balance connections to the database and eliminate the need for an external load balancer. If you are not using a smart driver, you will need an external load balancer.
 
@@ -29,7 +30,7 @@ For YCQL, YugabyteDB provides automatic load balancing.
 Connection load balancing in YugabyteDB Aeon
 {{</lead>}}
 
-### Using GCP load balancers
+#### Using GCP load balancers
 
 To configure a YugabyteDB universe deployed on GCP to use GCP-provided load balancers, you must set the [--pgsql_proxy_bind_address 0.0.0.0:5433](../../reference/configuration/yb-tserver/#pgsql-proxy-bind-address) and [--cql_proxy_bind_address 0.0.0.0:9042](../../reference/configuration/yb-tserver/#cql-proxy-bind-address) flags.
 
@@ -37,7 +38,7 @@ To configure a YugabyteDB universe deployed on GCP to use GCP-provided load bala
 Edit configuration flags
 {{</lead>}}
 
-## Can write ahead log (WAL) files be cleaned up or reduced in size?
+### Can write ahead log (WAL) files be cleaned up or reduced in size?
 
 For most YugabyteDB deployments, you should not need to adjust the configuration flags for the write ahead log (WAL). While your data size is small and growing, the WAL files may seem to be much larger, but over time, the WAL files should reach their steady state while the data size continues to grow and become larger than the WAL files.
 
@@ -50,7 +51,7 @@ Also, the following yb-tserver configuration flag is a factor in the size of eac
 
 - [`--log_segment_size_mb`](../../reference/configuration/yb-tserver/#log-segment-size-mb) – default is `64`.
 
-## How do I determine the size of a YSQL database?
+### How do I determine the size of a YSQL database?
 
 YugabyteDB doesn't currently support the `pg_database_size` function. Instead, use a custom function based on `pg_table_size` to calculate the size of the database.
 
@@ -105,18 +106,18 @@ You should see output like the following:
 For more information, see [Display YSQL Database size](https://yugabytedb.tips/display-ysql-database-size/)
 {{</lead>}}
 
-## How can I create a user in YSQL with a password that expires after a specific time interval?
+### How can I create a user in YSQL with a password that expires after a specific time interval?
 
 You can create a user with a password that expires after a set time using the `VALID UNTIL` clause. The following example sets the expiration time 4 hours from the current time:
 
 ```plpgsql
 DO $$
 DECLARE time TIMESTAMP := now() + INTERVAL '4 HOURS';
-BEGIN 
+BEGIN
   EXECUTE format(
-    'CREATE USER "John" WITH PASSWORD ''secure_password'' VALID UNTIL ''%s'';', 
+    'CREATE USER "John" WITH PASSWORD ''secure_password'' VALID UNTIL ''%s'';',
     time
-  ); 
+  );
 END
 $$;
 ```
@@ -124,16 +125,74 @@ $$;
 To verify the password expiration time, run the following query:
 
 ```plpgsql
-SELECT now(), valuntil, valuntil - now() AS diff 
-FROM pg_user 
+SELECT now(), valuntil, valuntil - now() AS diff
+FROM pg_user
 WHERE usename = 'John';
 ```
 
 ```output
-             now              |        valuntil        |      diff       
+             now              |        valuntil        |      diff
 ------------------------------+------------------------+----------------
  2025-01-23 17:16:22.82708+00 | 2025-01-23 21:16:21+00 | 03:59:58.17292
 (1 row)
 ```
 
 This confirms that the password for `John` will expire in approximately 4 hours.
+
+## Upgrade and rollback
+
+### What does the rollback feature do?
+
+ the YugabyteDB binaries and enables new features that do not change the data format on disk. This allows the system to run with multiple YSQL catalogs during the monitoring phase before finalization.
+
+{{<lead link="../../yugabyte-platform/manage-deployments/upgrade-software-install/">}}
+For detailed information about upgrading universes, see [Upgrade universes with a new version of YugabyteDB](../../yugabyte-platform/manage-deployments/upgrade-software-install/).
+{{</lead>}}
+
+### How long can a universe run after the upgrade but before the finalize step?
+
+The universe can run as long as needed while the application is being validated. However, it is recommended to finalize within 3 days. Operations like flag changes are disabled during the monitoring phase.
+
+### Are new YugabyteDB features disabled until the upgrade is finalized?
+
+New features that change the data format are disabled until finalization. These are usually rare, and they are not used by customers anyway as they are new features. 90% of code changes are validated from the new binary itself. The aim of rollback capabilities is to catch regressions to existing features and performance and handle them quickly.
+
+### Is it possible to run DDL operations during the upgrade (before finalize)?
+
+DDL operations are allowed for 2.20 to 2024.2 upgrades. DDL operations are only blocked when the PostgreSQL version is upgraded, such as from 2024.2 (PostgreSQL 11) to 2025.1 (PostgreSQL 15).
+
+### What happens if issues are observed in the application after finalization?
+
+YugabyteDB performs extensive testing to ensure there are no issues. For customers that are extremely risk averse, the recommendation is to upgrade and finalize a development environment first. Once the data format on disk has changed, you cannot go back to old binaries—this is a technical limitation of any software that stores data to disk. The only way to rollback after finalization is to restore from a backup that was taken before the finalization (with loss of data).
+
+### How does the rollback feature interact with bidirectional xCluster setups?
+
+xCluster can only replicate from the old version to the new version. The target cluster should be finalized before the source cluster. If the source is finalized before the target, then xCluster automatically pauses itself. This only happens in certain builds that have an external data format change, which 2024.2 has. For bidirectional setups, if writes are only happening on one side, then it's acceptable to upgrade and finalize the other side first and then upgrade the writable side. If both sides are taking writes, then both should be finalized at once; otherwise, replication in the new-to-old direction will not happen.
+
+{{<lead link="../../yugabyte-platform/manage-deployments/xcluster-replication/bidirectional-replication/">}}
+For more information about bidirectional xCluster replication, see [Bidirectional replication using xCluster](../../yugabyte-platform/manage-deployments/xcluster-replication/bidirectional-replication/).
+{{</lead>}}
+
+### Are the xCluster bidirectional upgrade steps the same for both YSQL and YCQL?
+
+Yes, the xCluster bidirectional upgrade steps are the same for both YSQL and YCQL.
+
+### What is the behavior of auto-gflags during the upgrade process?
+
+YugabyteDB Anywhere enables Volatile AutoFlags once all nodes are running the new binary version (before finalize). Only Persisted and External AutoFlags are enabled after finalization.
+
+{{<lead link="https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/auto_flags.md">}}
+For detailed information about AutoFlags, see [AutoFlags](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/auto_flags.md).
+{{</lead>}}
+
+### If not all new features are required immediately, is there a way to selectively enable them post-finalize?
+
+No, there is no way to selectively enable new features post-finalize. All features are enabled together after finalization.
+
+### What happens to custom gflags set at the universe level?
+
+Custom gflags set at the universe level persist across the upgrade and finalize steps. User overrides always take precedence over AutoFlags. However, customers are never recommended to modify AutoFlags directly.
+
+{{<lead link="../../yugabyte-platform/manage-deployments/edit-config-flags/">}}
+For information about editing configuration flags, see [Edit configuration flags](../../yugabyte-platform/manage-deployments/edit-config-flags/).
+{{</lead>}}

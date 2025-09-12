@@ -11,7 +11,6 @@ menu:
     weight: 40
 type: docs
 unversioned: true
-showRightNav: false
 ---
 
 ### What is a smart driver?
