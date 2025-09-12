@@ -1,1 +1,0 @@
-![US East Full-Text Search Library](/images/tutorials/build-and-learn/chapter4-full-text-search-add-movie.png)
