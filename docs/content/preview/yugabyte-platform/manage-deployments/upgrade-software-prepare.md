@@ -44,7 +44,7 @@ Transparent hugepages (THP) should be enabled on nodes for optimal performance. 
 
 - Point-in-time-restore (PITR)
 
-  - After finalizing an upgrade, snapshots from the previous version can no longer be used for PITR.
+  - If you have PITR enabled, you must disable it before performing an upgrade. Re-enable it only after the upgrade is either finalized or rolled back.
   - After the upgrade, PITR cannot be done to a time before the upgrade.
 
 ## Review major changes in previous YugabyteDB releases
