@@ -7,7 +7,7 @@ headcontent: Scale universes horizontally and vertically
 aliases:
   - /stable/manage/enterprise-edition/edit-universe/
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     identifier: edit-universe
     parent: manage-deployments
     weight: 30

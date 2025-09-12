@@ -5,7 +5,7 @@ linkTitle: Live Queries dashboard
 description: Live Queries dashboard
 headcontent: View live queries running on your universe
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     parent: alerts-monitoring
     identifier: live-queries-dashboard
     weight: 20

@@ -5,7 +5,7 @@ linkTitle: Patch Linux OS
 description: Apply operating system upgrades and patches to universe nodes.
 headcontent: Apply operating system upgrades and patches to universe nodes
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     identifier: upgrade-nodes-1-csp
     parent: manage-deployments
     weight: 10

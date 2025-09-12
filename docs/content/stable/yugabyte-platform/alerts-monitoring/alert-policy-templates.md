@@ -7,7 +7,7 @@ aliases:
   - /stable/yugabyte-platform/configure-yugabyte-platform/alert-policy-templates
   - /stable/yugabyteplatform/alerts-monitoring/alert-policy-templates/
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     identifier: alert-policy-templates
     parent: alert
     weight: 40

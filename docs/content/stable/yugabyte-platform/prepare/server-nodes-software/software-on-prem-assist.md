@@ -5,7 +5,7 @@ linkTitle: Legacy provisioning
 description: How to provision on-premises provider nodes using legacy assisted manual method.
 headContent: How to meet the software prerequisites for database nodes
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     identifier: software-on-prem-3-assist
     parent: software-on-prem
     weight: 10

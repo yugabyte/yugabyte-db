@@ -7,7 +7,7 @@ headcontent: Install YugabyteDB Anywhere to begin creating and managing deployme
 aliases:
   - /stable/yugabyte-platform/install-yugabyte-platform/install-replicated/
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: install-yugabyte-platform
 weight: 610

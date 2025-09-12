@@ -4,7 +4,7 @@ headerTitle: Migrate from Replicated
 linkTitle: Migrate from Replicated
 description: Migrate from Replicated.
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     identifier: migrate-replicated
     parent: install-yugabyte-platform
     weight: 50

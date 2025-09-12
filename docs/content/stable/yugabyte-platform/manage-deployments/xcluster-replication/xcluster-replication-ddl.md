@@ -5,7 +5,7 @@ linkTitle: Tables and indexes
 description: Manage tables and indexes in universes in xCluster Replication
 headContent: Add and remove tables and indexes in universes with xCluster Replication
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     parent: xcluster-replication
     identifier: xcluster-replication-ddl
     weight: 30

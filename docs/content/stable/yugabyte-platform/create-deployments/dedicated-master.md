@@ -4,7 +4,7 @@ headerTitle: Place YB-Masters on dedicated nodes
 linkTitle: Dedicated YB-Masters
 description: Use YugabyteDB Anywhere to create a universe with dedicated YB-Master nodes.
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     identifier: dedicated-master
     parent: create-deployments
     weight: 60

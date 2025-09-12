@@ -9,7 +9,7 @@ aliases:
   - /stable/yugabyte-platform/install-yugabyte-platform/install-software/default/
 
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     parent: install-yugabyte-platform
     identifier: install-software-1-installer
     weight: 10

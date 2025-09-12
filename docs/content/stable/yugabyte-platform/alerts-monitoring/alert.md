@@ -7,7 +7,7 @@ headcontent: Set alerts for activity in your account
 aliases:
   - /stable/yugabyte-platform/alert
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     identifier: alert
     parent: alerts-monitoring
     weight: 10

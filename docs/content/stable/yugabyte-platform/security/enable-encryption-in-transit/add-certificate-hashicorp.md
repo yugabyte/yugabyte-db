@@ -5,7 +5,7 @@ linkTitle: Add certificates
 description: Add Hashicorp Vault certificates to YugabyteDB Anywhere.
 headcontent: Use your own certificates for encryption in transit
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     parent: enable-encryption-in-transit
     identifier: add-certificate-3-hashicorp
     weight: 20

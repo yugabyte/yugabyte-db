@@ -5,7 +5,7 @@ linkTitle: Tables and indexes
 description: Manage tables and indexes in universes with disaster recovery
 headContent: Add and remove tables and indexes in universes with disaster recovery
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     parent: disaster-recovery
     identifier: disaster-recovery-tables
     weight: 50

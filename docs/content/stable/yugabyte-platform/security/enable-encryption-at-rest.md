@@ -5,7 +5,7 @@ linkTitle: Encryption at rest
 description: Use encryption at rest in YugabyteDB Anywhere
 headcontent: Encrypt your universes
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     parent: security
     identifier: enable-encryption-at-rest
     weight: 45

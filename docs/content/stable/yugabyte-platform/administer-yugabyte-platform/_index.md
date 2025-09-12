@@ -7,7 +7,7 @@ headcontent: Manage your YugabyteDB Anywhere installation
 aliases:
   - /stable/yugabyte-platform/administer-yp
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: administer-yugabyte-platform
     weight: 690

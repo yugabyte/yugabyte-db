@@ -5,7 +5,7 @@ linkTitle: Setup
 description: Setting up Disaster Recovery for a universe
 headContent: Start replication from your primary to your replica
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     parent: disaster-recovery
     identifier: disaster-recovery-setup
     weight: 10

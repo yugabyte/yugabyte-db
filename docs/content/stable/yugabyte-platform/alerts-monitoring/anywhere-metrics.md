@@ -5,7 +5,7 @@ linkTitle: Performance metrics
 description: View time series charts of universe metrics.
 headcontent: Evaluate performance at universe level with time series charts
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     parent: alerts-monitoring
     identifier: anywhere-metrics
     weight: 15

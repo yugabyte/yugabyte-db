@@ -5,7 +5,7 @@ linkTitle: Create universes
 description: Create YugabyteDB universe deployments.
 headcontent: Deploy to the public cloud, a private data center, or Kubernetes
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: create-deployments
     weight: 630

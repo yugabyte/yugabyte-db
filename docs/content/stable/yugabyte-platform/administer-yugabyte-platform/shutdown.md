@@ -4,7 +4,7 @@ headerTitle: Shut down YugabyteDB Anywhere
 linkTitle: Shut down
 description: Shut YugabyteDB Anywhere down gracefully to perform maintenance.
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     identifier: shutdown
     parent: administer-yugabyte-platform
     weight: 60

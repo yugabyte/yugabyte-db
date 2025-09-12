@@ -5,7 +5,7 @@ linkTitle: Read replica cluster
 description: Use YugabyteDB Anywhere to create a read replica cluster.
 headcontent: Reduce read latencies in remote regions
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     identifier: create-read-replica-cluster
     parent: create-deployments
     weight: 40

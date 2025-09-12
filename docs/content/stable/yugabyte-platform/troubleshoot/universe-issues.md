@@ -7,7 +7,7 @@ aliases:
   - /troubleshoot/enterprise-edition/universes/
   - /stable/troubleshoot/enterprise-edition/universes/
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     identifier: universe-issues
     parent: troubleshoot-yp
     weight: 20

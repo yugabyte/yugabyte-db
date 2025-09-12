@@ -7,7 +7,7 @@ headcontent: Measure query performance against service level objectives
 aliases:
   - /stable/yugabyteplatform/alerts-monitoring/latency-histogram/
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     parent: alerts-monitoring
     identifier: latency-histogram
     weight: 60

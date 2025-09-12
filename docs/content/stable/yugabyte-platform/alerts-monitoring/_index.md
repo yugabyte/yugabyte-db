@@ -5,7 +5,7 @@ linkTitle: Alerts and monitoring
 description: Use YugabyteDB Anywhere for alerts and monitoring of YugabyteDB universe data.
 headcontent: Review universe alerts and metrics
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: alerts-monitoring
     params:

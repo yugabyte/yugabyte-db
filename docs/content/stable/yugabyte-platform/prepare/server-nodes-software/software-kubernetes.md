@@ -5,7 +5,7 @@ linkTitle: Kubernetes provider
 description: Software requirements for Kubernetes provider cluster.
 headContent: Prepare a Kubernetes cluster for YugabyteDB deployments
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     identifier: software-kubernetes
     parent: server-nodes-software
     weight: 30

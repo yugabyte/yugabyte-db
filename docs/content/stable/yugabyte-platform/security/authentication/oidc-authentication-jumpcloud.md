@@ -7,7 +7,7 @@ headcontent: Use JumpCloud to authenticate accounts for database access
 tags:
   feature: early-access
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     identifier: oidc-authentication-jumpcloud
     parent: authentication
     weight: 30

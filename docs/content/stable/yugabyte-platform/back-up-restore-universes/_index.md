@@ -10,7 +10,7 @@ aliases:
   - /stable/yugabyte-platform/manage/backup-restore-data
   - /stable/yugabyte-platform/back-up-restore-universes/back-up-universe-data/
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: back-up-restore-universes
 weight: 650

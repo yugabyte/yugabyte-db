@@ -5,7 +5,7 @@ linkTitle: Hardware requirements
 description: Hardware prerequisites for database nodes.
 headContent: CPU, memory, disk, and instance types required for YugabyteDB
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     identifier: server-nodes-hardware
     parent: server-nodes
     weight: 10

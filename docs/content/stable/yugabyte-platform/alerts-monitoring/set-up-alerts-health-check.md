@@ -6,7 +6,7 @@ description: Configure alerts and health check
 aliases:
   - /stable/yugabyte-platform/configure-yugabyte-platform/set-up-alerts-health-check/
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     identifier: set-up-alerts-health-check
     parent: alert
     weight: 15

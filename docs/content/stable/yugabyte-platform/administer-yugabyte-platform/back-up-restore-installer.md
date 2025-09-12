@@ -5,7 +5,7 @@ description: Back up and restore YugabyteDB Anywhere using YBA Installer.
 headcontent: Back up your YugabyteDB Anywhere installation
 linkTitle: Back up YugabyteDB Anywhere
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     identifier: back-up-restore-installer
     parent: administer-yugabyte-platform
     weight: 30

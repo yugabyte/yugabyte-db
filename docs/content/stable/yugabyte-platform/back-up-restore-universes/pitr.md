@@ -5,7 +5,7 @@ linkTitle: Point-in-time recovery
 description: Using Point-in-time recovery in YugabyteDB Anywhere
 headContent: Restore to a point in time
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     parent: back-up-restore-universes
     identifier: pitr
     weight: 50

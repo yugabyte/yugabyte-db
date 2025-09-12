@@ -7,7 +7,7 @@ headContent: For deploying universes on GCP
 aliases:
   - /stable/deploy/enterprise-edition/configure-cloud-providers/gcp
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     identifier: set-up-cloud-provider-2-gcp
     parent: configure-yugabyte-platform
     weight: 20
