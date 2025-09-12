@@ -81,7 +81,7 @@ python3 -V
 # output: Python 3.11.0
 ```
 
-#### Permissions
+### Permissions
 
 You need sudo root permissions for installation for production use. (Without sudo root permissions, you can install YBA for non-production use.)
 
