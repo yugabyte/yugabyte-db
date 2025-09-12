@@ -150,4 +150,14 @@
 #include "sources/frontend.h"
 #include "sources/backend.h"
 
+#ifdef YB_GOOGLE_TCMALLOC
+
+/* TCMalloc stats function declaration */
+char *getTCMallocStats();
+
+/* Set TCMalloc sample period */
+void setTCMallocSamplePeriod(uint64_t sample_period_bytes);
+
+#endif /* YB_GOOGLE_TCMALLOC */
+
 #endif /* ODYSSEY_H */
