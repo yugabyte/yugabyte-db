@@ -2898,7 +2898,12 @@ TEST_F(PgCatalogVersionTest, InvalMessageYsqlUpgradeCommit3) {
   // The migrate sql is run under YSQL upgrade mode. Therefore its COMMIT is
   // considered as a DDL. There are two COMMIT statements. The first COMMIT
   // has got invalidation messages so it causes catalog version to increment
-  // from 1 to 2. Then the DROP VIEW statement causes catalog version to
+  // from 1 to 2.
+  //
+  // For the second transaction block:
+  // If Transactional DDL is enabled: the COMMIT is counted as a DDL and causes
+  // catalog version to increment from 2 to 3.
+  // Otherwise, the DROP VIEW statement causes catalog version to
   // increment from 2 to 3, the next CREATE OR REPLACE VIEW statement causes
   // catalog version to increment from 3 to 4. The last COMMIT statement got
   // 1 invalidation messages because even though there is no catalog table
@@ -2907,10 +2912,10 @@ TEST_F(PgCatalogVersionTest, InvalMessageYsqlUpgradeCommit3) {
   // captured by the call itself. Therefore the last COMMIT still causes
   // catalog version to increment.
   v = ASSERT_RESULT(GetCatalogVersion(&conn_yugabyte));
-  ASSERT_EQ(v, 5);
+  ASSERT_EQ(v, IsTransactionalDdlEnabled() ? 3 : 5);
   const auto count = ASSERT_RESULT(conn_yugabyte.FetchRow<PGUint64>(
       "SELECT COUNT(*) FROM pg_yb_invalidation_messages"));
-  ASSERT_EQ(count, 4);
+  ASSERT_EQ(count, IsTransactionalDdlEnabled() ? 2 : 4);
   auto query = "SELECT encode(messages, 'hex') FROM pg_yb_invalidation_messages "
                "WHERE current_version=$0"s;
 
@@ -2920,15 +2925,17 @@ TEST_F(PgCatalogVersionTest, InvalMessageYsqlUpgradeCommit3) {
 
   // version 3 messages.
   auto result3 = ASSERT_RESULT(conn_yugabyte.FetchAllAsString(Format(query, 3)));
-  ASSERT_EQ(result3.size(), 1248U);
+  ASSERT_EQ(result3.size(), IsTransactionalDdlEnabled() ? 2544U : 1248U);
 
-  // version 4 messages.
-  auto result4 = ASSERT_RESULT(conn_yugabyte.FetchAllAsString(Format(query, 4)));
-  ASSERT_EQ(result4.size(), 1344U);
+  if (!IsTransactionalDdlEnabled()) {
+    // version 4 messages.
+    auto result4 = ASSERT_RESULT(conn_yugabyte.FetchAllAsString(Format(query, 4)));
+    ASSERT_EQ(result4.size(), 1344U);
 
-  // version 5 messages.
-  auto result5 = ASSERT_RESULT(conn_yugabyte.FetchAllAsString(Format(query, 5)));
-  ASSERT_EQ(result5.size(), 48U);
+    // version 5 messages.
+    auto result5 = ASSERT_RESULT(conn_yugabyte.FetchAllAsString(Format(query, 5)));
+    ASSERT_EQ(result5.size(), 48U);
+  }
 }
 
 TEST_F(PgCatalogVersionTest, InvalMessageYsqlUpgradeCommit4) {

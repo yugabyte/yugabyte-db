@@ -3993,12 +3993,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 				 * it is equivalent to a ROLLBACK statement.
 				 */
 					IsTransactionState() &&
-					YbIsInvalidationMessageEnabled() &&
-				/*
-				 * When we have ddl transaction block support, we do not need
-				 * this special case code for YSQL upgrade.
-				 */
-					!YBIsDdlTransactionBlockEnabled())
+					YbIsInvalidationMessageEnabled())
 				{
 					/*
 					 * We assume YSQL upgrade only makes simple use of COMMIT
