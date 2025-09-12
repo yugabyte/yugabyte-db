@@ -25,6 +25,8 @@ If you are running YugabyteDB Anywhere on a [deprecated OS](../../../reference/c
 
 YugabyteDB Anywhere v25.1 and later requires Python v3.10-3.11. If you are running YugabyteDB Anywhere on a system with Python earlier than 3.10, you will need to update Python on your system before you can upgrade YugabyteDB Anywhere to v25.1 or later.
 
+In addition, both python and python3 must symbolically link to Python 3. Refer to [Prerequisites to deploy YBA on a VM](../../prepare/server-yba/).
+
 ## cron-based universes
 
 cron and root-level systemd have been deprecated in favor of user-level systemd with node agent for management of universe nodes.
