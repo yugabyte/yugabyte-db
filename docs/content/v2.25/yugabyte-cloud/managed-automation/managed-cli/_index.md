@@ -5,7 +5,7 @@ linkTitle: ybm CLI
 description: Use YugabyteDB Aeon CLI to create and manage YugabyteDB clusters.
 headcontent: Manage cluster and account resources from the command line
 menu:
-  v225_yugabyte-cloud:
+  v2.25_yugabyte-cloud:
     identifier: managed-cli
     parent: managed-automation
     weight: 50

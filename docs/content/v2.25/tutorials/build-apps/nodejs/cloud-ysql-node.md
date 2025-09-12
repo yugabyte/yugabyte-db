@@ -4,7 +4,7 @@ headerTitle: Build a Node.js application
 description: Build a simple Node.js application using the driver and using the YSQL API to connect to and interact with a YugabyteDB Aeon cluster.
 headContent: "Client driver: node-postgres"
 menu:
-  v225_tutorials:
+  v2.25_tutorials:
     parent: build-apps
     name: Node.js
     identifier: cloud-node

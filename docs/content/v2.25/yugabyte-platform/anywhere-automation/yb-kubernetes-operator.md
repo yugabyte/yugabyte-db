@@ -7,7 +7,7 @@ headcontent: Install YugabyteDB Anywhere and create universes using YugabyteDB K
 tags:
   feature: early-access
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     parent: anywhere-automation
     identifier: yb-kubernetes-operator
     weight: 100

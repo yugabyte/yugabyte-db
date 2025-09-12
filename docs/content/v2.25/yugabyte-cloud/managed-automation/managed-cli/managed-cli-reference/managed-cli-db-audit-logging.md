@@ -5,7 +5,7 @@ linkTitle: cluster db-audit-logging
 description: YugabyteDB Aeon CLI reference Cluster Database Audit Logging Resource.
 headcontent: Manage cluster database audit logging
 menu:
-  v225_yugabyte-cloud:
+  v2.25_yugabyte-cloud:
     identifier: managed-cli-db-audit-logging
     parent: managed-cli-reference
     weight: 20

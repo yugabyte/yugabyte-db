@@ -4,7 +4,7 @@ headerTitle: UPDATE
 linkTitle: UPDATE
 description: Use the UPDATE statement to update one or more column values for a row in table.
 menu:
-  v225_api:
+  v2.25_api:
     parent: api-cassandra
     weight: 1320
 aliases:

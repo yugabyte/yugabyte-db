@@ -9,7 +9,7 @@ aliases:
   - /preview/troubleshoot/enterprise-edition/
   - /preview/troubleshoot/yugabyte-platform/
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: troubleshoot-yp
     weight: 710

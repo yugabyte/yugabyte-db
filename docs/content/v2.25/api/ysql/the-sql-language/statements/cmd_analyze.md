@@ -6,7 +6,7 @@ description: Collect statistics about database tables with the ANALYZE statement
 tags:
   feature: early-access
 menu:
-  v225_api:
+  v2.25_api:
     identifier: cmd_analyze
     parent: statements
 type: docs

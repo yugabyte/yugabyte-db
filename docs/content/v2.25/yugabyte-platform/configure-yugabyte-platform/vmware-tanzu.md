@@ -8,7 +8,7 @@ aliases:
   - /deploy/pivotal-cloud-foundry/
   - /preview/deploy/pivotal-cloud-foundry/
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     identifier: set-up-kubernetes-provider-2
     parent: configure-yugabyte-platform
     weight: 30

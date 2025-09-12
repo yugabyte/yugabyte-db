@@ -7,7 +7,7 @@ headContent: For deploying universes on Azure
 aliases:
   - /preview/deploy/enterprise-edition/configure-cloud-providers/azure
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     identifier: set-up-cloud-provider-3-azure
     parent: configure-yugabyte-platform
     weight: 20

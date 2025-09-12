@@ -3,7 +3,7 @@ title: Apache Flink
 linkTitle: Apache Flink
 description: Apache Flink
 menu:
-  v225_integrations:
+  v2.25_integrations:
     identifier: apache-flink
     parent: data-integration
     weight: 571

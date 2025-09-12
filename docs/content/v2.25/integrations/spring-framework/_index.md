@@ -7,7 +7,7 @@ headcontent: Using Spring Framework with YugabyteDB
 aliases:
   - /preview/integrations/spring/
 menu:
-  v225_integrations:
+  v2.25_integrations:
     identifier: spring-framework
     parent: application-frameworks
     weight: 571

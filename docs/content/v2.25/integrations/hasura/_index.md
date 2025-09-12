@@ -5,7 +5,7 @@ linkTitle: Hasura
 description: Using Hasura with YugabyteDB
 headcontent: Using Hasura with YugabyteDB
 menu:
-  v225_integrations:
+  v2.25_integrations:
     identifier: hasura
     parent: application-frameworks
     weight: 571

@@ -4,7 +4,7 @@ headerTitle: Create function
 linkTitle: CREATE FUNCTION
 description: Use the CREATE FUNCTION statement to create a function in a database.
 menu:
-  v225_api:
+  v2.25_api:
     identifier: ddl_create_function
     parent: statements
 type: docs

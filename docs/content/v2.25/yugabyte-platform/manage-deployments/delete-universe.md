@@ -6,7 +6,7 @@ description: Use YugabyteDB Anywhere to pause, resume, and delete a universe.
 aliases:
   - /preview/manage/enterprise-edition/delete-universe/
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     identifier: delete-universe
     parent: manage-deployments
     weight: 50

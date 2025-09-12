@@ -8,7 +8,7 @@ aliases:
   - /preview/yugabyte-platform/manage-deployments/platform-high-availability/
   - /preview/yugabyte-platform/manage-deployments/high-availability/
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     identifier: platform-high-availability
     parent: administer-yugabyte-platform
     weight: 40

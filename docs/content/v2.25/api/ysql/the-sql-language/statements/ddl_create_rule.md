@@ -4,7 +4,7 @@ headerTitle: CREATE RULE
 linkTitle: CREATE RULE
 description: Use the CREATE RULE statement to create a rule.
 menu:
-  v225_api:
+  v2.25_api:
     identifier: ddl_create_rule
     parent: statements
 aliases:

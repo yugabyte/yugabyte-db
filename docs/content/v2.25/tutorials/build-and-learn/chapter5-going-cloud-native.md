@@ -4,7 +4,7 @@ headerTitle: "Chapter 5: Offloading operations with YugabyteDB Aeon"
 linkTitle: Offloading operations
 description: Offloading management and maintenance of the database clusters with YugabyteDB Aeon, fully managed databases-as-a-service
 menu:
-  v225_tutorials:
+  v2.25_tutorials:
     identifier: chapter5-offloading-operations
     parent: tutorials-build-and-learn
     weight: 6

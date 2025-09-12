@@ -5,7 +5,7 @@ linkTitle: xCluster Replication
 description: Enable xCluster Replication between universes
 headContent: Active universe with standby using xCluster deployment
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     parent: manage-deployments
     identifier: xcluster-replication
     weight: 90

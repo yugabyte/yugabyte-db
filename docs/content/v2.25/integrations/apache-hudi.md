@@ -3,7 +3,7 @@ title: Apache Hudi
 linkTitle: Apache Hudi
 description: Use Apache Hudi with YSQL API
 menu:
-  v225_integrations:
+  v2.25_integrations:
     identifier: ysql-hudi
     parent: integrations-other
     weight: 571

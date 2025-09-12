@@ -3,7 +3,7 @@ title: Mirantis Kubernetes Engine
 linkTitle: Mirantis MKE
 description: Mirantis
 menu:
-  v225_integrations:
+  v2.25_integrations:
     identifier: mirantis
     parent: integrations-other
     weight: 571

@@ -5,7 +5,7 @@ linkTitle: Automation
 description: Automation tools for YugabyteDB Anywhere.
 headcontent: Manage YugabyteDB Anywhere accounts and deployments using automation
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: anywhere-automation
     weight: 680

@@ -6,7 +6,7 @@ description: Compare TiDB database with YugabyteDB.
 aliases:
   - /comparisons/tidb/
 menu:
-  v225_faq:
+  v2.25_faq:
     parent: comparisons
     identifier: comparisons-tidb
     weight: 1076

@@ -7,7 +7,7 @@ headContent: For deploying universes on your private cloud
 aliases:
   - /preview/deploy/enterprise-edition/configure-cloud-providers/onprem
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     identifier: set-up-on-premises
     parent: configure-yugabyte-platform
     weight: 10

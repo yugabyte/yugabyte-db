@@ -7,7 +7,7 @@ description: Run the steps to ensure a successful offline migration using Yugaby
 aliases:
   - /preview/yugabyte-voyager/migrate-steps/
 menu:
-  v225_yugabyte-voyager:
+  v2.25_yugabyte-voyager:
     identifier: migrate-offline
     parent: migration-types
     weight: 102

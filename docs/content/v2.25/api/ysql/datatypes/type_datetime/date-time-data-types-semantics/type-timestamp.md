@@ -4,7 +4,7 @@ headerTitle: The plain timestamp and timestamptz data types
 linkTitle: Plain timestamp and timestamptz
 description: The semantics of the plain timestamp and timestamptz data types. [YSQL]
 menu:
-  v225_api:
+  v2.25_api:
     identifier: type-timestamp
     parent: date-time-data-types-semantics
     weight: 30

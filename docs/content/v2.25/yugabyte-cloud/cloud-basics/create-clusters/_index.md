@@ -4,7 +4,7 @@ linkTitle: Create your cluster
 description: Create clusters in YugabyteDB Aeon.
 headcontent: Create a cluster in YugabyteDB Aeon
 menu:
-  v225_yugabyte-cloud:
+  v2.25_yugabyte-cloud:
     identifier: create-clusters
     parent: cloud-basics
     weight: 25

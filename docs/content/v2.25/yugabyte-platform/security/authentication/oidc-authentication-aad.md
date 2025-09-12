@@ -7,7 +7,7 @@ headcontent: Use Azure AD to authenticate accounts for database access
 tags:
   feature: early-access
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     identifier: oidc-authentication-platform
     parent: authentication
     weight: 20

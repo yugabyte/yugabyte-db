@@ -7,7 +7,7 @@ aliases:
   - /preview/tools/dbeaver
   - /preview/tools/dbeaver-ysql/
 menu:
-  v225_integrations:
+  v2.25_integrations:
     identifier: dbeaver-1-ysql
     parent: tools
     weight: 50

@@ -3,7 +3,7 @@ title: YB Voyager diagnostics reporting
 linkTitle: Diagnostics reporting
 description: Sending diagnostics information to Yugabyte.
 menu:
-  v225_yugabyte-voyager:
+  v2.25_yugabyte-voyager:
     identifier: diagnostics-report
     parent: reference-voyager
     weight: 105

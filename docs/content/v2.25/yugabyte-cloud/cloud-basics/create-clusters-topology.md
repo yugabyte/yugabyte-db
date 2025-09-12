@@ -4,7 +4,7 @@ linkTitle: Choose a topology
 description: Overview of topologies available in YugabyteDB Aeon.
 headcontent: Deployment and replication options in YugabyteDB Aeon
 menu:
-  v225_yugabyte-cloud:
+  v2.25_yugabyte-cloud:
     identifier: create-clusters-topology
     parent: cloud-basics
     weight: 15

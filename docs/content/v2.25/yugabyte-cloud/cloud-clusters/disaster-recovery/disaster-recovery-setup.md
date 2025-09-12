@@ -5,7 +5,7 @@ linkTitle: Setup
 description: Setting up Disaster Recovery for a Aeon cluster
 headContent: Start replication from your source to your target
 menu:
-  v225_yugabyte-cloud:
+  v2.25_yugabyte-cloud:
     parent: disaster-recovery-aeon
     identifier: disaster-recovery-setup-aeon
     weight: 10

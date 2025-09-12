@@ -3,7 +3,7 @@ title: Nutanix AHV
 linkTitle: Nutanix AHV
 description: Use Nutanix AHV with YugabyteDB and YugabyteDB Anywhere
 menu:
-  v225_integrations:
+  v2.25_integrations:
     identifier: nutanix-ahv
     parent: integrations-platforms
     weight: 571

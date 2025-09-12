@@ -5,7 +5,7 @@ linkTitle: YSQL
 description: Learn how to build a Spark application using Spark SQL with YugabyteDB YSQL
 aliases:
 menu:
-  v225_integrations:
+  v2.25_integrations:
     identifier: apache-spark-4-sql
     parent: apache-spark
     weight: 579

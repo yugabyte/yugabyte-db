@@ -3,7 +3,7 @@ title: Dataedo
 linkTitle: Dataedo
 description: Use Dataedo with YSQL API
 menu:
-  v225_integrations:
+  v2.25_integrations:
     identifier: dataedo
     parent: data-discovery
     weight: 571

@@ -5,7 +5,7 @@ linkTitle: Legacy assisted manual
 description: Provision the on-premises nodes manually using a script.
 headContent: Manually provision on-premises nodes using the legacy assisted manual provisioning script
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     identifier: on-premises-script
     parent: on-premises-nodes
     weight: 20

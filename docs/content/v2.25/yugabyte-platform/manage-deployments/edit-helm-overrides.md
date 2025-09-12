@@ -4,7 +4,7 @@ headerTitle: Edit Kubernetes overrides
 linkTitle: Edit Kubernetes overrides
 description: Edit Kubernetes overrides for a universe.
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     identifier: edit-helm-overrides
     parent: edit-universe
     weight: 90

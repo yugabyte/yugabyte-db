@@ -4,7 +4,7 @@ headerTitle: SQL Workbench/J
 linkTitle: SQL Workbench/J
 description: Query distributed SQL databases using SQL Workbench/J.
 menu:
-  v225_integrations:
+  v2.25_integrations:
     identifier: sql-workbench
     parent: tools
     weight: 90

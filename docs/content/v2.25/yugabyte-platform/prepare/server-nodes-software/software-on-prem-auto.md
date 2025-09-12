@@ -5,7 +5,7 @@ linkTitle: Legacy provisioning
 description: How to provision on-premises provider nodes using legacy automatic method.
 headContent: How to meet the software prerequisites for database nodes
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     identifier: software-on-prem-2-auto
     parent: software-on-prem
     weight: 10

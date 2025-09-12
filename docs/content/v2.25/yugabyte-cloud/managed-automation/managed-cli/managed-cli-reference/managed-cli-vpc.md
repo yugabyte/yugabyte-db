@@ -5,7 +5,7 @@ linkTitle: vpc
 description: YugabyteDB Aeon CLI reference VPC resource.
 headcontent: Manage account VPCs
 menu:
-  v225_yugabyte-cloud:
+  v2.25_yugabyte-cloud:
     identifier: managed-cli-vpc
     parent: managed-cli-reference
     weight: 20

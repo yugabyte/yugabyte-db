@@ -4,7 +4,7 @@ headerTitle:
 linkTitle: Provider configuration issues
 description: Troubleshoot issues encountered when creating provider configurations for YugabyteDB Anywhere.
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     identifier: cloud-provider-config-issues
     parent: troubleshoot-yp
     weight: 30

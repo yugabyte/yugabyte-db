@@ -5,7 +5,7 @@ linkTitle: Add certificates
 description: Add CA-signed certificates to YugabyteDB Anywhere.
 headcontent: Use your own certificates for encryption in transit
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     parent: enable-encryption-in-transit
     identifier: add-certificate-2-ca
     weight: 20

@@ -4,7 +4,7 @@ headerTitle: INSERT
 linkTitle: INSERT
 description: Use the INSERT statement to add a row to a specified table.
 menu:
-  v225_api:
+  v2.25_api:
     parent: api-cassandra
     weight: 1300
 aliases:

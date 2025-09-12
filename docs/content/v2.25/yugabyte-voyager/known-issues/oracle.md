@@ -4,7 +4,7 @@ linkTitle: Oracle
 headcontent: What to watch out for when migrating data from Oracle
 description: Review limitations and suggested workarounds for migrating data from Oracle.
 menu:
-  v225_yugabyte-voyager:
+  v2.25_yugabyte-voyager:
     identifier: oracle-issues
     parent: known-issues
     weight: 102

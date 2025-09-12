@@ -5,7 +5,7 @@ linkTitle: Secure clusters
 description: Secure clusters in YugabyteDB Aeon.
 headcontent: Configure the security features of your YugabyteDB Aeon clusters
 menu:
-  v225_yugabyte-cloud:
+  v2.25_yugabyte-cloud:
     parent: yugabytedb-managed
     identifier: cloud-secure-clusters
 weight: 30

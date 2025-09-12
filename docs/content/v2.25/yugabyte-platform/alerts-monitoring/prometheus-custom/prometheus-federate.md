@@ -5,7 +5,7 @@ linkTitle: Federate metrics
 description: Scrape metrics from the YugabyteDB Anywhere Prometheus server
 headcontent: Scrape metrics from the YugabyteDB Anywhere Prometheus server
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     parent: prometheus-custom
     identifier: prometheus-federate
     weight: 10

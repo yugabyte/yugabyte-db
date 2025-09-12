@@ -5,7 +5,7 @@ linkTitle: Installation overview
 description: YugabyteDB Anywhere installation overview.
 headcontent: What you need to know about deploying YugabyteDB Anywhere
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     identifier: yba-overview-install
     parent: yba-overview
     weight: 600

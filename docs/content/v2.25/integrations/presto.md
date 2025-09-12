@@ -3,7 +3,7 @@ title: Presto
 linkTitle: Presto
 description: Presto
 menu:
-  v225_integrations:
+  v2.25_integrations:
     identifier: presto
     parent: data-discovery
     weight: 571

@@ -4,7 +4,7 @@ headerTitle: Caspio
 linkTitle: Caspio
 description: Use Caspio to work with distributed SQL databases in YugabyteDB.
 menu:
-  v225_integrations:
+  v2.25_integrations:
     identifier: caspio
     parent: development-platforms
     weight: 200

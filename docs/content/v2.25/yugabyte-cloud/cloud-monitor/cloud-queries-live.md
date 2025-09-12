@@ -5,7 +5,7 @@ linkTitle: Live queries
 description: View live queries running on your cluster.
 headcontent: View live queries running on your cluster
 menu:
-  v225_yugabyte-cloud:
+  v2.25_yugabyte-cloud:
     identifier: cloud-queries-live
     parent: cloud-monitor
     weight: 200

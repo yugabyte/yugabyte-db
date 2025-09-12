@@ -4,7 +4,7 @@ linkTitle: Spring Data JPA
 description: Spring Data JPA
 aliases:
 menu:
-  v225_integrations:
+  v2.25_integrations:
     identifier: spring-JPA
     parent: spring-framework
     weight: 579

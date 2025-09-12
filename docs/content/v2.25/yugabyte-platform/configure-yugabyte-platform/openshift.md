@@ -7,7 +7,7 @@ headContent: For deploying universes on Kubernetes
 aliases:
   - /preview/deploy/enterprise-edition/configure-cloud-providers/openshift
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     identifier: set-up-kubernetes-provider-3
     parent: configure-yugabyte-platform
     weight: 30

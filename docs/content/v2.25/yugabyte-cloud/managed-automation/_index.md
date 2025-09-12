@@ -5,7 +5,7 @@ linkTitle: Automation
 description: Automation tools for YugabyteDB Aeon.
 headcontent: Manage YugabyteDB Aeon accounts and clusters using automation
 menu:
-  v225_yugabyte-cloud:
+  v2.25_yugabyte-cloud:
     parent: yugabytedb-managed
     identifier: managed-automation
     weight: 550

@@ -6,7 +6,7 @@ description: Checks if the given index is consistent with its base relation.
 tags:
   feature: early-access
 menu:
-  v225_api:
+  v2.25_api:
     identifier: api-ysql-exprs-yb_index_check
     parent: api-ysql-exprs
     weight: 9

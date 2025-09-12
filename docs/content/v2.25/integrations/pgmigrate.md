@@ -4,7 +4,7 @@ headerTitle: PGmigrate
 linkTitle: PGmigrate
 description: Use PGmigrate to work with distributed SQL databases in YugabyteDB.
 menu:
-  v225_integrations:
+  v2.25_integrations:
     identifier: pgmigrate
     parent: data-migration
     weight: 571

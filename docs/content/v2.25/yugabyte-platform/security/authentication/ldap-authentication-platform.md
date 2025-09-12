@@ -5,7 +5,7 @@ linkTitle: LDAP authentication
 description: Configure YugabyteDB Anywhere to use LDAP authentication for databases.
 headcontent: Manage database users using LDAP
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     identifier: ldap-authentication-platform
     parent: authentication
     weight: 10

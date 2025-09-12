@@ -8,7 +8,7 @@ aliases:
   - /comparisons/
   - /preview/faq/comparisons/references
 menu:
-  v225_faq:
+  v2.25_faq:
     identifier: comparisons
     parent: comparisons-home
     weight: 100

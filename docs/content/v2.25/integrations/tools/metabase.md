@@ -3,7 +3,7 @@ title: Metabase
 linkTitle: Metabase
 description: Metabase
 menu:
-  v225_integrations:
+  v2.25_integrations:
     identifier: metabase
     parent: tools
     weight: 70

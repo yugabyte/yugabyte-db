@@ -4,7 +4,7 @@ headcontent: yb-voyager cutover
 linkTitle: cutover
 description: YugabyteDB Voyager cutover reference
 menu:
-  v225_yugabyte-voyager:
+  v2.25_yugabyte-voyager:
     identifier: voyager-cutover-initiate
     parent: cutover-archive
     weight: 110

@@ -4,7 +4,7 @@ linkTitle: PostgreSQL
 headcontent: What to watch out for when migrating data from PostgreSQL
 description: Review limitations and suggested workarounds for migrating data from PostgreSQL.
 menu:
-  v225_yugabyte-voyager:
+  v2.25_yugabyte-voyager:
     identifier: postgresql-issues
     parent: known-issues
     weight: 101

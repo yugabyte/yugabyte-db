@@ -4,7 +4,7 @@ headcontent: yb-voyager analyze schema
 linkTitle: analyze schema
 description: YugabyteDB Voyager analyze schema reference
 menu:
-  v225_yugabyte-voyager:
+  v2.25_yugabyte-voyager:
     identifier: voyager-analyze-schema
     parent: schema-migration
     weight: 20

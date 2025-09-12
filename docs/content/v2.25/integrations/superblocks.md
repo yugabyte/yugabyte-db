@@ -4,7 +4,7 @@ headerTitle: Superblocks
 linkTitle: Superblocks
 description: Use Superblocks to work with distributed SQL databases in YugabyteDB.
 menu:
-  v225_integrations:
+  v2.25_integrations:
     identifier: superblocks
     parent: development-platforms
     weight: 400

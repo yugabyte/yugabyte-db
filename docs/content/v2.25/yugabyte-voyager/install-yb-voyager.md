@@ -4,7 +4,7 @@ headerTitle: Install
 linkTitle: Install
 description: Prerequisites and installation instructions for YugabyteDB Voyager.
 menu:
-  v225_yugabyte-voyager:
+  v2.25_yugabyte-voyager:
     identifier: install-yb-voyager
     parent: yugabytedb-voyager
     weight: 101

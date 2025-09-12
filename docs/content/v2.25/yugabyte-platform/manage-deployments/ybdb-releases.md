@@ -5,7 +5,7 @@ linkTitle: Manage releases
 description: View and import releases of YugabyteDB into YugabyteDB Anywhere.
 headcontent: View and import database releases for use in universes
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     identifier: ybdb-releases
     parent: upgrade-software
     weight: 15

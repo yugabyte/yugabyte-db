@@ -4,7 +4,7 @@ headerTitle: RabbitMQ
 linkTitle: RabbitMQ
 description: Use RabbitMQ to work with distributed SQL databases in YugabyteDB.
 menu:
-  v225_integrations:
+  v2.25_integrations:
     identifier: rabbitmq
     parent: data-integration
     weight: 571

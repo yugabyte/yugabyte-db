@@ -5,7 +5,7 @@ linkTitle: Cluster activity
 description: View the activity on your cluster.
 headcontent: View the activity on your cluster
 menu:
-  v225_yugabyte-cloud:
+  v2.25_yugabyte-cloud:
     identifier: monitor-activity
     parent: cloud-monitor
     weight: 640

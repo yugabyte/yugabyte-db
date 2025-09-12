@@ -3,7 +3,7 @@ title: AtomicJar Testcontainers
 linkTitle: AtomicJar Testcontainers
 description: Use AtomicJar Testcontainers with YSQL API
 menu:
-  v225_integrations:
+  v2.25_integrations:
     identifier: ysql-atomicjar
     parent: application-frameworks
     weight: 571

@@ -5,7 +5,7 @@ linkTitle: api-key
 description: YugabyteDB Aeon CLI reference api-key resource.
 headcontent: Manage API keys
 menu:
-  v225_yugabyte-cloud:
+  v2.25_yugabyte-cloud:
     identifier: managed-cli-api-key
     parent: managed-cli-reference
     weight: 20

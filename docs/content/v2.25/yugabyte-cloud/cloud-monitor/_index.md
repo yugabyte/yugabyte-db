@@ -7,7 +7,7 @@ headcontent: Set alerts and monitor cluster performance and activity
 aliases:
   - /preview/yugabyte-cloud/cloud-monitor/logging-export/
 menu:
-  v225_yugabyte-cloud:
+  v2.25_yugabyte-cloud:
     parent: yugabytedb-managed
     identifier: cloud-monitor
     weight: 150

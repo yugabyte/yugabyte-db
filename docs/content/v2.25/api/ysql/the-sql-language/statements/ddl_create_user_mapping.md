@@ -4,7 +4,7 @@ headerTitle: CREATE USER MAPPING
 linkTitle: CREATE USER MAPPING
 description: Use the CREATE USER MAPPING statement to create a user mapping.
 menu:
-  v225_api:
+  v2.25_api:
     identifier: ddl_create_user_mapping
     parent: statements
 type: docs

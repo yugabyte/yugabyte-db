@@ -4,7 +4,7 @@ linkTitle: Audit account activity
 description: Monitor activity in YugabyteDB Aeon.
 headcontent: Monitor account and cluster activity in YugabyteDB Aeon
 menu:
-  v225_yugabyte-cloud:
+  v2.25_yugabyte-cloud:
     identifier: cloud-activity
     parent: cloud-secure-clusters
     weight: 500

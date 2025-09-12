@@ -5,7 +5,7 @@ linkTitle: BATCH
 summary: Execute multiple DML in 1 request
 description: Use batch to update multiple rows in 1 request.
 menu:
-  v225_api:
+  v2.25_api:
     parent: api-cassandra
     weight: 19991
 type: docs

@@ -5,7 +5,7 @@ linkTitle: Overview
 description: Requirements and considerations for setting up a VPC network in YugabyteDB Aeon.
 headcontent: What you need to know before creating VPCs
 menu:
-  v225_yugabyte-cloud:
+  v2.25_yugabyte-cloud:
     identifier: cloud-vpc-intro
     parent: cloud-vpcs
     weight: 5

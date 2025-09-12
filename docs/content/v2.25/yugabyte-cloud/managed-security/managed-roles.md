@@ -7,7 +7,7 @@ headcontent: Create custom roles for team members
 aliases:
   - /preview/yugabyte-cloud/cloud-admin/managed-roles/
 menu:
-  v225_yugabyte-cloud:
+  v2.25_yugabyte-cloud:
     identifier: managed-roles
     parent: managed-security
     weight: 150

@@ -5,7 +5,7 @@ linkTitle: Performance metrics
 description: View time series charts of cluster metrics.
 headcontent: Evaluate cluster performance with time series charts
 menu:
-  v225_yugabyte-cloud:
+  v2.25_yugabyte-cloud:
     identifier: overview-clusters
     parent: cloud-monitor
     weight: 100

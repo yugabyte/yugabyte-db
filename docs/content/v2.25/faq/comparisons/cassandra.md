@@ -6,7 +6,7 @@ description: Compare Apache Cassandra with YugabyteDB.
 aliases:
   - /comparisons/cassandra/
 menu:
-  v225_faq:
+  v2.25_faq:
     parent: comparisons
     identifier: comparisons-cassandra
     weight: 1120

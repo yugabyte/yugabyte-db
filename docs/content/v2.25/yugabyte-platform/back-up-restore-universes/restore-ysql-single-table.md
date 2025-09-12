@@ -5,7 +5,7 @@ linkTitle: Restore a single YSQL table
 description: Use YugabyteDB Anywhere to restore a single table in YSQL.
 headContent: Restore from full or incremental backups
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     parent: restore-universe-data
     identifier: restore-ysql-single-table
     weight: 30

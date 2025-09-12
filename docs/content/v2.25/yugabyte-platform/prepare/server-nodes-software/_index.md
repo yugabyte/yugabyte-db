@@ -5,7 +5,7 @@ linkTitle: Software requirements
 description: Software prerequisites for database nodes running YugabyteDB.
 headContent: Operating system and additional software required for YugabyteDB
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     identifier: server-nodes-software
     parent: server-nodes
     weight: 20

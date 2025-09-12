@@ -5,7 +5,7 @@ headerTitle: Array functions and operators
 description: Array functions and operators
 image: /images/section_icons/api/subsection.png
 menu:
-  v225_api:
+  v2.25_api:
     identifier: array-functions-operators
     parent: api-ysql-datatypes-array
     weight: 90

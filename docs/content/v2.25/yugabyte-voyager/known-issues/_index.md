@@ -10,7 +10,7 @@ aliases:
   - /preview/yugabyte-voyager/known-issues/general-issues/
   - /preview/yugabyte-voyager/known-issues/mysql-oracle/
 menu:
-  v225_yugabyte-voyager:
+  v2.25_yugabyte-voyager:
     identifier: known-issues
     parent: yugabytedb-voyager
     weight: 104

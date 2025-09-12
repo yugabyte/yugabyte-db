@@ -4,7 +4,7 @@ linkTitle: Flyway
 description: Using Flyway with YugabyteDB
 aliases:
 menu:
-  v225_integrations:
+  v2.25_integrations:
     identifier: flyway
     parent: schema-migration
     weight: 571

@@ -3,7 +3,7 @@ title: Jaeger
 linkTitle: Jaeger
 description: Use Jaeger with YCQL API
 menu:
-  v225_integrations:
+  v2.25_integrations:
     identifier: jaeger
     parent: integrations-other
     weight: 571

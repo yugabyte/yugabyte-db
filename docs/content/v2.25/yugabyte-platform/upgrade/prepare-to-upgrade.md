@@ -4,7 +4,7 @@ headerTitle: Prepare to upgrade YugabyteDB Anywhere
 linkTitle: Prepare to upgrade
 description: Review changes that may affect installation
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     identifier: prepare-to-upgrade
     parent: upgrade
     weight: 50

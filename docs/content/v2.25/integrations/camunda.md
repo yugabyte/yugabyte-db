@@ -4,7 +4,7 @@ linkTitle: Camunda
 description: Use Camunda with YSQL
 aliases:
 menu:
-  v225_integrations:
+  v2.25_integrations:
     parent: integrations-applications
     identifier: camunda
     weight: 571

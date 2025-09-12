@@ -6,7 +6,7 @@ description: Uninstall the YugabyteDB Anywhere software.
 aliases:
   - /preview/yugabyte-platform/install-yugabyte-platform/uninstall-software/
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     identifier: uninstall-software
     parent: administer-yugabyte-platform
     weight: 180

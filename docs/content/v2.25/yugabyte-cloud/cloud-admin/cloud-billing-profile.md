@@ -4,7 +4,7 @@ linkTitle: Manage billing
 description: Manage your YugabyteDB Aeon billing profile and payment methods and view invoices.
 headcontent: Manage your plan and payment, and review invoices and usage
 menu:
-  v225_yugabyte-cloud:
+  v2.25_yugabyte-cloud:
     identifier: cloud-billing-profile
     parent: cloud-admin
     weight: 200

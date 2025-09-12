@@ -5,7 +5,7 @@ linkTitle: Reference
 description: YugabyteDB Aeon CLI resource and command reference.
 headcontent: ybm syntax and commands
 menu:
-  v225_yugabyte-cloud:
+  v2.25_yugabyte-cloud:
     identifier: managed-cli-reference
     parent: managed-cli
     weight: 50

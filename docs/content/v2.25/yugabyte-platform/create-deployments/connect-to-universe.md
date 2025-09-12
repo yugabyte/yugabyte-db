@@ -5,7 +5,7 @@ linkTitle: Connect to a universe
 description: Connect to YugabyteDB Anywhere universes from your desktop using a client shell
 headcontent: Connect to database nodes from your desktop
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     identifier: connect-to-universe
     parent: create-deployments
     weight: 80

@@ -5,7 +5,7 @@ linkTitle: Authentication
 description: Use social logins and identity providers to manage authentication.
 headcontent: Use social logins and identity providers to manage authentication
 menu:
-  v225_yugabyte-cloud:
+  v2.25_yugabyte-cloud:
     parent: managed-security
     identifier: managed-authentication
     weight: 300

@@ -7,7 +7,7 @@ headcontent: Stream data change events from a YugabyteDB Aeon cluster
 tags:
   feature: early-access
 menu:
-  v225_yugabyte-cloud:
+  v2.25_yugabyte-cloud:
     identifier: aeon-cdc
     parent: cloud-clusters
     weight: 400

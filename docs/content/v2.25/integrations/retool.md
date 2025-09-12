@@ -4,7 +4,7 @@ headerTitle: Retool
 linkTitle: Retool
 description: Use Retool to work with distributed SQL databases in YugabyteDB.
 menu:
-  v225_integrations:
+  v2.25_integrations:
     identifier: retool
     parent: development-platforms
     weight: 300

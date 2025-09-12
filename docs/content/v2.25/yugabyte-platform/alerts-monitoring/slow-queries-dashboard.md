@@ -5,7 +5,7 @@ linkTitle: Slow Queries dashboard
 description: Slow Queries dashboard
 headcontent: View slow running queries that have run on your universe
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     parent: alerts-monitoring
     identifier: slow-queries-dashboard
     weight: 30

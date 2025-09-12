@@ -4,7 +4,7 @@ linkTitle: Kinesis Data Streams
 description: Use Kinesis Data Streams with YSQL API
 aliases:
 menu:
-  v225_integrations:
+  v2.25_integrations:
     identifier: kinesis
     parent: data-integration
     weight: 571

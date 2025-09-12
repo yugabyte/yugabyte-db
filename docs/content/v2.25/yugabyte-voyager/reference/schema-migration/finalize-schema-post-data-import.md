@@ -4,7 +4,7 @@ headcontent: yb-voyager finalize-schema-post-data-import
 linkTitle: finalize-schema-post-data-import
 description: YugabyteDB Voyager finalize-schema-post-data-import reference
 menu:
-  v225_yugabyte-voyager:
+  v2.25_yugabyte-voyager:
     identifier: voyager-finalize-schema-post-data-import
     parent: schema-migration
     weight: 60

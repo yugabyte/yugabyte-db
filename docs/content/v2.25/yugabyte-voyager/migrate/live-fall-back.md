@@ -5,7 +5,7 @@ linkTitle: Live migration with fall-back
 headcontent: Steps for a live migration with fall-back using YugabyteDB Voyager
 description: Steps to ensure a successful live migration with fall-back using YugabyteDB Voyager.
 menu:
-  v225_yugabyte-voyager:
+  v2.25_yugabyte-voyager:
     identifier: live-fall-back
     parent: migration-types
     weight: 104

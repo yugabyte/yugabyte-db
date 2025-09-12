@@ -3,7 +3,7 @@ title: Prisma
 linkTitle: Prisma
 description: Prisma
 menu:
-  v225_integrations:
+  v2.25_integrations:
     identifier: prisma-integration
     parent: schema-migration
     weight: 571

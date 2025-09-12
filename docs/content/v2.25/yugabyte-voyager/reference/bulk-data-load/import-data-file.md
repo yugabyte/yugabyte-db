@@ -4,7 +4,7 @@ headcontent: yb-voyager import data file
 linkTitle: import data file
 description: YugabyteDB Voyager import data file reference
 menu:
-  v225_yugabyte-voyager:
+  v2.25_yugabyte-voyager:
     identifier: voyager-import-data-file
     parent: bulk-data-load-ref
     weight: 70

@@ -5,7 +5,7 @@ linkTitle: region
 description: YugabyteDB Aeon CLI reference Region resource.
 headcontent: Query regions and instance types
 menu:
-  v225_yugabyte-cloud:
+  v2.25_yugabyte-cloud:
     identifier: managed-cli-region
     parent: managed-cli-reference
     weight: 20

@@ -6,7 +6,7 @@ description: Use YugabyteDB Anywhere to create and edit instance tags.
 aliases:
   - /preview/manage/enterprise-edition/instance-tags/
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     identifier: instance-tags
     parent: edit-universe
     weight: 20

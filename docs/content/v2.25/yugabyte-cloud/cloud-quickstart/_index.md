@@ -7,7 +7,7 @@ description: Get started using YugabyteDB Aeon in less than five minutes.
 layout: single
 type: docs
 menu:
-  v225_yugabyte-cloud:
+  v2.25_yugabyte-cloud:
     parent: yugabytedb-managed
     weight: 2
     params:

@@ -4,7 +4,7 @@ headerTitle: Upgrade YugabyteDB Anywhere
 linkTitle: Upgrade
 description: Upgrade YugabyteDB Anywhere.
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: upgrade
     weight: 700

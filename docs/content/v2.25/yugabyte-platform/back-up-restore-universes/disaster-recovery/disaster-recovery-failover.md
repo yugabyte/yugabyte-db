@@ -5,7 +5,7 @@ linkTitle: Failover
 description: Unplanned failover using disaster recovery
 headContent: Failover of application traffic to the DR replica
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     parent: disaster-recovery
     identifier: disaster-recovery-failover
     weight: 30

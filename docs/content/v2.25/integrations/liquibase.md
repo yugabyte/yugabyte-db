@@ -3,7 +3,7 @@ title: Liquibase
 linkTitle: Liquibase
 description: Using Liquibase with YugabyteDB
 menu:
-  v225_integrations:
+  v2.25_integrations:
     identifier: liquibase
     parent: schema-migration
     weight: 571

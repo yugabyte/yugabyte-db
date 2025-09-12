@@ -5,7 +5,7 @@ description: Compare Redis in-memory store with the YugabyteDB database.
 aliases:
   - /comparisons/redis/
 menu:
-  v225_faq:
+  v2.25_faq:
     parent: comparisons
     identifier: comparisons-redis
     weight: 1129

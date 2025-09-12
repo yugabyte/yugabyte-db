@@ -4,7 +4,7 @@ linkTitle: array_agg, jsonb_agg, jsonb_object_agg, string_agg, range_agg
 headerTitle: Aggregating arrays, strings, json and range
 description: Describes the functionality of the array_agg, string_agg, jsonb_agg, jsonb_object_agg YSQL aggregate functions
 menu:
-  v225_api:
+  v2.25_api:
     identifier: array-string-jsonb-jsonb-object-agg
     parent: aggregate-function-syntax-semantics
     weight: 20

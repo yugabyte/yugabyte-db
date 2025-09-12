@@ -8,7 +8,7 @@ linkTitle: "Tutorial: REST API"
 description: Tutorial for using YugabyteDB Aeon REST API to create clusters.
 headcontent: Example workflows for automation tools
 menu:
-  v225_yugabyte-cloud:
+  v2.25_yugabyte-cloud:
     identifier: managed-guide-api
     parent: managed-cli-examples
     weight: 60

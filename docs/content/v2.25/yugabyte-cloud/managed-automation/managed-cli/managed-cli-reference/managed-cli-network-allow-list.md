@@ -5,7 +5,7 @@ linkTitle: network-allow-list
 description: YugabyteDB Aeon CLI reference Network allow list resource.
 headcontent: Manage account IP allow lists
 menu:
-  v225_yugabyte-cloud:
+  v2.25_yugabyte-cloud:
     identifier: managed-cli-network-allow-list
     parent: managed-cli-reference
     weight: 20

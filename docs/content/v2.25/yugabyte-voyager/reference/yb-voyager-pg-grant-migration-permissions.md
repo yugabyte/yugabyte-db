@@ -4,7 +4,7 @@ linktitle: Permissions SQL script
 description: Usage, actions, and key considerations for the `yb-voyager-pg-grant-migration-permissions.sql` script.
 headcontent: Run the permissions SQL script to grant user permissions for migration
 menu:
-  v225_yugabyte-voyager:
+  v2.25_yugabyte-voyager:
     identifier: pg-grant-perm
     parent: yb-voyager-misc
     weight: 120

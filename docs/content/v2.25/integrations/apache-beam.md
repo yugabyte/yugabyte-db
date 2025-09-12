@@ -3,7 +3,7 @@ title: Apache Beam
 linkTitle: Apache Beam
 description: Apache Beam
 menu:
-  v225_integrations:
+  v2.25_integrations:
     identifier: apache-beam
     parent: data-integration
     weight: 571

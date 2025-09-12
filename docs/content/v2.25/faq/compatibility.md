@@ -7,7 +7,7 @@ aliases:
   - /faq/cassandra/
   - /preview/faq/cassandra/
 menu:
-  v225_faq:
+  v2.25_faq:
     identifier: faq-api-compatibility
     parent: faq
     weight: 60

@@ -6,7 +6,7 @@ description: YugabyteDB Voyager CLI and SSL connectivity.
 aliases:
   - /preview/yugabyte-voyager/yb-voyager-cli/
 menu:
-  v225_yugabyte-voyager:
+  v2.25_yugabyte-voyager:
     identifier: yb-voyager-cli
     parent: reference-voyager
     weight: 100

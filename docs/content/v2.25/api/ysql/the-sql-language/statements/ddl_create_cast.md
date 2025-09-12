@@ -4,7 +4,7 @@ headerTitle: CREATE CAST
 linkTitle: CREATE CAST
 description: Use the CREATE CAST statement to create a cast.
 menu:
-  v225_api:
+  v2.25_api:
     identifier: ddl_create_cast
     parent: statements
 aliases:

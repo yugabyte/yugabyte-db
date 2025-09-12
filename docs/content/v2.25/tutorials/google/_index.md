@@ -6,7 +6,7 @@ description: How to Develop Applications with Google Cloud and YugabyteDB
 image: /images/tutorials/google/google-cloud-logo.svg
 headcontent: Add a scalable and highly-available database to your Google projects
 menu:
-  v225_tutorials:
+  v2.25_tutorials:
     identifier: tutorials-google
     parent: tutorials-cloud
 type: indexpage

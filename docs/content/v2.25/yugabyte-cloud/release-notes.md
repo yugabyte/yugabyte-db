@@ -5,7 +5,7 @@ linkTitle: Change log
 description: YugabyteDB Aeon Change Log and known issues.
 headcontent: New features and known issues
 menu:
-  v225_yugabyte-cloud:
+  v2.25_yugabyte-cloud:
     identifier: yugabytedb-managed-releases
     parent: yugabytedb-managed
     weight: 22

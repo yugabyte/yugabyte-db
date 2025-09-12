@@ -4,7 +4,7 @@ headcontent: yb-voyager export schema
 linkTitle: export schema
 description: YugabyteDB Voyager export schema reference
 menu:
-  v225_yugabyte-voyager:
+  v2.25_yugabyte-voyager:
     identifier: voyager-export-schema
     parent: schema-migration
     weight: 10

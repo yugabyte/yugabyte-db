@@ -10,7 +10,7 @@ aliases:
 tags:
   feature: early-access
 menu:
-  v225_tutorials:
+  v2.25_tutorials:
     identifier: tutorials-kafka-stream
     parent: tutorials-cdc
 type: indexpage

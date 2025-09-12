@@ -4,7 +4,7 @@ headerTitle: Upgrade YugabyteDB Anywhere
 linkTitle: Upgrade installation
 description: Use Replicated to upgrade YugabyteDB Anywhere
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     identifier: upgrade-yp-2-replicated
     parent: upgrade
     weight: 80

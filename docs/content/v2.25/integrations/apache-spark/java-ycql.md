@@ -6,7 +6,7 @@ description: Learn how to build a Java-based application using Apache Spark and 
 aliases:
   - /preview/integrations/apache-spark/java/
 menu:
-  v225_integrations:
+  v2.25_integrations:
     identifier: apache-spark-2-java-ycql
     parent: apache-spark
     weight: 574

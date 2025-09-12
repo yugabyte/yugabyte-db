@@ -9,7 +9,7 @@ showRightNav: true
 type: indexpage
 ---
 <!--menu:
-  v225_api:
+  v2.25_api:
     parent: api
     identifier: api-cassandra
     weight: 10

@@ -4,7 +4,7 @@ headerTitle: Schema Evolution Manager
 linkTitle: Schema Evolution Manager
 description: Use Schema Evolution Manager to work with distributed SQL databases in YugabyteDB.
 menu:
-  v225_integrations:
+  v2.25_integrations:
     identifier: schema-evolution-mgr
     parent: schema-migration
     weight: 571

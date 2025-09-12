@@ -7,7 +7,7 @@ aliases:
   - /preview/yugabyte-cloud/hasura-cloud/
   - /preview/yugabyte-cloud/cloud-examples/hasura-cloud/
 menu:
-  v225_integrations:
+  v2.25_integrations:
     identifier: hasura-cloud
     parent: hasura
     weight: 30

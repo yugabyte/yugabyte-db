@@ -5,7 +5,7 @@ linkTitle: Terraform Provider
 description: Terraform Provider for YugabyteDB Anywhere.
 headcontent: Manage YugabyteDB Anywhere accounts and deployments using the Terraform Provider
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     parent: anywhere-automation
     identifier: anywhere-terraform
     weight: 10

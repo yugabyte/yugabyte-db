@@ -8,7 +8,7 @@ aliases:
   - /preview/back-up-restore-universes/restore-universe-data/ycql/
   - /preview/back-up-restore-universes/restore-universe-data/ysql/
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     parent: back-up-restore-universes
     identifier: restore-universe-data
     weight: 30

@@ -6,7 +6,7 @@ headContent: "Client driver: Rust-Postgres"
 aliases:
   - /preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-rust/
 menu:
-  v225_tutorials:
+  v2.25_tutorials:
     parent: build-apps
     name: Rust
     identifier: cloud-rust

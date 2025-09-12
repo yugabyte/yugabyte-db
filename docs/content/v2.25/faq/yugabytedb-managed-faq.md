@@ -5,7 +5,7 @@ description: YugabyteDB Aeon frequently asked questions.
 aliases:
   - /preview/yugabyte-cloud/cloud-faq/
 menu:
-  v225_faq:
+  v2.25_faq:
     identifier: yugabytedb-managed-faq
     parent: faq
     weight: 30

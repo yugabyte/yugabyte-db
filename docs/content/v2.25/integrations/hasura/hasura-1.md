@@ -5,7 +5,7 @@ description: Building applications with Hasura
 aliases:
   - /preview/develop/graphql/hasura/
 menu:
-  v225_integrations:
+  v2.25_integrations:
     identifier: hasura-1
     parent: hasura
     weight: 10

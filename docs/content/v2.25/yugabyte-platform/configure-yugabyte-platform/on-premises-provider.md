@@ -5,7 +5,7 @@ linkTitle: Create provider
 description: Configure the on-premises provider configuration.
 headContent: For deploying universes on your private cloud
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     identifier: on-premises-provider
     parent: set-up-on-premises
     weight: 10

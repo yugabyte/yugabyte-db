@@ -7,7 +7,7 @@ aliases:
   - /preview/yugabyte-cloud/cloud-basics/create-clusters-free/
   - /preview/yugabyte-cloud/free-tier/
 menu:
-  v225_yugabyte-cloud:
+  v2.25_yugabyte-cloud:
     identifier: create-clusters-free
     parent: create-clusters
     weight: 40

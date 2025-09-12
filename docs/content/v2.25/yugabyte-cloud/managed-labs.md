@@ -4,7 +4,7 @@ linkTitle: Product labs
 description: Discover how YugabyteDB solves latency and performance issues.
 headcontent: Test YugabyteDB Aeon features using a demo application in real time
 menu:
-  v225_yugabyte-cloud:
+  v2.25_yugabyte-cloud:
     identifier: managed-labs
     parent: yugabytedb-managed
     weight: 15

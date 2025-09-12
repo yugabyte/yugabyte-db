@@ -7,7 +7,7 @@ headContent: Create a database clone for recovery or testing
 tags:
   feature: early-access
 menu:
-  v225_yugabyte-cloud:
+  v2.25_yugabyte-cloud:
     identifier: aeon-pitr
     parent: cloud-clusters
     weight: 210

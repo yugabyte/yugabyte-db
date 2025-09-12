@@ -9,7 +9,7 @@ aliases:
   - /preview/yugabyte-platform/security/customize-ports/
   - /preview/yugabyte-platform/security/security-checklist-yp/
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: security
 weight: 660

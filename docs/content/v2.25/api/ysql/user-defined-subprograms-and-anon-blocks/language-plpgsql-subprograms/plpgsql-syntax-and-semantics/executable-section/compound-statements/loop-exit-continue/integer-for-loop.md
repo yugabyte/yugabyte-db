@@ -4,7 +4,7 @@ headerTitle: The "integer for loop"
 linkTitle: Integer for loop
 description: Describes the syntax and semantics of the integer for loop. [YSQL]
 menu:
-  v225_api:
+  v2.25_api:
     identifier: integer-for-loop
     parent: loop-exit-continue
     weight: 20

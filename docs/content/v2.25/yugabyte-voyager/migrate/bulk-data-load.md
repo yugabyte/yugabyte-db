@@ -5,7 +5,7 @@ linkTitle: Bulk data load
 headcontent: Import data from flat files using YugabyteDB Voyager
 description: Import data from flat files using YugabyteDB Voyager.
 menu:
-  v225_yugabyte-voyager:
+  v2.25_yugabyte-voyager:
     identifier: bulk-data-load
     parent: migration-types
     weight: 105

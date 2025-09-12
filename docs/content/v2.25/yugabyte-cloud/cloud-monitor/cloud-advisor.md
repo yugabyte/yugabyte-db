@@ -5,7 +5,7 @@ linkTitle: Insights
 description: Scan your cluster to discover performance optimizations.
 headcontent: Scan your cluster to discover performance optimizations
 menu:
-  v225_yugabyte-cloud:
+  v2.25_yugabyte-cloud:
     identifier: cloud-advisor
     parent: cloud-monitor
     weight: 400

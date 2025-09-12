@@ -4,7 +4,7 @@ linkTitle: Explore distributed SQL
 description: Use distributed SQL to explore core features of YugabyteDB.
 headcontent:
 menu:
-  v225_yugabyte-cloud:
+  v2.25_yugabyte-cloud:
     identifier: qs-explore-1-ysql
     parent: yugabytedb-managed
     params:

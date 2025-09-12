@@ -5,7 +5,7 @@ linkTitle: Apache Spark
 description: Use Apache Spark with YugabyteDB
 headcontent: Use Apache Spark with YugabyteDB
 menu:
-  v225_integrations:
+  v2.25_integrations:
     identifier: apache-spark
     parent: integrations-other
     weight: 571

@@ -4,7 +4,7 @@ headerTitle: Create a multi-region universe
 linkTitle: Multi-region universe
 description: Create a YugabyteDB universe that spans multiple geographic regions.
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     identifier: create-universe-multi-region
     parent: create-deployments
     weight: 30

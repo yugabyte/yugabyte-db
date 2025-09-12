@@ -3,7 +3,7 @@ title: WSO2 Identity Server
 linkTitle: WSO2 Identity Server
 description: WSO2 Identity Server
 menu:
-  v225_integrations:
+  v2.25_integrations:
     identifier: wso2
     parent: integrations-security
     weight: 571

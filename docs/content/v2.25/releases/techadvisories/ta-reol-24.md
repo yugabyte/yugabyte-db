@@ -7,7 +7,7 @@ showRightNav: true
 cascade:
   unversioned: true
 menu:
-  v225_releases:
+  v2.25_releases:
     identifier: ta-reol-24
     weight: 1
 rightNav:

@@ -4,7 +4,7 @@ headerTitle: Tutorial overview
 linkTitle: Overview
 description: Build and Learn tutorial overview
 menu:
-  v225_tutorials:
+  v2.25_tutorials:
     identifier: overview
     parent: tutorials-build-and-learn
     weight: 1

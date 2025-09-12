@@ -4,7 +4,7 @@ linkTitle: Cluster costs
 description: YugabyteDB Aeon cluster configuration costs.
 headcontent: Classic cluster pricing
 menu:
-  v225_yugabyte-cloud:
+  v2.25_yugabyte-cloud:
     identifier: cloud-billing-costs-2
     parent: cloud-admin
     weight: 400

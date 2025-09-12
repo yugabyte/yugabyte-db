@@ -8,7 +8,7 @@ linkTitle: >
 description: >
   Case study: using YSQL to implement a stopwatch
 menu:
-  v225_api:
+  v2.25_api:
     identifier: stopwatch
     parent: api-ysql-datatypes-datetime
     weight: 130

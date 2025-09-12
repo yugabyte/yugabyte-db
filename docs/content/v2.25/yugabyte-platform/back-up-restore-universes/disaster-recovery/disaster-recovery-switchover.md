@@ -5,7 +5,7 @@ linkTitle: Switchover
 description: Switchover using disaster recovery
 headContent: Switch application traffic to the DR replica
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     parent: disaster-recovery
     identifier: disaster-recovery-switchover
     weight: 40

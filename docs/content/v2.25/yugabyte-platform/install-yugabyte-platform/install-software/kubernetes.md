@@ -5,7 +5,7 @@ linkTitle: Install YBA software
 description: Install YugabyteDB Anywhere software in your Kubernetes environment.
 headContent: Install YBA software in a Kubernetes environment
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     parent: install-yugabyte-platform
     identifier: install-software-2-kubernetes
     weight: 10

@@ -5,7 +5,7 @@ linkTitle: Encryption at rest
 description: YugabyteDB Aeon cluster encryption at rest.
 headcontent: Encrypt your YugabyteDB cluster
 menu:
-  v225_yugabyte-cloud:
+  v2.25_yugabyte-cloud:
     identifier: managed-ear
     parent: cloud-secure-clusters
     weight: 460

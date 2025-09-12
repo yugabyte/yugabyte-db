@@ -5,7 +5,7 @@ linkTitle: Migration assessment
 headcontent: Assess the migration complexity and get schema changes, data distribution and cluster sizing
 description: Steps to create a migration assessment report to ensure successful migration using YugabyteDB Voyager.
 menu:
-  v225_yugabyte-voyager:
+  v2.25_yugabyte-voyager:
     identifier: assess-migration
     parent: migration-types
     weight: 101

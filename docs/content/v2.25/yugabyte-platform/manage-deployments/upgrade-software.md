@@ -5,7 +5,7 @@ linkTitle: Upgrade database
 description: Upgrade universes managed by YugabyteDB Anywhere.
 headcontent: Perform rolling upgrades on live universe deployments
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     identifier: upgrade-software
     parent: manage-deployments
     weight: 20

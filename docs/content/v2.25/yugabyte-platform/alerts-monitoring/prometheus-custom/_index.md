@@ -5,7 +5,7 @@ linkTitle: Custom Prometheus
 description: Export universe metrics to your own Prometheus instance
 headcontent: Export universe metrics to your own Prometheus instance
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     parent: alerts-monitoring
     identifier: prometheus-custom
 weight: 90

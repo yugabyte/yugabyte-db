@@ -3,7 +3,7 @@ title: Using TypeORM with YugabyteDB
 linkTitle: TypeORM
 description: Using TypeORM with YugabyteDB
 menu:
-  v225_integrations:
+  v2.25_integrations:
     identifier: typeorm
     parent: integrations
     weight: 571

@@ -5,7 +5,7 @@ linkTitle: Social logins
 description: Use social logins to manage authentication.
 headcontent: Use social logins to manage authentication
 menu:
-  v225_yugabyte-cloud:
+  v2.25_yugabyte-cloud:
     identifier: social-logins
     parent: managed-authentication
     weight: 10

@@ -5,7 +5,7 @@ linkTitle: SET CONSTRAINTS
 summary: SET CONSTRAINTS
 description: Use the `SET CONSTRAINTS` statement to set the timing of constraint checking within the current transaction.
 menu:
-  v225_api:
+  v2.25_api:
     identifier: txn_set_constraints
     parent: statements
 aliases:

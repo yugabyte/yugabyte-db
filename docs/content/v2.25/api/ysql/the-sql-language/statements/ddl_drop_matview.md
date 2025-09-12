@@ -4,7 +4,7 @@ headerTitle: DROP MATERIALIZED VIEW
 linkTitle: DROP MATERIALIZED VIEW
 description: Use the DROP MATERIALIZED VIEW statement to drop a materialized view.
 menu:
-  v225_api:
+  v2.25_api:
     identifier: ddl_drop_matview
     parent: statements
 aliases:

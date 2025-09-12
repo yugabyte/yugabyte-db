@@ -5,7 +5,7 @@ linkTitle: Alerts
 description: Set alerts for activity in your account.
 headcontent: Set alerts for activity in your account
 menu:
-  v225_yugabyte-cloud:
+  v2.25_yugabyte-cloud:
     identifier: cloud-alerts
     parent: cloud-monitor
     weight: 50

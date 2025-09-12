@@ -4,7 +4,7 @@ headerTitle: Upgrade YugabyteDB Anywhere
 linkTitle: Upgrade installation
 description: Use YBA Installer to upgrade YugabyteDB Anywhere
 menu:
-  v225_yugabyte-platform:
+  v2.25_yugabyte-platform:
     identifier: upgrade-yp-1-installer
     parent: upgrade
     weight: 80
