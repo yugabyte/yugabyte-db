@@ -63,6 +63,9 @@ To grant the necessary permissions on the target YugabyteDB universe, do the fol
     -- Grant USAGE, CREATE ON SCHEMA(s)
     GRANT USAGE, CREATE ON SCHEMA <schema_name> TO <username>;
 
+    -- Alter the OWNER of the SCHEMA(s)
+    ALTER SCHEMA <schema_name> OWNER TO <username>;
+
     -- Grant extension creation role (for pgcrypto, etc.)
     GRANT yb_extension TO <username>;
     ```
@@ -163,11 +166,18 @@ This section describes how to extract foreign key constraints from a pg_dump fil
 
     ```sh
     awk '
-    /^ALTER TABLE ONLY/ && /ADD CONSTRAINT/ && /FOREIGN KEY/ {
-        table = $4;
-        constraint = $7;
-        gsub(";", "", constraint);  # remove trailing semicolon if any
-        print "ALTER TABLE " table " DROP CONSTRAINT " constraint ";"
+    /^ALTER TABLE/ && /ADD CONSTRAINT/ && /FOREIGN KEY/ {
+        if ($3 == "ONLY") {
+         # Postgres style: ALTER TABLE ONLY public.table ADD CONSTRAINT ...
+         table = $4
+         constraint = $7
+        } else {
+         # Oracle/Mysql style: ALTER TABLE table ADD CONSTRAINT ...
+         table = $3
+         constraint = $6
+         }
+         gsub(";", "", constraint)   # remove trailing semicolon if any
+         print "ALTER TABLE " table " DROP CONSTRAINT " constraint ";"
     }
     ' filtered_schema.sql > drop_fks.sql
     ```
