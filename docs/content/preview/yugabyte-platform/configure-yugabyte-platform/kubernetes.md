@@ -234,7 +234,7 @@ tserver:
     valueFrom:
       fieldRef:
         fieldPath: status.hostIP
-  serverBroadcastAddress: "$(NODE_IP)"
+  serverBroadcastAddress: "${NODE_IP}"
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
