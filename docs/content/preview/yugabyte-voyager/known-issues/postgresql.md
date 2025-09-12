@@ -1746,11 +1746,22 @@ In YugabyteDB, you can specify three kinds of columns when using [CREATE INDEX](
 
 Design the index to evenly distribute data across all nodes and optimize performance based on query patterns.
 
-If an index is created on a column with a high percentage of NULL values, all NULL entries will be stored in a single tablet. This concentration can create a hotspot, leading to performance degradation.
+**Problems and Workarounds**:
 
-**Workaround**: If the NULL values are not being queried, it is recommended to create a Partial index by filtering the NULL values and  optimizing it for the other data.
+**Problem 1**: HASH index hotspots with NULL values
 
-If NULL values are being queried and the index is a single-column index, it is recommended to add another column and make it a multi-column range-sharded index to distribute the NULL values evenly across various nodes. If the index is multi-column, it is recommended to make it a range-sharded index.
+When an index is created on a column with a high percentage of NULL values using HASH sharding, all NULL entries are stored in a single tablet. This concentration creates a [hotspot](/preview/develop/data-modeling/#hot-shards), leading to performance degradation.
+
+**Workaround**: Make the index range-sharded to distribute data of the index evenly across all nodes to avoid hotspots.
+
+- For Voyager v2025.9.1 or later: Voyager automatically modifies all the [B-tree](https://en.wikipedia.org/wiki/B-tree) secondary indexes to be range-sharded during the export schema phase.
+- For Voyager versions older than v2025.9.1: You must manually modify the index to be range-sharded.
+
+**Problem 2** : Unnecessary writes for unqueried NULL values
+
+If NULL values are not being queried, storing them in the index results in unnecessary write operations and storage overhead.
+
+**Workaround**: Create a partial index by filtering out NULL values using a WHERE clause (for example, `WHERE column IS NOT NULL`). This optimizes the index for non-NULL data only.
 
 **Example**
 
@@ -1781,7 +1792,6 @@ CREATE INDEX idx_users_middle_name on users (middle_name) where middle_name <> N
 CREATE INDEX idx_users_middle_name_user_id on users (middle_name, user_id) where middle_name <> NULL;  --filtering the NULL values so those will not be indexed
 ```
 
-
 Making it a range-sharded index explicitly so that NULLs are evenly distributed across all nodes by using another column:
 
 ```sql
@@ -1801,11 +1811,22 @@ In YugabyteDB, you can specify three kinds of columns when using [CREATE INDEX](
 
 Design the index to evenly distribute data across all nodes and optimize performance based on query patterns.
 
-If the index is designed for a column with a high percentage of a particular value in the data, all the data for that value will reside on a single tablet, which will become a hotspot, causing performance degradation.
+**Problems and Workarounds**
 
-**Workaround**: If the frequently occurring value is not being queried, it is recommended that a Partial index be created by filtering this value, optimizing it for other data.
+**Problem 1**: HASH index hotspots with a high percentage of a particular value
 
-If the value is being queried and the index is a single-column index, it is recommended to add another column and make it a multi-column range-sharded index to distribute the value evenly across various nodes. If the index is multi-column, it is recommended to make it a range-sharded index.
+When an index is created on a column with a high percentage of a particular value using HASH sharding, all entries for a value is stored in a single tablet. This concentration creates a hotspot, leading to performance degradation.
+
+**Workaround**: Make the index as range-sharded to distribute data of the index evenly across all nodes to avoid hotspots.
+
+- For Voyager v2025.9.1 or later: Voyager automatically modifies all the [B-tree](https://en.wikipedia.org/wiki/B-tree) secondary indexes to be range-sharded during the export schema phase.
+- For Voyager versions older than v2025.9.1: You must manually modify the index to be range-sharded.
+
+**Problem 2** : Unnecessary writes for an unqueried particular value
+
+If a value with a high percentage is not being queried, storing it in the index results in unnecessary write operations and storage overhead.
+
+**Workaround**: Create a partial index by filtering out this value using a WHERE clause (for example, `WHERE column <> val`). This optimizes the index for other values on the column.
 
 **Example**
 

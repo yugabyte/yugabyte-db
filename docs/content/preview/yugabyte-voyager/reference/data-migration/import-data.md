@@ -210,6 +210,14 @@ send-diagnostics:
 
 | Enable or disable sending [diagnostics](../../../reference/diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
 
+| --max-retries-streaming |
+
+```yaml{.nocopy}
+max-retries-streaming:
+```
+
+| Maximum number of retries for failed event batch during live migration. <br>Default: 15 |
+
 | --target-db-host |
 
 ```yaml{.nocopy}
@@ -522,6 +530,15 @@ send-diagnostics:
 ```
 
 |Enable or disable sending [diagnostics](../../../reference/diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+
+| --max-retries-streaming |
+
+```yaml{.nocopy}
+max-retries-streaming:
+```
+
+| Maximum number of retries for failed event batch during live migration. <br>Default: 15 |
+
 | --source-db-password |
 
 ```yaml{.nocopy}
@@ -619,6 +636,15 @@ send-diagnostics:
 ```
 
 | Enable or disable sending [diagnostics](../../../reference/diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+
+| --max-retries-streaming |
+
+```yaml{.nocopy}
+max-retries-streaming:
+```
+
+| Maximum number of retries for failed event batch during live migration. <br>Default: 15 |
+
 | --source-replica-db-host |
 
 ```yaml {.nocopy}
