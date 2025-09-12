@@ -7,7 +7,7 @@ headcontent: Encrypt your YugabyteDB cluster
 aliases:
   - /secure/encryption-at-rest
 menu:
-  preview:
+  v2.25
     identifier: encryption-at-rest
     parent: secure
     weight: 735

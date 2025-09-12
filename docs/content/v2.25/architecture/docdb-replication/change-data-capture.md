@@ -9,7 +9,7 @@ tags:
 aliases:
   - /preview/architecture/change-data-capture/
 menu:
-  preview:
+  v2.25
     parent: architecture-docdb-replication
     identifier: architecture-docdb-replication-cdc
     weight: 600

@@ -5,7 +5,7 @@ linkTitle: Transaction priorities
 description: Transaction priorities in YugabyteDB.
 headcontent: Transaction priorities in YugabyteDB
 menu:
-  preview:
+  v2.25
     name: Transaction priorities
     identifier: develop-quality-of-service-transaction-priorities
     parent: develop-quality-of-service

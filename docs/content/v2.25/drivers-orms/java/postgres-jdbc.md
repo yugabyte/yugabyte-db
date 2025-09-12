@@ -6,7 +6,7 @@ description: Connect a Java application using PostgreSQL JDBC driver
 tags:
   other: ysql
 menu:
-  preview:
+  v2.25
     identifier: java-driver-3-jdbc-postgres
     parent: java-drivers
     weight: 500

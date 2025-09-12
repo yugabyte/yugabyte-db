@@ -4,7 +4,7 @@ headerTitle: Edit the docs
 linkTitle: Edit the docs
 description: Get set up and edit the YugabyteDB docs locally
 menu:
-  preview:
+  v2.25
     identifier: docs-edit
     parent: docs
     weight: 2914

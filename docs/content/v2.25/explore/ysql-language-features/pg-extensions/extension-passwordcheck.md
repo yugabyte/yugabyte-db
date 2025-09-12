@@ -4,7 +4,7 @@ headerTitle: passwordcheck extension
 linkTitle: passwordcheck
 description: Using the passwordcheck extension in YugabyteDB
 menu:
-  preview:
+  v2.25
     identifier: extension-passwordcheck
     parent: pg-extensions
     weight: 20

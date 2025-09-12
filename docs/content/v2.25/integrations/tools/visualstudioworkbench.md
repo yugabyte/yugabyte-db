@@ -4,7 +4,7 @@ headerTitle: Cassandra Workbench
 linkTitle: Cassandra Workbench
 description: Configure Visual Studio Code to work with YCQL.
 menu:
-  preview:
+  v2.25
     identifier: visualstudioworkbench
     parent: tools
     weight: 40

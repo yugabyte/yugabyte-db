@@ -3,7 +3,7 @@ title: All YB-Master flags
 headerTitle: All YB-Master flags
 description: List of all YB-Master process flags for configuring YugabyteDB using yb-master
 menu:
-  preview:
+  v2.25
     identifier: all-flags-yb-master
     weight: 2440
 type: docs

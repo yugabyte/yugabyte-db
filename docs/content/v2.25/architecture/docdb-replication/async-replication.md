@@ -7,7 +7,7 @@ headContent: High-throughput asynchronous physical replication
 aliases:
   - /preview/architecture/docdb/2dc-deployments/
 menu:
-  preview:
+  v2.25
     identifier: architecture-docdb-async-replication
     parent: architecture-docdb-replication
     weight: 300

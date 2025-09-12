@@ -8,7 +8,7 @@ tags:
 aliases:
   - /preview/reference/drivers/ycql-client-drivers/
 menu:
-  preview:
+  v2.25
     identifier: ycql-client-libraries
     parent: drivers-orms
     weight: 2001

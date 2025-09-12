@@ -4,7 +4,7 @@ linkTitle: Smart drivers
 description: Use YugabyteDB smart drivers to improve performance with connection load balancing for YSQL
 headcontent: Manage connection load balancing automatically using smart drivers
 menu:
-  preview:
+  v2.25
     identifier: smart-drivers
     parent: drivers-orms
     weight: 400

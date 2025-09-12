@@ -5,7 +5,7 @@ linkTitle: Resource guide
 description: Find resources for getting started with YugabyteDB.
 headcontent: Learn more about YugabyteDB with blogs, videos, and more
 menu:
-  preview:
+  v2.25
     identifier: get-started-guide
     parent: reference
     weight: 2600

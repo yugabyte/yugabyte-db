@@ -3,7 +3,7 @@ title: Collations
 linkTitle: Collations
 description: YSQL collations
 menu:
-  preview:
+  v2.25
     identifier: advanced-features-collations
     parent: advanced-features
     weight: 100

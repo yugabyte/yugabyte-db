@@ -4,7 +4,7 @@ headerTitle: Phoenix Example Application
 linkTitle: Phoenix
 description: Elixir application that uses Phoenix, Ecto and YSQL
 menu:
-  preview:
+  v2.25
     identifier: elixir-phoenix
     parent: elixir-drivers
     weight: 550

@@ -3,7 +3,7 @@ title: Manual remote bootstrap of failed peer
 linkTitle: Manual remote bootstrap of failed peer
 description: Manual remote bootstrap when a majority of peers fail
 menu:
-  preview:
+  v2.25
     parent: troubleshoot-cluster
     weight: 835
 type: docs

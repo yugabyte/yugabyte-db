@@ -6,7 +6,7 @@ description: Investigate and troubleshoot performance issues in YugabyteDB clust
 aliases:
   - /preview/benchmark/performance-troubleshooting/
 menu:
-  preview:
+  v2.25
     identifier: performance-troubleshooting
     parent: troubleshoot-cluster
     weight: 868

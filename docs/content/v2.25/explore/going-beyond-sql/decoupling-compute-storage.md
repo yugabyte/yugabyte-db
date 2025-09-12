@@ -3,7 +3,7 @@ title: Separating storage and compute
 linkTitle: Decouple storage and compute
 headcontent: Scale compute and storage layers independently
 menu:
-  preview:
+  v2.25
     identifier: decouple-storage-compute
     parent: going-beyond-sql
     weight: 800

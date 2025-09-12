@@ -7,7 +7,7 @@ headcontent: Deploy YugabyteDB in public clouds
 aliases:
   - /deploy/public-clouds/
 menu:
-  preview:
+  v2.25
     identifier: public-clouds
     parent: deploy
     weight: 40

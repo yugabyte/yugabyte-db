@@ -5,7 +5,7 @@ linkTitle: Sharding
 description: Learn about sharding strategies, hash and range sharding, colocated tables, and table splitting.
 headcontent: Learn about sharding strategies, hash and range sharding, colocated tables, and table splitting.
 menu:
-  preview:
+  v2.25
     identifier: architecture-docdb-sharding
     parent: architecture
     weight: 700

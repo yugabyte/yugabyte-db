@@ -5,7 +5,7 @@ linkTitle: Text search
 headcontent: Learn how to search text data types in YSQL
 description: Learn how to search text data types in YSQL
 menu:
-  preview:
+  v2.25
     identifier: text-search
     parent: learn
     weight: 150

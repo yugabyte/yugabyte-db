@@ -3,7 +3,7 @@ title: PUNSUBSCRIBE
 linkTitle: PUNSUBSCRIBE
 description: PUNSUBSCRIBE
 menu:
-  preview:
+  v2.25
     parent: api-yedis
     weight: 2555
 aliases:

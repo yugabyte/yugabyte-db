@@ -3,7 +3,7 @@ title: INCR
 linkTitle: INCR
 description: INCR
 menu:
-  preview:
+  v2.25
     parent: api-yedis
     weight: 2210
 aliases:

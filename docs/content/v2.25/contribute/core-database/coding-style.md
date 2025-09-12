@@ -5,7 +5,7 @@ linkTitle: Coding style
 description: YugabyteDB coding style
 headcontent: YugabyteDB coding style
 menu:
-  preview:
+  v2.25
     identifier: coding-style
     parent: core-database
     weight: 2914

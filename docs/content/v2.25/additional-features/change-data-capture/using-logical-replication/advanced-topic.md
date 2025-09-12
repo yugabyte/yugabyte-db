@@ -6,7 +6,7 @@ description: Advanced topics for Change Data Capture in YugabyteDB.
 aliases:
   - /preview/explore/change-data-capture/using-logical-replication/advanced-topic/
 menu:
-  preview:
+  v2.25
     parent: explore-change-data-capture-logical-replication
     identifier: advanced-topics
     weight: 50

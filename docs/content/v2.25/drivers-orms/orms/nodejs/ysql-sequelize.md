@@ -4,7 +4,7 @@ headerTitle: Node.js ORM example application
 linkTitle: Node.js
 description: Node.js ORM example application that uses Sequelize and YSQL.
 menu:
-  preview:
+  v2.25
     identifier: nodejs-sequelize
     parent: orm-tutorials
     weight: 690

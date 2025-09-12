@@ -3,7 +3,7 @@ title: Table partitioning
 linkTitle: Table partitioning
 description: Table partitioning in YSQL
 menu:
-  preview:
+  v2.25
     identifier: advanced-features-partitions
     parent: advanced-features
     weight: 600

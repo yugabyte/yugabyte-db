@@ -7,7 +7,7 @@ headcontent: Read performance when scaling horizontally
 aliases:
   - /preview/architecture/core-functions/read-path
 menu:
-  preview:
+  v2.25
     identifier: scaling-reads
     parent: explore-scalability
     weight: 30

@@ -6,7 +6,7 @@ description: C# Drivers and ORMs support for YugabyteDB.
 aliases:
   - /preview/develop/client-drivers/csharp/
 menu:
-  preview:
+  v2.25
     identifier: csharp-drivers
     parent: drivers-orms
     weight: 570

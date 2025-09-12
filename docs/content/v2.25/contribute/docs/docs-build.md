@@ -4,7 +4,7 @@ headerTitle: Build the docs
 linkTitle: Build the docs
 description: Build the YugabyteDB docs locally
 menu:
-  preview:
+  v2.25
     identifier: docs-build
     parent: docs
     weight: 2913

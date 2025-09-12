@@ -8,7 +8,7 @@ tags:
 aliases:
   - /preview/reference/drivers/go/pgx-reference/
 menu:
-  preview:
+  v2.25
     name: Go Drivers
     identifier: ref-2-pgx-go-driver
     parent: go-drivers

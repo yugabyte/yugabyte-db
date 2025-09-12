@@ -7,7 +7,7 @@ headcontent: Node.js ORM support for YugabyteDB
 aliases:
   - /integrations/typeorm/
 menu:
-  preview:
+  v2.25
     identifier: node-orm-3-typeorm
     parent: nodejs-drivers
     weight: 600

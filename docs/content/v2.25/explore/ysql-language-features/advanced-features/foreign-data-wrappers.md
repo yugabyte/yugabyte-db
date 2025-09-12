@@ -3,7 +3,7 @@ title: Foreign data wrappers
 linkTitle: Foreign data wrappers
 description: Foreign data wrappers in YSQL
 menu:
-  preview:
+  v2.25
     identifier: advanced-features-foreign-data-wrappers
     parent: advanced-features
     weight: 300

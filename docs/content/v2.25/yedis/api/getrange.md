@@ -3,7 +3,7 @@ title: GETRANGE
 linkTitle: GETRANGE
 description: GETRANGE
 menu:
-  preview:
+  v2.25
     parent: api-yedis
     weight: 2080
 aliases:

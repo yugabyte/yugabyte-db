@@ -4,7 +4,7 @@ linkTitle: Supported versions
 description: Supported versions for Go drivers and ORMs
 headcontent: Supported versions for Go drivers and ORMs
 menu:
-  preview:
+  v2.25
     identifier: go-compatibility
     parent: go-drivers
     weight: 800

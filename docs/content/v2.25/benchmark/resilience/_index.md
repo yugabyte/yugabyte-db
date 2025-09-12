@@ -5,7 +5,7 @@ linkTitle: Resilience
 description: Benchmark YugabyteDB's ability to withstand component failure.
 headcontent: Benchmarking the ability to withstand component failure
 menu:
-  preview:
+  v2.25
     identifier: resilience
     parent: benchmark
     weight: 21

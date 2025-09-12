@@ -3,7 +3,7 @@ title: PSUBSCRIBE
 linkTitle: PSUBSCRIBE
 description: PSUBSCRIBE
 menu:
-  preview:
+  v2.25
     parent: api-yedis
     weight: 2554
 aliases:

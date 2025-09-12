@@ -5,7 +5,7 @@ linkTitle: Build multi-cloud applications
 description: Build applications that run on different clouds
 headcontent: Build applications that run on different clouds
 menu:
-  preview:
+  v2.25
     identifier: build-multicloud-apps
     parent: develop
     weight: 60

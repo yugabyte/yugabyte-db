@@ -3,7 +3,7 @@ title: Recover YB-TServer from crash loop
 linkTitle: Recover YB-TServer from crash loop
 description: Recover YB-TServer from crash loop
 menu:
-  preview:
+  v2.25
     parent: troubleshoot-cluster
     weight: 866
 type: docs

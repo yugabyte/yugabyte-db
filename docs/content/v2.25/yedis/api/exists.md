@@ -3,7 +3,7 @@ title: EXISTS
 linkTitle: EXISTS
 description: EXISTS
 menu:
-  preview:
+  v2.25
     parent: api-yedis
     weight: 2060
 aliases:

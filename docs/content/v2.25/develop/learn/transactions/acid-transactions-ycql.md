@@ -6,7 +6,7 @@ description: Learn how ACID transactions work in YCQL on YugabyteDB.
 aliases:
   - /preview/develop/learn/acid-transactions-ycql/
 menu:
-  preview:
+  v2.25
     identifier: acid-transactions-2-ycql
     parent: learn
     weight: 140

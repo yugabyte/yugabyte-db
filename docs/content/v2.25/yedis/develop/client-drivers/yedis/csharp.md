@@ -6,7 +6,7 @@ description: Use C# to build a YugabyteDB application that interacts with YEDIS
 aliases:
   - /preview/yedis/develop/client-drivers/csharp
 menu:
-  preview:
+  v2.25
     identifier: client-drivers-yedis-csharp
     parent: develop-yedis
 type: docs

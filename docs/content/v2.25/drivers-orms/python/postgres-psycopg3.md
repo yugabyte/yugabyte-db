@@ -4,7 +4,7 @@ headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Python application using PostgreSQL Psycopg3 Driver for YSQL
 menu:
-  preview:
+  v2.25
     identifier: postgres-psycopg3-driver
     parent: python-drivers
     weight: 510

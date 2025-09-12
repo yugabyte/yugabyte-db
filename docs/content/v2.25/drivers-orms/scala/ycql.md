@@ -4,7 +4,7 @@ headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Scala application using YugabyteDB Java Driver for YCQL
 menu:
-  preview:
+  v2.25
     identifier: ycql-scala-driver
     parent: scala-drivers
     weight: 420

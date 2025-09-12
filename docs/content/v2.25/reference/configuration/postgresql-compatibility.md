@@ -7,7 +7,7 @@ aliases:
   - /preview/explore/ysql-language-features/postgresql-compatibility/
   - /preview/develop/postgresql-compatibility/
 menu:
-  preview:
+  v2.25
     identifier: ysql-postgresql-compatibility
     parent: configuration
     weight: 3500

@@ -7,7 +7,7 @@ headContent: Use Active Session History to monitor and troubleshoot performance 
 tags:
   feature: early-access
 menu:
-  preview:
+  v2.25
     parent: monitor-and-alert
     identifier: ash-monitor
     weight: 120

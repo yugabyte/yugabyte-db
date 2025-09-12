@@ -4,7 +4,7 @@ linkTitle: Supported versions
 description: Supported versions for Java drivers, ORMs and AppDev frameworks
 headcontent: Supported versions for Java drivers, ORMs and AppDev frameworks
 menu:
-  preview:
+  v2.25
     identifier: java-compatibility
     parent: java-drivers
     weight: 800

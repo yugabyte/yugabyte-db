@@ -4,7 +4,7 @@ headerTitle: PHP
 linkTitle: PHP
 description: PHP Drivers and ORMs support for YugabyteDB.
 menu:
-  preview:
+  v2.25
     identifier: php-drivers
     parent: drivers-orms
     weight: 590

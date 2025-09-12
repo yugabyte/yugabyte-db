@@ -10,7 +10,7 @@ aliases:
   - /preview/explore/global-distribution/linux
   - /preview/explore/multi-region-deployments/synchronous-replication-ycql/
 menu:
-  preview:
+  v2.25
     identifier: explore-multi-region-deployments-sync-replication-1-ysql
     parent: explore-multi-region-deployments
     weight: 710

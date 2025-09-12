@@ -5,7 +5,7 @@ linkTitle: xCluster
 description: Deploy unidirectional (master-follower) or bidirectional (multi-master) asynchronous replication between two universes
 headContent: Unidirectional (master-follower) and bidirectional (multi-master) replication
 menu:
-  preview:
+  v2.25
     identifier: async-replication
     parent: multi-dc
     weight: 610

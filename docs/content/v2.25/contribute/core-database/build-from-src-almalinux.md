@@ -5,7 +5,7 @@ linkTitle: Build the source
 description: Build YugabyteDB from source code on AlmaLinux.
 headcontent: Build the source code.
 menu:
-  preview:
+  v2.25
     identifier: build-from-src-1-almalinux
     parent: core-database
     weight: 2912

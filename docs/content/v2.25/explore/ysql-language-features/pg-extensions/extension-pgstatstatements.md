@@ -4,7 +4,7 @@ headerTitle: pg_stat_statements extension
 linkTitle: pg_stat_statements
 description: Using the pg_stat_statements extension in YugabyteDB
 menu:
-  preview:
+  v2.25
     identifier: extension-pgstatstatements
     parent: pg-extensions
     weight: 20

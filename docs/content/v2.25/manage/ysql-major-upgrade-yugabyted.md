@@ -5,7 +5,7 @@ linkTitle: YSQL major upgrade
 description: Upgrade YugabyteDB to PostgreSQL 15 using yugabyted
 headcontent: Upgrade YugabyteDB to a version that supports PG 15
 menu:
-  preview:
+  v2.25
     identifier: ysql-major-upgrade-1
     parent: manage-upgrade-deployment
     weight: 706

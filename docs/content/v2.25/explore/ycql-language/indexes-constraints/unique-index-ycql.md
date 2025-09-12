@@ -5,7 +5,7 @@ linkTitle: Unique indexes
 description: Using Unique indexes in YCQL
 headContent: Explore unique indexes in YugabyteDB using YCQL
 menu:
-  preview:
+  v2.25
     identifier: unique-index-ycql
     parent: explore-indexes-constraints-ycql
     weight: 231

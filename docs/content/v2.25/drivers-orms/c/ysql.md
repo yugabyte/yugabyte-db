@@ -8,7 +8,7 @@ aliases:
   - /preview/develop/client-drivers/c/
   - /preview/quick-start/build-apps/c/
 menu:
-  preview:
+  v2.25
     identifier: libpq-c-driver
     parent: c-drivers
     weight: 410

@@ -3,7 +3,7 @@ title: CREATEDB
 linkTitle: CREATEDB
 description: CREATEDB
 menu:
-  preview:
+  v2.25
     parent: api-yedis
     weight: 2032
 aliases:

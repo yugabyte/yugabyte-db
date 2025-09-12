@@ -7,7 +7,7 @@ headcontent: Enable encryption (using TLS) for client- and server-server communi
 aliases:
     - /preview/secure/tls-encryption/client-to-server/
 menu:
-  preview:
+  v2.25
     identifier: server-to-server
     parent: tls-encryption
     weight: 20

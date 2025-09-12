@@ -7,7 +7,7 @@ headcontent: Catalog information, tablet metadata, and cluster coordination
 aliases:
   - /preview/architecture/concepts/yb-master/
 menu:
-  preview:
+  v2.25
     identifier: architecture-concepts-yb-master
     parent: architecture
     weight: 1100

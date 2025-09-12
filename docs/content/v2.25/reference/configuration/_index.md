@@ -7,7 +7,7 @@ headcontent: Configure core database services
 aliases:
   - /preview/reference
 menu:
-  preview:
+  v2.25
     identifier: configuration
     parent: reference
     weight: 2600

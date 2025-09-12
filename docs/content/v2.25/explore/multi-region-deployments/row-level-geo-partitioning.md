@@ -4,7 +4,7 @@ linkTitle: Row-level geo-partitioning
 description: Row-level geo-partitioning in YSQL
 headcontent: Pin data to regions for compliance and lower latencies
 menu:
-  preview:
+  v2.25
     identifier: explore-multi-region-geo-partitioning
     parent: explore-multi-region-deployments
     weight: 720

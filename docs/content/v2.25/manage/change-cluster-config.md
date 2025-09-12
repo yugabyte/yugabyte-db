@@ -7,7 +7,7 @@ headcontent: Migrate a YugabyteDB cluster to a new set of nodes
 aliases:
   - manage/change-cluster-config
 menu:
-  preview:
+  v2.25
     identifier: manage-change-cluster-config
     parent: manage
     weight: 704

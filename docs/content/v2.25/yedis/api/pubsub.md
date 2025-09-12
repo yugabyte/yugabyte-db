@@ -3,7 +3,7 @@ title: PUBSUB
 linkTitle: PUBSUB
 description: PUBSUB
 menu:
-  preview:
+  v2.25
     parent: api-yedis
     weight: 2550
 aliases:

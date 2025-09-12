@@ -9,7 +9,7 @@ aliases:
   - /preview/architecture/layered-architecture/
   - /preview/architecture/overview/
 menu:
-  preview:
+  v2.25
     identifier: deploy
     parent: launch-and-manage
     weight: 10

@@ -5,7 +5,7 @@ linkTitle: Failover
 description: Unplanned failover using transactional xCluster replication between universes
 headContent: Failover of application traffic to the standby universe with potential data loss
 menu:
-  preview:
+  v2.25
     parent: async-replication-transactional
     identifier: async-transactional-failover
     weight: 30

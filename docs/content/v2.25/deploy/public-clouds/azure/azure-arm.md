@@ -7,7 +7,7 @@ aliases:
   - /deploy/public-clouds/azure/
   - /preview/deploy/public-clouds/azure
 menu:
-  preview:
+  v2.25
     identifier: deploy-on-azure-1-azure-arm
     parent: public-clouds
     weight: 650

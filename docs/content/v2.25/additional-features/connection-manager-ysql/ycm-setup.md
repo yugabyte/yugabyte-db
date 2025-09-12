@@ -5,7 +5,7 @@ linkTitle: Setup
 description: Set up YSQL Connection Manager
 headcontent: YSQL Connection Manager flags and settings
 menu:
-  preview:
+  v2.25
     identifier: ycm-setup
     parent: connection-manager
     weight: 10

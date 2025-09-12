@@ -5,7 +5,7 @@ linkTitle: Primary keys
 description: Defining Primary key constraint in YCQL
 headContent: Explore primary keys in YugabyteDB using YCQL
 menu:
-  preview:
+  v2.25
     identifier: primary-key-ycql
     parent: explore-indexes-constraints-ycql
     weight: 201

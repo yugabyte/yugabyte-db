@@ -5,7 +5,7 @@ linkTitle: CLIs
 description: Use these CLIs and command line tools to interact with YugabyteDB.
 headcontent: Tools for interacting with, configuring, and managing YugabyteDB
 menu:
-  preview:
+  v2.25
     identifier: admin
     parent: reference
     weight: 1400

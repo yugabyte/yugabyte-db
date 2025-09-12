@@ -7,7 +7,7 @@ headContent: Set up transactional xCluster replication
 aliases:
   - /preview/deploy/multi-dc/async-replication/async-transactional-setup-dblevel/
 menu:
-  preview:
+  v2.25
     parent: async-replication-transactional
     identifier: async-transactional-setup-2-semi-automatic
     weight: 10

@@ -5,7 +5,7 @@ linkTitle: Upgrade YugabyteDB
 description: Upgrade YugabyteDB
 headcontent: Upgrade an existing YugabyteDB deployment
 menu:
-  preview:
+  v2.25
     identifier: manage-upgrade-deployment
     parent: manage
     weight: 706

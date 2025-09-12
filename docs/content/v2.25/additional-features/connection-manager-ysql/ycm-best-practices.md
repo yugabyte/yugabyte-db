@@ -5,7 +5,7 @@ linkTitle: Best practices
 description: Best practices
 headcontent: How to get the most from YSQL Connection Manager
 menu:
-  preview:
+  v2.25
     identifier: ycm-best-practices
     parent: connection-manager
     weight: 20

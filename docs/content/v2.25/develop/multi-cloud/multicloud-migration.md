@@ -5,7 +5,7 @@ linkTitle: Multi-cloud migration
 description: Migrate your data between different clouds
 headcontent: Migrate your data between different clouds
 menu:
-  preview:
+  v2.25
     identifier: multicloud-migration
     parent: build-multicloud-apps
     weight: 200

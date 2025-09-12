@@ -6,7 +6,7 @@ description: Use NodeJS to build a YugabyteDB application that interacts with YE
 aliases:
   - /preview/yedis/develop/client-drivers/nodejs
 menu:
-  preview:
+  v2.25
     identifier: client-drivers-yedis-nodejs
     parent: develop-yedis
 type: docs

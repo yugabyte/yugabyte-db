@@ -3,7 +3,7 @@ title: Keyspaces and tables
 linkTitle: Keyspaces and tables
 description: Keyspaces and tables in YCQL
 menu:
-  preview:
+  v2.25
     identifier: explore-ycql-language-features-keyspaces-tables
     parent: explore-ycql-language
     weight: 60

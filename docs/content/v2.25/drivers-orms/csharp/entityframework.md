@@ -7,7 +7,7 @@ headcontent: C# ORM support for YugabyteDB
 aliases:
   - /preview/integrations/entity-framework/
 menu:
-  preview:
+  v2.25
     identifier: csharp-orm
     parent: csharp-drivers
     weight: 600

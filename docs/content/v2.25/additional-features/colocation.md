@@ -8,7 +8,7 @@ aliases:
   - /preview/architecture/docdb-sharding/colocated-tables/
   - /preview/explore/colocation/
 menu:
-  preview:
+  v2.25
     identifier: colocation
     parent: additional-features
     weight: 50

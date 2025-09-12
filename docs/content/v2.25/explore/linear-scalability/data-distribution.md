@@ -7,7 +7,7 @@ headcontent: Understand how a table is split into tablets and moved seamlessly a
 aliases:
   - /explore/linear-scalability/sharding-rebalancing
 menu:
-  preview:
+  v2.25
     identifier: scalability-data-distribution
     parent: explore-scalability
     weight: 10

@@ -3,7 +3,7 @@ title: Logging
 linkTitle: Logs
 headerTitle: Understand YugabyteDB logging
 menu:
-  preview:
+  v2.25
     identifier: observability-logging
     parent: explore-observability
     weight: 900

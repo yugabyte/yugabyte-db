@@ -4,7 +4,7 @@ headerTitle: Troubleshoot YugabyteDB
 linkTitle: Troubleshoot
 description: Diagnose and solve YugabyteDB cluster and node issues
 menu:
-  preview:
+  v2.25
     identifier: troubleshoot
     parent: launch-and-manage
     weight: 100

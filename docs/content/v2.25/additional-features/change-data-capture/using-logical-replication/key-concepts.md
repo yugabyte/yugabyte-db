@@ -7,7 +7,7 @@ headcontent: PostgreSQL logical replication concepts
 aliases:
   - /preview/explore/change-data-capture/using-logical-replication/key-concepts/
 menu:
-  preview:
+  v2.25
     parent: explore-change-data-capture-logical-replication
     identifier: key-concepts
     weight: 10

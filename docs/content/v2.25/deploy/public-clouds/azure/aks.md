@@ -6,7 +6,7 @@ description: Deploy on Microsoft Azure Kubernetes Service (AKS)
 aliases:
   - /deploy/public-clouds/azure/
 menu:
-  preview:
+  v2.25
     identifier: deploy-in-azure-2-aks
     parent: public-clouds
     weight: 650

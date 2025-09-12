@@ -5,7 +5,7 @@ linkTitle: Secondary indexes with JSONB
 description: Secondary indexes with JSONB in YugabyteDB YCQL
 headContent: Explore secondary indexes with JSONB in YugabyteDB using YCQL
 menu:
-  preview:
+  v2.25
     identifier: secondary-indexes-with-jsonb-ycql
     parent: explore-indexes-constraints-ycql
     weight: 260

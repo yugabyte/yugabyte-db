@@ -4,7 +4,7 @@ headerTitle: Jepsen testing
 linkTitle: Jepsen testing
 description: Description of Jepsen testing.
 menu:
-  preview:
+  v2.25
     identifier: jepsen-testing-1
     parent: resilience
     weight: 13

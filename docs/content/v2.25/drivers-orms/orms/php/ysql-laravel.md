@@ -4,7 +4,7 @@ headerTitle: PHP ORM example application
 linkTitle: PHP
 description: PHP ORM example application.
 menu:
-  preview:
+  v2.25
     identifier: php-orm
     parent: orm-tutorials
     weight: 830

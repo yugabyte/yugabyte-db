@@ -3,7 +3,7 @@ title: GETSET
 linkTitle: GETSET
 description: GETSET
 menu:
-  preview:
+  v2.25
     parent: api-yedis
     weight: 2090
 aliases:

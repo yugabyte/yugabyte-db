@@ -7,7 +7,7 @@ description: Learn how to search text with pattern matching
 tags:
   other: ysql
 menu:
-  preview:
+  v2.25
     identifier: pattern-matching-ysql
     parent: text-search
     weight: 100

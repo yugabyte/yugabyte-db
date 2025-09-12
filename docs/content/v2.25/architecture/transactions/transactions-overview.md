@@ -3,7 +3,7 @@ title: Fundamentals of Distributed Transactions
 linkTitle: Fundamentals
 description: The fundamental concepts behind distributed transactions
 menu:
-  preview:
+  v2.25
     identifier: architecture-transactions-overview
     parent: architecture-acid-transactions
     weight: 100

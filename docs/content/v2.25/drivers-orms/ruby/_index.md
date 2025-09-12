@@ -4,7 +4,7 @@ headerTitle: Ruby
 linkTitle: Ruby
 description: Ruby Drivers and ORMs support for YugabyteDB.
 menu:
-  preview:
+  v2.25
     identifier: ruby-drivers
     parent: drivers-orms
     weight: 580

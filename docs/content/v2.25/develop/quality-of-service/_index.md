@@ -5,7 +5,7 @@ linkTitle: Quality of service
 description: Quality of service and admission control
 headcontent: Quality of service and admission control
 menu:
-  preview:
+  v2.25
     identifier: develop-quality-of-service
     parent: develop
     weight: 585

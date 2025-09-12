@@ -3,7 +3,7 @@ title: SCARD
 linkTitle: SCARD
 description: SCARD
 menu:
-  preview:
+  v2.25
     parent: api-yedis
     weight: 2260
 aliases:

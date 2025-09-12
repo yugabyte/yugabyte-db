@@ -7,7 +7,7 @@ headcontent: Understand how to design a distributed job queue
 tags:
   other: ysql
 menu:
-  preview:
+  v2.25
     identifier: common-patterns-jobqueue
     parent: common-patterns
     weight: 300

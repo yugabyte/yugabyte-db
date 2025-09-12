@@ -7,7 +7,7 @@ description: YugabyteDB Documentation page elements on a single page.
 layout: single
 type: docs
 menu:
-  preview:
+  v2.25
     identifier: all-page-elements
     parent: docs-edit
     weight: 9000

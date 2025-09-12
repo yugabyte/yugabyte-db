@@ -7,7 +7,7 @@ aliases:
   - /preview/manage/backup-restore/back-up-data-ycql/
   - /preview/manage/backup-restore/restore-data-ycql/
 menu:
-  preview:
+  v2.25
     identifier: export-import-data-ycql
     parent: backup-restore
     weight: 703

@@ -3,7 +3,7 @@ title: LISTDB
 linkTitle: LISTDB
 description: LISTDB
 menu:
-  preview:
+  v2.25
     parent: api-yedis
     weight: 2036
 aliases:

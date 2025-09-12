@@ -4,7 +4,7 @@ headerTitle: Go ORM example application
 linkTitle: Go
 description: Go ORM example application that uses GORM and YSQL.
 menu:
-  preview:
+  v2.25
     identifier: go-gorm
     parent: orm-tutorials
     weight: 660

@@ -7,7 +7,7 @@ headcontent: Write performance when scaling horizontally
 aliases:
   - /preview/architecture/core-functions/write-path
 menu:
-  preview:
+  v2.25
     identifier: scaling-writes
     parent: explore-scalability
     weight: 40

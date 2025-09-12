@@ -6,7 +6,7 @@ headerTitle: Get query statistics using ycql_stat_statements
 tags:
   feature: tech-preview
 menu:
-  preview:
+  v2.25
     identifier: ycql-stat-statements
     parent: query-tuning
     weight: 200

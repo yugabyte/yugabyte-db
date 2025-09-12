@@ -8,7 +8,7 @@ aliases:
   - /preview/docdb/persistence/
 headcontent: The document store responsible for transactions, sharding, replication, and persistence
 menu:
-  preview:
+  v2.25
     identifier: docdb
     parent: architecture
     weight: 600

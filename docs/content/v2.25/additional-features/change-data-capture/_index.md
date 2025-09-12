@@ -9,7 +9,7 @@ tags:
 aliases:
   - /preview/develop/change-data-capture/
 menu:
-  preview:
+  v2.25
     identifier: explore-change-data-capture
     parent: additional-features
     weight: 30

@@ -4,7 +4,7 @@ headerTitle: Rust ORM example application
 linkTitle: Rust
 description: Rust ORM example application that uses Diesel and YSQL API to connect to and interact with YugabyteDB.
 menu:
-  preview:
+  v2.25
     identifier: rust-diesel
     parent: orm-tutorials
     weight: 730

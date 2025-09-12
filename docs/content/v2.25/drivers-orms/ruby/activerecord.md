@@ -4,7 +4,7 @@ headerTitle: Use an ORM
 linkTitle: Use an ORM
 description: Ruby Active Record ORM support for YugabyteDB
 menu:
-  preview:
+  v2.25
     identifier: activerecord-orm
     parent: ruby-drivers
     weight: 410

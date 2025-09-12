@@ -12,7 +12,7 @@ aliases:
   - /preview/quick-start/build-apps/java/
   - /preview/integrations/jdbc-drivers/
 menu:
-  preview:
+  v2.25
     identifier: java-driver-1-yugabyte-jdbc
     parent: java-drivers
     weight: 500

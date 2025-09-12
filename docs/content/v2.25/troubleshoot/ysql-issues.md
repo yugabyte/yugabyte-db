@@ -2,7 +2,7 @@
 title: YSQL issues
 linkTitle: YSQL issues
 menu:
-  preview:
+  v2.25
     identifier: troubleshoot-ysql
     parent: troubleshoot
     weight: 300

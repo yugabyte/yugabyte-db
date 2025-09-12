@@ -8,7 +8,7 @@ image: /images/section_icons/api/yedis.png
 aliases:
   - /preview/secure/enable-authentication/yedis/
 menu:
-  preview:
+  v2.25
     identifier: yedis
     parent: misc
     weight: 2900

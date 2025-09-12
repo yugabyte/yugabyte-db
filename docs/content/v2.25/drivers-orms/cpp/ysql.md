@@ -8,7 +8,7 @@ aliases:
   - /preview/develop/client-drivers/cpp/
   - /preview/quick-start/build-apps/cpp/
 menu:
-  preview:
+  v2.25
     identifier: cpp-ysql-driver
     parent: cpp-drivers
     weight: 410

@@ -3,7 +3,7 @@ title: SMEMBERS
 linkTitle: SMEMBERS
 description: SMEMBERS
 menu:
-  preview:
+  v2.25
     parent: api-yedis
     weight: 2300
 aliases:

@@ -16,7 +16,7 @@ aliases:
   - /preview/explore/auto-sharding/docker/
   - /preview/explore/auto-sharding/kubernetes/
 menu:
-  preview:
+  v2.25
     identifier: explore-scalability
     parent: explore
     weight: 220

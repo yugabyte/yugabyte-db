@@ -5,7 +5,7 @@ linkTitle: YCSB
 description: Learn how to test the YSQL api using the new YSQL binding.
 headcontent: Benchmark YSQL performance using YCSB
 menu:
-  preview:
+  v2.25
     identifier: ycsb-2-ysql
     parent: benchmark
     weight: 5

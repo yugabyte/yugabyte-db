@@ -5,7 +5,7 @@ linkTitle: Zone failures
 description: YugabyteDB can handle in-region failure of zones
 headcontent: YugabyteDB can handle in-region failure of zones
 menu:
-  preview:
+  v2.25
     identifier: handling-zone-failures
     parent: fault-tolerance
     weight: 30

@@ -5,7 +5,7 @@ linkTitle: Advanced capabilities
 description: How to deploy advanced capabilities for your YugabyteDB deployment.
 headcontent: Deploy and manage advanced capabilities for your YugabyteDB universe
 menu:
-  preview:
+  v2.25
     identifier: additional-features
     parent: launch-and-manage
     weight: 40

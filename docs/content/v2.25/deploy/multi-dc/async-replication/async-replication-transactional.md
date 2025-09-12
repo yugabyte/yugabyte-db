@@ -8,7 +8,7 @@ aliases:
   - /preview/deploy/multi-dc/async-replication-transactional/
   - /preview/deploy/multi-dc/async-replication/async-transactional-setup/
 menu:
-  preview:
+  v2.25
     parent: async-replication
     identifier: async-replication-transactional
     weight: 10

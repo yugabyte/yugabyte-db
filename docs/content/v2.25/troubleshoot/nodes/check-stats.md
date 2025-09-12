@@ -4,7 +4,7 @@ linkTitle: System statistics
 headerTitle: Check system statistics
 description: How to check system statistics on your YugabyteDB cluster
 menu:
-  preview:
+  v2.25
     parent: troubleshoot-nodes
     weight: 30
 type: docs

@@ -4,7 +4,7 @@ linkTitle: Beyond PostgreSQL
 description: Exclusive advanced features of YugabyteDB
 headcontent: Explore exclusive advanced features in YugabyteDB
 menu:
-  preview:
+  v2.25
     identifier: going-beyond-sql
     parent: explore
     weight: 150

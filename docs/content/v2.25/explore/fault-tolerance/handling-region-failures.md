@@ -5,7 +5,7 @@ linkTitle: Region failures
 description: YugabyteDB can handle region failure
 headcontent: Be resilient to failures of entire regions
 menu:
-  preview:
+  v2.25
     identifier: handling-region-failures
     parent: fault-tolerance
     weight: 40

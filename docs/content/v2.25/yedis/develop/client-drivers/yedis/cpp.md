@@ -6,7 +6,7 @@ description: Use C++ to build a YugabyteDB application that interacts with YEDIS
 aliases:
   - /preview/yedis/develop/client-drivers/cpp
 menu:
-  preview:
+  v2.25
     identifier: client-drivers-yedis-cpp
     parent: develop-yedis
 type: docs

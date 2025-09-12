@@ -8,7 +8,7 @@ aliases:
   - /preview/develop/client-drivers/php/
   - /preview/quick-start/build-apps/php/
 menu:
-  preview:
+  v2.25
     identifier: php-ysql-driver
     parent: php-drivers
     weight: 410

@@ -5,7 +5,7 @@ linkTitle: Manage
 description: Managing YugabyteDB deployments
 headcontent: Manage your YugabyteDB deployment
 menu:
-  preview:
+  v2.25
     identifier: manage
     parent: launch-and-manage
     weight: 50

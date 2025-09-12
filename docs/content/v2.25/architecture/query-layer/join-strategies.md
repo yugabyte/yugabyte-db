@@ -7,7 +7,7 @@ headcontent: Understand the various methods used for joining multiple tables
 aliases:
   - /preview/explore/ysql-language-features/join-strategies/
 menu:
-  preview:
+  v2.25
     identifier: joins-strategies-ysql
     parent: architecture-query-layer
     weight: 200

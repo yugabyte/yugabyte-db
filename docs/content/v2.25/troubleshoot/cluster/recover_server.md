@@ -6,7 +6,7 @@ aliases:
   - /troubleshoot/cluster/recover-server/
   - /preview/troubleshoot/cluster/recover-server/
 menu:
-  preview:
+  v2.25
     parent: troubleshoot-cluster
     weight: 828
 type: docs

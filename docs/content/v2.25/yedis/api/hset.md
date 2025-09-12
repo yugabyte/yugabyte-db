@@ -3,7 +3,7 @@ title: HSET
 linkTitle: HSET
 description: HSET
 menu:
-  preview:
+  v2.25
     parent: api-yedis
     weight: 2180
 aliases:

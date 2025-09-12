@@ -7,7 +7,7 @@ headcontent: Understand how YugabyteDB creates indexes without affecting ongoing
 aliases:
   - /preview/explore/query-1-performance/pg-stat-progress-create-index/
 menu:
-  preview:
+  v2.25
     identifier: index-backfill
     parent: explore-indexes-constraints-ysql
     weight: 300

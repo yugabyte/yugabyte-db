@@ -10,7 +10,7 @@ aliases:
   - /preview/architecture/concepts/single-node/
   - /preview/key-concepts/
 menu:
-  preview:
+  v2.25
     identifier: architecture-concepts-universe
     parent: reference
     weight: 10

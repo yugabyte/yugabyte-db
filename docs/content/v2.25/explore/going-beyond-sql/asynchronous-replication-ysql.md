@@ -11,7 +11,7 @@ aliases:
   - /preview/explore/going-beyond-sql/asynchronous-replication-ycql/
   - /preview/explore/multi-region-deployments/asynchronous-replication-ycql/
 menu:
-  preview:
+  v2.25
     identifier: asynchronous-replication-ysql
     parent: going-beyond-sql
     weight: 350

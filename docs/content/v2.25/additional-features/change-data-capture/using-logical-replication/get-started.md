@@ -7,7 +7,7 @@ headcontent: Start using CDC with logical replication
 aliases:
   - /preview/explore/change-data-capture/using-logical-replication/get-started/
 menu:
-  preview:
+  v2.25
     parent: explore-change-data-capture-logical-replication
     identifier: get-started
     weight: 20

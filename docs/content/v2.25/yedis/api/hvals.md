@@ -3,7 +3,7 @@ title: HVALS
 linkTitle: HVALS
 description: HVALS
 menu:
-  preview:
+  v2.25
     parent: api-yedis
     weight: 2200
 aliases:

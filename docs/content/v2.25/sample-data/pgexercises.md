@@ -4,7 +4,7 @@ headerTitle: PgExercises
 linkTitle: PgExercises
 description: Use the PgExercises sample database on YugabyteDB to learn SQL or test your knowledge.
 menu:
-  preview:
+  v2.25
     identifier: pgexercises
     parent: sample-data
     weight: 300

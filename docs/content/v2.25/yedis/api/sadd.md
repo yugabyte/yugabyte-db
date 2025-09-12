@@ -3,7 +3,7 @@ title: SADD
 linkTitle: SADD
 description: SADD
 menu:
-  preview:
+  v2.25
     parent: api-yedis
     weight: 2250
 aliases:

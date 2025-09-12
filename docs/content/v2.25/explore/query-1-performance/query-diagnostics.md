@@ -6,7 +6,7 @@ headcontent: Export diagnostic information for analysis
 tags:
   feature: tech-preview
 menu:
-  preview:
+  v2.25
     identifier: query-diagnostics
     parent: query-tuning
     weight: 500

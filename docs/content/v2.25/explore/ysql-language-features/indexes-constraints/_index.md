@@ -5,7 +5,7 @@ linkTitle: Indexes
 description: Using indexes in YugabyteDB YSQL
 headcontent: Explore indexes and constraints in YSQL
 menu:
-  preview:
+  v2.25
     identifier: explore-indexes-constraints-ysql
     parent: explore-ysql-language-features
     weight: 700

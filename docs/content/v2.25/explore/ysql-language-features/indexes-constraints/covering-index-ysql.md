@@ -5,7 +5,7 @@ linkTitle: Covering indexes
 description: Using covering indexes in YSQL
 headContent: Explore covering indexes in YugabyteDB using YSQL
 menu:
-  preview:
+  v2.25
     identifier: covering-index-ysql
     parent: explore-indexes-constraints-ysql
     weight: 250

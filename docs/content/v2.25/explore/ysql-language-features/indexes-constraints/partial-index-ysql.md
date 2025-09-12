@@ -5,7 +5,7 @@ linkTitle: Partial indexes
 description: Using Partial indexes in YSQL
 headContent: Explore partial indexes in YugabyteDB using YSQL
 menu:
-  preview:
+  v2.25
     identifier: partial-index-ysql
     parent: explore-indexes-constraints-ysql
     weight: 240

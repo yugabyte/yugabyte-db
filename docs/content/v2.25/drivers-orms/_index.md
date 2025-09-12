@@ -8,7 +8,7 @@ aliases:
   - /develop/client-drivers/
   - /preview/develop/client-drivers/
 menu:
-  preview:
+  v2.25
     identifier: drivers-orms
     parent: develop
     weight: 30

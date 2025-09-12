@@ -8,7 +8,7 @@ aliases:
   - /preview/explore/ysql-language-features/indexes-constraints/other-constraints/
   - /preview/explore/ysql-language-features/indexes-constraints/foreign-key-ysql/
 menu:
-  preview:
+  v2.25
     identifier: explore-ysql-language-features-data-manipulation
     parent: explore-ysql-language-features
     weight: 400

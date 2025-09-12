@@ -3,7 +3,7 @@ title: Views
 linkTitle: Views
 description: Views in YSQL
 menu:
-  preview:
+  v2.25
     identifier: advanced-features-views
     parent: advanced-features
     weight: 800

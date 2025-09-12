@@ -3,7 +3,7 @@ title: PUBLISH
 linkTitle: PUBLISH
 description: PUBLISH
 menu:
-  preview:
+  v2.25
     parent: api-yedis
     weight: 2551
 aliases:

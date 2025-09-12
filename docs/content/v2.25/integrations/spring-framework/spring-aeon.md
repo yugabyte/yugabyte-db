@@ -6,7 +6,7 @@ headcontent:
 aliases:
   - /preview/yugabyte-cloud/cloud-examples/connect-application/
 menu:
-  preview:
+  v2.25
     identifier: spring-aeon
     parent: spring-framework
     weight: 100

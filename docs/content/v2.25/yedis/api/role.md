@@ -3,7 +3,7 @@ title: ROLE
 linkTitle: ROLE
 description: ROLE
 menu:
-  preview:
+  v2.25
     parent: api-yedis
     weight: 2240
 aliases:

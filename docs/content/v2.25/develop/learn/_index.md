@@ -6,7 +6,7 @@ aliases:
   - /develop/learn/
   - /preview/develop/learn/sql-nosql/
 menu:
-  preview:
+  v2.25
     identifier: learn
     parent: develop
     weight: 10

@@ -7,7 +7,7 @@ headcontent: Distribute time-ordered data and retrieve data efficiently
 tags:
   other: ysql
 menu:
-  preview:
+  v2.25
     identifier: timeseries-global-ordering
     parent: common-patterns-timeseries
     weight: 100

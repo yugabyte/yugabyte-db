@@ -7,7 +7,7 @@ headcontent: Secure your YugabyteDB universes
 aliases:
   - /preview/explore/security/
 menu:
-  preview:
+  v2.25
     identifier: explore-security
     parent: explore
     weight: 310

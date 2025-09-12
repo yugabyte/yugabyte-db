@@ -4,7 +4,7 @@ linkTitle: Column statistics
 headerTitle: Column statistics using pg_stats
 headcontent: Improve queries using column level statistics of tables from pg_stats view
 menu:
-  preview:
+  v2.25
     identifier: pg-stats
     parent: query-tuning
     weight: 400

@@ -4,7 +4,7 @@ headerTitle: Cluster-aware client drivers
 linkTitle: Cluster-aware drivers
 headcontent:
 menu:
-  preview:
+  v2.25
     identifier: cluster-aware-drivers
     parent: going-beyond-sql
     weight: 450

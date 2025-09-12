@@ -7,7 +7,7 @@ headcontent: Deploy YugabyteDB natively on Kubernetes
 aliases:
   - /deploy/kubernetes/
 menu:
-  preview:
+  v2.25
     identifier: deploy-kubernetes
     parent: deploy
     weight: 50

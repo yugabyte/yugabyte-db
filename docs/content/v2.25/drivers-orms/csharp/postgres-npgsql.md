@@ -4,7 +4,7 @@ headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a C# application using PostgreSQL Npgsql driver
 menu:
-  preview:
+  v2.25
     identifier: csharp-2-postgres-npgsql-driver
     parent: csharp-drivers
     weight: 500

@@ -6,7 +6,7 @@ description: Best Practices for logical replication with Change Data Capture in 
 aliases:
   - /preview/explore/change-data-capture/using-logical-replication/best-practices/
 menu:
-  preview:
+  v2.25
     parent: explore-change-data-capture-logical-replication
     identifier: best-practices-cdc
     weight: 60

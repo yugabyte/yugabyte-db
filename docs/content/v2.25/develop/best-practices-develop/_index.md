@@ -7,7 +7,7 @@ headcontent: Tips and tricks to build applications for high performance and avai
 aliases:
   - /preview/develop/best-practices-ysql/
 menu:
-  preview:
+  v2.25
     identifier: best-practices-develop
     parent: develop
     weight: 80

@@ -4,7 +4,7 @@ headerTitle: 4. Verify deployment
 linkTitle: 4. Verify deployment
 description: How to verify the manual deployment of the YugabyteDB database cluster.
 menu:
-  preview:
+  v2.25
     identifier: deploy-verify-2-manual
     parent: deploy-manual-deployment
     weight: 615

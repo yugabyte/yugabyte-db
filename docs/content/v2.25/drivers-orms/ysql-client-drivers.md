@@ -8,7 +8,7 @@ tags:
 aliases:
   - /preview/reference/drivers/ysql-client-drivers/
 menu:
-  preview:
+  v2.25
     identifier: ysql-client-libraries
     parent: drivers-orms
     weight: 2000

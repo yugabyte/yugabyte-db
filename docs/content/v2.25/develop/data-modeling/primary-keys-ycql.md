@@ -5,7 +5,7 @@ linkTitle: Primary keys
 tags:
   other: ycql
 menu:
-  preview:
+  v2.25
     identifier: data-modeling-pk-ycql
     parent: data-modeling
     weight: 100

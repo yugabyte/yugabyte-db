@@ -3,7 +3,7 @@ title: ZRANGEBYSCORE
 linkTitle: ZRANGEBYSCORE
 description: ZRANGEBYSCORE
 menu:
-  preview:
+  v2.25
     parent: api-yedis
     weight: 2520
 aliases:

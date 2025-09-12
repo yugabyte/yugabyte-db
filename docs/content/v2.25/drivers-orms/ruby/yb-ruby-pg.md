@@ -9,7 +9,7 @@ aliases:
   - /preview/develop/build-apps/ruby/
   - /preview/quick-start/build-apps/ruby/
 menu:
-  preview:
+  v2.25
     identifier: ruby-pg-driver-1-yb
     parent: ruby-drivers
     weight: 410

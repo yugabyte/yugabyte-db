@@ -6,7 +6,7 @@ description: YugabyteDB connector properties for Change Data Capture in Yugabyte
 aliases:
   - /preview/explore/change-data-capture/using-logical-replication/yugabytedb-connector-properties/
 menu:
-  preview:
+  v2.25
     parent: yugabytedb-connector
     identifier: yugabytedb-connector-properties
     weight: 70

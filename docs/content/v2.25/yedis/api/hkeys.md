@@ -3,7 +3,7 @@ title: HKEYS
 linkTitle: HKEYS
 description: HKEYS
 menu:
-  preview:
+  v2.25
     parent: api-yedis
     weight: 2140
 aliases:
