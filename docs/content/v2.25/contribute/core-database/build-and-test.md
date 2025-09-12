@@ -5,9 +5,9 @@ linkTitle: Build and test
 description: Build and test
 headcontent: Building and testing with yb_build.sh.
 aliases:
-  - /preview/contribute/core-database/run-unit-tests/
+  - /stable/contribute/core-database/run-unit-tests/
 menu:
-  v2.25
+  v2.25:
     identifier: build-and-test
     parent: core-database
     weight: 2913

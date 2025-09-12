@@ -8,7 +8,7 @@ menu:
     identifier: cmd_do
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/cmd_do/
+  - /stable/api/ysql/commands/cmd_do/
 type: docs
 ---
 

@@ -5,13 +5,13 @@ linkTitle: Primary keys
 description: Defining Primary key constraint in YSQL
 headContent: Explore primary keys in YugabyteDB using YSQL
 menu:
-  v2.25
+  v2.25:
     identifier: primary-key-ysql
     parent: explore-indexes-constraints-ysql
     weight: 200
 aliases:
-  - /preview/explore/ysql-language-features/constraints/
-  - /preview/explore/indexes-constraints/constraints/
+  - /stable/explore/ysql-language-features/constraints/
+  - /stable/explore/indexes-constraints/constraints/
 type: docs
 ---
 

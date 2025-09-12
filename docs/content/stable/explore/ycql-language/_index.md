@@ -46,6 +46,6 @@ YCQL has a number of features that are not present in Cassandra, as summarized i
 
 ## Learn more
 
-- [Comparison with Apache Cassandra](/preview/faq/comparisons/cassandra/)
+- [Comparison with Apache Cassandra](/stable/faq/comparisons/cassandra/)
 - [YCQL command reference](../../api/ycql/)
 - [Cassandra 3.4 Feature parity](cassandra-feature-support/)

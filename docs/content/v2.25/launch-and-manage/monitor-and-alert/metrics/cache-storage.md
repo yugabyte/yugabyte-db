@@ -5,7 +5,7 @@ linkTitle: Cache and storage metrics
 headcontent: Monitor metrics for the RocksDB storage subsystem and other caches
 description: Learn about YugabyteDB's cache and storage subsystem metrics, and how to select and use the metrics.
 menu:
-  v2.25
+  v2.25:
     identifier: cache-storage
     parent: metrics-overview
     weight: 120

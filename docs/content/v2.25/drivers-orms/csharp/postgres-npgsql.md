@@ -4,7 +4,7 @@ headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a C# application using PostgreSQL Npgsql driver
 menu:
-  v2.25
+  v2.25:
     identifier: csharp-2-postgres-npgsql-driver
     parent: csharp-drivers
     weight: 500
@@ -111,7 +111,7 @@ var connStringBuilder = new NpgsqlConnectionStringBuilder();
     CRUD(connStringBuilder.ConnectionString);
 ```
 
-YugabyteDB Aeon clusters require SSL. Refer to [Connect applications](/preview/yugabyte-cloud/cloud-connect/connect-applications/) for instructions on how to obtain the cluster connection parameters and download the CA certificate.
+YugabyteDB Aeon clusters require SSL. Refer to [Connect applications](/stable/yugabyte-cloud/cloud-connect/connect-applications/) for instructions on how to obtain the cluster connection parameters and download the CA certificate.
 
 Refer to [Configure SSL/TLS](../postgres-npgsql-reference/#configure-ssl-tls) for more information on Npgsql default and supported SSL modes, and examples for setting up your connection strings when using SSL.
 

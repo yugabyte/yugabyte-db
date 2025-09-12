@@ -8,7 +8,7 @@ menu:
     identifier: dcl_create_group
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/dcl_create_group/
+  - /stable/api/ysql/commands/dcl_create_group/
 type: docs
 ---
 

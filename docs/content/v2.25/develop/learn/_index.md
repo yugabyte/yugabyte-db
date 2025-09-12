@@ -4,9 +4,9 @@ linkTitle: Learn app development
 description: Learn to develop YugabyteDB applications
 aliases:
   - /develop/learn/
-  - /preview/develop/learn/sql-nosql/
+  - /stable/develop/learn/sql-nosql/
 menu:
-  v2.25
+  v2.25:
     identifier: learn
     parent: develop
     weight: 10

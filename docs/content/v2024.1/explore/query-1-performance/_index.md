@@ -68,6 +68,6 @@ Ensure that the threshold is high enough so that you don't flood the `postgres*l
 
 {{< /note >}}
 
-{{<lead link="/preview/troubleshoot/nodes/check-logs/#yb-tserver-logs">}}
-Learn more about [YB-TServer logs](/preview/troubleshoot/nodes/check-logs/#yb-tserver-logs).
+{{<lead link="/stable/troubleshoot/nodes/check-logs/#yb-tserver-logs">}}
+Learn more about [YB-TServer logs](/stable/troubleshoot/nodes/check-logs/#yb-tserver-logs).
 {{</lead>}}

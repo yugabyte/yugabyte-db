@@ -5,7 +5,7 @@ linkTitle: Scale out a universe
 description: Scaling a universe in YugabyteDB.
 headcontent: Horizontal scale-out and scale-in in YugabyteDB
 menu:
-  v2.25
+  v2.25:
     name: Scale out a universe
     identifier: scale-out-a-universe
     parent: explore-scalability

@@ -6,9 +6,9 @@ description: PostgreSQL Psycopg2 Python Driver for YSQL
 tags:
   other: ysql
 aliases:
-- /preview/reference/drivers/python/postgres-psycopg2-reference/
+- /stable/reference/drivers/python/postgres-psycopg2-reference/
 menu:
-  v2.25
+  v2.25:
     name: Python drivers
     identifier: ref-postgres-psycopg2-driver
     parent: python-drivers

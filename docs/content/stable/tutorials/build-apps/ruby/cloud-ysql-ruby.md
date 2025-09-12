@@ -4,7 +4,7 @@ headerTitle: Build a Ruby application
 description: Build a small Ruby application using the Ruby Pg driver and using the YSQL API to connect to and interact with a YugabyteDB Aeon cluster.
 headContent: "Client driver: Ruby Pg"
 aliases:
-  - /preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-ruby/
+  - /stable/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-ruby/
 menu:
   preview_tutorials:
     parent: build-apps

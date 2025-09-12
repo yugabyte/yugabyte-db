@@ -4,7 +4,7 @@ headerTitle: Python ORM example application
 linkTitle: Python
 description: Python ORM example application that uses SQLAlchemy and YSQL.
 menu:
-  v2.25
+  v2.25:
     identifier: python-sqlalchemy
     parent: orm-tutorials
     weight: 670
@@ -34,7 +34,7 @@ The source for this application can be found in the [`python/sqlalchemy` directo
 
 This tutorial assumes that you have:
 
-- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/preview/quick-start/macos/).
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/stable/quick-start/macos/).
 - Python 3 is installed
 - the Python packages (dependencies) : [SQLAlchemy (`SQLAlchemy`)](https://www.sqlalchemy.org/), [psycopg2 (`psycopg2-binary`)](https://pypi.org/project/psycopg2/) and [JSONpickle (`jsonpickle`)](https://jsonpickle.github.io/) installed:
 

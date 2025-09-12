@@ -4,7 +4,7 @@ headerTitle: Transaction error codes in YSQL
 linkTitle: Error codes
 description: Understand the error codes returned during transactions.
 aliases:
-  - /preview/develop/learn/acid-transactions/error-codes
+  - /stable/develop/learn/acid-transactions/error-codes
 menu:
   preview:
     identifier: transaction-errorcodes-ysql

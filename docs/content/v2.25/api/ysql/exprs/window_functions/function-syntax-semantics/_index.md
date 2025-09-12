@@ -10,7 +10,7 @@ menu:
     parent: window-functions
     weight: 30
 aliases:
-  - /preview/api/ysql/exprs/window_functions
+  - /stable/api/ysql/exprs/window_functions
 type: indexpage
 showRightNav: true
 ---

@@ -5,7 +5,7 @@ linkTitle: Observability
 description: YSQL Connection Manager observability and metrics
 headcontent: Monitor YSQL Connection Manager
 menu:
-  v2.25
+  v2.25:
     identifier: ycm-monitor
     parent: connection-manager
     weight: 30

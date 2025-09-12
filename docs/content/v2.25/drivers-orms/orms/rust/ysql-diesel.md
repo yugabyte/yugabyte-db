@@ -4,7 +4,7 @@ headerTitle: Rust ORM example application
 linkTitle: Rust
 description: Rust ORM example application that uses Diesel and YSQL API to connect to and interact with YugabyteDB.
 menu:
-  v2.25
+  v2.25:
     identifier: rust-diesel
     parent: orm-tutorials
     weight: 730
@@ -30,7 +30,7 @@ The source for the application can be found in the [Using ORMs with YugabyteDB](
 
 This tutorial assumes that you have:
 
-- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/preview/quick-start/macos/).
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/stable/quick-start/macos/).
 - [Rust](https://www.rust-lang.org/tools/install) 1.31 or later.
 
 ## Clone the "orm-examples" repository

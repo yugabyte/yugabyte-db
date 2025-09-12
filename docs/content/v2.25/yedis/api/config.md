@@ -3,7 +3,7 @@ title: CONFIG
 linkTitle: CONFIG
 description: CONFIG
 menu:
-  v2.25
+  v2.25:
     parent: api-yedis
     weight: 2030
 type: docs

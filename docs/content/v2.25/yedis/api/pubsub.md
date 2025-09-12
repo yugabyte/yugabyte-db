@@ -3,12 +3,12 @@ title: PUBSUB
 linkTitle: PUBSUB
 description: PUBSUB
 menu:
-  v2.25
+  v2.25:
     parent: api-yedis
     weight: 2550
 aliases:
-  - /preview/api/redis/pubsub
-  - /preview/api/yedis/pubsub
+  - /stable/api/redis/pubsub
+  - /stable/api/yedis/pubsub
 type: docs
 ---
 

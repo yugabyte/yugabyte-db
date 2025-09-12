@@ -4,9 +4,9 @@ headerTitle: Amazon Web Services
 linkTitle: Amazon Web Services
 description: Deploy a YugabyteDB cluster on Amazon Web Services using AWS CloudFormation
 aliases:
-  - /preview/deploy/public-clouds/aws/
+  - /stable/deploy/public-clouds/aws/
 menu:
-  v2.25
+  v2.25:
     identifier: deploy-in-aws-1-cloudformation
     parent: public-clouds
     weight: 630

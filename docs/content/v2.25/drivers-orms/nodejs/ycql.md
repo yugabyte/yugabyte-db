@@ -4,7 +4,7 @@ headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect an application using YugabyteDB Node.js driver for YCQL
 menu:
-  v2.25
+  v2.25:
     identifier: node-driver-3-ycql
     parent: nodejs-drivers
     weight: 500
@@ -55,7 +55,7 @@ $ npm install yb-ycql-driver
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB and created a cluster. Refer to [Quick start](/preview/quick-start/macos/).
+- installed YugabyteDB and created a cluster. Refer to [Quick start](/stable/quick-start/macos/).
 - installed a recent version of [Node.js](https://nodejs.org/en/download/).
 - installed the [async](https://github.com/caolan/async) utility to work with asynchronous Javascript.
 

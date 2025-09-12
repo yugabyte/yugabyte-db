@@ -5,9 +5,9 @@ linkTitle: yugabyted
 description: Use yugabyted to deploy YugabyteDB universes.
 headcontent: Utility for deploying and managing YugabyteDB
 aliases:
-  - /preview/deploy/docker/
+  - /stable/deploy/docker/
 menu:
-  v2.25
+  v2.25:
     identifier: yugabyted
     parent: configuration
     weight: 100
@@ -30,7 +30,7 @@ You can use yugabyted for production deployments. You can also administer [YB-TS
 
 The yugabyted executable file is packaged with YugabyteDB and located in the YugabyteDB home `bin` directory.
 
-For information on installing YugabyteDB, see [Use a local cluster](/preview/quick-start/linux/) or [Get started](https://download.yugabyte.com).
+For information on installing YugabyteDB, see [Use a local cluster](/stable/quick-start/linux/) or [Get started](https://download.yugabyte.com).
 
 After installing YugabyteDB, if you want to use [backup](#backup) and [restore](#restore), you also need to install the YB Controller service, which manages backup and restore operations. YB Controller is included in the `share` directory of your YugabyteDB installation.
 
@@ -1925,7 +1925,7 @@ You can set the replication factor of the universe manually using the `--rf` fla
 
 Docker-based deployments are in {{<tags/feature/ea>}}.
 
-You can run yugabyted in a Docker container. For more information, see the [Quick Start](/preview/quick-start/docker/).
+You can run yugabyted in a Docker container. For more information, see the [Quick Start](/stable/quick-start/docker/).
 
 The following example shows how to create a multi-region universe. If the `~/yb_docker_data` directory already exists, delete and re-create it.
 

@@ -4,7 +4,7 @@ linkTitle: Get query statistics
 description: Track planning and execution statistics for all SQL statements executed by a server.
 headerTitle: Get query statistics using pg_stat_statements
 menu:
-  v2.25
+  v2.25:
     identifier: pg-stat-statements
     parent: query-tuning
     weight: 200

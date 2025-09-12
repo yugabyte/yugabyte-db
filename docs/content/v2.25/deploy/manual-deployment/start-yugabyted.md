@@ -4,7 +4,7 @@ headerTitle: 3. Deploy
 linkTitle: 3. Deploy
 description: How to start your YugabyteDB database cluster.
 menu:
-  v2.25
+  v2.25:
     identifier: deploy-1-yugabyted
     parent: deploy-manual-deployment
     weight: 613

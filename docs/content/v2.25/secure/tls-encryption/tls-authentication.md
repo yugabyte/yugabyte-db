@@ -7,7 +7,7 @@ headcontent: Use authentication in conjunction with TLS encryption
 tags:
   other: ysql
 menu:
-  v2.25
+  v2.25:
     identifier: tls-authentication
     parent: tls-encryption
     weight: 800

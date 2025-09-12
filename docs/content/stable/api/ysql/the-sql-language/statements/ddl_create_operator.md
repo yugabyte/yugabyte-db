@@ -8,7 +8,7 @@ menu:
     identifier: ddl_create_operator
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/ddl_create_operator/
+  - /stable/api/ysql/commands/ddl_create_operator/
 type: docs
 ---
 

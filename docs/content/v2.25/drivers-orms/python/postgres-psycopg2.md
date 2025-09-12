@@ -4,7 +4,7 @@ headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Python application using PostgreSQL Psycopg2 Driver for YSQL
 menu:
-  v2.25
+  v2.25:
     identifier: postgres-psycopg2-driver
     parent: python-drivers
     weight: 510
@@ -136,7 +136,7 @@ The following is an example for connecting to YugabyteDB with SSL encryption ena
 conn = psycopg2.connect("host=<hostname> port=5433 dbname=yugabyte user=<username> password=<password> sslmode=verify-full sslrootcert=/Users/my-user/Downloads/root.crt")
 ```
 
-If you have created a cluster on YugabyteDB Aeon, use the cluster credentials and [download the SSL Root certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
+If you have created a cluster on YugabyteDB Aeon, use the cluster credentials and [download the SSL Root certificate](/stable/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 
 ### Step 3: Write your application
 

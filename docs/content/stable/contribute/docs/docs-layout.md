@@ -13,22 +13,22 @@ type: docs
 
 The YugabyteDB docs are divided into several sections:
 
-* [**YugabyteDB Core**](/preview/) is the overview documentation for YugabyteDB
-* [**YugabyteDB Anywhere**](/preview/yugabyte-platform/) documents YugabyteDB Anywhere
-* [**YugabyteDB Aeon**](/preview/yugabyte-cloud/) documents YugabyteDB Aeon
-* [**Releases**](/preview/releases/) contains release notes and other information related to releases
-* [**Integrations**](/preview/integrations/) documents third-party integrations
-* [**Reference**](/preview/reference/configuration/) contains detailed reference and architecture information about functions, features, and interfaces
-* [**FAQ**](/preview/faq/general/) contains frequently-asked questions on a variety of topics
-* [**Misc**](/preview/legal/) contains legal information and the (deprecated) YEDIS subsystem
+* [**YugabyteDB Core**](/stable/) is the overview documentation for YugabyteDB
+* [**YugabyteDB Anywhere**](/stable/yugabyte-platform/) documents YugabyteDB Anywhere
+* [**YugabyteDB Aeon**](/stable/yugabyte-cloud/) documents YugabyteDB Aeon
+* [**Releases**](/stable/releases/) contains release notes and other information related to releases
+* [**Integrations**](/stable/integrations/) documents third-party integrations
+* [**Reference**](/stable/reference/configuration/) contains detailed reference and architecture information about functions, features, and interfaces
+* [**FAQ**](/stable/faq/general/) contains frequently-asked questions on a variety of topics
+* [**Misc**](/stable/legal/) contains legal information and the (deprecated) YEDIS subsystem
 
 ### YugabyteDB core docs
 
-The [core docs](/preview/) are landing pages with overview and getting-started information. Pages in this section should have a high-level overview of a feature, what's supported, limitations, and a link to any roadmap GitHub issues. These docs pages can have "Further reading" sections, where you can add links to blogs or Reference section docs as appropriate.
+The [core docs](/stable/) are landing pages with overview and getting-started information. Pages in this section should have a high-level overview of a feature, what's supported, limitations, and a link to any roadmap GitHub issues. These docs pages can have "Further reading" sections, where you can add links to blogs or Reference section docs as appropriate.
 
 #### Explore section
 
-Think of the pages in the [Explore section](/preview/explore/) as a self-guided tour of YugabyteDB. When you're reading a page in this section, you should be able to get a good sense of how the feature works. The page may not answer every question you have, but should point you to the reference page where you can find that information.
+Think of the pages in the [Explore section](/stable/explore/) as a self-guided tour of YugabyteDB. When you're reading a page in this section, you should be able to get a good sense of how the feature works. The page may not answer every question you have, but should point you to the reference page where you can find that information.
 
 ### Reference docs
 
@@ -36,8 +36,8 @@ Reference docs should be comprehensive and, above all, accurate. This applies to
 
 Here are some examples of reference docs in our documentation:
 
-* [Replication in DocDB](/preview/architecture/docdb-replication/replication/)
-* SQL reference sample: [CREATE TABLE [YSQL]](/preview/api/ysql/the-sql-language/statements/ddl_create_table/)
+* [Replication in DocDB](/stable/architecture/docdb-replication/replication/)
+* SQL reference sample: [CREATE TABLE [YSQL]](/stable/api/ysql/the-sql-language/statements/ddl_create_table/)
 
 ### Design docs on GitHub
 

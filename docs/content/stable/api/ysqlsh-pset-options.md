@@ -5,7 +5,7 @@ linkTitle: pset options
 description: YSQL shell pset meta-command options.
 headcontent: Options for the \pset meta-command
 aliases:
-  - /preview/admin/ysqlsh-pset-options/
+  - /stable/admin/ysqlsh-pset-options/
 menu:
   preview_api:
     identifier: ysqlsh-pset-options

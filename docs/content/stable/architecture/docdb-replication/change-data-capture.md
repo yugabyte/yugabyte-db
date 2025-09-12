@@ -7,7 +7,7 @@ headContent: Asynchronous replication of data changes (inserts, updates, and del
 tags:
   feature: early-access
 aliases:
-  - /preview/architecture/change-data-capture/
+  - /stable/architecture/change-data-capture/
 menu:
   preview:
     parent: architecture-docdb-replication

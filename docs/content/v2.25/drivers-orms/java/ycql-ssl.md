@@ -6,13 +6,13 @@ description: Connect a Java application using YCQL 4.15 driver and SSL.
 tags:
   other: ycql
 menu:
-  v2.25
+  v2.25:
     identifier: ycql-java-driver-ssl
     parent: java-drivers
     weight: 500
 aliases:
-  - /preview/yugabyte-cloud/cloud-develop/connect-ycql-application/
-  - /preview/yugabyte-cloud/cloud-examples/connect-ycql-application/
+  - /stable/yugabyte-cloud/cloud-develop/connect-ycql-application/
+  - /stable/yugabyte-cloud/cloud-examples/connect-ycql-application/
 type: docs
 ---
 
@@ -82,9 +82,9 @@ This tutorial assumes that you have the following:
 - JDK version 1.8 or later
 - Maven 3.3 or later
 
-Add your computer to the cluster IP allow list. Refer to [IP allow lists](/preview/yugabyte-cloud/cloud-secure-clusters/add-connections/).
+Add your computer to the cluster IP allow list. Refer to [IP allow lists](/stable/yugabyte-cloud/cloud-secure-clusters/add-connections/).
 
-You also need to download and install your YugabyteDB Aeon cluster CA certificate and obtain the cluster connection parameters. Refer to [Get the cluster connection parameters](/preview/yugabyte-cloud/cloud-connect/connect-applications/#get-the-cluster-connection-parameters).
+You also need to download and install your YugabyteDB Aeon cluster CA certificate and obtain the cluster connection parameters. Refer to [Get the cluster connection parameters](/stable/yugabyte-cloud/cloud-connect/connect-applications/#get-the-cluster-connection-parameters).
 
 ### Create the project's POM
 

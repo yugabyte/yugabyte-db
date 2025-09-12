@@ -106,6 +106,6 @@ This basic application can be run inside your Azure VNet to verify the connectiv
 
 Azure Private Link simplifies establishing a secure connection between Azure-based applications and YugabyteDB.
 
-If you're interested in developing other applications on Azure, check out [Build Applications Using Azure App Service](/preview/tutorials/azure/azure-app-service/).
+If you're interested in developing other applications on Azure, check out [Build Applications Using Azure App Service](/stable/tutorials/azure/azure-app-service/).
 
 If you would like to explore the different deployment options of YugabyteDB (including self-managed, co-managed, fully managed, and open source), explore our [database comparison page](https://www.yugabyte.com/compare-products/).

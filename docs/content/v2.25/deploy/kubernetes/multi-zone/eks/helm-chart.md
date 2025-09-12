@@ -4,13 +4,13 @@ headerTitle: Amazon Elastic Kubernetes Service (EKS)
 linkTitle: Amazon Elastic Kubernetes Service (EKS)
 description: Deploy a multi-zone YugabyteDB cluster on Amazon Elastic Kubernetes Service (EKS) using Helm Chart.
 menu:
-  v2.25
+  v2.25:
     parent: deploy-kubernetes-mz
     name: Amazon EKS
     identifier: k8s-mz-eks-1
     weight: 627
 aliases:
-  - /preview/deploy/kubernetes/multi-zone/eks
+  - /stable/deploy/kubernetes/multi-zone/eks
 type: docs
 ---
 
@@ -346,7 +346,7 @@ $ kubectl exec -n yb-demo-us-east-1a -it yb-tserver-0 -- ycqlsh \
 yb-tserver-0.yb-tservers.yb-demo-us-east-1a
 ```
 
-You can follow the [Explore YSQL](/preview/quick-start/explore/ysql/) tutorial and then go to the `http://<external-ip>:7000/tablet-servers` page of the yb-master Admin UI to confirm that tablet peers and their leaders are placed evenly across all three zones for both user data and system data.
+You can follow the [Explore YSQL](/stable/quick-start/explore/ysql/) tutorial and then go to the `http://<external-ip>:7000/tablet-servers` page of the yb-master Admin UI to confirm that tablet peers and their leaders are placed evenly across all three zones for both user data and system data.
 
 ![mz-ybtserver](/images/deploy/kubernetes/aws-multizone-ybtserver.png)
 

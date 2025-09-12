@@ -3,11 +3,11 @@ title: Distributed Data modeling
 linkTitle: Data modeling
 description: Data modeling in a distributed database
 aliases:
-  - /preview/develop/learn/data-modeling-ysql/
-  - /preview/develop/learn/data-modeling-ycql/
-  - /preview/develop/data-modeling-ysql/
+  - /stable/develop/learn/data-modeling-ysql/
+  - /stable/develop/learn/data-modeling-ycql/
+  - /stable/develop/data-modeling-ysql/
 menu:
-  v2.25
+  v2.25:
     identifier: data-modeling
     parent: develop
     weight: 40

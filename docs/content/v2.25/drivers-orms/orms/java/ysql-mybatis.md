@@ -4,7 +4,7 @@ headerTitle: Java ORM example application
 linkTitle: Java
 description: Java ORM example application with MyBatis persistence framework and use the YSQL API to connect to and interact with YugabyteDB.
 menu:
-  v2.25
+  v2.25:
     identifier: java-mybatis
     parent: orm-tutorials
     weight: 660
@@ -46,7 +46,7 @@ The source for this application can be found in the [Using ORMs with YugabyteDB]
 
 This tutorial assumes that you have:
 
-- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/preview/quick-start/macos/).
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/stable/quick-start/macos/).
 - Java Development Kit (JDK) 1.8, or later, is installed. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/).
 - [Apache Maven](https://maven.apache.org/index.html) 3.3, or later, is installed.
 

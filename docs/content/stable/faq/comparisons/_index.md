@@ -6,7 +6,7 @@ description: Learn how YugabyteDB compares with other operational SQL and NoSQL 
 headcontent: See how YugabyteDB compares with other operational databases in the distributed SQL and NoSQL categories. For a detailed comparison, click the database name.
 aliases:
   - /comparisons/
-  - /preview/faq/comparisons/references
+  - /stable/faq/comparisons/references
 menu:
   preview_faq:
     identifier: comparisons

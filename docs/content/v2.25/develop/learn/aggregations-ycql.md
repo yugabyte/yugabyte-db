@@ -4,7 +4,7 @@ headerTitle: Aggregations
 linkTitle: Aggregations
 description: Learn how YugabyteDB YCQL supports standard aggregation functions.
 menu:
-  v2.25
+  v2.25:
     identifier: aggregations-1-ycql
     parent: learn
     weight: 567

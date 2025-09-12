@@ -3,12 +3,12 @@ title: TSCARD
 linkTitle: TSCARD
 description: TSCARD
 menu:
-  v2.25
+  v2.25:
     parent: api-yedis
     weight: 2420
 aliases:
-  - /preview/api/redis/tscard
-  - /preview/api/yedis/tscard
+  - /stable/api/redis/tscard
+  - /stable/api/yedis/tscard
 type: docs
 ---
 

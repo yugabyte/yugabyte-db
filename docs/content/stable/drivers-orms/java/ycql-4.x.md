@@ -11,8 +11,8 @@ menu:
     parent: java-drivers
     weight: 500
 aliases:
-  - /preview/drivers-orms/java/ycql-4.6/
-  - /preview/tutorials/build-apps/java/ycql-4.6/
+  - /stable/drivers-orms/java/ycql-4.6/
+  - /stable/tutorials/build-apps/java/ycql-4.6/
 type: docs
 ---
 
@@ -76,7 +76,7 @@ To build a sample Java application with the [Yugabyte Java Driver for YCQL](http
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start](/preview/quick-start/macos/).
+- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start](/stable/quick-start/macos/).
 - installed JDK version 1.8 or later.
 - installed Maven 3.3 or later.
 

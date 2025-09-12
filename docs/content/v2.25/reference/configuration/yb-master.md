@@ -4,7 +4,7 @@ headerTitle: yb-master
 linkTitle: yb-master
 description: YugabyteDB Master Server (yb-master) binary and configuration flags to manage cluster metadata and coordinate cluster-wide operations.
 menu:
-  v2.25
+  v2.25:
     identifier: yb-master
     parent: configuration
     weight: 2000
@@ -1070,7 +1070,7 @@ Default: false
 
 ##### --allowed_v225_flags_csv
 
-Comma-separated values (CSV) formatted catalogue of [preview feature](/preview/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
+Comma-separated values (CSV) formatted catalogue of [preview feature](/stable/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
 
 By adding a flag to this list, you explicitly acknowledge and accept any potential risks or instability that may arise from modifying these preview features. This process serves as a safeguard, ensuring that you are fully aware of the experimental nature of the flags you are working with.
 

@@ -9,7 +9,7 @@ menu:
     parent: tools
     weight: 60
 aliases:
-  - /preview/tools/dbschema/
+  - /stable/tools/dbschema/
 type: docs
 ---
 

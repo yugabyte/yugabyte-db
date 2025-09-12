@@ -4,7 +4,7 @@ headerTitle: Build a Rust application
 description: Build a small Rust application using the Rust-Postgres driver and using the YSQL API to connect to and interact with a YugabyteDB Aeon cluster.
 headContent: "Client driver: Rust-Postgres"
 aliases:
-  - /preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-rust/
+  - /stable/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-rust/
 menu:
   v2.25_tutorials:
     parent: build-apps

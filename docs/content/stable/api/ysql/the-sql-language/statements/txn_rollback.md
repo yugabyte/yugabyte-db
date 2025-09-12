@@ -8,7 +8,7 @@ menu:
     identifier: txn_rollback
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/txn_rollback/
+  - /stable/api/ysql/commands/txn_rollback/
 type: docs
 ---
 

@@ -3,12 +3,12 @@ title: FLUSHDB
 linkTitle: FLUSHDB
 description: FLUSHDB
 menu:
-  v2.25
+  v2.25:
     parent: api-yedis
     weight: 2065
 aliases:
-  - /preview/api/redis/flushdb
-  - /preview/api/yedis/flushdb
+  - /stable/api/redis/flushdb
+  - /stable/api/yedis/flushdb
 type: docs
 ---
 

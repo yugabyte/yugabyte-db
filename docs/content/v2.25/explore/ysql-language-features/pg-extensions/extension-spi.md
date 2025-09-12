@@ -4,7 +4,7 @@ headerTitle: spi extension
 linkTitle: spi
 description: Using the spi extension in YugabyteDB
 menu:
-  v2.25
+  v2.25:
     identifier: extension-spi
     parent: pg-extensions
     weight: 20

@@ -5,7 +5,7 @@ linkTitle: Kubernetes
 description: Configure the OpenShift provider configuration
 headContent: For deploying universes on Kubernetes
 aliases:
-  - /preview/deploy/enterprise-edition/configure-cloud-providers/openshift
+  - /stable/deploy/enterprise-edition/configure-cloud-providers/openshift
 menu:
   v2.25_yugabyte-platform:
     identifier: set-up-kubernetes-provider-3

@@ -3,12 +3,12 @@ title: ZREVRANGE
 linkTitle: ZREVRANGE
 description: ZREVRANGE
 menu:
-  v2.25
+  v2.25:
     parent: api-yedis
     weight: 2540
 aliases:
-  - /preview/api/redis/zrevrange
-  - /preview/api/yedis/zrevrange
+  - /stable/api/redis/zrevrange
+  - /stable/api/yedis/zrevrange
 type: docs
 ---
 

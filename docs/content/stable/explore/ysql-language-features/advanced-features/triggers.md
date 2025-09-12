@@ -8,7 +8,7 @@ menu:
     parent: advanced-features
     weight: 700
 aliases:
-  - /preview/explore/ysql-language-features/triggers/
+  - /stable/explore/ysql-language-features/triggers/
 type: docs
 ---
 

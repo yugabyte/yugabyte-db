@@ -8,7 +8,7 @@ menu:
     identifier: ddl_create_rule
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/ddl_create_rule/
+  - /stable/api/ysql/commands/ddl_create_rule/
 type: docs
 ---
 

@@ -9,7 +9,7 @@ menu:
     parent: data-migration
     weight: 20
 aliases:
-  - /preview/yugabyte-voyager/reference/fall-forward/fall-forward-synchronize/
+  - /stable/yugabyte-voyager/reference/fall-forward/fall-forward-synchronize/
 type: docs
 rightNav:
   hideH4: true

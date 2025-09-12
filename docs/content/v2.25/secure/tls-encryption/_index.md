@@ -7,7 +7,7 @@ headcontent: Enable encryption in transit (using TLS) to protect network communi
 aliases:
   - /secure/tls-encryption/
 menu:
-  v2.25
+  v2.25:
     identifier: tls-encryption
     parent: secure
     weight: 725
@@ -17,7 +17,7 @@ type: indexpage
 {{< page-finder/head text="Encryption in transit" subtle="across different products">}}
   {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" current="" >}}
   {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" url="../../yugabyte-platform/security/enable-encryption-in-transit/" >}}
-  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/stable/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/" >}}
 {{< /page-finder/head >}}
 
 YugabyteDB can be configured to protect data in transit using the following:

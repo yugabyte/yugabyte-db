@@ -5,9 +5,9 @@ linkTitle: Non-transactional
 description: Deploy using non-transactional unidirectional (master-follower) or bidirectional (multi-master) replication between universes
 headContent: Deploy non-transactional uni- (master-follower) and bi- (multi-master) directional replication
 aliases:
-  - /preview/deploy/multi-dc/2dc-deployment
+  - /stable/deploy/multi-dc/2dc-deployment
 menu:
-  v2.25
+  v2.25:
     parent: async-replication
     identifier: async-deployment
     weight: 20

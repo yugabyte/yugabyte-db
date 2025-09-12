@@ -5,7 +5,7 @@ linkTitle: Examples
 description: YSQL shell meta-command examples.
 headcontent: Examples of ysqlsh meta-commands
 aliases:
-  - /preview/admin/ysqlsh-meta-examples/
+  - /stable/admin/ysqlsh-meta-examples/
 menu:
   preview_api:
     identifier: ysqlsh-meta-examples

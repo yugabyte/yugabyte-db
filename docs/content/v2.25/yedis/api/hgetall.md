@@ -3,12 +3,12 @@ title: HGETALL
 linkTitle: HGETALL
 description: HGETALL
 menu:
-  v2.25
+  v2.25:
     parent: api-yedis
     weight: 2130
 aliases:
-  - /preview/api/redis/hgetall
-  - /preview/api/yedis/hgetall
+  - /stable/api/redis/hgetall
+  - /stable/api/yedis/hgetall
 type: docs
 ---
 

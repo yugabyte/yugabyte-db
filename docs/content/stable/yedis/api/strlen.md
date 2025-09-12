@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2320
 aliases:
-  - /preview/api/redis/strlen
-  - /preview/api/yedis/strlen
+  - /stable/api/redis/strlen
+  - /stable/api/yedis/strlen
 type: docs
 ---
 

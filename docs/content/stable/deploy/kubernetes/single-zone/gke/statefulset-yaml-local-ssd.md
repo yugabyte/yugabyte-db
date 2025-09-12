@@ -10,7 +10,7 @@ menu:
     identifier: k8s-gke-3
     weight: 623
 aliases:
-  - /preview/deploy/kubernetes/gke/statefulset-yaml-local-ssd
+  - /stable/deploy/kubernetes/gke/statefulset-yaml-local-ssd
 type: docs
 ---
 

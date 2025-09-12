@@ -4,9 +4,9 @@ linkTitle: Spring Data Aeon
 description: Connect a Spring Spring Data YugabyteDB application to YugabyteDB Aeon.
 headcontent:
 aliases:
-  - /preview/yugabyte-cloud/cloud-examples/connect-application/
+  - /stable/yugabyte-cloud/cloud-examples/connect-application/
 menu:
-  v2.25
+  v2.25:
     identifier: spring-aeon
     parent: spring-framework
     weight: 100
@@ -33,7 +33,7 @@ In this walkthrough, you will:
 
 - Git
 - YugabyteDB Aeon cluster
-  - Your computer IP address must be in an [IP allow list](/preview/yugabyte-cloud/cloud-secure-clusters/add-connections/)
+  - Your computer IP address must be in an [IP allow list](/stable/yugabyte-cloud/cloud-secure-clusters/add-connections/)
 
 ## Clone the Spring Data YugabyteDB PetClinic application
 

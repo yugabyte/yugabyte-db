@@ -5,7 +5,7 @@ linkTitle: Build the source
 description: Build YugabyteDB from source code on macOS.
 headcontent: Build the source code.
 menu:
-  v2.25
+  v2.25:
     identifier: build-from-src-2-macos
     parent: core-database
     weight: 2912

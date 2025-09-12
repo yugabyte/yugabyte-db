@@ -7,7 +7,7 @@ headcontent: Understand how distributed transactions work
 aliases:
   - /architecture/transactions/
 menu:
-  v2.25
+  v2.25:
     identifier: architecture-acid-transactions
     parent: architecture
     weight: 900

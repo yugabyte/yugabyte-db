@@ -3,12 +3,12 @@ title: TSADD
 linkTitle: TSADD
 description: TSADD
 menu:
-  v2.25
+  v2.25:
     parent: api-yedis
     weight: 2400
 aliases:
-  - /preview/api/redis/tsadd
-  - /preview/api/yedis/tsadd
+  - /stable/api/redis/tsadd
+  - /stable/api/yedis/tsadd
 type: docs
 ---
 

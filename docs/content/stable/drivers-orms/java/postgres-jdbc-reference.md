@@ -6,7 +6,7 @@ description: Java JDBC Driver for YSQL
 tags:
   other: ysql
 aliases:
-- /preview/reference/drivers/java/postgres-jdbc-reference/
+- /stable/reference/drivers/java/postgres-jdbc-reference/
 menu:
   preview:
     name: JDBC Drivers
@@ -271,7 +271,7 @@ Steps for configuring the JDBC client for server authentication are as follows:
 
 Steps for configuring the JDBC client for server authentication in a Kubernetes cluster are as follows:
 
-1. Create a minikube cluster by adding `tls.enabled=true` to the command line described in [Quick start](/preview/quick-start/kubernetes/).
+1. Create a minikube cluster by adding `tls.enabled=true` to the command line described in [Quick start](/stable/quick-start/kubernetes/).
 
    ```sh
    $ kubectl create namespace yb-demo

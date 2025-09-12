@@ -3,11 +3,11 @@ title: DELETEDB
 linkTitle: DELETEDB
 description: DELETEDB
 menu:
-  v2.25
+  v2.25:
     parent: api-yedis
     weight: 2034
 aliases:
-  - /preview/api/yedis/deletedb
+  - /stable/api/yedis/deletedb
 type: docs
 ---
 

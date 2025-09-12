@@ -5,7 +5,7 @@ linkTitle: Spring Framework
 description: Using Spring Framework with YugabyteDB
 headcontent: Using Spring Framework with YugabyteDB
 aliases:
-  - /preview/integrations/spring/
+  - /stable/integrations/spring/
 menu:
   v2.25_integrations:
     identifier: spring-framework

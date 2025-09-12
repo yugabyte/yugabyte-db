@@ -174,5 +174,5 @@ The following illustration shows how the primary application (assuming it is sti
 There may be scenarios where you want to deploy the database in just one region. It is quite common for enterprises to have one data center as their primary and another data center just for failover. For this scenario, you can deploy YugabyteDB in your primary data center and set up another cluster in the second data center that gets the data from the primary cluster via asynchronous replication. This is also known as the 2DC or xCluster model.
 
 {{<tip>}}
-You can set this up by following the instructions of the [Active-Active Single-Master](/preview/develop/build-global-apps/active-active-single-master) pattern.
+You can set this up by following the instructions of the [Active-Active Single-Master](/stable/develop/build-global-apps/active-active-single-master) pattern.
 {{</tip>}}

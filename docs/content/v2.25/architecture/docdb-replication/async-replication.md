@@ -5,9 +5,9 @@ linkTitle: xCluster
 description: xCluster replication between multiple YugabyteDB universes.
 headContent: High-throughput asynchronous physical replication
 aliases:
-  - /preview/architecture/docdb/2dc-deployments/
+  - /stable/architecture/docdb/2dc-deployments/
 menu:
-  v2.25
+  v2.25:
     identifier: architecture-docdb-async-replication
     parent: architecture-docdb-replication
     weight: 300

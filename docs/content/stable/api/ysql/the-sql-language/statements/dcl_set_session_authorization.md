@@ -8,7 +8,7 @@ menu:
     identifier: dcl_set_session_authorization
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/dcl_set_session_authorization/
+  - /stable/api/ysql/commands/dcl_set_session_authorization/
 type: docs
 ---
 

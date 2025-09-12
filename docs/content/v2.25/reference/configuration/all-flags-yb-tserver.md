@@ -3,7 +3,7 @@ title: All YB-TServer flags
 headerTitle: All YB-TServer flags
 description: List of all YB-TServer process flags for configuring YugabyteDB using yb-tserver
 menu:
-  v2.25
+  v2.25:
     identifier: all-flags-yb-tserver
     weight: 2440
 type: docs

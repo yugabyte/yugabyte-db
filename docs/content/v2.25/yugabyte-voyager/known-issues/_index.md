@@ -7,8 +7,8 @@ description: What to watch out for when migrating data using YugabyteDB Voyager.
 type: indexpage
 showRightNav: true
 aliases:
-  - /preview/yugabyte-voyager/known-issues/general-issues/
-  - /preview/yugabyte-voyager/known-issues/mysql-oracle/
+  - /stable/yugabyte-voyager/known-issues/general-issues/
+  - /stable/yugabyte-voyager/known-issues/mysql-oracle/
 menu:
   v2.25_yugabyte-voyager:
     identifier: known-issues

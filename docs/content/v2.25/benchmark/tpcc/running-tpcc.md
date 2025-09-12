@@ -4,7 +4,7 @@ headerTitle: Run the TPC-C performance benchmark
 linkTitle: Run benchmark
 headcontent: Detailed steps to run the TPCC benchmark
 menu:
-  v2.25
+  v2.25:
     identifier: tpcc-ysql
     parent: tpcc
     weight: 100

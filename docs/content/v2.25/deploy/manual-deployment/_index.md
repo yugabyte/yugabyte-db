@@ -5,7 +5,7 @@ linkTitle: Single-DC deployments
 description: Deploy YugabyteDB manually in a single region or private data center using basic administration commands.
 headcontent: Deploy YugabyteDB in a single region or private data center
 menu:
-  v2.25
+  v2.25:
     identifier: deploy-manual-deployment
     parent: deploy
     weight: 20

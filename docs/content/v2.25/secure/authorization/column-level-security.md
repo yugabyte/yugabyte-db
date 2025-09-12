@@ -2,7 +2,7 @@
 title: Column-level security
 description: Column-level security in YugabyteDB
 menu:
-  v2.25
+  v2.25:
     name: Column-level security
     identifier: ysql-column-level-security
     parent: authorization

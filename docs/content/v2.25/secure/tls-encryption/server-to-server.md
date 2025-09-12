@@ -5,9 +5,9 @@ linkTitle: Enable encryption in transit
 description: Enable encryption (using TLS) for client- and server-server communication.
 headcontent: Enable encryption (using TLS) for client- and server-server communication
 aliases:
-    - /preview/secure/tls-encryption/client-to-server/
+    - /stable/secure/tls-encryption/client-to-server/
 menu:
-  v2.25
+  v2.25:
     identifier: server-to-server
     parent: tls-encryption
     weight: 20

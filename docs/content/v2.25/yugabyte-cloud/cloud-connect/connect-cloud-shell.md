@@ -4,7 +4,7 @@ linkTitle: Cloud Shell
 description: Connect to YugabyteDB Aeon clusters from any browser using Cloud Shell
 headcontent: Use your browser to connect to YugabyteDB Aeon databases
 aliases:
-  - /preview/yugabyte-cloud/cloud-quickstart/qs-connect/
+  - /stable/yugabyte-cloud/cloud-quickstart/qs-connect/
 menu:
   v2.25_yugabyte-cloud:
     identifier: connect-cloud-shell

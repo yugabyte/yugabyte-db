@@ -3,12 +3,12 @@ title: ECHO
 linkTitle: ECHO
 description: ECHO
 menu:
-  v2.25
+  v2.25:
     parent: api-yedis
     weight: 2050
 aliases:
-  - /preview/api/redis/echo
-  - /preview/api/yedis/del
+  - /stable/api/redis/echo
+  - /stable/api/yedis/del
 type: docs
 ---
 

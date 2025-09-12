@@ -4,9 +4,9 @@ headerTitle: Performance issues
 linkTitle: Performance issues
 description: Investigate and troubleshoot performance issues in YugabyteDB clusters
 aliases:
-  - /preview/benchmark/performance-troubleshooting/
+  - /stable/benchmark/performance-troubleshooting/
 menu:
-  v2.25
+  v2.25:
     identifier: performance-troubleshooting
     parent: troubleshoot-cluster
     weight: 868

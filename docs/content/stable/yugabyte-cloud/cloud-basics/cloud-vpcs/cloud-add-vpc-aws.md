@@ -5,7 +5,7 @@ linkTitle: Peer VPCs
 description: Peer a VPC in AWS.
 headcontent: Peer your cluster VPC with a VPC in AWS
 aliases:
-  - /preview/yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-configure-provider/
+  - /stable/yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-configure-provider/
 menu:
   preview_yugabyte-cloud:
     identifier: cloud-add-vpc-1-aws

@@ -9,7 +9,7 @@ block_indexing = true
 
   {{% tab header="Java" lang="java" %}}
 
-The [Java application](https://github.com/yugabyte/yugabyte-simple-java-app) connects to a YugabyteDB cluster using the topology-aware [Yugabyte JDBC driver](/preview/drivers-orms/java/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in Java.
+The [Java application](https://github.com/yugabyte/yugabyte-simple-java-app) connects to a YugabyteDB cluster using the topology-aware [Yugabyte JDBC driver](/stable/drivers-orms/java/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in Java.
 
 The application requires the following:
 
@@ -39,10 +39,10 @@ To build and run the application, do the following:
         - **database** - the name of the database you are connecting to (the default is `yugabyte`).
         - **dbUser** and **dbPassword** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Aeon, use the credentials in the credentials file you downloaded.
 
-    - YugabyteDB Aeon [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
+    - YugabyteDB Aeon [requires SSL connections](/stable/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
 
         - **sslMode** - the SSL mode to use; use `verify-full`.
-        - **sslRootCert** - the full path to the YugabyteDB Aeon [cluster CA certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
+        - **sslRootCert** - the full path to the YugabyteDB Aeon [cluster CA certificate](/stable/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
 
     - Save the file.
 
@@ -77,13 +77,13 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic Java application that works with YugabyteDB.
 
-[Explore the application logic](/preview/tutorials/build-apps/java/cloud-ysql-yb-jdbc/#explore-the-application-logic)
+[Explore the application logic](/stable/tutorials/build-apps/java/cloud-ysql-yb-jdbc/#explore-the-application-logic)
 
   {{% /tab %}}
 
   {{% tab header="Go" lang="go" %}}
 
-The [Go application](https://github.com/yugabyte/yugabyte-simple-go-app) connects to a YugabyteDB cluster using the [Go PostgreSQL driver](/preview/drivers-orms/go/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in Go.
+The [Go application](https://github.com/yugabyte/yugabyte-simple-go-app) connects to a YugabyteDB cluster using the [Go PostgreSQL driver](/stable/drivers-orms/go/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in Go.
 
 The application requires the following:
 
@@ -112,10 +112,10 @@ To build and run the application, do the following:
         - **dbName** - the name of the database you are connecting to (the default is `yugabyte`).
         - **dbUser** and **dbPassword** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Aeon, use the credentials in the credentials file you downloaded.
 
-    - YugabyteDB Aeon [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
+    - YugabyteDB Aeon [requires SSL connections](/stable/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
 
         - **sslMode** - the SSL mode to use; use `verify-full`.
-        - **sslRootCert** - the full path to the YugabyteDB Aeon [cluster CA certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
+        - **sslRootCert** - the full path to the YugabyteDB Aeon [cluster CA certificate](/stable/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
 
     - Save the file.
 
@@ -153,13 +153,13 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic Go application that works with YugabyteDB.
 
-[Explore the application logic](/preview/tutorials/build-apps/go/cloud-ysql-go/#explore-the-application-logic)
+[Explore the application logic](/stable/tutorials/build-apps/go/cloud-ysql-go/#explore-the-application-logic)
 
   {{% /tab %}}
 
   {{% tab header="Python" lang="python" %}}
 
-The [Python application](https://github.com/yugabyte/yugabyte-simple-python-app) connects to a YugabyteDB cluster using the [Python psycopg2 PostgreSQL database adapter](/preview/drivers-orms/python/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in Python.
+The [Python application](https://github.com/yugabyte/yugabyte-simple-python-app) connects to a YugabyteDB cluster using the [Python psycopg2 PostgreSQL database adapter](/stable/drivers-orms/python/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in Python.
 
 The application requires the following:
 
@@ -188,7 +188,7 @@ To build and run the application, do the following:
         - **dbName** - the name of the database you are connecting to (the default is `yugabyte`).
         - **dbUser** and **dbPassword** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Aeon, use the credentials in the credentials file you downloaded.
 
-    - YugabyteDB Aeon [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
+    - YugabyteDB Aeon [requires SSL connections](/stable/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
 
         - **sslMode** - the SSL mode to use; use `verify-full`.
         - **sslRootCert** - the full path to the YugabyteDB Aeon cluster CA certificate.
@@ -223,13 +223,13 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic Python application that works with YugabyteDB.
 
-[Explore the application logic](/preview/tutorials/build-apps/python/cloud-ysql-python/#explore-the-application-logic)
+[Explore the application logic](/stable/tutorials/build-apps/python/cloud-ysql-python/#explore-the-application-logic)
 
   {{% /tab %}}
 
   {{% tab header="Node.js" lang="nodejs" %}}
 
-The [Node.js application](https://github.com/yugabyte/yugabyte-simple-node-app) connects to a YugabyteDB cluster using the [node-postgres driver](/preview/drivers-orms/nodejs/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in Node.js.
+The [Node.js application](https://github.com/yugabyte/yugabyte-simple-node-app) connects to a YugabyteDB cluster using the [node-postgres driver](/stable/drivers-orms/nodejs/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in Node.js.
 
 The application requires the following:
 
@@ -258,9 +258,9 @@ To build and run the application, do the following:
         - **database** - the name of the database you are connecting to (the default is `yugabyte`).
         - **user** and **password** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Aeon, use the credentials in the credentials file you downloaded.
 
-    - YugabyteDB Aeon [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
+    - YugabyteDB Aeon [requires SSL connections](/stable/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
 
-        - **ssl** - To enable `verify-ca` SSL mode, the `rejectUnauthorized` property is set to `true` to require root certificate chain validation; replace `path_to_your_root_certificate` with the full path to the YugabyteDB Aeon [cluster CA certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
+        - **ssl** - To enable `verify-ca` SSL mode, the `rejectUnauthorized` property is set to `true` to require root certificate chain validation; replace `path_to_your_root_certificate` with the full path to the YugabyteDB Aeon [cluster CA certificate](/stable/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
 
     - Save the file.
 
@@ -298,20 +298,20 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic Node.js application that works with YugabyteDB.
 
-[Explore the application logic](/preview/tutorials/build-apps/nodejs/cloud-ysql-node/#explore-the-application-logic)
+[Explore the application logic](/stable/tutorials/build-apps/nodejs/cloud-ysql-node/#explore-the-application-logic)
 
   {{% /tab %}}
 
   {{% tab header="C" lang="c" %}}
 
-The [C application](https://github.com/yugabyte/yugabyte-simple-c-app) connects to a YugabyteDB cluster using the [libpq driver](/preview/drivers-orms/ysql-client-drivers/#libpq) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in C.
+The [C application](https://github.com/yugabyte/yugabyte-simple-c-app) connects to a YugabyteDB cluster using the [libpq driver](/stable/drivers-orms/ysql-client-drivers/#libpq) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in C.
 
 The application requires the following:
 
 - 32-bit (x86) or 64-bit (x64) architecture machine. (Use [Rosetta](https://support.apple.com/en-us/HT211861) to build and run on Apple silicon.)
 - gcc 4.1.2 or later, or clang 3.4 or later installed.
 - OpenSSL 1.1.1 or later (used by libpq to establish secure SSL connections).
-- [libpq](/preview/drivers-orms/ysql-client-drivers/#libpq). Homebrew users on macOS can install using `brew install libpq`. You can download the PostgreSQL binaries and source from [PostgreSQL Downloads](https://www.postgresql.org/download/).
+- [libpq](/stable/drivers-orms/ysql-client-drivers/#libpq). Homebrew users on macOS can install using `brew install libpq`. You can download the PostgreSQL binaries and source from [PostgreSQL Downloads](https://www.postgresql.org/download/).
 
 To build and run the application, do the following:
 
@@ -336,10 +336,10 @@ To build and run the application, do the following:
         - **DB_NAME** - the name of the database you are connecting to (the default is `yugabyte`).
         - **USER** and **PASSWORD** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Aeon, use the credentials in the credentials file you downloaded.
 
-    - YugabyteDB Aeon [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
+    - YugabyteDB Aeon [requires SSL connections](/stable/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
 
         - **SSL_MODE** - the SSL mode to use; use `verify-full`.
-        - **SSL_ROOT_CERT** - the full path to the YugabyteDB Aeon [cluster CA certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
+        - **SSL_ROOT_CERT** - the full path to the YugabyteDB Aeon [cluster CA certificate](/stable/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
 
     - Save the file.
 
@@ -373,21 +373,21 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic C application that works with YugabyteDB.
 
-[Explore the application logic](/preview/tutorials/build-apps/c/cloud-ysql-c/#explore-the-application-logic)
+[Explore the application logic](/stable/tutorials/build-apps/c/cloud-ysql-c/#explore-the-application-logic)
 
   {{% /tab %}}
 
   {{% tab header="C++" lang="cpp" %}}
 
-The [C++ application](https://github.com/yugabyte/yugabyte-simple-cpp-app) connects to a YugabyteDB cluster using the [libpqxx driver](/preview/drivers-orms/ysql-client-drivers/#libpqxx) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in C++.
+The [C++ application](https://github.com/yugabyte/yugabyte-simple-cpp-app) connects to a YugabyteDB cluster using the [libpqxx driver](/stable/drivers-orms/ysql-client-drivers/#libpqxx) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in C++.
 
 The application requires the following:
 
 - 32-bit (x86) or 64-bit (x64) architecture machine. (Use [Rosetta](https://support.apple.com/en-us/HT211861) to build and run on Apple silicon.)
 - gcc 4.1.2 or later, or clang 3.4 or later installed.
 - OpenSSL 1.1.1 or later (used by libpq and libpqxx to establish secure SSL connections).
-- [libpq](/preview/drivers-orms/ysql-client-drivers/#libpq). Homebrew users on macOS can install using `brew install libpq`. You can download the PostgreSQL binaries and source from [PostgreSQL Downloads](https://www.postgresql.org/download/).
-- [libpqxx](/preview/drivers-orms/ysql-client-drivers/#libpqxx). Homebrew users on macOS can install using `brew install libpqxx`. To build the driver yourself, refer to [Building libpqxx](https://github.com/jtv/libpqxx#building-libpqxx).
+- [libpq](/stable/drivers-orms/ysql-client-drivers/#libpq). Homebrew users on macOS can install using `brew install libpq`. You can download the PostgreSQL binaries and source from [PostgreSQL Downloads](https://www.postgresql.org/download/).
+- [libpqxx](/stable/drivers-orms/ysql-client-drivers/#libpqxx). Homebrew users on macOS can install using `brew install libpqxx`. To build the driver yourself, refer to [Building libpqxx](https://github.com/jtv/libpqxx#building-libpqxx).
 
 To build and run the application, do the following:
 
@@ -412,10 +412,10 @@ To build and run the application, do the following:
         - **DB_NAME** - the name of the database you are connecting to (the default is `yugabyte`).
         - **USER** and **PASSWORD** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Aeon, use the credentials in the credentials file you downloaded.
 
-    - YugabyteDB Aeon [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
+    - YugabyteDB Aeon [requires SSL connections](/stable/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
 
         - **SSL_MODE** - the SSL mode to use; use `verify-full`.
-        - **SSL_ROOT_CERT** - the full path to the YugabyteDB Aeon [cluster CA certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
+        - **SSL_ROOT_CERT** - the full path to the YugabyteDB Aeon [cluster CA certificate](/stable/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
 
     - Save the file.
 
@@ -451,13 +451,13 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic C++ application that works with YugabyteDB.
 
-[Explore the application logic](/preview/tutorials/build-apps/cpp/cloud-ysql-cpp/#explore-the-application-logic)
+[Explore the application logic](/stable/tutorials/build-apps/cpp/cloud-ysql-cpp/#explore-the-application-logic)
 
   {{% /tab %}}
 
   {{% tab header="C#" lang="csharp" %}}
 
-The [C# application](https://github.com/yugabyte/yugabyte-simple-csharp-app) connects to a YugabyteDB cluster using the [Npgsql driver](/preview/drivers-orms/csharp/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in C#.
+The [C# application](https://github.com/yugabyte/yugabyte-simple-csharp-app) connects to a YugabyteDB cluster using the [Npgsql driver](/stable/drivers-orms/csharp/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in C#.
 
 The application requires the following:
 
@@ -491,9 +491,9 @@ To build and run the application, do the following:
         - **urlBuilder.Port** - the port number for the driver to use (the default YugabyteDB YSQL port is 5433).
         - **urlBuilder.Database** - the name of the database you are connecting to (the default is `yugabyte`).
         - **urlBuilder.Username** and **urlBuilder.Password** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Aeon, use the credentials in the credentials file you downloaded.
-    - YugabyteDB Aeon [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
+    - YugabyteDB Aeon [requires SSL connections](/stable/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
         - **urlBuilder.SslMode** - the SSL mode to use; use `SslMode.VerifyFull`.
-        - **urlBuilder.RootCertificate** - the full path to the YugabyteDB Aeon [cluster CA certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
+        - **urlBuilder.RootCertificate** - the full path to the YugabyteDB Aeon [cluster CA certificate](/stable/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
 
     - Save the file.
 
@@ -519,20 +519,20 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic C# application that works with YugabyteDB.
 
-[Explore the application logic](/preview/tutorials/build-apps/csharp/cloud-ysql-csharp/#explore-the-application-logic)
+[Explore the application logic](/stable/tutorials/build-apps/csharp/cloud-ysql-csharp/#explore-the-application-logic)
 
   {{% /tab %}}
 
   {{% tab header="Ruby" lang="ruby" %}}
 
-The [Ruby application](https://github.com/yugabyte/yugabyte-simple-ruby-app) connects to a YugabyteDB cluster using the [Ruby Pg driver](/preview/drivers-orms/ruby/ruby-pg) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in Ruby.
+The [Ruby application](https://github.com/yugabyte/yugabyte-simple-ruby-app) connects to a YugabyteDB cluster using the [Ruby Pg driver](/stable/drivers-orms/ruby/ruby-pg) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in Ruby.
 
 The application requires the following:
 
 - Ruby 3.1 or later.
 - OpenSSL 1.1.1 or later (used by libpq and pg to establish secure SSL connections).
-- [libpq](/preview/drivers-orms/ysql-client-drivers/#libpq). Homebrew users on macOS can install using `brew install libpq`. You can download the PostgreSQL binaries and source from [PostgreSQL Downloads](https://www.postgresql.org/download/).
-- [Ruby pg](/preview/drivers-orms/ruby/ruby-pg/). To install Ruby pg, run the following command:
+- [libpq](/stable/drivers-orms/ysql-client-drivers/#libpq). Homebrew users on macOS can install using `brew install libpq`. You can download the PostgreSQL binaries and source from [PostgreSQL Downloads](https://www.postgresql.org/download/).
+- [Ruby pg](/stable/drivers-orms/ruby/ruby-pg/). To install Ruby pg, run the following command:
 
     ```sh
     gem install pg -- --with-pg-include=<path-to-libpq>/libpq/include --with-pg-lib=<path-to-libpq>/libpq/lib
@@ -563,10 +563,10 @@ To build and run the application, do the following:
         - **dbname** - the name of the database you are connecting to (the default is `yugabyte`).
         - **user** and **password** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Aeon, use the credentials in the credentials file you downloaded.
 
-    - YugabyteDB Aeon [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
+    - YugabyteDB Aeon [requires SSL connections](/stable/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
 
         - **sslmode** - the SSL mode to use; use `verify-full`.
-        - **sslrootcert** - the full path to the YugabyteDB Aeon [cluster CA certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
+        - **sslrootcert** - the full path to the YugabyteDB Aeon [cluster CA certificate](/stable/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
 
     - Save the file.
 
@@ -598,13 +598,13 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic Ruby application that works with YugabyteDB.
 
-[Explore the application logic](/preview/tutorials/build-apps/ruby/cloud-ysql-ruby/#explore-the-application-logic)
+[Explore the application logic](/stable/tutorials/build-apps/ruby/cloud-ysql-ruby/#explore-the-application-logic)
 
   {{% /tab %}}
 
   {{% tab header="Rust" lang="rust" %}}
 
-The [Rust application](https://github.com/yugabyte/yugabyte-simple-rust-app) connects to a YugabyteDB cluster using the [Rust-Postgres driver](/preview/drivers-orms/rust/yb-rust-postgres/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in Rust.
+The [Rust application](https://github.com/yugabyte/yugabyte-simple-rust-app) connects to a YugabyteDB cluster using the [Rust-Postgres driver](/stable/drivers-orms/rust/yb-rust-postgres/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in Rust.
 
 The application requires the following:
 
@@ -633,10 +633,10 @@ To build and run the application, do the following:
         - **DB_NAME** - the name of the database you are connecting to (the default is `yugabyte`).
         - **USER** and **PASSWORD** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Aeon, use the credentials in the credentials file you downloaded.
 
-    - YugabyteDB Aeon [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
+    - YugabyteDB Aeon [requires SSL connections](/stable/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
 
         - **SSL_MODE** - the SSL mode to use; use `SslMode::Require`.
-        - **SSL_ROOT_CERT** - the full path to the YugabyteDB Aeon [cluster CA certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
+        - **SSL_ROOT_CERT** - the full path to the YugabyteDB Aeon [cluster CA certificate](/stable/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
 
     - Save the file.
 
@@ -664,18 +664,18 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic Rust application that works with YugabyteDB.
 
-[Explore the application logic](/preview/tutorials/build-apps/rust/cloud-ysql-rust/#explore-the-application-logic)
+[Explore the application logic](/stable/tutorials/build-apps/rust/cloud-ysql-rust/#explore-the-application-logic)
 
   {{% /tab %}}
 
   {{% tab header="PHP" lang="php" %}}
 
-The [PHP application](https://github.com/yugabyte/yugabyte-simple-php-app) connects to a YugabyteDB cluster using the [php-pgsql](/preview/drivers-orms/php/ysql/) driver and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in PHP.
+The [PHP application](https://github.com/yugabyte/yugabyte-simple-php-app) connects to a YugabyteDB cluster using the [php-pgsql](/stable/drivers-orms/php/ysql/) driver and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in PHP.
 
 The application requires the following:
 
 - PHP runtime. The sample application was created using PHP 8.1 but should work with earlier and later versions. Homebrew users on macOS can install PHP using `brew install php`.
-- [php-pgsql driver](/preview/drivers-orms/php/ysql/).
+- [php-pgsql driver](/stable/drivers-orms/php/ysql/).
   - On macOS, Homebrew automatically installs the driver with `brew install php`.
   - Ubuntu users can install the driver using the `sudo apt-get install php-pgsql` command.
   - CentOS users can install the driver using the `sudo yum install php-pgsql` command.
@@ -703,10 +703,10 @@ To build and run the application, do the following:
         - **DB_NAME** - the name of the database to connect to (the default is `yugabyte`).
         - **USER** and **PASSWORD** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Aeon, use the credentials in the credentials file you downloaded.
 
-    - YugabyteDB Aeon [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
+    - YugabyteDB Aeon [requires SSL connections](/stable/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
 
         - **SSL_MODE** - the SSL mode to use; use `verify-full`.
-        - **SSL_ROOT_CERT** - the full path to the YugabyteDB Aeon [cluster CA certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
+        - **SSL_ROOT_CERT** - the full path to the YugabyteDB Aeon [cluster CA certificate](/stable/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
 
     - Save the file.
 
@@ -732,7 +732,7 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic PHP application that works with YugabyteDB.
 
-[Explore the application logic](/preview/tutorials/build-apps/php/cloud-ysql-php/#explore-the-application-logic)
+[Explore the application logic](/stable/tutorials/build-apps/php/cloud-ysql-php/#explore-the-application-logic)
 
   {{% /tab %}}
 

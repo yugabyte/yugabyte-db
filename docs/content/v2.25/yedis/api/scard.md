@@ -3,12 +3,12 @@ title: SCARD
 linkTitle: SCARD
 description: SCARD
 menu:
-  v2.25
+  v2.25:
     parent: api-yedis
     weight: 2260
 aliases:
-  - /preview/api/redis/scard
-  - /preview/api/yedis/scard
+  - /stable/api/redis/scard
+  - /stable/api/yedis/scard
 type: docs
 ---
 

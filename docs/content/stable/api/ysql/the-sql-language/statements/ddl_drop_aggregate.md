@@ -8,7 +8,7 @@ menu:
     identifier: ddl_drop_aggregate
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/ddl_drop_aggregate/
+  - /stable/api/ysql/commands/ddl_drop_aggregate/
 type: docs
 ---
 

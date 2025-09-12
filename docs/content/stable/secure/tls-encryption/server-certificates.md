@@ -6,7 +6,7 @@ description: Generate server certificates and prepare YugabyteDB nodes for serve
 headcontent: Generate server certificates and prepare YugabyteDB nodes for server-to-server encryption
 aliases:
   - /secure/tls-encryption/prepare-nodes
-  - /preview/secure/tls-encryption/prepare-nodes
+  - /stable/secure/tls-encryption/prepare-nodes
 menu:
   preview:
     identifier: prepare-nodes

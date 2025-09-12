@@ -22,7 +22,7 @@ YugabyteDB provides PostgreSQL without limits and is an excellent fit for new or
     title="Get Started"
     description="Create your first cluster and build a sample application in 15 minutes."
     buttonText="Get started"
-    buttonUrl="/preview/quick-start-yugabytedb-managed/"
+    buttonUrl="/stable/quick-start-yugabytedb-managed/"
     imageAlt="Laptop" imageUrl="/images/homepage/locally-laptop.svg"
   >}}
 
@@ -30,7 +30,7 @@ YugabyteDB provides PostgreSQL without limits and is an excellent fit for new or
     title="Modernize and Migrate"
     description="Streamline all stages of bringing a source to YugabyteDB, including analysis, conversion, migration, and cutover."
     buttonText="Get started"
-    buttonUrl="/preview/yugabyte-voyager/introduction/"
+    buttonUrl="/stable/yugabyte-voyager/introduction/"
     imageAlt="Cloud" imageUrl="/images/homepage/yugabyte-in-cloud.svg"
   >}}
 {{< /sections/2-boxes >}}
@@ -40,40 +40,40 @@ YugabyteDB provides PostgreSQL without limits and is an excellent fit for new or
     title="Explore"
     description="Explore YugabyteDB's support for cloud-native applications."
     linkText1="PostgreSQL compatibility"
-    linkUrl1="/preview/explore/ysql-language-features/"
+    linkUrl1="/stable/explore/ysql-language-features/"
     linkText2="Resilience"
-    linkUrl2="/preview/explore/fault-tolerance/"
+    linkUrl2="/stable/explore/fault-tolerance/"
     linkText3="Scalability"
-    linkUrl3="/preview/explore/linear-scalability/"
+    linkUrl3="/stable/explore/linear-scalability/"
     linkText4="Explore more"
     linkClass4="more"
-    linkUrl4="/preview/explore/"
+    linkUrl4="/stable/explore/"
   >}}
   {{< sections/3-box-card
     title="Develop"
     description="Build global applications using familiar APIs and drivers."
     linkText1="Global applications"
-    linkUrl1="/preview/develop/build-global-apps/"
+    linkUrl1="/stable/develop/build-global-apps/"
     linkText2="Hybrid and multi-cloud"
-    linkUrl2="/preview/develop/multi-cloud/"
+    linkUrl2="/stable/develop/multi-cloud/"
     linkText3="Drivers and ORMs"
-    linkUrl3="/preview/drivers-orms/"
+    linkUrl3="/stable/drivers-orms/"
     linkText4="Explore more"
     linkClass4="more"
-    linkUrl4="/preview/develop/"
+    linkUrl4="/stable/develop/"
   >}}
   {{< sections/3-box-card
     title="Under the hood"
     description="Learn about YugabyteDB's modern architecture."
     linkText1="Query layer"
-    linkUrl1="/preview/architecture/query-layer/"
+    linkUrl1="/stable/architecture/query-layer/"
     linkText2="Storage layer"
-    linkUrl2="/preview/architecture/docdb/"
+    linkUrl2="/stable/architecture/docdb/"
     linkText3="Transactions"
-    linkUrl3="/preview/architecture/transactions/"
+    linkUrl3="/stable/architecture/transactions/"
     linkText4="Explore more"
     linkClass4="more"
-    linkUrl4="/preview/architecture/"
+    linkUrl4="/stable/architecture/"
   >}}
 {{< /sections/3-boxes >}}
 

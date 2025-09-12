@@ -4,7 +4,7 @@ headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Go application using PQ driver
 menu:
-  v2.25
+  v2.25:
     identifier: go-3-pq-driver
     parent: go-drivers
     weight: 500

@@ -8,7 +8,7 @@ menu:
     identifier: ddl_drop_index
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/ddl_drop_index/
+  - /stable/api/ysql/commands/ddl_drop_index/
 type: docs
 ---
 

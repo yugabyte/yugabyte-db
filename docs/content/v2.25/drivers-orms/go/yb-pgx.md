@@ -4,7 +4,7 @@ headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Go application using YugabyteDB PGX Smart Driver
 menu:
-  v2.25
+  v2.25:
     identifier: go-1-yb-pgx-driver
     parent: go-drivers
     weight: 500
@@ -47,7 +47,7 @@ type: docs
 
 </ul>
 
-The [YugabyteDB PGX smart driver](https://pkg.go.dev/github.com/yugabyte/pgx) is a Go driver for [YSQL](/preview/api/ysql/) based on [jackc/pgx](https://github.com/jackc/pgx/), with additional [connection load balancing](../../smart-drivers/) features.
+The [YugabyteDB PGX smart driver](https://pkg.go.dev/github.com/yugabyte/pgx) is a Go driver for [YSQL](/stable/api/ysql/) based on [jackc/pgx](https://github.com/jackc/pgx/), with additional [connection load balancing](../../smart-drivers/) features.
 
 The driver makes an initial connection to the first contact point provided by the application to discover all the nodes in the cluster. If the driver discovers stale information (by default, older than 5 minutes), it refreshes the list of live endpoints with every new connection attempt.
 

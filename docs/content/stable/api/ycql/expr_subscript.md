@@ -8,7 +8,7 @@ menu:
     parent: api-cassandra
     weight: 1340
 aliases:
-  - /preview/api/cassandra/expr_subscript
+  - /stable/api/cassandra/expr_subscript
 type: docs
 ---
 

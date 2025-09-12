@@ -9,7 +9,7 @@ menu:
     weight: 70
 aliases:
   - /integrations/metabase/
-  - /preview/tools/metabase/
+  - /stable/tools/metabase/
 type: docs
 ---
 
@@ -19,7 +19,7 @@ This document shows how to set up Metabase to integrate with YugabyteDB's Postgr
 
 ## 1. Start local cluster
 
-Follow [Quick Start](/preview/quick-start/macos/) instructions to run a local YugabyteDB cluster.
+Follow [Quick Start](/stable/quick-start/macos/) instructions to run a local YugabyteDB cluster.
 
 ## 2. Load data
 

@@ -43,6 +43,13 @@
 
 # Make sure we're not redirecting anything under /images
 
+# CRITICAL: Redirect /preview to /stable to preserve SEO
+[[redirects]]
+  from = "/preview/*"
+  to = "/stable/:splat"
+  status = 301
+  force = true
+
 [[redirects]]
   from = "/images/*"
   to = "/images/:splat"

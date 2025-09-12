@@ -8,7 +8,7 @@ menu:
     identifier: dcl_revoke
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/dcl_revoke/
+  - /stable/api/ysql/commands/dcl_revoke/
 type: docs
 ---
 

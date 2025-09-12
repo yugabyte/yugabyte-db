@@ -4,7 +4,7 @@ headerTitle: Docs checklist
 linkTitle: Docs checklist
 description: Review the steps to start contributing documentation
 menu:
-  v2.25
+  v2.25:
     identifier: docs-checklist
     parent: docs
     weight: 2911

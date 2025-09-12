@@ -5,7 +5,7 @@ linkTitle: Read replicas
 description: Learn about read replicas in YugabyteDB.
 headContent: Replicate data asynchronously to one or more read replica clusters
 menu:
-  v2.25
+  v2.25:
     identifier: architecture-docdb-replication-read-replicas
     parent: architecture-docdb-replication
     weight: 400

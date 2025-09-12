@@ -5,7 +5,7 @@ linkTitle: Run the examples
 description: Set up clusters to run Explore examples.
 headcontent: Set up YugabyteDB to run Explore examples
 menu:
-  v2.25
+  v2.25:
     identifier: cluster-setup-2-aeon
     parent: explore
     weight: 5
@@ -41,7 +41,7 @@ You can run examples using a cluster on YugabyteDB Aeon, assuming you have [Crea
 
 ### Sandbox cluster
 
-Most examples in Explore can be run using the free [Sandbox](/preview/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/) cluster.
+Most examples in Explore can be run using the free [Sandbox](/stable/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/) cluster.
 
 If you haven't already created your sandbox cluster, sign in to YugabyteDB Aeon, on the **Clusters** page click **Add Cluster**, and follow the instructions in the **Create Cluster** wizard.
 
@@ -49,15 +49,15 @@ Save your cluster credentials in a convenient location. You will use them to con
 
 ### Multi-node universe
 
-Before you can create a multi-node cluster in YugabyteDB Aeon, you need to [add your billing profile and payment method](/preview/yugabyte-cloud/cloud-admin/cloud-billing-profile/), or you can [request a free trial](/preview/yugabyte-cloud/managed-freetrial/).
+Before you can create a multi-node cluster in YugabyteDB Aeon, you need to [add your billing profile and payment method](/stable/yugabyte-cloud/cloud-admin/cloud-billing-profile/), or you can [request a free trial](/stable/yugabyte-cloud/managed-freetrial/).
 
-To create a single region three-node cluster, refer to [Create a single-region cluster](/preview/yugabyte-cloud/cloud-basics/create-clusters/create-single-region/). Set **Fault tolerance** to **None** and **Nodes** to 3.
+To create a single region three-node cluster, refer to [Create a single-region cluster](/stable/yugabyte-cloud/cloud-basics/create-clusters/create-single-region/). Set **Fault tolerance** to **None** and **Nodes** to 3.
 
 Save your cluster credentials in a convenient location. You will use them to connect to your cluster.
 
 ## Connect to your clusters
 
-You can run Explore exercises in YugabyteDB Aeon using the [Cloud Shell](/preview/yugabyte-cloud/cloud-connect/connect-cloud-shell/):
+You can run Explore exercises in YugabyteDB Aeon using the [Cloud Shell](/stable/yugabyte-cloud/cloud-connect/connect-cloud-shell/):
 
 1. In YugabyteDB Aeon, on the **Clusters** page, select your cluster.
 1. Click **Connect**.
@@ -93,7 +93,7 @@ wget https://github.com/YugabyteDB-Samples/yb-workload-simulator/releases/downlo
 
 ### Use the application
 
-To connect the application to your cluster, ensure that you have downloaded the cluster SSL certificate and your computer is added to the IP allow list. Refer to [Before you begin](/preview/tutorials/build-apps/cloud-add-ip/).
+To connect the application to your cluster, ensure that you have downloaded the cluster SSL certificate and your computer is added to the IP allow list. Refer to [Before you begin](/stable/tutorials/build-apps/cloud-add-ip/).
 
 To start the application against a running YugabyteDB Aeon cluster, use the following command:
 
@@ -117,7 +117,7 @@ java -Dnode=<host name> \
     -Dspring.datasource.hikari.data-source-properties.topologyKeys=aws.us-east-1.us-east-1a,aws.us-east-1.us-east-2a,aws.us-east-1.us-east-3a
     ```
 -->
-- `<path-to-cluster-certificate>` with the path to the [cluster certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/) on your computer.
+- `<path-to-cluster-certificate>` with the path to the [cluster certificate](/stable/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/) on your computer.
 
 To view the application UI, navigate to `http://<machine_ip_or_dns>:8080` (for example, `http://localhost:8080`).
 

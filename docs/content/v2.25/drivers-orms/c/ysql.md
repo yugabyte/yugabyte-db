@@ -5,10 +5,10 @@ linkTitle: Connect an app
 description: Connect a C application using libpq driver
 aliases:
   - /develop/client-drivers/c/
-  - /preview/develop/client-drivers/c/
-  - /preview/quick-start/build-apps/c/
+  - /stable/develop/client-drivers/c/
+  - /stable/quick-start/build-apps/c/
 menu:
-  v2.25
+  v2.25:
     identifier: libpq-c-driver
     parent: c-drivers
     weight: 410
@@ -40,7 +40,7 @@ For details and documentation, refer to [libpq - C Library](https://www.postgres
 
 The tutorial assumes that you have:
 
-- installed YugabyteDB and created a universe. If not, follow the steps in [Quick start](/preview/quick-start/macos/).
+- installed YugabyteDB and created a universe. If not, follow the steps in [Quick start](/stable/quick-start/macos/).
 - a 32-bit (x86) or 64-bit (x64) architecture machine.
 - gcc 4.1.2 or later, clang 3.4 or later installed.
 

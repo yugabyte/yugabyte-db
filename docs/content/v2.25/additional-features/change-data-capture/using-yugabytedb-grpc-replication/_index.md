@@ -7,10 +7,10 @@ headcontent: Capture changes made to data in the database
 tags:
   feature: early-access
 aliases:
-  - /preview/explore/change-data-capture/cdc-overview/
-  - /preview/explore/change-data-capture/using-yugabytedb-grpc-replication/
+  - /stable/explore/change-data-capture/cdc-overview/
+  - /stable/explore/change-data-capture/using-yugabytedb-grpc-replication/
 menu:
-  v2.25
+  v2.25:
     identifier: explore-change-data-capture-grpc-replication
     parent: explore-change-data-capture
     weight: 280
@@ -32,7 +32,7 @@ To know more about the internals of CDC, see [Overview](./cdc-overview).
 
 Get started with Yugabyte gRPC replication.
 
-For tutorials on streaming data to Kafka environments, including Amazon MSK, Azure Event Hubs, and Confluent Cloud, see [Kafka environments](/preview/tutorials/cdc-tutorials/).
+For tutorials on streaming data to Kafka environments, including Amazon MSK, Azure Event Hubs, and Confluent Cloud, see [Kafka environments](/stable/tutorials/cdc-tutorials/).
 
 {{<lead link="./cdc-get-started/">}}
 [Get started](./cdc-get-started) using the connector.
@@ -81,7 +81,7 @@ In addition, CDC support for the following features will be added in upcoming re
 
 * [CDC architecture](../../../architecture/docdb-replication/change-data-capture/)
 * [Examples of CDC usage and patterns](https://github.com/yugabyte/cdc-examples/tree/main) {{<icon/github>}}
-* [Tutorials to deploy in different Kafka environments](/preview/tutorials/cdc-tutorials/) {{<icon/tutorial>}}
+* [Tutorials to deploy in different Kafka environments](/stable/tutorials/cdc-tutorials/) {{<icon/tutorial>}}
 * [Data Streaming Using YugabyteDB CDC, Kafka, and SnowflakeSinkConnector](https://www.yugabyte.com/blog/data-streaming-using-yugabytedb-cdc-kafka-and-snowflakesinkconnector/) {{<icon/blog>}}
 * [Unlock Azure Storage Options With YugabyteDB CDC](https://www.yugabyte.com/blog/unlocking-azure-storage-options-with-yugabytedb-cdc/) {{<icon/blog>}}
 * [Change Data Capture From YugabyteDB to Elasticsearch](https://www.yugabyte.com/blog/change-data-capture-cdc-yugabytedb-elasticsearch/) {{<icon/blog>}}

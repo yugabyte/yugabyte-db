@@ -195,4 +195,4 @@ curl -k --location --request PUT '<server-address>/api/v1/customers/<customerUUI
 
 ## Manage users and roles
 
-{{< readfile "/preview/yugabyte-platform/security/authentication/oidc-manage-users-include.md" >}}
+{{< readfile "/stable/yugabyte-platform/security/authentication/oidc-manage-users-include.md" >}}

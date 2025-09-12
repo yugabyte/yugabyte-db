@@ -8,7 +8,7 @@ menu:
     identifier: ddl_create_cast
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/ddl_create_cast/
+  - /stable/api/ysql/commands/ddl_create_cast/
 type: docs
 ---
 

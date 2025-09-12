@@ -7,7 +7,7 @@ headcontent: Keep entity data together in a time series data model
 tags:
   other: ysql
 menu:
-  v2.25
+  v2.25:
     identifier: timeseries-entity-ordering
     parent: common-patterns-timeseries
     weight: 200

@@ -5,7 +5,7 @@ linkTitle: Active-active multi-master
 description: Multi-Master dual cluster for global applications
 headcontent: Multi-Master dual cluster using asynchronous xCluster deployment
 menu:
-  v2.25
+  v2.25:
     identifier: global-apps-active-active-multi-master
     parent: build-global-apps
     weight: 400

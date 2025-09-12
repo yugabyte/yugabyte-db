@@ -3,12 +3,12 @@ title: HSET
 linkTitle: HSET
 description: HSET
 menu:
-  v2.25
+  v2.25:
     parent: api-yedis
     weight: 2180
 aliases:
-  - /preview/api/redis/hset
-  - /preview/api/yedis/hset
+  - /stable/api/redis/hset
+  - /stable/api/yedis/hset
 type: docs
 ---
 

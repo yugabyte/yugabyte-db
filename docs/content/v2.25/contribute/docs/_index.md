@@ -6,7 +6,7 @@ description: Contribute to the documentation
 image: fa-thin fa-books
 headcontent: How to contribute to the YugabyteDB documentation
 menu:
-  v2.25
+  v2.25:
     identifier: docs
     parent: contribute
     weight: 2910

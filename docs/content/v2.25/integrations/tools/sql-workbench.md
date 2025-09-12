@@ -9,7 +9,7 @@ menu:
     parent: tools
     weight: 90
 aliases:
-  - /preview/tools/sql-workbench/
+  - /stable/tools/sql-workbench/
 type: docs
 ---
 

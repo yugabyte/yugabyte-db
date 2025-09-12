@@ -5,9 +5,9 @@ linkTitle: Best practices
 description: Tips and tricks to build applications
 headcontent: Tips and tricks to build applications for high performance and availability
 aliases:
-  - /preview/develop/best-practices-ysql/
+  - /stable/develop/best-practices-ysql/
 menu:
-  v2.25
+  v2.25:
     identifier: best-practices-develop
     parent: develop
     weight: 80

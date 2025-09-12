@@ -5,8 +5,8 @@ linkTitle: Cloud providers
 description: Configure the Amazon Web Services (AWS) provider configuration.
 headContent: For deploying universes on AWS
 aliases:
-  - /preview/deploy/enterprise-edition/configure-cloud-providers/aws
-  - /preview/yugabyte-platform/deploy/configure-cloud-providers/aws
+  - /stable/deploy/enterprise-edition/configure-cloud-providers/aws
+  - /stable/yugabyte-platform/deploy/configure-cloud-providers/aws
 menu:
   preview_yugabyte-platform:
     identifier: set-up-cloud-provider-1-aws
@@ -216,7 +216,7 @@ You have an option to provide the following:
 
   If you don't provide an AMI ID, a recent x86 CentOS image is used. For additional information, see [CentOS on AWS](https://wiki.centos.org/Cloud/AWS). See [Supported operating systems and architectures](../supported-os-and-arch/) for a complete list of supported operating systems.
 
-To use automatic provisioning to bring up a universe on [AWS Graviton](https://aws.amazon.com/ec2/graviton/), you need to pass in the Arch AMI ID of AlmaLinux or Ubuntu. Note that this requires a YugabyteDB release for Linux ARM, which is available through one of the release pages (for example, the [current preview release](/preview/releases/release-notes/preview-release/)). YBA enables you to import releases via S3 or HTTP, as described in [Upgrade the YugabyteDB software](../../manage-deployments/upgrade-software/).
+To use automatic provisioning to bring up a universe on [AWS Graviton](https://aws.amazon.com/ec2/graviton/), you need to pass in the Arch AMI ID of AlmaLinux or Ubuntu. Note that this requires a YugabyteDB release for Linux ARM, which is available through one of the release pages (for example, the [current preview release](/stable/releases/release-notes/preview-release/)). YBA enables you to import releases via S3 or HTTP, as described in [Upgrade the YugabyteDB software](../../manage-deployments/upgrade-software/).
 
 #### Limitations
 

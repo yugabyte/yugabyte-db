@@ -6,7 +6,7 @@ description: Import data from PostgreSQL into YugabyteDB for YSQL.
 tags:
   other: ysql
 menu:
-  v2.25
+  v2.25:
     identifier: manage-bulk-import-ysql
     parent: manage-bulk-import-export
     weight: 729
@@ -66,7 +66,7 @@ While loading data that is exported from another RDBMS, the source data set may 
 ## Import PostgreSQL data
 
 {{< tip title="Migrate using YugabyteDB Voyager" >}}
-To automate your migration from PostgreSQL to YugabyteDB, use [YugabyteDB Voyager](/preview/yugabyte-voyager/). To learn more, refer to the [import schema](/preview/yugabyte-voyager/migrate/migrate-steps/#import-schema) and [import data](/preview/yugabyte-voyager/migrate/migrate-steps/#import-data) steps.
+To automate your migration from PostgreSQL to YugabyteDB, use [YugabyteDB Voyager](/stable/yugabyte-voyager/). To learn more, refer to the [import schema](/stable/yugabyte-voyager/migrate/migrate-steps/#import-schema) and [import data](/stable/yugabyte-voyager/migrate/migrate-steps/#import-data) steps.
 {{< /tip >}}
 
 ### Import data from CSV files

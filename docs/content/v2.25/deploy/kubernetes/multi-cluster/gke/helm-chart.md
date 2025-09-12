@@ -4,13 +4,13 @@ headerTitle: Google Kubernetes Engine (GKE)
 linkTitle: Google Kubernetes Engine (GKE)
 description: Use Helm chart to deploy a multi-region YugabyteDB cluster that spans three GKE clusters across three regions.
 menu:
-  v2.25
+  v2.25:
     parent: deploy-kubernetes-mc
     name: Google Kubernetes Engine
     identifier: k8s-mc-gke-1
     weight: 628
 aliases:
-  - /preview/deploy/kubernetes/multi-cluster/gke
+  - /stable/deploy/kubernetes/multi-cluster/gke
 type: docs
 ---
 
@@ -500,7 +500,7 @@ kubectl exec -n yb-demo-us-west1-b --context gke_yugabyte_us-west1-b_yugabytedb1
 -it yb-tserver-0 -- ycqlsh yb-tserver-0.yb-tservers.yb-demo-us-west1-b
 ```
 
-Follow the instructions provided in [Explore YSQL](/preview/quick-start/explore/ysql/) and then browse to `http://<external-ip>:7000/tablet-servers` of the YB-Master Admin UI to confirm that tablet peers and their leaders are placed evenly across all three zones for both user data and system data, as per the following illustration:
+Follow the instructions provided in [Explore YSQL](/stable/quick-start/explore/ysql/) and then browse to `http://<external-ip>:7000/tablet-servers` of the YB-Master Admin UI to confirm that tablet peers and their leaders are placed evenly across all three zones for both user data and system data, as per the following illustration:
 
 ![mz-ybtserver](/images/deploy/kubernetes/gke-multicluster-ybtserver.png)
 

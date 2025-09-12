@@ -8,7 +8,7 @@ menu:
     identifier: ddl_create_matview
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/ddl_create_matview/
+  - /stable/api/ysql/commands/ddl_create_matview/
 type: docs
 ---
 

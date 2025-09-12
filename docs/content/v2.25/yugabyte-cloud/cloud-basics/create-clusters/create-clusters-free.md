@@ -4,8 +4,8 @@ linkTitle: Sandbox
 description: Create Sandbox clusters in YugabyteDB Aeon.
 headcontent: Free forever
 aliases:
-  - /preview/yugabyte-cloud/cloud-basics/create-clusters-free/
-  - /preview/yugabyte-cloud/free-tier/
+  - /stable/yugabyte-cloud/cloud-basics/create-clusters-free/
+  - /stable/yugabyte-cloud/free-tier/
 menu:
   v2.25_yugabyte-cloud:
     identifier: create-clusters-free
@@ -108,5 +108,5 @@ YugabyteDB is a distributed database optimized for deployment across multiple no
 
 - [Connect to your cluster](../../../cloud-connect/)
 - [Add database users](../../../cloud-secure-clusters/add-users/)
-- [Build an application](/preview/tutorials/build-apps/)
+- [Build an application](/stable/tutorials/build-apps/)
 - [Database authorization in YugabyteDB Aeon clusters](../../../cloud-secure-clusters/cloud-users/)

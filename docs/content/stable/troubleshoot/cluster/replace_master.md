@@ -5,7 +5,7 @@ linkTitle: Replace a failed YB-Master
 description: Steps to replace a failed YB-Master in a YugabyteDB cluster.
 aliases:
   - /troubleshoot/cluster/replace-master/
-  - /preview/troubleshoot/cluster/replace-master/
+  - /stable/troubleshoot/cluster/replace-master/
 menu:
   preview:
     identifier: replace-failed-master

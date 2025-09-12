@@ -8,7 +8,7 @@ menu:
     identifier: ddl_drop_operator
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/ddl_drop_operator/
+  - /stable/api/ysql/commands/ddl_drop_operator/
 type: docs
 ---
 

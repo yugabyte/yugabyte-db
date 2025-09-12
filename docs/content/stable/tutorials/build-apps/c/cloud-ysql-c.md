@@ -4,7 +4,7 @@ headerTitle: Build a C application
 description: Build a small C application using the libpq driver and using the YSQL API to connect to and interact with a YugabyteDB Aeon cluster.
 headContent: "Client driver: libpq"
 aliases:
-  - /preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-c/
+  - /stable/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-c/
 menu:
   preview_tutorials:
     parent: build-apps

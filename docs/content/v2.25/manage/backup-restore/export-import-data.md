@@ -4,7 +4,7 @@ headerTitle: Export and import
 linkTitle: Export and import
 description: Export and import for YSQL
 menu:
-  v2.25
+  v2.25:
     identifier: export-import-data
     parent: backup-restore
     weight: 703

@@ -4,7 +4,7 @@ headerTitle: Build an application using Java
 linkTitle: Java
 description: Use Java to build a YugabyteDB application that interacts with YEDIS
 aliases:
-  - /preview/yedis/develop/client-drivers/java
+  - /stable/yedis/develop/client-drivers/java
 menu:
   preview:
     identifier: client-drivers-yedis-java
@@ -31,7 +31,7 @@ To build your Java application using the YugabyteDB version of the Jedis driver,
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe, and are able to interact with it using the Redis shell. If not, please follow these steps in [Quick start](/preview/quick-start/macos/).
+- installed YugabyteDB, created a universe, and are able to interact with it using the Redis shell. If not, please follow these steps in [Quick start](/stable/quick-start/macos/).
 - JDK version 1.8 or later
 - Maven 3.3 or later
 

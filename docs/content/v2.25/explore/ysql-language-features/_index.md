@@ -5,9 +5,9 @@ linkTitle: SQL features
 description: Explore core SQL features in YSQL
 headcontent: Explore core SQL features in YSQL
 aliases:
-  - /preview/explore/ysql-language-features/schema/
+  - /stable/explore/ysql-language-features/schema/
 menu:
-  v2.25
+  v2.25:
     identifier: explore-ysql-language-features
     parent: explore
     weight: 100

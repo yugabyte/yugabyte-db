@@ -5,15 +5,15 @@ linkTitle: PostgreSQL extensions
 description: Summary of supported PostgreSQL extensions
 summary: Reference for YSQL extensions
 menu:
-  v2.25
+  v2.25:
     identifier: pg-extensions
     parent: explore-ysql-language-features
     weight: 1000
 aliases:
-  - /preview/explore/ysql-language-features/advanced-features/extensions/
-  - /preview/api/ysql/extensions/
-  - /preview/explore/ysql-language-features/pg-extensions/extension-postgis/
-  - /preview/explore/ysql-language-features/pg-extensions/extension-pgsql-postal/
+  - /stable/explore/ysql-language-features/advanced-features/extensions/
+  - /stable/api/ysql/extensions/
+  - /stable/explore/ysql-language-features/pg-extensions/extension-postgis/
+  - /stable/explore/ysql-language-features/pg-extensions/extension-pgsql-postal/
 showRightNav: true
 type: indexpage
 ---

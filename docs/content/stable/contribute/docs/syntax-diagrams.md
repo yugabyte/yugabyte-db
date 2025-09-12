@@ -71,7 +71,7 @@ A set of syntax rule names grouped and displayed together on a content page.
 
 ### Diagram definition file
 
-The `ysql_grammar.ebnf` file located at `/docs/content/preview/api/ysql/syntax_resources/` holds the definition, written in EBNF notation, of every [_syntax rule_](#syntax-rule). This file in all its entirety is manually typed.
+The `ysql_grammar.ebnf` file located at `/docs/content/stable/api/ysql/syntax_resources/` holds the definition, written in EBNF notation, of every [_syntax rule_](#syntax-rule). This file in all its entirety is manually typed.
 
 You create a syntax rule by adding it to this file.
 

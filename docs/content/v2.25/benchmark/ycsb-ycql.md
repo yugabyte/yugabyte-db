@@ -5,9 +5,9 @@ linkTitle: YCSB
 description: Learn how to test the YCQL api using the YCSB benchmark.
 headcontent: Benchmark YCQL performance using YCSB
 aliases:
-  - /preview/benchmark/ycsb
+  - /stable/benchmark/ycsb
 menu:
-  v2.25
+  v2.25:
     identifier: ycsb-3-ycql
     parent: benchmark
     weight: 5

@@ -5,7 +5,7 @@ description: Synchronize snapshots in YSQL
 tags:
   feature: tech-preview
 menu:
-  v2.25
+  v2.25:
     identifier: synchronize-snapshots
     parent: advanced-features
     weight: 800

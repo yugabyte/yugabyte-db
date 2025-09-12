@@ -3,12 +3,12 @@ title: Views
 linkTitle: Views
 description: Views in YSQL
 menu:
-  v2.25
+  v2.25:
     identifier: advanced-features-views
     parent: advanced-features
     weight: 800
 aliases:
-  - /preview/explore/ysql-language-features/views/
+  - /stable/explore/ysql-language-features/views/
 type: docs
 ---
 

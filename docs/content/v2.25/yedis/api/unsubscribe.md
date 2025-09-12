@@ -3,12 +3,12 @@ title: UNSUBSCRIBE
 linkTitle: UNSUBSCRIBE
 description: UNSUBSCRIBE
 menu:
-  v2.25
+  v2.25:
     parent: api-yedis
     weight: 2553
 aliases:
-  - /preview/api/redis/unsubscribe
-  - /preview/api/yedis/unsubscribe
+  - /stable/api/redis/unsubscribe
+  - /stable/api/yedis/unsubscribe
 type: docs
 ---
 

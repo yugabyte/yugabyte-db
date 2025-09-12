@@ -4,7 +4,7 @@ headerTitle: Scaling YSQL queries
 linkTitle: Scaling queries
 description: Benchmark scaling YSQL queries in YugabyteDB
 menu:
-  v2.25
+  v2.25:
     identifier: scaling-queries-1-ysql
     parent: scalability
     weight: 11

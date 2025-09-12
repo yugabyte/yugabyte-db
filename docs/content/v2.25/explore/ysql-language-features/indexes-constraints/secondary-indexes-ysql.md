@@ -5,13 +5,13 @@ linkTitle: Secondary indexes
 description: Overview of Secondary indexes in YSQL
 headContent: Explore secondary indexes in YugabyteDB using YSQL
 menu:
-  v2.25
+  v2.25:
     identifier: secondary-indexes-ysql
     parent: explore-indexes-constraints-ysql
     weight: 210
 aliases:
-  - /preview/explore/ysql-language-features/indexes-1/
-  - /preview/explore/indexes-constraints/secondary-indexes/
+  - /stable/explore/ysql-language-features/indexes-1/
+  - /stable/explore/indexes-constraints/secondary-indexes/
 type: docs
 ---
 

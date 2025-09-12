@@ -4,7 +4,7 @@ headerTitle: Edit the docs
 linkTitle: Edit the docs
 description: Get set up and edit the YugabyteDB docs locally
 menu:
-  v2.25
+  v2.25:
     identifier: docs-edit
     parent: docs
     weight: 2914
@@ -71,7 +71,7 @@ Preview builds take up to 5 minutes to build.
 
 All PR previews on the main repository are of the form `https://deploy-preview-ABCDE--infallible-bardeen-164bc9.netlify.app/` where ABCDE is the pull request number.
 
-Optionally, you can tag the Netlify bot in the PR description to tell the bot where to launch the preview. For example, if you changed the page at `docs.yugabyte.com/preview/contribute/docs/docs-edit/` you could add a tag to the PR description as shown in the following illustration:
+Optionally, you can tag the Netlify bot in the PR description to tell the bot where to launch the preview. For example, if you changed the page at `docs.yugabyte.com/stable/contribute/docs/docs-edit/` you could add a tag to the PR description as shown in the following illustration:
 
 ![Tag Netlify in a PR](/images/contribute/contribute-docs-description.png)
 

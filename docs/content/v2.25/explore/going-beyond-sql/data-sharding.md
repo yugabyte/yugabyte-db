@@ -4,7 +4,7 @@ headerTitle: Configurable data sharding
 linkTitle: Configurable data sharding
 headcontent: Understand the various data distribution schemes
 menu:
-  v2.25
+  v2.25:
     identifier: data-sharding
     parent: going-beyond-sql
     weight: 300

@@ -4,9 +4,9 @@ headerTitle: Prometheus integration
 linkTitle: Prometheus integration
 description: Learn about exporting YugabyteDB metrics and monitoring the cluster with Prometheus.
 aliases:
-  - /preview/explore/observability/prometheus-integration/macos/
+  - /stable/explore/observability/prometheus-integration/macos/
 menu:
-  v2.25
+  v2.25:
     parent: explore-observability
     identifier: prometheus-integration
     weight: 235

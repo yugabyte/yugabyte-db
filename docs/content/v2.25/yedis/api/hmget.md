@@ -3,12 +3,12 @@ title: HMGET
 linkTitle: HMGET
 description: HMGET
 menu:
-  v2.25
+  v2.25:
     parent: api-yedis
     weight: 2160
 aliases:
-  - /preview/api/redis/hmget
-  - /preview/api/yedis/hmget
+  - /stable/api/redis/hmget
+  - /stable/api/yedis/hmget
 type: docs
 ---
 

@@ -3,7 +3,7 @@ title: AUTH
 linkTitle: AUTH
 description: AUTH
 menu:
-  v2.25
+  v2.25:
     parent: api-yedis
     weight: 2020
 type: docs

@@ -4,9 +4,9 @@ headerTitle: Performance
 linkTitle: Performance
 description: Learn how DocDB enhances RocksDB for scale and performance.
 aliases:
-  - /preview/architecture/concepts/docdb/performance/
+  - /stable/architecture/concepts/docdb/performance/
 menu:
-  v2.25
+  v2.25:
     identifier: docdb-performance
     parent: docdb
     weight: 400

@@ -4,7 +4,7 @@ headerTitle: auto_explain extension
 linkTitle: auto_explain
 description: Using the auto_explain extension in YugabyteDB
 menu:
-  v2.25
+  v2.25:
     identifier: extension-auto-explain
     parent: pg-extensions
     weight: 20

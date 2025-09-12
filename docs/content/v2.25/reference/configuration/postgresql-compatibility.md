@@ -3,11 +3,11 @@ title: Enhanced PostgreSQL Compatibility Mode
 linkTitle: Enhanced PG compatibility
 description: Enhance your application performance for PostgreSQL parity
 aliases:
-  - /preview/ysql/postgresql-compatibility/
-  - /preview/explore/ysql-language-features/postgresql-compatibility/
-  - /preview/develop/postgresql-compatibility/
+  - /stable/ysql/postgresql-compatibility/
+  - /stable/explore/ysql-language-features/postgresql-compatibility/
+  - /stable/develop/postgresql-compatibility/
 menu:
-  v2.25
+  v2.25:
     identifier: ysql-postgresql-compatibility
     parent: configuration
     weight: 3500
@@ -18,7 +18,7 @@ rightNav:
 
 YugabyteDB is a [PostgreSQL-compatible](https://www.yugabyte.com/tech/postgres-compatibility/) distributed database that supports the majority of PostgreSQL syntax. YugabyteDB is methodically expanding its features to deliver PostgreSQL-compatible performance that can substantially improve your application's efficiency.
 
-To test and take advantage of features developed for enhanced PostgreSQL compatibility in YugabyteDB that are currently in {{<tags/feature/ea>}}, you can enable Enhanced PostgreSQL Compatibility Mode (EPCM). When this mode is turned on, YugabyteDB is configured to use all the latest features developed for feature and performance parity. EPCM is available in [v2024.1](/preview/releases/ybdb-releases/v2024.1/) and later. The following features are part of EPCM.
+To test and take advantage of features developed for enhanced PostgreSQL compatibility in YugabyteDB that are currently in {{<tags/feature/ea>}}, you can enable Enhanced PostgreSQL Compatibility Mode (EPCM). When this mode is turned on, YugabyteDB is configured to use all the latest features developed for feature and performance parity. EPCM is available in [v2024.1](/stable/releases/ybdb-releases/v2024.1/) and later. The following features are part of EPCM.
 
 | Feature | Flag/Configuration Parameter | EA | GA |
 | :--- | :--- | :--- | :--- |
@@ -145,7 +145,7 @@ For example, from your YugabyteDB home directory, run the following command:
 
 ### YugabyteDB Anywhere
 
-To enable EPCM in YugabyteDB Anywhere v2024.1, see the [Release notes](/preview/releases/yba-releases/v2024.1/#v2024.1.0.0).
+To enable EPCM in YugabyteDB Anywhere v2024.1, see the [Release notes](/stable/releases/yba-releases/v2024.1/#v2024.1.0.0).
 
 To enable EPCM in YugabyteDB Anywhere v2024.2 or later:
 

@@ -14,7 +14,7 @@ menu:
 type: indexpage
 ---
 
-For tutorials on streaming data to Kafka environments, including Amazon MSK, Azure Event Hubs, and Confluent Cloud, see [Kafka environments](/preview/tutorials/cdc-tutorials/).
+For tutorials on streaming data to Kafka environments, including Amazon MSK, Azure Event Hubs, and Confluent Cloud, see [Kafka environments](/stable/tutorials/cdc-tutorials/).
 
 {{<index/block>}}
 

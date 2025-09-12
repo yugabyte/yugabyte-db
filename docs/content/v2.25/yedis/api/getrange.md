@@ -3,12 +3,12 @@ title: GETRANGE
 linkTitle: GETRANGE
 description: GETRANGE
 menu:
-  v2.25
+  v2.25:
     parent: api-yedis
     weight: 2080
 aliases:
-  - /preview/api/redis/getrange
-  - /preview/api/yedis/getrange
+  - /stable/api/redis/getrange
+  - /stable/api/yedis/getrange
 type: docs
 ---
 

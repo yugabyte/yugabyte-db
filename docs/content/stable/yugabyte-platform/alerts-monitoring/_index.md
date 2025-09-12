@@ -18,7 +18,7 @@ type: indexpage
 {{< page-finder/head text="Monitor YugabyteDB" subtle="across different products">}}
   {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" url="../../launch-and-manage/monitor-and-alert" >}}
   {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" current="" >}}
-  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/preview/yugabyte-cloud/cloud-monitor/" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/stable/yugabyte-cloud/cloud-monitor/" >}}
 {{< /page-finder/head >}}
 
 YugabyteDB Anywhere provides preconfigured alerts to notify you of potential problems with universes and your YugabyteDB Anywhere installation.

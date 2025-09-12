@@ -4,7 +4,7 @@ headerTitle: Build a Java application using Apache Spark and YugabyteDB
 linkTitle: YCQL
 description: Learn how to build a Java-based application using Apache Spark and YugabyteDB YCQL.
 aliases:
-  - /preview/integrations/apache-spark/java/
+  - /stable/integrations/apache-spark/java/
 menu:
   v2.25_integrations:
     identifier: apache-spark-2-java-ycql
@@ -44,7 +44,7 @@ The following tutorial describes how to build a Java application using the Yugab
 
 This tutorial assumes that you have:
 
-- YugabyteDB running. If you are new to YugabyteDB, follow the steps in [Quick start](/preview/quick-start/macos/).
+- YugabyteDB running. If you are new to YugabyteDB, follow the steps in [Quick start](/stable/quick-start/macos/).
 - Java Development Kit (JDK) 1.8. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/). Homebrew users on macOS can install using `brew install AdoptOpenJDK/openjdk/adoptopenjdk8`.
 - [Apache Spark 3.3.0](https://spark.apache.org/downloads.html).
 - [Apache Maven 3.3](https://maven.apache.org/index.html) or later.

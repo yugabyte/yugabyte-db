@@ -3,12 +3,12 @@ title: HVALS
 linkTitle: HVALS
 description: HVALS
 menu:
-  v2.25
+  v2.25:
     parent: api-yedis
     weight: 2200
 aliases:
-  - /preview/api/redis/hvals
-  - /preview/api/yedis/hvals
+  - /stable/api/redis/hvals
+  - /stable/api/yedis/hvals
 type: docs
 ---
 

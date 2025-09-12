@@ -6,7 +6,7 @@ description: Bulk export for YSQL using ysql_dump.
 tags:
   other: ysql
 menu:
-  v2.25
+  v2.25:
     identifier: manage-bulk-export-ysql
     parent: manage-bulk-import-export
     weight: 719
@@ -20,7 +20,7 @@ The recommended way to export data from PostgreSQL for purposes of importing it 
 To export an entire database that consists of smaller datasets, you can also use the YugabyteDB [ysql_dump](../../../admin/ysql-dump/) utility.
 
 {{< tip title="Migrate using YugabyteDB Voyager" >}}
-To automate your migration from PostgreSQL to YugabyteDB, use [YugabyteDB Voyager](/preview/yugabyte-voyager/). To learn more, refer to the [export schema](/preview/yugabyte-voyager/migrate/migrate-steps/#export-schema) and [export data](/preview/yugabyte-voyager/migrate/migrate-steps/#export-data) steps.
+To automate your migration from PostgreSQL to YugabyteDB, use [YugabyteDB Voyager](/stable/yugabyte-voyager/). To learn more, refer to the [export schema](/stable/yugabyte-voyager/migrate/migrate-steps/#export-schema) and [export data](/stable/yugabyte-voyager/migrate/migrate-steps/#export-data) steps.
 {{< /tip >}}
 
 ## Export data into CSV files using the COPY command

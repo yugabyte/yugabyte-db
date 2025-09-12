@@ -2,7 +2,7 @@
 title: Row-level security (RLS)
 description: Row-level security (RLS) in YugabyteDB
 menu:
-  v2.25
+  v2.25:
     name: Row-level security
     identifier: ysql-row-level-security
     parent: authorization

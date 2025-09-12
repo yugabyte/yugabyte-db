@@ -16,7 +16,7 @@ showRightNav: true
 {{< page-finder/head text="Encryption in transit" subtle="across different products">}}
   {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" url="../../../secure/tls-encryption/" >}}
   {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" current="" >}}
-  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/stable/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/" >}}
 {{< /page-finder/head >}}
 
 YugabyteDB Anywhere allows you to protect data in transit by using the following:

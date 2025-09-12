@@ -7,7 +7,7 @@ headContent: Use PostgreSQL 15 features in your applications
 tags:
   feature: tech-preview
 aliases:
-  - /preview/develop/pg15-features/
+  - /stable/develop/pg15-features/
 menu:
   v2.25_api:
     identifier: yb-postgresql-15
@@ -30,9 +30,9 @@ PostgreSQL 15 support is in Tech Preview and included with the YugabyteDB 2.25 p
 
 | Product | To try it out |
 | :--- | :--- |
-| YugabyteDB | Follow the instructions in [Quick Start](/preview/quick-start/macos/).<br>For information on upgrading a PostgreSQL 11-based universe (v2024.2 and earlier) to a version based on PostgreSQL 15 (v2.25.1 or later), refer to [YSQL major upgrade](../../../manage/ysql-major-upgrade-yugabyted/). |
+| YugabyteDB | Follow the instructions in [Quick Start](/stable/quick-start/macos/).<br>For information on upgrading a PostgreSQL 11-based universe (v2024.2 and earlier) to a version based on PostgreSQL 15 (v2.25.1 or later), refer to [YSQL major upgrade](../../../manage/ysql-major-upgrade-yugabyted/). |
 | YugabyteDB&nbsp;Anywhere | [Install YugabyteDB Anywhere v2.25.0.0 or later](../../../yugabyte-platform/install-yugabyte-platform/install-software/installer/#quick-start) and [create a universe](../../../yugabyte-platform/create-deployments/create-universe-multi-zone/) using DB Version 2.25.0.0 or later. |
-| YugabyteDB Aeon| [Create a Sandbox cluster](/preview/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/) with the Database version set to Preview Track (v2.25). |
+| YugabyteDB Aeon| [Create a Sandbox cluster](/stable/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/) with the Database version set to Preview Track (v2.25). |
 
 ## What's new
 
@@ -177,7 +177,7 @@ Currently, upgrades are only supported from v2024.2.2 or later to v2.25.1 or lat
 
 ### ysqlsh
 
-To ensure compatibility, make sure you are using the [latest ysqlsh client](/preview/releases/yugabyte-clients/) (v2.25) with YugabyteDB v2.25.
+To ensure compatibility, make sure you are using the [latest ysqlsh client](/stable/releases/yugabyte-clients/) (v2.25) with YugabyteDB v2.25.
 
 Due to the addition of the `--csv` option in psql (and hence [ysqlsh](../../ysqlsh/)), you can no longer use the `--c` (double-hyphen) flag in place of `--command`. Use either `-c` (single hyphen) or `--command` instead.
 

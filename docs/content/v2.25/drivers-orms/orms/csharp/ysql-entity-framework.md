@@ -4,7 +4,7 @@ headerTitle: C# ORM example application
 linkTitle: C#
 description: C# ORM example application that uses Entity Framework and the YSQL API.
 menu:
-  v2.25
+  v2.25:
     identifier: csharp-ef
     parent: orm-tutorials
     weight: 710
@@ -34,7 +34,7 @@ The source for the above application can be found in the [Using ORMs with Yugaby
 
 This tutorial assumes that you have:
 
-- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/preview/quick-start/macos/).
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/stable/quick-start/macos/).
 - [.NET SDK 6.0](https://dotnet.microsoft.com/en-us/download) or later.
 
 ## Clone the "orm-examples" repository

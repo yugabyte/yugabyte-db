@@ -8,8 +8,8 @@ menu:
     parent: api-cassandra
     weight: 1330
 aliases:
-  - /preview/api/cassandra/ddl_delete
-  - /preview/api/ycql/ddl_delete
+  - /stable/api/cassandra/ddl_delete
+  - /stable/api/ycql/ddl_delete
 type: docs
 ---
 

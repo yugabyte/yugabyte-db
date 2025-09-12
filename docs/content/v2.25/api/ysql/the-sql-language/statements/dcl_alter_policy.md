@@ -8,7 +8,7 @@ menu:
     identifier: dcl_alter_policy
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/dcl_alter_policy/
+  - /stable/api/ysql/commands/dcl_alter_policy/
 type: docs
 ---
 

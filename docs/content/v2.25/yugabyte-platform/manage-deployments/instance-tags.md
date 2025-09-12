@@ -4,7 +4,7 @@ headerTitle: Create and edit instance tags
 linkTitle: Configure instance tags
 description: Use YugabyteDB Anywhere to create and edit instance tags.
 aliases:
-  - /preview/manage/enterprise-edition/instance-tags/
+  - /stable/manage/enterprise-edition/instance-tags/
 menu:
   v2.25_yugabyte-platform:
     identifier: instance-tags

@@ -8,7 +8,7 @@ menu:
     identifier: ddl_alter_domain
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/ddl_alter_domain/
+  - /stable/api/ysql/commands/ddl_alter_domain/
 type: docs
 ---
 

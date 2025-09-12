@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2500
 aliases:
-  - /preview/api/redis/zadd
-  - /preview/api/yedis/zadd
+  - /stable/api/redis/zadd
+  - /stable/api/yedis/zadd
 type: docs
 ---
 

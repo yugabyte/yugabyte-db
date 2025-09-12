@@ -5,7 +5,7 @@ linkTitle: Use an ORM
 description: Node.js Prisma ORM support for YugabyteDB
 headcontent: Node.js ORM support for YugabyteDB
 menu:
-  v2.25
+  v2.25:
     identifier: node-orm-2-prisma
     parent: nodejs-drivers
     weight: 600
@@ -129,7 +129,7 @@ npm install -g prisma
 
 If you have a YugabyteDB Aeon cluster, modify the `DATABASE_URL` using the following steps:
 
-1. Download your [cluster certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication).
+1. Download your [cluster certificate](/stable/yugabyte-cloud/cloud-secure-clusters/cloud-authentication).
 
 1. Install OpenSSL, if not present.
 

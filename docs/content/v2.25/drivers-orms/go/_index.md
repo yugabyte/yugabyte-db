@@ -4,7 +4,7 @@ headerTitle: Go
 linkTitle: Go
 description: Go Drivers and ORMs support for YugabyteDB.
 menu:
-  v2.25
+  v2.25:
     identifier: go-drivers
     parent: drivers-orms
     weight: 510
@@ -46,8 +46,8 @@ To develop Golang applications for YugabyteDB, you need the following:
 
 - **YugabyteDB cluster**
 
-  - Create a free cluster on YugabyteDB Aeon. Refer to [Use a cloud cluster](/preview/quick-start-yugabytedb-managed/). Note that YugabyteDB Aeon requires SSL.
-  - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/preview/quick-start/macos/).
+  - Create a free cluster on YugabyteDB Aeon. Refer to [Use a cloud cluster](/stable/quick-start-yugabytedb-managed/). Note that YugabyteDB Aeon requires SSL.
+  - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/stable/quick-start/macos/).
 
 ## Next step
 

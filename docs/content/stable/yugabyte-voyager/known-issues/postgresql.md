@@ -1233,7 +1233,7 @@ $$;
 - [COMPRESSION clause](https://www.postgresql.org/docs/current/sql-createtable.html#SQL-CREATETABLE-PARMS-COMPRESSION) in TABLE Column for TOASTing method.
 - [CREATE DATABASE options](https://www.postgresql.org/docs/15/sql-createdatabase.html) (locale, collation, strategy, and OID related).
 
-In addition, if any of the following PostgreSQL features are present in the source schema, the import schema step on the target YugabyteDB will fail, unless you are importing to YugabyteDB [v2.25](/preview/releases/ybdb-releases/v2.25) or [v2025.1](/preview/releases/ybdb-releases/v2025.1) (which supports PG15).
+In addition, if any of the following PostgreSQL features are present in the source schema, the import schema step on the target YugabyteDB will fail, unless you are importing to YugabyteDB [v2.25](/stable/releases/ybdb-releases/v2.25) or [v2025.1](/stable/releases/ybdb-releases/v2025.1) (which supports PG15).
 
 - [Multirange datatypes](https://www.postgresql.org/docs/current/rangetypes.html#RANGETYPES-BUILTIN).
 - [UNIQUE NULLS NOT DISTINCT clause](https://www.postgresql.org/about/featurematrix/detail/392/) in constraint and index.
@@ -1940,7 +1940,7 @@ CREATE INDEX idx_child_parent_id ON child (parent_id);
 
 ### Missing primary key for table when unique and not null columns exist
 
-**Description**: YugabyteDB uses an index-organized table structure, which means that the primary key _is_ the table. When you don't explicitly define one, the system automatically assigns an internal `ybrowid` column as the primary key and uses [hash sharding](/preview/explore/going-beyond-sql/data-sharding/#hash-sharding) on it. However, if your table already contains columns that are both unique and not null, it's better to designate those as the primary key instead. This approach eliminates the need for an extra unique-constraint index structure, in addition to the primary key index (main table structure).
+**Description**: YugabyteDB uses an index-organized table structure, which means that the primary key _is_ the table. When you don't explicitly define one, the system automatically assigns an internal `ybrowid` column as the primary key and uses [hash sharding](/stable/explore/going-beyond-sql/data-sharding/#hash-sharding) on it. However, if your table already contains columns that are both unique and not null, it's better to designate those as the primary key instead. This approach eliminates the need for an extra unique-constraint index structure, in addition to the primary key index (main table structure).
 
 **Workaround**: Define a primary key using the columns that are already unique and not null.
 

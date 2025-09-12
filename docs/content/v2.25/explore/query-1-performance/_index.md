@@ -5,9 +5,9 @@ linkTitle: Query tuning
 description: Tuning and optimizing query performance
 headcontent: Optimize query performance
 aliases:
-  - /preview/explore/query-1-performance/query-tuning-intro/
+  - /stable/explore/query-1-performance/query-tuning-intro/
 menu:
-  v2.25
+  v2.25:
     identifier: query-tuning
     parent: explore
     weight: 300
@@ -63,8 +63,8 @@ Results are written to the current `postgres*log` file.
 
 (Depending on the database and the work being performed, long-running queries don't necessarily need to be optimized. Ensure that the threshold is high enough so that you don't flood the `postgres*log` log files.)
 
-{{<lead link="/preview/troubleshoot/nodes/check-logs/#yb-tserver-logs">}}
-Learn more about [YB-TServer logs](/preview/explore/observability/logging/).
+{{<lead link="/stable/troubleshoot/nodes/check-logs/#yb-tserver-logs">}}
+Learn more about [YB-TServer logs](/stable/explore/observability/logging/).
 {{</lead>}}
 
 ## Auto Analyze

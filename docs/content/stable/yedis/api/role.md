@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2240
 aliases:
-  - /preview/api/redis/role
-  - /preview/api/yedis/role
+  - /stable/api/redis/role
+  - /stable/api/yedis/role
 type: docs
 ---
 YEDIS only has `master` role as far as Redis compatibility is concerned.

@@ -9,7 +9,7 @@ menu:
     parent: tools
     weight: 30
 aliases:
-  - /preview/tools/arctype/
+  - /stable/tools/arctype/
 type: docs
 ---
 

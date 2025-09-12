@@ -4,7 +4,7 @@ headerTitle: yb-ts-cli
 linkTitle: yb-ts-cli
 description: Use the yb-ts-cli command line utility to perform advanced YB-TServer operations.
 menu:
-  v2.25
+  v2.25:
     identifier: yb-ts-cli
     parent: admin
     weight: 50
@@ -211,7 +211,7 @@ yb-ts-cli [ --server_address=<host>:<port> ] remote_bootstrap <source_host> <tab
 * *source_host*: The *host* or *host* and *port* of the tablet server to bootstrap from.
 * *tablet_id*: The identifier of the tablet to trigger a remote bootstrap for.
 
-See [Manual remote bootstrap of failed peer](/preview/troubleshoot/cluster/replace_failed_peers/) for example usage.
+See [Manual remote bootstrap of failed peer](/stable/troubleshoot/cluster/replace_failed_peers/) for example usage.
 
 ### set_flag
 

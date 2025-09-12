@@ -5,9 +5,9 @@ linkTitle: Connect an app
 description: Connect a Ruby application using YugabyteDB Ruby-pg Smart Driver for YSQL
 aliases:
   - /develop/client-drivers/ruby/
-  - /preview/develop/client-drivers/ruby/
-  - /preview/develop/build-apps/ruby/
-  - /preview/quick-start/build-apps/ruby/
+  - /stable/develop/client-drivers/ruby/
+  - /stable/develop/build-apps/ruby/
+  - /stable/quick-start/build-apps/ruby/
 menu:
   preview:
     identifier: ruby-pg-driver-1-yb
@@ -44,7 +44,7 @@ type: docs
   </li>
 </ul>
 
-The [YugabyteDB ruby-pg smart driver](https://rubygems.org/gems/yugabytedb-ysql) is a Ruby driver for [YSQL](/preview/api/ysql/) based on [ged/ruby-pg](https://github.com/ged/ruby-pg), with additional [connection load balancing](../../smart-drivers/) features.
+The [YugabyteDB ruby-pg smart driver](https://rubygems.org/gems/yugabytedb-ysql) is a Ruby driver for [YSQL](/stable/api/ysql/) based on [ged/ruby-pg](https://github.com/ged/ruby-pg), with additional [connection load balancing](../../smart-drivers/) features.
 
 The driver makes an initial connection to the first contact point provided by the application to discover all the nodes in the cluster. If the driver discovers stale information (by default, older than 5 minutes), it refreshes the list of live endpoints with the next connection attempt.
 

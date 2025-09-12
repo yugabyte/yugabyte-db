@@ -4,7 +4,7 @@ headerTitle: Query Planner / CBO
 linkTitle: Query Planner
 headcontent: Understand how the planner chooses the optimal path for query execution
 menu:
-  v2.25
+  v2.25:
     identifier: query-planner
     parent: architecture-query-layer
     weight: 100

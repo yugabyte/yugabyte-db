@@ -4,9 +4,9 @@ headerTitle: Build an application using NodeJS
 linkTitle: NodeJS
 description: Use NodeJS to build a YugabyteDB application that interacts with YEDIS
 aliases:
-  - /preview/yedis/develop/client-drivers/nodejs
+  - /stable/yedis/develop/client-drivers/nodejs
 menu:
-  v2.25
+  v2.25:
     identifier: client-drivers-yedis-nodejs
     parent: develop-yedis
 type: docs
@@ -26,7 +26,7 @@ $ npm install redis
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe, and are able to interact with it using the Redis shell. If not, follow the steps in [Quick start](/preview/quick-start/macos/).
+- installed YugabyteDB, created a universe, and are able to interact with it using the Redis shell. If not, follow the steps in [Quick start](/stable/quick-start/macos/).
 - installed a recent version of `node`. If not, you can find install instructions [here](https://nodejs.org/en/download/).
 
 ### Write the HelloWorld NodeJS application

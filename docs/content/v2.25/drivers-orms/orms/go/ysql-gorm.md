@@ -4,7 +4,7 @@ headerTitle: Go ORM example application
 linkTitle: Go
 description: Go ORM example application that uses GORM and YSQL.
 menu:
-  v2.25
+  v2.25:
     identifier: go-gorm
     parent: orm-tutorials
     weight: 660
@@ -28,7 +28,7 @@ The source for the above application can be found in the [repository](https://gi
 
 This tutorial assumes that you have:
 
-- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/preview/quick-start/macos/).
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/stable/quick-start/macos/).
 - Go 1.21, or later, is installed. The latest releases are available on the [Go Downloads page](https://golang.org/dl/).
 
 ## Clone the "orm-examples" repository

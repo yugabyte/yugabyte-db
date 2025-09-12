@@ -5,7 +5,7 @@ linkTitle: Key-value
 description: Explore the key-value data model
 headcontent: Explore the key-value data model
 menu:
-  v2.25
+  v2.25:
     identifier: common-patterns-keyvalue
     parent: common-patterns
     weight: 200

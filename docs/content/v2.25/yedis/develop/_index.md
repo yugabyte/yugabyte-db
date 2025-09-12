@@ -5,7 +5,7 @@ description: Develop applications on YEDIS
 headcontent:
 image: /images/section_icons/index/develop.png
 menu:
-  v2.25
+  v2.25:
     identifier: develop-yedis
     parent: yedis
     weight: 2900

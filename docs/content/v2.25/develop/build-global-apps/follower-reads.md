@@ -5,7 +5,7 @@ linkTitle: Follower reads
 description: Reduce read latency using Follower reads
 headcontent: Reduce read latency for global applications
 menu:
-  v2.25
+  v2.25:
     identifier: global-apps-follower-reads
     parent: build-global-apps
     weight: 800

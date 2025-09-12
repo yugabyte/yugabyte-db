@@ -5,7 +5,7 @@ linkTitle: Multi-region deployments
 description: Explore different Multi-Region deployment topologies in YugabyteDB.
 headcontent: Multi-Region Deployments in YugabyteDB.
 menu:
-  v2.25
+  v2.25:
     identifier: explore-multi-region-deployments
     parent: explore
     weight: 270

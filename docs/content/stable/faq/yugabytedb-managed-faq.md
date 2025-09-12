@@ -3,7 +3,7 @@ title: YugabyteDB Aeon FAQ
 linkTitle: YugabyteDB Aeon FAQ
 description: YugabyteDB Aeon frequently asked questions.
 aliases:
-  - /preview/yugabyte-cloud/cloud-faq/
+  - /stable/yugabyte-cloud/cloud-faq/
 menu:
   preview_faq:
     identifier: yugabytedb-managed-faq
@@ -38,8 +38,8 @@ Yugabyte bills for its services as follows:
 YugabyteDB Aeon Pricing
 {{</lead>}}
 
-{{<lead link="/preview/yugabyte-cloud/cloud-admin/cloud-billing-costs/">}}
-For a description of how cluster configurations are costed, refer to [Cluster costs](/preview/yugabyte-cloud/cloud-admin/cloud-billing-costs/).
+{{<lead link="/stable/yugabyte-cloud/cloud-admin/cloud-billing-costs/">}}
+For a description of how cluster configurations are costed, refer to [Cluster costs](/stable/yugabyte-cloud/cloud-admin/cloud-billing-costs/).
 {{</lead>}}
 
 ### What regions are available?
@@ -80,7 +80,7 @@ A YugabyteDB Aeon account is limited to a single Sandbox cluster; you can add as
 If you want to continue testing YugabyteDB with more resource-intensive scenarios, you can:
 
 - [Request a free trial](../../yugabyte-cloud/managed-freetrial/) to try out bigger clusters with more resources.
-- Download and run YugabyteDB on a local machine. For instructions, refer to [Quick Start](/preview/quick-start/macos/).
+- Download and run YugabyteDB on a local machine. For instructions, refer to [Quick Start](/stable/quick-start/macos/).
 - [Add a payment method](../../yugabyte-cloud/cloud-admin/cloud-billing-profile/) to upgrade to a fault-tolerant [single- or multi-region cluster](../../yugabyte-cloud/cloud-basics/create-clusters-topology/).
 
 ### Can I migrate my Sandbox to a Dedicated cluster?
@@ -111,13 +111,13 @@ Manage cluster maintenance windows and set exclusion periods
 
 ### What version of YugabyteDB does my cluster run on?
 
-Dedicated clusters are provisioned with a **stable** release, from a YugabyteDB [stable release](/preview/releases/versioning/#stable-releases) series. When creating a dedicated cluster, you can choose one of the following tracks:
+Dedicated clusters are provisioned with a **stable** release, from a YugabyteDB [stable release](/stable/releases/versioning/#stable-releases) series. When creating a dedicated cluster, you can choose one of the following tracks:
 
 - Production - Has less frequent updates, using select stable builds that have been tested longer in YugabyteDB Aeon.
 - Innovation - Updated more frequently, providing quicker access to new features.
 - Early Access - Updated more frequently, providing access to the most recent stable YugabyteDB release.
 
-In addition to the Innovation and Early Access tracks, Sandbox clusters can be provisioned with a **preview** release, from the YugabyteDB [preview release](/preview/releases/versioning/#preview-releases) series.
+In addition to the Innovation and Early Access tracks, Sandbox clusters can be provisioned with a **preview** release, from the YugabyteDB [preview release](/stable/releases/versioning/#preview-releases) series.
 
 Once a cluster is created, it is upgraded with releases from the track that was assigned at creation.
 
@@ -133,7 +133,7 @@ Default YugabyteDB users and roles in YugabyteDB Aeon clusters
 
 ### Can I test YugabyteDB locally?
 
-To test locally, download and install YugabyteDB on a local machine. Refer to [Quick Start](/preview/quick-start/macos/). For accurate comparison with cloud, be sure to download the version that is running on YugabyteDB Aeon.
+To test locally, download and install YugabyteDB on a local machine. Refer to [Quick Start](/stable/quick-start/macos/). For accurate comparison with cloud, be sure to download the version that is running on YugabyteDB Aeon.
 
 ## Support
 
@@ -202,7 +202,7 @@ You can connect to clusters in the following ways:
 
 Run the [ysqlsh](../../api/ysqlsh/) or [ycqlsh](../../api/ycqlsh/) shell from your browser to connect to and interact with your YugabyteDB database. Cloud Shell does not require a CA certificate or any special network access configured.
 
-When you connect using Cloud Shell with the YSQL API, the shell window also incorporates a [Quick Start Guide](/preview/yugabyte-cloud/cloud-quickstart/), with a series of pre-built queries for you to run.
+When you connect using Cloud Shell with the YSQL API, the shell window also incorporates a [Quick Start Guide](/stable/yugabyte-cloud/cloud-quickstart/), with a series of pre-built queries for you to run.
 
   {{% /tab %}}
 
@@ -225,7 +225,7 @@ psql --host=<HOST_ADDRESS> --port=5433 --username=<DB USER> \
 --set=sslrootcert=<ROOT_CERT_PATH>
 ```
 
-For detailed steps for configuring other popular third party tools, see [GUI clients](/preview/integrations/tools/).
+For detailed steps for configuring other popular third party tools, see [GUI clients](/stable/integrations/tools/).
 
   {{% /tab %}}
 
@@ -233,7 +233,7 @@ For detailed steps for configuring other popular third party tools, see [GUI cli
 
 Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). Before you can connect an application, you need to install the correct driver and configure it with the required connection parameters. You can also connect to YugabyteDB Aeon clusters using smart drivers.
 
-For information on drivers supported by YugabyteDB, refer to [Drivers and ORMs](../../drivers-orms/). For sample applications using popular drivers, refer to [Build an application](/preview/tutorials/build-apps/).
+For information on drivers supported by YugabyteDB, refer to [Drivers and ORMs](../../drivers-orms/). For sample applications using popular drivers, refer to [Build an application](/stable/tutorials/build-apps/).
 
 For information on obtaining the connection parameters for your cluster, refer to [Connect applications](../../yugabyte-cloud/cloud-connect/connect-applications/).
 
@@ -291,9 +291,9 @@ Currently, YugabyteDB Aeon does not support backups of Sandbox clusters.
 
 Backups are located in cloud storage of the provider where the cluster is deployed. The storage is located is the same region as the cluster.
 
-For [Replicate across region](/preview/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-multisync/) clusters, the backup is stored in one of the cluster regions, as determined automatically by Aeon when the cluster is created.
+For [Replicate across region](/stable/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-multisync/) clusters, the backup is stored in one of the cluster regions, as determined automatically by Aeon when the cluster is created.
 
-For [Partition by region](/preview/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-geopartition/) clusters, the database schema and tablet details are stored in the primary region, and the regional tablespace data is stored in its respective region to preserve data residency.
+For [Partition by region](/stable/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-geopartition/) clusters, the database schema and tablet details are stored in the primary region, and the regional tablespace data is stored in its respective region to preserve data residency.
 
 ### Can I download backups?
 

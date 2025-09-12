@@ -8,7 +8,7 @@ menu:
     identifier: ddl_create_view
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/ddl_create_view/
+  - /stable/api/ysql/commands/ddl_create_view/
 type: docs
 ---
 

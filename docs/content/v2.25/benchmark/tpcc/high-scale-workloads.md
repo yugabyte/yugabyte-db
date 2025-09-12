@@ -4,7 +4,7 @@ headerTitle: Testing high scale workloads of TPC-C benchmark
 linkTitle: Testing high scale workloads
 headcontent: Understand how YugabyteDB performs with high scale workloads
 menu:
-  v2.25
+  v2.25:
     identifier: tpcc-high-scale
     parent: tpcc
     weight: 300
@@ -295,7 +295,7 @@ To accomplish this feat, numerous new features had to be implemented and existin
 - Transaction retries.
 
 {{<note>}}
-The 150K warehouses benchmark was run on [v2.11](/preview/releases/ybdb-releases/end-of-life/v2.11/).
+The 150K warehouses benchmark was run on [v2.11](/stable/releases/ybdb-releases/end-of-life/v2.11/).
 {{</note>}}
 
 | Warehouses | TPMC | Efficiency(%) | Nodes | Connections | New Order Latency |  Machine Type (vCPUs)  |

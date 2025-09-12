@@ -7,10 +7,10 @@ headcontent: Built-in server-side connection pooler for YSQL
 tags:
   feature: early-access
 aliases:
-   - /preview/explore/connection-manager/connection-mgr-ysql/
-   - /preview/explore/connection-manager/
+   - /stable/explore/connection-manager/connection-mgr-ysql/
+   - /stable/explore/connection-manager/
 menu:
-  v2.25
+  v2.25:
     name: Built-in connection pooling
     identifier: explore-conn-mgr-ysql
     parent: going-beyond-sql

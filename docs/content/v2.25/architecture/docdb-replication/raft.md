@@ -4,7 +4,7 @@ headerTitle: Raft consensus protocol
 linkTitle: Raft
 headContent: Guaranteeing data consistency in a fault-tolerant distributed system
 menu:
-  v2.25
+  v2.25:
     identifier: architecture-docdb-Raft
     parent: architecture-docdb-replication
     weight: 100

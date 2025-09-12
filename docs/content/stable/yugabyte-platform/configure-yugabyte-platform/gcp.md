@@ -5,7 +5,7 @@ linkTitle: Cloud providers
 description: Configure the Google Cloud Platform (GCP) cloud provider.
 headContent: For deploying universes on GCP
 aliases:
-  - /preview/deploy/enterprise-edition/configure-cloud-providers/gcp
+  - /stable/deploy/enterprise-edition/configure-cloud-providers/gcp
 menu:
   preview_yugabyte-platform:
     identifier: set-up-cloud-provider-2-gcp

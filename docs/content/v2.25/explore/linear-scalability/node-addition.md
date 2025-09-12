@@ -5,7 +5,7 @@ linkTitle: Adding nodes
 description: Seamlessly scale and load balance your cluster on demand
 headcontent: Seamlessly scale and load balance your cluster on demand
 menu:
-  v2.25
+  v2.25:
     identifier: scalability-node-addition
     parent: explore-scalability
     weight: 20

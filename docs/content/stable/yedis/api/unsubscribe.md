@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2553
 aliases:
-  - /preview/api/redis/unsubscribe
-  - /preview/api/yedis/unsubscribe
+  - /stable/api/redis/unsubscribe
+  - /stable/api/yedis/unsubscribe
 type: docs
 ---
 

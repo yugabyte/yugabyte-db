@@ -10,7 +10,7 @@ menu:
     parent: api-ysql
     weight: 10
 aliases:
-  - /preview/api/ysql/with-clause/
+  - /stable/api/ysql/with-clause/
 type: indexpage
 showRightNav: true
 ---

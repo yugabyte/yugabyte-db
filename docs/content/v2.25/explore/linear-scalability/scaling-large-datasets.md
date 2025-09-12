@@ -5,7 +5,7 @@ linkTitle: Large datasets
 description: Large datasets
 headcontent: Performance running large datasets when scaling out
 menu:
-  v2.25
+  v2.25:
     name: Large datasets
     identifier: scaling-large-datasets
     parent: explore-scalability

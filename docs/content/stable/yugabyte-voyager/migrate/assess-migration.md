@@ -142,11 +142,11 @@ Replace `<voyager-version>` with your installed Voyager version, for example, `2
 
 ### Configure yugabyted UI
 
-You can use [yugabyted UI](/preview/reference/configuration/yugabyted/) to view the migration assessment report, and to visualize and review the database migration workflow performed by YugabyteDB Voyager.
+You can use [yugabyted UI](/stable/reference/configuration/yugabyted/) to view the migration assessment report, and to visualize and review the database migration workflow performed by YugabyteDB Voyager.
 
 To be able to view the assessment report in the yugabyted UI, do the following:
 
-  1. Start a local YugabyteDB cluster. Refer to the steps described in [Use a local cluster](/preview/quick-start/macos/).
+  1. Start a local YugabyteDB cluster. Refer to the steps described in [Use a local cluster](/stable/quick-start/macos/).
 
       {{< note title="Note" >}}
   After a migration assessment, if you choose to migrate using the open source YugabyteDB, you will be using this same local cluster as your [target database](../../introduction/#target-database).

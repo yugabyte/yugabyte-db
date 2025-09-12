@@ -4,8 +4,8 @@ headerTitle: Date and time
 linkTitle: Date and time
 description: Learn how to work with date and time in YSQL.
 aliases:
-  - /preview/explore/date-and-time/
-  - /preview/develop/learn/date-and-time/
+  - /stable/explore/date-and-time/
+  - /stable/develop/learn/date-and-time/
 menu:
   preview:
     parent: learn
@@ -21,7 +21,7 @@ type: docs
 
 YugabyteDB has extensive date and time capabilities. Once understood, the rich functionality allows you to perform very sophisticated calculations and granular time capture.
 
-For date and time data types, see [Data types](/preview/api/ysql/datatypes/).
+For date and time data types, see [Data types](/stable/api/ysql/datatypes/).
 
 The examples use the [Retail Analytics sample dataset](../../../sample-data/retail-analytics/).
 

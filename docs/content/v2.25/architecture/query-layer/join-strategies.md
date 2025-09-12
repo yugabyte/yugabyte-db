@@ -5,9 +5,9 @@ linkTitle: Join Strategies
 description: Understand the various methodologies used for joining multiple tables
 headcontent: Understand the various methods used for joining multiple tables
 aliases:
-  - /preview/explore/ysql-language-features/join-strategies/
+  - /stable/explore/ysql-language-features/join-strategies/
 menu:
-  v2.25
+  v2.25:
     identifier: joins-strategies-ysql
     parent: architecture-query-layer
     weight: 200

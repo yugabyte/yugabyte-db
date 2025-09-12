@@ -4,7 +4,7 @@ headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Scala application using YugabyteDB Java Driver for YCQL
 menu:
-  v2.25
+  v2.25:
     identifier: ycql-scala-driver
     parent: scala-drivers
     weight: 420
@@ -32,7 +32,7 @@ type: docs
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe and are able to interact with it using the YCQL shell. If not, follow these steps in [Quick start](/preview/quick-start/macos/).
+- installed YugabyteDB, created a universe and are able to interact with it using the YCQL shell. If not, follow these steps in [Quick start](/stable/quick-start/macos/).
 - installed Scala version 2.12 or later.
 - installed sbt 1.3.8 or later.
 

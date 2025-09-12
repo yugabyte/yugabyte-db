@@ -8,7 +8,7 @@ menu:
     identifier: ddl_create_procedure
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/ddl_create_procedure/
+  - /stable/api/ysql/commands/ddl_create_procedure/
 type: docs
 ---
 

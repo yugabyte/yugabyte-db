@@ -10,7 +10,7 @@ menu:
     identifier: k8s-gke-2
     weight: 623
 aliases:
-  - /preview/deploy/kubernetes/gke/statefulset-yaml
+  - /stable/deploy/kubernetes/gke/statefulset-yaml
 type: docs
 ---
 

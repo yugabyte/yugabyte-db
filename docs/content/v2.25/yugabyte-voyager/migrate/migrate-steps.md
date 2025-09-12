@@ -5,7 +5,7 @@ linkTitle: Offline migration
 headcontent: Steps for an offline migration using YugabyteDB Voyager
 description: Run the steps to ensure a successful offline migration using YugabyteDB Voyager.
 aliases:
-  - /preview/yugabyte-voyager/migrate-steps/
+  - /stable/yugabyte-voyager/migrate-steps/
 menu:
   v2.25_yugabyte-voyager:
     identifier: migrate-offline
@@ -195,11 +195,11 @@ Refer to the [offline-migration.yaml](https://github.com/yugabyte/yb-voyager/blo
 
 ## Configure yugabyted UI
 
-You can use [yugabyted UI](/preview/reference/configuration/yugabyted/) to view the migration assessment report, and to visualize and review the database migration workflow performed by YugabyteDB Voyager.
+You can use [yugabyted UI](/stable/reference/configuration/yugabyted/) to view the migration assessment report, and to visualize and review the database migration workflow performed by YugabyteDB Voyager.
 
 Configure the yugabyted UI as follows:
 
-  1. Start a local YugabyteDB cluster. Refer to the steps described in [Use a local cluster](/preview/quick-start/macos/). Skip this step if you already have a local YugabyteDB cluster as your [target database](#prepare-the-target-database).
+  1. Start a local YugabyteDB cluster. Refer to the steps described in [Use a local cluster](/stable/quick-start/macos/). Skip this step if you already have a local YugabyteDB cluster as your [target database](#prepare-the-target-database).
 
   1. To see the Voyager migration workflow details in the UI, set the following configuration parameters before starting the migration:
 
@@ -289,7 +289,7 @@ For the most accurate migration assessment, the source database must be actively
 
    If you are using YugabyteDB Anywhere, [enable compatibility mode](../../../develop/postgresql-compatibility/#yugabytedb-anywhere) by setting the **More > Edit Postgres Compatibility** option.
 
-1. If the assessment recommended creating some tables as colocated, check that your target YugabyteDB database is colocated in [ysqlsh](/preview/api/ysqlsh/) using the following command:
+1. If the assessment recommended creating some tables as colocated, check that your target YugabyteDB database is colocated in [ysqlsh](/stable/api/ysqlsh/) using the following command:
 
     ```sql
     select yb_is_database_colocated();

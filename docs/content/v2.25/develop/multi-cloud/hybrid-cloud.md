@@ -5,7 +5,7 @@ linkTitle: Hybrid cloud
 description: Build applications that run across on-prem datacenters and public clouds
 headcontent: Build applications that run across on-prem datacenters and public clouds
 menu:
-  v2.25
+  v2.25:
     identifier: multicloud-hybrid-cloud
     parent: build-multicloud-apps
     weight: 300

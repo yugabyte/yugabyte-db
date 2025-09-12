@@ -28,7 +28,7 @@ The source for the application can be found in the [yugabytedb-simple-elixir-app
 
 This tutorial assumes that you have:
 
-- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/preview/quick-start/macos/).
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/stable/quick-start/macos/).
 
 - The latest versions of [Elixir, Erlang VM, IEx and Mix](https://elixir-lang.org/docs.html) (tested with Elixir 1.17.1 and Erlang/OTP 26 erts-14.2.5).
 
@@ -264,4 +264,4 @@ Now, explore the [final version of the application](https://github.com/YugabyteD
 
 - [Watch](https://www.youtube.com/live/_utOXl3eWoA?feature=shared) Chris McCord, the creator of the Phoenix framework, joining YugabyteDB Community Open Hours and demonstrating how to build multi-region applications using Phoenix, Fly.io and YugabyteDB.
 
-- Create a [sample Elixir app](/preview/tutorials/build-apps/elixir/cloud-ysql-elixir/) using the Postgrex driver.
+- Create a [sample Elixir app](/stable/tutorials/build-apps/elixir/cloud-ysql-elixir/) using the Postgrex driver.

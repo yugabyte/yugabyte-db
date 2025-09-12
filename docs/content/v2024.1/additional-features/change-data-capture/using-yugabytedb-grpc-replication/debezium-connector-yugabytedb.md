@@ -956,7 +956,7 @@ For example, the connector is lagging behind in streaming the changes. In this c
 
 ## Deployment
 
-To deploy a Debezium connector, you install the YugabyteDB gRPC Connector archive, configure the connector, and start the connector by adding its configuration to Kafka Connect. For complete steps, follow the guide to [running the Debezium connector in YugabyteDB](/preview/integrations/cdc/debezium/).
+To deploy a Debezium connector, you install the YugabyteDB gRPC Connector archive, configure the connector, and start the connector by adding its configuration to Kafka Connect. For complete steps, follow the guide to [running the Debezium connector in YugabyteDB](/stable/integrations/cdc/debezium/).
 
 ### Connector configuration example
 
@@ -1074,7 +1074,7 @@ If you have a YugabyteDB cluster with SSL enabled, you need to obtain the root c
 
 * [Local deployments](../../../../secure/tls-encryption/)
 * [YugabyteDB Anywhere](../../../../yugabyte-platform/security/enable-encryption-in-transit/#enable-encryption-in-transit)
-* [YugabyteDB Aeon](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate)
+* [YugabyteDB Aeon](/stable/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate)
 
 {{< /note >}}
 

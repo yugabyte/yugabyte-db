@@ -3,7 +3,7 @@ title: Building applications with Hasura
 linkTitle: Application development
 description: Building applications with Hasura
 aliases:
-  - /preview/develop/graphql/hasura/
+  - /stable/develop/graphql/hasura/
 menu:
   preview_integrations:
     identifier: hasura-1
@@ -20,7 +20,7 @@ For details on using Hasura, see the [Hasura GraphQL engine documentation](https
 
 Before using Hasura with YugabyteDB, perform the following:
 
-- Install and start YugabyteDB, as described in [Quick Start Guide](/preview/quick-start/macos/).
+- Install and start YugabyteDB, as described in [Quick Start Guide](/stable/quick-start/macos/).
 
 - Install and start Hasura by following instructions provided in the Hasura [Quick Start with Docker](https://hasura.io/docs/latest/graphql/core/deployment/deployment-guides/docker.html). The configuration should be similar to PostgreSQL, except that the port should be `5433`. For a local Mac setup, the configuration should be as follows:
 

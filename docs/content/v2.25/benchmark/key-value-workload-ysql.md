@@ -5,7 +5,7 @@ linkTitle: Key-value workload
 description: Benchmark YSQL performance with key-value workloads.
 headcontent: Benchmark YSQL performance with key-value workloads
 menu:
-  v2.25
+  v2.25:
     identifier: key-value-workload-2-ysql
     parent: benchmark
     weight: 6

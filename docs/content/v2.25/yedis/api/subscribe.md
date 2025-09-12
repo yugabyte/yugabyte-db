@@ -3,12 +3,12 @@ title: SUBSCRIBE
 linkTitle: SUBSCRIBE
 description: SUBSCRIBE
 menu:
-  v2.25
+  v2.25:
     parent: api-yedis
     weight: 2552
 aliases:
-  - /preview/api/redis/subscribe
-  - /preview/api/yedis/subscribe
+  - /stable/api/redis/subscribe
+  - /stable/api/yedis/subscribe
 type: docs
 ---
 

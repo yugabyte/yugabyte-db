@@ -4,13 +4,13 @@ headerTitle: Jepsen testing
 linkTitle: Jepsen testing
 description: Description of Jepsen testing.
 menu:
-  v2.25
+  v2.25:
     identifier: jepsen-testing-1
     parent: resilience
     weight: 13
 aliases:
-  - /preview/benchmark/resilience/jepsen-testing-ysql/
-  - /preview/benchmark/resilience/jepsen-testing-ycql/
+  - /stable/benchmark/resilience/jepsen-testing-ysql/
+  - /stable/benchmark/resilience/jepsen-testing-ycql/
 type: docs
 ---
 

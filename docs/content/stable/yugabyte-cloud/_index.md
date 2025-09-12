@@ -4,7 +4,7 @@ headerTitle: YugabyteDB Aeon
 linkTitle: YugabyteDB Aeon
 headcontent: Fully managed YugabyteDB-as-a-Service
 aliases:
-  - /preview/deploy/yugabyte-cloud/
+  - /stable/deploy/yugabyte-cloud/
 menu:
   preview_yugabyte-cloud:
     name: "Overview"
@@ -131,7 +131,7 @@ YugabyteDB Managed is now YugabyteDB Aeon! [Learn more](https://www.yugabyte.com
   title="Build Applications"
   description="Start coding in your favorite programming language using these examples."
   buttonText="Get Started"
-  buttonUrl="/preview/tutorials/build-apps/"
+  buttonUrl="/stable/tutorials/build-apps/"
   >}}
 
   {{< sections/3-box-card

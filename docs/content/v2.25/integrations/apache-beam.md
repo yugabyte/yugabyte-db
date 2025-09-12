@@ -8,7 +8,7 @@ menu:
     parent: data-integration
     weight: 571
 alises:
-  - /preview/integrations/apache-spark/
+  - /stable/integrations/apache-spark/
 type: docs
 ---
 
@@ -16,7 +16,7 @@ type: docs
 
 ## Prerequisite
 
-To use Apache Beam, ensure that you have YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/preview/quick-start/macos/).
+To use Apache Beam, ensure that you have YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/stable/quick-start/macos/).
 
 ## Setup
 

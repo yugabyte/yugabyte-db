@@ -3,12 +3,12 @@ title: ZSCORE
 linkTitle: ZSCORE
 description: ZSCORE
 menu:
-  v2.25
+  v2.25:
     parent: api-yedis
     weight: 2545
 aliases:
-  - /preview/api/redis/zscore
-  - /preview/api/yedis/zscore
+  - /stable/api/redis/zscore
+  - /stable/api/yedis/zscore
 type: docs
 ---
 

@@ -7,7 +7,7 @@ description: Learn how to do phonetic matching in YSQL
 tags:
   other: ysql
 menu:
-  v2.25
+  v2.25:
     identifier: phonetic-matching-ysql
     parent: text-search
     weight: 400

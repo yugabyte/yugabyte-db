@@ -4,10 +4,10 @@ headerTitle: Export and import
 linkTitle: Export and import
 description: Export and import for YCQL
 aliases:
-  - /preview/manage/backup-restore/back-up-data-ycql/
-  - /preview/manage/backup-restore/restore-data-ycql/
+  - /stable/manage/backup-restore/back-up-data-ycql/
+  - /stable/manage/backup-restore/restore-data-ycql/
 menu:
-  v2.25
+  v2.25:
     identifier: export-import-data-ycql
     parent: backup-restore
     weight: 703

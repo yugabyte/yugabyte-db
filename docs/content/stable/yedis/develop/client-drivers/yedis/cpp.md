@@ -4,7 +4,7 @@ headerTitle: Build an application using C++
 linkTitle: C++
 description: Use C++ to build a YugabyteDB application that interacts with YEDIS
 aliases:
-  - /preview/yedis/develop/client-drivers/cpp
+  - /stable/yedis/develop/client-drivers/cpp
 menu:
   preview:
     identifier: client-drivers-yedis-cpp
@@ -17,7 +17,7 @@ type: docs
 The tutorial assumes that you have:
 
 - installed YugabyteDB, created a universe, and are able to interact with it using the Redis shell. If
-  not, follow the steps in [Quick start](/preview/quick-start/macos/).
+  not, follow the steps in [Quick start](/stable/quick-start/macos/).
 - have C++ 11 or later.
 
 ## Install the Redis C++ driver

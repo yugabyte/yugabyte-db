@@ -6,7 +6,7 @@ description: Bulk export for YCQL using cassandra-loader and cassandra-unloader.
 tags:
   other: ycql
 aliases:
-  - /preview/manage/data-migration/ycql/bulk-export/
+  - /stable/manage/data-migration/ycql/bulk-export/
 menu:
   preview:
     identifier: manage-bulk-export-ycql

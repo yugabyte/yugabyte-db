@@ -8,7 +8,7 @@ menu:
     identifier: savepoint_create
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/savepoint_create/
+  - /stable/api/ysql/commands/savepoint_create/
 type: docs
 ---
 

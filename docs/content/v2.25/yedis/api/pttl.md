@@ -3,12 +3,12 @@ title: PTTL
 linkTitle: PTTL
 description: PTTL
 menu:
-  v2.25
+  v2.25:
     parent: api-yedis
     weight: 2235
 aliases:
-  - /preview/api/redis/pttl
-  - /preview/api/yedis/pttl
+  - /stable/api/redis/pttl
+  - /stable/api/yedis/pttl
 type: docs
 ---
 

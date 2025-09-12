@@ -8,7 +8,7 @@ menu:
     identifier: dml_update
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/dml_update/
+  - /stable/api/ysql/commands/dml_update/
 type: docs
 ---
 

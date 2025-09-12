@@ -5,7 +5,7 @@ linkTitle: Manage account users
 description: Manage access to your YugabyteDB Aeon account and your clusters.
 headcontent: Invite team members to your YugabyteDB Aeon account
 aliases:
-  - /preview/yugabyte-cloud/cloud-admin/manage-access/
+  - /stable/yugabyte-cloud/cloud-admin/manage-access/
 menu:
   preview_yugabyte-cloud:
     identifier: manage-cloud-access

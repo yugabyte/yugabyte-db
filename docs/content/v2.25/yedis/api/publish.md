@@ -3,12 +3,12 @@ title: PUBLISH
 linkTitle: PUBLISH
 description: PUBLISH
 menu:
-  v2.25
+  v2.25:
     parent: api-yedis
     weight: 2551
 aliases:
-  - /preview/api/redis/publish
-  - /preview/api/yedis/publish
+  - /stable/api/redis/publish
+  - /stable/api/yedis/publish
 type: docs
 ---
 

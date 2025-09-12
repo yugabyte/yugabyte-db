@@ -4,7 +4,7 @@ headerTitle: 2. Install software
 linkTitle: 2. Install software
 description: How to manually install YugabyteDB database on each node.
 menu:
-  v2.25
+  v2.25:
     identifier: deploy-manual-deployment-install-software
     parent: deploy-manual-deployment
     weight: 612
@@ -15,7 +15,7 @@ Installing YugabyteDB involves completing prerequisites and downloading the Yuga
 
 ## Prerequisites
 
-{{% readfile "/preview/quick-start/include-prerequisites-linux.md" %}}
+{{% readfile "/stable/quick-start/include-prerequisites-linux.md" %}}
 
 ### Using disk encryption software with YugabyteDB
 
@@ -25,7 +25,7 @@ To avoid issues, stop YugabyteDB services on the node _before_ enabling or disab
 
 ## Download YugabyteDB
 
-The following instructions are for downloading the latest stable release of YugabyteDB, which is recommended for production deployments. For other versions, see [Releases](/preview/releases/).
+The following instructions are for downloading the latest stable release of YugabyteDB, which is recommended for production deployments. For other versions, see [Releases](/stable/releases/).
 
 {{<note title="Which release should I use?">}}
 For production deployments, install a stable release.

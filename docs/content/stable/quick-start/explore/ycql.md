@@ -5,8 +5,8 @@ linkTitle: Explore distributed SQL APIs
 description: Explore Yugabyte Cloud QL (YCQL), a semi-relational distributed SQL API
 aliases:
   - /quick-start/test-cassandra/
-  - /preview/quick-start/test-cassandra/
-  - /preview/quick-start/test-ycql/
+  - /stable/quick-start/test-cassandra/
+  - /stable/quick-start/test-ycql/
 menu:
   preview:
     parent: quick-start
@@ -34,9 +34,9 @@ type: docs
 
 </ul>
 
-After [creating a local cluster](/preview/quick-start/macos/), follow the instructions below to explore YugabyteDB's semi-relational [Yugabyte Cloud QL](/preview/api/ycql/) API.
+After [creating a local cluster](/stable/quick-start/macos/), follow the instructions below to explore YugabyteDB's semi-relational [Yugabyte Cloud QL](/stable/api/ycql/) API.
 
-[**ycqlsh**](/preview/api/ycqlsh/) is the command line shell for interacting with the YCQL API. You will use ycqlsh for this tutorial.
+[**ycqlsh**](/stable/api/ycqlsh/) is the command line shell for interacting with the YCQL API. You will use ycqlsh for this tutorial.
 
 ## Connect with ycqlsh
 

@@ -5,7 +5,7 @@ linkTitle: Latency histogram
 description: View histogram and P99 latency metrics for slow queries
 headcontent: Measure query performance against service level objectives
 aliases:
-  - /preview/yugabyteplatform/alerts-monitoring/latency-histogram/
+  - /stable/yugabyteplatform/alerts-monitoring/latency-histogram/
 menu:
   v2.25_yugabyte-platform:
     parent: alerts-monitoring

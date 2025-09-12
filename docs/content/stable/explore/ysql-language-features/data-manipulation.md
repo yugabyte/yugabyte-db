@@ -5,8 +5,8 @@ headerTitle: INSERT, UPDATE, and DELETE
 description: Data manipulation - Insert/Modify/Delete in YSQL
 headcontent: Understand how to insert new data and modify or delete existing data
 aliases:
-  - /preview/explore/ysql-language-features/indexes-constraints/other-constraints/
-  - /preview/explore/ysql-language-features/indexes-constraints/foreign-key-ysql/
+  - /stable/explore/ysql-language-features/indexes-constraints/other-constraints/
+  - /stable/explore/ysql-language-features/indexes-constraints/foreign-key-ysql/
 menu:
   preview:
     identifier: explore-ysql-language-features-data-manipulation

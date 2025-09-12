@@ -13,7 +13,7 @@ The Sandbox cluster provides a fully functioning single node YugabyteDB cluster 
 
 >**Sandbox cluster**
 >
->YugabyteDB is a distributed database optimized for deployment across a cluster of servers. The Sandbox cluster has a single node and limited resources, suitable for running tutorials, [Yugabyte University](https://university.yugabyte.com), and [building sample applications](/preview/tutorials/build-apps/). See [Differences between Sandbox and Dedicated clusters](/preview/faq/yugabytedb-managed-faq/#what-are-the-differences-between-sandbox-and-dedicated-clusters) for more information.
+>YugabyteDB is a distributed database optimized for deployment across a cluster of servers. The Sandbox cluster has a single node and limited resources, suitable for running tutorials, [Yugabyte University](https://university.yugabyte.com), and [building sample applications](/stable/tutorials/build-apps/). See [Differences between Sandbox and Dedicated clusters](/stable/faq/yugabytedb-managed-faq/#what-are-the-differences-between-sandbox-and-dedicated-clusters) for more information.
 >
 >To evaluate YugabyteDB Aeon for production use or conduct a proof-of-concept (POC), contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) for trial credits.
 
@@ -37,7 +37,7 @@ To create your Sandbox cluster:
 
 YugabyteDB Aeon bootstraps and provisions the cluster, and configures YugabyteDB. The process takes around 5 minutes. While you wait, you can optionally fill out a survey to customize your getting started experience.
 
-When the cluster is ready, the cluster [Overview](/preview/yugabyte-cloud/cloud-monitor/overview/) is displayed. You now have a fully configured YugabyteDB cluster provisioned in YugabyteDB Aeon.
+When the cluster is ready, the cluster [Overview](/stable/yugabyte-cloud/cloud-monitor/overview/) is displayed. You now have a fully configured YugabyteDB cluster provisioned in YugabyteDB Aeon.
 
 ## Connect to the cluster
 
@@ -75,13 +75,13 @@ To connect to your cluster, do the following:
     yugabyte=>
     ```
 
-> The command line interface (CLI) being used is called [ysqlsh](/preview/api/ysqlsh/). ysqlsh is the CLI for interacting with YugabyteDB using the PostgreSQL-compatible [YSQL API](/preview/api/ysql/). Cloud Shell also supports [ycqlsh](/preview/api/ycqlsh/), a CLI for the [YCQL API](/preview/api/ycql/).
+> The command line interface (CLI) being used is called [ysqlsh](/stable/api/ysqlsh/). ysqlsh is the CLI for interacting with YugabyteDB using the PostgreSQL-compatible [YSQL API](/stable/api/ysql/). Cloud Shell also supports [ycqlsh](/stable/api/ycqlsh/), a CLI for the [YCQL API](/stable/api/ycql/).
 >
-> For information on other ways to connect to your cluster, refer to [Connect to clusters](/preview/yugabyte-cloud/cloud-connect).
+> For information on other ways to connect to your cluster, refer to [Connect to clusters](/stable/yugabyte-cloud/cloud-connect).
 
 ## Explore distributed SQL
 
-When you connect to your cluster using Cloud Shell with the [YSQL API](/preview/api/ysql/) (the default), the shell window incorporates a **Quick Start Guide**, with a series of pre-built queries for you to run. Follow the prompts to explore YugabyteDB in 5 minutes.
+When you connect to your cluster using Cloud Shell with the [YSQL API](/stable/api/ysql/) (the default), the shell window incorporates a **Quick Start Guide**, with a series of pre-built queries for you to run. Follow the prompts to explore YugabyteDB in 5 minutes.
 
 ![Run the quick start tutorial](/images/yb-cloud/cloud-shell-tutorial.gif)
 
@@ -95,4 +95,4 @@ Before you begin, you need the following:
 - the cluster CA certificate; YugabyteDB Aeon uses TLS to secure connections to the database.
 - your computer added to the cluster IP allow list.
 
-Refer to [Before you begin](/preview/tutorials/build-apps/cloud-add-ip/).
+Refer to [Before you begin](/stable/tutorials/build-apps/cloud-add-ip/).

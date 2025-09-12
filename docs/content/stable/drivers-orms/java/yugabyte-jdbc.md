@@ -7,10 +7,10 @@ tags:
   other: ysql
 aliases:
   - /develop/client-drivers/java/
-  - /preview/develop/client-drivers/java/
-  - /preview/develop/build-apps/java/
-  - /preview/quick-start/build-apps/java/
-  - /preview/integrations/jdbc-drivers/
+  - /stable/develop/client-drivers/java/
+  - /stable/develop/build-apps/java/
+  - /stable/quick-start/build-apps/java/
+  - /stable/integrations/jdbc-drivers/
 menu:
   preview:
     identifier: java-driver-1-yugabyte-jdbc
@@ -181,7 +181,7 @@ jdbc:yugabytedb://hostname:port/database?user=yugabyte&password=yugabyte&load-ba
     ssl=true&sslmode=verify-full&sslrootcert=~/.postgresql/root.crt
 ```
 
-If you created a cluster on YugabyteDB Aeon, use the cluster credentials and [download the SSL Root certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
+If you created a cluster on YugabyteDB Aeon, use the cluster credentials and [download the SSL Root certificate](/stable/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 
 To use load balancing and SSL mode verify-full with a cluster in YugabyteDB Aeon, you need to provide the additional `sslhostnameverifier` parameter, set to `com.yugabyte.ysql.YBManagedHostnameVerifier`. (Available in driver version 42.3.5-yb-2 or later. For previous versions of the driver, use `verify-ca`.)
 
@@ -263,4 +263,4 @@ If you receive no output or an error, check the parameters in the connection str
 
 - [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
 - [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
-- [Develop Spring Boot applications using the YugabyteDB JDBC Driver](/preview/integrations/spring-framework/sdyb/)
+- [Develop Spring Boot applications using the YugabyteDB JDBC Driver](/stable/integrations/spring-framework/sdyb/)

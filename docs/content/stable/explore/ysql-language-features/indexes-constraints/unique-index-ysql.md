@@ -10,7 +10,7 @@ menu:
     parent: explore-indexes-constraints-ysql
     weight: 230
 aliases:
-  - /preview/explore/ysql-language-features/indexes-1/
+  - /stable/explore/ysql-language-features/indexes-1/
 type: docs
 ---
 

@@ -4,7 +4,7 @@ headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect an application using YugabyteDB Python driver for YCQL
 menu:
-  v2.25
+  v2.25:
     identifier: ycql-python-driver
     parent: python-drivers
     weight: 530
@@ -59,7 +59,7 @@ The flag `--no-cython` is necessary on MacOS Catalina and further MacOS releases
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start](/preview/quick-start/macos/).
+- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start](/stable/quick-start/macos/).
 
 ### Write the sample Python application
 

@@ -5,7 +5,7 @@ linkTitle: Read data
 description: Queries and joins to read data in YSQL
 headcontent: Interact with data using SELECT, filters, and joins
 menu:
-  v2.25
+  v2.25:
     identifier: explore-ysql-language-features-queries-joins
     parent: explore-ysql-language-features
     weight: 300

@@ -5,7 +5,7 @@ linkTitle: Node-level issues
 description: Troubleshoot node-level issues
 headcontent: Diagnose and solve issues on an individual YugabyteDB node
 menu:
-  v2.25
+  v2.25:
     identifier: troubleshoot-nodes
     parent: troubleshoot
     weight: 200

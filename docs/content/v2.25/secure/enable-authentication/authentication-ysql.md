@@ -3,13 +3,13 @@ title: Enable users in YSQL
 headerTitle: Enable users in YSQL
 description: Enable users in YSQL.
 menu:
-  v2.25
+  v2.25:
     name: Enable users
     identifier: enable-authentication-1-ysql
     parent: enable-authentication
     weight: 715
 aliases:
-  - /preview/secure/enable-authentication/ysql/
+  - /stable/secure/enable-authentication/ysql/
 type: docs
 ---
 

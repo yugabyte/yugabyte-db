@@ -9,7 +9,7 @@ menu:
     parent: install-yugabyte-platform
     weight: 20
 aliases:
-  - /preview/yugabyte-platform/configure-yugabyte-platform/create-admin-user/
+  - /stable/yugabyte-platform/configure-yugabyte-platform/create-admin-user/
 type: docs
 ---
 

@@ -5,12 +5,12 @@ linkTitle: Key concepts
 description: Learn about the Key concepts in YugabyteDB
 headcontent: Glossary of key concepts
 aliases:
-  - /preview/architecture/concepts
-  - /preview/architecture/concepts/universe
-  - /preview/architecture/concepts/single-node/
-  - /preview/key-concepts/
+  - /stable/architecture/concepts
+  - /stable/architecture/concepts/universe
+  - /stable/architecture/concepts/single-node/
+  - /stable/key-concepts/
 menu:
-  v2.25
+  v2.25:
     identifier: architecture-concepts-universe
     parent: reference
     weight: 10

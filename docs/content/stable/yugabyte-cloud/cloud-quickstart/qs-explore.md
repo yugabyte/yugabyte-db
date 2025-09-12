@@ -78,8 +78,8 @@ The quick start includes the following scenarios:
 | Triggers | Record the last update time of each row automatically. |
 | Materialized Views | Pre-compute analytics for reporting using a materialized view. |
 
-To run this tutorial from your desktop shell, refer to [Explore Yugabyte SQL](/preview/quick-start/explore/ysql/) in the Core Quick Start.
+To run this tutorial from your desktop shell, refer to [Explore Yugabyte SQL](/stable/quick-start/explore/ysql/) in the Core Quick Start.
 
 ## Next step
 
-[Build an application](/preview/tutorials/build-apps/)
+[Build an application](/stable/tutorials/build-apps/)

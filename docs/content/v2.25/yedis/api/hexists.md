@@ -3,12 +3,12 @@ title: HEXISTS
 linkTitle: HEXISTS
 description: HEXISTS
 menu:
-  v2.25
+  v2.25:
     parent: api-yedis
     weight: 2110
 aliases:
-  - /preview/api/redis/hexists
-  - /preview/api/yedis/hexists
+  - /stable/api/redis/hexists
+  - /stable/api/yedis/hexists
 type: docs
 ---
 

@@ -5,7 +5,7 @@ linkTitle: Alerts
 description: Use alerts
 headcontent: Set alerts for activity in your account
 aliases:
-  - /preview/yugabyte-platform/alert
+  - /stable/yugabyte-platform/alert
 menu:
   v2.25_yugabyte-platform:
     identifier: alert

@@ -4,7 +4,7 @@ headerTitle: Performance tuning in YSQL
 linkTitle: Performance tuning
 description: Learn how to speed up Transactions in YSQL on YugabyteDB.
 menu:
-  v2.25
+  v2.25:
     identifier: transactions-performance-ysql
     parent: acid-transactions-1-ysql
     weight: 568

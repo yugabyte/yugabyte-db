@@ -4,7 +4,7 @@ linkTitle: Cassandra feature support
 description: Summary of YugabyteDB's parity to Cassandra features
 headcontent: YugabyteDB supports most standard Cassandra features
 menu:
-  v2.25
+  v2.25:
     identifier: explore-ycql-language-feature-support
     parent: explore-ycql-language
     weight: 50
@@ -160,5 +160,5 @@ Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Langu
 
 ## Learn more
 
-- [Comparison with Apache Cassandra](/preview/faq/comparisons/cassandra)
+- [Comparison with Apache Cassandra](/stable/faq/comparisons/cassandra)
 - [YCQL command reference](../../../api/ycql/)

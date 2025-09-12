@@ -4,7 +4,7 @@ headerTitle: Widgets and shortcodes
 linkTitle: Widgets and shortcodes
 description: Widgets and shortcodes
 menu:
-  v2.25
+  v2.25:
     identifier: widgets-and-shortcodes
     parent: docs-edit
     weight: 2915
@@ -306,7 +306,7 @@ The corresponding code for this widget is as follows.
   title="Learn through examples"
   description="Microservices need a cloud native relational database that is resilient, scalable, and geo-distributed. YugabyteDB powers your modern applications"
   buttonText="Get started"
-  buttonUrl="/preview/quick-start-yugabytedb-managed/"
+  buttonUrl="/stable/quick-start-yugabytedb-managed/"
   imageAlt="Yugabyte cloud"
   imageUrl="/images/homepage/learn-through-examples.svg"
 */>}}
@@ -319,7 +319,7 @@ To change image background to transparent, add `imageTransparent=true` in the co
   title="Learn through examples"
   description="Microservices need a cloud native relational database that is resilient, scalable, and geo-distributed. YugabyteDB powers your modern applications"
   buttonText="Get started"
-  buttonUrl="/preview/quick-start-yugabytedb-managed/"
+  buttonUrl="/stable/quick-start-yugabytedb-managed/"
   imageAlt="Yugabyte cloud"
   imageTransparent=true
   imageUrl="/images/homepage/learn-through-examples.svg"

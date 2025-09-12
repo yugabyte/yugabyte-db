@@ -7,7 +7,7 @@ headcontent: Internals of query, transactions, sharding, replication, and storag
 aliases:
   - /architecture/layerered-architecture/
 menu:
-  v2.25
+  v2.25:
     identifier: architecture
     parent: reference
     weight: 1050

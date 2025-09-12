@@ -4,7 +4,7 @@ headerTitle: YugabyteDB Anywhere FAQ
 linkTitle: YugabyteDB Anywhere FAQ
 description: Answers to common questions about YugabyteDB Anywhere.
 aliases:
-  - /preview/faq/enterprise-edition/
+  - /stable/faq/enterprise-edition/
 menu:
   preview_faq:
     identifier: faq-yugabyte-platform
@@ -31,7 +31,7 @@ Introduction to YugabyteDB Anywhere
 
 ### How do I report a security vulnerability?
 
-Follow the steps in the [vulnerability disclosure policy](/preview/secure/vulnerability-disclosure-policy) to report a vulnerability to our security team. The policy outlines our commitments to you when you disclose a potential vulnerability, the reporting process, and how Yugabyte will respond.
+Follow the steps in the [vulnerability disclosure policy](/stable/secure/vulnerability-disclosure-policy) to report a vulnerability to our security team. The policy outlines our commitments to you when you disclose a potential vulnerability, the reporting process, and how Yugabyte will respond.
 
 ## Installation
 

@@ -16,7 +16,7 @@ This document describes how to use [TypeORM](https://typeorm.io/), an ORM that c
 
 Before you can start using TypeORM, ensure that you have the following available:
 
-- YugabyteDB version 2.4 or later (see [Quick Start](/preview/quick-start/macos/)).
+- YugabyteDB version 2.4 or later (see [Quick Start](/stable/quick-start/macos/)).
 
 - Node.js version 20.16.0 along with npm and npx (see [Downloading and installing Node.js](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm#using-a-node-installer-to-install-node-js-and-npm)).
 

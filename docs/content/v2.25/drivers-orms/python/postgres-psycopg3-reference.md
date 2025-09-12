@@ -6,7 +6,7 @@ description: PostgreSQL Psycopg3 Python Driver for YSQL
 tags:
   other: ysql
 menu:
-  v2.25
+  v2.25:
     name: Python drivers
     identifier: ref-postgres-psycopg3-driver
     parent: python-drivers

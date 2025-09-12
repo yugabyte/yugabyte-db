@@ -3,11 +3,11 @@ title: SELECT
 linkTitle: "SELECT "
 description: SELECT
 menu:
-  v2.25
+  v2.25:
     parent: api-yedis
     weight: 2038
 aliases:
-  - /preview/api/yedis/select
+  - /stable/api/yedis/select
 type: docs
 ---
 

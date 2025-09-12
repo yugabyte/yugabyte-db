@@ -4,7 +4,7 @@ headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Go application using PGX Driver
 menu:
-  v2.25
+  v2.25:
     identifier: go-2-pgx-driver
     parent: go-drivers
     weight: 500

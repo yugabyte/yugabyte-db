@@ -8,7 +8,7 @@ menu:
     identifier: dcl_alter_role
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/dcl_alter_role/
+  - /stable/api/ysql/commands/dcl_alter_role/
 type: docs
 ---
 

@@ -5,7 +5,7 @@ linkTitle: Legacy provisioning
 description: How to provision on-premises provider nodes using legacy manual method.
 headContent: How to meet the software prerequisites for database nodes
 aliases:
-    - /preview/yugabyteplatform/prepare/server-nodes-software/software-on-premmanual/
+    - /stable/yugabyteplatform/prepare/server-nodes-software/software-on-premmanual/
 menu:
   v2.25_yugabyte-platform:
     identifier: software-on-prem-4-manual
@@ -625,7 +625,7 @@ You must reboot the system for these two settings to take effect.
 
 ## Install node agent
 
-The YugabyteDB Anywhere node agent is used to manage communication between YugabyteDB Anywhere and the node. When node agent is installed, YugabyteDB Anywhere no longer requires SSH or sudo access to nodes. For more information, refer to [Node agent](/preview/faq/yugabyte-platform/#node-agent) FAQ.
+The YugabyteDB Anywhere node agent is used to manage communication between YugabyteDB Anywhere and the node. When node agent is installed, YugabyteDB Anywhere no longer requires SSH or sudo access to nodes. For more information, refer to [Node agent](/stable/faq/yugabyte-platform/#node-agent) FAQ.
 
 For automated and assisted manual provisioning, node agents are installed onto instances automatically when adding instances, or when running the pre-provisioning script using the `--install_node_agent` flag.
 

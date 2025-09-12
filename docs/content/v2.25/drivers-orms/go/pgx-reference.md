@@ -6,9 +6,9 @@ description: Go PGX Driver for YSQL
 tags:
   other: ysql
 aliases:
-  - /preview/reference/drivers/go/pgx-reference/
+  - /stable/reference/drivers/go/pgx-reference/
 menu:
-  v2.25
+  v2.25:
     name: Go Drivers
     identifier: ref-2-pgx-go-driver
     parent: go-drivers

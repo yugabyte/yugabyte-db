@@ -4,7 +4,7 @@ headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a C# application using YugabyteDB YCQL driver
 menu:
-  v2.25
+  v2.25:
     identifier: csharp-3-driver-ycql
     parent: csharp-drivers
     weight: 500
@@ -47,7 +47,7 @@ To use the driver's partition-aware load balancing feature in a YugabyteDB Aeon 
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start](/preview/quick-start/macos/).
+- installed YugabyteDB, created a universe and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start](/stable/quick-start/macos/).
 - installed Visual Studio.
 
 ## Write the HelloWorld C# app

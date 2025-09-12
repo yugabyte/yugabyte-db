@@ -5,9 +5,9 @@ linkTitle: YB-Master
 description: Learn how the YB-Master service manages tablet metadata and coordinates cluster configuration changes.
 headcontent: Catalog information, tablet metadata, and cluster coordination
 aliases:
-  - /preview/architecture/concepts/yb-master/
+  - /stable/architecture/concepts/yb-master/
 menu:
-  v2.25
+  v2.25:
     identifier: architecture-concepts-yb-master
     parent: architecture
     weight: 1100

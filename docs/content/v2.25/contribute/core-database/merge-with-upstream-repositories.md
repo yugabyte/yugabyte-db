@@ -5,7 +5,7 @@ linkTitle: Merge with upstream repositories
 description: How to merge upstream repositories into YugabyteDB
 headcontent: How to merge upstream repositories into YugabyteDB
 menu:
-  v2.25
+  v2.25:
     identifier: merge-with-upstream-repositories
     parent: core-database
     weight: 2914

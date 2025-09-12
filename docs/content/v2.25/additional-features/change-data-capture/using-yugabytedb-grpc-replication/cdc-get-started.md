@@ -5,10 +5,10 @@ linkTitle: Get started
 description: Get started with Change Data Capture in YugabyteDB.
 headcontent: Get set up for using CDC in YugabyteDB
 aliases:
-  - /preview/explore/change-data-capture/cdc-get-started/
-  - /preview/explore/change-data-capture/using-yugabytedb-grpc-replication/cdc-get-started/
+  - /stable/explore/change-data-capture/cdc-get-started/
+  - /stable/explore/change-data-capture/using-yugabytedb-grpc-replication/cdc-get-started/
 menu:
-  v2.25
+  v2.25:
     parent: explore-change-data-capture-grpc-replication
     identifier: cdc-get-started
     weight: 10

@@ -5,7 +5,7 @@ linkTitle: Transactions
 description: Transactions in YugabyteDB.
 headcontent: How transactions work in YugabyteDB
 menu:
-  v2.25
+  v2.25:
     identifier: explore-transactions
     parent: explore
     weight: 240

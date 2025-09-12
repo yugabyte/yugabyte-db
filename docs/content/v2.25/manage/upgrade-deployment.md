@@ -5,7 +5,7 @@ linkTitle: Upgrade YugabyteDB
 description: Upgrade YugabyteDB
 headcontent: Upgrade an existing YugabyteDB deployment
 menu:
-  v2.25
+  v2.25:
     identifier: manage-upgrade-deployment
     parent: manage
     weight: 706
@@ -15,7 +15,7 @@ type: docs
 {{< page-finder/head text="Upgrade YugabyteDB" subtle="across different products">}}
   {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" current="" >}}
   {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" url="../../yugabyte-platform/manage-deployments/upgrade-software/" >}}
-  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/preview/yugabyte-cloud/cloud-clusters/cloud-maintenance/" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/stable/yugabyte-cloud/cloud-clusters/cloud-maintenance/" >}}
 {{< /page-finder/head >}}
 
 {{< tip title="Tip" >}}
@@ -41,7 +41,7 @@ To upgrade YugabyteDB to a version based on a different version of PostgreSQL (f
 
     For example, if you are upgrading from v2.18.3.0, and the latest release in the v2.20 release series is v2.20.2.0, then you must upgrade to v2.20.2.0 (and not v2.20.1.0 or v2.20.0.0).
 
-    To view and download releases, refer to [Releases](/preview/releases/).
+    To view and download releases, refer to [Releases](/stable/releases/).
 
 - Upgrades are not supported between preview and stable versions.
 

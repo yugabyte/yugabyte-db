@@ -4,7 +4,7 @@ headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a C++ application using YugabyteDB C++ driver for YCQL
 menu:
-  v2.25
+  v2.25:
     identifier: cpp-ycql-driver
     parent: cpp-drivers
     weight: 420
@@ -46,7 +46,7 @@ To use the driver's partition-aware load balancing feature in a YugabyteDB Aeon 
 The tutorial assumes that you have:
 
 - installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell (ycqlsh). If
-  not, follow the steps in [Quick start](/preview/quick-start/macos/).
+  not, follow the steps in [Quick start](/stable/quick-start/macos/).
 - have a 32-bit (x86) or 64-bit (x64) architecture machine.
 - have gcc 4.1.2 or later, Clang 3.4 or later installed.
 

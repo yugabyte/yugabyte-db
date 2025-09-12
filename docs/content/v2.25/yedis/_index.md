@@ -6,9 +6,9 @@ description: (Deprecated) The YEDIS API allows YugabyteDB to function as a clust
 headcontent:
 image: /images/section_icons/api/yedis.png
 aliases:
-  - /preview/secure/enable-authentication/yedis/
+  - /stable/secure/enable-authentication/yedis/
 menu:
-  v2.25
+  v2.25:
     identifier: yedis
     parent: misc
     weight: 2900

@@ -8,7 +8,7 @@ menu:
     identifier: ddl_drop_matview
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/ddl_drop_matview/
+  - /stable/api/ysql/commands/ddl_drop_matview/
 type: docs
 ---
 

@@ -3,12 +3,12 @@ title: Triggers
 linkTitle: Triggers
 description: Triggers in YSQL
 menu:
-  v2.25
+  v2.25:
     identifier: explore-ysql-language-features-triggers
     parent: advanced-features
     weight: 700
 aliases:
-  - /preview/explore/ysql-language-features/triggers/
+  - /stable/explore/ysql-language-features/triggers/
 type: docs
 ---
 

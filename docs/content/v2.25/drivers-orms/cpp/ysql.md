@@ -5,10 +5,10 @@ linkTitle: Connect an app
 description: Connect a C++ application using libpqxx
 aliases:
   - /develop/client-drivers/cpp/
-  - /preview/develop/client-drivers/cpp/
-  - /preview/quick-start/build-apps/cpp/
+  - /stable/develop/client-drivers/cpp/
+  - /stable/quick-start/build-apps/cpp/
 menu:
-  v2.25
+  v2.25:
     identifier: cpp-ysql-driver
     parent: cpp-drivers
     weight: 410
@@ -41,7 +41,7 @@ type: docs
 
 The tutorial assumes that you have:
 
-- installed YugabyteDB, and created a universe with YSQL enabled. If not, please follow the steps in [Quick start](/preview/quick-start/macos/).
+- installed YugabyteDB, and created a universe with YSQL enabled. If not, please follow the steps in [Quick start](/stable/quick-start/macos/).
 - have a 32-bit (x86) or 64-bit (x64) architecture machine.
 - have `gcc` 4.1.2 or later, clang 3.4 or later installed.
 

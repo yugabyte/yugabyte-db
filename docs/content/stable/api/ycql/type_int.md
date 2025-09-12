@@ -8,8 +8,8 @@ menu:
     parent: api-cassandra
     weight: 1420
 aliases:
-  - /preview/api/cassandra/type_int
-  - /preview/api/ycql/type_int
+  - /stable/api/cassandra/type_int
+  - /stable/api/ycql/type_int
 type: docs
 ---
 

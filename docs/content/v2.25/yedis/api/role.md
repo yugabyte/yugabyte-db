@@ -3,12 +3,12 @@ title: ROLE
 linkTitle: ROLE
 description: ROLE
 menu:
-  v2.25
+  v2.25:
     parent: api-yedis
     weight: 2240
 aliases:
-  - /preview/api/redis/role
-  - /preview/api/yedis/role
+  - /stable/api/redis/role
+  - /stable/api/yedis/role
 type: docs
 ---
 YEDIS only has `master` role as far as Redis compatibility is concerned.

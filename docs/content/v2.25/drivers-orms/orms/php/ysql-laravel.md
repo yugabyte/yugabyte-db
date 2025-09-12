@@ -4,7 +4,7 @@ headerTitle: PHP ORM example application
 linkTitle: PHP
 description: PHP ORM example application.
 menu:
-  v2.25
+  v2.25:
     identifier: php-orm
     parent: orm-tutorials
     weight: 830
@@ -28,7 +28,7 @@ The source for this application can be found in the [Using ORMs with YugabyteDB]
 
 This tutorial assumes that you have:
 
-- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/preview/quick-start/macos/).
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/stable/quick-start/macos/).
 - PHP 7.3+
 - Laravel 8.40+
 - Composer (Dependency Manager for PHP)

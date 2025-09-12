@@ -4,11 +4,11 @@ headerTitle: Point-in-time recovery
 linkTitle: Point-in-time recovery
 description: Restore data from a specific point in time in YugabyteDB for YCQL
 aliases:
-  - /preview/explore/backup-restore/point-in-time-recovery-ycql
-  - /preview/explore/backup-restore/point-in-time-recovery
-  - /preview/explore/backup-restore
+  - /stable/explore/backup-restore/point-in-time-recovery-ycql
+  - /stable/explore/backup-restore/point-in-time-recovery
+  - /stable/explore/backup-restore
 menu:
-  v2.25
+  v2.25:
     identifier: cluster-management-point-in-time-recovery-ycql
     parent: explore-cluster-management
     weight: 704

@@ -7,9 +7,9 @@ headContent: Asynchronous replication of data changes (inserts, updates, and del
 tags:
   feature: early-access
 aliases:
-  - /preview/explore/logical-replication/
+  - /stable/explore/logical-replication/
 menu:
-  v2.25
+  v2.25:
     parent: architecture-docdb-replication
     identifier: architecture-docdb-replication-cdc-logical-replication
     weight: 500

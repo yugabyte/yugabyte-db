@@ -5,11 +5,11 @@ linkTitle: Observability
 description: Observability in YugabyteDB.
 headcontent: Monitoring, alerting, and analyzing metrics
 aliases:
-  - /preview/explore/observability-docker/macos
-  - /preview/explore/observability-docker/linux
-  - /preview/explore/observability-docker/docker
+  - /stable/explore/observability-docker/macos
+  - /stable/explore/observability-docker/linux
+  - /stable/explore/observability-docker/docker
 menu:
-  v2.25
+  v2.25:
     identifier: explore-observability
     parent: explore
     weight: 299

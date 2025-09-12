@@ -6,9 +6,9 @@ description: C# PostgreSQL Npgsql Driver for YSQL
 tags:
   other: ysql
 aliases:
-  - /preview/reference/drivers/csharp/postgres-npgsql-reference/
+  - /stable/reference/drivers/csharp/postgres-npgsql-reference/
 menu:
-  v2.25
+  v2.25:
     name: C# Drivers
     identifier: ref-2-postgres-npgsql-driver
     parent: csharp-drivers

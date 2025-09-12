@@ -3,12 +3,12 @@ title: INCR
 linkTitle: INCR
 description: INCR
 menu:
-  v2.25
+  v2.25:
     parent: api-yedis
     weight: 2210
 aliases:
-  - /preview/api/redis/incr
-  - /preview/api/yedis/incr
+  - /stable/api/redis/incr
+  - /stable/api/yedis/incr
 type: docs
 ---
 

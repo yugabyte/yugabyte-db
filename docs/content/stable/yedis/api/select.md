@@ -7,7 +7,7 @@ menu:
     parent: api-yedis
     weight: 2038
 aliases:
-  - /preview/api/yedis/select
+  - /stable/api/yedis/select
 type: docs
 ---
 

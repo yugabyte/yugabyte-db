@@ -5,7 +5,7 @@ linkTitle: Indexes and constraints
 description: Using indexes and constraints in YugabyteDB YCQL
 headcontent: Explore indexes and constraints in YCQL
 menu:
-  v2.25
+  v2.25:
     identifier: explore-indexes-constraints-ycql
     parent: explore-ycql-language
     weight: 245

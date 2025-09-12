@@ -7,9 +7,9 @@ headcontent: Capture changes made to data in the database
 tags:
   feature: early-access
 aliases:
-  - /preview/explore/change-data-capture/using-logical-replication/
+  - /stable/explore/change-data-capture/using-logical-replication/
 menu:
-  v2.25
+  v2.25:
     identifier: explore-change-data-capture-logical-replication
     parent: explore-change-data-capture
     weight: 240

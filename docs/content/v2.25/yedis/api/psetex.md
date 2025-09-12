@@ -3,12 +3,12 @@ title: PSETEX
 linkTitle: PSETEX
 description: PSETEX
 menu:
-  v2.25
+  v2.25:
     parent: api-yedis
     weight: 2272
 aliases:
-  - /preview/api/redis/psetex
-  - /preview/api/yedis/psetex
+  - /stable/api/redis/psetex
+  - /stable/api/yedis/psetex
 type: docs
 ---
 

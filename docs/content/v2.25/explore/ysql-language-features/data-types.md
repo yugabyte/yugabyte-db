@@ -4,10 +4,10 @@ headertitle: Data types
 linkTitle: Data types
 description: Data types in YSQL
 aliases:
-  - /preview/develop/learn/data-types-ysql/
-  - /preview/develop/learn/data-types/
+  - /stable/develop/learn/data-types-ysql/
+  - /stable/develop/learn/data-types/
 menu:
-  v2.25
+  v2.25:
     identifier: explore-ysql-language-features-data-types
     parent: explore-ysql-language-features
     weight: 200

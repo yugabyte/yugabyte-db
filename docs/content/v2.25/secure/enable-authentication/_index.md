@@ -5,7 +5,7 @@ linkTitle: Enable authentication
 description: Enable authentication.
 headcontent: Enable authentication to have clients provide valid credentials before they can connect
 menu:
-  v2.25
+  v2.25:
     name: Enable authentication
     identifier: enable-authentication
     parent: secure

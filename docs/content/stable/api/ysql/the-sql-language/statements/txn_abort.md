@@ -8,7 +8,7 @@ menu:
     identifier: txn_abort
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/txn_abort/
+  - /stable/api/ysql/commands/txn_abort/
 type: docs
 ---
 

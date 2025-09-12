@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2050
 aliases:
-  - /preview/api/redis/echo
-  - /preview/api/yedis/del
+  - /stable/api/redis/echo
+  - /stable/api/yedis/del
 type: docs
 ---
 

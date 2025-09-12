@@ -5,7 +5,7 @@ linkTitle: Design goals
 description: Learn the design goals that drive the building of YugabyteDB
 headcontent: Goals and ideas considered during designing YugabyteDB
 menu:
-  v2.25
+  v2.25:
     identifier: architecture-design-goals
     parent: architecture
     weight: 100
@@ -91,7 +91,7 @@ YugabyteDB has been designed with operational simplicity in mind, providing feat
 
 ## Heterogeneous workload support
 
-Depending on the use case, the database may need to support diverse workloads, such as [transactional processing](../../benchmark/tpcc/), [analytical queries](../../sample-data/retail-analytics/), [real-time data ingestion](/preview/tutorials/azure/azure-event-hubs/), [time-series](../../develop/data-modeling/common-patterns/timeseries/), and [key-value](../../benchmark/key-value-workload-ycql/) workloads.
+Depending on the use case, the database may need to support diverse workloads, such as [transactional processing](../../benchmark/tpcc/), [analytical queries](../../sample-data/retail-analytics/), [real-time data ingestion](/stable/tutorials/azure/azure-event-hubs/), [time-series](../../develop/data-modeling/common-patterns/timeseries/), and [key-value](../../benchmark/key-value-workload-ycql/) workloads.
 
 ## Transaction isolation levels
 

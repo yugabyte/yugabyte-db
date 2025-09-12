@@ -4,7 +4,7 @@ headerTitle: Best practices
 linkTitle: Best practices
 description: Best Practices for logical replication with Change Data Capture in YugabyteDB.
 aliases:
-  - /preview/explore/change-data-capture/using-logical-replication/best-practices/
+  - /stable/explore/change-data-capture/using-logical-replication/best-practices/
 menu:
   preview:
     parent: explore-change-data-capture-logical-replication

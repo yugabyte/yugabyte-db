@@ -5,7 +5,7 @@ linkTitle: Read replicas
 description: Explore read replicas in YugabyteDB using YCQL
 headContent: Replicate data asynchronously to one or more read replica clusters
 menu:
-  v2.25
+  v2.25:
     name: Read replicas
     identifier: explore-multi-region-deployments-read-replicas-ycql
     parent: explore-multi-region-deployments
@@ -26,7 +26,7 @@ Stale reads are possible with an upper bound on the amount of staleness. Reads a
 
 ## Prerequisites
 
-Ensure that you have downloaded and configured YugabyteDB, as described in [Quick start](/preview/quick-start/macos/).
+Ensure that you have downloaded and configured YugabyteDB, as described in [Quick start](/stable/quick-start/macos/).
 
 {{< note title="Note" >}}
 

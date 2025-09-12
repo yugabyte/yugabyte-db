@@ -5,7 +5,7 @@ linkTitle: Build the source
 description: Build YugabyteDB from source code on Ubuntu.
 headcontent: Build the source code.
 menu:
-  v2.25
+  v2.25:
     identifier: build-from-src-4-ubuntu
     parent: core-database
     weight: 2912

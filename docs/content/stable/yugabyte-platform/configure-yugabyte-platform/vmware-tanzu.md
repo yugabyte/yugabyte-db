@@ -6,7 +6,7 @@ description: Configure the VMware Tanzu provider configuration
 headContent: For deploying universes on Kubernetes
 aliases:
   - /deploy/pivotal-cloud-foundry/
-  - /preview/deploy/pivotal-cloud-foundry/
+  - /stable/deploy/pivotal-cloud-foundry/
 menu:
   preview_yugabyte-platform:
     identifier: set-up-kubernetes-provider-2

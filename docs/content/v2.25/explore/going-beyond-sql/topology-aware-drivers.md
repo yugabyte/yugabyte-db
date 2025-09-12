@@ -4,7 +4,7 @@ headerTitle: Topology-aware client drivers
 linkTitle: Topology-aware drivers
 headcontent:
 menu:
-  v2.25
+  v2.25:
     identifier: topology-aware-drivers
     parent: going-beyond-sql
     weight: 500

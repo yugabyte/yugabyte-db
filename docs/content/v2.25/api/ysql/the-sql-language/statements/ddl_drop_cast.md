@@ -8,7 +8,7 @@ menu:
     identifier: ddl_drop_cast
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/ddl_drop_cast/
+  - /stable/api/ysql/commands/ddl_drop_cast/
 type: docs
 ---
 

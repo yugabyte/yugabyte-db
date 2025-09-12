@@ -3,12 +3,12 @@ title: ZADD
 linkTitle: ZADD
 description: ZADD
 menu:
-  v2.25
+  v2.25:
     parent: api-yedis
     weight: 2500
 aliases:
-  - /preview/api/redis/zadd
-  - /preview/api/yedis/zadd
+  - /stable/api/redis/zadd
+  - /stable/api/yedis/zadd
 type: docs
 ---
 

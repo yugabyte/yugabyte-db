@@ -5,7 +5,7 @@ linkTitle: Manage users and roles
 description: Manage users and roles in YCQL
 headcontent: Manage users and roles
 menu:
-  v2.25
+  v2.25:
     identifier: create-roles-ycql
     parent: authorization
     weight: 717

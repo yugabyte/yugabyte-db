@@ -9,7 +9,7 @@ menu:
     identifier: api-ysql-datatypes-array
     parent: api-ysql-datatypes
 aliases:
-  - /preview/api/ysql/datatypes/type_array
+  - /stable/api/ysql/datatypes/type_array
 type: indexpage
 showRightNav: true
 ---

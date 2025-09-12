@@ -5,10 +5,10 @@ linkTitle: Monitor
 description: Monitor Change Data Capture in YugabyteDB.
 headcontent: Monitor deployed CDC connectors
 aliases:
-  - /preview/explore/change-data-capture/cdc-monitor/
-  - /preview/explore/change-data-capture/using-yugabytedb-grpc-replication/cdc-monitor/
+  - /stable/explore/change-data-capture/cdc-monitor/
+  - /stable/explore/change-data-capture/using-yugabytedb-grpc-replication/cdc-monitor/
 menu:
-  v2.25
+  v2.25:
     parent: explore-change-data-capture-grpc-replication
     identifier: cdc-monitor
     weight: 20

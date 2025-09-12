@@ -3,9 +3,9 @@ title: Stored procedures
 linkTitle: Stored procedures
 description: Stored procedures in YSQL
 aliases:
-  - /preview/explore/ysql-language-features/stored-procedures/
+  - /stable/explore/ysql-language-features/stored-procedures/
 menu:
-  v2.25
+  v2.25:
     identifier: explore-ysql-language-features-stored-procedures
     parent: advanced-features
     weight: 500

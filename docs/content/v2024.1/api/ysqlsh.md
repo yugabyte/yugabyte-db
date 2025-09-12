@@ -19,8 +19,8 @@ The YugabyteDB SQL shell ysqlsh provides a CLI for interacting with YugabyteDB u
 
 ysqlsh is installed with YugabyteDB and located in the `bin` directory of the YugabyteDB home directory.
 
-{{<lead link="/preview/releases/yugabyte-clients/">}}
-To download and install a standalone version of ysqlsh, refer to [YugabyteDB clients](/preview/releases/yugabyte-clients/).
+{{<lead link="/stable/releases/yugabyte-clients/">}}
+To download and install a standalone version of ysqlsh, refer to [YugabyteDB clients](/stable/releases/yugabyte-clients/).
 {{</lead>}}
 
 ### Starting ysqlsh

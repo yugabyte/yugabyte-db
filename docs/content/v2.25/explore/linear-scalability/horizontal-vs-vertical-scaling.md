@@ -5,7 +5,7 @@ linkTitle: Horizontal vs vertical
 description: Differences between horizontal and vertical scaling
 headcontent: Understand the differences between horizontal and vertical scaling
 menu:
-  v2.25
+  v2.25:
     identifier: scalability-horizontal-vs-vertical
     parent: explore-scalability
     weight: 5

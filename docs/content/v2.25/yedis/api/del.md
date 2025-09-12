@@ -3,12 +3,12 @@ title: DEL
 linkTitle: DEL
 description: DEL
 menu:
-  v2.25
+  v2.25:
     parent: api-yedis
     weight: 2040
 aliases:
-  - /preview/api/redis/del
-  - /preview/api/yedis/del
+  - /stable/api/redis/del
+  - /stable/api/yedis/del
 type: docs
 ---
 

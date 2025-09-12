@@ -5,7 +5,7 @@ linkTitle: Contribution checklist
 description: Review the steps to start contributing code and documentation.
 headcontent: Checklist for contributing to the core database.
 menu:
-  v2.25
+  v2.25:
     identifier: contribute-checklist
     parent: core-database
     weight: 2911
@@ -25,7 +25,7 @@ type: docs
 
 ## Step 2. Start a local cluster
 
-Having built the source, you can [start a local cluster](/preview/quick-start/macos/).
+Having built the source, you can [start a local cluster](/stable/quick-start/macos/).
 
 ## Step 3. Make the change
 

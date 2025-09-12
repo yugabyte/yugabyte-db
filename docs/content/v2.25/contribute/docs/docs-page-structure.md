@@ -4,7 +4,7 @@ headerTitle: Docs page structure
 linkTitle: Docs page structure
 description: Overview of the Markdown structure of YugabyteDB documentation pages
 menu:
-  v2.25
+  v2.25:
     identifier: docs-page-structure
     parent: docs-edit
     weight: 2914
@@ -24,7 +24,7 @@ description: SEO-Meta-Description
 headcontent: Brief-description
 image: Icon-For-Page-Title
 menu:
-  v2.25
+  v2.25:
     identifier: page-identifier
     parent: parent-page-identifier
     weight: number-to-decide-display-order

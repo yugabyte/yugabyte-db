@@ -4,7 +4,7 @@ headerTitle: yb-tserver
 linkTitle: yb-tserver
 description: YugabyteDB Tablet Server (yb-tserver) binary and configuration flags to store and manage data for client applications.
 menu:
-  v2.25
+  v2.25:
     identifier: yb-tserver
     parent: configuration
     weight: 2100
@@ -1080,7 +1080,7 @@ To learn about CDC, see [Change data capture (CDC)](../../../additional-features
 Default: `false`
 {{% /tags/wrap %}}
 
-Support for creating a stream for Transactional CDC is currently in [Tech Preview](/preview/releases/versioning/#feature-maturity).
+Support for creating a stream for Transactional CDC is currently in [Tech Preview](/stable/releases/versioning/#feature-maturity).
 
 Enable support for creating streams for transactional CDC.
 
@@ -1434,7 +1434,7 @@ Packed row size limit for YSQL. The default value is 0 (use block size as limit)
 Default: `false`
 {{% /tags/wrap %}}
 
-YCQL packed row support is currently in [Tech Preview](/preview/releases/versioning/#feature-maturity).
+YCQL packed row support is currently in [Tech Preview](/stable/releases/versioning/#feature-maturity).
 
 Whether packed row is enabled for YCQL.
 
@@ -2308,7 +2308,7 @@ The number of table rows to backfill in a single backfill job. In case of [GIN i
 
 {{% tags/wrap %}}{{<tags/feature/restart-needed>}}{{% /tags/wrap %}}
 
-Comma-separated values (CSV) formatted catalogue of [preview feature](/preview/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
+Comma-separated values (CSV) formatted catalogue of [preview feature](/stable/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
 
 By adding a flag to this list, you explicitly acknowledge and accept any potential risks or instability that may arise from modifying these preview features. This process serves as a safeguard, ensuring that you are fully aware of the experimental nature of the flags you are working with.
 

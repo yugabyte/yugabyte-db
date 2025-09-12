@@ -6,7 +6,7 @@ description: Connect a Java application using Vert.x PG driver
 tags:
   other: ysql
 menu:
-  v2.25
+  v2.25:
     identifier: java-driver-4-vertx-pg-client
     parent: java-drivers
     weight: 500
@@ -208,6 +208,6 @@ Example ran successfully!
 ## Learn more
 
 - [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
-- [Develop Spring Boot applications using the YugabyteDB JDBC Driver](/preview/integrations/spring-framework/sdyb/)
+- [Develop Spring Boot applications using the YugabyteDB JDBC Driver](/stable/integrations/spring-framework/sdyb/)
 - Build Java applications using [Hibernate ORM](../hibernate/)
 - Build Java applications using [Ebean ORM](../ebean/)

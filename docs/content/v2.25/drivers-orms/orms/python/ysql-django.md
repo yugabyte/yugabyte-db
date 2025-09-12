@@ -4,7 +4,7 @@ headerTitle: Python ORM example application
 linkTitle: Python
 description: Python ORM example application with Django that uses YSQL.
 menu:
-  v2.25
+  v2.25:
     identifier: python-django
     parent: orm-tutorials
     weight: 680
@@ -34,7 +34,7 @@ The source for the above application can be found in the `python/django` directo
 
 This tutorial assumes that you have:
 
-- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/preview/quick-start/macos/).
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/stable/quick-start/macos/).
 - [Python 3](https://www.python.org/downloads/) or later is installed.
 - [Django 2.2](https://www.djangoproject.com/download/) or later is installed.
 

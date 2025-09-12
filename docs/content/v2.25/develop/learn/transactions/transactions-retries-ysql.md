@@ -4,9 +4,9 @@ headerTitle: Transaction retries in YSQL
 linkTitle: Transaction retries
 description: Learn how to retry transactions in YSQL.
 aliases:
-   - /preview/develop/learn/transactions-retries-ysql/
+   - /stable/develop/learn/transactions-retries-ysql/
 menu:
-  v2.25
+  v2.25:
     identifier: transactions-retries-ysql
     parent: acid-transactions-1-ysql
     weight: 567

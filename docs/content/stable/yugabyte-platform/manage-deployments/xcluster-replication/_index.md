@@ -10,7 +10,7 @@ menu:
     identifier: xcluster-replication
     weight: 90
 aliases:
-  - /preview/yugabyte-platform/create-deployments/async-replication-platform
+  - /stable/yugabyte-platform/create-deployments/async-replication-platform
 type: indexpage
 showRightNav: true
 rightNav:

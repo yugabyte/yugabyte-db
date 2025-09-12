@@ -5,7 +5,7 @@ linkTitle: JSON support
 description: YSQL JSON Support in YugabyteDB.
 headcontent: Understand how to operate on JSON data
 menu:
-  v2.25
+  v2.25:
     name: JSON support
     identifier: explore-json-support-ysql
     parent: explore-ysql-language-features

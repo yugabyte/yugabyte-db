@@ -3,12 +3,12 @@ title: SADD
 linkTitle: SADD
 description: SADD
 menu:
-  v2.25
+  v2.25:
     parent: api-yedis
     weight: 2250
 aliases:
-  - /preview/api/redis/sadd
-  - /preview/api/yedis/sadd
+  - /stable/api/redis/sadd
+  - /stable/api/yedis/sadd
 type: docs
 ---
 ## Synopsis

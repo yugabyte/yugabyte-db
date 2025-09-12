@@ -5,9 +5,9 @@ linkTitle: YCQL applications
 description: Tips and tricks to build YCQL applications
 headcontent: Tips and tricks to build YCQL applications for high performance and availability
 aliases:
-  - /preview/develop/best-practices-ycql/
+  - /stable/develop/best-practices-ycql/
 menu:
-  v2.25
+  v2.25:
     identifier: best-practices-ycql
     parent: best-practices-develop
     weight: 40

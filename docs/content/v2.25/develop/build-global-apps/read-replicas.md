@@ -5,7 +5,7 @@ linkTitle: Read replicas
 description: Reduce read latency using Read replicas
 headcontent: Reduce read latency for global applications
 menu:
-  v2.25
+  v2.25:
     identifier: global-apps-read-replicas
     parent: build-global-apps
     weight: 900

@@ -5,7 +5,7 @@ linkTitle: API FAQ
 description: Answers to common questions about YugabyteDB APIs and compatibility.
 aliases:
   - /faq/cassandra/
-  - /preview/faq/cassandra/
+  - /stable/faq/cassandra/
 menu:
   v2.25_faq:
     identifier: faq-api-compatibility
@@ -24,7 +24,7 @@ rightNav:
 
 YugabyteDB supports two flavors of distributed SQL.
 
-{{<lead link="/preview/api/">}}
+{{<lead link="/stable/api/">}}
 API
 {{</lead>}}
 
@@ -46,7 +46,7 @@ Explore YCQL features
 
 {{< note title="Note" >}}
 
-The YugabyteDB APIs are isolated and independent from one another today. This means that the data inserted or managed by one API cannot be queried by the other API. Additionally, there is no common way to access the data across the APIs (external frameworks such as [Presto](/preview/integrations/presto/) can help for basic cases).
+The YugabyteDB APIs are isolated and independent from one another today. This means that the data inserted or managed by one API cannot be queried by the other API. Additionally, there is no common way to access the data across the APIs (external frameworks such as [Presto](/stable/integrations/presto/) can help for basic cases).
 
 **The net impact is that you need to select an API first before undertaking detailed database schema/query design and implementation.**
 
@@ -83,7 +83,7 @@ For key-value workloads that need persistence, elasticity and fault-tolerance, Y
 
 ### What does API compatibility mean exactly?
 
-API compatibility refers to the fact that the database APIs offered by YugabyteDB servers implement the same wire protocol and modeling/query language as that of an existing database. Because [client drivers](../../drivers-orms/), [command line shells](../../admin/), and IDE and other [ecosystem integrations](/preview/integrations/) of the existing database rely on this wire protocol and modeling/query language, they are expected to work with YugabyteDB without major modifications.
+API compatibility refers to the fact that the database APIs offered by YugabyteDB servers implement the same wire protocol and modeling/query language as that of an existing database. Because [client drivers](../../drivers-orms/), [command line shells](../../admin/), and IDE and other [ecosystem integrations](/stable/integrations/) of the existing database rely on this wire protocol and modeling/query language, they are expected to work with YugabyteDB without major modifications.
 
 {{< note title="Note" >}}
 The [YSQL](../../api/ysql/) API is compatible with PostgreSQL. This means PostgreSQL client drivers, psql command line shell, IDE integrations such as TablePlus and DBeaver, and more can be used with YugabyteDB. The same concept applies to [YCQL](../../api/ycql/) in the context of the Apache Cassandra Query Language.

@@ -5,10 +5,10 @@ linkTitle: Quick start
 headcontent: Get started in less than 5 minutes in the cloud or on your desktop
 description: Get started using YugabyteDB in less than five minutes on macOS.
 aliases:
-  - /preview/quick-start/create-local-cluster/
-  - /preview/quick-start/install/
-  - /preview/quick-start/
-  - /preview/tutorials/quick-start/macos/
+  - /stable/quick-start/create-local-cluster/
+  - /stable/quick-start/install/
+  - /stable/quick-start/
+  - /stable/tutorials/quick-start/macos/
 layout: single
 type: docs
 rightNav:
@@ -31,7 +31,7 @@ unversioned: true
   </li>
 </ul>
 
-The local cluster setup on a single host is intended for development and learning. For production deployment, performance benchmarking, or deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](/preview/deploy/).
+The local cluster setup on a single host is intended for development and learning. For production deployment, performance benchmarking, or deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](/stable/deploy/).
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li class="active">
@@ -195,7 +195,7 @@ You download YugabyteDB as follows:
 
 ## Create a local cluster
 
-Use the [yugabyted](/preview/reference/configuration/yugabyted/) utility to create and manage universes.
+Use the [yugabyted](/stable/reference/configuration/yugabyted/) utility to create and manage universes.
 
 {{< tabpane text=true >}}
 
@@ -211,7 +211,7 @@ On macOS pre-Monterey, create a single-node local cluster with a replication fac
 
   {{% tab header="macOS Monterey" lang="Monterey" %}}
 
-macOS Monterey enables AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail. Use the [--master_webserver_port flag](/preview/reference/configuration/yugabyted/#advanced-flags) when you start the cluster to change the default port number, as follows:
+macOS Monterey enables AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail. Use the [--master_webserver_port flag](/stable/reference/configuration/yugabyted/#advanced-flags) when you start the cluster to change the default port number, as follows:
 
 ```sh
 ./bin/yugabyted start --master_webserver_port=9999
@@ -223,7 +223,7 @@ Alternatively, you can disable AirPlay receiving, then start YugabyteDB normally
 
 {{< /tabpane >}}
 
-{{< readfile "/preview/quick-start/include-connect.md" >}}
+{{< readfile "/stable/quick-start/include-connect.md" >}}
 
 ## Build an application
 
@@ -232,7 +232,7 @@ Applications connect to and interact with YugabyteDB using API client libraries 
 ### Choose your language
 
 <details><summary>Choose the language you want to use to build your application.</summary><br>
-{{< readfile "/preview/quick-start-yugabytedb-managed/quick-start-buildapps-include.md" >}}
+{{< readfile "/stable/quick-start-yugabytedb-managed/quick-start-buildapps-include.md" >}}
 </details>
 
 ## Migrate from PostgreSQL
@@ -241,14 +241,14 @@ For PostgreSQL users seeking to transition to a modern, horizontally scalable da
 
 YugabyteDB enables midsize applications running on single-node instances to effortlessly migrate to a fully distributed database environment. As applications grow, YugabyteDB seamlessly transitions to distributed mode, allowing for massive scaling capabilities.
 
-[YugabyteDB Voyager](/preview/yugabyte-voyager/) simplifies the end-to-end database migration process, including cluster setup, schema migration, and data migration. It supports migrating data from PostgreSQL, MySQL, and Oracle databases to various YugabyteDB offerings, including Aeon, Anywhere, and the core open-source database.
+[YugabyteDB Voyager](/stable/yugabyte-voyager/) simplifies the end-to-end database migration process, including cluster setup, schema migration, and data migration. It supports migrating data from PostgreSQL, MySQL, and Oracle databases to various YugabyteDB offerings, including Aeon, Anywhere, and the core open-source database.
 
-You can [install](/preview/yugabyte-voyager/install-yb-voyager/) YugabyteDB Voyager on different operating systems such as RHEL, Ubuntu, macOS, or deploy it via Docker or Airgapped installations.
+You can [install](/stable/yugabyte-voyager/install-yb-voyager/) YugabyteDB Voyager on different operating systems such as RHEL, Ubuntu, macOS, or deploy it via Docker or Airgapped installations.
 
-In addition to [offline migration](/preview/yugabyte-voyager/migrate/migrate-steps/), the latest release of YugabyteDB Voyager introduces [live, non-disruptive migration](/preview/yugabyte-voyager/migrate/live-migrate/) from PostgreSQL, along with new live migration workflows featuring [fall-forward](/preview/yugabyte-voyager/migrate/live-fall-forward/) and [fall-back](/preview/yugabyte-voyager/migrate/live-fall-back/) capabilities.
+In addition to [offline migration](/stable/yugabyte-voyager/migrate/migrate-steps/), the latest release of YugabyteDB Voyager introduces [live, non-disruptive migration](/stable/yugabyte-voyager/migrate/live-migrate/) from PostgreSQL, along with new live migration workflows featuring [fall-forward](/stable/yugabyte-voyager/migrate/live-fall-forward/) and [fall-back](/stable/yugabyte-voyager/migrate/live-fall-back/) capabilities.
 
 Furthermore, Voyager previews a powerful migration assessment that scans existing applications and databases. This detailed assessment provides organizations with valuable insights into the readiness of their applications, data, and schema for migration, thereby accelerating modernization efforts.
 
 ## Next step
 
-[Explore YugabyteDB](/preview/explore/)
+[Explore YugabyteDB](/stable/explore/)

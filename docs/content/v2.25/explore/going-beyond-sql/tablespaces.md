@@ -5,7 +5,7 @@ linkTitle: Geo-placement
 description: Control the placement of data using tablespaces in YSQL
 headcontent: Control the placement of data using tablespaces
 menu:
-  v2.25
+  v2.25:
     identifier: going-beyond-sql-tablespaces
     parent: going-beyond-sql
     weight: 200

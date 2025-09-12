@@ -5,9 +5,9 @@ linkTitle: JSON support
 description: YCQL JSON Support in YugabyteDB.
 headcontent: Explore YugabyteDB YCQL support for JSON data
 aliases:
-  - /preview/develop/learn/data-types-ycql/
+  - /stable/develop/learn/data-types-ycql/
 menu:
-  v2.25
+  v2.25:
     name: JSON support
     identifier: explore-json-support-ycql
     parent: explore-ycql-language

@@ -3,12 +3,12 @@ title: TSLASTN
 linkTitle: TSLASTN
 description: TSLASTN
 menu:
-  v2.25
+  v2.25:
     parent: api-yedis
     weight: 2430
 aliases:
-  - /preview/api/redis/tslastn
-  - /preview/api/yedis/tslastn
+  - /stable/api/redis/tslastn
+  - /stable/api/yedis/tslastn
 type: docs
 ---
 

@@ -4,7 +4,7 @@ headerTitle: Monitor
 linkTitle: Monitor
 description: Monitor Change Data Capture in YugabyteDB.
 aliases:
-  - /preview/explore/change-data-capture/using-logical-replication/monitor/
+  - /stable/explore/change-data-capture/using-logical-replication/monitor/
 menu:
   preview:
     parent: explore-change-data-capture-logical-replication

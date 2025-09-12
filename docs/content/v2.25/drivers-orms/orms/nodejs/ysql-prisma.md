@@ -4,7 +4,7 @@ headerTitle: Node.js ORM example application
 linkTitle: Node.js
 description: Node.js ORM example application that uses Prisma and YSQL.
 menu:
-  v2.25
+  v2.25:
     identifier: nodejs-prisma
     parent: orm-tutorials
     weight: 700
@@ -32,13 +32,13 @@ The source for this application can be found in the [Using ORMs with YugabyteDB]
 
 {{< tip title="YugabyteDB Aeon requires SSL" >}}
 
-Are you using YugabyteDB Aeon? Install the [prerequisites](/preview/tutorials/build-apps/cloud-add-ip/).
+Are you using YugabyteDB Aeon? Install the [prerequisites](/stable/tutorials/build-apps/cloud-add-ip/).
 
 {{</ tip >}}
 
 ## Prerequisites
 
-This tutorial assumes that you have installed YugabyteDB and created a cluster. Refer to [Quick Start](/preview/quick-start/macos/).
+This tutorial assumes that you have installed YugabyteDB and created a cluster. Refer to [Quick Start](/stable/quick-start/macos/).
 
 ## Clone the orm-examples repository
 
@@ -93,7 +93,7 @@ DATABASE_URL="postgresql://<user>:<password>@<host>:<port>/<db_name>?ybServersRe
 
 If you have a YugabyteDB Aeon cluster, do the following:
 
-1. Download your [cluster certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
+1. Download your [cluster certificate](/stable/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 
 1. Install OpenSSL, if not present.
 

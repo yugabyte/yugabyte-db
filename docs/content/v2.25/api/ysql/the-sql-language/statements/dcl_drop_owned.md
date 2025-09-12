@@ -8,7 +8,7 @@ menu:
     identifier: dcl_drop_owned
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/dcl_drop_owned/
+  - /stable/api/ysql/commands/dcl_drop_owned/
 type: docs
 ---
 

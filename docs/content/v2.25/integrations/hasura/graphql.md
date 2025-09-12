@@ -3,7 +3,7 @@ title: Benchmarking
 linkTitle: Benchmarking
 description: Using the benchmark tool with Hasura
 aliases:
-  - /preview/develop/graphql
+  - /stable/develop/graphql
 menu:
   v2.25_integrations:
     identifier: graphql
@@ -24,7 +24,7 @@ For information on Hasura, see the following:
 
 Before using Hasura with YugabyteDB, perform the following:
 
-- Install and start YugabyteDB, as described in [Quick Start Guide](/preview/quick-start/macos/).
+- Install and start YugabyteDB, as described in [Quick Start Guide](/stable/quick-start/macos/).
 - Familiarize yourself with information on how to install and start Hasura on an existing database by reading [Run Hasura GraphQL Engine on Kubernetes](https://hasura.io/docs/latest/graphql/core/deployment/deployment-guides/kubernetes.html).
 
 To use Hasura with YugabyteDB, the configuration should be similar to PostgreSQL, except that the port should be `5433`.
@@ -131,7 +131,7 @@ Deploying the benchmark setup is a multi-step process that involves deployment o
 
 ### Deploy a YugabyteYB cluster
 
-- Follow instructions provided in [Deploy on Kubernetes](/preview/deploy/kubernetes/) to deploy a YugabyteYB cluster using Helm charts on Kubernetes.
+- Follow instructions provided in [Deploy on Kubernetes](/stable/deploy/kubernetes/) to deploy a YugabyteYB cluster using Helm charts on Kubernetes.
 
 - Ensure that your YugabyteDB cluster resources are 3 pods x 16 vCPU, 32GB RAM, and 2 x 100 GB SSD.
 

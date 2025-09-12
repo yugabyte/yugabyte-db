@@ -4,13 +4,13 @@ headerTitle: Azure Kubernetes Service (AKS)
 linkTitle: Azure Kubernetes Service (AKS)
 description: Use StatefulSet YAML to deploy a single-zone Kubernetes cluster on Azure Kubernetes Service (AKS).
 menu:
-  v2.25
+  v2.25:
     parent: deploy-kubernetes-sz
     name: Azure Kubernetes Service
     identifier: k8s-aks-2
     weight: 624
 aliases:
-  - /preview/deploy/kubernetes/aks/statefulset-yaml/
+  - /stable/deploy/kubernetes/aks/statefulset-yaml/
 type: docs
 ---
 

@@ -6,7 +6,7 @@ description: Connect a Java application using PostgreSQL JDBC driver
 tags:
   other: ysql
 menu:
-  v2.25
+  v2.25:
     identifier: java-driver-3-jdbc-postgres
     parent: java-drivers
     weight: 500
@@ -147,7 +147,7 @@ String yburl = "jdbc:postgresql://hostname:port/database?user=yugabyte&password=
 Connection conn = DriverManager.getConnection(yburl);
 ```
 
-If you created a cluster on YugabyteDB Aeon, use the cluster credentials and [download the SSL Root certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
+If you created a cluster on YugabyteDB Aeon, use the cluster credentials and [download the SSL Root certificate](/stable/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 
 ### Step 3: Write your application
 
@@ -224,4 +224,4 @@ If there is no output or you get an error, verify that the connection string in 
 ## Learn more
 
 - [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
-- [Develop Spring Boot applications using the YugabyteDB JDBC Driver](/preview/integrations/spring-framework/sdyb/)
+- [Develop Spring Boot applications using the YugabyteDB JDBC Driver](/stable/integrations/spring-framework/sdyb/)

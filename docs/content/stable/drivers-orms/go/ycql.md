@@ -4,7 +4,7 @@ headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Go application using YugabyteDB Go driver for YCQL
 aliases:
-  - /preview/tutorials/build-apps/go/cloud-ycql-go/
+  - /stable/tutorials/build-apps/go/cloud-ycql-go/
 menu:
   preview:
     identifier: go-4-yb-pgx-driver-ycql
@@ -47,7 +47,7 @@ To use the driver's partition-aware load balancing feature in a YugabyteDB Aeon 
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe and are able to interact with it using the YCQL shell. If not, follow these steps in [Quick start](/preview/quick-start/macos/).
+- installed YugabyteDB, created a universe and are able to interact with it using the YCQL shell. If not, follow these steps in [Quick start](/stable/quick-start/macos/).
 - installed Go version 1.13 or later.
 
 ## Install the Yugabyte Go Driver for YCQL

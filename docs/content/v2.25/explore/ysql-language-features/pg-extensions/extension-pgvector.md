@@ -4,7 +4,7 @@ headerTitle: pgvector extension
 linkTitle: pgvector
 description: Using the pgvector extension in YugabyteDB
 menu:
-  v2.25
+  v2.25:
     identifier: extension-pgvector
     parent: pg-extensions
     weight: 20
@@ -214,7 +214,7 @@ A higher `ef_construction` value provides faster recall at the cost of index bui
 
 ## Learn more
 
-- Tutorial: [Build and Learn](/preview/tutorials/build-and-learn/)
-- Tutorials: [Build scalable generative AI applications with YugabyteDB](/preview/tutorials/ai/)
+- Tutorial: [Build and Learn](/stable/tutorials/build-and-learn/)
+- Tutorials: [Build scalable generative AI applications with YugabyteDB](/stable/tutorials/ai/)
 - [PostgreSQL pgvector: Getting Started and Scaling](https://www.yugabyte.com/blog/postgresql-pgvector-getting-started/)
 - [Multimodal Search with PostgreSQL pgvector](https://www.yugabyte.com/blog/postgresql-pgvector-multimodal-search/)

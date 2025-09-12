@@ -8,7 +8,7 @@ menu:
     identifier: dcl_drop_role
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/dcl_drop_role/
+  - /stable/api/ysql/commands/dcl_drop_role/
 type: docs
 ---
 

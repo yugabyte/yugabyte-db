@@ -260,7 +260,7 @@ If these defaults are used for both TServer and master, then a node's available 
 | Postgres % | 25% | 27% | 28% | 27% |
 | other %    | 10% | 10% |  5% |  3% |
 
-To read this table, take your node's available memory in GiB, call it _M_, and find the column who's heading condition _M_ meets.  For example, a node with 7 GiB of available memory would fall under the column labeled "4 < _M_ &le; 8" because 4 < 7 &le; 8.  The defaults for [`--default_memory_limit_to_ram_ratio`](#default-memory-limit-to-ram-ratio) on this node will thus be `0.48` for TServers and `0.15` for masters. The Postgres and other percentages are not set via a flag currently but rather consist of whatever memory is left after TServer and master take their cut.  There is currently no distinction between Postgres and other memory except on [YugabyteDB Aeon](/preview/yugabyte-cloud/) where a [cgroup](https://www.cybertec-postgresql.com/en/linux-cgroups-for-postgresql/) is used to limit the Postgres memory.
+To read this table, take your node's available memory in GiB, call it _M_, and find the column who's heading condition _M_ meets.  For example, a node with 7 GiB of available memory would fall under the column labeled "4 < _M_ &le; 8" because 4 < 7 &le; 8.  The defaults for [`--default_memory_limit_to_ram_ratio`](#default-memory-limit-to-ram-ratio) on this node will thus be `0.48` for TServers and `0.15` for masters. The Postgres and other percentages are not set via a flag currently but rather consist of whatever memory is left after TServer and master take their cut.  There is currently no distinction between Postgres and other memory except on [YugabyteDB Aeon](/stable/yugabyte-cloud/) where a [cgroup](https://www.cybertec-postgresql.com/en/linux-cgroups-for-postgresql/) is used to limit the Postgres memory.
 
 For comparison, when `--use_memory_defaults_optimized_for_ysql` is `false`, the split is TServer 85%, master 10%, Postgres 0%, and other 5%.
 
@@ -790,7 +790,7 @@ Valid values: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, and `READ UNC
 
 Default: `READ COMMITTED` {{<tags/feature/ea>}}
 
-Read Committed support is currently in [Early Access](/preview/releases/versioning/#feature-maturity). [Read Committed Isolation](../../../explore/transactions/isolation-levels/) is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
+Read Committed support is currently in [Early Access](/stable/releases/versioning/#feature-maturity). [Read Committed Isolation](../../../explore/transactions/isolation-levels/) is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
 
 ##### --yb_enable_read_committed_isolation
 
@@ -1209,7 +1209,7 @@ Default: `0`
 
 ##### --ycql_enable_packed_row
 
-YCQL packed row support is currently in [Tech Preview](/preview/releases/versioning/#feature-maturity).
+YCQL packed row support is currently in [Tech Preview](/stable/releases/versioning/#feature-maturity).
 
 Whether packed row is enabled for YCQL.
 
@@ -1227,7 +1227,7 @@ To learn about CDC, see [Change data capture (CDC)](../../../additional-features
 
 ##### --yb_enable_cdc_consistent_snapshot_streams
 
-Support for creating a stream for Transactional CDC is currently in [Tech Preview](/preview/releases/versioning/#feature-maturity).
+Support for creating a stream for Transactional CDC is currently in [Tech Preview](/stable/releases/versioning/#feature-maturity).
 
 Enable support for creating streams for transactional CDC.
 
@@ -1647,7 +1647,7 @@ Default: 128
 
 ##### --allowed_preview_flags_csv
 
-Comma-separated values (CSV) formatted catalogue of [preview feature](/preview/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
+Comma-separated values (CSV) formatted catalogue of [preview feature](/stable/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
 
 By adding a flag to this list, you explicitly acknowledge and accept any potential risks or instability that may arise from modifying these preview features. This process serves as a safeguard, ensuring that you are fully aware of the experimental nature of the flags you are working with.
 

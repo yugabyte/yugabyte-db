@@ -18,14 +18,14 @@ Budibase integrates with other tools and services, making it easier to connect y
 ## Setup
 
 - Set up Budibase using either the [cloud](https://account.budibase.app/) or the [self-hosted options](https://docs.budibase.com/docs/hosting-methods).
-- Set up your YugabyteDB cluster by following the instructions at [YugabyteDB Prerequisites](/preview/integrations/tools/#yugabytedb-prerequisites).
+- Set up your YugabyteDB cluster by following the instructions at [YugabyteDB Prerequisites](/stable/integrations/tools/#yugabytedb-prerequisites).
 
 ## Connect Budibase to YugabyteDB
 
 1. Sign in to Budibase and set up a new application either from scratch via **Create new app** or by choosing one from the existing templates.
 1. On the **Data** tab, click on the **+ (plus)** icon to add a new data source.
 1. From the list of data sources, select **PostgreSQL**.
-1. Enter the [connection parameters](/preview/integrations/tools/#connection-parameters) (host information and database credentials) for your YugabyteDB cluster.
+1. Enter the [connection parameters](/stable/integrations/tools/#connection-parameters) (host information and database credentials) for your YugabyteDB cluster.
 
 You are all set to use data from YugabyteDB in your Budibase application.
 

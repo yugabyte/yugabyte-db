@@ -15,7 +15,7 @@ type: docs
 {{< page-finder/head text="Point-in-time recovery" subtle="across different products">}}
   {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" url="../../../manage/backup-restore/point-in-time-recovery/" >}}
   {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" current="" >}}
-  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/preview/yugabyte-cloud/cloud-clusters/aeon-pitr/" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/stable/yugabyte-cloud/cloud-clusters/aeon-pitr/" >}}
 {{< /page-finder/head >}}
 
 To prevent data loss, YugabyteDB Anywhere supports point-in-time recovery (PITR) of the universe data. When enabled for a database or keyspace, YugabyteDB Anywhere takes a snapshot of the data once a day. Each snapshot maintains a continuous change history. You can then recover to a specific point in time in a snapshot.

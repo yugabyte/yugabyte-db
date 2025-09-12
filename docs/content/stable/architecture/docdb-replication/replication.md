@@ -5,7 +5,7 @@ linkTitle: Synchronous
 description: Learn how YugabyteDB uses the Raft consensus in DocDB to replicate data across multiple independent fault domains like nodes, zones, regions, and clouds.
 headContent: Synchronous replication using the Raft consensus protocol
 aliases:
-  - /preview/architecture/concepts/docdb/replication/
+  - /stable/architecture/concepts/docdb/replication/
 menu:
   preview:
     identifier: architecture-docdb-replication-default

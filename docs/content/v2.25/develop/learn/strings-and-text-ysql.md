@@ -5,9 +5,9 @@ linkTitle: Strings and text
 description: Learn how to work with string and text data types in YSQL.
 aliases:
   - /develop/learn/strings-and-text/
-  - /preview/develop/learn/strings-and-text/
+  - /stable/develop/learn/strings-and-text/
 menu:
-  v2.25
+  v2.25:
     identifier: strings-and-text-1-ysql
     parent: learn
     weight: 570
@@ -28,7 +28,7 @@ With PostgreSQL, the use of different character data types has a historical aspe
 
 If you use char(n), character(n), or varchar(n), then the limitation will be the number you assign, which cannot exceed 10,485,760. For unlimited length, use a character data type without a length description, such as 'text'. However, if you have specific requirements to ignore trailing spaces, then you may wish to consider using char(n).
 
-For more information on character data types, refer to [Data types](/preview/api/ysql/datatypes/). Note that YugabyteDB implements the data type aliases and that is what is used here.
+For more information on character data types, refer to [Data types](/stable/api/ysql/datatypes/). Note that YugabyteDB implements the data type aliases and that is what is used here.
 
 The following example shows a few ways to work with different data types:
 

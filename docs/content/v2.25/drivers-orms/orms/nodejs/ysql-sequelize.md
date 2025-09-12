@@ -4,7 +4,7 @@ headerTitle: Node.js ORM example application
 linkTitle: Node.js
 description: Node.js ORM example application that uses Sequelize and YSQL.
 menu:
-  v2.25
+  v2.25:
     identifier: nodejs-sequelize
     parent: orm-tutorials
     weight: 690
@@ -34,7 +34,7 @@ The application source is in the [repository](https://github.com/yugabyte/orm-ex
 
 This tutorial assumes that you have:
 
-- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/preview/quick-start/macos/).
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/stable/quick-start/macos/).
 - [node.js](https://nodejs.org/en/) version 16 or later.
 
 ## Clone the orm-examples repository

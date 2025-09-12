@@ -5,7 +5,7 @@ linkTitle: Isolation levels
 description: Isolation Levels in YugabyteDB.
 headcontent: Serializable, Snapshot, and Read committed isolation in YugabyteDB
 menu:
-  v2.25
+  v2.25:
     name: Isolation levels
     identifier: explore-transactions-isolation-levels-1-ysql
     parent: explore-transactions

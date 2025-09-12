@@ -9,7 +9,7 @@ menu:
     identifier: txn_show
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/txn_show/
+  - /stable/api/ysql/commands/txn_show/
 type: docs
 ---
 

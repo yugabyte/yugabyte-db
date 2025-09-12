@@ -4,7 +4,7 @@ headerTitle: Build a C++ application
 description: Build a small C++ application using the libpqxx driver and using the YSQL API to connect to and interact with a YugabyteDB Aeon cluster.
 headContent: "Client driver: libpqxx"
 aliases:
-  - /preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-cpp/
+  - /stable/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-cpp/
 menu:
   preview_tutorials:
     parent: build-apps

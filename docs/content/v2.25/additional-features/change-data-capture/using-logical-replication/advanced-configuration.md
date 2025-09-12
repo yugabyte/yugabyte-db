@@ -5,9 +5,9 @@ linkTitle: Advanced configuration
 description: Advanced Configurations for Logical Replication.
 headcontent: Tune your CDC configuration
 aliases:
-  - /preview/explore/change-data-capture/using-logical-replication/advanced-configuration/
+  - /stable/explore/change-data-capture/using-logical-replication/advanced-configuration/
 menu:
-  v2.25
+  v2.25:
     parent: explore-change-data-capture-logical-replication
     identifier: advanced-configurations
     weight: 40

@@ -5,7 +5,7 @@ linkTitle: Node failures
 description: Simulate fault tolerance and resilience in a local YugabyteDB database.
 headcontent: Keep serving requests through node failures
 menu:
-  v2.25
+  v2.25:
     identifier: node-failure-1-macos
     parent: fault-tolerance
     weight: 10

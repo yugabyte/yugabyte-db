@@ -8,7 +8,7 @@ menu:
     identifier: api-ysql-datatypes-uuid
     parent: api-ysql-datatypes
 aliases:
-  - /preview/api/ysql/datatypes/type_uuid
+  - /stable/api/ysql/datatypes/type_uuid
 type: docs
 ---
 

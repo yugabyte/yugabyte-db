@@ -5,10 +5,10 @@ linkTitle: DocDB - Storage layer
 description: Learn about the persistent storage layer of DocDB.
 aliases:
   - /architecture/concepts/docdb/
-  - /preview/docdb/persistence/
+  - /stable/docdb/persistence/
 headcontent: The document store responsible for transactions, sharding, replication, and persistence
 menu:
-  v2.25
+  v2.25:
     identifier: docdb
     parent: architecture
     weight: 600

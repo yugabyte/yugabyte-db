@@ -4,7 +4,7 @@ headerTitle: yb-docker-ctl
 linkTitle: yb-docker-ctl
 description: Use the yb-docker-ctl command line tool to administer local Docker-based YugabyteDB clusters for development and learning.
 menu:
-  v2.25
+  v2.25:
     identifier: yb-docker-ctl
     parent: admin
     weight: 100
@@ -13,7 +13,7 @@ type: docs
 
 {{< warning title="yb-docker-ctl is deprecated" >}}
 
-yb-docker-ctl is no longer maintained. The recommended method to run YugabyteDB in Docker is to use [yugabyted](../../reference/configuration/yugabyted/#create-a-multi-region-cluster-in-docker). For more information, see the [Quick Start](/preview/quick-start/docker/).
+yb-docker-ctl is no longer maintained. The recommended method to run YugabyteDB in Docker is to use [yugabyted](../../reference/configuration/yugabyted/#create-a-multi-region-cluster-in-docker). For more information, see the [Quick Start](/stable/quick-start/docker/).
 
 {{< /warning >}}
 

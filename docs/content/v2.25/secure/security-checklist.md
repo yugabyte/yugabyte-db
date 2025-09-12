@@ -7,7 +7,7 @@ headcontent: Take measures to protect your YugabyteDB installation
 aliases:
   - /secure/security-checklist/
 menu:
-  v2.25
+  v2.25:
     identifier: security-checklist
     parent: secure
     weight: 710

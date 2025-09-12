@@ -4,7 +4,7 @@ headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a node.js application using node-postgres Driver
 menu:
-  v2.25
+  v2.25:
     identifier: node-driver-2-postgres
     parent: nodejs-drivers
     weight: 500
@@ -115,7 +115,7 @@ const config = {
 }
 ```
 
-If you created a cluster on YugabyteDB Aeon, use the cluster credentials and [download the SSL Root certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
+If you created a cluster on YugabyteDB Aeon, use the cluster credentials and [download the SSL Root certificate](/stable/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 
 Refer to [Configure SSL/TLS](../postgres-pg-reference/#configure-ssl-tls) for more information on node-postgresql default and supported SSL modes, and other examples for setting up your connection strings when using SSL.
 

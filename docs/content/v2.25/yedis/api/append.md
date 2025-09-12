@@ -3,12 +3,12 @@ title: APPEND
 linkTitle: APPEND
 description: APPEND
 menu:
-  v2.25
+  v2.25:
     parent: api-yedis
     weight: 2010
 aliases:
-  - /preview/api/redis/append
-  - /preview/api/yedis/append
+  - /stable/api/redis/append
+  - /stable/api/yedis/append
 type: docs
 ---
 

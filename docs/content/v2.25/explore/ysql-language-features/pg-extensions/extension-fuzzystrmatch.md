@@ -4,7 +4,7 @@ headerTitle: fuzzystrmatch extension
 linkTitle: fuzzystrmatch
 description: Using the fuzzystrmatch extension in YugabyteDB
 menu:
-  v2.25
+  v2.25:
     identifier: extension-fuzzystrmatch
     parent: pg-extensions
     weight: 20

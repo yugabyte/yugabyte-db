@@ -6,7 +6,7 @@ description: Contribute to the core database
 image: fa-thin fa-rectangle-terminal
 headcontent: How to contribute code to the core database
 menu:
-  v2.25
+  v2.25:
     identifier: core-database
     parent: contribute
     weight: 2910

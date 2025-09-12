@@ -5,9 +5,9 @@ linkTitle: Use an ORM
 description: C# Entity Framework support for YugabyteDB
 headcontent: C# ORM support for YugabyteDB
 aliases:
-  - /preview/integrations/entity-framework/
+  - /stable/integrations/entity-framework/
 menu:
-  v2.25
+  v2.25:
     identifier: csharp-orm
     parent: csharp-drivers
     weight: 600

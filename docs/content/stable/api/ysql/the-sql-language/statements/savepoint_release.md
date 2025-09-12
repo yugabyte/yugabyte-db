@@ -8,7 +8,7 @@ menu:
     identifier: savepoint_release
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/savepoint_release/
+  - /stable/api/ysql/commands/savepoint_release/
 type: docs
 ---
 

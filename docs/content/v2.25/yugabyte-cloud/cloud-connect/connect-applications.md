@@ -4,8 +4,8 @@ linkTitle: Connect applications
 description: Connect applications to YugabyteDB Aeon clusters
 headcontent: Get the database connection parameters for your application
 aliases:
-  - /preview/yugabyte-cloud/cloud-examples/
-  - /preview/yugabyte-cloud/cloud-examples/connect-application/
+  - /stable/yugabyte-cloud/cloud-examples/
+  - /stable/yugabyte-cloud/cloud-examples/connect-application/
 menu:
   v2.25_yugabyte-cloud:
     identifier: connect-applications
@@ -16,7 +16,7 @@ type: docs
 
 Applications connect to and interact with YugabyteDB using API client libraries, also known as client drivers. Because the YugabyteDB YSQL API is PostgreSQL-compatible, and the YCQL API has roots in the Apache Cassandra CQL, YugabyteDB supports many third-party drivers. YugabyteDB also supports [smart drivers](../../../drivers-orms/smart-drivers/), which extend PostgreSQL drivers to enable client applications to connect to YugabyteDB clusters without the need for external load balancers.
 
-To connect to a YugabyteDB Aeon cluster, you need to add the [cluster connection parameters](#get-the-cluster-connection-parameters) to your application code. How you update the application depends on the driver you are using. For examples of applications that connect to YugabyteDB Aeon using common drivers, refer to [Build an application](/preview/tutorials/build-apps/).
+To connect to a YugabyteDB Aeon cluster, you need to add the [cluster connection parameters](#get-the-cluster-connection-parameters) to your application code. How you update the application depends on the driver you are using. For examples of applications that connect to YugabyteDB Aeon using common drivers, refer to [Build an application](/stable/tutorials/build-apps/).
 
 You may want to add a database user specifically for your application. Refer to [Add database users](../../cloud-secure-clusters/add-users/).
 
@@ -127,9 +127,9 @@ To connect your application, do the following:
 
 {{< /tabpane >}}
 
-For examples of applications you can build and connect to YugabyteDB Aeon using a variety of drivers, refer to [Build an application](/preview/tutorials/build-apps/).
+For examples of applications you can build and connect to YugabyteDB Aeon using a variety of drivers, refer to [Build an application](/stable/tutorials/build-apps/).
 
 ## Learn more
 
 - [Add database users](../../cloud-secure-clusters/add-users/)
-- [Build an application](/preview/tutorials/build-apps/)
+- [Build an application](/stable/tutorials/build-apps/)

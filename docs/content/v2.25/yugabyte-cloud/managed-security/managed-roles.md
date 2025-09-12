@@ -5,7 +5,7 @@ linkTitle: Manage account roles
 description: Manage user roles using RBAC in YugabyteDB Aeon accounts.
 headcontent: Create custom roles for team members
 aliases:
-  - /preview/yugabyte-cloud/cloud-admin/managed-roles/
+  - /stable/yugabyte-cloud/cloud-admin/managed-roles/
 menu:
   v2.25_yugabyte-cloud:
     identifier: managed-roles

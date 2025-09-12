@@ -5,10 +5,10 @@ linkTitle: Transactional
 description: Deploy using transactional xCluster replication between universes
 headContent: Deploy transactional xCluster replication
 aliases:
-  - /preview/deploy/multi-dc/async-replication-transactional/
-  - /preview/deploy/multi-dc/async-replication/async-transactional-setup/
+  - /stable/deploy/multi-dc/async-replication-transactional/
+  - /stable/deploy/multi-dc/async-replication/async-transactional-setup/
 menu:
-  v2.25
+  v2.25:
     parent: async-replication
     identifier: async-replication-transactional
     weight: 10

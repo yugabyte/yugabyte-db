@@ -8,7 +8,7 @@ menu:
     identifier: ddl_alter_index
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/ddl_alter_index/
+  - /stable/api/ysql/commands/ddl_alter_index/
 type: docs
 ---
 

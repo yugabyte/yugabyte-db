@@ -4,7 +4,7 @@ linkTitle: Supported Versions
 description: Supported Versions for NodeJS Drivers, ORMs and AppDev Frameworks
 headcontent: Supported Versions for NodeJS Drivers, ORMs and AppDev Frameworks
 menu:
-  v2.25
+  v2.25:
     identifier: nodejs-compatibility
     parent: nodejs-drivers
     weight: 800

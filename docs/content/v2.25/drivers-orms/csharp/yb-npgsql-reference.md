@@ -6,10 +6,10 @@ description: C# Npgsql Smart Driver for YSQL
 tags:
   other: ysql
 aliases:
-  - /preview/reference/drivers/csharp/
-  - /preview/reference/drivers/csharp/yb-npgsql-reference/
+  - /stable/reference/drivers/csharp/
+  - /stable/reference/drivers/csharp/yb-npgsql-reference/
 menu:
-  v2.25
+  v2.25:
     name: C# Drivers
     identifier: ref-1-yb-npgsql-driver
     parent: csharp-drivers

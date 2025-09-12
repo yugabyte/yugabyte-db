@@ -7,7 +7,7 @@ menu:
     parent: api-yedis
     weight: 2036
 aliases:
-  - /preview/api/yedis/listdb
+  - /stable/api/yedis/listdb
 type: docs
 ---
 

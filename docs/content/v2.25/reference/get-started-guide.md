@@ -5,7 +5,7 @@ linkTitle: Resource guide
 description: Find resources for getting started with YugabyteDB.
 headcontent: Learn more about YugabyteDB with blogs, videos, and more
 menu:
-  v2.25
+  v2.25:
     identifier: get-started-guide
     parent: reference
     weight: 2600
@@ -88,7 +88,7 @@ Find resources for getting started, migrating existing databases, using your dat
 [Get started using Docker](https://github.com/FranckPachot/yugabyted-Compose)
 : Use Docker compose to start YugabyteDB with [yugabyted](../../reference/configuration/yugabyted/).
 
-[Create Global Applications](/preview/yugabyte-cloud/managed-labs/)
+[Create Global Applications](/stable/yugabyte-cloud/managed-labs/)
 : Test YugabyteDB features using a demo application in real time.
 
 [Start a multi-node cluster with Yugabyted](../../reference/configuration/yugabyted/#create-a-local-multi-node-cluster)
@@ -118,7 +118,7 @@ Find resources for getting started, migrating existing databases, using your dat
 [Global Applications with YugabyteDB](https://www.youtube.com/watch?v=jqZxUydBaMQ)
 : Explore how to design and build global applications with YugabyteDB.
 
-[Hello world](/preview/tutorials/build-apps/)
+[Hello world](/stable/tutorials/build-apps/)
 : Use your favorite programming language to build an application that uses YSQL or YCQL APIs.
 
 [Distributed PostgreSQL Essentials for Developers: Hands-on Course](https://www.youtube.com/watch?v=rqJBFQ-4Hgk)
@@ -154,7 +154,7 @@ Find resources for getting started, migrating existing databases, using your dat
 [EXPLAIN (ANALYZE, DIST) YugabyteDB distributed execution plan](https://dev.to/franckpachot/explain-analyze-dist-4nlc)
 : Use EXPLAIN (ANALYZE, DIST) in YugabyteDB to analyze distributed execution plans.
 
-[Query Tuning How To](/preview/explore/query-1-performance/)
+[Query Tuning How To](/stable/explore/query-1-performance/)
 : Optimize query performance in YugabyteDB, using indexing, query tuning, and tools like EXPLAIN to analyze and improve distributed query execution.
 
 [YugabyteDB Memory Tuning for YSQL](https://www.yugabyte.com/blog/optimizing-yugabytedb-memory-tuning-for-ysql/)

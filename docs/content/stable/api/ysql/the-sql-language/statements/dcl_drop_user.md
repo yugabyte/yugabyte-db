@@ -8,7 +8,7 @@ menu:
     identifier: dcl_drop_user
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/dcl_drop_user/
+  - /stable/api/ysql/commands/dcl_drop_user/
 type: docs
 ---
 

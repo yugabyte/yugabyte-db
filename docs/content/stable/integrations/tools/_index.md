@@ -6,8 +6,8 @@ description: Interactive third party clients that you can use with YugabyteDB.
 headcontent: Use popular third party clients with YugabyteDB
 aliases:
   - /develop/tools/
-  - /preview/develop/tools/
-  - /preview/tools/
+  - /stable/develop/tools/
+  - /stable/tools/
 type: indexpage
 showRightNav: true
 cascade:
@@ -82,12 +82,12 @@ Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can use thir
 
 To use these tools with YugabyteDB, you should have a cluster up and running, and you will need to know the connection parameters required by the client to connect to your cluster.
 
-To create a local cluster, follow the steps in [Quick start](/preview/quick-start/macos/).
+To create a local cluster, follow the steps in [Quick start](/stable/quick-start/macos/).
 
-To create a cluster in YugabyteDB Aeon, follow the steps in [Create a cluster](/preview/yugabyte-cloud/cloud-quickstart/). In addition, do the following:
+To create a cluster in YugabyteDB Aeon, follow the steps in [Create a cluster](/stable/yugabyte-cloud/cloud-quickstart/). In addition, do the following:
 
-- [Download the cluster certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate); YugabyteDB Aeon requires the use of TLS
-- [Add your computer to the cluster IP allow list](/preview/yugabyte-cloud/cloud-secure-clusters/add-connections/); this allows your computer to access the cluster
+- [Download the cluster certificate](/stable/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate); YugabyteDB Aeon requires the use of TLS
+- [Add your computer to the cluster IP allow list](/stable/yugabyte-cloud/cloud-secure-clusters/add-connections/); this allows your computer to access the cluster
 
 ## Connection parameters
 

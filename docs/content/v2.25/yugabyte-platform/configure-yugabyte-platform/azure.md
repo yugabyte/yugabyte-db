@@ -5,7 +5,7 @@ linkTitle: Cloud providers
 description: Configure the Microsoft Azure provider configuration
 headContent: For deploying universes on Azure
 aliases:
-  - /preview/deploy/enterprise-edition/configure-cloud-providers/azure
+  - /stable/deploy/enterprise-edition/configure-cloud-providers/azure
 menu:
   v2.25_yugabyte-platform:
     identifier: set-up-cloud-provider-3-azure

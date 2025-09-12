@@ -6,7 +6,7 @@ description: Learn how to recover failing disk
 aliases:
   - /troubleshoot/nodes/disk-failure/
 menu:
-  v2.25
+  v2.25:
     parent: troubleshoot-nodes
     weight: 40
 type: docs

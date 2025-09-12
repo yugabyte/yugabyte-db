@@ -8,7 +8,7 @@ menu:
     identifier: perf_deallocate
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/perf_deallocate/
+  - /stable/api/ysql/commands/perf_deallocate/
 type: docs
 ---
 

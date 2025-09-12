@@ -3,12 +3,12 @@ title: SET
 linkTitle: SET
 description: SET
 menu:
-  v2.25
+  v2.25:
     parent: api-yedis
     weight: 2270
 aliases:
-  - /preview/api/redis/set
-  - /preview/api/yedis/set
+  - /stable/api/redis/set
+  - /stable/api/yedis/set
 type: docs
 ---
 

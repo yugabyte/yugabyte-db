@@ -3,12 +3,12 @@ title: EXISTS
 linkTitle: EXISTS
 description: EXISTS
 menu:
-  v2.25
+  v2.25:
     parent: api-yedis
     weight: 2060
 aliases:
-  - /preview/api/redis/exist
-  - /preview/api/yedis/exist
+  - /stable/api/redis/exist
+  - /stable/api/yedis/exist
 type: docs
 ---
 Single-key request only. Requests with multiple keys are not yet supported.

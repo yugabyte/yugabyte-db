@@ -5,7 +5,7 @@ linkTitle: Use an ORM
 description: C# Entity Framework support for YugabyteDB
 headcontent: C# ORM support for YugabyteDB
 aliases:
-  - /preview/integrations/entity-framework/
+  - /stable/integrations/entity-framework/
 menu:
   preview:
     identifier: csharp-orm

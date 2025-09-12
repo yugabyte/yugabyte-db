@@ -5,7 +5,7 @@ linkTitle: Use an ORM
 description: Java Ebean ORM support for YugabyteDB
 headcontent: Java ORM support for YugabyteDB
 menu:
-  v2.25
+  v2.25:
     identifier: java-orm-ebean
     parent: java-drivers
     weight: 600

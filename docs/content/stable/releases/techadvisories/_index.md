@@ -63,13 +63,13 @@ It is strongly recommended that you take appropriate measures as outlined in the
 |
 | {{<ta 25193>}}
 | Logical Replication CDC may fail to stream UPDATE or DELETE changes correctly when using FULL_ROW_NEW_IMAGE, MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES, or DEFAULT Replica Identity with CDC lag
-| [CDC](/preview/additional-features/change-data-capture/)
+| [CDC](/stable/additional-features/change-data-capture/)
 | {{<release "2.20, 2024.1, 2024.2">}}
 | {{<nobreak "10 January 2025">}}
 |
 | {{<ta 24992>}}
 |Partial Streaming Stall After Tablet Split
-| [YugabyteDB gRPC (Debezium) Connector](/preview/additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/)
+| [YugabyteDB gRPC (Debezium) Connector](/stable/additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/)
 | [dz.1.9.5.yb.grpc.2024.1](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/tag/vdz.1.9.5.yb.grpc.2024.1)
 | {{<nobreak "3 December 2024">}}
 |
@@ -88,13 +88,13 @@ It is strongly recommended that you take appropriate measures as outlined in the
 | {{<ta 22935>}}
 |Potential issues with server-side sequence caching in multi-database clusters
 | {{<product "ysql">}}
-| [v2.18.0.0](/preview/releases/ybdb-releases/end-of-life/v2.18/#v2.18.0.0), {{<release "2.20.0.0, 2024.1.0.0">}}
+| [v2.18.0.0](/stable/releases/ybdb-releases/end-of-life/v2.18/#v2.18.0.0), {{<release "2.20.0.0, 2024.1.0.0">}}
 | {{<nobreak "25 June 2024">}}
 |
 | {{<ta 22802>}}
 |Inconsistencies between system catalog and DocDB schema during DDL operations
 | {{<product "ysql">}}
-| [v2.14.0.0](/preview/releases/ybdb-releases/end-of-life/v2.14/#v2.14.0.0), [v2.16.0.0](/preview/releases/ybdb-releases/end-of-life/v2.16/#v2.16.0.0), [v2.18.0.0](/preview/releases/ybdb-releases/end-of-life/v2.18/#v2.18.0.0), {{<release "2.20.0.0">}}
+| [v2.14.0.0](/stable/releases/ybdb-releases/end-of-life/v2.14/#v2.14.0.0), [v2.16.0.0](/stable/releases/ybdb-releases/end-of-life/v2.16/#v2.16.0.0), [v2.18.0.0](/stable/releases/ybdb-releases/end-of-life/v2.18/#v2.18.0.0), {{<release "2.20.0.0">}}
 | {{<nobreak "11 June 2024">}}
 |
 | {{<ta 22057>}}
@@ -118,7 +118,7 @@ It is strongly recommended that you take appropriate measures as outlined in the
 | {{<ta 21491>}}
 |Failure of upgrades to release versions 2.18 and 2.20
 | {{<product "ybdb,yba">}}
-| [v2.18](/preview/releases/ybdb-releases/end-of-life/v2.18/#v2.18.0.0), {{<release "2.20">}}
+| [v2.18](/stable/releases/ybdb-releases/end-of-life/v2.18/#v2.18.0.0), {{<release "2.20">}}
 | {{<nobreak "19 Mar 2024">}}
 |
 | {{<ta 21218>}}

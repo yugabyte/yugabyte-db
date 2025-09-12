@@ -4,7 +4,7 @@ headerTitle: Distributed snapshots for YSQL
 linkTitle: Distributed snapshots
 description: Distributed snapshots for YSQL.
 menu:
-  v2.25
+  v2.25:
     identifier: snapshots-1-ysql
     parent: backup-restore
     weight: 704

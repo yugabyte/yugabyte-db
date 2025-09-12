@@ -667,7 +667,7 @@ Valid values: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, and `READ UNC
 
 Default: `READ COMMITTED`<sup>$</sup>
 
-<sup>$</sup> Read Committed support is currently in [Early Access](/preview/releases/versioning/#feature-availability). Read Committed Isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
+<sup>$</sup> Read Committed support is currently in [Early Access](/stable/releases/versioning/#feature-availability). Read Committed Isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
 
 ##### --ysql_sequence_cache_method
 
@@ -1083,7 +1083,7 @@ Default: `0`
 
 ##### --ycql_enable_packed_row
 
-YCQL packed row support is currently in [Tech Preview](/preview/releases/versioning/#feature-maturity).
+YCQL packed row support is currently in [Tech Preview](/stable/releases/versioning/#feature-maturity).
 
 Whether packed row is enabled for YCQL.
 
@@ -1107,7 +1107,7 @@ To learn about CDC, see [Change data capture (CDC)](../../../architecture/docdb-
 
 ##### --yb_enable_cdc_consistent_snapshot_streams
 
-Support for creating a stream for Transactional CDC is currently in [Tech Preview](/preview/releases/versioning/#feature-maturity).
+Support for creating a stream for Transactional CDC is currently in [Tech Preview](/stable/releases/versioning/#feature-maturity).
 
 Enable support for creating streams for transactional CDC.
 
@@ -1339,7 +1339,7 @@ Default: 128
 
 ##### --allowed_preview_flags_csv
 
-Comma-separated values (CSV) formatted catalogue of [preview feature](/preview/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
+Comma-separated values (CSV) formatted catalogue of [preview feature](/stable/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
 
 By adding a flag to this list, you explicitly acknowledge and accept any potential risks or instability that may arise from modifying these preview features. This process serves as a safeguard, ensuring that you are fully aware of the experimental nature of the flags you are working with.
 

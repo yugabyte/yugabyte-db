@@ -4,7 +4,7 @@ headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Python application using YugabyteDB Psycopg2 Smart Driver for YSQL
 menu:
-  v2.25
+  v2.25:
     identifier: yugabyte-psycopg2-driver
     parent: python-drivers
     weight: 500
@@ -194,7 +194,7 @@ The following is an example for connecting to a YugabyteDB cluster with SSL enab
 conn = psycopg2.connect("host=<hostname> port=5433 dbname=yugabyte user=<username> password=<password> load_balance=true sslmode=verify-full sslrootcert=/path/to/root.crt")
 ```
 
-The Yugabyte Psycopg2 smart driver does not support SSL mode verify-full for clusters in YugabyteDB Aeon. Use verify-ca or the upstream psycopg2 driver. If your cluster is on YugabyteDB Aeon, use the cluster credentials for user and password, and [download the SSL Root certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
+The Yugabyte Psycopg2 smart driver does not support SSL mode verify-full for clusters in YugabyteDB Aeon. Use verify-ca or the upstream psycopg2 driver. If your cluster is on YugabyteDB Aeon, use the cluster credentials for user and password, and [download the SSL Root certificate](/stable/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 
 ### Step 3: Write your application
 

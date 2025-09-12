@@ -4,7 +4,7 @@ headerTitle: Ruby
 linkTitle: Ruby
 description: Ruby Drivers and ORMs support for YugabyteDB.
 menu:
-  v2.25
+  v2.25:
     identifier: ruby-drivers
     parent: drivers-orms
     weight: 580
@@ -36,8 +36,8 @@ To develop Ruby applications for YugabyteDB, you need the following:
   - Install [Ruby](https://www.ruby-lang.org/en/documentation/installation/) 2.7.0 or later. Verify the ruby version using `ruby -v`.
 
 - **YugabyteDB cluster**
-  - Create a free cluster on YugabyteDB Aeon. Refer to [Use a cloud cluster](/preview/quick-start-yugabytedb-managed/). Note that YugabyteDB Aeon requires SSL.
-  - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/preview/quick-start/macos/).
+  - Create a free cluster on YugabyteDB Aeon. Refer to [Use a cloud cluster](/stable/quick-start-yugabytedb-managed/). Note that YugabyteDB Aeon requires SSL.
+  - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/stable/quick-start/macos/).
 
 ## Next step
 

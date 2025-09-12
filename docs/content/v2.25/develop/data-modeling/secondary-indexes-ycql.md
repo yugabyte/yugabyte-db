@@ -5,7 +5,7 @@ linkTitle: Secondary indexes
 tags:
   other: ycql
 menu:
-  v2.25
+  v2.25:
     identifier: data-modeling-indexes-ycql
     parent: data-modeling
     weight: 200

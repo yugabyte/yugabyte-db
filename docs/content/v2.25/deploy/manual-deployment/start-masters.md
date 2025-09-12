@@ -4,9 +4,9 @@ headerTitle: 3. Deploy
 linkTitle: 3. Deploy
 description: How to manually start the YB-Masters Server service for your YugabyteDB database cluster.
 aliases:
-  - /preview/deploy/manual-deployment/start-tservers/
+  - /stable/deploy/manual-deployment/start-tservers/
 menu:
-  v2.25
+  v2.25:
     identifier: deploy-2-manual
     parent: deploy-manual-deployment
     weight: 613

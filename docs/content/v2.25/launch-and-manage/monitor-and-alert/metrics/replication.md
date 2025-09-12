@@ -5,7 +5,7 @@ linkTitle: xCluster
 headcontent: Monitor xCluster replication metrics
 description: Learn about YugabyteDB's xCluster replication metrics.
 menu:
-  v2.25
+  v2.25:
     identifier: replication
     parent: metrics-overview
     weight: 150

@@ -3,12 +3,12 @@ title: HSTRLEN
 linkTitle: HSTRLEN
 description: HSTRLEN
 menu:
-  v2.25
+  v2.25:
     parent: api-yedis
     weight: 2190
 aliases:
-  - /preview/api/redis/hstrlen
-  - /preview/api/yedis/hstrlen
+  - /stable/api/redis/hstrlen
+  - /stable/api/yedis/hstrlen
 type: docs
 ---
 

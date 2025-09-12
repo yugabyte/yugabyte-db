@@ -3,12 +3,12 @@ title: EXPIRE
 linkTitle: EXPIRE
 description: EXPIRE
 menu:
-  v2.25
+  v2.25:
     parent: api-yedis
     weight: 2061
 aliases:
-  - /preview/api/redis/expire
-  - /preview/api/yedis/expire
+  - /stable/api/redis/expire
+  - /stable/api/yedis/expire
 type: docs
 ---
 

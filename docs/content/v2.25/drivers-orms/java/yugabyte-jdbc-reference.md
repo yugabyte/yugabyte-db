@@ -6,9 +6,9 @@ description: YugabyteDB JDBC Smart Driver for YSQL reference
 tags:
   other: ysql
 aliases:
-- /preview/reference/drivers/java/yugabyte-jdbc-reference/
+- /stable/reference/drivers/java/yugabyte-jdbc-reference/
 menu:
-  v2.25
+  v2.25:
     name: JDBC Drivers
     identifier: ref-1-yugabyte-jdbc-driver
     parent: java-drivers
@@ -274,7 +274,7 @@ To access sample applications that use the YugabyteDB JDBC driver, visit [Yugaby
 
 To use the samples, complete the following steps:
 
-- Install YugabyteDB by following the instructions in [Quick start](/preview/quick-start/macos/).
+- Install YugabyteDB by following the instructions in [Quick start](/stable/quick-start/macos/).
 
 - Build the examples by running `mvn package`.
 

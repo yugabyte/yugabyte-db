@@ -3,12 +3,12 @@ title: GET
 linkTitle: GET
 description: GET
 menu:
-  v2.25
+  v2.25:
     parent: api-yedis
     weight: 2070
 aliases:
-  - /preview/api/redis/get
-  - /preview/api/yedis/get
+  - /stable/api/redis/get
+  - /stable/api/yedis/get
 type: docs
 ---
 

@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2250
 aliases:
-  - /preview/api/redis/sadd
-  - /preview/api/yedis/sadd
+  - /stable/api/redis/sadd
+  - /stable/api/yedis/sadd
 type: docs
 ---
 ## Synopsis

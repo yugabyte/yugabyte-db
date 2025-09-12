@@ -3,12 +3,12 @@ title: PUNSUBSCRIBE
 linkTitle: PUNSUBSCRIBE
 description: PUNSUBSCRIBE
 menu:
-  v2.25
+  v2.25:
     parent: api-yedis
     weight: 2555
 aliases:
-  - /preview/api/redis/punsubscribe
-  - /preview/api/yedis/punsubscribe
+  - /stable/api/redis/punsubscribe
+  - /stable/api/yedis/punsubscribe
 type: docs
 ---
 

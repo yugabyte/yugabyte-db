@@ -3,12 +3,12 @@ title: SETRANGE
 linkTitle: SETRANGE
 description: SETRANGE
 menu:
-  v2.25
+  v2.25:
     parent: api-yedis
     weight: 2280
 aliases:
-  - /preview/api/redis/setrange
-  - /preview/api/yedis/setrange
+  - /stable/api/redis/setrange
+  - /stable/api/yedis/setrange
 type: docs
 ---
 

@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2233
 aliases:
-  - /preview/api/redis/pexpire
-  - /preview/api/yedis/pexpire
+  - /stable/api/redis/pexpire
+  - /stable/api/yedis/pexpire
 type: docs
 ---
 

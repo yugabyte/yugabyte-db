@@ -20,7 +20,7 @@ Before you start using Keycloak, ensure that you have the following:
 
 - OpenJDK 21.
 - The latest version of [Keycloak](https://www.keycloak.org/downloads).
-- A YugabyteDB cluster. Refer to [YugabyteDB Quick start guide](/preview/quick-start/macos/) to install and start a local cluster.
+- A YugabyteDB cluster. Refer to [YugabyteDB Quick start guide](/stable/quick-start/macos/) to install and start a local cluster.
 
 ## Configure and start Keycloak
 
@@ -72,7 +72,7 @@ To configure Keycloak, do the following:
 
 ## Verify the integration using ysqlsh
 
-1. Run [ysqlsh](/preview/api/ysqlsh/) to connect to your database using the YSQL API as follows:
+1. Run [ysqlsh](/stable/api/ysqlsh/) to connect to your database using the YSQL API as follows:
 
     ```sh
     $ ./bin/ysqlsh

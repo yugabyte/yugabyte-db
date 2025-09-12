@@ -32,7 +32,7 @@ Review the following information before starting an upgrade.
 
     For example, if you are upgrading from v2.18.3.0, and the latest release in the v2.20 release series is v2.20.2.0, then you must upgrade to v2.20.2.0 (and not v2.20.1.0 or v2.20.0.0).
 
-    To view and download releases, refer to [Releases](/preview/releases/).
+    To view and download releases, refer to [Releases](/stable/releases/).
 
 - Upgrades are not supported between preview and stable versions.
 
@@ -40,7 +40,7 @@ Review the following information before starting an upgrade.
 
 - Roll back is {{<tags/feature/ea>}} and supported in v2.20.2 and later only. If you are upgrading from v2.20.1.x or earlier, follow the instructions for [v2.18](https://docs-archive.yugabyte.com/v2.18/manage/upgrade-deployment/).
 
-- You can upgrade from one stable version to another in one go, even across major versions, as long as they are in the same major YSQL version. For information on performing major YSQL version upgrades, refer to [YSQL major upgrade](/preview/manage/ysql-major-upgrade-yugabyted/).
+- You can upgrade from one stable version to another in one go, even across major versions, as long as they are in the same major YSQL version. For information on performing major YSQL version upgrades, refer to [YSQL major upgrade](/stable/manage/ysql-major-upgrade-yugabyted/).
 
 - Backups
 

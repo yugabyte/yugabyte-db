@@ -5,7 +5,7 @@ linkTitle: Multi-DC deployments
 description: Deploy YugabyteDB across multiple data centers or cloud regions
 headcontent: Deploy YugabyteDB across multiple data centers (DC)
 menu:
-  v2.25
+  v2.25:
     identifier: multi-dc
     parent: deploy
     weight: 30

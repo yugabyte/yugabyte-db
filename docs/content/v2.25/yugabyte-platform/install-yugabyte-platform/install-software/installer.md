@@ -5,8 +5,8 @@ linkTitle: Install YBA software
 description: Install YugabyteDB Anywhere software using YBA Installer
 headContent: Install YBA software using YBA Installer
 aliases:
-  - /preview/yugabyte-platform/install-yugabyte-platform/install-software/
-  - /preview/yugabyte-platform/install-yugabyte-platform/install-software/default/
+  - /stable/yugabyte-platform/install-yugabyte-platform/install-software/
+  - /stable/yugabyte-platform/install-yugabyte-platform/install-software/default/
 
 menu:
   v2.25_yugabyte-platform:

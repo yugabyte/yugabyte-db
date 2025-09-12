@@ -4,7 +4,7 @@ headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect an application using YugabyteDB Node.js smart driver for YSQL
 menu:
-  v2.25
+  v2.25:
     identifier: node-driver-1-yugabyte
     parent: nodejs-drivers
     weight: 500
@@ -111,7 +111,7 @@ Refer to [Configure SSL/TLS](../postgres-pg-reference/#configure-ssl-tls) for mo
 
 #### Use SSL with YugabyteDB Aeon
 
-If you created a cluster on YugabyteDB Aeon, use the cluster credentials and [download the SSL Root certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
+If you created a cluster on YugabyteDB Aeon, use the cluster credentials and [download the SSL Root certificate](/stable/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 
 With clusters in YugabyteDB Aeon, you can't use SSL mode verify-full; other SSL modes are supported. To use the equivalent of verify-full, don't set the `sslmode` or `sslrootcert` parameters in your connection string; instead, use the `ssl` object with the following parameters:
 

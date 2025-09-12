@@ -44,7 +44,7 @@ Add the following dependencies for Spring Data JPA with [YugabyteDB JDBC Driver]
 <dependencies>
 ```
 
-If you're planning to use the [PostgreSQL JDBC driver](/preview/drivers-orms/java/postgres-jdbc/), use the following dependencies:
+If you're planning to use the [PostgreSQL JDBC driver](/stable/drivers-orms/java/postgres-jdbc/), use the following dependencies:
 
 ```xml
 <dependencies>
@@ -96,7 +96,7 @@ Configure the Spring Boot application to connect to a YugabyteDB Cluster using t
 
 ### Create table
 
-Spring Data JPA uses [Hibernate ORM](/preview/drivers-orms/java/hibernate/) for handling creation of the database tables based on the domain objects configured in the Spring Boot application. Java POJOs annotated with `@Table` and `@Entity` are mapped to the corresponding YugabyteDB table.
+Spring Data JPA uses [Hibernate ORM](/stable/drivers-orms/java/hibernate/) for handling creation of the database tables based on the domain objects configured in the Spring Boot application. Java POJOs annotated with `@Table` and `@Entity` are mapped to the corresponding YugabyteDB table.
 
 For example:
 

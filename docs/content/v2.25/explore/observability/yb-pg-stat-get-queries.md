@@ -7,7 +7,7 @@ headcontent: See why a query failed
 aliases:
   - /explore/query-1-performance/yb-pg-stat-get-queries/
 menu:
-  v2.25
+  v2.25:
     identifier: yb-terminated-queries
     parent: explore-observability
     weight: 350

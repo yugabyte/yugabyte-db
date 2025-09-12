@@ -5,7 +5,7 @@ description: Using Debezium for CDC in YugabyteDB.
 tags:
   feature: early-access
 aliases:
-  - /preview/integrations/cdc/
+  - /stable/integrations/cdc/
 menu:
   v2.25_integrations:
     identifier: cdc-debezium

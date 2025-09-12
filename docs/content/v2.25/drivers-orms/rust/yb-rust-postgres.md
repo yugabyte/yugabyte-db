@@ -4,7 +4,7 @@ headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Rust application using YugabyteDB Rust-Postgres Smart Driver for YSQL
 menu:
-  v2.25
+  v2.25:
     identifier: rust-postgres-driver
     parent: rust-drivers
     weight: 500

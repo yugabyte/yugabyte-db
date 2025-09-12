@@ -4,12 +4,12 @@ headerTitle: YugabyteDB gRPC Connector
 linkTitle: YugabyteDB gRPC Connector
 description: YugabyteDB gRPC Connector is an open source distributed platform used to capture the changes in a database.
 aliases:
-  - /preview/explore/change-data-capture/debezium-connector-yugabytedb-ysql
-  - /preview/explore/change-data-capture/debezium-connector
-  - /preview/explore/change-data-capture/debezium
-  - /preview/explore/change-data-capture/debezium-connector-postgresql
-  - /preview/explore/change-data-capture/debezium-connector-yugabytedb
-  - /preview/explore/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/
+  - /stable/explore/change-data-capture/debezium-connector-yugabytedb-ysql
+  - /stable/explore/change-data-capture/debezium-connector
+  - /stable/explore/change-data-capture/debezium
+  - /stable/explore/change-data-capture/debezium-connector-postgresql
+  - /stable/explore/change-data-capture/debezium-connector-yugabytedb
+  - /stable/explore/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/
 menu:
   preview:
     parent: explore-change-data-capture-grpc-replication
@@ -958,7 +958,7 @@ For example, the connector is lagging behind in streaming the changes. In this c
 
 ## Deployment
 
-To deploy a Debezium connector, you install the YugabyteDB gRPC Connector archive, configure the connector, and start the connector by adding its configuration to Kafka Connect. For complete steps, follow the guide to [running the Debezium connector in YugabyteDB](/preview/integrations/cdc/debezium/).
+To deploy a Debezium connector, you install the YugabyteDB gRPC Connector archive, configure the connector, and start the connector by adding its configuration to Kafka Connect. For complete steps, follow the guide to [running the Debezium connector in YugabyteDB](/stable/integrations/cdc/debezium/).
 
 ### Connector configuration example
 
@@ -1076,7 +1076,7 @@ If you have a YugabyteDB cluster with SSL enabled, you need to obtain the root c
 
 * [Local deployments](../../../../secure/tls-encryption/)
 * [YugabyteDB Anywhere](../../../../yugabyte-platform/security/enable-encryption-in-transit/#enable-encryption-in-transit)
-* [YugabyteDB Aeon](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate)
+* [YugabyteDB Aeon](/stable/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate)
 
 {{< /note >}}
 

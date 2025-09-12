@@ -5,7 +5,7 @@ linkTitle: Large datasets
 description: Benchmark YSQL performance with large datasets
 headcontent: Benchmark YSQL performance with large datasets
 menu:
-  v2.25
+  v2.25:
     identifier: large-datasets-2-ysql
     parent: benchmark
     weight: 7

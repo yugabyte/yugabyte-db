@@ -14,7 +14,7 @@ type: docs
 
 The following tutorials describe how to integrate YugabyteDB with Apache Hudi:
 
-- Using real-time change data capture (CDC) with the [YugabyteDB gRPC connector](/preview/additional-features/change-data-capture/using-yugabytedb-grpc-replication/) and [HoodieDeltaStreamer](https://hudi.apache.org/docs/0.10.0/hoodie_deltastreamer/) with Apache Spark.
+- Using real-time change data capture (CDC) with the [YugabyteDB gRPC connector](/stable/additional-features/change-data-capture/using-yugabytedb-grpc-replication/) and [HoodieDeltaStreamer](https://hudi.apache.org/docs/0.10.0/hoodie_deltastreamer/) with Apache Spark.
 - Loading incremental data into YugabyteDB using HoodieDeltaStreamer and JDBC driver.
 
 ## Prerequisites
@@ -23,7 +23,7 @@ To use Apache Hudi, ensure that you have the following:
 
 - Docker.
 
-- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/preview/quick-start/docker).
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/stable/quick-start/docker).
 
 - Install Apache Spark (version 3.4, 3.3, or 3.2) and Scala. Verify installation using `spark-submit` and `spark-shell` commands.
 
@@ -136,7 +136,7 @@ Launch the Confluent Control Center and verify the schema details and messages i
 
 Access the Control Center at `http://<docker_container_IP_or_VM>:9021`.
 
-Start [populating the data from YugabyteDB](/preview/additional-features/change-data-capture/using-logical-replication/get-started/#use-the-ysql-command-line-client), and ensure you are able to see the messages in **Control Center –> Topics –> Messages** (for example, `http://172.18.0.2:9021/clusters/management/topics/cdc.public.cdctest/message-viewer`).
+Start [populating the data from YugabyteDB](/stable/additional-features/change-data-capture/using-logical-replication/get-started/#use-the-ysql-command-line-client), and ensure you are able to see the messages in **Control Center –> Topics –> Messages** (for example, `http://172.18.0.2:9021/clusters/management/topics/cdc.public.cdctest/message-viewer`).
 
 ### Install Apache Hudi
 

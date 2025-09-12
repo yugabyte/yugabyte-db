@@ -8,7 +8,7 @@ menu:
     identifier: dml_delete
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/dml_delete/
+  - /stable/api/ysql/commands/dml_delete/
 type: docs
 ---
 

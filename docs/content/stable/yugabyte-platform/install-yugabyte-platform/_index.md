@@ -5,7 +5,7 @@ linkTitle: Install
 description: Install YugabyteDB Anywhere and prepare universe nodes.
 headcontent: Install YugabyteDB Anywhere to begin creating and managing deployments
 aliases:
-  - /preview/yugabyte-platform/install-yugabyte-platform/install-replicated/
+  - /stable/yugabyte-platform/install-yugabyte-platform/install-replicated/
 menu:
   preview_yugabyte-platform:
     parent: yugabytedb-anywhere

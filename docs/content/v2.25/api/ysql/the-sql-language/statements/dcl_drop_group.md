@@ -7,7 +7,7 @@ menu:
     identifier: dcl_drop_group
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/dcl_drop_group/
+  - /stable/api/ysql/commands/dcl_drop_group/
 type: docs
 ---
 

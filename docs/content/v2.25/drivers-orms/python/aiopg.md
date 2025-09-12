@@ -6,7 +6,7 @@ description: Connect a Python application using aiopg Driver for YSQL
 aliases:
   - /integrations/aiopg/
 menu:
-  v2.25
+  v2.25:
     identifier: ysql-aiopg
     parent: python-drivers
     weight: 520
@@ -64,7 +64,7 @@ The following tutorial creates a basic Python application that connects to a Yug
 
 Before you start using Aiopg, ensure you have the following:
 
-- YugabyteDB up and running. If you are new to YugabyteDB, follow the steps in [Quick start](/preview/quick-start/linux/) to have YugabyteDB up and running in minutes.
+- YugabyteDB up and running. If you are new to YugabyteDB, follow the steps in [Quick start](/stable/quick-start/linux/) to have YugabyteDB up and running in minutes.
 - [Python 3](https://www.python.org/downloads/), or later, is installed.
 - [aiopg](https://aiopg.readthedocs.io/en/stable/) package is installed. Install the package using the following command:
 

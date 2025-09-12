@@ -4,7 +4,7 @@ headerTitle: Distributed transactions
 linkTitle: Distributed transactions
 description: Distributed ACID transactions modify multiple rows spread across multiple shards.
 menu:
-  v2.25
+  v2.25:
     identifier: architecture-distributed-acid-transactions
     parent: architecture-acid-transactions
     weight: 200

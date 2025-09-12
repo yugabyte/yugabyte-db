@@ -3,7 +3,7 @@ title: Configure audit logging in YSQL
 headerTitle: Configure audit logging in YSQL
 description: Configure audit logging in YSQL.
 menu:
-  v2.25
+  v2.25:
     name: Configure audit logging
     identifier: enable-audit-logging-1-ysql
     parent: audit-logging

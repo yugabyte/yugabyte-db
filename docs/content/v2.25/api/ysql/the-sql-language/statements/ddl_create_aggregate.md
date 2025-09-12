@@ -8,7 +8,7 @@ menu:
     identifier: ddl_create_aggregate
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/ddl_create_aggregate/
+  - /stable/api/ysql/commands/ddl_create_aggregate/
 type: docs
 ---
 

@@ -7,9 +7,9 @@ headcontent: Partition data for efficient data management
 tags:
   other: ysql
 aliases:
-   - /preview/common-patterns/timeseries/partitioning-by-time/
+   - /stable/common-patterns/timeseries/partitioning-by-time/
 menu:
-  v2.25
+  v2.25:
     identifier: timeseries-partition-by-time
     parent: common-patterns-timeseries
     weight: 400

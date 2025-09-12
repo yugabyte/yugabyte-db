@@ -4,8 +4,8 @@ headerTitle: Deploy a GraphQL application
 linkTitle: Deploy a GraphQL application
 description: Deploy the Realtime Poll GraphQL application for Hasura Cloud and YugabyteDB Aeon.
 aliases:
-  - /preview/yugabyte-cloud/hasura-sample-app/
-  - /preview/yugabyte-cloud/cloud-examples/hasura-sample-app/
+  - /stable/yugabyte-cloud/hasura-sample-app/
+  - /stable/yugabyte-cloud/cloud-examples/hasura-sample-app/
 menu:
   v2.25_integrations:
     identifier: hasura-application
@@ -21,7 +21,7 @@ This page demonstrates how to deploy a GraphQL application on Hasura Cloud and Y
 
 The example has the following prerequisites:
 
-* You have created a cluster on YugabyteDB Aeon. For instructions, refer to [Create your cluster](/preview/yugabyte-cloud/cloud-basics/create-clusters/).
+* You have created a cluster on YugabyteDB Aeon. For instructions, refer to [Create your cluster](/stable/yugabyte-cloud/cloud-basics/create-clusters/).
 * You have created a Hasura project and connected it to your cluster. For instructions, refer to [Connect Hasura Cloud to YugabyteDB Aeon](../hasura-cloud/).
 
   You will also need the **Admin Secret** of your Hasura project.
