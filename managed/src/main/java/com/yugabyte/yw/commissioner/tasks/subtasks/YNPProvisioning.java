@@ -65,6 +65,7 @@ public class YNPProvisioning extends AbstractTaskBase {
     public String sshUser;
     public UUID customerUuid;
     public String nodeAgentInstallDir;
+    public boolean isYbPrebuiltImage;
   }
 
   @Override
@@ -91,6 +92,7 @@ public class YNPProvisioning extends AbstractTaskBase {
       ynpNode.put("is_install_node_agent", false);
       ynpNode.put("yb_user_id", "1994");
       ynpNode.put("is_airgap", provider.getDetails().airGapInstall);
+      ynpNode.put("is_yb_prebuilt_image", taskParams().isYbPrebuiltImage);
       ynpNode.put(
           "tmp_directory",
           confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory));

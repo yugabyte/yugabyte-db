@@ -214,7 +214,8 @@ public class AnsibleConfigureServers extends NodeTaskBase {
                   universe, nodeDetails, taskParams(), optional.get()),
               NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
         }
-      } else {
+      } else if (shouldInstallDbSoftware(
+          universe, taskParams().ignoreUseCustomImageConfig, taskParams().vmUpgradeTaskType)) {
         nodeAgentClient.runDownloadSoftware(
             optional.get(),
             nodeAgentRpcPayload.setupDownloadSoftwareBits(
