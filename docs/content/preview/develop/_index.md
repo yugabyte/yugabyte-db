@@ -5,6 +5,8 @@ linkTitle: Develop
 description: Build YugabyteDB application that use ecosystem integrations and GraphQL.
 headcontent: Get started building applications based on YugabyteDB
 type: indexpage
+cascade:
+  unversioned: true
 ---
 
 ## Application development
