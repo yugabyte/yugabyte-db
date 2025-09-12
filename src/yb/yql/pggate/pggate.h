@@ -56,6 +56,7 @@
 #include "yb/yql/pggate/pg_sys_table_prefetcher.h"
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pg_type.h"
+#include "yb/yql/pggate/pg_txn_manager.h"
 #include "yb/yql/pggate/pg_ybctid_reader_provider.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/ybc_pggate.h"
@@ -671,7 +672,8 @@ class PgApiImpl {
   Status EnsureReadPoint();
   Status RestartReadPoint();
   bool IsRestartReadPointRequested();
-  Status CommitPlainTransaction(const std::optional<PgDdlCommitInfo>& ddl_commit_info);
+  Status CommitPlainTransaction(
+        const std::optional<PgDdlCommitInfo>& ddl_commit_info = std::nullopt);
   Status AbortPlainTransaction();
   Status SetTransactionIsolationLevel(int isolation);
   Status SetTransactionReadOnly(bool read_only);
@@ -890,6 +892,10 @@ class PgApiImpl {
   // Table Locks.
   //----------------------------------------------------------------------------------------------
   Status AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode);
+
+  auto TemporaryDisableReadTimeHistoryCutoff() {
+    return pg_txn_manager_->TemporaryDisableReadTimeHistoryCutoff();
+  }
 
   struct PgSharedData;
   struct SignedPgSharedData;

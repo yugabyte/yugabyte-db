@@ -179,11 +179,16 @@ PgTxnManager::SerialNo::SerialNo(uint64_t txn_serial_no, uint64_t read_time_seri
       max_read_time_(read_time_) {
 }
 
-void PgTxnManager::SerialNo::IncTxn() {
-  VLOG_WITH_FUNC(4) << "Inc txn from old txn_: " << txn_;
+void PgTxnManager::SerialNo::IncTxn(bool preserve_read_time_history) {
+  VLOG_WITH_FUNC(4)
+      << "Inc txn from old txn_: " << txn_
+      << ", min_read_time=" << min_read_time_
+      << " , preserve_read_time_history=" << preserve_read_time_history;
   ++txn_;
   IncReadTime();
-  min_read_time_ = read_time_;
+  if (!preserve_read_time_history) {
+    min_read_time_ = read_time_;
+  }
 }
 
 void PgTxnManager::SerialNo::IncReadTime() {
@@ -718,6 +723,7 @@ Status PgTxnManager::SetupPerformOptions(
   }
   const auto read_time_serial_no = serial_no_.read_time();
   options->set_read_time_serial_no(read_time_serial_no);
+  options->set_read_time_serial_no_history_min(serial_no_.min_read_time());
   if (snapshot_read_time_is_used_) {
     if (auto i = explicit_snapshot_read_time_.find(read_time_serial_no);
         i != explicit_snapshot_read_time_.end()) {
@@ -813,7 +819,7 @@ YbcTxnPriorityRequirement PgTxnManager::GetTransactionPriorityType() const {
 }
 
 void PgTxnManager::IncTxnSerialNo() {
-  serial_no_.IncTxn();
+  serial_no_.IncTxn(is_read_time_history_cutoff_disabled_);
   active_sub_transaction_id_ = kMinSubTransactionId;
   explicit_snapshot_read_time_.clear();
 }

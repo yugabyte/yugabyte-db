@@ -1028,6 +1028,16 @@ typedef struct {
   YbcPgSharedDataPlaceholder *shared_data;
 } YbcPgInitPostgresInfo;
 
+typedef struct {
+  int64_t xact_start_timestamp;
+  bool xact_read_only;
+  bool xact_deferrable;
+  bool enable_tracing;
+  int effective_pggate_isolation_level;
+  bool read_from_followers_enabled;
+  int32_t follower_read_staleness_ms;
+} YbcPgInitTransactionData;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

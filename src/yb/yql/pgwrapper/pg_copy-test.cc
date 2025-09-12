@@ -117,4 +117,24 @@ TEST_F(PgCopyTest, TestRetriesAreDisabledForCopy) {
   ASSERT_EQ(i % kRowsPerTransaction, 0);
 }
 
+// The test checks the absence of error like "Bad read time serial no 9 while [18, 18]" in case of
+// restoring internal snapshot when single Postgres transaction get split into multiples YB
+// transactions. The COPY FROM  statement does such splitting due to performance reason.
+TEST_F(PgCopyTest, HugeCopyFrom) {
+  auto conn = ASSERT_RESULT(Connect());
+  constexpr auto kCopyFromRowsPerTransaction = 100;
+  const auto file_name = GetTestPath("out.csv");
+  ASSERT_OK(conn.ExecuteFormat(
+      "COPY (SELECT s, s, s, s FROM generate_series(1, $0) AS s) TO '$1' WITH CSV",
+      kCopyFromRowsPerTransaction * 3, file_name));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v1 INT, v2 INT, v3 INT)"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "SET yb_default_copy_from_rows_per_transaction = $0", kCopyFromRowsPerTransaction));
+  ASSERT_OK(conn.ExecuteFormat(
+      "DO LANGUAGE plpgsql $$$$ "
+      "BEGIN"
+      "  COPY t FROM '$0' WITH CSV;"
+      "END;$$$$;", file_name));
+}
+
 } // namespace yb::pgwrapper

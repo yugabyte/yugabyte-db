@@ -251,6 +251,7 @@ YbcPgExpr
 YbcPgFunction
 YbcPgGFlagsAccessor
 YbcPgInitPostgresInfo
+YbcPgInitTransactionData
 YbcPgInsertOnConflictKeyInfo
 YbcPgInsertOnConflictKeyState
 YbcPgJwtAuthOptions

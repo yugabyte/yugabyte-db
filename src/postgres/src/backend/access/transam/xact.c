@@ -2124,20 +2124,50 @@ YBGetEffectivePggateIsolationLevel()
 	return mapped_pg_isolation_level;
 }
 
-void
-YBInitializeTransaction(void)
+static YbcPgInitTransactionData
+YBBuildInitTransactionData()
+{
+	return (YbcPgInitTransactionData)
+	{
+		.xact_start_timestamp = xactStartTimestamp,
+		.xact_read_only = XactReadOnly,
+		.xact_deferrable = XactDeferrable,
+		.enable_tracing = YBEnableTracing(),
+		.effective_pggate_isolation_level = YBGetEffectivePggateIsolationLevel(),
+		.read_from_followers_enabled = YBReadFromFollowersEnabled(),
+		.follower_read_staleness_ms = YBFollowerReadStalenessMs()
+	};
+}
+
+static void
+YBRunWithInitTransactionData(YbcStatus (*Callback)(const YbcPgInitTransactionData *))
 {
 	if (YBTransactionsEnabled())
 	{
-		HandleYBStatus(YBCPgBeginTransaction(xactStartTimestamp));
-
-		HandleYBStatus(YBCPgSetTransactionIsolationLevel(YBGetEffectivePggateIsolationLevel()));
-		HandleYBStatus(YBCPgUpdateFollowerReadsConfig(YBReadFromFollowersEnabled(),
-													  YBFollowerReadStalenessMs()));
-		HandleYBStatus(YBCPgSetTransactionReadOnly(XactReadOnly));
-		HandleYBStatus(YBCPgSetEnableTracing(YBEnableTracing()));
-		HandleYBStatus(YBCPgSetTransactionDeferrable(XactDeferrable));
+		const YbcPgInitTransactionData data =
+			{
+				.xact_start_timestamp = xactStartTimestamp,
+				.xact_read_only = XactReadOnly,
+				.xact_deferrable = XactDeferrable,
+				.enable_tracing = YBEnableTracing(),
+				.effective_pggate_isolation_level = YBGetEffectivePggateIsolationLevel(),
+				.read_from_followers_enabled = YBReadFromFollowersEnabled(),
+				.follower_read_staleness_ms = YBFollowerReadStalenessMs()
+			};
+		HandleYBStatus((*Callback)(&data));
 	}
+}
+
+void
+YBInitializeTransaction(void)
+{
+	YBRunWithInitTransactionData(&YBCInitTransaction);
+}
+
+void
+YBCommitTransactionIntermediate(void)
+{
+	YBRunWithInitTransactionData(&YBCCommitTransactionIntermediate);
 }
 
 /*

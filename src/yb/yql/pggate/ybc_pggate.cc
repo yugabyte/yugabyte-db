@@ -452,6 +452,26 @@ ReadHybridTime MakeReadHybridTime(const YbcReadHybridTime& read_time) {
   };
 }
 
+// YugabyteDB-specific binary upgrade flag
+static bool yb_is_binary_upgrade = false;
+
+
+Status YBCInitTransactionImpl(const YbcPgInitTransactionData& data) {
+  RETURN_NOT_OK(pgapi->BeginTransaction(data.xact_start_timestamp));
+  RETURN_NOT_OK(pgapi->SetTransactionIsolationLevel(data.effective_pggate_isolation_level));
+  RETURN_NOT_OK(pgapi->UpdateFollowerReadsConfig(
+      data.read_from_followers_enabled, data.follower_read_staleness_ms));
+  RETURN_NOT_OK(pgapi->SetTransactionReadOnly(data.xact_read_only));
+  RETURN_NOT_OK(pgapi->SetEnableTracing(data.enable_tracing));
+  return pgapi->SetTransactionDeferrable(data.xact_deferrable);
+}
+
+Status YBCCommitTransactionIntermediateImpl(const YbcPgInitTransactionData& data) {
+  const auto history_cutoff_guard = pgapi->TemporaryDisableReadTimeHistoryCutoff();
+  RETURN_NOT_OK(pgapi->CommitPlainTransaction());
+  return YBCInitTransactionImpl(data);
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -1875,7 +1895,7 @@ bool YBCIsRestartReadPointRequested() {
 }
 
 YbcStatus YBCPgCommitPlainTransaction() {
-  return ToYBCStatus(pgapi->CommitPlainTransaction(std::nullopt /* ddl_commit_info */));
+  return ToYBCStatus(pgapi->CommitPlainTransaction());
 }
 
 YbcStatus YBCPgCommitPlainTransactionContainingDDL(
@@ -3061,11 +3081,6 @@ bool YBCPgYsqlMajorVersionUpgradeInProgress() {
   return yb_major_version_upgrade_compatibility > 0 || !yb_upgrade_to_pg15_completed;
 }
 
-namespace {
-// YugabyteDB-specific binary upgrade flag
-static bool yb_is_binary_upgrade = false;
-}  // namespace
-
 bool YBCIsBinaryUpgrade() {
   return yb_is_binary_upgrade;
 }
@@ -3080,6 +3095,14 @@ void YBCRecordTablespaceOid(YbcPgOid db_oid, YbcPgOid table_oid, YbcPgOid tables
 
 void YBCClearTablespaceOid(YbcPgOid db_oid, YbcPgOid table_oid) {
   pgapi->ClearTablespaceOid(db_oid, table_oid);
+}
+
+YbcStatus YBCInitTransaction(const YbcPgInitTransactionData *data) {
+  return ToYBCStatus(YBCInitTransactionImpl(*data));
+}
+
+YbcStatus YBCCommitTransactionIntermediate(const YbcPgInitTransactionData *data) {
+  return ToYBCStatus(YBCCommitTransactionIntermediateImpl(*data));
 }
 
 } // extern "C"
