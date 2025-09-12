@@ -641,6 +641,18 @@
   to = "/preview/releases/"
   force = true
 
+# Unversion drivers-orms
+
+[[redirects]]
+  from = "/:version/drivers-orms/*"
+  to = "/preview/drivers-orms/:splat"
+  force = true
+
+[[redirects]]
+  from = "/v2.20/reference/drivers/*"
+  to = "/preview/drivers-orms/"
+  force = true
+
 # Redirect for YugabyteDB Voyager
 
 [[redirects]]
