@@ -7,7 +7,7 @@ headcontent: Set up links to third-party tools
 tags:
   feature: early-access
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     identifier: anywhere-export-configurations
     parent: alerts-monitoring
     weight: 80

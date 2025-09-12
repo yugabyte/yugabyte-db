@@ -5,7 +5,7 @@ linkTitle: Setup
 description: Setting up transactional (active-active single-master) replication between two YB universes
 headContent: Set up transactional xCluster replication
 menu:
-  stable:
+  preview:
     parent: async-replication-transactional
     identifier: async-transactional-setup-1-automatic
     weight: 10
@@ -39,8 +39,7 @@ To use automatic-mode transactional xCluster replication, both the Primary and S
 
 {{<tags/feature/ea idea="153">}}Automatic transactional xCluster replication handles all aspects of replication for both data and schema changes.
 
-In particular, DDL changes made to the Primary universe are
-automatically replicated to the Standby universe.
+In particular, DDL changes made to the Primary universe are automatically replicated to the Standby universe.
 
 {{< warning title="Warning" >}}
 

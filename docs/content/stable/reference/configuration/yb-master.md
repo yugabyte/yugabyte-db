@@ -4,7 +4,7 @@ headerTitle: yb-master
 linkTitle: yb-master
 description: YugabyteDB Master Server (yb-master) binary and configuration flags to manage cluster metadata and coordinate cluster-wide operations.
 menu:
-  stable:
+  preview:
     identifier: yb-master
     parent: configuration
     weight: 2000
@@ -215,22 +215,6 @@ Default: `false`
 Controls whether YSQL follower reads that specify a not-yet-safe read time should be rejected. This will force them to go to the leader, which will likely be faster than waiting for safe time to catch up.
 
 Default: `true`
-
-##### --master_ysql_operation_lease_ttl_ms
-
-Default: `5 * 60 * 1000` (5 minutes)
-
-Specifies base YSQL lease Time-To-Live (TTL). The YB-Master leader uses this value to determine the validity of a YB-TServer's YSQL lease.
-
-Refer to [YSQL lease mechanism](../../../architecture/transactions/concurrency-control/#master-ysql-operation-lease-ttl-ms) for more details.
-
-##### --ysql_operation_lease_ttl_client_buffer_ms
-
-Default: 2000 (2 seconds)
-
-Specifies a client-side buffer for the YSQL operation lease TTL.
-
-Refer to [YSQL lease mechanism](../../../architecture/transactions/concurrency-control/#ysql-operation-lease-ttl-client-buffer-ms) for more details.
 
 ## Logging flags
 
@@ -980,7 +964,7 @@ Default: `UINT32_MAX`
 
 ## Catalog flags
 
-For information on setting these flags, see [Customize preloading of YSQL catalog caches](../../../best-practices-operations/ysql-catalog-cache-tuning-guide/).
+Catalog cache flags are {{<tags/feature/ea idea="599">}}. For information on setting these flags, see [Customize preloading of YSQL catalog caches](../../../best-practices-operations/ysql-catalog-cache-tuning-guide/).
 
 ##### --ysql_enable_db_catalog_version_mode
 
@@ -1069,6 +1053,8 @@ See also [Auto Analyze Service TServer flags](../yb-tserver/#auto-analyze-servic
 Default: false
 
 ## Advisory lock flags
+
+Support for advisory locks is {{<tags/feature/tp idea="812">}}.
 
 To learn about advisory locks, see [Advisory locks](../../../explore/transactions/explicit-locking/#advisory-locks).
 

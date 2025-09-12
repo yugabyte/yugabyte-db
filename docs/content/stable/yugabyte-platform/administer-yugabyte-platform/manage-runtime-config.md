@@ -5,7 +5,7 @@ linkTitle: Manage runtime configuration
 description: Manage your universes by setting runtime configuration keys based on different scopes.
 headcontent: Customize your YugabyteDB Anywhere installation
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     identifier: manage-runtime-config
     parent: administer-yugabyte-platform
     weight: 50

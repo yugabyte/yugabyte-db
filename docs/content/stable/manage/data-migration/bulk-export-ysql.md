@@ -6,7 +6,7 @@ description: Bulk export for YSQL using ysql_dump.
 tags:
   other: ysql
 menu:
-  stable:
+  preview:
     identifier: manage-bulk-export-ysql
     parent: manage-bulk-import-export
     weight: 719

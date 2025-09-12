@@ -5,7 +5,7 @@ linkTitle: Add nodes
 description: Configure the on-premises provider configuration.
 headContent: Add node instances to the free pool of nodes for your provider
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     identifier: on-premises-nodes
     parent: set-up-on-premises
     weight: 20

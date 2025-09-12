@@ -6,8 +6,10 @@ description: Learn how YugabyteDB supports asynchronous replication of data chan
 headContent: Asynchronous replication of data changes (inserts, updates, and deletes) to external databases or applications
 tags:
   feature: early-access
+aliases:
+  - /preview/architecture/change-data-capture/
 menu:
-  stable:
+  preview:
     parent: architecture-docdb-replication
     identifier: architecture-docdb-replication-cdc
     weight: 600

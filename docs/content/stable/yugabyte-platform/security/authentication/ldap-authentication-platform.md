@@ -5,10 +5,12 @@ linkTitle: LDAP authentication
 description: Configure YugabyteDB Anywhere to use LDAP authentication for databases.
 headcontent: Manage database users using LDAP
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     identifier: ldap-authentication-platform
     parent: authentication
     weight: 10
+aliases:
+  - /preview/yugabyte-platform/security/ldap-authentication-platform/
 type: docs
 ---
 
@@ -105,7 +107,7 @@ Consider the following example:
 
     ```output
     Password for user yugabyte: yugabyte
-    ysqlsh (15.2-YB-{{<yb-version version="stable">}}-b0)
+    ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
     Type "help" for help.
     ```
 
@@ -121,7 +123,7 @@ Consider the following example:
 
     ```output
     Password for user adam: supersecret
-    ysqlsh (15.2-YB-{{<yb-version version="stable">}}-b0)
+    ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
     Type "help" for help.
     ```
 

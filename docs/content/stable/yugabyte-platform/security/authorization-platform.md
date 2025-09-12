@@ -4,7 +4,7 @@ headerTitle: Database authorization
 linkTitle: Database authorization
 description: Use the role-based access control (RBAC) to manage universe users and roles.
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     parent: security
     identifier: authorization-platform
     weight: 30
@@ -62,7 +62,7 @@ yugabyte=> \du
 
 ```output
                                      List of roles
-  Role name   |                         Attributes                         | Member of
+  Role name   |                         Attributes                         | Member of 
 --------------+------------------------------------------------------------+-----------
  postgres     | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
  yb_db_admin  | No inheritance, Cannot login                               | {}

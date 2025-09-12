@@ -3,7 +3,7 @@ title: Databases, schemas, and tables
 linkTitle: Schemas and tables
 description: Create and operate on databases, schemas, and tables
 menu:
-  stable:
+  preview:
     identifier: explore-ysql-language-features-databases-schemas-tables
     parent: explore-ysql-language-features
     weight: 100

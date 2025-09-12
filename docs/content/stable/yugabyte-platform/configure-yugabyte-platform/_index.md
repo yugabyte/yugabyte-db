@@ -4,13 +4,16 @@ headerTitle: Create provider configurations
 linkTitle: Create providers
 description: Create provider configurations for deploying YugabyteDB universes.
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: configure-yugabyte-platform
     weight: 620
     params:
       classes: separator
       hideLink: true
+aliases:
+  - /preview/yugabyte-platform/overview/configure/
+  - /preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/
 type: indexpage
 ---
 

@@ -7,7 +7,7 @@ headcontent: Trading off memory vs performance in YSQL catalog caches
 tags:
   other: ysql
 menu:
-  stable:
+  preview:
     identifier: ysql-catalog-cache-tuning-guide
     parent: best-practices-operations
     weight: 50

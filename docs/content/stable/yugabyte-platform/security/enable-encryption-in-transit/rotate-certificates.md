@@ -5,7 +5,7 @@ linkTitle: Rotate certificates
 description: Rotate certificates on YugabyteDB Anywhere.
 headcontent: Rotate certificates used by a universe
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     parent: enable-encryption-in-transit
     identifier: rotate-certificates
     weight: 30

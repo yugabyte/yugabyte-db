@@ -4,7 +4,7 @@ headerTitle: Host-based authentication
 linkTitle: Host-based authentication
 description: Manage access control for localhost, remote hosts, and clients for YSQL.
 menu:
-  stable:
+  preview:
     identifier: host-based-authentication
     parent: authentication
     weight: 733

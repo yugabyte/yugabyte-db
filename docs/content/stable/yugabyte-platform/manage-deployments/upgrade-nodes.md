@@ -5,7 +5,7 @@ linkTitle: Patch Linux OS
 description: Apply operating system upgrades and patches to universe nodes.
 headcontent: Apply operating system upgrades and patches to universe nodes
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     identifier: upgrade-nodes-2-onprem
     parent: manage-deployments
     weight: 10

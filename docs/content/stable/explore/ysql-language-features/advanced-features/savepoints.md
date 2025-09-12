@@ -3,7 +3,7 @@ title: Savepoints
 linkTitle: Savepoints
 description: Savepoints in YSQL
 menu:
-  stable:
+  preview:
     identifier: advanced-features-savepoints
     parent: advanced-features
     weight: 400

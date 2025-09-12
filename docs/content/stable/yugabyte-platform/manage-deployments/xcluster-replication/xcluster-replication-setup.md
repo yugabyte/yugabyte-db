@@ -5,7 +5,7 @@ linkTitle: Setup
 description: Setting up xCluster Replication for a universe
 headContent: Start replication from your source to your target
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     parent: xcluster-replication
     identifier: xcluster-replication-setup
     weight: 10

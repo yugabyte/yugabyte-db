@@ -4,9 +4,11 @@ headerTitle: DROP MATERIALIZED VIEW
 linkTitle: DROP MATERIALIZED VIEW
 description: Use the DROP MATERIALIZED VIEW statement to drop a materialized view.
 menu:
-  stable_api:
+  preview_api:
     identifier: ddl_drop_matview
     parent: statements
+aliases:
+  - /preview/api/ysql/commands/ddl_drop_matview/
 type: docs
 ---
 

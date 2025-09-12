@@ -5,7 +5,7 @@ linkTitle: Default ports
 description: Default ports for YugabyteDB including client APIs, RPC communication, and monitoring.
 headContent: Port settings for YugabyteDB deployments
 menu:
-  stable:
+  preview:
     identifier: default-ports
     parent: configuration
     weight: 3100

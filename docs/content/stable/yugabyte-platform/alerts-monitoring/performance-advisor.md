@@ -6,7 +6,7 @@ headcontent: Scan your universe to discover performance optimizations
 tags:
   feature: early-access
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     parent: alerts-monitoring
     identifier: performance-advisor-anywhere
     weight: 40

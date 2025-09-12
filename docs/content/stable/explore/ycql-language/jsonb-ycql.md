@@ -4,8 +4,10 @@ headerTitle: JSON Support
 linkTitle: JSON support
 description: YCQL JSON Support in YugabyteDB.
 headcontent: Explore YugabyteDB YCQL support for JSON data
+aliases:
+  - /preview/develop/learn/data-types-ycql/
 menu:
-  stable:
+  preview:
     name: JSON support
     identifier: explore-json-support-ycql
     parent: explore-ycql-language

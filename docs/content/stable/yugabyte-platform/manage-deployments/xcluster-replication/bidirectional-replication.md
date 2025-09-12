@@ -5,7 +5,7 @@ linkTitle: Bidirectional replication
 description: Bidirectional replication using xCluster
 headContent: Replicate data in both directions
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     parent: xcluster-replication
     identifier: bidirectional-replication
     weight: 50

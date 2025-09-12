@@ -7,14 +7,14 @@ headcontent: Built-in server-side connection pooler for YSQL
 tags:
   feature: early-access
 menu:
-  stable:
+  preview:
     identifier: connection-manager
     parent: additional-features
     weight: 10
 type: indexpage
 ---
 
-YugabyteDB includes a built-in connection pooler, YSQL Connection Manager. Because the manager is bundled with the product, it is convenient to manage, monitor, and configure the server connections without additional third-party tools. When combined with [smart drivers](/preview/drivers-orms/smart-drivers/), YSQL Connection Manager simplifies application architecture and enhances developer productivity.
+YugabyteDB includes a built-in connection pooler, YSQL Connection Manager. Because the manager is bundled with the product, it is convenient to manage, monitor, and configure the server connections without additional third-party tools. When combined with [smart drivers](../../drivers-orms/smart-drivers/), YSQL Connection Manager simplifies application architecture and enhances developer productivity.
 
 {{<index/block>}}
 

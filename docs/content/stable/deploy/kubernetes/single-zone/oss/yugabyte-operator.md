@@ -4,11 +4,17 @@ headerTitle: Open source Kubernetes
 linkTitle: Open source Kubernetes
 description: Deploy a YugabyteDB cluster with a Kubernetes native customer resource.
 menu:
-  stable:
+  preview:
     parent: deploy-kubernetes-sz
     name: Open Source
     identifier: k8s-oss-2
     weight: 621
+aliases:
+  - /preview/deploy/kubernetes/yugabyte-operator/
+  - /preview/deploy/kubernetes/oss/yugabyte-operator/
+  - /preview/deploy/kubernetes/operator-hub/
+  - /preview/deploy/kubernetes/oss/operator-hub/
+  - /preview/deploy/kubernetes/single-zone/oss/operator-hub/
 type: docs
 ---
 
@@ -27,6 +33,6 @@ type: docs
   </li>
 </ul>
 
-The YugabyteDB Kubernetes Operator automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments. It streamlines database operations, reducing manual effort for developers and operators.
+{{<tags/feature/ea idea="831">}}The YugabyteDB Kubernetes Operator automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments. It streamlines database operations, reducing manual effort for developers and operators.
 
 For more information, refer to the [YugabyteDB Kubernetes Operator](https://github.com/yugabyte/yugabyte-k8s-operator) GitHub project.

@@ -5,7 +5,7 @@ linkTitle: Resource guide
 description: Find resources for getting started with YugabyteDB.
 headcontent: Learn more about YugabyteDB with blogs, videos, and more
 menu:
-  stable:
+  preview:
     identifier: get-started-guide
     parent: reference
     weight: 2600
@@ -124,10 +124,10 @@ Find resources for getting started, migrating existing databases, using your dat
 [Distributed PostgreSQL Essentials for Developers: Hands-on Course](https://www.youtube.com/watch?v=rqJBFQ-4Hgk)
 : Build a scalable and fault-tolerant movie recommendation service.
 
-[Best practices](/preview/develop/best-practices-develop/)
+[Best practices](../../develop/best-practices-develop/)
 : Tips and tricks to build applications for high performance and availability.
 
-[Drivers and ORMs](/preview/drivers-orms/)
+[Drivers and ORMs](../../drivers-orms/)
 : Connect applications with your database.
 
 ### Hotspots

@@ -5,7 +5,7 @@ linkTitle: Servers for nodes
 description: Prerequisites for nodes to be managed by YugabyteDB Anywhere.
 headContent: Prepare VMs for database nodes
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     identifier: server-nodes
     parent: prepare
     weight: 40

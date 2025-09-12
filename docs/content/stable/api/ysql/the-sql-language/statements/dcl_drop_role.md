@@ -4,9 +4,11 @@ headerTitle: DROP ROLE
 linkTitle: DROP ROLE
 description: Use the DROP ROLE statement to remove the specified roles.
 menu:
-  stable_api:
+  preview_api:
     identifier: dcl_drop_role
     parent: statements
+aliases:
+  - /preview/api/ysql/commands/dcl_drop_role/
 type: docs
 ---
 

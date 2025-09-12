@@ -4,8 +4,11 @@ headerTitle: Restore universe data
 linkTitle: Restore universe data
 description: Use YugabyteDB Anywhere to restore data.
 headContent: Restore from full or incremental backups
+aliases:
+  - /preview/back-up-restore-universes/restore-universe-data/ycql/
+  - /preview/back-up-restore-universes/restore-universe-data/ysql/
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     parent: back-up-restore-universes
     identifier: restore-universe-data
     weight: 30
@@ -197,9 +200,9 @@ curl 'http://<platform-url>/api/v1/customers/:cUUID/restore' \
   }'
 ```-->
 
-You can restore entire backups with or without PITR. To enable the feature in YugabyteDB Anywhere, set the **Option for Off-Cluster PITR based Backup Schedule** Global Runtime Configuration option (config key `yb.ui.feature_flags.off_cluster_pitr_enabled`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
+{{<tags/feature/ea idea="989">}}You can restore entire backups with or without PITR. To enable the feature in YugabyteDB Anywhere, set the **Option for Off-Cluster PITR based Backup Schedule** Global Runtime Configuration option (config key `yb.ui.feature_flags.off_cluster_pitr_enabled`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
 
-If you created backups using a [scheduled backup policy with PITR](../schedule-data-backups/), you can restore YugabyteDB universe data from a backup as follows:
+If you created backups using a [scheduled backup policy with PITR](../schedule-data-backups/#create-a-scheduled-backup-policy-with-pitr), you can restore YugabyteDB universe data from a backup as follows:
 
 1. In the **Backups** list, select the backup to restore to display the **Backup Details**.
 

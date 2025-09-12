@@ -4,9 +4,11 @@ headerTitle: CREATE VIEW
 linkTitle: CREATE VIEW
 description: Use the CREATE VIEW statement to create a view in a database.
 menu:
-  stable_api:
+  preview_api:
     identifier: ddl_create_view
     parent: statements
+aliases:
+  - /preview/api/ysql/commands/ddl_create_view/
 type: docs
 ---
 
@@ -77,3 +79,4 @@ yugabyte=# SELECT * FROM sample_view;
 ## See also
 
 - [`SELECT`](../dml_select/)
+- [`DROP VIEW`](../ddl_drop_view/)

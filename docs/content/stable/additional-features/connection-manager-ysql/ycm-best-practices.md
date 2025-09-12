@@ -5,7 +5,7 @@ linkTitle: Best practices
 description: Best practices
 headcontent: How to get the most from YSQL Connection Manager
 menu:
-  stable:
+  preview:
     identifier: ycm-best-practices
     parent: connection-manager
     weight: 20
@@ -28,7 +28,7 @@ In the meantime, you can explicitly request sticky connections by using a role w
 
 ## Coordinate connection scaling using a smart driver
 
-YugabyteDB YSQL [Smart Drivers](/preview/drivers-orms/smart-drivers/) and Connection Manager are designed to work together and complement each other for optimal scalability and performance.
+YugabyteDB YSQL [Smart Drivers](../../../drivers-orms/smart-drivers/) and Connection Manager are designed to work together and complement each other for optimal scalability and performance.
 
 A smart driver intelligently routes connections across nodes in a distributed YugabyteDB cluster, ensuring that application traffic is load-balanced efficiently, and can dynamically route queries to appropriate TServers.
 

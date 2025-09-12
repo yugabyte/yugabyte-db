@@ -4,9 +4,12 @@ headerTitle: BLOB data type
 linkTitle: BLOB
 description: Use the BLOB data type to represent arbitrary binary data of variable length.
 menu:
-  stable_api:
+  preview_api:
     parent: api-cassandra
     weight: 1370
+aliases:
+  - /preview/api/cassandra/type_blob
+  - /preview/api/ycql/type_blob
 type: docs
 ---
 

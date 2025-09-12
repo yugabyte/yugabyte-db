@@ -5,7 +5,7 @@ linkTitle: Smart defaults
 description: Smart defaults for YugabyteDB settings.
 headContent: Set smart memory defaults when configuring YugabyteDB
 menu:
-  stable:
+  preview:
     identifier: smart-defaults
     parent: configuration
     weight: 3100

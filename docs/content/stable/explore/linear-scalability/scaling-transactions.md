@@ -5,7 +5,7 @@ linkTitle: Scaling transactions
 description: Transaction performance when scaling horizontally
 headcontent: Transaction performance when scaling horizontally
 menu:
-  stable:
+  preview:
     identifier: scaling-transactions-bench
     parent: explore-scalability
     weight: 50

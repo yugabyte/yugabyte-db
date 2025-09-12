@@ -3,13 +3,23 @@ title: Point-in-time recovery
 headerTitle: Point-in-time recovery
 linkTitle: Point-in-time recovery
 description: Restore data to a specific point in time in YugabyteDB
+aliases:
+  - /preview/manage/backup-restore/point-in-time-restore
+  - /preview/manage/backup-restore/point-in-time-restore-ycql
+  - /preview/yugabyte-platform/back-up-restore-universes/point-in-time
 menu:
-  stable:
+  preview:
     identifier: point-in-time-recovery
     parent: backup-restore
     weight: 705
 type: docs
 ---
+
+{{< page-finder/head text="Point-in-time recovery" subtle="across different products">}}
+  {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" current="" >}}
+  {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" url="../../../yugabyte-platform/back-up-restore-universes/pitr/" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/preview/yugabyte-cloud/cloud-clusters/aeon-pitr/" >}}
+{{< /page-finder/head >}}
 
 Point-in-time recovery (PITR) in YugabyteDB enables recovery from a user or software error, while minimizing recovery point objective (RPO), recovery time objective (RTO), and overall impact on the cluster.
 

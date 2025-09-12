@@ -7,7 +7,7 @@ headcontent: Configure pgaudit logging
 tags:
   feature: early-access
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     identifier: universe-logging
     parent: alerts-monitoring
     weight: 70

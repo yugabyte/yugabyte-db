@@ -5,7 +5,7 @@ linkTitle: WITH clause
 description: How to use the WITH clause and common table expressions (CTEs)
 image: /images/section_icons/api/subsection.png
 menu:
-  stable_api:
+  preview_api:
     identifier: with-clause
     parent: the-sql-language
     weight: 300

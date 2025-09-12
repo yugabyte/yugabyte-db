@@ -4,7 +4,7 @@ headerTitle: ALTER PUBLICATION
 linkTitle: ALTER PUBLICATION
 description: Change properties of an existing publication.
 menu:
-  stable_api:
+  preview_api:
     identifier: ddl_alter_publication
     parent: statements
 type: docs

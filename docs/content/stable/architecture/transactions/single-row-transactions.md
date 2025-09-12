@@ -4,7 +4,7 @@ headerTitle: Single-row transactions
 linkTitle: Single-row transactions
 description: Learn how YugabyteDB offers ACID semantics for mutations involving a single row or rows that are located within a single shard.
 menu:
-  stable:
+  preview:
     identifier: architecture-single-row-transactions
     parent: architecture-acid-transactions
     weight: 400

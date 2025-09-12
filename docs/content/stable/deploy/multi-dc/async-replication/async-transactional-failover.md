@@ -5,7 +5,7 @@ linkTitle: Failover
 description: Unplanned failover using transactional xCluster replication between universes
 headContent: Failover of application traffic to the standby universe with potential data loss
 menu:
-  stable:
+  preview:
     parent: async-replication-transactional
     identifier: async-transactional-failover
     weight: 30
@@ -210,6 +210,18 @@ xCluster only replicates sequence data in automatic mode.  If you are not using 
 For example, if you have a SERIAL column in a table and the highest value in that column after failover is 500, you need to set the sequence associated with that column to a value higher than 500, such as 501. This ensures that new writes on universe B do not conflict with existing data.
 
 Use the [nextval](../../../../api/ysql/exprs/sequence_functions/func_nextval/) function to set the sequence next values appropriately.
+
+### Fix CDC
+
+If you are using CDC to move data out of YugabyteDB, note that failover may incur data loss for your CDC replication; data lost on the CDC target may be different from data lost on the xCluster target.
+
+You can fix CDC in either of the following ways:
+
+- Start CDC on B (that is, create publications and slots on B). This resumes CDC from the failover point (subject to possible data loss).
+
+- Clear your CDC target of all data, and start CDC on B from a fresh copy, making another full copy.
+
+    Then point your CDC target to pull from B (the newly promoted database).
 
 ### Switch applications to B
 

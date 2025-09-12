@@ -6,7 +6,7 @@ description: Using the pg_partman extension in YugabyteDB
 tags:
   feature: early-access
 menu:
-  stable:
+  preview:
     identifier: extension-pgpartman
     parent: pg-extensions
     weight: 20

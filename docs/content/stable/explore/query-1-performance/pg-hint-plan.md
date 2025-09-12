@@ -4,7 +4,7 @@ linkTitle: Optimize YSQL queries
 description: Query optimization of YSQL queries using pg_hint_plan
 headerTitle: Optimize YSQL queries using pg_hint_plan
 menu:
-  stable:
+  preview:
     identifier: pg_hint_plan
     parent: query-tuning
     weight: 600

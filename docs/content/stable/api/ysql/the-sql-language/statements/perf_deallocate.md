@@ -4,9 +4,11 @@ headerTitle: DEALLOCATE
 linkTitle: DEALLOCATE
 description: Use the `DEALLOCATE` statement to deallocate a previously prepared SQL statement.
 menu:
-  stable_api:
+  preview_api:
     identifier: perf_deallocate
     parent: statements
+aliases:
+  - /preview/api/ysql/commands/perf_deallocate/
 type: docs
 ---
 

@@ -3,10 +3,12 @@ title: Cursors
 linkTitle: Cursors
 description: Using Cursors in YSQL
 menu:
-  stable:
+  preview:
     identifier: advanced-features-cursor
     parent: advanced-features
     weight: 200
+aliases:
+  - /preview/explore/ysql-language-features/cursor/
 type: docs
 ---
 

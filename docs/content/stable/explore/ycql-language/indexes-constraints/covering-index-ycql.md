@@ -5,7 +5,7 @@ linkTitle: Covering indexes
 description: Using covering indexes in YCQL
 headContent: Explore covering indexes in YugabyteDB using YCQL
 menu:
-  stable:
+  preview:
     identifier: covering-index-ycql
     parent: explore-indexes-constraints-ycql
     weight: 255

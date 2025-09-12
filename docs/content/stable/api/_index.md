@@ -8,7 +8,7 @@ type: indexpage
 showRightNav: true
 ---
 <!--menu:
-  stable_api:
+  preview_api:
     identifier: api
     parent: yugabyte-apis
     weight: 1100-->

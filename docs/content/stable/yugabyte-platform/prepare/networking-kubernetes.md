@@ -5,7 +5,7 @@ linkTitle: Kubernetes
 description: Added requirements for deploying YugabyteDB Anywhere on Kubernetes.
 headContent: Additional requirements for YugabyteDB Anywhere on Kubernetes
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     identifier: networking-kubernetes
     parent: networking
     weight: 10

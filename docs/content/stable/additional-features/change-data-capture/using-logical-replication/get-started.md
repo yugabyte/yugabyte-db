@@ -4,8 +4,10 @@ headerTitle: Get started
 linkTitle: Get started
 description: Get started with Change Data Capture in YugabyteDB.
 headcontent: Start using CDC with logical replication
+aliases:
+  - /preview/explore/change-data-capture/using-logical-replication/get-started/
 menu:
-  stable:
+  preview:
     parent: explore-change-data-capture-logical-replication
     identifier: get-started
     weight: 20
@@ -104,7 +106,7 @@ After starting YugabyteDB, use ysqlsh to create your database:
     You should see output similar to the following:
 
     ```output
-    ysqlsh (15.2-YB-{{<yb-version version="stable">}}-b0)
+    ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
     Type "help" for help.
 
     yugabyte=#

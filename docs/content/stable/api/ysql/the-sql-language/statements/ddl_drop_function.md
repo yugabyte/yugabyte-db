@@ -4,9 +4,11 @@ headerTitle: DROP FUNCTION
 linkTitle: DROP FUNCTION
 description: Remove a function from a database.
 menu:
-  stable_api:
+  preview_api:
     identifier: ddl_drop_function
     parent: statements
+aliases:
+  - /preview/api/ysql/commands/ddl_drop_function/
 type: docs
 ---
 

@@ -4,7 +4,7 @@ headerTitle: Cluster topology
 linkTitle: Cluster topology
 headcontent: List the servers in your cluster
 menu:
-  stable:
+  preview:
     identifier: show-cluster-topology
     parent: going-beyond-sql
     weight: 400
@@ -20,7 +20,7 @@ In YugabyteDB, the cluster topology refers to the physical and logical layout of
 You can use the `yb_servers()` function to return a list of all the nodes in your cluster and their location.
 
 {{<note>}}
-The [YugabyteDB smart drivers](/preview/drivers-orms/smart-drivers) use the `yb_servers()` function to retrieve the cluster information to be [cluster-aware](../cluster-aware-drivers) and [topology-aware](../topology-aware-drivers).
+The [YugabyteDB smart drivers](../../../drivers-orms/smart-drivers) use the `yb_servers()` function to retrieve the cluster information to be [cluster-aware](../cluster-aware-drivers) and [topology-aware](../topology-aware-drivers).
 {{</note>}}
 
 The function returns the following information.

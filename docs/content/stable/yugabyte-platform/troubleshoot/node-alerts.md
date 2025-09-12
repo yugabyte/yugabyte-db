@@ -5,7 +5,7 @@ linkTitle: Node alerts
 headcontent: What to do when you get a node alert
 description: What to do when you get a node alert
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     identifier: node-alerts
     parent: troubleshoot-yp
     weight: 15

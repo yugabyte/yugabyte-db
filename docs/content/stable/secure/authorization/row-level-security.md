@@ -2,7 +2,7 @@
 title: Row-level security (RLS)
 description: Row-level security (RLS) in YugabyteDB
 menu:
-  stable:
+  preview:
     name: Row-level security
     identifier: ysql-row-level-security
     parent: authorization
@@ -38,7 +38,7 @@ $ ./ysqlsh -U yugabyte -W
 When prompted for the password, enter the yugabyte password. You should be able to log in and see a response similar to the following:
 
 ```output
-ysqlsh (15.2-YB-{{<yb-version version="stable">}}-b0)
+ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
 Type "help" for help.
 
 yugabyte=#

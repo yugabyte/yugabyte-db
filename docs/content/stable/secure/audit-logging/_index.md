@@ -5,7 +5,7 @@ linkTitle: Audit logging
 description: Audit logging in YugabyteDB.
 headcontent: Trace statements and configure audit logging
 menu:
-  stable:
+  preview:
     identifier: audit-logging
     parent: secure
     weight: 750

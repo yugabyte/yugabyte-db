@@ -5,7 +5,7 @@ linkTitle: Legacy provisioning
 description: Software requirements for on-premises provider legacy provisioning.
 headContent: How to provision on-premises database nodes
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     identifier: software-on-prem-1-intro
     parent: software-on-prem
     weight: 10

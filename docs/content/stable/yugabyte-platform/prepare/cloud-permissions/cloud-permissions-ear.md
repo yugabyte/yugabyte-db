@@ -5,7 +5,7 @@ linkTitle: To use encryption at rest
 description: Prepare your cloud KMS for encryption at rest with YugabyteDB Anywhere.
 headContent: Prepare your cloud KMS for use with YugabyteDB Anywhere
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     identifier: cloud-permissions-ear
     parent: cloud-permissions
     weight: 40

@@ -4,8 +4,10 @@ headerTitle: Query tuning
 linkTitle: Query tuning
 description: Tuning and optimizing query performance
 headcontent: Optimize query performance
+aliases:
+  - /preview/explore/query-1-performance/query-tuning-intro/
 menu:
-  stable:
+  preview:
     identifier: query-tuning
     parent: explore
     weight: 300

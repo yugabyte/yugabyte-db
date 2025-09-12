@@ -5,10 +5,15 @@ linkTitle: PostgreSQL extensions
 description: Summary of supported PostgreSQL extensions
 summary: Reference for YSQL extensions
 menu:
-  stable:
+  preview:
     identifier: pg-extensions
     parent: explore-ysql-language-features
     weight: 1000
+aliases:
+  - /preview/explore/ysql-language-features/advanced-features/extensions/
+  - /preview/api/ysql/extensions/
+  - /preview/explore/ysql-language-features/pg-extensions/extension-postgis/
+  - /preview/explore/ysql-language-features/pg-extensions/extension-pgsql-postal/
 showRightNav: true
 type: indexpage
 ---
@@ -39,7 +44,7 @@ YugabyteDB supports the following [PostgreSQL modules](https://www.postgresql.or
 | [passwordcheck](extension-passwordcheck/) | Checks user passwords whenever they are set with CREATE ROLE or ALTER ROLE. If a password is considered too weak, it is rejected. |
 | [pgcrypto](extension-pgcrypto/) | Provides various cryptographic functions. |
 | [pg_stat_statements](extension-pgstatstatements/) | Provides a means for tracking execution statistics of all SQL statements executed by a server. |
-| [pg_trgm](/preview/develop/learn/text-search/similarity-matching/#trigrams) | Provides functions and operators for determining the similarity of alphanumeric text based on trigram matching, as well as index operator classes that support fast searching for similar strings.<br/>For more information, see [pg_trgm](https://www.postgresql.org/docs/15/pgtrgm.html) in the PostgreSQL documentation. |
+| [pg_trgm](../../../develop/learn/text-search/similarity-matching/#trigrams) | Provides functions and operators for determining the similarity of alphanumeric text based on trigram matching, as well as index operator classes that support fast searching for similar strings.<br/>For more information, see [pg_trgm](https://www.postgresql.org/docs/15/pgtrgm.html) in the PostgreSQL documentation. |
 | [postgres_fdw](extension-postgres-fdw/) | Provides the foreign-data wrapper postgres_fdw, which can be used to access data stored in external PostgreSQL servers. |
 | [spi](extension-spi/) | Lets you use the Server Programming Interface (SPI) to create user-defined functions and stored procedures in C, and to run YSQL queries directly against YugabyteDB. |
 | sslinfo | Provides information about the SSL certificate that the current client provided when connecting to PostgreSQL.<br/>For more information, see [sslinfo](https://www.postgresql.org/docs/15/sslinfo.html) in the PostgreSQL documentation. |
@@ -52,7 +57,7 @@ YugabyteDB supports the following additional extensions, some of which you must 
 
 | <div style="width:120px">Extension</div> | <div style="width:100px">Status</div> | Description |
 | :-------- | :----- | :---------- |
-| [Anonymizer](extension-pganon/)| Pre-bundled | Mask or replace personally identifiable information (PII) or commercially sensitive data in a database. |
+| [Anonymizer](extension-pganon/) {{<tags/feature/ea idea="1497">}}| Pre-bundled | Mask or replace personally identifiable information (PII) or commercially sensitive data in a database. |
 | [HypoPG](extension-hypopg/) | Pre-bundled | Create hypothetical indexes to test whether an index can increase performance for problematic queries without consuming any actual resources. |
 | Orafce | Pre-bundled | Provides compatibility with Oracle functions and packages that are either missing or implemented differently in YugabyteDB and PostgreSQL. This compatibility layer can help you port your Oracle applications to YugabyteDB.<br/>For more information, see the [Orafce](https://github.com/yugabyte/yugabyte-db/blob/master/src/postgres/third-party-extensions/orafce/README.asciidoc) documentation. |
 | [PGAudit](../../../secure/audit-logging/audit-logging-ysql/) | Pre-bundled | The PostgreSQL Audit Extension (pgaudit) provides detailed session and/or object audit logging via the standard PostgreSQL logging facility. |

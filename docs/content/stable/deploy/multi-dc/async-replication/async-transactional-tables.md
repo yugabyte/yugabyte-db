@@ -5,7 +5,7 @@ linkTitle: Manual DDL changes
 description: How to handle DDLs when using Manual mode transactional xCluster replication
 headContent: Making DDL changes in Manual mode transactional xCluster
 menu:
-  stable:
+  preview:
     parent: async-replication-transactional
     identifier: async-transactional-tables
     weight: 50

@@ -4,7 +4,7 @@ headerTitle: Trust authentication
 linkTitle: Trust authentication
 description: Allow clients to connect using a database user name.
 menu:
-  stable:
+  preview:
     identifier: trust-authentication
     parent: authentication
     weight: 734

@@ -4,9 +4,11 @@ headerTitle: DROP SEQUENCE
 linkTitle: DROP SEQUENCE
 description: Use the DROP SEQUENCE statement to delete a sequence in the current schema.
 menu:
-  stable_api:
+  preview_api:
     identifier: ddl_drop_sequence
     parent: statements
+aliases:
+  - /preview/api/ysql/commands/ddl_drop_sequence/
 type: docs
 ---
 

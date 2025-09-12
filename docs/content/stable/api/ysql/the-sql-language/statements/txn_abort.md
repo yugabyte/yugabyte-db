@@ -4,9 +4,11 @@ headerTitle: ABORT
 linkTitle: ABORT
 description: Use the ABORT statement to roll back the current transaction and discards all updates by the transaction.
 menu:
-  stable_api:
+  preview_api:
     identifier: txn_abort
     parent: statements
+aliases:
+  - /preview/api/ysql/commands/txn_abort/
 type: docs
 ---
 

@@ -5,7 +5,7 @@ linkTitle: REST API
 description: REST API YugabyteDB Anywhere.
 headcontent: Manage YugabyteDB Anywhere accounts and deployments using the REST API
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     parent: anywhere-automation
     identifier: anywhere-api
     weight: 10

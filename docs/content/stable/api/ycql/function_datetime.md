@@ -4,9 +4,12 @@ headerTitle: Date and time functions
 linkTitle: Date and time
 description: Use date and time functions to work on date and time data types.
 menu:
-  stable_api:
+  preview_api:
     parent: api-cassandra
     weight: 1560
+aliases:
+  - /preview/api/cassandra/function_datetime
+  - /preview/api/ycql/function_datetime
 type: docs
 ---
 

@@ -5,7 +5,7 @@ linkTitle: Read replicas
 description: Deploy read replica clusters to asynchronously replicate data from the primary cluster and guarantee timeline consistency.
 headContent: Deploy read replicas to asynchronously replicate data to different regions
 menu:
-  stable:
+  preview:
     parent: multi-dc
     identifier: read-replica-clusters
     weight: 620
@@ -69,7 +69,7 @@ To create the read replica cluster, do the following:
         --secure \
         --advertise_address=<IP_of_RR_1> \
         --join=<IP_of_VM_1> \
-        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node4 \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node4 \
         --cloud_location=aws.us-east-1.us-east-1d \
         --read_replica
 
@@ -77,7 +77,7 @@ To create the read replica cluster, do the following:
         --secure \
         --advertise_address=<IP_of_RR_2> \
         --join=<IP_of_VM_1> \
-        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node5 \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node5 \
         --cloud_location=aws.us-east-1.us-east-1d \
         --read_replica
 
@@ -85,7 +85,7 @@ To create the read replica cluster, do the following:
         --secure \
         --advertise_address=<IP_of_RR_3> \
         --join=<IP_of_VM_1> \
-        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node6 \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node6 \
         --cloud_location=aws.us-east-1.us-east-1e \
         --read_replica
 
@@ -93,7 +93,7 @@ To create the read replica cluster, do the following:
         --secure \
         --advertise_address=<IP_of_RR_4> \
         --join=<IP_of_VM_1> \
-        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node7 \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node7 \
         --cloud_location=aws.us-east-1.us-east-1f \
         --read_replica
 
@@ -101,7 +101,7 @@ To create the read replica cluster, do the following:
         --secure \
         --advertise_address=<IP_of_RR_5> \
         --join=<IP_of_VM_1> \
-        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node8 \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node8 \
         --cloud_location=aws.us-east-1.us-east-1f \
         --read_replica
     ```

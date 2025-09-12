@@ -4,7 +4,7 @@ headerTitle: Deployment checklist
 linkTitle: Deployment checklist
 description: Checklist to review system requirements, configuration details, and so on, when deploying the YugabyteDB database to production or for performance testing.
 menu:
-  stable:
+  preview:
     identifier: checklist
     parent: deploy
     weight: 10
@@ -146,9 +146,9 @@ cat /proc/cpuinfo | grep sse4.2
 
 - SSDs (solid state disks) are required.
 
-  - YugabyteDB Anywhere additionally supports the use of GCP Hyperdisks when deploying universes on GCP (specifically, the Balanced and Extreme options).
+  <!-- - YugabyteDB Anywhere additionally supports the use of GCP Hyperdisks when deploying universes on GCP (specifically, the Balanced and Extreme options).
 
-    Note: These disk types are only available in some GCP regions.
+  Note: These disk types are only available in some GCP regions. -->
 
 - Both local or remote attached storage work with YugabyteDB. Because YugabyteDB internally replicates data for fault tolerance, remote attached storage which does its own additional replication is not a requirement. Local disks often offer better performance at a lower cost.
 - Multi-disk nodes:

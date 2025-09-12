@@ -5,7 +5,7 @@ linkTitle: Cloud permissions
 description: Prepare your cloud for YugabyteDB Anywhere.
 headcontent: Prepare your cloud for YugabyteDB Anywhere deployments
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     parent: prepare
     identifier: cloud-permissions
 weight: 10

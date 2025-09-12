@@ -4,8 +4,10 @@ headerTitle: Create Kubernetes provider configuration
 linkTitle: Kubernetes
 description: Configure the OpenShift provider configuration
 headContent: For deploying universes on Kubernetes
+aliases:
+  - /preview/deploy/enterprise-edition/configure-cloud-providers/openshift
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     identifier: set-up-kubernetes-provider-3
     parent: configure-yugabyte-platform
     weight: 30

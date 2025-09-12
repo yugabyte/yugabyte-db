@@ -7,7 +7,7 @@ headcontent: Capture changes made to data in the database
 tags:
   feature: early-access
 menu:
-  stable:
+  preview:
     identifier: change-data-capture
     parent: explore
     weight: 280

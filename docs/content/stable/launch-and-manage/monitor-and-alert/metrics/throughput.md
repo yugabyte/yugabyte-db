@@ -5,7 +5,7 @@ linkTitle: Throughput+latency metrics
 headcontent: Monitor query processing and database IOPS
 description: Learn about YugabyteDB's throughput and latency metrics, and how to select and use the metrics.
 menu:
-  stable:
+  preview:
     identifier: throughput
     parent: metrics-overview
     weight: 100

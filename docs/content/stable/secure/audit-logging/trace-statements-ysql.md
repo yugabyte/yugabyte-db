@@ -3,7 +3,7 @@ title: Trace executed statements in YSQL
 headerTitle: Manually trace executed statements in YSQL
 description: Tracing executed statements in YSQL.
 menu:
-  stable:
+  preview:
     name: Trace statements
     identifier: trace-statements-ysql
     parent: audit-logging
@@ -62,7 +62,7 @@ Connect to the cluster using ysqlsh as follows:
 ```
 
 ```output
-ysqlsh (15.2-YB-{{<yb-version version="stable">}}-b0)
+ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
 Type "help" for help.
 
 yugabyte=#

@@ -4,8 +4,10 @@ headerTitle: Security
 linkTitle: Security
 description: Overview of security in YugabyteDB.
 headcontent: Secure your YugabyteDB universes
+aliases:
+  - /preview/explore/security/
 menu:
-  stable:
+  preview:
     identifier: explore-security
     parent: explore
     weight: 310

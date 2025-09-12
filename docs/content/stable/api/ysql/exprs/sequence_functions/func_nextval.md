@@ -4,9 +4,11 @@ headerTitle: nextval()
 linkTitle: nextval()
 description: Returns the next value from the sequence cache for the current session.
 menu:
-  stable_api:
+  preview_api:
     identifier: api-ysql-exprs-nextval
     parent: sequence-functions
+aliases:
+  - /preview/api/ysql/exprs/func_nextval
 type: docs
 ---
 

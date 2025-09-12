@@ -3,8 +3,10 @@ title: PostgreSQL Anonymizer extension
 headerTitle: PostgreSQL Anonymizer extension
 linkTitle: Anonymizer
 description: Using the PostgreSQL Anonymizer extension in YugabyteDB
+tags:
+  feature: early-access
 menu:
-  stable:
+  preview:
     identifier: extension-pganon
     parent: pg-extensions
     weight: 20
@@ -19,7 +21,7 @@ YugabyteDB uses v1.3.1 of PostgreSQL Anonymizer.
 
 ## Enable Anonymizer
 
-To enable the Anonymizer extension, you set the YB-TServer `--enable_pg_anonymizer` flag to true. For example, using [yugabyted](../../../../reference/configuration/yugabyted/), you would do the following:
+While in early access, to enable the Anonymizer extension, you set the YB-TServer `--enable_pg_anonymizer` flag to true. For example, using [yugabyted](../../../../reference/configuration/yugabyted/), you would do the following:
 
 ```sh
 ./bin/yugabyted start --tserver_flags="enable_pg_anonymizer=true"
@@ -113,7 +115,6 @@ The following shows output where the `anon.maskschema` and `anon.sourceschema` p
 ---------+------------------------------
  skynet  | {"search_path=mask, public"}
 ```
-
 Note that [Backup and restore](../../../../manage/backup-restore/) doesn't preserve roles, and will also not restore masked security labels for roles. After a restore, you will need to manually recreate security labels for roles, and then enable dynamic masking.
 
 To disable dynamic masking:
@@ -152,7 +153,7 @@ SELECT * FROM people; -- non masked user can read original values
 ```
 
 ```output
- id | firstname | lastname |   phone
+ id | firstname | lastname |   phone    
 ----+-----------+----------+------------
  1  | John      | Doe      | 1234567890
 ```
@@ -171,7 +172,7 @@ SELECT * FROM people;
 ```
 
 ```output
- id | firstname | lastname |   phone
+ id | firstname | lastname |   phone    
 ----+-----------+----------+------------
  1  | John      | Doe      | 1234567890
 ```
@@ -189,7 +190,7 @@ SELECT * FROM people;
 ```
 
 ```output
- id | firstname | lastname |   phone
+ id | firstname | lastname |   phone    
 ----+-----------+----------+------------
  1  | John      | Doe      | 12******90
 ```
@@ -231,7 +232,7 @@ SELECT * FROM people;
 ```
 
 ```output
- id | firstname | lastname |   phone
+ id | firstname | lastname |   phone    
 ----+-----------+----------+------------
  1  | John      | Doe      | 12******90
 ```
@@ -270,7 +271,7 @@ SELECT * FROM people;
 ```
 
 ```output
- id | firstname | lastname |   phone
+ id | firstname | lastname |   phone    
 ----+-----------+----------+------------
  1  | John      | Bryant   | 12******90
 ```
@@ -303,7 +304,7 @@ SELECT * FROM people;
 ```
 
 ```output
- id |  firstname   |   lastname   |   phone
+ id |  firstname   |   lastname   |   phone    
 ----+--------------+--------------+------------
  1  | CONFIDENTIAL | CONFIDENTIAL | 12******90
 ```

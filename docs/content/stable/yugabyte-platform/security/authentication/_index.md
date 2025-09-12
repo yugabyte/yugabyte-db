@@ -5,7 +5,7 @@ linkTitle: Database authentication
 headcontent: Manage authentication in YugabyteDB Anywhere using LDAP or OIDC
 description: Database authentication in YugabyteDB Anywhere.
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     parent: security
     identifier: authentication
 weight: 25

@@ -4,7 +4,7 @@ headerTitle: Create a KMS configuration
 linkTitle: Create a KMS configuration
 description: Use YugabyteDB Anywhere to create a KMS configuration for Amazon Web Services (AWS) KMS.
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     parent: security
     identifier: create-kms-config-1-aws-kms
     weight: 50
@@ -17,32 +17,27 @@ Encryption at rest uses a master key to encrypt and decrypt universe keys. The m
   <li >
     <a href="../aws-kms/" class="nav-link active">
       <i class="fa-brands fa-aws" aria-hidden="true"></i>
-      AWS
+      AWS KMS
     </a>
   </li>
   <li >
     <a href="../google-kms/" class="nav-link">
       <i class="fa-brands fa-google" aria-hidden="true"></i>
-      Google
+      Google KMS
     </a>
   </li>
 
   <li >
     <a href="../azure-kms/" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
-      Azure
+      Azure Key Vault
     </a>
   </li>
 
   <li >
     <a href="../hashicorp-kms/" class="nav-link">
-      HashiCorp
-    </a>
-  </li>
-
-  <li >
-    <a href="../ciphertrust-kms/" class="nav-link">
-      CipherTrust
+      <i class="icon-postgres" aria-hidden="true"></i>
+      HashiCorp Vault
     </a>
   </li>
 
@@ -52,7 +47,7 @@ Encryption at rest in YugabyteDB Anywhere supports the use of [Amazon Web Servic
 
 ## Prerequisites
 
-The master key resource policy and AWS user associated with a KMS configuration require specific permissions. See [To use encryption at rest with YugabyteDB Anywhere](../../../prepare/cloud-permissions/cloud-permissions-ear/).
+The master key resource policy and AWS user associated with a KMS configuration require specific permissions. Refer to [To use encryption at rest with YugabyteDB Anywhere](../../../prepare/cloud-permissions/cloud-permissions-ear/).
 
 ## Create a KMS configuration
 

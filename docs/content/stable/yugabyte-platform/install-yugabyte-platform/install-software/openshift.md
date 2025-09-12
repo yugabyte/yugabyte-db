@@ -4,7 +4,7 @@ headerTitle: Install YugabyteDB Anywhere on OpenShift
 linkTitle: OpenShift
 description: Install YugabyteDB Anywhere software in your OpenShift environment
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     parent: install-software-2-kubernetes
     identifier: install-software-2-openshift
     weight: 81
@@ -168,14 +168,14 @@ To create a YugabyteDB Anywhere instance, perform the following:
   To search for the available chart version, execute the following command:
 
   ```shell
-  helm search repo yugabytedb/yugaware-openshift --version {{<yb-version version="stable" format="short">}}
+  helm search repo yugabytedb/yugaware-openshift --version {{<yb-version version="preview" format="short">}}
   ```
 
   Expect the following output:
 
     ```output
     NAME                          CHART VERSION  APP VERSION  DESCRIPTION
-    yugabytedb/yugaware-openshift {{<yb-version version="stable" format="short">}}          {{<yb-version version="stable" format="build">}}  YugaWare is YugaByte Database's Orchestration a...
+    yugabytedb/yugaware-openshift {{<yb-version version="preview" format="short">}}          {{<yb-version version="preview" format="build">}}  YugaWare is YugaByte Database's Orchestration a...
     ```
 
 - Verify the StorageClass setting for your cluster by executing the following command as admin user:
@@ -190,7 +190,7 @@ To create a YugabyteDB Anywhere instance, perform the following:
 
   ```shell
   helm install yw-test yugabytedb/yugaware-openshift -n yb-platform \
-    --version {{<yb-version version="stable" format="short">}} \
+    --version {{<yb-version version="preview" format="short">}} \
     --wait
   ```
 

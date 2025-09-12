@@ -3,8 +3,10 @@ title: YugabyteDB connector
 headerTitle: YugabyteDB connector
 linkTitle: YugabyteDB connector
 description: YugabyteDB connector for Change Data Capture in YugabyteDB.
+aliases:
+  - /preview/explore/change-data-capture/using-logical-replication/yugabytedb-connector/
 menu:
-  stable:
+  preview:
     parent: explore-change-data-capture-logical-replication
     identifier: yugabytedb-connector
     weight: 70
@@ -1386,7 +1388,7 @@ Procedure
 
 ### Supported YugabyteDB topologies
 
-As mentioned in the beginning, YugabyteDB (for all versions > 2024.1.1) supports logical replication slots. The YugabyteDB connector can communicate with the server by connecting to any node using the [YugabyteDB Java driver](/preview/drivers-orms/java/yugabyte-jdbc-reference/). Should any node fail, the connector receives an error and restarts. Upon restart, the connector connects to any available node and continues streaming from that node.
+As mentioned in the beginning, YugabyteDB (for all versions > 2024.1.1) supports logical replication slots. The YugabyteDB connector can communicate with the server by connecting to any node using the [YugabyteDB Java driver](../../../../drivers-orms/java/yugabyte-jdbc-reference/). Should any node fail, the connector receives an error and restarts. Upon restart, the connector connects to any available node and continues streaming from that node.
 
 ### Setting up multiple connectors for same database server
 
@@ -1394,7 +1396,7 @@ Debezium uses [replication slots](https://www.postgresql.org/docs/15/logicaldeco
 
 Because a replication slot can only be used by a single connector, it is essential to create a unique replication slot for each connector. Although when a connector is not active, YugabyteDB may allow other connectors to consume the replication slot - which could be dangerous as it may lead to data loss as a slot will emit each change just once.
 
-In addition to replication slot, the connector uses publication to stream events when using the `pgoutput`or `yboutput` plugin. Similar to replication slot, publication is at database level and is defined for a set of tables. Thus, you'll need a unique publication for each connector, unless the connectors work on same set of tables. For more information about the options for enabling the connector to create publications, see `publication.autocreate.mode`.
+In addition to replication slot, Debezium uses publication to stream events when using the `pgoutput`or `yboutput` plugin. Similar to replication slot, publication is at database level and is defined for a set of tables. Thus, you'll need a unique publication for each connector, unless the connectors work on same set of tables. For more information about the options for enabling Debezium to create publications, see `publication.autocreate.mode`.
 
 See `slot.name` and `publication.name` on how to set a unique replication slot name and publication name for each connector.
 
@@ -1693,7 +1695,7 @@ In these cases, the error message has details about the problem and possibly a s
 
 ### YB-TServer becomes unavailable
 
-When the connector is running, the YB-TServer that it is connected to could become unavailable for any number of reasons. If this happens, the connector fails with an error and retries to connect to the YugabyteDB server. Because the connector uses the [YugabyteDB Java driver](/preview/drivers-orms/java/), the connection is handled internally and the connector restores the connection to another running node.
+When the connector is running, the YB-TServer that it is connected to could become unavailable for any number of reasons. If this happens, the connector fails with an error and retries to connect to the YugabyteDB server. Because the connector uses the [YugabyteDB Java driver](../../../../drivers-orms/java/), the connection is handled internally and the connector restores the connection to another running node.
 
 The YugabyteDB connector externally stores the last processed offset in the form of a YugabyteDB LSN. After a connector restarts and connects to a server instance, the connector communicates with the server to continue streaming from that particular offset. This offset is available as long as the Debezium replication slot remains intact.
 

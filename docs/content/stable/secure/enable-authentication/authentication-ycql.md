@@ -2,8 +2,10 @@
 title: Enable users in YCQL
 headerTitle: Enable users in YCQL
 description: Enable users in YCQL.
+aliases:
+  - /preview/secure/enable-authentication/ycql/
 menu:
-  stable:
+  preview:
     name: Enable users
     identifier: enable-authentication-2-ycql
     parent: enable-authentication

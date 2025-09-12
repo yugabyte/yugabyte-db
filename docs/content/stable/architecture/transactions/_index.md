@@ -4,8 +4,10 @@ headerTitle: DocDB transactions layer
 linkTitle: Transactions
 description: DocDB transactions layer
 headcontent: Understand how distributed transactions work
+aliases:
+  - /architecture/transactions/
 menu:
-  stable:
+  preview:
     identifier: architecture-acid-transactions
     parent: architecture
     weight: 900

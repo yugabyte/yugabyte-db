@@ -4,7 +4,7 @@ headertitle: Data types
 linkTitle: Data types
 description: Data types in YCQL
 menu:
-  stable:
+  preview:
     identifier: explore-ycql-language-features-data-types
     parent: explore-ycql-language
     weight: 150

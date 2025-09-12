@@ -5,7 +5,7 @@ linkTitle: To deploy nodes
 description: Prepare your cloud for deploying YugabyteDB universe nodes.
 headContent: Prepare your cloud for deploying YugabyteDB universe nodes
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     identifier: cloud-permissions-nodes-4-azure
     parent: cloud-permissions
     weight: 20
@@ -62,7 +62,7 @@ In addition, your Azure application needs to have a [resource group](https://lea
 
 ```sh
 Network Contributor
-Virtual Machine Contributor
+Virtual Machine Contributor 
 ```
 
 You can optionally create a resource group for network resources if you want network interfaces to be created separately. The network resource group must have the `Network Contributor` permission.

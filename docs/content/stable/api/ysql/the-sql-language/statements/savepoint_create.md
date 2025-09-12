@@ -4,9 +4,11 @@ headerTitle: SAVEPOINT
 linkTitle: SAVEPOINT
 description: Use the `SAVEPOINT` statement to start a subtransaction within the current transaction.
 menu:
-  stable_api:
+  preview_api:
     identifier: savepoint_create
     parent: statements
+aliases:
+  - /preview/api/ysql/commands/savepoint_create/
 type: docs
 ---
 

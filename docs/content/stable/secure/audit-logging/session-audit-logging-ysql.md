@@ -4,7 +4,7 @@ headerTitle: Session-level audit logging in YSQL
 linkTitle: Session-level audit logging
 description: Session-level audit logging in YSQL.
 menu:
-  stable:
+  preview:
     identifier: session-audit-logging-1-ysql
     parent: audit-logging
     weight: 760

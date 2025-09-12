@@ -5,7 +5,7 @@ linkTitle: Best practices
 description: Tips and tricks to run YugabyteDB deployments
 headcontent: Tips and tricks to run YugabyteDB deployments
 menu:
-  stable:
+  preview:
     identifier: best-practices-operations
     parent: launch-and-manage
     weight: 80

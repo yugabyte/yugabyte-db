@@ -4,8 +4,11 @@ headerTitle: Key-value workload
 linkTitle: Key-value workload
 description: Benchmark YCQL performance with key-value workloads.
 headcontent: Benchmark YCQL performance with key-value workloads
+aliases:
+  - /preview/benchmark/performance/
+  - /preview/benchmark/key-value-workload
 menu:
-  stable:
+  preview:
     identifier: key-value-workload-1-ycql
     parent: benchmark
     weight: 6

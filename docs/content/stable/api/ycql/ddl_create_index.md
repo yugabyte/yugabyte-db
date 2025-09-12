@@ -5,9 +5,11 @@ linkTitle: CREATE INDEX
 summary: Create a new index on a table
 description: Use the CREATE INDEX statement to create a new index on a table.
 menu:
-  stable_api:
+  preview_api:
     parent: api-cassandra
     weight: 1225
+aliases:
+  - /preview/api/ycql/ddl_create_index
 type: docs
 ---
 

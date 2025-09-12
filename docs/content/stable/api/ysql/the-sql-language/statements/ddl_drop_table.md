@@ -4,9 +4,11 @@ headerTitle: DROP TABLE
 linkTitle: DROP TABLE
 description: Use the DROP TABLE statement to remove one or more tables (with all of their data) from the database.
 menu:
-  stable_api:
+  preview_api:
     identifier: ddl_drop_table
     parent: statements
+aliases:
+  - /preview/api/ysql/commands/ddl_drop_table/
 type: docs
 ---
 

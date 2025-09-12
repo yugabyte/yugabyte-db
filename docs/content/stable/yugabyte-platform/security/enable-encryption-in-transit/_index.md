@@ -5,7 +5,7 @@ linkTitle: Encryption in transit
 description: Use encryption in transit (TLS) to secure data traffic.
 headcontent: Secure inter-node and application traffic
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     parent: security
     identifier: enable-encryption-in-transit
     weight: 40

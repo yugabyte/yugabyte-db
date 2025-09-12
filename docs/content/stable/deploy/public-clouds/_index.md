@@ -4,8 +4,10 @@ headerTitle: Public clouds
 linkTitle: Public clouds
 description: Deploy YugabyteDB clusters in public clouds, including Amazon Web Services (AWS), Google Cloud Platform (GCP), and Microsoft Azure.
 headcontent: Deploy YugabyteDB in public clouds
+aliases:
+  - /deploy/public-clouds/
 menu:
-  stable:
+  preview:
     identifier: public-clouds
     parent: deploy
     weight: 40

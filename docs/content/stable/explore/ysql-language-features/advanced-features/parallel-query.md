@@ -2,8 +2,10 @@
 title: Parallel queries
 linkTitle: Parallel queries
 description: Parallel queries in YSQL
+tags:
+  feature: early-access
 menu:
-  stable:
+  preview:
     identifier: advanced-features-parallel-query
     parent: advanced-features
     weight: 600

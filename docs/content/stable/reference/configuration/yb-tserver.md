@@ -4,7 +4,7 @@ headerTitle: yb-tserver
 linkTitle: yb-tserver
 description: YugabyteDB Tablet Server (yb-tserver) binary and configuration flags to store and manage data for client applications.
 menu:
-  stable:
+  preview:
     identifier: yb-tserver
     parent: configuration
     weight: 2100
@@ -396,9 +396,8 @@ Bitmap scans are only supported for LSM indexes.
 ##### yb_enable_bitmapscan
 
 {{% tags/wrap %}}
-
+{{<tags/feature/ea idea="1092">}}
 Default: `false`
-
 {{% /tags/wrap %}}
 
 Enables or disables the query planner's use of bitmap scans for YugabyteDB relations. Both [enable_bitmapscan](#enable-bitmapscan) and `yb_enable_bitmapscan` must be set to true for a YugabyteDB relation to use a bitmap scan. If `yb_enable_bitmapscan` is false, the planner never uses a YugabyteDB bitmap scan.
@@ -1451,7 +1450,7 @@ Packed row size limit for YCQL. The default value is 0 (use block size as limit)
 
 ### Catalog flags
 
-For information on setting these flags, see [Customize preloading of YSQL catalog caches](../../../best-practices-operations/ysql-catalog-cache-tuning-guide/).
+Catalog cache flags are {{<tags/feature/ea idea="599">}}. For information on setting these flags, see [Customize preloading of YSQL catalog caches](../../../best-practices-operations/ysql-catalog-cache-tuning-guide/).
 
 ##### --ysql_catalog_preload_additional_table_list
 
@@ -1863,9 +1862,11 @@ Starting from version 2.18, the default is `-1`. Previously it was `4`.
 
 {{< /note >}}
 
+
 ##### --full_compaction_pool_max_threads
 
 {{% tags/wrap %}}
+
 
 Default: `1`
 {{% /tags/wrap %}}
@@ -1876,6 +1877,7 @@ The maximum number of threads allowed for non-admin full compactions. This inclu
 
 {{% tags/wrap %}}
 
+
 Default: `500`
 {{% /tags/wrap %}}
 
@@ -1884,6 +1886,7 @@ The maximum number of full compaction tasks that can be queued simultaneously. T
 ##### --auto_compact_check_interval_sec
 
 {{% tags/wrap %}}
+
 
 Default: `60`
 {{% /tags/wrap %}}
@@ -1894,25 +1897,30 @@ The interval at which the full compaction task will check for tablets eligible f
 
 {{% tags/wrap %}}
 
+
 Default: `300`
 {{% /tags/wrap %}}
 
 Window of time in seconds over which DocDB read statistics are analyzed for the purpose of triggering full compactions to improve read performance. Both [auto_compact_percent_obsolete](#auto-compact-percent-obsolete) and [auto_compact_min_obsolete_keys_found](#auto-compact-min-obsolete-keys-found) are evaluated over this period of time.
+
 `auto_compact_stat_window_seconds` must be evaluated as a multiple of [auto_compact_check_interval_sec](#auto-compact-check-interval-sec), and will be rounded up to meet this constraint. For example, if `auto_compact_stat_window_seconds` is set to `100` and `auto_compact_check_interval_sec` is set to `60`, it will be rounded up to `120` at runtime.
 
 ##### --auto_compact_percent_obsolete
 
 {{% tags/wrap %}}
 
+
 Default: `99`
 {{% /tags/wrap %}}
 
 The percentage of obsolete keys (over total keys) read over the [auto_compact_stat_window_seconds](#auto-compact-stat-window-seconds) window of time required to trigger an automatic full compaction on a tablet. Only keys that are past their history retention (and thus can be garbage collected) are counted towards this threshold.
+
 For example, if the flag is set to `99` and 100000 keys are read over that window of time, and 99900 of those are obsolete and past their history retention, a full compaction will be triggered (subject to other conditions).
 
 ##### --auto_compact_min_obsolete_keys_found
 
 {{% tags/wrap %}}
+
 
 Default: `10000`
 {{% /tags/wrap %}}
@@ -1923,6 +1931,7 @@ Minimum number of keys that must be read over the last [auto_compact_stat_window
 
 {{% tags/wrap %}}
 
+
 Default: `0`
 {{% /tags/wrap %}}
 
@@ -1931,6 +1940,7 @@ Minimum wait time between statistics-based and scheduled full compactions. To be
 ##### --scheduled_full_compaction_frequency_hours
 
 {{% tags/wrap %}}
+
 
 Default: `0`
 {{% /tags/wrap %}}
@@ -1941,10 +1951,12 @@ The frequency with which full compactions should be scheduled on tablets. `0` in
 
 {{% tags/wrap %}}
 
+
 Default: `33`
 {{% /tags/wrap %}}
 
 Percentage of [scheduled_full_compaction_frequency_hours](#scheduled-full-compaction-frequency-hours) to be used as jitter when determining full compaction schedule per tablet. Must be a value between `0` and `100`. Jitter is introduced to prevent many tablets from being scheduled for full compactions at the same time.
+
 Jitter is deterministically computed when scheduling a compaction, between 0 and (frequency * jitter factor) hours. Once computed, the jitter is subtracted from the intended compaction frequency to determine the tablet's next compaction time.
 
 Example: If `scheduled_full_compaction_frequency_hours` is `720` hours (that is, 30 days), and `scheduled_full_compaction_jitter_factor_percentage` is `33` percent, each tablet will be scheduled for compaction every `482` hours to `720` hours.
@@ -1952,6 +1964,7 @@ Example: If `scheduled_full_compaction_frequency_hours` is `720` hours (that is,
 ##### --automatic_compaction_extra_priority
 
 {{% tags/wrap %}}
+
 
 Default: `50`
 {{% /tags/wrap %}}
@@ -2196,11 +2209,14 @@ Timeout, in milliseconds, for the node-level mutation reporting RPC to the Auto 
 
 ### Advisory lock flags
 
+Support for advisory locks is {{<tags/feature/tp idea="812">}}.
+
 To learn about advisory locks, see [Advisory locks](../../../explore/transactions/explicit-locking/#advisory-locks).
 
 ##### --ysql_yb_enable_advisory_locks
 
 {{% tags/wrap %}}
+{{<tags/feature/tp>}}
 {{<tags/feature/t-server>}}
 Default: `false`
 {{% /tags/wrap %}}
@@ -2243,7 +2259,7 @@ Set this flag to `false` to enable online index backfill. When set to `false`, o
 
 For details on how online index backfill works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
 
-##### --num_concurrent_backfills_allowed
+#### --num_concurrent_backfills_allowed
 
 {{% tags/wrap %}}
 
@@ -2571,7 +2587,7 @@ Specifies the time zone for displaying and interpreting timestamps.
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-Default: Uses the YSQL display format.
+Default: Uses the ISO, MDY display format.
 {{% /tags/wrap %}}
 
 Specifies the display format for data and time values.
@@ -2766,30 +2782,6 @@ Default: `true`
 {{% /tags/wrap %}}
 
 Controls whether YSQL follower reads that specify a not-yet-safe read time should be rejected. This will force them to go to the leader, which will likely be faster than waiting for safe time to catch up.
-
-##### --enable_ysql_operation_lease
-
-{{% tags/wrap %}}
-
-
-Default: `true`
-{{% /tags/wrap %}}
-
-Enables the [YSQL lease mechanism](../../../architecture/transactions/concurrency-control/#ysql-lease-mechanism).
-
-On YB-TServers, a new PostgreSQL process is spawned only after establishing a lease with the YB-Master leader. The flag also controls whether the background YB-TServer task makes lease refresh requests.
-
-##### --ysql_lease_refresher_interval_ms
-
-{{% tags/wrap %}}
-
-
-Default: `1000` (1 second)
-{{% /tags/wrap %}}
-
-Determines the interval a YB-TServer waits before initiating another YSQL lease refresh RPC.
-
-Refer to [YSQL lease mechanism](../../../architecture/transactions/concurrency-control/#ysql-lease-refresher-interval-ms) for more details.
 
 ### YCQL
 

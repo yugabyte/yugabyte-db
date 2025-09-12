@@ -5,7 +5,7 @@ linkTitle: Manage users
 description: Use role-based access control (RBAC) in YugabyteDB Anywhere to manage users and roles.
 headcontent: Invite team members to your account and manage their access
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     parent: administer-yugabyte-platform
     identifier: anywhere-rbac
     weight: 10

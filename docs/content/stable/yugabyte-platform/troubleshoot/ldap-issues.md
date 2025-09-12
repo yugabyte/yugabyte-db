@@ -4,7 +4,7 @@ headerTitle:
 linkTitle: LDAP issues
 description: Troubleshoot LDAP issues
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     identifier: ldap-issues
     parent: troubleshoot-yp
     weight: 40

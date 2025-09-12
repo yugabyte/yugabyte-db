@@ -4,7 +4,7 @@ headerTitle: yb-admin
 linkTitle: yb-admin
 description: Use the yb-admin command line tool for advanced administration of YugabyteDB clusters.
 menu:
-  stable:
+  preview:
     identifier: yb-admin
     parent: admin
     weight: 30
@@ -439,7 +439,7 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
-* *db-type*: The type of database. Valid values are `ysql` and `ycql`.
+* *db-type*: The type of database. Valid values include `ysql` and `ycql`.
 * *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
 * *table*: The name of the table to compact.
 * *timeout-in-seconds*: Specifies duration (in seconds) yb-admin waits for compaction to end. Default is `20`.
@@ -1459,7 +1459,7 @@ Having all tablet leaders reside in a single region reduces the number of networ
 
 * Tablespaces don't inherit cluster-level placement information, leader preference, or read replica configurations.
 
-* If the client application uses a smart driver, set the [topology keys](/preview/drivers-orms/smart-drivers/#topology-aware-load-balancing) to target the preferred zones.
+* If the client application uses a smart driver, set the [topology keys](../../drivers-orms/smart-drivers/#topology-aware-load-balancing) to target the preferred zones.
 
 {{< /note >}}
 
@@ -2883,7 +2883,9 @@ Concurrent operations in a cluster can lead to various transactional conflicts, 
 
 #### finalize_upgrade
 
-Finalizes an upgrade after a successful [YSQL major upgrade](../../manage/ysql-major-upgrade-local/). Note that `finalize_upgrade` is a cluster-level operation; you don't need to run it on every node.
+Finalizes an upgrade after a successful [YSQL major upgrade](../../manage/ysql-major-upgrade-local/). You can run this command from any node in the cluster.
+
+Note that `finalize_upgrade` is a cluster-level operation; you don't need to run it on every node.
 
 **Syntax**
 

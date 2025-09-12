@@ -4,8 +4,10 @@ headerTitle: Connect to clusters
 linkTitle: Connect to clusters
 description: Connect clients to remote YugabyteDB clusters that have client-to-server encryption enabled.
 headcontent: Connect clients to remote YugabyteDB clusters that have client-to-server encryption enabled
+aliases:
+  - /secure/tls-encryption/connect-to-cluster
 menu:
-  stable:
+  preview:
     identifier: connect-to-cluster
     parent: tls-encryption
     weight: 40
@@ -44,7 +46,7 @@ $ ./bin/ysqlsh -h 127.0.0.1 -p 5433 -U yugabyte "sslmode=require"
 ```
 
 ```output
-ysqlsh (15.2-YB-{{<yb-version version="stable">}}-b0)
+ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 Type "help" for help.
 

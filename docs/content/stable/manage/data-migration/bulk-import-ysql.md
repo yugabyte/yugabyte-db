@@ -6,7 +6,7 @@ description: Import data from PostgreSQL into YugabyteDB for YSQL.
 tags:
   other: ysql
 menu:
-  stable:
+  preview:
     identifier: manage-bulk-import-ysql
     parent: manage-bulk-import-export
     weight: 729

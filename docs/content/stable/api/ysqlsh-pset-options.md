@@ -4,8 +4,10 @@ headerTitle: ysqlsh pset options
 linkTitle: pset options
 description: YSQL shell pset meta-command options.
 headcontent: Options for the \pset meta-command
+aliases:
+  - /preview/admin/ysqlsh-pset-options/
 menu:
-  stable_api:
+  preview_api:
     identifier: ysqlsh-pset-options
     parent: ysqlsh-meta-commands
     weight: 10

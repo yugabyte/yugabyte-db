@@ -3,8 +3,10 @@ title: YugabyteDB connector properties
 headerTitle: YugabyteDB connector properties
 linkTitle: Connector properties
 description: YugabyteDB connector properties for Change Data Capture in YugabyteDB.
+aliases:
+  - /preview/explore/change-data-capture/using-logical-replication/yugabytedb-connector-properties/
 menu:
-  stable:
+  preview:
     parent: yugabytedb-connector
     identifier: yugabytedb-connector-properties
     weight: 70

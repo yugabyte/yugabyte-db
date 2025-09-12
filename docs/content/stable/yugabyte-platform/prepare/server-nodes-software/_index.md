@@ -5,10 +5,13 @@ linkTitle: Software requirements
 description: Software prerequisites for database nodes running YugabyteDB.
 headContent: Operating system and additional software required for YugabyteDB
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     identifier: server-nodes-software
     parent: server-nodes
     weight: 20
+aliases:
+  - /preview/yugabyte-platform/configure-yugabyte-platform/supported-os-and-arch/
+  - /preview/yugabyte-platform/install-yugabyte-platform/prepare-on-prem-nodes/
 type: indexpage
 showRightNav: true
 ---
@@ -112,13 +115,13 @@ The script performs the following steps:
 1. Ensure that all the THP settings are correctly set.
 
     ```sh
-    cat /sys/kernel/mm/transparent_hugepage/enabled
+    cat /sys/kernel/mm/transparent_hugepage/enabled 
     ```
 
     Should return "always".
 
     ```sh
-    cat /sys/kernel/mm/transparent_hugepage/defrag
+    cat /sys/kernel/mm/transparent_hugepage/defrag 
     ```
 
     Should return "defer+madvise".

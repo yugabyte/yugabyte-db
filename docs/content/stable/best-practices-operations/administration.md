@@ -5,10 +5,12 @@ linkTitle: YSQL database administrators
 description: Tips and tricks to build YSQL applications
 headcontent: Tips and tricks for administering YSQL databases
 menu:
-  stable:
+  preview:
     identifier: best-practices-ysql-administration
     parent: best-practices-operations
     weight: 10
+aliases:
+  - /preview/develop/best-practices/administration/
 type: docs
 ---
 

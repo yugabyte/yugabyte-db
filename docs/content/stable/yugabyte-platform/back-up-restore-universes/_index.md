@@ -4,8 +4,13 @@ headerTitle: Back up and restore universes
 linkTitle: Back up universes
 description: Use YugabyteDB Anywhere to back up and restore YugabyteDB universe data.
 headcontent: Use YugabyteDB Anywhere to back up and restore YugabyteDB universes and data
+aliases:
+  - /preview/manage/enterprise-edition/backup-restore
+  - /preview/manage/enterprise-edition/back-up-restore-data
+  - /preview/yugabyte-platform/manage/backup-restore-data
+  - /preview/yugabyte-platform/back-up-restore-universes/back-up-universe-data/
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: back-up-restore-universes
 weight: 650

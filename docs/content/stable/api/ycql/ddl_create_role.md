@@ -4,9 +4,12 @@ headerTitle: CREATE ROLE
 linkTitle: CREATE ROLE
 description: Use the `CREATE ROLE` statement to create a new role that is used to authenticate into YCQL and as a group of permissions used to restrict operations on the database objects.
 menu:
-  stable_api:
+  preview_api:
     parent: api-cassandra
     weight: 1235
+aliases:
+  - /preview/api/cassandra/ddl_create_role
+  - /preview/api/ycql/ddl_create_role
 type: docs
 ---
 
@@ -31,7 +34,7 @@ This statement is enabled by setting the YB-TServer flag [`--use_cassandra_authe
 ### Grammar
 
 ```ebnf
-create_role ::= CREATE ROLE [ IF NOT EXISTS ] role_name
+create_role ::= CREATE ROLE [ IF NOT EXISTS ] role_name 
                 [ WITH role_property [ AND ... ] ]
 
 role_property ::=  PASSWORD = <Text Literal>

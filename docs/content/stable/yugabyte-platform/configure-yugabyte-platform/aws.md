@@ -4,8 +4,11 @@ headerTitle: Create cloud provider configuration
 linkTitle: Cloud providers
 description: Configure the Amazon Web Services (AWS) provider configuration.
 headContent: For deploying universes on AWS
+aliases:
+  - /preview/deploy/enterprise-edition/configure-cloud-providers/aws
+  - /preview/yugabyte-platform/deploy/configure-cloud-providers/aws
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     identifier: set-up-cloud-provider-1-aws
     parent: configure-yugabyte-platform
     weight: 20
@@ -103,7 +106,7 @@ Enter a Provider name. The Provider name is an internal tag used for organizing 
 - **Specify Access ID and Secret Key** - Create an AWS Service Account with the required permissions (refer to [Cloud permissions](../../prepare/cloud-permissions/cloud-permissions-nodes-aws/)), and provide your AWS Access Key ID and Secret Access Key.
 - **Use IAM Role from this YBA host's instance** - Provision the YBA VM instance with an IAM role that has sufficient permissions by attaching an [IAM role](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html) to the YBA VM in the **EC2** tab. This option is only available if YBA is installed on AWS.
 
-**Use AWS Route 53 DNS Server**. Choose whether to use the cloud DNS Server / load balancer for universes deployed using this provider. Generally, SQL clients should prefer to use [smart client drivers](/preview/drivers-orms/smart-drivers/) to connect to cluster nodes, rather than load balancers. However, in some cases (for example, if no smart driver is available in the language), you may use a DNS Server or load-balancer. The DNS Server acts as a load-balancer that routes clients to various nodes in the database universe. YBA integrates with [Amazon Route53](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/Welcome.html) to provide managed Canonical Name (CNAME) entries for your YugabyteDB universes, and automatically updates the DNS entry as nodes get created, removed, or undergo maintenance.
+**Use AWS Route 53 DNS Server**. Choose whether to use the cloud DNS Server / load balancer for universes deployed using this provider. Generally, SQL clients should prefer to use [smart client drivers](../../../drivers-orms/smart-drivers/) to connect to cluster nodes, rather than load balancers. However, in some cases (for example, if no smart driver is available in the language), you may use a DNS Server or load-balancer. The DNS Server acts as a load-balancer that routes clients to various nodes in the database universe. YBA integrates with [Amazon Route53](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/Welcome.html) to provide managed Canonical Name (CNAME) entries for your YugabyteDB universes, and automatically updates the DNS entry as nodes get created, removed, or undergo maintenance.
 
 ### Regions
 

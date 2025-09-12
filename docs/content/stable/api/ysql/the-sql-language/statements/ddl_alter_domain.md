@@ -4,9 +4,11 @@ headerTitle: ALTER DOMAIN
 linkTitle: ALTER DOMAIN
 description: Use the ALTER DOMAIN statement to change the definition of a domain.
 menu:
-  stable_api:
+  preview_api:
     identifier: ddl_alter_domain
     parent: statements
+aliases:
+  - /preview/api/ysql/commands/ddl_alter_domain/
 type: docs
 ---
 

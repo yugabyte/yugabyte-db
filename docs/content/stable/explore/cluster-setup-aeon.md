@@ -5,7 +5,7 @@ linkTitle: Run the examples
 description: Set up clusters to run Explore examples.
 headcontent: Set up YugabyteDB to run Explore examples
 menu:
-  stable:
+  preview:
     identifier: cluster-setup-2-aeon
     parent: explore
     weight: 5
@@ -79,7 +79,7 @@ The application is used to demonstrate the following Explore topics:
 - [Resiliency](../fault-tolerance/macos/) (this example is not available for Aeon)
 - [Multi-region deployment](../multi-region-deployments/synchronous-replication-cloud/)
 
-The application uses the YugabyteDB JDBC [Smart Driver](/preview/drivers-orms/smart-drivers/), which features universe- and topology-aware connection load balancing. The driver automatically balances application connections across the nodes in a universe, and re-balances connections when a node fails. For more information, see [YB Workload Simulator](https://github.com/YugabyteDB-Samples/yb-workload-simulator/).
+The application uses the YugabyteDB JDBC [Smart Driver](../../drivers-orms/smart-drivers/), which features universe- and topology-aware connection load balancing. The driver automatically balances application connections across the nodes in a universe, and re-balances connections when a node fails. For more information, see [YB Workload Simulator](https://github.com/YugabyteDB-Samples/yb-workload-simulator/).
 
 ### Download
 
@@ -111,7 +111,7 @@ java -Dnode=<host name> \
 - `<host name>` - The host name of your YugabyteDB cluster. For YugabyteDB Aeon, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
 - `<dbname>` - The name of the database you are connecting to (the default is `yugabyte`).
 - `<dbuser>` and `<dbpassword>` - The username and password for the YugabyteDB database. Use the credentials in the credentials file you downloaded when you created your cluster.
-<!-- `<cloud.region.zone>` - The zones in your cluster, comma-separated, in the format `cloud.region.zone`, to be used as topology keys for [topology-aware load balancing](/preview/drivers-orms/smart-drivers/#topology-aware-load-balancing). Node details are displayed on the cluster **Nodes** tab. For example, to add topology keys for a multi-zone cluster in the AWS US East region, you would enter the following:
+<!-- `<cloud.region.zone>` - The zones in your cluster, comma-separated, in the format `cloud.region.zone`, to be used as topology keys for [topology-aware load balancing](../drivers-orms/smart-drivers/#topology-aware-load-balancing). Node details are displayed on the cluster **Nodes** tab. For example, to add topology keys for a multi-zone cluster in the AWS US East region, you would enter the following:
 
     ```sh
     -Dspring.datasource.hikari.data-source-properties.topologyKeys=aws.us-east-1.us-east-1a,aws.us-east-1.us-east-2a,aws.us-east-1.us-east-3a

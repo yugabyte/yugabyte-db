@@ -3,8 +3,10 @@ title: Create and edit instance tags
 headerTitle: Create and edit instance tags
 linkTitle: Configure instance tags
 description: Use YugabyteDB Anywhere to create and edit instance tags.
+aliases:
+  - /preview/manage/enterprise-edition/instance-tags/
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     identifier: instance-tags
     parent: edit-universe
     weight: 20

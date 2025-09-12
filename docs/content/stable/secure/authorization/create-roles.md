@@ -5,10 +5,12 @@ linkTitle: Manage users and roles
 description: Manage users and roles in YSQL
 headcontent: Manage users and roles
 menu:
-  stable:
+  preview:
     identifier: create-roles
     parent: authorization
     weight: 717
+aliases:
+  - /preview/secure/authorization/ysql-create-roles/
 type: docs
 ---
 

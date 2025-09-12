@@ -4,8 +4,10 @@ headerTitle: SQL features
 linkTitle: SQL features
 description: Explore core SQL features in YSQL
 headcontent: Explore core SQL features in YSQL
+aliases:
+  - /preview/explore/ysql-language-features/schema/
 menu:
-  stable:
+  preview:
     identifier: explore-ysql-language-features
     parent: explore
     weight: 100

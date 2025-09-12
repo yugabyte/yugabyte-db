@@ -5,7 +5,7 @@ linkTitle: Server for YBA
 description: Prerequisites for installing YugabyteDB Anywhere.
 headContent: Prepare a VM for YugabyteDB Anywhere
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     identifier: server-yba-kubernetes
     parent: prepare
     weight: 30

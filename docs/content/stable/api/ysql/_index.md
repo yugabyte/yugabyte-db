@@ -9,7 +9,7 @@ showRightNav: true
 type: indexpage
 ---
 <!--menu:
-  stable_api:
+  preview_api:
     parent: api
     identifier: api-ysql
     weight: 10

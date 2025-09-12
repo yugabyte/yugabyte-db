@@ -4,9 +4,11 @@ headerTitle: DROP PROCEDURE
 linkTitle: DROP PROCEDURE
 description: Use the DROP PROCEDURE statement to remove a procedure from a database.
 menu:
-  stable_api:
+  preview_api:
     identifier: ddl_drop_procedure
     parent: statements
+aliases:
+  - /preview/api/ysql/commands/ddl_drop_procedure/
 type: docs
 ---
 

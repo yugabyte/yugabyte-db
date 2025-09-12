@@ -4,7 +4,7 @@ headerTitle: pg_cron extension
 linkTitle: pg_cron
 description: Using the pg_cron extension in YugabyteDB
 menu:
-  stable:
+  preview:
     identifier: extension-pgcron
     parent: pg-extensions
     weight: 20

@@ -3,10 +3,12 @@ title: Logging
 linkTitle: Logs
 headerTitle: Understand YugabyteDB logging
 menu:
-  stable:
+  preview:
     identifier: observability-logging
     parent: explore-observability
     weight: 900
+aliases:
+- /preview/troubleshoot/nodes/check-logs/
 type: docs
 ---
 

@@ -5,7 +5,7 @@ linkTitle: On-premises provider
 description: Prepare a VM for deploying universes on-premises.
 headContent: Prepare a VM for deploying universes on-premises
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     identifier: software-on-prem
     parent: server-nodes-software
     weight: 20
@@ -55,7 +55,7 @@ Use this method if you don't have internet connectivity. This downloads the same
 Extract the package and go to the `scripts` directory.
 
 ```sh
-tar -xvzf node-agent.tar.gz && cd {{<yb-version version="stable" format="build">}}/scripts/
+tar -xvzf node-agent.tar.gz && cd {{<yb-version version="preview" format="build">}}/scripts/
 ```
 
 #### Direct download
@@ -63,28 +63,28 @@ tar -xvzf node-agent.tar.gz && cd {{<yb-version version="stable" format="build">
 Alternatively, the node agent package is included in the YBA Installer package. Download and extract the YBA Installer by entering the following commands:
 
 ```sh
-wget https://downloads.yugabyte.com/releases/{{<yb-version version="stable" format="long">}}/yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
-tar -xf yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
-cd yba_installer_full-{{<yb-version version="stable" format="build">}}/
+wget https://downloads.yugabyte.com/releases/{{<yb-version version="preview" format="long">}}/yba_installer_full-{{<yb-version version="preview" format="build">}}-linux-x86_64.tar.gz
+tar -xf yba_installer_full-{{<yb-version version="preview" format="build">}}-linux-x86_64.tar.gz
+cd yba_installer_full-{{<yb-version version="preview" format="build">}}/
 ```
 
 Extract the yugabundle package:
 
 ```sh
-tar -xf yugabundle-{{<yb-version version="stable" format="build">}}-centos-x86_64.tar.gz
-cd yugabyte-{{<yb-version version="stable" format="build">}}/
+tar -xf yugabundle-{{<yb-version version="preview" format="build">}}-centos-x86_64.tar.gz
+cd yugabyte-{{<yb-version version="preview" format="build">}}/
 ```
 
 Extract the node agent package and go to the `scripts` directory:
 
 ```sh
-tar -xf node_agent-{{<yb-version version="stable" format="build">}}-linux-amd64.tar.gz && cd {{<yb-version version="stable" format="build">}}/scripts/
+tar -xf node_agent-{{<yb-version version="preview" format="build">}}-linux-amd64.tar.gz && cd {{<yb-version version="preview" format="build">}}/scripts/
 ```
 
 or
 
 ```sh
-tar -xf node_agent-{{<yb-version version="stable" format="build">}}-linux-arm64.tar.gz && cd {{<yb-version version="stable" format="build">}}/scripts/
+tar -xf node_agent-{{<yb-version version="preview" format="build">}}-linux-arm64.tar.gz && cd {{<yb-version version="preview" format="build">}}/scripts/
 ```
 
 ### Create data directories or mount points

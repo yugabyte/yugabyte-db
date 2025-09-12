@@ -5,7 +5,7 @@ linkTitle: YugabyteDB Anywhere
 headcontent: Self-managed Database-as-a-Service
 description: YugabyteDB delivered as a private database-as-a-service for enterprises.
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     name: "Overview"
     parent: yugabytedb-anywhere
     identifier: overview-yp
@@ -80,7 +80,7 @@ Use YugabyteDB Anywhere to automate the deployment and management of YugabyteDB 
 
   {{< sections/3-box-card
   title="Automation"
-  description="Automate tasks using the API, CLI, Terraform, and more.."
+  description="Automate tasks using the YugabyteDB Anywhere Terraform provider."
   buttonText="Automation"
   buttonUrl="anywhere-automation/"
   >}}

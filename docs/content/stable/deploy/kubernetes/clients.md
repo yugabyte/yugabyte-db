@@ -4,7 +4,7 @@ headerTitle: Connect Clients to Kubernetes Clusters
 linkTitle: Connect Clients
 description: Connect remote clients to YugabyteDB clusters deployed within Kubernetes.
 menu:
-  stable:
+  preview:
     identifier: clients-kubernetes
     parent: deploy-kubernetes
     weight: 626
@@ -178,7 +178,7 @@ kubectl exec -n yb-demo -it yb-client -- ysqlsh -h yb-tservers.yb-demo.svc.clust
 ```
 
 ```output
-ysqlsh (15.2-YB-{{<yb-version version="stable">}}-b0)
+ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 Type "help" for help.
 ```
@@ -238,7 +238,7 @@ docker run -it --rm -v $(pwd)/certs/:/root/.yugabytedb/:ro yugabytedb/yugabyte-c
 ```
 
 ```output
-ysqlsh (15.2-YB-{{<yb-version version="stable">}}-b0)
+ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 Type "help" for help.
 ```
@@ -260,7 +260,7 @@ docker run -it --rm -v $(pwd)/certs/:/root/.yugabytedb/:ro \
 ```
 
 ```output
-ysqlsh (15.2-YB-{{<yb-version version="stable">}}-b0)
+ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
 Connected to local cluster at 35.200.205.208:9042.
 [cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.

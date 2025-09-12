@@ -5,7 +5,7 @@ linkTitle: Setup
 description: Setting up transactional (active-active single-master) replication between two YB universes
 headContent: Set up transactional xCluster replication
 menu:
-  stable:
+  preview:
     parent: async-replication-transactional
     identifier: async-transactional-setup-3-manual
     weight: 10

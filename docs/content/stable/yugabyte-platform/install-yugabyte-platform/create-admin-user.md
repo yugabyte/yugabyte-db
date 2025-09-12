@@ -4,10 +4,12 @@ headerTitle: Create admin user
 linkTitle: Create admin user
 description: Create an admin user.
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     identifier: create-admin-user
     parent: install-yugabyte-platform
     weight: 20
+aliases:
+  - /preview/yugabyte-platform/configure-yugabyte-platform/create-admin-user/
 type: docs
 ---
 

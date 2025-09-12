@@ -4,9 +4,11 @@ headerTitle: CREATE SCHEMA
 linkTitle: CREATE SCHEMA
 description: Use the CREATE SCHEMA statement to create schema in the current database.
 menu:
-  stable_api:
+  preview_api:
     identifier: ddl_create_schema
     parent: statements
+aliases:
+  - /preview/api/ysql/commands/ddl_create_schema/
 type: docs
 ---
 

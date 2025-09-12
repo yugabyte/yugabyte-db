@@ -5,7 +5,7 @@ linkTitle: Server for YBA
 description: Prerequisites for installing YugabyteDB Anywhere.
 headContent: Prepare a VM for YugabyteDB Anywhere
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     identifier: server-yba
     parent: prepare
     weight: 30
@@ -62,7 +62,7 @@ Installation requires a license file. To obtain your license, contact your sales
 
 ### Python for YugabyteDB Anywhere
 
-Python v3.10 to v3.11 must be pre-installed.
+For v2.25.0, Python v3.8 to v3.11 must be pre-installed. For v2.25.1, Python v3.10 to v3.11 must be pre-installed.
 
 Both python and python3 must symbolically link to Python 3. One way to achieve this is to use alternatives. For example:
 

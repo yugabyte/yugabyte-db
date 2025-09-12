@@ -4,8 +4,10 @@ headerTitle: Non-transactional xCluster
 linkTitle: Non-transactional
 description: Deploy using non-transactional unidirectional (master-follower) or bidirectional (multi-master) replication between universes
 headContent: Deploy non-transactional uni- (master-follower) and bi- (multi-master) directional replication
+aliases:
+  - /preview/deploy/multi-dc/2dc-deployment
 menu:
-  stable:
+  preview:
     parent: async-replication
     identifier: async-deployment
     weight: 20

@@ -3,8 +3,10 @@ title: Create and configure alerts
 headerTitle: Create and configure alerts
 linkTitle: Configure alerts
 description: Configure alerts and health check
+aliases:
+  - /preview/yugabyte-platform/configure-yugabyte-platform/set-up-alerts-health-check/
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     identifier: set-up-alerts-health-check
     parent: alert
     weight: 15

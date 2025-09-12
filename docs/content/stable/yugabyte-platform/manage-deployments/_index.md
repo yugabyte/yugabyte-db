@@ -4,7 +4,7 @@ headerTitle: Manage universes
 linkTitle: Manage universes
 description: Manage YugabyteDB universe deployments
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: manage-deployments
     weight: 640
@@ -44,11 +44,11 @@ To see your deployed universes, navigate to **Dashboard** or **Universes**. To v
     href="remove-nodes/"
     icon="fa-thin fa-wrench">}}
 
-   {{<index/item
-    title="Monitor tasks"
-    body="Monitor and manage tasks."
+  {{<index/item
+    title="Retry tasks"
+    body="Retry failed tasks."
     href="retry-failed-task/"
-    icon="fa-thin fa-magnifying-glass">}}
+    icon="fa-thin fa-rotate-right">}}
 
   {{<index/item
     title="xCluster Replication"

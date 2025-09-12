@@ -3,11 +3,13 @@ title: Enable users in YSQL
 headerTitle: Enable users in YSQL
 description: Enable users in YSQL.
 menu:
-  stable:
+  preview:
     name: Enable users
     identifier: enable-authentication-1-ysql
     parent: enable-authentication
     weight: 715
+aliases:
+  - /preview/secure/enable-authentication/ysql/
 type: docs
 ---
 
@@ -102,7 +104,7 @@ $ ./bin/ysqlsh -U yugabyte
 You are prompted to enter the password. After logging in, you should see the following output:
 
 ```output
-ysqlsh (15.2-YB-{{<yb-version version="stable">}}-b0)
+ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
 Type "help" for help.
 
 yugabyte=#

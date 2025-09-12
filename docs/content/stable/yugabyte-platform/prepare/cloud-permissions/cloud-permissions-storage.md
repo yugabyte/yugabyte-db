@@ -5,7 +5,7 @@ linkTitle: To back up and restore
 description: Prepare your cloud for backup and restore using YugabyteDB Anywhere.
 headContent: Prepare your cloud for backup and restore using YugabyteDB Anywhere
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     identifier: cloud-permissions-storage
     parent: cloud-permissions
     weight: 30

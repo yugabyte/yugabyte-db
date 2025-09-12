@@ -5,10 +5,12 @@ linkTitle: sysbench
 description: Benchmark YSQL performance using sysbench.
 headcontent: Benchmark YSQL performance using sysbench
 menu:
-  stable:
+  preview:
     identifier: sysbench-ysql
     parent: benchmark
     weight: 5
+aliases:
+  - /benchmark/sysbench/
 type: docs
 ---
 
@@ -28,7 +30,7 @@ $ export PATH=$PATH:/path/to/ysqlsh
 
 ### Install sysbench
 
-Install sysbench on a machine which satisfies the Prerequisites using one of
+Install sysbench on a machine which satisfies the Prerequisites using one of 
 the following options:
 
 <ul class="nav nav-tabs nav-tabs-yb">
@@ -78,7 +80,7 @@ RHEL package is only for EL8
 ```sh
 wget https://github.com/yugabyte/sysbench/releases/download/1.0.0-yb/sysbench-1.0.0-1.el8.x86_64.rpm
 
-sudo yum install -y sysbench-1.0.0-1.el8.x86_64.rpm
+sudo yum install -y sysbench-1.0.0-1.el8.x86_64.rpm 
 ```
 
   </div>
@@ -170,7 +172,7 @@ sysbench <workload> \
 
 ## Expected results
 
-The following results are for a 3-node cluster running YBDB version {{< yb-version version="stable" format="short">}}, with each node running on a c5.2xlarge AWS instance (8 cores, 16 GiB of RAM), all in the same AZ, with a replication factor of 3 and TLS enabled.
+The following results are for a 3-node cluster running YBDB version {{< yb-version version="preview" format="short">}}, with each node running on a c5.2xlarge AWS instance (8 cores, 16 GiB of RAM), all in the same AZ, with a replication factor of 3 and TLS enabled.
 
 ### 10 tables each with 100k rows
 

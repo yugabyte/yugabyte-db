@@ -4,9 +4,12 @@ headerTitle: DROP KEYSPACE
 linkTitle: DROP KEYSPACE
 description: Use the DROP KEYSPACE statement to remove a keyspace from the system.
 menu:
-  stable_api:
+  preview_api:
     parent: api-cassandra
     weight: 1260
+aliases:
+  - /preview/api/cassandra/ddl_drop_keyspace
+  - /preview/api/ycql/ddl_drop_keyspace
 type: docs
 ---
 

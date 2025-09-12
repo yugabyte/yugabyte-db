@@ -4,9 +4,11 @@ headerTitle: DROP AGGREGATE
 linkTitle: DROP AGGREGATE
 description: Use the DROP AGGREGATE statement to remove an aggregate.
 menu:
-  stable_api:
+  preview_api:
     identifier: ddl_drop_aggregate
     parent: statements
+aliases:
+  - /preview/api/ysql/commands/ddl_drop_aggregate/
 type: docs
 ---
 

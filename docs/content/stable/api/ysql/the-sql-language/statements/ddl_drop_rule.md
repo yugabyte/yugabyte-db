@@ -4,9 +4,11 @@ headerTitle: DROP RULE
 linkTitle: DROP RULE
 description: Use the DROP RULE statement to remove a rule.
 menu:
-  stable_api:
+  preview_api:
     identifier: ddl_drop_rule
     parent: statements
+aliases:
+  - /preview/api/ysql/commands/ddl_drop_rule/
 type: docs
 ---
 

@@ -5,7 +5,7 @@ linkTitle: Expression indexes
 description: Using expression indexes in YSQL
 headContent: Explore expression indexes in YugabyteDB using YSQL
 menu:
-  stable:
+  preview:
     identifier: expression-index-ysql
     parent: explore-indexes-constraints-ysql
     weight: 250

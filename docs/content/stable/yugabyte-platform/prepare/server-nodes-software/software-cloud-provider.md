@@ -5,7 +5,7 @@ linkTitle: Cloud provider
 description: Prepare a VM for deploying universes using cloud provider configurations.
 headContent: Prepare a VM for deploying universes using a cloud provider configuration
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     identifier: software-cloud-provider
     parent: server-nodes-software
     weight: 10

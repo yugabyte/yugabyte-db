@@ -4,8 +4,11 @@ headerTitle: Get started
 linkTitle: Get started
 description: Get started with Change Data Capture in YugabyteDB.
 headcontent: Get set up for using CDC in YugabyteDB
+aliases:
+  - /preview/explore/change-data-capture/cdc-get-started/
+  - /preview/explore/change-data-capture/using-yugabytedb-grpc-replication/cdc-get-started/
 menu:
-  stable:
+  preview:
     parent: explore-change-data-capture-grpc-replication
     identifier: cdc-get-started
     weight: 10
@@ -510,7 +513,7 @@ CDC record for UPDATE (using schema version 1):
 
 ## Colocated tables
 
-YugabyteDB supports streaming of changes from [colocated tables](../../../../additional-features/colocation). The connector can be configured with regular configuration properties and deployed for streaming.
+YugabyteDB supports streaming of changes from [colocated tables](../../../../additional-features/colocation/). The connector can be configured with regular configuration properties and deployed for streaming.
 
 {{< note title="Note" >}}
 

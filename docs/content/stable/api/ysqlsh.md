@@ -4,6 +4,10 @@ headerTitle: ysqlsh
 linkTitle: ysqlsh
 description: Use the YSQL shell (ysqlsh) to interact with YugabyteDB.
 headcontent: Shell for interacting with the YugabyteDB YSQL API
+aliases:
+  - /develop/tools/ysqlsh/
+  - /preview/develop/tools/ysqlsh/
+  - /preview/admin/ysqlsh/
 type: docs
 ---
 
@@ -30,7 +34,7 @@ To download and install a standalone version of ysqlsh, refer to [YugabyteDB cli
 ```
 
 ```output
-ysqlsh (15.2-YB-{{<yb-version version="stable">}}-b0)
+ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
 Type "help" for help.
 
 yugabyte=#

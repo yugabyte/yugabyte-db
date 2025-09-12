@@ -4,7 +4,7 @@ headerTitle: gen_random_uuid()
 linkTitle: gen_random_uuid()
 description: Generate a UUID.
 menu:
-  stable_api:
+  preview_api:
     identifier: api-ysql-exprs-gen-random-uuid
     parent: api-ysql-exprs
     weight: 20

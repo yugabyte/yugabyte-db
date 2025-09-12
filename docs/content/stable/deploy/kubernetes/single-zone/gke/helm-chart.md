@@ -4,11 +4,14 @@ headerTitle: Google Kubernetes Engine (GKE)
 linkTitle: Google Kubernetes Engine (GKE)
 description: Use Helm Chart to deploy a single-zone YugabyteDB cluster on Google Kubernetes Engine (GKE).
 menu:
-  stable:
+  preview:
     parent: deploy-kubernetes-sz
     name: Google Kubernetes Engine
     identifier: k8s-gke-1
     weight: 623
+aliases:
+  - /preview/deploy/kubernetes/gke/helm-chart/
+  - /preview/deploy/kubernetes/single-zone/gke/
 type: docs
 ---
 
@@ -117,14 +120,14 @@ helm repo update
 Execute the following command:
 
 ```sh
-helm search repo yugabytedb/yugabyte --version {{<yb-version version="stable" format="short">}}
+helm search repo yugabytedb/yugabyte --version {{<yb-version version="preview" format="short">}}
 ```
 
 Expect the following output:
 
 ```output
 NAME                 CHART VERSION  APP VERSION   DESCRIPTION
-yugabytedb/yugabyte  {{<yb-version version="stable" format="short">}}          {{<yb-version version="stable" format="build">}}  YugabyteDB is the high-performance distributed ...
+yugabytedb/yugabyte  {{<yb-version version="preview" format="short">}}          {{<yb-version version="preview" format="build">}}  YugabyteDB is the high-performance distributed ...
 ```
 
 ### Install YugabyteDB
@@ -133,7 +136,7 @@ Run the following commands to create a namespace and then install YugabyteDB:
 
 ```sh
 kubectl create namespace yb-demo
-helm install yb-demo yugabytedb/yugabyte --version {{<yb-version version="stable" format="short">}} --namespace yb-demo --wait
+helm install yb-demo yugabytedb/yugabyte --version {{<yb-version version="preview" format="short">}} --namespace yb-demo --wait
 ```
 
 ## Check the cluster status
@@ -212,7 +215,7 @@ helm history yb-demo -n yb-demo
 
 ```output
 REVISION  UPDATED                   STATUS    CHART           APP VERSION   DESCRIPTION
-1         Tue Apr 21 17:29:01 2020  deployed  yugabyte-{{<yb-version version="stable" format="short">}}  {{<yb-version version="stable" format="build">}}  Install complete
+1         Tue Apr 21 17:29:01 2020  deployed  yugabyte-{{<yb-version version="preview" format="short">}}  {{<yb-version version="preview" format="build">}}  Install complete
 ```
 
 ## Connect using YugabyteDB shells
@@ -253,12 +256,12 @@ You can configure the cluster using the same commands and options that are descr
 By default, the YugabyteDB Helm chart exposes the client API endpoints, as well as YB-Master UI endpoint using two LoadBalancers. To expose the client APIs using independent LoadBalancers, you can execute the following command:
 
 ```sh
-helm install yb-demo yugabytedb/yugabyte -f https://raw.githubusercontent.com/yugabyte/charts/master/stable/yugabyte/expose-all.yaml --version {{<yb-version version="stable" format="short">}} --namespace yb-demo --wait
+helm install yb-demo yugabytedb/yugabyte -f https://raw.githubusercontent.com/yugabyte/charts/master/stable/yugabyte/expose-all.yaml --version {{<yb-version version="preview" format="short">}} --namespace yb-demo --wait
 ```
 
 You can also bring up an internal LoadBalancer (for either YB-Master or YB-TServer services), if required. You would need to specify the [annotation](https://kubernetes.io/docs/concepts/services-networking/service/#internal-load-balancer) required for your cloud provider. The following command brings up an internal LoadBalancer for the YB-TServer service in Google Cloud Platform:
 
 ```sh
-helm install yugabyte -f https://raw.githubusercontent.com/yugabyte/charts/master/stable/yugabyte/expose-all.yaml --version {{<yb-version version="stable" format="short">}} --namespace yb-demo --name yb-demo \
+helm install yugabyte -f https://raw.githubusercontent.com/yugabyte/charts/master/stable/yugabyte/expose-all.yaml --version {{<yb-version version="preview" format="short">}} --namespace yb-demo --name yb-demo \
   --set annotations.tserver.loadbalancer."cloud\.google\.com/load-balancer-type"=Internal --wait
 ```

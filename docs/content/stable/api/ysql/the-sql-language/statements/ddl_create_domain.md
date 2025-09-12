@@ -4,9 +4,11 @@ headerTitle: CREATE DOMAIN
 linkTitle: CREATE DOMAIN
 description: Use the CREATE DOMAIN statement to create a user-defined data type with optional constraints.
 menu:
-  stable_api:
+  preview_api:
     identifier: ddl_create_domain
     parent: statements
+aliases:
+  - /preview/api/ysql/commands/ddl_create_domain/
 type: docs
 ---
 

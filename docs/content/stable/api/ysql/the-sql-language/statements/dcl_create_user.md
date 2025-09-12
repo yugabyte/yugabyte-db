@@ -4,7 +4,7 @@ headerTitle: CREATE USER
 linkTitle: CREATE USER
 description: Use the CREATE USER statement to create a user. The CREATE USER statement is an alias for CREATE ROLE, but creates a role that has LOGIN privileges by default.
 menu:
-  stable_api:
+  preview_api:
     identifier: dcl_create_user
     parent: statements
 type: docs
@@ -62,11 +62,11 @@ GRANT CREATE ON SCHEMA public TO <username>;
   ```plpgsql
   yugabyte=# DO $$
   DECLARE time TIMESTAMP := now() + INTERVAL '4 HOURS';
-  BEGIN
+  BEGIN 
     EXECUTE format(
-      'CREATE USER Edwin WITH PASSWORD ''secure_password'' VALID UNTIL ''%s'';',
+      'CREATE USER Edwin WITH PASSWORD ''secure_password'' VALID UNTIL ''%s'';', 
       time
-    );
+    ); 
   END
   $$;
   ```

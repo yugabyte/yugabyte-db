@@ -5,7 +5,7 @@ linkTitle: Distributed transactions
 description: Understand distributed transactions in YugabyteDB using YCQL.
 headcontent:
 menu:
-  stable:
+  preview:
     name: Distributed transactions
     identifier: explore-transactions-distributed-transactions-2-ycql
     parent: explore-transactions

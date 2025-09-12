@@ -5,7 +5,7 @@ linkTitle: Packed rows
 description: Packed rows implemention in DocDB
 headcontent: Understand how packed rows are implemented in DocDB
 menu:
-  stable:
+  preview:
     identifier: docdb-packed-rows
     parent: docdb
     weight: 200

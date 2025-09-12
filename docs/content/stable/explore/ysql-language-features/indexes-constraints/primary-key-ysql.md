@@ -5,10 +5,13 @@ linkTitle: Primary keys
 description: Defining Primary key constraint in YSQL
 headContent: Explore primary keys in YugabyteDB using YSQL
 menu:
-  stable:
+  preview:
     identifier: primary-key-ysql
     parent: explore-indexes-constraints-ysql
     weight: 200
+aliases:
+  - /preview/explore/ysql-language-features/constraints/
+  - /preview/explore/indexes-constraints/constraints/
 type: docs
 ---
 
@@ -152,7 +155,7 @@ ALTER TABLE census ADD PRIMARY KEY (id);
 
 ## Learn more
 
-- [Designing optimal Primary keys](/preview/develop/data-modeling/primary-keys-ysql)
+- [Designing optimal Primary keys](../../../../develop/data-modeling/primary-keys-ysql)
 - [Primary Key](../../../../api/ysql/the-sql-language/statements/ddl_create_table/#primary-key)
 - [Table with Primary Key](../../../../api/ysql/the-sql-language/statements/ddl_create_table/#table-with-primary-key)
 - [Natural versus Surrogate Primary Keys in a Distributed SQL Database](https://www.yugabyte.com/blog/natural-versus-surrogate-primary-keys-in-a-distributed-sql-database/)

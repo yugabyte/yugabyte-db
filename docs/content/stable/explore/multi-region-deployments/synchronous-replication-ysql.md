@@ -4,8 +4,13 @@ headerTitle: Synchronous multi region (3+ regions)
 linkTitle: Synchronous (3+ regions)
 description: Global data distributed using synchronous replication across regions.
 headcontent: Distribute data synchronously across regions
+aliases:
+  - /preview/explore/global-distribution-linux/
+  - /preview/explore/global-distribution/macos
+  - /preview/explore/global-distribution/linux
+  - /preview/explore/multi-region-deployments/synchronous-replication-ycql/
 menu:
-  stable:
+  preview:
     identifier: explore-multi-region-deployments-sync-replication-1-ysql
     parent: explore-multi-region-deployments
     weight: 710
@@ -71,7 +76,7 @@ Follow the [setup instructions](../../cluster-setup-local/#set-up-yb-workload-si
 
 The YugabyteDB JDBC Smart Driver performs uniform load balancing by default, meaning it uniformly distributes application connections across all the nodes in the universe. However, in a multi-region universe, it is more efficient to target regions closest to your application.
 
-You can configure the smart driver with [topology load balancing](/preview/drivers-orms/smart-drivers/#topology-aware-load-balancing) to limit connections to the closest region.
+You can configure the smart driver with [topology load balancing](../../../drivers-orms/smart-drivers/#topology-aware-load-balancing) to limit connections to the closest region.
 
 To turn on topology load balancing, start the application as usual, adding the following flag:
 

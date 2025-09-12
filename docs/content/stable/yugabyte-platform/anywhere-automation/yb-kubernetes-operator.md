@@ -4,15 +4,17 @@ headerTitle: YugabyteDB Kubernetes Operator
 linkTitle: Kubernetes Operator
 description: YugabyteDB Kubernetes Operator for YugabyteDB Anywhere.
 headcontent: Install YugabyteDB Anywhere and create universes using YugabyteDB Kubernetes Operator
+tags:
+  feature: early-access
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     parent: anywhere-automation
     identifier: yb-kubernetes-operator
     weight: 100
 type: docs
 ---
 
-The YugabyteDB Kubernetes Operator streamlines the deployment and management of YugabyteDB clusters in Kubernetes environments. You can use the Operator to automate provisioning, scaling, and handling lifecycle events of YugabyteDB clusters, and it provides additional capabilities not available via other automation methods (which rely on REST APIs, UIs, and Helm charts).
+The YugabyteDB Kubernetes Operator {{<tags/feature/ea idea="831">}} streamlines the deployment and management of YugabyteDB clusters in Kubernetes environments. You can use the Operator to automate provisioning, scaling, and handling lifecycle events of YugabyteDB clusters, and it provides additional capabilities not available via other automation methods (which rely on REST APIs, UIs, and Helm charts).
 
 The Operator establishes `ybuniverse` as a Custom Resource (CR) in Kubernetes, and enables a declarative management of your YugabyteDB Anywhere (YBA) universe. You can update the custom resources to customize the `ybuniverse` resources, including CPU, memory, and disk configurations, and deploy multi-availability zone balanced YBA universes on the underlying cluster for optimal performance. The CR supports seamless upgrades of YBA universes with no downtime, as well as transparent scaling operations.
 
@@ -82,7 +84,7 @@ FIELDS:
  kubernetesOverrides  <Object>
   Kubernetes overrides for the universe. Please refer to yugabyteDB
   documentation for more details.
-  https://docs.yugabyte.com/stable/yugabyte-platform/create-deployments/create-universe-multi-zone-kubernetes/#helm-overrides
+  https://docs.yugabyte.com/preview/yugabyte-platform/create-deployments/create-universe-multi-zone-kubernetes/#helm-overrides
 
  numNodes   <integer>
   Number of tservers in the universe to create.
@@ -349,6 +351,8 @@ spec:
 
 For more information, refer to [Authenticate to Google Cloud APIs from GKE workloads](https://cloud.google.com/kubernetes-engine/docs/how-to/workload-identity) in the Google Cloud documentation.
 
+<!--
+TODO in 2.27
 #### Scheduled backups
 
 This feature is {{<tags/feature/ea idea="1448">}}. Backup schedules support taking full backups based on cron expressions or specified frequencies. They also allow you to configure incremental backups to run in between these full backups, providing finer-grained recovery points.
@@ -578,7 +582,7 @@ $ kubectl get backups -n schedule-cr
 
 ```output
 No resources found in schedule-cr namespace.
-```
+``` -->
 
 ### Support bundle
 
@@ -615,11 +619,13 @@ spec:
 
 ## Limitations
 
+<!--TODO in 2.27 - Remove Backup schedules limitation-->
 - YugabyteDB Kubernetes Operator can only deploy universes on the _same_ Kubernetes cluster it is deployed on.
 - YugabyteDB Kubernetes Operator is single cluster only, and does not support multi-cluster universes.
 - Currently, YugabyteDB Kubernetes Operator does not support the following features:
   - Software upgrade rollback
   - [xCluster](../../../architecture/docdb-replication/async-replication/)
   - [Read Replica](../../../architecture/key-concepts/#read-replica-cluster)
+  - [Backup schedules](../../back-up-restore-universes/schedule-data-backups/)
   - [Encryption-At-Rest](../../security/enable-encryption-at-rest/)
 - Only self-signed [encryption in transit](../../security/enable-encryption-in-transit/) is supported. Editing this later is not supported.

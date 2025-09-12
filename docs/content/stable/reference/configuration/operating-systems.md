@@ -4,7 +4,7 @@ headerTitle: Operating system support
 linkTitle: Operating systems
 description: Operating systems supported by YugabyteDB and YugabyteDB Anywhere.
 menu:
-  stable:
+  preview:
     identifier: operating-systems
     parent: configuration
     weight: 3000

@@ -5,7 +5,7 @@ linkTitle: Legacy assisted manual
 description: Provision the on-premises nodes manually using a script.
 headContent: Manually provision on-premises nodes using the legacy assisted manual provisioning script
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     identifier: on-premises-script
     parent: on-premises-nodes
     weight: 20
@@ -62,7 +62,7 @@ You can manually provision each node using the pre-provisioning Python script, a
         --yba_url https://10.98.0.40:9000 \
         --node_name onprem_node1 \
         --instance_type c5.large \
-        --zone_name us-west-2a
+        --zone_name us-west-2a 
     ```
 
     Expect the following output and password prompt:

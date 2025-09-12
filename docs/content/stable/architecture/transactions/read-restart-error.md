@@ -4,7 +4,7 @@ headerTitle: Read Restart error
 linkTitle: Read Restart error
 description: Learn about the Read Restart error which stem due to the data distribution across more than one node.
 menu:
-  stable:
+  preview:
     identifier: architecture-read-restart-error
     parent: architecture-acid-transactions
     weight: 900

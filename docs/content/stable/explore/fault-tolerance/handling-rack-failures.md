@@ -5,7 +5,7 @@ linkTitle: Rack failures
 description: Racks can be treated as fault zones
 headcontent: Server rack-awareness in YugabyteDB
 menu:
-  stable:
+  preview:
     identifier: handling-rack-failures
     parent: fault-tolerance
     weight: 20

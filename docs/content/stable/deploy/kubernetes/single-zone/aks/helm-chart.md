@@ -4,11 +4,15 @@ headerTitle: Azure Kubernetes Service (AKS)
 linkTitle: Azure Kubernetes Service (AKS)
 description: Use Helm chart to deploy a single-zone YugabyteDB cluster on Azure Kubernetes Service (AKS).
 menu:
-  stable:
+  preview:
     parent: deploy-kubernetes-sz
     name: Azure Kubernetes Service
     identifier: k8s-aks-1
     weight: 624
+aliases:
+  - /preview/deploy/kubernetes/aks/
+  - /preview/deploy/kubernetes/aks/helm-chart/
+  - /preview/deploy/kubernetes/single-zone/aks/
 type: docs
 ---
 
@@ -225,12 +229,12 @@ You need to perform a number of steps to deploy YugabyteDB using Helm chart:
    ```
 
    ```sh
-   helm search repo yugabytedb/yugabyte --version {{<yb-version version="stable" format="short">}}
+   helm search repo yugabytedb/yugabyte --version {{<yb-version version="preview" format="short">}}
    ```
 
    ```output
    NAME                 CHART VERSION  APP VERSION   DESCRIPTION
-   yugabytedb/yugabyte  {{<yb-version version="stable" format="short">}}          {{<yb-version version="stable" format="build">}}  YugabyteDB is the high-performance distributed ...
+   yugabytedb/yugabyte  {{<yb-version version="preview" format="short">}}          {{<yb-version version="preview" format="build">}}  YugabyteDB is the high-performance distributed ...
    ```
 
 1. To create the `yb-demo` namespace, run the following command.
@@ -249,7 +253,7 @@ You need to perform a number of steps to deploy YugabyteDB using Helm chart:
 
    ```sh
    helm install yb-demo -n yb-demo yugabytedb/yugabyte \
-    --version {{<yb-version version="stable" format="short">}} \
+    --version {{<yb-version version="preview" format="short">}} \
     --set storage.master.count=1 \
     --set storage.tserver.count=1 \
     --set storage.master.storageClass=default \

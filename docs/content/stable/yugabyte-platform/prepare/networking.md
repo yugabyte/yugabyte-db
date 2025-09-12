@@ -5,7 +5,7 @@ linkTitle: Networking
 description: Prepare your networking and ports for deploying YugabyteDB Anywhere.
 headContent: Port settings for YugabyteDB Anywhere
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     identifier: networking
     parent: prepare
     weight: 10

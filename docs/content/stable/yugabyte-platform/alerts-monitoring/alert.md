@@ -4,8 +4,10 @@ headerTitle: Alerts
 linkTitle: Alerts
 description: Use alerts
 headcontent: Set alerts for activity in your account
+aliases:
+  - /preview/yugabyte-platform/alert
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     identifier: alert
     parent: alerts-monitoring
     weight: 10

@@ -5,7 +5,7 @@ linkTitle: Scrape nodes
 description: Export universe metrics to your own Prometheus instance
 headcontent: Scrape from universe nodes directly
 menu:
-  stable_yugabyte-platform:
+  preview_yugabyte-platform:
     parent: prometheus-custom
     identifier: prometheus-scrape
     weight: 20

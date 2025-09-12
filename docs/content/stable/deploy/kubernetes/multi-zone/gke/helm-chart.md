@@ -4,11 +4,13 @@ headerTitle: Google Kubernetes Engine (GKE)
 linkTitle: Google Kubernetes Engine (GKE)
 description: Deploy a multi-zonal or regional Google Kubernetes Engine (GKE) using Helm Chart.
 menu:
-  stable:
+  preview:
     parent: deploy-kubernetes-mz
     name: Google Kubernetes Engine
     identifier: k8s-mz-gke-1
     weight: 628
+aliases:
+  - /preview/deploy/kubernetes/multi-zone/gke
 type: docs
 ---
 
@@ -134,12 +136,12 @@ $ helm repo update
 Validate that you have the updated Chart version.
 
 ```sh
-$ helm search repo yugabytedb/yugabyte --version {{<yb-version version="stable" format="short">}}
+$ helm search repo yugabytedb/yugabyte --version {{<yb-version version="preview" format="short">}}
 ```
 
 ```output
 NAME                 CHART VERSION  APP VERSION   DESCRIPTION
-yugabytedb/yugabyte  {{<yb-version version="stable" format="short">}}          {{<yb-version version="stable" format="build">}}  YugabyteDB is the high-performance distributed ...
+yugabytedb/yugabyte  {{<yb-version version="preview" format="short">}}          {{<yb-version version="preview" format="build">}}  YugabyteDB is the high-performance distributed ...
 ```
 
 ### Create override files
@@ -253,21 +255,21 @@ Now create the overall YugabyteDB cluster in such a way that one third of the no
 
 ```sh
 $ helm install yb-demo-us-central1-a yugabytedb/yugabyte \
- --version {{<yb-version version="stable" format="short">}} \
+ --version {{<yb-version version="preview" format="short">}} \
  --namespace yb-demo-us-central1-a \
  -f overrides-us-central1-a.yaml --wait
 ```
 
 ```sh
 $ helm install yb-demo-us-central1-b yugabytedb/yugabyte \
- --version {{<yb-version version="stable" format="short">}} \
+ --version {{<yb-version version="preview" format="short">}} \
  --namespace yb-demo-us-central1-b \
  -f overrides-us-central1-b.yaml --wait
 ```
 
 ```sh
 $ helm install yb-demo-us-central1-c yugabytedb/yugabyte \
- --version {{<yb-version version="stable" format="short">}} \
+ --version {{<yb-version version="preview" format="short">}} \
  --namespace yb-demo-us-central1-c \
  -f overrides-us-central1-c.yaml --wait
 ```

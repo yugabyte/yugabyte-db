@@ -4,7 +4,7 @@ headerTitle: Read Committed isolation level
 linkTitle: Read Committed
 description: Details about the Read Committed isolation level
 menu:
-  stable:
+  preview:
     identifier: architecture-read-committed
     parent: architecture-acid-transactions
     weight: 800
@@ -27,6 +27,7 @@ To enable Read Committed isolation, set the YB-TServer flag [yb_enable_read_comm
 
 Refer to [Usage](#usage) to start a Read Committed transaction after enabling the flag.
 {{< /tip >}}
+
 
 ## Implementation and semantics (as in PostgreSQL)
 
@@ -1404,7 +1405,7 @@ commit;
 
 Read Committed interacts with the following feature:
 
-* [Follower reads](/preview/develop/build-global-apps/follower-reads/): When follower reads is enabled and the transaction block is explicitly marked `READ ONLY`, the read point for each statement in a read committed transaction is selected as `Now()` - `yb_follower_read_staleness_ms`.
+* [Follower reads](../../../develop/build-global-apps/follower-reads/): When follower reads is enabled and the transaction block is explicitly marked `READ ONLY`, the read point for each statement in a read committed transaction is selected as `Now()` - `yb_follower_read_staleness_ms`.
 
 ## Limitations
 
