@@ -2388,6 +2388,33 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
+   * Checks if the DB software should be installed based on the custom image properties.
+   *
+   * @param universe the universe.
+   * @param ignoreUseCustomImageConfig flag which is used only when vmUpgradeTaskType is not set.
+   * @param vmUpgradeTaskType VM image upgrade type if set.
+   * @return true if software needs to be installed else false.
+   */
+  public boolean shouldInstallDbSoftware(
+      Universe universe,
+      boolean ignoreUseCustomImageConfig,
+      @Nullable VmUpgradeTaskType vmUpgradeTaskType) {
+    // This is ported from NodeManager.
+    if (vmUpgradeTaskType == VmUpgradeTaskType.VmUpgradeWithCustomImages) {
+      return false;
+    }
+    if (vmUpgradeTaskType == VmUpgradeTaskType.None
+        && !ignoreUseCustomImageConfig
+        && universe
+            .getConfig()
+            .getOrDefault(Universe.USE_CUSTOM_IMAGE, "false")
+            .equalsIgnoreCase("true")) {
+      return false;
+    }
+    return true;
+  }
+
+  /**
    * Creates subtasks to create a set of server nodes. As the tasks are not idempotent, node states
    * are checked to determine if some tasks must be run or skipped. This state checking is ignored
    * if ignoreNodeStatus is true.
@@ -2463,8 +2490,16 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                 createSetupYNPTask(universe, filteredNodes)
                     .setSubTaskGroupType(SubTaskGroupType.Provisioning);
                 if (!useAnsibleProvisioning) {
-                  createYNPProvisioningTask(universe, filteredNodes)
-                      .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+                  // TODO hack to get the custom params.
+                  AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
+                  if (setupParamsCustomizer != null) {
+                    setupParamsCustomizer.accept(params);
+                  }
+                  if (shouldInstallDbSoftware(
+                      universe, params.ignoreUseCustomImageConfig, params.vmUpgradeTaskType)) {
+                    createYNPProvisioningTask(universe, filteredNodes)
+                        .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+                  }
                 }
               }
               createInstallNodeAgentTasks(universe, filteredNodes)
