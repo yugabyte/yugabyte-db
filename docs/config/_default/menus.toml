@@ -91,7 +91,7 @@
   name = "YugabyteDB Aeon"
   weight = 4
   parent = "products"
-  url = "/preview/yugabyte-cloud/"
+  url = "/stable/yugabyte-cloud/"
   [main.params]
     description = "Fully-managed cloud DBaaS"
     excludeVersion = true
@@ -101,7 +101,7 @@
   name = "YugabyteDB Voyager"
   weight = 5
   parent = "products"
-  url = "/preview/yugabyte-voyager/"
+  url = "/stable/yugabyte-voyager/"
   [main.params]
     description = "Database migration service"
     excludeVersion = true
@@ -110,14 +110,14 @@
 [[main]]
   name = "Tutorials"
   weight = 2
-  url = "/preview/tutorials/"
+  url = "/stable/tutorials/"
   [main.params]
     excludeVersion = true
 
 [[main]]
   name = "Integrations"
   weight = 3
-  url = "/preview/integrations/"
+  url = "/stable/integrations/"
   [main.params]
     excludeVersion = true
 
@@ -208,7 +208,7 @@
 [[main]]
   name = "FAQ"
   weight = 5
-  url = "/preview/faq/general/"
+  url = "/stable/faq/general/"
   [main.params]
     excludeVersion = true
 
@@ -216,7 +216,7 @@
   name = "Releases"
   weight = 6
   identifier = "releases"
-  url = "/preview/releases/"
+  url = "/stable/releases/"
   [main.params]
     excludeVersion = true
 
@@ -225,7 +225,7 @@
   weight = 1
   identifier = "yugabytedb-releases"
   parent = "releases"
-  url = "/preview/releases/ybdb-releases/"
+  url = "/stable/releases/ybdb-releases/"
   [main.params]
     excludeVersion = true
     imageUrl = "/icons/database.svg"
@@ -235,7 +235,7 @@
   weight = 2
   identifier = "yugabytedb-anywhere-releases"
   parent = "releases"
-  url = "/preview/releases/yba-releases/"
+  url = "/stable/releases/yba-releases/"
   [main.params]
     excludeVersion = true
     imageUrl = "/icons/server.svg"
@@ -245,7 +245,7 @@
   weight = 3
   identifier = "yugabytedb-managed-releases"
   parent = "releases"
-  url = "/preview/yugabyte-cloud/release-notes/"
+  url = "/stable/yugabyte-cloud/release-notes/"
   [main.params]
     excludeVersion = true
     imageUrl = "/icons/cloud.svg"
@@ -255,7 +255,7 @@
   weight = 4
   identifier = "yugabytedb-voyager-releases"
   parent = "releases"
-  url = "/preview/yugabyte-voyager/release-notes/"
+  url = "/stable/yugabyte-voyager/release-notes/"
   [main.params]
     excludeVersion = true
     imageUrl = "/images/migrate/migration-icon.svg"
@@ -265,7 +265,7 @@
   weight = 5
   identifier = "yugabytedb-client-releases"
   parent = "releases"
-  url = "/preview/releases/yugabyte-clients/"
+  url = "/stable/releases/yugabyte-clients/"
   [main.params]
     excludeVersion = true
     imageUrl = "/icons/api.svg"
@@ -275,7 +275,7 @@
   weight = 6
   identifier = "tech-advisories-menu"
   parent = "releases"
-  url = "/preview/releases/techadvisories/"
+  url = "/stable/releases/techadvisories/"
   [main.params]
     excludeVersion = true
     imageUrl = "/icons/triangle-exclamation-thin.svg"
@@ -368,7 +368,7 @@
   weight = 4
   identifier = "quick-start"
   pre = "<i class='icon-quick-start'></i>"
-  url = "/preview/quick-start-yugabytedb-managed/"
+  url = "/stable/quick-start-yugabytedb-managed/"
   [home.params]
     classes = "separator spacing no-transform"
     showSection = true
@@ -406,7 +406,7 @@
   weight = 12
   identifier = "yugabytedb-managed"
   pre = "<i class='icon-cloud'></i>"
-  url = "/preview/yugabyte-cloud/"
+  url = "/stable/yugabyte-cloud/"
   [home.params]
     classes = "no-transform"
     showSection = true
@@ -417,7 +417,7 @@
   weight = 13
   identifier = "migrate"
   pre = "<i class='icon-migrate'></i>"
-  url = "/preview/yugabyte-voyager/"
+  url = "/stable/yugabyte-voyager/"
   [home.params]
     classes = "no-transform"
     showSection = true
@@ -444,7 +444,7 @@
 [[products]]
   name = "YugabyteDB Aeon"
   weight = 4
-  url = "/preview/yugabyte-cloud/"
+  url = "/stable/yugabyte-cloud/"
   [products.params]
     description = "Fully-managed cloud DBaaS"
     excludeVersion = true
@@ -453,7 +453,7 @@
 [[products]]
   name = "YugabyteDB Voyager"
   weight = 5
-  url = "/preview/yugabyte-voyager/"
+  url = "/stable/yugabyte-voyager/"
   [products.params]
     description = "Database migration service"
     excludeVersion = true
@@ -471,7 +471,7 @@
   name = "Overview"
   weight = 2
   identifier = "yugabytedb"
-  url = "/preview/"
+  url = "/stable/"
   [preview.params]
     showSection = true
 
@@ -579,7 +579,7 @@
   name = "Integrations"
   weight = 2
   identifier = "integrations"
-  url = "/preview/integrations/"
+  url = "/stable/integrations/"
   [preview_integrations.params]
     classes = "separator"
     showSection = true
@@ -683,7 +683,7 @@
   name = "Tutorials"
   weight = 3
   identifier = "tutorials"
-  url = "/preview/tutorials/"
+  url = "/stable/tutorials/"
   [preview_tutorials.params]
     classes = "separator"
     showSection = true
@@ -692,7 +692,7 @@
 #   name = "Quick Start"
 #   weight = 4
 #   identifier = "quick-start"
-#   url = "/preview/quick-start-yugabytedb-managed/"
+#   url = "/stable/quick-start-yugabytedb-managed/"
 #   [preview_tutorials.params]
 #     showSection = true
 #     hideChildren = true
@@ -852,7 +852,7 @@
   name = "Releases"
   weight = 1
   identifier = "releases"
-  url = "/preview/releases/"
+  url = "/stable/releases/"
   [preview_releases.params]
     classes = "separator"
     showSection = true
@@ -861,7 +861,7 @@
   name = "YugabyteDB"
   weight = 2
   identifier = "ybdb-releases"
-  url = "/preview/releases/ybdb-releases/"
+  url = "/stable/releases/ybdb-releases/"
   [preview_releases.params]
     showSection = true
 
@@ -877,7 +877,7 @@
   name = "YugabyteDB Anywhere"
   weight = 3
   identifier = "yba-releases"
-  url = "/preview/releases/yba-releases/"
+  url = "/stable/releases/yba-releases/"
   [preview_releases.params]
     showSection = true
 
@@ -885,7 +885,7 @@
   name = "YugabyteDB Aeon"
   weight = 4
   identifier = "ybm-releases"
-  url = "/preview/yugabyte-cloud/release-notes/"
+  url = "/stable/yugabyte-cloud/release-notes/"
   [preview_releases.params]
     showSection = true
 
@@ -893,7 +893,7 @@
   name = "YugabyteDB Voyager"
   weight = 5
   identifier = "voy-releases"
-  url = "/preview/yugabyte-voyager/release-notes/"
+  url = "/stable/yugabyte-voyager/release-notes/"
   [preview_releases.params]
     showSection = true
     imageUrl = "/images/migrate/migration-icon.svg"
@@ -902,7 +902,7 @@
   name = "YugabyteDB Clients"
   weight = 6
   identifier = "yb-clients"
-  url = "/preview/releases/yugabyte-clients/"
+  url = "/stable/releases/yugabyte-clients/"
   [preview_releases.params]
     classes = "separator"
     showSection = true
@@ -919,7 +919,7 @@
   name = "Tech Advisories"
   weight = 11
   identifier = "tech-advisories"
-  url = "/preview/releases/techadvisories/"
+  url = "/stable/releases/techadvisories/"
   [preview_releases.params]
     showSection = true
 
@@ -986,7 +986,7 @@
 #   name = "What's New"
 #   weight = 4
 #   identifier = "yugabytedb-managed-releases"
-#   url = "/preview/yugabyte-cloud/release-notes/"
+#   url = "/stable/yugabyte-cloud/release-notes/"
 #   [preview_yugabyte-cloud.params]
 #     showSection = true
 
@@ -1589,7 +1589,7 @@
   name = "Quick Start"
   weight = 4
   identifier = "quick-start"
-  url = "/preview/quick-start-yugabytedb-managed/"
+  url = "/stable/quick-start-yugabytedb-managed/"
   ["v2025.1".params]
     showSection = true
     hideChildren = true
