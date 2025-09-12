@@ -364,14 +364,15 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
     payload.put("name", provider.getMetadata().getName());
     payload.put("code", "kubernetes");
     payload.put("kubernetesProvider", "custom");
-
+    String providerNamespace = provider.getMetadata().getNamespace();
     addProviderLevelCloudInfoToPayload(
         payload, objectMapper.valueToTree(provider.getSpec().getCloudInfo()));
-    addRegionsToPayload(payload, objectMapper.valueToTree(provider.getSpec().getRegions()));
+    addRegionsToPayload(
+        payload, objectMapper.valueToTree(provider.getSpec().getRegions()), providerNamespace);
     return payload;
   }
 
-  private void addRegionsToPayload(ObjectNode payload, JsonNode regions) {
+  private void addRegionsToPayload(ObjectNode payload, JsonNode regions, String providerNamespace) {
     if (regions == null || !regions.isArray() || regions.isEmpty()) {
       log.warn("Regions are null, not an array, or empty. Skipping.");
       return;
@@ -392,7 +393,12 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
           zoneNode.put("name", zone.get("code").asText().toLowerCase());
           JsonNode cloudInfo = zone.get("cloudInfo");
           if (cloudInfo != null && cloudInfo.isObject()) {
-            addZoneLevelCloudInfoToPayload(zoneNode, (ObjectNode) cloudInfo);
+            ObjectNode cloudInfoNode = (ObjectNode) cloudInfo;
+            if (cloudInfoNode.get("kubeNamespace") == null
+                || cloudInfoNode.get("kubeNamespace").asText().isEmpty()) {
+              cloudInfoNode.put("kubeNamespace", providerNamespace);
+            }
+            addZoneLevelCloudInfoToPayload(zoneNode, cloudInfoNode);
           }
         }
       }
@@ -438,8 +444,8 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
     }
 
     String secretName = secretRef.get("name").asText();
-    String namespace = secretRef.get("namespace").asText();
-    String kubeConfigHashName = secretName + "-" + namespace;
+    String secretNamespace = secretRef.get("namespace").asText();
+    String kubeConfigHashName = secretName + "-" + secretNamespace;
     String kubeConfigFileName = secretName + ".conf";
 
     String cachedKubeConfigContent = kubeConfigContentCache.getIfPresent(kubeConfigHashName);
@@ -451,7 +457,7 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
     } else {
       // Cache miss - fetch the secret and extract content
       log.info("Kubeconfig cache miss for {}, fetching secret", kubeConfigFileName);
-      Secret secret = operatorUtils.getSecret(secretName, namespace);
+      Secret secret = operatorUtils.getSecret(secretName, secretNamespace);
       if (secret != null) {
         String kubeConfigContent = operatorUtils.parseSecretForKey(secret, "kubeconfig");
         cloudInfo.put("kubeConfigName", kubeConfigFileName);
@@ -460,7 +466,9 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
         log.debug("Cached kubeconfig content for {}", kubeConfigFileName);
       } else {
         log.warn(
-            "Kubeconfig secret {} not found in namespace {}. Skipping.", secretName, namespace);
+            "Kubeconfig secret {} not found in namespace {}. Skipping.",
+            secretName,
+            secretNamespace);
       }
     }
     cloudInfo.remove("kubeConfigSecret");
