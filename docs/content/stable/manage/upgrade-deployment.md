@@ -57,7 +57,7 @@ To upgrade YugabyteDB to a version based on a different version of PostgreSQL (f
   - Backups taken during the upgrade cannot be restored to universes running a previous version.
   - Backups taken before the upgrade _can_ be used for restore to the new version.
 
-- Point-in-time-restore (PITR)
+- [Point-in-time-restore](../backup-restore/point-in-time-recovery/) (PITR)
 
   - If you have PITR enabled, you must disable it before performing an upgrade. Re-enable it only after the upgrade is either finalized or rolled back.
   - After the upgrade, PITR cannot be done to a time before the upgrade.

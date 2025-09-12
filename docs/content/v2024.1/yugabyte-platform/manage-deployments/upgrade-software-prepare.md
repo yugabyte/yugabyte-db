@@ -24,7 +24,7 @@ If your universe is running on a [deprecated OS](../../../reference/configuratio
   - Backups taken during the upgrade cannot be restored to universes running a previous version.
   - Backups taken before the upgrade _can_ be used for restore to the new version.
 
-- Point-in-time-restore (PITR)
+- [Point-in-time-restore](../../back-up-restore-universes/pitr/) (PITR)
 
   - If you have PITR enabled, you must disable it before performing an upgrade. Re-enable it only after the upgrade is either finalized or rolled back.
   - After the upgrade, PITR cannot be done to a time before the upgrade.
