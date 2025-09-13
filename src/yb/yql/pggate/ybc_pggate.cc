@@ -1516,8 +1516,8 @@ void YBCPgResetOperationsBuffering() {
   pgapi->ResetOperationsBuffering();
 }
 
-YbcStatus YBCPgFlushBufferedOperations(YbcFlushDebugContext context) {
-  return ToYBCStatus(pgapi->FlushBufferedOperations(context));
+YbcStatus YBCPgFlushBufferedOperations(YbcFlushDebugContext *debug_context) {
+  return ToYBCStatus(pgapi->FlushBufferedOperations(*debug_context));
 }
 
 YbcStatus YBCPgAdjustOperationsBuffering(int multiple) {

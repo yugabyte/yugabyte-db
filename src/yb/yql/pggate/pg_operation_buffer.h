@@ -61,8 +61,8 @@ class PgOperationBuffer {
   PgOperationBuffer(Flusher&& flusher, const BufferingSettings& buffering_settings);
   ~PgOperationBuffer();
   Status Add(const PgTableDesc& table, PgsqlWriteOpPtr op, bool transactional);
-  Status Flush(const YbcFlushDebugContext& context);
-  Result<BufferableOperations> Take(bool transactional, const YbcFlushDebugContext& context);
+  Status Flush(const YbcFlushDebugContext& debug_context);
+  Result<BufferableOperations> Take(bool transactional, const YbcFlushDebugContext& debug_context);
   bool IsEmpty() const;
   size_t Size() const;
   void Clear();

@@ -1476,8 +1476,8 @@ void PgApiImpl::ResetOperationsBuffering() {
   pg_session_->ResetOperationsBuffering();
 }
 
-Status PgApiImpl::FlushBufferedOperations(const YbcFlushDebugContext& context) {
-  return ResultToStatus(pg_session_->FlushBufferedOperations(context));
+Status PgApiImpl::FlushBufferedOperations(const YbcFlushDebugContext& debug_context) {
+  return ResultToStatus(pg_session_->FlushBufferedOperations(debug_context));
 }
 
 Status PgApiImpl::AdjustOperationsBuffering(int multiple) {
