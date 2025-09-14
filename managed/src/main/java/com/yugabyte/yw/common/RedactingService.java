@@ -74,6 +74,8 @@ public class RedactingService {
           // Kubernetes secrets
           .add("$..KUBECONFIG_PULL_SECRET_CONTENT")
           .add("$..KUBECONFIG_CONTENT")
+          .add("$..kubeConfigContent")
+          .add("$..kubernetesPullSecretContent")
           // onprem and certificate private keys
           .add("$..keyContent")
           .add("$..certContent")
