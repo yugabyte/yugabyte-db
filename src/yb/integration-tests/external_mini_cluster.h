@@ -937,7 +937,7 @@ void StartSecure(
   std::unique_ptr<ExternalMiniCluster>* cluster,
   std::unique_ptr<rpc::SecureContext>* secure_context,
   std::unique_ptr<rpc::Messenger>* messenger,
-  bool enable_ysql);
+  const ExternalMiniClusterOptions& opts);
 
 Status WaitForTableIntentsApplied(
     ExternalMiniCluster* cluster, const TableId& table_id,

@@ -113,6 +113,11 @@ class MessengerBuilder {
     return *this;
   }
 
+  MessengerBuilder &SetUncompressedProtocol(const Protocol* protocol) {
+    uncompressed_protocol_ = protocol;
+    return *this;
+  }
+
   template <class ContextType>
   MessengerBuilder &CreateConnectionContextFactory(
       size_t memory_limit, const std::shared_ptr<MemTracker>& parent_mem_tracker = nullptr) {
@@ -171,6 +176,7 @@ class MessengerBuilder {
   ConnectionContextFactoryPtr connection_context_factory_;
   StreamFactories stream_factories_;
   const Protocol* listen_protocol_;
+  const Protocol* uncompressed_protocol_;
   size_t workers_limit_;
   int num_connections_to_server_;
   std::shared_ptr<MemTracker> last_used_parent_mem_tracker_;
@@ -223,7 +229,8 @@ class Messenger : public ProxyContext {
   // Invoke the RpcService to handle a call directly.
   void Handle(InboundCallPtr call, Queue queue) override;
 
-  const Protocol* DefaultProtocol() override { return listen_protocol_; }
+  const Protocol& DefaultProtocol() override { return listen_protocol_; }
+  const Protocol& UncompressedProtocol() override { return uncompressed_protocol_; }
 
   rpc::ThreadPool& CallbackThreadPool(ServicePriority priority) override {
     return ThreadPool(priority);
@@ -360,7 +367,8 @@ class Messenger : public ProxyContext {
 
   const StreamFactories stream_factories_;
 
-  const Protocol* const listen_protocol_;
+  const Protocol& listen_protocol_;
+  const Protocol& uncompressed_protocol_;
 
   mutable PerCpuRwMutex lock_;
 
