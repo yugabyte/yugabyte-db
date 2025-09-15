@@ -13,7 +13,7 @@ import logging
 import os
 import socket
 import subprocess
-
+import time
 import boto3
 from botocore.exceptions import ClientError
 from botocore.utils import InstanceMetadataFetcher
