@@ -1686,7 +1686,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Allows enabling the volume encryption feature for new universes. Currently only"
               + " supported for AWS universes.",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableSystemdDebugLogging =
       new ConfKeyInfo<>(
           "yb.ansible.systemd_debug",
