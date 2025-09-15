@@ -176,6 +176,7 @@
 | "Node Agent Client Keep Alive Time" | "yb.node_agent.connection_keep_alive_time" | "GLOBAL" | "Client connection keep-alive time for node agent." | "Duration" |
 | "Node Agent Client Keep Alive Time-out" | "yb.node_agent.connection_keep_alive_timeout" | "GLOBAL" | "Client connection keep-alive timeout for node agent." | "Duration" |
 | "Node Agent Describe Poll Deadline" | "yb.node_agent.describe_poll_deadline" | "GLOBAL" | "Node agent describe polling deadline." | "Duration" |
+| "Allow Cloud Volume Encryption feature" | "yb.universe.allow_cloud_volume_encryption" | "GLOBAL" | "Allows enabling the volume encryption feature for new universes. Currently only supported for AWS universes." | "Boolean" |
 | "Enable YBC Background Upgrade" | "ybc.upgrade.enable_background_upgrade" | "GLOBAL" | "Enable background upgrade for YBC." | "Boolean" |
 | "Enable Systemd Debug Logging" | "yb.ansible.systemd_debug" | "GLOBAL" | "Enable systemd debug logging for systemctl service management commands." | "Boolean" |
 | "Keep Remote Files from an ansible run" | "yb.ansible.keep_remote_files" | "GLOBAL" | "Keep remote files after ansible run for debugging." | "Boolean" |
