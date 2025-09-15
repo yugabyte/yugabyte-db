@@ -2473,8 +2473,9 @@ Status MetaCache::ClearCacheEntries(const std::string& namespace_id) {
   std::set<TableId> db_tables_ids;
   std::set<TabletId> db_tablets_ids;
   for (const auto& [table_id, table_data] : tables_) {
-    // Escape sys catalog and parent table ids as they don't conform to a typical ysql table id
-    if (table_id == master::kSysCatalogTableId) {
+    // Escape sys catalog, ycql tables, and parent table ids as they don't conform to a typical
+    // ysql table id
+    if (table_id == master::kSysCatalogTableId || !IsPgsqlId(table_id)) {
       continue;
     } else if (IsColocationParentTableId(table_id)) {
       db_tables_ids.insert(table_id);
