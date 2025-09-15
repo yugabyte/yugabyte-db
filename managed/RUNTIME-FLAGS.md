@@ -169,6 +169,7 @@
 | "Enable Node Agent Configure Server" | "yb.node_agent.enable_configure_server" | "GLOBAL" | "Enable or disable server configuration RPCs in node agent. Defaults to ansible if it is disabled." | "Boolean" |
 | "Enable Node Agent Message Compression" | "yb.node_agent.enable_message_compression" | "GLOBAL" | "Enable compression for message sent over node agent channel." | "Boolean" |
 | "Enable Task Runtime Info on Retry" | "yb.task.enable_task_runtime_info_on_retry" | "GLOBAL" | "Use the runtime info from the previously failed task on retry" | "Boolean" |
+| "Allow Cloud Volume Encryption feature" | "yb.universe.allow_cloud_volume_encryption" | "GLOBAL" | "Allows enabling the volume encryption feature for new universes. Currently only supported for AWS universes." | "Boolean" |
 | "Enable Systemd Debug Logging" | "yb.ansible.systemd_debug" | "GLOBAL" | "Enable systemd debug logging for systemctl service management commands." | "Boolean" |
 | "Keep Remote Files from an ansible run" | "yb.ansible.keep_remote_files" | "GLOBAL" | "Keep remote files after ansible run for debugging." | "Boolean" |
 | "Clock Skew" | "yb.alert.max_clock_skew_ms" | "UNIVERSE" | "Default threshold for Clock Skew alert" | "Duration" |
