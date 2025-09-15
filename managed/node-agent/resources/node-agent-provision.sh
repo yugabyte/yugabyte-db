@@ -161,7 +161,7 @@ install_pywheels() {
 
         # Install setuptools and wheel first
         $PIP_CMD install --no-index --ignore-installed $extra_pip_flags \
-            --find-links="$WHEEL_DIR" setuptools==53.0.0 wheel==0.37.1 || {
+            --find-links="$WHEEL_DIR" setuptools==59.6.0 wheel==0.37.1 || {
             echo "Error installing setuptools and wheel"
             exit 1
         }
@@ -173,7 +173,7 @@ install_pywheels() {
     else
         # Install setuptools and wheel first for Python 3.8+
         $PIP_CMD install --no-index --ignore-installed $extra_pip_flags \
-            --find-links="$WHEEL_DIR" setuptools==69.5.1 wheel==0.43.0 || {
+            --find-links="$WHEEL_DIR" setuptools==78.1.1 wheel==0.43.0 || {
             echo "Error installing setuptools and wheel"
             exit 1
         }
