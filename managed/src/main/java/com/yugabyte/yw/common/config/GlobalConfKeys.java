@@ -1859,4 +1859,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " automated platform backups.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableSigningRegion =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_signing_region",
+          ScopeType.GLOBAL,
+          "Enable Signing Region",
+          "Enable AWS signing region for S3 access",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }
