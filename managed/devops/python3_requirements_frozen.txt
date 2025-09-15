@@ -18,7 +18,7 @@ certifi==2025.8.3
 cffi==1.17.1
 charset-normalizer==3.4.3
 click==8.1.8
-cryptography==45.0.6
+cryptography==45.0.7
 deepdiff==5.5.0
 distro==1.5.0
 fabric==2.2.1
@@ -30,7 +30,7 @@ google-auth==1.19.2
 google-auth-httplib2==0.2.0
 grpcio==1.65.4
 grpcio-tools==1.65.4
-httplib2==0.22.0
+httplib2==0.31.0
 idna==3.10
 invoke==1.7.3
 isodate==0.7.2
@@ -48,13 +48,13 @@ ordered-set==4.0.2
 paramiko==3.4.0
 pip==25.0.1
 portalocker==2.10.1
-protobuf==5.26.1
+protobuf==5.29.5
 psycopg2==2.9.10
 pyasn1==0.6.1
 pyasn1_modules==0.4.2
-pycparser==2.22
+pycparser==2.23
 PyJWT==2.9.0
-PyNaCl==1.5.0
+PyNaCl==1.6.0
 pyparsing==3.1.4
 python-dateutil==2.8.2
 python-ldap==3.4.4
