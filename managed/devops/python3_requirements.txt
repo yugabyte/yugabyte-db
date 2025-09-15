@@ -18,7 +18,7 @@
 #
 # TODO: see if we can move to using Pundler (https://github.com/Deepwalker/pundler) instead.
 
-ansible==9.2.0
+ansible==9.13.0
 ansible-vault==2.1.0
 azure-common==1.1.28
 azure-identity==1.6.1
