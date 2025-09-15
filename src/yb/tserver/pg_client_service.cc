@@ -1107,7 +1107,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
             DoGetOldTransactionsForTablet(min_txn_age_ms, max_num_txns, remote_tserver, tablet));
         status_tablet_ids.insert(tablet);
       }
-      for (const auto& tablet : txn_status_tablets.placement_local_tablets) {
+      for (const auto& tablet : txn_status_tablets.region_local_tablets) {
         res_futures.push_back(
             DoGetOldTransactionsForTablet(min_txn_age_ms, max_num_txns, remote_tserver, tablet));
         status_tablet_ids.insert(tablet);
