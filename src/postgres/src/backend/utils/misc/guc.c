@@ -5554,6 +5554,15 @@ static struct config_int ConfigureNamesInt[] =
 		65535, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
+		{
+		{"yb_test_reset_retry_counts", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Restricts the number of retries for transaction conflicts. For testing purposes."),
+			NULL
+		},
+		&yb_test_reset_retry_counts,
+		-1, -1, INT_MAX,
+		NULL, NULL, NULL
+	},
 
 	/* End-of-list marker */
 	{

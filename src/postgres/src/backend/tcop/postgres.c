@@ -5613,6 +5613,16 @@ yb_prepare_transaction_for_retry(int attempt, bool is_read_restart, bool stateme
 	}
 }
 
+static bool
+yb_is_retryable_error(YbTxnError kind)
+{
+	if (kind == YB_TXN_CONFLICT || kind == YB_TXN_RESTART_READ ||
+		kind == YB_TXN_DEADLOCK || kind == YB_TXN_ABORTED)
+		return true;
+
+	return false;
+}
+
 static void
 yb_perform_retry_on_error(int attempt, ErrorData *edata,
 						  const char *portal_name)
@@ -5620,16 +5630,15 @@ yb_perform_retry_on_error(int attempt, ErrorData *edata,
 	if (yb_debug_log_internal_restarts)
 		ereport(LOG, (errmsg("performing query layer retry, attempt number %d", attempt)));
 
-	const bool	is_read_restart = edata->sqlerrcode == ERRCODE_YB_RESTART_READ;
-	const bool	is_conflict_error = edata->sqlerrcode == ERRCODE_YB_TXN_CONFLICT;
-	const bool	is_deadlock_error = edata->sqlerrcode == ERRCODE_YB_DEADLOCK;
-	const bool	is_aborted_error = edata->sqlerrcode == ERRCODE_YB_TXN_ABORTED;
+	YbTxnError txn_error_kind = YbSqlErrorCodeToTransactionError(edata->sqlerrcode);
 
-	if (!(is_read_restart || is_conflict_error || is_deadlock_error || is_aborted_error))
+	if (!yb_is_retryable_error(txn_error_kind))
 	{
 		Assert(false);
 		elog(ERROR, "unexpected txn error code: %d", edata->sqlerrcode);
 	}
+
+	YbIncrementRetryCount(txn_error_kind);
 
 	/*
 	 * If in parallel mode, destroy parallel contexts.
@@ -5654,8 +5663,8 @@ yb_perform_retry_on_error(int attempt, ErrorData *edata,
 
 	PG_TRY();
 	{
-		yb_prepare_transaction_for_retry(attempt, is_read_restart,
-										 is_conflict_error || is_read_restart /* statement_retry_possible */ );
+		yb_prepare_transaction_for_retry(attempt, txn_error_kind == YB_TXN_RESTART_READ,
+										 txn_error_kind == YB_TXN_CONFLICT || txn_error_kind == YB_TXN_RESTART_READ /* statement_retry_possible */ );
 	}
 	PG_CATCH();
 	{
@@ -5756,6 +5765,13 @@ yb_exec_query_wrapper(MemoryContext exec_context,
 					  const void *functor_context)
 {
 	bool		retry = true;
+
+	/*
+	 * Resets the retry counter after each query execution.
+	 * This is done to avoid the retry counts from being carried over to the next query.
+	 * The retry counts are accumulated per query within pg_stat_statements.
+	 */
+	YbResetRetryCounts();
 
 	for (int attempt = 0; retry; ++attempt)
 	{

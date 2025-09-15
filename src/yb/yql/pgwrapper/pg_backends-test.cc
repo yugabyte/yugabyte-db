@@ -383,6 +383,20 @@ class PgBackendsTestConnLimit : public PgBackendsTest {
   }
 };
 
+class PgBackendsTestNoWaitQueues : public PgBackendsTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgBackendsTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back("--enable_wait_queues=false");
+  }
+
+  // Simulates a transaction conflict scenario to test retry counting
+  void SimulateConflictRetries(PGConn& conn1, PGConn& conn2);
+
+  // Checks pg_stat_statements for the expected number of conflict retries
+  void CheckPgssConflictRetries(PGConn& conn1, int expected_retries);
+};
+
 TEST_F_EX(PgBackendsTest, ConnectionLimit, PgBackendsTestConnLimit) {
   WaitOutInitialCatalogLeasePeriod();
   LOG_WITH_FUNC(INFO) << "Beginning test";
@@ -1239,6 +1253,72 @@ TEST_F(PgBackendsTestRf3Block, LeaderChangeInFlightLater) {
   LOG(INFO) << "Time taken: " << time_taken;
 
   thread_holder.Stop();
+}
+
+void PgBackendsTestNoWaitQueues::SimulateConflictRetries(PGConn& conn1, PGConn& conn2) {
+  constexpr auto kWaitTime = 5s;
+
+  ASSERT_OK(conn1.Execute("BEGIN"));
+  ASSERT_OK(conn1.Execute("UPDATE test SET v = 5 WHERE k = 1"));
+
+  ASSERT_OK(conn2.Execute("BEGIN"));
+
+  std::atomic<bool> update_completed{false};
+  std::atomic<bool> update_success{false};
+  std::thread update_thread([&conn2, &update_completed, &update_success]() {
+    auto status = conn2.Execute("UPDATE test SET v = 6 WHERE k = 1");
+    update_success = status.ok();
+    update_completed = true;
+  });
+
+  SleepFor(kWaitTime);
+  ASSERT_OK(conn1.Execute("COMMIT"));
+
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_reset_retry_counts", "-1"));
+
+  update_thread.join();
+  ASSERT_TRUE(update_completed.load()) << "Session 2 update did not complete";
+  ASSERT_TRUE(update_success.load()) << "Session 2 update failed";
+
+  ASSERT_OK(conn2.Execute("COMMIT"));
+}
+
+void PgBackendsTestNoWaitQueues::CheckPgssConflictRetries(PGConn& conn1, int expected_retries) {
+  auto result = ASSERT_RESULT(conn1.FetchRows<int64_t>(
+      "SELECT conflict_retries FROM pg_stat_statements WHERE query LIKE '%UPDATE test%'"));
+
+  ASSERT_FALSE(result.empty()) << "No matching queries found in pg_stat_statements";
+  ASSERT_EQ(result[0], expected_retries)
+      << "Expected conflict_retries to be " << expected_retries
+      << ", but got " << result[0];
+}
+
+TEST_F_EX(PgBackendsTest, VerifyResetRetryCounts, PgBackendsTestNoWaitQueues) {
+  constexpr int kFirstRetryCount = 20;
+  constexpr int kSecondRetryCount = 10;
+  constexpr int kExpectedTotalRetries = kFirstRetryCount + kSecondRetryCount;
+
+  PGConn conn1 = ASSERT_RESULT(Connect());
+  PGConn conn2 = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn1.Execute("CREATE TABLE test (k int PRIMARY KEY, v int)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO test VALUES (1, 1)"));
+
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_reset_retry_counts",
+                                        std::to_string(kFirstRetryCount)));
+  SimulateConflictRetries(conn1, conn2);
+  CheckPgssConflictRetries(conn1, kFirstRetryCount);
+
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_reset_retry_counts",
+                                        std::to_string(kSecondRetryCount)));
+  SimulateConflictRetries(conn1, conn2);
+
+  /*
+   * This confirms that the retry count is reset as expected.
+   * Otherwise, if after the first retry, the retry count is not reset, then the total retry count
+   * will be kFirstRetryCount + kFirstRetryCount = 40.
+   */
+  CheckPgssConflictRetries(conn1, kExpectedTotalRetries);
 }
 
 } // namespace pgwrapper

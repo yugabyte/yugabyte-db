@@ -1064,6 +1064,61 @@ typedef struct YbSessionStats
 
 static YbSessionStats yb_session_stats = {0};
 
+static uint64_t yb_retry_counts[YB_TXN_CONFLICT_KIND_COUNT] = {0};
+
+void
+YbResetRetryCounts()
+{
+	memset(yb_retry_counts, 0, sizeof(yb_retry_counts));
+}
+
+void
+YbIncrementRetryCount(YbTxnError kind)
+{
+	Assert(kind >= 0 && kind < YB_TXN_CONFLICT_KIND_COUNT);
+	yb_retry_counts[kind]++;
+
+	if (yb_test_reset_retry_counts > 0 && YbGetTotalRetryCount() >= yb_test_reset_retry_counts)
+		YbTestGucBlockWhileIntNotEqual(&yb_test_reset_retry_counts, -1, "yb_test_reset_retry_counts");
+}
+
+uint64_t
+YbGetRetryCount(YbTxnError kind)
+{
+	Assert(kind >= 0 && kind < YB_TXN_CONFLICT_KIND_COUNT);
+	return yb_retry_counts[kind];
+}
+
+uint64_t
+YbGetTotalRetryCount()
+{
+	return yb_retry_counts[YB_TXN_CONFLICT] + yb_retry_counts[YB_TXN_RESTART_READ] +
+		   yb_retry_counts[YB_TXN_DEADLOCK] + yb_retry_counts[YB_TXN_ABORTED];
+}
+
+YbTxnError
+YbSqlErrorCodeToTransactionError(int sqlerrcode)
+{
+	switch (sqlerrcode)
+	{
+		case ERRCODE_YB_TXN_CONFLICT:
+			return YB_TXN_CONFLICT;
+		case ERRCODE_YB_RESTART_READ:
+			return YB_TXN_RESTART_READ;
+		case ERRCODE_YB_DEADLOCK:
+			return YB_TXN_DEADLOCK;
+		case ERRCODE_YB_TXN_ABORTED:
+			return YB_TXN_ABORTED;
+		case ERRCODE_YB_TXN_SKIP_LOCKING:
+			return YB_TXN_SKIP_LOCKING;
+		case ERRCODE_YB_TXN_LOCK_NOT_FOUND:
+			return YB_TXN_LOCK_NOT_FOUND;
+		default:
+			ereport(ERROR,
+					(errmsg("unknown sql error code: %d", sqlerrcode)));
+	}
+}
+
 static YbcPgAshConfig ash_config;
 
 static void
@@ -2237,6 +2292,7 @@ bool		yb_test_inval_message_portability = false;
 int			yb_test_delay_after_applying_inval_message_ms = 0;
 int			yb_test_delay_set_local_tserver_inval_message_ms = 0;
 double		yb_test_delay_next_ddl = 0;
+int			yb_test_reset_retry_counts = -1;
 
 /*
  * These two GUC variables are used together to control whether DDL atomicity
@@ -4439,6 +4495,29 @@ YbTestGucBlockWhileStrEqual(char **actual, const char *expected,
 	static const int kSpinWaitMs = 100;
 
 	while (strcmp(*actual, expected) == 0)
+	{
+		ereport(LOG,
+				(errmsg("blocking %s for %dms", msg, kSpinWaitMs),
+				 errhidestmt(true),
+				 errhidecontext(true)));
+		pg_usleep(kSpinWaitMs * 1000);
+
+		/* Reload config in hopes that guc var actual changed. */
+		if (ConfigReloadPending)
+		{
+			ConfigReloadPending = false;
+			ProcessConfigFile(PGC_SIGHUP);
+		}
+	}
+}
+
+void
+YbTestGucBlockWhileIntNotEqual(int *actual, int expected,
+							const char *msg)
+{
+	static const int kSpinWaitMs = 100;
+
+	while (*actual != expected)
 	{
 		ereport(LOG,
 				(errmsg("blocking %s for %dms", msg, kSpinWaitMs),

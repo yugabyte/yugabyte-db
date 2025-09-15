@@ -375,6 +375,9 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_invalidate_table_cache_entry, true,
     "Enables invalidation of individual table cache entry on catalog cache refresh, "
     "only applicable when invalidation messages are enabled.");
 
+DEFINE_RUNTIME_PG_FLAG(int32, yb_test_reset_retry_counts, -1,
+    "Restricts the number of retries for transaction conflicts. For testing purposes.");
+
 DECLARE_bool(enable_pg_cron);
 DECLARE_bool(enable_object_locking_for_table_locks);
 

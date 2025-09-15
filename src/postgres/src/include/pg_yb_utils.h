@@ -736,6 +736,11 @@ extern int	yb_test_delay_set_local_tserver_inval_message_ms;
 extern double yb_test_delay_next_ddl;
 
 /*
+ * If > 0, then puts a hard limit on the number of retries.
+ */
+extern int	yb_test_reset_retry_counts;
+
+/*
  * Denotes whether DDL operations touching DocDB system catalog will be rolled
  * back upon failure. These two GUC variables are used together. See comments
  * for the gflag --ysql_enable_ddl_atomicity_infra in common_flags.cc.
@@ -972,6 +977,10 @@ extern void YbCheckUnsupportedLibcLocale(const char *localebuf);
 /* Spin wait while test guc var actual equals expected. */
 extern void YbTestGucBlockWhileStrEqual(char **actual, const char *expected,
 										const char *msg);
+
+/* Spin wait until test guc var actual equals expected. */
+extern void YbTestGucBlockWhileIntNotEqual(int *actual, int expected,
+										   const char *msg);
 
 extern void YbTestGucFailIfStrEqual(char *actual, const char *expected);
 
@@ -1452,5 +1461,22 @@ extern bool YbIsAnyDependentGeneratedColPK(Relation rel, AttrNumber attnum);
 extern bool YbCheckTserverResponseCacheForAuthGflags();
 
 extern bool YbUseTserverResponseCacheForAuth(uint64_t shared_catalog_version);
+
+typedef enum YbTxnError
+{
+	YB_TXN_CONFLICT,
+	YB_TXN_RESTART_READ,
+	YB_TXN_DEADLOCK,
+	YB_TXN_ABORTED,
+	YB_TXN_SKIP_LOCKING,
+	YB_TXN_LOCK_NOT_FOUND,
+	YB_TXN_CONFLICT_KIND_COUNT, /* Must be last value of this enum */
+} YbTxnError;
+
+extern void YbResetRetryCounts();
+extern void YbIncrementRetryCount(YbTxnError kind);
+extern uint64_t YbGetRetryCount(YbTxnError kind);
+extern uint64_t YbGetTotalRetryCount();
+extern YbTxnError YbSqlErrorCodeToTransactionError(int sqlerrcode);
 
 #endif							/* PG_YB_UTILS_H */

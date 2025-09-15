@@ -196,6 +196,9 @@ typedef enum YbIntCounters
 	YB_INT_DOCDB_READ_OPS,
 	YB_INT_DOCDB_WRITE_OPS,
 	YB_INT_DOCDB_ROWS_SCANNED,
+	YB_INT_CONFLICT_RETRIES,
+	YB_INT_READ_RESTART_RETRIES,
+	YB_INT_TOTAL_RETRIES,
 
 	YB_INT_COUNTERS_LAST = YB_NUM_COUNTERS_INT
 } YbIntCounters;
@@ -2002,12 +2005,12 @@ pgss_store(const char *query, uint64 queryId,
 			e->counters.jit_emission_time += INSTR_TIME_GET_MILLISEC(jitusage->emission_counter);
 		}
 
-		/*
-		 * YB: These stats are collected for both regular and utility
-		 * statements, unlike EXPLAIN
-		 */
 		if (kind == PGSS_EXEC)
 		{
+			/*
+			 * YB: These stats are collected for both regular and utility
+			 * statements, unlike EXPLAIN
+			 */
 			YbInstrumentation yb_instr = {0};
 
 			YbUpdateSessionStats((YbInstrumentation *) &yb_instr);
@@ -2027,6 +2030,13 @@ pgss_store(const char *query, uint64 queryId,
 			e->counters.yb_counters.counters_dbl[YB_DBL_DOCDB_WAIT_TIME_MS] +=
 				(yb_instr.tbl_reads.wait_time + yb_instr.write_flushes.wait_time +
 				 yb_instr.index_reads.wait_time) / 1000000.0;
+
+			/* Update retry statistics, only after the statement has completed */
+			e->counters.yb_counters.counters[YB_INT_CONFLICT_RETRIES] +=
+				YbGetRetryCount(YB_TXN_CONFLICT);
+			e->counters.yb_counters.counters[YB_INT_READ_RESTART_RETRIES] +=
+				YbGetRetryCount(YB_TXN_RESTART_READ);
+			e->counters.yb_counters.counters[YB_INT_TOTAL_RETRIES] += YbGetTotalRetryCount();
 		}
 
 		SpinLockRelease(&e->mutex);
@@ -2527,11 +2537,9 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 			nulls[i++] = true;
 
 			values[i++] = Float8GetDatumFast(tmp.yb_counters.counters_dbl[YB_DBL_DOCDB_WAIT_TIME_MS]);
-
-			/* TODO(#28446): Fill up retry counters */
-			nulls[i++] = true;
-			nulls[i++] = true;
-			nulls[i++] = true;
+			values[i++] = Int64GetDatumFast(tmp.yb_counters.counters[YB_INT_CONFLICT_RETRIES]);
+			values[i++] = Int64GetDatumFast(tmp.yb_counters.counters[YB_INT_READ_RESTART_RETRIES]);
+			values[i++] = Int64GetDatumFast(tmp.yb_counters.counters[YB_INT_TOTAL_RETRIES]);
 		}
 
 		Assert(i == (api_version == PGSS_V1_0 ? PG_STAT_STATEMENTS_COLS_V1_0 :
