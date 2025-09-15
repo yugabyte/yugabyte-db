@@ -620,12 +620,16 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       session->session().CompleteShutdown();
     }
     sessions.clear();
-    {
-      std::lock_guard lock(mutex_);
-      check_expired_sessions_.Shutdown();
+    auto schedulers = {
+        std::reference_wrapper(check_expired_sessions_),
+        std::reference_wrapper(check_object_id_allocators_),
+        std::reference_wrapper(check_ysql_lease_)};
+    for (auto& task : schedulers) {
+      task.get().StartShutdown();
     }
-    check_object_id_allocators_.Shutdown();
-    check_ysql_lease_.Shutdown();
+    for (auto& task : schedulers) {
+      task.get().CompleteShutdown();
+    }
     if (exchange_thread_pool_) {
       exchange_thread_pool_->Shutdown();
     }
@@ -2722,7 +2726,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
 
   std::atomic<int64_t> session_serial_no_{0};
 
-  rpc::ScheduledTaskTracker check_expired_sessions_ GUARDED_BY(mutex_);
+  rpc::ScheduledTaskTracker check_expired_sessions_;
   CoarseTimePoint check_expired_sessions_time_ GUARDED_BY(mutex_);
   rpc::ScheduledTaskTracker check_object_id_allocators_;
   rpc::ScheduledTaskTracker check_ysql_lease_;
