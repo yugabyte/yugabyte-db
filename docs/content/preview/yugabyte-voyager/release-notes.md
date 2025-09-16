@@ -38,7 +38,7 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
   - Removed a suggestion note to create range-sharded secondary indexes as they are now automatically created during export schema.
 
 - Added console messages to show resumption progress when importing from large files, keeping users informed during long resumption processes.
-- Introduced a flag [--max-streaming-retries](../reference/data-migration/import-data/#arguments) in the import data commands to configure the number of retries for the streaming phase in live migration.
+- Introduced a flag [--max-retries-streaming](../reference/data-migration/import-data/#arguments) in the import data commands to configure the number of retries for the streaming phase in live migration.
 
 ### Bug fixes
 
