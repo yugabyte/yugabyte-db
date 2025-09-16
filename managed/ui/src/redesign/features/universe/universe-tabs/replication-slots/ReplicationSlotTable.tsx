@@ -49,7 +49,7 @@ export const ReplicationSlotTable: FC<ReplicationTableProps> = ({ universeUUID, 
   const getCurrentLag = (sID: string) => {
     const streamResult = metricsQuery.find((m) => m.data?.streamID === sID);
     if (!streamResult) return 'n/a';
-    const currentLag = Number(_.last(streamResult?.data?.cdcsdk_sent_lag_micros?.data[0]?.y));
+    const currentLag = Number(_.last(streamResult?.data?.cdcsdk_flush_lag?.data[0]?.y));
     return currentLag;
   };
 
