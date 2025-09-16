@@ -233,6 +233,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected AZUResourceGroupApiClient azuResourceGroupApiClient =
       mock(AZUResourceGroupApiClient.class);
   protected CloudAPI cloudAPI = mock(CloudAPI.class);
+  protected int failsOnCapacityReservation = 0;
 
   @Before
   public void setUpBase() {
@@ -340,6 +341,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
               reservationsByGroup.put(groupName, new HashSet<>());
               return groupName;
             });
+    Map<String, Integer> failsPerReservation = new HashMap<>();
     lenient()
         .when(
             azuResourceGroupApiClient.createCapacityReservation(
@@ -354,6 +356,12 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
             invocation -> {
               String groupName = invocation.getArgument(0);
               String reservationName = invocation.getArgument(3);
+              if (failsOnCapacityReservation > 0) {
+                Integer res = failsPerReservation.merge(reservationName, 1, Integer::sum);
+                if (res <= failsOnCapacityReservation) {
+                  throw new RuntimeException("Failing");
+                }
+              }
               reservationsByGroup
                   .computeIfAbsent(groupName, x -> new HashSet<>())
                   .add(reservationName);

@@ -214,7 +214,6 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
     // Cache the password before it is redacted.
     cachePasswordsIfNeeded();
     Universe universe = null;
-    boolean deleteCapacityReservation = false;
     try {
       universe =
           lockAndFreezeUniverseForUpdate(
@@ -229,7 +228,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
 
       createInstanceExistsCheckTasks(universe.getUniverseUUID(), taskParams(), universe.getNodes());
 
-      deleteCapacityReservation =
+      boolean deleteCapacityReservation =
           createCapacityReservationsIfNeeded(
               taskParams().nodeDetailsSet,
               CapacityReservationUtil.OperationType.CREATE,
@@ -300,6 +299,9 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
+      if (universe != null) {
+        clearCapacityReservationOnError(t, Universe.getOrBadRequest(universe.getUniverseUUID()));
+      }
       throw t;
     } finally {
       releaseReservedNodes();

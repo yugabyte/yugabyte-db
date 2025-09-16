@@ -205,7 +205,6 @@ public class ResizeNode extends UpgradeTaskBase {
   public void run() {
     runUpgrade(
         () -> {
-          boolean deleteCapacityReservation = false;
           NodesToApply nodesToApply = calclulateNodesToApply();
 
           Universe universe = getUniverse();
@@ -217,7 +216,7 @@ public class ResizeNode extends UpgradeTaskBase {
           Map<UUID, UniverseDefinitionTaskParams.Cluster> newVersionsOfClusters =
               taskParams().getNewVersionsOfClusters(universe);
 
-          deleteCapacityReservation =
+          boolean deleteCapacityReservation =
               createCapacityReservationsIfNeeded(
                   nodesToApply.instanceChangingNodes,
                   CapacityReservationUtil.OperationType.RESIZE,
