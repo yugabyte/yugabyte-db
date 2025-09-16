@@ -383,6 +383,17 @@ SELECT num_tablets, num_hash_key_columns, is_colocated FROM
            3 |                    1 | f
 (1 row)
 
+CREATE TABLE t5(c0 money UNIQUE);
+ALTER TABLE ONLY t5 ALTER COLUMN c0 SET DATA TYPE money USING c0::text::money;
+\d t5;
+                Table "public.t5"
+ Column | Type  | Collation | Nullable | Default 
+--------+-------+-----------+----------+---------
+ c0     | money |           |          | 
+Indexes:
+    "t5_c0_key" UNIQUE CONSTRAINT, lsm (c0 ASC), colocation: true
+Colocation: true
+
 \c yugabyte;
 -- Suppress NOTICE messages during table rewrite operations.
 SET client_min_messages TO WARNING;

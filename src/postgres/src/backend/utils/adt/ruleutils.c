@@ -2648,7 +2648,13 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 					Relation	indexrel = index_open(indexId, AccessShareLock);
 					Oid			tblspc;
 
-					if (IsYBRelation(indexrel) && conForm->contype != CONSTRAINT_PRIMARY)
+					/*
+					 * YB: When this function is called internally as a part of
+					 * an alter table rewrite, we don't need to emit the
+					 * colocation id, as we want a new one to be assigned.
+					 */
+					if (IsYBRelation(indexrel) && conForm->contype != CONSTRAINT_PRIMARY
+						&& !is_yb_alter_table)
 						YbAppendIndexReloptions(&buf, indexId, YbGetTableProperties(indexrel));
 
 					/*
