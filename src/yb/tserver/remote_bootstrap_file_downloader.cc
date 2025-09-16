@@ -44,7 +44,7 @@ DEFINE_RUNTIME_int32(remote_bootstrap_max_chunk_size, 64_MB,
 
 DEPRECATE_FLAG(int64, remote_boostrap_rate_limit_bytes_per_sec, "10_2022");
 
-DEFINE_UNKNOWN_int64(remote_bootstrap_rate_limit_bytes_per_sec, 256_MB,
+DEFINE_RUNTIME_int64(remote_bootstrap_rate_limit_bytes_per_sec, 256_MB,
              "Maximum transmission rate during a remote bootstrap. This is across all the remote "
              "bootstrap sessions for which this process is acting as a sender or receiver. So "
              "the total limit will be 2 * remote_bootstrap_rate_limit_bytes_per_sec because a "
