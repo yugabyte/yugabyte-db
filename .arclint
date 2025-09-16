@@ -103,6 +103,7 @@
         "(^whitespace/blank_line$)": "disabled",
         "(^build/include_what_you_use$)": "disabled",
         "(^build/c[+][+]11$)": "disabled",
+        "(^legal/copyright$)": "warning",
         "(.*)": "error"
       }
     }
