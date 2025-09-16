@@ -5,6 +5,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
@@ -17,8 +18,11 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.provider.LocalCloudInfo;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -319,15 +323,31 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
       Map<String, String> gflags, Universe universe, ServerType serverType, NodeDetails node) {
     Map<String, String> serverGFlagsValidationErrors = new HashMap<>();
 
-    String ybHomeDir = nodeUniverseManager.getYbHomeDir(node, universe);
-    String cliPath = ybHomeDir;
+    UUID providerUUID =
+        UUID.fromString(
+            universe.getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent.provider);
+    Provider provider = Provider.getOrBadRequest(providerUUID);
 
-    if (serverType == ServerType.MASTER) {
-      cliPath = cliPath + "/master/bin/yb-master";
-    } else if (serverType == ServerType.TSERVER) {
-      cliPath = cliPath + "/tserver/bin/yb-tserver";
+    String cliPath;
+    if (provider.getCloudCode() == CloudType.local) {
+      LocalCloudInfo localCloudInfo = CloudInfoInterface.get(provider);
+      String yugabyteBinDir = localCloudInfo.getYugabyteBinDir();
+      if (serverType == ServerType.MASTER) {
+        cliPath = yugabyteBinDir + "/yb-master";
+      } else if (serverType == ServerType.TSERVER) {
+        cliPath = yugabyteBinDir + "/yb-tserver";
+      } else {
+        return serverGFlagsValidationErrors;
+      }
     } else {
-      return serverGFlagsValidationErrors;
+      String ybHomeDir = nodeUniverseManager.getYbHomeDir(node, universe);
+      if (serverType == ServerType.MASTER) {
+        cliPath = ybHomeDir + "/master/bin/yb-master";
+      } else if (serverType == ServerType.TSERVER) {
+        cliPath = ybHomeDir + "/tserver/bin/yb-tserver";
+      } else {
+        return serverGFlagsValidationErrors;
+      }
     }
 
     ShellProcessContext shellContext =

@@ -81,6 +81,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.CheckLocale,
           TaskType.CheckGlibc,
           TaskType.AnsibleConfigureServers,
+          TaskType.ValidateGFlags,
           TaskType.AnsibleConfigureServers, // GFlags
           TaskType.AnsibleConfigureServers, // GFlags
           TaskType.SetNodeStatus,
@@ -108,6 +109,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.FreezeUniverse,
           TaskType.PersistUseClockbound,
           TaskType.InstanceExistCheck,
+          TaskType.ValidateGFlags,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl, // master
           TaskType.WaitForServer,
