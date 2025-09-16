@@ -112,12 +112,13 @@ install_pywheels() {
         $PYTHON_CMD -c "import sys; print('.'.join(map(str, sys.version_info[:2])))"
     )
     # Select the appropriate requirements file based on Python version
-    if [[ "$PYTHON_MAJOR_MINOR" == "3.6" || "$PYTHON_MAJOR_MINOR" == "3.7" ]]; then
+    if [[ "$PYTHON_MAJOR_MINOR" == "3.6" || "$PYTHON_MAJOR_MINOR" == "3.7"
+         || "$PYTHON_MAJOR_MINOR" == "3.8" ]]; then
         REQUIREMENTS_FILE="$(pwd)/ynp_requirements_3.6.txt"
-        echo "Using Python 3.6/3.7 compatible requirements file: $REQUIREMENTS_FILE"
+        echo "Using Python 3.6/3.7/3.8 compatible requirements file: $REQUIREMENTS_FILE"
     else
         REQUIREMENTS_FILE="$(pwd)/ynp_requirements.txt"
-        echo "Using Python 3.8+ requirements file: $REQUIREMENTS_FILE"
+        echo "Using Python 3.9+ requirements file: $REQUIREMENTS_FILE"
     fi
 
     echo "Installing Python wheels from directory: $WHEEL_DIR using requirements: $REQUIREMENTS_FILE"
@@ -156,8 +157,9 @@ install_pywheels() {
     fi
 
     # Install packages in specific order to handle build dependencies
-    if [[ "$PYTHON_MAJOR_MINOR" == "3.6" || "$PYTHON_MAJOR_MINOR" == "3.7" ]]; then
-        echo "Installing packages in order for Python 3.6/3.7 compatibility..."
+    if [[ "$PYTHON_MAJOR_MINOR" == "3.6" || "$PYTHON_MAJOR_MINOR" == "3.7"
+         || "$PYTHON_MAJOR_MINOR" == "3.8" ]]; then
+        echo "Installing packages in order for Python 3.6/3.7/3.8 compatibility..."
 
         # Install setuptools and wheel first
         $PIP_CMD install --no-index --ignore-installed $extra_pip_flags \
@@ -171,7 +173,8 @@ install_pywheels() {
             exit 1
         }
     else
-        # Install setuptools and wheel first for Python 3.8+
+        echo "Installing packages in order for Python 3.9+ compatibility..."
+        # Install setuptools and wheel first for Python 3.9+
         $PIP_CMD install --no-index --ignore-installed $extra_pip_flags \
             --find-links="$WHEEL_DIR" setuptools==78.1.1 wheel==0.43.0 || {
             echo "Error installing setuptools and wheel"
