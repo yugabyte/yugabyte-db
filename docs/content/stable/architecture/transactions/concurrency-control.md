@@ -1272,6 +1272,74 @@ The `NOWAIT` clause for row-level explicit locking doesn't apply to the `Fail-on
 
 The `SKIP LOCKED` clause is supported in both concurrency control policies and provides a transaction with the capability to skip locking without any error when a conflict is detected. However, it isn't supported for Serializable isolation. [#11761](https://github.com/yugabyte/yugabyte-db/issues/5683) tracks support for `SKIP LOCKED` in Serializable isolation.
 
+## Table-level locks
+
+{{<tags/feature/tp idea="1114">}} Table-level locks for YSQL, available in {{<release "2025.1.1.0">}} and later, provide a mechanism to coordinate concurrent DML and DDL operations. The table-level locking feature provides serializable semantics between DMLs and DDLs for YSQL by introducing distributed locks on YSQL objects. PostgreSQL clients acquire locks to prevent DMLs and DDLs from running concurrently.
+
+PostgreSQL table locks can be broadly categorized into two types:
+
+**Shared locks:**
+
+- `ACCESS SHARE`
+- `ROW SHARE`
+- `ROW EXCLUSIVE`
+
+**Global locks:**
+
+- `SHARE UPDATE EXCLUSIVE`
+- `SHARE`
+- `SHARE ROW EXCLUSIVE`
+- `EXCLUSIVE`
+- `ACCESS EXCLUSIVE`
+
+DMLs acquire shared locks alone, while DDLs acquire a combination of shared and global locks.
+
+To reduce the overhead of DMLs, YugabyteDB takes shared locks on the PostgreSQL backend's host TServer alone. Global locks are propagated to the Master leader.
+
+Each TServer maintains an in-memory `TSLocalLockManager` that serves object lock acquire or release calls. The Master also maintains an in-memory lock manager primarily for serializing conflicting global object locks. When the Master leader receives a global lock request, it first acquires the lock locally, then fans out the lock request to all TServers with valid [YSQL leases](#ysql-lease-mechanism), and executes the client callback after the lock has been successfully acquired on all TServers (with a valid YSQL lease).
+
+All statements inherently acquire some object locks. You can also explicitly acquire object locks using the [LOCK TABLE API](https://www.postgresql.org/docs/current/sql-lock.html):
+
+```sql
+-- Acquire a share lock on a table
+LOCK TABLE my_table IN SHARE MODE;
+
+-- Acquire an access exclusive lock (blocks all other operations)
+LOCK TABLE my_table IN ACCESS EXCLUSIVE MODE;
+```
+
+You can observe active object locks using the [pg_locks](../../../explore/observability/pg-locks/) system view for locks older than [yb_locks_min_txn_age](../../../explore/observability/pg-locks/#yb-locks-min-txn-age):
+
+```sql
+SELECT * FROM pg_locks WHERE NOT granted;
+```
+
+### Lock scope and lifecycle
+
+All object locks are tied to a DocDB transaction:
+
+- **DMLs**: Locks are released at commit or abort time
+- **DDLs**: Lock release is delegated to the Master, which has a background task for observing DDL commits or aborts and finalizing schema changes.
+
+When a DDL finishes, all locks corresponding to the transaction are released and the TServers have the latest catalog cache. This ensures any new DMLs waiting on the same locks to see the latest schema after acquiring the object locks.
+
+To reduce overhead for read-only workloads, YugabyteDB reuses DocDB transactions wherever possible.
+
+### Failure handling
+
+Locks are cleaned up for various failure scenarios as follows:
+
+- PostgreSQL backend crash: The TServer-PostgreSQL session heartbeat cleans up corresponding locks.
+- TServer crash: YSQL Lease mechanism cleans up DDL locks for that TServer.
+- Master leader crash: Newly elected Master leader replays catalog entries to recreate locks' state held (at the master) and establish the lease for the TServers.
+
+### Important considerations
+
+- If a TServer doesn't have a valid YSQL lease, it cannot serve any requests from PostgreSQL backends.
+- Upon TServer lease changes (due to network issues), all active PostgreSQL backends are killed.
+- If TServers cannot communicate with the Master leader, DDLs will stall beacuse global locks cannot be served.
+- If TServers cannot communicate with the Master longer than the YSQL lease timeout, they lose their YSQL lease and all PostgreSQL backends are killed (until the connection with the Master is reestablished).
+
 ## YSQL lease mechanism
 
 YugabyteDB employs a robust lease mechanism between YB-TServer and YB-Master, so that in the event a YB-TServer is network partitioned from the YB-Master leader for a long time, the YB-TServer is transitioned to a mode that doesn't allow the YB-TServer to serve read or write traffic till it establishes connectivity with the YB-Master leader.
