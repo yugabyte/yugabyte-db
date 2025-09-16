@@ -29,6 +29,7 @@ public enum MetricCollectionLevel {
   ALL(StringUtils.EMPTY, false),
   NORMAL("metric/normal_level_params.json", false),
   MINIMAL("metric/minimal_level_params.json", false),
+  TABLE_OFF("metric/table_off_level_params.json", false),
   OFF(StringUtils.EMPTY, true);
 
   private final String paramsFilePath;
