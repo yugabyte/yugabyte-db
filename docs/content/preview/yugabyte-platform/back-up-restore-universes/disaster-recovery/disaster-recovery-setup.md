@@ -181,7 +181,7 @@ The following statuses [trigger an alert](#set-up-replication-lag-alerts).
 | Dropped From Database | The table was in replication, but doesn't exist on either the DR primary or DR replica. If you are using Manual mode, you need to remove it manually from the configuration. |
 | Extra Table On Source | The table is newly created on the DR primary but is not in replication yet. |
 | Extra Table On Target | The table is newly created on the DR replica but it is not in replication yet. |
-| Table Info Missing | The system is not able to fetch table info from either the DR primary nor the DR Replica. |
+| Table Info Missing | The system is unable to fetch table info from either the DR primary nor the DR replica. |
 | Missing op ID | The replication is broken and cannot continue because the write-ahead-logs are garbage collected before they were replicated to the other universe and you will need to [restart replication](#restart-replication).|
 | Schema&nbsp;mismatch | The schema was updated on the table (on either of the universes) and replication is paused until the same schema change is made to the other universe. |
 | Missing table | For colocated tables, only the parent table is in the replication group; any child table that is part of the colocation will also be replicated. This status is displayed for a parent colocated table if a child table only exists on the DR primary. Create the same table on the DR replica. |
