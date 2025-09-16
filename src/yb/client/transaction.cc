@@ -754,25 +754,31 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
     metadata_future_ = std::shared_future<Result<TransactionMetadata>>(
         metadata_promise_.get_future());
-    if (!ready_) {
-      auto transaction = transaction_->shared_from_this();
-      waiters_.push_back([this, transaction](const Status& status) {
-        WARN_NOT_OK(status, "Transaction request failed");
-        UniqueLock lock(mutex_);
-        if (status.ok()) {
-          metadata_promise_.set_value(metadata_);
-        } else {
-          metadata_promise_.set_value(status);
-        }
-      });
-      lock.unlock();
-      RequestStatusTablet(deadline);
-      lock.lock();
+    if (ready_) {
+      metadata_promise_.set_value(metadata_);
       return metadata_future_;
     }
 
-    metadata_promise_.set_value(metadata_);
-    return metadata_future_;
+    if (state_.load(std::memory_order_acquire) == TransactionState::kAborted) {
+      metadata_promise_.set_value(STATUS(IllegalState, "Transaction aborted"));
+      return metadata_future_;
+    }
+
+    auto transaction = transaction_->shared_from_this();
+    waiters_.push_back([this, transaction](const Status& status) {
+      WARN_NOT_OK(status, "Transaction request failed");
+      UniqueLock lock(mutex_);
+      if (status.ok()) {
+        metadata_promise_.set_value(metadata_);
+      } else {
+        metadata_promise_.set_value(status);
+      }
+    });
+
+    auto result = metadata_future_;
+    lock.unlock();
+    RequestStatusTablet(deadline);
+    return result;
   }
 
   Result<TransactionMetadata> metadata() EXCLUDES(mutex_) {
