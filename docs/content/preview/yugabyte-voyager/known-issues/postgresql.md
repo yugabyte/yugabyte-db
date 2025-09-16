@@ -1754,10 +1754,10 @@ When an index is created on a column with a high percentage of NULL values using
 
 **Workaround**: Make the index range-sharded to distribute data of the index evenly across all nodes to avoid hotspots.
 
-- For Voyager v2025.9.1 or later: Voyager automatically modifies all the [B-tree](https://en.wikipedia.org/wiki/B-tree) secondary indexes to be range-sharded during the export schema phase.
-- For Voyager versions older than v2025.9.1: You must manually modify the index to be range-sharded.
+- Voyager v2025.9.1 or later: Voyager automatically modifies all the [B-tree](https://en.wikipedia.org/wiki/B-tree) secondary indexes to be range-sharded during the export schema phase.
+- Voyager earlier than v2025.9.1: You must manually modify the index to be range-sharded.
 
-**Problem 2** : Unnecessary writes for unqueried NULL values
+**Problem 2**: Unnecessary writes for unqueried NULL values
 
 If NULL values are not being queried, storing them in the index results in unnecessary write operations and storage overhead.
 
@@ -1815,14 +1815,14 @@ Design the index to evenly distribute data across all nodes and optimize perform
 
 **Problem 1**: HASH index hotspots with a high percentage of a particular value
 
-When an index is created on a column with a high percentage of a particular value using HASH sharding, all entries for a value is stored in a single tablet. This concentration creates a hotspot, leading to performance degradation.
+When an index is created on a column where a particular value accounts for a high percentage of rows, all entries for the value are stored in a single tablet. This concentration creates a hotspot, leading to performance degradation.
 
-**Workaround**: Make the index as range-sharded to distribute data of the index evenly across all nodes to avoid hotspots.
+**Workaround**: Make the index range-sharded to distribute the data evenly across all nodes to avoid hotspots.
 
-- For Voyager v2025.9.1 or later: Voyager automatically modifies all the [B-tree](https://en.wikipedia.org/wiki/B-tree) secondary indexes to be range-sharded during the export schema phase.
-- For Voyager versions older than v2025.9.1: You must manually modify the index to be range-sharded.
+- Voyager v2025.9.1 or later: Voyager automatically modifies all the [B-tree](https://en.wikipedia.org/wiki/B-tree) secondary indexes to be range-sharded during the export schema phase.
+- Voyager earlier than v2025.9.1: You must manually modify the index to be range-sharded.
 
-**Problem 2** : Unnecessary writes for an unqueried particular value
+**Problem 2**: Unnecessary writes for an unqueried particular value
 
 If a value with a high percentage is not being queried, storing it in the index results in unnecessary write operations and storage overhead.
 

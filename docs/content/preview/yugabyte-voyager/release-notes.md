@@ -35,7 +35,7 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
   - Added explanatory notes about redundant indexes in the sizing recommendation section to help users understand the impact on estimated data import time.
   - Renamed "Sharding Recommendations" to "Colocation Recommendations" for better clarity.
   - Enhanced the colocation recommendations by suggesting only to colocate tables if it provides an overall benefit in the required number of cores or nodes.
-  - Removed a suggestion note to create range-sharded secondary indexes as they are automatically created during export schema now.
+  - Removed a suggestion note to create range-sharded secondary indexes as they are now automatically created during export schema.
 
 - Added console messages to show resumption progress when importing from large files, keeping users informed during long resumption processes.
 - Introduced a flag [--max-streaming-retries](../reference/data-migration/import-data/#arguments) in the import data commands to configure the number of retries for the streaming phase in live migration.
