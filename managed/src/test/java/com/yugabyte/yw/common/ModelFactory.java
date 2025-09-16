@@ -33,6 +33,8 @@ import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.AlertingData;
+import com.yugabyte.yw.forms.BackupRequestParams;
+import com.yugabyte.yw.forms.BackupRequestParams.KeyspaceTable;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.CreateTablespaceParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -104,6 +106,7 @@ import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.yb.CommonTypes.TableType;
 import play.libs.Json;
 
 @Slf4j
@@ -537,7 +540,21 @@ public class ModelFactory {
     params.setUniverseUUID(universeUUID);
     params.setKeyspace("foo");
     params.setTableName("bar");
+    params.backupType = TableType.PGSQL_TABLE_TYPE;
     params.tableUUID = UUID.randomUUID();
+    return Schedule.create(customerUUID, params, taskType, 1000, null);
+  }
+
+  public static Schedule createScheduleBackupRequestParams(
+      UUID customerUUID, UUID universeUUID, UUID configUUID, TaskType taskType) {
+    BackupRequestParams params = new BackupRequestParams();
+    params.storageConfigUUID = configUUID;
+    params.setUniverseUUID(universeUUID);
+    params.keyspaceTableList = new ArrayList<>();
+    KeyspaceTable keyspaceTable = new KeyspaceTable();
+    keyspaceTable.keyspace = "foo";
+    params.keyspaceTableList.add(keyspaceTable);
+    params.backupType = TableType.PGSQL_TABLE_TYPE;
     return Schedule.create(customerUUID, params, taskType, 1000, null);
   }
 
