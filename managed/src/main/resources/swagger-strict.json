@@ -22289,6 +22289,16 @@
         },
         "status" : {
           "items" : {
+            "enum" : [
+              "Created",
+              "Initializing",
+              "Running",
+              "Success",
+              "Failure",
+              "Unknown",
+              "Abort",
+              "Aborted"
+            ],
             "type" : "string"
           },
           "type" : "array",
