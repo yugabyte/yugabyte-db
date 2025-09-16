@@ -323,10 +323,11 @@ public class VMImageUpgrade extends UpgradeTaskBase {
       createHookProvisionTask(nodeList, TriggerType.PreNodeProvision);
       if (userIntent.providerType != CloudType.local) {
         createSetupYNPTask(universe, nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
-        if (!useAnsibleProvisioning
-            && shouldInstallDbSoftware(
-                universe, false /*ignoreUseCustomImageConfig*/, taskParams().vmUpgradeTaskType)) {
-          createYNPProvisioningTask(universe, nodeList)
+        if (!useAnsibleProvisioning) {
+          boolean isYbPrebuiltImage =
+              !shouldInstallDbSoftware(
+                  universe, false /*ignoreUseCustomImageConfig*/, taskParams().vmUpgradeTaskType);
+          createYNPProvisioningTask(universe, nodeList, isYbPrebuiltImage)
               .setSubTaskGroupType(SubTaskGroupType.Provisioning);
         }
       }

@@ -2342,7 +2342,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    *
    * @param nodes a collection of nodes to be processed.
    */
-  public SubTaskGroup createYNPProvisioningTask(Universe universe, Collection<NodeDetails> nodes) {
+  public SubTaskGroup createYNPProvisioningTask(
+      Universe universe, Collection<NodeDetails> nodes, boolean isYbPrebuiltImage) {
     Map<UUID, Provider> nodeUuidProviderMap = new HashMap<>();
     SubTaskGroup subTaskGroup =
         createSubTaskGroup(YNPProvisioning.class.getSimpleName(), SubTaskGroupType.Provisioning);
@@ -2374,6 +2375,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           params.setUniverseUUID(universe.getUniverseUUID());
           params.nodeAgentInstallDir = installPath;
           params.remotePackagePath = taskParams().remotePackagePath;
+          params.isYbPrebuiltImage = isYbPrebuiltImage;
           if (StringUtils.isNotEmpty(n.sshUserOverride)) {
             params.sshUser = n.sshUserOverride;
           }
@@ -2495,11 +2497,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                   if (setupParamsCustomizer != null) {
                     setupParamsCustomizer.accept(params);
                   }
-                  if (shouldInstallDbSoftware(
-                      universe, params.ignoreUseCustomImageConfig, params.vmUpgradeTaskType)) {
-                    createYNPProvisioningTask(universe, filteredNodes)
-                        .setSubTaskGroupType(SubTaskGroupType.Provisioning);
-                  }
+                  boolean isYbPrebuiltImage =
+                      !shouldInstallDbSoftware(
+                          universe, params.ignoreUseCustomImageConfig, params.vmUpgradeTaskType);
+                  createYNPProvisioningTask(universe, filteredNodes, isYbPrebuiltImage)
+                      .setSubTaskGroupType(SubTaskGroupType.Provisioning);
                 }
               }
               createInstallNodeAgentTasks(universe, filteredNodes)

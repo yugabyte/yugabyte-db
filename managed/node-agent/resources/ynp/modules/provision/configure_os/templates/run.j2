@@ -1,4 +1,5 @@
 is_cloud={{ is_cloud | default(false) }}
+is_yb_prebuilt_image={{ is_yb_prebuilt_image | default(false) }}
 bin_path="/usr/local/bin"
 
 # Set system limits
@@ -74,9 +75,13 @@ if [[ "$is_cloud" == "True" ]]; then
   DUMP_DIR="{{ yb_home_dir }}/cores/"
 
   # Ensure the cores directory exists with proper permissions
-  mkdir -p "$DUMP_DIR"
-  chmod 0755 "$DUMP_DIR"
-  chown "{{ yb_user }}:{{ yb_user }}" "$DUMP_DIR"
+  if [[ "$is_yb_prebuilt_image" == "True" ]] && [[ -L "$DUMP_DIR" ]]; then
+    echo "YB Prebuilt AMI detected, skipping creation of cores directory"
+  else
+    mkdir -p "$DUMP_DIR"
+    chmod 0755 "$DUMP_DIR"
+    chown "{{ yb_user }}:{{ yb_user }}" "$DUMP_DIR"
+  fi
 
   # Create core dump compression script
   cat << 'EOF' > "$bin_path/compress_core.sh"
