@@ -175,3 +175,84 @@ Finally, advisory locks can be blocking or non-blocking:
     select pg_try_advisory_lock(10);
     select pg_try_advisory_xact_lock(10);
     ```
+
+## Table-level locks
+
+{{<tags/feature/tp idea="1114">}} Table-level locks are available in {{<release "2025.1.1.0">}} and later.
+
+YugabyteDB's YSQL supports table-level locks (also known as object locks) to coordinate between DML and DDL operations. This feature ensures that DDLs wait for in-progress DMLs to finish before making schema changes, and gates new DMLs behind any waiting DDLs, providing concurrency handling that closely matches PostgreSQL behavior.
+
+You can enable Table-level locks under a preview flag, `enable_object_locking_for_table_locks`.
+
+Table-level locks depend on:
+
+- **YSQL lease**: Controlled by `master_ysql_operation_lease_ttl_ms`
+- **DDL Atomicity**: Controlled by `ysql_enable_db_catalog_version_mode`
+
+PostgreSQL table locks can be broadly categorized into two types:
+
+**Shared locks:**
+
+- `ACCESS SHARE`
+- `ROW SHARE`
+- `ROW EXCLUSIVE`
+
+**Global locks:**
+
+- `SHARE UPDATE EXCLUSIVE`
+- `SHARE`
+- `SHARE ROW EXCLUSIVE`
+- `EXCLUSIVE`
+- `ACCESS EXCLUSIVE`
+
+DMLs acquire shared locks alone, while DDLs acquire a combination of shared and global locks.
+
+To reduce the overhead of DMLs, YugabyteDB takes shared locks on the PostgreSQL backend's host TServer alone. Global locks are propagated to the Master leader.
+
+Each TServer maintains an in-memory `TSLocalLockManager` that serves object lock acquire or release calls. The Master also maintains an in-memory lock manager primarily for serializing conflicting global object locks. When the Master leader receives a global lock request, it first acquires the lock locally, then fans out the lock request to all TServers with valid [YSQL leases], and executes the client callback after the lock has been successfully acquired on all TServers (with a valid YSQL lease).
+
+### Using table-level locks
+
+All statements inherently acquire some object locks. You can also explicitly acquire object locks using the [LOCK TABLE API](https://www.postgresql.org/docs/current/sql-lock.html):
+
+```sql
+-- Acquire a share lock on a table
+LOCK TABLE my_table IN SHARE MODE;
+
+-- Acquire an access exclusive lock (blocks all other operations)
+LOCK TABLE my_table IN ACCESS EXCLUSIVE MODE;
+```
+
+### Lock scope and lifecycle
+
+All object locks are tied to a DocDB transaction:
+
+- **DMLs**: Locks are released at commit or abort time
+- **DDLs**: Lock release is delegated to the Master, which has a background task for observing DDL commits or aborts and finalizing schema changes.
+
+When a DDL finishes, all locks corresponding to the transaction are released and the TServers have the latest catalog cache. This ensures any new DMLs waiting on the same locks to see the latest schema after acquiring the object locks.
+
+To reduce overhead for read-only workloads, YugabyteDB reuses DocDB transactions wherever possible.
+
+### Observability
+
+You can observe active object locks using the `pg_locks` system view for locks older than `yb_locks_min_txn_age`:
+
+```sql
+SELECT * FROM pg_locks WHERE NOT granted;
+```
+
+### Failure handling
+
+Locks are cleaned up for various failure scenarios as follows:
+
+- PostgreSQL backend crash: The TServer-Pos session heartbeat cleans up corresponding locks
+- **TServer crash**: Lease mechanism cleans up DDL locks for that TServer
+- **Master leader crash**: Newly elected master leader replays catalog entries to recreate lock state
+
+### Important considerations
+
+- If a TServer doesn't have a valid YSQL lease, it cannot serve any requests from pg backends
+- Upon TServer lease changes (due to network issues), all active pg backends are killed
+- If TServers cannot communicate with the master leader, DDLs will stall since global locks cannot be served
+- If TServers cannot communicate with the master longer than the YSQL lease timeout, they lose their YSQL lease and all pg backends are killed
