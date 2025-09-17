@@ -1,4 +1,4 @@
----
+<!---
 title: ybm CLI command reference
 headerTitle: Reference
 linkTitle: Reference
@@ -13,7 +13,9 @@ type: indexpage
 showRightNav: true
 rightNav:
   hideH4: true
----
+cascade:
+  private: true
+--->
 
 ## Syntax
 
