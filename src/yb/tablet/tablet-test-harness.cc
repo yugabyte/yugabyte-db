@@ -11,9 +11,8 @@
 // under the License.
 //
 
-#include "yb/tablet/tablet-harness.h"
+#include "yb/tablet/tablet-test-harness.h"
 
-#include "yb/qlexpr/index.h"
 #include "yb/dockv/partition.h"
 
 #include "yb/consensus/log_anchor_registry.h"
@@ -27,8 +26,7 @@
 
 using std::vector;
 
-namespace yb {
-namespace tablet {
+namespace yb::tablet {
 
 std::pair<dockv::PartitionSchema, dockv::Partition> CreateDefaultPartition(const Schema& schema) {
   // Create a default partition schema.
@@ -42,12 +40,12 @@ std::pair<dockv::PartitionSchema, dockv::Partition> CreateDefaultPartition(const
   return std::make_pair(partition_schema, partitions[0]);
 }
 
-TabletHarness::TabletHarness(const Schema& schema, Options options)
+TabletTestHarness::TabletTestHarness(const Schema& schema, Options options)
     : options_(std::move(options)), schema_(schema) {}
 
-TabletHarness::~TabletHarness() = default;
+TabletTestHarness::~TabletTestHarness() = default;
 
-Status TabletHarness::Create(bool first_time) {
+Status TabletTestHarness::Create(bool first_time) {
   std::pair<dockv::PartitionSchema, dockv::Partition> partition(CreateDefaultPartition(schema_));
 
   // Build the Tablet
@@ -77,13 +75,13 @@ Status TabletHarness::Create(bool first_time) {
   return Status::OK();
 }
 
-Status TabletHarness::Open() {
+Status TabletTestHarness::Open() {
   RETURN_NOT_OK(tablet_->Open());
   tablet_->MarkFinishedBootstrapping();
   return tablet_->EnableCompactions(/* blocking_rocksdb_shutdown_start_ops_pause = */ nullptr);
 }
 
-Result<TabletPtr> TabletHarness::OpenTablet(const TabletId& tablet_id) {
+Result<TabletPtr> TabletTestHarness::OpenTablet(const TabletId& tablet_id) {
   auto metadata = VERIFY_RESULT(RaftGroupMetadata::Load(fs_manager_.get(), tablet_id));
   std::shared_ptr<Tablet> tablet(new Tablet(MakeTabletInitData(metadata)));
   RETURN_NOT_OK(tablet->Open());
@@ -93,7 +91,7 @@ Result<TabletPtr> TabletHarness::OpenTablet(const TabletId& tablet_id) {
   return tablet;
 }
 
-TabletInitData TabletHarness::MakeTabletInitData(const RaftGroupMetadataPtr& metadata) {
+TabletInitData TabletTestHarness::MakeTabletInitData(const RaftGroupMetadataPtr& metadata) {
   return TabletInitData {
       .metadata = metadata,
       .client_future = std::shared_future<client::YBClient*>(),
@@ -121,5 +119,4 @@ TabletInitData TabletHarness::MakeTabletInitData(const RaftGroupMetadataPtr& met
     };
 }
 
-} // namespace tablet
-} // namespace yb
+} // namespace yb::tablet
