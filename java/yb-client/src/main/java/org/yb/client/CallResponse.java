@@ -83,7 +83,7 @@ final class CallResponse extends DefaultByteBufHolder {
   }
 
   public boolean isEmpty() {
-    return this.totalResponseSize == 0;
+    return this.totalResponseSize <= 0;
   }
 
   /**
