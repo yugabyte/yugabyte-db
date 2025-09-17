@@ -207,6 +207,8 @@ class SchemaPackingStorage {
 
   bool HasVersionBelow(SchemaVersion version) const;
 
+  bool HasVersion(SchemaVersion version) const;
+
   TableType table_type() const {
     return table_type_;
   }

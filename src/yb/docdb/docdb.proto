@@ -51,6 +51,11 @@ message LockPairPB {
   optional bool is_lock = 3; // lock or unlock.
 }
 
+message XClusterUsedSchemaVersionPB {
+  optional uint32 colocation_id = 1;
+  repeated uint32 schema_versions = 2;
+}
+
 // A set of key/value pairs to be written into RocksDB.
 message KeyValueWriteBatchPB {
   repeated KeyValuePairPB write_pairs = 1;
@@ -102,6 +107,9 @@ message KeyValueWriteBatchPB {
 
   // Used to detect deadlocks between fast path transactions and transactional DDLs.
   optional TransactionMetadataPB object_locking_txn_meta = 18;
+
+  // Used to keep track of packing schema versions used in a xCluster write batch.
+  repeated XClusterUsedSchemaVersionPB xcluster_used_schema_versions = 19;
 }
 
 message PerDbFilterPB {

@@ -163,6 +163,7 @@ class WriteQuery {
   Result<bool> CqlPrepareExecute();
   Result<bool> PgsqlPrepareExecute();
   Result<bool> PgsqlPrepareLock();
+  Result<bool> ExternalWritePrepareExecute();
 
   void SimpleExecuteDone(const Status& status);
   void RedisExecuteDone(const Status& status);
