@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 -- Drop fields host_vpc_id, dest_vpc_id, host_vpc_region from the provider
 -- as these will now be stored as part provider -> details -> cloudInfo -> aws/gcp

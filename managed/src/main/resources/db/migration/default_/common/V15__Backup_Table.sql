@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 create table backup (
   backup_uuid                 uuid not null,

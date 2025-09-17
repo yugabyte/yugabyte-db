@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 -- Change last_failover column from timestamp without tz to epoch time in ms
 ALTER TABLE high_availability_config

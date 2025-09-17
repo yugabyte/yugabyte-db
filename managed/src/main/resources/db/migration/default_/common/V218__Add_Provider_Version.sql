@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 -- Add version column to provider table
 ALTER TABLE IF EXISTS provider

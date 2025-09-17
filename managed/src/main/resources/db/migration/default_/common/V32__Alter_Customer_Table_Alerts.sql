@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 create table alert (
   uuid                          uuid not null,
   customer_uuid                 uuid not null,

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 import { FC, useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';

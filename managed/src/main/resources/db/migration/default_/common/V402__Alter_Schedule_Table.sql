@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 ALTER TABLE IF EXISTS schedule ADD COLUMN IF NOT EXISTS prev_status varchar(10);
 

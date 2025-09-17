@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 CREATE TABLE IF not EXISTS oidc_group_to_yba_roles (
     uuid UUID NOT NULL,

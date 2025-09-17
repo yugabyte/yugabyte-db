@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 -- Add column if it does not exist
 ALTER TABLE IF EXISTS kms_history 

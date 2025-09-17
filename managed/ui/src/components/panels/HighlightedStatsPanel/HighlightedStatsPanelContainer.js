@@ -1,4 +1,4 @@
-// Copyright YugaByte Inc.
+// Copyright YugabyteDB, Inc.
 
 import { HighlightedStatsPanel } from '../../panels';
 import { connect } from 'react-redux';

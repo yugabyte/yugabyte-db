@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 create table if not exists high_availability_config (
     uuid                            uuid not null,

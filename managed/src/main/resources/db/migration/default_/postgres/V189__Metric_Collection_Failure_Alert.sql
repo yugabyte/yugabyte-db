@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 -- METRIC_COLLECTION_FAILURE_ALERT
 insert into alert_configuration

@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 alter table alert_route add column if not exists name varchar(255);
 update alert_route set name = uuid;

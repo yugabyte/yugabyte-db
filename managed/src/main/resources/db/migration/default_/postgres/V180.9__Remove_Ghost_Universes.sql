@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 /*
  * In V181 we remove "customer.universe_uuids". If some universes are not linked

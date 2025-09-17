@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 UPDATE high_availability_config
 SET accept_any_certificate = COALESCE(

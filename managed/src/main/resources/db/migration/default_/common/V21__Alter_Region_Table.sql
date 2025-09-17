@@ -1,3 +1,3 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 alter table region add column details json;

@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 DROP FUNCTION create_universe_alert_definitions(text,text);
 CREATE FUNCTION create_universe_alert_definitions(configurationName text, queryTemplate text)

@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 ALTER TABLE alert ADD COLUMN state varchar(64) default 'ACTIVE';
 ALTER TABLE alert ADD COLUMN send_email boolean default false;
 ALTER TABLE alert ADD COLUMN definition_uuid uuid default null;

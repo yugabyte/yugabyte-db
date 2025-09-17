@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 -- Add status column to the xcluster_namespace_config table.
 ALTER TABLE IF EXISTS xcluster_namespace_config

@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 ALTER TABLE instance_type RENAME TO instance_type_old;
 

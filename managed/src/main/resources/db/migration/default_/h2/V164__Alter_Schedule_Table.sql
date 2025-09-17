@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 ALTER TABLE schedule ADD COLUMN IF NOT EXISTS schedule_name varchar(255);
 ALTER TABLE schedule ADD COLUMN IF NOT EXISTS owner_uuid uuid;

@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 ALTER TABLE metric ADD COLUMN IF NOT EXISTS target_labels varchar(4000);
 ALTER TABLE metric_label ADD COLUMN IF NOT EXISTS target_label boolean DEFAULT false NOT NULL;
 ALTER TABLE metric DROP CONSTRAINT IF EXISTS uq_name_customer_target;

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Copyright (c) YugaByte, Inc.
+# Copyright (c) YugabyteDB, Inc.
 
 import json
 import http.client

@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 ALTER TABLE IF EXISTS node_instance ADD COLUMN if NOT EXISTS state VARCHAR(20) DEFAULT 'free' NOT NULL;
 

@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 -- No need to fill anything for h2.
 alter table alert_definition_group drop constraint ck_adg_threshold_unit;

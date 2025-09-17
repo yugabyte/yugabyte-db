@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 -- These should match the metadata in devops: opscli/ybops/data/aws-metadata.yml
 -- These should also be in sync with the UI data in YW: ui/src/components/config/PublicCloud/views/AWSProviderInitView.js

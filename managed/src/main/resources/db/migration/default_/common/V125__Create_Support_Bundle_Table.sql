@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 CREATE TABLE IF NOT EXISTS support_bundle (
   bundle_uuid                   uuid NOT NULL,

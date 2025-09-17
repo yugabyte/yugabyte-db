@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 CREATE TABLE IF NOT EXISTS telemetry_provider (
   uuid                     uuid NOT NULL,

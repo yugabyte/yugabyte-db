@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 -- Default Image Bundle Name can we quite large as we append provider name
 -- with prefix for the default image bundle name.

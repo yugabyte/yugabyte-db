@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 -- Rename the column to skip update of values.
 ALTER TABLE task_info RENAME COLUMN details to task_params;

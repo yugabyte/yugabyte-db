@@ -24,7 +24,7 @@
     "webpack-build": "webpack --mode=production",
     "webpack-watch": "webpack --mode=production -w"
   },
-  "author": "Yugabyte, Inc.",
+  "author": "YugabyteDB, Inc.",
   "license": "Apache License 2.0",
   "homepage": "https://github.com/yugabyte/yugabyte-db/docs#readme",
   "dependencies": {

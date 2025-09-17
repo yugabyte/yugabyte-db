@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 DELETE FROM troubleshooting_platform;
 ALTER TABLE troubleshooting_platform ADD COLUMN api_token bytea NOT NULL;

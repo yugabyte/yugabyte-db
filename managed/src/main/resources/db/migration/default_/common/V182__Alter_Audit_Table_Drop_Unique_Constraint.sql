@@ -1,3 +1,3 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 ALTER TABLE audit DROP CONSTRAINT IF EXISTS uq_audit_task_uuid;

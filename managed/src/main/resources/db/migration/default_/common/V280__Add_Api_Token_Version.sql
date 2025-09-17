@@ -1,3 +1,3 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 ALTER TABLE users ADD COLUMN api_token_version bigint DEFAULT 0 NOT NULL;

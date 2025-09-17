@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 -- Clean old alerts to avoid inconsistent alert structure.
 -- In case alert condition is still valid - it will be raised again.

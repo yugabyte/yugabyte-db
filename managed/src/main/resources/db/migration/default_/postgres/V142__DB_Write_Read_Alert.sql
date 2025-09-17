@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 -- DB_WRITE_READ_TEST_ERROR
 insert into alert_configuration

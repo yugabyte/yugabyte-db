@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 -- Clean old alerts with source_uuid = null which are not yet resolved -
 -- as attempt to resolve them fails.

@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 CREATE TABLE IF not EXISTS webhook (
     uuid UUID not null,

@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 ALTER TABLE alert_definition DROP COLUMN query;
 UPDATE alert_definition SET config_written = false;

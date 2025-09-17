@@ -1,3 +1,3 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 UPDATE region SET yb_image = NULL;

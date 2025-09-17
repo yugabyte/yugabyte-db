@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 create or replace function create_universe_alert_definitions(configurationName text, queryTemplate text)
  returns boolean

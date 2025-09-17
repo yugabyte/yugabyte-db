@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 package db.migration.default_.common
 
 import org.flywaydb.core.api.migration.{BaseJavaMigration, Context}

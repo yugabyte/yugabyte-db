@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 -- Add first_snapshot_time to backup table
 ALTER TABLE IF EXISTS backup

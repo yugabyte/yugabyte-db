@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 ALTER TABLE pitr_config ADD COLUMN created_for_dr boolean DEFAULT false NOT NULL;
 

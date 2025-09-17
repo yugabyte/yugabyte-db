@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 alter table if exists schedule drop constraint if exists ck_schedule_status;
 alter table if exists schedule alter column status TYPE varchar(10);

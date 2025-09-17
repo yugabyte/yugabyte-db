@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 -- Recreate alert definition to fix affected nodes expression
 update alert_definition set config_written = false where configuration_uuid IN

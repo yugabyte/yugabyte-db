@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 ALTER TABLE IF EXISTS dr_config ADD COLUMN IF NOT EXISTS storage_config_uuid UUID;
 ALTER TABLE IF EXISTS dr_config

@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 alter table alert_route add column if not exists default_route boolean default false;
 
 DO $$

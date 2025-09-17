@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 -- Rename Deleted to DeletionFailed and Init to Initialized in the possible states for
 -- xcluster_config.status.

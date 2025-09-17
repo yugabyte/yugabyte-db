@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 -- HEALTH_CHECK_ERROR
 select replace_configuration_query(

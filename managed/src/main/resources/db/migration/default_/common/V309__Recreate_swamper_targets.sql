@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 -- Adding ts_live_tablet_peers
 update universe set swamper_config_written = false;

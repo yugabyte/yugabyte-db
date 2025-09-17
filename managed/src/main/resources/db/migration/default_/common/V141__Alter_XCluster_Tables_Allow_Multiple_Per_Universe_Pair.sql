@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 alter table if exists xcluster_config
   drop constraint if exists uq_xcluster_config_source_universe_uuid_target_universe_uuid;

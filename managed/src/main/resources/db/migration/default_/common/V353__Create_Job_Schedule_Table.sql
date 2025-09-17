@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 CREATE TABLE IF NOT EXISTS job_schedule(
   uuid                      UUID NOT NULL,

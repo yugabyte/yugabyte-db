@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 import { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 import { ToastContainer } from 'react-toastify';
 import { ToastNotificationDuration } from '../redesign/helpers/constants';

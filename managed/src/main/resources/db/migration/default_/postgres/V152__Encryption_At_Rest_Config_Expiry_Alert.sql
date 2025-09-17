@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 -- ENCRYPTION_AT_REST_CONFIG_EXPIRY
 insert into alert_configuration

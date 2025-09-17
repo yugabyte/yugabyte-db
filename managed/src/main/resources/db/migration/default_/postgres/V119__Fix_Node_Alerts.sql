@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 select replace_configuration_query(
  'MEMORY_CONSUMPTION',

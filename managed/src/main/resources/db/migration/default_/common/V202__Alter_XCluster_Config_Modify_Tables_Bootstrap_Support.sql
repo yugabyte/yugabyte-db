@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 -- Add table_type column to the xcluster_config table.
 ALTER TABLE IF EXISTS xcluster_config

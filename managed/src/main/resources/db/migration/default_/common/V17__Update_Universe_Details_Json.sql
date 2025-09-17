@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 UPDATE universe SET universe_details_json = replace(universe_details_json, 'ToBeDecommissioned', 'ToBeRemoved');
 UPDATE universe SET universe_details_json = replace(universe_details_json, 'BeingDecommissioned', 'BeingRemoved');

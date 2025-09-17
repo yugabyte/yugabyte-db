@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 import t from 'typy';
 import { browserHistory } from 'react-router';
 import { isRbacEnabled } from '../redesign/features/rbac/common/RbacUtils';

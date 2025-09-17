@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 -- NEW_YSQL_TABLES_ADDED alert
 insert into alert_configuration

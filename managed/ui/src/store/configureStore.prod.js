@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 import { createStore, applyMiddleware } from 'redux';
 import rootReducer from '../reducers';

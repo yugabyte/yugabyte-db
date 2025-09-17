@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 -- Recreate alert definition with new affected_node_names
 update alert_definition set config_written = false where configuration_uuid IN

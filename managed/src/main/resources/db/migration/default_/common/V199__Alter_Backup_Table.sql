@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 -- Add column base_backup_uuid to backup table.
 ALTER TABLE backup ADD COLUMN if not exists base_backup_uuid uuid;

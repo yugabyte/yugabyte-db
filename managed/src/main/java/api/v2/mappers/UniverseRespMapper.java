@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 package api.v2.mappers;
 
 import api.v2.models.AllowedTasksOnFailure;

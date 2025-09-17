@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 ALTER TABLE alert DROP CONSTRAINT fk_alert_definition_uuid;
 ALTER TABLE alert ADD CONSTRAINT fk_alert_definition_uuid FOREIGN KEY (definition_uuid) references alert_definition (uuid)  ON DELETE CASCADE ON UPDATE CASCADE;
 

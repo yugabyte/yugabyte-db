@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 -- Delete invalid certs from certificate_info before creating the constraint.
 DELETE FROM certificate_info WHERE customer_uuid NOT IN (SELECT uuid FROM customer);

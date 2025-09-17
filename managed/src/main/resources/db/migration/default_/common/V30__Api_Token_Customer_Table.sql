@@ -1,2 +1,2 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 alter table customer add column api_token varchar(255);

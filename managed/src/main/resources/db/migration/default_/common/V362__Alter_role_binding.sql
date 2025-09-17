@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 ALTER TABLE role_binding
 DROP CONSTRAINT fk_role_binding_user_uuid;

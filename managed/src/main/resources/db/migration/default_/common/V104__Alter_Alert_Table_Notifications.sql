@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 ALTER TABLE alert ADD COLUMN IF NOT EXISTS notification_attempt_time timestamp;
 ALTER TABLE alert ADD COLUMN IF NOT EXISTS next_notification_time timestamp;
 ALTER TABLE alert ADD COLUMN IF NOT EXISTS notifications_failed int not null default 0;

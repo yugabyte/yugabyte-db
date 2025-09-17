@@ -1,7 +1,7 @@
 //go:build testonly
 // +build testonly
 
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 package util
 
 import (

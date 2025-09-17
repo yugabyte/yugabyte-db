@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc. 
+-- Copyright (c) YugabyteDB, Inc. 
 
 CREATE TABLE IF NOT EXISTS restore (
   restore_uuid          UUID NOT NULL,

@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 -- Add intermittent earliest recoverable time column to pitr_config table
 ALTER TABLE IF EXISTS pitr_config

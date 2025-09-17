@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 alter table provider drop constraint uq_provider_code;
 alter table provider add column customer_uuid uuid;

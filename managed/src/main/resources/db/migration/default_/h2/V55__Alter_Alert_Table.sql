@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 -- special case because of constraint name scope is per database in h2
 ALTER TABLE alert ADD COLUMN state varchar(64) default 'ACTIVE';
 ALTER TABLE alert ADD COLUMN send_email boolean default false;

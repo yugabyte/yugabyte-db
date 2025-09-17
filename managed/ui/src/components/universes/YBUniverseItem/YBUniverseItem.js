@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 import { Col, Row } from 'react-bootstrap';
 import { Link } from 'react-router';

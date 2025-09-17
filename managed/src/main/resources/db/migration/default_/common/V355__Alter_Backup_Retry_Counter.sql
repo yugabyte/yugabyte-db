@@ -1,3 +1,3 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 ALTER TABLE backup ADD COLUMN IF NOT EXISTS retry_count int DEFAULT 0 NOT NULL;

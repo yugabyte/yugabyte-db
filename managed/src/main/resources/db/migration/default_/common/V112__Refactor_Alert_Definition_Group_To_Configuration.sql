@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 ALTER TABLE alert_definition_group DROP CONSTRAINT IF EXISTS ck_adg_target_type;
 UPDATE alert_definition_group set target_type = 'PLATFORM' where target_type = 'CUSTOMER';

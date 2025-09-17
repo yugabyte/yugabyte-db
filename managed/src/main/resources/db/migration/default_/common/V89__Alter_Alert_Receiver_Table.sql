@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 alter table alert_receiver add column if not exists name varchar(255);
 update alert_receiver set name = uuid;

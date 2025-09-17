@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 -- Delete invalid subtasks from task_info before creating the contraint.
 DELETE FROM task_info t1 WHERE NOT EXISTS (SELECT 1 FROM task_info t2 WHERE

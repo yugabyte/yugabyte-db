@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) YugabyteDB, Inc.
 
 alter table task_info alter column task_type TYPE varchar(50);
 update task_info set task_type = 'CreateCassandraTable' where task_type = 'CreateCassTable';

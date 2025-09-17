@@ -1,6 +1,6 @@
 %{
 //--------------------------------------------------------------------------------------------------
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 // Portions Copyright (c) 1996-2015, PostgreSQL Global Development Group
 // Portions Copyright (c) 1994, Regents of the University of California
 //
