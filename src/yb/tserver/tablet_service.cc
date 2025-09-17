@@ -1055,6 +1055,14 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
       return;
     }
 
+    // If the request is to insert a packed schema, respond as succeeded.
+    // TODO(#28326): Need to validate that we do have the intermediate schema instead of just
+    // returning success.
+    if (req->insert_packed_schema()) {
+      context.RespondSuccess();
+      return;
+    }
+
     schema_version = tablet.peer->tablet_metadata()->schema_version(
         req->has_alter_table_id() ? req->alter_table_id() : "");
     if (schema_version == req->schema_version()) {
