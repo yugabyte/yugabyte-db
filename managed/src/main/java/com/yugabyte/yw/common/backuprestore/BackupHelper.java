@@ -49,6 +49,7 @@ import com.yugabyte.yw.forms.RestorePreflightParams;
 import com.yugabyte.yw.forms.RestorePreflightResponse;
 import com.yugabyte.yw.forms.UniverseBackupRequestParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.forms.backuprestore.AdvancedRestorePreflightParams;
 import com.yugabyte.yw.forms.backuprestore.KeyspaceTables;
 import com.yugabyte.yw.forms.backuprestore.RestoreItemsValidationParams;
@@ -318,9 +319,9 @@ public class BackupHelper {
     UniverseDefinitionTaskParams.UserIntent primaryClusterUserIntent =
         universe.getUniverseDetails().getPrimaryCluster().userIntent;
 
-    if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(universe)) {
+    if (!universe.getUniverseDetails().softwareUpgradeState.equals(SoftwareUpgradeState.Ready)) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "Cannot restore backup with major version upgrade is in progress");
+          BAD_REQUEST, "Cannot restore backup while software upgrade is in progress");
     }
 
     taskParams.backupStorageInfoList.forEach(
@@ -789,7 +790,7 @@ public class BackupHelper {
           INTERNAL_SERVER_ERROR, "Error while fetching TableSpace information");
     }
     String jsonData = CommonUtils.extractJsonisedSqlResponse(shellResponse);
-    if (jsonData == null || jsonData.isBlank()) {
+    if (jsonData == null || jsonData.trim().isEmpty()) {
       return new ArrayList<>();
     }
     try {

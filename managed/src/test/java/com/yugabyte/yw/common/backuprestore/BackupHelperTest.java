@@ -42,6 +42,7 @@ import com.yugabyte.yw.forms.RestorePreflightParams;
 import com.yugabyte.yw.forms.RestorePreflightResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PrevYBSoftwareConfig;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.forms.backuprestore.AdvancedRestorePreflightParams;
 import com.yugabyte.yw.forms.backuprestore.KeyspaceTables;
 import com.yugabyte.yw.forms.backuprestore.RestoreItemsValidationParams;
@@ -930,7 +931,7 @@ public class BackupHelperTest extends FakeDBApplication {
   }
 
   @Test
-  public void testRestoreWhenYsqlMajorVersionUpgradeInMonitoringPhase() {
+  public void testRestoreWhenUpgradeInMonitoringPhase() {
     Backup backup = createYCQLMultiKeyspaceBackup();
     RestoreBackupParams restoreBackupParams = new RestoreBackupParams();
     restoreBackupParams.storageConfigUUID = backup.getStorageConfigUUID();
@@ -947,20 +948,19 @@ public class BackupHelperTest extends FakeDBApplication {
               universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion =
                   "2025.1.0.0-b1";
               universe.getUniverseDetails().prevYBSoftwareConfig = new PrevYBSoftwareConfig();
+              universe.getUniverseDetails().softwareUpgradeState = SoftwareUpgradeState.PreFinalize;
               universe
                   .getUniverseDetails()
                   .prevYBSoftwareConfig
                   .setSoftwareVersion("2024.2.3.0-b1");
             });
-    when(mockSoftwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(any())).thenReturn(true);
     PlatformServiceException ex =
         assertThrows(
             PlatformServiceException.class,
             () -> {
               spyBackupHelper.createRestoreTask(testCustomer.getUuid(), restoreBackupParams);
             });
-    assertEquals(
-        "Cannot restore backup with major version upgrade is in progress", ex.getMessage());
+    assertEquals("Cannot restore backup while software upgrade is in progress", ex.getMessage());
   }
 
   public void testCreateBackupTaskChecksFail() {
