@@ -32,6 +32,9 @@ struct ProcessRecordInfo {
 
   // Map of producer-consumer schema versions for the record.
   const cdc::XClusterSchemaVersionMap schema_versions_map;
+
+  // Colocation id for the record, kColocationIdNotSet if not set.
+  ColocationId colocation_id;
 };
 
 class XClusterWriteInterface {

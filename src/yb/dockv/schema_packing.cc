@@ -963,6 +963,10 @@ bool SchemaPackingStorage::HasVersionBelow(SchemaVersion version) const {
   return false;
 }
 
+bool SchemaPackingStorage::HasVersion(SchemaVersion version) const {
+  return version_to_schema_packing_.contains(version);
+}
+
 std::string SchemaPackingStorage::VersionsToString() const {
   std::vector<SchemaVersion> versions;
   versions.reserve(version_to_schema_packing_.size());
