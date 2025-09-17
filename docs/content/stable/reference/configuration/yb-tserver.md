@@ -2286,17 +2286,6 @@ Default: `128`
 
 The number of table rows to backfill in a single backfill job. In case of [GIN indexes](../../../explore/ysql-language-features/indexes-constraints/gin/), the number can include more index rows. When index creation is slower than expected on large tables, increasing this parameter to 1024 or 2048 may speed up the operation. However, care must be taken to also tune the associated timeouts for larger batch sizes.
 
-### Table-level lock flags
-
-##### --enable_object_locking_for_table_locks
-
-{{% tags/wrap %}}
-{{<tags/feature/tp>}}
-Default: `false`
-{{% /tags/wrap %}}
-
-Enables [table-level locks](../../../explore/transactions/explicit-locking/#table-level-locks) to set distributed locks on YSQL objects.
-
 ### Other performance tuning options
 
 ##### --allowed_preview_flags_csv
