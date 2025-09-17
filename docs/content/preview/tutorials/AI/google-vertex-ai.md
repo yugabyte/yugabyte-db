@@ -17,7 +17,7 @@ type: docs
 
 This tutorial outlines the steps required to build a scalable, generative AI application using Google Vertex AI and YugabyteDB.
 
-Follow the guide to learn how to programmatically interface with the Google Vertex AI to generate text embeddings (a vectorized representation of the data) for each listing description, store embeddings in YugabyteDB, and perform a similarity search across a distributed YugabyteDB cluster using the [pgvector extension](../../../explore/ysql-language-features/pg-extensions/extension-pgvector/).
+Follow the guide to learn how to programmatically interface with the Google Vertex AI to generate text embeddings (a vectorized representation of the data) for each listing description, store embeddings in YugabyteDB, and perform a similarity search across a distributed YugabyteDB cluster using the [pgvector extension](../../../additional-features/pg-extensions/extension-pgvector/).
 
 The [sample application](https://github.com/YugabyteDB-Samples/yugabytedb-google-vertexai-lodging-service) we will use is a lodging recommendations service for travelers going to San Francisco.
 
@@ -199,7 +199,7 @@ const dbRes = await pool.query(
 
 ![YugaLodgings Application Search Results](/images/tutorials/google/google-vertex-ai/yugalodgings-search-results.png "YugaLodgings Application Search Results")
 
-This application uses cosine distance for indexing, as the backend query is using cosine similarity search. Using [vector indexing](../../../explore/ysql-language-features/pg-extensions/extension-pgvector/#vector-indexing) improves the search speed. YugabyteDB currently supports the Hierarchical Navigable Small World (HNSW) index type in pgvector.
+This application uses cosine distance for indexing, as the backend query is using cosine similarity search. Using [vector indexing](../../../additional-features/pg-extensions/extension-pgvector/#vector-indexing) improves the search speed. YugabyteDB currently supports the Hierarchical Navigable Small World (HNSW) index type in pgvector.
 
 ```sql
 # sql/1_airbnb_embeddings.sql

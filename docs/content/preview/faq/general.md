@@ -196,7 +196,7 @@ Integrations
 
 YugabyteDB pre-bundles many popular extensions and these should be readily available on your cluster. But given the distributed nature of YugabyteDB, not all extensions are supported by default.
 
-{{<lead link="/preview/explore/ysql-language-features/pg-extensions/">}}
+{{<lead link="/preview/additional-features/pg-extensions/">}}
 PostgreSQL extensions
 {{</lead>}}
 

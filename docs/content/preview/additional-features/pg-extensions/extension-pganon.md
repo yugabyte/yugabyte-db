@@ -11,6 +11,8 @@ menu:
     parent: pg-extensions
     weight: 20
 type: docs
+aliases:
+  - /preview/explore/ysql-language-features/pg-extensions/extension-pganon
 ---
 
 The [PostgreSQL Anonymizer](https://postgresql-anonymizer.readthedocs.io/en/stable/) extension can be used for masking or replacing personally identifiable information (PII) or commercially sensitive data in a YSQL database.
@@ -21,7 +23,7 @@ YugabyteDB uses v1.3.1 of PostgreSQL Anonymizer.
 
 ## Enable Anonymizer
 
-While in early access, to enable the Anonymizer extension, you set the YB-TServer `--enable_pg_anonymizer` flag to true. For example, using [yugabyted](../../../../reference/configuration/yugabyted/), you would do the following:
+While in early access, to enable the Anonymizer extension, you set the YB-TServer `--enable_pg_anonymizer` flag to true. For example, using [yugabyted](../../../reference/configuration/yugabyted/), you would do the following:
 
 ```sh
 ./bin/yugabyted start --tserver_flags="enable_pg_anonymizer=true"
@@ -115,7 +117,8 @@ The following shows output where the `anon.maskschema` and `anon.sourceschema` p
 ---------+------------------------------
  skynet  | {"search_path=mask, public"}
 ```
-Note that [Backup and restore](../../../../manage/backup-restore/) doesn't preserve roles, and will also not restore masked security labels for roles. After a restore, you will need to manually recreate security labels for roles, and then enable dynamic masking.
+
+Note that [Backup and restore](../../../manage/backup-restore/) doesn't preserve roles, and will also not restore masked security labels for roles. After a restore, you will need to manually recreate security labels for roles, and then enable dynamic masking.
 
 To disable dynamic masking:
 

@@ -9,6 +9,8 @@ menu:
     parent: pg-extensions
     weight: 20
 type: docs
+aliases:
+  - /preview/explore/ysql-language-features/pg-extensions/extension-tablefunc
 ---
 
 The [tablefunc](https://www.postgresql.org/docs/15/tablefunc.html) module includes various functions that return tables (that is, multiple rows).
@@ -57,7 +59,7 @@ You'll see results similar to the following:
 
 Every time you repeat the test, you'll see different generated values for `v`.
 
-For another example that uses `normal_rand()`, refer to [Analyzing a normal distribution with percent_rank(), cume_dist() and ntile()](../../../../api/ysql/exprs/window_functions/analyzing-a-normal-distribution/). It populates a table with a large number (say 100,000) of rows and displays the outcome as a histogram that clearly shows the familiar bell-curve shape.
+For another example that uses `normal_rand()`, refer to [Analyzing a normal distribution with percent_rank(), cume_dist() and ntile()](../../../api/ysql/exprs/window_functions/analyzing-a-normal-distribution/). It populates a table with a large number (say 100,000) of rows and displays the outcome as a histogram that clearly shows the familiar bell-curve shape.
 
 `tablefunc` also provides the `connectby()`, `crosstab()`, and `crosstabN()` functions.
 

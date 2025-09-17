@@ -9,13 +9,15 @@ menu:
     parent: pg-extensions
     weight: 20
 type: docs
+aliases:
+  - /preview/explore/ysql-language-features/pg-extensions/extension-passwordcheck
 ---
 
 The [passwordcheck](https://www.postgresql.org/docs/15/passwordcheck.html) PostgreSQL module provides a means to check user passwords whenever they are set with CREATE ROLE or ALTER ROLE. If a password is considered too weak, it will be rejected and the command will terminate with an error.
 
 ## Enable passwordcheck
 
-To enable the passwordcheck extension, add `passwordcheck` to `shared_preload_libraries` in the PostgreSQL server configuration parameters using the YB-TServer [--ysql_pg_conf_csv](../../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) flag:
+To enable the passwordcheck extension, add `passwordcheck` to `shared_preload_libraries` in the PostgreSQL server configuration parameters using the YB-TServer [--ysql_pg_conf_csv](../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) flag:
 
 ```sh
 --ysql_pg_conf_csv=shared_preload_libraries=passwordcheck
