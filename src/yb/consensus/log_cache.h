@@ -29,46 +29,40 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #pragma once
 
 #include <pthread.h>
 #include <sys/types.h>
 
-#include <atomic>
-#include <condition_variable>
 #include <map>
 #include <memory>
-#include <mutex>
 #include <string>
 #include <vector>
 
 #include <boost/container/small_vector.hpp>
-
-#include "yb/util/logging.h"
 #include <gtest/gtest_prod.h>
 
 #include "yb/common/opid.h"
 
 #include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/consensus_types.pb.h"
 #include "yb/consensus/log_fwd.h"
 #include "yb/consensus/log_util.h"
-#include "yb/consensus/consensus.pb.h"
-#include "yb/consensus/consensus_types.pb.h"
 
 #include "yb/gutil/macros.h"
 
-#include "yb/util/metrics_fwd.h"
 #include "yb/util/locks.h"
+#include "yb/util/metrics_fwd.h"
 #include "yb/util/monotime.h"
-#include "yb/util/mutex.h"
-#include "yb/util/trace.h"
 #include "yb/util/restart_safe_clock.h"
 #include "yb/util/status_callback.h"
+#include "yb/util/trace.h"
 
 namespace yb {
 
-class MetricEntity;
 class MemTracker;
+class MetricEntity;
 class OpIdPB;
 
 namespace consensus {
@@ -112,28 +106,35 @@ class LogCache {
   void Init(const OpIdPB& preceding_op);
 
   // Read operations from the log, following 'after_op_index'.
-  // If such an op exists in the log, an OK result will always include at least one operation.
   //
-  // The result will be limited such that the total ByteSize() of the returned ops is less than
-  // max_size_bytes, unless that would result in an empty result, in which case exactly one op is
-  // returned.
+  // If such an op exists in the log, an OK result will always include at least one operation.  Note
+  // that even if such an op exists, if obey_memory_limit is set and reading in that op would have
+  // required reading past the log reader memory limit, then status Busy will be returned instead.
   //
-  // The OpId which precedes the returned ops is returned in *preceding_op.  The index of this OpId
+  // The result will be limited by the available log reader memory if obey_memory_limit is set.  It
+  // will also be limited such that the total ByteSize() of the returned ops is less than
+  // max_size_bytes, unless that would result in an empty result, in which case one over-size op is
+  // allowed.
+  //
+  // The OpId that precedes the returned ops is returned in *preceding_op.  The index of this OpId
   // will match 'after_op_index'.
   //
   // If the ops being requested are not available in the log, this will synchronously read these ops
-  // from disk. Therefore, this function may take a substantial amount of time and should not be
+  // from disk.  Therefore, this function may take a substantial amount of time and should not be
   // called with important locks held, etc.
-  Result<ReadOpsResult> ReadOps(int64_t after_op_index, size_t max_size_bytes);
+  Result<ReadOpsResult> ReadOps(
+      int64_t after_op_index, size_t max_size_bytes, log::ObeyMemoryLimit obey_memory_limit);
 
   // Same as above but also includes a 'to_op_index' parameter which will be used to limit results
-  // until 'to_op_index' (inclusive).
+  // until 'to_op_index' (inclusive).  If deadline expires then no ops may be returned even if at
+  // least one op exists in the log.
   //
   // If 'to_op_index' is 0, then all operations after 'after_op_index' will be included.
   Result<ReadOpsResult> ReadOps(
       int64_t after_op_index,
       int64_t to_op_index,
       size_t max_size_bytes,
+      log::ObeyMemoryLimit obey_memory_limit,
       CoarseTimePoint deadline = CoarseTimePoint::max(),
       bool fetch_single_entry = false);
 
@@ -214,7 +215,7 @@ class LogCache {
     bool tracked = false;
   };
 
-  typedef boost::container::small_vector<ReplicateMsgPtr, 8> ReplicateMsgVector;
+  using ReplicateMsgVector = boost::container::small_vector<ReplicateMsgPtr, 8>;
 
   // Try to evict the oldest operations from the queue, stopping either when
   // 'bytes_to_evict' bytes have been evicted, or the op with index
@@ -269,7 +270,7 @@ class LogCache {
   // Maps from log index -> ReplicateMsg
   // An ordered map that serves as the buffer for the cached messages.  Maps from log index ->
   // CacheEntry
-  typedef std::map<int64_t, CacheEntry> MessageCache;
+  using MessageCache = std::map<int64_t, CacheEntry>;
   MessageCache cache_ GUARDED_BY(lock_);
 
   // The next log index to append. Each append operation must either start with this log index, or
