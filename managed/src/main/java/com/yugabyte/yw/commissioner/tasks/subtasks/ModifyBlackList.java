@@ -84,8 +84,7 @@ public class ModifyBlackList extends UniverseTaskBase {
           && !CollectionUtils.isEmpty(taskParams().removeNodes)) {
         List<NodeDetails> modifiedRemoveNodes = new ArrayList<>(taskParams().removeNodes);
         for (NodeDetails node : taskParams().removeNodes) {
-          Optional<NodeInstance> nodeInstanceOp =
-              NodeInstance.maybeGetByName(node.getNodeName(), node.getNodeUuid());
+          Optional<NodeInstance> nodeInstanceOp = NodeInstance.maybeGet(node.getNodeUuid());
           if (nodeInstanceOp.isPresent()) {
             NodeInstance nodeInstance = nodeInstanceOp.get();
             if (nodeInstance.getState().equals(NodeInstance.State.DECOMMISSIONED)) {

@@ -296,7 +296,10 @@ public class NodeAgentClient {
       }
       Map<String, ?> serviceConfig = getServiceConfig(NODE_AGENT_SERVICE_CONFIG_FILE);
       if (MapUtils.isNotEmpty(serviceConfig)) {
-        channelBuilder.defaultServiceConfig(serviceConfig);
+        channelBuilder
+            .disableServiceConfigLookUp()
+            .defaultServiceConfig(serviceConfig)
+            .enableRetry();
       }
       return channelBuilder.build();
     }
