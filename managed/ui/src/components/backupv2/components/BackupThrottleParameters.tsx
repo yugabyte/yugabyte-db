@@ -20,7 +20,7 @@ import {
 import { YBModalForm } from '../../common/forms';
 import { YBButton, YBControlledNumericInput } from '../../common/forms/fields';
 import { YBLoading } from '../../common/indicators';
-import { ThrottleParameters } from '../common/IBackup';
+import { ThrottleParameters, ThrottleParamsVal } from '../common/IBackup';
 import * as Yup from 'yup';
 
 import { toast } from 'react-toastify';
@@ -56,7 +56,7 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
     }
   );
 
-  const configurehrottleParameters = useMutation(
+  const configureThrottleParameters = useMutation(
     (values: ThrottleParameters['throttleParamsMap']) =>
       setThrottleParameters(currentUniverseUUID, values),
     {
@@ -82,6 +82,14 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
     }
   });
 
+  const convertBytesToMB = (bytes: number) => {
+    return (bytes / (1024 * 1024));
+  };
+
+  const convertMBToBytes = (mb: number) => {
+    return mb * 1024 * 1024;
+  };
+
   if (!visible) {
     return null;
   }
@@ -91,7 +99,15 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
   }
 
   const initialValues: ThrottleParameters['throttleParamsMap'] = {
-    ...throttleParameters!.data.throttleParamsMap
+    ...throttleParameters!.data.throttleParamsMap,
+    disk_read_bytes_per_sec: {
+      ...throttleParameters!.data.throttleParamsMap.disk_read_bytes_per_sec,
+      currentValue: convertBytesToMB(throttleParameters!.data.throttleParamsMap.disk_read_bytes_per_sec.currentValue)
+    },
+    disk_write_bytes_per_sec: {
+      ...throttleParameters!.data.throttleParamsMap.disk_write_bytes_per_sec,
+      currentValue: convertBytesToMB(throttleParameters!.data.throttleParamsMap.disk_write_bytes_per_sec.currentValue)
+    }
   };
 
   const getPresetValues = (
@@ -161,8 +177,8 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
         .typeError('Required')
         .test(
           'is-greater-than-zero',
-          `Must be 0 or greater than ${getPresetValues('disk_read_bytes_per_sec', 'min')} (1 MB)`,
-          (value) => value !== null && value !== undefined && (value === 0 || value >= getPresetValues('disk_read_bytes_per_sec', 'min'))
+          `Must be 0 or greater than ${convertBytesToMB(getPresetValues('disk_read_bytes_per_sec', 'min'))} MB`,
+          (value) => value !== null && value !== undefined && (value === 0 || value >= convertBytesToMB(getPresetValues('disk_read_bytes_per_sec', 'min')))
         )
     }),
     disk_write_bytes_per_sec: Yup.object().shape({
@@ -171,8 +187,8 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
         .typeError('Required')
         .test(
           'is-greater-than-zero',
-          `Must be 0 or greater than ${getPresetValues('disk_write_bytes_per_sec', 'min')} (1 MB)`,
-          (value) => value !== null && value !== undefined && (value === 0 || value >= getPresetValues('disk_write_bytes_per_sec', 'min'))
+          `Must be 0 or greater than ${convertBytesToMB(getPresetValues('disk_write_bytes_per_sec', 'min'))} MB`,
+          (value) => value !== null && value !== undefined && (value === 0 || value >= convertBytesToMB(getPresetValues('disk_write_bytes_per_sec', 'min')))
         )
     })
   });
@@ -206,7 +222,19 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
         ) => {
           const { setSubmitting } = formik;
           setSubmitting(false);
-          configurehrottleParameters.mutateAsync(values);
+          const payload = {
+            ...values,
+            disk_read_bytes_per_sec: {
+              ...values.disk_read_bytes_per_sec,
+              currentValue: convertMBToBytes(values.disk_read_bytes_per_sec.currentValue)
+            },
+            disk_write_bytes_per_sec: {
+              ...values.disk_write_bytes_per_sec,
+              currentValue: convertMBToBytes(values.disk_write_bytes_per_sec.currentValue)
+            }
+          };
+          
+          configureThrottleParameters.mutateAsync(payload);
         }}
         render={(formikProps: FormikProps<ThrottleParameters['throttleParamsMap']>) => {
           const { values, setFieldValue, errors } = formikProps;
@@ -234,7 +262,7 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
                   <div>
                     Use appropriate <b>disk throttling</b> values to throttle disk usage. 0 means use maximum available.
                     <YBTag type={YBTag_Types.YB_GRAY}>
-                      Min 1 MB/s
+                      Min {convertBytesToMB(getPresetValues('disk_read_bytes_per_sec', 'min')).toFixed(0)} MB/s
                     </YBTag>
                   </div>
                 </Col>
