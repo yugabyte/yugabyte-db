@@ -1934,7 +1934,7 @@ TEST_F(MasterPathHandlersItest, HeapProfile) {
 }
 
 TEST_F(MasterPathHandlersItest, TabletLimitsSkipDeadTServers) {
-  const std::string kTargetHeader = "Tablet Peer Limit";
+  const std::string kTargetHeader = "Tablet Peer Limit (Unenforced)";
   auto cols =
       ASSERT_RESULT(GetHtmlTableColumn("/tablet-servers", "universe_summary", kTargetHeader));
   ASSERT_FALSE(cols.empty());
@@ -1954,7 +1954,7 @@ TEST_F(MasterPathHandlersItest, TabletLimitsSkipDeadTServers) {
 }
 
 TEST_F(MasterPathHandlersItest, TabletLimitsSkipBlacklistedTServers) {
-  const std::string kTargetHeader = "Tablet Peer Limit";
+  const std::string kTargetHeader = "Tablet Peer Limit (Unenforced)";
   auto cols =
       ASSERT_RESULT(GetHtmlTableColumn("/tablet-servers", "universe_summary", kTargetHeader));
   ASSERT_FALSE(cols.empty());
