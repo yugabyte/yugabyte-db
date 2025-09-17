@@ -79,27 +79,7 @@ DEFINE_UNKNOWN_uint64(force_single_shard_waiter_retry_ms, 30000,
               "a heartbeat, since for these we will eventually discover that the transaction has "
               "been rolled back and remove the waiter. If set to zero, this will default to 30s.");
 
-// Enabling FLAGS_refresh_waiter_timeout_ms is necessary for maintaining up-to-date blocking
-// transaction(s) information at the transaction coordinator/deadlock detector. Else, with the
-// current implementation, it could result in true deadlocks not being detected.
-//
-// For instance, refer issue https://github.com/yugabyte/yugabyte-db/issues/16286
-//
-// Additionally, enabling this flag serves as a fallback mechanism for deadlock detection as it
-// helps maintain updated blocker(s) info at the deadlock detector. Since the feature of supporting
-// transaction promotion for geo-partitioned workloads in use of wait-queues and deadlock detection
-// is relatively new, it is advisable that we have the flag enabled for now. The value can be
-// increased once the feature hardens and the above referred issue is resolved.
-DEFINE_RUNTIME_uint64(refresh_waiter_timeout_ms, 30000,
-                      "The maximum amount of time a waiter transaction waits in the wait-queue "
-                      "before its callback is invoked. On invocation, the waiter transaction "
-                      "re-runs conflicts resolution and might enter the wait-queue again with "
-                      "updated blocker(s) information. Setting the value to 0 disables "
-                      "automatically re-running conflict resolution due to timeout. It follows "
-                      "that the waiter callback would only be invoked when a blocker txn commits/ "
-                      "aborts/gets promoted.");
-TAG_FLAG(refresh_waiter_timeout_ms, advanced);
-TAG_FLAG(refresh_waiter_timeout_ms, hidden);
+DECLARE_uint64(refresh_waiter_timeout_ms);
 
 DEFINE_test_flag(uint64, sleep_before_entering_wait_queue_ms, 0,
                  "The amount of time for which the thread sleeps before registering a transaction "

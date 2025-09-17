@@ -151,10 +151,20 @@ namespace yb {
       !_value || BOOST_PP_CAT(FLAGS_, required_flag), \
       "Requires " #required_flag " to be true")
 
+#define FLAG_REQUIRES_NONZERO_FLAG_VALIDATOR(required_flag) \
+    FLAG_DELAYED_COND_VALIDATOR( \
+      !_value || BOOST_PP_CAT(FLAGS_, required_flag), \
+      "Requires " #required_flag " to be non-zero")
+
 #define FLAG_REQUIRED_BY_FLAG_VALIDATOR(required_by_flag) \
     FLAG_DELAYED_COND_VALIDATOR( \
       _value || !BOOST_PP_CAT(FLAGS_, required_by_flag), \
       "Required by " #required_by_flag " to be true")
+
+#define FLAG_REQUIRED_NONZERO_BY_FLAG_VALIDATOR(required_by_flag) \
+    FLAG_DELAYED_COND_VALIDATOR( \
+      _value || !BOOST_PP_CAT(FLAGS_, required_by_flag), \
+      "Required to be non-zero when " #required_by_flag " is true")
 
 #define FLAG_CMP_VALUE_VALIDATOR_HELPER(cmp_value, cmp, cmp_desc) \
     FLAG_COND_VALIDATOR(cmp(_value, (cmp_value)), "Must be " cmp_desc " " #cmp_value)
