@@ -1,13 +1,13 @@
 export PATH="/usr/local/bin:/usr/bin:$PATH"
 
 # Define necessary variables
-setuptools_package_path="/usr/local/setuptools-44.1.1"
+setuptools_package_path="/usr/local/setuptools-59.6.0"
 python_magic_package_path="/usr/local/python-magic-0.4.18"
 python_dateutil_package_path="/usr/local/python-dateutil-2.8.2"
 s3cmd_package_name="s3cmd-2.3.0"
 s3cmd_package_path="/usr/local/$s3cmd_package_name"
 setuptools_scm_package_path="/usr/local/setuptools_scm-1.17.0"
-azcopy_package="azcopy_linux_amd64_10.28.1"
+azcopy_package="azcopy_linux_amd64_10.30.1"
 gsutil_package="gsutil_4.60"
 # Determine the correct Python interpreter
 python_interpreter=$(command -v python3 || command -v python3.11 || \
@@ -48,7 +48,7 @@ packages=("python-magic-0.4.18" "setuptools_scm-1.17.0" "python-dateutil-2.8.2" 
 
 # Conditionally include setuptools only if Python < 3.12
 if [[ "$py_version_major" -eq 3 && "$py_version_minor" -lt 12 ]]; then
-  packages=("setuptools-44.1.1" "${packages[@]}")
+  packages=("setuptools-59.6.0" "${packages[@]}")
 fi
 
 # Copy and unarchive required packages

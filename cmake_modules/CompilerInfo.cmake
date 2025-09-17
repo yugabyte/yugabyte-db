@@ -103,12 +103,26 @@ if("${COMPILER_FAMILY}" STREQUAL "gcc")
   set(IS_GCC TRUE)
 endif()
 
+set(IS_SANITIZER FALSE)
+set(IS_ASAN FALSE)
+set(IS_TSAN FALSE)
+if ("${YB_BUILD_TYPE}" MATCHES "^asan(_.*)?$")
+  set(IS_SANITIZER TRUE)
+  set(IS_ASAN TRUE)
+elseif ("${YB_BUILD_TYPE}" MATCHES "^tsan(_.*)?$")
+  set(IS_SANITIZER TRUE)
+  set(IS_TSAN TRUE)
+endif()
+
 yb_put_string_vars_into_cache(
   COMPILER_FAMILY
   COMPILER_VERSION
   IS_APPLE_CLANG
   IS_CLANG
   IS_GCC
+  IS_SANITIZER
+  IS_ASAN
+  IS_TSAN
   YB_COMPILER_TYPE
 )
 

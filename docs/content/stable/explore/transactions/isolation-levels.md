@@ -426,7 +426,7 @@ COMMIT;
 
 The inserted row (2, 3) is not visible because Read committed is disabled at the transactional layer and maps to Snapshot in which the whole transaction sees a consistent snapshot of the database.
 
-Set the YB-Tserver flag `yb_enable_read_committed_isolation` to `true`:
+Set the YB-TServer flag `yb_enable_read_committed_isolation` to `true`:
 
 ```sql
 BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;

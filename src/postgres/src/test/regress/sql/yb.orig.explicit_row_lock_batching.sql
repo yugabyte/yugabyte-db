@@ -2,9 +2,6 @@
 -- YB tests for lock batching
 --
 
--- disable printing of all non-deterministic fields in EXPLAIN
-SET yb_explain_hide_non_deterministic_fields = true;
-
 -- Enable and set lock batching size
 SET yb_explicit_row_locking_batch_size = 1024;
 

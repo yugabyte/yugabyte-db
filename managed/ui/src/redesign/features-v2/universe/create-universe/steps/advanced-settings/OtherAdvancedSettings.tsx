@@ -33,7 +33,7 @@ const { Box } = mui;
 
 export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
   const [
-    { generalSettings, databaseSettings },
+    { generalSettings, databaseSettings, otherAdvancedSettings },
     { moveToNextPage, moveToPreviousPage, saveOtherAdvancedSettings }
   ] = (useContext(CreateUniverseContext) as unknown) as CreateUniverseContextMethods;
 
@@ -48,8 +48,10 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
           name: '',
           value: ''
         }
-      ]
-    }
+      ],
+      ...otherAdvancedSettings
+    },
+    mode: 'onChange'
   });
 
   useImperativeHandle(

@@ -237,7 +237,7 @@ Result<bool> TableMatchesIdentifier(
 
 Status SetupError(MasterErrorPB* error, MasterErrorPB::Code code, const Status& s) {
   StatusToPB(s, error->mutable_status());
-  error->set_code(MasterError::ValueFromStatus(s).get_value_or(code));
+  error->set_code(MasterError::ValueFromStatus(s).value_or(code));
   return s;
 }
 

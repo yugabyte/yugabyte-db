@@ -22,7 +22,7 @@ yba universe table list --name <universe-name>
       --table-name string                 [Optional] Table name to be listed.
       --include-parent-table-info         [Optional] Include parent table information. (default false)
       --include-colocated-parent-tables   [Optional] Include colocated parent tables. (default true)
-      --xcluster-supported-only           [Optional] Include only XCluster supported tables. (default false)
+      --xcluster-supported-only           [Optional] Include only xCluster supported tables. (default false)
   -h, --help                              help for list
 ```
 

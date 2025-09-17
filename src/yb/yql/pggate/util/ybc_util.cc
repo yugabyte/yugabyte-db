@@ -479,9 +479,16 @@ const char* YBCGetWaitEventComponent(uint32_t wait_event_info) {
 const char* YBCGetWaitEventType(uint32_t wait_event_info) {
   // This is only called for ASH wait events, so we remove the component bits as
   // ash::WaitStateCode doesn't contain them.
-  constexpr uint32_t kWaitEventMask = (1 << YB_ASH_COMPONENT_POSITION) - 1;
+  static constexpr uint32_t kWaitEventMask = (1 << YB_ASH_COMPONENT_POSITION) - 1;
   uint32_t wait_event = wait_event_info & kWaitEventMask;
   return NoPrefixName(GetWaitStateType(static_cast<ash::WaitStateCode>(wait_event)));
+}
+
+const char* YBCGetWaitEventAuxDescription(uint32_t wait_event_info) {
+  static constexpr uint32_t kWaitEventMask = (1 << YB_ASH_COMPONENT_POSITION) - 1;
+  uint32_t wait_event = wait_event_info & kWaitEventMask;
+  const char* result = ash::GetWaitStateAuxDescription(static_cast<ash::WaitStateCode>(wait_event));
+  return result;
 }
 
 uint8_t YBCGetConstQueryId(YbcAshConstQueryIdType type) {
@@ -535,6 +542,19 @@ int YBCGetCallStackFrames(void** result, int max_depth, int skip_count) {
   return google::GetStackTrace(result, max_depth, skip_count);
 }
 
+bool YBCIsInitDbModeEnvVarSet() {
+  static bool cached_value = false;
+  static bool cached = false;
+
+  if (!cached) {
+    const char* initdb_mode_env_var_value = getenv("YB_PG_INITDB_MODE");
+    cached_value = initdb_mode_env_var_value && strcmp(initdb_mode_env_var_value, "1") == 0;
+    cached = true;
+  }
+
+  return cached_value;
+}
+
 bool YBIsMajorUpgradeInitDb() {
   static int cached_value = -1;
   if (cached_value == -1) {
@@ -544,6 +564,7 @@ bool YBIsMajorUpgradeInitDb() {
 
   return cached_value;
 }
+
 
 const char *YBCGetOutFuncName(YbcPgOid typid) {
   switch (typid) {
@@ -841,6 +862,25 @@ const char *YBCGetOutFuncName(YbcPgOid typid) {
       return "int8out";
     default:
       return NULL;
+  }
+}
+
+namespace {
+YbcUpdateInitPostgresMetricsFn update_init_postgres_metrics_fn = nullptr;
+}  // namespace
+
+void
+YBCSetUpdateInitPostgresMetricsFn(YbcUpdateInitPostgresMetricsFn update_init_postgres_metrics) {
+  CHECK_NOTNULL(update_init_postgres_metrics);
+  update_init_postgres_metrics_fn = update_init_postgres_metrics;
+}
+
+void YBCUpdateInitPostgresMetrics() {
+  if (update_init_postgres_metrics_fn) {
+    update_init_postgres_metrics_fn();
+  } else {
+    // At initdb time we do not load yb_pg_metrics extension.
+    DCHECK(YBCIsInitDbModeEnvVarSet());
   }
 }
 

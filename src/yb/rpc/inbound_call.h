@@ -34,8 +34,6 @@
 #include <string>
 #include <vector>
 
-#include <boost/optional/optional.hpp>
-
 #include "yb/ash/wait_state.h"
 
 #include "yb/gutil/stl_util.h"
@@ -90,7 +88,7 @@ class InboundCallHandler {
 
   virtual void Failure(const InboundCallPtr& call, const Status& status) = 0;
 
-  virtual boost::optional<int64_t> CallQueued(int64_t rpc_queue_limit) = 0;
+  virtual std::optional<int64_t> CallQueued(int64_t rpc_queue_limit) = 0;
 
   virtual void CallDequeued() = 0;
 

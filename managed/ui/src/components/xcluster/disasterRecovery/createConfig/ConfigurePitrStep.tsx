@@ -12,6 +12,7 @@ import { CreateDrConfigFormValues } from './CreateConfigModal';
 import { DurationUnit, PITR_RETENTION_PERIOD_UNIT_OPTIONS } from '../constants';
 import { YBInputField, YBTooltip } from '../../../../redesign/components';
 import { getPitrRetentionPeriodMinValue } from '../utils';
+import { I18N_ACCESSABILITY_ALT_TEXT_KEY_PREFIX } from '../../../../redesign/helpers/constants';
 
 import { useModalStyles } from '../../styles';
 
@@ -72,7 +73,10 @@ export const ConfigurePitrStep = ({ isFormDisabled }: ConfigureAlertStepProps) =
             <YBTooltip
               title={<Typography variant="body2">{t('retentionPeriod.tooltip')}</Typography>}
             >
-              <img src={InfoIcon} alt={t('infoIcon', { keyPrefix: 'imgAltText' })} />
+              <img
+                src={InfoIcon}
+                alt={t('infoIcon', { keyPrefix: I18N_ACCESSABILITY_ALT_TEXT_KEY_PREFIX })}
+              />
             </YBTooltip>
           </div>
           <Box display="flex" gridGap={theme.spacing(1)} alignItems="flex-start">

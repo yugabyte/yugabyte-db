@@ -1609,10 +1609,10 @@ TEST_F_EX(QLTransactionTest, PickReadTimeAtServer, QLTransactionBigLogSegmentSiz
 
 // Test that we could init transaction after it was originally created.
 TEST_F(QLTransactionTest, DelayedInit) {
-  SetAtomicFlag(0ULL, &FLAGS_max_clock_skew_usec); // To avoid read restart in this test.
+  SetAtomicFlag(0ULL, &FLAGS_max_clock_skew_usec);  // To avoid read restart in this test.
 
-  auto txn1 = std::make_shared<YBTransaction>(transaction_manager_.get_ptr());
-  auto txn2 = std::make_shared<YBTransaction>(transaction_manager_.get_ptr());
+  auto txn1 = std::make_shared<YBTransaction>(&transaction_manager_.value());
+  auto txn2 = std::make_shared<YBTransaction>(&transaction_manager_.value());
 
   auto write_session = CreateSession();
   ASSERT_OK(WriteRow(write_session, 0, 0));

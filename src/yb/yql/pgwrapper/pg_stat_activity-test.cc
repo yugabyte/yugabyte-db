@@ -27,6 +27,8 @@
 
 using namespace std::literals;
 
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
+
 namespace yb::pgwrapper {
 namespace {
 
@@ -53,6 +55,10 @@ class PgStatActivityTest : public LibPqTestBase {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_master_flags.push_back("--replication_factor=1");
     LibPqTestBase::UpdateMiniClusterOptions(options);
+  }
+
+  bool IsTransactionalDdlEnabled() const {
+    return ANNOTATE_UNPROTECTED_READ(FLAGS_ysql_yb_ddl_transaction_block_enabled);
   }
 
   static Result<TxnInfo> GetTransactionInfo(PGConn* conn) {
@@ -154,21 +160,23 @@ TEST_F(PgStatActivityTest, DDLInsideDMLTransaction) {
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1)", kTableName));
   const auto dml_txn_id = ASSERT_RESULT(GetTransactionId(&conn));
+  bool is_transactional_ddl_enabled = IsTransactionalDdlEnabled();
   Uuid ddl_txn_id;
   {
     CountDownLatch latch(1);
     TestThreadHolder threads;
-    threads.AddThreadFunctor([&aux_conn, &latch, &dml_txn_id, result = &ddl_txn_id] {
+    threads.AddThreadFunctor([&aux_conn, &latch, &dml_txn_id, &is_transactional_ddl_enabled,
+                              result = &ddl_txn_id] {
       auto info = ASSERT_RESULT(FetchTxnInfoFromStatActivity(&aux_conn));
       ASSERT_EQ(info.size(), 1);
       ASSERT_EQ(info.back().txn_id, dml_txn_id);
       latch.CountDown();
       ASSERT_OK(WaitFor(
-          [&aux_conn, &dml_txn_id, result]() -> Result<bool> {
+          [&aux_conn, &dml_txn_id, is_transactional_ddl_enabled, result]() -> Result<bool> {
             auto info = VERIFY_RESULT(FetchTxnInfoFromStatActivity(&aux_conn));
             SCHECK_EQ(info.size(), 1, IllegalState, "Unexpected size");
             *result = info.back().txn_id;
-            return *result != dml_txn_id;
+            return is_transactional_ddl_enabled ? *result == dml_txn_id : *result != dml_txn_id;
           },
           5s, "Wait for txn id switch"));
     });
@@ -176,7 +184,11 @@ TEST_F(PgStatActivityTest, DDLInsideDMLTransaction) {
     ASSERT_OK(conn.Execute("CREATE TABLE tmp AS SELECT c FROM (SELECT 1 as c, pg_sleep(5)) AS s"));
   }
   ASSERT_FALSE(ddl_txn_id.IsNil());
-  ASSERT_NE(ddl_txn_id, dml_txn_id);
+  if (is_transactional_ddl_enabled) {
+    ASSERT_EQ(ddl_txn_id, dml_txn_id);
+  } else {
+    ASSERT_NE(ddl_txn_id, dml_txn_id);
+  }
   ASSERT_EQ(dml_txn_id, ASSERT_RESULT(GetTransactionId(&conn)));
   ASSERT_OK(conn.RollbackTransaction());
   ASSERT_TRUE(ASSERT_RESULT(GetTransactionId(&conn)).IsNil());

@@ -578,6 +578,13 @@ public class NativeKubernetesManager extends KubernetesManager {
   }
 
   @Override
+  public String getCertChecksum(
+      String namespace, String helmReleaseName, Map<String, String> config) {
+    // TODO Auto-generated method stub
+    throw new UnsupportedOperationException("Unimplemented method 'getCertChecksum'");
+  }
+
+  @Override
   public void deleteNamespacedService(
       Map<String, String> config, String namespace, String universeName) {
     // TODO Auto-generated method stub

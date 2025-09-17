@@ -1409,14 +1409,25 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 			else
 			{
 				varattno = ((Var *) leftop)->varattno;
-				if (varattno < 1 || varattno > indnkeyatts)
-					elog(ERROR, "bogus index qualification");
 
 				/*
-				 * We have to look up the operator's strategy number.  This
-				 * provides a cross-check that the operator does match the index.
+				 * Special handling for ybctid column. This is currenly used
+				 * only by yb_index_check() which executes indexqual of the
+				 * form 'ybctid > lower_bound'.
 				 */
-				opfamily = index->rd_opfamily[varattno - 1];
+				if (varattno == YBTupleIdAttributeNumber)
+					opfamily = BYTEA_LSM_FAM_OID;
+				else
+				{
+					if (varattno < 1 || varattno > indnkeyatts)
+						elog(ERROR, "bogus index qualification");
+
+					/*
+					 * We have to look up the operator's strategy number.  This
+					 * provides a cross-check that the operator does match the index.
+					 */
+					opfamily = index->rd_opfamily[varattno - 1];
+				}
 			}
 
 			get_op_opfamily_properties(opno, opfamily, isorderby,
@@ -1674,14 +1685,25 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 				elog(ERROR, "indexqual doesn't have key on left side");
 
 			varattno = ((Var *) leftop)->varattno;
-			if (varattno < 1 || varattno > indnkeyatts)
-				elog(ERROR, "bogus index qualification");
 
 			/*
-			 * We have to look up the operator's strategy number.  This
-			 * provides a cross-check that the operator does match the index.
+			 * Special handling for ybctid column. This is currenly used only by
+			 * yb_index_check() which executes indexqual of the form:
+			 * 	'ybctid IN (array-expression)'
 			 */
-			opfamily = index->rd_opfamily[varattno - 1];
+			if (varattno == YBTupleIdAttributeNumber)
+				opfamily = BYTEA_LSM_FAM_OID;
+			else
+			{
+				if (varattno < 1 || varattno > indnkeyatts)
+					elog(ERROR, "bogus index qualification");
+
+				/*
+				 * We have to look up the operator's strategy number.  This
+				 * provides a cross-check that the operator does match the index.
+				 */
+				opfamily = index->rd_opfamily[varattno - 1];
+			}
 
 			get_op_opfamily_properties(opno, opfamily, isorderby,
 									   &op_strategy,
@@ -2041,9 +2063,9 @@ yb_init_index_scandesc(IndexScanState *node)
 		scandesc->yb_exec_params = &estate->yb_exec_params;
 		scandesc->yb_scan_plan = (Scan *) plan;
 		scandesc->yb_rel_pushdown =
-			YbInstantiatePushdownParams(&plan->yb_rel_pushdown, estate);
+			YbInstantiatePushdownExprs(&plan->yb_rel_pushdown, estate);
 		scandesc->yb_idx_pushdown =
-			YbInstantiatePushdownParams(&plan->yb_idx_pushdown, estate);
+			YbInstantiatePushdownExprs(&plan->yb_idx_pushdown, estate);
 		scandesc->yb_aggrefs = node->yb_iss_aggrefs;
 		scandesc->yb_distinct_prefixlen = plan->yb_distinct_prefixlen;
 		scandesc->fetch_ybctids_only = false;

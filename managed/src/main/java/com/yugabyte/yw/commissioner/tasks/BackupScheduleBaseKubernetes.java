@@ -136,8 +136,8 @@ public abstract class BackupScheduleBaseKubernetes extends KubernetesUpgradeTask
 
     List<Cluster> clusters = universe.getUniverseDetails().clusters;
     for (Cluster cluster : clusters) {
-      KubernetesGflagsUpgradeCommonParams upgradeParams =
-          new KubernetesGflagsUpgradeCommonParams(universe, cluster, confGetter);
+      KubernetesUpgradeCommonParams upgradeParams =
+          new KubernetesUpgradeCommonParams(universe, cluster, confGetter);
       createSingleKubernetesExecutorTask(
           universe.getName(),
           CommandType.POD_INFO,

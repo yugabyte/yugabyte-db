@@ -39,6 +39,7 @@ import {
   DrConfigSafetimeResponse
 } from '../../components/xcluster/disasterRecovery/dtos';
 import { XClusterConfigType } from '../../components/xcluster/constants';
+import { CustomerConfig } from '../../components/backupv2';
 
 /**
  * @deprecated Use query key factories for more flexable key organization
@@ -65,7 +66,7 @@ export enum QUERY_KEY {
 }
 
 export const PROMETHEUS_URL_QUERY_KEY = 'prometheusUrl';
-
+export const CONTINUOUS_BACKUP_QUERY_KEY = 'continuousBackup';
 // --------------------------------------------------------------------------------------
 // React Query Key Factories
 // --------------------------------------------------------------------------------------
@@ -143,6 +144,7 @@ export const xClusterQueryKey = {
     tableUuids?: string[];
     configType?: XClusterConfigType;
     includeDetails?: boolean;
+    isUsedForDr?: boolean;
   }) => [...xClusterQueryKey.ALL, requestParams]
 };
 
@@ -190,9 +192,11 @@ export const alertConfigQueryKey = {
 };
 
 export const alertTemplateQueryKey = {
-  ALL: ['alertTempalte'],
+  ALL: ['alertTemplate'],
   list: (filters: unknown) => [...alertTemplateQueryKey.ALL, { filters }]
 };
+
+export const CUSTOMER_CONFIG_QUERY_KEY = 'customerConfig';
 
 // --------------------------------------------------------------------------------------
 // API Constants
@@ -607,6 +611,11 @@ class ApiService {
   getKMSConfigs = (): Promise<KmsConfig[]> => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/kms_configs`;
     return axios.get<KmsConfig[]>(requestUrl).then((resp) => resp.data);
+  };
+
+  getCustomerConfig = (): Promise<CustomerConfig[]> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/configs`;
+    return axios.get<CustomerConfig[]>(requestUrl).then((response) => response.data);
   };
 
   getHAConfig = (): Promise<HaConfig> => {

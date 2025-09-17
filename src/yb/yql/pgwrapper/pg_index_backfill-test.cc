@@ -374,11 +374,7 @@ TEST_P(PgIndexBackfillTest, WaitForSplitsToComplete) {
   // Flush the data to generate SST files that can be split.
   const std::string table_id = ASSERT_RESULT(GetTableIdByTableName(
       client.get(), kDatabaseName, kTableName));
-  ASSERT_OK(client->FlushTables(
-      {table_id},
-      false /* add_indexes */,
-      kTimeoutSec,
-      false /* is_compaction */));
+  ASSERT_OK(client->FlushTables({table_id}, MonoDelta::FromSeconds(kTimeoutSec)));
 
   // Create a split that will not complete until we set the test flag to true.
   ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_tserver_get_split_key", "true"));
@@ -1326,16 +1322,8 @@ TEST_P(PgIndexBackfillSnapshotTooOld, SnapshotTooOld) {
     SleepFor(kHistoryRetentionInterval);
 
     LOG(INFO) << "Flush and compact indexed table...";
-    ASSERT_OK(client->FlushTables(
-        {table_id},
-        false /* add_indexes */,
-        kTimeoutSec,
-        false /* is_compaction */));
-    ASSERT_OK(client->FlushTables(
-        {table_id},
-        false /* add_indexes */,
-        kTimeoutSec,
-        true /* is_compaction */));
+    ASSERT_OK(client->FlushTables({table_id}, MonoDelta::FromSeconds(kTimeoutSec)));
+    ASSERT_OK(client->CompactTables({table_id}, MonoDelta::FromSeconds(kTimeoutSec)));
 
     LOG(INFO) << "Unblock backfill...";
     ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));

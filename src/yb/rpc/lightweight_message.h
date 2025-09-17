@@ -155,16 +155,26 @@ class LightweightSerialization<google::protobuf::internal::WireFormatLite::TYPE_
       return false;
     }
     auto p = input->IncrementRecursionDepthAndPushLimit(length);
-    if (p.second < 0 || !t->ParseFromCodedStream(input).ok()) {
+    if (p.second < 0) {
+      return false;
+    }
+    auto parse_status = t->ParseFromCodedStream(input);
+    if (!parse_status.ok()) {
+      LOG(WARNING) << "Parse failed: " << parse_status;
       return false;
     }
     return input->DecrementRecursionDepthAndPopLimit(p.first);
   }
 
   static uint8_t* Write(const T& value, uint8_t* out) {
+    auto size = value.cached_size();
     out = google::protobuf::io::CodedOutputStream::WriteVarint32ToArray(
-        narrow_cast<uint32_t>(value.cached_size()), out);
-    return value.SerializeToArray(out);
+        narrow_cast<uint32_t>(size), out);
+    auto start = out;
+    auto result = value.SerializeToArray(out);
+    LOG_IF(DFATAL, make_unsigned(result - start) != size)
+        << "Wrong serialized size: " << result - start << ", expected: " << size;
+    return result;
   }
 
   static size_t Size(const T& value) {

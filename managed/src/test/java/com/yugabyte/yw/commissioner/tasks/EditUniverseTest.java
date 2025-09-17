@@ -8,6 +8,9 @@ import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -17,6 +20,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -29,8 +33,13 @@ import com.google.common.collect.Iterables;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DoCapacityReservation;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -38,6 +47,7 @@ import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -334,6 +344,76 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   }
 
   @Test
+  public void testExpandWithCapacityReservationAzureSuccess() {
+    RuntimeConfigEntry.upsertGlobal(
+        ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
+    Region region = Region.create(azuProvider, "region-1", "region-1", "yb-image");
+    Universe universe = createUniverseForProvider("universe-test", azuProvider);
+
+    UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
+    taskParams.creatingUser = defaultUser;
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
+    taskParams.getPrimaryCluster().userIntent.numNodes += 2;
+    taskParams.getPrimaryCluster().placementInfo.azStream().findFirst().get().numNodesInAZ += 2;
+    taskParams.userAZSelected = true;
+    PlacementInfoUtil.updateUniverseDefinition(
+        taskParams, defaultCustomer.getId(), taskParams.getPrimaryCluster().uuid, EDIT);
+    updateIPs(taskParams);
+    taskParams.expectedUniverseVersion = 2;
+    RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
+    TaskInfo taskInfo = submitTask(taskParams);
+
+    assertEquals(Success, taskInfo.getTaskState());
+    universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
+
+    verifyCapacityReservationAZU(
+        universe.getUniverseUUID(),
+        region,
+        Map.of(
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
+            Map.of("1", Arrays.asList("host-n4", "host-n5"))));
+
+    verifyNodeInteractionsCapacityReservation(
+        37,
+        NodeManager.NodeCommandType.Create,
+        params -> ((AnsibleCreateServer.Params) params).capacityReservation,
+        Map.of(
+            DoCapacityReservation.getCapacityReservationGroupName(
+                universe.getUniverseUUID(), region.getCode()),
+            Arrays.asList("host-n4", "host-n5")));
+  }
+
+  @Test
+  public void testExpandWithCapacityReservationAwsSuccess() {
+    RuntimeConfigEntry.upsertGlobal(ProviderConfKeys.enableCapacityReservationAws.getKey(), "true");
+    Region region = Region.create(defaultProvider, "region-2", "region-2", "yb-image");
+    Universe universe = createUniverseForProvider("universe-test", defaultProvider);
+    UniverseDefinitionTaskParams taskParams = performExpand(universe);
+    RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
+    TaskInfo taskInfo = submitTask(taskParams);
+
+    assertEquals(Success, taskInfo.getTaskState());
+    universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
+
+    verifyCapacityReservationAws(
+        universe.getUniverseUUID(),
+        Map.of(
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
+            Map.of("1", new ZoneData("region-1", Arrays.asList("host-n4", "host-n5")))));
+
+    verifyNodeInteractionsCapacityReservation(
+        37,
+        NodeManager.NodeCommandType.Create,
+        params -> ((AnsibleCreateServer.Params) params).capacityReservation,
+        Map.of(
+            DoCapacityReservation.getZoneInstanceCapacityReservationName(
+                universe.getUniverseUUID(),
+                "1",
+                universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType),
+            Arrays.asList("host-n4", "host-n5")));
+  }
+
+  @Test
   public void testExpandOnPremSuccess() {
     AvailabilityZone zone = AvailabilityZone.getByCode(onPremProvider, AZ_CODE);
     createOnpremInstance(zone);
@@ -507,6 +587,104 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     assertEquals(Success, taskInfo.getTaskState());
   }
 
+  @Test
+  public void testExpandRollback() {
+    doAnswer(
+            invocation -> {
+              if (NodeManager.NodeCommandType.List.equals(invocation.getArgument(0))) {
+                ShellResponse listResponse = new ShellResponse();
+                listResponse.message = "";
+                return listResponse;
+              }
+              ShellResponse shellResponse = new ShellResponse();
+              shellResponse.code = 100;
+              shellResponse.message = "Nope";
+              return shellResponse;
+            })
+        .when(mockNodeManager)
+        .nodeCommand(any(), any());
+    Universe universe = defaultUniverse;
+    int nodes = universe.getUniverseDetails().nodeDetailsSet.size();
+    RuntimeConfigEntry.upsertGlobal("yb.task.enable_edit_auto_rollback", "true");
+    RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "0");
+    UniverseDefinitionTaskParams taskParams = performExpand(universe);
+    RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Failure, taskInfo.getTaskState());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(nodes, universe.getUniverseDetails().nodeDetailsSet.size());
+    assertTrue(universe.getUniverseDetails().autoRollbackPerformed);
+    assertNull(universe.getUniverseDetails().updatingTaskUUID);
+    assertNull(universe.getUniverseDetails().placementModificationTaskUuid);
+  }
+
+  @Test
+  public void testFullMoveRollback() {
+    doAnswer(
+            invocation -> {
+              if (NodeManager.NodeCommandType.List.equals(invocation.getArgument(0))) {
+                ShellResponse listResponse = new ShellResponse();
+                listResponse.message = "";
+                return listResponse;
+              }
+              ShellResponse shellResponse = new ShellResponse();
+              shellResponse.code = 100;
+              shellResponse.message = "Nope";
+              return shellResponse;
+            })
+        .when(mockNodeManager)
+        .nodeCommand(any(), any());
+    Universe universe = defaultUniverse;
+    int nodes = universe.getUniverseDetails().nodeDetailsSet.size();
+    RuntimeConfigEntry.upsertGlobal("yb.task.enable_edit_auto_rollback", "true");
+    RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "0");
+    UniverseDefinitionTaskParams taskParams = performFullMove(universe);
+    assertEquals(nodes * 2, taskParams.nodeDetailsSet.size());
+    RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Failure, taskInfo.getTaskState());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(nodes, universe.getUniverseDetails().nodeDetailsSet.size());
+    assertTrue(universe.getUniverseDetails().autoRollbackPerformed);
+    assertNull(universe.getUniverseDetails().updatingTaskUUID);
+    assertNull(universe.getUniverseDetails().placementModificationTaskUuid);
+  }
+
+  @Test
+  public void testFullMoveNoRollback() {
+    ShellResponse badShellResponse = new ShellResponse();
+    badShellResponse.code = 100;
+    badShellResponse.message = "No way!";
+    ShellResponse okShellResponse = new ShellResponse();
+    okShellResponse.message = "";
+    doAnswer(
+            invocation -> {
+              if (NodeManager.NodeCommandType.Create.equals(invocation.getArgument(0))) {
+                AnsibleCreateServer.Params params = invocation.getArgument(1);
+                if (params.nodeName.contains("n2")) {
+                  return badShellResponse;
+                }
+              }
+              return okShellResponse;
+            })
+        .when(mockNodeManager)
+        .nodeCommand(any(), any());
+    Universe universe = defaultUniverse;
+    int nodes = universe.getUniverseDetails().nodeDetailsSet.size();
+    RuntimeConfigEntry.upsertGlobal("yb.task.enable_edit_auto_rollback", "true");
+    RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "0");
+    UniverseDefinitionTaskParams taskParams = performFullMove(universe);
+    assertEquals(nodes * 2, taskParams.nodeDetailsSet.size());
+    RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Failure, taskInfo.getTaskState());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertNotEquals(nodes, universe.getUniverseDetails().nodeDetailsSet.size());
+    assertFalse(universe.getUniverseDetails().autoRollbackPerformed);
+    assertNotNull(universe.getUniverseDetails().updatingTaskUUID);
+    assertNotNull(universe.getUniverseDetails().placementModificationTaskUuid);
+  }
+
   private UniverseDefinitionTaskParams getTaskParamsForDiskSizeValidation(Universe universe) {
     Cluster primayCluster = universe.getUniverseDetails().getPrimaryCluster();
     if (primayCluster.userIntent.providerType == CloudType.onprem) {
@@ -588,14 +766,17 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     taskParams.getPrimaryCluster().userIntent = newUserIntent;
     PlacementInfoUtil.updateUniverseDefinition(
         taskParams, defaultCustomer.getId(), primaryCluster.uuid, EDIT);
+    updateIPs(taskParams);
+    return taskParams;
+  }
 
+  private void updateIPs(UniverseDefinitionTaskParams taskParams) {
     int iter = 1;
     for (NodeDetails node : taskParams.nodeDetailsSet) {
       node.cloudInfo.private_ip = "10.9.22." + iter;
       node.tserverRpcPort = 3333;
       iter++;
     }
-    return taskParams;
   }
 
   private void mockMetrics(

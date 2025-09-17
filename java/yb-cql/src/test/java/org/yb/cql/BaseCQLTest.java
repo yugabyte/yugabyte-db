@@ -105,7 +105,8 @@ public class BaseCQLTest extends BaseMiniClusterTest {
         String.valueOf(systemQueryCacheEmptyResponses));
     flagMap.put("client_read_write_timeout_ms",
         String.valueOf(BuildTypeUtil.adjustTimeout(clientReadWriteTimeoutMs)));
-
+    // TODO(zdrudi): GH 28438
+    flagMap.put("graceful_shutdown", "false");
     return flagMap;
   }
 

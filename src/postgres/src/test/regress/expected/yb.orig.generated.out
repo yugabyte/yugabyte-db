@@ -1,4 +1,3 @@
-SET yb_explain_hide_non_deterministic_fields TO true;
 DROP TABLE IF EXISTS t0_gen;
 NOTICE:  table "t0_gen" does not exist, skipping
 DROP TABLE IF EXISTS t1_gen;

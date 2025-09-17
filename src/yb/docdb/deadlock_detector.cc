@@ -89,11 +89,11 @@ namespace {
 
 YB_STRONGLY_TYPED_UUID(DetectorId);
 
-using LocalProbeProcessorCallback = std::function<void(
-    const Status&, const tserver::ProbeTransactionDeadlockResponsePB&)>;
+using LocalProbeProcessorCallback =
+    std::function<void(const Status&, const tserver::ProbeTransactionDeadlockResponsePB&)>;
 using WaiterTxnTuple = std::tuple<
     const TransactionId, const std::string, std::shared_ptr<const BlockingData>,
-    const boost::optional<uint64_t>>;
+    const std::optional<uint64_t>>;
 
 // Container class which supports efficiently fetching items uniquely indexed by probe_num as well
 // as efficiently removing items which were added before a threshold time or which are associated
@@ -753,9 +753,9 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
         // TODO(wait-queues): Tracking tserver uuid here is unnecessary as it isn't required in
         // GetProbesToSend. We adhere to this format so that GetProbesToSend function can be re-used
         // for both 'waiters_'  as well as 'waiters_to_probe'.
-        waiters_to_probe.push_back({
-            waiter_it->txn_id(), "" /* tserver uuid */, waiter_it->blocking_data(),
-            boost::none /* pg_session_req_version */});
+        waiters_to_probe.push_back(
+            {waiter_it->txn_id(), "" /* tserver uuid */, waiter_it->blocking_data(),
+             std::nullopt /* pg_session_req_version */});
         // Restore the old blocker(s) data for the waiter entry, if any.
         if (old_blocking_data) {
           CHECK(waiter_it != waiters_.end());
@@ -922,9 +922,9 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
           auto waiter_entries = boost::make_iterator_range(
               detector->waiters_.get<TransactionIdTag>().equal_range(origin_txn_id));
           for (auto entry : waiter_entries) {
-            waiters_to_probe.push_back({
-                origin_txn_id, "" /* tserver uuid */, entry.blocking_data(),
-                boost::none /* pg_session_req_version */});
+            waiters_to_probe.push_back(
+                {origin_txn_id, "" /* tserver uuid */, entry.blocking_data(),
+                 std::nullopt /* pg_session_req_version */});
           }
         }
         for (const auto& probe : detector->GetProbesToSend(waiters_to_probe)) {

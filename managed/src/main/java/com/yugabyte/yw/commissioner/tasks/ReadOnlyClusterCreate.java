@@ -17,6 +17,7 @@ import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.utils.CapacityReservationUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -54,7 +55,7 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
     updateOnPremNodeUuidsOnTaskParams(false);
     Collection<Cluster> clusters = taskParams().getReadOnlyClusters();
     // Create preflight node check tasks for on-prem nodes.
-    createPreflightNodeCheckTasks(clusters);
+    createPreflightNodeCheckTasks(universe, clusters);
     createCheckCertificateConfigTask(universe, clusters);
   }
 
@@ -77,6 +78,7 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
   public void run() {
     log.info("Started {} task for uuid={}", getName(), taskParams().getUniverseUUID());
     Universe universe = null;
+    boolean deleteCapacityReservation = false;
     try {
       universe =
           lockAndFreezeUniverseForUpdate(
@@ -100,6 +102,13 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
         log.error(errMsg);
         throw new IllegalArgumentException(errMsg);
       }
+      deleteCapacityReservation =
+          createCapacityReservationsIfNeeded(
+              nodesToProvision,
+              CapacityReservationUtil.OperationType.CREATE,
+              node ->
+                  node.state == NodeDetails.NodeState.ToBeAdded
+                      || node.state == NodeDetails.NodeState.Adding);
 
       // Provision the nodes.
       // State checking is enabled because the subtasks are not idempotent.
@@ -120,6 +129,9 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
             gFlagsParams.resetMasterState = true;
             gFlagsParams.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
           });
+      if (deleteCapacityReservation) {
+        createDeleteCapacityReservationTask();
+      }
 
       // Set of processes to be started, note that in this case it is same as nodes provisioned.
       Set<NodeDetails> newTservers = PlacementInfoUtil.getTserversToProvision(readOnlyNodes);

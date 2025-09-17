@@ -16,7 +16,6 @@
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
-#include "yb/client/table.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/table_info.h"
 #include "yb/client/xcluster_client.h"
@@ -25,21 +24,13 @@
 #include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/pg_system_attr.h"
-#include "yb/common/schema_pbutil.h"
 #include "yb/common/xcluster_util.h"
 
 #include "yb/docdb/docdb_pgapi.h"
 
-#include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
-#include "yb/util/is_operation_done_result.h"
-#include "yb/master/xcluster/xcluster_manager.h"
-#include "yb/master/xcluster/xcluster_replication_group.h"
-#include "yb/master/xcluster/master_xcluster_util.h"
-#include "yb/master/xcluster_consumer_registry_service.h"
-#include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/master.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_heartbeat.pb.h"
@@ -47,7 +38,16 @@
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/master_util.h"
 #include "yb/master/snapshot_transfer_manager.h"
+#include "yb/master/xcluster/master_xcluster_util.h"
+#include "yb/master/xcluster/xcluster_manager.h"
+#include "yb/master/xcluster_consumer_registry_service.h"
+#include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/ysql/ysql_manager_if.h"
+
+#include "yb/tablet/operations/change_metadata_operation.h"
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/transaction_participant.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug-util.h"
@@ -708,7 +708,7 @@ Status CatalogManager::BackfillMetadataForXRepl(
           uint32_t pg_type_oid = entry.second;
 
           const YbcPgTypeEntity* type_entity =
-              docdb::DocPgGetTypeEntity({(int32_t)pg_type_oid, -1});
+              docdb::DocPgGetTypeEntity({.type_id = (int32_t)pg_type_oid, .type_mod = -1});
 
           if (type_entity == nullptr && type_oid_info_map.contains(pg_type_oid)) {
             VLOG(1) << "Looking up primitive type for: " << pg_type_oid;
@@ -1361,7 +1361,6 @@ Status CatalogManager::SetAllCDCSDKRetentionBarriers(
   const std::vector<TableId>& table_ids, const xrepl::StreamId& stream_id,
   const bool has_consistent_snapshot_option, const bool require_history_cutoff) {
   VLOG_WITH_FUNC(4) << "Setting All retention barriers for stream: " << stream_id;
-  std::unordered_set<TableId> system_table_ids;
 
   for (const auto& table_id : table_ids) {
     auto table = VERIFY_RESULT(FindTableById(table_id));
@@ -1372,10 +1371,6 @@ Status CatalogManager::SetAllCDCSDKRetentionBarriers(
             NotFound, "Table does not exist", table_id,
             MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
       }
-    }
-
-    if (table->is_system()) {
-      system_table_ids.insert(table_id);
     }
 
     AlterTableRequestPB alter_table_req;
@@ -1401,16 +1396,85 @@ Status CatalogManager::SetAllCDCSDKRetentionBarriers(
     auto deadline = rpc->GetClientDeadline();
     // TODO(#18934): Handle partial failures by rolling back all changes.
     for (const auto& table_id : table_ids) {
-      // TODO(#26423): The check WaitForAlterTableToFinish fails for catalog tables because we do
-      // not perform a RAFT operation yet to set the retention barriers on catalog tables.
-      if (system_table_ids.contains(table_id)) {
-        continue;
-      }
       RETURN_NOT_OK(WaitForAlterTableToFinish(table_id, deadline));
     }
     RETURN_NOT_OK(WaitForSnapshotSafeOpIdToBePopulated(stream_id, table_ids, deadline));
   }
 
+  return Status::OK();
+}
+
+// This function sets the initial retention barriers on the sys catalog tablet. This is called only
+// in the CreateCDCStream context, i.e this will be always called on the master leader. It follows
+// the following steps:
+//    Step 1: Get the last committed OpId (safe_op_id) from the sys catalog tablet.
+//    Step 2: Create and submit a CHANGE_METADATA_OP. The retention barriers will be set on all the
+//    peers when this OP is applied.
+//    Step 3: Populate the safe_op_id in the cdc_state table upon successful apply of the
+//    CHANGE_METADATA_OP in the callback.
+Status CatalogManager::SetAllInitialCDCSDKRetentionBarriersOnCatalogTable(
+    const TableInfoPtr& table, const xrepl::StreamId& stream_id) {
+  auto tablet_peer = sys_catalog_->tablet_peer();
+
+  tablet::RemoveIntentsData data;
+  RETURN_NOT_OK(tablet_peer->GetLastReplicatedData(&data));
+  OpIdPB safe_op_id;
+  safe_op_id.set_term(data.op_id.term);
+  safe_op_id.set_index(data.op_id.index);
+
+  // Perform a raft operation (CHANGE_METADATA_OP) to set retention barriers. The barriers will be
+  // set in the ChangeMetadataOperation::Apply() path.
+  tablet::ChangeMetadataRequestPB cm_req;
+  tserver::ChangeMetadataResponsePB resp;
+  {
+    auto l = table->LockForRead();
+
+    cm_req.set_schema_version(l->pb.version());
+    cm_req.set_dest_uuid(master_->permanent_uuid());
+    cm_req.set_tablet_id(sys_catalog_->tablet_id());
+    cm_req.set_alter_table_id(table->id());
+    cm_req.mutable_schema()->CopyFrom(l->pb.schema());
+
+    if (l->pb.has_wal_retention_secs()) {
+      cm_req.set_wal_retention_secs(l->pb.wal_retention_secs());
+    }
+
+    cm_req.set_retention_requester_id(stream_id.ToString());
+
+    // TODO(#26427): Here we are setting the history retention barriers on the sys catalog tablet.
+    // However these barriers will not be moved by UpdatePeersAndMetrics thread but instead will be
+    // governed by the flag timestamp_syscatalog_history_retention_interval_sec.
+    cm_req.set_cdc_sdk_require_history_cutoff(true);
+  }
+  auto sys_catalog_tablet = VERIFY_RESULT(sys_catalog_->Tablet());
+  auto operation =
+      std::make_unique<tablet::ChangeMetadataOperation>(sys_catalog_tablet, tablet_peer->log());
+  auto request = operation->AllocateRequest();
+  request->CopyFrom(cm_req);
+
+  operation->set_completion_callback([this, table, stream_id, safe_op_id](Status s) {
+    // If the apply of CHANGE_METADATA_OP has returned non-ok status, then do not populate the state
+    // table entry for the sys catalog tablet. If safe_op_id is not populated in the state table
+    // then WaitForSnapshotSafeOpIdToBePopulated() will fail, hence failing stream creation.
+    if (!s.ok()) {
+      LOG(WARNING) << "Failed to set retention barriers on the sys catalog tablet. Will not "
+                      "populate its state table entry for stream: "
+                   << stream_id.ToString();
+      return;
+    }
+
+    WARN_NOT_OK(
+        PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails(
+            table, sys_catalog_->tablet_id(), stream_id, safe_op_id,
+            master_->clock()->Now() /* proposed_snapshot_time */,
+            true /* require_history_cutoff */),
+        "Failed to populate the CDC state table entry for the sys catalog tablet. Will fail stream "
+        "creation for the stream: " + stream_id.ToString());
+  });
+
+  // Submit the CHANGE_METADATA_OP and return. We wait in the CreateCDCStream processing for all
+  // retention barriers to be set.
+  tablet_peer->Submit(std::move(operation), tablet_peer->LeaderTerm());
   return Status::OK();
 }
 
@@ -1758,7 +1822,7 @@ Status CatalogManager::FindCDCSDKStreamsForAddedTables(
           continue;
         }
 
-        if (!IsTableEligibleForCDCSDKStream(table, table->LockForRead(), true)) {
+        if (!IsTableEligibleForCDCSDKStream(table, table->LockForRead(), /*check_schema=*/true)) {
           RemoveTableFromCDCSDKUnprocessedMap(unprocessed_table_id, stream_info->namespace_id());
           continue;
         }
@@ -1924,7 +1988,8 @@ void CatalogManager::FindAllNonEligibleTablesInCDCSDKStream(
       auto table_info = GetTableInfoUnlocked(table_id);
       if (table_info) {
         // Re-confirm this table is not meant to be part of a CDC stream.
-        if (!IsTableEligibleForCDCSDKStream(table_info, table_info->LockForRead(), true)) {
+        if (!IsTableEligibleForCDCSDKStream(
+                table_info, table_info->LockForRead(), /*check_schema=*/true)) {
           LOG(INFO) << "Found a non-eligible table: " << table_info->id()
                     << ", for stream: " << stream_id;
           LockGuard lock(cdcsdk_non_eligible_table_mutex_);
@@ -2107,7 +2172,7 @@ std::vector<TableInfoPtr> CatalogManager::FindAllTablesForCDCSDK(const Namespace
       continue;
     }
 
-    if (!IsTableEligibleForCDCSDKStream(table_info.get(), ltm, true)) {
+    if (!IsTableEligibleForCDCSDKStream(table_info.get(), ltm, /*check_schema=*/true)) {
       continue;
     }
 
@@ -2236,7 +2301,7 @@ Status CatalogManager::ProcessNewTablesForCDCSDKStreams(
       alter_table_req.mutable_table()->set_table_id(table_id);
       alter_table_req.set_wal_retention_secs(FLAGS_cdc_wal_retention_time_secs);
       AlterTableResponsePB alter_table_resp;
-      s = this->AlterTable(&alter_table_req, &alter_table_resp, nullptr, epoch);
+      s = this->AlterTable(&alter_table_req, &alter_table_resp, /*rpc=*/nullptr, epoch);
       if (!s.ok()) {
         LOG(WARNING) << "Unable to change the WAL retention time for table " << table_id;
         continue;
@@ -2371,7 +2436,7 @@ Status CatalogManager::ValidateTableForRemovalFromCDCSDKStream(
   }
 
   if (check_for_ineligibility) {
-    if (!IsTableEligibleForCDCSDKStream(table, lock, true)) {
+    if (!IsTableEligibleForCDCSDKStream(table, lock, /*check_schema=*/true)) {
       return STATUS(InvalidArgument, "Only allowed to remove user tables from CDC streams");
     }
   }
@@ -3494,7 +3559,8 @@ Status CatalogManager::UpdateCDCProducerOnTabletSplit(
         // table splits and concurrently we are removing such tables from stream, the child tables
         // do not get added.
         {
-          if (!IsTableEligibleForCDCSDKStream(table_info, table_info->LockForRead(), false)) {
+          if (!IsTableEligibleForCDCSDKStream(
+                  table_info, table_info->LockForRead(), /*check_schema=*/false)) {
             LOG(INFO) << "Skipping adding children tablets to cdc state for table "
                       << producer_table_id << " as it is not meant to part of a CDC stream";
             continue;
@@ -4778,7 +4844,7 @@ Status CatalogManager::DoClearFailedReplicationBootstrap(
     case SysUniverseReplicationBootstrapEntryPB_State_BOOTSTRAP_PRODUCER: {
       DeleteCDCStreamResponsePB resp;
       s = xcluster_rpc_task->client()->DeleteCDCStream(
-          bootstrap_ids, /* force_delete = */ true, /* ignore_failures = */ false, &resp);
+          bootstrap_ids, /*force_delete=*/ true, /*ignore_errors=*/false, &resp);
       if (!s.ok()) {
         LOG(WARNING) << Format(
             "Failed to send delete CDC streams request to producer on status: $0", s);
@@ -4915,7 +4981,7 @@ void CatalogManager::ScheduleXReplParentTabletDeletionTask() {
   xrepl_parent_tablet_deletion_task_.Schedule(
       [this](const Status& status) {
         Status s = background_tasks_thread_pool_->SubmitFunc(
-            std::bind(&CatalogManager::ProcessXReplParentTabletDeletionPeriodically, this));
+            [this] { ProcessXReplParentTabletDeletionPeriodically(); });
         if (!s.IsOk()) {
           // Failed to submit task to the thread pool. Mark that the task is now no longer running.
           LOG(WARNING) << "Failed to schedule: ProcessXReplParentTabletDeletionPeriodically";
@@ -5036,7 +5102,7 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion() {
                   << ". Reason: Consumer finished processing parent tablet after split.";
 
         // Also delete the parent tablet from cdc_state for all completed streams.
-        entries_to_delete.emplace_back(cdc::CDCStateTableKey{tablet_id, stream_id});
+        entries_to_delete.emplace_back(tablet_id, stream_id);
         count_tablet_streams_to_delete++;
         continue;
       }
@@ -5054,7 +5120,7 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion() {
           (hidden_tablet.hide_time_ < min_restart_time_across_slots ||
            IsCDCSDKTabletExpiredOrNotOfInterest(
                last_active_time, stream_creation_time_map.at(stream_id)))) {
-        entries_to_delete.emplace_back(cdc::CDCStateTableKey{tablet_id, stream_id});
+        entries_to_delete.emplace_back(tablet_id, stream_id);
         count_tablet_streams_to_delete++;
       }
     }

@@ -4,7 +4,7 @@ linkTitle: compare-dp-results
 headerTitle: Output from running do_compare_dp_results.sql on dp_results
 description: Output from running do_compare_dp_results.sql on dp_results.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: compare-dp-results
     parent: normal-distribution-analysis-reports
     weight: 30

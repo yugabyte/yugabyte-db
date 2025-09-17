@@ -276,7 +276,7 @@ def close_item(item: str, time_sec: float, status: str, tags: List[str]) -> str:
         if status == 'skipped':
             # Do not mark skipped items as needing investigation.
             req_data['issue'] = {"issueType": "NOT_ISSUE"}
-    logging.info("CSI close: " + item)
+    logging.info(f"CSI close ({status}): {item}")
     response = requests.put(csi['url'] + '/item/' + item,
                             headers=csi['headers'],
                             data=json.dumps(req_data))

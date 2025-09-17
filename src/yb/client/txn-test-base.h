@@ -135,8 +135,8 @@ class TransactionTestBase : public KeyValueTableTest<MiniClusterType> {
   std::shared_ptr<server::SkewedClock> skewed_clock_{
       std::make_shared<server::SkewedClock>(WallClock())};
   server::ClockPtr clock_{new server::HybridClock(skewed_clock_)};
-  boost::optional<TransactionManager> transaction_manager_;
-  boost::optional<TransactionManager> transaction_manager2_;
+  std::optional<TransactionManager> transaction_manager_;
+  std::optional<TransactionManager> transaction_manager2_;
 
   bool create_table_ = true;
   IsolationLevel isolation_level_ = IsolationLevel::SNAPSHOT_ISOLATION;

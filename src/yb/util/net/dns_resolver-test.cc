@@ -34,8 +34,6 @@
 
 #include <vector>
 
-#include <boost/optional/optional.hpp>
-
 #include <gtest/gtest.h>
 
 #include "yb/gutil/strings/util.h"
@@ -83,7 +81,7 @@ class DnsResolverTest : public YBTest {
 
   ThreadPtr io_thread_;
   IoService io_service_;
-  boost::optional<IoService::work> work_{io_service_};
+  std::optional<IoService::work> work_{io_service_};
 
   DnsResolver resolver_{&io_service_, nullptr};
 };

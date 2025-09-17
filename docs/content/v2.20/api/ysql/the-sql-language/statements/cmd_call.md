@@ -4,7 +4,7 @@ headerTitle: CALL
 linkTitle: CALL
 description: Use the CALL statement to execute a stored procedure.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: cmd_call
     parent: statements
 type: docs

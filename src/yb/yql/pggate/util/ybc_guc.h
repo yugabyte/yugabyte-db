@@ -271,6 +271,8 @@ extern bool yb_upgrade_to_pg15_completed;
 
 extern bool yb_debug_log_catcache_events;
 
+extern bool yb_debug_log_snapshot_mgmt;
+
 extern bool yb_extension_upgrade;
 
 extern bool yb_mixed_mode_expression_pushdown;
@@ -282,6 +284,8 @@ extern bool yb_use_internal_auto_analyze_service_conn;
 extern bool yb_ddl_transaction_block_enabled;
 
 extern bool yb_disable_ddl_transaction_block_for_read_committed;
+
+extern bool yb_allow_dockey_bounds;
 
 // Should be in sync with YsqlSamplingAlgorithm protobuf.
 typedef enum {

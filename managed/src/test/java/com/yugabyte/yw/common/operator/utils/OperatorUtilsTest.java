@@ -54,7 +54,6 @@ public class OperatorUtilsTest extends FakeDBApplication {
   private FormFactory mockFormFactory;
   private ReleaseManager mockReleaseManager;
   private OperatorUtils operatorUtils;
-
   private Universe testUniverse;
   private Customer testCustomer;
   private CustomerConfig testStorageConfig;

@@ -89,7 +89,7 @@ Status YQLVirtualTable::BuildYQLScanSpec(
   }
   const dockv::KeyEntryValues empty_vec;
   spec->reset(new docdb::DocQLScanSpec(
-      schema, /* hash_code = */ boost::none, /* max_hash_code = */ boost::none, empty_vec,
+      schema, /* hash_code = */ std::nullopt, /* max_hash_code = */ std::nullopt, empty_vec,
       request.has_where_expr() ? &request.where_expr().condition() : nullptr,
       request.has_if_expr() ? &request.if_expr().condition() : nullptr, rocksdb::kDefaultQueryId,
       request.is_forward_scan()));

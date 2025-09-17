@@ -4,7 +4,7 @@ headerTitle: Name resolution within user-defined subprograms and anonymous block
 linkTitle: Name resolution in subprograms
 description: Explains how unqualified identifiers, used within user-defined subprograms and anonymous blocks, are resolved [YSQL].
 menu:
-  v2.20:
+  v2.20_api:
     identifier: name-resolution-in-subprograms
     parent: user-defined-subprograms-and-anon-blocks
     weight: 60

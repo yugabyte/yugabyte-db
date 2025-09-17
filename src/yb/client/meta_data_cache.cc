@@ -383,8 +383,7 @@ Status YBMetaDataCache::HasTablePermission(const NamespaceName& keyspace_name,
 }
 
 void YBMetaDataCache::Shutdown() {
-  bool expected = false;
-  if (!shutting_down_.compare_exchange_strong(expected, true)) {
+  if (!shutting_down_.Set()) {
     return;
   }
   if (permissions_cache_) {

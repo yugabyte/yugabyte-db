@@ -499,7 +499,6 @@
   identifier = "quick-start"
   url = "/preview/quick-start/macos/"
   [preview.params]
-    classes = "separator"
     showSection = true
     hideChildren = true
 
@@ -517,6 +516,7 @@
   identifier = "develop"
   url = "/preview/develop/"
   [preview.params]
+    classes = "separator"
     showSection = true
 
 [[preview]]
@@ -548,6 +548,7 @@
   identifier = "benchmark"
   url = "/preview/benchmark/"
   [preview.params]
+    classes = "separator"
     showSection = true
 
 [[preview]]
@@ -783,6 +784,14 @@
   weight = 10
   identifier = "api-ysql"
   url = "/preview/api/ysql/"
+  [preview_api.params]
+    showSection = true
+
+[[preview_api]]
+  name = "Supporting language elements"
+  weight = 50
+  identifier = "ysql-language-elements"
+  parent = "api-ysql"
   [preview_api.params]
     showSection = true
 
@@ -1032,6 +1041,15 @@
     showSection = true
     hideLink = true
 
+[[preview_yugabyte-voyager]]
+  name = "Misc"
+  identifier = "yb-voyager-misc"
+  parent = "reference-voyager"
+  weight = 120
+  [preview_yugabyte-voyager.params]
+    showSection = true
+    hideLink = true
+
 ########## Menus for stable
 
 [[stable]]
@@ -1053,7 +1071,6 @@
   identifier = "quick-start"
   url = "/preview/quick-start/macos/"
   [stable.params]
-    classes = "separator"
     showSection = true
     hideChildren = true
 
@@ -1069,8 +1086,9 @@
   name = "Develop"
   weight = 6
   identifier = "develop"
-  url = "/stable/develop/"
+  url = "/preview/develop/"
   [stable.params]
+    classes = "separator"
     showSection = true
 
 #[[stable]]
@@ -1122,7 +1140,17 @@
   identifier = "benchmark"
   url = "/stable/benchmark/"
   [stable.params]
+    classes = "separator"
     showSection = true
+
+[[stable]]
+  name = "Contribute"
+  weight = 13
+  identifier = "contribute"
+  url = "/preview/contribute/"
+  [stable.params]
+    showSection = true
+
 
 ########## Menus (in stable) for YB Anywhere section
 
@@ -1164,6 +1192,14 @@
   weight = 10
   identifier = "api-ysql"
   url = "/stable/api/ysql/"
+  [stable_api.params]
+    showSection = true
+
+[[stable_api]]
+  name = "Supporting language elements"
+  weight = 50
+  identifier = "ysql-language-elements"
+  parent = "api-ysql"
   [stable_api.params]
     showSection = true
 
@@ -1230,7 +1266,6 @@
   identifier = "quick-start"
   url = "/preview/quick-start/macos/"
   ["v2024.2".params]
-    classes = "separator"
     showSection = true
     hideChildren = true
 
@@ -1246,8 +1281,9 @@
   name = "Develop"
   weight = 6
   identifier = "develop"
-  url = "/v2024.2/develop/"
+  url = "/preview/develop/"
   ["v2024.2".params]
+    classes = "separator"
     showSection = true
 
 [["v2024.2"]]
@@ -1283,6 +1319,15 @@
   weight = 11
   identifier = "benchmark"
   url = "/v2024.2/benchmark/"
+  ["v2024.2".params]
+    classes = "separator"
+    showSection = true
+
+[["v2024.2"]]
+  name = "Contribute"
+  weight = 13
+  identifier = "contribute"
+  url = "/preview/contribute/"
   ["v2024.2".params]
     showSection = true
 
@@ -1383,7 +1428,6 @@
   identifier = "quick-start"
   url = "/preview/quick-start/macos/"
   ["v2024.1".params]
-    classes = "separator"
     showSection = true
     hideChildren = true
 
@@ -1399,8 +1443,9 @@
   name = "Develop"
   weight = 6
   identifier = "develop"
-  url = "/v2024.1/develop/"
+  url = "/preview/develop/"
   ["v2024.1".params]
+    classes = "separator"
     showSection = true
 
 [["v2024.1"]]
@@ -1437,8 +1482,16 @@
   identifier = "benchmark"
   url = "/v2024.1/benchmark/"
   ["v2024.1".params]
+    classes = "separator"
     showSection = true
 
+[["v2024.1"]]
+  name = "Contribute"
+  weight = 13
+  identifier = "contribute"
+  url = "/preview/contribute/"
+  ["v2024.1".params]
+    showSection = true
 
 ######### Menus (in "v2024.1") for YB Anywhere section
 
@@ -1538,7 +1591,6 @@
   identifier = "quick-start"
   url = "/preview/quick-start-yugabytedb-managed/"
   ["v2025.1".params]
-    classes = "separator"
     showSection = true
     hideChildren = true
 
@@ -1554,8 +1606,9 @@
   name = "Develop"
   weight = 6
   identifier = "develop"
-  url = "/v2025.1/develop/"
+  url = "/preview/develop/"
   ["v2025.1".params]
+    classes = "separator"
     showSection = true
 
 [["v2025.1"]]
@@ -1592,6 +1645,15 @@
   identifier = "benchmark"
   url = "/v2025.1/benchmark/"
   ["v2025.1".params]
+    classes = "separator"
+    showSection = true
+
+[["v2025.1"]]
+  name = "Contribute"
+  weight = 13
+  identifier = "contribute"
+  url = "/preview/contribute/"
+  ["v2025.1".params]
     showSection = true
 
 ######### Menus (in "v2025.1") for YB Anywhere section
@@ -1609,7 +1671,7 @@
     showSection = true
     hideLink = true
 
-########## Menus (in v2024.1) for APIs
+########## Menus (in v2025.1) for APIs
 
 [["v2025.1_api"]]
   name = "API"
@@ -1691,7 +1753,6 @@
   identifier = "quick-start"
   url = "/preview/quick-start/macos/"
   ["v2.20".params]
-    classes = "separator"
     showSection = true
     hideChildren = true
 
@@ -1707,8 +1768,9 @@
   name = "Develop"
   weight = 6
   identifier = "develop"
-  url = "/v2.20/develop/"
+  url = "/preview/develop/"
   ["v2.20".params]
+    classes = "separator"
     showSection = true
 
 [["v2.20"]]
@@ -1744,6 +1806,15 @@
   weight = 11
   identifier = "benchmark"
   url = "/v2.20/benchmark/"
+  ["v2.20".params]
+    classes = "separator"
+    showSection = true
+
+[["v2.20"]]
+  name = "Contribute"
+  weight = 13
+  identifier = "contribute"
+  url = "/preview/contribute/"
   ["v2.20".params]
     showSection = true
 
@@ -1781,3 +1852,64 @@
   ["v2.20_yugabyte-platform".params]
     showSection = true
     newTab = true
+
+########## Menus (in v2.20) for APIs
+
+[["v2.20_api"]]
+  name = "API"
+  weight = 2
+  identifier = "api"
+  url = "/v2.20/api/"
+  ["v2.20_api".params]
+    classes = "separator"
+    showSection = true
+
+[["v2.20_api"]]
+  name = "YSQL"
+  weight = 10
+  identifier = "api-ysql"
+  url = "/v2.20/api/ysql/"
+  ["v2.20_api".params]
+    showSection = true
+
+[["v2.20_api"]]
+  name = "YCQL"
+  weight = 11
+  identifier = "api-cassandra"
+  url = "/v2.20/api/ycql/"
+  ["v2.20_api".params]
+    classes = "separator"
+    showSection = true
+
+[["v2.20_api"]]
+  name = "ysqlsh"
+  weight = 20
+  identifier = "ysqlsh"
+  url = "/v2.20/api/ysqlsh/"
+  ["v2.20_api".params]
+    showSection = true
+
+[["v2.20_api"]]
+  name = "ycqlsh"
+  weight = 21
+  identifier = "ycqlsh"
+  url = "/v2.20/api/ycqlsh/"
+  ["v2.20_api".params]
+    classes = "separator"
+    showSection = true
+
+[["v2.20_api"]]
+  name = "YugabyteDB Anywhere API"
+  weight = 30
+  identifier = "yugabytedb-anywhere-api"
+  url = "/v2.20/yugabyte-platform/anywhere-automation/anywhere-api/"
+  ["v2.20_api".params]
+    showSection = true
+
+[["v2.20_api"]]
+  name = "YugabyteDB Aeon API"
+  weight = 31
+  identifier = "yugabytedb-managed-api"
+  url = "/preview/yugabyte-cloud/managed-automation/managed-api/"
+  ["v2.20_api".params]
+    showSection = true

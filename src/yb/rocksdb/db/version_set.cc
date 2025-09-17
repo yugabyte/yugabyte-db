@@ -2004,15 +2004,12 @@ void VersionStorageInfo::CalculateBaseBytes(const ImmutableCFOptions& ioptions,
   // Special logic to set number of sorted runs.
   // It is to match the previous behavior when all files are in L0.
   int num_l0_count = 0;
-  if (options.MaxFileSizeForCompaction() == std::numeric_limits<uint64_t>::max()) {
-    num_l0_count = static_cast<int>(files_[0].size());
-  } else {
-    for (const auto& file : files_[0]) {
-      if (file->fd.GetTotalFileSize() <= options.MaxFileSizeForCompaction()) {
-        ++num_l0_count;
-      }
+  for (const auto& file : files_[0]) {
+    if (!options.ExcludeFromCompaction(*file)) {
+      ++num_l0_count;
     }
   }
+
   if (compaction_style_ == kCompactionStyleUniversal) {
     // For universal compaction, we use level0 score to indicate
     // compaction score for the whole DB. Adding other levels as if
@@ -2583,7 +2580,7 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
 
     manifest_file_number_ = pending_manifest_file_number_;
     manifest_file_size_ = new_manifest_file_size;
-    prev_log_number_ = edit->prev_log_number_.get_value_or(0);
+    prev_log_number_ = edit->prev_log_number_.value_or(0);
     if (flushed_frontier_override) {
       flushed_frontier_ = flushed_frontier_override;
     } else if (edit->flushed_frontier_) {
@@ -2757,7 +2754,7 @@ class ManifestReader {
   uint64_t manifest_file_number_ = 0;
   uint64_t current_manifest_file_size_ = 0;
   LogReporter reporter_;
-  boost::optional<log::Reader> reader_;
+  std::optional<log::Reader> reader_;
   std::string scratch_;
   Status status_;
   VersionEdit edit_;
@@ -3935,9 +3932,8 @@ ColumnFamilyData* VersionSet::CreateColumnFamily(
   AppendVersion(new_cfd, v);
   // GetLatestMutableCFOptions() is safe here without mutex since the
   // cfd is not available to client
-  new_cfd->CreateNewMemtable(*new_cfd->GetLatestMutableCFOptions(),
-                             LastSequence());
-  new_cfd->SetLogNumber(edit->log_number_.get_value_or(0));
+  new_cfd->CreateNewMemtable(*new_cfd->GetLatestMutableCFOptions(), LastSequence());
+  new_cfd->SetLogNumber(edit->log_number_.value_or(0));
   return new_cfd;
 }
 

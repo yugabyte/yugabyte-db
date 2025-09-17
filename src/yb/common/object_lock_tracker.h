@@ -43,6 +43,14 @@ struct ObjectLockContext {
 
   auto operator<=>(const ObjectLockContext&) const = default;
 
+  std::string ToString() const {
+    return yb::Format(
+        "$0 $1",
+        YB_STRUCT_TO_STRING(
+            txn_id, subtxn_id, database_oid, relation_oid, object_oid, object_sub_oid),
+        TableLockType_Name(lock_type));
+  }
+
   TransactionId txn_id;
   SubTransactionId subtxn_id;
   uint64_t database_oid;

@@ -14,9 +14,12 @@ import { isActionFrozen } from '../../../../redesign/helpers/utils';
 import { handleServerError } from '../../../../utils/errorHandlingUtils';
 import { AllowedTasks } from '../../../../redesign/helpers/dtos';
 import { DrConfig } from '../dtos';
-import { UNIVERSE_TASKS } from '../../../../redesign/helpers/constants';
 import { getPrimaryCluster } from '../../../../utils/universeUtilsTyped';
 import { formatYbSoftwareVersionString } from '../../../../utils/Formatters';
+import {
+  I18N_ACCESSABILITY_ALT_TEXT_KEY_PREFIX,
+  UNIVERSE_TASKS
+} from '../../../../redesign/helpers/constants';
 
 import toastStyles from '../../../../redesign/styles/toastStyles.module.scss';
 
@@ -174,7 +177,10 @@ export const InitiateSwitchoverModal = ({
           </Typography>
         }
       >
-        <img src={InfoIcon} alt={t('infoIcon', { keyPrefix: 'imgAltText' })} />
+        <img
+          src={InfoIcon}
+          alt={t('infoIcon', { keyPrefix: I18N_ACCESSABILITY_ALT_TEXT_KEY_PREFIX })}
+        />
       </YBTooltip>
     </Typography>
   );

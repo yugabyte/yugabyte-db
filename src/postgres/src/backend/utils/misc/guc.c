@@ -119,6 +119,7 @@
 #include "access/heaptoast.h"
 #include "access/yb_scan.h"
 #include "commands/copy.h"
+#include "common/pg_yb_param_status_flags.h"
 #include "executor/ybModifyTable.h"
 #include "pg_yb_utils.h"
 #include "tcop/pquery.h"
@@ -296,6 +297,8 @@ static void assign_yb_enable_base_scans_cost_model(bool new_value, void *extra);
 static bool check_yb_enable_advisory_locks(bool *newval, void **extra, GucSource source);
 
 static void assign_yb_silence_advisory_locks_not_supported_error(bool newval, void *extra);
+
+static void assign_yb_enable_pg_stat_statements_rpc_stats(bool newval, void *extra);
 
 /* Private functions in guc-file.l that need to be called from guc.c */
 static ConfigVariable *ProcessConfigFileInternal(GucContext context,
@@ -2403,6 +2406,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_debug_log_snapshot_mgmt", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Log details about snapshot management such as pushing/popping a snapshot and picking a new snapshot."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_debug_log_snapshot_mgmt,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_create_with_table_oid", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("Enables the ability to set table oids when creating tables or indexes."),
 			NULL,
@@ -3522,6 +3536,41 @@ static struct config_bool ConfigureNamesBool[] =
 		&yb_whitelist_extra_stmts_for_pl_speculative_execution,
 		false,
 		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_test_slowdown_index_check", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Slows down yb_index_check() by sleeping for 1s after processing "
+						 "every row. Used in tests to simulate long running yb_index_check()."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_slowdown_index_check,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_allow_dockey_bounds", PGC_SUSET, CUSTOM_OPTIONS,
+			gettext_noop("If true, allow lower_bound/upper_bound fields of PgsqlReadRequestPB "
+						 "to be DocKeys. Only applicable for hash-sharded tables."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_allow_dockey_bounds,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_pg_stat_statements_rpc_stats", PGC_SUSET, STATS_MONITORING,
+			gettext_noop("If true, enable RPC execution time stats for pg_stat_statements."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_pg_stat_statements_rpc_stats,
+		false,
+		NULL, assign_yb_enable_pg_stat_statements_rpc_stats, NULL
 	},
 
 	/* End-of-list marker */
@@ -5464,6 +5513,20 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_test_index_check_num_batches_per_snapshot", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Used to test yb_index_check()"),
+			gettext_noop("If set to > 0, number of index rows processed per snapshot "
+						 "is equal to  yb_test_index_check_num_batches_per_snapshot*yb_bnl_batch_size "
+						 "If set to 0, yb_index_check() will execute in single snapshot mode."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_index_check_num_batches_per_snapshot,
+		-1,
+		-1,
+		INT_MAX,
+		NULL, NULL, NULL
+	},
 	{
 		{"yb_fk_references_cache_limit", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Sets the maximum size for the FK reference cache filled by the INSERT, SELECT ... FOR KEY SHARE or similar statmements"),
@@ -8463,6 +8526,13 @@ SelectConfigFiles(const char *userDoption, const char *progname)
 	return true;
 }
 
+static bool
+yb_should_report_guc(struct config_generic *record)
+{
+	/* TODO(arpit.saxena): Use narrower sending criteria for correctness */
+	return ((record->flags & GUC_REPORT) && !YbIsClientYsqlConnMgr()) ||
+		(YbIsClientYsqlConnMgr() && record->context > PGC_BACKEND);
+}
 
 /*
  * Reset all options to their saved default values (implements RESET ALL)
@@ -8570,8 +8640,7 @@ ResetAllOptions(void)
 		gconf->scontext = gconf->reset_scontext;
 		gconf->srole = gconf->reset_srole;
 
-		if ((gconf->flags & GUC_REPORT && !YbIsClientYsqlConnMgr()) ||
-			(YbIsClientYsqlConnMgr() && gconf->context > PGC_BACKEND))
+		if (yb_should_report_guc(gconf))
 		{
 			gconf->status |= GUC_NEEDS_REPORT;
 			report_needed = true;
@@ -8993,9 +9062,7 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 			pfree(stack);
 
 			/* Report new value if we changed it */
-			if (changed &&
-				((gconf->flags & GUC_REPORT && !YbIsClientYsqlConnMgr()) ||
-				 (YbIsClientYsqlConnMgr() && gconf->context > PGC_BACKEND)))
+			if (changed && yb_should_report_guc(gconf))
 			{
 				gconf->status |= GUC_NEEDS_REPORT;
 				report_needed = true;
@@ -9123,27 +9190,28 @@ ReportGUCOption(struct config_generic *record)
 	{
 		StringInfoData msgbuf;
 
-		/*
-		 * YB: Do not bombard the client with ParameterStatus packets.
-		 * Send a specialized ParameterStatus packet to instruct Connection
-		 * Manager to not forward the packet to the client.
-		 *
-		 * 1. If GUC_REPORT is not enabled for the variable.
-		 * 2. If GUC_REPORT is enabled, but the previous value is the
-		 * same as the current value.
-		 */
-		bool		guc_report_not_enabled = !(record->flags & GUC_REPORT);
-		bool		guc_report_enabled_same_value = (record->flags & GUC_REPORT) &&
-			record->last_reported &&
-			strcmp(val, record->last_reported) == 0;
+		if (YbIsClientYsqlConnMgr())
+		{
+			uint8		flags = 0;
 
-		if (YbIsClientYsqlConnMgr() && (guc_report_not_enabled || guc_report_enabled_same_value))
+			if (record->flags & GUC_REPORT)
+				flags |= YB_PARAM_STATUS_REPORT_ENABLED;
+
+			/* TODO(arpit.saxena): Populate other bits in flags */
+
 			pq_beginmessage(&msgbuf, 'r');
+			pq_sendstring(&msgbuf, record->name);
+			pq_sendstring(&msgbuf, val);
+			pq_sendbyte(&msgbuf, flags);
+			pq_endmessage(&msgbuf);
+		}
 		else
+		{
 			pq_beginmessage(&msgbuf, 'S');
-		pq_sendstring(&msgbuf, record->name);
-		pq_sendstring(&msgbuf, val);
-		pq_endmessage(&msgbuf);
+			pq_sendstring(&msgbuf, record->name);
+			pq_sendstring(&msgbuf, val);
+			pq_endmessage(&msgbuf);
+		}
 
 		/*
 		 * We need a long-lifespan copy.  If strdup() fails due to OOM, we'll
@@ -10903,11 +10971,8 @@ set_config_option_ext(const char *name, const char *value,
 			}
 	}
 
-	if (changeVal &&
-		((record->flags & GUC_REPORT && !YbIsClientYsqlConnMgr()) ||
-		 (YbIsClientYsqlConnMgr() &&
-		  record->context > PGC_BACKEND &&
-		  !(action & GUC_ACTION_LOCAL))))
+	if (changeVal && yb_should_report_guc(record) &&
+		!(YbIsClientYsqlConnMgr() && (action & GUC_ACTION_LOCAL)))
 	{
 		record->status |= GUC_NEEDS_REPORT;
 		report_needed = true;
@@ -16165,6 +16230,12 @@ assign_yb_silence_advisory_locks_not_supported_error(bool newval, void *extra)
 						"without actually executing the lock request. It was added to avoid disruption for users who were "
 						"already using advisory locks but seeing success messages without the lock really being acquired.")));
 	}
+}
+
+static void
+assign_yb_enable_pg_stat_statements_rpc_stats(bool newval, void *extra)
+{
+	YbToggleSessionStatsTimer(newval);
 }
 
 #include "guc-file.c"

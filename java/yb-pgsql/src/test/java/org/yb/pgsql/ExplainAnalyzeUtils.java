@@ -66,6 +66,7 @@ public class ExplainAnalyzeUtils {
     TopLevelCheckerBuilder plan(ObjectChecker checker);
     TopLevelCheckerBuilder storageReadRequests(ValueChecker<Long> checker);
     TopLevelCheckerBuilder storageReadExecutionTime(ValueChecker<Double> checker);
+    TopLevelCheckerBuilder storageReadOps(ValueChecker<Long> checker);
     TopLevelCheckerBuilder storageRowsScanned(ValueChecker<Long> checker);
     TopLevelCheckerBuilder storageWriteRequests(ValueChecker<Long> checker);
     TopLevelCheckerBuilder catalogReadRequests(ValueChecker<Long> checker);
@@ -95,6 +96,7 @@ public class ExplainAnalyzeUtils {
     // This requires a different type of checker than ValueChecker<>
     PlanCheckerBuilder storageTableReadRequests(Checker checker);
     PlanCheckerBuilder storageTableReadExecutionTime(Checker checker);
+    PlanCheckerBuilder storageTableReadOps(ValueChecker<Long> checker);
     PlanCheckerBuilder storageTableRowsScanned(ValueChecker<Long> checker);
 
     // Table Writes

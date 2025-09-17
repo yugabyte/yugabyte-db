@@ -172,26 +172,6 @@ var updateAWSProviderCmd = &cobra.Command{
 			details.SetAirGapInstall(airgapInstall)
 		}
 
-		sshUser, err := cmd.Flags().GetString("ssh-user")
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		if len(sshUser) > 0 {
-			logrus.Debug("Updating SSH user\n")
-			details.SetSshUser(sshUser)
-		}
-
-		if cmd.Flags().Changed("ssh-port") {
-			sshPort, err := cmd.Flags().GetInt("ssh-port")
-			if err != nil {
-				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-			}
-			if details.GetSshPort() != int32(sshPort) {
-				logrus.Debug("Updating SSH port\n")
-				details.SetSshPort(int32(sshPort))
-			}
-		}
-
 		ntpServers, err := cmd.Flags().GetStringArray("ntp-servers")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -439,14 +419,6 @@ func init() {
 			"Each bundle to be removed needs to be provided using a separate "+
 			"--remove-image-bundle definition. "+
 			"Removing a image bundle removes the corresponding region overrides.")
-
-	updateAWSProviderCmd.Flags().String("ssh-user", "",
-		"[Optional] Updating SSH User to access the YugabyteDB nodes.")
-	updateAWSProviderCmd.Flags().Int("ssh-port", 0,
-		"[Optional] Updating SSH Port to access the YugabyteDB nodes.")
-
-	updateAWSProviderCmd.Flags().MarkDeprecated("ssh-port", "Use --edit-image-bundle instead.")
-	updateAWSProviderCmd.Flags().MarkDeprecated("ssh-user", "Use --edit-image-bundle instead.")
 
 	updateAWSProviderCmd.Flags().Bool("airgap-install", false,
 		"[Optional] Are YugabyteDB nodes installed in an air-gapped environment,"+

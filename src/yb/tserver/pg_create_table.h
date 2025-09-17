@@ -36,7 +36,7 @@ class PgCreateTable {
   Status Prepare();
   Status Exec(
       client::YBClient* client, const TransactionMetadata* transaction_metadata,
-      CoarseTimePoint deadline);
+      uint32_t sub_transaction_id, CoarseTimePoint deadline);
 
   const PgObjectId& indexed_table_id() const {
     return indexed_table_id_;
@@ -56,7 +56,7 @@ class PgCreateTable {
 
   const PgCreateTableRequestPB& req_;
   client::YBTableName table_name_;
-  boost::optional<dockv::YBHashSchema> hash_schema_;
+  std::optional<dockv::YBHashSchema> hash_schema_;
   std::vector<std::string> range_columns_;
   client::YBSchemaBuilder schema_builder_;
   PgObjectId indexed_table_id_;

@@ -6,7 +6,7 @@ linkTitle: >
 description: Describes the syntax and semantics of the PL/pgSQL language (a.k.a. language plpgsql). [YSQL].
 image: /images/section_icons/api/subsection.png
 menu:
-  v2.20:
+  v2.20_api:
     identifier: plpgsql-syntax-and-semantics
     parent: language-plpgsql-subprograms
     weight: 20

@@ -37,8 +37,6 @@
 #include <string>
 #include <vector>
 
-#include <boost/optional/optional_fwd.hpp>
-
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/opid.h"
 #include "yb/common/opid.pb.h"
@@ -250,13 +248,13 @@ class Consensus {
                              VoteResponsePB* response) = 0;
 
   // Implement a ChangeConfig() request.
-  virtual Status ChangeConfig(const ChangeConfigRequestPB& req,
-                              const StdStatusCallback& client_cb,
-                              boost::optional<tserver::TabletServerErrorPB::Code>* error);
+  virtual Status ChangeConfig(
+      const ChangeConfigRequestPB& req, const StdStatusCallback& client_cb,
+      std::optional<tserver::TabletServerErrorPB::Code>* error);
 
   virtual Status UnsafeChangeConfig(
       const UnsafeChangeConfigRequestPB& req,
-      boost::optional<tserver::TabletServerErrorPB::Code>* error_code) = 0;
+      std::optional<tserver::TabletServerErrorPB::Code>* error_code) = 0;
 
   virtual std::vector<FollowerCommunicationTime> GetFollowerCommunicationTimes() = 0;
 

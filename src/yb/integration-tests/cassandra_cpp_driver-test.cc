@@ -1358,11 +1358,7 @@ TEST_F_EX(CppCassandraDriverTest, WaitForSplitsToComplete, CppCassandraDriverTes
   const std::string table_id = ASSERT_RESULT(GetTableIdByTableName(
       client_.get(), kNamespace, kTableName));
 
-  ASSERT_OK(client_->FlushTables(
-      {table_id},
-      false /* add_indexes */,
-      3 /* timeout_secs */,
-      false /* is_compaction */));
+  ASSERT_OK(client_->FlushTables({table_id}, MonoDelta::FromSeconds(3)));
 
   // Create a split that will not complete until we set the test flag to true.
   ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_tserver_get_split_key", "true"));

@@ -1459,7 +1459,7 @@ Having all tablet leaders reside in a single region reduces the number of networ
 
 * Tablespaces don't inherit cluster-level placement information, leader preference, or read replica configurations.
 
-* If the client application uses a smart driver, set the [topology keys](../../drivers-orms/smart-drivers/#topology-aware-load-balancing) to target the preferred zones.
+* If the client application uses a smart driver, set the [topology keys](/preview/drivers-orms/smart-drivers/#topology-aware-load-balancing) to target the preferred zones.
 
 {{< /note >}}
 
@@ -1834,7 +1834,7 @@ yb-admin \
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *namespace-name*: The namespace on which the DB stream ID is to be created.
 * EXPLICIT: Checkpointing type on the server. See [Creating stream in EXPLICIT checkpointing mode](#creating-stream-in-explicit-checkpointing-mode).
-* *before-image-mode*: Record type indicating to the server that the stream should send only the new values of the changed columns. Refer to [Before image modes](../../develop/change-data-capture/using-yugabytedb-grpc-replication/cdc-get-started/#before-image-modes).
+* *before-image-mode*: Record type indicating to the server that the stream should send only the new values of the changed columns. Refer to [Before image modes](../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/cdc-get-started/#before-image-modes).
 
 A successful operation of the above command returns a message with a DB stream ID:
 

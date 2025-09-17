@@ -130,4 +130,10 @@ class NODISCARD_CLASS ScopeLogger {
 #define TEST_PAUSE_IF_FLAG_WITH_LOG_PREFIX(flag_name) \
   TEST_PAUSE_IF_FLAG_WITH_PREFIX(flag_name, LogPrefix())
 
+#ifndef NDEBUG
+#define DEBUG_ONLY(code) code
+#else
+#define DEBUG_ONLY(code)
+
+#endif
 } // namespace yb

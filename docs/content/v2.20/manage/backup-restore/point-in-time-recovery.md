@@ -220,7 +220,7 @@ PITR functionality has several limitations, primarily related to interactions wi
 
 ### CDC
 
-Using PITR and [CDC](../../../explore/change-data-capture/) together is currently not supported.
+Using PITR and [CDC](../../../additional-features/change-data-capture/) together is currently not supported.
 
 Tracking issue: [12773](https://github.com/yugabyte/yugabyte-db/issues/12773)
 

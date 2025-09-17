@@ -1,4 +1,3 @@
-SET yb_explain_hide_non_deterministic_fields TO true;
 CREATE TABLE ab_tab (a int, b int);
 INSERT INTO ab_tab SELECT g, g + 10 FROM generate_series(1, 10) g;
 --- Basic

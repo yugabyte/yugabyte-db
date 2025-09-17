@@ -601,12 +601,11 @@ bool AsyncAlterTable::SendRequest(int attempt) {
 
     // First provisional column ID is the earliest column ID we can set next_column_id to.
     int32_t first_provisional_column_id = l->pb.next_column_id();
-    if (l->pb.ysql_ddl_txn_verifier_state().size() > 0) {
-      DCHECK_EQ(l->pb.ysql_ddl_txn_verifier_state().size(), 1);
-      const auto& state = l->pb.ysql_ddl_txn_verifier_state()[0];
+    for (const auto& state : l->pb.ysql_ddl_txn_verifier_state()) {
       if (state.has_previous_next_column_id()) {
         // If we rollback, we will move next_column_id back to this.
         first_provisional_column_id = state.previous_next_column_id();
+        break;
       }
     }
     req.set_first_provisional_column_id(first_provisional_column_id);

@@ -74,14 +74,15 @@ class PatternWaiterLogSink : public google::LogSink {
     google::AddLogSink(this);
   }
 
-  // Wait for string_to_wait to occur in log.
+  // Wait for string_to_wait to occur at least once in log.
   Status WaitFor(MonoDelta timeout);
 
   void send(
       google::LogSeverity severity, const char* full_filename, const char* base_filename, int line,
       const struct ::tm* tm_time, const char* message, size_t message_len) override;
 
-  bool IsEventOccurred() { return event_occurred_; }
+  bool IsEventOccurred() { return GetEventCount() > 0; }
+  int64_t GetEventCount() { return event_count_.load(); }
 
   ~PatternWaiterLogSink() override { google::RemoveLogSink(this); }
 
@@ -92,7 +93,7 @@ class PatternWaiterLogSink : public google::LogSink {
   // PatternWaiterLogSink<std::string> this is the same string pattern we are waiting for.
   std::string pattern_source_;
   Pattern pattern_to_wait_for_;
-  std::atomic<bool> event_occurred_{false};
+  std::atomic<int64_t> event_count_{0};
 };
 
 using StringWaiterLogSink = PatternWaiterLogSink<std::string>;

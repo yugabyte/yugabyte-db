@@ -158,7 +158,7 @@ class OnPremDestroyInstancesMethod(DestroyInstancesMethod):
         host_info = self.cloud.get_host_info(args)
         if not host_info:
             logging.error("Host {} does not exists.".format(args.search_pattern))
-            return
+            raise YBOpsRuntimeError("Unable to find host {}".format(args.search_pattern))
         self.extra_vars.update(self.get_server_host_port(host_info, args.custom_ssh_port))
 
         # Force db-related commands to use the "yugabyte" user.

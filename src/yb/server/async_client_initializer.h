@@ -17,9 +17,10 @@
 #include "yb/client/client_fwd.h"
 
 #include "yb/server/server_base_options.h"
-
 #include "yb/server/server_fwd.h"
+
 #include "yb/util/atomic.h"
+#include "yb/util/one_time_bool.h"
 
 namespace yb {
 class Thread;
@@ -67,7 +68,7 @@ class AsyncClientInitializer {
   std::vector<std::function<void(client::YBClient*)>> post_create_hooks_;
 
   scoped_refptr<Thread> init_client_thread_;
-  std::atomic<bool> stopping_{false};
+  OneTimeBool stopping_;
 };
 
 }  // namespace client

@@ -199,8 +199,7 @@ Result<bool> PermissionsCache::can_login(const RoleName& role_name) {
 }
 
 void PermissionsCache::Shutdown() {
-  bool expected = false;
-  if (!shutting_down_.compare_exchange_strong(expected, true)) {
+  if (!shutting_down_.Set()) {
     return;
   }
   if (pool_) {

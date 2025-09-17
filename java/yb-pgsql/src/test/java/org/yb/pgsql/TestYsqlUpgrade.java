@@ -2023,6 +2023,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
         // PG15: {postgres=arwdDxt/postgres,=r/postgres}
         // So we cannot simply compare the as strings.
         // Similar changes happen for initprivs column of table pg_init_privs.
+        // Also, pg_proc.prosqlbody can contain oids which can change on view creation.
         if (tableName.equals("pg_class")) {
           assertRow("Table '" + tableName + "': ",
                     excluded(reinitdbRow, "relacl"),
@@ -2033,6 +2034,10 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
                     excluded(reinitdbRow, "initprivs"),
                     excluded(migratedRow, "initprivs"));
           assertSameAcl(retained(reinitdbRow, "initprivs"), retained(migratedRow, "initprivs"));
+        } else if (tableName.equals("pg_proc")) {
+          assertRow("Table '" + tableName + "': ",
+                    excluded(reinitdbRow, "prosqlbody"),
+                    excluded(migratedRow, "prosqlbody"));
         } else {
           assertRow("Table '" + tableName + "': ", reinitdbRow, migratedRow);
         }

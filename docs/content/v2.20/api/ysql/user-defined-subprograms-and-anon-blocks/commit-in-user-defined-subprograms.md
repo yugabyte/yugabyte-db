@@ -4,7 +4,7 @@ headerTitle: Issuing "commit" in user-defined subprograms and anonymous blocks
 linkTitle: «Commit» in user-defined subprograms
 description: Explains why you should should avoid issuing "commit" in user-defined subprograms and anonymous blocks [YSQL]
 menu:
-  v2.20:
+  v2.20_api:
     identifier: commit-in-user-defined-subprograms
     parent: user-defined-subprograms-and-anon-blocks
     weight: 5

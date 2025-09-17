@@ -940,6 +940,15 @@ SELECT * FROM crypto_hash_t1 WHERE sha3 = sha384(v1);
 SELECT * FROM crypto_hash_t1 WHERE sha4 = sha512(v1);
 
 -----------------------------------
+-- Test now() pushdown.
+CREATE TABLE x (t timestamptz);
+BEGIN;
+INSERT INTO x VALUES (now());
+SELECT COUNT(*) FROM x WHERE t = now();
+EXPLAIN SELECT * FROM x WHERE t = now();
+COMMIT;
+
+-----------------------------------
 -- Cleanup.
 DROP FUNCTION next_v3;
 DROP FUNCTION assign_one_plus_param_to_v1;

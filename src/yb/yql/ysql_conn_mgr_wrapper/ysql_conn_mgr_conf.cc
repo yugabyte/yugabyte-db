@@ -58,6 +58,8 @@ DECLARE_bool(ysql_conn_mgr_optimized_extended_query_protocol);
 DECLARE_bool(ysql_conn_mgr_optimized_session_parameters);
 DECLARE_int32(ysql_conn_mgr_max_pools);
 DECLARE_uint32(ysql_conn_mgr_jitter_time);
+DECLARE_uint32(ysql_conn_mgr_max_phy_conn_percent);
+DECLARE_uint32(TEST_ysql_conn_mgr_auth_delay_ms);
 
 namespace yb {
 namespace ysql_conn_mgr_wrapper {
@@ -228,6 +230,7 @@ std::string YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
       BoolToString(FLAGS_ysql_conn_mgr_optimized_session_parameters)},
     {"{%yb_max_pools%}", std::to_string(FLAGS_ysql_conn_mgr_max_pools)},
     {"{%yb_jitter_time%}", std::to_string(FLAGS_ysql_conn_mgr_jitter_time)},
+    {"{%TEST_yb_auth_delay_ms%}", std::to_string(FLAGS_TEST_ysql_conn_mgr_auth_delay_ms)},
     {"{%unix_socket_dir%}",
       PgDeriveSocketDir(postgres_address_)}}; // Return unix socket
             //  file path = "/tmp/.yb.host_ip:port"
@@ -283,6 +286,19 @@ void YsqlConnMgrConf::UpdateConfigFromGFlags() {
   // Get the max size of connections which the postgres can support. The postgres
   // instance to which this instance of ysql_conn_mgr is going to get attached.
   int maxConnections = getMaxConnectionsFromYsqlPgConf(ysql_pgconf_file_);
+
+  // Either it's multi route pooling where yb_ysql_max_connections is relevant or
+  // it's non-multi route pooling where control_connection_pool_size and global_pool_size are
+  // relevant. The total number of ysql connections that connection manager can create is
+  // FLAGS_ysql_conn_mgr_max_phy_conn_percent% of total ysql_max_connections. This ensures
+  // that the connection manager doesn't exceed the limit for non-replication superuser connections
+  // in postgres and client can fine tune the number of physical connections that can be created.
+
+  // Taking the ceil, to make sure it doesn't underallocate the connections.
+
+  maxConnections = static_cast<int>(
+    std::ceil(maxConnections * FLAGS_ysql_conn_mgr_max_phy_conn_percent / 100.0));
+
   // Divide the pool between the global pool and control connection pool.
   global_pool_size_ = FLAGS_ysql_conn_mgr_max_conns_per_db;
   if (global_pool_size_ == 0) {

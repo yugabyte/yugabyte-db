@@ -35,9 +35,10 @@ For information on xCluster deployment architecture, replication scenarios, and 
 
 - If the root certificates for the source and target universe are different, (for example, the node certificates for target and source nodes were not created on the same machine), copy the `ca.crt` for the source universe to all target nodes, and vice-versa. If the root certificate for both source and target universes is the same, you can skip this step.
 
-    Locate the `ca.crt` file for the source universe on any source universe node at `<base-dir>/certs/ca.crt`. Copy this file to all target nodes at `<base-dir>/certs/xcluster/<xcluster-replication-id>/` (create the directory if it is not there). The `<xcluster-replication-id>` must be the same as the replication ID you are using for your xCluster configuration.
-
-    Similarly, copy the `ca.crt` file for the target universe from any target universe node at `<base-dir>/certs/ca.crt` to the source universe nodes at `<base-dir>/certs/xcluster/<xcluster-replication-id>/` (create the directory if it is not there).
+    1. For each YB-Master and YB-TServer on both the source and target universe, set the flag `certs_for_cdc_dir` to the parent directory (for example, `<home>/xcluster-certs`) where you want to store all the other universe's certificates for replication.
+    1. Find the certificate authority file used by the source universe (`ca.crt`). This should be stored in the [--certs_dir](../../../reference/configuration/yb-master/#certs-dir).
+    1. Copy this file to each node on the target universe. It needs to be copied to a directory named `<home>/xcluster-certs/xcluster-replication-id` (create the directory if it is not there).
+    1. Similarly, copy the `ca.crt` file for the target universe from any target universe node at `--certs_dir` to the source universe nodes at `<home>/xcluster-certs/<xcluster-replication-id>/` (create the directory if it is not there).
 
 - Global objects like users, roles, tablespaces are not managed by xCluster. You must explicitly create and manage these objects on both source and target universes.
 
@@ -49,7 +50,7 @@ For information on xCluster deployment architecture, replication scenarios, and 
 
     This flag determines the duration for which WAL is retained on the source universe in case of a network partition or a complete outage of the target universe. The value depends on how long a network partition of the source universe or an outage of the target universe can be tolerated.
 
-- Make sure all YB-Master and YB-Tserver flags are set to the same value on both the source and target universes.
+- Make sure all YB-Master and YB-TServer flags are set to the same value on both the source and target universes.
 
 - Monitor CPU usage and ensure it remains below 65%. Note that xCluster replication typically incurs a 20% CPU overhead.
 

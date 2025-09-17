@@ -189,7 +189,7 @@ The following table describes the columns and their values:
 | `rolprffailedloginattempts` | int | 0 | Number of failed attempts by this role.
 | `rolprflockeduntil` | timestamptz | Null | If `rolprfstatus` is `t`, the duration that the role is locked. Otherwise, the value is NULL and not used.
 
-<!-- When login profiles are enabled, you can display these columns in the `pg_roles` table by running the following [meta-command](../../../admin/ysqlsh-meta-commands/):
+<!-- When login profiles are enabled, you can display these columns in the `pg_roles` table by running the following [meta-command](../../../api/ysqlsh-meta-commands/):
 
 ```sql
 yugabyte=# \dgP

@@ -359,7 +359,7 @@ TEST_F(XClusterDBScopedTest, ColocatedDB) {
 
   auto producer_colocated_table_name = ASSERT_RESULT(CreateYsqlTable(
       /*idx=*/1, /*num_tablets=*/3, &producer_cluster_,
-      /*tablegroup_name=*/boost::none, /*colocated=*/true));
+      /*tablegroup_name=*/std::nullopt, /*colocated=*/true));
   std::shared_ptr<client::YBTable> producer_colocated_table;
   ASSERT_OK(producer_client()->OpenTable(producer_colocated_table_name, &producer_colocated_table));
 
@@ -375,7 +375,7 @@ TEST_F(XClusterDBScopedTest, ColocatedDB) {
 
   auto consumer_colocated_table_name = ASSERT_RESULT(CreateYsqlTable(
       /*idx=*/1, /*num_tablets=*/3, &consumer_cluster_,
-      /*tablegroup_name=*/boost::none, /*colocated=*/true));
+      /*tablegroup_name=*/std::nullopt, /*colocated=*/true));
   std::shared_ptr<client::YBTable> consumer_colocated_table;
   ASSERT_OK(consumer_client()->OpenTable(consumer_colocated_table_name, &consumer_colocated_table));
 
@@ -406,7 +406,7 @@ TEST_F(XClusterDBScopedTest, ColocatedDB) {
 
   auto producer_colocated_table2_name = ASSERT_RESULT(CreateYsqlTable(
       /*idx=*/3, /*num_tablets=*/3, &producer_cluster_,
-      /*tablegroup_name=*/boost::none, /*colocated=*/true));
+      /*tablegroup_name=*/std::nullopt, /*colocated=*/true));
   std::shared_ptr<client::YBTable> producer_colocated_table2;
   ASSERT_OK(
       producer_client()->OpenTable(producer_colocated_table2_name, &producer_colocated_table2));
@@ -414,7 +414,7 @@ TEST_F(XClusterDBScopedTest, ColocatedDB) {
 
   auto consumer_colocated_table2_name = ASSERT_RESULT(CreateYsqlTable(
       /*idx=*/3, /*num_tablets=*/3, &consumer_cluster_,
-      /*tablegroup_name=*/boost::none, /*colocated=*/true));
+      /*tablegroup_name=*/std::nullopt, /*colocated=*/true));
   std::shared_ptr<client::YBTable> consumer_colocated_table2;
   ASSERT_OK(
       consumer_client()->OpenTable(consumer_colocated_table2_name, &consumer_colocated_table2));
@@ -509,7 +509,7 @@ class XClusterDBScopedTestWithTwoDBs : public XClusterDBScopedTest {
       RETURN_NOT_OK(CreateDatabase(cluster, namespace_name2_));
       auto table_name = VERIFY_RESULT(CreateYsqlTable(
           cluster, namespace_name2_, "" /* schema_name */, namespace2_table_name_,
-          /*tablegroup_name=*/boost::none, /*num_tablets=*/3));
+          /*tablegroup_name=*/std::nullopt, /*num_tablets=*/3));
 
       std::shared_ptr<client::YBTable> table;
       RETURN_NOT_OK(cluster->client_->OpenTable(table_name, &table));
@@ -1074,10 +1074,10 @@ TEST_F(XClusterDBScopedTest, ColocatedRangedPartitionsWithIndex) {
 
   ASSERT_OK(CreateYsqlTable(
       /*idx=*/1, /*num_tablets=*/1, &producer_cluster_,
-      /*tablegroup_name=*/boost::none, /*colocated=*/true));
+      /*tablegroup_name=*/std::nullopt, /*colocated=*/true));
   ASSERT_OK(CreateYsqlTable(
       /*idx=*/1, /*num_tablets=*/1, &consumer_cluster_,
-      /*tablegroup_name=*/boost::none, /*colocated=*/true));
+      /*tablegroup_name=*/std::nullopt, /*colocated=*/true));
 
   ASSERT_OK(CheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());

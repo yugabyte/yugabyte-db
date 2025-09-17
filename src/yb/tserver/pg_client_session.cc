@@ -106,8 +106,16 @@ DEFINE_RUNTIME_bool(ysql_ddl_transaction_wait_for_ddl_verification, true,
                     "If set, DDL transactions will wait for DDL verification to complete before "
                     "returning to the client. ");
 
+DEFINE_RUNTIME_bool(use_tablespace_based_transaction_placement, false,
+                    "Use tablespace-local locality will be used instead of region-local locality.");
+
 DEFINE_RUNTIME_uint64(big_shared_memory_segment_session_expiration_time_ms, 5000,
     "Time to release unused allocated big memory segment from session to pool.");
+
+DEFINE_test_flag(
+    bool, request_unknown_tables_during_perform, false,
+    "Add several unknown tables while processing perfrom request. "
+    "It is expected that opening of such tables will fail");
 
 DECLARE_bool(vector_index_dump_stats);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
@@ -478,6 +486,7 @@ class VectorIndexQuery {
     size_t partition_idx = 0;
     for (const auto& key : *partitions) {
       const auto& partition_state = partitions_[partition_idx];
+      VLOG_WITH_FUNC(4) << partition_idx << ": " << partition_state.ToString();
       if (!partition_state.whether_all_vectors_was_fetched &&
           partition_state.number_of_vectors_returned_to_postgres + prefetch_size_
               > partition_state.number_of_vectors_fetched_from_tablet) {
@@ -592,6 +601,7 @@ class VectorIndexQuery {
       if (!op_resp.vector_index_could_have_more_data()) {
         partitions_[op.partition_idx].whether_all_vectors_was_fetched = true;
       }
+      VLOG_WITH_FUNC(4) << op.partition_idx << ": " << partitions_[op.partition_idx].ToString();
     }
   }
 
@@ -1084,8 +1094,8 @@ class ReadPointHistory {
 
   [[nodiscard]] bool Restore(ConsistentReadPoint* read_point, uint64_t read_time_serial_no) {
     auto result = false;
-    auto i = read_points_.find(read_time_serial_no);
-    if (i != read_points_.end()) {
+    if (const auto i = read_points_.find(read_time_serial_no);
+        i != read_points_.end() && read_time_serial_no >= min_) {
       read_point->SetMomento(i->second);
       result = true;
     }
@@ -1101,6 +1111,13 @@ class ReadPointHistory {
     DCHECK(read_time);
     VLOG_WITH_PREFIX(4) << "ReadPointHistory::Save read_time_serial_no=" << read_time_serial_no
                         << " read time is " << AsString(read_time);
+    if (read_points_.empty()) {
+      max_ = read_time_serial_no;
+      min_ = read_time_serial_no;
+    } else {
+      min_ = std::min(min_, read_time_serial_no);
+      max_ = std::max(max_, read_time_serial_no);
+    }
     auto ipair = read_points_.try_emplace(read_time_serial_no, std::move(momento));
     if (!ipair.second) {
       // Potentially read time could be set to same read_time_serial_no multiple times.
@@ -1111,15 +1128,25 @@ class ReadPointHistory {
     }
   }
 
-  void Clear() {
-    VLOG_WITH_PREFIX(4) << "ReadTimeHistory::Clear";
-    read_points_.clear();
+  void Cleanup(uint64_t min) {
+    VLOG_WITH_PREFIX(4) << "ReadTimeHistory::Cleanup " << min;
+    if (read_points_.empty()) {
+      return;
+    }
+    if (max_ < min) {
+      VLOG_WITH_PREFIX(4) << "Clearing history [" << min_ << ", " << max_ << "]";
+      read_points_.clear();
+      return;
+    }
+    min_ = std::max(min_, min);
   }
 
  private:
   const PrefixLogger& LogPrefix() const { return prefix_logger_; }
 
   const PrefixLogger prefix_logger_;
+  uint64_t min_ = 0;
+  uint64_t max_ = 0;
   std::unordered_map<uint64_t, ConsistentReadPoint::Momento> read_points_;
 };
 
@@ -1150,7 +1177,9 @@ class TransactionProvider {
     client::internal::InFlightOpsGroupsWithMetadata ops_info;
     if (!next_plain_) {
       VLOG_WITH_FUNC(1) << "requesting new transaction";
-      auto txn = Build(deadline, {});
+      // TODO(#28317): We should figure out the correct locality and use it here. With table-level
+      // locks, this will prevent transactions from being started as global or tablespace-local(X).
+      auto txn = Build(TransactionFullLocality::RegionLocal(), deadline, {});
       // Don't execute txn->GetMetadata() here since the transaction is not iniatialized with
       // its full metadata yet, like isolation level.
       Synchronizer synchronizer;
@@ -1167,6 +1196,7 @@ class TransactionProvider {
     // next_plain_ would be ready at this point i.e status tablet picked.
     auto txn_meta_res = next_plain_->metadata();
     if (txn_meta_res.ok()) {
+      next_plain_->SetStartTimeIfNecessary();
       return txn_meta_res;
     }
     VLOG_WITH_FUNC(1) << "transaction already failed";
@@ -1189,13 +1219,13 @@ class TransactionProvider {
  private:
   struct BuildStrategy {
     bool is_ddl = false;
-    bool force_global = false;
     bool force_create = false;
   };
 
-  client::YBTransactionPtr Build(CoarseTimePoint deadline, const BuildStrategy& strategy) {
+  client::YBTransactionPtr Build(
+      TransactionFullLocality locality, CoarseTimePoint deadline, const BuildStrategy& strategy) {
     return builder_(
-        IsDDL{strategy.is_ddl}, client::ForceGlobalTransaction{strategy.force_global}, deadline,
+        IsDDL{strategy.is_ddl}, locality, deadline,
         client::ForceCreateTransaction{strategy.force_create});
   }
 
@@ -1207,19 +1237,16 @@ class TransactionProvider {
     //
     // Advisory locks table is not placement local, hence we need a global transaction for tagging
     // the requested session advisory locks.
-    return Build(deadline, {.force_global = true, .force_create = true});
+    return Build(TransactionFullLocality::Global(), deadline, {.force_create = true});
   }
 
   client::YBTransactionPtr TakeForDdl(CoarseTimePoint deadline) {
-    return Build(deadline, {.is_ddl = true, .force_global = true});
+    return Build(TransactionFullLocality::Global(), deadline, {.is_ddl = true});
   }
 
-  using TakeForPlainRT = std::pair<client::YBTransactionPtr, EnsureGlobal>;
-  TakeForPlainRT TakeForPlain(
-      client::ForceGlobalTransaction force_global, CoarseTimePoint deadline) {
-    return next_plain_
-        ? TakeForPlainRT{std::exchange(next_plain_, {}), EnsureGlobal{force_global}}
-        : TakeForPlainRT{Build(deadline, {.force_global = force_global}), EnsureGlobal::kFalse};
+  client::YBTransactionPtr TakeForPlain(
+      TransactionFullLocality locality, CoarseTimePoint deadline) {
+    return next_plain_ ? std::exchange(next_plain_, {}) : Build(locality, deadline, {});
   }
 
   const PgClientSession::TransactionBuilder builder_;
@@ -1505,6 +1532,8 @@ class PgClientSession::Impl {
 
   Status CreateTable(
       const PgCreateTableRequestPB& req, PgCreateTableResponsePB* resp, rpc::RpcContext* context) {
+    VLOG_WITH_FUNC(2) << "req: " << req.DebugString();
+
     PgCreateTable helper(req);
     RETURN_NOT_OK(helper.Prepare());
 
@@ -1516,7 +1545,9 @@ class PgClientSession::Impl {
         req.use_regular_transaction_block(), req.options(), context->GetClientDeadline()));
     const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
         req.use_transaction(), req.use_regular_transaction_block(), context->GetClientDeadline()));
-    RETURN_NOT_OK(helper.Exec(&client_, metadata, context->GetClientDeadline()));
+    RETURN_NOT_OK(helper.Exec(
+        &client_, metadata, req.options().active_sub_transaction_id(),
+        context->GetClientDeadline()));
     VLOG_WITH_PREFIX(1) << __func__ << ": " << req.table_name();
     const auto& indexed_table_id = helper.indexed_table_id();
     if (indexed_table_id.IsValid()) {
@@ -1528,6 +1559,7 @@ class PgClientSession::Impl {
   Status CreateDatabase(
       const PgCreateDatabaseRequestPB& req, PgCreateDatabaseResponsePB* resp,
       rpc::RpcContext* context) {
+    VLOG_WITH_FUNC(2) << "req: " << req.DebugString();
     bool is_clone =
         req.source_database_name() != "" &&
         req.source_database_name() != "template0" &&
@@ -1558,6 +1590,7 @@ class PgClientSession::Impl {
   Status DropDatabase(
       const PgDropDatabaseRequestPB& req, PgDropDatabaseResponsePB* resp,
       rpc::RpcContext* context) {
+    VLOG_WITH_FUNC(2) << "req: " << req.DebugString();
     return client_.DeleteNamespace(
         req.database_name(), YQL_DATABASE_PGSQL, GetPgsqlNamespaceId(req.database_oid()),
         context->GetClientDeadline());
@@ -1565,6 +1598,7 @@ class PgClientSession::Impl {
 
   Status DropTable(
       const PgDropTableRequestPB& req, PgDropTableResponsePB* resp, rpc::RpcContext* context) {
+    VLOG_WITH_FUNC(2) << "req: " << req.DebugString();
     const auto yb_table_id = PgObjectId::GetYbTableIdFromPB(req.table_id());
     RETURN_NOT_OK(SetupSessionForDdl(
       req.use_regular_transaction_block(), req.options(), context->GetClientDeadline()));
@@ -1578,7 +1612,7 @@ class PgClientSession::Impl {
       client::YBTableName indexed_table;
       RETURN_NOT_OK(client_.DeleteIndexTable(
           yb_table_id, &indexed_table, !YsqlDdlRollbackEnabled() /* wait */,
-          metadata, context->GetClientDeadline()));
+          metadata, req.options().active_sub_transaction_id(), context->GetClientDeadline()));
       indexed_table.SetIntoTableIdentifierPB(resp->mutable_indexed_table());
       table_cache().Invalidate(indexed_table.table_id());
       table_cache().Invalidate(yb_table_id);
@@ -1586,7 +1620,7 @@ class PgClientSession::Impl {
     }
 
     RETURN_NOT_OK(client_.DeleteTable(yb_table_id, !YsqlDdlRollbackEnabled(), metadata,
-          context->GetClientDeadline()));
+      req.options().active_sub_transaction_id(), context->GetClientDeadline()));
     table_cache().Invalidate(yb_table_id);
     return Status::OK();
   }
@@ -1594,6 +1628,7 @@ class PgClientSession::Impl {
   Status AlterDatabase(
       const PgAlterDatabaseRequestPB& req, PgAlterDatabaseResponsePB* resp,
       rpc::RpcContext* context) {
+    VLOG_WITH_FUNC(2) << "req: " << req.DebugString();
     const auto alterer = client_.NewNamespaceAlterer(
         req.database_name(), GetPgsqlNamespaceId(req.database_oid()));
     alterer->SetDatabaseType(YQL_DATABASE_PGSQL);
@@ -1603,6 +1638,7 @@ class PgClientSession::Impl {
 
   Status AlterTable(
       const PgAlterTableRequestPB& req, PgAlterTableResponsePB* resp, rpc::RpcContext* context) {
+    VLOG_WITH_FUNC(2) << "req: " << req.DebugString();
     const auto table_id = PgObjectId::GetYbTableIdFromPB(req.table_id());
     const auto alterer = client_.NewTableAlterer(table_id);
     RETURN_NOT_OK(SetupSessionForDdl(
@@ -1612,6 +1648,7 @@ class PgClientSession::Impl {
     if (txn) {
       alterer->part_of_transaction(txn);
     }
+    alterer->part_of_sub_transaction(req.options().active_sub_transaction_id());
     if (req.increment_schema_version()) {
       alterer->set_increment_schema_version();
     }
@@ -1787,6 +1824,7 @@ class PgClientSession::Impl {
   Status CreateTablegroup(
       const PgCreateTablegroupRequestPB& req, PgCreateTablegroupResponsePB* resp,
       rpc::RpcContext* context) {
+    VLOG_WITH_FUNC(2) << "req: " << req.DebugString();
     const auto id = PgObjectId::FromPB(req.tablegroup_id());
     const auto tablespace_id = PgObjectId::FromPB(req.tablespace_id());
     RETURN_NOT_OK(SetupSessionForDdl(
@@ -1796,7 +1834,8 @@ class PgClientSession::Impl {
         context->GetClientDeadline()));
     const auto s = client_.CreateTablegroup(
         req.database_name(), GetPgsqlNamespaceId(id.database_oid), id.GetYbTablegroupId(),
-        tablespace_id.IsValid() ? tablespace_id.GetYbTablespaceId() : "", metadata);
+        tablespace_id.IsValid() ? tablespace_id.GetYbTablespaceId() : "", metadata,
+        req.options().active_sub_transaction_id());
     if (s.ok()) {
       return Status::OK();
     }
@@ -1811,6 +1850,7 @@ class PgClientSession::Impl {
   Status DropTablegroup(
       const PgDropTablegroupRequestPB& req, PgDropTablegroupResponsePB* resp,
       rpc::RpcContext* context) {
+    VLOG_WITH_FUNC(2) << "req: " << req.DebugString();
     const auto id = PgObjectId::FromPB(req.tablegroup_id());
     RETURN_NOT_OK(SetupSessionForDdl(
       req.use_regular_transaction_block(), req.options(), context->GetClientDeadline()));
@@ -1818,7 +1858,8 @@ class PgClientSession::Impl {
         true /* use_transaction */, req.use_regular_transaction_block(),
         context->GetClientDeadline()));
     const auto status =
-        client_.DeleteTablegroup(GetPgsqlTablegroupId(id.database_oid, id.object_oid), metadata);
+        client_.DeleteTablegroup(GetPgsqlTablegroupId(id.database_oid, id.object_oid), metadata,
+        req.options().active_sub_transaction_id());
     if (status.IsNotFound()) {
       return Status::OK();
     }
@@ -1943,7 +1984,7 @@ class PgClientSession::Impl {
         return Status::OK();
       }
       txn = transaction_provider_.Take<PgClientSessionKind::kPlain>(
-          client::ForceGlobalTransaction::kFalse, deadline).first;
+          TransactionFullLocality::RegionLocal(), deadline);
       VLOG_WITH_PREFIX_AND_FUNC(1) << "Consuming re-usable kPlain txn " << txn->id();
     }
 
@@ -2364,6 +2405,10 @@ class PgClientSession::Impl {
   Status DoHandleSharedExchangeQuery(PerformQueryDataPtr&& data, CoarseTimePoint deadline) {
     boost::container::small_vector<TableId, 4> table_ids;
     PreparePgTablesQuery(data->req, table_ids);
+    if (PREDICT_FALSE(FLAGS_TEST_request_unknown_tables_during_perform)) {
+      table_ids.insert(
+          table_ids.end(), { GetPgsqlTableId(0, 0), GetPgsqlTableId(0, 1), GetPgsqlTableId(0, 2) });
+    }
     auto tables_future = GetTablesAsync(table_cache(), table_ids);
     RETURN_NOT_OK(Wait(tables_future, ToSteady(deadline)));
     return DoPerform(tables_future.get(), data, deadline);
@@ -2790,8 +2835,10 @@ class PgClientSession::Impl {
 
     const auto in_txn_limit = GetInTxnLimit(options, clock().get());
     VLOG_WITH_PREFIX(5) << "using in_txn_limit_ht: " << in_txn_limit;
+
+    TransactionFullLocality locality = GetTargetTransactionLocality(data->req);
     auto setup_session_result = VERIFY_RESULT(SetupSession(
-        data->req.options(), deadline, in_txn_limit));
+        data->req.options(), deadline, in_txn_limit, locality));
     auto* session = setup_session_result.session_data.session.get();
     auto& transaction = setup_session_result.session_data.transaction;
 
@@ -2968,7 +3015,8 @@ class PgClientSession::Impl {
   }
 
   Result<SetupSessionResult> SetupSession(
-      const PgPerformOptionsPB& options, CoarseTimePoint deadline, HybridTime in_txn_limit = {}) {
+      const PgPerformOptionsPB& options, CoarseTimePoint deadline, HybridTime in_txn_limit = {},
+      TransactionFullLocality locality = TransactionFullLocality::RegionLocal()) {
     const auto txn_serial_no = options.txn_serial_no();
     const auto read_time_serial_no = options.read_time_serial_no();
     auto kind = PgClientSessionKind::kPlain;
@@ -2988,15 +3036,14 @@ class PgClientSession::Impl {
       DCHECK(kind == PgClientSessionKind::kPlain);
       auto& session = EnsureSession(kind, deadline);
       RETURN_NOT_OK(CheckPlainSessionPendingUsedReadTime(options));
-      if (txn_serial_no != txn_serial_no_) {
-        read_point_history_.Clear();
-      } else if (read_time_serial_no != read_time_serial_no_) {
+      read_point_history_.Cleanup(options.read_time_serial_no_history_min());
+      if (read_time_serial_no != read_time_serial_no_) {
         auto& read_point = *session->read_point();
         if (read_point_history_.Restore(&read_point, read_time_serial_no)) {
           read_time_serial_no_ = read_time_serial_no;
         }
       }
-      RETURN_NOT_OK(BeginTransactionIfNecessary(options, deadline));
+      RETURN_NOT_OK(BeginTransactionIfNecessary(options, deadline, locality));
     }
 
     auto& session_data = GetSessionData(kind);
@@ -3113,15 +3160,17 @@ class PgClientSession::Impl {
   }
 
   Status BeginTransactionIfNecessary(
-      const PgPerformOptionsPB& options, CoarseTimePoint deadline) {
-    RETURN_NOT_OK(DoBeginTransactionIfNecessary(options, deadline));
+      const PgPerformOptionsPB& options, CoarseTimePoint deadline,
+      TransactionFullLocality locality) {
+    RETURN_NOT_OK(DoBeginTransactionIfNecessary(options, deadline, locality));
     const auto& data = GetSessionData(PgClientSessionKind::kPlain);
     data.session->SetForceConsistentRead(client::ForceConsistentRead(!data.transaction));
     return Status::OK();
   }
 
   Status DoBeginTransactionIfNecessary(
-      const PgPerformOptionsPB& options, CoarseTimePoint deadline) {
+      const PgPerformOptionsPB& options, CoarseTimePoint deadline,
+      TransactionFullLocality locality) {
     const auto isolation = static_cast<IsolationLevel>(options.isolation());
 
     auto priority = options.priority();
@@ -3167,12 +3216,13 @@ class PgClientSession::Impl {
                  : Status::OK();
     }
 
-    const client::ForceGlobalTransaction force_global_transaction{
+    const bool global_required =
         options.force_global_transaction() ||
-        (options.ddl_mode() && options.ddl_use_regular_transaction_block())};
-    TransactionProvider::EnsureGlobal ensure_global{false};
-    std::tie(txn, ensure_global) = transaction_provider_.Take<kSessionKind>(
-      force_global_transaction, deadline);
+        (options.ddl_mode() && options.ddl_use_regular_transaction_block());
+    if (global_required) {
+      locality = TransactionFullLocality::Global();
+    }
+    txn = transaction_provider_.Take<kSessionKind>(locality, deadline);
     txn->SetLogPrefixTag(kTxnLogPrefixTag, id_);
     RETURN_NOT_OK(txn->SetPgTxnStart(options.pg_txn_start_us()));
     auto* read_point = session->read_point();
@@ -3190,7 +3240,7 @@ class PgClientSession::Impl {
                           << ", new read time";
       RETURN_NOT_OK(txn->Init(isolation));
     }
-    if (ensure_global) {
+    if (global_required) {
       RETURN_NOT_OK(txn->EnsureGlobal(deadline));
     }
 
@@ -3218,7 +3268,8 @@ class PgClientSession::Impl {
                         << options.ShortDebugString();
     const auto in_txn_limit = GetInTxnLimit(options, clock().get());
     VLOG_WITH_PREFIX(5) << "using in_txn_limit_ht: " << in_txn_limit;
-    RETURN_NOT_OK(SetupSession(options, deadline, in_txn_limit));
+    RETURN_NOT_OK(SetupSession(
+        options, deadline, in_txn_limit, TransactionFullLocality::Global()));
     return Status::OK();
   }
 
@@ -3531,12 +3582,10 @@ class PgClientSession::Impl {
       plain_session_has_exclusive_object_locks_.store(false);
       DEBUG_ONLY_TEST_SYNC_POINT("PlainTxnStateReset");
     }
-    auto txn_meta_res = txn
-        ? txn->GetMetadata(deadline).get()
-        : NextObjectLockingTxnMeta(deadline, is_final_release);
-    RETURN_NOT_OK(txn_meta_res);
-    return DoReleaseObjectLocks(
-        txn_meta_res->transaction_id, subtxn_id, deadline, has_exclusive_locks);
+    auto txn_id = txn
+        ? txn->id()
+        : VERIFY_RESULT(NextObjectLockingTxnMeta(deadline, is_final_release)).transaction_id;
+    return DoReleaseObjectLocks(txn_id, subtxn_id, deadline, has_exclusive_locks);
   }
 
   Status DoReleaseObjectLocks(
@@ -3588,6 +3637,27 @@ class PgClientSession::Impl {
       object_lock_owner_.emplace(
           *object_lock_shared_, lock_owner_registry(), txn_id, status_tablet);
     }
+  }
+
+  TransactionFullLocality GetTargetTransactionLocality(const PgPerformRequestPB& request) const {
+    if (!FLAGS_use_tablespace_based_transaction_placement) {
+      return request.options().is_all_region_local()
+          ? TransactionFullLocality::RegionLocal() : TransactionFullLocality::Global();
+    }
+
+    PgTablespaceOid tablespace_oid = kInvalidOid;
+    for (const auto& op : request.ops()) {
+      PgTablespaceOid oid =
+          op.has_write() ? op.write().tablespace_oid() : op.read().tablespace_oid();
+      if (tablespace_oid == kInvalidOid) {
+        tablespace_oid = oid;
+      } else if (tablespace_oid != oid) {
+        return TransactionFullLocality::Global();
+      }
+    }
+    return tablespace_oid == kInvalidOid
+        ? TransactionFullLocality::Global()
+        : TransactionFullLocality::TablespaceLocal(tablespace_oid);
   }
 
   client::YBClient& client_;

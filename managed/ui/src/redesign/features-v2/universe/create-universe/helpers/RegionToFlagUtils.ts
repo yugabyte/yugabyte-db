@@ -69,6 +69,7 @@ const regionToCountryCode: Record<string, string> = {
     "asia-southeast4": "MY",
     "europe-southwest1": "PT",
     "northamerica-northeast2": "US",
+    "northamerica-south1": "MX",
 
     //Azure regions continued
     "eastus": "US",

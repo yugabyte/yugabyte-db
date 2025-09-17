@@ -150,16 +150,6 @@ var createGCPProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		sshUser, err := cmd.Flags().GetString("ssh-user")
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-
-		sshPort, err := cmd.Flags().GetInt("ssh-port")
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-
 		ntpServers, err := cmd.Flags().GetStringArray("ntp-servers")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -209,8 +199,6 @@ var createGCPProviderCmd = &cobra.Command{
 			AllAccessKeys: &allAccessKeys,
 			Details: &ybaclient.ProviderDetails{
 				AirGapInstall: util.GetBoolPointer(airgapInstall),
-				SshPort:       util.GetInt32Pointer(int32(sshPort)),
-				SshUser:       util.GetStringPointer(sshUser),
 				NtpServers:    util.StringSliceFromString(ntpServers),
 				CloudInfo: &ybaclient.CloudInfo{
 					Gcp: &gcpCloudInfo,
@@ -285,13 +273,6 @@ func init() {
 			"Each image bundle can be added using separate --image-bundle flag. "+
 			"Example: --image-bundle image-bundle-name=<image-bundle>::machine-image=<custom-ami>::"+
 			"ssh-user=<ssh-user>::ssh-port=22")
-
-	createGCPProviderCmd.Flags().String("ssh-user", "centos",
-		"[Optional] SSH User to access the YugabyteDB nodes.")
-	createGCPProviderCmd.Flags().Int("ssh-port", 22,
-		"[Optional] SSH Port to access the YugabyteDB nodes.")
-	createGCPProviderCmd.Flags().MarkDeprecated("ssh-port", "Use --image-bundle instead.")
-	createGCPProviderCmd.Flags().MarkDeprecated("ssh-user", "Use --image-bundle instead.")
 
 	createGCPProviderCmd.Flags().String("custom-ssh-keypair-name", "",
 		"[Optional] Provide custom key pair name to access YugabyteDB nodes. "+

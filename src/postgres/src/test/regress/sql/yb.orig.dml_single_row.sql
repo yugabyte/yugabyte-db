@@ -1,7 +1,6 @@
 -- Regression tests for UPDATE/DELETE single row operations.
 -- Expression pushdown is disabled.
 SET yb_enable_expression_pushdown to off;
-SET yb_explain_hide_non_deterministic_fields = 1;
 
 CREATE OR REPLACE PROCEDURE check_fast_path_txn(query TEXT, expected BOOL) LANGUAGE PLPGSQL AS
 $$
@@ -12,7 +11,9 @@ BEGIN
 	-- Note that buffered writes may not be flushed at the the statement boundary for
 	-- statements in stored procedures/functions, and are instead done so before the start of other
 	-- statements in the procedure or at the end of the procedure.
+	SET yb_explain_hide_non_deterministic_fields = off;
 	EXECUTE 'EXPLAIN (ANALYZE, DIST, DEBUG, COSTS OFF, FORMAT JSON)' || query INTO output;
+	RESET yb_explain_hide_non_deterministic_fields;
 	SELECT json_extract_path(output->0, 'Transaction')::TEXT INTO txn_type;
 	ASSERT (CASE WHEN txn_type = '"Fast Path"' THEN TRUE ELSE FALSE END) = expected;
 END;
@@ -977,7 +978,6 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE p_test SET k = (k + 11) % 30 WHERE k I
 
 SELECT * FROM p_test ORDER BY k;
 
-RESET yb_explain_hide_non_deterministic_fields;
 --
 -- Test to validate the transaction type in EXPLAIN.
 --

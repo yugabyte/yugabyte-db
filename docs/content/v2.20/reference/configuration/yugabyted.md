@@ -347,7 +347,7 @@ For example, delete a read replica cluster using the following command:
 
 ### connect
 
-Use the `yugabyted connect` command to connect to the cluster using [ysqlsh](../../../admin/ysqlsh/) or [ycqlsh](../../../admin/ycqlsh).
+Use the `yugabyted connect` command to connect to the cluster using [ysqlsh](../../../api/ysqlsh/) or [ycqlsh](../../../api/ycqlsh).
 
 #### Syntax
 
@@ -364,11 +364,11 @@ The following sub-commands are available for the `yugabyted connect` command:
 
 #### ysql
 
-Use the `yugabyted connect ysql` sub-command to connect to YugabyteDB with [ysqlsh](../../../admin/ysqlsh/).
+Use the `yugabyted connect ysql` sub-command to connect to YugabyteDB with [ysqlsh](../../../api/ysqlsh/).
 
 #### ycql
 
-Use the `yugabyted connect ycql` sub-command to connect to YugabyteDB with [ycqlsh](../../../admin/ycqlsh).
+Use the `yugabyted connect ycql` sub-command to connect to YugabyteDB with [ycqlsh](../../../api/ycqlsh).
 
 #### Flags
 
@@ -786,7 +786,7 @@ To create secure single-node cluster with [encryption in transit](../../../secur
     --base_dir=/Users/username/yugabyte-{{< yb-version version="v2.20" >}}/data1
 ```
 
-When authentication is enabled, the default user and password is `yugabyte` and `yugabyte` in YSQL, and `cassandra` and `cassandra` in YCQL.
+When authentication is enabled, the default user is `yugabyte` in YSQL, and `cassandra` in YCQL. When a cluster is started using the `--secure` flag, yugabyted outputs a message `Credentials File is stored at <credentials_file_path.txt>` with the location of the credentials for the default users.
 
 ### Create certificates for a secure local multi-node cluster
 
@@ -846,6 +846,8 @@ To create the cluster, do the following:
         --cloud_location=aws.us-east-1.us-east-1c
     ```
 
+When you use the `--secure` flag, yugabyted outputs a message `Credentials File is stored at <credentials_file_path.txt>` with the location of the credentials for the default users.
+
 ### Create a multi-zone cluster
 
 {{< tabpane text=true >}}
@@ -889,6 +891,8 @@ To create a secure multi-zone cluster:
         --cloud_location=aws.us-east-1.us-east-1c \
         --fault_tolerance=zone
     ```
+
+yugabyted outputs a message `Credentials File is stored at <credentials_file_path.txt>` with the location of the credentials for the default users.
 
   {{% /tab %}}
 
@@ -992,6 +996,8 @@ To create a secure multi-region cluster:
         --fault_tolerance=region
     ```
 
+yugabyted outputs a message `Credentials File is stored at <credentials_file_path.txt>` with the location of the credentials for the default users.
+
   {{% /tab %}}
 
   {{% tab header="Insecure" lang="basic-2" %}}
@@ -1089,13 +1095,13 @@ docker run -d --name yugabytedb-node3 --net yb-network \
     --base_dir=/home/yugabyte/yb_data --background=false
 ```
 
-### Create and manage read replica clusters
+## Create and manage read replica clusters
 
 To create a read replica cluster, you first create a YugabyteDB cluster; this example assumes a 3-node cluster is deployed. Refer to [Create a local multi-node cluster](#create-a-local-multi-node-cluster).
 
 You add read replica nodes to the primary cluster using the `--join` and `--read_replica` flags.
 
-#### Create a read replica cluster
+### Create a read replica cluster
 
 {{< tabpane text=true >}}
 
@@ -1232,7 +1238,7 @@ To create the read replica cluster, do the following:
 
 {{< /tabpane >}}
 
-#### Configure a new read replica cluster
+### Configure a new read replica cluster
 
 After starting all read replica nodes, configure the read replica cluster using `configure_read_replica new` command as follows:
 
@@ -1276,7 +1282,7 @@ When specifying the `--rf` flag:
   - Replication factor should be less than or equal to total read replica nodes deployed.
   - Replication factor should be greater than or equal to number of cloud locations that have a read replica node; that is, there should be at least one replica in each cloud location.
 
-#### Modifying a configured read replica cluster
+### Modify a configured read replica cluster
 
 You can modify an existing read replica cluster configuration using the `configure_read_replica modify` command and specifying new values for the `--data_placement_constraint` and `--rf` flags.
 
@@ -1292,7 +1298,7 @@ This changes the data placement configuration of the read replica cluster to hav
 
 When specifying new `--data_placement_constraint` or `--rf` values, the same rules apply.
 
-#### Delete a read replica cluster
+### Delete a read replica cluster
 
 To delete a read replica cluster, destroy all read replica nodes using the `destroy` command:
 
@@ -1310,7 +1316,7 @@ After destroying the nodes, run the `configure_read_replica delete` command to d
 ./bin/yugabyted configure_read_replica delete --base_dir=$HOME/yugabyte-{{< yb-version version="v2.20" >}}/node1
 ```
 
-### Enable and disable encryption at rest
+## Enable and disable encryption at rest
 
 To enable [encryption at rest](../../../secure/encryption-at-rest/) in a deployed local cluster, run the following command:
 
@@ -1340,7 +1346,7 @@ To disable encryption at rest in a multi-zone or multi-region cluster with this 
 ./bin/yugabyted configure encrypt_at_rest --disable
 ```
 
-### Pass additional flags to YB-TServer
+## Pass additional flags to YB-TServer
 
 Create a single-node cluster and set additional flags for the YB-TServer process:
 

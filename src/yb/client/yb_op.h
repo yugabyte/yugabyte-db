@@ -35,13 +35,12 @@
 #include <optional>
 #include <string>
 
-#include <boost/optional.hpp>
-
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/pgsql_protocol.messages.h"
 
 #include "yb/dockv/partial_row.h"
 #include "yb/common/read_hybrid_time.h"
@@ -49,6 +48,7 @@
 #include "yb/common/transaction.pb.h"
 
 #include "yb/docdb/docdb_fwd.h"
+#include "yb/dockv/partition.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -159,13 +159,11 @@ class YBOperation {
     partition_list_version_ = partition_list_version;
   }
 
-  boost::optional<PartitionListVersion> partition_list_version() const {
+  std::optional<PartitionListVersion> partition_list_version() const {
     return partition_list_version_;
   }
 
-  int64_t GetQueryId() const {
-    return reinterpret_cast<int64_t>(this);
-  }
+  int64_t GetQueryId() const { return reinterpret_cast<int64_t>(this); }
 
  protected:
   explicit YBOperation(const std::shared_ptr<YBTable>& table);
@@ -175,7 +173,7 @@ class YBOperation {
  private:
   scoped_refptr<internal::RemoteTablet> tablet_;
 
-  boost::optional<PartitionListVersion> partition_list_version_;
+  std::optional<PartitionListVersion> partition_list_version_;
 
   // Persist retryable request ID across internal retries within the same YBSession
   // to prevent duplicate writes due to internal retries.
@@ -621,5 +619,15 @@ bool IsTolerantToPartitionsChange(const YBOperation& op);
 
 Result<const PartitionKey&> TEST_FindPartitionKeyByUpperBound(
     const TablePartitionList& partitions, const PgsqlReadRequestPB& request);
+
+template <typename Req>
+inline bool AreBoundsHashCode(const Req& request) {
+  return (request.has_lower_bound() &&
+          dockv::PartitionSchema::IsValidHashPartitionKeyBound(request.lower_bound().key())) ||
+         (request.has_upper_bound() &&
+          dockv::PartitionSchema::IsValidHashPartitionKeyBound(request.upper_bound().key()));
+}
+
+template bool AreBoundsHashCode(const LWPgsqlReadRequestPB& request);
 
 }  // namespace yb::client

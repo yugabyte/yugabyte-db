@@ -20,7 +20,7 @@ type: docs
 
 Databases can be resource-intensive, consuming a lot of memory, CPU, IO, and network resources. By optimizing your YCQL, you can minimize resource use. The `ycql_stat_statements` module helps you track execution statistics for all the YCQL statements executed by a server.
 
-This view is accessible only via YSQL and provides YCQL statement metrics (similar to pg_stat_statements) that are also present on `<yb-tserver-ip>:12000/statements`. The view can be joined with YCQL wait events in the [yb_active_session_history](../../observability/active-session-history/#yb-active-session-history) view on the query ID.
+This view is accessible only via YSQL and provides YCQL statement metrics (similar to pg_stat_statements) that are also present on `<yb-tserver-ip>:12000/statements`. The view can be joined with YCQL wait events in the [yb_active_session_history](../../../launch-and-manage/monitor-and-alert/active-session-history-monitor/#yb-active-session-history) view on the query ID.
 
 This view is added in a YSQL extension `yb_ycql_utils`, which is not enabled by default.
 

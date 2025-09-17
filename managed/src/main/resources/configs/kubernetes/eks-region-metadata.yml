@@ -20,6 +20,11 @@ us-west-2:
   latitude: 45.5051
   longitude: -122.6750
 
+mx-central-1:
+ name: Queretaro (Mexico)
+ latitude: 20.5888
+ longitude: -100.3899
+
 ap-east-1:
   name: "Asia Pacific (Hong Kong)"
   latitude: 22.2793

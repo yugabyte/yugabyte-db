@@ -78,6 +78,10 @@ export const AWS_REGIONS = [
     zones: ['us-west-2a', 'us-west-2b', 'us-west-2c']
   },
   {
+    destVpcRegion: 'mx-central-1',
+    zones: ['mx-central-1a', 'mx-central-1b', 'mx-central-1c']
+  },
+  {
     destVpcRegion: 'af-south-1',
     zones: ['af-south-1a', 'af-south-1b', 'af-south-1c']
   },
@@ -144,7 +148,8 @@ export const GCP_KMS_REGIONS = [
       { value: 'us-west1', label: 'Oregon (us-west1)' },
       { value: 'us-west2', label: 'Los Angeles (us-west2)' },
       { value: 'us-west3', label: 'Salt Lake City (us-west3)' },
-      { value: 'us-west4', label: 'Las Vegas (us-west4)' }
+      { value: 'us-west4', label: 'Las Vegas (us-west4)' },
+      { value: 'northamerica-south1', label: 'Queretaro (northamerica-south1)'}
     ]
   },
   {

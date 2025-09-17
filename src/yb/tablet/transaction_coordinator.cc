@@ -310,9 +310,9 @@ class TransactionState {
     background_transaction_meta_ = std::move(new_meta);
   }
 
-  boost::optional<tserver::UpdateTransactionWaitingForStatusRequestPB> InternalWaitForRequest() {
+  std::optional<tserver::UpdateTransactionWaitingForStatusRequestPB> InternalWaitForRequest() {
     if (!forward_probe_to_detector_) {
-      return boost::none;
+      return std::nullopt;
     }
     forward_probe_to_detector_ = false;
     tserver::UpdateTransactionWaitingForStatusRequestPB req;
@@ -1265,15 +1265,14 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
       return STATUS_FORMAT(
           Aborted, "txn: $0, subtxn_set: $1 is inactive", transaction_id, subtxn_set);
     }
-    return TransactionInfo {it->first_touch(), it->pg_session_req_version()};
+    return TransactionInfo{it->first_touch(), it->pg_session_req_version()};
   }
 
-  boost::optional<TransactionInfo> GetTransactionInfo(
-      const TransactionId& transaction_id) override {
+  std::optional<TransactionInfo> GetTransactionInfo(const TransactionId& transaction_id) override {
     std::lock_guard lock(managed_mutex_);
     auto it = managed_transactions_.find(transaction_id);
     if (it == managed_transactions_.end() || !it->IsRunning()) {
-      return boost::none;
+      return std::nullopt;
     }
     return TransactionInfo{it->first_touch(), it->pg_session_req_version()};
   }
@@ -1313,19 +1312,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
       std::unique_lock<std::mutex> lock(managed_mutex_);
       const auto& index = managed_transactions_.get<FirstTouchTag>();
       for (auto it = index.begin(); it != index.end(); ++it) {
-        if (static_cast<uint32_t>(resp->txn_size()) >= req->max_num_txns()) {
-          break;
-        }
         if (it->status() != TransactionStatus::PENDING || !it->first_touch()) {
-          continue;
-        }
-        // TODO(pglocks): The coordinator could end up tracking txns with no involved tablets.
-        // Skip such transactions since they don't contribute to pg_locks output.
-        //
-        // Remove the below once https://github.com/yugabyte/yugabyte-db/issues/18787 is addressed.
-        if (it->pending_involved_tablets().empty()) {
-          LOG_WITH_PREFIX_AND_FUNC(WARNING) << "Ignoring old transaction " << it->id().ToString()
-                                            << " with no pending involved tablets.";
           continue;
         }
 
@@ -1534,7 +1521,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
       return;
     }
 
-    boost::optional<tserver::UpdateTransactionWaitingForStatusRequestPB> opt_probe = boost::none;
+    std::optional<tserver::UpdateTransactionWaitingForStatusRequestPB> opt_probe = std::nullopt;
     {
       Lock lock(this, term);
       auto it = managed_transactions_.find(*id);

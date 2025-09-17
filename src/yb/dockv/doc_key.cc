@@ -1403,10 +1403,10 @@ Result<bool> IsColocatedTableTombstoneKey(Slice doc_key) {
   return false;
 }
 
-Result<boost::optional<DocKeyHash>> DecodeDocKeyHash(const Slice& encoded_key) {
+Result<std::optional<DocKeyHash>> DecodeDocKeyHash(const Slice& encoded_key) {
   DocKey key;
   RETURN_NOT_OK(key.DecodeFrom(encoded_key, DocKeyPart::kUpToHashCode));
-  return key.has_hash() ? key.hash() : boost::optional<DocKeyHash>();
+  return key.has_hash() ? key.hash() : std::optional<DocKeyHash>();
 }
 
 }  // namespace yb::dockv

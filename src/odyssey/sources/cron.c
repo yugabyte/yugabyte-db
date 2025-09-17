@@ -336,38 +336,71 @@ static void od_cron(void *arg)
 {
 	od_cron_t *cron = arg;
 	od_instance_t *instance = cron->global->instance;
+#ifdef YB_GOOGLE_TCMALLOC
+	int tcmalloc_stats_tick = 0;
+	char *value = getenv("YB_YSQL_CONN_MGR_DUMP_HEAP_SNAPSHOT_INTERVAL");
+	int tcmalloc_stats_interval = 0;
+	if (value != NULL) {
+		tcmalloc_stats_interval = atoi(value);
+		value = getenv("YB_YSQL_CONN_MGR_TCMALLOC_SAMPLE_PERIOD");
+		if (value != NULL) {
+			uint64_t sample_period_bytes = atoi(value);
+			setTCMallocSamplePeriod(sample_period_bytes);
+		}
+	}
+#endif // YB_GOOGLE_TCMALLOC
 
 	cron->stat_time_us = machine_time_us();
-	cron->online = 1;
+	atomic_store(&cron->online, 1);
 
 	int stats_tick = 0;
 	for (;;) {
-		if (!cron->online) {
-			return;
+		if (!atomic_load(&cron->online)) {
+			break;
 		}
 
-		// we take a lock here
-		// to prevent usage routes that are deallocated while shutdown
-		pthread_mutex_lock(&cron->lock);
-		{
-			/* mark and sweep expired idle server connections */
-			od_cron_expire(cron);
+		/* mark and sweep expired idle server connections */
+		od_cron_expire(cron);
 
-			/* update statistics */
-			if (++stats_tick >= instance->config.stats_interval) {
-				od_cron_stat(cron);
-				stats_tick = 0;
-			}
-
-			od_cron_err_stat(cron);
+		/* update statistics */
+		if (++stats_tick >= instance->config.stats_interval) {
+			od_cron_stat(cron);
+			stats_tick = 0;
 		}
-		pthread_mutex_unlock(&cron->lock);
+
+		od_cron_err_stat(cron);
+
+#ifdef YB_GOOGLE_TCMALLOC
+		// No need to acquire the lock as it dumps the heap snaphot of complete conneciton
+		// manager process and doesn't care about the internal objects of process like routes, etc.
+		if (tcmalloc_stats_interval > 0 &&
+			++tcmalloc_stats_tick >= tcmalloc_stats_interval) {
+			char *tcmalloc_stats = getTCMallocStats();
+			od_logger_write_plain(&instance->logger, OD_LOG,
+				"TCMALLOC", NULL, NULL, 
+				tcmalloc_stats);
+			
+			free(tcmalloc_stats);
+			tcmalloc_stats_tick = 0;
+		}
+#endif // YB_GOOGLE_TCMALLOC
+
 		/* 1 second soft interval */
 		machine_sleep(1000);
 	}
+
+#ifdef YB_SUPPORT_FOUND
+	atomic_store(&cron->can_be_freed, true);
+#else
+	/*
+	a wait flag is used to prevent usage of routes
+	that are deallocated during shutdown
+	*/
+	machine_wait_flag_set(cron->can_be_freed);
+#endif
 }
 
-void od_cron_init(od_cron_t *cron)
+od_retcode_t od_cron_init(od_cron_t *cron)
 {
 	cron->stat_time_us = 0;
 	cron->global = NULL;
@@ -379,8 +412,16 @@ void od_cron_init(od_cron_t *cron)
 	cron->metrics->http_server = NULL;
 #endif
 
-	cron->online = 0;
-	pthread_mutex_init(&cron->lock, NULL);
+	atomic_init(&cron->online, 0);
+#ifdef YB_SUPPORT_FOUND
+	atomic_init(&cron->can_be_freed, 0);
+#else  // YB_SUPPORT_FOUND
+	cron->can_be_freed = machine_wait_flag_create();
+	if (cron->can_be_freed == NULL) {
+		return -1;
+	}
+#endif  // YB_SUPPORT_FOUND
+	return 0;
 }
 
 int od_cron_start(od_cron_t *cron, od_global_t *global)
@@ -400,8 +441,14 @@ int od_cron_start(od_cron_t *cron, od_global_t *global)
 
 od_retcode_t od_cron_stop(od_cron_t *cron)
 {
-	cron->online = 0;
-	pthread_mutex_lock(&cron->lock);
+	atomic_store(&cron->online, 0);
+#ifdef YB_SUPPORT_FOUND
+	while(!atomic_load(&cron->can_be_freed)) {
+		machine_sleep(1);
+	}
+#else
+	machine_wait_flag_wait(cron->can_be_freed, UINT32_MAX);
+#endif
 #ifdef PROM_FOUND
 	od_prom_metrics_destroy(cron->metrics);
 #endif

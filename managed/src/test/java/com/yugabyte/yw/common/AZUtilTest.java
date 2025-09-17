@@ -6,6 +6,8 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeast;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
@@ -21,6 +23,7 @@ import com.azure.storage.blob.models.BlobItem;
 import com.azure.storage.blob.models.BlobItemProperties;
 import com.azure.storage.blob.models.BlobProperties;
 import com.azure.storage.blob.models.BlobStorageException;
+import com.yugabyte.yw.common.AZUtil.CloudLocationInfoAzure;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageAzureData;
@@ -33,10 +36,12 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -560,5 +565,26 @@ public class AZUtilTest {
       inOrder.verify(mockBlobContainerClient).getBlobClient(eq(backupBlob1.getName()));
       inOrder.verify(mockBlobClient).delete();
     }
+  }
+
+  @Test
+  public void testBackupLocationWithSubDirectory() throws Exception {
+    CustomerConfigStorageAzureData azData = new CustomerConfigStorageAzureData();
+    azData.azureSasToken = "test-token";
+    azData.backupLocation = "https://test-account.blob.core.windows.net/test-container/sub/dir";
+    String azureUrl = "https://test-account.blob.core.windows.net";
+    String bucket = "test-container";
+    String cloudPath = "sub/dir";
+    CloudLocationInfoAzure cLInfo =
+        mockAZUtil.new CloudLocationInfoAzure(azureUrl, bucket, cloudPath);
+    doReturn(cLInfo).when(mockAZUtil).getCloudLocationInfo(any(), any(), any());
+    doReturn(mockBlobContainerClient).when(mockAZUtil).createBlobContainerClient(any(), any());
+    UUID randomFile = UUID.randomUUID();
+    when(mockAZUtil.getRandomUUID()).thenReturn(randomFile);
+    mockAZUtil.validate(azData, new ArrayList<>());
+    ArgumentCaptor<String> fileNameCaptor = ArgumentCaptor.forClass(String.class);
+    verify(mockBlobContainerClient, atLeast(1)).getBlobClient(fileNameCaptor.capture());
+    String expectedFileName = "sub/dir/" + randomFile.toString() + ".txt";
+    assertEquals(expectedFileName, fileNameCaptor.getValue());
   }
 }

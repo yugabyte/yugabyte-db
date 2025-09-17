@@ -5,8 +5,6 @@ INSERT INTO t (SELECT 1, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 -- Add one more distinct value to catch bugs that arise only with more than one distinct value.
 INSERT INTO t (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 
-SET yb_explain_hide_non_deterministic_fields = true;
-
 -- These tests illustrate some similarities and differences uniqkeys have with sortkeys.
 --
 -- Many of the differences arise from the fact that DISTINCT eliminates rows while

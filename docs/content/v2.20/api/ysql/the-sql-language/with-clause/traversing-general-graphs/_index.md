@@ -5,7 +5,7 @@ linkTitle: Traversing general graphs
 description: This section shows how to use a recursive CTE to traverse graphs of all kinds.
 image: /images/section_icons/api/subsection.png
 menu:
-  v2.20:
+  v2.20_api:
     identifier: traversing-general-graphs
     parent: with-clause
     weight: 50

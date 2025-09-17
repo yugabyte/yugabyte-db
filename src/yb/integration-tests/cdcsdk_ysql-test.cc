@@ -23,6 +23,7 @@
 #include "yb/integration-tests/cdcsdk_test_base.h"
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 
+#include "yb/master/sys_catalog_constants.h"
 #include "yb/master/tasks_tracker.h"
 
 #include "yb/tserver/tablet_server.h"
@@ -7830,7 +7831,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAtomicDDLDropColumn)) {
   // Sleep to ensure that second CHANGE_METADATA_OP is written to the WAL
   SleepFor(MonoDelta::FromSeconds(10));
 
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, false));
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}, MonoDelta::FromSeconds(1000)));
 
   // Call getChanges to consume the records
   auto get_changes_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
@@ -8676,7 +8677,7 @@ TEST_F(CDCSDKYsqlTest, TestPackedRowsWithLargeColumnValue) {
       "UPDATE $0 SET $1 = '$2' WHERE $3 = 1", kTableName, kValue2ColumnName, text + text,
       kKeyColumnName));
   ASSERT_OK(conn.Execute("COMMIT"));
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 30, false));
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}));
 
   std::unordered_set<std::string> record_primary_key;
   std::unordered_set<std::string> record_table_id;
@@ -8727,7 +8728,7 @@ TEST_F(CDCSDKYsqlTest, TestPackedRowsWithLargeColumnValue) {
       "UPDATE $0 SET $1 = '$2', $4 = 22, $5 = '$6' WHERE $3 = 2", kTableName, kValue2ColumnName,
       text + text, kKeyColumnName, kValueColumnName, kValue3ColumnName, text));
   ASSERT_OK(conn.Execute("COMMIT"));
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 30, false));
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}));
 
   get_changes_resp =
       ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &get_changes_resp.cdc_sdk_checkpoint()));
@@ -8780,7 +8781,7 @@ TEST_F(CDCSDKYsqlTest, TestPackedRowsWithLargeColumnValue) {
       "INSERT INTO $0($1, $2, $3, $4) VALUES (3, 4, NULL, '$5')", kTableName, kKeyColumnName,
       kValueColumnName, kValue2ColumnName, kValue3ColumnName, text));
   ASSERT_OK(conn.Execute("COMMIT"));
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 30, false));
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}));
 
   get_changes_resp =
       ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &get_changes_resp.cdc_sdk_checkpoint()));
@@ -8852,7 +8853,7 @@ TEST_F(CDCSDKYsqlTest, TestPackedRowsWithLargeColumnValueSingleShardTransaction)
   ASSERT_OK(conn.ExecuteFormat(
       "UPDATE $0 SET $1 = '$2' WHERE $3 = 1", kTableName, kValue2ColumnName, text + text,
       kKeyColumnName));
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 30, false));
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}));
 
   std::unordered_set<std::string> record_primary_key;
   std::unordered_set<std::string> record_table_id;
@@ -8897,7 +8898,7 @@ TEST_F(CDCSDKYsqlTest, TestPackedRowsWithLargeColumnValueSingleShardTransaction)
   ASSERT_OK(conn.ExecuteFormat(
       "INSERT INTO $0($1, $2, $3, $4) VALUES (3, 4, NULL, '$5')", kTableName, kKeyColumnName,
       kValueColumnName, kValue2ColumnName, kValue3ColumnName, text));
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 30, false));
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}));
   get_changes_resp =
       ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &get_changes_resp.cdc_sdk_checkpoint()));
 
@@ -12115,7 +12116,7 @@ TEST_F(CDCSDKYsqlTest, TestPollingPgCatalogTables) {
   ANNOTATE_UNPROTECTED_WRITE(
       FLAGS_TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication) = true;
 
-  ASSERT_OK(SetUpWithParams(3, 1));
+  ASSERT_OK(SetUpWithParams(3, 3));
   xrepl::StreamId stream_id =
       ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot("test_poll_catalog_tables"));
 
@@ -12195,12 +12196,13 @@ TEST_F(CDCSDKYsqlTest, TestStreamIndependenceWhilePollingCatalogTablet) {
   ASSERT_OK(conn_1.Execute("CREATE TABLE dynamic_table (id int primary key)"));
   ASSERT_OK(conn_1.Execute("ALTER PUBLICATION test_pub_1 ADD TABLE dynamic_table"));
 
-  // Call GetChanges on sys catalog tablet using stream_1. We will get 10 records: 6 corresponding
-  // to the CREATE TABLES (BEGIN, DDL, 2 INSERTS, 1 UPDATE, COMMIT) and 4 corresponding to the ALTER
-  // PUB (BEGIN, DDL, INSERT, COMMIT).
+  // Call GetChanges on sys catalog tablet using stream_1. We will get 11 records:
+  // 1 DDL corresponding to the CHANGE_METADATA_OP performed during creation of stream_2, 6 recprds
+  // corresponding to the CREATE TABLES (BEGIN, DDL, 2 INSERTS, 1 UPDATE, COMMIT) and 4 records
+  // corresponding to the ALTER PUB (BEGIN, DDL, INSERT, COMMIT).
   auto change_resp = ASSERT_RESULT(GetChangesFromMaster(stream_id_1));
   ASSERT_FALSE(change_resp.has_error());
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 10);
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 11);
 
   // Call GetChanges on sys catalog tablet using stream_2. We will not get any DMLs as sys catalog
   // tablet only has change records corresponding to the DB 1. These records will be filtered by CDC
@@ -12212,6 +12214,141 @@ TEST_F(CDCSDKYsqlTest, TestStreamIndependenceWhilePollingCatalogTablet) {
         (record.row_message().op() == RowMessage_Op_BEGIN) ||
         (record.row_message().op() == RowMessage_Op_COMMIT));
   }
+}
+
+TEST_F(CDCSDKYsqlTest, TestPollingPgCatalogTablesAfterLeaderStepDown) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication) = true;
+
+  ASSERT_OK(SetUpWithParams(3, 3, false));
+
+  // Create a table before stream creation. No change record corresponding to this DDL will be
+  // shipped from catalog tablet.
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute("CREATE TABLE test_1 (a int primary key, b text)"));
+
+  // Create a stream.
+  xrepl::StreamId stream_id =
+      ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot("test_poll_catalog_tables"));
+
+  // Change the leader master. This will ensure that GetChanges call is served by a different peer
+  // than the one which handled CreateCDCSteam.
+  ASSERT_OK(test_cluster_.mini_cluster_->StepDownMasterLeader("" /*new_leader_uuid*/));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE test_2 (a int primary key, b text)"));
+
+  auto change_resp = ASSERT_RESULT(GetChangesFromMaster(stream_id));
+
+  // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
+  // We will receive records only corresponding to the creation of test_2.
+  // Without packed row wer will receive 1 Insert in pg_class for test_2 entry, 1 insert in pg_class
+  // for pk index table and 1 Update to the originally added entry (first insert) regarding pk
+  // addition. With packed row instead of the Update we will receive another Insert.
+  int record_count[] = {0, 0, 0, 0, 0, 0, 0, 0};
+  const int expected_count_without_packed_row[] = {1, 2, 1, 0, 0, 0, 1, 1};
+  const int expected_count_with_packed_row[] = {1, 3, 0, 0, 0, 0, 1, 1};
+
+  // None of the records should belong to the DDL which was performed before stream creation.
+  for (auto record : change_resp.cdc_sdk_proto_records()) {
+    UpdateRecordCount(record, record_count);
+    if (record.row_message().op() == RowMessage_Op_INSERT ||
+        record.row_message().op() == RowMessage_Op_UPDATE) {
+      ASSERT_NE(
+          record.row_message().new_tuple().Get(1).pg_catalog_value().string_value(), "test_1");
+    }
+  }
+
+  for (int i = 0; i < 8; i++) {
+    if (FLAGS_ysql_enable_packed_row) {
+      ASSERT_EQ(record_count[i], expected_count_with_packed_row[i]);
+    } else {
+      ASSERT_EQ(record_count[i], expected_count_without_packed_row[i]);
+    }
+  }
+}
+
+TEST_F(CDCSDKYsqlTest, TestFailSettingRetentionBarriersOnApplyForCatalogTable) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_master_interval_secs) = 0;
+
+  // Set the test flag to fail setting retention barriers on apply of change metadata operation.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_cdc_setting_retention_barriers_on_apply) = true;
+
+  ASSERT_OK(SetUpWithParams(3, 3, false /* colocated */));
+
+  // Since there were no tables in the database, stream metadata will only contain the two catalog
+  // tables and we will try to set the retention barriers on sys catalog tablet only. Stream
+  // creation will fail since the safe_op_id will not be populated in the state table entry for the
+  // sys catalog tablet as the apply of change_metadata_op will fail.
+  auto stream_result = CreateConsistentSnapshotStreamWithReplicationSlot();
+  ASSERT_FALSE(stream_result.ok());
+
+  // Assert that the state table entry added for sys catalog tablet during the stream creation is
+  // deleted by UPAM after rolling back the stream creation.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto state_table_row_count = VERIFY_RESULT(GetStateTableRowCount());
+        return state_table_row_count == 0;
+      },
+      MonoDelta::FromSeconds(30 * kTimeMultiplier),
+      "Failed while waiting for state table to be empty"));
+}
+
+TEST_F(CDCSDKYsqlTest, TestConcurrentStreamCreationOnCatalogTables) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication) = true;
+
+  ASSERT_OK(SetUpWithParams(1, 1));
+
+  // Concurrently create two streams. Since there are no tables in the DB, stream metadata will only
+  // contain the catalog tables.
+  xrepl::StreamId stream_1, stream_2;
+  std::thread t1([&stream_1, this]() {
+    stream_1 = ASSERT_RESULT(this->CreateConsistentSnapshotStreamWithReplicationSlot());
+  });
+  std::thread t2([&stream_2, this]() {
+    stream_2 = ASSERT_RESULT(this->CreateConsistentSnapshotStreamWithReplicationSlot());
+  });
+
+  t1.join();
+  t2.join();
+
+  auto mini_master = ASSERT_RESULT(test_cluster_.mini_cluster_->GetLeaderMiniMaster());
+  auto tablet_peer = mini_master->tablet_peer();
+
+  // 2 entries for the sys catalog tablet and 2 slot entries.
+  auto row_count = ASSERT_RESULT(GetStateTableRowCount());
+  ASSERT_EQ(row_count, 4);
+
+  auto checkpoint_result_1 =
+      ASSERT_RESULT(GetCDCSnapshotCheckpoint(stream_1, tablet_peer->tablet_id()));
+  auto checkpoint_result_2 =
+      ASSERT_RESULT(GetCDCSnapshotCheckpoint(stream_2, tablet_peer->tablet_id()));
+
+  // Both the sys catalog tablet state table entris should have a valid checkpoint.
+  ASSERT_GT(checkpoint_result_1.checkpoint().op_id().term(), 0);
+  ASSERT_GT(checkpoint_result_1.checkpoint().op_id().index(), 0);
+  ASSERT_GT(checkpoint_result_2.checkpoint().op_id().term(), 0);
+  ASSERT_GT(checkpoint_result_2.checkpoint().op_id().index(), 0);
+
+  // Since we are setting the history barrier, cdc_sdk_safe_time should be valid.
+  ASSERT_NE(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
+
+  // Checkpoint in state table should be >= the retention boundary OpId (index).
+  ASSERT_GE(
+      checkpoint_result_1.checkpoint().op_id().index(),
+      tablet_peer->get_cdc_min_replicated_index());
+  ASSERT_GE(
+      checkpoint_result_2.checkpoint().op_id().index(),
+      tablet_peer->get_cdc_min_replicated_index());
+
+  ASSERT_EQ(
+      tablet_peer->cdc_sdk_min_checkpoint_op_id().index,
+      tablet_peer->get_cdc_min_replicated_index());
 }
 
 }  // namespace cdc

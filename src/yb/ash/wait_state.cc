@@ -661,6 +661,80 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
   FATAL_INVALID_ENUM_VALUE(WaitStateCode, code);
 }
 
+const char* GetWaitStateAuxDescription(WaitStateCode code) {
+  switch (code) {
+    case WaitStateCode::kOnCpu_Active:
+    case WaitStateCode::kOnCpu_Passive:
+    case WaitStateCode::kIdle:
+    case WaitStateCode::kRpc_Done:
+    case WaitStateCode::kDeprecated_Rpcs_WaitOnMutexInShutdown:
+    case WaitStateCode::kYBClient_WaitingOnDocDB:
+    case WaitStateCode::kYBClient_LookingUpTablet:
+    case WaitStateCode::kYBClient_WaitingOnMaster:
+    case WaitStateCode::kRetryableRequests_SaveToDisk:
+    case WaitStateCode::kMVCC_WaitForSafeTime:
+    case WaitStateCode::kLockedBatchEntry_Lock:
+    case WaitStateCode::kBackfillIndex_WaitForAFreeSlot:
+    case WaitStateCode::kCreatingNewTablet:
+    case WaitStateCode::kSaveRaftGroupMetadataToDisk:
+    case WaitStateCode::kTransactionStatusCache_DoGetCommitData:
+    case WaitStateCode::kWaitForYSQLBackendsCatalogVersion:
+    case WaitStateCode::kWriteSysCatalogSnapshotToDisk:
+    case WaitStateCode::kDumpRunningRpc_WaitOnReactor:
+    case WaitStateCode::kConflictResolution_ResolveConficts:
+    case WaitStateCode::kConflictResolution_WaitOnConflictingTxns:
+    case WaitStateCode::kRemoteBootstrap_FetchData:
+    case WaitStateCode::kRemoteBootstrap_StartRemoteSession:
+    case WaitStateCode::kRemoteBootstrap_ReadDataFromFile:
+    case WaitStateCode::kRemoteBootstrap_RateLimiter:
+    case WaitStateCode::kWaitForReadTime:
+    case WaitStateCode::kSnapshot_WaitingForFlush:
+    case WaitStateCode::kSnapshot_CleanupSnapshotDir:
+    case WaitStateCode::kSnapshot_RestoreCheckpoint:
+    case WaitStateCode::kRaft_WaitingForReplication:
+    case WaitStateCode::kRaft_ApplyingEdits:
+    case WaitStateCode::kWAL_Append:
+    case WaitStateCode::kWAL_Sync:
+    case WaitStateCode::kWAL_Read:
+    case WaitStateCode::kConsensusMeta_Flush:
+    case WaitStateCode::kReplicaState_TakeUpdateLock:
+    case WaitStateCode::kRocksDB_ReadBlockFromFile:
+    case WaitStateCode::kRocksDB_OpenFile:
+    case WaitStateCode::kRocksDB_WriteToFile:
+    case WaitStateCode::kRocksDB_Flush:
+    case WaitStateCode::kRocksDB_Compaction:
+    case WaitStateCode::kRocksDB_PriorityThreadPoolTaskPaused:
+    case WaitStateCode::kRocksDB_CloseFile:
+    case WaitStateCode::kRocksDB_RateLimiter:
+    case WaitStateCode::kRocksDB_WaitForSubcompaction:
+    case WaitStateCode::kRocksDB_NewIterator:
+    case WaitStateCode::kRocksDB_CreateCheckpoint:
+    case WaitStateCode::kXCluster_WaitingForGetChanges:
+      return "This contains tablet ID.";
+
+    case WaitStateCode::kYCQL_Parse:
+    case WaitStateCode::kYCQL_Read:
+    case WaitStateCode::kYCQL_Write:
+    case WaitStateCode::kYCQL_Analyze:
+    case WaitStateCode::kYCQL_Execute:
+      return "This contains table ID.";
+
+    case WaitStateCode::kWaitingOnTServer:
+      return "Name of the PgClient - TServer RPC.";
+
+    case WaitStateCode::kYSQLReserved:
+    case WaitStateCode::kCatalogRead:
+    case WaitStateCode::kIndexRead:
+    case WaitStateCode::kTableRead:
+    case WaitStateCode::kStorageFlush:
+    case WaitStateCode::kCatalogWrite:
+    case WaitStateCode::kIndexWrite:
+    case WaitStateCode::kTableWrite:
+      return "";
+  }
+  FATAL_INVALID_ENUM_VALUE(WaitStateCode, code);
+}
+
 namespace {
 
 WaitStateTracker flush_and_compaction_wait_states_tracker;

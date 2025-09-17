@@ -9,6 +9,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Provider.UsabilityState;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.Universe;
@@ -472,6 +473,35 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
       } catch (Exception e) {
         log.error("Failed to update BackupSchedule {} status", resourceDetails.name, e);
       }
+    }
+  }
+
+  @Override
+  public void updateProviderStatus(
+      KubernetesResourceDetails providerDetails,
+      UUID providerUUID,
+      UsabilityState state,
+      String message) {
+    try (final KubernetesClient kubernetesClient =
+        new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {
+      YBProvider providerCr =
+          operatorUtils.getResource(
+              providerDetails, kubernetesClient.resources(YBProvider.class), YBProvider.class);
+      YBProviderStatus providerStatus = providerCr.getStatus();
+      if (providerStatus == null) {
+        providerStatus = new YBProviderStatus();
+      }
+      providerStatus.setState(state.toString());
+      providerStatus.setResourceUUID(providerUUID.toString());
+      providerStatus.setMessage(message);
+      providerCr.setStatus(providerStatus);
+      kubernetesClient
+          .resources(YBProvider.class)
+          .inNamespace(providerDetails.namespace)
+          .resource(providerCr)
+          .replaceStatus();
+    } catch (Exception e) {
+      log.error("Failed to update Provider {} status", providerDetails.name, e);
     }
   }
 

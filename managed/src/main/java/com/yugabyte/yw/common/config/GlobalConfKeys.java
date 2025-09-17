@@ -486,6 +486,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Allow the usage of Loki Exporter in Telemetry Provider.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> telemetryAllowS3 =
+      new ConfKeyInfo<>(
+          "yb.telemetry.allow_s3",
+          ScopeType.GLOBAL,
+          "Allow S3 Exporter in Telemetry Provider",
+          "Allow the usage of S3 Exporter in Telemetry Provider.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Integer> hcvTokenRenewPercent =
       new ConfKeyInfo<>(
           "yb.kms.hcv_token_renew_percent",
@@ -1769,7 +1777,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Allows enabling the volume encryption feature for new universes. Currently only"
               + " supported for AWS universes.",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableYbcBackgroundUpgrade =
       new ConfKeyInfo<>(
           "ybc.upgrade.enable_background_upgrade",
@@ -1794,4 +1802,69 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Keep remote files after ansible run for debugging.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> skipRuntimeGflagValidation =
+      new ConfKeyInfo<>(
+          "yb.skip_runtime_gflag_validation",
+          ScopeType.GLOBAL,
+          "Skip Runtime GFlag validation before cluster operations.",
+          "Skip Runtime GFlag validation before cluster operations.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<List> capacityReservationOperationsAzure =
+      new ConfKeyInfo<>(
+          "yb.task.capacity_reservation_supported_operations_azure",
+          ScopeType.GLOBAL,
+          "Capacity reservations operations for azure",
+          "List of operations that use capacity reservation in azure",
+          ConfDataType.StringListType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> ybcSuccessMarkerDownloadTimeoutSecs =
+      new ConfKeyInfo<>(
+          "ybc.success_marker_download_timeout_secs",
+          ScopeType.GLOBAL,
+          "Timeout for backup success marker download",
+          "Timeout for backup success marker download from backup lcoation",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<List> capacityReservationOperationsAws =
+      new ConfKeyInfo<>(
+          "yb.task.capacity_reservation_supported_operations_aws",
+          ScopeType.GLOBAL,
+          "Capacity reservations operations for aws",
+          "List of operations that use capacity reservation in aws",
+          ConfDataType.StringListType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> verifyGFlagsOnNodeDuringUpgrade =
+      new ConfKeyInfo<>(
+          "yb.task.verify_gflags_on_node",
+          ScopeType.GLOBAL,
+          "Verify actual gflags state on node before upgrade",
+          "Verify actual gflags state on node before upgrade",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableEditAutoRollback =
+      new ConfKeyInfo<>(
+          "yb.task.enable_edit_auto_rollback",
+          ScopeType.GLOBAL,
+          "Enable Performing Automatic Rollback of Edit Operation",
+          "Enable performing automatic rollback of edit operation (if possible)",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableContinuousPlatformBackups =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.continuous_platform_backups",
+          ScopeType.GLOBAL,
+          "Enable new YBA platform backup and restore UI",
+          "Exposes a new subtab on the platform administration page where users can enable"
+              + " automated platform backups.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableSigningRegion =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_signing_region",
+          ScopeType.GLOBAL,
+          "Enable Signing Region",
+          "Enable AWS signing region for S3 access",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

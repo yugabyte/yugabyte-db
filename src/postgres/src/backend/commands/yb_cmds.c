@@ -908,6 +908,12 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 	CreateTableAddColumns(handle, desc, primary_key, is_colocated_via_database,
 						  is_tablegroup);
 
+	if (stmt->partspec != NULL)
+	{
+		/* Parent partitions do not hold data, so 1 tablet is sufficient */
+		HandleYBStatus(YBCPgCreateTableSetNumTablets(handle, 1));
+	}
+
 	/* Handle SPLIT statement, if present */
 	if (split_options)
 	{
@@ -1813,6 +1819,10 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 			 * require an ALTER.
 			 * This will need to be re-evaluated, if NULLability is propagated to docdb.
 			 */
+			*needsYBAlter = false;
+			break;
+
+		case AT_AlterConstraint:
 			*needsYBAlter = false;
 			break;
 

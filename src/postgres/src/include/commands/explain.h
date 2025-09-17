@@ -81,6 +81,7 @@ typedef struct ExplainState
 	bool		rpc;			/* print RPC stats */
 	YbExplainExecStats yb_stats;	/* hold YB-specific exec stats */
 	bool		yb_debug;		/* print debug information */
+	bool		yb_commit;		/* print commit stats (when available) */
 	bool		ybShowHints;	/* generate and display hints that will
 								 * produce the same plan as one Explained */
 	bool		ybShowUniqueIds;	/* show unique Path/Plan ids */
@@ -148,5 +149,7 @@ extern void ExplainOpenGroup(const char *objtype, const char *labelname,
 							 bool labeled, ExplainState *es);
 extern void ExplainCloseGroup(const char *objtype, const char *labelname,
 							  bool labeled, ExplainState *es);
+
+extern void YbExplainCommitStats(DestReceiver *dest);
 
 #endif							/* EXPLAIN_H */

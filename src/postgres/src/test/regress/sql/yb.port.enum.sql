@@ -302,11 +302,6 @@ ALTER TYPE bogon ADD VALUE 'bad';
 SELECT 'bad'::bogon;
 ROLLBACK;
 
--- (yifan): Non-transactional.
--- Add these two lines to change type bogus back to the expected state.
-DROP TYPE bogon;
-CREATE TYPE bogus AS ENUM('good','new');
-
 -- but a renamed value is safe to use later in same transaction
 BEGIN;
 ALTER TYPE bogus RENAME VALUE 'good' to 'bad';
@@ -321,11 +316,6 @@ CREATE TYPE bogus AS ENUM('good','bad','ugly');
 ALTER TYPE bogus RENAME TO bogon;
 select enum_range(null::bogon);
 ROLLBACK;
-
--- (yifan): Non-transactional.
--- Add this line to drop type bogon,
--- which cannot be removed in the transaction above
-DROP TYPE bogon;
 
 -- ideally, we'd allow this usage; but it requires keeping track of whether
 -- the enum type was created in the current transaction, which is expensive
@@ -344,7 +334,6 @@ DROP TABLE enumtest_child;
 DROP TABLE enumtest_parent;
 DROP TABLE enumtest;
 DROP TYPE rainbow;
-DROP TYPE bogon; -- (yifan): Non-transactional.
 
 --
 -- Verify properly cleaned up

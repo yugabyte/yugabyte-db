@@ -21,6 +21,17 @@ rightNav:
 
 ### 2025
 
+#### August 25, 2025
+
+##### New features
+
+- {{<tags/feature/ea>}}Support for [remote backup replication](../cloud-clusters/backup-clusters/#remote-backup-replication). Automatically copy all cluster backups (scheduled, incremental, and on demand) to a storage bucket in the same cloud provider. If you want to try this feature, contact {{% support-cloud %}}. Currently, only clusters deployed on GCP are supported.
+- New GCP regions: Doha and Dammam.
+
+##### Database
+
+- Early Access track updated to 2025.1.0.1 (based on PostgreSQL 15).
+
 #### July 28, 2025
 
 ##### New features
@@ -80,7 +91,7 @@ rightNav:
 
 - YugabyteDB v2.25.0.0 featuring support for PostgreSQL 15 is now available for testing on the Preview database track. To test it out, [create a Sandbox](../cloud-basics/create-clusters/create-clusters-free/) cluster with the Database version set to the Preview track.
   - [YugabyteDB v2.25.0.0 Release Notes](/preview/releases/ybdb-releases/v2.25/)
-  - [PostgreSQL 15 features](/preview/develop/pg15-features/)
+  - [PostgreSQL 15 features](/preview/api/ysql/pg15-features/)
   - [YugabyteDB Levels Up with PG15 Features](https://www.yugabyte.com/blog/postgresql-compatibility-new-yugabytedb-pg15-features/)
 - Support for configuring custom identity providers for [federated authentication](../managed-security/managed-authentication/federated-custom/), to provide single sign-on access for your account users.
 

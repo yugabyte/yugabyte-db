@@ -36,8 +36,6 @@
 #include <mutex>
 #include <string>
 
-#include <boost/optional.hpp>
-
 #include "yb/ash/wait_state.h"
 
 #include "yb/common/colocated_util.h"

@@ -1,7 +1,6 @@
 --
 -- Joins with YB Bitmap Scans (bitmap index scans + YB bitmap table scans)
 --
-SET yb_explain_hide_non_deterministic_fields = true;
 SET enable_bitmapscan = true;
 SET yb_enable_bitmapscan = true;
 SET yb_prefer_bnl = false;
@@ -327,6 +326,5 @@ SELECT c.relname FROM pg_class c, pg_namespace ns WHERE ns.oid = c.relnamespace 
 /*+ NestLoop(c ns) SeqScan(c) BitmapScan(ns) */
 SELECT c.relname FROM pg_class c, pg_namespace ns WHERE ns.oid = c.relnamespace AND c.relname = 'pg_class';
 
-RESET yb_explain_hide_non_deterministic_fields;
 RESET enable_bitmapscan;
 RESET yb_prefer_bnl;

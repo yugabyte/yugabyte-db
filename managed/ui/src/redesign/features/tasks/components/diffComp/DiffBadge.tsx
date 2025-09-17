@@ -11,7 +11,7 @@ import { FC } from 'react';
 import clsx from 'clsx';
 import { DiffOperation } from './dtos';
 import { Typography, makeStyles } from '@material-ui/core';
-import { ReactComponent as CheckIcon } from '../../../../assets/check.svg';
+import { ReactComponent as CheckIcon } from '../../../../assets/check-green.svg';
 import { ReactComponent as DeleteIcon } from '../../../../assets/Close-Bold.svg';
 import { ReactComponent as ChangeIcon } from '../../../../assets/switch-icon.svg';
 

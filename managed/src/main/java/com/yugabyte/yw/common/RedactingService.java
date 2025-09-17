@@ -74,6 +74,8 @@ public class RedactingService {
           // Kubernetes secrets
           .add("$..KUBECONFIG_PULL_SECRET_CONTENT")
           .add("$..KUBECONFIG_CONTENT")
+          .add("$..kubeConfigContent")
+          .add("$..kubernetesPullSecretContent")
           // onprem and certificate private keys
           .add("$..keyContent")
           .add("$..certContent")
@@ -114,6 +116,8 @@ public class RedactingService {
           .add("$..REFRESH_TOKEN")
           .add("$..PASSWORD")
           .add("$..ycql_ldap_bind_passwd")
+          // Dynatrace API token
+          .add("$..apiToken")
           .build();
 
   // List of json paths to any secret fields we want to redact.

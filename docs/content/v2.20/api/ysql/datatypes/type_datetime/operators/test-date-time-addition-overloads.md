@@ -4,7 +4,7 @@ headerTitle: Test the date-time addition overloads
 linkTitle: Test addition overloads
 description: Presents code that tests the date-time addition overloads. [YSQL]
 menu:
-  v2.20:
+  v2.20_api:
     identifier: test-date-time-addition-overloads
     parent: date-time-operators
     weight: 20

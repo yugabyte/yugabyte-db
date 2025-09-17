@@ -4,7 +4,7 @@ headerTitle: SAVEPOINT
 linkTitle: SAVEPOINT
 description: Use the `SAVEPOINT` statement to start a subtransaction within the current transaction.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: savepoint_create
     parent: statements
 type: docs

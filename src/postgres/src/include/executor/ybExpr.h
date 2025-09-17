@@ -48,8 +48,8 @@ extern YbcPgExpr YBCNewConstantVirtual(YbcPgStatement ybc_stmt, Oid type_id,
 extern YbcPgExpr YBCNewTupleExpr(YbcPgStatement ybc_stmt, const YbcPgTypeAttrs *type_attrs,
 								 int num_elems, YbcPgExpr *elems);
 
-extern Expr *YbExprInstantiateParams(Expr *expr, EState *estate);
-extern YbPushdownExprs *YbInstantiatePushdownParams(YbPushdownExprs *pushdown,
+extern Expr *YbExprInstantiateExprs(Expr *expr, EState *estate);
+extern YbPushdownExprs *YbInstantiatePushdownExprs(YbPushdownExprs *pushdown,
 													EState *estate);
 
 extern bool YbCanPushdownExpr(Expr *pg_expr, List **params, Oid relid);

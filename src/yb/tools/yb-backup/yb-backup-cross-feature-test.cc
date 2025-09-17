@@ -461,7 +461,7 @@ TEST_F_EX(YBBackupTest,
 
   // Flush table because it is necessary for manual tablet split.
   auto table_id = ASSERT_RESULT(GetTableId(table_name, "pre-split"));
-  ASSERT_OK(client_->FlushTables({table_id}, false, 30, false));
+  ASSERT_OK(client_->FlushTables({table_id}));
 
   // Split it && Wait for split to complete.
   constexpr int num_tablets = 4;
@@ -739,7 +739,7 @@ TEST_F_EX(YBBackupTest,
 
   // Flush table so SST file size is accurate.
   auto table_id = ASSERT_RESULT(GetTableId(table_name, "pre-split"));
-  ASSERT_OK(client_->FlushTables({table_id}, false, 30, false));
+  ASSERT_OK(client_->FlushTables({table_id}));
 
   // Wait for automatic split to complete.
   ASSERT_OK(WaitFor(
@@ -801,7 +801,7 @@ TEST_F_EX(YBBackupTest,
 
   // Flush table
   auto table_id = ASSERT_RESULT(GetTableId(table_name, "pre-split"));
-  ASSERT_OK(client_->FlushTables({table_id}, false, 30, false));
+  ASSERT_OK(client_->FlushTables({table_id}));
 
   // Split at split depth 0
   // Choose the first tablet among tablets: "" --- "4a" and "4a" --- ""
@@ -893,7 +893,7 @@ TEST_F_EX(YBBackupTest,
 
   // Flush index
   auto index_id = ASSERT_RESULT(GetTableId(index_name, "pre-split"));
-  ASSERT_OK(client_->FlushTables({index_id}, false, 30, false));
+  ASSERT_OK(client_->FlushTables({index_id}));
 
   // Split the unique index into three tablets on its hidden column:
   // tablet-1 boundaries: [ "", (null, <ybctid-1>) )
@@ -1007,7 +1007,7 @@ TEST_F_EX(YBBackupTest,
 
   // Flush index
   auto index_id = ASSERT_RESULT(GetTableId(index_name, "pre-split"));
-  ASSERT_OK(client_->FlushTables({index_id}, false, 30, false));
+  ASSERT_OK(client_->FlushTables({index_id}));
 
   // Split the index into three tablets on its hidden column:
   // tablet-1 boundaries: [ "", (200, <ybctid-1>) )
@@ -1111,7 +1111,7 @@ TEST_F_EX(YBBackupTest,
 
   // Flush index
   auto index_id = ASSERT_RESULT(GetTableId(index_name, "pre-split"));
-  ASSERT_OK(client_->FlushTables({index_id}, false, 30, false));
+  ASSERT_OK(client_->FlushTables({index_id}));
 
   // Split the GIN index into two tablets and wait for its split to complete.
   // The splits make GinNull become part of its tablets' partition bounds:
@@ -2186,7 +2186,7 @@ TEST_F_EX(
 
   // Flush table because it is necessary for manual tablet split.
   auto table_id = ASSERT_RESULT(GetTableId(table_name, "pre-split"));
-  ASSERT_OK(client_->FlushTables({table_id}, false, 30, false));
+  ASSERT_OK(client_->FlushTables({table_id}));
 
   ASSERT_OK(test_admin_client_->SplitTabletAndWait(
       default_db_, table_name, /* wait_for_parent_deletion */ false, tablets[0].tablet_id()));
@@ -2246,7 +2246,7 @@ TEST_F_EX(
   // Wait for intents and flush table because it is necessary for manual tablet split.
   ASSERT_OK(cluster_->WaitForAllIntentsApplied(10s));
   auto table_id = ASSERT_RESULT(GetTableId(table_name, "pre-split"));
-  ASSERT_OK(client_->FlushTables({table_id}, false, 30, false));
+  ASSERT_OK(client_->FlushTables({table_id}));
   constexpr bool kWaitForParentDeletion = false;
   ASSERT_OK(test_admin_client_->SplitTabletAndWait(
       default_db_, table_name, /* wait_for_parent_deletion */ kWaitForParentDeletion,

@@ -284,6 +284,24 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
 
   internal::AsyncRpcMetricsPtr async_rpc_metrics_;
 
+  mutable std::mutex async_write_query_mutex_;
+  struct AsyncWriteQuery {
+    TabletId tablet_id;
+    OpId op_id;
+
+    bool operator<(const AsyncWriteQuery& other) const {
+      return std::tie(tablet_id, op_id) < std::tie(other.tablet_id, other.op_id);
+    }
+
+    bool operator==(const AsyncWriteQuery& other) const {
+      return std::tie(tablet_id, op_id) == std::tie(other.tablet_id, other.op_id);
+    }
+  };
+  std::unordered_map<TableId, std::set<AsyncWriteQuery>> inflight_async_writes_
+      GUARDED_BY(async_write_query_mutex_);
+  Status async_write_status_ GUARDED_BY(async_write_query_mutex_);
+  mutable std::condition_variable async_write_query_completion_cv_;
+
   DISALLOW_COPY_AND_ASSIGN(YBSession);
 };
 

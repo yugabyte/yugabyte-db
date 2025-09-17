@@ -110,16 +110,9 @@ static void process_startup_options(Port *port, bool am_superuser);
 static void process_settings(Oid databaseid, Oid roleid);
 
 /* YB functions */
-static void InitPostgresImpl(const char *in_dbname, Oid dboid,
-							 const char *username, Oid useroid,
-							 bool load_session_libraries,
-							 bool override_allow_connections,
-							 char *out_dbname,
-							 uint64_t *yb_session_id,
-							 bool *yb_sys_table_prefetching_started);
-static void YbEnsureSysTablePrefetchingStopped();
 static void YbPresetDatabaseCollation(HeapTuple tuple);
-static bool YbUseTserverResponseCacheForAuth(int64_t shared_catalog_version);
+
+static long YbNumAuthorizedConnections = 0L;
 
 /*** InitPostgres support ***/
 
@@ -334,6 +327,9 @@ PerformAuthentication(Port *port)
 		ereport(LOG, errmsg_internal("%s", logmsg.data));
 		pfree(logmsg.data);
 	}
+
+	if (IsYugaByteEnabled())
+		YbNumAuthorizedConnections++;
 
 	set_ps_display("startup");
 
@@ -726,25 +722,10 @@ InitPostgres(const char *in_dbname, Oid dboid,
 			 const char *username, Oid useroid,
 			 bool load_session_libraries,
 			 bool override_allow_connections,
-			 char *out_dbname,
-			 uint64_t *yb_session_id)
+			 char *out_dbname)
 {
-	bool		sys_table_prefetching_started = false;
-
-	PG_TRY();
-	{
-		InitPostgresImpl(in_dbname, dboid, username, useroid,
-						 load_session_libraries, override_allow_connections,
-						 out_dbname, yb_session_id,
-						 &sys_table_prefetching_started);
-	}
-	PG_CATCH();
-	{
-		YbEnsureSysTablePrefetchingStopped();
-		PG_RE_THROW();
-	}
-	PG_END_TRY();
-	YbEnsureSysTablePrefetchingStopped();
+	YbInitPostgres(in_dbname, dboid, username, useroid, load_session_libraries,
+				   override_allow_connections, out_dbname, NULL);
 }
 
 static void
@@ -753,7 +734,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 				 bool load_session_libraries,
 				 bool override_allow_connections,
 				 char *out_dbname,
-				 uint64_t *yb_session_id,
+				 const YbcPgInitPostgresInfo *yb_init_info,
 				 bool *yb_sys_table_prefetching_started)
 {
 	bool		bootstrap = IsBootstrapProcessingMode();
@@ -862,10 +843,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		YbAshSetOneTimeMetadata();
 
 	/* Connect to YugaByte cluster. */
-	if (bootstrap)
-		YBInitPostgresBackend("postgres", yb_session_id);
-	else
-		YBInitPostgresBackend("postgres", yb_session_id);
+	YBInitPostgresBackend("postgres", yb_init_info);
 
 	if (IsYugaByteEnabled() && !bootstrap)
 	{
@@ -1433,43 +1411,37 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		CommitTransactionCommand();
 }
 
-static bool
-YbUseTserverResponseCacheForAuth(int64_t shared_catalog_version)
-{
-	if (!YbIsAuthBackend())
-		return false;
-	/* We should only see auth backend if connection manager is enabled. */
-	Assert(YbIsYsqlConnMgrEnabled());
-
-	if (!YbCheckTserverResponseCacheForAuthGflags())
-		return false;
-
-	/*
-	 * For now we do not allow using tserver response cache for auth processing
-	 * if login profile is enabled. This is because the login process itself
-	 * writes to pg_yb_role_profile table but this is not done under a DDL
-	 * statement context. As a result the catalog version isn't incremented
-	 * but the tserver response cache becomes stale. Newer login processing
-	 * will continue to use the stale cache which isn't right.
-	 */
-	if (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist)
-		return false;
-
-	/*
-	 * Tserver response cache requires a valid catalog version. Use the shared
-	 * memory catalog version as an approximation of the latest master catalog
-	 * version.
-	 */
-	if (shared_catalog_version == YB_CATCACHE_VERSION_UNINITIALIZED)
-		return false;
-	return true;
-}
-
 static void
 YbEnsureSysTablePrefetchingStopped()
 {
 	if (IsYugaByteEnabled() && YBCIsSysTablePrefetchingStarted())
 		YBCStopSysTablePrefetching();
+}
+
+void
+YbInitPostgres(const char *in_dbname, Oid dboid,
+			 const char *username, Oid useroid,
+			 bool load_session_libraries,
+			 bool override_allow_connections,
+			 char *out_dbname, const YbcPgInitPostgresInfo *yb_init_info)
+{
+	bool sys_table_prefetching_started = false;
+
+	PG_TRY();
+	{
+		InitPostgresImpl(in_dbname, dboid, username, useroid,
+						 load_session_libraries, override_allow_connections,
+						 out_dbname, yb_init_info, &sys_table_prefetching_started);
+	}
+	PG_CATCH();
+	{
+		YbEnsureSysTablePrefetchingStopped();
+		YBCUpdateInitPostgresMetrics();
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+	YbEnsureSysTablePrefetchingStopped();
+	YBCUpdateInitPostgresMetrics();
 }
 
 /*
@@ -1514,6 +1486,12 @@ YbPresetDatabaseCollation(HeapTuple tuple)
 	default_locale.provider = dbform->datlocprovider;
 	default_locale.deterministic = true;
 	yb_default_collation_resolved = true;
+}
+
+long
+YbGetAuthorizedConnections()
+{
+	return YbNumAuthorizedConnections;
 }
 
 /*

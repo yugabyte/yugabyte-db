@@ -4,7 +4,7 @@ linkTitle: synthetic-data.sql
 headerTitle: Linear regression analysis scatter-plot on synthetic data
 description: Show straight line computer by linear regression analysis the best fits a synthetically noisy straight line
 menu:
-  v2.20:
+  v2.20_api:
     identifier: synthetic-data-sql
     parent: analysis-scripts
     weight: 20

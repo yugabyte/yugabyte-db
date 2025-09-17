@@ -44,8 +44,8 @@ class SchedulerTest : public RpcTestBase {
   }
 
  protected:
-  boost::optional<IoThreadPool> pool_;
-  boost::optional<Scheduler> scheduler_;
+  std::optional<IoThreadPool> pool_;
+  std::optional<Scheduler> scheduler_;
 };
 
 const int kCycles = 1000;

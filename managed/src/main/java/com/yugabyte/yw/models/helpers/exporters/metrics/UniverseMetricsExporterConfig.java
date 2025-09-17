@@ -40,5 +40,17 @@ public class UniverseMetricsExporterConfig extends UniverseExporterConfig {
               + " differently.",
       accessMode = READ_WRITE,
       example = "ybdb.")
-  private String metricsPrefix = "ybdb.";
+  private String metricsPrefix = "";
+
+  @ApiModelProperty(
+      value = "Memory limit in MiB for the OpenTelemetry Collector process in the config file.",
+      accessMode = READ_WRITE,
+      example = "2048")
+  private Integer memoryLimitMib = 2048;
+
+  @ApiModelProperty(
+      value = "Check interval in seconds for the MemoryLimiterProcessor.",
+      accessMode = READ_WRITE,
+      example = "10")
+  private Integer memoryLimitCheckIntervalSeconds = 10;
 }

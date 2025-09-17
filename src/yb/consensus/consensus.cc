@@ -98,15 +98,13 @@ Status Consensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDownRes
   return STATUS(NotSupported, "Not implemented.");
 }
 
-Status Consensus::ChangeConfig(const ChangeConfigRequestPB& req,
-                               const StdStatusCallback& client_cb,
-                               boost::optional<tserver::TabletServerErrorPB::Code>* error) {
+Status Consensus::ChangeConfig(
+    const ChangeConfigRequestPB& req, const StdStatusCallback& client_cb,
+    std::optional<tserver::TabletServerErrorPB::Code>* error) {
   return STATUS(NotSupported, "Not implemented.");
 }
 
-Status Consensus::ConsensusFaultHooks::PreStart() {
-  return Status::OK();
-}
+Status Consensus::ConsensusFaultHooks::PreStart() { return Status::OK(); }
 
 Status Consensus::ConsensusFaultHooks::PostStart() {
   return Status::OK();

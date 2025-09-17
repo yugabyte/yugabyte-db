@@ -1834,7 +1834,7 @@ yb-admin \
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *namespace-name*: The namespace on which the DB stream ID is to be created.
 * EXPLICIT: Checkpointing type on the server. See [Creating stream in EXPLICIT checkpointing mode](#creating-stream-in-explicit-checkpointing-mode).
-* *before-image-mode*: Record type indicating to the server that the stream should send only the new values of the changed columns. Refer to [Before image modes](../../develop/change-data-capture/using-yugabytedb-grpc-replication/cdc-get-started/#before-image-modes).
+* *before-image-mode*: Record type indicating to the server that the stream should send only the new values of the changed columns. Refer to [Before image modes](../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/cdc-get-started/#before-image-modes).
 
 A successful operation of the above command returns a message with a DB stream ID:
 

@@ -160,7 +160,7 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
 
   virtual std::vector<std::shared_ptr<server::MonitoredTask>> GetRecentTasks() = 0;
 
-  virtual Result<boost::optional<TablespaceId>> GetTablespaceForTable(
+  virtual Result<std::optional<TablespaceId>> GetTablespaceForTable(
       const scoped_refptr<TableInfo>& table) const = 0;
 
   virtual bool IsLoadBalancerEnabled() = 0;

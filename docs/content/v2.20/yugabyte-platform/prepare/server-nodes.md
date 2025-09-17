@@ -1,5 +1,5 @@
 ---
-title: Requirements for servers for universe nodes
+title: Requirements for servers for database nodes
 headerTitle: Prerequisites to deploy YugabyteDB on a VM
 linkTitle: Servers for nodes
 description: Prerequisites for nodes to be managed by YugabyteDB Anywhere.

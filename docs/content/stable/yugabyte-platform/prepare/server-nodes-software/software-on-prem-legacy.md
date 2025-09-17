@@ -1,9 +1,9 @@
 ---
-title: YugabyteDB Anywhere on-premises node provisioning
+title: YugabyteDB Anywhere legacy on-premises node provisioning
 headerTitle: Legacy provisioning
 linkTitle: Legacy provisioning
-description: Software requirements for on-premises provider nodes.
-headContent: How to meet the software prerequisites for database nodes
+description: Software requirements for on-premises provider legacy provisioning.
+headContent: How to provision on-premises database nodes
 menu:
   stable_yugabyte-platform:
     identifier: software-on-prem-1-intro

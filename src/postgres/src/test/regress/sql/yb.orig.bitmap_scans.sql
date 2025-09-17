@@ -1,7 +1,6 @@
 --
 -- YB Bitmap Scans (bitmap index scans + YB bitmap table scans)
 --
-SET yb_explain_hide_non_deterministic_fields = true;
 SET yb_enable_bitmapscan = true;
 SET enable_bitmapscan = true;
 
@@ -503,5 +502,4 @@ ANALYZE test_and;
 /*+ BitmapScan(t) */ EXPLAIN (ANALYZE, SUMMARY OFF, COSTS OFF) SELECT * FROM test_and t WHERE (b < 3 AND a < 5) OR (b > 16 AND a < 6);
 
 RESET yb_enable_base_scans_cost_model;
-RESET yb_explain_hide_non_deterministic_fields;
 RESET enable_bitmapscan;

@@ -11,7 +11,6 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CertReloadTaskCreator;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert.UpdateRootCertAction;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseConfig;
 import com.yugabyte.yw.common.NodeManager;
@@ -190,19 +189,6 @@ public class CertsRotate extends UpgradeTaskBase {
         getTaskSubGroupType(),
         taskParams().rootCARotationType,
         taskParams().clientRootCARotationType);
-  }
-
-  private void createUniverseUpdateRootCertTask(UpdateRootCertAction updateAction) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("UniverseUpdateRootCert");
-    UniverseUpdateRootCert.Params params = new UniverseUpdateRootCert.Params();
-    params.setUniverseUUID(taskParams().getUniverseUUID());
-    params.rootCA = taskParams().rootCA;
-    params.action = updateAction;
-    UniverseUpdateRootCert task = createTask(UniverseUpdateRootCert.class);
-    task.initialize(params);
-    subTaskGroup.addSubTask(task);
-    subTaskGroup.setSubTaskGroupType(getTaskSubGroupType());
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
   private void createUpdateCertDirsTask(Collection<NodeDetails> nodes, ServerType serverType) {

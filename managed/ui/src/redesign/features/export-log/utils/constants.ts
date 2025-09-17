@@ -5,7 +5,8 @@ export const TP_FRIENDLY_NAMES = {
   [TelemetryProviderType.SPLUNK]: 'Splunk',
   [TelemetryProviderType.AWS_CLOUDWATCH]: 'AWS CloudWatch',
   [TelemetryProviderType.GCP_CLOUD_MONITORING]: 'GCP Cloud Logging',
-  [TelemetryProviderType.LOKI]: 'Loki'
+  [TelemetryProviderType.LOKI]: 'Loki',
+  [TelemetryProviderType.DYNATRACE]: 'Dynatrace'
 };
 
 export const TELEMETRY_PROVIDER_OPTIONS = [
@@ -28,6 +29,10 @@ export const TELEMETRY_PROVIDER_OPTIONS = [
   {
     label: 'Loki',
     value: TelemetryProviderType.LOKI
+  },
+  {
+    label: 'Dynatrace',
+    value: TelemetryProviderType.DYNATRACE
   }
 ];
 

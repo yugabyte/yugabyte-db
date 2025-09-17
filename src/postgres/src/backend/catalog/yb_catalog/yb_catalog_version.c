@@ -23,8 +23,10 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_yb_catalog_version.h"
+#include "catalog/pg_yb_invalidation_messages.h"
 #include "catalog/schemapg.h"
 #include "catalog/yb_catalog_version.h"
+#include "executor/spi.h"
 #include "executor/ybExpr.h"
 #include "executor/ybModifyTable.h"
 #include "miscadmin.h"
@@ -760,6 +762,57 @@ YbCreateMasterDBCatalogVersionTableEntry(Oid db_oid)
 }
 
 void
+YbDeleteMasterDBInvalidationMessagesTableEntries(Oid db_oid)
+{
+	/*
+	 * Connect to SPI manager
+	 */
+	if (SPI_connect() != SPI_OK_CONNECT)
+		elog(ERROR, "SPI_connect failed");
+	char		query[100];
+
+	sprintf(query, "DELETE FROM pg_catalog.pg_yb_invalidation_messages WHERE db_oid = %u", db_oid);
+	SPIPlanPtr	plan = SPI_prepare(query, 0, NULL);
+
+	if (plan == NULL)
+		elog(ERROR, "SPI_prepare failed for \"%s\"", query);
+
+	bool		saved_yb_is_calling_internal_sql_for_ddl = yb_is_calling_internal_sql_for_ddl;
+	Oid			save_userid;
+	int			save_sec_context;
+
+	GetUserIdAndSecContext(&save_userid, &save_sec_context);
+	SetUserIdAndSecContext(BOOTSTRAP_SUPERUSERID,
+						   SECURITY_RESTRICTED_OPERATION);
+	yb_is_calling_internal_sql_for_ddl = true;
+	PG_TRY();
+	{
+		int			spirc = SPI_execute_plan(plan, NULL, NULL, false, 0);
+
+		yb_is_calling_internal_sql_for_ddl = saved_yb_is_calling_internal_sql_for_ddl;
+		SetUserIdAndSecContext(save_userid, save_sec_context);
+		if (spirc != SPI_OK_DELETE)
+			elog(ERROR, "SPI_execute_plan failed for \"%s\"", query);
+		ereport((*YBCGetGFlags()->log_ysql_catalog_versions ? LOG : DEBUG1),
+				(errmsg("%s: deleted %lu invalidation messages for database %u",
+						__func__, SPI_processed, db_oid)));
+	}
+	PG_CATCH();
+	{
+		yb_is_calling_internal_sql_for_ddl = saved_yb_is_calling_internal_sql_for_ddl;
+		SetUserIdAndSecContext(save_userid, save_sec_context);
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	/*
+	 * Disconnect from SPI manager
+	 */
+	if (SPI_finish() != SPI_OK_FINISH)
+		elog(ERROR, "SPI_finish failed");
+}
+
+void
 YbDeleteMasterDBCatalogVersionTableEntry(Oid db_oid)
 {
 	Assert(YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE);
@@ -798,6 +851,14 @@ YbDeleteMasterDBCatalogVersionTableEntry(Oid db_oid)
 	Assert(rows_affected_count == 1);
 
 	RelationClose(rel);
+
+	/*
+	 * When invalidation messages are enabled, we also need to delete the
+	 * invalidation messages stored in pg_yb_invalidation_messages table
+	 * for db_oid.
+	 */
+	if (YbIsInvalidationMessageEnabled() && YbInvalidationMessagesTableExists())
+		YbDeleteMasterDBInvalidationMessagesTableEntries(db_oid);
 }
 
 YbCatalogVersionType

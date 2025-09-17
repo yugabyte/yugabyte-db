@@ -65,6 +65,7 @@ public class YNPProvisioning extends AbstractTaskBase {
     public String sshUser;
     public UUID customerUuid;
     public String nodeAgentInstallDir;
+    public boolean isYbPrebuiltImage;
   }
 
   @Override
@@ -91,6 +92,7 @@ public class YNPProvisioning extends AbstractTaskBase {
       ynpNode.put("is_install_node_agent", false);
       ynpNode.put("yb_user_id", "1994");
       ynpNode.put("is_airgap", provider.getDetails().airGapInstall);
+      ynpNode.put("is_yb_prebuilt_image", taskParams().isYbPrebuiltImage);
       ynpNode.put(
           "tmp_directory",
           confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory));
@@ -102,15 +104,17 @@ public class YNPProvisioning extends AbstractTaskBase {
       boolean enableEarlyoomFeature =
           confGetter.getConfForScope(customer, CustomerConfKeys.enableEarlyoomFeature);
       if (enableEarlyoomFeature) {
-        ObjectNode earlyoomNode = mapper.createObjectNode();
         AdditionalServicesStateData data =
             universe.getUniverseDetails().additionalServicesStateData;
-        if (data != null && data.isEarlyoomEnabled()) {
-          earlyoomNode.put("earlyoom_enable", true);
-          earlyoomNode.put(
-              "earlyoom_args", AdditionalServicesStateData.toArgs(data.getEarlyoomConfig()));
+        if (data != null) {
+          ObjectNode earlyoomNode = mapper.createObjectNode();
+          if (data.isEarlyoomEnabled()) {
+            earlyoomNode.put("earlyoom_enable", true);
+            earlyoomNode.put(
+                "earlyoom_args", AdditionalServicesStateData.toArgs(data.getEarlyoomConfig()));
+          }
+          ynpNode.set("earlyoom", earlyoomNode);
         }
-        ynpNode.set("earlyoom", earlyoomNode);
       }
       if (provider.getDetails().getNtpServers() != null
           && !provider.getDetails().getNtpServers().isEmpty()) {

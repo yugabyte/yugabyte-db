@@ -15,8 +15,6 @@
 
 #include <memory>
 
-#include <boost/optional.hpp>
-
 #include "yb/common/common_fwd.h"
 
 #include "yb/docdb/docdb_fwd.h"

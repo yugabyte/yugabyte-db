@@ -4,7 +4,7 @@ headerTitle: CLOSE
 linkTitle: CLOSE
 description: Use the CLOSE statement to 'drop' a cursor.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: dml_close
     parent: statements
 type: docs

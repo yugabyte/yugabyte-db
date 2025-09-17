@@ -302,10 +302,9 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       // disabled, so we enable it again in case of errors.
       if (!isLoadBalancerOn) {
         setTaskQueueAndRun(
-            () -> {
-              createLoadBalancerStateChangeTask(true)
-                  .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-            });
+            () ->
+                createLoadBalancerStateChangeTask(true)
+                    .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse));
       }
       if (onFailureTask != null) {
         log.info("Running on failure upgrade task");
@@ -1079,7 +1078,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
 
     String errorMsg =
         GFlagsUtil.checkForbiddenToOverride(
-            node, params, userIntent, universe, newGFlags, config, confGetter);
+            node, params, userIntent, universe, newGFlags, confGetter);
     if (errorMsg != null) {
       throw new PlatformServiceException(
           BAD_REQUEST,
@@ -1278,5 +1277,6 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     Consumer<NodeDetails> postAction;
     YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState;
     UUID rootCAUUID;
+    Boolean useYBDBInbuiltYbc;
   }
 }

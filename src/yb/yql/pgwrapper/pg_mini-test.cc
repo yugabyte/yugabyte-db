@@ -83,6 +83,7 @@ DECLARE_bool(TEST_enable_pg_client_mock);
 DECLARE_bool(TEST_fail_batcher_rpc);
 DECLARE_bool(TEST_force_master_leader_resolution);
 DECLARE_bool(TEST_no_schedule_remove_intents);
+DECLARE_bool(TEST_request_unknown_tables_during_perform);
 DECLARE_bool(delete_intents_sst_files);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_tracing);
@@ -2985,6 +2986,21 @@ TEST_F(PgMiniTest, KillPGInTheMiddleOfBatcherOperation) {
   ASSERT_TRUE(select_complete.load());
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_batcher_rpc) = false;
+}
+
+// The test checks absence of t-server crash in case some tables can't be opened during
+// read/write operation
+TEST_F_EX(PgMiniTest, OpenTableFailureDuringPerform, PgMiniTestSingleNode) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY)"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_request_unknown_tables_during_perform) = true;
+  auto has_object_not_found_errors = false;
+  for ([[maybe_unused]] auto _  : std::views::iota(0, 10)) {
+    auto res = conn.FetchRows<int32_t>("SELECT * FROM t");
+    ASSERT_TRUE(res.ok() || res.ToString().contains("OBJECT_NOT_FOUND"));
+    has_object_not_found_errors |= !res.ok();
+  }
+  ASSERT_TRUE(has_object_not_found_errors);
 }
 
 }  // namespace yb::pgwrapper

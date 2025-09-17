@@ -466,7 +466,7 @@ ALTER ROLE test_role;
 SET yb_non_ddl_txn_for_sys_tables_allowed=1;
 DELETE FROM pg_yb_invalidation_messages;
 SET yb_non_ddl_txn_for_sys_tables_allowed=0;
-\set display_all 'SELECT * FROM pg_yb_catalog_version; SELECT db_oid, current_version, messages FROM pg_yb_invalidation_messages'
+\set display_all 'SELECT datname, current_version, last_breaking_version FROM pg_yb_catalog_version JOIN pg_database ON db_oid = oid ORDER BY datname; SELECT datname, current_version, messages FROM pg_yb_invalidation_messages JOIN pg_database ON db_oid = oid ORDER BY datname'
 SET yb_non_ddl_txn_for_sys_tables_allowed TO on;
 SET yb_disable_catalog_version_check TO on;
 

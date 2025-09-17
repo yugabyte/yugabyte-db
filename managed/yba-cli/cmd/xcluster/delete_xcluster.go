@@ -62,7 +62,7 @@ var deleteXClusterCmd = &cobra.Command{
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(
 				response,
-				err, "XCluster", "Delete")
+				err, "xCluster", "Delete")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 

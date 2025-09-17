@@ -1822,23 +1822,19 @@ void TabletServiceAdminImpl::DeleteTablet(const DeleteTabletRequestPB* req,
             << ": Processing DeleteTablet with delete_type " << TabletDataState_Name(delete_type)
             << (req->has_reason() ? (" (" + req->reason() + ")") : "")
             << (req->hide_only() ? " (Hide only)" : "")
-            << (req->keep_data() ? " (Not deleting data)" : "")
-            << " from " << context.requestor_string();
+            << (req->keep_data() ? " (Not deleting data)" : "") << " from "
+            << context.requestor_string();
   VLOG(1) << "Full request: " << req->DebugString();
 
-  boost::optional<int64_t> cas_config_opid_index_less_or_equal;
+  std::optional<int64_t> cas_config_opid_index_less_or_equal;
   if (req->has_cas_config_opid_index_less_or_equal()) {
     cas_config_opid_index_less_or_equal = req->cas_config_opid_index_less_or_equal();
   }
-  boost::optional<TabletServerErrorPB::Code> error_code;
+  std::optional<TabletServerErrorPB::Code> error_code;
   Status s = server_->tablet_manager()->DeleteTablet(
-      req->tablet_id(),
-      delete_type,
+      req->tablet_id(), delete_type,
       tablet::ShouldAbortActiveTransactions(req->should_abort_active_txns()),
-      cas_config_opid_index_less_or_equal,
-      req->hide_only(),
-      req->keep_data(),
-      &error_code);
+      cas_config_opid_index_less_or_equal, req->hide_only(), req->keep_data(), &error_code);
   if (PREDICT_FALSE(!s.ok())) {
     HandleErrorResponse(resp, &context, s, error_code);
     return;
@@ -1896,19 +1892,15 @@ Status TabletsFlusherBase::Run() {
   return Status::OK();
 }
 
-inline tablet::FlushFlags CreateFlushFlags(const FlushTabletsRequestPB& req) {
-  return req.regular_only() ? tablet::FlushFlags::kRegular : tablet::FlushFlags::kAllDbs;
-}
-
 class TabletsFlusher final : public TabletsFlusherBase {
  public:
   explicit TabletsFlusher(
     const TabletServiceAdminImpl& service,
       const TSTabletManager::TabletPtrs& tablets,
-      const FlushTabletsRequestPB& req,
+      const tablet::FlushFlags flush_flags,
       FlushTabletsResponsePB& resp)
       : TabletsFlusherBase(service, tablets, resp),
-        flush_flags_(CreateFlushFlags(req)) {
+        flush_flags_(flush_flags) {
     VLOG_WITH_PREFIX(1) << "TabletsFlusher: flush_flags: " << std::to_underlying(flush_flags_);
   }
 
@@ -1924,20 +1916,15 @@ class TabletsFlusher final : public TabletsFlusherBase {
   const tablet::FlushFlags flush_flags_;
 };
 
-inline auto CopyVectorIndexIds(const FlushTabletsRequestPB& req) {
-  return req.all_vector_indexes() ?
-      TableIds{} : TableIds{ req.vector_index_ids().begin(), req.vector_index_ids().end() };
-}
-
 class VectorIndexFlusher : public TabletsFlusherBase {
  public:
   explicit VectorIndexFlusher(
       const TabletServiceAdminImpl& service,
       const TSTabletManager::TabletPtrs& tablets,
-      const FlushTabletsRequestPB& req,
+      TableIds&& vector_index_ids,
       FlushTabletsResponsePB& resp)
       : TabletsFlusherBase(service, tablets, resp),
-        vector_index_ids_(CopyVectorIndexIds(req)) {
+        vector_index_ids_(std::move(vector_index_ids)) {
     VLOG_WITH_PREFIX(1) << "VectorIndexFlusher: vector index ids: "
                         << (vector_index_ids_.size() ? AsString(vector_index_ids_) : "all");
   }
@@ -1969,12 +1956,21 @@ class VectorIndexFlusher : public TabletsFlusherBase {
     return it->second.WaitForFlush();
   }
 
-  std::vector<TableId> vector_index_ids_;
+  TableIds vector_index_ids_;
   std::unordered_map<TabletId, tablet::VectorIndexList> tablet_vector_indexes_;
 };
 
-bool HasVectorIndex(const FlushTabletsRequestPB& req) {
-  return req.all_vector_indexes() || req.vector_index_ids_size();
+bool IsRegularOnly(const FlushTabletsRequestPB& req) {
+  return req.flags() == tablet::FLUSH_COMPACT_REGULAR_FOR_TEST_ONLY;
+}
+
+bool IsVectorIndexOnly(const FlushTabletsRequestPB& req) {
+  return (req.flags() == tablet::FLUSH_COMPACT_VECTOR_INDEX) ||
+         (req.flags() == tablet::FLUSH_COMPACT_DEFAULT && req.vector_index_ids_size());
+}
+
+auto CopyVectorIndexIds(const FlushTabletsRequestPB& req) {
+  return TableIds{ req.vector_index_ids().begin(), req.vector_index_ids().end() };
 }
 
 Status TriggerFlush(
@@ -1982,8 +1978,71 @@ Status TriggerFlush(
     const TSTabletManager::TabletPtrs& tablets,
     const FlushTabletsRequestPB& req,
     FlushTabletsResponsePB& resp) {
-  return HasVectorIndex(req) ? VectorIndexFlusher{ service, tablets, req, resp }.Run()
-                             : TabletsFlusher{ service, tablets, req, resp }.Run();
+  // FlushCompactFlags for FLUSH operation:
+  // 1. FLUSH_COMPACT_DEFAULT
+  //    Flush regular + intents + vector indexes. If vector_index_ids field is not empty,
+  //    the value is treated as FLUSH_COMPACT_VECTOR_INDEX.
+  //
+  // 2. FLUSH_COMPACT_REGULAR_FOR_TEST_ONLY
+  //    Flush only regular db, used in tests only.
+  //
+  // 3. FLUSH_COMPACT_VECTOR_INDEX
+  //    Flush only vector indexes. Empty vector_index_ids means all vector indexes.
+  //
+  // 4. FLUSH_COMPACT_ALL
+  //    Flush regular + intents + vector indexes. Empty vector_index_ids means all vector indexes.
+  DCHECK_EQ(req.operation(), FlushTabletsRequestPB::FLUSH);
+
+  if (IsVectorIndexOnly(req)) {
+    return VectorIndexFlusher{ service, tablets, CopyVectorIndexIds(req), resp }.Run();
+  }
+
+  const tablet::FlushFlags flush_flags =
+      IsRegularOnly(req) ? tablet::FlushFlags::kRegular : tablet::FlushFlags::kAllDbs;
+  return TabletsFlusher{ service, tablets, flush_flags, resp }.Run();
+}
+
+TableIdsPtr VectorIndexesForCompaction(const FlushTabletsRequestPB& req) {
+  // If vector indexes are specfied in the request, return them unconditionally.
+  // May return empty collection to indicate "all vectors".
+  if (req.vector_index_ids_size() ||
+      req.flags() & tablet::FLUSH_COMPACT_VECTOR_INDEX) {
+    return std::make_shared<TableIds>(CopyVectorIndexIds(req));
+  }
+
+  return nullptr;
+}
+
+Status TriggerCompact(
+    TSTabletManager& tablet_manager,
+    const TSTabletManager::TabletPtrs& tablets,
+    const FlushTabletsRequestPB& req) {
+  // FlushCompactFlags for COMPACT operation:
+  // 1. FLUSH_COMPACT_DEFAULT
+  //    Compact ONLY regular and intents DB. Please mention, vector index is NOT compacted!
+  //    If vector_index_ids field is not empty, the value is treated as FLUSH_COMPACT_VECTOR_INDEX.
+  //
+  // 2. FLUSH_COMPACT_REGULAR_FOR_TEST_ONLY
+  //    Not applicable for COMPACT operation.
+  //
+  // 3. FLUSH_COMPACT_VECTOR_INDEX
+  //    Compact only vector indexes. Empty vector_index_ids means all vector indexes.
+  //
+  // 4. FLUSH_COMPACT_ALL
+  //    Compact regular + intents + vector indexes. Empty vector_index_ids means all vector indexes.
+  DCHECK_EQ(req.operation(), FlushTabletsRequestPB::COMPACT);
+  SCHECK_FORMAT(
+      req.flags() != tablet::FLUSH_COMPACT_REGULAR_FOR_TEST_ONLY, InvalidArgument,
+      "Flag [$0] is not supported for COMPACT operation", req.flags());
+
+  AdminCompactionOptions options {
+    ShouldWait::kTrue,
+    rocksdb::SkipCorruptDataBlocksUnsafe(req.remove_corrupt_data_blocks_unsafe()),
+    VectorIndexesForCompaction(req),
+    tablet::VectorIndexOnly(IsVectorIndexOnly(req))
+  };
+
+  return tablet_manager.TriggerAdminCompaction(tablets, options);
 }
 
 } // namespace
@@ -2034,20 +2093,13 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
   switch (req->operation()) {
     case FlushTabletsRequestPB::FLUSH: {
       RETURN_UNKNOWN_ERROR_IF_NOT_OK(
-        TriggerFlush(*this, tablet_ptrs, *req, *resp),
-        resp, &context);
+          TriggerFlush(*this, tablet_ptrs, *req, *resp),
+          resp, &context);
       break;
     }
     case FlushTabletsRequestPB::COMPACT: {
-      AdminCompactionOptions options(
-          ShouldWait::kTrue,
-          rocksdb::SkipCorruptDataBlocksUnsafe(req->remove_corrupt_data_blocks_unsafe()));
-      if (HasVectorIndex(*req)) {
-        options.vector_index_ids = std::make_shared<TableIds>(
-            req->all_vector_indexes() ? TableIds{} : CopyVectorIndexIds(*req));
-      }
       RETURN_UNKNOWN_ERROR_IF_NOT_OK(
-          server_->tablet_manager()->TriggerAdminCompaction(tablet_ptrs, options),
+          TriggerCompact(*server_->tablet_manager(), tablet_ptrs, *req),
           resp, &context);
       break;
     }
@@ -2512,6 +2564,7 @@ Status TabletServiceImpl::PerformWrite(
   VLOG(2) << "Received Write RPC: " << req->DebugString();
 
   UpdateClock(*req, server_->Clock());
+  TEST_SYNC_POINT_CALLBACK("TabletServiceImpl::PerformWrite", const_cast<WriteRequestPB*>(req));
 
   auto tablet =
       VERIFY_RESULT(LookupLeaderTablet(server_->tablet_peer_lookup(), req->tablet_id(), resp));
@@ -2619,6 +2672,30 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   if (!status.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), std::move(status), &context);
   }
+}
+
+void TabletServiceImpl::WaitForAsyncWrite(
+    const WaitForAsyncWriteRequestPB* req, WaitForAsyncWriteResponsePB* resp,
+    rpc::RpcContext context) {
+  auto callback = [resp, context_ptr = std::make_shared<rpc::RpcContext>(std::move(context))](
+                      const Status& status) {
+    if (!status.ok()) {
+      SetupErrorAndRespond(resp->mutable_error(), status, context_ptr.get());
+      return;
+    }
+    context_ptr->RespondSuccess();
+  };
+
+  // We dont need the leader check here because if the peer gracefully transitioned to a follower
+  // we still want to succeed previously committed async writes received by this peer.
+  auto tablet_result = LookupTabletPeer(server_->tablet_peer_lookup(), req->tablet_id());
+  if (!tablet_result) {
+    callback(tablet_result.status());
+    return;
+  }
+
+  tablet_result->tablet_peer->RegisterAsyncWriteCompletion(
+      OpId::FromPB(req->op_id()), std::move(callback));
 }
 
 void TabletServiceImpl::Read(const ReadRequestPB* req,
@@ -2802,7 +2879,7 @@ void ConsensusServiceImpl::ChangeConfig(const ChangeConfigRequestPB* req,
 
   shared_ptr<Consensus> consensus;
   if (!GetConsensusOrRespond(tablet_peer, resp, &context, &consensus)) return;
-  boost::optional<TabletServerErrorPB::Code> error_code;
+  std::optional<TabletServerErrorPB::Code> error_code;
   std::shared_ptr<RpcContext> context_ptr = std::make_shared<RpcContext>(std::move(context));
   Status s = consensus->ChangeConfig(*req, BindHandleResponse(resp, context_ptr), &error_code);
   VLOG(1) << "Sent ChangeConfig req " << req->ShortDebugString() << " to consensus layer.";
@@ -2828,7 +2905,7 @@ void ConsensusServiceImpl::UnsafeChangeConfig(const UnsafeChangeConfigRequestPB*
   if (!GetConsensusOrRespond(tablet_peer, resp, &context, &consensus)) {
     return;
   }
-  boost::optional<TabletServerErrorPB::Code> error_code;
+  std::optional<TabletServerErrorPB::Code> error_code;
   const Status s = consensus->UnsafeChangeConfig(*req, &error_code);
   if (PREDICT_FALSE(!s.ok())) {
     SetupErrorAndRespond(resp->mutable_error(), s, &context);

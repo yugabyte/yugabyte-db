@@ -99,6 +99,6 @@ To connect, follow the client's configuration steps, and use the following value
 | Port | `5433` (YSQL) `9042` (YCQL) | `5433` (YSQL) `9042` (YCQL) |
 | Database | Database name (`yugabyte` is the default) | Database name (`yugabyte` is the default) |
 | Username | `yugabyte` or `cassandra` | Database username (`admin` is the default) |
-| Password | `yugabyte` or `cassandra`<br>Leave blank if [authentication is not enabled](../../secure/enable-authentication/) | Database user password |
+| Password | `yugabyte` or `cassandra` are the default for an insecure local cluster.<br>For a [secure cluster](../../reference/configuration/yugabyted/#secure-universes), the credentials are in the credentials file.<br>Leave blank if [authentication is not enabled](../../secure/enable-authentication/). | Database user password |
 
 YugabyteDB Aeon requires TLS. Use the root.ca certificate you downloaded for connections to YugabyteDB Aeon clusters.

@@ -121,6 +121,8 @@ To create a secure multi-zone cluster:
         --tserver_flags="enable_ysql_conn_mgr=true"
     ```
 
+The credentials for the universe, including password, are output to a credentials file, and the location of the credentials file is output to the console.
+
 For more information on the yugabyted start command, refer to [start](../../../reference/configuration/yugabyted/#start).
 
 ## Grow the cluster

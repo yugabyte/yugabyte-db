@@ -12,7 +12,7 @@ import {
   StatusBadge as BackupStatusBadge
 } from '../../common/badge/StatusBadge';
 
-import { IStorageConfig as BackupStorageConfig } from '../../backupv2';
+import { CustomerConfig as BackupStorageConfig, StorageConfig } from '../../backupv2';
 import { RestartXClusterConfigFormValues } from './RestartConfigModal';
 
 import styles from './ConfigureBootstrapStep.module.scss';
@@ -33,12 +33,12 @@ export const ConfigureBootstrapStep = ({
   storageConfigUuid
 }: ConfigureBootstrapStepProps) => {
   const { t } = useTranslation('translation');
-  const storageConfigs: BackupStorageConfig[] = useSelector(
+  const storageConfigs = useSelector(
     (reduxState: any) =>
       reduxState?.customer?.configs?.data?.filter(
-        (storageConfig: BackupStorageConfig) => storageConfig.type === 'STORAGE'
+        (customerConfig: BackupStorageConfig) => customerConfig.type === 'STORAGE'
       ) ?? []
-  );
+  ) as StorageConfig[];
   const storageConfigName =
     storageConfigs?.find((storageConfig) => storageConfig.configUUID === storageConfigUuid)
       ?.configName ?? '';

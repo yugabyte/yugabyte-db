@@ -33,7 +33,7 @@ CDC via logical replication is supported in YugabyteDB starting from v2024.1.1.
 YugabyteDB logical replication can be used in conjunction with Apache Kafka to create a scalable, fault-tolerant, and highly available data pipeline as follows:
 
 1. Logical replication: YugabyteDB publishes changes to a logical replication slot, which captures the changes in a format that can be consumed by Kafka.
-1. [YugabyteDB Connector](../../develop/change-data-capture/using-logical-replication/yugabytedb-connector/): The logical replication slot is connected to the YugabyteDB Connector, a Kafka Connect worker based on Debezium, which converts the PostgreSQL change stream into Kafka messages.
+1. [YugabyteDB Connector](../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/): The logical replication slot is connected to the YugabyteDB Connector, a Kafka Connect worker based on Debezium, which converts the PostgreSQL change stream into Kafka messages.
 1. Kafka topics: YugabyteDB Connector publishes the messages to one or more Kafka topics.
 1. Kafka consumers: Kafka consumers subscribe to the topics and process the messages, which can be used for further processing, storage, or analysis.
 
@@ -60,7 +60,7 @@ To set up pg_recvlogical, create and start the local cluster by running the foll
   --tserver_flags="cdcsdk_publication_list_refresh_interval_secs=120"
 ```
 
-Any changes to the publication after slot creation will be reflected in the polling list only after the virtual WAL has refreshed its publication list. Data written between table creation and when the table is added to the virtual WAL's publication list won't be delivered as part of the streaming records. By default, the publication list is refreshed every 15 minutes, but you can reduce this interval by setting the `cdcsdk_publication_list_refresh_interval_secs` flag. In this example, the interval has been changed to 2 minutes (120 seconds). For more information, refer to [YugabyteDB semantics](../../develop/change-data-capture/using-logical-replication/advanced-topic/#yugabytedb-semantics).
+Any changes to the publication after slot creation will be reflected in the polling list only after the virtual WAL has refreshed its publication list. Data written between table creation and when the table is added to the virtual WAL's publication list won't be delivered as part of the streaming records. By default, the publication list is refreshed every 15 minutes, but you can reduce this interval by setting the `cdcsdk_publication_list_refresh_interval_secs` flag. In this example, the interval has been changed to 2 minutes (120 seconds). For more information, refer to [YugabyteDB semantics](../../additional-features/change-data-capture/using-logical-replication/advanced-topic/#yugabytedb-semantics).
 
 ### Create tables
 
@@ -168,7 +168,7 @@ table public.projects: INSERT: project_id[integer]:1 name[character varying]:'Pr
 COMMIT 3
 ```
 
-YugabyteDB semantics are different from PostgreSQL when it comes to streaming added tables to a publication. Refer to [YugabyteDB semantics](../../develop/change-data-capture/using-logical-replication/advanced-topic/#yugabytedb-semantics) for more details.
+YugabyteDB semantics are different from PostgreSQL when it comes to streaming added tables to a publication. Refer to [YugabyteDB semantics](../../additional-features/change-data-capture/using-logical-replication/advanced-topic/#yugabytedb-semantics) for more details.
 
 ## Try it out with LSN type HYBRID_TIME
 
@@ -303,5 +303,5 @@ COMMIT 8
 
 ## Learn more
 
-- [Change data capture](../../develop/change-data-capture/)
-- [Get started with YugabyteDB Connector](../../develop/change-data-capture/using-logical-replication/get-started/)
+- [Change data capture](../../additional-features/change-data-capture/)
+- [Get started with YugabyteDB Connector](../../additional-features/change-data-capture/using-logical-replication/get-started/)
