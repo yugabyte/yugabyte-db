@@ -1339,7 +1339,7 @@ Locks are cleaned up for various failure scenarios as follows:
 
 - If a TServer doesn't have a valid YSQL lease, it cannot serve any requests from PostgreSQL backends.
 - Upon TServer lease changes (due to network issues), all active PostgreSQL backends are killed.
-- If TServers cannot communicate with the Master leader for shorter durations (lesser than YSQL lease), DDLs will stall beacause global locks cannot be served.
+- If TServers cannot communicate with the Master leader for shorter durations (lesser than YSQL lease), DDLs will stall because global locks cannot be served.
 - If TServers cannot communicate with the Master longer than the YSQL lease timeout, they lose their YSQL lease and all PostgreSQL backends are killed (until the connection with the Master is reestablished).
 
 ## YSQL lease mechanism
