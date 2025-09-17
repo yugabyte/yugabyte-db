@@ -28,6 +28,15 @@ public class TestPgRegressMatview extends BasePgRegressTest {
     return 1800;
   }
 
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flags = super.getTServerFlags();
+    // TODO(#26734): Enable transactional DDL once savepoint for DDLs are supported.
+    flags.put("ysql_yb_ddl_transaction_block_enabled", "false");
+    flags.put("allowed_preview_flags_csv", "ysql_yb_ddl_transaction_block_enabled");
+    return flags;
+  }
+
   @Test
   public void testPgRegressMatview() throws Exception {
     runPgRegressTest("yb_matview_schedule");
