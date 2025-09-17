@@ -32,9 +32,7 @@
 
 #include <vector>
 
-#include "yb/qlexpr/index.h"
-
-#include "yb/consensus/consensus-test-util.h"
+#include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/log-test-base.h"
 #include "yb/consensus/log_util.h"
@@ -61,6 +59,8 @@ DECLARE_bool(save_index_into_wal_segments);
 DECLARE_bool(skip_flushed_entries);
 DECLARE_bool(skip_flushed_entries_in_first_replayed_segment);
 DECLARE_int32(retryable_request_timeout_secs);
+
+using namespace std::literals;
 
 using std::shared_ptr;
 using std::string;
@@ -112,7 +112,7 @@ struct BootstrapReport {
 };
 
 struct BootstrapTestHooksImpl : public TabletBootstrapTestHooksIf {
-  virtual ~BootstrapTestHooksImpl() {}
+  ~BootstrapTestHooksImpl() override = default;
 
   void Clear() { *this = BootstrapTestHooksImpl(); }
 
@@ -226,6 +226,7 @@ class BootstrapTest : public LogTestBase {
       .clock = scoped_refptr<Clock>(LogicalClock::CreateStartingAt(HybridTime::kInitial)),
       .parent_mem_tracker = shared_ptr<MemTracker>(),
       .block_based_table_mem_tracker = shared_ptr<MemTracker>(),
+      .read_wal_mem_tracker = shared_ptr<MemTracker>(),
       .metric_registry = nullptr,
       .log_anchor_registry = log_anchor_registry,
       .tablet_options = tablet_options,
@@ -432,7 +433,8 @@ TEST_F(BootstrapTest, TestOperationOverwriting) {
 TEST_F(BootstrapTest, OverwriteTailWithFlushedIndex) {
   BuildLog();
 
-  test_hooks_->flushed_op_ids = DocDbOpIds{{3, 2}, {3, 2}, {}};
+  test_hooks_->flushed_op_ids =
+      DocDbOpIds{.regular = {3, 2}, .intents = {3, 2}, .vector_indexes = {}};
 
   const std::string kTestStr("this is a test insert");
   const auto get_test_tuple = [kTestStr](int i) {
@@ -1022,7 +1024,8 @@ TEST_F(BootstrapTest, ReplayOpsFromLastOpId) {
     SleepFor(10ms);
   }
 
-  test_hooks_->flushed_op_ids = DocDbOpIds{{1, 3}, {1, 3}, {}};
+  test_hooks_->flushed_op_ids =
+      DocDbOpIds{.regular = {1, 3}, .intents = {1, 3}, .vector_indexes = {}};
   test_hooks_->flushed_retryable_requests_id = OpId{1, 3};
   TabletPtr tablet;
   ConsensusBootstrapInfo boot_info;
@@ -1058,7 +1061,8 @@ TEST_F(BootstrapTest, ReplayOpsFromFirstOpForUnflushedTablet) {
     SleepFor(10ms);
   }
 
-  test_hooks_->flushed_op_ids = DocDbOpIds{OpId::Invalid(), OpId::Invalid(), {}};
+  test_hooks_->flushed_op_ids =
+      DocDbOpIds{.regular = OpId::Invalid(), .intents = OpId::Invalid(), .vector_indexes = {}};
   test_hooks_->flushed_retryable_requests_id = OpId{1, 3};
   TabletPtr tablet;
   ConsensusBootstrapInfo boot_info;
@@ -1093,7 +1097,8 @@ TEST_F(BootstrapTest, ReplayOpsFromFirstOpIfSegmentUnclosed) {
     AppendReplicateBatchToLog(1);
   }
 
-  test_hooks_->flushed_op_ids = DocDbOpIds{{1, 2}, {1, 2}, {}};
+  test_hooks_->flushed_op_ids =
+      DocDbOpIds{.regular = {1, 2}, .intents = {1, 2}, .vector_indexes = {}};
   test_hooks_->flushed_retryable_requests_id = OpId{1, 2};
   TabletPtr tablet;
   ConsensusBootstrapInfo boot_info;

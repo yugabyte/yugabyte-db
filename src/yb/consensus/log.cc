@@ -40,7 +40,6 @@
 #include <mutex>
 #include <thread>
 #include <vector>
-#include <shared_mutex>
 
 #include <boost/algorithm/string/predicate.hpp>
 
@@ -60,24 +59,19 @@
 #include "yb/fs/fs_manager.h"
 
 #include "yb/gutil/bind.h"
-#include "yb/gutil/map-util.h"
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/callsite_profiling.h"
-#include "yb/util/countdown_latch.h"
-#include "yb/util/crc.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env_util.h"
 #include "yb/util/fault_injection.h"
-#include "yb/util/file_util.h"
-#include "yb/util/flags.h"
 #include "yb/util/flag_validators.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
@@ -88,9 +82,9 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
-#include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/taskstream.h"
 #include "yb/util/trace.h"
@@ -276,8 +270,7 @@ DEFINE_RUNTIME_AUTO_bool(store_last_wal_op_log_ht, kLocalPersisted, false, true,
 static std::string kSegmentPlaceholderFilePrefix = ".tmp.newsegment";
 static std::string kSegmentPlaceholderFileTemplate = kSegmentPlaceholderFilePrefix + "XXXXXX";
 
-namespace yb {
-namespace log {
+namespace yb::log {
 
 using env_util::OpenFileForRandom;
 using std::shared_ptr;
@@ -629,6 +622,7 @@ Status Log::Open(const LogOptions &options,
                  uint32_t schema_version,
                  const scoped_refptr<MetricEntity>& table_metric_entity,
                  const scoped_refptr<MetricEntity>& tablet_metric_entity,
+                 std::shared_ptr<MemTracker> read_wal_mem_tracker,
                  ThreadPool* append_thread_pool,
                  ThreadPool* allocation_thread_pool,
                  ThreadPool* background_sync_threadpool,
@@ -651,6 +645,7 @@ Status Log::Open(const LogOptions &options,
                                      schema_version,
                                      table_metric_entity,
                                      tablet_metric_entity,
+                                     std::move(read_wal_mem_tracker),
                                      append_thread_pool,
                                      allocation_thread_pool,
                                      background_sync_threadpool,
@@ -672,6 +667,7 @@ Log::Log(
     uint32_t schema_version,
     const scoped_refptr<MetricEntity>& table_metric_entity,
     const scoped_refptr<MetricEntity>& tablet_metric_entity,
+    std::shared_ptr<MemTracker> read_wal_mem_tracker,
     ThreadPool* append_thread_pool,
     ThreadPool* allocation_thread_pool,
     ThreadPool* background_sync_threadpool,
@@ -702,6 +698,7 @@ Log::Log(
       allocation_state_(SegmentAllocationState::kAllocationNotStarted),
       table_metric_entity_(table_metric_entity),
       tablet_metric_entity_(tablet_metric_entity),
+      read_wal_mem_tracker_(std::move(read_wal_mem_tracker)),
       on_disk_size_(0),
       log_prefix_(consensus::MakeTabletLogPrefix(tablet_id_, peer_uuid_)),
       create_new_segment_at_start_(create_new_segment),
@@ -737,6 +734,7 @@ Status Log::Init() {
                                 wal_dir_,
                                 table_metric_entity_.get(),
                                 tablet_metric_entity_.get(),
+                                read_wal_mem_tracker_,
                                 &reader_));
 
   // The case where we are continuing an existing log.  We must pick up where the previous WAL left
@@ -1356,8 +1354,8 @@ Status Log::Sync() {
         break;
       }
       fsync_task_in_queue_.store(true, std::memory_order_release);
-      auto status = background_sync_threadpool_token_->SubmitFunc(
-          std::bind(&Log::DoSyncAndResetTaskInQueue, this));
+      auto status =
+          background_sync_threadpool_token_->SubmitFunc([this] { DoSyncAndResetTaskInQueue(); });
       if (!status.ok()) {
         LOG_WITH_PREFIX(WARNING) << "Pushing sync operation to log-sync queue failed with "
                                  << "status " << status;
@@ -2051,9 +2049,9 @@ Status Log::SwitchToAllocatedSegment() {
   std::unique_ptr<RandomAccessFile> readable_file;
   RETURN_NOT_OK(get_env()->NewRandomAccessFile(new_segment_path, &readable_file));
 
-  scoped_refptr<ReadableLogSegment> readable_segment(
-    new ReadableLogSegment(new_segment_path,
-                           shared_ptr<RandomAccessFile>(readable_file.release())));
+  scoped_refptr<ReadableLogSegment> readable_segment(new ReadableLogSegment(
+      new_segment_path, shared_ptr<RandomAccessFile>(readable_file.release()),
+      read_wal_mem_tracker_));
   RETURN_NOT_OK(readable_segment->Init(header, new_segment->first_entry_offset()));
   RETURN_NOT_OK(reader_->AppendEmptySegment(readable_segment));
   // Now set 'active_segment_' to the new segment.
@@ -2079,7 +2077,7 @@ Status Log::ReplaceSegmentInReaderUnlocked() {
       get_env(), active_segment_->path(), &readable_file));
 
   scoped_refptr<ReadableLogSegment> readable_segment(
-      new ReadableLogSegment(active_segment_->path(), readable_file));
+      new ReadableLogSegment(active_segment_->path(), readable_file, read_wal_mem_tracker_));
   // Note: active_segment->header() will only contain an initialized PB if we wrote the header out.
   RETURN_NOT_OK(readable_segment->Init(active_segment_->header(),
                                        active_segment_->footer(),
@@ -2311,5 +2309,4 @@ void Log::UpdateMinStartTimeRunningTxnsFromGCSegments(const SegmentSequence& seg
   }
 }
 
-}  // namespace log
-}  // namespace yb
+} // namespace yb::log

@@ -13,9 +13,11 @@
 
 #include "yb/tablet/tablet-test-harness.h"
 
+#include "yb/consensus/log_anchor_registry.h"
+
 #include "yb/dockv/partition.h"
 
-#include "yb/consensus/log_anchor_registry.h"
+#include "yb/qlexpr/index.h"
 
 #include "yb/server/logical_clock.h"
 
@@ -98,6 +100,7 @@ TabletInitData TabletTestHarness::MakeTabletInitData(const RaftGroupMetadataPtr&
       .clock = clock_,
       .parent_mem_tracker = std::shared_ptr<MemTracker>(),
       .block_based_table_mem_tracker = std::shared_ptr<MemTracker>(),
+      .read_wal_mem_tracker = std::shared_ptr<MemTracker>(),
       .metric_registry = metrics_registry_.get(),
       .log_anchor_registry = new log::LogAnchorRegistry(),
       .tablet_options = TabletOptions(),
