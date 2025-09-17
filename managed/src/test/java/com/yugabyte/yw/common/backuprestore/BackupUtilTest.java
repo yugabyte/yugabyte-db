@@ -245,7 +245,11 @@ public class BackupUtilTest extends FakeDBApplication {
     SimpleDateFormat tsFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
     String backupLocationTS = tsFormat.format(new Date());
     String formattedLocation =
-        BackupUtil.formatStorageLocation(tableParams, isYbc, BackupVersion.V2, backupLocationTS);
+        BackupUtil.formatStorageLocation(
+            tableParams, isYbc, BackupVersion.V2, backupLocationTS, "foo");
+    // univ-name-uuid/keyspace/
+    String expectedPrefix = "univ-" + "foo-" + tableParams.getUniverseUUID().toString() + "/foo";
+    assertTrue(formattedLocation.contains(expectedPrefix));
     if (isYbc) {
       assertTrue(formattedLocation.contains("/ybc_backup"));
       if (emptyTableList) {
@@ -314,7 +318,7 @@ public class BackupUtilTest extends FakeDBApplication {
     tableParams.backupParamsIdentifier = UUID.randomUUID();
     tableParams.setUniverseUUID(UUID.randomUUID());
     tableParams.setKeyspace("foo");
-    String backupIdentifier = "univ-" + tableParams.getUniverseUUID().toString() + "/";
+    String backupIdentifier = "univ-bar-" + tableParams.getUniverseUUID().toString() + "/";
     SimpleDateFormat tsFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
     String backupLocationTS = tsFormat.format(new Date());
     BackupUtil.updateDefaultStorageLocation(
@@ -322,13 +326,16 @@ public class BackupUtilTest extends FakeDBApplication {
         testCustomer.getUuid(),
         BackupCategory.YB_BACKUP_SCRIPT,
         BackupVersion.V2,
-        backupLocationTS);
+        backupLocationTS,
+        "bar");
     String expectedStorageLocation = formData.get("data").get("BACKUP_LOCATION").asText();
+    String expectedUnivKeyspacePrefix = backupIdentifier + "foo/";
     expectedStorageLocation =
         expectedStorageLocation.endsWith("/")
             ? (expectedStorageLocation + backupIdentifier)
             : (expectedStorageLocation + "/" + backupIdentifier);
     assertTrue(tableParams.storageLocation.contains(expectedStorageLocation));
+    assertTrue(tableParams.storageLocation.contains(expectedUnivKeyspacePrefix));
     if (testConfig.getName().equals("NFS")) {
       // Assert no double slash occurance
       assertEquals(1, tableParams.storageLocation.split("//").length);
@@ -348,7 +355,7 @@ public class BackupUtilTest extends FakeDBApplication {
     tableParams.backupParamsIdentifier = UUID.randomUUID();
     tableParams.setUniverseUUID(UUID.randomUUID());
     tableParams.setKeyspace("foo");
-    String backupIdentifier = "univ-" + tableParams.getUniverseUUID().toString() + "/";
+    String backupIdentifier = "univ-bar-" + tableParams.getUniverseUUID().toString() + "/";
     SimpleDateFormat tsFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
     String backupLocationTS = tsFormat.format(new Date());
     BackupUtil.updateDefaultStorageLocation(
@@ -356,8 +363,10 @@ public class BackupUtilTest extends FakeDBApplication {
         testCustomer.getUuid(),
         BackupCategory.YB_CONTROLLER,
         BackupVersion.V2,
-        backupLocationTS);
+        backupLocationTS,
+        "bar");
     String expectedStorageLocation = formData.get("data").get("BACKUP_LOCATION").asText();
+    String expectedUnivKeyspacePrefix = backupIdentifier + "foo/";
     if (testConfig.getName().equals("NFS")) {
       backupIdentifier = "yugabyte_backup/" + backupIdentifier;
       expectedStorageLocation =
@@ -373,6 +382,7 @@ public class BackupUtilTest extends FakeDBApplication {
       assertEquals(2, tableParams.storageLocation.split("//").length);
     }
     assertTrue(tableParams.storageLocation.contains(expectedStorageLocation));
+    assertTrue(tableParams.storageLocation.contains(expectedUnivKeyspacePrefix));
   }
 
   @Test
