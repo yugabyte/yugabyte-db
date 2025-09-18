@@ -1300,6 +1300,10 @@ To reduce the overhead of DMLs, YugabyteDB takes shared locks on the PostgreSQL 
 
 Each TServer maintains an in-memory `TSLocalLockManager` that serves object lock acquire or release calls. The Master also maintains an in-memory lock manager primarily for serializing conflicting global object locks. When the Master leader receives a global lock request, it first acquires the lock locally, then fans out the lock request to all TServers with valid [YSQL leases](#ysql-lease-mechanism), and executes the client callback after the lock has been successfully acquired on all TServers (with a valid YSQL lease).
 
+The following illustration described how a DDL progresses in YugabyteDB:
+
+![Table-level locks](/images/architecture/txn/table-level-locks.png)
+
 All statements inherently acquire some object locks. You can also explicitly acquire object locks using the [LOCK TABLE API](https://www.postgresql.org/docs/current/sql-lock.html):
 
 ```sql
@@ -1320,7 +1324,7 @@ SELECT * FROM pg_locks WHERE NOT granted;
 
 All object locks are tied to a DocDB transaction:
 
-- **DMLs**: Locks are released at commit or abort time
+- **DMLs**: Locks are released at commit or abort time.
 - **DDLs**: Lock release is delegated to the Master, which has a background task for observing DDL commits or aborts and finalizing schema changes.
 
 When a DDL finishes, all locks corresponding to the transaction are released and this release path enforces cache refresh on the the TServers ensuring that they have the latest catalog cache. This also ensures any new DMLs waiting on the same locks to see the latest schema after acquiring the object locks.
@@ -1339,8 +1343,8 @@ Locks are cleaned up for various failure scenarios as follows:
 
 - If a TServer doesn't have a valid YSQL lease, it cannot serve any requests from PostgreSQL backends.
 - Upon TServer lease changes (due to network issues), all active PostgreSQL backends are killed.
-- If TServers cannot communicate with the Master leader for shorter durations (lesser than YSQL lease), DDLs will stall because global locks cannot be served.
-- If TServers cannot communicate with the Master longer than the YSQL lease timeout, they lose their YSQL lease and all PostgreSQL backends are killed (until the connection with the Master is reestablished).
+- If TServers cannot communicate with the Master leader for shorter durations (less than the YSQL lease), DDLs will stall because global locks cannot be served.
+- If the length of time during which TServers cannot communicate with the Master exceeds the YSQL lease timeout, they lose their YSQL lease and all PostgreSQL backends are killed (until the connection with the Master is reestablished).
 
 ## YSQL lease mechanism
 
