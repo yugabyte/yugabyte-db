@@ -196,6 +196,7 @@ ARCHIVED_PATHS_IN_BUILD_DIR = [
     'upgrade_test_builds',
     'gflag_allowlist.txt',
     'test_xcluster_ddl_replication_sql',
+    'test_conflict_resolve_keys_verification_sql',
     f'{POSTGRES_BUILD_SUBDIR}/contrib',
     f'{POSTGRES_BUILD_SUBDIR}/src/test/modules',
     f'{POSTGRES_BUILD_SUBDIR}/src/test/regress',

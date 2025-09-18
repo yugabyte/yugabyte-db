@@ -59,6 +59,7 @@
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/enums.h"
 #include "yb/util/fast_varint.h"
+#include "yb/util/file_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
@@ -81,6 +82,9 @@ DEFINE_RUNTIME_uint64(cdc_max_stream_intent_records, 1680,
 
 DEFINE_RUNTIME_bool(cdc_enable_caching_db_block, true,
                     "When set to true, cache the DB block read for CDC in block cache.");
+
+DEFINE_test_flag(string, file_to_dump_in_memory_keys, "",
+                 "Write memory locks into the file if specified.");
 
 namespace yb {
 namespace docdb {
@@ -189,6 +193,26 @@ Result<DetermineKeysToLockResult<SharedLockManager>> DetermineKeysToLock(
 
 } // namespace
 
+Status TEST_LogInMemoryKeys(const LockBatchEntries<SharedLockManager>& lock_batch,
+                            const std::string& path) {
+  auto transform = [] (const auto& entry) {
+    dockv::SubDocKey sub_doc_key;
+    Status s = sub_doc_key.FullyDecodeFrom(entry.key.as_slice(), dockv::HybridTimeRequired::kFalse);
+    if (!s.ok()) {
+      // Not valid sub-doc key. Append a kGroupEnd.
+      faststring copied_data;
+      const auto& slice = entry.key.as_slice();
+      copied_data.assign_copy(slice.data(), slice.size());
+      copied_data.push_back(dockv::KeyEntryTypeAsChar::kGroupEnd);
+      Slice copied_slice(copied_data);
+      CHECK_OK(sub_doc_key.DecodeFrom(&copied_slice, dockv::HybridTimeRequired::kFalse));
+    }
+    return std::make_pair(sub_doc_key.ToString(), entry.intent_types);
+  };
+  std::string desc = "in_memory";
+  return TEST_DumpCollectionToFile(desc, lock_batch, transform, path);
+}
+
 Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     const ArenaList<LWKeyValuePairPB>& read_pairs,
@@ -216,6 +240,12 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
   FilterKeysToLock<SharedLockManager>(&determine_keys_to_lock_result.lock_batch);
   VLOG_WITH_FUNC(4) << "filtered determine_keys_to_lock_result="
                     << determine_keys_to_lock_result.ToString();
+
+  if (PREDICT_FALSE(!FLAGS_TEST_file_to_dump_in_memory_keys.empty())) {
+      RETURN_NOT_OK(TEST_LogInMemoryKeys(determine_keys_to_lock_result.lock_batch,
+                                         FLAGS_TEST_file_to_dump_in_memory_keys));
+  }
+
   const MonoTime start_time = MonoTime::NowIf(tablet_metrics != nullptr);
   result.lock_batch = LockBatch(
       lock_manager, std::move(determine_keys_to_lock_result.lock_batch), deadline);
