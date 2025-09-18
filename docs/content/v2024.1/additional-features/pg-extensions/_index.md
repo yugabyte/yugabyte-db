@@ -7,7 +7,7 @@ summary: Reference for YSQL extensions
 menu:
   v2024.1:
     identifier: pg-extensions
-    parent: explore-ysql-language-features
+    parent: additional-features
     weight: 1000
 showRightNav: true
 type: indexpage
@@ -17,7 +17,7 @@ PostgreSQL extensions provide a way to extend the functionality of a database by
 
 Supported extensions are either pre-bundled with YugabyteDB or require installation:
 
-* **Pre-bundled** extensions are included in the standard YugabyteDB distribution and can be enabled in YSQL by running the [CREATE EXTENSION](../../../api/ysql/the-sql-language/statements/ddl_create_extension/) statement.
+* **Pre-bundled** extensions are included in the standard YugabyteDB distribution and can be enabled in YSQL by running the [CREATE EXTENSION](../../api/ysql/the-sql-language/statements/ddl_create_extension/) statement.
 * **Requires installation** - you must install these extensions manually before you can enable them using CREATE EXTENSION. Refer to [Install extensions](install-extensions/).
 
 You can install only extensions that are supported by YugabyteDB. If you are interested in an extension that is not yet supported, contact {{% support-general %}}, or [reach out on Slack](https://yugabyte-db.slack.com/).
@@ -54,8 +54,8 @@ YugabyteDB supports the following additional extensions, some of which you must 
 | :-------- | :----- | :---------- |
 | [HypoPG](extension-hypopg/) | Pre-bundled | Create hypothetical indexes to test whether an index can increase performance for problematic queries without consuming any actual resources. |
 | Orafce | Pre-bundled | Provides compatibility with Oracle functions and packages that are either missing or implemented differently in YugabyteDB and PostgreSQL. This compatibility layer can help you port your Oracle applications to YugabyteDB.<br/>For more information, see the [Orafce](https://github.com/yugabyte/yugabyte-db/blob/master/src/postgres/third-party-extensions/orafce/README.asciidoc) documentation. |
-| [PGAudit](../../../secure/audit-logging/audit-logging-ysql/) | Pre-bundled | The PostgreSQL Audit Extension (pgaudit) provides detailed session and/or object audit logging via the standard PostgreSQL logging facility. |
-| [pg_hint_plan](../../query-1-performance/pg-hint-plan/#root) | Pre-bundled | Tweak execution plans using "hints", which are descriptions in the form of SQL comments.<br/>For more information, see the [pg_hint_plan](https://pghintplan.osdn.jp/pg_hint_plan.html) documentation. |
+| [PGAudit](../../secure/audit-logging/audit-logging-ysql/) | Pre-bundled | The PostgreSQL Audit Extension (pgaudit) provides detailed session and/or object audit logging via the standard PostgreSQL logging facility. |
+| [pg_hint_plan](../../explore/query-1-performance/pg-hint-plan/#root) | Pre-bundled | Tweak execution plans using "hints", which are descriptions in the form of SQL comments.<br/>For more information, see the [pg_hint_plan](https://pghintplan.osdn.jp/pg_hint_plan.html) documentation. |
 | pg_stat_monitor | Pre-bundled | A PostgreSQL query performance monitoring tool, based on the PostgreSQL pg_stat_statements module.<br/>For more information, see the [pg_stat_monitor](https://docs.percona.com/pg-stat-monitor/index.html) documentation. |
 | [pgvector](extension-pgvector) | Pre-bundled | Allows you to store and query vectors, for use in vector similarity searching. |
 | [postgresql-hll](extension-postgresql-hll) | Pre-bundled | Adds the data type `hll`, which is a HyperLogLog data structure. |
