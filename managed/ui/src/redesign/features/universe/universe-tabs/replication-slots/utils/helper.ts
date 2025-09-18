@@ -19,7 +19,7 @@ export const INTERVAL_TYPES = [
   { label: 'Every 2 minutes', selectedLabel: '2 minute', value: 120000 }
 ];
 
-export const CDC_LAG_KEY = 'cdcsdk_sent_lag_micros';
+export const CDC_LAG_KEY = 'cdcsdk_flush_lag';
 export const CDC_CHANGE_EVENT_KEY = 'cdcsdk_change_event_count';
 export const CDC_TRAFFIC_SENT_KEY = 'cdcsdk_traffic_sent';
 export const CDC_EXPIRY_TIME_KEY = 'cdcsdk_expiry_time_mins';

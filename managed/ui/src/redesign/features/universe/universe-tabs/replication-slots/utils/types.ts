@@ -20,7 +20,7 @@ export interface ReplicationSlotResponse {
 
 export interface metricsResponse {
   streamID: string;
-  cdcsdk_sent_lag_micros: Record<string, any>;
+  cdcsdk_flush_lag: Record<string, any>;
   cdcsdk_expiry_time_mins: Record<string, any>;
   cdcsdk_change_event_count: Record<string, any>;
   cdcsdk_traffic_sent: Record<string, any>;
