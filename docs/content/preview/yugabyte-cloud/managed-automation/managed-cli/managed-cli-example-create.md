@@ -9,10 +9,13 @@ menu:
     identifier: managed-cli-example-create
     parent: managed-cli
     weight: 60
+aliases:
+  - /preview/yugabyte-cloud/managed-automation/managed-cli/managed-cli-examples/managed-cli-example-create/
+  - /preview/yugabyte-cloud/managed-automation/managed-cli/managed-cli-examples/
 type: docs
 ---
 
-The following tutorial shows how you can use ybm CLI to create clusters in YugabyteDB Aeon.
+The following tutorial shows how you can use ybm CLI to create clusters in YugabyteDB Aeon. The example shows how to use the [cluster](https://github.com/yugabyte/ybm-cli/blob/main/docs/ybm_cluster.md) resource.
 
 ## Prerequisites
 

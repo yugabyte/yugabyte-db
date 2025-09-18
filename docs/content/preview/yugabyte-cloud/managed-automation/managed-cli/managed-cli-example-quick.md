@@ -1,6 +1,6 @@
 ---
-title: Create clusters example for ybm CLI automation
-headerTitle: "ybm CLI: Examples"
+title: YugabyteDB ybm CLI quick examples
+headerTitle: ybm CLI examples
 linkTitle: Examples
 description: Quick examples for using YugabyteDB Aeon ybm CLI.
 headcontent: Quick examples for using ybm CLI
@@ -11,6 +11,8 @@ menu:
     weight: 60
 type: docs
 ---
+
+The following sections provide quick examples for using [ybm CLI comands](https://github.com/yugabyte/ybm-cli/blob/main/docs/).
 
 ## API key
 
@@ -30,7 +32,9 @@ List API keys in YugabyteDB Aeon:
 ybm api-key list
 ```
 
-## Backup policy
+## Backups
+
+### Backup policy
 
 Modify the cluster backup policy:
 
@@ -41,7 +45,7 @@ ybm backup policy update \
     --retention-period-in-days=14
 ```
 
-## Backup
+### Backup
 
 Create a backup:
 
@@ -51,7 +55,26 @@ ybm backup create \
     --retention-period=7
 ```
 
-## Cluster
+## Clusters
+
+### Region
+
+List AWS regions:
+
+```sh
+ybm region list \
+  --cloud-provider AWS
+```
+
+List AWS instance types in us-west-2:
+
+```sh
+ybm region instance list \
+  --cloud-provider AWS \
+  --region us-west-2
+```
+
+### Cluster create
 
 Create a local single-node cluster:
 
@@ -76,7 +99,49 @@ ybm cluster create \
   --wait
 ```
 
-## Cluster database audit logging
+### Cluster read replica create
+
+Create a read-replica cluster:
+
+```sh
+ybm cluster read-replica create \
+  --replica num-cores=2,\
+  memory-mb=4096,\
+  disk-size-gb=200,\
+  cloud-provider=AWS,\
+  region=us-west-3,\
+  num-nodes=3,\
+  vpc=my-vpc,\
+  num-replicas=2,\
+  multi-zone=true
+```
+
+### Usage
+
+Output usage for clusters `my-cluster` and `your-cluster` for September 2023:
+
+```sh
+ybm usage get \
+    --cluster-name my-cluster \
+    --cluster-name your-cluster \
+    --start 2023-09-01 \
+    --end 2023-09-30
+```
+
+## Logging and integrations
+
+### Integration
+
+Create a configuration:
+
+```sh
+ybm integration create \
+    --config-name datadog1 \
+    --type DATADOG \
+    --datadog-spec api-key=efXXXXXXXXXXXXXXXXXXXXXXXXXXXXee,site=US1
+```
+
+### Cluster database audit logging
 
 Enable database audit logging for a cluster:
 
@@ -112,7 +177,7 @@ ybm cluster db-audit-logging update \
   --ysql-config="log_catalog=true,log_client=false,log_level=NOTICE,log_relation=false,log_parameter=true,log_statement_once=true"
 ```
 
-## Database audit logging export
+### Database audit logging export
 
 Assign a configuration to a cluster:
 
@@ -124,7 +189,7 @@ ybm db-audit-logs-exporter assign \
     --ysql-config==log_catalog=true,log_client=false,log_level=INFO,log_parameter=true
 ```
 
-## Database query logging
+### Database query logging
 
 Enable database query logging for a cluster:
 
@@ -163,18 +228,9 @@ ybm cluster db-query-logging update \
 --log-min-duration-statement 60
 ```
 
-## Integration
+## Networking
 
-Create a configuration:
-
-```sh
-ybm integration create \
-    --config-name datadog1 \
-    --type DATADOG \
-    --datadog-spec api-key=efXXXXXXXXXXXXXXXXXXXXXXXXXXXXee,site=US1
-```
-
-## Network allow list
+### Network allow list
 
 Create a single address allow list:
 
@@ -185,7 +241,7 @@ ybm network-allow-list create \
     --ip-addr=$(curl ifconfig.me)
 ```
 
-## Cluster network
+### Cluster network
 
 Assign an allow list:
 
@@ -195,7 +251,7 @@ ybm cluster network allow-list assign \
   --network-allow-list=<allow_list_name>
 ```
 
-## VPC peering
+### VPC peering
 
 Create a peering connection on GCP:
 
@@ -209,41 +265,20 @@ ybm vpc peering create \
   --app-vpc-cidr 10.0.0.0/18
 ```
 
-## Cluster read replica
+### VPC
 
-Create a read-replica cluster:
-
-```sh
-ybm cluster read-replica create \
-  --replica num-cores=2,\
-  memory-mb=4096,\
-  disk-size-gb=200,\
-  cloud-provider=AWS,\
-  region=us-west-3,\
-  num-nodes=3,\
-  vpc=my-vpc,\
-  num-replicas=2,\
-  multi-zone=true
-```
-
-## Region
-
-List AWS regions:
+Create a global VPC on GCP:
 
 ```sh
-ybm region list \
-  --cloud-provider AWS
+ybm vpc create \
+    --name demo-vpc \
+    --cloud-provider GCP \
+    --global-cidr 10.0.0.0/18
 ```
 
-List AWS instance types in us-west-2:
+## Users and roles
 
-```sh
-ybm region instance list \
-  --cloud-provider AWS \
-  --region us-west-2
-```
-
-## Role
+### Role
 
 List roles in YugabyteDB Aeon:
 
@@ -267,19 +302,7 @@ ybm role create --role-name backuprole \
   --permissions resource-type=BACKUP,operation-group=DELETE
 ```
 
-## Usage
-
-Output usage for clusters `my-cluster` and `your-cluster` for September 2023:
-
-```sh
-ybm usage get \
-    --cluster-name my-cluster \
-    --cluster-name your-cluster \
-    --start 2023-09-01 \
-    --end 2023-09-30
-```
-
-## User
+### User
 
 List users in YugabyteDB Aeon:
 
@@ -291,15 +314,4 @@ Invite a user to YugabyteDB Aeon:
 
 ```sh
 ybm user invite --email developer@mycompany.com --role Developer
-```
-
-## VPC
-
-Create a global VPC on GCP:
-
-```sh
-ybm vpc create \
-    --name demo-vpc \
-    --cloud-provider GCP \
-    --global-cidr 10.0.0.0/18
 ```

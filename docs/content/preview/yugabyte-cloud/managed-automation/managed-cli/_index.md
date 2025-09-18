@@ -9,6 +9,8 @@ menu:
     identifier: managed-cli
     parent: managed-automation
     weight: 50
+aliases:
+  - /preview/yugabyte-cloud/managed-automation/managed-cli/managed-cli-overview/
 type: indexpage
 showRightNav: true
 rightNav:
@@ -23,9 +25,7 @@ Reference documentation for yba CLI commands and their flags is available in the
 
 ## Install ybm
 
-To install ybm, download the appropriate binary from the ybm-cli GitHub project [releases](https://github.com/yugabyte/ybm-cli/releases).
-
-On MacOS and Linux, you can also install ybm using [Homebrew](https://brew.sh) by entering the following command:
+On macOS and Linux, you can also install ybm using [Homebrew](https://brew.sh) by entering the following command:
 
 ```sh
 brew install yugabyte/tap/ybm
@@ -73,7 +73,7 @@ For convenience, you can configure ybm with a default API key as follows:
 
   By default, this writes the value to the file `.ybm-cli.yaml` under your `$HOME` directory.
 
-  You can create multiple configuration files, and switch between them using the --config flag. You can add any of the other [global flags](#global-flags) to your configuration files.
+  You can create multiple configuration files, and switch between them using the `--config` flag. You can add any of the other [global flags](#global-flags) to your configuration files.
 
 - Using [environment variables](#environment-variables). Environment variables must begin with `YBM_`. For example:
 
@@ -122,7 +122,7 @@ ybm help
 For help with specific ybm resource commands, use the `--help` or `-h` flag, in the following form:
 
 ```sh
-ybm [ resource ] [ command ] -h
+ybm [ <resource> ] [ <command> ] -h
 ```
 
 For example, to print the command-line help for the cluster `create` command, run the following:
@@ -142,7 +142,7 @@ ybm --version
 The following flags can be passed in with any command. These flags can also be added to your configuration file (see [Configure ybm](#configure-ybm)).
 
 -a, --apiKey string
-: YugabyteDB Aeon account API Key.
+: YugabyteDB Aeon account API key.
 
 --config string
 : Configuration file (default is `$HOME/.ybm-cli.yaml`).
@@ -178,7 +178,7 @@ ybm cluster delete \
     --wait
 ```
 
-If you are using ybm with the `--wait` flag in your CI system, you can set the environment variable `YBM_CI` to `true` to avoid generating unnecessary log lines.
+If you are using ybm with the `--wait` flag in your CI/CD system, you can set the environment variable `YBM_CI` to `true` to avoid generating unnecessary log lines.
 
 ## Autocompletion
 

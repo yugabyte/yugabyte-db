@@ -701,6 +701,11 @@
 #  force = true
 
 [[redirects]]
+  from = "/preview/yugabyte-cloud/managed-automation/managed-cli/managed-cli-reference/*"
+  to = "/preview/yugabyte-cloud/managed-automation/managed-cli"
+  force = true
+
+[[redirects]]
   from = "/:version/yugabyte-cloud/cloud-quickstart/qs-add/"
   to = "/preview/yugabyte-cloud/cloud-quickstart/"
   force = true
