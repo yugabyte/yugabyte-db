@@ -40,7 +40,7 @@ import { OutlierSelector } from '../OutlierSelector/OutlierSelector';
 import { GraphPanelHeaderTimezone } from './GraphPanelHeaderTimezone';
 import { YBFormatDate, ybFormatDate, YBTimeFormats } from '../../../redesign/helpers/DateUtils';
 import { DEFAULT_TIMEZONE, RuntimeConfigKey } from '../../../redesign/helpers/constants';
-import { UniverseMetricsExportConfigModal } from '@app/redesign/features/telemetry/UniverseMetricsExportConfigModal';
+import { UniverseMetricsExportConfigModal } from '@app/redesign/features/export-telemetry/UniverseMetricsExportConfigModal';
 
 import './GraphPanelHeader.scss';
 

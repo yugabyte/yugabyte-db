@@ -1,6 +1,6 @@
 import { Universe } from '@app/redesign/helpers/dtos';
 import { getPrimaryCluster } from '@app/utils/universeUtilsTyped';
-import { TelemetryProviderType } from '../export-log/utils/types';
+import { TelemetryProviderType } from './types';
 import { TelemetryProvider } from './dtos';
 
 /**

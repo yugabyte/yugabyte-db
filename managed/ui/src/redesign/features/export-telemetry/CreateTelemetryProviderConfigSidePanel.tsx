@@ -12,38 +12,44 @@ import {
   RadioGroupOrientation,
   YBSelect,
   YBTooltip
-} from '../../../components';
+} from '../../components';
 
-import { YBDropZoneField } from '../../../../components/configRedesign/providerRedesign/components/YBDropZone/YBDropZoneField';
-import { createErrorMessage } from '../../universe/universe-form/utils/helpers';
-import { readFileAsText } from '../../../../components/configRedesign/providerRedesign/forms/utils';
+import { YBDropZoneField } from '../../../components/configRedesign/providerRedesign/components/YBDropZone/YBDropZoneField';
+import { createErrorMessage } from '../universe/universe-form/utils/helpers';
+import { readFileAsText } from '../../../components/configRedesign/providerRedesign/forms/utils';
 import {
   ExportLogFormFields,
   TelemetryProviderType,
   ExportLogPayload,
   TelemetryProviderItem
-} from '../utils/types';
-import { TELEMETRY_PROVIDER_OPTIONS, DATADOG_SITES, LOKI_AUTH_TYPES } from '../utils/constants';
-import { api, runtimeConfigQueryKey } from '../../../helpers/api';
+} from './types';
+import { TELEMETRY_PROVIDER_OPTIONS, DATADOG_SITES, LOKI_AUTH_TYPES } from './constants';
+import { api, runtimeConfigQueryKey } from '../../helpers/api';
 //RBAC
-import { RuntimeConfigKey } from '../../../helpers/constants';
-import { hasNecessaryPerm } from '../../rbac/common/RbacApiPermValidator';
-import { ApiPermissionMap } from '../../rbac/ApiAndUserPermMapping';
-import { RBAC_ERR_MSG_NO_PERM } from '../../rbac/common/validator/ValidatorUtils';
+import { RuntimeConfigKey } from '../../helpers/constants';
+import { hasNecessaryPerm } from '../rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../rbac/ApiAndUserPermMapping';
+import { RBAC_ERR_MSG_NO_PERM } from '../rbac/common/validator/ValidatorUtils';
 
 //styles
-import { exportLogStyles } from '../utils/ExportLogStyles';
-import InfoIcon from '../../../assets/info-message.svg';
+import { useExportTelemetryStyles } from './styles';
+import InfoIcon from '../../assets/info-message.svg';
 
-interface ExportLogFormProps {
+interface CreateTelemetryProviderConfigSidePanelProps {
   open: boolean;
   onClose: () => void;
   formProps: TelemetryProviderItem | null;
 }
 
-export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, formProps }) => {
-  const classes = exportLogStyles();
-  const { t } = useTranslation();
+const TRANSLATION_KEY_PREFIX = 'exportTelemetry';
+
+export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderConfigSidePanelProps> = ({
+  open,
+  onClose,
+  formProps
+}) => {
+  const classes = useExportTelemetryStyles();
+  const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
   const isViewMode = formProps !== null;
   const formDefaultValues = isViewMode
     ? formProps
@@ -153,7 +159,7 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
     return (
       <>
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
-          <YBLabel>{t('exportAuditLog.dataDogApiKey')}</YBLabel>
+          <YBLabel>{t('dataDogApiKey')}</YBLabel>
           <YBInputField
             control={control}
             name="config.apiKey"
@@ -166,7 +172,7 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
         </Box>
         <Box display={'flex'} flexDirection={'row'} mt={3}>
           <Box display={'flex'} flexShrink={1} width="200px" flexDirection={'column'}>
-            <YBLabel>{t('exportAuditLog.dataDogSite')}</YBLabel>
+            <YBLabel>{t('dataDogSite')}</YBLabel>
             <YBSelect
               fullWidth
               value={dataDogSiteValue}
@@ -183,7 +189,7 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
                 <MenuItem
                   key={item.value}
                   value={item.value}
-                  className={classes.dataDogmenuItem}
+                  className={classes.datadogMenuItem}
                   data-testid={`DatadogForm-${item.value}`}
                 >
                   <Typography variant="body1">{item.name}</Typography>
@@ -196,18 +202,18 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
               <MenuItem
                 key={'selfHosted'}
                 value={''}
-                className={classes.dataDogmenuItem}
+                className={classes.datadogMenuItem}
                 data-testid={`DatadogForm-SelfHosted`}
               >
                 <Typography variant="body1">{'Self-hosted'}</Typography>
                 <Typography variant="subtitle1" color="textSecondary">
-                  {t('exportAuditLog.dataDogURLPlaceholder')}
+                  {t('dataDogURLPlaceholder')}
                 </Typography>
               </MenuItem>
             </YBSelect>
           </Box>
           <Box display={'flex'} ml={2} width="100%" flexDirection={'column'}>
-            <YBLabel>{t('exportAuditLog.siteURL')}</YBLabel>
+            <YBLabel>{t('siteURL')}</YBLabel>
             <YBInputField
               control={control}
               name="config.site"
@@ -227,7 +233,7 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
     return (
       <>
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
-          <YBLabel>{t('exportAuditLog.splunkToken')}</YBLabel>
+          <YBLabel>{t('splunkToken')}</YBLabel>
           <YBInputField
             control={control}
             name="config.token"
@@ -239,7 +245,7 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
           />
         </Box>
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
-          <YBLabel>{t('exportAuditLog.endpointURL')}</YBLabel>
+          <YBLabel>{t('endpointURL')}</YBLabel>
           <YBInputField
             control={control}
             name="config.endpoint"
@@ -252,7 +258,7 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
           />
         </Box>
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
-          <YBLabel>{t('exportAuditLog.source')}</YBLabel>
+          <YBLabel>{t('source')}</YBLabel>
           <YBInputField
             control={control}
             name="config.source"
@@ -264,7 +270,7 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
           />
         </Box>
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
-          <YBLabel>{t('exportAuditLog.sourceType')}</YBLabel>
+          <YBLabel>{t('sourceType')}</YBLabel>
           <YBInputField
             control={control}
             name="config.sourceType"
@@ -276,7 +282,7 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
           />
         </Box>
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
-          <YBLabel>{t('exportAuditLog.splunkIndex')}</YBLabel>
+          <YBLabel>{t('splunkIndex')}</YBLabel>
           <YBInputField
             control={control}
             name="config.index"
@@ -297,8 +303,8 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
           <Box display={'flex'} flexDirection={'row'} alignItems={'center'} mt={4}>
             <YBLabel width="200px">
-              {t('exportAuditLog.lokiEndpoint')} &nbsp;
-              <YBTooltip title={t('exportAuditLog.lokiEndpointTooltip')}>
+              {t('lokiEndpoint')} &nbsp;
+              <YBTooltip title={t('lokiEndpointTooltip')}>
                 <img src={InfoIcon} />
               </YBTooltip>
             </YBLabel>
@@ -306,7 +312,7 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
           <YBInputField
             control={control}
             name="config.endpoint"
-            placeholder={t('exportAuditLog.lokiEndpointPlaceholder')}
+            placeholder={t('lokiEndpointPlaceholder')}
             fullWidth
             disabled={isViewMode}
             inputProps={{
@@ -318,8 +324,8 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
         </Box>
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
           <Box display={'flex'} flexDirection={'row'} alignItems={'center'} mt={3}>
-            <Typography variant="body2">{t('exportAuditLog.lokiOrganizationID')} &nbsp;</Typography>
-            <YBTooltip title={t('exportAuditLog.lokiOrganizationIDTooltip')}>
+            <Typography variant="body2">{t('lokiOrganizationID')} &nbsp;</Typography>
+            <YBTooltip title={t('lokiOrganizationIDTooltip')}>
               <img src={InfoIcon} />
             </YBTooltip>
           </Box>
@@ -335,7 +341,7 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
         </Box>
         {/* Auth Type Selection */}
         <Box className={classes.mainFieldContainer}>
-          <Typography className={classes.exportToTitle}>{t('exportAuditLog.authType')}</Typography>
+          <Typography className={classes.exportToTitle}>{t('authType')}</Typography>
           <YBRadioGroupField
             name="config.authType"
             control={control}
@@ -356,7 +362,7 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
     return (
       <>
         <Box display="flex" flexDirection="column" width="100%" mt={3}>
-          <YBLabel>{t('exportAuditLog.lokiUsername')}</YBLabel>
+          <YBLabel>{t('lokiUsername')}</YBLabel>
           <YBInputField
             control={control}
             name="config.basicAuth.username"
@@ -370,7 +376,7 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
           />
         </Box>
         <Box display="flex" flexDirection="column" width="100%" mt={3}>
-          <YBLabel>{t('exportAuditLog.lokiPassword')}</YBLabel>
+          <YBLabel>{t('lokiPassword')}</YBLabel>
           <YBInputField
             control={control}
             name="config.basicAuth.password"
@@ -391,7 +397,7 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
     return (
       <>
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
-          <YBLabel>{t('exportAuditLog.awsAccessKey')}</YBLabel>
+          <YBLabel>{t('awsAccessKey')}</YBLabel>
           <YBInputField
             control={control}
             rules={{ required: 'This field is required' }}
@@ -404,7 +410,7 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
           />
         </Box>
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
-          <YBLabel>{t('exportAuditLog.awsSecretKey')}</YBLabel>
+          <YBLabel>{t('awsSecretKey')}</YBLabel>
           <YBInputField
             control={control}
             rules={{ required: 'This field is required' }}
@@ -417,7 +423,7 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
           />
         </Box>
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
-          <YBLabel>{t('exportAuditLog.logGroup')}</YBLabel>
+          <YBLabel>{t('logGroup')}</YBLabel>
           <YBInputField
             control={control}
             rules={{ required: 'This field is required' }}
@@ -430,7 +436,7 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
           />
         </Box>
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
-          <YBLabel>{t('exportAuditLog.logStream')}</YBLabel>
+          <YBLabel>{t('logStream')}</YBLabel>
           <YBInputField
             control={control}
             rules={{ required: 'This field is required' }}
@@ -443,7 +449,7 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
           />
         </Box>
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
-          <YBLabel>{t('exportAuditLog.awsRegion')}</YBLabel>
+          <YBLabel>{t('awsRegion')}</YBLabel>
           <YBInputField
             control={control}
             rules={{ required: 'This field is required' }}
@@ -456,7 +462,7 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
           />
         </Box>
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
-          <YBLabel>{t('exportAuditLog.awsRoleARN')}</YBLabel>
+          <YBLabel>{t('awsRoleARN')}</YBLabel>
           <YBInputField
             control={control}
             name="config.roleARN"
@@ -468,7 +474,7 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
           />
         </Box>
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
-          <YBLabel>{t('exportAuditLog.awsEndpoint')}</YBLabel>
+          <YBLabel>{t('awsEndpoint')}</YBLabel>
           <YBInputField
             control={control}
             name="config.endpoint"
@@ -488,7 +494,7 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
     return (
       <>
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
-          <YBLabel>{t('exportAuditLog.gcpProject')}</YBLabel>
+          <YBLabel>{t('gcpProject')}</YBLabel>
           <YBInputField
             control={control}
             name="config.project"
@@ -503,14 +509,14 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
           <YBDropZoneField
             name="config.gcpCredentials"
             control={control}
-            actionButtonText={t('exportAuditLog.uploadGCPCredentails')}
+            actionButtonText={t('uploadGCPCredentails')}
             multipleFiles={false}
             showHelpText={true}
             className={classes.gcpJSONUploader}
             disabled={isViewMode}
             descriptionText={
               <span>
-                <Trans i18nKey={'exportAuditLog.gcpDescription'} />
+                <Trans i18nKey={'gcpDescription'} />
               </span>
             }
           />
@@ -524,10 +530,12 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
   return (
     <YBSidePanel
       open={open}
-      title={isViewMode ? t('exportAuditLog.exportConfigForLogs') : t('exportAuditLog.modalTitle')}
-      submitLabel={!isViewMode ? t('exportAuditLog.submitLabel') : undefined}
+      title={isViewMode ? t('viewExportTelemetryProviderModalTitle') : t('modalTitle')}
+      submitLabel={!isViewMode ? t('submitLabel') : undefined}
       onClose={onClose}
-      cancelLabel={isViewMode ? t('common.close') : t('common.cancel')}
+      cancelLabel={
+        isViewMode ? t('close', { keyPrefix: 'common' }) : t('cancel', { keyPrefix: 'common' })
+      }
       overrideWidth={680}
       onSubmit={handleFormSubmit}
       submitTestId="ExportLogModalForm-Submit"
@@ -550,7 +558,7 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
           pr={1}
           mb={3}
         >
-          <YBLabel>{t('exportAuditLog.exportName')}</YBLabel>
+          <YBLabel>{t('exportName')}</YBLabel>
           <Box display={'flex'} width={'384px'} mt={0.5}>
             <YBInputField
               control={control}
@@ -565,9 +573,7 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
             />
           </Box>
           <Box className={classes.mainFieldContainer}>
-            <Typography className={classes.exportToTitle}>
-              {t('exportAuditLog.exportTo')}
-            </Typography>
+            <Typography className={classes.exportToTitle}>{t('exportTo')}</Typography>
             <YBRadioGroupField
               name="config.type"
               control={control}

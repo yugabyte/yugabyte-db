@@ -84,7 +84,7 @@ const MetricsExportConfigurationRequest = {
 type MetricsExportConfigurationRequest = typeof MetricsExportConfigurationRequest[keyof typeof MetricsExportConfigurationRequest];
 
 const MODAL_NAME = 'UniverseMetricsExporterConfigModal';
-const TRANSLATION_KEY_PREFIX = 'exportMetric.universeExportMetricModal';
+const TRANSLATION_KEY_PREFIX = 'exportTelemetry.universeExportMetricModal';
 
 export const UniverseMetricsExportConfigModal = ({
   universeUuid,

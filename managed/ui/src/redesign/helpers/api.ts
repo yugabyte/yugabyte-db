@@ -40,9 +40,9 @@ import {
 } from '../../components/xcluster/disasterRecovery/dtos';
 import { XClusterConfigType } from '../../components/xcluster/constants';
 import { CustomerConfig } from '../../components/backupv2';
-import { ExportLogPayload } from '../features/export-log/utils/types';
+import { ExportLogPayload } from '../features/export-telemetry/types';
 import { AuditLogPayload } from '../features/universe/universe-tabs/db-audit-logs/utils/types';
-import { TelemetryProvider } from '../features/telemetry/dtos';
+import { TelemetryProvider } from '../features/export-telemetry/dtos';
 
 /**
  * @deprecated Use query key factories for more flexable key organization

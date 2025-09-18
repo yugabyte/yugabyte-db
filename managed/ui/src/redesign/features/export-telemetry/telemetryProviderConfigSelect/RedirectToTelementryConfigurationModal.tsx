@@ -4,7 +4,7 @@ import { browserHistory } from 'react-router';
 import { YBModal, YBModalProps } from '@app/redesign/components';
 
 const TRANSLATION_KEY_PREFIX = 'telemetryProviderConfigSelect.redirectModal';
-const TELEMETRY_CONFIGURATION_PAGE = '/config/log';
+const TELEMETRY_CONFIGURATION_PAGE = '/config/exportTelemetry';
 
 export const RedirectToTelemetryConfigurationModal = ({ onClose, open }: YBModalProps) => {
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });

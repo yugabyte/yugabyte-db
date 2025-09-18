@@ -31,7 +31,7 @@ import {
   YSQLAuditLogLevel,
   AuditLogConfig
 } from '../utils/types';
-import { TP_FRIENDLY_NAMES } from '../../../../export-log/utils/constants';
+import { TP_FRIENDLY_NAMES } from '../../../../export-telemetry/constants';
 import { YSQL_AUDIT_CLASSES, YSQL_LOG_LEVEL_OPTIONS } from '../utils/constants';
 //RBAC
 import { hasNecessaryPerm } from '../../../../rbac/common/RbacApiPermValidator';
@@ -486,7 +486,7 @@ export const ExportNavigateDialog: FC<ExportNavigateDialogProps> = ({ open, onCl
       submitLabel={t('dbAuitLog.settingsModal.leaveModalSubmit')}
       cancelLabel={t('common.back')}
       onSubmit={() => {
-        browserHistory.push('/config/log');
+        browserHistory.push('/config/exportTelemetry');
       }}
     >
       <Box pt={1} pl={1.5} pr={1.5}>

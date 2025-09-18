@@ -8,8 +8,8 @@ import { api, telemetryProviderQueryKey } from '../../../helpers/api';
 import { RedirectToTelemetryConfigurationModal } from './RedirectToTelementryConfigurationModal';
 import { YBSelectField } from '@app/redesign/components';
 import { TelemetryProvider } from '../dtos';
-import { TelemetryProviderType } from '../../export-log/utils/types';
-import { TP_FRIENDLY_NAMES } from '../../export-log/utils/constants';
+import { TelemetryProviderType } from '../types';
+import { TP_FRIENDLY_NAMES } from '../constants';
 import { ReactComponent as AddIcon } from '../../../assets/add.svg';
 
 import { usePillStyles } from '@app/redesign/styles/styles';

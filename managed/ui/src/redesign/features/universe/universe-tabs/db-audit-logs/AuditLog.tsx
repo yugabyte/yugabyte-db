@@ -23,7 +23,7 @@ import {
 } from '../../../../../actions/tasks';
 import { AuditLogPayload } from './utils/types';
 import { Universe } from '../../universe-form/utils/dto';
-import { TP_FRIENDLY_NAMES } from '../../../export-log/utils/constants';
+import { TP_FRIENDLY_NAMES } from '../../../export-telemetry/constants';
 import { MODIFY_AUDITLOG_TASK_TYPE } from './utils/constants';
 import { api, telemetryProviderQueryKey } from '@app/redesign/helpers/api';
 

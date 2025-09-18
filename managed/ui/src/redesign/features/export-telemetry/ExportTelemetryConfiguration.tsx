@@ -10,13 +10,13 @@ import { YBButton, YBTooltip } from '../../components';
 import { YBTable } from '../../../components/common/YBTable';
 import { YBLoading } from '../../../components/common/indicators';
 import { YBLabelWithIcon } from '../../../components/common/descriptors';
-import { ExportLogModalForm } from './components/ExportLogModalForm';
-import { DeleteTelProviderModal } from './components/DeleteTelProviderModal';
+import { CreateTelemetryProviderConfigSidePanel } from './CreateTelemetryProviderConfigSidePanel';
+import { DeleteTelemetryProviderConfigModal } from './DeleteTelemetryProviderConfigModal';
 import { api, telemetryProviderQueryKey, universeQueryKey } from '../../helpers/api';
-import { TelemetryProviderItem } from './utils/types';
-import { TelemetryProviderMin } from './components/DeleteTelProviderModal';
-import { getLinkedUniverses } from './utils/helpers';
-import { TP_FRIENDLY_NAMES } from './utils/constants';
+import { TelemetryProviderItem } from './types';
+import { TelemetryProviderMin } from './DeleteTelemetryProviderConfigModal';
+import { getLinkedUniverses } from './helpers';
+import { TP_FRIENDLY_NAMES } from './constants';
 
 //RBAC
 import { ApiPermissionMap } from '../rbac/ApiAndUserPermMapping';
@@ -24,19 +24,19 @@ import { RbacValidator } from '../rbac/common/RbacApiPermValidator';
 
 //styles
 import { usePillStyles } from '../../styles/styles';
-import { exportLogStyles } from './utils/ExportLogStyles';
+import { useExportTelemetryStyles } from './styles';
 import styles from '../../../components/configRedesign/providerRedesign/ProviderList.module.scss';
 
 //icons
 import AuditBackupIcon from '../../assets/backup.svg';
 import EllipsisIcon from '../../assets/ellipsis.svg';
 
-interface ExportLogProps {}
+const TRANSLATION_KEY_PREFIX = 'exportTelemetry';
 
-export const ExportLog: FC<ExportLogProps> = () => {
-  const classes = exportLogStyles();
+export const ExportTelemetryConfigurations = () => {
+  const classes = useExportTelemetryStyles();
   const pillClasses = usePillStyles();
-  const { t } = useTranslation();
+  const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
   const [openExportModal, setOpenExportModal] = useState(false);
   const [exportModalProps, setExportModalProps] = useState<TelemetryProviderItem | null>(null);
   const [openDeleteModal, setDeleteModal] = useState(false);
@@ -68,11 +68,11 @@ export const ExportLog: FC<ExportLogProps> = () => {
   const formatUsage = (_: unknown, row: any) => {
     return row.linkedUniverses.length ? (
       <Box display="flex" gridGap="5px" alignItems="center">
-        <Typography variant="body2">{t('exportAuditLog.inUse')}</Typography>
+        <Typography variant="body2">{t('inUse')}</Typography>
         <div className={pillClasses.pill}>{row.linkedUniverses.length}</div>
       </Box>
     ) : (
-      <Typography variant="body2">{t('exportAuditLog.notInUse')}</Typography>
+      <Typography variant="body2">{t('notInUse')}</Typography>
     );
   };
 
@@ -139,9 +139,7 @@ export const ExportLog: FC<ExportLogProps> = () => {
               data-testid="ExportLog-DeleteConfiguration"
               disabled={!isEmpty(row.linkedUniverses)}
             >
-              <YBLabelWithIcon icon="fa fa-trash">
-                {t('exportAuditLog.deleteConfig')}
-              </YBLabelWithIcon>
+              <YBLabelWithIcon icon="fa fa-trash">{t('deleteConfig')}</YBLabelWithIcon>
             </MenuItem>
           </RbacValidator>
         </Dropdown.Menu>
@@ -151,9 +149,7 @@ export const ExportLog: FC<ExportLogProps> = () => {
   return (
     <Box display="flex" flexDirection="column" width="100%" p={0.25}>
       <Box mb={4}>
-        <Typography className={classes.mainTitle}>
-          {t('exportAuditLog.exportConfigForLogs')}
-        </Typography>
+        <Typography className={classes.mainTitle}>{t('heading')}</Typography>
       </Box>
       {!isEmpty(finalData) ? (
         <Box className={classes.exportListContainer}>
@@ -166,7 +162,7 @@ export const ExportLog: FC<ExportLogProps> = () => {
                 data-testid="ExportLog-AddConfig"
               >
                 <i className="fa fa-plus" />
-                {t('exportAuditLog.addConfiguration')}
+                {t('addConfiguration')}
               </YBButton>
             </RbacValidator>
           </Box>
@@ -186,7 +182,7 @@ export const ExportLog: FC<ExportLogProps> = () => {
                 dataSort
                 dataFormat={(cell) => <span>{cell}</span>}
               >
-                <span>{t('exportAuditLog.exportName')}</span>
+                <span>{t('exportName')}</span>
               </TableHeaderColumn>
               <TableHeaderColumn
                 width="200"
@@ -194,13 +190,13 @@ export const ExportLog: FC<ExportLogProps> = () => {
                 dataSort
                 dataFormat={(cell) => <span>{TP_FRIENDLY_NAMES[cell]}</span>}
               >
-                <span>{t('exportAuditLog.exportTo')}</span>
+                <span>{t('exportTo')}</span>
               </TableHeaderColumn>
               <TableHeaderColumn dataFormat={formatUsage} width="200">
-                {t('exportAuditLog.usageHeader')}
+                {t('usageHeader')}
               </TableHeaderColumn>
               <TableHeaderColumn dataFormat={formatUniverseList}>
-                {t('exportAuditLog.assignedUniverses')}
+                {t('assignedUniverses')}
               </TableHeaderColumn>
               <TableHeaderColumn
                 columnClassName={styles.exportActionsColumn}
@@ -221,14 +217,14 @@ export const ExportLog: FC<ExportLogProps> = () => {
                 onClick={() => setOpenExportModal(true)}
                 data-testid="ExportLog-CreateExport"
               >
-                {t('exportAuditLog.createExport')}
+                {t('createExport')}
               </YBButton>
             </Box>
-            <Typography variant="body2">{t('exportAuditLog.emptyMsg1')}</Typography>
+            <Typography variant="body2">{t('emptyMsg1')}</Typography>
             <br /> <br />
             <Typography variant="body2">
               <Trans>
-                {t('exportAuditLog.learnExport')}
+                {t('learnExport')}
                 <Link
                   target="_blank"
                   underline="always"
@@ -239,13 +235,13 @@ export const ExportLog: FC<ExportLogProps> = () => {
           </Box>
           <Box>
             <Typography variant="body2">
-              <Trans i18nKey={'exportAuditLog.emptyExportNote'} />
+              <Trans i18nKey={`${TRANSLATION_KEY_PREFIX}.emptyExportNote`} />
             </Typography>
           </Box>
         </Box>
       )}
       {openExportModal && (
-        <ExportLogModalForm
+        <CreateTelemetryProviderConfigSidePanel
           open={openExportModal}
           formProps={exportModalProps}
           onClose={() => {
@@ -256,7 +252,7 @@ export const ExportLog: FC<ExportLogProps> = () => {
         />
       )}
       {openDeleteModal && deleteModalProps && (
-        <DeleteTelProviderModal
+        <DeleteTelemetryProviderConfigModal
           open={openDeleteModal}
           onClose={() => {
             setDeleteModal(false);

@@ -2,31 +2,33 @@ import { FC } from 'react';
 import { toast } from 'react-toastify';
 import { useMutation } from 'react-query';
 import { useTranslation, Trans } from 'react-i18next';
-import { YBModal } from '../../../components';
+import { YBModal } from '../../components';
 import { api } from '@app/redesign/helpers/api';
-import { createErrorMessage } from '../../universe/universe-form/utils/helpers';
+import { createErrorMessage } from '../universe/universe-form/utils/helpers';
 //RBAC
-import { hasNecessaryPerm } from '../../rbac/common/RbacApiPermValidator';
-import { ApiPermissionMap } from '../../rbac/ApiAndUserPermMapping';
-import { RBAC_ERR_MSG_NO_PERM } from '../../rbac/common/validator/ValidatorUtils';
+import { hasNecessaryPerm } from '../rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../rbac/ApiAndUserPermMapping';
+import { RBAC_ERR_MSG_NO_PERM } from '../rbac/common/validator/ValidatorUtils';
 
 export interface TelemetryProviderMin {
   uuid: string;
   name: string;
 }
 
-interface DeleteTelProviderProps {
+interface DeleteTelemetryProviderConfigModalProps {
   telemetryProviderProps: TelemetryProviderMin;
   open: boolean;
   onClose: () => void;
 }
 
-export const DeleteTelProviderModal: FC<DeleteTelProviderProps> = ({
+const TRANSLATION_KEY_PREFIX = 'exportTelemetry';
+
+export const DeleteTelemetryProviderConfigModal: FC<DeleteTelemetryProviderConfigModalProps> = ({
   telemetryProviderProps,
   open,
   onClose
 }) => {
-  const { t } = useTranslation();
+  const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
 
   const deleteTelemetryProvider = useMutation(
     (providerUUID: string) => {
@@ -34,7 +36,7 @@ export const DeleteTelProviderModal: FC<DeleteTelProviderProps> = ({
     },
     {
       onSuccess: () => {
-        toast.success(t('exportAuditLog.deleteConfirmMsg', { name: telemetryProviderProps.name }));
+        toast.success(t('deleteConfirmMsg', { name: telemetryProviderProps.name }));
         onClose();
       },
       onError: (error: any) => {
@@ -55,9 +57,9 @@ export const DeleteTelProviderModal: FC<DeleteTelProviderProps> = ({
 
   return (
     <YBModal
-      title={t('exportAuditLog.deleteModalTitle')}
-      submitLabel={t('exportAuditLog.deleteModalSubmitLabel')}
-      cancelLabel={t('common.close')}
+      title={t('deleteModalTitle')}
+      submitLabel={t('deleteModalSubmitLabel')}
+      cancelLabel={t('close', { keyPrefix: 'common' })}
       open={open}
       size="sm"
       overrideHeight={'250px'}
@@ -73,7 +75,7 @@ export const DeleteTelProviderModal: FC<DeleteTelProviderProps> = ({
       submitButtonTooltip={!canDeleteProvider ? RBAC_ERR_MSG_NO_PERM : ''}
     >
       <Trans
-        i18nKey={'exportAuditLog.deleteModalMsg'}
+        i18nKey={`${TRANSLATION_KEY_PREFIX}.deleteModalMsg`}
         values={{ name: telemetryProviderProps.name }}
       />
     </YBModal>

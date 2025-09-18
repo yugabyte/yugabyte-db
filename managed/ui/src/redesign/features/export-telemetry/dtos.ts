@@ -1,4 +1,4 @@
-import { TelemetryProviderType } from '../export-log/utils/types';
+import { TelemetryProviderType } from './types';
 
 /**
  * TODO: Replace `ExportLogFormFields` from src/redesign/features/export-log/utils/types.ts with the types in

@@ -1,6 +1,6 @@
 import { makeStyles } from '@material-ui/core';
 
-export const exportLogStyles = makeStyles((theme) => ({
+export const useExportTelemetryStyles = makeStyles((theme) => ({
   mainTitle: {
     fontWeight: 700,
     fontSize: 22,
@@ -47,9 +47,9 @@ export const exportLogStyles = makeStyles((theme) => ({
     backgroundColor: '#FFFFFF',
     border: '1px solid #E5E5E9'
   },
-  dataDogmenuItem: {
+  datadogMenuItem: {
     height: 56,
-    dispaly: 'flex',
+    display: 'flex',
     flexDirection: 'column',
     alignItems: 'flex-start',
     rowGap: theme.spacing(0.5)

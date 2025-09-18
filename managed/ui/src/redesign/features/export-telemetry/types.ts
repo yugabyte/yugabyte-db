@@ -1,4 +1,4 @@
-import { GCPServiceAccount } from '../../../../components/configRedesign/providerRedesign/types';
+import { GCPServiceAccount } from '../../../components/configRedesign/providerRedesign/types';
 import { UniverseItem } from '@app/components/configRedesign/providerRedesign/providerView/providerDetails/UniverseTable';
 
 export enum TelemetryProviderType {

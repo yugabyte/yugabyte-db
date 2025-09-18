@@ -2566,8 +2566,8 @@
         "backup": {
           "tabLabel": "Backup"
         },
-        "log": {
-          "tabLabel": "Log"
+        "exportTelemetry": {
+          "tabLabel": "Logs & Metrics Export"
         },
         "security": {
           "tabLabel": "Security"
@@ -2754,7 +2754,7 @@
         "editAuditLog": "Edit Database Audit Logging",
         "confirmationDialogMsg": "{{typeVal}} database audit logging requires a <strong>rolling restart</strong> of a universe <strong>{{universeName}}</strong>. The universe will remain online and available throughout.",
         "leavePageModalTitle": "You are about to leave this page",
-        "leaveModalSubmit": "Navigate to Integrations > Log Export"
+        "leaveModalSubmit": "Navigate to Integrations > Logs & Metrics Export"
       },
       "tooltips": {
         "logCatalog": "Log statements for the PostgreSQL system catalog relations in pg_catalog. Disable this option to reduce noise in the log.",
@@ -2768,11 +2768,11 @@
         "logRow": "Include the rows retrieved or affected by a statement.",
         "exportLog": "Forward audit log to your preferred 3rd party log management tool such as Datadog, Splunk, AWS CloudWatch, or GCP Cloud Logging. The audit logs are always available for download using the API regardless of whether export is enabled or otherwise."
       },
-      "exportNavDialogMsg": "To create an export configuration for logs, navigate to <strong>Integrations > Log Export</strong>.",
-      "exportNavLink": "<strong>Note!</strong> To export database audit logs to a third party tool, you need an export configuration in <1>Integrations > Log export</1>."
+      "exportNavDialogMsg": "To create an export configuration for logs, navigate to <strong>Integrations > Logs & Metrics Export</strong>.",
+      "exportNavLink": "<strong>Note!</strong> To export database audit logs to a third party tool, you need an export configuration in <1>Integrations > Logs & Metrics Export</1>."
     },
-    "exportAuditLog": {
-      "exportConfigForLogs": "Export Configurations for Logs",
+    "exportTelemetry": {
+      "heading": "Export Configurations for Logs & Metrics",
       "createExport": "Create Export Configuration",
       "emptyMsg1": "Export logs and/or metrics to your preferred 3rd party monitoring tool.",
       "learnExport": "Learn more about <1>exporting logs</1>.",
@@ -2785,7 +2785,8 @@
       "inUse": "In Use",
       "notInUse": "Not in Use",
       "assignedUniverses": "Assigned Universes",
-      "modalTitle": "Create Export Configuration for Logs",
+      "modalTitle": "Create Export Configuration",
+      "viewExportTelemetryProviderModalTitle": "Export Configuration",
       "submitLabel": "Validate and Create Configuration",
       "dataDogApiKey": "Datadog API Key",
       "dataDogURLPlaceholder": "Custom Datadog URL",
@@ -2818,9 +2819,7 @@
       "deleteModalMsg": "Are you sure you want to delete <strong>{{name}}</strong> ?",
       "deleteModalSubmitLabel": "Delete Export Configuration",
       "deleteConfirmMsg": "{{name}} export configuration got deleted succesfully",
-      "deleteConfig": "Delete Configuration"
-    },
-    "exportMetric": {
+      "deleteConfig": "Delete Configuration",
       "universeExportMetricModal": {
         "title": "Export Metrics",
         "exportMetricsToggle": {
