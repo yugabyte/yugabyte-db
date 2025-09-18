@@ -2449,8 +2449,8 @@ tserver_async_replication_lag_micros:
         "async_replication_sent_lag_micros": "Sent Lag"
         "async_replication_committed_lag_micros": "Committed Lag"
 
-cdcsdk_sent_lag_micros:
-  metric: "cdcsdk_sent_lag_micros"
+cdcsdk_flush_lag:
+  metric: "cdcsdk_flush_lag"
   operator: "/ 1000"
   function: "max by (saved_name)"
   panel_group: "Tablet Server"
@@ -2461,7 +2461,7 @@ cdcsdk_sent_lag_micros:
     yaxis:
       ticksuffix: "&nbsp;ms"
       alias:
-        "cdcsdk_sent_lag_micros": "Current Lag"
+        "cdcsdk_flush_lag": "Current Lag"
 
 cdcsdk_expiry_time_mins:
   metric: "cdcsdk_expiry_time_ms"
