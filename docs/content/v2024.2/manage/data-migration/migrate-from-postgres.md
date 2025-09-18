@@ -39,8 +39,8 @@ Review the [list of unsupported features](../../../reference/configuration/postg
 
 PostgreSQL offers extensions that greatly enhance its capabilities, allowing users to tailor and extend its functionality according to their needs. YugabyteDB includes many, but not all, of these extensions. Double-check that the extensions used by your application are supported by YugabyteDB.
 
-{{<lead link="../../../explore/ysql-language-features/pg-extensions#supported-extensions">}}
-To verify that the extensions your applications use are available in YugabyteDB, check the [list of supported extensions](../../../explore/ysql-language-features/pg-extensions#supported-extensions).
+{{<lead link="../../../additional-features/pg-extensions#supported-extensions">}}
+To verify that the extensions your applications use are available in YugabyteDB, check the [list of supported extensions](../../../additional-features/pg-extensions#supported-extensions).
 {{</lead>}}
 
 ## Data distribution schemes

@@ -15,7 +15,7 @@ The [passwordcheck](https://www.postgresql.org/docs/11/passwordcheck.html) Postg
 
 ## Enable passwordcheck
 
-To enable the passwordcheck extension, add `passwordcheck` to `shared_preload_libraries` in the PostgreSQL server configuration parameters using the YB-TServer [--ysql_pg_conf_csv](../../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) flag:
+To enable the passwordcheck extension, add `passwordcheck` to `shared_preload_libraries` in the PostgreSQL server configuration parameters using the YB-TServer [--ysql_pg_conf_csv](../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) flag:
 
 ```sh
 --ysql_pg_conf_csv=shared_preload_libraries=passwordcheck

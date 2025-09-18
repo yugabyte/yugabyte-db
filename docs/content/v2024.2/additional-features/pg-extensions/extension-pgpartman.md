@@ -19,8 +19,8 @@ Partitioning in YugabyteDB refers to physically dividing large tables into small
 
 YugabyteDB fully supports pg_partman, with some minor [limitations](#limitations) due to its distributed nature that don't hinder partition management.
 
-{{<lead link="../../../ysql-language-features/advanced-features/partitions/">}}
-For more information on partitioning in YugabyteDB, see [Table partitioning](../../../ysql-language-features/advanced-features/partitions/)
+{{<lead link="../../../explore/ysql-language-features/advanced-features/partitions/">}}
+For more information on partitioning in YugabyteDB, see [Table partitioning](../../../explore/ysql-language-features/advanced-features/partitions/)
 {{</lead>}}
 
 {{<lead link="https://github.com/yugabyte/yugabyte-db/blob/master/src/postgres/third-party-extensions/pg_partman/doc/pg_partman.md">}}
