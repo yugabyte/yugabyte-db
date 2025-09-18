@@ -137,6 +137,12 @@ class ObjectLockSharedState::Impl {
   [[nodiscard]] bool Lock(const ObjectLockFastpathRequest& request) EXCLUDES(mutex_) {
     std::lock_guard lock(mutex_);
 
+    if (waiting_for_manager_) {
+      VLOG_WITH_FUNC(1)
+          << AsString(request) << ": waiting for ObjectLockSharedStateManager, cannot use fastpath";
+      return false;
+    }
+
     if (!request.owner) {
       VLOG_WITH_FUNC(1) << AsString(request) << ": No owner tag, cannot use fastpath";
       return false;
@@ -162,6 +168,29 @@ class ObjectLockSharedState::Impl {
 
     VLOG_WITH_FUNC(1) << AsString(request) << ": added request";
     return true;
+  }
+
+  ObjectLockSharedState::ActivationGuard Activate(
+      const std::unordered_map<ObjectLockPrefix, size_t>& initial_intents)
+      EXCLUDES(mutex_) PARENT_PROCESS_ONLY {
+    std::lock_guard lock(mutex_);
+    DCHECK(waiting_for_manager_);
+    LOG_WITH_FUNC(INFO) << "Activating with initial exclusive lock intents: "
+                        << CollectionToString(initial_intents);
+    for (const auto& [object_id, count] : initial_intents) {
+      if (count > 0) {
+        AcquireExclusiveLockIntent(object_id, count);
+      }
+    }
+    waiting_for_manager_ = false;
+    return ObjectLockSharedState::ActivationGuard(this);
+  }
+
+  void Deactivate() EXCLUDES(mutex_) PARENT_PROCESS_ONLY {
+    std::lock_guard lock(mutex_);
+    DCHECK(!waiting_for_manager_);
+    LOG_WITH_FUNC(INFO) << "Deactivating object lock shared state";
+    waiting_for_manager_ = true;
   }
 
   size_t ConsumePendingLockRequests(const FastLockRequestConsumer& consume)
@@ -195,10 +224,11 @@ class ObjectLockSharedState::Impl {
   }
 
  private:
-  void AcquireExclusiveLockIntent(const ObjectLockPrefix& object_id) PARENT_PROCESS_ONLY {
+  void AcquireExclusiveLockIntent(const ObjectLockPrefix& object_id, size_t count = 1)
+      PARENT_PROCESS_ONLY {
     auto& group_entry = group(object_id);
     VLOG_WITH_FUNC(1) << AsString(object_id);
-    ++group_entry.exclusive_intents;
+    group_entry.exclusive_intents.fetch_add(count);
   }
 
   [[nodiscard]] static size_t GroupFor(const ObjectLockPrefix& object_id) {
@@ -212,7 +242,29 @@ class ObjectLockSharedState::Impl {
   mutable RobustMutexNoCleanup mutex_;
   PendingLockRequests shared_requests_ GUARDED_BY(mutex_);
   ChildProcessRO<std::array<GroupLockState, kNumGroups>> lock_states_;
+
+  bool waiting_for_manager_ GUARDED_BY(mutex_) = true;
 };
+
+ObjectLockSharedState::ActivationGuard::ActivationGuard(Impl* impl) : impl_{impl} {}
+
+ObjectLockSharedState::ActivationGuard::ActivationGuard(ActivationGuard&& other)
+    : impl_{std::exchange(other.impl_, nullptr)} {}
+
+ObjectLockSharedState::ActivationGuard::~ActivationGuard() {
+  if (impl_) {
+    impl_->Deactivate();
+  }
+}
+
+ObjectLockSharedState::ActivationGuard&
+ObjectLockSharedState::ActivationGuard::operator=(ActivationGuard&& other) {
+  if (impl_) {
+    impl_->Deactivate();
+  }
+  impl_ = std::exchange(other.impl_, nullptr);
+  return *this;
+}
 
 ObjectLockSharedState::ObjectLockSharedState(SharedMemoryBackingAllocator& allocator)
     : impl_{CHECK_RESULT(allocator.MakeUnique<Impl>())} {}
@@ -221,6 +273,11 @@ ObjectLockSharedState::~ObjectLockSharedState() = default;
 
 bool ObjectLockSharedState::Lock(const ObjectLockFastpathRequest& request) {
   return impl_->Lock(request);
+}
+
+ObjectLockSharedState::ActivationGuard ObjectLockSharedState::Activate(
+    const std::unordered_map<ObjectLockPrefix, size_t>& initial_intents) {
+  return impl_->Activate(initial_intents);
 }
 
 size_t ObjectLockSharedState::ConsumeAndAcquireExclusiveLockIntents(

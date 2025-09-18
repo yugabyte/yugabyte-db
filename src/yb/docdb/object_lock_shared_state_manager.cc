@@ -83,8 +83,13 @@ ObjectLockOwnerRegistry::GetOwnerInfo(SessionLockOwnerTag tag) const {
 }
 
 void ObjectLockSharedStateManager::SetupShared(ObjectLockSharedState& shared) {
+  ParentProcessGuard g;
+  std::lock_guard lock(setup_mutex_);
+
   DCHECK(!shared_.load(std::memory_order_relaxed));
-  shared_.store(&shared, std::memory_order_relaxed);
+
+  shared_activate_ = shared.Activate(std::move(pre_setup_locks_));
+  shared_.store(&shared, std::memory_order_release);
 }
 
 size_t ObjectLockSharedStateManager::ConsumePendingSharedLockRequests(
@@ -99,6 +104,17 @@ size_t ObjectLockSharedStateManager::ConsumePendingSharedLockRequests(
 size_t ObjectLockSharedStateManager::ConsumeAndAcquireExclusiveLockIntents(
     const LockRequestConsumer& consume, std::span<const ObjectLockPrefix*> object_ids) {
   auto* shared = shared_.load(std::memory_order_relaxed);
+  if (PREDICT_FALSE(!shared)) {
+    std::lock_guard lock(setup_mutex_);
+    shared = shared_.load(std::memory_order_acquire);
+    if (!shared) {
+      for (const auto* object_id : object_ids) {
+        ++pre_setup_locks_[*object_id];
+      }
+      return 0uz;
+    }
+  }
+
   return CallWithRequestConsumer(
       shared,
       [shared, object_ids](auto&& c) PARENT_PROCESS_ONLY {
@@ -109,10 +125,18 @@ size_t ObjectLockSharedStateManager::ConsumeAndAcquireExclusiveLockIntents(
 
 void ObjectLockSharedStateManager::ReleaseExclusiveLockIntent(
     const ObjectLockPrefix& object_id, size_t count) {
-  ParentProcessGuard g;
-  if (auto* shared = shared_.load(std::memory_order_relaxed)) {
-    shared->ReleaseExclusiveLockIntent(object_id, count);
+  auto* shared = shared_.load(std::memory_order_relaxed);
+  if (PREDICT_FALSE(!shared)) {
+    std::lock_guard lock(setup_mutex_);
+    shared = shared_.load(std::memory_order_acquire);
+    if (!shared) {
+      pre_setup_locks_[object_id] -= count;
+      return;
+    }
   }
+
+  ParentProcessGuard g;
+  shared->ReleaseExclusiveLockIntent(object_id, count);
 }
 
 TransactionId ObjectLockSharedStateManager::TEST_last_owner() const {
