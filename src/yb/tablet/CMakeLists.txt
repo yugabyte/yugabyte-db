@@ -154,7 +154,7 @@ target_link_libraries(tablet
 
 add_library(tablet_test_util
             local_tablet_writer.cc
-            tablet-harness.cc
+            tablet-test-harness.cc
             tablet-test-base.cc
             tablet-test-util.cc)
 target_link_libraries(tablet_test_util tablet yb_common yb_test_util yb_util)

@@ -34,7 +34,6 @@
 #include <memory>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "yb/common/schema.h"
 
@@ -47,11 +46,9 @@
 #include "yb/tablet/tablet_fwd.h"
 
 #include "yb/util/env.h"
-#include "yb/util/status_log.h"
 
 
-namespace yb {
-namespace tablet {
+namespace yb::tablet {
 
 // Creates a default partition schema and partition for a table.
 //
@@ -61,7 +58,7 @@ namespace tablet {
 // key columns. The partition will cover the entire partition-key space.
 std::pair<dockv::PartitionSchema, dockv::Partition> CreateDefaultPartition(const Schema& schema);
 
-class TabletHarness {
+class TabletTestHarness {
  public:
   struct Options {
     explicit Options(std::string root_dir)
@@ -78,9 +75,9 @@ class TabletHarness {
     bool enable_metrics;
   };
 
-  TabletHarness(const Schema& schema, Options options);
+  TabletTestHarness(const Schema& schema, Options options);
 
-  virtual ~TabletHarness();
+  virtual ~TabletTestHarness();
 
   Status Create(bool first_time);
 
@@ -119,5 +116,4 @@ class TabletHarness {
   TabletPtr tablet_;
 };
 
-} // namespace tablet
-} // namespace yb
+} // namespace yb::tablet
