@@ -102,7 +102,7 @@ const preparePayload = (restoreContext: RestoreContextMethods): restoreBackupPro
         useTablespaces: generalSettings?.useTablespaces,
       };
 
-      if (generalSettings?.useTablespaces && conflictingTablespaces && !unSupportedTablespaces) {
+      if (generalSettings?.useTablespaces && ( conflictingTablespaces || unSupportedTablespaces )) {
         infoList['errorIfTablespacesExists'] = false;
       }
 

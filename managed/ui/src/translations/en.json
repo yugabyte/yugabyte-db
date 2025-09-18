@@ -3184,10 +3184,8 @@
           "activeKMS": "Active",
           "usedDuringBackup": "Used during backup",
           "parallelThreads": "Parallel threads (Optional)",
-          "tablespaceConflictResolution": "The target universe has tablespaces with the same name as tablespaces in the backup. In cases where the placement policy differs between the target and backup tablespaces, <b>the target policy will be used.</b> <a>View logs for details.</a>",
-          "tablespaceUnsupportedText1": "<b>Tablespace restore is unavailable.</b> This is because the topology of the target universe is not the same as the topology of the backup. <a>View logs for details.</a>",
-          "tablespaceUnsupportedText2": "If you proceed to restore without tablespaces, all data will be restored to the primary region, and after the restore you will need to recreate your tablespaces.",
-          "tablespaceUnsupportedText3": "Learn about tablespace restore <a>requirements.</a>"
+          "tablespacePlacementConflict": "<b>Tablespace Placement Conflict.</b> Some tablespaces in the backup have a placement policy that conflicts with the target universe. <a>View logs for details.</a><br/>If you proceed, the restore may fail. if it does, you can retry the restore without tablespaces. <a2>Learn more about restoring tablespaces.</a2>",
+          "tablespaceNameConflict": "<b>Tablespace Name Conflict.</b> The target universe has tablespaces with the same name as tablespaces in the backup. In cases where the placement policy differs between the target and backup tablespaces, <b>the target policy will be used.</b> <a>View logs for details</a>"
         },
         "validationErrMsg": {
           "keyspacesAlreadyExists": "Keyspace already exists in the target Universe",

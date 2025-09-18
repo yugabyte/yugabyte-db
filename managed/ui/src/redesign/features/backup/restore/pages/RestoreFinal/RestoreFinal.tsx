@@ -136,7 +136,7 @@ const preparePayload = (
         useTablespaces: target.useTablespaces
       } as any;
 
-      if (target?.useTablespaces && conflictingTablespaces && !unSupportedTablespaces) {
+      if (target?.useTablespaces && ( conflictingTablespaces || unSupportedTablespaces )) {
         infoList['errorIfTablespacesExists'] = false;
       }
 

@@ -11,12 +11,11 @@ import { useContext } from 'react';
 import { keys } from 'lodash';
 import { useFormContext } from 'react-hook-form';
 import { Trans, useTranslation } from 'react-i18next';
-import { AlertVariant, YBAlert, YBCheckbox } from '../../../../../../redesign/components';
+import { YBCheckbox } from '../../../../../../redesign/components';
 import { Box, makeStyles } from '@material-ui/core';
 import { IGeneralSettings } from './GeneralSettings';
+import { TablespaceWarnings } from '@app/redesign/features/backup/restore/pages/RestoreTarget/TablespaceWarnings';
 import { RestoreContextMethods, RestoreFormContext } from '../../RestoreContext';
-import { getUnSupportedTableSpaceConfig } from '@app/redesign/features/backup/restore/RestoreUtils';
-import { TablespaceUnSupported } from '@app/redesign/features/backup/restore/pages/RestoreTarget/TablespaceUnSupported';
 import UnChecked from '../../../../../../redesign/assets/checkbox/UnChecked.svg';
 import Checked from '../../../../../../redesign/assets/checkbox/Checked.svg';
 
@@ -41,27 +40,8 @@ const useStyles = makeStyles((theme) => ({
   },
   conflictingTablespace: {
     marginLeft: '34px',
-    marginTop: '8px',
-    '& > div': {
-      alignSelf: 'flex-start'
-    },
-    '& svg': {
-      marginTop: '0px'
-    }
-  },
-  unSupportedTablespace: {
-    marginLeft: '34px',
     marginTop: '5px'
   },
-  link: {
-    color: theme.palette.grey[700],
-    textDecoration: 'underline',
-    cursor: 'pointer',
-    '&:hover, &:focus': {
-      color: theme.palette.grey[700],
-      textDecoration: 'underline'
-    }
-  }
 }));
 
 export const TablespaceConfig = () => {
@@ -92,15 +72,6 @@ export const TablespaceConfig = () => {
     return null;
   }
 
-  const hasUnsupportedTablespaces = getUnSupportedTableSpaceConfig(
-    preflightResponse,
-    'unsupportedTablespaces'
-  );
-  const hasConflictingTablespaces = getUnSupportedTableSpaceConfig(
-    preflightResponse,
-    'conflictingTablespaces'
-  );
-
   return (
     <Box className={classes.root}>
       <YBCheckbox
@@ -112,43 +83,13 @@ export const TablespaceConfig = () => {
         onChange={(event) => {
           setValue('useTablespaces', event.target.checked);
         }}
-        disabled={hasUnsupportedTablespaces}
       />
-      {!hasUnsupportedTablespaces && (
-        <span className={classes.tablespaceHelpText}>
-          <Trans i18nKey="newRestoreModal.tablespaces.checkboxHelpText" components={{ b: <b /> }} />
-        </span>
-      )}
-
-      {hasUnsupportedTablespaces && (
-        <div className={classes.unSupportedTablespace}>
-          <TablespaceUnSupported loggingID={preflightResponse.loggingID} />
-        </div>
-      )}
-      {useTablespaces && !hasUnsupportedTablespaces && hasConflictingTablespaces && (
-        <YBAlert
-          text={
-            <Trans
-              i18nKey={`${TRANS_PREFIX}.tablespaceConflictResolution`}
-              t={t}
-              components={{
-                a: (
-                  <a
-                    className={classes.link}
-                    href={`/logs?queryRegex=${preflightResponse.loggingID}`}
-                    target="_blank"
-                    rel="noreferrer"
-                  />
-                ),
-                b: <b />
-              }}
-            />
-          }
-          open
-          variant={AlertVariant.Warning}
-          className={classes.conflictingTablespace}
-        />
-      )}
+      <span className={classes.tablespaceHelpText}>
+        <Trans i18nKey="newRestoreModal.tablespaces.checkboxHelpText" components={{ b: <b /> }} />
+      </span>
+      <div className={classes.conflictingTablespace}>
+        <TablespaceWarnings preflightResponse={preflightResponse} />
+      </div>
     </Box>
   );
 };

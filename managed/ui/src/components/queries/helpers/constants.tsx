@@ -16,7 +16,9 @@ export const EXTERNAL_LINKS: Record<string, string> = {
   REJECTED_CONNECTIONS:
     'https://docs.yugabyte.com/preview/yugabyte-platform/alerts-monitoring/performance-advisor/#rejected-connection-recommendations',
   HOT_SHARD:
-    'https://docs.yugabyte.com/preview/yugabyte-platform/alerts-monitoring/performance-advisor/#hot-shard'
+    'https://docs.yugabyte.com/preview/yugabyte-platform/alerts-monitoring/performance-advisor/#hot-shard',
+  TABLESPACE_RESTORE_PREREQUISITES:
+    'https://docs.yugabyte.com/preview/yugabyte-platform/back-up-restore-universes/restore-universe-data/#prerequisites'
 };
 
 export const CONST_VAR: Record<string, string> = {
