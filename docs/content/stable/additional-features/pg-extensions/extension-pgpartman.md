@@ -19,8 +19,8 @@ Partitioning in YugabyteDB refers to physically dividing large tables into small
 
 YugabyteDB fully supports pg_partman, with some minor [limitations](#limitations) due to its distributed nature that don't hinder partition management.
 
-{{<lead link="../../../ysql-language-features/advanced-features/partitions/">}}
-For more information on partitioning in YugabyteDB, see [Table partitioning](../../../ysql-language-features/advanced-features/partitions/)
+{{<lead link="../../../explore/ysql-language-features/advanced-features/partitions/">}}
+For more information on partitioning in YugabyteDB, see [Table partitioning](../../../explore/ysql-language-features/advanced-features/partitions/)
 {{</lead>}}
 
 {{<lead link="https://github.com/yugabyte/yugabyte-db/blob/master/src/postgres/third-party-extensions/pg_partman/doc/pg_partman.md">}}
@@ -212,7 +212,7 @@ The pg_partman `create_parent()` function requires an access exclusive lock on t
 
 ### Advisory locks
 
-[Advisory locks](../../../transactions/explicit-locking/#advisory-locks), used in some pg_partman functions to create or drop/delete partitioned tables, are not currently supported in pg_partman in YugabyteDB. Attempts to acquire these locks are disabled.
+[Advisory locks](../../../explore/transactions/explicit-locking/#advisory-locks), used in some pg_partman functions to create or drop/delete partitioned tables, are not currently supported in pg_partman in YugabyteDB. Attempts to acquire these locks are disabled.
 
 ### Background worker process
 
@@ -337,7 +337,7 @@ Note that if you are [using pg_cron to manage tasks](#maintain-partitions-using-
 - In v2025.1.0 or earlier, or if you are using semi-automatic or manual mode, you must install pg_cron on a separate database that is not part of the xCluster configuration.
 - In v2025.1.1 or later _in automatic mode_, you can install pg_cron on the same database.
 
-For more information on xCluster limitations, refer to [Limitations](../../../../architecture/docdb-replication/async-replication/#limitations).
+For more information on xCluster limitations, refer to [Limitations](../../../architecture/docdb-replication/async-replication/#limitations).
 
 #### Transactional xCluster and xCluster DR
 
@@ -396,6 +396,6 @@ Although not recommended, it is possible to use pg_partman using the following s
 
 During normal operations, as DDLs occur on the source universe, monitor the pg_audit log (on the source universe) to detect partition-related DDLs.
 
-When you detect partition-related DDLs, follow the instructions in [Handling DDL changes](../../../../deploy/multi-dc/async-replication/async-deployment/#handling-ddl-changes) to issue the same DDL command on the replica universe and include the table in xCluster replication.
+When you detect partition-related DDLs, follow the instructions in [Handling DDL changes](/preview/deploy/multi-dc/async-replication/async-deployment/#handling-ddl-changes) to issue the same DDL command on the replica universe and include the table in xCluster replication.
 
 Note that the sequence of operations can vary by DDL command (for example, CREATE partition and DROP partition require different follow-up actions in different orders).

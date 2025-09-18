@@ -19,7 +19,7 @@ YugabyteDB uses v1.3.1 of PostgreSQL Anonymizer.
 
 ## Enable Anonymizer
 
-To enable the Anonymizer extension, you set the YB-TServer `--enable_pg_anonymizer` flag to true. For example, using [yugabyted](../../../../reference/configuration/yugabyted/), you would do the following:
+To enable the Anonymizer extension, you set the YB-TServer `--enable_pg_anonymizer` flag to true. For example, using [yugabyted](../../../reference/configuration/yugabyted/), you would do the following:
 
 ```sh
 ./bin/yugabyted start --tserver_flags="enable_pg_anonymizer=true"
@@ -114,7 +114,7 @@ The following shows output where the `anon.maskschema` and `anon.sourceschema` p
  skynet  | {"search_path=mask, public"}
 ```
 
-Note that [Backup and restore](../../../../manage/backup-restore/) doesn't preserve roles, and will also not restore masked security labels for roles. After a restore, you will need to manually recreate security labels for roles, and then enable dynamic masking.
+Note that [Backup and restore](../../../manage/backup-restore/) doesn't preserve roles, and will also not restore masked security labels for roles. After a restore, you will need to manually recreate security labels for roles, and then enable dynamic masking.
 
 To disable dynamic masking:
 

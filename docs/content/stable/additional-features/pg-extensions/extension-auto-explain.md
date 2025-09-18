@@ -15,7 +15,7 @@ The [auto_explain](https://www.postgresql.org/docs/15/auto-explain.html) Postgre
 
 ## Enable auto_explain
 
-To enable the auto_explain extension, add `auto_explain` to `shared_preload_libraries` in the PostgreSQL server configuration parameters using the YB-TServer [--ysql_pg_conf_csv](../../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) flag:
+To enable the auto_explain extension, add `auto_explain` to `shared_preload_libraries` in the PostgreSQL server configuration parameters using the YB-TServer [--ysql_pg_conf_csv](../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) flag:
 
 ```sh
 --ysql_pg_conf_csv=shared_preload_libraries=auto_explain
@@ -38,7 +38,7 @@ You can customize the following auto_explain parameters:
 | `log_format` | The format of the EXPLAIN output. Allowed values are `text`, `xml`, `json`, and `yaml`. Only superusers can change this setting. | text |
 | `log_nested_statements` | Consider nested statements (statements executed inside a function) for logging. When off, only top-level query plans are logged. Only superusers can change this setting. | false |
 | `sample_rate` | Explain only a set fraction of the statements in each session. The default 1 means explain all the queries. In case of nested statements, either all will be explained or none. Only superusers can change this setting. | 1 |
-| `log_dist` | Set to false to disable the [DIST option](../../../../api/ysql/the-sql-language/statements/perf_explain/#dist) of `EXPLAIN ANALYZE`. True by default, equivalent to `EXPLAIN (ANALYZE, DIST)`. This setting only applies when `log_analyze` is true. | true |
+| `log_dist` | Set to false to disable the [DIST option](../../../api/ysql/the-sql-language/statements/perf_explain/#dist) of `EXPLAIN ANALYZE`. True by default, equivalent to `EXPLAIN (ANALYZE, DIST)`. This setting only applies when `log_analyze` is true. | true |
 
 Note that the default behavior is to do nothing, so you must set at least `auto_explain.log_min_duration` if you want any results.
 

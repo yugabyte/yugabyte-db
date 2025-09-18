@@ -23,7 +23,7 @@ Before you can use the feature, you must set the `enable_pg_cron` flag to true o
 
 The pg_cron extension is installed on only one database, which stores the extension data. The default cron database is `yugabyte`. You can change it by setting the `ysql_cron_database_name` flag on all YB-TServers. You can create the database after setting the flag. To change the database after the extension is created, you must first _drop the extension_ and then change the flag value.
 
-For example, to create a single-node [yugabyted](../../../../reference/configuration/yugabyted/) cluster with pg_cron on database 'db1', use the following command:
+For example, to create a single-node [yugabyted](../../../reference/configuration/yugabyted/) cluster with pg_cron on database 'db1', use the following command:
 
 ```sh
 ./bin/yugabyted start --master_flags "enable_pg_cron=true" --tserver_flags "enable_pg_cron=true,ysql_cron_database_name=db1" --ui false
