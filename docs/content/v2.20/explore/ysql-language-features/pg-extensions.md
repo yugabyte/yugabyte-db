@@ -2,7 +2,7 @@
 title: PostgreSQL extensions
 headerTitle: PostgreSQL extensions
 linkTitle: PostgreSQL extensions
-description: Summary of supported PostgreSQL extensions
+description: PostgreSQL extensions
 menu:
   v2.20:
     identifier: explore-pg-extensions

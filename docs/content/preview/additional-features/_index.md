@@ -27,15 +27,15 @@ type: indexpage
     icon="fa-thin fa-arrows-rotate">}}
 
   {{<index/item
-    title="PostgreSQL extensions"
-    body="Use PostgreSQL extensions to extend the functionality of YSQL."
-    href="pg-extensions/"
-    icon="fa-thin fa-puzzle">}}
-
-  {{<index/item
     title="Colocation"
     body="Keep closely related data together via colocation."
     href="colocation/"
     icon="fa-thin fa-people-roof">}}
+
+  {{<index/item
+    title="PostgreSQL extensions"
+    body="Use PostgreSQL extensions to extend the functionality of YSQL."
+    href="pg-extensions/"
+    icon="fa-thin fa-puzzle">}}
 
 {{</index/block>}}
