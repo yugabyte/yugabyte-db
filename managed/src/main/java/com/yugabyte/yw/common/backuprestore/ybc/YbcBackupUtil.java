@@ -1110,7 +1110,7 @@ public class YbcBackupUtil {
               YBDB_STABLE_GRANT_SAFETY_VERSION,
               YBDB_PREVIEW_GRANT_SAFETY_VERSION,
               true)
-          <= 0) {
+          >= 0) {
         extendedArgsBuilder.setDumpRoleChecks(tableParams.getDumpRoleChecks());
       } else {
         log.debug("database version {} does not support --dump-role-checks", ybdbSoftwareVersion);
