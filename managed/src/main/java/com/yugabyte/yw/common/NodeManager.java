@@ -615,7 +615,7 @@ public class NodeManager extends DevopsBase {
         UUID kmsConfigUUID = params.deviceInfo.cloudVolumeEncryption.kmsConfigUUID;
         String cmkId = AwsEARServiceUtil.getCMKId(kmsConfigUUID);
         if (cmkId != null) {
-          String cmkArn = AwsEARServiceUtil.getCMK(kmsConfigUUID, cmkId).getKeyArn();
+          String cmkArn = AwsEARServiceUtil.getCMK(kmsConfigUUID, cmkId).keyArn();
           args.add("--cmk_res_name");
           args.add(cmkArn);
         }
