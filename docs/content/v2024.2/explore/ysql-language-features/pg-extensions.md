@@ -13,9 +13,9 @@ rightNav:
 type: docs
 ---
 
-PostgreSQL extensions provide a way to extend the functionality of a database by bundling SQL objects into a package and using them as a unit. YugabyteDB supports a variety of PostgreSQL extensions.
+PostgreSQL extensions provide a way to extend the functionality of a database by bundling SQL objects into a package and using them as a unit. YugabyteDB supports a variety of popular PostgreSQL extensions. Pre-bundled modules and extensions cover security/auditing (PGAudit, passwordcheck), scheduling (pg_cron), performance insight and tuning (pg_stat_statements, pg_stat_monitor, auto_explain, HypoPG, pg_hint_plan), data modeling and analytics (hstore, tablefunc, cube, earthdistance, HLL), partitioning (pg_partman), FDWs (file_fdw, postgres_fdw), and AI/vector search (pgvector).
 
-Most supported extensions are pre-bundled with YugabyteDB and can be enabled in YSQL by running the [CREATE EXTENSION](../../../api/ysql/the-sql-language/statements/ddl_create_extension/) statement.
+Supported extensions are typically enabled in YSQL by running the [CREATE EXTENSION](../../../api/ysql/the-sql-language/statements/ddl_create_extension/) statement.
 
 For example, to enable the [pgvector extension](../../../additional-features/pg-extensions/extension-pgvector/):
 
@@ -25,26 +25,6 @@ CREATE EXTENSION vector;
 
 You can then use the extension as you would in PostgreSQL.
 
-For example, create a vector column with 3 dimensions:
-
-```sql
-CREATE TABLE items (id bigserial PRIMARY KEY, embedding vector(3));
-```
-
-Insert vectors:
-
-```sql
-INSERT INTO items (embedding) VALUES ('[1,2,3]'), ('[4,5,6]');
-```
-
-Get the nearest neighbors by L2 distance:
-
-```sql
-SELECT * FROM items ORDER BY embedding <-> '[3,1,2]' LIMIT 5;
-```
-
-You can install only extensions that are supported by YugabyteDB. If you are interested in an extension that is not yet supported, contact {{% support-general %}}, or [reach out on Slack](https://yugabyte-db.slack.com/).
-
 {{<lead link="../../../additional-features/pg-extensions/">}}
-For information on supported extensions, see [PostgreSQL Extensions](../../../additional-features/pg-extensions/)
+For information on the extensions bundled with YugabyteDB, see [PostgreSQL Extensions](../../../additional-features/pg-extensions/)
 {{</lead>}}
