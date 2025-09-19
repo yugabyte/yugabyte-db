@@ -26365,6 +26365,18 @@
           "readOnly" : true,
           "type" : "string"
         },
+        "memoryLimitCheckIntervalSeconds" : {
+          "description" : "Check interval in seconds for the MemoryLimiterProcessor.",
+          "example" : 10,
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "memoryLimitMib" : {
+          "description" : "Memory limit in MiB for the OpenTelemetry Collector process in the config file.",
+          "example" : 2048,
+          "format" : "int32",
+          "type" : "integer"
+        },
         "sendBatchMaxSize" : {
           "description" : "Maximum batch size for query logs exporter",
           "format" : "int32",

@@ -1453,6 +1453,15 @@ public class OtelCollectorConfigGenerator {
     collectorConfig.getProcessors().put(batchProcessorName, batchProcessor);
     processorNames.add(batchProcessorName);
 
+    String memoryLimiterProcessorName = PROCESSOR_PREFIX_MEMORY_LIMITER + exportTypeAndUUIDString;
+    OtelCollectorConfigFormat.MemoryLimiterProcessor memoryLimiterProcessor =
+        new OtelCollectorConfigFormat.MemoryLimiterProcessor();
+    memoryLimiterProcessor.setCheck_interval(
+        logsExporterConfig.getMemoryLimitCheckIntervalSeconds().toString() + "s");
+    memoryLimiterProcessor.setLimit_mib(logsExporterConfig.getMemoryLimitMib());
+    collectorConfig.getProcessors().put(memoryLimiterProcessorName, memoryLimiterProcessor);
+    processorNames.add(memoryLimiterProcessorName);
+
     // Add common transform processor
     addCommonTransformProcessor(collectorConfig);
 
