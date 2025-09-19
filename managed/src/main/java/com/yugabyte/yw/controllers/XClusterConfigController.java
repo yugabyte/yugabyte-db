@@ -219,14 +219,13 @@ public class XClusterConfigController extends AuthenticatedController {
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList =
         XClusterConfigTaskBase.getTableInfoList(ybService, targetUniverse);
 
-    Map<String, String> sourceTableIdTargetTableIdMap =
-        xClusterCreatePrecheck.xClusterCreatePreChecks(
-            requestedTableInfoList,
-            createFormData.configType,
-            sourceUniverse,
-            sourceTableInfoList,
-            targetUniverse,
-            targetTableInfoList);
+    xClusterCreatePrecheck.xClusterCreatePreChecks(
+        requestedTableInfoList,
+        createFormData.configType,
+        sourceUniverse,
+        sourceTableInfoList,
+        targetUniverse,
+        targetTableInfoList);
 
     if (createFormData.bootstrapParams != null
         && createFormData.bootstrapParams.allowBootstrap
@@ -235,6 +234,10 @@ public class XClusterConfigController extends AuthenticatedController {
           getAllBootstrapRequiredTableForXClusterRequestedTable(
               ybService, requestedTableInfoList, createFormData.tables, sourceUniverse);
     }
+
+    Map<String, String> sourceTableIdTargetTableIdMap =
+        XClusterConfigTaskBase.getSourceTableIdTargetTableIdMap(
+            requestedTableInfoList, targetTableInfoList);
 
     xClusterBootstrappingPreChecks(
         requestedTableInfoList,

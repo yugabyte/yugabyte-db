@@ -37,9 +37,9 @@ public class RetryableLocalTests extends LocalProviderUniverseTestBase {
   }
 
   @Override
-  public void setUp() {
+  public void setUpBase() {
     org.junit.Assume.assumeTrue("true".equals(System.getenv(ENV_VAR)));
-    super.setUp();
+    super.setUpBase();
     customerTaskManager = app.injector().instanceOf(CustomerTaskManager.class);
   }
 

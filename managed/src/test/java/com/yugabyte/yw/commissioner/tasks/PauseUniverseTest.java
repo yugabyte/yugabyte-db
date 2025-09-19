@@ -47,10 +47,8 @@ import play.libs.Json;
 public class PauseUniverseTest extends CommissionerBaseTest {
   private Universe defaultUniverse;
 
-  @Override
   @Before
   public void setUp() {
-    super.setUp();
     ShellResponse dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = "true";
     when(mockNodeManager.nodeCommand(any(), any()))

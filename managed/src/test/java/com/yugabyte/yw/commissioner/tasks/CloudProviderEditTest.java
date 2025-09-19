@@ -77,6 +77,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.junit.Before;
 import org.junit.Test;
 import play.libs.Json;
 import play.mvc.Result;
@@ -162,9 +163,8 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
         regionJson);
   }
 
-  @Override
+  @Before
   public void setUp() {
-    super.setUp();
     user = ModelFactory.testSuperAdminUserNewRbac(defaultCustomer);
     factory.globalRuntimeConf().setValue(GlobalConfKeys.enableVMOSPatching.getKey(), "true");
     provider =

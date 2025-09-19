@@ -72,7 +72,6 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
 
   @Before
   public void setUp() {
-    super.setUp();
     mockClient = mock(YBClient.class);
     when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
   }

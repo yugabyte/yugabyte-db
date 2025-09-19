@@ -39,10 +39,8 @@ public class BackupUniverseTest extends CommissionerBaseTest {
 
   private Users defaultUser;
 
-  @Override
   @Before
   public void setUp() {
-    super.setUp();
     defaultCustomer = ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse();
     Map<String, String> config = new HashMap<>();

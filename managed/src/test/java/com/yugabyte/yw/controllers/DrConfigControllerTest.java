@@ -1,7 +1,6 @@
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
-import static com.yugabyte.yw.common.AssertHelper.assertForbidden;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.FakeDBApplication.buildTaskInfo;
@@ -225,7 +224,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
             mockXClusterScheduler,
             null,
             mockSoftwareUpgradeHelper,
-            new XClusterCreatePrecheck(mockYBClientService, null, null, mockSoftwareUpgradeHelper));
+            new XClusterCreatePrecheck(mockYBClientService, null, mockSoftwareUpgradeHelper));
   }
 
   @Test
@@ -327,50 +326,6 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
         result,
         "Cannot configure XCluster/DR config because target universe is not in ready software"
             + " upgrade state.");
-  }
-
-  @Test
-  public void testCreateDbScopedWithEmptySourceTableNotOnTarget() throws Exception {
-    settableRuntimeConfigFactory
-        .globalRuntimeConf()
-        .setValue("yb.xcluster.db_scoped.creationEnabled", "true");
-    DrConfigCreateForm data = createDefaultCreateForm("dbScopedDR");
-
-    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfo = new ArrayList<>();
-    for (String namespaceId : namespaceIds) {
-      MasterDdlOuterClass.ListTablesResponsePB.TableInfo.Builder tiBuilder =
-          MasterDdlOuterClass.ListTablesResponsePB.TableInfo.newBuilder()
-              .setTableType(TableType.PGSQL_TABLE_TYPE)
-              .setId(ByteString.copyFromUtf8(UUID.randomUUID().toString()))
-              .setName("table_1")
-              .setRelationType(RelationType.USER_TABLE_RELATION)
-              .setNamespace(
-                  MasterTypes.NamespaceIdentifierPB.newBuilder()
-                      .setName(namespaceId)
-                      .setId(ByteString.copyFromUtf8(namespaceId))
-                      .build());
-      sourceTableInfo.add(tiBuilder.build());
-    }
-
-    ListTablesResponse sourceTableListResponse = mock(ListTablesResponse.class);
-    when(sourceTableListResponse.getTableInfoList()).thenReturn(sourceTableInfo);
-    ListTablesResponse targetTableListResponse = mock(ListTablesResponse.class);
-    when(targetTableListResponse.getTableInfoList()).thenReturn(List.of());
-    when(mockYBClient.getTablesList(nullable(String.class), eq(false), nullable(String.class)))
-        .thenReturn(sourceTableListResponse)
-        .thenReturn(targetTableListResponse);
-
-    Result result =
-        assertPlatformException(
-            () ->
-                doRequestWithAuthTokenAndBody(
-                    "POST",
-                    "/api/customers/" + defaultCustomer.getUuid() + "/dr_configs",
-                    authToken,
-                    Json.toJson(data)));
-
-    assertForbidden(
-        result, "Some tables are empty on the source universe and don't exist on the target");
   }
 
   @Test
@@ -643,78 +598,6 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
                     authToken,
                     Json.toJson(setDatabasesData)));
     assertThat(exception.getMessage(), containsString("error.required"));
-  }
-
-  @Test
-  public void testSetDatabasesDbScopedFailureWithEmptySourceTableNotOnTarget() throws Exception {
-    settableRuntimeConfigFactory
-        .globalRuntimeConf()
-        .setValue("yb.xcluster.db_scoped.creationEnabled", "true");
-
-    namespaceIds.add(UUID.randomUUID().toString().replace("-", ""));
-    DrConfigCreateForm data = createDefaultCreateForm("dbScopedDR", Set.of(namespaceIds.get(0)));
-
-    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfo = new ArrayList<>();
-    for (String namespaceId : namespaceIds) {
-      MasterDdlOuterClass.ListTablesResponsePB.TableInfo.Builder tiBuilder =
-          MasterDdlOuterClass.ListTablesResponsePB.TableInfo.newBuilder()
-              .setTableType(TableType.PGSQL_TABLE_TYPE)
-              .setId(ByteString.copyFromUtf8(UUID.randomUUID().toString()))
-              .setName("table_1")
-              .setRelationType(RelationType.USER_TABLE_RELATION)
-              .setNamespace(
-                  MasterTypes.NamespaceIdentifierPB.newBuilder()
-                      .setName(namespaceId)
-                      .setId(ByteString.copyFromUtf8(namespaceId))
-                      .build());
-      sourceTableInfo.add(tiBuilder.build());
-    }
-
-    ListTablesResponse sourceTableListResponse = mock(ListTablesResponse.class);
-    when(sourceTableListResponse.getTableInfoList()).thenReturn(sourceTableInfo);
-    ListTablesResponse targetTableListResponse = mock(ListTablesResponse.class);
-    when(targetTableListResponse.getTableInfoList()).thenReturn(List.of());
-    when(mockYBClient.getTablesList(nullable(String.class), eq(false), nullable(String.class)))
-        .thenReturn(sourceTableListResponse) // source in create request
-        .thenReturn(sourceTableListResponse) // target in create request
-        .thenReturn(sourceTableListResponse) // source in setDB request
-        .thenReturn(targetTableListResponse); // target in setDB request
-
-    UUID taskUUID = buildTaskInfo(null, TaskType.CreateDrConfig);
-    when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
-
-    Result result =
-        doRequestWithAuthTokenAndBody(
-            "POST",
-            "/api/customers/" + defaultCustomer.getUuid() + "/dr_configs",
-            authToken,
-            Json.toJson(data));
-    assertOk(result);
-
-    DrConfigSetDatabasesForm setDatabasesData = new DrConfigSetDatabasesForm();
-    setDatabasesData.dbs = Set.of(namespaceIds.get(0), namespaceIds.get(1));
-    DrConfig drConfig =
-        DrConfig.getBetweenUniverses(
-                sourceUniverse.getUniverseUUID(), targetUniverse.getUniverseUUID())
-            .get(0);
-    XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
-    xClusterConfig.updateStatus(XClusterConfigStatusType.Running);
-    drConfig.setState(State.Replicating);
-    drConfig.update();
-
-    result =
-        assertPlatformException(
-            () ->
-                doRequestWithAuthTokenAndBody(
-                    "PUT",
-                    String.format(
-                        "/api/customers/%s/dr_configs/%s/set_dbs",
-                        defaultCustomer.getUuid(), drConfig.getUuid()),
-                    authToken,
-                    Json.toJson(setDatabasesData)));
-
-    assertForbidden(
-        result, "Some tables are empty on the source universe and don't exist on the target");
   }
 
   private void setupMockGetUniverseReplicationInfo(

@@ -70,11 +70,8 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
 
   private YBClient mockClient = mock(YBClient.class);
 
-  @Override
   @Before
   public void setUp() {
-    super.setUp();
-
     Region region = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
     AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
     // create default universe

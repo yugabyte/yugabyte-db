@@ -69,10 +69,8 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
 
   private Region region;
 
-  @Override
   @Before
   public void setUp() {
-    super.setUp();
     mockClient = mock(YBClient.class);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     try {

@@ -40,10 +40,8 @@ public class CheckSoftwareVersionTest extends CommissionerBaseTest {
   private NodeDetails node;
   private YBClient mockClient;
 
-  @Override
   @Before
   public void setUp() {
-    super.setUp();
     defaultCustomer = ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse();
     UniverseDefinitionTaskParams details = defaultUniverse.getUniverseDetails();

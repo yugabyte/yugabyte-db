@@ -76,7 +76,6 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
 
   @Before
   public void setUp() {
-    super.setUp();
     when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
   }
 
