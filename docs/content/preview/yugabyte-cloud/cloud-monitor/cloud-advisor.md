@@ -1,5 +1,5 @@
 ---
-title: YugabyteDB Aeon Insights
+title: YugabyteDB Aeon Performance Insights
 headerTitle: Insights
 linkTitle: Insights
 description: Scan your cluster to discover performance optimizations.
