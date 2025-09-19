@@ -21,11 +21,11 @@ The following tutorial shows how you can use ybm CLI to create clusters in Yugab
 
 This guide assumes you have already done the following:
 
-- Created and saved an [API key](../../../managed-apikeys/).
-- [Installed ybm CLI](../../../managed-cli/managed-cli-overview/#install-ybm).
-- [Configured ybm CLI](../../../managed-cli/managed-cli-overview/#configure-ybm) with your API key.
+- Created and saved an [API key](../../managed-apikeys/).
+- [Installed ybm CLI](../#install-ybm).
+- [Configured ybm CLI](../#configure-ybm) with your API key.
 
-Note that you can only create one Sandbox cluster per account. To create VPCs and dedicated clusters, you need to [choose a plan](https://www.yugabyte.com/pricing/), or you can [start a free trial](../../../../managed-freetrial/). For more information, refer to [What are the differences between Sandbox and Dedicated clusters](../../../../../faq/yugabytedb-managed-faq/#what-are-the-differences-between-sandbox-and-dedicated-clusters).
+Note that you can only create one Sandbox cluster per account. To create VPCs and dedicated clusters, you need to [choose a plan](https://www.yugabyte.com/pricing/), or you can [start a free trial](../../../managed-freetrial/). For more information, refer to [What are the differences between Sandbox and Dedicated clusters](../../../../faq/yugabytedb-managed-faq/#what-are-the-differences-between-sandbox-and-dedicated-clusters).
 
 ## Create a sandbox cluster
 
@@ -49,7 +49,7 @@ my-sandbox   Sandbox   2.17.1.0-b439   ACTIVE    💚        us-west-2   1      
 
 ## Connect to your cluster
 
-To [connect to your database](../../../../cloud-connect/) from your desktop or an application, you need the following:
+To [connect to your database](../../../cloud-connect/) from your desktop or an application, you need the following:
 
 - your device added to the cluster IP allow list
 - the cluster TLS certificate
@@ -57,7 +57,7 @@ To [connect to your database](../../../../cloud-connect/) from your desktop or a
 
 ### Create and assign an IP allow list
 
-To connect to your cluster from your computer, you need an [IP allow list](../../../../cloud-secure-clusters/add-connections/) with your computer's IP address. Create one as follows:
+To connect to your cluster from your computer, you need an [IP allow list](../../../cloud-secure-clusters/add-connections/) with your computer's IP address. Create one as follows:
 
 ```sh
 ybm network-allow-list create \
@@ -96,7 +96,7 @@ my-computer                                       173.206.17.104/32   my-sandbox
 
 ### Download the cluster certificate
 
-To connect to a cluster in YugabyteDB Aeon using a shell, you need the [cluster certificate](../../../../cloud-secure-clusters/cloud-authentication/). Download the certificate using the following command:
+To connect to a cluster in YugabyteDB Aeon using a shell, you need the [cluster certificate](../../../cloud-secure-clusters/cloud-authentication/). Download the certificate using the following command:
 
 ```sh
 ybm cluster cert download --out $HOME/root.crt
@@ -141,7 +141,7 @@ my-sandbox-n1   us-west-2[us-west-2a]   💚        ✅        ✅        ❌   
 
 The public host address to use to connect to your cluster is displayed under **Endpoints**.
 
-To connect to your cluster using the ysqlsh or ycqlsh shells, follow the instructions in [Connect via client shells](../../../../cloud-connect/connect-client-shell/). Use the public endpoint host address, the database credentials you specified when you created the sandbox, and the certificate you downloaded.
+To connect to your cluster using the ysqlsh or ycqlsh shells, follow the instructions in [Connect via client shells](../../../cloud-connect/connect-client-shell/). Use the public endpoint host address, the database credentials you specified when you created the sandbox, and the certificate you downloaded.
 
 ## Create dedicated clusters
 
@@ -170,7 +170,7 @@ my-single-region   Dedicated   2.17.2.0-b216  ACTIVE    💚        ap-northeast
 
 ### Create a VPC and multi-region cluster
 
-Multi-region clusters must be deployed in a [VPC](../../../../cloud-basics/cloud-vpcs/). The following example creates a VPC on GCP:
+Multi-region clusters must be deployed in a [VPC](../../../cloud-basics/cloud-vpcs/). The following example creates a VPC on GCP:
 
 ```sh
 ybm vpc create \
@@ -192,7 +192,7 @@ To list the available regions in GCP:
 ybm region list --cloud-provider GCP
 ```
 
-The following command creates a [replicate-across-regions](../../../../cloud-basics/create-clusters/create-clusters-multisync/) cluster in the VPC you created:
+The following command creates a [replicate-across-regions](../../../cloud-basics/create-clusters/create-clusters-multisync/) cluster in the VPC you created:
 
 ```sh
 ybm cluster create \
@@ -227,11 +227,11 @@ ybm cluster update \
   --wait
 ```
 
-For more information, see [Scale and configure clusters](../../../../cloud-clusters/configure-clusters/).
+For more information, see [Scale and configure clusters](../../../cloud-clusters/configure-clusters/).
 
 ## Encryption at rest
 
-YugabyteDB Aeon supports [encryption at rest](../../../../cloud-secure-clusters/managed-ear) (EAR). Before you can create a cluster with EAR, you need to create a customer managed key (CMK) in a cloud provider Key Management Service (KMS). See [Prerequisites](../../../../cloud-secure-clusters/managed-ear/#prerequisites).
+YugabyteDB Aeon supports [encryption at rest](../../../cloud-secure-clusters/managed-ear) (EAR). Before you can create a cluster with EAR, you need to create a customer managed key (CMK) in a cloud provider Key Management Service (KMS). See [Prerequisites](../../../cloud-secure-clusters/managed-ear/#prerequisites).
 
 ### Create a cluster with EAR
 
@@ -326,7 +326,7 @@ ybm cluster create \
 ```output
 The cluster my-sandbox has been created
 Name           Tier        Version           State     Health    Provider   Regions     Nodes     Node Res.(Vcpu/Mem/DiskGB/IOPS)
-my-sandbox   Dedicated   {{< yb-version version="preview" format="build">}}       ACTIVE    💚        AZURE      eastus   3         4 / 16GB / 200GB / 3000
+my-sandbox   Dedicated   {{< yb-version version="stable" format="build">}}       ACTIVE    💚        AZURE      eastus   3         4 / 16GB / 200GB / 3000
 ```
 
 You can list the EAR details using the encryption list command.
