@@ -121,7 +121,7 @@
 
 [[redirects]]
   from = "/drivers-orms/"
-  to = "/preview/drivers-orms/"
+  to = "/preview/develop/drivers-orms/"
 
 [[redirects]]
   from = "/explore/tunable-reads/"
@@ -326,7 +326,7 @@
 
 [[redirects]]
   from = "/preview/develop/client-drivers/*"
-  to = "/preview/drivers-orms/:splat"
+  to = "/preview/develop/drivers-orms/:splat"
 
 [[redirects]]
   from = "/preview/explore/cloud-native/"
@@ -490,7 +490,7 @@
 
 [[redirects]]
   from = "/preview/reference/drivers/yugabytedb-jdbc-driver/"
-  to = "/preview/drivers-orms/java/yugabyte-jdbc-reference/"
+  to = "/preview/develop/drivers-orms/java/yugabyte-jdbc-reference/"
 
 [[redirects]]
   from = "/preview/releases/release-notes/preview-release/"
@@ -641,12 +641,12 @@
 
 [[redirects]]
   from = "/:version/drivers-orms/*"
-  to = "/preview/drivers-orms/:splat"
+  to = "/preview/develop/drivers-orms/:splat"
   force = true
 
 [[redirects]]
   from = "/v2.20/reference/drivers/*"
-  to = "/preview/drivers-orms/"
+  to = "/preview/develop/drivers-orms/"
   force = true
 
 # Redirect for YugabyteDB Voyager
@@ -793,55 +793,55 @@
 
 [[redirects]]
   from = "/preview/develop/build-apps/java/ysql-hibernate/"
-  to = "/preview/drivers-orms/orms/java/ysql-hibernate/"
+  to = "/preview/develop/drivers-orms/orms/java/ysql-hibernate/"
   force = true
 [[redirects]]
   from = "/preview/develop/build-apps/java/ysql-ebean/"
-  to = "/preview/drivers-orms/orms/java/ysql-ebean/"
+  to = "/preview/develop/drivers-orms/orms/java/ysql-ebean/"
   force = true
 [[redirects]]
   from = "/preview/develop/build-apps/java/ysql-spring-data/"
-  to = "/preview/drivers-orms/orms/java/ysql-spring-data/"
+  to = "/preview/develop/drivers-orms/orms/java/ysql-spring-data/"
   force = true
 [[redirects]]
   from = "/preview/develop/build-apps/go/ysql-pg/"
-  to = "/preview/drivers-orms/go/pg/"
+  to = "/preview/develop/drivers-orms/go/pg/"
   force = true
 [[redirects]]
   from = "/preview/develop/build-apps/go/ysql-gorm/"
-  to = "/preview/drivers-orms/orms/go/ysql-gorm/"
+  to = "/preview/develop/drivers-orms/orms/go/ysql-gorm/"
   force = true
 [[redirects]]
   from = "/preview/develop/build-apps/python/ysql-sqlalchemy/"
-  to = "/preview/drivers-orms/orms/python/ysql-sqlalchemy/"
+  to = "/preview/develop/drivers-orms/orms/python/ysql-sqlalchemy/"
   force = true
 [[redirects]]
   from = "/preview/develop/build-apps/python/ysql-django/"
-  to = "/preview/drivers-orms/orms/python/ysql-django/"
+  to = "/preview/develop/drivers-orms/orms/python/ysql-django/"
   force = true
 [[redirects]]
   from = "/preview/develop/build-apps/python/ysql-aiopg/"
-  to = "/preview/drivers-orms/python/aiopg/"
+  to = "/preview/develop/drivers-orms/python/aiopg/"
   force = true
 [[redirects]]
   from = "/preview/develop/build-apps/nodejs/ysql-sequelize/"
-  to = "/preview/drivers-orms/orms/nodejs/ysql-sequelize/"
+  to = "/preview/develop/drivers-orms/orms/nodejs/ysql-sequelize/"
   force = true
 [[redirects]]
   from = "/preview/develop/build-apps/nodejs/ysql-prisma/"
-  to = "/preview/drivers-orms/orms/nodejs/ysql-prisma/"
+  to = "/preview/develop/drivers-orms/orms/nodejs/ysql-prisma/"
   force = true
 [[redirects]]
   from = "/preview/develop/build-apps/csharp/ysql-entity-framework/"
-  to = "/preview/drivers-orms/orms/csharp/ysql-entity-framework/"
+  to = "/preview/develop/drivers-orms/orms/csharp/ysql-entity-framework/"
   force = true
 [[redirects]]
   from = "/preview/develop/build-apps/csharp/ysql-dapper/"
-  to = "/preview/drivers-orms/orms/csharp/ysql-dapper/"
+  to = "/preview/develop/drivers-orms/orms/csharp/ysql-dapper/"
   force = true
 [[redirects]]
   from = "/preview/develop/build-apps/rust/ysql-diesel/"
-  to = "/preview/drivers-orms/orms/rust/ysql-diesel/"
+  to = "/preview/develop/drivers-orms/orms/rust/ysql-diesel/"
   force = true
 [[redirects]]
   from = "/preview/develop/build-apps/java/ysql-sdyb/"
@@ -982,7 +982,7 @@
 # Moving Drivers from reference to Develop
 [[redirects]]
   from = "/preview/reference/drivers/"
-  to = "/preview/drivers-orms/"
+  to = "/preview/develop/drivers-orms/"
   force = true
 
 # CDC tutorials was in explore, now in Tutorials
@@ -1038,12 +1038,12 @@
 
 [[redirects]]
   from = "/:version/integrations/smart-driver/"
-  to = "/preview/drivers-orms/smart-drivers/"
+  to = "/preview/develop/drivers-orms/smart-drivers/"
   force = true
 
 [[redirects]]
   from = "/:version/integrations/jdbc-driver/"
-  to = "/preview/drivers-orms/java/yugabyte-jdbc-reference/"
+  to = "/preview/develop/drivers-orms/java/yugabyte-jdbc-reference/"
   force = true
 
 [[redirects]]
