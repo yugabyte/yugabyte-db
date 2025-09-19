@@ -2669,9 +2669,20 @@ class PgClientSession::Impl {
   }
 
   void StartShutdown(bool pg_service_shutting_down) {
+    VLOG(2) << "StartShutdown for session id: " << id();
     if (!pg_service_shutting_down) {
       WARN_NOT_OK(CleanupObjectLocks(), "Error cleaning up object locks");
-      if (const auto& txn = Transaction(PgClientSessionKind::kPgSession); txn) {
+
+      // Abort txns attached to this session
+      for (const auto kind :
+           {PgClientSessionKind::kPlain, PgClientSessionKind::kDdl,
+            PgClientSessionKind::kPgSession}) {
+        const auto& txn = Transaction(kind);
+        if (!txn) {
+          continue;
+        }
+        LOG(INFO) << "Aborting txn of kind " << yb::ToString(kind) << " with id " << txn->id()
+                  << " belonging to expired PG session ID: " << id();
         txn->Abort();
       }
     }

@@ -714,6 +714,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     if (it == sessions_.end()) {
       return;
     }
+    VLOG(2) << "Requesting session expiry for session " << session_id << " with pid " << pid;
     (**it).session().SetExpiration(now);
     session_expiration_queue_.emplace(now, session_id);
     ScheduleCheckExpiredSessions(now);
@@ -2246,6 +2247,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     }
     std::vector<SessionInfoPtr> not_ready_sessions;
     for (const auto& session : expired_sessions) {
+      VLOG(1) << "Starting shutdown for expired session ID: " << session->id();
       session->session().StartShutdown(/* pg_service_shutting_donw= */ false);
       txn_snapshot_manager_.UnregisterAll(session->id());
     }
