@@ -5,7 +5,7 @@ linkTitle: Common patterns
 description: Build on Common patterns
 headcontent: Design robust and efficient applications using common patterns
 menu:
-  preview:
+  preview_develop:
     identifier: common-patterns
     parent: data-modeling
     weight: 600

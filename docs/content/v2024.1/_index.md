@@ -34,7 +34,7 @@ YugabyteDB is an open source PostgreSQL-compatible distributed database for clou
     title="Build a Hello World application"
     description="Use your favorite programming language to build an application that connects to a YugabyteDB cluster."
     buttonText="Build"
-    buttonUrl="/preview/tutorials/build-apps/"
+    buttonUrl="/preview/develop/tutorials/build-apps/"
   >}}
 
   {{< sections/3-box-card

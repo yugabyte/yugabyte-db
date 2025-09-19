@@ -118,7 +118,7 @@ Find resources for getting started, migrating existing databases, using your dat
 [Global Applications with YugabyteDB](https://www.youtube.com/watch?v=jqZxUydBaMQ)
 : Explore how to design and build global applications with YugabyteDB.
 
-[Hello world](/preview/tutorials/build-apps/)
+[Hello world](/preview/develop/tutorials/build-apps/)
 : Use your favorite programming language to build an application that uses YSQL or YCQL APIs.
 
 [Distributed PostgreSQL Essentials for Developers: Hands-on Course](https://www.youtube.com/watch?v=rqJBFQ-4Hgk)

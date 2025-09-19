@@ -3,7 +3,7 @@ title: Smart driver FAQ
 linkTitle: Smart driver FAQ
 description: YugabyteDB smart drivers frequently asked questions
 aliases:
-  - /preview/drivers-orms/smart-drivers-faq/
+  - /preview/develop/drivers-orms/smart-drivers-faq/
 menu:
   preview_faq:
     identifier: smart-drivers-faq
@@ -31,7 +31,7 @@ YugabyteDB smart drivers for YSQL are currently available for the following lang
 - node.js
 - Python
 
-{{<lead link="/preview/drivers-orms/#choose-your-language">}}
+{{<lead link="/preview/develop/drivers-orms/#choose-your-language">}}
 Choose your language
 {{</lead>}}
 
