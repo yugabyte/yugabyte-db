@@ -1329,20 +1329,20 @@ Status PgSession::AcquireAdvisoryLock(
   tserver::PgAcquireAdvisoryLockRequestPB req;
   AdvisoryLockRequestInitCommon(req, pg_client_.SessionID(), lock_id, mode);
   req.set_wait(wait);
-  // No need to populate the txn metadata for session level advisory locks.
   if (session) {
     req.set_session(session);
-  } else {
-    auto& options = *req.mutable_options();
-    // If isolation level is READ_COMMITTED, set priority of the transaction to kHighestPriority.
-    RETURN_NOT_OK(pg_txn_manager_->CalculateIsolation(
-      false /* read_only */,
-      pg_txn_manager_->GetTxnPriorityRequirement(RowMarkType::ROW_MARK_ABSENT)));
-    RETURN_NOT_OK(SetupPerformOptions(&options));
-    // TODO(advisory-lock): Fully validate that the optimization of local txn will not be applied,
-    // then it should be safe to skip set_force_global_transaction.
-    options.set_force_global_transaction(true);
   }
+  // Populate the options even in case session level lock requests, as it would set relevant
+  // state on pg_client_session necessary for retries on statement rollback.
+  auto& options = *req.mutable_options();
+  // If isolation level is READ_COMMITTED, set priority of the transaction to kHighestPriority.
+  RETURN_NOT_OK(pg_txn_manager_->CalculateIsolation(
+    false /* read_only */,
+    pg_txn_manager_->GetTxnPriorityRequirement(RowMarkType::ROW_MARK_ABSENT)));
+  RETURN_NOT_OK(SetupPerformOptions(&options));
+  // TODO(advisory-lock): Fully validate that the optimization of local txn will not be applied,
+  // then it should be safe to skip set_force_global_transaction.
+  options.set_force_global_transaction(true);
   return pg_client_.AcquireAdvisoryLock(&req, CoarseTimePoint());
 }
 

@@ -1951,10 +1951,10 @@ class PgClientSession::Impl {
     }
 
     RSTATUS_DCHECK(transaction->HasSubTransaction(subtxn_id), InvalidArgument,
-                  Format("Transaction of kind $0 doesn't have sub transaction $1",
+                  Format("Transaction $0 of kind $1 doesn't have sub transaction $2",
+                          transaction->id(),
                           kind == PgClientSessionKind::kPlain ? "kPlain" : "kDdl",
                           subtxn_id));
-
     const auto deadline = context->GetClientDeadline();
     RETURN_NOT_OK(transaction->RollbackToSubTransaction(subtxn_id, deadline));
     return ReleaseObjectLocksIfNecessary(transaction, kind, deadline, subtxn_id);
@@ -2515,16 +2515,20 @@ class PgClientSession::Impl {
     VLOG(2) << "Servicing AcquireAdvisoryLock: " << req.ShortDebugString();
     SCHECK(FLAGS_ysql_yb_enable_advisory_locks, NotSupported, "advisory locks are disabled");
     const auto deadline = context->GetClientDeadline();
-    auto* primary_session_data = &GetSessionData(PgClientSessionKind::kPlain);
+    auto* primary_session_data = &GetSessionData(GetSessionKindBasedOnDDLOptions(
+        req.has_options() && req.options().ddl_mode(),
+        req.has_options() && req.options().ddl_use_regular_transaction_block()));
     auto* background_session_data = &GetSessionData(PgClientSessionKind::kPgSession);
     if (req.session()) {
+      // Update subtxn of host transaction as it is required for retries with statement rollbacks.
+      if (const auto& txn = primary_session_data->transaction; txn) {
+        txn->SetActiveSubTransaction(req.options().active_sub_transaction_id());
+      }
       std::swap(primary_session_data, background_session_data);
       const auto& pg_session_data = VERIFY_RESULT_REF(BeginPgSessionLevelTxnIfNecessary(deadline));
       DCHECK(&pg_session_data == primary_session_data) << "Expected session of kind kPgSession.";
     } else {
-      RSTATUS_DCHECK(
-          VERIFY_RESULT(SetupSession(req.options(), deadline)).is_plain,
-          IllegalState, "Expected session of kind kPlain.");
+      RETURN_NOT_OK(SetupSession(req.options(), deadline));
     }
     RSTATUS_DCHECK(
         primary_session_data->session && primary_session_data->transaction,
