@@ -12,18 +12,16 @@ cascade:
 {{< sections/2-boxes >}}
   {{< sections/bottom-image-box
     title="Create a hello world application"
-    description="Build the most basic application in your favorite language using YugabyteDB as a database."
-    buttonText="Get Started"
+    description="Build the most basic application in your favorite language, including Java, Go, Node, Python, and more, using YugabyteDB as a database."
+    buttonText="Hello World"
     buttonUrl="build-apps/"
-    imageAlt="Locally Laptop" imageUrl="/images/homepage/locally-laptop.svg"
   >}}
 
   {{< sections/bottom-image-box
     title="Build and learn"
-    description="Learn the essential capabilities of YugabyteDB by building a movie recommendations service that starts with a single-server PostgreSQL instance and scales to a multi-region YugabyteDB cluster."
+    description="Learn YugabyteDB essentials by building a movie recommendations service that starts with a single-server PostgreSQL instance and scales to a multi-region YugabyteDB cluster."
     buttonText="Get Started"
     buttonUrl="build-and-learn/"
-    imageAlt="Yugabyte cloud" imageUrl="/images/homepage/yugabyte-in-cloud.svg"
   >}}
 {{< /sections/2-boxes >}}
 
