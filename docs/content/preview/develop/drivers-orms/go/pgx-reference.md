@@ -111,7 +111,7 @@ if err != nil {
 
 The `conn.Exec()` function also returns an `error` object which, if not `nil`, needs to be handled in your code.
 
-Read more on designing [Database schemas and tables](../../../explore/ysql-language-features/databases-schemas-tables/).
+Read more on designing [Database schemas and tables](../../../../explore/ysql-language-features/databases-schemas-tables/).
 
 ### Read and write data
 
@@ -214,7 +214,7 @@ For more details, see [pgxpool package doc](https://pkg.go.dev/github.com/jackc/
 
 To build a Go application that communicates securely over SSL with YugabyteDB database, you need the root certificate (`ca.crt`) of the YugabyteDB cluster.
 
-To generate these certificates and install them while launching the cluster, follow the instructions in [Create server certificates](../../../secure/tls-encryption/server-certificates/).
+To generate these certificates and install them while launching the cluster, follow the instructions in [Create server certificates](../../../../secure/tls-encryption/server-certificates/).
 
 For a YugabyteDB Aeon cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as follows at the client side.
 
@@ -247,7 +247,7 @@ YugabyteDB Aeon requires SSL/TLS, and connections using SSL mode `disable` will 
 
 ## Transaction and isolation levels
 
-YugabyteDB supports transactions for inserting and querying data from the tables. YugabyteDB supports different [isolation levels](../../../architecture/transactions/isolation-levels/) for maintaining strong consistency for concurrent data access.
+YugabyteDB supports transactions for inserting and querying data from the tables. YugabyteDB supports different [isolation levels](../../../../architecture/transactions/isolation-levels/) for maintaining strong consistency for concurrent data access.
 
 The PGX driver provides `conn.Begin()` function to start a transaction. The function `conn.BeginEx()` can create a transaction with a specified isolation level.`
 

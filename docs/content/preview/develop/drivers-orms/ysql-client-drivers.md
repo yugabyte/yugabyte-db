@@ -22,11 +22,11 @@ rightNav:
 {{<tabitem href="../ycql-client-drivers/" text="YCQL" icon="cassandra">}}
 {{</tabs>}}
 
-The [Yugabyte Structured Query Language (YSQL) API](../../api/ysql/) builds upon and extends a fork of the query layer from PostgreSQL 15, with the intent of supporting most PostgreSQL functionality and adding new functionality to supported distributed SQL databases.
+The [Yugabyte Structured Query Language (YSQL) API](../../../api/ysql/) builds upon and extends a fork of the query layer from PostgreSQL 15, with the intent of supporting most PostgreSQL functionality and adding new functionality to supported distributed SQL databases.
 
-For details on PostgreSQL feature support in YSQL, refer to [SQL feature support](../../api/ysql/sql-feature-support/).
+For details on PostgreSQL feature support in YSQL, refer to [SQL feature support](../../../api/ysql/sql-feature-support/).
 
-Client drivers listed below are supported for developing applications that connect to and interact with the YSQL API. Most of the drivers use [libpq](#libpq) and support the [SCRAM-SHA-256 authentication method](../../secure/authentication/password-authentication/#scram-sha-256).
+Client drivers listed below are supported for developing applications that connect to and interact with the YSQL API. Most of the drivers use [libpq](#libpq) and support the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
 For help using these drivers with YSQL, ask your questions in the [Slack community]({{<slack-invite>}}).
 
@@ -36,7 +36,7 @@ If you encounter an issue or have an enhancement request, [file a GitHub issue](
 
 ### libpq
 
-[libpq](https://www.postgresql.org/docs/15/libpq.html) is the C client library for connecting to and interacting with PostgreSQL databases. libpq is also the underlying engine used in other PostgreSQL application interfaces. The libpq client library supports the [SCRAM-SHA-256 authentication method](../../secure/authentication/password-authentication/#scram-sha-256).
+[libpq](https://www.postgresql.org/docs/15/libpq.html) is the C client library for connecting to and interacting with PostgreSQL databases. libpq is also the underlying engine used in other PostgreSQL application interfaces. The libpq client library supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
 For details and documentation, refer to [libpq - C Library](https://www.postgresql.org/docs/15/libpq.html) for PostgreSQL 11 (on which YugabyteDB is based).
 
@@ -56,7 +56,7 @@ Homebrew users on macOS can install libpq using `brew install libpq`. You can do
 
 ### libpqxx
 
-The [libpqxx](http://pqxx.org/development/libpqxx/) driver is the official C++ client API for PostgreSQL. libpqxx is based on [libpq](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../secure/authentication/password-authentication/#scram-sha-256).
+The [libpqxx](http://pqxx.org/development/libpqxx/) driver is the official C++ client API for PostgreSQL. libpqxx is based on [libpq](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
 For details and documentation, refer to the [libpqxx README](https://github.com/jtv/libpqxx#readme) and [libpqxx documentation](https://libpqxx.readthedocs.io/en/latest/).
 
@@ -99,7 +99,7 @@ To get the latest versions for projects using [Apache Maven](https://maven.apach
 
 ### php-pgsql
 
-The [php-pgsql](https://www.php.net/manual/en/book.pgsql.php) driver is a collection of the official PostgreSQL module for PHP. php-pgsql is based on [libpq](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../secure/authentication/password-authentication/#scram-sha-256).
+The [php-pgsql](https://www.php.net/manual/en/book.pgsql.php) driver is a collection of the official PostgreSQL module for PHP. php-pgsql is based on [libpq](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
 For details on installing and using php-pgsql, see the [php-pgsql documentation](https://www.php.net/manual/en/book.pgsql.php).
 
@@ -135,7 +135,7 @@ pip3 install aiopg
 
 ### pg
 
-[pg](https://github.com/ged/ruby-pg) is the Ruby interface for PostgreSQL databases. pg is based on [libpq](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../secure/authentication/password-authentication/#scram-sha-256).
+[pg](https://github.com/ged/ruby-pg) is the Ruby interface for PostgreSQL databases. pg is based on [libpq](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
 For a tutorial on building a sample Ruby application with pg, see [Connect an application](../ruby/ruby-pg/).
 
@@ -159,7 +159,7 @@ Replace `<path-to-libpq>` with the path to the libpq installation; for example, 
 
 ### Rust-Postgres
 
-[Rust-Postgres](https://github.com/sfackler/rust-postgres) is the Rust interface for PostgreSQL databases. Rust-Postgres is not based on libpq, but supports the [SCRAM-SHA-256 authentication method](../../secure/authentication/password-authentication/#scram-sha-256).
+[Rust-Postgres](https://github.com/sfackler/rust-postgres) is the Rust interface for PostgreSQL databases. Rust-Postgres is not based on libpq, but supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
 For a tutorial on building a sample Ruby application with Rust-Postgres, see [Build a Rust application](/preview/develop/tutorials/build-apps/rust/cloud-ysql-rust/).
 

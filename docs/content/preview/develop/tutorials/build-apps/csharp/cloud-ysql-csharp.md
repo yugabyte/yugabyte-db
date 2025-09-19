@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-The following tutorial shows a small [C# application](https://github.com/yugabyte/yugabyte-simple-csharp-app) that connects to a YugabyteDB cluster using the [Npgsql driver](../../../../drivers-orms/csharp/postgres-npgsql) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Aeon in C#.
+The following tutorial shows a small [C# application](https://github.com/yugabyte/yugabyte-simple-csharp-app) that connects to a YugabyteDB cluster using the [Npgsql driver](/preview/develop/drivers-orms/csharp/postgres-npgsql) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Aeon in C#.
 
 ## Prerequisites
 
@@ -46,7 +46,7 @@ To do this:
     - **urlBuilder.Port** - the port number for the driver to use (the default YugabyteDB YSQL port is 5433).
     - **urlBuilder.Database** - the name of the database you are connecting to (the default is `yugabyte`).
     - **urlBuilder.Username** and **urlBuilder.Password** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte` and `yugabyte`). For YugabyteDB Aeon, use the credentials in the credentials file you downloaded.
-    - **urlBuilder.SslMode** - the SSL mode to use. YugabyteDB Aeon [requires SSL connections](../../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/); use `SslMode.VerifyFull`.
+    - **urlBuilder.SslMode** - the SSL mode to use. YugabyteDB Aeon [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/); use `SslMode.VerifyFull`.
     - **urlBuilder.RootCertificate** - the full path to the YugabyteDB Aeon cluster CA certificate.
 
 3. Save the file.
@@ -173,4 +173,4 @@ try
 
 ## Learn more
 
-[Npgsql driver](../../../../drivers-orms/csharp/postgres-npgsql/)
+[Npgsql driver](/preview/develop/drivers-orms/csharp/postgres-npgsql/)

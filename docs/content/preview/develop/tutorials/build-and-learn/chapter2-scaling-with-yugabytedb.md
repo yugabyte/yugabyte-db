@@ -30,7 +30,7 @@ You need to complete [Chapter 1](../chapter1-debuting-with-postgres) of the tuto
 
 ## Start YugabyteDB
 
-YugabyteDB offers various deployment options, including bare metal, containerization, or as a fully-managed service. In this tutorial, you'll use the [yugabyted tool](../../../reference/configuration/yugabyted/) deploying a YugabyteDB cluster in a containerized environment.
+YugabyteDB offers various deployment options, including bare metal, containerization, or as a fully-managed service. In this tutorial, you'll use the [yugabyted tool](../../../../reference/configuration/yugabyted/) deploying a YugabyteDB cluster in a containerized environment.
 
 To begin, start a single-node YugabyteDB cluster in Docker:
 
@@ -65,12 +65,12 @@ The command pulls the latest Docker image of YugabyteDB, starts the container, a
 * `15433` - for the YugabyteDB monitoring UI.
 * `5433` - serves as the database port to which your client applications connect. This port is associated with the PostgreSQL server/postmaster process, which manages client connections and initiates new backend processes.
 
-For a complete list of ports, refer to the [default ports](../../../reference/configuration/default-ports/) documentation.
+For a complete list of ports, refer to the [default ports](../../../../reference/configuration/default-ports/) documentation.
 {{< /note >}}
 
 Next, open a database connection and run a few SQL requests:
 
-1. Wait for the node to finish the initialization and connect to the container opening a database connection with the [ysqlsh](../../../api/ysqlsh/) command-line tool:
+1. Wait for the node to finish the initialization and connect to the container opening a database connection with the [ysqlsh](../../../../api/ysqlsh/) command-line tool:
 
     ```shell
     while ! docker exec -it yugabytedb-node1 postgres/bin/pg_isready -U yugabyte -h yugabytedb-node1; do sleep 1; done
@@ -170,7 +170,7 @@ To view more detailed information about the cluster nodes, go to the **Nodes** d
 
 ![YugabyteDB UI Nodes Dashboard](/images/tutorials/build-and-learn/chpater2-yugabytedb-ui-nodes-tab.png)
 
-The **Number of Tablets** column provides insights into how YugabyteDB [distributes data and workload](../../../architecture/docdb-sharding).
+The **Number of Tablets** column provides insights into how YugabyteDB [distributes data and workload](../../../../architecture/docdb-sharding).
 
 * **Tablets** - YugabyteDB shards your data by splitting tables into tablets, which are then distributed across the cluster nodes. Currently, the cluster splits system-level tables into `9` tablets (see the **Total** column).
 
@@ -206,7 +206,7 @@ All you need to do is to restart the application containers with YugabyteDB-spec
     ```
 
     {{< note title="Flyway and Advisory Locks" >}}
-The application uses Flyway to apply database migrations on startup. Flyway tries to acquire [PostgreSQL advisory locks](https://www.postgresql.org/docs/current/explicit-locking.html#ADVISORY-LOCKS), but does not require them. Because this example does not require them, we set the DB_CONN_INIT_SQL to suppress all advisory lock warnings. For information on advisory lock support in YugabyteDB, refer to [Advisory locks](../../../explore/transactions/explicit-locking/#advisory-locks).
+The application uses Flyway to apply database migrations on startup. Flyway tries to acquire [PostgreSQL advisory locks](https://www.postgresql.org/docs/current/explicit-locking.html#ADVISORY-LOCKS), but does not require them. Because this example does not require them, we set the DB_CONN_INIT_SQL to suppress all advisory lock warnings. For information on advisory lock support in YugabyteDB, refer to [Advisory locks](../../../../explore/transactions/explicit-locking/#advisory-locks).
     {{< /note >}}
 
 1. Start the application:

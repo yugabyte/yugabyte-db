@@ -34,7 +34,7 @@ type: docs
 
 </ul>
 
-YugabyteDB JDBC smart driver is a JDBC driver for [YSQL](../../../api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc), with additional connection load balancing features.
+YugabyteDB JDBC smart driver is a JDBC driver for [YSQL](../../../../api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc), with additional connection load balancing features.
 
 For more information on the YugabyteDB Java smart driver, see the following:
 
@@ -176,7 +176,7 @@ The driver also supports connecting to multiple YugabyteDB clusters, while keepi
 
 ## Try it out
 
-This tutorial shows how to use the YugabyteDB JDBC Driver with YugabyteDB. It starts by creating a three-node cluster with a replication factor of 3. This tutorial uses the [yugabyted](../../../reference/configuration/yugabyted/) utility.
+This tutorial shows how to use the YugabyteDB JDBC Driver with YugabyteDB. It starts by creating a three-node cluster with a replication factor of 3. This tutorial uses the [yugabyted](../../../../reference/configuration/yugabyted/) utility.
 
 Next, you use [yb-sample-apps](https://github.com/yugabyte/yb-sample-apps/tree/master) to demonstrate the driver's load balancing features and create a Maven project to learn how to use the driver in an application.
 

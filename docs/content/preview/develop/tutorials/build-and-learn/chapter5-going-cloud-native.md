@@ -164,9 +164,9 @@ Congratulations! You've completed Chapter 5, the final chapter of the tutorial. 
 
 Let's recap!
 
-* You started with PostgreSQL and then leveraged YugabyteDB's [feature and runtime compatibility](../../../explore/ysql-language-features/) with PostgreSQL by migrating to a distributed YugabyteDB cluster.
-* You learned how to [tolerate various outages](../../../explore/fault-tolerance/) by deploying a multi-region YugabyteDB cluster and using the [YugabyteDB smart driver](../../../drivers-orms/smart-drivers/).
-* You used the latency-optimized [geo-partitioning design pattern](../../../develop/build-global-apps/latency-optimized-geo-partition/) to scale both reads and writes across various locations.
+* You started with PostgreSQL and then leveraged YugabyteDB's [feature and runtime compatibility](../../../../explore/ysql-language-features/) with PostgreSQL by migrating to a distributed YugabyteDB cluster.
+* You learned how to [tolerate various outages](../../../../explore/fault-tolerance/) by deploying a multi-region YugabyteDB cluster and using the [YugabyteDB smart driver](/preview/develop/drivers-orms/smart-drivers/).
+* You used the latency-optimized [geo-partitioning design pattern](../../../build-global-apps/latency-optimized-geo-partition/) to scale both reads and writes across various locations.
 * You learned how to offload the management and operations of your database cluster by migrating to [YugabyteDB Aeon](/preview/yugabyte-cloud/).
 
 With that said, good luck building applications that scale and never fail! And don't forget to [join our community](https://inviter.co/yugabytedb), where you can get your questions answered and learn about the latest updates from the world of YugabyteDB.

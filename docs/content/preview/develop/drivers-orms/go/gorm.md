@@ -90,7 +90,7 @@ type Employee struct {
 db.Debug().AutoMigrate(&Employee{})
 ```
 
-Read more on designing [Database schemas and tables](../../../explore/ysql-language-features/databases-schemas-tables/).
+Read more on designing [Database schemas and tables](../../../../explore/ysql-language-features/databases-schemas-tables/).
 
 ### Step 4: Read and write data
 

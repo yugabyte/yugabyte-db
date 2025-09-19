@@ -22,7 +22,7 @@ To learn how to build applications on top of YugabyteDB, see [Learn app developm
 To communicate with YugabyteDB, applications need to use drivers. Applications can also be built using Object-Relational mappings, a technique used to communicate with the database using object-oriented techniques. We've tested various drivers and ORMs in multiple languages with the optimal configurations to get your applications up and running.
 
 {{<lead link="../drivers-orms/">}}
-For the list of drivers and ORMs with sample code, see [Drivers and ORMs](../drivers-orms/).
+For the list of drivers and ORMs with sample code, see [Drivers and ORMs](./drivers-orms/).
 {{</lead>}}
 
 ## Data modeling

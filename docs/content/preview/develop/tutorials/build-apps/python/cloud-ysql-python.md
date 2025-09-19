@@ -13,7 +13,7 @@ menu:
 type: docs
 ---
 
-The following tutorial shows a small [Python application](https://github.com/yugabyte/yugabyte-simple-python-app) that connects to a YugabyteDB cluster using the [Python psycopg2 PostgreSQL database adapter](../../../../drivers-orms/python/postgres-psycopg2/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Aeon in Python.
+The following tutorial shows a small [Python application](https://github.com/yugabyte/yugabyte-simple-python-app) that connects to a YugabyteDB cluster using the [Python psycopg2 PostgreSQL database adapter](/preview/develop/drivers-orms/python/postgres-psycopg2/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Aeon in Python.
 
 ## Prerequisites
 
@@ -41,7 +41,7 @@ To do this:
     - **port** - the port number that will be used by the driver (the default YugabyteDB YSQL port is 5433).
     - **dbName** - the name of the database you are connecting to (the default database is named `yugabyte`).
     - **dbUser** and **dbPassword** - the username and password for the YugabyteDB database. If you are using the credentials you created when deploying a cluster in YugabyteDB Aeon, these can be found in the credentials file you downloaded.
-    - **sslMode** - the SSL mode to use. YugabyteDB Aeon [requires SSL connections](../../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/); use `verify-full`.
+    - **sslMode** - the SSL mode to use. YugabyteDB Aeon [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/); use `verify-full`.
     - **sslRootCert** - the full path to the YugabyteDB Aeon cluster CA certificate.
 
 3. Save the file.
@@ -165,4 +165,4 @@ except (Exception, psycopg2.DatabaseError) as e:
 
 ## Learn more
 
-[Python psycopg2 PostgreSQL database adapter](../../../../drivers-orms/python/postgres-psycopg2/)
+[Python psycopg2 PostgreSQL database adapter](/preview/develop/drivers-orms/python/postgres-psycopg2/)

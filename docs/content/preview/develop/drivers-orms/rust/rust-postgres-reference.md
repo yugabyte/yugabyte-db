@@ -16,7 +16,7 @@ menu:
 type: docs
 ---
 
-YugabyteDB Rust smart driver is a Rust driver for [YSQL](../../../api/ysql/) based on [rust-postgres](https://github.com/sfackler/rust-postgres), with additional connection load balancing features.
+YugabyteDB Rust smart driver is a Rust driver for [YSQL](../../../../api/ysql/) based on [rust-postgres](https://github.com/sfackler/rust-postgres), with additional connection load balancing features.
 
 Rust smart drivers offers two different clients similar to rust-postgres:
 
@@ -93,7 +93,7 @@ let conn = yb_postgres::Client::connect(&connection_url,NoTls,)?;
 
 ## Try it out
 
-This tutorial shows how to use the asynchronous yb-tokio-postgres client with YugabyteDB. It starts by creating a three-node cluster with a [replication factor](../../../architecture/docdb-replication/replication/#replication-factor) of 3. This tutorial uses the [yugabyted](../../../reference/configuration/yugabyted/) utility.
+This tutorial shows how to use the asynchronous yb-tokio-postgres client with YugabyteDB. It starts by creating a three-node cluster with a [replication factor](../../../../architecture/docdb-replication/replication/#replication-factor) of 3. This tutorial uses the [yugabyted](../../../../reference/configuration/yugabyted/) utility.
 
 Next, you use a Rust application to demonstrate the driver's load balancing features.
 

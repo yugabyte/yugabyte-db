@@ -175,7 +175,7 @@ We can deploy our application to Azure using the [Azure CLI](https://learn.micro
     az functionapp create --resource-group RESOURCE_GROUP_NAME --consumption-plan-location eastus2 --runtime node --runtime-version 18 --functions-version 4 --name YBAzureFunctions --storage-account STORAGE_ACCOUNT_NAME
     ```
 
-1. Get the [outbound addresses for your function app](https://learn.microsoft.com/en-us/azure/azure-functions/ip-addresses?tabs=azurecli) and add them to your YugabyteDB cluster's [IP allow list](../../../yugabyte-cloud/cloud-secure-clusters/add-connections/). This ensures that a connection can be made between Azure Functions and YugabyteDB.
+1. Get the [outbound addresses for your function app](https://learn.microsoft.com/en-us/azure/azure-functions/ip-addresses?tabs=azurecli) and add them to your YugabyteDB cluster's [IP allow list](/preview/yugabyte-cloud/cloud-secure-clusters/add-connections/). This ensures that a connection can be made between Azure Functions and YugabyteDB.
 
     ```sh
     az functionapp show --resource-group RESOURCE_GROUP_NAME --name YBAzureFunctions --query possibleOutboundIpAddresses --output tsv

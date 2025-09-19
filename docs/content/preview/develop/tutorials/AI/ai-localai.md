@@ -13,7 +13,7 @@ menu:
 type: docs
 ---
 
-This tutorial shows how you can use [LocalAI](https://localai.io/) to create an interactive query interface. It features a Python application that uses a locally-running LLM to generate text-embeddings. This LLM generates embeddings for Wikipedia texts of popular programming languages, as well as user prompts. Embeddings for each programming language are stored in a YugabyteDB database using the [pgvector extension](../../../additional-features/pg-extensions/extension-pgvector/).
+This tutorial shows how you can use [LocalAI](https://localai.io/) to create an interactive query interface. It features a Python application that uses a locally-running LLM to generate text-embeddings. This LLM generates embeddings for Wikipedia texts of popular programming languages, as well as user prompts. Embeddings for each programming language are stored in a YugabyteDB database using the [pgvector extension](../../../../additional-features/pg-extensions/extension-pgvector/).
 
 ## Prerequisites
 
@@ -355,7 +355,7 @@ if __name__ == "__main__":
     main()
 ```
 
-This application uses cosine distance for indexing, as the backend query is using cosine similarity search. Using [vector indexing](../../../additional-features/pg-extensions/extension-pgvector/#vector-indexing) improves the search speed. YugabyteDB currently supports the Hierarchical Navigable Small World (HNSW) index type in pgvector.
+This application uses cosine distance for indexing, as the backend query is using cosine similarity search. Using [vector indexing](../../../../additional-features/pg-extensions/extension-pgvector/#vector-indexing) improves the search speed. YugabyteDB currently supports the Hierarchical Navigable Small World (HNSW) index type in pgvector.
 
 ```sql
 # sql/schema.sql

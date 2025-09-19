@@ -13,7 +13,7 @@ cascade:
 showRightNav: true
 ---
 
-Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). Because the YugabyteDB [YSQL API](../api/ysql/) is PostgreSQL-compatible, and the [YCQL API](../api/ycql/) has roots in the Apache Cassandra CQL, YugabyteDB supports many third-party drivers.
+Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). Because the YugabyteDB [YSQL API](../../api/ysql/) is PostgreSQL-compatible, and the [YCQL API](../../api/ycql/) has roots in the Apache Cassandra CQL, YugabyteDB supports many third-party drivers.
 
 In addition to the compatible upstream PostgreSQL (YSQL) and Cassandra (YCQL) drivers, YugabyteDB also supports smart drivers for [YSQL](smart-drivers/) and [YCQL](smart-drivers-ycql/), which extend the upstream drivers to provide additional capabilities.
 

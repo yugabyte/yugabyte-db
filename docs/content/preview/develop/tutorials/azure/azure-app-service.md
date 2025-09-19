@@ -62,13 +62,13 @@ Now that we've set the foundation on Azure, let's deploy a database cluster for 
 
 ## Create a cluster in YugabyteDB Aeon
 
-For steps on creating a cluster in YugabyteDB Aeon, see the [Quick start](../../../yugabyte-cloud/managed-freetrial/).
+For steps on creating a cluster in YugabyteDB Aeon, see the [Quick start](/preview/yugabyte-cloud/managed-freetrial/).
 
-This example shows a [three-node cluster](../../../yugabyte-cloud/cloud-basics/create-clusters/create-single-region/) on Azure in the westus3 region, which provides fault tolerance across availability zones, but the application also runs fine on the always-free single-node [Sandbox cluster](../../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/).
+This example shows a [three-node cluster](/preview/yugabyte-cloud/cloud-basics/create-clusters/create-single-region/) on Azure in the westus3 region, which provides fault tolerance across availability zones, but the application also runs fine on the always-free single-node [Sandbox cluster](/preview/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/).
 
 ![Create a YugabyteDB single-region cluster.](/images/tutorials/azure/azure-app-service/yb-create-cluster.png)
 
-Add the [outbound addresses for your web app](https://learn.microsoft.com/en-us/azure/app-service/overview-inbound-outbound-ips) to your cluster's [IP allow list](../../../yugabyte-cloud/cloud-secure-clusters/add-connections/). Find these addresses in the **Networking** tab of the Azure portal. This will ensure that a connection can be made between Azure App Service and YugabyteDB.
+Add the [outbound addresses for your web app](https://learn.microsoft.com/en-us/azure/app-service/overview-inbound-outbound-ips) to your cluster's [IP allow list](/preview/yugabyte-cloud/cloud-secure-clusters/add-connections/). Find these addresses in the **Networking** tab of the Azure portal. This will ensure that a connection can be made between Azure App Service and YugabyteDB.
 
 ![Locate the outbound IP addresses for your web app in Azure](/images/tutorials/azure/azure-app-service/azure-outbound-traffic.png)
 
@@ -78,7 +78,7 @@ Now that we have a working cluster in YugabyteDB Aeon, let's add some data.
 
 Now that our cluster is running in the cloud, we can seed it with data using the provided `schema.sql` and `data.sql` files.
 
-1. Use the [YugabyteDB Cloud Shell](../../../yugabyte-cloud/cloud-connect/connect-cloud-shell/) to connect to your cluster.
+1. Use the [YugabyteDB Cloud Shell](/preview/yugabyte-cloud/cloud-connect/connect-cloud-shell/) to connect to your cluster.
 1. Execute the commands in the `schema.sql` script against your cluster.
 1. Execute the commands in the `data.sql` script against your cluster.
 

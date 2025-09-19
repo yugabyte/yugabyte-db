@@ -153,7 +153,7 @@ For a database deployment that spans multiple regions, evenly distributing reque
 
 - For connecting to the geographically nearest regions and zones for lower latency and fewer network hops. Typically you would co-locate applications in the regions where your universe is located. Topology balancing allows you to target only regions where the applications are hosted.
 
-- The universe has [preferred locations](../../admin/yb-admin/#set-preferred-zones) assigned, where all the [tablet leaders](../../architecture/docdb-sharding/sharding/) are hosted. In this case, for best performance you want your application to target the preferred locations.
+- The universe has [preferred locations](../../../admin/yb-admin/#set-preferred-zones) assigned, where all the [tablet leaders](../../../architecture/docdb-sharding/sharding/) are hosted. In this case, for best performance you want your application to target the preferred locations.
 
 You can also specify fallback locations, and the order in which they should be attempted. When no nodes are available in the primary location, the driver tries to connect to nodes in the fallback locations in the order specified. This way you can, for example, target the next geographically nearest location in case the first location is unavailable.
 
@@ -269,7 +269,7 @@ Currently, multi-cluster connections are available only in the Java (JDBC) smart
 
 ## Connection pooling
 
-Smart drivers work seamlessly with [YSQL Connection Manager](../../additional-features/connection-manager-ysql/).
+Smart drivers work seamlessly with [YSQL Connection Manager](../../../additional-features/connection-manager-ysql/).
 
 Smart drivers can also be configured with popular third-party pooling solutions such as Hikari and Tomcat. Different pools can be configured with different load balancing policies if required. For example, an application can configure one pool with topology awareness for one region and its availability zones, and configure another pool to communicate with a completely different region.
 

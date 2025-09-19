@@ -13,7 +13,7 @@ menu:
 type: docs
 ---
 
-The following tutorial shows a small [Go application](https://github.com/yugabyte/yugabyte-simple-go-app) that connects to a YugabyteDB cluster using the [Go PostgreSQL driver](../../../../drivers-orms/go/pq/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Aeon in Go.
+The following tutorial shows a small [Go application](https://github.com/yugabyte/yugabyte-simple-go-app) that connects to a YugabyteDB cluster using the [Go PostgreSQL driver](/preview/develop/drivers-orms/go/pq/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Aeon in Go.
 
 ## Prerequisites
 
@@ -41,7 +41,7 @@ To do this:
     - **port** - the port number for the driver to use (the default YugabyteDB YSQL port is 5433).
     - **dbName** - the name of the database you are connecting to (the default is `yugabyte`).
     - **dbUser** and **dbPassword** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte` and `yugabyte`). For YugabyteDB Aeon, use the credentials in the credentials file you downloaded.
-    - **sslMode** - the SSL mode to use. YugabyteDB Aeon [requires SSL connections](../../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/); use `verify-full`.
+    - **sslMode** - the SSL mode to use. YugabyteDB Aeon [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/); use `verify-full`.
     - **sslRootCert** - the full path to the YugabyteDB Aeon cluster CA certificate.
 
 3. Save the file.
@@ -181,4 +181,4 @@ if checkIfTxAborted(err) {
 
 ## Learn more
 
-[Go PostgreSQL driver](../../../../drivers-orms/go/pq/)
+[Go PostgreSQL driver](/preview/develop/drivers-orms/go/pq/)

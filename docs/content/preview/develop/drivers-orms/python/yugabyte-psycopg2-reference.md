@@ -38,7 +38,7 @@ type: docs
   </li>
 </ul>
 
-Yugabyte Psycopg2 smart driver is a Python driver for [YSQL](../../../api/ysql/) built on the [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2), with additional connection load balancing features.
+Yugabyte Psycopg2 smart driver is a Python driver for [YSQL](../../../../api/ysql/) built on the [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2), with additional connection load balancing features.
 
 For more information on the YugabyteDB psycopg2 smart driver, see the following:
 

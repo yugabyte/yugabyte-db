@@ -14,14 +14,14 @@ menu:
 type: docs
 ---
 
-The following tutorial shows a small [Ruby application](https://github.com/yugabyte/yugabyte-simple-ruby-app) that connects to a YugabyteDB cluster using the [Ruby Pg driver](../../../../drivers-orms/ruby/ruby-pg/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Aeon in Ruby.
+The following tutorial shows a small [Ruby application](https://github.com/yugabyte/yugabyte-simple-ruby-app) that connects to a YugabyteDB cluster using the [Ruby Pg driver](/preview/develop/drivers-orms/ruby/ruby-pg/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Aeon in Ruby.
 
 ## Prerequisites
 
 - Ruby 3.1 or later.
 - OpenSSL 1.1.1 or later (used by libpq and pg to establish secure SSL connections).
-- [libpq](../../../../drivers-orms/ysql-client-drivers/#libpq). Homebrew users on macOS can install using `brew install libpq`. You can download the PostgreSQL binaries and source from [PostgreSQL Downloads](https://www.postgresql.org/download/).
-- [Ruby pg](../../../../drivers-orms/ruby/ruby-pg/). To install Ruby pg, run the following command:
+- [libpq](/preview/develop/drivers-orms/ysql-client-drivers/#libpq). Homebrew users on macOS can install using `brew install libpq`. You can download the PostgreSQL binaries and source from [PostgreSQL Downloads](https://www.postgresql.org/download/).
+- [Ruby pg](/preview/develop/drivers-orms/ruby/ruby-pg/). To install Ruby pg, run the following command:
 
     ```sh
     gem install pg -- --with-pg-include=<path-to-libpq>/libpq/include --with-pg-lib=<path-to-libpq>/libpq/lib
@@ -51,7 +51,7 @@ To do this:
     - **port** - the port number for the driver to use (the default YugabyteDB YSQL port is 5433).
     - **dbname** - the name of the database you are connecting to (the default is `yugabyte`).
     - **user** and **password** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte` and `yugabyte`). For YugabyteDB Aeon, use the credentials in the credentials file you downloaded.
-    - **sslmode** - the SSL mode to use. YugabyteDB Aeon [requires SSL connections](../../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/); use `verify-full`.
+    - **sslmode** - the SSL mode to use. YugabyteDB Aeon [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/); use `verify-full`.
     - **sslrootcert** - the full path to the YugabyteDB Aeon cluster CA certificate.
 
 3. Save the file.
@@ -166,6 +166,6 @@ end
 
 ## Learn more
 
-[Ruby pg driver](../../../../drivers-orms/ruby/ruby-pg/)
+[Ruby pg driver](/preview/develop/drivers-orms/ruby/ruby-pg/)
 
-[libpq driver](../../../../drivers-orms/ysql-client-drivers/#libpq)
+[libpq driver](/preview/develop/drivers-orms/ysql-client-drivers/#libpq)

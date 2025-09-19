@@ -16,7 +16,7 @@ type: docs
 {{<tabitem href="../smart-drivers-ycql/" text="YCQL" icon="cassandra" active="true" >}}
 {{</tabs>}}
 
-The standard/official drivers available for Cassandra work out-of-the-box with [YugabyteDB YCQL API](../../api/ycql/).
+The standard/official drivers available for Cassandra work out-of-the-box with [YugabyteDB YCQL API](../../../api/ycql/).
 
 Yugabyte has extended the upstream Cassandra drivers with specific changes to leverage YugabyteDB features, available as open source software under the Apache 2.0 license.
 
@@ -79,7 +79,7 @@ Whenever it is possible to calculate the hash of the partitioning key (token in 
 
 YugabyteDB supports JSONB data type, similar to PostgreSQL, and this data type is not supported by the upstream Cassandra drivers.
 
-For information on how to define and handle table columns with JSONB data type, see [JSON Support in YCQL](../../explore/ycql-language/jsonb-ycql/).
+For information on how to define and handle table columns with JSONB data type, see [JSON Support in YCQL](../../../explore/ycql-language/jsonb-ycql/).
 
 ## Connection handling
 

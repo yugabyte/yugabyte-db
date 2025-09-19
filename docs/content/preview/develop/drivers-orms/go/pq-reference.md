@@ -42,7 +42,7 @@ type: docs
 
 The [PQ driver](https://github.com/lib/pq/) is a popular driver for PostgreSQL that can used for connecting to YugabyteDB YSQL.
 
-The driver allows Go programmers to connect to YugabyteDB database to execute DMLs and DDLs using the standard `database/sql` package. The driver supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
+The driver allows Go programmers to connect to YugabyteDB database to execute DMLs and DDLs using the standard `database/sql` package. The driver supports the [SCRAM-SHA-256 authentication method](../../../../secure/authentication/password-authentication/#scram-sha-256).
 
 For a tutorial on building a sample Go application with pq, see [Connect an application](../pq/).
 
@@ -129,7 +129,7 @@ if _, err := db.Exec(createStmt); err != nil {
 
 The `db.Exec()` function also returns an `error` object which, if not `nil`, needs to handled in your code.
 
-Read more on designing [Database schemas and tables](../../../explore/ysql-language-features/databases-schemas-tables/).
+Read more on designing [Database schemas and tables](../../../../explore/ysql-language-features/databases-schemas-tables/).
 
 ### Read and write data
 
@@ -196,7 +196,7 @@ if err != nil {
 
 To build a Go application that communicates securely over SSL with YugabyteDB database, you need the root certificate (`ca.crt`) of the YugabyteDB Cluster.
 
-To generate these certificates and install them while launching the cluster, follow the instructions in [Create server certificates](../../../secure/tls-encryption/server-certificates/).
+To generate these certificates and install them while launching the cluster, follow the instructions in [Create server certificates](../../../../secure/tls-encryption/server-certificates/).
 
 For a YugabyteDB Aeon cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables at the client side.
 
@@ -229,7 +229,7 @@ YugabyteDB Aeon requires SSL/TLS, and connections using SSL mode `disable` will 
 
 ## Transaction and isolation levels
 
-YugabyteDB supports transactions for inserting and querying data from the tables. YugabyteDB supports different [isolation levels](../../../architecture/transactions/isolation-levels/) for maintaining strong consistency for concurrent data access.
+YugabyteDB supports transactions for inserting and querying data from the tables. YugabyteDB supports different [isolation levels](../../../../architecture/transactions/isolation-levels/) for maintaining strong consistency for concurrent data access.
 
 The PQ driver provides `db.Begin()` function to start a transaction. The function `conn.BeginEx()` can create a transaction with a specified isolation level.`
 

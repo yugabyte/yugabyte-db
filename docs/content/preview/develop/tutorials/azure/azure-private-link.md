@@ -13,9 +13,9 @@ menu:
 type: docs
 ---
 
-YugabyteDB provides multiple networking options to ensure security, reliability, and improved latencies. [Virtual Private Clouds (VPC)](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/) can be connected through a [VPC peering connection](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-add-peering/) to keep network traffic in a cloud provider's network, bypassing the public internet. This allows applications running in Google Cloud or AWS to connect to YugabyteDB as if they were in the same network.
+YugabyteDB provides multiple networking options to ensure security, reliability, and improved latencies. [Virtual Private Clouds (VPC)](/preview/yugabyte-cloud/cloud-basics/cloud-vpcs/) can be connected through a [VPC peering connection](/preview/yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-add-peering/) to keep network traffic in a cloud provider's network, bypassing the public internet. This allows applications running in Google Cloud or AWS to connect to YugabyteDB as if they were in the same network.
 
-In Azure, you can achieve a similar result using [Private Service Endpoints](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-add-endpoint/). To illustrate this point, let's securely connect a Node.js application in Azure to a cluster running in YugabyteDB Aeon.
+In Azure, you can achieve a similar result using [Private Service Endpoints](/preview/yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-add-endpoint/). To illustrate this point, let's securely connect a Node.js application in Azure to a cluster running in YugabyteDB Aeon.
 
 In the following sections, you will:
 
@@ -31,7 +31,7 @@ In the following sections, you will:
 
 ## Get started with YugabyteDB Aeon
 
-[Create a 3-node cluster](../../../yugabyte-cloud/cloud-basics/create-clusters/create-single-region/) on Azure in the _uswest3_ region.
+[Create a 3-node cluster](/preview/yugabyte-cloud/cloud-basics/create-clusters/create-single-region/) on Azure in the _uswest3_ region.
 
 ![3-node YugabyteDB deployment in uswest3](/images/tutorials/azure/azure-private-link/yb-deployment.png "3-node YugabyteDB deployment in uswest3")
 
@@ -54,9 +54,9 @@ To test the connection between Azure and YugabyteDB using Azure Private Link, st
 
 ## Set up Azure Private Link
 
-Follow [these instructions to configure Azure Private Link](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/managed-endpoint-azure/) between your YugabyteDB cluster and application VPC.
+Follow [these instructions to configure Azure Private Link](/preview/yugabyte-cloud/cloud-basics/cloud-vpcs/managed-endpoint-azure/) between your YugabyteDB cluster and application VPC.
 
-Once completed, you'll have a [Private Service Endpoint](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-add-endpoint/) which can be used to host our database connection.
+Once completed, you'll have a [Private Service Endpoint](/preview/yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-add-endpoint/) which can be used to host our database connection.
 
 ## Run a Node.js application on Azure
 

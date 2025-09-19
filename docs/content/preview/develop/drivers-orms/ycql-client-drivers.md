@@ -20,7 +20,7 @@ type: docs
 {{<tabitem href="../ycql-client-drivers/" text="YCQL" icon="cassandra" active="true" >}}
 {{</tabs>}}
 
-The following client drivers are supported for use with the [YugabyteDB Cloud Query Language (YCQL) API](../../api/ycql/), a SQL-based, semi-relational API, with roots in the Apache Cassandra Query Language (CQL).
+The following client drivers are supported for use with the [YugabyteDB Cloud Query Language (YCQL) API](../../../api/ycql/), a SQL-based, semi-relational API, with roots in the Apache Cassandra Query Language (CQL).
 
 For tutorials on building a sample application with the following client drivers, click the relevant link included below for each driver.
 

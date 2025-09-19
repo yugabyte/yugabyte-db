@@ -127,7 +127,7 @@ Find resources for getting started, migrating existing databases, using your dat
 [Best practices](../../develop/best-practices-develop/)
 : Tips and tricks to build applications for high performance and availability.
 
-[Drivers and ORMs](../../drivers-orms/)
+[Drivers and ORMs](/preview/develop/drivers-orms/)
 : Connect applications with your database.
 
 ### Hotspots

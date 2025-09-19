@@ -29,7 +29,7 @@ You need to complete [Chapter 3](../chapter3-tolerating-outages) of the tutorial
 
 ## Geo-partition the user library
 
-Using the [latency-optimized geo-partitioning pattern](../../../develop/build-global-apps/latency-optimized-geo-partition/), you can pin user data to cloud regions closest to their physical location. By implementing this strategy, your multi-region application can process read and write requests with low latency across all locations.
+Using the [latency-optimized geo-partitioning pattern](../../../build-global-apps/latency-optimized-geo-partition/), you can pin user data to cloud regions closest to their physical location. By implementing this strategy, your multi-region application can process read and write requests with low latency across all locations.
 
 The `user_library` table in the YugaPlus movies recommendation service is an excellent candidate for geo-partitioning. The current structure of the table is as follows:
 
@@ -337,7 +337,7 @@ docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 \
 
 {{< tip title="Alternate Design Patterns for Low-Latency Requests" >}}
 
-The YugaPlus application stores its movie catalog in the `movie` table. Given that the data in this table is generic and not specific to user location, it cannot be effectively geo-partitioned for latency optimization. However, other [design patterns](../../../develop/build-global-apps/#design-patterns) can be used to ensure low-latency access to this table.
+The YugaPlus application stores its movie catalog in the `movie` table. Given that the data in this table is generic and not specific to user location, it cannot be effectively geo-partitioned for latency optimization. However, other [design patterns](../../../build-global-apps/#design-patterns) can be used to ensure low-latency access to this table.
 
 For example, the video below demonstrates how to achieve low-latency reads across the United States by using the global database and follower reads patterns:
 

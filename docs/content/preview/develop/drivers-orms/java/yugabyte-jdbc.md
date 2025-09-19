@@ -63,7 +63,7 @@ type: docs
   </li>
 </ul>
 
-[YugabyteDB JDBC Smart Driver](https://github.com/yugabyte/pgjdbc) is a JDBC driver for [YSQL](../../../api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc), with additional [connection load balancing](../../smart-drivers/) features.
+[YugabyteDB JDBC Smart Driver](https://github.com/yugabyte/pgjdbc) is a JDBC driver for [YSQL](../../../../api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc), with additional [connection load balancing](../../smart-drivers/) features.
 
 For Java applications, the JDBC driver provides database connectivity through the standard JDBC application program interface (APIs) available on the Java platform.
 

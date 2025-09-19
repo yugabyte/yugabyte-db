@@ -25,7 +25,7 @@ Version refers to the latest tested version of the integration.
 
 ### Drivers and ORMs
 
-{{< readfile "../develop/drivers-orms/include-drivers-orms-list.md" >}}
+{{< readfile "/preview/develop/drivers-orms/include-drivers-orms-list.md" >}}
 
 ### Schema migration
 

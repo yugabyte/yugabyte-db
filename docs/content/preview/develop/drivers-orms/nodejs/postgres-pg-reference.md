@@ -31,7 +31,7 @@ type: docs
   </li>
 </ul>
 
-The [PostgreSQL node-postgres driver](https://node-postgres.com/) is the official Node.js driver for PostgreSQL. The YSQL API is fully compatible with the PostgreSQL node-postgres (pg) driver, so you can connect to the YugabyteDB database to execute DMLs and DDLs using the node-postgres APIs. The driver supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
+The [PostgreSQL node-postgres driver](https://node-postgres.com/) is the official Node.js driver for PostgreSQL. The YSQL API is fully compatible with the PostgreSQL node-postgres (pg) driver, so you can connect to the YugabyteDB database to execute DMLs and DDLs using the node-postgres APIs. The driver supports the [SCRAM-SHA-256 authentication method](../../../../secure/authentication/password-authentication/#scram-sha-256).
 
 For details on installing and using node-postgres, see the [node-postgres documentation](https://node-postgres.com/).
 
@@ -96,7 +96,7 @@ client
     })
 ```
 
-Read more on designing [Database schemas and tables](../../../explore/ysql-language-features/databases-schemas-tables/).
+Read more on designing [Database schemas and tables](../../../../explore/ysql-language-features/databases-schemas-tables/).
 
 ### Read and write data
 
@@ -143,7 +143,7 @@ client
 
 ## Configure SSL/TLS
 
-To build a Node.js application that communicates securely over SSL, get the root certificate (`ca.crt`) of the YugabyteDB Cluster. If certificates are not generated yet, follow the instructions in [Create server certificates](../../../secure/tls-encryption/server-certificates/).
+To build a Node.js application that communicates securely over SSL, get the root certificate (`ca.crt`) of the YugabyteDB Cluster. If certificates are not generated yet, follow the instructions in [Create server certificates](../../../../secure/tls-encryption/server-certificates/).
 
 Because a YugabyteDB Aeon cluster is always configured with SSL/TLS, you don't have to generate any certificate but only set the client-side SSL configuration. To fetch your root certificate, refer to [Download your cluster certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 
@@ -242,7 +242,7 @@ client.connect()
 
 ## Transaction and isolation levels
 
-YugabyteDB supports transactions for inserting and querying data from the tables. YugabyteDB supports different [isolation levels](../../../architecture/transactions/isolation-levels/) for maintaining strong consistency for concurrent data access.
+YugabyteDB supports transactions for inserting and querying data from the tables. YugabyteDB supports different [isolation levels](../../../../architecture/transactions/isolation-levels/) for maintaining strong consistency for concurrent data access.
 
 Node-postgres driver allows transaction using the queries, executed using `client.query()`.
 

@@ -14,7 +14,7 @@ menu:
 type: docs
 ---
 
-The following tutorial shows a small [Rust application](https://github.com/yugabyte/yugabyte-simple-rust-app) that connects to a YugabyteDB cluster using the [Rust-Postgres driver](../../../../drivers-orms/rust/yb-rust-postgres/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Aeon in Rust.
+The following tutorial shows a small [Rust application](https://github.com/yugabyte/yugabyte-simple-rust-app) that connects to a YugabyteDB cluster using the [Rust-Postgres driver](/preview/develop/drivers-orms/rust/yb-rust-postgres/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Aeon in Rust.
 
 ## Prerequisites
 
@@ -42,7 +42,7 @@ To do this:
     - **PORT** - the port number for the driver to use (the default YugabyteDB YSQL port is 5433).
     - **DB_NAME** - the name of the database you are connecting to (the default is `yugabyte`).
     - **USER** and **PASSWORD** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte` and `yugabyte`). For YugabyteDB Aeon, use the credentials in the credentials file you downloaded.
-    - **SSL_MODE** - the SSL mode to use. YugabyteDB Aeon [requires SSL connections](../../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/); use `SslMode::Require`.
+    - **SSL_MODE** - the SSL mode to use. YugabyteDB Aeon [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/); use `SslMode::Require`.
     - **SSL_ROOT_CERT** - the full path to the YugabyteDB Aeon cluster CA certificate.
 
 3. Save the file.
@@ -147,4 +147,4 @@ let exec_txn = || -> Result<(), DBError> {
 
 ## Learn more
 
-[Rust-Postgres driver](../../../../drivers-orms/rust/yb-rust-postgres/)
+[Rust-Postgres driver](/preview/develop/drivers-orms/rust/yb-rust-postgres/)

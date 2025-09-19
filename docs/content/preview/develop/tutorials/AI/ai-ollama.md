@@ -13,7 +13,7 @@ menu:
 type: docs
 ---
 
-This tutorial shows how you can use [Ollama](https://ollama.com/) to generate text embeddings. It features a Node.js application that uses a locally-running LLM to generate text-embeddings. This LLM generates embeddings for news article headlines and descriptions, which are stored in a YugabyteDB database using the [pgvector extension](../../../additional-features/pg-extensions/extension-pgvector/).
+This tutorial shows how you can use [Ollama](https://ollama.com/) to generate text embeddings. It features a Node.js application that uses a locally-running LLM to generate text-embeddings. This LLM generates embeddings for news article headlines and descriptions, which are stored in a YugabyteDB database using the [pgvector extension](../../../../additional-features/pg-extensions/extension-pgvector/).
 
 ## Prerequisites
 
@@ -265,7 +265,7 @@ CREATE TABLE
 CREATE INDEX NONCONCURRENTLY ON news_stories USING ybhnsw (embeddings vector_cosine_ops);
 ```
 
-The search speed is further increased by using [vector indexing](../../../additional-features/pg-extensions/extension-pgvector/#vector-indexing). YugabyteDB currently supports the Hierarchical Navigable Small World (HNSW) index type. This application uses cosine distance for indexing, as the backend query is using cosine similarity search.
+The search speed is further increased by using [vector indexing](../../../../additional-features/pg-extensions/extension-pgvector/#vector-indexing). YugabyteDB currently supports the Hierarchical Navigable Small World (HNSW) index type. This application uses cosine distance for indexing, as the backend query is using cosine similarity search.
 
 This application is straightforward. Before executing similarity searches, embeddings for each news story must be generated and then stored in the database. Refer to the `generate_embeddings.js` script for details.
 

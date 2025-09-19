@@ -51,7 +51,7 @@ A reference to the application we'll be developing can be found [on GitHub](http
     npm init -y
     ```
 
-1. Install the [YugabyteDB node-postgres smart driver](../../../drivers-orms/nodejs/yugabyte-node-driver/).
+1. Install the [YugabyteDB node-postgres smart driver](/preview/develop/drivers-orms/nodejs/yugabyte-node-driver/).
 
     ```sh
     npm install @yugabytedb/pg
@@ -209,4 +209,4 @@ We've just scratched the surface with what is possible using Azure SDKs and the 
 
 If you're also interested in building applications using Azure App Service, refer to [building applications using Azure App Service and YugabyteDB](https://www.yugabyte.com/blog/build-apps-azure-app-service/).
 
-You can also use Azure Key Vault to store customer managed keys for encrypting clusters in YugabyteDB Aeon - see [Encryption at rest](../../../yugabyte-cloud/cloud-secure-clusters/managed-ear/).
+You can also use Azure Key Vault to store customer managed keys for encrypting clusters in YugabyteDB Aeon - see [Encryption at rest](/preview/yugabyte-cloud/cloud-secure-clusters/managed-ear/).

@@ -30,10 +30,10 @@ In the following sections, you will:
 
 ## Create a YugabyteDB cluster
 
-Begin by deploying a multi-region, [geo-partitioned cluster](../../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-geopartition/) in YugabyteDB. This will partition data by region, reducing latencies by fetching data from the closest cluster nodes.
+Begin by deploying a multi-region, [geo-partitioned cluster](/preview/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-geopartition/) in YugabyteDB. This will partition data by region, reducing latencies by fetching data from the closest cluster nodes.
 
-1. A VPC is required for each region when deploying YugabyteDB on Azure. [Create separate VPCs](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-add-vpc/) in the _eastus_, _westus2_, and _westus3_ regions.
-1. Deploy a [3-node partition by region cluster](../../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-geopartition/) running on Azure, with nodes in the _eastus_, _westus2_, and _westus3_ regions. Under **Data Distribution**, select **Partition by region**.
+1. A VPC is required for each region when deploying YugabyteDB on Azure. [Create separate VPCs](/preview/yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-add-vpc/) in the _eastus_, _westus2_, and _westus3_ regions.
+1. Deploy a [3-node partition by region cluster](/preview/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-geopartition/) running on Azure, with nodes in the _eastus_, _westus2_, and _westus3_ regions. Under **Data Distribution**, select **Partition by region**.
 
     ![Geo-partitioned YugabyteDB deployment on Azure](/images/tutorials/azure/azure-private-link/yb-deployment.png "Geo-partitioned YugabyteDB deployment on Azure")
 

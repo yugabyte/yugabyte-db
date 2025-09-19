@@ -17,7 +17,7 @@ type: docs
 
 This tutorial outlines the steps required to build a scalable, generative AI application using the Azure OpenAI Service and YugabyteDB.
 
-Follow the guide to learn how to programmatically interface with the Azure OpenAI GPT and Embeddings models, store embeddings in YugabyteDB, and perform a similarity search across a distributed YugabyteDB cluster using the [pgvector extension](../../../additional-features/pg-extensions/extension-pgvector/).
+Follow the guide to learn how to programmatically interface with the Azure OpenAI GPT and Embeddings models, store embeddings in YugabyteDB, and perform a similarity search across a distributed YugabyteDB cluster using the [pgvector extension](../../../../additional-features/pg-extensions/extension-pgvector/).
 
 The [sample application](https://github.com/YugabyteDB-Samples/yugabytedb-azure-openai-lodging-service) we will use is a lodging recommendations service for travelers going to San Francisco. It supports two distinct modes:
 
@@ -34,7 +34,7 @@ The [sample application](https://github.com/YugabyteDB-Samples/yugabytedb-azure-
 - The latest [Node.js version](https://github.com/nodejs/release#release-schedule)
 - The latest version of [Docker](https://docs.docker.com/desktop/)
 - A YugabyteDB cluster running [v2.25.1](https://download.yugabyte.com/) or later
-- [ysqlsh](../../../api/ysqlsh/) or [psql](https://www.postgresql.org/docs/15/app-psql.html)
+- [ysqlsh](../../../../api/ysqlsh/) or [psql](https://www.postgresql.org/docs/15/app-psql.html)
 
 ## Deploy Azure OpenAI models
 
@@ -130,7 +130,7 @@ Navigate to the YugabyteDB UI to confirm that the database is up and running, at
 
 As long as the application provides a lodging recommendation service for San Francisco, you can leverage a publicly available Airbnb data set with over 7500 relevant listings:
 
-1. Create the `airbnb_listing` table using [ysqlsh](../../../api/ysqlsh/):
+1. Create the `airbnb_listing` table using [ysqlsh](../../../../api/ysqlsh/):
 
     ```sh
     ./bin/ysqlsh -h 127.0.0.1 -p 5433 -U yugabyte -d yugabyte -f {project_dir}/sql/0_airbnb_listings.sql
@@ -298,7 +298,7 @@ The application performs the following steps to generate the recommendations (se
     return places;
     ```
 
-This application uses cosine distance for indexing, as the backend query is using cosine similarity search. Using [vector indexing](../../../additional-features/pg-extensions/extension-pgvector/#vector-indexing) improves the search speed. YugabyteDB currently supports the Hierarchical Navigable Small World (HNSW) index type in pgvector.
+This application uses cosine distance for indexing, as the backend query is using cosine similarity search. Using [vector indexing](../../../../additional-features/pg-extensions/extension-pgvector/#vector-indexing) improves the search speed. YugabyteDB currently supports the Hierarchical Navigable Small World (HNSW) index type in pgvector.
 
 ```sql
 # sql/1_airbnb_embeddings.sql

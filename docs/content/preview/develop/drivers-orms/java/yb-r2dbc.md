@@ -57,7 +57,7 @@ type: docs
   </li>
 </ul>
 
-The [YugabyteDB R2DBC Smart Driver](https://github.com/yugabyte/r2dbc-postgresql) is an asynchronous Java driver for [YSQL](../../../api/ysql/) built on the [PostgreSQL R2DBC driver](https://github.com/pgjdbc/r2dbc-postgresql), with additional [connection load balancing](../../smart-drivers/) features.
+The [YugabyteDB R2DBC Smart Driver](https://github.com/yugabyte/r2dbc-postgresql) is an asynchronous Java driver for [YSQL](../../../../api/ysql/) built on the [PostgreSQL R2DBC driver](https://github.com/pgjdbc/r2dbc-postgresql), with additional [connection load balancing](../../smart-drivers/) features.
 
 {{< note title="YugabyteDB Aeon" >}}
 

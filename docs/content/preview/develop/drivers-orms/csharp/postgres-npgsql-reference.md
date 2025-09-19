@@ -34,7 +34,7 @@ type: docs
 
 </ul>
 
-Npgsql is an open source ADO.NET Data Provider for PostgreSQL; it allows programs written in C#, Visual Basic, and F# to access the YugabyteDB server. Npgsql is based on [libpq](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
+Npgsql is an open source ADO.NET Data Provider for PostgreSQL; it allows programs written in C#, Visual Basic, and F# to access the YugabyteDB server. Npgsql is based on [libpq](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../../secure/authentication/password-authentication/#scram-sha-256).
 
 For details on Npgsql, refer to the [Npgsql documentation](https://www.npgsql.org/doc/).
 

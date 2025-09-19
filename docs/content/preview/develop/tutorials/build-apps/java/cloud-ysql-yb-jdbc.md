@@ -13,7 +13,7 @@ menu:
 type: docs
 ---
 
-YugabyteDB YSQL is fully compatible with the [PostgreSQL JDBC driver](../../../../drivers-orms/java/postgres-jdbc-reference/), allowing Java programmers to connect to YugabyteDB database to execute DMLs and DDLs using the JDBC APIs. The [YugabyteDB JDBC smart driver](../../../../drivers-orms/java/yugabyte-jdbc-reference/) is built on the PostgreSQL JDBC driver, with additional connection load balancing features.
+YugabyteDB YSQL is fully compatible with the [PostgreSQL JDBC driver](/preview/develop/drivers-orms/java/postgres-jdbc-reference/), allowing Java programmers to connect to YugabyteDB database to execute DMLs and DDLs using the JDBC APIs. The [YugabyteDB JDBC smart driver](/preview/develop/drivers-orms/java/yugabyte-jdbc-reference/) is built on the PostgreSQL JDBC driver, with additional connection load balancing features.
 
 The following tutorial shows a small [Java application](https://github.com/yugabyte/yugabyte-simple-java-app) that connects to a YugabyteDB cluster using the topology-aware YugabyteDB JDBC driver and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Aeon in Java.
 
@@ -44,7 +44,7 @@ To do this:
     - **port** - the port number for the driver to use (the default YugabyteDB YSQL port is 5433).
     - **database** - the name of the database you are connecting to (the default is `yugabyte`).
     - **dbUser** and **dbPassword** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte` and `yugabyte`). For YugabyteDB Aeon, use the credentials in the credentials file you downloaded.
-    - **sslMode** - the SSL mode to use. YugabyteDB Aeon [requires SSL connections](../../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/); use `verify-full`.
+    - **sslMode** - the SSL mode to use. YugabyteDB Aeon [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/); use `verify-full`.
     - **sslRootCert** - the full path to the YugabyteDB Aeon cluster CA certificate.
 
 3. Save the file.
@@ -167,4 +167,4 @@ try {
 
 ## Learn more
 
-[Connect an application using the PostgreSQL JDBC driver](../../../../drivers-orms/java/postgres-jdbc/)
+[Connect an application using the PostgreSQL JDBC driver](/preview/develop/drivers-orms/java/postgres-jdbc/)

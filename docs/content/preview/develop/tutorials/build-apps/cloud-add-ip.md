@@ -22,17 +22,17 @@ In addition, if you are using YugabyteDB Aeon, you need the following to run the
 
 {{< note title="Note" >}}
 
-To use smart driver load balancing features when connecting to clusters in YugabyteDB Aeon, applications using smart drivers must be deployed in a VPC that has been peered with the cluster VPC. For information on VPC networking in YugabyteDB Aeon, refer to [VPC network](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/).
+To use smart driver load balancing features when connecting to clusters in YugabyteDB Aeon, applications using smart drivers must be deployed in a VPC that has been peered with the cluster VPC. For information on VPC networking in YugabyteDB Aeon, refer to [VPC network](/preview/yugabyte-cloud/cloud-basics/cloud-vpcs/).
 
 For applications that access the cluster from outside the VPC network, use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing. Applications that use smart drivers from outside the VPC network fall back to the upstream driver behavior automatically.
 
 {{< /note >}}
 
-For more information on connecting applications in YugabyteDB Aeon, refer to [Connect applications](../../../yugabyte-cloud/cloud-connect/connect-applications/).
+For more information on connecting applications in YugabyteDB Aeon, refer to [Connect applications](/preview/yugabyte-cloud/cloud-connect/connect-applications/).
 
 ## Download your cluster certificate
 
-YugabyteDB Aeon uses TLS 1.2 for communicating with clusters, and digital certificates to verify the identity of clusters. The [cluster CA certificate](../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/) is used to verify the identity of the cluster when you connect to it from an application or client.
+YugabyteDB Aeon uses TLS 1.2 for communicating with clusters, and digital certificates to verify the identity of clusters. The [cluster CA certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/) is used to verify the identity of the cluster when you connect to it from an application or client.
 
 To download the certificate to the computer that will be connecting to the cluster, do the following:
 
@@ -44,7 +44,7 @@ To download the certificate to the computer that will be connecting to the clust
 
 ## Add your computer to the cluster IP allow list
 
-Access to YugabyteDB Aeon clusters is limited to IP addresses that you explicitly allow using [IP allow lists](../../../yugabyte-cloud/cloud-secure-clusters/add-connections/). To enable applications to connect to your cluster, you need to add your computer's IP address to the cluster IP allow list.
+Access to YugabyteDB Aeon clusters is limited to IP addresses that you explicitly allow using [IP allow lists](/preview/yugabyte-cloud/cloud-secure-clusters/add-connections/). To enable applications to connect to your cluster, you need to add your computer's IP address to the cluster IP allow list.
 
 To add your computer to the cluster IP allow list:
 
@@ -59,4 +59,4 @@ The allow list takes up to 30 seconds to become active.
 
 ## Enable Public Access
 
-Clusters deployed in VPCs don't expose public IP addresses unless you explicitly turn on [Public Access](../../../yugabyte-cloud/cloud-secure-clusters/add-connections/#enabling-public-access). If your cluster is in a VPC and you are connecting from a public IP address (such as your computer), enable Public Access on the cluster **Settings** tab.
+Clusters deployed in VPCs don't expose public IP addresses unless you explicitly turn on [Public Access](/preview/yugabyte-cloud/cloud-secure-clusters/add-connections/#enabling-public-access). If your cluster is in a VPC and you are connecting from a public IP address (such as your computer), enable Public Access on the cluster **Settings** tab.

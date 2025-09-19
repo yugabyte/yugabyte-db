@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-The following tutorial shows a small [Node.js application](https://github.com/yugabyte/yugabyte-simple-node-app) that connects to a YugabyteDB cluster using the [node-postgres module](../../../../drivers-orms/nodejs/postgres-node-driver/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Aeon in Node.js.
+The following tutorial shows a small [Node.js application](https://github.com/yugabyte/yugabyte-simple-node-app) that connects to a YugabyteDB cluster using the [node-postgres module](/preview/develop/drivers-orms/nodejs/postgres-node-driver/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Aeon in Node.js.
 
 ## Prerequisites
 
@@ -40,7 +40,7 @@ To do this:
     - **port** - the port number for the driver to use (the default YugabyteDB YSQL port is 5433).
     - **database** - the name of the database you are connecting to (the default is `yugabyte`).
     - **user** and **password** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte` and `yugabyte`). For YugabyteDB Aeon, use the credentials in the credentials file you downloaded.
-    - **ssl** - YugabyteDB Aeon [requires SSL connections](../../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/). To enable `verify-ca` SSL mode, the `rejectUnauthorized` property is set to `true` to require root certificate chain validation; replace `path_to_your_root_certificate` with the full path to the YugabyteDB Aeon cluster CA certificate.
+    - **ssl** - YugabyteDB Aeon [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/). To enable `verify-ca` SSL mode, the `rejectUnauthorized` property is set to `true` to require root certificate chain validation; replace `path_to_your_root_certificate` with the full path to the YugabyteDB Aeon cluster CA certificate.
 
 3. Save the file.
 
@@ -179,4 +179,4 @@ try {
 
 ## Learn more
 
-[node-postgres module](../../../../drivers-orms/nodejs/postgres-node-driver/)
+[node-postgres module](/preview/develop/drivers-orms/nodejs/postgres-node-driver/)
