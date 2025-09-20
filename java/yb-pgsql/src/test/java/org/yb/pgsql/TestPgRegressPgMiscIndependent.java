@@ -35,9 +35,11 @@ public class TestPgRegressPgMiscIndependent extends BasePgRegressTestPorted {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("ysql_sequence_cache_minval", Integer.toString(TURN_OFF_SEQUENCE_CACHE_FLAG));
-    // TODO(#26734): Enable transactional DDL once savepoint for DDLs are supported.
+    // TODO(#26734): Enable transactional DDL (& table locks) once savepoint for DDLs are supported.
     flagMap.put("ysql_yb_ddl_transaction_block_enabled", "false");
-    flagMap.put("allowed_preview_flags_csv", "ysql_yb_ddl_transaction_block_enabled");
+    flagMap.put("enable_object_locking_for_table_locks", "false");
+    flagMap.put("allowed_preview_flags_csv",
+              "enable_object_locking_for_table_locks,ysql_yb_ddl_transaction_block_enabled");
     return flagMap;
   }
 
