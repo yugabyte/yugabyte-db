@@ -6,7 +6,7 @@ headcontent: Get started in less than 5 minutes in the cloud or on your desktop
 description: Get started using YugabyteDB in less than five minutes on Linux.
 aliases:
   - /quick-start/linux/
-  - /preview/tutorials/quick-start/linux/
+  - /preview/develop/tutorials/quick-start/linux/
 type: docs
 rightNav:
   hideH4: true

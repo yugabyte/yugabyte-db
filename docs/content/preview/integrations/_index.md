@@ -25,7 +25,7 @@ Version refers to the latest tested version of the integration.
 
 ### Drivers and ORMs
 
-{{< readfile "../drivers-orms/include-drivers-orms-list.md" >}}
+{{< readfile "/preview/develop/drivers-orms/include-drivers-orms-list.md" >}}
 
 ### Schema migration
 
@@ -50,12 +50,12 @@ Version refers to the latest tested version of the integration.
 | Apache Beam    | 2.49.0  | Partial | [Apache Beam](apache-beam/) |
 | Apache Flink   | 1.17.1  | Partial | [Apache Flink](apache-flink/) |
 | Akka Persistence | 1.0.1 | Partial | [Akka Persistence](akka-ysql/) |
-| Confluent      | 7.4.0   | Full | [Confluent Cloud](/preview/tutorials/cdc-tutorials/cdc-confluent-cloud/) |
+| Confluent      | 7.4.0   | Full | [Confluent Cloud](/preview/develop/tutorials/cdc-tutorials/cdc-confluent-cloud/) |
 | Debezium       | 1.9.5   | Full | [Debezium](cdc/debezium/) |
 | Hevo Data      | 1.66    | Partial | [Hevo Data](hevodata/) |
 | Kinesis Data Streams |   | Full | [Kinesis](kinesis/) |
 | RabbitMQ       | 3.11.21 | Partial | [RabbitMQ](rabbitmq/) |
-| Synapse        |         | Full | [Synapse](/preview/tutorials/cdc-tutorials/cdc-azure-event-hub/) |
+| Synapse        |         | Full | [Synapse](/preview/develop/tutorials/cdc-tutorials/cdc-azure-event-hub/) |
 
 ### GUI clients
 

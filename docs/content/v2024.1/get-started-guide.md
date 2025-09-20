@@ -126,17 +126,17 @@ Find resources for getting started, migrating existing databases, using your dat
 
 ## Develop
 
-**Documentation**: [Hello world](/preview/tutorials/build-apps/)
+**Documentation**: [Hello world](/preview/develop/tutorials/build-apps/)
 : Use your favorite programming language to build an application that uses YSQL or YCQL APIs.
 
 **Video**: [Distributed PostgreSQL Essentials for Developers: Hands-on Course](https://www.youtube.com/watch?v=rqJBFQ-4Hgk)<br>
-**Documentation**: [Build and learn the essential capabilities of YugabyteDB](/preview/tutorials/build-and-learn/)
+**Documentation**: [Build and learn the essential capabilities of YugabyteDB](/preview/develop/tutorials/build-and-learn/)
 : Build a scalable and fault-tolerant movie recommendation service.
 
 **Documentation**: [Best practices](../develop/best-practices-develop/)
 : Tips and tricks to build applications for high performance and availability.
 
-**Documentation**: [Drivers and ORMs](/preview/drivers-orms/)
+**Documentation**: [Drivers and ORMs](/preview/develop/drivers-orms/)
 : Connect applications with your database.
 
 ### Connections

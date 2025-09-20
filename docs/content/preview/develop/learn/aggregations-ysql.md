@@ -7,7 +7,7 @@ aliases:
   - /develop/learn/aggregations/
   - /preview/develop/learn/aggregations/
 menu:
-  preview:
+  preview_develop:
     identifier: aggregations-2-ysql
     parent: learn
     weight: 567

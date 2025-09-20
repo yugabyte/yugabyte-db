@@ -4,7 +4,7 @@ headerTitle: Date and time
 linkTitle: Date and time
 description: Learn how to work with date and time in YCQL.
 menu:
-  preview:
+  preview_develop:
     parent: learn
     name: Date and time
     identifier: date-and-time-2-ycql

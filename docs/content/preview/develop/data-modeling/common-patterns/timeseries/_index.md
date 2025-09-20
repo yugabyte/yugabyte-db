@@ -5,7 +5,7 @@ linkTitle: Time series
 description: Explore the Time series data model
 headcontent: Handle large amounts of data ordered by time
 menu:
-  preview:
+  preview_develop:
     identifier: common-patterns-timeseries
     parent: common-patterns
     weight: 100

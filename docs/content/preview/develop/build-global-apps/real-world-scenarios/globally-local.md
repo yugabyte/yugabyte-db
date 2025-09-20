@@ -5,7 +5,7 @@ linkTitle: Global and geo-local tables
 description: Keep some data global and some local to a geo
 headcontent: Keep some data global and some local to a geo
 menu:
-  preview:
+  preview_develop:
     identifier: real-world-global-local-tables
     parent: global-apps-real-world-scenarios
     weight: 10

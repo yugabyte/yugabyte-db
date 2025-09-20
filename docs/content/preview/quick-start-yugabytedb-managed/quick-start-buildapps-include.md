@@ -9,7 +9,7 @@ block_indexing = true
 
   {{% tab header="Java" lang="java" %}}
 
-The [Java application](https://github.com/yugabyte/yugabyte-simple-java-app) connects to a YugabyteDB cluster using the topology-aware [Yugabyte JDBC driver](/preview/drivers-orms/java/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in Java.
+The [Java application](https://github.com/yugabyte/yugabyte-simple-java-app) connects to a YugabyteDB cluster using the topology-aware [Yugabyte JDBC driver](/preview/develop/drivers-orms/java/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in Java.
 
 The application requires the following:
 
@@ -77,13 +77,13 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic Java application that works with YugabyteDB.
 
-[Explore the application logic](/preview/tutorials/build-apps/java/cloud-ysql-yb-jdbc/#explore-the-application-logic)
+[Explore the application logic](/preview/develop/tutorials/build-apps/java/cloud-ysql-yb-jdbc/#explore-the-application-logic)
 
   {{% /tab %}}
 
   {{% tab header="Go" lang="go" %}}
 
-The [Go application](https://github.com/yugabyte/yugabyte-simple-go-app) connects to a YugabyteDB cluster using the [Go PostgreSQL driver](/preview/drivers-orms/go/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in Go.
+The [Go application](https://github.com/yugabyte/yugabyte-simple-go-app) connects to a YugabyteDB cluster using the [Go PostgreSQL driver](/preview/develop/drivers-orms/go/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in Go.
 
 The application requires the following:
 
@@ -153,13 +153,13 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic Go application that works with YugabyteDB.
 
-[Explore the application logic](/preview/tutorials/build-apps/go/cloud-ysql-go/#explore-the-application-logic)
+[Explore the application logic](/preview/develop/tutorials/build-apps/go/cloud-ysql-go/#explore-the-application-logic)
 
   {{% /tab %}}
 
   {{% tab header="Python" lang="python" %}}
 
-The [Python application](https://github.com/yugabyte/yugabyte-simple-python-app) connects to a YugabyteDB cluster using the [Python psycopg2 PostgreSQL database adapter](/preview/drivers-orms/python/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in Python.
+The [Python application](https://github.com/yugabyte/yugabyte-simple-python-app) connects to a YugabyteDB cluster using the [Python psycopg2 PostgreSQL database adapter](/preview/develop/drivers-orms/python/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in Python.
 
 The application requires the following:
 
@@ -223,13 +223,13 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic Python application that works with YugabyteDB.
 
-[Explore the application logic](/preview/tutorials/build-apps/python/cloud-ysql-python/#explore-the-application-logic)
+[Explore the application logic](/preview/develop/tutorials/build-apps/python/cloud-ysql-python/#explore-the-application-logic)
 
   {{% /tab %}}
 
   {{% tab header="Node.js" lang="nodejs" %}}
 
-The [Node.js application](https://github.com/yugabyte/yugabyte-simple-node-app) connects to a YugabyteDB cluster using the [node-postgres driver](/preview/drivers-orms/nodejs/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in Node.js.
+The [Node.js application](https://github.com/yugabyte/yugabyte-simple-node-app) connects to a YugabyteDB cluster using the [node-postgres driver](/preview/develop/drivers-orms/nodejs/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in Node.js.
 
 The application requires the following:
 
@@ -298,20 +298,20 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic Node.js application that works with YugabyteDB.
 
-[Explore the application logic](/preview/tutorials/build-apps/nodejs/cloud-ysql-node/#explore-the-application-logic)
+[Explore the application logic](/preview/develop/tutorials/build-apps/nodejs/cloud-ysql-node/#explore-the-application-logic)
 
   {{% /tab %}}
 
   {{% tab header="C" lang="c" %}}
 
-The [C application](https://github.com/yugabyte/yugabyte-simple-c-app) connects to a YugabyteDB cluster using the [libpq driver](/preview/drivers-orms/ysql-client-drivers/#libpq) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in C.
+The [C application](https://github.com/yugabyte/yugabyte-simple-c-app) connects to a YugabyteDB cluster using the [libpq driver](/preview/develop/drivers-orms/ysql-client-drivers/#libpq) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in C.
 
 The application requires the following:
 
 - 32-bit (x86) or 64-bit (x64) architecture machine. (Use [Rosetta](https://support.apple.com/en-us/HT211861) to build and run on Apple silicon.)
 - gcc 4.1.2 or later, or clang 3.4 or later installed.
 - OpenSSL 1.1.1 or later (used by libpq to establish secure SSL connections).
-- [libpq](/preview/drivers-orms/ysql-client-drivers/#libpq). Homebrew users on macOS can install using `brew install libpq`. You can download the PostgreSQL binaries and source from [PostgreSQL Downloads](https://www.postgresql.org/download/).
+- [libpq](/preview/develop/drivers-orms/ysql-client-drivers/#libpq). Homebrew users on macOS can install using `brew install libpq`. You can download the PostgreSQL binaries and source from [PostgreSQL Downloads](https://www.postgresql.org/download/).
 
 To build and run the application, do the following:
 
@@ -373,21 +373,21 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic C application that works with YugabyteDB.
 
-[Explore the application logic](/preview/tutorials/build-apps/c/cloud-ysql-c/#explore-the-application-logic)
+[Explore the application logic](/preview/develop/tutorials/build-apps/c/cloud-ysql-c/#explore-the-application-logic)
 
   {{% /tab %}}
 
   {{% tab header="C++" lang="cpp" %}}
 
-The [C++ application](https://github.com/yugabyte/yugabyte-simple-cpp-app) connects to a YugabyteDB cluster using the [libpqxx driver](/preview/drivers-orms/ysql-client-drivers/#libpqxx) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in C++.
+The [C++ application](https://github.com/yugabyte/yugabyte-simple-cpp-app) connects to a YugabyteDB cluster using the [libpqxx driver](/preview/develop/drivers-orms/ysql-client-drivers/#libpqxx) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in C++.
 
 The application requires the following:
 
 - 32-bit (x86) or 64-bit (x64) architecture machine. (Use [Rosetta](https://support.apple.com/en-us/HT211861) to build and run on Apple silicon.)
 - gcc 4.1.2 or later, or clang 3.4 or later installed.
 - OpenSSL 1.1.1 or later (used by libpq and libpqxx to establish secure SSL connections).
-- [libpq](/preview/drivers-orms/ysql-client-drivers/#libpq). Homebrew users on macOS can install using `brew install libpq`. You can download the PostgreSQL binaries and source from [PostgreSQL Downloads](https://www.postgresql.org/download/).
-- [libpqxx](/preview/drivers-orms/ysql-client-drivers/#libpqxx). Homebrew users on macOS can install using `brew install libpqxx`. To build the driver yourself, refer to [Building libpqxx](https://github.com/jtv/libpqxx#building-libpqxx).
+- [libpq](/preview/develop/drivers-orms/ysql-client-drivers/#libpq). Homebrew users on macOS can install using `brew install libpq`. You can download the PostgreSQL binaries and source from [PostgreSQL Downloads](https://www.postgresql.org/download/).
+- [libpqxx](/preview/develop/drivers-orms/ysql-client-drivers/#libpqxx). Homebrew users on macOS can install using `brew install libpqxx`. To build the driver yourself, refer to [Building libpqxx](https://github.com/jtv/libpqxx#building-libpqxx).
 
 To build and run the application, do the following:
 
@@ -451,13 +451,13 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic C++ application that works with YugabyteDB.
 
-[Explore the application logic](/preview/tutorials/build-apps/cpp/cloud-ysql-cpp/#explore-the-application-logic)
+[Explore the application logic](/preview/develop/tutorials/build-apps/cpp/cloud-ysql-cpp/#explore-the-application-logic)
 
   {{% /tab %}}
 
   {{% tab header="C#" lang="csharp" %}}
 
-The [C# application](https://github.com/yugabyte/yugabyte-simple-csharp-app) connects to a YugabyteDB cluster using the [Npgsql driver](/preview/drivers-orms/csharp/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in C#.
+The [C# application](https://github.com/yugabyte/yugabyte-simple-csharp-app) connects to a YugabyteDB cluster using the [Npgsql driver](/preview/develop/drivers-orms/csharp/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in C#.
 
 The application requires the following:
 
@@ -519,20 +519,20 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic C# application that works with YugabyteDB.
 
-[Explore the application logic](/preview/tutorials/build-apps/csharp/cloud-ysql-csharp/#explore-the-application-logic)
+[Explore the application logic](/preview/develop/tutorials/build-apps/csharp/cloud-ysql-csharp/#explore-the-application-logic)
 
   {{% /tab %}}
 
   {{% tab header="Ruby" lang="ruby" %}}
 
-The [Ruby application](https://github.com/yugabyte/yugabyte-simple-ruby-app) connects to a YugabyteDB cluster using the [Ruby Pg driver](/preview/drivers-orms/ruby/ruby-pg) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in Ruby.
+The [Ruby application](https://github.com/yugabyte/yugabyte-simple-ruby-app) connects to a YugabyteDB cluster using the [Ruby Pg driver](/preview/develop/drivers-orms/ruby/ruby-pg) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in Ruby.
 
 The application requires the following:
 
 - Ruby 3.1 or later.
 - OpenSSL 1.1.1 or later (used by libpq and pg to establish secure SSL connections).
-- [libpq](/preview/drivers-orms/ysql-client-drivers/#libpq). Homebrew users on macOS can install using `brew install libpq`. You can download the PostgreSQL binaries and source from [PostgreSQL Downloads](https://www.postgresql.org/download/).
-- [Ruby pg](/preview/drivers-orms/ruby/ruby-pg/). To install Ruby pg, run the following command:
+- [libpq](/preview/develop/drivers-orms/ysql-client-drivers/#libpq). Homebrew users on macOS can install using `brew install libpq`. You can download the PostgreSQL binaries and source from [PostgreSQL Downloads](https://www.postgresql.org/download/).
+- [Ruby pg](/preview/develop/drivers-orms/ruby/ruby-pg/). To install Ruby pg, run the following command:
 
     ```sh
     gem install pg -- --with-pg-include=<path-to-libpq>/libpq/include --with-pg-lib=<path-to-libpq>/libpq/lib
@@ -598,13 +598,13 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic Ruby application that works with YugabyteDB.
 
-[Explore the application logic](/preview/tutorials/build-apps/ruby/cloud-ysql-ruby/#explore-the-application-logic)
+[Explore the application logic](/preview/develop/tutorials/build-apps/ruby/cloud-ysql-ruby/#explore-the-application-logic)
 
   {{% /tab %}}
 
   {{% tab header="Rust" lang="rust" %}}
 
-The [Rust application](https://github.com/yugabyte/yugabyte-simple-rust-app) connects to a YugabyteDB cluster using the [Rust-Postgres driver](/preview/drivers-orms/rust/yb-rust-postgres/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in Rust.
+The [Rust application](https://github.com/yugabyte/yugabyte-simple-rust-app) connects to a YugabyteDB cluster using the [Rust-Postgres driver](/preview/develop/drivers-orms/rust/yb-rust-postgres/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in Rust.
 
 The application requires the following:
 
@@ -664,18 +664,18 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic Rust application that works with YugabyteDB.
 
-[Explore the application logic](/preview/tutorials/build-apps/rust/cloud-ysql-rust/#explore-the-application-logic)
+[Explore the application logic](/preview/develop/tutorials/build-apps/rust/cloud-ysql-rust/#explore-the-application-logic)
 
   {{% /tab %}}
 
   {{% tab header="PHP" lang="php" %}}
 
-The [PHP application](https://github.com/yugabyte/yugabyte-simple-php-app) connects to a YugabyteDB cluster using the [php-pgsql](/preview/drivers-orms/php/ysql/) driver and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in PHP.
+The [PHP application](https://github.com/yugabyte/yugabyte-simple-php-app) connects to a YugabyteDB cluster using the [php-pgsql](/preview/develop/drivers-orms/php/ysql/) driver and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in PHP.
 
 The application requires the following:
 
 - PHP runtime. The sample application was created using PHP 8.1 but should work with earlier and later versions. Homebrew users on macOS can install PHP using `brew install php`.
-- [php-pgsql driver](/preview/drivers-orms/php/ysql/).
+- [php-pgsql driver](/preview/develop/drivers-orms/php/ysql/).
   - On macOS, Homebrew automatically installs the driver with `brew install php`.
   - Ubuntu users can install the driver using the `sudo apt-get install php-pgsql` command.
   - CentOS users can install the driver using the `sudo yum install php-pgsql` command.
@@ -732,7 +732,7 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic PHP application that works with YugabyteDB.
 
-[Explore the application logic](/preview/tutorials/build-apps/php/cloud-ysql-php/#explore-the-application-logic)
+[Explore the application logic](/preview/develop/tutorials/build-apps/php/cloud-ysql-php/#explore-the-application-logic)
 
   {{% /tab %}}
 

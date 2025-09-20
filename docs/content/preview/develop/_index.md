@@ -9,6 +9,34 @@ cascade:
   unversioned: true
 ---
 
+## Tutorials
+
+Get started with step-by-step guides for building scalable and fault-tolerant applications using YugabyteDB and your favorite programming language, services, and frameworks, including Kafka, Gen-AI, and more.
+
+{{< sections/3-boxes >}}
+  {{< sections/3-box-card
+    title="Create a hello world application"
+    description="Build the most basic application in your favorite language using YugabyteDB as a database."
+    buttonText="Hello World"
+    buttonUrl="tutorials/build-apps/"
+  >}}
+
+  {{< sections/3-box-card
+    title="Build and Learn"
+    description="Learn YugabyteDB essentials by building an app and scaling to a multi-region YugabyteDB cluster."
+    buttonText="Get Started"
+    buttonUrl="tutorials/build-and-learn/"
+  >}}
+
+  {{< sections/3-box-card
+    title="Artificial intelligence"
+    description="Add a scalable and highly-available database to your AI projects."
+    buttonText="Explore"
+    buttonUrl="tutorials/ai/"
+  >}}
+
+{{< /sections/3-boxes >}}
+
 ## Application development
 
 Although building scalable applications on top of YugabyteDB is straightforward, you need to understand certain fundamental concepts like transactions, search, and more to make the best use of them.
@@ -22,7 +50,7 @@ To learn how to build applications on top of YugabyteDB, see [Learn app developm
 To communicate with YugabyteDB, applications need to use drivers. Applications can also be built using Object-Relational mappings, a technique used to communicate with the database using object-oriented techniques. We've tested various drivers and ORMs in multiple languages with the optimal configurations to get your applications up and running.
 
 {{<lead link="../drivers-orms/">}}
-For the list of drivers and ORMs with sample code, see [Drivers and ORMs](../drivers-orms/).
+For the list of drivers and ORMs with sample code, see [Drivers and ORMs](./drivers-orms/).
 {{</lead>}}
 
 ## Data modeling
@@ -71,12 +99,4 @@ Cloud-native development refers to building and running applications that fully 
 
 {{<lead link="./gitdev/">}}
 To learn more about how to use browser-based IDEs, see [Cloud-native development](./gitdev/).
-{{</lead>}}
-
-## Tutorials
-
-Yugabyte provides multiple step-by-step guides for building scalable and fault-tolerant applications with YugabyteDB using your favorite programming language, services, and frameworks, including Kafka, Gen-AI, and more.
-
-{{<lead link="/preview/tutorials/">}}
-For step-by-step guides for various frameworks, see [Tutorials](/preview/tutorials/).
 {{</lead>}}

@@ -5,7 +5,7 @@ linkTitle: Quick start
 headcontent: Get started in less than 5 minutes in the cloud or on your desktop
 description: Get started using YugabyteDB in less than five minutes on Docker.
 aliases:
-  - /preview/tutorials/quick-start/docker/
+  - /preview/develop/tutorials/quick-start/docker/
   - /preview/deploy/docker/docker-compose
 type: docs
 unversioned: true

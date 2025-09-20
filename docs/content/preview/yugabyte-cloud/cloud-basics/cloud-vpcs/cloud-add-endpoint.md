@@ -42,7 +42,7 @@ Setting up a private link to connect your cluster to your application VPC involv
 ## Limitations
 
 - Currently, PSEs are supported for [AWS PrivateLink](https://docs.aws.amazon.com/vpc/latest/privatelink/what-is-privatelink.html) and [Azure Private Link](https://learn.microsoft.com/en-us/azure/private-link/).
-- You can't use smart driver load balancing features when connecting to clusters over a private link. See [YugabyteDB smart drivers for YSQL](../../../../drivers-orms/smart-drivers/).
+- You can't use smart driver load balancing features when connecting to clusters over a private link. See [YugabyteDB smart drivers for YSQL](/preview/develop/drivers-orms/smart-drivers/).
 
 ## Prerequisites
 

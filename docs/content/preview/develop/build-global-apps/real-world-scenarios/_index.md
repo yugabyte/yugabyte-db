@@ -7,7 +7,7 @@ aliases:
   - /preview/develop/realworld-apps/iot-spark-kafka-ksql/
   - /develop/realworld-apps/iot-spark-kafka/
 menu:
-  preview:
+  preview_develop:
     identifier: global-apps-real-world-scenarios
     parent: build-global-apps
     weight: 1001

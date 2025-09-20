@@ -8,7 +8,7 @@ aliases:
   - /preview/quick-start/create-local-cluster/
   - /preview/quick-start/install/
   - /preview/quick-start/
-  - /preview/tutorials/quick-start/macos/
+  - /preview/develop/tutorials/quick-start/macos/
 layout: single
 type: docs
 rightNav:

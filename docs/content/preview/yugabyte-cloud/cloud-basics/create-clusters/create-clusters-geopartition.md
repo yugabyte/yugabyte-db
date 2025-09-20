@@ -138,5 +138,5 @@ You now have a fully configured YugabyteDB cluster provisioned in YugabyteDB Aeo
 
 - [Connect to your cluster](../../../cloud-connect/)
 - [Add database users](../../../cloud-secure-clusters/add-users/)
-- [Build an application](/preview/tutorials/build-apps/)
+- [Build an application](/preview/develop/tutorials/build-apps/)
 - [Scale clusters](../../../cloud-clusters/configure-clusters/#partition-by-region-cluster)

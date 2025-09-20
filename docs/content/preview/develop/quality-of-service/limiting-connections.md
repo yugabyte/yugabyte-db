@@ -5,7 +5,7 @@ linkTitle: Rate limiting connections
 description: Rate limiting connections in YugabyteDB.
 headcontent: Rate limiting connections in YugabyteDB
 menu:
-  preview:
+  preview_develop:
     name: Rate limiting connections
     identifier: develop-quality-of-service-limiting-connections
     parent: develop-quality-of-service
