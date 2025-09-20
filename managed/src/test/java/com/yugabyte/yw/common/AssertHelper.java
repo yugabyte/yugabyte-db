@@ -65,7 +65,7 @@ public class AssertHelper {
 
   public static void assertForbidden(Result result, String errorStr) {
     assertEquals(FORBIDDEN, result.status());
-    assertEquals(errorStr, contentAsString(result));
+    assertErrorResponse(result, errorStr);
   }
 
   public static void assertForbiddenWithException(Result result, String errorStr) {

@@ -95,9 +95,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   private Customer customer;
   private Users user;
   private String configName;
-  private String sourceUniverseName;
   private UUID sourceUniverseUUID;
-  private Universe sourceUniverse;
   private String targetUniverseName;
   private UUID targetUniverseUUID;
   private Universe targetUniverse;
@@ -123,7 +121,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   Permission permission1 = new Permission(ResourceType.UNIVERSE, Action.XCLUSTER);
 
   @Before
-  public void setUp() {
+  public void setUp() throws Exception {
     customer = testCustomer("XClusterConfigController-test-customer");
     user = ModelFactory.testUser(customer);
     role =
@@ -132,19 +130,19 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
             "FakeRole1",
             "testDescription",
             RoleType.Custom,
-            new HashSet<>(Arrays.asList(permission1)));
+            Set.of(permission1));
     rd1 =
         ResourceDefinition.builder()
             .resourceType(ResourceType.OTHER)
-            .resourceUUIDSet(new HashSet<>(Arrays.asList(customer.getUuid())))
+            .resourceUUIDSet(Set.of(customer.getUuid()))
             .build();
     rd2 = ResourceDefinition.builder().resourceType(ResourceType.UNIVERSE).allowAll(true).build();
 
     configName = "XClusterConfigController-test-config";
 
-    sourceUniverseName = "XClusterConfigController-test-universe-1";
+    String sourceUniverseName = "XClusterConfigController-test-universe-1";
     sourceUniverseUUID = UUID.randomUUID();
-    sourceUniverse = createUniverse(sourceUniverseName, sourceUniverseUUID);
+    createUniverse(sourceUniverseName, sourceUniverseUUID);
 
     targetUniverseName = "XClusterConfigController-test-universe-2";
     targetUniverseUUID = UUID.randomUUID();
@@ -199,7 +197,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     setupMetricValues();
   }
 
-  private void mockTableSchemaResponse(CommonTypes.TableType tableType) {
+  private void mockTableSchemaResponse(CommonTypes.TableType tableType) throws Exception {
     GetTableSchemaResponse mockTableSchemaResponseTable1 =
         new GetTableSchemaResponse(
             0,
@@ -226,18 +224,15 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
             tableType,
             Collections.emptyList(),
             false);
-    try {
-      lenient()
-          .when(mockClient.getTableSchemaByUUID(exampleTableID1))
-          .thenReturn(mockTableSchemaResponseTable1);
-      lenient()
-          .when(mockClient.getTableSchemaByUUID(exampleTableID2))
-          .thenReturn(mockTableSchemaResponseTable2);
-    } catch (Exception ignored) {
-    }
+    lenient()
+        .when(mockClient.getTableSchemaByUUID(exampleTableID1))
+        .thenReturn(mockTableSchemaResponseTable1);
+    lenient()
+        .when(mockClient.getTableSchemaByUUID(exampleTableID2))
+        .thenReturn(mockTableSchemaResponseTable2);
   }
 
-  private void setupMockClusterConfigWithXCluster(XClusterConfig xClusterConfig) {
+  private void setupMockClusterConfigWithXCluster(XClusterConfig xClusterConfig) throws Exception {
     StreamEntryPB.Builder fakeStreamEntry1 =
         StreamEntryPB.newBuilder().setProducerTableId(exampleTableID1);
     StreamEntryPB.Builder fakeStreamEntry2 =
@@ -259,10 +254,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     GetMasterClusterConfigResponse fakeClusterConfigResponse =
         new GetMasterClusterConfigResponse(0, "", fakeClusterConfigBuilder.build(), null);
 
-    try {
-      when(mockClient.getMasterClusterConfig()).thenReturn(fakeClusterConfigResponse);
-    } catch (Exception e) {
-    }
+    when(mockClient.getMasterClusterConfig()).thenReturn(fakeClusterConfigResponse);
   }
 
   private void setupMockMetricQueryHelperResponse() {
@@ -292,11 +284,11 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     doReturn(metricValues).when(mockMetricQueryHelper).queryDirect(any());
   }
 
-  public void initClientGetTablesList() {
+  public void initClientGetTablesList() throws Exception {
     initClientGetTablesList(CommonTypes.TableType.YQL_TABLE_TYPE);
   }
 
-  public void initClientGetTablesList(CommonTypes.TableType tableType) {
+  public void initClientGetTablesList(CommonTypes.TableType tableType) throws Exception {
     ListTablesResponse mockListTablesResponse = mock(ListTablesResponse.class);
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList = new ArrayList<>();
     // Adding table 1.
@@ -324,23 +316,16 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
             .build());
     tableInfoList.add(table2TableInfoBuilder.build());
 
-    try {
-      when(mockListTablesResponse.getTableInfoList()).thenReturn(tableInfoList);
-      when(mockClient.getTablesList(eq(null), anyBoolean(), eq(null)))
-          .thenReturn(mockListTablesResponse);
-    } catch (Exception e) {
-      e.printStackTrace();
-    }
+    when(mockListTablesResponse.getTableInfoList()).thenReturn(tableInfoList);
+    when(mockClient.getTablesList(eq(null), anyBoolean(), eq(null)))
+        .thenReturn(mockListTablesResponse);
   }
 
-  private void mockDefaultInstanceClusterConfig() {
+  private void mockDefaultInstanceClusterConfig() throws Exception {
     GetMasterClusterConfigResponse fakeClusterConfigResponse =
         new GetMasterClusterConfigResponse(
             0, "", CatalogEntityInfo.SysClusterConfigEntryPB.getDefaultInstance(), null);
-    try {
-      when(mockClient.getMasterClusterConfig()).thenReturn(fakeClusterConfigResponse);
-    } catch (Exception ignore) {
-    }
+    when(mockClient.getMasterClusterConfig()).thenReturn(fakeClusterConfigResponse);
   }
 
   private void validateGetXClusterResponse(
@@ -404,8 +389,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreate() {
-
+  public void testCreate() throws Exception {
     initClientGetTablesList();
     mockDefaultInstanceClusterConfig();
     Result result =
@@ -416,9 +400,9 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
 
     XClusterConfig xClusterConfig =
         XClusterConfig.getByNameSourceTarget(configName, sourceUniverseUUID, targetUniverseUUID);
-    assertEquals(xClusterConfig.getName(), configName);
-    assertEquals(xClusterConfig.getStatus(), XClusterConfigStatusType.Initialized);
-    assertEquals(xClusterConfig.getTableIds(), exampleTables);
+    assertEquals(configName, xClusterConfig.getName());
+    assertEquals(XClusterConfigStatusType.Initialized, xClusterConfig.getStatus());
+    assertEquals(exampleTables, xClusterConfig.getTableIds());
 
     JsonNode resultJson = Json.parse(contentAsString(result));
     assertValue(resultJson, "taskUUID", taskUUID.toString());
@@ -442,7 +426,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateUsingNewRbacAuthzWithNeededPermissions() {
+  public void testCreateUsingNewRbacAuthzWithNeededPermissions() throws Exception {
     initClientGetTablesList();
     mockDefaultInstanceClusterConfig();
     RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
@@ -456,9 +440,9 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
 
     XClusterConfig xClusterConfig =
         XClusterConfig.getByNameSourceTarget(configName, sourceUniverseUUID, targetUniverseUUID);
-    assertEquals(xClusterConfig.getName(), configName);
-    assertEquals(xClusterConfig.getStatus(), XClusterConfigStatusType.Initialized);
-    assertEquals(xClusterConfig.getTableIds(), exampleTables);
+    assertEquals(configName, xClusterConfig.getName());
+    assertEquals(XClusterConfigStatusType.Initialized, xClusterConfig.getStatus());
+    assertEquals(exampleTables, xClusterConfig.getTableIds());
 
     JsonNode resultJson = Json.parse(contentAsString(result));
     assertValue(resultJson, "taskUUID", taskUUID.toString());
@@ -482,7 +466,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateUsingNewRbacAuthzWithNoPermissions() {
+  public void testCreateUsingNewRbacAuthzWithNoPermissions() throws Exception {
     user = ModelFactory.testUser(customer, "test3@gmail.com", Users.Role.ConnectOnly);
     RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "false");
     initClientGetTablesList();
@@ -493,7 +477,8 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateUsingNewRbacAuthzWithIncompletePermissionsOnTargetUniverse() {
+  public void testCreateUsingNewRbacAuthzWithIncompletePermissionsOnTargetUniverse()
+      throws Exception {
     user = ModelFactory.testUser(customer, "test3@gmail.com", Users.Role.ConnectOnly);
     RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "false");
     initClientGetTablesList();
@@ -501,9 +486,9 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     ResourceDefinition rd3 =
         ResourceDefinition.builder()
             .resourceType(ResourceType.UNIVERSE)
-            .resourceUUIDSet(new HashSet<>(Arrays.asList(sourceUniverseUUID)))
+            .resourceUUIDSet(Set.of(sourceUniverseUUID))
             .build();
-    ResourceGroup rG = new ResourceGroup(new HashSet<>(Arrays.asList(rd3)));
+    ResourceGroup rG = new ResourceGroup(Set.of(rd3));
     RoleBinding.create(user, RoleBindingType.Custom, role, rG);
     Result result =
         doRequestWithAuthTokenAndBody("POST", apiEndpoint, user.createAuthToken(), createRequest);
@@ -511,16 +496,17 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateUsingNewRbacAuthzWithIncompletePermissionsOnSourceUniverse() {
+  public void testCreateUsingNewRbacAuthzWithIncompletePermissionsOnSourceUniverse()
+      throws Exception {
     user = ModelFactory.testUser(customer, "test3@gmail.com", Users.Role.ConnectOnly);
     initClientGetTablesList();
     RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
     ResourceDefinition rd3 =
         ResourceDefinition.builder()
             .resourceType(ResourceType.UNIVERSE)
-            .resourceUUIDSet(new HashSet<>(Arrays.asList(targetUniverseUUID)))
+            .resourceUUIDSet(Set.of(targetUniverseUUID))
             .build();
-    ResourceGroup rG = new ResourceGroup(new HashSet<>(Arrays.asList(rd3)));
+    ResourceGroup rG = new ResourceGroup(Set.of(rd3));
     RoleBinding.create(user, RoleBindingType.Custom, role, rG);
     Result result =
         doRequestWithAuthTokenAndBody("POST", apiEndpoint, user.createAuthToken(), createRequest);
@@ -528,7 +514,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateUsingNewRbacAuthzWithIncompletePermission() {
+  public void testCreateUsingNewRbacAuthzWithIncompletePermission() throws Exception {
     user = ModelFactory.testUser(customer, "test3@gmail.com", Users.Role.ConnectOnly);
     initClientGetTablesList();
     RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
@@ -538,13 +524,13 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
             "FakeRole2",
             "testDescription",
             RoleType.Custom,
-            new HashSet<>(Arrays.asList(permission1)));
+            Set.of(permission1));
     ResourceDefinition rd3 =
         ResourceDefinition.builder()
             .resourceType(ResourceType.UNIVERSE)
-            .resourceUUIDSet(new HashSet<>(Arrays.asList(targetUniverseUUID)))
+            .resourceUUIDSet(Set.of(targetUniverseUUID))
             .build();
-    ResourceGroup rG = new ResourceGroup(new HashSet<>(Arrays.asList(rd3)));
+    ResourceGroup rG = new ResourceGroup(Set.of(rd3));
     RoleBinding.create(user, RoleBindingType.Custom, role1, rG);
     Result result =
         doRequestWithAuthTokenAndBody("POST", apiEndpoint, user.createAuthToken(), createRequest);
@@ -711,7 +697,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testGet() {
+  public void testGet() throws Exception {
     XClusterConfig xClusterConfig =
         XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
 
@@ -730,7 +716,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testGetUsesStreamIDCache() {
+  public void testGetUsesStreamIDCache() throws Exception {
     XClusterConfig xClusterConfig =
         XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
     // Set streamIds.
@@ -749,10 +735,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     GetMasterClusterConfigResponse fakeClusterConfigResponse =
         new GetMasterClusterConfigResponse(
             0, "", CatalogEntityInfo.SysClusterConfigEntryPB.getDefaultInstance(), null);
-    try {
-      when(mockClient.getMasterClusterConfig()).thenReturn(fakeClusterConfigResponse);
-    } catch (Exception ignore) {
-    }
+    when(mockClient.getMasterClusterConfig()).thenReturn(fakeClusterConfigResponse);
 
     String getAPIEndpoint = apiEndpoint + "/" + xClusterConfig.getUuid();
 
@@ -878,7 +861,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testEditTables() {
+  public void testEditTables() throws Exception {
     XClusterConfig xClusterConfig =
         XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
 
@@ -1339,8 +1322,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateXClusterConfigWithBootstrapRequiredOnPartialTables() {
-
+  public void testCreateXClusterConfigWithBootstrapRequiredOnPartialTables() throws Exception {
     mockTableSchemaResponse(CommonTypes.TableType.PGSQL_TABLE_TYPE);
     initClientGetTablesList(CommonTypes.TableType.PGSQL_TABLE_TYPE);
 
@@ -1363,10 +1345,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     GetMasterClusterConfigResponse fakeClusterConfigResponse =
         new GetMasterClusterConfigResponse(
             0, "", CatalogEntityInfo.SysClusterConfigEntryPB.getDefaultInstance(), null);
-    try {
-      when(mockClient.getMasterClusterConfig()).thenReturn(fakeClusterConfigResponse);
-    } catch (Exception ignore) {
-    }
+    when(mockClient.getMasterClusterConfig()).thenReturn(fakeClusterConfigResponse);
 
     String editAPIEndpoint = apiEndpoint + "/" + xClusterConfig.getUuid();
     IllegalArgumentException exception =
@@ -1407,13 +1386,13 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateYSQLXClusterConfigWhenUpgradeIsInComplete() {
+  public void testCreateYSQLXClusterConfigWhenUpgradeIsInComplete() throws Exception {
     targetUniverse =
         Universe.saveDetails(
             targetUniverse.getUniverseUUID(),
-            universe -> {
-              universe.getUniverseDetails().softwareUpgradeState = SoftwareUpgradeState.PreFinalize;
-            });
+            universe ->
+                universe.getUniverseDetails().softwareUpgradeState =
+                    SoftwareUpgradeState.PreFinalize);
     mockTableSchemaResponse(CommonTypes.TableType.PGSQL_TABLE_TYPE);
     initClientGetTablesList(CommonTypes.TableType.PGSQL_TABLE_TYPE);
     createFormData.tables = ImmutableSet.of(exampleTableID1);
@@ -1429,7 +1408,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateYCQLXClusterConfigWhenYSQLMajorUpgradeIsInComplete() {
+  public void testCreateYCQLXClusterConfigWhenYSQLMajorUpgradeIsInComplete() throws Exception {
     when(mockSoftwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(any())).thenReturn(true);
 
     initClientGetTablesList();
