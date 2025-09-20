@@ -111,6 +111,8 @@ const char* kSafeTimeBatchLastCommitTimeProcessed = "last_commit_time_processed"
 const std::unordered_set<std::string> kSupportedCommandTags {
     // Relations
     "CREATE TABLE",
+    "CREATE TABLE AS",
+    "SELECT INTO",
     "CREATE INDEX",
     "CREATE TYPE",
     "CREATE SEQUENCE",

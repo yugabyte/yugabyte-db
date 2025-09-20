@@ -355,6 +355,17 @@ DisallowMultiStatementQueries(CommandTag command_tag)
 		CommandTag	stmt_command_tag = CreateCommandTag(stmt->stmt);
 
 		/*
+		 * Exception for SELECT ... INTO: The parser tags this as a SELECT,
+		 * so we must check the parsed statement for an IntoClause.
+		 */
+		if (command_tag == CMDTAG_SELECT_INTO &&
+			stmt_command_tag == CMDTAG_SELECT &&
+			((SelectStmt *) stmt->stmt)->intoClause != NULL)
+		{
+			stmt_command_tag = CMDTAG_SELECT_INTO;
+		}
+
+		/*
 		 * Only Extension DDLs are allowed to be part of multi-statement as
 		 * they typically executes multiple DDLs under the covers.
 		 */
