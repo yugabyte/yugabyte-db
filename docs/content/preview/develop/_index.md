@@ -15,7 +15,7 @@ Get started with step-by-step guides for building scalable and fault-tolerant ap
 
 {{< sections/3-boxes >}}
   {{< sections/3-box-card
-    title="Create a hello world application"
+    title="Hello World"
     description="Build the most basic application in your favorite language using YugabyteDB as a database."
     buttonText="Hello World"
     buttonUrl="tutorials/build-apps/"
@@ -71,7 +71,7 @@ To learn more about building global applications, see [Build global applications
 
 ## Multi-cloud applications
 
-A multi-cloud strategy provides the flexibility to use the optimal computing environment for each specific workload, helps avoid vendor lock-in, lets you place data close to the users, and can minimize cost by choosing optimal pricing and performance of various cloud providers. You can also opt for a hybrid model as your path to migration onto the cloud.
+A multi-cloud strategy provides the flexibility to use the optimal computing environment for each specific workload, helps avoid vendor lock-in, lets you place data close to users, and can minimize cost by choosing optimal pricing and performance of various cloud providers. You can also opt for a hybrid model as your path to migration onto the cloud.
 
 {{<lead link="./multi-cloud/">}}
 To understand how to build a multi-cloud setup with YugabyteDB, see [Build multi-cloud applications](./multi-cloud/).
