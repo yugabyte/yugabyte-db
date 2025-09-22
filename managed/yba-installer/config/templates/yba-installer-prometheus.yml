@@ -212,7 +212,7 @@
       --web.listen-address=:{{ yamlPath "prometheus.port" }} \
       --query.max-concurrency={{ yamlPath "prometheus.maxConcurrency" }} \
       --query.max-samples={{ yamlPath "prometheus.maxSamples" }} \
-      --query.timeout={{ yamlPath "prometheus.timeout" }} &>> {{ .LogDir }}/prometheus.log"
+      --query.timeout={{ yamlPath "prometheus.timeout" }} >> {{ .LogDir }}/prometheus.log 2>&1"
 
       Restart=always
       RestartSec={{ yamlPath "prometheus.restartSeconds"}}
