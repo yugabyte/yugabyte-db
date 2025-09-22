@@ -111,7 +111,7 @@ The `conflict_action` specifies what to do when a conflict occurs with `ON CONFL
 
 When you use `DO UPDATE`, you'll need to specify the exact details of the `UPDATE` action. In the `SET` and `WHERE` clauses of `ON CONFLICT DO UPDATE`, you can access:
 
-- The existing row using the table's name (or an alias you've defined)
+- The existing row using the table's name (or an alias you've defined).
 - The row that was proposed for insertion using the special `excluded` table
 
 You'll need `SELECT` privilege on any column in the target table where you're reading from the corresponding `excluded` columns.
