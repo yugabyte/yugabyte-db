@@ -95,7 +95,7 @@ If the expression for any column isn't the correct data type, YugabyteDB will at
 
 ### *conflict_target*
 
-The `conflict_target` specifies which conflicts `ON CONFLICT` should handle by choosing arbiter indexes. You can either perform unique index inference or name a constraint explicitly.
+The `conflict_target` specifies which conflicts `ON CONFLICT` should handle by choosing arbiter indexes. You can either perform unique index inference, or name a constraint explicitly.
 
 The requirements depend on which conflict action you're using:
 
