@@ -608,7 +608,7 @@ DEFINE_RUNTIME_AUTO_bool(enable_tablespace_based_transaction_placement, kLocalPe
 DECLARE_bool(enable_pg_cron);
 DECLARE_bool(enable_truncate_cdcsdk_table);
 DECLARE_bool(ysql_yb_enable_replica_identity);
-DECLARE_bool(TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication);
+DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 
 namespace yb::master {
 
@@ -10861,7 +10861,7 @@ Status CatalogManager::SendAlterTableRequestInternal(
         VERIFY_RESULT(xrepl::StreamId::FromString(req->cdc_sdk_stream_id()));
       auto tablets = VERIFY_RESULT(table->GetTablets());
       if (tablets.size() == 1 && tablets[0]->tablet_id() == master::kSysCatalogTabletId &&
-          FLAGS_TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
+          FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
         RETURN_NOT_OK(SetAllInitialCDCSDKRetentionBarriersOnCatalogTable(table, stream_id));
         return Status::OK();
       }

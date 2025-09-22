@@ -126,7 +126,7 @@ void CDCSDKConsistentSnapshotTest::TestCSStreamFailureRollback(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 100;
   ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication) = poll_catalog_tables;
+      FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) = poll_catalog_tables;
 
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
   auto tablet_peer =
