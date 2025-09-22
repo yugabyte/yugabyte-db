@@ -116,7 +116,7 @@ When you use `DO UPDATE`, you'll need to specify the exact details of the `UPDAT
 
 You'll need `SELECT` privilege on any column in the target table where you're reading from the corresponding `excluded` columns.
 
-Keep in mind that the `excluded` values reflect all the effects of per-row `BEFORE INSERT` triggers, since those effects may have contributed to the row being excluded from insertion.
+Note that the `excluded` values reflect all the effects of per-row `BEFORE INSERT` triggers, as those effects may have contributed to the row being excluded from insertion.
 
 #### *update_item*
 
