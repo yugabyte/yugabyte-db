@@ -12106,6 +12106,7 @@
             "ALL",
             "NORMAL",
             "MINIMAL",
+            "TABLE_OFF",
             "OFF"
           ],
           "example" : "NORMAL",
