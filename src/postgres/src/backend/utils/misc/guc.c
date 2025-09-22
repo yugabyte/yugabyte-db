@@ -7166,11 +7166,7 @@ static struct config_enum ConfigureNamesEnum[] =
 			NULL
 		},
 		&Password_encryption,
-		/*
-		 * YB_TODO: Change encryption method back to 'scram-sha-256' from 'md5'.
-		 * Currently YSQL Connection Manager times out when using scram passwords for unknown reasons.
-		 */
-		PASSWORD_TYPE_MD5, password_encryption_options,
+		PASSWORD_TYPE_SCRAM_SHA_256, password_encryption_options,
 		NULL, NULL, NULL
 	},
 
