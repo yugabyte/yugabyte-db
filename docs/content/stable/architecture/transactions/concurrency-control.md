@@ -1278,6 +1278,8 @@ The `SKIP LOCKED` clause is supported in both concurrency control policies and p
 
 Support for table-level locks is disabled by default, and to enable the feature, set the [yb-tserver](../../../reference/configuration/yb-tserver/) flag [enable_object_locking_for_table_locks](../../../explore/transactions/explicit-locking/#enable-table-level-locks) to true.
 
+Table-level locks in YugabyteDB are semantically identical to PostgreSQL, and are managed using the same modes and API. Refer to [Table-level locks](https://www.postgresql.org/docs/15/explicit-locking.html#LOCKING-TABLES) in the PostgreSQL documentation.
+
 PostgreSQL table locks can be broadly categorized into two types:
 
 **Shared locks:**
@@ -1300,7 +1302,7 @@ To reduce the overhead of DMLs, YugabyteDB takes shared locks on the PostgreSQL 
 
 Each TServer maintains an in-memory `TSLocalLockManager` that serves object lock acquire or release calls. The Master also maintains an in-memory lock manager primarily for serializing conflicting global object locks. When the Master leader receives a global lock request, it first acquires the lock locally, then fans out the lock request to all TServers with valid [YSQL leases](#ysql-lease-mechanism), and executes the client callback after the lock has been successfully acquired on all TServers (with a valid YSQL lease).
 
-The following illustration described how a DDL progresses in YugabyteDB:
+The following illustration describes how a DDL progresses in YugabyteDB:
 
 ![Table-level locks](/images/architecture/txn/table-level-locks.png)
 
