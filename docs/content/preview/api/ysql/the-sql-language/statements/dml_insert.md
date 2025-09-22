@@ -89,7 +89,7 @@ Only rows that are successfully inserted or updated are returned. For example, i
 
 The values you supply in the `VALUES` clause or query are matched with your column list from left to right. 
 
-Any column not included in your explicit or implicit column list will be filled with its default value. If there's no declared default value for that column, it'll be set to `NULL`.
+Any column not included in your explicit or implicit column list is filled with its default value. If there's no declared default value for that column, it is set to `NULL`.
 
 If the expression for any column isn't the correct data type, YugabyteDB will attempt automatic type conversion.
 
